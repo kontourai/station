@@ -38,6 +38,7 @@ import {
   listOrchestrationSessions,
   respondToRequest,
 } from '@kontourai/station-sdk/client';
+import { requestIdsSettledByTurnAbort } from '@kontourai/station-shared/request-settlement';
 import {
   type ParsedCoreArgs,
   printJsonMode,
@@ -59,6 +60,12 @@ interface PendingApproval {
   threadId: string;
   requestId: string;
   requestType: string;
+  /**
+   * The `request.opened` event this row was read from. `approvals respond`
+   * sends it back as `expectedRequestEventId`, so the server answers the
+   * request this listing showed and refuses one that has changed since.
+   */
+  requestEventId?: string;
   title: string;
   toolName?: string;
   ageMs?: number;
@@ -133,8 +140,20 @@ function joinAnswerability(
 }
 
 /**
- * Mirrors `orchestration-session-state.ts:174-184`'s pending derivation:
- * resolved requestIds are excluded from the `request.opened` set.
+ * Mirrors the server's pending derivation: a `request.opened` is pending
+ * unless it was resolved, or settled by its turn's abort (#3071).
+ *
+ * The settled half is not re-derived here. It is the shared
+ * `requestIdsSettledByTurnAbort` fold the server itself applies, plus the
+ * server's own `session.openRequestIds` when that summary carries it: the
+ * server reads turn facts this response's event list may not hold, so a
+ * request it no longer lists is not offered. A summary without the member
+ * (an older Station) leaves the fold as the only filter.
+ *
+ * This removes a request the server has already closed; it is not the
+ * client-side answerability veto the note above `joinAnswerability` rules
+ * out. `approvals respond` still posts whatever it is given, and the server
+ * refuses a settled request itself.
  *
  * `session` is the decorated summary the same response already carried
  * (`GET /api/orchestration/sessions/:id` returns `{session, events}`), so
@@ -153,6 +172,15 @@ function derivePendingApprovals(
       .filter((id): id is string => typeof id === 'string'),
   );
 
+  const settledRequestIds = requestIdsSettledByTurnAbort(events);
+  const serverOpenRequestIds = Array.isArray(session?.openRequestIds)
+    ? new Set(
+        session.openRequestIds.filter(
+          (id): id is string => typeof id === 'string',
+        ),
+      )
+    : undefined;
+
   const pending: PendingApproval[] = [];
   for (const event of events) {
     if (event.method !== 'request.opened') {
@@ -160,7 +188,12 @@ function derivePendingApprovals(
     }
     const requestId =
       typeof event.requestId === 'string' ? event.requestId : undefined;
-    if (!requestId || resolvedRequestIds.has(requestId)) {
+    if (
+      !requestId ||
+      resolvedRequestIds.has(requestId) ||
+      settledRequestIds.has(requestId) ||
+      serverOpenRequestIds?.has(requestId) === false
+    ) {
       continue;
     }
     const payload =
@@ -175,6 +208,9 @@ function derivePendingApprovals(
       requestId,
       requestType:
         typeof event.requestType === 'string' ? event.requestType : 'unknown',
+      ...(typeof event.eventId === 'string'
+        ? { requestEventId: event.eventId }
+        : {}),
       title: typeof event.title === 'string' ? event.title : '',
       toolName:
         typeof payload?.toolName === 'string' ? payload.toolName : undefined,
@@ -420,6 +456,53 @@ async function runApprovalsList(
   printApprovals(pending, jsonMode);
 }
 
+/**
+ * The event id to bind a decision to, when this Station still lists the
+ * request as a pending approval or permission. With it the server answers
+ * exactly the request the caller meant and refuses one that was resolved,
+ * re-opened, or settled since.
+ *
+ * Nothing is vetoed here: a request this lookup does not find (already
+ * closed, an input request, a question, a session that could not be read)
+ * is posted without the binding and the server decides, as before.
+ */
+async function expectedRequestEvent(
+  apiBase: string,
+  threadId: string,
+  requestId: string,
+): Promise<{ expectedRequestEventId?: string }> {
+  let detail: OrchestrationSessionDetail;
+  try {
+    detail = await getOrchestrationSession<OrchestrationSessionDetail>(
+      apiBase,
+      threadId,
+    );
+  } catch {
+    return {};
+  }
+  const events = detail.events ?? [];
+  const request = derivePendingApprovals(threadId, events, detail.session).find(
+    (candidate) =>
+      candidate.requestId === requestId &&
+      (candidate.requestType === 'approval' ||
+        candidate.requestType === 'permission'),
+  );
+  if (!request?.requestEventId) return {};
+  // A question (a request carrying a questionnaire) is never bound here.
+  // The server refuses an unbound answer to one, so that nothing closes a
+  // question its asker has not been shown; binding it automatically would
+  // turn `decline` and `cancel` into a way around that.
+  const opened = events.find(
+    (event) => event.eventId === request.requestEventId,
+  );
+  const payload =
+    opened?.payload && typeof opened.payload === 'object'
+      ? (opened.payload as Record<string, unknown>)
+      : undefined;
+  if (payload?.questionnaire !== undefined) return {};
+  return { expectedRequestEventId: request.requestEventId };
+}
+
 async function runApprovalsRespond(
   apiBase: string,
   parsed: ParsedCoreArgs,
@@ -437,6 +520,7 @@ async function runApprovalsRespond(
   const { receipt } = await respondToRequest(apiBase, {
     threadId,
     requestId,
+    ...(await expectedRequestEvent(apiBase, threadId, requestId)),
     decision: decision as ApprovalDecision,
   });
 

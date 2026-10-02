@@ -1,0 +1,7 @@
+{
+  "revision": "7313e2e5010c88deda8f65df663a7b85c6f7380e",
+
+  "notes": [
+    {"path":"src-desktop/icons/README.md","note":"src-ui/src/index.css changed on this branch by removing the Browser pane's `.button--icon` rule (the pane now owns BrowserIconButton with its own lazily loaded sheet) and 68 rules whose class names appear in no markup, test, fixture or doc (agent-selector menu internals, chat-dock scope/settings/empty/model/session-info/new-icon/active filter pill/360px drawer toggle, provider-overview grid and card internals, new-chat-modal agent description and state chip, agent-editor steps/content/actions, the ACP session badge, workspace-tabs label, workspace-default empty/title/actions, knowledge status item, chat-settings active button, streaming-loading). Searched this document for those class names, Button variants, icon buttons and 44px claims; none is affected. No prose change."}
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "path": ".changeset/layout-header-can-launch-prompts.md",
+
+  "kind": "release-note",
+
+  "state": "classified",
+
+  "summary": "Release intent for the package versions named in this changeset.",
+
+  "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+
+  "document": {"digest":"cd2172c4873f33bb613b0718aef4171ea2e351ffe0d51f0517c4504d8523ee0f","revision":"eec64aa6defda8dd84ffebbe430eea95b35aea3f"},
+
+  "sources": [],
+
+  "checks": []
+}

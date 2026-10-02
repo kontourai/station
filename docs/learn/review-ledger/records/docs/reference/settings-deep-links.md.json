@@ -1,0 +1,43 @@
+{
+  "path": "docs/reference/settings-deep-links.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Reviewed route parsing, registry delivery, platform/mount limits, focus restoration and bounded streamed-answer buffering.",
+
+  "limits": "Browser/source and focused test evidence; no physical native-device result.",
+
+  "document": {"digest":"9c41fe48ae34d551ffe7c2832f9b8a8af704887abb825db3415bad23d8dfdda2","revision":"e56b7b6bf847135adcce152d99112d104542d029"},
+
+  "sources": [
+    {"path":"docs/architecture/module-map.md","digest":"8f082631ce14f9b1114110e69a7f336404340c0c8f58a02ebf2646973277a22b","revision":"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac"},
+
+    {"path":"scripts/gen-settings-registry.ts","digest":"76c9ac779d576b4d32367a429c2667f4b17fe79660fb9adaa18ce6019683c16e","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-server/generated/settings-registry.json","digest":"49c10e15cc0774927a5191781af93e14231145efe08861f2b72281d7fcd6b191","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/views/SettingsView.tsx","digest":"2f09efa4ae7974700bdbe901a4492a34329aafb2b1fa97a98f28edd3c8645167","revision":"f0f20e6125e5e41bbb691d806ea3cf866ac15769"},
+
+    {"path":"src-ui/src/views/settings/settings-deep-link.ts","digest":"48c9f6d2dfc21babff6ff3e8839b1cd3bf2781347f0aa622ae740613148c3990","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"}
+  ],
+
+  "checks": [
+    "Reviewed actual 5-second mount deadline and 1.4-second highlight; corrected character/event/thread/global bounds and transient-versus-terminal flush behavior. Focused settings checks passed.",
+
+    "Reviewed integration deltas: docs/architecture/module-map.md: Added and independently reviewed the native grant renewal supervisor against renderer/host callers and tests; corrected retained revision lookup and seal-source composition, and MCP policy filtering limits. All prior module reviews retained.",
+
+    "Landing source delta through 61d497e88: Reviewed corresponding canonical prose, the new dispatch-scope module/tree entry and regenerated 101-topic MCP content. Only affected claims changed; source links remain evidence routes, not proof of execution.",
+
+    "Landing review through d0d9d33f7: Added an explicitly unwired desktop account-proof foundation under DeploymentAuthentication; existing module identities, interfaces and reading routes are unchanged.",
+
+    "Reviewed landing deltas through 111744681: Added the registered NativeApplicationSignaling interface with explicit unwired consumer/data/proof limits; clarified the normative depth definition. Existing module contracts are unchanged.",
+
+    "Required merge-queue recovery through 421517851: reviewed current canonical prose/static MCP dependency changes; historical/policy classifications and unrelated documented behavior remain unchanged. Changed inputs reviewed: docs/architecture/module-map.md. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
+
+    "Integration source review through e0314c727: module-map.md changes are limited to the CollaborativeEditorPane to ProjectTaskRoom replacement and the PluginForegroundRuns removal. No settings or deep-link section changed, and the reference does not link the removed anchors. Source review is separate from executed test evidence.",
+
+    "Integration source review through 2ef40ae83: docs/architecture/module-map.md changed only its StationHomeArchive purpose (the separate update-backup schema) and its verification-coordinator import-direction wording. This document references neither section, so the prose is accurate. Source review is separate from executed test evidence."
+  ]
+}

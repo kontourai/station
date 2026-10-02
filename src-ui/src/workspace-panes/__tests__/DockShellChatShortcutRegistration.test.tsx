@@ -102,6 +102,10 @@ vi.mock('../../contexts/open-chats-store', () => ({
     registerNavigation: () => () => {},
   },
   useOpenChats: () => [],
+  useOpenChatInbox: () => ({
+    items: [],
+    currentSessionIdByConversation: new Map(),
+  }),
   countOpenChatAttention: () => 0,
 }));
 

@@ -45,7 +45,6 @@ import { useNavigation } from '../../contexts/NavigationContext';
 import {
   type ChatFocusTarget,
   openChatsStore,
-  useOpenChats,
 } from '../../contexts/open-chats-store';
 import { useProjects } from '../../contexts/ProjectsContext';
 import { useToast } from '../../contexts/ToastContext';
@@ -71,6 +70,7 @@ import {
 } from '../../hooks/useDockShellChrome';
 import { useDockFoldsToOneRegion } from '../../hooks/useIsMobile';
 import { useKeyboardShortcut } from '../../hooks/useKeyboardShortcut';
+import { readNewChatIntent } from '../../lib/newChatIntent';
 import {
   OPEN_PROJECT_CHATS_EVENT,
   type OpenProjectChatsDetail,
@@ -84,10 +84,12 @@ import {
   isSessionWorkActive,
 } from '../../utils/execution';
 import { displayProvider, sessionTitle } from '../../utils/sessionDisplay';
+import { chatTaskSessionId } from '../../views/home/home-view-model';
 import {
-  buildHomeTaskItems,
-  chatTaskSessionId,
-} from '../../views/home/home-view-model';
+  openChatInboxRows,
+  useInboxWorkItems,
+} from '../../views/home/useInboxWorkItems';
+import { useWorkFacts } from '../../views/home/useWorkFacts';
 import {
   selectChatReadyAgents,
   selectDirectNewChatAgent,
@@ -129,6 +131,7 @@ import {
   routeToOpenChatsCollection,
   shouldRouteScopedChatProject,
 } from './chat-dock-utils';
+import { ambientChatPaneFailureContext } from './chatPaneFailureContext';
 import { submitCommandLauncherIntent } from './command-launcher-model';
 import { claimComposerDraftRequest } from './composerDraftRequest';
 import type { ConversationOpenRecovery } from './conversationOpenController';
@@ -364,8 +367,43 @@ interface ChatWorkspacePaneSharedProps {
  */
 type ChatWorkspacePaneProps = ChatWorkspacePaneSharedProps &
   (
-    | { placement: 'dock'; shellChrome: DockShellChrome }
-    | { placement: 'fullscreen'; shellChrome?: never }
+    | {
+        placement: 'dock';
+        shellChrome: DockShellChrome;
+        ownsDockShortcuts?: never;
+        onPresentationTitleChange?: never;
+        conversationScope?: never;
+        onScreen?: never;
+      }
+    | {
+        placement: 'fullscreen';
+        shellChrome?: never;
+        /**
+         * Whether this full-screen placement registers the dock's maximize
+         * chord. True for the Chat layout, which owns the whole viewport. The
+         * Coding layout's centre passes false: its page has nothing to
+         * maximize, and the chord would write the (suspended) dock region.
+         */
+        ownsDockShortcuts?: boolean;
+        /** The title a host's breadcrumb shows for the conversation on screen. */
+        onPresentationTitleChange?: (title: string) => void;
+        /**
+         * `project` (the default): the Chat layout's pane belongs to its
+         * Project — its inbox lists that Project's conversations and a chat of
+         * another Project routes there. `ambient`: the Coding layout's centre
+         * holds the Chat the dock would otherwise hold, so it keeps the dock's
+         * scope — every conversation, with the dock's optional Project filter
+         * — and a sidebar or notification can open any conversation in it.
+         */
+        conversationScope?: 'project' | 'ambient';
+        /**
+         * Whether the reader can see this placement now. The Coding stack
+         * keeps its Chat page mounted behind a drill-in; while it is hidden,
+         * the conversation is not in the foreground, so end-of-turn and
+         * approval toasts must still reach the reader. Default true.
+         */
+        onScreen?: boolean;
+      }
   );
 
 export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
@@ -373,9 +411,10 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const isFullscreenPlacement = placement === 'fullscreen';
   // A full-screen Chat shows its active chat without opening the dock; end-of-
   // turn toasts must treat that chat as on screen (`isChatInForeground`).
+  const fullscreenOnScreen = isFullscreenPlacement && props.onScreen !== false;
   useEffect(
-    () => (isFullscreenPlacement ? registerFullscreenChatSurface() : undefined),
-    [isFullscreenPlacement],
+    () => (fullscreenOnScreen ? registerFullscreenChatSurface() : undefined),
+    [fullscreenOnScreen],
   );
   // A full-screen placement never mounts inside the ambient `DockShell`, so
   // it owns an independent chrome instance (cmd+D / cmd+M keep working
@@ -390,7 +429,8 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   // the same ids (station#4460 review H1).
   const localShellChrome = useDockShellChrome({
     publishesDockSlotClearance: false,
-    registersDockShortcuts: isFullscreenPlacement,
+    registersDockShortcuts:
+      isFullscreenPlacement && props.ownsDockShortcuts !== false,
   });
   // Narrowed on `props.placement` directly (not a destructured alias) so
   // TypeScript proves `props.shellChrome` is defined in the docked branch —
@@ -409,6 +449,11 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   // Get data from contexts
   const { apiBase } = useApiBase();
   const requestAuthority = useHostRequestAuthorityScope();
+  const [pendingGoalSend, setPendingGoalSend] = useState<{
+    sessionId: string;
+    prompt: string;
+    authority: typeof requestAuthority;
+  } | null>(null);
   const { captureCredentialEvidence } = useConnections();
   const mentionCredentialEvidence = captureCredentialEvidence();
   const mentionAuthority = mentionCredentialEvidence
@@ -484,7 +529,8 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
 
   // Derive sessions first so activeSessionCount is available for useChatDockState
   const [projectFilter, _setProjectFilter] = useState<string | null>(null);
-  const hasImmutableProjectScope = isFullscreenPlacement;
+  const hasImmutableProjectScope =
+    isFullscreenPlacement && props.conversationScope !== 'ambient';
   const scopedProjectSlug = hasImmutableProjectScope
     ? projectSlug
     : projectFilter;
@@ -560,7 +606,8 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   );
   // archive#3391: the inboxes name models through the catalog, as Home does.
   const { resolveModelLabel } = useCatalogModelLabel();
-  const openChatItems = useOpenChats(
+  // The one inbox derivation, shared with the sidebar's Open-chats rows.
+  const inboxItems = useInboxWorkItems(
     agents,
     orchestrationSessions,
     resolveModelLabel,
@@ -588,41 +635,31 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       ),
     [inventory.data],
   );
-  const taskItems = useMemo(() => {
-    const currentSessionIdByConversation = new Map(
-      allSessions.flatMap((session) =>
-        session.conversationId && session.currentSessionId
-          ? [[session.conversationId, session.currentSessionId] as const]
-          : [],
-      ),
-    );
-    return buildHomeTaskItems({
-      chats: {},
-      sessions: orchestrationSessions,
-      agents,
-      chatItems: openChatItems,
-      currentSessionIdByConversation,
-      resolveModelLabel,
-    }).map((item) => {
-      const conversation = inventoryById.get(item.id);
-      if (!conversation) return item;
-      const acknowledgedAt = conversation.acknowledgedAt
-        ? Date.parse(conversation.acknowledgedAt)
-        : Number.NaN;
-      return {
-        ...item,
-        conversationUpdatedAt: conversation.updatedAt,
-        ...(Number.isFinite(acknowledgedAt) ? { acknowledgedAt } : {}),
-      };
-    });
-  }, [
-    agents,
-    allSessions,
-    inventoryById,
-    openChatItems,
-    orchestrationSessions,
-    resolveModelLabel,
-  ]);
+  // The chats open in this tab as the inbox lists them, for the context
+  // meter's membership check.
+  const openChatRows = useMemo(
+    () => openChatInboxRows(inboxItems),
+    [inboxItems],
+  );
+  // The inventory's acknowledgement stamps are presentation (which finished
+  // rows are "Just finished"), layered on the shared items; no status word
+  // reads them.
+  const taskItems = useMemo(
+    () =>
+      inboxItems.map((item) => {
+        const conversation = inventoryById.get(item.id);
+        if (!conversation) return item;
+        const acknowledgedAt = conversation.acknowledgedAt
+          ? Date.parse(conversation.acknowledgedAt)
+          : Number.NaN;
+        return {
+          ...item,
+          conversationUpdatedAt: conversation.updatedAt,
+          ...(Number.isFinite(acknowledgedAt) ? { acknowledgedAt } : {}),
+        };
+      }),
+    [inboxItems, inventoryById],
+  );
   const acknowledgeTaskConversation = useCallback(
     (item: { id: string; conversationUpdatedAt?: string }) => {
       if (!item.conversationUpdatedAt) return;
@@ -737,6 +774,8 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     setImportedSessionId,
     onOpenInboxSession,
     newChatRequestEpoch,
+    newChatStartWithDefault,
+    newChatInitialPrompt,
     setShowNewChatModal,
     isHistoryOpen,
     toggleHistory,
@@ -766,6 +805,10 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     setShowNewChatModalState,
   });
 
+  // #3042/#3043: the inbox rows' status facts, derived beside `taskItems`
+  // (never carried on them).
+  const workFacts = useWorkFacts(taskItems, orchestrationSessions);
+
   const rehydrateSessions = useRehydrateSessions(apiBase);
   const {
     chatEngineConnection,
@@ -779,6 +822,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     toolPolicyDelivery,
     effectiveModels,
     fileAttachmentsSupported,
+    imageAttachmentCaveat,
     imageAttachmentRefusal,
     gitStatus,
     modelSupportsAttachments,
@@ -937,9 +981,11 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       images: modelSupportsAttachments,
       files: fileAttachmentsSupported,
       imageRefusal: imageAttachmentRefusal,
+      imageCaveat: imageAttachmentCaveat,
     }),
     [
       fileAttachmentsSupported,
+      imageAttachmentCaveat,
       imageAttachmentRefusal,
       modelSupportsAttachments,
     ],
@@ -951,6 +997,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     sessionId: activeSessionId,
     agentSlug: activeSessionForHook?.agentSlug || null,
     conversationId: activeSessionForHook?.conversationId,
+    orchestrationSession: activeOrchestrationSession,
     availableModels: effectiveModels,
     modelsStale,
     bindingStatus,
@@ -982,6 +1029,27 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     // generic toast must not be suppressed in that case.
     isChatVisible: isPaneOpen,
   });
+  useEffect(() => {
+    if (!pendingGoalSend) return;
+    if (pendingGoalSend.authority && !pendingGoalSend.authority.isCurrent()) {
+      setPendingGoalSend(null);
+      return;
+    }
+    if (activeSessionId !== pendingGoalSend.sessionId) {
+      setPendingGoalSend(null);
+      return;
+    }
+    if (chatInput.sendBlockedReason) return;
+    setPendingGoalSend(null);
+    if (chatInput.input !== pendingGoalSend.prompt) return;
+    void chatInput.handleSend(pendingGoalSend.prompt);
+  }, [
+    activeSessionId,
+    pendingGoalSend,
+    chatInput.input,
+    chatInput.handleSend,
+    chatInput.sendBlockedReason,
+  ]);
 
   // The enriched catalog row for the chat the dock is showing, resolved once
   // for every surface that renders its identity (station#3309).
@@ -1015,6 +1083,15 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const importedOrigin = importedSession
     ? `Started in ${displayProvider(importedSession)}`
     : 'Started in another app';
+  // The same title the header leads with, published to a host that shows it
+  // elsewhere (the Coding stack's breadcrumb).
+  const presentationTitle = importedSessionId
+    ? importedTitle
+    : activeSession?.title || 'Chat';
+  const onPresentationTitleChange = props.onPresentationTitleChange;
+  useEffect(() => {
+    onPresentationTitleChange?.(presentationTitle);
+  }, [onPresentationTitleChange, presentationTitle]);
   const activeChatModelLabel = chatModelLabel(
     activeChatModelId,
     effectiveModels,
@@ -1624,7 +1701,11 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     [openConversationInScopedPane],
   );
   useEffect(() => {
-    const openNewChat = () => setShowNewChatModal(true);
+    const openNewChat = (event: Event) => {
+      const intent = readNewChatIntent(event);
+      if (intent.startWithDefault && hasImmutableProjectScope) return;
+      setShowNewChatModal(true, intent);
+    };
     // station#1297: `HomeView.continueWork` / `ProjectSidebar` request focus
     // from outside the ChatDock subtree. The request used to carry only
     // `sessionId` and silently drop when that id wasn't a live in-memory
@@ -1754,6 +1835,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       unregisterOpenChatsNavigation();
     };
   }, [
+    hasImmutableProjectScope,
     applyDockSnap,
     collapseDockForNavigation,
     focusSessionInPane,
@@ -2434,7 +2516,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                 !importedSessionId &&
                 (isPaneOpen || isCollapsedDragPreview) &&
                 activeSession?.conversationId &&
-                openChatItems.some(
+                openChatRows.some(
                   (item) => chatTaskSessionId(item) === activeSession.id,
                 ) ? (
                   <ContextPercentage
@@ -2478,6 +2560,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                         items: taskItems,
                         agents,
                         gitLocationByThreadId,
+                        workFacts,
                         activeChatSessionId:
                           importedSessionId ?? activeSessionId,
                         openChatSessionIds: openInboxChatSessionIds,
@@ -2742,6 +2825,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                 void inventory.refetch();
               },
               agents,
+              workFacts,
               openChatSessionIds: openInboxChatSessionIds,
               activeChatSessionId: importedSessionId ?? activeSessionId,
               visualViewportStyle: visualViewport.style,
@@ -2779,7 +2863,9 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
             returnFocusTarget: backgroundTasksTriggerRef.current,
             onOpenTranscript: (threadId) => {
               setIsBackgroundTasksOpen(false);
-              setDockState(false, isDockMaximized);
+              // A full-screen Chat is no dock: closing "the dock" from it would
+              // write the real dock region's visibility behind the reader.
+              if (!isFullscreenPlacement) setDockState(false, isDockMaximized);
               showSurface('activity', { session: threadId });
             },
             onClose: () => setIsBackgroundTasksOpen(false),
@@ -2893,6 +2979,8 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
           sessions,
           showNewChatModal,
           newChatRequestEpoch,
+          newChatStartWithDefault,
+          newChatInitialPrompt,
           showChatSettings,
           showSessionPicker,
           chatFontSize,
@@ -2954,6 +3042,17 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
               providerId,
               providerType,
             );
+            if (
+              sessionId &&
+              newChatStartWithDefault &&
+              newChatInitialPrompt?.trim()
+            ) {
+              setPendingGoalSend({
+                sessionId,
+                prompt: newChatInitialPrompt,
+                authority: requestAuthority,
+              });
+            }
             if (sessionId) navigate(pathname, { chat: sessionId });
             setShowNewChatModal(false);
             setNewChatProjectOverride(null);
@@ -3181,6 +3280,7 @@ export function ChatDock({
       componentProps={{
         onRequestAuth,
         renderChatPane: renderAmbientChatPane,
+        chatPaneFailureContext: ambientChatPaneFailureContext,
         regionId,
       }}
       pending={null}

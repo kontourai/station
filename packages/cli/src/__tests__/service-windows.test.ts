@@ -59,7 +59,7 @@ function windowsFs(): ServiceFs {
   } as unknown as ServiceFs;
 }
 
-const WINDOWS_ACCOUNT = 'DESKTOP-WIN\\brian';
+const WINDOWS_ACCOUNT = 'DESKTOP-WIN\\casey';
 const WINDOWS_SID = 'S-1-5-21-1000';
 
 function whoamiIdentity() {
@@ -76,6 +76,70 @@ function taskXml(wrapperPath: string, user = WINDOWS_SID): string {
 
 function powerShellProgram(args: string[]): string {
   return Buffer.from(args[3] ?? '', 'base64').toString('utf16le');
+}
+
+// Pinned independently of the constants under test (#2970): no execution time
+// limit, the scheduler's restart settings, and no battery rules.
+const EXPECTED_TASK_SETTINGS =
+  'Priority=5, ExecutionTimeLimit=PT0S, RestartCount=255, RestartInterval=PT1M, DisallowStartIfOnBatteries=False, StopIfGoingOnBatteries=False';
+
+type TaskSettingName =
+  | 'Priority'
+  | 'ExecutionTimeLimit'
+  | 'RestartCount'
+  | 'RestartInterval'
+  | 'DisallowStartIfOnBatteries'
+  | 'StopIfGoingOnBatteries';
+type TaskSettings = Record<TaskSettingName, string>;
+
+/** What `schtasks /Create` leaves without settings XML. */
+function schtasksDefaultSettings(): TaskSettings {
+  return {
+    Priority: '7',
+    ExecutionTimeLimit: 'PT72H',
+    RestartCount: '0',
+    RestartInterval: '',
+    DisallowStartIfOnBatteries: 'True',
+    StopIfGoingOnBatteries: 'True',
+  };
+}
+
+function formatTaskSettings(settings: TaskSettings): string {
+  return `Priority=${settings.Priority}, ExecutionTimeLimit=${settings.ExecutionTimeLimit}, RestartCount=${settings.RestartCount}, RestartInterval=${settings.RestartInterval}, DisallowStartIfOnBatteries=${settings.DisallowStartIfOnBatteries}, StopIfGoingOnBatteries=${settings.StopIfGoingOnBatteries}`;
+}
+
+/**
+ * Models the encoded settings program against a persisted task: each
+ * `$task.Settings.<name> = <value>` assignment persists unless `ignored` names
+ * it (a scheduler that accepted the call but kept its value), and the
+ * program's own read-back comparison, if it has one, decides the exit status.
+ * Returns null for any other PowerShell program.
+ */
+function runTaskSettingsProgram(
+  program: string,
+  settings: TaskSettings,
+  ignored: ReadonlySet<string> = new Set(),
+): { status: number; stderr?: string } | null {
+  if (!program.includes('Set-ScheduledTask -InputObject $task')) return null;
+  for (const match of program.matchAll(
+    /\$task\.Settings\.(\w+) = '?([^';]*)'?/gu,
+  )) {
+    const [, name, raw] = match;
+    // PowerShell prints a boolean as True or False.
+    const value = raw === '$false' ? 'False' : raw === '$true' ? 'True' : raw;
+    if (name in settings && !ignored.has(name)) {
+      settings[name as TaskSettingName] = value;
+    }
+  }
+  const expected = program.match(/\$observed -ne '([^']*)'/u)?.[1];
+  const observed = formatTaskSettings(settings);
+  if (expected !== undefined && observed !== expected) {
+    return {
+      status: 1,
+      stderr: `Station Task Scheduler settings did not persist: ${observed}`,
+    };
+  }
+  return { status: 0 };
 }
 
 describe('Windows Task Scheduler service backend', () => {
@@ -120,21 +184,24 @@ describe('Windows Task Scheduler service backend', () => {
         instanceId: 'agent',
         lifecycle: {
           ...lifecycle('C:\\Station Data'),
-          stationRoot: 'C:\\Users\\Brian\\Station Root',
+          stationRoot: 'C:\\Users\\Me\\Station Root',
         },
         nodePath: 'C:\\node.exe',
         repoPath: 'C:\\repo',
       }),
-    ).toContain('set "STATION_ROOT=C:\\Users\\Brian\\Station Root"');
+    ).toContain('set "STATION_ROOT=C:\\Users\\Me\\Station Root"');
   });
 
   test.each([
     ['PowerShell exits non-zero', { status: 1, stderr: 'task query failed' }],
+    ['PowerShell emits only the priority', { status: 0, stdout: 'Priority=5' }],
     [
-      'PowerShell emits unparseable output',
-      { status: 0, stdout: 'Priority=5' },
+      'PowerShell emits a non-numeric priority',
+      {
+        status: 0,
+        stdout: EXPECTED_TASK_SETTINGS.replace('Priority=5', 'Priority=5.5'),
+      },
     ],
-    ['PowerShell emits a non-numeric priority', { status: 0, stdout: '5.5' }],
   ])('reports %s as unknown, never current', (_description, result) => {
     const registration = windowsRegistration(
       'agent',
@@ -145,7 +212,7 @@ describe('Windows Task Scheduler service backend', () => {
       inspectServiceSchedulingPolicy(registration, {
         run: vi.fn(() => result),
       }),
-    ).toMatchObject({ expected: 'Priority=5', status: 'unknown' });
+    ).toMatchObject({ expected: EXPECTED_TASK_SETTINGS, status: 'unknown' });
   });
 
   test('a registration missing its task name reports unknown, never current', () => {
@@ -158,29 +225,60 @@ describe('Windows Task Scheduler service backend', () => {
     const run = vi.fn();
 
     expect(inspectServiceSchedulingPolicy(registration, { run })).toMatchObject(
-      { expected: 'Priority=5', status: 'unknown' },
+      { expected: EXPECTED_TASK_SETTINGS, status: 'unknown' },
     );
     expect(run).not.toHaveBeenCalled();
   });
 
-  test('reads the persisted task priority for scheduling status', () => {
+  test.each<[string, Partial<TaskSettings>]>([
+    ['schtasks defaults', {}],
+    ['the default 72-hour limit', { ExecutionTimeLimit: 'PT72H' }],
+    ['no restart on failure', { RestartCount: '0', RestartInterval: '' }],
+    ['a restart count of 3', { RestartCount: '3' }],
+    ['the background priority', { Priority: '7' }],
+    ['no start on battery', { DisallowStartIfOnBatteries: 'True' }],
+    ['a stop when unplugged', { StopIfGoingOnBatteries: 'True' }],
+  ])('reports a task with %s as stale scheduling', (_name, drift) => {
     const registration = windowsRegistration(
       'agent',
       lifecycle('C:\\Station Data'),
     );
-    let priority = 7;
+    const persisted: TaskSettings =
+      Object.keys(drift).length === 0
+        ? schtasksDefaultSettings()
+        : {
+            Priority: '5',
+            ExecutionTimeLimit: 'PT0S',
+            RestartCount: '255',
+            RestartInterval: 'PT1M',
+            DisallowStartIfOnBatteries: 'False',
+            StopIfGoingOnBatteries: 'False',
+            ...drift,
+          };
     const run = vi.fn((_command: string, args: string[]) => {
-      const program = powerShellProgram(args);
-      expect(program).toContain('$task.Settings.Priority');
-      return { status: 0, stdout: `${priority}\n` };
+      // The probe only reads: it must never change the task it reports on.
+      expect(powerShellProgram(args)).not.toContain('Set-ScheduledTask');
+      return { status: 0, stdout: `${formatTaskSettings(persisted)}\r\n` };
     });
-    expect(inspectServiceSchedulingPolicy(registration, { run }).status).toBe(
-      'stale',
-    );
-    priority = 5;
     expect(inspectServiceSchedulingPolicy(registration, { run })).toEqual({
-      expected: 'Priority=5',
-      observed: 'Priority=5',
+      expected: EXPECTED_TASK_SETTINGS,
+      observed: formatTaskSettings(persisted),
+      status: 'stale',
+    });
+  });
+
+  test('reads every persisted task setting as current scheduling', () => {
+    const registration = windowsRegistration(
+      'agent',
+      lifecycle('C:\\Station Data'),
+    );
+    const run = vi.fn(() => ({
+      status: 0,
+      stdout: `${EXPECTED_TASK_SETTINGS}\r\n`,
+    }));
+    expect(inspectServiceSchedulingPolicy(registration, { run })).toEqual({
+      expected: EXPECTED_TASK_SETTINGS,
+      observed: EXPECTED_TASK_SETTINGS,
       status: 'current',
     });
   });
@@ -190,7 +288,7 @@ describe('Windows Task Scheduler service backend', () => {
     const baseDir = `\\tmp\\station-win-${process.pid}`;
     const registration = windowsRegistration('agent', lifecycle(baseDir));
     let installed = false;
-    let priority = 7;
+    let settings = schtasksDefaultSettings();
     let running = false;
     const run = vi.fn((command: string, args: string[]) => {
       if (isWindowsUtility(command, 'whoami')) return whoamiIdentity();
@@ -206,29 +304,20 @@ describe('Windows Task Scheduler service backend', () => {
         if (args.includes('verify') || args.includes('ensure')) {
           return { status: 0, stdout: '{"trusted":true}' };
         }
-        const program = powerShellProgram(args);
-        if (program.includes('Set-ScheduledTask -InputObject $task')) {
-          const assigned = program.match(
-            /\$task\.Settings\.Priority = (\d+)/u,
-          )?.[1];
-          const expected = program.match(
-            /\$updated\.Settings\.Priority -ne (\d+)/u,
-          )?.[1];
-          if (assigned === undefined || expected === undefined) {
-            return { status: 1, stderr: 'priority program is incomplete' };
-          }
-          priority = Number(assigned);
-          return priority === Number(expected)
-            ? { status: 0 }
-            : { status: 1, stderr: `priority readback was ${priority}` };
-        }
+        const applied = runTaskSettingsProgram(
+          powerShellProgram(args),
+          settings,
+        );
+        if (applied) return applied;
         return {
           status: 0,
           stdout: `${running ? '4' : '3'}\n`,
         };
       }
       if (args[0] === '/Create') {
+        // /Create /F registers a new definition with schtasks defaults.
         installed = true;
+        settings = schtasksDefaultSettings();
         return { status: 0 };
       }
       if (args[0] === '/Run') {
@@ -270,11 +359,22 @@ describe('Windows Task Scheduler service backend', () => {
     );
     expect(create?.[1]).not.toContain('/RP');
     expect(create?.[1]?.join(' ')).not.toContain('sc.exe');
-    // The test double starts at Task Scheduler's default (7) and models the
-    // persisted value read by the encoded program. This is behavior, not a
-    // source-text assertion: a missing write or mismatched readback fails the
-    // install before the task may run.
-    expect(priority).toBe(5);
+    // The test double starts at the schtasks defaults (priority 7, a 72-hour
+    // limit, no restart) and models the values the encoded program persists.
+    // A missing write or mismatched read-back fails the install before the
+    // task may run.
+    expect(formatTaskSettings(settings)).toBe(EXPECTED_TASK_SETTINGS);
+    const settingsUpdate =
+      run.mock.invocationCallOrder[
+        run.mock.calls.findIndex(([, args]) =>
+          powerShellProgram(args).includes('Set-ScheduledTask'),
+        )
+      ];
+    const firstRun =
+      run.mock.invocationCallOrder[
+        run.mock.calls.findIndex(([, args]) => args[0] === '/Run')
+      ];
+    expect(settingsUpdate).toBeLessThan(firstRun);
     expect(run.mock.calls.some(([, args]) => args[0] === '/Run')).toBe(true);
     expect(
       run.mock.calls.some(
@@ -301,6 +401,9 @@ describe('Windows Task Scheduler service backend', () => {
     expect(
       run.mock.calls.filter(([, args]) => args[0] === '/Create'),
     ).toHaveLength(2);
+    // A reinstall over a task registered with schtasks defaults (as every
+    // version before #2970 left it) migrates it to the expected settings.
+    expect(formatTaskSettings(settings)).toBe(EXPECTED_TASK_SETTINGS);
 
     startWindowsService(manifest, { fs, run });
     expect(windowsServiceStatus(manifest, { fs, run })).toMatchObject({
@@ -569,7 +672,7 @@ describe('Windows Task Scheduler service backend', () => {
     expect(run.mock.calls.some(([, args]) => args[0] === '/Delete')).toBe(true);
   });
 
-  test('removes a fresh task and wrapper when its priority mutation is denied', () => {
+  test('removes a fresh task and wrapper when its settings update is denied', () => {
     const fs = windowsFs();
     const baseDir = `\\tmp\\station-win-priority-denied-${process.pid}`;
     const registration = windowsRegistration('agent', lifecycle(baseDir));
@@ -618,83 +721,111 @@ describe('Windows Task Scheduler service backend', () => {
         repoPath: 'C:\\station',
         run,
       }),
-    ).toThrow('Task Scheduler priority update failed: access denied');
+    ).toThrow('Task Scheduler settings update failed: access denied');
     expect(installed).toBe(false);
     expect(running).toBe(false);
     expect(fs.existsSync(registration.unitPath)).toBe(false);
   });
 
-  test('restores a running replacement when its priority readback remains 7', () => {
-    const fs = windowsFs();
-    const baseDir = `\\tmp\\station-win-priority-readback-${process.pid}`;
-    const registration = windowsRegistration('agent', lifecycle(baseDir));
-    const priorWrapper = '@echo off\r\necho prior\r\n';
-    fs.mkdirSync(win32.dirname(registration.unitPath), { recursive: true });
-    fs.writeFileSync(registration.unitPath, priorWrapper);
-    let installed = true;
-    let priority = 7;
-    let running = true;
-    const run = vi.fn((command: string, args: string[]) => {
-      if (isWindowsUtility(command, 'whoami')) return whoamiIdentity();
-      if (args[0] === '/Query' && args.includes('/XML')) {
-        return installed
-          ? { status: 0, stdout: taskXml(registration.unitPath) }
-          : { status: 1, stderr: 'not found' };
-      }
-      if (isWindowsUtility(command, 'powershell')) {
-        if (args.includes('verify') || args.includes('ensure')) {
-          return { status: 0, stdout: '{"trusted":true}' };
+  test.each<[TaskSettingName, string]>([
+    [
+      'Priority',
+      'Priority=7, ExecutionTimeLimit=PT0S, RestartCount=255, RestartInterval=PT1M, DisallowStartIfOnBatteries=False, StopIfGoingOnBatteries=False',
+    ],
+    [
+      'ExecutionTimeLimit',
+      'Priority=5, ExecutionTimeLimit=PT72H, RestartCount=255, RestartInterval=PT1M, DisallowStartIfOnBatteries=False, StopIfGoingOnBatteries=False',
+    ],
+    [
+      'RestartCount',
+      'Priority=5, ExecutionTimeLimit=PT0S, RestartCount=0, RestartInterval=PT1M, DisallowStartIfOnBatteries=False, StopIfGoingOnBatteries=False',
+    ],
+    [
+      'RestartInterval',
+      'Priority=5, ExecutionTimeLimit=PT0S, RestartCount=255, RestartInterval=, DisallowStartIfOnBatteries=False, StopIfGoingOnBatteries=False',
+    ],
+    [
+      'DisallowStartIfOnBatteries',
+      'Priority=5, ExecutionTimeLimit=PT0S, RestartCount=255, RestartInterval=PT1M, DisallowStartIfOnBatteries=True, StopIfGoingOnBatteries=False',
+    ],
+    [
+      'StopIfGoingOnBatteries',
+      'Priority=5, ExecutionTimeLimit=PT0S, RestartCount=255, RestartInterval=PT1M, DisallowStartIfOnBatteries=False, StopIfGoingOnBatteries=True',
+    ],
+  ])(
+    'restores a running replacement when its %s does not persist',
+    (ignored, observed) => {
+      const fs = windowsFs();
+      const baseDir = `\\tmp\\station-win-settings-readback-${ignored}-${process.pid}`;
+      const registration = windowsRegistration('agent', lifecycle(baseDir));
+      const priorWrapper = '@echo off\r\necho prior\r\n';
+      fs.mkdirSync(win32.dirname(registration.unitPath), { recursive: true });
+      fs.writeFileSync(registration.unitPath, priorWrapper);
+      let installed = true;
+      const settings = schtasksDefaultSettings();
+      let running = true;
+      const run = vi.fn((command: string, args: string[]) => {
+        if (isWindowsUtility(command, 'whoami')) return whoamiIdentity();
+        if (args[0] === '/Query' && args.includes('/XML')) {
+          return installed
+            ? { status: 0, stdout: taskXml(registration.unitPath) }
+            : { status: 1, stderr: 'not found' };
         }
-        if (
-          powerShellProgram(args).includes(
-            'Set-ScheduledTask -InputObject $task',
-          )
-        ) {
-          // Model a scheduler that accepted the call but kept its default
-          // priority. The command's own readback must make this transactional.
-          return { status: 1, stderr: `priority readback was ${priority}` };
+        if (isWindowsUtility(command, 'powershell')) {
+          if (args.includes('verify') || args.includes('ensure')) {
+            return { status: 0, stdout: '{"trusted":true}' };
+          }
+          // Model a scheduler that accepted the call but kept one default. The
+          // program's own read-back must make this transactional.
+          const applied = runTaskSettingsProgram(
+            powerShellProgram(args),
+            settings,
+            new Set([ignored]),
+          );
+          if (applied) return applied;
+          return { status: 0, stdout: `${running ? '4' : '3'}\n` };
         }
-        return { status: 0, stdout: `${running ? '4' : '3'}\n` };
-      }
-      if (args[0] === '/End') {
-        running = false;
+        if (args[0] === '/End') {
+          running = false;
+          return { status: 0 };
+        }
+        if (args[0] === '/Create' && args.includes('/TR')) {
+          Object.assign(settings, schtasksDefaultSettings());
+          installed = true;
+          return { status: 0 };
+        }
+        if (args[0] === '/Create' && args.includes('/XML')) {
+          installed = true;
+          return { status: 0 };
+        }
+        if (args[0] === '/Run') {
+          running = true;
+          return { status: 0 };
+        }
         return { status: 0 };
-      }
-      if (args[0] === '/Create' && args.includes('/TR')) {
-        priority = 7;
-        installed = true;
-        return { status: 0 };
-      }
-      if (args[0] === '/Create' && args.includes('/XML')) {
-        installed = true;
-        return { status: 0 };
-      }
-      if (args[0] === '/Run') {
-        running = true;
-        return { status: 0 };
-      }
-      return { status: 0 };
-    });
+      });
 
-    expect(() =>
-      installWindowsService('agent', {
-        fs,
-        lifecycle: lifecycle(baseDir),
-        nodePath: 'C:\\node.exe',
-        repoPath: 'C:\\station',
-        run,
-      }),
-    ).toThrow('Task Scheduler priority update failed: priority readback was 7');
-    expect(priority).toBe(7);
-    expect(installed).toBe(true);
-    expect(running).toBe(true);
-    expect(fs.readFileSync(registration.unitPath, 'utf8')).toBe(priorWrapper);
-    expect(
-      run.mock.calls.some(
-        ([, args]) => args[0] === '/Create' && args.includes('/XML'),
-      ),
-    ).toBe(true);
-  });
+      expect(() =>
+        installWindowsService('agent', {
+          fs,
+          lifecycle: lifecycle(baseDir),
+          nodePath: 'C:\\node.exe',
+          repoPath: 'C:\\station',
+          run,
+        }),
+      ).toThrow(
+        `Task Scheduler settings update failed: Station Task Scheduler settings did not persist: ${observed}`,
+      );
+      expect(installed).toBe(true);
+      expect(running).toBe(true);
+      expect(fs.readFileSync(registration.unitPath, 'utf8')).toBe(priorWrapper);
+      expect(
+        run.mock.calls.some(
+          ([, args]) => args[0] === '/Create' && args.includes('/XML'),
+        ),
+      ).toBe(true);
+    },
+  );
 
   test('ends a running fresh replacement before deleting its task on rollback', () => {
     const fs = windowsFs();

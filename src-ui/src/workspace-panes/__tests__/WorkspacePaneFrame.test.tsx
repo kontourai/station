@@ -63,11 +63,24 @@ describe('WorkspacePaneFrame', () => {
       </WorkspacePaneFrame>,
     );
 
-    expect(screen.getByText('Example pane could not open')).toBeTruthy();
-    expect(onFailure).toHaveBeenCalledWith('one');
-    fireEvent.click(screen.getByRole('button', { name: 'Retry pane' }));
+    expect(screen.getByText('Example pane couldn’t open')).toBeTruthy();
+    // The caught error reaches the host with the failure, instead of being
+    // discarded at the boundary.
+    expect(onFailure).toHaveBeenCalledWith(
+      'one',
+      expect.objectContaining({
+        name: 'Error',
+        message: 'intentional pane failure',
+      }),
+      // No pane-owned failure context was supplied.
+      undefined,
+    );
+    expect(
+      screen.getByText('Technical details').closest('details')?.textContent,
+    ).toContain('Error: intentional pane failure');
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
     expect(onRetry).toHaveBeenCalledWith('one');
-    expect(screen.getByText('Example pane could not open')).toBeTruthy();
+    expect(screen.getByText('Example pane couldn’t open')).toBeTruthy();
     consoleError.mockRestore();
   });
 });

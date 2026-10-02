@@ -1,7 +1,8 @@
 /**
- * The four counts. A BLOCK — see `activity-bars.tsx` for why these do not
+ * The Home counts. A BLOCK — see `activity-bars.tsx` for why these do not
  * live inside the page that renders them.
  */
+import { LIVE_LANE_LABELS } from '../home-lane-model';
 import type { useHomeWorkLanes } from '../useHomeWorkLanes';
 
 interface PulseStat {
@@ -19,7 +20,7 @@ interface PulseStat {
   onActivate?: () => void;
   /**
    * Where activating goes, in the user's words — becomes the tail of the
-   * control's accessible name ("Active now, 3, show the Active now lane").
+   * control's accessible name ("Running, 3, show the Running lane").
    * Required alongside `onActivate` so a control can never be labelled with
    * only a number.
    */
@@ -27,7 +28,7 @@ interface PulseStat {
 }
 
 /**
- * The four counts, without the page that frames them.
+ * The counts, without the page that frames them.
  */
 export function PulseStats({ stats }: { stats: PulseStat[] }) {
   return (
@@ -69,28 +70,21 @@ export interface PulseStatTarget {
 /**
  * The counts every surface that shows them agrees on.
  *
- * `projectRowCount` (archive#3227 A7): the number of per-project rows the
- * HOST page actually renders beside these stats. It used to be
- * `model.projects.length` (CONFIGURED projects), a different population from
- * the rows under the number: the rows fold `projectLabel`, a display string
- * that includes `'No project'`, `'Project unavailable'`, and the ambiguous/
- * unverified-match variants, and omits configured projects with no recent
- * work — so "Projects 3" sat above five rows. The count must describe what
- * the user can see, not a second derivation of something else.
- *
  * `targets` is looked up by label for the same reason: a count and the thing
  * it can reveal must be the same population, and the host is what knows
  * whether that population is currently on screen.
  */
 export function pulseStats(
   lanes: ReturnType<typeof useHomeWorkLanes>,
-  projectRowCount: number,
   targets: Record<string, PulseStatTarget> = {},
 ): PulseStat[] {
   return [
-    { label: 'Active now', value: lanes.active.length },
+    // The live lanes, by what is happening (`workStatus`) — never one
+    // "Active now" total that counted idle sessions as active.
+    { label: LIVE_LANE_LABELS.needsYou, value: lanes.needsYou.length },
+    { label: LIVE_LANE_LABELS.running, value: lanes.running.length },
+    { label: LIVE_LANE_LABELS.idle, value: lanes.idle.length },
     { label: 'Just finished', value: lanes.recentlyFinished.length },
     { label: 'Snoozed', value: lanes.snoozed.length },
-    { label: 'Projects', value: projectRowCount },
   ].map((stat) => ({ ...stat, ...(targets[stat.label] ?? {}) }));
 }

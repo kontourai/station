@@ -10,11 +10,18 @@ import {
   useEffect,
   useRef,
   useState,
+  useSyncExternalStore,
 } from 'react';
 import { useAllActiveChats } from '../../contexts/ActiveChatsContext';
 import { useNavigationActions } from '../../contexts/NavigationContext';
 import { useNotificationHistory, useToast } from '../../contexts/ToastContext';
 import { openConnectionsModal } from '../../lib/connectionModalEvents';
+import {
+  focusRenderedApprovalCard,
+  getApprovalClaims,
+  OPEN_APPROVAL_QUEUE_EVENT,
+  subscribeApprovalClaims,
+} from '../status/approvalReveal';
 import './NotificationContainer.css';
 import {
   buildToastStackLayout,
@@ -286,9 +293,40 @@ export function NotificationContainer() {
   }, []);
 
   const activeNotifications = history.filter((item) => !item.dismissed);
-  const approvals = activeNotifications.filter(
+  const allApprovals = activeNotifications.filter(
     (item) => item.type === 'tool-approval' || item.type === 'pairing-request',
   );
+  // A chat pane presenting its own approval in its status pill claims its
+  // threads; the queue does not float a second copy of those over the pane.
+  // Asked to open from that pill (its card could not be brought on screen),
+  // the queue lists everything.
+  const claimedThreads = useSyncExternalStore(
+    subscribeApprovalClaims,
+    getApprovalClaims,
+    getApprovalClaims,
+  );
+  const [showAllApprovals, setShowAllApprovals] = useState(false);
+  const unclaimedApprovals = allApprovals.filter(
+    (item) => !item.sessionId || !claimedThreads.has(item.sessionId),
+  );
+  const approvals =
+    showAllApprovals && approvalQueueOpen ? allApprovals : unclaimedApprovals;
+  useEffect(() => {
+    const open = () => {
+      returnFocusRef.current = captureReturnFocus(
+        document.activeElement instanceof HTMLElement
+          ? document.activeElement
+          : null,
+      );
+      setShowAllApprovals(true);
+      setApprovalQueueOpen(true);
+    };
+    window.addEventListener(OPEN_APPROVAL_QUEUE_EVENT, open);
+    return () => window.removeEventListener(OPEN_APPROVAL_QUEUE_EVENT, open);
+  }, []);
+  useEffect(() => {
+    if (!approvalQueueOpen) setShowAllApprovals(false);
+  }, [approvalQueueOpen]);
   const transientNotifications = activeNotifications.filter(
     (item) => item.type !== 'tool-approval' && item.type !== 'pairing-request',
   );
@@ -471,6 +509,18 @@ export function NotificationContainer() {
                 closeApprovalQueue();
                 return;
               }
+              // One request whose own card is on screen: go there rather than
+              // open a second copy of the same decision. More than one, or a
+              // card that is not actually rendered: the queue lists them all.
+              const only = approvals.length === 1 ? approvals[0] : undefined;
+              if (
+                only?.approvalRequestId &&
+                focusRenderedApprovalCard({
+                  requestId: only.approvalRequestId,
+                  threadId: only.sessionId,
+                })
+              )
+                return;
               returnFocusRef.current = captureReturnFocus(
                 approvalQueueTriggerRef.current,
               );

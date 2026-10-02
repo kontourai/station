@@ -1729,6 +1729,10 @@ describe('CI verification workflow contracts', () => {
     expect(plan.outputs).toEqual({
       // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
       legacy: '${{ steps.mode.outputs.legacy }}',
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+      shards: '${{ steps.plan.outputs.shards }}',
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+      'shard-count': '${{ steps.plan.outputs.shard-count }}',
     });
     // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
     const legacyIf = "${{ steps.mode.outputs.legacy == 'true' }}";
@@ -1760,11 +1764,20 @@ describe('CI verification workflow contracts', () => {
     const shard = jobs['fast-checks-shard'];
     expect(shard.strategy?.['fail-fast']).toBe(false);
     expect(shard.strategy?.matrix?.shard).toEqual(
-      Array.from({ length: FAST_CHECKS_SHARD_COUNT }, (_, index) => index + 1),
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+      "${{ fromJSON(needs.fast-checks-plan.outputs.shards || '[1,2,3,4]') }}",
     );
     // Literal beside the derived value: a change to the constant must be a
     // deliberate edit here too.
     expect(FAST_CHECKS_SHARD_COUNT).toBe(4);
+    expect(
+      planSteps.find((step) => step.name === 'Plan the affected-test selection')
+        ?.id,
+    ).toBe('plan');
+    expect(
+      planSteps.find((step) => step.name === 'Plan the affected-test selection')
+        ?.env?.STATION_FAST_CHECKS_ADAPTIVE_SHARDS,
+    ).toBe('true');
     const shardSteps = shard.steps ?? [];
     const shardRuns = shardSteps.flatMap((step) =>
       typeof step.run === 'string' &&
@@ -1774,7 +1787,18 @@ describe('CI verification workflow contracts', () => {
     );
     expect(shardRuns).toHaveLength(2);
     for (const run of shardRuns)
-      expect(run).toContain(`--shard="$SHARD/${FAST_CHECKS_SHARD_COUNT}"`);
+      expect(run).toContain('--shard="$SHARD/$SHARD_COUNT"');
+    for (const name of [
+      'Resolve fast-checks shard slice',
+      'Run fast-checks shard',
+    ]) {
+      expect(
+        shardSteps.find((step) => step.name === name)?.env?.SHARD_COUNT,
+      ).toBe(
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+        "${{ needs.fast-checks-plan.outputs.shard-count || '4' }}",
+      );
+    }
 
     // Every shard stays inside the lane budget: the shard runner enforces
     // CI_FAST_TIMEOUT_MS itself, so its step has no step timeout below it,

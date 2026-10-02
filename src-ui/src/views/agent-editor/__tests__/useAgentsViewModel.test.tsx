@@ -845,6 +845,137 @@ describe('persisted detail remains authoritative while the collection reconciles
     expect(result.current.isLoading).toBe(true);
   });
 
+  test('leaving a record by URL drops its unsaved edit and its errors', () => {
+    // #2992: Agents keeps one surface across its routes, so this hook now
+    // outlives a selection. Back/Forward does not pass the discard guard, and
+    // an edit left dirty kept the guard armed for a form nobody could see.
+    state.selectedId = 'agent-a';
+    state.detail = agent({ slug: 'agent-a', name: 'Agent A' });
+    const { result, rerender } = render();
+    act(() => {
+      result.current.setIsLocked(false);
+      result.current.setForm((current) => ({ ...current, name: 'Edited' }));
+    });
+    expect(result.current.dirty).toBe(true);
+
+    act(() => {
+      state.selectedId = null;
+      state.detail = undefined;
+      rerender();
+    });
+    expect(result.current.dirty).toBe(false);
+    expect(result.current.form.name).toBe('');
+    expect(result.current.isLocked).toBe(true);
+    expect(result.current.validationErrors).toEqual({});
+  });
+
+  test('coming back to a cached Agent asks for the response its authority needs', () => {
+    // Found live: A -> B -> A ended on "Couldn't load agent" once the surface
+    // stopped remounting, because a fresh cache entry is not refetched on a
+    // key change and nothing else asked.
+    state.selectedId = 'agent-a';
+    state.detail = agent({ slug: 'agent-a', name: 'Agent A' });
+    refetchAgent.mockClear();
+    const { rerender } = render();
+    // The mount itself is `refetchOnMount`'s job, not this request's.
+    expect(refetchAgent).not.toHaveBeenCalled();
+
+    act(() => {
+      state.selectedId = 'agent-b';
+      state.detail = undefined;
+      state.detailLoading = true;
+      rerender();
+    });
+    expect(refetchAgent).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      state.selectedId = 'agent-a';
+      state.detail = agent({ slug: 'agent-a', name: 'Cached Agent A' });
+      state.detailFetchedAfterMount = false;
+      state.detailLoading = false;
+      rerender();
+    });
+    expect(refetchAgent).toHaveBeenCalledTimes(2);
+    expect(refetchAgent).toHaveBeenLastCalledWith({ cancelRefetch: false });
+    // A rerender of the same selection does not ask again.
+    rerender();
+    expect(refetchAgent).toHaveBeenCalledTimes(2);
+  });
+
+  test('selecting away from an unsaved edit asks through the route guard only', () => {
+    // The route change is what the unsaved guard arbitrates. When the hook
+    // also held the navigation behind its own prompt, one decision took two
+    // "Discard?" dialogs: its own, then the route guard's.
+    state.selectedId = 'agent-a';
+    state.detail = agent({ slug: 'agent-a', name: 'Agent A' });
+    const { result } = render();
+    act(() => {
+      result.current.setForm((current) => ({ ...current, name: 'Edited' }));
+    });
+    expect(result.current.dirty).toBe(true);
+    select.mockClear();
+
+    act(() => result.current.handleSelect('agent-b'));
+    expect(select).toHaveBeenCalledExactlyOnceWith('agent-b');
+    act(() => result.current.handleNew());
+    expect(select).toHaveBeenLastCalledWith('new');
+    // Still the loaded record until the navigation is admitted.
+    expect(result.current.isCreating).toBe(false);
+  });
+
+  test('a save that settles after the reader moved on leaves the new record clean', async () => {
+    // The hook outlives a selection (#2992), so the awaited half of a save
+    // can land on a different record: its snapshot made that record read
+    // dirty against a form it never had.
+    state.selectedId = 'agent-a';
+    state.detail = agent({
+      slug: 'agent-a',
+      name: 'Agent A',
+      prompt: 'Answer.',
+    });
+    let settle: (value: { data: object }) => void = () => {};
+    updateAgent.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          settle = resolve;
+        }),
+    );
+    const { result, rerender } = render();
+    act(() => {
+      result.current.setForm((current) => ({ ...current, name: 'Edited A' }));
+    });
+    act(() => {
+      void result.current.handleSave();
+    });
+    expect(updateAgent).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      state.selectedId = 'agent-b';
+      state.detail = undefined;
+      state.detailLoading = true;
+      rerender();
+    });
+    act(() => {
+      state.detail = agent({
+        slug: 'agent-b',
+        name: 'Agent B',
+        prompt: 'Answer.',
+      });
+      state.detailDataUpdatedAt = 10;
+      state.detailLoading = false;
+      rerender();
+    });
+    expect(result.current.form.name).toBe('Agent B');
+    expect(result.current.dirty).toBe(false);
+
+    await act(async () => {
+      settle({ data: {} });
+    });
+    expect(result.current.form.name).toBe('Agent B');
+    expect(result.current.dirty).toBe(false);
+    expect(result.current.isSaving).toBe(false);
+  });
+
   test('a successful mismatched detail revokes established authority', () => {
     state.selectedId = 'writer';
     state.detail = agent({ slug: 'writer', name: 'Writer' });

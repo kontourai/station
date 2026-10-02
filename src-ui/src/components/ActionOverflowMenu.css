@@ -1,0 +1,123 @@
+/* The `⋯` trigger of an overflow menu outside the dock (#3045). The dock's own
+   bar control keeps `.chat-dock__more-btn`; this is the same square for a row
+   of `.button`s, sized to sit beside the small button. */
+.action-overflow__trigger {
+  position: relative;
+  display: inline-flex;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: var(--text-lg);
+  line-height: 1;
+}
+
+.action-overflow__trigger:hover,
+.action-overflow__trigger.is-active {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+/* Beside an `ActionRow`'s buttons the trigger takes THEIR height — 32px by a
+   small button, 44px by a touch-sized one — so no host has to size it. 44px
+   wide, which makes it square beside a touch-sized button. (`aspect-ratio`
+   cannot do this: a stretched flex item's height is not a size the ratio is
+   allowed to read, so it resolved against `min-height` and stayed 32px.) */
+.action-row > .action-overflow__trigger {
+  width: auto;
+  min-width: 44px;
+  height: auto;
+  min-height: 32px;
+  align-self: stretch;
+}
+
+/* Standing alone, the trigger carries a word (see `triggerText`) and is drawn
+   as the shared small secondary `.button`, so it is sized, themed and given
+   its touch height by the same rules as the button it stands in for. */
+.action-overflow__trigger--labelled {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+/* The hit area, ALWAYS ON rather than behind a coarse-pointer query: a 32px
+   control is drawn, a 44px one is pressed. A pseudo-element instead of a
+   bigger box so the row's height and the trigger's alignment with its
+   neighbours do not change with the pointer type, and so this needs no
+   page-local responsive rule (the mobile CSS ratchet counts those). */
+.action-overflow__trigger::after {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: max(100%, 44px);
+  height: max(100%, 44px);
+  content: "";
+  transform: translate(-50%, -50%);
+}
+
+/* One rule line, before the destructive rows. `.menu-surface` deliberately has
+   no per-row dividers so that the one division carrying meaning is not lost
+   among six that do not; this is that one division. */
+.action-overflow__separator {
+  width: 100%;
+  height: 0;
+  margin: 0;
+  border: 0;
+  border-top: 1px solid var(--border-primary);
+}
+
+.menu-row.action-overflow__row--danger {
+  color: var(--error-text);
+}
+
+.menu-row.action-overflow__row--danger:hover,
+.menu-row.action-overflow__row--danger:focus-visible {
+  background: color-mix(in srgb, var(--error-text) 12%, transparent);
+  color: var(--error-text);
+}
+
+.menu-row.action-overflow__row--danger:disabled {
+  background: transparent;
+  color: var(--text-muted);
+}
+
+/* A row that is refused but says why. `aria-disabled`, not `disabled`, so it
+   can be focused and read; drawn like a disabled row, with a default cursor
+   and no hover fill promising an action. */
+.menu-row.action-overflow__row--explained,
+.menu-row.action-overflow__row--explained:hover {
+  background: transparent;
+  color: var(--text-muted);
+  cursor: default;
+}
+
+/* Label over reason, in the label's column. */
+.action-overflow__row-text {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  padding: var(--space-2) 0;
+}
+
+.action-overflow__reason {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+/* A row's keyboard shortcut, at its end (see `OverflowAction.shortcut`).
+   Rendered on a fine pointer only; the row announces it either way. */
+.action-overflow__shortcut {
+  margin-left: auto;
+  padding-left: var(--space-6);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}

@@ -23,6 +23,7 @@ export type AttentionRequestInspection =
       openedAt: string;
       answerability: RequestAnswerability;
       canRespond: boolean;
+      requiresAnswers?: boolean;
     }
   | {
       state: 'changed' | 'resolved' | 'unavailable';

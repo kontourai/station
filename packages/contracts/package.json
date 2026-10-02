@@ -1,6 +1,6 @@
 {
   "name": "@kontourai/station-contracts",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "sideEffects": false,
   "description": "Runtime, provider, and orchestration contracts for Station",
   "type": "module",
@@ -31,6 +31,7 @@
     "./device-toolchain": "./src/device-toolchain.ts",
     "./device-tools": "./src/device-tools.ts",
     "./native-push": "./src/native-push.ts",
+    "./native-device-proof": "./src/native-device-proof.ts",
     "./presence": "./src/presence.ts",
     ".": "./src/index.ts",
     "./acp": "./src/acp.ts",
@@ -58,6 +59,7 @@
     "./client-origin": "./src/client-origin.ts",
     "./chat-attachment": "./src/chat-attachment.ts",
     "./connection-recovery": "./src/connection-recovery.ts",
+    "./engine-accounts": "./src/engine-accounts.ts",
     "./conversation-context-boundary": "./src/conversation-context-boundary.ts",
     "./conversation-intent-summary": "./src/conversation-intent-summary.ts",
     "./config": "./src/config.ts",
@@ -109,6 +111,7 @@
     "./project-identity": "./src/project-identity.ts",
     "./project-task-room": "./src/project-task-room.ts",
     "./project-task-room-browser": "./src/project-task-room-browser.ts",
+    "./task-room-work": "./src/task-room-work.ts",
     "./project-reference-integrity": "./src/project-reference-integrity.ts",
     "./project-settings-overrides": "./src/project-settings-overrides.ts",
     "./registry-lifecycle": "./src/registry-lifecycle.ts",
@@ -191,7 +194,8 @@
     "./local-accounts": "./src/local-accounts.ts",
     "./application-session": "./src/application-session.ts",
     "./relay-enrollment": "./src/relay-enrollment.ts",
-    "./registry-trust": "./src/registry-trust.ts"
+    "./registry-trust": "./src/registry-trust.ts",
+    "./harness-questions": "./src/harness-questions.ts"
   },
   "dependencies": {
     "@kontourai/datum": "0.8.0",

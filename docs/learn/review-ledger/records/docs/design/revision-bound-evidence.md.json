@@ -1,0 +1,37 @@
+{
+  "path": "docs/design/revision-bound-evidence.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Completed exact-revision and persistence contract review; optional proposed-change lookup is not supplied by the production room bridge, which provides attribution only.",
+
+  "limits": "Reviewed the documented contract and actual callers, not every implementation branch. No new external engine, provider, cross-host, native/device or power-loss result. Historical test and issue receipts keep their original scope.",
+
+  "document": {"digest":"02e65ecf6fbd4fadabfc175d3d685df58ad453004079716d4011585c829d10cf","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+  "sources": [
+    {"path":"src-server/domain/__tests__/revision-bound-evidence.test.ts","digest":"84744b9133107d4ca9a34daf044ef5faa44b79ceb6af5345406fa43dba250398","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/domain/revision-bound-evidence.ts","digest":"cb297f8375790f638ce0f0097de0e5f4ec13d72b16cc60fb4209cbb8ec723787","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/orchestration/event-store.ts","digest":"95305152b73953e172ef0a1a26211c040f3b58ec002a24cf0e8f0dcb1e236f97","revision":"3a12d2273b4b8b1e024523d6eb396d6ec3c703fb"},
+
+    {"path":"src-server/services/orchestration/project-task-room-revision-evidence-bridge.ts","digest":"b15475ea8e06e179b98493884ce70f4eca5bc98ce1911aa9bb8537be0265217e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/orchestration/sqlite-revision-evidence-persistence.ts","digest":"522bfbd015ec9c314a1edffa628a36e35fcc54eae6c911ac7529b93f14b77952","revision":"0c1f436037261c43eeca3e079f5106948360c591"}
+  ],
+
+  "checks": [
+    "Read the complete document and traced owning implementation, composition and current consumers.",
+
+    "Executed six focused domain/controller/room-adapter files: 174 tests passed on the integrated worktree; no external provider or device.",
+
+    "Reviewed integration deltas: Completed exact-revision and persistence contract review; optional proposed-change lookup is not supplied by the production room bridge, which provides attribution only.",
+
+    "Integration source review through d72f79b08: in event-store.ts, #2904 adds `actor` to `latestApprovalModeDecision` and adds read-only queries for device decision threads, device-granted host starts, conversation titles and unattributed never-decisions. No revision-bound evidence receipt, persistence, restore or proposed-change lookup code changed. Prose accurate. Source review is separate from executed test evidence.",
+
+    "2026-09-28 test-audit refresh: event-store.ts only deleted the caller-less readChatTurn; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
+  ]
+}

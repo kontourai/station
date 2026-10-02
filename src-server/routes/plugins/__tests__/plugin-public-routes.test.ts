@@ -689,7 +689,7 @@ export default function register(app, { config }) {
       pluginDir,
       'plugin.mjs',
       `export default function register(app) {
-  app.get('/secret', () => { throw new Error('secret path /Users/brian/.aws/credentials'); });
+  app.get('/secret', () => { throw new Error('secret path /Users/me/.aws/credentials'); });
 }`,
     );
 
@@ -705,7 +705,7 @@ export default function register(app, { config }) {
       success: false,
     });
     expect(body.correlationId).toBeTruthy();
-    expect(JSON.stringify(body)).not.toContain('/Users/brian/.aws');
+    expect(JSON.stringify(body)).not.toContain('/Users/me/.aws');
   });
 
   test('returns generic plugin server failures when module import throws', async () => {
@@ -725,7 +725,7 @@ export default function register(app, { config }) {
     writePlugin(
       pluginDir,
       'plugin.mjs',
-      `throw new Error('secret import path /Users/brian/.aws/credentials');`,
+      `throw new Error('secret import path /Users/me/.aws/credentials');`,
     );
 
     const app = createApp(root);
@@ -740,7 +740,7 @@ export default function register(app, { config }) {
       success: false,
     });
     expect(body.correlationId).toBeTruthy();
-    expect(JSON.stringify(body)).not.toContain('/Users/brian/.aws');
+    expect(JSON.stringify(body)).not.toContain('/Users/me/.aws');
   });
 
   test('keeps the generic failure response when a plugin error hook throws', async () => {
@@ -761,10 +761,10 @@ export default function register(app, { config }) {
       pluginDir,
       'plugin.mjs',
       `export const hooks = {
-  onError() { throw new Error('secret hook path /Users/brian/.aws/credentials'); },
+  onError() { throw new Error('secret hook path /Users/me/.aws/credentials'); },
 };
 export default function register(app) {
-  app.get('/secret', () => { throw new Error('secret route path /Users/brian/.aws/credentials'); });
+  app.get('/secret', () => { throw new Error('secret route path /Users/me/.aws/credentials'); });
 }`,
     );
 
@@ -780,7 +780,7 @@ export default function register(app) {
       success: false,
     });
     expect(body.correlationId).toBeTruthy();
-    expect(JSON.stringify(body)).not.toContain('/Users/brian/.aws');
+    expect(JSON.stringify(body)).not.toContain('/Users/me/.aws');
   });
 
   test('rejects unscoped compatibility fetch route', async () => {

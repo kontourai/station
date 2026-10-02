@@ -66,7 +66,7 @@ const FRAMES: Record<NavigationView['type'], PageFrameSpec | null> = {
   'connections-engine-new': {
     eyebrow: 'Connections',
     title: 'Engines',
-    subtitle: 'Agent CLIs on this Station, and custom engines you connected.',
+    subtitle: 'AI apps and other engines that run your agents.',
     width: 'narrow',
   },
   'connections-tools': SPLIT_PANE,
@@ -77,7 +77,7 @@ const FRAMES: Record<NavigationView['type'], PageFrameSpec | null> = {
     subtitle: 'The knowledge store and its attached namespaces.',
     width: 'narrow',
   },
-  'connections-computers': SPLIT_PANE,
+  'connections-computers': { width: 'full', body: 'flow', flush: true },
 
   plugins: SPLIT_PANE,
   registry: {

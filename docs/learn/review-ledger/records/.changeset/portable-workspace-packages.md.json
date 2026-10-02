@@ -1,0 +1,17 @@
+{
+  "path": ".changeset/portable-workspace-packages.md",
+
+  "kind": "release-note",
+
+  "state": "classified",
+
+  "summary": "Release intent for the package versions named in this changeset.",
+
+  "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+
+  "document": {"digest":"00352a48c0a1cf0726f265a1ee2607a7b4c9673d45d52bd90f60f7316f6f844a","revision":"eec64aa6defda8dd84ffebbe430eea95b35aea3f"},
+
+  "sources": [],
+
+  "checks": []
+}

@@ -1,13 +1,12 @@
 import { HomeActionSection } from '../../components/home/HomeActionSection';
 import { HomeRecentWorkSection } from '../../components/home/HomeRecentWorkSection';
-import { useShowSurface } from '../../contexts/useShowSurface';
+import { useShowSurfacePage } from '../../contexts/useShowSurface';
 import type { NavigationView } from '../../types';
 import {
   ActivityBars,
   buildHeatRows,
   type HeatRow,
 } from './blocks/activity-bars';
-import { revealHomeRegion } from './home-reveal';
 import type { HomeViewNavigation, useHomeViewModel } from './useHomeViewModel';
 import { useHomeWorkLanes } from './useHomeWorkLanes';
 
@@ -50,14 +49,17 @@ export function HomeSurface({
   // snooze snapshot, so the counts and the list they caption could disagree
   // about what is snoozed.
   const lanes = useHomeWorkLanes(model.workItems);
-  // #928: Activity is a region surface with no standalone placement, so
-  // "View Activity" reveals it rather than navigating to a retired route.
-  const showSurface = useShowSurface();
+  // #928: Activity is a region surface with no standalone placement. "View
+  // Activity" goes to its PAGE — Activity takes `main` in Home's place, the
+  // same verb as the sidebar row — rather than docking it beside Home.
+  const showSurfacePage = useShowSurfacePage();
   // Lanes, not raw `workItems`: `partitionHomeWorkItems` hides a snoozed
   // item, and reading `workItems` directly here would put every snoozed row
   // back into the chart the counts beside it say is empty.
   const visible = [
-    ...lanes.active,
+    ...lanes.needsYou,
+    ...lanes.running,
+    ...lanes.idle,
     ...lanes.recentlyFinished,
     ...lanes.settled,
   ];
@@ -68,8 +70,8 @@ export function HomeSurface({
     <>
       <header className="home-view__intro">
         <p className="home-view__eyebrow">Your work</p>
-        <h1>What do you want to work on?</h1>
-        <p>Start something focused or continue exactly where you left off.</p>
+        <h1>What's next?</h1>
+        <p>Chat, explore agents, or open a project.</p>
       </header>
       <HomeActionSection
         continuation={continuation}
@@ -98,20 +100,15 @@ export function HomeSurface({
       <HomeRecentWorkSection
         lanes={lanes}
         workItems={model.workItems}
+        workFacts={model.workFacts}
         workLoading={model.workLoading}
         workDegraded={model.workDegraded}
         workError={model.workError}
         agents={model.agents}
         remoteUnavailable={model.remoteUnavailable}
         remoteAuthenticationRequired={model.remoteAuthenticationRequired}
-        projectRowCount={heatRows.length}
-        onShowProjects={
-          heatRows.length > 0
-            ? () => revealHomeRegion(ACTIVITY_HEADING_ID)
-            : null
-        }
         onOpen={model.continueWork}
-        onViewActivity={() => showSurface('activity')}
+        onViewActivity={() => showSurfacePage('activity')}
         onRetry={model.retryWork}
       />
     </>

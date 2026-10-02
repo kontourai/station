@@ -19,6 +19,11 @@ import {
 } from '@kontourai/station-contracts/engine-capability-matrix';
 import { FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY } from '@kontourai/station-contracts/provider';
 import type { SessionLifecycleState } from '@kontourai/station-contracts/session-lifecycle';
+import {
+  toolRequestFromPayload,
+  toolRequestGrantLabel,
+  toolRequestSessionGrantFromPayload,
+} from '@kontourai/station-shared/tool-request-preview';
 import { afterAll, afterEach, describe, expect, test, vi } from 'vitest';
 import { createStagedPreToolPolicyEvaluator } from '../../runtime/agents/pre-tool-policy.js';
 import {
@@ -543,6 +548,136 @@ describe('AcpAdapter', () => {
     expect(await nextEvent(iterator, 'request.opened')).toMatchObject({
       payload: { toolCallId: 'tool-2' },
     });
+    await adapter.stopAll();
+  });
+
+  test.each([
+    ['completes', 'turn.completed'],
+    ['fails', 'runtime.error'],
+  ] as const)(
+    'a permission request still open when the prompt %s is settled cancelled before the turn terminal',
+    async (_how, terminal) => {
+      const { adapter, processes } = createAdapter();
+      const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+      const threadId = `thread-prompt-end-${terminal}`;
+      await adapter.startSession({
+        provider: 'acp',
+        threadId,
+        cwd: '/tmp/project',
+        metadata: { connectionId: 'kiro' },
+      });
+      await nextEvent(iterator, 'session.started');
+      await nextEvent(iterator, 'session.configured');
+      const proc = processes[0];
+      await adapter.sendTurn({ threadId, input: 'Run it' });
+      await nextEvent(iterator, 'turn.started');
+      const requestPromise = requestPermission(proc.client, 'tool-orphan');
+      const opened = await nextEvent(iterator, 'request.opened');
+
+      // The engine ends the prompt without ever reading the answer.
+      if (terminal === 'turn.completed') proc.resolvePrompt('end_turn');
+      else proc.rejectPrompt(new Error('agent crashed'));
+
+      await expect(requestPromise).resolves.toEqual({
+        outcome: { outcome: 'cancelled' },
+      });
+      // Every consumer that folds request.opened/resolved (inbox, header
+      // count, toast queue, banner) clears on this, before the turn ends.
+      expect(await nextEvent(iterator, 'request.resolved')).toMatchObject({
+        requestId: opened.requestId,
+        status: 'cancelled',
+      });
+      expect((await nextEvent(iterator, terminal)).method).toBe(terminal);
+      await expect(
+        adapter.respondToRequest(threadId, String(opened.requestId), 'accept'),
+      ).rejects.toThrow('Unknown ACP permission request');
+      await adapter.stopAll();
+    },
+  );
+
+  test("request.opened carries the engine's ACP kind, and refuses one outside the vocabulary", async () => {
+    const { adapter, processes } = createAdapter();
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    await adapter.startSession({
+      provider: 'acp',
+      threadId: 'thread-request-kind',
+      cwd: '/tmp/project',
+      metadata: { connectionId: 'kiro' },
+    });
+    await nextEvent(iterator, 'session.started');
+    await nextEvent(iterator, 'session.configured');
+    const proc = processes[0];
+    await adapter.sendTurn({ threadId: 'thread-request-kind', input: 'Go' });
+    await nextEvent(iterator, 'turn.started');
+    // OpenCode's permission request: the title is the command line and
+    // there is no programmatic name.
+    const command = 'cd /tmp && gh api repos/o/r/contents/x.mjs > x.mjs';
+    void proc.client.requestPermission({
+      sessionId: 'ignored-by-adapter',
+      toolCall: {
+        toolCallId: 'call_exec',
+        title: command,
+        kind: 'execute',
+        rawInput: { command, description: 'Fetch the file', cwd: '/repo' },
+      },
+      options: PERMISSION_OPTIONS,
+    });
+    const opened = await nextEvent(iterator, 'request.opened');
+    expect((opened as any).payload).toMatchObject({ toolKind: 'execute' });
+    expect((opened as any).payload.toolName).toBeUndefined();
+
+    void proc.client.requestPermission({
+      sessionId: 'ignored-by-adapter',
+      toolCall: {
+        toolCallId: 'call_odd',
+        title: 'odd',
+        kind: 'teleport' as never,
+        rawInput: {},
+      },
+      options: PERMISSION_OPTIONS,
+    });
+    const odd = await nextEvent(iterator, 'request.opened');
+    expect((odd as any).payload).not.toHaveProperty('toolKind');
+    await adapter.stopAll();
+  });
+
+  test('request.opened names the tool a session grant would cover', async () => {
+    const { adapter, processes } = createAdapter();
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    await adapter.startSession({
+      provider: 'acp',
+      threadId: 'thread-request-name',
+      cwd: '/tmp/project',
+      metadata: { connectionId: 'kiro' },
+    });
+    await nextEvent(iterator, 'session.started');
+    await nextEvent(iterator, 'session.configured');
+    const proc = processes[0];
+    await adapter.sendTurn({ threadId: 'thread-request-name', input: 'Go' });
+    await nextEvent(iterator, 'turn.started');
+    void requestPermission(proc.client, 'tool-named', 'write');
+    const opened = await nextEvent(iterator, 'request.opened');
+    expect((opened as any).payload).toMatchObject({ toolName: 'write' });
+    // The shared label names it: the same words on the card and the toast.
+    const grant = toolRequestSessionGrantFromPayload((opened as any).payload);
+    expect(grant).toBe('tool');
+    expect(
+      toolRequestGrantLabel(
+        toolRequestFromPayload((opened as any).payload).toolName,
+        grant,
+      ),
+    ).toBe('Allow write for this session');
+    // …and that is exactly what the grant covers: the next `write` is
+    // allowed without a second request.
+    await adapter.respondToRequest(
+      'thread-request-name',
+      String(opened.requestId),
+      'acceptForSession',
+    );
+    await nextEvent(iterator, 'request.resolved');
+    await expect(
+      requestPermission(proc.client, 'tool-named-2', 'write'),
+    ).resolves.toMatchObject({ outcome: { outcome: 'selected' } });
     await adapter.stopAll();
   });
 
@@ -1101,6 +1236,226 @@ describe('AcpAdapter', () => {
         }),
         expect.objectContaining({ interaction: 'external' }),
       );
+    });
+
+    test.each([
+      ['with the shared staged policy', true],
+      ['without a staged policy', false],
+    ])(
+      '#2933: an autoApprove pattern of * never answers a plan exit (%s)',
+      async (_label, withPolicy) => {
+        const autoApprove = ['*'];
+        const { adapter, processes } = createAdapter(
+          withPolicy
+            ? { resolvePreToolPolicy: async () => sharedPolicy(autoApprove) }
+            : {},
+        );
+        const threadId = `thread-plan-exit-${withPolicy}`;
+        const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+        await adapter.startSession({
+          provider: 'acp',
+          threadId,
+          cwd: '/tmp/project',
+          metadata: { connectionId: 'kiro' },
+          agent: { slug: 'engine-lab', autoApprove },
+        });
+        await nextEvent(iterator, 'session.started');
+        await nextEvent(iterator, 'session.configured');
+        const client = processes[0].client;
+
+        // Positive control: a plain call is still auto-approved.
+        await expect(
+          requestPermission(client, 'plain', 'mcp__tools__write'),
+        ).resolves.toEqual({
+          outcome: { outcome: 'selected', optionId: 'allow-once' },
+        });
+
+        // ACP marks leaving plan mode with the `switch_mode` tool kind.
+        for (const [toolCallId, toolCall] of [
+          ['switch', { name: 'mcp__tools__exit', kind: 'switch_mode' }],
+          ['exit-plan', { name: 'ExitPlanMode' }],
+          // A tool named as a harness question is a person's to answer too.
+          ['question', { name: 'AskUserQuestion' }],
+        ] as const) {
+          const pending = client.requestPermission({
+            sessionId: 'ignored-by-adapter',
+            toolCall: {
+              toolCallId,
+              title: 'Ready to code?',
+              rawInput: { plan: 'Step 1' },
+              ...toolCall,
+            },
+            options: PERMISSION_OPTIONS,
+          } as RequestPermissionRequest);
+          const opened = await nextEvent(iterator, 'request.opened');
+          await adapter.respondToRequest(
+            threadId,
+            String(opened.requestId),
+            'decline',
+          );
+          await expect(pending).resolves.toEqual({
+            outcome: { outcome: 'selected', optionId: 'reject-once' },
+          });
+          await nextEvent(iterator, 'request.resolved');
+        }
+      },
+    );
+
+    test.each([
+      ['with the shared staged policy', true],
+      ['without a staged policy', false],
+    ])(
+      '#2933: a denyApprovals child with autoApprove * is declined a plan exit fail-fast, with no request (%s)',
+      async (_label, withPolicy) => {
+        const autoApprove = ['*'];
+        const { adapter, processes } = createAdapter(
+          withPolicy
+            ? { resolvePreToolPolicy: async () => sharedPolicy(autoApprove) }
+            : {},
+        );
+        const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+        await adapter.startSession({
+          provider: 'acp',
+          threadId: `thread-child-plan-exit-${withPolicy}`,
+          cwd: '/tmp/project',
+          metadata: {
+            connectionId: 'kiro',
+            delegation: {
+              mode: 'isolated-child',
+              depth: 1,
+              maxDepth: 2,
+              parentAgentSlug: 'parent',
+              rootAgentSlug: 'parent',
+              denyApprovals: true,
+            },
+          },
+          agent: { slug: 'engine-lab', autoApprove },
+        });
+        await nextEvent(iterator, 'session.started');
+        await nextEvent(iterator, 'session.configured');
+        const client = processes[0].client;
+
+        await expect(
+          requestPermission(client, 'plain', 'mcp__tools__write'),
+        ).resolves.toEqual({
+          outcome: { outcome: 'selected', optionId: 'allow-once' },
+        });
+        await expect(
+          client.requestPermission({
+            sessionId: 'ignored-by-adapter',
+            toolCall: {
+              toolCallId: 'switch',
+              title: 'Ready to code?',
+              rawInput: { plan: 'Step 1' },
+              name: 'mcp__tools__exit',
+              kind: 'switch_mode',
+            },
+            options: PERMISSION_OPTIONS,
+          } as RequestPermissionRequest),
+        ).resolves.toEqual({
+          outcome: { outcome: 'selected', optionId: 'reject-once' },
+        });
+        expect(await nextEventOrTimeout(iterator, 100)).toBe('TIMED_OUT');
+      },
+    );
+
+    test('#2933: a session answer on a plan exit is a one-call accept and grants nothing', async () => {
+      const { adapter, processes } = createAdapter();
+      const threadId = 'thread-plan-exit-session';
+      const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+      await adapter.startSession({
+        provider: 'acp',
+        threadId,
+        cwd: '/tmp/project',
+        metadata: { connectionId: 'kiro' },
+        agent: { slug: 'engine-lab' },
+      });
+      await nextEvent(iterator, 'session.started');
+      await nextEvent(iterator, 'session.configured');
+      const client = processes[0].client;
+      const planExit = (
+        toolCallId: string,
+        toolCall: { name: string; kind?: string },
+      ) =>
+        client.requestPermission({
+          sessionId: 'ignored-by-adapter',
+          toolCall: {
+            toolCallId,
+            title: 'Ready to code?',
+            rawInput: { plan: 'Step 1' },
+            ...toolCall,
+          },
+          options: PERMISSION_OPTIONS,
+        } as RequestPermissionRequest);
+
+      const planExits: { name: string; kind?: string }[] = [
+        { name: 'mcp__tools__exit', kind: 'switch_mode' },
+        { name: 'ExitPlanMode' },
+      ];
+      for (const toolCall of planExits) {
+        const first = planExit(`${toolCall.name}-1`, toolCall);
+        const opened = await nextEvent(iterator, 'request.opened');
+        if (toolCall.kind)
+          expect(opened).toMatchObject({
+            payload: { toolKind: 'switch_mode' },
+          });
+        await adapter.respondToRequest(
+          threadId,
+          String(opened.requestId),
+          'acceptForSession',
+        );
+        // The agent gets its allow-once option, never allow-always.
+        await expect(first).resolves.toEqual({
+          outcome: { outcome: 'selected', optionId: 'allow-once' },
+        });
+        await nextEvent(iterator, 'request.resolved');
+
+        const second = planExit(`${toolCall.name}-2`, toolCall);
+        const reopened = await nextEvent(iterator, 'request.opened');
+        await adapter.respondToRequest(
+          threadId,
+          String(reopened.requestId),
+          'decline',
+        );
+        await expect(second).resolves.toEqual({
+          outcome: { outcome: 'selected', optionId: 'reject-once' },
+        });
+        await nextEvent(iterator, 'request.resolved');
+      }
+
+      // Positive control: an ordinary tool's session answer still grants it.
+      const granted = requestPermission(client, 'grant-1', 'mcp__tools__write');
+      const opened = await nextEvent(iterator, 'request.opened');
+      await adapter.respondToRequest(
+        threadId,
+        String(opened.requestId),
+        'acceptForSession',
+      );
+      await expect(granted).resolves.toEqual({
+        outcome: { outcome: 'selected', optionId: 'allow-always' },
+      });
+      await nextEvent(iterator, 'request.resolved');
+      await expect(
+        requestPermission(client, 'grant-2', 'mcp__tools__write'),
+      ).resolves.toEqual({
+        outcome: { outcome: 'selected', optionId: 'allow-once' },
+      });
+
+      // A grant minted for a name on an ordinary call never answers a plan
+      // exit the agent reports under the same name.
+      const exitUnderGrantedName = planExit('granted-name-exit', {
+        name: 'mcp__tools__write',
+        kind: 'switch_mode',
+      });
+      const exitOpened = await nextEvent(iterator, 'request.opened');
+      await adapter.respondToRequest(
+        threadId,
+        String(exitOpened.requestId),
+        'decline',
+      );
+      await expect(exitUnderGrantedName).resolves.toEqual({
+        outcome: { outcome: 'selected', optionId: 'reject-once' },
+      });
     });
 
     test('fails closed when staged-policy preparation rejects', async () => {
@@ -2597,6 +2952,9 @@ describe('AcpAdapter', () => {
       message: expect.stringContaining(
         'did not advertise image attachment support',
       ),
+      // The literal, not the constant: clients translate on this string, and
+      // it is what tells them a retry with the same attachments cannot help.
+      code: 'attachment_input_unsupported',
     });
     expect(processes[0].promptContents).toEqual([]);
     await adapter.stopAll();
@@ -4978,14 +5336,15 @@ describe('AcpAdapter.steerTurn', () => {
     ]);
     expect(processes[0]?.cancelCalls).toBe(0);
     expect(processes[0]?.promptContents).toHaveLength(1);
-    await expect(
-      nextEvent(iterator, 'steer turn.started'),
-    ).resolves.toMatchObject({
+    const nativeSteer = await nextEvent(iterator, 'steer turn.started');
+    expect(nativeSteer).toMatchObject({
       method: 'turn.started',
       turnId: turn.turnId,
       prompt: 'go left',
       inputKind: 'steer',
     });
+    // An additive channel stopped nothing, so it claims nothing.
+    expect(nativeSteer).not.toHaveProperty('steerInterruptedRun');
 
     processes[0]?.resolvePrompt('end_turn');
     await expect(nextEvent(iterator, 'turn.completed')).resolves.toMatchObject({
@@ -5066,6 +5425,8 @@ describe('AcpAdapter.steerTurn', () => {
       method: 'turn.started',
       turnId: turn.turnId,
       inputKind: 'steer',
+      // The fallback cancelled the running prompt (and its tool): say so.
+      steerInterruptedRun: true,
     });
 
     processes[0]?.resolvePrompt('end_turn');

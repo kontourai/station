@@ -1,0 +1,21 @@
+{
+  "path": "docs/plans/README.md",
+
+  "kind": "generated",
+
+  "state": "classified",
+
+  "summary": "Reviewed the navigation and generated index boundaries; individual records retain their own purpose and evidence.",
+
+  "limits": "Index coverage is navigation evidence, not semantic review of linked documents.",
+
+  "document": {"digest":"359f6bfb0cf05877220a2ab53b697a9fbb25fe17ae0e6b9c074215d32b24cc54","revision":"ce0dfef8e53a7004193551ccdaf964cf2762bafa"},
+
+  "sources": [
+    {"path":"scripts/docs-index.mjs","digest":"bcde7189b68e8b091b415ce5a4730102803e2326ac29b6da6e0beacd776e7fe8","revision":"e5efef30008198db7198fe9dac38f3ad632c6621"}
+  ],
+
+  "checks": [
+    "Integration source review through d1e0facc2: Directory list is now private; generated index behavior is unchanged. Existing prose remains accurate. Source review is separate from executed test evidence."
+  ]
+}

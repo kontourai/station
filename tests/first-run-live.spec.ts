@@ -125,7 +125,7 @@ test('desktop first run boots to a coherent zero-project Home view', async ({
   // `/api/usage-telemetry/disclosure/acknowledgements` on this home.
   const disclosure = page.getByTestId('first-run-disclosure');
   await expect(disclosure).toBeVisible({ timeout: 20_000 });
-  await expect(page.getByText('Step 1 of 4')).toBeVisible();
+  await expect(page.getByText('Step 1 of 1')).toBeVisible();
   await expect(
     page.getByTestId('usage-telemetry-disclosure-modal'),
   ).toHaveCount(0);
@@ -135,8 +135,13 @@ test('desktop first run boots to a coherent zero-project Home view', async ({
     .click();
 
   const chapter = page.getByTestId('first-run-engines');
+  await expect(chapter).toHaveCount(0);
+  await page
+    .getByTestId('first-run-home-card')
+    .getByRole('button', { name: 'Personalize Station' })
+    .click();
   await expect(chapter).toBeVisible({ timeout: 20_000 });
-  await expect(page.getByText('Step 2 of 4')).toBeVisible();
+  await expect(page.getByText('Step 1 of 3')).toBeVisible();
   await expect(page.getByRole('dialog').filter({ has: chapter })).toBeVisible();
 
   // Deferring is a decision, and it is written down: the chapter closes, Home
@@ -173,21 +178,19 @@ test('desktop first run boots to a coherent zero-project Home view', async ({
     page.getByTestId('usage-telemetry-disclosure-modal'),
   ).toHaveCount(0);
 
-  // The run was DEFERRED, so this home has no Agent to chat with — and since
-  // archive#3627 Home says so rather than recommending one. The card used to
-  // read "Start direct chat" unconditionally over `flatList[0]`, which on a
-  // fresh home named an Agent the New Chat picker one click away flagged "Not
-  // set up". Asserting the old label here would be asserting that
-  // contradiction back into place.
-  const startAgent = page.getByRole('button', { name: /Set up an agent/i });
+  // An unfinished optional setup flow does not block entering a goal.
+  const goal = page.getByRole('textbox', { name: 'What would you like done?' });
+  await expect(goal).toBeVisible();
+  await expect(goal).toBeEditable();
+  const startAgent = page
+    .locator('.home-view__actions')
+    .getByRole('button', { name: 'Start a chat', exact: true });
+  await expect(startAgent).toBeDisabled();
+  await goal.fill('Help me get started');
+  await expect(startAgent).toBeEnabled();
   const openLocalProject = page.getByRole('button', {
     name: /Open local project/i,
   });
-  await expect(startAgent).toBeVisible();
-  await expect(startAgent).toBeEnabled();
-  await expect(
-    page.getByRole('button', { name: /Start direct chat/i }),
-  ).toHaveCount(0);
   await expect(openLocalProject).toBeVisible();
   await expect(openLocalProject).toBeEnabled();
 
@@ -302,6 +305,11 @@ test('phone first run recovers from no provider to a real streamed reply', async
       await expect(disclosure).toBeVisible();
       await disclosure
         .getByRole('button', { name: 'Keep usage telemetry on' })
+        .click();
+      await expect(chapter).toHaveCount(0);
+      await page
+        .getByTestId('first-run-home-card')
+        .getByRole('button', { name: 'Personalize Station' })
         .click();
       await expect(chapter).toBeVisible();
       await chapter.getByRole('button', { name: 'Not now' }).click();

@@ -1,0 +1,85 @@
+{
+  "path": "docs/design/channel-home-authority.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Completed full documented-claim review, building on the nine-guide controller review: paired identity/preparation/advance and private control authority, guarded durable SQLite, room source seals, snapshot digests, session-start/task-dispatch barriers and completed-dispatch recovery. Current narrower operations remain distinct from required distributed leases, target activation, cross-host writer fencing and provider continuation. No prose correction required.",
+
+  "limits": "Source review of this document’s stated contracts and actual callers, not an exhaustive audit of unclaimed implementation branches. No new external SDK/CLI compatibility, provider billing/sign-in, gateway/deployment, network-partition, independent-host, OS keyring/ACL, native/device, release, power-loss or cryptographic penetration qualification. Dated probes and prior test receipts remain historical evidence.",
+
+  "document": {"digest":"ec8920fcb32e04182559991d3301afec584a03478e9772ee33ebc90af05281a8","revision":"4775195c62ee67b1c20882a1561a4578b8db017f"},
+
+  "sources": [
+    {"path":"packages/contracts/src/environment-security.ts","digest":"5e95b203695a37807a3b3c9464df4f0153ca32b408496dc12f59274f61fd2486","revision":"91d79c3f0ce9ca5ae304e4248b67b6189103016e"},
+
+    {"path":"src-server/routes/environments/home-authority-routes.ts","digest":"64c1875089078327e3e74481923ecdec9ed1e6751e6b795b54ada44c7fca7ef4","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+
+    {"path":"src-server/runtime/bootstrap/personal-home-authority-database.ts","digest":"8d7f81a7cef515dfff921152c74d03028409708395de6c280f2e013c70e84f7f","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"ed83b5af4f41e38ea85de7ba4d975066b1c15f136b215926bd5cd31a45183a21","revision":"068722323b07f15f14280d43b1c05dbc2ca212eb"},
+
+    {"path":"src-server/services/execution-target/execution-target-execution.ts","digest":"c94ea32c0e391978d340cbfab4e5d9ee37fea207aac329580b68f2125a640c90","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
+
+    {"path":"src-server/services/orchestration/completed-task-dispatch-recovery.ts","digest":"d546e29721fb4338c50d2d661d9e09da9cdc2562022c32cbed2b1bbdc0a158b2","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+
+    {"path":"src-server/services/orchestration/home-transfer-room-binding.ts","digest":"327571a0ed3ca3530b5dd6acb90c6c66c8a009f4a413777bb6d1e82420e73f73","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+
+    {"path":"src-server/services/orchestration/home-transfer-room-probe.ts","digest":"452280720043dd06eabfa63058e4ae10bd65db403adf427ccc7b64061c102129","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+
+    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"14d4d68ff2f8715e1428ca985125a9eff9eb5a05ea52946dc16b4f5971405a34","revision":"bc671142a7ae70587daf5bb0d94732e8ca74600a"},
+
+    {"path":"src-server/services/orchestration/paired-home-transfer-authority.ts","digest":"085a90751ac616c54bca77ce48112a951334d1d644fdb4fa3287e6aed72f503f","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+
+    {"path":"src-server/services/orchestration/planned-home-admission-reconciliation.ts","digest":"b7f4f5da84fd564e60bf154c41e7270732d6a57046604e0ada5b9633a8fc1af4","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+
+    {"path":"src-server/services/orchestration/planned-home-admission-schema.ts","digest":"c18526693663135c65b06b6aa21b02caad2db819ebdaedee1d51ec914118832f","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+
+    {"path":"src-server/services/orchestration/planned-home-admission-store.ts","digest":"2b7da18c962fbb82036fa48e6193bcd038a3f843ec435dd9772b1755052d73a9","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+
+    {"path":"src-server/services/orchestration/planned-home-control-room-write-adapter.ts","digest":"dec0df930857ef8e7de10cbe5d4d8e4e3e604027a866355b020bda1711301f79","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+
+    {"path":"src-server/services/orchestration/planned-home-control-room-write-identity.ts","digest":"7f3f6cddbe5bae1db154cbe1dee86495b08bd53b99cb876d6b4bedc1affbb022","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+
+    {"path":"src-server/services/orchestration/planned-home-control-room-write-receipt-verifier.ts","digest":"f6c49a8611da028d5943e1b66be456acd4bb1de51c4e1a3c65bc2176d0711d54","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+
+    {"path":"src-server/services/orchestration/planned-home-control-session-authority.ts","digest":"5d9f0768ae2f584a3719568bed7166e708faf3452cdbbc792da9c576c979adff","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+
+    {"path":"src-server/services/orchestration/planned-home-control-session-schema.ts","digest":"9824fe95c7be0b10056125af8ff411780845d1bdbd5d64b3fbd3cba28f733325","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+
+    {"path":"src-server/services/orchestration/planned-home-transfer-coordinator.ts","digest":"e4e93a19400d17d54295d0dac64c4d8977a13ca0a10c6c9787d3607b45de1307","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+
+    {"path":"src-server/services/orchestration/planned-home-transfer-store.ts","digest":"7af2e74857cfc5af2e968831708daf50d5d4e19751d450044bca9bfc145f6e66","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
+
+    {"path":"src-server/services/orchestration/project-task-room-history-worker.ts","digest":"6c8f8684aadb16162fdf999f692e82b554773e9edbf17d0b4b36a00aba0d1736","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+
+    {"path":"src-server/services/orchestration/project-task-room-history.ts","digest":"67647ae8dadce1e7d9af02128ec52782aa10d87cea0bc211144f1a3b7628f340","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+
+    {"path":"src-server/services/orchestration/remote-home-transfer-coordinator.ts","digest":"ff03f9ae3fa558b2a29de1fbe22538d4da7f29fe09dfcdb263c1280c9f313eb0","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+
+    {"path":"src-server/services/orchestration/session-turn-boundary.ts","digest":"85b15fdd313d9e690718992ea6cbb70e4fd101988a2f261ae7896501462c1199","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+
+    {"path":"src-server/services/projects/task-dispatcher.ts","digest":"ae50a30b27da6b16cc22a0910af821e0f5d08c80b45b7c336c2935fb87ea0ce1","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+
+    {"path":"src-server/services/ssh/device-pairing-service.ts","digest":"dcecd8108147d5e7f2b26d132545cf8901b05ce62d14523a2732a10005fb1753","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+
+    {"path":"src-server/services/orchestration/project-task-room-runtime.ts","digest":"feb48a41131f04260c92e3a7757eda5aa61799a7015b3386a931d950250e3d58","revision":"9f8b407fac4a9e5536d72ca49be3a0b77715e1d8"}
+  ],
+
+  "checks": [
+    "REASONED: full document body read; current material claims traced to concrete owners and callers. Future requirements and dated receipts are not represented as executed current behavior.",
+
+    "EXECUTED: local Markdown paths/anchors415 PASS; public contract examples10 PASS; repository documentation hygiene PASS; two comment-only TypeScript programs print identically with comments removed; scoped Biome PASS.",
+
+    "No new provider/native/runtime journey and no repeated broad regression. Root owns combined ledger/reader freshness after integration.",
+
+    "EXECUTED: Veritas veritas-1790535465599 exited 0 with 0 failures and 2 optional diagnostic warnings. Governance and lint passed. The connected-agent diagnostic ended with SIGTERM after 600,139 ms and had reported two timing-related test failures; verification-policy refused 3 installed Knowledge example tests under the preserved demo home. Neither optional diagnostic passed; neither was rerun.",
+
+    "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits.",
+
+    "Integration source review through d72f79b08: #2904 added scope descriptions and the revocation report type to environment-security. The runtime-routes changes are a middleware that binds full-access refusal identity, plus revoke and scope-change responses that include the full-access reset. It added deviceHoldsScope to device-pairing-service and the approval-posture grantor and reset logic to orchestration-service. None of these touch the home-authority channel/transfer routes, the transfer-scoped credentials, the SQLite decision guards, the room seals or the session-start/task-dispatch barriers. The new access:manage description ('held only by older default grants') matches the doc's historical-scope wording. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 42491ca6b: cf43e14d0 (#2731) adds recognizeCredential to runtime-routes.ts. As a result, an ordinary Device credential on operator-only peer registration now gets 403 insufficient_scope at ingress instead of 401 (home-authority-routes.test.ts updated). This is consistent with the document's 403-for-insufficient-authority mapping. It does not change the operator-only offer/registration path or the other route statuses. Prose accurate. Source review is separate from executed test evidence."
+  ]
+}

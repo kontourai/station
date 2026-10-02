@@ -28,6 +28,10 @@ import type {
   Prerequisite,
 } from '@kontourai/station-contracts/tool';
 import {
+  harnessAnswerTexts,
+  validateHarnessQuestionAnswers,
+} from '@kontourai/station-shared/harness-questions';
+import {
   adapterSessionStartDuration,
   agentCapabilityUndelivered,
   appHomeSessions,
@@ -58,6 +62,11 @@ import {
   ProviderTurnEndedError,
   type ProviderTurnStartResult,
 } from '../adapter-shape.js';
+import {
+  CredentialProfileEnvironmentError,
+  type ResolvedAppHome,
+  usageCredentialAccountKey,
+} from '../app-home/app-home-profiles.js';
 import {
   buildCliRuntimePrerequisites,
   type CliCommandResult,
@@ -119,6 +128,7 @@ import {
 } from './codex-mcp-passthrough.js';
 import type { CodexModelOptions } from './codex-models.js';
 import { terminateCodexProcess } from './codex-process-termination.js';
+import { codexQuestionnaire } from './harness-questions.js';
 
 type CodexAdapterLogger = Pick<Logger, 'warn'>;
 type CodexExecutionKnobs = NonNullable<
@@ -141,7 +151,7 @@ interface CodexAdapterOptions {
    */
   getAppHomeEnv?: (
     credentialProfileRef?: string,
-  ) => Promise<Record<string, string> | undefined>;
+  ) => Promise<ResolvedAppHome | undefined>;
   /**
    * station#2072: per-connection env overrides + explicit config home,
    * resolved from `AgentConnectionSettings.config` (`env` map and
@@ -803,9 +813,9 @@ export class CodexAdapter implements ProviderAdapterShape {
   }): Promise<ConnectionQuotaResult> {
     // Resolve the credential namespace before consulting cache: the same
     // connection can legitimately address a profile or global Codex account.
-    const appHomeEnv = await this.resolveAppHomeEnv(
-      options.credentialProfileRef,
-    );
+    const appHomeEnv = (
+      await this.resolveAppHomeEnv(options.credentialProfileRef)
+    )?.env;
     const { accountScope, cacheKey } = quotaCacheIdentity({
       connectionId: options.connectionId,
       credentialProfileRef: options.credentialProfileRef,
@@ -1717,6 +1727,7 @@ export class CodexAdapter implements ProviderAdapterShape {
       adoption?.input.sourceAffinity ?? resumeCursor?.sourceAffinity;
     let appHomeEnv: Record<string, string> | undefined;
     let appHome: 'profile' | 'global' | 'source';
+    let resolvedHome: ResolvedAppHome | undefined;
     if (sourceAffinity) {
       const sourceHome = this.options.resolveSourceHome?.(sourceAffinity);
       if (!boundedFilesystemPath(sourceHome) || !isAbsolute(sourceHome)) {
@@ -1725,7 +1736,8 @@ export class CodexAdapter implements ProviderAdapterShape {
       appHomeEnv = { CODEX_HOME: sourceHome };
       appHome = 'source';
     } else {
-      appHomeEnv = await this.resolveAppHomeEnv(input.credentialProfileRef);
+      resolvedHome = await this.resolveAppHomeEnv(input.credentialProfileRef);
+      appHomeEnv = resolvedHome?.env;
       appHome = appHomeEnv ? 'profile' : 'global';
     }
     const quotaConnectionId = string(input.metadata?.connectionId);
@@ -1890,6 +1902,9 @@ export class CodexAdapter implements ProviderAdapterShape {
         initialState: 'created',
         metadata: {
           ...input.metadata,
+          usageAccountKey: resolvedHome
+            ? usageCredentialAccountKey(this.provider, resolvedHome.profileRef)
+            : undefined,
           codexThreadId: codexThread.id,
           ...(adoption
             ? {
@@ -1911,6 +1926,9 @@ export class CodexAdapter implements ProviderAdapterShape {
       });
       const baseConfiguredMetadata: Record<string, unknown> = {
         ...input.metadata,
+        usageAccountKey: resolvedHome
+          ? usageCredentialAccountKey(this.provider, resolvedHome.profileRef)
+          : undefined,
         // Note: `effectiveModel` here is sourced from `record.session.model`
         // (reported-or-requested, pre-existing behavior kept for
         // back-compat with every consumer already reading it as "the best
@@ -2207,14 +2225,15 @@ export class CodexAdapter implements ProviderAdapterShape {
    */
   private async resolveAppHomeEnv(
     credentialProfileRef?: string,
-  ): Promise<Record<string, string> | undefined> {
+  ): Promise<ResolvedAppHome | undefined> {
     try {
       return await this.options.getAppHomeEnv?.(credentialProfileRef);
     } catch (error) {
-      if (credentialProfileRef) {
-        throw new Error(
-          'Credential profile environment could not be prepared.',
-        );
+      if (
+        credentialProfileRef ||
+        error instanceof CredentialProfileEnvironmentError
+      ) {
+        throw new CredentialProfileEnvironmentError();
       }
       (this.options.logger ?? console).warn?.(
         `Codex app-home profile lookup failed; continuing with the global Codex config: ${errorMessage(error)}`,
@@ -2751,6 +2770,7 @@ export class CodexAdapter implements ProviderAdapterShape {
         requestId,
         rpcRequestId: pending.rpcRequestId,
         method: pending.method,
+        ...(pending.blocking === false ? { blocking: false } : {}),
         result: outcome.result,
         status: mapApprovalResolutionStatus(outcome.decision),
       });
@@ -2762,6 +2782,7 @@ export class CodexAdapter implements ProviderAdapterShape {
     threadId: string,
     requestId: string,
     decision: 'accept' | 'acceptForSession' | 'decline' | 'cancel',
+    context?: Parameters<ProviderAdapterShape['respondToRequest']>[3],
   ): Promise<void> {
     const record = this.transport.requireSession(threadId);
     const pending = record.pendingApprovals.get(requestId);
@@ -2771,6 +2792,43 @@ export class CodexAdapter implements ProviderAdapterShape {
       throw new Error('This Codex approval request is not open.');
     }
 
+    if (pending.method === 'item/tool/requestUserInput') {
+      const questionnaire = codexQuestionnaire(pending.payload);
+      if (
+        !questionnaire ||
+        !context?.expectedRequestEventId ||
+        context.expectedRequestEventId !== pending.openedEventId ||
+        decision === 'acceptForSession'
+      )
+        throw new Error('Inspect this question before answering it.');
+      const answers =
+        decision === 'accept'
+          ? validateHarnessQuestionAnswers(questionnaire, context?.answers)
+          : undefined;
+      if (decision !== 'accept' && context?.answers !== undefined)
+        throw new Error('A cancelled question cannot carry answers.');
+      record.pendingApprovals.delete(requestId);
+      this.transport.replyToApproval(record, {
+        requestId,
+        rpcRequestId: pending.rpcRequestId,
+        method: pending.method,
+        ...(pending.blocking === false ? { blocking: false } : {}),
+        result: {
+          answers: answers
+            ? Object.fromEntries(
+                questionnaire.questions.map((question) => [
+                  question.id,
+                  { answers: harnessAnswerTexts(question, answers) },
+                ]),
+              )
+            : {},
+        },
+        status: mapApprovalResolutionStatus(decision),
+      });
+      return;
+    }
+    if (context?.answers !== undefined)
+      throw new Error('This request does not accept question answers.');
     record.pendingApprovals.delete(requestId);
     const outcome = resolveApprovalOutcome(
       pending.method,

@@ -24,7 +24,12 @@ export interface KeyboardShortcut {
   key: string;
   modifiers: ShortcutModifier[];
   description: string;
-  handler: () => void;
+  /**
+   * Returns `false` when it had nothing to do, so the key is left alone —
+   * not prevented, and offered to the next matching shortcut and then to the
+   * browser (e.g. its own Back). Any other return consumes the key.
+   */
+  handler: () => void | boolean;
   /** Higher-priority shortcuts own the key before route-level fallbacks. */
   priority?: number;
   when?: ShortcutWhen;
@@ -441,8 +446,8 @@ export function KeyboardShortcutsProvider({
         const keyMatch = e.key.toLowerCase() === shortcut.key.toLowerCase();
 
         if (metaMatch && ctrlMatch && shiftMatch && altMatch && keyMatch) {
+          if (shortcut.handler() === false) continue;
           e.preventDefault();
-          shortcut.handler();
           break;
         }
       }

@@ -46,7 +46,7 @@ afterEach(() => {
 
 describe('STATION_HOME_RESET_REQUIRED error text (station#1913)', () => {
   it('names the supported reset command, not just "manually"', () => {
-    const error = new StationHomeResetRequiredError('/home/brian/.station');
+    const error = new StationHomeResetRequiredError('/home/user/.station');
 
     // Pinned to the exact command string so the error text and the actual
     // CLI verb cannot drift apart the way the old "reset this home

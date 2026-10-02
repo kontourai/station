@@ -225,7 +225,7 @@ async function seedRoutes(page: Page, initial: Environment[] = []) {
               {
                 alias: 'brian-media',
                 hostname: 'brian-media.tailnet',
-                user: 'brian',
+                user: 'casey',
                 port: 22,
                 identityAgent: 'default',
                 proxyJump: null,
@@ -257,7 +257,7 @@ async function seedRoutes(page: Page, initial: Environment[] = []) {
               'Station reached brian-media over SSH and verified the remote project folder.',
             resolved: {
               hostname: 'brian-media.tailnet',
-              user: 'brian',
+              user: 'casey',
               port: 22,
               identityAgent: 'default',
             },

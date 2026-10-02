@@ -1,0 +1,65 @@
+{
+  "path": "src-desktop/icons/README.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Completed generator, tracked prerequisites, channel overlays, Android main/debug copying, TestFlight init/apply/verify and Dev favicon caller claims. Corrected verifier scope to source-catalog bytes and one shipped loose-icon pixel comparison, not every compiled asset rendition. Alternative-init output still needs its own verification.",
+
+  "limits": "No native build, real device, Keychain/Keystore write, signed artifact, Linux/Windows launch, provider account mutation, publication, upgrade or rollback executed in this continuation. Fixture and source checks do not establish live outcomes. Parent owns combined CI and final ledger integration.",
+
+  "document": {"digest":"93c8c818dd83849cbbddde1804064669a0dc7cc2780cd6eb3d4c0e2b93b5b8dc","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+  "sources": [
+    {"path":".github/workflows/build-ios.yml","digest":"b4afee0a3cf62cd46226b9b68b648d15d00524a9d7bc27449e640fac6e3f9b73","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":".github/workflows/nightly-native-stage.yml","digest":"90a8d29da6c024c539a0abc1eb35ba490791780917e174eb7023d6fb45a90030","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
+
+    {"path":".github/workflows/release.yml","digest":"6ceff4507c2d55bb384c36cb7fba8be4b6eaaf0f0d408ecb990398fc00996c88","revision":"3a75d5e99ae2dac7bbf5d08d6e451cba23ded7c2"},
+
+    {"path":".github/workflows/testflight-delivery.yml","digest":"b65be60d29e76e922b07ed19bd89576ef1cac76e20712dd28d140c72d36012bb","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
+
+    {"path":"scripts/__tests__/ios-channel-icons.test.ts","digest":"070beef8b71ea052d7e7db75b03b10ce85353c4cbbeb0f4e023586ab352be5a7","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"scripts/__tests__/verify-desktop-clean-checkout.test.ts","digest":"87a508ba232114c55a47c8199ebfddf1988bda33383939419d817f1b0d684a76","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"scripts/apply-android-channel-icons.mjs","digest":"2118f8daf8bab71ca4f5173df63c9f67331b49c1cac8b9f1b0f060ffe901272a","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"scripts/generate-app-icons.mjs","digest":"b5e45b3774131fa471d9200af2aa5c292b797e48df149b8a7b690eb900f1c1ae","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"scripts/ios-channel-icons.mjs","digest":"f7e3a770d2476b55ff5ed555a55c8c6251bef0f50e65b5083d604d70c3e32537","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"scripts/verify-desktop-clean-checkout.mjs","digest":"5931addf88d2c9fc83a5a10c545dce9f72d34d246d4d3894705896da3aa0d6bc","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-desktop/tauri.conf.json","digest":"24ce785160cae3c41db78a82861ee7e4934490bb6a7ed986b30a278cc19c8ab1","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/index.css","digest":"90b1c018d688ca649437e24b009fc0e2365ef542f64c2b045735af3e21cc93dd","revision":"f9492a9202fc45b0776176178d0f5007a172f2d6"}
+  ],
+
+  "checks": [
+    "Prior review receipt (not rerun here): At the ancillary review revision,131focused dependency/desktop prerequisite checks passed. Browser-host baseline4FAIL→fixed4PASS; an independent guard-removal control produced1FAIL, exact restoration4PASS. Root repeated the four Node fixture tests after integration:4PASS. No native compilation or device operation.",
+
+    "Prior review receipt (not rerun here): Root upstream delta review: Added Notification Service signing/validation; icon generation/copy steps remain owned by the same helpers.",
+
+    "Prior review receipt (not rerun here): Root upstream delta review: Intel macOS pnpm setup fallback changed, not icon-generation ownership.",
+
+    "Executed before frozen merge: 191 tests/10 files PASS in 62.69s: native-update-feed, publish-mobile-feed-transaction, release-cohort, verify-release-cohort, windows-nightly, ios-channel-icons, macos-notarized-artifacts, macos-build-only-artifact, macos-build-only-cleanup, CoreUpdateLaunchCheck. Fixture/process boundaries only; relevant tested owners unchanged by frozen merge.",
+
+    "Executed at merged frozen source: 24 tests/3 files PASS in 8.92s: nativeRelayGrantRenewalAdapter, nativeRelayGrantRenewalSupervisor, RelayRouteProfiles. Injected native boundaries; no native shell.",
+
+    "Executed: docs:links:check PASS 415 Markdown files; git diff --check PASS. Final doctor wording only refines plain prose and adds no links.",
+
+    "Frozen deltas 2317f4ed3, 73e3cdac8, ae8f5d44f and 1bf1a1e98 reviewed through registered IPC, actual renderer/startup/staging callers. Package docs-script additions and tracked learning PNG exception also reviewed; no native semantic impact.",
+
+    "All remaining concrete claims and full-page consistency reviewed. This is source-reviewed documentation, not every branch of each named owner or physical/provider acceptance.",
+
+    "Veritas readiness veritas-1790533833943 on the three-file native delta before final Doctor wording refinement: exit0, 0 FAIL/1 WARN. repo-governance and lint PASS. Optional verification-policy exit80: five product laws behavior/fault-injection PASS; mobile-context primary-actions behavior PASS but fault-injection structured Vitest observation timed out after25916ms (INFRASTRUCTURE_ERROR), not a product failure or passing rejection proof. No rerun; root owns combined CI.",
+
+    "Landing delta f3954615e to 2400482c2 plus integrated corrections: Project-switcher truncation moved onto its inner label while hit targets/callbacks remain unchanged; other UI/capture scope remains accurate. Historical captures and inspected new geometry tests are not new execution.",
+
+    "Landing review through 64452b7f0: Reviewed reasoning-only selectors and the added reasoning touch target. Other layout, theme aliases, editor, placement, knowledge, connection, Starter and icon behavior is unchanged. Reasoning disclosure and actual media-manifest checks passed 9/9 in 3.56s; no new native or visual-layout execution is claimed.",
+
+    "Integration source review through 5731eba07: 8b48e2b35 (#2914) removed two negative source-text assertions from scripts/__tests__/ios-channel-icons.test.ts. The TestFlight apply/verify ordering assertions remain, and the README's apply/verify description is unchanged. Prose accurate. Source review is separate from executed test evidence."
+  ]
+}

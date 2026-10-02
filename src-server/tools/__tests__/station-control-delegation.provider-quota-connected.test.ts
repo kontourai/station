@@ -359,7 +359,7 @@ describe('delegation provider-plan quota connected projection (#2265)', () => {
       createOrchestrationRoutes({} as never, {
         eventBus: new EventBus(),
         logger: { debug: vi.fn() },
-        getUserId: () => 'brian',
+        getUserId: () => 'casey',
         observeDelegatedTask: (input: { taskId: string }) =>
           observeDelegatedTask({ ...input, userId: OWNER }, service),
         observeDelegatedTaskEvents: (input: { taskId: string }) =>
@@ -528,7 +528,7 @@ describe('delegation provider-plan quota connected projection (#2265)', () => {
     const app = createOrchestrationRoutes({} as never, {
       eventBus: new EventBus(),
       logger: { debug: vi.fn() },
-      getUserId: () => 'brian',
+      getUserId: () => 'casey',
       observeDelegatedTask: (input: { taskId: string }) =>
         observeDelegatedTask({ ...input, userId: OWNER }, service),
       observeDelegatedTaskEvents: (input: { taskId: string }) =>

@@ -5,6 +5,7 @@ import { isAcknowledgeableAttentionKind } from '@kontourai/station-contracts/att
 import type { Notification } from '@kontourai/station-contracts/notification';
 import { pluginProposalHref } from '@kontourai/station-contracts/plugin';
 import type { ProviderSession } from '@kontourai/station-contracts/provider';
+import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { sessionAttentionDisposition } from '@kontourai/station-contracts/session-attention';
 import {
   SESSION_LIFECYCLE_STATES,
@@ -16,7 +17,17 @@ import {
   sessionReadAuthorityFromRequest,
 } from '@kontourai/station-contracts/tenancy';
 import { afterAll, describe, expect, test, vi } from 'vitest';
+import {
+  APPROVAL_BETWEEN_TURNS_EVENTS,
+  INTERRUPTED_WITH_NO_REQUEST_EVENTS,
+  INTERRUPTED_WITH_ORPHANED_APPROVAL_EVENTS,
+  INTERRUPTED_WITH_SETTLED_APPROVAL_EVENTS,
+  SETTLEMENT_OBSERVATION,
+  SETTLEMENT_SESSION,
+  SETTLEMENT_THREAD_ID,
+} from '../../orchestration/__tests__/helpers/request-settlement-fixtures.js';
 import { projectRequestAnswerability } from '../../orchestration/open-requests.js';
+import { buildOrchestrationSessionSummary } from '../../orchestration/orchestration-session-state.js';
 import { PluginLifecycleProposalService } from '../../plugins/plugin-lifecycle-proposals.js';
 import {
   AttentionProjectionService,
@@ -2532,7 +2543,7 @@ describe('device pairing requests need attention (#765 D5)', () => {
         // No viewer capability supplied — an unknown caller fails closed:
         // the projection must never claim decidability nothing derived.
         viewerCanDecide: false,
-        openHref: '/connections',
+        openHref: '/notifications?pairing=pair-req-1',
         source: { requestId: 'pair-req-1' },
       },
     ]);
@@ -2704,7 +2715,7 @@ describe('Station cannot run its own Agent (#1536 D8)', () => {
       expect.objectContaining({
         id: 'setup-incomplete:model-connection:station',
         kind: 'setup-incomplete',
-        title: 'Station cannot run yet',
+        title: 'Agent “Station” needs setup',
         body: 'No enabled LLM provider connection is configured.',
         openHref: '/connections/models',
         source: { requirement: 'model-connection', agentSlug: 'station' },
@@ -3348,4 +3359,57 @@ describe('#2323 S5 plugin lifecycle proposal attention', () => {
       ),
     ).toEqual([]);
   });
+});
+
+/**
+ * #3071: the feed is built from the REAL summary fold and the same event log
+ * `readSession` returns, so these cases cover the projection's two inputs
+ * together: the session's kind (from the summary) and the request evidence
+ * (from `collectOpenRequests`).
+ */
+describe('#3071: a request its interrupted turn left behind is not an approval', () => {
+  async function feedFor(events: CanonicalRuntimeEvent[]) {
+    const session = buildOrchestrationSessionSummary({
+      persisted: SETTLEMENT_SESSION,
+      events,
+      answerability: SETTLEMENT_OBSERVATION,
+    });
+    return makeService({
+      sessions: [session],
+      sessionEvents: { [SETTLEMENT_THREAD_ID]: events },
+    }).list();
+  }
+
+  test('a genuine approval between turns is offered as an approval', async () => {
+    const result = await feedFor(APPROVAL_BETWEEN_TURNS_EVENTS);
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]).toMatchObject({
+      kind: 'review_pending',
+      title: 'Tool call awaiting approval: Allow bash',
+      requestType: 'approval',
+    });
+    expect(result.pendingCount).toBe(1);
+  });
+
+  test.each([
+    ['resolved by recovery', INTERRUPTED_WITH_SETTLED_APPROVAL_EVENTS],
+    ['orphaned in a pre-fix log', INTERRUPTED_WITH_ORPHANED_APPROVAL_EVENTS],
+  ])(
+    'an interrupted turn’s approval, %s, projects exactly what an interrupted turn with no request does',
+    async (_label, events) => {
+      const [withRequest, withoutRequest] = await Promise.all([
+        feedFor(events),
+        feedFor(INTERRUPTED_WITH_NO_REQUEST_EVENTS),
+      ]);
+      // The interruption itself still needs the user (to continue); what is
+      // gone is the approval: no review_pending item, no request to answer.
+      expect(withRequest.items).toEqual(withoutRequest.items);
+      expect(withRequest.pendingCount).toBe(withoutRequest.pendingCount);
+      expect(withRequest.items).toHaveLength(1);
+      expect(withRequest.items[0]).toMatchObject({ kind: 'needs_input' });
+      expect(withRequest.items[0]).not.toHaveProperty('requestType');
+      expect(JSON.stringify(withRequest.items)).not.toContain('req-1');
+      expect(JSON.stringify(withRequest.items)).not.toContain('Allow bash');
+    },
+  );
 });

@@ -75,7 +75,7 @@ describe('a login mechanism is observed, never declared', () => {
     const capabilities =
       await createEngineLoginCapabilityObserver(deps)('claude');
 
-    expect(loginMechanisms(capabilities)).toEqual([]);
+    expect(loginMechanisms(capabilities)).toEqual(['browser-code']);
     expect(mechanismEvidence(capabilities, 'device-code')).toBeUndefined();
     // Absent is not the same fact as unaskable. The CLI answered.
     expect(capabilities.unavailableReason).toBeUndefined();

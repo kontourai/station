@@ -69,6 +69,7 @@ on:
       - 'docs/architecture/module-map.md'
       - 'docs/learn/atlas.json'
       - 'install.sh'
+      - 'install.ps1'
       - 'schemas/**'
       - 'config/portable-server-node-runtime.json'
       # The release ring table and grammar that stamp .station-release.json.
@@ -110,6 +111,7 @@ on:
       - 'docs/architecture/module-map.md'
       - 'docs/learn/atlas.json'
       - 'install.sh'
+      - 'install.ps1'
       - 'schemas/**'
       - 'config/portable-server-node-runtime.json'
       # The release ring table and grammar that stamp .station-release.json.

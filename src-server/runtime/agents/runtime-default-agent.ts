@@ -20,6 +20,7 @@ import type { IAgentFramework } from '../types.js';
 import type { WorkItemCapture } from '../work-item-capture.js';
 import type { AgentHooksDeps } from './agent-hooks.js';
 import { createAgentHooks } from './agent-hooks.js';
+import { STATION_CAPABILITY_DISCOVERY_GUIDANCE } from './station-capability-discovery.js';
 
 interface RuntimeDefaultAgentContext {
   appConfig: AppConfig;
@@ -327,7 +328,10 @@ export async function bootstrapRuntimeDefaultAgent(
     name: 'default',
     instructions: () =>
       context.replaceTemplateVariables(
-        context.appConfig.systemPrompt || context.defaultSystemPrompt,
+        [
+          context.appConfig.systemPrompt || context.defaultSystemPrompt,
+          STATION_CAPABILITY_DISCOVERY_GUIDANCE,
+        ].join('\n\n'),
       ),
     model: defaultModel,
     tools: defaultTools,

@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
 
 const getCachedUser = vi.fn(() => ({
-  alias: 'brian',
-  name: 'Brian Anderson',
-  email: 'brian@example.com',
+  alias: 'casey',
+  name: 'Casey Example',
+  email: 'casey@example.com',
   title: 'Founder',
 }));
 
@@ -19,9 +19,9 @@ describe('replaceRuntimeTemplateVariables', () => {
   afterEach(() => {
     vi.restoreAllMocks();
     getCachedUser.mockReturnValue({
-      alias: 'brian',
-      name: 'Brian Anderson',
-      email: 'brian@example.com',
+      alias: 'casey',
+      name: 'Casey Example',
+      email: 'casey@example.com',
       title: 'Founder',
     });
   });
@@ -42,7 +42,7 @@ describe('replaceRuntimeTemplateVariables', () => {
       'Hi {{user_alias}} on {{iso_date}}',
       undefined,
     );
-    expect(result).toBe('Hi brian on 2026-04-10');
+    expect(result).toBe('Hi casey on 2026-04-10');
     vi.useRealTimers();
   });
 
@@ -74,9 +74,9 @@ describe('replaceRuntimeTemplateVariables', () => {
       },
     );
 
-    expect(result).toContain('Alias: brian');
-    expect(result).toContain('Name: Brian Anderson');
-    expect(result).toContain('Email: brian@example.com');
+    expect(result).toContain('Alias: casey');
+    expect(result).toContain('Name: Casey Example');
+    expect(result).toContain('Email: casey@example.com');
     expect(result).toContain('Title: Founder');
     expect(result).toContain('Project: Work Agent');
     expect(result).toContain('ISO: 2026-04-10');

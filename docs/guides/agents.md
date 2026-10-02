@@ -60,7 +60,7 @@ External delivery follows the [engine policy contract](../conformance/tool-polic
 
 - `mcpServers` — IDs of MCP servers to connect (each defined in `<STATION_HOME>/integrations/<id>/tool.json`)
 - `available` — allowlist of tool names exposed to the agent; omit or set `["*"]` to expose all tools from connected servers
-- `autoApprove` — patterns consulted for automatic approval; they do not override earlier runtime-generation, delegation or configuration-protection refusals
+- `autoApprove` — patterns consulted for automatic approval; they do not override earlier runtime-generation, delegation or configuration-protection refusals. A pattern covers plain calls to a tool and never an escalation or a plan exit, even `*` (see [below](#what-autoapprove-never-covers))
 - `unattendedAutoApprove` — explicit opt-in for tools the agent may run when nobody is there to confirm (see [Unattended runs](#unattended-runs))
 
 `tools.aliases` is retired. Older files still load because the loader removes
@@ -146,12 +146,77 @@ every possible tool outcome:
 
 The `InjectableStream` wrapper ensures approval events are emitted in the correct position in the SSE stream, even when the model is mid-reasoning.
 
+### Questions from agent harnesses
+
+Claude Code's `AskUserQuestion` and Codex's `requestUserInput` appear as inline
+question cards in the Session. Select an option, choose several where the
+harness supports it, or choose Other to enter a custom answer. Question tabs
+let you jump between prompts. Use Tab and the native choice
+keys; Ctrl/Cmd+Enter advances to the next question or the review. Review and
+edit every answer before sending the batch. Answering a question never grants
+permission to later tool calls, including under wildcard auto-approval.
+
+Non-private drafts are saved on this device for the exact request and verified
+Station authority. Without that verification or available storage, the draft
+stays in the tab. Private answers are masked during review and aren't saved as
+drafts; this does not promise secrecy in the engine's own history. A failed
+send keeps the entered answers. Optional Codex questions remain answerable
+without pausing the running Session.
+
+### What autoApprove never covers
+
+A pattern allows plain calls to a matching tool. It never answers a request
+that reaches beyond the call or a plan exit, even when the pattern is `*`. On
+Claude Code these always reach a person:
+
+- a path outside the session's working directories on a single command or
+  call (a `Read` pattern means reading the workspace, not reading anywhere),
+  or a suggestion to widen them;
+- a single command or call forced to ask by a `permissions.ask` rule, when
+  the engine reports the rule that matched;
+- a safety check the engine raises, on a read, a file edit (a sensitive
+  file such as `.git/config`) or a shell command (the engine allows reads
+  inside the working directories itself, so any Read, Glob, Grep or LSP ask
+  it raises prompts);
+- a single command or call a `permissions.ask` rule forced to ask, whether
+  or not the engine names the rule, including a WebFetch domain rule
+  (#2932);
+- a chained Bash command (`a && b`, a pipeline) when any part raises a
+  safety check, and every PowerShell command (#2932);
+- a sandbox network-host ask (each new host prompts), a call that disables
+  the sandbox, a tool whose approval is the user's own interaction, and an
+  MCP tool the organization requires approval for (#2932);
+- `ExitPlanMode`, so a plan is always reviewed.
+
+On ACP engines a plan exit (a `switch_mode` tool call, or `ExitPlanMode`)
+always prompts, and answering it "for this session" allows that one exit
+only. ACP reports no other escalation signal. Codex and Muse do not
+honour `autoApprove`. Station reads why Claude Code asks from the engine's
+own request, and a request it cannot read counts as an escalation, so a
+pattern never answers one. A pattern such as `Bash` covers chained commands
+too, and the engine does not report what their parts raise. So the first
+two items above do not hold inside a chained Bash command: a
+`permissions.ask` rule on the chain or on one part (when more than one part
+needs approval), a write or delete outside the working directories in an `&&` or
+`;` chain or behind a pipeline's output redirect, and a part's non-safety
+warning are answered by the pattern. A safety check on any part still
+prompts ([delivery boundary](../conformance/tool-policy-delivery.md)).
+
 ### Unattended runs
 
 A run with nobody to confirm a tool call — a scheduled job, `/invoke`, the CLI,
 or a delegated child session that cannot grant approvals — never waits on an
 approval request. Station's engine either allows the call without asking or
 denies it.
+
+External engines differ. On Claude Code and ACP, `autoApprove` does not cover
+escalations or plan exits, even for `*` ([what autoApprove never covers](#what-autoapprove-never-covers)).
+A headless run on those engines that reaches one waits on an approval request
+until someone answers it (for example from the approval inbox). A delegated
+child that cannot grant approvals is denied the call at once. On Claude Code
+every PowerShell call is such an escalation, so a `PowerShell` pattern
+answers nothing there: a headless run waits on each PowerShell call, and a
+child that cannot grant approvals is denied it.
 
 `autoApprove` is attended auto-approval. Attended chat matches a pattern against
 both the original MCP tool name (`station-control_delete_agent`) and the runtime
@@ -356,10 +421,11 @@ caution, negative and active `.tone-*` classes with AA-checked pairs. Custom sta
 styles use the tone tokens `--k-positive`, `--k-caution`, `--k-negative`,
 `--k-active` and `--k-neutral`, with `--k-positive-soft`, `--k-caution-soft`,
 `--k-negative-soft` and `--k-active-soft` as tinted fills (there is no neutral
-soft fill), and always carry a text label; color only reinforces it. Newer tokens
-such as `--k-status-contrast`, `--k-trust-*`, `--k-action` and `--k-focus`
-exist only in later package versions (1.12.0 defines none of them), so check
-`node_modules/@kontourai/ui/tokens/tokens.css` before using one. Follow the
+soft fill), and always carry a text label; color only reinforces it. The
+installed package (1.18.0) also defines `--k-status-contrast` (text on a
+status fill), the `--k-trust-*` trust-state inks, fills and line styles, and
+the `--k-action` and `--k-focus` interaction roles; check
+`node_modules/@kontourai/ui/tokens/tokens.css` before using a token. Follow the
 owning component's button style and [frontend guidance](../patterns/frontend.md).
 
 ### Styling

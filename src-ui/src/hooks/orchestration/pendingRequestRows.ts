@@ -1,9 +1,13 @@
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import { readHarnessQuestionnaire } from '@kontourai/station-shared/harness-questions';
 import {
   approvalRetiredBy,
   isSubagentApprovalRequest,
 } from '@kontourai/station-shared/runtime-event-projection';
-import { toolRequestFromPayload } from '@kontourai/station-shared/tool-request-preview';
+import {
+  toolRequestFromPayload,
+  toolRequestSessionGrantFromPayload,
+} from '@kontourai/station-shared/tool-request-preview';
 import type { ChatMessage } from '../../types';
 
 /** One card for the pending-approvals strip: the transcript's own part shape. */
@@ -45,6 +49,7 @@ function openApprovalRequests(
       for (const [entry, request] of open) {
         if (
           request.threadId === event.threadId &&
+          !(request.blocking === false && event.method === 'turn.completed') &&
           approvalRetiredBy(
             event.method,
             isSubagentApprovalRequest(request.payload),
@@ -76,17 +81,18 @@ export function unansweredApprovalRequests(
   messages: readonly ChatMessage[],
   events: readonly CanonicalRuntimeEvent[],
   /**
-   * station#2530 review 3: the OPEN turn's own row, when its request's
-   * binding lives there. F4 stitching can make that row PRESENT in
-   * `messages` (`openTurnProjected`) well before the turn settles — but on
-   * screen it is either the live streaming shell itself (nothing to click)
-   * or, once the shell is suppressed for it, the collapsed transcript tool
-   * card (an expand click away from Allow/Deny) — never the strip's
-   * immediately-actionable card this function's own docblock promises for
-   * exactly this case ("the open turn's own row can be held by the live
-   * streaming shell"). Bound-detection therefore ignores a binding on the
-   * currently open turn: the strip stays the answering surface for it until
-   * the turn ends and its durable, settled row takes over.
+   * station#2530 review 3: the OPEN turn's own row, when the live streaming
+   * shell renders it. F4 stitching can make that row PRESENT in `messages`
+   * before the turn settles while the shell (whose parts carry no request
+   * binding, so nothing to click) is still what is on screen.
+   * Bound-detection ignores a binding on this turn, and the strip stays the
+   * answering surface for it.
+   *
+   * Pass it ONLY while the shell renders the open turn. Once the transcript
+   * window projects the turn instead (`suppressStreamingRow`), the projected
+   * row carries the binding and renders Allow/Deny itself — a solo row
+   * directly, a batch through its always-visible pending-grant rows — and
+   * excluding it here rendered the same request as a second actionable card.
    */
   openTurnId?: string,
 ): PendingApprovalRequest[] {
@@ -101,7 +107,9 @@ export function unansweredApprovalRequests(
     }
   }
   const unanswered = open.filter(
-    (request) => !bound.has(requestKey(request.threadId, request.requestId)),
+    (request) =>
+      readHarnessQuestionnaire(request.payload?.questionnaire) !== null ||
+      !bound.has(requestKey(request.threadId, request.requestId)),
   );
   if (unanswered.length === 0) return NO_REQUESTS;
   return unanswered.map((request) => {
@@ -116,12 +124,24 @@ export function unansweredApprovalRequests(
       // A request with no reported tool keeps its title as the display name
       // only, so the grant label never names a command line.
       ...(toolName ? { toolName } : { name: request.title }),
+      ...(toolName ? { approvalToolName: toolName } : {}),
+      ...(typeof request.payload?.toolKind === 'string'
+        ? { toolKind: request.payload.toolKind }
+        : {}),
       ...(toolInput !== undefined ? { args: toolInput } : {}),
       state: 'awaiting-approval',
       needsApproval: true,
       approvalId: request.requestId,
+      ...(readHarnessQuestionnaire(request.payload?.questionnaire)
+        ? {
+            questionnaire: readHarnessQuestionnaire(
+              request.payload?.questionnaire,
+            )!,
+          }
+        : {}),
       approvalThreadId: request.threadId,
       approvalEventId: request.eventId,
+      approvalSessionGrant: toolRequestSessionGrantFromPayload(request.payload),
     };
   });
 }

@@ -26,12 +26,30 @@ not mean every deployment mounts or admits it.
 - Readiness, health, catalog discovery, and a completed model turn are distinct
   observations. Response fields and receipts state which one was observed.
 
+## Personal Task room agent requests
+
+`GET /api/tasks/:taskId/room/agent-requests` returns the authorized, versioned
+request projection. A client must verify `station.task-room-work/v1` before
+sending an additive `taskRoomRequest` through `POST /api/orchestration/delegations`.
+That object requires `taskId`, `taskCreatedAt` and a stable `operationId`;
+the normal prompt and execution target remain outside it. This initial path
+admits current-Station execution in the exact Task Project, with the existing
+read/operate, readiness and provider-effect authority gates. A request receipt
+does not establish Task completion or result quality.
+
+Ordinary `POST /api/tasks/:taskId/room/messages` can include
+`expectedTaskCreatedAt`; the room's history grant rechecks that incarnation
+before commit. See the [ownership and failure contract](../design/task-room-agent-requests.md)
+and [SDK clients](sdk.md#task-room-agent-requests). These routes are personal-runtime
+composition; this reference does not claim hosted, anonymous-public or invited
+participation acceptance.
+
 ## Table of Contents
 
 | Area | Route families |
 | --- | --- |
 | Work and layouts | [Starter Work](#starter-work), [Spatial Board](#spatial-board), [personal Boards](#personal-boards), [Layouts](#layout-management), [workflow files](#workflow-management), [independent review](#independent-review-evidence) |
-| Agents and conversations | [Agent management](#agent-management), [invocation](#agent-invocation), [orchestration model selection](#orchestration-model-launch-behavior), [conversations](#conversation-management), [attachments](#attachments), [global routes](#global-routes) |
+| Agents and conversations | [Agent management](#agent-management), [invocation](#agent-invocation), [Task room requests](#personal-task-room-agent-requests), [orchestration model selection](#orchestration-model-launch-behavior), [conversations](#conversation-management), [attachments](#attachments), [global routes](#global-routes) |
 | Models and configuration | [App configuration](#configuration), [connections](#connections), [fleet inference](#fleet-inference), [Bedrock catalog](#bedrock-models), [model capabilities](#model-capabilities), [standalone model routes](#standalone-model-capability-routes) |
 | Activity and observations | [Analytics](#analytics), [monitoring](#monitoring), [insights](#insights), [events](#events-sse), [analytics reset](#additional-analytics) |
 | Extensions | [Plugins](#plugins), [Registry](#registry), [frontend clients](#frontend-usage-summary) |
@@ -162,6 +180,21 @@ through the selected provider/catalog; absent or unknown selector evidence does
 not create an arbitrary model binding. The response is SSE; failures before
 stream creation use HTTP errors, while failures during a stream must be handled
 as stream outcomes.
+
+`start-step` and `finish-step` frames carry only their type. Provider request
+and response bodies, headers, metadata and nested errors are not sent in these
+frames. Text and successful tool frames retain their contracts. Failed VoltAgent
+tool-result frames omit the raw `output`, including error messages, stack traces
+and other error properties. Their `error` carries a safe Station-composed denial
+reason or the fixed `Tool call failed.` message; policy-denial badges remain.
+Any other frame field holding a raw error object (for example a `tool-error`
+part's `error`) is sent as the fixed text "The response stream failed.", and a
+mid-stream `error` part ends the turn with a single outward error frame.
+
+The framework compatibility route `POST /agents/:slug/chat` remains behind
+Station authentication. Its HTTP 5xx responses contain fixed failure text and
+a correlation ID, never the provider's raw error message. Successful streams
+and client-side 4xx refusals keep the framework's response contract.
 
 <a id="agent-management-1"></a>
 
@@ -723,6 +756,19 @@ Respect `hasMore` rather than assuming one response contains the entire history.
 from orchestration when the file-memory path has no usable record. Messages
 carry the owner's current parts/metadata shape; do not depend on every message
 having the old `content: string`/`timestamp` pair.
+
+A `/chat` turn that failed before producing output is recorded as a user-role
+`[SYSTEM_EVENT] [CHAT_ERROR] <text>` message. `<text>` is never the model
+provider's own error message. It is one of: a status sentence such as
+"The model provider returned an error (HTTP 500).", "The model provider
+rejected the credentials.", "Stream aborted by client", or "The response
+stream failed.". A marker stored before this rule holds provider text on
+disk; this route and everything behind the same read seam (export, fork and
+summary), title regeneration and the knowledge store's conversation records
+serve it as "The response stream failed." instead
+([marker scrubber](../../src-server/runtime/conversation/chat-error-marker.ts)).
+The marker never reaches a model: the Station-engine prompt, native-memory
+history and a direct Strands conversation's replayed history all exclude it.
 
 ### Update Conversation
 
@@ -1442,7 +1488,8 @@ every key is one of `--k-brand`, `--k-brand-contrast`, `--k-action`,
 `--k-action-contrast` or `--k-focus`, every value is `#rgb`/`#rrggbb`, and
 every check from the "White-label overrides" section in
 [`@kontourai/ui`'s DESIGN.md](https://github.com/kontourai/ui/blob/main/DESIGN.md#white-label-overrides)
-passes in both modes; otherwise it applies none of it and keeps the default.
+(the package's `validateBrandOverride`) and Station's stricter text checks
+pass in both modes; otherwise it applies none of it and keeps the default.
 The rules and a worked provider are in
 [examples/custom-branding](../../examples/custom-branding/README.md).
 
@@ -2512,6 +2559,159 @@ admission does not replace authentication or scope. See
 [environment settings](env-vars.md#server).
 
 ---
+
+
+## Engine accounts and usage
+
+`GET /api/connections/agent/:id/accounts` projects the default account plus saved
+profiles for Claude and Codex: opaque references, labels, CLI-verified auth state,
+observed login mechanism and the account in use. It requires `engine:login`,
+credential-management access or a verified operator. It returns no paths,
+commands, environment or CLI diagnostics.
+
+`GET /api/connections/agent/:id/account-usage?profileRef=<ref>` reads only the
+selected profile's provider quota. Omit the reference to inspect the connection's
+default account. This token-backed read requires `access:manage`; an engine-login
+grant alone does not admit it. The result is either normalized quota windows,
+plan, fetched time and provider exhaustion verdict, or an explicit unknown reason.
+Both variants can include optional `metadata`: Codex identity/credits/model and
+reset-credit facts, Claude extra usage/spending/weekly breakdown/limit annotations, and bounded response-shape `capture`
+(source, credential storage kind, unmapped/excluded field paths, truncation). Windows optionally carry
+`durationSeconds`, `resetAfterSeconds`, `allowed`, `limitReached`, `model` and
+`meteredFeature`. Raw response values for unmapped fields are never returned;
+full quota metadata is not persisted; only bounded allowance observations are retained. See the [capture inventory](../guides/connections.md#sign-an-engine-profile-in-from-a-device)
+for scope and live-verification limits.
+
+The optional `history` contains bounded hourly allowance observations for the
+selected profile. `status: unavailable` reports persistence failure without
+making the live limits unreadable. Full metadata and identity remain live only.
+
+`GET|POST|DELETE /api/connections/agent/:id/account-login?profileRef=<ref>` requires
+an existing saved profile and `engine:login` or a verified operator. No default
+account login is admitted. POST `{}` starts the observed provider-owned login;
+POST `{code}` relays a Claude browser code to its CLI stdin. GET projects status;
+DELETE cancels. The server checks current authority before private work and
+publication. Credentials and private CLI output are never returned. Refused
+starts return a safe reason, with Codex outcomes when available.
+
+
+`GET /api/analytics/usage-rollup?provider=codex&credentialProfileRef=<ref>` filters
+attributed account receipts before aggregation. An empty `credentialProfileRef`
+selects the default profile; omitting it includes all accounts. An engine filter
+is required. Older/source-home usage without `accountKey` remains unattributed.
+
+`GET /api/analytics/usage-rollup` accepts `provider=claude|codex` and `localOnly=1`
+for engine activity. Filtering precedes folding and pagination, while coverage
+remains explicit. This is Station engine history across accounts, not billing or
+per-profile attribution.
+
+## Read engine sign-in profiles
+
+```http
+GET /api/connections/agent/:id/device-code-profiles
+```
+
+This dedicated read requires a paired device's explicit `engine:login` grant
+or a verified Station operator credential. It returns
+`{success: true, data: {profiles: [{ref, label?, authState, mechanisms}]}}`.
+`authState` is `authenticated`, `unauthenticated` or `unknown`; `mechanisms`
+contains only observed `device-code` support. References and labels identify
+existing profiles, not provider account identity. Host paths, commands,
+environment variables, recovery policy and diagnostic details are excluded.
+
+Authority is rechecked around awaited reads and before publishing the result;
+revocation refuses an in-flight read. Profile management and manual enrolment
+retain their separate authority requirements. The operator exception covers
+only this read and GET/POST/DELETE of the existing profile device-code login
+leaf; it does not add `engine:login` to the operator's default scope set.
+See [profile sign-in](../guides/connections.md#sign-an-engine-profile-in-from-a-device).
+
+## Opt-in native Device proof binding management
+
+```http
+GET /api/pairing/native-device-bindings/:bindingId
+POST /api/pairing/native-device-bindings/:bindingId/approve
+```
+
+The native proof pilot mounts these routes only when its supported provider and
+native connector are configured. Both require a current operator credential and
+the `access:manage` tier; Device credentials, native proofs, account membership
+and home possession cannot approve a binding.
+
+POST accepts `{operation: "create" | "revoke", candidate}` with the exact
+`NativeDeviceBindingCandidateV1` tuple and matching path ID. GET projects public
+historical binding data plus `currentDeviceBinding`, which says nothing about
+account or Project authority. Responses use `Cache-Control: no-store`. Missing
+readback does not establish cancellation of an ambiguous approval request.
+See [deployment authentication](../guides/deployment-authentication.md)
+for the pilot's scope and remaining native-client limitations.
+
+The same opt-in composition mounts a separate
+[protected Device self-read](../../src-server/routes/system/native-device-proof-self-receipt-routes.ts):
+
+```http
+GET /api/auth/native-device-bindings/:bindingId/receipt
+HEAD /api/auth/native-device-bindings/:bindingId/receipt
+```
+
+It requires the owning, currently paired ordinary Device's bearer and
+`orchestration:read`; an account-bound Device can read before account sign-in.
+Operator credentials, cookies, delegation grants and native request proofs do
+not substitute for that bearer. The `NativeDeviceProofSelfReceiptV1` response
+contains only the public binding tuple, historical approval/revocation state
+and current Device-binding status. A missing ID and another Device's ID both
+return `404 not_found`; corrupt storage returns `503 unavailable`. Responses
+are not cached. Revoking the Device bearer removes self-read access, while
+binding revocation or replacement remains observable by its active owner.
+This read grants no account, Project or runtime authority and does not activate
+a native client or authorize provisional-key deletion after an unknown outcome.
+Endpoint errors include `error.version =
+station-native-device-proof-self-receipt-error/v1`. Only this versioned
+`not_found` response establishes a binding lookup absence; an unrelated route
+or proxy error is an unavailable observation.
+
+The Desktop [native relay owner](../../src-desktop/src/native_relay_redemption.rs)
+also registers the main-window `station_native_device_binding_self_receipt`
+command. Its inputs are only a saved profile name and expected revision; it
+reads the fixed endpoint using the current host-authorized Device bearer and
+compares the complete candidate tuple. Results distinguish fresh Station
+receipts from cached observations; cached positive history is
+`previously-confirmed-current` with its original observation timestamp.
+The command preserves the key on missing or unknown outcomes. The host peer and
+account owners require its positive current-owner observation, while ordinary
+route selection does not invoke it automatically. Source registration is not an
+executed native IPC or packaged acceptance receipt.
+
+The [peer owner](../../src-desktop/src/native_application_peer.rs) registers
+prepare/open/read/sign/close commands. The host mints the nonce and handle,
+verifies the exact Station-signed transcript and permits one bounded Device
+request proof. The renderer supplies no identity claims, hashes, signing input
+or connected assertion. Browser RTC remains renderer-owned.
+
+The separate [account owner](../../src-desktop/src/native_account_operations.rs)
+registers challenge/key preparation, complete local username/password exchange
+body preparation, and canonical GET/HEAD Project account headers. It constructs
+account claims using independent key custody and current host owners, with
+bounded one-exchange handles, replay/expiry and post-sign key fencing. These
+structured commands do not mint a principal or replace the server's current
+provider/Device/Project checks. See [native account continuation](sdk.md#native-station-account-continuation-opt-in)
+for the typed provider and account-body-before-Device-signing ordering.
+---
+
+
+## Decide a pending paired-device request
+
+A current operator, qualifying local-grant credential, or Device explicitly
+promoted with `access:approve` can use these exact routes:
+
+- `GET /api/pairing/requests`
+- `POST /api/pairing/requests/:requestId/confirm`
+- `DELETE /api/pairing/requests/:requestId`
+
+The promotion satisfies the pending-request route scope without granting
+`access:manage`. Authority is rechecked before publishing a decision. It does
+not admit other Device-management routes or verified-person/account binding.
+Ordinary Device presets do not include the promotion.
 
 ## Bind a paired device to its verified person
 

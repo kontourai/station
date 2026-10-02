@@ -1,0 +1,43 @@
+{
+  "path": "docs/guides/distribution-profiles.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Full current guide read: builtin/default/minimal/inline sources, remote declaration limits, lifecycle overrides, inert catalog, installed plugin state, Registry actions and project application.",
+
+  "limits": "Source-only explanation review; no live registry, plugin installation, layout application, or full authority/security audit. Remote adapters not inferred from source declarations.",
+
+  "document": {"digest":"7d043ac2d227ba0b400e0f1b19274aab83aeb558507395d01fa8e1d7fa33854d","revision":"e5efef30008198db7198fe9dac38f3ad632c6621"},
+
+  "sources": [
+    {"path":"packages/contracts/src/distribution.ts","digest":"0e46476abfa24b54bd36bc84ec2faec647d9ea8d6bd5767576af4f0a79c77ee4","revision":"e5efef30008198db7198fe9dac38f3ad632c6621"},
+
+    {"path":"packages/contracts/src/layout.ts","digest":"d239a39ed06c9dcb103e89da3a86f4d358aa3261a7623b1c5a86eff69e897a43","revision":"e5efef30008198db7198fe9dac38f3ad632c6621"},
+
+    {"path":"packages/sdk/src/query-domains/workspaceProjects.ts","digest":"5ad96ef66bdcd70027e22da621b69446dac81dc0820527e43314e0370f2d7b81","revision":"1da4798fab6730e9c81fb91d9d3dbbebc952f976"},
+
+    {"path":"src-server/routes/plugins/registry.ts","digest":"d2ad68bbcc5573372f17968589a0b7875ad7ba52974cd8b2a043626ca6a9ccd5","revision":"e5efef30008198db7198fe9dac38f3ad632c6621"},
+
+    {"path":"src-server/routes/projects/projects.ts","digest":"d87cdfa66a657cd27955762d9142eb32d477ce37d30e64e2b592a65a2f083847","revision":"e5efef30008198db7198fe9dac38f3ad632c6621"},
+
+    {"path":"src-server/services/plugins/distribution-profile-service.ts","digest":"ee59bcd8c2c2e70746b73c58f8575dd340978bd74d0c8f314412719d38671f45","revision":"e5efef30008198db7198fe9dac38f3ad632c6621"},
+
+    {"path":"src-ui/src/components/registry/ProjectLayoutCatalog.tsx","digest":"f09391bac33fefcd71d892159bdb1474cd969879d953c0da2600faf313bc76a4","revision":"e5efef30008198db7198fe9dac38f3ad632c6621"},
+
+    {"path":"src-ui/src/views/RegistryView.tsx","digest":"dae7ecd7e28804d1e2d3a8b58ef78a78b187c294b39fd0f1cc80badb6d0a9d73","revision":"e5efef30008198db7198fe9dac38f3ad632c6621"},
+
+    {"path":"src-ui/src/views/project-settings/LayoutsSection.tsx","digest":"0ac6db4dbba5e289010048f0d599ec1d43362ef7feb16a9a9ed0231eb65b8667","revision":"e5efef30008198db7198fe9dac38f3ad632c6621"}
+  ],
+
+  "checks": [
+    "Independent changed-claim source review accepted the recorded document and source bytes; no live operations or new test execution in that review.",
+
+    "Distribution profile and Registry focused suites: 61 tests passed.",
+
+    "Reviewed integration deltas: src-ui/src/components/registry/ProjectLayoutCatalog.tsx: Actual error projection now calls userFacingErrorMessage instead of raw message/errorText. That helper reads unique reason sentences from StationHttpError.details and otherwise retains errorText fallback; request, mutation, ownership and success paths unchanged. SDK reference already explains typed refusal details; no stale UI-copy guarantee found. src-ui/src/views/project-settings/LayoutsSection.tsx: Actual error projection now calls userFacingErrorMessage instead of raw message/errorText. That helper reads unique reason sentences from StationHttpError.details and otherwise retains errorText fallback; request, mutation, ownership and success paths unchanged. SDK reference already explains typed refusal details; no stale UI-copy guarantee found.",
+
+    "Integration source review through d1e0facc2: Unused formatMcpToolRef export removed; documented layout parsing/types remain. Existing prose remains accurate. Source review is separate from executed test evidence."
+  ]
+}

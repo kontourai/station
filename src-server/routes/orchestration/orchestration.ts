@@ -44,6 +44,7 @@ import {
 import {
   APPROVAL_MODES,
   type ApprovalMode,
+  ATTACHMENT_INPUT_UNSUPPORTED_CODE,
 } from '@kontourai/station-contracts/provider';
 import {
   ORCHESTRATION_STREAM_ACTIVITY_EVENT,
@@ -130,6 +131,12 @@ import {
 } from '../../services/projects/project-contribution-service.js';
 import { ProjectWorktreeDirectoryError } from '../../services/projects/project-service.js';
 import { composeAuthorizedSessionAnswerBasis } from '../../services/projects/task-basis-module.js';
+import {
+  type TaskRoomInvocationAdmission,
+  TaskRoomWorkAuthorityChangedError,
+  type TaskRoomWorkModule,
+  type TaskRoomWorkScope,
+} from '../../services/projects/task-room-work-module.js';
 import { CLIENT_SESSION_ID_PATTERN } from '../../services/ssh/client-connection-presence.js';
 import {
   orchestrationStreamDuration,
@@ -372,6 +379,17 @@ const respondToRequestCommandSchema = z.object({
     .max(ATTENTION_REQUEST_ID_MAX_CHARS)
     .optional(),
   decision: z.enum(['accept', 'acceptForSession', 'decline', 'cancel']),
+  answers: z
+    .record(
+      z.string().min(1).max(256),
+      z
+        .object({
+          optionIds: z.array(z.string().max(256)).max(32),
+          custom: z.string().max(12000).optional(),
+        })
+        .strict(),
+    )
+    .optional(),
 });
 
 const stopSessionCommandSchema = z.object({
@@ -510,6 +528,14 @@ export const delegateTaskSchema = z.object({
   prompt: z.string().trim().min(1).max(CHAT_INPUT_MAX_CHARS),
   target: executionTargetSchema,
   parentTaskId: z.string().min(1).max(512).optional(),
+  taskRoomRequest: z
+    .object({
+      taskId: z.string().min(1).max(160),
+      taskCreatedAt: z.string().min(1).max(40),
+      operationId: z.string().min(1).max(160),
+    })
+    .strict()
+    .optional(),
   /**
    * #2601: a CLAIM, like `/chat/delegated`'s. `deps.resolveRequestDelegation`
    * derives the context from a verified caller, keeps it only when Station's
@@ -769,6 +795,8 @@ interface DelegateTaskRequest {
   prompt: string;
   target: ExecutionTarget;
   parentTaskId?: string;
+  sessionId?: string;
+  taskRoomInvocationAdmission?: TaskRoomInvocationAdmission;
   /** #2601: `deps.resolveRequestDelegation`'s derivation, never body JSON. */
   delegation?: AgentDelegationContext;
   userId: string;
@@ -1299,6 +1327,14 @@ export function createOrchestrationRoutes(
      */
     stationControlDispatchScope?: StationControlDispatchScope;
     delegateTask?: (input: DelegateTaskRequest) => Promise<unknown>;
+    taskRoomWork?: {
+      module: TaskRoomWorkModule;
+      authorize(
+        taskId: string,
+        request: Request,
+        principal: PrincipalRef,
+      ): Promise<TaskRoomWorkScope | undefined>;
+    };
     /**
      * #484 phase A: admits (or refuses) the explicit portable-execution
      * intent against this Station's operator offer, binding the CURRENT
@@ -1360,6 +1396,12 @@ export function createOrchestrationRoutes(
       binding: { threadId: string; clientTurnId: string },
     ) => ChatAttachmentInput[];
     acceptStagedAttachments?: (
+      owner: PrincipalRef,
+      references: readonly StagedAttachmentReference[],
+      binding: { threadId: string; clientTurnId: string },
+    ) => void;
+    /** Undo the binding of a send refused before any engine effect. */
+    releaseStagedAttachments?: (
       owner: PrincipalRef,
       references: readonly StagedAttachmentReference[],
       binding: { threadId: string; clientTurnId: string },
@@ -1701,6 +1743,15 @@ export function createOrchestrationRoutes(
         503,
       );
     }
+    // Visible to the catch below: what this send bound, for a refusal that
+    // must release it.
+    let stagedAttachmentsForRelease:
+      | readonly StagedAttachmentReference[]
+      | undefined;
+    let stagedBindingForRelease:
+      | { threadId: string; clientTurnId: string }
+      | undefined;
+    let releasePrincipal: PrincipalRef | undefined;
     try {
       const {
         delegation: claimedDelegation,
@@ -1805,6 +1856,9 @@ export function createOrchestrationRoutes(
               resolveAttachments: (binding) =>
                 (() => {
                   stagedBinding = binding;
+                  stagedBindingForRelease = binding;
+                  stagedAttachmentsForRelease = stagedAttachments;
+                  releasePrincipal = principal;
                   return deps.hydrateStagedAttachments!(
                     principal!,
                     stagedAttachments,
@@ -1929,6 +1983,21 @@ export function createOrchestrationRoutes(
       const unreachableWorkspace =
         error instanceof ProjectWorktreeDirectoryError &&
         error.reason === 'unreachable';
+      // The engine refused these attachments before anything reached it, so
+      // their binding to this turn proves nothing: release it, or a resend
+      // of the same (restored) chips anywhere else is refused as bound.
+      if (
+        errorCode(error) === ATTACHMENT_INPUT_UNSUPPORTED_CODE &&
+        stagedAttachmentsForRelease?.length &&
+        stagedBindingForRelease &&
+        releasePrincipal
+      ) {
+        deps.releaseStagedAttachments?.(
+          releasePrincipal,
+          stagedAttachmentsForRelease,
+          stagedBindingForRelease,
+        );
+      }
       return c.json(
         {
           success: false,
@@ -2347,41 +2416,133 @@ export function createOrchestrationRoutes(
           ? { attestation: delegationAttestation }
           : {}),
       });
-      const data = await deps.delegateTask({
-        ...request,
-        ...(delegation ? { delegation } : {}),
-        target: normalizeExecutionTarget(
-          withCanonicalCwd(body.target, scoped.canonicalCwd),
-        ),
-        userId,
-        principal,
-        ownerAttribution,
-        fullAccessGrant,
-        clientOrigin,
-        ...(body.attemptId ? { delegationAttemptId: body.attemptId } : {}),
-        // The tool keys claims by `deviceId`: project the verified grant's
-        // id explicitly — passing the `{ id }` grant object through would
-        // key every claim under `undefined:` (cross-grant collision) and
-        // lookups keyed by the real id would never hit.
-        ...(body.attemptId && delegationAttemptCaller
-          ? {
-              delegationAttemptCaller: {
-                deviceId: delegationAttemptCaller.id,
-              },
-            }
-          : {}),
-        ...(deps.delegationAttemptClaimStore
-          ? { delegationAttemptClaimStore: deps.delegationAttemptClaimStore }
-          : {}),
-        ...(portableIntent
-          ? {
-              authorizeReceiverExecution,
-              inboundDeviceKind: deps.resolveInboundDeviceKind?.(c),
-              isRequestAuthorityCurrent: () =>
-                deps.isRequestPrincipalCurrent?.(c.req.raw) ?? false,
-            }
-          : {}),
-      });
+      const delegate = deps.delegateTask;
+      const roomRequest = body.taskRoomRequest;
+      const dispatch = (
+        sessionId?: string,
+        recheck?: () => Promise<void>,
+        roomBinding?: TaskRoomInvocationAdmission['roomBinding'],
+      ) =>
+        delegate({
+          ...request,
+          ...(delegation ? { delegation } : {}),
+          target: normalizeExecutionTarget(
+            withCanonicalCwd(body.target, scoped.canonicalCwd),
+          ),
+          userId,
+          principal,
+          ownerAttribution,
+          fullAccessGrant,
+          clientOrigin,
+          ...(sessionId
+            ? { sessionId, parentTaskId: roomRequest?.taskId }
+            : {}),
+          ...(recheck && roomBinding
+            ? {
+                taskRoomInvocationAdmission: {
+                  roomBinding,
+                  recheck: async () => {
+                    try {
+                      await recheck();
+                    } catch (error) {
+                      if (error instanceof TaskRoomWorkAuthorityChangedError)
+                        throw new ReceiverExecutionRefusal(
+                          'receiver_execution_authority_changed',
+                          error.message,
+                        );
+                      throw error;
+                    }
+                  },
+                },
+              }
+            : {}),
+          ...(body.attemptId ? { delegationAttemptId: body.attemptId } : {}),
+          // The tool keys claims by `deviceId`: project the verified grant's
+          // id explicitly — passing the `{ id }` grant object through would
+          // key every claim under `undefined:` (cross-grant collision) and
+          // lookups keyed by the real id would never hit.
+          ...(body.attemptId && delegationAttemptCaller
+            ? {
+                delegationAttemptCaller: {
+                  deviceId: delegationAttemptCaller.id,
+                },
+              }
+            : {}),
+          ...(deps.delegationAttemptClaimStore
+            ? { delegationAttemptClaimStore: deps.delegationAttemptClaimStore }
+            : {}),
+          ...(portableIntent
+            ? {
+                authorizeReceiverExecution,
+                inboundDeviceKind: deps.resolveInboundDeviceKind?.(c),
+                isRequestAuthorityCurrent: () =>
+                  deps.isRequestPrincipalCurrent?.(c.req.raw) ?? false,
+              }
+            : {}),
+        });
+      if (roomRequest) {
+        const work = deps.taskRoomWork;
+        if (
+          !work ||
+          !principal ||
+          body.target.environment.kind !== 'current' ||
+          body.target.workspace?.kind !== 'project'
+        )
+          return c.json(
+            {
+              success: false,
+              error:
+                'Task room agent requests are unavailable for this target.',
+            },
+            503,
+          );
+        const workspace = body.target.workspace;
+        const authorize = async () => {
+          const scope = await work.authorize(
+            roomRequest.taskId,
+            c.req.raw,
+            principal,
+          );
+          return scope &&
+            scope.projectSlug === workspace.projectSlug &&
+            scope.taskCreatedAt === roomRequest.taskCreatedAt
+            ? scope
+            : undefined;
+        };
+        const outcome = await work.module.submit(
+          roomRequest.taskId,
+          userId,
+          {
+            operationId: roomRequest.operationId,
+            agentId: body.target.agent,
+            prompt: body.prompt,
+          },
+          authorize,
+          async (sessionId, scope, recheck) => {
+            const handle = await dispatch(sessionId, recheck, {
+              projectId: scope.roomProjectId,
+              taskId: roomRequest.taskId,
+            });
+            if (
+              !handle ||
+              typeof handle !== 'object' ||
+              !('sessionId' in handle) ||
+              typeof handle.sessionId !== 'string'
+            )
+              throw new Error('Agent execution identity was not returned.');
+            return { sessionId: handle.sessionId };
+          },
+        );
+        return c.json(
+          { success: outcome.kind === 'recorded', data: outcome },
+          outcome.kind === 'recorded'
+            ? 200
+            : outcome.reason === 'access'
+              ? 403
+              : 409,
+        );
+      }
+      const data = await dispatch();
       return c.json({ success: true, data });
     } catch (error) {
       const refused = delegationRefusal(c, error);
@@ -4136,6 +4297,12 @@ export function createOrchestrationRoutes(
           ...(ownerAttribution ? { ownerAttribution } : {}),
           ...(command.type === 'adoptSession' && fullAccessGrant
             ? { fullAccessGrant }
+            : {}),
+          // #2915: this route's authorization is the one `setApprovalMode`
+          // uses (an Auto pick needs nothing beyond it), so an answer sent
+          // here may record the Auto posture an edit-mode answer implies.
+          ...(command.type === 'respondToRequest'
+            ? { approvalModeAuthority: true as const }
             : {}),
           ...(command.type === 'respondToRequest' &&
           command.expectedRequestEventId !== undefined

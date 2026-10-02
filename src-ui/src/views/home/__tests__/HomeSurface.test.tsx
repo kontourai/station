@@ -7,8 +7,10 @@ import type { HomeWorkItem } from '../home-view-model';
 // route, and `useShowSurface` reads the region model through a provider this
 // file does not mount. The double is what the assertions below read.
 const showSurface = vi.hoisted(() => vi.fn());
+const showSurfacePage = vi.hoisted(() => vi.fn());
 vi.mock('../../../contexts/useShowSurface', () => ({
   useShowSurface: () => showSurface,
+  useShowSurfacePage: () => showSurfacePage,
 }));
 
 import { HomeSurface } from '../HomeSurface';
@@ -84,19 +86,58 @@ function renderHome(
   return { model: m, onNavigate };
 }
 
+describe('HomeSurface live-lane focus', () => {
+  beforeEach(() => localStorage.clear());
+
+  test('a focused row whose lane empties (Running -> Idle) keeps focus', () => {
+    const running = item(
+      'a',
+      'Wire the delegate verbs',
+      'Station',
+      2,
+      'Running',
+    );
+    const idle = item('b', 'Audit the ref translation', 'Station', 30, 'Ready');
+    const view = render(
+      <HomeSurface
+        model={model({ workItems: [running, idle] })}
+        continuation={null}
+        onNavigate={vi.fn()}
+      />,
+    );
+    const open = (title: string) =>
+      screen
+        .getByText(title)
+        .closest<HTMLElement>('.chat-dock-inbox__item') as HTMLElement;
+    open('Wire the delegate verbs').focus();
+    expect(document.activeElement).toBe(open('Wire the delegate verbs'));
+
+    view.rerender(
+      <HomeSurface
+        model={model({
+          workItems: [{ ...running, lifecycleLabel: 'Ready' }, idle],
+        })}
+        continuation={null}
+        onNavigate={vi.fn()}
+      />,
+    );
+    expect(screen.queryByRole('heading', { name: /^Running/ })).toBeNull();
+    expect(document.activeElement).toBe(open('Wire the delegate verbs'));
+  });
+});
+
 describe('HomeSurface composition', () => {
   beforeEach(() => {
     localStorage.clear();
     showSurface.mockClear();
+    showSurfacePage.mockClear();
   });
 
   test('keeps the page heading and the guided actions', () => {
     renderHome({
       workItems: [item('a', 'Some work', 'Station', 3, 'Running')],
     });
-    expect(
-      screen.getByRole('heading', { name: 'What do you want to work on?' }),
-    ).toBeTruthy();
+    expect(screen.getByRole('heading', { name: "What's next?" })).toBeTruthy();
     expect(screen.getByRole('region', { name: 'Work actions' })).toBeTruthy();
   });
 
@@ -131,8 +172,11 @@ describe('HomeSurface composition', () => {
 
   test('the start card names the agent it can actually open on', () => {
     renderHome();
-    const card = screen.getByRole('button', { name: /Start direct chat/ });
-    expect(card.textContent).toContain('Codex · gpt-5.4');
+    const card = screen.getByRole('button', { name: /Start a chat/ });
+    expect(card).toHaveProperty('disabled', true);
+    expect(
+      screen.getByRole('textbox', { name: 'What would you like done?' }),
+    ).toBeTruthy();
   });
 
   test('with no runnable agent the start card becomes a set-up CTA', () => {
@@ -147,14 +191,28 @@ describe('HomeSurface composition', () => {
         effectiveModel: { label: 'Model not reported' },
       },
     });
-    expect(screen.queryByRole('button', { name: /Start direct chat/ })).toBe(
-      null,
+    expect(screen.getByRole('button', { name: /Start a chat/ })).toHaveProperty(
+      'disabled',
+      true,
     );
-    const cta = screen.getByRole('button', { name: /Set up an agent/ });
-    expect(cta.textContent).toContain('Set up an AI app to start chatting');
+    const cta = screen.getByRole('button', { name: /Start a chat/ });
+    fireEvent.change(
+      screen.getByRole('textbox', { name: 'What would you like done?' }),
+      { target: { value: 'Help me' } },
+    );
+    expect(cta).toHaveProperty('disabled', false);
     // And it names no agent at all.
     expect(cta.textContent).not.toContain('Codex');
   });
+
+  test.each([true, false])(
+    'Home can open agent discovery when chat readiness is %s',
+    (startReady) => {
+      const { onNavigate } = renderHome({ startReady });
+      fireEvent.click(screen.getByRole('button', { name: /Explore agents/ }));
+      expect(onNavigate).toHaveBeenCalledExactlyOnceWith({ type: 'agents' });
+    },
+  );
 
   test('renders the activity chart and the counts alongside one work list', () => {
     renderHome({
@@ -167,7 +225,9 @@ describe('HomeSurface composition', () => {
       screen.getByRole('heading', { name: 'Where the work has been' }),
     ).toBeTruthy();
     const recent = screen.getByRole('region', { name: 'Recent work' });
-    expect(within(recent).getByText('Active now')).toBeTruthy();
+    expect(
+      within(recent).getByRole('heading', { name: 'Running (1)' }),
+    ).toBeTruthy();
     // The one-list constraint, pinned: an item appears exactly once in the
     // list. Two recent-work lists is the failure this composition exists to
     // prevent, and it would read as a duplicate row rather than an error.
@@ -176,13 +236,7 @@ describe('HomeSurface composition', () => {
     ).toHaveLength(1);
   });
 
-  /**
-   * archive#3227 A7, carried over: the "Projects" number and the chart's rows
-   * must fold the same list. Pinned as the INVARIANT, not a spot value — the
-   * fixture deliberately has ONE configured project against five distinct
-   * project labels, the populations the audit caught disagreeing.
-   */
-  test('the Projects count equals the project rows the chart renders', () => {
+  test('keeps unattributed activity visible without calling its groups projects', () => {
     renderHome({
       workItems: [
         item('a', 'Attributed work', 'Station', 5, 'Running'),
@@ -206,15 +260,9 @@ describe('HomeSurface composition', () => {
     });
     const rows = document.querySelectorAll('.home-heat__row');
     expect(rows.length).toBe(5);
-    const projectStat = Array.from(
-      document.querySelectorAll('.home-pulse__stat'),
-    ).find(
-      (stat) =>
-        stat.querySelector('.home-pulse__label')?.textContent === 'Projects',
-    );
-    expect(projectStat?.querySelector('.home-pulse__value')?.textContent).toBe(
-      String(rows.length),
-    );
+    expect(
+      document.querySelector('.home-pulse__stats')?.textContent,
+    ).not.toContain('Projects');
   });
 
   /**
@@ -294,7 +342,7 @@ describe('HomeSurface composition', () => {
     // print four zeroes over an error.
     expect(document.querySelector('.home-pulse__stats')).toBeNull();
     screen.getByRole('button', { name: 'Open Activity' }).click();
-    expect(showSurface).toHaveBeenCalledWith('activity');
+    expect(showSurfacePage).toHaveBeenCalledWith('activity');
     expect(m.retryWork).not.toHaveBeenCalled();
     expect(
       screen.queryAllByRole('button', { name: LEGACY_SURFACE_LABEL }),
@@ -314,9 +362,10 @@ describe('HomeSurface: what is clickable', () => {
   beforeEach(() => {
     localStorage.clear();
     showSurface.mockClear();
+    showSurfacePage.mockClear();
   });
 
-  test('View Activity reveals the Activity surface, and promises nothing more', () => {
+  test('View Activity opens the Activity page, and promises nothing more', () => {
     const { onNavigate } = renderHome({
       workItems: [item('a', 'Some work', 'Station', 3, 'Running')],
     });
@@ -324,7 +373,9 @@ describe('HomeSurface: what is clickable', () => {
     within(recent).getByRole('button', { name: 'View Activity' }).click();
     // No session: a generic "show me Activity", so no intent is minted and
     // nothing routes (#928 — there is no Activity route left to route to).
-    expect(showSurface).toHaveBeenCalledWith('activity');
+    // It is the page verb (Activity takes `main`), not the dock reveal.
+    expect(showSurfacePage).toHaveBeenCalledWith('activity');
+    expect(showSurface).not.toHaveBeenCalled();
     expect(onNavigate).not.toHaveBeenCalled();
     // Activity is the surface's only name here: no retired "Sessions"
     // affordance renders beside the right one.
@@ -422,14 +473,14 @@ describe('HomeSurface: what is clickable', () => {
     });
     expect(
       screen.getByRole('button', {
-        name: 'Active now, 1, show the Active now lane',
+        name: 'Running, 1, show the Running lane',
       }),
     ).toBeTruthy();
-    expect(
-      screen.getByRole('button', {
-        name: 'Projects, 1, show where the work has been',
-      }),
-    ).toBeTruthy();
+    // Empty live lanes render nothing, so their zero counts are text.
+    expect(screen.queryByRole('button', { name: /^Needs you,/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Idle,/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Active now,/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Projects,/ })).toBeNull();
     // Nothing is snoozed and nothing is in the "Recently finished" lane, so
     // neither renders and neither count offers a destination.
     expect(screen.queryByRole('button', { name: /^Snoozed,/ })).toBeNull();
@@ -496,7 +547,9 @@ describe('HomeSurface: agent icons', () => {
         }),
       ],
     });
-    expect(document.querySelectorAll('.home-view__task-icon')).toHaveLength(1);
+    expect(document.querySelectorAll('.chat-dock-inbox__avatar')).toHaveLength(
+      1,
+    );
   });
 
   /**
@@ -514,13 +567,17 @@ describe('HomeSurface: agent icons', () => {
         }),
       ],
     });
-    expect(document.querySelectorAll('.home-view__task-icon')).toHaveLength(0);
+    expect(document.querySelectorAll('.chat-dock-inbox__avatar')).toHaveLength(
+      0,
+    );
     // …and the row still says who it was attributed to, in text.
     expect(screen.getAllByText(/Codex/).length).toBeGreaterThan(0);
   });
 
   test('a row naming no agent at all draws no icon', () => {
     renderHome({ workItems: [item('a', 'Work', 'Station', 3, 'Running')] });
-    expect(document.querySelectorAll('.home-view__task-icon')).toHaveLength(0);
+    expect(document.querySelectorAll('.chat-dock-inbox__avatar')).toHaveLength(
+      0,
+    );
   });
 });

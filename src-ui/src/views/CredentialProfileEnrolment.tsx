@@ -3,6 +3,7 @@ import {
   useEnrolmentQuery,
 } from '@kontourai/station-sdk';
 import { SkeletonBlock } from '../components/state';
+import { CredentialProfileDeviceCodeLogin } from './CredentialProfileDeviceCodeLogin';
 
 const authStateLabels: Record<EnrolmentAuthState, string> = {
   authenticated: 'Signed in',
@@ -64,6 +65,16 @@ export function CredentialProfileEnrolment({
       </p>
       {data.detail && (
         <p className="credential-enrolment__detail">{data.detail}</p>
+      )}
+      {data.login?.mechanisms.includes('device-code') && (
+        <CredentialProfileDeviceCodeLogin
+          connectionId={connectionId}
+          profileRef={profileRef}
+          authState={data.authState}
+          onCompleted={() => {
+            void refetch();
+          }}
+        />
       )}
       <details className="credential-enrolment__command">
         <summary>Show sign-in command</summary>

@@ -44,7 +44,11 @@ import {
 } from '@kontourai/station-contracts/provider';
 import type { TenantExecutionContext } from '@kontourai/station-contracts/tenancy';
 import type { Prerequisite, ToolDef } from '@kontourai/station-contracts/tool';
-import type { StagedPreToolPolicyEvaluator } from '../../runtime/agents/pre-tool-policy.js';
+import { toolRequestNeedsPerson } from '@kontourai/station-shared/tool-request-preview';
+import {
+  delegatedApprovalDenial,
+  type StagedPreToolPolicyEvaluator,
+} from '../../runtime/agents/pre-tool-policy.js';
 import {
   BUILTIN_STATION_DOCS_TOOL_SERVER_ID,
   isBuiltinStationDocs,
@@ -72,6 +76,7 @@ import {
 import { errorMessage } from '../../utils/error-message.js';
 import { expandTilde } from '../../utils/paths.js';
 import {
+  AttachmentInputUnsupportedError,
   type CanonicalRuntimeEvent,
   type ProviderAdapterShape,
   type ProviderSendTurnInput,
@@ -130,6 +135,7 @@ import {
 import {
   AcpToolUpdateGlobalBudget,
   AcpToolUpdateSupervisor,
+  engineToolKind,
 } from './acp-tool-update-supervisor.js';
 import { toPassthroughToolDef } from './agent-tool-server-mapping.js';
 import { mergeCapabilityDeliveryMetadata } from './capability-delivery-metadata.js';
@@ -400,6 +406,13 @@ interface AcpPendingRequest {
    * when the agent named no tool (nothing is granted or remembered).
    */
   toolName?: string;
+  /**
+   * #2933: the request is addressed to a person (`toolRequestNeedsPerson`:
+   * a plan exit, or a tool named as a harness question). A session answer to
+   * it is a one-call accept and mints no session grant, so a later plan exit
+   * is still reviewed.
+   */
+  needsPerson?: true;
 }
 
 export interface AcpSessionRecord {
@@ -1463,17 +1476,20 @@ export class AcpAdapter implements ProviderAdapterShape {
     } catch (error) {
       throw new SendTurnRefusedError(errorMessage(error));
     }
+    // Both attachment refusals carry a structured code: the same send is
+    // refused again on retry, so the client must not present it as a
+    // transient failure.
     try {
       rejectFileAttachments('This engine', decodedAttachments);
     } catch (error) {
-      throw new SendTurnRefusedError(errorMessage(error));
+      throw new AttachmentInputUnsupportedError(errorMessage(error));
     }
     if (
       decodedAttachments.length > 0 &&
       record.process.initResult?.agentCapabilities?.promptCapabilities
         ?.image !== true
     ) {
-      throw new SendTurnRefusedError(
+      throw new AttachmentInputUnsupportedError(
         'This engine did not advertise image attachment support.',
       );
     }
@@ -1655,6 +1671,7 @@ export class AcpAdapter implements ProviderAdapterShape {
       method: 'turn.started',
       prompt: text,
       inputKind: 'steer',
+      ...(native ? {} : { steerInterruptedRun: true as const }),
     });
   }
 
@@ -1670,10 +1687,16 @@ export class AcpAdapter implements ProviderAdapterShape {
     }
 
     record.pendingRequests.delete(requestId);
-    if (decision === 'acceptForSession' && pending.toolName) {
+    // #2933: a plan exit is answered for this call only: no session grant is
+    // minted, and the agent is sent its allow-once option, not allow-always.
+    const effective =
+      decision === 'acceptForSession' && pending.needsPerson
+        ? 'accept'
+        : decision;
+    if (effective === 'acceptForSession' && pending.toolName) {
       record.approvedTools.add(pending.toolName);
     }
-    pending.resolve(decision);
+    pending.resolve(effective);
 
     this.publish({
       eventId: crypto.randomUUID(),
@@ -1826,6 +1849,25 @@ export class AcpAdapter implements ProviderAdapterShape {
     record.pendingRequests.clear();
   }
 
+  /**
+   * An ACP permission request belongs to the prompt that raised it: once
+   * `session/prompt` settles, the engine has stopped waiting and will never
+   * read the answer. Left open, it stayed open everywhere that folds
+   * `request.opened`/`request.resolved` — the approval inbox and its header
+   * count, the approval toast queue, the chat's pending-approval banner —
+   * while the transcript had already retired the card at `turn.completed`
+   * (`approvalRetiredBy`). Settling it here as `cancelled` is the same
+   * terminal the interrupt path publishes, and it is what every one of those
+   * consumers already clears on.
+   */
+  private settleRequestsAtPromptEnd(
+    record: AcpSessionRecord,
+    threadId: string,
+  ): void {
+    if (record.pendingRequests.size === 0) return;
+    this.cancelPendingRequests(record, threadId);
+  }
+
   private prepareRecordForStop(record: AcpSessionRecord): void {
     const threadId = record.session.threadId;
     record.toolUpdateSupervisor.dispose();
@@ -1956,6 +1998,20 @@ export class AcpAdapter implements ProviderAdapterShape {
       params: RequestPermissionRequest,
     ): Promise<RequestPermissionResponse> => {
       const toolName = params.toolCall?.name;
+      // #2933: a tool-level grant (`tools.autoApprove`, matched by name)
+      // covers plain calls to the tool, never a plan exit. ACP marks a mode
+      // switch such as leaving plan mode with the `switch_mode` tool kind;
+      // it reports no other escalation signal on a permission request.
+      // The shared predicate also covers a tool the agent names
+      // `AskUserQuestion` (#3021) or `SandboxNetworkAccess` (#2932). Station
+      // has no ACP question card, but a question is still a person's to
+      // answer, and a network-host ask is asked per host. Either prompts as
+      // an ordinary approval rather than being accepted by a pattern or a
+      // session grant.
+      const needsPerson = toolRequestNeedsPerson(
+        toolName,
+        params.toolCall?.kind,
+      );
       if (toolName && record.preToolPolicy) {
         const decision = await record.preToolPolicy(
           {
@@ -1976,7 +2032,10 @@ export class AcpAdapter implements ProviderAdapterShape {
             identity: externalPreToolPolicyIdentity(toolName),
           },
         );
-        if (decision.behavior === 'allow') {
+        if (
+          decision.behavior === 'allow' &&
+          !(decision.toolGrant && needsPerson)
+        ) {
           return {
             outcome: mapAcpDecisionToOutcome('accept', params.options),
           };
@@ -1990,6 +2049,7 @@ export class AcpAdapter implements ProviderAdapterShape {
         // flow below; Station never opens a second prompt.
       } else if (
         toolName &&
+        !needsPerson &&
         isAutoApprovedExternalTool(
           toolName,
           record.agent?.autoApprove,
@@ -2008,7 +2068,8 @@ export class AcpAdapter implements ProviderAdapterShape {
       // so granted tools never re-prompt. Denies are never cached. When the
       // agent offers no allow option at all, the auto-acceptance would be
       // `cancelled` — fall through to the prompt rather than auto-cancel.
-      if (toolName && record.approvedTools.has(toolName)) {
+      // #2933: never for a plan exit, which a session grant cannot answer.
+      if (toolName && !needsPerson && record.approvedTools.has(toolName)) {
         const grantedOutcome = mapAcpDecisionToOutcome(
           'accept',
           params.options,
@@ -2016,6 +2077,23 @@ export class AcpAdapter implements ProviderAdapterShape {
         if (grantedOutcome.outcome !== 'cancelled') {
           return { outcome: grantedOutcome };
         }
+      }
+
+      // #2933: a delegated child that may not grant approvals reaches here
+      // when a tool-level grant let a plan exit past the staged evaluator's
+      // own denial, when no evaluator ran, or when the agent named no tool
+      // (a nameless request skips the evaluator). Nobody can answer the
+      // child's request, so decline it fail-fast rather than wait.
+      if (record.delegation?.denyApprovals) {
+        // Called for its toolDenials metric only: an ACP permission outcome
+        // has no reason channel, so the denial text reaches nobody.
+        delegatedApprovalDenial(
+          toolName ?? params.toolCall?.title ?? 'tool call',
+          'external',
+        );
+        return {
+          outcome: mapAcpDecisionToOutcome('decline', params.options),
+        };
       }
 
       const requestId = crypto.randomUUID();
@@ -2030,7 +2108,19 @@ export class AcpAdapter implements ProviderAdapterShape {
         title: params.toolCall?.title ?? 'Allow tool call',
         payload: {
           toolCallId: params.toolCall?.toolCallId,
+          // The programmatic name, when the engine reports one: it is what
+          // `respondToRequest` records a session grant under, so the grant
+          // button must be able to name it.
+          ...(toolName ? { toolName } : {}),
           rawInput: params.toolCall?.rawInput,
+          // The engine's ACP kind, so a card with no bound transcript row
+          // still says whether it gates a command, an edit or a read.
+          // #2933: surfaces also compute the session grant they offer from
+          // it; a `switch_mode` kind offers none. Only a kind in the ACP
+          // vocabulary is published: an unknown one is dropped, not coerced.
+          ...(engineToolKind(params.toolCall?.kind)
+            ? { toolKind: engineToolKind(params.toolCall?.kind) }
+            : {}),
           options: params.options,
         },
       });
@@ -2040,6 +2130,7 @@ export class AcpAdapter implements ProviderAdapterShape {
           resolve,
           options: params.options,
           ...(toolName ? { toolName } : {}),
+          ...(needsPerson ? { needsPerson: true as const } : {}),
         });
       });
 
@@ -2431,6 +2522,7 @@ export class AcpAdapter implements ProviderAdapterShape {
         if (record.promptEpoch !== promptEpoch) return;
         if (!this.ownsActiveTurn(threadId, record, turnId)) return;
         record.turnErrorNotifications = undefined;
+        this.settleRequestsAtPromptEnd(record, threadId);
         this.publish({
           eventId: crypto.randomUUID(),
           provider: this.provider,
@@ -2455,6 +2547,7 @@ export class AcpAdapter implements ProviderAdapterShape {
         const quota = classifyProviderQuotaFailure(error);
         const coReportedCause = record.turnErrorNotifications?.at(-1)?.message;
         record.turnErrorNotifications = undefined;
+        this.settleRequestsAtPromptEnd(record, threadId);
         if (quota) {
           this.publish({
             eventId: crypto.randomUUID(),

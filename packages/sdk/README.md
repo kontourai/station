@@ -18,6 +18,21 @@ Trusted server modules may also import the re-exported
 event observation. The host retains consumer identity, grants, projection, and
 settlement authority; see the plugin guide's durable operational-event section.
 
+## Choose an SDK surface
+
+Use the root and documented UI subpaths for plug-in hooks, components, and host
+integration. Use `@kontourai/station-sdk/agent` for headless Agent definitions,
+execution, delegation, decisions, observation, and outputs. `/client` remains
+the broader React-free Station API entry. All reuse canonical contracts and
+client owners. The Agent entry adds no runtime, automatic retry policy, or
+global selected Station.
+
+See [Agent development](../../docs/guides/agent-development.md), the
+[headless example](../../examples/headless-agent/README.md), and
+[ADR 0021](../../docs/adr/0021-separate-plugin-and-agent-sdk-surfaces.md).
+The Agent entry is present in this source checkout; published versions must
+include it in their export map. The package still has its existing React peers.
+
 ## Installation
 
 ```bash
@@ -593,3 +608,9 @@ install Station's theme.
 ## License
 
 Apache-2.0 — see [LICENSE](./LICENSE).
+
+
+The source-only additive `engine-accounts` entry provides authority-partitioned
+account, quota, sign-in and engine-activity hooks. See the
+[engine account query contract](../../docs/reference/sdk.md#engine-account-queries)
+and use a package release that contains these exports.

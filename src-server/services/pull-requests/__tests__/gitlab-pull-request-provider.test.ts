@@ -22,7 +22,7 @@ const mergeRequest = {
   title: 'Title',
   description: null,
   state: 'opened',
-  author: { username: 'brian', web_url: 'https://gitlab.com/brian' },
+  author: { username: 'casey', web_url: 'https://gitlab.com/casey' },
   source_branch: 'feature',
   target_branch: 'main',
   commits_count: 2,

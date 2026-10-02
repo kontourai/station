@@ -368,6 +368,13 @@ export interface TurnStartedEvent extends CanonicalRuntimeEventBase {
   /** Distinguishes input appended inside an already-running turn. */
   inputKind?: 'steer';
   /**
+   * A steer the engine had no additive channel for: Station delivered it by
+   * cancelling the in-flight prompt — and any tool that prompt was running —
+   * then re-prompting on the same turn (`acp-steer.ts` cancel + re-prompt).
+   * Stated so a client can say why a running step shows as cancelled.
+   */
+  steerInterruptedRun?: true;
+  /**
    * Durable, session-scoped user inputs used to reconstruct transcript media.
    * Persisted without their bytes (station#3374) — see
    * {@link PersistedChatAttachment} for which of `dataUrl`/`blobRef` a given
@@ -516,11 +523,34 @@ export interface ContentReasoningDeltaEvent extends CanonicalRuntimeEventBase {
   delta: string;
 }
 
+/**
+ * The engine's own category for a tool call, when it reports one. This is the
+ * Agent Client Protocol `ToolKind` vocabulary verbatim: ACP engines send it on
+ * `tool_call`/`tool_call_update` so a client can pick an icon and a verb
+ * without guessing from `toolName`. That matters because an ACP call with no
+ * programmatic name reports its human `title` as `toolName` — for OpenCode's
+ * shell tool that is the whole command line, which no name heuristic can
+ * classify.
+ */
+export type EngineToolKind =
+  | 'read'
+  | 'edit'
+  | 'delete'
+  | 'move'
+  | 'search'
+  | 'execute'
+  | 'think'
+  | 'fetch'
+  | 'switch_mode'
+  | 'other';
+
 export interface ToolStartedEvent extends CanonicalRuntimeEventBase {
   method: 'tool.started';
   itemId: string;
   toolCallId: string;
   toolName: string;
+  /** See {@link EngineToolKind}. Absent when the engine reported no kind. */
+  toolKind?: EngineToolKind;
   arguments?: unknown;
   /** Bounded, untrusted model-stated intent; never approval evidence. */
   purpose?: string;
@@ -571,6 +601,8 @@ export interface ToolCompletedEvent extends CanonicalRuntimeEventBase {
   itemId: string;
   toolCallId: string;
   toolName: string;
+  /** See {@link EngineToolKind}. Absent when the engine reported no kind. */
+  toolKind?: EngineToolKind;
   purpose?: string;
   /**
    * The observed outcome of the call.
@@ -670,9 +702,18 @@ export interface ToolCompletedEvent extends CanonicalRuntimeEventBase {
   policyDenied?: true;
 }
 
+/**
+ * `turnId`, when present, names the turn that is itself waiting on this
+ * request. An adapter stamps it only when it knows that: a request raised by
+ * work that can outlive the turn (a background subagent) carries none. A
+ * request that names a turn is settled, with no `request.resolved`, when
+ * that turn is aborted (`@kontourai/station-shared/request-settlement`).
+ */
 export interface RequestOpenedEvent extends CanonicalRuntimeEventBase {
   method: 'request.opened';
   requestId: string;
+  /** False for an asynchronous question; absent retains blocking behavior. */
+  blocking?: boolean;
   requestType: 'approval' | 'permission' | 'confirmation' | 'input';
   title: string;
   description?: string;
@@ -682,8 +723,10 @@ export interface RequestOpenedEvent extends CanonicalRuntimeEventBase {
 
 /**
  * #2880: what an adapter can report about a decision after Station records
- * it. `request.resolved` always means "decision recorded"; this says whether
- * any later `request.delivery` can follow.
+ * it. A `request.resolved` that carries this records a decision; this says
+ * whether any later `request.delivery` can follow. A `request.resolved`
+ * without it can also be a request closed with no decision at all — see
+ * {@link RequestResolvedEvent}.
  *
  * - `engine`: the engine closes the request on its own wire after Station's
  *   reply (Codex `serverRequest/resolved`, Muse `approval/resolved`). That is
@@ -696,9 +739,18 @@ export interface RequestOpenedEvent extends CanonicalRuntimeEventBase {
  */
 export type ApprovalAcknowledgement = 'engine' | 'in-process' | 'none';
 
+/**
+ * The request is closed. `approved` and `denied` record a decision.
+ * `cancelled` and `expired` record that it closed with none: the session or
+ * turn was stopped mid-request, the engine withdrew it, it timed out, or
+ * (`expired`, `response.reason: 'turn-interrupted'`) Station restarted while
+ * the turn that asked was running.
+ */
 export interface RequestResolvedEvent extends CanonicalRuntimeEventBase {
   method: 'request.resolved';
   requestId: string;
+  /** False for an asynchronous question; absent retains blocking behavior. */
+  blocking?: boolean;
   status: ApprovalStatus;
   response?: Record<string, unknown>;
   /**

@@ -187,7 +187,10 @@ describe('appHomesRootDir / appHomeProfileDir', () => {
 
 describe('claudeAppHomeEnv / codexAppHomeEnv', () => {
   test('claudeAppHomeEnv points CLAUDE_CONFIG_DIR at the profile dir', () => {
-    expect(claudeAppHomeEnv('/x/y')).toEqual({ CLAUDE_CONFIG_DIR: '/x/y' });
+    expect(claudeAppHomeEnv('/x/y')).toEqual({
+      CLAUDE_CONFIG_DIR: '/x/y',
+      CLAUDE_SECURESTORAGE_CONFIG_DIR: '/x/y',
+    });
   });
 
   test('codexAppHomeEnv points CODEX_HOME at the profile dir (wave-2 seam, unwired)', () => {

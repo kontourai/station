@@ -267,6 +267,53 @@ describe('NotificationsPage', () => {
     expect(screen.getByText(/Showing 0 of 0 activity items/)).toBeTruthy();
   });
 
+  test('a pairing deep link keeps the exact request visible through filters and focuses it without deciding', () => {
+    window.history.replaceState(
+      null,
+      '',
+      '/notifications?pairing=pair-target&q=unmatched',
+    );
+    const timestamp = new Date().toISOString();
+    attention = {
+      pendingCount: 2,
+      items: ['pair-other', 'pair-target'].map((requestId) => ({
+        id: `device-pairing:${requestId}`,
+        kind: 'device-pairing' as const,
+        title: `Pair ${requestId}`,
+        body: 'Waiting for approval',
+        createdAt: timestamp,
+        updatedAt: timestamp,
+        deviceName: requestId,
+        viewerCanDecide: true,
+        openHref: '/connections',
+        source: { requestId },
+      })),
+    };
+    renderPage();
+    const target = screen.getByText('Pair pair-target').closest('article');
+    expect(target).toBe(document.activeElement);
+    expect(screen.queryByText('Pair pair-other')).toBeNull();
+    expect(confirmPairing).not.toHaveBeenCalled();
+    expect(denyPairing).not.toHaveBeenCalled();
+    if (!target) throw new Error('Target pairing card missing');
+    fireEvent.click(within(target).getByRole('button', { name: 'Approve' }));
+    expect(confirmPairing).toHaveBeenCalledWith('pair-target');
+  });
+
+  test('an unavailable pairing deep link reports its absence without deciding another request', () => {
+    window.history.replaceState(
+      null,
+      '',
+      '/notifications?pairing=expired-request',
+    );
+    renderPage();
+    expect(
+      screen.getByText('That pairing request is no longer available.'),
+    ).toBeTruthy();
+    expect(confirmPairing).not.toHaveBeenCalled();
+    expect(denyPairing).not.toHaveBeenCalled();
+  });
+
   test('a resolved pairing request leaves Needs attention empty and its record in activity', () => {
     const timestamp = new Date().toISOString();
     attention = { pendingCount: 0, items: [] };

@@ -27,7 +27,10 @@ import { readTerminalSince, writeTerminalSince } from './terminal-since-store';
 const LANE_TICK_MS = 30_000;
 
 export interface HomeWorkLanes {
-  active: HomeLaneItem[];
+  /** Live lanes (`workStatus`), each in position-stable order. */
+  needsYou: HomeLaneItem[];
+  running: HomeLaneItem[];
+  idle: HomeLaneItem[];
   external?: HomeLaneItem[];
   /** #2310: never-prompted sessions — see `partitionHomeWorkItems`. */
   drafts?: HomeLaneItem[];
@@ -42,8 +45,8 @@ export interface HomeWorkLanes {
 }
 
 /**
- * Derives the three Home lanes (active / snoozed / settled) plus a
- * position-stable order for the active lane.
+ * Derives the Home lanes (needs you / running / idle / finished / snoozed /
+ * settled) plus a position-stable order for the live lanes.
  *
  * `identityAliasRef`, `terminalSinceRef`, `orderRef`, and `wokeAtRef` are
  * mutated during render rather than via `setState`. That is safe here
@@ -170,11 +173,17 @@ export function useHomeWorkLanes(items: HomeWorkItem[]): HomeWorkLanes {
     }
   }
 
-  orderRef.current = computeStableActiveOrder(
-    orderRef.current,
-    partition.active,
-  );
-  const active = orderItemsByKeys(partition.active, orderRef.current);
+  // One order over the union of the live lanes, then filtered per lane: a
+  // row keeps its place among its lane peers across status churn, and a
+  // Running -> Idle transition does not re-enter it as "new" at the top.
+  orderRef.current = computeStableActiveOrder(orderRef.current, [
+    ...partition.needsYou,
+    ...partition.running,
+    ...partition.idle,
+  ]);
+  const needsYou = orderItemsByKeys(partition.needsYou, orderRef.current);
+  const running = orderItemsByKeys(partition.running, orderRef.current);
+  const idle = orderItemsByKeys(partition.idle, orderRef.current);
   const recentlyFinished = sortSettledTail(
     partition.recentlyFinished,
     terminalSinceRef.current,
@@ -185,7 +194,9 @@ export function useHomeWorkLanes(items: HomeWorkItem[]): HomeWorkLanes {
   return {
     external: partition.external,
     drafts: partition.drafts,
-    active,
+    needsYou,
+    running,
+    idle,
     recentlyFinished,
     snoozed,
     settled,

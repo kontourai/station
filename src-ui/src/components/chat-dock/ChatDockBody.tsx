@@ -1,6 +1,7 @@
 import { useConnections } from '@kontourai/station-connect';
 import type { ToolPolicyDelivery } from '@kontourai/station-contracts/engine-capability-matrix';
 import { ENGINE_CAPABILITY_MATRICES } from '@kontourai/station-contracts/engine-capability-matrix';
+import { isFirstSendFailure } from '@kontourai/station-contracts/session-attention';
 import {
   type OrchestrationSessionSummary,
   steerOrchestrationTurn,
@@ -53,6 +54,7 @@ import {
 } from '../../utils/elidedHistory';
 import {
   isSessionExecutionActive,
+  isTurnStreamLive,
   sessionAdapterSupportsSteering,
 } from '../../utils/execution';
 import type {
@@ -64,8 +66,10 @@ import {
   ownerAttributionFromStation,
 } from '../../utils/ownerAttribution';
 import {
+  sessionFailureNote,
   sessionFailureText,
   transcriptCarriesFailureText,
+  transcriptShowsFailureSurface,
 } from '../../utils/sessionFailure';
 import { steerRefusalMessage } from '../../utils/steerTurn';
 import { ChatEmptyState } from '../chat/ChatEmptyState';
@@ -86,6 +90,7 @@ import {
   resolveRetryAttachments,
   retryAttachmentsFromParts,
 } from './retry-attachments';
+import { useChatStatusPill } from './useChatStatusPill';
 
 const loadChatMessageList = () =>
   import('../chat/ChatMessageList').then(({ ChatMessageList }) => ({
@@ -242,6 +247,21 @@ export function findPrecedingUserTurn(
   return null;
 }
 
+/**
+ * The newest transcript notice as one plain line (its bold title row), for the
+ * composer to repeat while a short dock hides the transcript.
+ */
+function latestNoticeLine(notices: readonly { content: string }[]) {
+  const content = notices[notices.length - 1]?.content;
+  if (!content) return undefined;
+  const line = content
+    .replace(/^\[SYSTEM_EVENT\]\s*/, '')
+    .split('\n', 1)[0]
+    ?.replace(/\*\*/g, '')
+    .trim();
+  return line || undefined;
+}
+
 export function ChatDockBody({
   activeSession,
   workingDirectory,
@@ -335,6 +355,14 @@ export function ChatDockBody({
   const resolvingOpen = openPhase === 'resolving';
   const transcript = useActiveChatTranscript(apiBase, activeSession);
   const streamStatus = useChatStreamStatus(apiBase, activeSession.replay);
+  // Live chats present approval, connection and turn activity in one floating
+  // pill; a replay keeps the inline rows it was recorded against.
+  const { pill: statusPill, statusInPill } = useChatStatusPill({
+    activeSession,
+    streamStatus,
+    turnLive: isTurnStreamLive(activeSession),
+    enabled: !activeSession.replay,
+  });
   /*
    * One transitional state for the whole conversation, from the two things
    * that are actually still in flight after a reload: the conversation-open
@@ -344,10 +372,8 @@ export function ChatDockBody({
    * an empty "Start a conversation" placeholder and a second red line under
    * the composer — three contradictory claims about a healthy conversation.
    */
-  const conversationLoading =
-    resolvingOpen ||
-    transcript.catchingUp ||
-    (transcript.enabled && !transcript.settled);
+  const transcriptPending =
+    transcript.catchingUp || (transcript.enabled && !transcript.settled);
   /*
    * station#2530 review 2: `transcript.catchingUp` legitimately blanks
    * `transcript.messages` for BACKGROUND refetches too — a revision bump
@@ -377,9 +403,21 @@ export function ChatDockBody({
   const displayedTranscriptMessages =
     transcript.messages.length > 0
       ? transcript.messages
-      : transcript.catchingUp
+      : transcriptPending
         ? stickyTranscriptRef.current.messages
         : transcript.messages;
+  /*
+   * Loading is the FIRST read of this session's transcript, not every refetch
+   * after it. A turn ending bumps the history revision (and can re-key the
+   * window when the conversation id lands), and that refetch is a background
+   * refresh of a transcript already on screen: counting it flashed a
+   * "Loading conversation" skeleton and a "Start new chat" escape under the
+   * finished answer on every turn. Once this session has shown messages, a
+   * pending refetch keeps showing them and claims nothing is loading.
+   */
+  const transcriptLoaded = stickyTranscriptRef.current.messages.length > 0;
+  const conversationLoading =
+    resolvingOpen || (transcriptPending && !transcriptLoaded);
   /*
    * The wait is BOUNDED but not short: both reads go through the SDK client,
    * whose `DEFAULT_CLIENT_REQUEST_TIMEOUT_MS` is 30_000, so a resolution that
@@ -486,10 +524,16 @@ export function ChatDockBody({
    */
   const bannerFailureText =
     failureText !== null &&
-    transcriptCarriesFailureText(renderedSession.messages, [
+    (transcriptCarriesFailureText(renderedSession.messages, [
       failureText,
       translateChatError({ message: failureText }).body,
-    ])
+    ]) ||
+      // A session whose sends never took has no turns; any visible failure
+      // card in its transcript is that refusal, in its own words.
+      (activeOrchestrationSession !== null &&
+        activeOrchestrationSession !== undefined &&
+        isFirstSendFailure(activeOrchestrationSession) &&
+        transcriptShowsFailureSurface(renderedSession.messages)))
       ? null
       : failureText;
   const historyFailure =
@@ -641,6 +685,7 @@ export function ChatDockBody({
     new Set(),
   );
   const ephemeralMessages = activeSession.messages.filter((m) => m.ephemeral);
+  const sendFailureNotice = latestNoticeLine(ephemeralMessages);
 
   // Every "New chat" affordance funnels rejections here: a typed
   // NewChatUnavailableError (the chat never started) surfaces bare, anything
@@ -892,6 +937,7 @@ export function ChatDockBody({
 
   return (
     <>
+      {statusPill}
       {showStatsPanel && (
         <ConversationStats
           agentSlug={activeSession.agentSlug}
@@ -1006,7 +1052,9 @@ export function ChatDockBody({
             approvalEvents: transcript.enabled ? transcript.events : undefined,
             approvalEventsSettled: transcript.settled,
             historyLoading: transcript.loading,
-            suppressActivity: Boolean(streamStatus),
+            // The status pill owns turn activity for a live chat.
+            suppressActivity: statusInPill || Boolean(streamStatus),
+            statusShownElsewhere: statusInPill,
             // #2309: the stall notice below presents the silence (with its
             // Stop action); the streaming row does not repeat it.
             progressSilenceShownElsewhere: Boolean(
@@ -1032,7 +1080,7 @@ export function ChatDockBody({
           }}
         />
       )}
-      {streamStatus && (
+      {streamStatus && !statusInPill && streamStatus.kind !== 'restored' && (
         <div
           className="chat-stream-status"
           role="status"
@@ -1222,7 +1270,7 @@ export function ChatDockBody({
         failureText={bannerFailureText}
         className="chat-dock__session-failure"
         testId="chat-dock-session-failure"
-        note="You can send a message to try to continue this session."
+        note={sessionFailureNote(activeOrchestrationSession)}
       />
       {agent?.available === false &&
         activeSession.modelSource !== 'session override' && (
@@ -1493,6 +1541,7 @@ export function ChatDockBody({
             draftText={chatInput.quotedDraftText}
             quoteContext={chatInput.quotes}
             sessionId={activeSession.id}
+            sendFailureNotice={sendFailureNotice}
             activeConversationId={activeSession.conversationId}
             input={chatInput.input}
             workingDirectory={workingDirectory}
@@ -1568,6 +1617,10 @@ export function ChatDockBody({
             selectAttachmentFiles={chatInput.selectAttachmentFiles}
             attachmentError={chatInput.attachmentError}
             attachmentStages={chatInput.attachmentStages}
+            attachmentNotice={chatInput.attachmentNotice}
+            attachUnavailableReason={chatInput.attachUnavailableReason}
+            onAttachUnavailable={chatInput.setAttachmentError}
+            removalUnblocksSend={chatInput.removalUnblocksSend}
             sendBlockedReason={
               recoveryOpen && !unverifiedOpen
                 ? 'This conversation is available read-only. Retry resolution or start a new chat.'

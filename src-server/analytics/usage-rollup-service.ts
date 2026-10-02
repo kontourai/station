@@ -17,11 +17,14 @@ import {
   foldUsageReceipts,
   USAGE_ROLLUP_MAX_PAGE_SIZE,
 } from '@kontourai/station-shared/usage-rollup';
+import { usageCredentialAccountKey } from '../providers/app-home/app-home-profiles.js';
 
 const USAGE_ROLLUP_MAX_SOURCES = 3;
 const USAGE_ROLLUP_SOURCE_DEADLINE_MS = 3_000;
 
 export interface UsageRollupRequest {
+  provider?: string;
+  credentialProfileRef?: string | null;
   from: string;
   to: string;
   groupBy?: 'provider' | 'model' | 'station' | 'conversation' | 'task' | 'day';
@@ -93,6 +96,18 @@ export class UsageRollupService {
     if (!isSessionReadAuthority(authority)) {
       throw new Error('Usage rollup read denied');
     }
+    if (request.credentialProfileRef !== undefined && !request.provider)
+      throw new Error('Account usage requires an engine filter.');
+    const accountKey =
+      request.credentialProfileRef === undefined
+        ? undefined
+        : usageCredentialAccountKey(
+            request.provider!,
+            request.credentialProfileRef,
+          );
+    const matches = (receipt: UsageReceipt) =>
+      (!request.provider || receipt.provider === request.provider) &&
+      (accountKey === undefined || receipt.accountKey === accountKey);
     const pageSize = Math.min(
       Math.max(request.pageSize ?? 50, 1),
       USAGE_ROLLUP_MAX_PAGE_SIZE,
@@ -148,12 +163,28 @@ export class UsageRollupService {
     const result = foldUsageReceipts({
       ...request,
       pageSize,
-      receipts: results.flatMap((result) => result.receipts),
-      aggregateReceipts: results.flatMap(
-        (result) => result.aggregateReceipts ?? result.receipts,
-      ),
+      receipts: results.flatMap((result) => result.receipts).filter(matches),
+      aggregateReceipts: results
+        .flatMap((result) => result.aggregateReceipts ?? result.receipts)
+        .filter(matches),
       coverage: [
-        ...results.map((result) => result.coverage),
+        ...results.map((result) =>
+          request.credentialProfileRef === undefined
+            ? result.coverage
+            : {
+                ...result.coverage,
+                state:
+                  result.coverage.state === 'complete'
+                    ? ('partial' as const)
+                    : result.coverage.state,
+                reason: [
+                  result.coverage.reason,
+                  'Account totals exclude usage without recorded credential-profile attribution. Capture counts describe the engine.',
+                ]
+                  .filter(Boolean)
+                  .join(' '),
+              },
+        ),
         ...this.unqueriedCoverage,
       ],
     });
@@ -174,9 +205,9 @@ export class UsageRollupService {
       ...result,
       ...(request.includeAggregate
         ? {
-            aggregateReceipts: results.flatMap(
-              (item) => item.aggregateReceipts ?? item.receipts,
-            ),
+            aggregateReceipts: results
+              .flatMap((item) => item.aggregateReceipts ?? item.receipts)
+              .filter(matches),
           }
         : {}),
       // The public route must not expose source-transfer material. The remote
@@ -517,7 +548,14 @@ function parseReceipt(value: unknown, stationId: string): UsageReceipt {
   // Older paired Stations cannot make a current row appear priced. Preserve
   // their omission as an explicit unpriced receipt instead of trusting a
   // caller-side catalog lookup.
-  for (const key of ['model', 'threadId', 'turnId', 'conversationId', 'taskId'])
+  for (const key of [
+    'model',
+    'threadId',
+    'turnId',
+    'conversationId',
+    'taskId',
+    'accountKey',
+  ])
     if (receipt[key] !== undefined && typeof receipt[key] !== 'string')
       throw new Error('invalid usage receipt field');
   return {

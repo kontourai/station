@@ -5,6 +5,8 @@ import {
   writeSnooze,
 } from '../../utils/activity-snooze-store';
 import {
+  LIVE_LANE_LABELS,
+  type LiveLaneId,
   partitionHomeWorkItems,
   terminalSinceFromRecency,
 } from '../../views/home/home-lane-model';
@@ -17,7 +19,7 @@ export { clearSnooze, readSnoozes, type SnoozeMap, writeSnooze };
 
 export type MobileActivityGroupId =
   | 'external'
-  | 'active'
+  | LiveLaneId
   | 'drafts'
   | 'settled'
   | 'snoozed'
@@ -77,7 +79,8 @@ export function snoozeKeyFor(item: HomeWorkItem): string {
 }
 
 /**
- * Split work items into Active now / Just finished / Snoozed / Earlier.
+ * Split work items into Needs you / Running / Idle / Drafts / Just finished /
+ * Snoozed / Earlier / From other apps.
  *
  * NOT A SECOND CLASSIFIER (station#3227 A6). This used to carry its own
  * "active" predicate (`Running`/`Needs attention` only) and its own 10-minute
@@ -87,13 +90,13 @@ export function snoozeKeyFor(item: HomeWorkItem): string {
  * switcher, with the difference parked under "Just finished" having finished
  * nothing. Same label, two derivations, contradicting counts.
  *
- * The groups are now a straight rename of the shared partition's lanes:
- * active ("Active now"), recentlyFinished ("Just finished"), drafts
- * ("Drafts", #2310), snoozed, settled ("Earlier") — the same mapping the Sessions lanes already use
- * (`sessions-lane-model.ts`). An unfinished-but-idle item (`Ready`/`Recent`/
- * `Current`/`Unanswerable`) is active here for the same reason it is on
- * desktop: "Just finished"/"Earlier" assert the work FINISHED, and it did
- * not. `terminalSince` uses the shared fresh-load proxy
+ * The groups are a straight rename of the shared partition's lanes:
+ * needsYou/running/idle (`workStatus`), drafts ("Drafts", #2310),
+ * recentlyFinished ("Just finished"), snoozed, settled ("Earlier") — the
+ * same mapping the Sessions lanes use (`sessions-lane-model.ts`). An
+ * unfinished-but-idle item (`Ready`/`Recent`/`Current`/`Unanswerable`) is
+ * Idle, not "Active now": nothing is running, and "Just finished"/"Earlier"
+ * would assert the work FINISHED, which it did not. `terminalSince` uses the shared fresh-load proxy
  * (`terminalSinceFromRecency`) because this surface, like the Sessions list,
  * has no persisted transition store.
  *
@@ -116,19 +119,26 @@ export function groupMobileActivity(
     terminalSince: terminalSinceFromRecency(items),
   });
 
+  // Live groups are emitted only when non-empty, like Drafts and "From
+  // other apps": three always-present headers would print empty "Needs you"
+  // and "Running" sections above most inboxes. The historic groups below
+  // (Just finished, Snoozed, Earlier) keep their always-present shape.
+  const live = (['needsYou', 'running', 'idle'] as const)
+    .filter((id) => partition[id].length > 0)
+    .map((id) => ({ id, label: LIVE_LANE_LABELS[id], items: partition[id] }));
   return [
-    { id: 'active', label: 'Active now', items: partition.active },
-    {
-      id: 'settled',
-      label: 'Just finished',
-      items: partition.recentlyFinished,
-    },
+    ...live,
     // #2310: never-prompted sessions. Their own group rather than a chip in
     // "Earlier", which asserts the work finished — a draft has not started.
     // Emitted only when non-empty, like "From other apps".
     ...(partition.drafts?.length
       ? [{ id: 'drafts' as const, label: 'Drafts', items: partition.drafts }]
       : []),
+    {
+      id: 'settled',
+      label: 'Just finished',
+      items: partition.recentlyFinished,
+    },
     { id: 'snoozed', label: 'Snoozed', items: partition.snoozed },
     { id: 'earlier', label: 'Earlier', items: partition.settled },
     ...(partition.external?.length
