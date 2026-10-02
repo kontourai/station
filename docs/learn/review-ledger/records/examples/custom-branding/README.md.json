@@ -24,7 +24,7 @@
 
     {"path":"src-server/services/plugins/plugin-permissions.ts","digest":"12fa3b2a465074275d4317cc1a356000b2c1a53af247b56c352db754a8727c7c","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
 
-    {"path":"src-ui/src/components/project-sidebar/ProjectSidebar.tsx","digest":"56a42c10b34d7e2830bf3ccc47b47ed16a256ac3d4b8165609b9e0137da49b8b","revision":"426153191586e330abfdfca99debbeab43855d09"},
+    {"path":"src-ui/src/components/project-sidebar/ProjectSidebar.tsx","digest":"df6ef4443092485bd102ed0352daf87b6ebb56e77cea9bc859b31585dec822ab","revision":"a5cca76ed88ba6f99813da924ad1c7554335de87"},
 
     {"path":"src-ui/src/lib/branding-theme.ts","digest":"6b0a440ba723e5af74ff8230c50b2f268a87a85aa3dadce7f12a1de13257cd9d","revision":"1e5f63186142dd36fcb720deb7660808dbf2f56b"}
   ],
