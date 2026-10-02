@@ -252,6 +252,13 @@ Station's browser-facing SSE routes send `X-Accel-Buffering: no` so nginx-family
 proxies deliver chat tokens and operational events immediately. Preserve that
 response header.
 
+Station also sends `x-station-envelope: 1` on every JSON response it writes
+itself. Clients use it to tell Station's own refusal from an error a proxy
+answered: a queued chat message is dropped only on Station's refusal. Pass the
+header through unchanged, and do not add it to responses the proxy generates.
+A proxy that removes it leaves clients deciding by the body's shape, as they
+did before the header existed.
+
 `proxy_buffering off` is not merely defense in depth: the station-control MCP
 endpoint streams through a handler-built response whose headers Station does not
 set, so it does **not** carry `X-Accel-Buffering`. Without `proxy_buffering off`,
