@@ -40,13 +40,13 @@
 
     {"path":"src-ui/src/App.tsx","digest":"484bef6765d17c490b67ff9b200945dbb4ea4f11c38eff32b338dac360445f46","revision":"c504d5902ffdb4fcb222f7f46939f48feb6fe4bc"},
 
-    {"path":"src-ui/src/components/chat-dock/ChatDock.tsx","digest":"ee24bb15d9cd65eb8f3bf9b13d6bef9b2cd6378f0fdc5f95f4f62e8a3b3513da","revision":"2ef5603c9d1d413c0147faa50f612883f34761ba"},
+    {"path":"src-ui/src/components/chat-dock/ChatDock.tsx","digest":"8b2afcd595e892421e4f0dc767d1b776074be7b78127b2d6607954bf454a5056","revision":"f06acf6b9cd2f940c1a5a9dcf283ad42bceb06f3"},
 
     {"path":"src-ui/src/components/chat-dock/DockShell.tsx","digest":"1961ea14eef051a37498d1e172a5e4ae52eefd07334cb71bfa1fda44064ccfb7","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
     {"path":"src-ui/src/components/chat/__tests__/ChatMarkdownAnchor.test.tsx","digest":"f4869dfc834b7acb9fcde1fa4b8b273c6e5ef1e59456f26655c98c93f990691f","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/components/chat/chat.css","digest":"5bfeadbbbca8a386c250a1886d9f4da43196cbef40fac86e4f4d7291adad8a07","revision":"5a36fc2200f30e8d1adc2bb1db88448b4b68312a"},
+    {"path":"src-ui/src/components/chat/chat.css","digest":"efe79b839097525390373d673582b054140651d48c5ecd946fb47610d25510ef","revision":"f06acf6b9cd2f940c1a5a9dcf283ad42bceb06f3"},
 
     {"path":"src-ui/src/components/chat/ChatMarkdownAnchor.tsx","digest":"58bb0fa41719b1f9bf314506cc756eb6a6ccf6a71b3c55fa2579af09b31363ce","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -96,7 +96,7 @@
 
     {"path":"src-ui/src/hooks/useUnsavedGuard.tsx","digest":"12fd9923bc5c1b7920be4ad426c00a55437be38fe1943ad42e27589072a7ec62","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/index.css","digest":"0f48310cbd3f275e6a8b9615d0be01a0a6abc125456d6a6f553644b9d9a5c04f","revision":"6e57ac76f8adf82bc9881e33f031db1f87dc26ee"},
+    {"path":"src-ui/src/index.css","digest":"dfd6618275df2ca0b314b59d3f8332ecd6ee77003387cf4041421a84405a4ea0","revision":"f06acf6b9cd2f940c1a5a9dcf283ad42bceb06f3"},
 
     {"path":"src-ui/src/layouts/index.tsx","digest":"b228a1f6ed2fa48a803755023df6b0cd07b9da0a38a3cb8cdfe6c56c68c581e2","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
