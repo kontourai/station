@@ -122,7 +122,12 @@ that the default Station host supplies its optional context.
 `submitTaskRoomAgentRequest`, `TaskRoomWorkProtocolError` and
 `TaskRoomWorkNotSentError`. Submission takes `(apiBase, taskId, projectSlug,
 taskCreatedAt, input, options?)`; input contains `operationId`, `agentId` and
-`prompt`. A fresh versioned request-list read precedes the additive delegation
+`prompt`, with optional `context: { version: 'station.task-room-context/v1', digest }`.
+The request-list result includes `contextVersion` and an authorized brief snapshot
+(or `null`) on supporting servers. Submission negotiates that version, forwards
+only the reference, and verifies that the acknowledgement retains its digest and
+Task incarnation. It does not substitute a newer brief on a retry.
+A fresh versioned request-list read precedes the additive delegation
 create field, so an older Station never silently receives an ordinary
 delegation instead. The response must match the Task and submitted intent.
 The server also checks the expected Task incarnation.
@@ -139,7 +144,10 @@ not currently published through room SSE. Mutation retries are disabled.
 Send refreshes Project-scoped delegation options and requires the selected
 agent to be ready before the version negotiation and create.
 
-`TaskRoomWorkNotSentError` identifies a failed preflight with no create sent.
+`TaskRoomWorkNotSentError` identifies a failed preflight with no create sent,
+or an explicit pre-invocation context refusal from a supporting server. Refresh
+the brief before starting a new intent; preserve a prior unknown request when
+a retry itself was not sent.
 After the create starts, an error can mean the execution already exists.
 Retain the exact operation and intent for an explicit retry or inspection;
 never generate a replacement operation automatically. A retry preflight failure
