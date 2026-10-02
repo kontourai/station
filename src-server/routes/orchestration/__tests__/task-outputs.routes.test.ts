@@ -27,12 +27,15 @@ function app() {
   writeFileSync(join(workspace, 'report.txt'), 'route snapshot');
   const tasks = {
     readTask: (id: string) =>
-      id === 'task-a' ? { id, projectId: 'project-a' } : null,
+      id === 'task-a'
+        ? { id, projectId: 'project-a', createdAt: '2026-10-01T00:00:00.000Z' }
+        : null,
     readTaskForOpen: async (id: string) =>
       id === 'task-a'
         ? {
             id,
             projectId: 'project-a',
+            createdAt: '2026-10-01T00:00:00.000Z',
             workspaceBinding: {
               availability: 'available' as const,
               workingDirectory: workspace,
@@ -43,7 +46,7 @@ function app() {
   return {
     workspace,
     routes: createTaskOutputRoutes(
-      new TaskOutputModule({ homeDir: home, taskGraphService: tasks as any }),
+      new TaskOutputModule({ homeDir: home, taskGraphService: tasks }),
     ),
   };
 }

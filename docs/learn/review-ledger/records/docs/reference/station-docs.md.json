@@ -94,7 +94,7 @@
 
     {"path":"src-server/services/projects/task-graph-service.ts","digest":"c895f75faffb94ab2cbe311400d0b5811bb00148ef83d72de18638635d5a8d68","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/projects/task-output-module.ts","digest":"8e548f679e27457b848fd88dffaf11bf4e54fa775c6c5bd614462599b8f7a4d4","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/projects/task-output-module.ts","digest":"50b30b30f262ed179d4b20b4d0514c8f113241f6acf1a39094cf86a6de602182","revision":"a1ff1d33dd8ecfb36db563da4fe31199ec75f90c"},
 
     {"path":"src-server/services/scheduling/builtin-scheduler-execution.ts","digest":"388c2403f460021860549a6e16a19f8fb710fa698692894d98a3255cc77a940a","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
