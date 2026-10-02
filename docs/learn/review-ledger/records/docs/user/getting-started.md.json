@@ -100,7 +100,7 @@
 
     {"path":"src-ui/src/hooks/useNewChatSelectionModel.ts","digest":"79d62da2bce71d836669cfc7836952c832e88aa7e23a95566712733b566a86a7","revision":"df34c2497051350c571a5b33d841277ff2fba301"},
 
-    {"path":"src-ui/src/index.css","digest":"7de4367779c65cb68a15dc4cda1f5da779b195897cdc42ad17a312c834ce89cd","revision":"b0231bc1e00fb9e7db24a527aea16f59b7db2c21"},
+    {"path":"src-ui/src/index.css","digest":"90b1c018d688ca649437e24b009fc0e2365ef542f64c2b045735af3e21cc93dd","revision":"f9492a9202fc45b0776176178d0f5007a172f2d6"},
 
     {"path":"src-ui/src/lib/newChatIntent.ts","digest":"a759731abdda8846bbfa382a714b397cfaeb913b7e407f46ebc92b956c304c5e","revision":"fdd1311dfc6f9bb5370219a598a46bf4359b248e"},
 

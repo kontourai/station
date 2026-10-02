@@ -50,7 +50,7 @@
 
     {"path":"src-ui/src/hooks/orchestration/replay/timeline.ts","digest":"e4ef9cf2e00be49810869092c67c0f9b6358a31429fcee394d313b8eaf9baabb","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/index.css","digest":"7de4367779c65cb68a15dc4cda1f5da779b195897cdc42ad17a312c834ce89cd","revision":"b0231bc1e00fb9e7db24a527aea16f59b7db2c21"},
+    {"path":"src-ui/src/index.css","digest":"90b1c018d688ca649437e24b009fc0e2365ef542f64c2b045735af3e21cc93dd","revision":"f9492a9202fc45b0776176178d0f5007a172f2d6"},
 
     {"path":"tests/chat-replay.spec.ts","digest":"22a340eb879c7e716b037e94f47bd065ffff2aae0b826ab8faac417cc421c6f2","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"}
   ],
