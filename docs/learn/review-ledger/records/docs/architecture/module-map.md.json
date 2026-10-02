@@ -888,7 +888,7 @@
 
     {"path":"src-ui/src/views/TaskWorkspaceView.tsx","digest":"2c6e6d9dec385870e2f639c42cfa86f5e1b553f17756fea1d78b4a4a1a9d73f0","revision":"79edb8d5dd98ef07de0722b0604b9ec606f2bdbf"},
 
-    {"path":"src-ui/src/views/connections-hub/NativeRelayEnrollmentWizard.tsx","digest":"f71aace884c81613bd1604acab1ca770a7a6b85b10c853e7a95e67fb9c47060b","revision":"4ba22e278dcfd1b86e80e491753b936ec449593b"},
+    {"path":"src-ui/src/views/connections-hub/NativeRelayEnrollmentWizard.tsx","digest":"45d0d54a3ab97fd0ef20717205079aeacf3aebb34d18aaf6ec72227ed961bfa0","revision":"aa4592ecd9a4cbc3bb99eeae9d4cf6062b7ba666"},
 
     {"path":"src-ui/src/views/developer/MemoryTab.tsx","digest":"8f9509629781c1a0ca749686df755d9c42821df6cbf4f4fd131d2fdbab702cec","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

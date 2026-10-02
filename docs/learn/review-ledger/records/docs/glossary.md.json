@@ -14,7 +14,7 @@
   "sources": [
     {"path":"docs/architecture/module-map.md","digest":"8d33787e4ca8472ad4d2d5c91d8eaea168553090163766c9b957ab9e48dd0f79","revision":"a3ac8721653c1c4dc646f54a5401f03f02ba795f"},
 
-    {"path":"docs/reference/connect.md","digest":"5a63b87d020669a6ef25cfef092e3d12e12b7c20b79d1e0c5cf3e07fc45c8f6f","revision":"3bf8fc111a30ce866c3b2574672bc4de3acd3bf3"},
+    {"path":"docs/reference/connect.md","digest":"908f3599f7bc2739e2efaacdb9756ae177a293123bf564aba2680b7fd0cd743b","revision":"aa4592ecd9a4cbc3bb99eeae9d4cf6062b7ba666"},
 
     {"path":"docs/reference/contracts.md","digest":"bed2d47ec281b1c7d81e12eb990739cd153f74525c1fdd30258353ebb55e9827","revision":"cc4f7016217bc65a2cf928481052ffeb68d49cb2"},
 

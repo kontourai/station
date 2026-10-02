@@ -82,7 +82,7 @@
 
     {"path":"src-ui/src/views/connections-hub/RelayRouteProfiles.tsx","digest":"af8632846e17429a01b67f46fdf711ae2d0198db171a9615acb7ebc21341f8b3","revision":"d956082d3d2864711773914857b8098c60bdd972"},
 
-    {"path":"src-ui/src/views/connections-hub/__tests__/RelayRouteProfiles.test.tsx","digest":"a256f80f7e0a3f9bb64aac09d0818b15ba0bc241da6141e059137d97d166240f","revision":"4ba22e278dcfd1b86e80e491753b936ec449593b"},
+    {"path":"src-ui/src/views/connections-hub/__tests__/RelayRouteProfiles.test.tsx","digest":"bde770853362f66b3a93b6dd6b89ecf74a91993c058e8e130dd3983abd88963d","revision":"aa4592ecd9a4cbc3bb99eeae9d4cf6062b7ba666"},
 
     {"path":"tests/tauri-shell/native-relay-grant-lifecycle.e2e.ts","digest":"cb255bdf8a7a0d869688c4d1bd3d2fddab8be6e7005279897e2fd4cef3db5efe","revision":"7923470413a32b1a4d4223a6390f0708fc7beaee"},
 
