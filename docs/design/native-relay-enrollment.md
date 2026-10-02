@@ -78,9 +78,18 @@ errors and iOS device-only access. A desktop-only default keyring entry cannot
 substitute for the maintained mobile store.
 
 Source-level intake, cancellation, exact-grant compensation and codec checks
-do not establish the iOS callback ABI, installed cold/warm delivery, pairing
-parity or the real two-person journey. Those remain **NOT_VERIFIED** until their
-own build, installed-runtime and physical receipts exist.
+are separate from installed-client evidence. An installed development iOS
+simulator build at `d956082d3` opened a non-secret public setup link while the
+app was stopped and while it was running. Closing either review preserved the
+saved profile bytes and existing Station confirmation. The ordinary saved
+Station screen also displayed the empty routing-grant state without a storage
+error. The earlier `4cf503807` build rejected this delivery; the corrected
+owned-delegate guard is included in the successful build.
+
+These observations do not qualify bound-secret delivery, successful pairing,
+mobile grant writes/readback/deletion, protected application traffic, signed
+Nightly distribution or the physical two-person journey. Those remain
+**NOT_VERIFIED** until their own receipts exist.
 
 ## Credential delivery
 
