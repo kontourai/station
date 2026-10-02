@@ -2560,7 +2560,7 @@
     min-height: 44px;
   }
 
-  .chat-status-pill__details {
+  .chat-input__activity .chat-status-pill__details {
     right: auto;
     left: 50%;
     translate: -50% 0;

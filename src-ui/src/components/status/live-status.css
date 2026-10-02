@@ -152,7 +152,7 @@ button.chat-status-pill {
    meets the 44px floor the rest of the chrome keeps (the app-wide approval
    trigger it stands in for was 44px). The read-only pill stays compact. */
 @media (max-width: 768px), (pointer: coarse) {
-  button.chat-status-pill {
+  .chat-status-pill-host button.chat-status-pill {
     min-height: 44px;
   }
 }
