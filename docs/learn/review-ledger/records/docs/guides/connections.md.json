@@ -9,7 +9,7 @@
 
   "limits": "Source review of this document's stated contracts and actual callers, not an exhaustive audit of unclaimed code. No new public deployment, TLS/TURN lab, SSH/cloud transfer, live provider, physical/native/keychain, Windows ACL/process, two-person, cryptographic penetration or release qualification. Prior executed checks and dated receipts are retained as prior evidence, not rerun or renewed here.",
 
-  "document": {"digest":"438397808f9c71d61a0a6be40340b147648116b40398d40b660bae31980c027f","revision":"1a235cd9bc482738abe4c3f011f73be86074d667"},
+  "document": {"digest":"2dde126b6534cc4b433f3a8e8a9760849dc9c9db7fbcad026d25fa53bff0e7c0","revision":"16115fc6e0cb1bd66d4053aad666c77f26349d4f"},
 
   "sources": [
     {"path":"docs/learn/media.json#/captures/2","digest":"34599d43d325f0f864589d4b7097201898fa2971f5f8154451aeb521a5fd39e5","revision":"15d7075a8fd69e210fb530500240567a8af27fd9"},
@@ -250,7 +250,7 @@
 
     {"path":"tests/connections-crud.spec.ts","digest":"b0c33e5e552b3651adf99dbe92ef3d43a38bb130ca13c26f7dff1bfeb3dbc9e5","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/views/EngineAccountOverview.tsx","digest":"39a7ad09d639b11b5427f3e4457e84f938367e563408aacf2c574811878e44e9","revision":"61b38640f3f1dcb2661392783b9baef5259f3e97"},
+    {"path":"src-ui/src/views/EngineAccountOverview.tsx","digest":"e3eb077285b1f7b26179b59f2a4be52919a5a04d040969e08aa9c33784263bab","revision":"3ea07647f240025bd44ab538e073f7617b32fbbf"},
 
     {"path":"src-server/services/connections/browser-code-login.ts","digest":"ed975062b5c25d966b1da0cb9ab654b9c861b8d33b647075b3a7a8d2b5208a3a","revision":"4750f0dd4c17a766da91628dca97b2c7627ca0ed"},
 
@@ -258,7 +258,7 @@
 
     {"path":"packages/sdk/src/engine-accounts.ts","digest":"a6d987bfa7df459d4c20727740a7ca94d169ae2ab53e50e3752df311e9ff24f1","revision":"0dd1181141ba6a645601e6798079a16189510438"},
 
-    {"path":"src-ui/src/__tests__/EngineAccountOverview.test.tsx","digest":"f5f1adbe52fc58b46bd084063f1ec340aa58b3bee51098a7a559d8b84352a4d0","revision":"61b38640f3f1dcb2661392783b9baef5259f3e97"},
+    {"path":"src-ui/src/__tests__/EngineAccountOverview.test.tsx","digest":"3fd114869a4de8dc4a8444d53f4e16202ed78cfa713218553c3762a0460dc3be","revision":"3ea07647f240025bd44ab538e073f7617b32fbbf"},
 
     {"path":"src-server/services/connections/credential-usage-metadata.ts","digest":"e87d9b0acd6f0a136d3a4b28d4bd8c18aaaca328fe3343837ac7a651ebaec584","revision":"9eec73db9183c76ac49c8584171ff3c45463f518"},
 
@@ -270,7 +270,7 @@
 
     {"path":"src-server/services/orchestration/__tests__/engine-account-usage-attribution.test.ts","digest":"d2b66dc45d766afb29dfcd5d0682c46a3c4e947103436bb7be17f36c37832521","revision":"c2f51cf0697d7d6a64c75e6ebee23c25c8b437fa"},
 
-    {"path":"src-server/analytics/usage-rollup-service.ts","digest":"57984b3bd575e53c85655d49bb7fdaaa9a4267e10225e22fbe819beedb15a081","revision":"0dd1181141ba6a645601e6798079a16189510438"},
+    {"path":"src-server/analytics/usage-rollup-service.ts","digest":"72854055e8cc4f894e5bcc1c89287eb7a6eae4e3a43ca92df0a16f29a4aae4bc","revision":"16115fc6e0cb1bd66d4053aad666c77f26349d4f"},
 
     {"path":"src-server/services/orchestration/session-transcript-reads.ts","digest":"cde3fc9fb19a7b38b5d2d48dfb3cb16c97ab6e26ffa0990f0e7180e9e1edf6ad","revision":"0dd1181141ba6a645601e6798079a16189510438"},
 
