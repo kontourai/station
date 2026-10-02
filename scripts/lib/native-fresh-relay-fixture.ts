@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import {
   closeSync,
   constants,
@@ -14,10 +14,12 @@ import {
 } from 'node:fs';
 import { Socket } from 'node:net';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { ensureStationHomeSchemaSync } from '@kontourai/station-shared/station-home-schema';
 import { z } from 'zod';
 import { allocateFreePortBlock } from '../../src-server/runtime/bootstrap/allocate-port-block.js';
 import { loadSelfHostedBrokerConnectorConfig } from '../../src-server/runtime/bootstrap/self-hosted-connector-config.js';
+import { createBrokerCredentialBundle } from '../../src-server/services/connections/self-hosted-broker-service.js';
 import { ConnectionSigningKeyStore } from '../../src-server/services/ssh/connection-signing-key-store.js';
 import { EnvironmentSecurityService } from '../../src-server/services/ssh/environment-security-service.js';
 
@@ -32,7 +34,7 @@ const scope = z
   .object({
     stationId: z.string().uuid(),
     enrollmentId: z.string().uuid(),
-    routingGeneration: z.literal(1),
+    routingGeneration: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
     browserOrigin: origin,
   })
   .strict();
@@ -63,6 +65,18 @@ const planSchema = z
     scope,
     stationTrust: signing,
     lifetimeMs: z.literal(NATIVE_FRESH_LIFETIME_MS),
+    stationHome: z.string().optional(),
+    predecessor: z
+      .object({
+        planPath: z.string(),
+        expectedRoutingGeneration: z
+          .number()
+          .int()
+          .positive()
+          .max(Number.MAX_SAFE_INTEGER - 1),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 export type NativeFreshFixturePlan = z.infer<typeof planSchema>;
@@ -115,9 +129,7 @@ export function readNativeFreshPrivateJson(path: string): unknown {
   }
 }
 
-export function loadNativeFreshFixturePlan(
-  path: string,
-): NativeFreshFixturePlan {
+function parseFixturePlan(path: string): NativeFreshFixturePlan {
   const plan = planSchema.parse(readNativeFreshPrivateJson(path));
   assert(
     isAbsolute(plan.directory) &&
@@ -135,7 +147,289 @@ export function loadNativeFreshFixturePlan(
       plan.scope.browserOrigin === plan.applicationOrigin,
     'fixture_scope_mismatch',
   );
+  assert(
+    Boolean(plan.predecessor) === Boolean(plan.stationHome),
+    'fixture_successor_provenance_required',
+  );
+  assert(
+    plan.predecessor || plan.scope.routingGeneration === 1,
+    'fixture_fresh_generation_required',
+  );
   return Object.freeze(plan);
+}
+
+function fixtureHome(plan: NativeFreshFixturePlan): string {
+  const home = plan.stationHome ?? join(plan.directory, 'home');
+  assert(
+    isAbsolute(home) && resolve(home) === home,
+    'fixture_home_path_invalid',
+  );
+  const info = lstatSync(home);
+  assert(
+    info.isDirectory() &&
+      !info.isSymbolicLink() &&
+      info.uid === process.getuid?.() &&
+      (info.mode & 0o077) === 0,
+    'fixture_private_home_required',
+  );
+  return home;
+}
+
+export function loadNativeFreshFixturePlan(
+  path: string,
+): NativeFreshFixturePlan {
+  const plan = parseFixturePlan(path);
+  if (plan.predecessor) {
+    const prior = parseFixturePlan(plan.predecessor.planPath);
+    assert(
+      plan.directory !== prior.directory &&
+        plan.predecessor.expectedRoutingGeneration ===
+          prior.scope.routingGeneration &&
+        plan.scope.routingGeneration === prior.scope.routingGeneration + 1,
+      'fixture_exact_successor_required',
+    );
+    assert(
+      plan.scope.stationId === prior.scope.stationId &&
+        plan.scope.enrollmentId === prior.scope.enrollmentId &&
+        plan.applicationOrigin === prior.applicationOrigin &&
+        plan.brokerOrigin === prior.brokerOrigin &&
+        fixtureHome(plan) === fixtureHome(prior),
+      'fixture_successor_scope_mismatch',
+    );
+    assert.deepEqual(
+      plan.stationTrust,
+      prior.stationTrust,
+      'fixture_successor_trust_mismatch',
+    );
+  }
+  return plan;
+}
+
+const credentialSchema = z
+  .object({ id: z.string().regex(/^[A-Za-z0-9_-]{22}$/u), secret: opaque })
+  .strict();
+const brokerCredentialsSchema = z
+  .object({
+    version: z.literal('station-self-hosted-broker-credentials/v1'),
+    scope,
+    bundle: z
+      .object({ connector: credentialSchema, routing: credentialSchema })
+      .strict(),
+  })
+  .strict();
+const brokerInitSchema = z
+  .object({
+    version: z.literal('station-self-hosted-broker/v1'),
+    databasePath: z.string(),
+    credentialsPath: z.string(),
+    port: z.number().int(),
+    provision: z.array(scope).length(1),
+  })
+  .strict();
+
+function openFixtureBrokerSnapshot(databasePath: string) {
+  assert(
+    isAbsolute(databasePath) && resolve(databasePath) === databasePath,
+    'fixture_broker_database_path_invalid',
+  );
+  const info = lstatSync(databasePath);
+  const parent = lstatSync(dirname(databasePath));
+  assert(
+    info.isFile() &&
+      !info.isSymbolicLink() &&
+      info.nlink === 1 &&
+      info.uid === process.getuid?.() &&
+      (info.mode & 0o077) === 0 &&
+      parent.isDirectory() &&
+      !parent.isSymbolicLink() &&
+      parent.uid === process.getuid?.() &&
+      (parent.mode & 0o077) === 0,
+    'fixture_private_broker_database_required',
+  );
+  return new DatabaseSync(databasePath, { readOnly: true });
+}
+
+function brokerOwnerSnapshot(plan: NativeFreshFixturePlan) {
+  const config = brokerInitSchema.parse(
+    readNativeFreshPrivateJson(join(plan.directory, 'broker-init.json')),
+  );
+  assert.equal(
+    config.credentialsPath,
+    join(plan.directory, 'broker-credentials.json'),
+    'fixture_credentials_owner_mismatch',
+  );
+  assert.deepEqual(
+    config.provision[0],
+    plan.scope,
+    'fixture_broker_scope_mismatch',
+  );
+  const credentials = brokerCredentialsSchema.parse(
+    readNativeFreshPrivateJson(config.credentialsPath),
+  );
+  assert.deepEqual(
+    credentials.scope,
+    plan.scope,
+    'fixture_credentials_scope_mismatch',
+  );
+  const database = openFixtureBrokerSnapshot(config.databasePath);
+  try {
+    const row = database
+      .prepare(
+        'SELECT generation,enrollment_id,browser_origin,connector_id,connector_hash,routing_id,routing_hash,expires_at,withdrawn_at FROM broker_leases WHERE station_id=?',
+      )
+      .get(plan.scope.stationId);
+    assert(
+      row &&
+        row.generation === plan.scope.routingGeneration &&
+        row.enrollment_id === plan.scope.enrollmentId &&
+        row.browser_origin === plan.applicationOrigin,
+      'fixture_broker_generation_changed',
+    );
+    for (const kind of ['connector', 'routing'] as const) {
+      const hash: unknown = row[`${kind}_hash`];
+      assert(
+        row[`${kind}_id`] === credentials.bundle[kind].id &&
+          hash instanceof Uint8Array &&
+          hash.length === 32 &&
+          timingSafeEqual(
+            hash,
+            createHash('sha256')
+              .update(credentials.bundle[kind].secret)
+              .digest(),
+          ),
+        'fixture_broker_owner_mismatch',
+      );
+    }
+    return {
+      config,
+      expiresAt: Number(row.expires_at),
+      withdrawnAt: row.withdrawn_at,
+    };
+  } finally {
+    database.close();
+  }
+}
+
+/** Read-only after normal broker init; no stale plan can spawn a connector. */
+export function assertNativeFreshBrokerLeaseCommitted(
+  plan: NativeFreshFixturePlan,
+): void {
+  const row = brokerOwnerSnapshot(plan);
+  assert(
+    row.withdrawnAt === null && row.expiresAt > Date.now(),
+    'fixture_broker_live_lease_required',
+  );
+}
+
+export async function prepareNativeFreshFixtureSuccessor(
+  priorPath: string,
+  directory: string,
+  expectedGeneration: number,
+  sourceRevision: string,
+) {
+  const prior = loadNativeFreshFixturePlan(priorPath);
+  assert(
+    Number.isSafeInteger(expectedGeneration) &&
+      expectedGeneration > 0 &&
+      expectedGeneration < Number.MAX_SAFE_INTEGER &&
+      expectedGeneration === prior.scope.routingGeneration,
+    'fixture_expected_generation_mismatch',
+  );
+  z.object({
+    runId: z.literal(prior.runId),
+    primaryRuntimeFailed: z.literal(false),
+    outputTruncated: z.literal(false),
+    outputInvalidUtf8: z.literal(false),
+    processGroupSettled: z.literal(true),
+    brokerCleanupConfirmed: z.literal(true),
+  })
+    .passthrough()
+    .parse(readNativeFreshPrivateJson(join(prior.directory, 'cleanup.json')));
+  const owner = z
+    .object({
+      runId: z.literal(prior.runId),
+      pid: z.number().int().positive().max(2_147_483_647),
+    })
+    .passthrough()
+    .parse(
+      readNativeFreshPrivateJson(join(prior.directory, 'runtime-owner.json')),
+    );
+  try {
+    process.kill(owner.pid, 0);
+    throw new Error('fixture_prior_process_live');
+  } catch (error) {
+    if (
+      !(error instanceof Error) ||
+      !('code' in error) ||
+      error.code !== 'ESRCH'
+    )
+      throw error;
+  }
+  const row = brokerOwnerSnapshot(prior);
+  assert(row.withdrawnAt !== null, 'fixture_prior_scope_not_withdrawn');
+  const home = fixtureHome(prior);
+  assert.deepEqual(
+    new ConnectionSigningKeyStore(home).readDescriptor(),
+    prior.stationTrust,
+    'fixture_station_trust_changed',
+  );
+  const operator = z
+    .object({ credential: opaque })
+    .strict()
+    .parse(readNativeFreshPrivateJson(join(prior.directory, 'operator.json')));
+  assert(
+    new EnvironmentSecurityService({ homeDir: home }).verifyOperatorCredential(
+      operator.credential,
+    ),
+    'fixture_operator_owner_mismatch',
+  );
+  assert(
+    isAbsolute(directory) &&
+      resolve(directory) === directory &&
+      directory !== prior.directory,
+    'fixture_path_invalid',
+  );
+  mkdirSync(directory, { mode: 0o700 });
+  const plan = planSchema.parse({
+    ...prior,
+    runId: randomUUID(),
+    directory,
+    port: await allocateFreePortBlock('127.0.0.1'),
+    sourceRevision,
+    stationHome: home,
+    scope: { ...prior.scope, routingGeneration: expectedGeneration + 1 },
+    predecessor: {
+      planPath: priorPath,
+      expectedRoutingGeneration: expectedGeneration,
+    },
+  });
+  writeFileSync(join(directory, 'operator.json'), JSON.stringify(operator), {
+    mode: 0o600,
+    flag: 'wx',
+  });
+  writeFileSync(
+    join(directory, 'broker-credentials.json'),
+    JSON.stringify({
+      version: 'station-self-hosted-broker-credentials/v1',
+      scope: plan.scope,
+      bundle: createBrokerCredentialBundle(),
+    }),
+    { mode: 0o600, flag: 'wx' },
+  );
+  writeFileSync(
+    join(directory, 'broker-init.json'),
+    JSON.stringify({
+      ...row.config,
+      credentialsPath: join(directory, 'broker-credentials.json'),
+      provision: [plan.scope],
+    }),
+    { mode: 0o600, flag: 'wx' },
+  );
+  writeFileSync(join(directory, 'plan.json'), JSON.stringify(plan), {
+    mode: 0o600,
+    flag: 'wx',
+  });
+  return loadNativeFreshFixturePlan(join(directory, 'plan.json'));
 }
 
 export async function prepareNativeFreshFixture(
@@ -270,7 +564,7 @@ export function nativeFreshFixtureEnvironment(
     artifact.sha256,
     'fixture_pion_digest_mismatch',
   );
-  const home = join(plan.directory, 'home');
+  const home = fixtureHome(plan);
   const liveTrust = new ConnectionSigningKeyStore(home).readDescriptor();
   assert.deepEqual(
     liveTrust,

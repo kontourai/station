@@ -16,12 +16,14 @@ import {
   runLabCommand,
 } from './lib/local-collaboration-process.mjs';
 import {
+  assertNativeFreshBrokerLeaseCommitted,
   cleanupNativeFreshBrokerGrants,
   installNativeFreshNodeNetworkGuard,
   loadNativeFreshFixturePlan,
   nativeFreshFixtureEnvironment,
   nativeFreshOperatorRequest,
   prepareNativeFreshFixture,
+  prepareNativeFreshFixtureSuccessor,
   readNativeFreshPrivateJson,
 } from './lib/native-fresh-relay-fixture.js';
 import {
@@ -44,8 +46,13 @@ const privateOutput = (path: string, directory: string, value: unknown) => {
 async function main() {
   const [mode, path, argument, extra] = process.argv.slice(2);
   assert(mode && path, 'fixture_usage');
-  if (mode === 'prepare') {
-    assert(!argument && !extra, 'fixture_usage');
+  if (mode === 'prepare' || mode === 'prepare-successor') {
+    assert(
+      mode === 'prepare'
+        ? !argument && !extra
+        : argument && extra && /^[1-9][0-9]*$/u.test(extra),
+      'fixture_usage',
+    );
     const clean = (
       await runLabCommand(
         'git',
@@ -61,10 +68,19 @@ async function main() {
         resolve(import.meta.dirname, '..'),
       )
     ).stdout.trim();
-    const plan = await prepareNativeFreshFixture(path, sourceRevision);
+    const plan =
+      mode === 'prepare'
+        ? await prepareNativeFreshFixture(path, sourceRevision)
+        : await prepareNativeFreshFixtureSuccessor(
+            path,
+            argument!,
+            Number(extra),
+            sourceRevision,
+          );
     output({
-      status: 'prepared',
-      planPath: join(path, 'plan.json'),
+      status:
+        mode === 'prepare' ? 'prepared' : 'successor_prepared_not_provisioned',
+      planPath: join(plan.directory, 'plan.json'),
       ...plan,
       signingKeyConfirmationCode: await stationConnectionKeyConfirmationCode(
         plan.stationTrust,
@@ -110,6 +126,7 @@ async function main() {
       'fixture_committed_source_changed',
     );
     const env = nativeFreshFixtureEnvironment(plan, connectorPath);
+    assertNativeFreshBrokerLeaseCommitted(plan);
     for (const directory of ['os-home', 'tmp'])
       mkdirSync(join(plan.directory, directory), {
         mode: 0o700,

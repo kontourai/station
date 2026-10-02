@@ -91,11 +91,57 @@ Pion, or public Project transfer was established by this failed run.
 The existing `provision` transaction returns an exact same-generation bundle
 idempotently without changing expiry. `register` and `renew` require a live lease.
 Therefore repeating private `init` cannot revive this expired generation. Keep
-its run directory and scope unchanged. The justified next attempt uses a new
-owned scope, completes artifact staging first, provisions last, and observes
-real online registration plus renewal. No lease TTL or authority rule is changed.
+its run directory and scope unchanged. At that revision the fixture required a
+new Station scope. The maintained successor preparation below instead permits
+an explicitly owned next routing generation after confirmed cleanup. Both paths
+complete artifact staging first, provision last, and observe real online
+registration plus renewal. Neither changes a lease TTL or authority rule.
 The [operator guide](../../docs/guides/self-hosted-broker.md) records the explicit
 recovery proposal separately; it is not an implemented bypass.
+
+## Owned successor after shutdown
+
+To retain the same Station, enrollment, signing key, Station home and logical
+application audience after an owned run ends, prepare its exact successor:
+
+```sh
+node --import tsx scripts/native-fresh-relay-fixture.ts prepare-successor /absolute/old-run/plan.json /absolute/new-run 1
+```
+
+The final argument is the expected current routing generation. It must match
+the prior private plan and actual broker row; this example prepares generation
+2. Preparation requires the prior wrapper's clean cleanup receipt, a settled
+child, an actually withdrawn lease, and matching private connector/routing
+credential hashes for that exact Station/enrollment/Origin. Foreign credentials,
+changed scope, a newer broker generation, unsafe private files, and incomplete
+cleanup refuse preparation. Initial `prepare` still creates a genuine fresh
+Station at generation 1.
+
+The successor owns a new run directory, listener block, runtime process receipts,
+and private connector/routing credential bundle. Its plan records the predecessor
+and retained Station home. The existing operator credential stays in the private
+runtime host; no account cookies, Device credential, model secret or new principal
+is copied into a caller. The retained home preserves existing Station data. A
+public install proof for the unchanged app/broker/Station/enrollment can be reused
+only after its current host context is checked. Station-key trust is separate
+from a routing grant, account session, Device activation and Project membership.
+
+Preparation does not initialize a lease. Its database inspection is a snapshot,
+not atomic provisioning. Stage a genuinely compiled Pion artifact for the new
+source revision, certificates and a connector config whose private resource paths
+belong to the new run. Run the complete environment preflight before provisioning.
+The normal broker `init` uses the successor's new private `broker-init.json` and
+bundle; its existing transaction owns the generation CAS and rejects a competing
+bundle or newer generation. `serve` verifies the actual committed scope, bundle
+hashes and live lease before spawning a child. Broker registration still performs
+its own authority check if the row changes after that inspection.
+
+Provision last, immediately start the foreground runtime, and observe registration
+and renewal before publishing or minting a fresh invitation. Each run retains its
+original thirty-minute limit. An old generation's credentials cannot withdraw
+its successor; old receipts and expired invitations remain evidence, not retry
+inputs. Inspect uncertain host grant/activation effects before another attempt;
+successor preparation does not prove that a native grant was absent or retired.
 
 ## Fresh person and Device journey
 

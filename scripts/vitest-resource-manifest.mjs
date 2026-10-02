@@ -149,6 +149,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/services/orchestration/__tests__/workspace-identity.test.ts',
   // Runs the source CLI twice against one private SQLite root to prove init recovery.
   'scripts/__tests__/self-hosted-broker-cli.test.ts',
+  // A real short Node lifecycle supplies the dead-child prerequisite for broker successor preparation.
+  'scripts/__tests__/native-fresh-relay-fixture.test.ts',
   // Races two real worker-owned SQLite connections at one lease CAS barrier.
   'src-server/services/connections/__tests__/self-hosted-broker-service.test.ts',
   // Exercises owned Pion child lifecycle and injected teardown faults.

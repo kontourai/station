@@ -1,14 +1,28 @@
+import { spawnSync } from 'node:child_process';
 import { once } from 'node:events';
-import { chmodSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  readFileSync,
+  renameSync,
+  symlinkSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { createConnection, createServer, Socket } from 'node:net';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { expect, test } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
+import {
+  createBrokerCredentialBundle,
+  SelfHostedBrokerService,
+} from '../../src-server/services/connections/self-hosted-broker-service.js';
 import { EnvironmentSecurityService } from '../../src-server/services/ssh/environment-security-service.js';
 import {
+  assertNativeFreshBrokerLeaseCommitted,
   installNativeFreshNodeNetworkGuard,
   loadNativeFreshFixturePlan,
   prepareNativeFreshFixture,
+  prepareNativeFreshFixtureSuccessor,
   readNativeFreshPrivateJson,
 } from '../lib/native-fresh-relay-fixture.js';
 
@@ -54,6 +68,270 @@ test('fresh fixture prepares a genuine unpaired Station and refuses private-plan
   expect(
     JSON.parse(readFileSync(join(directory, 'operator.json'), 'utf8')),
   ).toHaveProperty('credential');
+});
+
+async function completedBrokerFixture(withdraw = true) {
+  const root = makeTempDir('native-successor-');
+  const directory = join(root, 'first');
+  const prior = await prepareNativeFreshFixture(directory, revision);
+  const databasePath = join(root, 'broker.sqlite');
+  const broker = new SelfHostedBrokerService(databasePath);
+  const bundle = createBrokerCredentialBundle();
+  broker.provision(prior.scope, 60_000, bundle);
+  if (withdraw) broker.withdraw(prior.scope, bundle.connector);
+  const write = (name: string, value: unknown) =>
+    writeFileSync(join(directory, name), JSON.stringify(value), {
+      mode: 0o600,
+    });
+  write('broker-credentials.json', {
+    version: 'station-self-hosted-broker-credentials/v1',
+    scope: prior.scope,
+    bundle,
+  });
+  write('broker-init.json', {
+    version: 'station-self-hosted-broker/v1',
+    databasePath,
+    credentialsPath: join(directory, 'broker-credentials.json'),
+    port: 18765,
+    provision: [prior.scope],
+  });
+  const child = spawnSync(process.execPath, ['-e', ''], {
+    windowsHide: true,
+    timeout: 5000,
+  });
+  expect(child.status).toBe(0);
+  write('runtime-owner.json', {
+    runId: prior.runId,
+    pid: child.pid,
+    pgid: child.pid,
+  });
+  write('cleanup.json', {
+    runId: prior.runId,
+    primaryRuntimeFailed: false,
+    outputTruncated: false,
+    outputInvalidUtf8: false,
+    processGroupSettled: true,
+    brokerCleanupConfirmed: true,
+  });
+  return { root, directory, prior, broker, bundle, write };
+}
+
+test('operator successor retains the genuine Station home and trust, provisions exact generation two, and fences old cleanup and newer owners', async () => {
+  const f = await completedBrokerFixture();
+  try {
+    const unrelated = {
+      ...f.prior.scope,
+      stationId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+    };
+    const unrelatedBundle = createBrokerCredentialBundle();
+    f.broker.provision(unrelated, 60_000, unrelatedBundle);
+    const successor = await prepareNativeFreshFixtureSuccessor(
+      join(f.directory, 'plan.json'),
+      join(f.root, 'second'),
+      1,
+      revision,
+    );
+    expect(successor.scope.routingGeneration).toBe(2);
+    expect(successor.stationHome).toBe(join(f.directory, 'home'));
+    expect(successor.stationTrust).toEqual(f.prior.stationTrust);
+    expect(successor.applicationOrigin).toBe(f.prior.applicationOrigin);
+    expect(successor.runId === f.prior.runId).toBe(false);
+    const credentials = JSON.parse(
+      readFileSync(
+        join(successor.directory, 'broker-credentials.json'),
+        'utf8',
+      ),
+    );
+    expect(
+      credentials.bundle.connector.secret === f.bundle.connector.secret,
+    ).toBe(false);
+    expect(() => assertNativeFreshBrokerLeaseCommitted(successor)).toThrow(
+      'fixture_broker_generation_changed',
+    );
+    // Normal production provisioning owns the transaction; preparation did not initialize a lease.
+    const initialized = spawnSync(
+      process.execPath,
+      [
+        '--import',
+        'tsx',
+        'scripts/self-hosted-broker.ts',
+        'init',
+        join(successor.directory, 'broker-init.json'),
+      ],
+      {
+        cwd: resolve(import.meta.dirname, '../..'),
+        windowsHide: true,
+        timeout: 30_000,
+        encoding: 'utf8',
+        maxBuffer: 65536,
+      },
+    );
+    expect({
+      status: initialized.status,
+      errorType: initialized.error?.name,
+    }).toEqual({ status: 0, errorType: undefined });
+    expect(() =>
+      assertNativeFreshBrokerLeaseCommitted(successor),
+    ).not.toThrow();
+    expect(() =>
+      f.broker.withdraw(f.prior.scope, f.bundle.connector),
+    ).toThrow();
+    expect(() =>
+      assertNativeFreshBrokerLeaseCommitted(successor),
+    ).not.toThrow();
+    expect(() =>
+      f.broker.register(unrelated, unrelatedBundle.connector),
+    ).not.toThrow();
+    await expect(
+      prepareNativeFreshFixtureSuccessor(
+        join(f.directory, 'plan.json'),
+        join(f.root, 'stale'),
+        1,
+        revision,
+      ),
+    ).rejects.toThrow('fixture_broker_generation_changed');
+    f.broker.provision(
+      { ...successor.scope, routingGeneration: 3 },
+      60_000,
+      createBrokerCredentialBundle(),
+    );
+    expect(() => assertNativeFreshBrokerLeaseCommitted(successor)).toThrow(
+      'fixture_broker_generation_changed',
+    );
+  } finally {
+    f.broker.close();
+  }
+});
+
+test('successor refuses a live declared child, mismatched generation, incomplete cleanup, foreign private bundle and unsafe custody', async () => {
+  const f = await completedBrokerFixture();
+  try {
+    const priorPath = join(f.directory, 'plan.json');
+    await expect(
+      prepareNativeFreshFixtureSuccessor(
+        priorPath,
+        join(f.root, 'bad-generation'),
+        2,
+        revision,
+      ),
+    ).rejects.toThrow('fixture_expected_generation_mismatch');
+    const owner = JSON.parse(
+      readFileSync(join(f.directory, 'runtime-owner.json'), 'utf8'),
+    );
+    f.write('runtime-owner.json', { ...owner, pid: process.pid });
+    await expect(
+      prepareNativeFreshFixtureSuccessor(
+        priorPath,
+        join(f.root, 'live'),
+        1,
+        revision,
+      ),
+    ).rejects.toThrow('fixture_prior_process_live');
+    f.write('runtime-owner.json', owner);
+    const cleanup = JSON.parse(
+      readFileSync(join(f.directory, 'cleanup.json'), 'utf8'),
+    );
+    f.write('cleanup.json', { ...cleanup, processGroupSettled: false });
+    await expect(
+      prepareNativeFreshFixtureSuccessor(
+        priorPath,
+        join(f.root, 'unsettled'),
+        1,
+        revision,
+      ),
+    ).rejects.toThrow();
+    f.write('cleanup.json', cleanup);
+    const credentialPath = join(f.directory, 'broker-credentials.json');
+    const credentials = JSON.parse(readFileSync(credentialPath, 'utf8'));
+    f.write('broker-credentials.json', {
+      ...credentials,
+      bundle: {
+        connector: {
+          ...credentials.bundle.connector,
+          secret: createBrokerCredentialBundle().connector.secret,
+        },
+        routing: credentials.bundle.routing,
+      },
+    });
+    await expect(
+      prepareNativeFreshFixtureSuccessor(
+        priorPath,
+        join(f.root, 'foreign'),
+        1,
+        revision,
+      ),
+    ).rejects.toThrow('fixture_broker_owner_mismatch');
+    f.write('broker-credentials.json', credentials);
+    chmodSync(credentialPath, 0o644);
+    await expect(
+      prepareNativeFreshFixtureSuccessor(
+        priorPath,
+        join(f.root, 'public'),
+        1,
+        revision,
+      ),
+    ).rejects.toThrow('fixture_private_file_required');
+    chmodSync(credentialPath, 0o600);
+    const saved = join(f.directory, 'saved-broker-credentials.json');
+    renameSync(credentialPath, saved);
+    symlinkSync(saved, credentialPath);
+    await expect(
+      prepareNativeFreshFixtureSuccessor(
+        priorPath,
+        join(f.root, 'linked'),
+        1,
+        revision,
+      ),
+    ).rejects.toThrow('fixture_private_file_required');
+    unlinkSync(credentialPath);
+    renameSync(saved, credentialPath);
+    const config = JSON.parse(
+      readFileSync(join(f.directory, 'broker-init.json'), 'utf8'),
+    );
+    const databaseLink = join(f.root, 'linked-broker.sqlite');
+    symlinkSync(config.databasePath, databaseLink);
+    f.write('broker-init.json', { ...config, databasePath: databaseLink });
+    await expect(
+      prepareNativeFreshFixtureSuccessor(
+        priorPath,
+        join(f.root, 'linked-database'),
+        1,
+        revision,
+      ),
+    ).rejects.toThrow('fixture_private_broker_database_required');
+    f.write('broker-init.json', {
+      ...config,
+      provision: [
+        {
+          ...f.prior.scope,
+          enrollmentId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+        },
+      ],
+    });
+    await expect(
+      prepareNativeFreshFixtureSuccessor(
+        priorPath,
+        join(f.root, 'foreign-scope'),
+        1,
+        revision,
+      ),
+    ).rejects.toThrow('fixture_broker_scope_mismatch');
+  } finally {
+    f.broker.close();
+  }
+  const live = await completedBrokerFixture(false);
+  try {
+    await expect(
+      prepareNativeFreshFixtureSuccessor(
+        join(live.directory, 'plan.json'),
+        join(live.root, 'not-withdrawn'),
+        1,
+        revision,
+      ),
+    ).rejects.toThrow('fixture_prior_scope_not_withdrawn');
+  } finally {
+    live.broker.close();
+  }
 });
 
 test('disposable native fixture network guard permits its real local listener and refuses foreign HTTPS, unowned local ports and Unix sockets', async () => {
