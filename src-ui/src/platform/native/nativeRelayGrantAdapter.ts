@@ -120,6 +120,16 @@ export interface NativeRelayGrantAdapter {
       'brokerOrigin' | 'stationId' | 'enrollmentId'
     >;
   }): Promise<NativeRelayGrantRedemptionResult>;
+  redeemLinked(input: {
+    profileName: string;
+    expectedProfileRevision: number;
+    expectedUpdatedAt: number;
+    pendingId: string;
+    expectedRoute: Pick<
+      NativeRelayGrantRoute,
+      'brokerOrigin' | 'stationId' | 'enrollmentId'
+    >;
+  }): Promise<NativeRelayGrantRedemptionResult>;
 }
 
 const ERROR_CODES = new Set<NativeRelayGrantRedemptionFailureCode>([
@@ -748,6 +758,14 @@ export function createNativeRelayGrantAdapter(
         expectedRoute,
       ),
     assertCurrentRoute,
+    redeemLinked: async (input) => {
+      await assertCurrentRoute(input);
+      const { expectedRoute, ...request } = input;
+      return parseRedemptionFailure(
+        await invoke<unknown>('station_native_relay_link_redeem', request),
+        expectedRoute,
+      );
+    },
     redeem: async (input) => {
       const profileName = stringField(input.profileName, 'profileName', 256);
       const expectedProfileRevision = integerField(

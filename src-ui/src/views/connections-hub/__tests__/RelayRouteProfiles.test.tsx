@@ -3,6 +3,7 @@
 import { defaultStorage } from '@kontourai/station-connect';
 import type { NativeVerifiedPeerSignaling } from '@kontourai/station-connect/native-application';
 import type { NativeEnrollmentOpenedPeer } from '@kontourai/station-connect/native-enrollment';
+import { parseNativeRelayLink } from '@kontourai/station-connect/native-relay-link';
 import {
   emptyStationProfileStore,
   type StationProfileStore,
@@ -200,7 +201,12 @@ vi.mock(
 );
 
 vi.mock('../../../platform/PlatformProfileContext', () => ({
-  usePlatformProfile: () => ({ isTauri: true, isDesktop: mocks.isDesktop }),
+  usePlatformProfile: () => ({
+    isTauri: true,
+    isDesktop: mocks.isDesktop,
+    channel: 'nightly',
+    pairingDeepLinkScheme: 'station-nightly',
+  }),
   nativeProfileRepository: () =>
     mocks.repository ?? {
       getRelayRouteProfiles: () => mocks.profiles,
@@ -688,6 +694,39 @@ describe('RelayRouteProfiles', () => {
       mocks.profiles = [];
       for (const listener of mocks.listeners) listener();
     });
+  });
+
+  test('copies an explicit public iOS setup link without issuing an invitation or granting access', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    });
+    renderRoutes();
+    expect(writeText).not.toHaveBeenCalled();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Copy public iOS setup link' }),
+    );
+    await waitFor(() => expect(writeText).toHaveBeenCalledOnce());
+    const link = String(writeText.mock.calls[0]?.[0]);
+    const decoded = parseNativeRelayLink(link, {
+      channel: 'nightly',
+      appIdentifier: 'io.kontourai.station.nightly',
+    });
+    expect(decoded).toEqual({
+      version: 'station-native-relay-link/v1',
+      kind: 'route-intent',
+      applicationOrigin: mocks.profiles[0].endpoint,
+      brokerOrigin: 'https://broker.example',
+      stationId,
+      enrollmentId,
+    });
+    expect(link).toMatch(/^station-relay-nightly:\/\/relay#/u);
+    expect(decoded).not.toHaveProperty('invitation');
+    expect(mocks.beginKey).not.toHaveBeenCalled();
+    expect(mocks.approveKey).not.toHaveBeenCalled();
+    expect(mocks.accountLogin).not.toHaveBeenCalled();
+    expect(mocks.save).not.toHaveBeenCalled();
   });
 
   test('lists an unconfigured route, offers edit, and removes it without revoking trust', async () => {

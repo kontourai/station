@@ -4,6 +4,7 @@ import {
   stationRelayRouteTrustStatus,
 } from '@kontourai/station-connect/connection-trust';
 import type { StationProfile } from '@kontourai/station-contracts';
+import type { NativeRelayLinkRoute } from '@kontourai/station-contracts/native-relay-link';
 import { useQuery } from '@tanstack/react-query';
 import { useId, useState } from 'react';
 import { Button } from '../../components/Button';
@@ -137,22 +138,26 @@ export function RelayRouteTrustReadout({
 
 export function RelayRouteProfileDialog({
   profile,
+  initialRoute,
   onClose,
 }: {
   profile?: StationProfile;
+  initialRoute?: NativeRelayLinkRoute;
   onClose: () => void;
 }) {
   const fieldId = useId();
   const [name, setName] = useState(profile?.name ?? '');
-  const [endpoint, setEndpoint] = useState(profile?.endpoint ?? '');
+  const [endpoint, setEndpoint] = useState(
+    profile?.endpoint ?? initialRoute?.applicationOrigin ?? '',
+  );
   const [brokerOrigin, setBrokerOrigin] = useState(
-    profile?.relayRoute?.brokerOrigin ?? '',
+    profile?.relayRoute?.brokerOrigin ?? initialRoute?.brokerOrigin ?? '',
   );
   const [stationId, setStationId] = useState(
-    profile?.relayRoute?.stationId ?? '',
+    profile?.relayRoute?.stationId ?? initialRoute?.stationId ?? '',
   );
   const [enrollmentId, setEnrollmentId] = useState(
-    profile?.relayRoute?.enrollmentId ?? '',
+    profile?.relayRoute?.enrollmentId ?? initialRoute?.enrollmentId ?? '',
   );
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);

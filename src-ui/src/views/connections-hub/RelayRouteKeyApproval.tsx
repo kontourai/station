@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useId, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
+import { cancelNativeRelayLink } from '../../platform/native/nativeRelayLinkAdapter';
 import {
   nativeRelayKeyApproval,
   type RelayKeyApprovalSurface,
@@ -23,12 +24,27 @@ export function RelayRouteKeyApproval({
   brokerOrigin,
   stationId,
   enrollmentId,
+  linkedInvitation,
 }: {
   profileName: string;
   brokerOrigin: string;
   stationId: string;
   enrollmentId: string;
+  linkedInvitation?: {
+    pendingId: string;
+    expectedUpdatedAt: number;
+    surface: Omit<
+      RelayKeyApprovalSurface,
+      | 'profileName'
+      | 'brokerOrigin'
+      | 'stationId'
+      | 'enrollmentId'
+      | 'publicKey'
+    >;
+    expiresAt: number;
+  };
 }) {
+  const linkedPendingId = linkedInvitation?.pendingId;
   const id = useId();
   const queryClient = useQueryClient();
   const [invitation, setInvitation] = useState('');
@@ -66,6 +82,25 @@ export function RelayRouteKeyApproval({
   };
   const begin = useMutation({
     mutationFn: (attemptId: number) => {
+      if (linkedInvitation) {
+        if (
+          !surface ||
+          surface.appIdentifier !== linkedInvitation.surface.appIdentifier ||
+          surface.channel !== linkedInvitation.surface.channel ||
+          surface.clientInstanceId !==
+            linkedInvitation.surface.clientInstanceId ||
+          surface.keyThumbprint !== linkedInvitation.surface.keyThumbprint ||
+          linkedInvitation.expiresAt <= Date.now()
+        )
+          throw new Error(
+            'Linked invitation does not match this native install proof.',
+          );
+        return nativeRelayKeyApproval.beginLinked({
+          pendingId: linkedInvitation.pendingId,
+          profileName,
+          expectedUpdatedAt: linkedInvitation.expectedUpdatedAt,
+        });
+      }
       const input = invitationAttempt.current;
       invitationAttempt.current = null;
       if (!input || input.id !== attemptId) {
@@ -95,7 +130,10 @@ export function RelayRouteKeyApproval({
     },
   });
   const cancel = useMutation({
-    mutationFn: () => nativeRelayKeyApproval.cancel(profileName),
+    mutationFn: () =>
+      linkedInvitation
+        ? cancelNativeRelayLink(linkedInvitation.pendingId)
+        : nativeRelayKeyApproval.cancel(profileName),
     onSuccess: async () => {
       activeAttemptId.current += 1;
       hasPendingSession.current = false;
@@ -249,13 +287,13 @@ export function RelayRouteKeyApproval({
   );
   useEffect(
     () => () => {
-      if (hasPendingSession.current) {
-        activeAttemptId.current += 1;
+      activeAttemptId.current += 1;
+      if (hasPendingSession.current && !linkedPendingId) {
         invitationAttempt.current = null;
         void nativeRelayKeyApproval.cancel(profileName).catch(() => undefined);
       }
     },
-    [profileName],
+    [profileName, linkedPendingId],
   );
   async function copySurfaceMetadata() {
     if (!surfaceMatchesRoute || !surface) return;
@@ -433,31 +471,39 @@ export function RelayRouteKeyApproval({
           <Button onClick={() => void copySurfaceMetadata()}>
             Copy public install proof
           </Button>
-          <label className="editor-field" htmlFor={`${id}-invitation`}>
-            <span className="editor-label">One-time Station invitation</span>
-            <input
-              id={`${id}-invitation`}
-              className="editor-input"
-              type="password"
-              value={invitation}
-              autoComplete="off"
-              autoCapitalize="none"
-              autoCorrect="off"
-              spellCheck={false}
-              placeholder="Paste the one-time v2 invitation JSON"
-              onChange={(event) => setInvitation(event.target.value)}
-              onPaste={(event) => {
-                const text =
-                  event.clipboardData.getData('text/plain') ||
-                  event.clipboardData.getData('text');
-                if (!text) return;
-                event.preventDefault();
-                setInvitation(text.replace(/\r\n?|\n/gu, ''));
-              }}
-            />
-          </label>
+          {!linkedInvitation && (
+            <label className="editor-field" htmlFor={`${id}-invitation`}>
+              <span className="editor-label">One-time Station invitation</span>
+              <input
+                id={`${id}-invitation`}
+                className="editor-input"
+                type="password"
+                value={invitation}
+                autoComplete="off"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                placeholder="Paste the one-time v2 invitation JSON"
+                onChange={(event) => setInvitation(event.target.value)}
+                onPaste={(event) => {
+                  const text =
+                    event.clipboardData.getData('text/plain') ||
+                    event.clipboardData.getData('text');
+                  if (!text) return;
+                  event.preventDefault();
+                  setInvitation(text.replace(/\r\n?|\n/gu, ''));
+                }}
+              />
+            </label>
+          )}
           <Button
-            disabled={!invitation.trim() || busy}
+            disabled={
+              (!linkedInvitation && !invitation.trim()) ||
+              busy ||
+              Boolean(
+                linkedInvitation && linkedInvitation.expiresAt <= Date.now(),
+              )
+            }
             pending={begin.isPending}
             onClick={() => {
               const attemptId = ++activeAttemptId.current;

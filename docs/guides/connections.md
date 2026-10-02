@@ -114,6 +114,31 @@ and choose **Set up a broker route** in the list footer. This opens the same
 saved-route setup used by **Add computer**; the address, QR and pairing-code
 actions remain available in the manager.
 
+The iOS relay link intake has two separate steps. A **public setup link**
+opens **Review Station link** with the application address explicitly marked
+as an untrusted hint. Choose **Review and save route**, then **Save route**,
+to persist those public details. Prepare and share the device’s public install
+proof through the existing controls. **Copy public iOS setup link** shares
+routing hints only; it does not issue an invitation or grant access.
+
+A later **bound invitation link** requires one exact saved route and its
+matching native install proof. The host retains the invitation secret; the UI
+receives only public metadata and an opaque pending handle. Choose **Discover
+Station key**, compare the code and complete key ID through a separate trusted
+operator channel, and explicitly approve the key. **Redeem linked routing
+invitation** is a separate action. A confirmed grant exposes the existing
+Device setup ceremony; account sign-in and Project membership remain separate.
+Opening or cancelling a link does not select a Station or retire an existing
+account session. Cold intake precedes the operator and member roots; warm
+intake covers their mounted owners during review.
+
+These links use distinct iOS relay schemes for the installed channel. Android
+secret-link intake is unsupported. The source and mounted tests qualify the
+intake contract; installed cold/warm delivery, store distribution and physical
+device acceptance still require separate evidence. The UI owners are the
+[root intake](../../src-ui/src/platform/native/NativeRelayLinkIntake.tsx) and
+[opaque native adapter](../../src-ui/src/platform/native/nativeRelayLinkAdapter.ts).
+
 **Device setup** verifies a supported account, presents the exact Device
 candidate for operator approval, then requires explicit activation. Reopening
 setup recovers an existing attempt from the host journal; an uncertain

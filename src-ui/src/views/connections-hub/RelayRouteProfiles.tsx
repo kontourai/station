@@ -726,7 +726,7 @@ export function RelayRouteProfiles({
 }: {
   readonly onInvitationAccepted?: InvitationAcceptedCallback;
 } = {}) {
-  const { isTauri } = usePlatformProfile();
+  const { isTauri, channel, pairingDeepLinkScheme } = usePlatformProfile();
   const repository = isTauri ? nativeProfileRepository() : null;
   const connectionContext = useConnections();
   const evidence = connectionContext.captureCredentialEvidence();
@@ -817,6 +817,33 @@ export function RelayRouteProfiles({
       setSelectionError('Station could not select this route. Try again.');
     } finally {
       setSelectionPending(null);
+    }
+  }
+
+  async function copyPublicSetupLink(profile: StationProfile) {
+    if (!profile.relayRoute || !channel) return;
+    try {
+      const { encodeNativeRelayLink } = await import(
+        '@kontourai/station-connect/native-relay-link'
+      );
+      const link = encodeNativeRelayLink(
+        {
+          version: 'station-native-relay-link/v1',
+          kind: 'route-intent',
+          applicationOrigin: profile.endpoint,
+          ...profile.relayRoute,
+        },
+        {
+          channel,
+          devScheme: pairingDeepLinkScheme?.replace(
+            /^station-dev-/u,
+            'station-relay-dev-',
+          ),
+        },
+      );
+      await navigator.clipboard.writeText(link);
+    } catch {
+      setError('Station could not copy the public iOS setup link.');
     }
   }
 
@@ -916,6 +943,13 @@ export function RelayRouteProfiles({
             stationId={profile.relayRoute!.stationId}
             enrollmentId={profile.relayRoute!.enrollmentId}
           />
+          <Button onClick={() => void copyPublicSetupLink(profile)}>
+            Copy public iOS setup link
+          </Button>
+          <p>
+            Setup links contain untrusted routing hints only. They grant no
+            access.
+          </p>
           <button
             type="button"
             className="connections-computers__remove tap-target"
