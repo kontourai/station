@@ -72,7 +72,7 @@
 
     {"path":"scripts/lib/local-collaboration-station-child.ts","digest":"dae3a254331b78deb31c01518369be85d251f9bc28f95c92c3ab55e5ef6889c3","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
 
-    {"path":"docs/guides/native-shell-verification.md","digest":"811180a699dc7ff7ecbd525e98aa00099c83efd00113c9154b52c55a3763f1bd","revision":"193a4a5ece772653262138bf748d52abd753f667"},
+    {"path":"docs/guides/native-shell-verification.md","digest":"f9458bcb72ac411a20cee720f67e675029b6deb75cd7e3de78468e27f4c5ae09","revision":"cc44c602194e69ca379f1dcec1b46bedc6489bac"},
 
     {"path":"src-ui/src/platform/native/nativeAccountSessionBridge.ts","digest":"8247d3d4dfe7d8bd2a5130de0b4d9d77554057662af85206426592b4ca051bd4","revision":"2e4f061f91ffb0338e45de62382cf6da59cd5c76"},
 
