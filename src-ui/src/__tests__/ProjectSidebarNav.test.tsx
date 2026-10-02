@@ -2,7 +2,13 @@
  * @vitest-environment jsdom
  */
 
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 // archive#3313: the nav derives surface visibility from live flags (enabled
@@ -111,6 +117,31 @@ describe('ProjectSidebarNav', () => {
     expect(
       screen.getAllByRole('button').map((button) => button.textContent?.trim()),
     ).toEqual(['Activity', 'Schedule', 'Customize']);
+  });
+
+  test('opens Customize, restores its trigger on close, and navigates through a choice', async () => {
+    const navigate = vi.fn();
+    const onAfterNavigate = vi.fn();
+    render(
+      <ProjectSidebarNav
+        collapsed={false}
+        isMobile={true}
+        navigate={navigate}
+        onAfterNavigate={onAfterNavigate}
+        activePath="/settings"
+      />,
+    );
+    const trigger = screen.getByRole('button', { name: 'Customize' });
+    trigger.focus();
+    fireEvent.click(trigger);
+    await screen.findByRole('dialog', { name: 'Customize' });
+    fireEvent.click(screen.getByRole('button', { name: 'Close Customize' }));
+    await waitFor(() => expect(document.activeElement).toBe(trigger));
+    fireEvent.click(trigger);
+    fireEvent.click(await screen.findByRole('link', { name: 'Agents' }));
+    expect(navigate).toHaveBeenCalledWith('/agents');
+    expect(onAfterNavigate).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('dialog', { name: 'Customize' })).toBeNull();
   });
 
   test('marks a row whose route is still loading', () => {
