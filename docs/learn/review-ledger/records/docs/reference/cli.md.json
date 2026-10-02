@@ -14,7 +14,7 @@
   "sources": [
     {"path":".github/workflows/publish-release.yml","digest":"23195a92028651edffd70c006fc2a02a08a4591711aeb7fff8b491f3297c3f57","revision":"780dbbe2bb02372ad22a92e269e2fc3fa62bcd22"},
 
-    {"path":".github/workflows/release.yml","digest":"6ceff4507c2d55bb384c36cb7fba8be4b6eaaf0f0d408ecb990398fc00996c88","revision":"b07e53ea842cac7ccad1c02f5a367ae86b745328"},
+    {"path":".github/workflows/release.yml","digest":"d97d79d3c0ce4095b2ed65f98bc348daa1337e47f2a802bf6b2360a3e0938a6c","revision":"51684c027d476a8ed882b73f3a608dfadfb91b04"},
 
     {"path":"install.sh","digest":"f2b2fbf2dba1198f08637b48ad3a1cd7ae684cee020621cd293668e6bbb8b4bc","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 

@@ -9,7 +9,7 @@
 
   "limits": "No native build, real device, Keychain/Keystore write, signed artifact, Linux/Windows launch, provider account mutation, publication, upgrade or rollback executed in this continuation. Fixture and source checks do not establish live outcomes. Parent owns combined CI and final ledger integration.",
 
-  "document": {"digest":"0b2728e32cb46904ceb2c4738d4c45c6ec6f3deb690681753eb2b1104e01a8c6","revision":"12e161f7032b17c2f97702c0c41116b0c82bbb91"},
+  "document": {"digest":"a9c5b787f2209c269b6cefa0794bfa5c9bbe9a989290ead22ed7c0c69cdf2d81","revision":"6a99df951adb1f51fde5c39f0e3f1aefcbdb79ff"},
 
   "sources": [
     {"path":".github/workflows/build-ios.yml","digest":"b4afee0a3cf62cd46226b9b68b648d15d00524a9d7bc27449e640fac6e3f9b73","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
@@ -26,7 +26,7 @@
 
     {"path":".github/workflows/publish-release.yml","digest":"23195a92028651edffd70c006fc2a02a08a4591711aeb7fff8b491f3297c3f57","revision":"780dbbe2bb02372ad22a92e269e2fc3fa62bcd22"},
 
-    {"path":".github/workflows/release.yml","digest":"6ceff4507c2d55bb384c36cb7fba8be4b6eaaf0f0d408ecb990398fc00996c88","revision":"12e161f7032b17c2f97702c0c41116b0c82bbb91"},
+    {"path":".github/workflows/release.yml","digest":"d97d79d3c0ce4095b2ed65f98bc348daa1337e47f2a802bf6b2360a3e0938a6c","revision":"51684c027d476a8ed882b73f3a608dfadfb91b04"},
 
     {"path":".github/workflows/testflight-delivery.yml","digest":"b65be60d29e76e922b07ed19bd89576ef1cac76e20712dd28d140c72d36012bb","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
 
@@ -180,7 +180,7 @@
 
     {"path":"package.json#/version","digest":"28038cba2d9ec115028d011d4b7289218a794d7e4943a6fb33f148f2eede1152","revision":"bfe2de5ae881fa9221b2dd94360d003b996f0474"},
 
-    {"path":"scripts/release-admit-producer-assets.mjs","digest":"04fd408eba2f6cca5e14a5567bd2a7c2d13adf5f5b6e21cc944a0027482e5587","revision":"12e161f7032b17c2f97702c0c41116b0c82bbb91"}
+    {"path":"scripts/release-admit-producer-assets.mjs","digest":"3bb63527ba13519e9546ffab1e6fe03497e787c292beedfca99c9c4a395fbd08","revision":"f0f9e40155cd9cae70d9305a4f80d431b2466a58"}
   ],
 
   "checks": [
