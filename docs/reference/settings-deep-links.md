@@ -2,8 +2,8 @@
 
 On phones, the **Settings section** picker lists topics; computers show the
 same topics in a navigation rail. Both stay within Settings. General is the
-default. Customize opens management destinations from a separate main-panel
-button, and Schedule has its own panel entry. Route changes still use the
+default. Customize opens management destinations from a separate sidebar-footer
+button beside Schedule and Settings. Route changes still use the
 unsaved-changes guard.
 
 The Settings catalog assigns stable ids and deep links to its controls. A

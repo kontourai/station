@@ -135,6 +135,26 @@ PROJECTS                                            +
 - **Home and Activity** keep their placed-surface semantics
   ([placement.md](placement.md)): each row opens its surface as the page
   (`main` at `/`), and the row whose surface is the page is current.
+- **Activity details** keep transcript events chronological and open at the
+  latest message. New content follows the tail until the reader scrolls back;
+  **Jump to latest** resumes following. Pending decisions stay above the
+  transcript, and errors or attention take priority over following. A failed
+  conversation-window read shows its error and Retry rather than an empty
+  conversation. The Station-owned detail's live indicator reads the app-wide
+  transcript stream; session metadata and the raw event log stay collapsed.
+  Explicit evidence links still open and focus the evidence disclosure.
+  Follow-up drafts use the canonical device draft store under the selected
+  Station URL and exact session identity. Switching sessions preserves each
+  draft; pending sends stay with their session and cannot clear a newer draft.
+  Draft rows use creation age, matching their lane order and older-draft group,
+  even when runtime housekeeping updates the session's other timestamps.
+  A routed item missing from the inventory gets an exact-session read. Only
+  the requested identity is admitted. If that read fails, Activity discloses
+  that the item is not in the current list, offers Retry, and can return to the
+  list through a fresh Activity surface intent; it does not infer deletion.
+  Owners: [`SessionTranscript`](../../src-ui/src/components/session-detail/SessionTranscript.tsx),
+  [`MutableSessionDetail`](../../src-ui/src/components/session-detail/MutableSessionDetail.tsx),
+  and [`useSessionTranscriptEvents`](../../src-ui/src/hooks/orchestration/useSessionTranscriptEvents.ts).
 - **Boards** is the project-less section. Personal Boards list first, then
   instance-shared ones. The `+` creates a personal Board.
 - **Projects** keep their model. A project row shows a live-work count, a
@@ -148,21 +168,18 @@ PROJECTS                                            +
   `src-ui/src/workspace-panes/ChatWorkspaceLayout.tsx`,
   `src-ui/src/components/chat-dock/ChatDockInboxPanel.tsx`). No conversation
   list appears in the panel. The chat dock (⌘D) is unchanged.
-- **Footer**: presence, the attention bell, the gear, and the command
-  palette's chord. Nothing else. (Amended during slice 1 (#2059): the chord
-  was the one member of the retired status line worth keeping, because the
-  palette is one of the two ways to reach everything that leaves the panel —
-  advertising the move while deleting its advertisement would be
-  self-defeating. The status line's build stamp and open-chat count did not
-  survive: the stamp belongs to a problem report, not to navigation chrome,
-  and the count restated the panel's own Open chats section.)
+- **Footer**: live work and joined-room participants, Schedule, Customize, and
+  Settings. Notifications remain in the header, and the command palette keeps
+  its keyboard shortcut. Schedule and Customize do not occupy project-list rows.
+  The live-work count reads the authorized session inventory; participant faces
+  read task-room publication. A connected browser is not treated as a person.
 
 The original slice moved Agents, Connections, Guidance, Registry, Plugins,
 Schedule, and Developer behind the Settings gear and command palette, removing
 the old Customize/System disclosure groups. The October settings simplification
 supersedes that entry-point placement: a separate **Customize** button opens a
 chooser for Agents, Skills, Engines & Models, and Plugins, with Developer gated
-by this device's flag. Schedule is a panel destination. Settings contains only
+by this device's flag. Schedule is a footer destination. Settings contains only
 settings-topic navigation; its gear remains available from management screens.
 
 The destination registry owns `sidebar: { order }` for panel destinations and

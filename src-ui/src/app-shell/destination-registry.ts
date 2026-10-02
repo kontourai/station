@@ -432,7 +432,6 @@ export const APP_DESTINATION_REGISTRY = createDestinationRegistry([
     label: () => 'Schedule',
     keywords: ['schedule', 'cron', 'jobs', 'boo'],
     icon: 'schedule',
-    sidebar: { order: 20 },
     managementGroup: 'schedule',
     palette: { order: 70 },
     managementViewTypes: ['schedule'],

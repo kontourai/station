@@ -1893,6 +1893,15 @@ use stable handoff identities and catch observation-storage failures so those
 failures do not replace the wrapped domain result. The SDK/Activity UI consume
 these browser-safe records, not the private file store.
 
+The [Activity section](../../src-ui/src/components/action-operations/ActionOperationsSection.tsx)
+keeps platform actions separate from filtered sessions: operation records have
+account and optional machine/Session scope, without the Project or client-origin
+attribution those filters need. Its disclosure shows running and attention counts,
+opens for work needing attention, and keeps recent history collapsed separately.
+Terminal operation status owns the outcome text; retained progress does not make
+a succeeded, failed or cancelled operation read as still working. Active
+`reconciliation-required` operations remain visible as needing attention.
+
 [Service tests](../../src-server/services/operations/__tests__/action-operation-service.test.ts),
 [tracker tests](../../src-server/services/operations/__tests__/action-operation-tracker.test.ts)
 and [fleet-observer tests](../../src-server/services/operations/__tests__/fleet-dispatch-action-operation-observer.test.ts)

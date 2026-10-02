@@ -604,7 +604,7 @@ describe('ProjectSidebar panel order (#2059)', () => {
       ).textContent?.trim(),
     );
 
-  test('lists Home, Activity, Schedule and Customize before the projects', () => {
+  test('lists Home and Activity before the projects', () => {
     resetState();
     projects.push(
       { id: 'p1', slug: 'station', name: 'Station' },
@@ -615,14 +615,7 @@ describe('ProjectSidebar panel order (#2059)', () => {
     // The header is above the body and is its own control, so it anchors the
     // order rather than joining the row list.
     expect(screen.getByRole('button', { name: 'Station home' })).toBeTruthy();
-    expect(panelRowLabels()).toEqual([
-      'Home',
-      'Activity',
-      'Schedule',
-      'Customize',
-      'Station',
-      'Ferry',
-    ]);
+    expect(panelRowLabels()).toEqual(['Home', 'Activity', 'Station', 'Ferry']);
   });
 
   test('keeps individual customization destinations out of the panel', () => {

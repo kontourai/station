@@ -4,6 +4,7 @@ import {
   DEFAULT_NOTIFICATION_SOUND_PREFERENCES,
   DEVICE_SETTINGS_REGISTRY,
 } from '@kontourai/station-contracts/device-settings';
+import type { ModelConnectionConfig } from '@kontourai/station-contracts/tool';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   act,
@@ -13,6 +14,7 @@ import {
   waitFor,
   within,
 } from '@testing-library/react';
+import type { ComponentProps } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   OPERATOR_ONLY_SECTION_IDS,
@@ -71,6 +73,8 @@ vi.mock('@kontourai/station-sdk', async () => {
     useCoreUpdateStatusQuery: () => ({ data: undefined }),
     StationReadOnlyError: class extends Error {},
     useEngineConnectionsQuery: () => ({ data: [] }),
+    useModelConnectionsQuery: () => ({ data: modelConnections }),
+    useModelsQuery: () => ({ data: [] }),
     useAnswerSharesQuery: () => ({ data: [] }),
     // #2067: the plugin-visibility section. The ORDINARY operator case — a
     // directory in hand with one paired person — because the state under test
@@ -364,8 +368,8 @@ vi.mock('../hooks/useFeatureSettings', () => ({
     toggle: vi.fn(),
   }),
 }));
-vi.mock('../hooks/usePushNotifications', () => ({
-  usePushNotifications: () => ({ supported: false }),
+vi.mock('../contexts/PushNotificationsContext', () => ({
+  usePushNotificationsState: () => ({ supported: false }),
 }));
 vi.mock('../contexts/VoiceProviderContext', () => ({
   useVoiceProviderContext: () => ({
@@ -380,9 +384,20 @@ vi.mock('../contexts/VoiceProviderContext', () => ({
 vi.mock('../contexts/MessageContextContext', () => ({
   useMessageContextContext: () => ({ providers: [], toggleProvider: vi.fn() }),
 }));
-vi.mock('../components/ModelSelector', () => ({
-  ModelSelector: () => <input aria-label="Default Model" readOnly />,
-}));
+let exerciseModelSelection = false;
+let modelConnections: ModelConnectionConfig[] = [];
+vi.mock('../components/ModelSelector', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('../components/ModelSelector')>();
+  return {
+    ModelSelector: (props: ComponentProps<typeof actual.ModelSelector>) =>
+      exerciseModelSelection ? (
+        <actual.ModelSelector {...props} />
+      ) : (
+        <input aria-label="Default Model" readOnly />
+      ),
+  };
+});
 vi.mock('../components/header/ThemeToggle', () => ({
   ThemeToggle: () => <button type="button">theme</button>,
 }));
@@ -397,6 +412,8 @@ describe('settings catalog completeness', () => {
     pluginVisibilityRefused = false;
     pluginVisibilityFailed = false;
     updateConfig.mockReset();
+    exerciseModelSelection = false;
+    modelConnections = [];
     updateAppLogLevel.mockReset();
     configSnapshot = { config: { ...INITIAL_CONFIG }, dataUpdatedAt: 1 };
     configProvenance = {};
@@ -988,6 +1005,53 @@ describe('settings catalog completeness', () => {
     );
   });
 
+  test('date format validation explains invalid input and only saves valid JSON options', async () => {
+    configSnapshot.config = {
+      ...INITIAL_CONFIG,
+      templateVariables: [{ key: 'YEAR', type: 'date', format: '' }],
+    };
+    updateConfig.mockResolvedValueOnce(undefined);
+    await renderSettings();
+    const format = screen.getByPlaceholderText('Format (optional)');
+    fireEvent.change(format, { target: { value: 'YYYY-MM-DD' } });
+    expect(screen.getByText(/Format for "YEAR"/)).toBeTruthy();
+    expect(
+      (screen.getByRole('button', { name: 'Fix errors' }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    fireEvent.change(format, { target: { value: '{"year":"numeric"}' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() =>
+      expect(updateConfig).toHaveBeenCalledWith({
+        templateVariables: [
+          { key: 'YEAR', type: 'date', format: '{"year":"numeric"}' },
+        ],
+      }),
+    );
+  });
+
+  test('clearing Region sends the clear signal and stays clear after successful readback', async () => {
+    configSnapshot.config = { ...INITIAL_CONFIG, region: 'us-east-1' };
+    updateConfig.mockResolvedValueOnce(undefined);
+    const { applyServerSnapshot } = await renderSettings();
+    const region = screen.getByLabelText('Default Region') as HTMLInputElement;
+    fireEvent.change(region, { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() =>
+      expect(updateConfig).toHaveBeenCalledWith({ region: null }),
+    );
+    await waitFor(() =>
+      expect(screen.queryByText('Unsaved changes')).toBeNull(),
+    );
+    configSnapshot = {
+      config: { ...INITIAL_CONFIG },
+      dataUpdatedAt: Date.now() + 1,
+    };
+    await applyServerSnapshot();
+    expect(region.value).toBe('');
+    expect(screen.queryByText('Unsaved changes')).toBeNull();
+  });
+
   test('a plain-only save goes through the standard config document, not the log-level endpoint', async () => {
     const sdk = await import('@kontourai/station-sdk/app-config');
     updateConfig.mockResolvedValueOnce(undefined);
@@ -1001,6 +1065,46 @@ describe('settings catalog completeness', () => {
     await waitFor(() => expect(updateConfig).toHaveBeenCalledTimes(1));
     expect(updateConfig).toHaveBeenCalledWith({ defaultMaxTurns: 201 });
     expect(sdk.updateAppLogLevel).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(screen.queryByText('Unsaved changes')).toBeNull(),
+    );
+  });
+
+  test('imported settings save without transferring first-run progress', async () => {
+    configSnapshot.config = {
+      ...INITIAL_CONFIG,
+      firstRun: {
+        status: 'completed',
+        completedAt: '2026-10-02T00:00:00.000Z',
+      },
+    };
+    updateConfig.mockResolvedValueOnce(undefined);
+    const { container } = await renderSettings();
+    const file = new File([], 'station-settings.json', {
+      type: 'application/json',
+    });
+    Object.defineProperty(file, 'text', {
+      value: async () =>
+        JSON.stringify({
+          version: 2,
+          station: {
+            firstRun: {
+              status: 'skipped',
+              skippedAt: '2026-10-01T00:00:00.000Z',
+            },
+            defaultMaxTurns: 201,
+          },
+        }),
+    });
+    fireEvent.change(container.querySelector('input[type="file"]')!, {
+      target: { files: [file] },
+    });
+    await waitFor(() =>
+      expect(screen.getByText('Unsaved changes')).toBeDefined(),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(updateConfig).toHaveBeenCalledTimes(1));
+    expect(updateConfig).toHaveBeenCalledWith({ defaultMaxTurns: 201 });
     await waitFor(() =>
       expect(screen.queryByText('Unsaved changes')).toBeNull(),
     );
@@ -2176,6 +2280,70 @@ describe('settings catalog completeness', () => {
         target: { value: 'atlas' },
       });
     }
+
+    test('choosing a project model edits only that project and preserves its model connection', async () => {
+      exerciseModelSelection = true;
+      configSnapshot.config = {
+        ...INITIAL_CONFIG,
+        defaultModel: 'station-model',
+        defaultLLMProvider: 'station-connection',
+      };
+      projectRecord = {
+        slug: 'atlas',
+        defaultModel: 'project-model',
+        defaultProviderId: 'project-connection',
+      };
+      modelConnections = [
+        {
+          id: 'project-connection',
+          kind: 'model',
+          type: 'openai',
+          name: 'Project connection',
+          enabled: true,
+          status: 'ready',
+          capabilities: ['llm'],
+          prerequisites: [],
+          config: {
+            modelOptions: [
+              {
+                id: 'project-model',
+                name: 'Project model',
+                originalId: 'project-model',
+              },
+            ],
+          },
+        },
+      ];
+      await renderSettings();
+      selectAtlas();
+      const model = screen.getByPlaceholderText('Select a model…');
+      fireEvent.focus(model);
+      fireEvent.change(model, { target: { value: 'new-project-model' } });
+      fireEvent.mouseDown(screen.getByText('Use “new-project-model”'));
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+      await waitFor(() =>
+        expect(
+          updateProjectAsync.mock.calls.length + updateConfig.mock.calls.length,
+        ).toBe(1),
+      );
+      expect(updateConfig).not.toHaveBeenCalled();
+      expect(updateProjectAsync).toHaveBeenCalledWith({
+        slug: 'atlas',
+        defaultModel: 'new-project-model',
+      });
+      expect(updateConfig).not.toHaveBeenCalled();
+      expect(updateAppLogLevel).not.toHaveBeenCalled();
+      await waitFor(() =>
+        expect(screen.queryByText('Unsaved changes')).toBeNull(),
+      );
+      fireEvent.change(screen.getByLabelText('Defaults for'), {
+        target: { value: '' },
+      });
+      expect(
+        (screen.getByPlaceholderText('Select a model…') as HTMLInputElement)
+          .value,
+      ).toBe('station-model');
+    });
 
     test('changing the selector with a dirty Station draft asks before discarding', async () => {
       configSnapshot = {

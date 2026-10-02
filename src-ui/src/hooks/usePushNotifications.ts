@@ -71,79 +71,165 @@ export function usePushNotifications({
   const [pairingRequired, setPairingRequired] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const swRegRef = useRef<ServiceWorkerRegistration | null>(null);
+  const scopeRef = useRef({ enabled, apiBase, version: 0 });
+  if (
+    scopeRef.current.enabled !== enabled ||
+    scopeRef.current.apiBase !== apiBase
+  ) {
+    scopeRef.current = {
+      enabled,
+      apiBase,
+      version: scopeRef.current.version + 1,
+    };
+  }
+  const subscribingRef = useRef<Promise<void> | null>(null);
+  const cleanupRef = useRef<Promise<void> | null>(null);
 
-  // Register service worker on mount (no-op if already registered)
+  useEffect(
+    () => () => {
+      scopeRef.current.version += 1;
+    },
+    [],
+  );
+
   useEffect(() => {
-    if (!supported || !enabled) return;
-    navigator.serviceWorker
-      .register('/sw.js')
-      .then((reg) => {
+    if (!supported) return;
+    let cancelled = false;
+    const version = scopeRef.current.version;
+    const previousCleanup = cleanupRef.current;
+    const registration = enabled
+      ? navigator.serviceWorker.register('/sw.js')
+      : navigator.serviceWorker.getRegistration('/sw.js');
+    const operation = registration
+      .then(async (reg) => {
+        if (!reg) return;
         swRegRef.current = reg;
-        return reg.pushManager.getSubscription();
+        await previousCleanup;
+        if (enabled) await subscribingRef.current;
+        if (cancelled || version !== scopeRef.current.version) return;
+        const sub = await reg.pushManager.getSubscription();
+        if (cancelled || version !== scopeRef.current.version) return;
+        if (!enabled && sub) {
+          await sub.unsubscribe();
+          await unsubscribePushNotifications(sub.endpoint, apiBase).catch(
+            () => {},
+          );
+        }
+        if (!cancelled && version === scopeRef.current.version)
+          setSubscribed(enabled && !!sub);
       })
-      .then((sub) => {
-        setSubscribed(!!sub);
-      })
-      .catch((err) => setError(err.message));
-  }, [supported, enabled]);
-
-  const subscribe = useCallback(async () => {
-    if (!supported || !enabled) return;
-    setError(null);
-    setPairingRequired(false);
-
-    try {
-      // Request notification permission
-      const perm = await Notification.requestPermission();
-      setPermission(perm);
-      if (perm !== 'granted') {
-        setError('Notification permission denied');
-        return;
-      }
-
-      // Get VAPID public key from server
-      const publicKey = await fetchVapidPublicKey(apiBase);
-
-      // Register SW if not yet done
-      const reg =
-        swRegRef.current ?? (await navigator.serviceWorker.register('/sw.js'));
-      swRegRef.current = reg;
-
-      // Subscribe to push
-      const subscription = await reg.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(publicKey) as BufferSource,
+      .catch((err) => {
+        if (!cancelled && version === scopeRef.current.version)
+          setError(err.message);
       });
-
-      // Send subscription to server
-      await subscribePushNotifications(subscription.toJSON(), apiBase);
-
-      setSubscribed(true);
-    } catch (err: any) {
-      if (err instanceof DevicePairingRequiredError) {
-        setPairingRequired(true);
-        setError('Pair this device first');
-        return;
-      }
-      setError(err.message);
-    }
+    if (!enabled) cleanupRef.current = operation;
+    return () => {
+      cancelled = true;
+    };
   }, [supported, enabled, apiBase]);
 
-  const unsubscribe = useCallback(async () => {
-    if (!swRegRef.current) return;
-    try {
-      const sub = await swRegRef.current.pushManager.getSubscription();
-      if (sub) {
-        await sub.unsubscribe();
-        // Notify server to remove subscription
-        await unsubscribePushNotifications(sub.endpoint, apiBase).catch(() => {
-          /* best-effort */
+  const subscribe = useCallback(() => {
+    if (!supported || !enabled) return Promise.resolve();
+    const version = scopeRef.current.version;
+    const isCurrent = () => version === scopeRef.current.version;
+    const run = async () => {
+      await cleanupRef.current;
+      if (!isCurrent()) return;
+      setError(null);
+      setPairingRequired(false);
+
+      try {
+        // Request notification permission
+        const perm = await Notification.requestPermission();
+        if (!isCurrent()) return;
+        setPermission(perm);
+        if (perm !== 'granted') {
+          setError('Notification permission denied');
+          return;
+        }
+
+        // Get VAPID public key from server
+        const publicKey = await fetchVapidPublicKey(apiBase);
+        if (!isCurrent()) return;
+
+        // Register SW if not yet done
+        const reg =
+          swRegRef.current ??
+          (await navigator.serviceWorker.register('/sw.js'));
+        swRegRef.current = reg;
+
+        // Subscribe to push
+        const subscription = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(
+            publicKey,
+          ) as BufferSource,
         });
+        if (!isCurrent()) {
+          await subscription.unsubscribe();
+          return;
+        }
+
+        // Send subscription to server
+        await subscribePushNotifications(subscription.toJSON(), apiBase);
+        if (!isCurrent()) {
+          await subscription.unsubscribe();
+          await unsubscribePushNotifications(
+            subscription.endpoint,
+            apiBase,
+          ).catch(() => {});
+          return;
+        }
+
+        setSubscribed(true);
+      } catch (err: any) {
+        if (!isCurrent()) return;
+        if (err instanceof DevicePairingRequiredError) {
+          setPairingRequired(true);
+          setError('Pair this device first');
+          return;
+        }
+        setError(err.message);
       }
-      setSubscribed(false);
-    } catch (err: any) {
-      setError(err.message);
-    }
+    };
+    // New attempts wait for an older write and its compensation, while Off
+    // can revoke the local subscription immediately during that write.
+    const operation = (subscribingRef.current ?? Promise.resolve()).then(
+      run,
+      run,
+    );
+    subscribingRef.current = operation;
+    const finished = () => {
+      if (subscribingRef.current === operation) subscribingRef.current = null;
+    };
+    void operation.then(finished, finished);
+    return operation;
+  }, [supported, enabled, apiBase]);
+
+  const unsubscribe = useCallback(() => {
+    const previousCleanup = cleanupRef.current;
+    const version = scopeRef.current.version;
+    const operation = (async () => {
+      await previousCleanup;
+      if (!swRegRef.current) return;
+      try {
+        const sub = await swRegRef.current.pushManager.getSubscription();
+        if (sub) {
+          await sub.unsubscribe();
+          // Notify server to remove subscription
+          await unsubscribePushNotifications(sub.endpoint, apiBase).catch(
+            () => {
+              /* best-effort */
+            },
+          );
+        }
+        if (version === scopeRef.current.version) setSubscribed(false);
+      } catch (err: any) {
+        if (version === scopeRef.current.version) setError(err.message);
+      }
+    })();
+    cleanupRef.current = operation;
+    return operation;
   }, [apiBase]);
 
   return {

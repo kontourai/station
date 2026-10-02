@@ -603,8 +603,15 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
   const {
     errors: validationErrors,
     warnings: validationWarnings,
-    isValid,
+    isValid: stationConfigValid,
   } = getSettingsValidation(config);
+  const projectModelIncomplete =
+    !!selectedProjectSlug &&
+    typeof projectOverride?.values.defaultLLMProvider === 'string' &&
+    !!projectOverride.values.defaultLLMProvider &&
+    (typeof projectOverride.values.defaultModel !== 'string' ||
+      !projectOverride.values.defaultModel.trim());
+  const isValid = stationConfigValid && !projectModelIncomplete;
 
   const exportSettings = () => {
     const payload = buildSettingsExportPayload(config);
@@ -649,7 +656,11 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
             (savedConfig as Record<string, unknown>)[key] !==
             (config as Record<string, unknown>)[key],
         )
-        .map((key) => [key, (config as Record<string, unknown>)[key]]),
+        .map((key) => {
+          const value = (config as Record<string, unknown>)[key];
+          // Region's empty input inherits; null is the route's clear signal.
+          return [key, key === 'region' && value === '' ? null : value];
+        }),
     ) as Partial<AppConfig>;
     const { logLevel, ...plainChanges } = changed;
     const plainWrite =
@@ -716,9 +727,15 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
         (plainWrite !== undefined && plainOutcome.status === 'fulfilled') ||
         (logLevelWrite !== undefined && logLevelOutcome.status === 'fulfilled');
       if (hasSaved) {
+        // Preserve draft spelling until readback, including '' for cleared Region.
         const written = {
           ...(plainWrite !== undefined && plainOutcome.status === 'fulfilled'
-            ? plainChanges
+            ? Object.fromEntries(
+                Object.keys(plainChanges).map((key) => [
+                  key,
+                  (config as Record<string, unknown>)[key],
+                ]),
+              )
             : {}),
           ...(logLevelWrite &&
           logLevelOutcome.status === 'fulfilled' &&
@@ -1190,6 +1207,8 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                     validationErrors={validationErrors}
                     validationWarnings={validationWarnings}
                     onChange={setConfig}
+                    projectOverride={projectOverride}
+                    projectReadReady={selectedProject !== undefined}
                     region={config.region || ''}
                     regionError={validationErrors.region}
                     regionProvenance={provenance?.region}
@@ -1539,9 +1558,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                   </Section>
                 )}
 
-                {sectionVisible('notifications') && (
-                  <NotificationsSection apiBase={currentApiBase} />
-                )}
+                {sectionVisible('notifications') && <NotificationsSection />}
 
                 {sectionVisible('voice') && <VoiceFeaturesSection />}
 

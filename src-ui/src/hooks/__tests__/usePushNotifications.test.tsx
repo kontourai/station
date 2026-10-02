@@ -25,6 +25,7 @@ describe('usePushNotifications', () => {
   const getSubscription = vi.fn();
   const pushManagerSubscribe = vi.fn();
   const register = vi.fn();
+  const getRegistration = vi.fn();
 
   beforeEach(() => {
     getSubscription.mockReset().mockResolvedValue(null);
@@ -35,6 +36,7 @@ describe('usePushNotifications', () => {
         subscribe: pushManagerSubscribe,
       },
     });
+    getRegistration.mockReset().mockResolvedValue(undefined);
     mocks.fetchVapidPublicKey.mockReset().mockResolvedValue('AQAB');
     mocks.subscribePushNotifications.mockReset().mockResolvedValue(undefined);
     mocks.unsubscribePushNotifications.mockReset().mockResolvedValue(undefined);
@@ -45,7 +47,7 @@ describe('usePushNotifications', () => {
     });
     Object.defineProperty(navigator, 'serviceWorker', {
       configurable: true,
-      value: { register },
+      value: { register, getRegistration },
     });
     vi.stubGlobal('Notification', {
       permission: 'default',
@@ -72,7 +74,7 @@ describe('usePushNotifications', () => {
     expect(register).toHaveBeenCalledWith('/sw.js');
   });
 
-  test('does no service-worker or server work when disabled', async () => {
+  test('does not create a service worker or subscription when disabled', async () => {
     const { result } = renderHook(() =>
       usePushNotifications({ enabled: false, apiBase: 'http://station.test' }),
     );
@@ -199,6 +201,61 @@ describe('usePushNotifications', () => {
     );
     expect(result.current.subscribed).toBe(false);
   });
+
+  test.each([false, true])(
+    'switching off during server registration invalidates that write even if enabled later becomes %s',
+    async (enableAgain) => {
+      const subscription = {
+        endpoint: 'https://push.test/subscription',
+        toJSON: () => ({ endpoint: 'https://push.test/subscription' }),
+        unsubscribe: vi.fn(async () => {
+          getSubscription.mockResolvedValue(null);
+          return true;
+        }),
+      };
+      pushManagerSubscribe.mockImplementation(async () => {
+        getSubscription.mockResolvedValue(subscription);
+        return subscription;
+      });
+      getRegistration.mockResolvedValue({
+        pushManager: { getSubscription, subscribe: pushManagerSubscribe },
+      });
+      let finishRegistration = () => {};
+      mocks.subscribePushNotifications.mockImplementation(
+        () =>
+          new Promise<void>((resolve) => {
+            finishRegistration = resolve;
+          }),
+      );
+      const { result, rerender } = renderHook(
+        ({ enabled }) =>
+          usePushNotifications({ enabled, apiBase: 'http://station.test' }),
+        { initialProps: { enabled: true } },
+      );
+      await waitFor(() => expect(register).toHaveBeenCalled());
+      let subscribing: Promise<void>;
+      act(() => {
+        subscribing = result.current.subscribe();
+      });
+      await waitFor(() =>
+        expect(mocks.subscribePushNotifications).toHaveBeenCalledOnce(),
+      );
+
+      rerender({ enabled: false });
+      await waitFor(() =>
+        expect(mocks.unsubscribePushNotifications).toHaveBeenCalledOnce(),
+      );
+      if (enableAgain) rerender({ enabled: true });
+      await act(async () => {
+        finishRegistration();
+        await subscribing;
+      });
+
+      expect(mocks.unsubscribePushNotifications).toHaveBeenCalledTimes(2);
+      expect(subscription.unsubscribe).toHaveBeenCalledTimes(2);
+      expect(result.current.subscribed).toBe(false);
+    },
+  );
 
   test('treats server cleanup as best-effort after local unsubscribe', async () => {
     const subscription = {

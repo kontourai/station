@@ -1,11 +1,19 @@
 import type { OrchestrationSessionSummary } from '@kontourai/station-sdk';
 import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
-import { memo, type ReactNode, useEffect, useMemo } from 'react';
+import {
+  memo,
+  type ReactNode,
+  type RefObject,
+  useEffect,
+  useMemo,
+  useRef,
+} from 'react';
 import { conversationPartToContentParts } from '../../hooks/orchestration/conversationTranscriptParts';
 import { useSessionTranscriptEvents } from '../../hooks/orchestration/useSessionTranscriptEvents';
 import { Button } from '../Button';
 import { MessageContent } from '../chat/message-bubble/MessageContent';
-import { Empty, SkeletonBlock } from '../state';
+import { Empty, ErrorState, SkeletonBlock } from '../state';
+import { useSessionTranscriptScroll } from './useSessionTranscriptScroll';
 
 /**
  * The read-only conversation of a Station-owned session: the user's prompts,
@@ -30,6 +38,8 @@ export const SessionTranscript = memo(function SessionTranscript({
   failureShownAbove = false,
   notices,
   onSettledChange,
+  scrollContainerRef,
+  preserveReading = false,
 }: {
   apiBase: string;
   session: Pick<OrchestrationSessionSummary, 'threadId' | 'conversationId'>;
@@ -48,12 +58,37 @@ export const SessionTranscript = memo(function SessionTranscript({
   notices?: ReactNode;
   /** Whether the first window read has landed; content above may grow then. */
   onSettledChange?: (settled: boolean) => void;
+  scrollContainerRef?: RefObject<HTMLDivElement | null>;
+  preserveReading?: boolean;
 }) {
-  const { events, hasMore, loadOlder, settled } = useSessionTranscriptEvents(
-    apiBase,
-    session,
-    isStreaming,
+  const {
+    events,
+    hasMore,
+    loadOlder,
+    settled,
+    error,
+    upgradeRequired,
+    retry,
+    loading,
+  } = useSessionTranscriptEvents(apiBase, session, isStreaming);
+  const contentRef = useRef<HTMLElement | null>(null);
+  const noScrollRef = useRef<HTMLDivElement | null>(null);
+  const { atLatest, jumpToLatest, pauseFollowing } = useSessionTranscriptScroll(
+    {
+      identity: `${apiBase}\0${session.threadId}`,
+      scrollRef: scrollContainerRef ?? noScrollRef,
+      contentRef,
+      ready: settled && !error && !upgradeRequired,
+      contentVersion: events,
+      preserveReading:
+        preserveReading ||
+        (events.length > 0 && Boolean(error || upgradeRequired)),
+    },
   );
+  useEffect(() => {
+    if (error && scrollContainerRef?.current)
+      scrollContainerRef.current.scrollTop = 0;
+  }, [error, scrollContainerRef]);
   useEffect(() => {
     onSettledChange?.(settled);
   }, [onSettledChange, settled]);
@@ -82,14 +117,45 @@ export const SessionTranscript = memo(function SessionTranscript({
       className="session-transcript"
       aria-label="Conversation"
       data-testid="session-transcript"
+      ref={contentRef}
     >
+      {!atLatest && (
+        <div className="session-transcript__toolbar">
+          <Button variant="secondary" onClick={jumpToLatest}>
+            Jump to latest
+          </Button>
+        </div>
+      )}
+      {error && (
+        <ErrorState
+          variant="compact"
+          title={
+            upgradeRequired
+              ? 'Update Station to read this conversation'
+              : 'Conversation could not be loaded'
+          }
+          description={error.message}
+          action={
+            <Button
+              variant="secondary"
+              disabled={loading}
+              onClick={() => void retry()}
+            >
+              Retry
+            </Button>
+          }
+        />
+      )}
       {(hasMore || notices) && (
         <div className="session-history-controls">
           {hasMore && (
             <Button
               variant="secondary"
               className="session-history-controls__more"
-              onClick={() => void loadOlder()}
+              onClick={() => {
+                pauseFollowing();
+                void loadOlder();
+              }}
             >
               Show older messages
             </Button>
@@ -98,7 +164,7 @@ export const SessionTranscript = memo(function SessionTranscript({
         </div>
       )}
       {rows.length === 0 ? (
-        !settled ? (
+        error ? null : !settled ? (
           <SkeletonBlock label="Reading the conversation" count={2} />
         ) : (
           <Empty

@@ -184,9 +184,10 @@ The project selector appears only alongside model/workspace defaults and
 permissions. Device settings still save immediately; Station and Project drafts
 keep their existing Save and discard guard.
 
-**Customize** is a separate button in the main panel. Its chooser opens Agents,
+The sidebar footer groups **Schedule**, **Customize**, and **Settings** beside
+live work. Customize opens Agents,
 Skills, Engines & Models, and Plugins at their existing routes. Developer joins
-that chooser when enabled on this device. Schedule has its own panel entry.
+that chooser when enabled on this device. The footer replaces its command-palette chip and duplicate notification bell; the header bell and command-palette shortcut remain available.
 The Settings rail and phone picker stay within Settings; the panel's Settings
 gear remains available from management screens. Long permission and checkpoint
 explanations keep their full text under Details, with a short consequence visible
@@ -371,6 +372,23 @@ the revision, then sends `If-Match` and an `Idempotency-Key`. Settings settles
 the writes separately and reports failures; this is not one atomic transaction
 across Station and Project documents.
 
+Registry URL, default skill registries, the device helper address, layout sources,
+and workspace checkpoints are read when their runtime owners are constructed.
+Save persists their choices; their rows state that changes apply after the next
+Station restart. The Veritas evidence switch is read from live configuration
+when Trust bundles or Task answer support are requested, so it applies after
+configuration activation without a restart.
+
+Settings export/import excludes `firstRun`: it records this home's first-run
+decision rather than a preference and cannot be written through `PUT /config/app`.
+Imports also ignore it in older settings files; other registered configuration
+and device preferences retain their existing transfer behavior.
+
+Date/time template-variable formats are JSON objects of Intl date/time options,
+not date patterns. The Settings form, shared settings write validator (including
+offline CLI writes), and persisted-file validator reject malformed JSON and
+unsupported option values before runtime instruction resolution uses them.
+
 **Audit (slice 4).** Every existing single-control setting across `/settings`
 and the chat dock already followed immediate-save; ChatSettingsPanel's
 reasoning/tool-details/font-size were the one gap (no persistence at all,
@@ -441,6 +459,11 @@ A project may only change the keys
 `PROJECT_OVERRIDABLE_APP_SETTING_KEYS` lists, and the model pair is written
 whole or not at all. The three composite rows keep no status strip in this
 slice.
+
+A selected project's Default model control edits that project's model connection
+and model. Station default clears both project fields. The picker shows the
+inherited Station model until a project connection is chosen, and an incomplete
+connection/model draft must be completed before Save.
 
 - `/settings` becomes three registry-driven sections with explicit scope labels:
   **Station** (S1), **Defaults** (S2), **This device** (S3) — progressive

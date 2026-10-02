@@ -1,4 +1,3 @@
-import { lazy, Suspense, useState } from 'react';
 import {
   APP_DESTINATION_REGISTRY,
   type DestinationDefinition,
@@ -9,12 +8,6 @@ import { useRegionModelOptional } from '../../contexts/RegionModelContext';
 import { useShowSurfacePage } from '../../contexts/useShowSurface';
 import { useSurfaceVisibilityFlags } from '../../hooks/useSurfaceVisibilityFlags';
 import { destinationIcon } from './nav-items';
-
-const CustomizeDialog = lazy(() =>
-  import('./CustomizeDialog').then((module) => ({
-    default: module.CustomizeDialog,
-  })),
-);
 
 interface ProjectSidebarNavProps {
   collapsed: boolean;
@@ -33,7 +26,6 @@ export function ProjectSidebarNav({
   activePath,
   onAfterNavigate,
 }: ProjectSidebarNavProps) {
-  const [customizeOpen, setCustomizeOpen] = useState(false);
   const regionModel = useRegionModelOptional();
   const showSurfacePage = useShowSurfacePage();
   const activeDestination = APP_DESTINATION_REGISTRY.getDestinationForView(
@@ -111,31 +103,6 @@ export function ProjectSidebarNav({
   };
 
   return (
-    <div className="sidebar__nav">
-      {sidebarDestinations.map(renderRow)}
-      <button
-        type="button"
-        className="sidebar__nav-btn"
-        aria-label="Customize"
-        title={collapsed ? 'Customize' : undefined}
-        aria-haspopup="dialog"
-        onClick={() => setCustomizeOpen(true)}
-      >
-        {destinationIcon('plugins')}
-        <span className="sidebar__nav-label">Customize</span>
-      </button>
-      {customizeOpen && (
-        <Suspense fallback={null}>
-          <CustomizeDialog
-            onClose={() => setCustomizeOpen(false)}
-            onNavigate={(path) => {
-              setCustomizeOpen(false);
-              navigate(path);
-              if (isMobile) onAfterNavigate?.();
-            }}
-          />
-        </Suspense>
-      )}
-    </div>
+    <div className="sidebar__nav">{sidebarDestinations.map(renderRow)}</div>
   );
 }

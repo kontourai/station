@@ -1443,7 +1443,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
 
       // The footer's two navigation controls are the drawer's only remaining
       // destination affordances, so they carry the floor the rows used to.
-      for (const label of ['Notifications', 'Settings']) {
+      for (const label of ['Schedule', 'Customize', 'Settings']) {
         const control = navigation.getByRole('button', { name: label });
         await expect(control).toBeVisible();
         const box = (await control.boundingBox())!;
