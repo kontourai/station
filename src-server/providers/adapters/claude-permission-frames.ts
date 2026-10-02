@@ -12,7 +12,7 @@ import { Transform, type TransformCallback } from 'node:stream';
  * ordinary ask of an MCP tool, WebFetch, or a file edit inside the working
  * directories (Claude Code 2.1.278).
  */
-export type ClaudePermissionAsk = {
+type ClaudePermissionAsk = {
   decisionReasonType?: string;
   classifierApprovable?: boolean;
   decisionReasonCode?: string;
@@ -25,7 +25,7 @@ export const MAX_RECORDED_PERMISSION_ASKS = 256;
  * The longest stdout line the tap inspects. A longer line is forwarded
  * unrecorded, so an ask on it reads as missing and prompts.
  */
-export const MAX_PERMISSION_FRAME_BYTES = 8 * 1024 * 1024;
+const MAX_PERMISSION_FRAME_BYTES = 8 * 1024 * 1024;
 /** Bound on a recorded id or enum-like value; a longer one is refused. */
 const MAX_FIELD_LENGTH = 200;
 
@@ -215,7 +215,7 @@ function recordControlRequest(
  * A replay on any other response is ignored, as the SDK ignores it.
  * Any other line, and any line that is not JSON, is ignored.
  */
-export function recordClaudePermissionFrame(
+function recordClaudePermissionFrame(
   asks: ClaudePermissionAsks,
   line: Buffer,
 ): void {
