@@ -1,0 +1,21 @@
+{
+  "revision": "c7fa52bb423f968db7dbb56a1735bfea353f83ef",
+
+  "notes": [
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Re-record after the CodeQL action pin bump: security-analysis.yml and the actionlint-gate pin constants moved together (init/analyze 2892aa5e, v4); the documents security posture and gate guidance claims were re-checked against the pinned-pin invariant, which the updated constants still enforce."},
+
+    {"path":"docs/guides/dependency-security.md","note":"Re-record after the CodeQL action pin bump: security-analysis.yml and the actionlint-gate pin constants moved together (init/analyze 2892aa5e, v4); the documents security posture and gate guidance claims were re-checked against the pinned-pin invariant, which the updated constants still enforce."},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Re-record after the CodeQL action pin bump: security-analysis.yml and the actionlint-gate pin constants moved together (init/analyze 2892aa5e, v4); the documents security posture and gate guidance claims were re-checked against the pinned-pin invariant, which the updated constants still enforce."},
+
+    {"path":"docs/guides/private-runner-partition.md","note":"Re-record after the CodeQL action pin bump: security-analysis.yml and the actionlint-gate pin constants moved together (init/analyze 2892aa5e, v4); the documents security posture and gate guidance claims were re-checked against the pinned-pin invariant, which the updated constants still enforce."},
+
+    {"path":"docs/guides/product-law-authoring.md","note":"Re-record after the CodeQL action pin bump: security-analysis.yml and the actionlint-gate pin constants moved together (init/analyze 2892aa5e, v4); the documents security posture and gate guidance claims were re-checked against the pinned-pin invariant, which the updated constants still enforce."},
+
+    {"path":"docs/guides/repository-layout.md","note":"Re-record after the CodeQL action pin bump: security-analysis.yml and the actionlint-gate pin constants moved together (init/analyze 2892aa5e, v4); the documents security posture and gate guidance claims were re-checked against the pinned-pin invariant, which the updated constants still enforce."},
+
+    {"path":"docs/guides/work-board-security.md","note":"Re-record after the CodeQL action pin bump: security-analysis.yml and the actionlint-gate pin constants moved together (init/analyze 2892aa5e, v4); the documents security posture and gate guidance claims were re-checked against the pinned-pin invariant, which the updated constants still enforce."},
+
+    {"path":"docs/guides/workspace-packages.md","note":"Re-record after the CodeQL action pin bump: security-analysis.yml and the actionlint-gate pin constants moved together (init/analyze 2892aa5e, v4); the documents security posture and gate guidance claims were re-checked against the pinned-pin invariant, which the updated constants still enforce."}
+  ]
+}
