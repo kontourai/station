@@ -18,11 +18,11 @@
 
     {"path":"src-desktop/capabilities/default.json","digest":"b6ce0ba74944574562d08ddd8f02698a222840af0581bf093c662a70f07c9ab1","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
-    {"path":"src-desktop/src/lib.rs","digest":"55b2e5849868789c486b8ee0c489080f50fe66d06f2d74b0ec1de6ded0d5411d","revision":"b1b2d1fd15ddfd6dea0be7371a81d5008f6ffbf7"},
+    {"path":"src-desktop/src/lib.rs","digest":"57a47dd3656d47a5c43eaf4001895942d350d61b6de896fa4d1d3da498bfd821","revision":"d5e4502434838cc29b63091ae689474d6488cfe4"},
 
     {"path":"src-desktop/src/local_access_watch.rs","digest":"4499c78676d1f7dd5a3b580ba2bf82dedd3ef14fb8cd8273fcd1b24fc23429be","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
-    {"path":"src-desktop/src/native_relay_redemption.rs","digest":"43d47bff4d6b02e30f523c58d757a3783d95f012dca957487e8ab85576ae26b6","revision":"63da6d9d2de45c58fbd0f16a4a53690c09909b6d"},
+    {"path":"src-desktop/src/native_relay_redemption.rs","digest":"f56e9a51bf57589da7fe9cdfac230c1b65ff990d0b57f0bba04c54b95563ba7e","revision":"c67a9e55f21ec4678a3fd5a43b7cb92d8058c8a5"},
 
     {"path":"src-desktop/src/tray.rs","digest":"d8bd74ad3b9a20197b0ca221d33fa8558d9ce36b05167a5eb156796cfa2fa3c9","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
@@ -50,7 +50,7 @@
 
     {"path":"src-desktop/src/native_account_proof_key.rs","digest":"fb0830359c1b28f49429a1f837df81afe5af2d83e14fe7ad92aa5c54ec2e3e5c","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
 
-    {"path":"src-desktop/src/native_relay_proof_key.rs","digest":"b5cce8223164854715689def13c452fc70a03d2f3200526d856c92ae9b9172bb","revision":"90257cae3e652cf0b7fbd20dae21f940c3c362ae"},
+    {"path":"src-desktop/src/native_relay_proof_key.rs","digest":"e33c7395002ae8d230afa984115212ac58b53725b51c54265ce7a3a0c9174608","revision":"d5e4502434838cc29b63091ae689474d6488cfe4"},
 
     {"path":"src-desktop/src/native_relay_key_approval.rs","digest":"f0fdb455b1c3e476ddf9c7377a806c7fcb05d7e16b7430e00139fe2967b91a02","revision":"e33331ee19520c8bd546c878fdd503063a682634"},
 
@@ -86,7 +86,7 @@
 
     {"path":"packages/sdk/src/client/application-session-native.ts","digest":"300c8da40100c1d2659a8324654ee9216129b58ab5756b3724080f72e4b0bbcf","revision":"2e4f061f91ffb0338e45de62382cf6da59cd5c76"},
 
-    {"path":"src-desktop/src/native_relay_link_intake.rs","digest":"9316d68e3d0ed2ff41caa916717394b6a4ea5245d84d07c981fa07f3f0e98001","revision":"63da6d9d2de45c58fbd0f16a4a53690c09909b6d"},
+    {"path":"src-desktop/src/native_relay_link_intake.rs","digest":"546bc23ba0a5ece0b6522127c16694ebce744d1aa8f2e47ef9d2184388ac7ec0","revision":"0df04c97501a7e2918cbd138b324e947e573fa8b"},
 
     {"path":"src-desktop/src/native_relay_ios_launch.rs","digest":"135f11afc3cc411a915de32a9c399487a8ca3f4eb1bf0afc381abf30c3f4ab66","revision":"b1b2d1fd15ddfd6dea0be7371a81d5008f6ffbf7"},
 

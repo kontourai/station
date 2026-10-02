@@ -36,19 +36,19 @@
 
     {"path":"packages/connect/src/core/nativeRelayLink.ts","digest":"b810e954f0908cbad89aacfc4477d984a87f3188324f44a64084510cdcacddea","revision":"63da6d9d2de45c58fbd0f16a4a53690c09909b6d"},
 
-    {"path":"src-desktop/src/native_relay_link_intake.rs","digest":"9316d68e3d0ed2ff41caa916717394b6a4ea5245d84d07c981fa07f3f0e98001","revision":"63da6d9d2de45c58fbd0f16a4a53690c09909b6d"},
+    {"path":"src-desktop/src/native_relay_link_intake.rs","digest":"546bc23ba0a5ece0b6522127c16694ebce744d1aa8f2e47ef9d2184388ac7ec0","revision":"0df04c97501a7e2918cbd138b324e947e573fa8b"},
 
     {"path":"src-desktop/src/native_relay_ios_launch.rs","digest":"135f11afc3cc411a915de32a9c399487a8ca3f4eb1bf0afc381abf30c3f4ab66","revision":"b1b2d1fd15ddfd6dea0be7371a81d5008f6ffbf7"},
 
     {"path":"src-ui/src/platform/native/NativeRelayLinkIntake.tsx","digest":"4d332dc6786d1c1d3fad5a27572e992ab9615b5ddcd3839a4ed539ddfb3626d6","revision":"e512a39196d7df557d7de9ec15474a93aba570c2"},
 
-    {"path":"src-ui/src/platform/native/NativeRelayLinkReview.tsx","digest":"64dba27361b0baa972361897e3d38697bc7e8a3457afc422878d71e0b5f775ab","revision":"cc44c602194e69ca379f1dcec1b46bedc6489bac"},
+    {"path":"src-ui/src/platform/native/NativeRelayLinkReview.tsx","digest":"c3ea954be7d09a330eb5623bd7388343cd420d6cd45dab5a18d0465e1f760b44","revision":"c67a9e55f21ec4678a3fd5a43b7cb92d8058c8a5"},
 
     {"path":"src-ui/src/platform/native/nativeRelayLinkAdapter.ts","digest":"e995793c410131706f29493905dbae8cb47d44eef28c0b6cb7c104f60484e8f5","revision":"4cf503807d144ac197e10fcf4aee5e301b96e28d"},
 
     {"path":"src-desktop/src/native_secure_entry.rs","digest":"d6ff8051df4be60ff738f524488fe877b0711b95aa606cb70b378e74962bd209","revision":"8d92d732808201554ba801334e2a19f7081fd09d"},
 
-    {"path":"src-desktop/src/native_relay_redemption.rs","digest":"43d47bff4d6b02e30f523c58d757a3783d95f012dca957487e8ab85576ae26b6","revision":"63da6d9d2de45c58fbd0f16a4a53690c09909b6d"}
+    {"path":"src-desktop/src/native_relay_redemption.rs","digest":"f56e9a51bf57589da7fe9cdfac230c1b65ff990d0b57f0bba04c54b95563ba7e","revision":"c67a9e55f21ec4678a3fd5a43b7cb92d8058c8a5"}
   ],
 
   "checks": [

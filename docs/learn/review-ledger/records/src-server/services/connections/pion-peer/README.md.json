@@ -12,21 +12,21 @@
   "document": {"digest":"b1a56cbfb7ac3c067c4b105ba00f4f34b4e7a4a33b9526074a7e28352d6dc2ac","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
   "sources": [
-    {"path":"packages/contracts/src/self-hosted-broker.ts","digest":"cb8835bbd9ac3a09aa9ea8ecafb0c6b42488a64021eb98d5b445ce764a6df907","revision":"7dc84da36281cace63d55fbd59fac3f64fcb3721"},
+    {"path":"packages/contracts/src/self-hosted-broker.ts","digest":"31f204b0b16cbe3abeee7038efe9d0d139a585ec4a46f85cce622a6d2261d2bf","revision":"bd945f156a8a59964bab11fe68d36613177c7143"},
 
     {"path":"scripts/self-hosted-broker.ts","digest":"3c77e83fd3040569a804b426bd3299d4e599049f4c8fd21aac982081780352ae","revision":"7dc84da36281cace63d55fbd59fac3f64fcb3721"},
 
-    {"path":"src-desktop/src/lib.rs","digest":"55b2e5849868789c486b8ee0c489080f50fe66d06f2d74b0ec1de6ded0d5411d","revision":"b1b2d1fd15ddfd6dea0be7371a81d5008f6ffbf7"},
+    {"path":"src-desktop/src/lib.rs","digest":"57a47dd3656d47a5c43eaf4001895942d350d61b6de896fa4d1d3da498bfd821","revision":"d5e4502434838cc29b63091ae689474d6488cfe4"},
 
     {"path":"src-desktop/src/native_relay_key_approval.rs","digest":"f0fdb455b1c3e476ddf9c7377a806c7fcb05d7e16b7430e00139fe2967b91a02","revision":"e33331ee19520c8bd546c878fdd503063a682634"},
 
-    {"path":"src-desktop/src/native_relay_proof_key.rs","digest":"b5cce8223164854715689def13c452fc70a03d2f3200526d856c92ae9b9172bb","revision":"90257cae3e652cf0b7fbd20dae21f940c3c362ae"},
+    {"path":"src-desktop/src/native_relay_proof_key.rs","digest":"e33c7395002ae8d230afa984115212ac58b53725b51c54265ce7a3a0c9174608","revision":"d5e4502434838cc29b63091ae689474d6488cfe4"},
 
-    {"path":"src-desktop/src/native_relay_redemption.rs","digest":"43d47bff4d6b02e30f523c58d757a3783d95f012dca957487e8ab85576ae26b6","revision":"63da6d9d2de45c58fbd0f16a4a53690c09909b6d"},
+    {"path":"src-desktop/src/native_relay_redemption.rs","digest":"f56e9a51bf57589da7fe9cdfac230c1b65ff990d0b57f0bba04c54b95563ba7e","revision":"c67a9e55f21ec4678a3fd5a43b7cb92d8058c8a5"},
 
     {"path":"src-desktop/src/native_station_key_custody.rs","digest":"1a17585842afc1a8268d1da8e37d13163d4f3ab85486152b9c51179b4a52c9f1","revision":"e33331ee19520c8bd546c878fdd503063a682634"},
 
-    {"path":"src-server/routes/connections/self-hosted-broker.ts","digest":"fe87d55c8a067d068c07d79d3d1f3e5dbd488db7795bea0a5eafd4913629903a","revision":"7dc84da36281cace63d55fbd59fac3f64fcb3721"},
+    {"path":"src-server/routes/connections/self-hosted-broker.ts","digest":"eab2a2d75edf8a2fc9c4f790aa0a4c59e065f8a134904393880896fd01cdfbd3","revision":"bd945f156a8a59964bab11fe68d36613177c7143"},
 
     {"path":"src-server/runtime/bootstrap/self-hosted-broker-pion-runtime.ts","digest":"d0eaf0a7651d34680ab4ee3398f7c1f1f9924534ad0e26f9a8e7bff14fef7120","revision":"55606e0498d0cbd6e7edad154f82dce3c102b186"},
 
@@ -50,7 +50,7 @@
 
     {"path":"src-server/services/connections/self-hosted-broker-connector.ts","digest":"16c715c1e4b9243a2f6e7b74d1d67e7ca3cda2a7fcd4ec6575bfdb5577ba5d92","revision":"cf8683338fc1a537f8be0082ddaa3c3fafcbfb17"},
 
-    {"path":"src-server/services/connections/self-hosted-broker-service.ts","digest":"bd443d852a5dd81f6482fb22f140295bfc20fa93b2d7c80430367d08ae71c2ce","revision":"fec33b843681eb9554290998f8c6ebd64794847c"},
+    {"path":"src-server/services/connections/self-hosted-broker-service.ts","digest":"304ae2cf20a7935f52bb227385c2f0fb2066e7eb4c1c2c03e581e30515173e3e","revision":"bd945f156a8a59964bab11fe68d36613177c7143"},
 
     {"path":"src-server/services/infra/process-utils.ts","digest":"ee4b40d76a59bc8c4af9dd2a5ea9622007d84e2aa5254fdf579c52b6a8e6b5ba","revision":"c8bae67dac38dce6107177638464f9f9944fef92"}
   ],

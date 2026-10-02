@@ -12,7 +12,7 @@
   "document": {"digest":"cc1c91a1c20944964c821fab6d2bd7c5646032545bb01d9bf592ac0916f2592c","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
   "sources": [
-    {"path":"docs/reference/contracts.md","digest":"161f2d6ff8d6e25f9ce89f8aa49b99f98358b24410e1103909abbd939f4008f8","revision":"e58fcedea713f7fc640bf51abe384f17503f72e4"},
+    {"path":"docs/reference/contracts.md","digest":"c25e508ca748630a29d92eb3a35a130fef39f282e650c80c3f1b86ca6e424b96","revision":"bd945f156a8a59964bab11fe68d36613177c7143"},
 
     {"path":"packages/contracts/package.json","digest":"99b398c3d5908625e6b0fc3b8b451dbdb3b499ba10ed2c67590a45a1275f2b6d","revision":"e33331ee19520c8bd546c878fdd503063a682634"}
   ],

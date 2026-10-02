@@ -154,7 +154,7 @@
 
     {"path":"scripts/test-fixture-policy.mjs","digest":"fbe0e2438328249f4c047171503c0ffa8d366e9468418037cf0b211e090a48eb","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-desktop/src/lib.rs","digest":"55b2e5849868789c486b8ee0c489080f50fe66d06f2d74b0ec1de6ded0d5411d","revision":"b1b2d1fd15ddfd6dea0be7371a81d5008f6ffbf7"},
+    {"path":"src-desktop/src/lib.rs","digest":"57a47dd3656d47a5c43eaf4001895942d350d61b6de896fa4d1d3da498bfd821","revision":"d5e4502434838cc29b63091ae689474d6488cfe4"},
 
     {"path":"src-desktop/src/login_shell.rs","digest":"383da9b8cc506165bed9da14ba157d3e3a2f68a7495a708aac9025e4ed99cb2c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -180,9 +180,9 @@
 
     {"path":"src-desktop/src/native_relay_key_approval.rs","digest":"f0fdb455b1c3e476ddf9c7377a806c7fcb05d7e16b7430e00139fe2967b91a02","revision":"e33331ee19520c8bd546c878fdd503063a682634"},
 
-    {"path":"src-desktop/src/native_relay_link_intake.rs","digest":"9316d68e3d0ed2ff41caa916717394b6a4ea5245d84d07c981fa07f3f0e98001","revision":"63da6d9d2de45c58fbd0f16a4a53690c09909b6d"},
+    {"path":"src-desktop/src/native_relay_link_intake.rs","digest":"546bc23ba0a5ece0b6522127c16694ebce744d1aa8f2e47ef9d2184388ac7ec0","revision":"0df04c97501a7e2918cbd138b324e947e573fa8b"},
 
-    {"path":"src-desktop/src/native_relay_redemption.rs","digest":"43d47bff4d6b02e30f523c58d757a3783d95f012dca957487e8ab85576ae26b6","revision":"63da6d9d2de45c58fbd0f16a4a53690c09909b6d"},
+    {"path":"src-desktop/src/native_relay_redemption.rs","digest":"f56e9a51bf57589da7fe9cdfac230c1b65ff990d0b57f0bba04c54b95563ba7e","revision":"c67a9e55f21ec4678a3fd5a43b7cb92d8058c8a5"},
 
     {"path":"src-desktop/src/native_secure_entry.rs","digest":"d6ff8051df4be60ff738f524488fe877b0711b95aa606cb70b378e74962bd209","revision":"8d92d732808201554ba801334e2a19f7081fd09d"},
 
@@ -852,7 +852,7 @@
 
     {"path":"src-ui/src/platform/native/NativeRelayLinkIntake.tsx","digest":"4d332dc6786d1c1d3fad5a27572e992ab9615b5ddcd3839a4ed539ddfb3626d6","revision":"e512a39196d7df557d7de9ec15474a93aba570c2"},
 
-    {"path":"src-ui/src/platform/native/NativeRelayLinkReview.tsx","digest":"64dba27361b0baa972361897e3d38697bc7e8a3457afc422878d71e0b5f775ab","revision":"cc44c602194e69ca379f1dcec1b46bedc6489bac"},
+    {"path":"src-ui/src/platform/native/NativeRelayLinkReview.tsx","digest":"c3ea954be7d09a330eb5623bd7388343cd420d6cd45dab5a18d0465e1f760b44","revision":"c67a9e55f21ec4678a3fd5a43b7cb92d8058c8a5"},
 
     {"path":"src-ui/src/platform/native/__tests__/nativeRelayGrantRenewalAdapter.test.ts","digest":"1e387b759067cc0076ae7a46d2e0dc7948591cd200e48878ba72fe3bc426453b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

@@ -90,7 +90,7 @@
 
     {"path":"packages/sdk/src/client/http.ts","digest":"9892699e68483e0df3dd67ce71956994e98a43755a0c931dd6c3c5660caee00e","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
-    {"path":"src-desktop/src/native_relay_link_intake.rs","digest":"9316d68e3d0ed2ff41caa916717394b6a4ea5245d84d07c981fa07f3f0e98001","revision":"63da6d9d2de45c58fbd0f16a4a53690c09909b6d"},
+    {"path":"src-desktop/src/native_relay_link_intake.rs","digest":"546bc23ba0a5ece0b6522127c16694ebce744d1aa8f2e47ef9d2184388ac7ec0","revision":"0df04c97501a7e2918cbd138b324e947e573fa8b"},
 
     {"path":"src-server/routes/operations/voice.ts","digest":"492cdfda970de501b2659522e76897f2e0c268e5018fcc47f43aaf9593538b48","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
