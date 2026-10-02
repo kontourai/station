@@ -9,14 +9,14 @@
 
   "limits": "Source review of this document’s stated contracts and actual callers, not an exhaustive audit of unclaimed implementation branches. No new external SDK/CLI compatibility, provider billing/sign-in, gateway/deployment, network-partition, independent-host, OS keyring/ACL, native/device, release, power-loss or cryptographic penetration qualification. Dated probes and prior test receipts remain historical evidence.",
 
-  "document": {"digest":"588fccb40602d8b54b08bbb634cb3be0dab9be4ae71a38bd7c236e64af1340c7","revision":"91d79c3f0ce9ca5ae304e4248b67b6189103016e"},
+  "document": {"digest":"19a97096d8ded3b4745b480f4f5897ad3f694458432d020f9f3a6dfbfbd2d453","revision":"1d49e432472043f4c3ab7d870104fb3baaf4ad05"},
 
   "sources": [
     {"path":"src-server/domain/config-loader-app.ts","digest":"6f40b234fa3c45e6357d3eb028c53c780eaa139aec28a58444a2ed467898746b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"src-server/providers/adapters/acp-mcp-passthrough.ts","digest":"bae3c16d36044bd319ec404432f98469e5140297f7875f2e139b95ea1b5e16b1","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/providers/adapters/claude-adapter.ts","digest":"f151fded7ef84715d5800e1e825e97fd89ba1308b2cc7c30da94b9ed1a08c222","revision":"1a235cd9bc482738abe4c3f011f73be86074d667"},
+    {"path":"src-server/providers/adapters/claude-adapter.ts","digest":"1eb6048188a2a5d01b67738ab6b5d22f9fa85d93bd00b3e622423798b965e8fb","revision":"3d33d71792203d38262ac5fd80261d12bd31e1ed"},
 
     {"path":"src-server/providers/adapters/claude-skills-materialization.ts","digest":"221b6098abf237f280d14480d9afc6913973b9a94b47593999ba70ff731f0280","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
