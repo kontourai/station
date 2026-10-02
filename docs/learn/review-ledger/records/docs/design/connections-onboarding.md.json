@@ -9,7 +9,7 @@
 
   "limits": "Source review of this document’s stated contracts and actual callers, not an exhaustive audit of unclaimed implementation branches. No new external SDK/CLI compatibility, provider billing/sign-in, gateway/deployment, network-partition, independent-host, OS keyring/ACL, native/device, release, power-loss or cryptographic penetration qualification. Dated probes and prior test receipts remain historical evidence.",
 
-  "document": {"digest":"c892185c2e2851e2a8607688bca26c82a1f188ab9e0b05d227a6a3dd9bf8e27d","revision":"c75f24edf36e9dc018be74053f55ebcaeb5309c5"},
+  "document": {"digest":"247977307a3926fe31b74f40bc02f0b0b3fecbe7a7ef43076cebecd22da2e1b4","revision":"9c6e16f5491ef7b01bdb869be38a462648992e77"},
 
   "sources": [
     {"path":"src-server/domain/config-loader-app.ts","digest":"6f40b234fa3c45e6357d3eb028c53c780eaa139aec28a58444a2ed467898746b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
