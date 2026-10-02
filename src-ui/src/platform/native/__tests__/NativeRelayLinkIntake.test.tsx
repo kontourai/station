@@ -861,3 +861,57 @@ it('a late redemption for the replaced handle cannot stop the newer invitation t
     undefined,
   ]);
 });
+
+it.each([false, true])(
+  'link review discloses only a validated routing refusal and never advances Device setup (extra fields: %s)',
+  async (extraFields) => {
+    await configureBoundFlow(true);
+    const trap = 'https://secret.invalid/?password=SECRET-JWS-SDP';
+    const ordinaryInvoke = host.invoke.getMockImplementation();
+    host.invoke.mockImplementation(async (command, args) => {
+      if (command === 'station_native_relay_link_redeem')
+        return {
+          status: 'failed',
+          failure: {
+            primary: 'brokerRejected',
+            cleanup: 'notAttempted',
+            recovery: null,
+            ...(extraFields ? { rawMessage: trap } : {}),
+          },
+        };
+      return ordinaryInvoke?.(command, args);
+    });
+    render(
+      <NativeRelayLinkIntake>
+        <ProtectedRoot />
+      </NativeRelayLinkIntake>,
+    );
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: 'Continue to device approval',
+      }),
+    );
+    await screen.findByText(/The connection wasn’t confirmed/);
+    if (extraFields)
+      expect(screen.queryByText('Routing failure: brokerRejected')).toBeNull();
+    else
+      expect(screen.getByText('Routing failure: brokerRejected')).toBeTruthy();
+    expect(document.body.textContent).not.toContain(trap);
+    expect(screen.queryByText(/Connection invitation accepted/)).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: 'Request device access' }),
+    ).toBeNull();
+    expect(
+      host.invoke.mock.calls.filter(
+        ([command]) => command === 'station_native_relay_link_redeem',
+      ),
+    ).toHaveLength(1);
+    expect(
+      host.invoke.mock.calls.some(
+        ([command]) =>
+          command === 'station_native_enrollment_resume' ||
+          command === 'station_native_enrollment_begin_prepare',
+      ),
+    ).toBe(false);
+  },
+);

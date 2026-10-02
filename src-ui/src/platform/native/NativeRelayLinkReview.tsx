@@ -19,7 +19,10 @@ import { NativeRelayEnrollmentWizard } from '../../views/connections-hub/NativeR
 import { RelayRouteKeyApproval } from '../../views/connections-hub/RelayRouteKeyApproval';
 import { RelayRouteProfileDialog } from '../../views/connections-hub/RelayRouteProfileDialog';
 import { nativeProfileRepository } from '../PlatformProfileContext';
-import { nativeRelayGrantAdapter } from './nativeRelayGrantAdapter';
+import {
+  type NativeRelayGrantRedemptionFailureCode,
+  nativeRelayGrantAdapter,
+} from './nativeRelayGrantAdapter';
 import { nativeRelayKeyApproval } from './relayKeyApproval';
 import '../../views/connections-hub/ComputersSection.css';
 
@@ -81,6 +84,8 @@ function Review({
   const [saving, setSaving] = useState(false);
   const [busy, setBusy] = useState(false);
   const [redeemed, setRedeemed] = useState(false);
+  const [routingFailure, setRoutingFailure] =
+    useState<NativeRelayGrantRedemptionFailureCode>();
   const [error, setError] = useState<string | null>(null);
   const active = useRef(true);
   useEffect(() => {
@@ -101,6 +106,7 @@ function Review({
     if (delivery.kind !== 'bound-invitation' || !profile || !selection) return;
     setBusy(true);
     setError(null);
+    setRoutingFailure(undefined);
     try {
       if (delivery.invitation.expiresAt <= Date.now())
         throw new Error('expired');
@@ -133,7 +139,10 @@ function Review({
         expectedRoute: selection.expectedRoute,
       });
       if (!active.current) return;
-      if (result.status !== 'redeemed') throw new Error('refused');
+      if (result.status === 'failed') {
+        setRoutingFailure(result.failure.primary);
+        throw new Error('refused');
+      }
       onRedemptionConfirmed(delivery.pendingId);
       setRedeemed(true);
       await queryClient.invalidateQueries({ queryKey: ['native-relay-grant'] });
@@ -270,6 +279,12 @@ function Review({
           </>
         )}
         {error ? <p role="alert">{error}</p> : null}
+        {error && routingFailure ? (
+          <details>
+            <summary>Connection troubleshooting</summary>
+            <p>Routing failure: {routingFailure}</p>
+          </details>
+        ) : null}
       </Dialog>
       {saving && delivery.kind === 'route-intent' ? (
         <RelayRouteProfileDialog
