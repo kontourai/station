@@ -18,7 +18,7 @@
 
     {"path":".github/workflows/interactive-workspace-performance.yml","digest":"edcaa2f6d7a7ce1eeb4e7953ff65d78f7a6f609460dfedaf6976b727a04b7004","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 
-    {"path":".github/workflows/security-analysis.yml","digest":"14107fac7f9b0cef3631098200985ab9f73e0780ad8b95d74a6e01356c25deaa","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
+    {"path":".github/workflows/security-analysis.yml","digest":"9c846e48c9b46b176db769350facf7d698d9012311e5706637648a3a33782422","revision":"983f3de3740aa9ee6878a0d4feec0b650aa67f3c"},
 
     {"path":".github/workflows/windows-vitest-diagnostic.yml","digest":"040f1a8683332740c89c7c9716f7f70370838e9d86441827913cc3db7786d527","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 
@@ -40,7 +40,7 @@
 
     {"path":"pnpm-workspace.yaml","digest":"d8755daab4e9f4a491239888610ae28b412aa80de9b15625b785b26577131953","revision":"3ff5522abf460ad69d2e2ed4c53740d82e9ec289"},
 
-    {"path":"scripts/actionlint-gate.mjs","digest":"25b1f998e505ab9c07b1413791f22721c9fdf4defa433f2e7157739640f1df95","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
+    {"path":"scripts/actionlint-gate.mjs","digest":"e60d7d67ee5d943c9e7b951f20763f0c993bed8f9abd66831784a2263196eea6","revision":"c7fa52bb423f968db7dbb56a1735bfea353f83ef"},
 
     {"path":"scripts/codeql-error-baseline.json","digest":"68f25eff8ac6a15bb324e169be219a0659eacc42a59c451699b171968bd62978","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 
