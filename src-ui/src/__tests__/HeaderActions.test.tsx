@@ -2,7 +2,13 @@
  * @vitest-environment jsdom
  */
 
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 let pendingCount = 0;
@@ -79,7 +85,10 @@ vi.mock('../components/header/OverflowMenu', () => ({
 
 import { HeaderActions } from '../components/header/HeaderActions';
 
-function renderHeader(onOpenNotifications = vi.fn()) {
+function renderHeader(
+  onOpenNotifications = vi.fn(),
+  onOpenConnections = vi.fn(),
+) {
   render(
     <HeaderActions
       helpPrompts={[]}
@@ -95,7 +104,7 @@ function renderHeader(onOpenNotifications = vi.fn()) {
       onCloseNotifications={vi.fn()}
       onCloseOverflow={vi.fn()}
       onHelpPrompt={vi.fn()}
-      onOpenConnections={vi.fn()}
+      onOpenConnections={onOpenConnections}
       onOpenProfile={vi.fn()}
       onOpenHelp={vi.fn()}
       onOpenNotifications={onOpenNotifications}
@@ -186,6 +195,45 @@ describe('HeaderActions — self-describing connection surface', () => {
     savedConnections = [SAVED_STATION];
     bundledStatus = null;
     pendingApprovalRecord = null;
+  });
+
+  test('holding the connection shows its name without also opening the manager', () => {
+    vi.useFakeTimers();
+    try {
+      const openConnections = vi.fn();
+      renderHeader(vi.fn(), openConnections);
+      const button = screen.getByRole('button', { name: /^Manage Stations/ });
+      const startPress = () =>
+        fireEvent(
+          button,
+          new MouseEvent('pointerdown', {
+            bubbles: true,
+            button: 0,
+            clientX: 12,
+            clientY: 12,
+          }),
+        );
+
+      startPress();
+      fireEvent.pointerCancel(button);
+      act(() => vi.advanceTimersByTime(600));
+      expect(screen.queryByRole('tooltip')).toBeNull();
+
+      startPress();
+      act(() => vi.advanceTimersByTime(600));
+      expect(screen.getByRole('tooltip').textContent).toBe('Default');
+      fireEvent.pointerUp(button);
+      fireEvent.click(button);
+      expect(openConnections).not.toHaveBeenCalled();
+
+      fireEvent.keyDown(document, { key: 'Escape' });
+      expect(screen.queryByRole('tooltip')).toBeNull();
+      fireEvent.click(button);
+      expect(openConnections).toHaveBeenCalledTimes(1);
+    } finally {
+      cleanup();
+      vi.useRealTimers();
+    }
   });
 
   test('keeps the healthy Station chip compact and visibly names its saved profile', () => {
