@@ -487,14 +487,13 @@ export function NativeRelayEnrollmentWizard({
 
   return (
     <section
-      className="relay-route-enrollment connections-computers__note"
+      className="relay-route-enrollment native-relay-setup connections-computers__note"
       aria-label={`Device setup for ${profile.name}`}
     >
-      <h3>Device setup</h3>
+      <h3>Approve this device</h3>
       <p>
-        This flow enrolls a Device with this Station account after operator
-        approval. It does not sign in for application use or grant Project
-        access.
+        Sign in to request approval from the Station owner. After approval, sign
+        in again to open your shared projects.
       </p>
       {phase === 'idle' ? (
         <>
@@ -552,18 +551,18 @@ export function NativeRelayEnrollmentWizard({
                 begin.mutate();
               }}
             >
-              Begin Device setup
+              Request device access
             </Button>
           ) : null}
         </>
       ) : null}
 
       {candidate ? (
-        <section
+        <details
           className="connections-computers__note"
           aria-label="Public Device candidate"
         >
-          <h4>Public Device candidate for the Station operator</h4>
+          <summary>Device request details</summary>
           <dl>
             <div>
               <dt>Device ID</dt>
@@ -584,7 +583,7 @@ export function NativeRelayEnrollmentWizard({
             <summary>Public Device key</summary>
             <pre>{JSON.stringify(candidate.deviceProofJwk, null, 2)}</pre>
           </details>
-        </section>
+        </details>
       ) : null}
 
       {phase === 'challenge' ? (
@@ -664,20 +663,20 @@ export function NativeRelayEnrollmentWizard({
 
       {phase === 'pending' ? (
         <section aria-label="Pending operator approval">
-          <p>Waiting for the Station operator to approve this Device.</p>
+          <p>Waiting for the Station owner to approve this device.</p>
           <Button
             disabled={busy}
             pending={checkStatus.isPending}
             onClick={() => checkStatus.mutate()}
           >
-            Check operator approval
+            Check approval
           </Button>
           <Button
             disabled={busy}
             pending={finalize.isPending}
             onClick={() => finalize.mutate()}
           >
-            Check and stage Device delivery
+            Continue after approval
           </Button>
         </section>
       ) : null}
@@ -685,7 +684,8 @@ export function NativeRelayEnrollmentWizard({
       {phase === 'staged' ? (
         <section aria-label="Device delivery staged">
           <p>
-            The Device delivery is staged. Activate this Device to finish setup.
+            The Station owner approved this device. Finish device setup to
+            continue.
           </p>
           <Button
             variant="primary"
@@ -694,7 +694,7 @@ export function NativeRelayEnrollmentWizard({
             pendingLabel="Activating…"
             onClick={() => activate.mutate()}
           >
-            Activate this Device
+            Finish device setup
           </Button>
         </section>
       ) : null}

@@ -584,6 +584,20 @@ function renderRoutes(
 }
 
 function selectNativeRelayRoute(profileName = 'Home Station') {
+  mocks.profiles = mocks.profiles.map((profile) =>
+    profile.name === profileName
+      ? {
+          ...profile,
+          configurationState: 'configured',
+          environmentId: stationId,
+          clientInstanceId: '33333333-3333-4333-8333-333333333333',
+          credentialRef: {
+            kind: 'station-bearer',
+            id: 'native-enrollment:configured-test-reference',
+          },
+        }
+      : profile,
+  );
   mocks.credentialEvidence = {
     connectionId: `station-profile:${profileName.toLowerCase()}`,
     origin: 'https://station.example',
@@ -597,6 +611,12 @@ function selectNativeRelayRoute(profileName = 'Home Station') {
       enrollmentId,
     },
   };
+}
+
+function openDetails(label: string) {
+  const summary = screen.getByText(label);
+  const details = summary.closest('details');
+  if (!details?.open) fireEvent.click(summary);
 }
 
 describe('RelayRouteProfiles', () => {
@@ -704,6 +724,7 @@ describe('RelayRouteProfiles', () => {
     });
     renderRoutes();
     expect(writeText).not.toHaveBeenCalled();
+    openDetails('Connection settings');
     fireEvent.click(
       screen.getByRole('button', { name: 'Copy public iOS setup link' }),
     );
@@ -731,13 +752,13 @@ describe('RelayRouteProfiles', () => {
 
   test('lists an unconfigured route, offers edit, and removes it without revoking trust', async () => {
     renderRoutes();
-    expect(screen.getByText('Saved broker routes')).toBeTruthy();
+    expect(screen.getByText('Your Stations')).toBeTruthy();
     expect(screen.getByText('Device setup required')).toBeTruthy();
     await waitFor(() =>
-      expect(screen.getByText('Station key untrusted')).toBeTruthy(),
+      expect(screen.getByText('Station needs confirmation')).toBeTruthy(),
     );
     expect(
-      screen.getByRole('button', { name: 'Prepare native Station identity' }),
+      screen.getByRole('button', { name: 'Prepare device details' }),
     ).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
     expect(
@@ -745,6 +766,7 @@ describe('RelayRouteProfiles', () => {
     ).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
 
+    openDetails('Connection settings');
     fireEvent.click(screen.getByRole('button', { name: 'Remove this route' }));
     expect(
       screen.getByRole('heading', { name: 'Remove broker route?' }),
@@ -761,9 +783,7 @@ describe('RelayRouteProfiles', () => {
         'No broker routes are saved on this device yet. Save the Station and broker details provided by the Station operator to begin setup.',
       ),
     ).toBeTruthy();
-    expect(
-      screen.getByRole('button', { name: 'Add broker route' }),
-    ).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Add a Station' })).toBeTruthy();
   });
 
   test('selects only a fresh configured Station through ConnectionsContext', async () => {
@@ -872,9 +892,7 @@ describe('RelayRouteProfiles', () => {
     mocks.pendingKey.mockResolvedValue(null);
 
     const { queryClient } = renderRoutes();
-    await screen.findByText(
-      'A routing grant has not been saved on this device.',
-    );
+    await screen.findByText('Connection invitation needed.');
     expect(screen.getByText('Device setup required')).toBeTruthy();
     expect(mocks.grantInvoke).toHaveBeenCalledTimes(1);
 
@@ -895,7 +913,7 @@ describe('RelayRouteProfiles', () => {
       screen.getByRole('button', { name: 'Redeem routing grant' }),
     );
 
-    await screen.findByText(/Routing grant active · expires/);
+    await screen.findByText(/Connection invitation accepted · expires/);
     expect(mocks.grantInvoke).toHaveBeenCalledWith(
       'station_native_relay_grant_redeem',
       expect.objectContaining({
@@ -908,11 +926,7 @@ describe('RelayRouteProfiles', () => {
       'station_profile_store_read',
     );
     expect(screen.getByText('Device setup required')).toBeTruthy();
-    expect(
-      screen.getByText(
-        /account access, device approval, and Project access remain separate/,
-      ),
-    ).toBeTruthy();
+    expect(screen.getByText(/Device access is a separate step/)).toBeTruthy();
     expect(
       queryClient.getQueryData([
         'native-relay-grant',
@@ -969,9 +983,8 @@ describe('RelayRouteProfiles', () => {
     });
 
     renderRoutes();
-    await screen.findByText(
-      'A routing grant has not been saved on this device.',
-    );
+    await screen.findByText('Connection invitation needed.');
+    openDetails('Advanced: paste a connection invitation');
     fireEvent.change(screen.getByLabelText('One-time routing invitation'), {
       target: { value: JSON.stringify(invitation) },
     });
@@ -996,11 +1009,12 @@ describe('RelayRouteProfiles', () => {
     mocks.finalizeResponses.push({ state: 'pending' }, { state: 'delivered' });
     const rendered = renderRoutes();
 
-    await screen.findByRole('heading', { name: 'Device setup' });
-    fireEvent.click(screen.getByRole('button', { name: 'Begin Device setup' }));
-    await screen.findByRole('heading', {
-      name: 'Public Device candidate for the Station operator',
-    });
+    await screen.findByRole('heading', { name: 'Approve this device' });
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Request device access' }),
+    );
+    await screen.findByText('Device request details');
+    fireEvent.click(screen.getByText('Device request details'));
     expect(screen.getByText(enrollmentCandidate.deviceId)).toBeTruthy();
     expect(
       screen.getByText(enrollmentCandidate.deviceProofKeyThumbprint),
@@ -1037,9 +1051,7 @@ describe('RelayRouteProfiles', () => {
 
     await screen.findByRole('region', { name: 'Pending operator approval' });
     expect(
-      screen.getByText(
-        'Waiting for the Station operator to approve this Device.',
-      ),
+      screen.getByText('Waiting for the Station owner to approve this device.'),
     ).toBeTruthy();
     expect(screen.queryByLabelText('Station account password')).toBeNull();
     const loginCall = mocks.enrollmentInvoke.mock.calls.find(
@@ -1053,20 +1065,18 @@ describe('RelayRouteProfiles', () => {
       invitation: 'test-operator-invitation',
     });
 
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Check operator approval' }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Check approval' }));
     await screen.findByText(
       'The Station operator has not completed approval yet.',
     );
     fireEvent.click(
-      screen.getByRole('button', { name: 'Check and stage Device delivery' }),
+      screen.getByRole('button', { name: 'Continue after approval' }),
     );
     await screen.findByText(
       'Operator approval is still pending. You can check again later.',
     );
     fireEvent.click(
-      screen.getByRole('button', { name: 'Check and stage Device delivery' }),
+      screen.getByRole('button', { name: 'Continue after approval' }),
     );
     await screen.findByRole('region', { name: 'Device delivery staged' });
     expect(
@@ -1076,7 +1086,7 @@ describe('RelayRouteProfiles', () => {
     ).toBe(false);
 
     fireEvent.click(
-      screen.getByRole('button', { name: 'Activate this Device' }),
+      screen.getByRole('button', { name: 'Finish device setup' }),
     );
     await screen.findByText(/Device configured/);
     expect(screen.getByText('Device setup required')).toBeTruthy();
@@ -1115,7 +1125,7 @@ describe('RelayRouteProfiles', () => {
       name: `Resume saved setup 1`,
     });
     expect(
-      screen.queryByRole('button', { name: 'Begin Device setup' }),
+      screen.queryByRole('button', { name: 'Request device access' }),
     ).toBeNull();
     expect(mocks.enrollmentInvoke).not.toHaveBeenCalledWith(
       'station_native_enrollment_begin_prepare',
@@ -1123,16 +1133,15 @@ describe('RelayRouteProfiles', () => {
     );
 
     fireEvent.click(resumeButton);
-    await screen.findByRole('heading', {
-      name: 'Public Device candidate for the Station operator',
-    });
+    await screen.findByText('Device request details');
+    fireEvent.click(screen.getByText('Device request details'));
     expect(mocks.enrollmentInvoke).toHaveBeenCalledWith(
       'station_native_enrollment_begin_prepare',
       expect.objectContaining({ enrollmentHandle }),
     );
     expect(
       screen.getByText(
-        /does not sign in for application use or grant Project access/,
+        /After approval, sign in again to open your shared projects/,
       ),
     ).toBeTruthy();
   });
@@ -1141,7 +1150,7 @@ describe('RelayRouteProfiles', () => {
     configureEnrollmentReadyRoute();
     renderRoutes();
     const beginButton = await screen.findByRole('button', {
-      name: 'Begin Device setup',
+      name: 'Request device access',
     });
     mocks.recoveryAttempts.push({
       enrollmentHandle,
@@ -1244,7 +1253,7 @@ describe('RelayRouteProfiles', () => {
         name: 'Resume Device 44444444-4444-4444-8444-444444444444',
       }),
     );
-    await screen.findByRole('button', { name: 'Activate this Device' });
+    await screen.findByRole('button', { name: 'Finish device setup' });
     expect(mocks.enrollmentInvoke).not.toHaveBeenCalledWith(
       'station_native_enrollment_activate_prepare',
       expect.anything(),
@@ -1511,16 +1520,17 @@ describe('RelayRouteProfiles', () => {
   test('aborts the owned attempt and network signal when the user cancels', async () => {
     configureEnrollmentReadyRoute();
     renderRoutes();
-    await screen.findByRole('heading', { name: 'Device setup' });
-    fireEvent.click(screen.getByRole('button', { name: 'Begin Device setup' }));
-    await screen.findByRole('heading', {
-      name: 'Public Device candidate for the Station operator',
-    });
+    await screen.findByRole('heading', { name: 'Approve this device' });
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Request device access' }),
+    );
+    await screen.findByText('Device request details');
+    fireEvent.click(screen.getByText('Device request details'));
 
     fireEvent.click(
       screen.getByRole('button', { name: 'Cancel Device setup' }),
     );
-    await screen.findByRole('button', { name: 'Begin Device setup' });
+    await screen.findByRole('button', { name: 'Request device access' });
     expect(mocks.exchangeSignals.at(-1)?.aborted).toBe(true);
     expect(mocks.enrollmentInvoke).toHaveBeenCalledWith(
       'station_native_enrollment_abort',
@@ -1532,11 +1542,31 @@ describe('RelayRouteProfiles', () => {
   test('disposes an unfinished enrollment on row unmount', async () => {
     configureEnrollmentReadyRoute();
     const rendered = renderRoutes();
-    await screen.findByRole('heading', { name: 'Device setup' });
-    fireEvent.click(screen.getByRole('button', { name: 'Begin Device setup' }));
-    await screen.findByRole('heading', {
-      name: 'Public Device candidate for the Station operator',
-    });
+    await screen.findByRole('heading', { name: 'Approve this device' });
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Request device access' }),
+    );
+    try {
+      await screen.findByText('Device request details');
+    } catch (error) {
+      throw new Error(
+        JSON.stringify({
+          failure: 'native_begin_before_candidate',
+          grantCommands: mocks.grantInvoke.mock.calls.map(
+            ([command]) => command,
+          ),
+          enrollmentCommands: mocks.enrollmentInvoke.mock.calls.map(
+            ([command]) => command,
+          ),
+          peerOpenCount: mocks.openVerifiedPeer.mock.calls.length,
+          exchangePaths: mocks.exchangeResponse.mock.calls.map(
+            ([request]) => request.path,
+          ),
+        }),
+        { cause: error },
+      );
+    }
+    fireEvent.click(screen.getByText('Device request details'));
     const ownedSignal = mocks.exchangeSignals.at(-1);
 
     rendered.unmount();
@@ -1553,11 +1583,13 @@ describe('RelayRouteProfiles', () => {
   test('revalidates the captured public row epoch against live host profile storage before begin', async () => {
     const { liveStore } = configureEnrollmentReadyRoute();
     renderRoutes();
-    await screen.findByRole('button', { name: 'Begin Device setup' });
+    await screen.findByRole('button', { name: 'Request device access' });
 
     liveStore.revision = 13;
     liveStore.profiles[0].updatedAt = 3;
-    fireEvent.click(screen.getByRole('button', { name: 'Begin Device setup' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Request device access' }),
+    );
 
     await screen.findByText(
       'The saved route changed. Reopen setup and try again.',
@@ -1603,7 +1635,7 @@ describe('RelayRouteProfiles', () => {
         'No broker routes are saved on this device yet. Save the Station and broker details provided by the Station operator to begin setup.',
       ),
     ).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Add broker route' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add a Station' }));
 
     fireEvent.change(screen.getByLabelText(/Station application address/), {
       target: { value: 'https://station.example' },
@@ -1696,7 +1728,7 @@ describe('RelayRouteProfiles', () => {
     mocks.pendingKey.mockResolvedValue(null);
     const { queryClient } = renderRoutes();
 
-    await screen.findByText('Station key approved');
+    await screen.findByText('Station confirmed');
     expect(screen.getByText('sha256:cached-approved-key')).toBeTruthy();
     mocks.keyStatus.mockRejectedValueOnce(
       new Error('native keyring unavailable'),
@@ -1707,7 +1739,7 @@ describe('RelayRouteProfiles', () => {
       });
     });
 
-    await screen.findByText('Native key trust unavailable');
+    await screen.findByText('Station identity unavailable');
     expect(screen.queryByText('sha256:cached-approved-key')).toBeNull();
     expect(
       screen.queryByRole('button', { name: 'Revoke Station key trust' }),
@@ -1768,21 +1800,22 @@ describe('RelayRouteProfiles', () => {
     });
 
     renderRoutes();
-    await screen.findByText('Station key approved');
+    await screen.findByText('Station confirmed');
     expect(screen.getByText('sha256:old-station-key')).toBeTruthy();
     expect(
       screen.getByRole('button', { name: 'Review new Station key' }),
     ).toBeTruthy();
     expect(
-      screen.queryByRole('button', { name: 'Prepare native Station identity' }),
+      screen.queryByRole('button', { name: 'Prepare device details' }),
     ).toBeNull();
     expect(screen.queryByLabelText('One-time Station invitation')).toBeNull();
 
+    openDetails('Review a changed Station identity');
     fireEvent.click(
       screen.getByRole('button', { name: 'Review new Station key' }),
     );
     fireEvent.click(
-      screen.getByRole('button', { name: 'Prepare native Station identity' }),
+      screen.getByRole('button', { name: 'Prepare device details' }),
     );
     await screen.findByRole('region', {
       name: 'Public install proof metadata',
@@ -1794,27 +1827,27 @@ describe('RelayRouteProfiles', () => {
     ).toBeNull();
     expect(screen.getByText('sha256:old-station-key')).toBeTruthy();
 
+    openDetails('Review a changed Station identity');
     fireEvent.click(
       screen.getByRole('button', { name: 'Review new Station key' }),
     );
     fireEvent.click(
-      screen.getByRole('button', { name: 'Prepare native Station identity' }),
+      screen.getByRole('button', { name: 'Prepare device details' }),
     );
     await screen.findByRole('region', {
       name: 'Public install proof metadata',
     });
+    openDetails('Advanced: paste a setup invitation');
     fireEvent.change(screen.getByLabelText('One-time Station invitation'), {
       target: {
         value: '{"version":"station-broker-native-route-invitation/v2"}',
       },
     });
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Discover Station key' }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Check this Station' }));
     await screen.findByRole('region', {
       name: 'Candidate from native verification',
     });
-    expect(screen.getByText('Station key approved')).toBeTruthy();
+    expect(screen.getByText('Station confirmed')).toBeTruthy();
     expect(screen.getByText('sha256:old-station-key')).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText('Operator comparison code'), {
@@ -1828,12 +1861,10 @@ describe('RelayRouteProfiles', () => {
     );
     fireEvent.click(
       screen.getByLabelText(
-        /I got these values from the Station operator through a separate channel/,
+        /I compared both values with the Station owner through a separate trusted channel/,
       ),
     );
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Approve Station key' }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm Station' }));
     await waitFor(() =>
       expect(mocks.approveKey).toHaveBeenCalledWith({
         pendingId: rotatedCandidate.pendingId,
@@ -1939,9 +1970,9 @@ describe('RelayRouteProfiles', () => {
     });
 
     renderRoutes();
-    await screen.findByText('Station key untrusted');
+    await screen.findByText('Station needs confirmation');
     fireEvent.click(
-      screen.getByRole('button', { name: 'Prepare native Station identity' }),
+      screen.getByRole('button', { name: 'Prepare device details' }),
     );
     await screen.findByText('sha256:install-proof');
     expect(screen.getByText('io.kontourai.station')).toBeTruthy();
@@ -1954,9 +1985,7 @@ describe('RelayRouteProfiles', () => {
     expect(stationInvitationField.getAttribute('autocorrect')).toBe('off');
     expect(stationInvitationField.getAttribute('spellcheck')).toBe('false');
     pastePlainText(stationInvitationField, invitationJson);
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Discover Station key' }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Check this Station' }));
     await screen.findByText('sha256:full-station-key-id');
     expect(screen.getByText('ABCD-1234-EFGH-5678')).toBeTruthy();
     const candidateRegion = screen.getByRole('region', {
@@ -1970,17 +1999,15 @@ describe('RelayRouteProfiles', () => {
       name: 'Full key ID confirmed by operator',
     });
     const separateChannelAttestation = screen.getByRole('checkbox', {
-      name: /I got these values from the Station operator through a separate channel/,
+      name: /I compared both values with the Station owner through a separate trusted channel/,
     });
     const approveButton = screen.getByRole('button', {
-      name: 'Approve Station key',
+      name: 'Confirm Station',
     });
     expect(routeDetails).not.toBeNull();
     expect(routeDetails?.open).toBe(false);
     expect(
-      within(candidateRegion)
-        .getByText('Untrusted candidate')
-        .closest('details'),
+      screen.getByText('Station needs confirmation').closest('details'),
     ).toBeNull();
     expect(
       within(candidateRegion)
@@ -2022,10 +2049,10 @@ describe('RelayRouteProfiles', () => {
         fullKeyId: candidate.keyId,
       }),
     );
-    await screen.findByText('Station key approved');
-    expect(screen.getByText(/Route remains disconnected/)).toBeTruthy();
+    await screen.findByText('Station confirmed');
+    expect(screen.getByText(/Device access is a separate step/)).toBeTruthy();
     expect(
-      screen.queryByRole('button', { name: 'Prepare native Station identity' }),
+      screen.queryByRole('button', { name: 'Prepare device details' }),
     ).toBeNull();
     expect(
       screen.queryByRole('region', { name: 'Public install proof metadata' }),
@@ -2052,9 +2079,9 @@ describe('RelayRouteProfiles', () => {
         fullKeyId: candidate.keyId,
       }),
     );
-    await screen.findByText('Station key trust revoked');
+    await screen.findByText('Station confirmation removed');
     expect(
-      screen.getByRole('button', { name: 'Prepare native Station identity' }),
+      screen.getByRole('button', { name: 'Prepare device details' }),
     ).toBeTruthy();
   });
 
@@ -2071,9 +2098,9 @@ describe('RelayRouteProfiles', () => {
       publicKey: { kty: 'EC', crv: 'P-256', x: 'x', y: 'y' },
     });
     renderRoutes();
-    await screen.findByText('Station key untrusted');
+    await screen.findByText('Station needs confirmation');
     fireEvent.click(
-      screen.getByRole('button', { name: 'Prepare native Station identity' }),
+      screen.getByRole('button', { name: 'Prepare device details' }),
     );
     await screen.findByText('sha256:install-proof');
     const input = screen.getByLabelText(

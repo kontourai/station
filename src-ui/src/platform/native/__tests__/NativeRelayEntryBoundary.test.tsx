@@ -228,7 +228,7 @@ it('the actual main entry cuts native routes above operator providers through pe
   await import('../../../main');
   if (!entry.tree) throw new Error('main did not construct its actual root');
   const mounted = render(entry.tree);
-  await screen.findByRole('dialog', { name: 'Review Station link' });
+  await screen.findByRole('dialog', { name: /Connect to /u });
   expect(screen.queryByText('Native member entry')).toBeNull();
   expect(entry.auth).not.toHaveBeenCalled();
   expect(entry.operator).not.toHaveBeenCalled();
@@ -248,7 +248,7 @@ it('the actual main entry cuts native routes above operator providers through pe
         },
       });
   });
-  await screen.findByRole('dialog', { name: 'Review Station link' });
+  await screen.findByRole('dialog', { name: /Connect to /u });
   expect(
     screen.getByText('Native member entry').closest('[inert]'),
   ).not.toBeNull();
@@ -282,7 +282,7 @@ it('the actual main entry cuts native routes above operator providers through pe
         },
       });
   });
-  await screen.findByRole('dialog', { name: 'Review Station link' });
+  await screen.findByRole('dialog', { name: /Connect to /u });
   expect(
     screen.getByText('Operator workspace').closest('[inert]'),
   ).not.toBeNull();

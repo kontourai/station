@@ -312,27 +312,30 @@ function NativeRelayMemberContent() {
       <main className="project-page">
         <div className="project-page__inner">
           <QueryClientProvider client={recoveryClient}>
-            <NativeSavedStations
-              onInvitationAccepted={(accepted, capturedScope) => {
-                if (
-                  !memberClient ||
-                  !scope?.isCurrent() ||
-                  !capturedScope.isCurrent() ||
-                  capturedScope.authorityKey !== scope.authorityKey ||
-                  capturedScope.apiBase !== scope.apiBase ||
-                  accepted.scope.stationId !== route.stationId
-                )
-                  return;
-                void memberClient.invalidateQueries({
-                  queryKey: [
-                    'native-member-projects',
-                    scope.apiBase,
-                    scope.authorityKey,
-                  ],
-                  exact: true,
-                });
-              }}
-            />
+            <details open={!scope?.isCurrent()} className="native-relay-setup">
+              <summary>Your Station connection</summary>
+              <NativeSavedStations
+                onInvitationAccepted={(accepted, capturedScope) => {
+                  if (
+                    !memberClient ||
+                    !scope?.isCurrent() ||
+                    !capturedScope.isCurrent() ||
+                    capturedScope.authorityKey !== scope.authorityKey ||
+                    capturedScope.apiBase !== scope.apiBase ||
+                    accepted.scope.stationId !== route.stationId
+                  )
+                    return;
+                  void memberClient.invalidateQueries({
+                    queryKey: [
+                      'native-member-projects',
+                      scope.apiBase,
+                      scope.authorityKey,
+                    ],
+                    exact: true,
+                  });
+                }}
+              />
+            </details>
           </QueryClientProvider>
           {scope?.isCurrent() && memberClient ? (
             <NativeMemberEpoch
@@ -342,10 +345,7 @@ function NativeRelayMemberContent() {
               client={memberClient}
             />
           ) : (
-            <p>
-              Sign in to this Station to view the Projects shared with your
-              account.
-            </p>
+            <p>Finish the steps above to see your shared projects.</p>
           )}
         </div>
       </main>

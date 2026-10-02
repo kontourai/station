@@ -12,6 +12,7 @@ import {
 } from '@testing-library/react';
 import { StrictMode, useEffect } from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import type { NativeRelayGrantMetadata } from '../nativeRelayGrantAdapter';
 import { NativeStationProfileStorage } from '../stationProfileStorage';
 import { TauriNativePlatformAdapter } from '../tauri';
 
@@ -62,7 +63,7 @@ const route = {
   stationId: '11111111-1111-4111-8111-111111111111',
   enrollmentId: '22222222-2222-4222-8222-222222222222',
 };
-const intent: NativeRelayLinkDelivery = {
+const intent: Extract<NativeRelayLinkDelivery, { kind: 'route-intent' }> = {
   kind: 'route-intent',
   pendingId: '33333333-3333-4333-8333-333333333333',
   route,
@@ -155,7 +156,10 @@ beforeEach(async () => {
   host.repository = new NativeStationProfileStorage();
   await host.repository.hydrate();
 });
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 it('drains cold delivery after listening, and only explicit Save persists public intent through the real profile repository', async () => {
   host.launch = intent;
   render(
@@ -163,7 +167,7 @@ it('drains cold delivery after listening, and only explicit Save persists public
       <ProtectedRoot />
     </NativeRelayLinkIntake>,
   );
-  await screen.findByRole('dialog', { name: 'Review Station link' });
+  await screen.findByRole('dialog', { name: /Connect to /u });
   expect(host.events).toEqual(['listen', 'take']);
   expect(screen.queryByText('Existing protected workspace')).toBeNull();
   expect(host.store?.profiles).toHaveLength(0);
@@ -172,9 +176,7 @@ it('drains cold delivery after listening, and only explicit Save persists public
       String(command).includes('relay_link_begin'),
     ),
   ).toBe(false);
-  fireEvent.click(
-    screen.getByRole('button', { name: 'Review and save route' }),
-  );
+  fireEvent.click(screen.getByRole('button', { name: 'Save this Station' }));
   expect(
     (
       (await screen.findByLabelText(
@@ -185,7 +187,7 @@ it('drains cold delivery after listening, and only explicit Save persists public
   fireEvent.change(screen.getByLabelText(/Name/), {
     target: { value: 'Shared Station' },
   });
-  fireEvent.click(screen.getByRole('button', { name: 'Save route' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Save Station' }));
   await waitFor(() => expect(host.store?.profiles).toHaveLength(1));
   expect(host.store?.profiles[0]).toMatchObject({
     name: 'Shared Station',
@@ -220,7 +222,7 @@ it('warm open and cancel keep the protected owner, selected Station and opaque a
   );
   await screen.findByText('Existing protected workspace');
   await emit(intent);
-  await screen.findByRole('dialog', { name: 'Review Station link' });
+  await screen.findByRole('dialog', { name: /Connect to /u });
   expect(
     screen.getByText('Existing protected workspace').closest('[inert]'),
   ).not.toBeNull();
@@ -248,11 +250,11 @@ it('StrictMode recovery and duplicate warm notifications show one review without
       JSON.stringify(host.invoke.mock.calls.map(([command]) => command)),
     ).toContain('take');
   });
-  await screen.findByRole('dialog', { name: 'Review Station link' });
+  await screen.findByRole('dialog', { name: /Connect to /u });
   await emit(intent);
-  expect(
-    screen.getAllByRole('dialog', { name: 'Review Station link' }),
-  ).toHaveLength(1);
+  expect(screen.getAllByRole('dialog', { name: /Connect to /u })).toHaveLength(
+    1,
+  );
   expect(
     host.invoke.mock.calls.filter(
       ([command]) => command === 'station_native_relay_link_cancel',
@@ -320,7 +322,7 @@ it('rejects unexpected secret-bearing IPC fields without saving, discovery or re
     ),
   ).toBe(false);
 });
-it('a bound delivery keeps invitation secret in host custody and requires independent key comparison before explicit opaque redemption', async () => {
+async function configureBoundFlow(initiallyConfirmed = false) {
   await host.repository?.saveRelayRouteProfile({
     name: 'Shared Station',
     endpoint: route.applicationOrigin,
@@ -356,8 +358,9 @@ it('a bound delivery keeps invitation secret in host custody and requires indepe
         surface,
       },
     };
-  let approved = false,
+  let approved = initiallyConfirmed,
     pending: unknown = null;
+  let storedGrant: NativeRelayGrantMetadata | null = null;
   const ordinaryInvoke = host.invoke.getMockImplementation();
   host.invoke.mockImplementation(async (command, args) => {
     if (command === 'station_native_relay_key_approval_prepare')
@@ -410,39 +413,41 @@ it('a bound delivery keeps invitation secret in host custody and requires indepe
         profileRevision: host.store?.revision,
         stationId: route.stationId,
         enrollmentId: route.enrollmentId,
-        grants: [],
+        grants: storedGrant ? [{ metadata: storedGrant, expired: false }] : [],
         cleanups: [],
       };
     if (command === 'station_native_relay_link_redeem') {
       if (!approved) throw new Error('trust missing');
-      return {
-        status: 'redeemed',
-        grant: {
-          route: {
-            brokerOrigin: route.brokerOrigin,
-            stationId: route.stationId,
-            enrollmentId: route.enrollmentId,
-            routingGeneration: 1,
-            grantId: 'abcdefghijklmnopqrstuv',
-          },
-          stationSigningKeyId: keyId,
-          stationSigningGeneration: 1,
-          expiresAt: Date.now() + 3600000,
+      storedGrant = {
+        route: {
+          brokerOrigin: route.brokerOrigin,
+          stationId: route.stationId,
+          enrollmentId: route.enrollmentId,
+          routingGeneration: 1,
+          grantId: 'abcdefghijklmnopqrstuv',
         },
+        stationSigningKeyId: keyId,
+        stationSigningGeneration: 1,
+        expiresAt: Date.now() + 3600000,
       };
+      return { status: 'redeemed', grant: storedGrant };
     }
     if (command === 'station_native_enrollment_resume')
       return { version: 'station.native-relay-enrollment/v1', attempts: [] };
     return ordinaryInvoke?.(command, args);
   });
   host.launch = bound;
+  return { bound, profile, keyId, code };
+}
+it('a bound delivery keeps invitation secret in host custody and requires independent key comparison before explicit opaque redemption', async () => {
+  const { bound, profile, keyId, code } = await configureBoundFlow();
   render(
     <NativeRelayLinkIntake>
       <ProtectedRoot />
     </NativeRelayLinkIntake>,
   );
   await screen.findByRole('button', {
-    name: 'Prepare native Station identity',
+    name: 'Prepare device details',
   });
   expect(
     host.invoke.mock.calls.some(
@@ -450,15 +455,15 @@ it('a bound delivery keeps invitation secret in host custody and requires indepe
     ),
   ).toBe(false);
   fireEvent.click(
-    screen.getByRole('button', { name: 'Prepare native Station identity' }),
+    screen.getByRole('button', { name: 'Prepare device details' }),
   );
   const discover = await screen.findByRole('button', {
-    name: 'Discover Station key',
+    name: 'Check this Station',
   });
   expect(screen.queryByLabelText('One-time Station invitation')).toBeNull();
   fireEvent.click(discover);
   const approve = await screen.findByRole('button', {
-    name: 'Approve Station key',
+    name: 'Confirm Station',
   });
   expect((approve as HTMLButtonElement).disabled).toBe(true);
   fireEvent.change(screen.getByLabelText('Operator comparison code'), {
@@ -474,17 +479,17 @@ it('a bound delivery keeps invitation secret in host custody and requires indepe
   });
   expect((approve as HTMLButtonElement).disabled).toBe(false);
   fireEvent.click(approve);
-  await screen.findByText('Station signing key approved on this device.');
+  await screen.findByText('Station confirmed. Device access comes next.');
   expect(
     host.invoke.mock.calls.some(
       ([command]) => command === 'station_native_relay_link_redeem',
     ),
   ).toBe(false);
   fireEvent.click(
-    screen.getByRole('button', { name: 'Redeem linked routing invitation' }),
+    screen.getByRole('button', { name: 'Continue to device approval' }),
   );
   await screen.findByText(
-    'Routing grant confirmed. Device approval and account access remain separate.',
+    'Connection invitation accepted. The Station owner still needs to approve this device.',
   );
   const begin = host.invoke.mock.calls.find(
     ([command]) => command === 'station_native_relay_link_begin',
@@ -602,12 +607,12 @@ it.each([
     if (accepted) {
       await screen.findByText(applicationOrigin);
       expect(
-        screen.getByRole('button', { name: 'Review and save route' }),
+        screen.getByRole('button', { name: 'Save this Station' }),
       ).toBeDefined();
     } else {
       await screen.findByText('Station could not verify native link metadata.');
       expect(
-        screen.queryByRole('button', { name: 'Review and save route' }),
+        screen.queryByRole('button', { name: 'Save this Station' }),
       ).toBeNull();
     }
     expect(host.store?.profiles).toHaveLength(0);
@@ -647,7 +652,7 @@ it('bound invitation expiry cancels its opaque host handle and replaces all acti
     undefined,
   ]);
   expect(
-    screen.queryByRole('button', { name: 'Redeem linked routing invitation' }),
+    screen.queryByRole('button', { name: 'Continue to device approval' }),
   ).toBeNull();
   expect(
     host.invoke.mock.calls.some(
@@ -656,4 +661,197 @@ it('bound invitation expiry cancels its opaque host handle and replaces all acti
         command === 'station_native_relay_link_redeem',
     ),
   ).toBe(false);
+});
+
+it('keeps resumed Device setup alive after the already-redeemed invitation deadline', async () => {
+  vi.useFakeTimers({
+    shouldAdvanceTime: true,
+    toFake: ['Date', 'setTimeout', 'clearTimeout'],
+  });
+  const { bound, keyId, code } = await configureBoundFlow();
+  const ordinaryInvoke = host.invoke.getMockImplementation();
+  const enrollmentHandle = 'E'.repeat(43);
+  host.invoke.mockImplementation(async (command, args) => {
+    if (command === 'station_native_enrollment_resume')
+      return {
+        version: 'station.native-relay-enrollment/v1',
+        attempts: [
+          {
+            enrollmentHandle,
+            phase: 'staged',
+            profileRevision: host.store?.revision,
+            expiresAt: Date.now() + 600000,
+            registrationAvailable: false,
+            candidate: null,
+            transition: null,
+          },
+        ],
+      };
+    if (command === 'station_native_enrollment_abort') return;
+    return ordinaryInvoke?.(command, args);
+  });
+  render(
+    <NativeRelayLinkIntake>
+      <ProtectedRoot />
+    </NativeRelayLinkIntake>,
+  );
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Prepare device details' }),
+  );
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Check this Station' }),
+  );
+  fireEvent.change(await screen.findByLabelText('Operator comparison code'), {
+    target: { value: code },
+  });
+  fireEvent.change(screen.getByLabelText('Full key ID confirmed by operator'), {
+    target: { value: keyId },
+  });
+  fireEvent.click(screen.getByRole('checkbox'));
+  fireEvent.click(screen.getByRole('button', { name: 'Confirm Station' }));
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Continue to device approval' }),
+  );
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Resume saved setup 1' }),
+  );
+  await screen.findByRole('button', { name: 'Finish device setup' });
+  expect(
+    host.invoke.mock.calls.some(
+      ([command]) => command === 'station_native_enrollment_abort',
+    ),
+  ).toBe(false);
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(
+      bound.invitation.expiresAt - Date.now() + 1,
+    );
+  });
+  expect(
+    screen.getByRole('button', { name: 'Finish device setup' }),
+  ).toBeDefined();
+  expect(
+    screen.queryByText(
+      'This Station invitation has expired. Ask the operator for a new link.',
+    ),
+  ).toBeNull();
+  expect(
+    host.invoke.mock.calls.some(
+      ([command]) => command === 'station_native_enrollment_abort',
+    ),
+  ).toBe(false);
+});
+
+it('public setup for a confirmed Station only prepares and copies public device metadata', async () => {
+  await configureBoundFlow(true);
+  host.launch = intent;
+  const writeText = vi.fn().mockResolvedValue(undefined);
+  Object.defineProperty(navigator, 'clipboard', {
+    configurable: true,
+    value: { writeText },
+  });
+  render(
+    <NativeRelayLinkIntake>
+      <ProtectedRoot />
+    </NativeRelayLinkIntake>,
+  );
+  const prepare = await screen.findByRole('button', {
+    name: 'Prepare device details',
+  });
+  expect(
+    host.invoke.mock.calls.some(
+      ([command]) =>
+        command === 'station_native_relay_link_begin' ||
+        command === 'station_native_relay_link_redeem' ||
+        command === 'station_native_relay_key_approval_approve',
+    ),
+  ).toBe(false);
+  fireEvent.click(prepare);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Copy device details' }),
+  );
+  await waitFor(() => expect(writeText).toHaveBeenCalledOnce());
+  const copied = JSON.parse(String(writeText.mock.calls[0]?.[0]));
+  expect(copied).toMatchObject({
+    profileName: 'Shared Station',
+    appIdentifier: 'io.kontourai.station.nightly',
+    channel: 'nightly',
+    publicKey: { kty: 'EC', crv: 'P-256' },
+  });
+  expect(copied).not.toHaveProperty('invitationSecret');
+  expect(
+    host.invoke.mock.calls.some(
+      ([command]) =>
+        command === 'station_native_relay_link_begin' ||
+        command === 'station_native_relay_link_redeem' ||
+        command === 'station_native_relay_key_approval_approve' ||
+        command === 'station_native_relay_key_approval_revoke' ||
+        command === 'station_profile_authorize_active',
+    ),
+  ).toBe(false);
+  expect(host.store?.profiles[0].configurationState).toBe('unconfigured');
+  expect(host.active).toBe('station-profile:existing');
+  expect(
+    screen.getByText('Device details (public)').closest('details')?.open,
+  ).toBe(false);
+});
+
+it('a late redemption for the replaced handle cannot stop the newer invitation timer', async () => {
+  vi.useFakeTimers({
+    shouldAdvanceTime: true,
+    toFake: ['Date', 'setTimeout', 'clearTimeout'],
+  });
+  const { bound, keyId } = await configureBoundFlow(true);
+  let reply!: (value: unknown) => void;
+  const ordinaryInvoke = host.invoke.getMockImplementation();
+  host.invoke.mockImplementation(async (command, args) => {
+    if (command === 'station_native_relay_link_redeem')
+      return new Promise((resolve) => {
+        reply = resolve;
+      });
+    return ordinaryInvoke?.(command, args);
+  });
+  render(
+    <NativeRelayLinkIntake>
+      <ProtectedRoot />
+    </NativeRelayLinkIntake>,
+  );
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Continue to device approval' }),
+  );
+  await waitFor(() => expect(reply).toBeDefined());
+  const newer = {
+    ...bound,
+    pendingId: '77777777-7777-4777-8777-777777777777',
+    invitation: { ...bound.invitation, expiresAt: Date.now() + 1000 },
+  };
+  await act(async () => {
+    for (const handler of host.handlers) handler({ payload: newer });
+    reply({
+      status: 'redeemed',
+      grant: {
+        route: {
+          brokerOrigin: route.brokerOrigin,
+          stationId: route.stationId,
+          enrollmentId: route.enrollmentId,
+          routingGeneration: 1,
+          grantId: 'abcdefghijklmnopqrstuv',
+        },
+        stationSigningKeyId: keyId,
+        stationSigningGeneration: 1,
+        expiresAt: Date.now() + 3600000,
+      },
+    });
+  });
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(1001);
+  });
+  await screen.findByRole('heading', { name: 'Couldn’t open this invitation' });
+  expect(
+    screen.queryByRole('heading', { name: 'Approve this device' }),
+  ).toBeNull();
+  expect(host.invoke.mock.calls).toContainEqual([
+    'station_native_relay_link_cancel',
+    { pendingId: newer.pendingId },
+    undefined,
+  ]);
 });

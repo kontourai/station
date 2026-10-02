@@ -3,6 +3,7 @@ import type { NativeRelayLinkDelivery } from '@kontourai/station-contracts/nativ
 import {
   QueryClient,
   QueryClientProvider,
+  useQuery,
   useQueryClient,
 } from '@tanstack/react-query';
 import {
@@ -34,9 +35,11 @@ function matches(profile: StationProfile, delivery: PendingDelivery) {
 function Review({
   delivery,
   onClose,
+  onRedemptionConfirmed,
 }: {
   delivery: NativeRelayLinkDelivery;
   onClose: () => void;
+  onRedemptionConfirmed: (pendingId: string) => void;
 }) {
   const queryClient = useQueryClient();
   const repository = nativeProfileRepository();
@@ -54,6 +57,27 @@ function Review({
       ? []
       : profiles.filter((profile) => matches(profile, delivery));
   const profile = matching.length === 1 ? matching[0] : undefined;
+  const trust = useQuery({
+    queryKey: ['native-relay-key-approval', profile?.name ?? '', 'status'],
+    queryFn: () => {
+      if (!profile) throw new Error('Saved Station is unavailable.');
+      return nativeRelayKeyApproval.status(profile.name);
+    },
+    enabled: Boolean(profile),
+    retry: false,
+    staleTime: 0,
+  });
+  const boundConfirmed =
+    delivery.kind === 'bound-invitation' &&
+    profile &&
+    trust.isSuccess &&
+    !trust.isFetching &&
+    trust.data.status === 'approved' &&
+    trust.data.stationId === delivery.route.stationId &&
+    trust.data.enrollmentId === delivery.route.enrollmentId &&
+    trust.data.brokerOrigin === delivery.route.brokerOrigin &&
+    trust.data.keyId === delivery.invitation.stationSigningKeyId &&
+    trust.data.generation === delivery.invitation.stationSigningGeneration;
   const [saving, setSaving] = useState(false);
   const [busy, setBusy] = useState(false);
   const [redeemed, setRedeemed] = useState(false);
@@ -110,12 +134,13 @@ function Review({
       });
       if (!active.current) return;
       if (result.status !== 'redeemed') throw new Error('refused');
+      onRedemptionConfirmed(delivery.pendingId);
       setRedeemed(true);
       await queryClient.invalidateQueries({ queryKey: ['native-relay-grant'] });
     } catch {
       if (active.current)
         setError(
-          'Station did not confirm routing grant redemption. Check native status before continuing; do not reuse an uncertain invitation.',
+          'The connection wasn’t confirmed. Close this screen and check the Station’s status before using another invitation.',
         );
     } finally {
       if (active.current) setBusy(false);
@@ -124,7 +149,14 @@ function Review({
   return (
     <>
       <Dialog
-        title="Review Station link"
+        panelClassName="native-relay-setup"
+        title={
+          delivery.kind === 'rejected'
+            ? 'Couldn’t open this invitation'
+            : profile
+              ? `Connect to ${profile.name}`
+              : 'Connect to this Station'
+        }
         closeLabel="Close Station link review"
         onClose={close}
         historyMode="none"
@@ -132,23 +164,35 @@ function Review({
         footer={<Button onClick={close}>Close link review</Button>}
       >
         <p>
-          Opening this link does not select a Station, approve a key, sign in,
-          enroll a Device, or grant Project access.
+          Only continue if you expected an invitation from this Station’s owner.
         </p>
         {delivery.kind === 'rejected' ? (
-          <p role="alert">{delivery.message}</p>
+          <>
+            <p role="alert">Ask the Station owner for a new link.</p>
+            <details>
+              <summary>Details</summary>
+              <p>{delivery.message}</p>
+              <p>Error: {delivery.code}</p>
+            </details>
+          </>
         ) : (
           <>
-            <dl>
-              <dt>Application address hint · untrusted</dt>
-              <dd>{delivery.route.applicationOrigin}</dd>
-              <dt>Broker address</dt>
-              <dd>{delivery.route.brokerOrigin}</dd>
-              <dt>Station ID</dt>
-              <dd>{delivery.route.stationId}</dd>
-              <dt>Enrollment ID</dt>
-              <dd>{delivery.route.enrollmentId}</dd>
-            </dl>
+            <details>
+              <summary>Connection details</summary>
+              <p>
+                The address is supplied by this link and hasn’t been verified.
+              </p>
+              <dl>
+                <dt>Application address hint · untrusted</dt>
+                <dd>{delivery.route.applicationOrigin}</dd>
+                <dt>Broker address</dt>
+                <dd>{delivery.route.brokerOrigin}</dd>
+                <dt>Station ID</dt>
+                <dd>{delivery.route.stationId}</dd>
+                <dt>Enrollment ID</dt>
+                <dd>{delivery.route.enrollmentId}</dd>
+              </dl>
+            </details>
             {matching.length > 1 ? (
               <p role="alert">
                 More than one saved route matches. Resolve the duplicate routes
@@ -158,8 +202,8 @@ function Review({
             {delivery.kind === 'route-intent' &&
             !profile &&
             matching.length === 0 ? (
-              <Button onClick={() => setSaving(true)}>
-                Review and save route
+              <Button variant="primary" onClick={() => setSaving(true)}>
+                Save this Station
               </Button>
             ) : null}
             {delivery.kind === 'bound-invitation' && !profile ? (
@@ -181,6 +225,7 @@ function Review({
                   brokerOrigin={delivery.route.brokerOrigin}
                   stationId={delivery.route.stationId}
                   enrollmentId={delivery.route.enrollmentId}
+                  publicSetupIntent={delivery.kind === 'route-intent'}
                   linkedInvitation={
                     delivery.kind === 'bound-invitation'
                       ? {
@@ -192,22 +237,23 @@ function Review({
                       : undefined
                   }
                 />
-                {delivery.kind === 'bound-invitation' && !redeemed ? (
+                {boundConfirmed && !redeemed ? (
                   <Button
+                    variant="primary"
                     disabled={
                       busy || delivery.invitation.expiresAt <= Date.now()
                     }
                     pending={busy}
                     onClick={() => void redeem()}
                   >
-                    Redeem linked routing invitation
+                    Continue to device approval
                   </Button>
                 ) : null}
                 {redeemed && selection ? (
                   <>
                     <p role="status">
-                      Routing grant confirmed. Device approval and account
-                      access remain separate.
+                      Connection invitation accepted. The Station owner still
+                      needs to approve this device.
                     </p>
                     <NativeRelayEnrollmentWizard
                       profile={profile}
@@ -237,6 +283,7 @@ function Review({
 export function NativeRelayLinkReview(props: {
   delivery: NativeRelayLinkDelivery;
   onClose: () => void;
+  onRedemptionConfirmed: (pendingId: string) => void;
 }) {
   const [client] = useState(
     () =>

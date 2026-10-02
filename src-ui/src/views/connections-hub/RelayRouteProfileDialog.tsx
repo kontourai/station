@@ -182,9 +182,20 @@ export function RelayRouteProfileDialog({
 
   return (
     <Dialog
-      eyebrow="Station route"
-      title={profile ? 'Edit broker route' : 'Save broker route'}
-      subtitle="A broker finds the Station. It does not authenticate this device or grant Project access."
+      eyebrow="Station"
+      panelClassName="native-relay-setup"
+      title={
+        initialRoute
+          ? 'Save this Station'
+          : profile
+            ? 'Edit broker route'
+            : 'Save broker route'
+      }
+      subtitle={
+        initialRoute
+          ? 'Give this Station a name you’ll recognize. Confirming its identity comes next.'
+          : 'Save connection details. Access is approved separately.'
+      }
       closeLabel="Close broker route"
       onClose={onClose}
       footer={
@@ -197,80 +208,11 @@ export function RelayRouteProfileDialog({
             pendingLabel="Saving…"
             onClick={() => void submit()}
           >
-            Save route
+            {initialRoute ? 'Save Station' : 'Save route'}
           </Button>
         </>
       }
     >
-      <label className="editor-field" htmlFor={`${fieldId}-station-endpoint`}>
-        <span className="editor-label">Station application address</span>
-        <input
-          id={`${fieldId}-station-endpoint`}
-          className="editor-input"
-          value={endpoint}
-          placeholder="https://station.example"
-          autoCapitalize="none"
-          autoCorrect="off"
-          spellCheck={false}
-          onChange={(event) => setEndpoint(event.target.value)}
-        />
-        <span className="editor-hint">
-          The Station’s application origin is entered separately from the
-          broker.
-        </span>
-      </label>
-      <label className="editor-field" htmlFor={`${fieldId}-broker-origin`}>
-        <span className="editor-label">Broker address</span>
-        <input
-          id={`${fieldId}-broker-origin`}
-          className="editor-input"
-          value={brokerOrigin}
-          placeholder="https://broker.example"
-          autoCapitalize="none"
-          autoCorrect="off"
-          spellCheck={false}
-          onChange={(event) => setBrokerOrigin(event.target.value)}
-        />
-        <span className="editor-hint">
-          Public brokers require HTTPS. HTTP is allowed only for a numeric
-          loopback address during local testing.
-        </span>
-      </label>
-      <label className="editor-field" htmlFor={`${fieldId}-station-id`}>
-        <span className="editor-label">Station ID</span>
-        <input
-          id={`${fieldId}-station-id`}
-          className="editor-input"
-          value={stationId}
-          autoCapitalize="none"
-          autoCorrect="off"
-          spellCheck={false}
-          onChange={(event) => setStationId(event.target.value)}
-        />
-      </label>
-      <label className="editor-field" htmlFor={`${fieldId}-enrollment-id`}>
-        <span className="editor-label">Enrollment ID</span>
-        <input
-          id={`${fieldId}-enrollment-id`}
-          className="editor-input"
-          value={enrollmentId}
-          autoCapitalize="none"
-          autoCorrect="off"
-          spellCheck={false}
-          onChange={(event) => setEnrollmentId(event.target.value)}
-        />
-      </label>
-      <RelayRouteTrustReadout
-        stationId={stationId}
-        enrollmentId={enrollmentId}
-      />
-      <p className="connections-computers__note">
-        The profile stores no broker credential or Station signing key. The key
-        is read only from this device’s separate trust record. This trust
-        display is advisory; a connection attempt must check the current record
-        again. Saving this route does not connect or sign in; broker transport
-        and account setup are not enabled here.
-      </p>
       <label className="editor-field" htmlFor={`${fieldId}-name`}>
         <span className="editor-label">
           Name <span className="editor-hint">optional</span>
@@ -282,6 +224,78 @@ export function RelayRouteProfileDialog({
           onChange={(event) => setName(event.target.value)}
         />
       </label>
+      <details open={!initialRoute}>
+        <summary>Connection details</summary>
+        <label className="editor-field" htmlFor={`${fieldId}-station-endpoint`}>
+          <span className="editor-label">Station application address</span>
+          <input
+            id={`${fieldId}-station-endpoint`}
+            className="editor-input"
+            value={endpoint}
+            placeholder="https://station.example"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+            onChange={(event) => setEndpoint(event.target.value)}
+          />
+          <span className="editor-hint">
+            The Station’s application origin is entered separately from the
+            broker.
+          </span>
+        </label>
+        <label className="editor-field" htmlFor={`${fieldId}-broker-origin`}>
+          <span className="editor-label">Broker address</span>
+          <input
+            id={`${fieldId}-broker-origin`}
+            className="editor-input"
+            value={brokerOrigin}
+            placeholder="https://broker.example"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+            onChange={(event) => setBrokerOrigin(event.target.value)}
+          />
+          <span className="editor-hint">
+            Public brokers require HTTPS. HTTP is allowed only for a numeric
+            loopback address during local testing.
+          </span>
+        </label>
+        <label className="editor-field" htmlFor={`${fieldId}-station-id`}>
+          <span className="editor-label">Station ID</span>
+          <input
+            id={`${fieldId}-station-id`}
+            className="editor-input"
+            value={stationId}
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+            onChange={(event) => setStationId(event.target.value)}
+          />
+        </label>
+        <label className="editor-field" htmlFor={`${fieldId}-enrollment-id`}>
+          <span className="editor-label">Enrollment ID</span>
+          <input
+            id={`${fieldId}-enrollment-id`}
+            className="editor-input"
+            value={enrollmentId}
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+            onChange={(event) => setEnrollmentId(event.target.value)}
+          />
+        </label>
+        <RelayRouteTrustReadout
+          stationId={stationId}
+          enrollmentId={enrollmentId}
+        />
+        <p className="connections-computers__note">
+          The profile stores no broker credential or Station signing key. The
+          key is read only from this device’s separate trust record. This trust
+          display is advisory; a connection attempt must check the current
+          record again. Saving this route does not connect or sign in; broker
+          transport and account setup are not enabled here.
+        </p>
+      </details>
       {error && (
         <p className="connections-computers__alert" role="alert">
           {error}

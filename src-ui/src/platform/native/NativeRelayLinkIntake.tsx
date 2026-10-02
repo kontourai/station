@@ -23,6 +23,10 @@ export function NativeRelayLinkIntake({ children }: { children: ReactNode }) {
   const [childrenStarted, setChildrenStarted] = useState(!enabled);
   const [pending, setPending] = useState<NativeRelayLinkDelivery | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [redeemedPendingId, setRedeemedPendingId] = useState<string | null>(
+    null,
+  );
+  const redeemedPendingIdRef = useRef<string | null>(null);
   const seen = useRef(new Set<string>());
   const current = useRef<NativeRelayLinkDelivery | null>(null);
   useEffect(() => {
@@ -83,10 +87,18 @@ export function NativeRelayLinkIntake({ children }: { children: ReactNode }) {
     if (ready && !pending) setChildrenStarted(true);
   }, [ready, pending]);
   useEffect(() => {
-    if (pending?.kind !== 'bound-invitation') return;
+    if (
+      pending?.kind !== 'bound-invitation' ||
+      pending.pendingId === redeemedPendingId
+    )
+      return;
     const timer = setTimeout(
       () => {
-        if (current.current !== pending) return;
+        if (
+          current.current !== pending ||
+          redeemedPendingIdRef.current === pending.pendingId
+        )
+          return;
         const expired: NativeRelayLinkDelivery = {
           kind: 'rejected',
           code: 'expired',
@@ -100,7 +112,14 @@ export function NativeRelayLinkIntake({ children }: { children: ReactNode }) {
       Math.max(0, pending.invitation.expiresAt - Date.now()),
     );
     return () => clearTimeout(timer);
-  }, [pending]);
+  }, [pending, redeemedPendingId]);
+  function redemptionConfirmed(pendingId: string) {
+    const owner = current.current;
+    if (owner?.kind === 'bound-invitation' && owner.pendingId === pendingId) {
+      redeemedPendingIdRef.current = pendingId;
+      setRedeemedPendingId(pendingId);
+    }
+  }
   async function close() {
     const closing = current.current;
     try {
@@ -135,7 +154,11 @@ export function NativeRelayLinkIntake({ children }: { children: ReactNode }) {
         <LazyBoundary
           key={pending.kind === 'rejected' ? 'rejected' : pending.pendingId}
           load={loadReview}
-          componentProps={{ delivery: pending, onClose: () => void close() }}
+          componentProps={{
+            delivery: pending,
+            onClose: () => void close(),
+            onRedemptionConfirmed: redemptionConfirmed,
+          }}
           pending={<SkeletonBlock label="Opening Station link review" />}
         />
       ) : null}

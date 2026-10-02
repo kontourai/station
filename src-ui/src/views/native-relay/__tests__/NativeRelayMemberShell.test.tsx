@@ -306,9 +306,7 @@ it('keeps accountless native recovery open without any protected or operator req
   ).toBeDefined();
   expect(screen.getByText('Native account recovery')).toBeDefined();
   expect(
-    screen.getByText(
-      'Sign in to this Station to view the Projects shared with your account.',
-    ),
+    screen.getByText('Finish the steps above to see your shared projects.'),
   ).toBeDefined();
   expect(state.transport).not.toHaveBeenCalled();
   expect(fetch).not.toHaveBeenCalled();

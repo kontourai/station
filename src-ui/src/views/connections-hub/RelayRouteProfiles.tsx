@@ -248,12 +248,15 @@ function NativeRelayGrantControls({
       className="connections-computers__note"
       aria-label={`Routing grant for ${profile.name}`}
     >
-      <h3>Broker routing grant</h3>
+      <h3>
+        {profile.configurationState === 'configured'
+          ? 'Device access ready'
+          : 'Connect this device'}
+      </h3>
       <p>
-        Station trust must be approved separately before redemption. The native
-        host checks trust again when it redeems the invitation. A routing grant
-        only authorizes broker signaling; account access, device approval, and
-        Project access remain separate steps.
+        {trustMatchesRoute
+          ? 'Use the setup invitation from the Station owner to continue.'
+          : 'Confirm this Station first. Device approval comes next.'}
       </p>
       {trust.isPending ? (
         <SkeletonBlock count={1} label="Checking Station key trust" />
@@ -265,16 +268,10 @@ function NativeRelayGrantControls({
         </p>
       ) : null}
       {!trust.isPending && !trust.isError && !trustMatchesRoute ? (
-        <p role="status">
-          Approve the Station signing key below before redeeming a routing
-          grant.
-        </p>
+        <p role="status">Confirm this Station before continuing.</p>
       ) : null}
       {trustMatchesRoute ? (
-        <p role="status">
-          Station key trust is approved for this saved route; the native host
-          will verify it again at redemption.
-        </p>
+        <p role="status">Station confirmed. Your device still needs access.</p>
       ) : null}
       {status.isPending ? (
         <SkeletonBlock count={1} label="Checking this device’s routing grant" />
@@ -303,47 +300,52 @@ function NativeRelayGrantControls({
           }}
         />
       ) : null}
-      <NativeRelayAccountSessionPanel
-        profile={profile}
-        onInvitationAccepted={onInvitationAccepted}
-      />
-      <label>
-        One-time routing invitation
-        <input
-          aria-label="One-time routing invitation"
-          type="password"
-          className="editor-input"
-          autoComplete="off"
-          autoCapitalize="none"
-          autoCorrect="off"
-          spellCheck={false}
-          value={invitation}
-          onChange={(event) => setInvitation(event.target.value)}
-          onPaste={(event) => {
-            const text =
-              event.clipboardData.getData('text/plain') ||
-              event.clipboardData.getData('text');
-            if (!text) return;
-            event.preventDefault();
-            setInvitation(text.replace(/\r\n?|\n/gu, ''));
-          }}
+      {profile.configurationState === 'configured' ? (
+        <NativeRelayAccountSessionPanel
+          profile={profile}
+          onInvitationAccepted={onInvitationAccepted}
         />
-      </label>
-      <Button
-        variant="primary"
-        disabled={
-          !invitation.trim() ||
-          status.isError ||
-          status.isFetching ||
-          !trustMatchesRoute ||
-          Boolean(status.data?.grants.length)
-        }
-        pending={redeem.isPending}
-        pendingLabel="Redeeming…"
-        onClick={redeemInvitation}
-      >
-        Redeem routing grant
-      </Button>
+      ) : null}
+      <details>
+        <summary>Advanced: paste a connection invitation</summary>
+        <label>
+          One-time routing invitation
+          <input
+            aria-label="One-time routing invitation"
+            type="password"
+            className="editor-input"
+            autoComplete="off"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+            value={invitation}
+            onChange={(event) => setInvitation(event.target.value)}
+            onPaste={(event) => {
+              const text =
+                event.clipboardData.getData('text/plain') ||
+                event.clipboardData.getData('text');
+              if (!text) return;
+              event.preventDefault();
+              setInvitation(text.replace(/\r\n?|\n/gu, ''));
+            }}
+          />
+        </label>
+        <Button
+          variant="primary"
+          disabled={
+            !invitation.trim() ||
+            status.isError ||
+            status.isFetching ||
+            !trustMatchesRoute ||
+            Boolean(status.data?.grants.length)
+          }
+          pending={redeem.isPending}
+          pendingLabel="Redeeming…"
+          onClick={redeemInvitation}
+        >
+          Redeem routing grant
+        </Button>
+      </details>
       {error ? <p role="alert">{error}</p> : null}
       {redeem.isSuccess ? (
         <p role="status">Routing grant saved on this device.</p>
@@ -594,11 +596,8 @@ function NativeRelayAccountSessionPanel({
       className="connections-computers__note"
       aria-label={`Station account for ${profile.name}`}
     >
-      <h3>Station account session</h3>
-      <p>
-        Account sign-in uses the selected native relay. It does not authorize
-        Device approval or Project membership.
-      </p>
+      <h3>Sign in</h3>
+      <p>Sign in to see the projects shared with your account.</p>
       {hasAccountSession ? (
         <>
           <label className="editor-field">
@@ -709,11 +708,14 @@ function NativeRelayAccountSessionPanel({
 
 function NativeRelayGrantSummary({ state }: { state: NativeRelayGrantState }) {
   const grant = state.grants[0];
-  if (!grant) return <p>A routing grant has not been saved on this device.</p>;
+  if (!grant) return <p>Connection invitation needed.</p>;
   const expired = grant.expired || grant.metadata.expiresAt <= Date.now();
   return (
     <p>
-      {expired ? 'Routing grant expired' : 'Routing grant active'} · expires{' '}
+      {expired
+        ? 'Connection invitation expired'
+        : 'Connection invitation accepted'}{' '}
+      · expires{' '}
       <time dateTime={new Date(grant.metadata.expiresAt).toISOString()}>
         {new Date(grant.metadata.expiresAt).toLocaleString()}
       </time>
@@ -864,15 +866,15 @@ export function RelayRouteProfiles({
   }
 
   return (
-    <section className="relay-route-profiles" aria-label="Saved broker routes">
-      <h2 className="relay-route-profiles__heading">Saved broker routes</h2>
+    <section
+      className="relay-route-profiles native-relay-setup"
+      aria-label="Saved broker routes"
+    >
+      <h2 className="relay-route-profiles__heading">Your Stations</h2>
       <p className="connections-computers__note">
-        These routes are saved locally. Choose a configured Station to sign in
-        through the native relay. Account access, Device approval, and Project
-        membership remain separate. Approved routing grants renew while this app
-        is awake; remove a saved route to stop maintaining it.
+        Choose a Station, then finish the steps to access its shared projects.
       </p>
-      <Button onClick={() => setCreating(true)}>Add broker route</Button>
+      <Button onClick={() => setCreating(true)}>Add a Station</Button>
       {profiles.length === 0 && (
         <p className="connections-computers__note">
           No broker routes are saved on this device yet. Save the Station and
@@ -886,17 +888,18 @@ export function RelayRouteProfiles({
           resume renewal.
         </p>
       )}
+      <details>
+        <summary>Connection upkeep</summary>
+        <p>
+          Approved routing grants renew while this app is awake. Remove a
+          Station to stop maintaining its connection.
+        </p>
+      </details>
       {profiles.map((profile) => (
         <PageRow
           key={profile.name.toLowerCase()}
           className="connections-computers__row"
-          label={
-            <>
-              {profile.name}{' '}
-              <span className="connections-computers__chip">Broker route</span>
-            </>
-          }
-          description={`${profile.relayRoute!.brokerOrigin} · ${profile.endpoint}`}
+          label={<>{profile.name} </>}
           status={
             <span className="connections-computers__state">
               {routeStatus(profile)}
@@ -931,11 +934,6 @@ export function RelayRouteProfiles({
             />
           }
         >
-          <NativeRelayGrantControls
-            key={`grant:${profile.name.toLowerCase()}:${profile.endpoint}:${profile.relayRoute!.brokerOrigin}:${profile.relayRoute!.stationId}:${profile.relayRoute!.enrollmentId}`}
-            profile={profile}
-            onInvitationAccepted={onInvitationAccepted}
-          />
           <RelayRouteKeyApproval
             key={`${profile.name}:${profile.updatedAt}:${profile.relayRoute!.brokerOrigin}:${profile.relayRoute!.stationId}:${profile.relayRoute!.enrollmentId}`}
             profileName={profile.name}
@@ -943,20 +941,26 @@ export function RelayRouteProfiles({
             stationId={profile.relayRoute!.stationId}
             enrollmentId={profile.relayRoute!.enrollmentId}
           />
-          <Button onClick={() => void copyPublicSetupLink(profile)}>
-            Copy public iOS setup link
-          </Button>
-          <p>
-            Setup links contain untrusted routing hints only. They grant no
-            access.
-          </p>
-          <button
-            type="button"
-            className="connections-computers__remove tap-target"
-            onClick={() => setRemoveTarget(profile)}
-          >
-            Remove this route
-          </button>
+          <NativeRelayGrantControls
+            key={`grant:${profile.name.toLowerCase()}:${profile.endpoint}:${profile.relayRoute!.brokerOrigin}:${profile.relayRoute!.stationId}:${profile.relayRoute!.enrollmentId}`}
+            profile={profile}
+            onInvitationAccepted={onInvitationAccepted}
+          />
+          <details>
+            <summary>Connection settings</summary>
+
+            <Button onClick={() => void copyPublicSetupLink(profile)}>
+              Copy public iOS setup link
+            </Button>
+            <p>This setup link shares connection details, not access.</p>
+            <button
+              type="button"
+              className="connections-computers__remove tap-target"
+              onClick={() => setRemoveTarget(profile)}
+            >
+              Remove this route
+            </button>
+          </details>
         </PageRow>
       ))}
       {error && (

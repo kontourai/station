@@ -274,3 +274,57 @@
   outline: 2px solid var(--focus-ring, var(--accent-primary));
   outline-offset: 2px;
 }
+
+/* Local setup uses the shipped UI scale; protocol values stay in Details. */
+.native-relay-setup {
+  font-family: var(--k-font-ui);
+  font-size: var(--k-text-md);
+  color: var(--k-text);
+}
+.native-relay-setup :is(h3, h4, p) {
+  margin: 0;
+  font-size: var(--k-text-md);
+  line-height: 1.5;
+}
+.native-relay-setup :is(h3, h4) {
+  font-weight: 600;
+}
+.native-relay-setup h2 {
+  font-size: var(--k-text-xl);
+}
+.native-relay-setup details {
+  min-width: 0;
+}
+.native-relay-setup summary {
+  min-height: 44px;
+  padding-block: var(--k-space-2);
+  color: var(--k-text-muted);
+  cursor: pointer;
+  font-size: var(--k-text-md);
+}
+.native-relay-setup details[open] > :not(summary) {
+  margin-top: var(--k-space-2);
+}
+.native-relay-setup :is(dl, pre, code) {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.native-relay-setup .native-relay-setup__code {
+  padding: var(--k-space-3);
+  border-radius: var(--k-radius-md);
+  background: var(--k-panel-raised);
+  font-family: var(--k-font-mono);
+  font-size: var(--k-text-xl);
+  letter-spacing: 0.04em;
+}
+.native-relay-setup__comparison-key {
+  display: grid;
+  gap: var(--k-space-1);
+}
+.native-relay-setup__comparison-key code {
+  font-family: var(--k-font-mono);
+  font-size: var(--k-text-sm);
+}
+.native-relay-setup :is(button, input, select) {
+  font-size: var(--k-text-md);
+}
