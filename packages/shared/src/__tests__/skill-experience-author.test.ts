@@ -1,19 +1,13 @@
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import {
-  cpSync,
-  mkdtempSync,
-  readFileSync,
-  symlinkSync,
-  writeFileSync,
-} from 'node:fs';
+import { cpSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { AgentPluginManifestV1 } from '@kontourai/station-contracts/agent-plugin';
 import type { SkillExperienceDefinitionV1 } from '@kontourai/station-contracts/skill-experience';
-import { afterEach, describe, expect, test } from 'vitest';
+import { describe, expect, test } from 'vitest';
+import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.js';
 import { parseAgentPluginManifest } from '../agent-plugin-manifest.js';
 import { buildPlugin } from '../build.js';
 
@@ -22,19 +16,10 @@ const exampleRoot = resolve(
   '../../../../examples/visual-skill-experience',
 );
 const definitionPath = 'io.kontourai.station/experiences/stress-test-idea.json';
-const cleanupRoots: string[] = [];
-
-afterEach(async () => {
-  await Promise.all(
-    cleanupRoots
-      .splice(0)
-      .map((root) => rm(root, { recursive: true, force: true })),
-  );
-});
+const makeTempDir = trackTempDirs();
 
 function authorPackage() {
-  const root = mkdtempSync(join(tmpdir(), 'station-experience-author-'));
-  cleanupRoots.push(root);
+  const root = makeTempDir('station-experience-author-');
   const plugin = join(root, 'plugin');
   cpSync(exampleRoot, plugin, { recursive: true });
   const definition: SkillExperienceDefinitionV1 = JSON.parse(
