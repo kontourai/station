@@ -41,11 +41,7 @@ import type {
   SteerInputInspectionResult,
   SteerTurnResult,
 } from '@kontourai/station-contracts/orchestration';
-import { apiErrorMessage } from '../api-core';
-import {
-  envelopeError,
-  StationHttpError as SteeringHttpError,
-} from './api-error-message';
+import { envelopeError } from './api-error-message';
 import { ChatHttpError, isStationEnvelope } from './chatHttpError';
 import {
   authenticatedFetch,
@@ -459,16 +455,8 @@ async function dispatchSteerCommand<T>(
     details?: unknown;
   };
   if (!response.ok || !result.success) {
-    const message = apiErrorMessage(result, `HTTP ${response.status}`);
-    throw typeof result.code === 'string'
-      ? new ChatHttpError(
-          new SteeringHttpError(response.status, message, {
-            code: result.code,
-            details: result.details ?? undefined,
-          }),
-          isStationEnvelope(result),
-        )
-      : new Error(message);
+    const failure = envelopeError(response, result, `HTTP ${response.status}`);
+    throw new ChatHttpError(failure, isStationEnvelope(result));
   }
   return result.data as T;
 }

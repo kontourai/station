@@ -1974,283 +1974,6 @@
 /* The footer's controls are nested inside their own components, so the
    inventory-wide direct-child 44px floor cannot reach them — apply it
    explicitly on touch viewports. */
-@media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
-  .app-toolbar__action--secondary.app-toolbar__action--secondary {
-    display: none;
-  }
-  .app-toolbar__overflow-btn.app-toolbar__overflow-btn {
-    display: flex;
-  }
-  /* Touch targets: shared toolbar controls must clear 44x44px on mobile. */
-  .app-toolbar__icon-btn {
-    min-width: 44px;
-    min-height: 44px;
-    /* station#1401: the 44px above is a floor, so glyph-only controls stay
-       touchable regardless of their padding. The vertical 6px -> 4px is
-       inert for the same reason `min-height` floors it, and the dock's own
-       connection chip overrides padding entirely (`index.css`,
-       `.chat-dock__mobile-conn`). */
-    padding: 4px 6px;
-  }
-  /* Keep the status control touchable without spending phone width on its
-     name. Holding the dot reveals the name; tapping opens the Station chooser. */
-  .app-toolbar__conn {
-    box-sizing: border-box;
-    width: 44px;
-    min-width: 44px;
-    flex: 0 0 44px;
-  }
-  .app-toolbar__conn-label,
-  .app-toolbar__conn-name,
-  .app-toolbar__conn-state {
-    display: none;
-  }
-
-  .composer-popover-overlay {
-    justify-content: stretch;
-    padding: 0;
-    background: rgba(0, 0, 0, 0.32);
-  }
-  .composer-popover-panel,
-  .composer-popover-overlay[data-anchored] .composer-popover-panel {
-    width: 100%;
-    /* The surface drops the anchor when the mobile query matches, but that
-       happens in a matchMedia callback one paint later than the browser's own
-       style recalc — the [data-anchored] variant here makes sheet geometry
-       win during that crossing paint too, by specificity instead of timing. */
-    position: static;
-    max-height: none;
-  }
-
-  .chat-settings-modal {
-    min-width: unset;
-    width: 90vw;
-  }
-
-  .chat-dock__header-actions button {
-    padding: 6px 8px;
-    font-size: var(--text-sm);
-  }
-
-  .chat-input textarea {
-    min-height: 40px;
-    font-size: var(--text-xl); /* prevents iOS zoom on focus */
-  }
-
-  /* The row's only gap declaration at this breakpoint — the `--space-1` copy
-     that used to sit in the 480px block above never applied, because this
-     block always matches when that one does and declares the same property
-     later in the same file. */
-  .app-toolbar__actions {
-    gap: var(--space-2);
-  }
-
-  .message__rating-btn {
-    min-width: 44px;
-    min-height: 44px;
-    padding: 10px;
-  }
-
-  .message__copy-btn {
-    padding: 10px;
-  }
-
-  .message__fork-btn {
-    min-width: 44px;
-    min-height: 44px;
-  }
-
-  /* ── Dock chrome: simplify + un-nest for touch ── */
-
-  /* Keyboard-shortcut hints are meaningless on touch and crowd the chrome.
-     Drop every subtitle/shortcut glyph throughout the dock so the header and
-     tab-action buttons collapse to a single, legible line. */
-  .chat-dock__title .chat-dock__subtitle,
-  .chat-dock__new .chat-dock__subtitle,
-  .chat-dock__maximize-btn .chat-dock__subtitle {
-    display: none;
-  }
-
-  /* Header: tighten padding, keep title from overflowing 390px, and give the
-     interactive controls real 44x44 tap targets. */
-  .chat-dock__header {
-    padding: var(--space-2) var(--space-3);
-    gap: var(--space-2);
-    cursor: ns-resize;
-    touch-action: none;
-  }
-  .chat-dock__title {
-    flex: 1;
-    min-width: 0;
-  }
-  .chat-dock__title > span:first-child {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .chat-dock__title > .chat-dock__icon-btn,
-  .chat-dock__counter {
-    display: none;
-  }
-  .chat-dock__header-actions {
-    gap: var(--space-2);
-    min-width: 0;
-  }
-  .chat-dock__icon-btn,
-  .chat-dock__maximize-btn {
-    min-width: 44px;
-    min-height: 44px;
-    justify-content: center;
-  }
-
-  .mobile-task-switcher__overlay {
-    position: fixed;
-    inset: 0;
-    z-index: 70;
-    display: flex;
-    align-items: flex-end;
-    justify-content: center;
-    padding: var(--space-2);
-    background: rgba(0, 0, 0, 0.55);
-  }
-  .mobile-task-switcher__panel {
-    width: min(100%, 520px);
-    max-height: calc(var(--responsive-visual-viewport-height) - var(--space-4));
-    overflow: auto;
-    border: 1px solid var(--border-primary);
-    border-radius: var(--radius-lg) var(--radius-lg) var(--radius-md)
-      var(--radius-md);
-    background: var(--bg-primary);
-    box-shadow: var(--shadow-lg);
-  }
-  .mobile-task-switcher__header {
-    /* The panel is the scroll container; keep the dismiss affordance pinned
-       while the list scrolls (#1051). */
-    position: sticky;
-    top: 0;
-    z-index: 1;
-    background: var(--bg-primary);
-    display: flex;
-    min-height: 52px;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-2);
-    padding: var(--space-3);
-    border-bottom: 1px solid var(--border-secondary);
-  }
-  .mobile-task-switcher__header p,
-  .mobile-task-switcher__header h2 {
-    margin: 0;
-  }
-  .mobile-task-switcher__header p {
-    color: var(--text-muted);
-    font-size: var(--text-xs);
-    font-weight: 700;
-    text-transform: uppercase;
-  }
-  .mobile-task-switcher__header h2 {
-    font-size: var(--text-base);
-  }
-  .mobile-task-switcher__list {
-    display: grid;
-    gap: var(--space-1);
-    padding: var(--space-2);
-  }
-  /* Composer two-row stack: at phone width the desktop layout (textarea +
-     a right-hand controls column) squeezes the textarea and pushes the
-     model/approval/context chips off the right edge of the viewport.
-     Instead: row 1 is the full-width textarea; row 2 is a horizontal strip
-     (attach, mic, Send, model chip, approval chip, context %). Pure CSS
-     wrap — DOM order unchanged. The mic (#729) lives inside
-     .chat-controls-row next to Send on every viewport, so no mobile-only
-     reorder is needed here anymore. */
-  .chat-input {
-    display: flex;
-    flex-direction: column;
-    min-width: 0;
-    max-width: 100%;
-    flex-wrap: nowrap;
-    gap: 4px;
-  }
-  .chat-input__textarea-wrapper {
-    flex: 0 0 auto;
-    width: 100%;
-    max-width: 100%;
-    min-width: 0;
-  }
-  .chat-input__textarea-wrapper > textarea {
-    box-sizing: border-box;
-    width: 100%;
-    min-width: 0;
-  }
-  .chat-controls {
-    flex: 0 0 auto;
-    width: 100%;
-    flex-direction: row;
-    align-items: stretch;
-    gap: 4px;
-    min-width: 0;
-    max-width: 100%;
-  }
-  .chat-controls-row {
-    flex: 0 0 auto;
-    min-width: 0;
-  }
-  /* These carry the `.chat-input__meta` scope so they still WIN against the
-     desktop pill rules above, which had to be raised to (0,2,0) to escape
-     `.chat-input button`'s clobber. Dropping the scope here would silently
-     hand the 44px touch floor back to a 24px desktop value on a phone. */
-  .chat-input__meta .chat-input__model-btn {
-    flex: 0 1 auto;
-    /* 44px for the same reason as the approval chip below: this scoped rule
-       (0,2,0) outranks `.chat-input button`'s (0,1,1) touch floor, so a bare
-       `min-width: 0` silently removes it. Not reachable today — the button
-       bottoms out at 120px in every measured state — but with a third chip in
-       the row it collapses to 14px, and the asymmetry of pinning one control
-       and not its neighbour is exactly how the floor was lost the first time. */
-    min-width: 44px;
-    max-width: 100%;
-  }
-  .chat-input__meta .chat-input__agent-btn {
-    flex: 0 1 auto;
-    max-width: 35%;
-  }
-  .chat-input__meta .chat-input__approval-chip {
-    flex: 0 0 auto;
-    max-width: 40%;
-  }
-  .chat-input__meta .chat-input__agent-btn {
-    min-width: 44px;
-    min-height: 44px;
-  }
-  .chat-input__meta .chat-input__approval-chip {
-    /* 44px, not 0. The old `min-width: 0` was harmless only because the long
-       label made the chip 152px wide anyway; with the short label it measures
-       40px, and this scoped rule now outranks the `.chat-input button` touch
-       floor that used to guarantee the width. Both dimensions are pinned here
-       so the floor cannot be lost again. */
-    min-width: 44px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    min-height: 44px;
-  }
-  .chat-input .chat-input__send-btn,
-  .chat-input__cancel-btn {
-    min-height: 44px;
-  }
-  .chat-input__meta .chat-input__model-btn {
-    min-height: 44px;
-  }
-  .chat-input__meta .chat-input__model-reset {
-    min-height: 44px;
-  }
-
-  .turn-footer .turn-provenance__summary,
-  .turn-footer .share-answer__button {
-    min-height: 44px;
-    min-width: 44px;
-  }
-}
 
 /* #1132 defect 2: below this width the toolbar's action cluster no longer fits,
    and the connection chip's label is what it can give up.
@@ -2539,13 +2262,6 @@
   min-height: var(--k-space-6);
   gap: var(--k-space-1);
 }
-@media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
-  .composer-icon-action .button,
-  .chat-input__send-mode {
-    min-height: 44px;
-    min-width: 44px;
-  }
-}
 
 .chat-input .chat-input__send-btn {
   width: auto;
@@ -2567,11 +2283,6 @@
   width: 100%;
   min-height: 44px;
   text-align: start;
-}
-
-.chat-input .chat-input__send-btn--active {
-  background: var(--k-action);
-  color: var(--k-action-contrast);
 }
 
 .chat-input .chat-input__stop-btn {
@@ -2609,7 +2320,290 @@
 .chat-input__mode-slot {
   display: none;
 }
+
 @media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
+  .app-toolbar__action--secondary.app-toolbar__action--secondary {
+    display: none;
+  }
+  .app-toolbar__overflow-btn.app-toolbar__overflow-btn {
+    display: flex;
+  }
+  /* Touch targets: shared toolbar controls must clear 44x44px on mobile. */
+  .app-toolbar__icon-btn {
+    min-width: 44px;
+    min-height: 44px;
+    /* station#1401: the 44px above is a floor, so glyph-only controls stay
+       touchable regardless of their padding. The vertical 6px -> 4px is
+       inert for the same reason `min-height` floors it, and the dock's own
+       connection chip overrides padding entirely (`index.css`,
+       `.chat-dock__mobile-conn`). */
+    padding: 4px 6px;
+  }
+  /* Keep the status control touchable without spending phone width on its
+     name. Holding the dot reveals the name; tapping opens the Station chooser. */
+  .app-toolbar__conn {
+    box-sizing: border-box;
+    width: 44px;
+    min-width: 44px;
+    flex: 0 0 44px;
+  }
+  .app-toolbar__conn-label,
+  .app-toolbar__conn-name,
+  .app-toolbar__conn-state {
+    display: none;
+  }
+
+  .composer-popover-overlay {
+    justify-content: stretch;
+    padding: 0;
+    background: rgba(0, 0, 0, 0.32);
+  }
+  .composer-popover-panel,
+  .composer-popover-overlay[data-anchored] .composer-popover-panel {
+    width: 100%;
+    /* The surface drops the anchor when the mobile query matches, but that
+       happens in a matchMedia callback one paint later than the browser's own
+       style recalc — the [data-anchored] variant here makes sheet geometry
+       win during that crossing paint too, by specificity instead of timing. */
+    position: static;
+    max-height: none;
+  }
+
+  .chat-settings-modal {
+    min-width: unset;
+    width: 90vw;
+  }
+
+  .chat-dock__header-actions button {
+    padding: 6px 8px;
+    font-size: var(--text-sm);
+  }
+
+  .chat-input textarea {
+    min-height: 40px;
+    font-size: var(--text-xl); /* prevents iOS zoom on focus */
+  }
+
+  /* The row's only gap declaration at this breakpoint — the `--space-1` copy
+     that used to sit in the 480px block above never applied, because this
+     block always matches when that one does and declares the same property
+     later in the same file. */
+  .app-toolbar__actions {
+    gap: var(--space-2);
+  }
+
+  .message__rating-btn {
+    min-width: 44px;
+    min-height: 44px;
+    padding: 10px;
+  }
+
+  .message__copy-btn {
+    padding: 10px;
+  }
+
+  .message__fork-btn {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  /* ── Dock chrome: simplify + un-nest for touch ── */
+
+  /* Keyboard-shortcut hints are meaningless on touch and crowd the chrome.
+     Drop every subtitle/shortcut glyph throughout the dock so the header and
+     tab-action buttons collapse to a single, legible line. */
+  .chat-dock__title .chat-dock__subtitle,
+  .chat-dock__new .chat-dock__subtitle,
+  .chat-dock__maximize-btn .chat-dock__subtitle {
+    display: none;
+  }
+
+  /* Header: tighten padding, keep title from overflowing 390px, and give the
+     interactive controls real 44x44 tap targets. */
+  .chat-dock__header {
+    padding: var(--space-2) var(--space-3);
+    gap: var(--space-2);
+    cursor: ns-resize;
+    touch-action: none;
+  }
+  .chat-dock__title {
+    flex: 1;
+    min-width: 0;
+  }
+  .chat-dock__title > span:first-child {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .chat-dock__title > .chat-dock__icon-btn,
+  .chat-dock__counter {
+    display: none;
+  }
+  .chat-dock__header-actions {
+    gap: var(--space-2);
+    min-width: 0;
+  }
+  .chat-dock__icon-btn,
+  .chat-dock__maximize-btn {
+    min-width: 44px;
+    min-height: 44px;
+    justify-content: center;
+  }
+
+  .mobile-task-switcher__overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 70;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    padding: var(--space-2);
+    background: rgba(0, 0, 0, 0.55);
+  }
+  .mobile-task-switcher__panel {
+    width: min(100%, 520px);
+    max-height: calc(var(--responsive-visual-viewport-height) - var(--space-4));
+    overflow: auto;
+    border: 1px solid var(--border-primary);
+    border-radius: var(--radius-lg) var(--radius-lg) var(--radius-md)
+      var(--radius-md);
+    background: var(--bg-primary);
+    box-shadow: var(--shadow-lg);
+  }
+  .mobile-task-switcher__header {
+    /* The panel is the scroll container; keep the dismiss affordance pinned
+       while the list scrolls (#1051). */
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--bg-primary);
+    display: flex;
+    min-height: 52px;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    padding: var(--space-3);
+    border-bottom: 1px solid var(--border-secondary);
+  }
+  .mobile-task-switcher__header p,
+  .mobile-task-switcher__header h2 {
+    margin: 0;
+  }
+  .mobile-task-switcher__header p {
+    color: var(--text-muted);
+    font-size: var(--text-xs);
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+  .mobile-task-switcher__header h2 {
+    font-size: var(--text-base);
+  }
+  .mobile-task-switcher__list {
+    display: grid;
+    gap: var(--space-1);
+    padding: var(--space-2);
+  }
+  /* Composer two-row stack: at phone width the desktop layout (textarea +
+     a right-hand controls column) squeezes the textarea and pushes the
+     model/approval/context chips off the right edge of the viewport.
+     Instead: row 1 is the full-width textarea; row 2 is a horizontal strip
+     (attach, mic, Send, model chip, approval chip, context %). Pure CSS
+     wrap — DOM order unchanged. The mic (#729) lives inside
+     .chat-controls-row next to Send on every viewport, so no mobile-only
+     reorder is needed here anymore. */
+  .chat-input {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    max-width: 100%;
+    flex-wrap: nowrap;
+    gap: 4px;
+  }
+  .chat-input__textarea-wrapper {
+    flex: 0 0 auto;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+  .chat-input__textarea-wrapper > textarea {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+  }
+  .chat-controls {
+    flex: 0 0 auto;
+    width: 100%;
+    flex-direction: row;
+    align-items: stretch;
+    gap: 4px;
+    min-width: 0;
+    max-width: 100%;
+  }
+  .chat-controls-row {
+    flex: 0 0 auto;
+    min-width: 0;
+  }
+  /* These carry the `.chat-input__meta` scope so they still WIN against the
+     desktop pill rules above, which had to be raised to (0,2,0) to escape
+     `.chat-input button`'s clobber. Dropping the scope here would silently
+     hand the 44px touch floor back to a 24px desktop value on a phone. */
+  .chat-input__meta .chat-input__model-btn {
+    flex: 0 1 auto;
+    /* 44px for the same reason as the approval chip below: this scoped rule
+       (0,2,0) outranks `.chat-input button`'s (0,1,1) touch floor, so a bare
+       `min-width: 0` silently removes it. Not reachable today — the button
+       bottoms out at 120px in every measured state — but with a third chip in
+       the row it collapses to 14px, and the asymmetry of pinning one control
+       and not its neighbour is exactly how the floor was lost the first time. */
+    min-width: 44px;
+    max-width: 100%;
+  }
+  .chat-input__meta .chat-input__agent-btn {
+    flex: 0 1 auto;
+    max-width: 35%;
+  }
+  .chat-input__meta .chat-input__approval-chip {
+    flex: 0 0 auto;
+    max-width: 40%;
+  }
+  .chat-input__meta .chat-input__agent-btn {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  .chat-input__meta .chat-input__approval-chip {
+    /* 44px, not 0. The old `min-width: 0` was harmless only because the long
+       label made the chip 152px wide anyway; with the short label it measures
+       40px, and this scoped rule now outranks the `.chat-input button` touch
+       floor that used to guarantee the width. Both dimensions are pinned here
+       so the floor cannot be lost again. */
+    min-width: 44px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-height: 44px;
+  }
+  .chat-input .chat-input__send-btn,
+  .chat-input__cancel-btn {
+    min-height: 44px;
+  }
+  .chat-input__meta .chat-input__model-btn {
+    min-height: 44px;
+  }
+  .chat-input__meta .chat-input__model-reset {
+    min-height: 44px;
+  }
+
+  .turn-footer .turn-provenance__summary,
+  .turn-footer .share-answer__button {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  .composer-icon-action .button,
+  .chat-input__send-mode {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
   .chat-input__send-label,
   .chat-input__mode-label {
     display: none;
@@ -2625,4 +2619,13 @@
     width: 44px;
     height: 44px;
   }
+}
+
+.chat-input .chat-input__send-btn--active {
+  background: var(--k-action);
+  color: var(--k-action-contrast);
+}
+
+.chat-input .chat-input__send-btn--active:hover:not(:disabled) {
+  background: var(--k-action);
 }

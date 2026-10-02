@@ -115,21 +115,6 @@
   color: var(--error-text);
 }
 
-@media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
-  /* Queued steer controls must remain comfortably tappable on mobile. */
-  .queued-message {
-    gap: var(--space-1);
-  }
-
-  .queued-message__btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 44px;
-    min-height: 44px;
-  }
-}
-
 /* the reason a queued follow-up is still queued, rendered with
    the message it is holding back rather than only as a transient notice. */
 .queued-messages__failure {
@@ -185,36 +170,12 @@
   outline: var(--k-focus-ring-width) solid var(--k-focus);
   outline-offset: var(--k-focus-ring-offset);
 }
-@media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
-  .queued-messages--pending .queued-messages__list {
-    max-height: min(35dvh, 24rem);
-  }
-  .queued-messages--pending .queued-message {
-    flex-wrap: wrap;
-    padding: var(--k-space-2);
-  }
-  .queued-messages--pending .queued-message__text {
-    flex: 1 0 calc(100% - var(--k-space-5));
-  }
-  .queued-messages--pending .queued-message__btn {
-    font-size: var(--k-text-sm);
-    opacity: 1;
-  }
-}
 
 .queued-messages--pending .queued-message__utilities {
   display: flex;
   align-items: center;
   gap: var(--k-space-1);
   margin-inline-start: auto;
-}
-@media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
-  .queued-messages--pending .queued-message {
-    align-items: flex-start;
-  }
-  .queued-messages--pending .queued-message__order {
-    padding-top: var(--k-space-1);
-  }
 }
 
 .queued-messages--pending {
@@ -262,7 +223,43 @@
 .queued-messages--pending .queued-messages__content[hidden] {
   display: none;
 }
+
 @media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
+  /* Queued steer controls must remain comfortably tappable on mobile. */
+  .queued-message {
+    gap: var(--space-1);
+  }
+
+  .queued-message__btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .queued-messages--pending .queued-messages__list {
+    max-height: min(35dvh, 24rem);
+  }
+  .queued-messages--pending .queued-message {
+    flex-wrap: wrap;
+    padding: var(--k-space-2);
+  }
+  .queued-messages--pending .queued-message__text {
+    flex: 1 0 calc(100% - var(--k-space-5));
+  }
+  .queued-messages--pending .queued-message__btn {
+    font-size: var(--k-text-sm);
+    opacity: 1;
+  }
+
+  .queued-messages--pending .queued-message {
+    align-items: flex-start;
+  }
+  .queued-messages--pending .queued-message__order {
+    padding-top: var(--k-space-1);
+  }
+
   .queued-messages--pending .queued-messages__toggle {
     min-height: 44px;
   }
