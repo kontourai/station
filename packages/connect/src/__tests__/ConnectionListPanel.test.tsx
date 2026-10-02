@@ -404,6 +404,10 @@ describe('ConnectionListPanel', () => {
     expect(document.activeElement).toBe(check);
     fireEvent.keyDown(check, { key: 'ArrowDown' });
     expect(document.activeElement).toBe(
+      screen.getByRole('menuitem', { name: 'Reconnect' }),
+    );
+    fireEvent.keyDown(document.activeElement!, { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(
       screen.getByRole('menuitem', { name: 'Copy address' }),
     );
     fireEvent.keyDown(document.activeElement!, { key: 'ArrowDown' });
