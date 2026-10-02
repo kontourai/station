@@ -1,29 +1,28 @@
-import { useEffect, useState } from 'react';
+import { useSyncExternalStore } from 'react';
 
-const COARSE_POINTER_QUERY = '(pointer: coarse)';
+const QUERY = '(pointer: coarse)';
+
+function subscribe(onChange: () => void): () => void {
+  if (typeof window === 'undefined' || !window.matchMedia) return () => {};
+  const media = window.matchMedia(QUERY);
+  media.addEventListener('change', onChange);
+  return () => media.removeEventListener('change', onChange);
+}
 
 function read(): boolean {
-  if (typeof window === 'undefined' || !window.matchMedia) return false;
-  return window.matchMedia(COARSE_POINTER_QUERY).matches;
+  return (
+    typeof window !== 'undefined' &&
+    Boolean(window.matchMedia) &&
+    window.matchMedia(QUERY).matches
+  );
 }
 
 /**
- * Whether the primary pointer is coarse (touch). The Browser pane and its
- * page-dialog card mark themselves with it (`data-coarse` /
- * `data-pointer`) instead of carrying page-local media queries: responsive
- * rules belong to the shared primitives (scripts/mobile-css-ratchet.mjs).
+ * Whether the primary pointer is coarse (a finger). A component decision,
+ * not a stylesheet one: a surface that reveals controls on hover has to
+ * render a different chrome for a pointer that cannot hover, and a
+ * page-local media query cannot change what is rendered.
  */
 export function useCoarsePointer(): boolean {
-  const [coarse, setCoarse] = useState(read);
-
-  useEffect(() => {
-    if (typeof window === 'undefined' || !window.matchMedia) return;
-    const query = window.matchMedia(COARSE_POINTER_QUERY);
-    const onChange = (event: MediaQueryListEvent) => setCoarse(event.matches);
-    setCoarse(query.matches);
-    query.addEventListener('change', onChange);
-    return () => query.removeEventListener('change', onChange);
-  }, []);
-
-  return coarse;
+  return useSyncExternalStore(subscribe, read, () => false);
 }

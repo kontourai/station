@@ -61,6 +61,27 @@
   flex-wrap: wrap;
 }
 
+/* The row's status word (`workStatus`), with its icon: never colour-only. */
+.chat-dock-inbox-hover-card__status-word {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 650;
+}
+
+.chat-dock-inbox-hover-card__status-word[data-tone="attention"],
+.chat-dock-inbox-hover-card__status-word[data-tone="caution"] {
+  color: var(--warning-text);
+}
+
+.chat-dock-inbox-hover-card__status-word[data-tone="active"] {
+  color: var(--accent-primary);
+}
+
+.chat-dock-inbox-hover-card__status-word[data-tone="broken"] {
+  color: var(--status-error);
+}
+
 .chat-dock-inbox-hover-card__notice {
   margin: 8px 0 0;
   color: var(--text-secondary);
@@ -222,4 +243,38 @@
   font-size: var(--text-2xs);
   text-transform: uppercase;
   letter-spacing: 0.05em;
+}
+
+/* The same card as a sheet/popover, opened by a touch row's Details action. */
+.chat-dock-inbox-details {
+  width: min(360px, calc(100vw - 16px));
+}
+
+.chat-dock-inbox-details__body {
+  padding: 0 12px 12px;
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
+/* The row's remaining actions, in the shared menu primitive's groups and
+   rows. Flat here: the sheet is already the raised surface, so the list
+   takes no second border, fill or shadow of its own. */
+.chat-dock-inbox-details__menu {
+  margin-top: 12px;
+  padding: 0;
+  border: 0;
+  border-top: 1px solid var(--border-primary);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  padding-top: 8px;
+}
+
+/* The shared discard button draws its icon as a direct child; give it the
+   16px slot every other row's glyph sits in. */
+.chat-dock-inbox-details__menu .menu-row > svg {
+  width: var(--space-8);
+  height: var(--space-8);
+  flex: 0 0 var(--space-8);
 }
