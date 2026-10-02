@@ -14,8 +14,6 @@
   "sources": [
     {"path":"packages/contracts/src/task-room-work.ts","digest":"dfe913e035babc22b611db32854a0866787d39ed0e7c7c9cef917851c1c35040","revision":"a258f06c1515ccdde83e198862ae8efe43d71207"},
 
-    {"path":"packages/contracts/package.json","digest":"e68c62ed1e493e0b8834dc4586ccb37b750313b65a19a61ac00512e30564f684","revision":"b004ed8cb3e885da544adf960b2894780aaf2b51"},
-
     {"path":"packages/sdk/src/client/task-room-work.ts","digest":"57fdf0a01a7e541af361869b5c73e15e8b54f978caa5596bc9881740f82b8696","revision":"a258f06c1515ccdde83e198862ae8efe43d71207"},
 
     {"path":"packages/sdk/src/client/project-task-rooms.ts","digest":"a3a9664a9235b566536f167ff888a73d918f160bc7a70ca0eb3d0f6a2872d11f","revision":"a258f06c1515ccdde83e198862ae8efe43d71207"},
@@ -58,7 +56,9 @@
 
     {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"92d31dd655d7c0a62ce68dc6fd804268cda2f357bb775a512ee974d7c09564db","revision":"1a235cd9bc482738abe4c3f011f73be86074d667"},
 
-    {"path":"src-server/runtime/routes/__tests__/runtime-routes-project-task-room-principal.test.ts","digest":"daa53aa09454d47668d3084ad4c6c13c2bfc1ece9fc7c49e0473d2ff346675fb","revision":"97a988b2e9da6ea439e816b89400762aeb93c4d6"}
+    {"path":"src-server/runtime/routes/__tests__/runtime-routes-project-task-room-principal.test.ts","digest":"daa53aa09454d47668d3084ad4c6c13c2bfc1ece9fc7c49e0473d2ff346675fb","revision":"97a988b2e9da6ea439e816b89400762aeb93c4d6"},
+
+    {"path":"packages/contracts/package.json#/exports/.~1task-room-work","digest":"581c042771ed026476503019c1528e261058e922122e701490659ab861bac4ba","revision":"cf099c6275ffb239f2825c0e53b75be6fa19c6a6"}
   ],
 
   "checks": [

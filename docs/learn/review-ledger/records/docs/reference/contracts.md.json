@@ -9,12 +9,12 @@
 
   "limits": "Review covers every current documented claim, not all possible behaviors of every exported module. Detailed historical Muse/Claude captures remain historical; no live provider, native push gateway, physical device, deployed account or relay journey was run. Contract declarations and valid parsers never prove authorization, delivery or owner completion. No new security probe.",
 
-  "document": {"digest":"91f07d13e66545c07aad8b506e741687a7d6291b86a5453419ef26ade50b8f88","revision":"3a12d2273b4b8b1e024523d6eb396d6ec3c703fb"},
+  "document": {"digest":"4fc6322a0a4f02149563c235375f8c699cb09ffceec16ac9c3416b84bff518f0","revision":"1e6450e0caa47975d33f505a1348bdc01ae1382e"},
 
   "sources": [
     {"path":"packages/cli/src/commands/delegate.ts","digest":"9e1e324cb71d85c563afd74dbd8da063fe8a13a3faaa174690eaebea7ca8518d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/contracts/package.json","digest":"e68c62ed1e493e0b8834dc4586ccb37b750313b65a19a61ac00512e30564f684","revision":"b004ed8cb3e885da544adf960b2894780aaf2b51"},
+    {"path":"packages/contracts/package.json","digest":"ac7f0242d693504423a432a2a764c7df53888ca61c27199bcc206b601a4ab0bb","revision":"1e6450e0caa47975d33f505a1348bdc01ae1382e"},
 
     {"path":"packages/contracts/src/__tests__/learning-review.test.ts","digest":"d91c0dcd54fc02fd99e0c7959b63a7dc1216b0556cfb2f8d1ff0996df1651347","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -30,7 +30,7 @@
 
     {"path":"packages/contracts/src/harness-questions.ts","digest":"09d2fbff4ff198f3903249bc83a77e6f02d25d87532fb6324db67ccc478f2a05","revision":"92636a1751411426e2972236b7416e50b18daf32"},
 
-    {"path":"packages/contracts/src/index.ts","digest":"ec58f0f49b82828345bfda96f2183a8bf6ca7cdada9f109ca24edef5bf21ea9a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"packages/contracts/src/index.ts","digest":"8622b3bbcdb622dbc385cf285e83654139eaea3d9338464125c1d103bd99f29c","revision":"1e6450e0caa47975d33f505a1348bdc01ae1382e"},
 
     {"path":"packages/contracts/src/layout.ts","digest":"d239a39ed06c9dcb103e89da3a86f4d358aa3261a7623b1c5a86eff69e897a43","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -132,7 +132,9 @@
 
     {"path":"src-server/services/orchestration/session-transcript-reads.ts","digest":"cde3fc9fb19a7b38b5d2d48dfb3cb16c97ab6e26ffa0990f0e7180e9e1edf6ad","revision":"0dd1181141ba6a645601e6798079a16189510438"},
 
-    {"path":"packages/contracts/src/usage-rollup.ts","digest":"22d0231b9711bccb674bbc966991a33e41f622f3547e972e5517e04047beb6ad","revision":"0dd1181141ba6a645601e6798079a16189510438"}
+    {"path":"packages/contracts/src/usage-rollup.ts","digest":"22d0231b9711bccb674bbc966991a33e41f622f3547e972e5517e04047beb6ad","revision":"0dd1181141ba6a645601e6798079a16189510438"},
+
+    {"path":"packages/contracts/src/skill-experience.ts","digest":"4e46998e7d18f942b60b2cfc9e8c1502ddf9b25e1b5c4f05a987bc23faa5d4a6","revision":"1e6450e0caa47975d33f505a1348bdc01ae1382e"}
   ],
 
   "checks": [
