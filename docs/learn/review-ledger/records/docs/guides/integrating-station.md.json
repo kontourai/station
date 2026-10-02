@@ -26,7 +26,7 @@
 
     {"path":"docs/guides/workspace-packages.md","digest":"01bebb92c862b7a6cf006bbb8fe4d4389caa8df327f79ef7f1ba44233890d55c","revision":"18002c0871ea8538605e922464aab5356c77593c"},
 
-    {"path":"docs/reference/api.md","digest":"f0c96bb64098d922dadf82732c3a22fd20e15fb95b86b86b424324fe6c937c60","revision":"24d0063f45516c1d6c7cddec670c60ef0185f1f2"},
+    {"path":"docs/reference/api.md","digest":"eea4da022bf934498a57d980ecb76ffdea19ba1987b0691291b8c5587ffbd82f","revision":"42c0e9686015ccb23936b0c671313e66cd876395"},
 
     {"path":"docs/reference/cli.md","digest":"b2cdeea42fb4b6baacc5aa6a74692e4d60975f7b30c2ad49e2c4d89990138297","revision":"24d0063f45516c1d6c7cddec670c60ef0185f1f2"},
 
