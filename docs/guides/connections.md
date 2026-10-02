@@ -66,7 +66,7 @@ status before starting again because the server may still be running the login.
 
 **Allowance** shows the selected account's provider-reported limits and reset
 times. Failed or unrecognized readings say unavailable, never zero. **Refresh**
-requests a new reading; there is no continuous quota polling. Claude credentials
+requests a new reading. While the account page is visible, it refreshes every minute; it does not poll in the background. Claude credentials
 are read from the selected macOS Keychain namespace first, with a credential
 file fallback when that namespace has no usable entry. A stale legacy file does
 not override the current secure-store login. Tokens remain on the server.
@@ -92,24 +92,37 @@ not discard readable account/credit details.
 field paths and deliberate exclusions. Only field names leave the server for
 unmapped values. This bounded shape audit excludes null/empty fields, value
 validation, credential stores and other endpoints; “none in this response” does
-not establish complete provider coverage. Quota readings are live projections,
-not persisted history. Usage receipts below are persisted separately.
+not establish complete provider coverage. The full quota response remains a live projection. **Allowance history** retains
+only window labels, percentages, durations, reset times and observation timestamps.
+It saves a 30-day window of the latest observation per UTC hour, at most 720 observations
+and 32 windows per observation, under this Station's `analytics/engine-allowance/`.
+The window is pruned on capture; closed or deleted profiles are not automatically
+purged. Each profile file is bounded, while the number of files follows the
+profiles/config homes observed. Identity values, credits, spending, raw responses and credentials are not stored
+in that history. History is partitioned by engine, connection, profile and config
+home. A changed reported account identity clears that profile's history; when a
+provider does not report identity, observations describe the credential profile
+and cannot detect an external sign-in to a different account in the same home.
+Unknown readings remain gaps. No history is backfilled or captured while the
+page is closed. A failed history write leaves live limits readable and shows
+that history is unavailable. **View observations** exposes timestamps and resets,
+with older rows loaded on request. Usage receipts are persisted separately.
 
 The current projection inventory is:
 
 | Source fields | Capture and display | Storage / limits |
 | --- | --- | --- |
 | Codex `email`, `account_id`, `user_id`, `plan_type` | Account identity and plan | Live, credential-management access |
-| Codex rate limits, additional limits, code-review limits, chat-pass windows | Percentage, duration, absolute/relative reset, availability; additional model/feature identity | Live; null windows omitted, unknown durations not guessed |
+| Codex rate limits, additional limits, code-review limits, chat-pass windows | Percentage, duration, absolute/relative reset, availability; additional model/feature identity | Live plus bounded hourly allowance history; null windows omitted, unknown durations not guessed |
 | Codex `credits` | Availability, unlimited flag, balance, overage verdict and message ranges | Live; credit units are not currency |
 | Codex `model_usage` | Model availability, availability time, whether credits enable it | Live; at most 32 models projected |
 | Codex `rate_limit_reset_credits` | Available and applicable counts | Live |
 | Codex `spend_control.reached` | Account exhaustion verdict | Live; individual spend-limit policy, promo and limit-reached type deliberately excluded |
-| Claude `five_hour`, `seven_day`, model/OAuth/Cowork weekly windows and scoped `limits` | Percentage, reset and provider exhaustion verdict | Live; not all accounts return each window |
+| Claude `five_hour`, `seven_day`, model/OAuth/Cowork weekly windows and scoped `limits` | Percentage, reset and provider exhaustion verdict | Live plus bounded hourly allowance history; not all accounts return each window |
 | Claude `extra_usage` | Enabled/user-disabled state, prior credit enablement, used amount, monthly limit, utilization, spend-limit verdict and declared units | Live; raw amounts stay in provider units |
 | Claude `spend` | Declared-currency amounts, severity, enabled state, capability flags and provider disclaimer | Live; explicit minor units/exponent required for currency formatting; no purchase or setting mutation |
 | Claude `limits`, `seven_day_breakdown`, `member_dashboard_available` | Active/group/model/surface annotations, dated weekly percentage breakdown and dashboard availability | Live; detail/breakdown arrays capped at 32; shape audit marks truncation |
-| Station usage rollup | Input/output/cache tokens, receipts, reported/estimated costs, pricing sources/snapshots, coverage/freshness/observed turns | Persisted receipts; all engine accounts on this Station, not provider-wide billing |
+| Station usage rollup | Input/output/cache tokens, receipts, reported/estimated costs, pricing sources/snapshots, coverage/freshness/observed turns | Persisted receipts; selected profile or all engine accounts on this Station, not provider-wide billing |
 | Non-null unrecognized response leaves | Unmapped paths, never their values | No raw-response storage; audit capped at depth 8, 2048 visited nodes, 256 leaves, 64 keys/object and 32 items/array |
 
 On 2026-10-01 a read-only Codex account probe confirmed the weekly-primary,
@@ -120,17 +133,26 @@ precedence, both readers reported no unmapped non-null field paths or audit
 truncation for those account responses. Claude spending, breakdown, active-limit
 and extra-usage shapes are live-observed as well as fixture-validated. Other plans and provider endpoints remain outside this observation.
 
-**Activity** shows 7 or 30 days of this engine's runs on this Station, across all
-accounts. Receipts do not identify the credential profile, so this is not
-per-account history. Reported cost and estimates remain separate. The daily chart uses reported cost
-when available, estimates when only estimates are available, and otherwise
-tokens. Missing days keep their place and are marked unreported. Missing costs
-are shown as unavailable, and partial coverage is disclosed. **Token breakdown &
-capture coverage** expands cache/input/output totals, pricing provenance and
-observed-versus-usage-reported turn counts. Missing values are not added as
-known zeros; reported subtotals can be incomplete. Subscription
-allowance and engine-reported costs are not billing statements. Activity uses the protected usage API and requires credential-management access,
-even when the page requests only this Station.
+**Activity** shows 7 or 30 days of runs on this Station. **Activity for** switches
+between the selected credential profile and all accounts of this engine. New
+Claude and Codex sessions record an opaque account key from the profile actually
+resolved for the process. Raw profile references are not published in runtime
+events. Source-home continuations and older events without this observation
+remain unattributed. A process restart does not inherit a previous process's
+account observation. Account filtering excludes unattributed receipts; it never
+assigns old costs to today's active account. Capture counts still describe the
+engine, and account results disclose this attribution gap.
+
+Reported costs and estimates remain separate. **Tokens**, **Reported cost** and
+**Estimated cost** select the daily chart measure. A cost measure with no values
+shows unavailable observations, never a token chart labeled as cost. Mixed
+currencies retain separate totals and a currency selector; Station does not
+convert or combine them. Missing days keep their place and are marked unreported.
+**Token breakdown & capture coverage** expands cache/input/output totals, pricing
+provenance and observed-versus-usage-reported turn counts. Missing values are not
+added as known zeros; reported subtotals can be incomplete. Subscription allowance
+and engine-reported costs are not billing statements. Activity requires
+credential-management access, even for this Station alone.
 
 The component/transport tests exercise both account pages and the login relay
 with controlled provider responses. An isolated Claude CLI probe confirmed the

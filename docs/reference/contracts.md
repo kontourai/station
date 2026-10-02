@@ -537,3 +537,12 @@ operator-configured browser identity choices, their declared POST begin-login
 paths and availability. These are presentation/capability facts, not identity
 claims, Device grants or Project membership. Secret references and provider
 configuration remain private to Station's operator composition.
+
+### Engine account observation history
+
+`EngineAccountUsage.history` optionally exposes 30 days of hourly allowance
+observations, including unknown readings as gaps. It stores no raw responses,
+identity values or credentials. `UsageReceipt.accountKey` is an optional opaque
+engine/profile observation from the applied process environment. Its absence
+means account attribution is unknown; consumers must not infer the current
+active account. These fields are observations, never billing or routing authority.

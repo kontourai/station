@@ -9,7 +9,7 @@
 
   "limits": "Review covers every current documented claim, not all possible behaviors of every exported module. Detailed historical Muse/Claude captures remain historical; no live provider, native push gateway, physical device, deployed account or relay journey was run. Contract declarations and valid parsers never prove authorization, delivery or owner completion. No new security probe.",
 
-  "document": {"digest":"8040b31d90d574e6564f0768dce92bdb345c01fda6805538f7d3794d8705de47","revision":"b9ed99fffb44db5295c2652b34dfc2adc10e1c83"},
+  "document": {"digest":"0b69e97e37f4770464f9b22ad3ccc4ff744a5e9ddc77aa6cd3d6aad61e8f15a4","revision":"0dd1181141ba6a645601e6798079a16189510438"},
 
   "sources": [
     {"path":"packages/cli/src/commands/delegate.ts","digest":"9e1e324cb71d85c563afd74dbd8da063fe8a13a3faaa174690eaebea7ca8518d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
@@ -92,7 +92,7 @@
 
     {"path":"src-server/routes/system/system-status-routes.ts","digest":"0c52821e1938ae72876d26def0ee756db16f1cb2a33e9088bb4e1da8800e4f0b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"4e02fdbdc3ab121af4b11113970aaca7f19ee98ad4e52bfdfc743ad74e6f9a90","revision":"9f8b407fac4a9e5536d72ca49be3a0b77715e1d8"},
+    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"92d31dd655d7c0a62ce68dc6fd804268cda2f357bb775a512ee974d7c09564db","revision":"1a235cd9bc482738abe4c3f011f73be86074d667"},
 
     {"path":"src-server/runtime/conversation/conversation-stats-view.ts","digest":"60cde631c8481e21f8abf3223648d922604e2c31376e805fc3a80caef81a6a23","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -120,7 +120,19 @@
 
     {"path":"src-ui/src/hooks/orchestration/ensureOrchestrationEventStream.ts","digest":"08e8b202ab12395f8eed5cb5859919470cd0723eb6bbafa7befcd0af6df33f45","revision":"92636a1751411426e2972236b7416e50b18daf32"},
 
-    {"path":"packages/contracts/src/task-room-work.ts","digest":"dfe913e035babc22b611db32854a0866787d39ed0e7c7c9cef917851c1c35040","revision":"f139772dbf282dc2b4c5d08f38c79432374c11c3"}
+    {"path":"packages/contracts/src/task-room-work.ts","digest":"dfe913e035babc22b611db32854a0866787d39ed0e7c7c9cef917851c1c35040","revision":"f139772dbf282dc2b4c5d08f38c79432374c11c3"},
+
+    {"path":"src-server/services/connections/engine-account-history.ts","digest":"2c910d0d4d50966962226d3deb8419a138b5c61ce413a3e4dd6276aa100d5f61","revision":"1a235cd9bc482738abe4c3f011f73be86074d667"},
+
+    {"path":"src-server/services/connections/__tests__/engine-account-history.test.ts","digest":"678515d554351f419a3859463e05da0165a45bc68119df91221a603b7c36ad41","revision":"c2f51cf0697d7d6a64c75e6ebee23c25c8b437fa"},
+
+    {"path":"src-server/services/orchestration/__tests__/engine-account-usage-attribution.test.ts","digest":"d2b66dc45d766afb29dfcd5d0682c46a3c4e947103436bb7be17f36c37832521","revision":"c2f51cf0697d7d6a64c75e6ebee23c25c8b437fa"},
+
+    {"path":"src-server/analytics/usage-rollup-service.ts","digest":"57984b3bd575e53c85655d49bb7fdaaa9a4267e10225e22fbe819beedb15a081","revision":"0dd1181141ba6a645601e6798079a16189510438"},
+
+    {"path":"src-server/services/orchestration/session-transcript-reads.ts","digest":"cde3fc9fb19a7b38b5d2d48dfb3cb16c97ab6e26ffa0990f0e7180e9e1edf6ad","revision":"0dd1181141ba6a645601e6798079a16189510438"},
+
+    {"path":"packages/contracts/src/usage-rollup.ts","digest":"22d0231b9711bccb674bbc966991a33e41f622f3547e972e5517e04047beb6ad","revision":"0dd1181141ba6a645601e6798079a16189510438"}
   ],
 
   "checks": [

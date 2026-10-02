@@ -147,6 +147,35 @@ const usageMetadataSchema = z
       .strict(),
   })
   .strict();
+const usageHistorySchema = z
+  .object({
+    status: z.enum(['ok', 'unavailable']),
+    retentionDays: z.number().int().positive(),
+    observations: z
+      .array(
+        z
+          .object({
+            fetchedAt: z.string().datetime({ offset: true }),
+            status: z.enum(['ok', 'unknown']),
+            windows: z
+              .array(
+                z
+                  .object({
+                    id: z.string(),
+                    label: z.string(),
+                    usedPercent: z.number().min(0).max(100),
+                    resetsAt: z.string().optional(),
+                    durationSeconds: z.number().positive().optional(),
+                  })
+                  .strict(),
+              )
+              .max(32),
+          })
+          .strict(),
+      )
+      .max(720),
+  })
+  .strict();
 const engineAccountUsageSchema = z.union([
   z
     .object({
@@ -171,6 +200,7 @@ const engineAccountUsageSchema = z.union([
       ),
       exhausted: z.boolean(),
       metadata: usageMetadataSchema.optional(),
+      history: usageHistorySchema.optional(),
     })
     .strict(),
   z
@@ -180,6 +210,7 @@ const engineAccountUsageSchema = z.union([
       planLabel: z.string().optional(),
       reason: z.string(),
       metadata: usageMetadataSchema.optional(),
+      history: usageHistorySchema.optional(),
     })
     .strict(),
 ]);
@@ -281,6 +312,7 @@ export function useEngineAccountUsageQuery(
       ),
     enabled,
     ...queryPolicy,
+    refetchInterval: 60000,
   });
 }
 export function useEngineAccountLoginQuery(
@@ -379,6 +411,7 @@ export function useEngineActivityQuery(
   days: 7 | 30,
   scope: ApiRequestScope,
   enabled: boolean,
+  credentialProfileRef?: string | null,
 ) {
   return useQuery({
     queryKey: [
@@ -387,6 +420,7 @@ export function useEngineActivityQuery(
       scope.authorityKey,
       engine,
       days,
+      credentialProfileRef,
     ],
     queryFn: async ({ signal }) => {
       const response = await fetchUsageRollup(
@@ -394,6 +428,7 @@ export function useEngineActivityQuery(
         {
           days,
           provider: engine,
+          credentialProfileRef,
           localOnly: true,
           groupBy: 'day',
           pageSize: 100,

@@ -40,6 +40,7 @@ test.each([
     });
     const calls: Array<{ path: string; method: string; body?: string }> = [];
     let manageAccess = management;
+    let mixedCurrencies = false;
     let started = false,
       done = false,
       refused = true,
@@ -101,6 +102,28 @@ test.each([
               status: 'ok',
               fetchedAt: '2026-10-01T12:00:00Z',
               planLabel: 'Team',
+              history: {
+                status: 'ok',
+                retentionDays: 30,
+                observations: [
+                  {
+                    fetchedAt: new Date(Date.now() - 3600000).toISOString(),
+                    status: 'ok',
+                    windows: [
+                      {
+                        id: 'five-hour',
+                        label: '5 hour',
+                        usedPercent: u.searchParams.has('profileRef') ? 70 : 10,
+                      },
+                    ],
+                  },
+                  {
+                    fetchedAt: new Date().toISOString(),
+                    status: 'unknown',
+                    windows: [],
+                  },
+                ],
+              },
               exhausted: false,
               metadata: {
                 identity: {
@@ -209,6 +232,10 @@ test.each([
         if (u.pathname === '/api/analytics/usage-rollup') {
           expect(u.searchParams.get('provider')).toBe(engine);
           expect(u.searchParams.get('localOnly')).toBe('1');
+          if (u.searchParams.has('credentialProfileRef'))
+            expect(['', 'work']).toContain(
+              u.searchParams.get('credentialProfileRef'),
+            );
           return reply({
             success: true,
             data: {
@@ -231,9 +258,16 @@ test.each([
                   cacheReadTokens: 40,
                   cacheWriteTokens: 0,
                   outputTokens: 20,
-                  ...(engine === 'claude'
-                    ? { reportedCost: { amount: 2, currency: 'USD' } }
-                    : { estimatedCost: { amount: 2, currency: 'USD' } }),
+                  ...(mixedCurrencies
+                    ? {
+                        reportedCostBuckets: [
+                          { amount: 2, currency: 'USD' },
+                          { amount: 3, currency: 'EUR' },
+                        ],
+                      }
+                    : engine === 'claude'
+                      ? { reportedCost: { amount: 2, currency: 'USD' } }
+                      : { estimatedCost: { amount: 2, currency: 'USD' } }),
                   pricingStatus: 'unpriced',
                   receiptCount: 1,
                 },
@@ -272,8 +306,13 @@ test.each([
       fireEvent.click(screen.getByText('Data captured · incomplete'));
       expect(screen.getByText('future.window')).toBeTruthy();
       expect(
-        screen.getByText('Live reading; no quota history stored'),
+        screen.getByText(
+          'Live reading; history retains allowance observations only',
+        ),
       ).toBeTruthy();
+      fireEvent.click(screen.getByText('View observations'));
+      expect((await screen.findByRole('table')).textContent).toContain('90%');
+      expect(screen.getByRole('table').textContent).toContain('Not reported');
       fireEvent.click(screen.getByText('Token breakdown & capture coverage'));
       expect(screen.getByText('40')).toBeTruthy();
       expect(screen.getAllByText('Not reported').length).toBeGreaterThan(0);
@@ -284,7 +323,12 @@ test.each([
     fireEvent.change(screen.getByRole('combobox', { name: 'Account' }), {
       target: { value: 'work' },
     });
-    if (management) await screen.findByText('20% left');
+    if (management) {
+      await screen.findByText('20% left');
+      fireEvent.click(screen.getByText('View observations'));
+      expect((await screen.findByRole('table')).textContent).toContain('30%');
+      expect(screen.getByRole('table').textContent).not.toContain('90%');
+    }
     const signIn = await screen.findByRole('button', { name: 'Sign in' });
     await waitFor(() => expect(signIn).toHaveProperty('disabled', false));
     fireEvent.click(signIn);
@@ -321,6 +365,19 @@ test.each([
           engine === 'claude' ? 'Daily reported cost' : 'Daily estimated cost',
         ),
       ).toBeTruthy();
+      mixedCurrencies = true;
+      fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+      await screen.findByText('$2.00 · EUR 3.00');
+      fireEvent.change(screen.getByRole('combobox', { name: 'Currency' }), {
+        target: { value: 'EUR' },
+      });
+      expect(screen.getByTitle('2026-09-30: EUR 3.00')).toBeTruthy();
+      fireEvent.click(screen.getByRole('button', { name: 'Tokens' }));
+      expect(screen.getByText('Daily tokens')).toBeTruthy();
+      fireEvent.click(screen.getByRole('button', { name: 'Estimated cost' }));
+      expect(
+        screen.getByText('No estimated cost observations in this period.'),
+      ).toBeTruthy();
     } else {
       expect(
         calls.filter((c) => c.path.includes('account-usage')),
@@ -330,10 +387,16 @@ test.each([
       );
     }
     expect(
+      screen.getByText('This Station · selected profile · attributed runs'),
+    ).toBeTruthy();
+    fireEvent.change(screen.getByRole('combobox', { name: 'Activity for' }), {
+      target: { value: 'engine' },
+    });
+    expect(
       screen.getByText('This Station · this engine · all accounts'),
     ).toBeTruthy();
     if (management)
-      expect(screen.getByText('Some activity is missing.')).toBeTruthy();
+      expect(await screen.findByText('Some activity is missing.')).toBeTruthy();
     if (management) {
       workExists = false;
       fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
@@ -348,6 +411,9 @@ test.each([
       expect(screen.queryByText('viewer@example.test')).toBeNull();
       expect(screen.queryByText('Account & credits')).toBeNull();
       expect(screen.queryByText('Team')).toBeNull();
+      expect(
+        screen.queryByRole('region', { name: 'Allowance history' }),
+      ).toBeNull();
     }
     mounted.unmount();
     client.clear();

@@ -99,6 +99,21 @@ export interface EngineAccountUsageMetadata {
     truncated: boolean;
   };
 }
+export interface EngineAccountUsageHistory {
+  status: 'ok' | 'unavailable';
+  retentionDays: number;
+  observations: Array<{
+    fetchedAt: string;
+    status: 'ok' | 'unknown';
+    windows: Array<{
+      id: string;
+      label: string;
+      usedPercent: number;
+      resetsAt?: string;
+      durationSeconds?: number;
+    }>;
+  }>;
+}
 export type EngineAccountUsage =
   | {
       status: 'ok';
@@ -107,6 +122,7 @@ export type EngineAccountUsage =
       windows: EngineAccountUsageWindow[];
       exhausted: boolean;
       metadata?: EngineAccountUsageMetadata;
+      history?: EngineAccountUsageHistory;
     }
   | {
       status: 'unknown';
@@ -114,6 +130,7 @@ export type EngineAccountUsage =
       planLabel?: string;
       reason: string;
       metadata?: EngineAccountUsageMetadata;
+      history?: EngineAccountUsageHistory;
     };
 export interface EngineAccountLogin {
   engine: 'claude' | 'codex';
