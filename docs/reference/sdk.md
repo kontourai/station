@@ -1129,6 +1129,14 @@ Shared query-factory entry for agent conversation lists. Use this when a feature
 
 ### `useApiQuery<T>(queryKey, queryFn, config?)`
 
+Station's config-change event invalidates Trust bundle/report and Task answer
+support queries within the current authority's query client. Trust readers
+refetch invalidated data when remounted; Task answer support retains its
+existing fresh-authorization mount policy. Disabled observers remain disabled.
+Trust requests carry cancellation through API-base resolution and transport.
+See [Trust query owners](../../packages/sdk/src/query-domains/trustBundles.ts)
+and [the config-change consumer](../../src-ui/src/hooks/useServerEvents.ts).
+
 Generic query hook for a caller-owned async function. It passes an AbortSignal;
 the function must use it and handle HTTP status, response validation and
 authority. The following host-supplied reader must already implement those

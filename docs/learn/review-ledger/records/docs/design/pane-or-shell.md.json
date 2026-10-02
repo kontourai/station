@@ -12,7 +12,7 @@
   "document": {"digest":"c1440d672ee51e914ea0b0d2267d6e53b4abca7d8602ac01a0feda9c09aeeec8","revision":"cf85b5e3b16b0ca2bfbed4c4fd16822026aff744"},
 
   "sources": [
-    {"path":"src-ui/src/app-shell/destination-registry.ts","digest":"11bb2e1e9615053b5dd1c8292617c68d43c2ccb407449174797028aaeb5eac3d","revision":"75785f43c80623e548f4ae8f5282be9585e203dd"},
+    {"path":"src-ui/src/app-shell/destination-registry.ts","digest":"43648ebbbe654ea2da92f7f57fc3e2350e68253e12a8096bc6314eb6153f110b","revision":"d6a3158c22a62d9530592c6366a1624790ee9401"},
 
     {"path":"src-ui/src/app-shell/routing.ts","digest":"64eb187dd30dffe0d9317242bb454ab41ff0116af6ad02c7dc6ad805a8dd65f2","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},
 

@@ -174,11 +174,12 @@ export function MutableSessionDetail({
       respond.error ||
       stopTask.error,
   );
+  // biome-ignore lint/correctness/useExhaustiveDependencies: A new request failure must reveal its notice even when an earlier notice keeps the boolean true.
   useEffect(() => {
     if (importantNotice && transcriptScrollRef.current) {
       transcriptScrollRef.current.scrollTop = 0;
     }
-  }, [importantNotice]);
+  }, [importantNotice, sendError, respond.error]);
   const agentLabel = sessionAgentLabel(session, useAgents());
   // Open in chat goes through the shared open-chat focus (archive#1297), the
   // seam Home and the project page use: the chat dock rehydrates the real

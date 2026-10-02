@@ -9,7 +9,7 @@
 
   "limits": "Source and mocked fixtures; no real browser push service, phone display, Windows key-file ACL, native push or hosted enablement qualification.",
 
-  "document": {"digest":"1ad4a7e9ded295937ec60443cc7a3ced1414bd92fcb17aab3aa382fdfd53e5a0","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+  "document": {"digest":"3bedd812b8d7e928252bfa203c6277638126eadb05d3f6f4b4e04e461ee3e5a9","revision":"d6a3158c22a62d9530592c6366a1624790ee9401"},
 
   "sources": [
     {"path":"packages/connect/src/react/connection-manager-modal/ConnectionListPanel.tsx","digest":"bcae3e6dcbe2ebff7d674500a8a19d96e9bf73fff23b6fac3fa537959458aa15","revision":"ae4a861e2c29da739f863b17078c7b5a0a7ca326"},
@@ -36,7 +36,7 @@
 
     {"path":"src-server/runtime/routes/runtime-route-support.ts","digest":"6a4c97a6eb7f6bbce23da80e037ffb76ca1da14f53e54b2a934a4e64e60f2052","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"400dc75dd88a48bc411a4edb9c5f40f9d22ae0f1c5b68d8f748e7733efae5a0e","revision":"cb3ebc3797508b3f46d66b8bc5ece89b32cb79ae"},
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"90e94e3a617cb7c9642c029f8dd1c58fbebeca19e29dbd1b097af41952fe4b93","revision":"cf12c0d848d0dc068f3dcaa530e9a1f213618834"},
 
     {"path":"src-server/services/notifications/agent-activity-eligibility.ts","digest":"a5685997c8eabaf0530be90935a564235cef1abf2c18c5ef5abb5fe264863727","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
@@ -70,17 +70,21 @@
 
     {"path":"src-ui/public/sw.js","digest":"411d96698a8c13cd73c04887dfbcababc5de8b82a3ed0909ab3d3cdcae0cc263","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
-    {"path":"src-ui/src/hooks/__tests__/usePushNotifications.test.tsx","digest":"f02dc51bf465c713e76ca921057246f923f8c20798e78079a44d286d322d41fc","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+    {"path":"src-ui/src/hooks/__tests__/usePushNotifications.test.tsx","digest":"42fa04aa75d493dde954e378b74c20a4d53ed27e4870e8ec2c0dc8d9180a7283","revision":"d6a3158c22a62d9530592c6366a1624790ee9401"},
 
     {"path":"src-ui/src/hooks/useFeatureSettings.ts","digest":"97b65c542aadec23d2ec6dc926e4912adfc96852fed1694a0dd5f59134d7b56d","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
-    {"path":"src-ui/src/hooks/usePushNotifications.ts","digest":"836ba76645a4c7f6637c76596993409d01b8ed1342d8783956de5418e4ea2be0","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+    {"path":"src-ui/src/hooks/usePushNotifications.ts","digest":"17b4b9a8e103f019b4ce0d4f4f2a425a8cb201981dbfb76ed0c3e9863d58e2cb","revision":"d6a3158c22a62d9530592c6366a1624790ee9401"},
 
     {"path":"src-ui/src/hooks/useServerEvents.ts","digest":"6288bb72ce5a3f87626a5966cf6917dbe9ae46ac5c504a9bdd2cc14054dbcb07","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
-    {"path":"src-ui/src/views/settings/PairingSection.tsx","digest":"e1a62de74a2dfc8b032b358b1ca6b7f29322c182b8619507bf3a5e0882d7324c","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+    {"path":"src-ui/src/views/settings/PairingSection.tsx","digest":"8e1e2856247d3dd539e45e28a108941c2e504d3dcb13b5c774b1c251079d2a63","revision":"d6a3158c22a62d9530592c6366a1624790ee9401"},
 
-    {"path":"src-ui/src/views/settings/VoiceFeaturesSection.tsx","digest":"a1f688fa7b6256ecdeb6b28c9f0d25324ce815fdbcd0697ac60925a16b2e48cf","revision":"42491ca6bab31b1365b33e3190c171819881eb72"}
+    {"path":"src-ui/src/views/settings/VoiceFeaturesSection.tsx","digest":"0f372be366bf8beddcfb361e71bd3298faa08a8981aad76127906ad65a9d9f09","revision":"d6a3158c22a62d9530592c6366a1624790ee9401"},
+
+    {"path":"src-ui/src/contexts/PushNotificationsContext.tsx","digest":"433c21d236368caa253a3d560400b3d930eaba9203ad76c8e3bbaa9d93c2c2d1","revision":"d6a3158c22a62d9530592c6366a1624790ee9401"},
+
+    {"path":"src-ui/src/App.tsx","digest":"8adeb594b372c2fb6dfa134c8f7ed472e56afae50f78a3becf59e4c3d272edf5","revision":"d6a3158c22a62d9530592c6366a1624790ee9401"}
   ],
 
   "checks": [
