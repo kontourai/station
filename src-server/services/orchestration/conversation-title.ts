@@ -33,10 +33,14 @@ const EMPHASIS = [
 ];
 
 /**
- * How much of the text a title is derived from. A title is 80 code points, and
- * markdown stripping only ever shrinks text, so the first thousand are far more
- * than it can use; deriving from a whole prompt (callers pass user prompts of
- * any size) made the scans below quadratic.
+ * How much of the text a title is derived from, after leading whitespace. A
+ * title is 80 code points, so the first thousand are far more than it needs in
+ * practice; deriving from a whole prompt (callers pass user prompts of any
+ * size) made the scans below quadratic. This is a deliberate approximation, not
+ * an equivalence: markdown that opens inside the bound and closes beyond it is
+ * read as unpaired, and a title whose words all start after 1000 code points
+ * of non-leading content (or heavy markup) can derive differently from the
+ * unbounded text.
  */
 export const TITLE_SOURCE_MAX_CODE_POINTS = 1000;
 /** A link label or destination longer than this is plain text, not a link. */
@@ -138,8 +142,12 @@ function boundedTitle(text: string): string {
 export function derivedConversationTitle(
   text: string | undefined,
 ): string | undefined {
+  // Leading whitespace is skipped (linear) before the cut so it does not spend
+  // the budget.
   const plain = text
-    ? plainTitleText(leadingCodePoints(text, TITLE_SOURCE_MAX_CODE_POINTS))
+    ? plainTitleText(
+        leadingCodePoints(text.trimStart(), TITLE_SOURCE_MAX_CODE_POINTS),
+      )
     : '';
   return plain ? boundedTitle(plain) : undefined;
 }

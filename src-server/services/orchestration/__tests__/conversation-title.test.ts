@@ -53,35 +53,58 @@ describe('derivedConversationTitle', () => {
     expect(derivedConversationTitle(undefined)).toBeUndefined();
   });
 
+  // Structural bound, checked on small inputs so a removed bound FAILS fast
+  // instead of hanging in the quadratic scans: bold that opens inside the first
+  // TITLE_SOURCE_MAX_CODE_POINTS and closes beyond them is read as unpaired.
+  // Without the cut the pair would be stripped and the title would not start
+  // with the markers.
+  test('markup that closes beyond the bound does not influence the title', () => {
+    expect(TITLE_SOURCE_MAX_CODE_POINTS).toBe(1000);
+    const title = derivedConversationTitle(`**${'a'.repeat(1100)}**`);
+    expect(title?.startsWith('**aaa')).toBe(true);
+  });
+
+  test('content after the bound is never read', () => {
+    const head = 'word '.repeat(200); // exactly 1000 code points
+    expect(Array.from(head)).toHaveLength(1000);
+    expect(derivedConversationTitle(`${head}[x](`)).toBe(
+      derivedConversationTitle(`${head}anything else entirely`),
+    );
+  });
+
   // The title is derived from prompts of any size, server-side. Repeated
   // unbalanced `[a](` used to make the link scan quadratic (10,000 repeats took
-  // half a second, 400,000 never finished). The bound is structural: only the
-  // first TITLE_SOURCE_MAX_CODE_POINTS are ever read, so a huge prompt derives
-  // exactly what its head derives, in constant work.
+  // half a second, 400,000 never finished). Timing-free: this only checks the
+  // result matches the head's, at a size where a missing bound is slow rather
+  // than endless.
   test.each([
     ['unbalanced links', '[a]('],
     ['unclosed labels', '['],
     ['bold openers', '**a '],
     ['parenthesised runs', '(((a '],
-  ])(
-    'a 400,000-repeat prompt of %s derives from its head only',
-    (_name, unit) => {
-      const prompt = unit.repeat(400_000);
-      const head = Array.from(prompt)
-        .slice(0, TITLE_SOURCE_MAX_CODE_POINTS)
-        .join('');
-      expect(derivedConversationTitle(prompt)).toBe(
-        derivedConversationTitle(head),
-      );
-    },
-  );
+  ])('a 20,000-repeat prompt of %s derives from its head only', (_n, unit) => {
+    const prompt = unit.repeat(20_000);
+    const head = Array.from(prompt)
+      .slice(0, TITLE_SOURCE_MAX_CODE_POINTS)
+      .join('');
+    expect(derivedConversationTitle(prompt)).toBe(
+      derivedConversationTitle(head),
+    );
+  });
 
-  test('a long prompt whose words start after the bound derives no title from them', () => {
-    // The literal 1000, next to the constant it pins.
-    expect(TITLE_SOURCE_MAX_CODE_POINTS).toBe(1000);
-    expect(derivedConversationTitle(`${' '.repeat(1000)}late`)).toBeUndefined();
-    // Exactly 1000 are read: 999 spaces and the first letter.
-    expect(derivedConversationTitle(`${' '.repeat(999)}late`)).toBe('l');
+  test('leading whitespace does not spend the budget', () => {
+    expect(derivedConversationTitle(`${'\n'.repeat(1500)}fix the bug`)).toBe(
+      'fix the bug',
+    );
+    expect(derivedConversationTitle(`${' '.repeat(1001)}fix`)).toBe('fix');
+    expect(derivedConversationTitle(`${' '.repeat(5000)}late`)).toBe('late');
+  });
+
+  test('a long prompt whose words start after 1000 non-whitespace code points derives from the head', () => {
+    // 1000 code points of punctuation-free filler, then words: only the filler
+    // is read, so the title is cut from it, not from the late words.
+    const title = derivedConversationTitle(`${'x'.repeat(1000)} late`);
+    expect(title?.includes('late')).toBe(false);
   });
 
   test('the bound counts code points, not UTF-16 units', () => {
