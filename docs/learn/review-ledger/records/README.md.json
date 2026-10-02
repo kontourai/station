@@ -24,7 +24,7 @@
 
     {"path":"docs/privacy-policy.md","digest":"fb5be7ad7342be17509e79e40a6e2dbbe7046ea7dbbe8db4ba637fcdbb21d403","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"docs/reference/cli.md","digest":"98f975022501b6d33e43422fc2652317fb84f72eab24522a582238bf244252ee","revision":"4a1fc2197028ded07d0e389e98a30042ab7cadb5"},
+    {"path":"docs/reference/cli.md","digest":"5db0e299c9a461a4e17cfb614d26f13f10c64260eae57d435b0f4088be8b325a","revision":"1b73087d156d008468234fa83d218468d21add03"},
 
     {"path":"install.sh","digest":"f2b2fbf2dba1198f08637b48ad3a1cd7ae684cee020621cd293668e6bbb8b4bc","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 

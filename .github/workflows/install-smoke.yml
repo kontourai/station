@@ -294,6 +294,33 @@ jobs:
             tail -200 "$log"
           done
 
+  # #2970: the service's Task Scheduler settings on a real Windows host. No
+  # leg installs a Windows service end to end, so this registers throwaway
+  # tasks the way `station service install` does, applies the install's
+  # settings, reads them back through the task XML, and records that Task
+  # Scheduler does not rerun a wrapper that exits non-zero.
+  windows-task-scheduler:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          repository: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
+      - name: Setup pinned pnpm
+        uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
+        with: { install: false }
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+      - run: npm run dependencies:ci
+      - name: Register, configure and read back real scheduled tasks
+        env:
+          STATION_REAL_TASK_SCHEDULER: '1'
+        run: node node_modules/vitest/vitest.mjs run packages/cli/src/__tests__/service-windows.task-scheduler.test.ts --maxWorkers=1 --no-file-parallelism
+
   # #2675 B2: the public-manifest path installs a prebuilt per-platform
   # server archive. Builds two archives of this candidate on the runner,
   # signs schema 2 manifests for them with a throwaway key under the pinned
