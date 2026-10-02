@@ -107,6 +107,30 @@ test.each([
                 retentionDays: 30,
                 observations: [
                   {
+                    fetchedAt: new Date(Date.now() - 14400000).toISOString(),
+                    status: 'ok',
+                    windows: [
+                      {
+                        id: 'primary',
+                        label: 'Primary',
+                        durationSeconds: 86400,
+                        usedPercent: 60,
+                      },
+                    ],
+                  },
+                  {
+                    fetchedAt: new Date(Date.now() - 10800000).toISOString(),
+                    status: 'ok',
+                    windows: [
+                      {
+                        id: 'primary',
+                        label: 'Primary',
+                        durationSeconds: 3600,
+                        usedPercent: 40,
+                      },
+                    ],
+                  },
+                  {
                     fetchedAt: new Date(Date.now() - 7200000).toISOString(),
                     status: 'ok',
                     windows: [
@@ -338,6 +362,24 @@ test.each([
       expect(screen.getByRole('table').textContent).toContain('Not reported');
       expect(screen.getByRole('table').textContent).not.toContain('50%');
       const limit = screen.getByRole('combobox', { name: 'Limit' });
+      fireEvent.change(limit, {
+        target: {
+          value: screen
+            .getByRole('option', { name: 'Primary · 1h' })
+            .getAttribute('value'),
+        },
+      });
+      expect(screen.getByRole('table').textContent).toContain('60%');
+      expect(screen.getByRole('table').textContent).not.toContain('40%');
+      fireEvent.change(limit, {
+        target: {
+          value: screen
+            .getByRole('option', { name: 'Primary · 1d' })
+            .getAttribute('value'),
+        },
+      });
+      expect(screen.getByRole('table').textContent).toContain('40%');
+      expect(screen.getByRole('table').textContent).not.toContain('60%');
       fireEvent.change(limit, {
         target: {
           value: screen

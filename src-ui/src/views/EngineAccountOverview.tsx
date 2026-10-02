@@ -901,6 +901,18 @@ function historyWindowKey(
     window.durationSeconds ?? null,
   ]);
 }
+function historyDuration(seconds: number | undefined): string {
+  if (seconds === undefined) return 'duration unknown';
+  const [value, unit]: [number, string] =
+    seconds >= 86400
+      ? [seconds / 86400, 'd']
+      : seconds >= 3600
+        ? [seconds / 3600, 'h']
+        : seconds >= 60
+          ? [seconds / 60, 'm']
+          : [seconds, 's'];
+  return `${percentFormatter.format(value)}${unit}`;
+}
 function AllowanceHistory({
   history,
   days,
@@ -921,10 +933,30 @@ function AllowanceHistory({
       .reverse()
       .flatMap((point) =>
         point.windows.map(
-          (window) => [historyWindowKey(window), window.label] as const,
+          (window) => [historyWindowKey(window), window] as const,
         ),
       ),
   );
+  const labelCounts = new Map<string, number>();
+  for (const window of windows.values())
+    labelCounts.set(window.label, (labelCounts.get(window.label) ?? 0) + 1);
+  const labels = new Map(
+    [...windows].map(
+      ([key, window]) =>
+        [
+          key,
+          (labelCounts.get(window.label) ?? 0) > 1
+            ? `${window.label} · ${historyDuration(window.durationSeconds)}`
+            : window.label,
+        ] as const,
+    ),
+  );
+  const optionCounts = new Map<string, number>();
+  for (const label of labels.values())
+    optionCounts.set(label, (optionCounts.get(label) ?? 0) + 1);
+  for (const [index, [key, label]] of [...labels].entries())
+    if ((optionCounts.get(label) ?? 0) > 1)
+      labels.set(key, `${label} · series ${index + 1}`);
   const id = windows.has(selected) ? selected : windows.keys().next().value;
   const observations = points.map((point) => ({
     fetchedAt: point.fetchedAt,
@@ -947,7 +979,7 @@ function AllowanceHistory({
               value={id}
               onChange={(event) => setSelected(event.target.value)}
             >
-              {[...windows].map(([key, label]) => (
+              {[...labels].map(([key, label]) => (
                 <option key={key} value={key}>
                   {label}
                 </option>
@@ -970,7 +1002,7 @@ function AllowanceHistory({
         <>
           <figure>
             <figcaption>
-              {windows.get(id ?? '') ?? 'Allowance'} · remaining at each
+              {labels.get(id ?? '') ?? 'Allowance'} · remaining at each
               observation · {days} days
             </figcaption>
             <svg
@@ -978,7 +1010,7 @@ function AllowanceHistory({
               viewBox={`0 0 ${Math.max(1, observations.length)} 100`}
               preserveAspectRatio="none"
               role="img"
-              aria-label={`${windows.get(id ?? '') ?? 'Allowance'} remaining history, ${observations.length} hourly observations`}
+              aria-label={`${labels.get(id ?? '') ?? 'Allowance'} remaining history, ${observations.length} hourly observations`}
             >
               {observations.map((point, index) => {
                 const remaining = point.window
