@@ -29,7 +29,7 @@ describe('readCheckoutRemotes', () => {
       { cwd: dir },
     );
     execGitSync(
-      ['remote', 'add', 'upstream', 'https://github.com/brian/station.git'],
+      ['remote', 'add', 'upstream', 'https://github.com/casey/station.git'],
       { cwd: dir },
     );
 
@@ -38,7 +38,7 @@ describe('readCheckoutRemotes', () => {
       ok: true,
       remotes: [
         { name: 'origin', url: 'git@github.com:kontourai/station.git' },
-        { name: 'upstream', url: 'https://github.com/brian/station.git' },
+        { name: 'upstream', url: 'https://github.com/casey/station.git' },
       ],
     });
   });

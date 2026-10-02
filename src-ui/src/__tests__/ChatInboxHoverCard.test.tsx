@@ -89,7 +89,7 @@ function gitRepo() {
     untracked: 0,
     lastCommit: {
       sha: 'abc1234',
-      author: 'Brian',
+      author: 'Casey',
       relativeTime: '2h ago',
       message: 'feat(projects): expose portable identity',
     },

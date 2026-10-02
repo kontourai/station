@@ -12,7 +12,7 @@
   "document": {"digest":"490d044f9376c5e9604c43516260d5508a44e4a7670ffe01b60492c916d1a9c4","revision":"1d49e432472043f4c3ab7d870104fb3baaf4ad05"},
 
   "sources": [
-    {"path":"package.json","digest":"a5bdcf2fc2c0871428f7ecfae8ce7d0a51483df2a5abd19eeec6563d76bc20f7","revision":"4bf030fd83ec2d050da7cb4a567ba66450a9cfd3"},
+    {"path":"package.json","digest":"7263c035fa5946e593a759d3a0b55d8f504e955eb14fab5a401b71c7d3b2ac50","revision":"df9188971e1a93d2c5525a7f5f38e3da93c9e4de"},
 
     {"path":"packages/contracts/src/engine-capability-matrix.ts","digest":"e6d2c0397a5894f2f2c8aa175e9a6cd240c8a4445269041c982019245c5cc102","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
@@ -24,7 +24,7 @@
 
     {"path":"packages/shared/src/tool-request-preview.ts","digest":"45216ed966e11646d2c0f4b4890b6cd6796cb7c731916c41bc0641de4f7371c6","revision":"7d1527f7d45762dfaefe64449512d102c71a6c2c"},
 
-    {"path":"pnpm-lock.yaml","digest":"fd7359aa74c6fa2ce27a20c84f69722273ec162933c580280bdca21dce9d28ff","revision":"1e5f63186142dd36fcb720deb7660808dbf2f56b"},
+    {"path":"pnpm-lock.yaml","digest":"29dbdce300fcd3d881ae511317af478da6e9c098a8e8cf51c6b2269a937525df","revision":"df9188971e1a93d2c5525a7f5f38e3da93c9e4de"},
 
     {"path":"src-server/providers/__tests__/claude-adapter.test.ts","digest":"a3a658a6238a51e36fc9c26d9778d2e65f05547c90221cdfcf917ac5d38e3585","revision":"9f288f6a91eef1d6a9877a6ded318720a0e04949"},
 
