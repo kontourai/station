@@ -58,6 +58,10 @@ import {
 } from '@kontourai/station-contracts/session-inventory-mcp';
 import { SESSION_LIFECYCLE_STATES } from '@kontourai/station-contracts/session-lifecycle';
 import {
+  TASK_ROOM_CONTEXT_VERSION,
+  type TaskRoomContextSnapshot,
+} from '@kontourai/station-contracts/task-room-work';
+import {
   type HostedTenantRegistry,
   sessionReadAuthorityFromRequest,
 } from '@kontourai/station-contracts/tenancy';
@@ -533,6 +537,18 @@ export const delegateTaskSchema = z.object({
       taskId: z.string().min(1).max(160),
       taskCreatedAt: z.string().min(1).max(40),
       operationId: z.string().min(1).max(160),
+      context: z
+        .object({
+          version: z.literal(TASK_ROOM_CONTEXT_VERSION),
+          // 64 hex chars; the explicit .max() keeps the bound machine-visible
+          // to the seam walker (regex length is not).
+          digest: z
+            .string()
+            .max(64)
+            .regex(/^[0-9a-f]{64}$/),
+        })
+        .strict()
+        .optional(),
     })
     .strict()
     .optional(),
@@ -1329,6 +1345,11 @@ export function createOrchestrationRoutes(
     delegateTask?: (input: DelegateTaskRequest) => Promise<unknown>;
     taskRoomWork?: {
       module: TaskRoomWorkModule;
+      resolveContext?(
+        taskId: string,
+        request: Request,
+        principal: PrincipalRef,
+      ): Promise<TaskRoomContextSnapshot | undefined>;
       authorize(
         taskId: string,
         request: Request,
@@ -2422,9 +2443,15 @@ export function createOrchestrationRoutes(
         sessionId?: string,
         recheck?: () => Promise<void>,
         roomBinding?: TaskRoomInvocationAdmission['roomBinding'],
+        contextSnapshot?: TaskRoomContextSnapshot,
       ) =>
         delegate({
           ...request,
+          ...(contextSnapshot
+            ? {
+                prompt: `${body.prompt}\n\nSelected Task brief snapshot:\n${JSON.stringify(contextSnapshot)}`,
+              }
+            : {}),
           ...(delegation ? { delegation } : {}),
           target: normalizeExecutionTarget(
             withCanonicalCwd(body.target, scoped.canonicalCwd),
@@ -2516,13 +2543,19 @@ export function createOrchestrationRoutes(
             operationId: roomRequest.operationId,
             agentId: body.target.agent,
             prompt: body.prompt,
+            ...(roomRequest.context ? { context: roomRequest.context } : {}),
           },
           authorize,
-          async (sessionId, scope, recheck) => {
-            const handle = await dispatch(sessionId, recheck, {
-              projectId: scope.roomProjectId,
-              taskId: roomRequest.taskId,
-            });
+          async (sessionId, scope, recheck, contextSnapshot) => {
+            const handle = await dispatch(
+              sessionId,
+              recheck,
+              {
+                projectId: scope.roomProjectId,
+                taskId: roomRequest.taskId,
+              },
+              contextSnapshot,
+            );
             if (
               !handle ||
               typeof handle !== 'object' ||
@@ -2532,6 +2565,9 @@ export function createOrchestrationRoutes(
               throw new Error('Agent execution identity was not returned.');
             return { sessionId: handle.sessionId };
           },
+          () =>
+            work.resolveContext?.(roomRequest.taskId, c.req.raw, principal) ??
+            Promise.resolve(undefined),
         );
         return c.json(
           { success: outcome.kind === 'recorded', data: outcome },
