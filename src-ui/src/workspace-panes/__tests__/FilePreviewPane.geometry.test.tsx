@@ -170,16 +170,20 @@ describe.skipIf(!chromiumIsInstalled(REPO_ROOT))(
             const cy = rect.top + rect.height / 2;
             const reachX = Math.floor(Number.parseFloat(before.width) / 2 - 1);
             const reachY = Math.floor(Number.parseFloat(before.height) / 2 - 1);
-            const cornersHit = [
-              hit(cx - reachX, cy - reachY, element),
-              hit(cx + reachX, cy - reachY, element),
-              hit(cx - reachX, cy + reachY, element),
-              hit(cx + reachX, cy + reachY, element),
+            // Cardinal probes, one pixel inside the pseudo's edge — the
+            // same reach the stepped version measured. A corner probe
+            // would demand the pseudo also win diagonally, where the
+            // bar's neighbouring buttons sit by design.
+            const cardinalHits = [
+              hit(cx - reachX, cy, element),
+              hit(cx + reachX, cy, element),
+              hit(cx, cy - reachY, element),
+              hit(cx, cy + reachY, element),
             ].every(Boolean);
             return {
               width: Number.parseFloat(before.width),
               height: Number.parseFloat(before.height),
-              hittable: cornersHit,
+              hittable: cardinalHits,
             };
           };
           const style = (element: Element) => getComputedStyle(element);
