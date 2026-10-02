@@ -206,7 +206,7 @@ it('drains cold delivery after listening, and only explicit Save persists public
       String(command).includes('authorize_active'),
     ),
   ).toBe(false);
-  fireEvent.click(screen.getByRole('button', { name: 'Close link review' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Close' }));
   await screen.findByText('Existing protected workspace');
   expect(host.invoke.mock.calls).toContainEqual([
     'station_native_relay_link_cancel',
@@ -227,7 +227,7 @@ it('warm open and cancel keep the protected owner, selected Station and opaque a
     screen.getByText('Existing protected workspace').closest('[inert]'),
   ).not.toBeNull();
   expect(host.retired).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole('button', { name: 'Close link review' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Close' }));
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   expect(host.active).toBe('station-profile:existing');
   expect(host.account).toBe('opaque-account-session');
@@ -295,7 +295,7 @@ it('a newer warm event wins over a late cold drain reply, and old notifications 
   await screen.findByText('https://new.example.test');
   await act(async () => resolveLaunch(intent));
   expect(screen.queryByText(route.applicationOrigin)).toBeNull();
-  fireEvent.click(screen.getByRole('button', { name: 'Close link review' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Close' }));
   await screen.findByText('Existing protected workspace');
   await emit(newer);
   expect(screen.queryByRole('dialog')).toBeNull();
@@ -447,16 +447,14 @@ it('a bound delivery keeps invitation secret in host custody and requires indepe
     </NativeRelayLinkIntake>,
   );
   await screen.findByRole('button', {
-    name: 'Prepare device details',
+    name: 'Share device details',
   });
   expect(
     host.invoke.mock.calls.some(
       ([command]) => command === 'station_native_relay_link_begin',
     ),
   ).toBe(false);
-  fireEvent.click(
-    screen.getByRole('button', { name: 'Prepare device details' }),
-  );
+  fireEvent.click(screen.getByRole('button', { name: 'Share device details' }));
   const discover = await screen.findByRole('button', {
     name: 'Check this Station',
   });
@@ -696,7 +694,7 @@ it('keeps resumed Device setup alive after the already-redeemed invitation deadl
     </NativeRelayLinkIntake>,
   );
   fireEvent.click(
-    await screen.findByRole('button', { name: 'Prepare device details' }),
+    await screen.findByRole('button', { name: 'Share device details' }),
   );
   fireEvent.click(
     await screen.findByRole('button', { name: 'Check this Station' }),
@@ -755,8 +753,16 @@ it('public setup for a confirmed Station only prepares and copies public device 
     </NativeRelayLinkIntake>,
   );
   const prepare = await screen.findByRole('button', {
-    name: 'Prepare device details',
+    name: 'Share device details',
   });
+  expect(
+    screen.queryByRole('heading', { name: 'Confirm this Station' }),
+  ).toBeNull();
+  expect(screen.getAllByRole('button', { name: 'Close' })).toHaveLength(1);
+  expect(
+    screen.getByText('Confirmation details').closest('details')?.open,
+  ).toBe(false);
+
   expect(
     host.invoke.mock.calls.some(
       ([command]) =>

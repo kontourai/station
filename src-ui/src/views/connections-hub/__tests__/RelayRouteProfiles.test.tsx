@@ -758,7 +758,7 @@ describe('RelayRouteProfiles', () => {
       expect(screen.getByText('Station needs confirmation')).toBeTruthy(),
     );
     expect(
-      screen.getByRole('button', { name: 'Prepare device details' }),
+      screen.getByRole('button', { name: 'Share device details' }),
     ).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
     expect(
@@ -926,7 +926,7 @@ describe('RelayRouteProfiles', () => {
       'station_profile_store_read',
     );
     expect(screen.getByText('Device setup required')).toBeTruthy();
-    expect(screen.getByText(/Device access is a separate step/)).toBeTruthy();
+    expect(screen.getByText('Station confirmed')).toBeTruthy();
     expect(
       queryClient.getQueryData([
         'native-relay-grant',
@@ -1806,16 +1806,16 @@ describe('RelayRouteProfiles', () => {
       screen.getByRole('button', { name: 'Review new Station key' }),
     ).toBeTruthy();
     expect(
-      screen.queryByRole('button', { name: 'Prepare device details' }),
+      screen.queryByRole('button', { name: 'Share device details' }),
     ).toBeNull();
     expect(screen.queryByLabelText('One-time Station invitation')).toBeNull();
 
-    openDetails('Review a changed Station identity');
+    openDetails('Confirmation details');
     fireEvent.click(
       screen.getByRole('button', { name: 'Review new Station key' }),
     );
     fireEvent.click(
-      screen.getByRole('button', { name: 'Prepare device details' }),
+      screen.getByRole('button', { name: 'Share device details' }),
     );
     await screen.findByRole('region', {
       name: 'Public install proof metadata',
@@ -1827,12 +1827,12 @@ describe('RelayRouteProfiles', () => {
     ).toBeNull();
     expect(screen.getByText('sha256:old-station-key')).toBeTruthy();
 
-    openDetails('Review a changed Station identity');
+    openDetails('Confirmation details');
     fireEvent.click(
       screen.getByRole('button', { name: 'Review new Station key' }),
     );
     fireEvent.click(
-      screen.getByRole('button', { name: 'Prepare device details' }),
+      screen.getByRole('button', { name: 'Share device details' }),
     );
     await screen.findByRole('region', {
       name: 'Public install proof metadata',
@@ -1972,7 +1972,7 @@ describe('RelayRouteProfiles', () => {
     renderRoutes();
     await screen.findByText('Station needs confirmation');
     fireEvent.click(
-      screen.getByRole('button', { name: 'Prepare device details' }),
+      screen.getByRole('button', { name: 'Share device details' }),
     );
     await screen.findByText('sha256:install-proof');
     expect(screen.getByText('io.kontourai.station')).toBeTruthy();
@@ -2050,9 +2050,9 @@ describe('RelayRouteProfiles', () => {
       }),
     );
     await screen.findByText('Station confirmed');
-    expect(screen.getByText(/Device access is a separate step/)).toBeTruthy();
+    expect(screen.getByText('Station confirmed')).toBeTruthy();
     expect(
-      screen.queryByRole('button', { name: 'Prepare device details' }),
+      screen.queryByRole('button', { name: 'Share device details' }),
     ).toBeNull();
     expect(
       screen.queryByRole('region', { name: 'Public install proof metadata' }),
@@ -2081,7 +2081,7 @@ describe('RelayRouteProfiles', () => {
     );
     await screen.findByText('Station confirmation removed');
     expect(
-      screen.getByRole('button', { name: 'Prepare device details' }),
+      screen.getByRole('button', { name: 'Share device details' }),
     ).toBeTruthy();
   });
 
@@ -2100,7 +2100,7 @@ describe('RelayRouteProfiles', () => {
     renderRoutes();
     await screen.findByText('Station needs confirmation');
     fireEvent.click(
-      screen.getByRole('button', { name: 'Prepare device details' }),
+      screen.getByRole('button', { name: 'Share device details' }),
     );
     await screen.findByText('sha256:install-proof');
     const input = screen.getByLabelText(

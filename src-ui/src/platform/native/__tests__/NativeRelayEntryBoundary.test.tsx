@@ -232,7 +232,7 @@ it('the actual main entry cuts native routes above operator providers through pe
   expect(screen.queryByText('Native member entry')).toBeNull();
   expect(entry.auth).not.toHaveBeenCalled();
   expect(entry.operator).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole('button', { name: 'Close link review' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Close' }));
   await screen.findByText('Native member entry');
   expect(entry.auth).not.toHaveBeenCalled();
   expect(entry.recovery).not.toHaveBeenCalled();
@@ -254,7 +254,7 @@ it('the actual main entry cuts native routes above operator providers through pe
   ).not.toBeNull();
   expect(entry.retired).not.toHaveBeenCalled();
   expect(entry.auth).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole('button', { name: 'Close link review' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Close' }));
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   expect(entry.retired).not.toHaveBeenCalled();
   // Native classification does not consult an account-ready or login result.
@@ -288,7 +288,7 @@ it('the actual main entry cuts native routes above operator providers through pe
   ).not.toBeNull();
   expect(entry.operator).toHaveBeenCalledTimes(operatorCalls);
   expect(entry.auth).toHaveBeenCalledTimes(authCalls);
-  fireEvent.click(screen.getByRole('button', { name: 'Close link review' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Close' }));
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   entry.operator.mockClear();
   entry.auth.mockClear();

@@ -114,26 +114,37 @@ and choose **Set up a broker route** in the list footer. This opens the same
 saved-route setup used by **Add computer**; the address, QR and pairing-code
 actions remain available in the manager.
 
-The iOS relay link intake has two separate steps. A **public setup link**
-opens **Connect to a Station** with the application address explicitly marked
-as an untrusted hint. Choose **Save this Station**, then **Save Station**,
-to persist those public details. Prepare and share the device’s public install
-proof through the existing controls. **Copy public iOS setup link** shares
-routing hints only; it does not issue an invitation or grant access.
+On iOS, a public setup link opens **Connect to a Station**. Give the Station a
+name with **Save this Station → Save Station**. The address comes from the link
+and is not yet verified; inspect it under **Connection details**. Saving does
+not connect, sign in, approve a Device, or grant Project access.
 
-A later **bound invitation link** requires one exact saved route and its
-matching native install proof. Connection identifiers and public proof details are collapsed by default. Both the comparison code and full key ID remain required after discovery. The host retains the invitation secret; the UI
-receives only public metadata and an opaque pending handle. Choose **Check this Station**, compare the code and complete key ID through a separate trusted
-operator channel, and explicitly approve the key. **Continue to device approval** is a separate action. A confirmed grant exposes the existing
-Device setup ceremony; consuming the invitation ends its UI expiry timer without changing the separate grant or Device deadlines. account sign-in and Project membership remain separate.
-Opening or cancelling a link does not select a Station or retire an existing
-account session. Cold intake precedes the operator and member roots; warm
-intake covers their mounted owners during review.
+Choose **Share device details**, then **Copy device details**, and send them to
+the Station owner for approval. These are public installation details, not a
+password or private key. This action is available even when the Station is
+already confirmed. It does not rotate trust or issue an invitation.
 
-These links use distinct iOS relay schemes for the installed channel. Android
-secret-link intake is unsupported. The source and mounted tests qualify the
-intake contract; installed cold/warm delivery, store distribution and physical
-device acceptance still require separate evidence. The UI owners are the
+The owner’s later bound invitation requires that exact saved Station and its
+matching device details. The host retains the secret; the UI receives public
+metadata and an opaque handle. Choose **Check this Station**. Compare the code
+and full key ID with the owner through a separate trusted channel, enter both,
+and explicitly **Confirm Station**. Both values and the separate-channel check
+remain required. Technical inspection and confirmation management are under
+**Confirmation details**.
+
+**Continue to device approval** is a separate action. A confirmed routing grant
+opens Device setup. The consumed invitation’s expiry no longer closes that
+setup; grant and Device deadlines remain unchanged. Account sign-in and
+Project membership are still separate. Opening or cancelling a link does not
+select a Station or retire an existing account session. Cold intake precedes
+the operator and member roots; warm intake covers their mounted owners.
+
+These links use separate iOS schemes for each installed channel. Android
+secret-link intake is unsupported. The d956 development simulator observed
+nonsecret public cold and warm intake, cancellation, unchanged saved profiles
+and confirmation, and error-free empty grant status. Bound secret delivery,
+actual grant storage writes/deletes, account/application traffic, store
+releases and physical acceptance remain unverified. The UI owners are the
 [root intake](../../src-ui/src/platform/native/NativeRelayLinkIntake.tsx) and
 [opaque native adapter](../../src-ui/src/platform/native/nativeRelayLinkAdapter.ts).
 

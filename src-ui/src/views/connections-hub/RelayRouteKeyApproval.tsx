@@ -147,26 +147,24 @@ export function RelayRouteKeyApproval({
       setApprovalKeyId('');
       setSeparateChannelConfirmed(false);
       setMessage(
-        'Pending Station key discovery was cancelled. Durable trust was not changed.',
+        'The pending confirmation was closed. Review the Station status before continuing.',
       );
       await refresh();
     },
     onError: () =>
       setMessage(
-        'Could not cancel pending Station key discovery. Check native status before continuing.',
+        'Couldn’t close this confirmation. Check the Station’s status before continuing.',
       ),
   });
   const prepare = useMutation({
     mutationFn: () => nativeRelayKeyApproval.prepare(profileName),
     onSuccess: (prepared) => {
       setSurface(prepared);
-      setMessage(
-        'Native install proof is ready. Share this public surface metadata with the Station operator to create a matching invitation.',
-      );
+      setMessage('Device details ready. Send them to the Station owner.');
     },
     onError: () =>
       setMessage(
-        'Could not prepare this native Station identity. The route remains untrusted.',
+        'Couldn’t prepare device details. Your Station confirmation is unchanged.',
       ),
   });
   const approve = useMutation({
@@ -195,7 +193,7 @@ export function RelayRouteKeyApproval({
     },
     onError: async () => {
       setMessage(
-        'Approval failed. The comparison values have been cleared; start a fresh key discovery and compare again.',
+        'Confirmation wasn’t verified. Check the Station’s confirmation status before continuing.',
       );
       setConfirmationCode('');
       setApprovalKeyId('');
@@ -214,12 +212,12 @@ export function RelayRouteKeyApproval({
       setRevokeKeyId('');
       setSurface(null);
       setInvitation('');
-      setMessage('Station signing-key trust revoked on this device.');
+      setMessage('Station confirmation removed from this device.');
       await refresh();
     },
     onError: () =>
       setMessage(
-        'Could not revoke Station key trust. Confirm native key storage is available and retry.',
+        'Removal wasn’t confirmed. Check this Station’s confirmation status.',
       ),
   });
   const candidate = pendingQuery.data;
@@ -271,6 +269,8 @@ export function RelayRouteKeyApproval({
       trustStatusCurrent &&
       statusMatchesRoute &&
       status === 'approved');
+  const compactConfirmed =
+    status === 'approved' && !rotationReview && !candidate;
   const canApprove = Boolean(
     candidate &&
       candidateMatchesRoute &&
@@ -310,7 +310,7 @@ export function RelayRouteKeyApproval({
       setMessage('Device details copied. Share them with the Station owner.');
     } catch {
       setMessage(
-        'Could not copy install proof. Select the public values above and share them with the Station operator.',
+        'Couldn’t copy device details. Open the public details and share them with the Station owner.',
       );
     }
   }
@@ -327,19 +327,21 @@ export function RelayRouteKeyApproval({
       return;
     }
     setMessage(
-      'New Station key review cancelled. The currently approved key remains trusted.',
+      'Confirmation review closed. Your previously confirmed Station is unchanged.',
     );
   }
 
   return (
     <section
-      className="relay-route-key-approval native-relay-setup"
+      className={`relay-route-key-approval native-relay-setup ${compactConfirmed ? 'relay-route-key-approval--confirmed' : ''}`}
       aria-label="Station signing-key trust"
     >
-      <h3>Confirm this Station</h3>
-      <p className="connections-computers__note">
-        Confirm who you’re connecting to before giving this device access.
-      </p>
+      {!compactConfirmed && (
+        <>
+          <h3>Confirm this Station</h3>
+          <p>Match both values with the Station owner before confirming.</p>
+        </>
+      )}
       <div
         className={`relay-route-trust relay-route-trust--${status}`}
         role="status"
@@ -357,60 +359,20 @@ export function RelayRouteKeyApproval({
                     ? 'Station identity unavailable'
                     : 'Station needs confirmation'}
         </strong>
-        <span>
-          {status === 'approved'
-            ? 'Identity confirmed. Device access is a separate step.'
-            : statusQuery.isError
-              ? 'Try again when this device’s secure storage is available.'
-              : 'Ask the Station owner to help you confirm its identity.'}
-        </span>
-      </div>
-      {trustStatusCurrent &&
-        statusQuery.data?.status !== 'untrusted' &&
-        statusQuery.data?.keyId && (
-          <details className="relay-route-key-approval__durable">
-            <summary>Confirmation details</summary>
-            <dl>
-              <div>
-                <dt>Station ID</dt>
-                <dd>{statusQuery.data.stationId}</dd>
-              </div>
-              <div>
-                <dt>Enrollment ID</dt>
-                <dd>{statusQuery.data.enrollmentId}</dd>
-              </div>
-              <div>
-                <dt>Generation</dt>
-                <dd>{statusQuery.data.generation ?? 'unknown'}</dd>
-              </div>
-              <div>
-                <dt>Full key ID</dt>
-                <dd className="relay-route-trust-approval__key-id">
-                  {statusQuery.data.keyId}
-                </dd>
-              </div>
-              <div>
-                <dt>Trust revision</dt>
-                <dd>{statusQuery.data.trustRevision}</dd>
-              </div>
-            </dl>
-          </details>
+        {!compactConfirmed && (
+          <span>
+            {status === 'approved'
+              ? 'Identity confirmed. Device access is a separate step.'
+              : statusQuery.isError
+                ? 'Try again when this device’s secure storage is available.'
+                : 'Ask the Station owner to help you confirm its identity.'}
+          </span>
         )}
-
-      {status === 'approved' && !rotationReview && !candidate && (
-        <details open={Boolean(linkedInvitation)}>
-          <summary>Review a changed Station identity</summary>
-          <Button disabled={busy} onClick={() => setRotationReview(true)}>
-            Review new Station key
-          </Button>
-        </details>
-      )}
-
+      </div>
       {canPrepareSurface && !candidate && !surfaceMatchesRoute && (
         <div className="relay-route-key-approval__prepare">
           <p className="connections-computers__note">
-            Share this device’s public details with the Station owner. They’ll
-            send you a setup link.
+            Send these details to the owner so they can approve this device.
           </p>
           <Button
             variant="primary"
@@ -419,7 +381,7 @@ export function RelayRouteKeyApproval({
             pendingLabel="Preparing…"
             onClick={() => void prepare.mutateAsync().catch(() => undefined)}
           >
-            Prepare device details
+            Share device details
           </Button>
           {status === 'approved' && rotationReview && (
             <Button
@@ -674,48 +636,83 @@ export function RelayRouteKeyApproval({
       )}
       {candidate && !candidateMatchesRoute && (
         <p className="connections-computers__alert" role="alert">
-          Pending candidate does not match this saved broker route. Start a
-          fresh discovery.
+          This confirmation belongs to another Station. Ask the owner for a
+          matching link.
         </p>
       )}
-      {status === 'approved' && (
-        <details className="relay-route-key-approval__revoke">
-          <summary>Advanced: remove Station confirmation</summary>
-          <label className="editor-field" htmlFor={`${id}-revoke-key-id`}>
-            <span className="editor-label">
-              Type the current full key ID to confirm revocation
-            </span>
-            <input
-              id={`${id}-revoke-key-id`}
-              className="editor-input"
-              value={revokeKeyId}
-              autoCapitalize="none"
-              autoCorrect="off"
-              spellCheck={false}
-              onChange={(event) => setRevokeKeyId(event.target.value)}
-            />
-          </label>
-          <Button
-            variant="danger"
-            disabled={!canRevoke || busy}
-            onClick={() =>
-              void revoke
-                .mutateAsync({
-                  expectedTrustRevision: statusQuery.data?.trustRevision ?? 0,
-                  fullKeyId: revokeKeyId.trim(),
-                })
-                .catch(() => undefined)
-            }
-          >
-            Revoke Station key trust
-          </Button>
+      {trustStatusCurrent &&
+      statusQuery.data?.status !== 'untrusted' &&
+      statusQuery.data?.keyId ? (
+        <details>
+          <summary>Confirmation details</summary>
+          <dl>
+            <div>
+              <dt>Station ID</dt>
+              <dd>{statusQuery.data.stationId}</dd>
+            </div>
+            <div>
+              <dt>Enrollment ID</dt>
+              <dd>{statusQuery.data.enrollmentId}</dd>
+            </div>
+            <div>
+              <dt>Generation</dt>
+              <dd>{statusQuery.data.generation ?? 'unknown'}</dd>
+            </div>
+            <div>
+              <dt>Full key ID</dt>
+              <dd className="relay-route-trust-approval__key-id">
+                {statusQuery.data.keyId}
+              </dd>
+            </div>
+            <div>
+              <dt>Trust revision</dt>
+              <dd>{statusQuery.data.trustRevision}</dd>
+            </div>
+          </dl>
+          {status === 'approved' && !rotationReview && !candidate ? (
+            <Button disabled={busy} onClick={() => setRotationReview(true)}>
+              Review new Station key
+            </Button>
+          ) : null}
+          {status === 'approved' ? (
+            <section aria-label="Remove Station confirmation">
+              <label className="editor-field" htmlFor={`${id}-revoke-key-id`}>
+                <span className="editor-label">
+                  Type the current full key ID to confirm revocation
+                </span>
+                <input
+                  id={`${id}-revoke-key-id`}
+                  className="editor-input"
+                  value={revokeKeyId}
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  onChange={(event) => setRevokeKeyId(event.target.value)}
+                />
+              </label>
+              <Button
+                variant="danger"
+                disabled={!canRevoke || busy}
+                onClick={() =>
+                  void revoke
+                    .mutateAsync({
+                      expectedTrustRevision:
+                        statusQuery.data?.trustRevision ?? 0,
+                      fullKeyId: revokeKeyId.trim(),
+                    })
+                    .catch(() => undefined)
+                }
+              >
+                Revoke Station key trust
+              </Button>
+            </section>
+          ) : null}
         </details>
-      )}
-
+      ) : null}
       {pendingQuery.isError && (
         <p className="connections-computers__alert" role="alert">
-          Could not load the native pending candidate. Retry after checking
-          native key trust.
+          Couldn’t check this Station’s confirmation. Check its status before
+          continuing.
         </p>
       )}
       {message && (

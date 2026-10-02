@@ -68,7 +68,7 @@ export function NativeRelayLinkIntake({ children }: { children: ReactNode }) {
       .catch(() => {
         if (!disposed) {
           setError(
-            'Station could not receive native relay links. Reload before continuing.',
+            'Couldn’t open this Station invitation. Close and reopen Station before continuing.',
           );
         }
       });
@@ -132,7 +132,7 @@ export function NativeRelayLinkIntake({ children }: { children: ReactNode }) {
     } catch {
       if (current.current === closing)
         setError(
-          'Station could not cancel this link. Check native status before continuing.',
+          'Couldn’t close this invitation. Check the connection’s status before continuing.',
         );
     }
   }
@@ -148,7 +148,7 @@ export function NativeRelayLinkIntake({ children }: { children: ReactNode }) {
           {children}
         </div>
       ) : !pending ? (
-        <SkeletonBlock label="Checking native Station links" />
+        <SkeletonBlock label="Checking Station invitations" />
       ) : null}
       {pending ? (
         <LazyBoundary
@@ -159,7 +159,7 @@ export function NativeRelayLinkIntake({ children }: { children: ReactNode }) {
             onClose: () => void close(),
             onRedemptionConfirmed: redemptionConfirmed,
           }}
-          pending={<SkeletonBlock label="Opening Station link review" />}
+          pending={<SkeletonBlock label="Opening Station invitation" />}
         />
       ) : null}
       {error ? <p role="alert">{error}</p> : null}

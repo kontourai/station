@@ -328,3 +328,8 @@
 .native-relay-setup :is(button, input, select) {
   font-size: var(--k-text-md);
 }
+
+.relay-route-key-approval--confirmed {
+  border: 0;
+  padding: 0;
+}

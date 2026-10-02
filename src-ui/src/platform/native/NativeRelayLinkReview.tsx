@@ -157,11 +157,16 @@ function Review({
               ? `Connect to ${profile.name}`
               : 'Connect to this Station'
         }
-        closeLabel="Close Station link review"
+        closeLabel="Close"
+        hideClose={delivery.kind === 'rejected'}
         onClose={close}
         historyMode="none"
         size="lg"
-        footer={<Button onClick={close}>Close link review</Button>}
+        footer={
+          delivery.kind === 'rejected' ? (
+            <Button onClick={close}>Close</Button>
+          ) : undefined
+        }
       >
         <p>
           Only continue if you expected an invitation from this Station’s owner.
@@ -208,17 +213,12 @@ function Review({
             ) : null}
             {delivery.kind === 'bound-invitation' && !profile ? (
               <p role="alert">
-                This invitation requires one exact saved route and its existing
-                native install proof. Save the public setup link first and ask
-                the operator for a matching invitation.
+                Save this Station first. Share your device details with its
+                owner, then ask for a setup link.
               </p>
             ) : null}
             {profile ? (
               <>
-                <p>
-                  Saved route: {profile.name}. Prepare its public install proof
-                  and share it with the operator separately.
-                </p>
                 <RelayRouteKeyApproval
                   key={`${profile.name}:${profile.updatedAt}`}
                   profileName={profile.name}
