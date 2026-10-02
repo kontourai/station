@@ -16,7 +16,7 @@ use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
-#[cfg(test)]
+#[cfg(any(test, target_os = "ios"))]
 use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
 #[cfg(target_os = "ios")]
