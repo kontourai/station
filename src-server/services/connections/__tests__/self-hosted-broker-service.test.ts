@@ -150,6 +150,7 @@ describe.runIf(process.platform !== 'win32')(
   'self-hosted broker control plane',
   () => {
     const makeIceTempDir = trackTempDirs();
+    const makeWithdrawalTempDir = trackTempDirs();
     test('ICE HTTP routes require exact native PoP or connector authority and refuse retired owners', async () => {
       const root = makeIceTempDir('station-broker-ice-routes-');
       const now = 1_000;
@@ -723,9 +724,7 @@ describe.runIf(process.platform !== 'win32')(
       restarted.close();
     });
     test('expired connector withdrawal retires only its authenticated current scope without reviving it', async () => {
-      const root = mkdtempSync(
-        join(tmpdir(), 'station-broker-expired-withdraw-'),
-      );
+      const root = makeWithdrawalTempDir('station-broker-expired-withdraw-');
       const path = join(root, 'broker.sqlite');
       let now = 10_000;
       const service = new SelfHostedBrokerService(path, () => now);
