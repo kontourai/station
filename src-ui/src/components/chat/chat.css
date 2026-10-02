@@ -1827,7 +1827,7 @@
     padding: 4px 6px;
   }
   /* Keep the status control touchable without spending phone width on its
-     name. Holding the dot reveals the name; tapping opens Manage Stations. */
+     name. Holding the dot reveals the name; tapping opens the Station chooser. */
   .app-toolbar__conn {
     box-sizing: border-box;
     width: 44px;
