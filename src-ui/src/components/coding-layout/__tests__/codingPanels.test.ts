@@ -4,6 +4,8 @@ import { renderHook } from '@testing-library/react';
 import { act } from 'react';
 import { describe, expect, test, vi } from 'vitest';
 import {
+  CODING_FOLD_HYSTERESIS,
+  CODING_FOLD_SETTLE_MS,
   CODING_LOWER_MIN_HEIGHT,
   CODING_SIDE_DEFAULT_WIDTH,
   CODING_SIDE_MIN_WIDTH,
@@ -14,6 +16,7 @@ import {
   codingLowerMaxHeight,
   codingSideMaxWidth,
   codingTranscriptWidth,
+  hostRendersCodingPane,
   resizeCodingPanelFromKeyboard,
   useCodingWide,
 } from '../codingPanels';
@@ -140,5 +143,27 @@ describe('codingPanels — the wide fold and the panels’ bounds (#3040)', () =
         reset: 280,
       }),
     ).toBe(200);
+  });
+});
+
+describe('codingPanels — the fold’s settle and hysteresis, and who draws the Terminal', () => {
+  test('a resized room rests 150ms before the fold is judged, and an unfold waits for 24px of room past the floor', () => {
+    // Literals beside the constants: zeroing either changes the behaviour
+    // the workbench tests prove (a fold per frame; a width on the line
+    // flapping), so it changes these too.
+    expect(CODING_FOLD_SETTLE_MS).toBe(150);
+    expect(CODING_FOLD_HYSTERESIS).toBe(24);
+  });
+
+  test('the pane host draws every pane once drilled in, except the Terminal past the fold', () => {
+    expect(hostRendersCodingPane(false, true, 'terminal', 'terminal')).toBe(
+      true,
+    );
+    expect(hostRendersCodingPane(true, true, 'diff', 'terminal')).toBe(true);
+    expect(hostRendersCodingPane(true, true, 'terminal', 'terminal')).toBe(
+      false,
+    );
+    expect(hostRendersCodingPane(true, true, 'terminal', null)).toBe(true);
+    expect(hostRendersCodingPane(true, false, 'diff', 'terminal')).toBe(false);
   });
 });

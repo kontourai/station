@@ -20,6 +20,7 @@ import { Tooltip } from '@kontourai/ui/react';
 import {
   type CSSProperties,
   type KeyboardEvent,
+  memo,
   type ReactNode,
   type PointerEvent as ReactPointerEvent,
   useCallback,
@@ -78,6 +79,8 @@ import {
 } from '../icons/Glyph';
 import { Empty } from '../state';
 import {
+  CODING_FOLD_HYSTERESIS,
+  CODING_FOLD_SETTLE_MS,
   CODING_LOWER_MIN_HEIGHT,
   CODING_SIDE_DEFAULT_WIDTH,
   CODING_SIDE_MIN_WIDTH,
@@ -119,10 +122,8 @@ function focusInKeyOwningEditor(): boolean {
 
 const STACK_CHORD_WHEN: ShortcutWhen = { not: 'terminalFocused' };
 const USER_MOVE_WINDOW_MS = 1000;
-/** How long a resized room rests before the inbox fold is judged again. */
-const FOLD_SETTLE_MS = 150;
-/** Room beyond the floor an unfold waits for, so a width on the line is still. */
-const FOLD_HYSTERESIS = 24;
+/** A separator press that moves less than this is a click, not a resize. */
+const DRAG_THRESHOLD_PX = 2;
 
 type StackTransition = 'push' | 'pop' | null;
 
@@ -337,16 +338,33 @@ export function CodingWorkbench({
   const lowerHeadingRef = useRef<HTMLHeadingElement>(null);
   const [announcement, setAnnouncement] = useState('');
 
+  // A preview the host already holds for a path (the rail names each
+  // preview's path), so a link to an open file shows it rather than opening
+  // a second occurrence; shown the way a rail pick would show it.
+  const existingPreviewFor = useCallback(
+    (path: string) =>
+      instances.find((instance) => paneDetail?.(instance) === path)
+        ?.instanceId ?? null,
+    [instances, paneDetail],
+  );
+  const focusExistingPreview = useCallback(
+    (instanceId: string) => {
+      if (wide)
+        navigationStore.updateParams({ pane: instanceId, paneScope: scopeKey });
+      else navigationStore.setActiveWorkspacePane(instanceId, scopeKey);
+    },
+    [scopeKey, wide],
+  );
   useCodingChatPositionEffects({
     projectId,
     projectSlug,
-    // A File Preview deep link is the Chat position's to open, as it was the
-    // Coding tab's: on a drill-in, or beside Chat past the wide fold, the
-    // Files pane that wrote the intent has already opened its own preview,
-    // and opening it here too would open it twice (every preview is its own
-    // occurrence). So the position consumes an intent only while no pane is
-    // beside Chat — a cold link's, not a pane's.
-    paneHostOpen: page === 'chat' && !sideOpen ? hostOpen : null,
+    // A File Preview intent is the Chat position's to open, as it was the
+    // Coding tab's — a transcript link, a session panel's file, a shared
+    // URL — whatever tool is beside Chat. The Files pane's own row write
+    // names itself (`openFilePreviewIntentFrom`) and is left to it.
+    paneHostOpen: page === 'chat' ? hostOpen : null,
+    existingPreviewFor,
+    focusExisting: focusExistingPreview,
     // A phone's Chat is the dock, maximized while the Chat page is the page.
     ownsMobileDock: page === 'chat',
   });
@@ -599,6 +617,26 @@ export function CodingWorkbench({
     updatePanels,
     wide,
   ]);
+  // The fold crossed the other way with the lower panel open: below it the
+  // Terminal is a drill-in, so it becomes the page (in place — the reader
+  // did not navigate) rather than vanishing with the lower panel. Its tabs
+  // and their server-side processes carry across the remount; xterm's local
+  // scrollback does not.
+  const wasWide = useRef(wide);
+  useLayoutEffect(() => {
+    const was = wasWide.current;
+    wasWide.current = wide;
+    if (!was || wide || provisional || terminalId === null) return;
+    if (panels.terminalOpen && location.page === 'chat')
+      navigationStore.updateParams({ pane: terminalId, paneScope: scopeKey });
+  }, [
+    location.page,
+    panels.terminalOpen,
+    provisional,
+    scopeKey,
+    terminalId,
+    wide,
+  ]);
 
   const drilledIn =
     page === 'drill-in' || sideOpen
@@ -758,17 +796,22 @@ export function CodingWorkbench({
   // The rail sits beside the pages, in the same room the fold was sized for.
   const roomWidth = (room.width || window.innerWidth) + 44;
   const roomHeight = room.height || window.innerHeight;
-  const [sideDraft, setSideDraft] = useState<number | null>(null);
-  const [lowerDraft, setLowerDraft] = useState<number | null>(null);
   const sideWidth = clampCodingSideWidth(
-    sideDraft ?? panels.sideWidth ?? CODING_SIDE_DEFAULT_WIDTH,
+    panels.sideWidth ?? CODING_SIDE_DEFAULT_WIDTH,
     roomWidth,
   );
   const lowerDefault = codingLowerDefaultHeight(roomHeight);
   const lowerHeight = clampCodingLowerHeight(
-    lowerDraft ?? panels.terminalHeight ?? lowerDefault,
+    panels.terminalHeight ?? lowerDefault,
     roomHeight,
   );
+  // A drag's frames are written to the room's own custom properties, not
+  // to React state: nothing re-renders per pointer move, least of all Chat.
+  // The release commits the size once, and the render that follows writes
+  // the same value back through the style prop.
+  const draftRoomSize = useCallback((name: string, px: number) => {
+    pagesRef.current?.style.setProperty(name, `${px}px`);
+  }, []);
   const sideMax = codingSideMaxWidth(roomWidth);
   const lowerMax = codingLowerMaxHeight(roomHeight);
   /** The room's far edge a panel hangs from (the viewport's when unmeasured). */
@@ -786,7 +829,13 @@ export function CodingWorkbench({
   // session (`panels.inbox`) and is never overridden.
   const inboxOpen = useDeviceSettings().inboxOpen;
   const ownInboxWrite = useRef<boolean | null>(null);
-  const autoFolded = useRef(false);
+  /**
+   * Who folded the inbox is the session record's (`inbox: 'layout'`), not a
+   * ref: a reload or a return must know the layout folded it, so that the
+   * tool closing — now or on arrival — unfolds it again.
+   */
+  const layoutFolded = panels.inbox === 'layout';
+  const readerChoice = typeof panels.inbox === 'boolean' ? panels.inbox : null;
   const writeInbox = useCallback(
     (value: boolean) => {
       ownInboxWrite.current = value;
@@ -801,28 +850,28 @@ export function CodingWorkbench({
   useEffect(() => {
     const timer = window.setTimeout(
       () => setFoldRoomWidth(roomWidth),
-      FOLD_SETTLE_MS,
+      CODING_FOLD_SETTLE_MS,
     );
     return () => window.clearTimeout(timer);
   }, [roomWidth]);
-  /** The inbox's width when the layout folded it, for judging the unfold. */
+  /** The inbox's width when the layout folded it, for judging the unfold (0: unmeasured, the rule applies). */
   const foldedInboxWidth = useRef(0);
   useEffect(() => {
     if (!wide) return;
     if (!sideOpen) {
-      if (autoFolded.current) {
-        autoFolded.current = false;
-        writeInbox(true);
+      if (layoutFolded) {
+        updatePanels({ inbox: null });
+        if (!inboxOpen) writeInbox(true);
       }
       return;
     }
     // The reader's own choice for this session stands, whatever the room.
-    if (panels.inbox !== null) return;
+    if (readerChoice !== null) return;
     const width = clampCodingSideWidth(
       committedSideWidth ?? CODING_SIDE_DEFAULT_WIDTH,
       foldRoomWidth,
     );
-    if (inboxOpen && !autoFolded.current) {
+    if (inboxOpen && !layoutFolded) {
       const inbox =
         chatPageRef.current?.querySelector<HTMLElement>('.chat-dock-inbox');
       const measured = inbox?.getBoundingClientRect().width || null;
@@ -831,26 +880,35 @@ export function CodingWorkbench({
         foldedInboxWidth.current =
           measured ??
           codingTranscriptWidth(foldRoomWidth, width, 0) - transcript;
-        autoFolded.current = true;
+        updatePanels({ inbox: 'layout' });
         writeInbox(false);
       }
-    } else if (!inboxOpen && autoFolded.current) {
+    } else if (!inboxOpen && layoutFolded) {
       // Widened again: the inbox the layout folded comes back once it fits
       // with room to spare, so a width on the line does not flap.
       if (
-        codingTranscriptWidth(foldRoomWidth, width, foldedInboxWidth.current) >=
-        CODING_TRANSCRIPT_MIN_WIDTH + FOLD_HYSTERESIS
+        codingTranscriptWidth(
+          foldRoomWidth,
+          width,
+          foldedInboxWidth.current || null,
+        ) >=
+        CODING_TRANSCRIPT_MIN_WIDTH + CODING_FOLD_HYSTERESIS
       ) {
-        autoFolded.current = false;
+        updatePanels({ inbox: null });
         writeInbox(true);
       }
+    } else if (inboxOpen && layoutFolded) {
+      // Folded by the layout, open anyway (another tab's write): not ours.
+      updatePanels({ inbox: null });
     }
   }, [
     committedSideWidth,
     foldRoomWidth,
     inboxOpen,
-    panels.inbox,
+    layoutFolded,
+    readerChoice,
     sideOpen,
+    updatePanels,
     wide,
     writeInbox,
   ]);
@@ -863,11 +921,22 @@ export function CodingWorkbench({
       return;
     }
     // The reader's own move while a tool is beside Chat: theirs to keep.
-    if (wide && sideOpen) {
-      autoFolded.current = false;
-      updatePanels({ inbox: inboxOpen });
-    }
+    if (wide && sideOpen) updatePanels({ inbox: inboxOpen });
   }, [inboxOpen, sideOpen, updatePanels, wide]);
+  // The reader's standing choice for a session is applied when the session
+  // arrives or returns, as the record promises; the layout's own folds are
+  // judged above.
+  const choiceAppliedFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (!wide || provisional) {
+      choiceAppliedFor.current = null;
+      return;
+    }
+    if (choiceAppliedFor.current === sessionKey) return;
+    choiceAppliedFor.current = sessionKey;
+    if (readerChoice !== null && readerChoice !== inboxOpen)
+      writeInbox(readerChoice);
+  }, [inboxOpen, provisional, readerChoice, sessionKey, wide, writeInbox]);
 
   // ── One bar: the breadcrumb names the conversation, and Chat's own
   // toolbar (its project context, Open/New, the dock menu) renders into the
@@ -1079,18 +1148,12 @@ export function CodingWorkbench({
               {...pageState('chat', page === 'chat')}
             >
               {centerChat ? (
-                <RegionChromeSlotsContext.Provider value={chatBarSlots}>
-                  <ChatWorkspacePane
-                    placement="fullscreen"
-                    // The dock's Chat, moved to the centre: the dock's scope
-                    // (every conversation), not the Chat layout's Project-bound one.
-                    conversationScope="ambient"
-                    onScreen={page === 'chat'}
-                    ownsDockShortcuts={false}
-                    onPresentationTitleChange={setChatTitle}
-                    onInboxNeedsYouChange={setInboxNeedsYou}
-                  />
-                </RegionChromeSlotsContext.Provider>
+                <CenterChat
+                  slots={chatBarSlots}
+                  onScreen={page === 'chat'}
+                  onPresentationTitleChange={setChatTitle}
+                  onInboxNeedsYouChange={setInboxNeedsYou}
+                />
               ) : (
                 <DockChatNotice />
               )}
@@ -1136,14 +1199,16 @@ export function CodingWorkbench({
                 reset={CODING_SIDE_DEFAULT_WIDTH}
                 measure={(clientX) => roomEdge('right') - clientX}
                 onDraft={(width) =>
-                  setSideDraft(clampCodingSideWidth(width, roomWidth))
+                  draftRoomSize(
+                    '--coding-side-width',
+                    clampCodingSideWidth(width, roomWidth),
+                  )
                 }
-                onCommit={(width) => {
-                  setSideDraft(null);
+                onCommit={(width) =>
                   updatePanels({
                     sideWidth: clampCodingSideWidth(width, roomWidth),
-                  });
-                }}
+                  })
+                }
               />
             ) : null}
             <section
@@ -1207,17 +1272,19 @@ export function CodingWorkbench({
                   reset={lowerDefault}
                   measure={(_clientX, clientY) => roomEdge('bottom') - clientY}
                   onDraft={(height) =>
-                    setLowerDraft(clampCodingLowerHeight(height, roomHeight))
+                    draftRoomSize(
+                      '--coding-lower-height',
+                      clampCodingLowerHeight(height, roomHeight),
+                    )
                   }
-                  onCommit={(height) => {
-                    setLowerDraft(null);
+                  onCommit={(height) =>
                     updatePanels({
                       terminalHeight: clampCodingLowerHeight(
                         height,
                         roomHeight,
                       ),
-                    });
-                  }}
+                    })
+                  }
                 />
               ) : null}
               <section
@@ -1352,27 +1419,40 @@ function PanelSeparator({
   onDraft(size: number): void;
   onCommit(size: number): void;
 }) {
-  const drag = useRef<{ pointerId: number; last: number } | null>(null);
+  // A drag is relative to the press: the press point is not the edge, so
+  // the panel moves by the pointer's travel rather than jumping to it, and a
+  // press that never travels is a click, not a resize.
+  const drag = useRef<{
+    pointerId: number;
+    origin: number;
+    last: number;
+    moved: boolean;
+  } | null>(null);
   const onPointerDown = (event: ReactPointerEvent<HTMLButtonElement>) => {
     if (event.button !== 0) return;
     event.preventDefault();
     event.currentTarget.setPointerCapture?.(event.pointerId);
     drag.current = {
       pointerId: event.pointerId,
-      last: measure(event.clientX, event.clientY),
+      origin: measure(event.clientX, event.clientY) - value,
+      last: value,
+      moved: false,
     };
-    onDraft(drag.current.last);
   };
   const onPointerMove = (event: ReactPointerEvent<HTMLButtonElement>) => {
     if (drag.current?.pointerId !== event.pointerId) return;
-    drag.current.last = measure(event.clientX, event.clientY);
-    onDraft(drag.current.last);
+    const next = measure(event.clientX, event.clientY) - drag.current.origin;
+    if (!drag.current.moved && Math.abs(next - value) < DRAG_THRESHOLD_PX)
+      return;
+    drag.current.moved = true;
+    drag.current.last = next;
+    onDraft(next);
   };
   const endDrag = (event: ReactPointerEvent<HTMLButtonElement>) => {
     if (drag.current?.pointerId !== event.pointerId) return;
-    const { last } = drag.current;
+    const { last, moved } = drag.current;
     drag.current = null;
-    onCommit(last);
+    if (moved) onCommit(last);
   };
   const onKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
     const next = resizeCodingPanelFromKeyboard(orientation, value, event.key, {
@@ -1386,30 +1466,73 @@ function PanelSeparator({
     onCommit(next);
   };
   return (
-    // The suggested <hr> is a decorative rule: not focusable, not operable,
-    // and unable to carry aria-valuenow. This is a window splitter — a real
-    // button that resizes with the arrow keys and reports its position.
-    // biome-ignore lint/a11y/useSemanticElements: an <hr> cannot be a focusable, operable splitter.
-    <button
-      type="button"
-      role="separator"
-      className={`coding-workbench__separator coding-workbench__separator--${orientation}`}
-      aria-label={label}
-      aria-orientation={orientation}
-      aria-valuenow={value}
-      aria-valuemin={min}
-      aria-valuemax={max}
-      title="Drag or use the arrow keys to resize; double-click to reset"
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={endDrag}
-      onPointerCancel={endDrag}
-      onLostPointerCapture={endDrag}
-      onDoubleClick={() => onCommit(reset)}
-      onKeyDown={onKeyDown}
-    />
+    <Tooltip
+      label={`${label}: drag or arrow keys; double-click resets`}
+      placement={orientation === 'vertical' ? 'left' : 'top'}
+      className={`coding-workbench__separator-slot coding-workbench__separator-slot--${orientation}`}
+    >
+      {/* The suggested <hr> is a decorative rule: not focusable, not
+          operable, and unable to carry aria-valuenow. This is a window
+          splitter — a real button that resizes with the arrow keys and
+          reports its position. */}
+      {/* biome-ignore lint/a11y/useSemanticElements: an <hr> cannot be a focusable, operable splitter. */}
+      <button
+        type="button"
+        role="separator"
+        className={`coding-workbench__separator coding-workbench__separator--${orientation}`}
+        aria-label={label}
+        aria-orientation={orientation}
+        aria-valuenow={value}
+        aria-valuemin={min}
+        aria-valuemax={max}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
+        onLostPointerCapture={endDrag}
+        onDoubleClick={() => onCommit(reset)}
+        onKeyDown={onKeyDown}
+      />
+    </Tooltip>
   );
 }
+
+/**
+ * The centre's Chat, memoised on its own props so the workbench's geometry
+ * (a separator drag, a room measurement, an announcement) does not render
+ * Station's one Chat controller: its props are the bar's slot elements, a
+ * boolean and two stable setters.
+ */
+const CenterChat = memo(function CenterChat({
+  slots,
+  onScreen,
+  onPresentationTitleChange,
+  onInboxNeedsYouChange,
+}: {
+  slots: {
+    leading: HTMLElement | null;
+    trailing: HTMLElement | null;
+    namesPane: boolean;
+  };
+  onScreen: boolean;
+  onPresentationTitleChange(title: string): void;
+  onInboxNeedsYouChange(count: number): void;
+}) {
+  return (
+    <RegionChromeSlotsContext.Provider value={slots}>
+      <ChatWorkspacePane
+        placement="fullscreen"
+        // The dock's Chat, moved to the centre: the dock's scope (every
+        // conversation), not the Chat layout's Project-bound one.
+        conversationScope="ambient"
+        onScreen={onScreen}
+        ownsDockShortcuts={false}
+        onPresentationTitleChange={onPresentationTitleChange}
+        onInboxNeedsYouChange={onInboxNeedsYouChange}
+      />
+    </RegionChromeSlotsContext.Provider>
+  );
+});
 
 /** A glyph per built-in drill-in; anything else draws the generic pane mark. */
 function railGlyph(descriptorId: string): ReactNode {

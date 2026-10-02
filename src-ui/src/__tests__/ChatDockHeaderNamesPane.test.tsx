@@ -82,9 +82,13 @@ describe('ChatDockHeader in a bar that names the pane', () => {
       expect(leading.textContent).not.toContain('Dev Agent Chat');
       expect(leading.textContent).toContain('Dev');
 
-      const open = await within(trailing).findByRole('button', {
-        name: 'Open conversation, 2 sessions',
-      });
+      // The verbs arrive with a lazily loaded chunk; a cold transform of it
+      // can take seconds in this runner.
+      const open = await within(trailing).findByRole(
+        'button',
+        { name: 'Open conversation, 2 sessions' },
+        { timeout: 15_000 },
+      );
       const create = within(trailing).getByRole('button', { name: 'New chat' });
       expect(open.querySelector('.chat-dock__new-count')?.textContent).toBe(
         '2',
@@ -121,7 +125,9 @@ describe('ChatDockHeader in a bar that names the pane', () => {
       );
       expect(container.querySelector('.chat-dock__header')).not.toBeNull();
       expect(container.textContent).toContain('Dev Agent Chat');
-      expect(await screen.findByText('New')).toBeTruthy();
+      expect(
+        await screen.findByText('New', {}, { timeout: 15_000 }),
+      ).toBeTruthy();
       expect(screen.getByText('Open')).toBeTruthy();
     } finally {
       leading.remove();

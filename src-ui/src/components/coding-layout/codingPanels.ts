@@ -59,6 +59,34 @@ export const CODING_LOWER_MIN_HEIGHT = 160;
  */
 const CODING_LOWER_DEFAULT_FRACTION = 0.3;
 
+/**
+ * How long a resized room rests before the inbox fold is judged again, and
+ * the room beyond the transcript's floor an unfold waits for, so a width on
+ * the line does not flap between folded and unfolded.
+ */
+export const CODING_FOLD_SETTLE_MS = 150;
+export const CODING_FOLD_HYSTERESIS = 24;
+
+/**
+ * Whether the pane host draws this pane (#3040): every pane it holds once
+ * the reader has drilled in — except the Terminal past the wide fold, which
+ * the workbench's lower panel draws instead, so one terminal is never
+ * mounted twice.
+ */
+export function hostRendersCodingPane(
+  wide: boolean,
+  renderPanes: boolean,
+  instanceId: string,
+  terminalInstanceId: string | null,
+): boolean {
+  if (!renderPanes) return false;
+  return !(
+    wide &&
+    terminalInstanceId !== null &&
+    instanceId === terminalInstanceId
+  );
+}
+
 export function codingLowerDefaultHeight(roomHeight: number): number {
   return clampCodingLowerHeight(
     roomHeight * CODING_LOWER_DEFAULT_FRACTION,

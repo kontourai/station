@@ -1,4 +1,5 @@
 import { expect, type Page } from '@playwright/test';
+import { buildLongSessionTurns } from './fixtures/long-session';
 import {
   codingNavigation,
   codingViewItem,
@@ -10,6 +11,7 @@ import {
   DEFAULT_CONVERSATION_LOOKUPS,
   DEFAULT_CONVERSATIONS,
   dismissSetupLauncher,
+  installMockOrchestrationEventWindow,
   installMockOrchestrationSse,
   seedActiveChats,
   seedOrchestrationRoutes,
@@ -496,7 +498,9 @@ test.describe('Coding stack — wide (1440px): tools beside Chat', () => {
 
     await openCodingView(page, 'Diff');
     await expect(sidePanel(page)).toBeVisible();
-    await expect(sidePanel(page).getByText('Git Diff')).toBeVisible();
+    await expect(
+      sidePanel(page).getByRole('heading', { name: 'Diff' }),
+    ).toBeVisible();
     await expect(centreChat(page)).toBeVisible();
     await expect(chatPage(page)).toHaveAttribute('data-active', 'true');
     await expect(page).toHaveURL(/[?&]pane=/);
@@ -627,7 +631,9 @@ test.describe('Coding stack — wide (1440px): tools beside Chat', () => {
       .first()
       .click();
     await expect(page).toHaveURL(/chat=conv-1|chat=session-1/);
-    await expect(sidePanel(page).getByText('Git Diff')).toBeVisible();
+    await expect(
+      sidePanel(page).getByRole('heading', { name: 'Diff' }),
+    ).toBeVisible();
     await expect(lowerPanel(page)).toBeVisible();
     await expect(codingViewItem(page, 'Diff')).toHaveAttribute(
       'aria-pressed',
@@ -884,5 +890,176 @@ test.describe('Coding stack — wide (1440px): the folded inbox’s edge', () =>
     await expect(edge(page)).toBeVisible();
     await page.setViewportSize({ width: 2000, height: 900 });
     await expect(inbox(page)).toBeVisible();
+  });
+});
+
+/**
+ * Review round (#3040 M1, M2, M5): a file link from the transcript opens
+ * beside Chat whatever tool is there; a fold the layout made survives a
+ * reload; one Terminal across the fold.
+ */
+test.describe('Coding stack — wide (1440px): links, reloads and the Terminal across the fold', () => {
+  test.use({ viewport: { width: 1440, height: 900 } });
+
+  const sidePanel = (page: Page) =>
+    page.locator('.coding-workbench__page--drill-in');
+  const lowerPanel = (page: Page) => page.locator('.coding-workbench__lower');
+  const historyLength = (page: Page) =>
+    page.evaluate(() => window.history.length);
+
+  async function seedWithTranscriptLink(page: Page) {
+    await seedActiveChats(page, [
+      {
+        sessionId: 'session-1',
+        conversationId: 'conv-1',
+        agentSlug: 'dev-agent',
+        title: 'Fix the login flake',
+        model: 'claude-sonnet',
+        provider: 'codex',
+        providerOptions: {},
+        projectSlug: 'dev',
+        projectName: 'Dev',
+        orchestrationSessionStarted: true,
+        inputHistory: [],
+        ephemeralMessages: [],
+      },
+    ]);
+    await installMockOrchestrationSse(page);
+    await seedOrchestrationRoutes(page, {
+      conversations: DEFAULT_CONVERSATIONS,
+      conversationLookups: DEFAULT_CONVERSATION_LOOKUPS,
+    });
+    // The transcript is the conversation's event window: one completed turn
+    // whose reply names a file in the Project, as an agent's answer would.
+    await installMockOrchestrationEventWindow(page, 'codex', {
+      'session-1': buildLongSessionTurns({
+        threadId: 'session-1',
+        provider: 'codex',
+        turnCount: 1,
+        promptText: () => 'Where does the app start?',
+        replyText: () => 'The entry point is [src/app.ts](src/app.ts).',
+      }).flat(),
+    });
+    await page.route('**/api/projects/dev/file-preview', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          data: {
+            path: 'src/app.ts',
+            status: 'ready',
+            renderKind: 'text',
+            content: 'export const app = true;\n',
+          },
+        }),
+      }),
+    );
+  }
+
+  test('a file link in the transcript opens beside Chat with Diff open, with Files open, and with nothing open — never as a history entry', async ({
+    page,
+  }) => {
+    await seedWithTranscriptLink(page);
+    await landOnChat(page);
+    // The transcript renders the path as a file chip: a link named by the
+    // file, titled with the path.
+    const link = centreChat(page).getByRole('link', { name: 'app.ts' });
+    await expect(link).toBeVisible();
+    const length = await historyLength(page);
+
+    // Diff beside Chat.
+    await openCodingView(page, 'Diff');
+    await expect(
+      sidePanel(page).getByRole('heading', { name: 'Diff' }),
+    ).toBeVisible();
+    await link.click();
+    await expect(
+      sidePanel(page).getByRole('heading', { name: 'app.ts' }),
+    ).toBeVisible();
+    await expect(centreChat(page)).toBeVisible();
+    expect(await historyLength(page)).toBe(length);
+    await expect(page).not.toHaveURL(/previewPath=/);
+    await expect(codingViewItem(page, 'app.ts')).toHaveCount(1);
+
+    // Files beside Chat: a link is not the pane's own row; the preview that
+    // is already open is shown, not opened again.
+    await openCodingView(page, 'Files');
+    await expect(sidePanel(page).locator('.file-tree-panel')).toBeVisible();
+    await link.click();
+    await expect(
+      sidePanel(page).getByRole('heading', { name: 'app.ts' }),
+    ).toBeVisible();
+    await expect(codingViewItem(page, 'app.ts')).toHaveCount(1);
+    expect(await historyLength(page)).toBe(length);
+
+    // Nothing beside Chat.
+    await codingViewItem(page, 'app.ts').click();
+    await expect(sidePanel(page)).toBeHidden();
+    await link.click();
+    await expect(sidePanel(page)).toBeVisible();
+    await expect(
+      sidePanel(page).getByRole('heading', { name: 'app.ts' }),
+    ).toBeVisible();
+    expect(await historyLength(page)).toBe(length);
+  });
+
+  test('a fold the layout made comes back after a reload once the tool closes, and after leaving and returning', async ({
+    page,
+  }) => {
+    await seed(page);
+    await landOnChat(page);
+    await openCodingView(page, 'Diff');
+    await expect(inbox(page)).toHaveCount(0);
+
+    await page.reload();
+    await expect(centreChat(page)).toBeVisible({ timeout: 20_000 });
+    await expect(sidePanel(page)).toBeVisible();
+    await expect(inbox(page)).toHaveCount(0);
+    await openCodingView(page, 'Diff');
+    await expect(sidePanel(page)).toBeHidden();
+    await expect(inbox(page)).toBeVisible();
+
+    // Leave with the tool open and the inbox folded, return, close the tool.
+    await openCodingView(page, 'Diff');
+    await expect(inbox(page)).toHaveCount(0);
+    await page.getByRole('button', { name: 'Home', exact: true }).click();
+    await expect(centreChat(page)).toHaveCount(0);
+    await page.goBack();
+    await expect(centreChat(page)).toBeVisible({ timeout: 20_000 });
+    await expect(sidePanel(page)).toBeVisible();
+    await openCodingView(page, 'Diff');
+    await expect(inbox(page)).toBeVisible();
+  });
+
+  test('one Terminal across the fold: a drill-in below it becomes the lower panel above it, and never both', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1180, height: 800 });
+    await seed(page);
+    await landOnChat(page);
+    await openCodingView(page, 'Terminal');
+    await expect(drillInPage(page)).toHaveAttribute('data-active', 'true');
+    await expect(page.locator('.coding-layout__terminal')).toHaveCount(1);
+    await expect(page).toHaveURL(/[?&]pane=/);
+
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await expect(lowerPanel(page)).toBeVisible();
+    await expect(centreChat(page)).toBeVisible();
+    await expect(page).not.toHaveURL(/[?&]pane=/);
+    // The host's own selection is still the Terminal; it draws nothing for
+    // it past the fold, so there is exactly one terminal on the page.
+    await expect(page.locator('.coding-layout__terminal')).toHaveCount(1);
+    await openCodingView(page, 'Files');
+    await expect(sidePanel(page)).toBeVisible();
+    await expect(page.locator('.coding-layout__terminal')).toHaveCount(1);
+
+    // Back below the fold with the lower panel open: the Terminal is the
+    // page, in place, not gone.
+    await codingViewItem(page, 'Files').click();
+    await page.setViewportSize({ width: 1180, height: 800 });
+    await expect(drillInPage(page)).toHaveAttribute('data-active', 'true');
+    await expect(crumbs(page)).toContainText('Terminal');
+    await expect(page.locator('.coding-layout__terminal')).toHaveCount(1);
   });
 });

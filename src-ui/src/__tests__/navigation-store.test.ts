@@ -607,6 +607,50 @@ describe('navigationStore File Preview intent', () => {
     expect(navigationStore.getHistoryIndex()).toBe(index + 1);
     expect(window.location.pathname).toBe('/projects/demo/layouts/review');
   });
+
+  test('a preview intent remembers who wrote it: the Files pane’s own write stays the pane’s through a later params write; a link’s or a re-read one is a link’s', () => {
+    navigationStore.navigate('/projects/demo/layouts/coding', {
+      previewPath: null,
+      previewLineStart: null,
+      previewLineEnd: null,
+    });
+    expect(navigationStore.getSnapshot().openFilePreviewIntentFrom).toBe(
+      'link',
+    );
+    navigationStore.setLayout('demo', 'coding', {
+      openFilePreviewIntent: { projectSlug: 'demo', path: 'src/own.ts' },
+      from: 'pane',
+    });
+    expect(navigationStore.getSnapshot().openFilePreviewIntentFrom).toBe(
+      'pane',
+    );
+    // The pane's selection written beside it keeps the name.
+    navigationStore.updateParams({ pane: 'file-preview:x', paneScope: 's' });
+    expect(navigationStore.getSnapshot().openFilePreviewIntent?.path).toBe(
+      'src/own.ts',
+    );
+    expect(navigationStore.getSnapshot().openFilePreviewIntentFrom).toBe(
+      'pane',
+    );
+    // A link to another file is a link's.
+    navigationStore.setLayout('demo', 'coding', {
+      openFilePreviewIntent: { projectSlug: 'demo', path: 'src/link.ts' },
+    });
+    expect(navigationStore.getSnapshot().openFilePreviewIntentFrom).toBe(
+      'link',
+    );
+    // So is the same path written by a link after the pane wrote it.
+    navigationStore.setLayout('demo', 'coding', {
+      openFilePreviewIntent: { projectSlug: 'demo', path: 'src/own.ts' },
+      from: 'pane',
+    });
+    navigationStore.setLayout('demo', 'coding', {
+      openFilePreviewIntent: { projectSlug: 'demo', path: 'src/own.ts' },
+    });
+    expect(navigationStore.getSnapshot().openFilePreviewIntentFrom).toBe(
+      'link',
+    );
+  });
 });
 
 describe('normalizeDockMode (legacy persisted-value migration, #1043)', () => {

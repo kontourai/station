@@ -356,7 +356,7 @@
 }
 
 /* A panel's head: its name, its ⋯ when it has one, and a close icon. One
-   32px row, quiet. */
+   36px row, quiet. */
 .coding-workbench__panel-head {
   display: flex;
   align-items: center;
@@ -706,4 +706,66 @@
   font-size: var(--text-2xs);
   font-weight: var(--weight-bold);
   line-height: 1;
+}
+
+/* The separators' tooltip wrapper is the flex item; the button fills it. */
+.coding-workbench__separator-slot {
+  display: flex;
+  flex: none;
+  position: relative;
+  z-index: 1;
+}
+
+.coding-workbench__separator-slot--vertical {
+  margin: 0 -4px;
+}
+
+.coding-workbench__separator-slot--horizontal {
+  margin: -4px 0;
+}
+
+.coding-workbench__separator-slot .coding-workbench__separator--vertical,
+.coding-workbench__separator-slot .coding-workbench__separator--horizontal {
+  margin: 0;
+}
+
+/* The dock's accent top rule has no meaning under the Coding bar: the bar
+   is the row above the transcript, and a rule that stops at the Chat
+   column read as a tab underline once a panel sat beside it. */
+.coding-workbench__page--chat > .chat-dock,
+.coding-workbench__page--chat > #chat-workspace-pane {
+  border-top: 0;
+}
+
+/* At rest the edge reads as a control, quietly: a small low-emphasis
+   chevron on an accent-tinted rule; hover or focus brings both up. */
+.coding-workbench__inbox-edge {
+  border-right-color: color-mix(
+    in srgb,
+    var(--accent-primary) 45%,
+    transparent
+  );
+  overflow: visible;
+}
+
+.coding-workbench__inbox-edge-glyph {
+  width: 16px;
+  height: 16px;
+  background: transparent;
+  font-size: var(--text-sm);
+  opacity: 0.55;
+}
+
+.coding-workbench__inbox-edge:hover,
+.coding-workbench__inbox-edge:focus-visible {
+  border-right-color: var(--accent-primary);
+}
+
+.coding-workbench__inbox-edge:hover .coding-workbench__inbox-edge-glyph,
+.coding-workbench__inbox-edge:focus-visible
+  .coding-workbench__inbox-edge-glyph {
+  width: 20px;
+  height: 20px;
+  background: color-mix(in srgb, var(--accent-primary) 13%, transparent);
+  font-size: var(--text-md);
 }

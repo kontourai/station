@@ -1624,8 +1624,8 @@ per conversation.** Below the fold nothing above changes.
   #3049 gives it one.
 - **Sizes.** The side panel is 440px by default, never under 320px and never
   wider than leaves Chat 480px of the row (the rail and separator excluded);
-  the lower panel 280px, never under 160px and never taller than leaves Chat
-  240px. Each edge is a real `role="separator"` (`aria-orientation`,
+  the lower panel three tenths of the room, never under 160px and never
+  taller than leaves Chat 240px. Each edge is a real `role="separator"` (`aria-orientation`,
   `aria-valuenow/min/max`, focusable): a drag drafts every frame and commits
   once on release, the arrows along its axis nudge 16px (Shift 64px), Home
   and End go to the bounds, Enter or a double-click returns the default. The
@@ -1651,18 +1651,26 @@ per conversation.** Below the fold nothing above changes.
   itself (`setLayout` with a preview intent for the layout already on
   screen) is written in place in both modes — choosing a file is not a page
   — which also removes the second entry a file click used to push below the
-  fold before the drill-in's own. The Chat position consumes a preview
-  intent only while no pane is beside Chat (a cold link's), since every
-  preview is its own occurrence and the Files pane opens its own.
+  fold before the drill-in's own. The Files pane's row write names itself
+  (`openFilePreviewIntentFrom: 'pane'`, in the navigation store's memory
+  for the parse its write causes), and the Chat position leaves such an
+  intent to the pane that wrote it; every other intent — a transcript link,
+  a session panel's file, a shared or reloaded URL — the position opens
+  whatever tool is beside Chat, showing an already-open preview of that
+  path (the rail names each preview's path) rather than opening a second
+  occurrence.
 - **The transcript keeps 480px beside a tool** (`CODING_TRANSCRIPT_MIN_WIDTH`,
   the same floor the fold budgets for Chat once the inbox is folded). A tool
   that would leave the transcript narrower folds the inbox (`inboxOpen`
   false) for its stay and unfolds it when the tool closes, measuring the
   inbox as rendered or by its own 240–360px rule. A fold or unfold the
   reader makes by hand while a tool is open is remembered for the session
-  (`inbox` in the record) and never overridden: no fold, no restore, and
-  the choice applied again when the session returns. The crumb's Inbox is
-  such a choice.
+  (`inbox: true | false` in the record) and never overridden: no fold, no
+  restore, and the choice applied again when the session arrives or
+  returns. The crumb's Inbox and the edge strip are such choices. Who
+  folded it is the record's too (`inbox: 'layout'`), so a reload or a
+  return on a folded inbox unfolds it when the tool closes, as it would
+  have without the reload.
 - **One bar (#3046).** The breadcrumb names the conversation, and Chat's
   own toolbar renders into the bar's two slots beside it through
   `RegionChromeSlots` with `namesPane` — the full-screen Chat joins a bar
@@ -1683,6 +1691,25 @@ per conversation.** Below the fold nothing above changes.
   (`filePreviewPanePresentationPath`). The lower panel opens at three tenths
   of the room (`CODING_LOWER_DEFAULT_FRACTION`), between 160px and Chat's
   240px floor, and is remembered and resizable as before.
+- **The Terminal across the fold.** Past it the pane host is handed nothing
+  for the Terminal (`hostRendersCodingPane`) and the lower panel draws it;
+  below it the host draws it as a drill-in. Crossing from wide to narrow
+  with the lower panel open makes the Terminal the page in place (the
+  reader did not navigate), so it does not vanish; crossing back opens the
+  lower panel. Either way the Terminal remounts: its tabs and their
+  server-side processes carry across (the tab list is the pane's own
+  session storage and the socket reconnects within the server's grace
+  window), while xterm's local scrollback and selection do not.
+- **Geometry stays out of Chat.** The centre's Chat is memoised on its own
+  props (the bar's slot elements, whether it is on screen, two stable
+  setters); a separator drag writes the room's custom properties directly
+  and commits once on release, so a drag, a room measurement or an
+  announcement renders the workbench but not Station's one Chat controller.
+- **Diff's head.** Beside Chat the Diff pane draws no "GIT DIFF" row: its
+  stats join the head after the name, Collapse all and Expand all are named
+  icons, and the view (unified or split) and line wrap are rows of one
+  overflow. On its own it keeps its row. File Preview's head is left for
+  the per-file Changes rework in flight to build on.
 
 - **The folded inbox's edge.** While the inbox is folded past the fold (by
   the layout or by hand) on a fine pointer, the Chat column's left edge

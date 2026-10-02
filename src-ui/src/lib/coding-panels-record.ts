@@ -58,7 +58,7 @@ function parseSessionPanels(value: unknown): CodingSessionPanels | null {
     sideWidth === undefined ||
     terminalHeight === undefined ||
     typeof terminalOpen !== 'boolean' ||
-    (inbox !== null && typeof inbox !== 'boolean') ||
+    (inbox !== null && typeof inbox !== 'boolean' && inbox !== 'layout') ||
     typeof at !== 'number' ||
     !Number.isFinite(at)
   )

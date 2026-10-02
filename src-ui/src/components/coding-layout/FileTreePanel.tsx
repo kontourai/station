@@ -396,6 +396,7 @@ export function FileTreePanel({
         <input
           type="search"
           className="file-tree-panel__search-input"
+          aria-label="Filter files"
           placeholder="Filter files…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}

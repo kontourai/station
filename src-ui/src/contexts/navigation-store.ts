@@ -52,6 +52,13 @@ export type NavigationState = {
   activeWorkspacePaneScope: string | null;
   /** One exact, route-owned File Preview request. Consumers clear it after host admission. */
   openFilePreviewIntent: OpenFilePreviewIntent | null;
+  /**
+   * Who wrote the current preview intent: `pane` when the Files pane wrote
+   * it for its own row (it opens its own preview, so no position should
+   * open another), `link` for everything else — a transcript link, a
+   * session panel's file, a shared or reloaded URL (#3040 round 4).
+   */
+  openFilePreviewIntentFrom: 'pane' | 'link';
   /** One exact shell-owned surface reveal request. The region model clears it after adoption. */
   surfaceIntent: SurfaceDeepLinkIntent | null;
   isDockOpen: boolean;
@@ -106,6 +113,7 @@ function getDefaultNavigationState(): NavigationState {
     activeWorkspacePane: null,
     activeWorkspacePaneScope: null,
     openFilePreviewIntent: null,
+    openFilePreviewIntentFrom: 'link',
     surfaceIntent: null,
     isDockOpen: false,
     isDockMaximized: false,
@@ -192,6 +200,19 @@ function closedDockNeverMaximized(
   params: Record<string, string | null>,
 ): Record<string, string | null> {
   return params.dock === null ? { ...params, maximize: null } : params;
+}
+
+function sameOpenFilePreviewIntent(
+  a: OpenFilePreviewIntent | null,
+  b: OpenFilePreviewIntent | null,
+): boolean {
+  if (!a || !b) return a === b;
+  return (
+    a.projectSlug === b.projectSlug &&
+    a.path === b.path &&
+    a.lineRange?.start === b.lineRange?.start &&
+    a.lineRange?.end === b.lineRange?.end
+  );
 }
 
 class NavigationStore {
@@ -522,6 +543,7 @@ class NavigationStore {
       }
     }
 
+    const previewIntent = parseOpenFilePreviewIntent(selectedProject, params);
     return {
       pathname,
       selectedAgent,
@@ -545,10 +567,20 @@ class NavigationStore {
           ? scope
           : null;
       })(),
-      openFilePreviewIntent: parseOpenFilePreviewIntent(
-        selectedProject,
-        params,
-      ),
+      openFilePreviewIntent: previewIntent,
+      // A writer names itself for the parse its write causes, and the name
+      // stays with that intent through later parses that keep it (a pane
+      // selection written beside it); a new or re-read intent (a popstate,
+      // a reload) is a link's.
+      openFilePreviewIntentFrom:
+        this.nextPreviewIntentFrom ??
+        (this.state &&
+        sameOpenFilePreviewIntent(
+          this.state.openFilePreviewIntent,
+          previewIntent,
+        )
+          ? this.state.openFilePreviewIntentFrom
+          : 'link'),
       surfaceIntent: parseSurfaceDeepLink(params),
       isDockOpen: params.get('dock') === 'open',
       isDockMaximized: params.get('maximize') === 'true',
@@ -955,10 +987,17 @@ class NavigationStore {
     this.navigate(`/projects/${slug}`);
   }
 
+  /** See `NavigationState.openFilePreviewIntentFrom`; null outside `setLayout`. */
+  private nextPreviewIntentFrom: 'pane' | 'link' | null = null;
+
   setLayout(
     projectSlug: string,
     layoutSlug: string,
-    options?: { openFilePreviewIntent?: OpenFilePreviewIntent },
+    options?: {
+      openFilePreviewIntent?: OpenFilePreviewIntent;
+      /** The Files pane's own row write; absent for any other writer. */
+      from?: 'pane';
+    },
   ) {
     this.lastProject = projectSlug;
     this.lastProjectLayout = layoutSlug;
@@ -994,14 +1033,31 @@ class NavigationStore {
     // drill-in below the Coding layout's wide fold, a replaced side panel
     // past it (#3040) — and a selection that also pushed here made Back step
     // through the chosen file before the pane it opened.
-    if (
-      options?.openFilePreviewIntent &&
-      pathname === window.location.pathname
-    ) {
-      this.updateParams(previewFields);
-      return;
+    this.nextPreviewIntentFrom = options?.openFilePreviewIntent
+      ? (options.from ?? 'link')
+      : null;
+    try {
+      if (
+        options?.openFilePreviewIntent &&
+        pathname === window.location.pathname
+      ) {
+        this.updateParams(previewFields);
+        // The same intent written again by another writer changes no URL
+        // field, only whose intent it is.
+        const from = options.from ?? 'link';
+        if (
+          this.state.openFilePreviewIntent &&
+          this.state.openFilePreviewIntentFrom !== from
+        ) {
+          this.state = { ...this.state, openFilePreviewIntentFrom: from };
+          this.notify();
+        }
+        return;
+      }
+      this.navigate(pathname, previewFields);
+    } finally {
+      this.nextPreviewIntentFrom = null;
     }
-    this.navigate(pathname, previewFields);
   }
 
   setConversation(id: string | null) {

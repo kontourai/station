@@ -44,6 +44,8 @@ const harness = vi.hoisted(() => ({
   },
   /** What the inbox's "Needs you" lane holds, as Chat would publish it. */
   needsYou: 0,
+  /** How many times Chat has rendered: geometry must not render it. */
+  chatRenders: 0,
 }));
 
 // Station's one Chat controller is its own subject; here it is the page's
@@ -55,6 +57,7 @@ vi.mock('../../chat-dock/ChatDock', () => ({
   }) => {
     const { onPresentationTitleChange, onInboxNeedsYouChange } = props;
     harness.chatProps = props;
+    harness.chatRenders += 1;
     const slots = useRegionChromeSlots();
     harness.chatSlots = slots;
     useEffect(() => {
@@ -218,6 +221,7 @@ beforeEach(() => {
   harness.chatMounts = 0;
   harness.chatSlots = null;
   harness.needsYou = 0;
+  harness.chatRenders = 0;
   harness.shortcuts.clear();
   harness.showSurface.mockReset();
   deviceSettingsStore.reset('codingPanels');
@@ -227,6 +231,9 @@ beforeEach(() => {
     paneScope: null,
     chat: null,
     dock: null,
+    previewPath: null,
+    previewLineStart: null,
+    previewLineEnd: null,
   });
 });
 
@@ -873,7 +880,8 @@ describe('CodingWorkbench — panels beside and below Chat past the wide fold (#
     fireEvent.keyDown(side, { key: 'ArrowLeft' });
     expect(remembered('~')?.sideWidth).toBe(456);
 
-    // A drag drafts and commits once on release, clamped.
+    // A drag drafts to the room's custom property, relative to the press,
+    // and commits once on release, clamped.
     fireEvent.pointerDown(side, {
       button: 0,
       pointerId: 1,
@@ -881,8 +889,10 @@ describe('CodingWorkbench — panels beside and below Chat past the wide fold (#
       clientY: 10,
     });
     fireEvent.pointerMove(side, { pointerId: 1, clientX: 100, clientY: 10 });
-    expect(side.getAttribute('aria-valuenow')).toBe('536');
+    expect(pages.style.getPropertyValue('--coding-side-width')).toBe('536px');
+    expect(side.getAttribute('aria-valuenow')).toBe('456');
     fireEvent.pointerUp(side, { pointerId: 1, clientX: 100, clientY: 10 });
+    expect(side.getAttribute('aria-valuenow')).toBe('536');
     expect(remembered('~')?.sideWidth).toBe(536);
 
     fireEvent.click(railItem('Terminal'));
@@ -1052,12 +1062,14 @@ describe('CodingWorkbench — one quiet bar, the inbox beside a tool, and names 
     expect(deviceSettingsStore.get('inboxOpen')).toBe(true);
     await drillInto('Diff');
     expect(deviceSettingsStore.get('inboxOpen')).toBe(false);
-    // Folded by the layout, not chosen: nothing is remembered as a choice.
-    expect(remembered('~')?.inbox).toBeNull();
+    // Folded by the layout, not chosen: the record names the layout, so a
+    // reload knows whose fold it is, and never a choice.
+    expect(remembered('~')?.inbox).toBe('layout');
     await drillInto('Files');
     expect(deviceSettingsStore.get('inboxOpen')).toBe(false);
     await drillInto('Files');
     expect(deviceSettingsStore.get('inboxOpen')).toBe(true);
+    expect(remembered('~')?.inbox).toBeNull();
   });
 
   test('a room with space for both leaves the inbox alone', async () => {
@@ -1245,5 +1257,257 @@ describe('CodingWorkbench — the folded inbox’s edge, and the fold judged aga
       withViewportWidth(width);
       vi.useRealTimers();
     }
+  });
+});
+
+describe('CodingWorkbench — review round: file links, the fold’s owner, geometry out of Chat, the Terminal across the fold', () => {
+  const linkIntent = () =>
+    act(() =>
+      navigationStore.setLayout('demo', 'coding', {
+        openFilePreviewIntent: { projectSlug: 'demo', path: 'src/app.ts' },
+      }),
+    );
+
+  test('a file link opens beside Chat whatever tool is there — Diff, Files, or nothing — and never twice', async () => {
+    const open = vi.fn(() => WORKSPACE_PANE_OPENED);
+    renderStack({ wide: true, hostOpen: { open } });
+    // Nothing open.
+    linkIntent();
+    await act(async () => undefined);
+    expect(open).toHaveBeenCalledTimes(1);
+    expect(new URLSearchParams(window.location.search).has('previewPath')).toBe(
+      false,
+    );
+    // Diff beside Chat.
+    await drillInto('Diff');
+    linkIntent();
+    await act(async () => undefined);
+    expect(open).toHaveBeenCalledTimes(2);
+    // Files beside Chat: a link is not the pane's own row.
+    await drillInto('Files');
+    linkIntent();
+    await act(async () => undefined);
+    expect(open).toHaveBeenCalledTimes(3);
+    // The Files pane's own row write is the pane's to open.
+    act(() =>
+      navigationStore.setLayout('demo', 'coding', {
+        openFilePreviewIntent: { projectSlug: 'demo', path: 'src/own.ts' },
+        from: 'pane',
+      }),
+    );
+    await act(async () => undefined);
+    expect(open).toHaveBeenCalledTimes(3);
+    expect(new URLSearchParams(window.location.search).get('previewPath')).toBe(
+      'src/own.ts',
+    );
+  });
+
+  test('a link to a file whose preview is already open shows that preview instead of a second one', async () => {
+    const open = vi.fn(() => WORKSPACE_PANE_OPENED);
+    const preview: WorkspacePaneInstance = {
+      ...files,
+      instanceId: 'file-preview:abc' as WorkspacePaneInstance['instanceId'],
+      stateKey: 'file-preview:abc' as WorkspacePaneInstance['stateKey'],
+    };
+    render(
+      <NavigationProvider>
+        <CodingWorkbench
+          projectId="project-uuid"
+          projectSlug="demo"
+          centerChat
+          wide
+          location={{ page: 'drill-in', paneId: diff.instanceId }}
+          scope={scope}
+          instances={[...instances, preview]}
+          hostDocument={() => document}
+          paneLabel={(instance) =>
+            instance.instanceId === preview.instanceId
+              ? 'app.ts'
+              : label(instance)
+          }
+          paneDetail={(instance) =>
+            instance.instanceId === preview.instanceId ? 'src/app.ts' : null
+          }
+          hostOpen={{ open }}
+          onOpenCatalog={vi.fn()}
+        >
+          <div />
+        </CodingWorkbench>
+      </NavigationProvider>,
+    );
+    const index = navigationStore.getHistoryIndex();
+    linkIntent();
+    await act(async () => undefined);
+    expect(open).not.toHaveBeenCalled();
+    expect(urlPane()).toBe(preview.instanceId);
+    expect(navigationStore.getHistoryIndex()).toBe(index);
+    expect(new URLSearchParams(window.location.search).has('previewPath')).toBe(
+      false,
+    );
+  });
+
+  test('a fold the layout made survives a remount: arriving on the tool and closing it unfolds the inbox', async () => {
+    navigationStore.navigate(ROUTE, { chat: 'conv-fold' });
+    const view = renderStack({ wide: true });
+    await drillInto('Diff');
+    expect(deviceSettingsStore.get('inboxOpen')).toBe(false);
+    expect(remembered('conv-fold')?.inbox).toBe('layout');
+    // The reload: a fresh mount on the same URL (`?pane=diff`), the device
+    // setting still false and the record still naming the layout.
+    view.unmount();
+    renderStack({ wide: true });
+    await act(async () => undefined);
+    expect(deviceSettingsStore.get('inboxOpen')).toBe(false);
+    await drillInto('Diff');
+    expect(deviceSettingsStore.get('inboxOpen')).toBe(true);
+    expect(remembered('conv-fold')?.inbox).toBeNull();
+  });
+
+  test('a fold the layout made is undone on a return that finds the tool closed', async () => {
+    // Left the layout with the inbox folded for a tool, then the tool was
+    // closed elsewhere (another tab, a stale record): the return unfolds.
+    deviceSettingsStore.set('inboxOpen', false);
+    deviceSettingsStore.set('codingPanels', {
+      version: 1,
+      sessions: {
+        'conv-left': {
+          side: null,
+          sideWidth: null,
+          terminalOpen: false,
+          terminalHeight: null,
+          inbox: 'layout',
+          at: 1,
+        },
+      },
+    });
+    navigationStore.navigate(ROUTE, { chat: 'conv-left' });
+    renderStack({ wide: true });
+    await act(async () => undefined);
+    expect(deviceSettingsStore.get('inboxOpen')).toBe(true);
+    expect(remembered('conv-left')?.inbox).toBeNull();
+  });
+
+  test('the reader’s standing choice is applied when their session arrives or returns', async () => {
+    deviceSettingsStore.set('codingPanels', {
+      version: 1,
+      sessions: {
+        'conv-closed': {
+          side: diff.instanceId,
+          sideWidth: null,
+          terminalOpen: false,
+          terminalHeight: null,
+          inbox: false,
+          at: 1,
+        },
+        'conv-open': {
+          side: diff.instanceId,
+          sideWidth: null,
+          terminalOpen: false,
+          terminalHeight: null,
+          inbox: true,
+          at: 2,
+        },
+      },
+    });
+    navigationStore.navigate(ROUTE, { chat: 'conv-closed' });
+    renderStack({ wide: true });
+    await act(async () => undefined);
+    expect(deviceSettingsStore.get('inboxOpen')).toBe(false);
+    act(() => navigationStore.setActiveChat('conv-open'));
+    await act(async () => undefined);
+    expect(deviceSettingsStore.get('inboxOpen')).toBe(true);
+    act(() => navigationStore.setActiveChat('conv-closed'));
+    await act(async () => undefined);
+    expect(deviceSettingsStore.get('inboxOpen')).toBe(false);
+    // Applied by the layout, not recorded over: the choices stand as made.
+    expect(remembered('conv-open')?.inbox).toBe(true);
+    expect(remembered('conv-closed')?.inbox).toBe(false);
+  });
+
+  test('a separator drag of thirty moves and a window resize do not render Chat; a press that does not travel is not a resize', async () => {
+    vi.useFakeTimers();
+    try {
+      renderStack({ wide: true, terminal });
+      await drillInto('Diff');
+      const pages = window.document.querySelector<HTMLElement>(
+        '.coding-workbench__pages',
+      )!;
+      const side = screen.getByRole('separator', { name: 'Resize Diff panel' });
+      const before = harness.chatRenders;
+      fireEvent.pointerDown(side, {
+        button: 0,
+        pointerId: 1,
+        clientX: 600,
+        clientY: 10,
+      });
+      for (let step = 1; step <= 30; step += 1)
+        fireEvent.pointerMove(side, {
+          pointerId: 1,
+          clientX: 600 - step * 2,
+          clientY: 10,
+        });
+      // The frames went to the room's custom property, not through React.
+      expect(pages.style.getPropertyValue('--coding-side-width')).toBe('500px');
+      expect(side.getAttribute('aria-valuenow')).toBe('440');
+      fireEvent.pointerUp(side, { pointerId: 1, clientX: 540, clientY: 10 });
+      expect(side.getAttribute('aria-valuenow')).toBe('500');
+      expect(remembered('~')?.sideWidth).toBe(500);
+      expect(harness.chatRenders - before).toBeLessThanOrEqual(1);
+
+      // A resize's ticks render the workbench, not Chat.
+      const during = harness.chatRenders;
+      for (let tick = 0; tick < 5; tick += 1) {
+        Object.defineProperty(window, 'innerWidth', {
+          value: 1600 + tick * 10,
+          configurable: true,
+          writable: true,
+        });
+        act(() => {
+          window.dispatchEvent(new Event('resize'));
+        });
+      }
+      act(() => {
+        vi.advanceTimersByTime(200);
+      });
+      expect(harness.chatRenders).toBe(during);
+
+      // A press and release without travel commits nothing.
+      fireEvent.pointerDown(side, {
+        button: 0,
+        pointerId: 2,
+        clientX: 300,
+        clientY: 10,
+      });
+      fireEvent.pointerMove(side, { pointerId: 2, clientX: 301, clientY: 10 });
+      fireEvent.pointerUp(side, { pointerId: 2, clientX: 301, clientY: 10 });
+      expect(remembered('~')?.sideWidth).toBe(500);
+      expect(side.getAttribute('aria-valuenow')).toBe('500');
+    } finally {
+      Object.defineProperty(window, 'innerWidth', {
+        value: 1024,
+        configurable: true,
+        writable: true,
+      });
+      vi.useRealTimers();
+    }
+  });
+
+  test('crossing to below the fold with the lower Terminal open makes the Terminal the page, in place', async () => {
+    const view = renderStack({ wide: true, terminal });
+    fireEvent.click(railItem('Terminal'));
+    await act(async () => undefined);
+    expect(lowerPanel()?.getAttribute('data-active')).toBe('true');
+    const index = navigationStore.getHistoryIndex();
+    view.rerender(
+      <NavigationProvider>
+        <Stack wide={false} terminal={terminal} />
+      </NavigationProvider>,
+    );
+    await act(async () => undefined);
+    expect(urlPane()).toBe(terminal.instanceId);
+    expect(navigationStore.getHistoryIndex()).toBe(index);
+    expect(crumbs()).toEqual(['Inbox', harness.chatTitle, 'Terminal']);
+    // No lower panel below the fold: the host draws the Terminal there.
+    expect(lowerPanel()).toBeNull();
   });
 });

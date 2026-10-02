@@ -58,7 +58,10 @@ import {
   useState,
 } from 'react';
 import { CodingWorkbench } from '../components/coding-layout/CodingWorkbench';
-import { useCodingWide } from '../components/coding-layout/codingPanels';
+import {
+  hostRendersCodingPane,
+  useCodingWide,
+} from '../components/coding-layout/codingPanels';
 import {
   resolveCodingStackLocation,
   useCodingStackSelection,
@@ -1574,8 +1577,12 @@ function BuiltinCodingLayoutHost({
           onInstanceRemoved={onInstanceRemoved}
           presentationLabel={presentationLabel}
           renderPane={(instance, presentation) =>
-            renderPanes &&
-            !(wide && instance.instanceId === terminalInstance?.instanceId)
+            hostRendersCodingPane(
+              wide,
+              renderPanes,
+              instance.instanceId,
+              terminalInstance?.instanceId ?? null,
+            )
               ? renderCodingPane(instance, presentation)
               : null
           }

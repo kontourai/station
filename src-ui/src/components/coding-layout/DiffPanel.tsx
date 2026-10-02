@@ -34,10 +34,15 @@ import {
 } from '../../contexts/DeviceSettingsContext';
 import { DiffCommentThread } from './DiffCommentThread';
 import './DiffPanel.css';
+import { Tooltip } from '@kontourai/ui/react';
+import { createPortal } from 'react-dom';
 import {
   browserEpochMs,
   emitDiffCommitPerformanceMark,
 } from '../../performance/interactive-workspace-performance-hooks';
+import { usePaneHeadSlots } from '../../workspace-panes/PaneHeadSlots';
+import { ActionOverflowMenu } from '../ActionOverflowMenu';
+import { ArrowDownGlyph, ArrowUpGlyph } from '../icons/Glyph';
 import { SkeletonBlock } from '../state';
 
 type DiffCommentSide = DiffComment['side'];
@@ -635,92 +640,149 @@ export function ObservedDiffPanel({
     />
   );
 
+  // Inside a host that draws the pane's head itself (the Coding layout's
+  // side panel), the title is the host's: the stats join the head after the
+  // name, and the controls — collapse and expand as named icons, the view
+  // and wrap choices behind one overflow — join it before the host's close.
+  // Nothing of the pane's own title row renders then (#3046 round).
+  const headSlots = usePaneHeadSlots();
+  const stats = (
+    <span className="diff-stat">
+      <span className="diff-stat__files">
+        {files.length} {files.length === 1 ? 'file' : 'files'}
+      </span>
+      <span className="diff-stat__additions">+{totalCounts.additions}</span>
+      <span className="diff-stat__deletions">−{totalCounts.deletions}</span>
+    </span>
+  );
+  const headControls = (
+    <div className="diff-head-controls">
+      <Tooltip label="Collapse all files" placement="bottom">
+        <button
+          type="button"
+          onClick={collapseAllFiles}
+          aria-label="Collapse all files"
+          className="diff-head-control"
+        >
+          <ArrowUpGlyph />
+        </button>
+      </Tooltip>
+      <Tooltip label="Expand all files" placement="bottom">
+        <button
+          type="button"
+          onClick={expandAllFiles}
+          aria-label="Expand all files"
+          className="diff-head-control"
+        >
+          <ArrowDownGlyph />
+        </button>
+      </Tooltip>
+      <ActionOverflowMenu
+        label="Diff view options"
+        triggerClassName="coding-workbench__rail-item diff-head-control"
+        actions={[
+          {
+            key: 'style',
+            label: diffStyle === 'unified' ? 'Split view' : 'Unified view',
+            onSelect: () =>
+              setDiffStyle(diffStyle === 'unified' ? 'split' : 'unified'),
+          },
+          {
+            key: 'wrap',
+            label: 'Wrap lines',
+            checked: wrap,
+            onSelect: () => setWrap(!wrap),
+          },
+        ]}
+      />
+    </div>
+  );
+
   return (
     <div
       ref={performanceSurfaceRef}
       data-station-performance-surface="worktree-diff"
       style={{ height: '100%', display: 'flex', flexDirection: 'column' }}
     >
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: '8px',
-          padding: '6px 12px 4px',
-          flexShrink: 0,
-        }}
-      >
-        <span
+      {headSlots ? (
+        <>
+          {headSlots.leading && hasDiff
+            ? createPortal(stats, headSlots.leading)
+            : null}
+          {headSlots.trailing && hasDiff
+            ? createPortal(headControls, headSlots.trailing)
+            : null}
+        </>
+      ) : (
+        <div
           style={{
-            fontSize: '11px',
-            fontWeight: 600,
-            color: 'var(--text-muted)',
-            textTransform: 'uppercase',
-            letterSpacing: '0.05em',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '8px',
+            padding: '6px 12px 4px',
+            flexShrink: 0,
           }}
         >
-          Git Diff
-        </span>
-        {hasDiff && (
-          <span className="diff-stat">
-            <span className="diff-stat__files">
-              {files.length} {files.length === 1 ? 'file' : 'files'}
-            </span>
-            <span className="diff-stat__additions">
-              +{totalCounts.additions}
-            </span>
-            <span className="diff-stat__deletions">
-              −{totalCounts.deletions}
-            </span>
+          <span
+            style={{
+              fontSize: '11px',
+              fontWeight: 600,
+              color: 'var(--text-muted)',
+              textTransform: 'uppercase',
+              letterSpacing: '0.05em',
+            }}
+          >
+            Git Diff
           </span>
-        )}
-        {hasDiff && (
-          <div style={{ display: 'flex', gap: '4px' }}>
-            <button
-              type="button"
-              onClick={collapseAllFiles}
-              title="Collapse all files"
-              aria-label="Collapse all files"
-              className="diff-toggle"
-            >
-              Collapse all
-            </button>
-            <button
-              type="button"
-              onClick={expandAllFiles}
-              title="Expand all files"
-              aria-label="Expand all files"
-              className="diff-toggle"
-            >
-              Expand all
-            </button>
-            <button
-              type="button"
-              onClick={() =>
-                setDiffStyle(diffStyle === 'unified' ? 'split' : 'unified')
-              }
-              title={`Switch to ${diffStyle === 'unified' ? 'split' : 'unified'} view`}
-              aria-label={`Diff view: ${diffStyle} (click to switch)`}
-              className="diff-toggle"
-            >
-              {diffStyle === 'unified' ? 'Unified' : 'Split'}
-            </button>
-            <button
-              type="button"
-              onClick={() => setWrap(!wrap)}
-              title={wrap ? 'Disable line wrap' : 'Enable line wrap'}
-              aria-pressed={wrap}
-              aria-label="Toggle line wrap"
-              className={
-                wrap ? 'diff-toggle diff-toggle--active' : 'diff-toggle'
-              }
-            >
-              Wrap
-            </button>
-          </div>
-        )}
-      </div>
+          {hasDiff && stats}
+          {hasDiff && (
+            <div style={{ display: 'flex', gap: '4px' }}>
+              <button
+                type="button"
+                onClick={collapseAllFiles}
+                title="Collapse all files"
+                aria-label="Collapse all files"
+                className="diff-toggle"
+              >
+                Collapse all
+              </button>
+              <button
+                type="button"
+                onClick={expandAllFiles}
+                title="Expand all files"
+                aria-label="Expand all files"
+                className="diff-toggle"
+              >
+                Expand all
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  setDiffStyle(diffStyle === 'unified' ? 'split' : 'unified')
+                }
+                title={`Switch to ${diffStyle === 'unified' ? 'split' : 'unified'} view`}
+                aria-label={`Diff view: ${diffStyle} (click to switch)`}
+                className="diff-toggle"
+              >
+                {diffStyle === 'unified' ? 'Unified' : 'Split'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setWrap(!wrap)}
+                title={wrap ? 'Disable line wrap' : 'Enable line wrap'}
+                aria-pressed={wrap}
+                aria-label="Toggle line wrap"
+                className={
+                  wrap ? 'diff-toggle diff-toggle--active' : 'diff-toggle'
+                }
+              >
+                Wrap
+              </button>
+            </div>
+          )}
+        </div>
+      )}
       <div style={{ flex: 1, overflowY: 'auto', padding: '4px 12px 12px' }}>
         {loading && <SkeletonBlock count={2} label="Loading diff" />}
         {error && (

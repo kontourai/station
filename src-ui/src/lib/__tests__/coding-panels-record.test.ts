@@ -52,13 +52,20 @@ describe('coding-panels-record (#3051)', () => {
       inbox: null,
       at: 20,
     });
-    // The reader's own inbox choice is a field like the others.
+    // The reader's own inbox choice is a field like the others, and so is
+    // the layout's own fold.
     expect(
       readCodingSessionPanels(
         writeCodingSessionPanels(ab, 'conv-a', { inbox: true }, 30),
         'conv-a',
       ).inbox,
     ).toBe(true);
+    expect(
+      readCodingSessionPanels(
+        writeCodingSessionPanels(ab, 'conv-a', { inbox: 'layout' }, 31),
+        'conv-a',
+      ).inbox,
+    ).toBe('layout');
     // A patch that changes nothing is the same record (no store write).
     expect(writeCodingSessionPanels(ab, 'conv-a', { side: 'diff' }, 30)).toBe(
       ab,
@@ -133,6 +140,7 @@ describe('coding-panels-record (#3051)', () => {
         'bad-width': { sideWidth: -1 },
         'bad-open': { terminalOpen: 'yes' },
         'bad-inbox': { inbox: 'yes' },
+        folded: { inbox: 'layout' },
         'bad-at': { at: 'now' },
         '': { side: 'diff' },
       },
@@ -149,6 +157,7 @@ describe('coding-panels-record (#3051)', () => {
           at: 5,
         },
         sparse: CLOSED_CODING_SESSION_PANELS,
+        folded: { ...CLOSED_CODING_SESSION_PANELS, inbox: 'layout' },
       },
     });
 

@@ -30,7 +30,7 @@ export type NavigationActions = {
   setLayout: (
     projectSlug: string,
     layoutSlug: string,
-    options?: { openFilePreviewIntent?: OpenFilePreviewIntent },
+    options?: { openFilePreviewIntent?: OpenFilePreviewIntent; from?: 'pane' },
   ) => void;
   setConversation: (id: string | null) => void;
   setActiveChat: (id: string | null) => void;
@@ -72,7 +72,10 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     (
       projectSlug: string,
       layoutSlug: string,
-      options?: { openFilePreviewIntent?: OpenFilePreviewIntent },
+      options?: {
+        openFilePreviewIntent?: OpenFilePreviewIntent;
+        from?: 'pane';
+      },
     ) => {
       navigationStore.setLayout(projectSlug, layoutSlug, options);
     },

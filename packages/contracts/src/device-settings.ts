@@ -379,9 +379,10 @@ export interface CodingSessionPanels {
    * (#3046 round): `null` means no such choice, and the layout may collapse
    * the inbox itself to keep the transcript its floor and reopen it when the
    * tool closes; `true`/`false` is the reader's own choice for this session,
-   * which the layout never overrides.
+   * which the layout never overrides; `'layout'` records that the layout
+   * folded it, so a reload or a return restores it when the tool closes.
    */
-  inbox: boolean | null;
+  inbox: boolean | 'layout' | null;
   at: number;
 }
 

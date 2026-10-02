@@ -388,6 +388,19 @@ describe('FileTreePanel in a host that draws its head (#3046 round)', () => {
     expect(screen.getByTitle('src')).toBeTruthy();
   });
 
+  test('the filter field is named, not placeholder-only', () => {
+    render(
+      <FileTreePanel
+        projectSlug="demo"
+        workingDir="/workspace"
+        onFileSelect={vi.fn()}
+      />,
+    );
+    expect(
+      screen.getByRole('searchbox', { name: 'Filter files' }),
+    ).toBeTruthy();
+  });
+
   test('on its own it keeps its title row', () => {
     const { container } = render(
       <FileTreePanel

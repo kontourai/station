@@ -184,11 +184,12 @@
 }
 
 .coding-layout__terminal-empty-content {
+  /* A token, not a grey that fails contrast on the dark terminal ground. */
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 8px;
-  color: #6b7280;
+  color: var(--text-secondary);
 }
 
 .coding-layout__terminal-empty-icon {

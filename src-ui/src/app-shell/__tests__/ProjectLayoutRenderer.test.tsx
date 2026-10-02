@@ -182,6 +182,11 @@ vi.mock('../../hooks/useIsMobile', () => ({
   // A phone-sized viewport folds the dock to one region, so its Coding Chat
   // page is the dock, not the centre (`resolveLayoutChatPlacement`).
   useDockFoldsToOneRegion: () => mobileMock(),
+  // The workbench reads the pointer for the folded inbox's edge (#3046).
+  useDockSlotDevice: () => ({
+    viewportWidth: mobileMock() ? 390 : 1280,
+    coarsePointer: mobileMock(),
+  }),
 }));
 // The Coding stack's Chat page mounts Station's one Chat controller; this
 // file is about the pane host beside it, so Chat is a marker that records
@@ -1490,6 +1495,9 @@ describe('ProjectLayoutRenderer', () => {
           projectSlug: 'project-route',
           path: 'src/app.ts',
         },
+        // The pane's own row write, named so the Chat position leaves the
+        // preview to the pane (#3040 round 4).
+        from: 'pane',
       },
     );
 
