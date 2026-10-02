@@ -3305,7 +3305,7 @@ describe('CodexAdapter', () => {
           },
         ],
       }),
-    ).rejects.toThrow('Codex supports image attachments here');
+    ).rejects.toThrow('Codex cannot take non-image files');
     expect(
       processHandle.stdin.lines
         .map(parseLine)

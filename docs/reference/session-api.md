@@ -92,6 +92,14 @@ binding, verifies the caller and current Environment, resolves the current Agent
 and only then sends the turn. Optional `model.override` and `model.options` apply
 only when that engine supports them; omission retains the current model choice.
 
+On either route, when the bound engine is an ACP engine, a send whose
+attachments it cannot take (its handshake did not advertise image input, or a
+non-image file) is refused before any engine effect with
+`code: "attachment_input_unsupported"`. The same request is refused again, so it
+is not a retry candidate. Staged uploads the refused send had bound are released
+from that turn, so the same references can be sent on another turn. Codex and Muse refuse a non-image file with a plain
+error that carries no code.
+
 A completed turn does not discard the conversation. If the next turn needs a new
 execution Session, it remains linked beneath the same Conversation. Station-native
 prompt history reads existing authorized native memory segments across that
@@ -281,7 +289,9 @@ The remaining controls are defined by
 `src-server/routes/orchestration/orchestration.ts`:
 
 - `steerTurn`: `{ type: 'steerTurn', threadId, input, turnId? }` sends steering
-  input where the engine supports it.
+  input where the engine supports it. An ACP engine without a native steer
+  method is steered by cancelling and re-prompting the running turn; that
+  steer's `turn.started` carries `steerInterruptedRun: true`.
 - `setApprovalMode`: `{ type: 'setApprovalMode', threadId, approvalMode,
   basedOnSequence }` records an ordered posture decision. `basedOnSequence` is
   required: use the latest observed decision sequence, or `null` when none was

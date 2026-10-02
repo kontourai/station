@@ -131,6 +131,7 @@ import {
   routeToOpenChatsCollection,
   shouldRouteScopedChatProject,
 } from './chat-dock-utils';
+import { ambientChatPaneFailureContext } from './chatPaneFailureContext';
 import { submitCommandLauncherIntent } from './command-launcher-model';
 import { claimComposerDraftRequest } from './composerDraftRequest';
 import type { ConversationOpenRecovery } from './conversationOpenController';
@@ -821,6 +822,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     toolPolicyDelivery,
     effectiveModels,
     fileAttachmentsSupported,
+    imageAttachmentCaveat,
     imageAttachmentRefusal,
     gitStatus,
     modelSupportsAttachments,
@@ -979,9 +981,11 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       images: modelSupportsAttachments,
       files: fileAttachmentsSupported,
       imageRefusal: imageAttachmentRefusal,
+      imageCaveat: imageAttachmentCaveat,
     }),
     [
       fileAttachmentsSupported,
+      imageAttachmentCaveat,
       imageAttachmentRefusal,
       modelSupportsAttachments,
     ],
@@ -993,6 +997,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     sessionId: activeSessionId,
     agentSlug: activeSessionForHook?.agentSlug || null,
     conversationId: activeSessionForHook?.conversationId,
+    orchestrationSession: activeOrchestrationSession,
     availableModels: effectiveModels,
     modelsStale,
     bindingStatus,
@@ -3275,6 +3280,7 @@ export function ChatDock({
       componentProps={{
         onRequestAuth,
         renderChatPane: renderAmbientChatPane,
+        chatPaneFailureContext: ambientChatPaneFailureContext,
         regionId,
       }}
       pending={null}

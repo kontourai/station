@@ -327,6 +327,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // discovery, which is itself a Vitest child. Single-shot spawns, no
   // wall-clock assertion.
   'scripts/__tests__/fast-checks-shard-cli.test.ts',
+  // #3101: dependency-free planner CLI output and exit status in child processes.
+  'scripts/__tests__/fast-checks-plan.test.ts',
   // #2709 re-land: runs the aggregator's real base-controlled bash/jq step
   // from ci.yml against simulated job results. Single-shot spawns, no
   // wall-clock assertion.
@@ -594,6 +596,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #2675 D: installs two fixture archives with the real install.sh and runs
   // the real launcher, whose child stages with install.sh again.
   'scripts/__tests__/service-launcher-e2e.test.ts',
+  // #2675 W1: runs install.ps1's embedded installer core as a bounded
+  // single-shot node child per case, whose own `--version` self-check spawns
+  // the fixture archive's runtime once.
+  'scripts/__tests__/install-ps1.test.ts',
   'scripts/__tests__/installer-tool-output-parsing.test.ts',
   'scripts/__tests__/local-verification.test.ts',
   'scripts/__tests__/native-release-config.test.ts',

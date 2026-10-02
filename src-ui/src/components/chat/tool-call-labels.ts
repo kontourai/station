@@ -15,7 +15,10 @@
  * module the streaming progress indicator uses) is the shared fallback so
  * this doesn't invent a second naming scheme.
  */
-import { formatToolName } from '../../utils/chat-progress';
+import {
+  formatToolName,
+  isProgrammaticToolName,
+} from '../../utils/chat-progress';
 import { toolDisplayView } from './tool-display-view';
 
 export type ToolCallKind = 'read' | 'write' | 'exec' | 'search' | 'other';
@@ -32,7 +35,7 @@ interface KindVerbs {
   pendingVerb: string;
 }
 
-export const KIND_VERBS: Record<ToolCallKind, KindVerbs> = {
+const KIND_VERBS: Record<ToolCallKind, KindVerbs> = {
   read: { verb: 'Read', progressiveVerb: 'Reading', pendingVerb: 'Read' },
   write: { verb: 'Edited', progressiveVerb: 'Editing', pendingVerb: 'Edit' },
   exec: { verb: 'Ran', progressiveVerb: 'Running', pendingVerb: 'Run' },
@@ -168,6 +171,101 @@ export function classifyToolName(toolName: string | undefined): ToolCallKind {
   return 'other';
 }
 
+/**
+ * The engine's own category (ACP `ToolKind`) in this row taxonomy. `fetch`,
+ * `think` and `switch_mode` have no verb of their own here and stay `other`.
+ */
+const ENGINE_KIND: Readonly<Record<string, ToolCallKind>> = {
+  read: 'read',
+  edit: 'write',
+  delete: 'write',
+  move: 'write',
+  search: 'search',
+  execute: 'exec',
+  fetch: 'other',
+  think: 'other',
+  switch_mode: 'other',
+  other: 'other',
+};
+
+function stringField(args: Record<string, unknown>, keys: string[]) {
+  for (const key of keys) {
+    const value = args[key];
+    if (typeof value === 'string' && value.trim()) return value;
+  }
+  return undefined;
+}
+
+/**
+ * Classify by the arguments' SHAPE, for a call whose name is display text.
+ * The field names are the ones the engines actually send: OpenCode's shell
+ * tool `{command, description}`, its file tools `{filePath, ...}` with
+ * `content`/`oldString`/`newString` for a write, `{pattern, path}` for
+ * grep/glob.
+ */
+function hasCommandArgument(args: unknown): boolean {
+  if (!args || typeof args !== 'object' || Array.isArray(args)) return false;
+  const a = args as Record<string, unknown>;
+  const command = a.command ?? a.cmd ?? a.cmdline;
+  return (
+    (typeof command === 'string' && command.trim().length > 0) ||
+    (Array.isArray(command) && command.length > 0)
+  );
+}
+
+function classifyToolArgs(args: unknown): ToolCallKind {
+  if (!args || typeof args !== 'object' || Array.isArray(args)) return 'other';
+  const a = args as Record<string, unknown>;
+  if (hasCommandArgument(a)) return 'exec';
+  const path = stringField(a, ['file_path', 'filePath', 'filepath', 'path']);
+  if (
+    path &&
+    ['content', 'oldString', 'newString', 'old_string', 'new_string', 'patch']
+      .map((key) => a[key])
+      .some((value) => typeof value === 'string')
+  )
+    return 'write';
+  if (stringField(a, ['pattern', 'query', 'glob'])) return 'search';
+  if (path) return 'read';
+  return 'other';
+}
+
+export interface ToolCallIdentity {
+  toolName?: string;
+  toolKind?: unknown;
+  args?: unknown;
+}
+
+/**
+ * The row kind for one call, most authoritative evidence first:
+ *
+ * 1. a command argument: whatever the call is called, if it carries a
+ *    command it runs one, and the row must say so and show it — a `read`
+ *    kind on `bash {command: 'rm -rf ~'}` must never read "Read bash";
+ * 2. the engine's own `toolKind` (ACP engines report one per call);
+ * 3. a tool NAME — any single token, including dotted or colon-scoped MCP
+ *    names (`fs.write_file`, `filesystem:edit_file`, `shell.exec`) — by its
+ *    words; a write shown as a read on an approval card is the unsafe
+ *    direction, so these keep name classification;
+ * 4. the shape of the arguments, when the name says nothing or is display
+ *    text with spaces (an ACP title: a command line).
+ *
+ * Titles with spaces never go through step 3: tokenizing `cd /tmp && gh api …
+ * > gsd.mjs` guessed a read in one render and a search in another.
+ */
+export function classifyToolCall(call: ToolCallIdentity): ToolCallKind {
+  if (hasCommandArgument(call.args)) return 'exec';
+  if (typeof call.toolKind === 'string' && call.toolKind in ENGINE_KIND) {
+    return ENGINE_KIND[call.toolKind]!;
+  }
+  const name = call.toolName?.trim();
+  if (name && !/\s/.test(name)) {
+    const byName = classifyToolName(name);
+    if (byName !== 'other') return byName;
+  }
+  return classifyToolArgs(call.args);
+}
+
 const MAX_TARGET_LENGTH = 60;
 
 function truncate(value: string, max = MAX_TARGET_LENGTH): string {
@@ -186,15 +284,63 @@ function firstLine(value: string): string {
   return idx >= 0 ? value.slice(0, idx) : value;
 }
 
+/** One leading `NAME=value ` whose value is a plain literal: no `$`,
+ * backtick, quote, parenthesis, or other shell expansion. */
+const LITERAL_ENV_ASSIGNMENT =
+  /^([A-Za-z_][A-Za-z0-9_]*)=([A-Za-z0-9_@%+,.:/-]*)\s+/;
+
+/**
+ * The only variables a collapsed row may drop: ones that change how output
+ * looks or how much is logged, never what runs, what it loads, where it
+ * connects or which credentials it uses. An allow-list, not a deny-list —
+ * the set of variables that change what a command does (`LD_PRELOAD`,
+ * `JAVA_TOOL_OPTIONS`, `npm_config_script_shell`, `EDITOR`, `HTTPS_PROXY`,
+ * `KUBECONFIG`, …) is open-ended, so anything not named here stays visible.
+ */
+const INERT_ENV =
+  /^(?:CI|FORCE_COLOR|NO_COLOR|CLICOLOR|CLICOLOR_FORCE|NODE_ENV|DEBUG|VERBOSE|LANG|LANGUAGE|LC_[A-Z]+|TZ|TERM|COLUMNS|LINES|RUST_LOG|RUST_BACKTRACE|PYTHONUNBUFFERED|PYTHONDONTWRITEBYTECODE|STATION_DOCS_[A-Z0-9_]+)$/;
+
+/**
+ * The collapsed row's form of a shell command: its first line. For a call
+ * that already ran, leading environment assignments are dropped so the
+ * command itself is what fits (`STATION_DOCS_FRESHNESS=scoped npm run
+ * docs:check` → `npm run docs:check`) — but only when every one of them is a
+ * plain literal of an inert variable (`INERT_ENV`); anything else keeps the whole
+ * line. A call awaiting approval is never trimmed: what the user is asked to
+ * allow is the whole command. The expanded row prints it verbatim.
+ */
+function commandTarget(command: string, trimEnv: boolean): string {
+  const line = firstLine(command).trim();
+  if (!trimEnv) return truncate(line);
+  let rest = line;
+  for (;;) {
+    const match = LITERAL_ENV_ASSIGNMENT.exec(rest);
+    if (!match) break;
+    if (!INERT_ENV.test(match[1]!)) return truncate(line);
+    rest = rest.slice(match[0].length);
+  }
+  // Something still looks like an assignment: it was not a plain literal
+  // (`FOO=$(rm -rf /) ls`), so nothing is trimmed.
+  if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(rest)) return truncate(line);
+  return truncate(rest || line);
+}
+
 /** A concise, human target for one call — "app.tsx" for a Read, a truncated
  * command for a Bash/shell_exec call. Falls back to the change list on
  * patch-style edits that carry no top-level path. A raw STRING argument (an
  * ACP engine's unstringified pass-through — see archive#3559) is shown as
  * its truncated first line rather than dropped, so a shell command stays
  * visible in the collapsed row on that path too. */
-function extractTarget(kind: ToolCallKind, args: unknown): string | null {
+function extractTarget(
+  kind: ToolCallKind,
+  args: unknown,
+  trimEnv: boolean,
+): string | null {
   if (typeof args === 'string') {
-    return args.trim() ? truncate(firstLine(args)) : null;
+    if (!args.trim()) return null;
+    return kind === 'exec'
+      ? commandTarget(args, trimEnv)
+      : truncate(firstLine(args));
   }
   if (!args || typeof args !== 'object') return null;
   const a = args as Record<string, unknown>;
@@ -227,9 +373,9 @@ function extractTarget(kind: ToolCallKind, args: unknown): string | null {
   }
 
   if (kind === 'exec') {
-    const command = a.command;
+    const command = a.command ?? a.cmd ?? a.cmdline;
     if (typeof command === 'string' && command.trim()) {
-      return truncate(firstLine(command));
+      return commandTarget(command, trimEnv);
     }
     if (Array.isArray(command) && command.length > 0) {
       return truncate(command.join(' '));
@@ -267,8 +413,16 @@ export function callLabel(
       : resolved === 'proposed' || resolved === 'unresolved'
         ? cfg.pendingVerb
         : cfg.verb;
-  const target = extractTarget(kind, args);
+  // What a user is asked to allow is shown whole (see `commandTarget`).
+  const trimEnv = resolved !== 'proposed';
+  const target = extractTarget(kind, args, trimEnv);
   if (target) return `${verb} ${target}`;
+  // No argument named a target, so the name is the target. Display text (an
+  // ACP title: the command line, the path) is shown as the engine wrote it,
+  // env-trimmed for a command exactly like an argument would be.
+  if (toolName.trim() && !isProgrammaticToolName(toolName)) {
+    return `${verb} ${kind === 'exec' ? commandTarget(toolName, trimEnv) : truncate(toolName)}`;
+  }
   const fallbackName = formatToolName(toolName);
   return fallbackName ? `${verb} ${fallbackName}` : verb;
 }

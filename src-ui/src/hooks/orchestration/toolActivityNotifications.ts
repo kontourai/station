@@ -1,6 +1,7 @@
 import type { ChatUIState } from '../../contexts/active-chats-state';
 import { navigationStore } from '../../contexts/NavigationContext';
 import { toastStore } from '../../contexts/ToastContext';
+import { formatToolName } from '../../utils/chat-progress';
 import { isReplayThread } from './replay/replay-registry';
 import type { OrchestrationEvent } from './types';
 
@@ -8,10 +9,6 @@ type ToolCompletedEvent = Extract<
   OrchestrationEvent,
   { method: 'tool.completed' }
 >;
-
-function formatToolName(toolName: string): string {
-  return toolName.trim().replace(/[-_]+/g, ' ').replace(/\s+/g, ' ');
-}
 
 function trimDetail(value: string): string | undefined {
   const trimmed = value.trim();

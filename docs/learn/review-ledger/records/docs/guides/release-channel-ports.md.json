@@ -9,7 +9,7 @@
 
   "limits": "Bounded source and hermetic evidence only. No native compilation, app/device launch, signing, provisioning, OS/network policy change, store credentials or provider delivery. Full document reading does not certify all platform behavior.",
 
-  "document": {"digest":"3483f6ad81e2f9c47e478a4c3156ac39656cc0371fd19902d05c43c2cf76c00d","revision":"6b720068a6a3d8ccf6aa3260e8da6ee4cf99ea80"},
+  "document": {"digest":"b90cd2926db148fda6e028bab7d9a1746956db1a90e6fedcb0c7b9920c46f156","revision":"332b227345684d098aaaf3191ac0e9d927ac9401"},
 
   "sources": [
     {"path":".github/workflows/android-test.yml","digest":"2a653b007047dfca16491297c7ce96455fd6571d5dad7a2fea40a62859a14146","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
@@ -50,7 +50,7 @@
 
     {"path":"packages/cli/src/commands/service-run.ts","digest":"2b3560dd4f26026869b307587704c134cc63a81fe8295527131ba225d0486154","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"packages/cli/src/commands/service-windows.ts","digest":"e9900e431944c46a0f46b6329c2218942d7281dc2f2bef2760770837298c2f71","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"packages/cli/src/commands/service-windows.ts","digest":"28e4f5acb3c03d08b41550290265ae2ee013f36f6e274a88d617727ea5d68581","revision":"c8d9944f3aedde24e7acd1f862d5ee1163ffbe59"},
 
     {"path":"packages/cli/src/commands/service.ts","digest":"66660b960af7fe541ec7c5a35f9e0c0ad4a0525060ac967372249b05108ed349","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
@@ -72,13 +72,13 @@
 
     {"path":"scripts/build-desktop.mjs","digest":"882c850640e9a350c1b48f4290b947b506e0b1ef4a6cdf447c6330a88e393c99","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"scripts/channel-ports.mjs","digest":"1f94a510faac71ad5e46dbbcb75591aa60c396aab94692eb7515afa314641138","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"scripts/channel-ports.mjs","digest":"60371dd4ece531ee30f4361f652ef21b7061bf4984fe202fa79ae4f8ca3b2b3e","revision":"b45e66e498207045e6f2d36a48075c702cbf4d92"},
 
     {"path":"scripts/check-android-16kb-alignment.mjs","digest":"b3d12f75a5873e36f43b933b7b34c95a3628813bc338499b284bca8f93505839","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
     {"path":"scripts/dev-desktop.mts","digest":"e5ad5e41f4d402d485492426a826ad9c6f095f5ae5da21c0fcee40eb51053798","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"scripts/install-script-generated.mjs","digest":"2c40c48272518a9db1eb3c44903171385ce7c45ac694465b86ec4e0938a74cd6","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"scripts/install-script-generated.mjs","digest":"b6cc8658bf3390211a0601fbfcb7081c9553d1e1814bed5c479cf1df6915a9e4","revision":"614c216de6de9d4c06ef56963853ccff52f2f685"},
 
     {"path":"scripts/ios-testflight-channel.mjs","digest":"302570f2b8fbc0fd49994c158753bc1ac41e27e6145864360a48f816c3e1e304","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 

@@ -242,6 +242,7 @@ function ChatDockContentAreaImpl({
           // empty state carries the action itself now.
           <Empty
             variant="prominent"
+            className="chat-dock__no-chat"
             label="No chat open"
             action={
               <button
