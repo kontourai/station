@@ -1578,9 +1578,20 @@ in the PR; changing an assertion solely to match an implementation is not that
 justification.
 
 The required `fast-checks` check is an aggregator (#2709). `fast-checks-plan`
-computes the affected-test selection once; `fast-checks-shard` runs it as four
-deterministic round-robin slices, each inside the fifteen-minute budget and
-each writing a receipt (an empty slice passes explicitly with an `empty`
+computes the affected-test selection once; `fast-checks-shard` runs it as one
+to four deterministic round-robin slices. `FAST_CHECKS_FILES_PER_SHARD` in
+`scripts/lib/fast-checks-shards.mjs` sets the initial threshold at 40 files:
+0–40 use one job, 41–80 two, 81–120 three, and 121+ four. The planner knows
+file count, not test duration. This is a tunable proxy, justified by #3101's
+2026-10-01 sample: 1.4 minutes of setup for 0.2 minutes of tests per shard
+(86% setup) while the 20-job pool was saturated. Hosted runs must establish
+the actual savings and whether this threshold needs tuning. The matrix creates
+only planned legs; omitted legs need no receipt and cannot keep the aggregate
+pending. The workflow opts in with `STATION_FAST_CHECKS_ADAPTIVE_SHARDS=true`.
+Without that handshake, a new planner retains four shards for the old base
+workflow. Older candidates that emit no adaptive outputs also retain four shards.
+Each slice runs inside the fifteen-minute budget and
+writes a receipt (an empty slice passes explicitly with an `empty`
 receipt); `fast-checks-statics` runs `ci:fast` with
 `STATION_CI_FAST_SCOPE=statics` plus the browser smoke, performance smoke and
 UI bundle budget. `fast-checks` fails unless every part job succeeded and

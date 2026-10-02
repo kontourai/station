@@ -327,6 +327,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // discovery, which is itself a Vitest child. Single-shot spawns, no
   // wall-clock assertion.
   'scripts/__tests__/fast-checks-shard-cli.test.ts',
+  // #3101: dependency-free planner CLI output and exit status in child processes.
+  'scripts/__tests__/fast-checks-plan.test.ts',
   // #2709 re-land: runs the aggregator's real base-controlled bash/jq step
   // from ci.yml against simulated job results. Single-shot spawns, no
   // wall-clock assertion.

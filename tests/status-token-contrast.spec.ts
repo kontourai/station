@@ -267,6 +267,44 @@ test.describe('error/danger token family contrast', () => {
     });
   }
 
+  /**
+   * At rest the Stop control used to be the error TINT (`--error-bg`) with a
+   * red glyph: a red square on a dark-red circle that barely separated from
+   * a dark composer. A phone has no hover to reach the legible fill, so the
+   * resting fill itself must stand off the composer surface as a non-text
+   * control (WCAG 1.4.11, 3:1), not only carry its glyph.
+   */
+  test('the resting Stop fill stands off the composer surface in both themes', async ({
+    page,
+  }) => {
+    for (const theme of THEMES) {
+      await page.evaluate((value) => {
+        document.documentElement.setAttribute('data-theme', value);
+      }, theme);
+      const { probe } = await mountProbe(
+        page,
+        'chat-input__stop-btn',
+        '--bg-primary',
+        'chat-input',
+      );
+      await page.mouse.move(2000, 2000);
+      await settleHover(page, false);
+      // The fill, painted as a text colour on the same host surface, measured
+      // with the same compositing contrast helper.
+      await probe.evaluate((element) => {
+        const swatch = document.createElement('span');
+        swatch.setAttribute('data-testid', 'stop-fill-swatch');
+        swatch.textContent = 'fill';
+        swatch.style.color = getComputedStyle(element).backgroundColor;
+        element.parentElement?.appendChild(swatch);
+      });
+      expect(
+        await contrastRatio(page.getByTestId('stop-fill-swatch')),
+        `resting Stop fill against the composer surface in ${theme} theme`,
+      ).toBeGreaterThanOrEqual(3);
+    }
+  });
+
   test('the Stop button stays legible through its hover fill in both themes', async ({
     page,
   }) => {

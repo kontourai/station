@@ -288,6 +288,55 @@ describe('ChatDockBody session-failure ownership (station#3299)', () => {
     expect(screen.queryByTestId('chat-dock-session-failure')).toBeNull();
   });
 
+  // The live Grok Build shape: the first send carried images the engine
+  // does not take, the server folded the session to a first-send failure
+  // whose record carries only the ATTRIBUTION sentence, and the send path
+  // wrote its own translated notice. Text arbitration could not match the two,
+  // so the dock showed both — the card's advice and the banner's "send a
+  // message to try to continue this session" for a session that never began.
+  const refusedFirstSend = (): OrchestrationSessionSummary => ({
+    ...failedOrchestrationSession(),
+    lifecycleState: 'idle',
+    status: 'ready',
+    blockedReason: 'Station refused the send before it started.',
+    terminalAttribution: {
+      kind: 'send_refused',
+      detail: 'Station refused the send before it started.',
+    },
+    eventCount: 1,
+  });
+
+  test('a refused first send renders once: the send notice owns it, not a second banner', () => {
+    const session = buildSession({
+      status: 'error',
+      messages: [
+        {
+          id: 'ephemeral-refusal',
+          role: 'system',
+          content:
+            "**This engine can't take these attachments**\n\nThis engine did not advertise image attachment support. Nothing was sent.",
+          timestamp: 1,
+          ephemeral: true,
+        },
+      ] as ChatSession['messages'],
+    });
+
+    renderDock(session, refusedFirstSend());
+
+    expect(screen.queryByTestId('chat-dock-session-failure')).toBeNull();
+  });
+
+  test('a cold arrival at a refused first send says nothing ran, not "continue this session"', () => {
+    renderDock(buildSession({ messages: [] }), refusedFirstSend());
+
+    const banner = screen.getByTestId('chat-dock-session-failure');
+    expect(banner.textContent).toContain(
+      'Station refused the send before it started.',
+    );
+    expect(banner.textContent).toContain('Nothing reached the engine.');
+    expect(banner.textContent).not.toContain('continue this session');
+  });
+
   test('cold arrival at a failed session still renders the banner (station#3213 preserved)', () => {
     // Deep link / tab switch: the transcript carries nothing about the
     // failure — the banner is the only surface that can say it.
