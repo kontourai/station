@@ -554,9 +554,7 @@ describe('HomeView', () => {
     ];
     const onNavigate = vi.fn();
     renderHomeView({ continuation: null, onNavigate });
-    expect(
-      screen.getAllByText(/Agent not reported · Model not reported/).length,
-    ).toBeGreaterThan(0);
+    expect(screen.getAllByText('Agent not reported').length).toBeGreaterThan(0);
     fireEvent.click(
       screen.getByRole('button', { name: /Continue most recent work/i }),
     );
@@ -893,7 +891,7 @@ describe('HomeView', () => {
     expect(screen.getByText('Write a message and begin')).toBeTruthy();
   });
 
-  test('separates Running from terminal Recently finished work with counts and compact cwd metadata', () => {
+  test('separates Running from terminal Recently finished work with counts', () => {
     const recentTerminalAt = new Date(Date.now() - 60_000).toISOString();
     fixtures.sessions = [
       {
@@ -933,7 +931,9 @@ describe('HomeView', () => {
       name: 'Recently finished (1)',
     });
     expect(within(active).getByText('Keep working')).toBeTruthy();
-    expect(within(active).getByText(/…\/kontourai\/station/)).toBeTruthy();
+    expect(
+      within(active).getByText('Running', { selector: '.inbox-row__word' }),
+    ).toBeTruthy();
     expect(
       within(recentlyFinished).getByText('Repair the failed run'),
     ).toBeTruthy();
@@ -1183,7 +1183,7 @@ describe('HomeView lane wiring (review finding: snooze/shelf/settled-tail intera
       }
     });
 
-    test('a settled failed row retains its lifecycle chip and compact cwd metadata', () => {
+    test('a settled failed row still says Failed', () => {
       fixtures.sessions = [
         {
           threadId: 'settled-failed-thread',
@@ -1210,7 +1210,6 @@ describe('HomeView lane wiring (review finding: snooze/shelf/settled-tail intera
       expect(
         within(earlier).getByText('Repair the settled failure'),
       ).toBeTruthy();
-      expect(within(earlier).getByText(/…\/kontourai\/station/)).toBeTruthy();
       expect(within(earlier).getByText('Failed')).toBeTruthy();
     });
   });
@@ -1292,11 +1291,14 @@ describe('HomeView remote-session read augmentation (station#1097)', () => {
 
     expect(within(recent).getByText('Brian media')).toBeTruthy();
     expect(within(recent).getByText('Office box')).toBeTruthy();
-    // Both remote items render the "Remote session" kind label.
-    expect(within(recent).getAllByText(/Remote session/).length).toBe(2);
     // The local session's own row must still render, unmarked by any
-    // environment badge, using the plain (non-remote) "Session" kind label.
-    expect(within(recent).getAllByText(/Session · No project/).length).toBe(1);
+    // machine: exactly two rows carry one.
+    expect(within(recent).getAllByTestId('inbox-row')).toHaveLength(3);
+    expect(
+      recent.querySelectorAll(
+        '.inbox-row__chip--remote, .inbox-row__slim-remote',
+      ),
+    ).toHaveLength(2);
 
     // archive#1097: REMOTE_SESSION (env-a, "Brian
     // media") is the single most-recent item across every environment here
@@ -1477,7 +1479,11 @@ describe('HomeView remote-session read augmentation (station#1097)', () => {
 
     renderHomeView({ continuation: null, onNavigate: vi.fn() });
 
-    expect(document.querySelector('.home-view__environment-badge')).toBeNull();
+    expect(
+      document.querySelector(
+        '.inbox-row__chip--remote, .inbox-row__slim-remote',
+      ),
+    ).toBeNull();
     expect(document.querySelector('.home-view__remote-note')).toBeNull();
   });
 });
