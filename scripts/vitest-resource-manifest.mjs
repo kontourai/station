@@ -122,6 +122,8 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  // Exercises the health CLI refusal before any GitHub request.
+  'scripts/__tests__/ci-health.test.ts',
   'src-server/services/connections/__tests__/browser-code-login.test.ts',
   'scripts/__tests__/learning-atlas.browser.test.ts',
   // Starts a nested Vitest run of its probe under a simulated merge-queue env.
@@ -329,6 +331,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // discovery, which is itself a Vitest child. Single-shot spawns, no
   // wall-clock assertion.
   'scripts/__tests__/fast-checks-shard-cli.test.ts',
+  // #3101: dependency-free planner CLI output and exit status in child processes.
+  'scripts/__tests__/fast-checks-plan.test.ts',
   // #2709 re-land: runs the aggregator's real base-controlled bash/jq step
   // from ci.yml against simulated job results. Single-shot spawns, no
   // wall-clock assertion.
@@ -596,6 +600,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #2675 D: installs two fixture archives with the real install.sh and runs
   // the real launcher, whose child stages with install.sh again.
   'scripts/__tests__/service-launcher-e2e.test.ts',
+  // #2675 W1: runs install.ps1's embedded installer core as a bounded
+  // single-shot node child per case, whose own `--version` self-check spawns
+  // the fixture archive's runtime once.
+  'scripts/__tests__/install-ps1.test.ts',
   'scripts/__tests__/installer-tool-output-parsing.test.ts',
   'scripts/__tests__/local-verification.test.ts',
   'scripts/__tests__/native-release-config.test.ts',
@@ -816,6 +824,11 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // under the four-worker ordinary corpus. Keep their feedback deterministic.
   'src-server/providers/__tests__/acp-adapter.test.ts',
   'src-server/providers/__tests__/station-control-mcp-passthrough.integration.test.ts',
+  // #2932: the real Agent SDK launches a small Node script standing in for
+  // the Claude CLI, through its own spawn and through Station's. The spawn
+  // is the SDK's and the adapter's, not a direct test-file import. Each run
+  // is single-shot and exits by itself; nothing asserts a wall-clock bound.
+  'src-server/providers/__tests__/claude-code-spawn.sdk.test.ts',
   'src-server/providers/auth/__tests__/cli-auth-login-path.test.ts',
   'src-server/routes/plugins/__tests__/plugins.routes.test.ts',
   // One private Node child with exposed GC proves strong lease custody. No

@@ -68,11 +68,6 @@ interface HomeRecentWorkSectionProps {
   agents: readonly SessionIconAgent[];
   remoteUnavailable: { environmentName: string }[];
   remoteAuthenticationRequired: { environmentName: string }[];
-  /** Per-project rows the host's activity chart renders — the "Projects"
-   *  count, which must describe those rows and not a second population. */
-  projectRowCount: number;
-  /** Reveals the host's activity chart, or `null` when it is not rendered. */
-  onShowProjects: (() => void) | null;
   onOpen: (task: HomeWorkItem) => void;
   onViewActivity: () => void;
   onRetry: () => void;
@@ -208,8 +203,6 @@ function HomeWorkContent({
   workError,
   workFacts,
   agents,
-  projectRowCount,
-  onShowProjects,
   onOpen,
   onViewActivity,
   onRetry,
@@ -235,11 +228,7 @@ function HomeWorkContent({
           this branch, so a count can never be shown — or made activatable —
           for a lane that is not on the page. */}
       <PulseStats
-        stats={pulseStats(
-          controller.lanes,
-          projectRowCount,
-          statTargets(controller, onShowProjects),
-        )}
+        stats={pulseStats(controller.lanes, statTargets(controller))}
       />
       <HomeWorkLanesContent
         controller={controller}
@@ -269,7 +258,6 @@ function HomeWorkContent({
  */
 function statTargets(
   controller: HomeWorkController,
-  onShowProjects: (() => void) | null,
 ): Record<string, PulseStatTarget> {
   const { lanes } = controller;
   const targets: Record<string, PulseStatTarget> = {};
@@ -296,12 +284,6 @@ function statTargets(
         controller.expandShelf();
         revealHomeRegion(SNOOZED_HEADING_ID);
       },
-    };
-  }
-  if (onShowProjects) {
-    targets.Projects = {
-      destination: 'show where the work has been',
-      onActivate: onShowProjects,
     };
   }
   return targets;

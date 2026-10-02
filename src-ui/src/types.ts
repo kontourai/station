@@ -129,6 +129,14 @@ export interface ComposerAttachmentStageSnapshot {
   delivery?: 'legacy-inline' | 'staged';
   /** A reload has retained the stage reference but cannot retain File bytes. */
   needsFile?: boolean;
+  /**
+   * The completed upload outlived its server stage TTL, so it must be
+   * uploaded again before it can be sent. Distinguishes "time ran out" from
+   * a failed upload so the chip can say which one happened.
+   */
+  expired?: boolean;
+  /** See `ComposerAttachmentStageUpdate.capacityFull`. */
+  capacityFull?: boolean;
   error?: string;
   /** Retained provenance is safe across reload; source bytes are never retained. */
   transformation?: TransformationReceipt;
@@ -153,6 +161,12 @@ export interface ChatMessage {
   showContinue?: boolean;
   timestamp?: number;
   traceId?: string;
+  /**
+   * A steer Station delivered by stopping the step that was running (the
+   * engine has no additive steer channel); the bubble says so, because the
+   * step it stopped otherwise reads as cancelled for no reason.
+   */
+  steerInterruptedRun?: boolean;
   fromPrompt?: boolean;
   contentParts?: Array<{
     type:
@@ -173,6 +187,8 @@ export interface ChatMessage {
     name?: string;
     // Flat `tool-invocation` tool-part fields — the single chat tool vocabulary.
     toolName?: string;
+    /** See `MessagePart.toolKind`: the engine's own category, when reported. */
+    toolKind?: string;
     server?: string;
     originalName?: string;
     args?: any;
@@ -189,6 +205,8 @@ export interface ChatMessage {
     approvalThreadId?: string;
     /** #2316: see `MessagePart.approvalEventId`. */
     approvalEventId?: string;
+    /** See `MessagePart.approvalToolName`. */
+    approvalToolName?: string;
     /** #2915: see `MessagePart.approvalSessionGrant`. */
     approvalSessionGrant?: ToolRequestSessionGrant;
     questionnaire?: HarnessQuestionnaire;
@@ -370,6 +388,8 @@ export interface ChatSession {
   currentModeId?: string | null;
   planArtifact?: PlanArtifact | null;
   pendingApprovals?: string[];
+  /** See ChatUIState.answeredApprovals. */
+  answeredApprovals?: string[];
   /** See ChatUIState.unacknowledgedDecisions (#2880). */
   unacknowledgedDecisions?: UnacknowledgedDecision[];
   isProcessingStep?: boolean;

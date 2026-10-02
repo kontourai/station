@@ -97,3 +97,32 @@ describe('ConnectionManagerModal lazy body', () => {
     ).toBeTruthy();
   });
 });
+
+it('uses the host live status for the selected row without inventing an in-progress check', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => Response.json({ requests: [] })),
+  );
+  await import('../react/ConnectionManagerModalContent');
+  const store = new ConnectionStore({ storage: memoryAdapter() });
+  const current = store.add('Current Station', 'https://current.example.test');
+  store.add('Another Station', 'https://other.example.test');
+  const health = vi.fn(async () => false);
+  render(
+    <ConnectionsProvider store={store}>
+      <ConnectionManagerModal
+        isOpen
+        onClose={vi.fn()}
+        checkHealth={health}
+        activeHealth={{
+          connectionId: current.id,
+          status: 'connected',
+          reason: null,
+        }}
+      />
+    </ConnectionsProvider>,
+  );
+  expect(await screen.findByText('Current · Connected')).toBeTruthy();
+  expect(screen.getByText('Not checked')).toBeTruthy();
+  expect(health).not.toHaveBeenCalled();
+});

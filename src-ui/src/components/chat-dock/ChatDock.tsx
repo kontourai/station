@@ -70,6 +70,7 @@ import {
 } from '../../hooks/useDockShellChrome';
 import { useDockFoldsToOneRegion } from '../../hooks/useIsMobile';
 import { useKeyboardShortcut } from '../../hooks/useKeyboardShortcut';
+import { readNewChatIntent } from '../../lib/newChatIntent';
 import {
   OPEN_PROJECT_CHATS_EVENT,
   type OpenProjectChatsDetail,
@@ -130,6 +131,7 @@ import {
   routeToOpenChatsCollection,
   shouldRouteScopedChatProject,
 } from './chat-dock-utils';
+import { ambientChatPaneFailureContext } from './chatPaneFailureContext';
 import { submitCommandLauncherIntent } from './command-launcher-model';
 import { claimComposerDraftRequest } from './composerDraftRequest';
 import type { ConversationOpenRecovery } from './conversationOpenController';
@@ -447,6 +449,11 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   // Get data from contexts
   const { apiBase } = useApiBase();
   const requestAuthority = useHostRequestAuthorityScope();
+  const [pendingGoalSend, setPendingGoalSend] = useState<{
+    sessionId: string;
+    prompt: string;
+    authority: typeof requestAuthority;
+  } | null>(null);
   const { captureCredentialEvidence } = useConnections();
   const mentionCredentialEvidence = captureCredentialEvidence();
   const mentionAuthority = mentionCredentialEvidence
@@ -767,6 +774,8 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     setImportedSessionId,
     onOpenInboxSession,
     newChatRequestEpoch,
+    newChatStartWithDefault,
+    newChatInitialPrompt,
     setShowNewChatModal,
     isHistoryOpen,
     toggleHistory,
@@ -813,6 +822,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     toolPolicyDelivery,
     effectiveModels,
     fileAttachmentsSupported,
+    imageAttachmentCaveat,
     imageAttachmentRefusal,
     gitStatus,
     modelSupportsAttachments,
@@ -971,9 +981,11 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       images: modelSupportsAttachments,
       files: fileAttachmentsSupported,
       imageRefusal: imageAttachmentRefusal,
+      imageCaveat: imageAttachmentCaveat,
     }),
     [
       fileAttachmentsSupported,
+      imageAttachmentCaveat,
       imageAttachmentRefusal,
       modelSupportsAttachments,
     ],
@@ -985,6 +997,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     sessionId: activeSessionId,
     agentSlug: activeSessionForHook?.agentSlug || null,
     conversationId: activeSessionForHook?.conversationId,
+    orchestrationSession: activeOrchestrationSession,
     availableModels: effectiveModels,
     modelsStale,
     bindingStatus,
@@ -1016,6 +1029,27 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     // generic toast must not be suppressed in that case.
     isChatVisible: isPaneOpen,
   });
+  useEffect(() => {
+    if (!pendingGoalSend) return;
+    if (pendingGoalSend.authority && !pendingGoalSend.authority.isCurrent()) {
+      setPendingGoalSend(null);
+      return;
+    }
+    if (activeSessionId !== pendingGoalSend.sessionId) {
+      setPendingGoalSend(null);
+      return;
+    }
+    if (chatInput.sendBlockedReason) return;
+    setPendingGoalSend(null);
+    if (chatInput.input !== pendingGoalSend.prompt) return;
+    void chatInput.handleSend(pendingGoalSend.prompt);
+  }, [
+    activeSessionId,
+    pendingGoalSend,
+    chatInput.input,
+    chatInput.handleSend,
+    chatInput.sendBlockedReason,
+  ]);
 
   // The enriched catalog row for the chat the dock is showing, resolved once
   // for every surface that renders its identity (station#3309).
@@ -1667,7 +1701,11 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     [openConversationInScopedPane],
   );
   useEffect(() => {
-    const openNewChat = () => setShowNewChatModal(true);
+    const openNewChat = (event: Event) => {
+      const intent = readNewChatIntent(event);
+      if (intent.startWithDefault && hasImmutableProjectScope) return;
+      setShowNewChatModal(true, intent);
+    };
     // station#1297: `HomeView.continueWork` / `ProjectSidebar` request focus
     // from outside the ChatDock subtree. The request used to carry only
     // `sessionId` and silently drop when that id wasn't a live in-memory
@@ -1797,6 +1835,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       unregisterOpenChatsNavigation();
     };
   }, [
+    hasImmutableProjectScope,
     applyDockSnap,
     collapseDockForNavigation,
     focusSessionInPane,
@@ -2940,6 +2979,8 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
           sessions,
           showNewChatModal,
           newChatRequestEpoch,
+          newChatStartWithDefault,
+          newChatInitialPrompt,
           showChatSettings,
           showSessionPicker,
           chatFontSize,
@@ -3001,6 +3042,17 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
               providerId,
               providerType,
             );
+            if (
+              sessionId &&
+              newChatStartWithDefault &&
+              newChatInitialPrompt?.trim()
+            ) {
+              setPendingGoalSend({
+                sessionId,
+                prompt: newChatInitialPrompt,
+                authority: requestAuthority,
+              });
+            }
             if (sessionId) navigate(pathname, { chat: sessionId });
             setShowNewChatModal(false);
             setNewChatProjectOverride(null);
@@ -3228,6 +3280,7 @@ export function ChatDock({
       componentProps={{
         onRequestAuth,
         renderChatPane: renderAmbientChatPane,
+        chatPaneFailureContext: ambientChatPaneFailureContext,
         regionId,
       }}
       pending={null}

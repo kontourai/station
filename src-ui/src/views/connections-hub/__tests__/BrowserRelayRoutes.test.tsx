@@ -103,6 +103,7 @@ function fillAndAccept(turn?: {
   username?: string;
   credential?: string;
 }) {
+  fireEvent.click(screen.getByText('Advanced: broker setup'));
   fireEvent.change(screen.getByLabelText('Station name'), {
     target: { value: 'Home Station' },
   });
@@ -202,6 +203,20 @@ describe('browser broker route acceptance', () => {
     ).toBeTruthy();
     expect(mocks.redeem).not.toHaveBeenCalled();
     expect(mocks.approveTrust).not.toHaveBeenCalled();
+    expect(mocks.addBrokerRoute).not.toHaveBeenCalled();
+  });
+
+  it('keeps broker setup out of the ordinary view until explicitly expanded', () => {
+    render(<BrowserRelayRoutes />);
+    const summary = screen.getByText('Advanced: broker setup');
+    const disclosure = summary.closest('details');
+    expect(disclosure).not.toBeNull();
+    expect(disclosure?.open).toBe(false);
+    fireEvent.click(summary);
+    expect(disclosure?.open).toBe(true);
+    expect(screen.getByLabelText('Station name')).toBeTruthy();
+    expect(screen.getByLabelText('Station application address')).toBeTruthy();
+    expect(mocks.redeem).not.toHaveBeenCalled();
     expect(mocks.addBrokerRoute).not.toHaveBeenCalled();
   });
 

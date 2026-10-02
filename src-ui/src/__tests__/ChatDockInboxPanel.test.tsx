@@ -10,6 +10,7 @@ import {
 } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ChatDockInboxPanel } from '../components/chat-dock/ChatDockInboxPanel';
+import { LIFECYCLE_HOLD_MS } from '../components/chat-dock/useHeldLifecycles';
 import { chatDraftsStore } from '../contexts/chat-drafts-store';
 import { deviceSettingsStore } from '../lib/device-settings-store';
 import { migrateSnoozeKey } from '../utils/activity-snooze-store';
@@ -154,6 +155,21 @@ describe('ChatDockInboxPanel', () => {
   });
 
   describe('focus survives a server-driven lane move', () => {
+    // A move out of Running is held (useHeldLifecycles) so a blip never
+    // jumps the row; the lane move — and the focus hand-off — land once the
+    // hold elapses. Only timers and Date are faked: the focus hook's
+    // microtask must still run.
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+    const settleHold = () =>
+      act(() => {
+        vi.advanceTimersByTime(LIFECYCLE_HOLD_MS);
+      });
+
     it('keeps focus on a row that moves Running -> Idle (its Running lane empties)', () => {
       const running = item('moving', 'Running', NOW - 60_000);
       const other = item('other', 'Ready', NOW - 5 * 60_000);
@@ -173,6 +189,14 @@ describe('ChatDockInboxPanel', () => {
           items={[{ ...running, lifecycleLabel: 'Ready' }, other]}
         />,
       );
+      // Held: still under Running and still focused, no jump yet.
+      expect(
+        within(screen.getByRole('region', { name: 'Running' })).getByRole(
+          'button',
+          { name: rowName },
+        ),
+      ).toBe(document.activeElement);
+      settleHold();
       expect(screen.queryByRole('region', { name: 'Running' })).toBeNull();
       const idle = screen.getByRole('region', { name: 'Idle' });
       expect(document.activeElement).toBe(
@@ -204,6 +228,8 @@ describe('ChatDockInboxPanel', () => {
           items={[{ ...running, lifecycleLabel: 'Ready' }, other]}
         />,
       );
+      settleHold();
+      expect(screen.getByRole('region', { name: 'Idle' })).toBeTruthy();
       expect(document.activeElement).toBe(document.body);
     });
 
@@ -233,6 +259,7 @@ describe('ChatDockInboxPanel', () => {
           items={[{ ...running, lifecycleLabel: 'Ready' }, other]}
         />,
       );
+      settleHold();
       expect(document.activeElement).toBe(
         within(screen.getByRole('region', { name: 'Idle' })).getByRole(
           'button',

@@ -193,7 +193,7 @@ checks, while preserving global/system configuration. This lets a check inspect
 its intended subdirectory or temporary repository instead of inheriting the
 pushed repository's index and Git directory. A failed check still rejects the push.
 
-In hosted CI, required `fast-checks` aggregates the affected-test plan, four
+In hosted CI, required `fast-checks` aggregates the affected-test plan, one to four planned
 shards, and `fast-checks-statics`. It checks both job outcomes and receipts
 bound to the plan and source revision. Local `ci:fast` still runs its whole
 bounded lane; `STATION_CI_FAST_SCOPE=statics` is the hosted split's explicit

@@ -811,6 +811,13 @@ interface ConnectionManagerModalProps {
   isOpen: boolean;
   onClose: () => void;
   checkHealth: (url: string, credential?: string) => Promise<ConnectionHealthCheckResult>;
+  checkCompatibility?: (url: string, signal?: AbortSignal) => Promise<StationCompatibilityResult>;
+  activeHealth?: {
+    connectionId: string;
+    status: 'connecting' | 'connected' | 'error' | 'idle';
+    reason?: ConnectionFailureReason | null;
+  };
+  guardConnectionChange?: (proceed: () => void) => void;
   initialPanel?: 'list' | 'add' | 'request-access' | 'pair-device' | 'pair-code' | 'pair-host' | 'devices' | 'discover';
   initialPairingPayload?: string;
   listFooterContent?: ReactNode;
@@ -829,6 +836,9 @@ does not interpret the content or change pairing and address flows.
   isOpen={showModal}
   onClose={() => setShowModal(false)}
   checkHealth={hostCheckConnectionHealth}
+  checkCompatibility={hostCheckCompatibility}
+  activeHealth={hostActiveConnectionHealth}
+  guardConnectionChange={hostGuardUnsavedWork}
 />
 ```
 
@@ -837,6 +847,19 @@ structured failure reason to a bare `false`; credential refusal and an
 unreachable server need different recovery. See the
 [complete prop contract](../../packages/connect/src/react/ConnectionManagerModal.tsx)
 for compatibility checks and native-host integration options.
+
+The compatibility checker is required for adding a Station or completing
+pairing: omitting it blocks those flows with an integration error. Bind
+`activeHealth` to the selected connection's ID and its live health snapshot;
+the manager ignores it for another connection. Without that snapshot, an
+unchecked row is idle rather than claiming an in-progress connection.
+Opening a row reveals details without changing the selected Station. Its
+explicit **Switch to this Station** action passes through
+`guardConnectionChange`; the host calls `proceed` only after its unsaved-work
+decision allows the change. Hosts that omit this optional guard supply no
+unsaved-work interception at this boundary. The manager offers an access
+request for a missing or rejected credential, rather than for every saved
+connection.
 
 The [store](../../packages/connect/src/core/ConnectionStore.ts),
 [profile normalizer](../../packages/connect/src/core/connectionProfile.ts), and

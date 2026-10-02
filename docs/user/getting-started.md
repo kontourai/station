@@ -84,6 +84,12 @@ runs its own agent loop.
    External agent in the same confirmed action.
 3. Follow its setup action until it reports **Ready**.
 
+For OpenAI's model service, supply its API key. A custom server may use another
+supported authentication method or need no key. **Create** saves a Model
+connection and checks it immediately; if its model list is unavailable, the
+check may send a small, potentially billable test prompt using the default
+model. Correct a refused check before expecting the connection to run work.
+
 Read the accompanying evidence too. A saved connection or a live model catalog
 does not prove that a chat turn completed. An explicit one-turn smoke supplies
 that narrower proof and can incur provider charges; opening Connections or
@@ -108,6 +114,28 @@ Choose the simplest path for what you want to do:
 
 ## Start Your First Chat
 
+On Home, write what you want done and choose **Start a chat**. Station uses
+working defaults, waits for discovery, and carries your original request into
+the conversation. You do not need to choose an Agent, Model, or provider first.
+An already-ready engine can be prepared through the existing idempotent setup
+path; installed, unconnected apps can be connected when needed. Explicitly
+disabled apps remain disabled. A missing account, permission, or working target
+is shown at the point where it is needed, without claiming preparation succeeded.
+
+**Chat options** opens the full picker when you want a different app, Model,
+or workspace. **Explore agents** remains available for deliberate customization.
+The usage disclosure ends after your usage decision. **Personalize Station**
+opens optional preferences after the work entry; it is not a prerequisite for a
+chat.
+Closing preparation prevents a late response from starting work. The request stays
+in the Home field while that Home view remains mounted and through the temporary
+setup-return flow; changing Stations or authorization ends that flow.
+
+When creating an agent, choose **Use a model connection** for Station's engine
+or **Use an AI app** for Claude Code, Codex, or another connected engine. Those
+apps run on the computer hosting your Station, including when you use a phone.
+An agent's setup warning names that agent; other ready agents can still run.
+
 At the end of first-run setup, choose **Start your first chat**. Station saves
 any personalization answers you selected, then opens New Chat. Unanswered
 questions add no profile. If saving those answers fails, setup stays open so
@@ -124,13 +152,33 @@ Both save the same selected answers before opening their next step.
 If New Chat offers **Connect**, **Set up**, **Edit agent**, or **Set up
 Connections**, use that action to open the owning setup page. The picker steps
 aside while keeping your chosen workspace, Agent, Model, and selected context.
-Use **Return to New Chat** when finished, or browser Back to return to the page
-you left. Station rechecks setup before you choose an Agent; returning sends no
-message. If a choice was removed or access changed, choose an available option.
+For explicit Chat options, use **Return to New Chat** when finished, or browser
+Back to return to the page you left. Station rechecks setup before selection;
+that manual return sends no message. For a written Home goal, readiness of the
+selected agent returns you automatically and resumes the original request after
+revalidation. A failed read keeps the request unsent. If a choice was removed or
+access changed, choose an available option.
 
 **Cancel return**, opening a fresh New Chat, navigating elsewhere, changing
 Stations or authorization, and reloading the page end this temporary return
 flow. Connection changes you already saved remain saved.
+
+### Keep a scheduled-job draft through setup
+
+If Add Job needs an agent, use its setup action. Station prefers repairing an
+existing eligible agent's model connection or configuration; it offers agent
+creation when none exists. The dialog keeps its name, instructions, schedule,
+provider and other fields while the setup page is open. Browser Back or the
+return action restores that draft; verified readiness returns automatically.
+An existing job waits for its selected agent to be ready before returning.
+The job is saved only when you submit it. Changing Station or access, cancelling
+the return, or reloading ends this temporary draft journey.
+
+Opening a page through app navigation reveals that page instead of
+leaving it under maximized chat. On a phone, chat collapses so the destination
+can use the screen. Explicit maximized conversation links still
+open chat at their requested size, and the prior chat size remains available
+when you return to the conversation.
 
 ### Reference project files and earlier conversations
 
@@ -203,7 +251,16 @@ Project's Review layout. Missing or unavailable records remain visible as such.
 Reading a receipt does not satisfy a gate. See
 [how the inspection keeps the exact target](https://github.com/kontourai/station/blob/main/docs/guides/starter-work.md#inspect-approval-and-review-evidence).
 
+Home keeps unattributed chats visible in its activity chart. Its work counters
+show states such as Running and Needs you; activity groups are not a count of
+configured Projects.
+
 ## Run A Scheduled Readiness Check
+
+To create an ordinary scheduled job, use an agent with a model connection
+(Station's engine). AI app agents cannot run scheduled jobs. If none is ready,
+the job form offers **Set up a scheduled-job agent** to open agent creation;
+choose **Use a model connection** there.
 
 Home can create **station-starter-check** and run it once. Its daily schedule
 stays disabled until you enable it. Open the receipt to read the findings;

@@ -283,6 +283,17 @@ aborted after it was accepted, or interrupts a recovered turn. A queued send
 still waiting when the engine ends is recorded with its message and then
 aborted (`engine-ended-before-start`).
 
+An ACP send whose attachments the engine cannot take (images when its
+`initialize` handshake did not advertise `promptCapabilities.image`, or any
+non-image file) is refused before any engine effect with
+`ATTACHMENT_INPUT_UNSUPPORTED_CODE` (`attachment_input_unsupported`, from
+`provider`). Unlike the two codes above it is not retryable: the same send is
+refused again. An ACP steer delivered by the cancel + re-prompt fallback, for
+an engine without a native steer method, cancels the running prompt and any
+tool it was running. Its steer `turn.started` carries
+`steerInterruptedRun: true` so a client can say why that step shows as
+cancelled.
+
 Muse through `muse serve` (#2452). The Station runtime drives each Muse
 session through one `muse serve` (MSP) host, and everything above about
 `muse exec` describes its fallback: a session whose host cannot be used (no

@@ -1,6 +1,7 @@
 import { APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE } from '@kontourai/station-contracts/orchestration';
 import { PRINCIPAL_UNRESOLVED_CODE } from '@kontourai/station-contracts/principal';
 import {
+  ATTACHMENT_INPUT_UNSUPPORTED_CODE,
   ENGINE_SESSION_BINDING_DEAD_CODE,
   ENGINE_TURN_FAILED_CODE,
   MUSE_TURN_IDLE_TIMEOUT_CODE,
@@ -364,6 +365,20 @@ export function translateChatError(
         'This session has already ended, so it cannot take another message.',
       hint: 'Start a new chat to continue.',
       terminalSession: true,
+    };
+  }
+
+  // The engine cannot take the attachments, refused before anything reached
+  // it. Deterministic: sending the same attachments again is refused again,
+  // so this carries no "temporary" hint and callers withhold Retry
+  // (`retryable: false`). The server's sentence names what the engine did not
+  // advertise; the hint names the two things that actually change the answer.
+  if (code === ATTACHMENT_INPUT_UNSUPPORTED_CODE) {
+    return {
+      title: "This engine can't take these attachments",
+      body: `${text || 'This engine cannot take the attached files.'} Nothing was sent.`,
+      hint: 'Remove the attachments to send your text, or switch to an engine or model that accepts them.',
+      retryable: false,
     };
   }
 

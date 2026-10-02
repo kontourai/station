@@ -39,6 +39,29 @@ host's current credential/transport integration. See
 [storage](./src/core/storage.ts), [ConnectionStore](./src/core/ConnectionStore.ts)
 and the [host profile adapter](../../src-ui/src/platform/native/stationProfileStorage.ts).
 
+## Connection manager integration
+
+Render `ConnectionManagerModal` inside `ConnectionsProvider`. Supply the
+host's authenticated `checkHealth` adapter and `checkCompatibility`; adding a
+Station or completing pairing is blocked when the compatibility checker is
+missing. Native hosts keep credential values in their existing host transport
+and profile owners.
+
+Pass `activeHealth` with the selected connection's ID, live status and optional
+failure reason. The manager uses that snapshot only for the matching selected
+connection; other unchecked rows remain idle. Opening a row reveals details,
+and **Switch to this Station** performs the selection separately. Supply
+`guardConnectionChange(proceed)` when the host owns unsaved work, and call
+`proceed` only after its guard allows the switch. Omitting the optional guard
+does not add an unsaved-work decision automatically.
+
+The manager offers access recovery when the selected connection needs it,
+rather than asking every paired device to request access again. These UI
+props report observations and coordinate a selection; they do not grant
+credentials or Project authority. See the
+[Connect reference](../../docs/reference/connect.md#connectionmanagermodal)
+and [complete prop contract](./src/react/ConnectionManagerModal.tsx).
+
 ## Optional native application transport
 
 `@kontourai/station-connect/native-application` exports

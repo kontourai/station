@@ -7,7 +7,7 @@
 
   "summary": "Completed all remaining documented claims through actual release/TestFlight and client callers: optional feed reads versus compile inclusion, pinned-origin fetch and HTTPS action validation, conditional writes/readback/compensation and ambiguous outcomes, container alias publication, three-profile/extension entitlement export checks, native credential persistence rejection and iOS accessibility, and pinned OIDC/Secret Manager action behavior. Corrected guarantees to the checks performed.",
 
-  "limits": "No native build, real device, Keychain/Keystore write, signed artifact, Linux/Windows launch, provider account mutation, publication, upgrade or rollback executed in this continuation. Fixture and source checks do not establish live outcomes. Parent owns combined CI and final ledger integration.",
+  "limits": "No native build, real device, Keychain/Keystore write, signed artifact, Linux/Windows launch, provider account mutation, publication, upgrade or rollback executed in this continuation. Fixture and source checks do not establish live outcomes. Parent owns combined CI and final ledger integration.\n\nStructural merge of 5fd2dd86ad0cd35018ce09537c1aa01ce58e0e55 and 8f9ea788561518398a488d35bb768b78a272e73b preserves both prior immutable document/source anchors and historical checks. Selecting an existing current-byte binding is structural reconciliation only, not semantic approval of merged inputs. No new digest/revision or coverage baseline was minted. Competing prior anchors remain pending semantic review and supported recording after the merge commit: [{\"path\":\".github/workflows/nightly.yml\",\"ours\":{\"path\":\".github/workflows/nightly.yml\",\"digest\":\"b7e07d02c9583bad18f20d2a362a6c70a7f1e4fb425d7c06d6d313d2be824dca\",\"revision\":\"401e7c7ca5cf5b194b76a21a317fd8ec34591301\"},\"main\":{\"path\":\".github/workflows/nightly.yml\",\"digest\":\"555ac154d3eb7983e8dd5c6f3ff5f73e4f48ac6aac1800747fbbbc5ce4d36801\",\"revision\":\"ec29a8774f2c138bfd9e9818c0f0cc36fc5ebefe\"},\"active\":{\"path\":\".github/workflows/nightly.yml\",\"digest\":\"b7e07d02c9583bad18f20d2a362a6c70a7f1e4fb425d7c06d6d313d2be824dca\",\"revision\":\"401e7c7ca5cf5b194b76a21a317fd8ec34591301\"},\"decision\":\"oursMatch\"},{\"path\":\"src-desktop/Cargo.lock\",\"ours\":{\"path\":\"src-desktop/Cargo.lock\",\"digest\":\"d07581565c34d28f701e69cc8234c8f9a7a5ddd88657ecfdafc08e246c128b40\",\"revision\":\"e33331ee19520c8bd546c878fdd503063a682634\"},\"main\":{\"path\":\"src-desktop/Cargo.lock\",\"digest\":\"38624df3105a4d464e085d4034e32a78e7fe867334cfac2006d6d8b73a31fc4b\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},\"active\":{\"path\":\"src-desktop/Cargo.lock\",\"digest\":\"d07581565c34d28f701e69cc8234c8f9a7a5ddd88657ecfdafc08e246c128b40\",\"revision\":\"e33331ee19520c8bd546c878fdd503063a682634\"},\"decision\":\"oursMatch\"},{\"path\":\"src-desktop/Cargo.toml\",\"ours\":{\"path\":\"src-desktop/Cargo.toml\",\"digest\":\"1bd5b1cfcc31ff425e990407c5b919b9688d5e1b264c0ca60fb969fadf3ce600\",\"revision\":\"b1b2d1fd15ddfd6dea0be7371a81d5008f6ffbf7\"},\"main\":{\"path\":\"src-desktop/Cargo.toml\",\"digest\":\"74e0f4e26dcd14a8d40422c9b7a8b0a1940728f04d3f6cfd1d5b020cb70f0b85\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},\"active\":{\"path\":\"src-desktop/Cargo.toml\",\"digest\":\"1bd5b1cfcc31ff425e990407c5b919b9688d5e1b264c0ca60fb969fadf3ce600\",\"revision\":\"b1b2d1fd15ddfd6dea0be7371a81d5008f6ffbf7\"},\"decision\":\"oursMatch\"},{\"path\":\"src-desktop/src/lib.rs\",\"ours\":{\"path\":\"src-desktop/src/lib.rs\",\"digest\":\"55b2e5849868789c486b8ee0c489080f50fe66d06f2d74b0ec1de6ded0d5411d\",\"revision\":\"b1b2d1fd15ddfd6dea0be7371a81d5008f6ffbf7\"},\"main\":{\"path\":\"src-desktop/src/lib.rs\",\"digest\":\"8c75f82874099575e30e4b757be90a2ba22bbd8d2623813566b5b3f139124833\",\"revision\":\"3517d8f66db867fd982a8f9883ed85052c4e1fc1\"},\"active\":{\"path\":\"src-desktop/src/lib.rs\",\"digest\":\"55b2e5849868789c486b8ee0c489080f50fe66d06f2d74b0ec1de6ded0d5411d\",\"revision\":\"b1b2d1fd15ddfd6dea0be7371a81d5008f6ffbf7\"},\"decision\":\"oursMatch\"}]",
 
   "document": {"digest":"e023c537a26d21fc5670e6ff044521dec517957c3ed66e7d6838c1ae89011205","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
@@ -37,6 +37,8 @@
     {"path":"install.sh","digest":"f2b2fbf2dba1198f08637b48ad3a1cd7ae684cee020621cd293668e6bbb8b4bc","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
     {"path":"ops/nightly/install-macos.zsh","digest":"70db095f76a9397adaccbab4a78374a2e562a76af2e0f595a30b5f09328776f3","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"package.json#/scripts/mobile:permissions:gate","digest":"388ab98f993e01ae62702b6901800b488c2ca0c767a5dbf851c481e37074aca9","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
 
     {"path":"patches/android-native-keyring-store/src/by_service/cred.rs","digest":"780472c84c59241c7bb0a54dc8d39032ae683cff9b4220f6b5a069243c9a1e14","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
@@ -108,15 +110,13 @@
 
     {"path":"src-desktop/src/lib.rs","digest":"55b2e5849868789c486b8ee0c489080f50fe66d06f2d74b0ec1de6ded0d5411d","revision":"b1b2d1fd15ddfd6dea0be7371a81d5008f6ffbf7"},
 
+    {"path":"src-desktop/src/native_secure_entry.rs","digest":"d6ff8051df4be60ff738f524488fe877b0711b95aa606cb70b378e74962bd209","revision":"8d92d732808201554ba801334e2a19f7081fd09d"},
+
     {"path":"src-server/services/notifications/agent-activity-publisher.ts","digest":"3753a4c2bf54fbe7024f0cd658b5a69e9e2c8e0a03c00b9e8592ab6096ee0712","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
     {"path":"src-ui/src/__tests__/CoreUpdateLaunchCheck.test.tsx","digest":"d4b04ded0daf9782f355af8c27f7f2b07d4ed1a8263dad862a71f4b9708bea58","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-ui/src/components/CoreUpdateLaunchCheck.tsx","digest":"97dbb424d7dcdb9a111cd789df399ace5f50468ccc1015d0a9ec9594656e495e","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
-    {"path":"package.json#/scripts/mobile:permissions:gate","digest":"388ab98f993e01ae62702b6901800b488c2ca0c767a5dbf851c481e37074aca9","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
-
-    {"path":"src-desktop/src/native_secure_entry.rs","digest":"d6ff8051df4be60ff738f524488fe877b0711b95aa606cb70b378e74962bd209","revision":"8d92d732808201554ba801334e2a19f7081fd09d"}
+    {"path":"src-ui/src/components/CoreUpdateLaunchCheck.tsx","digest":"97dbb424d7dcdb9a111cd789df399ace5f50468ccc1015d0a9ec9594656e495e","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"}
   ],
 
   "checks": [

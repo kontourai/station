@@ -9,7 +9,10 @@ import { FilePartPreview } from '../FilePartPreview';
 import { LazyMarkdown } from '../LazyMarkdown';
 import { ReasoningSection } from '../ReasoningSection';
 import { ChatErrorDetails } from '../SystemEventMessage';
-import { ToolCallBatchBoundary } from '../ToolCallBatchBoundary';
+import {
+  ToolCallBatchBoundary,
+  usePreloadToolCallBatch,
+} from '../ToolCallBatchBoundary';
 import { type ToolApprovalOutcome, ToolCallDisplay } from '../ToolCallDisplay';
 import { splitToolCallRuns } from '../tool-call-runs';
 import { UIBlockRenderer } from '../UIBlockRenderer';
@@ -54,6 +57,9 @@ function MessageContentComponent({
   // buried inside a collapsed summary. Only the structural split runs
   // eagerly here; classification/summary happens inside the lazy chunk.
   const blocks = useMemo(() => splitToolCallRuns(contentParts), [contentParts]);
+  usePreloadToolCallBatch(
+    blocks.some((block) => block.type === 'tool-call-run'),
+  );
   const currentMessageProjection = useMemo(
     () => <div>{textContent}</div>,
     [textContent],
