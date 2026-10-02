@@ -31,6 +31,7 @@ type SnapshotChatState = Pick<
   | 'currentSessionId'
   | 'conversationId'
   | 'pendingApprovals'
+  | 'pendingApprovalTurnIds'
   | 'approvalToasts'
 >;
 
@@ -621,8 +622,18 @@ export function applyOrchestrationSnapshot(
 
   for (const { threadId, updates } of plan.sessionUpdates) {
     let approvalToasts: Map<string, string> | undefined;
+    let pendingApprovalTurnIds: Record<string, string> | undefined;
     if (updates.pendingApprovals) {
       const openIds = new Set(updates.pendingApprovals);
+      // #3071: the server's list already excludes what a turn's abort
+      // settled. A binding this client learned live (`request.opened.turnId`)
+      // is kept for the ids still open, so a later live abort can settle
+      // them by the same rule; the server names no turn for the rest.
+      pendingApprovalTurnIds = Object.fromEntries(
+        Object.entries(snapshot[threadId]?.pendingApprovalTurnIds ?? {}).filter(
+          ([requestId]) => openIds.has(requestId),
+        ),
+      );
       approvalToasts = new Map(snapshot[threadId]?.approvalToasts ?? []);
       for (const [requestId, toastId] of approvalToasts) {
         if (openIds.has(requestId)) continue;
@@ -646,6 +657,7 @@ export function applyOrchestrationSnapshot(
     activeChatsStore.updateChat(threadId, {
       ...updates,
       ...(approvalToasts ? { approvalToasts } : {}),
+      ...(pendingApprovalTurnIds ? { pendingApprovalTurnIds } : {}),
       ...(isReconnectFallback
         ? reconnectCatchUpUpdates(
             snapshot[threadId],

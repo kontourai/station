@@ -122,8 +122,9 @@ every other route. These rules make it a region rather than a special case
     below the page, and the reader's maximize memory (`lastDockMaximized`,
     what `focusSession` reopens Chat with) is kept. This holds for Home's row
     as well, which shares the path. `placeSurface` (a tab's Move to Main, the
-    Layout picker) does not go through `commit` and does not restore a
-    maximized region yet. On a phone the page is not a layer over
+    Layout picker) does not go through `commit` but restores a maximized
+    region the same way, with the same memory rule, when the target is
+    `main` (#2988). On a phone the page is not a layer over
     Chat; when the layer is showing the very pane being opened as the page,
     the layer is ended through its own restore first (without asking its
     guards — only a guard-free surface can be both), and its history entry
@@ -137,21 +138,49 @@ every other route. These rules make it a region rather than a special case
     transient, like the phone layer's origin — it is not in the persisted
     arrangement record, so after a reload the chord returns to
     `defaultRegion`. An explicit placement clears it.
-  - **Accepted gap: swapping `main` at `/` adds no history entry.** The page
-    is placement, not a URL, as Home's row always was. From another route
-    the navigation to `/` is one entry, and Back returns to that route. At
-    `/`, Back after the swap leaves `/` for the previous entry rather than
-    returning to Home — and on a phone, where Back used to close Activity's
-    layer back to Chat, Back from the Activity page now leaves the page
-    (in the Android app, from the first entry, that can close the app).
-    When the page was opened from Activity's phone layer, the layer's
-    history entry is consumed by that open, so Back lands on the entry
-    before the layer, whose URL carries Chat's maximize: Chat comes back
-    full screen over the Activity page, which is still `main`'s occupant.
-    A history entry per swap would need a restore-on-popstate rule for
-    `main` that survives reload, forward and interleaved route navigation;
-    that is a design decision for `main`'s URL identity, not part of this
-    rule.
+  - **A page swap at `/` is a history entry (#2986).** The page is
+    placement, not a URL, so its identity lives in `history.state`
+    (`main-page-history.ts`): every `/` entry is stamped with the surface
+    `main` showed on it, and a swap made at `/` pushes a same-URL entry for
+    the new page. A traversal that lands on a stamped entry puts that page
+    back, so Back from Activity returns to Home, Forward re-opens Activity,
+    and the stamps are in `history.state`, so they outlive a reload. After
+    one, the stored arrangement is what is shown and the live entry is
+    stamped to match it. From another route the
+    navigation to `/` is still one entry and Back returns to that route. On a
+    phone with Chat full screen, the entry being left keeps `maximize` in its
+    URL, so Back returns to the full-screen Chat the page was opened over
+    — also when the page was opened from Activity's phone layer, whose own
+    entry is left orphaned beneath and skipped on the way back.
+    The swap is pushed through the navigation store, so the entry has a
+    navigation index of its own and a guarded traversal across page entries
+    is travelled back by the right distance; the traversal between two page
+    entries is itself same-URL and asks no unsaved-changes guard. A stamp
+    says what the entry showed, so a change of occupant that is not a page
+    open (the chord returning Activity to its dock, a tab moved out of
+    `main`) rewrites the live entry's stamp rather than adding an entry —
+    including at mount, where the stored arrangement is what is on screen. A
+    route entry carries no stamp, and an unstamped `/` entry is stamped on
+    arrival. Three traversals are not obeyed: the store's own bare
+    `popstate`; the landing of a guarded traversal before the guard has
+    answered (`navigationStore.traversalAwaitsGuard`); and a traversal
+    within one navigation entry — a dialog layer copies the state it was
+    pushed on, stamp included, so closing it lands on the entry beneath,
+    whose stamp is then brought up to date instead of applied (the two are
+    told apart by navigation index: the store reports the index of the
+    entry a traversal left, `traversalDepartedIndex`). A page change caused
+    by adopting a surface deep link (`/?surface=…`) adds no entry of its
+    own: the link's entry is the entry, and the adoption clears the command
+    from it. Limits: a
+    page chosen from a dialog (the command palette) closes that dialog, as
+    any navigation does, and leaves its entry orphaned beneath, which costs
+    one extra Forward press on the way back; a swap also closes any other
+    open dialog, and abandons a navigation still waiting on its precommit,
+    as a navigation does; a swap asked for from inside another navigation's
+    notification gets no entry of its own; and the page a traversal
+    removes is unplaced, as when Home's row takes the page, without asking
+    that surface's own unsaved-changes guards (no surface that declares
+    `main` registers one today).
 - **`main` has no toolbar control on any device** (it is always visible;
   since #2143 the toolbar is per DOCK region). A surface that declares `main`
   (Activity) also reaches it through its place row (above) and **Move to Main**,
@@ -1446,6 +1475,125 @@ itself still opens and says what it is waiting for: the "+" may decline to
 render at all while the read runs, and a toggle the user has already HELD may
 not, because a completed gesture that produces nothing is indistinguishable
 from a broken one (#2155 review M3).
+
+## The Coding layout's centre is a navigation stack (2026-09-29)
+
+**Desktop slice of the coding-layout revamp. Supersedes, for the built-in
+Coding layout on a device that is not bottom-only, the note above that Chat
+declares only the three dock regions and that "its `main` placement would be
+a projectless full-screen Chat, a mount no entry point has made".** The
+built-in Coding layout now puts Station's one Chat controller in its own
+centre, as the Chat page of a navigation stack; every pane is a page drilled
+into from it.
+
+- **Placement is a render-time derivation.**
+  `resolveLayoutChatPlacement` ([project-layout-kind.ts](../../src-ui/src/app-shell/project-layout-kind.ts))
+  answers `viewport` for the Station-owned Chat layout (App mounts no region
+  shells, unchanged), `center` for the built-in Coding layout on a device that
+  is not bottom-only (`useDockFoldsToOneRegion`), and `none` otherwise — a
+  plugin or withheld layout typed `coding`, and every bottom-only device,
+  whose Coding Chat stays the (maximized) dock as before. App provides the
+  answer through `LayoutChatPlacementContext`
+  ([chat-placement.ts](../../src-ui/src/app-shell/chat-placement.ts)), and the
+  Coding host derives the same answer, so no frame mounts two Chat controllers.
+  Until the layout record is known — the layout query `isPending`, which
+  includes the idle frame while the persisted query cache restores — App
+  mounts no Chat anywhere: not the dock's, which the record could suspend a
+  frame later, and not a layout's, which has no layout yet.
+- **The ambient `chat` surface is suspended, not moved.** While the centre
+  owns Chat, `RegionShells` and the toolbar wrap their readers in
+  `SuspendRegionSurfaces` ([RegionModelContext.tsx](../../src-ui/src/contexts/RegionModelContext.tsx)):
+  `useRegionModelOptional` returns `withSuspendedSurfaces`'s read view
+  ([region-model.ts](../../src-ui/src/regions/region-model.ts)). A region
+  holding only Chat renders nothing (hidden, not an empty chooser); a region
+  holding Chat and another pane shows that pane and drops a maximize that was
+  Chat's; a tab reorder written through the view puts Chat back where it was
+  (`restoreSuspendedPanes`). The provider's state and the persisted
+  arrangement keep Chat, so leaving the layout brings the dock's Chat back.
+- **Show Chat goes to the centre.** Chat's chord (⌘D) and
+  `useShowSurface('chat', intent)` ask the mounted workbench for its Chat
+  page (`requestCenterChatPage`), focusing the composer; a session intent is
+  delivered through the outbox (`deliverSurfaceIntent`) without revealing a
+  region. The centre's Chat keeps the dock's conversation scope (every
+  conversation, not the Chat layout's Project-bound one) and registers as the
+  foreground Chat only while its page is on screen, so toasts still reach a
+  reader who is on a drill-in.
+- **The stack is the navigation store's.**
+  [CodingWorkbench](../../src-ui/src/components/coding-layout/CodingWorkbench.tsx)
+  derives the page from the pane host's selection
+  ([codingStackPage.ts](../../src-ui/src/components/coding-layout/codingStackPage.ts)):
+  `?pane=`+`?paneScope=` for this host is a drill-in (a pushed history entry),
+  its absence is the Chat page. The host runs with
+  `navigationSelection="explicit"` (a catalog reconciliation or a close keeps
+  an existing `?pane=` current but never mints one) and is drawn
+  `chromeless`: a drill-in page is the breadcrumb and the pane, no tab strip,
+  save notice or pane actions. Choosing another conversation in the inbox is a
+  replace (`setActiveChat`), not an entry. The bar is the breadcrumb
+  (Inbox / conversation / pane; earlier crumbs go back); drill-ins are an icon
+  rail on the trailing edge with the current one solid, the Diff badged with a
+  changed-file count the layout already knows, the Browser launcher and the
+  pane catalog last. Back and Forward are the browser's and the stack's
+  chords (⌘[ ⌘] on macOS, Alt+← Alt+→ elsewhere); Escape is left to the
+  composer. The navigation store remembers the locations of the entries it
+  has seen (`adjacentLocation`, bounded to 64, in memory) so a chord can tell
+  whether the adjacent entry is this layout's.
+- **Both pages stay mounted.** The inactive page is hidden (`visibility`) and
+  inert; a drill-in's pane renders only once the reader has drilled in during
+  that mount and stays mounted after. Page changes animate with a short CSS
+  slide-and-fade whose direction is the history index delta (not the View
+  Transitions API, which WebKitGTK lacks); under `prefers-reduced-motion` the
+  global rule in `tokens.css` collapses it to 0.01ms, so none of it is seen. The
+  workbench's CSS carries no page-local media query: its rail and crumbs are
+  44px targets on every pointer.
+- **The inbox is Chat's own.** The centre's Chat is `ChatWorkspacePane`'s
+  full-screen placement, whose inbox panel collapses and reopens through its
+  `inboxOpen` device setting exactly as in the Chat layout; the stack mounts
+  no second inbox.
+- **The Coding occurrence is the Chat page.** It still gates the host, but is
+  no pane of it and is not offered by the picker. A document persisted before
+  the stack keeps its id: the host's restore drops the occurrence its baseline
+  no longer issues and prunes the group it leaves empty, keeping every other
+  pane and its state, and a first load lands on the Chat page with no drill-in
+  open.
+
+- **Chat never goes missing, and the dock is left as the reader had it.**
+  Every Coding host state before its pane host mounts (the catalog loading or
+  failing, an unavailable Coding occurrence, a composition that cannot be
+  admitted) still renders the Chat page, with that state as a notice. While
+  the centre owns Chat, the Chat chord and `showSurface('chat')` never toggle
+  or reveal the dock, even before the workbench mounts, and the other writers
+  that open the dock (the palette's "Open chat dock", a turn notification, a
+  share, a new session) go through `showChatPageOrDock`. The persisted dock
+  region is unchanged by a visit to the layout.
+- **The chords stay out of text.** A shortcut handler may return `false` to
+  decline its key (`KeyboardShortcutsContext`), which is then neither
+  prevented nor consumed. The stack's chords decline only inside an editor
+  that owns those keys itself (CodeMirror, xterm, a contenteditable editor),
+  and when there is nothing to go back or forward to in the layout, so the
+  browser keeps its own Back. In a plain input, textarea or the composer they
+  are the stack's Back and Forward (off macOS, Alt+← there would otherwise be
+  the browser's Back and could leave the layout). A synthetic key cannot show
+  what the browser's own accelerator does; the tests prove the stack's side.
+- **A pane the host lacks is not a ghost page.** A close in explicit
+  selection mode corrects the URL in place (`replaceWorkspacePaneHostSelection`)
+  rather than pushing, and a `?pane=` naming a pane the host does not hold
+  resolves to the pane the host is showing, which the breadcrumb and the rail
+  then name.
+- **Focus follows the reader's move.** A page change the reader made (within
+  a second of the move, and consumed by any change the stack sees) or one
+  that left focus on the page going inert moves focus to the composer or to
+  the drill-in page, and a polite live region names the new page. A cold deep
+  link arrives on its drill-in directly: while the catalog loads, the page is
+  the one the URL names, and settling on the layout's own page neither slides
+  nor announces.
+
+Limits: bottom-only devices keep the dock (the narrow inbox-root stack is a
+later slice), session-bound docks are not part of this slice, and a layout
+whose catalog issues no drill-in pane mounts no host (the rail then offers no
+"Add pane"). Crossing the 768px fold remounts Chat between the centre and the
+dock, so state the Chat pane keeps locally (an unsent draft not yet saved to
+the session, scroll position, an open panel) is not carried across; the
+session and its saved draft are.
 
 ## Failure shapes this design is meant to prevent
 

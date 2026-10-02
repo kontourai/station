@@ -18,7 +18,7 @@
 
     {"path":"tests/helpers/install-plugin.ts","digest":"dc3683c74ba62c0c1f136e69279b91b3c465d01affdcdc98c34d7e2754c09a3c","revision":"e1e8339750ff5b7210254866bd2d853454efaf04"},
 
-    {"path":"tests/plugin-pane-sdk-context.spec.ts","digest":"9c7dae827f31537ac3078cbdce667f43fd8891df09ffba435f41bf301c282308","revision":"e1e8339750ff5b7210254866bd2d853454efaf04"}
+    {"path":"tests/plugin-pane-sdk-context.spec.ts","digest":"a63a3c61aebbf377c44c90d035b07bd9640654c0c830964083e17b7ca7da7dad","revision":"adcb57024f39f6b546a2589d81e68dc526a85b29"}
   ],
 
   "checks": [
