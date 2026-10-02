@@ -249,9 +249,11 @@ describe('translateChatError', () => {
       message: 'Synthetic transport detail.',
     });
 
-    expect(result.title).toBe('Station is handling too many requests');
+    expect(result.title).toBe('Station connection is busy');
     expect(result.body).toBe('Synthetic transport detail.');
-    expect(result.hint).toBe('Retry your request in a moment.');
+    expect(result.hint).toBe(
+      'Wait for current requests to finish, then Retry.',
+    );
   });
 
   it.each([

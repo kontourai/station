@@ -32,6 +32,46 @@ device, TestFlight, or App Store package. The command prints the resulting
 `.app` path. Archive that app only for a workspace or service that accepts iOS
 simulator artifacts; it cannot be installed on a physical iPhone or iPad.
 
+## Native request queue pressure
+
+The authenticated native HTTP bridge admits up to 8 ordinary requests and 12
+requested event streams per origin, with 32 active requests across origins.
+Ordinary requests wait in a bounded FIFO of 64 entries. The reserved identity
+health probe has a separate allowance. These are request counts, not CPU,
+memory, provider usage, or rate-limit measurements.
+
+A full ordinary queue rejects admission before sending HTTP bytes. That
+`transport_capacity` error includes a validated `capacity` snapshot: waiting
+and active counts and limits, ordinary and stream counts for the requested
+origin, and a 250 ms retry hint. The same counts appear in its human-readable
+diagnosis. The snapshot also lists active request methods, fixed route
+categories, ages, phases (awaiting response or receiving a body/event stream),
+and whether they target this Station, plus the FIFO head's age and category.
+The oldest three active entries and the queue head appear in the human-readable
+error and a shell warning, emitted at most once per five seconds. Categories
+omit full URLs, query strings, credentials, request bodies, and resource IDs.
+Counts describe the moment of refusal; request ages include admission wait.
+They do not establish whether the server or client caused the backlog.
+
+The renderer retains the request and automatically retries this pre-dispatch
+queue refusal up to six times. Delays start at 250 ms, double to a 4-second
+cap, and add up to 25% jitter (about 12–15 seconds total back-off). Each attempt
+checks current admission under the host's queue lock. Cancellation stops
+back-off, and the captured authority is checked again before each retry.
+Request body, method, URL, and scoped binding remain the same.
+
+Stream, reserved health-probe, duplicate-ID, legacy uncoded, and post-dispatch
+channel failures do not use this retry path. This prevents a possibly sent
+chat POST from being replayed. After exhaustion, the final error retains the
+latest counts and explains that automatic retries could not find space.
+React Query still does not retry `transport_capacity`, so it cannot start a
+second automatic retry cycle after the transport's bounded attempt.
+
+Rust admission tests cover the serialized snapshot and queue bound; the
+native adapter tests cover recovery, exhaustion, cancellation, authority
+changes, and non-replayable failures. Those tests do not establish real
+WebView IPC, packaged-shell, mobile, or physical-device behavior.
+
 ## Native foreground dispatch deadlines
 
 The native HTTP broker waits up to 60 seconds for response headers on
