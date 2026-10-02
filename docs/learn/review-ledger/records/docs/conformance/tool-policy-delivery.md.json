@@ -62,7 +62,7 @@
 
     {"path":"src-server/providers/adapters/acp-adapter-events.ts","digest":"f3e937e0fac5e359c1dddfc56891e09cf597cbe9e6e6b8132efee91b65481427","revision":"b7561d3b1d39b4cd9ae541ef6048f7e9648a86ad"},
 
-    {"path":"src-server/providers/adapters/claude-permission-frames.ts","digest":"300ade87b015d85e3752dc8c3f6acd15119066baf8f40b75f62c3b1c1331978d","revision":"e0d9d93ecc6952a3d3ad760e6378e0d147d93eae"},
+    {"path":"src-server/providers/adapters/claude-permission-frames.ts","digest":"92c1ac0cfd831849c0c744d791c06e5eae42b89bd9cc8434027dab38575dad32","revision":"ff3cb2b963dc2445f4f70921dccc8b5ab4c161f5"},
 
     {"path":"src-server/providers/adapters/claude-code-spawn.ts","digest":"3099ddc2f4bdc915e5a9b20b6d9a38fe46186e42d684c5909e306afee94aab18","revision":"e0d9d93ecc6952a3d3ad760e6378e0d147d93eae"}
   ],
