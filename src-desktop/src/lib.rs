@@ -12245,9 +12245,9 @@ If a stable instance is running, this launch will focus its window and exit.",
     {
         let state = app.state::<native_relay_link_intake::NativeRelayLinkState>();
         state.start_expiry_worker();
-        if native_relay_ios_launch::install(app.handle().clone()).is_err() {
+        if let Err(stage) = native_relay_ios_launch::install(app.handle().clone()) {
             state.unavailable();
-            log::error!("Station native relay URL launch delivery is unavailable.");
+            log::error!("Station native relay URL launch delivery is unavailable ({stage}).");
         }
     }
     app.run(|app, event| {
