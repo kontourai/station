@@ -14,10 +14,7 @@ import { CHAT_ATTACHMENT_MAX_COMMAND_JSON_BYTES } from '@kontourai/station-contr
 import type { ProviderSessionStartInput } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { parseHostedTenantRegistry } from '@kontourai/station-contracts/tenancy';
-import {
-  inspectOrchestrationSteerInput,
-  steerOrchestrationTurn,
-} from '@kontourai/station-sdk';
+import { inspectSteerInput, steerTurn } from '@kontourai/station-sdk/client';
 import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
 import { assembleTurnProvenanceEnvelopes } from '@kontourai/station-shared/turn-provenance-fold';
 import { Hono } from 'hono';
@@ -508,7 +505,7 @@ describe('Orchestration Routes', () => {
     });
     const fetchSpy = vi
       .spyOn(globalThis, 'fetch')
-      .mockImplementation((input, init) =>
+      .mockImplementation(async (input, init) =>
         legacy.request(input instanceof Request ? input : String(input), init),
       );
     const input = {
@@ -519,19 +516,19 @@ describe('Orchestration Routes', () => {
       clientInputId: 'stable-input',
     };
     try {
-      await expect(inspectOrchestrationSteerInput(input)).rejects.toThrow(
+      await expect(inspectSteerInput(input.apiBase, input)).rejects.toThrow(
         'Validation failed',
       );
       expect(engineSteer).not.toHaveBeenCalled();
-      await expect(steerOrchestrationTurn(input)).rejects.toThrow(
+      await expect(steerTurn(input.apiBase, input)).rejects.toThrow(
         'Validation failed',
       );
       expect(engineSteer).not.toHaveBeenCalled();
       await expect(
-        steerOrchestrationTurn({ ...input, clientInputId: '' }),
+        steerTurn(input.apiBase, { ...input, clientInputId: '' }),
       ).rejects.toThrow('Validation failed');
       expect(engineSteer).not.toHaveBeenCalled();
-      await steerOrchestrationTurn({ ...input, clientInputId: undefined });
+      await steerTurn(input.apiBase, { ...input, clientInputId: undefined });
       expect(engineSteer).toHaveBeenCalledTimes(1);
       expect(engineSteer.mock.calls[0][0]).not.toHaveProperty('clientInputId');
     } finally {
@@ -625,7 +622,7 @@ describe('Orchestration Routes', () => {
       text: 'redirect',
     };
     try {
-      await expect(steerOrchestrationTurn(input)).rejects.toThrow(
+      await expect(steerTurn(input.apiBase, input)).rejects.toThrow(
         'HTTP acknowledgement lost',
       );
       expect(adapter.steerTurn).toHaveBeenCalledTimes(1);
@@ -638,18 +635,18 @@ describe('Orchestration Routes', () => {
         createdAt: at,
         finishReason: 'stop',
       });
-      expect(await inspectOrchestrationSteerInput(input)).toEqual({
+      expect(await inspectSteerInput(input.apiBase, input)).toEqual({
         outcome: 'steered',
         threadId,
         turnId: 'live',
       });
       const absent = { ...input, clientInputId: 'http-never-received' };
-      expect(await inspectOrchestrationSteerInput(absent)).toEqual({
+      expect(await inspectSteerInput(absent.apiBase, absent)).toEqual({
         outcome: 'not-received',
         threadId,
         clientInputId: absent.clientInputId,
       });
-      expect(await inspectOrchestrationSteerInput(absent)).toMatchObject({
+      expect(await inspectSteerInput(absent.apiBase, absent)).toMatchObject({
         outcome: 'not-received',
       });
       expect(adapter.steerTurn).toHaveBeenCalledTimes(1);
@@ -670,13 +667,13 @@ describe('Orchestration Routes', () => {
           clientInputId: held.clientInputId,
         }),
       ).toBe(true);
-      expect(await inspectOrchestrationSteerInput(held)).toEqual({
+      expect(await inspectSteerInput(held.apiBase, held)).toEqual({
         outcome: 'indeterminate',
         threadId,
         clientInputId: held.clientInputId,
       });
       expect(adapter.steerTurn).toHaveBeenCalledTimes(1);
-      expect(await steerOrchestrationTurn(input)).toEqual({
+      expect(await steerTurn(input.apiBase, input)).toEqual({
         outcome: 'steered',
         threadId,
         turnId: 'live',

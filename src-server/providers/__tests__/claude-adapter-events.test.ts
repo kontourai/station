@@ -1210,7 +1210,7 @@ describe('claude-adapter-events — thinking/status notifications', () => {
         retry_delay_ms: 1500,
         error_status: 429,
         error: 'rate_limit',
-        uuid: 'retry-1',
+        uuid: '00000000-0000-4000-8000-000000000001',
         session_id: 's-1',
       },
     });

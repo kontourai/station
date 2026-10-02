@@ -44,8 +44,10 @@ import {
   getOrchestrationSessionEventWindow,
   getSessionBuilderRun,
   getSessionFlowRun,
+  inspectSteerInput as inspectSteerInputClient,
   type SessionBuilderRunView,
   type SessionFlowRunView,
+  steerTurn as steerTurnClient,
 } from '../client/orchestration';
 import { StationRequestTimeoutError } from '../client/request-deadline';
 import {
@@ -1115,7 +1117,6 @@ export async function setOrchestrationApprovalMode(input: {
   );
 }
 
-/** Add user input to the currently open turn; this never queues a future turn. */
 /** Receipt inspection is safe against older servers: an unknown command never steers. */
 export async function inspectOrchestrationSteerInput(input: {
   threadId: string;
@@ -1124,20 +1125,10 @@ export async function inspectOrchestrationSteerInput(input: {
   clientInputId: string;
   apiBase?: string;
 }) {
-  return dispatchOrchestrationCommand<
-    import('@kontourai/station-contracts/orchestration').SteerInputInspectionResult
-  >(
-    {
-      type: 'inspectSteerInput',
-      threadId: input.threadId,
-      input: input.text,
-      clientInputId: input.clientInputId,
-      ...(input.turnId ? { turnId: input.turnId } : {}),
-    },
-    input.apiBase,
-  );
+  return inspectSteerInputClient(await resolveApiBase(input.apiBase), input);
 }
 
+/** Add user input to the currently open turn; this never queues a future turn. */
 export async function steerOrchestrationTurn(input: {
   threadId: string;
   text: string;
@@ -1145,19 +1136,7 @@ export async function steerOrchestrationTurn(input: {
   clientInputId?: string;
   apiBase?: string;
 }) {
-  return dispatchOrchestrationCommand<
-    import('@kontourai/station-contracts/orchestration').SteerTurnResult
-  >(
-    {
-      ...(input.clientInputId !== undefined
-        ? { type: 'steerTurnOnce' as const, clientInputId: input.clientInputId }
-        : { type: 'steerTurn' as const }),
-      threadId: input.threadId,
-      input: input.text,
-      ...(input.turnId ? { turnId: input.turnId } : {}),
-    },
-    input.apiBase,
-  );
+  return steerTurnClient(await resolveApiBase(input.apiBase), input);
 }
 
 export function useOrchestrationProvidersQuery(

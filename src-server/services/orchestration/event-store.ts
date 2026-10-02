@@ -11054,7 +11054,7 @@ export class EventStore {
         `INSERT OR IGNORE INTO orchestration_steer_inputs (thread_id, client_input_id, input_digest) VALUES (?, ?, ?)`,
       )
       .run(input.threadId, input.clientInputId, this.steerInputDigest(input));
-    return Number(result.changes) === 1;
+    return sqliteRunChanges(result) === 1;
   }
 
   confirmSteerInput(
@@ -11076,7 +11076,7 @@ export class EventStore {
         input.clientInputId,
         this.steerInputDigest(input),
       );
-    if (Number(result.changes) !== 1)
+    if (sqliteRunChanges(result) !== 1)
       throw new Error('Steer delivery confirmation was not recorded.');
   }
 
@@ -12793,6 +12793,17 @@ interface CommandReceiptRow {
   status: OrchestrationCommandReceipt['status'];
   created_at: string;
   client_origin: string | null;
+}
+
+function sqliteRunChanges(result: unknown): number {
+  if (
+    typeof result !== 'object' ||
+    result === null ||
+    !('changes' in result) ||
+    (typeof result.changes !== 'number' && typeof result.changes !== 'bigint')
+  )
+    throw new Error('SQLite write returned an invalid change count.');
+  return Number(result.changes);
 }
 
 function recoveryTransition(result: {
