@@ -604,7 +604,7 @@ describe('ProjectSidebar panel order (#2059)', () => {
       ).textContent?.trim(),
     );
 
-  test('lists header, Home, Activity, then the projects — and no other destination rows', () => {
+  test('lists Home, Activity, Schedule and Customize before the projects', () => {
     resetState();
     projects.push(
       { id: 'p1', slug: 'station', name: 'Station' },
@@ -615,10 +615,17 @@ describe('ProjectSidebar panel order (#2059)', () => {
     // The header is above the body and is its own control, so it anchors the
     // order rather than joining the row list.
     expect(screen.getByRole('button', { name: 'Station home' })).toBeTruthy();
-    expect(panelRowLabels()).toEqual(['Home', 'Activity', 'Station', 'Ferry']);
+    expect(panelRowLabels()).toEqual([
+      'Home',
+      'Activity',
+      'Schedule',
+      'Customize',
+      'Station',
+      'Ferry',
+    ]);
   });
 
-  test('removes every configuration destination and both group headers from the panel', () => {
+  test('keeps individual customization destinations out of the panel', () => {
     resetState();
     renderSidebar(<ProjectSidebar />);
 
@@ -634,7 +641,6 @@ describe('ProjectSidebar panel order (#2059)', () => {
       'Developer',
       'Notifications',
       'Settings',
-      'Customize',
       'System',
     ]) {
       expect(
