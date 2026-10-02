@@ -9,14 +9,14 @@
 
   "limits": "The isolated normal Linux Node runtime and real loopback Project/shared-work publisher executed in the preserved failed fresh-d8dd-20261001 run. Public connector registration never occurred: its initial lease expired before process spawn, exact credentials/scope matched, actual register/withdraw and cleanup returned 401. Actual fresh native host ceremony, main WebView, ordinary UI driver, physical iOS Nightly and Zach acceptance remain NOT_VERIFIED. Pion staging/build and a matching artifact digest do not establish an application peer. Node guard is not an OS sandbox; routing revocation is not instantaneous TURN credential revocation or a financial spend cap.",
 
-  "document": {"digest":"955f8efaf43a29a357443450d333ddec58fef434ed31959a63070187394b7ca3","revision":"8aacc3bd625dd38c7b10bd7c88b7db4f03792a73"},
+  "document": {"digest":"65912260b16dafb5e1a61de529c28b20e2ccc7f257352b04128713c3735bda2d","revision":"e0ed479b4a907eb23a4aa1a788a4921e14f5f3bb"},
 
   "sources": [
-    {"path":"scripts/lib/native-fresh-relay-fixture.ts","digest":"603e1f01200fe509ab069300113181477f07b263f42754a8624e95381ffde140","revision":"f4df091ff774a1a88c182bf6e94f1a187e47483a"},
+    {"path":"scripts/lib/native-fresh-relay-fixture.ts","digest":"4673c2cc2af412718ed9aeebcd64afd8a248e38c1646b7d8131b66175dcb390f","revision":"e0ed479b4a907eb23a4aa1a788a4921e14f5f3bb"},
 
-    {"path":"scripts/native-fresh-relay-fixture.ts","digest":"7fcc4a15eec894f8fb33c682218771bd02a1599d4d7d5268f9c07334e20bf43f","revision":"fa447997e733e00b082b05e7c709a08a38820b5d"},
+    {"path":"scripts/native-fresh-relay-fixture.ts","digest":"28ae6e27c47c40c95928b7b68b944c3378a06db9f711103f2a9ba70e0e895300","revision":"e0ed479b4a907eb23a4aa1a788a4921e14f5f3bb"},
 
-    {"path":"scripts/__tests__/native-fresh-relay-fixture.test.ts","digest":"cf9debefd899ea909089251087d64b221441d3baf676e3983774973359aef01a","revision":"19a3410ebe8ecfa7dd5a9e233b247ca6567239d6"},
+    {"path":"scripts/__tests__/native-fresh-relay-fixture.test.ts","digest":"d83a98df30452d0a0164d5db0a89e0065ff88f2fa329c32d3d4ddd6133f78a6b","revision":"564e13c2309f192e8ae5077339b39f423cf238b2"},
 
     {"path":"tests/tauri-shell/native-fresh-relay-acceptance-webview.ts","digest":"3618b4a5b6517ced5f38e274952dac2cbfd7a276bba743581dbc30c1a305080e","revision":"058b19b63d88ffc68b5af83c3dda88ac9add9c63"},
 

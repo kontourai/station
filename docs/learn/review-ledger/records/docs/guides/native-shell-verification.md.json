@@ -112,15 +112,15 @@
 
     {"path":"src-desktop/src/native_device_binding_candidate.rs","digest":"83e1d464487d41fb5dc361259a2b80bfb91e0711cdc3c9a6c52e3f8726b76ffc","revision":"34838898143e9a6048203520cdc6da3f78ecf49e"},
 
-    {"path":"scripts/native-fresh-relay-fixture.ts","digest":"7fcc4a15eec894f8fb33c682218771bd02a1599d4d7d5268f9c07334e20bf43f","revision":"fa447997e733e00b082b05e7c709a08a38820b5d"},
+    {"path":"scripts/native-fresh-relay-fixture.ts","digest":"28ae6e27c47c40c95928b7b68b944c3378a06db9f711103f2a9ba70e0e895300","revision":"e0ed479b4a907eb23a4aa1a788a4921e14f5f3bb"},
 
     {"path":"src-ui/src/components/OnboardingGate.tsx","digest":"a162e42d41ed579ec24bfa787aaefb332c1dd3671250191619d976513520fbd5","revision":"e58fcedea713f7fc640bf51abe384f17503f72e4"},
 
     {"path":"tests/tauri-shell/native-fresh-relay-acceptance-webview.ts","digest":"3618b4a5b6517ced5f38e274952dac2cbfd7a276bba743581dbc30c1a305080e","revision":"058b19b63d88ffc68b5af83c3dda88ac9add9c63"},
 
-    {"path":"scripts/lib/native-fresh-relay-fixture.ts","digest":"603e1f01200fe509ab069300113181477f07b263f42754a8624e95381ffde140","revision":"f4df091ff774a1a88c182bf6e94f1a187e47483a"},
+    {"path":"scripts/lib/native-fresh-relay-fixture.ts","digest":"4673c2cc2af412718ed9aeebcd64afd8a248e38c1646b7d8131b66175dcb390f","revision":"e0ed479b4a907eb23a4aa1a788a4921e14f5f3bb"},
 
-    {"path":"tests/tauri-shell/native-fresh-relay-fixture.md","digest":"955f8efaf43a29a357443450d333ddec58fef434ed31959a63070187394b7ca3","revision":"8aacc3bd625dd38c7b10bd7c88b7db4f03792a73"},
+    {"path":"tests/tauri-shell/native-fresh-relay-fixture.md","digest":"65912260b16dafb5e1a61de529c28b20e2ccc7f257352b04128713c3735bda2d","revision":"e0ed479b4a907eb23a4aa1a788a4921e14f5f3bb"},
 
     {"path":"src-desktop/src/native_relay_ios_launch.rs","digest":"135f11afc3cc411a915de32a9c399487a8ca3f4eb1bf0afc381abf30c3f4ab66","revision":"b1b2d1fd15ddfd6dea0be7371a81d5008f6ffbf7"},
 
