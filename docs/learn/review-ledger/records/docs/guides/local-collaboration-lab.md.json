@@ -180,19 +180,19 @@
 
     {"path":"src-ui/src/platform/native/nativeRelaySignalingBridge.ts","digest":"4a04ae2c635c320bc13782ed9932efec3a135cea5cc30a6adbe14d4784c54257","revision":"699a02c3954e4be022d48267e4c5fc9aa2737a4e"},
 
+    {"path":"src-ui/src/views/account/account-entry-continuation.ts","digest":"b8daef294a50dfeebda2682768d23165399a486785da42fc47f919b5e2fdaf92","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
     {"path":"src-ui/src/views/account/AccountEntryView.tsx","digest":"9531a840fb63ea89dc0333ec52949977a76ec04950a9dcf5541623ff68f7c5e4","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"src-ui/src/views/account/guest-account-authority.ts","digest":"b4b584ad13cb971c1aaedc584afa7e5a5ce52834624f055e762aab8b703a4c47","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
     {"path":"src-ui/src/views/account/GuestDeviceOnboarding.tsx","digest":"7e6a036f893841dc121f95d9761e587fde027d8508142698b6ae6b1fedc6b6c8","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
     {"path":"src-ui/src/views/account/GuestProjectAccessView.tsx","digest":"e8bbd1c403d5076532f3948ddc500bcb5f720bea8d43aa6fa09d177dfb8f627c","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-ui/src/views/account/account-entry-continuation.ts","digest":"b8daef294a50dfeebda2682768d23165399a486785da42fc47f919b5e2fdaf92","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
-    {"path":"src-ui/src/views/account/guest-account-authority.ts","digest":"b4b584ad13cb971c1aaedc584afa7e5a5ce52834624f055e762aab8b703a4c47","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"src-ui/src/views/connections-hub/__tests__/BrowserRelayRoutes.test.tsx","digest":"640043b02ab76074f83a414d7c1ba9ffc660b2675d9e8d2628f8dbcf19ce662b","revision":"aee61ec2b806703d8531ba68086ea46f37145f31"},
 
     {"path":"src-ui/src/views/connections-hub/BrowserRelayRoutes.tsx","digest":"73f608345988cfe00d297d4605da138d9772d326d90b267aa23e3e68c3f20b9e","revision":"3eb0ca8d962b21e22b041e6b0d92af2a0d178054"},
-
-    {"path":"src-ui/src/views/connections-hub/__tests__/BrowserRelayRoutes.test.tsx","digest":"640043b02ab76074f83a414d7c1ba9ffc660b2675d9e8d2628f8dbcf19ce662b","revision":"aee61ec2b806703d8531ba68086ea46f37145f31"},
 
     {"path":"tests/tauri-shell/native-project-acceptance-webview.ts","digest":"4ab4a1f98e3d2e677da5bda05f7bb9d6e8186f684f88f63faa23841b179911a8","revision":"2e4f061f91ffb0338e45de62382cf6da59cd5c76"},
 

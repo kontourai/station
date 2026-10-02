@@ -30,9 +30,9 @@
 
     {"path":".github/workflows/windows-pr-verification.yml","digest":"608bbdfac16fd9d0379b4fcffbb79d8a1a94ab014736442765087fe3f17a21ae","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
-    {"path":".veritas/GOVERNANCE.md","digest":"896ca1d26e71e4e8d691fb2539888282903f15024cd1dc2585299d682b9d269c","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
-
     {"path":".veritas/authority/default.authority-settings.json","digest":"b47233d5d20d847ee85c5b77ccbd991ff13159270690a6adb957134b72cf57ac","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+
+    {"path":".veritas/GOVERNANCE.md","digest":"896ca1d26e71e4e8d691fb2539888282903f15024cd1dc2585299d682b9d269c","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
     {"path":".veritas/repo-map.json","digest":"fcabfcd9d0ad7a59d2ef216c943591575656f039e1d9df2d05565b96347ebca4","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
