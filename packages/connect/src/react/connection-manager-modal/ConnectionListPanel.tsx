@@ -218,7 +218,7 @@ function ConnectionRow({
 
   return (
     <div
-      className={`station-connect-row${connection.id === activeConnectionId ? ' station-connect-row--active' : ''}${isLocalServerDown ? ' station-connect-row--inactive' : ''}`}
+      className={`station-connect-row${connection.id === activeConnectionId ? ' station-connect-row--active' : ''}${isLocalServerDown ? ' station-connect-row--inactive' : ''}${detailsOpen ? ' station-connect-row--details' : ''}`}
     >
       {!isLocalServerDown && (
         <button

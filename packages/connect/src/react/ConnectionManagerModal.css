@@ -223,13 +223,17 @@
 
 .station-connect-row__url {
   margin-top: 2px;
-  pointer-events: auto;
+  pointer-events: none;
   user-select: text;
   overflow-wrap: anywhere;
   white-space: normal;
   font-family: var(--font-mono, ui-monospace, monospace);
   font-size: 11px;
   color: var(--text-secondary, #999);
+}
+
+.station-connect-row--details .station-connect-row__url {
+  pointer-events: auto;
 }
 
 .station-connect-row__meta {
