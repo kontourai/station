@@ -14,7 +14,7 @@
   "sources": [
     {"path":"packages/cli/src/cli.ts","digest":"ecf39393a34edc99d05222a41947a1ba086cf8fc60bac7fe3cdd4651e825881a","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"packages/cli/src/commands/lifecycle-doctor.ts","digest":"e0a3594c498a1ff682523e3f8a61cc3f28dda295ffec677fdb59b5351936fcc0","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"packages/cli/src/commands/lifecycle-doctor.ts","digest":"faccc3081c4b2f0bf2af1f51827b4d8458addca4690425f35e621f74dfdb972b","revision":"df558c03ac2dd6e437223c64f8100b2766f5e04b"},
 
     {"path":"packages/cli/src/commands/service.ts","digest":"66660b960af7fe541ec7c5a35f9e0c0ad4a0525060ac967372249b05108ed349","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -36,7 +36,7 @@
 
     {"path":"src-server/runtime/bootstrap/readiness-handshake.ts","digest":"321dc2ec9238434fb5b52e7e263c71b64546db0bc56292c164d73ab6fc6fd449","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/main.tsx","digest":"ea8ad745a9a86e49c5811a8320a01cce7764d38278a67f97b9ab2443d1f50e86","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"src-ui/src/main.tsx","digest":"ea8ad745a9a86e49c5811a8320a01cce7764d38278a67f97b9ab2443d1f50e86","revision":"f654ac16d7b2bc4944641044d0b33ee42320028a"},
 
     {"path":"src-ui/src/platform/native/__tests__/rendererLiveness.test.tsx","digest":"ccc6ecb72b88623cffc931a3b44f59a1d9367f15e283aea5286d339c44a0c2d3","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
