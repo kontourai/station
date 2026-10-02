@@ -149,14 +149,18 @@ pub(crate) fn relay_scheme(app_identifier: &str, channel: &str, dev_build: bool)
     format!("station-relay-{channel}")
 }
 
-fn canonical_origin(value: &str) -> bool {
+fn canonical_origin(value: &str, allow_debug_loopback: bool) -> bool {
     url::Url::parse(value).is_ok_and(|url| {
+        let numeric_loopback = match url.host() {
+            Some(url::Host::Ipv4(host)) => host == std::net::Ipv4Addr::LOCALHOST,
+            Some(url::Host::Ipv6(host)) => host == std::net::Ipv6Addr::LOCALHOST,
+            _ => false,
+        };
         url.origin().ascii_serialization() == value
             && url.username().is_empty()
             && url.password().is_none()
             && (url.scheme() == "https"
-                || (url.scheme() == "http"
-                    && matches!(url.host_str(), Some("localhost" | "127.0.0.1" | "[::1]"))))
+                || (url.scheme() == "http" && allow_debug_loopback && numeric_loopback))
     })
 }
 
@@ -301,8 +305,9 @@ fn decode_link(
             (route, Some(encoded_invitation), expires_at, delivery)
         }
     };
-    if !canonical_origin(&route.application_origin)
-        || !canonical_origin(&route.broker_origin)
+    let allow_debug_loopback = dev_build && channel == "dev";
+    if !canonical_origin(&route.application_origin, allow_debug_loopback)
+        || !canonical_origin(&route.broker_origin, allow_debug_loopback)
         || !valid_id(&route.station_id)
         || !valid_id(&route.enrollment_id)
     {
@@ -574,8 +579,8 @@ mod tests {
     #[test]
     fn first_contact_is_public_intent_and_cannot_start_invitation_operations() {
         let state = NativeRelayLinkState::default();
-        let value = json!({"version":"station-native-relay-link/v1","kind":"route-intent","applicationOrigin":"http://127.0.0.1:3491",
-            "brokerOrigin":"http://localhost:3492","stationId":"11111111-1111-4111-8111-111111111111","enrollmentId":"22222222-2222-4222-8222-222222222222"});
+        let value = json!({"version":"station-native-relay-link/v1","kind":"route-intent","applicationOrigin":"https://station.example",
+            "brokerOrigin":"https://broker.example","stationId":"11111111-1111-4111-8111-111111111111","enrollmentId":"22222222-2222-4222-8222-222222222222"});
         let delivery = state.receive(
             &link(&value),
             "io.kontourai.station.nightly",
@@ -592,6 +597,52 @@ mod tests {
             false
         )
         .is_err());
+    }
+
+    #[test]
+    fn production_links_require_https_and_debug_links_allow_only_numeric_exact_loopback() {
+        let now = now_ms();
+        for origin in [
+            "http://localhost:3491",
+            "http://127.0.0.1:3491",
+            "http://[::1]:3491",
+        ] {
+            for field in ["application", "broker"] {
+                let mut value = invitation(now);
+                if field == "application" {
+                    value["applicationOrigin"] = json!(origin);
+                } else {
+                    value["invitation"]["brokerOrigin"] = json!(origin);
+                }
+                let state = NativeRelayLinkState::default();
+                assert!(matches!(
+                    state.receive(
+                        &link(&value),
+                        "io.kontourai.station.nightly",
+                        "nightly",
+                        false,
+                        now
+                    ),
+                    LinkDelivery::Rejected { .. }
+                ));
+            }
+        }
+        let mut value = json!({"version":"station-native-relay-link/v1","kind":"route-intent","applicationOrigin":"http://127.0.0.1:3491",
+            "brokerOrigin":"http://[::1]:3492","stationId":"11111111-1111-4111-8111-111111111111","enrollmentId":"22222222-2222-4222-8222-222222222222"});
+        let mut url = link(&value);
+        url.set_scheme("station-relay-dev-instance").unwrap();
+        let state = NativeRelayLinkState::default();
+        assert!(matches!(
+            state.receive(&url, "io.kontourai.station.dev.instance", "dev", true, now),
+            LinkDelivery::RouteIntent { .. }
+        ));
+        value["brokerOrigin"] = json!("http://localhost:3492");
+        let mut url = link(&value);
+        url.set_scheme("station-relay-dev-instance").unwrap();
+        assert!(matches!(
+            state.receive(&url, "io.kontourai.station.dev.instance", "dev", true, now),
+            LinkDelivery::Rejected { .. }
+        ));
     }
 }
 

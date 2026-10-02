@@ -1738,8 +1738,11 @@ pub(crate) struct OsNativeGrantBackend;
 impl NativeGrantBackend for OsNativeGrantBackend {
     fn get(&mut self, account: &str) -> RedemptionResult<Option<Zeroizing<String>>> {
         super::initialize_credential_store().map_err(|_| NativeRedemptionError::GrantStore)?;
-        let entry = keyring_core::Entry::new(super::STATION_CREDENTIAL_SERVICE, account)
-            .map_err(|_| NativeRedemptionError::GrantStore)?;
+        let entry = crate::native_secure_entry::NativeSecureEntry::new(
+            super::STATION_CREDENTIAL_SERVICE,
+            account,
+        )
+        .map_err(|_| NativeRedemptionError::GrantStore)?;
         match entry.get_password() {
             Ok(value) => Ok(Some(Zeroizing::new(value))),
             Err(keyring_core::Error::NoEntry) => Ok(None),
@@ -1749,8 +1752,11 @@ impl NativeGrantBackend for OsNativeGrantBackend {
 
     fn set(&mut self, account: &str, value: &str) -> RedemptionResult<()> {
         super::initialize_credential_store().map_err(|_| NativeRedemptionError::GrantStore)?;
-        let entry = keyring_core::Entry::new(super::STATION_CREDENTIAL_SERVICE, account)
-            .map_err(|_| NativeRedemptionError::GrantStore)?;
+        let entry = crate::native_secure_entry::NativeSecureEntry::new(
+            super::STATION_CREDENTIAL_SERVICE,
+            account,
+        )
+        .map_err(|_| NativeRedemptionError::GrantStore)?;
         entry
             .set_password(value)
             .map_err(|_| NativeRedemptionError::GrantStore)
@@ -1758,8 +1764,11 @@ impl NativeGrantBackend for OsNativeGrantBackend {
 
     fn delete(&mut self, account: &str) -> RedemptionResult<()> {
         super::initialize_credential_store().map_err(|_| NativeRedemptionError::GrantStore)?;
-        let entry = keyring_core::Entry::new(super::STATION_CREDENTIAL_SERVICE, account)
-            .map_err(|_| NativeRedemptionError::GrantStore)?;
+        let entry = crate::native_secure_entry::NativeSecureEntry::new(
+            super::STATION_CREDENTIAL_SERVICE,
+            account,
+        )
+        .map_err(|_| NativeRedemptionError::GrantStore)?;
         match entry.delete_credential() {
             Ok(()) | Err(keyring_core::Error::NoEntry) => Ok(()),
             Err(_) => Err(NativeRedemptionError::GrantStore),

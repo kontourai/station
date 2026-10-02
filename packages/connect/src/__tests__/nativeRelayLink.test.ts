@@ -70,6 +70,52 @@ describe('native relay link publication contract', () => {
     expect(parseNativeRelayLink(inputLink(intent), options)).toEqual(intent);
   });
 
+  test('requires HTTPS in production and allows numeric loopback only for the explicit development association', () => {
+    for (const applicationOrigin of [
+      'http://localhost:3491',
+      'http://127.0.0.1:3491',
+      'http://[::1]:3491',
+    ]) {
+      expect(() =>
+        parseNativeRelayLink(
+          inputLink({ ...intent, applicationOrigin }),
+          options,
+        ),
+      ).toThrow('native_relay_link_invalid');
+    }
+    const local = {
+      ...intent,
+      applicationOrigin: 'http://127.0.0.1:3491',
+      brokerOrigin: 'http://[::1]:3492',
+    };
+    const dev = {
+      channel: 'dev' as const,
+      devScheme: 'station-relay-dev-instance',
+      appIdentifier: 'io.kontourai.station.dev.instance',
+      now,
+    };
+    const encoded = encodeNativeRelayLink(local, dev);
+    expect(parseNativeRelayLink(encoded, dev)).toEqual(local);
+    expect(() =>
+      encodeNativeRelayLink(
+        { ...local, brokerOrigin: 'http://localhost:3492' },
+        dev,
+      ),
+    ).toThrow('native_relay_link_invalid');
+    expect(() =>
+      parseNativeRelayLink(
+        inputLink({
+          ...bound,
+          invitation: {
+            ...bound.invitation,
+            brokerOrigin: 'http://127.0.0.1:3492',
+          },
+        }),
+        options,
+      ),
+    ).toThrow('native_relay_link_invalid');
+  });
+
   test.each([
     { ...bound, trusted: true },
     { ...bound, version: 'station-native-relay-link/v99' },

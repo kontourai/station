@@ -43,7 +43,7 @@ function positive(value: unknown): number {
   return value;
 }
 
-function origin(value: unknown): string {
+function origin(value: unknown, channel: NativeRelayLinkChannel): string {
   const input = text(value);
   let url: URL;
   try {
@@ -61,7 +61,8 @@ function origin(value: unknown): string {
     !(
       url.protocol === 'https:' ||
       (url.protocol === 'http:' &&
-        ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname))
+        channel === 'dev' &&
+        ['127.0.0.1', '[::1]'].includes(url.hostname))
     )
   )
     invalid();
@@ -125,7 +126,7 @@ function invitation(
     invalid();
   return {
     version: 'station-broker-native-route-invitation/v2',
-    brokerOrigin: origin(dto.brokerOrigin),
+    brokerOrigin: origin(dto.brokerOrigin, channel),
     scope: {
       stationId: text(scope.stationId, UUID),
       enrollmentId: text(scope.enrollmentId, UUID),
@@ -169,8 +170,8 @@ function envelope(
     return {
       version: VERSION,
       kind,
-      applicationOrigin: origin(dto.applicationOrigin),
-      brokerOrigin: origin(dto.brokerOrigin),
+      applicationOrigin: origin(dto.applicationOrigin, options.channel),
+      brokerOrigin: origin(dto.brokerOrigin, options.channel),
       stationId: text(dto.stationId, UUID),
       enrollmentId: text(dto.enrollmentId, UUID),
     };
@@ -186,7 +187,7 @@ function envelope(
     return {
       version: VERSION,
       kind,
-      applicationOrigin: origin(dto.applicationOrigin),
+      applicationOrigin: origin(dto.applicationOrigin, options.channel),
       invitation: invitation(
         dto.invitation,
         options.channel,
