@@ -367,6 +367,7 @@ const steerTurnCommandSchema = z.object({
   // generic zod message, exactly the divergence archive#2807 unified away.
   input: z.string().trim().min(1).max(CHAT_INPUT_MAX_CHARS),
   turnId: z.string().optional(),
+  clientInputId: z.string().min(1).max(128).optional(),
 });
 
 const respondToRequestCommandSchema = z.object({

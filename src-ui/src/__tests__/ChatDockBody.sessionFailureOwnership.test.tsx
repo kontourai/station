@@ -125,25 +125,28 @@ vi.mock('../components/chat/ChatInputArea', () => ({
 }));
 
 vi.mock('../components/chat/QueuedMessages', () => ({
-  QueuedMessages: (props: { onSendNow?: () => void; onRetry?: () => void }) => (
+  QueuedMessages: (props: {
+    metadata?: Array<{ id: string }>;
+    onSendMessageNow?: (messageId: string) => Promise<void>;
+    onRetry?: () => void;
+  }) => {
+    const messageId = props.metadata?.[0]?.id;
+    return (
     <div data-testid="queued-messages">
-      {props.onSendNow ? (
-        <button type="button" onClick={props.onSendNow}>
-          Send now
-        </button>
+      {props.onSendMessageNow && messageId ? (
+        <button type="button" onClick={() => props.onSendMessageNow?.(messageId)}>Send now</button>
       ) : null}
-      {props.onRetry ? (
-        <button type="button" onClick={props.onRetry}>
-          Retry
-        </button>
-      ) : null}
+      {props.onRetry ? <button type="button" onClick={props.onRetry}>Retry</button> : null}
     </div>
-  ),
+    );
+  },
 }));
 
 const drainQueuedMessageOnTurnCompleted = vi.hoisted(() => vi.fn());
+const sendPendingMessageNow = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 vi.mock('../hooks/orchestration/queueDrain', () => ({
   drainQueuedMessageOnTurnCompleted,
+  sendPendingMessageNow,
 }));
 
 import type { OrchestrationSessionSummary } from '@kontourai/station-sdk';
@@ -509,14 +512,15 @@ describe('ChatDockBody turn-stall notice (#765)', () => {
     };
   }
 
-  test('renders the stall notice with a working stop affordance while the turn is in flight', () => {
+  test('reports observed silence without inferring a retry and offers Stop while the turn is in flight', () => {
     const chatInput = buildChatInput();
     // `isTurnInFlight` — status 'sending' is the local in-flight signal.
     const session = buildSession({ status: 'sending' });
     renderDock(session, stalledOrchestrationSession(), chatInput);
 
     expect(screen.getByTestId('chat-dock-turn-stall-notice')).toBeTruthy();
-    expect(screen.getByText(/appears stalled/i)).toBeTruthy();
+    expect(screen.getByText(/No response from Claude Code for .*Still waiting\./i)).toBeTruthy();
+    expect(screen.queryByText(/retrying/i)).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: /stop this turn/i }));
     expect(chatInput.handleCancel).toHaveBeenCalledTimes(1);
   });
@@ -610,33 +614,32 @@ describe('#2309 the dock queue: "Send now" and Retry are explicit sends', () => 
         status: 'idle',
         conversationId,
         queuedMessages: ['still waiting'],
+        queuedMessageMetadata: [{ id: 'pending-id', mode: 'queue' }],
         conversationActivity: { conversationId, asOfSequence: 9 },
       }),
       null,
     );
     fireEvent.click(await screen.findByRole('button', { name: 'Send now' }));
-    expect(drainQueuedMessageOnTurnCompleted).toHaveBeenCalledWith(
-      expect.any(String),
-      'failure-ownership-session',
-      true,
-      true,
+    expect(sendPendingMessageNow).toHaveBeenCalledWith(
+      expect.any(String), 'failure-ownership-session', 'pending-id',
     );
   });
 
-  test('a healthy open turn offers no "Send now"; Retry still goes as an explicit request', async () => {
+  test('a healthy open turn keeps explicit Send now available; Retry remains an explicit request', async () => {
     drainQueuedMessageOnTurnCompleted.mockClear();
     renderDock(
       buildSession({
         status: 'idle',
         conversationId,
         queuedMessages: ['behind the turn'],
+        queuedMessageMetadata: [{ id: 'pending-active-id', mode: 'queue' }],
         queuedMessageFailure: { message: 'engine paused', at: 1 },
         conversationActivity: { conversationId, asOfSequence: 10, openTurn },
       }),
       null,
     );
     fireEvent.click(await screen.findByRole('button', { name: 'Retry' }));
-    expect(screen.queryByRole('button', { name: 'Send now' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Send now' })).not.toBeNull();
     expect(drainQueuedMessageOnTurnCompleted).toHaveBeenCalledWith(
       expect.any(String),
       'failure-ownership-session',

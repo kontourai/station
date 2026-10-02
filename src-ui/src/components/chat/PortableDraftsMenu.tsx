@@ -9,6 +9,7 @@ import {
   ResponsiveDialogHeader,
   ResponsiveDialogSurface,
 } from '../ResponsiveDialogSurface';
+import { ComposerIconAction } from './ComposerIconAction';
 import { composerDisplayValue } from './composer-mentions';
 
 interface PortableDraftsMenuProps {
@@ -39,15 +40,25 @@ export function PortableDraftsMenu({
 
   return (
     <>
-      <button
-        type="button"
+      <ComposerIconAction
+        label="Drafts"
         className="chat-input__drafts-button"
-        aria-haspopup="dialog"
-        aria-expanded={open}
+        expanded={open}
         onClick={() => onOpenChange(true)}
       >
-        Drafts
-      </button>
+        <svg
+          viewBox="0 0 24 24"
+          width="18"
+          height="18"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          aria-hidden="true"
+        >
+          <path d="M7 3h8l4 4v14H7z" />
+          <path d="M15 3v5h4M10 12h6M10 16h6M3 7v14" />
+        </svg>
+      </ComposerIconAction>
       {open && (
         <ResponsiveDialogSurface
           layer="popover"

@@ -147,6 +147,7 @@ export type OrchestrationCommandInput =
       threadId: string;
       input: string;
       turnId?: string;
+      clientInputId?: string;
     }
   | {
       type: 'stopSession';

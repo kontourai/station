@@ -336,10 +336,19 @@ A client that folds raw events without the shared rule still sees it open.
 The remaining controls are defined by
 `src-server/routes/orchestration/orchestration.ts`:
 
-- `steerTurn`: `{ type: 'steerTurn', threadId, input, turnId? }` sends steering
+- `steerTurn`: `{ type: 'steerTurn', threadId, input, turnId?, clientInputId? }` sends steering
   input where the engine supports it. An ACP engine without a native steer
   method is steered by cancelling and re-prompting the running turn; that
   steer's `turn.started` carries `steerInterruptedRun: true`.
+  A stable `clientInputId` makes acknowledgement retries safe: a durable claim
+  precedes the adapter call, confirmed same-ID input returns its stored result,
+  and an unresolved or mismatched claim returns `outcome: 'indeterminate'`
+  without invoking the engine again. Retain the original `threadId`, `turnId`
+  and input on retry. Never turn an indeterminate steer into an automatic new
+  turn; retain it for review. The digest-only claim survives restart and is
+  removed with its Session. Calls without this optional ID retain the legacy
+  behavior and cannot claim transport idempotency.
+
 - `setApprovalMode`: `{ type: 'setApprovalMode', threadId, approvalMode,
   basedOnSequence }` records an ordered posture decision. `basedOnSequence` is
   required: use the latest observed decision sequence, or `null` when none was

@@ -22,8 +22,8 @@ conversations discovered in another coding app. A quiet "Started in Claude Code"
 work; history uses source-event time and remains separate from active work.
 
 Opening a conversation or typing does not migrate it. The composer accepts a
-normal draft. Send (or Enter, except during IME composition) opens a one-time
-"Continue here?" confirmation; Cancel preserves the draft and Shift+Enter adds a
+normal draft. Send (or the configured Return shortcut, except during IME composition) opens a one-time
+"Continue here?" confirmation; Cancel preserves the draft and Shift+Return adds a
 line. Confirmation opens the continuation through the normal dock controller
 and hands the exact draft to the normal sender once. The original conversation
 remains available in its original app. A failed opening retains the reader and offers a
@@ -118,8 +118,11 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
   naturally and truncate when needed; Model does not stretch into unused space.
 - The capsule owns one textarea focus ring. Keyboard-focused toolbar controls retain
   their individual focus indicator.
-- Drafts and the labeled Clear action belong in the secondary action row, leaving
-  the textarea its full width. Clear appears only when there is text.
+- Drafts and Clear message are icon actions in the secondary row, leaving the
+  textarea its full width. Hover, keyboard focus and touch hold reveal their
+  labels; accessible names remain available. Drafts retains unsent composer
+  content, distinct from Message history and Playbooks. Clear appears only
+  when there is text.
 - Model controls render only when the Provider reports support. A named reset
   restores the original default Provider and model for the chat.
 - Station-managed chats may switch Model Providers. Externally managed agent
@@ -131,6 +134,64 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
   model, and there is no engine history to carry over. The session list that
   says so is re-read after every send that did not take, and a turn in flight
   outranks it, so a running first turn never reopens Model.
+
+### Turn activity and follow-up delivery
+
+On desktop, Send remains available beside a separate Stop action during a turn.
+On mobile, Send is an arrow and its mode picker a chevron. They appear once the
+composer holds text, an attachment or quoted context; their geometry stays
+reserved while hidden, so editing does not move Stop or the other toolbar
+controls. Names and the selected mode remain accessible, and the opened picker
+uses explicit Queue and Steer labels. Stop stays visible throughout the turn. Its mode
+picker defaults to **Queue**, which starts a new turn after the entire current
+turn finishes. **Steer** uses native mid-turn input only where the selected
+engine can prove that capability. Claude Code and Codex have additive steering.
+ACP's capability matrix also includes cancel-and-reprompt, which is not proof
+of native steering for the current session.
+
+For other engines, Steer holds the message for a supported safe boundary before
+stopping and sending. Current adapters expose no such safe-boundary receipt, so
+this fallback conservatively waits for turn completion, even after tools settle.
+Native steering uses a persisted `clientInputId` for each intent. The server
+claims it before invoking the adapter and records the confirmed turn after the
+adapter returns. Same-ID acknowledgement retries return that stored result;
+an unresolved claim returns **Delivery not confirmed** and never replays the
+engine invocation. The pending row retains its original Session and turn,
+remains visible across reload, and cannot be edited or sent as a new turn while
+its delivery is uncertain. Retry steering reuses that identity; it may make the
+first attempt only if no earlier request reached the server. The server journal
+retains digests rather than message bodies, and Session deletion removes it.
+
+The pending-message section starts collapsed, showing only its count and a
+Needs review indicator for failures or unconfirmed delivery. Its disclosure
+reveals message content, mode, status and actions; it does not auto-expand during
+a turn. Pending rows retain their selected mode. **Send now** is an explicit immediate
+stop override: Station waits for a settled interruption receipt before sending
+the selected row, keeps other rows in order, and retains the message if stopping
+cannot be confirmed. Queued follow-ups currently accept text and quoted context;
+attachments remain in the composer until the turn finishes.
+
+Activity is engine-reported. Claude Code SDK API retries supply attempt and delay
+with a bounded reason category; Codex's `willRetry` reports retry intent without
+attempt or delay. OpenCode 1.18.28 has internal retry status, but its
+[ACP translator](https://github.com/anomalyco/opencode/blob/v1.18.28/packages/opencode/src/acp/event.ts#L93-L106)
+does not forward it. Station therefore reports **No response from OpenCode for …
+Still waiting** from its server silence observation. Elapsed silence never
+establishes a retry. New text, reasoning, tool progress and terminal events clear
+transient waiting/retry status; raw logs and engine error payloads are not chat
+activity labels.
+
+### Return on this device
+
+**Chat settings → Return in chat** is saved in the existing device-settings
+record and applies to software and attached keyboards. Automatic sends on a
+fine-pointer desktop and inserts a new line on coarse-pointer touch devices,
+including tablets and landscape phones. Narrow desktop windows retain desktop
+keyboard behavior. Explicit **Return sends** and **Return inserts a new line**
+override that default. Shift+Return always inserts a line; Ctrl/Cmd+Return sends.
+IME composition keeps ownership of Return until composition ends. Browser APIs
+do not reliably distinguish hardware from software keyboards; Station uses the
+simple per-device preference rather than claiming to detect an attached keyboard.
 
 ### 3.2 Attachments
 

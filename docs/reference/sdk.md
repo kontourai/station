@@ -1170,6 +1170,21 @@ Re-exported from `@tanstack/react-query` for direct cache access.
 
 Imperative API calls — use in event handlers, slash commands, or anywhere hooks aren't available.
 
+### Turn steering and acknowledgement retries
+
+`steerOrchestrationTurn({ threadId, text, turnId?, clientInputId?, apiBase? })`
+sends input to an open turn. Use one stable `clientInputId` per intent and retain
+its original Session, turn and text when retrying an acknowledgement. The server
+journals the adapter attempt before invocation and returns a confirmed same-ID
+result without sending it again. `outcome: 'indeterminate'` means delivery cannot
+be confirmed; retain the input for review and do not automatically send it as a
+new turn. A same-ID retry may make the first attempt if the initial request never
+reached the server. Unsupported, busy, and no-active-turn outcomes remain
+explicit. See [Session API steering](session-api.md#lifecycle-control-commands) for the public
+command and engine-specific interruptive fallback; Station's composer offers a
+conservative safe-waiting fallback separately from native steering.
+
+
 `sendMessage`, `streamMessage`, `invokeAgent`, `invoke`, `callTool` and
 `fetchConfig` are legacy ambient-base helpers using direct `fetch`. They do not
 automatically use the host's native or encrypted broker transport. For those

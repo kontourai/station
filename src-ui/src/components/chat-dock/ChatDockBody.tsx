@@ -1,6 +1,6 @@
 import { useConnections } from '@kontourai/station-connect';
 import type { ToolPolicyDelivery } from '@kontourai/station-contracts/engine-capability-matrix';
-import { ENGINE_CAPABILITY_MATRICES } from '@kontourai/station-contracts/engine-capability-matrix';
+import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import { isFirstSendFailure } from '@kontourai/station-contracts/session-attention';
 import {
   type OrchestrationSessionSummary,
@@ -22,11 +22,15 @@ import {
 } from '../../contexts/ApiBaseContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { isTurnInFlight } from '../../contexts/active-chats-state';
+import { activeChatsStore } from '../../contexts/active-chats-store';
 import { chatDraftsStore } from '../../contexts/chat-drafts-store';
 import { conversationOpenPhase } from '../../contexts/conversation-open-policy';
 import { useMessageContextContext } from '../../contexts/MessageContextContext';
 import { useNavigationActions } from '../../contexts/NavigationContext';
-import { drainQueuedMessageOnTurnCompleted } from '../../hooks/orchestration/queueDrain';
+import {
+  drainQueuedMessageOnTurnCompleted,
+  sendPendingMessageNow,
+} from '../../hooks/orchestration/queueDrain';
 import { isReplayThread } from '../../hooks/orchestration/replay/replay-registry';
 import { useActiveChatTranscript } from '../../hooks/orchestration/useActiveChatTranscript';
 import { useChatStreamStatus } from '../../hooks/orchestration/useChatStreamStatus';
@@ -47,7 +51,6 @@ import {
   SESSION_START_INDETERMINATE_CODE,
   translateChatError,
 } from '../../utils/chatErrorTranslation';
-import { queueSendNowOffered } from '../../utils/conversation-activity';
 import {
   elidedHistoryNoticeText,
   summarizeElidedReasons,
@@ -637,14 +640,13 @@ export function ChatDockBody({
       queueOnBusy: true,
     });
   }, [getComposedContext, chatInput]);
+  const nativeSteering = sessionAdapterSupportsSteering(
+    activeSession.agentConnectionId,
+    [],
+    activeSession.orchestrationProvider,
+  );
   const busyFollowUp =
-    isTurnInFlight(activeSession) &&
-    sessionAdapterSupportsSteering(
-      activeSession.agentConnectionId,
-      [],
-      activeSession.orchestrationProvider,
-    ) &&
-    chatInput.attachments.length === 0
+    isTurnInFlight(activeSession) && chatInput.attachments.length === 0
       ? 'steer'
       : 'queue';
   const isExecutionActive = isSessionExecutionActive(activeSession);
@@ -1148,6 +1150,16 @@ export function ChatDockBody({
           componentProps={{
             sessionId: activeSession.id,
             messages: activeSession.queuedMessages,
+            metadata: activeSession.queuedMessageMetadata,
+            waitingForTools: activeSession.streamingMessage?.contentParts?.some(
+              (part) =>
+                part.type === 'tool-invocation' && part.state === 'running',
+            ),
+            sendNowPending:
+              activeSession.queueSendNowPending ||
+              activeSession.queueDrainSettling,
+            onSendMessageNow: (messageId: string) =>
+              sendPendingMessageNow(apiBase, activeSession.id, messageId),
             failure: activeSession.queuedMessageFailure,
             // UX audit T3: the automatic drain only fires on a later
             // `turn.completed`/`runtime.error`. A follow-up refused for a
@@ -1162,21 +1174,60 @@ export function ChatDockBody({
                 // #2309: an explicit request; not held back by the record.
                 true,
               ),
-            onSendNow: queueSendNowOffered(activeSession)
-              ? () =>
-                  drainQueuedMessageOnTurnCompleted(
-                    apiBase,
-                    activeSession.id,
-                    true,
-                    true,
-                  )
-              : undefined,
             canSteer:
-              isExecutionActive &&
-              !!activeSession.orchestrationProvider &&
-              ENGINE_CAPABILITY_MATRICES[activeSession.orchestrationProvider]
-                ?.midTurnSteer === true,
-            onSteer: async (message: string) => {
+              Boolean(isExecutionActive ||
+                activeSession.queuedMessageMetadata?.some(
+                  (entry) => !!entry.delivery,
+                )) &&
+              sessionAdapterSupportsSteering(
+                activeSession.agentConnectionId,
+                [],
+                activeSession.orchestrationProvider,
+              ),
+            onPendingSettled: () => {
+              const latest = activeChatsStore.getSnapshot()[activeSession.id];
+              if (
+                latest &&
+                latest.orchestrationStatus !== 'aborted' &&
+                !isTurnInFlight(latest)
+              )
+                drainQueuedMessageOnTurnCompleted(apiBase, activeSession.id);
+            },
+            onSteer: async (message: string, clientInputId?: string) => {
+              const latest = activeChatsStore.getSnapshot()[activeSession.id];
+              if (
+                !latest ||
+                latest.queueSendNowPending ||
+                latest.queueDrainSettling
+              )
+                return false;
+              activeChatsStore.updateChat(activeSession.id, {
+                queueSendNowPending: true,
+              });
+              const metadata = latest.queuedMessageMetadata?.find(
+                (entry) => entry.id === clientInputId,
+              );
+              activeChatsStore.updateChat(activeSession.id, {
+                queuedMessageMetadata: latest.queuedMessageMetadata?.map(
+                  (entry) =>
+                    entry.id === clientInputId
+                      ? {
+                          ...entry,
+                          delivery: 'steering',
+                          mode: 'steer',
+                          steerThreadId:
+                            entry.steerThreadId ??
+                            latest.conversationActivity?.openTurn?.threadId ??
+                            latest.currentSessionId ??
+                            activeSession.id,
+                          steerTurnId:
+                            entry.steerTurnId ??
+                            latest.conversationActivity?.openTurn?.turnId ??
+                            latest.openTurnId,
+                        }
+                      : entry,
+                ),
+              });
               try {
                 const result = await steerOrchestrationTurn({
                   // Steering is a command on the live execution Session. The
@@ -1186,24 +1237,68 @@ export function ChatDockBody({
                   // #2309: the server's open turn names the exact lineage
                   // child and turn; the local stamp is the older-server path.
                   threadId:
+                    metadata?.steerThreadId ??
                     activeSession.conversationActivity?.openTurn?.threadId ??
                     activeSession.currentSessionId ??
                     activeSession.id,
                   text: message,
+                  clientInputId,
                   turnId:
+                    metadata?.steerTurnId ??
                     activeSession.conversationActivity?.openTurn?.turnId ??
                     activeSession.openTurnId,
                   apiBase,
                 });
-                if (result.outcome === 'steered') return true;
+                if (result.outcome === 'steered') {
+                  addEphemeralMessage(activeSession.id, {
+                    role: 'system',
+                    content: 'Steering sent.',
+                  });
+                  return true;
+                }
+                if (result.outcome === 'indeterminate') {
+                  const held = activeChatsStore.getSnapshot()[activeSession.id];
+                  activeChatsStore.updateChat(activeSession.id, {
+                    queuedMessageMetadata: held?.queuedMessageMetadata?.map(
+                      (entry) =>
+                        entry.id === clientInputId
+                          ? { ...entry, delivery: 'indeterminate' }
+                          : entry,
+                    ),
+                  });
+                  return false;
+                }
+                const refused =
+                  activeChatsStore.getSnapshot()[activeSession.id];
+                activeChatsStore.updateChat(activeSession.id, {
+                  queuedMessageMetadata: refused?.queuedMessageMetadata?.map(
+                    (entry) =>
+                      entry.id === clientInputId
+                        ? { ...entry, delivery: undefined }
+                        : entry,
+                  ),
+                });
                 addEphemeralMessage(activeSession.id, {
                   role: 'system',
                   content: steerRefusalMessage(result),
                 });
               } catch (error) {
+                const held = activeChatsStore.getSnapshot()[activeSession.id];
+                activeChatsStore.updateChat(activeSession.id, {
+                  queuedMessageMetadata: held?.queuedMessageMetadata?.map(
+                    (entry) =>
+                      entry.id === clientInputId
+                        ? { ...entry, delivery: 'indeterminate' }
+                        : entry,
+                  ),
+                });
                 addEphemeralMessage(activeSession.id, {
                   role: 'system',
-                  content: `Could not send steer: ${error instanceof Error ? error.message : String(error)}`,
+                  content: `Could not confirm steering delivery: ${error instanceof Error ? error.message : String(error)}`,
+                });
+              } finally {
+                activeChatsStore.updateChat(activeSession.id, {
+                  queueSendNowPending: false,
                 });
               }
               return false;
@@ -1462,35 +1557,46 @@ export function ChatDockBody({
         `isTurnInFlight` gates it so a stale projection read after the turn
         settled cannot claim a live stall.
       */}
-      {turnProgressSilence && isTurnInFlight(activeSession) && (
-        <div
-          role="status"
-          data-testid="chat-dock-turn-stall-notice"
-          style={{
-            padding: '8px 12px',
-            margin: '0 12px 8px',
-            background: 'var(--bg-warning, var(--bg-secondary))',
-            border: '1px solid var(--border-warning, var(--border-primary))',
-            borderRadius: '6px',
-            fontSize: '0.85em',
-            color: 'var(--text-muted)',
-          }}
-        >
-          <strong>The engine appears stalled.</strong>{' '}
-          <ProgressSilenceObservation observation={turnProgressSilence} />
-          {'. '}
-          You can wait, or{' '}
-          <button
-            type="button"
-            onClick={() => void chatInput.handleCancel()}
-            disabled={!!activeSession.stopPending}
-            style={BANNER_LINK_BUTTON_STYLE}
+      {turnProgressSilence &&
+        isTurnInFlight(activeSession) &&
+        activeSession.activityHint?.kind !== 'retrying' && (
+          <div
+            role="status"
+            data-testid="chat-dock-turn-stall-notice"
+            style={{
+              padding: '8px 12px',
+              margin: '0 12px 8px',
+              background: 'var(--bg-warning, var(--bg-secondary))',
+              border: '1px solid var(--border-warning, var(--border-primary))',
+              borderRadius: '6px',
+              fontSize: '0.85em',
+              color: 'var(--text-muted)',
+            }}
           >
-            stop this turn
-          </button>
-          .
-        </div>
-      )}
+            <ProgressSilenceObservation
+              observation={turnProgressSilence}
+              engineName={
+                agent?.engineDisplayName ??
+                acpConnections.find(
+                  (connection) =>
+                    connection.id === activeSession.agentConnectionId,
+                )?.name ??
+                engineDisplayLabel(turnProgressSilence.provider) ??
+                'the engine'
+              }
+            />{' '}
+            You can{' '}
+            <button
+              type="button"
+              onClick={() => void chatInput.handleCancel()}
+              disabled={!!activeSession.stopPending}
+              style={BANNER_LINK_BUTTON_STYLE}
+            >
+              stop this turn
+            </button>
+            .
+          </div>
+        )}
       {activeSession.replay?.mode === 'timeline' ? (
         <LazyBoundary
           load={loadConversationTimeline}
@@ -1555,6 +1661,7 @@ export function ChatDockBody({
             isSending={isExecutionActive}
             turnInFlight={isTurnInFlight(activeSession)}
             busyFollowUp={busyFollowUp}
+            busySteeringKind={nativeSteering ? 'native' : 'safe-stop'}
             onQueueFollowUp={handleQueueFollowUp}
             stopPending={!!activeSession.stopPending}
             modelSupportsAttachments={modelSupportsAttachments}

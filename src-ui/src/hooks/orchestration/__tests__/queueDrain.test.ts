@@ -1,11 +1,14 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 let activeChatsStore: import('../../../contexts/active-chats-store').ActiveChatsStore;
+let resumePendingSendNowOnTurnTerminal: typeof import('../queueDrain').resumePendingSendNowOnTurnTerminal;
+let sendPendingMessageNow: typeof import('../queueDrain').sendPendingMessageNow;
 let drainQueuedMessageOnTurnCompleted: typeof import('../queueDrain').drainQueuedMessageOnTurnCompleted;
 // Imported after resetModules so `instanceof` in queueDrain sees the same
 // module instance the test constructs errors from.
 let ChatHttpError: typeof import('@kontourai/station-sdk/client').ChatHttpError;
 
+const interruptMock = vi.fn();
 const sendExecutionMessageMock = vi.fn().mockResolvedValue(undefined);
 
 const threadId = 'thread-drain-1';
@@ -19,6 +22,7 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
     });
     vi.resetModules();
     sendExecutionMessageMock.mockClear();
+    interruptMock.mockReset();
 
     vi.doMock('../../../contexts/active-chats-store', async () => {
       const actual = await vi.importActual<
@@ -40,12 +44,18 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
 
     vi.doMock('@kontourai/station-sdk', () => ({
       contextRegistry: { getComposedContext: () => undefined },
+      interruptOrchestrationTurn: (...args: unknown[]) =>
+        interruptMock(...args),
     }));
 
     ({ activeChatsStore } = await import(
       '../../../contexts/active-chats-store'
     ));
-    ({ drainQueuedMessageOnTurnCompleted } = await import('../queueDrain'));
+    ({
+      drainQueuedMessageOnTurnCompleted,
+      sendPendingMessageNow,
+      resumePendingSendNowOnTurnTerminal,
+    } = await import('../queueDrain'));
     ({ ChatHttpError } = await import('@kontourai/station-sdk/client'));
 
     activeChatsStore.initChat(threadId, {
@@ -63,6 +73,223 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
     vi.doUnmock('../../../lib/foregroundMessageDispatch');
     vi.resetModules();
     vi.useRealTimers();
+  });
+
+  test('Send now coalesces repeated clicks, stops once, and preserves remaining FIFO messages', async () => {
+    let settle!: (value: unknown) => void;
+    interruptMock.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          settle = resolve;
+        }),
+    );
+    activeChatsStore.updateChat(threadId, {
+      queuedMessages: ['first', 'selected', 'third'],
+      orchestrationTurnOpen: true,
+      openTurnId: 'running',
+      status: 'sending',
+    });
+    const id =
+      activeChatsStore.getSnapshot()[threadId].queuedMessageMetadata![1].id;
+    const first = sendPendingMessageNow('http://api.test', threadId, id);
+    await vi.dynamicImportSettled();
+    await sendPendingMessageNow('http://api.test', threadId, id);
+    drainQueuedMessageOnTurnCompleted('http://api.test', threadId);
+    expect(interruptMock).toHaveBeenCalledTimes(1);
+    expect(sendExecutionMessageMock).not.toHaveBeenCalled();
+    settle({ outcome: 'cooperative', turnId: 'running' });
+    await first;
+    await sendPendingMessageNow('http://api.test', threadId, id);
+    await vi.advanceTimersByTimeAsync(200);
+    await vi.dynamicImportSettled();
+    expect(interruptMock).toHaveBeenCalledTimes(1);
+    expect(sendExecutionMessageMock).toHaveBeenCalledTimes(1);
+    expect(sendExecutionMessageMock.mock.calls[0][1]).toMatchObject({
+      message: 'selected',
+      clientTurnId: id,
+    });
+    expect(activeChatsStore.getSnapshot()[threadId].queuedMessages).toEqual([
+      'first',
+      'third',
+    ]);
+  });
+
+  test('a terminal event before dispatch acknowledgement still releases the next queued message', async () => {
+    let acknowledge!: (receipt: unknown) => void;
+    sendExecutionMessageMock.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          acknowledge = resolve;
+        }),
+    );
+    activeChatsStore.updateChat(threadId, {
+      queuedMessages: ['first', 'second'],
+    });
+    drainQueuedMessageOnTurnCompleted('http://api.test', threadId);
+    await vi.advanceTimersByTimeAsync(200);
+    await vi.dynamicImportSettled();
+    activeChatsStore.updateChat(threadId, {
+      status: 'idle',
+      orchestrationTurnOpen: false,
+    });
+    drainQueuedMessageOnTurnCompleted('http://api.test', threadId);
+    expect(sendExecutionMessageMock).toHaveBeenCalledTimes(1);
+    acknowledge({});
+    await vi.advanceTimersByTimeAsync(200);
+    await vi.dynamicImportSettled();
+    expect(sendExecutionMessageMock).toHaveBeenCalledTimes(2);
+    expect(sendExecutionMessageMock.mock.calls[1][1]).toMatchObject({
+      message: 'second',
+    });
+  });
+
+  test('reload retains a follow-up before the first conversation receipt and blocks unconfirmed dispatch', async () => {
+    activeChatsStore.updateChat(threadId, {
+      queuedMessages: ['authored before first receipt'],
+      queuedMessageMetadata: [{ id: 'first-receipt-pending', mode: 'queue' }],
+    });
+    const { serializeActiveChats } = await import('../../../contexts/active-chats-state');
+    const saved = JSON.stringify(serializeActiveChats(activeChatsStore.getSnapshot()));
+    const { ActiveChatsStore } = await import('../../../contexts/active-chats-store');
+    const reloaded = new ActiveChatsStore({ storage: { getItem: () => saved, setItem: () => {} } });
+    const recovered = reloaded.getSnapshot()[threadId];
+    expect(recovered).toBeDefined();
+    expect(recovered.queuedMessages).toEqual(['authored before first receipt']);
+    expect(recovered.queuedMessageMetadata).toEqual([{ id: 'first-receipt-pending', mode: 'queue' }]);
+    expect(recovered.queuedMessageFailure?.code).toBe('unconfirmed-first-send');
+    const { conversationCanMutate } = await import('../../../contexts/conversation-open-policy');
+    expect(conversationCanMutate(recovered)).toBe(false);
+    activeChatsStore.updateChat(threadId, recovered);
+    drainQueuedMessageOnTurnCompleted('http://api.test', threadId);
+    drainQueuedMessageOnTurnCompleted('http://api.test', threadId, true, true);
+    await vi.advanceTimersByTimeAsync(200);
+    expect(sendExecutionMessageMock).not.toHaveBeenCalled();
+  });
+
+  test('reload restores a claimed queue head with its original mode and dispatch identity', async () => {
+    activeChatsStore.updateChat(threadId, {
+      conversationId: 'persisted-conversation',
+      queuedMessages: ['recover me', 'later'],
+      queuedMessageMetadata: [
+        { id: 'recover-id', mode: 'steer' },
+        { id: 'later-id', mode: 'queue' },
+      ],
+    });
+    drainQueuedMessageOnTurnCompleted('http://api.test', threadId);
+    const { serializeActiveChats } = await import(
+      '../../../contexts/active-chats-state'
+    );
+    const saved = JSON.stringify(
+      serializeActiveChats(activeChatsStore.getSnapshot()),
+    );
+    const { ActiveChatsStore } = await import(
+      '../../../contexts/active-chats-store'
+    );
+    const reloaded = new ActiveChatsStore({
+      storage: { getItem: () => saved, setItem: () => {} },
+    });
+    expect(reloaded.getSnapshot()[threadId].queuedMessages).toEqual([
+      'recover me',
+      'later',
+    ]);
+    expect(reloaded.getSnapshot()[threadId].queuedMessageMetadata).toEqual([
+      { id: 'recover-id', mode: 'steer' },
+      { id: 'later-id', mode: 'queue' },
+    ]);
+    expect(reloaded.getSnapshot()[threadId].queueDrainHeldForOpen).toBe(true);
+  });
+
+  test('an unconfirmed Send now keeps the message and never dispatches it', async () => {
+    interruptMock.mockRejectedValueOnce(new Error('response lost'));
+    activeChatsStore.updateChat(threadId, {
+      queuedMessages: ['held'],
+      orchestrationTurnOpen: true,
+      openTurnId: 'held-turn',
+      status: 'sending',
+    });
+    const id =
+      activeChatsStore.getSnapshot()[threadId].queuedMessageMetadata![0].id;
+    await sendPendingMessageNow('http://api.test', threadId, id);
+    await vi.advanceTimersByTimeAsync(200);
+    expect(sendExecutionMessageMock).not.toHaveBeenCalled();
+    expect(activeChatsStore.getSnapshot()[threadId].queuedMessages).toEqual([
+      'held',
+    ]);
+    expect(activeChatsStore.getSnapshot()[threadId].queueSendNowPending).toBe(
+      false,
+    );
+  });
+
+  test('deferred Send now resumes only its selected message after the exact interrupted turn ends', async () => {
+    interruptMock.mockResolvedValueOnce({
+      outcome: 'pending-turn-start',
+      threadId,
+    });
+    activeChatsStore.updateChat(threadId, {
+      queuedMessages: ['first', 'selected'],
+      orchestrationTurnOpen: true,
+      openTurnId: 'stop-target',
+      status: 'sending',
+    });
+    const id =
+      activeChatsStore.getSnapshot()[threadId].queuedMessageMetadata![1].id;
+    await sendPendingMessageNow('http://api.test', threadId, id);
+    expect(
+      activeChatsStore.getSnapshot()[threadId].pendingSendNow,
+    ).toMatchObject({ messageId: id, turnId: 'stop-target' });
+    activeChatsStore.updateChat(threadId, {
+      orchestrationTurnOpen: false,
+      status: 'idle',
+      orchestrationStatus: 'aborted',
+    });
+    resumePendingSendNowOnTurnTerminal(
+      'http://api.test',
+      threadId,
+      'other-turn',
+    );
+    await vi.advanceTimersByTimeAsync(200);
+    expect(sendExecutionMessageMock).not.toHaveBeenCalled();
+    resumePendingSendNowOnTurnTerminal(
+      'http://api.test',
+      threadId,
+      'stop-target',
+    );
+    resumePendingSendNowOnTurnTerminal(
+      'http://api.test',
+      threadId,
+      'stop-target',
+    );
+    await vi.advanceTimersByTimeAsync(200);
+    await vi.dynamicImportSettled();
+    expect(sendExecutionMessageMock).toHaveBeenCalledTimes(1);
+    expect(sendExecutionMessageMock.mock.calls[0][1]).toMatchObject({
+      message: 'selected',
+      clientTurnId: id,
+    });
+    expect(activeChatsStore.getSnapshot()[threadId].queuedMessages).toEqual([
+      'first',
+    ]);
+  });
+
+  test('safe fallback waits for turn completion even when no tool is active', async () => {
+    activeChatsStore.updateChat(threadId, {
+      queuedMessages: ['safe steer'],
+      queuedMessageMetadata: [{ id: 'pending-steer', mode: 'steer' }],
+      orchestrationTurnOpen: true,
+    });
+    drainQueuedMessageOnTurnCompleted('http://api.test', threadId);
+    await vi.advanceTimersByTimeAsync(200);
+    expect(sendExecutionMessageMock).not.toHaveBeenCalled();
+    expect(interruptMock).not.toHaveBeenCalled();
+    activeChatsStore.updateChat(threadId, { orchestrationTurnOpen: false });
+    drainQueuedMessageOnTurnCompleted('http://api.test', threadId);
+    await vi.advanceTimersByTimeAsync(200);
+    await vi.dynamicImportSettled();
+    expect(sendExecutionMessageMock).toHaveBeenCalledTimes(1);
+    expect(sendExecutionMessageMock.mock.calls[0][1]).toMatchObject({
+      message: 'safe steer',
+      clientTurnId: 'pending-steer',
+    });
   });
 
   test('is a no-op when the queue is empty', async () => {
@@ -271,6 +498,7 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
     // The poison loop is the defect: a later turn completion must not
     // re-dispatch the dropped entry.
     sendExecutionMessageMock.mockClear();
+    interruptMock.mockReset();
     drainQueuedMessageOnTurnCompleted('http://api.test', threadId);
     await vi.advanceTimersByTimeAsync(200);
     await vi.dynamicImportSettled();

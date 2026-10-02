@@ -1,6 +1,7 @@
 import type { ConversationTurnActivity } from '@kontourai/station-contracts/orchestration';
 import type { ChatActivityHint } from '../../contexts/active-chats-state';
 import type { ChatStreamStatus } from '../../hooks/orchestration/useChatStreamStatus';
+import { retryActivityLabel } from '../../utils/chat-activity';
 import { formatToolName } from '../../utils/chat-progress';
 import { openTurnStartedAtMs } from '../../utils/conversation-activity';
 import type { LiveStatusGlyphKind, LiveStatusTone } from './LiveStatusGlyph';
@@ -141,7 +142,10 @@ export function deriveChatStatus(
   const running = activity?.openTurn ? (activity.runningTools ?? []) : [];
   const current = running.at(-1);
   let label: string;
-  if (current) {
+  if (input.activityHint?.kind === 'retrying') {
+    label = 'Retrying';
+    details.push({ text: retryActivityLabel(input.activityHint) });
+  } else if (current) {
     const more = running.length > 1 ? ` (+${running.length - 1} more)` : '';
     label = `Running ${formatToolName(current.name)}${more}`;
     details.push({
@@ -154,7 +158,9 @@ export function deriveChatStatus(
         ? 'Thinking'
         : input.activityHint?.kind === 'compacting'
           ? 'Compacting context'
-          : 'Working';
+          : input.activityHint?.kind === 'requesting'
+            ? 'Preparing'
+            : 'Working';
     const last = activity?.lastTool;
     const lastAt = epochMs(last?.completedAt);
     const turnAt = epochMs(activity?.openTurn?.startedAt);
@@ -169,8 +175,13 @@ export function deriveChatStatus(
       });
   }
   const silentSince = epochMs(activity?.progressSilence?.silentSinceEventAt);
-  if (silentSince !== undefined)
-    details.push({ text: 'No output for', since: silentSince });
+  if (silentSince !== undefined && input.activityHint?.kind !== 'retrying') {
+    label = current ? label : 'Still waiting';
+    details.push({
+      text: 'No response from the engine for',
+      since: silentSince,
+    });
+  }
   return {
     kind: 'working',
     tone: 'active',

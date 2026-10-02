@@ -11,8 +11,10 @@ vitestConfigVi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { CHAT_ATTACHMENT_MAX_COMMAND_JSON_BYTES } from '@kontourai/station-contracts/chat-attachment';
+import type { ProviderSessionStartInput } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { parseHostedTenantRegistry } from '@kontourai/station-contracts/tenancy';
+import { steerOrchestrationTurn } from '@kontourai/station-sdk';
 import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
 import { assembleTurnProvenanceEnvelopes } from '@kontourai/station-shared/turn-provenance-fold';
 import { Hono } from 'hono';
@@ -470,6 +472,117 @@ const personalReadAuthority = (userId: string) =>
   });
 
 describe('Orchestration Routes', () => {
+  test('SDK native steer identity survives lost HTTP acknowledgement and a completed turn without redelivery', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'steer-http-receipt-'));
+    const eventStore = new EventStore(join(directory, 'orchestration.sqlite'));
+    const eventBus = new EventBus();
+    class SteerAdapter extends GateTestAdapter {
+      private loaded = false;
+      readonly steerTurn = vi.fn(async () => {});
+      async startSession(input: ProviderSessionStartInput) {
+        const session = await super.startSession(input);
+        this.loaded = true;
+        return session;
+      }
+      async hasSession() {
+        return this.loaded;
+      }
+    }
+    const adapter = new SteerAdapter();
+    const service = new OrchestrationService({
+      adapterRegistry: createGateTestRegistry(adapter),
+      eventBus,
+      eventStore,
+      logger: { debug: vi.fn(), warn: vi.fn() },
+    });
+    const app = new Hono().route(
+      '/api/orchestration',
+      createOrchestrationRoutes(service, {
+        eventBus,
+        logger: { debug: vi.fn() },
+        getUserId: () => ROUTE_TEST_USER_ID,
+      }),
+    );
+    const threadId = 'steer-http';
+    const at = new Date().toISOString();
+    await service.dispatch(
+      {
+        type: 'startSession',
+        input: { provider: 'claude', threadId, cwd: directory },
+      },
+      { userId: ROUTE_TEST_USER_ID },
+    );
+    eventStore.appendEvent({
+      eventId: 'steer-http-session',
+      provider: 'claude',
+      threadId,
+      sessionId: threadId,
+      method: 'session.started',
+      createdAt: at,
+      metadata: { userId: ROUTE_TEST_USER_ID, agentSlug: 'claude' },
+    });
+    eventStore.appendEvent({
+      eventId: 'steer-http-turn',
+      provider: 'claude',
+      threadId,
+      turnId: 'live',
+      method: 'turn.started',
+      createdAt: at,
+      prompt: 'initial',
+    });
+    let loseReceipt = true;
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(async (input, init) => {
+        const response = await app.request(
+          input instanceof Request ? input : String(input),
+          init,
+        );
+        expect(response.status).toBe(200);
+        if (loseReceipt) {
+          expect(await response.clone().json()).toMatchObject({
+            success: true,
+            data: { outcome: 'steered', threadId, turnId: 'live' },
+          });
+          loseReceipt = false;
+          throw new TypeError('HTTP acknowledgement lost');
+        }
+        return response;
+      });
+    const input = {
+      apiBase: 'http://station.test',
+      threadId,
+      turnId: 'live',
+      clientInputId: 'http-input-1',
+      text: 'redirect',
+    };
+    try {
+      await expect(steerOrchestrationTurn(input)).rejects.toThrow(
+        'HTTP acknowledgement lost',
+      );
+      expect(adapter.steerTurn).toHaveBeenCalledTimes(1);
+      eventStore.appendEvent({
+        eventId: 'steer-http-complete',
+        provider: 'claude',
+        threadId,
+        turnId: 'live',
+        method: 'turn.completed',
+        createdAt: at,
+        finishReason: 'stop',
+      });
+      expect(await steerOrchestrationTurn(input)).toEqual({
+        outcome: 'steered',
+        threadId,
+        turnId: 'live',
+      });
+      expect(adapter.steerTurn).toHaveBeenCalledTimes(1);
+    } finally {
+      fetchSpy.mockRestore();
+      eventStore.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   // archive#4075 stage 2 acceptance: "Missing principal fails closed at
   // dispatch — typed refusal, no 'unknown-user', no alias." Every OTHER
   // test in this file configures `getUserId` (the legacy test-only escape

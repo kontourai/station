@@ -1120,6 +1120,7 @@ export async function steerOrchestrationTurn(input: {
   threadId: string;
   text: string;
   turnId?: string;
+  clientInputId?: string;
   apiBase?: string;
 }) {
   return dispatchOrchestrationCommand<
@@ -1129,6 +1130,7 @@ export async function steerOrchestrationTurn(input: {
       type: 'steerTurn',
       threadId: input.threadId,
       input: input.text,
+      ...(input.clientInputId ? { clientInputId: input.clientInputId } : {}),
       ...(input.turnId ? { turnId: input.turnId } : {}),
     },
     input.apiBase,

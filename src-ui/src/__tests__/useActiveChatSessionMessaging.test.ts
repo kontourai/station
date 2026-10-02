@@ -1463,6 +1463,25 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     ]);
   });
 
+  it('holds ACP steering without interrupting a tool or guessing a safe boundary', async () => {
+    activeChatsStore.updateChat(sessionId, {
+      status: 'sending',
+      orchestrationProvider: 'acp',
+    });
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+    await act(async () => {
+      await result.current(sessionId, 'opencode', sessionId, 'course correct');
+    });
+    expect(steerOrchestrationTurnMock).not.toHaveBeenCalled();
+    expect(sendExecutionMessageMock).not.toHaveBeenCalled();
+    expect(activeChatsStore.getSnapshot()[sessionId].queuedMessages).toEqual([
+      'course correct',
+    ]);
+    expect(
+      activeChatsStore.getSnapshot()[sessionId].queuedMessageMetadata,
+    ).toEqual([expect.objectContaining({ mode: 'steer' })]);
+  });
+
   it('steers a mid-turn message on Claude instead of queueing a new turn', async () => {
     steerOrchestrationTurnMock.mockResolvedValueOnce({
       outcome: 'steered',
@@ -1487,6 +1506,7 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     });
 
     expect(steerOrchestrationTurnMock).toHaveBeenCalledWith({
+      clientInputId: expect.any(String),
       threadId: 'exec-claude-1',
       text: 'course correct',
       turnId: 'turn-open',
@@ -1725,6 +1745,7 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     });
 
     expect(steerOrchestrationTurnMock).toHaveBeenCalledWith({
+      clientInputId: expect.any(String),
       threadId: 'exec-codex-1',
       text: 'focus on fails',
       turnId: 'turn-open',
@@ -1736,7 +1757,7 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     );
   });
 
-  it('queues a Claude follow-up that carries attachments (steer has no file channel)', async () => {
+  it('retains a busy attachment message in the composer rather than queueing only its text', async () => {
     activeChatsStore.updateChat(sessionId, {
       status: 'sending',
       orchestrationProvider: 'claude',
@@ -1752,9 +1773,44 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
 
     expect(steerOrchestrationTurnMock).not.toHaveBeenCalled();
     expect(sendExecutionMessageMock).not.toHaveBeenCalled();
-    expect(activeChatsStore.getSnapshot()[sessionId].queuedMessages).toEqual([
-      'with file',
+    expect(activeChatsStore.getSnapshot()[sessionId].queuedMessages).toEqual(
+      [],
+    );
+    expect(
+      activeChatsStore.getSnapshot()[sessionId].ephemeralMessages?.at(-1)
+        ?.content,
+    ).toContain('still in the composer');
+  });
+
+  it('holds an unconfirmed native steer with a stable delivery identity instead of duplicating the draft', async () => {
+    steerOrchestrationTurnMock.mockRejectedValueOnce(
+      new Error('response lost'),
+    );
+    activeChatsStore.updateChat(sessionId, {
+      status: 'sending',
+      orchestrationProvider: 'claude',
+      currentSessionId: 'execution-origin',
+      openTurnId: 'origin-turn',
+      input: 'held steering',
+    });
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+    await act(async () => {
+      await result.current(sessionId, 'claude', sessionId, 'held steering');
+    });
+    const state = activeChatsStore.getSnapshot()[sessionId];
+    expect(state.input).toBe('');
+    expect(state.queuedMessages).toEqual(['held steering']);
+    const inputId = steerOrchestrationTurnMock.mock.calls[0][0].clientInputId;
+    expect(state.queuedMessageMetadata).toEqual([
+      {
+        id: inputId,
+        mode: 'steer',
+        delivery: 'indeterminate',
+        steerThreadId: 'execution-origin',
+        steerTurnId: 'origin-turn',
+      },
     ]);
+    expect(sendExecutionMessageMock).not.toHaveBeenCalled();
   });
 
   it('restores the draft when a steer is refused', async () => {
@@ -1995,6 +2051,7 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
       });
       expect(sendExecutionMessageMock).not.toHaveBeenCalled();
       expect(steerOrchestrationTurnMock).toHaveBeenCalledWith({
+        clientInputId: expect.any(String),
         threadId: `${conv}:child`,
         text: 'steer me',
         turnId: 'server-turn',

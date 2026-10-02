@@ -75,7 +75,13 @@ export type OrchestrationCommand =
        */
       clientTurnId?: string;
     }
-  | { type: 'steerTurn'; threadId: string; input: string; turnId?: string }
+  | {
+      type: 'steerTurn';
+      threadId: string;
+      input: string;
+      turnId?: string;
+      clientInputId?: string;
+    }
   | {
       type: 'respondToRequest';
       threadId: string;
@@ -352,6 +358,12 @@ export type InterruptTurnResult =
 export const PENDING_TURN_INTERRUPT_TTL_MS = 60_000;
 
 export type SteerTurnResult =
+  | {
+      /** Delivery may have happened; this input must not be sent again. */
+      outcome: 'indeterminate';
+      threadId: string;
+      clientInputId: string;
+    }
   | {
       /**
        * The input was enqueued to the live runtime iterable and durably
