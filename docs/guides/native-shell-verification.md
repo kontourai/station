@@ -47,8 +47,10 @@ origin, and a 250 ms retry hint. The same counts appear in its human-readable
 diagnosis. The snapshot also lists active request methods, fixed route
 categories, ages, phases (awaiting response or receiving a body/event stream),
 and whether they target this Station, plus the FIFO head's age and category.
-The oldest three active entries and the queue head appear in the human-readable
-error and a shell warning, emitted at most once per five seconds. Categories
+The summary prioritizes the oldest ordinary requests before long-lived event
+streams. Up to three active entries and the queue head appear in the
+human-readable error and a shell warning, emitted at most once per five
+seconds. Categories
 omit full URLs, query strings, credentials, request bodies, and resource IDs.
 Counts describe the moment of refusal; request ages include admission wait.
 They do not establish whether the server or client caused the backlog.

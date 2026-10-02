@@ -3266,7 +3266,7 @@ fn reserve_native_http_request(
                     })
             })
             .collect();
-        occupants.sort_by_key(|request| std::cmp::Reverse(request.age_ms));
+        occupants.sort_by_key(|request| (request.stream, std::cmp::Reverse(request.age_ms)));
         let queue_head = state.pending_reads.front().and_then(|request| {
             request
                 .observation
@@ -3320,7 +3320,7 @@ fn reserve_native_http_request(
         ));
         for occupant in capacity.occupants.iter().take(3) {
             error.message.push_str(&format!(
-                " Oldest active: {} {} ({}s, {}, {}, {}).",
+                " Active request: {} {} ({}s, {}, {}, {}).",
                 occupant.method,
                 occupant.route_category,
                 occupant.age_ms / 1000,
@@ -17439,6 +17439,21 @@ mod tests {
                     route: native_http_route_category("/api/config/private-canary?secret=canary"),
                 });
             state.active.get_mut("seed-0").unwrap().phase = "receiving-body";
+            admit_native_http_request(
+                &mut state.active,
+                "healthy-stream",
+                "https://station.example.test",
+                true,
+                std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            )
+            .unwrap();
+            let stream = state.active.get_mut("healthy-stream").unwrap();
+            stream.observation = Some(NativeHttpRequestObservation {
+                started_at: Instant::now() - Duration::from_secs(1800),
+                method: "GET".to_string(),
+                route: "monitoring",
+            });
+            stream.phase = "receiving-event-stream";
             for index in 0..NATIVE_HTTP_PENDING_READ_LIMIT {
                 state.pending_reads.push_back(NativePendingHttpRequest {
                     observation: Some(NativeHttpRequestObservation {
@@ -17466,11 +17481,11 @@ mod tests {
         let wire_error = serde_json::to_value(&refusal).unwrap();
         assert_eq!(wire_error["capacity"]["pendingRequests"], 64);
         assert_eq!(wire_error["capacity"]["pendingLimit"], 64);
-        assert_eq!(wire_error["capacity"]["activeRequests"], 8);
+        assert_eq!(wire_error["capacity"]["activeRequests"], 9);
         assert_eq!(wire_error["capacity"]["activeLimit"], 32);
         assert_eq!(wire_error["capacity"]["originRequests"], 8);
         assert_eq!(wire_error["capacity"]["originRequestLimit"], 8);
-        assert_eq!(wire_error["capacity"]["originStreams"], 0);
+        assert_eq!(wire_error["capacity"]["originStreams"], 1);
         assert_eq!(wire_error["capacity"]["originStreamLimit"], 12);
         assert_eq!(wire_error["capacity"]["retryAfterMs"], 250);
         assert_eq!(
