@@ -150,9 +150,8 @@ export function ChatDockMobileOverflowSheet({
             {overflow.inputOriginLabel}
           </div>
         )}
-        {/* One named entry point per snap state the drag gesture can reach
-            (collapsed / half / full), so the pointer gesture is never the only
-            way to change dock height. */}
+        {/* Collapse/expand lives on the header; full screen keeps a named,
+            reversible action so the gesture is optional. */}
         {overflow.dockControls !== false && overflow.isDockMaximized ? (
           <button
             type="button"
