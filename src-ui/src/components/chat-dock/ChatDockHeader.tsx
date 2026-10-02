@@ -276,7 +276,7 @@ export function ChatDockHeader({
       {workspaceControls?.showInboxToggle && (
         <button
           type="button"
-          className="chat-dock__action-btn"
+          className="chat-dock__icon-btn"
           aria-label={
             workspaceControls.isInboxOpen
               ? 'Collapse chat list'
