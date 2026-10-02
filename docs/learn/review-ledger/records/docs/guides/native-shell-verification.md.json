@@ -114,7 +114,7 @@
 
     {"path":"scripts/native-fresh-relay-fixture.ts","digest":"7fcc4a15eec894f8fb33c682218771bd02a1599d4d7d5268f9c07334e20bf43f","revision":"fa447997e733e00b082b05e7c709a08a38820b5d"},
 
-    {"path":"src-ui/src/components/OnboardingGate.tsx","digest":"c868e6e6c5e5c6d301af2cd3c48d150c22ec389919a0c726e611bafefd9f6fa7","revision":"7a327814d48d76faaca497206b6529d781d111dd"},
+    {"path":"src-ui/src/components/OnboardingGate.tsx","digest":"a162e42d41ed579ec24bfa787aaefb332c1dd3671250191619d976513520fbd5","revision":"e58fcedea713f7fc640bf51abe384f17503f72e4"},
 
     {"path":"tests/tauri-shell/native-fresh-relay-acceptance-webview.ts","digest":"3618b4a5b6517ced5f38e274952dac2cbfd7a276bba743581dbc30c1a305080e","revision":"058b19b63d88ffc68b5af83c3dda88ac9add9c63"},
 

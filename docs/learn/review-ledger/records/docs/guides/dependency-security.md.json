@@ -24,7 +24,7 @@
 
     {"path":"config/dependency-lifecycle-allowlist.json","digest":"4b8f259cd745009531fe4740668a878289b06285414efa2e5a5319c5faf54f4a","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
 
-    {"path":"package.json","digest":"a6deceaea9701a9deb9d05ebd0b1f42db716b05f155c155b2e872443511def48","revision":"8e884d84b5609d130f29937159601c65d119b664"},
+    {"path":"package.json","digest":"4b367a2c40a0613ebe8d9c35e26ff7c2a454ca84abd543856d84b88bd3201019","revision":"e58fcedea713f7fc640bf51abe384f17503f72e4"},
 
     {"path":"patches/voltagent-core-2.10.0.patch","digest":"8eda67a9681b85cf7adbeb5669184db3412ccc9f1954e068ac32ee5dd409170a","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 

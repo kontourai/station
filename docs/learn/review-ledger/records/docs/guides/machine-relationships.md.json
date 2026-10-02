@@ -12,7 +12,7 @@
   "document": {"digest":"108f08839833e66e6ac3d7c5b61bc59c9cb7de5dc999f58ee6aa52ac5aa52441","revision":"2ab3c6e171e1cae8222f85e17416538a99019390"},
 
   "sources": [
-    {"path":"docs/guides/connections.md","digest":"74a74042f5a9be44795f0ade1707ad015dc02fc6e50bdd336b71f54e64459827","revision":"08c51f7a541a89e5a98b0d4610299e30c9b5dc46"},
+    {"path":"docs/guides/connections.md","digest":"f2e09f43976262b6477bf010be02e986c035b45361f82413c1151555538ec09f","revision":"e58fcedea713f7fc640bf51abe384f17503f72e4"},
 
     {"path":"packages/connect/src/core/applicationChannel.ts","digest":"572c3b2ab6630c448abff1c49f99a2371425b64c818e5cce2d132fe348afb0c1","revision":"7abc84fcb97288d80f1b25cfc99de23d93817d4c"},
 
@@ -48,7 +48,7 @@
 
     {"path":"src-server/runtime/bootstrap/runtime-http.ts","digest":"bf1b7671bc40fe53615a39f8e9f12b5ad27beace97a86fc50e2ebb4e9717d20e","revision":"54ca710a3594bf1f3b7ac3d4464a2db2edc6e6c0"},
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"33e19d52230c0339923db1768b0cae89a71077634c4632f9a10c11f6a3e05f78","revision":"83c4111b8c4dcda1e978d78bb191c974888c9ca4"},
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"651fe6809a207b9b208d056e04b1cb0a800c245271fdec9500e567151e1c16ad","revision":"e58fcedea713f7fc640bf51abe384f17503f72e4"},
 
     {"path":"src-server/services/connections/fleet-contribution-manifest.ts","digest":"b652110a8ae06e2a05b9274128160b5c698a51a0cfa0a68a66664d71e1de72a5","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
 

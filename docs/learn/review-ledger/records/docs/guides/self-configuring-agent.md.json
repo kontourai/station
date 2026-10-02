@@ -16,7 +16,7 @@
 
     {"path":"packages/connect/src/core/brokerRouteEnrollment.ts","digest":"93c9f2a2d3a4dc37fd6de925b090db8e704780902d923e61ddbc7e3c74275824","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/connect/src/react/connection-manager-modal/ConnectionListPanel.tsx","digest":"cdd81415c132260e40a63b3c1d9dc1569e4b9ede7d723f12702520e6851c5b42","revision":"7a327814d48d76faaca497206b6529d781d111dd"},
+    {"path":"packages/connect/src/react/connection-manager-modal/ConnectionListPanel.tsx","digest":"f655052a713a9135d2f976f6272eb23f2db570921801863d4d43963b3a37fe5c","revision":"e58fcedea713f7fc640bf51abe384f17503f72e4"},
 
     {"path":"packages/contracts/src/agent.ts","digest":"09ccd526184f256ab9833dd6e46f417f4da565a825f3fd870f5621e017922e22","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

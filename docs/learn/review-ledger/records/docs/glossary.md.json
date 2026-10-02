@@ -14,9 +14,9 @@
   "sources": [
     {"path":"docs/architecture/module-map.md","digest":"8d33787e4ca8472ad4d2d5c91d8eaea168553090163766c9b957ab9e48dd0f79","revision":"a3ac8721653c1c4dc646f54a5401f03f02ba795f"},
 
-    {"path":"docs/reference/connect.md","digest":"908f3599f7bc2739e2efaacdb9756ae177a293123bf564aba2680b7fd0cd743b","revision":"aa4592ecd9a4cbc3bb99eeae9d4cf6062b7ba666"},
+    {"path":"docs/reference/connect.md","digest":"118c7a3c18abc56f4e9b7f89bfad696e0930eb4791bde4bcf4de195b1bd9dd39","revision":"e58fcedea713f7fc640bf51abe384f17503f72e4"},
 
-    {"path":"docs/reference/contracts.md","digest":"bed2d47ec281b1c7d81e12eb990739cd153f74525c1fdd30258353ebb55e9827","revision":"cc4f7016217bc65a2cf928481052ffeb68d49cb2"},
+    {"path":"docs/reference/contracts.md","digest":"161f2d6ff8d6e25f9ce89f8aa49b99f98358b24410e1103909abbd939f4008f8","revision":"e58fcedea713f7fc640bf51abe384f17503f72e4"},
 
     {"path":"packages/contracts/src/agent-identity.ts","digest":"d352f22b4698f100c1cc2a7466fd62556a6a69c03bffaf66e54c1bbdfc1410b7","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -52,7 +52,7 @@
 
     {"path":"src-server/routes/mobile-device.ts","digest":"0a46281dcaaac36ce6d49fd9415619c58e663f874d4d8bb032822e3ae68fbe46","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"33e19d52230c0339923db1768b0cae89a71077634c4632f9a10c11f6a3e05f78","revision":"83c4111b8c4dcda1e978d78bb191c974888c9ca4"},
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"651fe6809a207b9b208d056e04b1cb0a800c245271fdec9500e567151e1c16ad","revision":"e58fcedea713f7fc640bf51abe384f17503f72e4"},
 
     {"path":"src-server/services/browser/browser-access.ts","digest":"c435162b9cf5941edce107cfdccb5a4e6a4a5293fd105a745112c48ce9ae7870","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

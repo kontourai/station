@@ -38,7 +38,7 @@
 
     {"path":"ops/nightly/install-macos.zsh","digest":"70db095f76a9397adaccbab4a78374a2e562a76af2e0f595a30b5f09328776f3","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"package.json","digest":"a6deceaea9701a9deb9d05ebd0b1f42db716b05f155c155b2e872443511def48","revision":"8e884d84b5609d130f29937159601c65d119b664"},
+    {"path":"package.json","digest":"4b367a2c40a0613ebe8d9c35e26ff7c2a454ca84abd543856d84b88bd3201019","revision":"e58fcedea713f7fc640bf51abe384f17503f72e4"},
 
     {"path":"schemas/release-artifact-manifest.schema.json","digest":"07221e98f2132afb9e1b50f52b713327e634b66772a9fdc01e5ff026b0f0f5ae","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 

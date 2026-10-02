@@ -122,11 +122,11 @@
 
     {"path":"src-server/runtime/bootstrap/self-hosted-broker-pion-runtime.ts","digest":"d0eaf0a7651d34680ab4ee3398f7c1f1f9924534ad0e26f9a8e7bff14fef7120","revision":"55606e0498d0cbd6e7edad154f82dce3c102b186"},
 
-    {"path":"src-server/runtime/bootstrap/self-hosted-broker-runtime.ts","digest":"058f685c87ec89317352cf9c09f232b50113dabdb2dd4b564d6806f0a85e93db","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"src-server/runtime/bootstrap/self-hosted-broker-runtime.ts","digest":"bf1a6e8cbaa90f70068cb932c5fbfece01180b2624ff66c0847f3ea326ce5309","revision":"f57565382a6ff45cb87c52b04cced05fc7589e56"},
 
     {"path":"src-server/runtime/bootstrap/self-hosted-connector-config.ts","digest":"57fb0a7a6820b8b5b78c02a653e2e7c9f6ef68d7a747f7b55eff2b2151fe2da8","revision":"55606e0498d0cbd6e7edad154f82dce3c102b186"},
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"33e19d52230c0339923db1768b0cae89a71077634c4632f9a10c11f6a3e05f78","revision":"83c4111b8c4dcda1e978d78bb191c974888c9ca4"},
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"651fe6809a207b9b208d056e04b1cb0a800c245271fdec9500e567151e1c16ad","revision":"e58fcedea713f7fc640bf51abe384f17503f72e4"},
 
     {"path":"src-server/services/connections/pion-application-adapter.ts","digest":"656c2d512795679c80b3193b64dd4d5f41da4e24d95bf4dda935fa70761e88c6","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 

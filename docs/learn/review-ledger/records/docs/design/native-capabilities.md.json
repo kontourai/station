@@ -74,7 +74,7 @@
 
     {"path":"src-desktop/src/native_secure_entry.rs","digest":"d6ff8051df4be60ff738f524488fe877b0711b95aa606cb70b378e74962bd209","revision":"8d92d732808201554ba801334e2a19f7081fd09d"},
 
-    {"path":"src-ui/src/components/OnboardingGate.tsx","digest":"c868e6e6c5e5c6d301af2cd3c48d150c22ec389919a0c726e611bafefd9f6fa7","revision":"7a327814d48d76faaca497206b6529d781d111dd"},
+    {"path":"src-ui/src/components/OnboardingGate.tsx","digest":"a162e42d41ed579ec24bfa787aaefb332c1dd3671250191619d976513520fbd5","revision":"e58fcedea713f7fc640bf51abe384f17503f72e4"},
 
     {"path":"src-ui/src/platform/native/nativeAccountSessionBridge.ts","digest":"8247d3d4dfe7d8bd2a5130de0b4d9d77554057662af85206426592b4ca051bd4","revision":"2e4f061f91ffb0338e45de62382cf6da59cd5c76"},
 

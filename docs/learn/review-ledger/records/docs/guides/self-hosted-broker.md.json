@@ -9,7 +9,7 @@
 
   "limits": "Source review of the stated broker/native pilot contracts and inspected debug macOS frozen-harness receipt, not an exhaustive audit or release/mobile/Windows/Linux, remote/public deployment, production TURN/TLS, external identity-provider, two-person, default UI or fresh relay-only enrollment qualification. Prior dated receipts remain historical.",
 
-  "document": {"digest":"34876166ac6e017cce776174b07734de3e2160dbeba0c8f5e13d8e1ce1e86666","revision":"a320658a37b9537b814c0acb8460e7bf1b6018ea"},
+  "document": {"digest":"74a08d666110743d45d138199608e5c484000ec139fdd696fcfd7ba5574a3d96","revision":"f57565382a6ff45cb87c52b04cced05fc7589e56"},
 
   "sources": [
     {"path":"packages/connect/src/core/applicationChannel.ts","digest":"572c3b2ab6630c448abff1c49f99a2371425b64c818e5cce2d132fe348afb0c1","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
@@ -54,7 +54,7 @@
 
     {"path":"src-server/runtime/bootstrap/self-hosted-broker-pion-runtime.ts","digest":"d0eaf0a7651d34680ab4ee3398f7c1f1f9924534ad0e26f9a8e7bff14fef7120","revision":"55606e0498d0cbd6e7edad154f82dce3c102b186"},
 
-    {"path":"src-server/runtime/bootstrap/self-hosted-broker-runtime.ts","digest":"058f685c87ec89317352cf9c09f232b50113dabdb2dd4b564d6806f0a85e93db","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    {"path":"src-server/runtime/bootstrap/self-hosted-broker-runtime.ts","digest":"bf1a6e8cbaa90f70068cb932c5fbfece01180b2624ff66c0847f3ea326ce5309","revision":"f57565382a6ff45cb87c52b04cced05fc7589e56"},
 
     {"path":"src-server/runtime/bootstrap/self-hosted-connector-config.ts","digest":"57fb0a7a6820b8b5b78c02a653e2e7c9f6ef68d7a747f7b55eff2b2151fe2da8","revision":"55606e0498d0cbd6e7edad154f82dce3c102b186"},
 
