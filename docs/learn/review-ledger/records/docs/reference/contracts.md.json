@@ -9,7 +9,7 @@
 
   "limits": "Review covers every current documented claim, not all possible behaviors of every exported module. Detailed historical Muse/Claude captures remain historical; no live provider, native push gateway, physical device, deployed account or relay journey was run. Contract declarations and valid parsers never prove authorization, delivery or owner completion. No new security probe.",
 
-  "document": {"digest":"d1f25105f82d21d7250b53635621eb35e68d10bfc837e38998a11cb6d3bde875","revision":"c940b8d8bd415857e855a1674fc214f5d456b5a8"},
+  "document": {"digest":"ed70b894bc3d7dcbc3eab2f854e585ed29c6e804f5bf07ac0c8b9560e4108b6e","revision":"9025aeca54c23f7e7a86e329e2a274303b116c32"},
 
   "sources": [
     {"path":"packages/cli/src/commands/delegate.ts","digest":"9e1e324cb71d85c563afd74dbd8da063fe8a13a3faaa174690eaebea7ca8518d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
@@ -46,7 +46,7 @@
 
     {"path":"packages/contracts/src/plugin.ts","digest":"98607c85d86241ccf638de4d207ebb64285752092eb7a827e4304c75df409b95","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/contracts/src/pull-request-provider.ts","digest":"93dd9bdf19fe6a252e81acc0fa40571ea08b4045274e1663213ffd0447ec8441","revision":"543ec6c18fac08d9cd88ed6dff81b940e7776f86"},
+    {"path":"packages/contracts/src/pull-request-provider.ts","digest":"2dfca6b4c1aae914499a369879547be630bc22000a101cac765f23b556968448","revision":"6c2cd5fa91bdd90c87d03e9f55df59b7e6a7f247"},
 
     {"path":"packages/contracts/src/relay-enrollment.ts","digest":"622325708688314a4f708985de77a330c30cfe2615559fc32837f780b7932f22","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -112,9 +112,9 @@
 
     {"path":"src-server/services/orchestration/turn-stall-watchdog.ts","digest":"11df4b14703e5376a92a9f469ffec78fd88a218745725c509bcd90dfa4e9c655","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/pull-requests/__tests__/pull-request-review.test.ts","digest":"63211729227142a5260cc98ccc8f8492941f5d7b3e7f76568873cd20946c8865","revision":"c940b8d8bd415857e855a1674fc214f5d456b5a8"},
+    {"path":"src-server/services/pull-requests/__tests__/pull-request-review.test.ts","digest":"3468a46e4a56d93f46e2cb4973a2c265c818f244798b35dbfe832a700f507af9","revision":"b8b24c97d098d1569105a87991fedadee778d22a"},
 
-    {"path":"src-server/services/pull-requests/pull-request-review.ts","digest":"1ec687c304021edd2d93cd2304e00a6d245b2b613a10c97e041d4fcce0ca2985","revision":"c940b8d8bd415857e855a1674fc214f5d456b5a8"},
+    {"path":"src-server/services/pull-requests/pull-request-review.ts","digest":"ac2b9f7a46736ecc544a8ff555b75773917cbcd67b842acd60474b8fea9933f6","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"src-server/tools/station-control-delegation.ts","digest":"b924e289e8e485cf249ec99ebd3097b014f001f58942aa29f91e0196bbc5af70","revision":"ee7cb7c444fb45f465be3f4ea5c938e5a130145e"},
 
