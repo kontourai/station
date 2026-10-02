@@ -9,7 +9,7 @@
 
   "limits": "Source review of the stated broker/native pilot contracts and inspected debug macOS frozen-harness receipt, not an exhaustive audit or release/mobile/Windows/Linux, remote/public deployment, production TURN/TLS, external identity-provider, two-person, default UI or fresh relay-only enrollment qualification. Prior dated receipts remain historical.",
 
-  "document": {"digest":"74a08d666110743d45d138199608e5c484000ec139fdd696fcfd7ba5574a3d96","revision":"f57565382a6ff45cb87c52b04cced05fc7589e56"},
+  "document": {"digest":"7d19efe2dd30df91b12435846441dbc4f95374f44c1cea117d8c8ab30d3cd7de","revision":"fec33b843681eb9554290998f8c6ebd64794847c"},
 
   "sources": [
     {"path":"packages/connect/src/core/applicationChannel.ts","digest":"572c3b2ab6630c448abff1c49f99a2371425b64c818e5cce2d132fe348afb0c1","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
@@ -74,7 +74,7 @@
 
     {"path":"src-server/services/connections/self-hosted-broker-connector.ts","digest":"16c715c1e4b9243a2f6e7b74d1d67e7ca3cda2a7fcd4ec6575bfdb5577ba5d92","revision":"cf8683338fc1a537f8be0082ddaa3c3fafcbfb17"},
 
-    {"path":"src-server/services/connections/self-hosted-broker-service.ts","digest":"8dcff05f0bbf43d8729dd9fd24c2191048720126bd94fa4528753cc3df3def56","revision":"7dc84da36281cace63d55fbd59fac3f64fcb3721"},
+    {"path":"src-server/services/connections/self-hosted-broker-service.ts","digest":"bd443d852a5dd81f6482fb22f140295bfc20fa93b2d7c80430367d08ae71c2ce","revision":"fec33b843681eb9554290998f8c6ebd64794847c"},
 
     {"path":"src-server/services/identity/relay-enrollment-service.ts","digest":"f4abb50060321e593e55eac98c1adcfffa2440caecc90e4df26b7537d8d61fed","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 

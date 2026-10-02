@@ -144,7 +144,7 @@
 
     {"path":"src-server/services/connections/self-hosted-broker-connector.ts","digest":"16c715c1e4b9243a2f6e7b74d1d67e7ca3cda2a7fcd4ec6575bfdb5577ba5d92","revision":"cf8683338fc1a537f8be0082ddaa3c3fafcbfb17"},
 
-    {"path":"src-server/services/connections/self-hosted-broker-service.ts","digest":"8dcff05f0bbf43d8729dd9fd24c2191048720126bd94fa4528753cc3df3def56","revision":"7dc84da36281cace63d55fbd59fac3f64fcb3721"},
+    {"path":"src-server/services/connections/self-hosted-broker-service.ts","digest":"bd443d852a5dd81f6482fb22f140295bfc20fa93b2d7c80430367d08ae71c2ce","revision":"fec33b843681eb9554290998f8c6ebd64794847c"},
 
     {"path":"src-server/services/identity/application-session-service.ts","digest":"1f402b63070067b8c40c8009a29ce03a2a48781d3b9f599d6c7149e0e0993f3e","revision":"d4b8f59be510d5eb8220bc5a883dd1691cfa2679"},
 
