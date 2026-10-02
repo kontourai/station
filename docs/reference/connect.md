@@ -759,7 +759,7 @@ interface ConnectionManagerModalProps {
   isOpen: boolean;
   onClose: () => void;
   checkHealth: (url: string, credential?: string) => Promise<ConnectionHealthCheckResult>;
-  checkCompatibility?: (url: string) => Promise<StationCompatibilityResult>;
+  checkCompatibility?: (url: string, signal?: AbortSignal) => Promise<StationCompatibilityResult>;
   activeHealth?: {
     connectionId: string;
     status: 'connecting' | 'connected' | 'error' | 'idle';
