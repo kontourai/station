@@ -9,7 +9,7 @@
 
   "limits": "Review covers every current documented claim, not all possible behaviors of every exported module. Detailed historical Muse/Claude captures remain historical; no live provider, native push gateway, physical device, deployed account or relay journey was run. Contract declarations and valid parsers never prove authorization, delivery or owner completion. No new security probe.",
 
-  "document": {"digest":"a92feb608ff35eb575e312d234f3b6d4de46735add00702bad15160005a2e942","revision":"9816185d79a9c9f83a325d7bc16905765ea66705"},
+  "document": {"digest":"91f07d13e66545c07aad8b506e741687a7d6291b86a5453419ef26ade50b8f88","revision":"3a12d2273b4b8b1e024523d6eb396d6ec3c703fb"},
 
   "sources": [
     {"path":"packages/cli/src/commands/delegate.ts","digest":"9e1e324cb71d85c563afd74dbd8da063fe8a13a3faaa174690eaebea7ca8518d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
