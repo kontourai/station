@@ -10,7 +10,16 @@
  * turn.aborted): a client that heard both live kept the request pending
  * while a client that reconnected through a snapshot did not.
  */
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+} from 'vitest';
 
 const dismissToast = vi.fn((_id: string) => {});
 const showToast = vi.fn(
@@ -155,13 +164,8 @@ function foldSnapshot(threadId: string, trace: Trace) {
   );
 }
 
-beforeEach(async () => {
+beforeAll(async () => {
   vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => {} });
-  vi.resetModules();
-  toastCount = 0;
-  dismissToast.mockClear();
-  showToast.mockClear();
-  showToolApproval.mockClear();
   vi.doMock('../../../contexts/active-chats-store', async () => {
     const actual = await vi.importActual<
       typeof import('../../../contexts/active-chats-store')
@@ -182,7 +186,22 @@ beforeEach(async () => {
   ));
 });
 
-afterEach(() => {
+beforeEach(() => {
+  for (const threadId of Object.keys(activeChatsStore.getSnapshot())) {
+    activeChatsStore.removeChat(threadId);
+  }
+  toastCount = 0;
+  dismissToast.mockClear();
+  showToast.mockClear();
+  showToolApproval.mockClear();
+});
+
+afterEach(async () => {
+  await vi.dynamicImportSettled();
+  activeChatsStore.flushPendingSave();
+});
+
+afterAll(() => {
   vi.unstubAllGlobals();
   vi.doUnmock('../../../contexts/active-chats-store');
   vi.resetModules();
