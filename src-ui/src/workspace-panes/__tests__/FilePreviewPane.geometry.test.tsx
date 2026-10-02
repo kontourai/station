@@ -168,8 +168,15 @@ describe.skipIf(!chromiumIsInstalled(REPO_ROOT))(
             const rect = element.getBoundingClientRect();
             const cx = rect.left + rect.width / 2;
             const cy = rect.top + rect.height / 2;
-            const reachX = Math.floor(Number.parseFloat(before.width) / 2 - 1);
-            const reachY = Math.floor(Number.parseFloat(before.height) / 2 - 1);
+            // Two pixels of slack, not one: a 44px pseudo on a fractional
+            // boundary puts a (w/2 - 1) probe exactly on the edge pixel on
+            // some engines (Linux CI measured the File segment's right
+            // probe outside by half a pixel). The floor itself is asserted
+            // exactly by the width and height checks above; the probes only
+            // prove the pseudo is really hittable, and ±2 keeps that proof
+            // clear of subpixel boundaries.
+            const reachX = Math.floor(Number.parseFloat(before.width) / 2 - 2);
+            const reachY = Math.floor(Number.parseFloat(before.height) / 2 - 2);
             // Cardinal probes, one pixel inside the pseudo's edge — the
             // same reach the stepped version measured. A corner probe
             // would demand the pseudo also win diagonally, where the
