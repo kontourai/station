@@ -74,7 +74,11 @@ the shipped slices.
 **Recorded per-CLI config-surface audit** (the original wave's observations).
 Current spawn code additionally layers Station's augmented process environment and
 connection environment. The ACP process also supplies an explicit augmented child
-environment; the old “no env key” row is not the current spawn contract. External SDK
+environment; the old “no env key” row is not the current spawn contract. Since #2932
+Station makes the Claude Code spawn call itself, through the SDK's
+`spawnClaudeCodeProcess` option (`claude-code-spawn.ts`), to read permission requests
+from the engine's stdout. The SDK still builds the command, arguments and environment
+from `Options`, so the environment column below is unchanged. External SDK
 and CLI behavior below retains the probe's original version scope.
 
 | Engine | Spawn path today | Env at spawn | Config-home override | Station read paths of that config |
