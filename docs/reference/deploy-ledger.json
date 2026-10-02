@@ -1,5 +1,40 @@
 [
   {
+    "timestampUtc": "2026-10-02T13:16:04Z",
+    "channel": "nightly-npm",
+    "version": "0.7.0-nightly.2466.37006002202",
+    "sha": "1c46287e3d2c12adf752e0c8ba9027560a6845ce",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/37006002202",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.7.0-nightly.2466.37006002202 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "2ed63fc9e7f6c73ef9c7a20cbdc742975dfaf1a9",
+      "groups": {
+        "feat": [
+          "[#3111](https://github.com/kontourai/station/pull/3111) feat(ci): measure merge-queue and runner health over time (#3101 H)",
+          "[#3100](https://github.com/kontourai/station/pull/3100) feat(claude): read the engine's structured ask reasons so grants never answer safety checks or ask rules (#2932)",
+          "[#2974](https://github.com/kontourai/station/pull/2974) feat(install): install.ps1 stages Windows archives through a shared installer core (#2675 W1)"
+        ],
+        "fix": [
+          "[#3108](https://github.com/kontourai/station/pull/3108) fix(chat): phone chat fixes — tool rows and approvals, pane layout, send and attachments"
+        ],
+        "ci": [
+          "[#3107](https://github.com/kontourai/station/pull/3107) ci: right-size fast-checks shards for the hosted runner pool (#3101 D)"
+        ],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 5
+    }
+  },
+  {
     "timestampUtc": "2026-10-02T06:39:22Z",
     "channel": "nightly-desktop",
     "version": "0.1.11-nightly.2466.1",
