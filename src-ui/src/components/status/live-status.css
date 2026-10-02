@@ -108,19 +108,18 @@
    it never covers the header's `…` menu. Floating (absolute), so appearing,
    changing and leaving move nothing in the transcript. */
 .chat-status-pill-host {
-  position: absolute;
+  position: relative;
   z-index: 3;
-  top: 8px;
-  right: 12px;
   display: flex;
-  max-width: min(78%, 360px);
+  min-width: 0;
+  max-width: 100%;
   flex-direction: column;
   align-items: flex-end;
   gap: 6px;
   pointer-events: none;
 }
 
-.chat-status-pill {
+.chat-status-pill-host .chat-status-pill {
   display: inline-flex;
   max-width: 100%;
   min-height: 32px;
@@ -245,7 +244,11 @@ button.chat-status-pill {
 }
 
 .chat-status-pill__details {
-  max-width: 100%;
+  position: absolute;
+  bottom: calc(100% + var(--k-space-2));
+  right: 0;
+  width: max-content;
+  max-width: min(calc(100cqw - var(--k-space-6) - var(--k-space-5)), 360px);
   padding: 8px 12px;
   border: 1px solid var(--border-primary);
   border-radius: 10px;

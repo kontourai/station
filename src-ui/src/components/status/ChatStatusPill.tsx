@@ -93,10 +93,8 @@ function PillDetails({
 }
 
 /**
- * The chat pane's one floating status: approval, connection, or what the turn
- * is doing (see `deriveChatStatus` for the priority). It floats over the
- * transcript's top-right corner, so appearing, morphing and leaving never
- * move a line of the conversation.
+ * The chat pane's status beside the composer: approval, connection, or what
+ * the turn is doing (see `deriveChatStatus` for the priority).
  *
  * Motion carries meaning and nothing else: it floats in when there is
  * something to say and out when there is not; a change of state re-keys the
