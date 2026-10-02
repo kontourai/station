@@ -85,7 +85,10 @@ export function QueuedMessages({
   if (messages.length === 0) return null;
 
   return (
-    <div className="queued-messages" data-expanded={expanded || undefined}>
+    <div
+      className="queued-messages queued-messages--pending"
+      data-expanded={expanded || undefined}
+    >
       <button
         type="button"
         className="queued-messages__toggle"

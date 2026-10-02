@@ -161,71 +161,71 @@
   letter-spacing: normal;
 }
 
-.queued-message__status {
+.queued-messages--pending .queued-message__status {
   display: block;
   color: var(--k-text-muted);
   font-size: var(--text-sm);
   white-space: normal;
 }
 
-.queued-message__status {
+.queued-messages--pending .queued-message__status {
   margin-top: var(--k-space-1);
   line-height: var(--k-leading-normal);
 }
-.queued-message__btn {
+.queued-messages--pending .queued-message__btn {
   border-radius: var(--k-radius-control);
 }
-.queued-message__btn:hover:not(:disabled),
-.queued-message__btn:focus-visible {
+.queued-messages--pending .queued-message__btn:hover:not(:disabled),
+.queued-messages--pending .queued-message__btn:focus-visible {
   background: var(--k-panel-raised);
   color: var(--k-text);
   opacity: 1;
 }
-.queued-message__btn:focus-visible {
+.queued-messages--pending .queued-message__btn:focus-visible {
   outline: var(--k-focus-ring-width) solid var(--k-focus);
   outline-offset: var(--k-focus-ring-offset);
 }
 @media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
-  .queued-messages {
+  .queued-messages--pending .queued-messages--pending {
     padding: var(--k-space-2);
   }
-  .queued-messages__list {
+  .queued-messages--pending .queued-messages__list {
     max-height: min(35dvh, 24rem);
   }
-  .queued-message {
+  .queued-messages--pending .queued-message {
     flex-wrap: wrap;
     padding: var(--k-space-2);
   }
-  .queued-message__text {
+  .queued-messages--pending .queued-message__text {
     flex: 1 0 calc(100% - var(--k-space-5));
   }
-  .queued-message__btn {
+  .queued-messages--pending .queued-message__btn {
     font-size: var(--k-text-sm);
     opacity: 1;
   }
 }
 
-.queued-message__utilities {
+.queued-messages--pending .queued-message__utilities {
   display: flex;
   align-items: center;
   gap: var(--k-space-1);
   margin-inline-start: auto;
 }
 @media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
-  .queued-message {
+  .queued-messages--pending .queued-message {
     align-items: flex-start;
   }
-  .queued-message__order {
+  .queued-messages--pending .queued-message__order {
     padding-top: var(--k-space-1);
   }
 }
 
-.queued-messages {
+.queued-messages--pending .queued-messages--pending {
   padding: 0;
   border: none;
   background: transparent;
 }
-.queued-messages__toggle {
+.queued-messages--pending .queued-messages__toggle {
   display: flex;
   align-items: center;
   gap: var(--k-space-2);
@@ -238,33 +238,35 @@
   font-size: var(--k-text-sm);
   cursor: pointer;
 }
-.queued-messages__toggle:hover,
-.queued-messages__toggle:focus-visible {
+.queued-messages--pending .queued-messages__toggle:hover,
+.queued-messages--pending .queued-messages__toggle:focus-visible {
   background: var(--k-panel-raised);
   color: var(--k-text);
 }
-.queued-messages__toggle:focus-visible {
+.queued-messages--pending .queued-messages__toggle:focus-visible {
   outline: var(--k-focus-ring-width) solid var(--k-focus);
   outline-offset: var(--k-focus-ring-offset);
 }
-.queued-messages__toggle[aria-expanded="true"] > :last-child {
+.queued-messages--pending
+  .queued-messages__toggle[aria-expanded="true"]
+  > :last-child {
   transform: rotate(180deg);
 }
-.queued-messages__attention {
+.queued-messages--pending .queued-messages__attention {
   color: var(--k-caution);
   font-size: var(--k-text-xs);
 }
-.queued-messages__content {
+.queued-messages--pending .queued-messages__content {
   padding: var(--k-space-2);
   border: var(--k-border-thin) solid var(--k-line);
   border-radius: var(--k-radius-control);
   background: var(--k-panel);
 }
-.queued-messages__content[hidden] {
+.queued-messages--pending .queued-messages__content[hidden] {
   display: none;
 }
 @media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
-  .queued-messages__toggle {
+  .queued-messages--pending .queued-messages__toggle {
     min-height: 44px;
   }
 }
