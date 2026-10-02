@@ -2427,6 +2427,13 @@ const SCREENS: Screen[] = [
     viewport: { width: 320, height: 568 },
     afterGoto: async (page) => {
       await assertNoStrayProjectModal(page);
+      const brand = page.locator('.app-toolbar__brand');
+      await expect(brand).toBeVisible();
+      expect(
+        await brand.evaluate(
+          (element) => element.scrollWidth <= element.clientWidth + 1,
+        ),
+      ).toBe(true);
       await expect(page.locator('.chat-dock')).toBeVisible({
         timeout: 10_000,
       });
