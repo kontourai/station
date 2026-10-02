@@ -25,6 +25,7 @@ import {
 } from '../../services/orchestration/dispatch-cwd-admission.js';
 import {
   type StationControlPolicyCaller,
+  stationControlRefusal,
   stationControlRefusalBody,
   stationControlScopeRefusal,
 } from '../../tools/station-control-policy.js';
@@ -143,7 +144,8 @@ function dispatchCwdAdmission(
 /**
  * #2873: the 403 for a dispatch the spawn-side scope check refused. The
  * refusal crosses the dispatch as an error carrying its station-control
- * code; only a station-control caller's request is answered this way.
+ * code; the body is that code's fixed copy, never the error's own text.
+ * Only a station-control caller's request is answered this way.
  */
 export function dispatchCwdRefusalFor(
   c: Context,
@@ -160,14 +162,7 @@ export function dispatchCwdRefusalFor(
     code !== 'station_control_assurance_insufficient'
   )
     return undefined;
-  return c.json(
-    {
-      success: false,
-      code,
-      error: error instanceof Error ? error.message : String(error),
-    },
-    403,
-  );
+  return c.json(stationControlRefusalBody(stationControlRefusal(code)), 403);
 }
 
 /** {@link scopeDispatch} where the route has no folder to dispatch. */
