@@ -8,12 +8,12 @@
  * from history, the project page's live-work section — got a chat pane with
  * no indication anything had gone wrong, above a composer that looked fine.
  *
- * Every test here is a COLD arrival: no live event has been handled, the local
- * `ChatSession` carries no error, and nothing is streaming. That is the state
- * the dock rendered silently.
+ * Cold-arrival cases reproduce that missing failure surface. Composer cases
+ * also exercise live delivery and terminal stream transitions.
  */
 
 import { agentId } from '@kontourai/station-contracts/agent-identity';
+import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   act,
@@ -25,6 +25,16 @@ import {
 } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { activeChatsStore } from '../contexts/active-chats-store';
+
+const nativeRaceTransport = vi.hoisted(() => ({
+  onMessage: null as
+    | null
+    | ((frame: { event: string; data: string; id?: string }) => void),
+  dispatch: vi.fn(async (_input: Record<string, unknown>) => ({})),
+}));
+vi.mock('../lib/foregroundMessageDispatch', () => ({
+  dispatchForeground: nativeRaceTransport.dispatch,
+}));
 
 const agentsMock = vi.hoisted(() => ({ current: [] as any[] }));
 const transcriptMock = vi.hoisted(() => ({
@@ -48,6 +58,20 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@kontourai/station-sdk')>()),
   inspectOrchestrationSteerInput: (...args: unknown[]) =>
     inspectOrchestrationSteerInputMock(...args),
+  fetchSSE: (
+    _url: string,
+    options: {
+      onMessage: (frame: { event: string; data: string; id?: string }) => void;
+    },
+  ) => {
+    nativeRaceTransport.onMessage = options.onMessage;
+    return {
+      close: vi.fn(),
+      signal: new AbortController().signal,
+      completed: new Promise<void>(() => {}),
+      retry: vi.fn(),
+    };
+  },
   steerOrchestrationTurn: (...args: unknown[]) =>
     steerOrchestrationTurnMock(...args),
 }));
@@ -70,16 +94,18 @@ vi.mock('../contexts/ApiBaseContext', () => ({
   useHostRequestAuthorityScope: () => undefined,
 }));
 
-vi.mock('../contexts/ToastContext', () => ({
+vi.mock('../contexts/ToastContext', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../contexts/ToastContext')>()),
   useToast: () => ({ showToast: vi.fn() }),
 }));
 
-vi.mock('../contexts/NavigationContext', () => {
+vi.mock('../contexts/NavigationContext', async (importOriginal) => {
   // NavigationContext publishes two read hooks: `useNavigation` (subscribes to
   // the store, optionally through a selector) and `useNavigationActions` (the
   // memoized actions, no subscription). This mock answers both from one value.
   const navigation = () => ({ navigate: vi.fn() });
   return {
+    ...(await importOriginal<typeof import('../contexts/NavigationContext')>()),
     useNavigation: (
       selector?: (state: ReturnType<typeof navigation>) => unknown,
     ) => (selector ? selector(navigation()) : navigation()),
@@ -198,6 +224,7 @@ vi.mock('../components/chat/QueuedMessages', async (importOriginal) => {
 });
 
 import { ChatDockBody } from '../components/chat-dock/ChatDockBody';
+import { ensureOrchestrationEventStream } from '../hooks/orchestration/ensureOrchestrationEventStream';
 import type { ChatSession } from '../types';
 
 const LONG_UNBREAKABLE_REASON =
@@ -319,6 +346,7 @@ function renderDock({
 describe('ChatDockBody failed-session banner (station#3213)', () => {
   beforeEach(() => {
     activeChatsStore.removeChat('thread-alpha');
+    nativeRaceTransport.dispatch.mockClear();
     agentsMock.current = [];
     transcriptMock.events = [];
     transcriptMock.enabled = false;
@@ -706,6 +734,120 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
       expect(steerOrchestrationTurnMock).not.toHaveBeenCalled();
     } finally {
       write.mockRestore();
+    }
+  });
+
+  test('a native acknowledgement retires B before a terminal SSE microtask can drain A', async () => {
+    realQueueControlsMock.enabled = true;
+    const metadata = [
+      { id: 'a-race-id', mode: 'queue' as const },
+      { id: 'b-race-id', mode: 'queue' as const },
+    ];
+    activeChatsStore.initChat('thread-alpha', {
+      agentSlug: 'claude',
+      agentName: 'Claude',
+      title: 'Steering race',
+      conversationId: 'race-conversation',
+    });
+    activeChatsStore.updateChat('thread-alpha', {
+      status: 'sending',
+      currentSessionId: 'race-child',
+      openTurnId: 'race-turn',
+      conversationOpenPending: false,
+      queuedMessages: ['ordinary A', 'confirmed B'],
+      queuedMessageMetadata: metadata,
+      conversationActivity: {
+        conversationId: 'race-conversation',
+        asOfSequence: 1,
+        openTurn: {
+          threadId: 'race-child',
+          turnId: 'race-turn',
+          startedAt: '2026-10-02T18:00:00.000Z',
+        },
+      },
+    });
+    renderDock({
+      orchestrationSession: buildOrchestrationSession({
+        status: 'running',
+        lifecycleState: 'running',
+      }),
+      session: buildSession({
+        status: 'sending',
+        conversationId: 'race-conversation',
+        currentSessionId: 'race-child',
+        openTurnId: 'race-turn',
+        queuedMessages: ['ordinary A', 'confirmed B'],
+        queuedMessageMetadata: metadata,
+        orchestrationProvider: 'claude',
+      }),
+    });
+    fireEvent.click(
+      await screen.findByRole('button', { name: '2 pending messages' }),
+    );
+    ensureOrchestrationEventStream('http://localhost:3242');
+    expect(nativeRaceTransport.onMessage).not.toBeNull();
+    vi.useFakeTimers();
+    let locked = false;
+    let delivered = false;
+    const unsubscribe = activeChatsStore.subscribe(() => {
+      const state = activeChatsStore.getSnapshot()['thread-alpha'];
+      if (state?.queueSendNowPending) locked = true;
+      if (locked && !state?.queueSendNowPending && !delivered) {
+        delivered = true;
+        void Promise.resolve().then(() =>
+          nativeRaceTransport.onMessage?.({
+            event: SERVER_EVENTS.ORCHESTRATION_EVENT,
+            id: 'native-race-terminal',
+            data: JSON.stringify({
+              event: {
+                eventId: 'native-race-terminal',
+                provider: 'claude',
+                threadId: 'race-child',
+                turnId: 'race-turn',
+                method: 'turn.completed',
+                outputText: 'Finished',
+                createdAt: '2026-10-02T18:00:10.000Z',
+              },
+              conversation: {
+                conversationId: 'race-conversation',
+                currentSessionId: 'race-child',
+                activity: {
+                  conversationId: 'race-conversation',
+                  asOfSequence: 2,
+                },
+              },
+            }),
+          }),
+        );
+      }
+    });
+    try {
+      await act(async () => {
+        fireEvent.click(
+          screen.getAllByRole('button', { name: 'Send as steer' })[0],
+        );
+      });
+      expect(delivered).toBe(true);
+      expect(
+        activeChatsStore.getSnapshot()['thread-alpha'].queuedMessages,
+      ).toEqual([]);
+      expect(
+        activeChatsStore.getSnapshot()['thread-alpha'].pendingQueueDispatch
+          ?.content,
+      ).toBe('ordinary A');
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(150);
+        await vi.dynamicImportSettled();
+      });
+      expect(steerOrchestrationTurnMock).toHaveBeenCalledTimes(1);
+      expect(nativeRaceTransport.dispatch).toHaveBeenCalledTimes(1);
+      expect(nativeRaceTransport.dispatch.mock.calls[0]?.[0]).toMatchObject({
+        message: 'ordinary A',
+        clientTurnId: 'a-race-id',
+      });
+    } finally {
+      unsubscribe();
+      vi.useRealTimers();
     }
   });
 

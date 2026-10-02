@@ -290,7 +290,7 @@ describe('QueuedMessages — reorder buttons (#613)', () => {
     ).toBeNull();
   });
 
-  it('removes a steered row by identity after concurrent queue removal', async () => {
+  it('leaves receipt retirement to the caller after concurrent queue changes', async () => {
     let resolve!: (sent: boolean) => void;
     const onSteer = vi.fn(
       () =>
@@ -298,12 +298,14 @@ describe('QueuedMessages — reorder buttons (#613)', () => {
           resolve = done;
         }),
     );
+    const onPendingSettled = vi.fn();
     const { rerender } = renderQueue(
       <QueuedMessages
         sessionId="s1"
         messages={['first', 'redirect', 'last']}
         canSteer
         onSteer={onSteer}
+        onPendingSettled={onPendingSettled}
       />,
     );
     fireEvent.click(
@@ -315,10 +317,12 @@ describe('QueuedMessages — reorder buttons (#613)', () => {
         messages={['redirect', 'last']}
         canSteer
         onSteer={onSteer}
+        onPendingSettled={onPendingSettled}
       />,
     );
     await act(async () => resolve(true));
 
-    expect(removeMock).toHaveBeenCalledWith(0);
+    expect(removeMock).not.toHaveBeenCalled();
+    expect(onPendingSettled).toHaveBeenCalledTimes(1);
   });
 });

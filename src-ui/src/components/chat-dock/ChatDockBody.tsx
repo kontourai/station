@@ -1231,6 +1231,23 @@ export function ChatDockBody({
               activeChatsStore.updateChat(activeSession.id, {
                 queueSendNowPending: true,
               });
+              const retireConfirmedById = () => {
+                const current =
+                  activeChatsStore.getSnapshot()[activeSession.id];
+                const index =
+                  current?.queuedMessageMetadata?.findIndex(
+                    (entry) => entry.id === clientInputId,
+                  ) ?? -1;
+                if (!current || index < 0) return;
+                activeChatsStore.updateChat(activeSession.id, {
+                  queuedMessages: current.queuedMessages.filter(
+                    (_, position) => position !== index,
+                  ),
+                  queuedMessageMetadata: current.queuedMessageMetadata?.filter(
+                    (_, position) => position !== index,
+                  ),
+                });
+              };
               try {
                 const steeringInput = {
                   // Steering is a command on the live execution Session. The
@@ -1259,6 +1276,7 @@ export function ChatDockBody({
                     clientInputId,
                   });
                   if (inspection.outcome === 'steered') {
+                    retireConfirmedById();
                     addEphemeralMessage(activeSession.id, {
                       role: 'system',
                       content: 'Steering sent.',
@@ -1334,6 +1352,7 @@ export function ChatDockBody({
                 }
                 const result = await steerOrchestrationTurn(steeringInput);
                 if (result.outcome === 'steered') {
+                  retireConfirmedById();
                   addEphemeralMessage(activeSession.id, {
                     role: 'system',
                     content: 'Steering sent.',

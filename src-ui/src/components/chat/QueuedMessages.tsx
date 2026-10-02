@@ -231,20 +231,11 @@ export function QueuedMessages({
                           if (pendingRef.current.has(row.id)) return;
                           pendingRef.current.add(row.id);
                           setPendingRows(new Set(pendingRef.current));
-                          void onSteer(msg, metadata?.[idx]?.id)
-                            .then((sent) => {
-                              if (sent) {
-                                const currentIndex = rowsRef.current.findIndex(
-                                  (candidate) => candidate.id === row.id,
-                                );
-                                if (currentIndex >= 0) remove(currentIndex);
-                              }
-                            })
-                            .finally(() => {
-                              pendingRef.current.delete(row.id);
-                              setPendingRows(new Set(pendingRef.current));
-                              onPendingSettled?.();
-                            });
+                          void onSteer(msg, metadata?.[idx]?.id).finally(() => {
+                            pendingRef.current.delete(row.id);
+                            setPendingRows(new Set(pendingRef.current));
+                            onPendingSettled?.();
+                          });
                         }}
                         className="queued-message__btn"
                         aria-label={

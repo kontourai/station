@@ -29,6 +29,7 @@ import {
 } from '../../../__test-utils__/orchestration-gate-test-harness.js';
 import { readJson } from '../../../__test-utils__/read-json.js';
 import { readStreamUntil } from '../../../__test-utils__/sse-helpers.js';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { ORCHESTRATION_STREAM_RESUME_GAP_THRESHOLD } from '../../../constants.js';
 import { AsyncEventQueue } from '../../../providers/sessions/async-event-queue.js';
 import { createHostedTenantMiddleware } from '../../../runtime/bootstrap/runtime-tenant-context.js';
@@ -476,6 +477,12 @@ const personalReadAuthority = (userId: string) =>
   });
 
 describe('Orchestration Routes', () => {
+  const makeTempDir = trackTempDirs();
+  const steerFixtureStores: EventStore[] = [];
+  afterEach(() => {
+    for (const store of steerFixtureStores.splice(0)) store.close();
+  });
+
   test('SDK receipt-protected steering and inspection fail closed on a legacy server before engine invocation', async () => {
     const legacySteerSchema = z.object({
       type: z.literal('steerTurn'),
@@ -533,8 +540,9 @@ describe('Orchestration Routes', () => {
   });
 
   test('SDK native steer identity survives lost HTTP acknowledgement and a completed turn without redelivery', async () => {
-    const directory = mkdtempSync(join(tmpdir(), 'steer-http-receipt-'));
+    const directory = makeTempDir('steer-http-receipt-');
     const eventStore = new EventStore(join(directory, 'orchestration.sqlite'));
+    steerFixtureStores.push(eventStore);
     const eventBus = new EventBus();
     class SteerAdapter extends GateTestAdapter {
       private loaded = false;
@@ -676,8 +684,6 @@ describe('Orchestration Routes', () => {
       expect(adapter.steerTurn).toHaveBeenCalledTimes(1);
     } finally {
       fetchSpy.mockRestore();
-      eventStore.close();
-      rmSync(directory, { recursive: true, force: true });
     }
   });
 
