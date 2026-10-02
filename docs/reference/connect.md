@@ -16,6 +16,26 @@ where — see
 
 ---
 
+## Native relay link publication
+
+The `/native-relay-link` source entry exports `nativeRelayLinkScheme`,
+`encodeNativeRelayLink` and `parseNativeRelayLink`. It publishes or inspects the
+closed `station-native-relay-link/v1` envelope: public first-contact route
+intent, or an untrusted application-origin hint wrapping an unchanged native
+v2 installation-bound invitation. The distinct URI association carries the
+complete bounded envelope in its fragment, with no query payload. Production
+origins require canonical HTTPS; explicit development links permit only exact
+numeric loopback HTTP.
+
+The codec grants no authority and is not the receiving native secret boundary.
+iOS receives the invitation in [host custody](../../src-desktop/src/native_relay_link_intake.rs)
+and emits only `NativeRelayLinkDelivery` metadata and a pending handle. The
+renderer does not parse or retain a received link's secret. Saved-route review,
+public-proof/operator approval, independent Station-key comparison, person
+authentication, Device approval and Project membership remain separate.
+Android does not register the relay-secret association. Source composition
+does not qualify an installed native or collaborator journey.
+
 ## Application channel request preparation
 
 The `/application-channel` entry exports `ApplicationChannel`,

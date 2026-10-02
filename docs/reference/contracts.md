@@ -33,6 +33,7 @@ Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shar
 | `@kontourai/station-contracts/native-device-proof` | Native Device request-proof version, header, approved binding, exact one-use claims and the host-proposed binding candidate (provisional canonical UUIDv4 ID, approved Device ID, full surface and Device public JWK; no secret); `NativeDeviceProofBindingReadbackV1` projects operator-only historical binding data and separate current Device-binding status; `NativeDeviceProofSelfReceiptV1` reuses that public tuple for the owning current Device bearer through a distinct protected read; `NativeDeviceProofSelfReceiptErrorV1` versions its closed lookup/refusal codes so an unrelated HTTP error cannot establish binding absence; protocol data grants no Device, account or Project authority and supplies no runtime admission |
 | `@kontourai/station-contracts/relay-enrollment` | Fresh relay-only account enrollment, finalize-delivery and signed-activation bindings; a pending identity receives no active Device authority before the exact delivered bundle is acknowledged |
 | `@kontourai/station-contracts/native-relay-enrollment` | Native challenge/candidate, fixed HPKE recipient, ciphertext delivery, signed activation/status, retained fixed request and owned transition/resume DTOs. Declarations grant no authority; server/native/UI owners compose them separately, and no Device bearer crosses renderer IPC |
+| `@kontourai/station-contracts/native-relay-link` | Closed v1 public route intent or unchanged native v2 invitation envelope, untrusted origin hints, fixed native channels and secret-free host delivery metadata/opaque handles; no trust, person, Device, Project or compute authority |
 | `@kontourai/station-contracts/deployment-authentication` | Public operator-installed authentication provider configuration, factory, descriptor, operations and verified account-session results; see [deployment authentication](../guides/deployment-authentication.md) |
 | `@kontourai/station-contracts/catalog` | Registry items, install results, skills, guidance assets |
 | `@kontourai/station-contracts/child-work` | Provider-neutral child work (engine subagents and Station delegates): items, deltas, the session read model, and the one pure reducer over them |
@@ -114,6 +115,17 @@ a promotion verdict. An empty effect-observation set means not observed, never
 successful.
 
 ## Native relay and account composition
+
+The [native relay link contract](../../packages/contracts/src/native-relay-link.ts)
+distinguishes public first contact from an invitation already bound to the
+installation's proof key. Its receiving `NativeRelayLinkDelivery` omits the
+invitation secret and exposes only routing metadata and a pending handle.
+The [publication codec](../../packages/connect/src/core/nativeRelayLink.ts) and
+[native intake](../../src-desktop/src/native_relay_link_intake.rs) own parsing
+and lifetime checks; declarations neither create a proof key nor approve a
+surface. Origin hints are not Station identity. The existing operator surface
+approval and independent signing-key comparison remain mandatory before the
+separate native grant and account/Device/Project flows.
 
 The [native enrollment contract](../../packages/contracts/src/native-relay-enrollment.ts)
 separates installation routing proof, recipient/Device/account keys, operator

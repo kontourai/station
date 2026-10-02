@@ -20,18 +20,46 @@ The command initializes and builds with `tauri.ios.dev.conf.json`, giving the
 app the separate `io.kontourai.station.dev.instance` identifier and matching
 `station-dev-instance` pairing scheme. The additional development Info.plist
 retains Station's privacy descriptions and its pairing association when the
-Xcode project is regenerated.
+Xcode project is regenerated. The native app build owner adds the separate
+`station-relay-dev-instance` association to iOS; Android does not register that
+relay-secret receiver.
 
 The build embeds the simulator's application and private keychain group in
 the executable's `__TEXT,__entitlements` section using simulator-only linker
 settings. These iOS rights must not be put in the macOS code signature of the
 simulator process. The verifier reads the actual section bytes, checks the
-app identity, pairing scheme, and simulator platform, then seals resources
+app identity, exact pairing and relay schemes, and simulator platform, then seals resources
 with an ordinary ad-hoc signature. It refuses device or non-development
 artifacts. This requires no distribution certificate and does not produce a
 device, TestFlight, or App Store package. The command prints the resulting
 `.app` path. Archive that app only for a workspace or service that accepts iOS
 simulator artifacts; it cannot be installed on a physical iPhone or iPad.
+
+## Qualify native relay link intake
+
+The [iOS intake implementation](../../src-desktop/src/native_relay_ios_launch.rs)
+wraps public application/scene delegate callbacks before generic URL parsing;
+the [host custody owner](../../src-desktop/src/native_relay_link_intake.rs)
+emits public metadata and opaque handles only. An iOS source check includes
+those platform branches; a desktop Rust test does not compile the callback
+module. Neither check proves installed delivery or OS storage.
+
+Qualification requires the same installed app identity, channel and actual
+proof-key surface as the operator-approved native v2 invitation. Exercise
+cold and warm launches, explicit cancel then return to the original invitation,
+wrong channel/surface/scope, expiry and replay through the mounted intake.
+Exercise pairing cold/warm parity and app-unavailable recovery separately.
+Check a malformed relay carrier with a sentinel against app logs, renderer
+events, telemetry, notifications and persistent route storage; do not infer
+that OS-owned URL objects were erased.
+
+The native grant backend uses the same
+[maintained secure-entry adapter](../../src-desktop/src/native_secure_entry.rs)
+as native proof custody. On the installed iOS client, observe grant status
+before redemption, accepted grant write/readback, exact retirement/cleanup,
+then status after deletion. Missing records and unavailable/locked storage must
+remain distinct. Retain the artifact SHA, app identity and native evidence;
+an in-memory backend or host typecheck cannot qualify mobile custody.
 
 ## Native foreground dispatch deadlines
 

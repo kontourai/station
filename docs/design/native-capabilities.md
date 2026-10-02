@@ -35,6 +35,7 @@ host.
 | Native host-event bridge | unsupported | enabled | Share intake uses `station://share-received`; separate typed subscriptions handle tray navigation, bundled-server status and startup-readiness retry. |
 | Native share receiver | n/a | disabled | Generic OS share intake remains off; it has a different untrusted-content boundary. |
 | Pairing deep link | unsupported | enabled | Release schemes are `station-stable`, `station-beta`, and `station-nightly`; isolated development configuration uses a generated `station-dev-<suffix>` scheme. The pairing route accepts only `pair?linkVersion=1&clientChannel=<channel>&payload=station-pairing:v1:...`, opens Join for explicit confirmation, and never navigates or fetches a supplied URL. |
+| Native relay link delivery | unsupported | iOS source path; other targets unsupported | Separate `station-relay-<channel>` associations deliver public routing metadata and an opaque pending handle. Build enablement and compilation do not qualify installed cold/warm delivery. |
 | Compile-target report | unsupported | enabled | Rust reports target and Station-enabled state. |
 | Haptics | unsupported | enabled on mobile compile targets; unsupported on desktop | Official `tauri-plugin-haptics` (station#1954). Selection/impact/notification kinds only; preference `hapticsEnabled` (default on). |
 | Remote push wakeup | unsupported | build-dependent | Enabled for Android builds carrying all four Firebase values or iOS builds carrying the Live Activity plugin. iOS also checks push signing before offering registration. User opt-in, server registration and provider delivery remain separate. |
@@ -57,6 +58,58 @@ are deliberately separate from this generic share boundary.
 Both adapters enforce the same 256 KiB text limit before shared content reaches
 React state. Rejected native events and host-listener registration failures are
 reported through the typed adapter error callback and surfaced to the user.
+
+### iOS relay URL intake
+
+The [native intake owner](../../src-desktop/src/native_relay_link_intake.rs)
+admits only the closed `station-native-relay-link/v1` envelope in
+`station-relay-<channel>://relay#relay-link=<base64url JSON>`. Decoded JSON is
+bounded to 16 KiB. Production origins must be canonical HTTPS; an actual
+debug/development receiver also admits exact numeric loopback HTTP. The link
+either carries public route intent or wraps the existing installation-bound
+native v2 invitation. Application origin remains an untrusted routing hint.
+Opening a link does not save or select a route, approve a surface or Station
+key, authenticate a person, approve a Device, or grant Project/compute access.
+
+The [iOS public delegate owner](../../src-desktop/src/native_relay_ios_launch.rs)
+captures cold launch options and consumes relay URLs before Tao's warm parser.
+It forwards pairing and unrelated URLs to their original callbacks. The generic
+deep-link runtime plugin is not initialized on iOS; its build-time generator
+still owns pairing configuration. [The app build owner](../../src-desktop/build.rs)
+adds the separate relay association only to iOS. Android retains pairing and
+does not register a relay-secret association.
+
+These commands are registered in both host dispatch tables, with main-app
+origin checks on operations. Registration does not enable link intake on other
+platforms:
+
+| Command | Input | Public result |
+| --- | --- | --- |
+| `station_native_link_delivery_mode` | None | `station-owned` on iOS; `plugin` elsewhere |
+| `station_native_pairing_link_take` | None | Pending pairing URLs for the separate pairing parser |
+| `station_native_relay_link_take` | None | Public delivery or rejection metadata; no invitation secret |
+| `station_native_relay_link_cancel` | Pending handle | Clears pending custody and fences continuation |
+| `station_native_relay_link_begin` | Pending handle, saved profile name and exact update timestamp | Existing independently unapproved Station-key candidate |
+| `station_native_relay_link_redeem` | Pending handle, saved profile name, exact profile revision and update timestamp | Existing structured routing-grant result |
+
+`station://native-relay-link` carries the same secret-free delivery DTO. A
+subscriber registers before draining launch delivery; `take` can recover public
+metadata for the same still-pending handle after an interrupted consumer.
+Cancellation and expiry remove that handle. Expiry clears host custody; it does
+not emit a separate expiry event. Consumers use the published deadline and host
+currentness checks rather than treating stale displayed metadata as admission.
+
+The host keeps invitation bytes in bounded zeroizing memory until explicit
+redemption, cancellation, supersession or expiry. New link mutation arguments
+carry only opaque handles. The secret is not placed in renderer events, saved
+profiles or notifications; this does not promise erasure of OS-owned transient
+URL objects. A bound invite still needs the existing public-proof/operator
+surface approval and independent full Station key/code comparison. Cancellation
+before trust precommit prevents a new trust write; cancelling routing does not
+revoke a Station key already explicitly committed by the user. Late routing
+grant results retain the existing exact-grant retirement/quarantine path.
+Compilation and focused host tests do not establish installed iOS delivery,
+mobile storage behavior or a completed collaborator journey.
 
 ## Least privilege and threat boundary
 
