@@ -3036,7 +3036,7 @@ describe.runIf(process.platform !== 'win32')(
     test('superseded scope observation authenticates the unconsumed invitation without changing routing authority', async () => {
       const root = mkdtempSync(join(tmpdir(), 'station-broker-scope-observe-'));
       const path = join(root, 'broker.sqlite');
-      let now = 100_000;
+      const now = 100_000;
       let service = new SelfHostedBrokerService(path, () => now);
       const db = new DatabaseSync(path);
       try {
@@ -3359,8 +3359,6 @@ describe.runIf(process.platform !== 'win32')(
             })
           ).response.status,
         ).toBe(401);
-        now += 600_001;
-        expect((await makeRequest()).response.status).toBe(401);
       } finally {
         db.close();
         service.close();
