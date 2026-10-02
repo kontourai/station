@@ -125,11 +125,32 @@ test('operator successor retains the genuine Station home and trust, provisions 
     };
     const unrelatedBundle = createBrokerCredentialBundle();
     f.broker.provision(unrelated, 60_000, unrelatedBundle);
-    const successor = await prepareNativeFreshFixtureSuccessor(
-      join(f.directory, 'plan.json'),
-      join(f.root, 'second'),
-      1,
-      revision,
+    const successorDirectory = join(f.root, 'second');
+    const prepared = spawnSync(
+      process.execPath,
+      [
+        '--import',
+        'tsx',
+        'scripts/native-fresh-relay-fixture.ts',
+        'prepare-successor',
+        join(f.directory, 'plan.json'),
+        successorDirectory,
+        '1',
+      ],
+      {
+        cwd: resolve(import.meta.dirname, '../..'),
+        windowsHide: true,
+        timeout: 30_000,
+        encoding: 'utf8',
+        maxBuffer: 65536,
+      },
+    );
+    expect({
+      status: prepared.status,
+      errorType: prepared.error?.name,
+    }).toEqual({ status: 0, errorType: undefined });
+    const successor = loadNativeFreshFixturePlan(
+      join(successorDirectory, 'plan.json'),
     );
     expect(successor.scope.routingGeneration).toBe(2);
     expect(successor.stationHome).toBe(join(f.directory, 'home'));
