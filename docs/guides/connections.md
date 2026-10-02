@@ -351,6 +351,12 @@ it never chooses one silently. This native journey still needs installed-shell
 qualification, as described in
 [native shell verification](native-shell-verification.md#qualify-native-relay-link-intake).
 
+Once **Request device access** opens the account form, submit it within the
+five-minute Device request. If the request expires, choose **Close expired
+request**. Station verifies and closes the saved attempt before offering a new
+**Request device access** action. Closing the dialog alone does not remove a
+saved Device setup.
+
 For a native signing-key approval, select the saved broker route and choose
 **Share device details**. Station creates or reopens this install's
 proof key in the OS keyring and shows only its public key, thumbprint, client
