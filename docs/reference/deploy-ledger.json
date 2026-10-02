@@ -1,5 +1,35 @@
 [
   {
+    "timestampUtc": "2026-10-02T15:38:59Z",
+    "channel": "nightly-android",
+    "version": "0.1.11-nightly.2466.3",
+    "sha": "e7fb9b3161de5d6a3e006ad9760ced9c862130c8",
+    "artifactBuiltAt": "2026-10-02T14:55:25.707Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/37021990417",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 37021990417)"
+    ],
+    "changelog": {
+      "previousSha": "1c46287e3d2c12adf752e0c8ba9027560a6845ce",
+      "groups": {
+        "feat": [
+          "[#3115](https://github.com/kontourai/station/pull/3115) feat(file-preview): highlighted source and a per-file Changes view",
+          "[#3082](https://github.com/kontourai/station/pull/3082) feat(ui): start with the task and simplify Station switching"
+        ],
+        "fix": [],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 2
+    }
+  },
+  {
     "timestampUtc": "2026-10-02T15:36:40Z",
     "channel": "nightly-npm",
     "version": "0.7.0-nightly.2466.37021990417",
