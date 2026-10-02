@@ -8,6 +8,24 @@ type Invoke = <T>(
   args?: Record<string, unknown>,
 ) => Promise<T>;
 
+type NativeRelayGrantStatusCode =
+  | 'shape'
+  | 'profile'
+  | 'route'
+  | 'ambiguous'
+  | 'scope'
+  | 'metadata'
+  | 'cleanup'
+  | 'unavailable'
+  | 'unknown';
+
+export class NativeRelayGrantStatusError extends Error {
+  constructor(readonly code: NativeRelayGrantStatusCode) {
+    super('Native relay grant status was refused.');
+    this.name = 'NativeRelayGrantStatusError';
+  }
+}
+
 export interface NativeRelayGrantRoute {
   brokerOrigin: string;
   stationId: string;
@@ -386,29 +404,36 @@ function parseGrantState(
   const stationId = stringField(dto.stationId, 'stationId', 128);
   const enrollmentId = stringField(dto.enrollmentId, 'enrollmentId', 128);
   if (resultProfileName !== profileName)
-    throw new Error(
-      'Native relay grant status does not match the saved profile.',
-    );
+    throw new NativeRelayGrantStatusError('profile');
   if (
     stationId !== expectedRoute.stationId ||
     enrollmentId !== expectedRoute.enrollmentId
   )
-    throw new Error(
-      'Native relay grant status does not match the saved route.',
-    );
+    throw new NativeRelayGrantStatusError('route');
   const grants = arrayField(dto.grants, 'grant list', 32).map((item) => {
-    const entry = record(item, 'grant status item');
-    exactKeys(entry, ['metadata', 'expired'], 'grant status item');
-    return {
-      metadata: parseMetadata(entry.metadata, 'grant metadata', expectedRoute),
-      expired: booleanField(entry.expired, 'grant expired state'),
-    };
+    try {
+      const entry = record(item, 'grant status item');
+      exactKeys(entry, ['metadata', 'expired'], 'grant status item');
+      return {
+        metadata: parseMetadata(
+          entry.metadata,
+          'grant metadata',
+          expectedRoute,
+        ),
+        expired: booleanField(entry.expired, 'grant expired state'),
+      };
+    } catch {
+      throw new NativeRelayGrantStatusError('metadata');
+    }
   });
-  if (grants.length > 1)
-    throw new Error('Native relay grant status is ambiguous.');
-  const cleanups = arrayField(dto.cleanups, 'cleanup list', 64).map((item) =>
-    parseCleanup(item, expectedRoute),
-  );
+  if (grants.length > 1) throw new NativeRelayGrantStatusError('ambiguous');
+  const cleanups = arrayField(dto.cleanups, 'cleanup list', 64).map((item) => {
+    try {
+      return parseCleanup(item, expectedRoute);
+    } catch {
+      throw new NativeRelayGrantStatusError('cleanup');
+    }
+  });
   if (
     grants.some(
       ({ metadata }) =>
@@ -420,7 +445,7 @@ function parseGrantState(
         route.stationId !== stationId || route.enrollmentId !== enrollmentId,
     )
   ) {
-    throw new Error('Native relay grant status scope is inconsistent.');
+    throw new NativeRelayGrantStatusError('scope');
   }
   return {
     profileName: resultProfileName,
@@ -749,14 +774,27 @@ export function createNativeRelayGrantAdapter(
         throw new Error('staleProfile');
     };
   return {
-    status: async ({ profileName, expectedRoute }) =>
-      parseGrantState(
-        await invoke<unknown>('station_native_relay_grant_status', {
+    status: async ({ profileName, expectedRoute }) => {
+      let response: unknown;
+      try {
+        response = await invoke<unknown>('station_native_relay_grant_status', {
           profileName,
-        }),
-        profileName,
-        expectedRoute,
-      ),
+        });
+      } catch (cause) {
+        const fixed = 'Station could not read native relay grant status.';
+        throw new NativeRelayGrantStatusError(
+          cause === fixed || (cause instanceof Error && cause.message === fixed)
+            ? 'unavailable'
+            : 'unknown',
+        );
+      }
+      try {
+        return parseGrantState(response, profileName, expectedRoute);
+      } catch (cause) {
+        if (cause instanceof NativeRelayGrantStatusError) throw cause;
+        throw new NativeRelayGrantStatusError('shape');
+      }
+    },
     assertCurrentRoute,
     redeemLinked: async (input) => {
       await assertCurrentRoute(input);

@@ -105,7 +105,7 @@ describe('native relay grant adapter', () => {
     const adapter = createNativeRelayGrantAdapter(hostInvoker(handler));
     await expect(
       adapter.status({ profileName: 'Home Station', expectedRoute }),
-    ).rejects.toThrow(/fields/);
+    ).rejects.toMatchObject({ code: 'metadata' });
 
     handler.mockResolvedValueOnce({
       ...status,
@@ -118,7 +118,7 @@ describe('native relay grant adapter', () => {
     });
     await expect(
       adapter.status({ profileName: 'Home Station', expectedRoute }),
-    ).rejects.toThrow(/saved route/);
+    ).rejects.toMatchObject({ code: 'metadata' });
   });
 
   test('submits the parsed invitation with the host CAS revision and validates secret-free result', async () => {

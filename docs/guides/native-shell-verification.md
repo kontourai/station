@@ -60,6 +60,13 @@ before redemption, accepted grant write/readback, exact retirement/cleanup,
 then status after deletion. Missing records and unavailable/locked storage must
 remain distinct. Retain the artifact SHA, app identity and native evidence;
 an in-memory backend or host typecheck cannot qualify mobile custody.
+Before linked redemption, optional connection troubleshooting can classify a
+refused grant-status response as shape, profile, route, ambiguous, scope,
+metadata or cleanup. Unrecognized invoke failures report `unknown`; the existing
+fixed host status refusal reports `unavailable`. These are closed diagnostic
+codes, with no response bodies or raw error text. The adapter still rejects
+multiple grants and foreign or malformed metadata; it never chooses a grant
+to make qualification proceed.
 
 ## Native foreground dispatch deadlines
 

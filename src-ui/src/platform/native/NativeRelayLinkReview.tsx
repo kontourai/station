@@ -21,6 +21,7 @@ import { RelayRouteProfileDialog } from '../../views/connections-hub/RelayRouteP
 import { nativeProfileRepository } from '../PlatformProfileContext';
 import {
   type NativeRelayGrantRedemptionFailureCode,
+  NativeRelayGrantStatusError,
   nativeRelayGrantAdapter,
 } from './nativeRelayGrantAdapter';
 import { nativeRelayKeyApproval } from './relayKeyApproval';
@@ -182,13 +183,16 @@ function Review({
       await queryClient.invalidateQueries({ queryKey: ['native-relay-grant'] });
     } catch (cause) {
       if (active.current) {
-        const code = LOCAL_FAILURE_CODES.get(
-          cause instanceof Error
-            ? cause.message
-            : typeof cause === 'string'
-              ? cause
-              : '',
-        );
+        const code =
+          cause instanceof NativeRelayGrantStatusError
+            ? `grant-status-${cause.code}`
+            : LOCAL_FAILURE_CODES.get(
+                cause instanceof Error
+                  ? cause.message
+                  : typeof cause === 'string'
+                    ? cause
+                    : '',
+              );
         setConnectionFailure({ step, ...(code ? { code } : {}) });
         setError(
           'The connection wasn’t confirmed. Close this screen and check the Station’s status before using another invitation.',
