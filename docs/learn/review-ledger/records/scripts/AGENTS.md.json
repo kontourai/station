@@ -12,9 +12,9 @@
   "document": {"digest":"6500d9d9e476f425384826b8c40f1845bb87b97efe0bbd53595eb429f7b1668d","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
   "sources": [
-    {"path":"docs/guides/code-quality.md","digest":"96a55448c92106cb87224425635a37fa97882c1c52da11aa3a1fe31a7e56cbba","revision":"a1478b242401c5da824956478bd77fef1f4dfa51"},
+    {"path":"docs/guides/code-quality.md","digest":"e55382f741c8ed1783b7aa5848beb764fe08cf95326319aa21e9de4d0ed6427f","revision":"de240170769fcf739c188b104f801d4371f8086d"},
 
-    {"path":"docs/guides/testing.md","digest":"e848363d4357e9a2f8de392a6024fd7525262b8b92e138da4a50a05057128916","revision":"0c26d863c1ac3b3e93ea79c2375ebde95e906e8f"},
+    {"path":"docs/guides/testing.md","digest":"3e4789296b942680c646505eec49db5b87f7cbe2eb160ee719c580022dc27950","revision":"de240170769fcf739c188b104f801d4371f8086d"},
 
     {"path":"scripts/code-health-gate.mjs","digest":"601c9b86a673c782230fad9f1caaec8791a1fdd15f64b7124ef8bdf6151b9927","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
@@ -22,7 +22,7 @@
 
     {"path":"scripts/verification-lanes.mjs","digest":"3fb1be3bd88d1d5139983eaf770e8a5474ce6cc6ef304d4e008df63d0c143fef","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"scripts/vitest-resource-manifest.mjs","digest":"6ee1dfda23f013d1d96eb8799bfd973d59b5cb5ef2deecf8558a25079985cc61","revision":"f49fba566686ee5aa151b8dc6043116a6dcfce55"}
+    {"path":"scripts/vitest-resource-manifest.mjs","digest":"32990e48b4fde3bec3e125af153f7bc116934f97f1e81ea31d932821b8e0f07f","revision":"f089fdbb3a79c154d3d69ad72154aefcaafc3776"}
   ],
 
   "checks": [

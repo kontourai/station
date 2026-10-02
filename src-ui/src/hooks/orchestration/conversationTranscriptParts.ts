@@ -27,6 +27,7 @@ export function conversationPartToContentParts(
     toolCallId: part.toolCallId,
     sourceEventId: part.sourceEventId,
     toolName: part.toolName,
+    ...(part.toolKind !== undefined ? { toolKind: part.toolKind } : {}),
     args: part.args,
     result: part.result,
     output: part.output,
@@ -41,6 +42,9 @@ export function conversationPartToContentParts(
     approvalId: part.approvalId,
     approvalThreadId: part.approvalThreadId,
     approvalEventId: part.approvalEventId,
+    ...(part.approvalToolName !== undefined
+      ? { approvalToolName: part.approvalToolName }
+      : {}),
     approvalSessionGrant: part.approvalSessionGrant,
     approvalStatus: part.approvalStatus,
   } as ContentPart;

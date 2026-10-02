@@ -137,6 +137,7 @@ export function handleTurnStartedEvent(
         timestamp: Date.parse(event.createdAt) || undefined,
         turnId: event.turnId,
         sessionId: event.threadId,
+        ...(event.steerInterruptedRun ? { steerInterruptedRun: true } : {}),
       });
     }
     store.updateChat(event.threadId, {

@@ -177,6 +177,7 @@ import {
   createConversationSessionLineageModule,
   isSameConversationSessionLineage,
 } from './conversation-session-lineage.js';
+import { derivedConversationTitle } from './conversation-title.js';
 import {
   type CredentialApplicationHandle,
   createCredentialApplicationFactory,
@@ -11857,9 +11858,9 @@ export class EventStore {
               tenant?.tenantId ?? null,
               agentSlug ?? null,
               projectSlug ?? null,
-              typeof title === 'string' && title.trim()
-                ? title.trim().slice(0, 80)
-                : null,
+              (typeof title === 'string'
+                ? derivedConversationTitle(title)
+                : undefined) ?? null,
               messageCount,
               session.created_at,
               session.updated_at,
@@ -12003,9 +12004,10 @@ export class EventStore {
         agentSlug ?? null,
         projectSlug ?? null,
         inheritedTitle ??
-          (typeof prompt === 'string' && prompt.trim()
-            ? prompt.trim().slice(0, 80)
-            : null),
+          (typeof prompt === 'string'
+            ? derivedConversationTitle(prompt)
+            : undefined) ??
+          null,
         messageCount,
         existing?.created_at ?? persisted?.created_at ?? event.createdAt,
         event.createdAt,

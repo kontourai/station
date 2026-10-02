@@ -427,7 +427,7 @@ against `STATION_CI_FAST_BASE` first, then fixed runtime, lockfile, workflow,
 evidence-check registration, generated-output, documentation,
 verification-policy, lint, governance and typecheck invariants. It is not
 the full static/build chain or full Vitest corpus.
-Hosted CI splits that work: `fast-checks-plan` selects once, four
+Hosted CI splits that work: `fast-checks-plan` selects once, one to four planned
 `fast-checks-shard` jobs run the affected tests, and `fast-checks-statics` runs
 the fixed invariants plus browser/performance smoke and the UI bundle budget.
 The required `fast-checks` result combines job outcomes with exact-plan shard

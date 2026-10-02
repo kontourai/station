@@ -12,7 +12,7 @@
   "document": {"digest":"24971c9b5209e24964294485c81246212eabdf96bfb85165fc96b6c032d8a66b","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
   "sources": [
-    {"path":".github/workflows/ci.yml","digest":"092798d877aa8138f197a0edbd7547e876dc2e310b54b4e00598f8f48b3535b8","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":".github/workflows/ci.yml","digest":"aedbb116a4ce043ec251ec20c47368aa89f77ebc1b5b526fecb9580af280bb91","revision":"de240170769fcf739c188b104f801d4371f8086d"},
 
     {"path":".github/workflows/interactive-workspace-performance.yml","digest":"edcaa2f6d7a7ce1eeb4e7953ff65d78f7a6f609460dfedaf6976b727a04b7004","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
