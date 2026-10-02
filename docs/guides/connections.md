@@ -325,10 +325,11 @@ The [host renewal and supervisor](self-hosted-broker.md#native-routing-grant-fou
 keep credentials and durable retry identity out of the renderer.
 
 If a linked invitation finds multiple saved grants for its route and this
-installation, **Review saved connections** opens a preview. **Remove saved
-connections** confirms the cleanup. Technical routing details appear only when
-expanded. The host first tries to retire each broker grant and clears eligible
-local records only after cleanup is established. This does not change Station
+installation, or a previous cleanup is still pending, **Review saved
+connections** opens a preview. **Remove saved connections** confirms the
+cleanup. Technical routing details appear only when expanded. The host first
+tries to retire each broker grant and clears eligible local records only after
+cleanup is established. This does not change Station
 trust, Device approval, account sign-in or shared Project access. For an older
 routing generation only, the host can use the still-unconsumed invitation to
 establish that the old scope is no longer admitted. If observation or local
