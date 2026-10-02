@@ -625,19 +625,19 @@ it.each(['observed', 'pending', 'changed', 'unsafe-preview'] as const)(
     );
     await screen.findByText('Connection error: grant-status-ambiguous');
     fireEvent.click(
-      screen.getByRole('button', { name: 'Review saved connection access' }),
+      screen.getByRole('button', { name: 'Review saved connections' }),
     );
     if (outcome === 'unsafe-preview') {
       await screen.findByText(
-        /Station couldn’t confirm that saved connection access was cleared/,
+        /Station couldn’t confirm that saved connections were removed/,
       );
     } else {
-      await screen.findByText('Remove saved connection access?');
+      await screen.findByText('Remove saved connections?');
       expect(
-        screen.getByText(/Saved records: 2\. Cleanup still needed: 0/),
+        screen.getByText(/Saved connections: 2\. Cleanup needed: 0/),
       ).toBeTruthy();
       expect(
-        screen.getByText(/does not change trust in this Station/),
+        screen.getByText(/Station trust, device approval, account sign-in/),
       ).toBeTruthy();
       const technicalDetails = screen.getByText('Technical details')
         .parentElement as HTMLDetailsElement;
@@ -649,14 +649,14 @@ it.each(['observed', 'pending', 'changed', 'unsafe-preview'] as const)(
       ).toBe(false);
       if (outcome === 'changed' && host.store) host.store.revision++;
       fireEvent.click(
-        screen.getByRole('button', { name: 'Remove saved access' }),
+        screen.getByRole('button', { name: 'Remove saved connections' }),
       );
       await screen.findByText(
         outcome === 'changed'
-          ? /Station couldn’t confirm that saved connection access was cleared/
+          ? /Station couldn’t confirm that saved connections were removed/
           : outcome === 'pending'
-            ? /Some saved connection access could not be cleared yet/
-            : /Saved connection access removed/,
+            ? /Some saved connections could not be removed yet/
+            : /Saved connections removed/,
       );
     }
     const resets = host.invoke.mock.calls.filter(
