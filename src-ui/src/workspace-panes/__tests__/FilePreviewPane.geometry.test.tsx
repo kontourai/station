@@ -157,23 +157,29 @@ describe.skipIf(!chromiumIsInstalled(REPO_ROOT))(
           /** The element a touch at (x, y) lands on, named by its text. */
           const hit = (x: number, y: number, target: Element) =>
             document.elementFromPoint(x, y)?.closest('button') === target;
-          /** How far a touch may land from the box's centre and still press it. */
+          /** The control's touch target: the invisible `::before` that
+           *  carries the 44px floor. Its resolved size is the invariant;
+           *  integer-stepped hit probes only quantize it (a 44px area on a
+           *  fractional boundary measured 43 steps on Linux CI), so read
+           *  the computed box and prove hittability with probes that stay
+           *  a pixel inside the edge. */
           const touch = (element: HTMLElement) => {
+            const before = getComputedStyle(element, '::before');
             const rect = element.getBoundingClientRect();
             const cx = rect.left + rect.width / 2;
             const cy = rect.top + rect.height / 2;
-            const reach = (dx: number, dy: number) => {
-              let steps = 0;
-              while (
-                steps < 40 &&
-                hit(cx + dx * (steps + 1), cy + dy * (steps + 1), element)
-              )
-                steps += 1;
-              return steps;
-            };
+            const reachX = Math.floor(Number.parseFloat(before.width) / 2 - 1);
+            const reachY = Math.floor(Number.parseFloat(before.height) / 2 - 1);
+            const cornersHit = [
+              hit(cx - reachX, cy - reachY, element),
+              hit(cx + reachX, cy - reachY, element),
+              hit(cx - reachX, cy + reachY, element),
+              hit(cx + reachX, cy + reachY, element),
+            ].every(Boolean);
             return {
-              width: reach(-1, 0) + reach(1, 0) + 1,
-              height: reach(0, -1) + reach(0, 1) + 1,
+              width: Number.parseFloat(before.width),
+              height: Number.parseFloat(before.height),
+              hittable: cornersHit,
             };
           };
           const style = (element: Element) => getComputedStyle(element);
@@ -228,9 +234,11 @@ describe.skipIf(!chromiumIsInstalled(REPO_ROOT))(
         expect(segment.width, segment.label).toBeGreaterThanOrEqual(44);
         expect(segment.touch.width, segment.label).toBeGreaterThanOrEqual(44);
         expect(segment.touch.height, segment.label).toBeGreaterThanOrEqual(44);
+        expect(segment.touch.hittable, segment.label).toBe(true);
       }
       expect(phone.icon.touch.width).toBeGreaterThanOrEqual(44);
       expect(phone.icon.touch.height).toBeGreaterThanOrEqual(44);
+      expect(phone.icon.touch.hittable).toBe(true);
     });
   },
 );
