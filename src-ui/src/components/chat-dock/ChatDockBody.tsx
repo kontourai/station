@@ -297,6 +297,8 @@ export function ChatDockBody({
   onForkFromTurn,
   setShowStatsPanel,
 }: ChatDockBodyProps) {
+  const [scrollControlsTarget, setScrollControlsTarget] =
+    useState<HTMLDivElement | null>(null);
   const agents = useAgents();
   const { apiBase } = useApiBase();
   const mentionRequestScope = useHostRequestAuthorityScope();
@@ -359,8 +361,7 @@ export function ChatDockBody({
   const resolvingOpen = openPhase === 'resolving';
   const transcript = useActiveChatTranscript(apiBase, activeSession);
   const streamStatus = useChatStreamStatus(apiBase, activeSession.replay);
-  // Live chats present approval, connection and turn activity in one floating
-  // pill; a replay keeps the inline rows it was recorded against.
+  // Live chat status shares the composer rail; replay keeps its recorded rows.
   const { pill: statusPill, statusInPill } = useChatStatusPill({
     activeSession,
     streamStatus,
@@ -940,7 +941,6 @@ export function ChatDockBody({
 
   return (
     <>
-      {statusPill}
       {showStatsPanel && (
         <ConversationStats
           agentSlug={activeSession.agentSlug}
@@ -1044,6 +1044,7 @@ export function ChatDockBody({
             suppressStreamingRow: transcript.openTurnProjected,
             fontSize: chatFontSize,
             layoutHeight: dockHeight,
+            scrollControlsTarget,
             showReasoning,
             showToolDetails,
             renderOverride,
@@ -1752,6 +1753,8 @@ export function ChatDockBody({
             />
           )}
           <ChatInputArea
+            activity={statusPill}
+            activityRef={setScrollControlsTarget}
             hasQuotedContext={chatInput.quotes.length > 0}
             draftText={chatInput.quotedDraftText}
             quoteContext={chatInput.quotes}

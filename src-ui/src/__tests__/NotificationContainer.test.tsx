@@ -94,6 +94,32 @@ describe('NotificationContainer', () => {
     expect(dismissToast).toHaveBeenCalledWith('tool-1');
   });
 
+  test('keeps diagnostics behind Details and exposes the conversation action as a button', () => {
+    const onNavigate = vi.fn();
+    notifications = [
+      {
+        id: 'turn-failed',
+        type: 'turn-activity',
+        message: 'Turn failed',
+        timestamp: Date.now(),
+        dismissed: false,
+        conversationTitle: 'Repo Chat',
+        metadata: { detail: 'Provider diagnostics with a long error trace' },
+        onNavigate,
+      },
+    ];
+    render(<NotificationContainer />);
+    const detail = screen.getByText(
+      'Provider diagnostics with a long error trace',
+    );
+    const disclosure = detail.closest('details');
+    expect(disclosure).not.toBeNull();
+    expect(disclosure?.open).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: 'Open chat' }));
+    expect(onNavigate).toHaveBeenCalledTimes(1);
+    expect(dismissToast).toHaveBeenCalledWith('turn-failed');
+  });
+
   test('renders View and routes a notification navigateTo action', () => {
     notifications = [
       {

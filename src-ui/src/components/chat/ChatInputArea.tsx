@@ -125,6 +125,8 @@ function isPortableDraftShortcut(event: {
 }
 
 interface ChatInputAreaProps {
+  activity?: React.ReactNode;
+  activityRef?: React.Ref<HTMLDivElement>;
   // Session info
   /**
    * The active chat session's stable identity (thread id) — used only to
@@ -337,6 +339,8 @@ function sizeDraft(textarea: HTMLTextAreaElement, availableHeight: number) {
 }
 
 export function ChatInputArea({
+  activity,
+  activityRef,
   sessionId,
   activeConversationId,
   input,
@@ -873,99 +877,102 @@ export function ChatInputArea({
         </ResponsiveDialogSurface>
       )}
 
-      {/* Session state, as pills above the input rather than peers of Send.
-          The rail scrolls instead of wrapping — wrapping is what used to push
-          Send onto a fourth row and off the bottom of a phone screen. */}
+      {/* Settings stay in a scrollable rail; activity and reader controls move together. */}
       <div className="chat-input__meta">
-        {onOpenAgentHandoff && (
+        <div className="chat-input__settings">
+          {onOpenAgentHandoff && (
+            <button
+              ref={agentHandoffTriggerRef}
+              type="button"
+              className="choice-trigger chat-input__agent-btn"
+              onClick={agentHandoffDisabled ? undefined : onOpenAgentHandoff}
+              aria-disabled={agentHandoffDisabled}
+              aria-haspopup="dialog"
+              aria-label={agentAccessibleLabel}
+              title={agentAccessibleLabel}
+            >
+              <span className="chat-input__chip-stack">
+                <span className="chat-input__chip-caption" aria-hidden="true">
+                  Agent
+                </span>
+                <span className="chat-input__agent-name">
+                  {agentLabel ?? 'Current Agent'}
+                </span>
+              </span>
+              <ArrowDownGlyph className="choice-caret" />
+            </button>
+          )}
           <button
-            ref={agentHandoffTriggerRef}
+            ref={modelButtonRef}
             type="button"
-            className="choice-trigger chat-input__agent-btn"
-            onClick={agentHandoffDisabled ? undefined : onOpenAgentHandoff}
-            aria-disabled={agentHandoffDisabled}
+            onClick={canModelSelect ? onModelOpen : undefined}
+            aria-disabled={!canModelSelect}
+            className={`choice-trigger chat-input__model-btn ${isOverride ? 'chat-input__model-btn--override' : 'chat-input__model-btn--default'}`}
             aria-haspopup="dialog"
-            aria-label={agentAccessibleLabel}
-            title={agentAccessibleLabel}
+            aria-expanded={modelQuery !== null && !input.startsWith('/model ')}
+            aria-label={modelAccessibleLabel}
+            title={modelAccessibleLabel}
           >
             <span className="chat-input__chip-stack">
               <span className="chat-input__chip-caption" aria-hidden="true">
-                Agent
+                Model
               </span>
-              <span className="chat-input__agent-name">
-                {agentLabel ?? 'Current Agent'}
+              <span className="chat-input__model-name" aria-hidden="true">
+                {modelLabel}
               </span>
             </span>
             <ArrowDownGlyph className="choice-caret" />
           </button>
-        )}
-        <button
-          ref={modelButtonRef}
-          type="button"
-          onClick={canModelSelect ? onModelOpen : undefined}
-          aria-disabled={!canModelSelect}
-          className={`choice-trigger chat-input__model-btn ${isOverride ? 'chat-input__model-btn--override' : 'chat-input__model-btn--default'}`}
-          aria-haspopup="dialog"
-          aria-expanded={modelQuery !== null && !input.startsWith('/model ')}
-          aria-label={modelAccessibleLabel}
-          title={modelAccessibleLabel}
-        >
-          <span className="chat-input__chip-stack">
-            <span className="chat-input__chip-caption" aria-hidden="true">
-              Model
-            </span>
-            <span className="chat-input__model-name" aria-hidden="true">
-              {modelLabel}
-            </span>
-          </span>
-          <ArrowDownGlyph className="choice-caret" />
-        </button>
-        {isOverride && (
-          <button
-            type="button"
-            className="chat-input__model-reset"
-            onClick={onModelReset}
-            title="Reset this session to its default model"
-          >
-            Use{' '}
-            {defaultModelSource
-              ? modelSourceLabel(defaultModelSource).toLowerCase()
-              : 'default'}
-          </button>
-        )}
-        {acpSessionModes.length > 0 && onAcpSessionModeChange ? (
-          <React.Suspense fallback={null}>
-            <AcpSessionModeChip
-              key={sessionId}
-              modes={acpSessionModes}
-              currentModeId={
-                typeof modelRuntimeOptions?.mode === 'string'
-                  ? modelRuntimeOptions.mode
-                  : acpCurrentModeId
-              }
-              onChange={onAcpSessionModeChange}
-            />
-          </React.Suspense>
-        ) : (
-          executionMode === EXECUTION_MODE.EXTERNAL &&
-          approvalModeKnobSupported(agentConnectionId) && (
-            <ApprovalModeChip
-              // Structural reset (not blur-dependent) for the chip's local
-              // confirm state when the active session changes — this
-              // subtree persists across session switches with no natural
-              // remount otherwise (archive#727 3).
-              key={sessionId}
-              engineConnectionId={agentConnectionId}
-              toolPolicyDelivery={toolPolicyDelivery}
-              sessionOverride={approvalModeOverride?.mode}
-              sessionOverrideState={approvalModeOverride?.state}
-              agentDefault={approvalModeAgentDefault}
-              stationDefault={approvalModeStationDefault}
-              lastAppliedApprovalMode={lastAppliedApprovalMode}
-              onChange={onApprovalModeChange}
-            />
-          )
-        )}
+          {isOverride && (
+            <button
+              type="button"
+              className="chat-input__model-reset"
+              onClick={onModelReset}
+              title="Reset this session to its default model"
+            >
+              Use{' '}
+              {defaultModelSource
+                ? modelSourceLabel(defaultModelSource).toLowerCase()
+                : 'default'}
+            </button>
+          )}
+          {acpSessionModes.length > 0 && onAcpSessionModeChange ? (
+            <React.Suspense fallback={null}>
+              <AcpSessionModeChip
+                key={sessionId}
+                modes={acpSessionModes}
+                currentModeId={
+                  typeof modelRuntimeOptions?.mode === 'string'
+                    ? modelRuntimeOptions.mode
+                    : acpCurrentModeId
+                }
+                onChange={onAcpSessionModeChange}
+              />
+            </React.Suspense>
+          ) : (
+            executionMode === EXECUTION_MODE.EXTERNAL &&
+            approvalModeKnobSupported(agentConnectionId) && (
+              <ApprovalModeChip
+                // Structural reset (not blur-dependent) for the chip's local
+                // confirm state when the active session changes — this
+                // subtree persists across session switches with no natural
+                // remount otherwise (archive#727 3).
+                key={sessionId}
+                engineConnectionId={agentConnectionId}
+                toolPolicyDelivery={toolPolicyDelivery}
+                sessionOverride={approvalModeOverride?.mode}
+                sessionOverrideState={approvalModeOverride?.state}
+                agentDefault={approvalModeAgentDefault}
+                stationDefault={approvalModeStationDefault}
+                lastAppliedApprovalMode={lastAppliedApprovalMode}
+                onChange={onApprovalModeChange}
+              />
+            )
+          )}
+        </div>
+        <div className="chat-input__activity" ref={activityRef}>
+          {activity}
+        </div>
       </div>
 
       <div className="chat-input__capsule">

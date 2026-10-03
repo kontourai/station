@@ -12,6 +12,7 @@ import {
   mergeMetrics,
   parseOptions,
   percentile,
+  qualificationMetrics,
   readHistory,
   renderHistory,
   renderSnapshot,
@@ -327,6 +328,61 @@ describe('CI health metrics', () => {
       groupsTimedOut: 1,
       regressionMinutes: { count: 3, median: 2, p90: 4 },
     });
+  });
+  it('reports qualification recovery and actual agent attempts separately from queue churn', () => {
+    const runs = ['failure', 'timed_out', 'success'].map((conclusion, i) =>
+      run(i, {
+        name: 'Main qualification',
+        head_branch: 'main',
+        event: 'schedule',
+        conclusion,
+        created_at: at(i * 10),
+        updated_at: at(i * 10 + 5),
+      }),
+    );
+    const jobs = [
+      job(1, {
+        steps: [
+          {
+            name: 'Repair collected failures once',
+            started_at: at(5),
+            conclusion: 'success',
+          },
+        ],
+      }),
+      job(2, {
+        steps: [
+          { name: 'Repair collected failures once', conclusion: 'skipped' },
+        ],
+      }),
+    ];
+    expect(qualificationMetrics(runs, jobs)).toEqual({
+      runs: 3,
+      failedOrIncomplete: 2,
+      restoreMinutes: { count: 1, median: 25, p90: 25 },
+      unresolvedEpisodeInWindow: false,
+      agentInterventions: 1,
+    });
+    expect(
+      qualificationMetrics(runs.slice(0, 2), jobs).unresolvedEpisodeInWindow,
+    ).toBe(true);
+    expect(
+      mergeMetrics(
+        [
+          run(9, {
+            name: 'Merge integration',
+            event: 'merge_group',
+            conclusion: 'success',
+            run_started_at: at(0),
+            updated_at: at(2),
+          }),
+        ],
+        [],
+        {},
+        at(0),
+        at(60),
+      ).regressionMinutes.count,
+    ).toBe(1);
   });
   it('separates setup overhead from named test steps for sampled shard families', () => {
     const jobs = [

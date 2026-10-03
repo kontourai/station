@@ -181,41 +181,6 @@
    by #2143: the toolbar is per REGION again, and a surface's placement is
    its tab's own menu (`.region-tabs__move-menu`, index.css). */
 
-@media (max-width: 480px) {
-  /* station#1630: two declarations lived here that never applied — an
-     `.app-toolbar__icon-btn` padding/font-size pair and an
-     `.app-toolbar__workspace-btn { display: none }` — because the base rules
-     redeclare the same properties LATER at equal specificity, and source
-     order decides a tie. They stated an intent that computed nothing.
-
-     `.app-toolbar__workspace-btn` had no consumer anywhere in the app, so
-     hiding it was never a change anyone could see and its whole rule set went
-     with it.
-
-     The icon-button pair was deleted rather than moved after the base, and
-     the two halves are not alike. `font-size` only shrinks the glyph, which
-     renders at `1em`. `padding` is NOT inert: the 768px block's 44px is a
-     min-width FLOOR, and two controls in this row are content-sized past it —
-     the connection chip and the notifications button when it carries a badge.
-     Trimming 8px to 6px gives each of those back 4px, so 8px of a
-     `flex-shrink: 0` row.
-
-     station#1401 has since TAKEN that padding half — the trim lives in the
-     mobile touch block below, where it applies, and it moved the label
-     breakpoint from 382 to 374. The font-size half stayed deleted: it only
-     shrinks the glyph, which is a visible cost with nothing to show for it.
-     So this block's two declarations are still correctly gone, and the row
-     they described is 8px narrower than when they were written.
-
-     This rule is the block's live one: its base sits EARLIER in this sheet,
-     so it wins the tie. A finger needs the same 44px floor the composer
-     controls get; the glyph does not grow. */
-  .app-toolbar__region-btn {
-    width: 44px;
-    height: 44px;
-  }
-}
-
 /* Mobile: overflow menu for secondary actions */
 .app-toolbar__overflow-btn.app-toolbar__overflow-btn {
   display: none;
@@ -1142,23 +1107,6 @@
    the same 44px floor its composer siblings do (WCAG 2.5.5) — a 20px target
    between a thumbnail and the next chip is a mis-tap waiting to happen. The
    button grows; the glyph does not. */
-@media (max-width: 768px), (pointer: coarse) {
-  .composer-attachments__chip {
-    min-height: 44px;
-  }
-  .composer-attachments__remove {
-    width: 44px;
-    height: 44px;
-  }
-  .composer-attachments__action {
-    min-height: 44px;
-    padding-inline: var(--space-2);
-  }
-  /* Two chips per row on a phone, so two screenshots take one row. */
-  .composer-attachments__chip {
-    max-width: calc(50% - var(--space-1));
-  }
-}
 
 /* #1552 D4: `.menu-row` is now EVERY menu's row — the dock's placement and More
    menus, the header's overflow, help and profile menus, the Layout picker and
@@ -1178,6 +1126,22 @@
    The class is DOUBLED so this beats index.css's single-class base rule on
    specificity rather than on which sheet the bundler emitted last. */
 @media (max-width: 768px), (pointer: coarse) {
+  .composer-attachments__chip {
+    min-height: 44px;
+  }
+  .composer-attachments__remove {
+    width: 44px;
+    height: 44px;
+  }
+  .composer-attachments__action {
+    min-height: 44px;
+    padding-inline: var(--space-2);
+  }
+  /* Two chips per row on a phone, so two screenshots take one row. */
+  .composer-attachments__chip {
+    max-width: calc(50% - var(--space-1));
+  }
+
   .menu-row.menu-row {
     min-height: 44px;
   }
@@ -1522,6 +1486,39 @@
 }
 
 @media (max-width: 480px) {
+  /* station#1630: two declarations lived here that never applied — an
+     `.app-toolbar__icon-btn` padding/font-size pair and an
+     `.app-toolbar__workspace-btn { display: none }` — because the base rules
+     redeclare the same properties LATER at equal specificity, and source
+     order decides a tie. They stated an intent that computed nothing.
+
+     `.app-toolbar__workspace-btn` had no consumer anywhere in the app, so
+     hiding it was never a change anyone could see and its whole rule set went
+     with it.
+
+     The icon-button pair was deleted rather than moved after the base, and
+     the two halves are not alike. `font-size` only shrinks the glyph, which
+     renders at `1em`. `padding` is NOT inert: the 768px block's 44px is a
+     min-width FLOOR, and two controls in this row are content-sized past it —
+     the connection chip and the notifications button when it carries a badge.
+     Trimming 8px to 6px gives each of those back 4px, so 8px of a
+     `flex-shrink: 0` row.
+
+     station#1401 has since TAKEN that padding half — the trim lives in the
+     mobile touch block below, where it applies, and it moved the label
+     breakpoint from 382 to 374. The font-size half stayed deleted: it only
+     shrinks the glyph, which is a visible cost with nothing to show for it.
+     So this block's two declarations are still correctly gone, and the row
+     they described is 8px narrower than when they were written.
+
+     This rule is the block's live one: its base sits EARLIER in this sheet,
+     so it wins the tie. A finger needs the same 44px floor the composer
+     controls get; the glyph does not grow. */
+  .app-toolbar__region-btn {
+    width: 44px;
+    height: 44px;
+  }
+
   /* The footer is a column now, so the narrow-screen decision that these
      controls sit at the reading edge is expressed on the cross axis. It was
      `justify-content: flex-start` while the footer was a row. */
@@ -2461,6 +2458,8 @@
     background: rgba(0, 0, 0, 0.55);
   }
   .mobile-task-switcher__panel {
+    display: flex;
+    flex-direction: column;
     width: min(100%, 520px);
     max-height: calc(var(--responsive-visual-viewport-height) - var(--space-4));
     overflow: auto;
@@ -2477,31 +2476,113 @@
     top: 0;
     z-index: 1;
     background: var(--bg-primary);
-    display: flex;
-    min-height: 52px;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-2);
-    padding: var(--space-3);
-    border-bottom: 1px solid var(--border-secondary);
+    border-bottom: 1px solid var(--k-line);
   }
-  .mobile-task-switcher__header p,
-  .mobile-task-switcher__header h2 {
-    margin: 0;
-  }
-  .mobile-task-switcher__header p {
-    color: var(--text-muted);
-    font-size: var(--text-xs);
-    font-weight: 700;
-    text-transform: uppercase;
-  }
-  .mobile-task-switcher__header h2 {
-    font-size: var(--text-base);
+  .mobile-task-switcher__header .responsive-dialog-header {
+    border-bottom: 0;
   }
   .mobile-task-switcher__list {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
     display: grid;
-    gap: var(--space-1);
-    padding: var(--space-2);
+    gap: var(--k-space-2);
+    padding: var(--k-space-3);
+  }
+  .mobile-task-switcher__list .inbox-row {
+    --inbox-row-title-size: var(--k-text-lg);
+    --inbox-row-text-size: var(--k-text-md);
+    --inbox-row-line: var(--k-space-5);
+    --inbox-row-pad-block: var(--k-space-3);
+    --inbox-row-pad-inline: var(--k-space-3);
+  }
+  .mobile-task-switcher__list .inbox-row--touch {
+    display: block;
+  }
+  .mobile-task-switcher__list .inbox-row--touch .inbox-row__open {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    width: 100%;
+    gap: var(--k-space-2);
+  }
+  .mobile-task-switcher__list .inbox-row__meta {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .mobile-task-switcher__list .inbox-row__time {
+    display: none;
+  }
+  .mobile-task-switcher__list
+    .inbox-row__status:not(.inbox-row__status--reason) {
+    grid-column: 2;
+    grid-row: 1;
+    justify-content: flex-end;
+    gap: var(--k-space-1);
+  }
+  .mobile-task-switcher__list
+    .inbox-row__status:not(.inbox-row__status--reason)
+    .inbox-row__detail {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  .mobile-task-switcher__list
+    .inbox-row__status:not(.inbox-row__status--reason)
+    > .inbox-row__sep {
+    display: none;
+  }
+  .mobile-task-switcher__list .inbox-row__status--reason,
+  .mobile-task-switcher__list .inbox-row__chips {
+    grid-column: 1 / -1;
+    padding-right: 44px;
+  }
+  .mobile-task-switcher__list .inbox-row__project-context {
+    display: flex;
+    grid-column: 1 / -1;
+    align-items: center;
+    gap: var(--k-space-2);
+    min-width: 0;
+    padding-right: 44px;
+    color: var(--text-secondary);
+    font-size: var(--k-text-md);
+  }
+  .mobile-task-switcher__list .inbox-row__project-context svg {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+  }
+  .mobile-task-switcher__list .inbox-row__project-context .inbox-row__project {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .mobile-task-switcher__list .inbox-row--touch .inbox-row__actions {
+    position: absolute;
+    right: var(--k-space-2);
+    bottom: var(--k-space-2);
+    top: auto;
+  }
+  .mobile-task-switcher__list .inbox-row__title {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    min-height: 44px;
+    padding-right: 44px;
+    display: -webkit-box;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+  .mobile-task-switcher__list .inbox-row--slim .inbox-row__open {
+    min-height: 52px;
+  }
+  .mobile-task-switcher__list .chat-dock-inbox__group-label,
+  .mobile-task-switcher__list .chat-dock-inbox__section-toggle {
+    font-size: var(--k-text-md);
+    text-transform: none;
+    letter-spacing: normal;
   }
   /* Composer two-row stack: at phone width the desktop layout (textarea +
      a right-hand controls column) squeezes the textarea and pushes the
@@ -2628,4 +2709,144 @@
 
 .chat-input .chat-input__send-btn--active:hover:not(:disabled) {
   background: var(--k-action);
+}
+
+.chat-input {
+  container-type: inline-size;
+}
+
+.chat-input .chat-input__meta {
+  display: flex;
+  flex-wrap: wrap;
+  overflow: visible;
+}
+
+.chat-input__settings {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: var(--k-space-2);
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.chat-input__activity {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--k-space-1);
+  min-width: 0;
+  max-width: 100%;
+  margin-inline-start: auto;
+}
+
+.chat-input__activity .chat-scroll-to-bottom {
+  position: static;
+  flex: 0 0 auto;
+  width: var(--k-space-6);
+  height: var(--k-space-6);
+  min-width: 32px;
+  min-height: 32px;
+  border: 1px solid var(--k-line-strong);
+  border-radius: var(--k-radius-md);
+  background: var(--k-panel);
+  color: var(--k-text);
+  box-shadow: none;
+  font-size: var(--k-text-lg);
+}
+
+@container (max-width: 640px) {
+  .chat-input__activity {
+    justify-content: center;
+    order: -1;
+    flex-basis: 100%;
+  }
+
+  .chat-input__activity:not(:has(.chat-status-pill, .chat-scroll-to-bottom)) {
+    display: none;
+  }
+
+  .chat-input__settings {
+    flex-basis: 100%;
+  }
+
+  .chat-input__activity .chat-scroll-to-bottom,
+  .chat-input__activity .chat-status-pill-host .chat-status-pill {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .chat-input__activity .chat-status-pill__details {
+    right: auto;
+    left: 50%;
+    translate: -50% 0;
+  }
+}
+
+@media (max-height: 540px) and (pointer: coarse) {
+  .app__main
+    .chat-dock--bottom
+    .chat-input:has(textarea:focus)
+    > .chat-input__meta:has(.chat-input__activity) {
+    display: flex;
+  }
+
+  .app__main
+    .chat-dock--bottom
+    .chat-input:has(textarea:focus)
+    .chat-input__settings {
+    display: none;
+  }
+}
+
+/* The existing live markers gate motion; settled and approval rows stay still. */
+.tool-call__line:has(.tool-call__pulse),
+.tool-call-batch__summary:has(.tool-call-batch__pulse) {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.tool-call__line .tool-call__pulse,
+.tool-call-batch__summary .tool-call-batch__pulse {
+  display: none;
+}
+
+.tool-call__line:has(.tool-call__pulse)::after,
+.tool-call-batch__summary:has(.tool-call-batch__pulse)::after {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  width: 35%;
+  pointer-events: none;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--k-text) 10%, transparent),
+    transparent
+  );
+  animation: tool-call-reflection var(--motion-status-breathe)
+    var(--ease-linear) infinite both;
+}
+
+@keyframes tool-call-reflection {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(390%);
+  }
+}
+
+:root[data-page-hidden] .tool-call__line::after,
+:root[data-page-hidden] .tool-call-batch__summary::after {
+  animation-play-state: paused;
+}
+
+.chat-input__activity .chat-scroll-to-bottom:hover {
+  transform: none;
+  box-shadow: none;
+  background: var(--k-panel-raised);
 }

@@ -38,6 +38,35 @@ The shared popover shell opens toward the roomier viewport edge, including when
 the dock is maximized. A narrow Activity region shows its list or its selected
 detail, with a Back to list control, instead of squeezing both columns.
 
+## Chat controls and attention
+
+Live approval, connection, and working status sit above the composer, on the
+right of the Agent, Model, and Approval controls. Scroll to bottom appears
+immediately to the right of that status and moves with it as the draft grows.
+When the chat pane is narrow, the status and scroll control are centered
+together in a row above the settings. Scroll-button hover changes its background
+without enlarging its target. The desktop header exposes Collapse chat list /
+Expand chat list directly, with its current state available to assistive technology.
+
+The pill uses compact state labels such as Working, Thinking, and Reconnecting;
+it does not expand to display tool names. State changes animate its width with
+the shared motion token, while the clock reserves a stable text column. Running
+tool rows and batches show a subtle reflection sweeping left to right; settled
+calls and approval requests stay still. Reduced motion disables the reflection
+and makes pill size changes immediate.
+
+User-message action menus reserve padding before hover so their targets cannot
+cover the text. Individual tool failures remain on their transcript rows rather
+than creating global toasts. Turn attention and approval notifications keep their
+existing ownership. Toasts show a short headline, explicit actions where available,
+and a closed Details disclosure for longer messages or diagnostics; opening the
+chat is a button. Tool approval previews remain visible before a decision.
+
+These controls are owned by [ChatInputArea](../../src-ui/src/components/chat/ChatInputArea.tsx),
+[ChatMessageList](../../src-ui/src/components/chat/ChatMessageList.tsx),
+[ChatDockHeader](../../src-ui/src/components/chat-dock/ChatDockHeader.tsx), and
+[NotificationContainer](../../src-ui/src/components/notifications/NotificationContainer.tsx).
+
 ## 1. The principle: if an agent can't drive it, it's broken
 
 Station's thesis is agents doing real work with receipts. That obligates Station's own UI
@@ -268,9 +297,36 @@ Owner-directed revision (clarified 2026-09-05): project switching and
 conversation switching are primary phone-header actions. Both stay directly
 reachable with readable current context and 44px touch targets at 320px,
 390px, and 412px widths. Neither requires opening Chat actions first.
-New chat, Activity, connection management, and dock sizing remain explicit
-actions in Chat actions. The collapsed dock also keeps a direct Expand chat control. No
-resize or navigation action requires a gesture.
+The **Chats and tasks** picker keeps a circular **+** action at the lower
+right, outside the scrolling list. Its accessible name and hover label are
+**New chat**. It uses the same direct-chat or agent-choice flow as Chat actions;
+opening it sends no message. Rows show the catalog's Agent icon, conversation
+title, Project, and a right-aligned status/time. Unresolved Agents retain their
+name. **Input** and **Approval** are compact presentations of the existing
+answer/approval states. Running time uses the recorded open-turn start; without
+one, the displayed time is labelled as last activity. One ellipsis opens the
+existing details/actions sheet, including Git and PR reads on demand.
+
+The **Projects** picker uses the same **+** component, named **New project**,
+and opens the canonical `/projects/new` flow. Its empty state explains the
+next action. Project icons and accent fallback match the sidebar; a checkmark
+identifies the selected project. Other rows show stacked switch arrows; the
+separate home icon opens the Project workspace. Hover, keyboard focus or a hold
+explains each action; the hold does not also perform it. Selecting an existing row changes the dock's
+binding, and its separate Open action shows the workspace.
+
+Selecting a workspace through the sidebar also sets the default project for
+new chats after navigation guards admit the route. It preserves the active
+chat and its original project. Opening an existing conversation also preserves
+this default. Choosing a different project in the chat bar
+overrides that default until the next explicit workspace selection. Both bars
+caption this value **New chats**; desktop also names the current chat's project
+when it differs. This revises the earlier independent-sidebar/default behavior.
+
+Chat actions retains conversation history, background tasks, connection
+management where needed, and chat settings. Its geometry action is **Full screen**
+or **Exit full screen**. Collapse stays on the header control. No resize or
+navigation action requires a gesture.
 
 Mobile message rows prioritize the authored text and essential live approval or
 error state. A separate 44px actions button opens attribution, model facts,

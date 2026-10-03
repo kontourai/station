@@ -26,6 +26,7 @@ import {
   type CanonicalRuntimeEvent,
   PROVIDER_TURN_TRIGGER,
 } from '@kontourai/station-contracts/runtime-events';
+import { assembleTurnProvenanceEnvelopes } from '@kontourai/station-shared/turn-provenance-fold';
 import { afterEach, describe, expect, test } from 'vitest';
 import { ProviderTurnInProgressError } from '../adapter-shape.js';
 import {
@@ -489,6 +490,7 @@ describe('#2452 muse serve: a workflow subagent approval reaches Station', () =>
       approvalMode: 'ask',
       decide: 'accept',
     });
+
     // The capture ends with the host's own turn still running.
     const refusal = await h.adapter
       .sendTurn({ threadId: THREAD, input: 'next' })
@@ -610,6 +612,16 @@ describe('#2452 muse serve: workflow children are child work', () => {
       approvalMode: 'ask',
       decide: 'accept',
     });
+    const envelopes = assembleTurnProvenanceEnvelopes(h.events);
+    expect(
+      envelopes.some(
+        (envelope) =>
+          envelope.usage.state === 'observed' &&
+          envelope.usage.value.inputTokens === 28465 &&
+          envelope.usage.value.outputTokens === 911 &&
+          envelope.usage.value.cacheReadTokens === 5105,
+      ),
+    ).toBe(true);
     const deltas = childWorkDeltas(h.events);
     const firstSnapshot = deltas.find((delta) => delta.kind === 'snapshot');
     expect(firstSnapshot).toMatchObject({

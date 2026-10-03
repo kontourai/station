@@ -12,7 +12,6 @@ import {
   upsertToolResultBlocks,
   upsertToolResultFiles,
 } from './messageParts';
-import { notifyToolCompletion } from './toolActivityNotifications';
 import type { OrchestrationEvent } from './types';
 
 function getStreamingMessage(
@@ -448,7 +447,6 @@ export function handleToolCompletedEvent(
       // `isProcessingStep` describes the turn in flight. A result for an
       // EARLIER turn says nothing about it, so it is left alone.
       activeChatsStore.updateChat(event.threadId, { messages: nextMessages });
-      notifyToolCompletion(event, chat);
       return;
     }
   }
@@ -472,6 +470,4 @@ export function handleToolCompletedEvent(
       contentParts: settle(streamingMessage.contentParts),
     },
   });
-
-  notifyToolCompletion(event, chat);
 }
