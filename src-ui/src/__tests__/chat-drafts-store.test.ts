@@ -19,22 +19,54 @@ describe('chatDraftsStore', () => {
     vi.restoreAllMocks();
   });
 
-  test('survives a reload-like fresh read and clears after send', async () => {
+  test('chat and Station-scoped Activity drafts survive fresh reads and clear after send', async () => {
     chatDraftsStore.set('session-a', 'unsent message');
+    chatDraftsStore.setActivityDraft(
+      'https://station-a.example',
+      'same-session',
+      'A follow-up',
+    );
+    chatDraftsStore.setActivityDraft(
+      'https://station-b.example',
+      'same-session',
+      'B follow-up',
+    );
     vi.resetModules();
     const { chatDraftsStore: reloaded } = await import(
       '../contexts/chat-drafts-store'
     );
     expect(reloaded.get('session-a')).toBe('unsent message');
+    expect(
+      reloaded.getActivityDraft('https://station-a.example', 'same-session'),
+    ).toBe('A follow-up');
+    expect(
+      reloaded.getActivityDraft('https://station-b.example', 'same-session'),
+    ).toBe('B follow-up');
+    expect(Object.keys(reloaded.getSnapshot())).toEqual(['session-a']);
 
     reloaded.clear('session-a');
+    reloaded.clearActivityDraft('https://station-a.example', 'same-session');
     vi.resetModules();
     const { chatDraftsStore: afterSend } = await import(
       '../contexts/chat-drafts-store'
     );
     expect(afterSend.get('session-a')).toBe('');
+    expect(
+      afterSend.getActivityDraft('https://station-a.example', 'same-session'),
+    ).toBe('');
+    expect(
+      afterSend.getActivityDraft('https://station-b.example', 'same-session'),
+    ).toBe('B follow-up');
     // The statically imported instance still holds the draft in memory.
     chatDraftsStore.clear('session-a');
+    chatDraftsStore.clearActivityDraft(
+      'https://station-a.example',
+      'same-session',
+    );
+    chatDraftsStore.clearActivityDraft(
+      'https://station-b.example',
+      'same-session',
+    );
   });
 
   test('keeps at most twenty newest session drafts', () => {

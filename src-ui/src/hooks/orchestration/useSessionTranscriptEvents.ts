@@ -123,5 +123,9 @@ export function useSessionTranscriptEvents(
     hasMore: window.hasMore,
     loadOlder: window.loadOlder,
     settled: window.settled,
+    error: window.error,
+    upgradeRequired: window.upgradeRequired,
+    retry: window.reload,
+    loading: window.loading,
   };
 }
