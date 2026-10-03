@@ -76,7 +76,7 @@
 
     {"path":"src-desktop/src/native_relay_proof_key.rs","digest":"e33c7395002ae8d230afa984115212ac58b53725b51c54265ce7a3a0c9174608","revision":"d5e4502434838cc29b63091ae689474d6488cfe4"},
 
-    {"path":"src-desktop/src/native_relay_redemption.rs","digest":"dbf3c222dce269cb71deba9d86e1f9b51f58f8d1abc77f3f4583556f160ae115","revision":"70e9b50c5329411de0b7b432408f0722407a0208"},
+    {"path":"src-desktop/src/native_relay_redemption.rs","digest":"a56d97c24bdf73ff4e2328bd73c022a2c12815c0ca1420e49cc964f7cdf2d22c","revision":"11b4ccc5932fa6788af8276326296bd86f51542c"},
 
     {"path":"src-desktop/src/native_station_key_custody.rs","digest":"ede5f4ea69dcb8fc6ad5570d70fdc5cae848467335d6c393277c6dbc8fe2ccf5","revision":"a516c638f82e312fe84fe7f8dd8cd5094b2567a5"},
 
