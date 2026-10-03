@@ -48,10 +48,9 @@ export type ApprovalPickCarry =
     };
 
 export type ForegroundMessageInput = ForegroundMessageFields &
-  ApprovalPickCarry;
+  ApprovalPickCarry & { skillExperience?: SkillExperienceStartInputV1 };
 
 interface ForegroundMessageFields {
-  skillExperience?: SkillExperienceStartInputV1;
   expectedInputRequest?: AttentionRequestReference;
   target: Omit<ExecutionTarget, 'environment'> & {
     environment?: EnvironmentRef;
@@ -313,6 +312,10 @@ export async function continueExecutionMessage(
   input: ContinueForegroundMessageInput,
   opts?: ClientRequestOptions,
 ): Promise<ForegroundMessageReceipt> {
+  if ('skillExperience' in input && input.skillExperience !== undefined)
+    throw new Error(
+      'Visual skill starts use the canonical foreground chat route.',
+    );
   const response = await mutateJson(
     `${apiBase}/api/orchestration/chat/${encodeURIComponent(conversationId)}/continue`,
     'POST',
@@ -333,6 +336,10 @@ export async function handoffExecutionMessage(
     },
   opts?: ClientRequestOptions,
 ): Promise<ForegroundMessageReceipt & { handoff: ConversationHandoffReceipt }> {
+  if ('skillExperience' in input && input.skillExperience !== undefined)
+    throw new Error(
+      'Visual skill starts use the canonical foreground chat route.',
+    );
   const response = await mutateJson(
     `${apiBase}/api/orchestration/conversations/${encodeURIComponent(conversationId)}/handoff`,
     'POST',
