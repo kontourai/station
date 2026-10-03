@@ -16,6 +16,36 @@ vi.mock('../../../telemetry/metrics.js', () => ({
 const { createAnalyticsRoutes } = await import('../analytics.js');
 const makeHome = trackTempDirs();
 
+test('rescanning the same measured messages in a different order preserves cost eligibility', async () => {
+  const home = makeHome('station-profile-cost-rounding-');
+  const dir = join(home, 'agents', 'sample', 'memory', 'sessions');
+  await mkdir(dir, { recursive: true });
+  const rows = Array.from({ length: 3000 }, (_, index) =>
+    JSON.stringify({
+      role: 'assistant',
+      metadata: {
+        usage: {
+          inputTokens: 10,
+          outputTokens: 20,
+          estimatedCost: index < 1500 ? 0.001 : 0.008,
+        },
+      },
+    }),
+  );
+  const file = join(dir, 'one.ndjson');
+  const app = createAnalyticsRoutes(new UsageAggregator(home));
+  for (const ordered of [rows, [...rows].reverse()]) {
+    await writeFile(file, ordered.join('\n'));
+    expect((await app.request('/rescan', { method: 'POST' })).status).toBe(200);
+    const body = await json(await app.request('/achievements'));
+    const milestone = body.data.find(
+      (item: { id: string }) => item.id === 'cost-conscious',
+    );
+    expect(milestone.unlocked).toBe(true);
+    expect(milestone.measurementUnavailableReason).toBeUndefined();
+  }
+});
+
 test.each([
   {
     name: 'missing',

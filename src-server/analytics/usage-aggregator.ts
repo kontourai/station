@@ -329,7 +329,14 @@ export class UsageAggregator {
         stats.lifetime.totalOutputTokens >
           currentStats.lifetime.totalOutputTokens ||
         stats.lifetime.totalCost - currentStats.lifetime.totalCost >
-          Number.EPSILON * Math.max(1, stats.lifetime.totalCost) * 8 ||
+          Number.EPSILON *
+            Math.max(1, stats.lifetime.totalCost) *
+            Math.max(
+              1,
+              stats.lifetime.totalMessages +
+                (stats.lifetime.engineUsageCoverage?.sessions ?? 0),
+            ) *
+            2 ||
         (stats.lifetime.totalCacheReadTokens ?? 0) >
           (currentStats.lifetime.totalCacheReadTokens ?? 0) ||
         (stats.lifetime.totalCacheWriteTokens ?? 0) >
