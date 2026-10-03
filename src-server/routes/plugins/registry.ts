@@ -111,6 +111,18 @@ interface RegistryRouteDeps {
   settleProviderAdapterRetirements?: () => Promise<void>;
 }
 
+const CATALOG_REFUSAL_MESSAGES: Record<RegistryCatalogRefusal['code'], string> =
+  {
+    'source-unavailable':
+      'Selected marketplace is unavailable. Refresh it before trying again.',
+    'source-changed':
+      'Marketplace changed since this selection. Inspect the item again.',
+    'source-authority-changed':
+      'Selected marketplace authority changed. Inspect it again.',
+    'item-unavailable': 'Selected marketplace item is no longer available.',
+    'source-forbidden': 'Selected marketplace is not available to this caller.',
+  };
+
 /** Remove display-only bracket qualifiers without a lazy wildcard regex.
  * Integration manifests are local project input, so this must make one pass
  * even when a malformed name contains many unclosed `[` characters. */
@@ -862,8 +874,12 @@ export function createRegistryRoutes(
     } catch (error) {
       if (error instanceof RegistryCatalogRefusal)
         return c.json(
-          { success: false, code: error.code, message: error.message },
-          409,
+          {
+            success: false,
+            code: error.code,
+            message: CATALOG_REFUSAL_MESSAGES[error.code],
+          },
+          error.code === 'source-forbidden' ? 403 : 409,
         );
       if (!(error instanceof UnsupportedRegistrySkillFormatError))
         return c.json(
@@ -981,7 +997,11 @@ export function createRegistryRoutes(
         error.code === 'source-forbidden'
       )
         return c.json(
-          { success: false, code: error.code, message: error.message },
+          {
+            success: false,
+            code: error.code,
+            message: CATALOG_REFUSAL_MESSAGES[error.code],
+          },
           403,
         );
       return c.json(

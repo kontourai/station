@@ -525,7 +525,14 @@ export function registerPluginLifecycleRoutes(
       !registryOwner.success &&
       registryOwner.message.startsWith('Installed plugin')
     )
-      return c.json({ success: false, error: registryOwner.message }, 409);
+      return c.json(
+        {
+          success: false,
+          error:
+            'Installed plugin marketplace is unavailable or its source changed. Its package is preserved. Refresh the source and inspect the item again.',
+        },
+        409,
+      );
     if (!registryOwner.success && registryOwner.message.includes('multiple')) {
       return c.json({ success: false, error: registryOwner.message }, 400);
     }
