@@ -62,6 +62,7 @@ describe('connection recovery decision table', () => {
       kind: 'rate-limit',
       scope: 'account',
       timing: { resetAt: '2026-07-29T13:00:00.000Z' },
+      usageLimit: true,
     });
     expect(
       decideConnectionRecovery({ capability: capable, failure, now }),

@@ -110,27 +110,100 @@ describe('#3157 usage-limit resume', () => {
       createdAt: STOPPED_AT.toISOString(),
       method: 'runtime.error',
       severity: 'error',
-      code: 'usageLimitExceeded',
+      code: details.usageLimit ? 'usageLimitExceeded' : 'rate_limit',
       retriable: false,
-      message: "You've hit your usage limit.",
+      message: details.usageLimit
+        ? "You've hit your usage limit."
+        : '429 too many requests',
       details,
     });
   }
 
-  test('with automatic resume off, the reset stays visible and nothing is sent', async () => {
+  test('with automatic resume off, the stop waits with its reset visible and is never sent', async () => {
     vi.useFakeTimers({ now: STOPPED_AT });
     const { store } = openStore();
     const { coordinator, dispatch } = coordinatorFor(store, () => false);
     stopOnUsageLimit(coordinator, store);
     await vi.advanceTimersByTimeAsync(0);
+    // The setting is applied at the reset, not before.
     expect(coordinator.latestProjection(THREAD)).toMatchObject({
       failureKind: 'rate-limit',
+      decision: 'wait-until-reset',
+      dueAt: RESET_AT,
+      outcome: 'armed',
+      usageLimit: true,
+    });
+    await vi.advanceTimersByTimeAsync(UNTIL_RESET_MS + 60_000);
+    expect(dispatch).not.toHaveBeenCalled();
+    expect(coordinator.latestProjection(THREAD)).toMatchObject({
       decision: 'wait-until-reset',
       dueAt: RESET_AT,
       outcome: 'manual',
       outcomeReason: 'auto-resume-off',
     });
-    await vi.advanceTimersByTimeAsync(UNTIL_RESET_MS + 60_000);
+    await coordinator.dispose();
+    store.close();
+  });
+
+  test('turning the setting on before the reset sends exactly one resume', async () => {
+    vi.useFakeTimers({ now: STOPPED_AT });
+    const { store } = openStore();
+    let enabled = false;
+    const { coordinator, dispatch } = coordinatorFor(store, () => enabled);
+    stopOnUsageLimit(coordinator, store);
+    await vi.advanceTimersByTimeAsync(60_000);
+    enabled = true;
+    await vi.advanceTimersByTimeAsync(UNTIL_RESET_MS);
+    expect(dispatch).toHaveBeenCalledOnce();
+    await vi.advanceTimersByTimeAsync(24 * 60 * 60 * 1_000);
+    expect(dispatch).toHaveBeenCalledOnce();
+    await coordinator.dispose();
+    store.close();
+  });
+
+  test('the setting gates only usage-limit stops: an ordinary timed retry still runs', async () => {
+    vi.useFakeTimers({ now: STOPPED_AT });
+    const { store } = openStore();
+    const autoResume = vi.fn(() => false);
+    const { coordinator, dispatch } = coordinatorFor(store, autoResume);
+    stopOnUsageLimit(coordinator, store, {
+      scope: 'provider',
+      retryAfterMs: 60_000,
+    });
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(dispatch).toHaveBeenCalledOnce();
+    expect(autoResume).not.toHaveBeenCalled();
+    expect(coordinator.latestProjection(THREAD)).not.toHaveProperty(
+      'usageLimit',
+    );
+    await coordinator.dispose();
+    store.close();
+  });
+
+  test('a newer turn also retires a stop that was left to the user', async () => {
+    vi.useFakeTimers({ now: STOPPED_AT });
+    const { store } = openStore();
+    const { coordinator, dispatch } = coordinatorFor(store, () => false);
+    stopOnUsageLimit(coordinator, store);
+    await vi.advanceTimersByTimeAsync(UNTIL_RESET_MS + 1_000);
+    expect(coordinator.latestProjection(THREAD)).toMatchObject({
+      outcome: 'manual',
+      outcomeReason: 'auto-resume-off',
+    });
+    observe(coordinator, store, {
+      eventId: 'moved-on-start',
+      provider: 'codex',
+      threadId: THREAD,
+      turnId: 'moved-on-turn',
+      createdAt: new Date(Date.now()).toISOString(),
+      method: 'turn.started',
+      prompt: 'Something else.',
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(coordinator.latestProjection(THREAD)).toMatchObject({
+      outcome: 'canceled',
+      outcomeReason: 'superseded',
+    });
     expect(dispatch).not.toHaveBeenCalled();
     await coordinator.dispose();
     store.close();
@@ -227,6 +300,26 @@ describe('#3157 usage-limit resume', () => {
     expect(after.coordinator.latestProjection(THREAD)).toMatchObject({
       outcome: 'manual',
       outcomeReason: 'auto-resume-off',
+    });
+    await after.coordinator.dispose();
+    second.store.close();
+  });
+
+  test('a usage-limit stop with no reset is fenced at shutdown like any manual intent', async () => {
+    vi.useFakeTimers({ now: STOPPED_AT });
+    const first = openStore();
+    const before = coordinatorFor(first.store, () => true);
+    stopOnUsageLimit(before.coordinator, first.store, {
+      usageLimit: true,
+      scope: 'account',
+    });
+    await before.coordinator.dispose();
+    first.store.close();
+    const second = openStore(first.path);
+    const after = coordinatorFor(second.store, () => true);
+    after.coordinator.reconcile();
+    expect(after.coordinator.latestProjection(THREAD)).toMatchObject({
+      outcome: 'canceled',
     });
     await after.coordinator.dispose();
     second.store.close();

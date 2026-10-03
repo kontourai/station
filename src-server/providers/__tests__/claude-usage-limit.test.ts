@@ -4,6 +4,7 @@ import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime
 import { describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { EventStore } from '../../services/orchestration/event-store.js';
+import { buildOrchestrationSessionSummary } from '../../services/orchestration/orchestration-session-state.js';
 import { SessionRecoveryCoordinator } from '../../services/orchestration/session-recovery-coordinator.js';
 import {
   type ClaudeMessageState,
@@ -184,6 +185,38 @@ describe('#3157 Claude usage-limit stop', () => {
     expect(dispatch).not.toHaveBeenCalled();
   });
 
+  test('the session summary tells clients the stop was a usage limit', () => {
+    const record = claudeRecord('thread-summary');
+    const events = drive(record, [rejectedWindow(), limitedResult()]);
+    const summarize = (stream: CanonicalRuntimeEvent[]) =>
+      buildOrchestrationSessionSummary({
+        persisted: {
+          provider: 'claude',
+          threadId: 'thread-summary',
+          status: 'error',
+          createdAt: '2026-09-24T20:00:00.000Z',
+          updatedAt: '2026-09-24T21:00:00.000Z',
+        },
+        answerability: {
+          threadAttachment: 'detached',
+          providerRegistered: true,
+          observedBy: 'test',
+          observedAt: '2026-09-24T21:00:00.000Z',
+        },
+        events: stream,
+      });
+    expect(summarize(events)).toMatchObject({
+      lastEventMethod: 'runtime.error',
+      lastRuntimeErrorUsageLimit: true,
+    });
+    const ordinary = drive(claudeRecord('thread-summary'), [
+      limitedResult({ api_error_status: 500, result: 'Internal error' }),
+    ]);
+    expect(summarize(ordinary)).not.toHaveProperty(
+      'lastRuntimeErrorUsageLimit',
+    );
+  });
+
   test('the same stop with no reported reset stays manual', async () => {
     const record = claudeRecord('thread-no-reset');
     const events = drive(record, [
@@ -255,6 +288,29 @@ describe('#3157 Claude usage-limit stop', () => {
       limitedResult({ terminal_reason: 'prompt_too_long' }),
     ]);
     expect(runtimeError(otherCause)).not.toHaveProperty('details');
+  });
+
+  test('a rejected window a successful turn ran past does not mark a later failure', () => {
+    const record = claudeRecord('thread-stale-window');
+    drive(record, [
+      rejectedWindow({ rateLimitType: 'seven_day_opus' }),
+      limitedResult({
+        subtype: 'success',
+        is_error: false,
+        api_error_status: null,
+        terminal_reason: 'completed',
+        result: 'Done.',
+      }),
+    ]);
+    recordClaudeTurnDispatched(record, 'turn-after-success');
+    const later = drive(record, [
+      limitedResult({
+        api_error_status: 500,
+        result: 'Internal server error',
+        uuid: '22222222-2222-4222-8222-000000000105',
+      }),
+    ]);
+    expect(runtimeError(later)).not.toHaveProperty('details');
   });
 
   test('a rate-limit reply is consumed by its turn and does not mark a later failure', () => {

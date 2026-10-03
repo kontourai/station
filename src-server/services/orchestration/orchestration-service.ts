@@ -4130,7 +4130,17 @@ export class OrchestrationService {
       (event) => event.payload,
     );
 
-    const recovery = this.recoveryCoordinator?.latestProjection(threadId);
+    const latestRecovery = this.recoveryCoordinator?.latestProjection(threadId);
+    // #3157: a waiting usage-limit resume says whether the setting would let
+    // it run unattended now; the coordinator applies it only at the reset.
+    const recovery =
+      latestRecovery?.usageLimit && latestRecovery.outcome === 'armed'
+        ? {
+            ...latestRecovery,
+            autoResume:
+              (await this.options.resolveUsageLimitAutoResume?.()) === true,
+          }
+        : latestRecovery;
     // See `listSessionReadModel`: a continuation child folds only its own
     // events, which start at the second prompt.
     const conversationFirstPromptedTurn =

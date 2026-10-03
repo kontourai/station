@@ -20,6 +20,8 @@ export interface ClassifiedConnectionFailure {
   kind: ConnectionRecoveryFailureKind;
   scope: ConnectionRecoveryScope;
   timing: ConnectionRecoveryTiming;
+  /** #3157: the adapter reported a provider usage limit. */
+  usageLimit?: true;
 }
 
 export type CredentialRecoverySelectionRefusalReason =
@@ -134,6 +136,7 @@ export function classifyConnectionFailure(error: {
       kind: 'rate-limit',
       scope: classifiedScope,
       timing: { resetAt, retryAfterMs },
+      usageLimit: true,
     };
   }
   if (/rate.?limit|too_many_requests|429/.test(`${code} ${message}`)) {

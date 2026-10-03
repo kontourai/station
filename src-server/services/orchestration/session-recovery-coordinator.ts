@@ -93,12 +93,13 @@ export class SessionRecoveryCoordinator {
         warn: (message: string, meta?: Record<string, unknown>) => void;
       };
       /**
-       * #3157: whether an ordinary resume may be sent without the user — the
-       * `usageLimitAutoResume` setting. Read when an intent is armed and
-       * again when it is due, so a change applies to resumes already
-       * waiting. Credential-profile failover has its own policy and is not
-       * gated here. Absent means allowed; the production wiring always
-       * supplies it.
+       * #3157: whether a usage-limit stop may be resumed without the user —
+       * the `usageLimitAutoResume` setting. Applied only when the resume is
+       * due (and so again after a restart), so turning it on or off while a
+       * resume waits decides that resume. Gates only usage-limit intents:
+       * ordinary timed recovery and credential-profile failover are not
+       * gated. Absent means allowed; the production wiring always supplies
+       * it.
        */
       autoResume?: () => boolean | Promise<boolean>;
     },
@@ -286,12 +287,17 @@ export class SessionRecoveryCoordinator {
    * the limited turn itself keeps its turn id and supersedes nothing.
    */
   private retireSupersededBy(event: TurnStartedEvent): void {
-    const waiting = this.ledger
-      .pending()
-      .filter(
-        (intent) =>
-          intent.outcome === 'armed' && intent.sourceTurnId !== event.turnId,
-      );
+    // Left to the user too: a turn the user moved past must not be offered
+    // for "Resume now".
+    const waiting = [
+      ...this.ledger.pending(),
+      ...this.ledger.awaitingUser(),
+    ].filter(
+      (intent) =>
+        intent.usageLimit === true &&
+        (intent.outcome === 'armed' || intent.outcome === 'manual') &&
+        intent.sourceTurnId !== event.turnId,
+    );
     if (waiting.length === 0) return;
     const conversation = new Set(
       this.options.eventStore.conversationSessionIds(event.threadId),
@@ -348,13 +354,6 @@ export class SessionRecoveryCoordinator {
     } else if (intent.outcome === 'armed' && intent.dueAt) {
       this.schedule(intent.fingerprint, intent.dueAt);
     }
-    // #3157: with automatic resume off, say so now rather than at the reset.
-    // Queued behind credential failover, which is not gated by the setting.
-    if (this.options.autoResume && intent.outcome === 'armed' && intent.dueAt)
-      this.enqueueLifecycle(intent.fingerprint, async () => {
-        if (!(await this.autoResumeAllowed()))
-          this.retireWaiting(intent, 'manual', 'auto-resume-off');
-      });
   }
 
   private armRecovery(
@@ -385,6 +384,7 @@ export class SessionRecoveryCoordinator {
       scope: failure.scope,
       decision: decisionName,
       ...(dueAt ? { dueAt } : {}),
+      ...(failure.usageLimit ? { usageLimit: true as const } : {}),
       maxAttempts: Math.max(
         1,
         Math.min(3, declaredMaxAttempts ?? DEFAULT_MAX_ATTEMPTS),
@@ -442,7 +442,7 @@ export class SessionRecoveryCoordinator {
     // #3157: the last look before an unattended resume. Retiring here is a
     // compare-and-set on a still-waiting intent, so it cannot race a claim.
     const waiting = this.ledger.find(fingerprint);
-    if (waiting?.outcome === 'armed') {
+    if (waiting?.outcome === 'armed' && waiting.usageLimit) {
       const obstacle = this.dispatchObstacle(waiting);
       if (obstacle) {
         this.retireWaiting(waiting, 'canceled', obstacle);
@@ -664,7 +664,10 @@ export class SessionRecoveryCoordinator {
   }
 
   private trackClaimAndResume(fingerprint: string): void {
-    if (!this.options.autoResume) {
+    if (
+      !this.options.autoResume ||
+      !this.ledger.find(fingerprint)?.usageLimit
+    ) {
       this.enqueueLifecycle(fingerprint, () =>
         this.claimAndResume(fingerprint),
       );
@@ -1064,9 +1067,10 @@ export class SessionRecoveryCoordinator {
     this.cancellationRetryTimers.set(intent.fingerprint, timer);
   }
 
-  /** #3157: an armed intent whose only obligation is a timer at its reset. */
+  /** #3157: a usage-limit intent whose only obligation is a timer at its reset. */
   private isWaitingForReset(intent: ConnectionRecoveryIntent): boolean {
     return (
+      intent.usageLimit === true &&
       intent.outcome === 'armed' &&
       intent.decision === 'wait-until-reset' &&
       !this.dispatchControllers.has(intent.fingerprint)

@@ -676,6 +676,7 @@ export function ensureOrchestrationRecoverySettlementColumns(
       ['shutdown_cancel_requested_at', 'TEXT'],
       // #3157: why a waiting intent was left to the user or retired unsent.
       ['outcome_reason', 'TEXT'],
+      ['usage_limit', 'INTEGER'],
     ] as const) {
       if (!names.has(name)) {
         db.exec(

@@ -14,7 +14,7 @@ export interface ClaudeUsageLimitState {
    * Windows the SDK last reported as `rejected` without overage to continue
    * on, keyed by `rateLimitType`, with the reset each one reported (ISO) or
    * `null` when it gave none. A later `allowed` report for a window removes
-   * it.
+   * it, and a result that is not a usage-limit stop clears them all.
    */
   rejectedUsageLimits?: Map<string, string | null>;
   /** The running turn's reply was the SDK's synthetic `rate_limit` error. */
@@ -76,7 +76,12 @@ export function takeClaudeUsageLimitDetails(
     ((resets.length > 0 || reply) &&
       (result.terminal_reason === undefined ||
         result.terminal_reason === 'api_error'));
-  if (!limited) return undefined;
+  if (!limited) {
+    // A turn that ended for any other reason ran past every window it saw
+    // rejected; a later failure must not inherit their resets.
+    state.rejectedUsageLimits?.clear();
+    return undefined;
+  }
   const known = resets.filter((reset): reset is string => reset !== null);
   const resetAt =
     known.length > 0 && known.length === resets.length

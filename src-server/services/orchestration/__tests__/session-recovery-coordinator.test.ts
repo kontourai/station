@@ -2296,8 +2296,6 @@ describe('SessionRecoveryCoordinator', () => {
     });
     const now = new Date('2026-08-13T00:00:00.000Z');
     const fingerprint = 'shutdown:turn:rate-limit:server';
-    // `retry-now`: a `wait-until-reset` intent with nothing in flight
-    // deliberately outlives shutdown (#3157, tested on its own below).
     real.arm({
       fingerprint,
       threadId: 'shutdown',
@@ -2306,7 +2304,7 @@ describe('SessionRecoveryCoordinator', () => {
       sourceTurnId: 'turn',
       failureKind: 'rate-limit',
       scope: 'server',
-      decision: 'retry-now',
+      decision: 'wait-until-reset',
       dueAt: new Date(now.getTime() + 60_000).toISOString(),
       maxAttempts: 1,
       outcome: 'armed',
@@ -2964,25 +2962,22 @@ describe('SessionRecoveryCoordinator', () => {
       sendTurn,
       now: () => now,
     });
-    // #3157: two intents for ONE turn (two failure classifications). Two
-    // failed turns would not test exclusion: the later turn supersedes the
-    // earlier turn's resume before it is due.
-    store.appendEvent({
-      eventId: 'started-turn',
-      provider: 'claude',
-      threadId: 'thread',
-      turnId: 'turn',
-      createdAt: now.toISOString(),
-      method: 'turn.started',
-      prompt: 'input',
-    });
     for (const suffix of ['one', 'two']) {
+      store.appendEvent({
+        eventId: `started-${suffix}`,
+        provider: 'claude',
+        threadId: 'thread',
+        turnId: `turn-${suffix}`,
+        createdAt: now.toISOString(),
+        method: 'turn.started',
+        prompt: suffix,
+      });
       recoveryLedger(store).arm({
         fingerprint: `thread:turn-${suffix}:rate-limit:server`,
         threadId: 'thread',
         provider: 'claude',
-        sourceEventId: 'started-turn',
-        sourceTurnId: 'turn',
+        sourceEventId: `started-${suffix}`,
+        sourceTurnId: `turn-${suffix}`,
         failureKind: 'rate-limit',
         scope: 'server',
         decision: 'retry-now',

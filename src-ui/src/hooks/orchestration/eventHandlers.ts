@@ -198,14 +198,23 @@ export function handleOrchestrationEvent(
 /**
  * #3157: a usage-limit stop ends its turn but is no cue for the queue. The
  * provider would refuse the follow-up, and a newer turn retires the resume
- * Station holds for the reset. The queue waits for the resumed turn's end, or
+ * Station holds for the reset. Recorded on the chat, where the one drain
+ * decision (`drainQueuedMessageOnTurnCompleted`) reads it; a snapshot records
+ * the server's same verdict. The queue waits for the resumed turn's end, or
  * for the user (Send now).
  */
-function heldByUsageLimit(event: OrchestrationEvent): boolean {
-  return (
+function markUsageLimitStop(chatKey: string, event: OrchestrationEvent): void {
+  const stopped =
     event.method === 'runtime.error' &&
-    (event.details as { usageLimit?: unknown } | undefined)?.usageLimit === true
-  );
+    (event.details as { usageLimit?: unknown } | undefined)?.usageLimit ===
+      true;
+  if (
+    Boolean(activeChatsStore.getSnapshot()[chatKey]?.usageLimitStopped) !==
+    stopped
+  )
+    activeChatsStore.updateChat(chatKey, {
+      usageLimitStopped: stopped ? true : undefined,
+    });
 }
 
 function drainUnroutedConversationTurnEnd(
@@ -216,15 +225,14 @@ function drainUnroutedConversationTurnEnd(
   if (!conversation || conversation.currentSessionId !== event.threadId) return;
   const endsTurn =
     event.method === 'turn.completed' ||
-    (event.method === 'runtime.error' &&
-      !isDeferredRetriableTurnError(event) &&
-      !heldByUsageLimit(event));
+    (event.method === 'runtime.error' && !isDeferredRetriableTurnError(event));
   if (!endsTurn) return;
   if (activeChatsStore.getChatKeyForExecutionSession(event.threadId)) return;
   const chatKey = activeChatsStore.getChatKeyForExecutionSession(
     conversation.conversationId,
   );
   if (!chatKey || isReplayThread(chatKey)) return;
+  markUsageLimitStop(chatKey, event);
   drainQueuedMessageOnTurnCompleted(apiBase, chatKey);
 }
 
@@ -248,6 +256,12 @@ function dispatchProjectedOrchestrationEvent(
       handleSessionExitedEvent(event);
       return;
     case 'turn.started':
+      if (chat.usageLimitStopped)
+        activeChatsStore.updateChat(
+          activeChatsStore.getChatKeyForExecutionSession(event.threadId) ??
+            event.threadId,
+          { usageLimitStopped: undefined },
+        );
       handleTurnStartedEvent(event);
       return;
     case 'content.text-delta':
@@ -301,9 +315,13 @@ function dispatchProjectedOrchestrationEvent(
       // still silently retrying.
       if (
         !isDeferredRetriableTurnError(event) &&
-        !heldByUsageLimit(event) &&
         !isReplayThread(event.threadId)
       ) {
+        markUsageLimitStop(
+          activeChatsStore.getChatKeyForExecutionSession(event.threadId) ??
+            event.threadId,
+          event,
+        );
         const terminalTurnId = event.details?.turnId ?? event.turnId;
         if (typeof terminalTurnId === 'string')
           resumePendingSendNowOnTurnTerminal(

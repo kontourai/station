@@ -90,8 +90,9 @@ export interface RecoveryLedger {
     reason?: ConnectionRecoveryOutcomeReason,
   ): RecoveryTransition;
   /**
-   * #3157: settles a still-waiting (armed, never claimed) intent without a
-   * dispatch, recording why. A claimed intent is `stale` here.
+   * #3157: settles a still-waiting intent (armed, or a usage-limit intent left
+   * to the user as `manual`; never claimed) without a dispatch, recording
+   * why. A claimed intent is `stale` here.
    */
   retireWaiting(input: {
     fingerprint: string;
@@ -99,6 +100,8 @@ export interface RecoveryLedger {
     reason: ConnectionRecoveryOutcomeReason;
     now: string;
   }): RecoveryTransition;
+  /** #3157: usage-limit intents left to the user (`manual`), never claimed. */
+  awaitingUser(): RecoveryIntentSnapshot[];
   /** Startup repair: source-terminal events remain authoritative after a canceled write fault. */
   cancelSourceTerminated(now: string): RecoveryTransition;
   cancelShutdownRequested(now: string): RecoveryTransition;
@@ -253,6 +256,7 @@ interface RecoveryLedgerCoordinator {
     reason: ConnectionRecoveryOutcomeReason;
     now: string;
   }): RecoveryTransition;
+  awaitingUser(): RecoveryIntentRecord[];
   cancelSourceTerminated(now: string): RecoveryTransition;
   cancelShutdownRequested(now: string): RecoveryTransition;
 }
@@ -591,6 +595,13 @@ export function createRecoveryLedger(options: {
         return options.coordinator.cancel(fingerprint, now, reason);
       } catch {
         return unavailable();
+      }
+    },
+    awaitingUser: () => {
+      try {
+        return options.coordinator.awaitingUser().map(snapshot);
+      } catch {
+        return [];
       }
     },
     retireWaiting: (input) => {

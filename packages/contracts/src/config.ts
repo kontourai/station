@@ -167,9 +167,9 @@ export interface AppConfig {
    * #3157: after Claude Code or Codex stops on a usage limit whose reset the
    * provider reported, send the stopped turn again once the limit resets.
    * **Default off** — absent/undefined/false all mean off: a resume spends
-   * quota while nobody is watching. Read at the moment a resume is due, so a
-   * change applies to stops already waiting. Off, the reset time is still
-   * shown and the resume waits for the user.
+   * quota while nobody is watching. Applied when a resume is due, so turning
+   * it on or off while a stop waits decides that stop. Off at the reset, the
+   * stop is left to the user with its reset time still shown.
    */
   usageLimitAutoResume?: boolean;
   /** Distribution defaults for starter layouts and registry sources. */

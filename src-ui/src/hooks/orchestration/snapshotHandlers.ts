@@ -196,6 +196,8 @@ type SelectedSnapshotRow = {
   openRequestIds: string[] | undefined;
   blockingOpenRequestIds: string[] | undefined;
   lastTurnEndMethod?: 'turn.completed' | 'turn.aborted' | 'runtime.error';
+  /** #3157: that turn end was a provider usage-limit stop. */
+  usageLimitStopped?: boolean;
 };
 
 function selectSnapshotRows(
@@ -275,7 +277,7 @@ function selectSnapshotRows(
 
   const selected = new Map<string, SelectedSnapshotRow>();
   for (const [key, candidates] of candidatesByChat) {
-    const lastTurnEndMethod = candidates
+    const lastTurnEnd = candidates
       .filter(
         (row) =>
           row.lastEventMethod === 'turn.completed' ||
@@ -285,7 +287,12 @@ function selectSnapshotRows(
       .sort((left, right) =>
         (left.lastEventAt ?? '').localeCompare(right.lastEventAt ?? ''),
       )
-      .at(-1)?.lastEventMethod as SelectedSnapshotRow['lastTurnEndMethod'];
+      .at(-1);
+    const lastTurnEndMethod =
+      lastTurnEnd?.lastEventMethod as SelectedSnapshotRow['lastTurnEndMethod'];
+    const usageLimitStopped =
+      lastTurnEndMethod === 'runtime.error' &&
+      lastTurnEnd?.lastRuntimeErrorUsageLimit === true;
     const openRequestIds = candidates.every(
       (row) => row.openRequestIds !== undefined,
     )
@@ -332,6 +339,7 @@ function selectSnapshotRows(
         openRequestIds,
         blockingOpenRequestIds,
         lastTurnEndMethod,
+        usageLimitStopped,
       });
       continue;
     }
@@ -348,6 +356,7 @@ function selectSnapshotRows(
       openRequestIds,
       blockingOpenRequestIds,
       lastTurnEndMethod,
+      usageLimitStopped,
     });
   }
   return selected;
@@ -362,7 +371,13 @@ function planSnapshot(
   const sessionUpdates = [...selected].map(
     ([
       chatKey,
-      { row: session, record, blockingOpenRequestIds, lastTurnEndMethod },
+      {
+        row: session,
+        record,
+        blockingOpenRequestIds,
+        lastTurnEndMethod,
+        usageLimitStopped,
+      },
     ]) => {
       const chat = chats[chatKey];
       // #2303: live events for the running child route through
@@ -506,6 +521,10 @@ function planSnapshot(
               : lastTurnEndMethod === 'turn.aborted'
                 ? { error: session.lastTurnAbortReason }
                 : { error: undefined }),
+          // #3157: the server's verdict, so a reload or reconnect holds the
+          // queue exactly as the live usage-limit `runtime.error` did.
+          usageLimitStopped:
+            !snapshotTurnOpen && usageLimitStopped === true ? true : undefined,
           ...(adoptsCurrentChild
             ? {
                 currentSessionId: currentChild,

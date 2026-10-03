@@ -376,6 +376,14 @@ export type ChatUIState = {
    */
   sendAwaitingTurnStart?: boolean;
   /**
+   * #3157: the conversation's latest turn ended on a provider usage limit.
+   * Automatic queue drains wait (the provider would refuse the follow-up, and
+   * its turn would retire the resume Station holds for the reset); a turn
+   * starting clears it. Set by the live `runtime.error` and by snapshots, from
+   * the server's own verdict. Session-scoped and not persisted.
+   */
+  usageLimitStopped?: boolean;
+  /**
    * #2309: the turn the record showed open when the current send window
    * began (a stopped turn not yet aborted, typically). That turn opening
    * again in the record is not this send's acknowledgement. Not persisted.

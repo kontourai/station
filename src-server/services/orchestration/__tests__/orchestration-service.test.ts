@@ -6977,6 +6977,42 @@ describe('OrchestrationService', () => {
     await expect(coordinatorOptions.autoResume()).resolves.toBe(false);
   });
 
+  test('#3157: a waiting usage-limit resume tells the session detail whether auto-resume is on', async () => {
+    const threadId = 'usage-limit-detail';
+    eventStore.upsertSession({
+      provider: 'codex',
+      threadId,
+      status: 'ready',
+      createdAt: '2026-09-24T21:00:00.000Z',
+      updatedAt: '2026-09-24T21:00:00.000Z',
+    });
+    eventStore.createRecoveryLedger().arm({
+      fingerprint: `${threadId}:turn:rate-limit:account`,
+      threadId,
+      provider: 'codex',
+      sourceEventId: 'source',
+      sourceTurnId: 'turn',
+      failureKind: 'rate-limit',
+      scope: 'account',
+      decision: 'wait-until-reset',
+      dueAt: '2099-01-01T00:00:00.000Z',
+      maxAttempts: 1,
+      outcome: 'armed',
+      usageLimit: true,
+      createdAt: '2026-09-24T21:00:00.000Z',
+      updatedAt: '2026-09-24T21:00:00.000Z',
+    });
+    const detail = await service.readSession(
+      threadId,
+      INTERNAL_SESSION_READ_SCOPE,
+    );
+    expect(detail?.recovery).toMatchObject({
+      outcome: 'armed',
+      usageLimit: true,
+      autoResume: false,
+    });
+  });
+
   test("RECOVERY TELEMETRY DEFECT: the emitted event carries the classifier's verdict, not a constant", () => {
     const telemetry = {
       trackSessionRecovery: vi.fn(),

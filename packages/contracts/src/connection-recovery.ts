@@ -172,6 +172,12 @@ export interface ConnectionRecoveryIntent {
   resumedTurnId?: string;
   /** Why Station left this intent to the user or retired it unsent. */
   outcomeReason?: ConnectionRecoveryOutcomeReason;
+  /**
+   * #3157: armed from a provider usage-limit stop (`UsageLimitFailureDetails`).
+   * Only these intents are gated by `usageLimitAutoResume` and re-checked
+   * against the conversation before an unattended resume.
+   */
+  usageLimit?: true;
   createdAt: string;
   updatedAt: string;
 }
@@ -186,12 +192,23 @@ export interface ConnectionRecoveryProjection {
   attempts: number;
   maxAttempts: number;
   outcomeReason?: ConnectionRecoveryOutcomeReason;
+  /** #3157: the intent came from a provider usage-limit stop. */
+  usageLimit?: true;
+  /**
+   * #3157: on a usage-limit intent still waiting (`armed`), whether the
+   * `usageLimitAutoResume` setting currently lets it run unattended at
+   * `dueAt`. The setting is applied only when the resume is due, so this can
+   * change while it waits. Absent when the reader did not consult it.
+   */
+  autoResume?: boolean;
   updatedAt: string;
 }
 
 /**
- * #3157: why an intent that was waiting to resume did not. `manual` intents
- * carry `auto-resume-off`; `canceled` intents carry the other three.
+ * #3157: why a usage-limit intent did not resume on its own. A `manual`
+ * intent carries `auto-resume-off`. A `canceled` intent carries
+ * `superseded`, `request-pending` or `session-ended` when one of those
+ * retired it; other cancellations (a Stop, shutdown) carry no reason.
  */
 export type ConnectionRecoveryOutcomeReason =
   /** The user has not turned on automatic resume after usage limits. */
