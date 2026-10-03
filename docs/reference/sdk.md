@@ -875,7 +875,12 @@ Fetches conversation stats. Disabled when either param is undefined.
 
 ### `useUsageQuery(config?)`
 
-Fetches usage analytics.
+Fetches the retained Station-wide usage snapshot. Usage, period usage, receipt
+rollup, achievement, and Insights hooks poll every 30 seconds while observed,
+refetch on stale mount/focus, and accept caller configuration overrides. Active
+server reads refresh the lifetime snapshot at most once a minute. A request's
+success is not proof of complete provider reporting; retain source coverage and
+snapshot metadata. A rescan invalidates all analytics and Insights queries.
 
 ### `useAchievementsQuery(config?)`
 
@@ -3900,3 +3905,14 @@ than inferring five hours from the primary position.
 These exports require a release containing this change; current source presence
 is not evidence of npm publication. The Connections guide owns account-viewing,
 sign-in, permission and cost-attribution limits.
+
+
+### Paired-person profile reads
+
+`usePairedDevicesQuery(apiBase?, config?)` accepts `requestScope` and
+`requireRequestScope`. Scoped cache keys include API base and authority key;
+the HTTP reader checks that captured authority before consuming the response.
+With required scope absent, the observer is disabled under an isolated key.
+The default poll pauses after HTTP 401/403; explicit retry or Profile-page remount can reauthorize the read. `QueryConfig.refetchIntervalForError` can return `false` to pause polling or a number for an error-specific interval; `undefined` preserves the numeric interval. The Profile page uses this mode for approved person bindings and current
+connection projections. This list requires the pairing route's existing access
+and does not share another person's usage statistics.
