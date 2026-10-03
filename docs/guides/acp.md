@@ -322,6 +322,11 @@ confined to a Station-spawned child.
 Since station#1684 Station can deliver it to an ACP-connected external engine instead, over
 HTTP. The rules, in full:
 
+- **Whole integrations only.** Authored individual-tool selection or integration
+  disablement cannot be enforced through this protocol. Station reports the
+  restricted integration as undelivered (`engine-unsupported`) instead of
+  widening its selection.
+
 - **Gated on the live handshake.** Station delivers it only when *this*
   connection's `initialize` result advertises
   `agentCapabilities.mcpCapabilities.http === true`. There is no static
