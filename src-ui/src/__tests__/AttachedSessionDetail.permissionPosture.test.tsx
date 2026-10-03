@@ -610,8 +610,8 @@ test.each(['inspector', 'chat'] as const)(
           turnId: 'r3',
           requestId: 'rq1',
           requestType: 'approval',
-          toolCallId: 'c1',
           title: 'Allow Bash',
+          payload: { toolCallId: 'c1', toolName: 'Bash' },
         } as never),
       ],
     });
