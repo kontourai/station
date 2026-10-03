@@ -440,7 +440,7 @@
 
     {"path":"src-server/services/projects/project-service.ts","digest":"3006dd5084e859e0b2d921ae9124893cdfd4afa69bb29e087a5099c242b3ffb4","revision":"13f10612b09f7a79e6f2c6a568ce108bc661972d"},
 
-    {"path":"src-server/services/projects/project-shared-task-service.ts","digest":"bfc85a5d4ed6cd718c439e61ce556988edce7a3853726e85175da62a393bb690","revision":"6f8a06cbbd25d5d59dfdab13778e76c1703c5252"},
+    {"path":"src-server/services/projects/project-shared-task-service.ts","digest":"4e8b9312c0cffe2b2c4ffb16887f8da250ba812fc3a3582067375cf1c9484cc5","revision":"5080022185abdbe347ee33ece20d0a38dcef64d1"},
 
     {"path":"src-server/services/projects/task-basis-module.ts","digest":"b706c3c53cf0c6e23e33de129bf982494906caabdec00b1c08ebbbfb5adf6953","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
