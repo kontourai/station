@@ -9,7 +9,7 @@
 
   "limits": "No live external-engine MCP delivery, plugin installation, provider execution, Fleet/device journey or repository-wide certification. Architecture topics have their own separate review scope.",
 
-  "document": {"digest":"20355d38c989b077e221d2811b14cd933fb656df7e4e864a90140ffd16520a1b","revision":"69eb5db90072c149c16115135f495ac538155e71"},
+  "document": {"digest":"150b784d01559582c4645565474214cd834f604d1b1f113e6c6f4d7af770df3b","revision":"31f4009ab463545288900a3ca2a9dfac04fd1791"},
 
   "sources": [
     {"path":"docs/design/mcp-ui-host.md","digest":"060ae4fc6877a186e8ea6d5073729e03f161dbe270b700f62741095560000195","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
