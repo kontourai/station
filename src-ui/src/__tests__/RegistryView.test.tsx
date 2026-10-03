@@ -11,6 +11,7 @@ import {
   within,
 } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import type { RegistryItem } from '../components/registry/registryCatalogModel';
 import * as remotePluginBundleConsent from '../core/remotePluginBundleConsent';
 
 const installedByTab = {
@@ -67,7 +68,7 @@ const validDemoPreview = () => ({
   dependencies: [],
 });
 
-const registryItems = {
+const registryItems: Record<keyof typeof installedByTab, RegistryItem[]> = {
   agents: [
     {
       id: 'agent-one',
@@ -137,7 +138,7 @@ const registryItems = {
       enabled: false,
     },
   ],
-} as const;
+};
 
 function makeMutation(
   tab: 'agents' | 'integrations' | 'plugins' | 'skills' | 'layouts',

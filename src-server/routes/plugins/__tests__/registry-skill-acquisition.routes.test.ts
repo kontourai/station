@@ -8,6 +8,7 @@ import {
   writeFile,
 } from 'node:fs/promises';
 import { join } from 'node:path';
+import type { RegistryItem } from '@kontourai/station-contracts/catalog';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { ConfigLoader } from '../../../domain/config-loader.js';
@@ -247,10 +248,12 @@ describe('Registry skill acquisition and host compatibility', () => {
         }),
       ],
     });
-    const catalog = await (await app.request('/skills')).json();
+    const catalog = (await (await app.request('/skills')).json()) as {
+      data: RegistryItem[];
+    };
     const selected = catalog.data.find(
-      (item: { status?: string }) => item.status === 'unsupported-skill-format',
-    );
+      (item) => item.status === 'unsupported-skill-format',
+    )!;
     const content = await app.request(`/skills/${selected.id}/content`);
     expect(content.status).toBe(200);
     expect(await content.json()).toMatchObject({
@@ -487,8 +490,10 @@ describe('Registry skill acquisition and host compatibility', () => {
   test('refuses the inspected GitHub selection when its branch moves before acquisition', async () => {
     const network = networkFixture();
     const { app, home } = setup();
-    const listing = await (await app.request('/skills')).json();
-    const selected = listing.data[0];
+    const listing = (await (await app.request('/skills')).json()) as {
+      data: RegistryItem[];
+    };
+    const selected = listing.data[0]!;
     network.moveBranch();
     const refused = await app.request('/skills/install', {
       method: 'POST',

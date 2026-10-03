@@ -2063,9 +2063,10 @@ The built-in [GitHub Skill provider](../../src-server/providers/registries/githu
 resolves a branch to one immutable commit/tree and verifies blob hashes.
 Discovery supports nested Skill directories and refuses ambiguous names,
 truncated trees and unreadable required files. Its budgets are 512 Skills,
-8192 tree entries, four concurrent Markdown reads, 1 MiB per blob and 8 MiB
-per discovery/acquisition, with a 60-second operation and 15-second request
-ceiling. An installed package has at most 256 files. Portable path checks and
+8192 tree entries, four concurrent Markdown reads, 1 MiB per blob and an
+8 MiB blob budget per discovery/acquisition. Each commit/tree JSON response
+has a separate 2 MiB bound. Operations have a 60-second ceiling and requests
+have a 15-second ceiling. An installed package has at most 256 files. Portable path checks and
 exclusive staging-directory/file creation still refuse filesystem aliases.
 These checks do not qualify Windows/native execution.
 

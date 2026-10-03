@@ -1,10 +1,12 @@
+import type { RegistryItem as CatalogRegistryItem } from '@kontourai/station-contracts/catalog';
 import type { RegistryCatalogTab } from '@kontourai/station-sdk';
 
-export interface RegistryItem {
+export interface RegistryItem
+  extends Pick<
+    CatalogRegistryItem,
+    'catalog' | 'catalogSourceName' | 'catalogFreshness' | 'installedPluginName'
+  > {
   id: string;
-  catalog?: import('@kontourai/station-contracts/catalog').RegistryCatalogSelection;
-  catalogSourceName?: string;
-  catalogFreshness?: 'live' | 'stale';
   displayName?: string;
   description?: string;
   installed?: boolean;
