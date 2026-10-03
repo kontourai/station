@@ -163,7 +163,7 @@ const NOT_FOUND = () =>
   );
 
 /** The most sessions one `browser_status` page lists, and its default. */
-export const BROWSER_STATUS_PAGE_MAX = 20;
+const BROWSER_STATUS_PAGE_MAX = 20;
 
 /**
  * Where a `browser_status` page ends: the last session it listed. Pages run
