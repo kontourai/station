@@ -422,6 +422,12 @@
 
   .profile-card__name-row {
     justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  .profile-hero-info {
+    width: 100%;
+    min-width: 0;
   }
 
   .profile-hero-badges {
@@ -435,6 +441,19 @@
 
   .profile-usage-graph__bars {
     gap: 0.45rem;
+  }
+
+  .profile-usage-graph__label {
+    visibility: hidden;
+  }
+
+  .profile-usage-graph__column:nth-child(4n + 1) .profile-usage-graph__label,
+  .profile-usage-graph__column:last-child .profile-usage-graph__label {
+    visibility: visible;
+  }
+
+  .profile-usage-graph__column:nth-last-child(2) .profile-usage-graph__label {
+    visibility: hidden;
   }
 
   .profile-stats-grid {

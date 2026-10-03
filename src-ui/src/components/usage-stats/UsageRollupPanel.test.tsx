@@ -114,16 +114,21 @@ describe('UsageRollupPanel (station#4135)', () => {
   });
 
   test('calls an empty coverage result never reported instead of zero usage', () => {
+    const savedCoverage = result.data.coverage;
     result.data.coverage = [];
-    render(<UsageRollupPanel />);
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Usage never reported' }),
-    );
-    expect(
-      screen.getByText(
-        'No Station or provider reported usage for this window.',
-      ),
-    ).toBeTruthy();
+    try {
+      render(<UsageRollupPanel />);
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Usage never reported' }),
+      );
+      expect(
+        screen.getByText(
+          'No Station or provider reported usage for this window.',
+        ),
+      ).toBeTruthy();
+    } finally {
+      result.data.coverage = savedCoverage;
+    }
   });
 
   test('labels each grouping by its group identity rather than a receipt provider', () => {
@@ -144,6 +149,10 @@ describe('UsageRollupPanel (station#4135)', () => {
   });
 
   test('does not claim cached complete coverage after a failed refetch', () => {
+    const savedCoverage = result.data.coverage;
+    result.data.coverage = [
+      { ...savedCoverage[0], state: 'complete', providers: [] },
+    ];
     result.error = new Error('offline');
     try {
       render(<UsageRollupPanel />);
@@ -154,6 +163,7 @@ describe('UsageRollupPanel (station#4135)', () => {
       expect(result.refetch).toHaveBeenCalledOnce();
     } finally {
       result.error = null;
+      result.data.coverage = savedCoverage;
     }
   });
 });
