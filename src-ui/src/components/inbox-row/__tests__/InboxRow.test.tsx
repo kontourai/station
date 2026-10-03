@@ -32,6 +32,10 @@ import {
 } from '../../../views/home/home-view-model';
 import { buildWorkFacts, type WorkFacts } from '../../../views/home/work-facts';
 import { workStatus } from '../../../views/home/work-status';
+import {
+  CONVERSATION_REFERENCE_DRAG_TYPE,
+  draggedConversationReference,
+} from '../../chat/conversationReferenceDrag';
 import { InboxGroupList, InboxRow } from '../../chat-dock/ChatDockInboxRows';
 import { inboxRowChips } from '../inbox-row-chips';
 
@@ -909,5 +913,47 @@ describe('the Details sheet’s actions are a menu list, never a row of buttons'
     } finally {
       document.documentElement.style.removeProperty('--layer-surface-popover');
     }
+  });
+});
+
+describe('#3159: a row whose conversation may be referenced is a drag source', () => {
+  const scope = { apiBase: 'http://station.test', authorityKey: 'owner-a' };
+
+  it('drags its conversation, under its Station scope, onto a composer', () => {
+    const row = rowFor();
+    renderRow(row, {
+      referenceDrag: {
+        scope,
+        isReferenceable: (id) => id === row.item.id,
+      },
+    });
+    const button = screen.getByRole('button', {
+      name: new RegExp(row.item.title),
+    });
+    expect(button.getAttribute('draggable')).toBe('true');
+    const values = new Map<string, string>();
+    fireEvent.dragStart(button, {
+      dataTransfer: {
+        setData: (type: string, value: string) => values.set(type, value),
+        effectAllowed: 'all',
+      },
+    });
+    expect(values.get(CONVERSATION_REFERENCE_DRAG_TYPE)).toBe(row.item.id);
+    expect(draggedConversationReference(row.item.id, scope)).toMatchObject({
+      id: row.item.id,
+      title: row.item.title,
+    });
+    fireEvent.dragEnd(button);
+    expect(draggedConversationReference(row.item.id, scope)).toBeNull();
+  });
+
+  it('is not draggable when the inventory does not mark it referenceable', () => {
+    const row = rowFor();
+    renderRow(row, { referenceDrag: { scope, isReferenceable: () => false } });
+    expect(
+      screen
+        .getByRole('button', { name: new RegExp(row.item.title) })
+        .hasAttribute('draggable'),
+    ).toBe(false);
   });
 });
