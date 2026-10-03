@@ -1746,10 +1746,15 @@ describe('append-only review notes and Git history (#3101)', () => {
     f.write('src/c.ts', SHARED_C.replace('c1 = 1', 'c1 = 2'));
     const revision = commit(f.root, 'source before recording');
     const paths = ['docs/a.md', 'docs/b.md', 'docs/c.md', 'docs/map.md'];
-    for (const path of paths)
-      expect(record_(f.root, [path, '--note', 'Checked source.']).status).toBe(
-        0,
+    const recordAll = (note: string) => {
+      f.write(
+        '.git/reviews.json',
+        JSON.stringify(paths.map((path) => ({ path, note }))),
       );
+      const result = record_(f.root, ['--batch', '.git/reviews.json']);
+      expect(result.status, JSON.stringify(result.error)).toBe(0);
+    };
+    recordAll('Checked source.');
     expect(check(f.root, scoped).status).toBe(0);
     const notes = notesFiles(f.root).map((file) => ({
       file: `${REVIEW_LEDGER_DIR}/notes/${file}`,
@@ -1777,10 +1782,8 @@ describe('append-only review notes and Git history (#3101)', () => {
       expect(line).toContain(
         `npm run docs:review:record -- ${path} --note "<what you checked>"`,
       );
-      expect(
-        record_(f.root, [path, '--note', 'Checked rewritten source.']).status,
-      ).toBe(0);
     }
+    recordAll('Checked rewritten source.');
     expect(check(f.root, scoped).status).toBe(0);
     commit(f.root, 're-record after rewrite');
     expect(check(f.root, scoped).status).toBe(0);
