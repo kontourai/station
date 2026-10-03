@@ -467,7 +467,7 @@ test('the docked badge names the bound Project and reports a foreign chat’s ow
 
   // The switcher marks the bound Project as current.
   fireEvent.click(badge);
-  await screen.findByRole('dialog', { name: 'Switch project' });
+  await screen.findByRole('dialog', { name: 'Projects' });
   expect(
     screen
       .getByRole('button', { name: 'Switch to Pulse' })

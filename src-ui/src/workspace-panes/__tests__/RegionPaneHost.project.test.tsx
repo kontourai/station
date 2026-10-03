@@ -224,6 +224,9 @@ function tabs(region: string): [string, string | null][] {
  * runner fact, not a product one: every later assertion is immediate.
  */
 async function awaitChatPane() {
+  await act(async () => {
+    await vi.dynamicImportSettled();
+  });
   await waitFor(() => expect(model).not.toBeNull());
   await waitFor(
     () => expect(screen.queryByTestId('ambient-chat-occupant')).not.toBeNull(),
