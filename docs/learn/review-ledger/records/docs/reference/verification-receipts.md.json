@@ -9,7 +9,7 @@
 
   "limits": "Historical redaction sweep counts and release incidents are retained observations, not rerun measurements. Source/focused evidence does not establish a new full-regression or hosted promotion receipt.",
 
-  "document": {"digest":"ff74bf1de7043ac6706c6e252e7e5cac78469dfecd92a760e2f44826212d62bd","revision":"a1478b242401c5da824956478bd77fef1f4dfa51"},
+  "document": {"digest":"8023542d969ef6f61d7e990869f117e454579f8fdf4b12961d47337b0e9c252e","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
 
   "sources": [
     {"path":"package.json","digest":"8161e13f46212729130685df12cc34747e385002183410cd57e47d5cdd125306","revision":"2fc8f69d15e5c8fa3188bb2ee4731f1b63c66218"},
@@ -38,7 +38,9 @@
 
     {"path":"scripts/run-verification.mjs","digest":"dbbf9cf12e8b59b8d87feab8c6e1510bb92b9d8b4f6241803c897ff6f929a60a","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"scripts/verification-lanes.mjs","digest":"3fb1be3bd88d1d5139983eaf770e8a5474ce6cc6ef304d4e008df63d0c143fef","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"}
+    {"path":"scripts/verification-lanes.mjs","digest":"3fb1be3bd88d1d5139983eaf770e8a5474ce6cc6ef304d4e008df63d0c143fef","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/__tests__/trust-reconcile-manifest.test.ts","digest":"bb88093ff64ee3ea5e49c091122b473ed43c7076aae75226931305a9c016d8d4","revision":"bd3c66c56cfee6af5662438fdf3ceda335eda251"}
   ],
 
   "checks": [

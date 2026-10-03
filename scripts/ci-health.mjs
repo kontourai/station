@@ -208,7 +208,7 @@ export function mergeMetrics(runs, jobs, timelines, since, until) {
   const regression = runs.filter(
     (r) =>
       r.event === 'merge_group' &&
-      r.name === 'Merge-queue regression' &&
+      ['Merge-queue regression', 'Merge integration'].includes(r.name) &&
       r.conclusion != null &&
       r.conclusion !== 'cancelled' &&
       r.run_started_at &&
@@ -618,6 +618,41 @@ export async function collectHealth(
     collectedAt: new Date().toISOString(),
   };
 }
+export function qualificationMetrics(runs, jobs) {
+  const qualified = runs
+    .filter(
+      (run) =>
+        run.name === 'Main qualification' &&
+        run.head_branch === 'main' &&
+        ['schedule', 'workflow_dispatch'].includes(run.event),
+    )
+    .sort((a, b) => time(a.created_at) - time(b.created_at));
+  const restored = [];
+  let firstFailure = null;
+  for (const run of qualified) {
+    if (['failure', 'timed_out', 'cancelled'].includes(run.conclusion)) {
+      firstFailure ??= time(run.created_at);
+    } else if (run.conclusion === 'success' && firstFailure !== null) {
+      restored.push(Math.max(0, time(run.updated_at) - firstFailure) / minute);
+      firstFailure = null;
+    }
+  }
+  return {
+    runs: qualified.length,
+    failedOrIncomplete: qualified.filter((run) => run.conclusion !== 'success')
+      .length,
+    restoreMinutes: distribution(restored),
+    unresolvedEpisodeInWindow: firstFailure !== null,
+    agentInterventions: jobs.filter((job) =>
+      (job.steps ?? []).some(
+        (step) =>
+          step.name === 'Repair collected failures once' &&
+          step.started_at &&
+          step.conclusion !== 'skipped',
+      ),
+    ).length,
+  };
+}
 export function buildSnapshot(data, options) {
   const capacity = capacityMetrics(data.jobs, options.until);
   const reasons = [...data.reasons];
@@ -640,6 +675,7 @@ export function buildSnapshot(data, options) {
       options.until,
     ),
     capacity,
+    qualification: qualificationMetrics(data.runs, data.jobs),
     perPRPush: summarizeGroups(groupRuns(data.runs, 'push'), data.jobs),
     perMergeGroup: summarizeGroups(
       groupRuns(data.runs, 'merge_group'),
@@ -703,12 +739,25 @@ export function renderSnapshot(s) {
   const c = s.capacity;
   const rows = [
     ['Merge groups built', m.groupsBuilt],
+    ...(s.qualification
+      ? [
+          [
+            'Qualification runs / failed or incomplete',
+            `${s.qualification.runs} / ${s.qualification.failedOrIncomplete}`,
+          ],
+          [
+            'Qualification restore minutes median / p90',
+            stats(s.qualification.restoreMinutes),
+          ],
+          ['Repair agent interventions', s.qualification.agentInterventions],
+        ]
+      : []),
     ['Groups failed / rate', `${m.groupsFailed} / ${percent(m.failureRate)}`],
     [
       'Groups cancelled / timed out',
       `${m.groupsCancelled} / ${m.groupsTimedOut}`,
     ],
-    ['Failed groups with regression failure', m.regressionFailedGroups],
+    ['Failed groups with integration-gate failure', m.regressionFailedGroups],
     [
       'PRs with failed group / bot removals',
       `${m.prsWithFailedGroup} / ${m.botRemovals}`,
@@ -721,7 +770,7 @@ export function renderSnapshot(s) {
       'Re-entry: pending / unresolved unchanged',
       `${m.reentries.pending} / ${m.reentries.unresolvedUnchanged}`,
     ],
-    ['Regression minutes median / p90', stats(m.regressionMinutes)],
+    ['Merge integration minutes median / p90', stats(m.regressionMinutes)],
     [
       'Jobs executed / skipped / unfinished',
       `${c.executed} / ${c.skipped} / ${c.unfinished}`,

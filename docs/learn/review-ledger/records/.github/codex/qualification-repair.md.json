@@ -1,0 +1,25 @@
+{
+  "path": ".github/codex/qualification-repair.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Bounded scheduled-qualification repair instructions; logs treated as evidence, protected paths require handoff, publication lives in a separate trusted job.",
+
+  "limits": "Scoped source review and local executable tests; no hosted agent, publication, signing, physical-device or external Builder schema admission proof. Existing local receipt schema remains separate.",
+
+  "document": {"digest":"dffd8ee1af1ac4ff610a4c5f96ae3c3a4ec0292bb8544668bd12406f9e5e5d98","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
+
+  "sources": [
+    {"path":".github/workflows/qualification-repair.yml","digest":"6f3889eb085c36fd2d7ee89713d9b68b9a6616ed11d89612c511af21030fa207","revision":"8de1b741d83aec880c76c3cece6bb3e9cdee740d"},
+
+    {"path":"scripts/qualification-repair.mjs","digest":"08a9b2eab286f2c9c7bf69bb000bb7a7d4b5b0a0cdcd72af1cb1128fc7de6890","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
+
+    {"path":"scripts/__tests__/qualification-repair.test.ts","digest":"ec2c565db05fe51eaf5d5cc1f2a7f00f6dc399d46e0a700da0b678c542150f5d","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"}
+  ],
+
+  "checks": [
+    "Focused CI/workflow/release tests executed; receipt all-jobs-to-any mutation rejected and restored green; independent report-only review found no remaining P1/P2."
+  ]
+}

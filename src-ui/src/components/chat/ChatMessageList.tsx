@@ -7,6 +7,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
+import { createPortal } from 'react-dom';
 import { useAgents } from '../../contexts/AgentsContext';
 import { useApiBase } from '../../contexts/ApiBaseContext';
 import type { ChatContentPart } from '../../contexts/active-chats-state';
@@ -57,6 +58,7 @@ import {
 
 interface ChatMessageListProps {
   activeSession: ChatSession;
+  scrollControlsTarget?: HTMLElement | null;
   /** The canonical window plus sequenced live events already renders this turn. */
   suppressStreamingRow?: boolean;
   fontSize: number;
@@ -157,6 +159,7 @@ const EMPTY_MESSAGES: ChatMessage[] = [];
 const NO_PENDING_APPROVALS: ReturnType<typeof unansweredApprovalRequests> = [];
 function ChatMessageListComponent({
   activeSession,
+  scrollControlsTarget,
   suppressStreamingRow,
   fontSize,
   layoutHeight,
@@ -990,9 +993,15 @@ function ChatMessageListComponent({
           />
         )}
       </div>
-      {isUserScrolledUp && (
-        <ScrollToBottomButton onClick={handleScrollToBottom} />
-      )}
+      {isUserScrolledUp &&
+        (scrollControlsTarget ? (
+          createPortal(
+            <ScrollToBottomButton onClick={handleScrollToBottom} />,
+            scrollControlsTarget,
+          )
+        ) : (
+          <ScrollToBottomButton onClick={handleScrollToBottom} />
+        ))}
     </UIBlockActionsContext.Provider>
   );
 }
