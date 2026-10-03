@@ -11,7 +11,7 @@
  */
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { describe, expect, test, vi } from 'vitest';
+import { beforeAll, describe, expect, test, vi } from 'vitest';
 
 const captured = vi.hoisted(() => ({
   options: undefined as Record<string, unknown> | undefined,
@@ -55,8 +55,14 @@ function fakeAdapter(provider: string) {
 }
 
 describe('runtime composition: an engine connection’s default working directory', () => {
+  // The runtime graph's cold import is slow under host load; it gets its own
+  // budget here, so the test's timeout covers only construction and reads.
+  let initializeRuntime: typeof import('../runtime-initialize.js')['initializeRuntime'];
+  beforeAll(async () => {
+    ({ initializeRuntime } = await import('../runtime-initialize.js'));
+  }, 120_000);
+
   test('is read from the ACP connection config, as the adapter resolves it', async () => {
-    const { initializeRuntime } = await import('../runtime-initialize.js');
     const logger = {
       debug: vi.fn(),
       info: vi.fn(),

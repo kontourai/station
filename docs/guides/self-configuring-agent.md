@@ -86,7 +86,9 @@ which a folder can be swapped; it does not pin the directory. Other uses of a
 Session's folder, such as terminals, are not covered. A follow-up to a Session
 with no recorded folder, such as one the operator started or one from before
 this check existed, gets only the admission check. A forked conversation does
-not inherit the record.
+not inherit the record, and neither does a child Session that continues the
+conversation in a different folder than the previous Session recorded: it
+starts with no record.
 
 Saved-Environment discovery and remote dispatch require a bound operator caller.
 Remote task listings, task reads, event reads, and interrupts carry the same
