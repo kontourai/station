@@ -4,6 +4,7 @@ import type {
 } from '@kontourai/station-sdk';
 import type { ChatUIState } from '../../contexts/active-chats-state';
 import { serverWorkLive } from '../../utils/conversation-activity';
+import { requestsWaitingOnUser } from '../../utils/waiting-approvals';
 import {
   orchestrationLifecycleLabel,
   sessionAttentionKind,
@@ -135,7 +136,9 @@ function workActivityFrom(
  * says only "waiting".
  */
 function chatAttentionKind(chat: ChatUIState): WorkAttentionKind | undefined {
-  if (chat.pendingApprovals?.length) return 'approval';
+  // Requests still waiting on the user, not every one open on the server: an
+  // answered one waits on the engine (utils/waiting-approvals).
+  if (requestsWaitingOnUser(chat).length > 0) return 'approval';
   if (chat.status === 'queued') return 'queued';
   if (chat.orchestrationStatus === 'awaiting-approval') return 'waiting';
   return undefined;
