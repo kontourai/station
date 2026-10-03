@@ -12,9 +12,9 @@
   "document": {"digest":"3d073ff4e3d37f619a5381fe3d3dd0bcdb01a8c359a1602d4dccf305fde0250b","revision":"e5efef30008198db7198fe9dac38f3ad632c6621"},
 
   "sources": [
-    {"path":"src-ui/src/__tests__/AgentEditorForm.test.tsx","digest":"5902de49fbc2061e43b970a1edaad8a3ad5dc324274df2211bf671c5edc2bcfa","revision":"e5efef30008198db7198fe9dac38f3ad632c6621"},
+    {"path":"src-ui/src/__tests__/AgentEditorForm.test.tsx","digest":"00bc23eff7293c8e5ef739b3d44b306c84125cc64bc0ff7e2bd5093c7ffb05f1","revision":"54fc4a556486e17d1f4f0546c02be91fedf3b6b7"},
 
-    {"path":"src-ui/src/views/AgentEditorForm.tsx","digest":"fb8865af940fb49b6647a6ce64a8d708a41519c9a647128dfc83b26241523bae","revision":"423cbe55b9e35e4cd8954fd441cb9f3c69740d66"}
+    {"path":"src-ui/src/views/AgentEditorForm.tsx","digest":"42039f637252639d4f3e4333ea060560d540f9c6ba48e7f9b7b81147e1c4402d","revision":"54fc4a556486e17d1f4f0546c02be91fedf3b6b7"}
   ],
 
   "checks": [

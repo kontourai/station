@@ -12,7 +12,7 @@
   "document": {"digest":"32071612f7703e74291cd5bcf8d80595ff05356293892f2ffc8c7271963d9ed8","revision":"d6a3158c22a62d9530592c6366a1624790ee9401"},
 
   "sources": [
-    {"path":"docs/reference/config.md","digest":"52bb015f1846d5b7295019259ba3e3fb44ed77ac8b700584cb08d315edffe6e0","revision":"03b34026f59e9d32091d481aef1cab1f3a4fa03d"},
+    {"path":"docs/reference/config.md","digest":"75eb18568340e206957366d15dafef202282bcb2d86d1b96c01a2922ffb1ddc6","revision":"45c71d38091f91e917006dacdc7e2a0bb3cd58a4"},
 
     {"path":"docs/reference/settings-deep-links.md","digest":"504697512af473efd0be4ba655151406b11450e87e3bbe497a7ac3d03ec88434","revision":"d6a3158c22a62d9530592c6366a1624790ee9401"},
 
