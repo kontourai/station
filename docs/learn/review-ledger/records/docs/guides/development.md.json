@@ -9,7 +9,7 @@
 
   "limits": "Full reading and bounded source review are not all-platform execution or universal semantic certification. No hosted CI, cloud, release or real provider/device proof. Protected policy activation is limited to the approved documentation additions in this branch.",
 
-  "document": {"digest":"4ff9d0090aeb85b74d4a98f233f9184706b0c36f374cdb955ce446663ea06509","revision":"de240170769fcf739c188b104f801d4371f8086d"},
+  "document": {"digest":"ae5529d07e267aa9bef6bde4bef4d50056d05e07c7e69befbd5f9b5832962687","revision":"01c8161b147ae157927f5d9f60ec07ea9d2c6065"},
 
   "sources": [
     {"path":".agents/skills/documentation-audit/SKILL.md","digest":"2f5e193ebfb24a08597fd9dc31663a7d293bceaf1847e2df508b093e898845a6","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
@@ -20,11 +20,11 @@
 
     {"path":".githooks/pre-push","digest":"eb2d5cdd2c9f91b4e2dc96dd0d4ef36c55f313074f4f05aa30e0269cd5c0a6c9","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
-    {"path":".github/workflows/ci.yml","digest":"aedbb116a4ce043ec251ec20c47368aa89f77ebc1b5b526fecb9580af280bb91","revision":"de240170769fcf739c188b104f801d4371f8086d"},
+    {"path":".github/workflows/ci.yml","digest":"9b586bd70bb7c94986ce19ee41151ff768bad2a308a196a15047375c92f9646a","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
 
-    {"path":".github/workflows/full-regression.yml","digest":"dd5b4a1b3f64b23f7a3a7e73733600a9246934bd0d6409f2028706cf83c663be","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    {"path":".github/workflows/full-regression.yml","digest":"064212250fcc5a2d13bed01a3de5a7a72620616b9847ded3cfcdb166b6f694f2","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
 
-    {"path":".github/workflows/merge-queue-regression.yml","digest":"f803f8df52480932b1b69b1e623f31ac0f1128596f034ab0b0babca1fd46bbb8","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    {"path":".github/workflows/merge-queue-regression.yml","digest":"ba13e009f55d64dc1059167c9f1ed009c1518605483c42f4e3a3509e579e9480","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
 
     {"path":".github/workflows/portable-server-archives.yml","digest":"c7c7ff935b2bd8df40440aa8a7b6fd4405304e99e87c4a892de073fe0ae72924","revision":"614c216de6de9d4c06ef56963853ccff52f2f685"},
 

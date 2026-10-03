@@ -9,7 +9,7 @@
 
   "limits": "No actual signed Git tag, install, rollback, GitHub OIDC attestation or publication. Independent current source review covers described branches, not OS isolation or provider uptime.",
 
-  "document": {"digest":"75d72fe29216dca1d8443e8c502cda5d7fc03aa2d88d74fee939a688c9ee62eb","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+  "document": {"digest":"4e947b5fdb5551a20617d3aa4d8ab9023ce9ad15fdb2d54e0d42fb48f6c38504","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
 
   "sources": [
     {"path":".github/workflows/build-ios.yml","digest":"b4afee0a3cf62cd46226b9b68b648d15d00524a9d7bc27449e640fac6e3f9b73","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
@@ -20,13 +20,13 @@
 
     {"path":".github/workflows/nightly-native-stage.yml","digest":"90a8d29da6c024c539a0abc1eb35ba490791780917e174eb7023d6fb45a90030","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
 
-    {"path":".github/workflows/nightly.yml","digest":"555ac154d3eb7983e8dd5c6f3ff5f73e4f48ac6aac1800747fbbbc5ce4d36801","revision":"ec29a8774f2c138bfd9e9818c0f0cc36fc5ebefe"},
+    {"path":".github/workflows/nightly.yml","digest":"4b0cb6bcc5e169bcad830d8a56f7de030864ab0d23cfe64ce1b9880845f45592","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
 
     {"path":".github/workflows/portable-server-archives.yml","digest":"c7c7ff935b2bd8df40440aa8a7b6fd4405304e99e87c4a892de073fe0ae72924","revision":"614c216de6de9d4c06ef56963853ccff52f2f685"},
 
-    {"path":".github/workflows/publish-release.yml","digest":"b1f8a7f84db1576cd6e3f7ddd499f435d66e2ea5974a68e20a4508759ac695a6","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
+    {"path":".github/workflows/publish-release.yml","digest":"8811d948692207aff9c3987ed9c5ecfd7778770dfbb76b4d80cb7773713f6fa1","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
 
-    {"path":".github/workflows/release.yml","digest":"6ceff4507c2d55bb384c36cb7fba8be4b6eaaf0f0d408ecb990398fc00996c88","revision":"12e161f7032b17c2f97702c0c41116b0c82bbb91"},
+    {"path":".github/workflows/release.yml","digest":"e9322e982c85dfb6b26188a6f6d0bc596f1f384e949bc50a59fe07d552e3c8f2","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
 
     {"path":".github/workflows/testflight-delivery.yml","digest":"b65be60d29e76e922b07ed19bd89576ef1cac76e20712dd28d140c72d36012bb","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
 
@@ -46,7 +46,7 @@
 
     {"path":"scripts/__tests__/release-manifest-vectors.test.ts","digest":"2d2416f7ea846fd8ba91d4ddacec28219107af7d4269d597d3f3424758babfd6","revision":"614c216de6de9d4c06ef56963853ccff52f2f685"},
 
-    {"path":"scripts/__tests__/release-workflow.test.ts","digest":"bae8939a7bc0134f682c457adfc56796419b6fbc8537e1b083be357af19b8fce","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"scripts/__tests__/release-workflow.test.ts","digest":"2b899fdd5b06966e07e391e65cec71bb78696228febfea25e9c41f3d5c455b02","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
 
     {"path":"scripts/app-store-connect-receipt.mjs","digest":"c70c7c9b86be2658f294f930a37f70c28d41671a041f7f87185c4c1e7df98812","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
