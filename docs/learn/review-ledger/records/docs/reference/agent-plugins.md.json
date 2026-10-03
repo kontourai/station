@@ -28,7 +28,7 @@
 
     {"path":"packages/shared/src/agent-plugin-validators.generated.mjs","digest":"344d01f927c8bb3b0c9268c84308e15598078d6bf9a80f31d6c5685003b65112","revision":"f2bb7d8a1e4b56ac783fb9d0cfe167fe7a0fdde5"},
 
-    {"path":"packages/shared/src/build.ts","digest":"20f919a4a98519ce20e8e2f0d5d498a4be8daeba1314a97ddae752fd36df4630","revision":"1e6450e0caa47975d33f505a1348bdc01ae1382e"},
+    {"path":"packages/shared/src/build.ts","digest":"8db6bc04bffe80ead5af5e8d9b23be2ae02f1e5afbae67f850e583b8ca40c783","revision":"e78cdc9c00d09b69f333e1609821d8fa70bce58c"},
 
     {"path":"packages/shared/src/skill-experience-author.ts","digest":"78eff8e23674a648d904c12919b137ff62c04520fc3f164f66a482102047754b","revision":"f2bb7d8a1e4b56ac783fb9d0cfe167fe7a0fdde5"},
 
