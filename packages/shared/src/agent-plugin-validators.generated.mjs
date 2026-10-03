@@ -4,7 +4,7 @@
  * schemas/agent-plugins/1.0.0/plugin.schema.json sha256:0a4aad95ce337878ad38802ebf0daa3fde76abe3f65400c86bcbb1ec0b3ab883
  * schemas/agent-plugins/io.kontourai.station-1.0.schema.json sha256:e3ddeacd09b521057a214a203eb486d277b5be0256bfe2c99bee9696aed26ed5
  * schemas/agent-plugins/skill-experience-1.0.schema.json sha256:7805eb30fd8e9757aa52e9974674355dfd02b518cd92362bc5c200c9b546a811
- * schemas/agent-plugins/skill-experience-review-1.0.schema.json sha256:9cf691b7faf7290a06b97f15424ab6da75b4b24ee5b5c4029ada5059302a8042
+ * schemas/agent-plugins/skill-experience-review-1.0.schema.json sha256:6b3cd41e19608e64a50f6262cf156ef5572980c4dbf315759c579f7a722823a3
  */
 /*! Bundled Ajv runtime helper.
 The MIT License (MIT)
