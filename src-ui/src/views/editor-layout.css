@@ -2079,3 +2079,35 @@
 .agent-tools__chevron.is-open {
   transform: none;
 }
+
+.agent-inline-editor .editor-label-row:has(.info-tip) {
+  justify-content: flex-start;
+  gap: var(--k-space-1);
+}
+
+.agent-inline-editor .editor-label-row .editor-label {
+  margin-bottom: 0;
+}
+
+.agent-inline-editor .info-tip {
+  margin-left: var(--k-space-1);
+}
+
+@media (max-width: 768px) {
+  .agent-inline-editor .info-tip__trigger {
+    position: relative;
+    width: 44px;
+    height: 44px;
+    border: none;
+  }
+}
+
+@media (max-width: 768px) {
+  .agent-inline-editor .info-tip__trigger::before {
+    position: absolute;
+    inset: 13px;
+    border: 1px solid var(--k-line);
+    border-radius: 50%;
+    content: "";
+  }
+}

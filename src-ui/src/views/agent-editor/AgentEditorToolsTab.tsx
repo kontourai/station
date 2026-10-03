@@ -4,6 +4,7 @@ import type { Dispatch, SetStateAction } from 'react';
 import { useState } from 'react';
 import { Button } from '../../components/Button';
 import { Checkbox } from '../../components/Checkbox';
+import { InfoTip } from '../../components/InfoTip';
 import {
   ArrowDownGlyph,
   CloseGlyph,
@@ -105,13 +106,7 @@ export function AgentEditorToolsTab({
       <div className="editor-field agent-tools__shell">
         <div className="agent-tools__heading">
           <span className="editor-label">
-            Tools{' '}
-            <small
-              className="agent-tools__timing"
-              title="Changes apply to new chats"
-            >
-              New chats
-            </small>
+            Tools <InfoTip label="Tools">Changes apply to new chats.</InfoTip>
           </span>
           <div className="agent-tools__actions">
             {station && !form.tools.mcpServers.includes(station.id) && (
@@ -627,11 +622,15 @@ export function AgentEditorToolsTab({
         <summary>Advanced</summary>
         <div className="editor-field">
           <div className="editor-label-row">
-            <span className="editor-label">Browser tools</span>
+            <span className="editor-label">
+              Browser tools
+              <InfoTip label="Browser tools">
+                Drive the Project browser. Available to Claude agents.
+              </InfoTip>
+            </span>
             <Toggle
               checked={form.tools.browser !== false}
               disabled={disabled}
-              describedBy="agent-browser-tools-hint"
               label="Browser tools"
               onChange={(browser) =>
                 setForm((current) => ({
@@ -641,9 +640,6 @@ export function AgentEditorToolsTab({
               }
             />
           </div>
-          <span className="editor-hint" id="agent-browser-tools-hint">
-            Drive the Project browser. Available to Claude agents.
-          </span>
         </div>
         <AgentEditorWorkflows slug={form.slug} locked={locked} />
       </details>

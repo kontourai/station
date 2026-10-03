@@ -124,9 +124,6 @@ export function AgentEditorForm(props: AgentEditorFormProps) {
       </section>
 
       <section className="agent-editor__section" aria-labelledby="agent-engine">
-        <h3 id="agent-engine" className="agent-editor__section-title">
-          Engine
-        </h3>
         <AgentEditorEngineSelection
           form={form}
           setForm={props.setForm}

@@ -2,11 +2,37 @@
  * @vitest-environment jsdom
  */
 
-import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, test } from 'vitest';
+import { act, fireEvent, render, screen } from '@testing-library/react';
+import { describe, expect, test, vi } from 'vitest';
 import { InfoTip } from '../components/InfoTip';
 
 describe('InfoTip', () => {
+  test('keeps hover help readable across the gap and pins it when clicked', () => {
+    vi.useFakeTimers();
+    try {
+      render(<InfoTip label="Tools">Changes apply to new chats.</InfoTip>);
+      const trigger = screen.getByRole('button', { name: 'More about Tools' });
+      fireEvent.mouseEnter(trigger);
+      const tooltip = screen.getByRole('tooltip');
+      fireEvent.mouseLeave(trigger);
+      fireEvent.mouseEnter(tooltip);
+      act(() => vi.advanceTimersByTime(300));
+      expect(screen.getByRole('tooltip')).toBe(tooltip);
+      fireEvent.mouseLeave(tooltip);
+      act(() => vi.advanceTimersByTime(300));
+      expect(screen.queryByRole('tooltip')).toBeNull();
+      fireEvent.mouseEnter(trigger);
+      fireEvent.click(trigger);
+      fireEvent.mouseLeave(trigger);
+      act(() => vi.advanceTimersByTime(300));
+      expect(screen.getByRole('tooltip')).toBeTruthy();
+      fireEvent.click(trigger);
+      expect(screen.queryByRole('tooltip')).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   test('opens through an accessible button and renders the explanation in a portal', () => {
     render(
       <InfoTip label="Approval guardian">Extra screening details</InfoTip>,

@@ -75,10 +75,10 @@ describe('agent editor browser tools switch (D14)', () => {
     fireEvent.click(screen.getByText('Advanced'));
     const toggle = screen.getByRole('switch', { name: 'Browser tools' });
     expect(toggle.getAttribute('aria-checked')).toBe('true');
-    expect(
-      document.getElementById(toggle.getAttribute('aria-describedby') ?? '')
-        ?.textContent,
-    ).toMatch(/Claude agents/);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'More about Browser tools' }),
+    );
+    expect(screen.getByRole('tooltip').textContent).toMatch(/Claude agents/);
     fireEvent.click(toggle);
     expect(latest?.tools.browser).toBe(false);
     expect(toggle.getAttribute('aria-checked')).toBe('false');

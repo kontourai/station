@@ -51,7 +51,9 @@ adds read-only built-in controls; expand the row to choose **Read only**, **All*
 Knowledge, Projects, Tasks, Scheduling, and other areas. The three shortcuts apply
 to the chosen group and preserve choices elsewhere. Search narrows the checklist. The shield opens approval settings; the gear
 opens harness settings. **Advanced** contains browser and workflow options.
-Saved changes apply to new chats.
+Saved changes apply to new chats. Hover over or click an info icon for field
+explanations and engine capabilities. Keyboard users can press Enter to open it,
+use arrow or Page keys to scroll long help, and press Escape to dismiss it.
 
 Station Control publishes native MCP titles and behavioral annotations. The
 `ai.kontour/tool-group` vendor metadata organizes the picker; third-party
