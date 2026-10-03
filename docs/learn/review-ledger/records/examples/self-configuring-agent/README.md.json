@@ -54,7 +54,7 @@
 
     {"path":"src-server/providers/llm/openai-compat-provider.ts","digest":"3947c2c6bc098058e2890b79b56953ebccfc8f22a6021aed5f9081dbd82eafe6","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/routes/agents/skills.ts","digest":"e12a8e9c7c3120e32a859ae668138d6da2394f6c1d82d6aadb989ab58b88b7c1","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/routes/agents/skills.ts","digest":"e39a612adc1d35767a9149cc5079d2c2732b4a2848171e2115ce3d4e4c25c62d","revision":"a366557a12a4f5e6a41d38ce92aacbd0ab32193b"},
 
     {"path":"src-server/routes/connections/app-home.ts","digest":"ed7412dd78667321bec46937a4bc7a1fa92f1e9a3b27c344fbeea55345a20b5a","revision":"1a235cd9bc482738abe4c3f011f73be86074d667"},
 
@@ -92,7 +92,7 @@
 
     {"path":"src-server/security/station-control-request-authority.ts","digest":"b522bde2d245f4d682cf1468329f5314fbfd5f5abb431cc916b88b56aa7c9ec6","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/agents/skill-service.ts","digest":"b422d6e8444abe623ad16f39e37a535e9d6b6b3bdb8f009d621b493c2b22c369","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/agents/skill-service.ts","digest":"f2502c86772405101c46632bce3512c1b2e0d9db9e83a1027f1b0a311c2957af","revision":"578cffa3a692d7e7b66cf6002b4c625c72cec618"},
 
     {"path":"src-server/services/connections/connection-env.ts","digest":"80e4ce2713521a60ffb7c87b5fa027399eeecf1407e63453f33dc7a55f18430b","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 

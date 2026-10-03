@@ -9,10 +9,10 @@
 
   "limits": "Controlled local Node/macOS author-file tests and CLI build only. No installed runtime, model/provider, native/device, hosted schema URI or released-package proof. FIFO controls are POSIX-only and skip Windows; this is not hostile concurrent filesystem isolation or complete transitive Skill dependency discovery.",
 
-  "document": {"digest":"0b604c7b0c6cb225edba01a6dcd7652a378cf4d20d44a6b11da6530a19ed8d18","revision":"4846133db20d56a37c3941d83b0dca5444f21a52"},
+  "document": {"digest":"e58fddaddb82237a87ade72b694b98bf081f0fe414aaadbc0b7e6d119b1c99ed","revision":"2b8d3ba6c9825fba821fe157f32956f4e051be0a"},
 
   "sources": [
-    {"path":"packages/contracts/src/skill-experience.ts","digest":"4e46998e7d18f942b60b2cfc9e8c1502ddf9b25e1b5c4f05a987bc23faa5d4a6","revision":"4846133db20d56a37c3941d83b0dca5444f21a52"},
+    {"path":"packages/contracts/src/skill-experience.ts","digest":"87d65f668205bed4648b8c265c74f6115e1f89944a613ee1f36e9124d5db1004","revision":"a366557a12a4f5e6a41d38ce92aacbd0ab32193b"},
 
     {"path":"packages/contracts/src/agent-plugin.ts","digest":"2e3d120f5eae47814db06203169553f98b31a39263efae9d768762cf8452b1a9","revision":"4846133db20d56a37c3941d83b0dca5444f21a52"},
 
@@ -20,7 +20,7 @@
 
     {"path":"schemas/agent-plugins/io.kontourai.station-1.0.schema.json","digest":"e3ddeacd09b521057a214a203eb486d277b5be0256bfe2c99bee9696aed26ed5","revision":"4846133db20d56a37c3941d83b0dca5444f21a52"},
 
-    {"path":"packages/shared/src/skill-experience-author.ts","digest":"5227a059dbe7a2f557e0916ae58a796021b387ef0589c15d278b82a04852ed7b","revision":"4846133db20d56a37c3941d83b0dca5444f21a52"},
+    {"path":"packages/shared/src/skill-experience-author.ts","digest":"ad4c1718cd49718a71b341ade9babdbbdee11a8c3b5b4b36b578e1bc48ec69d6","revision":"cdbbf99cf334245282450ff5bfc51dcd4f42d660"},
 
     {"path":"packages/shared/src/regular-file.ts","digest":"e6b1a4bfa2c1379a327d70dc3b357aadfe2d814bab4f6a0e0dc0270560eb7a78","revision":"4846133db20d56a37c3941d83b0dca5444f21a52"},
 
@@ -36,7 +36,15 @@
 
     {"path":"examples/visual-skill-experience/skills/stress-test-idea/SKILL.md","digest":"d5e7270b300e941d361be53562712fa04274a3076ba0201803d422832966e35d","revision":"4846133db20d56a37c3941d83b0dca5444f21a52"},
 
-    {"path":"src-server/__test-utils__/temp-dirs.ts","digest":"20c81129e9cd3db2df51d96b788515b8afde2a2740112ca25e101a6880f72cb1","revision":"cd4139fe26bdaac578c408aaa75784fff0391a5a"}
+    {"path":"src-server/__test-utils__/temp-dirs.ts","digest":"20c81129e9cd3db2df51d96b788515b8afde2a2740112ca25e101a6880f72cb1","revision":"cd4139fe26bdaac578c408aaa75784fff0391a5a"},
+
+    {"path":"src-server/services/plugins/agent-plugin-loader.ts","digest":"b6434939c6229105e9771e53932416d1aa4244d01f24afa84b03f8108a03fcee","revision":"d222e0af2621a3b0cd4cc0dff0c5736f9a715329"},
+
+    {"path":"src-server/services/agents/skill-service.ts","digest":"f2502c86772405101c46632bce3512c1b2e0d9db9e83a1027f1b0a311c2957af","revision":"578cffa3a692d7e7b66cf6002b4c625c72cec618"},
+
+    {"path":"src-server/routes/agents/skills.ts","digest":"e39a612adc1d35767a9149cc5079d2c2732b4a2848171e2115ce3d4e4c25c62d","revision":"a366557a12a4f5e6a41d38ce92aacbd0ab32193b"},
+
+    {"path":"src-server/routes/agents/__tests__/skill-experiences.routes.test.ts","digest":"30fdcb4941445814987513af9c3dee55d0e5508243111461a6c30fe57e6d47c7","revision":"d222e0af2621a3b0cd4cc0dff0c5736f9a715329"}
   ],
 
   "checks": [

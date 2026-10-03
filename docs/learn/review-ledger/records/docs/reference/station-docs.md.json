@@ -72,7 +72,7 @@
 
     {"path":"src-server/runtime/mcp/mcp-ui-resolver.ts","digest":"b82399f787d6b71129684e5cb4fad8858846d5315d0c1077822ac1591199075e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/agents/skill-service.ts","digest":"b422d6e8444abe623ad16f39e37a535e9d6b6b3bdb8f009d621b493c2b22c369","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/agents/skill-service.ts","digest":"f2502c86772405101c46632bce3512c1b2e0d9db9e83a1027f1b0a311c2957af","revision":"578cffa3a692d7e7b66cf6002b4c625c72cec618"},
 
     {"path":"src-server/services/connections/fleet-contribution-manifest.ts","digest":"b652110a8ae06e2a05b9274128160b5c698a51a0cfa0a68a66664d71e1de72a5","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -104,7 +104,7 @@
 
     {"path":"src-server/tools/station-control-platform-tools.ts","digest":"a209f508dffc890f68c90ef5393125ff4a4d68f020c66b55c4abb84812727f5d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/tools/station-docs-content.ts","digest":"c112f831517ab8df9af25fba576016ccdc41f3fdb711660418566bd9342cca3c","revision":"e403554362186ebc38993487e46a7c4acf1004f8"},
+    {"path":"src-server/tools/station-docs-content.ts","digest":"d30be3f998feb666890d471794652ab6e87e6396d96f368d7b972223915082c4","revision":"b51616a8b8800fe8ee85c3d3400e519e8984f25e"},
 
     {"path":"src-server/tools/station-docs-mcp-server.ts","digest":"6c3b7b2586bed5225ba1b32ddae94e61d5cc087083157d0f6e62d6ddf1490872","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

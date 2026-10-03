@@ -9,7 +9,7 @@
 
   "limits": "190 existing tests across seven files use controlled package, route, builder, install and MCP fixtures; no live external MCP service, package publication, user-home installation, OAuth exchange, device or hosted deployment was exercised. Settings secret references remain plaintext settings inputs rather than a secret resolver. Source review is of current documented claims, not a formal proof of every package/adversarial input or every contribution runtime.",
 
-  "document": {"digest":"16d7481b7b5f3ab4e6a0559cb748abe6853f998a0851dab2bd677a474db6e784","revision":"1e6450e0caa47975d33f505a1348bdc01ae1382e"},
+  "document": {"digest":"55288d984ea3adfb4c7d1651dd004f4b7fd17f3bcbef17c95b40d13a87103bba","revision":"2b8d3ba6c9825fba821fe157f32956f4e051be0a"},
 
   "sources": [
     {"path":".githooks/pre-push","digest":"eb2d5cdd2c9f91b4e2dc96dd0d4ef36c55f313074f4f05aa30e0269cd5c0a6c9","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
@@ -46,9 +46,9 @@
 
     {"path":"src-server/routes/plugins/plugin-config-routes.ts","digest":"42dda4eeb196c8b63c081f059822f9f56187b1da9d8f84ec4c09cacc3d95f5a4","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-server/services/agents/skill-service.ts","digest":"b422d6e8444abe623ad16f39e37a535e9d6b6b3bdb8f009d621b493c2b22c369","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"src-server/services/agents/skill-service.ts","digest":"f2502c86772405101c46632bce3512c1b2e0d9db9e83a1027f1b0a311c2957af","revision":"578cffa3a692d7e7b66cf6002b4c625c72cec618"},
 
-    {"path":"src-server/services/plugins/agent-plugin-loader.ts","digest":"91dd9928c383d1db4197a5c2e4cf7f80bcbcfb15a6ffad5ffeb1d27362d9c5b6","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"src-server/services/plugins/agent-plugin-loader.ts","digest":"b6434939c6229105e9771e53932416d1aa4244d01f24afa84b03f8108a03fcee","revision":"d222e0af2621a3b0cd4cc0dff0c5736f9a715329"},
 
     {"path":"src-server/services/plugins/mcp-service.ts","digest":"ae0db4eaae63bb43fdacf188eb5aacccd7377e656809b0005623516e2f1249aa","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
 
@@ -70,9 +70,9 @@
 
     {"path":"package.json#/scripts/agent-plugin:validators:gate","digest":"981a70b44b8755a2c69a3ded474dbe7b5f81f89eb73248e7ca90518e3280af77","revision":"444e3ec61e26b58fa5c2edd68abfca6d00a2cc98"},
 
-    {"path":"packages/contracts/src/skill-experience.ts","digest":"4e46998e7d18f942b60b2cfc9e8c1502ddf9b25e1b5c4f05a987bc23faa5d4a6","revision":"1e6450e0caa47975d33f505a1348bdc01ae1382e"},
+    {"path":"packages/contracts/src/skill-experience.ts","digest":"87d65f668205bed4648b8c265c74f6115e1f89944a613ee1f36e9124d5db1004","revision":"a366557a12a4f5e6a41d38ce92aacbd0ab32193b"},
 
-    {"path":"packages/shared/src/skill-experience-author.ts","digest":"5227a059dbe7a2f557e0916ae58a796021b387ef0589c15d278b82a04852ed7b","revision":"e7f0eff3366dd7a874b2cdc6d9f8b5877659a640"},
+    {"path":"packages/shared/src/skill-experience-author.ts","digest":"ad4c1718cd49718a71b341ade9babdbbdee11a8c3b5b4b36b578e1bc48ec69d6","revision":"cdbbf99cf334245282450ff5bfc51dcd4f42d660"},
 
     {"path":"schemas/agent-plugins/skill-experience-1.0.schema.json","digest":"7805eb30fd8e9757aa52e9974674355dfd02b518cd92362bc5c200c9b546a811","revision":"1e6450e0caa47975d33f505a1348bdc01ae1382e"}
   ],

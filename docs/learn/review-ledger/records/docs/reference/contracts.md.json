@@ -9,7 +9,7 @@
 
   "limits": "Review covers every current documented claim, not all possible behaviors of every exported module. Detailed historical Muse/Claude captures remain historical; no live provider, native push gateway, physical device, deployed account or relay journey was run. Contract declarations and valid parsers never prove authorization, delivery or owner completion. No new security probe.",
 
-  "document": {"digest":"4fc6322a0a4f02149563c235375f8c699cb09ffceec16ac9c3416b84bff518f0","revision":"1e6450e0caa47975d33f505a1348bdc01ae1382e"},
+  "document": {"digest":"a0f436bdd8446df8c638882b82a6a3585b697630623965b1ba4f7859b2d70c45","revision":"2b8d3ba6c9825fba821fe157f32956f4e051be0a"},
 
   "sources": [
     {"path":"packages/cli/src/commands/delegate.ts","digest":"9e1e324cb71d85c563afd74dbd8da063fe8a13a3faaa174690eaebea7ca8518d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
@@ -134,7 +134,7 @@
 
     {"path":"packages/contracts/src/usage-rollup.ts","digest":"22d0231b9711bccb674bbc966991a33e41f622f3547e972e5517e04047beb6ad","revision":"0dd1181141ba6a645601e6798079a16189510438"},
 
-    {"path":"packages/contracts/src/skill-experience.ts","digest":"4e46998e7d18f942b60b2cfc9e8c1502ddf9b25e1b5c4f05a987bc23faa5d4a6","revision":"1e6450e0caa47975d33f505a1348bdc01ae1382e"}
+    {"path":"packages/contracts/src/skill-experience.ts","digest":"87d65f668205bed4648b8c265c74f6115e1f89944a613ee1f36e9124d5db1004","revision":"a366557a12a4f5e6a41d38ce92aacbd0ab32193b"}
   ],
 
   "checks": [

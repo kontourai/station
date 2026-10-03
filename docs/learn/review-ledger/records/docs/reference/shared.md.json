@@ -9,7 +9,7 @@
 
   "limits": "Selected documented contracts only, not every helper export or implementation branch. Syntax-only snippets are excerpts, not complete standalone programs. Existing parser/build tests use disposable fixtures and controlled dependency preparation. No real plugin install, registry or live MCP/provider/device outcome exercised. Earlier MCP and notification checks remain separately recorded; hashes are freshness checks, not semantic proof.",
 
-  "document": {"digest":"1afd4a99ce1699324a45ab45f2cfabc729098f4627992f5ed3fd667a1dc88ed3","revision":"4846133db20d56a37c3941d83b0dca5444f21a52"},
+  "document": {"digest":"89adf5889eabac778f3dd70300faa06565fe38201e1ff8be3bd335bc25186492","revision":"2b8d3ba6c9825fba821fe157f32956f4e051be0a"},
 
   "sources": [
     {"path":"docs/design/mcp-ui-host.md","digest":"060ae4fc6877a186e8ea6d5073729e03f161dbe270b700f62741095560000195","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
@@ -50,7 +50,7 @@
 
     {"path":"packages/sdk/src/api-agent-runtime.ts","digest":"4b5cff321da3b39dca67b50c39d64090b9f794f95d52b0e1d6504c18dfedfc14","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
-    {"path":"packages/shared/package.json","digest":"45a3e54c719ca24083dcd1deb3c547f06effb31cba0ba723662006d82c3be741","revision":"1e6450e0caa47975d33f505a1348bdc01ae1382e"},
+    {"path":"packages/shared/package.json","digest":"349b7e4be40349c4bde9e88ce927720a4b91e3d1af35d23c2281324e8579cfc0","revision":"a366557a12a4f5e6a41d38ce92aacbd0ab32193b"},
 
     {"path":"packages/shared/src/__tests__/build.test.ts","digest":"e7c2da46760a947ef17e70c50e4c244376e4b60f98802a4fd2f620764f08d4bf","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -110,7 +110,9 @@
 
     {"path":"src-ui/src/core/PluginRegistry.ts","digest":"4b87c6951d37298e6497639e1cc45294fd1239f06d4c6caf9f5ed540eef5ca2c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/core/pluginSharedRuntime.ts","digest":"b9b3865a69ebf0b8246ac7b6b7b294b24f7a05f51004dd8a8b5ea273fc2fae49","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"}
+    {"path":"src-ui/src/core/pluginSharedRuntime.ts","digest":"b9b3865a69ebf0b8246ac7b6b7b294b24f7a05f51004dd8a8b5ea273fc2fae49","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
+
+    {"path":"packages/shared/src/skill-experience-author.ts","digest":"ad4c1718cd49718a71b341ade9babdbbdee11a8c3b5b4b36b578e1bc48ec69d6","revision":"cdbbf99cf334245282450ff5bfc51dcd4f42d660"}
   ],
 
   "checks": [
