@@ -9,16 +9,16 @@
 
   "limits": "Source trace plus actual schema/template checks and existing focused fixtures. No live model, MCP server, AWS account, native/Windows ACL, external engine bounded loop, deployment or provider/network outcome was exercised. Strands configured step caps, guardrails.maxSteps admission, retained quick prompts and template-format admission are documented limitations/draft recommendations, not repaired runtime behavior. Source hashes indicate later drift only.",
 
-  "document": {"digest":"f27eb8c8776abdf47715715a6f4681a1a8b988ea64dafc3bd2a928663371cad9","revision":"1eedcca663f35646df4414881a0a63ae9dfbeee1"},
+  "document": {"digest":"f059032ee97e76fbc37a69981de1c3664602dde9c79f2b706d33014b04388cfa","revision":"d6a3158c22a62d9530592c6366a1624790ee9401"},
 
   "sources": [
     {"path":"packages/contracts/src/agent.ts","digest":"09ccd526184f256ab9833dd6e46f417f4da565a825f3fd870f5621e017922e22","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"packages/contracts/src/chat-attachment.ts","digest":"acf48de0ad38da3cd46b22e46020a8ef36d9fad0fefe28f1edfe30e545f8473e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/contracts/src/config.ts","digest":"d7eb4b693fdae3966c9ec13321f50eb92c3da6c4bf6d62b9e7f9679b05f276f2","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"packages/contracts/src/config.ts","digest":"05591bdbec9d2e5ea98e24330e0020afb26e270e7c4808f7bd757c232f724d31","revision":"d6a3158c22a62d9530592c6366a1624790ee9401"},
 
-    {"path":"packages/contracts/src/settings-registry.ts","digest":"95bcee81c363ab5ab39dff227f2aaec271f7baecd7bf1c9ae33b85ac7928de5d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"packages/contracts/src/settings-registry.ts","digest":"1b22ce258daf0a7e941b8aa8d738b701595ba0d1a162547c4c1f560a69dad582","revision":"d6a3158c22a62d9530592c6366a1624790ee9401"},
 
     {"path":"pnpm-lock.yaml","digest":"5c3c9968c59ac5b4e7e5ec861c2873bfce11b7c60e7b28e8706db6b29d028ddb","revision":"1e6450e0caa47975d33f505a1348bdc01ae1382e"},
 
@@ -32,7 +32,7 @@
 
     {"path":"src-server/domain/config-loader-app.ts","digest":"6f40b234fa3c45e6357d3eb028c53c780eaa139aec28a58444a2ed467898746b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/domain/validator.ts","digest":"30eafb50e47da5d4affca4fe67b6d7e1b9e79e9e77ae61f265775da273bee69c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/domain/validator.ts","digest":"3eb3a7b8ee4c11d88b25e26cb055a7909ce2017011fad50fbe5d39ab379a21e8","revision":"d6a3158c22a62d9530592c6366a1624790ee9401"},
 
     {"path":"src-server/knowledge-store/conversation-root-bootstrap.ts","digest":"658683fe19a2d352c6ab3e9b7a18d96d8752fcc20c2808a08050f5062b4ab31c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -94,7 +94,7 @@
 
     {"path":"src-server/runtime/plugins/runtime-provider-resolution.ts","digest":"99c57df9288ec94d454dace087cb1bfc99867e41f6caa992d244bc053a2a0253","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"400dc75dd88a48bc411a4edb9c5f40f9d22ae0f1c5b68d8f748e7733efae5a0e","revision":"cb3ebc3797508b3f46d66b8bc5ece89b32cb79ae"},
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"90e94e3a617cb7c9642c029f8dd1c58fbebeca19e29dbd1b097af41952fe4b93","revision":"cf12c0d848d0dc068f3dcaa530e9a1f213618834"},
 
     {"path":"src-server/security/pairing-route-scopes.ts","digest":"6135d879afff21c7d3c8f82d0fb701f04c7bc8de28724848ce0ffa39b0ded204","revision":"b004ed8cb3e885da544adf960b2894780aaf2b51"},
 

@@ -1,115 +1,208 @@
 {
   "path": "docs/patterns/frontend.md",
-
   "kind": "policy",
-
   "state": "classified",
-
   "summary": "Full-read contributor patterns; replaced stale hooks, raw-fetch recipes and effectful queries with current query/context owners and small examples. Retained existing architecture, component-size, logging and verification conventions.",
-
   "limits": "Contributor guidance and named source/fixture checks do not establish universal adoption, rendered contrast, physical keyboard/device/native behavior or provider execution.",
-
-  "document": {"digest":"42c6c7765de30e437f348e2e027d1cdddf6b5ab456da49fcfa6e762f530666c3","revision":"2b22c2609a75d0f40b77472fe918de3c34094b69"},
-
+  "document": {
+    "digest": "42c6c7765de30e437f348e2e027d1cdddf6b5ab456da49fcfa6e762f530666c3",
+    "revision": "2b22c2609a75d0f40b77472fe918de3c34094b69"
+  },
   "sources": [
-    {"path":"docs/ui/responsive-action-surfaces.txt","digest":"599d6ed4075c93a9fa089b0e56df3167866c1b42b003caf011bd27c9437aeda3","revision":"8d7aae8989f68cf5129b6bd9094c3206af596b5a"},
-
-    {"path":"docs/ui/responsive-surfaces.json","digest":"ed85a588d1029bca3f050c4225772a2b58c42e944af63014960389794d0b24c5","revision":"d1708e0a66e7328c9c62a95865f1bb1dcfbeb8d1"},
-
-    {"path":"packages/sdk/src/client/http.ts","digest":"9892699e68483e0df3dd67ce71956994e98a43755a0c931dd6c3c5660caee00e","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
-
-    {"path":"packages/sdk/src/index.ts","digest":"7a0645f44c08a15d2e4ff972cfb31c25a7e361b8534886ee9de826ac61a72a49","revision":"0814cc6ddb168cff69e5572b185a853540a4f6e0"},
-
-    {"path":"packages/sdk/src/queries.ts","digest":"6604989192ed7bbea006f7dd70e0ed2726c4d1f4f0095c0c0d430fe3cf61cc87","revision":"0814cc6ddb168cff69e5572b185a853540a4f6e0"},
-
-    {"path":"packages/sdk/src/query-core.ts","digest":"f61dfd3363e3afe8bcf0ca97330e4e799e44aeb0d1348a212a117d1f755873e9","revision":"9bb90045b7aeb926e7003b27fc4fd62252638524"},
-
-    {"path":"packages/sdk/src/query-domains/agentAdmin.ts","digest":"d17ef2aeb91c21d5cf1e207289bd2936b2896752d5254cea6b94a9c82aaf62fb","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
-    {"path":"packages/sdk/src/queryFactories.ts","digest":"1359417720b7dd3507f5909d835d7f9c06200e2cadaa7c3c66e754cb1a5ee8ea","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
-
-    {"path":"pnpm-lock.yaml","digest":"5c3c9968c59ac5b4e7e5ec861c2873bfce11b7c60e7b28e8706db6b29d028ddb","revision":"1e6450e0caa47975d33f505a1348bdc01ae1382e"},
-
-    {"path":"scripts/mobile-css-ratchet.mjs","digest":"fda86f326ff20d297ae799164c8ebeada155f55ea2560eabd39e8270ed7372c1","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
-    {"path":"scripts/responsive-surface-ratchet.mjs","digest":"e95fee0262929bf025295a0f5915c8da95e8b8d565f49f6f84a920edca5da57c","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
-    {"path":"src-server/routes/agents/agents.ts","digest":"06d20a294112b76993e9a1efd4ab9ce639242ab9116e04a7f1cbb7f68153ba23","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
-    {"path":"src-server/runtime/bootstrap/runtime-http.ts","digest":"400f3e49be7138980b286334db40de4fa4a6fbaa1ea37c285ae9774ddc5fbbb7","revision":"2c5134e4bfc4db4d19877df92119078a80bf27e7"},
-
-    {"path":"src-server/runtime/streaming/StreamPipeline.ts","digest":"cdf3e6786b92a321ffa13c413f25b8b7bf367436b389f7212492cb2eccf1c6f2","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
-    {"path":"src-server/runtime/streaming/types.ts","digest":"31789bc824034a421a368940714ba41424538e715801c7770d5794ffccb3143f","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
-    {"path":"src-server/security/pairing-route-scopes.ts","digest":"6135d879afff21c7d3c8f82d0fb701f04c7bc8de28724848ce0ffa39b0ded204","revision":"b004ed8cb3e885da544adf960b2894780aaf2b51"},
-
-    {"path":"src-server/services/approvals/approval-registry.ts","digest":"3b23285f102a3fa0d14e98f210bbba6ec2a98d8dbfa57421988a810d302d00ff","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
-    {"path":"src-server/services/orchestration/event-bus.ts","digest":"e2a2fc5c1689bbed48617bede62d985ba9e645f413479cc49e03c5bb730e803e","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
-    {"path":"src-server/utils/logger.ts","digest":"d74d211202a1a38bd4caaa9814b6de202ac0c9420c521baecc8fdaff243197b1","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
-    {"path":"src-ui/AGENTS.md","digest":"1861af0378a679a97a10955cf6f250ce58e073b68c4147d9d9c333de609d1aa8","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
-    {"path":"src-ui/src/components/Dialog.tsx","digest":"0e52c3a21b2c7c989eb41ac5a2e2cb3897bddfa55f90cc0914aece0470242dd2","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
-    {"path":"src-ui/src/components/header/ThemeToggle.tsx","digest":"5cd7fb99ff38e6e9a6bf1f572c2ed488604b341e85569767a836a580fba63e9f","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
-    {"path":"src-ui/src/components/ResponsiveDialogSurface.tsx","digest":"ff389dc7c2632309151df7065f56f8434712b5cba120324bbba48c7693a56612","revision":"f4eb9345e808edfbcadd25b1cf88a69db088f117"},
-
-    {"path":"src-ui/src/hooks/useIsMobile.ts","digest":"6cedc0e8a70136acb36e40078106a880663ea10b9d5d7da97a503c9c39b20ddd","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
-    {"path":"src-ui/src/hooks/useMobileVisualViewport.ts","digest":"5bb1bd2e86eee7e46b6a4e2cc87a858c51884acde125aad363771df20783aa5e","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
-    {"path":"src-ui/src/index.css","digest":"e3bf9bb5c0dbeea17eb06bf2536ebcd445ce60875becb64ca97da08118422dcd","revision":"8fd71c3714eceeb651bd8e52f200aa1532fa33c6"},
-
-    {"path":"src-ui/src/lib/accent-contrast.ts","digest":"54291f7600d527c9ea3f9a4af8eca21f0c56a046cf0776292766c4d2b0ac768b","revision":"2b22c2609a75d0f40b77472fe918de3c34094b69"},
-
-    {"path":"src-ui/src/lib/device-settings-store.ts","digest":"2c9c1dfb7259dbe56a3c101aba0c370c481516a6e0b67a666655a518d2a90fd7","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
-    {"path":"src-ui/src/main.tsx","digest":"ea8ad745a9a86e49c5811a8320a01cce7764d38278a67f97b9ab2443d1f50e86","revision":"2b22c2609a75d0f40b77472fe918de3c34094b69"},
-
-    {"path":"src-ui/src/platform/PlatformProfileContext.tsx","digest":"69d1e522c214436378d6dd4322a23f5fb737aa530b6f44856292270502830d48","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
-    {"path":"src-ui/src/slashCommands/tools.ts","digest":"a44a9b6201815f334653b659c1b9be35af315ef9dfd897f34d728c51033d6f00","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
-    {"path":"src-ui/src/tokens.css","digest":"482e8e1faaaa1131ac3cd7079c7e222c9b309305b6e9a0be0582b26aa5aa887c","revision":"de4d8ae141f5831213eacd90dee84bcdc45d87ba"},
-
-    {"path":"src-ui/src/utils/logger.ts","digest":"268bafae97a21bd4af060d50ba5d121f2553376a22369440276cc60ee8108076","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
-    {"path":"packages/shared/package.json#/exports/.~1parsers","digest":"49e52fdc77a433d5a628077b8727c8e8a0ac9e1473b750cb4a371069948289a4","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
-
-    {"path":"packages/shared/package.json#/exports/.~1build","digest":"7ad7900a109bea8e9d548359becc3f0e887fba3634cff5d171fe108df0b29d24","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
-
-    {"path":"packages/shared/package.json#/exports/.~1git","digest":"0076ffb2fb4effe48ae5684d3ab1b0499ecd07192939091512a2101f3d351269","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"}
+    {
+      "path": "docs/ui/responsive-action-surfaces.txt",
+      "digest": "599d6ed4075c93a9fa089b0e56df3167866c1b42b003caf011bd27c9437aeda3",
+      "revision": "8d7aae8989f68cf5129b6bd9094c3206af596b5a"
+    },
+    {
+      "path": "docs/ui/responsive-surfaces.json",
+      "digest": "ed85a588d1029bca3f050c4225772a2b58c42e944af63014960389794d0b24c5",
+      "revision": "d1708e0a66e7328c9c62a95865f1bb1dcfbeb8d1"
+    },
+    {
+      "path": "packages/sdk/src/client/http.ts",
+      "digest": "9892699e68483e0df3dd67ce71956994e98a43755a0c931dd6c3c5660caee00e",
+      "revision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"
+    },
+    {
+      "path": "packages/sdk/src/index.ts",
+      "digest": "7a0645f44c08a15d2e4ff972cfb31c25a7e361b8534886ee9de826ac61a72a49",
+      "revision": "0814cc6ddb168cff69e5572b185a853540a4f6e0"
+    },
+    {
+      "path": "packages/sdk/src/queries.ts",
+      "digest": "6604989192ed7bbea006f7dd70e0ed2726c4d1f4f0095c0c0d430fe3cf61cc87",
+      "revision": "0814cc6ddb168cff69e5572b185a853540a4f6e0"
+    },
+    {
+      "path": "packages/sdk/src/query-core.ts",
+      "digest": "f61dfd3363e3afe8bcf0ca97330e4e799e44aeb0d1348a212a117d1f755873e9",
+      "revision": "9bb90045b7aeb926e7003b27fc4fd62252638524"
+    },
+    {
+      "path": "packages/sdk/src/query-domains/agentAdmin.ts",
+      "digest": "d17ef2aeb91c21d5cf1e207289bd2936b2896752d5254cea6b94a9c82aaf62fb",
+      "revision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"
+    },
+    {
+      "path": "packages/sdk/src/queryFactories.ts",
+      "digest": "1359417720b7dd3507f5909d835d7f9c06200e2cadaa7c3c66e754cb1a5ee8ea",
+      "revision": "ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"
+    },
+    {
+      "path": "pnpm-lock.yaml",
+      "digest": "5c3c9968c59ac5b4e7e5ec861c2873bfce11b7c60e7b28e8706db6b29d028ddb",
+      "revision": "1e6450e0caa47975d33f505a1348bdc01ae1382e"
+    },
+    {
+      "path": "scripts/mobile-css-ratchet.mjs",
+      "digest": "fda86f326ff20d297ae799164c8ebeada155f55ea2560eabd39e8270ed7372c1",
+      "revision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"
+    },
+    {
+      "path": "scripts/responsive-surface-ratchet.mjs",
+      "digest": "e95fee0262929bf025295a0f5915c8da95e8b8d565f49f6f84a920edca5da57c",
+      "revision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"
+    },
+    {
+      "path": "src-server/routes/agents/agents.ts",
+      "digest": "06d20a294112b76993e9a1efd4ab9ce639242ab9116e04a7f1cbb7f68153ba23",
+      "revision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"
+    },
+    {
+      "path": "src-server/runtime/bootstrap/runtime-http.ts",
+      "digest": "400f3e49be7138980b286334db40de4fa4a6fbaa1ea37c285ae9774ddc5fbbb7",
+      "revision": "2c5134e4bfc4db4d19877df92119078a80bf27e7"
+    },
+    {
+      "path": "src-server/runtime/streaming/StreamPipeline.ts",
+      "digest": "cdf3e6786b92a321ffa13c413f25b8b7bf367436b389f7212492cb2eccf1c6f2",
+      "revision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"
+    },
+    {
+      "path": "src-server/runtime/streaming/types.ts",
+      "digest": "31789bc824034a421a368940714ba41424538e715801c7770d5794ffccb3143f",
+      "revision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"
+    },
+    {
+      "path": "src-server/security/pairing-route-scopes.ts",
+      "digest": "6135d879afff21c7d3c8f82d0fb701f04c7bc8de28724848ce0ffa39b0ded204",
+      "revision": "b004ed8cb3e885da544adf960b2894780aaf2b51"
+    },
+    {
+      "path": "src-server/services/approvals/approval-registry.ts",
+      "digest": "3b23285f102a3fa0d14e98f210bbba6ec2a98d8dbfa57421988a810d302d00ff",
+      "revision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"
+    },
+    {
+      "path": "src-server/services/orchestration/event-bus.ts",
+      "digest": "e2a2fc5c1689bbed48617bede62d985ba9e645f413479cc49e03c5bb730e803e",
+      "revision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"
+    },
+    {
+      "path": "src-server/utils/logger.ts",
+      "digest": "d74d211202a1a38bd4caaa9814b6de202ac0c9420c521baecc8fdaff243197b1",
+      "revision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"
+    },
+    {
+      "path": "src-ui/AGENTS.md",
+      "digest": "1861af0378a679a97a10955cf6f250ce58e073b68c4147d9d9c333de609d1aa8",
+      "revision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"
+    },
+    {
+      "path": "src-ui/src/components/Dialog.tsx",
+      "digest": "0e52c3a21b2c7c989eb41ac5a2e2cb3897bddfa55f90cc0914aece0470242dd2",
+      "revision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"
+    },
+    {
+      "path": "src-ui/src/components/header/ThemeToggle.tsx",
+      "digest": "5cd7fb99ff38e6e9a6bf1f572c2ed488604b341e85569767a836a580fba63e9f",
+      "revision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"
+    },
+    {
+      "path": "src-ui/src/components/ResponsiveDialogSurface.tsx",
+      "digest": "ff389dc7c2632309151df7065f56f8434712b5cba120324bbba48c7693a56612",
+      "revision": "f4eb9345e808edfbcadd25b1cf88a69db088f117"
+    },
+    {
+      "path": "src-ui/src/hooks/useIsMobile.ts",
+      "digest": "6cedc0e8a70136acb36e40078106a880663ea10b9d5d7da97a503c9c39b20ddd",
+      "revision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"
+    },
+    {
+      "path": "src-ui/src/hooks/useMobileVisualViewport.ts",
+      "digest": "5bb1bd2e86eee7e46b6a4e2cc87a858c51884acde125aad363771df20783aa5e",
+      "revision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"
+    },
+    {
+      "path": "src-ui/src/index.css",
+      "digest": "e3bf9bb5c0dbeea17eb06bf2536ebcd445ce60875becb64ca97da08118422dcd",
+      "revision": "8fd71c3714eceeb651bd8e52f200aa1532fa33c6"
+    },
+    {
+      "path": "src-ui/src/lib/accent-contrast.ts",
+      "digest": "54291f7600d527c9ea3f9a4af8eca21f0c56a046cf0776292766c4d2b0ac768b",
+      "revision": "2b22c2609a75d0f40b77472fe918de3c34094b69"
+    },
+    {
+      "path": "src-ui/src/lib/device-settings-store.ts",
+      "digest": "2c9c1dfb7259dbe56a3c101aba0c370c481516a6e0b67a666655a518d2a90fd7",
+      "revision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"
+    },
+    {
+      "path": "src-ui/src/main.tsx",
+      "digest": "ea8ad745a9a86e49c5811a8320a01cce7764d38278a67f97b9ab2443d1f50e86",
+      "revision": "2b22c2609a75d0f40b77472fe918de3c34094b69"
+    },
+    {
+      "path": "src-ui/src/platform/PlatformProfileContext.tsx",
+      "digest": "69d1e522c214436378d6dd4322a23f5fb737aa530b6f44856292270502830d48",
+      "revision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"
+    },
+    {
+      "path": "src-ui/src/slashCommands/tools.ts",
+      "digest": "a44a9b6201815f334653b659c1b9be35af315ef9dfd897f34d728c51033d6f00",
+      "revision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"
+    },
+    {
+      "path": "src-ui/src/tokens.css",
+      "digest": "482e8e1faaaa1131ac3cd7079c7e222c9b309305b6e9a0be0582b26aa5aa887c",
+      "revision": "de4d8ae141f5831213eacd90dee84bcdc45d87ba"
+    },
+    {
+      "path": "src-ui/src/utils/logger.ts",
+      "digest": "268bafae97a21bd4af060d50ba5d121f2553376a22369440276cc60ee8108076",
+      "revision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"
+    },
+    {
+      "path": "packages/shared/package.json#/exports/.~1parsers",
+      "digest": "49e52fdc77a433d5a628077b8727c8e8a0ac9e1473b750cb4a371069948289a4",
+      "revision": "c526c4a93bd752e4020ff51303125379f404bb4c"
+    },
+    {
+      "path": "packages/shared/package.json#/exports/.~1build",
+      "digest": "7ad7900a109bea8e9d548359becc3f0e887fba3634cff5d171fe108df0b29d24",
+      "revision": "c526c4a93bd752e4020ff51303125379f404bb4c"
+    },
+    {
+      "path": "packages/shared/package.json#/exports/.~1git",
+      "digest": "0076ffb2fb4effe48ae5684d3ab1b0499ecd07192939091512a2101f3d351269",
+      "revision": "c526c4a93bd752e4020ff51303125379f404bb4c"
+    }
   ],
-
   "checks": [
     "106 tests across five owner suites plus 13 final documentation-foundations tests passed.",
-
     "Public UI documentation checked at its recorded upstream revision; installed 1.12.0 public manifest was inspected. The tracked lockfile binds dependency freshness; node_modules is not committed evidence.",
-
     "Parent read all four revised documents and inspected query defaults, approval timeout and EventBus behavior. Connect publication wording is limited to this checkout.",
-
     "Reviewed source deltas: Auth limiter code moved to contracts/http with identical authentication_rate_limited value; request admission behavior unchanged.",
-
     "Reviewed source changes: One retained independent-review inspector is now an explicit unmounted exception; its surface proof is deferred. General responsive primitives and actual Review layout remain the current path. Removed a numeric legacy parser unreachable from the current closed registry: no number-kind setting has priorStorageKey. Existing persisted settings and migration claims remain; future numeric legacy keys would need a new parser.",
-
     "Reviewed source changes: StationHttpError moved with details support; common envelope helper adoption reviewed; captured requestAuthority and mutationAllowed behavior unchanged. Corrected success-shape validation wording. Root reviewed the corresponding diff and the affected current-document claims. Added portable-server-targets and release-manifest Node mjs subpaths; mixed source export and Node-only helper documentation remains accurate. Root reviewed the corresponding diff and the affected current-document claims. PlatformSessionGate extracted unchanged conditional into platform/PlatformSessionGate.tsx with explicit API base prop; voice/default SDK composition unchanged. Root reviewed the corresponding diff and the affected current-document claims.",
-
     "Reviewed integration deltas: scripts/responsive-surface-ratchet.mjs: Three discovery/validation helpers become private; executable CLI still calls the same inventory validation. No rendered-geometry guarantee inferred from that inventory. src-server/routes/agents/agents.ts: Create/update admission now requires the full-access grant when effective Agent defaults rise to never, including inherited Station defaults; unchanged effective never is not a raise. API explanation updated. src-ui/src/index.css: Removed unused header-nav selectors only; no production references remain. Captured browser scenes retain their styles; explicit media delta review accepted all8 original captures.",
-
     "Landing delta f3954615e to 2400482c2 plus integrated corrections: Project-switcher truncation moved onto its inner label while hit targets/callbacks remain unchanged; other UI/capture scope remains accurate. Historical captures and inspected new geometry tests are not new execution. Reviewed changed canonical prose, incoming removal of the unmounted Reviews tab, public evidence limits and dated generated deployment additions where applicable. Unchanged linked claims need no token prose edit.",
-
     "Landing review through 64452b7f0: Reviewed reasoning-only selectors and the added reasoning touch target. Other layout, theme aliases, editor, placement, knowledge, connection, Starter and icon behavior is unchanged. Reviewed the shared DESIGN.md through its canonical GitHub page because the pinned package predates its inclusion. Public --k-bg, --k-text and --k-line exist in the pinned token entry; no UI style or OPEN decision was changed by this documentation correction. Reasoning disclosure and actual media-manifest checks passed 9/9 in 3.56s; no new native or visual-layout execution is claimed.",
-
     "Required merge-queue recovery through 421517851: HTTP changes recognize native continuation headers and preserve exact native provenance through bounded Request replacement; ordinary browser Origin/cookie, budget, API error and resource authorization rules remain. Changed inputs reviewed: src-server/runtime/bootstrap/runtime-http.ts. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
-
     "Integration source review through e0314c727: pnpm-lock.yaml only removed the bearing/forage importer entries. The frontend query/context patterns do not depend on them and remain accurate. Classification review only.",
-
     "Integration source review through 42491ca6b: cf43e14d0 (#2731) answers a recognized but unadmitted credential with 403 instead of 401 in runtime-http.ts, so the browser keeps its device session; prose accurate: the query/context and ApiRequestScope patterns make no claim about which status drops the session. Source review is separate from executed test evidence.",
-
     "Integration source review through 5731eba07: 3ab09593d responsive-action-surfaces.txt adds the Dialog geometry test (#2919); SDK adds service-update progress exports and shared package.json adds prebuilt-archive/service-launcher-protocol subpaths plus a pairing read leaf (#2881); the doc's generic Dialog/ResponsiveDialogSurface and package-boundary guidance is unchanged; prose accurate. Source review is separate from executed test evidence."
   ]
 }

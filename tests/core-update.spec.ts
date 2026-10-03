@@ -130,7 +130,7 @@ test.describe('Core Update Flow', () => {
       return r.continue();
     });
 
-    await page.goto('/settings');
+    await page.goto('/settings?view=system');
     await page
       .getByRole('button', { name: /Check for server updates/ })
       .click();
@@ -205,7 +205,7 @@ test.describe('Core Update Flow', () => {
       return r.continue();
     });
 
-    await page.goto('/settings');
+    await page.goto('/settings?view=system');
     await page
       .getByRole('button', { name: /Check for server updates/ })
       .click();
@@ -239,7 +239,7 @@ test.describe('Core Update Flow', () => {
       return r.continue();
     });
 
-    await page.goto('/settings');
+    await page.goto('/settings?view=system');
     await page
       .getByRole('button', { name: /Check for server updates/ })
       .click();
@@ -312,7 +312,7 @@ test.describe('Release archive run by the service launcher (#2675 D3)', () => {
       return r.continue();
     });
 
-    await page.goto('/settings');
+    await page.goto('/settings?view=system');
     await page
       .getByRole('button', { name: /Check for server updates/ })
       .click();

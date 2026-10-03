@@ -24,6 +24,13 @@ publisher identity or execution qualification.
   plugin declares dependencies or a host `build` command, and it stays a subset
   of `manifest.json` so the two cannot drift apart.
 
+The default catalog includes the
+[Station-curated engineering collection](../matt-pocock-engineering/README.md).
+It is an ordinary Agent Plugin with pinned attributed Skills and visual
+definitions; choosing an agent, project/tracker setup and concrete action
+authority are still required. A catalog listing alone does not qualify its
+installed model journey.
+
 ## Scope
 
 This is the reproducible local fixture proof on which Phase 2 was closed. It is
