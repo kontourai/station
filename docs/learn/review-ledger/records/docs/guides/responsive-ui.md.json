@@ -46,7 +46,7 @@
 
     {"path":"src-server/runtime/streaming/types.ts","digest":"31789bc824034a421a368940714ba41424538e715801c7770d5794ffccb3143f","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-server/security/pairing-route-scopes.ts","digest":"4c1527cee9416183e5830c057a26f4c2bad32ff38c9ccd50aa36643cd59745d9","revision":"94da87e3016992b8cdbdde3be15b978b489a1c63"},
+    {"path":"src-server/security/pairing-route-scopes.ts","digest":"3d97627b8cd57ac85f239f7f46da16b3b5e822dfac889aa040432df6f79bdfae","revision":"6fd2134bfad3cb98e82b631bfd090a4760afa5c9"},
 
     {"path":"src-server/services/approvals/approval-registry.ts","digest":"3b23285f102a3fa0d14e98f210bbba6ec2a98d8dbfa57421988a810d302d00ff","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -102,11 +102,11 @@
 
     {"path":"tests/cross-runtime-chat-switching.spec.ts","digest":"0aeb646fe962c41108316c65360c405268ea7061ea2504e7441b51a0a9bd2878","revision":"8fd71c3714eceeb651bd8e52f200aa1532fa33c6"},
 
-    {"path":"src-ui/src/components/chat-dock/ChatDock.tsx","digest":"f92052af5abd7736675c6a27499a8a43ded8167dcecff4b0e4e775c2614562f3","revision":"4d59eb1868139f2faeaf1a1467811c22726f741c"},
+    {"path":"src-ui/src/components/chat-dock/ChatDock.tsx","digest":"940f0a312dbaceda68eb4324389882920f546b6aa1d77da87c59853dfdbca56e","revision":"ca8bcda1ed99c7c81c8da9741b3bacc870757b49"},
 
     {"path":"src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx","digest":"66f0394440649ebf2fd68d1292cd7e009ca0a449d85681a2ee1d36a0d192e107","revision":"b14f1b80ec27c38844b3d16e8a4bdfe624a778c9"},
 
-    {"path":"src-ui/src/components/chat-dock/ChatDockInboxRows.tsx","digest":"0850b9f30797c40cbc19c8817bf574d046065a600163d1925d50fbcc4d4c0c2c","revision":"b14f1b80ec27c38844b3d16e8a4bdfe624a778c9"},
+    {"path":"src-ui/src/components/chat-dock/ChatDockInboxRows.tsx","digest":"04bba6cc68950324b20ef066fe606e60a3d490f311458d16541076a4836c88cb","revision":"ca8bcda1ed99c7c81c8da9741b3bacc870757b49"},
 
     {"path":"src-ui/src/components/chat-dock/ChatDockMobileOverflowSheet.tsx","digest":"a8bc823744ae5fbe11ca4d59391185963104e36549cf5fdc2b178afceb603650","revision":"af7dbb3005e9e1f29dd1450b0a06ec5703afb0d6"},
 

@@ -74,7 +74,7 @@
 
     {"path":"src-server/providers/sessions/claude-transcript-session-source.ts","digest":"d1dc78e049ebbd92c6dabf54436f3b82779bbe0c801d6e31514351f1c58c560d","revision":"ed7aacb2c9d560efe6c8af7c9bed5a4e711f5053"},
 
-    {"path":"src-server/services/orchestration/event-store.ts","digest":"1ea0958938d8834be0de3694e34491f63c2e3db7863bd44147ed8572257e7cd8","revision":"061ace7180fe67218f67d9a74230ce419b887c11"},
+    {"path":"src-server/services/orchestration/event-store.ts","digest":"f298ac4ba1d53fbf19839864b6996874711540ef8f56b207431b6586bf292e80","revision":"6fd2134bfad3cb98e82b631bfd090a4760afa5c9"},
 
     {"path":"src-ui/src/pages/ProfilePage.css","digest":"9a36e5f00b440a12ae1c2cd2222a59e52c7f030d2a8c23119c600527714cd1e8","revision":"b0568b6eb4305aa50f762e2715f69661608c94e3"},
 

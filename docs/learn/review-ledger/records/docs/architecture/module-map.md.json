@@ -362,7 +362,7 @@
 
     {"path":"src-server/runtime/mcp/mcp-ui-resolver.ts","digest":"b82399f787d6b71129684e5cb4fad8858846d5315d0c1077822ac1591199075e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/runtime/mcp/station-control-dispatch-scope.ts","digest":"cf22738353be6006483825dd4bfe99ae96d0f18c91b944402457a7bc9f25f8a8","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/runtime/mcp/station-control-dispatch-scope.ts","digest":"df7b0fd0a794e94f94e5d9053f5c9e016b9d5466fdec42f7791d45d3a6c4e87c","revision":"dafa5de583fb92bfda2d310421e540258382ef0d"},
 
     {"path":"src-server/runtime/plugins/__tests__/plugin-operational-event-subscriptions.test.ts","digest":"f37fbe787caf544ba734d69cc69b969c9f38503e292c58029371ae16ef0a92e2","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -372,7 +372,7 @@
 
     {"path":"src-server/runtime/routes/runtime-route-support.ts","digest":"6a4c97a6eb7f6bbce23da80e037ffb76ca1da14f53e54b2a934a4e64e60f2052","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"21831e2e97672cb946b2e23f9e183477773a632390b02daf66b3e6cf3fe20e71","revision":"595059eafa17ef6b7a39217a405619ecbfac2270"},
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"ecb6be17c44877a04b3387c0c36f5411af66d94d5f624bf1aae2652094ff5557","revision":"6fd2134bfad3cb98e82b631bfd090a4760afa5c9"},
 
     {"path":"src-server/runtime/routes/workspace-pane-host-actions.ts","digest":"47243c2ce659cae374048d91ff97faa62921d3b1ce2475199a56cd776bd0ca10","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -380,7 +380,7 @@
 
     {"path":"src-server/security/native-device-request-authority.ts","digest":"1c45b668b337e71894ff067e35213f415cfc830aa6603efbf13f615114087d02","revision":"d4b8f59be510d5eb8220bc5a883dd1691cfa2679"},
 
-    {"path":"src-server/security/pairing-route-scopes.ts","digest":"4c1527cee9416183e5830c057a26f4c2bad32ff38c9ccd50aa36643cd59745d9","revision":"94da87e3016992b8cdbdde3be15b978b489a1c63"},
+    {"path":"src-server/security/pairing-route-scopes.ts","digest":"3d97627b8cd57ac85f239f7f46da16b3b5e822dfac889aa040432df6f79bdfae","revision":"6fd2134bfad3cb98e82b631bfd090a4760afa5c9"},
 
     {"path":"src-server/services/__tests__/scheduler.test.ts","digest":"74bb68bb7b32fd0414bbef71ac778852c4b8e77c79008ae437bd64f77d3a0b40","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
@@ -582,7 +582,7 @@
 
     {"path":"src-server/services/orchestration/credential-recovery-module.ts","digest":"a30d1344421536b0549657afa880c140faf54f3a5d7adac49e04afaf0617bdba","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/orchestration/event-store.ts","digest":"1ea0958938d8834be0de3694e34491f63c2e3db7863bd44147ed8572257e7cd8","revision":"061ace7180fe67218f67d9a74230ce419b887c11"},
+    {"path":"src-server/services/orchestration/event-store.ts","digest":"f298ac4ba1d53fbf19839864b6996874711540ef8f56b207431b6586bf292e80","revision":"6fd2134bfad3cb98e82b631bfd090a4760afa5c9"},
 
     {"path":"src-server/services/orchestration/flow-policy-sidecar.ts","digest":"437b48f82ba45cedac66ea4c8c933758226ad017ca957313fb9353b3a9abbe44","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -776,7 +776,7 @@
 
     {"path":"src-server/tools/station-control-browser-tools.ts","digest":"c50e59f6e0ae041e64fbc426d041cbe1c9cc5ae3c6b094c38dc3524dded81a10","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/tools/station-control-policy.ts","digest":"7861e4666c9ab7bdfafb6d38b4b9a742f707ca64741f1351b042384f4a51dc94","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+    {"path":"src-server/tools/station-control-policy.ts","digest":"3b756120483174c7d41030f250672c22022d9b6eaf598766e746b5e65220364d","revision":"4fff18cc6ab31e26e5988125acda051c5821c301"},
 
     {"path":"src-server/utils/path-containment.ts","digest":"e6a7867d0d39ee6b6c4dee4d7b697b8ab4ab55e86c7f9503d6ce657e0ed1d083","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

@@ -94,9 +94,9 @@
 
     {"path":"src-server/runtime/plugins/runtime-provider-resolution.ts","digest":"99c57df9288ec94d454dace087cb1bfc99867e41f6caa992d244bc053a2a0253","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"21831e2e97672cb946b2e23f9e183477773a632390b02daf66b3e6cf3fe20e71","revision":"595059eafa17ef6b7a39217a405619ecbfac2270"},
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"ecb6be17c44877a04b3387c0c36f5411af66d94d5f624bf1aae2652094ff5557","revision":"6fd2134bfad3cb98e82b631bfd090a4760afa5c9"},
 
-    {"path":"src-server/security/pairing-route-scopes.ts","digest":"4c1527cee9416183e5830c057a26f4c2bad32ff38c9ccd50aa36643cd59745d9","revision":"94da87e3016992b8cdbdde3be15b978b489a1c63"},
+    {"path":"src-server/security/pairing-route-scopes.ts","digest":"3d97627b8cd57ac85f239f7f46da16b3b5e822dfac889aa040432df6f79bdfae","revision":"6fd2134bfad3cb98e82b631bfd090a4760afa5c9"},
 
     {"path":"src-server/security/runtime-request-security.ts","digest":"c3219b8afbdd24e8969fb407d2a0a0aa77c08a7656a0e147f64f99f0ed9af3c4","revision":"904729ae7f4058a2cd7dbaf11a4daaa6b8837d08"},
 
@@ -110,7 +110,7 @@
 
     {"path":"src-server/services/orchestration/attachment-blob-store.ts","digest":"d059c34e6fb37d33e1d83f5d90530483db408d04a8b27fe54825c485dc5db6dd","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/orchestration/event-store.ts","digest":"1ea0958938d8834be0de3694e34491f63c2e3db7863bd44147ed8572257e7cd8","revision":"061ace7180fe67218f67d9a74230ce419b887c11"},
+    {"path":"src-server/services/orchestration/event-store.ts","digest":"f298ac4ba1d53fbf19839864b6996874711540ef8f56b207431b6586bf292e80","revision":"6fd2134bfad3cb98e82b631bfd090a4760afa5c9"},
 
     {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"4582d45b868ea008447f5405bcedb1adf987b1e3ad7701e39de19fc6a8d8994c","revision":"4711f21b516d04300b15ad4da473e24bf2e7adb2"},
 
@@ -130,7 +130,7 @@
 
     {"path":"src-shared/monitoring-keys.ts","digest":"1c2939ae04a2df7205ff75d2e16531e200199b7b785c672b1820a06a0a736f25","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/components/chat-dock/ChatDock.tsx","digest":"f92052af5abd7736675c6a27499a8a43ded8167dcecff4b0e4e775c2614562f3","revision":"4d59eb1868139f2faeaf1a1467811c22726f741c"},
+    {"path":"src-ui/src/components/chat-dock/ChatDock.tsx","digest":"940f0a312dbaceda68eb4324389882920f546b6aa1d77da87c59853dfdbca56e","revision":"ca8bcda1ed99c7c81c8da9741b3bacc870757b49"},
 
     {"path":"src-ui/src/components/chat-dock/ChatDockBody.tsx","digest":"e9d72a345f839a5ef48fa695e88991c40051b0046002396c14d809a253d75d90","revision":"c6ebec77b17b679e630a3857b10a6f814d7fb436"},
 
