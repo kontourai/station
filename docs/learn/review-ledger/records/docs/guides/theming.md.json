@@ -14,7 +14,7 @@
   "sources": [
     {"path":"docs/ui/responsive-action-surfaces.txt","digest":"df8f338a5465c4e4b6b54eca597dfc6f2d4a1bd85b85f83010609bb42cd81e6a","revision":"00bada2726c33a49f7edc8803d08831b46b6deb3"},
 
-    {"path":"docs/ui/responsive-surfaces.json","digest":"ee8207bccc55812d339f0fff7412c6196a5cbde791829603666a4f55fe2dfbd6","revision":"027c189b201b8f67d786e9843bd00b84cb5475a5"},
+    {"path":"docs/ui/responsive-surfaces.json","digest":"ed85a588d1029bca3f050c4225772a2b58c42e944af63014960389794d0b24c5","revision":"d1708e0a66e7328c9c62a95865f1bb1dcfbeb8d1"},
 
     {"path":"packages/sdk/src/client/http.ts","digest":"9892699e68483e0df3dd67ce71956994e98a43755a0c931dd6c3c5660caee00e","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 

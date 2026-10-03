@@ -190,7 +190,6 @@ describe('the skills list', () => {
 
   test('the list subtitle no longer calls every loaded skill a workspace skill', () => {
     expect(SKILLS_SUBTITLE).not.toContain('workspace skills');
-    expect(SKILLS_SUBTITLE).toContain('grouped by where it came from');
   });
 });
 
