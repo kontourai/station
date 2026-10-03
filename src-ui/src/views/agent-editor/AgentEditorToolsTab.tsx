@@ -299,6 +299,17 @@ export function AgentEditorToolsTab({
                     (!group || (tool.group || 'Other') === group),
                 );
                 const prefix = `${integration.id}_`;
+                const allScopeKeys = scoped
+                  .filter((tool) => tool.enabled !== false)
+                  .map((tool) => getIntegrationToolKey(integration.id, tool));
+                const readOnlyKeys =
+                  readOnly?.map(
+                    (tool) => `${prefix}${tool.toolName || tool.name}`,
+                  ) ?? [];
+                const selectedScopeKeys = allScopeKeys.filter((key) =>
+                  toolEnabled(integration.id, key),
+                );
+
                 return (
                   <div className="editor__tools-server" key={integration.id}>
                     <div className="agent-tools__server-row">
@@ -373,6 +384,14 @@ export function AgentEditorToolsTab({
                             {readOnly?.length ? (
                               <Button
                                 variant="secondary"
+                                aria-pressed={
+                                  readOnlyKeys.length > 0 &&
+                                  allScopeKeys.every(
+                                    (key) =>
+                                      toolEnabled(integration.id, key) ===
+                                      readOnlyKeys.includes(key),
+                                  )
+                                }
                                 disabled={disabled}
                                 onClick={() =>
                                   setForm((current) =>
@@ -391,6 +410,10 @@ export function AgentEditorToolsTab({
                             ) : null}
                             <Button
                               variant="secondary"
+                              aria-pressed={
+                                allScopeKeys.length > 0 &&
+                                selectedScopeKeys.length === allScopeKeys.length
+                              }
                               disabled={disabled}
                               onClick={() =>
                                 setForm((current) =>
@@ -412,6 +435,7 @@ export function AgentEditorToolsTab({
                             </Button>
                             <Button
                               variant="ghost"
+                              aria-pressed={selectedScopeKeys.length === 0}
                               disabled={disabled}
                               onClick={() =>
                                 setForm((current) => choose(current, []))

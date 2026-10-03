@@ -392,7 +392,7 @@ export async function loadStrandsTools(options: {
         const originalName = tool.toolSpec.name;
         const [loadedIdentity] = normalizeLoadedMCPTools(
           slug,
-          [{ name: `${toolId}_${originalName}` }] as any,
+          [{ name: `${toolId}_${originalName}` }],
           opts.toolNameMapping,
           opts.toolNameReverseMapping,
           provenanceGeneration,

@@ -148,6 +148,9 @@ test('adds Station tools to a Claude agent and saves read-only, empty and custom
   ).toBe(false);
   fireEvent.click(screen.getByRole('button', { name: 'None' }));
   expect(payload().tools?.available).toEqual([]);
+  expect(
+    screen.getByRole('button', { name: 'None' }).getAttribute('aria-pressed'),
+  ).toBe('true');
   fireEvent.click(screen.getByRole('checkbox', { name: 'Search knowledge' }));
   expect(payload().tools?.available).toEqual([
     'station-control_search_knowledge',
@@ -162,6 +165,9 @@ test('adds Station tools to a Claude agent and saves read-only, empty and custom
   fireEvent.change(screen.getByLabelText('Discovery'), {
     target: { value: 'on-demand' },
   });
+  expect(
+    screen.getByRole('button', { name: 'None' }).getAttribute('aria-pressed'),
+  ).toBe('false');
   expect(payload().tools?.mcpLoading).toBe('on-demand');
   fireEvent.click(screen.getByRole('switch', { name: 'Keep harness tools' }));
   expect(payload().tools?.mcpMode).toBe('replace');

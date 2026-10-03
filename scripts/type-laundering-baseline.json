@@ -1377,12 +1377,6 @@
       "reason": "legacy-cast"
     },
     {
-      "file": "src-server/runtime/frameworks/strands-tool-loader.ts",
-      "rule": "as-any",
-      "fingerprint": "e642260df4b8645d73561e9d27a51a53b256038bb4e5faa6b08c4bde4fa7d6fb",
-      "reason": "legacy-cast"
-    },
-    {
       "file": "src-server/runtime/frameworks/voltagent-adapter.ts",
       "rule": "as-any",
       "fingerprint": "09a7b325650bc198d3f1a621420cedcdb113b33cf594e1f2e7c39cebf6ecaa14",
