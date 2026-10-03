@@ -24,7 +24,8 @@
  * sources change, so a push that touches nothing under `packages/sdk/src/`
  * skips — which is most pushes.
  */
-import { execFileSync, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
+import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { resolveRef } from './lib/git-ref.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
@@ -75,7 +76,7 @@ export function decideSdkBarrelScope({ baseSha, changedPaths }) {
 }
 
 function git(args) {
-  return execFileSync('git', args, {
+  return execFileSyncBounded('git', args, {
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
   });

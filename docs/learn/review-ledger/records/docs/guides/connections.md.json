@@ -66,7 +66,7 @@
 
     {"path":"schemas/agent.schema.json","digest":"fe5a6c91fb32f7d027438d00fd28f071bdcced285bf7b3a60ed55f36c56beb88","revision":"423cbe55b9e35e4cd8954fd441cb9f3c69740d66"},
 
-    {"path":"scripts/examples-conformance.mjs","digest":"2eac8e0f018acdf56bc2ead72e428a38cf7d40c3be2dde34b4945f969fa4d587","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"scripts/examples-conformance.mjs","digest":"951a60876f5fd3ea6d0b6daaaf194e737280ed8000a4d3808a0cfbd3bd2085e4","revision":"d1519a65a54ea7738269a1f1c02c4985a45f074c"},
 
     {"path":"scripts/self-hosted-broker.ts","digest":"94f81b48093080a0e80c3cb131a5fb568ca970b277209fb8a47ab560bd6fff25","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

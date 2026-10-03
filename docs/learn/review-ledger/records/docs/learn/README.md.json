@@ -18,7 +18,7 @@
 
     {"path":"scripts/__tests__/learning-atlas.browser.test.ts","digest":"586cfb7b9101207ebc20d8987e4cf37326011b4314cbf7a91351d9d8d064c057","revision":"bbd3c6c0797cce19e15b36627f182f79baa7e025"},
 
-    {"path":"scripts/build-learning-guide.mjs","digest":"3a3462887203d43998cd6817e300a59c9856c2710d697274a597d4076ce969dd","revision":"8199fd1541fc2af0053845c9253ed0962dd7fbb8"},
+    {"path":"scripts/build-learning-guide.mjs","digest":"189c91b929b6db1c572296f9ec9e75d74add5f1c52dab529425038f686c0f300","revision":"d1519a65a54ea7738269a1f1c02c4985a45f074c"},
 
     {"path":"scripts/documentation-impact.mjs","digest":"4d9cc897cbbf6046574acd80239d54cc53c7f01632dc6d71ddaf24d0fb6316ab","revision":"8199fd1541fc2af0053845c9253ed0962dd7fbb8"},
 

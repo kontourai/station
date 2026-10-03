@@ -34,7 +34,7 @@
 
     {"path":"scripts/lib/verification-terminal-receipt.mjs","digest":"7b6bce34d4a9094469ba935c9c8f6287ce89b1e2d3839ea3741f13f454bc59c8","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"scripts/run-changed-verification.mjs","digest":"24e1af297dc3857d60e751386c93697fdc77eeef59fbdc5f7efdc41a061bf862","revision":"3e1907f8c81b0b7c818c7c34f95d2c5ffa4ea008"},
+    {"path":"scripts/run-changed-verification.mjs","digest":"3fdc5fd6380bc61eb7b5bf84be49b9a27b143221146640b81319e2dae066c5db","revision":"d1519a65a54ea7738269a1f1c02c4985a45f074c"},
 
     {"path":"scripts/run-verification.mjs","digest":"cb92060b3ba75731d2685b2907036333948df8b1a654980a0c120af237145e8c","revision":"87d45fd9b238d6b9891d7d6167c72a035cf8363c"},
 

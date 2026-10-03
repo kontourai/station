@@ -26,7 +26,7 @@
 
     {"path":"scripts/lib/elf-symbol-floor.mjs","digest":"7b51f6f692022736fc8b41161c1b6f47e2d31819ecc0df5fd637af55066eb73b","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
-    {"path":"scripts/verify-node-pty-prebuild.mjs","digest":"07e6c6f0e6ad7030c9017bf08f75f3437bbdee6a3fa069aa46cb34158d1e5157","revision":"c8bae67dac38dce6107177638464f9f9944fef92"}
+    {"path":"scripts/verify-node-pty-prebuild.mjs","digest":"62492e0cd3f0e92a0b2a35ebcee82aa7ad7862924351803ec8845c657080a55c","revision":"2b52ddf0663cdee3ccc2f0ebf848691f24ca4635"}
   ],
 
   "checks": [

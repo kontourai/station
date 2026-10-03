@@ -32,7 +32,7 @@
 
     {"path":"scripts/button-cap-ratchet.mjs","digest":"8bb9cc8484f0e930609dd015c9b2d85e307449a46700fdae2ff59e1ac56792c4","revision":"593652a1d2869e383d77238e69227735ab2b4bc5"},
 
-    {"path":"scripts/mobile-css-ratchet.mjs","digest":"fda86f326ff20d297ae799164c8ebeada155f55ea2560eabd39e8270ed7372c1","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"scripts/mobile-css-ratchet.mjs","digest":"a09b2cdae6cc367c34c04a108fc3ec695a669277d51af78b3de913ce124f6710","revision":"2b52ddf0663cdee3ccc2f0ebf848691f24ca4635"},
 
     {"path":"scripts/responsive-surface-ratchet.mjs","digest":"e95fee0262929bf025295a0f5915c8da95e8b8d565f49f6f84a920edca5da57c","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 

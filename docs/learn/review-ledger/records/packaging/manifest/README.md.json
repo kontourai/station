@@ -12,7 +12,7 @@
   "document": {"digest":"54b625415596f5a8347a9b98caa705978def18f23ad22d69da3a27e12f641047","revision":"614c216de6de9d4c06ef56963853ccff52f2f685"},
 
   "sources": [
-    {"path":".github/workflows/portable-server-archives.yml","digest":"c7c7ff935b2bd8df40440aa8a7b6fd4405304e99e87c4a892de073fe0ae72924","revision":"614c216de6de9d4c06ef56963853ccff52f2f685"},
+    {"path":".github/workflows/portable-server-archives.yml","digest":"f1d5a07d35d1bac32c057827bc6cc7dd85266fc4ed2011b983c6942690b641e6","revision":"5120b73c0fbb9f4d4ca81c5504daef000ad8558e"},
 
     {"path":"config/release-manifest-keys.json","digest":"28b356665f581456dcddd64ae86ebf3bde1fb1ee12408c480b7a2fa68923f0c3","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -32,7 +32,7 @@
 
     {"path":"scripts/smoke-install-prebuilt-archive.sh","digest":"244d90cb7cac757aabeeced510fc4bf18ecfc6664bab71d03f2f4f306b4169f6","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":".github/workflows/install-smoke.yml","digest":"2709b01ebe6bca1e7ec152578cfa9f7b8f352daebeb1fc55d168430f22b02719","revision":"ec6faf20ba1d2fff4e72712303ea1a9c8c22d13b"},
+    {"path":".github/workflows/install-smoke.yml","digest":"6ecaf7b5e72abbf32e7bd0db8a1ffd5bff6a118d6fa6ebcabaf948588f1358cd","revision":"5120b73c0fbb9f4d4ca81c5504daef000ad8558e"},
 
     {"path":".github/workflows/portable-nightly-publish.yml","digest":"bdf3341cca00666ca0adaa2a849d90dbba893e0c55ca9f387da5bf4d8b488702","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"}
   ],

@@ -12,7 +12,7 @@
   "document": {"digest":"3f79bc62cefcec06bb9305792c2cba2c8af3dfe34fac5b2f0fe5f2db212f1bc1","revision":"2ca3f09ca104eb4da49cf27803683fc8dbf9ce84"},
 
   "sources": [
-    {"path":"scripts/native-platform-boundary.mjs","digest":"683fa02581626bf5dfdd57e45be7224aa4df112aaa341646233f0ef9254eb883","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    {"path":"scripts/native-platform-boundary.mjs","digest":"5844d2dfe76232f6e9c7fce65ac8c88dee16d263788d36abbb39ed1f5b4baf72","revision":"2b52ddf0663cdee3ccc2f0ebf848691f24ca4635"},
 
     {"path":"src-desktop/Cargo.toml","digest":"74e0f4e26dcd14a8d40422c9b7a8b0a1940728f04d3f6cfd1d5b020cb70f0b85","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 

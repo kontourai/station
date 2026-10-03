@@ -9,7 +9,7 @@
 
   "limits": "Normative contributor policy. Routing and named owners were checked; this is not proof that every implementation or contributor complies, nor completion evidence for CI, performance, native devices, or hosted delivery.",
 
-  "document": {"digest":"6500d9d9e476f425384826b8c40f1845bb87b97efe0bbd53595eb429f7b1668d","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+  "document": {"digest":"d54300f1be27aa2b7b053000725c6b3f71222a7126f9bd64e11667d659d644fc","revision":"d1519a65a54ea7738269a1f1c02c4985a45f074c"},
 
   "sources": [
     {"path":"docs/guides/code-quality.md","digest":"1b7bc04797256f903db6149fa6a8bb770af637ca3c2635280bc79a8d513a71a6","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
@@ -22,7 +22,7 @@
 
     {"path":"scripts/verification-lanes.mjs","digest":"3fb1be3bd88d1d5139983eaf770e8a5474ce6cc6ef304d4e008df63d0c143fef","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"scripts/vitest-resource-manifest.mjs","digest":"9574416d6a98de01407042832c1fbc0671afd4f69a151c0d1a3d5e9df6d97a4e","revision":"707749d31f0c095a87d8b4838361a64791068bf0"}
+    {"path":"scripts/vitest-resource-manifest.mjs","digest":"bd719534da4e2357ab2c65cb8f3d32d5bba4fa503a0ade5d00a6ebec4129795f","revision":"5120b73c0fbb9f4d4ca81c5504daef000ad8558e"}
   ],
 
   "checks": [

@@ -14,7 +14,7 @@
   "sources": [
     {"path":"examples/portable-author-kit/plugin.json","digest":"332b41c7aff2bf308211fa388999aa5580185763512b10ade5336f221825d714","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"scripts/examples-conformance.mjs","digest":"2eac8e0f018acdf56bc2ead72e428a38cf7d40c3be2dde34b4945f969fa4d587","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"scripts/examples-conformance.mjs","digest":"951a60876f5fd3ea6d0b6daaaf194e737280ed8000a4d3808a0cfbd3bd2085e4","revision":"d1519a65a54ea7738269a1f1c02c4985a45f074c"},
 
     {"path":"package.json#/scripts/examples:conformance","digest":"2424d0e55a2ccff023d5369220c5233c3dee7defedacee9dc2ba5f94fb202c6d","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
 
