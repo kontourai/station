@@ -14,7 +14,7 @@
   "sources": [
     {"path":"packages/shared/package.json#/engines","digest":"6c12acb1990a85e4fe6986ad29ad44b644eca474a81f946d053aabd14ba62059","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
 
-    {"path":"packages/shared/package.json#/exports","digest":"139c7f367bb2f4f85a9fc171e047c1715328e410d8e827d4b311d337aa57335f","revision":"aadb5aa183a58e97344d13b8c5f34f92a7d78a94"},
+    {"path":"packages/shared/package.json#/exports","digest":"9f6dfc8a9e445e4e5e9b8ee568a9182b6b4914438d4a80d7c4cea999ba380d2f","revision":"8f5d75dd531657b81af48cd5c9f24f65908003b7"},
 
     {"path":"packages/shared/package.json#/files","digest":"43219f75df025fd68c4b3a47b045f822115a0cb02eb1a21f6f0003b466db6b24","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
 

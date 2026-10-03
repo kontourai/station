@@ -30,7 +30,7 @@
 
     {"path":"packages/sdk/package.json","digest":"31286b6e99fa502f8eb1bf6c744a4a34041d21bf6e0e0e5d22f27f2771dc5c06","revision":"18ae5d5640f6a47eb953b72f1d0a55b06a137677"},
 
-    {"path":"packages/shared/package.json","digest":"88ae450775a0c2e667acd96fa240d4b56ac40ac5a1272a93b57cfeed586deee4","revision":"aadb5aa183a58e97344d13b8c5f34f92a7d78a94"},
+    {"path":"packages/shared/package.json","digest":"a82c0ce2b631a776e6a5dc913089a3c07934eea2bfe6cc1f0f259babe57b1939","revision":"8f5d75dd531657b81af48cd5c9f24f65908003b7"},
 
     {"path":"packages/shared/src/agent-plugin-manifest.ts","digest":"a1b0dab918c8787193cc23e0f5362fc3ea5be6885440b56522314329974d55ba","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
