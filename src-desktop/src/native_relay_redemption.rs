@@ -6305,6 +6305,14 @@ mod tests {
         assert_eq!(wire["status"], "failed");
         assert_eq!(wire["failure"]["primary"], "grantStore");
         assert_eq!(wire["failure"]["cleanup"]["status"], "pending");
+        assert_eq!(wire["failure"]["cleanup"], serde_json::json!({
+            "status": "pending",
+            "localRevokeFailed": false,
+            "brokerRetireFailed": true,
+            "custodyFailed": false,
+        }));
+        assert_eq!(serde_json::to_value(NativeGrantCleanupDisposition::Complete).unwrap(), serde_json::json!("complete"));
+        assert_eq!(serde_json::to_value(NativeGrantCleanupDisposition::NotAttempted).unwrap(), serde_json::json!("notAttempted"));
         assert_eq!(wire["failure"]["recovery"]["stationId"], STATION_ID);
         assert_eq!(wire["failure"]["recovery"]["grantId"], "G".repeat(22));
         assert!(!encoded.contains(&"S".repeat(43)));
