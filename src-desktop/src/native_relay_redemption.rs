@@ -170,8 +170,7 @@ impl From<NativeRedemptionError> for NativeGrantStoreFailure {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
-#[serde(tag = "status", rename_all = "camelCase")]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum NativeGrantCleanupDisposition {
     NotAttempted,
     Complete,
@@ -180,6 +179,31 @@ pub(crate) enum NativeGrantCleanupDisposition {
         broker_retire_failed: bool,
         custody_failed: bool,
     },
+}
+
+impl Serialize for NativeGrantCleanupDisposition {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeMap;
+        match self {
+            Self::NotAttempted => serializer.serialize_str("notAttempted"),
+            Self::Complete => serializer.serialize_str("complete"),
+            Self::Pending {
+                local_revoke_failed,
+                broker_retire_failed,
+                custody_failed,
+            } => {
+                let mut value = serializer.serialize_map(Some(4))?;
+                value.serialize_entry("status", "pending")?;
+                value.serialize_entry("localRevokeFailed", local_revoke_failed)?;
+                value.serialize_entry("brokerRetireFailed", broker_retire_failed)?;
+                value.serialize_entry("custodyFailed", custody_failed)?;
+                value.end()
+            }
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -6305,6 +6329,23 @@ mod tests {
         assert_eq!(wire["status"], "failed");
         assert_eq!(wire["failure"]["primary"], "grantStore");
         assert_eq!(wire["failure"]["cleanup"]["status"], "pending");
+        assert_eq!(
+            wire["failure"]["cleanup"],
+            serde_json::json!({
+                "status": "pending",
+                "localRevokeFailed": false,
+                "brokerRetireFailed": true,
+                "custodyFailed": false,
+            })
+        );
+        assert_eq!(
+            serde_json::to_value(NativeGrantCleanupDisposition::Complete).unwrap(),
+            serde_json::json!("complete")
+        );
+        assert_eq!(
+            serde_json::to_value(NativeGrantCleanupDisposition::NotAttempted).unwrap(),
+            serde_json::json!("notAttempted")
+        );
         assert_eq!(wire["failure"]["recovery"]["stationId"], STATION_ID);
         assert_eq!(wire["failure"]["recovery"]["grantId"], "G".repeat(22));
         assert!(!encoded.contains(&"S".repeat(43)));

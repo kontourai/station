@@ -18,7 +18,7 @@
 
     {"path":"packages/connect/package.json","digest":"7e5503ba0ee016008cd7397ffc2c71988149f291d6827b8a570e134b0f731a31","revision":"e33331ee19520c8bd546c878fdd503063a682634"},
 
-    {"path":"packages/contracts/package.json","digest":"0d013c2d4ed1b569b51a2068a3b1084b1e687f2a3c4ea23f2236871752dd84d4","revision":"88a7f8ed59c055ea6ac713120ba6069d33fbb892"},
+    {"path":"packages/contracts/package.json","digest":"4207a40b79f1ca84ab14d89cbfa7dd56b3f1c95ff20d9b37abd90216969325ca","revision":"fdca33b1896b280299ba72fc70a3c9b9cda7f3af"},
 
     {"path":"packages/contracts/package.json#/exports","digest":"068810cc8b3594e03c2fef6ca250d233e62e378fb6cf06d66b4832d7beae112a","revision":"88a7f8ed59c055ea6ac713120ba6069d33fbb892"},
 
@@ -26,7 +26,7 @@
 
     {"path":"packages/contracts/src/tool.ts","digest":"69c44f3f06d5dd3e52b1721feb30f0bbb9407e4a1354f399270846500e3e8be6","revision":"cbc2079af1af80cab8189da6ac6e7ac477aceb60"},
 
-    {"path":"packages/sdk/package.json","digest":"31286b6e99fa502f8eb1bf6c744a4a34041d21bf6e0e0e5d22f27f2771dc5c06","revision":"18ae5d5640f6a47eb953b72f1d0a55b06a137677"},
+    {"path":"packages/sdk/package.json","digest":"42fe4326a8a49db222c65e5536cbdf7a2bd1885671e292fcb7fd454dc79249db","revision":"fdca33b1896b280299ba72fc70a3c9b9cda7f3af"},
 
     {"path":"packages/sdk/src/agent/index.ts","digest":"27b8861c43936cd4996215ce8ad0f3a2bbd7835adba4740e160e8b8efd02f54e","revision":"d326e74f0f416a770b08cb1b66badf150618b3c0"},
 

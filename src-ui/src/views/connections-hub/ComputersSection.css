@@ -209,6 +209,23 @@
   min-width: 0;
 }
 
+.relay-route-key-approval__prepare {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.relay-route-key-approval__prepare > p {
+  flex: 1 1 12rem;
+}
+
+.native-relay-setup .button {
+  justify-self: start;
+  width: fit-content;
+  max-width: 100%;
+  min-height: 44px;
+}
+
 .relay-route-key-approval__durable {
   display: grid;
   gap: var(--k-space-2);
@@ -434,6 +451,21 @@
   overflow: auto;
   padding: var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left);
 }
+.native-relay-member-shell .page__header {
+  flex-direction: row;
+  align-items: center;
+  gap: var(--k-space-2);
+  margin-bottom: var(--k-space-3);
+}
+
+.native-relay-member-shell .page__header-text {
+  min-width: 0;
+}
+
+.native-relay-member-shell .project-page__inner {
+  padding-top: var(--k-space-3);
+}
+
 .native-relay-member-shell .theme-toggle {
   min-width: 44px;
   min-height: 44px;
