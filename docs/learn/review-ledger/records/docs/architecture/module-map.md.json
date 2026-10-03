@@ -156,7 +156,7 @@
 
     {"path":"scripts/test-fixture-policy.mjs","digest":"fbe0e2438328249f4c047171503c0ffa8d366e9468418037cf0b211e090a48eb","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-desktop/src/lib.rs","digest":"87107637c2b0c4d1c470664c3ae3d5b4f1f377777f561ea2c25bd63df8cf2cd6","revision":"a516c638f82e312fe84fe7f8dd8cd5094b2567a5"},
+    {"path":"src-desktop/src/lib.rs","digest":"c1f14ebce1d8326b17d071eec351ca84af929b8058bfc6ce456b2f6a4b73867c","revision":"2c506080536ad8cb02b6af0b53bbd19c6d1e3ecb"},
 
     {"path":"src-desktop/src/login_shell.rs","digest":"383da9b8cc506165bed9da14ba157d3e3a2f68a7495a708aac9025e4ed99cb2c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -180,7 +180,7 @@
 
     {"path":"src-desktop/src/native_relay_ios_launch.rs","digest":"135f11afc3cc411a915de32a9c399487a8ca3f4eb1bf0afc381abf30c3f4ab66","revision":"b1b2d1fd15ddfd6dea0be7371a81d5008f6ffbf7"},
 
-    {"path":"src-desktop/src/native_relay_key_approval.rs","digest":"f0fdb455b1c3e476ddf9c7377a806c7fcb05d7e16b7430e00139fe2967b91a02","revision":"e33331ee19520c8bd546c878fdd503063a682634"},
+    {"path":"src-desktop/src/native_relay_key_approval.rs","digest":"a6f3c45f2c5b2660d9ccf0d5221d9ddb3568b8c002b846336fefc7a4c0787bd4","revision":"2c506080536ad8cb02b6af0b53bbd19c6d1e3ecb"},
 
     {"path":"src-desktop/src/native_relay_link_intake.rs","digest":"f9006742ccebb94eeaa9b18936d480697bad199322ac1f5161cada86198b97c9","revision":"7ad03486b8521649247b6a728da71d08780069ac"},
 
@@ -800,11 +800,11 @@
 
     {"path":"src-server/voice/voice-session.ts","digest":"957f092791868376ee49c32261dc73d32fa25a8bdbfe5d79d6b70265ea685b28","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-shared/__tests__/extension-notification-bindings.test.ts","digest":"d4c9e9eb36e6bb05162ae49ea8cdddac29b11cf4b503078fc9451cee0b1f514e","revision":"89765352964045a079d13a17bee54ab2de7b83e0"},
+    {"path":"src-shared/__tests__/extension-notification-bindings.test.ts","digest":"d4c9e9eb36e6bb05162ae49ea8cdddac29b11cf4b503078fc9451cee0b1f514e","revision":"306ebf4317397e0b06c543c69b4f770184f50654"},
 
     {"path":"src-shared/collaborative-edit-limits.ts","digest":"a8f42aba2e6bea3c88190357a8e2d9c59c824584bac3e100fad51c5cb3028529","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-shared/extension-notification-bindings.ts","digest":"23059844999bc5d7f2e7f8f4137b965e6f98129207fd765eb871d46ce976c11b","revision":"89765352964045a079d13a17bee54ab2de7b83e0"},
+    {"path":"src-shared/extension-notification-bindings.ts","digest":"23059844999bc5d7f2e7f8f4137b965e6f98129207fd765eb871d46ce976c11b","revision":"306ebf4317397e0b06c543c69b4f770184f50654"},
 
     {"path":"src-ui/src/__tests__/deliveryFeed.nativeConsumer.test.ts","digest":"d966359769aef709ce188ff027309928a73dbe1ac340bb54f9b9db14640c8871","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -842,13 +842,13 @@
 
     {"path":"src-ui/src/float-over-chat/FloatOverChatHost.tsx","digest":"81c979aa34b061b5c9ca39dea2fe8327e387f97ceb079918039dd5311275ae3e","revision":"e5d9b68a5a99edfb53c307ebc86f2890a3200d00"},
 
-    {"path":"src-ui/src/hooks/orchestration/extensionHandlers.ts","digest":"0a85524d3c1ff8ef7b46900ed86b639b2308322dd9e11aeedc5de959ecf007c3","revision":"89765352964045a079d13a17bee54ab2de7b83e0"},
+    {"path":"src-ui/src/hooks/orchestration/extensionHandlers.ts","digest":"0a85524d3c1ff8ef7b46900ed86b639b2308322dd9e11aeedc5de959ecf007c3","revision":"306ebf4317397e0b06c543c69b4f770184f50654"},
 
-    {"path":"src-ui/src/hooks/orchestration/queueDrain.ts","digest":"5172f08676c5ae320d10b42f23f7b5158ab77172a54c537235de9156ea504eb8","revision":"89765352964045a079d13a17bee54ab2de7b83e0"},
+    {"path":"src-ui/src/hooks/orchestration/queueDrain.ts","digest":"5172f08676c5ae320d10b42f23f7b5158ab77172a54c537235de9156ea504eb8","revision":"306ebf4317397e0b06c543c69b4f770184f50654"},
 
     {"path":"src-ui/src/hooks/orchestration/replay/observe.ts","digest":"edbe10fd612c9a33d91709961c6e86886950edacf14d51b2dfac760fdcb848a9","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/hooks/orchestration/turnHandlers.ts","digest":"4763f7c3bb1b29b3892b84ab4bee0484334667a540be36d7a5b6a21aca3bde82","revision":"89765352964045a079d13a17bee54ab2de7b83e0"},
+    {"path":"src-ui/src/hooks/orchestration/turnHandlers.ts","digest":"4763f7c3bb1b29b3892b84ab4bee0484334667a540be36d7a5b6a21aca3bde82","revision":"306ebf4317397e0b06c543c69b4f770184f50654"},
 
     {"path":"src-ui/src/hooks/useActiveChatSessionMessaging.ts","digest":"9318eb8735235a5cf39ece24756ba0a90405a79b9c24982199f65326b4c4c6b2","revision":"34d62da501fa53187b7062288f6e1dbaec8c20ed"},
 

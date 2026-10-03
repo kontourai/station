@@ -580,6 +580,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #2675 slice E: drives the manifest signer and the Nightly publication
   // helper CLIs as bounded single-shot children (dry-run sign and verify).
   'scripts/__tests__/portable-nightly-publish-workflow.test.ts',
+  // #2959: runs the release publication and signer CLIs, the release and
+  // publish workflows' own bash steps, and install.sh as bounded children.
+  'scripts/__tests__/portable-release-publish-workflow.test.ts',
   // station#4389: runs the root shell launcher against isolated PATH stubs to
   // prove lifecycle delegation and launch sequencing at the process boundary.
   'scripts/__tests__/dependency-lifecycle.test.ts',
