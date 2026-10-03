@@ -28,7 +28,7 @@
 
     {"path":"packages/sdk/src/client/http.ts","digest":"a5b6aab76a026713b995e37745c777db0c574349ee3a05d3961f8460108c2bac","revision":"59dd5f220c057d2052ad5bf075ea060793f85225"},
 
-    {"path":"packages/shared/src/build.ts","digest":"a985e6f1e039bf69fdcb6990255d899d45900aa145b539a6e0249a6e5843af21","revision":"f72daba9492778d9418abbf9730b6482b73a300c"},
+    {"path":"packages/shared/src/build.ts","digest":"20f919a4a98519ce20e8e2f0d5d498a4be8daeba1314a97ddae752fd36df4630","revision":"1e6450e0caa47975d33f505a1348bdc01ae1382e"},
 
     {"path":"src-ui/src/core/pluginSharedRuntime.ts","digest":"b9b3865a69ebf0b8246ac7b6b7b294b24f7a05f51004dd8a8b5ea273fc2fae49","revision":"f72daba9492778d9418abbf9730b6482b73a300c"}
   ],

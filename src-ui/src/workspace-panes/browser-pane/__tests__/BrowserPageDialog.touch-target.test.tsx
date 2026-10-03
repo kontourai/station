@@ -29,7 +29,10 @@ function sheet(...paths: string[]) {
     .join('\n');
 }
 
-const CARD_SHEETS = ['../BrowserIconButton.css', '../BrowserPageDialog.css'];
+const CARD_SHEETS = [
+  '../../../components/IconButton.css',
+  '../BrowserPageDialog.css',
+];
 const CSS = {
   float: sheet(
     '../../../index.css',

@@ -13,12 +13,14 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
+import type { TaskRoomContextSnapshot } from '@kontourai/station-contracts/task-room-work';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
   createGateTestRegistry,
   GateTestAdapter,
 } from '../../../__test-utils__/orchestration-gate-test-harness.js';
+import { readJson } from '../../../__test-utils__/read-json.js';
 import { getCachedUser } from '../../../routes/system/auth.js';
 import {
   type RuntimeAuthenticatedRequestPrincipal,
@@ -236,6 +238,78 @@ describe('Task-room requestAuthority principal (station#4075 stage 3 slice 1)', 
       },
     };
   }
+
+  test('brief capture refuses Task metadata edited during the document read', async () => {
+    const { app, store, roomRuntime, taskRecord, setCaller } =
+      await setup('brief-device');
+    setCaller({
+      credential: 'brief-device',
+      authority: 'device-credential',
+      source: 'bearer',
+    });
+    const fetchContext = () =>
+      Promise.resolve(
+        app.fetch(
+          new Request(
+            `http://station/api/tasks/${taskRecord.id}/room/agent-requests`,
+          ),
+          loopbackEnv(),
+        ),
+      );
+    let release = () => {};
+    let pending: Promise<Response> | undefined;
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const control = await fetchContext();
+      const initial = await readJson<{
+        data: { context: TaskRoomContextSnapshot | null };
+      }>(control);
+      expect(initial.data.context?.title).toBe(taskRecord.title);
+      let enter!: () => void;
+      const entered = new Promise<void>((resolve, reject) => {
+        enter = () => {
+          clearTimeout(timeout);
+          resolve();
+        };
+        timeout = setTimeout(
+          () => reject(new Error('Document capture was not reached')),
+          5000,
+        );
+      });
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const document = roomRuntime.document.bind(roomRuntime);
+      vi.spyOn(roomRuntime, 'document').mockImplementationOnce(
+        async (input) => {
+          const captured = await document(input);
+          enter();
+          await held;
+          return captured;
+        },
+      );
+      pending = fetchContext();
+      await entered;
+      taskRecord.title = 'Edited objective during capture';
+      release();
+      const response = await pending;
+      expect(response.status).toBe(200);
+      expect(
+        (
+          await readJson<{ data: { context: TaskRoomContextSnapshot | null } }>(
+            response,
+          )
+        ).data.context,
+      ).toBeNull();
+    } finally {
+      clearTimeout(timeout);
+      release();
+      await pending?.catch(() => undefined);
+      vi.restoreAllMocks();
+      await roomRuntime.close();
+      store.close();
+    }
+  });
 
   test.each(['revoke', 'replace-task', 'replace-project'] as const)(
     'request delivery refuses %s while canonical lifecycle reconciliation is awaiting',

@@ -17,7 +17,10 @@ and its evaluator, `PreToolUse` runs Station's staged evaluator before the call.
 `canUseTool` also honors that Agent's matching `tools.autoApprove` patterns,
 for plain calls only (#2933). A pattern never answers an escalation or a plan
 exit, even `*`: it is allowed only where `toolRequestIsPlainCall` holds, the
-`tool` or `edit-mode` case of the session-grant computation below. An
+`tool` or `edit-mode` case of the session-grant computation below. That
+computation reads the engine's structured reason for the ask (#2932), so a
+pattern answers no safety check and no ask rule on a single command either;
+the limits for chained Bash commands are stated there. An
 autoApprove match in the staged evaluator (`toolGrant`) is therefore not
 returned as a `PreToolUse` allow. After a hook allow, Claude Code 2.1.278
 (read in its bundled binary, as 2.1.261 was first) re-checks only deny rules,
@@ -103,7 +106,8 @@ escalations in several shapes, first read in 2.1.261 and re-checked in
 2.1.278. Read, Glob, Grep and LSP ask for a path outside
 the session's working directories without a `blockedPath`. They carry a session
 `Read(//<dir>/**)` rule suggestion and the workingDir reason text; the SDK
-drops the reason's type. Edit and Write outside them suggest `addDirectories`
+drops the reason's type, which Station reads from the engine's request
+instead (see the structured reason below). Edit and Write outside them suggest `addDirectories`
 (with `acceptEdits` in default mode). The Bash path checks report a
 `blockedPath`, with a `Read` rule for a read and `addDirectories` for a write.
 A directory suggestion is an allow rule for a file tool (Read, Edit, Write,
@@ -158,20 +162,19 @@ card label it:
   for this session" for read rules and "Allow access to this folder for this
   session" otherwise. An `acceptEdits` suggested alongside is not forwarded.
 - No session option is shown where there is nothing to forward, and a session
-  answer is recorded as a one-call accept. That covers an ask rule, a read
-  safety check, a file-edit safety check once the session is in `acceptEdits`,
-  and `ExitPlanMode` (#2916). A plan exit therefore always prompts, and its
-  suggested mode change is dropped.
+  answer is recorded as a one-call accept. That covers an ask rule, a safety
+  check (read, file edit or shell command), an ask
+  whose engine request Station could not read, and `ExitPlanMode` (#2916). A
+  plan exit therefore always prompts, and its suggested mode change is
+  dropped.
 
-Station cannot see the reason type behind an edit ask (the SDK drops it), so
-a file-edit safety check the engine raises while it still suggests
-`acceptEdits`, such as a Windows suspicious-path check, can still offer the
-auto-accept option (#2932). Answering it allows that call and switches the
-session to `acceptEdits`; the engine keeps asking for such paths.
+A file-edit safety check the engine raises in default mode suggests
+`acceptEdits` exactly as a plain edit does. Station tells them apart by the
+structured reason below, so the check offers no auto-accept option (#2932).
 
 Some escalations the SDK does let Station see, and those always prompt: no
 tool grant and no agent `autoApprove` pattern answers them, even `*`
-(#2932, part 1).
+(#2932, part 1). They remain as a second layer under the structured reason.
 
 - The sandbox network-host ask. Claude Code 2.1.278 (as 2.1.261) sends it
   as tool
@@ -192,12 +195,13 @@ tool grant and no agent `autoApprove` pattern answers them, even `*`
   2.1.278): if a later CLI rewords one,
   the rule stops matching and that ask goes back to being treated as an
   ordinary call. A wording change disables the rule; it never widens it.
-  The durable signal is the structured `decision_reason_type`, which part 2
-  reads.
+  The durable signal is the structured `decision_reason_type`, read as
+  described below.
 - The ask flags `suppressAlwaysAllowRule`, `defaultToNo` and
   `requiresUserInteraction`. The CLI sends all three. Agent SDK 0.3.278
   forwards `suppressAlwaysAllowRule` and `defaultToNo` and still drops
-  `requiresUserInteraction`, which the adapter reads if an SDK forwards it.
+  `requiresUserInteraction`, which the adapter reads from the engine's
+  request (below).
   In 2.1.278 the engine sets these flags on escalations only: claude.ai
   artifact reads, writes and deletes, an MCP tool marked as requiring user
   interaction, an MCP connector's approval retry, a call run on a remote
@@ -215,12 +219,139 @@ ASCII host syntax before any sanitising, so a host carrying an invisible or
 control character is shown as "an unrecognised host", never as the host
 left after the character is removed.
 
-What this does not cover: a Bash or PowerShell safety check (its reason is
-prose whose wording is not a stable contract) and a plain `permissions.ask`
-rule, which arrives with no `matchedAskRule` and no reason. Neither carries a
-signal the SDK forwards, so a Bash tool grant or pattern can still answer
-them, as can an Edit grant for a sensitive-file check above. Reading the
-engine's structured reason for those is later work (#2932, part 2).
+### The engine's structured reason (#2932, part 2)
+
+Claude Code writes why it asks on each `can_use_tool` control request:
+`decision_reason_type` (`rule`, `mode`, `subcommandResults`,
+`permissionPromptTool`, `hook`, `asyncAgent`, `sandboxOverride`,
+`workingDir`, `safetyCheck`, `classifier`, `other`), `classifier_approvable`,
+`decision_reason_code` and `requires_user_interaction`. Agent SDK 0.3.278
+hands `canUseTool` none of them. A test runs the real SDK against a stand-in
+CLI and fails when that changes
+(`src-server/providers/__tests__/claude-code-spawn.sdk.test.ts`). The request
+shapes and reason texts below were read in the CLI bundled with that SDK
+(2.1.278), not captured from a live session.
+
+Station therefore owns the engine spawn through the SDK's
+`spawnClaudeCodeProcess` option
+(`src-server/providers/adapters/claude-code-spawn.ts`). The engine's stdout
+passes through a tap that forwards every byte unchanged and records those
+fields per `request_id`, which the SDK passes to `canUseTool` as `requestId`
+(`claude-permission-frames.ts`). The tap also reads the requests replayed in
+`pending_permission_requests`, only on the response to the SDK's `initialize`
+request, which it recognises by watching the SDK's writes to the engine's
+stdin; the SDK itself ignores a replay on any other response. A record is
+consumed when the adapter reads it. Two requests that give one `request_id`
+different reasons leave it unrecorded, so it reads as missing; the same
+request seen twice is kept once. At most 256 unread records are kept; the
+oldest is dropped beyond that. A stdout line longer than 8 MiB is forwarded
+without being read.
+
+`claudeAskEscalates` in the shared computation then decides, for both the
+session grant and `toolRequestIsPlainCall`:
+
+- A reason type other than `other` and `subcommandResults` escalates. That
+  covers a `permissions.ask` rule on a single command (`rule`, which arrives
+  with no reason text and, for WebFetch, looks exactly like the ordinary ask
+  on the callback), a Bash, read or file-edit safety check (`safetyCheck`),
+  a sandbox override, a path outside the working directories, and any type
+  a later engine adds.
+- `classifier_approvable` set, to either value, escalates. The engine sets it
+  exactly when a safety check is involved, in the ask itself or in any part
+  of a chained command, and sends `decision_reason` text with a chained
+  command only then. Its absence therefore rules a safety check out.
+- A `decision_reason_code` escalates. The engine sets one only for a block a
+  host may act on (`outside_reads_blocked`, `memory_paused`,
+  `classifier_transcript_too_long`).
+- Type `subcommandResults` on PowerShell always escalates, so every
+  PowerShell ask prompts. PowerShell wraps each ask in that type, and a
+  single command with a security warning (Invoke-Expression,
+  download-and-execute, elevation, encoded parameters, scheduled tasks, WMI,
+  COM, a path check) arrives exactly like an ordinary command.
+- Type `subcommandResults` on Bash is a chained command (`a && b`, `a; b`, a
+  pipeline). By owner decision it is a plain call, so a Bash grant or
+  `autoApprove` answers it, unless the request carries
+  `classifier_approvable`, any `decision_reason` text, a `matched_ask_rule`,
+  or one of the other signals above (a blocked path, a directory suggestion,
+  a sandbox override, an ask flag). What that leaves invisible is listed
+  under the gaps below.
+- Type `other` escalates unless its reason is exactly `This command requires
+  approval`, what 2.1.278 sends for a single Bash command no rule matched.
+  Its other `other` reasons are checks: shell operators, an
+  unparseable command, a `cd` before a write, a sed write, process
+  substitution.
+- No reason type is a plain call, except on a shell tool. It is the ordinary
+  ask of an MCP tool, WebFetch, and a file edit inside the working
+  directories. An ordinary Bash ask carries type `other` in 2.1.278, so a
+  shell ask without a type is never the ordinary one and escalates. The
+  engine does send such asks: a Bash path-check ask carries a blocked path
+  and no reason type, and prompts on both counts. The rule also means an
+  engine that stopped sending the field cannot turn every shell ask into a
+  plain call.
+- A Claude ask with no record escalates. This is the fail-closed rule: an
+  unread, oversize, reshaped or evicted request costs a prompt, never a
+  grant.
+
+An escalation still offers the folder option when the engine suggested a
+directory, so the `read-folder` and `folder` grants above are unchanged, and
+a plain file edit still offers `edit-mode`. `request.opened` carries the
+record as `claudeAsk` (`decisionReasonType`, `classifierApprovable`,
+`decisionReasonCode`), or `null` when there was none, so the surfaces compute
+the same grant. Other engines publish no `claudeAsk`, which says nothing.
+
+What this costs, and what it still does not cover:
+
+- **A chained Bash command hides what its parts raised (accepted gap).**
+  The engine does not send the reasons of a chain's parts. A safety check
+  on any part always prompts, and an ask rule on a single command always
+  prompts. Under a Bash session grant or an agent's `autoApprove`, inside a
+  chained command, these carry no signal and are answered:
+  - (i) any `permissions.ask` rule that applies to the chained command or to
+    one of its parts, exact or prefix, whenever the chain arrives as
+    `subcommandResults`, which is when more than one part needs approval.
+    With `Bash(git push:*)`, `make build && git push origin main` arrives
+    with no `matched_ask_rule`; so does the same command under a rule
+    written for the whole chain, `Bash(make build && git push origin
+    main)`. When the ruled part is the only one needing approval (`ls && git
+    push origin main`) the engine sends type `rule`, which prompts.
+  - (ii) a write or delete outside the working directories in an `&&` or `;`
+    chain (`make build && rm /outside/f`), or in a pipeline with an output
+    redirect (`make build | sort > /outside/f`). The engine sends no blocked
+    path and no directory suggestion, only command-rule suggestions. A
+    pipeline part that names the path as an argument (`make build | tee
+    /outside/f`) keeps its `addDirectories` suggestion and prompts, as does
+    a single command.
+  - (iii) a part's warning that is not a safety check.
+
+  These gaps exist on `main` today: before Station read the structured
+  reason, a Bash grant answered every chained command. Closing them needs
+  the engine to send the nested reasons. The request shapes for (i) and
+  (ii), and for the two guarantees, were captured from live turns against
+  the bundled 2.1.278 CLI and are pinned, with Station's verdict for each,
+  in
+  `src-server/providers/__tests__/fixtures/claude-2.1.278-chained-bash-asks.json`.
+  Gap (iii) was read in the engine's code, not captured.
+- **Every PowerShell ask prompts.** See the type bullet above: a PowerShell
+  grant or pattern answers nothing. The list of PowerShell security warnings
+  there was read in the engine's code, not captured.
+- **The ordinary Bash ask is recognised by its text.** `other` covers both
+  the ordinary ask and safety prose, and only the text tells them apart. The
+  text was read in 2.1.278. If a later engine rewords it, ordinary Bash calls
+  prompt until the literal is updated; a rewording never widens a grant.
+- **A different frame shape costs prompts, with one exception.** A request
+  Station cannot parse is not recorded, so all Claude asks would prompt and
+  offer no tool grant. A session can run an installed `claude` newer than
+  the bundled one, so this can happen without a Station change. The
+  exception: if an engine sent readable requests without the reason type,
+  shell asks would still prompt, but an ask rule or safety check on any
+  other tool (WebFetch, a file edit, an MCP tool) would read as a plain
+  call. Those would be covered only by the part 1 signals, as before.
+- **Exit errors.** The SDK appends the engine's stderr to an exit error only
+  for its own spawn. Station keeps the last 2048 characters itself, redacted,
+  and appends them to the `runtime.error` it publishes when the message
+  stream fails. An exit error the SDK raises on another call does not carry
+  them. The SDK also adds its `--debug-file` argument only for its own
+  spawn, which matters only when SDK debug logging is on.
 
 A session answer never writes the engine's settings files. Every suggestion
 a session answer forwards is sent with `destination: 'session'`

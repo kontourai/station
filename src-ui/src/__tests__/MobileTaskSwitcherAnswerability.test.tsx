@@ -8,10 +8,11 @@
  * files over carried both. Same label, two answers, one of them a bare
  * adjective.
  */
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { createRef } from 'react';
 import { describe, expect, test, vi } from 'vitest';
 import { MobileTaskSwitcher } from '../components/chat-dock/MobileTaskSwitcher';
+import { LIFECYCLE_HOLD_MS } from '../components/chat-dock/useHeldLifecycles';
 import type { HomeWorkItem } from '../views/home/home-view-model';
 
 const NOTICE =
@@ -34,11 +35,20 @@ function task(overrides: Partial<HomeWorkItem> = {}): HomeWorkItem {
   };
 }
 
-function renderSheet(tasks: HomeWorkItem[], pending = false) {
+function renderSheet(
+  tasks: HomeWorkItem[],
+  pending = false,
+  attention?: 'answer' | 'approval',
+) {
   return render(
     <MobileTaskSwitcher
       open
       tasks={tasks}
+      workFacts={
+        attention
+          ? new Map(tasks.map((item) => [item.id, { attention }]))
+          : undefined
+      }
       pending={pending}
       activeChatSessionId={null}
       visualViewportStyle={{}}
@@ -53,6 +63,55 @@ function renderSheet(tasks: HomeWorkItem[], pending = false) {
 }
 
 describe('MobileTaskSwitcher answerability basis', () => {
+  test.each([
+    { items: [] },
+    {
+      items: [
+        task({ lifecycleLabel: 'Running', unanswerableNotice: undefined }),
+      ],
+    },
+  ])('can start a new chat from the empty or populated picker', ({ items }) => {
+    const calls: string[] = [];
+    render(
+      <MobileTaskSwitcher
+        open
+        tasks={items}
+        activeChatSessionId={null}
+        visualViewportStyle={{}}
+        triggerRef={createRef<HTMLButtonElement>()}
+        onClose={() => calls.push('close')}
+        onNewChat={() => calls.push('new')}
+        onFocusChat={vi.fn()}
+        onOpenConversation={vi.fn()}
+        onOpenSession={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'New chat' }));
+    expect(calls).toEqual(['close', 'new']);
+  });
+
+  test.each([
+    { attention: 'answer' as const, label: 'Input' },
+    { attention: 'approval' as const, label: 'Approval' },
+  ])(
+    'shows $label only for its recorded attention kind',
+    ({ attention, label }) => {
+      renderSheet(
+        [
+          task({
+            lifecycleLabel: 'Needs attention',
+            unanswerableNotice: undefined,
+          }),
+        ],
+        false,
+        attention,
+      );
+      expect(
+        screen.getByText(label, { selector: '.inbox-row__word' }),
+      ).toBeTruthy();
+    },
+  );
+
   test('reports pending reads instead of claiming there are no chats', () => {
     renderSheet([], true);
     expect(
@@ -115,12 +174,11 @@ describe('MobileTaskSwitcher answerability basis', () => {
       }),
     ]);
     expect(screen.queryByTestId('inbox-row-answerability')).toBeNull();
-    // The shared row renders the lifecycle CHIP, not a bare status string
-    // (#3312 richness parity). The chip's word is the lane's word, "Running"
-    // (never "Active"), and it appears once, inside the chip.
+    // The shared row renders ONE status line (#3043). Its word is the lane's
+    // word, "Running" (never "Active"), and it appears once.
     const row = screen.getByTestId('inbox-row');
     expect(
-      within(row).getByText('Running', { selector: '.lifecycle-chip' }),
+      within(row).getByText('Running', { selector: '.inbox-row__word' }),
     ).toBeTruthy();
     expect(within(row).getAllByText('Running')).toHaveLength(1);
     expect(within(row).queryByText('Active')).toBeNull();
@@ -130,45 +188,56 @@ describe('MobileTaskSwitcher answerability basis', () => {
 
 describe('MobileTaskSwitcher lane-move focus', () => {
   test('a focused row that moves Running -> Idle keeps focus in the sheet', () => {
-    const props = {
-      open: true,
-      activeChatSessionId: null,
-      visualViewportStyle: {},
-      triggerRef: createRef<HTMLButtonElement>(),
-      onClose: vi.fn(),
-      onFocusChat: vi.fn(),
-      onOpenConversation: vi.fn(),
-      onOpenSession: vi.fn(),
-      now: Date.now(),
-    };
-    const running = task({
-      id: 'chat:moving',
-      chatSessionId: 'moving',
-      title: 'Moving row',
-      lifecycleLabel: 'Running',
-      unanswerableNotice: undefined,
-    });
-    const other = task({
-      id: 'chat:other',
-      chatSessionId: 'other',
-      title: 'Other row',
-      lifecycleLabel: 'Ready',
-      unanswerableNotice: undefined,
-    });
-    const view = render(
-      <MobileTaskSwitcher {...props} tasks={[running, other]} />,
-    );
-    const name = 'Moving row, Station';
-    screen.getByRole('button', { name }).focus();
-    expect(document.activeElement).toBe(screen.getByRole('button', { name }));
+    // The move out of Running is held (useHeldLifecycles); it lands, with
+    // the focus hand-off, once the hold elapses.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    try {
+      const props = {
+        open: true,
+        activeChatSessionId: null,
+        visualViewportStyle: {},
+        triggerRef: createRef<HTMLButtonElement>(),
+        onClose: vi.fn(),
+        onFocusChat: vi.fn(),
+        onOpenConversation: vi.fn(),
+        onOpenSession: vi.fn(),
+        now: Date.now(),
+      };
+      const running = task({
+        id: 'chat:moving',
+        chatSessionId: 'moving',
+        title: 'Moving row',
+        lifecycleLabel: 'Running',
+        unanswerableNotice: undefined,
+      });
+      const other = task({
+        id: 'chat:other',
+        chatSessionId: 'other',
+        title: 'Other row',
+        lifecycleLabel: 'Ready',
+        unanswerableNotice: undefined,
+      });
+      const view = render(
+        <MobileTaskSwitcher {...props} tasks={[running, other]} />,
+      );
+      const name = 'Moving row, Station';
+      screen.getByRole('button', { name }).focus();
+      expect(document.activeElement).toBe(screen.getByRole('button', { name }));
 
-    view.rerender(
-      <MobileTaskSwitcher
-        {...props}
-        tasks={[{ ...running, lifecycleLabel: 'Ready' }, other]}
-      />,
-    );
-    expect(screen.queryByRole('heading', { name: /^Running/ })).toBeNull();
-    expect(document.activeElement).toBe(screen.getByRole('button', { name }));
+      view.rerender(
+        <MobileTaskSwitcher
+          {...props}
+          tasks={[{ ...running, lifecycleLabel: 'Ready' }, other]}
+        />,
+      );
+      expect(screen.getByRole('heading', { name: /^Running/ })).toBeTruthy();
+      act(() => {
+        vi.advanceTimersByTime(LIFECYCLE_HOLD_MS);
+      });
+      expect(screen.queryByRole('heading', { name: /^Running/ })).toBeNull();
+      expect(document.activeElement).toBe(screen.getByRole('button', { name }));
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

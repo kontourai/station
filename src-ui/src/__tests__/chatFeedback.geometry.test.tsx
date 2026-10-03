@@ -193,7 +193,7 @@ describe('September 8 visual feedback regressions', () => {
       try {
         await page.setContent(`<style>${css}</style>${markup}`);
         const panel = await page
-          .getByRole('dialog', { name: 'Switch project' })
+          .getByRole('dialog', { name: 'Projects' })
           .boundingBox();
         expect(panel).not.toBeNull();
         expect(panel!.y).toBeGreaterThanOrEqual(0);

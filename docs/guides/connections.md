@@ -31,6 +31,12 @@ saved settings from a check that actually reached the provider:
 Select the action on the row. Station keeps transport, process, and connection-kind details
 out of the overview; they remain available only where setup or diagnosis needs them.
 
+When adding a Model connection, **Create** saves it and immediately checks the
+provider. OpenAI's service requires an API key. For a custom endpoint, follow
+that server's authentication requirements; some permit anonymous access or
+host-managed credentials. Blank fields alone do not establish readiness. A
+refused check retains its reason so you can correct the settings and retry.
+
 **Test Connection** first requests the model catalog. If no usable catalog is
 available, it can send one minimal chat request using the connection's default
 model; that request may be billable. A successful catalog check alone does not
@@ -66,18 +72,95 @@ status before starting again because the server may still be running the login.
 
 **Allowance** shows the selected account's provider-reported limits and reset
 times. Failed or unrecognized readings say unavailable, never zero. **Refresh**
-requests a new reading; there is no continuous quota polling. Claude credentials
-may be read from its selected macOS Keychain namespace when no credential file
-exists. Tokens remain on the server.
+requests a new reading. While the account page is visible, it refreshes every minute; it does not poll in the background. Claude credentials
+are read from the selected macOS Keychain namespace first, with a credential
+file fallback when that namespace has no usable entry. A stale legacy file does
+not override the current secure-store login. Tokens remain on the server.
 
-**Activity** shows 7 or 30 days of this engine's runs on this Station, across all
-accounts. Receipts do not identify the credential profile, so this is not
-per-account history. Reported cost and estimates remain separate. The daily chart uses reported cost
-when available, estimates when only estimates are available, and otherwise
-tokens. Missing days keep their place and are marked unreported. Missing costs
-are shown as unavailable, and partial coverage is disclosed. Subscription
-allowance and engine-reported costs are not billing statements. Activity uses the protected usage API and requires credential-management access,
-even when the page requests only this Station.
+Codex window labels use the provider's reported duration. A primary window is
+not necessarily five hours; absent durations are labeled primary or secondary.
+Reset countdowns tick locally, with the absolute reset time beside them.
+Passing a reset time does not clear the captured quota; refresh for a new reading. Individual reserve/model windows retain their own availability verdict.
+
+**Account & credits** expands account identity, credit balances, approximate
+local/cloud message ranges, reset credits and model availability when Codex
+returns them. Claude extra usage shows enabled/user-disabled state, prior credit
+enablement, utilization, currency/decimal metadata and amounts
+in provider units; Station does not assume those amounts are dollars.
+Claude provider spending uses explicit minor-unit/currency/exponent data for
+formatted amounts and exposes provider severity and credit/settings capability
+flags. **Weekly usage breakdown** and **Provider limit details** retain the
+provider's dated breakdown and active/group/model/surface annotations.
+Unavailable fields remain **Not reported**. An unavailable quota percentage does
+not discard readable account/credit details.
+
+**Data captured** shows the reading's source, credential storage kind, storage policy, unmapped non-null
+field paths and deliberate exclusions. Only field names leave the server for
+unmapped values. This bounded shape audit excludes null/empty fields, value
+validation, credential stores and other endpoints; “none in this response” does
+not establish complete provider coverage. The full quota response remains a live projection. **Allowance history** retains
+only window labels, percentages, durations, reset times and observation timestamps.
+It saves a 30-day window of the latest observation per UTC hour, at most 720 observations
+and 32 windows per observation, under this Station's `analytics/engine-allowance/`.
+The window is pruned on capture; closed or deleted profiles are not automatically
+purged. Each profile file is bounded, while the number of files follows the
+profiles/config homes observed. Identity values, credits, spending, raw responses and credentials are not stored
+in that history. History is partitioned by engine, connection, profile and config
+home. A changed reported account identity clears that profile's history; when a
+provider does not report identity, observations describe the credential profile
+and cannot detect an external sign-in to a different account in the same home.
+Unknown readings remain gaps. No history is backfilled or captured while the
+page is closed. A failed history write leaves live limits readable and shows
+that history is unavailable. **View observations** exposes timestamps and resets,
+with older rows loaded on request. History keeps a reused window ID separate
+when its label or duration changes, so different allowance periods are not blended. Usage receipts are persisted separately.
+
+The current projection inventory is:
+
+| Source fields | Capture and display | Storage / limits |
+| --- | --- | --- |
+| Codex `email`, `account_id`, `user_id`, `plan_type` | Account identity and plan | Live, credential-management access |
+| Codex rate limits, additional limits, code-review limits, chat-pass windows | Percentage, duration, absolute/relative reset, availability; additional model/feature identity | Live plus bounded hourly allowance history; null windows omitted, unknown durations not guessed |
+| Codex `credits` | Availability, unlimited flag, balance, overage verdict and message ranges | Live; credit units are not currency |
+| Codex `model_usage` | Model availability, availability time, whether credits enable it | Live; at most 32 models projected |
+| Codex `rate_limit_reset_credits` | Available and applicable counts | Live |
+| Codex `spend_control.reached` | Account exhaustion verdict | Live; individual spend-limit policy, promo and limit-reached type deliberately excluded |
+| Claude `five_hour`, `seven_day`, model/OAuth/Cowork weekly windows and scoped `limits` | Percentage, reset and provider exhaustion verdict | Live plus bounded hourly allowance history; not all accounts return each window |
+| Claude `extra_usage` | Enabled/user-disabled state, prior credit enablement, used amount, monthly limit, utilization, spend-limit verdict and declared units | Live; raw amounts stay in provider units |
+| Claude `spend` | Declared-currency amounts, severity, enabled state, capability flags and provider disclaimer | Live; explicit minor units/exponent required for currency formatting; no purchase or setting mutation |
+| Claude `limits`, `seven_day_breakdown`, `member_dashboard_available` | Active/group/model/surface annotations, dated weekly percentage breakdown and dashboard availability | Live; detail/breakdown arrays capped at 32; shape audit marks truncation |
+| Station usage rollup | Input/output/cache tokens, receipts, reported/estimated costs, pricing sources/snapshots, coverage/freshness/observed turns | Persisted receipts; selected profile or all engine accounts on this Station, not provider-wide billing |
+| Non-null unrecognized response leaves | Unmapped paths, never their values | No raw-response storage; audit capped at depth 8, 2048 visited nodes, 256 leaves, 64 keys/object and 32 items/array |
+
+On 2026-10-01 a read-only Codex account probe confirmed the weekly-primary,
+reserve, model availability, credit, chat-pass and reset-credit response shapes.
+The legacy Claude credential file returned 401, while its selected macOS
+secure-store credential returned 200. After correcting credential-source
+precedence, both readers reported no unmapped non-null field paths or audit
+truncation for those account responses. Claude spending, breakdown, active-limit
+and extra-usage shapes are live-observed as well as fixture-validated. Other plans and provider endpoints remain outside this observation.
+
+**Activity** initially shows 7 or 30 days of all engine runs on this Station, so
+older activity remains visible. **Activity for** switches
+between the selected credential profile and all accounts of this engine. New
+Claude and Codex sessions record an opaque account key from the profile actually
+resolved for the process. Raw profile references are not published in runtime
+events. Source-home continuations and older events without this observation
+remain unattributed. A process restart does not inherit a previous process's
+account observation. Account filtering excludes unattributed receipts; it never
+assigns old costs to today's active account. Capture counts still describe the
+engine, and account results disclose this attribution gap.
+
+Reported costs and estimates remain separate. **Tokens**, **Reported cost** and
+**Estimated cost** select the daily chart measure. A cost measure with no values
+shows unavailable observations, never a token chart labeled as cost. Mixed
+currencies retain separate totals and a currency selector; Station does not
+convert or combine them. Missing days keep their place and are marked unreported.
+**Token breakdown & capture coverage** expands cache/input/output totals, pricing
+provenance and observed-versus-usage-reported turn counts. Missing values are not
+added as known zeros; reported subtotals can be incomplete. Subscription allowance
+and engine-reported costs are not billing statements. Activity requires
+credential-management access, even for this Station alone.
 
 The component/transport tests exercise both account pages and the login relay
 with controlled provider responses. An isolated Claude CLI probe confirmed the
@@ -86,9 +169,34 @@ exchange, every provider plan or Windows secure-store behavior.
 
 ## Saved Station addresses
 
-Open **Manage Stations** in the header to inspect the computers this client
-connects to. Each address wraps on narrow screens so its port stays visible.
-The row's **More actions** menu provides **Copy address** and **Edit Station**.
+Tap the connection dot on a phone, or the connection name on desktop, to
+choose a Station. A checkmark identifies the current Station, whose status is
+live. The chooser does not probe inactive Stations; they say **Not checked**
+unless a saved access or connection error needs attention. Holding the phone's
+dot shows its saved name without switching or opening the chooser.
+
+Choose **Manage Stations** to inspect saved connections. Tap a row to reveal
+**Switch to this Station** and **Edit Station**; inspecting a row does not
+switch the active connection. Switching respects unsaved-work decisions.
+Each address wraps on narrow screens so its port stays visible. The row's
+**More actions** menu provides **Copy address** and **Check reachability**.
+Expand the row's details to select its address text, or use **Copy address**
+to copy the full address directly.
+For the current saved Station, **Reconnect** opens its access-request flow
+even when this device is already paired, so you can request fresh approval.
+It is not offered for an inactive Station or a connection managed by the
+native host. Completing reauthorization still requires Station approval.
+The manager uses the current Station's live status; inactive rows show
+**Not checked** until checked there. Connections with valid saved access do
+not prompt for another access request. A rejected or missing credential still
+offers the appropriate access remedy.
+
+Use an HTTPS address when connecting another device. An HTTP address requires
+**Allow an unencrypted connection** before requesting access, including a
+`localhost` address in a native app. The exception is numeric loopback
+(`127.0.0.1` or `[::1]`), or the browser session on the Station that served its
+page. The choice applies only to that exact origin on this device; approval
+and pairing are still required.
 
 Native clients save edits through the shared profile store. A name change
 preserves pairing and updates references to that profile, including its default
@@ -157,8 +265,10 @@ replacement must advance the generation and use a different key; cancelling
 the review keeps the existing approval. A revoked key likewise needs a newer
 generation and different key before trust can be restored.
 
-In the browser, **Connections → Computers → Broker routes** first has a **Station
-signing key** step. A fresh browser with no Device cookie can reach the same
+In the browser, open **Connections → Computers → Broker routes → Advanced:
+broker setup** to start the **Station signing key** step. This disclosure stays
+closed for ordinary direct-address and pairing use; saved route actions remain
+outside it. A fresh browser with no Device cookie can reach the same
 setup from **Connect to a Station → Use a broker invitation**. The operator can run
 `npm run --silent connection:key -- inspect --home=<absolute-home-path>` and
 send its public JSON report through a separate trusted channel. Compare the

@@ -345,18 +345,23 @@ describe.skipIf(!chromiumAvailable)(
             );
           return {
             violations: describe(run.violations),
-            // A StatusGlyph is a symbol (●, ✓, ×) with an aria-label; axe
-            // files symbol-only text as "incomplete" because 1.4.3 does not
-            // apply to it — under either wording, and the one-character
-            // wording only for a status glyph. Anything else it could not
-            // decide is a failure here.
-            incomplete: describe(run.incomplete).filter(
-              (entry) =>
-                !/contains only non-text characters/.test(entry) &&
-                !(
-                  /\.status-glyph/.test(entry) &&
-                  /content is too short to determine/.test(entry)
-                ),
+            // A StatusGlyph is a symbol (●, ✓) with an aria-label; axe files
+            // symbol-only text as "incomplete" because 1.4.3 does not apply
+            // to it. Anything else it could not decide is a failure here.
+            incomplete: describe(
+              run.incomplete.map((group) => ({
+                ...group,
+                nodes: group.nodes.filter((node) => {
+                  const element =
+                    node.target.length === 1
+                      ? document.querySelector(node.target[0]!)
+                      : null;
+                  return !(
+                    element?.matches('.status-glyph[role="img"]') &&
+                    /^[^\p{L}\p{N}]+$/u.test(element.textContent?.trim() ?? '')
+                  );
+                }),
+              })),
             ),
             // Passes counted per selected row, not in total: a total lets
             // well-covered rows hide one axe rated nothing in.

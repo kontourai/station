@@ -1,12 +1,9 @@
 /**
  * @vitest-environment jsdom
  *
- * #2937: the chip matches a pull request by the checkout's LOCAL branch name,
- * exactly as before this change. Two real layouts pin that:
- * - fetch `o/r`, push `me/r` through `remote.origin.pushurl`, branch `feat`
- *   tracking `origin/feat`: the conflicting `feat` pull request lights it;
- * - branch `feat` tracking `origin/main`: a conflicting `main` pull request
- *   (the upstream's name, not this branch) does not.
+ * #2941: local branch and push-target owner identify the conflicting PR.
+ * Real checkouts cover fetch-only, pushurl, push-remote precedence, base-branch
+ * tracking and unknown-owner fallbacks without replacing git or the resolver.
  *
  * Everything below the forge is real: a temporary git repository, the
  * pull-request context resolver, the pull-request routes, the GitHub
@@ -49,7 +46,12 @@ function git(cwd: string, ...args: string[]) {
 }
 
 /** A checkout of `o/r` on branch `feat`, tracking `origin/<upstream>`. */
-function checkout(options: { upstream: string; pushurl?: string }) {
+function checkout(options: {
+  upstream: string;
+  pushurl?: string;
+  branch?: string;
+}) {
+  const branch = options.branch ?? 'feat';
   const repository = join(makeTempDir('station-pr-branch-'), 'checkout');
   mkdirSync(repository);
   git(repository, 'init', '-q', '-b', 'main');
@@ -64,18 +66,18 @@ function checkout(options: { upstream: string; pushurl?: string }) {
     'refs/remotes/origin/HEAD',
     'refs/remotes/origin/main',
   );
-  git(repository, 'checkout', '-q', '-b', 'feat');
+  if (branch !== 'main') git(repository, 'checkout', '-q', '-b', branch);
   git(
     repository,
     'update-ref',
     `refs/remotes/origin/${options.upstream}`,
     'HEAD',
   );
-  git(repository, 'config', 'branch.feat.remote', 'origin');
+  git(repository, 'config', `branch.${branch}.remote`, 'origin');
   git(
     repository,
     'config',
-    'branch.feat.merge',
+    `branch.${branch}.merge`,
     `refs/heads/${options.upstream}`,
   );
   return realpathSync(repository);
@@ -125,16 +127,46 @@ async function renderChip(routes: ReturnType<typeof station>['routes']) {
   return client;
 }
 
+async function expectUnlit(
+  routes: ReturnType<typeof station>['routes'],
+  gh: ReturnType<typeof station>['gh'],
+) {
+  const client = await renderChip(routes);
+  await waitFor(() =>
+    expect(
+      gh.mock.calls.filter(([args]) => args[0] === 'pr' && args[1] === 'list'),
+    ).toHaveLength(1),
+  );
+  await waitFor(() =>
+    expect(
+      client
+        .getQueryCache()
+        .findAll({ queryKey: ['pull-request-mergeability'] })
+        .some((query) => query.state.status === 'success'),
+    ).toBe(true),
+  );
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  });
+  expect(screen.queryByText('PR conflict')).toBeNull();
+  client.clear();
+}
+
 const contextOf = async (routes: ReturnType<typeof station>['routes']) =>
   (await routes.request('/context?project=station&thread=t1')).json();
 
-const pullRequest = (headRefName: string, mergeable: string) => ({
+const pullRequest = (
+  headRefName: string,
+  mergeable: string,
+  owner?: string,
+) => ({
+  ...(owner ? { headRepositoryOwner: { login: owner } } : {}),
   number: headRefName === 'feat' ? 7 : 8,
   headRefName,
   mergeable,
 });
 
-describe('session conflict chip matches the local branch (#2937)', () => {
+describe('session conflict chip matches local branch and push target (#2941)', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
   });
@@ -142,7 +174,7 @@ describe('session conflict chip matches the local branch (#2937)', () => {
   test('a pushurl checkout lights for its conflicting branch pull request', async () => {
     const { routes } = station(
       checkout({ upstream: 'feat', pushurl: 'https://github.com/me/r.git' }),
-      [pullRequest('feat', 'CONFLICTING')],
+      [pullRequest('feat', 'CONFLICTING', 'ME')],
     );
     await expect(contextOf(routes)).resolves.toEqual({
       success: true,
@@ -152,6 +184,7 @@ describe('session conflict chip matches the local branch (#2937)', () => {
         host: 'github.com',
         repository: { owner: 'o', name: 'r' },
         branch: 'feat',
+        pushTargetOwner: 'me',
       },
     });
     const client = await renderChip(routes);
@@ -167,27 +200,86 @@ describe('session conflict chip matches the local branch (#2937)', () => {
     await expect(contextOf(routes)).resolves.toMatchObject({
       data: { available: true, branch: 'feat' },
     });
-    const client = await renderChip(routes);
-    // The observation completed: both reads answered, and nothing lit.
-    await waitFor(() =>
-      expect(
-        gh.mock.calls.filter(
-          ([args]) => args[0] === 'pr' && args[1] === 'list',
-        ),
-      ).toHaveLength(1),
-    );
-    await waitFor(() =>
-      expect(
-        client
-          .getQueryCache()
-          .findAll({ queryKey: ['pull-request-mergeability'] })
-          .some((query) => query.state.status === 'success'),
-      ).toBe(true),
-    );
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 20));
+    await expectUnlit(routes, gh);
+  });
+  test('fetch-only origin lights for a same-repository PR', async () => {
+    const { routes } = station(checkout({ upstream: 'feat' }), [
+      pullRequest('feat', 'CONFLICTING', 'o'),
+    ]);
+    await expect(contextOf(routes)).resolves.toMatchObject({
+      data: { pushTargetOwner: 'o' },
     });
-    expect(screen.queryByText('PR conflict')).toBeNull();
+    const client = await renderChip(routes);
+    await waitFor(() => expect(screen.getByText('PR conflict')).toBeTruthy());
     client.clear();
   });
+
+  test('pushurl fork ignores a same-name PR from another owner', async () => {
+    const { routes, gh } = station(
+      checkout({ upstream: 'feat', pushurl: 'https://github.com/me/r.git' }),
+      [pullRequest('feat', 'CONFLICTING', 'other')],
+    );
+    await expect(contextOf(routes)).resolves.toMatchObject({
+      data: { branch: 'feat', pushTargetOwner: 'me' },
+    });
+    await expectUnlit(routes, gh);
+  });
+
+  test('main tracking origin/main ignores a conflicting fork main', async () => {
+    const { routes, gh } = station(
+      checkout({ upstream: 'main', branch: 'main' }),
+      [pullRequest('main', 'CONFLICTING', 'other')],
+    );
+    await expect(contextOf(routes)).resolves.toMatchObject({
+      data: { branch: 'main', pushTargetOwner: 'o' },
+    });
+    await expectUnlit(routes, gh);
+  });
+
+  test('unknown push owner retains branch-only matching', async () => {
+    const { routes } = station(
+      checkout({ upstream: 'feat', pushurl: '/unidentified/local/repository' }),
+      [pullRequest('feat', 'CONFLICTING', 'other')],
+    );
+    const context = await contextOf(routes);
+    expect(context.data.branch).toBe('feat');
+    expect(context.data).not.toHaveProperty('pushTargetOwner');
+    const client = await renderChip(routes);
+    await waitFor(() => expect(screen.getByText('PR conflict')).toBeTruthy());
+    client.clear();
+  });
+
+  test.each([
+    { branchRemote: 'named', pushDefault: 'origin', expected: 'me' },
+    { branchRemote: undefined, pushDefault: 'named', expected: 'me' },
+    { branchRemote: undefined, pushDefault: undefined, expected: 'o' },
+  ])(
+    'push remote precedence: $branchRemote / $pushDefault',
+    async ({ branchRemote, pushDefault, expected }) => {
+      const root = checkout({ upstream: 'feat' });
+      // A second fetch URL for the same repository preserves repository resolution.
+      git(root, 'remote', 'add', 'named', 'https://github.com/o/r.git');
+      git(
+        root,
+        'config',
+        'remote.named.pushurl',
+        'https://github.com/me/r.git',
+      );
+      if (branchRemote)
+        git(root, 'config', 'branch.feat.pushRemote', branchRemote);
+      if (pushDefault) git(root, 'config', 'remote.pushDefault', pushDefault);
+      const { routes } = station(root, [
+        pullRequest('feat', 'CONFLICTING', expected),
+      ]);
+      await expect(contextOf(routes)).resolves.toMatchObject({
+        data: {
+          repository: { owner: 'o', name: 'r' },
+          pushTargetOwner: expected,
+        },
+      });
+      const client = await renderChip(routes);
+      await waitFor(() => expect(screen.getByText('PR conflict')).toBeTruthy());
+      client.clear();
+    },
+  );
 });

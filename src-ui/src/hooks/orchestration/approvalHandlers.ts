@@ -26,9 +26,8 @@ export function handleRequestOpenedEvent(
   if (event.blocking === false) return;
 
   const pendingApprovals = [...(chat.pendingApprovals || [])];
-  if (!pendingApprovals.includes(event.requestId)) {
-    pendingApprovals.push(event.requestId);
-  }
+  const newlyOpened = !pendingApprovals.includes(event.requestId);
+  if (newlyOpened) pendingApprovals.push(event.requestId);
   // #3071: the turn this request names, read by the shared settle rule when
   // a turn ends (`settlePendingApprovalsOnTurnEnd`). A re-opened request is
   // a new ask, so its binding is this event's, or none.
@@ -40,6 +39,16 @@ export function handleRequestOpenedEvent(
       typeof event.turnId === 'string'
         ? { ...otherTurnIds, [event.requestId]: event.turnId }
         : otherTurnIds,
+    // A request that opens (again) waits on the user, whatever an earlier
+    // answer under the same id left behind. A re-delivered event for a
+    // request already pending changes nothing.
+    ...(newlyOpened && chat.answeredApprovals?.includes(event.requestId)
+      ? {
+          answeredApprovals: chat.answeredApprovals.filter(
+            (id) => id !== event.requestId,
+          ),
+        }
+      : {}),
     orchestrationStatus: 'awaiting-approval',
   });
 
@@ -109,6 +118,7 @@ function showApprovalToast(
   };
   const toastId = toastStore.showToolApproval({
     sessionId: event.threadId,
+    requestId: event.requestId,
     toolName: view.toolName,
     ...(view.toolPreview ? { toolPreview: view.toolPreview } : {}),
     agentName: view.agentName,
@@ -141,6 +151,18 @@ function showApprovalToast(
   activeChatsStore.updateChat(event.threadId, { approvalToasts });
 }
 
+/** Marks or unmarks a request as answered here; see `answeredApprovals`. */
+function setAnswered(threadId: string, requestId: string, answered: boolean) {
+  const chat = activeChatsStore.getChatForExecutionSession(threadId);
+  if (!chat) return;
+  const others = (chat.answeredApprovals ?? []).filter(
+    (id) => id !== requestId,
+  );
+  activeChatsStore.updateChat(threadId, {
+    answeredApprovals: answered ? [...others, requestId] : others,
+  });
+}
+
 /**
  * #2344: the toast used to fire the answer and forget it, so a refused or
  * failed decision showed nothing while the inline card named it. The toast
@@ -155,6 +177,11 @@ async function answerFromToast(
   view: ApprovalToastView,
   decision: 'accept' | 'acceptForSession' | 'decline',
 ) {
+  // The request stops waiting on the user at the click, not at the engine's
+  // `request.resolved`: the queue card is already gone, and a status surface
+  // that kept saying "Approval needed" until the round trip finished would
+  // contradict it.
+  setAnswered(event.threadId, event.requestId, true);
   try {
     // Loaded on demand: the answer path runs only after a click, so it stays
     // out of the entry chunk (same precedent as queueDrain's dispatcher). A
@@ -179,6 +206,8 @@ async function answerFromToast(
       error instanceof Error && error.message
         ? error.message
         : 'Station did not accept this decision.';
+    // Not delivered: the request waits on the user again.
+    setAnswered(event.threadId, event.requestId, false);
     toastStore.show(
       `Your decision on ${view.toolName} was not delivered: ${reason}`,
       event.threadId,
@@ -255,6 +284,9 @@ export function handleRequestResolvedEvent(
   activeChatsStore.updateChat(event.threadId, {
     pendingApprovals,
     pendingApprovalTurnIds,
+    answeredApprovals: (chat.answeredApprovals ?? []).filter(
+      (id) => id !== event.requestId,
+    ),
     approvalToasts,
     ...(event.blocking === false
       ? {}

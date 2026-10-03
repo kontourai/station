@@ -249,9 +249,11 @@ describe('translateChatError', () => {
       message: 'Synthetic transport detail.',
     });
 
-    expect(result.title).toBe('Station is handling too many requests');
+    expect(result.title).toBe('Station connection is busy');
     expect(result.body).toBe('Synthetic transport detail.');
-    expect(result.hint).toBe('Retry your request in a moment.');
+    expect(result.hint).toBe(
+      'Wait for current requests to finish, then Retry.',
+    );
   });
 
   it.each([
@@ -627,5 +629,23 @@ describe('#1796 full-access refusal', () => {
     expect(translated.title).toBe('Full access was not applied');
     expect(translated.body).not.toContain('evil.example');
     expect(translated.hint).toBeUndefined();
+  });
+});
+
+describe('attachment refusal (attachment_input_unsupported)', () => {
+  it('is deterministic: no "temporary" hint, not retryable, and names the fix', () => {
+    const translated = translateChatError({
+      status: 400,
+      // The literal the server forwards, not the constant.
+      code: 'attachment_input_unsupported',
+      message: 'This engine did not advertise image attachment support.',
+    });
+    expect(translated.title).toBe("This engine can't take these attachments");
+    expect(translated.body).toBe(
+      'This engine did not advertise image attachment support. Nothing was sent.',
+    );
+    expect(translated.hint).toContain('Remove the attachments');
+    expect(translated.hint).not.toContain('temporary');
+    expect(translated.retryable).toBe(false);
   });
 });

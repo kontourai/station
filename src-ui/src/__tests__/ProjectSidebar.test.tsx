@@ -100,8 +100,8 @@ vi.mock('../contexts/AgentsContext', () => ({
 vi.mock('../contexts/ActiveChatsContext', () => ({
   useAllActiveChats: () => chats,
 }));
-vi.mock('../contexts/open-chats-store', () => ({
-  useOpenChats: () =>
+vi.mock('../contexts/open-chats-store', () => {
+  const fakeOpenChats = () =>
     Object.entries(chats).map(([id, chat]: [string, any]) => ({
       id,
       chatSessionId: id,
@@ -114,16 +114,23 @@ vi.mock('../contexts/open-chats-store', () => ({
       modelLabel: chat.model ?? 'Model not reported',
       lifecycleLabel: 'Recent',
       updatedAt: 0,
-    })),
-  openChatsStore: {
-    focus: vi.fn(),
-    openCollection: vi.fn(),
-    registerNavigation: ({ openCollection }: any) => {
-      openChatsStore.openCollection = openCollection;
-      return vi.fn();
+    }));
+  return {
+    useOpenChats: fakeOpenChats,
+    useOpenChatInbox: () => ({
+      items: fakeOpenChats(),
+      currentSessionIdByConversation: new Map(),
+    }),
+    openChatsStore: {
+      focus: vi.fn(),
+      openCollection: vi.fn(),
+      registerNavigation: ({ openCollection }: any) => {
+        openChatsStore.openCollection = openCollection;
+        return vi.fn();
+      },
     },
-  },
-}));
+  };
+});
 vi.mock('../contexts/NavigationContext', () => {
   // NavigationContext publishes two read hooks: `useNavigation` (subscribes to
   // the store, optionally through a selector) and `useNavigationActions` (the
@@ -597,7 +604,7 @@ describe('ProjectSidebar panel order (#2059)', () => {
       ).textContent?.trim(),
     );
 
-  test('lists header, Home, Activity, then the projects — and no other destination rows', () => {
+  test('lists Home and Activity before the projects', () => {
     resetState();
     projects.push(
       { id: 'p1', slug: 'station', name: 'Station' },
@@ -611,7 +618,7 @@ describe('ProjectSidebar panel order (#2059)', () => {
     expect(panelRowLabels()).toEqual(['Home', 'Activity', 'Station', 'Ferry']);
   });
 
-  test('removes every configuration destination and both group headers from the panel', () => {
+  test('keeps individual customization destinations out of the panel', () => {
     resetState();
     renderSidebar(<ProjectSidebar />);
 
@@ -624,11 +631,9 @@ describe('ProjectSidebar panel order (#2059)', () => {
       'Registry',
       'Review',
       'Plugins',
-      'Schedule',
       'Developer',
       'Notifications',
       'Settings',
-      'Customize',
       'System',
     ]) {
       expect(

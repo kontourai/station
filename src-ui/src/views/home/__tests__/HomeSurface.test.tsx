@@ -108,7 +108,7 @@ describe('HomeSurface live-lane focus', () => {
     const open = (title: string) =>
       screen
         .getByText(title)
-        .closest<HTMLElement>('.home-view__task-open') as HTMLElement;
+        .closest<HTMLElement>('.chat-dock-inbox__item') as HTMLElement;
     open('Wire the delegate verbs').focus();
     expect(document.activeElement).toBe(open('Wire the delegate verbs'));
 
@@ -137,9 +137,7 @@ describe('HomeSurface composition', () => {
     renderHome({
       workItems: [item('a', 'Some work', 'Station', 3, 'Running')],
     });
-    expect(
-      screen.getByRole('heading', { name: 'What do you want to work on?' }),
-    ).toBeTruthy();
+    expect(screen.getByRole('heading', { name: "What's next?" })).toBeTruthy();
     expect(screen.getByRole('region', { name: 'Work actions' })).toBeTruthy();
   });
 
@@ -174,8 +172,11 @@ describe('HomeSurface composition', () => {
 
   test('the start card names the agent it can actually open on', () => {
     renderHome();
-    const card = screen.getByRole('button', { name: /Start direct chat/ });
-    expect(card.textContent).toContain('Codex · gpt-5.4');
+    const card = screen.getByRole('button', { name: /Start a chat/ });
+    expect(card).toHaveProperty('disabled', true);
+    expect(
+      screen.getByRole('textbox', { name: 'What would you like done?' }),
+    ).toBeTruthy();
   });
 
   test('with no runnable agent the start card becomes a set-up CTA', () => {
@@ -190,14 +191,28 @@ describe('HomeSurface composition', () => {
         effectiveModel: { label: 'Model not reported' },
       },
     });
-    expect(screen.queryByRole('button', { name: /Start direct chat/ })).toBe(
-      null,
+    expect(screen.getByRole('button', { name: /Start a chat/ })).toHaveProperty(
+      'disabled',
+      true,
     );
-    const cta = screen.getByRole('button', { name: /Set up an agent/ });
-    expect(cta.textContent).toContain('Set up an AI app to start chatting');
+    const cta = screen.getByRole('button', { name: /Start a chat/ });
+    fireEvent.change(
+      screen.getByRole('textbox', { name: 'What would you like done?' }),
+      { target: { value: 'Help me' } },
+    );
+    expect(cta).toHaveProperty('disabled', false);
     // And it names no agent at all.
     expect(cta.textContent).not.toContain('Codex');
   });
+
+  test.each([true, false])(
+    'Home can open agent discovery when chat readiness is %s',
+    (startReady) => {
+      const { onNavigate } = renderHome({ startReady });
+      fireEvent.click(screen.getByRole('button', { name: /Explore agents/ }));
+      expect(onNavigate).toHaveBeenCalledExactlyOnceWith({ type: 'agents' });
+    },
+  );
 
   test('renders the activity chart and the counts alongside one work list', () => {
     renderHome({
@@ -221,13 +236,7 @@ describe('HomeSurface composition', () => {
     ).toHaveLength(1);
   });
 
-  /**
-   * archive#3227 A7, carried over: the "Projects" number and the chart's rows
-   * must fold the same list. Pinned as the INVARIANT, not a spot value — the
-   * fixture deliberately has ONE configured project against five distinct
-   * project labels, the populations the audit caught disagreeing.
-   */
-  test('the Projects count equals the project rows the chart renders', () => {
+  test('keeps unattributed activity visible without calling its groups projects', () => {
     renderHome({
       workItems: [
         item('a', 'Attributed work', 'Station', 5, 'Running'),
@@ -251,15 +260,9 @@ describe('HomeSurface composition', () => {
     });
     const rows = document.querySelectorAll('.home-heat__row');
     expect(rows.length).toBe(5);
-    const projectStat = Array.from(
-      document.querySelectorAll('.home-pulse__stat'),
-    ).find(
-      (stat) =>
-        stat.querySelector('.home-pulse__label')?.textContent === 'Projects',
-    );
-    expect(projectStat?.querySelector('.home-pulse__value')?.textContent).toBe(
-      String(rows.length),
-    );
+    expect(
+      document.querySelector('.home-pulse__stats')?.textContent,
+    ).not.toContain('Projects');
   });
 
   /**
@@ -477,11 +480,7 @@ describe('HomeSurface: what is clickable', () => {
     expect(screen.queryByRole('button', { name: /^Needs you,/ })).toBeNull();
     expect(screen.queryByRole('button', { name: /^Idle,/ })).toBeNull();
     expect(screen.queryByRole('button', { name: /^Active now,/ })).toBeNull();
-    expect(
-      screen.getByRole('button', {
-        name: 'Projects, 1, show where the work has been',
-      }),
-    ).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /^Projects,/ })).toBeNull();
     // Nothing is snoozed and nothing is in the "Recently finished" lane, so
     // neither renders and neither count offers a destination.
     expect(screen.queryByRole('button', { name: /^Snoozed,/ })).toBeNull();
@@ -548,7 +547,9 @@ describe('HomeSurface: agent icons', () => {
         }),
       ],
     });
-    expect(document.querySelectorAll('.home-view__task-icon')).toHaveLength(1);
+    expect(document.querySelectorAll('.chat-dock-inbox__avatar')).toHaveLength(
+      1,
+    );
   });
 
   /**
@@ -566,13 +567,17 @@ describe('HomeSurface: agent icons', () => {
         }),
       ],
     });
-    expect(document.querySelectorAll('.home-view__task-icon')).toHaveLength(0);
+    expect(document.querySelectorAll('.chat-dock-inbox__avatar')).toHaveLength(
+      0,
+    );
     // …and the row still says who it was attributed to, in text.
     expect(screen.getAllByText(/Codex/).length).toBeGreaterThan(0);
   });
 
   test('a row naming no agent at all draws no icon', () => {
     renderHome({ workItems: [item('a', 'Work', 'Station', 3, 'Running')] });
-    expect(document.querySelectorAll('.home-view__task-icon')).toHaveLength(0);
+    expect(document.querySelectorAll('.chat-dock-inbox__avatar')).toHaveLength(
+      0,
+    );
   });
 });

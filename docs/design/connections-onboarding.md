@@ -22,6 +22,21 @@
 > engine setup has its own Add engine flow. Legacy URLs redirect to the corresponding
 > section. Provider presets and explicit configuration remain shared design rules.
 
+## Intent-first work entry
+
+Home accepts the task before configuration choices. A submitted request uses the
+canonical ready default, can materialize an already-ready engine, and can connect
+an installed, unconnected app through the existing owning APIs. Detection alone
+is not success: warned preparation does not launch the request, explicitly
+disabled apps are excluded, and the catalog is refreshed before dispatch.
+Credentials, account permissions, and a necessary target remain real user
+decisions. The full picker and configuration editors are optional customization.
+
+The usage disclosure is a separate decision. The automatic Home path returns to
+work after that choice; it does not proceed into engine or personalization
+questions or mark the optional setup run complete. **Personalize Station** opens
+that run explicitly after the work entry.
+
 ## 1. The detection principle: observe infrastructure, never read secrets
 
 Detection exists to shorten onboarding, not to configure on the user's behalf. The line:
@@ -59,7 +74,11 @@ the shipped slices.
 **Recorded per-CLI config-surface audit** (the original wave's observations).
 Current spawn code additionally layers Station's augmented process environment and
 connection environment. The ACP process also supplies an explicit augmented child
-environment; the old “no env key” row is not the current spawn contract. External SDK
+environment; the old “no env key” row is not the current spawn contract. Since #2932
+Station makes the Claude Code spawn call itself, through the SDK's
+`spawnClaudeCodeProcess` option (`claude-code-spawn.ts`), to read permission requests
+from the engine's stdout. The SDK still builds the command, arguments and environment
+from `Options`, so the environment column below is unchanged. External SDK
 and CLI behavior below retains the probe's original version scope.
 
 | Engine | Spawn path today | Env at spawn | Config-home override | Station read paths of that config |

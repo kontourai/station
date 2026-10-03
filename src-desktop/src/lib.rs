@@ -448,6 +448,24 @@ struct NativeCredentialReference {
 struct NativeCommandError {
     code: &'static str,
     message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    capacity: Option<NativeHttpCapacitySnapshot>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct NativeHttpCapacitySnapshot {
+    pending_requests: usize,
+    pending_limit: usize,
+    active_requests: usize,
+    active_limit: usize,
+    origin_requests: usize,
+    origin_request_limit: usize,
+    origin_streams: usize,
+    origin_stream_limit: usize,
+    retry_after_ms: u64,
+    occupants: Vec<NativeHttpOccupantSnapshot>,
+    queue_head: Option<NativeHttpOccupantSnapshot>,
 }
 
 impl NativeCommandError {
@@ -455,6 +473,7 @@ impl NativeCommandError {
         Self {
             code,
             message: message.into(),
+            capacity: None,
         }
     }
 }
@@ -932,6 +951,7 @@ struct NativeHttpAdmissionState {
     /// the request id, which a later request may reuse).
     orphaned_calls: std::collections::HashMap<u64, NativeOrphanedHttpCall>,
     next_call_token: u64,
+    last_capacity_log: Option<Instant>,
     /// Every admission-slot release made through `NativeHttpSlot` or an
     /// abandon, so tests can prove a slot is released exactly once.
     #[cfg(test)]
@@ -944,13 +964,67 @@ struct NativeOrphanedHttpCall {
     liveness: bool,
 }
 
+struct NativeHttpRequestObservation {
+    started_at: Instant,
+    method: String,
+    route: &'static str,
+}
+
+fn native_http_route_category(path: &str) -> &'static str {
+    // Fixed categories only: URLs can carry private IDs or one-use receipts.
+    [
+        "orchestration",
+        "sessions",
+        "config",
+        "plugins",
+        "system",
+        "tasks",
+        "projects",
+        "agents",
+        "monitoring",
+        "scheduler",
+        "notifications",
+        "connections",
+        "events",
+        "auth",
+        "uploads",
+        "files",
+        "knowledge",
+        "registry",
+    ]
+    .into_iter()
+    .find(|category| {
+        path.strip_prefix("/api/").is_some_and(|tail| {
+            tail == *category
+                || tail
+                    .strip_prefix(category)
+                    .is_some_and(|rest| rest.starts_with('/'))
+        })
+    })
+    .unwrap_or("other")
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct NativeHttpOccupantSnapshot {
+    method: String,
+    route_category: &'static str,
+    age_ms: u64,
+    phase: &'static str,
+    stream: bool,
+    same_origin: bool,
+}
+
 struct NativePendingHttpRequest {
     request_id: String,
+    observation: Option<NativeHttpRequestObservation>,
     origin: String,
     cancel: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
 struct NativeActiveHttpRequest {
+    observation: Option<NativeHttpRequestObservation>,
+    phase: &'static str,
     cancel: std::sync::Arc<std::sync::atomic::AtomicBool>,
     origin: String,
     /// Whether this reservation draws on the stream allowance rather than the
@@ -3095,6 +3169,8 @@ fn admit_native_http_request(
     active.insert(
         request_id.to_string(),
         NativeActiveHttpRequest {
+            observation: None,
+            phase: "awaiting-response",
             cancel,
             origin: origin.to_string(),
             stream: is_stream,
@@ -3138,6 +3214,7 @@ fn reserve_native_http_request(
     origin: &str,
     is_stream_request: bool,
     cancel: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    observation: Option<NativeHttpRequestObservation>,
 ) -> Result<NativeHttpSlot, NativeCommandError> {
     use std::sync::atomic::Ordering;
 
@@ -3156,18 +3233,136 @@ fn reserve_native_http_request(
         ));
     }
     if is_stream_request {
-        return admit_native_http_request(&mut state.active, request_id, origin, true, cancel)
-            .map(|()| NativeHttpSlot::admitted(cancellations, request_id))
-            .map_err(native_http_capacity_refusal);
+        admit_native_http_request(&mut state.active, request_id, origin, true, cancel)
+            .map_err(native_http_capacity_refusal)?;
+        state
+            .active
+            .get_mut(request_id)
+            .expect("request was admitted")
+            .observation = observation;
+        return Ok(NativeHttpSlot::admitted(cancellations, request_id));
     }
 
     if state.pending_reads.len() >= NATIVE_HTTP_PENDING_READ_LIMIT {
-        return Err(native_http_capacity_refusal(
-            "native Station request queue capacity reached".to_string(),
+        let mut occupants: Vec<_> = state
+            .active
+            .values()
+            .filter(|request| !request.liveness)
+            .filter_map(|request| {
+                request
+                    .observation
+                    .as_ref()
+                    .map(|observation| NativeHttpOccupantSnapshot {
+                        method: observation.method.clone(),
+                        route_category: observation.route,
+                        age_ms: observation
+                            .started_at
+                            .elapsed()
+                            .as_millis()
+                            .min(u64::MAX as u128) as u64,
+                        phase: request.phase,
+                        stream: request.stream,
+                        same_origin: request.origin == origin,
+                    })
+            })
+            .collect();
+        occupants.sort_by_key(|request| (request.stream, std::cmp::Reverse(request.age_ms)));
+        let queue_head = state.pending_reads.front().and_then(|request| {
+            request
+                .observation
+                .as_ref()
+                .map(|observation| NativeHttpOccupantSnapshot {
+                    method: observation.method.clone(),
+                    route_category: observation.route,
+                    age_ms: observation
+                        .started_at
+                        .elapsed()
+                        .as_millis()
+                        .min(u64::MAX as u128) as u64,
+                    phase: "waiting-for-admission",
+                    stream: false,
+                    same_origin: request.origin == origin,
+                })
+        });
+        let capacity = NativeHttpCapacitySnapshot {
+            pending_requests: state.pending_reads.len(),
+            pending_limit: NATIVE_HTTP_PENDING_READ_LIMIT,
+            active_requests: native_http_non_liveness_active_count(&state.active),
+            active_limit: NATIVE_HTTP_GLOBAL_REQUEST_LIMIT,
+            origin_requests: state
+                .active
+                .values()
+                .filter(|request| request.origin == origin && !request.stream && !request.liveness)
+                .count(),
+            origin_request_limit: NATIVE_HTTP_PER_ORIGIN_REQUEST_LIMIT,
+            origin_streams: state
+                .active
+                .values()
+                .filter(|request| request.origin == origin && request.stream && !request.liveness)
+                .count(),
+            origin_stream_limit: NATIVE_HTTP_PER_ORIGIN_STREAM_LIMIT,
+            retry_after_ms: 250,
+            occupants,
+            queue_head,
+        };
+        let mut error = native_http_capacity_refusal(format!(
+            "Native request queue is full: {}/{} waiting; {}/{} active across Stations; \
+             {}/{} ordinary requests and {}/{} event streams active for this Station. \
+             This request has not been sent.",
+            capacity.pending_requests,
+            capacity.pending_limit,
+            capacity.active_requests,
+            capacity.active_limit,
+            capacity.origin_requests,
+            capacity.origin_request_limit,
+            capacity.origin_streams,
+            capacity.origin_stream_limit,
         ));
+        for occupant in capacity.occupants.iter().take(3) {
+            error.message.push_str(&format!(
+                " Active request: {} {} ({}s, {}, {}, {}).",
+                occupant.method,
+                occupant.route_category,
+                occupant.age_ms / 1000,
+                occupant.phase,
+                if occupant.stream {
+                    "stream"
+                } else {
+                    "ordinary"
+                },
+                if occupant.same_origin {
+                    "this Station"
+                } else {
+                    "another Station"
+                },
+            ));
+        }
+        if let Some(head) = &capacity.queue_head {
+            error.message.push_str(&format!(
+                " Queue head: {} {} ({}s, {}).",
+                head.method,
+                head.route_category,
+                head.age_ms / 1000,
+                if head.same_origin {
+                    "this Station"
+                } else {
+                    "another Station"
+                }
+            ));
+        }
+        if state
+            .last_capacity_log
+            .is_none_or(|last| last.elapsed() >= Duration::from_secs(5))
+        {
+            log::warn!("{}", error.message);
+            state.last_capacity_log = Some(Instant::now());
+        }
+        error.capacity = Some(capacity);
+        return Err(error);
     }
 
     state.pending_reads.push_back(NativePendingHttpRequest {
+        observation,
         request_id: request_id.to_string(),
         origin: origin.to_string(),
         cancel: std::sync::Arc::clone(&cancel),
@@ -3195,6 +3390,8 @@ fn reserve_native_http_request(
             state.active.insert(
                 request_id.to_string(),
                 NativeActiveHttpRequest {
+                    observation: pending.observation,
+                    phase: "awaiting-response",
                     cancel: pending.cancel,
                     origin: pending.origin,
                     stream: false,
@@ -3268,6 +3465,8 @@ fn reserve_native_http_liveness_probe(
     state.active.insert(
         request_id.to_string(),
         NativeActiveHttpRequest {
+            observation: None,
+            phase: "awaiting-response",
             cancel,
             origin: origin.to_string(),
             stream: false,
@@ -3948,6 +4147,11 @@ fn station_native_http_request_to_sink_blocking(
             &origin,
             is_stream_request,
             Arc::clone(&cancel),
+            Some(NativeHttpRequestObservation {
+                started_at: Instant::now(),
+                method: method.clone(),
+                route: native_http_route_category(parsed_url.path()),
+            }),
         )?
     };
     let result = (|| -> Result<(), NativeHttpBrokerFailure> {
@@ -4017,6 +4221,17 @@ fn station_native_http_request_to_sink_blocking(
                 )
                 .map_err(|error| NativeHttpBrokerFailure::coded(error.code))?;
                 let open_stream = native_response_is_open_stream(response.headers());
+                let (state_lock, _) = &*cancellations.0;
+                if let Ok(mut state) = state_lock.lock() {
+                    if let Some(active) = state.active.get_mut(&request_id) {
+                        active.phase = if open_stream {
+                            "receiving-event-stream"
+                        } else {
+                            "receiving-body"
+                        };
+                    }
+                }
+
                 let status = response.status().as_u16();
                 sink.send(NativeHttpMessage::Response {
                     status,
@@ -15771,6 +15986,7 @@ mod tests {
             "https://station.example.test",
             false,
             cancel(),
+            None,
         )
         .expect("the first request is admitted");
 
@@ -15780,6 +15996,7 @@ mod tests {
             "https://station.example.test",
             false,
             cancel(),
+            None,
         )
         .expect_err("a duplicate request id is refused");
 
@@ -15810,6 +16027,8 @@ mod tests {
             state.active.insert(
                 format!("seed-{index}"),
                 NativeActiveHttpRequest {
+                    observation: None,
+                    phase: "awaiting-response",
                     cancel: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
                     origin: origin.to_string(),
                     stream: false,
@@ -15835,6 +16054,7 @@ mod tests {
                 origin,
                 false,
                 std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+                None,
             )
             .unwrap();
             first_tx.send("queued-first").unwrap();
@@ -15850,6 +16070,7 @@ mod tests {
                 origin,
                 false,
                 std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+                None,
             )
             .unwrap();
             admitted_tx.send("queued-second").unwrap();
@@ -15898,6 +16119,7 @@ mod tests {
                 origin,
                 false,
                 std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+                None,
             )
             .unwrap();
             admitted_tx.send(request_id).unwrap();
@@ -16163,6 +16385,7 @@ mod tests {
                 origin,
                 false,
                 std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+                None,
             )
             .unwrap_err()
         });
@@ -16263,6 +16486,7 @@ mod tests {
                 origin,
                 false,
                 cancel,
+                None,
             ));
         });
         admitted_rx
@@ -16326,9 +16550,15 @@ mod tests {
     fn native_http_uncancelled_call_returns_its_result_and_keeps_its_slot() {
         let cancellations = NativeHttpCancellation::default();
         let origin = "https://station.example.test";
-        let mut slot =
-            reserve_native_http_request(&cancellations, "read", origin, false, new_cancel_flag())
-                .unwrap();
+        let mut slot = reserve_native_http_request(
+            &cancellations,
+            "read",
+            origin,
+            false,
+            new_cancel_flag(),
+            None,
+        )
+        .unwrap();
         let outcome =
             run_native_http_call_cancellable(&mut slot, &new_cancel_flag(), || "response").unwrap();
         assert!(matches!(
@@ -16556,6 +16786,7 @@ mod tests {
             &origin,
             false,
             std::sync::Arc::clone(&cancel),
+            None,
         )
         .unwrap();
         let request = ureq::http::Request::builder()
@@ -16696,9 +16927,15 @@ mod tests {
     fn native_http_exchange_releases_a_completed_slot_once() {
         let cancellations = NativeHttpCancellation::default();
         let origin = "https://station.example.test";
-        let slot =
-            reserve_native_http_request(&cancellations, "done", origin, false, new_cancel_flag())
-                .unwrap();
+        let slot = reserve_native_http_request(
+            &cancellations,
+            "done",
+            origin,
+            false,
+            new_cancel_flag(),
+            None,
+        )
+        .unwrap();
         let handled = std::cell::Cell::new(false);
         run_admitted_native_http_exchange(
             slot,
@@ -16728,6 +16965,7 @@ mod tests {
             origin,
             false,
             std::sync::Arc::clone(&cancel),
+            None,
         )
         .unwrap();
         let (release_call, call) = blocked_native_call();
@@ -16766,6 +17004,7 @@ mod tests {
             origin,
             false,
             new_cancel_flag(),
+            None,
         )
         .unwrap();
         let failure = run_admitted_native_http_exchange(
@@ -16789,6 +17028,7 @@ mod tests {
             origin,
             false,
             new_cancel_flag(),
+            None,
         )
         .unwrap();
         let panicked = std::thread::spawn(move || {
@@ -17142,6 +17382,8 @@ mod tests {
                 state.active.insert(
                     format!("global-{index}"),
                     NativeActiveHttpRequest {
+                        observation: None,
+                        phase: "awaiting-response",
                         cancel: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
                         origin: format!("https://station-{index}.example.test"),
                         stream: true,
@@ -17156,6 +17398,7 @@ mod tests {
             "https://stream.example.test",
             true,
             std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            None,
         )
         .unwrap_err();
         assert_eq!(stream_refusal.code, "transport_capacity");
@@ -17168,6 +17411,7 @@ mod tests {
                 "https://read.example.test",
                 false,
                 std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+                None,
             )
         });
         wait_for_pending_native_reads(&cancellations, 1);
@@ -17184,11 +17428,39 @@ mod tests {
     #[test]
     fn native_http_pending_read_queue_is_bounded() {
         let cancellations = NativeHttpCancellation::default();
+        fill_native_read_allowance(&cancellations, "https://station.example.test");
         {
             let (state_lock, _) = &*cancellations.0;
             let mut state = state_lock.lock().unwrap();
+            state.active.get_mut("seed-0").unwrap().observation =
+                Some(NativeHttpRequestObservation {
+                    started_at: Instant::now() - Duration::from_secs(30),
+                    method: "GET".to_string(),
+                    route: native_http_route_category("/api/config/private-canary?secret=canary"),
+                });
+            state.active.get_mut("seed-0").unwrap().phase = "receiving-body";
+            admit_native_http_request(
+                &mut state.active,
+                "healthy-stream",
+                "https://station.example.test",
+                true,
+                std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            )
+            .unwrap();
+            let stream = state.active.get_mut("healthy-stream").unwrap();
+            stream.observation = Some(NativeHttpRequestObservation {
+                started_at: Instant::now() - Duration::from_secs(1800),
+                method: "GET".to_string(),
+                route: "monitoring",
+            });
+            stream.phase = "receiving-event-stream";
             for index in 0..NATIVE_HTTP_PENDING_READ_LIMIT {
                 state.pending_reads.push_back(NativePendingHttpRequest {
+                    observation: Some(NativeHttpRequestObservation {
+                        started_at: Instant::now() - Duration::from_secs(15),
+                        method: "GET".to_string(),
+                        route: "system",
+                    }),
                     request_id: format!("pending-{index}"),
                     origin: "https://station.example.test".to_string(),
                     cancel: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
@@ -17202,13 +17474,51 @@ mod tests {
             "https://station.example.test",
             false,
             std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            None,
         )
         .unwrap_err();
         assert_eq!(refusal.code, "transport_capacity");
+        let wire_error = serde_json::to_value(&refusal).unwrap();
+        assert_eq!(wire_error["capacity"]["pendingRequests"], 64);
+        assert_eq!(wire_error["capacity"]["pendingLimit"], 64);
+        assert_eq!(wire_error["capacity"]["activeRequests"], 9);
+        assert_eq!(wire_error["capacity"]["activeLimit"], 32);
+        assert_eq!(wire_error["capacity"]["originRequests"], 8);
+        assert_eq!(wire_error["capacity"]["originRequestLimit"], 8);
+        assert_eq!(wire_error["capacity"]["originStreams"], 1);
+        assert_eq!(wire_error["capacity"]["originStreamLimit"], 12);
+        assert_eq!(wire_error["capacity"]["retryAfterMs"], 250);
         assert_eq!(
-            refusal.message,
-            "native Station request queue capacity reached"
+            wire_error["capacity"]["occupants"][0]["routeCategory"],
+            "config"
         );
+        assert_eq!(
+            wire_error["capacity"]["occupants"][0]["phase"],
+            "receiving-body"
+        );
+        assert_eq!(wire_error["capacity"]["occupants"][0]["sameOrigin"], true);
+        assert!(
+            wire_error["capacity"]["occupants"][0]["ageMs"]
+                .as_u64()
+                .unwrap()
+                >= 30_000
+        );
+        assert_eq!(
+            wire_error["capacity"]["queueHead"]["routeCategory"],
+            "system"
+        );
+        assert_eq!(
+            wire_error["capacity"]["queueHead"]["phase"],
+            "waiting-for-admission"
+        );
+        assert!(refusal.message.contains("64/64 waiting"));
+        assert!(refusal.message.contains("GET config (30s, receiving-body"));
+        assert!(!wire_error.to_string().contains("canary"));
+        assert!(refusal.message.contains("This request has not been sent"));
+        let (state_lock, _) = &*cancellations.0;
+        let state = state_lock.lock().unwrap();
+        assert_eq!(state.pending_reads.len(), 64);
+        assert!(!state.active.contains_key("pending-overflow"));
     }
 
     #[test]
@@ -17592,6 +17902,7 @@ mod tests {
                 "https://basis.example",
                 false,
                 std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+                None,
             )
         });
         wait_for_pending_native_reads(&cancellations, 1);

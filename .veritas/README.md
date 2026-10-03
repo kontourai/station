@@ -128,7 +128,7 @@ source drift. See [documentation maintenance](../docs/guides/documentation.md#ge
 None of these mechanisms proves the semantics
 of a prose claim or covers source dependencies absent from the ledger.
 
-Hosted `fast-checks` now aggregates an affected-test plan, four shards, and
+Hosted `fast-checks` now aggregates an affected-test plan, one to four planned shards, and
 `fast-checks-statics`. The statics job runs `ci:fast` with the explicit statics
 scope and includes its Veritas readiness call. The required documentation
 evidence is unioned with default, routed or explicitly selected checks; it
