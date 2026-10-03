@@ -24,7 +24,7 @@
 
     {"path":"docs/guides/documentation.md","digest":"35dd6dd9ae31089fcab2adaf2d58595f809a9e93cf85025c430b71350c576c15","revision":"595059eafa17ef6b7a39217a405619ecbfac2270"},
 
-    {"path":"docs/guides/keyboard-shortcuts.md","digest":"f861855d04df4423c67c69331a5114f27346c0e72b1b040c9c670a36fe2ac540","revision":"89765352964045a079d13a17bee54ab2de7b83e0"},
+    {"path":"docs/guides/keyboard-shortcuts.md","digest":"f861855d04df4423c67c69331a5114f27346c0e72b1b040c9c670a36fe2ac540","revision":"306ebf4317397e0b06c543c69b4f770184f50654"},
 
     {"path":"docs/guides/monitoring.md","digest":"b015e5cd44b250ca16a49aaae95721d5529325200b70d1ff32056c515c0fd06c","revision":"a11755821186eaeb034b77e970dfa372c5c7f789"},
 
@@ -34,9 +34,9 @@
 
     {"path":"docs/learn/walkthroughs.md","digest":"5e9132c4454e34d336fbc044491ec7f279926e057fe261654eafaafe05ea3b16","revision":"48fd2c0212f17cc11ba07ed86b52f253c63e3f68"},
 
-    {"path":"docs/reference/cli.md","digest":"62c03f1a50009e0973510034c314c46df560dddf761547e6798d86808eb116fd","revision":"020eb6a14e05313bb66724ec3504e613717e6ed1"},
+    {"path":"docs/reference/cli.md","digest":"62c03f1a50009e0973510034c314c46df560dddf761547e6798d86808eb116fd","revision":"19aff2a08b9739ad9ffbda39ff8cb19b026fda82"},
 
-    {"path":"docs/reference/config.md","digest":"75eb18568340e206957366d15dafef202282bcb2d86d1b96c01a2922ffb1ddc6","revision":"45c71d38091f91e917006dacdc7e2a0bb3cd58a4"},
+    {"path":"docs/reference/config.md","digest":"75eb18568340e206957366d15dafef202282bcb2d86d1b96c01a2922ffb1ddc6","revision":"c2c67c2f25d565ea97d757b370f2bbf942a9588b"},
 
     {"path":"docs/reference/metrics.md","digest":"52a966457313c28546da0ca12f53cfab6ec1b754c1eca415a26bfce55576db08","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 
