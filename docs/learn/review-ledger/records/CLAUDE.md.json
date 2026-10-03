@@ -14,7 +14,7 @@
   "sources": [
     {"path":".veritas/GOVERNANCE.md","digest":"896ca1d26e71e4e8d691fb2539888282903f15024cd1dc2585299d682b9d269c","revision":"d0ca944c58c8dd4de5a17563eb97d06dbdbe3512"},
 
-    {"path":"AGENTS.md","digest":"0e31823767475525929724dcdebec21bfe67d0e3d624ffdb2d40f687dc68c410","revision":"c53537e2f86111cd65178dc7744cddbb949f819f"}
+    {"path":"AGENTS.md","digest":"c3046dc938bd5d230bcfd718fe23b5a1d1b8f6c65c786e0cae090f80d8e1d094","revision":"e70cad9b9ed6b96c438871e21b7349e1ab3d8fe0"}
   ],
 
   "checks": [

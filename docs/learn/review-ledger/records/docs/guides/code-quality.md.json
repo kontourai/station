@@ -36,7 +36,7 @@
 
     {"path":".veritas/repo-standards/default.repo-standards.json","digest":"03b4e8ec9e6d2369d81fe31700dd3804df1a1259d3ba4c3e977feb27e17edbed","revision":"888c42dffff4aae57a7a6f6f397c8ba1ecca96ee"},
 
-    {"path":"AGENTS.md","digest":"0e31823767475525929724dcdebec21bfe67d0e3d624ffdb2d40f687dc68c410","revision":"c53537e2f86111cd65178dc7744cddbb949f819f"},
+    {"path":"AGENTS.md","digest":"c3046dc938bd5d230bcfd718fe23b5a1d1b8f6c65c786e0cae090f80d8e1d094","revision":"e70cad9b9ed6b96c438871e21b7349e1ab3d8fe0"},
 
     {"path":"docs/guides/documentation.md","digest":"03c26a23b91b0e665d65bd89e7a8172d8131afa49624db9312c4602e272ba05f","revision":"68257f50971037b3fd9df5b134bbd599142cd6d8"},
 
