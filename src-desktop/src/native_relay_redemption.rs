@@ -1926,7 +1926,7 @@ pub(crate) fn retry_pending_cleanup_for_app(app: &AppHandle) -> RedemptionResult
     let channel = super::native_app_channel(&app_identifier, cfg!(debug_assertions));
     let grants = native_relay_grant_vault();
     let owners = grants.registered_cleanup_owners(&app_identifier, channel)?;
-    let context = AppNativeRedemptionContextProvider::new(app.clone());
+    let context = AppNativeRedemptionContextProvider::for_existing_route(app.clone());
     let proof_keys = NativeRelayProofKeyVault::new();
     let http = UreqNativeBrokerTransport::new();
     let service = NativeRelayRedemptionService::new(
@@ -3420,7 +3420,7 @@ pub(crate) fn retry_staged_profile_route_cleanup(
     app: &AppHandle,
     staged_routes: &[(NativeProofKeyOwner, Vec<NativeRelayGrantCleanupStatus>)],
 ) {
-    let context = AppNativeRedemptionContextProvider::new(app.clone());
+    let context = AppNativeRedemptionContextProvider::for_existing_route(app.clone());
     let proof_keys = NativeRelayProofKeyVault::new();
     let http = UreqNativeBrokerTransport::new();
     let grants = native_relay_grant_vault();
@@ -9015,7 +9015,7 @@ pub(crate) async fn station_native_relay_grant_revoke(
                 )
                 .map_err(|_| "Station could not stage native relay grant revocation.".to_owned())
             })?;
-        let context = AppNativeRedemptionContextProvider::new(app.clone());
+        let context = AppNativeRedemptionContextProvider::for_existing_route(app.clone());
         let proof_keys = NativeRelayProofKeyVault::new();
         let http = UreqNativeBrokerTransport::new();
         let service = NativeRelayRedemptionService::new(
@@ -9134,7 +9134,7 @@ pub(crate) async fn station_native_relay_grant_cleanup_retry(
         if matching.len() != 1 {
             return Err("The native relay cleanup is unavailable or ambiguous.".to_owned());
         }
-        let context = AppNativeRedemptionContextProvider::new(app.clone());
+        let context = AppNativeRedemptionContextProvider::for_existing_route(app.clone());
         let proof_keys = NativeRelayProofKeyVault::new();
         let http = UreqNativeBrokerTransport::new();
         let service = NativeRelayRedemptionService::new(
