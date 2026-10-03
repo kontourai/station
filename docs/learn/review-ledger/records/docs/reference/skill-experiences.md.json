@@ -40,7 +40,7 @@
 
     {"path":"src-server/services/plugins/agent-plugin-loader.ts","digest":"5e2ebd404a26505676a99a207854fc10fe3692fa02628c891bed0156eb1b231c","revision":"56f4c4897a189eeb30430119a4f4895e95fbb541"},
 
-    {"path":"src-server/services/agents/skill-service.ts","digest":"da429fbc637564b3e3fe0e8e796569b3aa4f8514bb5e8cd3c3fd86cfe9175a6a","revision":"56f4c4897a189eeb30430119a4f4895e95fbb541"},
+    {"path":"src-server/services/agents/skill-service.ts","digest":"9f92c44195a5c87a63c1a14a3079b3cc91e00149f2b2f4e400a72189bb64d7f6","revision":"569b7dcead02252ba2786c9f326bb54daebbbde2"},
 
     {"path":"src-server/routes/agents/skills.ts","digest":"e39a612adc1d35767a9149cc5079d2c2732b4a2848171e2115ce3d4e4c25c62d","revision":"a366557a12a4f5e6a41d38ce92aacbd0ab32193b"},
 

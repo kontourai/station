@@ -9,7 +9,7 @@
 
   "limits": "Source review is complete for the documented module claims; it does not establish every application behavior, live provider/device outcomes, deployed services, power-loss safety or production performance. One coordinator test timed out; its failure is retained. Linked designs and historical evidence have separate review records.",
 
-  "document": {"digest":"6f11cb0a97df105bdbd07283d1c4ad57be6f7af0328c7f0b430a54573caf3fa6","revision":"b208a334880a96bb3f4267c2d2ffd6d03e118218"},
+  "document": {"digest":"568e4363f0b0cd5cf86da372be839c8dbc55514784cea458e0cdd4aa250d18f0","revision":"569b7dcead02252ba2786c9f326bb54daebbbde2"},
 
   "sources": [
     {"path":"docs/design/mcp-ui-host.md","digest":"060ae4fc6877a186e8ea6d5073729e03f161dbe270b700f62741095560000195","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
@@ -378,7 +378,7 @@
 
     {"path":"src-server/security/native-device-request-authority.ts","digest":"4f66110a1392b0188cb64660f42c5c80bf28676060aa46e9e21e7ba29edfba93","revision":"3517d8f66db867fd982a8f9883ed85052c4e1fc1"},
 
-    {"path":"src-server/security/pairing-route-scopes.ts","digest":"a42baaeeb2d0c8c535bb62d3c59f60d60ae2832f79ef539ddbac25f3bac4ee89","revision":"285fe95cfc05e5a9b0f4dda0a218f333fc8f5877"},
+    {"path":"src-server/security/pairing-route-scopes.ts","digest":"e36c4fe2983d7bca141f699538abc0afcf97632e3ca9848d49c22fc91075479e","revision":"569b7dcead02252ba2786c9f326bb54daebbbde2"},
 
     {"path":"src-server/services/__tests__/scheduler.test.ts","digest":"74bb68bb7b32fd0414bbef71ac778852c4b8e77c79008ae437bd64f77d3a0b40","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
@@ -390,7 +390,7 @@
 
     {"path":"src-server/services/agents/skill-revision.ts","digest":"699c12904cbbbdf5218f9b7c2371c9bf41346107855eff8f7681ba60936f9910","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/agents/skill-service.ts","digest":"da429fbc637564b3e3fe0e8e796569b3aa4f8514bb5e8cd3c3fd86cfe9175a6a","revision":"56f4c4897a189eeb30430119a4f4895e95fbb541"},
+    {"path":"src-server/services/agents/skill-service.ts","digest":"9f92c44195a5c87a63c1a14a3079b3cc91e00149f2b2f4e400a72189bb64d7f6","revision":"569b7dcead02252ba2786c9f326bb54daebbbde2"},
 
     {"path":"src-server/services/browser/browser-access.ts","digest":"c435162b9cf5941edce107cfdccb5a4e6a4a5293fd105a745112c48ce9ae7870","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
