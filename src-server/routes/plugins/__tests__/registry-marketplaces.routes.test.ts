@@ -25,7 +25,10 @@ import {
   registerSkillRegistryProvider,
   replacePluginProvidersForSource,
 } from '../../../providers/registries/registry.js';
-import { readRegistryInstallAliases } from '../../../providers/registries/registry-install-aliases.js';
+import {
+  readRegistryInstallAliases,
+  writeRegistryInstallAliases,
+} from '../../../providers/registries/registry-install-aliases.js';
 import { RegistrySourceManager } from '../../../providers/registries/registry-source-manager.js';
 import { SkillService } from '../../../services/agents/skill-service.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
@@ -568,7 +571,7 @@ describe('Marketplace source lifecycle through Registry routes', () => {
     ).toContain('New instructions');
   });
 
-  test('installs a source-qualified package through the real plugin authority and updates its catalog revision without changing the data owner', async () => {
+  test('installs a source-qualified package through the real authority and updates legacy aliases across catalog revisions without changing the data owner', async () => {
     const { home, config, service } = setup();
     await ensureStationHomeSchema(home);
     const root = temporary('marketplace-plugin-package-');
@@ -654,6 +657,9 @@ describe('Marketplace source lifecycle through Registry routes', () => {
         'shared',
       )!;
       expect(Object.keys(readRegistryInstallAliases(home))).toEqual([first.id]);
+      writeRegistryInstallAliases(home, {
+        shared: readRegistryInstallAliases(home)[first.id]!,
+      });
       await writeVersion('2.0.0');
       const revised = (
         (await (await call('/plugins')).json()) as { data: RegistryItem[] }
