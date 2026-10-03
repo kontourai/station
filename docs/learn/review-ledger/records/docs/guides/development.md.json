@@ -26,7 +26,7 @@
 
     {"path":".github/workflows/merge-queue-regression.yml","digest":"ba13e009f55d64dc1059167c9f1ed009c1518605483c42f4e3a3509e579e9480","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
 
-    {"path":".github/workflows/portable-server-archives.yml","digest":"c7c7ff935b2bd8df40440aa8a7b6fd4405304e99e87c4a892de073fe0ae72924","revision":"614c216de6de9d4c06ef56963853ccff52f2f685"},
+    {"path":".github/workflows/portable-server-archives.yml","digest":"f1d5a07d35d1bac32c057827bc6cc7dd85266fc4ed2011b983c6942690b641e6","revision":"5120b73c0fbb9f4d4ca81c5504daef000ad8558e"},
 
     {"path":".github/workflows/windows-pr-verification.yml","digest":"608bbdfac16fd9d0379b4fcffbb79d8a1a94ab014736442765087fe3f17a21ae","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
@@ -56,7 +56,7 @@
 
     {"path":"scripts/__tests__/run-ci-fast.test.ts","digest":"3de2360a632570b4e567c8397ce0b7388512b50fb17b6bdffbb10230babdbc35","revision":"a1478b242401c5da824956478bd77fef1f4dfa51"},
 
-    {"path":"scripts/build-portable-server-archive.mjs","digest":"3660d877f9a4698c2a107fd3b3539c6c2efea1f4626068b3ed68e9822fafbaa6","revision":"d1519a65a54ea7738269a1f1c02c4985a45f074c"},
+    {"path":"scripts/build-portable-server-archive.mjs","digest":"7a53ba0e94b63ca65e7c103ece7c6efd63ea0537c0946d20bd09cefc780dcbed","revision":"2b52ddf0663cdee3ccc2f0ebf848691f24ca4635"},
 
     {"path":"scripts/cli-agent-e2e.mjs","digest":"d08c8d36c33e9ed6e682817bca9ef214d8a77b286c7cb426f9a82747f8e6d217","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 

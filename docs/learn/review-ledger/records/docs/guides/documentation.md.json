@@ -28,7 +28,7 @@
 
     {"path":".github/workflows/docs-freshness-sweep.yml","digest":"fbcd659bb24451546b1f61500f3b0b0f26b497216e99f98244b1750a6d769ec4","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
-    {"path":"scripts/run-repo-scan-suites.mjs","digest":"c9a3922fd1b22ffc149c736973b1a86c0cccf64e68813110725cbc707b10405e","revision":"d1519a65a54ea7738269a1f1c02c4985a45f074c"},
+    {"path":"scripts/run-repo-scan-suites.mjs","digest":"a183c9ac4f851483f27fb8acdfd836fee22c69c2a6042d65b66f263153449d66","revision":"2b52ddf0663cdee3ccc2f0ebf848691f24ca4635"},
 
     {"path":"scripts/lib/review-ledger-store.mjs","digest":"0ae9f94081af3b929fb17cc93bc222e9ce84227fe3832aa1beb1fbbc8dd3884a","revision":"8199fd1541fc2af0053845c9253ed0962dd7fbb8"},
 

@@ -14,9 +14,9 @@
   "sources": [
     {"path":".github/workflows/android-test.yml","digest":"2a653b007047dfca16491297c7ce96455fd6571d5dad7a2fea40a62859a14146","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
 
-    {"path":".github/workflows/build-android.yml","digest":"5c20cca3946560c4c3c217c44ce6ea7686ce9254a4f576fe0c0e1596b440f7a7","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
+    {"path":".github/workflows/build-android.yml","digest":"221e69af260dceedf8bf72c11490539b54fd029f005b2b89e2cf7bf38f919979","revision":"2b52ddf0663cdee3ccc2f0ebf848691f24ca4635"},
 
-    {"path":".github/workflows/desktop-clean-checkout.yml","digest":"b1bf471f893030f7441245158c57fd287bbeadb232dbffe24f78418a1c1ed427","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":".github/workflows/desktop-clean-checkout.yml","digest":"2207ed50042e9a15dd958d8f782e014c9aefc87a17e6c8b8170db54db1d8f9cb","revision":"2b52ddf0663cdee3ccc2f0ebf848691f24ca4635"},
 
     {"path":".github/workflows/nightly-native-stage.yml","digest":"90a8d29da6c024c539a0abc1eb35ba490791780917e174eb7023d6fb45a90030","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
 

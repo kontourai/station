@@ -92,7 +92,7 @@
 
     {"path":"scripts/lib/documentation-freshness.mjs","digest":"1015b8a88ace1d10171a04a1b5da6a192b0397174fa51127c66211736c06ab74","revision":"8199fd1541fc2af0053845c9253ed0962dd7fbb8"},
 
-    {"path":"scripts/run-repo-scan-suites.mjs","digest":"c9a3922fd1b22ffc149c736973b1a86c0cccf64e68813110725cbc707b10405e","revision":"d1519a65a54ea7738269a1f1c02c4985a45f074c"},
+    {"path":"scripts/run-repo-scan-suites.mjs","digest":"a183c9ac4f851483f27fb8acdfd836fee22c69c2a6042d65b66f263153449d66","revision":"2b52ddf0663cdee3ccc2f0ebf848691f24ca4635"},
 
     {"path":"package.json#/scripts/docs:truth:gate","digest":"b1aeeadfeda42b73cf8275b984b8cdc01834f2af2fa7eed291f91a0b188bf2a8","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
 
