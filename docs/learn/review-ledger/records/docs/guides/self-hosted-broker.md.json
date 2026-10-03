@@ -9,7 +9,7 @@
 
   "limits": "Source review of the stated broker/native pilot contracts and inspected debug macOS frozen-harness receipt, not an exhaustive audit or release/mobile/Windows/Linux, remote/public deployment, production TURN/TLS, external identity-provider, two-person, default UI or fresh relay-only enrollment qualification. Prior dated receipts remain historical.\n\nMerge anchor history (structural reconciliation only; no semantic approval): source src-desktop/src/lib.rs ours={\"digest\":\"57a47dd3656d47a5c43eaf4001895942d350d61b6de896fa4d1d3da498bfd821\",\"revision\":\"d5e4502434838cc29b63091ae689474d6488cfe4\"}; origin/main={\"digest\":\"ad3b52011a9be6e6a18133b2367c04d0a6245907e5b7e13fa324bcd8b5255557\",\"revision\":\"464d602fb7fb5fa9bd0df9d241dc03495b398b96\"}. The merged source bytes require supported review after the merge commit.\n\nMerge anchor history (structural reconciliation only; no semantic approval): source docs/guides/native-shell-verification.md ours={\"digest\":\"02022b49c8533609bcf561776a2dd5c1b20cdfb3b8ae4cf5f5b5ae141e28e86e\",\"revision\":\"d5e4502434838cc29b63091ae689474d6488cfe4\"}; origin/main={\"digest\":\"db5ef187c02545195074cac011b8bd21fab7ff9eb23d28bf884dd36922b14c29\",\"revision\":\"464d602fb7fb5fa9bd0df9d241dc03495b398b96\"}. The merged source bytes require supported review after the merge commit.",
 
-  "document": {"digest":"683d8721484df3b126b15151f99278367498ebba1d5e57c617a805bb30c7e838","revision":"f9790fdf6b90a0eca602b25145ba88be6c0ed4e9"},
+  "document": {"digest":"9ee2e9c3534b60d5a7c8991bbc743a48987b5b7b66ccae607713b62159348a49","revision":"c97e259bbacd23a3bc8fc25accb253a8cb2a7e43"},
 
   "sources": [
     {"path":"deployment/self-hosted-broker/.env.example","digest":"556b997484fc854ea509f91bb0f39b12829ddd882e89619180098ed9b95bd101","revision":"ce1dff921cfc4c580e38ae66f5d27f32eda7f0ce"},
@@ -20,7 +20,7 @@
 
     {"path":"Dockerfile","digest":"7cbabfe80425ae5b5e3c30c978e20e53274d9cbbb6d069fc6f87c126f664f0e4","revision":"e01bc77122b9ed7b4323dde178d7c82334f7de49"},
 
-    {"path":"docs/guides/native-shell-verification.md","digest":"71a8ddf3c522f2f3f987a147ba6c106b13fb2c26d90429d57a381aa6a1559110","revision":"1ac5727520fe410ac2db16dd6742697287a08e79"},
+    {"path":"docs/guides/native-shell-verification.md","digest":"32a8d734dfbb3b11ed4bdf6ef2ac927dd8e02b2b13a809326c91e48a6bf05ba8","revision":"c97e259bbacd23a3bc8fc25accb253a8cb2a7e43"},
 
     {"path":"packages/connect/src/__tests__/relayIceConfiguration.test.ts","digest":"3146699fe18f669c88e277edc5ebd750a3250233d6fe1f85055c9e3ce059a637","revision":"7dc84da36281cace63d55fbd59fac3f64fcb3721"},
 
@@ -142,7 +142,7 @@
 
     {"path":"src-ui/src/platform/native/__tests__/nativeDiagnosticEchoBridge.test.ts","digest":"b9221a5713062938261b59f2a01562faec920fc5c287d8abc5e3369ae89d20d0","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
-    {"path":"src-ui/src/platform/native/__tests__/NativeRelayLinkIntake.test.tsx","digest":"0e46aa89af22a68ae9f89d0631015b8c28d00041cdce62dec9af463a6c1cc858","revision":"37271cfc0ef9c5356be5b49dd7e4b97337aabc8f"},
+    {"path":"src-ui/src/platform/native/__tests__/NativeRelayLinkIntake.test.tsx","digest":"0498e831020008d55b4a658b96148f4e5524c97db45ca6c2c3455a6453c419d8","revision":"0bb3d22cb3fd4e595af5045e594dbca34404f977"},
 
     {"path":"src-ui/src/platform/native/nativeAccountSessionBridge.ts","digest":"8247d3d4dfe7d8bd2a5130de0b4d9d77554057662af85206426592b4ca051bd4","revision":"2e4f061f91ffb0338e45de62382cf6da59cd5c76"},
 
@@ -160,7 +160,7 @@
 
     {"path":"src-ui/src/platform/native/nativeRelayIceConfigurationBridge.ts","digest":"57a78aad56d01acac6859975bfbfdf7e563e5c2ec1e949aad899c6389800e4dc","revision":"00075624e6885ed90e12a9152dbea3f53d3eb3c3"},
 
-    {"path":"src-ui/src/platform/native/NativeRelayLinkReview.tsx","digest":"df28b927137b9c9e1c92919fe88521bba7d8d18dbad454f42671d2f876036d1c","revision":"37271cfc0ef9c5356be5b49dd7e4b97337aabc8f"},
+    {"path":"src-ui/src/platform/native/NativeRelayLinkReview.tsx","digest":"b7fb384b60709564446429ea5d03fcf8d2b729a8b2c647720515d64f1c46a832","revision":"0bb3d22cb3fd4e595af5045e594dbca34404f977"},
 
     {"path":"src-ui/src/platform/native/nativeRelaySignalingBridge.ts","digest":"4a04ae2c635c320bc13782ed9932efec3a135cea5cc30a6adbe14d4784c54257","revision":"699a02c3954e4be022d48267e4c5fc9aa2737a4e"},
 

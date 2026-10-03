@@ -12,7 +12,7 @@
   "document": {"digest":"d9430287f5711f652f31d7bf4713b85c230806f5506a9a6703cd467658746632","revision":"214bbb63ddf239ab441c890f2fc3d40d83e27284"},
 
   "sources": [
-    {"path":"docs/guides/native-shell-verification.md","digest":"71a8ddf3c522f2f3f987a147ba6c106b13fb2c26d90429d57a381aa6a1559110","revision":"1ac5727520fe410ac2db16dd6742697287a08e79"},
+    {"path":"docs/guides/native-shell-verification.md","digest":"32a8d734dfbb3b11ed4bdf6ef2ac927dd8e02b2b13a809326c91e48a6bf05ba8","revision":"c97e259bbacd23a3bc8fc25accb253a8cb2a7e43"},
 
     {"path":"packages/connect/src/core/applicationChannel.ts","digest":"572c3b2ab6630c448abff1c49f99a2371425b64c818e5cce2d132fe348afb0c1","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
 
