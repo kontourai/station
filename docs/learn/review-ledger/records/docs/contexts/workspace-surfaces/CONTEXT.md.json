@@ -44,7 +44,7 @@
 
     {"path":"src-ui/src/workspace-panes/CodingChatPane.tsx","digest":"06beb36e2c74c1998c6d38a1255d4865ce361118cfcc5edbce3385cabb6329d1","revision":"c6e3245e902156daf2862b84e379efc0481faaac"},
 
-    {"path":"src-ui/src/workspace-panes/FilePreviewPane.tsx","digest":"0d2027974e03f3b18f35305523e2588b5e4a55f8f1a80961fa76471379617936","revision":"f2fbbccbc7f61aa429b61c8ce7aaeb16f669b9a4"},
+    {"path":"src-ui/src/workspace-panes/FilePreviewPane.tsx","digest":"0cf432e6170fe2ebaedfb68c5a1e586f8d55563023e03ea6866713457506d593","revision":"a88f84fa9284d16e6b28f002669ba513ede7be5b"},
 
     {"path":"src-ui/src/workspace-panes/InertRenderedMarkdown.tsx","digest":"28d702eb860f567e6b006aededad7801f315a462e07ca755d8cff20e6fc87fc6","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
