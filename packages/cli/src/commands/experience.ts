@@ -1,8 +1,7 @@
-import { readFileSync } from 'node:fs';
 import {
   inspectSkillLibrary,
+  readSkillExperienceReview,
   reviewSkillExperiencePackage,
-  type SkillExperienceReview,
   skillExperiencePackageDigest,
 } from '@kontourai/station-shared/skill-experience-workflow';
 
@@ -55,9 +54,7 @@ export function runExperienceCommand(args: string[]): void {
     );
     return;
   }
-  const review: SkillExperienceReview = JSON.parse(
-    readFileSync(receipt, 'utf8'),
-  );
+  const review = readSkillExperienceReview(receipt);
   console.log(
     JSON.stringify(
       reviewSkillExperiencePackage(path, library, entries, review),

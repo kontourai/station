@@ -6,11 +6,20 @@ import {
   readSync,
   realpathSync,
 } from 'node:fs';
-import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
+import {
+  basename,
+  dirname,
+  isAbsolute,
+  relative,
+  resolve,
+  sep,
+} from 'node:path';
 import type { SkillExperienceDefinitionV1 } from '@kontourai/station-contracts/skill-experience';
 import { frontmatterToProperties, parseFrontmatter } from 'agent-skills-ts-sdk';
 import { parseAgentPluginManifest } from './agent-plugin-manifest.js';
+import { validateSkillExperienceReview } from './agent-plugin-validators.generated.mjs';
 import { readPluginBuildManifest } from './build.js';
+import { computePluginTreeDigest } from './plugin-tree-digest.js';
 import { openRegularFileSync } from './regular-file.js';
 
 interface SourceFile {
@@ -59,7 +68,11 @@ function digest(value: unknown): string {
   return createHash('sha256').update(JSON.stringify(value)).digest('hex');
 }
 
-function readFile(root: string, path: string): SourceFile {
+function readFile(
+  root: string,
+  path: string,
+  maxBytes = 1024 * 1024,
+): SourceFile {
   const actual = realpathSync(resolve(root, path));
   const local = relative(root, actual);
   if (isAbsolute(local) || local === '..' || local.startsWith(`..${sep}`))
@@ -67,17 +80,17 @@ function readFile(root: string, path: string): SourceFile {
   const fd = openRegularFileSync(actual);
   if (fd === null) throw new Error(`Author source must be regular: ${path}`);
   try {
-    if (fstatSync(fd).size > 1024 * 1024)
-      throw new Error(`Author source exceeds 1 MiB: ${path}`);
-    const buffer = Buffer.alloc(1024 * 1024 + 1);
+    if (fstatSync(fd).size > maxBytes)
+      throw new Error(`Author source exceeds ${maxBytes} bytes: ${path}`);
+    const buffer = Buffer.alloc(maxBytes + 1);
     let length = 0;
     while (length < buffer.length) {
       const count = readSync(fd, buffer, length, buffer.length - length, null);
       if (!count) break;
       length += count;
     }
-    if (length > 1024 * 1024)
-      throw new Error(`Author source exceeds 1 MiB: ${path}`);
+    if (length > maxBytes)
+      throw new Error(`Author source exceeds ${maxBytes} bytes: ${path}`);
     const bytes = buffer.subarray(0, length);
     return {
       path: path.replaceAll(sep, '/'),
@@ -89,12 +102,7 @@ function readFile(root: string, path: string): SourceFile {
   }
 }
 
-/** Local inspection only. Literal edges are review leads, never a complete semantic proof. */
-export function inspectSkillLibrary(
-  libraryDir: string,
-  entries: string[],
-): SkillLibraryInspection {
-  const root = realpathSync(libraryDir);
+function sourcePaths(root: string, excludeDependencies = true): string[] {
   const paths: string[] = [];
   function walk(path: string, depth: number): void {
     if (depth > 16)
@@ -102,24 +110,37 @@ export function inspectSkillLibrary(
     for (const entry of readdirSync(resolve(root, path), {
       withFileTypes: true,
     }).sort((a, b) => a.name.localeCompare(b.name))) {
-      if (entry.name === '.git' || entry.name === 'node_modules') continue;
+      if (
+        !path &&
+        (entry.name === '.git' ||
+          (excludeDependencies && entry.name === 'node_modules'))
+      )
+        continue;
       const child = path ? `${path}/${entry.name}` : entry.name;
       if (entry.isSymbolicLink()) {
         readFile(root, child);
         paths.push(child);
-        continue;
-      }
-      if (entry.isDirectory()) walk(child, depth + 1);
+      } else if (entry.isDirectory()) walk(child, depth + 1);
       else {
         if (!entry.isFile())
           throw new Error(`Author source must be regular: ${child}`);
         paths.push(child);
-        if (paths.length > 1024)
-          throw new Error('Author source exceeds 1024 files');
       }
+      if (paths.length > 1024)
+        throw new Error('Author source exceeds 1024 files');
     }
   }
   walk('', 0);
+  return paths;
+}
+
+/** Local inspection only. Literal edges are review leads, never a complete semantic proof. */
+export function inspectSkillLibrary(
+  libraryDir: string,
+  entries: string[],
+): SkillLibraryInspection {
+  const root = realpathSync(libraryDir);
+  const paths = sourcePaths(root);
   const index = new Map<string, string>();
   const gaps = new Set<string>([
     'Literal discovery cannot resolve dynamic Skill/tool/environment discovery; reviewer must inspect the supplied source and record limits.',
@@ -237,8 +258,9 @@ export function reviewSkillExperiencePackage(
   pluginDir: string,
   libraryDir: string,
   entries: string[],
-  review: SkillExperienceReview,
+  candidateReview: unknown,
 ) {
+  const review = parseSkillExperienceReview(candidateReview);
   readPluginBuildManifest(pluginDir);
   const root = realpathSync(pluginDir);
   const manifestFile = readFile(root, 'plugin.json');
@@ -360,27 +382,40 @@ export function skillExperiencePackageDigest(pluginDir: string): string {
   const parsed = parseAgentPluginManifest(JSON.parse(manifest.text));
   if (!parsed?.stationExtension?.experiences?.length)
     throw new Error('No experiences declared');
-  const files = [
-    manifest,
-    ...parsed.stationExtension.experiences.map((entry) =>
-      readFile(root, entry.source),
-    ),
-  ];
-  function walk(path: string): void {
-    for (const entry of readdirSync(resolve(root, path), {
-      withFileTypes: true,
-    }).sort((a, b) => a.name.localeCompare(b.name))) {
-      const child = `${path}/${entry.name}`;
-      if (entry.isDirectory()) walk(child);
-      else {
-        if (!entry.isFile())
-          throw new Error(`Package review refuses nonregular file: ${child}`);
-        files.push(readFile(root, child));
-        if (files.length > 1024)
-          throw new Error('Package review exceeds 1024 files');
-      }
-    }
+  let totalBytes = 0;
+  for (const path of sourcePaths(root, false)) {
+    const file = readFile(root, path);
+    totalBytes += Buffer.byteLength(file.text);
+    if (totalBytes > 8 * 1024 * 1024)
+      throw new Error('Package review exceeds 8 MiB');
   }
-  walk('skills');
-  return digest(files);
+  const treeDigest = computePluginTreeDigest(root);
+  if (!treeDigest) throw new Error('Package tree could not be hashed');
+  return treeDigest.slice('sha256:'.length);
+}
+
+function parseSkillExperienceReview(candidate: unknown): SkillExperienceReview {
+  if (!validateSkillExperienceReview(candidate)) {
+    const first = validateSkillExperienceReview.errors?.[0];
+    throw new Error(
+      `Invalid author review receipt ${first?.instancePath ?? '/'}: ${first?.message ?? 'unsupported receipt'}`,
+    );
+  }
+  const review = candidate as SkillExperienceReview;
+  const keys = review.evidence.map(
+    (item) => `${item.experienceId}:${item.pointer}`,
+  );
+  if (new Set(keys).size !== keys.length)
+    throw new Error('Duplicate author review evidence key');
+  const gaps = review.gapDispositions.map((item) => item.gap);
+  if (new Set(gaps).size !== gaps.length)
+    throw new Error('Duplicate author review gap disposition');
+  return review;
+}
+
+export function readSkillExperienceReview(path: string): SkillExperienceReview {
+  const absolute = resolve(path);
+  const root = realpathSync(dirname(absolute));
+  const bytes = readFile(root, basename(absolute), 64 * 1024);
+  return parseSkillExperienceReview(JSON.parse(bytes.text));
 }

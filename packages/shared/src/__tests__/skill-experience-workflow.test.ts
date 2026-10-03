@@ -1,26 +1,26 @@
 import { createHash } from 'node:crypto';
-import {
-  cpSync,
-  mkdirSync,
-  readFileSync,
-  symlinkSync,
-  writeFileSync,
-} from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
+import exampleDefinition from '../../../../examples/visual-skill-experience/io.kontourai.station/experiences/stress-test-idea.json' with {
+  type: 'json',
+};
+import exampleManifest from '../../../../examples/visual-skill-experience/plugin.json' with {
+  type: 'json',
+};
 import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.js';
 import {
   inspectSkillLibrary,
+  readSkillExperienceReview,
   reviewSkillExperiencePackage,
   type SkillExperienceReview,
   skillExperiencePackageDigest,
 } from '../skill-experience-workflow.js';
 
 const makeTemp = trackTempDirs();
-const example = resolve(
-  dirname(fileURLToPath(import.meta.url)),
-  '../../../../examples/visual-skill-experience',
+const example = fileURLToPath(
+  new URL('../../../../examples/visual-skill-experience/', import.meta.url),
 );
 
 function write(root: string, path: string, text: string): void {
@@ -76,7 +76,23 @@ describe('public Skill experience author workflow', () => {
   function authorReview() {
     const root = makeTemp('experience-review-');
     const plugin = join(root, 'plugin');
-    cpSync(example, plugin, { recursive: true });
+    write(plugin, 'plugin.json', JSON.stringify(exampleManifest));
+    write(
+      plugin,
+      'io.kontourai.station/experiences/stress-test-idea.json',
+      JSON.stringify(exampleDefinition),
+    );
+    write(
+      plugin,
+      'skills/stress-test-idea/SKILL.md',
+      readFileSync(
+        new URL(
+          '../../../../examples/visual-skill-experience/skills/stress-test-idea/SKILL.md',
+          import.meta.url,
+        ),
+        'utf8',
+      ),
+    );
     const inspection = inspectSkillLibrary(plugin, ['stress-test-idea']);
     write(
       plugin,
@@ -187,8 +203,10 @@ describe('public Skill experience author workflow', () => {
         endLine: 901,
       };
     if (failure === 'origin') review.evidence[0].origin = 'station-added';
-    if (failure === 'transcript')
+    if (failure === 'transcript') {
       write(plugin, 'evaluations/success.md', 'Edited transcript.');
+      review.packageDigest = skillExperiencePackageDigest(plugin);
+    }
     if (failure === 'source-delta')
       write(
         plugin,
@@ -220,5 +238,91 @@ describe('public Skill experience author workflow', () => {
     expect(() => inspectSkillLibrary(example, ['missing'])).toThrow(
       /Entries must name/,
     );
+  });
+
+  test('refuses a changed rich asset anywhere in the distributed package', () => {
+    const { plugin, review } = authorReview();
+    write(
+      plugin,
+      'io.kontourai.station/assets/panel.html',
+      '<p>Changed behavior</p>',
+    );
+    expect(() =>
+      reviewSkillExperiencePackage(
+        plugin,
+        plugin,
+        ['stress-test-idea'],
+        review,
+      ),
+    ).toThrow(/delta requires/);
+  });
+
+  test('refuses unsupported receipt origins and duplicate source evidence before approval', () => {
+    const { plugin, review } = authorReview();
+    const malformed = structuredClone(review);
+    const candidate: unknown = {
+      ...malformed,
+      evidence: malformed.evidence.map((item) =>
+        item.pointer === '/interaction' ? { ...item, origin: 'garbage' } : item,
+      ),
+    };
+    expect(() =>
+      reviewSkillExperiencePackage(
+        plugin,
+        plugin,
+        ['stress-test-idea'],
+        candidate,
+      ),
+    ).toThrow(/Invalid author review receipt/);
+    review.evidence.push(review.evidence[0]);
+    expect(() =>
+      reviewSkillExperiencePackage(
+        plugin,
+        plugin,
+        ['stress-test-idea'],
+        review,
+      ),
+    ).toThrow(/Duplicate author review evidence/);
+  });
+
+  test('reads only bounded regular receipt files and refuses unknown receipt fields', () => {
+    const { plugin, review } = authorReview();
+    const receipt = join(makeTemp('experience-receipt-'), 'review.json');
+    writeFileSync(receipt, JSON.stringify(review));
+    expect(readSkillExperienceReview(receipt).reviewer).toBe(
+      'Independent author',
+    );
+    writeFileSync(receipt, JSON.stringify({ ...review, grantTools: true }));
+    expect(() => readSkillExperienceReview(receipt)).toThrow(
+      /Invalid author review receipt/,
+    );
+    writeFileSync(receipt, ' '.repeat(65537));
+    expect(() => readSkillExperienceReview(receipt)).toThrow(
+      /exceeds 65536 bytes/,
+    );
+    expect(() => readSkillExperienceReview(plugin)).toThrow(/must be regular/);
+  });
+
+  test('counts symbolic files against the limit and bounds package depth/total bytes', () => {
+    const library = makeTemp('experience-many-symlinks-');
+    write(library, 'ordinary.txt', 'contained');
+    for (let i = 0; i < 1024; i++)
+      symlinkSync(join(library, 'ordinary.txt'), join(library, `link-${i}`));
+    expect(() => inspectSkillLibrary(library, ['missing'])).toThrow(
+      /exceeds 1024 files/,
+    );
+    const { plugin } = authorReview();
+    write(
+      plugin,
+      `${Array.from({ length: 18 }, () => 'deep').join('/')}/asset.txt`,
+      'asset',
+    );
+    expect(() => skillExperiencePackageDigest(plugin)).toThrow(
+      /16 directory levels/,
+    );
+    const large = authorReview().plugin;
+    for (let i = 0; i < 9; i++)
+      write(large, `assets/${i}.txt`, 'x'.repeat(1024 * 1024));
+    expect(() => skillExperiencePackageDigest(large)).toThrow(/8 MiB/);
   });
 });

@@ -78,10 +78,12 @@ and package digests for the proposed revision:
 station plugin experience review /path/to/plugin --library=/path/to/pinned-library --entries=grill-me,to-spec,to-tickets
 ```
 
-The package digest covers `plugin.json`, every referenced definition and the
-complete portable `skills/` tree, including references, scripts and assets.
-Review notices and supplementary author files as part of normal package review;
-they are not approval authority. The source digest covers the inspected graph
+The package digest uses the existing plugin-tree format over the complete
+bounded distributable directory, including notices, definitions, rich assets,
+Skill references, scripts, evaluations and symlink topology. Git metadata is
+excluded. Review a clean package staging directory; dependency installation
+directories count toward the bounds and should not be part of this payload.
+Keep the review receipt outside that directory to avoid self-reference. The source digest covers the inspected graph
 and its gaps, not a remote upstream repository identity.
 
 Install the draft through ordinary Plugin preview/consent in an isolated
@@ -93,7 +95,7 @@ alone is not an authorized request. Record transcript bytes in a local
 `evaluations/` directory inside the author package. Keep private transcripts
 out of public packages or use sanitized, clearly labelled examples.
 
-Write a receipt implementing
+Write an external receipt implementing
 [`SkillExperienceReview`](../../packages/shared/src/skill-experience-workflow.ts):
 
 ```json
@@ -127,6 +129,11 @@ Write a receipt implementing
   ]
 }
 ```
+
+The receipt has a closed runtime grammar: unknown fields, unsupported provenance
+classes, duplicate evidence keys, overlong strings and oversized arrays are
+refused. The CLI reads a contained regular receipt file of at most 64 KiB and
+refuses special files without a blocking open.
 
 Supply evidence for every input, output and required-context item, plus
 `/interaction` and `/capabilities`. Skill-declared evidence needs a valid source
