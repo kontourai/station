@@ -12,7 +12,7 @@
   "document": {"digest":"504697512af473efd0be4ba655151406b11450e87e3bbe497a7ac3d03ec88434","revision":"1aecbf35557098c1502ee4575c7e332fb1e9d60c"},
 
   "sources": [
-    {"path":"docs/architecture/module-map.md","digest":"0ea9d79a62128ee7b6fd7cbeb233d7fa7d2f0256d840691e1abd931fcf0bb912","revision":"9284c690de029594417d7599810fbfbe9eca3d92"},
+    {"path":"docs/architecture/module-map.md","digest":"206a6266e9a4dc5bc00114150ed31171c6367279f03f80389046de795d096810","revision":"cda4f5e7438d4373842cd0ea297d4ca921950d27"},
 
     {"path":"scripts/gen-settings-registry.ts","digest":"76c9ac779d576b4d32367a429c2667f4b17fe79660fb9adaa18ce6019683c16e","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 

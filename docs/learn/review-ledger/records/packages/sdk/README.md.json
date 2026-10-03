@@ -32,7 +32,7 @@
 
     {"path":"packages/sdk/src/hooks/operations.ts","digest":"02dbff5afebdbe657824c6718e11773b39a9f454062b43e6391c877fcf12d994","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"packages/sdk/src/index.ts","digest":"7a0645f44c08a15d2e4ff972cfb31c25a7e361b8534886ee9de826ac61a72a49","revision":"0814cc6ddb168cff69e5572b185a853540a4f6e0"},
+    {"path":"packages/sdk/src/index.ts","digest":"b5cbdd321b37addcb83163bc91d58eb54e1bfacaac870b128112d0da28a60c2b","revision":"cda4f5e7438d4373842cd0ea297d4ca921950d27"},
 
     {"path":"packages/sdk/src/providers.tsx","digest":"c2e1919b3feade010b3e393920ae4852b88d71921cddfb9716e164049b9acf3b","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 

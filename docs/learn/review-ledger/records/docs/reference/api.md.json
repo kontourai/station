@@ -68,7 +68,7 @@
 
     {"path":"packages/sdk/src/client/scheduler.ts","digest":"db883fb0678e85bf7f57ca1132b2b66ea96ce80a2e01ab757b1bc1f2b16a01ec","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
-    {"path":"packages/sdk/src/queries.ts","digest":"6604989192ed7bbea006f7dd70e0ed2726c4d1f4f0095c0c0d430fe3cf61cc87","revision":"0814cc6ddb168cff69e5572b185a853540a4f6e0"},
+    {"path":"packages/sdk/src/queries.ts","digest":"fce38aa5a91b944a7bc5b99658f81c2a5b83dd8a56f941261acadf7a81e2cf67","revision":"cda4f5e7438d4373842cd0ea297d4ca921950d27"},
 
     {"path":"packages/sdk/src/query-domains/agentAdmin.ts","digest":"d17ef2aeb91c21d5cf1e207289bd2936b2896752d5254cea6b94a9c82aaf62fb","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

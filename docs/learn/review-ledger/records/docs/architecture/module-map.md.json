@@ -9,7 +9,7 @@
 
   "limits": "Source review is complete for the documented module claims; it does not establish every application behavior, live provider/device outcomes, deployed services, power-loss safety or production performance. One coordinator test timed out; its failure is retained. Linked designs and historical evidence have separate review records.",
 
-  "document": {"digest":"0ea9d79a62128ee7b6fd7cbeb233d7fa7d2f0256d840691e1abd931fcf0bb912","revision":"9284c690de029594417d7599810fbfbe9eca3d92"},
+  "document": {"digest":"206a6266e9a4dc5bc00114150ed31171c6367279f03f80389046de795d096810","revision":"cda4f5e7438d4373842cd0ea297d4ca921950d27"},
 
   "sources": [
     {"path":"docs/design/mcp-ui-host.md","digest":"060ae4fc6877a186e8ea6d5073729e03f161dbe270b700f62741095560000195","revision":"0c1f436037261c43eeca3e079f5106948360c591"},

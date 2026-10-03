@@ -18,9 +18,9 @@
 
     {"path":"packages/sdk/src/client/http.ts","digest":"9892699e68483e0df3dd67ce71956994e98a43755a0c931dd6c3c5660caee00e","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
-    {"path":"packages/sdk/src/index.ts","digest":"7a0645f44c08a15d2e4ff972cfb31c25a7e361b8534886ee9de826ac61a72a49","revision":"0814cc6ddb168cff69e5572b185a853540a4f6e0"},
+    {"path":"packages/sdk/src/index.ts","digest":"b5cbdd321b37addcb83163bc91d58eb54e1bfacaac870b128112d0da28a60c2b","revision":"cda4f5e7438d4373842cd0ea297d4ca921950d27"},
 
-    {"path":"packages/sdk/src/queries.ts","digest":"6604989192ed7bbea006f7dd70e0ed2726c4d1f4f0095c0c0d430fe3cf61cc87","revision":"0814cc6ddb168cff69e5572b185a853540a4f6e0"},
+    {"path":"packages/sdk/src/queries.ts","digest":"fce38aa5a91b944a7bc5b99658f81c2a5b83dd8a56f941261acadf7a81e2cf67","revision":"cda4f5e7438d4373842cd0ea297d4ca921950d27"},
 
     {"path":"packages/sdk/src/query-core.ts","digest":"f61dfd3363e3afe8bcf0ca97330e4e799e44aeb0d1348a212a117d1f755873e9","revision":"9bb90045b7aeb926e7003b27fc4fd62252638524"},
 
