@@ -30,7 +30,7 @@
 
     {"path":"src-server/services/projects/workspace-pane-catalog.ts","digest":"d46e8e6c91c8e1e5ae10ca584759a673bdc90a8d932352348150d140b2275222","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/contexts/navigation-store.ts","digest":"cb5cf525e16bca7880f258c31ec4d83716419d8e6af9675a4cffb0030d560cca","revision":"b14f1b80ec27c38844b3d16e8a4bdfe624a778c9"},
+    {"path":"src-ui/src/contexts/navigation-store.ts","digest":"2486db91eb4f818fec69048dcd202c7a7ffc5a9517c2cb11fa7728197f919607","revision":"4d59eb1868139f2faeaf1a1467811c22726f741c"},
 
     {"path":"src-ui/src/regions/region-arrangement-record.ts","digest":"25978c0bf3ba1e054d216ec6f2af73b5bc16cb282049c5577f2557f36adeb37f","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 

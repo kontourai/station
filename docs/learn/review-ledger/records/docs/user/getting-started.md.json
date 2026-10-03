@@ -92,7 +92,7 @@
 
     {"path":"src-ui/src/components/scheduler/SchedulerJobDialogHost.tsx","digest":"af9fb765b7619841de6afd4fb9159b9f3c6953f445475e071051a1953c98ecb6","revision":"911cbf3bf7911834075f21709acff87a9b3c27a8"},
 
-    {"path":"src-ui/src/contexts/NavigationContext.tsx","digest":"f90ed428c8bb37d073472434d51f63dbdaaad162bbf9a4d79ff045de68f7ddab","revision":"312fbe2956ee34b535485d4556146503e65cb168"},
+    {"path":"src-ui/src/contexts/NavigationContext.tsx","digest":"9dea6962ca501c9edccc9f76f841fbab1796e426476ee5570592d90473c13267","revision":"4d59eb1868139f2faeaf1a1467811c22726f741c"},
 
     {"path":"src-ui/src/contexts/scheduler-job-dialog-store.ts","digest":"5c3d2e50f1eac439eb4b5264550c6d37fbab65344ec37350ad36dd4a9e2b63fa","revision":"69eb5db90072c149c16115135f495ac538155e71"},
 
@@ -140,11 +140,11 @@
 
     {"path":"src-ui/src/components/inbox-row/InboxRowStatus.tsx","digest":"d7cc9d13090f4c7d529e76bcd4828113375a1c52711ba6009d6e0cb8cad85418","revision":"b14f1b80ec27c38844b3d16e8a4bdfe624a778c9"},
 
-    {"path":"src-ui/src/contexts/navigation-store.ts","digest":"cb5cf525e16bca7880f258c31ec4d83716419d8e6af9675a4cffb0030d560cca","revision":"b14f1b80ec27c38844b3d16e8a4bdfe624a778c9"},
+    {"path":"src-ui/src/contexts/navigation-store.ts","digest":"2486db91eb4f818fec69048dcd202c7a7ffc5a9517c2cb11fa7728197f919607","revision":"4d59eb1868139f2faeaf1a1467811c22726f741c"},
 
     {"path":"tests/cross-runtime-chat-switching.spec.ts","digest":"0aeb646fe962c41108316c65360c405268ea7061ea2504e7441b51a0a9bd2878","revision":"8fd71c3714eceeb651bd8e52f200aa1532fa33c6"},
 
-    {"path":"src-ui/src/components/chat-dock/ChatDock.tsx","digest":"e53b8be83f24f901faa7616592029340e55de433922523f5bc6ef06d926ef963","revision":"b14f1b80ec27c38844b3d16e8a4bdfe624a778c9"},
+    {"path":"src-ui/src/components/chat-dock/ChatDock.tsx","digest":"f92052af5abd7736675c6a27499a8a43ded8167dcecff4b0e4e775c2614562f3","revision":"4d59eb1868139f2faeaf1a1467811c22726f741c"},
 
     {"path":"src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx","digest":"66f0394440649ebf2fd68d1292cd7e009ca0a449d85681a2ee1d36a0d192e107","revision":"b14f1b80ec27c38844b3d16e8a4bdfe624a778c9"},
 
@@ -152,7 +152,7 @@
 
     {"path":"src-ui/src/components/chat-dock/ChatDockMobileOverflowSheet.tsx","digest":"a8bc823744ae5fbe11ca4d59391185963104e36549cf5fdc2b178afceb603650","revision":"af7dbb3005e9e1f29dd1450b0a06ec5703afb0d6"},
 
-    {"path":"src-ui/src/components/chat/chat.css","digest":"cc0ba5664fc6c0b0dc4d3cfd77b539c2d335842745743f187f852dde275bae4d","revision":"b14f1b80ec27c38844b3d16e8a4bdfe624a778c9"},
+    {"path":"src-ui/src/components/chat/chat.css","digest":"9ff5dc95b71dda67d80f7241591dab8294cb5252f6001b589dcc80cabbad14b7","revision":"f8dcd092359118c2f44bda770acccc1c45beb281"},
 
     {"path":"src-ui/src/views/home/work-status.ts","digest":"ff0100dddce220275b7d9f0183fb2c44bac835eb0fbb67e071be63f4c127b120","revision":"d1f68396648a4d450f1d743e436df703be0935be"},
 
