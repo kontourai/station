@@ -79,30 +79,30 @@ export type ConversationReadRefusalCode =
 
 const REFUSALS: Record<
   ConversationReadRefusalCode,
-  { status: 400 | 403 | 404 | 410; message: string }
+  { status: 400 | 403 | 404 | 410; explanation: string }
 > = {
   conversation_not_found: {
     status: 404,
-    message:
+    explanation:
       'No conversation with this id is readable here. Check the id, or ask the person to reference the conversation in a message to you.',
   },
   conversation_out_of_scope: {
     status: 403,
-    message:
+    explanation:
       "This conversation is outside your session's Project (or global space), and no person referenced it in your conversation. Ask the person to reference it in a message to you.",
   },
   conversation_deleted: {
     status: 410,
-    message:
+    explanation:
       'This conversation was referenced in your conversation but is no longer available to read: it was deleted, or it is not this person’s.',
   },
   conversation_read_limit_out_of_range: {
     status: 400,
-    message: `limit must be a whole number from 1 to ${READ_CONVERSATION_MAX_LIMIT}.`,
+    explanation: `limit must be a whole number from 1 to ${READ_CONVERSATION_MAX_LIMIT}.`,
   },
   conversation_read_cursor_invalid: {
     status: 400,
-    message:
+    explanation:
       'cursor is not a cursor this read returned for this conversation. Omit it to start from the first message.',
   },
 };
@@ -110,7 +110,7 @@ const REFUSALS: Record<
 function refuse(c: Context, code: ConversationReadRefusalCode) {
   const refusal = REFUSALS[code];
   return c.json(
-    { success: false, code, error: refusal.message },
+    { success: false, code, error: refusal.explanation },
     refusal.status,
   );
 }
