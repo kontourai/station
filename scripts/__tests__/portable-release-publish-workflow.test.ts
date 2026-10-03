@@ -11,7 +11,7 @@ import {
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { load } from 'js-yaml';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { PORTABLE_SERVER_TARGETS } from '../../packages/shared/src/portable-server-targets.mjs';
 import { STATION_RELEASE_RINGS } from '../../packages/shared/src/release-rings.generated.mjs';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
@@ -24,6 +24,7 @@ import {
   PORTABLE_LAUNCHER_PROTOCOL,
   parseRingVersion,
   publicationLocations,
+  verifyManifestLocation,
 } from '../lib/portable-publication.mjs';
 import {
   PUBLIC_MANIFEST_POINTERS,
@@ -693,6 +694,103 @@ describe('publication checks for stable and preview', () => {
         { version: '1.2.3-preview.4' },
       ),
     ).toBe(true);
+  });
+
+  // The predicate above is only half of #3013: the pointer job's
+  // `verify --manifest <https URL>` runs verifyManifestLocation, whose retry
+  // loop is taken only for a remote location. The shell-step tests serve the
+  // pointer as a local path, so they never reach it.
+  describe('the remote re-verify the pointer job runs', () => {
+    const keys = keyring('stable');
+    const expected = assemblePayload('stable', '1.2.3');
+    const bytesFor = (payloadPath: string) =>
+      readFileSync(keys.sign(payloadPath));
+    const otherBytesSameVersion = () => {
+      const path = join(freshDir('same-version'), 'payload.json');
+      writeFileSync(
+        path,
+        JSON.stringify({
+          ...expected.payload,
+          publishedAt: '2026-09-29T02:00:00.000Z',
+        }),
+      );
+      return bytesFor(path);
+    };
+    const URL = rollingManifestUrl('stable');
+
+    /** Serves `responses` in order (the last repeats); returns the outcome. */
+    async function reverify(responses: Buffer[]) {
+      const served: string[] = [];
+      vi.useFakeTimers();
+      vi.stubGlobal('fetch', async (url: string) => {
+        served.push(url);
+        const body = responses[Math.min(served.length, responses.length) - 1];
+        return new Response(new Uint8Array(body), { status: 200 });
+      });
+      try {
+        const settled = verifyManifestLocation(
+          'stable',
+          URL,
+          keys.keyTable,
+          expected.payload,
+        ).then(
+          (value) => ({ ok: true as const, value }),
+          (error: unknown) => ({ ok: false as const, error }),
+        );
+        await vi.runAllTimersAsync();
+        return { result: await settled, fetches: served.length, served };
+      } finally {
+        vi.unstubAllGlobals();
+        vi.useRealTimers();
+      }
+    }
+
+    it("waits out an older cached manifest, then accepts this run's bytes", async () => {
+      const older = bytesFor(assemblePayload('stable', '1.2.2').output);
+      const { result, fetches, served } = await reverify([
+        older,
+        older,
+        bytesFor(expected.output),
+      ]);
+      expect(result.ok, String(!result.ok && result.error)).toBe(true);
+      expect(fetches).toBe(3);
+      expect(new Set(served)).toEqual(new Set([URL]));
+    });
+
+    it('fails at once, without retrying, on the same version with other bytes or a newer version', async () => {
+      for (const [label, bytes, fetched] of [
+        ['same version, other bytes', otherBytesSameVersion(), '1.2.3'],
+        [
+          'newer version',
+          bytesFor(assemblePayload('stable', '1.2.4').output),
+          '1.2.4',
+        ],
+      ] as const) {
+        const { result, fetches } = await reverify([
+          bytes,
+          bytesFor(expected.output),
+        ]);
+        expect(result.ok, label).toBe(false);
+        expect(!result.ok && result.error, label).toBeInstanceOf(
+          ManifestMismatchError,
+        );
+        expect(String(!result.ok && result.error), label).toContain(
+          `manifest payload for ${fetched} is not the payload this run signed (1.2.3)`,
+        );
+        expect(fetches, label).toBe(1);
+      }
+    });
+
+    it('gives up on staleness that outlasts the bounded wait', async () => {
+      const older = bytesFor(assemblePayload('stable', '1.2.2').output);
+      const { result, fetches } = await reverify([older]);
+      expect(result.ok).toBe(false);
+      expect(String(!result.ok && result.error)).toContain(
+        'manifest payload for 1.2.2 is not the payload this run signed (1.2.3)',
+      );
+      // REVERIFY_ATTEMPTS (30) reads, ten seconds apart: five minutes.
+      expect(fetches).toBe(30);
+    });
   });
 
   it("binds the payload to this release's versioned assets under the BASE_URL", () => {
