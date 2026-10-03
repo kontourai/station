@@ -398,3 +398,19 @@ test('a separately authored rich pane package builds without a Station component
     /same-package plugin-component Workspace Pane/,
   );
 });
+
+test.each(['constructor', 'prototype', '__proto__'])(
+  'author build refuses reserved input id %s before publishing a declaration the wire parser cannot start',
+  async (id) => {
+    const authored = authorPackage();
+    const input = authored.definition.inputs[0]!;
+    if (input.kind !== 'text') throw new Error('Expected original text input');
+    input.id = id;
+    input.required = false;
+    input.default = 'A declared default';
+    authored.writeDefinition(authored.definition);
+    await expect(buildPlugin(authored.plugin)).rejects.toThrow(
+      `inputs/${id}: reserved input identity`,
+    );
+  },
+);
