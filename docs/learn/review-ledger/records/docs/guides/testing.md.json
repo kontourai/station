@@ -64,7 +64,7 @@
 
     {"path":"scripts/__tests__/metric-reference.test.ts","digest":"9c432501ef9d37322a972c2f54b52fd38552731b9b3bc59a5894a70bc557fb81","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
-    {"path":"scripts/__tests__/path-read-pin-boundary.test.ts","digest":"680c21e7cc4a454ceaa1a2c549055b475e13c3ba894164a0b227306569da312f","revision":"8c0170f5d9fb2a224c36326efbebb56b609f323a"},
+    {"path":"scripts/__tests__/path-read-pin-boundary.test.ts","digest":"40d7c1708ac66781ec300065398daf3e5274dedcac39e25b7520b952b7de8a10","revision":"64f79d4cfc8d468b475bf7c1ba871fb17534dcc2"},
 
     {"path":"scripts/__tests__/portable-server-archive.test.ts","digest":"f35ee8e8fcf9966fbcbdfa872a3e3b6ac8bd7be0c2f99086fa290b99b239b181","revision":"614c216de6de9d4c06ef56963853ccff52f2f685"},
 

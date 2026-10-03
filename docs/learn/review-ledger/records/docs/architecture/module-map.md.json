@@ -822,6 +822,8 @@
 
     {"path":"src-ui/src/components/mcp-ui/MCPToolUIFrame.tsx","digest":"732a76fa3772bbc163f0c9c5b8da98c530614a27acfaba1b93fbecb497f240b3","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
+    {"path":"src-ui/src/components/plugins/plugin-frame-runtime.ts","digest":"1254690e9a2426b4ca75612ff064a93781630679bd57e38d456eed4c129966ae","revision":"1188208f32995f08e02bc87c2a0063184540fb6a"},
+
     {"path":"src-ui/src/components/project-sidebar/ProjectSidebarNav.tsx","digest":"df150c40788645fb9cfcbfce9882e6f7e2c943586ca8d3c8215b7141c2f2f791","revision":"d6a3158c22a62d9530592c6366a1624790ee9401"},
 
     {"path":"src-ui/src/components/review/ReviewLayout.tsx","digest":"7963493f35ba9c01b90b75afa5c70f53eeffea4e0b514b929abdac0ee6fe40de","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
@@ -848,13 +850,13 @@
 
     {"path":"src-ui/src/hooks/orchestration/turnHandlers.ts","digest":"4763f7c3bb1b29b3892b84ab4bee0484334667a540be36d7a5b6a21aca3bde82","revision":"89765352964045a079d13a17bee54ab2de7b83e0"},
 
-    {"path":"src-ui/src/hooks/useActiveChatSessionMessaging.ts","digest":"c0609512c0eff8faabaddd90b55198a6c2ddabb3fceeda419ed8b60b70340bc9","revision":"4711f21b516d04300b15ad4da473e24bf2e7adb2"},
+    {"path":"src-ui/src/hooks/useActiveChatSessionMessaging.ts","digest":"9318eb8735235a5cf39ece24756ba0a90405a79b9c24982199f65326b4c4c6b2","revision":"34d62da501fa53187b7062288f6e1dbaec8c20ed"},
 
     {"path":"src-ui/src/hooks/useOutboundQueueFlush.ts","digest":"4d1c55ae87eafc2fc46ff96fc8d3a8c6b3f9816e38423239e629991efaa86dc4","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"src-ui/src/lib/device-settings-store.ts","digest":"2c9c1dfb7259dbe56a3c101aba0c370c481516a6e0b67a666655a518d2a90fd7","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/lib/foregroundMessageDispatch.ts","digest":"8dd461fc84dda8844b89d1cc72d2c2da72aab7d5f0b0a07803405627f6f2ab23","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-ui/src/lib/foregroundMessageDispatch.ts","digest":"e2eb4d3d4647f06dcd2275f7d95ea43cfa4abd66beaf1b6d96a656aaa71019bb","revision":"1f43155ddcfe86c48422d3f4b0041ddbdad16c3d"},
 
     {"path":"src-ui/src/lib/outboundQueue.ts","digest":"f5d6b23d36ce463a6f819530e4a4d5bc7c64efb376750829d8a24fb82f427d6c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

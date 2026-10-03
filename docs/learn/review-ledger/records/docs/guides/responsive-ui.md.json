@@ -12,15 +12,15 @@
   "document": {"digest":"f22a765808cc9067032740b95e53c631476bb217ecdfa02e2ffd921fd6ef36ad","revision":"b14f1b80ec27c38844b3d16e8a4bdfe624a778c9"},
 
   "sources": [
-    {"path":"docs/ui/responsive-action-surfaces.txt","digest":"190bba9bf527833f3f0ef5e362a72b0a09d6553b634d86d3c2336553d2ac2c25","revision":"9284c690de029594417d7599810fbfbe9eca3d92"},
+    {"path":"docs/ui/responsive-action-surfaces.txt","digest":"b43b53ce0b4fe11a0541f1aa583171d68218473e1b50b22b1ef79ddc4b1c41b5","revision":"adbeb32e99a86e9a8b6fca370b944f3b2147ca9f"},
 
     {"path":"docs/ui/responsive-surfaces.json","digest":"ed85a588d1029bca3f050c4225772a2b58c42e944af63014960389794d0b24c5","revision":"d1708e0a66e7328c9c62a95865f1bb1dcfbeb8d1"},
 
     {"path":"packages/sdk/src/client/http.ts","digest":"9892699e68483e0df3dd67ce71956994e98a43755a0c931dd6c3c5660caee00e","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
-    {"path":"packages/sdk/src/index.ts","digest":"b5cbdd321b37addcb83163bc91d58eb54e1bfacaac870b128112d0da28a60c2b","revision":"cda4f5e7438d4373842cd0ea297d4ca921950d27"},
+    {"path":"packages/sdk/src/index.ts","digest":"f73107a4c0e92647e409563d7ccf7472bea46c81cf67864d9c160c979f39ca75","revision":"34d62da501fa53187b7062288f6e1dbaec8c20ed"},
 
-    {"path":"packages/sdk/src/queries.ts","digest":"fce38aa5a91b944a7bc5b99658f81c2a5b83dd8a56f941261acadf7a81e2cf67","revision":"cda4f5e7438d4373842cd0ea297d4ca921950d27"},
+    {"path":"packages/sdk/src/queries.ts","digest":"7afdef915cf3241d320b76d7e6ae6bbc1b1dd145eff019692b3f9889c0164c33","revision":"34d62da501fa53187b7062288f6e1dbaec8c20ed"},
 
     {"path":"packages/sdk/src/query-core.ts","digest":"f61dfd3363e3afe8bcf0ca97330e4e799e44aeb0d1348a212a117d1f755873e9","revision":"9bb90045b7aeb926e7003b27fc4fd62252638524"},
 
@@ -28,7 +28,7 @@
 
     {"path":"packages/sdk/src/queryFactories.ts","digest":"1359417720b7dd3507f5909d835d7f9c06200e2cadaa7c3c66e754cb1a5ee8ea","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
-    {"path":"packages/shared/package.json","digest":"0083983d7254b1e242c04620e9c9708ecc70b6f50303fa25a9466a4312b01129","revision":"0961c433764c39dd7998c9418b9c157b6547292b"},
+    {"path":"packages/shared/package.json","digest":"2b5baa810e13794d2b50232ad620ba68e89ca9fae0e8321bb31749f560d28c63","revision":"8924149a7e6ef1356fc078c9a387c6a60ada429a"},
 
     {"path":"pnpm-lock.yaml","digest":"4f9a974bd49f637fd690699b3bcd9b6ce915114eb4f52e2e6bdd5b0f3b699f2a","revision":"ea49cb8678208b9037f8e9ab3ceb2a95fe2647ff"},
 
@@ -66,7 +66,7 @@
 
     {"path":"src-ui/src/components/ResponsiveDialogSurface.tsx","digest":"ff389dc7c2632309151df7065f56f8434712b5cba120324bbba48c7693a56612","revision":"f4eb9345e808edfbcadd25b1cf88a69db088f117"},
 
-    {"path":"src-ui/src/components/chat-dock/ChatDock.tsx","digest":"f92052af5abd7736675c6a27499a8a43ded8167dcecff4b0e4e775c2614562f3","revision":"4d59eb1868139f2faeaf1a1467811c22726f741c"},
+    {"path":"src-ui/src/components/chat-dock/ChatDock.tsx","digest":"ea96d9b1e01df4219ee45a05f4b894bf7db7dc7f55ade3d3fcd063c6ecfb88a5","revision":"bc542083c3919bc80d36e5e165dc6da009c6ac05"},
 
     {"path":"src-ui/src/components/chat-dock/ChatDockInboxRows.tsx","digest":"0850b9f30797c40cbc19c8817bf574d046065a600163d1925d50fbcc4d4c0c2c","revision":"b14f1b80ec27c38844b3d16e8a4bdfe624a778c9"},
 

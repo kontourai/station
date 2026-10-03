@@ -62,13 +62,13 @@
 
     {"path":"packages/sdk/src/client/http.ts","digest":"9892699e68483e0df3dd67ce71956994e98a43755a0c931dd6c3c5660caee00e","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
-    {"path":"packages/sdk/src/client/index.ts","digest":"0eea547402be44e6defe10dcf58f702a9142ba7a2eb83584bfe5ec1a64fe198b","revision":"79edb8d5dd98ef07de0722b0604b9ec606f2bdbf"},
+    {"path":"packages/sdk/src/client/index.ts","digest":"23e6795a9ba57005a4e99cfb3e561aead9934caa0ec3ecbeb8315a4bf175dc6f","revision":"21a3255e8f9899947d33bf16eb3eaaef961a5e70"},
 
     {"path":"packages/sdk/src/client/reviews.ts","digest":"8100a4534fcd3c3ca1a848a799e3928ff2fba3f39609cfe3660eea7014fc141d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"packages/sdk/src/client/scheduler.ts","digest":"db883fb0678e85bf7f57ca1132b2b66ea96ce80a2e01ab757b1bc1f2b16a01ec","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
-    {"path":"packages/sdk/src/queries.ts","digest":"fce38aa5a91b944a7bc5b99658f81c2a5b83dd8a56f941261acadf7a81e2cf67","revision":"cda4f5e7438d4373842cd0ea297d4ca921950d27"},
+    {"path":"packages/sdk/src/queries.ts","digest":"7afdef915cf3241d320b76d7e6ae6bbc1b1dd145eff019692b3f9889c0164c33","revision":"34d62da501fa53187b7062288f6e1dbaec8c20ed"},
 
     {"path":"packages/sdk/src/query-domains/agentAdmin.ts","digest":"d17ef2aeb91c21d5cf1e207289bd2936b2896752d5254cea6b94a9c82aaf62fb","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -368,7 +368,7 @@
 
     {"path":"src-shared/monitoring-keys.ts","digest":"1c2939ae04a2df7205ff75d2e16531e200199b7b785c672b1820a06a0a736f25","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/components/chat-dock/ChatDock.tsx","digest":"f92052af5abd7736675c6a27499a8a43ded8167dcecff4b0e4e775c2614562f3","revision":"4d59eb1868139f2faeaf1a1467811c22726f741c"},
+    {"path":"src-ui/src/components/chat-dock/ChatDock.tsx","digest":"ea96d9b1e01df4219ee45a05f4b894bf7db7dc7f55ade3d3fcd063c6ecfb88a5","revision":"bc542083c3919bc80d36e5e165dc6da009c6ac05"},
 
     {"path":"src-ui/src/components/chat-dock/retry-attachments.ts","digest":"e35fc0d7d193cd614829fddbf3f822b4118510a0776e5f8853fdcb8bf1ea3d93","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
