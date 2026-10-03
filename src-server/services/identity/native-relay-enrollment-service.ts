@@ -291,7 +291,10 @@ export class NativeRelayEnrollmentService {
     const terminalRecovery =
       (purpose === 'status' || purpose === 'cancel') &&
       record.expiresAt <= this.#now() &&
-      record.state !== 'committed' &&
+      !['device-pending', 'awaiting-ack', 'activating', 'committed'].includes(
+        record.state,
+      ) &&
+      record.bundleDigest === undefined &&
       record.ackDigest === undefined;
     this.#matches(record, cap, terminalRecovery);
     if (!candidate) throw new NativeRelayEnrollmentRefusal('invalid');

@@ -827,6 +827,25 @@ test('successor route cannot finalize, activate or cancel a committed Device cer
   ).not.toBeNull();
 });
 
+test('expired staged delivery refuses newer-generation status and cancellation', async () => {
+  const h = await fixture();
+  const delivery = await h.registered();
+  await h.replaceTransport(2);
+  vi.spyOn(Date, 'now').mockReturnValue(h.challenge.expiresAt + 1);
+  const before = h.journal.get(h.challenge.enrollmentId)!;
+  expect(before.state).toBe('awaiting-ack');
+  expect(before.bundleDigest).toBe(delivery.bundleDigest);
+  expect(before.ackDigest).toBeUndefined();
+  for (const purpose of ['status', 'cancel']) {
+    const refused = await h.proved(purpose, {
+      enrollmentId: h.challenge.enrollmentId,
+      candidate: h.candidate,
+    });
+    expect(refused.response.status, refused.raw).toBe(400);
+  }
+  expect(h.journal.get(h.challenge.enrollmentId)).toEqual(before);
+});
+
 test.each(['backward', 'different-installation'] as const)(
   'expired terminal recovery refuses %s transport',
   async (kind) => {
