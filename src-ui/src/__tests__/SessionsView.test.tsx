@@ -323,6 +323,10 @@ vi.mock('../hooks/orchestration/useSessionEventStream', () => ({
   }),
 }));
 
+import {
+  CONVERSATION_REFERENCE_DRAG_TYPE,
+  draggedConversationReference,
+} from '../components/chat/conversationReferenceDrag';
 import { SessionsView } from '../views/SessionsView';
 
 function renderView(
@@ -562,6 +566,42 @@ describe('SessionsView', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     expect(refetchSessions).toHaveBeenCalledTimes(1);
+  });
+
+  test('#3159: an Activity row whose conversation may be referenced drags it onto a composer', () => {
+    const scope = { apiBase: 'http://test.local', authorityKey: 'owner-a' };
+    const renderWith = (isReferenceable: (id: string) => boolean) =>
+      render(
+        <QueryClientProvider client={new QueryClient()}>
+          <NavigationProvider>
+            <SessionsView
+              apiBase="http://test.local"
+              referenceDrag={{ scope, isReferenceable }}
+            />
+          </NavigationProvider>
+        </QueryClientProvider>,
+      );
+    const first = renderWith(() => false);
+    expect(rowButton('Worker task').hasAttribute('draggable')).toBe(false);
+    first.unmount();
+
+    renderWith((id) => id === 'thread-alpha');
+    const row = rowButton('Worker task');
+    expect(row.getAttribute('draggable')).toBe('true');
+    const values = new Map<string, string>();
+    fireEvent.dragStart(row, {
+      dataTransfer: {
+        setData: (type: string, value: string) => values.set(type, value),
+        effectAllowed: 'all',
+      },
+    });
+    expect(values.get(CONVERSATION_REFERENCE_DRAG_TYPE)).toBe('thread-alpha');
+    expect(draggedConversationReference('thread-alpha', scope)).toMatchObject({
+      id: 'thread-alpha',
+      projectSlug: 'demo',
+    });
+    fireEvent.dragEnd(row);
+    expect(draggedConversationReference('thread-alpha', scope)).toBeNull();
   });
 
   test('lists sessions and opens a live feed on select', () => {
