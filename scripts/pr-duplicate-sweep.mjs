@@ -1,7 +1,4 @@
 #!/usr/bin/env node
-import { mkdtempSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 // Duplicate-after-merge sweep (report-only). When a PR merges, find open
 // sibling PRs that look superseded and comment the evidence on the merged PR.
 // This script NEVER closes anything: closing is owner work until the
@@ -9,6 +6,9 @@ import { join } from 'node:path';
 //
 //   node scripts/pr-duplicate-sweep.mjs --pr 2629            # report to stdout
 //   node scripts/pr-duplicate-sweep.mjs --pr 2629 --apply    # comment once on the merged PR
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 

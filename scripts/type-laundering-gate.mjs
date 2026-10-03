@@ -1,7 +1,4 @@
 #!/usr/bin/env node
-import { createHash } from 'node:crypto';
-import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join, relative, sep } from 'node:path';
 // Type-laundering gate: blocks NEW `as unknown as T` and `as any` casts in
 // production surfaces. Existing sites live in the shrink-only baseline; a
 // baseline entry may be removed, never added, and a covered site that
@@ -13,6 +10,9 @@ import { join, relative, sep } from 'node:path';
 //
 // The scan is line-based and deliberately simple: it sees textual casts, not
 // every way to launder a type. It is a ratchet, not a type system.
+import { createHash } from 'node:crypto';
+import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { join, relative, sep } from 'node:path';
 import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 

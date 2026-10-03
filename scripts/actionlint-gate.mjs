@@ -3087,7 +3087,9 @@ function main() {
     });
   } catch (error) {
     status = typeof error.status === 'number' ? error.status : -1;
-    stdout = `${error.stdout ?? ''}${error.stderr ?? ''}`;
+    // A capture overflow or spawn failure carries no child output; its
+    // message is the only diagnostic, so never print an empty detail.
+    stdout = `${error.stdout ?? ''}${error.stderr ?? ''}` || error.message;
   }
 
   if (status !== 0 && status !== 1) {

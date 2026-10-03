@@ -1,3 +1,7 @@
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { describe, expect, test } from 'vitest';
 import {
   CAPTURE_MAX_BYTES,
@@ -109,5 +113,67 @@ describe('bounded synchronous capture (#2787)', () => {
         stdio: ['ignore', 'pipe', 'pipe'],
       }),
     ).toThrow(expect.objectContaining({ status: 3 }));
+  });
+
+  test('an explicit maxBuffer: undefined still gets the bound', () => {
+    // Node reads an explicit undefined as unbounded, not as its default.
+    let requested: unknown;
+    spawnSyncBounded(
+      'unused',
+      [],
+      { maxBuffer: undefined },
+      {
+        run: (_command: string, _args: string[], options: object) => {
+          requested = (options as { maxBuffer?: number }).maxBuffer;
+          return { status: 0, stdout: '', stderr: '' };
+        },
+      },
+    );
+    expect(requested).toBe(67_108_864);
+  });
+
+  test('the ratchet family reads a tracked-file listing larger than 1 MiB whole', () => {
+    const root = mkdtempSync(join(tmpdir(), 'station-ratchet-ls-files-'));
+    try {
+      const git = (args: string[], input?: string) =>
+        execFileSyncBounded('git', args, {
+          cwd: root,
+          encoding: 'utf8',
+          ...(input === undefined ? {} : { input }),
+        });
+      git(['init', '-q']);
+      // Index entries only: `git ls-files` lists them with no files on disk.
+      const blob = git(['hash-object', '-w', '--stdin'], '').trim();
+      const count = 6000;
+      const names = Array.from(
+        { length: count },
+        (_, index) => `pad/${'p'.repeat(200)}-${index}.txt`,
+      );
+      expect(Buffer.byteLength(names.join('\n'))).toBeGreaterThan(
+        NODE_DEFAULT_MAX_BUFFER,
+      );
+      git(
+        ['update-index', '--add', '--index-info'],
+        names.map((name) => `100644 ${blob}\t${name}\n`).join(''),
+      );
+
+      // gitLsFiles lists from process.cwd(), so drive the production module
+      // in a child whose cwd is the scratch repository.
+      const ratchetUtils = pathToFileURL(
+        resolve('scripts/lib/ratchet-utils.mjs'),
+      ).href;
+      const listed = execFileSyncBounded(
+        process.execPath,
+        [
+          '--input-type=module',
+          '-e',
+          `const { gitLsFiles } = await import(${JSON.stringify(ratchetUtils)}); process.stdout.write(String(gitLsFiles([]).length));`,
+        ],
+        { cwd: root, encoding: 'utf8' },
+      );
+      expect(Number(listed)).toBe(count);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });

@@ -159,9 +159,11 @@ function verifyReusableBaseline(root, baseSha) {
       windowsHide: true,
     },
   );
-  if (result.status !== 0)
+  // A capture overflow (or a spawn failure) leaves no child output to show;
+  // the error's own message names the cause.
+  if (result.error || result.status !== 0)
     fail(
-      `dependencies:verify failed in ${root}: ${(result.stderr || result.stdout || '').trim().slice(-400)}`,
+      `dependencies:verify failed in ${root}: ${(result.error?.message || result.stderr || result.stdout || '').trim().slice(-400)}`,
     );
 }
 

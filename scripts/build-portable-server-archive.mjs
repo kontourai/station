@@ -1,7 +1,4 @@
 #!/usr/bin/env node
-import { appendFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { parseArgs } from 'node:util';
 // Builds station-server-<os>-<arch> for THIS host from a built checkout
 // (`npm run build` first): the pinned official Node.js, the server bundle,
 // the UI, schemas and the pruned runtime node_modules, plus a JSON descriptor
@@ -14,6 +11,9 @@ import { parseArgs } from 'node:util';
 // The build refuses a --sha other than HEAD, and a dirty working tree.
 // --allow-unverified-source lifts that for tests and local experiments only;
 // such an archive's provenance is not the source of its bytes.
+import { appendFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { parseArgs } from 'node:util';
 import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import {
   assertBuildSourceIsCheckout,

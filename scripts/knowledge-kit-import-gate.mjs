@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-import { readFileSync } from 'node:fs';
 // Zero-tolerance regression gate for #200's K2 acceptance criterion
 // `k2-no-kit-internal-imports` (mirrors scripts/rename-inventory.mjs's /
 // scripts/unsaved-guard-gate.mjs's "ban a pattern everywhere" style, not a
@@ -50,6 +49,7 @@ import { readFileSync } from 'node:fs';
 // `@kontourai` mentions elsewhere in the tree (verified empirically: this
 // repo's existing `node_modules` references, in packages/cli and
 // packages/shared, are never adjacent to `@kontourai`/`flow-agents` tokens).
+import { readFileSync } from 'node:fs';
 import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 

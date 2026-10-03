@@ -42,6 +42,10 @@ function boundedOptions(options) {
   return {
     windowsHide: true,
     ...options,
+    // `??`, after the spread, on purpose: Node treats an explicit
+    // `maxBuffer: undefined` as unbounded, not as its 1 MiB default. A
+    // `{ maxBuffer: CAPTURE_MAX_BYTES, ...options }` refactor would let a
+    // caller's `undefined` silently remove the bound.
     maxBuffer: options?.maxBuffer ?? CAPTURE_MAX_BYTES,
   };
 }

@@ -94,7 +94,7 @@ describe('Vitest resource manifest', () => {
     expect(assertOrdinaryVitestSelection(groups)).toEqual(groups.ordinary);
   }, 70_000);
 
-  it('refuses a discovery listing past its 1 MiB limit by name (#2787)', () => {
+  it('refuses a discovery listing past the 64 MiB capture bound by name (#2787)', () => {
     let requested: unknown;
     expect(() =>
       discoverVitestFiles({
@@ -114,8 +114,8 @@ describe('Vitest resource manifest', () => {
           };
         }) as never,
       }),
-    ).toThrow(/list --filesOnly wrote more than 1048576 bytes/);
-    expect(requested).toBe(1_048_576);
+    ).toThrow(/list --filesOnly wrote more than 67108864 bytes/);
+    expect(requested).toBe(67_108_864);
   });
 
   it('proves eight ordinary slices cover the canonical corpus exactly once', async () => {

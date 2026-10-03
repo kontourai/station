@@ -1,8 +1,4 @@
 #!/usr/bin/env node
-import { existsSync, readFileSync } from 'node:fs';
-import { builtinModules } from 'node:module';
-import path from 'node:path';
-import ts from 'typescript';
 // station#3423: a test file that imports a package no `npm install` in this
 // repo has ever put on disk cannot execute as written — it either errors
 // somewhere nothing surfaces, or (as happened here) the file gets quietly
@@ -32,6 +28,10 @@ import ts from 'typescript';
 // Parse syntax so generated module fixtures and comments are not mistaken for
 // imports by the test itself. The TypeScript parser also preserves real imports
 // across comments and visits executable expressions inside template literals.
+import { existsSync, readFileSync } from 'node:fs';
+import { builtinModules } from 'node:module';
+import path from 'node:path';
+import ts from 'typescript';
 import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 

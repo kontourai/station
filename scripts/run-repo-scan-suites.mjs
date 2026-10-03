@@ -1,7 +1,4 @@
 #!/usr/bin/env node
-import { existsSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 /**
  * Run every whole-tree source scan (`REPO_SCAN_SUITES`, #2176) through the
  * focused runner. The list lives in the impact manifest so this runner, the
@@ -9,6 +6,9 @@ import { fileURLToPath } from 'node:url';
  *
  * `--list` prints the suites and runs nothing.
  */
+import { existsSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { DOCS_FRESHNESS_MODE_ENV } from './lib/documentation-freshness.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';

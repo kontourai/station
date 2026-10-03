@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-import { readFileSync } from 'node:fs';
 // Regression gate for #195 (editor unsaved-guard unification + kill last
 // window.confirm). Two independent checks, run together:
 //
@@ -59,6 +58,7 @@ import { readFileSync } from 'node:fs';
 //      (e.g. `isModified`) would not be caught by 2b. This is a heuristic,
 //      not exhaustive static analysis — mitigated by keeping the pattern
 //      list easy to extend.
+import { readFileSync } from 'node:fs';
 import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 

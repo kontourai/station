@@ -1,6 +1,4 @@
 #!/usr/bin/env node
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
 /**
  * Mobile CSS convergence gate. Responsive rules belong to the shared
  * primitives; this records the remaining page-local rules and only permits
@@ -26,6 +24,8 @@ import { fileURLToPath } from 'node:url';
  * The aggregate ceiling is kept as a second, weaker assertion so the total
  * cannot creep up through per-file edits alone.
  */
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 

@@ -1,13 +1,13 @@
 #!/usr/bin/env node
-import { readFileSync, writeFileSync } from 'node:fs';
-import { basename, dirname, relative, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 // Generates the file index inside docs/design/README.md and
 // docs/plans/README.md between the docs-index markers, one line per tracked
 // markdown file with its own H1 as the description. `--check` regenerates and
 // diffs instead of writing (the docs:issue-lifecycle:check pattern), so the
 // indexes cannot silently omit a record again — docs/design/README.md linked
 // 2 of 44 files when this was introduced, and docs/plans/README.md 5 of 8.
+import { readFileSync, writeFileSync } from 'node:fs';
+import { basename, dirname, relative, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
