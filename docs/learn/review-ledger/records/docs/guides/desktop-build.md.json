@@ -128,7 +128,7 @@
 
     {"path":"src-ui/src/components/DesktopUpdateLaunchCheck.tsx","digest":"7cfd1dcc6316d30b1b3777b04cc5cca179282e8aa108f3093bb99c77d2ef3cef","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-ui/src/core/PluginRegistry.ts","digest":"4b87c6951d37298e6497639e1cc45294fd1239f06d4c6caf9f5ed540eef5ca2c","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"src-ui/src/core/PluginRegistry.ts","digest":"69836e5e1dd4762f58da6f2495e96f0cab41d586e65327fc4c1dc08d80acc8f9","revision":"1373230550904315438e5bd2869a3c41a9e419ca"},
 
     {"path":"src-ui/src/platform/androidSafeArea.ts","digest":"d9d5db24209f5a5c0848edbed5c8f9cfd82d903c45b85a11ba284c7e9f7005a6","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 

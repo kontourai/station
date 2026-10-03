@@ -9,16 +9,20 @@
 
   "limits": "Local author schema/source/transcript assertions only. Curated model evaluations, fresh published external consumer, installed browser/native/mobile, rich interface and release qualification remain NOT_VERIFIED.",
 
-  "document": {"digest":"b6f2510fa89e1f5dc49113d6fee278cdccf6dbfc12b4a90ecf11ec0f4f8edb67","revision":"036d5d3d2289fc22e325a9ded733e8de561e9b30"},
+  "document": {"digest":"c6c9388b429e09f4a1eaa475b4cec0a2329813befde8be91ad53b0dee0ff0302","revision":"4131b514cf6f6507d6a7faa45a95ba22deff6e87"},
 
   "sources": [
-    {"path":"examples/matt-pocock-engineering/plugin.json","digest":"b6ebdeab7bff481cc948a5556f3a7c2726b9d0444f261810b69341b4ef4786a0","revision":"f249300b2162c4ef35f8978e4cf9ded407027304"},
-
     {"path":"examples/matt-pocock-engineering/ADAPTATIONS.json","digest":"55407b097633ef9c6430260373c74453f4a76ac1f59f11506a8e9e76a92108a4","revision":"036d5d3d2289fc22e325a9ded733e8de561e9b30"},
 
-    {"path":"examples/matt-pocock-engineering/SOURCE-TRACE.json","digest":"f3a19118238ea07b420e8b4a0c874857dd53eac21baf9032493f45b78351a678","revision":"036d5d3d2289fc22e325a9ded733e8de561e9b30"},
+    {"path":"examples/matt-pocock-engineering/EVALUATION-CASES.json","digest":"e4904582a2d1a7f6fca50f268d9eff5515c1f73d45e1f8c51b9f0e52b416f36a","revision":"f001e226f40b1483bae77de036d70596952aef94"},
 
-    {"path":"packages/shared/src/skill-experience-author.ts","digest":"ad4c1718cd49718a71b341ade9babdbbdee11a8c3b5b4b36b578e1bc48ec69d6","revision":"cdbbf99cf334245282450ff5bfc51dcd4f42d660"}
+    {"path":"examples/matt-pocock-engineering/SOURCE-TRACE.json","digest":"b098db310d83c91061a55713ea2c5cbce14b2fea9857b5ae2fa8ea986d310ed8","revision":"f2bb7d8a1e4b56ac783fb9d0cfe167fe7a0fdde5"},
+
+    {"path":"examples/matt-pocock-engineering/plugin.json","digest":"ca5e3cb989287602ded89bd36e4274f18d687f400e3fefcf6b44c3e2e3e7379b","revision":"f2bb7d8a1e4b56ac783fb9d0cfe167fe7a0fdde5"},
+
+    {"path":"examples/matt-pocock-engineering/qualification/browser-focus-board-20261003.json","digest":"600a46df6d2c9f80f1b201bf2d48db78a8122e71db199b0a68149cbee83119f7","revision":"dbc0939f81dc3aa566b257653a255f4e4a331886"},
+
+    {"path":"packages/shared/src/skill-experience-author.ts","digest":"78eff8e23674a648d904c12919b137ff62c04520fc3f164f66a482102047754b","revision":"f2bb7d8a1e4b56ac783fb9d0cfe167fe7a0fdde5"}
   ],
 
   "checks": [

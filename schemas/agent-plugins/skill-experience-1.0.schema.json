@@ -190,7 +190,7 @@
             ],
             "properties": {
               "id": {
-                "$ref": "#/$defs/id"
+                "$ref": "#/$defs/inputId"
               },
               "label": {
                 "type": "string",
@@ -240,7 +240,7 @@
             ],
             "properties": {
               "id": {
-                "$ref": "#/$defs/id"
+                "$ref": "#/$defs/inputId"
               },
               "label": {
                 "type": "string",
@@ -303,7 +303,7 @@
             ],
             "properties": {
               "id": {
-                "$ref": "#/$defs/id"
+                "$ref": "#/$defs/inputId"
               },
               "label": {
                 "type": "string",
@@ -432,6 +432,49 @@
         },
         "defaultMode": {
           "enum": ["guided", "alongside"]
+        },
+        "richView": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["version", "kind", "descriptorId"],
+          "properties": {
+            "version": {
+              "const": "1.0"
+            },
+            "kind": {
+              "const": "workspace-pane"
+            },
+            "descriptorId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            }
+          }
+        }
+      }
+    },
+    "entrySkillId": {
+      "$ref": "#/$defs/id"
+    },
+    "transitions": {
+      "type": "array",
+      "maxItems": 32,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["experienceId", "label", "provenance"],
+        "properties": {
+          "experienceId": {
+            "$ref": "#/$defs/id"
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "provenance": {
+            "$ref": "#/$defs/provenance"
+          }
         }
       }
     }
@@ -476,6 +519,18 @@
               "minLength": 1,
               "maxLength": 2000
             }
+          }
+        }
+      ]
+    },
+    "inputId": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/id"
+        },
+        {
+          "not": {
+            "enum": ["constructor", "prototype", "__proto__"]
           }
         }
       ]

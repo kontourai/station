@@ -42,6 +42,7 @@
         "SessionQueryModule",
         "ConversationSessionLineage",
         "SessionCommandModule",
+        "SkillExperienceRuntime",
         "SessionLifecycleModule",
         "SessionTurnBoundaryAuthority",
         "TurnDeduplicator",

@@ -20,6 +20,7 @@ import {
 import {
   currentAuthorizedTurnCorrelation,
   currentNativeMemoryHistory,
+  currentSkillExperienceContext,
   INTERNAL_TURN_CORRELATION_HEADER,
   issueAuthorizedTurnCorrelationHandoff,
 } from '../../runtime/conversation/authorized-turn-correlation.js';
@@ -1032,6 +1033,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
             nativeOutputRelay,
             currentNativeMemoryHistory(),
             nativeForeground,
+            currentSkillExperienceContext(),
           )
         : undefined;
       // #2377 slice A: the relay is Station's own server code (the built-in

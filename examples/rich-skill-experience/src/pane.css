@@ -1,0 +1,62 @@
+.rich-skill-experience {
+  font-family: system-ui, sans-serif;
+  color-scheme: light dark;
+}
+.rich-skill-experience {
+  margin: 0;
+  padding: 1rem;
+}
+.rich-skill-experience {
+  max-width: 45rem;
+  margin: auto;
+}
+.rich-skill-experience h1 {
+  font-size: 1.35rem;
+}
+.rich-skill-experience section {
+  display: grid;
+  gap: 1rem;
+}
+.rich-skill-experience button {
+  min-height: 44px;
+  padding: 0.5rem 1rem;
+  border: 1px solid currentColor;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  background: transparent;
+  color: inherit;
+}
+.rich-skill-experience button:focus-visible,
+.rich-skill-experience input:focus-visible,
+.rich-skill-experience textarea:focus-visible {
+  outline: 3px solid Highlight;
+  outline-offset: 3px;
+}
+.rich-skill-experience fieldset {
+  display: grid;
+  gap: 0.75rem;
+  border: 1px solid currentColor;
+  border-radius: 0.5rem;
+  padding: 1rem;
+}
+.rich-skill-experience label {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  min-height: 44px;
+}
+.rich-skill-experience label:has(textarea) {
+  display: grid;
+}
+.rich-skill-experience textarea {
+  min-height: 6rem;
+  width: 100%;
+  box-sizing: border-box;
+}
+.rich-skill-experience dt {
+  font-weight: 600;
+}
+.rich-skill-experience dd {
+  margin: 0.25rem 0 1rem;
+  white-space: pre-wrap;
+}

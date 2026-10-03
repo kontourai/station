@@ -2868,6 +2868,12 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     },
     { method: 'GET', path: '/api/orchestration/sessions' },
     { method: 'GET', path: '/api/orchestration/sessions/:threadId' },
+    // Immutable experience history uses the same Session read authority;
+    // the reader also authorizes every historical thread before publication.
+    {
+      method: 'GET',
+      path: '/api/orchestration/sessions/:threadId/skill-experience',
+    },
     {
       method: 'GET',
       path: '/api/orchestration/sessions/:threadId/requests/:requestId',

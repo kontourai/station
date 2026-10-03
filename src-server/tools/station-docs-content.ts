@@ -13,7 +13,7 @@ export interface StationDocsTopic {
 }
 
 export const STATION_DOCS_CONTENT_DIGEST =
-  '18e00fff59a8f5199f0af5a3ff6b832ab22d0e1015b64cca9a65ff7fc104241c';
+  '939fc4a2053aff95fa5fe8382494391fcbc7c08f9f20aedb6ac4e545e4df2d83';
 export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
   {
     id: 'station-overview',
@@ -442,7 +442,7 @@ export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
     title: 'Sessions, engines, and recovery',
     summary:
       'How a message becomes an engine invocation, how output becomes a durable record, and how Station handles stop, reconnect, and uncertainty.',
-    body: 'How a message becomes an engine invocation, how output becomes a durable record, and how Station handles stop, reconnect, and uncertainty.\n\nThis is a reading path through shipped documentation, not live state or a completed semantic audit.\n\nQuestions:\n- Where is the boundary between accepting a command and knowing an engine accepted it?\n- Can a reconnect replay output without replaying an external effect?\n- Which states distinguish failure, cancellation, and an unknown outcome?\n\nRead module topics with get_station_docs_topic:\n- architecture-sessionquerymodule: SessionQueryModule\n- architecture-conversationsessionlineage: ConversationSessionLineage\n- architecture-sessioncommandmodule: SessionCommandModule\n- architecture-sessionlifecyclemodule: SessionLifecycleModule\n- architecture-sessionturnboundaryauthority: SessionTurnBoundaryAuthority\n- architecture-turndeduplicator: TurnDeduplicator\n- architecture-adoptionledger: AdoptionLedger\n- architecture-recoveryledger-and-private-credentialapplicationfactoryhandle: RecoveryLedger and private CredentialApplicationFactory/Handle\n- architecture-credentialrecoverymodule: CredentialRecoveryModule\n- architecture-outbounddispatchmodule: OutboundDispatchModule\n- architecture-session-inventory-sources: Session inventory Sources\n- architecture-workspace-checkpoints: Workspace checkpoints\n\nCanonical reading:\n- docs/architecture.md#data-flow-chat-request\n- docs/reference/session-api.md\n- docs/design/orchestration-decomposition-map.md\n- docs/guides/agents.md\n- docs/guides/acp.md\n- docs/user/workspace-checkpoints.md',
+    body: 'How a message becomes an engine invocation, how output becomes a durable record, and how Station handles stop, reconnect, and uncertainty.\n\nThis is a reading path through shipped documentation, not live state or a completed semantic audit.\n\nQuestions:\n- Where is the boundary between accepting a command and knowing an engine accepted it?\n- Can a reconnect replay output without replaying an external effect?\n- Which states distinguish failure, cancellation, and an unknown outcome?\n\nRead module topics with get_station_docs_topic:\n- architecture-sessionquerymodule: SessionQueryModule\n- architecture-conversationsessionlineage: ConversationSessionLineage\n- architecture-sessioncommandmodule: SessionCommandModule\n- architecture-skillexperienceruntime: SkillExperienceRuntime\n- architecture-sessionlifecyclemodule: SessionLifecycleModule\n- architecture-sessionturnboundaryauthority: SessionTurnBoundaryAuthority\n- architecture-turndeduplicator: TurnDeduplicator\n- architecture-adoptionledger: AdoptionLedger\n- architecture-recoveryledger-and-private-credentialapplicationfactoryhandle: RecoveryLedger and private CredentialApplicationFactory/Handle\n- architecture-credentialrecoverymodule: CredentialRecoveryModule\n- architecture-outbounddispatchmodule: OutboundDispatchModule\n- architecture-session-inventory-sources: Session inventory Sources\n- architecture-workspace-checkpoints: Workspace checkpoints\n\nCanonical reading:\n- docs/architecture.md#data-flow-chat-request\n- docs/reference/session-api.md\n- docs/design/orchestration-decomposition-map.md\n- docs/guides/agents.md\n- docs/guides/acp.md\n- docs/user/workspace-checkpoints.md',
     tags: ['architecture', 'execution'],
     parentId: 'architecture',
     sourcePath: 'docs/learn/atlas.json',
@@ -480,6 +480,17 @@ export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
     parentId: 'architecture-execution',
     sourcePath: 'docs/architecture/module-map.md',
     sourceAnchor: 'sessioncommandmodule',
+  },
+  {
+    id: 'architecture-skillexperienceruntime',
+    title: 'SkillExperienceRuntime',
+    summary:
+      'Interface, composition, invariants, and documented evidence for SkillExperienceRuntime.',
+    body: 'Shipped architecture reference. Source and test links describe evidence to inspect; they do not establish live state or that those tests have been executed for this installation.\n\n## SkillExperienceRuntime\n\n[SkillExperienceRuntime](../../src-server/services/orchestration/skill-experience-runtime.ts)\nbinds explicit foreground selections to the installed source owner and the\ncanonical Session turn. The package-content lease/journal and Skill scope owner\nrevalidate pinned source/dependencies; source admission wraps actual send, steer\nand accepting request effects. The existing exact turn attribution mechanism\nadds only the bounded retained-snapshot reference to an accepted `turn.started`.\n\n[Immutable snapshots](../../src-server/services/orchestration/skill-experience-snapshots.ts)\nlive in the same EventStore. Bounded history follows the existing conversation\nlineage and Session read authorization. A snapshot without a canonical turn is\nnot invocation truth; removed sources retain inert history and fail future\nadmission. Rich pane actions additionally bind the exact current event and hold\nthe current `agents.invoke` grant. Presentation controls and package-defined\ntransitions create no second execution lifecycle.\n\nThe [contract guide](../reference/skill-experiences.md) links author/schema,\nforeground routes, storage and the independent rich example. Controlled route,\nprovider-bound and frame transport evidence lives in\n`src-server/routes/agents/__tests__/skill-experiences.routes.test.ts`,\n`src-ui/src/__tests__/framePaneHost.test.tsx` and\n`packages/sdk/src/__tests__/skill-experience-pane.test.ts`. Those tests do not\nestablish a live model, native-device renderer or release receipt.',
+    tags: ['architecture', 'execution', 'SkillExperienceRuntime'],
+    parentId: 'architecture-execution',
+    sourcePath: 'docs/architecture/module-map.md',
+    sourceAnchor: 'skillexperienceruntime',
   },
   {
     id: 'architecture-sessionlifecyclemodule',

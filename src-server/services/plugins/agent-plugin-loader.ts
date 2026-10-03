@@ -29,7 +29,11 @@ import {
   type StationAgentPluginExtensionV1,
 } from '@kontourai/station-contracts/agent-plugin';
 import { isCanonicalPluginId } from '@kontourai/station-contracts/plugin';
-import type { SkillExperienceInventoryV1 } from '@kontourai/station-contracts/skill-experience';
+import type {
+  SkillExperienceDefinitionV1,
+  SkillExperienceIdentityV1,
+  SkillExperienceInventoryV1,
+} from '@kontourai/station-contracts/skill-experience';
 import type { ToolDef, ToolMetadata } from '@kontourai/station-contracts/tool';
 import { parseAgentPluginManifest } from '@kontourai/station-shared/agent-plugin-manifest';
 import {
@@ -58,6 +62,7 @@ import {
   resolveInstalledPluginRoot,
   resolvePluginMaterialization,
 } from './plugin-incarnation.js';
+import { withPluginPermissionInvocation } from './plugin-permissions.js';
 
 const MAX_CONFIGURATION_BYTES = 2 * 1024 * 1024;
 const WINDOWS_RESERVED_ENV = new Set(['plugin_root', 'plugin_data']);
@@ -859,6 +864,140 @@ export class AgentPluginLoader {
       });
     }
     return inventory;
+  }
+
+  async withSkillExperience<T>(
+    identity: SkillExperienceIdentityV1,
+    effect: (
+      definition: SkillExperienceDefinitionV1,
+      entryContent: string,
+    ) => Promise<T>,
+    permission?: 'agents.invoke',
+  ): Promise<T> {
+    return withPluginContentLock(
+      this.pluginsDir,
+      identity.pluginId,
+      async () => {
+        const root = this.selectedRoot(identity.pluginId)?.packageRoot;
+        const journal = this.options.journal?.();
+        const current = journal?.currentInstallation(identity.pluginId);
+        if (
+          !root ||
+          !journal ||
+          current?.state !== 'observed' ||
+          current.installation.incarnation !== identity.incarnation ||
+          current.installation.materialization !== identity.materialization ||
+          current.installation.contentDigest !== identity.contentDigest ||
+          !journal.admissionOpen(current.installation) ||
+          (await computePluginContentDigestAsync(
+            dirname(root),
+            basename(root),
+          )) !== identity.contentDigest
+        )
+          throw new Error(
+            'The selected Skill experience source is no longer available.',
+          );
+        const parsed = this.parseManifest(
+          root,
+          JSON.parse(
+            readBoundedRegularFile(
+              resolveContainedPath(root, join(root, 'plugin.json')),
+            ),
+          ),
+          [],
+        );
+        if (
+          !parsed?.stationExtension ||
+          parsed.manifest.version !== identity.pluginVersion ||
+          parsed.manifest.name !== identity.pluginId
+        )
+          throw new Error('The selected Skill experience package changed.');
+        const definition = readValidatedSkillExperiences(
+          root,
+          parsed.manifest,
+          parsed.stationExtension,
+        ).find((value) => value.id === identity.experienceId);
+        if (
+          !definition ||
+          createHash('sha256')
+            .update(JSON.stringify(definition))
+            .digest('hex') !== identity.definitionDigest
+        )
+          throw new Error('The selected Skill experience definition changed.');
+        const entry =
+          definition.skills.find(
+            (skill) => skill.id === definition.entrySkillId,
+          ) ??
+          (definition.skills.length === 1 ? definition.skills[0] : undefined);
+        if (!entry)
+          throw new Error('This experience needs an explicit entry Skill.');
+        const ordered: typeof definition.skills = [];
+        const visited = new Set<string>();
+        const collect = (skill: typeof entry) => {
+          if (visited.has(skill.id)) return;
+          visited.add(skill.id);
+          for (const dependency of skill.dependsOn ?? []) {
+            const source = definition.skills.find(
+              (value) => value.id === dependency,
+            );
+            if (!source)
+              throw new Error('A bundled dependency is unavailable.');
+            collect(source);
+          }
+          ordered.push(skill);
+        };
+        collect(entry);
+        const content =
+          `Selected entry Skill: ${entry.name}. Package resource root (normal Agent/tool permissions still apply): ${root}.\n\n` +
+          ordered
+            .map(
+              (skill) =>
+                `Bundled Skill ${skill.name}:\n${readBoundedRegularFile(resolveContainedPath(root, join(root, skill.path)))}`,
+            )
+            .join('\n\n');
+        if (Buffer.byteLength(content) > 128 * 1024)
+          throw new Error(
+            'The selected Skill and its bundled dependencies exceed the execution context bound.',
+          );
+        const reserved = journal.reserve(current.installation, 'app');
+        if (reserved.state !== 'reserved')
+          throw new Error('The Skill experience source is retiring.');
+        let entered = false;
+        try {
+          if (
+            !reserved.claim.isCurrent() ||
+            this.selectedRoot(identity.pluginId)?.packageRoot !== root ||
+            (await computePluginContentDigestAsync(
+              dirname(root),
+              basename(root),
+            )) !== identity.contentDigest ||
+            reserved.claim.enterEffectBoundary().state !== 'applied'
+          )
+            throw new Error(
+              'The Skill experience source changed before dispatch.',
+            );
+          entered = true;
+          const invoke = () => effect(definition, content);
+          return await (permission
+            ? withPluginPermissionInvocation(
+                this.projectHomeDir,
+                identity.pluginId,
+                permission,
+                invoke,
+                {
+                  pluginId: identity.pluginId,
+                  generation: identity.incarnation,
+                  digest: identity.contentDigest,
+                  isCurrent: () => reserved.claim.isCurrent(),
+                },
+              )
+            : invoke());
+        } finally {
+          if (entered) reserved.claim.observeLocalSettlement();
+          else reserved.claim.releaseNotStarted();
+        }
+      },
+    );
   }
 
   skillSources(
