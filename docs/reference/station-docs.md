@@ -220,6 +220,15 @@ has its own delivery and authorization boundary.
 
 Third-party MCP servers are configured as integrations and can be attached to an Agent. Delivery to an external engine follows that engine's transport and credential-custody policy; an empty environment does not grant a server arbitrary authority. The built-in Station Docs server has a verified runtime identity and no credential requirement. Station Control is a separate capability with its own authorization and delivery requirements.
 
+Open an Agent's Tools section and choose **Add Station tools** or **Add tools**.
+Expand an integration to search and choose Read only, All, None, or individual
+tools. Station additions start read-only where individual selection is supported.
+Approvals are separate and collapsed until requested. Changes apply to new chats.
+Claude and Codex can keep their configured harness MCP integrations while adding
+Station's selections. Claude also offers native on-demand tool loading. Generic
+connected engines receive whole integrations and disclose unsupported restrictions.
+The [Agent guide](../guides/agents.md#mcp-tool-configuration) owns setup and limits.
+
 Mutating tools remain subject to their authorization and approval rules.
 Inspect the specific tool result and the approval or execution evidence
 available for that operation. A successful tool response alone does not prove

@@ -12,9 +12,9 @@
   "document": {"digest":"83622cba5c9fb980797a0b5d57fea1fcf25eb41ab5c72cbefee14d8c3814155e","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
 
   "sources": [
-    {"path":"packages/contracts/src/agent.ts","digest":"09ccd526184f256ab9833dd6e46f417f4da565a825f3fd870f5621e017922e22","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+    {"path":"packages/contracts/src/agent.ts","digest":"e325363bc2303d78102c7c4c45b118756d71d66cae3d801eee303761d0715b6c","revision":"423cbe55b9e35e4cd8954fd441cb9f3c69740d66"},
 
-    {"path":"schemas/agent.schema.json","digest":"d5f9d556348793b8a12764d68b005a9ab08c956da09304b61f2bf29620ba798d","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+    {"path":"schemas/agent.schema.json","digest":"fe5a6c91fb32f7d027438d00fd28f071bdcced285bf7b3a60ed55f36c56beb88","revision":"423cbe55b9e35e4cd8954fd441cb9f3c69740d66"},
 
     {"path":"src-server/domain/config-loader-agents.ts","digest":"e7d8a221ff3de08e9a8c429b2b78cfb4fc45e8762136d218eeb96082fe6a7789","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
 

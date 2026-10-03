@@ -54,13 +54,13 @@
 
     {"path":"src-server/runtime/bootstrap/runtime-service-bootstrap.ts","digest":"a78f60fbabf9c50eb01380d1aeee4d90583848b546547a23bcd70760ce026dbd","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"92d31dd655d7c0a62ce68dc6fd804268cda2f357bb775a512ee974d7c09564db","revision":"1a235cd9bc482738abe4c3f011f73be86074d667"},
+    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"b13d44008f39b08b3d32e459abc3081c8ac8936f53e5a7bdb93d4dcbdc2043f1","revision":"423cbe55b9e35e4cd8954fd441cb9f3c69740d66"},
 
     {"path":"src-server/runtime/conversation/runtime-event-log.ts","digest":"c73565025ce6279646a17c4c6f2e3b339d8ff79a1c6d2ca444b98fc6232b1b26","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"src-server/runtime/conversation/stream-orchestrator.ts","digest":"7fc42bc4728646375044efd3b85bc5341f828dbbca0bbed63cdb3cef997451f3","revision":"b3e03916cee441245a015ac51c5b06bf44165fc9"},
 
-    {"path":"src-server/runtime/mcp/mcp-manager.ts","digest":"c6569ade67cb9b48930cac5ca09521ba0836161c462f7b5a7c684b6eb8db1d3c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/runtime/mcp/mcp-manager.ts","digest":"2b111148f423e896011695de09bca6f6f2990bc8285b4466a5fd70a3c93c65d1","revision":"aadb5aa183a58e97344d13b8c5f34f92a7d78a94"},
 
     {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"400dc75dd88a48bc411a4edb9c5f40f9d22ae0f1c5b68d8f748e7733efae5a0e","revision":"cb3ebc3797508b3f46d66b8bc5ece89b32cb79ae"},
 
@@ -94,7 +94,7 @@
 
     {"path":"packages/contracts/package.json#/files","digest":"43219f75df025fd68c4b3a47b045f822115a0cb02eb1a21f6f0003b466db6b24","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
 
-    {"path":"packages/shared/package.json#/exports","digest":"043a18cf24771ad5cc0939669e4423eb2374d925ef84b25dfe7b5d626e1e45cd","revision":"c6c7d4dd40660b087eacdcda019f817a127405e8"},
+    {"path":"packages/shared/package.json#/exports","digest":"139c7f367bb2f4f85a9fc171e047c1715328e410d8e827d4b311d337aa57335f","revision":"aadb5aa183a58e97344d13b8c5f34f92a7d78a94"},
 
     {"path":"packages/shared/package.json#/engines","digest":"6c12acb1990a85e4fe6986ad29ad44b644eca474a81f946d053aabd14ba62059","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"}
   ],

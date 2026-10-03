@@ -16,7 +16,7 @@
 
     {"path":"docs/reference/connect.md","digest":"5177a7569eef2e2401d24bb0be4ea4dff99287719b8990176cda0d1887b9e982","revision":"45349f9ef03de948da85f70c2dde2477832fac1a"},
 
-    {"path":"docs/reference/contracts.md","digest":"4fc6322a0a4f02149563c235375f8c699cb09ffceec16ac9c3416b84bff518f0","revision":"1e6450e0caa47975d33f505a1348bdc01ae1382e"},
+    {"path":"docs/reference/contracts.md","digest":"c3fe09a8f4e29b2629039b6a76716d1caeac996e5b6f95bfd5a7f236e69baa4a","revision":"c60379bda4b5cb78a25647c443fc795f3b28224d"},
 
     {"path":"packages/contracts/src/agent-identity.ts","digest":"d352f22b4698f100c1cc2a7466fd62556a6a69c03bffaf66e54c1bbdfc1410b7","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

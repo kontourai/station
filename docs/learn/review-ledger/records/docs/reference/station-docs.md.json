@@ -50,7 +50,7 @@
 
     {"path":"src-server/domain/agent-registry.ts","digest":"b25558e066b73e96a09310d9d8a4bc8a0db41f893047a6f86035411ee0df3f50","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"b67b8535152f5964f1491089851480aadca7d18ff7106a0300a526dbabe82f65","revision":"b2d3503cd33490cf074a99eae94562607360f72b"},
+    {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"061da89e00216d5c3250d7f13dc1dea5717765b50db7ebf8c49672208524a3d0","revision":"423cbe55b9e35e4cd8954fd441cb9f3c69740d66"},
 
     {"path":"src-server/routes/agents/enriched-agents.ts","digest":"6baed1928fa80cd18e59ea9d531b656099f6389b5457b2cbe39420ea0e5de20c","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
@@ -84,7 +84,7 @@
 
     {"path":"src-server/services/orchestration/orchestration-session-state.ts","digest":"44a232d30c1d080f58b798e418a54d3adacb1086b3b6757a06f307370b703943","revision":"af3c8fbfee90c9179a0ac19659b76d24c707d574"},
 
-    {"path":"src-server/services/orchestration/session-agent-resolution.ts","digest":"9782644b16fc2b7480f868339465b2acae5b7d59d880c718a2d5453213171009","revision":"69eb5db90072c149c16115135f495ac538155e71"},
+    {"path":"src-server/services/orchestration/session-agent-resolution.ts","digest":"eea912e5afec264ab495d93b40eaa2eee6d478f5bab262aa84b56068210991b2","revision":"aadb5aa183a58e97344d13b8c5f34f92a7d78a94"},
 
     {"path":"src-server/services/plugins/plugin-install-transaction.ts","digest":"d86ca9367f039174cd2aaaba83b65dc1df376f6474bd4a4f29be54341fd2c0e7","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
