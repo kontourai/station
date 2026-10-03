@@ -552,7 +552,7 @@ export function AgentConnectionView({
                 connection={form}
                 onChange={(config) => setField('config', config)}
                 onManageModels={() =>
-                  guardedNavigate({ type: 'connections-models' })
+                  onNavigate({ type: 'connections-models' })
                 }
               />
             )}
