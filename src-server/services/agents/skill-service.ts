@@ -2327,16 +2327,35 @@ export class SkillService {
     projectHomeDir: string,
     projectSlug?: string,
     expectedInstalledRevision?: string,
+    canUseSource?: (
+      source: import('@kontourai/station-contracts/catalog').RegistrySource,
+    ) => boolean,
   ): Promise<{ success: boolean; message: string }> {
     skillOps.add(1, { operation: 'install' });
-    const { readRegistryCatalogSelection, registrySourceManager } =
-      await import('../../providers/registries/registry-source-manager.js');
+    const {
+      readRegistryCatalogSelection,
+      registrySourceManager,
+      RegistryCatalogRefusal,
+    } = await import('../../providers/registries/registry-source-manager.js');
     const selection = readRegistryCatalogSelection(name);
     if (selection) {
       if (selection.kind !== 'skills')
         throw new Error('Selected catalog item is not a skill.');
       const manager = registrySourceManager(projectHomeDir);
+      const source = manager
+        .list()
+        .find((source) => source.id === selection.sourceId);
+      if (source && canUseSource?.(source) === false)
+        throw new RegistryCatalogRefusal(
+          'source-forbidden',
+          'Selected marketplace is not available to this caller.',
+        );
       const resolved = await manager.resolve(name);
+      if (canUseSource?.(resolved.entry.source) === false)
+        throw new RegistryCatalogRefusal(
+          'source-forbidden',
+          'Selected marketplace is not available to this caller.',
+        );
       return installSkillFromRegistry({
         name: selection.itemId,
         projectHomeDir,
@@ -2357,7 +2376,17 @@ export class SkillService {
           packageRevision: resolved.item.packageRevision,
           item: resolved.item,
           assertCurrent: async () => {
+            if (canUseSource?.(resolved.entry.source) === false)
+              throw new RegistryCatalogRefusal(
+                'source-forbidden',
+                'Selected marketplace is not available to this caller.',
+              );
             await manager.resolve(name);
+            if (canUseSource?.(resolved.entry.source) === false)
+              throw new RegistryCatalogRefusal(
+                'source-forbidden',
+                'Selected marketplace is not available to this caller.',
+              );
           },
         },
         expectedInstalledRevision,
@@ -2366,7 +2395,7 @@ export class SkillService {
       });
     }
     const manager = registrySourceManager(projectHomeDir);
-    const matches = (await manager.catalog('skills')).filter(
+    const matches = (await manager.catalog('skills', canUseSource)).filter(
       (item) => item.catalog?.itemId === name,
     );
     if (matches.length !== 1)
@@ -2382,6 +2411,7 @@ export class SkillService {
       projectHomeDir,
       projectSlug,
       expectedInstalledRevision,
+      canUseSource,
     );
   }
 

@@ -3785,7 +3785,10 @@ async function installPluginFromSourceUnderContext(
             pluginAcquisitionOrigin({
               projectHomeDir,
               source,
-              registryId: options?.registryId,
+              registryId: options?.registryId
+                ? (readRegistryCatalogSelection(options.registryId)?.itemId ??
+                  options.registryId)
+                : undefined,
               registryKey: options?.registryKey,
             });
           const activationPlan: PluginActivationPlan | undefined = isAgentPlugin

@@ -837,6 +837,9 @@ export function createRegistryRoutes(
         const result = await skillService.installSkill(
           items[0]!.id,
           projectHomeDir,
+          undefined,
+          undefined,
+          sourceVisible(c),
         );
         if (result.success && reloadSkills)
           await reloadSkills().catch(() => {});
@@ -845,6 +848,9 @@ export function createRegistryRoutes(
       const result = await skillService.installSkill(
         id,
         configLoader.getProjectHomeDir(),
+        undefined,
+        undefined,
+        sourceVisible(c),
       );
       if (result.success && reloadSkills) await reloadSkills().catch(() => {});
       return c.json(result, result.success ? 200 : 500);
@@ -929,7 +935,19 @@ export function createRegistryRoutes(
           },
           409,
         );
-      const available = await sources.catalog('skills');
+      const source = sources
+        .list()
+        .find((source) => source.id === provenance.sourceId);
+      if (source && !sourceVisible(c)(source))
+        return c.json(
+          {
+            success: false,
+            message:
+              'Installed skill marketplace is not available to this caller.',
+          },
+          403,
+        );
+      const available = await sources.catalog('skills', sourceVisible(c));
       const selected = available.find(
         (item) =>
           item.catalog?.sourceId === provenance.sourceId &&
@@ -950,8 +968,17 @@ export function createRegistryRoutes(
         projectHomeDir,
         undefined,
         revision,
+        sourceVisible(c),
       );
-    } catch {
+    } catch (error) {
+      if (
+        error instanceof RegistryCatalogRefusal &&
+        error.code === 'source-forbidden'
+      )
+        return c.json(
+          { success: false, code: error.code, message: error.message },
+          403,
+        );
       return c.json(
         {
           success: false,

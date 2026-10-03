@@ -319,12 +319,19 @@ setting `registryUrl`:
 The Registry's Add marketplace flow connects additional public GitHub Skill
 libraries, local Skill directories and local/HTTPS Station manifests without
 changing `registryUrl`. Sources persist separately, can be refreshed or disabled,
-and report offline/stale/error status independently. Removing one preserves
+and report offline/stale/error status independently. Offline plugin rows retain
+the current installed state from the local Library, even after an update or
+removal; cached catalog metadata cannot declare a package installed. Removing one preserves
 installed content and provenance in the Library. Unsupported marketplace index
 formats and private credential-bearing URLs are refused rather than imported
 as an assumed compatible catalog. Plugin-contributed registry providers appear
 through their existing visibility/grant lifecycle; manage their availability
-through the owning plugin. See [marketplace APIs](../reference/api.md#manage-marketplaces)
+through the owning plugin. Source configuration is a regular file bounded to
+8 MiB, at most 32 user-added sources and 32 retained catalog snapshots, with
+at most 512 rows in each snapshot. Corrupt, oversized, unsupported and
+nonregular configuration is refused without replacing its bytes; restore the
+existing file before continuing. Plugin catalog rows and package claims from
+a Station manifest are read together from one fresh observation. See [marketplace APIs](../reference/api.md#manage-marketplaces)
 and the published provider types in `@kontourai/station-contracts/catalog`.
 
 A configured value always wins over the bundle. Relative paths resolve against

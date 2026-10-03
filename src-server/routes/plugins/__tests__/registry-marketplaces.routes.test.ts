@@ -1,24 +1,37 @@
+import { execFileSync } from 'node:child_process';
 import { createHash, generateKeyPairSync, sign } from 'node:crypto';
-import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
+import {
+  access,
+  lstat,
+  mkdir,
+  readFile,
+  rm,
+  symlink,
+  writeFile,
+} from 'node:fs/promises';
 import { join } from 'node:path';
 import type {
   RegistryItem,
   RegistrySource,
 } from '@kontourai/station-contracts/catalog';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { ConfigLoader } from '../../../domain/config-loader.js';
 import { ensureStationHomeSchema } from '../../../domain/home-schema-gate.js';
 import { FilesystemSkillRegistryProvider } from '../../../providers/registries/filesystem-skill-registry.js';
 import {
   clearAll,
+  registerPluginRegistryProvider,
   registerSkillRegistryProvider,
   replacePluginProvidersForSource,
 } from '../../../providers/registries/registry.js';
+import { readRegistryInstallAliases } from '../../../providers/registries/registry-install-aliases.js';
 import { RegistrySourceManager } from '../../../providers/registries/registry-source-manager.js';
 import { SkillService } from '../../../services/agents/skill-service.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
+import { computePluginContentDigest } from '../../../services/plugins/plugin-content-integrity.js';
+import { resolveInstalledPluginRoot } from '../../../services/plugins/plugin-incarnation.js';
 import {
   capturePluginRegistryAcquisition,
   resolvePluginRegistryInstall,
@@ -96,6 +109,247 @@ async function catalog(request: ReturnType<typeof setup>['request']) {
 }
 
 describe('Marketplace source lifecycle through Registry routes', () => {
+  test.each(['malformed', 'unsupported', 'oversized'] as const)(
+    'refuses %s source configuration on restart without replacing its bytes',
+    async (shape) => {
+      const home = temporary('marketplace-config-');
+      const file = join(home, 'config/registry-sources.json');
+      await mkdir(join(home, 'config'));
+      const bytes =
+        shape === 'malformed'
+          ? '{bad'
+          : shape === 'unsupported'
+            ? JSON.stringify({ version: 2, sources: [], disabled: [] })
+            : ' '.repeat(8 * 1024 * 1024 + 1);
+      await writeFile(file, bytes);
+      expect(() => new RegistrySourceManager(home)).toThrow(
+        'Registry source configuration',
+      );
+      expect(await readFile(file, 'utf8')).toBe(bytes);
+    },
+  );
+
+  test.skipIf(process.platform === 'win32')(
+    'refuses symlink and FIFO source configurations without following or replacing them',
+    async () => {
+      const home = temporary('marketplace-config-special-');
+      const file = join(home, 'config/registry-sources.json');
+      const target = join(home, 'retained.json');
+      await mkdir(join(home, 'config'));
+      const bytes = JSON.stringify({
+        version: 1,
+        sources: [],
+        disabled: [],
+        snapshots: {},
+      });
+      await writeFile(target, bytes);
+      await symlink(target, file);
+      expect(() => new RegistrySourceManager(home)).toThrow(
+        'bounded regular file',
+      );
+      expect((await lstat(file)).isSymbolicLink()).toBe(true);
+      expect(await readFile(target, 'utf8')).toBe(bytes);
+      await rm(file);
+      execFileSync('mkfifo', [file], { windowsHide: true });
+      expect(() => new RegistrySourceManager(home)).toThrow(
+        'bounded regular file',
+      );
+      expect((await lstat(file)).isFIFO()).toBe(true);
+    },
+  );
+
+  test('bounds persisted offline catalogs by count and bytes while keeping live discovery available', async () => {
+    const { home } = setup();
+    let large = false;
+    for (let n = 0; n < 34; n += 1) {
+      registerPluginRegistryProvider({
+        registryKey: `bounded-${n}`,
+        listAvailable: async () =>
+          Array.from({ length: large ? 512 : 1 }, (_, i) => ({
+            id: `item-${i}`,
+            installed: false,
+            ...(large ? { description: 'x'.repeat(2000) } : {}),
+          })),
+        listInstalled: async () => [],
+        install: async () => ({
+          success: false,
+          message: 'Not an install fixture',
+        }),
+        uninstall: async () => ({
+          success: false,
+          message: 'Not an install fixture',
+        }),
+      });
+    }
+    const manager = new RegistrySourceManager(home);
+    expect(await manager.catalog('plugins')).toHaveLength(34);
+    const file = join(home, 'config/registry-sources.json');
+    const first = JSON.parse(await readFile(file, 'utf8')) as {
+      snapshots: Record<string, unknown>;
+    };
+    expect(Object.keys(first.snapshots)).toHaveLength(32);
+    large = true;
+    expect(await manager.catalog('plugins')).toHaveLength(34 * 512);
+    const bytes = await readFile(file);
+    expect(bytes.byteLength).toBeLessThanOrEqual(8 * 1024 * 1024);
+    const retained = JSON.parse(bytes.toString()) as {
+      snapshots: Record<string, unknown>;
+    };
+    expect(Object.keys(retained.snapshots).length).toBeLessThan(32);
+    expect(Object.keys(retained.snapshots).length).toBeGreaterThan(0);
+    expect(new RegistrySourceManager(home).list()).toHaveLength(34);
+  }, 30000);
+
+  test('a manifest catalog request binds every row and package claim to one fresh network observation', async () => {
+    const { request } = setup();
+    let calls = 0;
+    const remote = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(async () => {
+        calls += 1;
+        return new Response(
+          JSON.stringify({
+            version: 1,
+            plugins: Array.from({ length: 3 }, (_, n) => ({
+              id: `item-${n}`,
+              source: `https://catalog.example/packages/${n}-${calls}`,
+              version: `${calls}.0.0`,
+              claim: { observation: calls },
+            })),
+          }),
+        );
+      });
+    try {
+      expect(
+        (
+          await request('/sources', 'POST', {
+            displayName: 'Coherent catalog',
+            adapter: 'manifest',
+            location: 'https://catalog.example/catalog.json',
+          })
+        ).status,
+      ).toBe(201);
+      const first = (
+        (await (await request('/plugins')).json()) as { data: RegistryItem[] }
+      ).data;
+      expect(calls).toBe(1);
+      expect(first.map((item) => item.version)).toEqual([
+        '1.0.0',
+        '1.0.0',
+        '1.0.0',
+      ]);
+      expect(first[0]!.packageRevision).toBe(
+        createHash('sha256')
+          .update(
+            JSON.stringify({
+              source: 'https://catalog.example/packages/0-1',
+              claim: { observation: 1 },
+            }),
+          )
+          .digest('hex'),
+      );
+      const second = (
+        (await (await request('/plugins')).json()) as { data: RegistryItem[] }
+      ).data;
+      expect(calls).toBe(2);
+      expect(second.map((item) => item.version)).toEqual([
+        '2.0.0',
+        '2.0.0',
+        '2.0.0',
+      ]);
+      expect(second[0]!.id).not.toBe(first[0]!.id);
+    } finally {
+      remote.mockRestore();
+    }
+  });
+
+  test('configured multi-root filesystem libraries keep stable distinct source choices and install the exact same-name package', async () => {
+    const { request, home } = setup();
+    const first = await library('Configured first instructions');
+    const second = await library('Configured second instructions');
+    registerSkillRegistryProvider(
+      new FilesystemSkillRegistryProvider([first, second]),
+    );
+    const items = await catalog(request);
+    expect(items).toHaveLength(2);
+    expect(new Set(items.map((item) => item.catalog?.sourceId)).size).toBe(2);
+    const chosen = items.find((item) => item.source === second)!;
+    expect(
+      (await request('/skills/install', 'POST', { id: chosen.id })).status,
+    ).toBe(200);
+    expect(
+      await readFile(join(home, 'skills/clarify/SKILL.md'), 'utf8'),
+    ).toContain('Configured second instructions');
+    expect(
+      await readFile(join(home, 'skills/clarify/assets/bytes.bin')),
+    ).toEqual(await readFile(join(second, 'clarify/assets/bytes.bin')));
+  });
+
+  test('an installed private skill cannot read or update its source when caller visibility is refused, or publish when revoked during staging', async () => {
+    const { request, home, config, service } = setup();
+    const root = await library('Retained instructions');
+    const calls = { list: 0, install: 0 };
+    let allowed = true;
+    let revokeDuringInstall = false;
+    class PrivateLibrary extends FilesystemSkillRegistryProvider {
+      override async listAvailable() {
+        calls.list += 1;
+        return super.listAvailable();
+      }
+      override async install(
+        id: string,
+        target: string,
+        options?: { expectedPackageRevision?: string },
+      ) {
+        calls.install += 1;
+        const result = await super.install(id, target, options);
+        if (revokeDuringInstall) allowed = false;
+        return result;
+      }
+    }
+    await replacePluginProvidersForSource('private-library-plugin', [
+      {
+        type: 'skillRegistry',
+        source: 'private-library-plugin',
+        provider: new PrivateLibrary([root]),
+      },
+    ]);
+    const selected = (await catalog(request))[0]!;
+    expect(
+      (await request('/skills/install', 'POST', { id: selected.id })).status,
+    ).toBe(200);
+    const app = createRegistryRoutes(
+      config,
+      async () => {},
+      undefined,
+      service,
+      { logger, canSeePlugin: () => allowed },
+    );
+    calls.list = 0;
+    calls.install = 0;
+    allowed = false;
+    expect(
+      (await app.request('/skills/clarify/update', { method: 'POST' })).status,
+    ).toBe(403);
+    expect((await app.request(`/skills/${selected.id}/content`)).status).toBe(
+      403,
+    );
+    expect(calls).toEqual({ list: 0, install: 0 });
+    allowed = true;
+    revokeDuringInstall = true;
+    await writeFile(
+      join(root, 'clarify/SKILL.md'),
+      '---\nname: clarify\ndescription: New private content\n---\n\nReplacement instructions',
+    );
+    expect(
+      (await app.request('/skills/clarify/update', { method: 'POST' })).status,
+    ).toBe(403);
+    expect(calls.install).toBe(1);
+    expect(
+      await readFile(join(home, 'skills/clarify/SKILL.md'), 'utf8'),
+    ).toContain('Retained instructions');
+  });
+
   test('keeps same-name choices and installs only the inspected source with complete bytes and durable provenance', async () => {
     const { request, home, config, service } = setup();
     const first = await library('First instructions');
@@ -308,6 +562,144 @@ describe('Marketplace source lifecycle through Registry routes', () => {
     expect(
       await readFile(join(home, 'skills/clarify/SKILL.md'), 'utf8'),
     ).toContain('New instructions');
+  });
+
+  test('installs a source-qualified package through the real plugin authority and updates its catalog revision without changing the data owner', async () => {
+    const { home, config, service } = setup();
+    await ensureStationHomeSchema(home);
+    const root = temporary('marketplace-plugin-package-');
+    const packageRoot = join(root, 'shared');
+    await mkdir(packageRoot);
+    const manifestPath = join(root, 'catalog.json');
+    const writeVersion = async (version: string) => {
+      await writeFile(
+        join(packageRoot, 'plugin.json'),
+        JSON.stringify({
+          $schema: 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
+          name: 'shared',
+          version,
+        }),
+      );
+      await writeFile(
+        manifestPath,
+        JSON.stringify({
+          version: 1,
+          plugins: [{ id: 'shared', version, source: './shared' }],
+          tools: [],
+        }),
+      );
+    };
+    await writeVersion('1.0.0');
+    const store = new EventStore(join(home, 'events.sqlite'));
+    try {
+      const app = createRegistryRoutes(
+        config,
+        async () => {},
+        undefined,
+        service,
+        {
+          logger,
+          packageMcpJournal: store.createPackageMcpAdmissionJournal(),
+          visibility: {
+            resolvePrincipal: () => ({
+              id: LOCAL_OPERATOR_PRINCIPAL_ID,
+              kind: 'human',
+              display: 'Operator',
+            }),
+          },
+        },
+      );
+      const call = (path: string, body?: unknown) =>
+        app.request(path, {
+          method: body ? 'POST' : 'GET',
+          headers: { 'Content-Type': 'application/json' },
+          ...(body ? { body: JSON.stringify(body) } : {}),
+        });
+      expect(
+        (
+          await call('/sources', {
+            displayName: 'Package catalog',
+            adapter: 'manifest',
+            location: manifestPath,
+          })
+        ).status,
+      ).toBe(201);
+      const install = async () => {
+        const item = (
+          (await (await call('/plugins')).json()) as { data: RegistryItem[] }
+        ).data[0]!;
+        const result = await call('/plugins/install', {
+          id: item.id,
+          dataPolicy: 'preserve',
+          consent: {
+            permissions: [],
+            contentDigest: computePluginContentDigest(root, 'shared'),
+            dependencies: [],
+          },
+        });
+        const outcome = await result.json();
+        expect(outcome, JSON.stringify(outcome)).toMatchObject({
+          success: true,
+        });
+        expect(result.status).toBe(200);
+        return item;
+      };
+      const first = await install();
+      const before = resolveInstalledPluginRoot(
+        join(home, 'plugins'),
+        'shared',
+      )!;
+      expect(Object.keys(readRegistryInstallAliases(home))).toEqual([first.id]);
+      await writeVersion('2.0.0');
+      const revised = (
+        (await (await call('/plugins')).json()) as { data: RegistryItem[] }
+      ).data[0]!;
+      expect(revised).toMatchObject({
+        installed: true,
+        installedPluginName: 'shared',
+      });
+      const second = await install();
+      expect(second.id).not.toBe(first.id);
+      const after = resolveInstalledPluginRoot(
+        join(home, 'plugins'),
+        'shared',
+      )!;
+      expect(after.dataScope).toEqual(before.dataScope);
+      expect(
+        JSON.parse(
+          await readFile(join(after.packageRoot, 'plugin.json'), 'utf8'),
+        ).version,
+      ).toBe('2.0.0');
+      expect(Object.keys(readRegistryInstallAliases(home))).toEqual([
+        second.id,
+      ]);
+      const installed = (
+        (await (await call('/plugins')).json()) as { data: RegistryItem[] }
+      ).data[0]!;
+      expect(installed).toMatchObject({
+        installed: true,
+        installedPluginName: 'shared',
+      });
+      await rm(manifestPath);
+      const offline = (
+        (await (await call('/plugins')).json()) as { data: RegistryItem[] }
+      ).data[0]!;
+      expect(offline).toMatchObject({
+        catalogFreshness: 'stale',
+        installed: true,
+        installedPluginName: 'shared',
+      });
+      expect(
+        (await app.request('/plugins/shared', { method: 'DELETE' })).status,
+      ).toBe(200);
+      const removed = (
+        (await (await call('/plugins')).json()) as { data: RegistryItem[] }
+      ).data[0]!;
+      expect(removed.installed).toBe(false);
+      expect(removed.installedPluginName).toBeUndefined();
+    } finally {
+      store.close();
+    }
   });
 
   test('resolves same-name plugin catalogs exactly and refuses a removed or changed source', async () => {

@@ -24,6 +24,7 @@ import {
   resolve,
   sep,
 } from 'node:path';
+import type { PluginRegistryCatalogSnapshot } from '@kontourai/station-contracts/catalog';
 import type { ToolDef } from '@kontourai/station-contracts/tool';
 import { createStationTempDirSync } from '@kontourai/station-shared/temp-dir';
 import { scanInstalledPluginInventory } from '../../services/plugins/installed-plugin-inventory.js';
@@ -402,6 +403,31 @@ export class JsonManifestRegistryProvider
     this.manifestCache = manifest;
     this.cacheExpiry = now + this.cacheTimeout;
     return manifest;
+  }
+
+  async getCatalogSnapshot(): Promise<PluginRegistryCatalogSnapshot> {
+    const manifest = await this.fetchManifest(true);
+    const entries = this.manifestEntriesOfKind(manifest, 'plugin');
+    return {
+      revision: createHash('sha256')
+        .update(JSON.stringify(manifest))
+        .digest('hex'),
+      items: entries.map((plugin) => ({
+        id: plugin.id,
+        displayName: plugin.displayName,
+        description: plugin.description,
+        version: plugin.version,
+        source: this.listedSource(plugin.id, plugin.source),
+        installed: false,
+      })),
+      packages: entries.map((plugin) => ({
+        id: plugin.id,
+        source: this.resolveManifestSource(plugin.source).location,
+        ...(plugin.claim === undefined
+          ? {}
+          : { claim: structuredClone(plugin.claim) }),
+      })),
+    };
   }
 
   async refresh(): Promise<void> {

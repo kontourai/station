@@ -43,19 +43,17 @@ vi.mock('../../../providers/registries/registry.js', () => {
     install: vi.fn().mockResolvedValue({ success: true }),
     uninstall: vi.fn().mockResolvedValue({ success: true }),
   };
+  const pluginProvider = {
+    registryKey: 'test-registry',
+    listAvailable: async () => [
+      { id: 'p1', displayName: 'Plugin 1', installed: false },
+    ],
+    listInstalled: async () => [{ id: 'p1', installed: true }],
+  };
   return {
     pluginProviderSourceGeneration: () => 0,
     getPluginRegistryProviders: () => [
-      {
-        source: 'test',
-        provider: {
-          registryKey: 'test-registry',
-          listAvailable: async () => [
-            { id: 'p1', displayName: 'Plugin 1', installed: false },
-          ],
-          listInstalled: async () => [{ id: 'p1', installed: true }],
-        },
-      },
+      { source: 'test', provider: pluginProvider },
     ],
     getSkillRegistryProviders: vi
       .fn()
@@ -324,14 +322,14 @@ describe('Registry Routes', () => {
     expect(performance.now() - startedAt).toBeLessThan(250);
   });
 
-  test('GET /plugins returns { success, data } array with installed state', async () => {
+  test('GET /plugins keeps provider declarations separate from observed installed inventory', async () => {
     const { app } = setup();
     const body = await json(await app.request('/plugins'));
     expect(body.success).toBe(true);
     expect(Array.isArray(body.data)).toBe(true);
     expect(body.data[0]).toMatchObject({
       catalog: expect.objectContaining({ itemId: 'p1' }),
-      installed: true,
+      installed: false,
       catalogSourceName: 'test',
     });
   });
@@ -867,6 +865,9 @@ describe('Registry Routes', () => {
     expect(skillService.installSkill).toHaveBeenCalledExactlyOnceWith(
       expect.stringMatching(/^catalog\./),
       registryHome,
+      undefined,
+      undefined,
+      expect.any(Function),
     );
     expect(reloadSkills).toHaveBeenCalledOnce();
   });

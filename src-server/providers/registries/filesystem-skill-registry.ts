@@ -30,16 +30,22 @@ function defaultSkillRoots() {
 }
 
 export class FilesystemSkillRegistryProvider implements ISkillRegistryProvider {
-  constructor(private roots: string[] = defaultSkillRoots()) {}
+  private readonly roots: string[];
+  private children?: FilesystemSkillRegistryProvider[];
+
+  constructor(roots: string[] = defaultSkillRoots()) {
+    this.roots = [...roots];
+  }
 
   get registryKey(): string {
     return this.roots.join('|');
   }
 
   catalogProviders(): FilesystemSkillRegistryProvider[] {
-    return this.roots.map(
+    this.children ??= this.roots.map(
       (root) => new FilesystemSkillRegistryProvider([root]),
     );
+    return this.children;
   }
 
   async getPackageRevision(id: string): Promise<string | null> {

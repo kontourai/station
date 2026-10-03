@@ -1,14 +1,12 @@
-import { createHash, randomUUID } from 'node:crypto';
-import { existsSync, readFileSync } from 'node:fs';
-import { isAbsolute, join, resolve } from 'node:path';
+import { randomUUID } from 'node:crypto';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 import type {
   RegistryCatalogSelection,
   RegistryItem,
   RegistrySource,
 } from '@kontourai/station-contracts/catalog';
 import { writeJsonDurably } from '@kontourai/station-shared/durable-json-file';
-import { z } from 'zod';
-import { scanInstalledPluginInventory } from '../../services/plugins/installed-plugin-inventory.js';
 import { mapWithConcurrency } from '../../utils/bounded-async.js';
 import type {
   IPluginRegistryProvider,
@@ -23,55 +21,27 @@ import {
   getSkillRegistryProviders,
   pluginProviderSourceGeneration,
 } from './registry.js';
-import { readRegistryInstallAliases } from './registry-install-aliases.js';
+import { readRegistryCatalogInstalledState } from './registry-catalog-installed-state.js';
 
-const sourceInput = z
-  .object({
-    displayName: z.string().trim().min(1).max(100),
-    adapter: z.enum(['manifest', 'directory', 'github']),
-    location: z.string().trim().min(1).max(2000),
-  })
-  .strict();
-const selectionSchema = z
-  .object({
-    sourceId: z.string().min(1).max(100),
-    itemId: z.string().min(1).max(200),
-    revision: z.string().regex(/^[a-f0-9]{64}$/),
-    kind: z.enum(['skills', 'plugins']),
-  })
-  .strict();
+import {
+  digest,
+  RegistryCatalogRefusal,
+  readRegistryCatalogSelection,
+  readRegistrySourceConfiguration,
+  registryCatalogId,
+  registryItemSchema,
+  retainRegistrySourceSnapshots,
+  type SourceConfig,
+  sourceInput,
+  validateRegistrySourceLocation,
+} from './registry-source-configuration.js';
 
-const registryItemSchema = z.object({
-  id: z.string().min(1).max(1500),
-  displayName: z.string().max(200).optional(),
-  description: z.string().max(2000).optional(),
-  version: z.string().max(200).optional(),
-  source: z.string().max(2000).optional(),
-  status: z.string().max(200).optional(),
-  installed: z.boolean(),
-  installedPluginName: z.string().max(200).optional(),
-  tags: z.array(z.string().max(100)).max(32).optional(),
-  catalog: selectionSchema.optional(),
-  catalogSourceName: z.string().max(100).optional(),
-  catalogFreshness: z.enum(['live', 'stale']).optional(),
-  packageRevision: z.string().max(200).optional(),
-});
-const snapshotSchema = z.object({
-  data: z.array(registryItemSchema).max(512),
-  revision: z.string().regex(/^[a-f0-9]{64}$/),
-  checkedAt: z.string().datetime(),
-});
-const configuration = z.object({
-  version: z.literal(1),
-  sources: z
-    .array(sourceInput.extend({ id: z.string().uuid(), enabled: z.boolean() }))
-    .max(32),
-  snapshots: z.record(z.string(), snapshotSchema).default({}),
-  disabled: z.array(z.string()).max(128),
-});
+export {
+  RegistryCatalogRefusal,
+  readRegistryCatalogSelection,
+  registryCatalogId,
+} from './registry-source-configuration.js';
 
-type SourceConfig = z.infer<typeof configuration>;
-type SourceInput = z.infer<typeof sourceInput>;
 type Provider = ISkillRegistryProvider | IPluginRegistryProvider;
 type Entry = {
   source: RegistrySource;
@@ -80,42 +50,6 @@ type Entry = {
   generation: number;
 };
 type Snapshot = { data: RegistryItem[]; revision: string; checkedAt: string };
-
-function digest(value: unknown): string {
-  return createHash('sha256').update(JSON.stringify(value)).digest('hex');
-}
-
-export function registryCatalogId(selection: RegistryCatalogSelection): string {
-  return `catalog.${Buffer.from(JSON.stringify(selection)).toString('base64url')}`;
-}
-
-export function readRegistryCatalogSelection(
-  id: string,
-): RegistryCatalogSelection | null {
-  if (!id.startsWith('catalog.')) return null;
-  if (id.length > 1500) throw new Error('Invalid catalog selection.');
-  try {
-    return selectionSchema.parse(
-      JSON.parse(Buffer.from(id.slice(8), 'base64url').toString('utf8')),
-    );
-  } catch {
-    throw new Error('Invalid catalog selection.');
-  }
-}
-
-export class RegistryCatalogRefusal extends Error {
-  constructor(
-    readonly code:
-      | 'source-unavailable'
-      | 'source-changed'
-      | 'source-authority-changed'
-      | 'item-unavailable',
-    message: string,
-  ) {
-    super(message);
-    this.name = 'RegistryCatalogRefusal';
-  }
-}
 
 const managers = new Map<string, RegistrySourceManager>();
 export function registrySourceManager(home: string): RegistrySourceManager {
@@ -161,9 +95,7 @@ export class RegistrySourceManager {
 
   constructor(private readonly home: string) {
     this.file = join(home, 'config', 'registry-sources.json');
-    this.config = existsSync(this.file)
-      ? configuration.parse(JSON.parse(readFileSync(this.file, 'utf8')))
-      : { version: 1, sources: [], disabled: [], snapshots: {} };
+    this.config = readRegistrySourceConfiguration(this.file);
     for (const [id, snapshot] of Object.entries(this.config.snapshots)) {
       this.snapshots.set(id, snapshot);
       this.statuses.set(id, {
@@ -175,13 +107,17 @@ export class RegistrySourceManager {
   }
 
   private persist(next: SourceConfig): void {
-    writeJsonDurably(this.file, next);
-    this.config = next;
+    const retained = retainRegistrySourceSnapshots(next);
+    writeJsonDurably(this.file, retained);
+    this.config = retained;
+    const retainedIds = new Set(Object.keys(retained.snapshots));
+    for (const id of this.snapshots.keys())
+      if (!retainedIds.has(id)) this.snapshots.delete(id);
   }
 
   add(input: unknown): RegistrySource {
     const parsed = sourceInput.parse(input);
-    const location = this.validateLocation(parsed);
+    const location = validateRegistrySourceLocation(parsed);
     if (
       this.list().some(
         (source) =>
@@ -204,47 +140,6 @@ export class RegistrySourceManager {
       );
     this.persist({ ...this.config, sources: [...this.config.sources, added] });
     return this.list().find((source) => source.id === added.id)!;
-  }
-
-  private validateLocation(input: SourceInput): string {
-    if (input.adapter === 'github') {
-      const url = new URL(input.location);
-      if (
-        url.protocol !== 'https:' ||
-        url.hostname !== 'github.com' ||
-        url.username ||
-        url.password ||
-        url.search ||
-        url.hash
-      )
-        throw new Error(
-          'Use a public https://github.com/owner/repository URL.',
-        );
-      const parts = url.pathname.replace(/\/$/, '').split('/').slice(1);
-      if (
-        parts.length !== 2 ||
-        parts.some((part) => !/^[A-Za-z0-9_.-]+$/.test(part))
-      )
-        throw new Error(
-          'Use a repository URL; branch and directory selection are declared by its adapter.',
-        );
-      return `https://github.com/${parts.join('/')}`;
-    }
-    if (isAbsolute(input.location)) return resolve(input.location);
-    if (input.adapter === 'manifest') {
-      const url = new URL(input.location);
-      if (
-        url.protocol === 'https:' &&
-        !url.username &&
-        !url.password &&
-        !url.search &&
-        !url.hash
-      )
-        return url.href;
-    }
-    throw new Error(
-      'Use an absolute local path or a public HTTPS manifest URL. Credential-bearing URLs are not supported.',
-    );
   }
 
   setEnabled(id: string, enabled: boolean): RegistrySource {
@@ -415,14 +310,19 @@ export class RegistrySourceManager {
       !existsSync(entry.source.location!)
     )
       throw new Error('Local marketplace directory is unavailable.');
-    if (fresh && 'refresh' in provider) await provider.refresh?.();
-    const listed = (await provider.listAvailable()).map((item) =>
-      registryItemSchema.parse({ ...item, installed: false }),
-    );
-    const catalogRevision =
+    const snapshotProvider =
       entry.kind === 'plugins'
-        ? await (provider as IPluginRegistryProvider).getCatalogRevision?.()
+        ? (provider as IPluginRegistryProvider)
         : undefined;
+    const catalogSnapshot = await snapshotProvider?.getCatalogSnapshot?.();
+    if (!catalogSnapshot && (fresh || entry.kind === 'plugins'))
+      await provider.refresh?.();
+    const listed = (
+      catalogSnapshot?.items ?? (await provider.listAvailable())
+    ).map((item) => registryItemSchema.parse({ ...item, installed: false }));
+    const catalogRevision =
+      catalogSnapshot?.revision ??
+      (await snapshotProvider?.getCatalogRevision?.());
     if (listed.length > 512)
       throw new Error('Marketplace catalog exceeds the item limit.');
     const names = new Set<string>();
@@ -438,14 +338,33 @@ export class RegistrySourceManager {
             (await skillProvider.getPackageRevision?.(item.id)) ?? undefined,
         };
       }
-      const resolved = await (
-        provider as IPluginRegistryProvider
-      ).resolvePackage?.(item.id);
+      const snapshotPackage = catalogSnapshot?.packages.find(
+        (candidate) => candidate.id === item.id,
+      );
+      const resolved = catalogSnapshot
+        ? snapshotPackage
+          ? {
+              source: snapshotPackage.source,
+              ...(snapshotPackage.claim === undefined
+                ? {}
+                : { claim: snapshotPackage.claim }),
+            }
+          : undefined
+        : await snapshotProvider?.resolvePackage?.(item.id);
       return {
         ...item,
         packageRevision: resolved ? digest(resolved) : undefined,
       };
     });
+    if (
+      !catalogSnapshot &&
+      catalogRevision &&
+      (await snapshotProvider?.getCatalogRevision?.()) !== catalogRevision
+    )
+      throw new RegistryCatalogRefusal(
+        'source-changed',
+        'Marketplace changed during catalog observation. Refresh it again.',
+      );
     const revision = digest([
       entry.source.id,
       entry.generation,
@@ -496,6 +415,10 @@ export class RegistrySourceManager {
     kind: RegistryCatalogSelection['kind'],
     visible: (source: RegistrySource) => boolean = () => true,
   ): Promise<RegistryItem[]> {
+    const installedState =
+      kind === 'plugins'
+        ? readRegistryCatalogInstalledState(this.home)
+        : undefined;
     const results = await Promise.all(
       this.entries()
         .filter(
@@ -507,43 +430,15 @@ export class RegistrySourceManager {
         .map(async (entry) => {
           try {
             const data = (await this.observe(entry)).data;
+            if (!this.isCurrent(entry) || !visible(entry.source)) return [];
             if (entry.kind !== 'plugins') return data;
-            const installed = new Set(
-              scanInstalledPluginInventory(join(this.home, 'plugins')).flatMap(
-                (item) => (item.state === 'valid' ? [item.manifest.name] : []),
-              ),
+            return installedState!(
+              data,
+              entry.source.id,
+              entry.provider.registryKey,
             );
-            const aliases = readRegistryInstallAliases(this.home);
-            const legacyInstalled = new Map(
-              (await entry.provider.listInstalled()).map((item) => [
-                item.id,
-                item,
-              ]),
-            );
-            if (!this.isCurrent(entry)) return [];
-            return data.map((item) => {
-              const alias = Object.entries(aliases).find(([id, alias]) => {
-                const selected = readRegistryCatalogSelection(id);
-                return (
-                  selected?.sourceId === entry.source.id &&
-                  selected.itemId === item.catalog?.itemId &&
-                  alias.registryKey === entry.provider.registryKey &&
-                  installed.has(alias.pluginName)
-                );
-              })?.[1];
-              const legacy = legacyInstalled.get(item.catalog!.itemId);
-              return {
-                ...item,
-                installed: !!alias || !!legacy,
-                ...(alias
-                  ? { installedPluginName: alias.pluginName }
-                  : legacy?.installedPluginName
-                    ? { installedPluginName: legacy.installedPluginName }
-                    : {}),
-              };
-            });
           } catch {
-            if (!this.isCurrent(entry)) return [];
+            if (!this.isCurrent(entry) || !visible(entry.source)) return [];
             const cached = this.snapshots.get(entry.source.id);
             this.statuses.set(entry.source.id, {
               ...this.statuses.get(entry.source.id),
@@ -552,12 +447,18 @@ export class RegistrySourceManager {
               error:
                 'Marketplace unavailable. Refresh the source or check its location and prerequisites.',
             });
-            return (
+            const data =
               cached?.data.map((item) => ({
                 ...item,
                 catalogFreshness: 'stale' as const,
-              })) ?? []
-            );
+              })) ?? [];
+            return installedState
+              ? installedState(
+                  data,
+                  entry.source.id,
+                  entry.provider.registryKey,
+                )
+              : data;
           }
         }),
     );

@@ -366,7 +366,14 @@ export interface SkillRegistryProvider {
   getContent?(id: string): Promise<string | null>;
 }
 
+export interface PluginRegistryCatalogSnapshot {
+  revision: string;
+  items: RegistryItem[];
+  packages: Array<{ id: string; source: string; claim?: unknown }>;
+}
+
 export interface PluginRegistryProvider {
+  getCatalogSnapshot?(): Promise<PluginRegistryCatalogSnapshot>;
   readonly registryKey?: string;
   refresh?(): Promise<void>;
   getCatalogRevision?(): Promise<string>;
