@@ -12,7 +12,6 @@ import { fileURLToPath } from 'node:url';
  */
 export const TRANSCRIPT_SESSION_ID = '00000000-0000-4000-8000-000000000003';
 export const TRANSCRIPT_AGENT_ID = 'a3849bb64b339db79';
-export const TRANSCRIPT_PROJECT_DIR = '/workspace/example';
 
 const FIXTURE_DIR = fileURLToPath(
   new URL('./fixtures/claude-2.1.283-subagent-transcript/', import.meta.url),
@@ -25,7 +24,11 @@ const FIXTURE_DIR = fileURLToPath(
  */
 export function installClaudeSubagentTranscript(
   makeTempDir: (prefix: string) => string,
-  options: { withAgent?: boolean } = {},
+  options: {
+    withAgent?: boolean;
+    /** Leave CLAUDE_CONFIG_DIR alone: the directory is a session's own profile. */
+    asProfile?: boolean;
+  } = {},
 ): { configDir: string; restore: () => void } {
   const configDir = makeTempDir('station-claude-config-');
   const project = join(configDir, 'projects', '-workspace-example');
@@ -43,6 +46,7 @@ export function installClaudeSubagentTranscript(
       );
     }
   }
+  if (options.asProfile) return { configDir, restore: () => {} };
   const previous = process.env.CLAUDE_CONFIG_DIR;
   process.env.CLAUDE_CONFIG_DIR = configDir;
   return {

@@ -135,7 +135,55 @@ export type ChildWorkTranscriptRef = {
   kind: 'claude-subagent';
   sessionId: string;
   agentId: string;
+  /**
+   * The Claude config home the session ran under (its app-home or
+   * credential profile, a connection's config home, or the global one), as
+   * the adapter applied it at spawn. Absent means the server's own global
+   * config home. Written by the server; no request supplies it.
+   */
+  configHome?: string;
 };
+
+/** Bound on a recorded config home path. */
+const CHILD_WORK_CONFIG_HOME_MAX_CHARS = 4_096;
+
+/** An absolute POSIX or Windows path, with no NUL. */
+function isAbsoluteConfigHome(value: string): boolean {
+  return (
+    value.length > 0 &&
+    value.length <= CHILD_WORK_CONFIG_HOME_MAX_CHARS &&
+    !value.includes('\0') &&
+    (value.startsWith('/') || /^[A-Za-z]:[\\/]/.test(value))
+  );
+}
+
+/**
+ * Whether `id` can be a model id at all. Claude labels a locally synthesized
+ * reply (an API error, an interruption) `<synthetic>`: no model produced it,
+ * so it is never a child's model and must not replace a real one.
+ */
+export function isReportableChildWorkModelId(id: string): boolean {
+  const trimmed = id.trim();
+  return (
+    trimmed.length > 0 &&
+    trimmed.length <= CHILD_WORK_MODEL_ID_MAX_CHARS &&
+    !(trimmed.startsWith('<') && trimmed.endsWith('>'))
+  );
+}
+
+/**
+ * The first `max` code points of `text`, flagged when cut. Never splits a
+ * surrogate pair, so a cut emoji does not become a lone surrogate.
+ */
+export function cutChildWorkText(
+  text: string,
+  max: number,
+): { text: string; truncated?: true } {
+  if (text.length <= max) return { text };
+  const points = Array.from(text);
+  if (points.length <= max) return { text };
+  return { text: points.slice(0, max).join(''), truncated: true };
+}
 
 /** A Claude session id: a UUID, as the SDK's own transcript reader requires. */
 const CLAUDE_SESSION_ID_PATTERN =
@@ -159,10 +207,18 @@ export function parseChildWorkTranscriptRef(
   ) {
     return undefined;
   }
+  const configHome =
+    typeof raw.configHome === 'string' && isAbsoluteConfigHome(raw.configHome)
+      ? raw.configHome
+      : undefined;
+  // A config home that is present but not an absolute path is not a ref.
+  if (raw.configHome !== undefined && configHome === undefined)
+    return undefined;
   return {
     kind: 'claude-subagent',
     sessionId: raw.sessionId,
     agentId: raw.agentId,
+    ...(configHome ? { configHome } : {}),
   };
 }
 
@@ -173,11 +229,7 @@ function parseChildWorkModel(value: unknown): ChildWorkModel | undefined {
   const raw = value as Record<string, unknown>;
   const id = typeof raw.id === 'string' ? raw.id.trim() : '';
   if (
-    id.length === 0 ||
-    id.length > CHILD_WORK_MODEL_ID_MAX_CHARS ||
-    // Claude labels a locally synthesized reply (an API error, an
-    // interruption) `<synthetic>`: no model produced it.
-    (id.startsWith('<') && id.endsWith('>')) ||
+    !isReportableChildWorkModelId(id) ||
     !CHILD_WORK_MODEL_SOURCES.includes(raw.source as ChildWorkModelSource)
   ) {
     return undefined;

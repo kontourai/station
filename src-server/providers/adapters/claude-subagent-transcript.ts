@@ -1,49 +1,57 @@
-import {
-  type GetSubagentMessagesOptions,
-  getSubagentMessages,
-  type SessionMessage,
-} from '@anthropic-ai/claude-agent-sdk';
+import { createReadStream, type Dirent } from 'node:fs';
+import { lstat, readdir } from 'node:fs/promises';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
+import { createInterface } from 'node:readline';
 import {
   CHILD_WORK_TRANSCRIPT_ENTRIES_PER_MESSAGE_MAX,
   CHILD_WORK_TRANSCRIPT_TEXT_MAX_CHARS,
   type ChildWorkTranscriptEntry,
   type ChildWorkTranscriptPage,
   type ChildWorkTranscriptRef,
+  cutChildWorkText,
 } from '@kontourai/station-contracts/child-work';
+import { redactInlineData } from '../model-image-attachments.js';
 
 /**
- * #3163: a Claude subagent's own transcript, read through the SDK's reader.
+ * #3163: a Claude subagent's own transcript, read from disk.
  *
- * Claude Code writes each subagent's conversation to disk under the parent
- * Claude session, by agent id. `getSubagentMessages` finds and parses it
- * from those two ids (plus the project directory as a hint), so Station never
- * builds or accepts a file path. The transcript outlives both the Claude
- * process and a Station restart.
+ * Claude Code writes each subagent's conversation under the config home the
+ * session ran with: `<config>/projects/<project>/<session>/subagents/` holds
+ * `agent-<agentId>.jsonl` (a workflow's agents one level or two further
+ * down). The config home is the ref's own (`configHome`, the session's
+ * app-home or credential profile, or a connection's config home), else the
+ * server's global one. The SDK's `getSubagentMessages` reads only the
+ * server process's `CLAUDE_CONFIG_DIR`, so it can't open a profile session's
+ * transcript; this reader takes the config home explicitly instead.
+ *
+ * Nothing here builds a path from request input: the session and agent ids
+ * are validated by the contract (a UUID and one path-safe segment), the file
+ * name is fixed, and directories are walked without following symlinks.
  *
  * Read-only and bounded: a page is at most `limit` messages, a message adds
- * at most `CHILD_WORK_TRANSCRIPT_ENTRIES_PER_MESSAGE_MAX` entries, and every
- * text is cut at `CHILD_WORK_TRANSCRIPT_TEXT_MAX_CHARS`. Thinking blocks
- * are left out.
+ * at most `CHILD_WORK_TRANSCRIPT_ENTRIES_PER_MESSAGE_MAX` entries, inline
+ * image data is redacted before any cut (as the parent's tool results are),
+ * and every text is cut at `CHILD_WORK_TRANSCRIPT_TEXT_MAX_CHARS` code
+ * points. Thinking blocks and records that are not a conversation turn are
+ * left out.
  */
-
-export type ClaudeSubagentMessageReader = (
-  sessionId: string,
-  agentId: string,
-  options: GetSubagentMessagesOptions,
-) => Promise<readonly Pick<SessionMessage, 'type' | 'message'>[]>;
 
 export type ClaudeSubagentTranscriptOutcome =
   | { status: 'found'; page: ChildWorkTranscriptPage }
-  /** The engine has no transcript for this agent (deleted, or another config home). */
+  /** No transcript for this agent under its config home. */
   | { status: 'unavailable' };
 
+/** How deep under `subagents/` a workflow keeps its agents' transcripts. */
+const SUBAGENT_DIR_MAX_DEPTH = 3;
+/** A line longer than this is skipped unparsed (never a page entry). */
+const TRANSCRIPT_LINE_MAX_CHARS = 4 * 1024 * 1024;
+
 function bounded(text: string): { text: string; truncated?: true } {
-  return text.length > CHILD_WORK_TRANSCRIPT_TEXT_MAX_CHARS
-    ? {
-        text: text.slice(0, CHILD_WORK_TRANSCRIPT_TEXT_MAX_CHARS),
-        truncated: true,
-      }
-    : { text };
+  return cutChildWorkText(
+    redactInlineData(text),
+    CHILD_WORK_TRANSCRIPT_TEXT_MAX_CHARS,
+  );
 }
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
@@ -80,11 +88,9 @@ function blockEntry(
     }
     case 'tool_use': {
       if (typeof record.name !== 'string') return undefined;
-      const input =
-        record.input === undefined ? undefined : JSON.stringify(record.input);
-      if (input === undefined)
+      if (record.input === undefined)
         return { message, kind: 'tool-call', name: record.name };
-      const cut = bounded(input);
+      const cut = bounded(JSON.stringify(record.input));
       return {
         message,
         kind: 'tool-call',
@@ -110,15 +116,14 @@ function blockEntry(
   }
 }
 
-/** One SDK transcript message as read-only entries. */
+/** One transcript record (`{ type, message: { role, content } }`) as entries. */
 export function claudeTranscriptEntries(
-  sessionMessage: Pick<SessionMessage, 'type' | 'message'>,
+  transcriptRecord: { type?: unknown; message?: unknown },
   message: number,
 ): ChildWorkTranscriptEntry[] {
-  if (sessionMessage.type !== 'user' && sessionMessage.type !== 'assistant')
-    return [];
-  const role = sessionMessage.type;
-  const content = asRecord(sessionMessage.message)?.content;
+  const role = transcriptRecord.type;
+  if (role !== 'user' && role !== 'assistant') return [];
+  const content = asRecord(transcriptRecord.message)?.content;
   if (typeof content === 'string') {
     return content.length > 0
       ? [{ message, kind: 'text', role, ...bounded(content) }]
@@ -141,34 +146,112 @@ export function claudeTranscriptEntries(
   ];
 }
 
+async function entriesOf(directory: string): Promise<Dirent[]> {
+  try {
+    return await readdir(directory, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+}
+
+/** `agent-<id>.jsonl` under a `subagents/` directory, symlinks never followed. */
+async function findUnder(
+  directory: string,
+  fileName: string,
+  depth: number,
+): Promise<string | undefined> {
+  const entries = await entriesOf(directory);
+  const file = entries.find((entry) => entry.name === fileName);
+  if (file?.isFile()) return join(directory, fileName);
+  if (depth >= SUBAGENT_DIR_MAX_DEPTH) return undefined;
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const found = await findUnder(
+      join(directory, entry.name),
+      fileName,
+      depth + 1,
+    );
+    if (found) return found;
+  }
+  return undefined;
+}
+
+/** The agent's transcript file, or undefined when its config home has none. */
+export async function findClaudeSubagentTranscript(
+  ref: ChildWorkTranscriptRef,
+): Promise<string | undefined> {
+  const configHome = ref.configHome ?? claudeGlobalConfigHome();
+  const projects = join(configHome, 'projects');
+  const fileName = `agent-${ref.agentId}.jsonl`;
+  for (const project of await entriesOf(projects)) {
+    if (!project.isDirectory()) continue;
+    const subagents = join(projects, project.name, ref.sessionId, 'subagents');
+    const stat = await lstat(subagents).catch(() => undefined);
+    if (!stat?.isDirectory()) continue;
+    const found = await findUnder(subagents, fileName, 0);
+    if (found) return found;
+  }
+  return undefined;
+}
+
+/** The server's own global config home, as Claude Code resolves it. */
+function claudeGlobalConfigHome(): string {
+  const configured = process.env.CLAUDE_CONFIG_DIR?.trim();
+  return configured ? configured : join(homedir(), '.claude');
+}
+
 /**
- * A page of the subagent's transcript, starting at message `offset`.
- * `projectDir` is the reporting session's working directory, a lookup hint:
- * when it finds nothing, the SDK searches every project for the session.
+ * The conversation records of a transcript file, in file order, from
+ * `offset` until `limit` have been collected. Streamed: memory holds the
+ * page, not the file.
  */
+async function readMessages(
+  path: string,
+  offset: number,
+  limit: number,
+): Promise<{ type?: unknown; message?: unknown }[]> {
+  const lines = createInterface({
+    input: createReadStream(path, { encoding: 'utf8' }),
+    crlfDelay: Number.POSITIVE_INFINITY,
+  });
+  const page: { type?: unknown; message?: unknown }[] = [];
+  let index = 0;
+  try {
+    for await (const line of lines) {
+      if (line.length === 0) continue;
+      if (line.length > TRANSCRIPT_LINE_MAX_CHARS) continue;
+      let record: Record<string, unknown> | undefined;
+      try {
+        record = asRecord(JSON.parse(line));
+      } catch {
+        continue;
+      }
+      if (
+        !record ||
+        (record.type !== 'user' && record.type !== 'assistant') ||
+        record.isMeta === true
+      ) {
+        continue;
+      }
+      if (index >= offset) page.push(record);
+      index += 1;
+      if (page.length >= limit) break;
+    }
+  } finally {
+    lines.close();
+  }
+  return page;
+}
+
+/** A page of the subagent's transcript, starting at message `offset`. */
 export async function readClaudeSubagentTranscriptPage(
   ref: ChildWorkTranscriptRef,
-  options: {
-    offset: number;
-    limit: number;
-    projectDir?: string;
-    reader?: ClaudeSubagentMessageReader;
-  },
+  options: { offset: number; limit: number },
 ): Promise<ClaudeSubagentTranscriptOutcome> {
-  const reader = options.reader ?? getSubagentMessages;
+  const path = await findClaudeSubagentTranscript(ref);
+  if (!path) return { status: 'unavailable' };
   // One past the page tells whether another page follows.
-  const window = { offset: options.offset, limit: options.limit + 1 };
-  let messages = await reader(ref.sessionId, ref.agentId, {
-    ...window,
-    ...(options.projectDir ? { dir: options.projectDir } : {}),
-  });
-  if (messages.length === 0 && options.projectDir) {
-    messages = await reader(ref.sessionId, ref.agentId, window);
-  }
-  // Every subagent transcript opens with its prompt: an empty first page
-  // means the engine has no transcript for this agent.
-  if (messages.length === 0 && options.offset === 0)
-    return { status: 'unavailable' };
+  const messages = await readMessages(path, options.offset, options.limit + 1);
   const page = messages.slice(0, options.limit);
   return {
     status: 'found',

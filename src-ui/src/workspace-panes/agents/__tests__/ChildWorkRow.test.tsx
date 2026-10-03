@@ -264,7 +264,10 @@ test('a truncated summary says so; a delegate’s usage is read only once the ro
   );
 });
 
+const refetch = vi.fn();
 const transcriptQuery = (overrides: Record<string, unknown> = {}) => ({
+  refetch,
+  isRefetching: false,
   data: undefined,
   error: null,
   isPending: false,
@@ -373,4 +376,58 @@ test('#3163: a transcript the engine no longer has says so', () => {
   expect(screen.getByRole('alert').textContent).toBe(
     'The engine no longer has this transcript.',
   );
+});
+
+test('#3163: a running child’s open transcript re-reads when the child reports, and offers Refresh', () => {
+  useChildWorkTranscriptQuery.mockReturnValue(
+    transcriptQuery({
+      isSuccess: true,
+      data: {
+        pages: [
+          {
+            entries: [
+              { message: 0, kind: 'text', role: 'user', text: 'Reply INNER' },
+            ],
+          },
+        ],
+      },
+    }),
+  );
+  const view = render(
+    <ul>
+      <ChildWorkRow
+        row={row({ transcript: TRANSCRIPT, progress: 'Reading files' })}
+        now={100_000}
+        showProvenance={false}
+        onOpenSession={onOpenSession}
+      />
+    </ul>,
+  );
+  const toggle = screen.getByRole('button', { name: 'View transcript' });
+  fireEvent.click(toggle);
+  const region = screen.getByRole('region', { name: 'Subagent transcript' });
+  expect(toggle.getAttribute('aria-controls')).toBe(region.id);
+  expect(refetch).not.toHaveBeenCalled();
+  view.rerender(
+    <ul>
+      <ChildWorkRow
+        row={row({ transcript: TRANSCRIPT, progress: 'Writing the answer' })}
+        now={100_000}
+        showProvenance={false}
+        onOpenSession={onOpenSession}
+      />
+    </ul>,
+  );
+  expect(refetch).toHaveBeenCalledTimes(1);
+  fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+  expect(refetch).toHaveBeenCalledTimes(2);
+});
+
+test('#3163: a settled child’s transcript offers no Refresh', () => {
+  useChildWorkTranscriptQuery.mockReturnValue(
+    transcriptQuery({ isSuccess: true, data: { pages: [{ entries: [] }] } }),
+  );
+  mount(row({ status: 'completed', transcript: TRANSCRIPT }));
+  fireEvent.click(screen.getByRole('button', { name: 'View transcript' }));
+  expect(screen.queryByRole('button', { name: 'Refresh' })).toBeNull();
 });

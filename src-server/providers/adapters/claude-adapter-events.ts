@@ -255,6 +255,8 @@ export interface ClaudeMessageState {
    * sibling subagent's request stays answerable.
    */
   onTaskSettled?: (taskId: string) => void;
+  /** #3163: the CLAUDE_CONFIG_DIR the engine was spawned with, when set. */
+  claudeConfigHome?: string;
   /**
    * #2457: the session's child work (its subagents) as the contract's
    * registry. Owned by `claude-adapter-child-work.ts`.

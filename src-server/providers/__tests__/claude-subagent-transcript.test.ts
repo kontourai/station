@@ -12,7 +12,6 @@ import {
 import {
   installClaudeSubagentTranscript,
   TRANSCRIPT_AGENT_ID,
-  TRANSCRIPT_PROJECT_DIR,
   TRANSCRIPT_SESSION_ID,
 } from './claude-subagent-transcript-fixture.js';
 
@@ -35,7 +34,6 @@ describe('#3163 Claude subagent transcript', () => {
     const outcome = await readClaudeSubagentTranscriptPage(ref, {
       offset: 0,
       limit: 30,
-      projectDir: TRANSCRIPT_PROJECT_DIR,
     });
     expect(outcome.status).toBe('found');
     if (outcome.status !== 'found') return;
@@ -88,14 +86,62 @@ describe('#3163 Claude subagent transcript', () => {
     expect(second.page.entries.at(-1)).toMatchObject({ text: 'INNER DONE' });
   });
 
-  test('a project hint that misses still finds the session', async () => {
-    ({ restore } = installClaudeSubagentTranscript(makeTempDir));
-    const outcome = await readClaudeSubagentTranscriptPage(ref, {
-      offset: 0,
-      limit: 30,
-      projectDir: '/workspace/moved-elsewhere',
+  test('the ref’s config home wins over the server’s: a profile session reads its own transcript', async () => {
+    ({ restore } = installClaudeSubagentTranscript(makeTempDir, {
+      withAgent: false,
+    }));
+    const profile = installClaudeSubagentTranscript(makeTempDir, {
+      asProfile: true,
     });
+    expect(
+      (await readClaudeSubagentTranscriptPage(ref, { offset: 0, limit: 30 }))
+        .status,
+    ).toBe('unavailable');
+    const outcome = await readClaudeSubagentTranscriptPage(
+      { ...ref, configHome: profile.configDir },
+      { offset: 0, limit: 30 },
+    );
     expect(outcome.status).toBe('found');
+  });
+
+  test('inline image data is redacted before any cut, in text, tool input and tool result', () => {
+    const image = `data:image/png;base64,${'A'.repeat(CHILD_WORK_TRANSCRIPT_TEXT_MAX_CHARS * 2)}`;
+    const entries = claudeTranscriptEntries(
+      {
+        type: 'assistant',
+        message: {
+          role: 'assistant',
+          content: [
+            { type: 'text', text: `Screenshot: ${image}` },
+            { type: 'tool_use', name: 'Write', input: { content: image } },
+            {
+              type: 'tool_result',
+              content: [{ type: 'text', text: `saved ${image}` }],
+            },
+          ],
+        },
+      },
+      0,
+    );
+    expect(entries).toHaveLength(3);
+    for (const entry of entries) {
+      const text = JSON.stringify(entry);
+      expect(text).not.toContain('base64,');
+      expect(text).toContain('[inline image data omitted]');
+      expect(entry.truncated).toBeUndefined();
+    }
+  });
+
+  test('a cut never splits a surrogate pair', () => {
+    const text = `${'x'.repeat(CHILD_WORK_TRANSCRIPT_TEXT_MAX_CHARS - 1)}😀😀`;
+    const [entry] = claudeTranscriptEntries(
+      { type: 'user', message: { role: 'user', content: text } },
+      0,
+    );
+    if (entry.kind !== 'text') throw new Error('kind');
+    expect(entry.truncated).toBe(true);
+    expect(entry.text.endsWith('😀')).toBe(true);
+    expect(entry.text).not.toMatch(/[\uD800-\uDBFF]$/);
   });
 
   test('an agent with no transcript on disk is unavailable, not an empty transcript', async () => {
@@ -106,7 +152,6 @@ describe('#3163 Claude subagent transcript', () => {
       await readClaudeSubagentTranscriptPage(ref, {
         offset: 0,
         limit: 30,
-        projectDir: TRANSCRIPT_PROJECT_DIR,
       }),
     ).toEqual({ status: 'unavailable' });
   });

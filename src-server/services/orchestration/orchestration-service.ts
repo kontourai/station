@@ -2304,9 +2304,6 @@ export class OrchestrationService {
         ).map((row) => row.payload),
       canReadSession: (threadId, authority) =>
         this.sessionAuthz.canReadSession(threadId, authority),
-      workspaceForSession: (threadId) =>
-        this.sessionReadModel.get(threadId)?.cwd ??
-        this.options.eventStore?.readSessionByThread(threadId)?.cwd,
     });
     this.monitoringBridge = new OrchestrationMonitoringBridge(
       options.monitoringEmitter,

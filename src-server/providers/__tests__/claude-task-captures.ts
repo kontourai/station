@@ -107,6 +107,8 @@ export function replayClaudeTaskCapture(
      * message), keeping every other line exactly as captured.
      */
     rewrite?: (lines: ClaudeTaskCaptureLine[]) => ClaudeTaskCaptureLine[];
+    /** The CLAUDE_CONFIG_DIR the session was spawned with (#3163). */
+    claudeConfigHome?: string;
   } = {},
 ): { events: CanonicalRuntimeEvent[]; record: ClaudeMessageState } {
   const threadId = options.threadId ?? 'thread-claude';
@@ -121,6 +123,9 @@ export function replayClaudeTaskCapture(
       updatedAt: '2026-09-23T00:00:00.000Z',
     },
     lastSessionState: 'running',
+    ...(options.claudeConfigHome
+      ? { claudeConfigHome: options.claudeConfigHome }
+      : {}),
   };
   recordClaudeTurnDispatched(record, 'turn-1');
   const endSession = () =>

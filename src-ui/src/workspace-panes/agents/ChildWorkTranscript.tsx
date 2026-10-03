@@ -3,6 +3,7 @@ import {
   StationHttpError,
   useChildWorkTranscriptQuery,
 } from '@kontourai/station-sdk';
+import { useEffect, useRef } from 'react';
 import { Button } from '../../components/Button';
 import { SkeletonBlock } from '../../components/state';
 
@@ -80,16 +81,40 @@ function EntryLine({ entry }: { entry: ChildWorkTranscriptEntry }) {
 }
 
 export function ChildWorkTranscript({
+  id,
   threadId,
   childId,
+  running,
+  revision,
 }: {
+  id: string;
   threadId: string;
   childId: string;
+  /** The child is still running, so its transcript can still grow. */
+  running: boolean;
+  /**
+   * Changes whenever the child's reported state does (progress, usage,
+   * status). The transcript is re-read on each change, so a running child's
+   * last page does not stay frozen at the moment the view opened.
+   */
+  revision: string;
 }) {
   const transcript = useChildWorkTranscriptQuery({ threadId, childId });
+  const { refetch } = transcript;
+  const seenRevision = useRef(revision);
+  useEffect(() => {
+    if (seenRevision.current === revision) return;
+    seenRevision.current = revision;
+    // Including the change that settles it: its last messages land then.
+    void refetch();
+  }, [revision, refetch]);
   const entries = transcript.data?.pages.flatMap((page) => page.entries) ?? [];
   return (
-    <section className="child-work-transcript" aria-label="Subagent transcript">
+    <section
+      id={id}
+      className="child-work-transcript"
+      aria-label="Subagent transcript"
+    >
       {transcript.isPending && (
         <SkeletonBlock count={3} label="Loading transcript" />
       )}
@@ -119,6 +144,15 @@ export function ChildWorkTranscript({
           onClick={() => void transcript.fetchNextPage()}
         >
           Load more
+        </Button>
+      )}
+      {running && !transcript.isPending && (
+        <Button
+          size="sm"
+          pending={transcript.isRefetching}
+          onClick={() => void refetch()}
+        >
+          Refresh
         </Button>
       )}
       {transcript.isFetchNextPageError && (

@@ -1,3 +1,4 @@
+import type { ChildWorkModel } from '@kontourai/station-contracts/child-work';
 import type {
   ConversationHandoffProjection,
   ConversationOpenResolution,
@@ -240,6 +241,8 @@ export type ChatBackgroundTask = {
   toolCallId?: string;
   description?: string;
   subagentType?: string;
+  /** #3163: the child's own reported model, when its engine reported one. */
+  model?: ChildWorkModel;
   backgrounded?: boolean;
   /**
    * Nesting depth reported by the provider: 1 for a top-level spawn, N+1 for

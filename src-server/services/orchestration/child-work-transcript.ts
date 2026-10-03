@@ -8,10 +8,7 @@ import {
 } from '@kontourai/station-contracts/child-work';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import type { SessionReadAuthority } from '@kontourai/station-contracts/tenancy';
-import {
-  type ClaudeSubagentMessageReader,
-  readClaudeSubagentTranscriptPage,
-} from '../../providers/adapters/claude-subagent-transcript.js';
+import { readClaudeSubagentTranscriptPage } from '../../providers/adapters/claude-subagent-transcript.js';
 
 /**
  * #3163: a child's own transcript, read-only and paged.
@@ -41,9 +38,6 @@ export interface ChildWorkTranscriptModuleDeps {
     threadId: string,
     authority: SessionReadAuthority,
   ) => boolean;
-  /** The reporting session's working directory, a lookup hint only. */
-  workspaceForSession: (threadId: string) => string | undefined;
-  readClaudeSubagentMessages?: ClaudeSubagentMessageReader;
 }
 
 export interface ChildWorkTranscriptModule {
@@ -118,15 +112,10 @@ export function createChildWorkTranscriptModule(
         Math.max(1, Math.floor(limit)),
         CHILD_WORK_TRANSCRIPT_PAGE_MAX,
       );
-      const projectDir = deps.workspaceForSession(threadId);
       try {
         return await readClaudeSubagentTranscriptPage(ref, {
           offset: Math.max(0, Math.floor(offset)),
           limit: pageLimit,
-          ...(projectDir ? { projectDir } : {}),
-          ...(deps.readClaudeSubagentMessages
-            ? { reader: deps.readClaudeSubagentMessages }
-            : {}),
         });
       } catch {
         return { status: 'unavailable' };

@@ -10,7 +10,6 @@ import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import {
   installClaudeSubagentTranscript,
   TRANSCRIPT_AGENT_ID,
-  TRANSCRIPT_PROJECT_DIR,
 } from '../../../providers/__tests__/claude-subagent-transcript-fixture.js';
 import { replayClaudeTaskCapture } from '../../../providers/__tests__/claude-task-captures.js';
 import { createChildWorkTranscriptModule } from '../../../services/orchestration/child-work-transcript.js';
@@ -43,7 +42,6 @@ function fixture(history: CanonicalRuntimeEvent[] = persistedHistory()) {
   const childWorkTranscripts = createChildWorkTranscriptModule({
     listChildWorkHistory,
     canReadSession: () => readable,
-    workspaceForSession: () => TRANSCRIPT_PROJECT_DIR,
   });
   const service = {
     canUserReadSession: () => readable,
@@ -154,6 +152,33 @@ describe('#3163 GET /sessions/:threadId/child-work/:childId/transcript', () => {
     caller.revokeCaller();
     await unavailable(await caller.request());
     expect(caller.listChildWorkHistory).not.toHaveBeenCalled();
+  });
+
+  test('an app-home session’s transcript is read from the profile it ran under, not the server’s config home', async () => {
+    // The session ran under its own profile; the server's global config home
+    // (beforeEach) holds no transcript for this agent.
+    restore?.();
+    ({ restore } = installClaudeSubagentTranscript(makeTempDir, {
+      withAgent: false,
+    }));
+    const profile = installClaudeSubagentTranscript(makeTempDir, {
+      asProfile: true,
+    });
+    const { events } = replayClaudeTaskCapture('nested-agent', {
+      threadId: THREAD,
+      claudeConfigHome: profile.configDir,
+    });
+    const history = events.filter(
+      (event) => event.method === 'child-work.updated',
+    );
+    const response = await fixture(history).request();
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      data: { entries: Array<{ text?: string }> };
+    };
+    expect(body.data.entries.at(-1)?.text).toBe('INNER DONE');
+    // Without the session's own config home, the same read finds nothing.
+    await unavailable(await fixture(persistedHistory()).request(), 503);
   });
 
   test('a transcript the engine no longer has is unavailable (503)', async () => {

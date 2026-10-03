@@ -613,6 +613,46 @@ describe('#3163 Claude subagent model and transcript identity', () => {
     });
   });
 
+  test('a later synthetic reply never erases the real model a subagent reported', () => {
+    const [outerCall] = spawnCalls();
+    // The outer agent replies on Sonnet, then a synthesized frame (an API
+    // error, an interruption) arrives under the same spawn.
+    const realThenSynthetic = (
+      lines: ReturnType<typeof loadClaudeTaskCapture>,
+    ) => {
+      const rewritten = withSubagentModels({ [outerCall]: OUTER_MODEL })(lines);
+      const lastOwnReply = rewritten.findLastIndex(
+        (line) =>
+          view(line).type === 'assistant' &&
+          view(line).parent_tool_use_id === outerCall,
+      );
+      const own = rewritten[lastOwnReply].message as unknown as {
+        message: Record<string, unknown>;
+      };
+      const synthetic = {
+        message: {
+          ...own,
+          uuid: '00000000-0000-4000-8000-0000000000ff',
+          message: { ...own.message, model: '<synthetic>' },
+        },
+      } as unknown as (typeof rewritten)[number];
+      return [
+        ...rewritten.slice(0, lastOwnReply + 1),
+        synthetic,
+        ...rewritten.slice(lastOwnReply + 1),
+      ];
+    };
+    const { events } = replayClaudeTaskCapture('nested-agent', {
+      rewrite: realThenSynthetic,
+    });
+    const [outer] = expectedChildIds('nested-agent');
+    expect(
+      itemsOf(events).find((item) => item.childId === outer)?.model,
+    ).toEqual({ id: OUTER_MODEL, source: 'subagent-reply' });
+    for (const delta of deltasOf(events))
+      expect(JSON.stringify(delta)).not.toContain('<synthetic>');
+  });
+
   test('a synthetic reply names no model', () => {
     const [outerCall] = spawnCalls();
     const { events } = replayClaudeTaskCapture('nested-agent', {

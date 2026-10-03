@@ -18,6 +18,7 @@ import {
   type ChildWorkUsage,
   childWorkForReporter,
   createEmptyChildWorkRegistry,
+  isReportableChildWorkModelId,
 } from '@kontourai/station-contracts/child-work';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import type { ProviderSession } from '../adapter-shape.js';
@@ -99,6 +100,12 @@ const CLAUDE_PENDING_REPLY_MODELS_MAX = 64;
 export interface ClaudeChildWorkRecord {
   session: Pick<ProviderSession, 'threadId'>;
   activeTurnId?: string;
+  /**
+   * #3163: the CLAUDE_CONFIG_DIR this session's engine was spawned with
+   * (absent: the server's own global config home). Subagent transcripts
+   * live under it.
+   */
+  claudeConfigHome?: string;
   childWork?: ClaudeChildWorkState;
 }
 
@@ -307,6 +314,9 @@ export function observeClaudeTaskStarted(
           kind: 'claude-subagent' as const,
           sessionId,
           agentId: message.task_id,
+          ...(context.record.claudeConfigHome
+            ? { configHome: context.record.claudeConfigHome }
+            : {}),
         }
       : undefined;
   const item: ChildWorkItem = {
@@ -348,10 +358,16 @@ function takePendingReplyModel(
   return model;
 }
 
-/** The model a reply frame names, when it is a real model id. */
+/**
+ * The model a reply frame names, when it is a real model id. A
+ * `<synthetic>` frame (an API error, an interruption) names none, so it can
+ * never replace the child's real model.
+ */
 function replyModel(message: SDKAssistantMessage): string | undefined {
   const model = message.message?.model;
-  return typeof model === 'string' ? nonEmpty(model.trim()) : undefined;
+  return typeof model === 'string' && isReportableChildWorkModelId(model)
+    ? model.trim()
+    : undefined;
 }
 
 /**

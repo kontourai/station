@@ -694,6 +694,25 @@ function adoptionTitle(threadId: string): string {
 const CLAUDE_CONFIG_DIR_ENV_KEY = 'CLAUDE_CONFIG_DIR';
 
 /**
+ * #3163: the config home a spawn resolves, in `buildOptions`' own env layer
+ * order (ambient, then the connection, then the app home). The global default
+ * (`~/.claude`) when none sets it.
+ */
+function claudeSpawnConfigHome(
+  appHomeEnv: Record<string, string> | undefined,
+  connectionEnv: Record<string, string> | undefined,
+  augmentedEnv: Record<string, string | undefined> | undefined,
+): string {
+  const configured =
+    appHomeEnv?.[CLAUDE_CONFIG_DIR_ENV_KEY] ??
+    connectionEnv?.[CLAUDE_CONFIG_DIR_ENV_KEY] ??
+    (augmentedEnv ?? process.env)[CLAUDE_CONFIG_DIR_ENV_KEY];
+  return configured?.trim()
+    ? nodePath.resolve(configured.trim())
+    : nodePath.join(homedir(), '.claude');
+}
+
+/**
  * station#2072: the connection env's config-home key applies only to
  * spawns whose config root is Station's to choose (fresh sessions,
  * discovery). Adoption and source-affinity resume deliberately pin the
@@ -1472,6 +1491,13 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       allowsBypassPermissions: permissionMode === 'bypassPermissions',
       currentModelOptions: claudeAppliedModelOptions(input.modelOptions),
       skillsOverlayDir,
+      // #3163: where this session's subagent transcripts are written, so a
+      // later read (even after a restart) opens the same config home.
+      claudeConfigHome: claudeSpawnConfigHome(
+        appHomeEnv,
+        connectionEnv,
+        augmentedEnv,
+      ),
       engineStderrTail: engineProcess.stderrTail,
     };
     // #2316/#2348: a subagent that ended can no longer be waiting on the

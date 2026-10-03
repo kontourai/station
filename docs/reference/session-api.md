@@ -610,15 +610,16 @@ authorized like the session's other reads and are never cached
 
 Query: `offset` (message index, default `0`) and `limit` (messages per page,
 `1`–`50`, default `30`). The response's `data` is a `ChildWorkTranscriptPage`:
-`entries` (prompt and reply text, tool calls, tool results; each text cut at
-4,000 characters and flagged) and `nextOffset` when another page follows.
+`entries` (prompt and reply text, tool calls, tool results; inline image data
+replaced by a placeholder, then each text cut at 4,000 characters and flagged) and `nextOffset` when another page follows.
 `404` means no transcript for a session you can read; `503` means the engine
 no longer has it.
 
 Only Claude subagents have a transcript today. Claude Code keeps it under the
-Claude config home the Station server runs with; a session whose connection
-points Claude at a different `CLAUDE_CONFIG_DIR` returns `503`. Codex child
-threads have no transcript reference.
+config home the session's engine was spawned with (its app-home or credential
+profile, a connection's config home, or the global one); the adapter records
+that config home with the reference, so a profile session's transcript is
+read from its own profile. Codex child threads have no transcript reference.
 
 ### Live SSE feed (`GET /events`)
 

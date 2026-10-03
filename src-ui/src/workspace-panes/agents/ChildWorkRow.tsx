@@ -13,7 +13,7 @@ import {
   cacheInclusiveTotalTokens,
   foldUsageEvents,
 } from '@kontourai/station-shared/usage-fold';
-import { type CSSProperties, useMemo, useState } from 'react';
+import { type CSSProperties, useId, useMemo, useState } from 'react';
 import { Button } from '../../components/Button';
 import { AgentGlyph } from '../../components/icons/Glyph';
 import { ChildWorkTranscript } from './ChildWorkTranscript';
@@ -142,6 +142,7 @@ export function ChildWorkRow({
 }) {
   const [expanded, setExpanded] = useState(false);
   const [transcriptOpen, setTranscriptOpen] = useState(false);
+  const transcriptId = useId();
   const { item } = row;
   const running = item.status === 'running';
   const interrupt = useInterruptDelegatedTaskMutation();
@@ -272,7 +273,12 @@ export function ChildWorkRow({
           {(sessionHandle || transcript) && (
             <Button
               size="sm"
-              {...(sessionHandle ? {} : { 'aria-expanded': transcriptOpen })}
+              {...(sessionHandle
+                ? {}
+                : {
+                    'aria-expanded': transcriptOpen,
+                    'aria-controls': transcriptId,
+                  })}
               onClick={() =>
                 sessionHandle
                   ? onOpenSession(sessionHandle.threadId)
@@ -321,8 +327,11 @@ export function ChildWorkRow({
       {transcript && transcriptOpen && (
         <div className="child-work-row__detail">
           <ChildWorkTranscript
+            id={transcriptId}
             threadId={item.reporterThreadId}
             childId={item.childId}
+            running={running}
+            revision={JSON.stringify([item.status, item.progress, item.usage])}
           />
         </div>
       )}
