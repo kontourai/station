@@ -7,7 +7,7 @@
 
   "summary": "Reviewed route parsing, registry delivery, platform/mount limits, focus restoration and bounded streamed-answer buffering.",
 
-  "limits": "Browser/source and focused test evidence; no physical native-device result.",
+  "limits": "Browser/source and focused test evidence; no physical native-device result. Merge reconciliation preserves both prior review anchors below as historical evidence, not a new review of combined source bytes. Active bindings retain existing reviewed anchors; any mismatch with merged bytes remains stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"docs/architecture/module-map.md\",\"ours\":{\"digest\":\"52cd3cfb4c4e811e087ee89b0d844695e85a21a0e085409850936bd613653957\",\"revision\":\"801b6662aff67a25eff4927c1c50e92f4c9b4e53\"},\"main\":{\"digest\":\"8f082631ce14f9b1114110e69a7f336404340c0c8f58a02ebf2646973277a22b\",\"revision\":\"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac\"}}].",
 
   "document": {"digest":"504697512af473efd0be4ba655151406b11450e87e3bbe497a7ac3d03ec88434","revision":"d6a3158c22a62d9530592c6366a1624790ee9401"},
 

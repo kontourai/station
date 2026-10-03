@@ -40,6 +40,15 @@ import {
 } from '../lib/browserRelayRouteBinding';
 import { setStationHealthRouteResolver } from '../lib/serverHealth';
 import {
+  getNativeRelayAccountScope,
+  nativeRelayAccountScopeKey,
+  subscribeNativeRelayAccountScope,
+} from '../platform/native/nativeRelayAccountScope';
+import {
+  captureNativeRelayConnectionOwner,
+  retireNativeRelayConnectionOwners,
+} from '../platform/native/nativeRelayConnectionOwnerRegistry';
+import {
   nativeProfileRepository,
   useNativeProfileSelection,
   useNativeProfileStoreEpoch,
@@ -112,7 +121,7 @@ export function ApiBaseProvider({ children }: { children: ReactNode }) {
   const bundledStatus = useBundledServerStatus(profile.supervisesBundledServer);
 
   useEffect(() => {
-    if (!profile.isTauri || !profile.isDesktop) return;
+    if (!profile.isTauri) return;
     let disposed = false;
     let supervisor: { start(): void; stop(): void } | undefined;
     void Promise.all([
@@ -150,7 +159,7 @@ export function ApiBaseProvider({ children }: { children: ReactNode }) {
       disposed = true;
       supervisor?.stop();
     };
-  }, [profile.isDesktop, profile.isTauri]);
+  }, [profile.isTauri]);
 
   // Resolve one host-supplied, never-persisted connection. An explicit CLI
   // base is deliberate user intent and therefore always wins over desktop
@@ -293,6 +302,11 @@ function StationCredentialBridge({ children }: { children: ReactNode }) {
   } = useConnections();
   const profile = usePlatformProfile();
 
+  useEffect(() => {
+    if (!profile.isTauri) return;
+    return retireNativeRelayConnectionOwners;
+  }, [profile.isTauri]);
+
   // Keep the shared SDK transport aligned above OnboardingGate. SDKAdapter
   // cannot do this while the gate is showing a blocking connection error.
   _setApiBase(apiBase);
@@ -306,7 +320,11 @@ function StationCredentialBridge({ children }: { children: ReactNode }) {
       const evidence = captureCredentialEvidence();
       if (!evidence) return undefined;
       return {
-        kind: !profile.isTauri && evidence.brokerRoute ? 'broker' : 'direct',
+        kind:
+          evidence.nativeBrokerRoute ||
+          (!profile.isTauri && evidence.brokerRoute)
+            ? 'broker'
+            : 'direct',
         apiBase: evidence.origin,
         connectionId: evidence.connectionId,
         activationEpoch: evidence.activationEpoch,
@@ -356,6 +374,22 @@ function StationCredentialBridge({ children }: { children: ReactNode }) {
             )?.bindingId === nativeBinding.bindingId,
         );
       let relayCredential: ClientCredential | undefined;
+      if (profile.isTauri && evidence?.nativeBrokerRoute) {
+        if (!nativeBinding || !isCredentialEvidenceCurrent(evidence))
+          throw new Error('native_relay_binding_required');
+        const { prepareNativeRelayConnectionOwner } = await import(
+          '../platform/native/nativeRelayConnectionOwner'
+        );
+        const owner = await prepareNativeRelayConnectionOwner({
+          connectionId: evidence.connectionId,
+          origin: evidence.origin,
+          route: evidence.nativeBrokerRoute,
+          bindingId: nativeBinding.bindingId,
+          selectionIsCurrent: () =>
+            isCredentialEvidenceCurrent(evidence) && nativeBindingIsCurrent(),
+        });
+        relayCredential = owner.credential();
+      }
       if (!profile.isTauri && evidence?.brokerRoute && browserRoute) {
         const { createBrowserRelayApplicationCredential } = await import(
           '../lib/browserRelayApplicationAuthority'
@@ -375,7 +409,14 @@ function StationCredentialBridge({ children }: { children: ReactNode }) {
           ? {
               ...requestAuthorityScopeFromCredentialEvidence(evidence, {
                 ...(nativeBinding
-                  ? { authorityQualifier: nativeBinding.bindingId }
+                  ? {
+                      authorityQualifier: evidence.nativeBrokerRoute
+                        ? JSON.stringify([
+                            nativeBinding.bindingId,
+                            relayCredential?.requestAuthority?.authorityKey,
+                          ])
+                        : nativeBinding.bindingId,
+                    }
                   : relayCredential?.requestAuthority?.authorityKey
                     ? {
                         authorityQualifier:
@@ -398,9 +439,21 @@ function StationCredentialBridge({ children }: { children: ReactNode }) {
         // credentials remain host-owned.
         ...(profile.isTauri
           ? {
-              transport: nativeBinding
-                ? nativeTransportForBinding(nativeBinding.bindingId)
-                : lazyNativeAuthenticatedTransport,
+              transport: evidence?.nativeBrokerRoute
+                ? (relayCredential?.transport ??
+                  (async () => {
+                    throw new Error('native_relay_binding_required');
+                  }))
+                : nativeBinding
+                  ? nativeTransportForBinding(nativeBinding.bindingId)
+                  : lazyNativeAuthenticatedTransport,
+              ...(evidence?.nativeBrokerRoute
+                ? {
+                    mutationAllowed: () => false,
+                    onAccountUnauthorized:
+                      relayCredential?.onAccountUnauthorized,
+                  }
+                : {}),
             }
           : {}),
         ...(!profile.isTauri && evidence?.brokerRoute
@@ -436,7 +489,7 @@ function StationCredentialBridge({ children }: { children: ReactNode }) {
         // that awaited the request could read the state the 401 replaced.
         onUnauthorized: () =>
           evidence
-            ? evidence.brokerRoute
+            ? evidence.brokerRoute || evidence.nativeBrokerRoute
               ? relayCredential?.onUnauthorized?.()
               : markCredentialRequired(
                   evidence.connectionId,
@@ -461,7 +514,7 @@ function StationCredentialBridge({ children }: { children: ReactNode }) {
         // the recovery whenever the failure was recorded after this closure
         // was installed — the normal cold-boot ordering) is not needed either.
         onAuthenticated: (url) =>
-          evidence && !evidence.brokerRoute
+          evidence && !evidence.brokerRoute && !evidence.nativeBrokerRoute
             ? recordAuthenticatedSuccess(
                 evidence.connectionId,
                 url,
@@ -488,10 +541,42 @@ function StationCredentialBridge({ children }: { children: ReactNode }) {
   ]);
 
   useInsertionEffect(() => {
-    if (profile.isTauri) return;
     setStationHealthRouteResolver(
       async (origin, brokerRoute, authenticated) => {
         const evidence = captureCredentialEvidence();
+        if (profile.isTauri) {
+          if (!evidence || origin !== evidence.origin)
+            return { kind: 'reject' };
+          if (!evidence.nativeBrokerRoute) return null;
+          if (brokerRoute || origin !== evidence.origin)
+            return { kind: 'reject' };
+          const binding = nativeProfileRepository().captureNativeRequestBinding(
+            evidence.connectionId,
+            evidence.origin,
+          );
+          if (!binding) return { kind: 'reject' };
+          const { prepareNativeRelayConnectionOwner } = await import(
+            '../platform/native/nativeRelayConnectionOwner'
+          );
+          const owner = await prepareNativeRelayConnectionOwner({
+            connectionId: evidence.connectionId,
+            origin: evidence.origin,
+            route: evidence.nativeBrokerRoute,
+            bindingId: binding.bindingId,
+            selectionIsCurrent: () =>
+              isCredentialEvidenceCurrent(evidence) &&
+              nativeProfileRepository().captureNativeRequestBinding(
+                evidence.connectionId,
+                evidence.origin,
+              )?.bindingId === binding.bindingId,
+          });
+          return {
+            kind: 'native-relay',
+            transport: owner.application.fetch,
+            identityTransport: owner.credential().transport,
+            isCurrent: owner.application.isCurrent,
+          };
+        }
         if (
           brokerRoute &&
           (!evidence?.brokerRoute ||
@@ -634,6 +719,23 @@ export function useHostRequestAuthorityScope() {
         )
       : null;
 
+  const nativeRelayScopeKey =
+    evidence?.nativeBrokerRoute && nativeBinding
+      ? nativeRelayAccountScopeKey({
+          connectionId: evidence.connectionId,
+          origin: evidence.origin,
+          route: evidence.nativeBrokerRoute,
+          bindingId: nativeBinding.bindingId,
+        })
+      : null;
+  const nativeRelayAccountScope = useSyncExternalStore(
+    subscribeNativeRelayAccountScope,
+    () => getNativeRelayAccountScope(nativeRelayScopeKey),
+    () => null,
+  );
+  const nativeRelayAccountReady = !!nativeRelayAccountScope?.account;
+  const nativeRelayAccountAuthority = nativeRelayAccountScope?.scopeKey;
+
   // `captureCredentialEvidence` and the native repository intentionally
   // return snapshots.  Their object identities are therefore not an authority
   // change: using them as memo dependencies would replace every subscriber on
@@ -655,7 +757,8 @@ export function useHostRequestAuthorityScope() {
     if (
       !evidence ||
       (profile.isTauri && !nativeBinding) ||
-      (evidence.brokerRoute && !relayAccountScopeReady)
+      (evidence.brokerRoute && !relayAccountScopeReady) ||
+      (evidence.nativeBrokerRoute && !nativeRelayAccountReady)
     )
       return undefined;
     const scope: ReturnType<
@@ -675,7 +778,14 @@ export function useHostRequestAuthorityScope() {
         profile.isTauri || Boolean(evidence.brokerRoute),
       ...requestAuthorityScopeFromCredentialEvidence(evidence, {
         ...(nativeBinding
-          ? { authorityQualifier: nativeBinding.bindingId }
+          ? {
+              authorityQualifier: evidence.nativeBrokerRoute
+                ? JSON.stringify([
+                    nativeBinding.bindingId,
+                    nativeRelayAccountAuthority,
+                  ])
+                : nativeBinding.bindingId,
+            }
           : relayAccountScopeKey
             ? { authorityQualifier: relayAccountScopeKey }
             : {}),
@@ -686,6 +796,12 @@ export function useHostRequestAuthorityScope() {
           (relayAccountScopeReady &&
             getBrowserRelayAccountScope(relayScopeKey) ===
               relayAccountScope)) &&
+        (!evidence.nativeBrokerRoute ||
+          (getNativeRelayAccountScope(nativeRelayScopeKey) ===
+            nativeRelayAccountScope &&
+            captureNativeRelayConnectionOwner(
+              nativeRelayScopeKey,
+            )?.account() === nativeRelayAccountScope?.account)) &&
         (!profile.isTauri ||
           nativeProfileRepository().captureNativeRequestBinding(
             evidence.connectionId,
@@ -700,10 +816,52 @@ export function useHostRequestAuthorityScope() {
     connectionId,
     credentialState,
     nativeBindingId,
+    nativeRelayAccountReady,
+    nativeRelayAccountAuthority,
+    nativeRelayScopeKey,
     relayAccountScopeKey,
     relayAccountScopeReady,
     relayAccountScopeVersion,
     profile.isTauri,
     relayScopeKey,
   ]);
+}
+
+/** Sign-in UI uses the same selected host owner as SDK requests; no endpoint or bearer is accepted here. */
+export function useNativeRelayAccountSession() {
+  const { captureCredentialEvidence, isCredentialEvidenceCurrent } =
+    useConnections();
+  const selectedOwner = async () => {
+    const evidence = captureCredentialEvidence();
+    if (!evidence?.nativeBrokerRoute)
+      throw new Error('native_relay_selection_required');
+    const binding = nativeProfileRepository().captureNativeRequestBinding(
+      evidence.connectionId,
+      evidence.origin,
+    );
+    if (!binding) throw new Error('native_relay_binding_required');
+    const { prepareNativeRelayConnectionOwner } = await import(
+      '../platform/native/nativeRelayConnectionOwner'
+    );
+    return prepareNativeRelayConnectionOwner({
+      connectionId: evidence.connectionId,
+      origin: evidence.origin,
+      route: evidence.nativeBrokerRoute,
+      bindingId: binding.bindingId,
+      selectionIsCurrent: () =>
+        isCredentialEvidenceCurrent(evidence) &&
+        nativeProfileRepository().captureNativeRequestBinding(
+          evidence.connectionId,
+          evidence.origin,
+        )?.bindingId === binding.bindingId,
+    });
+  };
+  return {
+    login: async (credentials: { username: string; password: string }) =>
+      (await selectedOwner()).login(credentials),
+    acceptInvitation: async (token: string) =>
+      (await selectedOwner()).acceptInvitation(token),
+    logout: async () => (await selectedOwner()).logout(),
+    retireAccount: async () => (await selectedOwner()).retireAccount(),
+  };
 }
