@@ -98,7 +98,7 @@
 
     {"path":"src-ui/src/workspace-panes/WorkspacePaneRouteView.tsx","digest":"a2e50ba67bfe92c4336f8accf96d3f3854e79527af839e95f6cd2ae2a6128207","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 
-    {"path":"src-ui/src/workspace-panes/builtinWorkspacePaneRegistry.tsx","digest":"9cf334499d01499656f57ea5a63f7efc7465972380778ec77ff547dc74906513","revision":"79edb8d5dd98ef07de0722b0604b9ec606f2bdbf"},
+    {"path":"src-ui/src/workspace-panes/builtinWorkspacePaneRegistry.tsx","digest":"0f01c9f526d44f137218376170a6c4a87430a67fa4c8ab98ae0e65cb16c89d04","revision":"3d305ee698b18ae0b9e2bb71f3af821237b3c86f"},
 
     {"path":"tests/container-self-host.spec.ts","digest":"35a9f2abca5519fa980137f32f8011bb6a88311f2bc3bacd3e9cca830f5379f6","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"}
   ],
