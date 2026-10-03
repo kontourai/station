@@ -26,7 +26,11 @@
 
     {"path":"packages/contracts/src/application-session.ts","digest":"46663ea304ab3e2b0d63ae3eff1500055e386d4601f0e2050c35e6abc2d5215e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
+    {"path":"packages/contracts/src/catalog.ts","digest":"7c18a88495a7f46c113fc67436a0ecf851bf006e599e42a608a2001f32c205de","revision":"93b4a941961ba7cef7c3faeee989dfaef6f80370"},
+
     {"path":"packages/contracts/src/connection-recovery.ts","digest":"1bac2d14d557e109df4b1f28654f80f2cf83f712ee63995646d911f57f4a6dea","revision":"2e1efb68c1c00b4c2caf5e6509362cda3d4e068a"},
+
+    {"path":"packages/contracts/src/engine-accounts.ts","digest":"ed79fcde0a0b55cedf906325a3f7d68c783b220d239764de998dedb786521a9e","revision":"0dd1181141ba6a645601e6798079a16189510438"},
 
     {"path":"packages/contracts/src/notification.ts","digest":"8ab242f152839490894494f48fd701c6dfd2b5d13fcad3d439eeb83c17463156","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -35,6 +39,8 @@
     {"path":"packages/contracts/src/task-basis-mcp.ts","digest":"e441fa4b24dc096a453b6641b061477a87c0ec9750478f5edecc1b77245c63e9","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"packages/contracts/src/task-basis.ts","digest":"9345de0dd369e4e9d5fae71c38261983385662c314c0cdbf77f9596cdd3d7834","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/contracts/src/usage-rollup.ts","digest":"22d0231b9711bccb674bbc966991a33e41f622f3547e972e5517e04047beb6ad","revision":"0dd1181141ba6a645601e6798079a16189510438"},
 
     {"path":"packages/sdk/package.json","digest":"31286b6e99fa502f8eb1bf6c744a4a34041d21bf6e0e0e5d22f27f2771dc5c06","revision":"18ae5d5640f6a47eb953b72f1d0a55b06a137677"},
 
@@ -98,7 +104,7 @@
 
     {"path":"packages/sdk/src/client/local-accounts.ts","digest":"d5c3462a067e9a89b86d27ec791badd4e37f3fd27c08c58ed0957ee1d71f2d65","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/sdk/src/client/orchestration.ts","digest":"7cede28541860714941e250eef7b326495fb6d15b85bf4cdddde9ef9de6efc0c","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
+    {"path":"packages/sdk/src/client/orchestration.ts","digest":"62e4c7d474a1dd3dacbd28c00c6cdc9b4eb60bc079c48d4e0cdbd2985c555740","revision":"57e1daf6e0d4fe2c366e51d67e20c1a70587966f"},
 
     {"path":"packages/sdk/src/client/plugins.ts","digest":"02d4b43402fbb920707aa8222c525ef27e0c4d86479ecad270164ff8f0759ee7","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
@@ -166,6 +172,8 @@
 
     {"path":"packages/sdk/src/device-code-login.ts","digest":"b5c22efa94fb3234e6b97aedaf0fa174bd8c6987451fb6c0cdfba978bfc11091","revision":"2e1efb68c1c00b4c2caf5e6509362cda3d4e068a"},
 
+    {"path":"packages/sdk/src/engine-accounts.ts","digest":"a6d987bfa7df459d4c20727740a7ca94d169ae2ab53e50e3752df311e9ff24f1","revision":"0dd1181141ba6a645601e6798079a16189510438"},
+
     {"path":"packages/sdk/src/flow-gate-evaluations.ts","digest":"49b4e953db4d7e575a7746731ef04254ef31f808e6cb53b55ae3772d9d0b660c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"packages/sdk/src/hooks/context.ts","digest":"7b579f584b19684cdcadb54928c87f98e8ef47a088f1f66de48073d2d1fd6520","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
@@ -200,7 +208,7 @@
 
     {"path":"packages/sdk/src/query-domains/chatRuntimeConversations.ts","digest":"d551717fd5bdd3e04d737064dbe04b6ca27aafc771ebdee1c19247b0488fe9b4","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
-    {"path":"packages/sdk/src/query-domains/chatRuntimeOrchestration.ts","digest":"d4341001f4cb290b64a3171e8b284e12410463726f6aa3b3590c4be2094d30f4","revision":"42019764437469e865189dfd8ad8b1762b77a97a"},
+    {"path":"packages/sdk/src/query-domains/chatRuntimeOrchestration.ts","digest":"c7d4a86b8d4473d417d3aa2c1cb2e13a5d0cf63e78fe075ad1f67c9aae60bde7","revision":"061ace7180fe67218f67d9a74230ce419b887c11"},
 
     {"path":"packages/sdk/src/query-domains/devicePairingRequests.ts","digest":"be679fb0964921f7a7e7ec77433cd198f89772b8c1e13450e4fc39204dbdd4a3","revision":"9bb90045b7aeb926e7003b27fc4fd62252638524"},
 
@@ -274,6 +282,8 @@
 
     {"path":"src-desktop/src/native_account_operations.rs","digest":"39404c66b2187bbfe5a2a520d5d4e3e08f404bcdade6191107371a6696efa0bf","revision":"3517d8f66db867fd982a8f9883ed85052c4e1fc1"},
 
+    {"path":"src-server/analytics/usage-rollup-service.ts","digest":"72854055e8cc4f894e5bcc1c89287eb7a6eae4e3a43ca92df0a16f29a4aae4bc","revision":"16115fc6e0cb1bd66d4053aad666c77f26349d4f"},
+
     {"path":"src-server/knowledge-store/adapters/shared/file-transactions.ts","digest":"5505e0eb47ae0cc4eeefa829efa474a70ac0de4a438fd0f28d7e1855cf591c36","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"src-server/knowledge-store/knowledge-source-observation-policy.ts","digest":"d4cb2a7bae52db410ea472b7a936c944503253b59037f7f1bf55caa28e16cbff","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
@@ -281,6 +291,16 @@
     {"path":"src-server/knowledge-store/knowledge-store-provider.ts","digest":"268f67326c695832ef2a1577353ee6ece0a41218e7711dda87cc62a0ee814e85","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"src-server/providers/adapters/station-agent-adapter.ts","digest":"816a95380f960a7d06c9ffd37744d8d9f2d710aebb75a14cdc5f5e6e5149be17","revision":"11d74764719f6778a58dc7b4fa83a32af49c7c25"},
+
+    {"path":"src-server/providers/registries/filesystem-skill-registry.ts","digest":"04d981c6e1ed6f89c4149be49c8b3ca8711a4fae6c7e36d2d101c81ca81307d3","revision":"2867eea7c9a4838e2a59cdbf6ec7f940b7d4cf26"},
+
+    {"path":"src-server/providers/registries/json-manifest-registry.ts","digest":"278b9454c712425274a2566d9becbcfc0acb68d86216484f37ab472faad19eac","revision":"2867eea7c9a4838e2a59cdbf6ec7f940b7d4cf26"},
+
+    {"path":"src-server/providers/registries/registry-catalog-installed-state.ts","digest":"56210cc44ce38f67ad13ab2d27e0c340d7a2215a1c606b23c0d84ffc2e4294d6","revision":"2867eea7c9a4838e2a59cdbf6ec7f940b7d4cf26"},
+
+    {"path":"src-server/providers/registries/registry-source-configuration.ts","digest":"c18ab5a6d6f6163df087ab5d344544fa9c86d660b535a5bb9a9f8c0289172a93","revision":"27e102c04a86e76e1ab20cfcd7ee02d55eeff9df"},
+
+    {"path":"src-server/providers/registries/registry-source-manager.ts","digest":"6354f2b2a03af2f1be2a6acd87c647be6abbad09b8e342fe38ca6481f110fced","revision":"27e102c04a86e76e1ab20cfcd7ee02d55eeff9df"},
 
     {"path":"src-server/routes/agents/invoke-agent.ts","digest":"158a95a8af0b8a1f4480ad8ebaee68d569048c611f469ab78734c0d52cdd7cca","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -294,15 +314,19 @@
 
     {"path":"src-server/routes/operations/notifications.ts","digest":"4d0add85259d3edb2deee0c0929891851ebccc980416b6c693b0b002cc081651","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"3976ce75117d6cbfcb2d61733068a738c46de966a3106e5a76190d03b31e63e6","revision":"71c69cadad789baff389812ff52e9efae397c316"},
+    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"755ec9f2a3b4e0523ad5fd4126605f4433a4ac90b0075160d21acb280359c704","revision":"c6ebec77b17b679e630a3857b10a6f814d7fb436"},
 
     {"path":"src-server/routes/orchestration/tasks.ts","digest":"8ed321060c9fc811bc408ff9aeee527fdde7555f6c0fd628fa1eb2920a285b46","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"src-server/routes/orchestration/workspace-pane-host-actions.ts","digest":"9cc22e24b04ae9ac07dcdedf4702081bc21ca6986a54fa909eb336d5801b33b9","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
+    {"path":"src-server/routes/plugins/__tests__/registry-marketplaces.routes.test.ts","digest":"34259ae52213d3ac1532f51aab7e8772181749d49e9d9c3f40c29ac58da4182e","revision":"925b1fbe35ddb7a6c387a87a06c8b367128f9ef0"},
+
     {"path":"src-server/routes/plugins/plugin-install-routes.ts","digest":"b5696f343313b1a6ded1a1fd00d15be70ddb1bd7f35a63fc60eafb856ec90bf9","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"src-server/routes/plugins/plugin-public-routes.ts","digest":"5d088d683e1fc60155100743cf2fb67a6df25ded4914307ba54883d1097f157e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/plugins/registry.ts","digest":"f3f5be48240bb62b1bd0e1a5a0349d5205a99891cf15c4e3930cb1250fd900a6","revision":"47fbbbd8f767858f60a0a323b74e26cb60abce62"},
 
     {"path":"src-server/routes/projects/coding.ts","digest":"4360b6eceddadfbec486bc83a4d0f6d2cb2d8abf4b0d530b22bea65e96e97e32","revision":"2c5b089d9b6afeeaf43d9f9145be15571310e78b"},
 
@@ -350,7 +374,13 @@
 
     {"path":"src-server/security/pairing-route-scopes.ts","digest":"6135d879afff21c7d3c8f82d0fb701f04c7bc8de28724848ce0ffa39b0ded204","revision":"b004ed8cb3e885da544adf960b2894780aaf2b51"},
 
+    {"path":"src-server/services/agents/skill-service.ts","digest":"036d075316efb30c94191ded896d3c69c9169f23e053f3fba34ef1b4283d161e","revision":"2867eea7c9a4838e2a59cdbf6ec7f940b7d4cf26"},
+
     {"path":"src-server/services/checkpoints/checkpoint-restore.ts","digest":"252a314587f773a6215329b59c6044a9d34c3bd49cbbae33cef1ed02d5655d88","revision":"7e86d5a632f7aaa71e963b204cbc7d1af1db2f0d"},
+
+    {"path":"src-server/services/connections/__tests__/engine-account-history.test.ts","digest":"678515d554351f419a3859463e05da0165a45bc68119df91221a603b7c36ad41","revision":"c2f51cf0697d7d6a64c75e6ebee23c25c8b437fa"},
+
+    {"path":"src-server/services/connections/engine-account-history.ts","digest":"2c910d0d4d50966962226d3deb8419a138b5c61ce413a3e4dd6276aa100d5f61","revision":"1a235cd9bc482738abe4c3f011f73be86074d667"},
 
     {"path":"src-server/services/evidence/answer-assessment-module.ts","digest":"95d113224b308b1ce152239d30a8cf87b0727a4f211c80d2cdc6ead6b916d133","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -366,13 +396,15 @@
 
     {"path":"src-server/services/notifications/notification-service.ts","digest":"dc0df39c89f0e28181353f544f15467c528fb9685622077cca74b672d2857c19","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
+    {"path":"src-server/services/orchestration/__tests__/engine-account-usage-attribution.test.ts","digest":"d2b66dc45d766afb29dfcd5d0682c46a3c4e947103436bb7be17f36c37832521","revision":"c2f51cf0697d7d6a64c75e6ebee23c25c8b437fa"},
+
     {"path":"src-server/services/orchestration/conversation-open-resolver.ts","digest":"58648fa42a44086ff148f1b35f21c32e4f28e8560c7ca600433e72c159654799","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"src-server/services/orchestration/foreground-invocation-admission.ts","digest":"a951b45737fe532d44c0349e096748104744f466281fb3adad0c8b4b7852be36","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"src-server/services/orchestration/isolated-session-transcript-search.ts","digest":"b4583c148fa3069baeb59b4cc80f91e3e2a3dcb5cbfacf0a745757a0abf6de09","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"14d4d68ff2f8715e1428ca985125a9eff9eb5a05ea52946dc16b4f5971405a34","revision":"bc671142a7ae70587daf5bb0d94732e8ca74600a"},
+    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"4582d45b868ea008447f5405bcedb1adf987b1e3ad7701e39de19fc6a8d8994c","revision":"4711f21b516d04300b15ad4da473e24bf2e7adb2"},
 
     {"path":"src-server/services/orchestration/orchestration-session-state.ts","digest":"44a232d30c1d080f58b798e418a54d3adacb1086b3b6757a06f307370b703943","revision":"af3c8fbfee90c9179a0ac19659b76d24c707d574"},
 
@@ -381,6 +413,8 @@
     {"path":"src-server/services/orchestration/run-projection.ts","digest":"aa85a3e0831f81286e77598fe2498d27751b497fab9e824e7d38b4d08fc82dac","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"src-server/services/orchestration/session-query-module.ts","digest":"561d25babceae640528aac6e593827c894ed38442e21ed23d36f98f5dfe6f0a2","revision":"0af0405fb22db35e44b4577b9c610067fbfd109b"},
+
+    {"path":"src-server/services/orchestration/session-transcript-reads.ts","digest":"cde3fc9fb19a7b38b5d2d48dfb3cb16c97ab6e26ffa0990f0e7180e9e1edf6ad","revision":"0dd1181141ba6a645601e6798079a16189510438"},
 
     {"path":"src-server/services/orchestration/transcript-search-queries.ts","digest":"230ce0667d882f151f105fa3eacf624f3622aff31134b50e4e10af3ddc141311","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -458,15 +492,15 @@
 
     {"path":"src-ui/src/core/SDKAdapter.tsx","digest":"6b97757f9bfe3c29837ba06546c68a7a05c18447466f1535768dc936f4d86feb","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/hooks/orchestration/queueDrain.ts","digest":"428804b4d68474f9c5e86c702b2f00c4793e245145587a8813c42279580eafae","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-ui/src/hooks/orchestration/queueDrain.ts","digest":"5172f08676c5ae320d10b42f23f7b5158ab77172a54c537235de9156ea504eb8","revision":"89765352964045a079d13a17bee54ab2de7b83e0"},
 
     {"path":"src-ui/src/hooks/orchestration/snapshotHandlers.ts","digest":"ba834cfbb80f42b1742554455e2159f790f0149dba41039d68c6c91a1b5ff478","revision":"392b955a316234ea7972c96b5930b0b27db06ea6"},
 
     {"path":"src-ui/src/hooks/useActiveChatSessionLifecycle.ts","digest":"2a90e4f43cde95121b12aec4ae642905f1329e9e23e95f797a41cd6746da9349","revision":"389d349629e5834edf691e2e986675ec566ceadc"},
 
-    {"path":"src-ui/src/hooks/useActiveChatSessionMessaging.ts","digest":"53af6df5a169a76a3eb936293dff7b0064b8596b6d5ddec1efa738ac6b0002e2","revision":"4e4453cb3140e7f075e2a53468d475f950837221"},
+    {"path":"src-ui/src/hooks/useActiveChatSessionMessaging.ts","digest":"c0609512c0eff8faabaddd90b55198a6c2ddabb3fceeda419ed8b60b70340bc9","revision":"4711f21b516d04300b15ad4da473e24bf2e7adb2"},
 
-    {"path":"src-ui/src/hooks/useChatInput.ts","digest":"31ed118293149ecc8a7aa42edbb1309eedd1b362370d170ddee1036d6ee98a6c","revision":"74db2e79bbb82782cffb1834eb904546edfb536a"},
+    {"path":"src-ui/src/hooks/useChatInput.ts","digest":"e01f3c1e39604e05bb18f81541c4b50e059afa4411dfa768b97dce6e8f47d36d","revision":"89765352964045a079d13a17bee54ab2de7b83e0"},
 
     {"path":"src-ui/src/hooks/useConnectedServerUpdateContext.ts","digest":"e6a192da8badae2e46073b05e957c2b8e896f4131e66cc101006b1f0597f60c7","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -502,41 +536,7 @@
 
     {"path":"src-ui/src/workspace-panes/PluginWorkspacePaneSDKBoundary.tsx","digest":"fea4ba195d5618d81b20820ca4075c1220d13ac9ba4c71db011c6f12861dff54","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/workspace-panes/WorkspacePaneHostActions.tsx","digest":"2d83cf6470cd354426b7923a2a87eb8b0fc58872578fc99d01ca51c45c56b7c4","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
-
-    {"path":"packages/sdk/src/engine-accounts.ts","digest":"a6d987bfa7df459d4c20727740a7ca94d169ae2ab53e50e3752df311e9ff24f1","revision":"0dd1181141ba6a645601e6798079a16189510438"},
-
-    {"path":"packages/contracts/src/engine-accounts.ts","digest":"ed79fcde0a0b55cedf906325a3f7d68c783b220d239764de998dedb786521a9e","revision":"0dd1181141ba6a645601e6798079a16189510438"},
-
-    {"path":"src-server/services/connections/engine-account-history.ts","digest":"2c910d0d4d50966962226d3deb8419a138b5c61ce413a3e4dd6276aa100d5f61","revision":"1a235cd9bc482738abe4c3f011f73be86074d667"},
-
-    {"path":"src-server/services/connections/__tests__/engine-account-history.test.ts","digest":"678515d554351f419a3859463e05da0165a45bc68119df91221a603b7c36ad41","revision":"c2f51cf0697d7d6a64c75e6ebee23c25c8b437fa"},
-
-    {"path":"src-server/services/orchestration/__tests__/engine-account-usage-attribution.test.ts","digest":"d2b66dc45d766afb29dfcd5d0682c46a3c4e947103436bb7be17f36c37832521","revision":"c2f51cf0697d7d6a64c75e6ebee23c25c8b437fa"},
-
-    {"path":"src-server/analytics/usage-rollup-service.ts","digest":"72854055e8cc4f894e5bcc1c89287eb7a6eae4e3a43ca92df0a16f29a4aae4bc","revision":"16115fc6e0cb1bd66d4053aad666c77f26349d4f"},
-
-    {"path":"src-server/services/orchestration/session-transcript-reads.ts","digest":"cde3fc9fb19a7b38b5d2d48dfb3cb16c97ab6e26ffa0990f0e7180e9e1edf6ad","revision":"0dd1181141ba6a645601e6798079a16189510438"},
-
-    {"path":"packages/contracts/src/usage-rollup.ts","digest":"22d0231b9711bccb674bbc966991a33e41f622f3547e972e5517e04047beb6ad","revision":"0dd1181141ba6a645601e6798079a16189510438"},
-
-    {"path":"packages/contracts/src/catalog.ts","digest":"7c18a88495a7f46c113fc67436a0ecf851bf006e599e42a608a2001f32c205de","revision":"93b4a941961ba7cef7c3faeee989dfaef6f80370"},
-
-    {"path":"src-server/providers/registries/registry-source-manager.ts","digest":"6354f2b2a03af2f1be2a6acd87c647be6abbad09b8e342fe38ca6481f110fced","revision":"27e102c04a86e76e1ab20cfcd7ee02d55eeff9df"},
-
-    {"path":"src-server/providers/registries/registry-source-configuration.ts","digest":"c18ab5a6d6f6163df087ab5d344544fa9c86d660b535a5bb9a9f8c0289172a93","revision":"27e102c04a86e76e1ab20cfcd7ee02d55eeff9df"},
-
-    {"path":"src-server/providers/registries/registry-catalog-installed-state.ts","digest":"56210cc44ce38f67ad13ab2d27e0c340d7a2215a1c606b23c0d84ffc2e4294d6","revision":"2867eea7c9a4838e2a59cdbf6ec7f940b7d4cf26"},
-
-    {"path":"src-server/providers/registries/filesystem-skill-registry.ts","digest":"04d981c6e1ed6f89c4149be49c8b3ca8711a4fae6c7e36d2d101c81ca81307d3","revision":"2867eea7c9a4838e2a59cdbf6ec7f940b7d4cf26"},
-
-    {"path":"src-server/providers/registries/json-manifest-registry.ts","digest":"278b9454c712425274a2566d9becbcfc0acb68d86216484f37ab472faad19eac","revision":"2867eea7c9a4838e2a59cdbf6ec7f940b7d4cf26"},
-
-    {"path":"src-server/routes/plugins/registry.ts","digest":"f3f5be48240bb62b1bd0e1a5a0349d5205a99891cf15c4e3930cb1250fd900a6","revision":"47fbbbd8f767858f60a0a323b74e26cb60abce62"},
-
-    {"path":"src-server/services/agents/skill-service.ts","digest":"036d075316efb30c94191ded896d3c69c9169f23e053f3fba34ef1b4283d161e","revision":"2867eea7c9a4838e2a59cdbf6ec7f940b7d4cf26"},
-
-    {"path":"src-server/routes/plugins/__tests__/registry-marketplaces.routes.test.ts","digest":"34259ae52213d3ac1532f51aab7e8772181749d49e9d9c3f40c29ac58da4182e","revision":"925b1fbe35ddb7a6c387a87a06c8b367128f9ef0"}
+    {"path":"src-ui/src/workspace-panes/WorkspacePaneHostActions.tsx","digest":"2d83cf6470cd354426b7923a2a87eb8b0fc58872578fc99d01ca51c45c56b7c4","revision":"0c1f436037261c43eeca3e079f5106948360c591"}
   ],
 
   "checks": [

@@ -113,7 +113,7 @@ memory paths or another Session's memory identity.
 ## Lifecycle control commands
 
 `POST /api/orchestration/commands` is a control surface, not an execution selector.
-It accepts `adoptSession`, `interruptTurn`, `steerTurn`, `respondToRequest`,
+It accepts `adoptSession`, `interruptTurn`, `steerTurn`, `steerTurnOnce`, `inspectSteerInput`, `respondToRequest`,
 `setApprovalMode`, `discardDraft`, and `stopSession`. Commands use the execution
 Session ID as `threadId`, not an assumed copy of the Conversation ID.
 Public `startSession` and `sendTurn` commands do not exist; adapter dispatch remains
@@ -336,10 +336,32 @@ A client that folds raw events without the shared rule still sees it open.
 The remaining controls are defined by
 `src-server/routes/orchestration/orchestration.ts`:
 
-- `steerTurn`: `{ type: 'steerTurn', threadId, input, turnId? }` sends steering
+- `steerTurn`: `{ type: 'steerTurn', threadId, input, turnId?, clientInputId? }` sends steering
   input where the engine supports it. An ACP engine without a native steer
   method is steered by cancelling and re-prompting the running turn; that
   steer's `turn.started` carries `steerInterruptedRun: true`.
+  On this server, a stable `clientInputId` makes acknowledgement retries safe: a durable claim
+  precedes the adapter call, confirmed same-ID input returns its stored result,
+  and an unresolved or mismatched claim returns `outcome: 'indeterminate'`
+  without invoking the engine again. Retain the original `threadId`, `turnId`
+  and input on retry. Never turn an indeterminate steer into an automatic new
+  turn; retain it for review. The digest-only claim survives restart and is
+  removed with its Session. Calls without this optional ID retain the legacy
+  behavior and cannot claim transport idempotency.
+
+- `steerTurnOnce`: `{ type: 'steerTurnOnce', threadId, input, turnId?, clientInputId }`
+  requires a stable ID and normalizes to the same internal `steerTurn` command
+  before authorization and dispatch. Older servers reject this distinct wire
+  type before any engine invocation; they cannot silently discard the ID. The
+  receipt's `commandType` remains `steerTurn`. Use this variant for retry-safe
+  clients that may connect to older servers.
+- `inspectSteerInput`: `{ type: 'inspectSteerInput', threadId, input, turnId?, clientInputId }`
+  reads the original journal identity and returns `steered`, `indeterminate` or
+  `not-received`. It creates a standard command audit receipt, but never resolves
+  an adapter or invokes an engine. Inspect uncertain delivery first; only
+  `not-received` permits a protected same-ID first attempt. An unsupported lookup
+  or unresolved claim must remain held.
+
 - `setApprovalMode`: `{ type: 'setApprovalMode', threadId, approvalMode,
   basedOnSequence }` records an ordered posture decision. `basedOnSequence` is
   required: use the latest observed decision sequence, or `null` when none was
@@ -432,7 +454,7 @@ failures can occur before a receipt exists. Acceptance is not turn completion:
   "receipt": {
     "commandId": "uuid, generated server-side",
     "threadId": "string",
-    "commandType": "adoptSession | interruptTurn | steerTurn | respondToRequest | setApprovalMode | discardDraft | stopSession",
+    "commandType": "adoptSession | interruptTurn | steerTurn | inspectSteerInput | respondToRequest | setApprovalMode | discardDraft | stopSession",
     "status": "accepted | rejected | failed",
     "createdAt": "ISO 8601 timestamp"
   }

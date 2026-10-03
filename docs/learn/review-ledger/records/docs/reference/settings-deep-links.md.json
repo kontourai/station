@@ -18,9 +18,9 @@
 
     {"path":"src-server/generated/settings-registry.json","digest":"7b9514e37d3049f9d8acfeaecc66b3a0a84752667ed62749e43ad8ca1832c70e","revision":"1aecbf35557098c1502ee4575c7e332fb1e9d60c"},
 
-    {"path":"src-ui/src/views/SettingsView.tsx","digest":"1ede27735768ba3e57c06aabe2313abe5369045a9020512f32099e22980225ef","revision":"1aecbf35557098c1502ee4575c7e332fb1e9d60c"},
+    {"path":"src-ui/src/views/settings/settings-deep-link.ts","digest":"48c9f6d2dfc21babff6ff3e8839b1cd3bf2781347f0aa622ae740613148c3990","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/views/settings/settings-deep-link.ts","digest":"48c9f6d2dfc21babff6ff3e8839b1cd3bf2781347f0aa622ae740613148c3990","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"}
+    {"path":"src-ui/src/views/SettingsView.tsx","digest":"1ede27735768ba3e57c06aabe2313abe5369045a9020512f32099e22980225ef","revision":"1aecbf35557098c1502ee4575c7e332fb1e9d60c"}
   ],
 
   "checks": [

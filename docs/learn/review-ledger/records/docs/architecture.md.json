@@ -18,6 +18,10 @@
 
     {"path":"packages/connect/package.json","digest":"880e5cac1c66ca9387136b8fff36a4f6aa8c0514d45780dcb8a8a38ff7c616ca","revision":"22ffd796d86ec7f841cb3c75764ed2a3fb7783b0"},
 
+    {"path":"packages/contracts/package.json#/exports","digest":"ee81c48b5d1385a876060069c972466a69148bb52f2a98881595b72342665e91","revision":"1e6450e0caa47975d33f505a1348bdc01ae1382e"},
+
+    {"path":"packages/contracts/package.json#/files","digest":"43219f75df025fd68c4b3a47b045f822115a0cb02eb1a21f6f0003b466db6b24","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
+
     {"path":"packages/contracts/src/tool.ts","digest":"5333089345f6d5bc620294d7eda8ca8b6a8e9f4f559abc7fb100207b87e633e3","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"packages/sdk/package.json","digest":"31286b6e99fa502f8eb1bf6c744a4a34041d21bf6e0e0e5d22f27f2771dc5c06","revision":"18ae5d5640f6a47eb953b72f1d0a55b06a137677"},
@@ -27,6 +31,10 @@
     {"path":"packages/sdk/src/index.ts","digest":"7a0645f44c08a15d2e4ff972cfb31c25a7e361b8534886ee9de826ac61a72a49","revision":"0814cc6ddb168cff69e5572b185a853540a4f6e0"},
 
     {"path":"packages/sdk/src/voice/registry.ts","digest":"62ce9013b0c9d5e935c88ae2912bf31768f58ef5f40409745df9676ebfb87408","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/shared/package.json#/engines","digest":"6c12acb1990a85e4fe6986ad29ad44b644eca474a81f946d053aabd14ba62059","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
+
+    {"path":"packages/shared/package.json#/exports","digest":"5c63f1e0939f2ba5c839ba2b721cf762287a6c902b6efcee66f4b6b7848d32e5","revision":"036d5d3d2289fc22e325a9ded733e8de561e9b30"},
 
     {"path":"packages/shared/src/mcp-connection.ts","digest":"7820dc126d63a74fbb6b81f8c8ce080ac9d52af0fe3d80f55e882baf772d3a76","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -40,7 +48,7 @@
 
     {"path":"src-server/providers/sessions/codex-rollout-session-source.ts","digest":"35e09b5648c9969919fa37fed58ff37af1e3b7e802a3b42c5fd236fa5100fba9","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"3976ce75117d6cbfcb2d61733068a738c46de966a3106e5a76190d03b31e63e6","revision":"71c69cadad789baff389812ff52e9efae397c316"},
+    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"755ec9f2a3b4e0523ad5fd4126605f4433a4ac90b0075160d21acb280359c704","revision":"c6ebec77b17b679e630a3857b10a6f814d7fb436"},
 
     {"path":"src-server/runtime/agents/agent-engine-classification.ts","digest":"cec04bb10726e4ce741930da266458c95fa1f53acd475d8d696a5271c32f7c6d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -74,7 +82,7 @@
 
     {"path":"src-server/services/flow/flow-run-service.ts","digest":"501881355a01c561de9ecdbe2cc99a9f83bb565873615997cba75965e6e29271","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"14d4d68ff2f8715e1428ca985125a9eff9eb5a05ea52946dc16b4f5971405a34","revision":"bc671142a7ae70587daf5bb0d94732e8ca74600a"},
+    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"4582d45b868ea008447f5405bcedb1adf987b1e3ad7701e39de19fc6a8d8994c","revision":"4711f21b516d04300b15ad4da473e24bf2e7adb2"},
 
     {"path":"src-server/services/plugins/plugin-install-transaction.ts","digest":"01ba3b7fe2249e6215c6fb62c6372e21324c863bee37bcac6e739a7b0170db61","revision":"63833ae5666cb06da0b5671dc0e3bf63bdc1d0fa"},
 
@@ -88,15 +96,7 @@
 
     {"path":"src-ui/src/hooks/voiceWsUrl.ts","digest":"4b609c4ad165efdf372f565aacdf1617ed9f0c793fbba7cca2005a0ab33f71b1","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/providers/voice/NovaVoiceSessionAdapter.ts","digest":"e0af5660bc581fae84121a3890cb5a180960213d761eef4a23319e5fa1bece2c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
-
-    {"path":"packages/contracts/package.json#/exports","digest":"ee81c48b5d1385a876060069c972466a69148bb52f2a98881595b72342665e91","revision":"1e6450e0caa47975d33f505a1348bdc01ae1382e"},
-
-    {"path":"packages/contracts/package.json#/files","digest":"43219f75df025fd68c4b3a47b045f822115a0cb02eb1a21f6f0003b466db6b24","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
-
-    {"path":"packages/shared/package.json#/exports","digest":"5c63f1e0939f2ba5c839ba2b721cf762287a6c902b6efcee66f4b6b7848d32e5","revision":"036d5d3d2289fc22e325a9ded733e8de561e9b30"},
-
-    {"path":"packages/shared/package.json#/engines","digest":"6c12acb1990a85e4fe6986ad29ad44b644eca474a81f946d053aabd14ba62059","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"}
+    {"path":"src-ui/src/providers/voice/NovaVoiceSessionAdapter.ts","digest":"e0af5660bc581fae84121a3890cb5a180960213d761eef4a23319e5fa1bece2c","revision":"0c1f436037261c43eeca3e079f5106948360c591"}
   ],
 
   "checks": [

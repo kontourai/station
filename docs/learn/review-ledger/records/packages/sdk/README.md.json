@@ -52,13 +52,13 @@
 
     {"path":"src-server/services/plugins/plugin-install-transaction.ts","digest":"01ba3b7fe2249e6215c6fb62c6372e21324c863bee37bcac6e739a7b0170db61","revision":"63833ae5666cb06da0b5671dc0e3bf63bdc1d0fa"},
 
-    {"path":"src-ui/src/core/SDKAdapter.tsx","digest":"6b97757f9bfe3c29837ba06546c68a7a05c18447466f1535768dc936f4d86feb","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
     {"path":"src-ui/src/core/pluginSharedRuntime.ts","digest":"b9b3865a69ebf0b8246ac7b6b7b294b24f7a05f51004dd8a8b5ea273fc2fae49","revision":"f72daba9492778d9418abbf9730b6482b73a300c"},
+
+    {"path":"src-ui/src/core/SDKAdapter.tsx","digest":"6b97757f9bfe3c29837ba06546c68a7a05c18447466f1535768dc936f4d86feb","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
     {"path":"src-ui/src/hooks/useActiveChatSessionLifecycle.ts","digest":"2a90e4f43cde95121b12aec4ae642905f1329e9e23e95f797a41cd6746da9349","revision":"2f3085a2920085f2283c41a1b0431a6ded12a480"},
 
-    {"path":"src-ui/src/hooks/useActiveChatSessionMessaging.ts","digest":"53af6df5a169a76a3eb936293dff7b0064b8596b6d5ddec1efa738ac6b0002e2","revision":"4e4453cb3140e7f075e2a53468d475f950837221"},
+    {"path":"src-ui/src/hooks/useActiveChatSessionMessaging.ts","digest":"c0609512c0eff8faabaddd90b55198a6c2ddabb3fceeda419ed8b60b70340bc9","revision":"4711f21b516d04300b15ad4da473e24bf2e7adb2"},
 
     {"path":"src-ui/src/workspace-panes/ConnectedStationBasisPane.tsx","digest":"f3b6189f6366ce62062c91c9fe5f5730b33ae21dde0386c036d4f6cb02739018","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"}
   ],

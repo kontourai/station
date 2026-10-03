@@ -1244,7 +1244,7 @@ to `'other'`/absent reasons without a decision recorded here.
 **Purpose.** Vendor extension notifications remain opaque until Station has an
 exact handling rule for their `(namespace, type)` tuple. The immutable
 [shared table](../../src-shared/extension-notification-bindings.ts) records that
-rule, the observed adapter variant and a historical observation tag.
+rule, the adapter or protocol variant and an observation or pinned SDK contract tag.
 `extensionNotificationBinding()` returns an exact match or absence. A matching
 namespace prefix, version string or stored capability flag is not a match.
 
@@ -1267,7 +1267,7 @@ binding says nothing about which canonical event, if any, should replace it.
 
 [Exact-set tests](../../src-shared/__tests__/extension-notification-bindings.test.ts),
 ACP mapper tests and UI handler tests check lookup and current handling.
-Historical observation tags are evidence pointers, not a fresh provider run.
+Observation and pinned SDK contract tags are evidence pointers, not a fresh provider run.
 Add or remove a tuple together with its actual handler and evidence; do not
 replace exact matching with wildcard vendor routing.
 

@@ -11,18 +11,22 @@ vitestConfigVi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { CHAT_ATTACHMENT_MAX_COMMAND_JSON_BYTES } from '@kontourai/station-contracts/chat-attachment';
+import type { ProviderSessionStartInput } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { parseHostedTenantRegistry } from '@kontourai/station-contracts/tenancy';
+import { inspectSteerInput, steerTurn } from '@kontourai/station-sdk/client';
 import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
 import { assembleTurnProvenanceEnvelopes } from '@kontourai/station-shared/turn-provenance-fold';
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { z } from 'zod';
 import {
   createGateTestRegistry,
   GateTestAdapter,
 } from '../../../__test-utils__/orchestration-gate-test-harness.js';
 import { readJson } from '../../../__test-utils__/read-json.js';
 import { readStreamUntil } from '../../../__test-utils__/sse-helpers.js';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { ORCHESTRATION_STREAM_RESUME_GAP_THRESHOLD } from '../../../constants.js';
 import { AsyncEventQueue } from '../../../providers/sessions/async-event-queue.js';
 import { createHostedTenantMiddleware } from '../../../runtime/bootstrap/runtime-tenant-context.js';
@@ -470,6 +474,216 @@ const personalReadAuthority = (userId: string) =>
   });
 
 describe('Orchestration Routes', () => {
+  const makeTempDir = trackTempDirs();
+  const steerFixtureStores: EventStore[] = [];
+  afterEach(() => {
+    for (const store of steerFixtureStores.splice(0)) store.close();
+  });
+
+  test('SDK receipt-protected steering and inspection fail closed on a legacy server before engine invocation', async () => {
+    const legacySteerSchema = z.object({
+      type: z.literal('steerTurn'),
+      threadId: z.string(),
+      input: z.string(),
+      turnId: z.string().optional(),
+    });
+    const engineSteer = vi.fn();
+    const legacy = new Hono();
+    legacy.post('/api/orchestration/commands', async (c) => {
+      const parsed = legacySteerSchema.safeParse(await c.req.json());
+      if (!parsed.success)
+        return c.json({ success: false, error: 'Validation failed' }, 400);
+      engineSteer(parsed.data);
+      return c.json({
+        success: true,
+        data: {
+          outcome: 'steered',
+          threadId: parsed.data.threadId,
+          turnId: 'live',
+        },
+      });
+    });
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(async (input, init) =>
+        legacy.request(input instanceof Request ? input : String(input), init),
+      );
+    const input = {
+      apiBase: 'http://legacy.test',
+      threadId: 'legacy-thread',
+      turnId: 'live',
+      text: 'redirect',
+      clientInputId: 'stable-input',
+    };
+    try {
+      await expect(inspectSteerInput(input.apiBase, input)).rejects.toThrow(
+        'Validation failed',
+      );
+      expect(engineSteer).not.toHaveBeenCalled();
+      await expect(steerTurn(input.apiBase, input)).rejects.toThrow(
+        'Validation failed',
+      );
+      expect(engineSteer).not.toHaveBeenCalled();
+      await expect(
+        steerTurn(input.apiBase, { ...input, clientInputId: '' }),
+      ).rejects.toThrow('Validation failed');
+      expect(engineSteer).not.toHaveBeenCalled();
+      await steerTurn(input.apiBase, { ...input, clientInputId: undefined });
+      expect(engineSteer).toHaveBeenCalledTimes(1);
+      expect(engineSteer.mock.calls[0][0]).not.toHaveProperty('clientInputId');
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  test('SDK native steer identity survives lost HTTP acknowledgement and a completed turn without redelivery', async () => {
+    const directory = makeTempDir('steer-http-receipt-');
+    const eventStore = new EventStore(join(directory, 'orchestration.sqlite'));
+    steerFixtureStores.push(eventStore);
+    const eventBus = new EventBus();
+    class SteerAdapter extends GateTestAdapter {
+      private loaded = false;
+      readonly steerTurn = vi.fn(async () => {});
+      async startSession(input: ProviderSessionStartInput) {
+        const session = await super.startSession(input);
+        this.loaded = true;
+        return session;
+      }
+      async hasSession() {
+        return this.loaded;
+      }
+    }
+    const adapter = new SteerAdapter();
+    const service = new OrchestrationService({
+      adapterRegistry: createGateTestRegistry(adapter),
+      eventBus,
+      eventStore,
+      logger: { debug: vi.fn(), warn: vi.fn() },
+    });
+    const app = new Hono().route(
+      '/api/orchestration',
+      createOrchestrationRoutes(service, {
+        eventBus,
+        logger: { debug: vi.fn() },
+        getUserId: () => ROUTE_TEST_USER_ID,
+      }),
+    );
+    const threadId = 'steer-http';
+    const at = new Date().toISOString();
+    await service.dispatch(
+      {
+        type: 'startSession',
+        input: { provider: 'claude', threadId, cwd: directory },
+      },
+      { userId: ROUTE_TEST_USER_ID },
+    );
+    eventStore.appendEvent({
+      eventId: 'steer-http-session',
+      provider: 'claude',
+      threadId,
+      sessionId: threadId,
+      method: 'session.started',
+      createdAt: at,
+      metadata: { userId: ROUTE_TEST_USER_ID, agentSlug: 'claude' },
+    });
+    eventStore.appendEvent({
+      eventId: 'steer-http-turn',
+      provider: 'claude',
+      threadId,
+      turnId: 'live',
+      method: 'turn.started',
+      createdAt: at,
+      prompt: 'initial',
+    });
+    let loseReceipt = true;
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(async (input, init) => {
+        const response = await app.request(
+          input instanceof Request ? input : String(input),
+          init,
+        );
+        expect(response.status).toBe(200);
+        if (loseReceipt) {
+          expect(await response.clone().json()).toMatchObject({
+            success: true,
+            data: { outcome: 'steered', threadId, turnId: 'live' },
+          });
+          loseReceipt = false;
+          throw new TypeError('HTTP acknowledgement lost');
+        }
+        return response;
+      });
+    const input = {
+      apiBase: 'http://station.test',
+      threadId,
+      turnId: 'live',
+      clientInputId: 'http-input-1',
+      text: 'redirect',
+    };
+    try {
+      await expect(steerTurn(input.apiBase, input)).rejects.toThrow(
+        'HTTP acknowledgement lost',
+      );
+      expect(adapter.steerTurn).toHaveBeenCalledTimes(1);
+      eventStore.appendEvent({
+        eventId: 'steer-http-complete',
+        provider: 'claude',
+        threadId,
+        turnId: 'live',
+        method: 'turn.completed',
+        createdAt: at,
+        finishReason: 'stop',
+      });
+      expect(await inspectSteerInput(input.apiBase, input)).toEqual({
+        outcome: 'steered',
+        threadId,
+        turnId: 'live',
+      });
+      const absent = { ...input, clientInputId: 'http-never-received' };
+      expect(await inspectSteerInput(absent.apiBase, absent)).toEqual({
+        outcome: 'not-received',
+        threadId,
+        clientInputId: absent.clientInputId,
+      });
+      expect(await inspectSteerInput(absent.apiBase, absent)).toMatchObject({
+        outcome: 'not-received',
+      });
+      expect(adapter.steerTurn).toHaveBeenCalledTimes(1);
+      expect(
+        eventStore.readSteerInput({
+          threadId,
+          input: absent.text,
+          turnId: absent.turnId,
+          clientInputId: absent.clientInputId,
+        }),
+      ).toBeUndefined();
+      const held = { ...input, clientInputId: 'http-pending' };
+      expect(
+        eventStore.claimSteerInput({
+          threadId,
+          input: held.text,
+          turnId: held.turnId,
+          clientInputId: held.clientInputId,
+        }),
+      ).toBe(true);
+      expect(await inspectSteerInput(held.apiBase, held)).toEqual({
+        outcome: 'indeterminate',
+        threadId,
+        clientInputId: held.clientInputId,
+      });
+      expect(adapter.steerTurn).toHaveBeenCalledTimes(1);
+      expect(await steerTurn(input.apiBase, input)).toEqual({
+        outcome: 'steered',
+        threadId,
+        turnId: 'live',
+      });
+      expect(adapter.steerTurn).toHaveBeenCalledTimes(1);
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   // archive#4075 stage 2 acceptance: "Missing principal fails closed at
   // dispatch — typed refusal, no 'unknown-user', no alias." Every OTHER
   // test in this file configures `getUserId` (the legacy test-only escape

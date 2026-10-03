@@ -314,6 +314,9 @@ export interface ChatSession {
   input: string;
   attachments: FileAttachment[];
   queuedMessages: string[];
+  queuedMessageMetadata?: import('./contexts/active-chats-state').PendingMessageMetadata[];
+  queueSendNowPending?: boolean;
+  streamingMessage?: import('./contexts/active-chats-state').StreamingMessage;
   /** See ChatUIState.queuedMessageFailure (active-chats-state.ts) — persisted. */
   queuedMessageFailure?: { message: string; code?: string; at: number };
   /** See ChatUIState.unsentMessages (archive#3706) — persisted, not a queue. */

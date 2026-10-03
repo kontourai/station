@@ -16,9 +16,9 @@
 
     {"path":"packages/sdk/src/index.ts","digest":"7a0645f44c08a15d2e4ff972cfb31c25a7e361b8534886ee9de826ac61a72a49","revision":"0814cc6ddb168cff69e5572b185a853540a4f6e0"},
 
-    {"path":"src-ui/src/components/plugins/PluginFrameHost.tsx","digest":"8675ac0b041936053e70ec9d762e1707d816bf9ea7cf081f31ef4501f813f7f6","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
     {"path":"src-ui/src/components/plugins/framePaneHost.tsx","digest":"6bf2356c1be5d613095175322bbc3d851e9c75699b87c256f1b82e5d2b807a3f","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/components/plugins/PluginFrameHost.tsx","digest":"8675ac0b041936053e70ec9d762e1707d816bf9ea7cf081f31ef4501f813f7f6","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
     {"path":"src-ui/src/workspace-panes/inProcessPaneHost.tsx","digest":"1da9d2ca44fc97a740f3b8025678e5bcb4d4c929df6c1e0c6445d00c2bc7bd3e","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"}
   ],

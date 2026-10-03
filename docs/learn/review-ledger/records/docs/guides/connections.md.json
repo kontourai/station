@@ -114,7 +114,7 @@
 
     {"path":"src-server/routes/operations/voice.ts","digest":"492cdfda970de501b2659522e76897f2e0c268e5018fcc47f43aaf9593538b48","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"3976ce75117d6cbfcb2d61733068a738c46de966a3106e5a76190d03b31e63e6","revision":"71c69cadad789baff389812ff52e9efae397c316"},
+    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"755ec9f2a3b4e0523ad5fd4126605f4433a4ac90b0075160d21acb280359c704","revision":"c6ebec77b17b679e630a3857b10a6f814d7fb436"},
 
     {"path":"src-server/routes/system/relay-enrollment-routes.ts","digest":"3844e28d46c1394058412e854d53c725d813651ebea53c7de22430bc409fc52f","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -198,7 +198,7 @@
 
     {"path":"src-server/services/orchestration/approval-posture.ts","digest":"88bd82f2afb16d2a11f1edb9dcdf65f395bbfb2fd937f1df0bc70ebca5405a9d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"14d4d68ff2f8715e1428ca985125a9eff9eb5a05ea52946dc16b4f5971405a34","revision":"bc671142a7ae70587daf5bb0d94732e8ca74600a"},
+    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"4582d45b868ea008447f5405bcedb1adf987b1e3ad7701e39de19fc6a8d8994c","revision":"4711f21b516d04300b15ad4da473e24bf2e7adb2"},
 
     {"path":"src-server/services/orchestration/session-transcript-reads.ts","digest":"cde3fc9fb19a7b38b5d2d48dfb3cb16c97ab6e26ffa0990f0e7180e9e1edf6ad","revision":"0dd1181141ba6a645601e6798079a16189510438"},
 

@@ -579,6 +579,7 @@ export {
   type IntegrationLifecycleResult,
   type IntegrationViewModel,
   type InterruptOrchestrationDelegatedTaskInput,
+  inspectOrchestrationSteerInput,
   installACPConnectionRegistryEntry,
   interruptOrchestrationDelegatedTask,
   interruptOrchestrationTurn,

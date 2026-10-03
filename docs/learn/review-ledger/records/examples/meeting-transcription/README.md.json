@@ -14,11 +14,11 @@
   "sources": [
     {"path":"examples/meeting-transcription/plugin.json","digest":"aa804e2b368ed0b54993478a6a83e5780e4146063b967bd19faaee79fd8970b3","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
+    {"path":"examples/meeting-transcription/src/index.ts","digest":"d0f5cf93772b18dc06617947af7c1e3822828b35901d9f0e8bfa46388a23400b","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
     {"path":"examples/meeting-transcription/src/MeetingTranscriptionModal.tsx","digest":"a00e284e0e81c976cbbf077116d7ec2cde67a49b6cbe1edf916f81f522e37677","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
     {"path":"examples/meeting-transcription/src/MeetingTranscriptionPane.tsx","digest":"4624cbab6d47b6b4610f5ad0134f62cf14c2f34cb63cb47238a139fb6d382829","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
-    {"path":"examples/meeting-transcription/src/index.ts","digest":"d0f5cf93772b18dc06617947af7c1e3822828b35901d9f0e8bfa46388a23400b","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
     {"path":"examples/meeting-transcription/src/useRegisteredSTT.ts","digest":"a4f2e81f606513b245bf9dad512a92e07bf12c88fbdceed935b57f0c96050e0a","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -34,9 +34,9 @@
 
     {"path":"packages/shared/src/build.ts","digest":"20f919a4a98519ce20e8e2f0d5d498a4be8daeba1314a97ddae752fd36df4630","revision":"1e6450e0caa47975d33f505a1348bdc01ae1382e"},
 
-    {"path":"src-ui/src/hooks/useSTT.ts","digest":"07ef559ed6484e750a1d3be22e9f88e80ade4d2335b38f658d82461f6ce4208a","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
     {"path":"src-ui/src/hooks/useServerCapabilities.ts","digest":"31bb78d7241677e1d91ddf23b848f9dd9e43f6dd412bbf7537721faf8173a04c","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/hooks/useSTT.ts","digest":"07ef559ed6484e750a1d3be22e9f88e80ade4d2335b38f658d82461f6ce4208a","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
     {"path":"src-ui/src/providers/voice/index.ts","digest":"4efdf7a405dbb2efdacbd3321169c86a63c97e6895a2466cf36ca5dc2cb47db2","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"}
   ],
