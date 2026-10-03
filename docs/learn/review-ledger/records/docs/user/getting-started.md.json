@@ -128,7 +128,7 @@
 
     {"path":"tests/helpers/live-station-task.ts","digest":"f8e8de76e6e499512e39b2eab7da91ebca7d8a98622981a1d6d3acb28ee74b9f","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/views/SkillsView.tsx","digest":"3527a039a8714b5a993976326342c9f1b96f874884e0b65d8e7b6d63aeef74e5","revision":"fb82d3d9619cdb345148501d010222c8b1332662"},
+    {"path":"src-ui/src/views/SkillsView.tsx","digest":"23fef1059203985bb70f467df6c9f252f8005c93787e721b43fb4ace050fda94","revision":"d1708e0a66e7328c9c62a95865f1bb1dcfbeb8d1"},
 
     {"path":"src-ui/src/components/modals/SkillRunModal.tsx","digest":"d8e938a9a5a8306c4cf41afdda2e1e068e22050a5f189debbd59da8ba2a68c28","revision":"c1841d01497260f6e3c951d4439553bfc9663e04"},
 
