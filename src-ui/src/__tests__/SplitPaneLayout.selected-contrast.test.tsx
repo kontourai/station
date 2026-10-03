@@ -17,27 +17,43 @@
  * `color-contrast` rule over the selected rows only.
  *
  * Row content, and why each is here:
- * - Agents: the real `buildAgentsViewItems` rows (engine chip + readiness
- *   pill badges, tone-coloured).
- * - Activity: a row in the shape `SessionsView` renders today —
- *   `.activity-row-meta` with the real `StatusGlyph`, its state word, a
+ * - Agents: the real `buildAgentsViewItems` rows (agent icon, engine chip +
+ *   readiness pill badges, tone-coloured).
+ * - Activity: a row in the shape `SessionsView` renders today — the agent
+ *   icon, `.activity-row-meta` with the real `StatusGlyph`, its state word, a
  *   failure detail and the agent/project/origin segments — plus the trailing
  *   time and the row-actions trigger. SessionsView's own row builder is not
  *   exported, so this is a fixture of its markup, not a call into it.
  * - A plain name + subtitle row, the shape the other consumers use.
  *
+ * The agent icon, as a user sees it (#3093). `AgentIcon` draws one of two
+ * things, both on its own opaque tile inside the row's opaque icon slot:
+ * - an engine with a bundled brand mark (Station, Codex, ...) gets an inline
+ *   SVG, loaded lazily, with no text in it;
+ * - an engine without one (a custom ACP engine) gets its initials on a
+ *   seeded hue swatch — text, which axe rates here like any other.
+ * The fixture waits for the brand marks to load before it captures the
+ * markup and carries `BrandIcon.css`, so neither is an empty grey tile.
+ * The marks are not rated for contrast: they are logos beside the agent's
+ * name, and what they are drawn with and on belongs to the icon, not the
+ * row. What a selected row could do is repaint them, or show through
+ * them, so each page checks that a selected row's mark sits on an opaque
+ * tile and is painted exactly as the same mark in an unselected row.
+ *
  * Anti-inert guards: each page asserts the selected rows exist and that axe
  * PASSED colour-contrast on text inside them (so a renamed class or a rule
- * axe could not evaluate is a failure, not a silent green), and that nothing
- * was left `incomplete` except symbol-only status glyphs, which 1.4.3 (text)
- * does not cover. Glyph non-text contrast is NOT measured here.
+ * axe could not evaluate is a failure, not a silent green), that nothing was
+ * left `incomplete` except symbol-only status glyphs, which 1.4.3 (text)
+ * does not cover, that axe rated every selected row's agent-icon initials,
+ * and that every selected brand mark was drawn and found its unselected
+ * twin. Glyph and brand-mark non-text contrast is NOT measured here.
  */
 
 import { createRequire } from 'node:module';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from '@playwright/test';
-import { cleanup, render } from '@testing-library/react';
+import { cleanup, render, waitFor } from '@testing-library/react';
 import {
   afterAll,
   afterEach,
@@ -83,6 +99,7 @@ const CSS_PATHS = [
   resolve(HERE, '../components/SplitPaneLayout.css'),
   resolve(HERE, '../components/AgentReadinessCell.css'),
   resolve(HERE, '../components/badges/EngineChip.css'),
+  resolve(HERE, '../components/icons/BrandIcon.css'),
   resolve(HERE, '../components/status/StatusGlyph.css'),
   resolve(HERE, '../views/activity/ActivityRowMenu.css'),
   resolve(HERE, '../views/SessionsView.css'),
@@ -115,12 +132,21 @@ const AGENTS = [
     unavailableReason: 'no enabled LLM provider connection is configured.',
     unavailableFix: { kind: 'models' },
   },
+  // A user's agent on a custom ACP engine: no brand mark, so its icon is
+  // initials ("RN") on a seeded hue swatch.
+  {
+    slug: 'release-notes',
+    name: 'Release Notes',
+    engineId: 'acp',
+    engineConnectionType: 'acp',
+    connectionName: 'Gemini CLI',
+  },
 ] as unknown as AgentData[];
 
-function railMarkup(
+async function railMarkup(
   items: Parameters<typeof SplitPaneLayout>[0]['items'],
   selectedId: string,
-): string {
+): Promise<string> {
   const { container, unmount } = render(
     <SplitPaneLayout
       label="fixture"
@@ -135,12 +161,20 @@ function railMarkup(
   );
   const left = container.querySelector('.split-pane__left');
   if (!left) throw new Error('the rail did not render');
+  // A brand mark is a lazy chunk: captured before it resolves, the tile is
+  // an empty box. Wait for every mark the rail asked for to be drawn.
+  await waitFor(() => {
+    const undrawn = Array.from(
+      left.querySelectorAll('.brand-icon[data-brand-key]'),
+    ).filter((icon) => !icon.querySelector('svg, img'));
+    expect(undrawn).toEqual([]);
+  });
   const html = left.outerHTML;
   unmount();
   return html;
 }
 
-function fixtureRails(): string[] {
+async function fixtureRails(): Promise<string[]> {
   const agentItems = buildAgentsViewItems(
     AGENTS,
     { onChat: () => {}, onFix: () => {} },
@@ -149,13 +183,12 @@ function fixtureRails(): string[] {
   const sessionRow = (
     id: string,
     state: 'Running' | 'Failed' | 'Completed' | 'Needs attention',
+    agent: AgentData,
   ) => ({
     id,
     name: `SLOW refactor the chart module (${state})`,
-    // The avatar SessionsView renders. In this fixture it contributes no
-    // text: its brand mark is lazy and has not loaded when the markup is
-    // captured, so the tile is empty (#3093).
-    icon: <AgentIcon agent={AGENTS[1]} size="small" />,
+    // The avatar SessionsView renders: a brand mark or initials, by engine.
+    icon: <AgentIcon agent={agent} size="small" />,
     // Kept short on purpose: the row clamps this line to two, and text the
     // clamp clips is text axe cannot judge. It must fit under any platform's
     // fallback font, so the audit measures every node on every runner.
@@ -167,7 +200,7 @@ function fixtureRails(): string[] {
         {' · '}
         <span className="activity-row-meta__detail">HTTP 500</span>
         {' · '}
-        <span data-segment="agent">Reviewer</span>
+        <span data-segment="agent">{agent.name}</span>
       </span>
     ),
     trailing: (
@@ -186,11 +219,12 @@ function fixtureRails(): string[] {
     ),
     group: { id: 'run', label: 'Run · 3 delegated sessions' },
   });
+  // Both icon kinds, each in a selected and an unselected row of every rail.
   const sessionItems = [
-    sessionRow('running', 'Running'),
-    sessionRow('failed', 'Failed'),
-    sessionRow('completed', 'Completed'),
-    sessionRow('attention', 'Needs attention'),
+    sessionRow('running', 'Running', AGENTS[1]!),
+    sessionRow('failed', 'Failed', AGENTS[2]!),
+    sessionRow('completed', 'Completed', AGENTS[1]!),
+    sessionRow('attention', 'Needs attention', AGENTS[2]!),
   ];
   const plainItems = [
     {
@@ -198,17 +232,20 @@ function fixtureRails(): string[] {
       name: 'A skill',
       subtitle: 'Workspace · 3 files',
       // Text that sets no colour of its own, so it inherits the row's: the
-      // one node here that measures `.split-pane__item--selected`'s `color`,
-      // and the one a scan taken mid-transition gets wrong (#3074).
+      // one node here that measures `.split-pane__item--selected`'s `color`
+      // (agent icons set their own), and the one a scan taken mid-transition
+      // gets wrong (#3074).
       icon: <span>SK</span>,
     },
     { id: 'other', name: 'Another skill', subtitle: 'Registry' },
   ];
-  return [
-    ...agentItems.map((item) => railMarkup(agentItems, item.id)),
-    ...sessionItems.map((item) => railMarkup(sessionItems, item.id)),
-    railMarkup(plainItems, 'plain'),
-  ];
+  const rails: string[] = [];
+  for (const item of agentItems)
+    rails.push(await railMarkup(agentItems, item.id));
+  for (const item of sessionItems)
+    rails.push(await railMarkup(sessionItems, item.id));
+  rails.push(await railMarkup(plainItems, 'plain'));
+  return rails;
 }
 
 function fixtureHtml(rails: string[]): string {
@@ -248,7 +285,7 @@ describe.skipIf(!chromiumAvailable)(
 
     beforeAll(async () => {
       browser = await chromium.launch();
-      html = fixtureHtml(fixtureRails());
+      html = fixtureHtml(await fixtureRails());
     });
     afterAll(async () => {
       await browser?.close();
@@ -263,6 +300,9 @@ describe.skipIf(!chromiumAvailable)(
       passedPerRow: number[];
       violations: string[];
       incomplete: string[];
+      marksCompared: number;
+      repaintedMarks: string[];
+      initialsRated: number;
     }> {
       const page = await browser.newPage({
         viewport: { width: 1000, height: 2400 },
@@ -374,13 +414,84 @@ describe.skipIf(!chromiumAvailable)(
                     row.contains(document.querySelector(node.target[0])),
                   ).length,
             ),
+            // Agent-icon initials axe PASSED in selected rows: without this,
+            // an icon that stopped drawing initials would just be one fewer
+            // node, hidden by the per-row floor.
+            initialsRated: run.passes
+              .flatMap((group) => group.nodes)
+              .filter((node) =>
+                document
+                  .querySelector(node.target[0])
+                  ?.matches(
+                    '.split-pane__item--selected .brand-icon__initials',
+                  ),
+              ).length,
           };
+        });
+        // A selected row's brand mark against the same mark in an unselected
+        // row: the slot, the tile and every painted shape.
+        const marks = await page.evaluate(() => {
+          const paint = (icon: Element) => {
+            const slot = icon.closest('.split-pane__item-icon');
+            return JSON.stringify({
+              slot: slot && getComputedStyle(slot).backgroundColor,
+              tile: getComputedStyle(icon).backgroundColor,
+              border: getComputedStyle(icon).borderTopColor,
+              shapes: Array.from(
+                icon.querySelectorAll('svg rect, svg path'),
+                (shape) => getComputedStyle(shape).fill,
+              ),
+            });
+          };
+          const repainted: string[] = [];
+          let compared = 0;
+          for (const icon of document.querySelectorAll(
+            '.split-pane__item--selected .brand-icon[data-brand-key]',
+          )) {
+            const key = icon.getAttribute('data-brand-key');
+            const twin = document.querySelector(
+              `.split-pane__item:not(.split-pane__item--selected) .brand-icon[data-brand-key="${key}"]`,
+            );
+            if (!twin) {
+              repainted.push(`${key}: no unselected row draws this mark`);
+              continue;
+            }
+            if (!icon.querySelector('svg rect, svg path')) {
+              // An empty tile matches an empty twin; that is not a mark.
+              repainted.push(`${key}: the mark was not drawn`);
+              continue;
+            }
+            // The tile is what a mark is drawn on. If it is see-through (or
+            // `BrandIcon.css` is missing from the page) the row's selection
+            // tint shows through, and an equal twin no longer means an
+            // unchanged mark.
+            const tile = getComputedStyle(icon).backgroundColor;
+            // rgba(r, g, b, a) or color(srgb r g b / a); rgb() is opaque.
+            const alpha = /^rgba\(.*,\s*([\d.]+)\)$|\/\s*([\d.]+)\)$/.exec(
+              tile,
+            );
+            if (alpha && Number(alpha[1] ?? alpha[2]) < 1) {
+              repainted.push(`${key}: the mark's tile is not opaque (${tile})`);
+              continue;
+            }
+            compared += 1;
+            const selected = paint(icon);
+            const unselected = paint(twin);
+            if (selected !== unselected)
+              repainted.push(
+                `${key}: selected ${selected} vs unselected ${unselected}`,
+              );
+          }
+          return { compared, repainted };
         });
         return {
           selectedRows,
           passedPerRow: result.passedPerRow,
           violations: result.violations,
           incomplete: result.incomplete,
+          marksCompared: marks.compared,
+          repaintedMarks: marks.repainted,
+          initialsRated: result.initialsRated,
         };
       } finally {
         await page.close();
@@ -390,13 +501,26 @@ describe.skipIf(!chromiumAvailable)(
     test.each(PRESETS)(
       '$channel channel, $theme theme: every text node in a selected row is AA',
       async (preset) => {
-        const { selectedRows, passedPerRow, violations, incomplete } =
-          await audit(preset, false);
-        // 2 Agents rails + 4 Activity rails + 1 plain rail.
-        expect(selectedRows).toBe(7);
+        const {
+          selectedRows,
+          passedPerRow,
+          violations,
+          incomplete,
+          marksCompared,
+          repaintedMarks,
+          initialsRated,
+        } = await audit(preset, false);
+        // 3 Agents rails + 4 Activity rails + 1 plain rail.
+        expect(selectedRows).toBe(8);
         // Violations first, so a contrast regression reports the contrast.
         expect(violations).toEqual([]);
         expect(incomplete).toEqual([]);
+        expect(repaintedMarks).toEqual([]);
+        // Station and Codex in the Agents rails, Codex in two Activity rails.
+        expect(marksCompared).toBe(4);
+        // The custom-engine agent's "RN": its Agents rail and two Activity
+        // rails.
+        expect(initialsRated).toBe(3);
         expect(passedPerRow).toHaveLength(selectedRows);
         // Every row has at least a name and a second text node (subtitle or
         // badge); a row with fewer passes is one axe was not looking at.
@@ -407,12 +531,19 @@ describe.skipIf(!chromiumAvailable)(
     test.each(PRESETS.filter((preset) => preset.channel === 'release'))(
       'release channel, $theme theme: a hovered selected row stays AA',
       async (preset) => {
-        const { passedPerRow, violations, incomplete } = await audit(
-          preset,
-          true,
-        );
+        const {
+          passedPerRow,
+          violations,
+          incomplete,
+          marksCompared,
+          repaintedMarks,
+          initialsRated,
+        } = await audit(preset, true);
         expect(violations).toEqual([]);
         expect(incomplete).toEqual([]);
+        expect(repaintedMarks).toEqual([]);
+        expect(marksCompared).toBe(4);
+        expect(initialsRated).toBe(3);
         expect(Math.min(...passedPerRow)).toBeGreaterThanOrEqual(2);
       },
     );
