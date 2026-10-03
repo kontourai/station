@@ -74,7 +74,6 @@ src-ui/src/components/home/SnoozeMenu.tsx|covered|src-ui/src/__tests__/SnoozeMen
 src-ui/src/components/modals/NewProjectLayoutBrowser.tsx|covered|tests/project-forms.spec.ts
 src-ui/src/components/modals/NewProjectModalContent.tsx|covered|tests/project-forms.spec.ts
 src-ui/src/components/modals/PromptModal.tsx|covered|ResponsiveSurfaceActions shared phone action-row contract
-src-ui/src/components/modals/SkillRunModal.tsx|covered|ResponsiveSurfaceActions shared phone action-row contract
 src-ui/src/components/modals/UserDetailModal.tsx|covered|ResponsiveDialogSurface and tap-target close controls
 src-ui/src/components/monitoring/InsightsDashboard.tsx|exception|Insights actions; reviewed for incremental migration
 src-ui/src/components/notifications/BannerHost.tsx|exception|Banner action row (#1961/#1963) inherits the global mobile wrap/44px floor; banner-store.test.ts covers action dispatch logic, a dedicated 390px geometry fixture is deferred
