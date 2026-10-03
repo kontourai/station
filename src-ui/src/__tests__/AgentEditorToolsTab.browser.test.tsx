@@ -339,12 +339,13 @@ test('group shortcuts preserve other groups and individual choices remain saveab
   ).toBe(true);
 });
 
-test('group changes preserve disabled choices and existing wildcard approvals outside the group', () => {
+test('group changes preserve disabled and undiscovered choices and existing approvals outside the group', () => {
   let latest = createEmptyAgentForm();
   latest.tools.mcpServers = ['station-control'];
   latest.tools.available = [
     'station-control_list_agents',
     'station-control_search_knowledge',
+    'station-control_temporarily_missing',
   ];
   latest.tools.autoApprove = ['station-control_*'];
   latest.toolsAvailableEdited = true;
@@ -380,11 +381,18 @@ test('group changes preserve disabled choices and existing wildcard approvals ou
   fireEvent.click(screen.getByRole('button', { name: 'Read only' }));
   expect(latest.tools.autoApprove).toEqual([
     'station-control_list_agents',
+    'station-control_temporarily_missing',
     'station-control_search_knowledge',
   ]);
   fireEvent.click(screen.getByRole('button', { name: 'None' }));
   expect(buildAgentPayload({ ...latest, slug: 'helper' }).tools).toMatchObject({
-    available: ['station-control_list_agents'],
-    autoApprove: ['station-control_list_agents'],
+    available: [
+      'station-control_list_agents',
+      'station-control_temporarily_missing',
+    ],
+    autoApprove: [
+      'station-control_list_agents',
+      'station-control_temporarily_missing',
+    ],
   });
 });

@@ -247,10 +247,23 @@ export function AgentEditorToolsTab({
                           getIntegrationToolKey(integration.id, tool),
                         )
                     : [];
+                  const known = new Set(
+                    tools.map((tool) =>
+                      getIntegrationToolKey(integration.id, tool),
+                    ),
+                  );
+                  const undiscovered = group
+                    ? currentPatterns.filter(
+                        (key) =>
+                          key.startsWith(`${integration.id}_`) &&
+                          !key.includes('*') &&
+                          !known.has(key),
+                      )
+                    : [];
                   return selectIntegrationTools(
                     current,
                     integration.id,
-                    [...retained, ...keys],
+                    [...retained, ...undiscovered, ...keys],
                     catalogs,
                   );
                 };
