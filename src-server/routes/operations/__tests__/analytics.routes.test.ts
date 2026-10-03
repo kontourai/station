@@ -14,6 +14,40 @@ vi.mock('../../../telemetry/metrics.js', () => ({
 const { createAnalyticsRoutes } = await import('../analytics.js');
 const makeHome = trackTempDirs();
 
+test.each([undefined, 0])(
+  'cost milestones distinguish missing engine cost from a reported %s',
+  async (reportedCostUsd) => {
+    const aggregator = new UsageAggregator(makeHome('station-profile-cost-'), {
+      get: () => ({
+        listSessionUsage: () => [
+          {
+            threadId: 'thread-cost',
+            conversationId: 'cost',
+            usage: {
+              provider: 'codex',
+              turns: 60,
+              toolCalls: 0,
+              ...(reportedCostUsd === undefined ? {} : { reportedCostUsd }),
+            },
+          },
+        ],
+      }),
+    });
+    const body = await json(
+      await createAnalyticsRoutes(aggregator).request('/achievements'),
+    );
+    const milestone = body.data.find(
+      (item: { id: string }) => item.id === 'cost-conscious',
+    );
+    expect(milestone.unlocked).toBe(reportedCostUsd !== undefined);
+    if (reportedCostUsd === undefined) {
+      expect(milestone.measurementUnavailableReason).toBeTruthy();
+      expect(milestone.progress).toBeUndefined();
+      expect(milestone.progressPercent).toBeUndefined();
+    }
+  },
+);
+
 test('usage reads refresh engine totals and achievements after the snapshot expires', async () => {
   const home = makeHome('station-profile-freshness-');
   const usage = { turns: 1, toolCalls: 0, inputTokens: 50 };

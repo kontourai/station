@@ -1190,7 +1190,8 @@ Agent, model, and date aggregates. Active reads rebuild the retained snapshot
 at most once a minute, sharing an in-flight rebuild with other readers.
 `snapshot.rescannedAt` identifies the completed source scan;
 `snapshot.engineUsage` distinguishes available, unavailable, and unconfigured
-engine sources, and `snapshot.skippedMessages` counts unreadable message rows.
+engine sources, and `snapshot.skippedMessages` counts unreadable message rows; `snapshot.retainedUsage`
+flags message/cost totals larger than the currently rescanned corpus.
 A completed scan does not prove historical totals or every provider's accounting
 are complete. The date map is `byDate`, not `byDay`.
 Optional `from`/`to` date strings filter `byDate` and add `rangeSummary`; other
@@ -1201,7 +1202,9 @@ as totals for the selected window.
 
 `GET /api/analytics/achievements` returns
 `{success: true, data: achievements}` from the same refreshed aggregate snapshot. The achievement
-schema and unlock rules belong to that owner, not a fixed list in this page.
+schema and unlock rules belong to that owner, not a fixed list in this page. Cost
+milestones with unavailable measurement carry `measurementUnavailableReason`,
+omit numeric progress, and remain locked; a reported zero remains eligible.
 
 ### Rescan Analytics
 

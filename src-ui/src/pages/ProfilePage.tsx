@@ -266,7 +266,7 @@ export function ProfilePage() {
                     </h2>
                     {usageStats?.lifetime.firstMessageDate && (
                       <span className="profile-card__title">
-                        First recorded activity (UTC){' '}
+                        First daily record (UTC){' '}
                         {new Date(
                           usageStats.lifetime.firstMessageDate,
                         ).toLocaleDateString(undefined, { timeZone: 'UTC' })}

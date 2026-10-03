@@ -16,6 +16,7 @@ import {
   createEmptyUsageStats,
   getAchievementProgress,
   getCostConsciousProgressPercent,
+  getCostMeasurementGap,
   mergeRescannedUsageStats,
   type OrchestrationSessionUsage,
   type UsageStats,
@@ -309,6 +310,9 @@ export class UsageAggregator {
           ? 'unavailable'
           : 'not_configured',
       skippedMessages,
+      retainedUsage:
+        stats.lifetime.totalMessages > currentStats.lifetime.totalMessages ||
+        stats.lifetime.totalCost > currentStats.lifetime.totalCost,
     };
 
     await this.saveStats(stats);
@@ -381,6 +385,7 @@ export class UsageAggregator {
       const existing = saved[def.id];
 
       const costConscious = def.id === 'cost-conscious';
+      const costGap = costConscious ? getCostMeasurementGap(stats) : null;
       return {
         ...def,
         unlocked,
@@ -388,10 +393,14 @@ export class UsageAggregator {
           unlocked && !existing?.unlocked
             ? new Date().toISOString()
             : existing?.unlockedAt,
-        progress: this.getProgress(def, stats),
+        ...(costGap
+          ? { measurementUnavailableReason: costGap }
+          : { progress: this.getProgress(def, stats) }),
         ...(costConscious
           ? {
-              progressPercent: getCostConsciousProgressPercent(stats),
+              ...(!costGap
+                ? { progressPercent: getCostConsciousProgressPercent(stats) }
+                : {}),
               lowerIsBetter: true,
               precondition: {
                 label: 'Messages analyzed',
