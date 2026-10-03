@@ -12,9 +12,9 @@
   "document": {"digest":"4480def2cafbc901b67500e70198b8a8e5897784f0f33dc17fbdda12e3f5174e","revision":"57980be1afd64ff365472c005a13fce3d5c76ced"},
 
   "sources": [
-    {"path":"packages/contracts/package.json","digest":"99b398c3d5908625e6b0fc3b8b451dbdb3b499ba10ed2c67590a45a1275f2b6d","revision":"e33331ee19520c8bd546c878fdd503063a682634"},
+    {"path":"packages/contracts/package.json","digest":"c60f7f694a64c5bf98ca6a431d1659676d4d0d5cba08b8f66a9778b4930dbef3","revision":"ea49cb8678208b9037f8e9ab3ceb2a95fe2647ff"},
 
-    {"path":"packages/contracts/package.json#/exports","digest":"ee81c48b5d1385a876060069c972466a69148bb52f2a98881595b72342665e91","revision":"1e6450e0caa47975d33f505a1348bdc01ae1382e"},
+    {"path":"packages/contracts/package.json#/exports","digest":"6404f25e5b463dfad20c67f829b415cfd462ef0094f99f224873d9372d70a04f","revision":"ea49cb8678208b9037f8e9ab3ceb2a95fe2647ff"},
 
     {"path":"packages/contracts/package.json#/files","digest":"43219f75df025fd68c4b3a47b045f822115a0cb02eb1a21f6f0003b466db6b24","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
 

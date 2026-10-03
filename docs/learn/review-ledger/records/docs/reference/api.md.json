@@ -80,7 +80,7 @@
 
     {"path":"scripts/plugin-identity-enumeration-scan.mjs","digest":"c8b4144dcf7f69e3c6038410bf9f8ec2920eee95642a2c443573fb7ac32f4d21","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-desktop/src/lib.rs","digest":"efb56af98923f91f077bce297fc781bd3526a0a0f07dd212a340992ccd56bac2","revision":"19e70a1db7d3faabe474a5324c7ac28d10ede7a3"},
+    {"path":"src-desktop/src/lib.rs","digest":"87107637c2b0c4d1c470664c3ae3d5b4f1f377777f561ea2c25bd63df8cf2cd6","revision":"a516c638f82e312fe84fe7f8dd8cd5094b2567a5"},
 
     {"path":"src-desktop/src/native_account_operations.rs","digest":"63d05ea979a9a335c0ded3a400d8f899b6ff5f60deb8a062c5e260d7daeecbec","revision":"2e4f061f91ffb0338e45de62382cf6da59cd5c76"},
 
@@ -88,7 +88,7 @@
 
     {"path":"src-desktop/src/native_device_binding_candidate.rs","digest":"83e1d464487d41fb5dc361259a2b80bfb91e0711cdc3c9a6c52e3f8726b76ffc","revision":"34838898143e9a6048203520cdc6da3f78ecf49e"},
 
-    {"path":"src-desktop/src/native_relay_redemption.rs","digest":"f56e9a51bf57589da7fe9cdfac230c1b65ff990d0b57f0bba04c54b95563ba7e","revision":"c67a9e55f21ec4678a3fd5a43b7cb92d8058c8a5"},
+    {"path":"src-desktop/src/native_relay_redemption.rs","digest":"719749ac08eb896842e92ccd2228e3c0e03113734a1b9c265be87780aa67a56b","revision":"e7349c44cade1f9e025a1468ef3a7ef45965bd84"},
 
     {"path":"src-server/analytics/usage-aggregator-state.ts","digest":"12b5d86068c4ddaa5738cde5337f33c36ae5871a49db3d097264aaf7e3f6b522","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

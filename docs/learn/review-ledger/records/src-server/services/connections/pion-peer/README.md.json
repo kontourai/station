@@ -16,15 +16,15 @@
 
     {"path":"scripts/self-hosted-broker.ts","digest":"3c77e83fd3040569a804b426bd3299d4e599049f4c8fd21aac982081780352ae","revision":"7dc84da36281cace63d55fbd59fac3f64fcb3721"},
 
-    {"path":"src-desktop/src/lib.rs","digest":"efb56af98923f91f077bce297fc781bd3526a0a0f07dd212a340992ccd56bac2","revision":"19e70a1db7d3faabe474a5324c7ac28d10ede7a3"},
+    {"path":"src-desktop/src/lib.rs","digest":"87107637c2b0c4d1c470664c3ae3d5b4f1f377777f561ea2c25bd63df8cf2cd6","revision":"a516c638f82e312fe84fe7f8dd8cd5094b2567a5"},
 
     {"path":"src-desktop/src/native_relay_key_approval.rs","digest":"f0fdb455b1c3e476ddf9c7377a806c7fcb05d7e16b7430e00139fe2967b91a02","revision":"e33331ee19520c8bd546c878fdd503063a682634"},
 
     {"path":"src-desktop/src/native_relay_proof_key.rs","digest":"e33c7395002ae8d230afa984115212ac58b53725b51c54265ce7a3a0c9174608","revision":"d5e4502434838cc29b63091ae689474d6488cfe4"},
 
-    {"path":"src-desktop/src/native_relay_redemption.rs","digest":"f56e9a51bf57589da7fe9cdfac230c1b65ff990d0b57f0bba04c54b95563ba7e","revision":"c67a9e55f21ec4678a3fd5a43b7cb92d8058c8a5"},
+    {"path":"src-desktop/src/native_relay_redemption.rs","digest":"719749ac08eb896842e92ccd2228e3c0e03113734a1b9c265be87780aa67a56b","revision":"e7349c44cade1f9e025a1468ef3a7ef45965bd84"},
 
-    {"path":"src-desktop/src/native_station_key_custody.rs","digest":"1a17585842afc1a8268d1da8e37d13163d4f3ab85486152b9c51179b4a52c9f1","revision":"e33331ee19520c8bd546c878fdd503063a682634"},
+    {"path":"src-desktop/src/native_station_key_custody.rs","digest":"ede5f4ea69dcb8fc6ad5570d70fdc5cae848467335d6c393277c6dbc8fe2ccf5","revision":"a516c638f82e312fe84fe7f8dd8cd5094b2567a5"},
 
     {"path":"src-server/routes/connections/self-hosted-broker.ts","digest":"eab2a2d75edf8a2fc9c4f790aa0a4c59e065f8a134904393880896fd01cdfbd3","revision":"bd945f156a8a59964bab11fe68d36613177c7143"},
 

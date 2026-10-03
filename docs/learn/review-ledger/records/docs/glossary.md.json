@@ -12,11 +12,11 @@
   "document": {"digest":"f3948bb0a098dccb1433f6c88994217b3a7258e37da2104126f2197df2904511","revision":"a5cca76ed88ba6f99813da924ad1c7554335de87"},
 
   "sources": [
-    {"path":"docs/architecture/module-map.md","digest":"e2c0aa862af3e5d22af4919dced8b06b2935cd95e17e29b504645dabf481514c","revision":"390e7e49c0412fd4d2604f588b8279779d98605a"},
+    {"path":"docs/architecture/module-map.md","digest":"97117e396a45c630fb43365b05aab213bf909c11ca2ff80cd4bfffc14e56423b","revision":"e7e89f1b1b77e4f4b556e94952d4633ff028a7fd"},
 
-    {"path":"docs/reference/connect.md","digest":"67c0748b3c94ce02be2f9902478138d52e82517d1854b6fe06fca3138981f3bf","revision":"4fc27440716382d26fd4bba77e94bd8fdbf75153"},
+    {"path":"docs/reference/connect.md","digest":"6b670c264e00a41205673ec664d241a3a1054a06006932f6e1d0b17dd086d5db","revision":"13ab0b8cc55ca7db5568879e7dced0e5a2e0f3e4"},
 
-    {"path":"docs/reference/contracts.md","digest":"c25e508ca748630a29d92eb3a35a130fef39f282e650c80c3f1b86ca6e424b96","revision":"bd945f156a8a59964bab11fe68d36613177c7143"},
+    {"path":"docs/reference/contracts.md","digest":"08a0571d33304f6af994b0a4e602e5e48e331c5eac7d2985cb9bda6a6c0199f3","revision":"ea49cb8678208b9037f8e9ab3ceb2a95fe2647ff"},
 
     {"path":"packages/contracts/src/agent-identity.ts","digest":"d352f22b4698f100c1cc2a7466fd62556a6a69c03bffaf66e54c1bbdfc1410b7","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
