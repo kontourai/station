@@ -1,4 +1,8 @@
-import type { SkillExperienceInventoryV1 } from '@kontourai/station-contracts/skill-experience';
+import type {
+  SkillExperienceDefinitionV1,
+  SkillExperienceIdentityV1,
+  SkillExperienceInventoryV1,
+} from '@kontourai/station-contracts/skill-experience';
 import { errorMessage } from '../../utils/error-message.js';
 import type { PluginActivationComposition } from '../plugins/plugin-activation-composition.js';
 /**
@@ -455,6 +459,39 @@ export class SkillPublicationIndeterminateError extends Error {
 }
 
 export class SkillService {
+  private experienceExecution = false;
+  enableExperienceExecution(): void {
+    this.experienceExecution = Boolean(this.experienceSource);
+  }
+  private readonly experienceSource?: <T>(
+    identity: SkillExperienceIdentityV1,
+    effect: (
+      definition: SkillExperienceDefinitionV1,
+      content: string,
+    ) => Promise<T>,
+  ) => Promise<T>;
+  async withSkillExperience<T>(
+    identity: SkillExperienceIdentityV1,
+    effect: (
+      definition: SkillExperienceDefinitionV1,
+      content: string,
+    ) => Promise<T>,
+  ): Promise<T> {
+    if (
+      !this.experienceSource ||
+      !(await this.listSkillExperiences()).experiences.some((entry) =>
+        Object.keys(entry.identity).every(
+          (key) =>
+            entry.identity[key as keyof SkillExperienceIdentityV1] ===
+            identity[key as keyof SkillExperienceIdentityV1],
+        ),
+      )
+    )
+      throw new Error(
+        'The selected Skill experience is unavailable in the current scope.',
+      );
+    return this.experienceSource(identity, effect);
+  }
   private readonly experienceInventory?: () => Promise<SkillExperienceInventoryV1>;
 
   async listSkillExperiences(): Promise<SkillExperienceInventoryV1> {
@@ -483,7 +520,13 @@ export class SkillService {
         });
       return matches;
     });
-    return { experiences, diagnostics: inventory.diagnostics };
+    return {
+      experiences,
+      diagnostics: inventory.diagnostics,
+      ...(this.experienceExecution
+        ? { executionContract: '1.0' as const }
+        : {}),
+    };
   }
   private registry = new Map<string, RegisteredSkill>();
   /** Read-only package-contributed skill roots (e.g. flow-agents, S3). */
@@ -548,6 +591,7 @@ export class SkillService {
             composition?: PluginActivationComposition,
           ) => CanonicalSkillSource[]);
       usage?: SkillUsageService;
+      experienceSource?: SkillService['experienceSource'];
       experienceInventory?: () => Promise<SkillExperienceInventoryV1>;
       /**
        * Plugin-contributed command skills, scanned IN PLACE as read-only
@@ -566,6 +610,7 @@ export class SkillService {
     } = {},
   ) {
     this.experienceInventory = options.experienceInventory;
+    this.experienceSource = options.experienceSource;
     const canonicalSources = options.canonicalSources;
     this.canonicalSourceProvider =
       typeof canonicalSources === 'function'

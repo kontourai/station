@@ -6067,6 +6067,9 @@ export async function executeExecutionTargetMessage(
             {
               foregroundInvocationAdmission: admission,
               nativeMemoryReadAuthority: readAuthority,
+              ...(input.skillExperience
+                ? { skillExperience: input.skillExperience }
+                : {}),
               ...(input.receiverAdmission
                 ? {
                     receiverExecutionAdmission: receiverEffectAdmissionFor(
@@ -6082,6 +6085,9 @@ export async function executeExecutionTargetMessage(
             dispatchContext,
             {
               nativeMemoryReadAuthority: readAuthority,
+              ...(input.skillExperience
+                ? { skillExperience: input.skillExperience }
+                : {}),
               ...(input.receiverAdmission
                 ? {
                     receiverExecutionAdmission: receiverEffectAdmissionFor(
