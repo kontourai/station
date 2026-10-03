@@ -1204,7 +1204,7 @@ to `'other'`/absent reasons without a decision recorded here.
 **Purpose.** Vendor extension notifications remain opaque until Station has an
 exact handling rule for their `(namespace, type)` tuple. The immutable
 [shared table](../../src-shared/extension-notification-bindings.ts) records that
-rule, the observed adapter variant and a historical observation tag.
+rule, the adapter or protocol variant and an observation or pinned SDK contract tag.
 `extensionNotificationBinding()` returns an exact match or absence. A matching
 namespace prefix, version string or stored capability flag is not a match.
 
@@ -1227,7 +1227,7 @@ binding says nothing about which canonical event, if any, should replace it.
 
 [Exact-set tests](../../src-shared/__tests__/extension-notification-bindings.test.ts),
 ACP mapper tests and UI handler tests check lookup and current handling.
-Historical observation tags are evidence pointers, not a fresh provider run.
+Observation and pinned SDK contract tags are evidence pointers, not a fresh provider run.
 Add or remove a tuple together with its actual handler and evidence; do not
 replace exact matching with wildcard vendor routing.
 
@@ -3142,10 +3142,7 @@ Project identity and migrates legacy state; `browser-pane/BrowserPane.tsx` and
 `BrowserAutomation`. Control operations capture a lease fence and check it
 around asynchronous steps. JavaScript evaluation additionally needs the
 Project's default-off permission; timeout/preemption does not undo an effect
-already sent to Chromium. `BrowserAutomation.close` lets an Agent close a
-session only when an Agent opened it, it is bound to the caller's own
-conversation and nobody else holds its lease; it reuses the registry's
-`closeSession`, the pane's effect. Closing a viewer only stops its capture subscription.
+already sent to Chromium. Closing a viewer only stops its capture subscription.
 Host exit/restart produces `needs-reopen`, and old-generation live surfaces are
 unregistered. Idle host shutdown runs after its last live target closes,
 not merely when nobody watches.
