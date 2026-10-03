@@ -1,45 +1,48 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const keyring = vi.hoisted(() => ({
-  construct: vi.fn(),
-  deleteCredential: vi.fn(),
-  getPassword: vi.fn(),
-  require: vi.fn(),
-  setPassword: vi.fn(),
-}));
+const keyring = vi.hoisted(() => {
+  const methods = {
+    construct: vi.fn<(service: string, account: string) => void>(),
+    deleteCredential: vi.fn<() => boolean>().mockReturnValue(true),
+    getPassword: vi.fn<() => string | null>(),
+    setPassword: vi.fn<(credential: string) => void>(),
+  };
+
+  class FakeEntry {
+    constructor(service: string, account: string) {
+      methods.construct(service, account);
+    }
+
+    deleteCredential = methods.deleteCredential;
+    getPassword = methods.getPassword;
+    setPassword = methods.setPassword;
+  }
+
+  return {
+    ...methods,
+    require: vi.fn(() => ({ Entry: FakeEntry })),
+  };
+});
 
 vi.mock('node:module', async (importOriginal) => ({
   ...(await importOriginal<typeof import('node:module')>()),
   createRequire: () => keyring.require,
 }));
 
-class FakeEntry {
-  constructor(service: string, account: string) {
-    keyring.construct(service, account);
-  }
+import { createProfileKeyringStore } from '../commands/profile-keyring.js';
 
-  deleteCredential = keyring.deleteCredential;
-  getPassword = keyring.getPassword;
-  setPassword = keyring.setPassword;
-}
-
-let createProfileKeyringStore: typeof import('../commands/profile-keyring.js')['createProfileKeyringStore'];
+const nativeLoadCallsOnImport = [...keyring.require.mock.calls];
 
 const ref = { kind: 'station-bearer' as const, id: 'remote-home' };
 
 describe('profile OS-keyring adapter', () => {
-  beforeEach(async () => {
-    vi.resetModules();
+  beforeEach(() => {
     vi.clearAllMocks();
     keyring.getPassword.mockReturnValue(null);
-    keyring.require.mockReturnValue({ Entry: FakeEntry });
-    ({ createProfileKeyringStore } = await import(
-      '../commands/profile-keyring.js'
-    ));
   });
 
   it('round-trips only through the native keyring entry', () => {
-    expect(keyring.require).not.toHaveBeenCalled();
+    expect(nativeLoadCallsOnImport).toEqual([]);
     const store = createProfileKeyringStore();
     expect(keyring.require).not.toHaveBeenCalled();
     store.set(ref, 'secret');
