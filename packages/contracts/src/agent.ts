@@ -79,6 +79,10 @@ export type AgentSource = 'local' | 'acp';
 
 export interface AgentTools {
   mcpServers: string[];
+  /** Add to harness MCPs, or replace its configured list. Absent preserves legacy behavior. */
+  mcpMode?: 'add' | 'replace';
+  /** MCP loading preference; supported by Claude native tool search. */
+  mcpLoading?: 'on-demand' | 'always';
   available?: string[];
   /**
    * Tools that run without asking in ATTENDED chat. Patterns may name the
