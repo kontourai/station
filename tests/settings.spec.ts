@@ -130,7 +130,9 @@ test.describe('Settings', () => {
     for (const label of ['Agents', 'Skills', 'Engines & Models', 'Plugins']) {
       const entry = chooser.getByRole('link', { name: label, exact: true });
       await expect(entry).toBeVisible();
-      expect((await entry.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+      await expect
+        .poll(async () => (await entry.boundingBox())?.height ?? 0)
+        .toBeGreaterThanOrEqual(44);
     }
     await expect(
       chooser.getByRole('link', { name: 'Registry', exact: true }),
