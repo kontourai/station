@@ -270,10 +270,7 @@ test.describe('Coding stack — desktop below the wide fold (1180px)', () => {
     // The conversation has resolved (its title reaches the breadcrumb), so
     // the header's menu is not rebuilt under the click.
     await expect(crumbs(page)).toContainText('Dev Agent Chat');
-    await page.getByRole('button', { name: 'More dock actions' }).click();
-    await page
-      .getByRole('menuitemcheckbox', { name: 'Collapse chat list' })
-      .click();
+    await page.getByRole('button', { name: 'Collapse chat list' }).click();
     await expect(inbox(page)).toHaveCount(0);
 
     await page.reload();
@@ -281,10 +278,7 @@ test.describe('Coding stack — desktop below the wide fold (1180px)', () => {
     await expect(crumbs(page)).toContainText('Dev Agent Chat');
     await expect(inbox(page)).toHaveCount(0);
 
-    await page.getByRole('button', { name: 'More dock actions' }).click();
-    await page
-      .getByRole('menuitemcheckbox', { name: 'Expand chat list' })
-      .click();
+    await page.getByRole('button', { name: 'Expand chat list' }).click();
     await expect(inbox(page)).toBeVisible();
   });
 
@@ -610,10 +604,7 @@ test.describe('Coding stack — wide (1440px): tools beside Chat', () => {
     // The Diff folded the inbox (the transcript's floor); unfold it by hand
     // to pick another conversation — the reader's choice for this session.
     await expect(inbox(page)).toHaveCount(0);
-    await page.getByRole('button', { name: 'More dock actions' }).click();
-    await page
-      .getByRole('menuitemcheckbox', { name: 'Expand chat list' })
-      .click();
+    await page.getByRole('button', { name: 'Expand chat list' }).click();
     await expect(inbox(page)).toBeVisible();
 
     await inbox(page)
@@ -629,10 +620,7 @@ test.describe('Coding stack — wide (1440px): tools beside Chat', () => {
     // This conversation has no choice of its own yet, so Files folded the
     // inbox; unfold it to go back.
     await expect(inbox(page)).toHaveCount(0);
-    await page.getByRole('button', { name: 'More dock actions' }).click();
-    await page
-      .getByRole('menuitemcheckbox', { name: 'Expand chat list' })
-      .click();
+    await page.getByRole('button', { name: 'Expand chat list' }).click();
 
     await inbox(page)
       .getByRole('button', { name: /Dev Agent Chat/ })
@@ -740,10 +728,7 @@ test.describe('Coding stack — wide (1440px): one bar, the inbox, a file from F
     // The reader expands it by hand while the tool is open: their choice.
     await openCodingView(page, 'Files');
     await expect(inbox(page)).toHaveCount(0);
-    await page.getByRole('button', { name: 'More dock actions' }).click();
-    await page
-      .getByRole('menuitemcheckbox', { name: 'Expand chat list' })
-      .click();
+    await page.getByRole('button', { name: 'Expand chat list' }).click();
     await expect(inbox(page)).toBeVisible();
     await openCodingView(page, 'Diff');
     await expect(inbox(page)).toBeVisible();
