@@ -50,7 +50,7 @@
 
     {"path":"src-server/services/browser/browser-agent-authority.ts","digest":"e39f5e30689677a94ecff53ffc07a199aacdb10b3232de7fd7d8f3e74dc73daf","revision":"18002c0871ea8538605e922464aab5356c77593c"},
 
-    {"path":"src-server/services/browser/browser-automation.ts","digest":"509ddd3671dade258930c0eb2f838a58d332ebb98253a5f91767ef9039cbafa0","revision":"2492f595e63d1879a6c6cfc1d8d892c2306be08d"},
+    {"path":"src-server/services/browser/browser-automation.ts","digest":"031ef953e99b1edc093357f03cb30baa0b6cb4842d2f10408a80e7e3b0063134","revision":"d1946c3c45fe175a059256fa00f94ee17228988f"},
 
     {"path":"src-server/services/browser/browser-egress-proxy.ts","digest":"87d315f8362d7fd1a8f9c43f3086162459296fcf2e9de8d67967e0e60d09f9a8","revision":"18002c0871ea8538605e922464aab5356c77593c"},
 

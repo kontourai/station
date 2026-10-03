@@ -9,7 +9,7 @@
 
   "limits": "Bounded source/caller review plus named synthetic tests; no real browser acquisition/launch, public-site navigation, physical device/app, SSH host operation, native package, Windows process tree or saturated-origin-pool proof. File hash identifies owner bytes, not whole-file implementation certification.",
 
-  "document": {"digest":"c279cf4b3d693e4e0125c31d7dc0fc863da19ce853b072506b542f732a5a9f98","revision":"cccc3b5a7758957a9f94283d940453ca086a8258"},
+  "document": {"digest":"471e795d913dfeeb76dea71fcf7367bd93155b720a3ba5ae364592f155aeadc2","revision":"d1946c3c45fe175a059256fa00f94ee17228988f"},
 
   "sources": [
     {"path":"packages/contracts/src/live-surface.ts","digest":"249e322f147816c782477257489efbd2069d5222d188a081f11ed7d3e4238546","revision":"e5d9b68a5a99edfb53c307ebc86f2890a3200d00"},
@@ -40,7 +40,7 @@
 
     {"path":"src-server/services/browser/browser-agent-authority.ts","digest":"e39f5e30689677a94ecff53ffc07a199aacdb10b3232de7fd7d8f3e74dc73daf","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-server/services/browser/browser-automation.ts","digest":"509ddd3671dade258930c0eb2f838a58d332ebb98253a5f91767ef9039cbafa0","revision":"2492f595e63d1879a6c6cfc1d8d892c2306be08d"},
+    {"path":"src-server/services/browser/browser-automation.ts","digest":"031ef953e99b1edc093357f03cb30baa0b6cb4842d2f10408a80e7e3b0063134","revision":"d1946c3c45fe175a059256fa00f94ee17228988f"},
 
     {"path":"src-server/services/browser/browser-egress-proxy.ts","digest":"87d315f8362d7fd1a8f9c43f3086162459296fcf2e9de8d67967e0e60d09f9a8","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
