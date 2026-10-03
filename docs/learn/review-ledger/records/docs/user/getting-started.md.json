@@ -9,7 +9,7 @@
 
   "limits": "No real installer/release or first-run provider setup execution, live engine/chat billing, remote/mobile/native journey, real approval operation or personal-store observation. Unit fixtures and isolated UI captures are bounded evidence. Source startup completion status writes separately from selected-profile save. Current references are scoped tokens/metadata, not transcript insertion or exhaustive history search.",
 
-  "document": {"digest":"53a097e483b1f02b6541a49f02a08bf09432d1f84e5533507e011b02b8a1d974","revision":"5c4715178ae1172f03cd2d819c40985302e56ee7"},
+  "document": {"digest":"38ef2416be1f5ae0c912e59e4c83862574d5ac401b6c6fa2d6b6d8fc918b7f58","revision":"00e4d696ef242a1032f41392e9248698bbb49aaa"},
 
   "sources": [
     {"path":".nvmrc","digest":"68ca3fba3b7e864770cb61aeb306d4bd4354b68ab4dd38450860c5d823e42a53","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
@@ -126,7 +126,25 @@
 
     {"path":"tests/helpers/exact-request-backend.ts","digest":"ddfd358fd04c7274ce9e2522af61fc153e5b051fa4826b72792f3b8a05537fff","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"tests/helpers/live-station-task.ts","digest":"f8e8de76e6e499512e39b2eab7da91ebca7d8a98622981a1d6d3acb28ee74b9f","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"}
+    {"path":"tests/helpers/live-station-task.ts","digest":"f8e8de76e6e499512e39b2eab7da91ebca7d8a98622981a1d6d3acb28ee74b9f","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/views/SkillsView.tsx","digest":"23fef1059203985bb70f467df6c9f252f8005c93787e721b43fb4ace050fda94","revision":"d1708e0a66e7328c9c62a95865f1bb1dcfbeb8d1"},
+
+    {"path":"src-ui/src/components/modals/SkillRunModal.tsx","digest":"d8e938a9a5a8306c4cf41afdda2e1e068e22050a5f189debbd59da8ba2a68c28","revision":"c1841d01497260f6e3c951d4439553bfc9663e04"},
+
+    {"path":"src-ui/src/components/modals/ImportSkillsModal.tsx","digest":"65dae4a6ca3633c3109dac6efee0cf43823fec76402f6c927796be3f4949ac19","revision":"224e1f29005a8afc5495fe69e55445e8d0d4e12c"},
+
+    {"path":"src-ui/src/__tests__/SkillsView.test.tsx","digest":"a1a646de354d8db524e0c14728f60ee6945fb6cfc55e261f0d0b3d3caab27d87","revision":"fb82d3d9619cdb345148501d010222c8b1332662"},
+
+    {"path":"src-ui/src/__tests__/SkillsView.navigation.test.tsx","digest":"7d063868e930ad7fa87883704b779e7d6ac1bb251e7b32754ef2ee424cbd7c0a","revision":"fb82d3d9619cdb345148501d010222c8b1332662"},
+
+    {"path":"src-ui/src/__tests__/SkillsView.launch.test.tsx","digest":"27d9ef6edf40b46f9f05a32475882aa5cee903c02c41c0962f6763a39b9f2414","revision":"39a9b348e9f283080439de010b5a0d26b507e3c3"},
+
+    {"path":"src-ui/src/hooks/useActiveChatSessionLifecycle.ts","digest":"2a90e4f43cde95121b12aec4ae642905f1329e9e23e95f797a41cd6746da9349","revision":"4c9ba2382e94915895b19b7fdd08979d83807864"},
+
+    {"path":"src-ui/src/hooks/useActiveChatSessionMessaging.ts","digest":"53af6df5a169a76a3eb936293dff7b0064b8596b6d5ddec1efa738ac6b0002e2","revision":"31cac46a69cdd1f5b1f6da671dc6d30cae2fdb95"},
+
+    {"path":"src-ui/src/lib/foregroundMessageDispatch.ts","digest":"8dd461fc84dda8844b89d1cc72d2c2da72aab7d5f0b0a07803405627f6f2ab23","revision":"797b97599f89df6555282de2d42af11e4aee4f08"}
   ],
 
   "checks": [

@@ -9,7 +9,7 @@
 
   "limits": "Full reading and bounded source review are not all-platform execution or universal semantic certification. No hosted CI, cloud, release or real provider/device proof. Protected policy activation is limited to the approved documentation additions in this branch.",
 
-  "document": {"digest":"0cb4253b939858eac42d6d28b75eb82fd8556ed133277f566bc2f196f4b6d749","revision":"01c8161b147ae157927f5d9f60ec07ea9d2c6065"},
+  "document": {"digest":"9d4e05743a212a295ecdefbeb1cafdddbe7d4cedf923295d07dd36736cc4c373","revision":"f55627e0627f6746899c13f9befb0b338c5a6f91"},
 
   "sources": [
     {"path":".agents/skills/documentation-audit/SKILL.md","digest":"2f5e193ebfb24a08597fd9dc31663a7d293bceaf1847e2df508b093e898845a6","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
@@ -62,7 +62,7 @@
 
     {"path":"scripts/__tests__/metric-reference.test.ts","digest":"9c432501ef9d37322a972c2f54b52fd38552731b9b3bc59a5894a70bc557fb81","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
-    {"path":"scripts/__tests__/path-read-pin-boundary.test.ts","digest":"01211e6de3353b7773a35a910287e1dea2de931fca837de9d55a76cc3e0ad5fa","revision":"b45e66e498207045e6f2d36a48075c702cbf4d92"},
+    {"path":"scripts/__tests__/path-read-pin-boundary.test.ts","digest":"680c21e7cc4a454ceaa1a2c549055b475e13c3ba894164a0b227306569da312f","revision":"8c0170f5d9fb2a224c36326efbebb56b609f323a"},
 
     {"path":"scripts/__tests__/portable-server-archive.test.ts","digest":"f35ee8e8fcf9966fbcbdfa872a3e3b6ac8bd7be0c2f99086fa290b99b239b181","revision":"614c216de6de9d4c06ef56963853ccff52f2f685"},
 

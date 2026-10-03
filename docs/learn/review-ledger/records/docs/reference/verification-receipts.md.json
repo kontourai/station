@@ -36,7 +36,7 @@
 
     {"path":"scripts/run-changed-verification.mjs","digest":"24e1af297dc3857d60e751386c93697fdc77eeef59fbdc5f7efdc41a061bf862","revision":"3e1907f8c81b0b7c818c7c34f95d2c5ffa4ea008"},
 
-    {"path":"scripts/run-verification.mjs","digest":"dbbf9cf12e8b59b8d87feab8c6e1510bb92b9d8b4f6241803c897ff6f929a60a","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"scripts/run-verification.mjs","digest":"cb92060b3ba75731d2685b2907036333948df8b1a654980a0c120af237145e8c","revision":"87d45fd9b238d6b9891d7d6167c72a035cf8363c"},
 
     {"path":"scripts/verification-lanes.mjs","digest":"3fb1be3bd88d1d5139983eaf770e8a5474ce6cc6ef304d4e008df63d0c143fef","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
