@@ -9,7 +9,7 @@
 
   "limits": "Local source/fixture review. Native provider compatibility, physical UI, real approvals, and platform/runtime setup are not established by this record.",
 
-  "document": {"digest":"7241f5dde54374e78e063b8b7db9957199f328235e02c511e1cbbc724ca0cea9","revision":"54fc4a556486e17d1f4f0546c02be91fedf3b6b7"},
+  "document": {"digest":"a8255ef04da3fb6747f93d7fb3cce6447582fb6bb001b693f30c63f84f57d1ac","revision":"4f3acdc5478e27a733c06e91a202a325817c2f53"},
 
   "sources": [
     {"path":"packages/cli/src/commands/profile-store.ts","digest":"e169198969311f9d708a955f0137ebeba4a1fd69d9a9f89f0b914df961ee6109","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
@@ -36,9 +36,9 @@
 
     {"path":"src-server/domain/validator.ts","digest":"3eb3a7b8ee4c11d88b25e26cb055a7909ce2017011fad50fbe5d39ab379a21e8","revision":"d6a3158c22a62d9530592c6366a1624790ee9401"},
 
-    {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"061da89e00216d5c3250d7f13dc1dea5717765b50db7ebf8c49672208524a3d0","revision":"423cbe55b9e35e4cd8954fd441cb9f3c69740d66"},
+    {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"f44a4e94ca0f335cfc5ee2a803ed1659f140e149b0cd0e66e4c9b5bef9179718","revision":"4f3acdc5478e27a733c06e91a202a325817c2f53"},
 
-    {"path":"src-server/providers/adapters/claude-adapter.ts","digest":"3b2845b046cad6902a72d173810082511f848cb4819c02e0d42a18e28d3b7d80","revision":"423cbe55b9e35e4cd8954fd441cb9f3c69740d66"},
+    {"path":"src-server/providers/adapters/claude-adapter.ts","digest":"37e1c06d5a117c40258e38da79c424fce7720236c486fbceb9a1c29c1548a0f4","revision":"4f3acdc5478e27a733c06e91a202a325817c2f53"},
 
     {"path":"src-server/providers/adapters/codex-adapter-transport.ts","digest":"ddc57bdc7eead816bff59653f324a25f2349d9ff9478005264cac8e7a099b4fc","revision":"754e48394b02f670894b419807274752fd9676d4"},
 
@@ -74,7 +74,7 @@
 
     {"path":"src-server/runtime/agents/delegation.ts","digest":"68f406b4334bf5b4ed0bb64efc3a7149199fa6b8dcbab9aca17213dba5c3e363","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/runtime/agents/pre-tool-policy.ts","digest":"40afce59c98da72b4886d7b462c742d8a8d5fb53ae11604df83bd94fc48ca484","revision":"cf0e84f7536007ebe547d13ec6c4a68a44937f4b"},
+    {"path":"src-server/runtime/agents/pre-tool-policy.ts","digest":"880debd075f915ac8e746d359528fc6b1f3da03873c657b168930c57884268e0","revision":"aba169ab98b0546fc88ea07509450efe838e90b6"},
 
     {"path":"src-server/runtime/agents/request-delegation.ts","digest":"4580434538f5c94c90ecf3217bb8a4bef4fad2c4681a56d9de99b6241826c34f","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 

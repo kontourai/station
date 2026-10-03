@@ -233,6 +233,21 @@ needs approval), a write or delete outside the working directories in an `&&` or
 warning are answered by the pattern. A safety check on any part still
 prompts ([delivery boundary](../conformance/tool-policy-delivery.md)).
 
+An approval-guardian allow has the same limits on these engines (#2947). The
+guardian reviews the tool's name and arguments (and, on ACP, the call's
+title); it isn't shown the session's working directories or why the engine
+asks. On Claude Code its allow answers a plain call without a prompt, for the
+input it reviewed, and everything in the list above still reaches a person,
+including a read outside the working directories that the guardian allowed.
+Like a `Bash` pattern, a guardian allow answers a chained Bash command,
+including the chained-command gaps described above: an ask rule or an
+outside-directory write hidden inside the chain does not prompt. On ACP engines its allow answers any call except a
+plan exit, a question, or a sandbox network-host ask. A guardian deny in
+`enforce` mode still blocks the call. A delegated child that cannot grant
+approvals is denied an escalation at once, guardian allow or not. With the
+guardian enabled, a headless run on these engines that reaches an escalation
+waits on an approval request where it used to run on the guardian's allow.
+
 ### Unattended runs
 
 A run with nobody to confirm a tool call — a scheduled job, `/invoke`, the CLI,
