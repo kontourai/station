@@ -695,7 +695,8 @@ export function createRegistryRoutes(
         {
           success: false,
           code: 'unsupported-skill-format',
-          message: error.message,
+          message:
+            'This skill uses metadata that Station cannot install. Its original Markdown is available for inspection; ask its publisher for a supported format.',
         },
         400,
       );
