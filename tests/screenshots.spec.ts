@@ -243,6 +243,8 @@ async function assertNoStrayProjectModal(page: Page, timeoutMs = 10_000) {
  *    relative "just now" — the one remaining live-clock-derived label this
  *    gallery ever renders a toast for
  *    (`motion-reduced-notification`).
+ *  - The Profile's completed rebuild timestamp. The unavailable-time
+ *    fallback stays visible; only a live "Snapshot rebuilt ..." line is hidden.
  *  - `.chat-dock__mobile-conn` (ChatDockMobileHeader.tsx via
  *    `ChatDockMobileConnection.tsx`): the mobile chat dock's OWN
  *    connected/connecting/error/needs-credential indicator — the same
@@ -268,6 +270,12 @@ async function assertNoStrayProjectModal(page: Page, timeoutMs = 10_000) {
  * previously injected style tag) and as close to the shot as practical.
  */
 async function hideVolatileChrome(page: Page) {
+  await page
+    .locator('.profile-usage-status p')
+    .filter({ hasText: /^Snapshot rebuilt / })
+    .evaluateAll((elements) => {
+      for (const element of elements) element.style.visibility = 'hidden';
+    });
   await page.addStyleTag({
     content: `
       .time-filter-wrapper { visibility: hidden !important; }
@@ -1184,12 +1192,12 @@ function overlayDockProjectMismatchHooks(): Pick<
         await expect(badge).toHaveText('');
         await badge.click();
         await expect(
-          page.getByRole('dialog', { name: 'Switch project' }),
+          page.getByRole('dialog', { name: 'Projects' }),
         ).toBeVisible({ timeout: 10_000 });
         await page.getByRole('button', { name: 'Switch to Project A' }).click();
-        await expect(
-          page.getByRole('dialog', { name: 'Switch project' }),
-        ).toBeHidden({ timeout: 10_000 });
+        await expect(page.getByRole('dialog', { name: 'Projects' })).toBeHidden(
+          { timeout: 10_000 },
+        );
         // The badge now names the BOUND project (by design it never
         // follows the active session) — while the facts
         // row leads with the session's own, muted, differing project name.
@@ -2269,14 +2277,14 @@ const SCREENS: Screen[] = [
         await expect(badge).toHaveText('');
         await badge.click();
         await expect(
-          page.getByRole('dialog', { name: 'Switch project' }),
+          page.getByRole('dialog', { name: 'Projects' }),
         ).toBeVisible({ timeout: 10_000 });
         await page
           .getByRole('button', { name: 'Switch to Demo Project' })
           .click();
-        await expect(
-          page.getByRole('dialog', { name: 'Switch project' }),
-        ).toBeHidden({ timeout: 10_000 });
+        await expect(page.getByRole('dialog', { name: 'Projects' })).toBeHidden(
+          { timeout: 10_000 },
+        );
         // Scoped to the badge's own class: the project sidebar (seeded
         // from the same `/api/projects` mock) also renders a same-named
         // button.
@@ -2313,7 +2321,7 @@ const SCREENS: Screen[] = [
         await trigger.waitFor({ timeout: 10_000 });
         await trigger.click();
         await expect(
-          page.getByRole('dialog', { name: 'Switch project' }),
+          page.getByRole('dialog', { name: 'Projects' }),
         ).toBeVisible({ timeout: 10_000 });
         await expect(
           page.getByRole('button', { name: 'Switch to Demo Project' }),
