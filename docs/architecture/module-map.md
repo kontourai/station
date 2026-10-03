@@ -3142,7 +3142,10 @@ Project identity and migrates legacy state; `browser-pane/BrowserPane.tsx` and
 `BrowserAutomation`. Control operations capture a lease fence and check it
 around asynchronous steps. JavaScript evaluation additionally needs the
 Project's default-off permission; timeout/preemption does not undo an effect
-already sent to Chromium. Closing a viewer only stops its capture subscription.
+already sent to Chromium. `BrowserAutomation.close` lets an Agent close a
+session only when an Agent opened it, it is bound to the caller's own
+conversation and nobody else holds its lease; it reuses the registry's
+`closeSession`, the pane's effect. Closing a viewer only stops its capture subscription.
 Host exit/restart produces `needs-reopen`, and old-generation live surfaces are
 unregistered. Idle host shutdown runs after its last live target closes,
 not merely when nobody watches.
