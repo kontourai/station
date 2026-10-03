@@ -16,6 +16,12 @@ import { createDeploymentAuthenticationRoutes } from '../../routes/system/deploy
 import { createLocalAccountAdministrationRoutes } from '../../routes/system/local-account-administration-routes.js';
 import { createRelayEnrollmentRoutes } from '../../routes/system/relay-enrollment-routes.js';
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
+import {
+  classifyOperatorCredentialPosition,
+  isHostLocalOperatorCredentialUse,
+  type OperatorCredentialPosition,
+  usesOperatorCredential,
+} from '../../security/host-operator-credential.js';
 import { writeLocalGrantSecretFile } from '../../security/local-grant-file.js';
 import { createStationControlAuthorityGuard } from '../../security/station-control-authority-guard.js';
 import {
@@ -589,6 +595,7 @@ import {
   connectedClientPresenceOps,
   devicePairingRequests,
   deviceSessionExchanges,
+  operatorCredentialDeviceAdminUses,
   reviewEvidenceDuration,
   reviewEvidenceOperations,
 } from '../../telemetry/metrics.js';
@@ -2382,6 +2389,20 @@ export function configureRuntimeRoutes(
       relayEnrollment: context.relayEnrollment,
       resetFullAccessGrantedBy: (input) =>
         context.orchestrationService.resetFullAccessGrantedBy(input),
+      // #2894 S1 (D2, observe first): count every use; log the off-host ones
+      // at warn so they are readable beside the pairing approval audit.
+      observeOperatorCredentialUse: (record) => {
+        operatorCredentialDeviceAdminUses.add(1, {
+          route: record.route,
+          position: record.position,
+        });
+        if (!record.hostLocal) {
+          context.logger.warn(
+            'Operator credential used off-host for device administration',
+            { ...record },
+          );
+        }
+      },
     },
   );
 
@@ -8072,6 +8093,27 @@ export interface PairingApprovalAuditRecord {
 }
 
 /**
+ * #2894 S1 (owner decision D2, observe first): one raw operator-credential
+ * use on a device-admin route. The routes do not refuse an off-host use yet;
+ * this record is how the operator sees how often that happens before the
+ * refusal ships. Like the approval record above it carries no device id,
+ * device name, credential or address.
+ */
+export interface OperatorCredentialUseRecord {
+  readonly event: 'station.pairing.operator_credential_used';
+  readonly route:
+    | 'GET /api/pairing/devices'
+    | 'DELETE /api/pairing/devices/:deviceId'
+    | 'POST /api/pairing/devices/:deviceId/scope'
+    | 'DELETE /api/pairing/devices/:deviceId/record';
+  readonly position: OperatorCredentialPosition;
+  readonly hostLocal: boolean;
+  /** Off-host uses this process has observed so far, this one included. */
+  readonly offHostUses: number;
+  readonly timestamp: number;
+}
+
+/**
  * Durable, secret-safe public pairing failure evidence. The raw source is
  * intentionally absent: it is used only as an in-memory limiter key, never
  * promoted into logs or metrics.
@@ -8131,9 +8173,31 @@ export function configureDevicePairingHostRoutes(
       cause: FullAccessRevocationReport['cause'];
       clientOrigin: ClientOrigin;
     }) => Promise<FullAccessRevocationReport>;
+    /** #2894 S1: every raw operator-credential use on a device-admin route. */
+    observeOperatorCredentialUse?: (
+      record: OperatorCredentialUseRecord,
+    ) => void;
   },
 ): void {
   const audit = options.audit;
+  // #2894 S1: counted per process, so the log line itself carries the total.
+  let offHostOperatorCredentialUses = 0;
+  const observeOperatorCredentialUse = (
+    c: Parameters<typeof isHostLocalOperatorCredentialUse>[0],
+    route: OperatorCredentialUseRecord['route'],
+  ): void => {
+    if (!usesOperatorCredential(c)) return;
+    const hostLocal = isHostLocalOperatorCredentialUse(c);
+    if (!hostLocal) offHostOperatorCredentialUses += 1;
+    options.observeOperatorCredentialUse?.({
+      event: 'station.pairing.operator_credential_used',
+      route,
+      position: classifyOperatorCredentialPosition(c),
+      hostLocal,
+      offHostUses: offHostOperatorCredentialUses,
+      timestamp: Date.now(),
+    });
+  };
   /**
    * #1796: the revocation's report, added to the route's answer. The scope
    * change or revoke has already happened; a reset that fails is reported
@@ -8489,6 +8553,7 @@ export function configureDevicePairingHostRoutes(
     }
   });
   app.get('/api/pairing/devices', (c) => {
+    observeOperatorCredentialUse(c, 'GET /api/pairing/devices');
     const devices = pairing.listDevices();
     const connected = options.connectedClientPresence?.snapshot(
       devices
@@ -8527,6 +8592,7 @@ export function configureDevicePairingHostRoutes(
       if (!currentOperator(c, request)) {
         return c.json({ error: 'authentication_required' }, 401);
       }
+      observeOperatorCredentialUse(c, 'DELETE /api/pairing/devices/:deviceId');
       const deviceId = c.req.param('deviceId');
       const device = pairing.revokeDevice(deviceId, 'operator-credential');
       options.connectedClientPresence?.disconnectDevice(deviceId);
@@ -8558,6 +8624,10 @@ export function configureDevicePairingHostRoutes(
       if (!currentOperator(c, request)) {
         return c.json({ error: 'authentication_required' }, 401);
       }
+      observeOperatorCredentialUse(
+        c,
+        'POST /api/pairing/devices/:deviceId/scope',
+      );
       const body = (await request.json().catch(() => null)) as {
         scope?: unknown;
         expectedScope?: unknown;
@@ -8643,6 +8713,10 @@ export function configureDevicePairingHostRoutes(
       if (!currentOperator(c, request)) {
         return c.json({ error: 'authentication_required' }, 401);
       }
+      observeOperatorCredentialUse(
+        c,
+        'DELETE /api/pairing/devices/:deviceId/record',
+      );
       return c.json(
         pairing.removeRevokedDevice(
           c.req.param('deviceId'),
