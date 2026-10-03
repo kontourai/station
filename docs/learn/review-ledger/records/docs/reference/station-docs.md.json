@@ -58,7 +58,7 @@
 
     {"path":"src-server/routes/plugins/plugin-validate-routes.ts","digest":"22e628993e930427de7679249466002699eb1819f8cfbe8728c12a27da9afdc4","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/runtime/agents/runtime-default-agent.ts","digest":"dc13c75ea5da25f8469895cd0e3be1c52a54ed0f8a8a1192707a8b5f67fb493a","revision":"e2637079bd55a47964f12faedfb5c43abc7f1e95"},
+    {"path":"src-server/runtime/agents/runtime-default-agent.ts","digest":"a5d49aa51d223b2a88e1d359b5c09f09911e4611b0259c579234067bd08c5928","revision":"c834403ed0024f506335ddc01af6d09e1a4d813a"},
 
     {"path":"src-server/runtime/agents/station-capability-discovery.ts","digest":"fb95589365de3171f527ef96c98df9127dfb32e363df5f4253f86f105bf31e52","revision":"69eb5db90072c149c16115135f495ac538155e71"},
 

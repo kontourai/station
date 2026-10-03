@@ -78,7 +78,7 @@
 
     {"path":"src-ui/src/views/settings/KnowledgeStoreSection.tsx","digest":"56f97a6e2ea290893e0103cbeeadc63b5defa436c6df49e949d5082922881d4c","revision":"d6a3158c22a62d9530592c6366a1624790ee9401"},
 
-    {"path":"src-server/tools/station-knowledge-tools.ts","digest":"f1d5bac2cca8c9da1ec64d356e73132b9d7739f6fbf8cb0a0950900462ec1b70","revision":"e2637079bd55a47964f12faedfb5c43abc7f1e95"},
+    {"path":"src-server/tools/station-knowledge-tools.ts","digest":"b82a345dc075de55aa99553290bea0f56f9258b943af353a155632f272a0ce55","revision":"c834403ed0024f506335ddc01af6d09e1a4d813a"},
 
     {"path":"src-server/tools/station-knowledge-mcp-server.ts","digest":"0523644b6b81e0de1546bd84e04197f3a1af8c5307092e88467b52c8c0d874f1","revision":"e2637079bd55a47964f12faedfb5c43abc7f1e95"},
 
@@ -92,7 +92,7 @@
 
     {"path":"src-server/providers/adapters/station-agent-adapter.ts","digest":"9b5f17a8f10f4135326bac9ca7c74926cdb044e715ffdcd75d0ae702a864cef9","revision":"de8683f4e14dac4a3ebeeb959013aaa31906f8e8"},
 
-    {"path":"src-server/runtime/agents/runtime-default-agent.ts","digest":"dc13c75ea5da25f8469895cd0e3be1c52a54ed0f8a8a1192707a8b5f67fb493a","revision":"e2637079bd55a47964f12faedfb5c43abc7f1e95"},
+    {"path":"src-server/runtime/agents/runtime-default-agent.ts","digest":"a5d49aa51d223b2a88e1d359b5c09f09911e4611b0259c579234067bd08c5928","revision":"c834403ed0024f506335ddc01af6d09e1a4d813a"},
 
     {"path":"src-server/runtime/routes/__tests__/runtime-routes-station-control-read-scope.test.ts","digest":"6b8ced2d840f733b7a0ebc2d7a669d8f23af80fdb7d9a2c5031bc2daa44da54d","revision":"e2637079bd55a47964f12faedfb5c43abc7f1e95"}
   ],
