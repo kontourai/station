@@ -169,6 +169,7 @@ type Measurement = {
   visible: boolean;
   left: number;
   right: number;
+  inkLeft: number;
 };
 
 const WIDTHS = [320, 800, 1200] as const;
@@ -221,6 +222,8 @@ describe.skipIf(!chromiumAvailable).each([
             const fontSize = Number.parseFloat(style.fontSize) || 16;
             const parsedLineHeight = Number.parseFloat(style.lineHeight);
             const box = element.getBoundingClientRect();
+            const text = document.createRange();
+            text.selectNodeContents(element);
             return {
               selector,
               clientWidth: element.clientWidth,
@@ -233,6 +236,7 @@ describe.skipIf(!chromiumAvailable).each([
               visible: box.width > 0,
               left: box.left,
               right: box.right,
+              inkLeft: text.getBoundingClientRect().left,
             };
           }),
         );
@@ -265,7 +269,7 @@ describe.skipIf(!chromiumAvailable).each([
     );
 
     test.each(WIDTHS)(
-      'the project labels and branch stay on one line within their boxes at %ipx',
+      'the project labels stay left aligned and all labels fit one line at %ipx',
       async (width) => {
         const measurements = await measure(width);
         const column = measurements.find(
@@ -288,6 +292,10 @@ describe.skipIf(!chromiumAvailable).each([
           if (selector !== '.git-badge__branch') {
             expect(entry.left).toBeGreaterThanOrEqual(column.left - 1);
             expect(entry.right).toBeLessThanOrEqual(column.right + 1);
+            expect(
+              entry.inkLeft,
+              `${selector} text remains left aligned`,
+            ).toBeCloseTo(column.left, 0);
           }
         }
       },
