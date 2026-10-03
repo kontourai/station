@@ -13,6 +13,7 @@ import {
   MCPLocalConnectionCustody,
   MCPLocalCustodyError,
 } from '@kontourai/station-shared/mcp';
+import { mcpToolDisabled } from '@kontourai/station-shared/mcp-tool-selection';
 import { DEFAULT_SERVER_PORT } from '@kontourai/station-shared/ports';
 import type { Transport } from '@modelcontextprotocol/client';
 import { zodToJsonSchema } from 'zod-to-json-schema';
@@ -37,7 +38,6 @@ import type {
   IntegrationSecretBindingGranter,
   IntegrationSecretResolver,
 } from '../secrets/secret-binding-administration.js';
-import { mcpToolDisabled } from './mcp-tool-selection.js';
 import { ToolServerCredentialStore } from './tool-server-credential-store.js';
 import {
   captureToolServerOperationFailure,

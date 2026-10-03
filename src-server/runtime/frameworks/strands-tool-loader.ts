@@ -4,6 +4,10 @@ import {
   type MCPLocalConnectionCustody,
   MCPLocalCustodyError,
 } from '@kontourai/station-shared/mcp';
+import {
+  mcpToolDisabled,
+  originalMcpToolName,
+} from '@kontourai/station-shared/mcp-tool-selection';
 import { FunctionTool, McpClient } from '@strands-agents/sdk';
 import { wrapPlatformMutationGatedTools } from '../../services/evidence/platform-mutation-gate.js';
 import { createMCPToolProvenanceGeneration } from '../../services/orchestration/mcp-tool-provenance.js';
@@ -246,6 +250,7 @@ export function createStrandsFunctionTools(
 export function applyStrandsAvailableToolFilter(
   tools: ITool[],
   available: string[] = ['*'],
+  originalNames?: Map<string, { original: string }>,
 ): ITool[] {
   if (available.includes('*')) {
     return tools;
@@ -253,11 +258,15 @@ export function applyStrandsAvailableToolFilter(
 
   return tools.filter((tool) =>
     available.some((pattern) => {
-      if (pattern === tool.name) {
+      const original = originalNames?.get(tool.name)?.original;
+      if (pattern === tool.name || pattern === original) {
         return true;
       }
       if (pattern.endsWith('*')) {
-        return tool.name.startsWith(pattern.slice(0, -1));
+        return (
+          tool.name.startsWith(pattern.slice(0, -1)) ||
+          !!original?.startsWith(pattern.slice(0, -1))
+        );
       }
       return false;
     }),
@@ -435,7 +444,15 @@ export async function loadStrandsTools(options: {
       // Mutating station-control tools execute through the
       // platform-mutation gate regardless of dispatch path (S3 item 4).
       const enabledServerTools = serverTools.filter(
-        (tool) => !toolDef.disabledTools?.includes(tool.name),
+        (tool) =>
+          !mcpToolDisabled(
+            toolId,
+            originalMcpToolName(
+              toolId,
+              opts.toolNameMapping.get(tool.name)?.original ?? tool.name,
+            ),
+            toolDef.disabledTools,
+          ),
       );
       allTools.push(
         ...wrapPlatformMutationGatedTools(enabledServerTools, {
@@ -506,6 +523,7 @@ export async function loadStrandsTools(options: {
   return applyStrandsAvailableToolFilter(
     allTools,
     spec.tools.available || ['*'],
+    opts.toolNameMapping,
   );
 }
 

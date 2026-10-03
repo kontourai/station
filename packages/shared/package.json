@@ -40,6 +40,7 @@
     "./tool-server-credential-store": "./src/tool-server-credential-store.ts",
     "./guidance-assets": "./src/guidance-assets.ts",
     "./mcp": "./src/mcp.ts",
+    "./mcp-tool-selection": "./src/mcp-tool-selection.ts",
     "./mcp-ui-csp": "./src/mcp-ui-csp.ts",
     "./node-runtime": "./src/node-runtime.ts",
     "./owned-dependency-installer": "./src/owned-dependency-installer.ts",

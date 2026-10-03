@@ -52,16 +52,16 @@ import {
   SYSTEM_PROMPT_CAPABILITY_ID,
 } from '@kontourai/station-contracts/provider';
 import type { ToolDef } from '@kontourai/station-contracts/tool';
+import {
+  mcpToolDisabled,
+  originalMcpToolName,
+  selectedMcpTools,
+} from '@kontourai/station-shared/mcp-tool-selection';
 import { STATION_CAPABILITY_DISCOVERY_GUIDANCE } from '../../runtime/agents/station-capability-discovery.js';
 import { isBuiltinStationControl } from '../../runtime/bootstrap/station-control-runtime-env.js';
 import { SC_AUTO_APPROVED_TOOLS } from '../../runtime/tools/runtime-control-tools.js';
 import { agentCapabilityUndelivered } from '../../telemetry/metrics.js';
 import { stationControlToolCatalog } from '../../tools/station-control-mcp-server.js';
-import {
-  mcpToolDisabled,
-  originalMcpToolName,
-  selectedMcpTools,
-} from '../plugins/mcp-tool-selection.js';
 
 interface SessionAgentResolverOptions {
   /** Load an agent's spec by slug; `null` for an unknown/not-on-disk agent. */
@@ -432,7 +432,9 @@ export function createSessionAgentResolver(
                   args: toolDef.args,
                   endpoint: toolDef.endpoint,
                   ...(disabled.length ? { disabledTools: disabled } : {}),
-                  ...(spec.tools?.available !== undefined || disabled.length
+                  ...(spec.tools?.available !== undefined ||
+                  spec.tools?.mcpMode !== undefined ||
+                  disabled.length
                     ? { toolNames: names }
                     : {}),
                   ...(selected !== undefined ? { allowedTools: selected } : {}),

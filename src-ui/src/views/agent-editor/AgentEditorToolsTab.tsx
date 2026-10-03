@@ -12,7 +12,7 @@ import { AgentEditorWorkflows } from './AgentEditorWorkflows';
 import type { AgentEditorFormProps } from './types';
 import {
   addIntegration,
-  effectiveAgentToolPatterns,
+  canonicalAgentToolPatterns,
   getIntegrationToolKey,
   removeIntegration,
   selectIntegrationTools,
@@ -54,7 +54,6 @@ export function AgentEditorToolsTab({
   const [showApprovals, setShowApprovals] = useState(false);
   const checkTools = useReconnectIntegrationMutation();
   const disabled = locked || !!finding;
-  const patterns = effectiveAgentToolPatterns(form);
   const selected: Tool[] = form.tools.mcpServers.map(
     (id) =>
       availableTools.find((tool) => tool.id === id) ?? {
@@ -77,6 +76,10 @@ export function AgentEditorToolsTab({
           enabled: !tool.disabled,
         }))
       : (integrationTools[integration.id] ?? []);
+  const catalogs = Object.fromEntries(
+    selected.map((integration) => [integration.id, catalogFor(integration)]),
+  );
+  const patterns = canonicalAgentToolPatterns(form, catalogs);
   const toolEnabled = (id: string, key: string) =>
     patterns.includes('*') ||
     patterns.includes(`${id}_*`) ||
@@ -302,6 +305,7 @@ export function AgentEditorToolsTab({
                                         (tool) =>
                                           `${prefix}${tool.toolName || tool.name}`,
                                       ),
+                                      catalogs,
                                     ),
                                   )
                                 }
@@ -325,6 +329,7 @@ export function AgentEditorToolsTab({
                                           tool,
                                         ),
                                       ),
+                                    catalogs,
                                   ),
                                 )
                               }
@@ -340,6 +345,7 @@ export function AgentEditorToolsTab({
                                     current,
                                     integration.id,
                                     [],
+                                    catalogs,
                                   ),
                                 )
                               }

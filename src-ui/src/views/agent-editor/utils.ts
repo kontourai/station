@@ -1,3 +1,7 @@
+import {
+  mcpToolIdentities,
+  selectedMcpTools,
+} from '@kontourai/station-shared/mcp-tool-selection';
 import type { Tool } from '../../types';
 import type { AgentFormData } from './types';
 
@@ -99,12 +103,53 @@ export function addIntegration(
   };
 }
 
+export function canonicalAgentToolPatterns(
+  form: AgentFormData,
+  catalogs: Record<string, Tool[]>,
+): string[] {
+  const patterns = effectiveAgentToolPatterns(form);
+  if (patterns.includes('*')) return patterns;
+  const canonical = new Set<string>();
+  for (const id of form.tools.mcpServers) {
+    const tools = catalogs[id];
+    if (!tools) continue;
+    const selected = selectedMcpTools(
+      id,
+      tools.map((tool) => tool.toolName || tool.name),
+      patterns,
+      form.tools.mcpServers,
+    );
+    for (const name of selected === undefined ? ['*'] : selected)
+      canonical.add(`${id}_${name}`);
+  }
+  for (const pattern of patterns) {
+    if (
+      !Object.entries(catalogs).some(
+        ([id, tools]) =>
+          pattern.startsWith(`${id}_`) ||
+          pattern.startsWith(`${id}/`) ||
+          tools.some((tool) =>
+            mcpToolIdentities(id, tool.toolName || tool.name).includes(pattern),
+          ),
+      )
+    )
+      canonical.add(pattern);
+  }
+  return [...canonical];
+}
+
 export function selectIntegrationTools(
   form: AgentFormData,
   integrationId: string,
   names: string[] | 'all',
+  catalogs: Record<string, Tool[]> = {},
 ): AgentFormData {
-  const added = addIntegration(form, integrationId);
+  const canonical = canonicalAgentToolPatterns(form, catalogs);
+  const normalized = {
+    ...form,
+    tools: { ...form.tools, available: canonical },
+  };
+  const added = addIntegration(normalized, integrationId);
   const prefix = `${integrationId}_`;
   const patterns = effectiveAgentToolPatterns(added);
   const existing = patterns.includes('*')
@@ -132,7 +177,7 @@ export function toggleIntegrationToolEnabled(
   toolKey: string,
   tools: Tool[],
 ): AgentFormData {
-  const patterns = effectiveAgentToolPatterns(form);
+  const patterns = canonicalAgentToolPatterns(form, { [integrationId]: tools });
   const all = patterns.includes('*') || patterns.includes(`${integrationId}_*`);
   const enabled = new Set(
     all
@@ -141,7 +186,9 @@ export function toggleIntegrationToolEnabled(
   );
   if (enabled.has(toolKey)) enabled.delete(toolKey);
   else enabled.add(toolKey);
-  return selectIntegrationTools(form, integrationId, [...enabled]);
+  return selectIntegrationTools(form, integrationId, [...enabled], {
+    [integrationId]: tools,
+  });
 }
 
 export function toggleIntegrationToolAutoApprove(

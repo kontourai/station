@@ -229,3 +229,39 @@ test('adds the complete server for a connected harness that cannot select indivi
   expect(latest.tools.available).toEqual(['station-control_*']);
   expect(screen.queryByRole('button', { name: 'Read only' })).toBeNull();
 });
+
+test('None and read-only choices replace legacy normalized selections', () => {
+  let latest = createEmptyAgentForm();
+  latest.tools.mcpServers = ['station-control'];
+  latest.tools.available = ['stationControl_deleteAgent'];
+  latest.toolsOriginal = {
+    mcpServers: ['station-control'],
+    available: ['stationControl_deleteAgent'],
+  };
+  render(
+    <Harness
+      initial={latest}
+      onForm={(form) => {
+        latest = form;
+      }}
+      availableTools={stationTools}
+      engineId="claude"
+    />,
+  );
+  fireEvent.click(screen.getByRole('button', { name: /^Station tools/i }));
+  expect(
+    (screen.getByRole('checkbox', { name: 'Delete agent' }) as HTMLInputElement)
+      .checked,
+  ).toBe(true);
+  fireEvent.click(screen.getByRole('button', { name: 'None' }));
+  expect(
+    buildAgentPayload({ ...latest, slug: 'helper' }).tools?.available,
+  ).toEqual([]);
+  fireEvent.click(screen.getByRole('button', { name: 'Read only' }));
+  expect(
+    buildAgentPayload({ ...latest, slug: 'helper' }).tools?.available,
+  ).toEqual([
+    'station-control_list_agents',
+    'station-control_search_knowledge',
+  ]);
+});

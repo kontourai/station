@@ -74,7 +74,7 @@ Station Control tool cannot reach its callback. These filters do not relax the
 existing per-call authority table.
 
 Probe receipts store server-qualified names. The shared
-[selection translator](../../src-server/services/plugins/mcp-tool-selection.ts)
+[selection translator](../../packages/shared/src/mcp-tool-selection.ts)
 resolves original, qualified and legacy normalized identities consistently for
 Agent selection, integration disablement, model delivery and App calls.
 Codex applies authored selection flags on the thread after reading its effective

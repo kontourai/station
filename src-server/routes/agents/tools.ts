@@ -3,6 +3,11 @@
  */
 
 import type { ToolDef } from '@kontourai/station-contracts/tool';
+import {
+  canonicalDisabledMcpTools,
+  mcpToolDisabled,
+  originalMcpToolName,
+} from '@kontourai/station-shared/mcp-tool-selection';
 import { Hono } from 'hono';
 import {
   markIntegrationEnabledExplicit,
@@ -22,11 +27,6 @@ import {
   type MCPService,
   MCPToolDisabledError,
 } from '../../services/plugins/mcp-service.js';
-import {
-  canonicalDisabledMcpTools,
-  mcpToolDisabled,
-  originalMcpToolName,
-} from '../../services/plugins/mcp-tool-selection.js';
 import {
   integrationIconAssetReads,
   mcpUiRenderPermissionAllows,

@@ -13,16 +13,16 @@ import {
   MCPLocalCustodyError,
   type MCPToolInfo,
 } from '@kontourai/station-shared/mcp';
+import {
+  mcpToolDisabled,
+  originalMcpToolName,
+} from '@kontourai/station-shared/mcp-tool-selection';
 import { DEFAULT_SERVER_PORT } from '@kontourai/station-shared/ports';
 import type { Tool } from '@voltagent/core';
 import type { ConfigLoader } from '../../domain/config-loader.js';
 import { wrapPlatformMutationGatedTools } from '../../services/evidence/platform-mutation-gate.js';
 import type { MCPToolProvenanceGeneration } from '../../services/orchestration/mcp-tool-provenance.js';
 import { toolServerOAuthRedirectUrl } from '../../services/plugins/mcp-service.js';
-import {
-  mcpToolDisabled,
-  originalMcpToolName,
-} from '../../services/plugins/mcp-tool-selection.js';
 import {
   type AttestedProposalSubject,
   attestProposalSourceContext,
