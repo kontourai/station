@@ -177,6 +177,65 @@ The runner requires a clean linked worktree, takes an exclusive lock, owns the t
 
 The mutation suite is deliberately focused and opt-in. Its runner safety and policy catch tests run in ordinary focused verification; the application mutations themselves are not injected during general CI or while another process owns the worktree.
 
+## CI health history
+
+[`scripts/ci-health.mjs`](../../scripts/ci-health.mjs) recomputes the capacity
+and merge-queue baseline for [epic #3101](https://github.com/kontourai/station/issues/3101).
+It requires authenticated `gh` and local, non-shallow `origin/main` history.
+Fetch `origin/main` before measuring recent ledger changes; the command reads
+that ref without checking out or advancing local `main`.
+
+```bash
+npm run ci:health -- --hours=6
+npm run ci:health -- --since=2026-10-01T00:00:00Z --until=2026-10-02T00:00:00Z --json
+npm run ci:health -- --hours=6 --record --issue=3101
+npm run ci:health -- --history --issue=3101
+```
+
+The default window is the last 24 hours; `--since` and `--hours` are alternatives.
+`--repo=owner/name` selects another repository, but its ledger measurement
+requires the exact same local origin owner/name on GitHub. Default output is
+Markdown; `--json` emits one snapshot object. Recording is explicit: `--record --issue=<n>` appends a
+human summary and fenced JSON snapshot to that issue through REST. There is no
+default issue and no scheduled workflow. `--history --issue=<n>` reads these
+comments into a trend table; `--json` also works for history.
+
+| Measure | Definition |
+| --- | --- |
+| Merge groups built, failed, failure rate | Distinct queue branches across workflows; a group fails if any workflow run attempt concludes `failure`. Groups with cancelled or timed-out runs have separate counts (which may overlap failed groups). Rate divides failed groups by all built groups, including unfinished groups. |
+| Integration failures and duration | Failed groups containing the legacy required `Merge-queue regression` job; median/p90 elapsed time of concluded, non-cancelled `Merge integration` or historical `Merge-queue regression` workflow attempts (`run_started_at` to `updated_at`, including runner waits), not the short aggregator job. |
+| PRs with a failed group, bot removals | PR membership from the queue branch, REST run metadata and synthetic commit subjects; `removed_from_merge_queue` events by actor login `github-merge-queue[bot]` for those PRs inside the window. Other bot actors are excluded. Removals within one minute of a merge are excluded. |
+| Re-entries: new commits / passed unchanged | A removal followed by queue entry with a commit or `head_ref_force_pushed` event in between, versus neither event followed by merge without another failed removal. Timeline `created_at` decides event order when present. A commit without event time falls back to committer date, then author date; if neither exists, it cannot establish an intervening change. These are observed correlations, not proof that a code change was necessary. Pending and unresolved unchanged attempts are separate. Outcomes stop at the window end. |
+| Executed / skipped jobs; runner-hours / waiting hours | Executed jobs have a non-skipped conclusion and start/end timestamps; skipped jobs have conclusion `skipped`. Runner time is start to end; wait is creation to start, floored at zero. Unfinished jobs (null conclusion) have a separate count and wait-so-far median/p90 as of `until`: creation to start for running jobs, creation to `until` for queued jobs, floored at zero. They contribute to waiting hours, wait shares and OS wait distributions; runner-hours remain completed-job measurements. |
+| Time with >=18 jobs running | Sweep-line share including idle gaps; running unfinished jobs extend to `until`, while queued jobs contribute zero runner slots from creation through `until`. Completed jobs span start to completion, with completion floored at start for inverted timestamps; simultaneous completions precede starts. |
+| Jobs waiting >5 / >20 minutes; OS wait | Shares among executed and unfinished jobs using their observed wait or wait so far and strict thresholds. Linux/Windows/macOS waits have median/p90 minutes; labels containing macOS or Windows identify those systems, other labels count as Linux as in the baseline. |
+| Per PR push / per merge group | Executed jobs, summed runner-minutes, and creation-to-last-completion wall minutes, each median/p90. The baseline approximates a PR push by PR number and ten-minute creation bucket, combining `pull_request` and `pull_request_target` workflows. Queue branches group merge workflows. Groups with fewer than five executed jobs or any unfinished run/job are excluded, so an in-progress merge group is never a completed wall-time sample. |
+| Shard setup versus tests | Up to 20 executed jobs per family: `fast-checks shard`, `Ordinary corpus`, `Process-heavy corpus`. Named test/corpus/regression/shard steps count as tests; installation, planning, downloads and uploads do not. Remaining job duration counts as overhead, including teardown and gaps. This is a step-name estimate, not a profiler measurement. |
+| PR merges touching the review ledger | First-parent `origin/main` commits with a PR number in the subject and changed paths under `docs/learn/review-ledger/`; count, median and maximum changed record/note files. |
+
+Runs are selected by creation time in the half-open window; all job durations
+and available attempts for those runs are counted, even when completion lies
+outside the window. Percentiles use the baseline's sorted upper-rank definition
+(index `floor(n * p)`, capped at `n - 1`); empty populations are `null`/`n/a`.
+Any unfinished jobs set `incomplete: true` with reason
+`window includes N unfinished jobs` and exit nonzero. Their wait and concurrency
+stop at `until`; completed-job durations still use their full intervals.
+Collection is not an atomic GitHub snapshot. Re-running a window can change
+pending conclusions or reveal additional attempts.
+
+Actions listing queries split recursively at the 1,000-result cap and deduplicate
+boundary runs. Unsplittable caps, exhausted pagination, rate limits and other
+collection errors set `incomplete: true`, retain reasons and exit nonzero.
+Partial numbers must not be read as a complete baseline. Successfully split
+caps remain visible as `listingCapHits`. History errors also exit nonzero;
+incomplete recorded snapshots are flagged in the trend table. Recording writes
+only an issue comment; no snapshot file or workflow is added to `main`.
+
+Fixture coverage lives in
+[`scripts/__tests__/ci-health.test.ts`](../../scripts/__tests__/ci-health.test.ts).
+The mutation cases `ci-health-concurrency-threshold`, `ci-health-reentry-commits`,
+`ci-health-bot-login` and `ci-health-listing-cap` use `npm run test:mutation:smoke -- --case=<id>`.
+
 ## Philosophy
 
 - **Unit tests** for business logic (services, utilities, pure functions)
@@ -291,9 +350,15 @@ classifier is missing, fails, or returns anything other than one exact
 Do not run `npm run full:regression`
 locally merely because `main` moved.
 
+Nightly and tagged preview and stable promotions pass one exact source SHA
+to the hosted qualification authority.
+
 The reusable hosted workflow `.github/workflows/full-regression.yml` owns the
-canonical completion receipt. Nightly and tagged preview and stable promotions
-pass it one exact source SHA and cannot build or publish unless it succeeds. A
+exact-source qualification receipt. It runs every canonical phase in hosted
+shards and additionally runs Android viewport tests. Scheduled main qualification,
+daily Nightly, and tagged Preview/Stable use that authority. Promotion requires
+success, with bounded exact-source reuse; native Nightly staging can run alongside
+qualification but cannot publish before it passes. See [the release process](releasing.md). A
 manual `workflow_dispatch` of CI remains the explicit diagnostic escape hatch.
 The full Vitest corpus is phase-attested there, separately from the fast
 feedback loop.
@@ -579,6 +644,10 @@ Connections-hub engine detection) that otherwise raced the fixed settle
 window — so that two captures of the identical build decode to identical
 pixels and exact comparison is strictly simpler, and strictly more
 trustworthy, than any threshold.
+
+Profile captures hide only the completed "Snapshot rebuilt ..." timestamp
+line. Missing-time fallbacks, usage scope, failure notices, and the rebuild
+control remain visible. These pixels do not establish accounting freshness.
 
 The screenshot bucket runs under its own `playwright.config.ts` project
 (`screenshot`, matched to `tests/screenshots.spec.ts` only — every other spec
@@ -1004,6 +1073,13 @@ step under `inFlightStep` instead of `failingStep`. If you see either, the
 answer is budget or sharding, not a hunt for a failing test: the suite did not
 finish, so no failing test name exists to find.
 
+`node scripts/run-verification.mjs explain full-regression` reports the current
+request identity and canonical receipt path without starting verification.
+Its bounded output keeps those fields ahead of unrelated coordinator jobs:
+the status summary reports omitted live jobs, while `status` provides their
+bounded details. An explanation identifies a request; only a validated
+completion receipt proves that its checks passed.
+
 <!-- station:verification-policy:start -->
 The "Invalidated by" column names only the lane-specific `manifestDigest`
 content; every other field participates in reuse identity for every lane and
@@ -1064,25 +1140,24 @@ enforces that partition for any persistent Linux job. See
 [the private-runner partition guide](private-runner-partition.md) before
 changing fleet labels or adding a capacity-leased workflow.
 
-### Merge-queue regression (required)
+### Merge integration (required)
 
-`Merge-queue regression` is a required check (since 2026-09-23). On every queue
-candidate it runs Nightly's full-regression phases, sharded across hosted jobs
-by `scripts/run-full-regression-phases.mjs`, plus the Android viewport suite.
-On pull requests it reports skipped, which the ruleset counts as passing. A red
-aggregate names real failing tests in the failed job's log: diagnose the test
-and fix it at source rather than requeueing until green. If the same failure
-appears on unrelated candidates, main itself is red, so fix main first. Flaky
-tests go through the quarantine policy below.
+The `Merge integration` workflow retains the legacy required context
+`Merge-queue regression` for ruleset compatibility. It checks the combined
+candidate diff and the incident-owner integration pause. The separately required
+`fast-checks` owns affected tests, fixed invariants, all typecheck lanes and
+critical browser smoke; security and relevant platform checks remain required.
+The merge path does not run the full corpus.
 
-Queue operations have three standing rules. Never `gh pr update-branch` a
-bot-owned pull request (dependency or release automation): your push replaces
-the bot as the triggering actor and breaks author-scoped exemptions, so let the
-bot rebase or re-cut instead. Before re-arming after a red candidate, confirm
-the queue candidate's tree (`potentialMergeCommit`) actually contains the pushed
-change; arming within seconds of a push can build the previous candidate. A
-`DIRTY` merge state with a clean `git merge origin/main` is GitHub's recompute,
-not a real conflict: merge, re-verify, push, and arm again.
+[Main qualification](../../.github/workflows/main-qualification.yml) runs every
+six hours outside the queue. A failure collects the available independent
+failures and starts one bounded repair episode instead of repeatedly dequeuing
+unrelated PRs. See [qualification and repair](releasing.md#one-repair-sweep-per-failure-episode).
+
+Never `gh pr update-branch` a bot-owned PR: let the bot regenerate its branch.
+An opted-in `station-autoland` PR can be armed by deterministic landing automation
+once PR CI succeeds; real conflicts remain with the owning session. Keep
+arm/confirm/stop as the local handoff instead of polling the queue.
 
 ### Real-time waits in tests
 
@@ -1128,10 +1203,10 @@ not every way to wait.
 
 ### Test quarantine
 
-The merge-queue regression gate (`.github/workflows/merge-queue-regression.yml`)
-runs the full-regression phases on every queued candidate. One flaky test
-would otherwise hold every queued pull request, so the queue has a bounded
-escape valve: `QUARANTINED_VITEST_FILES` in `scripts/vitest-resource-manifest.mjs`.
+The historical `QUARANTINED_VITEST_FILES` list remains a diagnostic exclusion
+mechanism for explicitly requested corpus runs. Merge integration no longer
+runs the full corpus. Scheduled and release qualification never exclude these
+files: a known flake remains visible and blocks promotion until resolved.
 
 **When to quarantine.** Only a test that is flaky, not broken: the *same
 commit* both passed and failed it. A test that fails every time is a defect to
@@ -1144,8 +1219,8 @@ twenty-attempt pass-rate receipt for an isolation A/B, and on a shared host the
 [shared-host flake triage](../strategy/multi-agent-delivery-protocol.md#4-shared-host-flake-triage-before-diagnosing-anything)
 ladder comes before any diagnosis of the test itself.
 
-**What it does.** The merge-queue shards pass `--exclude-quarantined`, which
-drops the listed files from every queue corpus group. Nightly's canonical
+**What it does.** Explicit diagnostic runs can pass `--exclude-quarantined`,
+which drops the listed files from that corpus selection. Hosted qualification's
 `full:regression` never passes that flag, so quarantined files still run every
 night and Nightly stays exposed to the flake. A quarantined file keeps its
 resource group; quarantine is an overlay on the partition, not a group of its
@@ -1578,9 +1653,20 @@ in the PR; changing an assertion solely to match an implementation is not that
 justification.
 
 The required `fast-checks` check is an aggregator (#2709). `fast-checks-plan`
-computes the affected-test selection once; `fast-checks-shard` runs it as four
-deterministic round-robin slices, each inside the fifteen-minute budget and
-each writing a receipt (an empty slice passes explicitly with an `empty`
+computes the affected-test selection once; `fast-checks-shard` runs it as one
+to four deterministic round-robin slices. `FAST_CHECKS_FILES_PER_SHARD` in
+`scripts/lib/fast-checks-shards.mjs` sets the initial threshold at 40 files:
+0–40 use one job, 41–80 two, 81–120 three, and 121+ four. The planner knows
+file count, not test duration. This is a tunable proxy, justified by #3101's
+2026-10-01 sample: 1.4 minutes of setup for 0.2 minutes of tests per shard
+(86% setup) while the 20-job pool was saturated. Hosted runs must establish
+the actual savings and whether this threshold needs tuning. The matrix creates
+only planned legs; omitted legs need no receipt and cannot keep the aggregate
+pending. The workflow opts in with `STATION_FAST_CHECKS_ADAPTIVE_SHARDS=true`.
+Without that handshake, a new planner retains four shards for the old base
+workflow. Older candidates that emit no adaptive outputs also retain four shards.
+Each slice runs inside the fifteen-minute budget and
+writes a receipt (an empty slice passes explicitly with an `empty`
 receipt); `fast-checks-statics` runs `ci:fast` with
 `STATION_CI_FAST_SCOPE=statics` plus the browser smoke, performance smoke and
 UI bundle budget. `fast-checks` fails unless every part job succeeded and

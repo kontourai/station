@@ -277,7 +277,7 @@ describe('partitionHomeWorkItems (AC3 linger + snooze partition)', () => {
   /**
    * The owner's report: "'Active' feels incorrect when there's no activity".
    * Every lifecycle label is pinned to its lane here as a LITERAL table, not
-   * derived from `liveLaneFor`, so collapsing the split back into one live
+   * derived from the status ladder (`workStatus`), so collapsing the split back into one live
    * bucket (or moving an idle label under Running) fails a named row.
    */
   it.each([

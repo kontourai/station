@@ -9,28 +9,28 @@
 
   "limits": "No device or cross-tab storage proof; file-preview multiwriter remains explicitly unverified. External product experience contract implementation is not claimed.",
 
-  "document": {"digest":"4857d7c6b89854ba2a9f4d135bead55a3f5a9428b50d845f08bbb87ff7c13522","revision":"580664464f709bc97483a6c6a1743ef654ddc400"},
+  "document": {"digest":"e8acb5b7d5884898fe497c865a7017f0ca392c10f1fa25807c28a91f159bfc6a","revision":"cff807c77b3676f414a57b880fabb5c70ca674ed"},
 
   "sources": [
-    {"path":"packages/contracts/src/workspace-file-preview.ts","digest":"c7826aaebe56f64bb927a4abb5c79293522bbacd69cf7bbd9df03d3dc0b0cd0e","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"packages/contracts/src/workspace-file-preview.ts","digest":"4c0c76eb8eae35333a3bad7c8d080efca885f5a2ded817fd392fcd4869657a8a","revision":"bac0b25995fa6f6fe514287e4a7c41ffeaf319ef"},
 
     {"path":"packages/contracts/src/workspace-pane-host.ts","digest":"ea09483694bc388fd11f4c87c51799d9af7429dea5de838235f52c3819bd18ee","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
     {"path":"packages/contracts/src/workspace-pane.ts","digest":"30d58ac97807dd5d51b6f8420186f4c5ad5cb110988c1f79a81745756dd504a9","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-server/routes/projects/workspace-pane-previews.ts","digest":"e7dd34602b3b94ac6dcbf5438da4d973146c31b8e0c816f4f073fbf1b344fd5f","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"src-server/routes/projects/workspace-pane-previews.ts","digest":"555669617a70e30f36819bd0eea7a7fe39c71ad383ecc3c5607566865bc533d9","revision":"6c08e0f49fddf6887e2a8df043f71a2244e07172"},
 
     {"path":"src-server/services/projects/proposed-change-service.ts","digest":"3893b0bcd521c13e114508f95b65f40998f380129c0e16434b269a728982f9bd","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
     {"path":"src-server/services/projects/session-workspace-directory.ts","digest":"33ec9a0b7b1c31f711cb8d5dfcf0a9cec7d8517ed7ec4a67ecada01eec2b360e","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-server/services/projects/workspace-file-preview-service.ts","digest":"5436a41781fa63b3fdaa57f78a1446fd1a3318393ca554cb743ba47fa3fb6b22","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"src-server/services/projects/workspace-file-preview-service.ts","digest":"f32a052ffbd1d0020810499089db02e675b21a5be170ed0d5c9e6de93c150f1e","revision":"9c5ea30892c77fd86eab15e7400e7cc77093c53d"},
 
     {"path":"src-server/services/projects/workspace-pane-availability-resolver.ts","digest":"2c40a6a46425aaae41c7b785062f4cf7ea31bb9e926e4098800d51314783f733","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
     {"path":"src-server/services/projects/workspace-pane-catalog.ts","digest":"d46e8e6c91c8e1e5ae10ca584759a673bdc90a8d932352348150d140b2275222","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/contexts/navigation-store.ts","digest":"da8c2eaa373faf62d8345bea73be528702c3d65160e0cbb66aefb0828f97ec63","revision":"580664464f709bc97483a6c6a1743ef654ddc400"},
+    {"path":"src-ui/src/contexts/navigation-store.ts","digest":"2486db91eb4f818fec69048dcd202c7a7ffc5a9517c2cb11fa7728197f919607","revision":"4d59eb1868139f2faeaf1a1467811c22726f741c"},
 
     {"path":"src-ui/src/regions/region-arrangement-record.ts","digest":"25978c0bf3ba1e054d216ec6f2af73b5bc16cb282049c5577f2557f36adeb37f","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -44,11 +44,11 @@
 
     {"path":"src-ui/src/workspace-panes/CodingChatPane.tsx","digest":"c257163f58fc88a9b1e882cc1a9f6b6a7457a1d12002aa507e532d141ac8a6c6","revision":"580664464f709bc97483a6c6a1743ef654ddc400"},
 
-    {"path":"src-ui/src/workspace-panes/FilePreviewPane.tsx","digest":"af191706a2c37ffafaafbe5324731553046573a8685e1d7aad67aba93cd86849","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"src-ui/src/workspace-panes/FilePreviewPane.tsx","digest":"f63ec599172b0ebd59f8ddbe588a6e0bb5812934e0adea57aa580fab46b6abf6","revision":"5d69f8f0eac14651004831e85e8053a989e2dd65"},
 
     {"path":"src-ui/src/workspace-panes/InertRenderedMarkdown.tsx","digest":"28d702eb860f567e6b006aededad7801f315a462e07ca755d8cff20e6fc87fc6","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/workspace-panes/RegionPaneHost.tsx","digest":"7aeaffe0ca0c199563ebe34302646533558871d69914b365810ced54e74f4ed4","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"src-ui/src/workspace-panes/RegionPaneHost.tsx","digest":"6bebef5e8aaae046ffc950b9539faf38e131164ea1242f9d2e9216678e12119d","revision":"8b9a7d6c2e0d013a1f163ea51d598585d8ed80d4"},
 
     {"path":"src-ui/src/workspace-panes/builtinWorkspacePaneRegistry.tsx","digest":"9cf334499d01499656f57ea5a63f7efc7465972380778ec77ff547dc74906513","revision":"79edb8d5dd98ef07de0722b0604b9ec606f2bdbf"},
 

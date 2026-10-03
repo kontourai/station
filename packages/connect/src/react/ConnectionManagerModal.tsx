@@ -3,7 +3,10 @@ import { lazy, Suspense } from 'react';
 import type { ConnectionHealthCheckResult } from '../core/ConnectionHealthCoordinator';
 import type { PendingPairingExchange } from '../core/devicePairing';
 import type { SavedConnection } from '../core/types';
-import type { ConnectionManagerPanel } from './connection-manager-modal-utils';
+import type {
+  ConnectionManagerActiveHealth,
+  ConnectionManagerPanel,
+} from './connection-manager-modal-utils';
 
 // The modal body (discovery, pairing, QR, the connection list) is the largest
 // surface this package contributes, and it is only ever mounted behind a user
@@ -29,13 +32,17 @@ export interface ConnectionManagerModalProps {
    * `ConnectionHealthCheckResult` includes `boolean`, so existing boolean
    * implementations still satisfy this.
    */
+  /** Host's live status, bound to its currently selected connection. */
+  activeHealth?: ConnectionManagerActiveHealth;
+  /** Host-owned unsaved-work decision before changing the selected Station. */
+  guardConnectionChange?: (proceed: () => void) => void;
   checkHealth: (
     url: string,
     credential?: string,
   ) => Promise<ConnectionHealthCheckResult>;
   /**
-   * Optional client/server compatibility check, run against a host before it
-   * is saved. Omit it and the add/pairing paths behave exactly as before.
+   * Verify compatibility before adding or completing pairing with a host.
+   * An omitted checker blocks those flows with an integration error.
    */
   checkCompatibility?: (
     url: string,
@@ -99,6 +106,8 @@ export function ConnectionManagerModal({
   isOpen,
   onClose,
   checkHealth,
+  activeHealth,
+  guardConnectionChange,
   checkCompatibility,
   initialPanel,
   initialPairingPayload,
@@ -123,6 +132,8 @@ export function ConnectionManagerModal({
       <ConnectionManagerModalContent
         onClose={onClose}
         checkHealth={checkHealth}
+        activeHealth={activeHealth}
+        guardConnectionChange={guardConnectionChange}
         checkCompatibility={checkCompatibility}
         initialPanel={initialPanel}
         initialPairingPayload={initialPairingPayload}

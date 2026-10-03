@@ -1,5 +1,32 @@
 import { describe, expect, test } from 'vitest';
-import { deriveToolProgressSummary } from '../utils/chat-progress';
+import {
+  deriveToolProgressSummary,
+  formatToolName,
+} from '../utils/chat-progress';
+
+describe('formatToolName', () => {
+  test('humanizes a programmatic name', () => {
+    expect(formatToolName('shell_exec')).toBe('shell exec');
+    expect(formatToolName('mcp__github__create_issue')).toBe(
+      'mcp github create issue',
+    );
+    expect(formatToolName('github/create-issue')).toBe('github/create-issue');
+    // Deliberate: a hyphenated single token is kept as written.
+    expect(formatToolName('git-lfs')).toBe('git-lfs');
+  });
+
+  test('never rewrites display text: a command line or a path is shown as written', () => {
+    for (const title of [
+      'ps -o pid,lstart -p 946878',
+      "git -c core.sshCommand='ssh -F /dev/null' fetch origin --quiet",
+      'npm run gate:for -- Dockerfile docs/user/getting-started.md',
+      'STATION_DOCS_FRESHNESS=scoped npm run docs:check',
+      'docs/user/getting-started.md',
+    ])
+      expect(formatToolName(title)).toBe(title);
+    expect(formatToolName('  echo  a\n b ')).toBe('echo a b');
+  });
+});
 
 describe('chat progress utils', () => {
   test('returns null when there is no running tool', () => {

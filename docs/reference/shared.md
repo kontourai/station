@@ -988,6 +988,12 @@ the SDK agent/client/voice entries, not every SDK subpath. A build does not inst
 authorize or activate a plugin. `--dev` in the example build file selects one
 build; it is not a watcher.
 
+Portable Agent Plugins can also declare inert visual Skill definitions. The
+author builder validates their referenced files and exact bundled Skill identity
+before bundling or returning a no-bundle result. See the
+[authoring contract](skill-experiences.md) for bounds, refusal diagnostics, and
+the separate runtime activation work.
+
 ```ts
 interface BuildResult {
   built: boolean;

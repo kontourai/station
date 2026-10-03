@@ -9,7 +9,7 @@
 
   "limits": "No native build, real device, Keychain/Keystore write, signed artifact, Linux/Windows launch, provider account mutation, publication, upgrade or rollback executed in this continuation. Fixture and source checks do not establish live outcomes. Parent owns combined CI and final ledger integration.",
 
-  "document": {"digest":"7a459f9e8b71560ce041403a37d667d004c15ae25017f2149de30a64649c569a","revision":"ec29a8774f2c138bfd9e9818c0f0cc36fc5ebefe"},
+  "document": {"digest":"90c3bf5659d765aa697f10cb23f31f820cc603d7dab885a5b5dc9b20606681be","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
 
   "sources": [
     {"path":".github/workflows/build-ios.yml","digest":"b4afee0a3cf62cd46226b9b68b648d15d00524a9d7bc27449e640fac6e3f9b73","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
@@ -20,11 +20,11 @@
 
     {"path":".github/workflows/nightly-native-stage.yml","digest":"90a8d29da6c024c539a0abc1eb35ba490791780917e174eb7023d6fb45a90030","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
 
-    {"path":".github/workflows/nightly.yml","digest":"555ac154d3eb7983e8dd5c6f3ff5f73e4f48ac6aac1800747fbbbc5ce4d36801","revision":"ec29a8774f2c138bfd9e9818c0f0cc36fc5ebefe"},
+    {"path":".github/workflows/nightly.yml","digest":"4b0cb6bcc5e169bcad830d8a56f7de030864ab0d23cfe64ce1b9880845f45592","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
 
-    {"path":".github/workflows/publish-release.yml","digest":"b1f8a7f84db1576cd6e3f7ddd499f435d66e2ea5974a68e20a4508759ac695a6","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
+    {"path":".github/workflows/publish-release.yml","digest":"8811d948692207aff9c3987ed9c5ecfd7778770dfbb76b4d80cb7773713f6fa1","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
 
-    {"path":".github/workflows/release.yml","digest":"6ceff4507c2d55bb384c36cb7fba8be4b6eaaf0f0d408ecb990398fc00996c88","revision":"12e161f7032b17c2f97702c0c41116b0c82bbb91"},
+    {"path":".github/workflows/release.yml","digest":"e9322e982c85dfb6b26188a6f6d0bc596f1f384e949bc50a59fe07d552e3c8f2","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
 
     {"path":".github/workflows/testflight-delivery.yml","digest":"b65be60d29e76e922b07ed19bd89576ef1cac76e20712dd28d140c72d36012bb","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
 
@@ -64,7 +64,7 @@
 
     {"path":"scripts/__tests__/release-cohort.test.ts","digest":"d0d2ebf265d7d9e890dd29378c4b50942a4bd43e6c2e5ff5e894bf99c7ad0aa3","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"scripts/__tests__/release-workflow.test.ts","digest":"bae8939a7bc0134f682c457adfc56796419b6fbc8537e1b083be357af19b8fce","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"scripts/__tests__/release-workflow.test.ts","digest":"2b899fdd5b06966e07e391e65cec71bb78696228febfea25e9c41f3d5c455b02","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
 
     {"path":"scripts/__tests__/verify-release-cohort.test.ts","digest":"d4fa543fe60e8e708c7a926ab704ff70335870489952ce71525fc843541ae213","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
@@ -92,7 +92,7 @@
 
     {"path":"scripts/lib/native-release-config.mjs","digest":"e26ea6f37e258847dbd060dc54f881a70b62bd054d36f613c93147b16a135d67","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"scripts/lib/portable-server-archive.mjs","digest":"1961344a0a37b270a1bf8a97d3793fc8e5d6aba7d55614c09c55cf3208688f21","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"scripts/lib/portable-server-archive.mjs","digest":"5f03affc9ae69b585e7b6395f7ae42f73b678ed9571737d7e18dbd6904da154d","revision":"614c216de6de9d4c06ef56963853ccff52f2f685"},
 
     {"path":"scripts/lib/portable-smoke-diagnostics.mjs","digest":"3b176f0e3239428ab7e98b029126eec214165ddd857b85d4fcf970cb406799ba","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
@@ -122,7 +122,7 @@
 
     {"path":"src-desktop/Cargo.lock","digest":"38624df3105a4d464e085d4034e32a78e7fe867334cfac2006d6d8b73a31fc4b","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-desktop/src/lib.rs","digest":"8c75f82874099575e30e4b757be90a2ba22bbd8d2623813566b5b3f139124833","revision":"3517d8f66db867fd982a8f9883ed85052c4e1fc1"},
+    {"path":"src-desktop/src/lib.rs","digest":"ad3b52011a9be6e6a18133b2367c04d0a6245907e5b7e13fa324bcd8b5255557","revision":"464d602fb7fb5fa9bd0df9d241dc03495b398b96"},
 
     {"path":"src-desktop/tauri.linux-appimage.conf.json","digest":"c590f935a579a9cf6c14a6110587a7fb223b5c91e6def12c9d13e2082186a8ab","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 

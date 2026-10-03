@@ -45,6 +45,24 @@
       "maxItems": 32,
       "items": { "$ref": "#/$defs/command" }
     },
+    "experiences": {
+      "type": "array",
+      "maxItems": 32,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["version", "id", "source"],
+        "properties": {
+          "version": { "const": "1.0" },
+          "id": { "$ref": "#/$defs/id" },
+          "source": {
+            "type": "string",
+            "maxLength": 256,
+            "pattern": "^\\./io\\.kontourai\\.station/experiences/[a-z0-9][a-z0-9-]*\\.json$"
+          }
+        }
+      }
+    },
     "links": {},
     "agents": {
       "type": "array",

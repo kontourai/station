@@ -14,7 +14,7 @@
   "sources": [
     {"path":"docs/reference/config.md","digest":"f27eb8c8776abdf47715715a6f4681a1a8b988ea64dafc3bd2a928663371cad9","revision":"1eedcca663f35646df4414881a0a63ae9dfbeee1"},
 
-    {"path":"docs/reference/settings-deep-links.md","digest":"779b71ebb7067137aefa613e0df89a8d3665369aca2520e6076dd28c9083b594","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+    {"path":"docs/reference/settings-deep-links.md","digest":"9c41fe48ae34d551ffe7c2832f9b8a8af704887abb825db3415bad23d8dfdda2","revision":"e56b7b6bf847135adcce152d99112d104542d029"},
 
     {"path":"packages/cli/src/commands/config.ts","digest":"c1bfda2c2163a25eb8893ee6bb2417d3949059da5b027f39b5ecd82e12d86b5d","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
 
@@ -34,7 +34,7 @@
 
     {"path":"src-ui/src/lib/device-settings-store.ts","digest":"2c9c1dfb7259dbe56a3c101aba0c370c481516a6e0b67a666655a518d2a90fd7","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
 
-    {"path":"src-ui/src/views/SettingsView.tsx","digest":"4324cbcd6cca335a2beaed8df7d1abe24f497ab8325a51ae0542197a3f5ca988","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+    {"path":"src-ui/src/views/SettingsView.tsx","digest":"2f09efa4ae7974700bdbe901a4492a34329aafb2b1fa97a98f28edd3c8645167","revision":"f0f20e6125e5e41bbb691d806ea3cf866ac15769"},
 
     {"path":"src-ui/src/views/settings/settings-catalog.ts","digest":"4475cb7b7e9405bfa3568d7bfb700f1dcbbc75e3eaaed6b5529dab6aab5bc856","revision":"fcd4407178cb5509ea47a958714603034fe20004"}
   ],

@@ -211,7 +211,7 @@ function openLinkLabel(kind: AttentionItem['kind']): string {
     case 'gate-exception':
       return 'Open flow console';
     case 'device-pairing':
-      return 'Open connections';
+      return 'Review device request';
     // #1536 D8: the requirement's route out, not a session.
     case 'setup-incomplete':
       return 'Open model connections';

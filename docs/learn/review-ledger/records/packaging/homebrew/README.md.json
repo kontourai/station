@@ -20,7 +20,7 @@
 
     {"path":"packaging/homebrew/Casks/station.rb.template","digest":"1fdb94c39e1c2e432de9da4e4090551445aa3bf69274f4e6dce9e93aa1cf7837","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"packaging/manifest/README.md","digest":"7922c9b16e0c0c9174a54e992ac9533e83c04c473f46ea274ca1c553da4f049b","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"packaging/manifest/README.md","digest":"54b625415596f5a8347a9b98caa705978def18f23ad22d69da3a27e12f641047","revision":"614c216de6de9d4c06ef56963853ccff52f2f685"},
 
     {"path":"scripts/ecosystem-manifest.mjs","digest":"00924f84cf27a5683761b6511fb017b7013c8eeaaecdac8637901faf7efaeff8","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 

@@ -12,11 +12,11 @@
   "document": {"digest":"b57c8e11f45a7a52030614f2ef963a169b8b7be5b4e004becd5a8f483075ff06","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
   "sources": [
-    {"path":"docs/reference/sdk.md","digest":"fc1f55514f1f57f93d50697bef15662b2211c64769c3f7f95081a3d2f3d433e1","revision":"15ccffed2afec7906d7bf4a853335f3be3a6293b"},
+    {"path":"docs/reference/sdk.md","digest":"c9f5ce66e2db6b8a170166ea4d5bf74a901aebe507a5d559c429ffb0a0d39148","revision":"9bb90045b7aeb926e7003b27fc4fd62252638524"},
 
     {"path":"packages/sdk/package.json","digest":"31286b6e99fa502f8eb1bf6c744a4a34041d21bf6e0e0e5d22f27f2771dc5c06","revision":"18ae5d5640f6a47eb953b72f1d0a55b06a137677"},
 
-    {"path":"packages/sdk/src/query-core.ts","digest":"fd13ab3d8f8f7e9cfb224fdc47baea62682389194ffcfcf7d038934bf299ae9b","revision":"df950bd9f41b1227b3de566dbf5e396aa8bf3a2a"}
+    {"path":"packages/sdk/src/query-core.ts","digest":"f61dfd3363e3afe8bcf0ca97330e4e799e44aeb0d1348a212a117d1f755873e9","revision":"9bb90045b7aeb926e7003b27fc4fd62252638524"}
   ],
 
   "checks": [

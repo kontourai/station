@@ -63,9 +63,13 @@ import {
   useDeviceSettings,
   useDeviceSettingsActions,
 } from './DeviceSettingsContext';
+import { mainPageOf, stampMainPage } from './main-page-history';
 import { useNavigation } from './NavigationContext';
-import { navigationStore } from './navigation-store';
-import { clearSurfaceDeepLinkParams } from './surface-deep-link';
+import { navigationEntryIndex, navigationStore } from './navigation-store';
+import {
+  clearSurfaceDeepLinkParams,
+  parseSurfaceDeepLink,
+} from './surface-deep-link';
 
 export interface SurfaceIntent {
   session?: string;
@@ -361,6 +365,53 @@ function navigateToMainOutlet() {
   if (window.location.pathname !== '/') navigationStore.navigate('/');
 }
 
+/** `main`'s occupant by name; an empty `main` is Home's. */
+function mainPage(arrangement: RegionArrangement): string {
+  return arrangement.main.occupant ?? 'home';
+}
+
+/**
+ * A page landed in `main`. From another route that is a navigation to `/`,
+ * one entry as before. AT `/` a different page gets an entry of its own, so
+ * Back returns to the page it replaced (#2986): the entry being left keeps
+ * the stamp of what it showed, and the store pushes a same-URL entry — a real
+ * navigation entry with its own index, so a guarded traversal across it
+ * restores to the right place — which is then stamped with the new page.
+ */
+function enterMainOutlet(previous: string, next: string) {
+  // A surface deep link being adopted (`/?surface=…`) is its own entry: the
+  // adoption clears the command from the LIVE entry afterwards, so a pushed
+  // entry would leave the command on the one beneath, and Back onto that
+  // would run it again.
+  const adoptingLink =
+    parseSurfaceDeepLink(new URLSearchParams(window.location.search)) !== null;
+  if (window.location.pathname === '/' && previous !== next && !adoptingLink) {
+    stampMainPage(previous);
+    navigationStore.navigate('/');
+    stampMainPage(next);
+    return;
+  }
+  navigateToMainOutlet();
+}
+
+/**
+ * A page opened in `main` has to be SEEN, on every device: a maximized dock
+ * hides the route outlet — the whole viewport on a phone
+ * (`isMobileDockFullscreenState`), and on a desktop a maximized side region
+ * hides `.main-content` while a maximized bottom region takes its row
+ * (index.css). The dock is restored, not closed — it stays where the reader
+ * left it, beside or below the page.
+ */
+function restoreMaximizedDocks(arrangement: RegionArrangement): {
+  arrangement: RegionArrangement;
+  restored: boolean;
+} {
+  let next = arrangement;
+  for (const id of DOCK_REGION_IDS)
+    if (next[id].maximized) next = updateRegion(next, id, { maximized: false });
+  return { arrangement: next, restored: next !== arrangement };
+}
+
 /**
  * Trailing-edge coalescing window for the `regionArrangement` write (#928 D).
  * A drag resolves to one `setRegion` today, but a toggle-and-place burst is
@@ -480,6 +531,7 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
     isDockOpen,
     isDockMaximized,
     dockMode,
+    pathname,
     surfaceIntent,
     setDockMode,
     setDockState,
@@ -616,33 +668,24 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
    */
   const commit = useCallback(
     (arrangement: RegionArrangement, region: RegionId) => {
-      let next = arrangement;
-      // A page opened in `main` has to be SEEN, on every device: a maximized
-      // dock hides the route outlet — the whole viewport on a phone
-      // (`isMobileDockFullscreenState`), and on a desktop a maximized side
-      // region hides `.main-content` while a maximized bottom region takes
-      // its row (index.css). Without this the Activity or Home row would
-      // change `main` behind the dock and nothing on screen would move. The
-      // dock is restored, not closed — it stays where the reader left it,
-      // beside or below the page.
-      let unmaximized = false;
-      if (region === 'main')
-        for (const id of DOCK_REGION_IDS)
-          if (next[id].maximized) {
-            next = updateRegion(next, id, { maximized: false });
-            unmaximized = true;
-          }
+      const previousPage = mainPage(regionsRef.current);
+      // Without the restore the Activity or Home row would change `main`
+      // behind a maximized dock and nothing on screen would move.
+      const { arrangement: next, restored } =
+        region === 'main'
+          ? restoreMaximizedDocks(arrangement)
+          : { arrangement, restored: false };
       // That restore is the system's, not the reader's: navigation's
       // maximize MEMORY (`lastDockMaximized`, what `focusSession` reopens
       // Chat with) is put back after the mirror writes the restore, the same
       // way a phone layer's exit does. A layer restore that already queued
       // its own memory keeps it.
-      if (unmaximized && pendingDockMemoryRef.current === null)
+      if (restored && pendingDockMemoryRef.current === null)
         pendingDockMemoryRef.current = navigationStore.lastDockMaximized;
       regionsRef.current = next;
       setLastShownRegion(region);
       setRegions(next);
-      if (region === 'main') navigateToMainOutlet();
+      if (region === 'main') enterMainOutlet(previousPage, mainPage(next));
     },
     [],
   );
@@ -654,18 +697,84 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
     // An explicit placement is the user's own: any dock region remembered
     // for a `main` page return is superseded by it.
     mainOriginRef.current.delete(surfaceId);
-    const next = placeSurfaceInArrangement(
+    const previousPage = mainPage(regionsRef.current);
+    let next = placeSurfaceInArrangement(
       regionsRef.current,
       surfaceId,
       regionId,
     );
+    // A tab's Move to Main and the Layout picker land here, not in `commit`:
+    // the moved pane is as hidden behind a maximized dock as an opened page
+    // would be (#2988), and the reader's maximize memory is kept the same way.
+    if (regionId === 'main') {
+      const shown = restoreMaximizedDocks(next);
+      next = shown.arrangement;
+      if (shown.restored && pendingDockMemoryRef.current === null)
+        pendingDockMemoryRef.current = navigationStore.lastDockMaximized;
+    }
     if (next !== regionsRef.current) {
       regionsRef.current = next;
       setLastShownRegion(regionId);
       setRegions(next);
     }
-    if (regionId === 'main') navigateToMainOutlet();
+    if (regionId === 'main') enterMainOutlet(previousPage, mainPage(next));
   }, []);
+
+  // Back and Forward over `/` entries (#2986): a traversal onto an entry
+  // stamped with the page `main` showed puts that page back. No entry is
+  // written here: the traversal already chose one.
+  //
+  // Three traversals are not that. The store's own notifications dispatch a
+  // bare `popstate` (no state). A guarded traversal lands first on an entry
+  // the reader has not been admitted to and is travelled straight back
+  // (`traversalAwaitsGuard`). And a same-URL layer — a dialog's Back marker —
+  // copies the state it was pushed on, stamp included, so closing it lands on
+  // the entry beneath: the same navigation entry, whose stamp may be older
+  // than a change made while the layer was open. That one is brought up to
+  // date instead of obeyed. (The store's listener is registered at module
+  // load, so it has run by the time this one reads from it.)
+  useEffect(() => {
+    const restoreMainPage = (event: PopStateEvent) => {
+      if (event.state === null || navigationStore.traversalAwaitsGuard) return;
+      const page = mainPageOf(event.state);
+      if (!page || window.location.pathname !== '/') return;
+      const current = regionsRef.current;
+      if (
+        navigationEntryIndex(event.state) ===
+        navigationStore.traversalDepartedIndex
+      ) {
+        stampMainPage(mainPage(current));
+        return;
+      }
+      if (mainPage(current) === page || !surfaceMayOccupy(page, 'main')) return;
+      const next = placeSurfaceInArrangement(current, page, 'main');
+      if (next === current) return;
+      regionsRef.current = next;
+      setLastShownRegion('main');
+      setRegions(next);
+    };
+    window.addEventListener('popstate', restoreMainPage);
+    return () => window.removeEventListener('popstate', restoreMainPage);
+  }, []);
+
+  // Keep the live `/` entry's stamp true. A change of occupant that is not a
+  // page open (the chord returning Activity to its dock, a tab moved out of
+  // `main`) rewrites it — which includes the mount: after a reload the
+  // arrangement is what is on screen, and the entry says so. Arriving at `/`
+  // on an entry that has no stamp — the first load, a link — gives it one;
+  // an arrival on a stamped entry is the traversal's above, which may not
+  // have applied it yet.
+  const currentMainPage = mainPage(regions);
+  const atMainOutlet = pathname === '/';
+  // biome-ignore lint/correctness/useExhaustiveDependencies: arriving at `/` stamps only an entry that has no stamp; the occupant effect below owns changes.
+  useEffect(() => {
+    if (atMainOutlet && mainPageOf(window.history.state) === undefined)
+      stampMainPage(currentMainPage);
+  }, [atMainOutlet]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a change of occupant restamps; arriving at `/` is the effect above.
+  useEffect(() => {
+    if (atMainOutlet) stampMainPage(currentMainPage);
+  }, [currentMainPage]);
 
   const selectPane = useCallback((regionId: RegionId, surfaceId: string) => {
     const next = selectRegionPane(regionsRef.current, regionId, surfaceId);

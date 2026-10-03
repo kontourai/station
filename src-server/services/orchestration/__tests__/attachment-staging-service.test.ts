@@ -13,6 +13,34 @@ const ownerA = { principalId: 'human:local:operator' };
 const ownerB = { principalId: 'human:local:other' };
 
 describe('AttachmentStagingService', () => {
+  // A send the engine refused before any effect (attachment_input_unsupported)
+  // left its stages bound to that turn, so the restored chips were refused as
+  // "bound to another turn" on any resend elsewhere.
+  test('a released refused binding lets the same stages bind to a new turn', () => {
+    const service = new AttachmentStagingService(() => 1_000);
+    const prepared = service.prepare(ownerA, descriptor);
+    const reference = service.upload(
+      prepared.stageId,
+      prepared.uploadGrant,
+      DATA,
+    );
+    const refused = { threadId: 'thread-grok', clientTurnId: 'turn-refused' };
+    service.bindAndHydrate(ownerA, [reference], refused);
+    const resend = { threadId: 'thread-other', clientTurnId: 'turn-2' };
+    expect(() => service.bindAndHydrate(ownerA, [reference], resend)).toThrow(
+      /already bound to another turn/,
+    );
+    // Another owner cannot release it.
+    service.releaseBinding(ownerB, [reference], refused);
+    expect(() => service.bindAndHydrate(ownerA, [reference], resend)).toThrow(
+      /already bound to another turn/,
+    );
+    service.releaseBinding(ownerA, [reference], refused);
+    expect(service.bindAndHydrate(ownerA, [reference], resend)).toEqual([
+      { ...descriptor, dataUrl: DATA },
+    ]);
+  });
+
   test('keeps grants and bytes out of the reconnect projection while hydrating JIT', () => {
     const service = new AttachmentStagingService(() => 1_000);
     const prepared = service.prepare(ownerA, descriptor);
