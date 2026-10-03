@@ -9,7 +9,7 @@
 
   "limits": "Source and bounded fixtures/in-memory exporter probes do not establish real collector export, historical timing reproduction, complete billing or production reliability. Named recording families are reviewed; the generated catalog lists declarations only.",
 
-  "document": {"digest":"2fa3e64bde00d3945331074e6dfe02358eb1aec88fa342ae662a9c718ad757e4","revision":"508065f5e3732043063471fc4080cb22d8439a09"},
+  "document": {"digest":"b015e5cd44b250ca16a49aaae95721d5529325200b70d1ff32056c515c0fd06c","revision":"a11755821186eaeb034b77e970dfa372c5c7f789"},
 
   "sources": [
     {"path":"pnpm-lock.yaml","digest":"29dbdce300fcd3d881ae511317af478da6e9c098a8e8cf51c6b2269a937525df","revision":"df9188971e1a93d2c5525a7f5f38e3da93c9e4de"},
@@ -46,11 +46,11 @@
 
     {"path":"src-shared/monitoring-keys.ts","digest":"1c2939ae04a2df7205ff75d2e16531e200199b7b785c672b1820a06a0a736f25","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
-    {"path":"src-ui/src/pages/ProfilePage.tsx","digest":"e3b9d809e87f4c7d492af5d4278b2fa4be7ca3774632dbd5d896f16d0dcd3dad","revision":"35ed35c0afcb53f5918d40ebd6a761ba44ec37c3"},
+    {"path":"src-ui/src/pages/ProfilePage.tsx","digest":"1619fbb8aea95d9164f3ebf68177f459b42f117ae78193fefe85687813011440","revision":"a11755821186eaeb034b77e970dfa372c5c7f789"},
 
     {"path":"src-ui/src/components/profile/StationPeoplePanel.tsx","digest":"fabd9d689d4c0ac5ceea07eb3af030081345948281c3d22ae4213aba0f1f7035","revision":"9bb90045b7aeb926e7003b27fc4fd62252638524"},
 
-    {"path":"src-ui/src/components/usage-stats/UsageRollupPanel.tsx","digest":"1fbeee4b6256d3ebff73fc15a9ab0cd3c2f0d4768571b82e1050bf09111c9704","revision":"5e6fbfedca2315119d1d20a7829252899c52c15a"},
+    {"path":"src-ui/src/components/usage-stats/UsageRollupPanel.tsx","digest":"62b11185d355abd84592d6e1a3e882897d7cba03097572184c93df6f2e70bbc8","revision":"a11755821186eaeb034b77e970dfa372c5c7f789"},
 
     {"path":"src-ui/src/components/usage-stats/UsageStatsPanel.tsx","digest":"5d90c8796da6af36a1f0c4ff481d75c11893c80e19f9b53d40abdfe1f1614568","revision":"5e6fbfedca2315119d1d20a7829252899c52c15a"},
 
@@ -60,9 +60,9 @@
 
     {"path":"packages/sdk/src/query-domains/devicePairingRequests.ts","digest":"be679fb0964921f7a7e7ec77433cd198f89772b8c1e13450e4fc39204dbdd4a3","revision":"9bb90045b7aeb926e7003b27fc4fd62252638524"},
 
-    {"path":"src-server/analytics/usage-aggregator.ts","digest":"7f67a063a1e9c811b19f83af0cb31f76a3a835f7e759fb24eee5cdf95fa915f3","revision":"508065f5e3732043063471fc4080cb22d8439a09"},
+    {"path":"src-server/analytics/usage-aggregator.ts","digest":"a8088a0a903e7d1996a569f147c5f468c197458886e2799f0a145775007556ff","revision":"231bd56ebc8379877a169db1822e3fbff10c9787"},
 
-    {"path":"src-server/analytics/usage-aggregator-state.ts","digest":"1d970d1cd0ad7f5d5c8d29d4b6ed1f238743c8ae5eb57bc95529225864ddf154","revision":"35ed35c0afcb53f5918d40ebd6a761ba44ec37c3"},
+    {"path":"src-server/analytics/usage-aggregator-state.ts","digest":"eafbfa911453fec372d124ae9072826f16a57864055e2a262f45ec3312b0e659","revision":"a11755821186eaeb034b77e970dfa372c5c7f789"},
 
     {"path":"packages/shared/src/usage-fold.ts","digest":"1a5a80b7af3c26970acd6e33da1a530565a0db0716445b2345ca581b9fe4c57f","revision":"5e6fbfedca2315119d1d20a7829252899c52c15a"},
 
