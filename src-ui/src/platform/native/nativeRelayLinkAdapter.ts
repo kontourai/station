@@ -131,10 +131,6 @@ function delivery(
   };
 }
 
-export async function cancelNativeRelayLink(pendingId: string): Promise<void> {
-  await invokeTauri('station_native_relay_link_cancel', { pendingId });
-}
-
 /** Register before launch drain; late launch results cannot replace a newer event. */
 export async function subscribeNativeRelayLinks(
   receive: (value: NativeRelayLinkDelivery) => void,

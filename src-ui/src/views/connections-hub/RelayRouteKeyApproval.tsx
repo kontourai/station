@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useId, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
-import { cancelNativeRelayLink } from '../../platform/native/nativeRelayLinkAdapter';
+import { cancelNativeRelayLink } from '../../platform/native/nativeRelayLinkCancellation';
 import { publishNativeRelaySetupChange } from '../../platform/native/nativeRelaySetupState';
 import {
   nativeRelayKeyApproval,

@@ -1103,6 +1103,43 @@ it.each([
     expect(host.store?.profiles).toHaveLength(0);
   },
 );
+it.each([30 * 24 * 60 * 60_000, Number.MAX_SAFE_INTEGER])(
+  'does not cancel a long-lived invitation early when its expiry exceeds the browser timer range: %s',
+  async (lifetime) => {
+    vi.useFakeTimers({
+      shouldAdvanceTime: true,
+      toFake: ['Date', 'setTimeout', 'clearTimeout'],
+    });
+    const { bound } = await configureBoundFlow(true);
+    host.launch = {
+      ...bound,
+      invitation: {
+        ...bound.invitation,
+        expiresAt:
+          lifetime === Number.MAX_SAFE_INTEGER
+            ? lifetime
+            : Date.now() + lifetime,
+      },
+    };
+    render(
+      <NativeRelayLinkIntake>
+        <ProtectedRoot />
+      </NativeRelayLinkIntake>,
+    );
+    await screen.findByRole('button', { name: 'Continue to device approval' });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
+    });
+    expect(
+      screen.getByRole('button', { name: 'Continue to device approval' }),
+    ).toBeDefined();
+    expect(
+      host.invoke.mock.calls.some(
+        ([command]) => command === 'station_native_relay_link_cancel',
+      ),
+    ).toBe(false);
+  },
+);
 it('bound invitation expiry cancels its opaque host handle and replaces all actionable review controls', async () => {
   host.launch = {
     kind: 'bound-invitation',
