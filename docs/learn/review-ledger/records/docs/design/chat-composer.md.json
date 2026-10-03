@@ -38,9 +38,9 @@
 
     {"path":"tests/cross-runtime-chat-switching.spec.ts","digest":"0aeb646fe962c41108316c65360c405268ea7061ea2504e7441b51a0a9bd2878","revision":"8fd71c3714eceeb651bd8e52f200aa1532fa33c6"},
 
-    {"path":"src-ui/src/components/chat-dock/ChatDock.tsx","digest":"ea96d9b1e01df4219ee45a05f4b894bf7db7dc7f55ade3d3fcd063c6ecfb88a5","revision":"bc542083c3919bc80d36e5e165dc6da009c6ac05"},
+    {"path":"src-ui/src/components/chat-dock/ChatDock.tsx","digest":"9f356ba5e9df44c171bf5bd3240261d705f7322d28e98b55f79fa0e842147c0d","revision":"cbc2079af1af80cab8189da6ac6e7ac477aceb60"},
 
-    {"path":"src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx","digest":"66f0394440649ebf2fd68d1292cd7e009ca0a449d85681a2ee1d36a0d192e107","revision":"b14f1b80ec27c38844b3d16e8a4bdfe624a778c9"},
+    {"path":"src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx","digest":"c58fc01a0999195552d407d751dbfdf0b7104c2c59955a84e7729f41a5eaabb6","revision":"cbc2079af1af80cab8189da6ac6e7ac477aceb60"},
 
     {"path":"src-ui/src/components/chat-dock/ChatDockInboxRows.tsx","digest":"0850b9f30797c40cbc19c8817bf574d046065a600163d1925d50fbcc4d4c0c2c","revision":"b14f1b80ec27c38844b3d16e8a4bdfe624a778c9"},
 
