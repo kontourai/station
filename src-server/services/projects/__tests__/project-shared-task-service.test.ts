@@ -2,6 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import type { ProjectMembershipScope } from '@kontourai/station-contracts/project-membership';
 import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
 import { describe, expect, test, vi } from 'vitest';
+import { ProjectMembershipRefusal } from '../project-membership-store.js';
 import { ProjectSharedTaskService } from '../project-shared-task-service.js';
 import {
   ProjectSharedTaskRefusal,
@@ -140,6 +141,43 @@ describe('ProjectSharedTaskService', () => {
         task: { id: 'task-1', createdAt: task().createdAt },
       }),
     ).rejects.toMatchObject({ code: 'conflict' });
+    h.db.close();
+  });
+  test('member publication shows only a current share and re-checks like an operator read', async () => {
+    const h = fixture();
+    h.authority.operator.mockImplementation(async () => {
+      h.callbacks.push('operator');
+      throw new ProjectMembershipRefusal('forbidden');
+    });
+    await expect(
+      h.service.publication(scope, 'task-1', h.authority),
+    ).rejects.toMatchObject({ code: 'not-found' });
+    h.store.share({
+      scope,
+      taskId: 'task-1',
+      taskCreatedAt: task().createdAt,
+      sharedBy: 'human:owner',
+    });
+    h.callbacks.length = 0;
+    const listed = await h.service.list(scope, h.authority);
+    await expect(
+      h.service.publication(scope, 'task-1', h.authority),
+    ).resolves.toEqual({ kind: 'shared', publication: listed[0] });
+    expect(h.callbacks.slice(2)).toEqual([
+      'current',
+      'operator',
+      'read',
+      'current',
+      'read',
+    ]);
+    h.db.close();
+  });
+  test('an operator check that fails for another reason never downgrades to a member read', async () => {
+    const h = fixture();
+    h.authority.operator.mockRejectedValue(new Error('authority unavailable'));
+    await expect(
+      h.service.publication(scope, 'task-1', h.authority),
+    ).rejects.toThrow('authority unavailable');
     h.db.close();
   });
   test('unshare and reshare rotates share incarnation so an in-flight admission stays revoked', async () => {
