@@ -7,14 +7,14 @@
 
   "summary": "Retained native implementation separated from removed launch/pairing UI; actual Add computer path creates server-owned SSH environment, while saved-forward rows retain status and SHA warning behavior.",
 
-  "limits": "No native build, live SSH/remote Git/install/pairing/reconnect or dispatch qualification. Source absence search cannot prove all future dynamic callers; historical end-to-end acceptance is not currently mounted.",
+  "limits": "No native build, live SSH/remote Git/install/pairing/reconnect or dispatch qualification. Source absence search cannot prove all future dynamic callers; historical end-to-end acceptance is not currently mounted.\n\nMerge anchor history (structural reconciliation only; no semantic approval): source src-desktop/src/lib.rs ours={\"digest\":\"57a47dd3656d47a5c43eaf4001895942d350d61b6de896fa4d1d3da498bfd821\",\"revision\":\"d5e4502434838cc29b63091ae689474d6488cfe4\"}; origin/main={\"digest\":\"ad3b52011a9be6e6a18133b2367c04d0a6245907e5b7e13fa324bcd8b5255557\",\"revision\":\"464d602fb7fb5fa9bd0df9d241dc03495b398b96\"}. The merged source bytes require supported review after the merge commit.",
 
   "document": {"digest":"2590a6e3c1723f7c66b04ce9333756755f25750762b271480dcffe17d1d04b69","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
   "sources": [
-    {"path":"packages/connect/src/core/types.ts","digest":"1e4b1904628f0f00a704c81c4f7cd8c4f26c8988b99aa7aabb833e4d9f89dc81","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    {"path":"packages/connect/src/core/types.ts","digest":"1a69c7971eda8664c5bdbd272d474dde9e9bd46f191fc319b08f008cf6e35675","revision":"2fd15755236ce5a8c62318e4047d67fdcc200463"},
 
-    {"path":"src-desktop/src/lib.rs","digest":"ad3b52011a9be6e6a18133b2367c04d0a6245907e5b7e13fa324bcd8b5255557","revision":"464d602fb7fb5fa9bd0df9d241dc03495b398b96"},
+    {"path":"src-desktop/src/lib.rs","digest":"87107637c2b0c4d1c470664c3ae3d5b4f1f377777f561ea2c25bd63df8cf2cd6","revision":"a516c638f82e312fe84fe7f8dd8cd5094b2567a5"},
 
     {"path":"src-desktop/src/ssh_launcher.rs","digest":"b687664310160032657179ad40dfff3ccac0cfa6d8735bcc9dc712d237f1457a","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
