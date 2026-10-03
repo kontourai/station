@@ -1245,10 +1245,9 @@ export interface FullAccessRevocationReport {
       | 'station-default';
   }[];
   /**
-   * Conversations with a session this device's grant had unconfined, which
-   * run confined (`workspace`) from their next turn: a decision stands, so
-   * each turn re-applies its mode under the confinement the grant no longer
-   * lifts; or the engine is not running, so its next start is confined.
+   * Conversations with a session this device's grant had unconfined and no
+   * engine of it running: each runs confined (`workspace`) from its next
+   * start.
    */
   readonly reconfined: readonly {
     readonly conversationId: string;
@@ -1256,10 +1255,17 @@ export interface FullAccessRevocationReport {
     readonly sessionId?: string;
   }[];
   /**
-   * The same kind of session, still unconfined: its engine is running with
-   * no decision standing, so it keeps the posture it started with until it
-   * restarts (`engine-restart`); or this Station does not check the grant
-   * at each turn (`grant-not-checked`).
+   * The same kind of session, still unconfined:
+   * - `next-turn` (#2898): its engine is running. A turn already running
+   *   finishes at the posture it started with; the session's next turn runs
+   *   confined, whether or not a decision stands. One entry per running
+   *   session, whose `sessionId` is that session, so a client can stop it
+   *   at once (`stopSession`).
+   * - `grant-not-checked`: this Station does not check the grant at each
+   *   turn.
+   * - `engine-restart`: sent only by Stations from before #2898, where a
+   *   running engine with no decision standing kept its start posture until
+   *   it restarted. Clients still read it from those Stations.
    */
   readonly stillUnconfined: readonly {
     readonly conversationId: string;
@@ -1267,7 +1273,7 @@ export interface FullAccessRevocationReport {
     readonly title?: string;
     /** A session of it, to open it by (the Activity deep link). */
     readonly sessionId?: string;
-    readonly until: 'engine-restart' | 'grant-not-checked';
+    readonly until: 'next-turn' | 'grant-not-checked' | 'engine-restart';
   }[];
   /**
    * Live sessions running unconfined (`host`) whose start recorded no

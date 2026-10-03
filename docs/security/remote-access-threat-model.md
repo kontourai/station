@@ -335,8 +335,10 @@ the operator. Attribution is exact, from the server-derived actor on the
 decision or beside the start's `host` stamp. The sessions its grant unconfined
 run confined again, because the stamp is checked against the grant at every
 turn start and respawn. A running turn finishes; the next one is confined and
-asks. The exception is a running engine with no decision standing: it keeps
-its start posture until it restarts, and it is listed. Full access from the
+asks. With no decision standing, the confinement change itself makes the next
+turn re-apply the engine's mode confined (#2898), so no engine keeps its start
+posture past its next turn. Each session still running is listed until then,
+and the operator can stop it at once from the revocation notice. Full access from the
 operator, another device, or an Agent or Station default on someone else's
 session is listed and left alone. So are live sessions started before
 grantors were recorded (at most 50, with the total).

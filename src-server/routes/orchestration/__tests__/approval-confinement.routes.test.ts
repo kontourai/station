@@ -1559,8 +1559,8 @@ describe('#1796 G3: revoking a device resets the full access it granted', () => 
       cause: 'scope-removed',
       reset: [{ conversationId, was: 'never' }],
       stillFullAccess: [],
-      reconfined: [{ conversationId }],
-      stillUnconfined: [],
+      reconfined: [],
+      stillUnconfined: [{ conversationId, until: 'next-turn' }],
       unattributedHostStarts: NONE_UNATTRIBUTED,
     });
     // History kept: the device's never, then the operator's Ask.
@@ -1606,8 +1606,8 @@ describe('#1796 G3: revoking a device resets the full access it granted', () => 
       cause: 'device-revoked',
       reset: [{ conversationId, was: 'host-start' }],
       stillFullAccess: [],
-      reconfined: [{ conversationId }],
-      stillUnconfined: [],
+      reconfined: [],
+      stillUnconfined: [{ conversationId, until: 'next-turn' }],
       unattributedHostStarts: NONE_UNATTRIBUTED,
     });
     expect(await nextTurn(f, threadId)).toMatchObject({
@@ -1686,7 +1686,84 @@ describe('#1796 G3: revoking a device resets the full access it granted', () => 
     });
   });
 
-  test('a running session the device started, at never only by its Agent default, is not reset: listed unconfined until it restarts, and restarts confined', async () => {
+  /**
+   * #2898 (owner decision 2026-09-27): a running engine whose full access
+   * came only from its Agent's default has no decision to re-apply, and an
+   * ordinary turn carries no posture (#2144 slice 6). The confinement change
+   * is the exception: the next turn re-applies the mode the engine runs,
+   * under `workspace`. Claude takes it as a permission mode (`auto`, since
+   * it cannot run `never` confined); Codex keeps `never`, which its adapter
+   * sends as the `workspace-write` sandbox (codex-adapter.test.ts, "never is
+   * never full access for a workspace session").
+   */
+  test.each([
+    ['claude-agent', 'auto'],
+    ['codex-agent', 'never'],
+  ] as const)(
+    'a running %s session the device started, at never only by its Agent default, is not reset: listed unconfined until its next turn, which runs confined',
+    async (agent, confinedMode) => {
+      const f = await fixture({ agents: { [agent]: 'never' } });
+      const engine = engineFor(f, agent);
+      engine.completeTurns = true;
+      const laptop = f.pair('Laptop', true);
+      const { conversationId } = await f.chat(
+        f.bearer(laptop.credential),
+        agent,
+      );
+      const threadId = engine.starts.at(-1)!.threadId;
+      expect(lastStart(f, agent)).toMatchObject({
+        confinement: 'host',
+        approvalMode: 'never',
+      });
+      // An ordinary turn before the revocation carries no posture (#2144
+      // slice 6), so the exception below is the confinement change alone.
+      await f.service.dispatch({
+        type: 'sendTurn',
+        input: { threadId, input: 'before' },
+      });
+      expect(engine.turns.at(-1)?.confinement).toBe('host');
+      expect(engine.turns.at(-1)?.modelOptions?.approvalMode).toBeUndefined();
+
+      const removed = await removeFullAccess(f, laptop.device.id);
+
+      expect(bare(removed.body.fullAccessRevocation)).toEqual({
+        cause: 'scope-removed',
+        reset: [],
+        stillFullAccess: [],
+        reconfined: [],
+        stillUnconfined: [{ conversationId, until: 'next-turn' }],
+        unattributedHostStarts: NONE_UNATTRIBUTED,
+      });
+      // The entry names the running session, the one "Stop now" stops.
+      expect(
+        removed.body.fullAccessRevocation.stillUnconfined[0].sessionId,
+      ).toBe(threadId);
+      expect(decisions(f, threadId)).toEqual([]);
+      const startsBefore = engine.starts.length;
+      await f.service.dispatch({
+        type: 'sendTurn',
+        input: { threadId, input: 'after' },
+      });
+      // Re-confined on the running engine, at its next turn: no restart.
+      expect(engine.starts.length).toBe(startsBefore);
+      expect(engine.turns.at(-1)).toMatchObject({
+        confinement: 'workspace',
+        modelOptions: { approvalMode: confinedMode },
+      });
+      // Still re-applied on the turn after, until the engine restarts
+      // confined: a failed turn cannot leave it at its start posture.
+      await f.service.dispatch({
+        type: 'sendTurn',
+        input: { threadId, input: 'again' },
+      });
+      expect(engine.turns.at(-1)).toMatchObject({
+        confinement: 'workspace',
+        modelOptions: { approvalMode: confinedMode },
+      });
+    },
+  );
+
+  test('a running session listed unconfined can be stopped at once, and its next start is confined', async () => {
     const f = await fixture({ agents: { 'claude-agent': 'never' } });
     f.claude.completeTurns = true;
     const laptop = f.pair('Laptop', true);
@@ -1694,35 +1771,32 @@ describe('#1796 G3: revoking a device resets the full access it granted', () => 
       f.bearer(laptop.credential),
       'claude-agent',
     );
-    const threadId = f.claude.starts.at(-1)!.threadId;
-    expect(lastStart(f, 'claude-agent')).toMatchObject({
-      confinement: 'host',
-      approvalMode: 'never',
-    });
 
     const removed = await removeFullAccess(f, laptop.device.id);
 
-    expect(bare(removed.body.fullAccessRevocation)).toEqual({
-      cause: 'scope-removed',
-      reset: [],
-      stillFullAccess: [],
-      reconfined: [],
-      stillUnconfined: [{ conversationId, until: 'engine-restart' }],
-      unattributedHostStarts: NONE_UNATTRIBUTED,
-    });
-    expect(decisions(f, threadId)).toEqual([]);
-    // A turn on the running engine carries no posture (#2144 slice 6), so
-    // the engine keeps what it started with: that is why it is listed.
-    const turn = await nextTurn(f, threadId);
-    expect(turn?.confinement).toBe('workspace');
-    expect(turn?.modelOptions?.approvalMode).toBeUndefined();
-    // Its next start is confined: the Agent's never, as Claude's auto.
+    const [entry] = removed.body.fullAccessRevocation.stillUnconfined;
+    expect(entry).toMatchObject({ conversationId, until: 'next-turn' });
+    // What the revocation notice's "Stop now" sends.
+    const stop = vi.spyOn(f.claude, 'stopSession');
     const stopped = await f.request(
       f.bearer(f.operator.credential),
       '/api/orchestration/commands',
-      { type: 'stopSession', threadId },
+      { type: 'stopSession', threadId: entry.sessionId },
     );
     expect(stopped.status, stopped.text).toBe(200);
+    expect(stop).toHaveBeenCalledWith(entry.sessionId);
+    // With no engine running, it is re-confined from its next start.
+    await vi.waitFor(async () => {
+      const rerun = await f.request(
+        f.bearer(f.operator.credential),
+        `/api/pairing/devices/${encodeURIComponent(laptop.device.id)}/scope`,
+        { scope: standardScope, resetFullAccess: true },
+      );
+      expect(bare(rerun.body.fullAccessRevocation)).toMatchObject({
+        reconfined: [{ conversationId }],
+        stillUnconfined: [],
+      });
+    });
     const starts = f.claude.starts.length;
     await vi.waitFor(async () => {
       const continued = await f.request(
@@ -1924,8 +1998,13 @@ describe('#1796 G3: revoking a device resets the full access it granted', () => 
 
     expect(bare(removed.body.fullAccessRevocation)).toMatchObject({
       reset: [],
-      reconfined: [{ conversationId: response.body.data.conversationId }],
-      stillUnconfined: [],
+      reconfined: [],
+      stillUnconfined: [
+        {
+          conversationId: response.body.data.conversationId,
+          until: 'next-turn',
+        },
+      ],
     });
     // The Default now resolves confined: the Station's never, as Claude's
     // auto inside the workspace, re-applied on this turn.
@@ -2004,11 +2083,19 @@ describe('#1796 G3: revoking a device resets the full access it granted', () => 
     expect(bare(removed.body.fullAccessRevocation).reset).toEqual([
       { conversationId: auto.conversationId, was: 'auto-on-host' },
     ]);
-    const reconfined = bare(removed.body.fullAccessRevocation).reconfined.map(
-      (entry: { conversationId: string }) => entry.conversationId,
+    // Both engines are running: each is listed until its next turn.
+    const unconfined = bare(
+      removed.body.fullAccessRevocation,
+    ).stillUnconfined.map(
+      (entry: { conversationId: string; until: string }) =>
+        `${entry.conversationId} ${entry.until}`,
     );
-    expect(reconfined.sort()).toEqual(
-      [auto.conversationId, ask.conversationId].sort(),
+    expect(bare(removed.body.fullAccessRevocation).reconfined).toEqual([]);
+    expect(unconfined.sort()).toEqual(
+      [
+        `${auto.conversationId} next-turn`,
+        `${ask.conversationId} next-turn`,
+      ].sort(),
     );
     expect(
       decisions(f, ask.threadId).map((event) => event.approvalMode),
@@ -2121,12 +2208,12 @@ describe('#1796 G3: revoking a device resets the full access it granted', () => 
 
     expect(bare(retried.body.fullAccessRevocation)).toMatchObject({
       reset: [{ conversationId, was: 'never' }],
-      reconfined: [{ conversationId }],
+      stillUnconfined: [{ conversationId, until: 'next-turn' }],
     });
     const again = await retry();
     expect(bare(again.body.fullAccessRevocation)).toMatchObject({
       reset: [],
-      reconfined: [{ conversationId }],
+      stillUnconfined: [{ conversationId, until: 'next-turn' }],
     });
     expect(decisions(f, threadId).map((event) => event.approvalMode)).toEqual([
       'never',
@@ -2150,6 +2237,10 @@ describe('#1796 G3: revoking a device resets the full access it granted', () => 
     expect(removed.body.fullAccessRevocation.reset).toEqual([
       { ...entry, was: 'never' },
     ]);
-    expect(removed.body.fullAccessRevocation.reconfined).toEqual([entry]);
+    // Its engine is running: listed, by that running session, until its
+    // next turn.
+    expect(removed.body.fullAccessRevocation.stillUnconfined).toEqual([
+      { ...entry, until: 'next-turn' },
+    ]);
   });
 });

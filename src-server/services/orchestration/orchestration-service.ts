@@ -8816,9 +8816,11 @@ export class OrchestrationService {
    * of the revoking request) carrying `revocation`; history is never
    * deleted. Recording a decision does not touch a running turn: the next
    * turn start or respawn applies it (`ApprovalPosture.resolve`, where a
-   * decision wins over a start's carried mode). A `host` start stamp stays,
-   * so the next turn runs unconfined but at Ask: the engine asks before
-   * acting. `never` decisions from before decisions carried an actor are
+   * decision wins over a start's carried mode). A `host` start stamp stays as
+   * written. One this device granted applies as `workspace` from then on
+   * (`readStartConfinementStamp`), so that session's next turn runs
+   * confined; one someone else granted still runs unconfined, at Ask where
+   * an Ask was recorded: the engine asks before acting. `never` decisions from before decisions carried an actor are
    * listed as unattributed, never reset.
    */
   async resetFullAccessGrantedBy(input: {
@@ -9003,24 +9005,31 @@ export class OrchestrationService {
       }
     }
     // Sessions this device's grant unconfined. The applied stamp reads the
-    // grant live, so each is confined from the next time Station hands its
-    // engine a posture: every turn while a decision stands (the decision's
-    // mode is re-applied under `workspace`), or its next start or respawn.
-    // A live engine with no decision standing is sent no posture on a turn
-    // (#2144 slice 6), so it keeps what it started with until it restarts:
-    // listed as still unconfined. So is everything when this Station cannot
-    // check the grant. A standing `never` from someone else keeps the
-    // conversation unconfined anyway and is listed as still at full access.
+    // grant live, so each is confined from its next turn: a standing
+    // decision's mode is re-applied under `workspace`, and with no decision
+    // the turn re-applies the mode its engine runs (#2898, the confinement
+    // change exception to #2144 slice 6); or from its next start or respawn.
+    // A running engine is listed as still unconfined until that next turn,
+    // one entry per running session, so the operator can stop it at once; a
+    // conversation with none running is listed as re-confined. Everything is
+    // listed as still unconfined when this Station cannot check the grant.
+    // A standing `never` from someone else keeps the conversation unconfined
+    // anyway and is listed as still at full access.
     for (const [conversationId, seed, granted] of grantedConversations) {
       const standing = this.approvalPosture.decision(seed);
       if (standing?.approvalMode === 'never') continue;
+      const running = [...new Set(granted)].filter((threadId) =>
+        this.sessionAdapters.has(threadId),
+      );
       if (!this.options.isFullAccessGrantorCurrent)
         stillUnconfined.push({ conversationId, until: 'grant-not-checked' });
-      else if (
-        !standing &&
-        granted.some((threadId) => this.sessionAdapters.has(threadId))
-      )
-        stillUnconfined.push({ conversationId, until: 'engine-restart' });
+      else if (running.length > 0)
+        for (const sessionId of running)
+          stillUnconfined.push({
+            conversationId,
+            sessionId,
+            until: 'next-turn',
+          });
       else reconfined.push({ conversationId });
     }
     // Live `host` sessions started before the grantor was recorded: listed,
@@ -9072,7 +9081,12 @@ export class OrchestrationService {
         entry.conversationId,
         ...threadsOf(entry.conversationId, seed),
       ]);
-      return { ...entry, sessionId: seed, ...(title ? { title } : {}) };
+      // An entry that names its session (a running one) keeps it.
+      return {
+        sessionId: seed,
+        ...entry,
+        ...(title ? { title } : {}),
+      };
     };
     return {
       cause: input.cause,
