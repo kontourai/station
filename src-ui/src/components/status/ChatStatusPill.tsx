@@ -1,4 +1,11 @@
-import { memo, useEffect, useId, useRef, useState } from 'react';
+import {
+  memo,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react';
 import type { ChatStatus } from './chatStatus';
 import {
   LiveStatusGlyph,
@@ -93,16 +100,14 @@ function PillDetails({
 }
 
 /**
- * The chat pane's one floating status: approval, connection, or what the turn
- * is doing (see `deriveChatStatus` for the priority). It floats over the
- * transcript's top-right corner, so appearing, morphing and leaving never
- * move a line of the conversation.
+ * The chat pane's status beside the composer: approval, connection, or what
+ * the turn is doing (see `deriveChatStatus` for the priority).
  *
  * Motion carries meaning and nothing else: it floats in when there is
  * something to say and out when there is not; a change of state re-keys the
  * body so it morphs rather than pops; a decision landing or the connection
- * coming back settles with a one-shot burst. Every motion is transform or
- * opacity (live-status.css), and reduced motion swaps states instantly.
+ * coming back settles with a one-shot burst. State-driven width changes use
+ * the shared motion token; reduced motion swaps states instantly.
  *
  * Accessibility: one polite live region announces the state (kind-level
  * label, never the ticking clock); the pill itself is a button when a tap
@@ -119,6 +124,10 @@ export function ChatStatusPill({
 }) {
   useEffect(trackPageVisibilityForStatusMotion, []);
   const detailsId = useId();
+  const hostRef = useRef<HTMLDivElement>(null);
+  const lastWidth = useRef<number | undefined>(undefined);
+  const resizeAnimation = useRef<Animation | undefined>(undefined);
+  useEffect(() => () => resizeAnimation.current?.cancel(), []);
   const [expanded, setExpanded] = useState(false);
 
   // A decision the user made lands as a brief "Resumed" before the pill
@@ -193,13 +202,46 @@ export function ChatStatusPill({
   }, [shownAction]);
 
   const current = shown ?? (leaving ? lastShown.current : undefined);
-  // Kind-level only: "Running bash" → "Running npm test" → "Thinking" are
-  // one state (working) to a screen reader, never a stream of announcements.
-  const announcement = !shown
-    ? ''
-    : shown.kind === 'working'
-      ? 'Working'
-      : shown.label;
+  const announcement =
+    shown?.kind === 'approval' && shown.count !== undefined
+      ? `${shown.count} approvals needed`
+      : (shown?.label ?? '');
+  const currentLabel = current?.label;
+  const currentCount = current?.count;
+  const hasClock = current?.clockFrom !== undefined;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: measure when the visible label, badge, or clock column changes; clock ticks stay isolated.
+  useLayoutEffect(() => {
+    const element = hostRef.current;
+    if (!element?.querySelector('[data-chat-status-pill]')) {
+      resizeAnimation.current?.cancel();
+      lastWidth.current = undefined;
+      return;
+    }
+    const previous =
+      resizeAnimation.current?.playState === 'running'
+        ? element.offsetWidth
+        : lastWidth.current;
+    resizeAnimation.current?.cancel();
+    const width = element.offsetWidth;
+    lastWidth.current = width;
+    if (
+      previous === undefined ||
+      previous === width ||
+      reducedMotion() ||
+      typeof element.animate !== 'function'
+    )
+      return;
+    const style = getComputedStyle(element);
+    const duration = style.getPropertyValue('--motion-base').trim();
+    resizeAnimation.current = element.animate(
+      [{ width: `${previous}px` }, { width: `${width}px` }],
+      {
+        duration:
+          Number.parseFloat(duration) * (duration.endsWith('ms') ? 1 : 1000),
+        easing: style.getPropertyValue('--ease-standard').trim(),
+      },
+    );
+  }, [currentLabel, currentCount, hasClock]);
   const celebrate = current?.kind === 'resumed' || current?.kind === 'restored';
 
   const activate = () => {
@@ -237,13 +279,14 @@ export function ChatStatusPill({
   const common = {
     className: 'chat-status-pill',
     'data-chat-status-pill': current?.kind,
+    'data-entering': lastWidth.current === undefined ? 'true' : undefined,
     'data-tone': current?.tone,
     'data-leaving': leaving ? 'true' : undefined,
     'data-celebrate': celebrate ? 'true' : undefined,
   } as const;
 
   return (
-    <div className="chat-status-pill-host">
+    <div className="chat-status-pill-host" ref={hostRef}>
       <span className="sr-only" role="status" aria-live="polite">
         {announcement}
       </span>
@@ -254,7 +297,9 @@ export function ChatStatusPill({
             {...common}
             aria-label={
               current.action === 'reveal-approval'
-                ? `${current.label} — show the request`
+                ? current.count !== undefined
+                  ? `${current.count} approvals needed — show the requests`
+                  : `${current.label} — show the request`
                 : current.action === 'repair'
                   ? `${current.label} — repair the connection`
                   : current.label
