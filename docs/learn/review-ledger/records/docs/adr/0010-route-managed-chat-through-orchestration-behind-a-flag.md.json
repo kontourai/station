@@ -18,7 +18,7 @@
 
     {"path":"packages/cli/src/commands/session-client.ts","digest":"0328bc971c138d5a5d4f0077f4faa39d5450b0827035b7b8f9eb78fb700b4cd8","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"755ec9f2a3b4e0523ad5fd4126605f4433a4ac90b0075160d21acb280359c704","revision":"c6ebec77b17b679e630a3857b10a6f814d7fb436"},
+    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"25d5567f609e84815cbf51d3d7670733f6dea7abc2b3ad7027a6aa731822bebe","revision":"cb38616d44325b145965c8c03c6d5aacad470660"},
 
     {"path":"src-server/runtime/bootstrap/station-features.ts","digest":"55c74fed5caae236c699dfc66ac63bb298b40abe1efd1b59dcf40a95e27842da","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
