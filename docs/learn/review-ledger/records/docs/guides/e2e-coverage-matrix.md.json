@@ -64,7 +64,7 @@
 
     {"path":"tests/connections-crud.spec.ts","digest":"b0c33e5e552b3651adf99dbe92ef3d43a38bb130ca13c26f7dff1bfeb3dbc9e5","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"tests/default-agent-workflow.spec.ts","digest":"a568dd21059a806543958a1dd8603afcf6aa753c1a0d2c63960d305b8af325d5","revision":"32ababfbffaa8b43bc56f3382fc4e110a8309fd6"},
+    {"path":"tests/default-agent-workflow.spec.ts","digest":"c9330b014214e40d1202785359a08f4039607e53e023abf7728fbc1f620b21c4","revision":"0d71215d3c9a4e15c331243a6b7d231d2662c344"},
 
     {"path":"tests/e2e-manifest.mjs","digest":"2fbba39624069865e8b0ab8e45746f104001e3be4e591e098e916e9a405ae873","revision":"5c4d665e0ceed44dc820abfe3ec98bd919a84570"},
 
