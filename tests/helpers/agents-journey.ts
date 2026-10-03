@@ -404,7 +404,7 @@ export async function sendComposerTurn(
 ): Promise<void> {
   const composer = page.getByPlaceholder(/^Type a message/);
   await composer.fill(text);
-  await composer.press('Enter');
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
   await expect(
     page
       .locator(
