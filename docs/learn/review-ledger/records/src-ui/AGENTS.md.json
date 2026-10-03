@@ -1,65 +1,61 @@
 {
   "path": "src-ui/AGENTS.md",
+
   "kind": "policy",
+
   "state": "classified",
+
   "summary": "Routes to canonical module/test guidance. The navigation store and useUnsavedGuard support the single route-guard ownership rule; shared controls and physical layout claims remain distinct from DOM tests.",
+
   "limits": "Normative contributor policy. Routing and named owners were checked; this is not proof that every implementation or contributor complies, nor completion evidence for CI, performance, native devices, or hosted delivery. No visual, touch-target, theme, or all-surface conformance certification was performed.",
-  "document": {
-    "digest": "1861af0378a679a97a10955cf6f250ce58e073b68c4147d9d9c333de609d1aa8",
-    "revision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"
-  },
+
+  "document": {"digest":"1861af0378a679a97a10955cf6f250ce58e073b68c4147d9d9c333de609d1aa8","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
   "sources": [
-    {
-      "path": "docs/architecture/module-map.md",
-      "digest": "60e11b0596ffd56c21ce2004cc954f7e8df96edbf509d5dbcc672c9372f109ff",
-      "revision": "47fbbbd8f767858f60a0a323b74e26cb60abce62"
-    },
-    {
-      "path": "docs/guides/testing.md",
-      "digest": "53af26e5853101d07b3c331f1ce1bca2ca6e5c19555f7d0045cca9a9483b052b",
-      "revision": "26c576127006fc775278e3da2eea0ab23bc9e90c"
-    },
-    {
-      "path": "src-ui/src/components/Button.tsx",
-      "digest": "b5ec131e05175b7bed06b33e6ae9446cf1a7297ede17f2576dbef404fcf8ae7b",
-      "revision": "5d69f8f0eac14651004831e85e8053a989e2dd65"
-    },
-    {
-      "path": "src-ui/src/components/Dialog.tsx",
-      "digest": "0e52c3a21b2c7c989eb41ac5a2e2cb3897bddfa55f90cc0914aece0470242dd2",
-      "revision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"
-    },
-    {
-      "path": "src-ui/src/components/ResponsiveDialogSurface.tsx",
-      "digest": "ff389dc7c2632309151df7065f56f8434712b5cba120324bbba48c7693a56612",
-      "revision": "f4eb9345e808edfbcadd25b1cf88a69db088f117"
-    },
-    {
-      "path": "src-ui/src/contexts/navigation-store.ts",
-      "digest": "2486db91eb4f818fec69048dcd202c7a7ffc5a9517c2cb11fa7728197f919607",
-      "revision": "4d59eb1868139f2faeaf1a1467811c22726f741c"
-    },
-    {
-      "path": "src-ui/src/hooks/useUnsavedGuard.tsx",
-      "digest": "12fd9923bc5c1b7920be4ad426c00a55437be38fe1943ad42e27589072a7ec62",
-      "revision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"
-    }
+    {"path":"docs/architecture/module-map.md","digest":"0ea9d79a62128ee7b6fd7cbeb233d7fa7d2f0256d840691e1abd931fcf0bb912","revision":"9284c690de029594417d7599810fbfbe9eca3d92"},
+
+    {"path":"docs/guides/testing.md","digest":"53af26e5853101d07b3c331f1ce1bca2ca6e5c19555f7d0045cca9a9483b052b","revision":"26c576127006fc775278e3da2eea0ab23bc9e90c"},
+
+    {"path":"src-ui/src/components/Button.tsx","digest":"b5ec131e05175b7bed06b33e6ae9446cf1a7297ede17f2576dbef404fcf8ae7b","revision":"5d69f8f0eac14651004831e85e8053a989e2dd65"},
+
+    {"path":"src-ui/src/components/Dialog.tsx","digest":"0e52c3a21b2c7c989eb41ac5a2e2cb3897bddfa55f90cc0914aece0470242dd2","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/components/ResponsiveDialogSurface.tsx","digest":"ff389dc7c2632309151df7065f56f8434712b5cba120324bbba48c7693a56612","revision":"f4eb9345e808edfbcadd25b1cf88a69db088f117"},
+
+    {"path":"src-ui/src/contexts/navigation-store.ts","digest":"2486db91eb4f818fec69048dcd202c7a7ffc5a9517c2cb11fa7728197f919607","revision":"4d59eb1868139f2faeaf1a1467811c22726f741c"},
+
+    {"path":"src-ui/src/hooks/useUnsavedGuard.tsx","digest":"12fd9923bc5c1b7920be4ad426c00a55437be38fe1943ad42e27589072a7ec62","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"}
   ],
+
   "checks": [
     "Complete narrow-scope read; local routes, imports and named npm commands checked.",
+
     "Instruction/fixture selection: 201 tests across 4 files passed; individual fixture/provenance evidence limits retained.",
+
     "Reviewed subsequent module-map delta: two source-reviewed workspace sections and relocation/qualification of OIDC; the instruction route and policy meaning are unchanged.",
+
     "Reviewed Browser/Device owner additions and links; existing instruction routing and earlier bounded claims remain intact.",
+
     "Reviewed the architecture rewrite and added shortcut owner as routing dependencies; existing bounded purpose/claims preserved.",
+
     "Reviewed routing dependencies after package-reference and contributor-guide corrections; instruction scope is unchanged. Verification-lane source delta changes only its displayed scope label.",
+
     "Reviewed source changes: All73 documented module sections were reviewed against implementation and real callers; instruction files still use this map as their source route. Frozen-main guide was reviewed against plan/shard/statics routing, hosted promotion receipts and current local typecheck rules; instruction files continue to route to this owner.",
+
     "Reviewed integration deltas: docs/architecture/module-map.md: Added and independently reviewed the native grant renewal supervisor against renderer/host callers and tests; corrected retained revision lookup and seal-source composition, and MCP policy filtering limits. All prior module reviews retained.",
+
     "Landing delta f3954615e to 2400482c2 plus integrated corrections: Reviewed changed canonical prose, incoming removal of the unmounted Reviews tab, public evidence limits and dated generated deployment additions where applicable. Unchanged linked claims need no token prose edit.",
+
     "Landing source delta through 61d497e88: Reviewed corresponding canonical prose, the new dispatch-scope module/tree entry and regenerated 101-topic MCP content. Only affected claims changed; source links remain evidence routes, not proof of execution.",
+
     "Landing review through d0d9d33f7: Added an explicitly unwired desktop account-proof foundation under DeploymentAuthentication; existing module identities, interfaces and reading routes are unchanged.",
+
     "Reviewed landing deltas through 111744681: Added the registered NativeApplicationSignaling interface with explicit unwired consumer/data/proof limits; clarified the normative depth definition. Existing module contracts are unchanged. Replaced the fixed discovery timeout with caller allocation, post-refinement remaining time, settlement reserve, standalone fallback and refusal behavior. Existing commands, evidence authority and lane ceilings are unchanged. Read the changed document in context; its purpose and prior evidence limits remain.",
+
     "Required merge-queue recovery through 421517851: reviewed current canonical prose/static MCP dependency changes; historical/policy classifications and unrelated documented behavior remain unchanged. Changed inputs reviewed: docs/architecture/module-map.md. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
+
     "Integration source review through e0314c727: the module map dropped the CollaborativeEditorPane and PluginForegroundRuns sections and added ProjectTaskRoom. This policy only routes to the module map and names no removed module, so the prose is accurate. Source review is separate from executed test evidence.",
+
     "Integration source review through 2ef40ae83: docs/architecture/module-map.md changed only its StationHomeArchive purpose (the separate update-backup schema) and its verification-coordinator import-direction wording. This document references neither section, so the prose is accurate. Source review is separate from executed test evidence."
   ]
 }

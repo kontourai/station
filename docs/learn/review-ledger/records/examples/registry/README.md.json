@@ -1,53 +1,37 @@
 {
   "path": "examples/registry/README.md",
+
   "kind": "current",
+
   "state": "source-reviewed",
+
   "summary": "Both manifests, default resolution and CLI/server installation callers inspected. Catalog presence and no declared dependencies no longer imply successful installation; missing consent linked #2809.",
+
   "limits": "No actual plugin installation, native/device/audio journey, public package distribution, provider operation or cross-host qualification. Source/fixture checks do not establish those outcomes.",
-  "document": {
-    "digest": "bbdbc0a92897c3cb8e82dc51e621db90054a1c96b481e6a98c595579f9ecbb4d",
-    "revision": "0814cc6ddb168cff69e5572b185a853540a4f6e0"
-  },
+
+  "document": {"digest":"c2b2a3e581bf685a4ae436016d2dfb331502c5183ab966ee2516515f4d0f5d61","revision":"9284c690de029594417d7599810fbfbe9eca3d92"},
+
   "sources": [
-    {
-      "path": "examples/registry/default.json",
-      "digest": "cfad94ca0675644a0a8dd45ba204ea43c8813bb40c5ca3b4e4fa54956c2f4545",
-      "revision": "ed05e6f6c98c5b2bb994a88ff8fa8e1421639269"
-    },
-    {
-      "path": "examples/registry/manifest.json",
-      "digest": "1a6cc7babffefe6a1d0dd44d71387dd6209857091bdf40cf556d29531ec8e32b",
-      "revision": "ed05e6f6c98c5b2bb994a88ff8fa8e1421639269"
-    },
-    {
-      "path": "packages/cli/src/commands/install-registry.ts",
-      "digest": "f718a3fb5c763792c60f9a488f2369a1806f281683e62f13525ed851bcf0ec74",
-      "revision": "ed05e6f6c98c5b2bb994a88ff8fa8e1421639269"
-    },
-    {
-      "path": "packages/cli/src/commands/install.ts",
-      "digest": "ca98a0fa5d41930d6b3bb5d33000804411d82ec80650a7d97294cb7dcd020ac5",
-      "revision": "ed05e6f6c98c5b2bb994a88ff8fa8e1421639269"
-    },
-    {
-      "path": "src-server/providers/registries/default-registry.ts",
-      "digest": "37610478ac1fcc60b9a777d7a9cbd05ee88f9f20b5d3ce57f5806907332600c8",
-      "revision": "ed05e6f6c98c5b2bb994a88ff8fa8e1421639269"
-    },
-    {
-      "path": "src-server/routes/plugins/registry.ts",
-      "digest": "f3f5be48240bb62b1bd0e1a5a0349d5205a99891cf15c4e3930cb1250fd900a6",
-      "revision": "47fbbbd8f767858f60a0a323b74e26cb60abce62"
-    },
-    {
-      "path": "src-server/services/plugins/plugin-install-consent.ts",
-      "digest": "6e34e0844061dd5311e027973b1919483bf29047e18721ecae8b72ece98765ed",
-      "revision": "ed05e6f6c98c5b2bb994a88ff8fa8e1421639269"
-    }
+    {"path":"examples/registry/default.json","digest":"ef03a6a928d57756719fa0ef4086397b87042e6aa9d825ce7a9f0f9b003162d1","revision":"19aff2a08b9739ad9ffbda39ff8cb19b026fda82"},
+
+    {"path":"examples/registry/manifest.json","digest":"7abfc33a3f2e281d8a15c3a72c64bcfbec502cb0feab23c3990894026dfd7b13","revision":"19aff2a08b9739ad9ffbda39ff8cb19b026fda82"},
+
+    {"path":"packages/cli/src/commands/install-registry.ts","digest":"f718a3fb5c763792c60f9a488f2369a1806f281683e62f13525ed851bcf0ec74","revision":"ed05e6f6c98c5b2bb994a88ff8fa8e1421639269"},
+
+    {"path":"packages/cli/src/commands/install.ts","digest":"ca98a0fa5d41930d6b3bb5d33000804411d82ec80650a7d97294cb7dcd020ac5","revision":"ed05e6f6c98c5b2bb994a88ff8fa8e1421639269"},
+
+    {"path":"src-server/providers/registries/default-registry.ts","digest":"37610478ac1fcc60b9a777d7a9cbd05ee88f9f20b5d3ce57f5806907332600c8","revision":"ed05e6f6c98c5b2bb994a88ff8fa8e1421639269"},
+
+    {"path":"src-server/routes/plugins/registry.ts","digest":"f3f5be48240bb62b1bd0e1a5a0349d5205a99891cf15c4e3930cb1250fd900a6","revision":"47fbbbd8f767858f60a0a323b74e26cb60abce62"},
+
+    {"path":"src-server/services/plugins/plugin-install-consent.ts","digest":"6e34e0844061dd5311e027973b1919483bf29047e18721ecae8b72ece98765ed","revision":"ed05e6f6c98c5b2bb994a88ff8fa8e1421639269"}
   ],
+
   "checks": [
     "Example/documentation, snippets, voice smoke refusal, sessions renderer, Fieldwork, Survey and branding selection: 76 tests across seven files passed. These are bounded fixture checks, not every example or a live provider.",
+
     "Reviewed source changes: Read the complete current CLI registry owner. Catalog listing no longer guesses installed state from local aliases/files; it directs installed-state reads to the running Station. Example catalog resolution and the separately tracked preview-consent gap remain.",
+
     "Integration source review through abfc7a889: #2864 changes only the plugin install command (install.ts), not `registry install`. The statement that `registry install <id>` submits no preview consent (#2809) still holds. Prose accurate. Source review is separate from executed test evidence."
   ]
 }
