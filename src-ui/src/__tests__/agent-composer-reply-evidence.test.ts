@@ -16,17 +16,15 @@ test.each([false, true])(
         </section>
       `);
       await page.evaluate((withReply) => {
-        document
-          .querySelector('button')!
-          .addEventListener('click', () => {
-            document.body.dataset.submitted = 'true';
-            if (withReply) {
-              const message = document.createElement('div');
-              message.className = 'message assistant';
-              message.textContent = 'PONG';
-              document.querySelector('#chat-dock')!.append(message);
-            }
-          });
+        document.querySelector('button')!.addEventListener('click', () => {
+          document.body.dataset.submitted = 'true';
+          if (withReply) {
+            const message = document.createElement('div');
+            message.className = 'message assistant';
+            message.textContent = 'PONG';
+            document.querySelector('#chat-dock')!.append(message);
+          }
+        });
       }, reply);
       const result = sendComposerTurn(page, 'PONG', /PONG/, 250);
       if (reply) await result;

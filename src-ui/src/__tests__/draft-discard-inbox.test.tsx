@@ -370,7 +370,9 @@ describe('#2312 discarding Drafts from the inbox', () => {
       screen.getByRole('button', { name: `Details for ${staleTitle}` }),
     );
     fireEvent.click(
-      await screen.findByRole('button', { name: `Discard draft ${staleTitle}` }),
+      await screen.findByRole('button', {
+        name: `Discard draft ${staleTitle}`,
+      }),
     );
 
     await waitFor(() =>

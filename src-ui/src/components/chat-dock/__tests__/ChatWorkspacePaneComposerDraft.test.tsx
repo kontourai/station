@@ -460,10 +460,10 @@ test('the docked badge names the bound Project and reports a foreign chat’s ow
 
   const badge = screen.getByRole('button', { name: 'Pulse' });
   // The directory is the chat's, not the bound Project's.
-  expect(badge.getAttribute('title')).toBe('Pulse — /work/other');
+  expect(badge.getAttribute('title')).toBe('This chat (Other) — /work/other');
   expect(
     document.querySelector('.chat-dock__project-session-name')?.textContent,
-  ).toBe('Other ·');
+  ).toBe('This chat: Other');
 
   // The switcher marks the bound Project as current.
   fireEvent.click(badge);
