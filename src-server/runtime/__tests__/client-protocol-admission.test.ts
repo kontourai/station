@@ -12,7 +12,11 @@ import {
 } from '@kontourai/station-contracts/environment-security';
 import { Hono } from 'hono';
 import { describe, expect, it, vi } from 'vitest';
-import type { ClientProtocolPolicy } from '../../security/client-protocol-admission.js';
+import {
+  CLIENT_PROTOCOL_NAVIGATION_EXEMPT_RULE_IDS,
+  type ClientProtocolPolicy,
+} from '../../security/client-protocol-admission.js';
+import type { RuntimeSecurityAuditRecord } from '../../security/runtime-request-security.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
 import { HOST_STATION_COMPATIBILITY } from '../../services/ssh/environment-security-service.js';
 import {
@@ -52,6 +56,7 @@ function createHarness(policy?: ClientProtocolPolicy) {
   } as unknown as Logger;
   const app = new Hono<{ Bindings: TestBindings }>();
   const reached: string[] = [];
+  const audits: RuntimeSecurityAuditRecord[] = [];
   configureRuntimeHttp({
     app: app as never,
     logger,
@@ -62,6 +67,7 @@ function createHarness(policy?: ClientProtocolPolicy) {
         candidate === CREDENTIAL ? DEFAULT_GRANT_PAIRING_SCOPE : undefined,
       resolveCredentialAuthority: () => 'operator-credential',
       allowedOrigins: [ALLOWED_ORIGIN],
+      audit: (record: RuntimeSecurityAuditRecord) => audits.push(record),
       ...(policy ? { clientCompatibility: policy } : {}),
     },
   } as Parameters<typeof configureRuntimeHttp>[0]);
@@ -86,6 +92,12 @@ function createHarness(policy?: ClientProtocolPolicy) {
       return c.json({ reached: true });
     });
   }
+  for (const path of ['/', '/doc', '/ui', '/integrations/github/icon']) {
+    app.get(path, (c) => {
+      reached.push(path);
+      return c.json({ reached: true });
+    });
+  }
   app.get('/api/projects', (c) => {
     reached.push('projects');
     return c.json({ reached: true });
@@ -101,7 +113,7 @@ function createHarness(policy?: ClientProtocolPolicy) {
       app.request(path, init, { incoming } as TestBindings),
     );
   }
-  return { app, reached, request };
+  return { app, reached, request, audits };
 }
 
 function api(protocol?: string, extra: Record<string, string> = {}) {
@@ -377,5 +389,23 @@ describe('client API protocol admission (#2962)', () => {
     expect(preflight.headers.get('Access-Control-Allow-Headers')).toContain(
       'X-Station-Client-Protocol',
     );
+  });
+
+  it('exempts only navigation-reached routes, which cannot carry a header', async () => {
+    // Pinned literally: widening the exemption is a deliberate edit here.
+    expect([...CLIENT_PROTOCOL_NAVIGATION_EXEMPT_RULE_IDS].sort()).toEqual([
+      '/:landing-read',
+      '/doc:read',
+      '/integrations/:id/icon:read',
+      '/ui:read',
+    ]);
+    const { request, reached } = createHarness(RAISED);
+    const noHeader = { headers: { Authorization: `Bearer ${CREDENTIAL}` } };
+    for (const path of ['/', '/doc', '/ui', '/integrations/github/icon']) {
+      expect((await request(path, noHeader)).status, path).toBe(200);
+    }
+    expect(reached).toEqual(['/', '/doc', '/ui', '/integrations/github/icon']);
+    // A sibling in the same family is not exempt.
+    expect((await request('/api/projects', noHeader)).status).toBe(426);
   });
 });

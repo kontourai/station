@@ -26,6 +26,28 @@ const PAIRING_CEREMONY_RULE_IDS: ReadonlySet<string> = new Set([
   'public:pairing-exchange',
 ]);
 
+/**
+ * Paired-scope routes a browser reaches by navigation or an `<img>` element,
+ * authenticated by the device-session cookie. A navigation cannot carry a
+ * custom request header, so these could never declare a protocol and would be
+ * refused as legacy the moment the minimum rose. They are exempt, each for a
+ * stated reason; the set is pinned in `client-protocol-admission.test.ts`.
+ *
+ * Everything else the UI reads, including attachments, MCP UI resources and
+ * previews, goes through the SDK (`authenticatedFetch`, `getJson`) and is
+ * covered. Exempting a route here must be a deliberate edit to that pin.
+ */
+export const CLIENT_PROTOCOL_NAVIGATION_EXEMPT_RULE_IDS: ReadonlySet<string> =
+  new Set([
+    // The host root a person opens in a browser tab.
+    '/:landing-read',
+    // The interactive API documentation pages, opened by navigation.
+    '/doc:read',
+    '/ui:read',
+    // Integration icons are loaded by `<img src>` (`BrandIcon`).
+    '/integrations/:id/icon:read',
+  ]);
+
 export interface ClientProtocolRefusal {
   status: 400 | 426;
   body: {
@@ -55,6 +77,8 @@ export interface ClientProtocolRefusal {
  * - MCP-token, webhook-token, stage-grant, relay-enrollment, share-token and
  *   account-authentication routes, which have separately declared callers
  *   and versioning;
+ * - navigation-reached routes that cannot carry a header
+ *   ({@link CLIENT_PROTOCOL_NAVIGATION_EXEMPT_RULE_IDS});
  * - a caller attested as Station's own loopback consumer (per-boot internal
  *   token), which is the running host build itself.
  */
@@ -63,6 +87,7 @@ export function clientProtocolApplies(
   attestedInternalCaller: boolean,
 ): boolean {
   if (attestedInternalCaller) return false;
+  if (CLIENT_PROTOCOL_NAVIGATION_EXEMPT_RULE_IDS.has(rule.id)) return false;
   return (
     rule.capability === 'pairing-scope' ||
     PAIRING_CEREMONY_RULE_IDS.has(rule.id)
