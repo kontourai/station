@@ -26,7 +26,7 @@
 
     {"path":"packages/contracts/src/application-session.ts","digest":"46663ea304ab3e2b0d63ae3eff1500055e386d4601f0e2050c35e6abc2d5215e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/contracts/src/connection-recovery.ts","digest":"1f97932d60e13e27e8dcabc8c5f3becfceb9d193918d8b4f8df2cda01a6d7b2c","revision":"faad29d67dec3873fdb6a4d5d0e18168caa1237e"},
+    {"path":"packages/contracts/src/connection-recovery.ts","digest":"7173cffb01bcaa81d3cf1bfaee2b367ac22f458836c514b3498ef701580a62be","revision":"462c43a89905ea97ae2d67fd097deb676f79822f"},
 
     {"path":"packages/contracts/src/notification.ts","digest":"8ab242f152839490894494f48fd701c6dfd2b5d13fcad3d439eeb83c17463156","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -372,9 +372,9 @@
 
     {"path":"src-server/services/orchestration/isolated-session-transcript-search.ts","digest":"b4583c148fa3069baeb59b4cc80f91e3e2a3dcb5cbfacf0a745757a0abf6de09","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"ac1c9c5cc9605dc344ca728b2cb570bf3ebd3e210c42a82b21ca478b27c3d4c7","revision":"f7b3c575969281e525b5c38ab0fd4cb8ef9e407a"},
+    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"cc732ac0998cab454269b662968aa2d5a34b28a41b1f47c0d1df78488a43336f","revision":"462c43a89905ea97ae2d67fd097deb676f79822f"},
 
-    {"path":"src-server/services/orchestration/orchestration-session-state.ts","digest":"44a232d30c1d080f58b798e418a54d3adacb1086b3b6757a06f307370b703943","revision":"af3c8fbfee90c9179a0ac19659b76d24c707d574"},
+    {"path":"src-server/services/orchestration/orchestration-session-state.ts","digest":"c9da7f23566fc89b3d951f83f61d322180fcf7f72b4f67c32a5c531b631df5bd","revision":"462c43a89905ea97ae2d67fd097deb676f79822f"},
 
     {"path":"src-server/services/orchestration/request-inspection.ts","digest":"1adaf32f260c35b8f4e599a01e5db9a9c4f8526ff20a4228db55022df3e9445c","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
 
@@ -458,9 +458,9 @@
 
     {"path":"src-ui/src/core/SDKAdapter.tsx","digest":"6b97757f9bfe3c29837ba06546c68a7a05c18447466f1535768dc936f4d86feb","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/hooks/orchestration/queueDrain.ts","digest":"5172f08676c5ae320d10b42f23f7b5158ab77172a54c537235de9156ea504eb8","revision":"89765352964045a079d13a17bee54ab2de7b83e0"},
+    {"path":"src-ui/src/hooks/orchestration/queueDrain.ts","digest":"cf717e781483c79e1100edf268c8df602f0e6561179cca3e824dacde944b78db","revision":"462c43a89905ea97ae2d67fd097deb676f79822f"},
 
-    {"path":"src-ui/src/hooks/orchestration/snapshotHandlers.ts","digest":"ba834cfbb80f42b1742554455e2159f790f0149dba41039d68c6c91a1b5ff478","revision":"392b955a316234ea7972c96b5930b0b27db06ea6"},
+    {"path":"src-ui/src/hooks/orchestration/snapshotHandlers.ts","digest":"3a9e56e6d908c6596bf80346ae048609a5b0fe2583e67a0718b8dccf1b0247c4","revision":"462c43a89905ea97ae2d67fd097deb676f79822f"},
 
     {"path":"src-ui/src/hooks/useActiveChatSessionLifecycle.ts","digest":"2a90e4f43cde95121b12aec4ae642905f1329e9e23e95f797a41cd6746da9349","revision":"389d349629e5834edf691e2e986675ec566ceadc"},
 

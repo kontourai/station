@@ -14,7 +14,7 @@
   "sources": [
     {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","digest":"0663ec8460f3271254bdeeba20df7518812da5b49781c0eb07c12a8f4a9d9bd8","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 
-    {"path":"docs/architecture/module-map.md","digest":"e87d73593b902dbbbb7578b190b8b4631b8373eafcad586041b4f378e369075e","revision":"f7b3c575969281e525b5c38ab0fd4cb8ef9e407a"},
+    {"path":"docs/architecture/module-map.md","digest":"ebb2e73273af2445d48054198aeffa0e70c2e017375c0cab6ce384c954ac573c","revision":"462c43a89905ea97ae2d67fd097deb676f79822f"},
 
     {"path":"docs/design/orchestration-decomposition-map.md","digest":"862b155a3e78daace7b97c0fd5d1005d47c892b99328349d6a8b583378f857d6","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
 
@@ -74,7 +74,7 @@
 
     {"path":"src-server/services/orchestration/__tests__/session-lifecycle-module.test.ts","digest":"48925af379888c49356fd0902d0b42f0f23ccf785355ca45557feddbbe3f8f90","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 
-    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"ac1c9c5cc9605dc344ca728b2cb570bf3ebd3e210c42a82b21ca478b27c3d4c7","revision":"f7b3c575969281e525b5c38ab0fd4cb8ef9e407a"},
+    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"cc732ac0998cab454269b662968aa2d5a34b28a41b1f47c0d1df78488a43336f","revision":"462c43a89905ea97ae2d67fd097deb676f79822f"},
 
     {"path":"src-server/services/orchestration/session-command-module.ts","digest":"a187447cec48eca40e8933bce7600c5e00baebfae55c4ecf2ca4ef5d70626622","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 
