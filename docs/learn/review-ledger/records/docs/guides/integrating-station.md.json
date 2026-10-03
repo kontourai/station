@@ -12,9 +12,9 @@
   "document": {"digest":"19141922ec87bc6d1b7858f51e8d73004a3f86a6f320ac61ff71226d66969b1e","revision":"87b7b438cf0f881e850574ef6bbcffafe3d72a92"},
 
   "sources": [
-    {"path":"deploy/gcp-dev/README.md","digest":"b638bdfb5553e5bd7a04d415473b5adf02948e11a650f7f58f65ff6b54d7a0b0","revision":"18002c0871ea8538605e922464aab5356c77593c"},
-
     {"path":"deploy/gcp-dev/bootstrap.sh","digest":"e6c628e0cbafedc499f4fe2ce923649c0b3e58d3a9abffa1d86ff3bfe27d5f5d","revision":"18002c0871ea8538605e922464aab5356c77593c"},
+
+    {"path":"deploy/gcp-dev/README.md","digest":"b638bdfb5553e5bd7a04d415473b5adf02948e11a650f7f58f65ff6b54d7a0b0","revision":"18002c0871ea8538605e922464aab5356c77593c"},
 
     {"path":"docs/guides/deployment-authentication.md","digest":"1c0a536c39a4dbc365aaea832eb2da0a0bda5440eabe66b0351108c745a048b1","revision":"fabc07873700d8d828274e62929191d01130efb7"},
 
@@ -24,7 +24,7 @@
 
     {"path":"docs/guides/plugins.md","digest":"8db6998152ba6de1241cc9e55f46bd4643b39932ddd3a8287da8b0afacb181fa","revision":"87b7b438cf0f881e850574ef6bbcffafe3d72a92"},
 
-    {"path":"docs/guides/workspace-packages.md","digest":"01bebb92c862b7a6cf006bbb8fe4d4389caa8df327f79ef7f1ba44233890d55c","revision":"18002c0871ea8538605e922464aab5356c77593c"},
+    {"path":"docs/guides/workspace-packages.md","digest":"4590c3915425e58b96a0ae8c36d825bf0409e7ddff1b7023f367f14a4aede9d1","revision":"5c18724d4ba50fd9b5f6c4043e7a00ebc893c70d"},
 
     {"path":"docs/reference/api.md","digest":"5c91b949386f6b3f155a32fd16f365753aaac9ff870c3b13a427d308bbbe63e1","revision":"a058838c32094ebc98fa31929b76b7855bb7dd85"},
 

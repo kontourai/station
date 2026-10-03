@@ -23,7 +23,8 @@ import {
   workItemOpenFailureMessage,
 } from '../../views/home/work-item-open-policy';
 import { registerDialogHistory } from '../dialog-history';
-import { ResponsiveDialogCloseButton } from '../ResponsiveDialogSurface';
+import { PickerCreateAction } from '../PickerCreateAction';
+import { ResponsiveDialogHeader } from '../ResponsiveDialogSurface';
 import { Empty, ErrorState, SkeletonList } from '../state';
 import {
   InboxGroupList,
@@ -51,6 +52,7 @@ export function MobileTaskSwitcher({
   visualViewportStyle,
   triggerRef,
   onClose,
+  onNewChat,
   onFocusChat,
   onOpenConversation,
   onOpenSession,
@@ -61,6 +63,7 @@ export function MobileTaskSwitcher({
   now: suppliedNow,
   agents,
   workFacts,
+  gitLocationByThreadId,
   pending = false,
   loadError = false,
   onRetryLoad,
@@ -72,6 +75,7 @@ export function MobileTaskSwitcher({
   visualViewportStyle: CSSProperties;
   triggerRef: React.RefObject<HTMLButtonElement | null>;
   onClose: () => void;
+  onNewChat?: () => void;
   onFocusChat: (id: string) => void;
   /** station#1297: rehydrates a session with no live tab into the chat
    *  overlay — mirrors `useChatDockActions`' `openConversation`. */
@@ -103,6 +107,7 @@ export function MobileTaskSwitcher({
   agents?: InboxGroupListProps['agents'];
   /** Status facts by item id; see `InboxGroupListProps.workFacts`. */
   workFacts?: InboxGroupListProps['workFacts'];
+  gitLocationByThreadId?: InboxGroupListProps['gitLocationByThreadId'];
   /** True until every read contributing rows has settled. */
   pending?: boolean;
   loadError?: boolean;
@@ -212,9 +217,7 @@ export function MobileTaskSwitcher({
 
   if (!open) return null;
 
-  // 'Switch task' is the established accessible name for this sheet and is what
-  // the e2e suite and any name-driven caller already target.
-  const heading = 'Switch task';
+  const heading = 'Chats and tasks';
 
   // Portaled to <body>: this sheet used to render inside the ChatDock
   // subtree, whose `position: fixed; z-index: 100` root creates a stacking
@@ -226,6 +229,7 @@ export function MobileTaskSwitcher({
     <div
       className="mobile-task-switcher__overlay responsive-surface-overlay"
       style={visualViewportStyle}
+      data-no-dock-drag=""
       onPointerDown={(event) => {
         if (event.target === event.currentTarget) closeAndRestoreFocus();
       }}
@@ -240,13 +244,10 @@ export function MobileTaskSwitcher({
         tabIndex={-1}
       >
         <header className="mobile-task-switcher__header">
-          <div>
-            <p>Chats and tasks</p>
-            <h2>{heading}</h2>
-          </div>
-          <ResponsiveDialogCloseButton
-            label="Close task switcher"
-            onClick={closeAndRestoreFocus}
+          <ResponsiveDialogHeader
+            title={heading}
+            closeLabel="Close task switcher"
+            onClose={closeAndRestoreFocus}
           />
         </header>
         <div className="mobile-task-switcher__list">
@@ -271,7 +272,11 @@ export function MobileTaskSwitcher({
               <SkeletonList count={3} />
             </div>
           ) : visibleGroups.length === 0 ? (
-            <Empty variant="compact" label="No chats yet." />
+            <Empty
+              variant="compact"
+              label="No chats yet."
+              description="Start a chat to explore an idea or work with an agent."
+            />
           ) : null}
           {loadError && visibleGroups.length > 0 && (
             <p role="status">
@@ -294,9 +299,11 @@ export function MobileTaskSwitcher({
             now={now}
             agents={agents}
             workFacts={workFacts}
+            gitLocationByThreadId={gitLocationByThreadId}
             showGroupCounts
             snoozeMenuOnly
             chrome="touch"
+            actionsInDetails
             onActivate={(task) => {
               // station#3687: acknowledge only after the click did something,
               // and say so when it could not (same contract as the desktop
@@ -350,6 +357,15 @@ export function MobileTaskSwitcher({
             }}
           />
         </div>
+        {onNewChat && (
+          <PickerCreateAction
+            label="New chat"
+            onClick={() => {
+              closeAndRestoreFocus();
+              onNewChat();
+            }}
+          />
+        )}
       </section>
     </div>,
     document.body,

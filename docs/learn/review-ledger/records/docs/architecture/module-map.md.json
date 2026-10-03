@@ -114,7 +114,7 @@
 
     {"path":"packages/shared/src/station-home-recovery-preflight.ts","digest":"fd6ca8cc8c169a163c01a89609545de86097815ebc9d1bfb318efc8c2f06cb40","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/shared/src/workspace-package.ts","digest":"a24525a792fa3d672e483a2ee6eceb0ea73d99b42ad540bb99db86eb9f39aa1d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"packages/shared/src/workspace-package.ts","digest":"34c9a91798a6b8259dc7106387c94ffafe970aa43707887923c651d4313b4a40","revision":"5c18724d4ba50fd9b5f6c4043e7a00ebc893c70d"},
 
     {"path":"pnpm-lock.yaml","digest":"4f9a974bd49f637fd690699b3bcd9b6ce915114eb4f52e2e6bdd5b0f3b699f2a","revision":"ea49cb8678208b9037f8e9ab3ceb2a95fe2647ff"},
 
@@ -150,7 +150,7 @@
 
     {"path":"scripts/run-test-mutations.mjs","digest":"c432c9b8ba46c3a58d439d945883ce913629b7a68fd65ccb4b69e4802662d61f","revision":"1c13dd90939769cd3ca557a36649aa25823194db"},
 
-    {"path":"scripts/run-verification.mjs","digest":"dbbf9cf12e8b59b8d87feab8c6e1510bb92b9d8b4f6241803c897ff6f929a60a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"scripts/run-verification.mjs","digest":"cb92060b3ba75731d2685b2907036333948df8b1a654980a0c120af237145e8c","revision":"87d45fd9b238d6b9891d7d6167c72a035cf8363c"},
 
     {"path":"scripts/test-fixture-policy.mjs","digest":"fbe0e2438328249f4c047171503c0ffa8d366e9468418037cf0b211e090a48eb","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

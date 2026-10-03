@@ -122,6 +122,8 @@
 
     {"path":"src-server/providers/llm/bedrock-region.ts","digest":"a60f287958c5db26c48d3e89d433c8e1586e8b52cd442027785708724bf65bdb","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
+    {"path":"src-server/providers/registries/github-skill-registry.ts","digest":"4ce34af64065b6443c28b409339af2bd31b1cda0d432f19384a9e074fbd1d4cd","revision":"7be721b29fb6742b6e66cf8f952782481b3f0fe0"},
+
     {"path":"src-server/routes/agents/agent-tools.ts","digest":"ea178269f250820bee8d8d1c91198be22b47b5ce76b2ca579935468b77d84c71","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"src-server/routes/agents/agents.ts","digest":"06d20a294112b76993e9a1efd4ab9ce639242ab9116e04a7f1cbb7f68153ba23","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
@@ -174,6 +176,8 @@
 
     {"path":"src-server/routes/orchestration/runs.ts","digest":"f247aba8556b954a0fbbbb46b89870c75b736340cf9c0b4f1c617005bf31aebd","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
+    {"path":"src-server/routes/plugins/__tests__/registry-skill-acquisition.routes.test.ts","digest":"52ed271e4c36d967b31c50ecb89b0fbe5f8937b835b87a29c076bf839dc39a1c","revision":"7be721b29fb6742b6e66cf8f952782481b3f0fe0"},
+
     {"path":"src-server/routes/plugins/plugin-bundles.ts","digest":"1f1d61bad07cbd02ef056fd97e055ba034ca65d05dd39b32d8285ecad2df9afb","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"src-server/routes/plugins/plugin-config-routes.ts","digest":"42dda4eeb196c8b63c081f059822f9f56187b1da9d8f84ec4c09cacc3d95f5a4","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
@@ -196,7 +200,7 @@
 
     {"path":"src-server/routes/plugins/plugins.ts","digest":"fbaf259293b5a5f7ae43c76aae4d8676c35ab5e92157284cbd39d4f13622fb2f","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/routes/plugins/registry.ts","digest":"d2ad68bbcc5573372f17968589a0b7875ad7ba52974cd8b2a043626ca6a9ccd5","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/routes/plugins/registry.ts","digest":"182f1ca8372a27bd8f40e5b9ca8faec49b24cd1e4959b4a8aa1250def71e91dc","revision":"c191c6d08ae926b8d038cf5e2a4b494beee19243"},
 
     {"path":"src-server/routes/projects/fs.ts","digest":"73b84dab3f633c021406ad629cee445610a2cf44f43b93dc8b81e3d70d8efac4","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -348,7 +352,7 @@
 
     {"path":"src-shared/monitoring-keys.ts","digest":"1c2939ae04a2df7205ff75d2e16531e200199b7b785c672b1820a06a0a736f25","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/components/chat-dock/ChatDock.tsx","digest":"8b2afcd595e892421e4f0dc767d1b776074be7b78127b2d6607954bf454a5056","revision":"f06acf6b9cd2f940c1a5a9dcf283ad42bceb06f3"},
+    {"path":"src-ui/src/components/chat-dock/ChatDock.tsx","digest":"f92052af5abd7736675c6a27499a8a43ded8167dcecff4b0e4e775c2614562f3","revision":"4d59eb1868139f2faeaf1a1467811c22726f741c"},
 
     {"path":"src-ui/src/components/chat-dock/retry-attachments.ts","digest":"e35fc0d7d193cd614829fddbf3f822b4118510a0776e5f8853fdcb8bf1ea3d93","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
