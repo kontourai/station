@@ -3,6 +3,7 @@ import { useActivityUsageQuery } from '@kontourai/station-sdk';
 import { useState } from 'react';
 import './ActivityTimeline.css';
 import { describeReadFailure, ErrorState, SkeletonBlock } from './state';
+import { describeDailyHistoryGap } from './usage-stats/period';
 
 // Series rungs are theme tokens, not literals (#2140). These were the dark
 // chart palette written into `style={}`, which the theme cannot reach, so the
@@ -46,7 +47,7 @@ export function ActivityTimeline() {
   // (never blank a working page on a refetch failure).
   if (loading && !data)
     return <SkeletonBlock count={1} label="Loading activity" />;
-  if (isError && !data) {
+  if (isError) {
     return (
       <ErrorState
         title="Could not load activity"
@@ -66,7 +67,7 @@ export function ActivityTimeline() {
   const end = new Date(toDate);
   while (d <= end) {
     dates.push(fmt(d));
-    d.setDate(d.getDate() + 1);
+    d.setUTCDate(d.getUTCDate() + 1);
   }
 
   const agentSet = new Set<string>();
@@ -89,6 +90,10 @@ export function ActivityTimeline() {
 
   return (
     <div>
+      <p>UTC daily history · Station-recorded messages only.</p>
+      {describeDailyHistoryGap(data.lifetime?.engineUsageCoverage) && (
+        <p>{describeDailyHistoryGap(data.lifetime?.engineUsageCoverage)}</p>
+      )}
       {/* Date range picker */}
       <div className="timeline-date-picker">
         <label className="timeline-label" htmlFor="timeline-from-date">
