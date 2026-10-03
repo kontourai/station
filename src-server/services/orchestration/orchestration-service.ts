@@ -7913,7 +7913,9 @@ export class OrchestrationService {
       internal?.receiverExecutionAdmission?.admitted
     )
       return [undefined, 'session'];
-    if (input.cwd !== undefined)
+    // Truthiness, as the ACP adapter's own chain (`input.cwd || connection`):
+    // an empty `cwd` is no directory, so the connection's default applies.
+    if (input.cwd)
       return [input.cwdDefaulted ? undefined : input.cwd, 'session'];
     if (!this.options.resolveConnectionDefaultCwd)
       throw new DispatchCwdRefusedError(
@@ -7964,7 +7966,7 @@ export class OrchestrationService {
     input: ProviderSessionStartInput,
   ): string | undefined {
     const store = this.options.eventStore;
-    if (!store || input.cwd === undefined) return undefined;
+    if (!store || !input.cwd) return undefined;
     const conversationId = store.conversationForSession(
       input.threadId,
     )?.conversationId;

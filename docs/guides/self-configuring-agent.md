@@ -83,7 +83,10 @@ and `station_control_assurance_insufficient` when it is in another scope. The
 check runs before Station calls the engine adapter. The adapter then starts
 the process with the same path string, so the check narrows the interval in
 which a folder can be swapped; it does not pin the directory. Other uses of a
-Session's folder, such as terminals, are not covered.
+Session's folder, such as terminals, are not covered. A follow-up to a Session
+with no recorded folder, such as one the operator started or one from before
+this check existed, gets only the admission check. A forked conversation does
+not inherit the record.
 
 Saved-Environment discovery and remote dispatch require a bound operator caller.
 Remote task listings, task reads, event reads, and interrupts carry the same

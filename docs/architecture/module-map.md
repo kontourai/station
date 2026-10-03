@@ -962,7 +962,10 @@ continuation child in the same folder inherits it. The refusal reaches the
 dispatch route as an error with a station-control code and becomes a 403.
 The repeat does not hold a directory handle: the adapter resolves the path
 once more when it spawns the process. Conversation forks and non-engine uses
-of the folder are outside it. The
+of the folder are outside it. So is a later start for a Session that carries
+no record, one the operator started or one started before the record existed:
+a constrained caller's follow-up to it gets the route's admission check only,
+not the check before the engine starts. The
 [spawn composition test](../../src-server/runtime/routes/__tests__/runtime-routes-station-control-dispatch-spawn.test.ts)
 drives both dispatch routes into a real `OrchestrationService` with a recording
 engine double, and the

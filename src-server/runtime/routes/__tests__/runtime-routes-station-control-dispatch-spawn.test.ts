@@ -44,7 +44,10 @@ import { AsyncEventQueue } from '../../../providers/sessions/async-event-queue.j
 import { __resetStationServerSelfAttestationForTests } from '../../../security/station-server-scope.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
 import { NotificationService } from '../../../services/notifications/notification-service.js';
-import { DISPATCH_CANONICAL_CWD_METADATA_KEY } from '../../../services/orchestration/dispatch-cwd-admission.js';
+import {
+  DISPATCH_CANONICAL_CWD_METADATA_KEY,
+  DispatchCwdRefusedError,
+} from '../../../services/orchestration/dispatch-cwd-admission.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
@@ -1004,6 +1007,49 @@ describe('configureRuntimeRoutes: a station-control dispatch folder is decided a
       const ui = await post(base, request.path, operatorUi, request.body);
       expect([ui.status, ui.code]).toEqual([200, undefined]);
       expect(adapter.starts).toHaveLength(1);
+    });
+
+    // The routes refuse an empty `cwd`, but the start command does not, and
+    // the ACP adapter reads `input.cwd || connection cwd`: an empty string
+    // runs in the connection's directory, so it must be decided as one.
+    test('an empty session cwd is decided on the connection’s directory, as the adapter runs it', async () => {
+      const { adapter } = await setup();
+      const { root } = layout();
+      support.connectionCwd = join(root, 'proj', 'sub');
+      const decided: [string | undefined, string][] = [];
+      const started = await (
+        support.service as OrchestrationService
+      ).sessionCommands.execute(
+        {
+          type: 'start-session',
+          input: {
+            threadId: 'empty-cwd',
+            provider: 'acp',
+            cwd: '',
+            metadata: { agentSlug: 'writer', connectionId: CONNECTION },
+          },
+        },
+        {
+          userId: LOCAL_OPERATOR_PRINCIPAL_ID,
+          dispatchCwdAdmission: {
+            recheck(directory, origin) {
+              decided.push([directory, origin]);
+              if (origin === 'connection' && directory?.startsWith(root))
+                throw new DispatchCwdRefusedError(
+                  'outside the caller scope',
+                  ASSURANCE,
+                );
+              return undefined;
+            },
+          },
+        },
+      );
+      expect(decided).toEqual([[join(root, 'proj', 'sub'), 'connection']]);
+      expect([started.status, 'code' in started && started.code]).toEqual([
+        'rejected',
+        ASSURANCE,
+      ]);
+      expect(adapter.starts).toEqual([]);
     });
 
     test('a link into a Project is resolved before it is scoped', async () => {
