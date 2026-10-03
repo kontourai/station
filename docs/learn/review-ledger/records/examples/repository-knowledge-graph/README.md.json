@@ -14,7 +14,7 @@
   "sources": [
     {"path":"docs/architecture/module-map.md","digest":"c27130aceafe95cf3696da486bc7e2cbc3e33aa7553c87ff14fa682c8485595e","revision":"7715aaf09e8146909ad30ee8fb2eb5d869cd94c1"},
 
-    {"path":"docs/learn/atlas.json","digest":"c69356a2f739a0d5c322029134336356a917bc186641bf872a65b3cb3a7fae0a","revision":"d73d9f64333504f027a200482e978cc4445338da"},
+    {"path":"docs/learn/atlas.json","digest":"c392d0f008c898438a024054fdcfc98c1a1eeb636c8713b72a6c36eb2907d770","revision":"0ed893868b2be12651928150004d23a11f94837f"},
 
     {"path":"examples/repository-knowledge-graph/__tests__/repository-knowledge-graph.test.mjs","digest":"f88bfb8efa7de7ae220048c77313c64d5fcece1ea5c344cee0b2178d511db323","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
 
