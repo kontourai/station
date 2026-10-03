@@ -134,6 +134,22 @@ const RAISED: ClientProtocolPolicy = {
 };
 
 describe('client API protocol admission (#2962)', () => {
+  it('keeps the minimum at legacy protocol while known undeclared callers remain', () => {
+    // Rollout blockers independently identified at their request owners. Remove
+    // an entry only with carriage evidence, not merely a protocol-constant bump.
+    const knownUndeclaredCallers = [
+      'native pairing exchange: src-desktop/src/lib.rs',
+      'notification action: src-ui/src/components/notifications/NotificationContainer.tsx',
+      'local UI identity: src-ui/src/lib/local-ui-bootstrap.ts',
+      'operate event stream: packages/cli/src/commands/operate/shell.ts',
+    ];
+    expect(
+      STATION_COMPAT_MIN_CLIENT_PROTOCOL <= 1 ||
+        knownUndeclaredCallers.length === 0,
+      `Cannot raise minClientProtocol above 1 while callers remain undeclared: ${knownUndeclaredCallers.join('; ')}`,
+    ).toBe(true);
+  });
+
   it('enforces exactly what the handshake advertises, which today admits every client', async () => {
     // Pinned beside the constants so a bump is a deliberate edit here too.
     expect(STATION_COMPAT_PROTOCOL_VERSION).toBe(1);
