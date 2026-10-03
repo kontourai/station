@@ -107,6 +107,9 @@ vi.mock('../../../tools/station-control-delegation.js', async (original) => {
     delegateTask: record('delegate', () => ({ taskId: 'task:x' })),
     continueDelegatedTask: record('task-continue', () => ({})),
     respondToDelegatedTaskRequest: record('respond', () => ({})),
+    interruptDelegatedTask: record('task-interrupt', () => ({
+      interruptRequested: true,
+    })),
   };
 });
 
@@ -422,6 +425,14 @@ describe('configureRuntimeRoutes: station-control dispatch stays in scope (slice
               message: 'go',
               ...(aim.remote ? { environmentId: 'env-peer' } : {}),
             },
+          }
+        : undefined,
+    // #2377 slice C3: stopping a task's turn is held like a follow-up to it.
+    'POST /delegations/:taskId/interrupt': (aim) =>
+      aim.kind === 'thread'
+        ? {
+            path: `/api/orchestration/delegations/${aim.threadId}/interrupt`,
+            body: aim.remote ? { environmentId: 'env-peer' } : {},
           }
         : undefined,
   };
@@ -800,6 +811,58 @@ describe('configureRuntimeRoutes: station-control dispatch stays in scope (slice
     );
   });
 
+  // #2377 slice C3: the interrupt route was the one dispatch route that
+  // decided only the remote verdict, so an agent could stop a turn of its
+  // owner's session in another Project.
+  test('interrupting a task: the raw token, and a bound caller acting for another person', async () => {
+    const { base } = await setup();
+    const interrupt = (taskId: string) =>
+      ROUTES['POST /delegations/:taskId/interrupt']!({
+        kind: 'thread',
+        threadId: taskId,
+      })!;
+    const cases: Array<[string, () => Record<string, string>, string, string]> =
+      [
+        [
+          'raw token',
+          () => internal(),
+          'op-thread-a',
+          'station_control_caller_required',
+        ],
+        [
+          'bound person, own other-Project task',
+          as('bound', 'person-caller-a'),
+          'person-thread-b',
+          'reached',
+        ],
+        [
+          'bound person, the operator’s task',
+          as('bound', 'person-caller-a'),
+          'op-thread-a',
+          ROLE,
+        ],
+        [
+          'bearer person, own other-Project task',
+          as('bearer-exposed', 'person-caller-a'),
+          'person-thread-b',
+          ASSURANCE,
+        ],
+        [
+          'no such task',
+          as('bearer-exposed', 'op-caller-a'),
+          'new-task',
+          ASSURANCE,
+        ],
+      ];
+    for (const [label, headers, taskId, expected] of cases) {
+      const request = interrupt(taskId);
+      expect([
+        label,
+        await outcome(base, request.path, headers(), request.body),
+      ]).toEqual([label, expected]);
+    }
+  });
+
   test('the operator UI is not a station-control caller: it dispatches anywhere, remote included', async () => {
     const { base } = await setup();
     support.hostThreads.add('op-host-a');
@@ -813,6 +876,14 @@ describe('configureRuntimeRoutes: station-control dispatch stays in scope (slice
       [
         'POST /delegations/:taskId/continue',
         { kind: 'thread', threadId: 'person-thread-b' },
+      ],
+      [
+        'POST /delegations/:taskId/interrupt',
+        { kind: 'thread', threadId: 'person-thread-b' },
+      ],
+      [
+        'POST /delegations/:taskId/interrupt',
+        { kind: 'thread', threadId: 'op-host-a' },
       ],
     ] as const) {
       const request = ROUTES[route]!(aim as Aim)!;

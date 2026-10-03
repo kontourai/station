@@ -3078,11 +3078,20 @@ export function createOrchestrationRoutes(
           503,
         );
       }
-      const remoteRefused = refuseRemoteForStationControlCaller(
+      // #2377 slice C3: stopping a task's turn stays in the caller's scope,
+      // like a follow-up to it (another Station needs a bound operator).
+      const scopeRefused = refuseOutOfScopeDispatch(
         c,
-        (getBody(c) as { environmentId?: unknown }).environmentId !== undefined,
+        deps.stationControlDispatchScope,
+        () => ({
+          kind: 'task',
+          taskId: param(c, 'taskId'),
+          remote:
+            (getBody(c) as { environmentId?: unknown }).environmentId !==
+            undefined,
+        }),
       );
-      if (remoteRefused) return remoteRefused;
+      if (scopeRefused) return scopeRefused;
       try {
         const { principal, userId, ownerAttribution } = resolveDispatchActor(
           deps,
