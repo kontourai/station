@@ -9,7 +9,7 @@
 
   "limits": "Index coverage is navigation evidence, not semantic review of linked documents. Merge reconciliation preserves both prior review anchors below as historical evidence, not a new review of combined source bytes. Active bindings retain existing reviewed anchors; any mismatch with merged bytes remains stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"docs/design/README.md\",\"ours\":{\"digest\":\"62d7eaaa2a46a3994c850cb85080cdc5f26340144f41d9670e11d8e73745f749\",\"revision\":\"cfe5e7f40028437d518c2bce1e29633d508b9e31\"},\"main\":{\"digest\":\"229a1d6390563244ccaf7847781f1327d776fa49308e6011ccb7f59dd68b4c72\",\"revision\":\"3411e53b043de4cbf57cf8b4571991ba9ee6674a\"}}].",
 
-  "document": {"digest":"154259eb6aeb6da085f06722d52c554a0a393ca454a15fc77305b8dc2a0a6556","revision":"83c4111b8c4dcda1e978d78bb191c974888c9ca4"},
+  "document": {"digest":"88e40028e41779362548323ed59f2ab1369f819afc437b5a05937280a8155d2a","revision":"6ff32302c09e3703febfc3f96d27149cd4f02e25"},
 
   "sources": [
     {"path":"scripts/docs-index.mjs","digest":"bcde7189b68e8b091b415ce5a4730102803e2326ac29b6da6e0beacd776e7fe8","revision":"e5efef30008198db7198fe9dac38f3ad632c6621"}
