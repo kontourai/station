@@ -843,7 +843,7 @@ export const DEVICE_SETTINGS_REGISTRY = [
     scope: 'device',
     descriptor: { kind: 'enum', values: ['auto', 'send', 'newline'] },
     label: 'Return in chat',
-    help: 'Automatic uses a new line on touch devices and sends on desktop, including attached keyboards; Shift+Return always adds a line and Ctrl/Cmd+Return sends.',
+    help: 'Automatic uses a new line on touch devices and sends on desktop. Shift+Return always adds a line; Ctrl/Cmd+Return sends. Applies to attached keyboards too.',
     description:
       'Choose whether Return sends a message or inserts a new line on this device.',
     defaultValue: 'auto',

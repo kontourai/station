@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { authenticatedFetchMock } = vi.hoisted(() => ({
   authenticatedFetchMock: vi.fn(),
@@ -100,13 +100,9 @@ describe('device pairing request actions (#765 D5)', () => {
 });
 
 describe('paired-device identity query (#951 step 2)', () => {
-  const fetchMock = vi.fn<typeof fetch>();
   beforeEach(() => {
-    fetchMock.mockReset();
-    vi.stubGlobal('fetch', fetchMock);
+    authenticatedFetchMock.mockReset();
   });
-
-  afterEach(() => vi.unstubAllGlobals());
 
   it('reads the current device records from the canonical pairing route', async () => {
     const devices = [
@@ -124,14 +120,16 @@ describe('paired-device identity query (#951 step 2)', () => {
         revocation: { state: 'not-revoked' },
       },
     ];
-    fetchMock.mockResolvedValue(Response.json({ devices }));
+    authenticatedFetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({ devices }),
+    } as Response);
 
-    await expect(fetchPairedDevices('https://station.test')).resolves.toEqual(
+    await expect(fetchPairedDevices('https://station.test')).resolves.toBe(
       devices,
     );
-    expect(fetchMock).toHaveBeenCalledWith(
+    expect(authenticatedFetchMock).toHaveBeenCalledWith(
       'https://station.test/api/pairing/devices',
-      expect.objectContaining({ method: 'GET' }),
     );
   });
 
@@ -142,7 +140,10 @@ describe('paired-device identity query (#951 step 2)', () => {
   });
 
   it('refuses a successful response that has no device inventory', async () => {
-    fetchMock.mockResolvedValue(Response.json({}));
+    authenticatedFetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({}),
+    } as Response);
 
     await expect(fetchPairedDevices('https://station.test')).rejects.toThrow(
       'Paired devices response is missing its device list',
@@ -150,7 +151,10 @@ describe('paired-device identity query (#951 step 2)', () => {
   });
 
   it('surfaces an HTTP refusal instead of treating it as an empty registry', async () => {
-    fetchMock.mockResolvedValue(Response.json({}, { status: 403 }));
+    authenticatedFetchMock.mockResolvedValue({
+      ok: false,
+      status: 403,
+    } as Response);
 
     await expect(fetchPairedDevices('https://station.test')).rejects.toThrow(
       'Paired devices request failed (HTTP 403)',
