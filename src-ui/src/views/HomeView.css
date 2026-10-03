@@ -8,6 +8,48 @@
 .home-view__intro {
   max-width: 680px;
 }
+/* U2: the page's skip target, visible only when it has focus. */
+.home-view__skip {
+  position: absolute;
+  left: -9999px;
+  padding: 6px 10px;
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+  color: var(--accent-primary);
+  font-size: var(--text-sm);
+}
+.home-view__skip:focus-visible {
+  position: static;
+  display: inline-block;
+  margin-bottom: 8px;
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+/* The one quiet link in a section heading (B6): text, not a bordered box. */
+.home-view__link {
+  min-height: 44px;
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  color: var(--accent-primary);
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+.home-view__link:hover {
+  text-decoration: underline;
+}
+.home-view__link:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+.home-view__start {
+  margin: 0 0 24px;
+}
+.home-view__start--compact {
+  margin-bottom: 8px;
+}
 .home-view__intro h1 {
   margin: 4px 0 8px;
   font-size: clamp(28px, 4vw, 44px);
@@ -100,7 +142,6 @@
   justify-content: space-between;
   gap: 16px;
 }
-.home-view__section-heading button,
 .home-view__recent .empty__action button {
   min-height: 44px;
   padding: 8px 12px;
@@ -258,56 +299,6 @@
   font-weight: 600;
 }
 
-/* --- The counts that caption recent work --------------------------------- */
-
-/* Inline, small, and horizontal: these caption the lanes below rather than
-   being the surface. At full size they outranked the work they describe. */
-.home-pulse__stats {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 18px;
-  margin: 4px 0 12px;
-}
-.home-pulse__stat {
-  display: flex;
-  flex-direction: row;
-  align-items: baseline;
-  gap: 6px;
-}
-/* A count is a control only where its population is on this page — see
-   `statTargets` in HomeRecentWorkSection.tsx. */
-.home-pulse__stat--link {
-  /* archive#3768: the same explicit tap floor every other Home control
-     carries (`.home-view__section-heading button`, the work rows).
-     It was the omission that made these two counts the surface's only
-     sub-44px targets. */
-  min-height: 44px;
-  padding: 0;
-  border: none;
-  background: none;
-  cursor: pointer;
-  font-family: inherit;
-}
-.home-pulse__stat--link:hover .home-pulse__label {
-  color: var(--text-primary);
-}
-.home-pulse__stat--link:focus-visible {
-  outline: 2px solid var(--accent-primary);
-  outline-offset: 2px;
-  border-radius: 4px;
-}
-.home-pulse__value {
-  font-size: var(--text-sm, 14px);
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  color: var(--text-primary);
-}
-.home-pulse__label {
-  color: var(--text-muted);
-  font-size: var(--text-xs);
-  letter-spacing: 0.04em;
-}
-
 /* ── Home role (archive#3122) ─────────────────────────────────── */
 /* The provenance bar above a granted Home Pane: always names who provides
    the route and always offers the way back to the built-in. */
@@ -357,6 +348,12 @@
 }
 .home-view__goal textarea {
   min-height: 96px;
+}
+.home-view__goal--compact textarea {
+  min-height: 44px;
+}
+.home-view__goal--compact .home-view__goal-actions {
+  gap: var(--k-space-2);
 }
 .home-view__goal-actions {
   display: flex;

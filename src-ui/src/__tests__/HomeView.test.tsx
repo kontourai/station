@@ -465,9 +465,7 @@ describe('HomeView', () => {
       },
     };
     renderHomeView({ continuation: null, onNavigate: vi.fn() });
-    expect(
-      screen.queryByRole('button', { name: /Continue most recent work/i }),
-    ).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Continue/ })).toBeNull();
   });
 
   test('the same chat produces the card once its first turn promotes it', () => {
@@ -484,8 +482,7 @@ describe('HomeView', () => {
     };
     renderHomeView({ continuation: null, onNavigate: vi.fn() });
     expect(
-      screen.getByRole('button', { name: /Continue most recent work/i })
-        .textContent,
+      screen.getByRole('button', { name: /^Continue/ }).textContent,
     ).toContain('New chat');
   });
 
@@ -527,7 +524,7 @@ describe('HomeView', () => {
     });
     renderHomeView({ continuation: null, onNavigate: vi.fn() });
     const continueButton = screen.getByRole('button', {
-      name: /Continue most recent work/i,
+      name: /^Continue/,
     });
     expect(continueButton.textContent).toContain('Task-first home');
     expect(continueButton.textContent).toContain('Codex · gpt-5.3-codex');
@@ -557,9 +554,7 @@ describe('HomeView', () => {
     const onNavigate = vi.fn();
     renderHomeView({ continuation: null, onNavigate });
     expect(screen.getAllByText('Agent not reported').length).toBeGreaterThan(0);
-    fireEvent.click(
-      screen.getByRole('button', { name: /Continue most recent work/i }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: /^Continue/ }));
     expect(showSurface).toHaveBeenCalledWith('activity', {
       session: 'unmapped-thread',
     });
@@ -600,9 +595,7 @@ describe('HomeView', () => {
       },
     ];
     renderHomeView({ continuation: null, onNavigate: vi.fn() });
-    fireEvent.click(
-      screen.getByRole('button', { name: /Continue most recent work/i }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: /^Continue/ }));
     expect(showSurface).toHaveBeenCalledWith('activity', {
       session: 'worked-thread',
     });
@@ -788,9 +781,7 @@ describe('HomeView', () => {
     });
     renderHomeView({ continuation: null, onNavigate });
 
-    fireEvent.click(
-      screen.getByRole('button', { name: /Continue most recent work/i }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: /^Continue/ }));
 
     expect(onNavigate).not.toHaveBeenCalled();
     expect(focus).toHaveBeenCalledTimes(1);
@@ -828,9 +819,7 @@ describe('HomeView', () => {
     const onNavigate = vi.fn();
     renderHomeView({ continuation: null, onNavigate });
 
-    fireEvent.click(
-      screen.getByRole('button', { name: /Continue most recent work/i }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: /^Continue/ }));
 
     expect(showSurface).toHaveBeenCalledWith('activity', {
       session: 'attached-thread',
@@ -877,10 +866,9 @@ describe('HomeView', () => {
     });
 
     expect(container.querySelector('.home-view__empty')).toBeNull();
-    expect(container.querySelector('.empty.empty--prominent')).toBeTruthy();
-    expect(
-      screen.getByText('Your chats and project work will appear here'),
-    ).toBeTruthy();
+    // One line (V6); the start form above it is the action.
+    expect(container.querySelector('.empty.empty--compact')).toBeTruthy();
+    expect(screen.getByText('No work yet')).toBeTruthy();
   });
 
   /**
@@ -895,10 +883,8 @@ describe('HomeView', () => {
     expect(
       screen.queryByRole('button', { name: 'Start your first chat' }),
     ).toBeNull();
-    expect(
-      screen.getByText(/Your chats and project work will appear here/),
-    ).toBeTruthy();
-    // The card it names is the one that stays.
+    expect(screen.getByText('No work yet')).toBeTruthy();
+    // The form it defers to is the one that stays.
     expect(screen.getByText('Start a chat')).toBeTruthy();
     expect(
       screen.getAllByRole('textbox', { name: 'What would you like done?' }),
@@ -997,9 +983,7 @@ describe('HomeView', () => {
     expect(showSurfacePage).toHaveBeenCalledWith('activity');
     expect(onNavigate).not.toHaveBeenCalled();
     onNavigate.mockClear();
-    fireEvent.click(
-      screen.getByRole('button', { name: /Continue most recent work/i }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: /^Continue/ }));
     expect(onNavigate).toHaveBeenCalledWith({
       type: 'task',
       taskId: 'task/durable',
@@ -1047,9 +1031,7 @@ describe('HomeView', () => {
 
     expect(screen.queryByText('Raw correlated chat')).toBeNull();
     expect(screen.getAllByText('Persisted task')).toHaveLength(2);
-    fireEvent.click(
-      screen.getByRole('button', { name: /Continue most recent work/i }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: /^Continue/ }));
     expect(onNavigate).toHaveBeenCalledWith({ type: 'task', taskId: 'task-1' });
   });
 });
@@ -1390,7 +1372,7 @@ describe('HomeView remote-session read augmentation (station#1097)', () => {
     // primary CTA must skip past it to the most-recent item this Station can
     // actually continue: the local session.
     const continueButton = screen.getByRole('button', {
-      name: /Continue most recent work/i,
+      name: /^Continue/,
     });
     expect(continueButton.textContent).toContain(CODEX_SESSION_TITLE);
     fireEvent.click(continueButton);
@@ -1445,9 +1427,7 @@ describe('HomeView remote-session read augmentation (station#1097)', () => {
     };
     renderHomeView({ continuation: null, onNavigate: vi.fn() });
 
-    expect(
-      screen.queryByRole('button', { name: /Continue most recent work/i }),
-    ).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Continue/ })).toBeNull();
   });
 
   // the local list renders synchronously (from `useOrchestrationSessionsQuery`

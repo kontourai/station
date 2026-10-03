@@ -2,11 +2,6 @@ import { useEffect, useRef, useState } from 'react';
 import { useCoarsePointer } from '../../hooks/useCoarsePointer';
 import { useRowFocusPreservation } from '../../hooks/useRowFocusPreservation';
 import type { SessionIconAgent } from '../../utils/sessionDisplay';
-import {
-  PulseStats,
-  type PulseStatTarget,
-  pulseStats,
-} from '../../views/home/blocks/pulse-stats';
 import { bucketByRecency } from '../../views/home/blocks/recency-buckets';
 import {
   olderDraftsLabel,
@@ -18,7 +13,6 @@ import {
   LIVE_LANE_LABELS,
   type LiveLaneId,
 } from '../../views/home/home-lane-model';
-import { revealHomeRegion } from '../../views/home/home-reveal';
 import type { HomeWorkItem } from '../../views/home/home-view-model';
 import type { HomeWorkLanes } from '../../views/home/useHomeWorkLanes';
 import type { WorkFactsById } from '../../views/home/work-facts';
@@ -51,6 +45,8 @@ const FINISHED_HEADING_ID = 'home-recently-finished-heading';
 const SNOOZED_HEADING_ID = 'home-snoozed-shelf-heading';
 
 interface HomeRecentWorkSectionProps {
+  /** The section's element id, the page's skip target. */
+  id?: string;
   /**
    * The lanes, derived ONCE by the host and shared with everything that
    * counts them. Deriving them a second time here would give the counts
@@ -78,7 +74,6 @@ interface HomeWorkController {
   shelfExpanded: boolean;
   settledVisibleCount: number;
   toggleShelf: () => void;
-  expandShelf: () => void;
   showMoreSettled: () => void;
   detailsFor: string | null;
   setDetailsFor: (id: string | null) => void;
@@ -113,7 +108,6 @@ function useHomeWorkController(lanes: HomeWorkLanes): HomeWorkController {
     shelfExpanded,
     settledVisibleCount,
     toggleShelf: () => setShelfExpanded((value) => !value),
-    expandShelf: () => setShelfExpanded(true),
     showMoreSettled: () =>
       setSettledVisibleCount((count) => count + SETTLED_PAGE_SIZE),
   };
@@ -129,13 +123,19 @@ export function HomeRecentWorkSection(props: HomeRecentWorkSectionProps) {
   return (
     <section
       ref={sectionRef}
+      id={props.id}
       className="home-view__recent"
       aria-labelledby="recent-work-heading"
       tabIndex={-1}
     >
       <div className="home-view__section-heading">
         <h2 id="recent-work-heading">Recent work</h2>
-        <button type="button" onClick={props.onViewActivity}>
+        {/* A quiet link, not a bordered button (B6): it goes somewhere. */}
+        <button
+          type="button"
+          className="home-view__link"
+          onClick={props.onViewActivity}
+        >
           View Activity
         </button>
       </div>
@@ -212,14 +212,6 @@ function HomeWorkContent({
   if (workItems.length === 0) return <RecentWorkEmpty />;
   return (
     <>
-      {/* The counts caption the lanes below rather than heading the page: at
-          full size they outranked the work they describe (station#3122's
-          composed variant, the shape the owner chose). They render only in
-          this branch, so a count can never be shown — or made activatable —
-          for a lane that is not on the page. */}
-      <PulseStats
-        stats={pulseStats(controller.lanes, statTargets(controller))}
-      />
       <HomeWorkLanesContent
         controller={controller}
         agents={agents}
@@ -236,48 +228,6 @@ function HomeWorkContent({
       />
     </>
   );
-}
-
-/**
- * What each count reveals, and only where that thing is actually rendered.
- *
- * Every target is a region of THIS page. Nothing outside Home accepts these
- * populations: Activity takes only a session intent and its project filter
- * is component state with no route parameter, so linking a count there would
- * land the reader on the unfiltered global list under a heading promising a
- * filter — see `home-reveal.ts`.
- */
-function statTargets(
-  controller: HomeWorkController,
-): Record<string, PulseStatTarget> {
-  const { lanes } = controller;
-  const targets: Record<string, PulseStatTarget> = {};
-  // A live lane renders only when non-empty (`HomeLiveLane`), so its count
-  // links only then; a zero count reads as text.
-  for (const lane of LIVE_LANES) {
-    if (lanes[lane.id].length > 0) {
-      targets[lane.label] = {
-        destination: `show the ${lane.label} lane`,
-        onActivate: () => revealHomeRegion(lane.headingId),
-      };
-    }
-  }
-  if (lanes.recentlyFinished.length > 0) {
-    targets['Just finished'] = {
-      destination: 'show the Just finished lane',
-      onActivate: () => revealHomeRegion(FINISHED_HEADING_ID),
-    };
-  }
-  if (lanes.snoozed.length > 0) {
-    targets.Snoozed = {
-      destination: 'open the snoozed shelf',
-      onActivate: () => {
-        controller.expandShelf();
-        revealHomeRegion(SNOOZED_HEADING_ID);
-      },
-    };
-  }
-  return targets;
 }
 
 function RecentWorkDegraded({ onRetry }: { onRetry: () => void }) {
@@ -311,18 +261,11 @@ function RecentWorkError({ onViewActivity }: { onViewActivity: () => void }) {
 }
 
 /**
- * #1536 C2: Home offered three ways to start a chat with no session — the
- * "Start direct chat" action card, this button, and the dock's own "Start a
- * chat". The card and the dock control both stay; the empty state explains
- * what will appear without claiming an engine is ready.
+ * #1536 C2 / V6: one line, no second door. The start form above this
+ * section is the action; the empty state only says there is nothing yet.
  */
 function RecentWorkEmpty() {
-  return (
-    <Empty
-      variant="prominent"
-      label="Your chats and project work will appear here"
-    />
-  );
+  return <Empty variant="compact" label="No work yet" />;
 }
 
 function HomeWorkLanesContent({
@@ -487,7 +430,7 @@ function HomeLiveLane({
 }) {
   const items = controller.lanes[lane.id];
   // Empty live lanes render nothing, like Just finished: three "(0)"
-  // headings would be noise, and the pulse counts already say zero.
+  // headings would be noise.
   if (items.length === 0) return null;
   return (
     <section aria-labelledby={lane.headingId}>
