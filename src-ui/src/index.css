@@ -2437,6 +2437,33 @@ button:hover {
 }
 /* Decorative only (aria-hidden in the component) — the row it flags never
    disables either action; see D5 in the kontourai-station-793 plan. */
+.chat-dock__project-switcher-cue {
+  display: flex;
+  width: 20px;
+  height: 20px;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+}
+.chat-dock__project-switcher-panel {
+  position: relative;
+}
+.chat-dock__project-switcher-help {
+  position: absolute;
+  right: var(--k-space-4);
+  bottom: calc(52px + var(--k-space-3) * 2 + var(--k-space-2));
+  left: var(--k-space-4);
+  margin: 0;
+  padding: var(--k-space-3);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-overlay);
+  background: var(--bg-secondary);
+  box-shadow: var(--k-elevation-overlay);
+  color: var(--text-primary);
+  font-size: var(--k-text-md);
+  line-height: var(--k-leading-normal);
+  pointer-events: none;
+}
 .chat-dock__project-switcher-current {
   display: flex;
   width: 20px;

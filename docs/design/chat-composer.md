@@ -217,7 +217,9 @@ existing details/actions sheet, including Git and PR reads on demand.
 The **Projects** picker uses the same **+** component, named **New project**,
 and opens the canonical `/projects/new` flow. Its empty state explains the
 next action. Project icons and accent fallback match the sidebar; a checkmark
-identifies the selected project. Selecting an existing row changes the dock's
+identifies the selected project. Other rows show stacked switch arrows; the
+separate home icon opens the Project workspace. Hover, keyboard focus or a hold
+explains each action; the hold does not also perform it. Selecting an existing row changes the dock's
 binding, and its separate Open action shows the workspace.
 
 Selecting a workspace through the sidebar also sets the default project for

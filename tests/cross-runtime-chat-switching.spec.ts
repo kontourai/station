@@ -9,6 +9,7 @@ import { createDailyDriverUiObservation } from '../scripts/lib/daily-driver-ui-o
 import { monitorBrowserHealth } from './helpers/browser-health';
 import { agentConnectionFixture } from './helpers/connection-fixtures';
 import { foregroundMessageReceiptEnvelope } from './helpers/execution-receipt';
+import { pressAndHold } from './helpers/long-press';
 import {
   emitMockOrchestrationEvent,
   installMockOrchestrationConversationEventWindow,
@@ -1605,6 +1606,17 @@ test.describe('chat-dock project switcher (kontourai/station#793)', () => {
     await expect(
       page.locator('.responsive-surface-overlay[data-anchored]'),
     ).toBeVisible();
+
+    const switchAlpha = dialog.getByRole('button', {
+      name: 'Switch to Alpha Project',
+    });
+    const release = await pressAndHold(page, switchAlpha);
+    await release();
+    await expect(dialog).toBeVisible();
+    await expect(badge).toHaveAccessibleName('Beta Project');
+    await expect(dialog.getByRole('tooltip')).toContainText(
+      'Existing chats keep their original project.',
+    );
 
     await expect(
       dialog.getByRole('button', { name: 'Open Alpha Project' }),
