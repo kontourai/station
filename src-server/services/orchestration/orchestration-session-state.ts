@@ -523,6 +523,15 @@ export function buildOrchestrationSessionSummary(options: {
         ...(delegation.title ? { title: delegation.title } : {}),
       }
     : undefined;
+  const configuredRouteEvent = [...events]
+    .reverse()
+    .find((event) => event.method === 'session.configured');
+  const modelRoute =
+    options.loaded && Object.hasOwn(options.loaded, 'modelRoute')
+      ? readModelRoute(options.loaded.modelRoute)
+      : configuredRouteEvent
+        ? readModelRoute(configuredRouteEvent.metadata?.modelRoute)
+        : readModelRoute(base.modelRoute);
   const effectiveSelection = extractEffectiveModelSelection(events);
   const selectionReceipt = extractModelSelectionReceipt(events);
   const modelLaunchPlan = extractModelLaunchPlan(events);
@@ -601,6 +610,7 @@ export function buildOrchestrationSessionSummary(options: {
       observedBy: options.answerability.observedBy,
       observedAt: options.answerability.observedAt,
     }),
+    ...(modelRoute ? { modelRoute } : {}),
     ...(base.model ? { model: base.model } : {}),
     ...(base.cwd ? { cwd: base.cwd } : {}),
     ...(base.resumeCursor !== undefined

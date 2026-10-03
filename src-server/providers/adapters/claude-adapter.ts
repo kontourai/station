@@ -1458,6 +1458,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     }
 
     const session: ProviderSession = {
+      modelRoute,
       provider: this.provider,
       threadId: input.threadId,
       status: 'connecting',

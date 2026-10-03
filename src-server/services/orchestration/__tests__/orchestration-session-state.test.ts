@@ -4376,3 +4376,42 @@ test('configured sessions retain their actual safe proxy route and a direct re-l
   apply();
   expect(sessions.get('proxy-route')?.modelRoute).toBeUndefined();
 });
+
+test('session summaries expose the captured route when the loaded runtime has no new route field', () => {
+  const route = {
+    connectionId: 'proxy-home',
+    label: 'brian-media',
+    endpoint: 'https://proxy.example',
+  };
+  const loaded: ProviderSession = {
+    provider: 'codex',
+    threadId: 'route-summary',
+    status: 'ready',
+    createdAt: '2026-10-03T00:00:00Z',
+    updatedAt: '2026-10-03T00:00:00Z',
+  };
+  const events: CanonicalRuntimeEvent[] = [
+    {
+      provider: 'codex',
+      threadId: loaded.threadId,
+      createdAt: loaded.createdAt,
+      method: 'session.configured',
+      sessionId: loaded.threadId,
+      metadata: { modelRoute: route },
+    },
+  ];
+  expect(
+    buildOrchestrationSessionSummary({
+      loaded,
+      events,
+      answerability: OBSERVATION,
+    }).modelRoute,
+  ).toEqual(route);
+  expect(
+    buildOrchestrationSessionSummary({
+      loaded: { ...loaded, modelRoute: undefined },
+      events,
+      answerability: OBSERVATION,
+    }).modelRoute,
+  ).toBeUndefined();
+});

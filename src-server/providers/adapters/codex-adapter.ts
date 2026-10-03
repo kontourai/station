@@ -1908,6 +1908,7 @@ export class CodexAdapter implements ProviderAdapterShape {
         : approvalKnobs?.sandbox;
       record.session = {
         ...record.session,
+        modelRoute: connectionLaunch.route,
         status: 'ready',
         model: reportedModelFromInit ?? input.modelId,
         updatedAt: this.now().toISOString(),
