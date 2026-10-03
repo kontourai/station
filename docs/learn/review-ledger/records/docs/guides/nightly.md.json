@@ -114,7 +114,7 @@
 
     {"path":"scripts/lib/windows-nightly.mjs","digest":"6ad16d115434c40d429c7ed7323c6b8659b6edd284530bac01cebd4fafa5dedd","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"scripts/portable-nightly-publication.mjs","digest":"f4c49094d99c29712fd552079888be228c174a0f1a64d26a76363c518dc9c584","revision":"12e161f7032b17c2f97702c0c41116b0c82bbb91"},
+    {"path":"scripts/portable-nightly-publication.mjs","digest":"1255aa0d27678ed50716dde09f566464e385256a31889a1240d58b6516cbba9c","revision":"51684c027d476a8ed882b73f3a608dfadfb91b04"},
 
     {"path":"scripts/release-artifacts.mjs","digest":"723faabe56568d395f3d898369423ae592da0e092953332f8241f67e539ded33","revision":"780dbbe2bb02372ad22a92e269e2fc3fa62bcd22"},
 

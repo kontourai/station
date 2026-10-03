@@ -146,7 +146,7 @@
 
     {"path":"scripts/publish-mobile-feed-transaction.sh","digest":"e983e732ff706b8b2c7fbd4e13001331de7341c7aaed0d66656ddfc99cd7a34f","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"scripts/release-admit-producer-assets.mjs","digest":"04fd408eba2f6cca5e14a5567bd2a7c2d13adf5f5b6e21cc944a0027482e5587","revision":"12e161f7032b17c2f97702c0c41116b0c82bbb91"},
+    {"path":"scripts/release-admit-producer-assets.mjs","digest":"3bb63527ba13519e9546ffab1e6fe03497e787c292beedfca99c9c4a395fbd08","revision":"f0f9e40155cd9cae70d9305a4f80d431b2466a58"},
 
     {"path":"scripts/release-artifacts.mjs","digest":"723faabe56568d395f3d898369423ae592da0e092953332f8241f67e539ded33","revision":"780dbbe2bb02372ad22a92e269e2fc3fa62bcd22"},
 
