@@ -1,32 +1,53 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const keyring = vi.hoisted(() => ({
+  construct: vi.fn(),
   deleteCredential: vi.fn(),
   getPassword: vi.fn(),
+  require: vi.fn(),
   setPassword: vi.fn(),
 }));
 
-import {
-  createProfileKeyringStore,
-  setProfileKeyringEntryFactoryForTests,
-} from '../commands/profile-keyring.js';
+vi.mock('node:module', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('node:module')>()),
+  createRequire: () => keyring.require,
+}));
+
+class FakeEntry {
+  constructor(service: string, account: string) {
+    keyring.construct(service, account);
+  }
+
+  deleteCredential = keyring.deleteCredential;
+  getPassword = keyring.getPassword;
+  setPassword = keyring.setPassword;
+}
+
+let createProfileKeyringStore: typeof import('../commands/profile-keyring.js')['createProfileKeyringStore'];
 
 const ref = { kind: 'station-bearer' as const, id: 'remote-home' };
 
 describe('profile OS-keyring adapter', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    vi.resetModules();
     vi.clearAllMocks();
     keyring.getPassword.mockReturnValue(null);
-    setProfileKeyringEntryFactoryForTests(() => ({
-      deleteCredential: keyring.deleteCredential,
-      getPassword: keyring.getPassword,
-      setPassword: keyring.setPassword,
-    }));
+    keyring.require.mockReturnValue({ Entry: FakeEntry });
+    ({ createProfileKeyringStore } = await import(
+      '../commands/profile-keyring.js'
+    ));
   });
 
   it('round-trips only through the native keyring entry', () => {
+    expect(keyring.require).not.toHaveBeenCalled();
     const store = createProfileKeyringStore();
+    expect(keyring.require).not.toHaveBeenCalled();
     store.set(ref, 'secret');
+    expect(keyring.require).toHaveBeenCalledWith('@napi-rs/keyring');
+    expect(keyring.construct).toHaveBeenCalledWith(
+      'io.kontourai.station',
+      'profile:station-bearer:remote-home',
+    );
     expect(keyring.setPassword).toHaveBeenCalledWith('secret');
 
     keyring.getPassword.mockReturnValue('secret');
