@@ -3,6 +3,7 @@ import {
   authenticatedFetch,
   type ClientRequestOptions,
   getJson,
+  StationHttpError,
 } from '../client/http';
 import { rethrowDeadline } from '../client/request-deadline';
 import {
@@ -27,7 +28,10 @@ export async function fetchPairedDevices(
     options,
   );
   if (!response.ok) {
-    throw new Error(`Paired devices request failed (HTTP ${response.status})`);
+    throw new StationHttpError(
+      response.status,
+      `Paired devices request failed (HTTP ${response.status})`,
+    );
   }
   const body = (await response.json()) as PairedDevicesResponse;
   if (!Array.isArray(body.devices)) {
@@ -72,6 +76,10 @@ export function usePairedDevicesQuery(
     {
       staleTime: 15_000,
       refetchInterval: 15_000,
+      refetchIntervalForError: (error) =>
+        error instanceof StationHttpError && [401, 403].includes(error.status)
+          ? false
+          : undefined,
       retry: false,
       ...config,
       enabled:

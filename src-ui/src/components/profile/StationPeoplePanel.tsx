@@ -1,5 +1,8 @@
 import type { PairedDevice } from '@kontourai/station-contracts/environment-security';
-import { usePairedDevicesQuery } from '@kontourai/station-sdk';
+import {
+  StationHttpError,
+  usePairedDevicesQuery,
+} from '@kontourai/station-sdk';
 import { useState } from 'react';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { Button } from '../Button';
@@ -65,7 +68,12 @@ export function StationPeoplePanel() {
         <ErrorState
           variant="compact"
           title="Paired profiles unavailable"
-          description="This connection could not read the device registry."
+          description={
+            query.error instanceof StationHttpError &&
+            [401, 403].includes(query.error.status)
+              ? 'Pairing-management access is required to view these profiles. Automatic refresh is paused for this connection.'
+              : 'This connection could not read the device registry.'
+          }
           action={
             <Button size="sm" onClick={() => void query.refetch()}>
               Retry

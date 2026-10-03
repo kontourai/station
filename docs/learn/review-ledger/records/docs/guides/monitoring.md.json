@@ -46,9 +46,9 @@
 
     {"path":"src-shared/monitoring-keys.ts","digest":"1c2939ae04a2df7205ff75d2e16531e200199b7b785c672b1820a06a0a736f25","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
-    {"path":"src-ui/src/pages/ProfilePage.tsx","digest":"eff16ee890245858351ddad09e556b4cd4403bba29e790228d60cd2c88a98653","revision":"5e6fbfedca2315119d1d20a7829252899c52c15a"},
+    {"path":"src-ui/src/pages/ProfilePage.tsx","digest":"7cd82789c471a04dcd08d3ab5200f580e4f2845b122c8b9f3cb1a5f7432ecb0e","revision":"588eae2a9ce0653a1ea92b44de34c56bce5a5c78"},
 
-    {"path":"src-ui/src/components/profile/StationPeoplePanel.tsx","digest":"2df8af759ec3f5e83f9926e47cf94d9417010035a4ebf955dceb542993524879","revision":"5e6fbfedca2315119d1d20a7829252899c52c15a"},
+    {"path":"src-ui/src/components/profile/StationPeoplePanel.tsx","digest":"0995105c2fa9a13672d69eb64f4d37247cfd6375512b9e15c6a9d193ee87404a","revision":"588eae2a9ce0653a1ea92b44de34c56bce5a5c78"},
 
     {"path":"src-ui/src/components/usage-stats/UsageRollupPanel.tsx","digest":"1fbeee4b6256d3ebff73fc15a9ab0cd3c2f0d4768571b82e1050bf09111c9704","revision":"5e6fbfedca2315119d1d20a7829252899c52c15a"},
 

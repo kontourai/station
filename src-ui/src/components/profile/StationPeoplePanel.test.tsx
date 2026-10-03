@@ -7,7 +7,12 @@ const state = vi.hoisted(() => ({
   devices: [] as PairedDevice[],
   error: null as Error | null,
 }));
-vi.mock('@kontourai/station-sdk', () => ({
+vi.mock('@kontourai/station-sdk', async () => ({
+  StationHttpError: (
+    await vi.importActual<typeof import('@kontourai/station-sdk')>(
+      '@kontourai/station-sdk',
+    )
+  ).StationHttpError,
   usePairedDevicesQuery: () => ({
     data: state.devices,
     error: state.error,

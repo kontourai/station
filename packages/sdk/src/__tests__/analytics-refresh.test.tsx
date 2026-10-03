@@ -8,7 +8,8 @@ import { usePairedDevicesQuery } from '../query-domains/devicePairingRequests';
 
 const fetch = vi.hoisted(() => vi.fn());
 vi.mock('../api', () => ({ _getApiBase: async () => 'http://station.test' }));
-vi.mock('../client/http', () => ({
+vi.mock('../client/http', async () => ({
+  ...(await vi.importActual<typeof import('../client/http')>('../client/http')),
   authenticatedFetch: fetch,
   getJson: fetch,
 }));
@@ -66,3 +67,38 @@ test('paired-profile reads cannot reuse an unscoped registry when authority is u
     client.clear();
   }
 });
+
+test.each([401, 403])(
+  'paired-profile polling pauses after HTTP %s and resumes after an explicit successful retry',
+  async (status) => {
+    vi.useFakeTimers();
+    fetch
+      .mockReset()
+      .mockImplementation(async () => Response.json({}, { status }));
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const view = renderHook(() => usePairedDevicesQuery(), {
+      wrapper: wrapperFor(client),
+    });
+    try {
+      await act(() => vi.advanceTimersByTimeAsync(10));
+      expect(view.result.current.isError).toBe(true);
+      await act(() => vi.advanceTimersByTimeAsync(60_010));
+      expect(fetch).toHaveBeenCalledOnce();
+      fetch.mockImplementation(async () => Response.json({ devices: [] }));
+      await act(async () => {
+        const retry = await view.result.current.refetch();
+        expect(retry.data).toEqual([]);
+      });
+      await act(() => vi.advanceTimersByTimeAsync(15_010));
+      expect(view.result.current.data).toEqual([]);
+      expect(fetch).toHaveBeenCalledTimes(3);
+    } finally {
+      view.unmount();
+      client.clear();
+      vi.useRealTimers();
+      fetch.mockReset();
+    }
+  },
+);

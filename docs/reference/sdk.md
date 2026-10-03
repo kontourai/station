@@ -3855,6 +3855,6 @@ sign-in, permission and cost-attribution limits.
 `requireRequestScope`. Scoped cache keys include API base and authority key;
 the HTTP reader checks that captured authority before consuming the response.
 With required scope absent, the observer is disabled under an isolated key.
-The Profile page uses this mode for approved person bindings and current
+The default poll pauses after HTTP 401/403; explicit retry or Profile-page remount can reauthorize the read. `QueryConfig.refetchIntervalForError` can return `false` to pause polling or a number for an error-specific interval; `undefined` preserves the numeric interval. The Profile page uses this mode for approved person bindings and current
 connection projections. This list requires the pairing route's existing access
 and does not share another person's usage statistics.

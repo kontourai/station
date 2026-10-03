@@ -71,7 +71,8 @@ Names come from those bindings, not a guessed user-directory alias. The detail
 shows their approved devices and last authenticated request, when recorded.
 An open primary event stream is shown as connected; absence of a reported stream
 is not a claim that every client is offline. A failed registry read hides cached
-profiles. This surface grants no access and shares no personal usage statistics.
+profiles. HTTP 401/403 pauses registry polling to avoid consuming the auth-failure
+rate limit; an explicit retry can reauthorize it. This surface grants no access and shares no personal usage statistics.
 
 ## Quick Start
 
