@@ -1439,8 +1439,10 @@ other's backup; the traversal and caps below describe `home backup`.
 **Ownership and backup.** [StationHomeLifecycle](../../packages/shared/src/station-home-lifecycle.ts)
 tracks runtime owners by PID and birth identity and gives maintenance exclusive
 ownership against cooperating runtimes. Dead owners can be reclaimed;
-unverifiable owners remain fenced. The lease can represent multiple runtime
-owners, while individual callers can impose stricter same-home policy.
+unverifiable owners remain fenced. Runtime publication makes bounded exact
+birth-probe retries for its own PID before refusing startup; probes of other
+owners do not retry or fall back to PID-only authority. The lease can represent
+multiple runtime owners, while individual callers can impose stricter same-home policy.
 [StationRuntime](../../src-server/runtime/bootstrap/station-runtime.ts) retains
 its lease through persistence shutdown. CLI wrappers also check lifecycle
 observations for useful offline diagnostics. These checks do not stop an
