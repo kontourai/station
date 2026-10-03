@@ -336,6 +336,74 @@ describe('Marketplace source lifecycle through Registry routes', () => {
     },
   );
 
+  test.each(['plugin', 'agent-plugin'] as const)(
+    'hides %s provided Skill ownership from public catalog conflicts while retaining an operator control',
+    async (kind) => {
+      const { request, home, config } = setup();
+      const publicRoot = await library('Public instructions');
+      await add(request, 'Public library', publicRoot);
+      const privateRoot = await library('Private package instructions');
+      const source = `${kind}:private-provider` as const;
+      const service = new SkillService(
+        config,
+        logger,
+        kind === 'plugin'
+          ? {
+              pluginCommandSource: () => [
+                {
+                  name: 'clarify',
+                  description: 'Private supplied skill',
+                  body: 'Private instructions',
+                  resources: [],
+                  location: join(privateRoot, 'plugin.json'),
+                  source,
+                },
+              ],
+            }
+          : {
+              canonicalSources: [
+                {
+                  root: privateRoot,
+                  label: 'agent-plugin:private-provider',
+                  origin: 'plugin',
+                },
+              ],
+            },
+      );
+      await service.discoverSkills(home);
+      expect(service.listSkills()).toEqual([
+        expect.objectContaining({
+          name: 'clarify',
+          origin: 'plugin',
+          source,
+          installed: true,
+        }),
+      ]);
+      const listing = async (visible: boolean) => {
+        const app = createRegistryRoutes(
+          config,
+          async () => {},
+          undefined,
+          service,
+          { logger, canSeePlugin: () => visible },
+        );
+        const response = await app.request('/skills');
+        expect(response.status).toBe(200);
+        return (await response.json()) as { data: RegistryItem[] };
+      };
+      const hidden = await listing(false);
+      expect(hidden.data).toHaveLength(1);
+      expect(hidden.data[0]).toMatchObject({ installed: false });
+      expect(hidden.data[0]!.status).not.toBe('installed-name-conflict');
+      expect(JSON.stringify(hidden)).not.toContain('private-provider');
+      const operator = await listing(true);
+      expect(operator.data[0]).toMatchObject({
+        installed: false,
+        status: 'installed-name-conflict',
+      });
+    },
+  );
+
   test('configured multi-root filesystem libraries keep stable distinct source choices and install the exact same-name package', async () => {
     const { request, home } = setup();
     const first = await library('Configured first instructions');
