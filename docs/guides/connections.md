@@ -275,7 +275,7 @@ nonsecret public cold and warm intake, cancellation, unchanged saved profiles
 and confirmation, and error-free empty grant status. Bound secret delivery,
 actual grant storage writes/deletes, account/application traffic, store
 releases and physical acceptance remain unverified. The UI owners are the
-[root intake](../../src-ui/src/platform/native/NativeRelayLinkIntake.tsx) and
+[root intake](../../src-ui/src/platform/native/NativeRelayLinkIntake.tsx) (with its iOS-only [controller](../../src-ui/src/platform/native/NativeRelayLinkIntakeController.tsx)) and
 [opaque native adapter](../../src-ui/src/platform/native/nativeRelayLinkAdapter.ts).
 
 **Approve this device** verifies a supported account, presents the exact Device
@@ -804,3 +804,8 @@ The connection section registry and `getPathForView` emit canonical routes.
 Navigation ingestion also normalizes the listed aliases, including old deep
 links. See the [section registry](../../src-ui/src/views/connections-hub/connection-sections.ts)
 and [routing owner](../../src-ui/src/app-shell/routing.ts).
+
+The invitation intake controller loads only on iOS and still waits for launch
+delivery handling before starting protected roots. No-expiry links have no local
+expiry timer. Longer finite deadlines are checked in bounded timer intervals,
+so browser timer overflow cannot close a valid link early.
