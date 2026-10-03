@@ -30,7 +30,7 @@
 
     {"path":"packages/cli/src/commands/station-instance-reconciler.ts","digest":"845e7d0147d219e66d4b79e6a6846765ccf55c56ab8f776572888d8222fd6954","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/connect/src/core/devicePairing.ts","digest":"1072b18524cd5e982906263d776f3aaf94818b14fea3f83220d40596e175f4ed","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"packages/connect/src/core/devicePairing.ts","digest":"2581a614f5441f1c6bd4dc1604101f91c0f439fc04f0b78fa138d8dda7293061","revision":"fadd647731c00e53b2aeb25a7873ee66c0aa7608"},
 
     {"path":"packages/connect/src/core/nativeApplicationTransport.ts","digest":"1232c1c8b293b9c4fc29dc9b0dff4aeff4f9d7ec17b8da82f7b1e84bf6603cd0","revision":"214bbb63ddf239ab441c890f2fc3d40d83e27284"},
 
@@ -68,7 +68,7 @@
 
     {"path":"packages/sdk/src/client/application-session-native.ts","digest":"300c8da40100c1d2659a8324654ee9216129b58ab5756b3724080f72e4b0bbcf","revision":"2e4f061f91ffb0338e45de62382cf6da59cd5c76"},
 
-    {"path":"packages/sdk/src/client/http.ts","digest":"9892699e68483e0df3dd67ce71956994e98a43755a0c931dd6c3c5660caee00e","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+    {"path":"packages/sdk/src/client/http.ts","digest":"68cf352bfc07dc47297ecaaccaa548adb394478ba8a7ff8baff6817a8beccd44","revision":"fadd647731c00e53b2aeb25a7873ee66c0aa7608"},
 
     {"path":"packages/sdk/src/client/learning-source.ts","digest":"e7250cbdd1d308ca10b197663affe679702ec97c5672685e3fd38e1b6c3e88f4","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -156,7 +156,7 @@
 
     {"path":"scripts/test-fixture-policy.mjs","digest":"fbe0e2438328249f4c047171503c0ffa8d366e9468418037cf0b211e090a48eb","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-desktop/src/lib.rs","digest":"87107637c2b0c4d1c470664c3ae3d5b4f1f377777f561ea2c25bd63df8cf2cd6","revision":"a516c638f82e312fe84fe7f8dd8cd5094b2567a5"},
+    {"path":"src-desktop/src/lib.rs","digest":"c98156ab945eb55a1499c3b79c24417865d042347a985d1b808aafb13131f256","revision":"9623ad155b409f289f9fd6083db80372819c2a26"},
 
     {"path":"src-desktop/src/login_shell.rs","digest":"383da9b8cc506165bed9da14ba157d3e3a2f68a7495a708aac9025e4ed99cb2c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -352,7 +352,7 @@
 
     {"path":"src-server/runtime/bootstrap/native-device-proof-runtime.ts","digest":"54bb568bc83d313232b95afaff825e92965fb0d6cb92b5bad3fae295aed7c8f8","revision":"a72f474ba3d42a59409d95d36eb9e0264b599e33"},
 
-    {"path":"src-server/runtime/bootstrap/runtime-http.ts","digest":"bf1b7671bc40fe53615a39f8e9f12b5ad27beace97a86fc50e2ebb4e9717d20e","revision":"54ca710a3594bf1f3b7ac3d4464a2db2edc6e6c0"},
+    {"path":"src-server/runtime/bootstrap/runtime-http.ts","digest":"cdfffc4dc4fa6b5581595ef57780cedff21b645ab3f284cf9afc086a2f1d45e2","revision":"9623ad155b409f289f9fd6083db80372819c2a26"},
 
     {"path":"src-server/runtime/bootstrap/runtime-initialize.ts","digest":"bd381c9d60f70ac986c9eee0977752d883f52a018842fee300d3e352933aea6d","revision":"56f4c4897a189eeb30430119a4f4895e95fbb541"},
 

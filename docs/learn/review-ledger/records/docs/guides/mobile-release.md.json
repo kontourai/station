@@ -108,7 +108,7 @@
 
     {"path":"src-desktop/ios/StationNotificationService/NotificationService.swift","digest":"5789171c146635064aecf59cc854e742a8726e8fbf9d158c8cf78a38d2ff468a","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-desktop/src/lib.rs","digest":"87107637c2b0c4d1c470664c3ae3d5b4f1f377777f561ea2c25bd63df8cf2cd6","revision":"a516c638f82e312fe84fe7f8dd8cd5094b2567a5"},
+    {"path":"src-desktop/src/lib.rs","digest":"c98156ab945eb55a1499c3b79c24417865d042347a985d1b808aafb13131f256","revision":"9623ad155b409f289f9fd6083db80372819c2a26"},
 
     {"path":"src-desktop/src/native_secure_entry.rs","digest":"d6ff8051df4be60ff738f524488fe877b0711b95aa606cb70b378e74962bd209","revision":"8d92d732808201554ba801334e2a19f7081fd09d"},
 

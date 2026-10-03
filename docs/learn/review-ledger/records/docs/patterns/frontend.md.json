@@ -16,7 +16,7 @@
 
     {"path":"docs/ui/responsive-surfaces.json","digest":"ed85a588d1029bca3f050c4225772a2b58c42e944af63014960389794d0b24c5","revision":"d1708e0a66e7328c9c62a95865f1bb1dcfbeb8d1"},
 
-    {"path":"packages/sdk/src/client/http.ts","digest":"9892699e68483e0df3dd67ce71956994e98a43755a0c931dd6c3c5660caee00e","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+    {"path":"packages/sdk/src/client/http.ts","digest":"68cf352bfc07dc47297ecaaccaa548adb394478ba8a7ff8baff6817a8beccd44","revision":"fadd647731c00e53b2aeb25a7873ee66c0aa7608"},
 
     {"path":"packages/sdk/src/index.ts","digest":"f73107a4c0e92647e409563d7ccf7472bea46c81cf67864d9c160c979f39ca75","revision":"34d62da501fa53187b7062288f6e1dbaec8c20ed"},
 
@@ -28,7 +28,7 @@
 
     {"path":"packages/sdk/src/queryFactories.ts","digest":"1359417720b7dd3507f5909d835d7f9c06200e2cadaa7c3c66e754cb1a5ee8ea","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
-    {"path":"packages/shared/package.json","digest":"2b5baa810e13794d2b50232ad620ba68e89ca9fae0e8321bb31749f560d28c63","revision":"8924149a7e6ef1356fc078c9a387c6a60ada429a"},
+    {"path":"packages/shared/package.json","digest":"e2442c4158407550a9ca4059b5430660ad1cfde58f8b5d46ff07131c0094b388","revision":"9623ad155b409f289f9fd6083db80372819c2a26"},
 
     {"path":"packages/shared/package.json#/exports/.~1build","digest":"7ad7900a109bea8e9d548359becc3f0e887fba3634cff5d171fe108df0b29d24","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
 
@@ -44,7 +44,7 @@
 
     {"path":"src-server/routes/agents/agents.ts","digest":"06d20a294112b76993e9a1efd4ab9ce639242ab9116e04a7f1cbb7f68153ba23","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-server/runtime/bootstrap/runtime-http.ts","digest":"bf1b7671bc40fe53615a39f8e9f12b5ad27beace97a86fc50e2ebb4e9717d20e","revision":"54ca710a3594bf1f3b7ac3d4464a2db2edc6e6c0"},
+    {"path":"src-server/runtime/bootstrap/runtime-http.ts","digest":"cdfffc4dc4fa6b5581595ef57780cedff21b645ab3f284cf9afc086a2f1d45e2","revision":"9623ad155b409f289f9fd6083db80372819c2a26"},
 
     {"path":"src-server/runtime/streaming/StreamPipeline.ts","digest":"cdf3e6786b92a321ffa13c413f25b8b7bf367436b389f7212492cb2eccf1c6f2","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 

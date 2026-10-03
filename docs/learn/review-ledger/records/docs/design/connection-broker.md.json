@@ -24,7 +24,7 @@
 
     {"path":"scripts/lib/local-collaboration-station.ts","digest":"94250f9184c8a4a45c434ba30ef119ce96c0981c4ec063a5c99773281b48b656","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
 
-    {"path":"src-desktop/src/lib.rs","digest":"87107637c2b0c4d1c470664c3ae3d5b4f1f377777f561ea2c25bd63df8cf2cd6","revision":"a516c638f82e312fe84fe7f8dd8cd5094b2567a5"},
+    {"path":"src-desktop/src/lib.rs","digest":"c98156ab945eb55a1499c3b79c24417865d042347a985d1b808aafb13131f256","revision":"9623ad155b409f289f9fd6083db80372819c2a26"},
 
     {"path":"src-desktop/src/native_account_operations.rs","digest":"63d05ea979a9a335c0ded3a400d8f899b6ff5f60deb8a062c5e260d7daeecbec","revision":"2e4f061f91ffb0338e45de62382cf6da59cd5c76"},
 
@@ -48,7 +48,7 @@
 
     {"path":"src-server/runtime/bootstrap/native-device-proof-runtime.ts","digest":"54bb568bc83d313232b95afaff825e92965fb0d6cb92b5bad3fae295aed7c8f8","revision":"a72f474ba3d42a59409d95d36eb9e0264b599e33"},
 
-    {"path":"src-server/runtime/bootstrap/runtime-http.ts","digest":"bf1b7671bc40fe53615a39f8e9f12b5ad27beace97a86fc50e2ebb4e9717d20e","revision":"54ca710a3594bf1f3b7ac3d4464a2db2edc6e6c0"},
+    {"path":"src-server/runtime/bootstrap/runtime-http.ts","digest":"cdfffc4dc4fa6b5581595ef57780cedff21b645ab3f284cf9afc086a2f1d45e2","revision":"9623ad155b409f289f9fd6083db80372819c2a26"},
 
     {"path":"src-server/runtime/bootstrap/self-hosted-broker-pion-runtime.ts","digest":"d0eaf0a7651d34680ab4ee3398f7c1f1f9924534ad0e26f9a8e7bff14fef7120","revision":"55606e0498d0cbd6e7edad154f82dce3c102b186"},
 

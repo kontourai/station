@@ -134,7 +134,7 @@
 
     {"path":"src-desktop/Cargo.lock","digest":"6b27bee2d6f95c5f3039652d8f16d3f05575ec6c03512a3a223705050c854a63","revision":"6f7521ea2fc94d945814f683c64bdfccccb480bd"},
 
-    {"path":"src-desktop/src/lib.rs","digest":"87107637c2b0c4d1c470664c3ae3d5b4f1f377777f561ea2c25bd63df8cf2cd6","revision":"a516c638f82e312fe84fe7f8dd8cd5094b2567a5"},
+    {"path":"src-desktop/src/lib.rs","digest":"c98156ab945eb55a1499c3b79c24417865d042347a985d1b808aafb13131f256","revision":"9623ad155b409f289f9fd6083db80372819c2a26"},
 
     {"path":"src-desktop/tauri.linux-appimage.conf.json","digest":"c590f935a579a9cf6c14a6110587a7fb223b5c91e6def12c9d13e2082186a8ab","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 

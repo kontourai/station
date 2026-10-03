@@ -16,7 +16,7 @@
 
     {"path":"docs/guides/native-shell-verification.md","digest":"a9cd227932854e615fc50e919b4692057691fcc2c422d9563c087655b60338fc","revision":"d606c17132af7b1d9ec0d576871937dc37f79864"},
 
-    {"path":"src-desktop/src/lib.rs","digest":"87107637c2b0c4d1c470664c3ae3d5b4f1f377777f561ea2c25bd63df8cf2cd6","revision":"a516c638f82e312fe84fe7f8dd8cd5094b2567a5"},
+    {"path":"src-desktop/src/lib.rs","digest":"c98156ab945eb55a1499c3b79c24417865d042347a985d1b808aafb13131f256","revision":"9623ad155b409f289f9fd6083db80372819c2a26"},
 
     {"path":"src-desktop/src/service_state.rs","digest":"0a8b8787be159c47a70e0b5c0448b58b384d2aea5dd9c304630b1b3127a864bc","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
