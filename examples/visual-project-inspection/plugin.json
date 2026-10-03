@@ -1,0 +1,21 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "visual-project-inspection",
+  "version": "1.0.0",
+  "description": "Original independent author example using only the public declarative contract.",
+  "author": {
+    "name": "Example independent author"
+  },
+  "extensions": {
+    "io.kontourai.station": {
+      "schemaVersion": "1.0",
+      "experiences": [
+        {
+          "version": "1.0",
+          "id": "inspect-onboarding",
+          "source": "./io.kontourai.station/experiences/inspect-onboarding.json"
+        }
+      ]
+    }
+  }
+}

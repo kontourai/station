@@ -23,6 +23,17 @@ The [export map](../../packages/shared/package.json) selects source files, mostl
 requirements. The type excerpts below are not exhaustive replacements for their
 owning declarations; import the canonical type rather than copying an interface.
 
+## Skill experience authoring
+
+`@kontourai/station-shared/skill-experience-workflow` exports local
+`inspectSkillLibrary`, `skillExperiencePackageDigest` and
+`readSkillExperienceReview`, `reviewSkillExperiencePackage`, plus the inspection/review types. These Node
+filesystem helpers emit bounded source review leads and validate author
+assertions against actual package/source/transcript bytes. They do not run a
+model, grant tools, install a plugin or establish runtime/release qualification.
+Use the [author learning path](../guides/authoring-skill-experiences.md) for
+proposal, preview, evaluation and revision review.
+
 ## Harness question helpers
 
 `@kontourai/station-shared/harness-questions` owns the browser-safe
