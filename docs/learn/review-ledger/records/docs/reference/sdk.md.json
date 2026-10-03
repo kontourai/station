@@ -516,7 +516,7 @@
 
     {"path":"src-ui/src/views/learning-review/LearningSourceDialog.tsx","digest":"77759902c0d35d498b1f9476c74f5b7829f1c45daf3aca9f87a3add53764447d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/views/native-relay/NativeRelayMemberShell.tsx","digest":"a0749e9f35dbf8eb7510c22a9d57184c64480e3c1e34b4ecec9dc689958bea69","revision":"d956082d3d2864711773914857b8098c60bdd972"},
+    {"path":"src-ui/src/views/native-relay/NativeRelayMemberShell.tsx","digest":"5c1f22454fb7ad912a7f8ec6abc43023b8780782496345fb89088271ea443947","revision":"f5c6562112f72b72d04ccdcb9d8dc5d865e5f57d"},
 
     {"path":"src-ui/src/views/ProjectPage.tsx","digest":"1beca4918231aa34f3a65329243fc4024b2ecd94fe078d1c7da80366460f2fb0","revision":"3a63c64679a92f30544c2b84905fdb2874ebfebb"},
 

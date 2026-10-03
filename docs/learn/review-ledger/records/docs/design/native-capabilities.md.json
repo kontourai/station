@@ -50,7 +50,7 @@
 
     {"path":"src-desktop/src/native_relay_key_approval.rs","digest":"f0fdb455b1c3e476ddf9c7377a806c7fcb05d7e16b7430e00139fe2967b91a02","revision":"e33331ee19520c8bd546c878fdd503063a682634"},
 
-    {"path":"src-desktop/src/native_relay_link_intake.rs","digest":"4312358df5c8918b9a60bcacea47931a18981534cd428804b49dd6b37db0ee0c","revision":"70e9b50c5329411de0b7b432408f0722407a0208"},
+    {"path":"src-desktop/src/native_relay_link_intake.rs","digest":"f9006742ccebb94eeaa9b18936d480697bad199322ac1f5161cada86198b97c9","revision":"7ad03486b8521649247b6a728da71d08780069ac"},
 
     {"path":"src-desktop/src/native_relay_proof_key.rs","digest":"e33c7395002ae8d230afa984115212ac58b53725b51c54265ce7a3a0c9174608","revision":"d5e4502434838cc29b63091ae689474d6488cfe4"},
 

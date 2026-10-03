@@ -80,7 +80,7 @@
 
     {"path":"packages/shared/src/index.ts","digest":"61ae87e4180d5ee0fd0176ef8cf4b2279efcb998e9b1c4f241cf1e70681daca8","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-desktop/src/native_relay_link_intake.rs","digest":"4312358df5c8918b9a60bcacea47931a18981534cd428804b49dd6b37db0ee0c","revision":"70e9b50c5329411de0b7b432408f0722407a0208"},
+    {"path":"src-desktop/src/native_relay_link_intake.rs","digest":"f9006742ccebb94eeaa9b18936d480697bad199322ac1f5161cada86198b97c9","revision":"7ad03486b8521649247b6a728da71d08780069ac"},
 
     {"path":"src-server/analytics/usage-rollup-service.ts","digest":"72854055e8cc4f894e5bcc1c89287eb7a6eae4e3a43ca92df0a16f29a4aae4bc","revision":"16115fc6e0cb1bd66d4053aad666c77f26349d4f"},
 

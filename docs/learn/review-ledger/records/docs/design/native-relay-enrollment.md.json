@@ -48,7 +48,7 @@
 
     {"path":"src-ui/src/views/connections-hub/NativeRelayEnrollmentWizard.tsx","digest":"79cb2659b18787521916dfabca3b3cd4bf26ed24bb81e7ec488a3823e3e872b2","revision":"fc7857beb8210ea8db44cf3ffe50ae30b3aca057"},
 
-    {"path":"src-ui/src/views/native-relay/NativeRelayMemberShell.tsx","digest":"a0749e9f35dbf8eb7510c22a9d57184c64480e3c1e34b4ecec9dc689958bea69","revision":"d956082d3d2864711773914857b8098c60bdd972"}
+    {"path":"src-ui/src/views/native-relay/NativeRelayMemberShell.tsx","digest":"5c1f22454fb7ad912a7f8ec6abc43023b8780782496345fb89088271ea443947","revision":"f5c6562112f72b72d04ccdcb9d8dc5d865e5f57d"}
   ],
 
   "checks": [

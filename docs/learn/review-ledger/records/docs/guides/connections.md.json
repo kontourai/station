@@ -302,9 +302,9 @@
 
     {"path":"tests/connections-crud.spec.ts","digest":"b0c33e5e552b3651adf99dbe92ef3d43a38bb130ca13c26f7dff1bfeb3dbc9e5","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/views/connections-hub/RelaySetupHelp.tsx","digest":"f223072ac94e25f51b787f19a2c009d2adee18481d0e5931fd9aebc6871d0333","revision":"fc7857beb8210ea8db44cf3ffe50ae30b3aca057"},
+    {"path":"src-ui/src/views/connections-hub/RelaySetupHelp.tsx","digest":"5954ffbbefb3ed14700f03d4b95a6535669c4db61ec37a4dd9d70158744dc829","revision":"cc99afd2d896c9ccda904e6347f83a863e11160a"},
 
-    {"path":"src-ui/src/views/connections-hub/ComputersSection.css","digest":"b244ab90a8bc690415bbbb15e67478ad9f8b71359ade226c0a959d773d09ba1d","revision":"fc7857beb8210ea8db44cf3ffe50ae30b3aca057"}
+    {"path":"src-ui/src/views/connections-hub/ComputersSection.css","digest":"018f21a78796561e07eb4380a39602a369f1b31a637f67cf2aecf629d6a89e5e","revision":"cc99afd2d896c9ccda904e6347f83a863e11160a"}
   ],
 
   "checks": [
