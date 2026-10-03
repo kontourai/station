@@ -52,7 +52,7 @@ reveals automatic-approval settings separately. Saved changes apply to new chats
 
 Claude and Codex offer **Keep harness tools**. New Agents add integrations to
 the harness configuration; existing Agents keep their previous behavior until
-you change this switch. Turning it off uses only the authored MCP list. Claude
+you change this switch. Turning it off replaces the configured MCP list; the harness keeps its built-in tools. Claude
 also offers **Harness default**, **On demand**, and **Always available** loading.
 On demand uses Claude's native tool search and requires a compatible model and
 endpoint; it is not a Station search proxy. Other engines keep their own loading
@@ -76,10 +76,10 @@ External policy delivery follows the [engine policy contract](../conformance/too
 }
 ```
 
-- `mcpServers` — IDs of MCP servers to connect (each defined in `<STATION_HOME>/integrations/<id>/tool.json`)
+- `mcpServers` — IDs of MCP servers to connect (each defined in `<STATION_HOME>/integrations/<id>/integration.json`)
 - `mcpMode` — `add` preserves harness integrations; `replace` supplies only the Agent's list. Omission retains legacy engine behavior
 - `mcpLoading` — `on-demand` or `always`, delivered through Claude's `ENABLE_TOOL_SEARCH`; omission preserves the harness setting
-- `available` — allowlist of tool names exposed to the agent; omit or set `["*"]` to expose all tools from connected servers; an empty list exposes none
+- `available` — allowlist of tool names exposed to the agent; omit or set `["*"]` to expose all tools from connected servers; an empty list exposes none from these integrations
 - `autoApprove` — patterns consulted for automatic approval; they do not override earlier runtime-generation, delegation or configuration-protection refusals. A pattern covers plain calls to a tool and never an escalation or a plan exit, even `*` (see [below](#what-autoapprove-never-covers))
 - `unattendedAutoApprove` — explicit opt-in for tools the agent may run when nobody is there to confirm (see [Unattended runs](#unattended-runs))
 

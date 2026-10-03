@@ -132,7 +132,10 @@ export function selectedMcpTools(
     else if (
       !entry.includes('*') &&
       !serverIds.some(
-        (id) => entry.startsWith(`${id}_`) || entry.startsWith(`${id}/`),
+        (id) =>
+          entry.startsWith(`${id}_`) ||
+          entry.startsWith(`${id}/`) ||
+          entry.startsWith(normalizeToolName(`${id}_`)),
       )
     )
       selected.add(entry);

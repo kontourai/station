@@ -389,9 +389,10 @@ export async function loadStrandsTools(options: {
 
       const serverTools: ITool[] = [];
       for (const tool of mcpTools) {
+        const originalName = tool.toolSpec.name;
         const [loadedIdentity] = normalizeLoadedMCPTools(
           slug,
-          [{ name: tool.toolSpec.name }] as any,
+          [{ name: `${toolId}_${originalName}` }] as any,
           opts.toolNameMapping,
           opts.toolNameReverseMapping,
           provenanceGeneration,
@@ -400,7 +401,7 @@ export async function loadStrandsTools(options: {
             // Strands' client owns this loaded-tool list; the configured
             // integration is its exact client identity at this boundary.
             serverId: toolId,
-            originalToolName: tool.toolSpec.name,
+            originalToolName: originalName,
           }),
           opts.logger,
         );

@@ -15,6 +15,7 @@ For runtime helpers, use explicit subpaths:
 - `@kontourai/station-shared/build`
 - `@kontourai/station-shared/git`
 - `@kontourai/station-shared/mcp`
+- `@kontourai/station-shared/mcp-tool-selection` — browser-safe original/qualified/runtime MCP identities and selection matching
 
 The [export map](../../packages/shared/package.json) selects source files, mostly
 `.ts` with a few `.mjs` Node leaves, and declares Node 24.x. See the

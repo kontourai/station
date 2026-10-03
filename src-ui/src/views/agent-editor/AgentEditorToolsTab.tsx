@@ -438,6 +438,7 @@ export function AgentEditorToolsTab({
                                         integration.id,
                                         key,
                                         tools,
+                                        catalogs,
                                       ),
                                     )
                                   }

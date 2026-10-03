@@ -75,8 +75,9 @@ existing per-call authority table.
 
 Probe receipts store server-qualified names. The shared
 [selection translator](../../packages/shared/src/mcp-tool-selection.ts)
-resolves original, qualified and legacy normalized identities consistently for
-Agent selection, integration disablement, model delivery and App calls.
+resolves original, qualified and legacy normalized identities for external
+Agent selection, integration disablement and App calls. Native available filters
+also retain their framework-specific runtime/original-name matching.
 Codex applies authored selection flags on the thread after reading its effective
 MCP configuration, including same-name inherited disabled/subset flags. Replacing
 an inherited allowlist requires a known integration inventory; missing inventory

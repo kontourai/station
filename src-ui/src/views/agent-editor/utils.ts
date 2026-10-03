@@ -129,7 +129,12 @@ export function canonicalAgentToolPatterns(
           pattern.startsWith(`${id}_`) ||
           pattern.startsWith(`${id}/`) ||
           tools.some((tool) =>
-            mcpToolIdentities(id, tool.toolName || tool.name).includes(pattern),
+            mcpToolIdentities(id, tool.toolName || tool.name).some(
+              (identity) =>
+                identity === pattern ||
+                (pattern.endsWith('*') &&
+                  identity.startsWith(pattern.slice(0, -1))),
+            ),
           ),
       )
     )
@@ -176,8 +181,9 @@ export function toggleIntegrationToolEnabled(
   integrationId: string,
   toolKey: string,
   tools: Tool[],
+  catalogs: Record<string, Tool[]> = { [integrationId]: tools },
 ): AgentFormData {
-  const patterns = canonicalAgentToolPatterns(form, { [integrationId]: tools });
+  const patterns = canonicalAgentToolPatterns(form, catalogs);
   const all = patterns.includes('*') || patterns.includes(`${integrationId}_*`);
   const enabled = new Set(
     all
@@ -186,9 +192,7 @@ export function toggleIntegrationToolEnabled(
   );
   if (enabled.has(toolKey)) enabled.delete(toolKey);
   else enabled.add(toolKey);
-  return selectIntegrationTools(form, integrationId, [...enabled], {
-    [integrationId]: tools,
-  });
+  return selectIntegrationTools(form, integrationId, [...enabled], catalogs);
 }
 
 export function toggleIntegrationToolAutoApprove(
