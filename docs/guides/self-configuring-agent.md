@@ -41,6 +41,11 @@ The Agent's tool allowlist and the calling Session's authority still apply.
 Exposing a management tool does not grant the operator's identity or bypass
 Project access checks.
 
+For reading and capturing records, add `station-knowledge`. Its five data tools
+follow the calling Session owner’s store access; capture also needs Project
+edit access. Index rebuild and migration remain Station Control operations.
+See [Knowledge agent tools](knowledge.md#agent-tools).
+
 ### Dispatch authority
 
 Station checks an Agent's dispatch against its verified Session caller:
