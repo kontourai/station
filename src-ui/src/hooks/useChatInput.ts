@@ -498,6 +498,7 @@ export function useChatInput({
       // after a just-issued handleInputChange.
       // Explicit overrides bypass the persisted composer value, so sanitize at
       // the shared send boundary as well as on ordinary input updates.
+      const submittedExperienceDraft = activeChatState?.skillExperienceDraft;
       const submittedQuotes = chatDraftsStore.getQuotes(sessionId);
       if (submittedQuotes.some((quote) => quote.origin !== apiBase)) {
         showToast(
@@ -568,9 +569,9 @@ export function useChatInput({
         selectedAttachments,
         options?.ambientContext,
         undefined,
-        activeChatState?.skillExperienceDraft
+        submittedExperienceDraft
           ? {
-              skillExperienceStart: activeChatState.skillExperienceDraft.start,
+              skillExperienceDraft: submittedExperienceDraft,
               experienceRequestScope: mentionRequestScope,
               ...(options?.queueOnBusy ? { queueOnBusy: true } : {}),
             }

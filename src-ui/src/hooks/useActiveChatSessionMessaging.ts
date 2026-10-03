@@ -7,7 +7,6 @@ import {
   PROVIDER_TURN_IN_PROGRESS_CODE,
 } from '@kontourai/station-contracts/provider';
 import { isFirstSendFailure } from '@kontourai/station-contracts/session-attention';
-import type { SkillExperienceStartInputV1 } from '@kontourai/station-contracts/skill-experience';
 import type { ConnectionConfig } from '@kontourai/station-contracts/tool';
 import {
   type ChatHttpError,
@@ -39,6 +38,7 @@ import type {
   OutboundDispatchClaim,
   OutboundDispatchTransportResult,
 } from '../lib/outboundQueue';
+import type { SkillExperienceDraft } from '../lib/skill-experience-draft';
 import type { ComposerAttachmentStageSnapshot, FileAttachment } from '../types';
 import {
   approvalModeChipLabel,
@@ -250,7 +250,7 @@ export function useSendMessage(
       // The durable outbound queue owns deferred replay. A busy replay must
       // stay durable, rather than also entering this legacy in-memory queue.
       options?: {
-        skillExperienceStart?: SkillExperienceStartInputV1;
+        skillExperienceDraft?: SkillExperienceDraft;
         experienceRequestScope?: import('@kontourai/station-sdk/client').ApiRequestScope & {
           isCurrent: () => boolean;
         };
@@ -283,14 +283,14 @@ export function useSendMessage(
         !options?.dispatch &&
         (experienceDraft ||
           currentState?.skillExperienceDraftInvalid ||
-          options?.skillExperienceStart)
+          options?.skillExperienceDraft)
       ) {
         const refusal = currentState?.skillExperienceDraftInvalid
           ? 'The saved visual skill selection could not be read. Choose it again or explicitly remove it before sending.'
-          : !options?.skillExperienceStart
+          : !options?.skillExperienceDraft
             ? 'Review the visual skill and send it explicitly; your selection has not been sent.'
             : !experienceDraft ||
-                options.skillExperienceStart !== experienceDraft.start
+                options.skillExperienceDraft !== experienceDraft
               ? 'Visual skill inputs changed while preparing this message. Review them and send again; your current draft has not been sent.'
               : experienceAuthorityStatus !== 'verified' ||
                   !experienceNamespace ||
@@ -306,7 +306,7 @@ export function useSendMessage(
                     : Object.values(
                         skillExperienceInputErrors(
                           experienceDraft.definition,
-                          options.skillExperienceStart.inputs,
+                          options.skillExperienceDraft.start.inputs,
                           attachments?.length
                             ? attachments.length
                             : (currentState.attachmentStages?.length ?? 0),
@@ -329,7 +329,7 @@ export function useSendMessage(
         }
       }
       const sourceStart = experienceDraft
-        ? options?.skillExperienceStart
+        ? options?.skillExperienceDraft?.start
         : undefined;
       // Steer is more input on the OPEN turn (`steerTurn`). Queue is a
       // follow-up that waits for `turn.completed` and starts a new turn.

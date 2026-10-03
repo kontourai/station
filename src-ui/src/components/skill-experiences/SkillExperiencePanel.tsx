@@ -188,7 +188,6 @@ export function SkillExperiencePanel({ session }: { session: ChatSession }) {
                   updateChat(session.id, {
                     skillExperienceDraft: {
                       ...draft,
-                      start: { ...draft.start },
                       attachmentAssignments,
                     },
                   })

@@ -245,8 +245,8 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     activeChatsStore.removeChat(sessionId);
   });
 
-  it.each(['replaced', 'removed'] as const)(
-    'refuses a captured start after its unsent inputs were %s before dispatch',
+  it.each(['replaced', 'removed', 'roles'] as const)(
+    'refuses a captured start after a %s change to the complete draft before dispatch',
     async (change) => {
       const definition: SkillExperienceDefinitionV1 = JSON.parse(
         readFileSync(
@@ -257,7 +257,19 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
           'utf8',
         ),
       );
+      definition.inputs.push({
+        id: 'evidence',
+        kind: 'attachments',
+        label: 'Evidence',
+        required: true,
+        maxCount: 1,
+        provenance: {
+          origin: 'station-added',
+          explanation: 'Explicit composer assignment.',
+        },
+      });
       const submitted = {
+        attachmentAssignments: { evidence: ['first'] },
         namespace: 'authority-1',
         apiBase: 'http://api.test',
         definition,
@@ -276,10 +288,20 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
       };
       activeChatsStore.updateChat(sessionId, {
         skillExperienceDraft: submitted,
+        attachmentStages: ['first', 'second'].map((id) => ({
+          ...stagedSnapshot,
+          clientAttachmentId: id,
+          stageId: `stage-${id}`,
+          reference: {
+            ...stagedSnapshot.reference,
+            clientAttachmentId: id,
+            stageId: `stage-${id}`,
+          },
+        })),
       });
       const { result } = renderHook(() => useSendMessage('http://api.test'));
       const captured = {
-        skillExperienceStart: submitted.start,
+        skillExperienceDraft: submitted,
         experienceRequestScope: {
           apiBase: 'http://api.test',
           authorityKey: 'authority-1',
@@ -288,7 +310,14 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
       };
       const replacement = {
         ...submitted,
-        start: { ...submitted.start, inputs: { idea: 'Newer unsent input' } },
+        start:
+          change === 'roles'
+            ? submitted.start
+            : { ...submitted.start, inputs: { idea: 'Newer unsent input' } },
+        attachmentAssignments:
+          change === 'roles'
+            ? { evidence: ['second'] }
+            : submitted.attachmentAssignments,
       };
       activeChatsStore.updateChat(sessionId, {
         skillExperienceDraft: change === 'removed' ? undefined : replacement,
@@ -397,7 +426,6 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
             activeChatsStore.updateChat(sessionId, {
               skillExperienceDraft: {
                 ...draft,
-                start: { ...draft.start },
                 attachmentAssignments: next,
               },
             });
@@ -419,7 +447,7 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
                 undefined,
                 undefined,
                 {
-                  skillExperienceStart: current?.start,
+                  skillExperienceDraft: current,
                   experienceRequestScope: {
                     apiBase: 'http://api.test',
                     authorityKey: 'authority-1',
@@ -518,7 +546,7 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
           undefined,
           undefined,
           undefined,
-          { skillExperienceStart: draft.start, experienceRequestScope: scope },
+          { skillExperienceDraft: draft, experienceRequestScope: scope },
         ),
       ).toBe(false);
     });
@@ -535,7 +563,7 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
         undefined,
         undefined,
         undefined,
-        { skillExperienceStart: draft.start, experienceRequestScope: scope },
+        { skillExperienceDraft: draft, experienceRequestScope: scope },
       );
     });
     expect(
@@ -551,7 +579,7 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
         undefined,
         undefined,
         undefined,
-        { skillExperienceStart: draft.start, experienceRequestScope: scope },
+        { skillExperienceDraft: draft, experienceRequestScope: scope },
       );
     });
     expect(
