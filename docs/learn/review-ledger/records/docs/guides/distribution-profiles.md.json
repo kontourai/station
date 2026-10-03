@@ -18,7 +18,7 @@
 
     {"path":"packages/sdk/src/query-domains/workspaceProjects.ts","digest":"5ad96ef66bdcd70027e22da621b69446dac81dc0820527e43314e0370f2d7b81","revision":"1da4798fab6730e9c81fb91d9d3dbbebc952f976"},
 
-    {"path":"src-server/routes/plugins/registry.ts","digest":"d2ad68bbcc5573372f17968589a0b7875ad7ba52974cd8b2a043626ca6a9ccd5","revision":"e5efef30008198db7198fe9dac38f3ad632c6621"},
+    {"path":"src-server/routes/plugins/registry.ts","digest":"c4e50957f0a7b9abe9ffe6cc3b492ae0df827b2b27a56f139431e65665284116","revision":"a102a2fe3d467b7052c8217801efa5c9e6679aa0"},
 
     {"path":"src-server/routes/projects/projects.ts","digest":"d87cdfa66a657cd27955762d9142eb32d477ce37d30e64e2b592a65a2f083847","revision":"e5efef30008198db7198fe9dac38f3ad632c6621"},
 
@@ -26,7 +26,7 @@
 
     {"path":"src-ui/src/components/registry/ProjectLayoutCatalog.tsx","digest":"f09391bac33fefcd71d892159bdb1474cd969879d953c0da2600faf313bc76a4","revision":"e5efef30008198db7198fe9dac38f3ad632c6621"},
 
-    {"path":"src-ui/src/views/RegistryView.tsx","digest":"dae7ecd7e28804d1e2d3a8b58ef78a78b187c294b39fd0f1cc80badb6d0a9d73","revision":"e5efef30008198db7198fe9dac38f3ad632c6621"},
+    {"path":"src-ui/src/views/RegistryView.tsx","digest":"955d4710c3aae69829967950187d59a26c0ff7da55ff4590fe5f003f0ffbfe30","revision":"a102a2fe3d467b7052c8217801efa5c9e6679aa0"},
 
     {"path":"src-ui/src/views/project-settings/LayoutsSection.tsx","digest":"0ac6db4dbba5e289010048f0d599ec1d43362ef7feb16a9a9ed0231eb65b8667","revision":"e5efef30008198db7198fe9dac38f3ad632c6621"}
   ],
