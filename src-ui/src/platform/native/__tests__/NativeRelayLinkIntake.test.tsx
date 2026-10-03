@@ -514,7 +514,7 @@ it('a bound delivery keeps invitation secret in host custody and requires indepe
 });
 
 it.each([8, 9])(
-  'reviews older saved generation %i before G9 redemption and preserves same-generation custody with wizard recovery',
+  'reviews saved generation %i before G9 redemption so a retry cannot compound grants',
   async (savedGeneration) => {
     const { profile, keyId, bound } = await configureBoundFlow(true);
     host.launch = {
@@ -575,31 +575,12 @@ it.each([8, 9])(
         name: 'Continue to device approval',
       }),
     );
-    if (savedGeneration === 9) {
-      await screen.findByText(
-        /Stage: route-status. Code: native_enrollment_saved_connections_ambiguous/,
-      );
-      expect(
-        screen.getByText(/Ask the Station owner for a new setup invitation/),
-      ).toBeTruthy();
-      expect(
-        screen.getByRole('button', { name: 'Check after connection recovery' }),
-      ).toBeTruthy();
-      expect(
-        screen.queryByRole('button', { name: 'Review saved connections' }),
-      ).toBeNull();
-      expect(
-        screen.queryByRole('button', { name: 'Request device access' }),
-      ).toBeNull();
-      expect(
-        host.invoke.mock.calls.some(
-          ([command]) =>
-            command === 'station_native_relay_link_recovery_reset' ||
-            command === 'station_native_enrollment_resume',
-        ),
-      ).toBe(false);
-      return;
-    }
+    await screen.findByText(/A connection is already saved on this device/);
+    expect(
+      host.invoke.mock.calls.some(
+        ([command]) => command === 'station_native_relay_link_redeem',
+      ),
+    ).toBe(false);
     fireEvent.click(
       await screen.findByRole('button', { name: 'Review saved connections' }),
     );

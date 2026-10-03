@@ -246,6 +246,9 @@ setup; grant and Device deadlines remain unchanged. Account sign-in and
 Project membership are still separate. Opening or cancelling a link does not
 select a Station or retire an existing account session. Cold intake precedes
 the operator and member roots; warm intake covers their mounted owners.
+If a connection is already saved, the next invitation stops before redemption
+and offers a review of those saved connections. Removing them requires an
+explicit confirmation; the new invitation is not consumed during review.
 
 The saved Station card shows that the connection invitation is stored on this
 device. Its collapsed expiry details describe the local credential; they do not

@@ -40,7 +40,7 @@ const LOCAL_FAILURE_CODES = new Map([
   ['trust', 'station-trust-required'],
   ['staleProfile', 'saved-profile-changed'],
   ['Connection cleanup is still pending.', 'connection-cleanup-pending'],
-  ['Older saved connections need review.', 'older-saved-connections'],
+  ['Saved connections need review.', 'saved-connections-require-review'],
   [
     'Station could not read native relay grant status.',
     'grant-status-unavailable',
@@ -183,15 +183,9 @@ function Review({
         setCleanupPending(true);
         throw new Error('Connection cleanup is still pending.');
       }
-      if (
-        status.grants.some(
-          ({ metadata }) =>
-            metadata.route.routingGeneration <
-            delivery.invitation.routingGeneration,
-        )
-      ) {
+      if (status.grants.length > 0) {
         setCleanupPending(true);
-        throw new Error('Older saved connections need review.');
+        throw new Error('Saved connections need review.');
       }
       step = 'host-redemption';
       const result = await nativeRelayGrantAdapter.redeemLinked({
@@ -224,8 +218,8 @@ function Review({
               );
         setConnectionFailure({ step, ...(code ? { code } : {}) });
         setError(
-          code === 'older-saved-connections'
-            ? 'An earlier connection is saved on this device. Review and remove it before using this invitation.'
+          code === 'saved-connections-require-review'
+            ? 'A connection is already saved on this device. Review it before using this invitation.'
             : 'The connection wasn’t confirmed. Close this screen and check the Station’s status before using another invitation.',
         );
       }
@@ -360,7 +354,7 @@ function Review({
           </>
         )}
         {error ? <p role="alert">{error}</p> : null}
-        {(connectionFailure?.code === 'older-saved-connections' ||
+        {(connectionFailure?.code === 'saved-connections-require-review' ||
           connectionFailure?.code === 'grant-status-ambiguous' ||
           connectionFailure?.code === 'connection-cleanup-pending') &&
         delivery.kind === 'bound-invitation' &&
