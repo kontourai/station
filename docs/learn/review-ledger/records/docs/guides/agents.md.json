@@ -9,7 +9,7 @@
 
   "limits": "Local source/fixture review. Native provider compatibility, physical UI, real approvals, and platform/runtime setup are not established by this record.",
 
-  "document": {"digest":"2675a6f0cbe438f1ccd19b0a1ba9240b59114cefde8c3517e07543ffbfaa5b98","revision":"8d715b7bee77e593e64a1e0b2af99956571c9795"},
+  "document": {"digest":"67b8ad01ee84fe0ecb72ff59d6bddda7109e69a3fe025085627d170e61efa6b3","revision":"9785e029ae32c7061de1a85ce63f0dc8dfe6f907"},
 
   "sources": [
     {"path":"packages/cli/src/commands/profile-store.ts","digest":"e169198969311f9d708a955f0137ebeba4a1fd69d9a9f89f0b914df961ee6109","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
@@ -170,13 +170,13 @@
 
     {"path":"src-ui/src/components/chat/harnessQuestionDrafts.ts","digest":"341c5d3a3184a8249eb65e9808523812bec532b49cb89cde1dcdae2d9fa95176","revision":"754e48394b02f670894b419807274752fd9676d4"},
 
-    {"path":"src-ui/src/views/agent-editor/AgentEditorToolsTab.tsx","digest":"80ba8a2cd8ae559208f46df1450942809fda28dfbc736f5cd0f9ec0b333063e8","revision":"091f3e68a4456e9fba912d0c810e4e71dcbf9859"},
+    {"path":"src-ui/src/views/agent-editor/AgentEditorToolsTab.tsx","digest":"f4233e2ec027f047acce99b734a685bb52e930cc590fb7230cfd3ef0ea82adc8","revision":"36f027454a18fc04098a8e899431773f47a50367"},
 
     {"path":"src-ui/src/views/agent-editor/utils.ts","digest":"d2d578c2e8767d203be76c24797b8058f56e51b3b3e2f9ac0edef50526c7b7d2","revision":"6be3ff9a9122d55dfa315d5b18e866e477180c90"},
 
     {"path":"src-server/tools/station-control-mcp-server.ts","digest":"71093b289019109469dfc6fcb495e981c45f0ae17a4ccf8f639126c5bc437c39","revision":"8d715b7bee77e593e64a1e0b2af99956571c9795"},
 
-    {"path":"src-ui/src/__tests__/AgentEditorToolsTab.browser.test.tsx","digest":"7b37692ad0d59a0defffef2ad397ed1eeac32d4224b59e0652b3212dee76f25c","revision":"091f3e68a4456e9fba912d0c810e4e71dcbf9859"}
+    {"path":"src-ui/src/__tests__/AgentEditorToolsTab.browser.test.tsx","digest":"64f9a80fecf2d2f7173076d2f3448964df711b499fa730e21dc35e65fd359f13","revision":"c1ca28d5d45de049823a56671e74a101b66775a8"}
   ],
 
   "checks": [
