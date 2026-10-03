@@ -1574,14 +1574,15 @@ describe('publish-release.yml signs and moves the host pointer only behind the o
         'action=replace\n',
       );
       const replaced = runStep(stepRun(REPLACE), ws);
+      // No upload at all: not a clobber followed by a restore.
+      expect(readFileSync(join(ws.releases, '.log'), 'utf8')).not.toMatch(
+        /^upload /m,
+      );
       expect(replaced.status, replaced.stderr).toBe(0);
       expect(replaced.stdout).toContain(
         '::warning::v1.2.5 is older than the manifest portable-stable holds now (the plan read a stale copy)',
       );
       expect(readFileSync(ws.rollingFile)).toEqual(before);
-      expect(readFileSync(join(ws.releases, '.log'), 'utf8')).not.toMatch(
-        /^upload /m,
-      );
     });
 
     it('refuses to clobber when the release holds the same version with other bytes', () => {
@@ -1598,14 +1599,15 @@ describe('publish-release.yml signs and moves the host pointer only behind the o
       const before = readFileSync(ws.rollingFile);
       expect(before).not.toEqual(readFileSync(ws.signed));
       const replaced = runStep(stepRun(REPLACE), ws);
+      // No upload at all: not a clobber followed by a restore.
+      expect(readFileSync(join(ws.releases, '.log'), 'utf8')).not.toMatch(
+        /^upload /m,
+      );
       expect(replaced.status).toBe(1);
       expect(replaced.stderr).toContain(
         'the rolling stable manifest already names 1.2.4 with different bytes than this run signed',
       );
       expect(readFileSync(ws.rollingFile)).toEqual(before);
-      expect(readFileSync(join(ws.releases, '.log'), 'utf8')).not.toMatch(
-        /^upload /m,
-      );
     });
 
     it('restores the previous manifest when the replaced pointer does not verify', () => {
