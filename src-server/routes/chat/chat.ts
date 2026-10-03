@@ -17,11 +17,16 @@ import { Hono } from 'hono';
 import { FileMemoryAdapter } from '../../adapters/file/memory-adapter.js';
 import { resolveMaxSteps } from '../../constants.js';
 import {
+  isCredentialShapedMessage,
+  outwardModelProviderError,
+} from '../../providers/model-provider-failure.js';
+import {
   INTERNAL_TURN_CORRELATION_HEADER,
   readAuthorizedTurnCorrelationHandoff,
   readNativeForegroundRelayCompanion,
   readNativeMemoryRelayCompanion,
   readNativeOutputRelayCompanion,
+  readSkillExperienceRelayContext,
 } from '../../runtime/conversation/authorized-turn-correlation.js';
 import {
   INTERNAL_NATIVE_WORKSPACE_HEADER,
@@ -154,6 +159,9 @@ export function createChatRoutes(ctx: ChatRuntimeContext) {
         : undefined;
     const turnCorrelation = trustedRelay
       ? readAuthorizedTurnCorrelationHandoff(relayHandoff)
+      : undefined;
+    const skillExperienceContext = trustedRelay
+      ? readSkillExperienceRelayContext(relayHandoff)
       : undefined;
     const nativeMemory = trustedRelay
       ? readNativeMemoryRelayCompanion(relayHandoff)
@@ -337,6 +345,7 @@ export function createChatRoutes(ctx: ChatRuntimeContext) {
         plugin,
         input: input as string | ChatMessage[],
         ambientContext,
+        skillExperienceContext,
         restOptions,
         injectContext,
         ragContext,
@@ -376,11 +385,18 @@ export function createChatRoutes(ctx: ChatRuntimeContext) {
         );
       ctx.logger.error('Chat error', { error });
       chatErrors.add(1, { agent: slug, plugin });
-      const errMsg = errorMessage(error);
-      const isCredentialError =
-        errMsg.includes('credential') ||
-        errMsg.includes('accessKeyId') ||
-        errMsg.includes('secretAccessKey');
+      // A model provider's error (a launch or model resolution that called
+      // the provider), found through RetryError/cause wrappers, is returned
+      // as its outward sentence: its own text can carry the request URL and
+      // response body, and the station-agent relay republishes this reason
+      // as a durable runtime.error. Station-authored errors keep their text.
+      const providerFailure = outwardModelProviderError(error);
+      const errMsg = providerFailure?.text ?? errorMessage(error);
+      // A credential 401 is inferred from wording only when no provider
+      // status exists (statusInferred); a provider status is not overridden.
+      const isCredentialError = providerFailure
+        ? providerFailure.credentialsInferred
+        : isCredentialShapedMessage(errMsg);
       const status =
         error instanceof RuntimeConfigurationConflictError
           ? 409

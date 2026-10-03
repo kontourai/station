@@ -44,6 +44,7 @@ import {
 import {
   APPROVAL_MODES,
   type ApprovalMode,
+  ATTACHMENT_INPUT_UNSUPPORTED_CODE,
 } from '@kontourai/station-contracts/provider';
 import {
   ORCHESTRATION_STREAM_ACTIVITY_EVENT,
@@ -56,6 +57,11 @@ import {
   STATION_SESSION_INVENTORY_MCP_V2_VERSION,
 } from '@kontourai/station-contracts/session-inventory-mcp';
 import { SESSION_LIFECYCLE_STATES } from '@kontourai/station-contracts/session-lifecycle';
+import type { SkillExperienceStartInputV1 } from '@kontourai/station-contracts/skill-experience';
+import {
+  TASK_ROOM_CONTEXT_VERSION,
+  type TaskRoomContextSnapshot,
+} from '@kontourai/station-contracts/task-room-work';
 import {
   type HostedTenantRegistry,
   sessionReadAuthorityFromRequest,
@@ -122,6 +128,7 @@ import {
   type StartOwnerAttribution,
   UNATTRIBUTED_AGENT_OWNER_ATTRIBUTION,
 } from '../../services/orchestration/session-owner-attribution.js';
+import { parseExperienceIdentity } from '../../services/orchestration/skill-experience-model.js';
 import { MAX_TOOL_RESULT_DESCRIPTOR_ID_BYTES } from '../../services/orchestration/thread-tool-result-adapter.js';
 import type { ReceiverExecutionAdmission } from '../../services/projects/project-contribution-service.js';
 import {
@@ -130,6 +137,12 @@ import {
 } from '../../services/projects/project-contribution-service.js';
 import { ProjectWorktreeDirectoryError } from '../../services/projects/project-service.js';
 import { composeAuthorizedSessionAnswerBasis } from '../../services/projects/task-basis-module.js';
+import {
+  type TaskRoomInvocationAdmission,
+  TaskRoomWorkAuthorityChangedError,
+  type TaskRoomWorkModule,
+  type TaskRoomWorkScope,
+} from '../../services/projects/task-room-work-module.js';
 import { CLIENT_SESSION_ID_PATTERN } from '../../services/ssh/client-connection-presence.js';
 import {
   orchestrationStreamDuration,
@@ -350,6 +363,14 @@ const interruptTurnCommandSchema = z.object({
   clientTurnId: z.string().min(1).max(128).optional(),
 });
 
+const inspectSteerInputCommandSchema = z.object({
+  type: z.literal('inspectSteerInput'),
+  threadId: z.string().min(1).max(512),
+  input: z.string().trim().min(1).max(CHAT_INPUT_MAX_CHARS),
+  turnId: z.string().min(1).max(512).optional(),
+  clientInputId: z.string().min(1).max(128),
+});
+
 const steerTurnCommandSchema = z.object({
   type: z.literal('steerTurn'),
   threadId: z.string().min(1),
@@ -360,10 +381,48 @@ const steerTurnCommandSchema = z.object({
   // generic zod message, exactly the divergence archive#2807 unified away.
   input: z.string().trim().min(1).max(CHAT_INPUT_MAX_CHARS),
   turnId: z.string().optional(),
+  clientInputId: z.string().min(1).max(128).optional(),
 });
+
+const steerTurnOnceCommandSchema = steerTurnCommandSchema.extend({
+  type: z.literal('steerTurnOnce'),
+  threadId: z.string().min(1).max(512),
+  turnId: z.string().min(1).max(512).optional(),
+  clientInputId: z.string().min(1).max(128),
+});
+
+const experienceIdentitySchema = z
+  .object({
+    pluginId: z.string().min(1).max(128),
+    pluginVersion: z.string().min(1).max(128),
+    experienceId: z.string().min(1).max(128),
+    incarnation: z.string().min(1).max(128),
+    materialization: z.string().min(1).max(128),
+    contentDigest: z
+      .string()
+      .max(71)
+      .regex(/^sha256:[a-f0-9]{64}$/),
+    definitionDigest: z
+      .string()
+      .max(64)
+      .regex(/^[a-f0-9]{64}$/),
+  })
+  .strict()
+  .refine(
+    (value) => Boolean(parseExperienceIdentity(value)),
+    'Invalid installed experience identity',
+  );
+
+const experienceFrameReferenceSchema = z
+  .object({
+    identity: experienceIdentitySchema,
+    eventId: z.string().min(1).max(512),
+  })
+  .strict();
 
 const respondToRequestCommandSchema = z.object({
   type: z.literal('respondToRequest'),
+  expectedSkillExperience: experienceFrameReferenceSchema.optional(),
   threadId: z.string().min(1),
   requestId: z.string().min(1),
   expectedRequestEventId: z
@@ -372,6 +431,17 @@ const respondToRequestCommandSchema = z.object({
     .max(ATTENTION_REQUEST_ID_MAX_CHARS)
     .optional(),
   decision: z.enum(['accept', 'acceptForSession', 'decline', 'cancel']),
+  answers: z
+    .record(
+      z.string().min(1).max(256),
+      z
+        .object({
+          optionIds: z.array(z.string().max(256)).max(32),
+          custom: z.string().max(12000).optional(),
+        })
+        .strict(),
+    )
+    .optional(),
 });
 
 const stopSessionCommandSchema = z.object({
@@ -423,6 +493,8 @@ export const orchestrationCommandSchema = z.discriminatedUnion('type', [
   adoptSessionCommandSchema,
   interruptTurnCommandSchema,
   steerTurnCommandSchema,
+  steerTurnOnceCommandSchema,
+  inspectSteerInputCommandSchema,
   respondToRequestCommandSchema,
   stopSessionCommandSchema,
   setApprovalModeCommandSchema,
@@ -510,6 +582,26 @@ export const delegateTaskSchema = z.object({
   prompt: z.string().trim().min(1).max(CHAT_INPUT_MAX_CHARS),
   target: executionTargetSchema,
   parentTaskId: z.string().min(1).max(512).optional(),
+  taskRoomRequest: z
+    .object({
+      taskId: z.string().min(1).max(160),
+      taskCreatedAt: z.string().min(1).max(40),
+      operationId: z.string().min(1).max(160),
+      context: z
+        .object({
+          version: z.literal(TASK_ROOM_CONTEXT_VERSION),
+          // 64 hex chars; the explicit .max() keeps the bound machine-visible
+          // to the seam walker (regex length is not).
+          digest: z
+            .string()
+            .max(64)
+            .regex(/^[0-9a-f]{64}$/),
+        })
+        .strict()
+        .optional(),
+    })
+    .strict()
+    .optional(),
   /**
    * #2601: a CLAIM, like `/chat/delegated`'s. `deps.resolveRequestDelegation`
    * derives the context from a verified caller, keeps it only when Station's
@@ -541,7 +633,31 @@ const inputRequestReferenceSchema = z.object({
   requestId: z.string().min(1).max(ATTENTION_REQUEST_ID_MAX_CHARS),
   requestEventId: z.string().min(1).max(ATTENTION_REQUEST_ID_MAX_CHARS),
 });
+const skillExperienceSelectionSchema = z
+  .object({
+    identity: experienceIdentitySchema,
+    inputs: z
+      .record(z.string().max(128), z.string().max(CHAT_INPUT_MAX_CHARS))
+      .refine(
+        (value) => Object.keys(value).length <= 32,
+        'Too many experience inputs',
+      ),
+    expectedPreviousInvocationEventId: z.string().min(1).max(512).optional(),
+    attachmentInputs: z
+      .record(
+        z.string().max(128),
+        z.array(z.number().int().min(0).max(4)).max(5),
+      )
+      .refine(
+        (value) => Object.keys(value).length <= 32,
+        'Too many attachment inputs',
+      )
+      .optional(),
+  })
+  .strict();
+
 export const foregroundMessageObjectSchema = z.object({
+  skillExperience: skillExperienceSelectionSchema.optional(),
   expectedInputRequest: inputRequestReferenceSchema.optional(),
   target: executionTargetSchema,
   // An image-only turn is meaningful: the attachment is the prompt. Keep the
@@ -769,6 +885,8 @@ interface DelegateTaskRequest {
   prompt: string;
   target: ExecutionTarget;
   parentTaskId?: string;
+  sessionId?: string;
+  taskRoomInvocationAdmission?: TaskRoomInvocationAdmission;
   /** #2601: `deps.resolveRequestDelegation`'s derivation, never body JSON. */
   delegation?: AgentDelegationContext;
   userId: string;
@@ -821,6 +939,7 @@ interface DelegateTaskRequest {
 }
 
 interface ForegroundMessageRequest {
+  skillExperience?: SkillExperienceStartInputV1;
   expectedInputRequest?: AttentionRequestReference;
   target: ExecutionTarget;
   message: string;
@@ -1299,6 +1418,19 @@ export function createOrchestrationRoutes(
      */
     stationControlDispatchScope?: StationControlDispatchScope;
     delegateTask?: (input: DelegateTaskRequest) => Promise<unknown>;
+    taskRoomWork?: {
+      module: TaskRoomWorkModule;
+      resolveContext?(
+        taskId: string,
+        request: Request,
+        principal: PrincipalRef,
+      ): Promise<TaskRoomContextSnapshot | undefined>;
+      authorize(
+        taskId: string,
+        request: Request,
+        principal: PrincipalRef,
+      ): Promise<TaskRoomWorkScope | undefined>;
+    };
     /**
      * #484 phase A: admits (or refuses) the explicit portable-execution
      * intent against this Station's operator offer, binding the CURRENT
@@ -1360,6 +1492,12 @@ export function createOrchestrationRoutes(
       binding: { threadId: string; clientTurnId: string },
     ) => ChatAttachmentInput[];
     acceptStagedAttachments?: (
+      owner: PrincipalRef,
+      references: readonly StagedAttachmentReference[],
+      binding: { threadId: string; clientTurnId: string },
+    ) => void;
+    /** Undo the binding of a send refused before any engine effect. */
+    releaseStagedAttachments?: (
       owner: PrincipalRef,
       references: readonly StagedAttachmentReference[],
       binding: { threadId: string; clientTurnId: string },
@@ -1694,6 +1832,39 @@ export function createOrchestrationRoutes(
     return c.json({ success: true, data });
   });
 
+  app.get('/sessions/:threadId/skill-experience', async (c) => {
+    try {
+      if (deps.isRequestPrincipalCurrent?.(c.req.raw) === false)
+        return c.json({ success: false, error: 'Session not found' }, 404);
+      const query = z
+        .object({
+          expectedSkillExperience: z.string().max(2048).optional(),
+          cursor: z.string().min(1).max(512).optional(),
+          limit: z.coerce.number().int().min(1).max(100).default(20),
+        })
+        .parse(c.req.query());
+      const expected = query.expectedSkillExperience
+        ? experienceFrameReferenceSchema.parse(
+            JSON.parse(query.expectedSkillExperience),
+          )
+        : undefined;
+      const data = await orchestrationService.readSkillExperience(
+        param(c, 'threadId'),
+        readAuthorityFor(c),
+        query.cursor,
+        query.limit,
+        expected,
+      );
+      if (deps.isRequestPrincipalCurrent?.(c.req.raw) === false)
+        return c.json({ success: false, error: 'Session not found' }, 404);
+      return data
+        ? c.json({ success: true, data })
+        : c.json({ success: false, error: 'Session not found' }, 404);
+    } catch (error) {
+      return c.json({ success: false, error: errorMessage(error) }, 400);
+    }
+  });
+
   const handleForegroundMessage = async (c: Context) => {
     if (!deps.executeForegroundMessage) {
       return c.json(
@@ -1701,6 +1872,15 @@ export function createOrchestrationRoutes(
         503,
       );
     }
+    // Visible to the catch below: what this send bound, for a refusal that
+    // must release it.
+    let stagedAttachmentsForRelease:
+      | readonly StagedAttachmentReference[]
+      | undefined;
+    let stagedBindingForRelease:
+      | { threadId: string; clientTurnId: string }
+      | undefined;
+    let releasePrincipal: PrincipalRef | undefined;
     try {
       const {
         delegation: claimedDelegation,
@@ -1718,6 +1898,18 @@ export function createOrchestrationRoutes(
         requestedApprovalMode(body.target.model?.options),
       ]);
       if (fullAccessRefused) return fullAccessRefused;
+      if (
+        body.skillExperience &&
+        (body.automaticBackground || !body.clientTurnId)
+      )
+        return c.json(
+          {
+            success: false,
+            error:
+              'Skill experiences require foreground execution on this Station and a client turn id.',
+          },
+          400,
+        );
       const projectSlug =
         body.target.workspace?.kind === 'project'
           ? body.target.workspace.projectSlug
@@ -1741,6 +1933,22 @@ export function createOrchestrationRoutes(
           }),
       );
       if ('refused' in scoped) return scoped.refused;
+      const resolvedTarget = normalizeExecutionTarget(
+        withCanonicalCwd(body.target, scoped.canonicalCwd),
+        !body.target.environment && projectSlug
+          ? deps.projectDefaultEnvironment?.(projectSlug)
+          : undefined,
+      );
+      if (body.skillExperience && resolvedTarget.environment.kind !== 'current')
+        return c.json(
+          {
+            success: false,
+            error:
+              'Skill experiences require foreground execution on this Station.',
+          },
+          400,
+        );
+
       const { principal, userId, ownerAttribution, fullAccessGrant } =
         resolveDispatchActor(deps, c);
       if (body.expectedInputRequest) {
@@ -1805,6 +2013,9 @@ export function createOrchestrationRoutes(
               resolveAttachments: (binding) =>
                 (() => {
                   stagedBinding = binding;
+                  stagedBindingForRelease = binding;
+                  stagedAttachmentsForRelease = stagedAttachments;
+                  releasePrincipal = principal;
                   return deps.hydrateStagedAttachments!(
                     principal!,
                     stagedAttachments,
@@ -1815,12 +2026,7 @@ export function createOrchestrationRoutes(
           : body.attachments
             ? { attachments: body.attachments as ChatAttachmentInput[] }
             : {}),
-        target: normalizeExecutionTarget(
-          withCanonicalCwd(body.target, scoped.canonicalCwd),
-          !body.target.environment && projectSlug
-            ? deps.projectDefaultEnvironment?.(projectSlug)
-            : undefined,
-        ),
+        target: resolvedTarget,
         userId,
         // archive#4075 stage 2: rides alongside `userId` to the ONE
         // production `sendTurn` implementation (station-control-delegation.ts),
@@ -1929,6 +2135,21 @@ export function createOrchestrationRoutes(
       const unreachableWorkspace =
         error instanceof ProjectWorktreeDirectoryError &&
         error.reason === 'unreachable';
+      // The engine refused these attachments before anything reached it, so
+      // their binding to this turn proves nothing: release it, or a resend
+      // of the same (restored) chips anywhere else is refused as bound.
+      if (
+        errorCode(error) === ATTACHMENT_INPUT_UNSUPPORTED_CODE &&
+        stagedAttachmentsForRelease?.length &&
+        stagedBindingForRelease &&
+        releasePrincipal
+      ) {
+        deps.releaseStagedAttachments?.(
+          releasePrincipal,
+          stagedAttachmentsForRelease,
+          stagedBindingForRelease,
+        );
+      }
       return c.json(
         {
           success: false,
@@ -2347,41 +2568,148 @@ export function createOrchestrationRoutes(
           ? { attestation: delegationAttestation }
           : {}),
       });
-      const data = await deps.delegateTask({
-        ...request,
-        ...(delegation ? { delegation } : {}),
-        target: normalizeExecutionTarget(
-          withCanonicalCwd(body.target, scoped.canonicalCwd),
-        ),
-        userId,
-        principal,
-        ownerAttribution,
-        fullAccessGrant,
-        clientOrigin,
-        ...(body.attemptId ? { delegationAttemptId: body.attemptId } : {}),
-        // The tool keys claims by `deviceId`: project the verified grant's
-        // id explicitly — passing the `{ id }` grant object through would
-        // key every claim under `undefined:` (cross-grant collision) and
-        // lookups keyed by the real id would never hit.
-        ...(body.attemptId && delegationAttemptCaller
-          ? {
-              delegationAttemptCaller: {
-                deviceId: delegationAttemptCaller.id,
+      const delegate = deps.delegateTask;
+      const roomRequest = body.taskRoomRequest;
+      const dispatch = (
+        sessionId?: string,
+        recheck?: () => Promise<void>,
+        roomBinding?: TaskRoomInvocationAdmission['roomBinding'],
+        contextSnapshot?: TaskRoomContextSnapshot,
+      ) =>
+        delegate({
+          ...request,
+          ...(contextSnapshot
+            ? {
+                prompt: `${body.prompt}\n\nSelected Task brief snapshot:\n${JSON.stringify(contextSnapshot)}`,
+              }
+            : {}),
+          ...(delegation ? { delegation } : {}),
+          target: normalizeExecutionTarget(
+            withCanonicalCwd(body.target, scoped.canonicalCwd),
+          ),
+          userId,
+          principal,
+          ownerAttribution,
+          fullAccessGrant,
+          clientOrigin,
+          ...(sessionId
+            ? { sessionId, parentTaskId: roomRequest?.taskId }
+            : {}),
+          ...(recheck && roomBinding
+            ? {
+                taskRoomInvocationAdmission: {
+                  roomBinding,
+                  recheck: async () => {
+                    try {
+                      await recheck();
+                    } catch (error) {
+                      if (error instanceof TaskRoomWorkAuthorityChangedError)
+                        throw new ReceiverExecutionRefusal(
+                          'receiver_execution_authority_changed',
+                          error.message,
+                        );
+                      throw error;
+                    }
+                  },
+                },
+              }
+            : {}),
+          ...(body.attemptId ? { delegationAttemptId: body.attemptId } : {}),
+          // The tool keys claims by `deviceId`: project the verified grant's
+          // id explicitly — passing the `{ id }` grant object through would
+          // key every claim under `undefined:` (cross-grant collision) and
+          // lookups keyed by the real id would never hit.
+          ...(body.attemptId && delegationAttemptCaller
+            ? {
+                delegationAttemptCaller: {
+                  deviceId: delegationAttemptCaller.id,
+                },
+              }
+            : {}),
+          ...(deps.delegationAttemptClaimStore
+            ? { delegationAttemptClaimStore: deps.delegationAttemptClaimStore }
+            : {}),
+          ...(portableIntent
+            ? {
+                authorizeReceiverExecution,
+                inboundDeviceKind: deps.resolveInboundDeviceKind?.(c),
+                isRequestAuthorityCurrent: () =>
+                  deps.isRequestPrincipalCurrent?.(c.req.raw) ?? false,
+              }
+            : {}),
+        });
+      if (roomRequest) {
+        const work = deps.taskRoomWork;
+        if (
+          !work ||
+          !principal ||
+          body.target.environment.kind !== 'current' ||
+          body.target.workspace?.kind !== 'project'
+        )
+          return c.json(
+            {
+              success: false,
+              error:
+                'Task room agent requests are unavailable for this target.',
+            },
+            503,
+          );
+        const workspace = body.target.workspace;
+        const authorize = async () => {
+          const scope = await work.authorize(
+            roomRequest.taskId,
+            c.req.raw,
+            principal,
+          );
+          return scope &&
+            scope.projectSlug === workspace.projectSlug &&
+            scope.taskCreatedAt === roomRequest.taskCreatedAt
+            ? scope
+            : undefined;
+        };
+        const outcome = await work.module.submit(
+          roomRequest.taskId,
+          userId,
+          {
+            operationId: roomRequest.operationId,
+            agentId: body.target.agent,
+            prompt: body.prompt,
+            ...(roomRequest.context ? { context: roomRequest.context } : {}),
+          },
+          authorize,
+          async (sessionId, scope, recheck, contextSnapshot) => {
+            const handle = await dispatch(
+              sessionId,
+              recheck,
+              {
+                projectId: scope.roomProjectId,
+                taskId: roomRequest.taskId,
               },
-            }
-          : {}),
-        ...(deps.delegationAttemptClaimStore
-          ? { delegationAttemptClaimStore: deps.delegationAttemptClaimStore }
-          : {}),
-        ...(portableIntent
-          ? {
-              authorizeReceiverExecution,
-              inboundDeviceKind: deps.resolveInboundDeviceKind?.(c),
-              isRequestAuthorityCurrent: () =>
-                deps.isRequestPrincipalCurrent?.(c.req.raw) ?? false,
-            }
-          : {}),
-      });
+              contextSnapshot,
+            );
+            if (
+              !handle ||
+              typeof handle !== 'object' ||
+              !('sessionId' in handle) ||
+              typeof handle.sessionId !== 'string'
+            )
+              throw new Error('Agent execution identity was not returned.');
+            return { sessionId: handle.sessionId };
+          },
+          () =>
+            work.resolveContext?.(roomRequest.taskId, c.req.raw, principal) ??
+            Promise.resolve(undefined),
+        );
+        return c.json(
+          { success: outcome.kind === 'recorded', data: outcome },
+          outcome.kind === 'recorded'
+            ? 200
+            : outcome.reason === 'access'
+              ? 403
+              : 409,
+        );
+      }
+      const data = await dispatch();
       return c.json({ success: true, data });
     } catch (error) {
       const refused = delegationRefusal(c, error);
@@ -4047,7 +4375,13 @@ export function createOrchestrationRoutes(
       maxBodyBytes: CHAT_ATTACHMENT_MAX_COMMAND_JSON_BYTES,
     }),
     async (c) => {
-      const command = getBody(c);
+      const wireCommand = getBody(c);
+      // New clients require receipt semantics through a distinct wire type;
+      // older servers reject it instead of silently dropping clientInputId.
+      const command =
+        wireCommand.type === 'steerTurnOnce'
+          ? { ...wireCommand, type: 'steerTurn' as const }
+          : wireCommand;
       // #2436: full access needs the operator in person or a granted device.
       // #2377 slice C1: a Default that would run the engine at `never`
       // unconfined needs the grant too.
@@ -4136,6 +4470,12 @@ export function createOrchestrationRoutes(
           ...(ownerAttribution ? { ownerAttribution } : {}),
           ...(command.type === 'adoptSession' && fullAccessGrant
             ? { fullAccessGrant }
+            : {}),
+          // #2915: this route's authorization is the one `setApprovalMode`
+          // uses (an Auto pick needs nothing beyond it), so an answer sent
+          // here may record the Auto posture an edit-mode answer implies.
+          ...(command.type === 'respondToRequest'
+            ? { approvalModeAuthority: true as const }
             : {}),
           ...(command.type === 'respondToRequest' &&
           command.expectedRequestEventId !== undefined

@@ -5,10 +5,11 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
+  '@grpc/grpc-js': ^1.14.5
   adm-zip: ^0.6.0
-  axios: ^1.18.1
+  axios: ^1.20.0
   express-rate-limit: ^8.3.1
-  fast-uri: ^3.1.6
+  fast-uri: ^3.1.8
   form-data: ^4.0.6
   gaxios: ^7.3.0
   lodash: ^4.18.1
@@ -21,8 +22,8 @@ overrides:
   read-yaml-file>js-yaml: ^3.15.2
   readdirp>picomatch: ^2.3.2
   socket.io-parser: ^4.2.7
-  minimatch@^10.0.0>brace-expansion: ^5.0.9
-  brace-expansion@^2.0.2: ^2.1.4
+  minimatch@^10.0.0>brace-expansion: ^5.0.12
+  brace-expansion@^2.0.2: ^2.1.7
   js-yaml@^4.1.0: ^4.3.2
   js-yaml@^4.1.1: ^4.3.2
   nanoid: ^3.3.18
@@ -87,6 +88,9 @@ importers:
       '@hono/node-server':
         specifier: ^2.1.1
         version: 2.1.1(hono@4.13.8)
+      '@hpke/core':
+        specifier: 1.9.0
+        version: 1.9.0
       '@kontourai/conduit':
         specifier: 0.7.1
         version: 0.7.1
@@ -130,13 +134,13 @@ importers:
         specifier: ^0.5.1
         version: link:packages/connect
       '@kontourai/station-contracts':
-        specifier: ^0.7.0
+        specifier: ^0.8.0
         version: link:packages/contracts
       '@kontourai/station-sdk':
-        specifier: ^0.7.0
+        specifier: ^0.8.0
         version: link:packages/sdk
       '@kontourai/station-shared':
-        specifier: ^0.7.0
+        specifier: ^0.8.0
         version: link:packages/shared
       '@kontourai/surface':
         specifier: 3.2.0
@@ -148,11 +152,11 @@ importers:
         specifier: 0.5.0
         version: 0.5.0
       '@kontourai/ui':
-        specifier: ^1.12.0
-        version: 1.12.0(react@19.3.0)
+        specifier: ^1.18.0
+        version: 1.18.0(react@19.3.0)
       '@kontourai/veritas':
-        specifier: 1.7.4
-        version: 1.7.4(supports-color@7.2.0)(zod@4.6.5)
+        specifier: 1.7.6
+        version: 1.7.6(supports-color@7.2.0)(zod@4.6.5)
       '@modelcontextprotocol/client':
         specifier: ^2.0.0
         version: 2.0.0
@@ -264,6 +268,9 @@ importers:
       better-auth:
         specifier: 1.7.5
         version: 1.7.5(@opentelemetry/api@1.9.1)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(vitest@4.1.11)
+      canonicalize:
+        specifier: 5.1.0
+        version: 5.1.0
       chokidar:
         specifier: ^5.0.0
         version: 5.0.0
@@ -271,8 +278,8 @@ importers:
         specifier: ^4.4.3
         version: 4.4.3(supports-color@7.2.0)
       dompurify:
-        specifier: ^3.4.15
-        version: 3.4.15
+        specifier: ^3.4.16
+        version: 3.4.16
       dotenv:
         specifier: ^17.4.2
         version: 17.4.2
@@ -522,7 +529,7 @@ importers:
         specifier: 0.10.0
         version: 0.10.0(@ai-sdk/provider@3.0.16)(@anthropic-ai/sdk@0.122.0(zod@4.6.5))(@kontourai/bearing@0.2.0(playwright@1.63.0))(openai@6.49.0(@aws-sdk/credential-provider-node@3.972.83)(@smithy/signature-v4@5.6.12)(ws@8.21.3)(zod@4.6.5))(playwright@1.63.0)(supports-color@7.2.0)(typescript@5.9.3)
       '@kontourai/station-sdk':
-        specifier: ^0.7.0
+        specifier: ^0.8.0
         version: link:../../packages/sdk
     devDependencies:
       '@tanstack/react-query':
@@ -550,17 +557,17 @@ importers:
   packages/basis-pane:
     dependencies:
       '@kontourai/station-contracts':
-        specifier: ^0.7.0
+        specifier: ^0.8.0
         version: link:../contracts
       '@kontourai/station-sdk':
-        specifier: ^0.7.0
+        specifier: ^0.8.0
         version: link:../sdk
       '@kontourai/surface':
         specifier: ^3.2.0
         version: 3.2.0(supports-color@7.2.0)
       '@kontourai/ui':
-        specifier: ^1.12.0
-        version: 1.12.0(react@19.3.0)
+        specifier: ^1.18.0
+        version: 1.18.0(react@19.3.0)
       '@modelcontextprotocol/ext-apps':
         specifier: ^1.7.5
         version: 1.7.5(@modelcontextprotocol/sdk@1.30.0(supports-color@7.2.0)(zod@4.6.5))(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(zod@4.6.5)
@@ -596,14 +603,14 @@ importers:
         specifier: ^0.2.0
         version: 0.2.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       '@kontourai/station-contracts':
-        specifier: ^0.7.0
+        specifier: ^0.8.0
         version: link:../contracts
       '@kontourai/station-sdk':
-        specifier: ^0.7.0
+        specifier: ^0.8.0
         version: link:../sdk
       '@kontourai/ui':
-        specifier: ^1.12.0
-        version: 1.12.0(react@19.3.0)
+        specifier: ^1.18.0
+        version: 1.18.0(react@19.3.0)
       react:
         specifier: ^18.0.0 || ^19.0.0
         version: 19.3.0
@@ -631,13 +638,13 @@ importers:
         specifier: ^0.5.1
         version: link:../connect
       '@kontourai/station-contracts':
-        specifier: ^0.7.0
+        specifier: ^0.8.0
         version: link:../contracts
       '@kontourai/station-sdk':
-        specifier: ^0.7.0
+        specifier: ^0.8.0
         version: link:../sdk
       '@kontourai/station-shared':
-        specifier: ^0.7.0
+        specifier: ^0.8.0
         version: link:../shared
       commander:
         specifier: ^15.0.0
@@ -652,10 +659,10 @@ importers:
   packages/connect:
     dependencies:
       '@kontourai/station-contracts':
-        specifier: ^0.7.0
+        specifier: ^0.8.0
         version: link:../contracts
       '@kontourai/station-shared':
-        specifier: ^0.7.0
+        specifier: ^0.8.0
         version: link:../shared
       jsqr:
         specifier: ^1.4.0
@@ -719,10 +726,10 @@ importers:
         specifier: 6.4.0
         version: 6.4.0(@ai-sdk/provider@3.0.16)(@kontourai/bearing@0.2.0(playwright@1.63.0))(playwright@1.63.0)(supports-color@7.2.0)(typescript@5.9.3)(zod@4.6.5)
       '@kontourai/station-contracts':
-        specifier: ^0.7.0
+        specifier: ^0.8.0
         version: link:../contracts
       '@kontourai/station-shared':
-        specifier: ^0.7.0
+        specifier: ^0.8.0
         version: link:../shared
       '@kontourai/surface':
         specifier: ^3.2.0
@@ -731,8 +738,8 @@ importers:
         specifier: 0.5.0
         version: 0.5.0
       '@kontourai/ui':
-        specifier: ^1.12.0
-        version: 1.12.0(react@19.3.0)
+        specifier: ^1.18.0
+        version: 1.18.0(react@19.3.0)
       react:
         specifier: ^18.0.0 || ^19.0.0
         version: 19.3.0
@@ -756,7 +763,7 @@ importers:
   packages/shared:
     dependencies:
       '@kontourai/station-contracts':
-        specifier: ^0.7.0
+        specifier: ^0.8.0
         version: link:../contracts
       '@kontourai/thread':
         specifier: 0.5.0
@@ -764,6 +771,9 @@ importers:
       '@modelcontextprotocol/client':
         specifier: ^2.0.0
         version: 2.0.0
+      agent-skills-ts-sdk:
+        specifier: ^2.5.0
+        version: 2.5.0
       esbuild:
         specifier: ^0.28.2
         version: 0.28.2
@@ -2094,8 +2104,8 @@ packages:
     peerDependencies:
       graphql: ^0.8.0 || ^0.9.0 || ^0.10.0 || ^0.11.0 || ^0.12.0 || ^0.13.0 || ^14.0.0 || ^15.0.0 || ^16.0.0 || ^17.0.0
 
-  '@grpc/grpc-js@1.14.4':
-    resolution: {integrity: sha512-k9Dj3DV/itK9D06Y8f190Qgop7/Ui+D0njFV3LHMPwPT75DpXLQohE9Wmz0QElrJnzsjB7KPWiKJbOl7IPDArQ==}
+  '@grpc/grpc-js@1.14.5':
+    resolution: {integrity: sha512-7VZM+SVdEcUUqSQeNI3zM8Qs/BhQKZndPo2h5VkYkAM8Iz0wJIa8mKV5ekQGqG8UUsnkQ0NMxIxwkIHYvj0qOw==}
     engines: {node: '>=12.10.0'}
 
   '@grpc/proto-loader@0.8.1':
@@ -2119,6 +2129,14 @@ packages:
     resolution: {integrity: sha512-Hn90DOOJ62ICJQplQvCDVpi9Jcn6EhtRaiffyJIS53wA5RmRLtMCDQGVc0bor8vQD7JIwpkweWjs+3cycp+IvA==}
     peerDependencies:
       hono: '>=4.0.0'
+
+  '@hpke/common@1.10.1':
+    resolution: {integrity: sha512-moJwhmtLtuxiUzzNp1jpfBfx8yefKoO9D/RCR9dmwrnc7qjJqId1rEtQz+lSlU5cabX8daToMSx/7HayXOiaFw==}
+    engines: {node: '>=16.0.0'}
+
+  '@hpke/core@1.9.0':
+    resolution: {integrity: sha512-pFxWl1nNJeQCSUFs7+GAblHvXBCjn9EPN65vdKlYQil2aURaRxfGMO6vBKGqm1YHTKwiAxJQNEI70PbSowMP9Q==}
+    engines: {node: '>=16.0.0'}
 
   '@iconify/types@2.0.0':
     resolution: {integrity: sha512-+wluvCrRhXrhyOmRDJ3q8mux9JkKy5SJ/v8ol2tu4FVjyYvtEzkc/3pK15ET6RKg4b4w4BmTk1+gsCUhf21Ykg==}
@@ -2414,14 +2432,14 @@ packages:
       typescript:
         optional: true
 
-  '@kontourai/ui@1.12.0':
-    resolution: {integrity: sha512-DsbMTv8PIGN2c71vdOxrH2W3Rt6SwTunYtp/+xB+2XP+xt789nX1RfJPmfdv58EQmfsms0Z3k3C+CS3GfFJVMw==}
+  '@kontourai/ui@1.18.0':
+    resolution: {integrity: sha512-VR5vHBpQ8q7CVOSlR4YINJ05ghZ4Ao7J5vM8pxk+CBkadnMLHnnnsB6EaXjK83K5blffBwMOkKBwOvr2TC/Tsw==}
     engines: {node: '>=22'}
     peerDependencies:
       react: ^19.0.0
 
-  '@kontourai/veritas@1.7.4':
-    resolution: {integrity: sha512-G960alKtrpYg6fgxIpU/02zef6mHzh5jHmNggtqERoYtFpe6XUIhVmy3at6G+ff8MlytSKyEMwxbvWPOrLzaew==}
+  '@kontourai/veritas@1.7.6':
+    resolution: {integrity: sha512-1BOyT7EbrSFZqVWdpmH65c9Ay8E/uk/4uOxM7Fe24uoax78BjgVB36cTKOS5cp0bxwsFBE9e5OHQJRbthpjViw==}
     engines: {node: '>=22'}
     hasBin: true
 
@@ -4439,8 +4457,8 @@ packages:
     resolution: {integrity: sha512-UzGt8zg7Ny8djbYMhxl2zuEevVa7r2gJjYY5Lwr1xM7+XU2nd6CkIWFTVcCIbAP63vSz71NaVyyuSk9lHKcy0A==}
     engines: {node: '>=4'}
 
-  axios@1.18.1:
-    resolution: {integrity: sha512-3nTvFlvpn9Zu/RkHUqtc7/+al4UpRW5az71ap5zccp6e8RAYEzhMTecX8Dz1wWDYrPpUoB1HAQEGEAEvUr7S9g==}
+  axios@1.20.0:
+    resolution: {integrity: sha512-r8aOh8j9cGKpgQAqpzrUHnSIc6a59Y3Xf/cv8sy1DrHCkZHzQGEuoq1tARk6qSyDdtQGSDgpb9kFlruzPvrgwg==}
 
   bail@2.0.2:
     resolution: {integrity: sha512-0xO6mYd7JB2YesxDKplafRpsiOzPt9V02ddPCLbY1xYGPOX24NTyN50qnUxgCPcSoYMhKpAuBTjQoRZCAkUDRw==}
@@ -4567,11 +4585,11 @@ packages:
     resolution: {integrity: sha512-9gYgQKXx+1nP8mP7CzFyaUARhg7D3n1dF/FnErWmu9l6JvGpNUN278h0aSb+QjoiKSWG+iZ3uHrcqk0qrY9RQQ==}
     engines: {node: '>=10'}
 
-  brace-expansion@2.1.4:
-    resolution: {integrity: sha512-hGfVzPxthbf3+2yjg/RBs60cB0FhqBS/zvdV/4wn4/BmN0bNMMHPc4V/BbFieqf1TKAGGAHnY4eSjajCl0f2Xg==}
+  brace-expansion@2.1.7:
+    resolution: {integrity: sha512-uZbew1NqdmPDTMJ8ah1y+b+9QEJrfkXFk3RcTQw3X0jW/xRUvFKsg1CfQdSYGdTbXZWExtU3J3ccxtnfw1Fi0g==}
 
-  brace-expansion@5.0.9:
-    resolution: {integrity: sha512-ScQ4IuvIEF1TMlP7Zt+vjJ//9zlPb2SDcxWxM3bk8s6t6GGdJ7KO1dCcTidOPJKePW30LE/2cT7wCyPho9/Wxg==}
+  brace-expansion@5.0.12:
+    resolution: {integrity: sha512-YovQ3rzhaLMIrDjNDMkNS01tea93qhEhG5xy8f6+R0l+dw3Ki+5sCoIoI942iuLZTHWogWktgwVDhU09iNEimQ==}
     engines: {node: 20 || >=22}
 
   braces@3.0.3:
@@ -4652,6 +4670,11 @@ packages:
 
   caniuse-lite@1.0.30001806:
     resolution: {integrity: sha512-72Cuvd95zbSYPKq6Fhg8eDJRlzgWDf7/mtoZv6Qe/DYNCEBdNxoA3+rZAU2ZhGCpZlns3EssFavaZomckT5Uuw==}
+
+  canonicalize@5.1.0:
+    resolution: {integrity: sha512-bab9+WefZljqQ8jT0qRwVmTyzAUU63K97QIQD3agynIBrb6sa5M2eAy8Hv8K3p4V9+ONVYZKtGYl4Dg+/5Gumw==}
+    engines: {node: '>=22'}
+    hasBin: true
 
   ccount@2.0.1:
     resolution: {integrity: sha512-eyrF0jiFpY+3drT6383f1qhkbGsLSifNAjA61IUjZjmLCWjItY6LB9ft9YhoDgwfmclB2zhu51Lc7+95b8NRAg==}
@@ -5195,8 +5218,8 @@ packages:
     resolution: {integrity: sha512-gYzvtM72ZtxQO0T048kd6HWSbbGCNOUwcnfQ01cqIJ4X2IYKFFHZ5mKvrQETcFXxsRObZulDaKmy//R7TPtsBg==}
     engines: {node: '>=20.19.0'}
 
-  dompurify@3.4.15:
-    resolution: {integrity: sha512-EUBjM+B+lkDE41iE82DDSCfkoPGfXx8IxFxPMjNzm/Uk4xDet77rTN9wqlxlVg71kK7XGuUMv6wUxJUwwv+Xyw==}
+  dompurify@3.4.16:
+    resolution: {integrity: sha512-sqo+pNp3qRhCIpbgRi1y8Tgk27Bo2Ry7w0dC1NBeNTdZChWjz9Xb/KOoZbRP/R6pQZ80Qw8YhXw13hWWBbMRnQ==}
 
   domutils@3.2.2:
     resolution: {integrity: sha512-6kZKyUajlDuqlHKVX1w7gyslj9MPIXzIFiz/rGu35uC1wMi+kMhQwGhl4lt9unC9Vb9INnY9Z3/ZA3+FhASLaw==}
@@ -5440,8 +5463,8 @@ packages:
   fast-string-width@3.0.2:
     resolution: {integrity: sha512-gX8LrtNEI5hq8DVUfRQMbr5lpaS4nMIWV+7XEbXk2b8kiQIizgnlr12B4dA3ZEx3308ze0O4Q1R+cHts8kyUJg==}
 
-  fast-uri@3.1.7:
-    resolution: {integrity: sha512-dOvZVzjdZdz7phd9v6jCbwxrBW3fK6n8Rc0CtdmM4bumzMnxywBYhuph6J819RRw/ku+rLbelwfMunktuzVVHg==}
+  fast-uri@3.1.8:
+    resolution: {integrity: sha512-GZMtZUTNRpOVIECoXwLNZS5xUGE+mVNbTB8h/7Rwh2TFWcBQiPzTgyZi05BF9UMZKkLJv8XBRJTlU7zg8+ZfMg==}
 
   fast-wrap-ansi@0.2.2:
     resolution: {integrity: sha512-7F2Fl+TjRSenLqlU3UjSH0iyqopqoZIu7eZVpEirP2g1GtWa2G/ecEmBdgz31+Mxr+ELclgg6sokpSFIQiZ02Q==}
@@ -9426,7 +9449,7 @@ snapshots:
     dependencies:
       graphql: 16.14.2
 
-  '@grpc/grpc-js@1.14.4':
+  '@grpc/grpc-js@1.14.5':
     dependencies:
       '@grpc/proto-loader': 0.8.1
       '@js-sdsl/ordered-map': 4.4.2
@@ -9449,6 +9472,12 @@ snapshots:
   '@hono/swagger-ui@0.5.3(hono@4.13.8)':
     dependencies:
       hono: 4.13.8
+
+  '@hpke/common@1.10.1': {}
+
+  '@hpke/core@1.9.0':
+    dependencies:
+      '@hpke/common': 1.10.1
 
   '@iconify/types@2.0.0': {}
 
@@ -9528,7 +9557,7 @@ snapshots:
   '@kontourai/console-ui@0.2.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)':
     dependencies:
       '@kontourai/console-core': 0.3.0
-      '@kontourai/ui': 1.12.0(react@19.3.0)
+      '@kontourai/ui': 1.18.0(react@19.3.0)
       react: 19.3.0
       react-dom: 19.3.0(react@19.3.0)
 
@@ -9794,11 +9823,11 @@ snapshots:
       - canvas
       - playwright
 
-  '@kontourai/ui@1.12.0(react@19.3.0)':
+  '@kontourai/ui@1.18.0(react@19.3.0)':
     dependencies:
       react: 19.3.0
 
-  '@kontourai/veritas@1.7.4(supports-color@7.2.0)(zod@4.6.5)':
+  '@kontourai/veritas@1.7.6(supports-color@7.2.0)(zod@4.6.5)':
     dependencies:
       '@kontourai/surface': 2.18.0(supports-color@7.2.0)
       '@modelcontextprotocol/sdk': 1.30.0(supports-color@7.2.0)(zod@4.6.5)
@@ -9806,7 +9835,7 @@ snapshots:
       ajv-formats: 3.0.1(ajv@8.20.0)
       cross-spawn: 7.0.6
       hachure: 0.15.0
-      picomatch: 4.0.5
+      picomatch: 4.0.7
     transitivePeerDependencies:
       - '@cfworker/json-schema'
       - kerberos
@@ -10316,7 +10345,7 @@ snapshots:
 
   '@opentelemetry/otlp-grpc-exporter-base@0.222.0(@opentelemetry/api@1.9.1)':
     dependencies:
-      '@grpc/grpc-js': 1.14.4
+      '@grpc/grpc-js': 1.14.5
       '@opentelemetry/api': 1.9.1
       '@opentelemetry/core': 2.11.0(@opentelemetry/api@1.9.1)
       '@opentelemetry/otlp-exporter-base': 0.222.0(@opentelemetry/api@1.9.1)
@@ -10749,7 +10778,7 @@ snapshots:
       '@sap/xsenv': 6.2.1(supports-color@7.2.0)
       '@sap/xssec': 4.13.3(supports-color@7.2.0)
       async-retry: 1.3.3
-      axios: 1.18.1(debug@4.4.3(supports-color@7.2.0))(supports-color@7.2.0)
+      axios: 1.20.0(debug@4.4.3(supports-color@7.2.0))(supports-color@7.2.0)
       jks-js: 1.1.7
       jsonwebtoken: 9.0.3
       safe-stable-stringify: 2.5.0
@@ -10762,7 +10791,7 @@ snapshots:
       '@sap-cloud-sdk/connectivity': 4.8.0(debug@4.4.3(supports-color@7.2.0))(supports-color@7.2.0)
       '@sap-cloud-sdk/resilience': 4.8.0(debug@4.4.3(supports-color@7.2.0))(supports-color@7.2.0)
       '@sap-cloud-sdk/util': 4.8.0(debug@4.4.3(supports-color@7.2.0))(supports-color@7.2.0)
-      axios: 1.18.1(debug@4.4.3(supports-color@7.2.0))(supports-color@7.2.0)
+      axios: 1.20.0(debug@4.4.3(supports-color@7.2.0))(supports-color@7.2.0)
     transitivePeerDependencies:
       - debug
       - supports-color
@@ -10773,7 +10802,7 @@ snapshots:
       '@sap-cloud-sdk/http-client': 4.8.0(debug@4.4.3(supports-color@7.2.0))(supports-color@7.2.0)
       '@sap-cloud-sdk/resilience': 4.8.0(debug@4.4.3(supports-color@7.2.0))(supports-color@7.2.0)
       '@sap-cloud-sdk/util': 4.8.0(debug@4.4.3(supports-color@7.2.0))(supports-color@7.2.0)
-      axios: 1.18.1(debug@4.4.3(supports-color@7.2.0))(supports-color@7.2.0)
+      axios: 1.20.0(debug@4.4.3(supports-color@7.2.0))(supports-color@7.2.0)
     transitivePeerDependencies:
       - debug
       - supports-color
@@ -10782,7 +10811,7 @@ snapshots:
     dependencies:
       '@sap-cloud-sdk/util': 4.8.0(debug@4.4.3(supports-color@7.2.0))(supports-color@7.2.0)
       async-retry: 1.3.3
-      axios: 1.18.1(debug@4.4.3(supports-color@7.2.0))(supports-color@7.2.0)
+      axios: 1.20.0(debug@4.4.3(supports-color@7.2.0))(supports-color@7.2.0)
       opossum: 10.0.0
     transitivePeerDependencies:
       - debug
@@ -10790,7 +10819,7 @@ snapshots:
 
   '@sap-cloud-sdk/util@4.8.0(debug@4.4.3(supports-color@7.2.0))(supports-color@7.2.0)':
     dependencies:
-      axios: 1.18.1(debug@4.4.3(supports-color@7.2.0))(supports-color@7.2.0)
+      axios: 1.20.0(debug@4.4.3(supports-color@7.2.0))(supports-color@7.2.0)
       logform: 2.7.0
       voca: 1.4.1
       winston: 3.19.0
@@ -11375,7 +11404,7 @@ snapshots:
 
   '@types/dompurify@3.2.0':
     dependencies:
-      dompurify: 3.4.15
+      dompurify: 3.4.16
 
   '@types/estree-jsx@1.0.5':
     dependencies:
@@ -11940,7 +11969,7 @@ snapshots:
   ajv@8.20.0:
     dependencies:
       fast-deep-equal: 3.1.3
-      fast-uri: 3.1.7
+      fast-uri: 3.1.8
       json-schema-traverse: 1.0.0
       require-from-string: 2.0.2
 
@@ -12033,7 +12062,7 @@ snapshots:
 
   axe-core@4.13.0: {}
 
-  axios@1.18.1(debug@4.3.2(supports-color@7.2.0))(supports-color@7.2.0):
+  axios@1.20.0(debug@4.3.2(supports-color@7.2.0))(supports-color@7.2.0):
     dependencies:
       follow-redirects: 1.16.0(debug@4.3.2(supports-color@7.2.0))
       form-data: 4.0.6
@@ -12043,7 +12072,7 @@ snapshots:
       - debug
       - supports-color
 
-  axios@1.18.1(debug@4.4.3(supports-color@7.2.0))(supports-color@7.2.0):
+  axios@1.20.0(debug@4.4.3(supports-color@7.2.0))(supports-color@7.2.0):
     dependencies:
       follow-redirects: 1.16.0(debug@4.4.3(supports-color@7.2.0))
       form-data: 4.0.6
@@ -12170,12 +12199,12 @@ snapshots:
       widest-line: 3.1.0
       wrap-ansi: 7.0.0
 
-  brace-expansion@2.1.4:
+  brace-expansion@2.1.7:
     dependencies:
       balanced-match: 1.0.2
     optional: true
 
-  brace-expansion@5.0.9:
+  brace-expansion@5.0.12:
     dependencies:
       balanced-match: 4.0.4
 
@@ -12290,6 +12319,8 @@ snapshots:
   camelcase@6.3.0: {}
 
   caniuse-lite@1.0.30001806: {}
+
+  canonicalize@5.1.0: {}
 
   ccount@2.0.1: {}
 
@@ -12816,7 +12847,7 @@ snapshots:
     dependencies:
       domelementtype: 3.0.0
 
-  dompurify@3.4.15:
+  dompurify@3.4.16:
     optionalDependencies:
       '@types/trusted-types': 2.0.7
 
@@ -13178,7 +13209,7 @@ snapshots:
     dependencies:
       fast-string-truncated-width: 3.0.3
 
-  fast-uri@3.1.7: {}
+  fast-uri@3.1.8: {}
 
   fast-wrap-ansi@0.2.2:
     dependencies:
@@ -13195,6 +13226,10 @@ snapshots:
   fdir@6.5.0(picomatch@4.0.5):
     optionalDependencies:
       picomatch: 4.0.5
+
+  fdir@6.5.0(picomatch@4.0.7):
+    optionalDependencies:
+      picomatch: 4.0.7
 
   fecha@4.2.3: {}
 
@@ -14002,7 +14037,7 @@ snapshots:
 
   localtunnel@2.0.2(supports-color@7.2.0):
     dependencies:
-      axios: 1.18.1(debug@4.3.2(supports-color@7.2.0))(supports-color@7.2.0)
+      axios: 1.20.0(debug@4.3.2(supports-color@7.2.0))(supports-color@7.2.0)
       debug: 4.3.2(supports-color@7.2.0)
       openurl: 1.1.1
       yargs: 17.1.1
@@ -14325,7 +14360,7 @@ snapshots:
       d3-sankey: 0.12.3
       dagre-d3-es: 7.0.14
       dayjs: 1.11.23
-      dompurify: 3.4.15
+      dompurify: 3.4.16
       es-toolkit: 1.52.0
       fastdom: 1.0.12
       katex: 0.16.47
@@ -14559,11 +14594,11 @@ snapshots:
 
   minimatch@10.2.5:
     dependencies:
-      brace-expansion: 5.0.9
+      brace-expansion: 5.0.12
 
   minimatch@9.0.9:
     dependencies:
-      brace-expansion: 2.1.4
+      brace-expansion: 2.1.7
     optional: true
 
   minimist@1.2.8: {}
@@ -15102,7 +15137,7 @@ snapshots:
 
   posthog-node@4.18.0(debug@4.4.3(supports-color@7.2.0))(supports-color@7.2.0):
     dependencies:
-      axios: 1.18.1(debug@4.4.3(supports-color@7.2.0))(supports-color@7.2.0)
+      axios: 1.20.0(debug@4.4.3(supports-color@7.2.0))(supports-color@7.2.0)
     transitivePeerDependencies:
       - debug
       - supports-color
@@ -15856,8 +15891,8 @@ snapshots:
 
   tinyglobby@0.2.17:
     dependencies:
-      fdir: 6.5.0(picomatch@4.0.5)
-      picomatch: 4.0.5
+      fdir: 6.5.0(picomatch@4.0.7)
+      picomatch: 4.0.7
 
   tinyrainbow@3.1.1: {}
 

@@ -4,6 +4,7 @@ import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { Hono } from 'hono';
 import { isContextSafetyError } from '../../services/orchestration/context-safety.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
+import { parseExperienceIdentity } from '../../services/orchestration/skill-experience-model.js';
 import type { PackageMcpAdmissionJournal } from '../../services/plugins/package-mcp-admission.js';
 import {
   type PluginCommandWithdrawalCapture,
@@ -97,11 +98,23 @@ export function registerPluginPublicRoutes(
     } catch (error) {
       return c.text(errorMessage(error), 400);
     }
+    const claimed = c.req.query('experienceIdentity');
+    let expected: ReturnType<typeof parseExperienceIdentity>;
+    try {
+      expected =
+        claimed && claimed.length <= 2048
+          ? parseExperienceIdentity(JSON.parse(claimed))
+          : undefined;
+    } catch {
+      return c.text('Invalid experience identity', 400);
+    }
+    if (claimed && !expected) return c.text('Invalid experience identity', 400);
     const bundle = await readPluginBundle(
       pluginsDir,
       name,
       'bundle.js',
       deps.packageMcpJournal,
+      expected,
     );
     if (bundle === null) return c.text('Bundle not found', 404);
     c.header('Content-Type', 'application/javascript');
@@ -116,11 +129,23 @@ export function registerPluginPublicRoutes(
     } catch (error) {
       return c.text(errorMessage(error), 400);
     }
+    const claimed = c.req.query('experienceIdentity');
+    let expected: ReturnType<typeof parseExperienceIdentity>;
+    try {
+      expected =
+        claimed && claimed.length <= 2048
+          ? parseExperienceIdentity(JSON.parse(claimed))
+          : undefined;
+    } catch {
+      return c.text('Invalid experience identity', 400);
+    }
+    if (claimed && !expected) return c.text('Invalid experience identity', 400);
     const css = await readPluginBundle(
       pluginsDir,
       name,
       'bundle.css',
       deps.packageMcpJournal,
+      expected,
     );
     if (css === null) return c.text('', 200);
     c.header('Content-Type', 'text/css');

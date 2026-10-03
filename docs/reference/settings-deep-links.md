@@ -1,5 +1,11 @@
 # Settings deep links
 
+On phones, the **Settings section** picker lists topics; computers show the
+same topics in a navigation rail. Both stay within Settings. General is the
+default. Customize opens management destinations from a separate sidebar-footer
+button beside Schedule and Settings. Route changes still use the
+unsaved-changes guard.
+
 The Settings catalog assigns stable ids and deep links to its controls. A
 link opens the owning section and attempts to reveal the control. Platform
 restrictions and delayed rendering can prevent that reveal. This reference
@@ -11,7 +17,8 @@ explains the URL, catalog endpoint, and how to use its results.
 /settings?view=<SettingsSectionId>&highlight=<SettingsCatalogId>
 ```
 
-- `view` is the section id — the group of controls the page opens on.
+- `view` is a leaf section id or a topic id from `settings-pages.ts`.
+  Existing leaf links still open their section; `overview` shows all sections.
 - `highlight` is the control id — the row the page scrolls to and highlights.
 
 Both ids are stable identities, never derived from the visible label, so a
@@ -26,11 +33,11 @@ asked for:
   strips it from the URL and announces "That Settings target is no longer
   available." — nothing is highlighted, and the page stays where the `view`
   put it. Keep control ids stable when changing labels or sections.
-- A `view` that is not a section id falls back to the **overview**. When the
+- A `view` that is not a section id falls back to **General**. When the
   link also carries a real `highlight`, that fallback is invisible: the
   healing below moves the page to the section the control is in now. When it
-  does not — a bare `?view=<something stale>` — the reader lands on the
-  overview with no error, which is the deliberate cost of letting sections be
+  does not — a bare `?view=<something stale>` — the reader lands on
+  General with no error, which is the deliberate cost of letting sections be
   renamed at all.
 
 ### When a control changes section

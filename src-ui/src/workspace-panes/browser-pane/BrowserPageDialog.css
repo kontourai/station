@@ -1,0 +1,135 @@
+/*
+ * The page-dialog card (#90): a browser alert/confirm/prompt held for the
+ * person in control, drawn over the live view in the Browser pane and in the
+ * float-over-chat. Its own sheet so it rides whichever chunk shows it.
+ */
+.browser-pane__page-dialog {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md, 6px);
+  box-shadow: var(--shadow-md, 0 2px 8px rgb(0 0 0 / 0.2));
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+  max-height: 70%;
+  max-width: 28rem;
+  overflow: auto;
+  padding: var(--space-3, 12px);
+  width: 100%;
+}
+
+.browser-pane__page-dialog-title {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.browser-pane__page-dialog-message {
+  margin: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.browser-pane__page-dialog-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2, 8px);
+  justify-content: flex-end;
+}
+
+/* Open in pane: an icon-only control (the shared `IconButton`) at the row's
+   start. On a coarse pointer it is a 44px target like the labelled OK and
+   Cancel beside it; the icon sheet reads the variable. */
+.browser-pane__page-dialog-open {
+  margin-right: auto;
+}
+
+.browser-pane__page-dialog[data-pointer="coarse"] {
+  --browser-pane-control: 44px;
+  --icon-button-size: 44px;
+}
+
+.browser-pane__page-dialog-input {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md, 6px);
+  color: var(--text-primary);
+  font: inherit;
+  min-height: 44px;
+  padding: 0 var(--space-2, 8px);
+}
+
+.browser-pane__page-dialog .browser-pane__notice {
+  font-size: 0.8125rem;
+  margin: 0;
+}
+
+.browser-pane__page-dialog .browser-pane__control {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+/* The float's own placement: over the floated view, top-centred. */
+.float-over-chat__dialog-layer {
+  display: flex;
+  justify-content: center;
+  left: 8px;
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  z-index: 2;
+}
+
+/* Compact (the float): the card fills the float and scrolls if it must;
+   the page's text is clamped to two lines (its full text is the tooltip). */
+.browser-pane__page-dialog--compact {
+  gap: 4px;
+  max-height: 100%;
+  max-width: none;
+  padding: 6px 8px;
+}
+
+.browser-pane__page-dialog--compact .browser-pane__page-dialog-title,
+.browser-pane__page-dialog--compact .browser-pane__page-dialog-message {
+  font-size: 0.75rem;
+}
+
+.browser-pane__page-dialog.browser-pane__page-dialog--compact
+  .browser-pane__page-dialog-message {
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  display: -webkit-box;
+  flex: 0 0 auto;
+  overflow: hidden;
+  white-space: normal;
+}
+
+.browser-pane__page-dialog--compact .browser-pane__page-dialog-actions {
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+  gap: 4px;
+}
+
+.browser-pane__page-dialog--compact .browser-pane__page-dialog-actions > * {
+  white-space: nowrap;
+}
+
+/* Fine pointer only (the card says so with `data-pointer`, from the shared
+   pointer hook): a touch float keeps its 44px targets. */
+.browser-pane__page-dialog--compact[data-pointer="fine"] .browser-pane__control,
+.browser-pane__page-dialog--compact[data-pointer="fine"]
+  .browser-pane__page-dialog-input {
+  font-size: 0.75rem;
+  min-height: 26px;
+  min-width: 0;
+  padding: 0 8px;
+}
+
+.float-over-chat__dialog-layer--compact {
+  bottom: 4px;
+  left: 4px;
+  right: 4px;
+  top: 4px;
+}

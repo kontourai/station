@@ -10,6 +10,7 @@ import {
 } from '@kontourai/station-shared/return-focus';
 import {
   lazy,
+  type ReactNode,
   Suspense,
   useCallback,
   useEffect,
@@ -35,6 +36,7 @@ import { ConnectionListPanel } from './connection-manager-modal/ConnectionListPa
 import { ManualAddPanel } from './connection-manager-modal/ManualAddPanel';
 import { PairedDevicesPanel } from './connection-manager-modal/PairedDevicesPanel';
 import {
+  type ConnectionManagerActiveHealth,
   type ConnectionManagerPanel,
   getConnectionManagerTitle,
   getConnectionStatus,
@@ -64,6 +66,10 @@ interface ConnectionManagerModalContentProps {
    * `{ ok: false, reason }` result instead. `ConnectionHealthCheckResult`
    * includes `boolean`, so existing boolean implementations still satisfy this.
    */
+  /** Host's live status, bound to its currently selected connection. */
+  activeHealth?: ConnectionManagerActiveHealth;
+  /** Host-owned unsaved-work decision before changing the selected Station. */
+  guardConnectionChange?: (proceed: () => void) => void;
   checkHealth: (
     url: string,
     credential?: string,
@@ -79,6 +85,7 @@ interface ConnectionManagerModalContentProps {
     signal?: AbortSignal,
   ) => Promise<StationCompatibilityResult>;
   initialPanel?: ConnectionManagerPanel;
+  listFooterContent?: ReactNode;
   /** A decoded, one-time pairing payload awaiting the user's confirmation. */
   initialPairingPayload?: string;
   pairingLinkError?: string;
@@ -174,8 +181,11 @@ async function readCandidateHandshake(response: Response): Promise<{
 export function ConnectionManagerModalContent({
   onClose,
   checkHealth,
+  activeHealth,
+  guardConnectionChange,
   checkCompatibility,
   initialPanel = 'list',
+  listFooterContent,
   initialPairingPayload,
   pairingLinkError,
   onPairingReviewDismissed,
@@ -749,6 +759,10 @@ export function ConnectionManagerModalContent({
       connectionId: conn.id,
       activeConnectionId: activeConnection?.id,
       healthValue: healthMap[conn.id],
+      activeStatus:
+        activeHealth?.connectionId === conn.id
+          ? activeHealth.status
+          : undefined,
     });
 
   const reviewConnectionCandidate = useCallback(
@@ -983,20 +997,23 @@ export function ConnectionManagerModalContent({
             credentialEntry={credentialEntry}
             allowManualCredentials={allowManualCredentials}
             getStatus={statusForConn}
+            activeHealth={activeHealth}
             pendingConnectionId={pendingForConnections?.targetConnectionId}
             onSelect={(connection) => {
-              void setActiveConnection(connection.id)
-                .then(() => {
-                  setSelectionError(null);
-                  void checkOne(connection);
-                })
-                .catch((error) => {
-                  setSelectionError(
-                    `Could not switch Stations: ${
-                      error instanceof Error ? error.message : String(error)
-                    }`,
-                  );
-                });
+              const proceed = () => {
+                void setActiveConnection(connection.id)
+                  .then(() => {
+                    setSelectionError(null);
+                    void checkOne(connection);
+                  })
+                  .catch((error) => {
+                    setSelectionError(
+                      `Could not switch Stations: ${error instanceof Error ? error.message : String(error)}`,
+                    );
+                  });
+              };
+              if (guardConnectionChange) guardConnectionChange(proceed);
+              else proceed();
             }}
             onCheck={checkOne}
             onStartEdit={startEdit}
@@ -1078,6 +1095,7 @@ export function ConnectionManagerModalContent({
               restorePairingCodeFocusRef.current = true;
               setPanel('pair-code');
             }}
+            listFooterContent={listFooterContent}
             onPairPhone={() => {
               setHostPairingReturnPanel('list');
               setPanel('pair-host');

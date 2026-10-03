@@ -20,6 +20,7 @@ import type {
 } from '@kontourai/station-contracts/self-hosted-broker';
 import { stationConnectionSigningKeyId } from '@kontourai/station-shared/connection-proof';
 import { calculateJwkThumbprint, importJWK } from 'jose';
+import { NativeSurfaceRegistry } from '../../services/connections/native-surface-registry.js';
 import { SelfHostedBrokerClient } from '../../services/connections/self-hosted-broker-client.js';
 import type { VirtualApplication } from '../../services/connections/virtual-application.js';
 import { ConnectionKeyCandidateIssuer } from '../../services/ssh/connection-key-candidate-issuer.js';
@@ -59,6 +60,7 @@ interface SelfHostedConnectorFactory {
   issueNativeInvitation(
     prepare: unknown,
     signal: AbortSignal,
+    invitationTtlMs?: number | null,
   ): Promise<SelfHostedBrokerNativeRouteInvitationV2>;
   /** Typed StationRuntimeOptions entries: spread both into normal
    * StationRuntime construction. The runtime owns the broker lifecycle
@@ -399,74 +401,106 @@ export function loadSelfHostedBrokerConnectorConfig(options?: {
   // against current Station trust before any admission.
   let nativeClient:
     | {
-        surface: SelfHostedBrokerNativeClientSurfaceV2;
+        surface?: SelfHostedBrokerNativeClientSurfaceV2;
+        registry?: true;
         maxPeers?: number;
       }
     | undefined;
   if (config.nativeClient !== undefined) {
     const raw = config.nativeClient as Record<string, unknown>;
     if (
-      !raw ||
-      typeof raw !== 'object' ||
-      Array.isArray(raw) ||
-      ![
-        'appIdentifier,channel,clientInstanceId,keyThumbprint,kind,maxPeers',
-        'appIdentifier,channel,clientInstanceId,keyThumbprint,kind',
-      ].includes(Object.keys(raw).sort().join(','))
-    )
-      fail('connector_config_native_client_invalid');
-    if (
-      raw.kind !== 'station-native' ||
-      typeof raw.appIdentifier !== 'string' ||
-      !/^[A-Za-z0-9][A-Za-z0-9.-]{0,254}$/.test(raw.appIdentifier) ||
-      !['dev', 'stable', 'beta', 'nightly'].includes(raw.channel as string) ||
-      typeof raw.clientInstanceId !== 'string' ||
-      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-        raw.clientInstanceId,
-      ) ||
-      typeof raw.keyThumbprint !== 'string' ||
-      !/^[A-Za-z0-9_-]{43}$/.test(raw.keyThumbprint)
-    )
-      fail('connector_config_native_client_invalid');
-    if (raw.maxPeers !== undefined) {
-      const nativeMaxPeers = raw.maxPeers as number;
+      raw &&
+      typeof raw === 'object' &&
+      !Array.isArray(raw) &&
+      raw.kind === 'station-native-registry'
+    ) {
       if (
-        !Number.isSafeInteger(nativeMaxPeers) ||
-        nativeMaxPeers < 1 ||
-        nativeMaxPeers > 32
+        !['kind', 'kind,maxPeers'].includes(
+          Object.keys(raw).sort().join(','),
+        ) ||
+        (raw.maxPeers !== undefined &&
+          (!Number.isSafeInteger(raw.maxPeers) ||
+            (raw.maxPeers as number) < 1 ||
+            (raw.maxPeers as number) > 32))
       )
         fail('connector_config_native_client_invalid');
+      nativeClient = {
+        registry: true,
+        ...(raw.maxPeers !== undefined
+          ? { maxPeers: raw.maxPeers as number }
+          : {}),
+      };
+    } else {
+      if (
+        !raw ||
+        typeof raw !== 'object' ||
+        Array.isArray(raw) ||
+        ![
+          'appIdentifier,channel,clientInstanceId,keyThumbprint,kind,maxPeers',
+          'appIdentifier,channel,clientInstanceId,keyThumbprint,kind',
+        ].includes(Object.keys(raw).sort().join(','))
+      )
+        fail('connector_config_native_client_invalid');
+      if (
+        raw.kind !== 'station-native' ||
+        typeof raw.appIdentifier !== 'string' ||
+        !/^[A-Za-z0-9][A-Za-z0-9.-]{0,254}$/.test(raw.appIdentifier) ||
+        !['dev', 'stable', 'beta', 'nightly'].includes(raw.channel as string) ||
+        typeof raw.clientInstanceId !== 'string' ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+          raw.clientInstanceId,
+        ) ||
+        typeof raw.keyThumbprint !== 'string' ||
+        !/^[A-Za-z0-9_-]{43}$/.test(raw.keyThumbprint)
+      )
+        fail('connector_config_native_client_invalid');
+      if (raw.maxPeers !== undefined) {
+        const nativeMaxPeers = raw.maxPeers as number;
+        if (
+          !Number.isSafeInteger(nativeMaxPeers) ||
+          nativeMaxPeers < 1 ||
+          nativeMaxPeers > 32
+        )
+          fail('connector_config_native_client_invalid');
+      }
+      nativeClient = {
+        surface: {
+          kind: 'station-native',
+          appIdentifier: raw.appIdentifier as string,
+          channel:
+            raw.channel as SelfHostedBrokerNativeClientSurfaceV2['channel'],
+          clientInstanceId: raw.clientInstanceId as string,
+          keyThumbprint: raw.keyThumbprint as string,
+        },
+        ...(raw.maxPeers !== undefined
+          ? { maxPeers: raw.maxPeers as number }
+          : {}),
+      };
     }
-    nativeClient = {
-      surface: {
-        kind: 'station-native',
-        appIdentifier: raw.appIdentifier as string,
-        channel:
-          raw.channel as SelfHostedBrokerNativeClientSurfaceV2['channel'],
-        clientInstanceId: raw.clientInstanceId as string,
-        keyThumbprint: raw.keyThumbprint as string,
-      },
-      ...(raw.maxPeers !== undefined
-        ? { maxPeers: raw.maxPeers as number }
-        : {}),
-    };
   }
   const turn = config.turn as Record<string, unknown>;
+  const brokerTurn =
+    !!turn &&
+    typeof turn === 'object' &&
+    !Array.isArray(turn) &&
+    Object.keys(turn).join(',') === 'source' &&
+    turn.source === 'broker';
   if (
-    !turn ||
-    typeof turn !== 'object' ||
-    Array.isArray(turn) ||
-    Object.keys(turn).sort().join(',') !== 'password,url,username' ||
-    typeof turn.url !== 'string' ||
-    turn.url.length === 0 ||
-    turn.url.length > 4096 ||
-    !(turn.url.startsWith('turn:') || turn.url.startsWith('turns:')) ||
-    typeof turn.username !== 'string' ||
-    turn.username.length === 0 ||
-    turn.username.length > 512 ||
-    typeof turn.password !== 'string' ||
-    turn.password.length === 0 ||
-    turn.password.length > 1024
+    !brokerTurn &&
+    (!turn ||
+      typeof turn !== 'object' ||
+      Array.isArray(turn) ||
+      Object.keys(turn).sort().join(',') !== 'password,url,username' ||
+      typeof turn.url !== 'string' ||
+      turn.url.length === 0 ||
+      turn.url.length > 4096 ||
+      !(turn.url.startsWith('turn:') || turn.url.startsWith('turns:')) ||
+      typeof turn.username !== 'string' ||
+      turn.username.length === 0 ||
+      turn.username.length > 512 ||
+      typeof turn.password !== 'string' ||
+      turn.password.length === 0 ||
+      turn.password.length > 1024)
   )
     fail('connector_config_turn_invalid');
 
@@ -623,16 +657,21 @@ export function loadSelfHostedBrokerConnectorConfig(options?: {
     executable,
     certificatePem: certificateRef.bytes.toString('utf8'),
     privateKeyPem: keyRef.bytes.toString('utf8'),
-    turn: Object.freeze({
-      url: turn.url as string,
-      username: turn.username as string,
-      password: turn.password as string,
-    }),
+    turn: brokerTurn
+      ? Object.freeze({ source: 'broker' as const })
+      : Object.freeze({
+          url: turn.url as string,
+          username: turn.username as string,
+          password: turn.password as string,
+        }),
     maxPeers,
     maxPeerLifetimeMs,
     nativeClient: nativeClient
       ? Object.freeze({
-          surface: Object.freeze(structuredClone(nativeClient.surface)),
+          ...(nativeClient.surface
+            ? { surface: Object.freeze(structuredClone(nativeClient.surface)) }
+            : {}),
+          ...(nativeClient.registry ? { registry: true as const } : {}),
           ...(nativeClient.maxPeers !== undefined
             ? { maxPeers: nativeClient.maxPeers }
             : {}),
@@ -649,7 +688,7 @@ export function loadSelfHostedBrokerConnectorConfig(options?: {
   const trustOwner = createConnectorTrustOwner(homeDir);
   return {
     applicationOrigin: snapshot.applicationOrigin,
-    async issueNativeInvitation(prepare, signal) {
+    async issueNativeInvitation(prepare, signal, invitationTtlMs) {
       signal.throwIfAborted();
       const trust = trustOwner.current();
       if (
@@ -673,6 +712,7 @@ export function loadSelfHostedBrokerConnectorConfig(options?: {
         signingKeyId,
         trust.generation,
         signal,
+        invitationTtlMs,
       );
       await routingClient.requireOnline(signal);
       if (!trustOwner.isCurrent(trust))
@@ -685,6 +725,19 @@ export function loadSelfHostedBrokerConnectorConfig(options?: {
       ready: () => {},
     },
     selfHostedBrokerConnector: {
+      ...(snapshot.nativeClient
+        ? {
+            nativeApplication: Object.freeze({
+              stationId: snapshot.scope.stationId,
+              ...(snapshot.nativeClient.surface
+                ? { surface: snapshot.nativeClient.surface }
+                : {}),
+              ...(snapshot.nativeClient.registry
+                ? { registry: true as const }
+                : {}),
+            }),
+          }
+        : {}),
       create: (application: VirtualApplication) =>
         factoryCreateRuntime(snapshot, application, options?.observeStatus),
     },
@@ -705,12 +758,15 @@ function factoryCreateRuntime(
     executable: string;
     certificatePem: string;
     privateKeyPem: string;
-    turn: { url: string; username: string; password: string };
+    turn:
+      | { url: string; username: string; password: string }
+      | { source: 'broker' };
     maxPeers: number;
     maxPeerLifetimeMs: number;
     nativeClient?:
       | {
-          surface: SelfHostedBrokerNativeClientSurfaceV2;
+          surface?: SelfHostedBrokerNativeClientSurfaceV2;
+          registry?: true;
           maxPeers?: number;
         }
       | undefined;
@@ -756,7 +812,17 @@ function factoryCreateRuntime(
       ...(snapshot.nativeClient
         ? {
             native: {
-              surface: { ...snapshot.nativeClient.surface },
+              ...(snapshot.nativeClient.surface
+                ? { surface: { ...snapshot.nativeClient.surface } }
+                : {}),
+              ...(snapshot.nativeClient.registry
+                ? {
+                    registry: new NativeSurfaceRegistry(
+                      snapshot.homeDir,
+                      snapshot.scope.stationId,
+                    ),
+                  }
+                : {}),
               ...(snapshot.nativeClient.maxPeers !== undefined
                 ? { maxPeers: snapshot.nativeClient.maxPeers }
                 : {}),

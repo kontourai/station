@@ -1,0 +1,25 @@
+{
+  "path": "docs/reference/issue-lifecycle.md",
+
+  "kind": "generated",
+
+  "state": "source-reviewed",
+
+  "summary": "Reviewed label transitions, reporter-comment filtering, delivery-stage admission and bounded uncertain-write reconciliation against generators and callers.",
+
+  "limits": "Generated contract or retained release evidence; no new hosted release, live label mutation or platform result is claimed.",
+
+  "document": {"digest":"62c34faf69830d671988f14ee01ab2bdfb53e966f29afd7c6275a0d6cd0cf4c4","revision":"2dd99129dc84d2589b416ca56f5e0060fc30c1ab"},
+
+  "sources": [
+    {"path":".github/labels.json","digest":"f9a492139c9d9511725226664a146802ed069303dbd9913fee25905e429fb276","revision":"8de1b741d83aec880c76c3cece6bb3e9cdee740d"},
+
+    {"path":"scripts/generate-issue-lifecycle-reference.mjs","digest":"31f5fd9b8685cc1610b7e3e5a37a1c13bc22496de0207c5ec5494692d0c6778e","revision":"2dd99129dc84d2589b416ca56f5e0060fc30c1ab"},
+
+    {"path":"scripts/issue-lifecycle-reducer.mjs","digest":"7d6895964aa5bd919abca039319b63f4ae1d5e3a4b7113d19b286ef66754549c","revision":"2dd99129dc84d2589b416ca56f5e0060fc30c1ab"}
+  ],
+
+  "checks": [
+    "Focused issue lifecycle and release/source availability checks passed; an unavailable response is not proof that no label changed."
+  ]
+}

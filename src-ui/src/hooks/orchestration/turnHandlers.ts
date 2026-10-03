@@ -26,6 +26,7 @@ import {
   isChatErrorMarker,
   pruneStaleFailureMarkers,
 } from '../../utils/sessionFailure';
+import { settlePendingApprovalsOnTurnEnd } from './approvalHandlers';
 import { finalizeAssistantTurn } from './assistantTurn';
 import { createAssistantStreamingMessage } from './messageParts';
 import { drainQueuedMessageOnTurnCompleted } from './queueDrain';
@@ -136,6 +137,7 @@ export function handleTurnStartedEvent(
         timestamp: Date.parse(event.createdAt) || undefined,
         turnId: event.turnId,
         sessionId: event.threadId,
+        ...(event.steerInterruptedRun ? { steerInterruptedRun: true } : {}),
       });
     }
     store.updateChat(event.threadId, {
@@ -344,6 +346,13 @@ export function handleTurnCompletedEvent(
   );
   activeChatsStore.updateChat(event.threadId, {
     orchestrationHistoryRevision: historyRevision + 1,
+    // #3071: a cancelled completion (an engine confirming a stop) settles
+    // the requests that name this turn, by the shared rule; an ordinary
+    // completion settles none. Read after `finalizeAssistantTurn`'s write.
+    ...settlePendingApprovalsOnTurnEnd(
+      activeChatsStore.getChatForExecutionSession(event.threadId),
+      event,
+    ),
     ...(closesOpenTurn &&
     currentChat?.conversationId &&
     currentChat.currentSessionId === event.threadId &&
@@ -402,9 +411,14 @@ export function handleTurnAbortedEvent(
   // streaming. That abort must not tear down the open turn's stream or mark
   // the chat idle; it only ends the waiting send.
   const openTurnId = chat?.openTurnId;
+  // #3071: whichever branch below, the aborted turn's own requests are
+  // settled by the shared rule — the same fold a snapshot's `openRequestIds`
+  // already reflects — and a request naming no turn, or another turn, stays.
+  const settledApprovals = settlePendingApprovalsOnTurnEnd(chat, event);
   if (openTurnId && openTurnId !== event.turnId) {
     activeChatsStore.updateChat(chatKey, {
       orchestrationHistoryRevision: historyRevision + 1,
+      ...settledApprovals,
       ...(chat?.sendAwaitingTurnStart
         ? { sendAwaitingTurnStart: undefined, pendingClientTurnId: undefined }
         : {}),
@@ -412,6 +426,7 @@ export function handleTurnAbortedEvent(
     return;
   }
   activeChatsStore.updateChat(chatKey, {
+    ...settledApprovals,
     // A late provider abort revokes a previously committed same-turn answer.
     // Keeping it would leave Add to Task on an answer the lifecycle rejects.
     ...(chat
@@ -474,6 +489,23 @@ export function handleTurnAbortedEvent(
 export function handleRuntimeErrorEvent(
   event: Extract<OrchestrationEvent, { method: 'runtime.error' }>,
 ) {
+  if (isDeferredRetriableTurnError(event)) {
+    const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
+    if (
+      !chat?.orchestrationTurnOpen ||
+      (event.turnId && chat.openTurnId && event.turnId !== chat.openTurnId)
+    )
+      return;
+    const detail = /timeout|timed out/i.test(event.message)
+      ? 'Response timed out'
+      : /rate.limit|429/i.test(event.message)
+        ? 'Rate limited'
+        : undefined;
+    activeChatsStore.updateChat(event.threadId, {
+      activityHint: { kind: 'retrying', detail },
+    });
+    return;
+  }
   // archive#3451 (corrected wording, not code):
   // `RuntimeErrorEvent extends CanonicalRuntimeEventBase`, which carries an
   // optional TOP-LEVEL `turnId` — publishers set it there (muse-adapter.ts,
@@ -624,6 +656,7 @@ export function handleRuntimeErrorEvent(
     !chat.conversationOpenState.canContinue
       ? { conversationOpenPending: true, conversationOpenFailed: false }
       : {}),
+    activityHint: undefined,
     status: 'error',
     error: event.message,
     orchestrationStatus: 'errored',

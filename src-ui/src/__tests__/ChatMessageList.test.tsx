@@ -594,10 +594,10 @@ describe('ChatMessageList', () => {
         fontSize={14}
         showReasoning
         showToolDetails
-        owner={{ id: 'brian', label: 'Brian Anderson' }}
+        owner={{ id: 'casey', label: 'Casey Example' }}
       />,
     );
-    expect(screen.getByText(/via Brian Anderson/)).toBeTruthy();
+    expect(screen.getByText(/via Casey Example/)).toBeTruthy();
   });
 
   test('omitting the owner prop renders no "Managed by …" chip at all (contrast case for the wiring test above)', () => {
@@ -688,7 +688,9 @@ describe('ChatMessageList', () => {
     expect(scroller.scrollTop).toBe(1_500);
   });
 
-  test('a reader scrolled up during projected streaming gets the scroll-to-bottom affordance back', () => {
+  test('a scrolled-up reader can return through the composer control and resume following', () => {
+    const target = document.createElement('div');
+    document.body.append(target);
     const base = {
       ...resizeSession(),
       id: 'projected-stream-reader',
@@ -703,6 +705,7 @@ describe('ChatMessageList', () => {
     const view = render(
       <ChatMessageList
         activeSession={base}
+        scrollControlsTarget={target}
         suppressStreamingRow
         fontSize={14}
         showReasoning={false}
@@ -720,7 +723,9 @@ describe('ChatMessageList', () => {
     scroller.scrollTop = 200;
     fireEvent.wheel(scroller);
     fireEvent.scroll(scroller);
-    fireEvent.click(screen.getByRole('button', { name: 'Scroll to bottom' }));
+    const button = screen.getByRole('button', { name: 'Scroll to bottom' });
+    expect(target.contains(button)).toBe(true);
+    fireEvent.click(button);
     expect(scroller.scrollTop).toBe(1_000);
     // Follow resumes: the next projected delta re-pins without another click.
     Object.defineProperty(scroller, 'scrollHeight', {
@@ -748,6 +753,7 @@ describe('ChatMessageList', () => {
       />,
     );
     expect(scroller.scrollTop).toBe(1_500);
+    target.remove();
   });
 
   function projectedStreamSession(id: string) {

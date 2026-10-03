@@ -17,6 +17,13 @@ import {
   useApiQuery,
 } from '../query-core';
 
+const liveAnalyticsConfig = {
+  staleTime: 30_000,
+  refetchInterval: 30_000,
+  refetchOnMount: true,
+  refetchOnWindowFocus: true,
+} as const;
+
 export interface FeedbackRatingInput {
   agentSlug: string;
   conversationId: string;
@@ -60,7 +67,10 @@ export async function rescanAnalytics(): Promise<void> {
 }
 
 export function useUsageQuery(config?: QueryConfig<any>) {
-  return useApiQuery(['analytics', 'usage'], () => fetchUsageStats(), config);
+  return useApiQuery(['analytics', 'usage'], () => fetchUsageStats(), {
+    ...liveAnalyticsConfig,
+    ...config,
+  });
 }
 
 export async function fetchUsageRollup(
@@ -84,12 +94,14 @@ export function useUsageRollupQuery(
       'analytics',
       'usage-rollup',
       query.days,
+      query.provider ?? '',
+      query.localOnly ? 1 : 0,
       query.groupBy ?? 'provider',
       query.cursor ?? '',
       query.pageSize ?? 50,
     ],
     () => fetchUsageRollup(query),
-    config,
+    { ...liveAnalyticsConfig, ...config },
   );
 }
 
@@ -108,7 +120,7 @@ export function useActivityUsageQuery(
       if (!response.ok) throw new Error('Failed to fetch activity usage');
       return (await response.json()).data;
     },
-    config,
+    { ...liveAnalyticsConfig, ...config },
   );
 }
 
@@ -124,7 +136,7 @@ export function useAchievementsQuery(config?: QueryConfig<any>) {
       const result = await response.json();
       return result.data;
     },
-    config,
+    { ...liveAnalyticsConfig, ...config },
   );
 }
 
@@ -170,7 +182,7 @@ export function useInsightsQuery(
     // from being served from an unfiltered cache entry.
     ['insights', days, insightsQuery(days, filters)],
     () => fetchInsights(days, filters),
-    config,
+    { ...liveAnalyticsConfig, ...config },
   );
 }
 
@@ -274,10 +286,7 @@ export function useAnalyticsRescanMutation(
   options?: MutationOptions<void, void>,
 ) {
   return useApiMutation(async () => rescanAnalytics(), {
-    invalidateKeys: [
-      ['analytics', 'usage'],
-      ['analytics', 'achievements'],
-    ],
+    invalidateKeys: [['analytics'], ['insights']],
     onSuccess: options?.onSuccess,
     onError: options?.onError,
   });

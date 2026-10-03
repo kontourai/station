@@ -34,7 +34,24 @@ type ToolDenialReason =
  * or to no opinion at all.
  */
 export type PreToolPolicyDecision =
-  | { behavior: 'allow' }
+  | {
+      behavior: 'allow';
+      /**
+       * #2933: the allow came from a tool-level grant (`isGranted`: the
+       * agent's `tools.autoApprove` patterns or an intrinsic grant). Such a
+       * grant covers plain calls to the tool, never an escalation or a plan
+       * exit, and it is decided from the tool name alone, before the engine
+       * has said whether this call escalates. An external adapter must
+       * therefore not let it answer a request the engine marks as one; see
+       * the Claude and ACP adapters.
+       *
+       * #2947: the same limit holds for an allow without this marker, which
+       * on the external path is the approval guardian's. The marker only
+       * tells the Claude adapter which allow it re-derives from the agent's
+       * patterns in `canUseTool` and which it must carry there itself.
+       */
+      toolGrant?: true;
+    }
   | { behavior: 'deny'; denial: ToolCallDenial }
   | { behavior: 'ask' }
   | { behavior: 'defer' };
@@ -101,7 +118,7 @@ function deny(
   toolName: string,
   predicate: string,
   quoted?: QuotedDenialText,
-): PreToolPolicyDecision {
+): Extract<PreToolPolicyDecision, { behavior: 'deny' }> {
   toolDenials.add(1, { reason });
   return {
     behavior: 'deny',
@@ -150,6 +167,24 @@ const SCHEDULED_JOB_STORE_UNAVAILABLE =
  * The opt-in is honoured on Station's engine only, so an external (ACP or
  * Claude) child is not sent to an edit that changes nothing there.
  */
+/**
+ * The denial a delegated child that may not grant approvals
+ * (`delegation.denyApprovals`) gets for a call that would ask a person. One
+ * composition for the staged evaluator and for an external adapter whose
+ * engine asks after a tool-level grant let the call through (#2933): nobody
+ * can answer the child's request, so it fails fast instead of waiting.
+ */
+export function delegatedApprovalDenial(
+  toolName: string,
+  interaction: 'managed' | 'external',
+): Extract<PreToolPolicyDecision, { behavior: 'deny' }> {
+  return deny(
+    'delegation_deny_approvals',
+    toolName,
+    childDenialPredicate(interaction),
+  );
+}
+
 function childDenialPredicate(interaction: 'managed' | 'external'): string {
   const predicate =
     'requires approval, and delegated child sessions cannot grant approvals.';
@@ -247,7 +282,13 @@ type GuardianOutcome =
 
 /**
  * The approval guardian's verdict. An enforce-mode deny blocks; an allow
- * allows. Anything else leaves the call undecided — and in enforce mode that
+ * allows, in either mode. The guardian is shown the agent, the tool's name,
+ * the call's arguments and a description where the adapter passes one (ACP
+ * passes the call's title; Claude passes none), and nothing of the session: not
+ * its working directories, its permission mode, or why an engine would ask.
+ * Its allow therefore speaks for the call as written. On an external engine
+ * it answers plain calls only and never an escalation or a plan exit
+ * (#2947; see the Claude and ACP adapters). Anything else leaves the call undecided — and in enforce mode that
  * undecided verdict (a `defer`, including the guardian's own error and
  * parse-failure fallbacks) is carried forward so an unattended call can treat
  * it as a refusal (#2613).
@@ -384,7 +425,7 @@ export function createStagedPreToolPolicyEvaluator(
       }
     }
 
-    if (deps.isGranted(tool)) return { behavior: 'allow' };
+    if (deps.isGranted(tool)) return { behavior: 'allow', toolGrant: true };
 
     const guardian = await reviewWithGuardian(deps, tool, invocation);
     if (guardian.kind === 'decided') return guardian.decision;
@@ -425,11 +466,7 @@ export function createStagedPreToolPolicyEvaluator(
         agentSlug: invocation.agentSlug,
         conversationId: invocation.conversationId,
       });
-      return deny(
-        'delegation_deny_approvals',
-        tool.toolName,
-        childDenialPredicate(options.interaction),
-      );
+      return delegatedApprovalDenial(tool.toolName, options.interaction);
     }
 
     // The Claude SDK's canUseTool remains its interactive authority. Defer so

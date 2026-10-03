@@ -26,12 +26,36 @@ not mean every deployment mounts or admits it.
 - Readiness, health, catalog discovery, and a completed model turn are distinct
   observations. Response fields and receipts state which one was observed.
 
+## Personal Task room agent requests
+
+`GET /api/tasks/:taskId/room/agent-requests` returns the authorized, versioned
+request projection. A client must verify `station.task-room-work/v1` before
+sending an additive `taskRoomRequest` through `POST /api/orchestration/delegations`.
+That object requires `taskId`, `taskCreatedAt` and a stable `operationId`;
+the normal prompt and execution target remain outside it. Supporting servers
+also advertise `contextVersion: 'station.task-room-context/v1'` and an authorized
+Task/shared-document snapshot in the read response. A create can supply only its
+`context: { version, digest }` reference. The server captures and saves that exact
+brief for a new operation; an existing operation reuses its saved snapshot.
+A stale/unavailable context is refused before invocation, and changed context
+under an existing operation conflicts. This initial path
+admits current-Station execution in the exact Task Project, with the existing
+read/operate, readiness and provider-effect authority gates. A request receipt
+does not establish Task completion or result quality.
+
+Ordinary `POST /api/tasks/:taskId/room/messages` can include
+`expectedTaskCreatedAt`; the room's history grant rechecks that incarnation
+before commit. See the [ownership and failure contract](../design/task-room-agent-requests.md)
+and [SDK clients](sdk.md#task-room-agent-requests). These routes are personal-runtime
+composition; this reference does not claim hosted, anonymous-public or invited
+participation acceptance.
+
 ## Table of Contents
 
 | Area | Route families |
 | --- | --- |
 | Work and layouts | [Starter Work](#starter-work), [Spatial Board](#spatial-board), [personal Boards](#personal-boards), [Layouts](#layout-management), [workflow files](#workflow-management), [independent review](#independent-review-evidence) |
-| Agents and conversations | [Agent management](#agent-management), [invocation](#agent-invocation), [orchestration model selection](#orchestration-model-launch-behavior), [conversations](#conversation-management), [attachments](#attachments), [global routes](#global-routes) |
+| Agents and conversations | [Agent management](#agent-management), [invocation](#agent-invocation), [Task room requests](#personal-task-room-agent-requests), [orchestration model selection](#orchestration-model-launch-behavior), [conversations](#conversation-management), [attachments](#attachments), [global routes](#global-routes) |
 | Models and configuration | [App configuration](#configuration), [connections](#connections), [fleet inference](#fleet-inference), [Bedrock catalog](#bedrock-models), [model capabilities](#model-capabilities), [standalone model routes](#standalone-model-capability-routes) |
 | Activity and observations | [Analytics](#analytics), [monitoring](#monitoring), [insights](#insights), [events](#events-sse), [analytics reset](#additional-analytics) |
 | Extensions | [Plugins](#plugins), [Registry](#registry), [frontend clients](#frontend-usage-summary) |
@@ -162,6 +186,21 @@ through the selected provider/catalog; absent or unknown selector evidence does
 not create an arbitrary model binding. The response is SSE; failures before
 stream creation use HTTP errors, while failures during a stream must be handled
 as stream outcomes.
+
+`start-step` and `finish-step` frames carry only their type. Provider request
+and response bodies, headers, metadata and nested errors are not sent in these
+frames. Text and successful tool frames retain their contracts. Failed VoltAgent
+tool-result frames omit the raw `output`, including error messages, stack traces
+and other error properties. Their `error` carries a safe Station-composed denial
+reason or the fixed `Tool call failed.` message; policy-denial badges remain.
+Any other frame field holding a raw error object (for example a `tool-error`
+part's `error`) is sent as the fixed text "The response stream failed.", and a
+mid-stream `error` part ends the turn with a single outward error frame.
+
+The framework compatibility route `POST /agents/:slug/chat` remains behind
+Station authentication. Its HTTP 5xx responses contain fixed failure text and
+a correlation ID, never the provider's raw error message. Successful streams
+and client-side 4xx refusals keep the framework's response contract.
 
 <a id="agent-management-1"></a>
 
@@ -724,6 +763,19 @@ from orchestration when the file-memory path has no usable record. Messages
 carry the owner's current parts/metadata shape; do not depend on every message
 having the old `content: string`/`timestamp` pair.
 
+A `/chat` turn that failed before producing output is recorded as a user-role
+`[SYSTEM_EVENT] [CHAT_ERROR] <text>` message. `<text>` is never the model
+provider's own error message. It is one of: a status sentence such as
+"The model provider returned an error (HTTP 500).", "The model provider
+rejected the credentials.", "Stream aborted by client", or "The response
+stream failed.". A marker stored before this rule holds provider text on
+disk; this route and everything behind the same read seam (export, fork and
+summary), title regeneration and the knowledge store's conversation records
+serve it as "The response stream failed." instead
+([marker scrubber](../../src-server/runtime/conversation/chat-error-marker.ts)).
+The marker never reaches a model: the Station-engine prompt, native-memory
+history and a direct Strands conversation's replayed history all exclude it.
+
 ### Update Conversation
 
 `PATCH /agents/:slug/conversations/:conversationId` accepts the supported
@@ -887,7 +939,9 @@ kind/name does not invent a new engine adapter.
 Creation normally returns 201, update 200, with `{success: true, data}`. A saved
 configuration awaiting runtime activation returns 202 and
 `configurationActivation`, as with Agent writes. The returned definition is
-redacted. Invalid saves return a structured 400 response.
+redacted. Invalid saves return a structured 400 response. A POST whose `id`
+names an existing Model connection returns 409 and changes nothing; replacing
+it, including its stored API key, is a PUT.
 
 ### Delete or Reset a Connection
 
@@ -1032,6 +1086,18 @@ normal request authentication runs first. See the
 
 ## Orchestration model launch behavior
 
+Installed [Skill experiences](skill-experiences.md) use this same foreground
+route when their inventory advertises `executionContract: "1.0"`. The optional
+`skillExperience` selection contains pinned identity, scalar inputs, canonical
+attachment-index assignments and an expected previous invocation event. Project
+Environment defaults resolve normally; this contract refuses remote forwarding.
+`GET /api/orchestration/sessions/:threadId/skill-experience` returns immutable
+current/history presentation tied to actual canonical turns. Rich reads and
+question answers bind `{identity, eventId}` in `expectedSkillExperience` and hold
+the current package grant; ordinary user controls omit that frame admission.
+See the [Session API](session-api.md#visual-skill-presentation) for ownership and
+unavailable-history behavior.
+
 `POST /api/orchestration/chat` carries model selection under
 `target.model: {override?, options?}`, alongside the Agent and Environment target.
 The [route schema](../../src-server/routes/orchestration/orchestration.ts),
@@ -1132,7 +1198,18 @@ per-invocation receipts. An unavailable aggregator returns a 500 error.
 ### Get Usage Statistics
 
 `GET /api/analytics/usage` returns `{success: true, data: stats}` with lifetime,
-Agent, model, and date aggregates. The date map is `byDate`, not `byDay`.
+Agent, model, and date aggregates. Active reads rebuild the retained snapshot
+at most once a minute, sharing an in-flight rebuild with other readers.
+`snapshot.rescannedAt` identifies the completed source scan;
+`snapshot.engineUsage` distinguishes available, unavailable, and unconfigured
+engine sources, and `snapshot.skippedMessages` counts unreadable message rows.
+`snapshot.missingMessageCosts` counts saved assistant/usage rows without a valid
+cost, while `snapshot.costCoverageChecked` becomes false after incremental
+writes or enrichment until a rebuild. `snapshot.retainedUsage` flags retained
+message, token or cost totals larger than the currently rescanned corpus
+(ignoring cost rounding differences).
+A completed scan does not prove historical totals or every provider's accounting
+are complete. The date map is `byDate`, not `byDay`.
 Optional `from`/`to` date strings filter `byDate` and add `rangeSummary`; other
 fields retain their existing aggregate scope. Do not relabel those other fields
 as totals for the selected window.
@@ -1140,8 +1217,10 @@ as totals for the selected window.
 ### Get Achievements
 
 `GET /api/analytics/achievements` returns
-`{success: true, data: achievements}` from the aggregator. The achievement
-schema and unlock rules belong to that owner, not a fixed list in this page.
+`{success: true, data: achievements}` from the same refreshed aggregate snapshot. The achievement
+schema and unlock rules belong to that owner, not a fixed list in this page. Cost
+milestones with unavailable measurement carry `measurementUnavailableReason`,
+omit numeric progress, and remain locked; a reported zero remains eligible.
 
 ### Rescan Analytics
 
@@ -1440,7 +1519,8 @@ every key is one of `--k-brand`, `--k-brand-contrast`, `--k-action`,
 `--k-action-contrast` or `--k-focus`, every value is `#rgb`/`#rrggbb`, and
 every check from the "White-label overrides" section in
 [`@kontourai/ui`'s DESIGN.md](https://github.com/kontourai/ui/blob/main/DESIGN.md#white-label-overrides)
-passes in both modes; otherwise it applies none of it and keeps the default.
+(the package's `validateBrandOverride`) and Station's stricter text checks
+pass in both modes; otherwise it applies none of it and keeps the default.
 The rules and a worked provider are in
 [examples/custom-branding](../../examples/custom-branding/README.md).
 
@@ -2117,16 +2197,102 @@ error is currently caught, so success is not proof that local cleanup completed.
 `POST /api/registry/integrations/sync` awaits provider sync and returns
 `{success: true}`.
 
+### Manage marketplaces
+
+`GET /api/registry/sources` lists connected sources for the Station operator.
+All source-management methods require `access:manage` credential scope as well
+as the operator principal check. Ordinary catalog browsing retains its read
+scope; a standard paired credential cannot enumerate host source configuration
+or trigger source refresh.
+`POST /api/registry/sources` accepts `{displayName, adapter, location}` where
+`adapter` is `directory`, `github` or `manifest`. Directory and local manifest
+locations are absolute paths on this Station. Public GitHub repository URLs use
+its default branch and discover nested directories containing `SKILL.md`.
+Manifest URLs require HTTPS. Credentials in URLs are refused; private sources
+and other index formats need a future credential-aware adapter.
+
+`PATCH /api/registry/sources/:id` accepts `{enabled}`;
+`POST /api/registry/sources/:id/refresh` returns current status;
+`DELETE /api/registry/sources/:id` removes a user-added source. Installed
+packages and their historical attribution remain. Plugin-owned sources are
+managed through the plugin's existing enable/disable/revoke lifecycle.
+
+[The source manager](../../src-server/providers/registries/registry-source-manager.ts)
+keeps versioned configuration and last successful catalog snapshots in
+`config/registry-sources.json`: a regular file bounded to 8 MiB, 32 user-added
+sources and 32 retained snapshots, each with at most 512 rows. Corrupt,
+unsupported, oversized and nonregular configuration is refused without
+replacing the existing bytes. Offline plugin rows use current local installed
+inventory and source ownership aliases. Provider visibility and generation fences remain
+owned by the existing provider registry. Source status is `ready`, `stale`,
+`error`, `disabled` or `unknown`; it includes checked/last successful times and
+an explicit error when refresh fails. Cached data is discovery evidence;
+installation always revalidates the selected source.
+
 ### List Available Skills (Registry)
 
-`GET /api/registry/skills` merges registered Skill catalogs and deduplicates IDs,
-keeping the first occurrence. No registered providers gives an empty list.
+`GET /api/registry/skills` preserves same-name entries from independent sources.
+Each item has `catalog: {sourceId, itemId, revision, kind}` and an opaque `id`
+that clients pass unchanged to inspect/install. `catalogSourceName` is the
+host's source label; `source` retains the provider's original attribution.
+The response includes per-source status and `partial: true` when a source fails.
+Successful independent results remain visible. A cached snapshot is marked
+`stale`; when every available source has failed and there is no snapshot,
+the response is 503 with `success: false`, rather than an empty successful list.
+A successful empty catalog from an independent source remains a successful
+partial observation; source availability is determined from the read outcome,
+not its row count. Plugin catalogs use the same failure and partial-result rule.
+
+The built-in [GitHub Skill provider](../../src-server/providers/registries/github-skill-registry.ts)
+resolves a branch to one immutable commit/tree and verifies blob hashes.
+Discovery supports nested Skill directories and refuses ambiguous names,
+truncated trees and unreadable required files. Its budgets are 512 Skills,
+8192 tree entries, four concurrent Markdown reads, 1 MiB per blob and an
+8 MiB blob budget per discovery/acquisition. Each commit/tree JSON response
+has a separate 2 MiB bound. Operations have a 60-second ceiling and requests
+have a 15-second ceiling. An installed package has at most 256 files. Portable path checks and
+exclusive staging-directory/file creation still refuse filesystem aliases.
+These checks do not qualify Windows/native execution.
+
+Readable reserved-name and unsupported-format documents remain inspectable with
+`unsupported-skill-name` or `unsupported-skill-format`; installation is refused.
+Inspection uses `GET /api/registry/skills/:id/content` with the opaque selection
+ID and returns the original instructions. Bad required metadata, duplicate
+names, unsafe names and incomplete discovery fail the source rather than
+silently hiding entries. A bare name is supported only when one source matches.
 
 ### Install Skill from Registry
 
 `POST /api/registry/skills/install` accepts `{id}` and returns SkillService's
 result. It attempts a Skill reload after success; a caught reload failure does
-not change the install result.
+not change the install result. `prototype` and `constructor` return a 400 envelope
+with `code: "unsupported-skill-name"` before SkillService or staged filesystem
+effects. `__proto__` is rejected by the route's directory-name schema with its
+ordinary validation 400 envelope before the custom reserved-name code runs. The
+provider and SkillService retain their independent storage-name guards.
+
+An unsupported-format package raises a typed refusal at the GitHub acquisition
+owner before package bytes are written. Existing SkillService cleanup removes its
+transient stage; the API returns 400 with `code: "unsupported-skill-format"`, without
+a published or leftover package. An empty parent directory can remain. A local source can still install while an
+independent GitHub source is offline. Refusing the selected source never tries
+an alternative with the same name.
+
+SkillService copies the selected complete directory, including binary assets and
+executable files, through its existing validated staging/publication path. It
+revalidates the selected catalog/package revision before publication. Changed
+sources return 409 and require fresh inspection; blob/path/acquisition failure
+prevents publication. The install record retains source ID, item ID, catalog
+revision, source location, installed tree digest and installation time under
+`provenance.catalog`. Ordinary same-name installation remains a conflict.
+Only files inside the selected directory are copied; sibling references do not
+automatically install another Skill. Packages with multiple Skills/dependencies
+use ordinary Agent Plugin packaging and its existing dependency lifecycle.
+
+`POST /api/registry/skills/:id/update` resolves the installed provenance to the
+same current source, stages/validates the replacement, and retains the existing
+package on refusal. A missing source or provenance cannot choose another source.
+The marketplace's Open skill action returns to the existing installed Library.
 
 ### Uninstall Skill from Registry
 
@@ -2141,12 +2307,16 @@ mutation rules.
 
 ### List Installed Plugins (Registry)
 
-`GET /api/registry/plugins/installed` filters the same availability projection to
-installed entries; it is also operator-only.
+`GET /api/registry/plugins/installed` retains the existing registered-provider
+availability projection. Managed marketplace installation is reflected on
+`GET /api/registry/plugins`; the canonical installed inventory remains
+`GET /api/plugins`. These plugin reads are operator-only where specified by
+the existing visibility owner.
 
 ### Install Plugin from Registry
 
-`POST /api/registry/plugins/install` resolves the registry ID to a unique source
+`POST /api/registry/plugins/install` resolves a source-qualified selection to its
+exact current provider/catalog revision (legacy IDs still require a unique match)
 and uses the full plugin transaction. Its body can carry the same preview
 consent, skip list, data policy, and expected installation as source installation.
 Ambiguous registry ownership is refused rather than resolved by choosing the
@@ -2552,9 +2722,9 @@ DELETE /api/analytics/usage
 ```
 
 Returns `{success: true, message: "Usage stats reset"}` after resetting the
-existing aggregate stats file to `{}`. It does not delete conversations,
+aggregate stats file to a valid empty accumulator. It does not delete conversations,
 monitoring logs, or invocation receipts; later updates/rescans can rebuild
-statistics from retained sources. See the
+statistics from retained sources; the next active usage read also rebuilds it. See the
 [aggregator reset](../../src-server/analytics/usage-aggregator.ts).
 
 ---
@@ -2665,6 +2835,181 @@ admission does not replace authentication or scope. See
 [environment settings](env-vars.md#server).
 
 ---
+
+
+## Engine accounts and usage
+
+`GET /api/connections/agent/:id/accounts` projects the default account plus saved
+profiles for Claude and Codex: opaque references, labels, CLI-verified auth state,
+observed login mechanism and the account in use. It requires `engine:login`,
+credential-management access or a verified operator. It returns no paths,
+commands, environment or CLI diagnostics.
+
+`GET /api/connections/agent/:id/account-usage?profileRef=<ref>` reads only the
+selected profile's provider quota. Omit the reference to inspect the connection's
+default account. This token-backed read requires `access:manage`; an engine-login
+grant alone does not admit it. The result is either normalized quota windows,
+plan, fetched time and provider exhaustion verdict, or an explicit unknown reason.
+Both variants can include optional `metadata`: Codex identity/credits/model and
+reset-credit facts, Claude extra usage/spending/weekly breakdown/limit annotations, and bounded response-shape `capture`
+(source, credential storage kind, unmapped/excluded field paths, truncation). Windows optionally carry
+`durationSeconds`, `resetAfterSeconds`, `allowed`, `limitReached`, `model` and
+`meteredFeature`. Raw response values for unmapped fields are never returned;
+full quota metadata is not persisted; only bounded allowance observations are retained. See the [capture inventory](../guides/connections.md#sign-an-engine-profile-in-from-a-device)
+for scope and live-verification limits.
+
+The optional `history` contains bounded hourly allowance observations for the
+selected profile. `status: unavailable` reports persistence failure without
+making the live limits unreadable. Full metadata and identity remain live only.
+
+`GET|POST|DELETE /api/connections/agent/:id/account-login?profileRef=<ref>` requires
+an existing saved profile and `engine:login` or a verified operator. No default
+account login is admitted. POST `{}` starts the observed provider-owned login;
+POST `{code}` relays a Claude browser code to its CLI stdin. GET projects status;
+DELETE cancels. The server checks current authority before private work and
+publication. Credentials and private CLI output are never returned. Refused
+starts return a safe reason, with Codex outcomes when available.
+
+
+`GET /api/analytics/usage-rollup?provider=codex&credentialProfileRef=<ref>` filters
+attributed account receipts before aggregation. An empty `credentialProfileRef`
+selects the default profile; omitting it includes all accounts. An engine filter
+is required. Older/source-home usage without `accountKey` remains unattributed.
+
+`GET /api/analytics/usage-rollup` accepts `provider=claude|codex` and `localOnly=1`
+for engine activity. Filtering precedes folding and pagination, while coverage
+remains explicit. Without a credential-profile filter, this is Station engine
+history across accounts. A profile filter selects attributed receipts and
+excludes unattributed usage; neither view is a provider billing statement.
+
+## Read engine sign-in profiles
+
+```http
+GET /api/connections/agent/:id/device-code-profiles
+```
+
+This dedicated read requires a paired device's explicit `engine:login` grant
+or a verified Station operator credential. It returns
+`{success: true, data: {profiles: [{ref, label?, authState, mechanisms}]}}`.
+`authState` is `authenticated`, `unauthenticated` or `unknown`; `mechanisms`
+contains only observed `device-code` support. References and labels identify
+existing profiles, not provider account identity. Host paths, commands,
+environment variables, recovery policy and diagnostic details are excluded.
+
+Authority is rechecked around awaited reads and before publishing the result;
+revocation refuses an in-flight read. Profile management and manual enrolment
+retain their separate authority requirements. The operator exception covers
+only this read and GET/POST/DELETE of the existing profile device-code login
+leaf; it does not add `engine:login` to the operator's default scope set.
+See [profile sign-in](../guides/connections.md#sign-an-engine-profile-in-from-a-device).
+
+## Opt-in native Device proof binding management
+
+```http
+GET /api/pairing/native-device-bindings/:bindingId
+POST /api/pairing/native-device-bindings/:bindingId/approve
+```
+
+The native proof pilot mounts these routes only when its supported provider and
+native connector are configured. Both require a current operator credential and
+the `access:manage` tier; Device credentials, native proofs, account membership
+and home possession cannot approve a binding.
+
+POST accepts `{operation: "create" | "revoke", candidate}` with the exact
+`NativeDeviceBindingCandidateV1` tuple and matching path ID. GET projects public
+historical binding data plus `currentDeviceBinding`, which says nothing about
+account or Project authority. Responses use `Cache-Control: no-store`. Missing
+readback does not establish cancellation of an ambiguous approval request.
+See [deployment authentication](../guides/deployment-authentication.md)
+for the pilot's scope and remaining native-client limitations.
+
+The same opt-in composition mounts a separate
+[protected Device self-read](../../src-server/routes/system/native-device-proof-self-receipt-routes.ts):
+
+```http
+GET /api/auth/native-device-bindings/:bindingId/receipt
+HEAD /api/auth/native-device-bindings/:bindingId/receipt
+```
+
+It requires the owning, currently paired ordinary Device's bearer and
+`orchestration:read`; an account-bound Device can read before account sign-in.
+Operator credentials, cookies, delegation grants and native request proofs do
+not substitute for that bearer. The `NativeDeviceProofSelfReceiptV1` response
+contains only the public binding tuple, historical approval/revocation state
+and current Device-binding status. A missing ID and another Device's ID both
+return `404 not_found`; corrupt storage returns `503 unavailable`. Responses
+are not cached. Revoking the Device bearer removes self-read access, while
+binding revocation or replacement remains observable by its active owner.
+This read grants no account, Project or runtime authority and does not activate
+a native client or authorize provisional-key deletion after an unknown outcome.
+Endpoint errors include `error.version =
+station-native-device-proof-self-receipt-error/v1`. Only this versioned
+`not_found` response establishes a binding lookup absence; an unrelated route
+or proxy error is an unavailable observation.
+
+The desktop and mobile [native relay owner](../../src-desktop/src/native_relay_redemption.rs)
+also registers the main-window `station_native_device_binding_self_receipt`
+command. Its inputs are only a saved profile name and expected revision; it
+reads the fixed endpoint using the current host-authorized Device bearer and
+compares the complete candidate tuple. Results distinguish fresh Station
+receipts from cached observations; cached positive history is
+`previously-confirmed-current` with its original observation timestamp.
+The command preserves the key on missing or unknown outcomes. The host peer and
+account owners require its positive current-owner observation, while ordinary
+route selection does not invoke it automatically. Source registration is not an
+executed native IPC or packaged acceptance receipt.
+
+The [peer owner](../../src-desktop/src/native_application_peer.rs) registers
+prepare/open/read/sign/close commands. The host mints the nonce and handle,
+verifies the exact Station-signed transcript and permits one bounded Device
+request proof. The renderer supplies no identity claims, hashes, signing input
+or connected assertion. Browser RTC remains renderer-owned.
+
+The separate [account owner](../../src-desktop/src/native_account_operations.rs)
+registers challenge/key preparation, complete local username/password exchange
+body preparation, canonical GET/HEAD member-read account headers, and fixed
+invitation-acceptance and native-continuation revocation requests. It constructs
+account claims using independent key custody and current host owners, with
+bounded one-exchange handles, replay/expiry and post-sign key fencing. These
+structured commands do not mint a principal or replace the server's current
+provider/Device/Project checks. See [native account continuation](sdk.md#native-station-account-continuation-opt-in)
+for the typed provider and account-body-before-Device-signing ordering.
+
+The selected native relay member route permits only bounded Station observations
+and Project/shared-work reads, plus its fixed account operations. Ordinary SDK
+mutations are refused; operator and compute surfaces are unsupported. Native
+continuation revocation retires that continuation and its provider session,
+without retiring Device custody. These are source-composed contracts, not a
+fresh native enrollment, physical-device, or published application receipt.
+
+A separate `STATION_NATIVE_ENROLLMENT_PILOT=1` composition mounts the seven
+`POST /.well-known/station/v1/relay/native-enrollment/` leaves: `begin`, `login`,
+`register`, `finalize`, `activate`, `status`, and `cancel`. The runtime requires
+the Device-proof pilot, configured native relay and supported pending account
+provider. Private current Pion provenance and an approved native installation
+surface admit bootstrap requests; after `begin`, candidate proof fences each
+ceremony operation. Public route classification does not waive those checks.
+Operator-only surface
+approval and pending-enrollment approval live under
+`/api/pairing/native-relay-surfaces` and `/api/pairing/native-relay-enrollments`.
+See [native enrollment](../design/native-relay-enrollment.md) for credential
+sealing, activation, cancellation, recovery and evidence limits.
+---
+
+
+## Decide a pending paired-device request
+
+A current operator, qualifying local-grant credential, or Device explicitly
+promoted with `access:approve` can use these exact routes:
+
+- `GET /api/pairing/requests`
+- `POST /api/pairing/requests/:requestId/confirm`
+- `DELETE /api/pairing/requests/:requestId`
+
+The promotion satisfies the pending-request route scope without granting
+`access:manage`. Authority is rechecked before publishing a decision. It does
+not admit other Device-management routes or verified-person/account binding.
+Ordinary Device presets do not include the promotion.
 
 ## Bind a paired device to its verified person
 

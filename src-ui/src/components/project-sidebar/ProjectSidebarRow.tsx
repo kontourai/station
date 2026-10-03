@@ -42,13 +42,13 @@ export function ProjectSidebarRow({
   /** The set-aware color `projectAccents` allocates over the sidebar's projects. */
   accent?: string;
   /**
-   * Sessions in this project's live lanes — Needs you plus Active now, the
+   * Sessions in this project's live lanes — Needs you, Running and Idle, the
    * Sessions list's own populations scoped to this project (archive#3202).
    */
   liveCount?: number;
   /**
-   * What that number means, in the lanes' own words ("Needs you: 2 · Active
-   * now: 1"). Supplied by the same derivation that produced `liveCount`, never
+   * What that number means, in the lanes' own words ("Needs you: 2 · Running:
+   * 1"). Supplied by the same derivation that produced `liveCount`, never
    * composed here, so the number and its explanation cannot drift.
    */
   liveLabel?: string;
@@ -168,7 +168,7 @@ export function ProjectSidebarRow({
           type="button"
           className={btnClass}
           onClick={handleClick}
-          title={collapsed ? project.name : undefined}
+          title={`Open ${project.name} workspace`}
         >
           <span
             className="sidebar__project-accent"
@@ -223,7 +223,7 @@ export function ProjectSidebarRow({
               SEAM — member avatars (#2066, design record D5). The record
               draws "[J][M]" here, but presence is what it draws: the avatars
               of members PRESENT. No per-project presence authority exists in
-              the UI today — `LiveCollaboratorsSection` reads a host-wide
+              the UI today — the footer presence tray reads a host-wide
               projection (connected clients, not people, and not per project),
               and task-room presence is scoped to a task room. The only
               per-project membership read, `useProjectAccess`, is an

@@ -6,15 +6,14 @@ name: Nightly
 # publication.
 on:
   schedule:
-    # 00:00, 06:00, 12:00, 18:00 UTC. Quiet intervals no-op when main has
-    # not moved since the last verified ship.
-    - cron: '0 */6 * * *'
+    # Daily qualified dogfood delivery. Main qualification runs every six hours.
+    - cron: '43 6 * * *'
   workflow_dispatch:
     inputs:
       source_sha: { description: Optional current workflow event SHA; older revisions are rejected, required: false }
       rebuild_index: { description: Optional native rebuild index, required: false }
 
-permissions: { contents: write, id-token: write, attestations: write }
+permissions: { contents: write, actions: read, id-token: write, attestations: write }
 concurrency: { group: nightly, cancel-in-progress: false }
 
 jobs:
@@ -165,9 +164,11 @@ jobs:
       source_sha: ${{ needs.test-gate.outputs.source_sha }}
       marketing_version: ${{ needs.native-stage.outputs.marketing_version }}
       version_code: ${{ needs.native-stage.outputs.bundle_version }}
-    # A reusable workflow's job sees its environment's secrets only when the
-    # caller inherits: without this the signing key arrived empty inside
-    # portable-nightly-signing. Only the callee's publish job reads a secret.
+    # Pass caller-available secrets to this reusable workflow. Its publish job
+    # separately names the protected portable-nightly-signing environment.
+    # An earlier call without inheritance reported an empty signing key; retain
+    # that incident separately from GitHub's environment-secret contract.
+    # Only the callee's publish job reads a secret.
     secrets: inherit
 
   nightly-cli:

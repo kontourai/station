@@ -1,0 +1,29 @@
+{
+  "path": "docs/design/isolated-agent-runs.md",
+
+  "kind": "design",
+
+  "state": "classified",
+
+  "summary": "Proposed isolated-run record, command shape, ownership rules, and acceptance criteria.",
+
+  "limits": "Current workspace resolver/provisioning owners were checked. No CLI availability claim is inferred from the proposed command, and no isolated-run or cleanup journey was executed.",
+
+  "document": {"digest":"8a5c45200daf2b3e9c137c8f1f7a81e21e1b64b3758b78714ea0a444b75e73cc","revision":"b78b164722084d11b93b3565bd3d128c26c99ea7"},
+
+  "sources": [
+    {"path":"src-server/services/execution-target/execution-target-execution.ts","digest":"376fcedbde14978515ed735d00423cc6b89b613788149e634174b39bf165c317","revision":"8540fafb86b969775254b898711ad3ae40ccc39d"},
+
+    {"path":"src-server/services/execution-target/execution-target-resolver.ts","digest":"bd0c0c061874d5900ccbcf8332f4a4efa94299c82631873ebd7a5a66187382f8","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"}
+  ],
+
+  "checks": [
+    "Full document read; bounded current-owner/caller routing inspection. Purpose classification only, not complete source-accuracy certification.",
+
+    "Original document bytes preserved exactly after removing the added reading-status banner.",
+
+    "Reviewed integration deltas: src-server/services/execution-target/execution-target-execution.ts: Before recording a carried pick, actual foreground executor checks effective full access for resolved thread/Agent; missing resolver conservatively refuses Default/never without grant. Existing recordApprovalMode and grant paths retained. Approval design C1 and API authority explanation cover changed behavior.",
+
+    "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits."
+  ]
+}

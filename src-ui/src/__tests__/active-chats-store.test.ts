@@ -112,6 +112,7 @@ describe('ActiveChatsStore', () => {
         // empty array is a real value the exact snapshot must carry (archive#4222).
         attachmentStages: [],
         queuedMessages: [],
+        queuedMessageMetadata: [],
         inputHistory: ['/resume'],
         hasUnread: false,
         agentSlug: 'planner',

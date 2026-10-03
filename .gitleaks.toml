@@ -134,3 +134,22 @@ condition = "AND"
 regexTarget = "match"
 regexes = ['''-----BEGIN PRIVATE KEY-----\\n\$\{btoa\(binary\)''']
 paths = ['''(^|/)deploy/push-gateway/test/helpers\.ts$''']
+
+[[allowlists]]
+# Leak-proof tests plant a secret-shaped canary in provider errors, bodies and
+# URLs and assert it never reaches a served, persisted or model-bound surface.
+# The AND condition keeps the exemption to that exact synthetic shape in server
+# test files, so a real key committed anywhere (tests included) is still caught.
+description = "Synthetic provider-leak canaries used by server tests"
+condition = "AND"
+regexTarget = "secret"
+regexes = ['''^sk-live-SECRET-[0-9a-f]{6}$''']
+paths = ['''(^|/)src-server/.+/__tests__/[^/]+\.test\.ts$''']
+
+[[allowlists]]
+description = "Verified typography-review prose; no credential"
+targetRules = ["generic-api-key"]
+condition = "AND"
+regexTarget = "secret"
+regexes = ['''^labels/captions$''']
+paths = ['''(^|/)docs/learn/review-ledger/notes/20261001T130629\.148Z-f9e91a5db6fe\.json$''']

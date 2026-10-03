@@ -35,7 +35,7 @@ import {
   openChatsStore,
 } from '../contexts/open-chats-store';
 import { useScopedProjectsQuery } from '../contexts/ProjectsContext';
-import { useShowSurface } from '../contexts/useShowSurface';
+import { useShowSurfacePage } from '../contexts/useShowSurface';
 import { useKeyboardShortcut } from '../hooks/useKeyboardShortcut';
 import { useSurfaceVisibilityFlags } from '../hooks/useSurfaceVisibilityFlags';
 import { useLocale } from '../i18n/LocaleContext';
@@ -55,6 +55,7 @@ import { LazyBoundary } from './LazyBoundary';
 import { requestNewBoard } from './project-sidebar/new-board-events';
 import { Empty, ErrorState, SkeletonBlock } from './state';
 import './CommandPalette.css';
+import { showChatPageOrDock } from '../app-shell/chat-placement';
 import type {
   formatSettingsMessage,
   localizedSettingsTargetLabel,
@@ -185,7 +186,7 @@ const SearchIcon = (
 );
 
 export function CommandPalette() {
-  const showSurface = useShowSurface();
+  const showSurfacePage = useShowSurfacePage();
   const [open, setOpen] = useState(false);
   const [workspaceSearch, setWorkspaceSearch] = useState(false);
   const [messageSearch, setMessageSearch] = useState<LegacySearchData>();
@@ -604,7 +605,7 @@ export function CommandPalette() {
       label: 'Open chat dock',
       group: 'Actions',
       keywords: ['chat', 'dock', 'open', 'new'],
-      run: () => setDockState(true),
+      run: () => showChatPageOrDock(() => setDockState(true)),
     });
     // archive#2652: the tour is re-triggerable from here, which is also what
     // its last step tells the user. `requestFirstRunTour` dispatches the same
@@ -676,8 +677,11 @@ export function CommandPalette() {
         group: 'Navigation',
         keywords: destination.keywords ? [...destination.keywords] : undefined,
         run: () => {
+          // A `regionSurface` destination is a place (Activity; Home, when a
+          // palette entry is registered for it): go to its page, the same
+          // verb as its sidebar row.
           if (destination.regionSurface) {
-            showSurface(destination.regionSurface);
+            showSurfacePage(destination.regionSurface);
             return;
           }
           if (params) navigate(destination.route, { ...params });
@@ -947,6 +951,7 @@ export function CommandPalette() {
     showSurface,
     pluginPaletteCommands,
     runPluginCommand,
+    showSurfacePage,
   ]);
 
   const ranked = useMemo(

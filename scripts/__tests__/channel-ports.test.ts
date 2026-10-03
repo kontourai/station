@@ -29,6 +29,7 @@ function generatedTreeCopy() {
   for (const path of [
     'packages/shared/src/channel-ports.generated.ts',
     'packages/shared/src/release-rings.generated.mjs',
+    'packages/shared/src/release-manifest-keys.generated.ts',
     'src-desktop/src/channel_ports_generated.rs',
     'src-desktop/Info.stable.plist',
     'src-desktop/Info.beta.plist',
@@ -88,6 +89,28 @@ describe('channel port generation', () => {
     expect(() => checkGeneratedChannelPorts({ outputRoot })).not.toThrow();
   });
 
+  test('detects drift in the shared copy of the pinned manifest keys and sync restores it', () => {
+    const outputRoot = generatedTreeCopy();
+    const generated = join(
+      outputRoot,
+      'packages/shared/src/release-manifest-keys.generated.ts',
+    );
+    const original = readFileSync(generated, 'utf8');
+    // The projection carries every pinned key id from the config.
+    const config = JSON.parse(
+      readFileSync(resolve(root, 'config/release-manifest-keys.json'), 'utf8'),
+    ) as { keys: { keyId: string }[] };
+    expect(config.keys.length).toBeGreaterThan(0);
+    for (const key of config.keys) expect(original).toContain(key.keyId);
+    // A swapped key is exactly what this file must never drift into.
+    const drifted = original.replace('MCowBQYDK2VwAyEA', 'MCowBQYDK2VwAyEB');
+    expect(drifted).not.toBe(original);
+    writeFileSync(generated, drifted);
+    expect(() => checkGeneratedChannelPorts({ outputRoot })).toThrow(/stale/);
+    syncGeneratedChannelPorts({ outputRoot });
+    expect(readFileSync(generated, 'utf8')).toBe(original);
+  });
+
   test('detects generated release-ring module drift and sync restores it', () => {
     const outputRoot = generatedTreeCopy();
     const generated = join(
@@ -142,9 +165,7 @@ describe('channel port generation', () => {
     }
   });
 
-  test('projects every release channel port block into Station-owned installer consumers', () => {
-    const installer = readFileSync(resolve(root, 'install.sh'), 'utf8');
-
+  test('allocates each release channel a contiguous server block and distinct UI port', () => {
     // station#3677: the consent listener is the fourth member of each
     // channel's contiguous reserved block (server, terminal, voice, consent),
     // published explicitly in the contract rather than silently derived.
@@ -163,11 +184,6 @@ describe('channel port generation', () => {
         consentPort,
         uiPort,
       ]).toEqual(expectedBlocks[channel]);
-    }
-    for (const channel of ['stable', 'beta', 'nightly'] as const) {
-      const { serverPort, uiPort } = channelPorts[channel];
-      expect(installer).toContain(`runtime_server_port=${serverPort}`);
-      expect(installer).toContain(`runtime_ui_port=${uiPort}`);
     }
   });
 });

@@ -22,14 +22,19 @@ Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shar
 
 | Module | Owns |
 |---|---|
+| `@kontourai/station-contracts/engine-accounts` | Secret-free engine account, quota, optional identity/credit/model/spending/breakdown metadata and bounded capture-audit projections, plus provider-owned login; runtime validation stays in SDK consumers |
 | `@kontourai/station-contracts/acp` | ACP connection config and ACP connection status values |
 | `@kontourai/station-contracts/agent` | Agent specs, metadata, tools, slash commands |
 | `@kontourai/station-contracts/agent-plugin` | Agent Plugins 1.0 schema identities, name grammar, and Station extension declarations |
+| `@kontourai/station-contracts/skill-experience` | Inert v1 Skill definitions and explicit stage/rich-pane declarations, host-observed inventory identity, canonical start inputs and retained Session invocation views; see [experience contract](skill-experiences.md) |
 | `@kontourai/station-contracts/attention` | Attention projections and exact approval/permission request references and inspection states |
 | `@kontourai/station-contracts/auth` | Auth status, renew results, user identity/detail models |
 | `@kontourai/station-contracts/authority-observation` | Closed credential-bound authority observation: current home identity, resolved principal echo (kind+id only), and verified grant tier; authorization-neutral, grants nothing |
 | `@kontourai/station-contracts/application-session` | Device-bound account continuations, explicit capabilities, public proof keys and challenge/credential projections; no Device or Project grant |
+| `@kontourai/station-contracts/native-device-proof` | Native Device request-proof version, header, approved binding, exact one-use claims and the host-proposed binding candidate (provisional canonical UUIDv4 ID, approved Device ID, full surface and Device public JWK; no secret); `NativeDeviceProofBindingReadbackV1` projects operator-only historical binding data and separate current Device-binding status; `NativeDeviceProofSelfReceiptV1` reuses that public tuple for the owning current Device bearer through a distinct protected read; `NativeDeviceProofSelfReceiptErrorV1` versions its closed lookup/refusal codes so an unrelated HTTP error cannot establish binding absence; protocol data grants no Device, account or Project authority and supplies no runtime admission |
 | `@kontourai/station-contracts/relay-enrollment` | Fresh relay-only account enrollment, finalize-delivery and signed-activation bindings; a pending identity receives no active Device authority before the exact delivered bundle is acknowledged |
+| `@kontourai/station-contracts/native-relay-enrollment` | Native challenge/candidate, fixed HPKE recipient, ciphertext delivery, signed activation/status, retained fixed request and owned transition/resume DTOs. Declarations grant no authority; server/native/UI owners compose them separately, and no Device bearer crosses renderer IPC |
+| `@kontourai/station-contracts/native-relay-link` | Closed v1 public route intent or unchanged native v2 invitation envelope, untrusted origin hints, fixed native channels and secret-free host delivery metadata/opaque handles; no trust, person, Device, Project or compute authority |
 | `@kontourai/station-contracts/deployment-authentication` | Public operator-installed authentication provider configuration, factory, descriptor, operations and verified account-session results; see [deployment authentication](../guides/deployment-authentication.md) |
 | `@kontourai/station-contracts/catalog` | Registry items, install results, skills, guidance assets |
 | `@kontourai/station-contracts/child-work` | Provider-neutral child work (engine subagents and Station delegates): items, deltas, the session read model, and the one pure reducer over them |
@@ -37,8 +42,11 @@ Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shar
 | `@kontourai/station-contracts/registry-trust` | Candidate registry policies, bounded applied identity/epoch shapes, and untrusted signed-package claim shapes |
 | `@kontourai/station-contracts/config` | App config and template variables |
 | `@kontourai/station-contracts/connection-proof` | Transport-only Station/enrollment/client/SDP bindings and independently approved signing-key trust; never account or Project grants |
-| `@kontourai/station-contracts/self-hosted-broker` | Versioned browser Origin scope, native proof-key surface and distinct v2 native offer metadata; routing authority is separate from signing trust, account identity and Project permission |
+| `@kontourai/station-contracts/connection-quota` | Provider-reported quota snapshots, explicit unavailable outcomes, and pure rolling-observation merging; absent provider data stays absent |
+| `@kontourai/station-contracts/self-hosted-broker` | Versioned browser Origin scope, native proof-key surface and distinct v2 native offer metadata and closed invitation-authenticated older-scope observations; routing authority is separate from signing trust, account identity and Project permission |
+| `@kontourai/station-contracts/relay-ice` | Closed relay-only short-lived end-user ICE receipt, exact native scope/optional surface, issue/expiry times and a 600-second ceiling; no issuer secret or application/Device/account grant |
 | `@kontourai/station-contracts/execution-target` | Environment, Agent and workspace intent, including exact portable Project/resource execution; see [receiver execution offers](../design/portable-project-identity.md#receiver-execution-offers) |
+| `@kontourai/station-contracts/harness-questions` | Types for normalized harness questionnaires and batches of choice/custom answers; validation lives in shared |
 | `@kontourai/station-contracts/knowledge` | Knowledge namespaces, tree/search/document metadata |
 | `@kontourai/station-contracts/live-surface` | Host-neutral live surface (#90): frame header, input events, control lease, stream params, their strict wire parsers and the length-prefixed binary record envelope |
 | `@kontourai/station-contracts/workspace-browser-pane` | Browser pane v2 (#90): per-device pane state referencing a server-owned browser session, its v1→v2 migration, and the `/api/browser/*` wire views the pane reads |
@@ -58,13 +66,27 @@ Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shar
 | `@kontourai/station-contracts/session-work-item` | Closed immutable Session-to-work-item association observations |
 | `@kontourai/station-contracts/scheduler` | Scheduler jobs, stats, capabilities, notifications |
 | `@kontourai/station-contracts/system-status` | Device presentation, the answering server's runtime identity, and update-provenance issue codes |
+| `@kontourai/station-contracts/task-room-work` | Versioned Task agent request intent, authorized request records, list and submission outcomes. Requester IDs are Task-scoped display pseudonyms; execution references do not grant Session access or prove completion |
 | `@kontourai/station-contracts/tool` | Tool definitions, permissions, connection configs |
 | `@kontourai/station-contracts/unified-search` | Owner-qualified typed search results, provider pages, source states, open intents, and fresh owner-resolved open targets |
 | `@kontourai/station-contracts/workspace-pane-host-contribution` | Package-level Pane-host actions and explicit owner-relative/default Agent selection |
 
+`AgentTools.mcpMode` selects additive (`add`) or replacement (`replace`) MCP
+configuration; omission preserves the prior engine-specific behavior.
+`AgentTools.mcpLoading` optionally selects Claude's native on-demand or eager
+loading. The session resolver carries these as `toolServerMode` and
+`toolServerLoading`. A resolved server's `allowedTools` contains exact original
+MCP names (empty means none); `disabledTools` excludes names independently, and
+`toolNames` is catalog metadata for known-tool exclusions. See the
+[Agent Tools guide](../guides/agents.md#mcp-tool-configuration) for delivery limits.
+
 `OrchestrationSessionSummary.openRequestIds` is present when the server reads
 its durable request state. An empty array means no requests remain open;
-absence means that server did not report this projection.
+absence means that server did not report this projection. A request settled
+by its turn's abort is not listed, and does not set `pendingReview`, whether
+or not a `request.resolved` was recorded for it; the
+[Session API](session-api.md#respondtorequest) says which aborts settle which
+requests.
 
 `OrchestrationSessionSummary.currentSessionId` names the current durable
 execution child for the row's conversation, including when no turn is open.
@@ -102,6 +124,38 @@ retirement records; its unavailable forms contain no protected owner identity.
 Station does not turn feedback, an accepted request, or transport success into
 a promotion verdict. An empty effect-observation set means not observed, never
 successful.
+
+## Native relay and account composition
+
+The [native relay link contract](../../packages/contracts/src/native-relay-link.ts)
+distinguishes public first contact from an invitation already bound to the
+installation's proof key. Its receiving `NativeRelayLinkDelivery` omits the
+invitation secret and exposes only routing metadata and a pending handle.
+The [publication codec](../../packages/connect/src/core/nativeRelayLink.ts) and
+[native intake](../../src-desktop/src/native_relay_link_intake.rs) own parsing
+and lifetime checks; declarations neither create a proof key nor approve a
+surface. Origin hints are not Station identity. The existing operator surface
+approval and independent signing-key comparison remain mandatory before the
+separate native grant and account/Device/Project flows.
+
+The [native enrollment contract](../../packages/contracts/src/native-relay-enrollment.ts)
+separates installation routing proof, recipient/Device/account keys, operator
+approval and signed activation. A prepared fixed request names its peer and
+retained request handle; an active host result names an owned transition and
+configured profile revision. Resume metadata is only a hint until the host
+checks the exact owned transition. The [mounted owners](../design/native-relay-enrollment.md)
+implement that validation; importing a declaration does not enable ingress.
+
+The [application-session contract](../../packages/contracts/src/application-session.ts)
+has a distinct native target without browser Origin and a fixed native revoke
+leaf. Its revocation result confirms remote provider revocation only after the
+real owner validates it. [ProjectInvitationAcceptance](../../packages/contracts/src/project-membership.ts)
+returns exact Project scope and `grantsDeviceAccess: false`; membership is not
+inferred from transport success. The provider's optional
+[pending enrollment registration hook](../../packages/contracts/src/deployment-authentication.ts)
+is server-private, invitation-gated and returns a still-pending real person.
+Unsupported providers fail closed; it neither invents a principal nor changes
+browser cookie flows.
 
 ## Scheduler deferral events
 
@@ -239,6 +293,17 @@ names its own id, which happens when Station cleans up a send whose caller
 aborted after it was accepted, or interrupts a recovered turn. A queued send
 still waiting when the engine ends is recorded with its message and then
 aborted (`engine-ended-before-start`).
+
+An ACP send whose attachments the engine cannot take (images when its
+`initialize` handshake did not advertise `promptCapabilities.image`, or any
+non-image file) is refused before any engine effect with
+`ATTACHMENT_INPUT_UNSUPPORTED_CODE` (`attachment_input_unsupported`, from
+`provider`). Unlike the two codes above it is not retryable: the same send is
+refused again. An ACP steer delivered by the cancel + re-prompt fallback, for
+an engine without a native steer method, cancels the running prompt and any
+tool it was running. Its steer `turn.started` carries
+`steerInterruptedRun: true` so a client can say why that step shows as
+cancelled.
 
 Muse through `muse serve` (#2452). The Station runtime drives each Muse
 session through one `muse serve` (MSP) host, and everything above about
@@ -452,12 +517,28 @@ and indeterminate attempts. A forge review is not a Station gate verdict.
 the inspected revision; review-origin merges observe the resulting provider state.
 
 `PullRequestBranchMergeability` on `pull-request-provider` is a conflict
-indicator's read: one open pull request's ref, source branch and mergeability,
+indicator's read: one open pull request's ref, source branch, optional
+`sourceOwner` (GitHub's head repository owner), and mergeability,
 and nothing a review needs. The GitHub adapter serves at most 100 and refuses
 a longer list as unavailable rather than serving part of it. The optional
 `IPullRequestProvider.listOpenPullRequestMergeability` answers it for a
 repository; the route refuses a provider without it rather than falling back
 to the full list. See the [GitHub adapter](../../src-server/services/pull-requests/github-pull-request-provider.ts).
+
+`PullRequestClientContext.pushTargetOwner` optionally reports the local branch's
+configured push repository owner. The resolver chooses `branch.<b>.pushRemote`,
+then `remote.pushDefault`, then the branch's upstream remote, then `origin`,
+and reads `git remote get-url --push` so a `pushurl` is honored. This does not
+change the repository resolved for PR reads. Unrecognized push URLs, detached
+checkouts, or failed push-target reads omit the owner. `/context` projects only
+declared client fields; checkout paths and PR-opening head/base facts stay private.
+
+The session conflict chip matches the local `branch`, never the upstream branch
+name. When both owners are known it also requires `pushTargetOwner` and
+`sourceOwner` to match case-insensitively. Missing either owner retains branch-only
+matching. GitLab does not report `sourceOwner`, so its behavior is unchanged.
+See the [resolver](../../src-server/services/pull-requests/pull-request-repository-context-resolver.ts)
+and [chip integration tests](../../src-ui/src/__tests__/SessionPullRequestConflictChip.pushurl.test.tsx).
 
 `AttentionInputReplyContext` on the attention subpath projects one exact open
 input request's reply binding and declared file/image transport. `needs_input`
@@ -529,3 +610,12 @@ operator-configured browser identity choices, their declared POST begin-login
 paths and availability. These are presentation/capability facts, not identity
 claims, Device grants or Project membership. Secret references and provider
 configuration remain private to Station's operator composition.
+
+### Engine account observation history
+
+`EngineAccountUsage.history` optionally exposes 30 days of hourly allowance
+observations, including unknown readings as gaps. It stores no raw responses,
+identity values or credentials. `UsageReceipt.accountKey` is an optional opaque
+engine/profile observation from the applied process environment. Its absence
+means account attribution is unknown; consumers must not infer the current
+active account. These fields are observations, never billing or routing authority.

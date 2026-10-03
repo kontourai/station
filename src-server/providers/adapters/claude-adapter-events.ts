@@ -7,6 +7,7 @@ import type {
   TerminalReason,
 } from '@anthropic-ai/claude-agent-sdk';
 import type { ChatAttachmentInput } from '@kontourai/station-contracts/chat-attachment';
+import { sanitizeUntrustedDisplayText } from '@kontourai/station-contracts/orchestration';
 import {
   ENGINE_SESSION_BINDING_DEAD_CODE,
   ENGINE_TURN_FAILED_CODE,
@@ -392,6 +393,37 @@ interface MapClaudeMessageParams {
   interruptEngine?: () => void;
 }
 
+/**
+ * #2915: record a permission mode the engine now runs in, when it differs
+ * from the one Station last knew, and report it as `session.configured`
+ * metadata (the channel the composer's applied-mode chip reads). Called for
+ * the engine's own `status` report of a mode change, and when a session
+ * answer forwards a `setMode` update, so Station's view (and the next turn's
+ * "has the mode changed" check, and per-turn metadata) matches the engine.
+ */
+export function reportClaudePermissionMode(
+  record: Pick<ClaudeMessageState, 'currentPermissionMode' | 'session'>,
+  mode: PermissionMode,
+  publish: (event: CanonicalRuntimeEvent) => void,
+  provider: ProviderSession['provider'],
+): void {
+  if (record.currentPermissionMode === mode) return;
+  record.currentPermissionMode = mode;
+  const approvalMode = mapPermissionModeToApprovalMode(mode);
+  publish({
+    eventId: crypto.randomUUID(),
+    provider,
+    threadId: record.session.threadId,
+    createdAt: new Date().toISOString(),
+    method: 'session.configured',
+    sessionId: record.session.threadId,
+    metadata: {
+      permissionMode: mode,
+      ...(approvalMode ? { approvalMode } : {}),
+    },
+  });
+}
+
 export function mapClaudeSdkMessage({
   provider,
   record,
@@ -613,6 +645,36 @@ export function mapClaudeSdkMessage({
     return;
   }
 
+  if (message.type === 'system' && message.subtype === 'api_retry') {
+    // SDK retry notices contain structured counters; only this bounded
+    // display projection crosses into chat, never error bodies or logs.
+    const reason = message.no_response
+      ? 'No response headers'
+      : message.error_status === null
+        ? 'Connection failed'
+        : message.error === 'rate_limit'
+          ? 'Rate limited'
+          : message.error === 'overloaded'
+            ? 'Provider overloaded'
+            : 'Provider request failed';
+    publish({
+      eventId: crypto.randomUUID(),
+      provider,
+      threadId: record.session.threadId,
+      createdAt,
+      turnId: record.activeTurnId,
+      method: 'extension.notification',
+      namespace: CLAUDE_EXTENSION_NAMESPACE,
+      type: 'api/retry',
+      payload: {
+        attempt: message.attempt,
+        delayMs: message.retry_delay_ms,
+        reason,
+      },
+    });
+    return;
+  }
+
   if (message.type === 'system' && message.subtype === 'thinking_tokens') {
     publish({
       eventId: crypto.randomUUID(),
@@ -632,6 +694,15 @@ export function mapClaudeSdkMessage({
   }
 
   if (message.type === 'system' && message.subtype === 'status') {
+    // The engine reports a changed permission mode on a status message
+    // (its own plan-mode entry, a forwarded setMode, …).
+    if (message.permissionMode)
+      reportClaudePermissionMode(
+        record,
+        message.permissionMode,
+        publish,
+        provider,
+      );
     publish({
       eventId: crypto.randomUUID(),
       provider,
@@ -1458,6 +1529,100 @@ export function withdrawnSubagentPermissionResult(): PermissionResult {
     message:
       'The permission request was withdrawn before it was answered. Request it again if the call is still needed.',
   };
+}
+
+/**
+ * #2932: the ask flags the Claude CLI sends on `can_use_tool`
+ * (`suppress_always_allow_rule`, `default_to_no`,
+ * `requires_user_interaction`). Agent SDK 0.3.278, the one the lockfile
+ * resolves, forwards and types `suppressAlwaysAllowRule` and `defaultToNo`
+ * but still drops `requires_user_interaction`. The adapter reads that one
+ * from the engine's frame and passes it in under the name the other two
+ * follow, so an SDK that forwards it needs no change. Each is copied only
+ * when it is `true`.
+ */
+export function claudeAskFlags(options: object): {
+  suppressAlwaysAllowRule?: true;
+  defaultToNo?: true;
+  requiresUserInteraction?: true;
+} {
+  const record = options as Record<string, unknown>;
+  return {
+    ...(record.suppressAlwaysAllowRule === true
+      ? { suppressAlwaysAllowRule: true }
+      : {}),
+    ...(record.defaultToNo === true ? { defaultToNo: true } : {}),
+    ...(record.requiresUserInteraction === true
+      ? { requiresUserInteraction: true }
+      : {}),
+  };
+}
+
+/** Claude Code's sandbox network-access ask; its input is `{host}`. */
+const CLAUDE_SANDBOX_NETWORK_TOOL = 'SandboxNetworkAccess';
+/**
+ * Room for the host in a network title. A longer host keeps its end, where
+ * the registrable domain is, behind a leading "…" (#2911's Codex bound).
+ */
+const MAX_NETWORK_TITLE_HOST_LENGTH = 120;
+/**
+ * An ASCII host: dot-separated labels of letters, digits, hyphen and
+ * underscore (IPv4 and punycode included), or a bracketed IPv6 address.
+ * Nothing in it can be invisible or pass for the title's own words.
+ */
+const NETWORK_TITLE_HOST_SYNTAX =
+  /^(?:\[[0-9A-Fa-f:.]+\]|[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*\.?)$/;
+
+/**
+ * #2932: the title of a sandbox network ask, which the engine sends with no
+ * title of its own: "Allow network access to <host>", so every surface names
+ * the host being allowed. The host is engine-supplied text: it is shown only
+ * when the RAW value is a plain ASCII host (cut from the left past 120 code
+ * points), and otherwise as "an unrecognised host". The syntax check runs
+ * before any sanitising, so an invisible or control character in the host
+ * (zero-width, bidi, soft hyphen, NUL) cannot be stripped away to show a
+ * different host from the one the engine remembers. Undefined for any other
+ * tool.
+ */
+export function claudeSandboxNetworkTitle(
+  toolName: string,
+  toolInput: Record<string, unknown>,
+): string | undefined {
+  if (toolName !== CLAUDE_SANDBOX_NETWORK_TOOL) return undefined;
+  const host = typeof toolInput.host === 'string' ? toolInput.host : '';
+  if (!host.trim()) return 'Allow network access to an unnamed host';
+  if (!NETWORK_TITLE_HOST_SYNTAX.test(host))
+    return 'Allow network access to an unrecognised host';
+  const shown =
+    host.length <= MAX_NETWORK_TITLE_HOST_LENGTH
+      ? host
+      : `\u2026${host.slice(host.length - (MAX_NETWORK_TITLE_HOST_LENGTH - 1))}`;
+  return `Allow network access to ${shown}`;
+}
+
+/** Bound on engine-supplied request text (`description`, `decisionReason`). */
+const MAX_CLAUDE_REQUEST_TEXT_LENGTH = 1000;
+/** ANSI CSI and OSC escape sequences, removed whole before sanitising. */
+const ANSI_ESCAPE =
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: matching terminal escapes is the point.
+  /\u001B(?:\[[0-?]*[ -/]*[@-~]|\][^\u0007\u001B]*(?:\u0007|\u001B\\)?)/g;
+
+/**
+ * #2932: engine-supplied request text made one bounded, visible line. The
+ * CLI documents that `decision_reason` may carry ANSI escapes, so whole
+ * escape sequences are removed first (sanitising alone would drop the ESC
+ * and leave `[0m`), then control, format and separator characters. Plain
+ * text, such as the escalation-reason literals, is returned unchanged.
+ * Undefined when the value is not a string or nothing visible remains.
+ */
+export function claudeRequestDisplayText(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  return (
+    sanitizeUntrustedDisplayText(
+      value.replace(ANSI_ESCAPE, ''),
+      MAX_CLAUDE_REQUEST_TEXT_LENGTH,
+    ) || undefined
+  );
 }
 
 /**

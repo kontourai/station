@@ -3,6 +3,7 @@ import type { AttentionRequestReference } from './attention.js';
 import type { SessionChildWork } from './child-work.js';
 import type { ClientOrigin } from './client-origin.js';
 import type { ConnectionRecoveryProjection } from './connection-recovery.js';
+import type { HarnessQuestionAnswers } from './harness-questions.js';
 import type {
   ApprovalMode,
   AttachedSessionSourceMetadata,
@@ -19,6 +20,7 @@ import type {
   SessionTransitionReason,
   SessionTransitionSource,
 } from './session-lifecycle.js';
+import type { SkillExperienceIdentityV1 } from './skill-experience.js';
 
 export type {
   AttachedSessionSourceMetadata,
@@ -53,6 +55,15 @@ export type OrchestrationStartSessionInput = Omit<
   'credentialProfileRef' | 'reviewIsolation' | 'confinement'
 >;
 
+/** Public wire discriminant guarantees old servers refuse before any provider effect. */
+export interface ReceiptProtectedSteerCommand {
+  type: 'steerTurnOnce';
+  threadId: string;
+  input: string;
+  turnId?: string;
+  clientInputId: string;
+}
+
 export type OrchestrationCommand =
   | { type: 'startSession'; input: OrchestrationStartSessionInput }
   | {
@@ -74,14 +85,34 @@ export type OrchestrationCommand =
        */
       clientTurnId?: string;
     }
-  | { type: 'steerTurn'; threadId: string; input: string; turnId?: string }
+  | {
+      /** Read-only receipt lookup; never claims or dispatches an input. */
+      type: 'inspectSteerInput';
+      threadId: string;
+      input: string;
+      turnId?: string;
+      clientInputId: string;
+    }
+  | {
+      type: 'steerTurn';
+      threadId: string;
+      input: string;
+      turnId?: string;
+      clientInputId?: string;
+    }
   | {
       type: 'respondToRequest';
+      /** Frame-origin action: admit this exact current package and its agents.invoke grant. */
+      expectedSkillExperience?: {
+        identity: SkillExperienceIdentityV1;
+        eventId: string;
+      };
       threadId: string;
       requestId: string;
       /** Compare this exact opened event immediately before responding. */
       expectedRequestEventId?: string;
       decision: 'accept' | 'acceptForSession' | 'decline' | 'cancel';
+      answers?: HarnessQuestionAnswers;
     }
   | { type: 'stopSession'; threadId: string }
   | {
@@ -351,6 +382,12 @@ export const PENDING_TURN_INTERRUPT_TTL_MS = 60_000;
 
 export type SteerTurnResult =
   | {
+      /** Delivery may have happened; this input must not be sent again. */
+      outcome: 'indeterminate';
+      threadId: string;
+      clientInputId: string;
+    }
+  | {
       /**
        * The input was enqueued to the live runtime iterable and durably
        * recorded in the transcript. The provider SDK exposes no delivery ack.
@@ -379,6 +416,10 @@ export type SteerTurnResult =
       outcome: 'concurrent-steer';
       threadId: string;
     };
+
+export type SteerInputInspectionResult =
+  | Extract<SteerTurnResult, { outcome: 'steered' | 'indeterminate' }>
+  | { outcome: 'not-received'; threadId: string; clientInputId: string };
 
 /** Path- and provider-cursor-free response for attached-session adoption. */
 export interface AdoptedSessionResult {
@@ -939,6 +980,8 @@ export interface OrchestrationSessionSummary extends ProviderSession {
   currentSessionId?: string;
   /** Authoritative unresolved request ids when this summary carries a reader. */
   openRequestIds?: string[];
+  /** Current requests that suspend progress; absent on older hosts. */
+  blockingOpenRequestIds?: string[];
   lifecycleState?: SessionLifecycleState;
   previousLifecycleState?: SessionLifecycleState;
   transitionReason?: SessionTransitionReason;
@@ -1116,6 +1159,15 @@ export interface OrchestrationSessionDetail {
 export type RuntimeEventElisionReason = 'byte_limit' | 'output_limit';
 
 export interface OrchestrationSequencedEvent {
+  /**
+   * The event's position, in the number space of the read that returned it:
+   * - in an event WINDOW (`OrchestrationSessionEventWindow`,
+   *   `OrchestrationConversationEventWindow`) it is the GLOBAL stream
+   *   sequence — the same space as the window's `watermark` and as the live
+   *   SSE frame ids a reader stitches past that watermark;
+   * - in an event PAGE (`OrchestrationSessionEventPage`) it is the per-thread
+   *   sequence, the same space as that page's `nextSequence` cursor.
+   */
   sequence: number;
   event: CanonicalRuntimeEvent;
   /**
@@ -1125,10 +1177,16 @@ export interface OrchestrationSequencedEvent {
   elided?: RuntimeEventElisionReason;
 }
 
+/**
+ * A forward page of ONE thread's events. Unlike the event windows, its
+ * `events[].sequence` and `nextSequence` are the thread's own ordinal
+ * (monotonic within this thread only), not the global stream sequence.
+ */
 export interface OrchestrationSessionEventPage {
   session: OrchestrationSessionSummary;
   events: OrchestrationSequencedEvent[];
   hasMore: boolean;
+  /** Per-thread sequence to resume from. */
   nextSequence: number;
 }
 
@@ -1154,6 +1212,7 @@ export interface OrchestrationConversationStreamBinding {
 export interface OrchestrationSessionEventWindow {
   protocolVersion: 1;
   session: OrchestrationSessionSummary;
+  /** Numbered by GLOBAL stream sequence, the same space as `watermark`. */
   events: OrchestrationSequencedEvent[];
   hasMore: boolean;
   nextCursor?: string;
@@ -1164,7 +1223,9 @@ export interface OrchestrationSessionEventWindow {
 /**
  * Bounded transcript projection for one durable conversation. The contained
  * runtime events retain their exact child-session `threadId`; `sequence` is
- * only the conversation-local ordinal ordering used by the reader.
+ * the GLOBAL stream sequence (stable across the lineage's child sessions and
+ * in the same space as `watermark`), which is what orders events from several
+ * child sessions in one projection.
  */
 export interface OrchestrationConversationEventWindow
   extends OrchestrationSessionEventWindow {

@@ -358,7 +358,7 @@ describe('central runtime HTTP security boundary', () => {
           Authorization: `Bearer ${CREDENTIAL}`,
           [INTERNAL_API_TOKEN_HEADER]: token,
           [INTERNAL_INGRESS_IDENTITY_HEADER]: Buffer.from(
-            JSON.stringify({ provider: 'tailscale-serve', login: 'brian' }),
+            JSON.stringify({ provider: 'tailscale-serve', login: 'casey' }),
           ).toString('base64url'),
         },
       },
@@ -1732,27 +1732,41 @@ describe('actual VoltAgent full-app mounts', () => {
     // Windows module-evaluation race between VoltAgent's bundled Zod OpenAPI
     // extensions and MCP's Zod v4 schemas.
     const { createVoltAgentApp } = await import('@voltagent/server-hono');
-    const { app } = await createVoltAgentApp({} as never, {
-      cors: false,
-      configureFullApp: ({ app, routes, middlewares }) => {
-        configureRuntimeHttp({
-          app: app as never,
-          logger,
-          eventBus: { emit: vi.fn() } as unknown as EventBus,
-          security: {
-            verifyCredential: (candidate) => candidate === CREDENTIAL,
-            resolveGrantedScope: (candidate) =>
-              candidate === CREDENTIAL
-                ? DEFAULT_GRANT_PAIRING_SCOPE
-                : undefined,
-          },
-        });
-        middlewares.landingPage();
-        routes.agents();
-        routes.tools();
-        assertRuntimeHttpRouteCoverage(app.routes);
-      },
+    const providerCanary = 'secret-bearing-provider-error-canary';
+    const streamText = vi.fn<
+      () => Promise<{ toUIMessageStreamResponse: () => Response }>
+    >(async () => {
+      throw new Error(providerCanary);
     });
+    const { app } = await createVoltAgentApp(
+      {
+        agentRegistry: {
+          getAgent: (slug: string) =>
+            slug === 'missing' ? undefined : { streamText },
+        },
+      } as never,
+      {
+        cors: false,
+        configureFullApp: ({ app, routes, middlewares }) => {
+          configureRuntimeHttp({
+            app: app as never,
+            logger,
+            eventBus: { emit: vi.fn() } as unknown as EventBus,
+            security: {
+              verifyCredential: (candidate) => candidate === CREDENTIAL,
+              resolveGrantedScope: (candidate) =>
+                candidate === CREDENTIAL
+                  ? DEFAULT_GRANT_PAIRING_SCOPE
+                  : undefined,
+            },
+          });
+          middlewares.landingPage();
+          routes.agents();
+          routes.tools();
+          assertRuntimeHttpRouteCoverage(app.routes);
+        },
+      },
+    );
     const request = (path: string, authorization?: string) =>
       app.request(
         path,
@@ -1761,6 +1775,58 @@ describe('actual VoltAgent full-app mounts', () => {
           : undefined,
         { incoming: { socket: { remoteAddress: '100.96.12.7' } } } as never,
       );
+
+    const failedChat = await app.request(
+      '/agents/assistant/chat',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${CREDENTIAL}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ input: 'hello' }),
+      },
+      { incoming: { socket: { remoteAddress: '100.96.12.7' } } } as never,
+    );
+    expect(streamText).toHaveBeenCalledTimes(1);
+    expect(failedChat.status).toBe(500);
+    const failedBody = await failedChat.text();
+    expect(failedBody).not.toContain(providerCanary);
+    expect(JSON.parse(failedBody)).toMatchObject({
+      error: 'The response stream failed.',
+      message: 'The response stream failed.',
+    });
+
+    const chatRequest = (slug: string) =>
+      app.request(
+        `/agents/${slug}/chat`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${CREDENTIAL}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ input: 'hello' }),
+        },
+        { incoming: { socket: { remoteAddress: '100.96.12.7' } } } as never,
+      );
+    const missingChat = await chatRequest('missing');
+    expect(missingChat.status).toBe(404);
+    expect(await missingChat.json()).toMatchObject({
+      error: 'Agent missing not found',
+    });
+    streamText.mockResolvedValueOnce({
+      toUIMessageStreamResponse: () =>
+        new Response('data: visible-answer\n\n', {
+          headers: { 'Content-Type': 'text/event-stream' },
+        }),
+    });
+    const successfulChat = await chatRequest('assistant');
+    expect(successfulChat.status).toBe(200);
+    expect(successfulChat.headers.get('content-type')).toBe(
+      'text/event-stream',
+    );
+    expect(await successfulChat.text()).toBe('data: visible-answer\n\n');
 
     for (const path of ['/', '/agents', '/tools']) {
       expect((await request(path)).status, path).toBe(401);

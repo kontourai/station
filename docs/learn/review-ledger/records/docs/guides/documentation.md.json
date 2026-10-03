@@ -1,0 +1,59 @@
+{
+  "path": "docs/guides/documentation.md",
+
+  "kind": "policy",
+
+  "state": "classified",
+
+  "summary": "Reviewed the audit, source-evidence, comment, editorial, and GitHub follow-through workflow.",
+
+  "limits": "Normative contributor guidance; this classification does not establish that every document or future feature has followed it.",
+
+  "document": {"digest":"35dd6dd9ae31089fcab2adaf2d58595f809a9e93cf85025c430b71350c576c15","revision":"595059eafa17ef6b7a39217a405619ecbfac2270"},
+
+  "sources": [
+    {"path":".veritas/repo-map.json","digest":"fcabfcd9d0ad7a59d2ef216c943591575656f039e1d9df2d05565b96347ebca4","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+
+    {"path":".veritas/repo-standards/default.repo-standards.json","digest":"03b4e8ec9e6d2369d81fe31700dd3804df1a1259d3ba4c3e977feb27e17edbed","revision":"888c42dffff4aae57a7a6f6f397c8ba1ecca96ee"},
+
+    {"path":".veritas/attestations/HEAD","digest":"b6ddfc606b19dead23131c3004da1420574a4fc90c96623c3f5c2e4b13e6fc04","revision":"65b3516d12cdf594553a2dc8f0e6883b8b0db89d"},
+
+    {"path":"scripts/lib/documentation-freshness.mjs","digest":"1015b8a88ace1d10171a04a1b5da6a192b0397174fa51127c66211736c06ab74","revision":"8199fd1541fc2af0053845c9253ed0962dd7fbb8"},
+
+    {"path":"scripts/check-documentation-freshness.mjs","digest":"41d1622754ffb7a8671a277b2728c5cee2f226da71340666bf4a2be6e8f11d5f","revision":"8199fd1541fc2af0053845c9253ed0962dd7fbb8"},
+
+    {"path":"scripts/record-documentation-review.mjs","digest":"2541d1547706a30bf5cd19927d4b0567b00ae379e4f61ddcd7d36da382f6f54f","revision":"8199fd1541fc2af0053845c9253ed0962dd7fbb8"},
+
+    {"path":"scripts/docs-freshness-sweep.mjs","digest":"b081d84f26484adc6afe330b37976a38e6ed9312c2ed5c394e701a212934c8e8","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
+
+    {"path":".github/workflows/docs-freshness-sweep.yml","digest":"fbcd659bb24451546b1f61500f3b0b0f26b497216e99f98244b1750a6d769ec4","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+
+    {"path":"scripts/run-repo-scan-suites.mjs","digest":"06c1be69f439b1676b78bfe673c310f5abaf3c4a29ddfd25160ae5a36f684584","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+
+    {"path":"scripts/lib/review-ledger-store.mjs","digest":"444d83be0ef4e28ed9acc3db60a705ab01e8e094d6da7cbe23f34b6d60990d8a","revision":"870f87665091ffd778281fd578835377526b7bb1"},
+
+    {"path":"scripts/lib/review-binding.mjs","digest":"09c45446e0d7070b8310fd86f888b37dbe873f53854f48e8bf63ed18481fa692","revision":"6c3604888394821808a5617ddd044c6e61d86fc2"},
+
+    {"path":"scripts/migrate-review-ledger.mjs","digest":"398aff22df16bea250357c6a24e04cb28f915a407e97570503798cb8af1f9c14","revision":"377a56b36cbb87cab716ef441d3202057d4486e8"}
+  ],
+
+  "checks": [
+    "Independently reviewed anchor-check guidance, including local/current-revision scope, historical external links, parser behavior, and semantic-review limits.",
+
+    "Reviewed added guidance to inspect pinned dependency defaults; factory mocks do not establish persisted or emitted fields.",
+
+    "Added the implemented source-impact/catch-up workflow, separate edit/review identities and historical dependency-removal handling; independent actual CLI controls passed.",
+
+    "Final type repair independently reviewed: scripts typecheck passed (367 compiled files; existing 56 deferred), impact/media/browser selection passed 22 tests, and corrected native-element browser callbacks passed all seven reader tests. Earlier type and callback failures remain separate receipts.",
+
+    "Reviewed the owner-approved additive activation: documentation-truth is default and required evidence, and documentation-source-currentness remains Guide. Existing checks, authority, contributor routes and historical trial outcomes remain unchanged. Activation is in this audit branch, not a hosted deployment receipt.",
+
+    "Reviewed the closed generated-release lifecycle: entry and changelog validation, unique identities, fatal UTF-8 decoding, and exact Markdown rendering are separate from publication truth and retained human/agent source review. Generator/validator drift and ordinary missing/changed guides still require review. Only source-free, check-free classified changeset notes can become absent historical records. Catch-up and the reader use the same derived states; old hashes are not automatically refreshed.",
+
+    "Added and reviewed the Keep reviews fresh section against scripts/lib/documentation-freshness.mjs (mode selection, merge-base scope, edited-entry rule, strict fallback), check-documentation-freshness.mjs, record-documentation-review.mjs (HEAD binding, refusals, capture refresh, dependents), docs-freshness-sweep.mjs and its workflow, and run-repo-scan-suites.mjs; the Veritas paragraph now says a touched stale record blocks. Slice guidance added (#2928). Executed documentation-freshness.test.ts.",
+
+    "Rewrote the mode list: the mode follows the event (ci:fast is advisory in merge_group), scoped includes deletions, advisory covers records whose document or source another change removed, and fork-smoke may fall back to strict without the upstream base. Checked against documentationFreshnessMode, checkDocumentationFreshness (reportMissing), record-documentation-review.mjs (captures first, manifest dependents, option-value refusal) and the title-based sweep lookup. Executed documentation-freshness.test.ts.",
+
+    "Reviewed: documentation-freshness.mjs gained DOCS_FRESHNESS_ENV_KEYS and withoutFreshnessEnv (the variables the mode is derived from, and a copy of an env without them); mode selection, scope and the blocking decision are unchanged. The Keep reviews fresh modes are unchanged."
+  ]
+}

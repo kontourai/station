@@ -122,6 +122,8 @@ const SCAN_EXCLUSIONS = {
     'A mutation naming its own target. It reveals no plugin the caller did not already name.',
   'POST /api/registry/plugins/install':
     'Same: a mutation naming its own target. The `plugins/` signal is the install destination, not a listing.',
+  'POST /api/registry/skills/install':
+    'A mutation of the caller-named Skill selection. Bare-name resolution uses caller-visible sources; plugin-owned sources are checked before reads and publication. It returns that Skill outcome or a closed refusal, not another plugin identity. The installed+name signal is the local Skill premise, not plugin inventory.',
   'POST /acp/registry/:id/install':
     'A mutation naming its own target: it installs the engine connection the caller named and returns that connection, never a listing. The `agent` receipt names the Agent this same mutation created or adopted for THAT connection id — a fact the projected agents list (`GET /api/agents`, the New Chat picker\u2019s own source) already carries — and names no other engine or plugin.',
   'POST /api/plugin-proposals':
@@ -287,6 +289,8 @@ function identitySignals(body) {
   for (const token of IDENTITY_TOKENS) {
     if (new RegExp(`\\b${token}\\b`).test(body)) hits.push(token);
   }
+  if (/\bcatalog\s*\(\s*(['"])plugins\1/.test(body))
+    hits.push('plugin catalog()');
   for (const reader of ENUMERATING_READERS) {
     if (new RegExp(`\\b${reader}\\s*\\(`).test(body)) hits.push(`${reader}()`);
   }

@@ -113,6 +113,7 @@ vi.mock('@kontourai/station-sdk/workspace-pane', () => ({
 
 const navigateMock = vi.fn();
 const showSurfaceMock = vi.fn();
+const showSurfacePageMock = vi.fn();
 const setProjectMock = vi.fn();
 const setDockStateMock = vi.fn();
 
@@ -143,6 +144,7 @@ vi.mock('../contexts/NavigationContext', () => ({
 vi.mock('../contexts/RegionModelContext', () => ({}));
 vi.mock('../contexts/useShowSurface', () => ({
   useShowSurface: () => showSurfaceMock,
+  useShowSurfacePage: () => showSurfacePageMock,
 }));
 
 // #1418/#1419: the coordinator itself is unit-tested against a scripted
@@ -216,6 +218,7 @@ afterEach(() => {
   indexRebuilds.count = 0;
   navigateMock.mockReset();
   showSurfaceMock.mockReset();
+  showSurfacePageMock.mockReset();
   setProjectMock.mockReset();
   setDockStateMock.mockReset();
   registeredCommand.mockReset();
@@ -844,7 +847,9 @@ describe('CommandPalette', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 
-  test('Activity navigation reveals its registered region surface', async () => {
+  // Activity is a place: its palette entry is the same verb as its sidebar
+  // row — go to the page — not the contextual dock reveal.
+  test('Activity navigation opens its region surface as the page', async () => {
     await renderCommandPalette();
     open();
     fireEvent.change(screen.getByRole('combobox'), {
@@ -859,7 +864,8 @@ describe('CommandPalette', () => {
     const navigationsBefore = navigateMock.mock.calls.length;
     fireEvent.click(screen.getByRole('option', { name: /^Activity/ }));
 
-    expect(showSurfaceMock).toHaveBeenCalledWith('activity');
+    expect(showSurfacePageMock).toHaveBeenCalledWith('activity');
+    expect(showSurfaceMock).not.toHaveBeenCalled();
     expect(navigateMock.mock.calls.length).toBe(navigationsBefore);
   });
 

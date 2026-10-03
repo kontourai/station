@@ -40,6 +40,8 @@
   position: fixed;
   z-index: var(--layer-popover);
   width: min(280px, calc(100vw - 24px));
+  max-height: calc(100vh - 24px);
+  overflow-y: auto;
   padding: var(--space-6) var(--space-8);
   border: 1px solid
     color-mix(in srgb, var(--accent-primary) 35%, var(--border-secondary));

@@ -47,6 +47,7 @@ import {
   removeRegionPane,
   resolveRegionSurface,
   restorePhonePaneLayer,
+  restoreSuspendedPanes,
   revealSurface,
   seedRegionArrangementFromDock,
   selectRegionPane,
@@ -55,15 +56,20 @@ import {
   syncRegionArrangementFromDock,
   toggleSurface as toggleSurfaceInArrangement,
   updateRegion,
+  withSuspendedSurfaces,
 } from '../regions/region-model';
 import { normalizeDockMode } from '../types';
 import {
   useDeviceSettings,
   useDeviceSettingsActions,
 } from './DeviceSettingsContext';
+import { mainPageOf, stampMainPage } from './main-page-history';
 import { useNavigation } from './NavigationContext';
-import { navigationStore } from './navigation-store';
-import { clearSurfaceDeepLinkParams } from './surface-deep-link';
+import { navigationEntryIndex, navigationStore } from './navigation-store';
+import {
+  clearSurfaceDeepLinkParams,
+  parseSurfaceDeepLink,
+} from './surface-deep-link';
 
 export interface SurfaceIntent {
   session?: string;
@@ -133,7 +139,7 @@ function withoutSurfaceIntent(
   );
 }
 
-interface RegionModelValue {
+export interface RegionModelValue {
   regions: RegionArrangement;
   lastShownRegion: RegionId | null;
   surfaces: typeof REGION_SURFACE_REGISTRY;
@@ -149,8 +155,19 @@ interface RegionModelValue {
    * or place it where it belongs (`revealSurface`/`showSurfaceAlone`): the
    * surface-keyed form of `openInRegion` with no options, plus the intent
    * outbox. Since #2048 it is `openSurfaceInRegion` underneath.
+   *
+   * `options.region` names the region instead of the surface's rule. Its one
+   * caller is `useShowSurfacePage`, which asks for `main`: a place row (the
+   * sidebar's Activity, the palette's Activity, Home's "View Activity") goes
+   * to the surface's page rather than revealing it where it last was. The
+   * outbox is handled the same either way, so a page open with no intent
+   * clears an undelivered record exactly as a plain reveal does.
    */
-  showSurface(surfaceId: string, intent?: SurfaceIntent): void;
+  showSurface(
+    surfaceId: string,
+    intent?: SurfaceIntent,
+    options?: Pick<OpenInRegionOptions, 'region'>,
+  ): void;
   /**
    * Open a surface in a dock region (#2048): the model half of
    * `openInRegion` (`useOpenInRegion.ts`), which is the one producer callers
@@ -216,6 +233,14 @@ interface RegionModelValue {
    * minted between the render that read the record and this call.
    */
   consumeSurfaceIntent(surfaceId: string, token: number): void;
+  /**
+   * Put an intent in the outbox WITHOUT placing or revealing anything: for a
+   * placement the region model does not own — Chat in the Coding layout's
+   * centre (`resolveLayoutChatPlacement`) — which consumes `surfaceIntents`
+   * the same way a region-hosted placement does. `showSurface` is the reveal
+   * plus this; calling it there would open Chat's (suspended) dock region.
+   */
+  deliverSurfaceIntent(surfaceId: string, intent: SurfaceIntent): void;
   /**
    * Whether a region surface host is mounted, i.e. whether `showSurface` can
    * produce anything the reader will see. Not a predicate re-derived from the
@@ -340,6 +365,53 @@ function navigateToMainOutlet() {
   if (window.location.pathname !== '/') navigationStore.navigate('/');
 }
 
+/** `main`'s occupant by name; an empty `main` is Home's. */
+function mainPage(arrangement: RegionArrangement): string {
+  return arrangement.main.occupant ?? 'home';
+}
+
+/**
+ * A page landed in `main`. From another route that is a navigation to `/`,
+ * one entry as before. AT `/` a different page gets an entry of its own, so
+ * Back returns to the page it replaced (#2986): the entry being left keeps
+ * the stamp of what it showed, and the store pushes a same-URL entry — a real
+ * navigation entry with its own index, so a guarded traversal across it
+ * restores to the right place — which is then stamped with the new page.
+ */
+function enterMainOutlet(previous: string, next: string) {
+  // A surface deep link being adopted (`/?surface=…`) is its own entry: the
+  // adoption clears the command from the LIVE entry afterwards, so a pushed
+  // entry would leave the command on the one beneath, and Back onto that
+  // would run it again.
+  const adoptingLink =
+    parseSurfaceDeepLink(new URLSearchParams(window.location.search)) !== null;
+  if (window.location.pathname === '/' && previous !== next && !adoptingLink) {
+    stampMainPage(previous);
+    navigationStore.navigate('/');
+    stampMainPage(next);
+    return;
+  }
+  navigateToMainOutlet();
+}
+
+/**
+ * A page opened in `main` has to be SEEN, on every device: a maximized dock
+ * hides the route outlet — the whole viewport on a phone
+ * (`isMobileDockFullscreenState`), and on a desktop a maximized side region
+ * hides `.main-content` while a maximized bottom region takes its row
+ * (index.css). The dock is restored, not closed — it stays where the reader
+ * left it, beside or below the page.
+ */
+function restoreMaximizedDocks(arrangement: RegionArrangement): {
+  arrangement: RegionArrangement;
+  restored: boolean;
+} {
+  let next = arrangement;
+  for (const id of DOCK_REGION_IDS)
+    if (next[id].maximized) next = updateRegion(next, id, { maximized: false });
+  return { arrangement: next, restored: next !== arrangement };
+}
+
 /**
  * Trailing-edge coalescing window for the `regionArrangement` write (#928 D).
  * A drag resolves to one `setRegion` today, but a toggle-and-place burst is
@@ -459,6 +531,7 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
     isDockOpen,
     isDockMaximized,
     dockMode,
+    pathname,
     surfaceIntent,
     setDockMode,
     setDockState,
@@ -528,6 +601,14 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
   // `toggleSurface` is declared above the layer's exits; it reaches the
   // current one through this.
   const closePhoneLayerRef = useRef<() => void>(() => {});
+  // The layer's restore, for `openSurfaceInRegion`'s page open of the pane
+  // the layer shows (declared above the restore, like the ref above).
+  const restorePhoneLayerRef = useRef<() => void>(() => {});
+  // The dock region a surface was taken from when it was opened as the
+  // `main` page, keyed by surface. Transient like the phone layer's origin:
+  // it is not part of the persisted arrangement record, so a reload returns
+  // the chord to the surface's `defaultRegion`.
+  const mainOriginRef = useRef(new Map<string, DockRegionId>());
   // The Back an unsaved-changes guard is deciding, if any
   // (`leavePhoneLayerByBack`). While set, the layer is reinstated and neither
   // navigation's inbound sync nor the dismissal effect may act on it.
@@ -585,29 +666,115 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
    * Apply an arrangement a reveal or open produced: the fold's last shown
    * region follows it, and a landing in `main` navigates to the outlet.
    */
-  const commit = useCallback((next: RegionArrangement, region: RegionId) => {
-    regionsRef.current = next;
-    setLastShownRegion(region);
-    setRegions(next);
-    if (region === 'main') navigateToMainOutlet();
-  }, []);
+  const commit = useCallback(
+    (arrangement: RegionArrangement, region: RegionId) => {
+      const previousPage = mainPage(regionsRef.current);
+      // Without the restore the Activity or Home row would change `main`
+      // behind a maximized dock and nothing on screen would move.
+      const { arrangement: next, restored } =
+        region === 'main'
+          ? restoreMaximizedDocks(arrangement)
+          : { arrangement, restored: false };
+      // That restore is the system's, not the reader's: navigation's
+      // maximize MEMORY (`lastDockMaximized`, what `focusSession` reopens
+      // Chat with) is put back after the mirror writes the restore, the same
+      // way a phone layer's exit does. A layer restore that already queued
+      // its own memory keeps it.
+      if (restored && pendingDockMemoryRef.current === null)
+        pendingDockMemoryRef.current = navigationStore.lastDockMaximized;
+      regionsRef.current = next;
+      setLastShownRegion(region);
+      setRegions(next);
+      if (region === 'main') enterMainOutlet(previousPage, mainPage(next));
+    },
+    [],
+  );
 
   const placeSurface = useCallback((surfaceId: string, regionId: RegionId) => {
     // A refused placement (the surface does not declare this region) must not
     // navigate either: nothing was placed, so there is nothing to go and see.
     if (!surfaceMayOccupy(surfaceId, regionId)) return;
-    const next = placeSurfaceInArrangement(
+    // An explicit placement is the user's own: any dock region remembered
+    // for a `main` page return is superseded by it.
+    mainOriginRef.current.delete(surfaceId);
+    const previousPage = mainPage(regionsRef.current);
+    let next = placeSurfaceInArrangement(
       regionsRef.current,
       surfaceId,
       regionId,
     );
+    // A tab's Move to Main and the Layout picker land here, not in `commit`:
+    // the moved pane is as hidden behind a maximized dock as an opened page
+    // would be (#2988), and the reader's maximize memory is kept the same way.
+    if (regionId === 'main') {
+      const shown = restoreMaximizedDocks(next);
+      next = shown.arrangement;
+      if (shown.restored && pendingDockMemoryRef.current === null)
+        pendingDockMemoryRef.current = navigationStore.lastDockMaximized;
+    }
     if (next !== regionsRef.current) {
       regionsRef.current = next;
       setLastShownRegion(regionId);
       setRegions(next);
     }
-    if (regionId === 'main') navigateToMainOutlet();
+    if (regionId === 'main') enterMainOutlet(previousPage, mainPage(next));
   }, []);
+
+  // Back and Forward over `/` entries (#2986): a traversal onto an entry
+  // stamped with the page `main` showed puts that page back. No entry is
+  // written here: the traversal already chose one.
+  //
+  // Three traversals are not that. The store's own notifications dispatch a
+  // bare `popstate` (no state). A guarded traversal lands first on an entry
+  // the reader has not been admitted to and is travelled straight back
+  // (`traversalAwaitsGuard`). And a same-URL layer — a dialog's Back marker —
+  // copies the state it was pushed on, stamp included, so closing it lands on
+  // the entry beneath: the same navigation entry, whose stamp may be older
+  // than a change made while the layer was open. That one is brought up to
+  // date instead of obeyed. (The store's listener is registered at module
+  // load, so it has run by the time this one reads from it.)
+  useEffect(() => {
+    const restoreMainPage = (event: PopStateEvent) => {
+      if (event.state === null || navigationStore.traversalAwaitsGuard) return;
+      const page = mainPageOf(event.state);
+      if (!page || window.location.pathname !== '/') return;
+      const current = regionsRef.current;
+      if (
+        navigationEntryIndex(event.state) ===
+        navigationStore.traversalDepartedIndex
+      ) {
+        stampMainPage(mainPage(current));
+        return;
+      }
+      if (mainPage(current) === page || !surfaceMayOccupy(page, 'main')) return;
+      const next = placeSurfaceInArrangement(current, page, 'main');
+      if (next === current) return;
+      regionsRef.current = next;
+      setLastShownRegion('main');
+      setRegions(next);
+    };
+    window.addEventListener('popstate', restoreMainPage);
+    return () => window.removeEventListener('popstate', restoreMainPage);
+  }, []);
+
+  // Keep the live `/` entry's stamp true. A change of occupant that is not a
+  // page open (the chord returning Activity to its dock, a tab moved out of
+  // `main`) rewrites it — which includes the mount: after a reload the
+  // arrangement is what is on screen, and the entry says so. Arriving at `/`
+  // on an entry that has no stamp — the first load, a link — gives it one;
+  // an arrival on a stamped entry is the traversal's above, which may not
+  // have applied it yet.
+  const currentMainPage = mainPage(regions);
+  const atMainOutlet = pathname === '/';
+  // biome-ignore lint/correctness/useExhaustiveDependencies: arriving at `/` stamps only an entry that has no stamp; the occupant effect below owns changes.
+  useEffect(() => {
+    if (atMainOutlet && mainPageOf(window.history.state) === undefined)
+      stampMainPage(currentMainPage);
+  }, [atMainOutlet]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a change of occupant restamps; arriving at `/` is the effect above.
+  useEffect(() => {
+    if (atMainOutlet) stampMainPage(currentMainPage);
+  }, [currentMainPage]);
 
   const selectPane = useCallback((regionId: RegionId, surfaceId: string) => {
     const next = selectRegionPane(regionsRef.current, regionId, surfaceId);
@@ -646,9 +813,23 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
       if (!surface) return { ok: false, reason: 'no-surface' };
       if (options.placement === 'split')
         return { ok: false, reason: 'unsupported-placement' };
+      const target = options.region;
+      // Opening as the page a pane the phone layer is showing over Chat ends
+      // that layer first, through its own restore (the pane goes back to
+      // where the layer found it, Chat's region to its pre-layer state), so
+      // the page placement below starts from the arrangement the reader had
+      // before the layer — and the layer's history entry goes with it.
+      //
+      // It does not ask the layer pane's unsaved-changes guards (Back and
+      // "‹ Chat" do): it runs only when the pane being opened as the page IS
+      // the layer's pane, and a pane that can be both a phone layer and a
+      // `main` page (Activity) registers no guard — the move remounts it
+      // either way. A guarded surface that declares `main` would need to
+      // route this through `closePhoneLayer` instead.
+      if (target === 'main' && phoneLayerRef.current?.surfaceId === surfaceId)
+        restorePhoneLayerRef.current();
       const current = regionsRef.current;
       const held = occupiedRegion(current, surfaceId);
-      const target = options.region;
       // The phone layer: on a bottom-only device, a pane opened with no
       // explicit region — or with a side region the fold does not offer,
       // which used to be refused `region-unavailable` — opens OVER Chat, as
@@ -717,6 +898,12 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
           !(available as readonly RegionId[]).includes(target)
         )
           return { ok: false, reason: 'region-unavailable' };
+        // A page taken from a dock region remembers that region, so the
+        // chord's return (`toggleSurface`'s `main` case) goes back to where
+        // the user had docked it rather than to `defaultRegion`.
+        if (target === 'main' && held && isDockRegion(held))
+          mainOriginRef.current.set(surfaceId, held);
+        else mainOriginRef.current.delete(surfaceId);
         let next = placeSurfaceInArrangement(current, surfaceId, target);
         if (bottomOnly && isDockRegion(target))
           for (const id of DOCK_REGION_IDS)
@@ -728,9 +915,20 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
       // No target: the surface's own rule — its region if it has one, else
       // its default (the first free dock region when that is taken); on a
       // bottom-only device the revealed region becomes the only visible one.
+      // An UNPLACED surface that was last taken from a dock region into the
+      // `main` page (and then displaced by Home) goes back to that region
+      // when this device offers it — the chord's show and a later reveal
+      // honour the user's placement like the chord's direct return does.
+      const remembered =
+        held === undefined ? mainOriginRef.current.get(surfaceId) : undefined;
+      const preferred =
+        remembered && (available as readonly RegionId[]).includes(remembered)
+          ? remembered
+          : surface.defaultRegion;
+      mainOriginRef.current.delete(surfaceId);
       const shown = bottomOnly
-        ? showSurfaceAlone(current, surfaceId, surface.defaultRegion)
-        : revealSurface(current, surfaceId, surface.defaultRegion);
+        ? showSurfaceAlone(current, surfaceId, preferred)
+        : revealSurface(current, surfaceId, preferred);
       commit(shown.arrangement, shown.region);
       return {
         ok: true,
@@ -743,8 +941,15 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
   );
 
   const showSurface = useCallback(
-    (surfaceId: string, intent?: SurfaceIntent) => {
-      const opened = openSurfaceInRegion(surfaceId);
+    (
+      surfaceId: string,
+      intent?: SurfaceIntent,
+      options?: Pick<OpenInRegionOptions, 'region'>,
+    ) => {
+      const opened = openSurfaceInRegion(
+        surfaceId,
+        options?.region ? { region: options.region } : undefined,
+      );
       // An unregistered id was never a reveal; the intent outbox is left
       // alone for it, as before #2048.
       if (!opened.ok) return;
@@ -793,12 +998,23 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
         closePhoneLayerRef.current();
         return;
       }
+      // A `main` page returns to the dock region it was taken from, when
+      // this device still offers it; otherwise to its default.
+      const remembered = mainOriginRef.current.get(surfaceId);
+      const returnRegion =
+        remembered &&
+        occupiedRegion(regionsRef.current, surfaceId) === 'main' &&
+        (available as readonly RegionId[]).includes(remembered)
+          ? remembered
+          : surface.defaultRegion;
       const toggled = toggleSurfaceInArrangement(
         regionsRef.current,
         surfaceId,
-        surface.defaultRegion,
+        returnRegion,
         { lastShownRegion, bottomOnly },
       );
+      if (toggled.kind === 'arrangement')
+        mainOriginRef.current.delete(surfaceId);
       if (toggled.kind === 'none') return;
       if (toggled.kind === 'show') {
         // Showing is `showSurface`'s: it owns the unplaced landing, the
@@ -810,7 +1026,7 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
       if (toggled.shownRegion) setLastShownRegion(toggled.shownRegion);
       setRegions(toggled.arrangement);
     },
-    [bottomOnly, lastShownRegion, showSurface],
+    [available, bottomOnly, lastShownRegion, showSurface],
   );
 
   // Counted rather than a boolean: React can commit a replacement host before
@@ -820,6 +1036,17 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
     setMountedSurfaceHosts((count) => count + 1);
     return () => setMountedSurfaceHosts((count) => count - 1);
   }, []);
+
+  const deliverSurfaceIntent = useCallback(
+    (surfaceId: string, intent: SurfaceIntent) => {
+      const token = ++surfaceIntentTokenRef.current;
+      setSurfaceIntents((current) => ({
+        ...current,
+        [surfaceId]: { ...intent, token },
+      }));
+    },
+    [],
+  );
 
   const consumeSurfaceIntent = useCallback(
     (surfaceId: string, token: number) => {
@@ -855,6 +1082,7 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
     regionsRef.current = next;
     setRegions(next);
   }, [setPhoneLayer]);
+  restorePhoneLayerRef.current = restorePhoneLayer;
 
   // Anything else that takes the layer's pane off screen — "Show Chat" in the
   // folded menu, the tab closed, the region hidden, another tab adopting a
@@ -1272,6 +1500,7 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
       toggleSurface,
       surfaceIntents,
       consumeSurfaceIntent,
+      deliverSurfaceIntent,
       canRenderRegionSurfaces: mountedSurfaceHosts > 0,
       registerRegionSurfaceHost,
       phoneLayer: phoneLayerView,
@@ -1290,6 +1519,7 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
       toggleSurface,
       surfaceIntents,
       consumeSurfaceIntent,
+      deliverSurfaceIntent,
       mountedSurfaceHosts,
       registerRegionSurfaceHost,
       phoneLayerView,
@@ -1303,8 +1533,84 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
   );
 }
 
+const NO_SUSPENDED_SURFACES: readonly string[] = [];
+
+/**
+ * The surfaces suspended for the subtree below (`SuspendRegionSurfaces`):
+ * rendered by an owner outside the region model, so the shells in that
+ * subtree must neither render them nor act as their host.
+ */
+const SuspendedRegionSurfacesContext = createContext<readonly string[]>(
+  NO_SUSPENDED_SURFACES,
+);
+
+/**
+ * Suspends `surfaces` for every region-model reader below it (#928 coding
+ * stack): `RegionShells` wraps its hosts in this while the Coding layout's
+ * centre owns Chat, so `RegionPaneHost`, `DockShell`, `useDockShellChrome`
+ * and the toolbar all read the arrangement WITHOUT Chat — a region holding
+ * only Chat mounts nothing, one holding Chat and Terminal shows Terminal —
+ * and nothing there claims Chat's `#chat-dock` or its chords. The provider's
+ * own state and the persisted record are untouched; see
+ * `withSuspendedSurfaces`.
+ */
+export function SuspendRegionSurfaces({
+  surfaces,
+  children,
+}: {
+  surfaces: readonly string[];
+  children: ReactNode;
+}) {
+  return (
+    <SuspendedRegionSurfacesContext.Provider value={surfaces}>
+      {children}
+    </SuspendedRegionSurfacesContext.Provider>
+  );
+}
+
+/**
+ * A region model as seen through the enclosing suspension: `regions` is the
+ * suspended read view, and a tab-order write computed from that view puts the
+ * suspended panes back where they were (`restoreSuspendedPanes`), so no write
+ * made through it can drop a suspended pane from the record. Every other
+ * command is the model's own — they are keyed by surface, never derived from
+ * the suspended `regions`.
+ *
+ * Exported for tests that supply their own model to App (the source of the
+ * model is replaced; the suspension a reader sees is still this one).
+ */
+// Also called by AppHomeRoute.test.tsx through a `vi.mock` importOriginal that fallow cannot trace.
+// fallow-ignore-next-line unused-export
+export function useSuspendedRegionModel<T extends RegionModelValue>(
+  model: T | null,
+): T | null {
+  const suspended = useContext(SuspendedRegionSurfacesContext);
+  return useMemo(() => {
+    if (!model || suspended.length === 0) return model;
+    const setRegion = model.setRegion;
+    return {
+      ...model,
+      regions: withSuspendedSurfaces(model.regions, suspended),
+      setRegion: (id: RegionId, patch: Partial<RegionState>) =>
+        setRegion(
+          id,
+          patch.panes === undefined
+            ? patch
+            : {
+                ...patch,
+                panes: restoreSuspendedPanes(
+                  model.regions[id].panes,
+                  patch.panes,
+                  suspended,
+                ),
+              },
+        ),
+    };
+  }, [model, suspended]);
+}
+
 export function useRegionModelOptional(): RegionModelValue | null {
-  return useContext(RegionModelContext);
+  return useSuspendedRegionModel(useContext(RegionModelContext));
 }
 
 export function useRegionModel(): RegionModelValue {

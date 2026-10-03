@@ -601,6 +601,16 @@ function mergeHomeWorkItems(
       orchestration && !orchestration.model && !orchestration.projectSlug
         ? earlier
         : undefined;
+    // The side that supplies the winning slug supplies the label. A side's
+    // "No project" is a display fallback for an absent value and must never
+    // outrank the other side's real project: the dock read "No project" for
+    // a chat bound to Project B whose session reported no slug. Only when no
+    // side knows a slug does the orchestration label stand, and that may
+    // legitimately be a delegated or ambiguous name (`sessionProjectLabel`)
+    // rather than the fallback.
+    const projectSource = [orchestration, identity, chat].find(
+      (candidate) => candidate?.projectSlug,
+    );
     combined.set(key, {
       ...display,
       id: key,
@@ -643,12 +653,9 @@ function mergeHomeWorkItems(
         orchestration?.modelLabel ??
         chat?.modelLabel ??
         display.modelLabel,
-      projectSlug:
-        orchestration?.projectSlug ??
-        identity?.projectSlug ??
-        chat?.projectSlug,
+      projectSlug: projectSource?.projectSlug,
       projectLabel:
-        (identity?.projectSlug ? identity.projectLabel : undefined) ??
+        projectSource?.projectLabel ??
         orchestration?.projectLabel ??
         chat?.projectLabel ??
         display.projectLabel,
@@ -1020,11 +1027,19 @@ export function buildActiveChatTaskItems({
         kind: 'chat' as const,
         kindLabel: 'Direct chat' as const,
         // Match the dock session-title convention (useDerivedSessions):
-        // untitled chats read "<Agent> Chat", not the bare agent name —
-        // title is not persisted across reloads, so this fallback is the
-        // steady-state name for rehydrated sessions.
+        // untitled chats read "<Agent> Chat", not the bare agent name.
+        // Title is not persisted across reloads, so before that fallback a
+        // chat takes its correlated session's name — the server's
+        // `displayTitle`, through `sessionTitle`, the one name Activity and
+        // Home list that session under. Only when the session HAS one:
+        // `sessionTitle`'s own fallbacks ("Station session") say less than
+        // "<Agent> Chat".
         title:
-          chat.title?.trim() || (agentLabel ? `${agentLabel} Chat` : 'Task'),
+          chat.title?.trim() ||
+          (currentExecution?.displayTitle?.trim()
+            ? sessionTitle(currentExecution)
+            : undefined) ||
+          (agentLabel ? `${agentLabel} Chat` : 'Task'),
         projectLabel: chat.projectName || chat.projectSlug || 'No project',
         agentLabel,
         modelLabel: resolveModelLabel(model),

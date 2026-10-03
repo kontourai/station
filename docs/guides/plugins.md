@@ -286,6 +286,9 @@ Factories receive the new values the next time the plugin provider loading
 path constructs them; a successful settings save alone is not evidence that a
 running provider has changed.
 
+For local agent-assisted visual Skill conversion, review and evaluation, use
+[Author a visual skill experience](authoring-skill-experiences.md).
+
 ## Plugin registry
 
 The Registry page browses installable plugins from a JSON manifest.
@@ -305,6 +308,7 @@ and need registry access; a local catalog does not promise a network-free build.
 | `minimal-layout` | The smallest useful layout surface |
 | `demo-layout` | A tour of Station capabilities, no external services |
 | `smart-routing` | A provider plugin with no UI entrypoint |
+| `matt-pocock-engineering` | Attributed pinned Skills and four visual entry definitions; agent, project/tracker setup and authority remain prerequisites |
 
 The fuller catalog at `examples/registry/manifest.json` adds examples that pull
 npm dependencies (`enterprise-layout`, `survey-review-workbench`,
@@ -316,6 +320,31 @@ setting `registryUrl`:
   "registryUrl": "examples/registry/manifest.json"
 }
 ```
+
+Managing connected sources requires the Station operator and an
+`access:manage` credential. Standard paired clients can browse ordinary
+catalog items without gaining host source-management authority.
+
+The Registry's Add marketplace flow connects additional public GitHub Skill
+libraries, local Skill directories and local/HTTPS Station manifests without
+changing `registryUrl`. Sources persist separately, can be refreshed or disabled,
+and report offline/stale/error status independently. Offline plugin rows retain
+the current installed state from the local Library, even after an update or
+removal; cached catalog metadata cannot declare a package installed. Removing one preserves
+installed content and provenance in the Library. Unsupported marketplace index
+formats and private credential-bearing URLs are refused rather than imported
+as an assumed compatible catalog. Plugin-contributed registry providers appear
+through their existing visibility/grant lifecycle; manage their availability
+through the owning plugin. Source configuration is a regular file bounded to
+8 MiB, at most 32 user-added sources and 32 retained catalog snapshots, with
+at most 512 rows in each snapshot. Corrupt, oversized, unsupported and
+nonregular configuration is refused without replacing its bytes; restore the
+existing file before continuing. Plugin catalog rows and package claims from
+a Station manifest are read together from one fresh observation. Existing
+bare-item registry aliases can become source-qualified on a reviewed update
+only when the original item ID and registry key match. The update retains the
+existing plugin data owner; a different registry key cannot claim it. See [marketplace APIs](../reference/api.md#manage-marketplaces)
+and the published provider types in `@kontourai/station-contracts/catalog`.
 
 A configured value always wins over the bundle. Relative paths resolve against
 the install root; absolute paths and `https://` URLs are used as given. An
@@ -571,6 +600,13 @@ export default Main;
 - `@tanstack/react-query` hooks share the host's QueryClient
 
 ## SDK Integration
+
+Use the SDK root and owning UI subpaths for plug-in UI. For headless Agent
+execution and delegation, use `@kontourai/station-sdk/agent`; the builder and
+host bridge share its canonical clients. A plug-in can distribute an Agent and
+invoke it from a Pane, while a headless application invokes the same identity.
+See [Agent development](agent-development.md) and
+[ADR 0021](../adr/0021-separate-plugin-and-agent-sdk-surfaces.md).
 
 Use the documented SDK root or owning subpath. Key root hooks:
 
@@ -1324,7 +1360,7 @@ These are provided by the host at runtime via `window.__station_ai_shared` and m
 |--------|-------|
 | `react`, `react/jsx-runtime`, `react/jsx-dev-runtime` | React runtime |
 | `@kontourai/station-sdk` | All SDK hooks and utilities |
-| `@kontourai/station-sdk/client`, `@kontourai/station-sdk/voice` | Admitted React-free client and voice runtime entries |
+| `@kontourai/station-sdk/agent`, `@kontourai/station-sdk/client`, `@kontourai/station-sdk/voice` | Admitted React-free client and voice runtime entries |
 | `@kontourai/station-components` | Shared UI components |
 | `@tanstack/react-query` | Shares host's QueryClient |
 | `dompurify` | HTML sanitization — host-loaded on demand (see below) |

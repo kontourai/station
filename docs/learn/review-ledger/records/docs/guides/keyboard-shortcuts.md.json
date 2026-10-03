@@ -1,0 +1,43 @@
+{
+  "path": "docs/guides/keyboard-shortcuts.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Full guide checked against capture, local settings, dispatch, current registered defaults, limited warning/conflict hints and mobile layout. Known Space mismatch and hint derivation are explicit, with backlog links.",
+
+  "limits": "DOM/storage/caller evidence only; no physical keyboard, browser-reserved-key or native-shell qualification. The documented product defects remain unfixed.",
+
+  "document": {"digest":"f861855d04df4423c67c69331a5114f27346c0e72b1b040c9c670a36fe2ac540","revision":"89765352964045a079d13a17bee54ab2de7b83e0"},
+
+  "sources": [
+    {"path":"src-ui/src/__tests__/KeyboardShortcutsContext.test.ts","digest":"ac6e867bac63c0c5728df322b86cdc0ecd6f4d4b5db3d1969c85b218e4c03887","revision":"5bc39d324d26c7d17fc8ee142408ff36d6f80f7b"},
+
+    {"path":"src-ui/src/__tests__/KeyboardShortcutsSection.test.tsx","digest":"7fd216eee45a67de0d2d6532dc8a7c7059e258c2e27ade2c87ec4ee51b120933","revision":"5bc39d324d26c7d17fc8ee142408ff36d6f80f7b"},
+
+    {"path":"src-ui/src/contexts/KeyboardShortcutsContext.tsx","digest":"f245dcc79cecb5b79bc5b05a96d61167632a6ff054fb15b9bfbb17732a478fc7","revision":"86261a64cb5fc5bddc8a5decf17cbe977d4bd32e"},
+
+    {"path":"src-ui/src/hooks/useIsMobile.ts","digest":"6cedc0e8a70136acb36e40078106a880663ea10b9d5d7da97a503c9c39b20ddd","revision":"5bc39d324d26c7d17fc8ee142408ff36d6f80f7b"},
+
+    {"path":"src-ui/src/lib/device-settings-store.ts","digest":"2c9c1dfb7259dbe56a3c101aba0c370c481516a6e0b67a666655a518d2a90fd7","revision":"7ee8992ddf9ca89f60546a72199bce8e2d25da43"},
+
+    {"path":"src-ui/src/settings/shortcutPreferences.ts","digest":"4a734f717d38f9f63daf255d0bc448384df825f98a6a73ca13b562044e56ed27","revision":"5bc39d324d26c7d17fc8ee142408ff36d6f80f7b"},
+
+    {"path":"src-ui/src/views/settings/KeyboardShortcutsSection.tsx","digest":"442e18ff1d6da5f12184ddb6adda4e4f890227e4138bb43bce924e79cb7f5a8b","revision":"5bc39d324d26c7d17fc8ee142408ff36d6f80f7b"},
+
+    {"path":"src-ui/src/views/settings/utils.ts","digest":"276a3b5ce442404273399f1dc1df620053da2049ad1278f2b75f89f6a398a742","revision":"d6a3158c22a62d9530592c6366a1624790ee9401"}
+  ],
+
+  "checks": [
+    "14 existing editor/registry tests passed.",
+
+    "Independent mounted Space probe: baseline 4/4 passed, 4 passed and one intended assertion failed under the probe, exact restoration 4/4 passed.",
+
+    "65 lines of registry commentary removed while retaining regression rationale; independent TSX comparison confirmed identical executable output.",
+
+    "Independent final guide/module/README delta accepted. Public Pages external source-route link preserved; learning reader maps it locally.",
+
+    "Reviewed source changes: Removed a numeric legacy parser unreachable from the current closed registry: no number-kind setting has priorStorageKey. Existing persisted settings and migration claims remain; future numeric legacy keys would need a new parser."
+  ]
+}

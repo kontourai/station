@@ -1176,7 +1176,7 @@ for (const [relativePath, requiredImport] of [
   ],
   ['../src-ui/src/utils/execution.ts', '@kontourai/station-contracts/tool'],
   [
-    '../src-ui/src/views/ScheduleView.tsx',
+    '../src-ui/src/contexts/scheduler-job-dialog-store.ts',
     '@kontourai/station-contracts/scheduler',
   ],
   [
@@ -5966,9 +5966,6 @@ const usageStatsPanel = readRequiredSource(
 if (hasRawFetchCall(usageStatsPanel)) {
   errors.push('UsageStatsPanel must not issue raw fetch() calls.');
 }
-if (!usageStatsPanel.includes('useResetUsageStatsMutation')) {
-  errors.push('UsageStatsPanel must use the shared usage reset mutation.');
-}
 for (const requiredImport of [
   './UsageSummaryCards',
   './UsageBreakdownSection',
@@ -6018,7 +6015,7 @@ for (const requiredHelper of [
 const insightsDashboard = readRequiredSource(
   '../src-ui/src/components/monitoring/InsightsDashboard.tsx',
 );
-if (insightsDashboard.includes('fetch(')) {
+if (hasRawFetchCall(insightsDashboard)) {
   errors.push('InsightsDashboard must not issue raw fetch() calls.');
 }
 if (!insightsDashboard.includes('./insightsDashboardUtils')) {

@@ -14,7 +14,15 @@
  * the parent's onSelect handler surfaces instead of vanishing — from the
  * user's seat that failure is identical to the silent fall-through.
  */
-import { agentId } from '@kontourai/station-contracts/agent-identity';
+import { readFileSync } from 'node:fs';
+import { URL as NodeURL } from 'node:url';
+import { agentId, engineId } from '@kontourai/station-contracts/agent-identity';
+import type {
+  InstalledSkillExperienceV1,
+  SkillExperienceDefinitionV1,
+  SkillExperienceInventoryV1,
+} from '@kontourai/station-contracts/skill-experience';
+import type { ExternalEngineReadinessProjection } from '@kontourai/station-contracts/system-status';
 import {
   act,
   cleanup,
@@ -69,6 +77,9 @@ const selectionModelState = {
   // set equals the rendered agents.
   scopedAgents: null as AgentData[] | null,
   agentConnections: [] as unknown[],
+  recommendedAgent: AGENT as AgentData | undefined,
+  loading: false,
+  refreshSetup: undefined as (() => Promise<void>) | undefined,
 };
 
 vi.mock('../hooks/useIsMobile', () => ({ useIsMobile: () => false }));
@@ -79,9 +90,34 @@ vi.mock('../hooks/useDevicePresentation', () => ({
 // Enable's CREATE half is `POST /agents/materialize-engine` — the one
 // find-or-create path the server owns. Mocking the SDK mutation keeps
 // react-query (and its provider requirement) out of this render tree.
-const { materializeMock } = vi.hoisted(() => ({ materializeMock: vi.fn() }));
+const { materializeMock, connectMock, detectedEngines } = vi.hoisted(() => ({
+  materializeMock: vi.fn(),
+  connectMock: vi.fn(),
+  detectedEngines: [] as ExternalEngineReadinessProjection[],
+}));
+vi.mock('../hooks/useSystemStatus', () => ({
+  useSystemStatus: () => ({
+    data: { externalEngines: detectedEngines },
+    isLoading: false,
+    isFetching: false,
+  }),
+}));
+const experienceInventory = vi.hoisted(() => ({
+  current: { experiences: [], diagnostics: [] } as SkillExperienceInventoryV1,
+}));
+vi.mock('../contexts/AuthorityPersistenceContext', () => ({
+  useAuthorityPersistence: () => ({
+    namespace: 'authority-1',
+    status: 'verified',
+  }),
+}));
 vi.mock('@kontourai/station-sdk', () => ({
+  useSkillExperienceInventoryQuery: () => ({
+    data: experienceInventory.current,
+    refetch: vi.fn(),
+  }),
   useMaterializeEngineAgentMutation: () => ({ mutateAsync: materializeMock }),
+  useConnectAndMaterializeEngineMutation: () => ({ mutateAsync: connectMock }),
 }));
 
 vi.mock('../hooks/useNewChatSelectionModel', () => ({
@@ -111,8 +147,10 @@ vi.mock('../hooks/useNewChatSelectionModel', () => ({
     acpConnections: [],
     agentConnections: selectionModelState.agentConnections,
     modelConnections: [],
-    runtimeLoading: false,
-    modelsLoading: false,
+    defaultSelection: { agent: selectionModelState.recommendedAgent },
+    runtimeLoading: selectionModelState.loading,
+    modelsLoading: selectionModelState.loading,
+    refreshSetup: selectionModelState.refreshSetup,
     modelPickerAgent: null,
     setModelPickerAgent: vi.fn(),
     modelChoices: {},
@@ -137,12 +175,18 @@ const { pluginAuthoringComposerDraft } = await import(
 
 afterEach(() => {
   cleanup();
+  experienceInventory.current = { experiences: [], diagnostics: [] };
   selectionModelState.isGlobal = true;
   selectionModelState.selectedProject = undefined;
   selectionModelState.agents = [AGENT];
   selectionModelState.scopedAgents = null;
   selectionModelState.agentConnections = [];
+  selectionModelState.recommendedAgent = AGENT;
+  selectionModelState.loading = false;
   materializeMock.mockReset();
+  connectMock.mockReset();
+  detectedEngines.length = 0;
+  selectionModelState.refreshSetup = undefined;
 });
 
 beforeAll(() => {
@@ -785,5 +829,318 @@ describe('shouldRouteScopedChatProject (#3013 routing seam)', () => {
     expect(
       shouldRouteScopedChatProject({ ...base, targetProjectSlug: undefined }),
     ).toBe(false);
+  });
+});
+
+describe('start with working defaults', () => {
+  test('opens the recommended ready agent without making a choice among other ready agents', async () => {
+    const other = { ...AGENT, slug: agentId('other'), name: 'Other' };
+    selectionModelState.agents = [other, AGENT];
+    const onSelect = vi.fn();
+    const view = render(
+      <NewChatModal
+        agents={selectionModelState.agents}
+        projects={[]}
+        onSelect={onSelect}
+        onClose={vi.fn()}
+        startWithDefault
+      />,
+    );
+    await waitFor(() => expect(onSelect).toHaveBeenCalledOnce());
+    expect(onSelect.mock.calls[0]?.[0]).toBe(AGENT);
+    view.rerender(
+      <NewChatModal
+        agents={selectionModelState.agents}
+        projects={[]}
+        onSelect={onSelect}
+        onClose={vi.fn()}
+        startWithDefault
+      />,
+    );
+    expect(onSelect).toHaveBeenCalledOnce();
+  });
+
+  test('waits for the catalog before selecting a default', async () => {
+    selectionModelState.loading = true;
+    const onSelect = vi.fn();
+    const view = render(
+      <NewChatModal
+        agents={[AGENT]}
+        projects={[]}
+        onSelect={onSelect}
+        onClose={vi.fn()}
+        startWithDefault
+      />,
+    );
+    expect(onSelect).not.toHaveBeenCalled();
+    selectionModelState.loading = false;
+    view.rerender(
+      <NewChatModal
+        agents={[AGENT]}
+        projects={[]}
+        onSelect={onSelect}
+        onClose={vi.fn()}
+        startWithDefault
+      />,
+    );
+    await waitFor(() => expect(onSelect).toHaveBeenCalledOnce());
+  });
+
+  test('prepares an already-ready engine through the existing idempotent materialization owner', async () => {
+    selectionModelState.agents = [ENABLEABLE_ALIAS];
+    selectionModelState.recommendedAgent = undefined;
+    materializeMock.mockResolvedValue({ data: AUTHORED_CODEX });
+    const onSelect = vi.fn();
+    render(
+      <NewChatModal
+        agents={[ENABLEABLE_ALIAS]}
+        projects={[]}
+        onSelect={onSelect}
+        onClose={vi.fn()}
+        startWithDefault
+      />,
+    );
+    await waitFor(() => expect(onSelect).toHaveBeenCalledOnce());
+    expect(materializeMock).toHaveBeenCalledExactlyOnceWith('codex');
+    expect(onSelect.mock.calls[0]?.[0]).toBe(AUTHORED_CODEX);
+  });
+});
+
+describe('intent-first preparation', () => {
+  test.each([false, true])(
+    'waits for installed-app preparation and catalog refresh before dispatch (warned=%s)',
+    async (warned) => {
+      selectionModelState.agents = [];
+      selectionModelState.recommendedAgent = undefined;
+      detectedEngines.push({
+        engineId: engineId('codex'),
+        name: 'Codex',
+        detected: true,
+        ready: false,
+        source: 'registry',
+        reason: 'not_connected',
+        registryEntryId: 'codex',
+      });
+      const warning = 'Sign in to Codex before starting.';
+      connectMock.mockResolvedValue({
+        data: AGENT,
+        created: true,
+        warnings: warned ? [warning] : [],
+      });
+      let settleRefresh!: () => void;
+      const refreshing = new Promise<void>((resolve) => {
+        settleRefresh = resolve;
+      });
+      const onSelect = vi.fn();
+      let view!: ReturnType<typeof render>;
+      const modal = () => (
+        <NewChatModal
+          agents={selectionModelState.agents}
+          projects={[]}
+          onSelect={onSelect}
+          onClose={vi.fn()}
+          startWithDefault
+          initialPrompt="Keep this goal"
+        />
+      );
+      const refresh = vi.fn(async () => {
+        selectionModelState.loading = true;
+        view.rerender(modal());
+        selectionModelState.agents = [AGENT];
+        selectionModelState.recommendedAgent = AGENT;
+        selectionModelState.loading = false;
+        view.rerender(modal());
+        await refreshing;
+      });
+      selectionModelState.refreshSetup = refresh;
+      view = render(modal());
+      try {
+        await waitFor(() => expect(refresh).toHaveBeenCalledOnce());
+        expect(onSelect).not.toHaveBeenCalled();
+        await act(async () => settleRefresh());
+        if (warned) {
+          await waitFor(() => expect(screen.getByText(warning)).toBeTruthy());
+          expect(onSelect).not.toHaveBeenCalled();
+        } else {
+          await waitFor(() => expect(onSelect).toHaveBeenCalledOnce());
+          expect(onSelect.mock.calls[0]?.[3]).toBe('Keep this goal');
+        }
+      } finally {
+        await act(async () => settleRefresh());
+      }
+    },
+  );
+
+  test('passes the original goal directly to the conversation without a model or agent choice', async () => {
+    const onSelect = vi.fn();
+    const prompt = 'Reply exactly GOAL READY.\nUse no tools.';
+    render(
+      <NewChatModal
+        agents={[AGENT]}
+        projects={[]}
+        onSelect={onSelect}
+        onClose={vi.fn()}
+        startWithDefault
+        initialPrompt={prompt}
+      />,
+    );
+    await waitFor(() => expect(onSelect).toHaveBeenCalledOnce());
+    expect(onSelect.mock.calls[0]?.[3]).toBe(prompt);
+    expect(screen.queryByPlaceholderText('Search agents…')).toBeNull();
+  });
+
+  test('closing preparation prevents a late materialization from starting the goal', async () => {
+    selectionModelState.agents = [ENABLEABLE_ALIAS];
+    selectionModelState.recommendedAgent = undefined;
+    let complete: ((value: { data: AgentData }) => void) | undefined;
+    materializeMock.mockReturnValue(
+      new Promise((resolve) => {
+        complete = resolve;
+      }),
+    );
+    const onSelect = vi.fn();
+    const onClose = vi.fn();
+    render(
+      <NewChatModal
+        agents={[ENABLEABLE_ALIAS]}
+        projects={[]}
+        onSelect={onSelect}
+        onClose={onClose}
+        startWithDefault
+        initialPrompt="Keep this goal"
+      />,
+    );
+    await waitFor(() => expect(materializeMock).toHaveBeenCalledOnce());
+    fireEvent.click(screen.getByRole('button', { name: 'Close new chat' }));
+    await act(async () => complete?.({ data: AUTHORED_CODEX }));
+    expect(onClose).toHaveBeenCalledOnce();
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  test('a warned preparation cannot start the goal or claim success', async () => {
+    selectionModelState.agents = [ENABLEABLE_ALIAS];
+    selectionModelState.recommendedAgent = undefined;
+    materializeMock.mockResolvedValue({
+      data: AUTHORED_CODEX,
+      warnings: ['Sign in to Codex before starting.'],
+    });
+    const onSelect = vi.fn();
+    render(
+      <NewChatModal
+        agents={[ENABLEABLE_ALIAS]}
+        projects={[]}
+        onSelect={onSelect}
+        onClose={vi.fn()}
+        startWithDefault
+        initialPrompt="Keep this goal"
+      />,
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByText('Sign in to Codex before starting.'),
+      ).toBeTruthy(),
+    );
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+});
+
+describe('visual skill selection through the New Chat picker', () => {
+  function installedExperience(): InstalledSkillExperienceV1 {
+    const definition: SkillExperienceDefinitionV1 = JSON.parse(
+      readFileSync(
+        new NodeURL(
+          '../../../examples/visual-skill-experience/io.kontourai.station/experiences/stress-test-idea.json',
+          import.meta.url,
+        ),
+        'utf8',
+      ),
+    );
+    return {
+      definition,
+      identity: {
+        pluginId: 'example',
+        pluginVersion: '1.0.0',
+        experienceId: definition.id,
+        incarnation: 'installation-1',
+        materialization: 'materialization-1',
+        contentDigest: 'digest-1',
+        definitionDigest: 'definition-1',
+      },
+    };
+  }
+  const authority = {
+    apiBase: 'http://station.test',
+    authorityKey: 'authority-1',
+    isCurrent: () => true,
+  };
+  test('prepares edited source-bound intent without dispatching until an Agent is chosen', () => {
+    const experience = installedExperience();
+    experienceInventory.current = {
+      executionContract: '1.0',
+      experiences: [experience],
+      diagnostics: [],
+    } as SkillExperienceInventoryV1;
+    const onSelect = vi.fn();
+    render(
+      <NewChatModal
+        agents={[AGENT]}
+        projects={[]}
+        onSelect={onSelect}
+        onClose={vi.fn()}
+        requestAuthority={authority}
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: new RegExp(experience.definition.title),
+      }),
+    );
+    fireEvent.change(
+      screen.getByRole('textbox', { name: /What would you like to build/ }),
+      { target: { value: 'My edited proposal' } },
+    );
+    expect(onSelect).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: /Assistant Ready/ }));
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(onSelect.mock.calls[0].at(-1)).toMatchObject({
+      namespace: 'authority-1',
+      apiBase: authority.apiBase,
+      start: {
+        identity: experience.identity,
+        inputs: { idea: 'My edited proposal' },
+      },
+    });
+  });
+  test('inventory-only hosts retain the inputs and visibly refuse preparing a start', () => {
+    const experience = installedExperience();
+    experienceInventory.current = {
+      experiences: [experience],
+      diagnostics: [],
+    };
+    const onSelect = vi.fn();
+    render(
+      <NewChatModal
+        agents={[AGENT]}
+        projects={[]}
+        onSelect={onSelect}
+        onClose={vi.fn()}
+        requestAuthority={authority}
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: new RegExp(experience.definition.title),
+      }),
+    );
+    fireEvent.change(
+      screen.getByRole('textbox', { name: /What would you like to build/ }),
+      { target: { value: 'Retain this' } },
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Assistant Ready/ }));
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(screen.getByText(/cannot start on this Station/)).toBeTruthy();
+    expect(
+      screen.getByRole('textbox', { name: /What would you like to build/ }),
+    ).toHaveProperty('value', 'Retain this');
   });
 });

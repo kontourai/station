@@ -200,3 +200,436 @@
   min-height: 0;
   position: relative;
 }
+
+/* --- Toolbar (#90): quiet chrome, one row --------------------------------
+   Omnibox, driver chip, Console, ⋯. Layout and sizing only: every button is
+   the shared `IconButton` (round, sized by `--icon-button-size` from its own
+   sheet, which follows `--browser-pane-control` here), every menu the shared
+   menu surface.
+   On a coarse pointer or a phone-width window (`data-coarse` / `data-narrow`, set
+   by the pane from the shared hooks: media queries are the primitives' business) every
+   target is 44px and the row never wraps: the path gives way first, then the
+   host truncates. */
+
+.browser-pane {
+  --browser-pane-control: 30px;
+  --icon-button-size: var(--browser-pane-control);
+}
+
+.browser-pane:is([data-coarse], [data-narrow]) {
+  --browser-pane-control: 44px;
+}
+
+.browser-pane__toolbar {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* The omnibox: lock, host, path, then back / forward / reload inside it. */
+.browser-pane__omni {
+  align-items: center;
+  /* A tint of the text colour reads as a field on either theme's surface. */
+  background: color-mix(in oklab, var(--k-text) 7%, transparent);
+  border-radius: 999px;
+  display: flex;
+  flex: 1 1 auto;
+  gap: 4px;
+  min-height: 34px;
+  min-width: 0;
+  padding: 0 2px 0 var(--k-space-3);
+}
+
+.browser-pane__omni-lock {
+  color: var(--text-secondary, var(--k-text-muted));
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+
+.browser-pane__omni-field {
+  display: block;
+  flex: 1 1 auto;
+  min-width: 0;
+  position: relative;
+}
+
+.browser-pane__omni-input {
+  background: transparent;
+  border: 0;
+  color: var(--text-primary, var(--k-text));
+  font: inherit;
+  font-size: var(--k-text-sm);
+  border-radius: var(--radius-md, 6px);
+  height: var(--browser-pane-control);
+  padding: 0 4px;
+  text-overflow: ellipsis;
+  width: 100%;
+}
+
+/* One focus ring: the product-level `:focus-visible` outline, drawn inside
+   the field so it stays within the pill at every control size (at 44px the
+   field is as tall as the pill, and an outset ring would poke out of it). */
+.browser-pane__omni-input:focus-visible {
+  outline-offset: -2px !important;
+}
+
+/* Not editing: the field's text is drawn as host + path instead. */
+.browser-pane__omni:not(.browser-pane__omni--editing)
+.browser-pane__omni-input {
+  color: transparent;
+}
+
+.browser-pane__omni-display {
+  align-items: center;
+  display: flex;
+  font-size: var(--k-text-sm);
+  inset: 0;
+  min-width: 0;
+  overflow: hidden;
+  padding: 0 4px;
+  pointer-events: none;
+  position: absolute;
+  white-space: nowrap;
+}
+
+.browser-pane__omni-host {
+  flex: 0 1 auto;
+  font-weight: 600;
+  min-width: 7ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The path gives way first: it shrinks to nothing before the host does. */
+.browser-pane__omni-path {
+  color: var(--text-secondary, var(--k-text-muted));
+  flex: 0 1000 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Back and forward appear on hover or focus of the bar; on a coarse pointer
+   there is no hover, so they are always there. */
+.browser-pane__omni-reveal {
+  opacity: 0;
+  transition: opacity var(--motion-fast) var(--ease-standard);
+}
+
+.browser-pane__toolbar:hover .browser-pane__omni-reveal,
+.browser-pane__toolbar:focus-within .browser-pane__omni-reveal {
+  opacity: 1;
+}
+
+.browser-pane[data-coarse] .browser-pane__omni-reveal {
+  opacity: 1;
+}
+
+/* Phone widths: the host needs the lock's room more than the lock does. */
+.browser-pane[data-narrow] .browser-pane__omni-lock {
+  display: none;
+}
+
+.browser-pane[data-narrow] .browser-pane__omni {
+  gap: 0;
+  padding-left: var(--k-space-2);
+}
+
+/* The driver chip: a soft tint, a dot and one word. */
+.browser-pane__chip-wrap {
+  flex: 0 0 auto;
+  position: relative;
+}
+
+.browser-pane__chip {
+  align-items: center;
+  background: color-mix(in oklab, var(--k-text-muted) 12%, transparent);
+  border: 0;
+  border-radius: 999px;
+  color: var(--k-text-muted);
+  display: inline-flex;
+  flex: 0 0 auto;
+  font: inherit;
+  font-size: var(--k-text-xs);
+  font-weight: 600;
+  gap: 7px;
+  height: 24px;
+  padding: 0 10px;
+  white-space: nowrap;
+}
+
+.browser-pane__chip--button {
+  cursor: pointer;
+}
+
+.browser-pane__chip[data-tone="agent"] {
+  background: color-mix(in oklab, var(--k-active) 12%, transparent);
+  color: var(--k-active);
+}
+
+.browser-pane__chip[data-tone="you"] {
+  background: color-mix(in oklab, var(--k-positive) 12%, transparent);
+  color: var(--k-positive);
+}
+
+.browser-pane__chip-dot {
+  background: currentColor;
+  border-radius: 50%;
+  height: 7px;
+  width: 7px;
+}
+
+/* An agent drove recently: the dot breathes. */
+.browser-pane__chip[data-tone="agent"] .browser-pane__chip-dot {
+  animation: browser-pane-breathe var(--motion-status-breathe)
+    var(--ease-standard) infinite;
+}
+
+@keyframes browser-pane-breathe {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in oklab, currentColor 45%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 5px transparent;
+  }
+}
+
+/* Reduced motion: the global reset in tokens.css limits the breathing to one
+   near-instant iteration, so no local rule is needed. */
+
+/* The chip that opens a menu is a 44px target; the tint stays 24px. */
+.browser-pane:is([data-coarse], [data-narrow]) .browser-pane__chip--button {
+  background-clip: content-box;
+  height: 44px;
+  padding: 10px;
+}
+
+.browser-pane__chip-menu {
+  min-width: 12rem;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: var(--layer-popover, var(--k-z-popover));
+}
+
+/* Unseen errors: a small red count on the Console button, pinned to the
+   glyph's corner (from the button's centre) so it sits the same on a 30px
+   and a 44px target. */
+.browser-pane__badge-count {
+  align-items: center;
+  background: var(--k-negative);
+  border-radius: 999px;
+  box-shadow: 0 0 0 2px var(--bg-secondary, var(--k-panel));
+  color: #fff;
+  display: grid;
+  font-size: 9.5px;
+  font-weight: 700;
+  height: 15px;
+  line-height: 1;
+  min-width: 15px;
+  justify-content: center;
+  padding: 0 3px;
+  position: absolute;
+  right: calc(50% - 18px);
+  top: calc(50% - 18px);
+}
+
+/* An agent is driving: hovering the page says how to take over. */
+.browser-pane__takeover-hint {
+  backdrop-filter: blur(6px);
+  background: rgb(10 14 20 / 0.78);
+  border-radius: 999px;
+  bottom: var(--k-space-3);
+  color: #fff;
+  font-size: var(--k-text-xs);
+  left: 50%;
+  opacity: 0;
+  padding: 6px 12px;
+  pointer-events: none;
+  position: absolute;
+  transform: translateX(-50%);
+  transition: opacity var(--motion-fast) var(--ease-standard);
+  white-space: nowrap;
+  z-index: 1;
+}
+
+.browser-pane__stage:hover .browser-pane__takeover-hint {
+  opacity: 1;
+}
+
+.browser-pane[data-coarse] .browser-pane__takeover-hint {
+  opacity: 1;
+}
+
+/* The ⋯ menu: the shared .menu-surface look, bounded with its own scroll. */
+.browser-pane__menu {
+  min-width: 14rem;
+  overflow-y: auto;
+  z-index: var(--layer-popover, var(--k-z-popover));
+}
+
+.browser-pane__menu-backdrop,
+.browser-pane__menu-backdrop:hover,
+.browser-pane__menu-backdrop:focus,
+.browser-pane__menu-backdrop:focus-visible {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  inset: 0;
+  padding: 0;
+  position: fixed;
+  z-index: calc(var(--layer-popover, var(--k-z-popover)) - 1);
+}
+
+.browser-pane__menu-separator {
+  border: 0;
+  border-top: 1px solid var(--border-primary, var(--k-line));
+  margin: 4px;
+}
+
+.browser-pane__menu-label {
+  flex: 1 1 auto;
+}
+
+.browser-pane__menu-hint {
+  color: var(--text-secondary, var(--k-text-muted));
+  font-family: var(--k-font-mono);
+  font-size: var(--k-text-xs);
+  margin-left: var(--k-space-3);
+}
+
+.browser-pane__menu-row--danger,
+.browser-pane__menu-row--danger:hover,
+.browser-pane__menu-row--danger:focus-visible {
+  color: var(--k-negative);
+}
+
+/* The 44px touch floor for `.menu-row` is the shared one (chat.css). */
+
+.browser-pane__console {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+}
+
+.browser-pane__console-bar {
+  align-items: center;
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 6px;
+}
+
+.browser-pane__console-bar h3 {
+  flex: 1 1 auto;
+  margin: 0;
+}
+
+.browser-pane__console-list {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.75rem;
+  list-style: none;
+  margin: 0;
+  /* Its own scroll, a sensible default, and the reader can drag it taller. */
+  height: 10rem;
+  max-height: 60vh;
+  min-height: 4rem;
+  overflow: auto;
+  padding: 0;
+  resize: vertical;
+}
+
+/* With the console open, the live view gives up the drawer's height rather
+   than being pushed below the fold. */
+.browser-pane:has(.browser-pane__console) .live-surface__canvas {
+  max-height: calc(100dvh - 8rem - 14rem);
+}
+
+.browser-pane__console-entry {
+  border-top: 1px solid var(--border-primary);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--space-2, 8px);
+  padding: var(--space-1, 4px) 0;
+}
+
+.browser-pane__console-entry[data-level="error"] {
+  color: var(--accent-danger, var(--text-primary));
+}
+
+.browser-pane__console-entry[data-level="warning"] {
+  color: var(--accent-warning, var(--text-primary));
+}
+
+.browser-pane__console-entry[data-level="debug"] {
+  color: var(--text-secondary);
+}
+
+.browser-pane__console-level {
+  flex: 0 0 auto;
+  font-weight: 600;
+  min-width: 4.5rem;
+}
+
+.browser-pane__console-text {
+  flex: 1 1 12rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.browser-pane__console-where {
+  color: var(--text-secondary);
+  flex: 1 1 100%;
+  overflow-wrap: anywhere;
+}
+
+.browser-pane__dialog-layer {
+  display: flex;
+  justify-content: center;
+  left: var(--space-2, 8px);
+  position: absolute;
+  right: var(--space-2, 8px);
+  top: var(--space-2, 8px);
+  z-index: 2;
+}
+
+.browser-pane__screenshot-thumb {
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-sm, 4px);
+  max-height: 64px;
+  max-width: 96px;
+  object-fit: contain;
+}
+
+/* An anchor dressed as a button still gets the 44px target. */
+.browser-pane__link-button {
+  align-items: center;
+  display: inline-flex;
+  justify-content: center;
+  text-decoration: none;
+}
+
+/* The console header is one slim row: label, a compact level filter (the
+   shared choice-trigger), and Clear as an icon button. Targets follow the
+   toolbar's size: compact on a fine pointer, 44px on touch or phone width. */
+.browser-pane__console-bar h3 {
+  font-size: var(--k-text-sm);
+}
+
+.browser-pane__console-filter {
+  display: inline-flex;
+  position: relative;
+}
+
+.browser-pane__console-select {
+  appearance: none;
+  font-size: var(--k-text-xs);
+  height: var(--browser-pane-control);
+  min-height: 0;
+  padding: 0 calc(var(--k-space-3) + 14px) 0 var(--k-space-2);
+}

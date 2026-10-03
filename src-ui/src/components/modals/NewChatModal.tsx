@@ -1,12 +1,29 @@
-import { useMaterializeEngineAgentMutation } from '@kontourai/station-sdk';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import type { InstalledSkillExperienceV1 } from '@kontourai/station-contracts/skill-experience';
+import {
+  useMaterializeEngineAgentMutation,
+  useSkillExperienceInventoryQuery,
+} from '@kontourai/station-sdk';
+import {
+  sameSkillExperienceIdentity,
+  skillExperienceInputDefaults,
+  skillExperiencesCanExecute,
+} from '@kontourai/station-shared/skill-experience-values';
+import React, {
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useRef,
+  useState,
+} from 'react';
 import type { AgentData } from '../../contexts/AgentsContext';
+import { useAuthorityPersistence } from '../../contexts/AuthorityPersistenceContext';
 import type { ProjectMetadata } from '../../contexts/ProjectsContext';
 import { useDevicePresentation } from '../../hooks/useDevicePresentation';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useNewChatSelectionModel } from '../../hooks/useNewChatSelectionModel';
 import { trackRecentAgent } from '../../hooks/useRecentAgents';
 import { isComposingKeyEvent } from '../../lib/isComposingKeyEvent';
+import type { SkillExperienceDraft } from '../../lib/skill-experience-draft';
 import { agentEngineDescriptor } from '../../utils/engine';
 import { userFacingErrorMessage } from '../../utils/errorText';
 import { type EffectiveModelSource } from '../../utils/execution';
@@ -17,6 +34,7 @@ import {
   agentFixRoute,
 } from '../AgentReadinessCell';
 import { agentRunnability } from '../agent-runnability';
+import { Button } from '../Button';
 import { EngineChip, engineChipLabel } from '../badges/EngineChip';
 import { normalizedDisplayLabel } from '../chat/message-bubble/MessageAttribution';
 import {
@@ -40,7 +58,9 @@ import {
   ResponsiveDialogSurface,
 } from '../ResponsiveDialogSurface';
 import { ModelPickerDialogFrame } from '../session/ModelPickerDialogFrame';
+import { SkillExperiencePicker } from '../skill-experiences/SkillExperiencePicker';
 import { describeReadFailure, Empty, ErrorState, SkeletonList } from '../state';
+import { AutomaticEnginePreparation } from './AutomaticEnginePreparation';
 import {
   findAuthoredAgentForEngineConnection,
   GLOBAL_CONTEXT,
@@ -90,11 +110,14 @@ interface NewChatModalProps {
     providerOptions?: Record<string, unknown>,
     providerId?: string,
     providerType?: string,
+    experienceDraft?: SkillExperienceDraft,
   ) => void | Promise<void>;
   onClose: () => void;
   draftContext?: CodingChatContextDraft | null;
   mode?: NewChatModalMode;
   requestAuthority?: NewChatSetupAuthority;
+  startWithDefault?: boolean;
+  initialPrompt?: string;
 }
 
 /** "Global" sentinel for the context picker */
@@ -107,8 +130,42 @@ export function NewChatModal({
   draftContext = null,
   mode,
   requestAuthority,
+  startWithDefault = false,
+  initialPrompt,
 }: NewChatModalProps) {
+  const { namespace, status: authorityStatus } = useAuthorityPersistence();
+  const experienceInventory = useSkillExperienceInventoryQuery({
+    enabled: !mode && !startWithDefault && !initialPrompt,
+    refetchOnMount: 'always',
+  });
+  const [experience, setExperience] =
+    useState<InstalledSkillExperienceV1 | null>(null);
+  const [experienceInputs, setExperienceInputs] = useState<
+    Record<string, string>
+  >({});
+  const currentExperience = experienceInventory.data?.experiences.find(
+    (entry) =>
+      experience &&
+      sameSkillExperienceIdentity(entry.identity, experience.identity),
+  );
   const isMobile = useIsMobile();
+  const devicePresentation = useDevicePresentation();
+  const requestActive = useRef(true);
+  const initialAuthority = useRef(requestAuthority);
+  useEffect(() => {
+    requestActive.current = true;
+    return () => {
+      requestActive.current = false;
+    };
+  }, []);
+  const automaticStartAttempted = useRef(false);
+  const [discoveryCompleted, setDiscoveryCompleted] = useState(false);
+  const [discoveryInProgress, setDiscoveryInProgress] = useState(false);
+  const [preparedEngineId, setPreparedEngineId] = useState<
+    string | undefined
+  >();
+  const [showChatOptions, setShowChatOptions] = useState(false);
+  const automaticMode = startWithDefault && !mode && !showChatOptions;
   const [agentSearch, setAgentSearch] = useState('');
   const preservedAgentSlug = useRef<string | undefined>(undefined);
   const preserveSetupContext = useRef(false);
@@ -167,6 +224,7 @@ export function NewChatModal({
 
   const {
     viewModel,
+    defaultSelection,
     // Defaulted: not every consumer/test double of the selection model
     // supplies this list, and a missing engine-connection list must degrade to
     // "no connection directory known", never to a render crash.
@@ -197,7 +255,7 @@ export function NewChatModal({
     selectedContext,
     contextSearch,
     agentSearch,
-    revalidateSelection: returnedFromSetup,
+    revalidateSelection: startWithDefault || returnedFromSetup,
   });
   const {
     isGlobal,
@@ -217,11 +275,33 @@ export function NewChatModal({
     : 0;
   const setupReturn = useNewChatSetupReturn({
     authority: requestAuthority,
+    readyToResume:
+      startWithDefault &&
+      !runtimeFetching &&
+      !modelsFetching &&
+      !setupFetching &&
+      !runtimeError &&
+      !modelsError &&
+      !setupError &&
+      Boolean(
+        preservedAgentSlug.current
+          ? flatList.some(
+              (agent) =>
+                agent.slug === preservedAgentSlug.current &&
+                (agentRunnability(agent).runnable ||
+                  (resolveNewChatAgentEnable(agent) &&
+                    agentFixRoute(agent) === 'enable')),
+            )
+          : defaultSelection?.agent,
+      ),
     onCancel: onClose,
+    allowedPaths: ['/registry', '/connections'],
     revalidate: async () => {
+      if (!mode && !startWithDefault && !initialPrompt)
+        await experienceInventory.refetch();
       if (refreshSetup) await refreshSetup();
       else
-        await Promise.allSettled([
+        await Promise.all([
           refetchAgentConnections?.(),
           refetchModelConnections?.(),
         ]);
@@ -404,6 +484,11 @@ export function NewChatModal({
   const materializeEngineAgent = useMaterializeEngineAgentMutation();
 
   const handleSelect = (agent: AgentData) => {
+    if (
+      !requestActive.current ||
+      (initialAuthority.current && !initialAuthority.current.isCurrent())
+    )
+      return;
     if (mode?.pending) return;
     if (checkingSetup) {
       setSelectFeedback('Wait for connections to finish checking.');
@@ -450,10 +535,9 @@ export function NewChatModal({
       draftContext?.items.filter((item) =>
         selectedDraftContextIds.includes(item.id),
       ) || [];
-    const initialMessage = buildCodingChatInitialMessage(
-      draftItems,
-      draftContext?.framing,
-    );
+    const initialMessage =
+      initialPrompt ??
+      buildCodingChatInitialMessage(draftItems, draftContext?.framing);
     const defaultEffectiveModel = defaultEffectiveModelForAgent(agent);
     const choice = modelChoices[modelChoiceKey(agent)];
     if (
@@ -486,13 +570,50 @@ export function NewChatModal({
     // a throw there (a failed lazy chunk, a broken route) previously vanished,
     // which from the user's seat is identical to the silent fall-through.
     const dispatch = (projectSlug?: string, projectName?: string) => {
+      if (
+        experience &&
+        (experienceInventory.error ||
+          experienceInventory.isFetching ||
+          !currentExperience ||
+          !skillExperiencesCanExecute(experienceInventory.data) ||
+          authorityStatus !== 'verified' ||
+          !namespace ||
+          !requestAuthority?.isCurrent())
+      ) {
+        setSelectFeedback(
+          'This visual skill cannot start on this Station. Refresh its source and check Station support; your input is retained.',
+        );
+        return;
+      }
+      if (
+        experience?.definition.requiredContext.some(
+          (context) => context.kind === 'project' && context.required,
+        ) &&
+        !projectSlug
+      ) {
+        setSelectFeedback('Choose a workspace for this visual skill.');
+        return;
+      }
+      if (
+        experience?.definition.requiredContext.some(
+          (context) => context.kind === 'conversation' && context.required,
+        )
+      ) {
+        setSelectFeedback(
+          'This visual skill requires an existing conversation. Open it there.',
+        );
+        return;
+      }
       try {
         void Promise.resolve(
           onSelect(
             agent,
             projectSlug,
             projectName,
-            initialMessage || undefined,
+            initialMessage ||
+              (experience
+                ? `Start ${experience.definition.title}.`
+                : undefined),
             sessionModel,
             modelSource,
             defaultEffectiveModel.id || undefined,
@@ -500,6 +621,19 @@ export function NewChatModal({
             choice?.providerOptions,
             choice?.providerId,
             choice?.providerType,
+            ...(experience && namespace && requestAuthority
+              ? ([
+                  {
+                    namespace,
+                    apiBase: requestAuthority.apiBase,
+                    definition: experience.definition,
+                    start: {
+                      identity: experience.identity,
+                      inputs: experienceInputs,
+                    },
+                  },
+                ] as const)
+              : ([] as const)),
           ),
         ).catch((error) => {
           console.error(
@@ -507,6 +641,9 @@ export function NewChatModal({
               ? 'Conversation fork failed:'
               : 'New chat start failed:',
             error,
+          );
+          setSelectFeedback(
+            'Could not start the chat. Try again; if it keeps failing, restart Station.',
           );
         });
       } catch (error) {
@@ -660,9 +797,19 @@ export function NewChatModal({
       // list: the enriched catalog activates deferred and its last-stable
       // cache may lag minutes behind this write. The mutation already
       // invalidates the agents query for eventual consistency.
-      const { data } = await materializeEngineAgent.mutateAsync(
+      const { data, warnings } = await materializeEngineAgent.mutateAsync(
         enable.engineConnectionId,
       );
+      if (
+        !requestActive.current ||
+        (initialAuthority.current && !initialAuthority.current.isCurrent())
+      )
+        return;
+      if (warnings?.length) {
+        setSelectFeedback(warnings.join(' '));
+        if (refreshSetup) await refreshSetup();
+        return;
+      }
       const materialized = data as AgentData;
       // The server's find-or-create is scope-blind by design (identity is
       // global). If what it returned is owned by a DIFFERENT project than
@@ -692,7 +839,218 @@ export function NewChatModal({
     }
   };
 
+  const repairAgent = (agent: AgentData, route: AgentFixRoute) => {
+    if (route === 'enable' && resolveNewChatAgentEnable(agent)) {
+      if (!enableInFlight) void handleEnable(agent);
+      return;
+    }
+    beginSetup(
+      route === 'edit'
+        ? `/agents/${encodeURIComponent(agent.slug)}`
+        : route === 'models'
+          ? '/connections/models'
+          : agent.execution?.agentConnectionId
+            ? `/connections/engines/${encodeURIComponent(agent.execution.agentConnectionId)}`
+            : '/connections/engines',
+      agent.slug,
+    );
+  };
+
+  const startWorkingDefaults = useEffectEvent(
+    (ready?: AgentData, prepare?: AgentData) => {
+      if (ready) handleSelect(ready);
+      else if (prepare) void handleEnable(prepare);
+    },
+  );
+
+  useEffect(() => {
+    if (
+      !automaticMode ||
+      discoveryInProgress ||
+      selectFeedback ||
+      automaticStartAttempted.current ||
+      setupReturn.suspended ||
+      runtimeLoading ||
+      modelsLoading ||
+      runtimeFetching ||
+      modelsFetching ||
+      setupFetching ||
+      checkingSetup ||
+      setupError ||
+      runtimeError ||
+      modelsError ||
+      returnError ||
+      (!isGlobal && !projectCatalogResolved)
+    )
+      return;
+    const ready = defaultSelection?.agent;
+    const prepare = ready
+      ? undefined
+      : flatList.find(
+          (agent) =>
+            resolveNewChatAgentEnable(agent) &&
+            agentFixRoute(agent) === 'enable',
+        );
+    if (!ready && !prepare) return;
+    automaticStartAttempted.current = true;
+    startWorkingDefaults(ready, prepare);
+  }, [
+    automaticMode,
+    discoveryInProgress,
+    selectFeedback,
+    setupReturn.suspended,
+    runtimeLoading,
+    modelsLoading,
+    runtimeFetching,
+    modelsFetching,
+    setupFetching,
+    checkingSetup,
+    setupError,
+    runtimeError,
+    modelsError,
+    returnError,
+    isGlobal,
+    projectCatalogResolved,
+    defaultSelection?.agent,
+    flatList,
+  ]);
+
+  const closeChatRequest = () => {
+    requestActive.current = false;
+    setupReturn.close();
+  };
+
   if (setupReturn.suspended) return null;
+
+  if (automaticMode) {
+    const readError = returnError ?? setupError ?? runtimeError ?? modelsError;
+    const preparing =
+      runtimeLoading ||
+      modelsLoading ||
+      setupFetching ||
+      runtimeFetching ||
+      modelsFetching ||
+      checkingSetup ||
+      enableInFlight;
+    const needsAttention =
+      (preparedEngineId
+        ? flatList.find((agent) => agent.engineId === preparedEngineId)
+        : undefined) ??
+      flatList.find((agent) => agentFixRoute(agent)) ??
+      flatList[0];
+    const canEnableAgent = flatList.some(
+      (agent) =>
+        resolveNewChatAgentEnable(agent) && agentFixRoute(agent) === 'enable',
+    );
+    return (
+      <ResponsiveDialogSurface
+        layer="dialog"
+        ariaLabel="Start a chat"
+        overlayClassName="new-chat-modal__overlay"
+        panelClassName="new-chat-modal"
+        onClose={closeChatRequest}
+      >
+        <div className="new-chat-modal__header">
+          <div className="new-chat-modal__title-row">
+            <h3 className="new-chat-modal__title">Start a chat</h3>
+            <ResponsiveDialogCloseButton
+              label="Close new chat"
+              onClick={closeChatRequest}
+            />
+          </div>
+        </div>
+        <div className="new-chat-modal__body">
+          {readError || (selectFeedback && !enableInFlight) ? (
+            <ErrorState
+              variant="compact"
+              title="Could not prepare your chat"
+              description={
+                selectFeedback?.text ?? describeReadFailure(readError)
+              }
+              action={
+                <Button
+                  onClick={() => {
+                    automaticStartAttempted.current = false;
+                    setSelectFeedback(null);
+                    if (returnedFromSetup) setupReturn.retry();
+                    else if (refreshSetup)
+                      void refreshSetup().catch(() => undefined);
+                    else {
+                      void refetchAgentConnections?.();
+                      void refetchModelConnections?.();
+                    }
+                  }}
+                >
+                  Try again
+                </Button>
+              }
+            />
+          ) : discoveryInProgress ||
+            (!discoveryCompleted &&
+              isGlobal &&
+              !preparing &&
+              !canEnableAgent &&
+              !defaultSelection?.agent &&
+              !automaticStartAttempted.current) ? (
+            <AutomaticEnginePreparation
+              agents={scopedAgents}
+              refresh={async () => {
+                if (refreshSetup) await refreshSetup();
+              }}
+              onStart={() => setDiscoveryInProgress(true)}
+              isCurrent={() =>
+                requestActive.current &&
+                (!initialAuthority.current ||
+                  initialAuthority.current.isCurrent())
+              }
+              onComplete={(engineId, failure) => {
+                setDiscoveryInProgress(false);
+                setPreparedEngineId(engineId);
+                setDiscoveryCompleted(true);
+                if (failure) setSelectFeedback(failure);
+              }}
+            />
+          ) : preparing ||
+            canEnableAgent ||
+            defaultSelection?.agent ||
+            automaticStartAttempted.current ? (
+            <SkeletonList
+              count={1}
+              label={
+                enableInFlight ? 'Preparing your AI app' : 'Opening your chat'
+              }
+            />
+          ) : needsAttention ? (
+            <>
+              <p>
+                Station needs one thing before it can use{' '}
+                {needsAttention.engineDisplayName ?? needsAttention.name}.
+              </p>
+              <AgentReadinessCell
+                agent={needsAttention}
+                devicePresentation={devicePresentation}
+                onFix={(route) => repairAgent(needsAttention, route)}
+              />
+            </>
+          ) : (
+            <Empty
+              variant="compact"
+              label="Connect an AI account"
+              description="Station needs access to an AI account before it can help."
+              action={
+                <Button onClick={() => beginSetup('/connections/engines')}>
+                  Connect an AI app
+                </Button>
+              }
+            />
+          )}
+          <Button variant="link" onClick={() => setShowChatOptions(true)}>
+            Chat options
+          </Button>
+        </div>
+      </ResponsiveDialogSurface>
+    );
+  }
 
   return (
     <ResponsiveDialogSurface
@@ -702,7 +1060,7 @@ export function NewChatModal({
       panelClassName="new-chat-modal"
       initialFocusRef={agentInputRef}
       initialFocusPolicy="desktop"
-      onClose={setupReturn.close}
+      onClose={closeChatRequest}
     >
       <div className="new-chat-modal__header">
         <div className="new-chat-modal__title-row">
@@ -711,7 +1069,7 @@ export function NewChatModal({
           </h3>
           <ResponsiveDialogCloseButton
             label={mode?.kind === 'fork' ? 'Cancel fork' : 'Close new chat'}
-            onClick={onClose}
+            onClick={closeChatRequest}
           />
         </div>
 
@@ -719,6 +1077,33 @@ export function NewChatModal({
           <div className="new-chat-modal__compat-warning" role="note">
             <strong>New independent conversation.</strong> {mode.disclosure}
           </div>
+        )}
+
+        {!mode && !startWithDefault && !initialPrompt && (
+          <SkillExperiencePicker
+            query={experienceInventory}
+            selected={experience}
+            current={Boolean(currentExperience)}
+            inputs={experienceInputs}
+            onChange={setExperienceInputs}
+            onSelect={(entry) => {
+              if (
+                experience &&
+                sameSkillExperienceIdentity(experience.identity, entry.identity)
+              )
+                return;
+              setExperience(entry);
+              setExperienceInputs(
+                skillExperienceInputDefaults(entry.definition),
+              );
+            }}
+            onRemove={() => setExperience(null)}
+            onBrowse={() => {
+              preservedAgentSlug.current = flatList[selectedAgentIndex]?.slug;
+              preserveSetupContext.current = true;
+              setupReturn.begin('/registry');
+            }}
+          />
         )}
 
         {/* Context picker */}
@@ -1057,23 +1442,7 @@ export function NewChatModal({
                         ? enableInFlight
                         : undefined
                     }
-                    onFix={(route) => {
-                      // Only the server's `engine-disabled` repair may enable
-                      // an alias. Broken and missing connections arrive as
-                      // their own unavailableFix kinds and route below.
-                      if (route === 'enable' && enable) {
-                        if (!enableInFlight) void handleEnable(agent);
-                        return;
-                      }
-                      beginSetup(
-                        route === 'edit'
-                          ? `/agents/${encodeURIComponent(agent.slug)}`
-                          : route === 'models'
-                            ? '/connections/models'
-                            : '/connections/engines',
-                        agent.slug,
-                      );
-                    }}
+                    onFix={(route) => repairAgent(agent, route)}
                   />
                 );
               })}

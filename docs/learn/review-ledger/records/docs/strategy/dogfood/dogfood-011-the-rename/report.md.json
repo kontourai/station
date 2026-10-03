@@ -1,0 +1,17 @@
+{
+  "path": "docs/strategy/dogfood/dogfood-011-the-rename/report.md",
+
+  "kind": "historical",
+
+  "state": "classified",
+
+  "summary": "Retained Flow report for a named run of the retired station-delivery definition.",
+
+  "limits": "PASS and completion statements belong to that recorded run. The embedded evidence IDs and digests were not re-executed or treated as evidence for this checkout; see docs/strategy/station-delivery-retirement.md.",
+
+  "document": {"digest":"2f1606082b639155eef5b4ee8a4fb55905107492d9de47499e967376d4ee067e","revision":"eec64aa6defda8dd84ffebbe430eea95b35aea3f"},
+
+  "sources": [],
+
+  "checks": []
+}

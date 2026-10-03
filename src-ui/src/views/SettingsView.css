@@ -204,8 +204,9 @@
   background: var(--bg-primary);
   border-radius: 0.25rem;
   font-family: var(--font-mono);
-  font-size: 0.7rem;
-  color: var(--text-secondary);
+  font-size: var(--k-text-sm);
+  color: var(--k-text-muted);
+  line-height: var(--k-leading-normal);
 }
 
 /* ── Host runtime (de-emphasized host diagnostics) ── */
@@ -267,15 +268,6 @@
 }
 
 /* ── Core Update Status ── */
-.settings__update-text--success {
-  color: var(--success-text);
-}
-.settings__update-text--warning {
-  color: var(--warning-text);
-}
-.settings__update-text--muted {
-  color: var(--text-muted);
-}
 .settings__update-msg--warning {
   color: var(--warning-text);
 }
@@ -284,11 +276,6 @@
 }
 .settings__update-msg--error {
   color: var(--error-text);
-}
-
-/* ── Connection ── */
-.settings__conn-custom-warning {
-  color: var(--warning-text);
 }
 
 /* ── Character Counter ── */
@@ -306,13 +293,6 @@
   margin-top: 0.25rem;
   font-size: 0.7rem;
   color: var(--warning-text);
-}
-
-/* ── Theme Row ── */
-.settings__theme-row {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
 }
 
 /* ── Export/Import ── */
@@ -343,12 +323,12 @@
 .settings__search {
   width: 100%;
   padding: 0.5rem 0.75rem;
-  font-size: 0.8rem;
-  border: 1px solid var(--border-primary);
-  border-radius: 0.375rem;
-  background: var(--bg-primary);
-  color: var(--text-primary);
-  margin-bottom: 0.5rem;
+  font-size: var(--k-text-md);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  background: var(--k-bg);
+  color: var(--k-text);
+  margin-bottom: var(--k-space-3);
   font-family: inherit;
 }
 
@@ -408,6 +388,10 @@
   margin-bottom: 1.25rem;
 }
 
+.settings__mobile-section-picker {
+  display: none;
+}
+
 /* archive#4463: the scope-grouped nav (Station / Defaults / This
    device) used to wrap each group in its own `.settings__nav-group` flex row
    with an all-caps `.settings__nav-group-title` label sharing the tab row —
@@ -455,7 +439,7 @@
    `#section-<id>` anchor, its focus outline and its scroll margin stay on the
    outer element, so deep links land and pulse exactly where they did. */
 .settings__section {
-  margin-bottom: 1.75rem;
+  margin-bottom: var(--k-space-5);
 }
 .settings__section.page-section {
   overflow: visible;
@@ -468,7 +452,7 @@
   border-bottom: 0;
 }
 .settings__section .page-section__title {
-  font-size: 0.9375rem;
+  font-size: var(--k-text-md);
   font-weight: 600;
 }
 .settings__section-icon {
@@ -477,10 +461,10 @@
   opacity: 0.7;
 }
 .settings__section-body {
-  padding: 0.25rem 1.25rem;
-  border: 1px solid var(--border-primary);
-  border-radius: 12px;
-  background: var(--bg-secondary);
+  padding: 0 var(--k-space-4);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  background: var(--k-panel);
 }
 
 /* ── Field Rows ── */
@@ -500,8 +484,9 @@
 .settings__field-hint {
   display: block;
   margin-top: 0.3rem;
-  font-size: 0.7rem;
-  color: var(--text-secondary);
+  font-size: var(--k-text-sm);
+  color: var(--k-text-muted);
+  line-height: var(--k-leading-normal);
 }
 .settings__field input[type="text"],
 .settings__field input[type="number"],
@@ -630,38 +615,6 @@
   margin-bottom: 0.5rem;
   color: var(--text-secondary);
 }
-/* ── Notification Thresholds ── */
-.settings__thresholds {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  margin-top: 0.75rem;
-}
-.settings__threshold {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.4rem 0.75rem;
-  background: var(--bg-primary);
-  border: 1px solid var(--border-primary);
-  border-radius: 0.375rem;
-  cursor: pointer;
-  font-size: 0.8rem;
-  transition:
-    border-color var(--motion-fast),
-    background var(--motion-fast);
-}
-.settings__threshold--active {
-  border-color: var(--accent-primary);
-  background: color-mix(in srgb, var(--accent-primary) 8%, transparent);
-}
-.settings__threshold input {
-  width: 0.85rem;
-  height: 0.85rem;
-  cursor: pointer;
-  accent-color: var(--accent-primary);
-}
-
 /* ── Template Variables ── */
 .settings__vars {
   display: flex;
@@ -755,61 +708,6 @@
   background: var(--bg-secondary);
   border-radius: 0.2rem;
   color: var(--accent-primary);
-}
-
-/* ── Connection Test ── */
-.settings__conn-row {
-  display: flex;
-  gap: 0.4rem;
-  align-items: flex-start;
-}
-.settings__conn-row input {
-  flex: 1;
-}
-.settings__conn-reset {
-  padding: 0.5rem 0.65rem;
-  font-size: 0.75rem;
-  font-weight: 500;
-  background: transparent;
-  color: var(--text-secondary);
-  border: 1px solid var(--border-primary);
-  border-radius: 0.375rem;
-  cursor: pointer;
-  white-space: nowrap;
-}
-.settings__conn-reset:hover {
-  border-color: var(--accent-primary);
-  color: var(--text-primary);
-}
-.settings__conn-test {
-  margin-top: 0.4rem;
-  padding: 0.3rem 0.65rem;
-  font-size: 0.7rem;
-  font-weight: 500;
-  background: transparent;
-  color: var(--text-secondary);
-  border: 1px solid var(--border-primary);
-  border-radius: 0.25rem;
-  cursor: pointer;
-  transition:
-    border-color var(--motion-fast) var(--ease-standard),
-    color var(--motion-fast) var(--ease-standard);
-}
-.settings__conn-test:hover {
-  border-color: var(--accent-primary);
-  color: var(--accent-primary);
-}
-.settings__conn-test:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-.settings__conn-test--ok {
-  color: var(--success-text);
-  border-color: var(--success-text);
-}
-.settings__conn-test--fail {
-  color: var(--error-text);
-  border-color: var(--error-text);
 }
 
 /* ── Core Update ── */
@@ -1045,23 +943,6 @@
   margin-top: 0.1875rem;
 }
 
-/* ── Mobile Pairing ── */
-.settings__pairing-content {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0.75rem;
-}
-.settings__pairing-detecting {
-  font-size: 0.8125rem;
-  color: var(--text-secondary);
-}
-.settings__pairing-warning {
-  font-size: 0.75rem;
-  color: var(--warning-text);
-  max-width: 20rem;
-}
-
 /* ── Notification Subscribe ── */
 .settings__notif-subscribe {
   margin-top: 0.5rem;
@@ -1165,38 +1046,32 @@
   border-color: var(--error-text);
 }
 
-.settings__connections-link {
-  padding: 12px;
-  /* --border-subtle until archive#1254 (re-seeded here by archive#1359) — a
-     token that does not exist, so these cards had no outline.
-     --border-primary is the subtle line. */
-  border: 1px solid var(--border-primary);
-  border-radius: 9px;
-  background: var(--bg-secondary);
-}
-
-.settings__connections-link strong,
-.settings__connections-link span {
-  display: block;
-}
-
-.settings__connections-link span {
-  margin-top: 4px;
-  color: var(--text-muted);
-  font-size: var(--text-xs);
-  line-height: 1.4;
-}
-
-.settings__connections-link {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 18px;
-}
-
 /* ── Mobile touch targets ── */
 @media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
+  .settings .settings__section-nav {
+    display: none;
+  }
+
+  .settings__mobile-section-picker {
+    display: flex;
+    flex-direction: column;
+    gap: var(--k-space-2);
+    margin-bottom: var(--k-space-5);
+  }
+
+  .settings__help-details summary {
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+  }
+
+  .settings__search,
+  .settings
+    input:not([type="checkbox"]):not([type="color"]):not([type="hidden"]),
+  .settings select {
+    min-height: 44px;
+  }
+
   /* Single column: key, type, value, and remove each get the full row width so
      the key input no longer truncates (e.g. "AGENT_NAM" → "AGENT_NAME"). */
   .settings__var-row {
@@ -1213,17 +1088,11 @@
     width: 100%;
   }
 
-  .settings__connections-link {
-    align-items: stretch;
-    flex-direction: column;
-  }
   .settings__provenance-list {
     grid-template-columns: minmax(0, 1fr);
   }
   .settings__save-pill-discard,
   .settings__save-pill-btn,
-  .settings__conn-test,
-  .settings__conn-reset,
   .settings__secondary-btn,
   .settings__import-label,
   .settings__update-btn,
@@ -1337,4 +1206,60 @@
 }
 .settings__project-scope .settings__field-hint {
   flex-basis: 100%;
+}
+
+.settings__section .page-row {
+  padding-block: var(--k-space-4);
+  gap: var(--k-space-5);
+}
+.settings__section .page-row__label {
+  font-size: var(--k-text-md);
+  font-weight: 500;
+}
+.settings__section .page-row__description {
+  margin-top: var(--k-space-1);
+  font-size: var(--k-text-sm);
+  line-height: var(--k-leading-normal);
+  color: var(--k-text-muted);
+}
+.settings__section-icon {
+  display: none;
+}
+.settings__navigation.section-nav--rail {
+  flex-basis: 190px;
+  border-right: 0;
+  padding-right: 0;
+  max-height: none;
+  overflow: visible;
+}
+.settings__navigation .settings__section-nav {
+  position: static;
+  border-right: 0;
+  padding-right: 0;
+}
+.settings__section-nav > .page__tab {
+  padding: var(--k-space-3);
+  font-size: var(--k-text-md);
+}
+.settings > .section-nav-rail {
+  gap: var(--k-space-6);
+}
+.settings__help-details {
+  margin-top: var(--k-space-1);
+}
+.settings__help-details summary {
+  width: fit-content;
+  color: var(--k-text-muted);
+  cursor: pointer;
+}
+.settings__help-details summary:focus-visible {
+  outline: var(--k-focus-ring-width) solid var(--k-focus);
+  outline-offset: var(--k-focus-ring-offset);
+}
+.settings__help-details p {
+  margin: var(--k-space-2) 0 0;
+}
+.settings__project-scope select {
+  width: auto;
+  max-width: 100%;
 }

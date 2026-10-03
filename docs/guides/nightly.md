@@ -20,8 +20,9 @@ device receipts for current availability.
 
 `.github/workflows/nightly.yml` builds and publishes the Android nightly.
 
-**Cadence: every six hours, and only when `main` moved.** The schedule trigger
-fires at 00:00, 06:00, 12:00, and 18:00 UTC. The scheduled job compares `HEAD`
+**Cadence: daily at 06:43 UTC, with native publication only when `main` moved.**
+Main qualification runs independently every six hours; Nightly admits its
+exact-source evidence or runs fresh qualification. See [the release process](releasing.md). The scheduled job compares `HEAD`
 against the rolling `nightly` tag (the commit the last published nightly was
 cut from) and builds nothing when they match and the deploy ledger records
 that ship: a new version number over identical content is a version number
@@ -35,7 +36,7 @@ version code. Manual `rebuild_index` remains the exception for rebuilding a
 commit that already shipped, below.
 
 **What a tester should expect.** Queueing, separate stage timeouts, signing and
-provider processing determine delivery time. The six-hour schedule is not a
+provider processing determine delivery time. The daily schedule is not a
 promise that a build reaches a phone within a few hours. Play auto-update and
 tester eligibility are separate device/provider conditions. Read the final
 per-platform receipt and Play state; a job exit alone is not installation proof.
@@ -91,16 +92,21 @@ artifacts.
 This is the platform-array schema v2 manifest. On macOS and Linux, `install.sh`
 selects the host's archive, verifies its signed size and digest, and installs
 it under `versions/<version>` with its bundled Node.js and a forwarding
-launcher. Set `STATION_CHANNEL=nightly` and
+launcher. On Windows, `install.ps1` so far only stages a verified version
+(`STATION_INSTALL_STAGE_ONLY=1`). Set `STATION_CHANNEL=nightly` and
 `STATION_INSTALL_PUBLIC_MANIFEST_URL` to an available signed Nightly manifest.
 Installer support does not establish that publication is enabled or that a
 release has been installed successfully; see the
 [archive install contract](release-channel-ports.md#prebuilt-archives-and-source-releases).
 
 The `publish` job is the only one with `contents: write` and the only one that
-reads a secret. The Nightly caller passes `secrets: inherit`, because a reusable
-workflow's job receives its environment's secrets only then; without it the
-signing key arrives empty. It runs
+reads a secret. The Nightly caller passes `secrets: inherit`; the called
+`publish` job separately names the protected `portable-nightly-signing`
+environment. A retained earlier call without inheritance reported an empty
+signing key. Keep that incident's receipt separate from the
+[GitHub environment-secret contract](https://docs.github.com/en/actions/how-tos/reuse-automations/reuse-workflows#using-inputs-and-secrets-in-a-reusable-workflow):
+a called job's environment supplies its secrets independently of caller-passed
+secrets. The job runs
 only when the repository variable `STATION_PORTABLE_NIGHTLY_PUBLISH` is exactly
 `enabled`, the run came from `nightly.yml` on `main`, and the version is a
 reservation. A direct dispatch of the publication workflow is always a dry
@@ -116,6 +122,11 @@ newer than the rolling manifest, uploads the archives and the manifest to the
 immutable prerelease `v<version>` (never marked latest), re-downloads them and
 compares digests, replaces `station-portable-nightly-manifest.json` on the
 rolling `portable-nightly` release last, and re-fetches and re-verifies it.
+Unlike the stable and preview host pointers, Nightly checks "newer than the
+rolling manifest" against the cacheable download URL only and does not plan
+again against the release's own bytes before replacing, so a stale cached
+copy can let an older Nightly replace a newer one. Nightly also has no
+restore if the replace or re-verification fails.
 
 While the gate is off, the dry run cannot turn Nightly red: its jobs are
 `continue-on-error`, so a failed dry-run job shows red in the run but the run

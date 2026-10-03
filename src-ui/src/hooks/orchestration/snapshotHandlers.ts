@@ -31,6 +31,7 @@ type SnapshotChatState = Pick<
   | 'currentSessionId'
   | 'conversationId'
   | 'pendingApprovals'
+  | 'pendingApprovalTurnIds'
   | 'approvalToasts'
 >;
 
@@ -193,6 +194,7 @@ type SelectedSnapshotRow = {
   /** The chat's record (newest across its rows), when any row carries one. */
   record: ConversationRecord | undefined;
   openRequestIds: string[] | undefined;
+  blockingOpenRequestIds: string[] | undefined;
   lastTurnEndMethod?: 'turn.completed' | 'turn.aborted' | 'runtime.error';
 };
 
@@ -289,6 +291,16 @@ function selectSnapshotRows(
     )
       ? [...new Set(candidates.flatMap((row) => row.openRequestIds ?? []))]
       : undefined;
+    const blockingOpenRequestIds =
+      openRequestIds === undefined
+        ? undefined
+        : [
+            ...new Set(
+              candidates.flatMap(
+                (row) => row.blockingOpenRequestIds ?? row.openRequestIds ?? [],
+              ),
+            ),
+          ];
     const latest = (rows: SnapshotSession[]) =>
       rows.reduce((best, row) =>
         snapshotRowRecency(row) >= snapshotRowRecency(best) ? row : best,
@@ -318,6 +330,7 @@ function selectSnapshotRows(
           latest(candidates),
         record,
         openRequestIds,
+        blockingOpenRequestIds,
         lastTurnEndMethod,
       });
       continue;
@@ -333,6 +346,7 @@ function selectSnapshotRows(
             latest(candidates)),
       record: undefined,
       openRequestIds,
+      blockingOpenRequestIds,
       lastTurnEndMethod,
     });
   }
@@ -348,7 +362,7 @@ function planSnapshot(
   const sessionUpdates = [...selected].map(
     ([
       chatKey,
-      { row: session, record, openRequestIds, lastTurnEndMethod },
+      { row: session, record, blockingOpenRequestIds, lastTurnEndMethod },
     ]) => {
       const chat = chats[chatKey];
       // #2303: live events for the running child route through
@@ -450,7 +464,9 @@ function planSnapshot(
                     !rowTurnIsOpen(session, record)
                   ? 'idle'
                   : session.status,
-          ...(openRequestIds ? { pendingApprovals: openRequestIds } : {}),
+          ...(blockingOpenRequestIds
+            ? { pendingApprovals: blockingOpenRequestIds }
+            : {}),
           // Reseed the client turn fold only from an EXPLICIT server
           // verdict (archive#1076) — a reconnect during an in-turn approval must
           // let the next live 'running' state-change re-engage. A legacy
@@ -606,8 +622,18 @@ export function applyOrchestrationSnapshot(
 
   for (const { threadId, updates } of plan.sessionUpdates) {
     let approvalToasts: Map<string, string> | undefined;
+    let pendingApprovalTurnIds: Record<string, string> | undefined;
     if (updates.pendingApprovals) {
       const openIds = new Set(updates.pendingApprovals);
+      // #3071: the server's list already excludes what a turn's abort
+      // settled. A binding this client learned live (`request.opened.turnId`)
+      // is kept for the ids still open, so a later live abort can settle
+      // them by the same rule; the server names no turn for the rest.
+      pendingApprovalTurnIds = Object.fromEntries(
+        Object.entries(snapshot[threadId]?.pendingApprovalTurnIds ?? {}).filter(
+          ([requestId]) => openIds.has(requestId),
+        ),
+      );
       approvalToasts = new Map(snapshot[threadId]?.approvalToasts ?? []);
       for (const [requestId, toastId] of approvalToasts) {
         if (openIds.has(requestId)) continue;
@@ -631,6 +657,7 @@ export function applyOrchestrationSnapshot(
     activeChatsStore.updateChat(threadId, {
       ...updates,
       ...(approvalToasts ? { approvalToasts } : {}),
+      ...(pendingApprovalTurnIds ? { pendingApprovalTurnIds } : {}),
       ...(isReconnectFallback
         ? reconnectCatchUpUpdates(
             snapshot[threadId],

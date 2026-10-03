@@ -1,0 +1,35 @@
+{
+  "path": "docs/design/pane-host-contract.md",
+
+  "kind": "design",
+
+  "state": "classified",
+
+  "summary": "Pane-host design and extraction history, routed to the implemented shared contract and both adapters.",
+
+  "limits": "Owner/caller wiring checked, not every payload clone-safety property, bridge refusal, same-artifact compatibility, install trust prompt, or iframe threat-model claim.",
+
+  "document": {"digest":"ea9a4aac2960704925d42d87d417cc85f3baee40732fdc57adaada6db23219f7","revision":"dae6cc432669dd3ced4da190a53362f9c6bb8ac5"},
+
+  "sources": [
+    {"path":"packages/contracts/src/workspace-pane-host-contract.ts","digest":"064ef9c3654c3296074caced9eab79ffd204c0d98fcebd9221b5a2b540cd6191","revision":"56f4c4897a189eeb30430119a4f4895e95fbb541"},
+
+    {"path":"packages/sdk/src/index.ts","digest":"f73107a4c0e92647e409563d7ccf7472bea46c81cf67864d9c160c979f39ca75","revision":"34d62da501fa53187b7062288f6e1dbaec8c20ed"},
+
+    {"path":"src-ui/src/components/plugins/PluginFrameHost.tsx","digest":"311d451d47f78ab255af9831d8268d867165daed9b529c8bbb1516ad60bc4ee4","revision":"1188208f32995f08e02bc87c2a0063184540fb6a"},
+
+    {"path":"src-ui/src/components/plugins/framePaneHost.tsx","digest":"c5a270f6b98199ad7e04f8283e3e259b252a6908ba51331175feb34e77417fc2","revision":"8540fafb86b969775254b898711ad3ae40ccc39d"},
+
+    {"path":"src-ui/src/components/plugins/plugin-frame-runtime.ts","digest":"1254690e9a2426b4ca75612ff064a93781630679bd57e38d456eed4c129966ae","revision":"1188208f32995f08e02bc87c2a0063184540fb6a"},
+
+    {"path":"src-ui/src/workspace-panes/inProcessPaneHost.tsx","digest":"1da9d2ca44fc97a740f3b8025678e5bcb4d4c929df6c1e0c6445d00c2bc7bd3e","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"}
+  ],
+
+  "checks": [
+    "Full body read (1331 original lines across the tranche); bounded source/caller routing inspection. Purpose classification, not complete semantic certification.",
+
+    "Entire original body byte-identical after removing reading banner.",
+
+    "Integration source review through 5731eba07: 3ab09593d (#2881) SDK index adds requestServiceUpdateProgress/useServiceUpdateProgressQuery only; pane host contract claims unaffected; prose accurate. Source review is separate from executed test evidence."
+  ]
+}

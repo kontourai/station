@@ -1,0 +1,17 @@
+{
+  "path": ".changeset/sdk-typed-host-contexts.md",
+
+  "kind": "release-note",
+
+  "state": "classified",
+
+  "summary": "Release intent for the package versions named in this changeset.",
+
+  "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+
+  "document": {"digest":"4fa99398deb6e8b98b3d0cb446fbf3800fd53d3d7950da48ae114ec4cbcd14eb","revision":"eec64aa6defda8dd84ffebbe430eea95b35aea3f"},
+
+  "sources": [],
+
+  "checks": []
+}

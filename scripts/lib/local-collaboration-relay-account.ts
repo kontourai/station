@@ -728,6 +728,7 @@ type RelayAccountStationOptions = {
   name?: string;
   prepareSelfHostedBrokerConfig?: (stationOrigin: string) => string;
   ownedBrokerTcpPort?: number;
+  nativeDeviceProofPilot?: true;
   publicOrigin?: string;
   additionalBrowserOrigins?: readonly string[];
   onStationReady?: (
@@ -793,6 +794,7 @@ async function startRelayAccountStationCore(
           : {}),
         prepareSelfHostedBrokerConfig: options.prepareSelfHostedBrokerConfig,
         ownedBrokerTcpPort: options.ownedBrokerTcpPort,
+        nativeDeviceProofPilot: options.nativeDeviceProofPilot,
       },
       signal,
     );
@@ -923,7 +925,7 @@ export async function startRelayAccountStationGroup() {
               },
             ),
           );
-          return { ...fixture, stop };
+          return { ...fixture, stopStation: fixture.stop, stop };
         } catch (error) {
           admissionClosed = true;
           throw error;

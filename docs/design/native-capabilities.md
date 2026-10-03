@@ -35,6 +35,7 @@ host.
 | Native host-event bridge | unsupported | enabled | Share intake uses `station://share-received`; separate typed subscriptions handle tray navigation, bundled-server status and startup-readiness retry. |
 | Native share receiver | n/a | disabled | Generic OS share intake remains off; it has a different untrusted-content boundary. |
 | Pairing deep link | unsupported | enabled | Release schemes are `station-stable`, `station-beta`, and `station-nightly`; isolated development configuration uses a generated `station-dev-<suffix>` scheme. The pairing route accepts only `pair?linkVersion=1&clientChannel=<channel>&payload=station-pairing:v1:...`, opens Join for explicit confirmation, and never navigates or fetches a supplied URL. |
+| Native relay link delivery | unsupported | iOS source path; other targets unsupported | Separate `station-relay-<channel>` associations deliver public routing metadata and an opaque pending handle. Build enablement and compilation do not qualify installed cold/warm delivery. |
 | Compile-target report | unsupported | enabled | Rust reports target and Station-enabled state. |
 | Haptics | unsupported | enabled on mobile compile targets; unsupported on desktop | Official `tauri-plugin-haptics` (station#1954). Selection/impact/notification kinds only; preference `hapticsEnabled` (default on). |
 | Remote push wakeup | unsupported | build-dependent | Enabled for Android builds carrying all four Firebase values or iOS builds carrying the Live Activity plugin. iOS also checks push signing before offering registration. User opt-in, server registration and provider delivery remain separate. |
@@ -58,6 +59,58 @@ Both adapters enforce the same 256 KiB text limit before shared content reaches
 React state. Rejected native events and host-listener registration failures are
 reported through the typed adapter error callback and surfaced to the user.
 
+### iOS relay URL intake
+
+The [native intake owner](../../src-desktop/src/native_relay_link_intake.rs)
+admits only the closed `station-native-relay-link/v1` envelope in
+`station-relay-<channel>://relay#relay-link=<base64url JSON>`. Decoded JSON is
+bounded to 16 KiB. Production origins must be canonical HTTPS; an actual
+debug/development receiver also admits exact numeric loopback HTTP. The link
+either carries public route intent or wraps the existing installation-bound
+native v2 invitation. Application origin remains an untrusted routing hint.
+Opening a link does not save or select a route, approve a surface or Station
+key, authenticate a person, approve a Device, or grant Project/compute access.
+
+The [iOS public delegate owner](../../src-desktop/src/native_relay_ios_launch.rs)
+captures cold launch options and consumes relay URLs before Tao's warm parser.
+It forwards pairing and unrelated URLs to their original callbacks. The generic
+deep-link runtime plugin is not initialized on iOS; its build-time generator
+still owns pairing configuration. [The app build owner](../../src-desktop/build.rs)
+adds the separate relay association only to iOS. Android retains pairing and
+does not register a relay-secret association.
+
+These commands are registered in both host dispatch tables, with main-app
+origin checks on operations. Registration does not enable link intake on other
+platforms:
+
+| Command | Input | Public result |
+| --- | --- | --- |
+| `station_native_link_delivery_mode` | None | `station-owned` on iOS; `plugin` elsewhere |
+| `station_native_pairing_link_take` | None | Pending pairing URLs for the separate pairing parser |
+| `station_native_relay_link_take` | None | Public delivery or rejection metadata; no invitation secret |
+| `station_native_relay_link_cancel` | Pending handle | Clears pending custody and fences continuation |
+| `station_native_relay_link_begin` | Pending handle, saved profile name and exact update timestamp | Existing independently unapproved Station-key candidate |
+| `station_native_relay_link_redeem` | Pending handle, saved profile name, exact profile revision and update timestamp | Existing structured routing-grant result |
+
+`station://native-relay-link` carries the same secret-free delivery DTO. A
+subscriber registers before draining launch delivery; `take` can recover public
+metadata for the same still-pending handle after an interrupted consumer.
+Cancellation and expiry remove that handle. Expiry clears host custody; it does
+not emit a separate expiry event. Consumers use the published deadline and host
+currentness checks rather than treating stale displayed metadata as admission.
+
+The host keeps invitation bytes in bounded zeroizing memory until explicit
+redemption, cancellation, supersession or expiry. New link mutation arguments
+carry only opaque handles. The secret is not placed in renderer events, saved
+profiles or notifications; this does not promise erasure of OS-owned transient
+URL objects. A bound invite still needs the existing public-proof/operator
+surface approval and independent full Station key/code comparison. Cancellation
+before trust precommit prevents a new trust write; cancelling routing does not
+revoke a Station key already explicitly committed by the user. Late routing
+grant results retain the existing exact-grant retirement/quarantine path.
+Compilation and focused host tests do not establish installed iOS delivery,
+mobile storage behavior or a completed collaborator journey.
+
 ## Least privilege and threat boundary
 
 `src-desktop/capabilities/default.json` grants the typed event bridge plus the
@@ -79,49 +132,74 @@ bearers and Rust performs bounded authenticated requests without returning
 bearer values to the WebView. That source boundary is not physical-device
 qualification of every platform store.
 
-Native broker grants now have a host renewal command and a Desktop-only saved-route
-supervisor. They maintain already approved, redeemed routing grants while the
-renderer is visible; they do not enable native application-route selection or
-account/Device enrollment. See the [broker lifecycle contract](../guides/self-hosted-broker.md#native-routing-grant-foundation-v2).
+Native broker grants have a host renewal command and a saved-route supervisor
+composed by [ApiBaseProvider](../../src-ui/src/contexts/ApiBaseContext.tsx) on
+desktop and mobile. They maintain already approved, redeemed routing grants
+while the renderer is visible; renewal grants no application, Device, account
+or Project authority. The separate [selected-route owner](../../src-ui/src/platform/native/nativeRelayConnectionOwner.ts)
+and [fresh enrollment ceremony](native-relay-enrollment.md) supply those distinct
+source paths. See the [broker lifecycle contract](../guides/self-hosted-broker.md#native-routing-grant-foundation-v2).
 
 The static `native-platform:ratchet` blocks `@tauri-apps/api` imports and
 `__TAURI__`/`__SHARE_TEXT__` globals outside the platform adapter.
 
-### Desktop application signaling commands
+<a id="desktop-application-signaling-commands"></a>
 
-The Desktop command table registers three main-window-only signaling commands
-in [the native relay owner](../../src-desktop/src/native_relay_redemption.rs):
+### Native application signaling commands
 
-| Command | Caller input beyond the saved profile name and exact revision | Result |
+Desktop and mobile hosts register main-window-only commands for public binding metadata and
+the separate host-owned native application peer. The existing
+`station_native_relay_application_binding` command remains the source of the
+saved profile's public scope, client surface and approved Station trust view.
+The peer commands in the [native peer owner](../../src-desktop/src/native_application_peer.rs)
+are:
+
+| Command | Caller input | Result |
 | --- | --- | --- |
-| `station_native_relay_application_binding` | None | Host-derived public profile, scope, native surface and approved Station trust metadata |
-| `station_native_relay_application_open` | Nonce and bounded offer SDP | Offer expiry |
-| `station_native_relay_application_read` | Existing offer nonce | Optional answer SDP and opaque Station proof, plus expiry |
+| `station_native_application_peer_prepare` | Saved profile name and exact profile revision | Versioned opaque peer handle, host nonce, client connection ID and expiry |
+| `station_native_application_peer_open` | Peer handle and bounded offer SDP | Peer expiry |
+| `station_native_application_peer_read` | Peer handle | Versioned answer, Station proof and expiry after host transcript verification |
+| `station_native_application_peer_sign` | Peer handle and exact method, path and bounded body bytes | Versioned native Device request proof |
+| `station_native_application_peer_close` | Peer handle | No result |
 
-These are application-named entry points to the same service used by the
-diagnostic commands. The host resolves the saved profile, approved Station key
-and an existing keyring-held routing grant; it rechecks custody after broker
-I/O. Input envelopes reject caller-supplied bearer, private key, broker URL or
-Project authority. Requests use fixed broker paths. An uncertain `open` may
-already have created an offer: retain its nonce and read that offer within its
-window rather than blindly opening it again.
+The host derives authority from the selected profile, approved Station trust,
+current Device receipt and existing routing custody. The renderer supplies no
+broker URL, bearer, key, nonce, Project authority, proof claims or audience.
+Uncertain `open` results are recovered by reading the same handle; the client
+does not open a second peer. The adapter is separate from diagnostic signaling.
+Connect verifies the Station proof before applying the answer, then uses the
+host signer for bounded per-request Device proof. Station composes this in its
+[application runtime](../../src-ui/src/platform/native/nativeRelayApplicationRuntime.ts)
+for an explicitly selected native saved route. Its read surface is limited to
+Station health, authority and member Project/shared-work reads; fixed account
+challenge/exchange/revoke and invitation acceptance are separate control leaves.
+Account continuation and Project membership remain independent. A mounted
+consumer is not proof of a completed fresh native or physical Project journey.
 
-The renderer's [application signaling adapter](../../src-ui/src/platform/native/nativeApplicationSignalingBridge.ts)
-wraps these names for one exact saved-profile revision and validates their
-results, but no ordinary native application caller composes it. The commands
-themselves do not open a DataChannel, verify the returned Station proof,
-carry application requests, select a route, sign in or enroll a Device. The
-account proof-key vault below remains separate and unwired. Command registration
-and source tests are not an executed Tauri IPC, packaged-platform or physical
-device receipt; no such execution is claimed by this review.
+Rust verifies the exact Station-signed nonce, connection identity, offer/answer
+digests and both DTLS fingerprints. It owns transcript state and one proof per
+handle, not browser RTC connectivity. The handle/nonce exist before network open;
+owner/epoch changes, replay and expiry refuse. Read deadlines can shorten but
+cannot extend prior polling deadlines, and the adapter retires expired handles.
 
-### Desktop account proof-key foundation
+The source adapter and focused tests do not establish executed Tauri IPC,
+packaged-platform behavior, physical-device qualification or a completed
+authenticated Project journey. The account proof-key vault below also remains
+separate from account sign-in and enrollment.
+
+<a id="desktop-account-proof-key-foundation"></a>
+
+### Native account proof-key foundation
 
 The [account proof-key vault](../../src-desktop/src/native_account_proof_key.rs)
-is included only for non-mobile builds. It is Rust-internal: no Tauri command,
-capability-report field, renderer adapter or production account-sign-in caller
-currently reaches it. It does not change the available connection or recovery
-actions.
+is included in desktop and mobile builds. The vault remains Rust-internal; the
+[account operation owner](../../src-desktop/src/native_account_operations.rs)
+reaches it through five main-window commands, with no raw signing IPC. The
+[production account bridge](../../src-ui/src/platform/native/nativeAccountSessionBridge.ts)
+composes those commands with the selected encrypted native application owner;
+the [account panel](../../src-ui/src/views/connections-hub/RelayRouteProfiles.tsx)
+is its ordinary UI caller. This source composition does not qualify fresh
+onboarding or a physical device.
 
 The vault uses a separate OS-keyring service and account namespace from the
 broker routing proof key. Its owner binds the app identifier, channel, client
@@ -134,10 +212,185 @@ This is software-key custody: Rust holds decoded private bytes while signing.
 Owner construction validates identifiers; it does not establish Device approval
 or account authority, and the signer itself does not validate a request protocol.
 
+`station_native_account_challenge_prepare` restores or creates the independent
+account key for the reconciled host Device owner and returns its public key,
+fixed challenge body and opaque handle. `station_native_account_exchange_prepare`
+accepts closed opaque challenge data and local username/password credentials;
+Rust derives identity, hashes, JTI and time and returns the complete exchange
+body and matching proof header. `station_native_account_request_headers` accepts
+opaque native continuation data and only the canonical GET/HEAD health and
+member-read inventory. `station_native_account_accept_invitation_prepare`
+accepts one canonical invitation token for its fixed POST leaf;
+`station_native_account_revoke_prepare` prepares only the empty-body native
+revoke leaf. No caller-supplied audience, Device, surface, hash or signing bytes
+reach these operations.
+
+Sixteen process-local contexts are bounded to fifteen minutes and the current
+grant lifetime. Preparation exposes its actual `contextExpiresAtMs`; the SDK
+captures it once and clamps the continuation/public scope to the earlier
+host/server expiry. A delayed sign-in cannot extend that host context. One exchange consumes a context before signing; challenge IDs
+remain consumed for the full host challenge window independently of shorter
+untrusted expiry hints. Current profile, Device/epoch, trust, grant and binding
+are checked through the shared live-owner callback. Effective challenge or
+continuation expiry and the actual account key are checked again after key/sign
+waits before a result returns. Refusal preserves the key. An existing account-bound
+paired Device and approved native Device binding are server prerequisites;
+that Device can come from existing pairing or the separately acknowledged
+[native enrollment ceremony](native-relay-enrollment.md). The account operation
+does not itself bootstrap a Device or an unsupported provider.
+
 The source includes memory-backend tests and an opt-in macOS Keychain test.
-They were not run for this documentation review. IPC, account continuation,
-mobile custody and packaged/device behavior require separate integration and
-platform evidence.
+Unit checks do not establish IPC, account continuation, mobile custody or
+packaged/device behavior; those require separate integration and platform evidence.
+
+<a id="desktop-device-proof-key-foundation"></a>
+
+### Native Device proof-key foundation
+
+The [Device proof-key vault](../../src-desktop/src/native_device_proof_key.rs)
+is also shared across native targets and remains Rust-internal. Its keyring service and record prefix
+are separate from the account and routing vaults. Its exact owner adds a random
+Device binding UUID to the app, channel, client instance, Station and Device
+IDs. A shared [private custody core](../../src-desktop/src/native_proof_key_core.rs)
+preserves the account record format and implements both vaults' storage and
+ES256 operations.
+
+The vault remains Rust-internal. A main-window-guarded
+`station_native_device_binding_candidate` command in the
+[native relay owner](../../src-desktop/src/native_relay_redemption.rs) returns
+only the public candidate descriptor. Under one locked profile-store snapshot,
+the selected relay-route profile supplies Station, trust, grant and surface;
+the separately host-authorized profile supplies the active paired Device. They
+must share the same store revision, client instance and exact Station origin.
+The [candidate manager](../../src-desktop/src/native_device_binding_candidate.rs)
+persists that owner snapshot and a provisional binding ID in a private
+Keychain namespace before creating the Device proof key, then returns only the
+public JWK and thumbprint. It retains the initial Device-authorization epoch
+for provenance and resumes the same key after reauthorization, while keeping
+the profile revision, Station, Device, trust, route and surface exact. No
+renderer caller currently uses this command. It does not submit operator
+approval, reconcile a server receipt, bind a peer session or sign a request. A
+key and owner tuple do not establish operator approval. Server-side Device
+authorization exists in the opt-in pilot; the separate native peer owner now
+supplies fixed request-signing IPC for a reconciled approved Device. A fresh
+packaged or physical Project journey remains a qualification requirement. The software key is decoded
+inside Rust for signing; this is not hardware-backed non-exportability.
+
+The separate main-window command `station_native_device_binding_self_receipt`
+loads an existing candidate and reads its fixed Station receipt URL through the
+native HTTP owner. It accepts only the saved profile and expected revision;
+the bearer stays in Rust. One process-wide nonblocking guard prevents overlapping
+reads from overwriting newer observations. The HTTP exchange has a 45-second
+deadline, including capacity wait, and a 4 KiB response limit. Receipt-only
+global and body budgets leave ordinary HTTP and open-ended SSE behavior unchanged.
+
+After HTTP, profile and authority locks cover owner revalidation, receipt
+validation, the Keychain observation write and result construction. The current
+host authorization epoch is separate from the Device proof binding UUID. A
+matching receipt reports `current` or `not-current`; only the closed versioned
+404 response records `not-found`. Transport failure or the versioned unavailable
+response may return a prior observation with `source: cached-observation` and
+its original timestamp. A prior positive observation is labeled
+`previously-confirmed-current`, never fresh `current`. Missing, malformed,
+mismatched or unavailable readback preserves the candidate and key. The peer and
+account operation owners require a positive observation bound to the current
+owner/epoch; ordinary route-selection UI does not automatically invoke this command.
+Source and Rust/HTTP fixtures do not establish an executed native IPC or packaged journey.
+
+<a id="desktop-paired-device-identity-custody"></a>
+
+### Native paired-Device identity custody
+
+The [Device custody owner](../../src-desktop/src/native_device_custody.rs) keeps
+a versioned companion beside the existing bearer in a separate OS-keyring
+namespace. The authenticated pairing exchange captures the Device ID and kind
+in host-held pending state. The companion binds the native app and channel,
+credential reference, bearer digest, exact origin, Station and client instance.
+Neither the bearer nor its digest is returned to the renderer.
+
+The Rust-internal resolver holds the profile-file lock and checks the current
+authorized profile, revision and epoch against the bearer and companion.
+Missing, malformed or mismatched metadata refuses Device identity resolution;
+ordinary legacy HTTP credential use remains independent. This establishes no
+Device-key approval, account or Project authority and exposes no signing IPC.
+
+Credential retirement records durable, profile-scoped intent before a profile
+removal or replacement. Public and cold-start retries permit cleanup only,
+check the original credential digest and refuse an intervening replacement or
+reauthorization. An unreadable legacy entry without a trustworthy digest stays
+quarantined for manual removal. Its journal entry can be released only after
+both owned keyring entries are confirmed absent, without attempting deletion.
+
+Pending pairing handles remain process-memory state; they do not survive a
+crash. Cold observation of a completed profile and retirement recovery are
+separate from unfinished pairing recovery. Mobile pairing commit, selection,
+deletion, profile removal and cold cleanup use the same custody and retirement
+owners as desktop. Mobile metadata stays in the application's private config
+directory and retains its existing mobile lock protocol; desktop process-birth
+ownership is not substituted. A compound Device capture receives the already
+locked profile path, so it does not retake mobile's genesis lock.
+
+The shared [secret entry](../../src-desktop/src/native_secure_entry.rs) selects
+the OS-backed mobile store separately for each namespace. iOS writes use
+`AfterFirstUnlockThisDeviceOnly`. Foreground reads distinguish a missing item
+from locked or unavailable storage; a background convenience read cannot turn
+those failures into absence. These settings and software-key custody do not
+establish hardware non-exportability or physical background/lock behavior.
+
+On September 30, 2026, source
+`c8f4f46d043674770b67cf26f41f541433a74de9` compiled, packaged, installed and ran
+as the isolated `io.kontourai.station.dev.instance` application on an iOS 26.5
+simulator. Its executable SHA-256 was
+`e74a0cd8f345c51b80e7fd2f47646b56e5194e6e393c1b6671bf109dcd38bdbe`.
+Actual main-WebView IPC observed `tauri://localhost`, iOS and the development
+channel. It completed independently compared Station-key approval, host-held
+routing-grant redemption, a real account-bound Device pairing exchange, the
+requires-auth → bearer-and-companion → configured transaction, and host active
+selection. Device candidate capture matched the pairing Device and completed in
+414 milliseconds; exact operator approval and the authenticated Station
+self-receipt returned `current`. No bearer was returned to the renderer.
+The stale profile revision refused, and local credential deletion completed.
+
+The first receipt qualifies paired bootstrap and custody using a synthetic local
+account and the real source runtime. A later revocation attempt reached an
+expired five-minute fixture process, and the prepared full Project run then
+failed its startup prerequisite under host resource exhaustion. Neither failure
+is counted as a passed application scenario.
+
+A separately recorded full run reused that same installed iOS simulator
+executable and the existing native account/RTC acceptance helper. Its isolated
+Linux Station/Pion/TURN runtime used clean source
+`f5eda517106a4547d1934e841f0fca25e4785655`; explicit SSH TCP forwards exposed
+only fixture-owned loopback endpoints to the simulator. Real Keychain/IPC and
+the account provider completed protected Project read (200), fresh-peer
+reconnect (200), account revocation (401), reauthentication (200) and Device
+revocation (403). Every read recorded a fresh host peer, a selected relay pair,
+relay candidates in the offer and zero direct Project HTTP attempts. Successful
+reads contained the expected Project; revoked reads contained no Project payload.
+Both account challenge/exchange pairs returned 200 and passed their closed
+version, target, Device and surface checks. Owned profile/grant cleanup returned
+an empty profile store; the runtime stopped, its TURN container disappeared,
+and the three owned SSH forwarders closed.
+
+This qualifies the development iOS simulator and that SSH fixture topology.
+It does not qualify ordinary native onboarding, fresh relay-only enrollment,
+signed or physical iOS Nightly, public TLS/TURN/NAT reachability, a hosted service,
+or physical two-human use. No timeout increase or CSP relaxation was used.
+
+A newer development iOS simulator build/install receipt names source
+`99b6eec01dda1d7149816678f0d8e395725267f3`, application
+`io.kontourai.station.dev.instance` on the `dev` channel, and executable SHA-256
+`c1d16b63032c3e47808191cef5a420462f3391d97d72fa28584dd1b5901cba3d`.
+It built, installed and opened on October 1, 2026. The actual Station manager
+now renders **Set up a broker route**, whose click opens the real
+[relay profiles](../../src-ui/src/views/connections-hub/RelayRouteProfiles.tsx)
+through [the Station manager entry](../../src-ui/src/components/OnboardingGate.tsx). This
+proves that entry was reachable on the exercised simulator build; it proves no
+fresh enrollment, public application traffic or physical Nightly operation.
+See the [shell verification evidence](../guides/native-shell-verification.md).
+
+Source tests and the macOS Keychain roundtrip do not establish
+physical-device Project access.
 
 ### Pairing deep-link threat review (station#1957)
 
@@ -205,10 +458,11 @@ was reviewed on 2026-08-08; it is not a current dependency inventory:
 
 ## Explicitly unverified
 
-Native distribution, signing, installation, real-device behavior, durable
-mobile credentials, inbound native shares, remote-push delivery, and
-background mobile agents are
-NOT_VERIFIED. #818 adds source-controlled Android/iOS Tauri configuration and
+Physical release distribution, signing/store delivery, real-device credential
+lifecycle, inbound native shares, remote-push delivery and background mobile
+agents remain **NOT_VERIFIED** by the receipts on this page. Development
+simulator build/install and the older paired simulator IPC journey are narrower
+observed results, not physical Nightly acceptance. #818 adds source-controlled Android/iOS Tauri configuration and
 a fail-closed GitHub workflow contract, not credential-backed distribution
 proof. The only secretless mobile output is an unsigned iOS simulator archive
 marked verification-only; it is never a distributable asset. The 2026-07-25

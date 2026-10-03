@@ -1,6 +1,14 @@
 import { type ReactNode, useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { useRegionModelOptional } from '../../contexts/RegionModelContext';
+import {
+  CENTER_OWNED_SURFACES,
+  requestCenterChatPage,
+  useLayoutChatPlacement,
+} from '../../app-shell/chat-placement';
+import {
+  SuspendRegionSurfaces,
+  useRegionModelOptional,
+} from '../../contexts/RegionModelContext';
 import { useKeyboardShortcut } from '../../hooks/useKeyboardShortcut';
 import { useLongPress } from '../../hooks/useLongPress';
 import { useMenuFocus } from '../../hooks/useMenuFocus';
@@ -423,13 +431,27 @@ function ConnectedRegionToolbarControls() {
     );
   }, []);
 
+  // While the Coding layout's centre owns Chat, Chat's chord is not a dock
+  // toggle: the dock does not hold Chat on this route (`RegionShells`
+  // suspends it). It goes to the centre's Chat page and focuses its composer
+  // instead, and leaves every region as it was.
+  const centerOwnsChat = useLayoutChatPlacement() === 'center';
   const shortcuts = surfaceList.flatMap((surface) =>
     surface.shortcut ? (
       <RegionShortcut
         key={surface.id}
         surface={surface}
         shortcut={surface.shortcut}
-        onToggle={() => toggleSurface(surface)}
+        onToggle={() => {
+          if (centerOwnsChat && surface.id === 'chat') {
+            // Never the dock's toggle here, even in the moment before the
+            // workbench mounts to answer: toggling would persist a visible
+            // Chat region that renders nothing on this route.
+            requestCenterChatPage();
+            return;
+          }
+          toggleSurface(surface);
+        }}
       />
     ) : (
       []
@@ -530,5 +552,17 @@ function ConnectedRegionToolbarControls() {
 }
 
 export function RegionToolbarControls() {
-  return useRegionModelOptional() ? <ConnectedRegionToolbarControls /> : null;
+  const model = useRegionModelOptional();
+  const centerOwnsChat = useLayoutChatPlacement() === 'center';
+  if (!model) return null;
+  // The toggles report what the region shells render: with Chat suspended
+  // (the Coding centre owns it), a region holding only Chat is hidden and
+  // empty, not "open: Chat".
+  return centerOwnsChat ? (
+    <SuspendRegionSurfaces surfaces={CENTER_OWNED_SURFACES}>
+      <ConnectedRegionToolbarControls />
+    </SuspendRegionSurfaces>
+  ) : (
+    <ConnectedRegionToolbarControls />
+  );
 }

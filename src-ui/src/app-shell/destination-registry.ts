@@ -11,15 +11,8 @@ type ManagementDestinationId =
   | 'developer'
   | 'notifications'
   | 'schedule';
-/**
- * #2144 slice 4: which Settings navigation group a nav-only entry sits in.
- *
- * These are IDs, not the words on screen. The group headings ("Set up",
- * "Control", "This Station") are presentation and belong to `SettingsView`,
- * which is free to retitle them without this file — and without any settings
- * section id — moving.
- */
-export type SettingsNavGroupId = 'set-up' | 'control' | 'this-station';
+/** Stable chooser ordering groups; independent of Settings topics. */
+export type CustomizeNavGroupId = 'set-up' | 'control' | 'this-station';
 
 export type DestinationIconId =
   | 'agents'
@@ -66,7 +59,7 @@ export interface DestinationDefinition {
   icon?: DestinationIconId;
   previewFlag?: string;
   hiddenFromNav?: boolean;
-  /** When set, the palette calls `showSurface(regionSurface)` and `params` are not applied. */
+  /** When set, the palette and the sidebar row open that surface as the page (`useShowSurfacePage`) and `params` are not applied. */
   regionSurface?: string;
   /**
    * A row in the left panel. #2059 (design record D3): the panel lists PLACES
@@ -76,21 +69,9 @@ export interface DestinationDefinition {
    * `localeCompare` had sorted the top-level band into the middle.
    */
   sidebar?: { order: number };
-  /**
-   * #2144 slice 4: a NAV-ONLY row in the Settings section navigation. It looks
-   * like a settings section in the sidebar and behaves like a link: choosing it
-   * leaves `/settings` for this destination's own surface. It is not a settings
-   * section, so it has no `SettingsSectionId`, no catalog rows, and no entry in
-   * `ALL_SETTINGS_VIEWS`.
-   *
-   * `label` and `route` OVERRIDE the destination's own for this one surface, so
-   * a hub can be entered at the tab a reader actually wants (Connections is
-   * listed as "Engines & Models" and opens `/connections/engines`) without
-   * minting a second destination for a surface that already has one. Both are
-   * plain data: nothing here may import the settings catalog or a hub module.
-   */
-  settingsNav?: {
-    group: SettingsNavGroupId;
+  /** A Customize chooser entry. Overrides select the destination's entry tab. */
+  customizeNav?: {
+    group: CustomizeNavGroupId;
     order: number;
     label?: string;
     route?: string;
@@ -104,16 +85,10 @@ export interface DestinationDefinition {
   view?: NavigationView;
 }
 
-/**
- * One nav-only Settings row, with its label and route already RESOLVED against
- * the destination's own. The override lives in exactly one place this way: a
- * consumer reading `entry.route` cannot forget that Connections is entered at
- * its Engines tab here, which is the way a second reader of an overridden
- * value eventually disagrees with the first.
- */
-export interface SettingsNavEntry {
+/** A resolved destination entry for the Customize chooser. */
+export interface CustomizeNavEntry {
   id: string;
-  group: SettingsNavGroupId;
+  group: CustomizeNavGroupId;
   order: number;
   label: string;
   route: string;
@@ -128,17 +103,10 @@ export interface DestinationRegistry {
   getSidebar(
     enabledPreviewFlags?: ReadonlySet<string>,
   ): readonly DestinationDefinition[];
-  /**
-   * The nav-only Settings rows, each carrying the group it belongs to and
-   * ordered by `order`. Ordering is meaningful WITHIN a group; grouping them,
-   * and placing each group against this page's own sections, is the
-   * navigation's job. Flags apply exactly as they do everywhere else, so
-   * Developer appears here only while developer tools are enabled on this
-   * device.
-   */
-  getSettingsNav(
+  /** Resolved chooser entries, ordered and filtered by the same live flags as other navigation. */
+  getCustomizeNav(
     enabledPreviewFlags?: ReadonlySet<string>,
-  ): readonly SettingsNavEntry[];
+  ): readonly CustomizeNavEntry[];
   getPalette(
     enabledPreviewFlags?: ReadonlySet<string>,
   ): readonly DestinationDefinition[];
@@ -172,8 +140,8 @@ export function createDestinationRegistry(
         sidebar: definition.sidebar
           ? Object.freeze({ ...definition.sidebar })
           : undefined,
-        settingsNav: definition.settingsNav
-          ? Object.freeze({ ...definition.settingsNav })
+        customizeNav: definition.customizeNav
+          ? Object.freeze({ ...definition.customizeNav })
           : undefined,
         palette: definition.palette
           ? Object.freeze({
@@ -199,7 +167,7 @@ export function createDestinationRegistry(
   >();
   const byExactRoute = new Map<string, NavigationView>();
   const sidebarSlots = new Set<number>();
-  const settingsNavSlots = new Set<string>();
+  const customizeNavSlots = new Set<string>();
   const paletteSlots = new Set<number>();
   for (const definition of registered) {
     if (byId.has(definition.id)) {
@@ -214,35 +182,35 @@ export function createDestinationRegistry(
       }
       sidebarSlots.add(definition.sidebar.order);
     }
-    if (definition.settingsNav) {
+    if (definition.customizeNav) {
       // Same composition rule the panel/Manage split already carries: a
-      // destination is a PLACE in the left panel or a nav-only Settings row,
+      // destination is a PLACE in the left panel or a Customize entry,
       // never both, so one surface cannot advertise itself twice.
       if (definition.sidebar) {
         throw new Error(
-          `Destination ${definition.id} is both a panel place and a Settings nav entry`,
+          `Destination ${definition.id} is both a panel place and a Customize nav entry`,
         );
       }
-      // `hiddenFromNav` and `settingsNav` compose to nothing: the pair
-      // declares a Settings row and then withholds it, leaving the surface
+      // `hiddenFromNav` and `customizeNav` compose to nothing: the pair
+      // declares a Customize entry and then withholds it, leaving the surface
       // advertised nowhere with no error to read.
       if (definition.hiddenFromNav) {
         throw new Error(
-          `Destination ${definition.id} cannot be hidden from nav and a Settings nav entry`,
+          `Destination ${definition.id} cannot be hidden from nav and a Customize nav entry`,
         );
       }
-      const navRoute = definition.settingsNav.route;
+      const navRoute = definition.customizeNav.route;
       if (navRoute !== undefined && !navRoute.startsWith('/')) {
         throw new Error(
-          `Destination ${definition.id} must use an absolute Station route for its Settings nav entry`,
+          `Destination ${definition.id} must use an absolute Station route for its Customize nav entry`,
         );
       }
       // Order is unique WITHIN a group; two groups may both have a row 10.
-      const slot = `${definition.settingsNav.group}:${definition.settingsNav.order}`;
-      if (settingsNavSlots.has(slot)) {
-        throw new Error(`Duplicate Settings nav destination order: ${slot}`);
+      const slot = `${definition.customizeNav.group}:${definition.customizeNav.order}`;
+      if (customizeNavSlots.has(slot)) {
+        throw new Error(`Duplicate Customize nav destination order: ${slot}`);
       }
-      settingsNavSlots.add(slot);
+      customizeNavSlots.add(slot);
     }
     if (definition.palette) {
       if (paletteSlots.has(definition.palette.order)) {
@@ -290,27 +258,20 @@ export function createDestinationRegistry(
           )
           .sort((left, right) => left.sidebar!.order - right.sidebar!.order),
       ),
-    getSettingsNav: (flags = defaultFlags) =>
+    getCustomizeNav: (flags = defaultFlags) =>
       Object.freeze(
         advertised(flags)
-          .filter((definition) => definition.settingsNav)
+          .filter((definition) => definition.customizeNav)
           .map((definition) =>
             Object.freeze({
               id: definition.id,
-              group: definition.settingsNav!.group,
-              order: definition.settingsNav!.order,
-              label: definition.settingsNav!.label ?? definition.label(),
-              route: definition.settingsNav!.route ?? definition.route,
+              group: definition.customizeNav!.group,
+              order: definition.customizeNav!.order,
+              label: definition.customizeNav!.label ?? definition.label(),
+              route: definition.customizeNav!.route ?? definition.route,
             }),
           )
-          // `order` only. It is a total order WITHIN a group — the composer
-          // refuses two entries in one `group:order` slot — and that is all
-          // this projection promises, because sequencing the groups against
-          // each other and against the settings sections is the navigation's
-          // decision: `settingsSectionNavItems` partitions these rows by
-          // `group` and interleaves each partition with the sections of the
-          // same group. A list here that also claimed a group sequence would
-          // have to agree with that one, and nothing could check that it did.
+          // Order slots are unique within each group. Stable ties preserve registration order.
           .sort((left, right) => left.order - right.order),
       ),
     getPalette: (flags = defaultFlags) =>
@@ -347,13 +308,7 @@ export const APP_DESTINATION_REGISTRY = createDestinationRegistry([
     label: () => 'Agents',
     keywords: ['agents', 'manage'],
     icon: 'agents',
-    // #2059 (D3): configuration is reached through the gear and the palette.
-    // RT-13 had promoted Agents to a top-level panel row because it was two
-    // clicks deep behind a collapsed group labelled with a verb ("Customize");
-    // the fix was that the panel carries no configuration rows at all. #2144
-    // slice 4 finished it: within Settings these are rows in its own section
-    // navigation, not a separate Manage grid below the fold.
-    settingsNav: { group: 'set-up', order: 10 },
+    customizeNav: { group: 'set-up', order: 10 },
     managementGroup: 'agents',
     palette: { order: 10 },
     managementViewTypes: ['agents', 'agent-new', 'agent-edit'],
@@ -368,7 +323,7 @@ export const APP_DESTINATION_REGISTRY = createDestinationRegistry([
     label: () => 'Skills',
     keywords: ['guidance', 'skills', 'commands', 'playbooks', 'prompts'],
     icon: 'guidance',
-    settingsNav: { group: 'set-up', order: 20 },
+    customizeNav: { group: 'set-up', order: 20 },
     managementGroup: 'guidance',
     managementViewTypes: ['guidance'],
   },
@@ -401,7 +356,7 @@ export const APP_DESTINATION_REGISTRY = createDestinationRegistry([
     // `/connections` itself is a resolver frame that immediately picks a
     // section, so listing the hub root put a reader one redirect from the
     // place the row is about.
-    settingsNav: {
+    customizeNav: {
       group: 'set-up',
       order: 30,
       label: 'Engines & Models',
@@ -440,9 +395,9 @@ export const APP_DESTINATION_REGISTRY = createDestinationRegistry([
     keywords: ['plugins'],
     icon: 'plugins',
     // #2144 decision 4: Registry FOLDS in here. Browsing the catalogue and
-    // managing what it installed are one errand, so Settings offers one row
+    // managing what it installed are one errand, so Customize offers one row
     // for it; /registry keeps its route, its palette entry and its keywords.
-    settingsNav: { group: 'set-up', order: 40 },
+    customizeNav: { group: 'set-up', order: 40 },
     managementGroup: 'plugins',
     palette: { order: 60 },
     managementViewTypes: ['plugins'],
@@ -477,7 +432,6 @@ export const APP_DESTINATION_REGISTRY = createDestinationRegistry([
     label: () => 'Schedule',
     keywords: ['schedule', 'cron', 'jobs', 'boo'],
     icon: 'schedule',
-    settingsNav: { group: 'set-up', order: 50 },
     managementGroup: 'schedule',
     palette: { order: 70 },
     managementViewTypes: ['schedule'],
@@ -503,7 +457,7 @@ export const APP_DESTINATION_REGISTRY = createDestinationRegistry([
     // `activityDeepLink` builder the server-side producers use, it is where
     // `/activity` and `/sessions` now redirect and it really does open this
     // surface. `regionSurface` short-circuits both advertised entry points
-    // (the palette and the sidebar row call `showSurface`), so the field is
+    // (the palette and the sidebar row open it as the page), so the field is
     // only read when something asks this surface for a path — and what it
     // hands back has to be one that works.
     //
@@ -543,7 +497,7 @@ export const APP_DESTINATION_REGISTRY = createDestinationRegistry([
     // The device flag gates ADVERTISEMENT only, here exactly as it gated the
     // Manage entry and the panel row before it: /developer stays deep-linkable
     // whether or not this row is offered.
-    settingsNav: { group: 'this-station', order: 10 },
+    customizeNav: { group: 'this-station', order: 100 },
     managementGroup: 'developer',
     palette: { order: 80 },
     managementViewTypes: ['developer'],

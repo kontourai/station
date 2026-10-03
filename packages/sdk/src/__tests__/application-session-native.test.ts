@@ -15,6 +15,7 @@ import {
   applicationSessionKeyThumbprint,
   createNativeApplicationSessionProof,
   NativeApplicationSessionClient,
+  type NativeApplicationSessionProofProvider,
   type NativeApplicationSessionTrustSnapshotV1,
   serializedCredentialsHash,
 } from '../client/application-session-native';
@@ -43,7 +44,12 @@ function decodeClaims(proof: string): NativeApplicationSessionProofClaimsV1 {
   );
 }
 
-async function fixture() {
+async function fixture(
+  proofProvider?: (
+    key: Awaited<ReturnType<typeof createApplicationSessionKey>>,
+    trust: () => NativeApplicationSessionTrustSnapshotV1,
+  ) => NativeApplicationSessionProofProvider,
+) {
   const key = await createApplicationSessionKey();
   let trust: NativeApplicationSessionTrustSnapshotV1 = {
     kind: 'station-native',
@@ -124,7 +130,7 @@ async function fixture() {
   const client = new NativeApplicationSessionClient(
     transport,
     () => trust,
-    key,
+    proofProvider ? proofProvider(key, () => trust) : key,
   );
   return {
     client,
@@ -149,6 +155,411 @@ async function fixture() {
       afterChallenge = action;
     },
   };
+}
+
+function hostProvider(
+  key: Awaited<ReturnType<typeof createApplicationSessionKey>>,
+  trust: () => NativeApplicationSessionTrustSnapshotV1,
+): NativeApplicationSessionProofProvider {
+  return {
+    kind: 'station-native-host-proof-provider/v1',
+    publicKey: key.publicKey,
+    async prepareExchange({ challenge, credentials }) {
+      const ordered = {
+        username: credentials.username,
+        password: credentials.password,
+      };
+      const proof = await createNativeApplicationSessionProof(key, trust(), {
+        purpose: 'exchange',
+        deviceId: trust().deviceId,
+        nonce: challenge.nonce,
+        method: 'POST',
+        path: APPLICATION_SESSION_NATIVE_EXCHANGE_PATH,
+        expiresAtMs: challenge.expiresAtMs,
+        challengeIdHash: createHash('sha256')
+          .update(challenge.challengeId)
+          .digest('base64url'),
+        credentialsHash: createHash('sha256')
+          .update(JSON.stringify(ordered))
+          .digest('base64url'),
+      });
+      return {
+        body: {
+          version: APPLICATION_SESSION_NATIVE_VERSION,
+          challengeId: challenge.challengeId,
+          credentials: ordered,
+          proof,
+        },
+        headers: { [APPLICATION_SESSION_NATIVE_PROOF_HEADER]: proof },
+      };
+    },
+    async requestHeaders({ continuation, request }) {
+      const proof = await createNativeApplicationSessionProof(key, trust(), {
+        purpose: 'request',
+        deviceId: trust().deviceId,
+        nonce: continuation.nonce,
+        method: request.method,
+        path: request.path,
+        expiresAtMs: continuation.expiresAtMs,
+        credentialHash: createHash('sha256')
+          .update(continuation.credential)
+          .digest('base64url'),
+      });
+      return {
+        [APPLICATION_SESSION_NATIVE_HEADER]: continuation.credential,
+        [APPLICATION_SESSION_NATIVE_PROOF_HEADER]: proof,
+      };
+    },
+  };
+}
+
+function invitationHostProvider(
+  key: Parameters<typeof hostProvider>[0],
+  trust: Parameters<typeof hostProvider>[1],
+): NativeApplicationSessionProofProvider {
+  return {
+    ...hostProvider(key, trust),
+    async prepareInvitationAcceptance({ continuation, token }) {
+      const proof = await createNativeApplicationSessionProof(key, trust(), {
+        purpose: 'request',
+        deviceId: trust().deviceId,
+        nonce: continuation.nonce,
+        method: 'POST',
+        path: '/api/account-auth/accept-invitation',
+        expiresAtMs: continuation.expiresAtMs,
+        credentialHash: createHash('sha256')
+          .update(continuation.credential)
+          .digest('base64url'),
+      });
+      return {
+        body: { token },
+        headers: {
+          [APPLICATION_SESSION_NATIVE_HEADER]: continuation.credential,
+          [APPLICATION_SESSION_NATIVE_PROOF_HEADER]: proof,
+        },
+      };
+    },
+  };
+}
+
+describe('structured native account proof provider', () => {
+  test('host context deadline is frozen before signing and clamps a later server session without extending reads or revoke', async () => {
+    const started = Date.now();
+    let hostDeadline = started + 900000;
+    const h = await fixture((key, trust) => {
+      const host = invitationHostProvider(key, trust);
+      return {
+        ...host,
+        get contextExpiresAtMs() {
+          return hostDeadline;
+        },
+        async prepareExchange(input) {
+          const result = await host.prepareExchange(input);
+          hostDeadline = started + 1800000;
+          return result;
+        },
+      };
+    });
+    h.setContinuationOverride({
+      expiresAt: new Date(started + 960000).toISOString(),
+    });
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(started + 60000);
+    try {
+      const accepted = await h.client.exchange(credentials);
+      expect(Date.parse(accepted.expiresAt)).toBe(started + 900000);
+      clock.mockReturnValue(started + 900000);
+      await expect(
+        h.client.headers(accepted, { method: 'GET', path: '/api/projects' }),
+      ).rejects.toThrow('context expired');
+      await expect(h.client.prepareRevocation(accepted)).rejects.toThrow(
+        'context expired',
+      );
+    } finally {
+      clock.mockRestore();
+      h.fetchSpy.mockRestore();
+    }
+  });
+
+  test('fixed native revoke preparation validates exact endpoint proof and trust after host signing without widening reads', async () => {
+    let wrongPath = true;
+    let change: () => void = () => {};
+    const h = await fixture((key, trust) => ({
+      ...hostProvider(key, trust),
+      async prepareRevocation({ continuation }) {
+        const proof = await createNativeApplicationSessionProof(key, trust(), {
+          purpose: 'request',
+          deviceId: trust().deviceId,
+          nonce: continuation.nonce,
+          method: 'POST',
+          path: wrongPath
+            ? '/api/account-auth/continuations/revoke'
+            : '/api/account-auth/continuations/native/revoke',
+          credentialHash: createHash('sha256')
+            .update(continuation.credential)
+            .digest('base64url'),
+          expiresAtMs: continuation.expiresAtMs,
+        });
+        change();
+        return {
+          body: {},
+          headers: {
+            [APPLICATION_SESSION_NATIVE_HEADER]: continuation.credential,
+            [APPLICATION_SESSION_NATIVE_PROOF_HEADER]: proof,
+          },
+        };
+      },
+    }));
+    const continuation = await h.client.exchange(credentials);
+    await expect(h.client.prepareRevocation(continuation)).rejects.toThrow();
+    wrongPath = false;
+    const prepared = await h.client.prepareRevocation(continuation);
+    expect(prepared.body).toEqual({});
+    expect(Object.isFrozen(prepared.body)).toBe(true);
+    expect(
+      decodeClaims(prepared.headers[APPLICATION_SESSION_NATIVE_PROOF_HEADER]!),
+    ).toMatchObject({
+      method: 'POST',
+      path: '/api/account-auth/continuations/native/revoke',
+    });
+    await expect(
+      h.client.headers(continuation, {
+        method: 'POST',
+        path: '/api/account-auth/continuations/native/revoke',
+      }),
+    ).rejects.toThrow();
+    change = () =>
+      h.setTrust({ deviceId: '99999999-9999-4999-8999-999999999999' });
+    await expect(h.client.prepareRevocation(continuation)).rejects.toThrow();
+    h.fetchSpy.mockRestore();
+  });
+
+  test('host account read proofs cover only the exact member-read capability inventory', async () => {
+    const h = await fixture(hostProvider);
+    const continuation = await h.client.exchange({
+      username: 'operator',
+      password: 'password',
+    });
+    for (const path of [
+      '/.well-known/station/v1',
+      '/api/system/status',
+      '/api/system/identity',
+      '/api/auth/authority',
+      '/api/projects',
+      '/api/projects/demo',
+      '/api/projects/demo/shared-work',
+      '/api/projects/demo/shared-work/task_1/document',
+      '/api/projects/demo/shared-work/task_1/history',
+      '/api/projects/demo/shared-work/task_1/publication',
+    ])
+      expect(
+        await h.client.headers(continuation, { method: 'GET', path }),
+      ).toHaveProperty(APPLICATION_SESSION_NATIVE_PROOF_HEADER);
+    for (const path of [
+      '/api/pairing/devices',
+      '/api/config',
+      '/api/projects/demo/git/status',
+      '/api/projects/demo/shared-work/task_1/messages',
+      '/api/projects/demo/shared-work/task_1/document/extra',
+      '/api/projects/%2Fadmin',
+    ])
+      await expect(
+        h.client.headers(continuation, { method: 'GET', path }),
+      ).rejects.toThrow();
+    await expect(
+      h.client.headers(continuation, {
+        method: 'POST',
+        path: '/api/projects/demo/shared-work/task_1/document',
+      }),
+    ).rejects.toThrow();
+    h.fetchSpy.mockRestore();
+  });
+
+  test('fixed invitation preparation validates the token and host proof without widening GET/HEAD request headers', async () => {
+    const prepare = vi.fn();
+    const reads = vi.fn();
+    const h = await fixture((key, trust) => {
+      const host = invitationHostProvider(key, trust);
+      prepare.mockImplementation(host.prepareInvitationAcceptance!);
+      reads.mockImplementation(host.requestHeaders);
+      return {
+        ...host,
+        prepareInvitationAcceptance: prepare,
+        requestHeaders: reads,
+      };
+    });
+    const continuation = await h.client.exchange({
+      username: 'operator',
+      password: 'password',
+    });
+    const token = Buffer.alloc(32, 8).toString('base64url');
+    const prepared = await h.client.prepareInvitationAcceptance(
+      continuation,
+      token,
+    );
+    expect(prepared.body).toEqual({ token });
+    expect(Object.isFrozen(prepared.body)).toBe(true);
+    expect(reads).not.toHaveBeenCalled();
+    expect(prepare).toHaveBeenCalledTimes(1);
+    await expect(
+      h.client.headers(continuation, {
+        method: 'POST',
+        path: '/api/account-auth/accept-invitation',
+      }),
+    ).rejects.toThrow('only Project reads');
+    await expect(
+      h.client.prepareInvitationAcceptance(continuation, 'bad-token'),
+    ).rejects.toThrow();
+    expect(prepare).toHaveBeenCalledTimes(1);
+    h.fetchSpy.mockRestore();
+  });
+  test('fixed invitation preparation refuses substituted body and stale owner while preserving observable failure', async () => {
+    let substitution = true;
+    let changed: () => void = () => {};
+    const h = await fixture((key, trust) => {
+      const host = invitationHostProvider(key, trust);
+      return {
+        ...host,
+        async prepareInvitationAcceptance(input) {
+          const prepared = await host.prepareInvitationAcceptance!(input);
+          if (substitution)
+            return {
+              ...prepared,
+              body: { token: Buffer.alloc(32, 9).toString('base64url') },
+            };
+          changed();
+          return prepared;
+        },
+      };
+    });
+    const continuation = await h.client.exchange({
+      username: 'operator',
+      password: 'password',
+    });
+    const token = Buffer.alloc(32, 8).toString('base64url');
+    await expect(
+      h.client.prepareInvitationAcceptance(continuation, token),
+    ).rejects.toThrow();
+    substitution = false;
+    changed = () =>
+      h.setTrust({ deviceId: '99999999-9999-4999-8999-999999999999' });
+    await expect(
+      h.client.prepareInvitationAcceptance(continuation, token),
+    ).rejects.toThrow();
+    h.fetchSpy.mockRestore();
+  });
+
+  test('validates and sends the ordered host exchange body before transport framing', async () => {
+    const h = await fixture(hostProvider);
+    const result = await h.client.exchange({
+      password: '🔒 café\u2028λ',
+      username: 'operator',
+    });
+    const sent = h.posts[1]!;
+    const body = zBody(sent.body);
+    expect(Object.keys(body.credentials)).toEqual(['username', 'password']);
+    expect(decodeClaims(body.proof).credentialsHash).toBe(
+      createHash('sha256')
+        .update(JSON.stringify(body.credentials))
+        .digest('base64url'),
+    );
+    expect(sent.headers[APPLICATION_SESSION_NATIVE_PROOF_HEADER]).toBe(
+      body.proof,
+    );
+    const headers = await h.client.headers(result, {
+      method: 'GET',
+      path: '/api/projects?include=exact%2Bquery',
+    });
+    expect(
+      decodeClaims(headers[APPLICATION_SESSION_NATIVE_PROOF_HEADER]!).path,
+    ).toBe('/api/projects?include=exact%2Bquery');
+    expect(headers[APPLICATION_SESSION_NATIVE_HEADER]).toBe(result.credential);
+    h.fetchSpy.mockRestore();
+  });
+
+  test.each(['body', 'headers', 'signature'] as const)(
+    'refuses mismatched host %s before exchange dispatch',
+    async (change) => {
+      const h = await fixture((key, trust) => {
+        const provider = hostProvider(key, trust);
+        return {
+          ...provider,
+          async prepareExchange(input) {
+            const prepared = await provider.prepareExchange(input);
+            if (change === 'body')
+              return {
+                ...prepared,
+                body: {
+                  ...prepared.body,
+                  credentials: {
+                    username: 'attacker',
+                    password: input.credentials.password,
+                  },
+                },
+              };
+            if (change === 'headers')
+              return {
+                ...prepared,
+                headers: {
+                  [APPLICATION_SESSION_NATIVE_PROOF_HEADER]: 'different-proof',
+                },
+              };
+            const parts = prepared.body.proof.split('.');
+            parts[2] = 'A'.repeat(86);
+            const proof = parts.join('.');
+            return {
+              body: { ...prepared.body, proof },
+              headers: { [APPLICATION_SESSION_NATIVE_PROOF_HEADER]: proof },
+            };
+          },
+        };
+      });
+      await expect(h.client.exchange(credentials)).rejects.toThrow();
+      expect(h.posts).toHaveLength(1);
+      h.fetchSpy.mockRestore();
+    },
+  );
+
+  test('refuses unsupported provider credentials and non-read Project targets without calling the provider', async () => {
+    const prepare = vi.fn();
+    const request = vi.fn();
+    const h = await fixture((key, trust) => {
+      const provider = hostProvider(key, trust);
+      prepare.mockImplementation(provider.prepareExchange);
+      request.mockImplementation(provider.requestHeaders);
+      return { ...provider, prepareExchange: prepare, requestHeaders: request };
+    });
+    await expect(
+      h.client.exchange({
+        email: 'someone@example.test',
+        password: 'password',
+      }),
+    ).rejects.toThrow();
+    expect(prepare).not.toHaveBeenCalled();
+    expect(h.posts).toHaveLength(0);
+    const current = await h.client.exchange(credentials);
+    for (const target of [
+      { method: 'POST', path: '/api/projects' },
+      { method: 'GET', path: '/api/pairing/devices' },
+      { method: 'GET', path: '/api/projects/a/access' },
+    ])
+      await expect(h.client.headers(current, target)).rejects.toThrow(
+        'only Project reads',
+      );
+    expect(request).not.toHaveBeenCalled();
+    h.fetchSpy.mockRestore();
+  });
+});
+
+function zBody(value: Record<string, unknown>) {
+  const credentials = value.credentials;
+  if (
+    !credentials ||
+    typeof credentials !== 'object' ||
+    Array.isArray(credentials) ||
+    typeof value.proof !== 'string'
+  )
+    throw new Error('fixture exchange body missing');
+  return { credentials, proof: value.proof };
 }
 
 describe('native application session client', () => {

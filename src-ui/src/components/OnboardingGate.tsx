@@ -1,3 +1,4 @@
+import { OPEN_NEW_CHAT_EVENT, readNewChatIntent } from '../lib/newChatIntent';
 /**
  * OnboardingGate keeps the shell available when a Station endpoint is
  * unavailable. ConnectionBannerSource owns reachability disclosure while this
@@ -12,6 +13,7 @@ import {
   loadPendingExchange,
   type PendingPairingExchange,
   retryLocalSelfProvisionAfterRejection,
+  useConnectionStatus,
   useConnections,
 } from '@kontourai/station-connect';
 import { pairingStateCopy } from '@kontourai/station-contracts/pairing-copy';
@@ -35,6 +37,7 @@ import {
   bannerStore,
 } from '../contexts/banner-store';
 import { useNavigation } from '../contexts/NavigationContext';
+import { navigationStore } from '../contexts/navigation-store';
 import {
   shouldRenderSetupLauncher,
   shouldRenderUsageTelemetryDisclosure,
@@ -52,7 +55,11 @@ import {
   type OpenConnectionsModalDetail,
 } from '../lib/connectionModalEvents';
 import { hasRealSavedConnection } from '../lib/saved-connections';
-import { checkServerHealthDetailed } from '../lib/serverHealth';
+import {
+  checkServerHealth,
+  checkServerHealthDetailed,
+  probeServerConnection,
+} from '../lib/serverHealth';
 import { hasLocalStationForProfile } from '../platform/client-origin-surface';
 import { reconnectLocalService } from '../platform/native/localServiceReconnect';
 import { invokeTauri } from '../platform/native/tauriInvoke';
@@ -80,6 +87,37 @@ type ConnectionModalMode =
   | 'devices'
   | 'pair-host';
 
+const loadNativeRelayRouteProfiles = () =>
+  import('../views/connections-hub/RelayRouteProfiles').then((module) => ({
+    default: module.RelayRouteProfiles,
+  }));
+
+function NativeRelayRouteSetupFooter() {
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <>
+      <h3>Connect through a broker route</h3>
+      <p>
+        Save a Station and broker route when a direct address or pairing code is
+        not available.
+      </p>
+      <Button
+        aria-expanded={expanded}
+        onClick={() => setExpanded((current) => !current)}
+      >
+        {expanded ? 'Hide broker route setup' : 'Set up a broker route'}
+      </Button>
+      {expanded ? (
+        <LazyBoundary
+          load={loadNativeRelayRouteProfiles}
+          componentProps={{}}
+          pending={null}
+        />
+      ) : null}
+    </>
+  );
+}
+
 const PAIRING_APPROVAL_BANNER_ID = 'chrome:onboarding:pairing-approval';
 /**
  * Module-scope loaders (archive#2605 keeps these out of render), handed to
@@ -104,6 +142,11 @@ const loadBundledServiceBanner = () =>
 export function OnboardingGate({ children }: { children: ReactNode }) {
   const { refetch } = useSystemStatus();
   const { apiBase, activeConnection, connections } = useConnections();
+  const activeHealth = useConnectionStatus({
+    checkHealth: checkServerHealth,
+    probeEndpoint: probeServerConnection,
+    pollInterval: 10_000,
+  });
   // COMPOSITION BOUNDARY (hosted connect-modal regression): this gate mounts
   // ABOVE `AuthorityQueryProvider` inside `RecoveryQueryBoundary`, so the
   // open access-request flow survives activation transitions that replace
@@ -680,6 +723,14 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
     };
   }, [profile.isDesktop, observedAuthFailure, forceRefetch]);
 
+  useEffect(() => {
+    const startWork = (event: Event) => {
+      if (readNewChatIntent(event).startWithDefault) deferSetupBanner();
+    };
+    window.addEventListener(OPEN_NEW_CHAT_EVENT, startWork);
+    return () => window.removeEventListener(OPEN_NEW_CHAT_EVENT, startWork);
+  }, [deferSetupBanner]);
+
   // `shouldRenderSetupLauncher` already requires non-null content; the
   // explicit `&& setupBannerContent` only exists so TypeScript narrows the
   // prop type here without a cast.
@@ -827,11 +878,26 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
           setPairingLinkError(undefined);
         }}
         checkHealth={checkServerHealthDetailed}
+        activeHealth={
+          activeConnection
+            ? {
+                connectionId: activeConnection.id,
+                status: activeHealth.status,
+                reason: activeHealth.reason,
+              }
+            : undefined
+        }
+        guardConnectionChange={(proceed) =>
+          navigationStore.runNavigationGuards(proceed)
+        }
         checkCompatibility={checkHostCompatibility}
         pairingClientChannel={
           profile.channel === 'dev' ? 'stable' : profile.channel
         }
         initialPanel={connectionModalMode}
+        listFooterContent={
+          profile.isTauri ? <NativeRelayRouteSetupFooter /> : undefined
+        }
         initialPairingPayload={pairingPayload}
         pairingLinkError={pairingLinkError}
         onPairingReviewDismissed={() => {

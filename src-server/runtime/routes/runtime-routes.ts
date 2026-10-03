@@ -1,5 +1,6 @@
 import { humanPrincipal as deploymentHumanPrincipal } from '@kontourai/station-contracts/principal';
 import { sessionLifecycleOutcome } from '@kontourai/station-contracts/session-lifecycle';
+import { TASK_ROOM_CONTEXT_VERSION } from '@kontourai/station-contracts/task-room-work';
 import { createBrowserRoutes } from '../../routes/browser.js';
 import { createBrowserAgentRoutes } from '../../routes/browser-agent.js';
 import { createDeviceHostRoutes } from '../../routes/device-hosts.js';
@@ -13,6 +14,11 @@ import { createProjectSharedTaskRoutes } from '../../routes/projects/project-sha
 import { createApplicationSessionRoutes } from '../../routes/system/application-session-routes.js';
 import { createDeploymentAuthenticationRoutes } from '../../routes/system/deployment-authentication-routes.js';
 import { createLocalAccountAdministrationRoutes } from '../../routes/system/local-account-administration-routes.js';
+import {
+  createNativeRelayEnrollmentOperatorRoutes,
+  createNativeRelayEnrollmentRoutes,
+} from '../../routes/system/native-relay-enrollment-routes.js';
+import { createNativeRelaySurfaceRoutes } from '../../routes/system/native-relay-surface-routes.js';
 import { createRelayEnrollmentRoutes } from '../../routes/system/relay-enrollment-routes.js';
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
 import { writeLocalGrantSecretFile } from '../../security/local-grant-file.js';
@@ -39,6 +45,7 @@ import {
   createBrowserService,
 } from '../../services/browser/browser-service.js';
 import { suggestLocalTargets } from '../../services/browser/local-port-scanner.js';
+import type { NativeSurfaceRegistry } from '../../services/connections/native-surface-registry.js';
 import { createAndroidAvdResolver } from '../../services/devices/android-avd.js';
 import {
   type DeviceAccess,
@@ -78,6 +85,7 @@ import {
   isDeploymentAccountPrincipalId,
 } from '../../services/identity/deployment-authentication-service.js';
 import type { LoadedLocalAccounts } from '../../services/identity/local-account-runtime.js';
+import type { NativeRelayEnrollmentService } from '../../services/identity/native-relay-enrollment-service.js';
 import {
   RelayEnrollmentRefusal,
   type RelayEnrollmentService,
@@ -93,6 +101,7 @@ import { ProjectMembershipRefusal } from '../../services/projects/project-member
 import { guardProjectResponse } from '../../services/projects/project-response-guard.js';
 import { ProjectSharedTaskService } from '../../services/projects/project-shared-task-service.js';
 import type { ProjectSharedTaskStore } from '../../services/projects/project-shared-task-store.js';
+import { createTaskRoomContext } from '../../services/projects/task-room-context.js';
 import {
   currentRequestReadAuthority,
   runAsStationKnowledgeIndexer,
@@ -344,12 +353,15 @@ import {
 } from '../../routes/system/config.js';
 import { createDiagnosticsRoutes } from '../../routes/system/diagnostics.js';
 import { createFeaturePreviewRoutes } from '../../routes/system/feature-previews.js';
+import { createNativeDeviceProofBindingRoutes } from '../../routes/system/native-device-proof-binding-routes.js';
+import { createNativeDeviceProofSelfReceiptRoutes } from '../../routes/system/native-device-proof-self-receipt-routes.js';
 import { createSettingsRegistryRoutes } from '../../routes/system/settings-registry.js';
 import { createSystemRoutes } from '../../routes/system/system.js';
 import { createInboundWebhookRoutes } from '../../routes/webhooks/inbound-webhooks.js';
 import { createWebhookTurnStarter } from '../../routes/webhooks/webhook-turn-starter.js';
 import { BoundedAttemptBudget } from '../../security/bounded-attempt-budget.js';
 import { bindFullAccessRefusalIdentity } from '../../security/full-access-refusal.js';
+import { NativeDeviceRequestAuthority } from '../../security/native-device-request-authority.js';
 import { isDefinitelyOffBox } from '../../security/off-box-peer.js';
 import {
   PairingFailureLimiter,
@@ -358,6 +370,7 @@ import {
 import {
   grantedPairingScope,
   type PairingScopeContextStore,
+  pairingScopeSatisfiesHttpRoute,
   requiredPairingScope,
 } from '../../security/pairing-route-scopes.js';
 import {
@@ -524,6 +537,10 @@ import { createTaskBasisAppReadModule } from '../../services/projects/task-basis
 import { createTaskBasisRuntimeComposition } from '../../services/projects/task-basis-runtime-composition.js';
 import type { TaskDispatcher } from '../../services/projects/task-dispatcher.js';
 import type { TaskGraphService } from '../../services/projects/task-graph-service.js';
+import {
+  TaskRoomWorkModule,
+  type TaskRoomWorkScope,
+} from '../../services/projects/task-room-work-module.js';
 import { createTaskGateEvaluationReferenceReadAdapter } from '../../services/projects/task-tool-result-reference-read-adapter.js';
 import { WorkItemProviderService } from '../../services/projects/work-item-provider-service.js';
 import { declaredPullRequestsForConversation } from '../../services/pull-requests/conversation-declared-pull-requests.js';
@@ -554,6 +571,10 @@ import {
   type PairingRequesterPosition,
 } from '../../services/ssh/device-pairing-service.js';
 import type { EnvironmentSecurityService } from '../../services/ssh/environment-security-service.js';
+import {
+  type NativeDeviceProofBindingService,
+  NativeDeviceProofOperatorAuthority,
+} from '../../services/ssh/native-device-proof-binding-service.js';
 import { searchConnectedRemoteMessages } from '../../services/ssh/remote-session-reader.js';
 import type { SshEnvironmentService } from '../../services/ssh/ssh-environment-service.js';
 import {
@@ -711,10 +732,25 @@ export async function pullRequestSessionForReader<
 
 export interface ConfigureRuntimeRoutesContext {
   projectMembership?: ProjectMembershipService;
+  nativeDeviceProofBindings?: NativeDeviceProofBindingService;
+  /**
+   * #2893 opt-in native Device request-proof pilot. Composed only behind an
+   * explicit opt-in with a supported provider/session capability; absent
+   * means every presented Device proof header refuses closed.
+   */
+  nativeDeviceProofPilot?: {
+    binding: import('../../security/native-device-request-authority.js').NativeDeviceProofBindingLookup;
+    pairing: import('../../security/native-device-request-authority.js').NativeDeviceProofPairingLookup;
+    replayStore: import('../../services/identity/native-device-proof-verifier.js').NativeDeviceProofReplayStore;
+    nowSeconds?: () => number;
+    authority?: NativeDeviceRequestAuthority;
+  };
   projectSharedTasks?: ProjectSharedTaskStore;
   deploymentAuthentication?: LoadedDeploymentAuthentication;
   localAccounts?: LoadedLocalAccounts;
   applicationSessions?: ApplicationSessionService;
+  nativeRelayEnrollment?: NativeRelayEnrollmentService;
+  nativeSurfaceRegistry?: NativeSurfaceRegistry;
   relayEnrollment?: RelayEnrollmentService;
   runtimeSearch?: import('../../services/search/runtime-search.js').RuntimeSearch;
   app: HonoApp;
@@ -970,7 +1006,7 @@ export function createPersonalTaskAnswerSupportModule(
     | 'projectService'
     | 'orchestrationService'
     | 'configLoader'
-    | 'appConfig'
+    | 'getLiveAppConfig'
   >,
 ): TaskAnswerSupportModule {
   return new TaskAnswerSupportModule({
@@ -1028,7 +1064,7 @@ export function createPersonalTaskAnswerSupportModule(
         ),
         veritasEvidenceDir:
           workspacePath &&
-          context.appConfig.surfaceTrustFromVeritasEvidence !== false
+          context.getLiveAppConfig().surfaceTrustFromVeritasEvidence !== false
             ? [
                 join(workspacePath, STATION_ARTIFACT_ROOTS.veritas, 'evidence'),
                 join(workspacePath, STATION_LEGACY_ROOTS.veritas, 'evidence'),
@@ -1166,6 +1202,87 @@ export function configureRuntimeRoutes(
     focus: focusPresence,
   });
   let projectTaskRoomRuntime: ProjectTaskRoomRuntime | undefined;
+  const taskRoomWork = new TaskRoomWorkModule(
+    join(context.configLoader.getProjectHomeDir(), 'task-room-work.json'),
+  );
+  const authorizeTaskRoomWork = async (
+    taskId: string,
+    request: Request,
+    principal: PrincipalRef,
+  ): Promise<TaskRoomWorkScope | undefined> => {
+    if (!projectTaskRoomRuntime || !isRequestPrincipalCurrent(request))
+      return undefined;
+    roomRequestPrincipals.set(request, principal);
+    const room = await projectTaskRoomRuntime.discover({ taskId, request });
+    if (
+      (room.kind !== 'opened' && room.kind !== 'existing') ||
+      !isRequestPrincipalCurrent(request)
+    )
+      return undefined;
+    const task = context.taskGraphService.readTaskView(taskId);
+    const project =
+      task &&
+      context.projectService
+        .listProjects()
+        .find((p) => p.id === task.projectId || p.slug === task.projectId);
+    return task && project
+      ? {
+          projectId: project.id,
+          projectSlug: project.slug,
+          roomProjectId: room.scope.projectId,
+          taskCreatedAt: task.createdAt,
+          requesterId: principal.id,
+        }
+      : undefined;
+  };
+  const resolveTaskRoomContext = async (
+    taskId: string,
+    request: Request,
+    principal: PrincipalRef,
+  ) => {
+    const scope = await authorizeTaskRoomWork(taskId, request, principal);
+    const task = context.taskGraphService.readTaskView(taskId);
+    if (
+      !scope ||
+      !task ||
+      task.createdAt !== scope.taskCreatedAt ||
+      !projectTaskRoomRuntime
+    )
+      return undefined;
+    const title = task.title,
+      description = task.description;
+    const document = await projectTaskRoomRuntime.document({ taskId, request });
+    const current = await authorizeTaskRoomWork(taskId, request, principal);
+    const currentTask = context.taskGraphService.readTaskView(taskId);
+    if (
+      !currentTask ||
+      currentTask.title !== title ||
+      currentTask.description !== description ||
+      !current ||
+      current.projectId !== scope.projectId ||
+      current.projectSlug !== scope.projectSlug ||
+      current.roomProjectId !== scope.roomProjectId ||
+      current.taskCreatedAt !== scope.taskCreatedAt ||
+      current.requesterId !== scope.requesterId ||
+      (document.kind !== 'snapshot' && document.kind !== 'delta') ||
+      typeof document.revision !== 'string' ||
+      typeof document.text !== 'string'
+    )
+      return undefined;
+    return createTaskRoomContext(
+      {
+        taskId,
+        projectId: scope.projectId,
+        taskCreatedAt: scope.taskCreatedAt,
+      },
+      {
+        title,
+        description,
+        documentRevision: document.revision,
+        text: document.text,
+      },
+    );
+  };
   let pluginDraftService: PluginDraftService | undefined;
   let projectTaskRoomLifecycleReady: Promise<void> = Promise.resolve();
   let liveSurfaceRegistry: LiveSurfaceRegistry | undefined;
@@ -1178,7 +1295,27 @@ export function configureRuntimeRoutes(
   let remoteDeviceHosts: RemoteDeviceHostServices | undefined;
   let browserProjectAuthorizer: BrowserProjectAuthorizer | undefined;
   const allowedOrigins = resolveConfiguredRuntimeOrigins(context);
+  // #2893: the one native Device request authority for this runtime. Absent
+  // unless the pilot was explicitly composed; proof headers then refuse closed.
+  const nativeDeviceProofAuthority = context.nativeDeviceProofPilot
+    ? context.nativeDeviceProofPilot.authority instanceof
+      NativeDeviceRequestAuthority
+      ? context.nativeDeviceProofPilot.authority
+      : new NativeDeviceRequestAuthority(context.nativeDeviceProofPilot)
+    : undefined;
+  const resolveNativeDeviceBinding = nativeDeviceProofAuthority
+    ? (request: Request) => {
+        const current = nativeDeviceProofAuthority.resolveCurrent(request);
+        return current ? { device: current.device } : undefined;
+      }
+    : undefined;
   const runtimeSecurity = {
+    // #2893: native Device proof admission exists only when the pilot was
+    // explicitly composed; otherwise proof headers refuse closed.
+    ...(nativeDeviceProofAuthority
+      ? { nativeDeviceProof: nativeDeviceProofAuthority }
+      : {}),
+    nativeEnrollment: context.nativeRelayEnrollment,
     deploymentAuthentication: context.deploymentAuthentication?.service,
     verifyCredential: (
       credential: string,
@@ -1480,6 +1617,17 @@ export function configureRuntimeRoutes(
       environmentSecurityService: context.environmentSecurityService,
       deploymentAuthentication: context.deploymentAuthentication?.service,
       hostedTenantRegistry,
+      ...(resolveNativeDeviceBinding
+        ? {
+            resolveNativeDevice: (request: Request) => {
+              const current =
+                nativeDeviceProofAuthority!.resolveCurrent(request);
+              return current
+                ? { accountBinding: current.accountBinding }
+                : undefined;
+            },
+          }
+        : {}),
     });
   const conversationReadAuthorityForContext = (
     c: Parameters<typeof resolveOrchestrationRequestPrincipal>[0],
@@ -1628,6 +1776,9 @@ export function configureRuntimeRoutes(
       context.environmentSecurityService.identifyDevice(credential),
     identifyIngress,
     deploymentAuthentication: context.deploymentAuthentication,
+    ...(resolveNativeDeviceBinding
+      ? { resolveNativeDevice: resolveNativeDeviceBinding }
+      : {}),
   });
   // Station #90 lane D (station #122): a station-control tool's verified caller
   // names a session; the principal it acts for, its project and its
@@ -1812,6 +1963,51 @@ export function configureRuntimeRoutes(
     '/api/account-auth/continuations',
     createApplicationSessionRoutes(context.applicationSessions),
   );
+  if (context.nativeRelayEnrollment) {
+    const nativeRoutes = createNativeRelayEnrollmentRoutes(
+      context.nativeRelayEnrollment,
+    );
+    context.app.post(
+      '/.well-known/station/v1/relay/native-enrollment/begin',
+      (c) => nativeRoutes.fetch(c.req.raw),
+    );
+    context.app.post(
+      '/.well-known/station/v1/relay/native-enrollment/login',
+      (c) => nativeRoutes.fetch(c.req.raw),
+    );
+    context.app.post(
+      '/.well-known/station/v1/relay/native-enrollment/register',
+      (c) => nativeRoutes.fetch(c.req.raw),
+    );
+    context.app.post(
+      '/.well-known/station/v1/relay/native-enrollment/finalize',
+      (c) => nativeRoutes.fetch(c.req.raw),
+    );
+    context.app.post(
+      '/.well-known/station/v1/relay/native-enrollment/activate',
+      (c) => nativeRoutes.fetch(c.req.raw),
+    );
+    context.app.post(
+      '/.well-known/station/v1/relay/native-enrollment/status',
+      (c) => nativeRoutes.fetch(c.req.raw),
+    );
+    context.app.post(
+      '/.well-known/station/v1/relay/native-enrollment/cancel',
+      (c) => nativeRoutes.fetch(c.req.raw),
+    );
+    context.app.route(
+      '/api/pairing/native-relay-enrollments',
+      createNativeRelayEnrollmentOperatorRoutes(context.nativeRelayEnrollment),
+    );
+  }
+  if (context.nativeSurfaceRegistry)
+    context.app.route(
+      '/api/pairing/native-relay-surfaces',
+      createNativeRelaySurfaceRoutes({
+        registry: context.nativeSurfaceRegistry,
+        security: context.environmentSecurityService,
+      }),
+    );
   if (context.relayEnrollment) {
     const relayEnrollmentRoutes = createRelayEnrollmentRoutes(
       context.relayEnrollment,
@@ -2200,6 +2396,24 @@ export function configureRuntimeRoutes(
   // that carries no stored values is not tiered with the route that reads
   // and writes them.
   context.app.route('/api/settings', createSettingsRegistryRoutes());
+
+  if (context.nativeDeviceProofBindings) {
+    context.app.route(
+      '/api/auth/native-device-bindings',
+      createNativeDeviceProofSelfReceiptRoutes({
+        bindings: context.nativeDeviceProofBindings,
+        security: context.environmentSecurityService,
+      }),
+    );
+    context.app.route(
+      '/api/pairing/native-device-bindings',
+      createNativeDeviceProofBindingRoutes({
+        bindings: context.nativeDeviceProofBindings,
+        operatorAuthority: new NativeDeviceProofOperatorAuthority(),
+        security: context.environmentSecurityService,
+      }),
+    );
+  }
 
   configureDevicePairingHostRoutes(
     context.app,
@@ -2896,8 +3110,8 @@ export function configureRuntimeRoutes(
     // environment variable — instead of a direct env read, so the Settings
     // row ("Device helper URL", with its provenance badge) and the Device
     // pane's setup copy name the same source the runtime actually consults.
-    // Live config first (a user can change the setting between boots); the
-    // boot snapshot is the fallback when no live reader answers.
+    // The helper service binds this address at construction. A saved change
+    // applies after a Station restart, as the Settings row states.
     const configuredDeviceHub = resolveEffectiveAppSetting(
       'mobileDeviceHubUrl',
       { config: context.getLiveAppConfig?.() ?? context.appConfig },
@@ -3513,6 +3727,61 @@ export function configureRuntimeRoutes(
             : { kind: 'revoked' as const };
         },
       },
+      readAgentRequests: async (taskId) => {
+        const task = context.taskGraphService.readTaskView(taskId);
+        const project =
+          task &&
+          context.projectService
+            .listProjects()
+            .find(
+              (candidate) =>
+                candidate.id === task.projectId ||
+                candidate.slug === task.projectId,
+            );
+        if (!task || !project) return [];
+        const incarnation = {
+          taskCreatedAt: task.createdAt,
+          roomProjectId: task.projectId,
+          projectId: project.id,
+          projectSlug: project.slug,
+        };
+        const requests = await taskRoomWork.readPublicationRequests({
+          taskId,
+          projectId: project.id,
+          taskCreatedAt: task.createdAt,
+          roomProjectId: task.projectId,
+          readBinding: (sessionId) =>
+            context.orchestrationEventStore!.readProjectTaskRoomExecutionBinding(
+              sessionId,
+            ),
+        });
+        const currentTask = context.taskGraphService.readTaskView(taskId);
+        const currentProject =
+          currentTask &&
+          context.projectService
+            .listProjects()
+            .find(
+              (candidate) =>
+                candidate.id === currentTask.projectId ||
+                candidate.slug === currentTask.projectId,
+            );
+        if (
+          !currentTask ||
+          !currentProject ||
+          currentTask.createdAt !== incarnation.taskCreatedAt ||
+          currentTask.projectId !== incarnation.roomProjectId ||
+          currentProject.id !== incarnation.projectId ||
+          currentProject.slug !== incarnation.projectSlug
+        )
+          return [];
+        return requests.map((record) => ({
+          sessionId: record.sessionId,
+          agentId: record.agentId,
+          ownerOperatorId: record.ownerId,
+          taskCreatedAt: record.taskCreatedAt,
+          createdAt: record.createdAt,
+        }));
+      },
       readAgentLifecycle: async ({ sessionId }) => {
         const detail = await context.orchestrationService.readSession(
           sessionId,
@@ -3526,6 +3795,8 @@ export function configureRuntimeRoutes(
         const outcome = sessionLifecycleOutcome(lifecycle.lifecycleState);
         return {
           provider: detail.session.provider,
+          createdAt: detail.session.createdAt,
+          updatedAt: detail.session.updatedAt,
           ...(outcome ? { outcome } : {}),
         };
       },
@@ -3595,7 +3866,44 @@ export function configureRuntimeRoutes(
     context.app.use('/api/tasks/*', primeRoomRequestPrincipal);
     context.app.use('/api/live-activity', primeRoomRequestPrincipal);
     context.app.use('/api/home-authority/rooms/*', primeRoomRequestPrincipal);
-    context.app.route('/api/tasks', createProjectTaskRoomRoutes(roomRuntime));
+    context.app.route(
+      '/api/tasks',
+      createProjectTaskRoomRoutes(roomRuntime, {
+        listAgentRequests: async (taskId, request) => {
+          const principal = roomRequestPrincipals.get(request);
+          const initial =
+            principal &&
+            (await authorizeTaskRoomWork(taskId, request, principal));
+          const authorize = async () => {
+            const current =
+              principal &&
+              (await authorizeTaskRoomWork(taskId, request, principal));
+            return initial &&
+              current &&
+              current.projectId === initial.projectId &&
+              current.projectSlug === initial.projectSlug &&
+              current.roomProjectId === initial.roomProjectId &&
+              current.taskCreatedAt === initial.taskCreatedAt &&
+              current.requesterId === initial.requesterId
+              ? current
+              : undefined;
+          };
+          const result = await taskRoomWork.list(taskId, authorize);
+          if (result.kind !== 'available') return result;
+          await roomRuntime.reconcileAgentLifecycles([taskId]);
+          const contextSnapshot = principal
+            ? await resolveTaskRoomContext(taskId, request, principal)
+            : undefined;
+          return (await authorize())
+            ? {
+                ...result,
+                contextVersion: TASK_ROOM_CONTEXT_VERSION,
+                context: contextSnapshot ?? null,
+              }
+            : { kind: 'refused' as const };
+        },
+      }),
+    );
   }
   context.app.route(
     '/api/home-authority/rooms',
@@ -3803,6 +4111,11 @@ export function configureRuntimeRoutes(
           remoteStations,
         ),
       ),
+      taskRoomWork: {
+        module: taskRoomWork,
+        authorize: authorizeTaskRoomWork,
+        resolveContext: resolveTaskRoomContext,
+      },
       // #485: the receiver's durable attempt-claim owner, threaded through
       // the route seam into the tool's receiver-local path.
       delegationAttemptClaimStore: context.delegationAttemptClaims,
@@ -3870,6 +4183,17 @@ export function configureRuntimeRoutes(
       ),
       hydrateStagedAttachments: (principal, references, binding) =>
         attachmentStaging.bindAndHydrate(
+          {
+            principalId: principal.id,
+            ...(currentTenantExecutionContext()
+              ? { tenantId: currentTenantExecutionContext()!.tenantId }
+              : {}),
+          },
+          references,
+          binding,
+        ),
+      releaseStagedAttachments: (principal, references, binding) =>
+        attachmentStaging.releaseBinding(
           {
             principalId: principal.id,
             ...(currentTenantExecutionContext()
@@ -4105,26 +4429,35 @@ export function configureRuntimeRoutes(
     request: Request,
   ): ProjectMembershipAuthority => ({
     async current() {
-      if (
-        !isRuntimeRequestPrincipalCurrent(
-          request,
-          context.environmentSecurityService,
-        )
-      )
-        throw new ProjectMembershipRefusal('forbidden');
+      // #2893: a proven native Device keeps a pilot-specific currentness
+      // path — the shared resolver re-reads binding, paired Device and
+      // account binding; it never rides the credential principal check.
+      const nativeDevice =
+        nativeDeviceProofAuthority?.resolveCurrent(request) ?? undefined;
+      const principalCurrent = nativeDevice
+        ? nativeDeviceProofAuthority!.resolveCurrent(request) !== undefined
+        : isRuntimeRequestPrincipalCurrent(
+            request,
+            context.environmentSecurityService,
+          );
+      if (!principalCurrent) throw new ProjectMembershipRefusal('forbidden');
       const account =
         await context.deploymentAuthentication?.service.authenticate(request);
-      if (
-        !isRuntimeRequestPrincipalCurrent(
-          request,
-          context.environmentSecurityService,
-        )
-      )
-        throw new ProjectMembershipRefusal('forbidden');
+      const refreshedNativeDevice = nativeDevice
+        ? nativeDeviceProofAuthority!.resolveCurrent(request)
+        : undefined;
+      const stillCurrent = nativeDevice
+        ? refreshedNativeDevice !== undefined
+        : isRuntimeRequestPrincipalCurrent(
+            request,
+            context.environmentSecurityService,
+          );
+      if (!stillCurrent) throw new ProjectMembershipRefusal('forbidden');
       if (account?.kind === 'authenticated') {
         const runtime = getRuntimeAuthenticatedRequestPrincipal(request);
-        const binding =
-          runtime?.authority === 'device-credential'
+        const binding = refreshedNativeDevice
+          ? refreshedNativeDevice.accountBinding
+          : runtime?.authority === 'device-credential'
             ? context.environmentSecurityService.identifyDevice(
                 runtime.credential,
               )?.principalBinding
@@ -4242,6 +4575,9 @@ export function configureRuntimeRoutes(
         registry: browserService.registry,
         acquisition: browserService.acquisition,
         surfaceIdFor: browserService.surfaceIdFor,
+        pendingDialogFor: browserService.pendingDialogFor,
+        answerDialog: browserService.answerDialog,
+        consoleFor: browserService.consoleFor,
         authorizeProject: authorizeBrowserProject,
         authorizeOperator: createBrowserOperatorAuthorizer(browserAccess),
         localTargets: browserService.localTargets,
@@ -4294,6 +4630,8 @@ export function configureRuntimeRoutes(
       sessions: browserService.registry,
       surfaces: liveSurfaceRegistry ?? { get: () => undefined },
       surfaceIdFor: browserService.surfaceIdFor,
+      dialogWaitingForPerson: (browserSessionId) =>
+        browserService?.pendingDialogFor(browserSessionId) !== undefined,
       settings: browserService.projectSettings,
       locatorEngine: loadLocatorEngineInstallExpression,
     });
@@ -4817,6 +5155,11 @@ export function configureRuntimeRoutes(
   context.app.route(
     '/api/connections',
     createAppHomeRoutes({
+      isLoginReadCurrent: (request) =>
+        isRuntimeRequestPrincipalCurrent(
+          request,
+          context.environmentSecurityService,
+        ),
       // #896 wave 2: the DELETE clear route's 409-while-enabled guard reads
       // the connection's SAVED config directly — never the in-memory
       // adapter state — same source of truth `runtimeDefaultConfig`/
@@ -5349,7 +5692,7 @@ export function configureRuntimeRoutes(
           // so Trust lights up wherever Veritas has run.
           const veritasEvidenceDir =
             workspacePath &&
-            context.appConfig.surfaceTrustFromVeritasEvidence !== false
+            context.getLiveAppConfig().surfaceTrustFromVeritasEvidence !== false
               ? [
                   join(
                     workspacePath,
@@ -6169,10 +6512,10 @@ export function configureRuntimeRoutes(
       // SAME two gates the middleware applies to an approve/deny request, in
       // the same order: the pairing family's authority boundary
       // (`authorizeCredential`, via the exported predicate) and then the
-      // scope table's tier for the confirm/deny leaves (read from the table
-      // itself, not restated — live verification caught a device that passes
-      // the boundary with `access:approve` while the table still 403s it
-      // because the scope-edit promotion path cannot retain `access:manage`).
+      // scope requirement for the confirm/deny leaves, including the narrow
+      // explicit approval grant. The same matcher runs at ingress and delayed
+      // revalidation, so an operator-promoted device need not carry management
+      // authority to decide a pending request.
       // The attested internal principal (station-control/MCP) bypasses both
       // gates in `configureRuntimeHttp`, so it decides too; an absent
       // principal or an unmapped table entry fails closed.
@@ -6200,7 +6543,10 @@ export function configureRuntimeRoutes(
           );
         return (
           grantedScope !== undefined &&
-          pairingScopeIncludes(grantedScope, requiredScope)
+          pairingScopeSatisfiesHttpRoute(grantedScope, requiredScope, {
+            method: 'POST',
+            path: '/api/pairing/requests/request/confirm',
+          })
         );
       },
     }),

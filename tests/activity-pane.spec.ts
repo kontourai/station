@@ -6,8 +6,12 @@
  * longer offers a surface-owned "Dock this pane" — Activity is a REGISTERED
  * SURFACE (`REGION_SURFACE_REGISTRY`), the link is a REVEAL, and the region
  * model decides where a revealed surface lands. On a fine pointer that is
- * Activity's declared `defaultRegion`, `right`; on a coarse one the dock edges
- * fold to `bottom` and the reveal shows it alone.
+ * Activity's declared `defaultRegion`, `right`; on a phone it opens over Chat
+ * in the one folded slot (#2549), and "‹ Chat" returns.
+ *
+ * The sidebar's Activity row is the other entry point, and it is a PLACE: it
+ * opens Activity as the page (`main`), the way Home's row opens Home, and the
+ * row is then the current page. The deep link keeps its contextual reveal.
  *
  * Activity is also the only surface today that declares every region
  * (`regions: REGION_IDS`), so it is the only one whose journey can cross the
@@ -25,7 +29,17 @@
  * Read-only against the isolated temp-home instance apart from this browser
  * context's own `regionArrangement` device setting (localStorage).
  */
+
+import {
+  LIVE_ACTIVITY_SCHEMA_VERSION,
+  parseLiveActivityProjection,
+} from '@kontourai/station-contracts/live-activity';
 import { expect, test } from '@playwright/test';
+import { test as fixtureTest } from './helpers/fixture-audit';
+import {
+  installMockOrchestrationSse,
+  seedOrchestrationRoutes,
+} from './helpers/orchestration';
 import {
   chatDockShell,
   chooseSurfaceInEmptyRegion,
@@ -142,6 +156,116 @@ test.describe('Activity surface deep link', () => {
     ).toBeVisible({ timeout: FIRST_RENDER_TIMEOUT_MS });
     await expect(mainHeading(page, 'Activity')).toHaveCount(0);
   });
+});
+
+test.describe('The sidebar Activity row is a place', () => {
+  /**
+   * The panel's Activity row opens Activity as the PAGE — it takes `main`
+   * the way Home does — and becomes the current page; Home's row gives that
+   * state up. Every contextual producer (the `?surface=activity` link that
+   * notifications and evidence mint) still reveals it in its dock beside
+   * the page. Both halves are observed here in one journey so a regression
+   * of either reds by name.
+   */
+  function primaryNav(page: import('@playwright/test').Page) {
+    return page.getByRole('navigation', { name: 'Primary navigation' });
+  }
+  function activityRow(page: import('@playwright/test').Page) {
+    return primaryNav(page).getByRole('button', {
+      name: 'Activity',
+      exact: true,
+    });
+  }
+  function homeRow(page: import('@playwright/test').Page) {
+    return primaryNav(page).getByRole('button', { name: 'Home', exact: true });
+  }
+  function homeRegion(page: import('@playwright/test').Page) {
+    return page.locator('#station-main').getByRole('region', { name: 'Home' });
+  }
+
+  test('opens Activity as the page, hands it back to Home, and leaves the deep link docking right', async ({
+    page,
+  }) => {
+    await page.goto('/');
+    await expect(homeRegion(page)).toBeVisible({
+      timeout: FIRST_RENDER_TIMEOUT_MS,
+    });
+    await expect(homeRow(page)).toHaveAttribute('aria-current', 'page');
+    await expect(activityRow(page)).not.toHaveAttribute('aria-current', /.*/);
+
+    await activityRow(page).click();
+    await expect(mainHeading(page, 'Activity')).toBeVisible({
+      timeout: FIRST_RENDER_TIMEOUT_MS,
+    });
+    await expect(homeRegion(page)).toHaveCount(0);
+    await expect(
+      surfaceDockShell(page, 'Activity'),
+      'the page is not also a dock region',
+    ).toHaveCount(0);
+    await expect(activityRow(page)).toHaveAttribute('aria-current', 'page');
+    await expect(homeRow(page)).not.toHaveAttribute('aria-current', /.*/);
+    await expect(page).toHaveURL(/\/$/);
+
+    // Pressing the current page again keeps it the page.
+    await activityRow(page).click();
+    await expect(mainHeading(page, 'Activity')).toBeVisible();
+    await expect(activityRow(page)).toHaveAttribute('aria-current', 'page');
+
+    await homeRow(page).click();
+    await expect(homeRegion(page)).toBeVisible({
+      timeout: FIRST_RENDER_TIMEOUT_MS,
+    });
+    await expect(mainHeading(page, 'Activity')).toHaveCount(0);
+    await expect(homeRow(page)).toHaveAttribute('aria-current', 'page');
+    await expect(activityRow(page)).not.toHaveAttribute('aria-current', /.*/);
+
+    // A notification-style link is a contextual reveal: Activity docks on
+    // the right beside Home, and Home stays the page.
+    await page.goto('/?surface=activity');
+    await expect(surfaceDockShell(page, 'Activity')).toHaveClass(
+      /chat-dock--right/,
+      { timeout: FIRST_RENDER_TIMEOUT_MS },
+    );
+    await expect(homeRegion(page)).toBeVisible();
+    await expect(homeRow(page)).toHaveAttribute('aria-current', 'page');
+    await expect(activityRow(page)).not.toHaveAttribute('aria-current', /.*/);
+
+    // From the dock, the row still goes to the page (the dock gives it up).
+    await activityRow(page).click();
+    await expect(mainHeading(page, 'Activity')).toBeVisible();
+    await expect(surfaceDockShell(page, 'Activity')).toHaveCount(0);
+    await expect(activityRow(page)).toHaveAttribute('aria-current', 'page');
+  });
+});
+
+test.describe('The Activity page from a maximized desktop dock', () => {
+  // Review round 2: on a desktop a maximized side region hides the route
+  // outlet and a maximized bottom region takes its row, so the page open
+  // has to restore the dock for the page to be seen.
+  for (const [label, link] of [
+    ['right', '/?dock=open&maximize=true&dockSlotPlacement=right'],
+    ['bottom', '/?dock=open&maximize=true'],
+  ] as const) {
+    test(`the row shows the Activity page from a maximized ${label} dock`, async ({
+      page,
+    }, testInfo) => {
+      await page.goto(link);
+      await expect(chatDockShell(page)).toBeVisible({
+        timeout: FIRST_RENDER_TIMEOUT_MS,
+      });
+      await page
+        .getByRole('navigation', { name: 'Primary navigation' })
+        .getByRole('button', { name: 'Activity', exact: true })
+        .click();
+      const heading = mainHeading(page, 'Activity');
+      await expect(heading).toBeVisible({ timeout: FIRST_RENDER_TIMEOUT_MS });
+      await expect(heading).toBeInViewport();
+      await expect(page).not.toHaveURL(/maximize=true/);
+      await page.screenshot({
+        path: testInfo.outputPath(`activity-page-from-${label}.png`),
+      });
+    });
+  }
 });
 
 test.describe('An empty region is a chooser', () => {
@@ -285,51 +409,212 @@ test.describe('Activity surface at 390x844', () => {
     hasTouch: true,
   });
 
-  test('reveals Activity alone in the one phone dock slot and gives that slot back to Chat', async ({
+  // #2549 (owner decision 2026-09-24, placement.md): on a phone a revealed
+  // pane opens OVER Chat, in Chat's one folded slot, and "‹ Chat" (or Back)
+  // returns. The deep link is such a reveal. (Before #2549 this asserted a
+  // separate Activity dock shell that replaced Chat's.)
+  test('reveals Activity over Chat in the one phone dock slot, and Back to Chat returns', async ({
     page,
   }) => {
     await page.goto('/?surface=activity');
-    const activity = surfaceDockShell(page, 'Activity');
-    await expect(activity).toBeVisible({ timeout: FIRST_RENDER_TIMEOUT_MS });
-
-    // A coarse pointer folds every dock edge to `bottom` and `RegionShells`
-    // mounts only the folded region, so the reveal does not put Activity
-    // beside Chat — it shows it ALONE, in the single slot this device has.
+    const slot = chatDockShell(page);
+    const back = slot.getByRole('button', {
+      name: 'Back to Chat',
+      exact: true,
+    });
+    await expect(back).toBeVisible({ timeout: FIRST_RENDER_TIMEOUT_MS });
     await expect(page.locator('.chat-dock')).toHaveCount(1);
-    await expect(activity).toHaveClass(/chat-dock--bottom/);
-    await expect(chatDockShell(page)).toHaveCount(0);
+    await expect(slot).toHaveClass(/chat-dock--bottom/);
+    await expect(
+      slot.getByRole('heading', { name: 'Activity', exact: true }),
+    ).toBeVisible();
+    // A reveal is not the page: the primary area did not become Activity.
+    await expect(mainHeading(page, 'Activity')).toHaveCount(0);
 
     expect(
       await documentFitsViewportWidth(page),
       'the Activity deep link must not push the phone document sideways',
     ).toBe(true);
-    await expectBoxWithinViewport(page, activity, 'the revealed Activity pane');
-
-    // The control that gives the slot back is the pane's own, and on a phone
-    // it has to be thumb-sized.
-    const hide = activity.getByRole('button', {
-      name: 'Hide Activity',
-      exact: true,
-    });
-    const hideBounds = await hide.boundingBox();
+    await expectBoxWithinViewport(page, slot, 'the revealed Activity pane');
     expect(
-      hideBounds?.height,
-      "the pane's own visibility control must be a 44px tap target",
+      (await back.boundingBox())?.height,
+      'the way back to Chat must be a 44px tap target',
     ).toBeGreaterThanOrEqual(44);
 
-    await hide.click();
-
-    // Hiding the only visible dock region hands the slot to Chat's region:
-    // `foldedDockRegion` falls back to wherever Chat is.
+    await back.click();
+    await expect(back).toHaveCount(0);
     await expect(page.locator('.chat-dock')).toHaveCount(1);
     await expect(
-      chatDockShell(page),
-      'hiding the revealed pane must return the one phone dock slot to Chat',
-    ).toHaveClass(/chat-dock--bottom/);
-    await expect(activity).toHaveCount(0);
-    expect(
-      await documentFitsViewportWidth(page),
-      'returning the slot to Chat must not push the phone document sideways',
-    ).toBe(true);
+      slot.getByRole('heading', { name: 'Activity', exact: true }),
+    ).toHaveCount(0);
   });
+
+  // The sidebar row is a place on a phone too: Activity becomes the page
+  // (not a layer over Chat), the row is current, and Home takes it back.
+  test('the drawer Activity row opens Activity as the page, and Home takes it back', async ({
+    page,
+  }) => {
+    await page.goto('/');
+    const navigation = page.getByRole('navigation', {
+      name: 'Mobile navigation',
+    });
+    const openDrawer = () =>
+      page.getByRole('button', { name: 'Toggle menu' }).click();
+    const row = (name: string) =>
+      navigation.getByRole('button', { name, exact: true });
+
+    await openDrawer();
+    await row('Activity').click();
+    await expect(mainHeading(page, 'Activity')).toBeVisible({
+      timeout: FIRST_RENDER_TIMEOUT_MS,
+    });
+    await expect(
+      page.getByRole('button', { name: 'Back to Chat', exact: true }),
+      'a page open is not a layer over Chat',
+    ).toHaveCount(0);
+    await expect(
+      page.locator('#station-main').getByRole('region', { name: 'Home' }),
+    ).toHaveCount(0);
+
+    await openDrawer();
+    await expect(row('Activity')).toHaveAttribute('aria-current', 'page');
+    await expect(row('Home')).not.toHaveAttribute('aria-current', /.*/);
+    await row('Home').click();
+    await expect(
+      page.locator('#station-main').getByRole('region', { name: 'Home' }),
+    ).toBeVisible({ timeout: FIRST_RENDER_TIMEOUT_MS });
+    await expect(mainHeading(page, 'Activity')).toHaveCount(0);
+  });
+
+  // Review round 1: the page must be SEEN on a phone. A maximized Chat owns
+  // the whole viewport (the route outlet is hidden under it), so the row has
+  // to restore the dock — the assertion is the Activity heading visible in
+  // the primary area, on screen, not model state. (With Activity open OVER
+  // Chat the layer covers the drawer toggle, so the row is not reachable
+  // there; that model path is unit-covered.)
+  test('the drawer Activity row shows the page from a maximized Chat', async ({
+    page,
+  }) => {
+    await page.goto('/?dock=open&maximize=true');
+    const menu = page.getByRole('button', { name: 'Toggle menu' });
+    await expect(menu).toBeVisible({ timeout: FIRST_RENDER_TIMEOUT_MS });
+    await menu.click();
+    await page
+      .getByRole('navigation', { name: 'Mobile navigation' })
+      .getByRole('button', { name: 'Activity', exact: true })
+      .click();
+    const heading = mainHeading(page, 'Activity');
+    await expect(heading).toBeVisible({ timeout: FIRST_RENDER_TIMEOUT_MS });
+    await expect(heading).toBeInViewport();
+    await expect(page).not.toHaveURL(/maximize=true/);
+  });
+});
+
+fixtureTest.describe('Live work in the sidebar footer', () => {
+  fixtureTest.beforeEach(async ({ page }) => {
+    await seedOrchestrationRoutes(page);
+    await installMockOrchestrationSse(page);
+    const observedAt = Date.now();
+    const liveProjection = {
+      schemaVersion: LIVE_ACTIVITY_SCHEMA_VERSION,
+      observedAt,
+      connectedClients: 4,
+      participants: Array.from({ length: 4 }, (_, index) => ({
+        id: (index + 1).toString(16).padStart(24, '0'),
+        actor: { kind: 'human', label: `Participant ${index + 1}` },
+        scope: { projectId: 'p1', projectSlug: 'demo', taskId: '77' },
+        work: {
+          workName: 'Reviewing work',
+          workState: 'reviewing',
+          startedAt: observedAt,
+        },
+      })),
+    };
+    if (!parseLiveActivityProjection(liveProjection))
+      throw new Error('Invalid live presence fixture');
+    await page.route('**/api/live-activity', (route) =>
+      route.fulfill({ json: { success: true, data: liveProjection } }),
+    );
+    await page.route('**/api/orchestration/sessions/read-model*', (route) =>
+      route.fulfill({
+        json: {
+          success: true,
+          data: [1, 2].map((index) => ({
+            provider: 'station',
+            threadId: `station:footer-${index}`,
+            status: 'busy',
+            controlMode: 'station-owned',
+            lifecycleState: 'running',
+            hasActiveTurn: true,
+            isLoaded: true,
+            isPersisted: true,
+            eventCount: 1,
+            createdAt: new Date(observedAt).toISOString(),
+            updatedAt: new Date(observedAt).toISOString(),
+          })),
+        },
+      }),
+    );
+    await page.goto('/settings');
+  });
+
+  fixtureTest(
+    'populated live work fits the sidebar beside its three footer actions',
+    async ({ page }, testInfo) => {
+      await page.setViewportSize({ width: 1280, height: 900 });
+      const footer = page.locator('.sidebar__footer');
+      const presence = footer.getByRole('button', {
+        name: /4 participants.*2 active sessions/,
+      });
+      await expect(presence).toBeVisible();
+      const bounds = (await footer.boundingBox())!;
+      for (const name of ['Schedule', 'Customize', 'Settings']) {
+        const box = (await footer
+          .getByRole('button', { name, exact: true })
+          .boundingBox())!;
+        expect(box.x).toBeGreaterThanOrEqual(bounds.x);
+        expect(box.x + box.width).toBeLessThanOrEqual(bounds.x + bounds.width);
+      }
+      await page.screenshot({
+        path: testInfo.outputPath('footer-populated-desktop.png'),
+      });
+      await page.getByRole('button', { name: 'Collapse sidebar' }).click();
+      await expect(presence).toBeVisible();
+      for (const name of ['Schedule', 'Customize', 'Settings']) {
+        await expect(
+          footer.getByRole('button', { name, exact: true }),
+        ).toBeVisible();
+      }
+    },
+  );
+
+  fixtureTest(
+    'opening live Activity closes mobile navigation and reveals the work',
+    async ({ page }, testInfo) => {
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page.getByRole('button', { name: 'Toggle menu' }).click();
+      const navigation = page.getByRole('navigation', {
+        name: 'Mobile navigation',
+      });
+      const presence = navigation.getByRole('button', {
+        name: /4 participants.*2 active sessions/,
+      });
+      await expect(presence).toBeVisible();
+      await presence.click();
+      await page
+        .getByRole('button', { name: 'Open Activity', exact: true })
+        .click();
+      await expect(navigation).toBeHidden();
+      await expect(
+        page.getByRole('heading', { name: 'Activity', exact: true }),
+      ).toBeVisible();
+      await expect(
+        page.getByText('Running · 2', { exact: true }),
+      ).toBeVisible();
+      expect(await documentFitsViewportWidth(page)).toBe(true);
+      await page.screenshot({
+        path: testInfo.outputPath('footer-activity-mobile.png'),
+      });
+    },
+  );
 });

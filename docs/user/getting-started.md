@@ -84,6 +84,12 @@ runs its own agent loop.
    External agent in the same confirmed action.
 3. Follow its setup action until it reports **Ready**.
 
+For OpenAI's model service, supply its API key. A custom server may use another
+supported authentication method or need no key. **Create** saves a Model
+connection and checks it immediately; if its model list is unavailable, the
+check may send a small, potentially billable test prompt using the default
+model. Correct a refused check before expecting the connection to run work.
+
 Read the accompanying evidence too. A saved connection or a live model catalog
 does not prove that a chat turn completed. An explicit one-turn smoke supplies
 that narrower proof and can incur provider charges; opening Connections or
@@ -108,6 +114,28 @@ Choose the simplest path for what you want to do:
 
 ## Start Your First Chat
 
+On Home, write what you want done and choose **Start a chat**. Station uses
+working defaults, waits for discovery, and carries your original request into
+the conversation. You do not need to choose an Agent, Model, or provider first.
+An already-ready engine can be prepared through the existing idempotent setup
+path; installed, unconnected apps can be connected when needed. Explicitly
+disabled apps remain disabled. A missing account, permission, or working target
+is shown at the point where it is needed, without claiming preparation succeeded.
+
+**Chat options** opens the full picker when you want a different app, Model,
+or workspace. **Explore agents** remains available for deliberate customization.
+The usage disclosure ends after your usage decision. **Personalize Station**
+opens optional preferences after the work entry; it is not a prerequisite for a
+chat.
+Closing preparation prevents a late response from starting work. The request stays
+in the Home field while that Home view remains mounted and through the temporary
+setup-return flow; changing Stations or authorization ends that flow.
+
+When creating an agent, choose **Use a model connection** for Station's engine
+or **Use an AI app** for Claude Code, Codex, or another connected engine. Those
+apps run on the computer hosting your Station, including when you use a phone.
+An agent's setup warning names that agent; other ready agents can still run.
+
 At the end of first-run setup, choose **Start your first chat**. Station saves
 any personalization answers you selected, then opens New Chat. Unanswered
 questions add no profile. If saving those answers fails, setup stays open so
@@ -119,18 +147,101 @@ connection errors, or setup actions when a choice is not ready. Opening it does
 not send a message. **Take the tour** and **Connect another device** are optional alternatives.
 Both save the same selected answers before opening their next step.
 
+On a phone, tap the current chat title to open **Chats and tasks**, then use
+**+** at the lower right to start a chat. **Projects** has the same add control
+for creating a project, including a short first-project prompt when empty.
+
+Selecting a project in the sidebar opens its workspace and makes it the default
+for new chats. An existing chat stays with its original project. The chat bar's
+**New chats** value lets you choose another default without leaving the workspace.
+The next sidebar project selection updates that default again.
+
+### Prepare a visual skill
+
+Ordinary New Chat also lists installed visual skills, including when only one
+Agent is ready. A card describes its purpose, example and owning plugin. Choose
+a card and fill its text or choice inputs, then choose an Agent, Model and
+workspace. This prepares an unsent chat. Attach any required files using the
+ordinary composer, assign files to the named roles when shown, and send
+explicitly to start. Stations that expose inventory without execution support
+show previews and refuse starts.
+
+Guided mode keeps the preparation or recorded stage above the conversation.
+Alongside chat places it beside the conversation on wide screens and above it
+on phones. Chat mode keeps the same conversation with a compact skill header.
+Questions, approvals, transcript, artifacts and Stop keep their ordinary
+conversation controls when switching modes. Declared outputs are expectations;
+actual results appear when the Agent produces them.
+
+The prepared selection, scalar inputs and inert composer file-role choices
+persist with the selected Station's scoped chat draft. Reload restores a bounded
+display preview; Send checks the current installed source again. A failed, busy
+or offline send retains that selection and
+never queues it for automatic replay. A changed source requires a new review.
+Use **Remove unsent visual skill** to deliberately return to ordinary chat.
+**Prepare another stage in this conversation** binds a new unsent preparation
+to the current recorded stage; sending still requires the same source to be
+available. **Browse marketplaces** opens Registry while retaining the picker
+inputs and choices. Return or browser Back refetches the inventory and setup;
+it never installs a plugin or starts the skill automatically.
+
+A source can declare other named stages or a rich view. Preparing a named stage
+keeps this conversation and checks the same installed package. **Open declared
+rich view** uses its existing workspace pane occurrence and isolated host;
+when the pane, source or permission is unavailable, the guided controls remain
+available. Rich views can answer current nonsecret question rounds and prepare
+an unsent next stage. Secret questions and tool approvals use the ordinary
+conversation controls.
+
+
 ### Finish setup and return
 
 If New Chat offers **Connect**, **Set up**, **Edit agent**, or **Set up
 Connections**, use that action to open the owning setup page. The picker steps
 aside while keeping your chosen workspace, Agent, Model, and selected context.
-Use **Return to New Chat** when finished, or browser Back to return to the page
-you left. Station rechecks setup before you choose an Agent; returning sends no
-message. If a choice was removed or access changed, choose an available option.
+For explicit Chat options, use **Return to New Chat** when finished, or browser
+Back to return to the page you left. Station rechecks setup before selection;
+that manual return sends no message. For a written Home goal, readiness of the
+selected agent returns you automatically and resumes the original request after
+revalidation. A failed read keeps the request unsent. If a choice was removed or
+access changed, choose an available option.
 
 **Cancel return**, opening a fresh New Chat, navigating elsewhere, changing
 Stations or authorization, and reloading the page end this temporary return
 flow. Connection changes you already saved remain saved.
+
+### Keep a scheduled-job draft through setup
+
+If Add Job needs an agent, use its setup action. Station prefers repairing an
+existing eligible agent's model connection or configuration; it offers agent
+creation when none exists. The dialog keeps its name, instructions, schedule,
+provider and other fields while the setup page is open. Browser Back or the
+return action restores that draft; verified readiness returns automatically.
+An existing job waits for its selected agent to be ready before returning.
+The job is saved only when you submit it. Changing Station or access, cancelling
+the return, or reloading ends this temporary draft journey.
+
+Opening a page through app navigation reveals that page instead of
+leaving it under maximized chat. On a phone, chat collapses so the destination
+can use the screen. Explicit maximized conversation links still
+open chat at their requested size, and the prior chat size remains available
+when you return to the conversation.
+
+### Send a follow-up while an engine works
+
+Keep typing during a turn. **Send** defaults to **Queue**, which delivers after
+the turn finishes; its dropdown offers **Steer**. Claude Code and Codex can take
+native steering. Other engines hold steering until a safe boundary can be proven;
+currently they wait until the turn finishes. Each pending row shows its mode.
+**Send now** deliberately stops the active turn immediately and sends the
+selected message after Station confirms the stop. **Stop** remains separate.
+
+Quiet turns show elapsed silence without guessing that an engine retried. Retry
+status appears only when the engine reports it. The Drafts icon saves and restores
+unsent composer content; the trash icon clears the current message. Hold or focus
+either icon to read its label. Choose **Chat settings → Return in chat** to change
+Return behavior on this device. Touch devices default to a new line; desktop
+Return sends. Shift+Return adds a line and Ctrl/Cmd+Return sends.
 
 ### Reference project files and earlier conversations
 
@@ -156,6 +267,30 @@ changes before send, Station refuses it instead of silently resolving it under
 the new account. Hosted/shared destinations do not offer conversation
 references until the server can prove that exposing the source title and link
 to that destination is permitted.
+
+## Use a skill
+
+Open **Skills** and search the loaded library by name or description. Select a
+skill to read what it does, where it came from, and which template inputs it
+needs. **View instructions** shows the original instructions. A source label
+identifies where Station loaded the skill; it does not establish publisher trust.
+
+Choose **Use in a new chat**, fill any required inputs, and select an Agent.
+Blank optional inputs use their declared defaults. **Preview instructions**
+shows the message with those values applied. **Start chat** opens a new chat
+and sends that message. This does not attach the skill to the Agent or install
+its dependencies; the Agent's configured tools and permissions still apply.
+
+To add skills, choose **Browse Registry Skills** and inspect the available
+catalog before installing. **Import .md** accepts standalone Markdown skill
+files and reports the outcome of each file. Open an imported skill from its
+result to review and use it. Import does not copy a repository's
+scripts or supporting files. Load plugin packages through Registry.
+
+For a writable skill, **Edit skill** opens its definition and command settings.
+**Back to overview** asks before discarding unsaved edits. Package-owned or
+plugin-served skills show the server's read-only reason and keep editing
+unavailable.
 
 ## Start Your First Task
 
@@ -203,7 +338,16 @@ Project's Review layout. Missing or unavailable records remain visible as such.
 Reading a receipt does not satisfy a gate. See
 [how the inspection keeps the exact target](https://github.com/kontourai/station/blob/main/docs/guides/starter-work.md#inspect-approval-and-review-evidence).
 
+Home keeps unattributed chats visible in its activity chart. Its work counters
+show states such as Running and Needs you; activity groups are not a count of
+configured Projects.
+
 ## Run A Scheduled Readiness Check
+
+To create an ordinary scheduled job, use an agent with a model connection
+(Station's engine). AI app agents cannot run scheduled jobs. If none is ready,
+the job form offers **Set up a scheduled-job agent** to open agent creation;
+choose **Use a model connection** there.
 
 Home can create **station-starter-check** and run it once. Its daily schedule
 stays disabled until you enable it. Open the receipt to read the findings;

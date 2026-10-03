@@ -1321,6 +1321,18 @@ every thread for `--agent`'s provider when `--thread` is omitted) and derives
 "pending" the way the server does; `respond` calls the existing
 `POST /api/orchestration/commands {type:'respondToRequest'}` route.
 
+A request is pending when it has no `request.resolved`, was not
+[settled by its turn's abort](session-api.md#respondtorequest), and, when the
+session summary carries `openRequestIds`, is still listed there. Each row
+carries `requestEventId`, the `request.opened` event it was read from.
+`respond` looks the request up first and, for an approval or permission this
+Station still lists, sends that id as `expectedRequestEventId`, so the server
+answers the request that was listed and refuses one that changed. A question
+(a request carrying a questionnaire) is never bound this way, so the server
+still refuses to close one that was not inspected. A request the lookup does
+not find is posted without the id and the server decides; nothing is refused
+client-side.
+
 ```
 station approvals list --agent=<slug> [--thread=<id>] [--watch] [--json] [--api-base=<url>]
 station approvals respond <thread-id> <request-id> <accept|acceptForSession|decline|cancel> [--json] [--api-base=<url>]
@@ -1378,6 +1390,12 @@ history), `GET /api/orchestration/sessions/:threadId/flow-run`
 /api/orchestration/sessions/:threadId/builder-run` (`getSessionBuilderRun`,
 archive#189 S4), plus a separate fleet-routing receipt read. This does not
 continuously refresh every owner projection.
+
+The approvals pane lists a `request.opened` with no `request.resolved` that
+was not [settled by its turn's abort](session-api.md#respondtorequest), by the
+same shared rule the server applies, over the events this screen holds. A
+keypress decision on an approval or permission that is not a question is
+sent with the listed request's event id as `expectedRequestEventId`.
 
 The GATES pane renders the Builder run as its own row, never merged into the
 Flow-run lines above it: they are two different runs with independent
@@ -1520,6 +1538,11 @@ station connections update <id> --data=<json> [--api-base=<url>]
 station connections delete <id> [--api-base=<url>]
 station connections test <id> [--api-base=<url>]
 ```
+
+`create`, `update` and `delete` print the resolved target to stderr
+(`Target: station=… endpoint=… source=…`) before the request, because the
+default target can be a saved remote Station. `create` refuses an `id` that
+already names a Model connection on that Station; use `update` instead.
 
 ### `flow`
 
@@ -1901,7 +1924,7 @@ origins on an `origins` line.
 | --- | --- | --- | --- |
 | macOS | LaunchAgent in `~/Library/LaunchAgents/` | after reboot and login | `<STATION_HOME>/logs/*-service.{out,err}.log` |
 | Linux | systemd user unit in `~/.config/systemd/user/` | user-manager startup, including reboot without login | `journalctl --user -u station-<instance>.service` |
-| Windows | Task Scheduler task, `ONLOGON`, `LIMITED` | installing user's logon | `<STATION_HOME>\logs\*-service.{out,err}.log` |
+| Windows | Task Scheduler task, `ONLOGON`, `LIMITED`, no time limit, no battery rules | installing user's logon | `<STATION_HOME>\logs\*-service.{out,err}.log` |
 | No service manager (container, or Linux without a systemd user session) | none — supervise `station service run` yourself | whenever its supervisor starts it | the supervisor's own stdout/stderr |
 
 `service status` reports the OS unit, lifecycle instance/processes, and both
@@ -1946,6 +1969,26 @@ disappear before bootstrap. On Linux they use `systemctl --user start|stop`.
 On Windows Station verifies the scheduled task owner, wrapper command, and
 limited run level before start, stop, replacement, or deletion; a conflicting
 task fails closed.
+
+`schtasks /Create` leaves a task with Task Scheduler's defaults: a 72-hour
+execution time limit, and battery rules that keep the task from starting on
+battery and stop it when a laptop unplugs. Install therefore sets, through
+`Set-ScheduledTask`, priority 5, no execution time limit (`PT0S`), both battery
+rules off, and the scheduler's restart settings (every minute, the shortest
+interval, up to 255 times). It reads all six back and refuses the install,
+restoring the previous registration or removing the new one, if any of them
+did not persist. Unlike the macOS (`KeepAlive`) and Linux (`Restart=always`)
+units, the Windows task does not relaunch a service that exits: Task
+Scheduler's restart settings apply to a task it could not start, and a wrapper
+that exits non-zero is left stopped until the next logon or `service start`.
+`service status` (and `station upgrade`) read the same six values on a
+`scheduling` line: a task registered by an earlier version reports `stale`
+with the reinstall command, and `healthy` is false until it is reinstalled.
+So on an existing Windows install `service status` exits 1 after this change
+until `station service install` is run again; the service itself keeps
+running, and `station upgrade` only prints the advisory. A task whose settings
+were changed by hand is reported `stale` the same way, and a reinstall
+overwrites them.
 
 On Linux, installation requires a working systemd user manager and verified
 linger. Station runs `loginctl enable-linger <uid>` when needed and fails the
@@ -2366,9 +2409,10 @@ station fresh --force --allow-default-home-clean
 
 ### `home verify`
 
-Run an integrity check over the SQLite stores this home owns
-(`data/orchestration.sqlite` and `scheduler/scheduler.sqlite`) and report each
-one. The stores are opened read-only, so this is safe to run while Station is
+Run an integrity check over `data/orchestration.sqlite` and
+`scheduler/scheduler.sqlite` and report each one. This command does not inspect
+the home's other authentication, membership, native replay or Knowledge stores.
+The stores are opened read-only, so this is safe to run while Station is
 up -- it is the only `home` action that does not require the home to be idle.
 
 ```
@@ -2401,7 +2445,11 @@ is covered by this command, not by that schedule.
 
 Create an offline, content-hashed backup of one Station home. Every Station
 using that home must be stopped. SQLite stores are checkpointed and integrity
-checked before copy for selected `*.sqlite` files; symlinks in included content,
+checked before copy for every included `*.sqlite` file, a database named by the
+[home store registry](../../packages/shared/src/station-home-store-registry.ts),
+or a file with an existing SQLite WAL. This includes
+`security/native-device-proof-replay.sqlite` and `knowledge-index/index.db`;
+WAL and shared-memory sidecars are not copied. Symlinks in included content,
 corrupt databases, detected active instances, and
 configured size/count limits fail closed. Volatile logs, monitoring output,
 service state, temporary files, live instance records, and the top-level
@@ -2997,6 +3045,20 @@ station plugin create my-provider --template=provider
 
 `station plugin dev` previews legacy layout tabs only; it does not render
 `workspacePanes`. Install the scaffold to see its Pane.
+
+### `plugin experience inspect|review`
+
+Inspect a pinned local Skill library, then review an authored ordinary plugin
+against its source/package digests, source spans, gap dispositions and retained
+evaluation transcripts. These commands read local files and grant no execution
+or installation authority. See the [author learning path](../guides/authoring-skill-experiences.md)
+for the receipt contract and evidence limits.
+
+```bash
+station plugin experience inspect /path/to/library --entries=my-skill
+station plugin experience review /path/to/plugin --library=/path/to/library --entries=my-skill
+station plugin experience review /path/to/plugin --library=/path/to/library --entries=my-skill --receipt=/path/to/review.json
+```
 
 ### `plugin build`
 

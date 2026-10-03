@@ -6,7 +6,11 @@ import {
 import { type Context, Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { z } from 'zod/v3';
-import { RuntimeAuthFailureLimiter } from '../../security/runtime-request-security.js';
+import {
+  getRuntimeNativeDeviceProofPrincipal,
+  isRuntimeNativeDeviceProofCurrent,
+  RuntimeAuthFailureLimiter,
+} from '../../security/runtime-request-security.js';
 import {
   ApplicationSessionRefusal,
   type ApplicationSessionService,
@@ -194,7 +198,14 @@ export function createApplicationSessionRoutes(
         })
         .strict()
         .parse(await nativeInput(c));
-      const key = c.req.header('Authorization') ?? '<absent>';
+      // #2893: a native exchange attempt is bounded by the VERIFIED Device
+      // identity minted at the admission seam, never by the
+      // Authorization '<absent>' bucket every proof attempt would share.
+      const native = getRuntimeNativeDeviceProofPrincipal(c.req.raw);
+      const key =
+        native && isRuntimeNativeDeviceProofCurrent(c.req.raw)
+          ? `native-device:${native.deviceId}`
+          : (c.req.header('Authorization') ?? '<absent>');
       const retryAfter = attempts.retryAfterSeconds(key);
       if (retryAfter !== undefined) {
         c.header('Retry-After', String(retryAfter));
@@ -202,6 +213,14 @@ export function createApplicationSessionRoutes(
       }
       attempts.recordFailure(key);
       return owner.establishNative(c.req.raw, body);
+    }),
+  );
+  app.post('/native/revoke', (c) =>
+    run(c, async (owner) => {
+      z.object({})
+        .strict()
+        .parse(await nativeInput(c));
+      return owner.revokeNative(c.req.raw);
     }),
   );
   app.post('/renew', (c) => run(c, (owner) => owner.renew(c.req.raw)));

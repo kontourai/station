@@ -56,6 +56,7 @@
  */
 import type { PairingScope } from '@kontourai/station-contracts';
 import {
+  PAIRING_SCOPE_ACCESS_APPROVE,
   PAIRING_SCOPE_ACCESS_MANAGE,
   PAIRING_SCOPE_CONSENT_DECIDE,
   PAIRING_SCOPE_HOME_CONTROL,
@@ -84,12 +85,93 @@ import {
   PUBLIC_STATION_PROOF_PATH,
 } from '@kontourai/station-contracts/environment-security';
 import { FLEET_INFERENCE_ROUTE_PREFIX } from '@kontourai/station-contracts/fleet-inference';
+import { NATIVE_RELAY_ENROLLMENT_PATHS } from '@kontourai/station-contracts/native-relay-enrollment';
 import {
   RELAY_ENROLLMENT_ACTIVATE_PATH,
   RELAY_ENROLLMENT_BEGIN_PATH,
   RELAY_ENROLLMENT_FINALIZE_PATH,
   RELAY_ENROLLMENT_LOGIN_PATH,
 } from '@kontourai/station-contracts/relay-enrollment';
+
+/**
+ * The exact `/api/pairing` leaves a promoted device may act on
+ * (archive#1887): read the pending-request list, and confirm or deny ONE
+ * pending request.
+ *
+ * Matched positively and exactly — no prefix, no wildcard. `/api/pairing` is
+ * where the authority to mint further authority lives, so a route added under
+ * it later must be denied to promoted devices by default and admitted only by
+ * someone editing this list on purpose. The id segment is bounded to the
+ * shapes the routes actually accept so a traversal-ish path cannot widen the
+ * match.
+ */
+const PAIRING_APPROVAL_LEAVES: readonly {
+  method: string;
+  pattern: RegExp;
+}[] = [
+  { method: 'GET', pattern: /^\/api\/pairing\/requests$/ },
+  {
+    method: 'POST',
+    pattern: /^\/api\/pairing\/requests\/[A-Za-z0-9._~-]{1,128}\/confirm$/,
+  },
+  {
+    method: 'DELETE',
+    pattern: /^\/api\/pairing\/requests\/[A-Za-z0-9._~-]{1,128}$/,
+  },
+];
+
+export function isPairingApprovalLeaf(request: {
+  method: string;
+  path: string;
+}): boolean {
+  const method = request.method.toUpperCase();
+  // Compare against the path only; a query string must never participate in
+  // an authorization match.
+  const path = request.path.split('?')[0] ?? request.path;
+  return PAIRING_APPROVAL_LEAVES.some(
+    (leaf) => leaf.method === method && leaf.pattern.test(path),
+  );
+}
+
+function isEngineLoginLeaf(request: { method: string; path: string }): boolean {
+  const path = request.path.split('?')[0] ?? request.path;
+  return (
+    (request.method === 'GET' &&
+      /^\/api\/connections\/agent\/[^/]+\/accounts$/.test(path)) ||
+    (['GET', 'POST', 'DELETE'].includes(request.method) &&
+      /^\/api\/connections\/agent\/[^/]+\/account-login$/.test(path)) ||
+    (request.method === 'GET' &&
+      /^\/api\/connections\/agent\/[^/]+\/device-code-profiles$/.test(path)) ||
+    (['GET', 'POST', 'DELETE'].includes(request.method) &&
+      /^\/api\/connections\/agent\/[^/]+\/enrolment\/[^/]+\/device-code$/.test(
+        path,
+      ))
+  );
+}
+
+/** Scope satisfaction only; credential authority must be checked first. */
+export function pairingScopeSatisfiesHttpRoute(
+  grantedScope: string,
+  requiredScope: PairingScope,
+  request: { method: string; path: string },
+  verifiedOperator = false,
+): boolean {
+  return (
+    pairingScopeIncludes(grantedScope, requiredScope) ||
+    (requiredScope === PAIRING_SCOPE_ENGINE_LOGIN &&
+      request.method === 'GET' &&
+      /^\/api\/connections\/agent\/[^/]+\/accounts$/.test(
+        request.path.split('?')[0] ?? request.path,
+      ) &&
+      pairingScopeIncludes(grantedScope, PAIRING_SCOPE_ACCESS_MANAGE)) ||
+    (verifiedOperator &&
+      requiredScope === PAIRING_SCOPE_ENGINE_LOGIN &&
+      isEngineLoginLeaf(request)) ||
+    (requiredScope === PAIRING_SCOPE_ACCESS_MANAGE &&
+      isPairingApprovalLeaf(request) &&
+      pairingScopeIncludes(grantedScope, PAIRING_SCOPE_ACCESS_APPROVE))
+  );
+}
 
 const READ_METHODS = ['GET', 'HEAD'] as const;
 const MUTATING_METHODS = ['POST', 'PUT', 'PATCH', 'DELETE'] as const;
@@ -273,6 +355,20 @@ export const PAIRING_SCOPE_CATCH_ALL_MOUNT_EXCEPTIONS: readonly string[] = [
 ];
 
 export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
+  {
+    id: '/api/connections/agent/:id/account-usage:manage',
+    method: '*',
+    prefix: '/api/connections/agent/:id/account-usage',
+    scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit',
+  },
+  ...['accounts', 'account-login'].map((leaf) => ({
+    id: `/api/connections/agent/:id/${leaf}:engine-login`,
+    method: '*' as const,
+    prefix: `/api/connections/agent/:id/${leaf}`,
+    scope: PAIRING_SCOPE_ENGINE_LOGIN,
+    origin: 'explicit' as const,
+  })),
   {
     id: '/api/home-authority/control-sessions/open:home-control',
     method: 'POST',
@@ -788,6 +884,54 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     origin: 'explicit',
   },
   {
+    id: '/api/pairing/native-device-bindings/:bindingId:manage',
+    method: 'GET',
+    prefix: '/api/pairing/native-device-bindings/:bindingId',
+    exact: true,
+    scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit',
+  },
+  ...(['GET', 'POST'] as const).map((method) => ({
+    id: `/api/pairing/native-relay-surfaces:${method}:manage`,
+    method,
+    prefix: '/api/pairing/native-relay-surfaces',
+    exact: true,
+    scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit' as const,
+  })),
+  {
+    id: '/api/pairing/native-relay-enrollments:manage',
+    method: 'GET',
+    prefix: '/api/pairing/native-relay-enrollments',
+    exact: true,
+    scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/pairing/native-relay-enrollments/:enrollmentId/approve:manage',
+    method: 'POST',
+    prefix: '/api/pairing/native-relay-enrollments/:enrollmentId/approve',
+    exact: true,
+    scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit',
+  },
+  ...(['GET', 'HEAD'] as const).map((method) => ({
+    id: `/api/auth/native-device-bindings/:bindingId/receipt:${method}:read`,
+    method,
+    prefix: '/api/auth/native-device-bindings/:bindingId/receipt',
+    exact: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit' as const,
+  })),
+  {
+    id: '/api/pairing/native-device-bindings/:bindingId/approve:manage',
+    method: 'POST',
+    prefix: '/api/pairing/native-device-bindings/:bindingId/approve',
+    exact: true,
+    scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit',
+  },
+  {
     id: '/api/client-presence/summary:read',
     method: 'GET',
     prefix: '/api/client-presence/summary',
@@ -1206,6 +1350,13 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     scope: PAIRING_SCOPE_ACCESS_MANAGE,
     origin: 'explicit',
   },
+  {
+    id: '/api/connections/agent/:id/device-code-profiles:engine-login',
+    method: '*',
+    prefix: '/api/connections/agent/:id/device-code-profiles',
+    scope: PAIRING_SCOPE_ENGINE_LOGIN,
+    origin: 'explicit',
+  },
   // The device-code leaves, which START the engine's own login as a child
   // process on this host. A LONGER, more specific prefix than the enrolment
   // family above, so it wins rather than inheriting that family's tier.
@@ -1301,6 +1452,18 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
       origin: 'explicit',
     }),
   ),
+  // Paired-client threat model: a standard orchestration credential must not
+  // enumerate or reconfigure this host's marketplace roots and endpoints.
+  // Refresh can perform host filesystem/network reads; add, enable and remove
+  // persist personal source configuration. The handlers retain operatorOnly
+  // as a separate principal check, including for credentials with this scope.
+  {
+    id: '/api/registry/sources:manage',
+    method: '*',
+    prefix: '/api/registry/sources',
+    scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit',
+  },
   // Portable Kit discovery exposes only Station's read-only projection, so
   // it deliberately takes the ordinary orchestration read tier. Lifecycle
   // transitions and declared operator actions change host-owned state and
@@ -1597,6 +1760,16 @@ export const EXTERNAL_SURFACE_CAPABILITY_TABLE: readonly ExternalSurfaceCapabili
       capability: 'public',
       reason: 'public challenge proof',
     },
+    ...NATIVE_RELAY_ENROLLMENT_PATHS.map((path) => ({
+      id: `native-enrollment:${path}`,
+      transport: 'http' as const,
+      method: 'POST' as const,
+      prefix: path,
+      match: 'exact' as const,
+      capability: 'public' as const,
+      reason:
+        'fixed native enrollment bootstrap; private capability owner verifies current Pion provenance, approved transport surface and candidate proof before any effect',
+    })),
     {
       id: 'public:relay-enrollment-begin',
       transport: 'http',
@@ -2218,6 +2391,7 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'GET', path: '/api/tasks/:taskId/room/history' },
     { method: 'GET', path: '/api/tasks/:taskId/room/document' },
     { method: 'GET', path: '/api/tasks/:taskId/room/events' },
+    { method: 'GET', path: '/api/tasks/:taskId/room/agent-requests' },
     // Task Output bytes remain the paired operator's local Task projection;
     // reads use the family read tier and promotion/deletion use operate.
     { method: 'GET', path: '/api/tasks/:taskId/outputs' },
@@ -2694,6 +2868,12 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     },
     { method: 'GET', path: '/api/orchestration/sessions' },
     { method: 'GET', path: '/api/orchestration/sessions/:threadId' },
+    // Immutable experience history uses the same Session read authority;
+    // the reader also authorizes every historical thread before publication.
+    {
+      method: 'GET',
+      path: '/api/orchestration/sessions/:threadId/skill-experience',
+    },
     {
       method: 'GET',
       path: '/api/orchestration/sessions/:threadId/requests/:requestId',
@@ -3054,6 +3234,9 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // discloses no peer/environment data and cannot mutate evidence.
     { method: 'GET', path: '/api/review-evidence' },
     { method: 'GET', path: '/api/skills' },
+    // Installed definitions for this Station's existing Skill catalog. This
+    // read starts no execution and does not resolve another Station's data.
+    { method: 'GET', path: '/api/skills/experiences' },
     { method: 'POST', path: '/api/skills' },
     { method: 'DELETE', path: '/api/skills/:name' },
     { method: 'GET', path: '/api/skills/:name' },

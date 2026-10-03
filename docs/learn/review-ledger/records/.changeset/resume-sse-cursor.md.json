@@ -1,0 +1,17 @@
+{
+  "path": ".changeset/resume-sse-cursor.md",
+
+  "kind": "release-note",
+
+  "state": "classified",
+
+  "summary": "Release intent for the package versions named in this changeset.",
+
+  "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+
+  "document": {"digest":"e7f656dc8c76964119410bcd28f2886e295905a7ea2f4eba3cf385d066ba0b4d","revision":"eec64aa6defda8dd84ffebbe430eea95b35aea3f"},
+
+  "sources": [],
+
+  "checks": []
+}

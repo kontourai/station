@@ -547,6 +547,10 @@ const request = async (
  */
 const ELSEWHERE = new Map<string, string>([
   [
+    'GET /api/registry/skills',
+    'src-server/routes/plugins/__tests__/registry-marketplaces.routes.test.ts',
+  ],
+  [
     'GET /api/projects/:slug/panes',
     'src-server/routes/projects/__tests__/pane-visibility.routes.test.ts',
   ],

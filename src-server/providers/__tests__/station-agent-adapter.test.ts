@@ -6,6 +6,7 @@ import { describe, expect, test, vi } from 'vitest';
 import {
   INTERNAL_TURN_CORRELATION_HEADER,
   readAuthorizedTurnCorrelationHandoff,
+  readSkillExperienceRelayContext,
   runWithAuthorizedTurnCorrelation,
 } from '../../runtime/conversation/authorized-turn-correlation.js';
 import { rememberToolPurpose } from '../../runtime/frameworks/tool-purpose.js';
@@ -542,7 +543,7 @@ describe('StationAgentAdapter', () => {
     },
   );
 
-  test('relays only an exact authorized turn correlation and uses its canonical turn id', async () => {
+  test('relays exact turn identity and private Skill context while keeping the typed prompt in the HTTP body', async () => {
     const fetchMock = vi
       .fn<typeof fetch>()
       .mockResolvedValue(
@@ -566,11 +567,17 @@ describe('StationAgentAdapter', () => {
       turnId: 'fleet-turn',
       correlationId: 'fleet-correlation',
     };
-    const result = await runWithAuthorizedTurnCorrelation(correlation, () =>
-      adapter.sendTurn({
-        threadId: 'fleet-session',
-        input: 'private prompt that must not enter correlation',
-      }),
+    const result = await runWithAuthorizedTurnCorrelation(
+      correlation,
+      () =>
+        adapter.sendTurn({
+          threadId: 'fleet-session',
+          input:
+            'PINNED_DEPENDENCY_SENTINEL\nprivate prompt that must not enter correlation',
+          displayInput: 'private prompt that must not enter correlation',
+        }),
+      undefined,
+      'PINNED_DEPENDENCY_SENTINEL',
     );
 
     const headers = fetchMock.mock.calls[0]?.[1]?.headers as Record<
@@ -578,6 +585,14 @@ describe('StationAgentAdapter', () => {
       string
     >;
     expect(result.turnId).toBe('fleet-turn');
+    expect(
+      readSkillExperienceRelayContext(
+        headers[INTERNAL_TURN_CORRELATION_HEADER],
+      ),
+    ).toBe('PINNED_DEPENDENCY_SENTINEL');
+    expect(String(fetchMock.mock.calls[0]?.[1]?.body)).not.toContain(
+      'PINNED_DEPENDENCY_SENTINEL',
+    );
     expect(
       readAuthorizedTurnCorrelationHandoff(
         headers[INTERNAL_TURN_CORRELATION_HEADER],
@@ -2609,5 +2624,170 @@ describe('StationAgentAdapter', () => {
         finishReason: 'stop',
       });
     });
+  });
+});
+
+// The inner /chat error frame is `writeSSEError`'s `{ errorText, statusCode }`.
+// The relay composes its runtime.error message from the numeric status alone;
+// the frame's text (and any stray provider field) never reaches an event.
+describe('StationAgentAdapter — inner /chat error frame becomes a classified reason', () => {
+  const SECRET =
+    'sk-live-SECRET-9f8e7d provider said https://api.example.test/v1?key=abc';
+
+  async function runFailedTurn(frame: Record<string, unknown>) {
+    const adapter = new StationAgentAdapter({
+      apiBase: 'http://127.0.0.1:3141',
+      hasAgent: () => true,
+      ...approvalDeps(),
+      fetch: vi
+        .fn<typeof fetch>()
+        .mockResolvedValue(sseResponse([frame, '[DONE]'])),
+    });
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    await adapter.startSession({
+      threadId: 'failing-turn',
+      provider: 'station-agent',
+      metadata: { agentId: 'reviewer' },
+    });
+    await adapter.sendTurn({ threadId: 'failing-turn', input: 'go' });
+    const events: CanonicalRuntimeEvent[] = [];
+    while (!events.some((event) => event.method === 'runtime.error')) {
+      events.push(...(await nextEvents(iterator, 1)));
+    }
+    // Drain whatever the failed turn publishes after its error, so the leak
+    // assertion covers every event the turn produced, not just the first.
+    for (;;) {
+      const next = await Promise.race([
+        iterator.next(),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 100)),
+      ]);
+      if (!next || next.done) break;
+      events.push(next.value);
+    }
+    const error = events.find((event) => event.method === 'runtime.error');
+    return { error, events };
+  }
+
+  test.each([
+    [401, 'The model provider rejected the credentials (HTTP 401).'],
+    [403, 'The model provider rejected the credentials (HTTP 403).'],
+    [404, 'The model provider could not find the model (HTTP 404).'],
+    [408, 'The model provider timed out (HTTP 408).'],
+    [504, 'The model provider timed out (HTTP 504).'],
+    [429, 'The model provider rate-limited the request (HTTP 429).'],
+    [500, 'The model provider returned an error (HTTP 500).'],
+    [503, 'The model provider returned an error (HTTP 503).'],
+    [400, 'The model provider refused the request (HTTP 400).'],
+  ])(
+    'HTTP %i publishes %j without any provider text',
+    async (statusCode, message) => {
+      const { error, events } = await runFailedTurn({
+        type: 'error',
+        errorText: `The response stream failed. ${SECRET}`,
+        error: SECRET,
+        statusCode,
+      });
+
+      expect(error).toMatchObject({
+        method: 'runtime.error',
+        message,
+        code: 'station_agent_turn_failed',
+        retriable: true,
+        details: { httpStatus: statusCode },
+      });
+      const serialized = JSON.stringify(events);
+      expect(serialized).not.toContain('sk-live-SECRET');
+      expect(serialized).not.toContain('api.example.test');
+      expect(serialized).not.toContain('The response stream failed.');
+    },
+  );
+
+  test.each([
+    ['no status', {}],
+    ['a status outside 4xx/5xx', { statusCode: 302 }],
+    ['a non-integer status', { statusCode: 500.5 }],
+    ['a string status', { statusCode: '500' }],
+  ])(
+    '%s keeps the fixed generic message and adds no details',
+    async (_label, extra) => {
+      const { error, events } = await runFailedTurn({
+        type: 'error',
+        errorText: SECRET,
+        ...extra,
+      });
+
+      // The exact text the route persists as its failed-turn marker for a
+      // statusless failure, so the two de-duplicate to one card on reload.
+      const { outwardTurnFailureText } = await import(
+        '../../runtime/conversation/stream-orchestrator.js'
+      );
+      expect(outwardTurnFailureText(new Error('no status'))).toBe(
+        'The response stream failed.',
+      );
+      expect(error).toMatchObject({
+        method: 'runtime.error',
+        message: 'The response stream failed.',
+        code: 'station_agent_turn_failed',
+        retriable: true,
+      });
+      expect(error).not.toHaveProperty('details');
+      expect(JSON.stringify(events)).not.toContain('sk-live-SECRET');
+    },
+  );
+
+  test('an inferred credential 401 is worded without a status and records none', async () => {
+    const { writeSSEError } = await import(
+      '../../runtime/conversation/stream-orchestrator.js'
+    );
+    const writes: string[] = [];
+    await writeSSEError(
+      { write: async (value: string) => writes.push(value) },
+      new Error(`missing credential ${SECRET}`),
+    );
+    const frame = JSON.parse(writes[0].replace(/^data: /, '').trim()) as Record<
+      string,
+      unknown
+    >;
+
+    const { error, events } = await runFailedTurn(frame);
+
+    expect(error).toMatchObject({
+      message: 'The model provider rejected the credentials.',
+      code: 'station_agent_turn_failed',
+      retriable: true,
+    });
+    expect(error).not.toHaveProperty('details');
+    expect(JSON.stringify(events)).not.toContain('HTTP 401');
+    expect(JSON.stringify(events)).not.toContain('sk-live-SECRET');
+  });
+
+  test('the real writeSSEError frame for an ai-sdk APICallError reaches the relay as its status', async () => {
+    const { APICallError } = await import('@ai-sdk/provider');
+    const { writeSSEError } = await import(
+      '../../runtime/conversation/stream-orchestrator.js'
+    );
+    const writes: string[] = [];
+    await writeSSEError(
+      { write: async (value: string) => writes.push(value) },
+      new APICallError({
+        message: `upstream exploded ${SECRET}`,
+        url: 'https://api.example.test/v1/chat/completions',
+        requestBodyValues: { prompt: SECRET },
+        statusCode: 500,
+        responseBody: SECRET,
+      }),
+    );
+    const frame = JSON.parse(writes[0].replace(/^data: /, '').trim()) as Record<
+      string,
+      unknown
+    >;
+
+    const { error, events } = await runFailedTurn(frame);
+
+    expect(error).toMatchObject({
+      message: 'The model provider returned an error (HTTP 500).',
+      details: { httpStatus: 500 },
+    });
+    expect(JSON.stringify(events)).not.toContain('sk-live-SECRET');
   });
 });

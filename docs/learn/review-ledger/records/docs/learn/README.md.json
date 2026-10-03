@@ -1,0 +1,83 @@
+{
+  "path": "docs/learn/README.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Reviewed navigation, immutable source snapshots, lazy loading, diagram controls, capture admission, review freshness, impact/catch-up and shared MCP inputs against their actual implementation.",
+
+  "limits": "Local contributor reader. No public Pages deployment, remote physical device, or semantic certification follows from a structural check. Media playback has a separate browser check.",
+
+  "document": {"digest":"0ac8f8ac857022280619dd19947686c17b2bda0f1d6a954b1591b0c65fe81404","revision":"e6db304484770666a5dad430b4beae94cdefe69a"},
+
+  "sources": [
+    {"path":"docs/learn/atlas.css","digest":"40c53ad655686cec61730294088350d83ccf48ff252a18d8ebbaf62441a6bc29","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+
+    {"path":"docs/learn/atlas.js","digest":"5736779c6e338b74ab1415003b56e14654e05208887a69b6b2a9d92e8b534483","revision":"8199fd1541fc2af0053845c9253ed0962dd7fbb8"},
+
+    {"path":"docs/learn/atlas.json","digest":"c69356a2f739a0d5c322029134336356a917bc186641bf872a65b3cb3a7fae0a","revision":"d73d9f64333504f027a200482e978cc4445338da"},
+
+    {"path":"docs/learn/diagrams.js","digest":"dd72f02140d05078f0423312e01ea8fd8bd8d1b66c125f94d275f3f323642c24","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+
+    {"path":"docs/learn/index.html","digest":"0cd31011be9559d7355000fa8a51507517f4eb7dd8a30b2fee31c7c3972c878b","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+
+    {"path":"scripts/__tests__/learning-atlas.browser.test.ts","digest":"586cfb7b9101207ebc20d8987e4cf37326011b4314cbf7a91351d9d8d064c057","revision":"bbd3c6c0797cce19e15b36627f182f79baa7e025"},
+
+    {"path":"scripts/build-learning-guide.mjs","digest":"3a3462887203d43998cd6817e300a59c9856c2710d697274a597d4076ce969dd","revision":"8199fd1541fc2af0053845c9253ed0962dd7fbb8"},
+
+    {"path":"scripts/documentation-impact.mjs","digest":"a60bf5659ff78f92a2b598211ff3144f5cda714e602e99c14cb4686ebfaf6bde","revision":"e8b72ea25ff33bef8d17412bac9548787e2d200d"},
+
+    {"path":"scripts/lib/documentation-freshness.mjs","digest":"1015b8a88ace1d10171a04a1b5da6a192b0397174fa51127c66211736c06ab74","revision":"8199fd1541fc2af0053845c9253ed0962dd7fbb8"},
+
+    {"path":"scripts/lib/documentation-model.mjs","digest":"cbfd7235be50696a0289524232c6d2b1de5de03bff71f8e6edef38f6adcaf6b4","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+
+    {"path":"scripts/lib/learning-markdown.mjs","digest":"fbc83e6e0c25264ba1c6f0ea557144ff805e381ded7b7b4663ebc4fa9ebf5b5e","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
+
+    {"path":"scripts/lib/learning-media.mjs","digest":"6d3bfbc02e925e382beb9be69fcb60427fda18987dfc6b61ec7cd4a119a3e40e","revision":"8199fd1541fc2af0053845c9253ed0962dd7fbb8"},
+
+    {"path":"scripts/lib/review-ledger-store.mjs","digest":"444d83be0ef4e28ed9acc3db60a705ab01e8e094d6da7cbe23f34b6d60990d8a","revision":"870f87665091ffd778281fd578835377526b7bb1"},
+
+    {"path":"scripts/record-documentation-review.mjs","digest":"2541d1547706a30bf5cd19927d4b0567b00ae379e4f61ddcd7d36da382f6f54f","revision":"8199fd1541fc2af0053845c9253ed0962dd7fbb8"},
+
+    {"path":"src-server/tools/station-docs-server.ts","digest":"c76912b19734775f650634f5b97639c60168fe9995b61f927c0e35a62b3fb1ae","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"}
+  ],
+
+  "checks": [
+    "Earlier independent browser checks exercised navigation, snapshots and all diagrams; impact CLI probes exercised actual collection, failure and dependency-removal paths.",
+
+    "Added canonical graph guide and captured Library route to the Knowledge reading branch; module membership and explanation authority unchanged.",
+
+    "Reviewed integration deltas: Reviewed navigation wording and explicit source/evidence limits; graph and capture routes use canonical owners. docs/learn/atlas.json: Added the reviewed native renewal module and Knowledge graph/walkthrough links to their existing branches; canonical module membership checked by generator.",
+
+    "Integrated browser/MCP selection passed; strict atlas validates 415 Markdown documents and 74 modules, with 100 generated MCP topics. All 13 documentation gates passed, including 163 foundation tests.",
+
+    "Browser review caught an invalid #overview route. Both static home links now navigate to ./; the real-reader test exercises each link after opening a document.",
+
+    "After the manual browser caught the invalid overview hash, all seven real-reader tests passed with explicit sidebar and brand return-to-overview actions.",
+
+    "Scripts typecheck repair: declared real input/topic contracts, return catchUp as part of the result shape, type parsed CLI output, execute DOM observations in the browser context without changing the Node type environment, and let a missing media document fail the assertion. No evidence bypass or policy change.",
+
+    "Bound the reviewed reader template, styles and diagram controls as explicit impact dependencies, in addition to renderer and browser tests.",
+
+    "Final type repair independently reviewed: scripts typecheck passed (367 compiled files; existing 56 deferred), impact/media/browser selection passed 22 tests, and corrected native-element browser callbacks passed all seven reader tests. Earlier type and callback failures remain separate receipts.",
+
+    "Updated preview link label to audit and evidence; target and navigation behavior are unchanged.",
+
+    "Reviewed the closed generated-release lifecycle: entry and changelog validation, unique identities, fatal UTF-8 decoding, and exact Markdown rendering are separate from publication truth and retained human/agent source review. Generator/validator drift and ordinary missing/changed guides still require review. Only source-free, check-free classified changeset notes can become absent historical records. Catch-up and the reader use the same derived states; old hashes are not automatically refreshed.",
+
+    "Landing source delta through 61d497e88: Reviewed corresponding canonical prose, the new dispatch-scope module/tree entry and regenerated 101-topic MCP content. Only affected claims changed; source links remain evidence routes, not proof of execution.",
+
+    "Reviewed landing deltas through 111744681: Added NativeApplicationSignaling to the Connections branch; the catalog still assigns every module once and introduces no runtime authority.",
+
+    "Integration source review through e0314c727: atlas.json swapped CollaborativeEditorPane for ProjectTaskRoom, added NativeApplicationSignaling and dropped PluginForegroundRuns in its concept groups. The README describes atlas mechanics generically and names none of them; prose accurate. Source review is separate from executed test evidence.",
+
+    "Reviewed the freshness and capture paragraphs against the shared policy (build-learning-guide check mode now resolves it; stale entries outside the change print as advisory) and the capture refresh path in record-documentation-review.mjs (reviewedRevision, source digests, reviewNotes; refuses changed image bytes). learning-media.mjs gained captureInputs, the requireFresh predicate and reviewNotes validation. Executed learning-media.test.ts and documentation-freshness.test.ts.",
+
+    "Reviewed the JSDoc-only delta that types the requireFresh option (boolean or scoped predicate) in the review and capture compilers; behavior and this document's claims are unchanged.",
+
+    "Reviewed the fix-round delta: the check reports untracked capture and review sources as stale (advisory in the queue, blocking when the change deletes them), the builder skips snapshots for them, and the record command digests reviews over the media.json it writes and lists manifest dependents. The freshness and capture paragraphs remain accurate. Executed learning-media.test.ts.",
+
+    "Reviewed: documentation-freshness.mjs gained DOCS_FRESHNESS_ENV_KEYS and withoutFreshnessEnv (the variables the mode is derived from, and a copy of an env without them); mode selection, scope and the blocking decision are unchanged. The freshness and capture paragraphs remain accurate."
+  ]
+}

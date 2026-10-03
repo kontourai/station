@@ -1,9 +1,11 @@
 import { existsSync, lstatSync, realpathSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
-import { join, resolve, sep } from 'node:path';
+import { dirname, join, resolve, sep } from 'node:path';
 import type { PluginManifest } from '@kontourai/station-contracts/plugin';
+import type { SkillExperienceIdentityV1 } from '@kontourai/station-contracts/skill-experience';
 import { buildPlugin as buildPluginBundle } from '@kontourai/station-shared/build';
 import type { PackageMcpAdmissionJournal } from '../../services/plugins/package-mcp-admission.js';
+import { withPluginPermissionInvocation } from '../../services/plugins/plugin-permissions.js';
 import { capturePluginRuntimeArtifactAsync } from '../../services/plugins/plugin-runtime-artifact.js';
 import type { Logger } from '../../utils/logger.js';
 import { errorMessage } from '../schemas/schemas.js';
@@ -49,6 +51,7 @@ export async function readPluginBundle(
   name: string,
   file: 'bundle.js' | 'bundle.css',
   journal?: PackageMcpAdmissionJournal,
+  expectedExperience?: SkillExperienceIdentityV1,
 ): Promise<string | null> {
   try {
     const artifact = await capturePluginRuntimeArtifactAsync(
@@ -57,13 +60,37 @@ export async function readPluginBundle(
       journal,
     );
     if (!artifact) return null;
+    if (expectedExperience) {
+      const current = journal?.currentInstallation(name);
+      if (
+        expectedExperience.pluginId !== name ||
+        expectedExperience.pluginVersion !== artifact.manifest.version ||
+        expectedExperience.incarnation !== artifact.generation ||
+        expectedExperience.contentDigest !== artifact.digest ||
+        current?.state !== 'observed' ||
+        current.installation.materialization !==
+          expectedExperience.materialization
+      )
+        return null;
+    }
     const path = containedRegularFile(
       artifact.packageRoot,
       join(artifact.packageRoot, 'dist', file),
     );
     if (!path) return null;
-    const content = await readFile(path, 'utf8');
-    return (await artifact.isCurrentAsync()) ? content : null;
+    const deliver = async () => {
+      const content = await readFile(path, 'utf8');
+      return (await artifact.isCurrentAsync()) ? content : null;
+    };
+    return expectedExperience
+      ? await withPluginPermissionInvocation(
+          dirname(pluginsDir),
+          name,
+          'agents.invoke',
+          deliver,
+          artifact,
+        )
+      : await deliver();
   } catch {
     return null;
   }

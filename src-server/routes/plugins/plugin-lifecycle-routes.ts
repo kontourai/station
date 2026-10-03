@@ -21,6 +21,10 @@ import {
 import type { PluginProviderReadView } from '../../providers/registries/registry.js';
 import { getPluginRegistryProviders } from '../../providers/registries/registry.js';
 import { readRegistryInstallAliases } from '../../providers/registries/registry-install-aliases.js';
+import {
+  readRegistryCatalogSelection,
+  registrySourceManager,
+} from '../../providers/registries/registry-source-manager.js';
 import type { AgentConfigurationMutationRunner } from '../../runtime/types.js';
 import { isContextSafetyError } from '../../services/orchestration/context-safety.js';
 import type { PackageMcpAdmissionJournal } from '../../services/plugins/package-mcp-admission.js';
@@ -194,6 +198,54 @@ async function findOwningPluginRegistryProvider(
   | { success: false; message: string }
 > {
   await ensureCanonicalRegistryInstallAliases(projectHomeDir);
+  const catalogAliases = Object.entries(
+    readRegistryInstallAliases(projectHomeDir),
+  ).filter(
+    ([id, alias]) =>
+      (id === name || alias.pluginName === name) &&
+      readRegistryCatalogSelection(id),
+  );
+  if (catalogAliases.length > 0) {
+    const identities = new Set(
+      catalogAliases.map(([id]) => {
+        const selection = readRegistryCatalogSelection(id)!;
+        return `${selection.sourceId}:${selection.itemId}`;
+      }),
+    );
+    if (identities.size !== 1)
+      return {
+        success: false,
+        message: 'Installed plugin has multiple marketplace source owners.',
+      };
+    const [id, alias] = catalogAliases[0]!;
+    const selection = readRegistryCatalogSelection(id)!;
+    const manager = registrySourceManager(projectHomeDir);
+    const item = (await manager.catalog('plugins')).find(
+      (item) =>
+        item.catalog?.sourceId === selection.sourceId &&
+        item.catalog.itemId === selection.itemId,
+    );
+    if (!item)
+      return {
+        success: false,
+        message:
+          'Installed plugin marketplace is unavailable. Its package is preserved.',
+      };
+    const resolved = await manager.resolve(item.id);
+    const provider = resolved.entry
+      .provider as import('../../providers/provider-interfaces.js').IPluginRegistryProvider;
+    if (provider.registryKey !== alias.registryKey)
+      return {
+        success: false,
+        message: 'Installed plugin marketplace source identity changed.',
+      };
+    return {
+      success: true,
+      entry: { provider, source: resolved.entry.source.displayName },
+      installedName: alias.pluginName,
+      registryId: item.id,
+    };
+  }
   const matches: Array<{
     entry: PluginRegistryProviderEntry;
     installedName: string;
@@ -474,6 +526,18 @@ export function registerPluginLifecycleRoutes(
           success: false,
           error:
             'Plugin installation changed before update; reload before retrying',
+        },
+        409,
+      );
+    if (
+      !registryOwner.success &&
+      registryOwner.message.startsWith('Installed plugin')
+    )
+      return c.json(
+        {
+          success: false,
+          error:
+            'Installed plugin marketplace is unavailable or its source changed. Its package is preserved. Refresh the source and inspect the item again.',
         },
         409,
       );

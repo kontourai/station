@@ -1,6 +1,57 @@
 {
   "version": 2,
-  "exceptions": [],
+  "exceptions": [
+    {
+      "scope": "root",
+      "package": "node-forge",
+      "advisory": "GHSA-86w9-cpqp-85rv",
+      "severity": "high",
+      "owner": "station-maintainers",
+      "reason": "Unpatched upstream (digitalbazaar/forge#1152 open). Production-graph transitive via @voltagent/core -> @mymediset/sap-ai-provider -> @sap-cloud-sdk -> jks-js, reached only when the SAP provider is explicitly configured, and only to parse an operator-supplied local JKS keystore. Station verifies no attacker-controlled RSA signatures through this chain, so the forgery primitive in CVE-2026-85393 has no reachable target. Re-run npm run audit:policy on every VoltAgent core or @mymediset/sap-ai-provider update.",
+      "trackingIssue": "https://github.com/kontourai/station/issues/3122",
+      "expires": "2026-10-16"
+    },
+    {
+      "scope": "root",
+      "package": "http-cache-semantics",
+      "advisory": "GHSA-ch52-4w7c-c8xp",
+      "severity": "high",
+      "owner": "station-maintainers",
+      "reason": "Brian explicitly approved seven-day risk acceptance in thread ad2ad454-cf14-49b6-997e-296c38cbedc0 on 2026-10-03. Upstream has no published patched version. Threat model: An unauthenticated caller manipulating max-stale against a shared HTTP cache containing another user response. Station-specific exploitability has not been ruled out; this is risk acceptance, not remediation or non-reachability proof. Recheck on every upstream release or dependency graph change and remove this exact exception when patched. All other critical/high identities remain blocking. Brian also explicitly authorized this exact exception through 2026-10-10 in thread 2476b495-8abe-4c47-be5a-57851a445325; production graph reachability is confirmed and Station exploitability remains unproven.",
+      "trackingIssue": "https://github.com/kontourai/station/issues/3150",
+      "expires": "2026-10-10"
+    },
+    {
+      "scope": "root",
+      "package": "braces",
+      "advisory": "GHSA-vfj7-8cjw-p6xm",
+      "severity": "high",
+      "owner": "station-maintainers",
+      "reason": "Brian explicitly approved seven-day risk acceptance in thread ad2ad454-cf14-49b6-997e-296c38cbedc0 on 2026-10-03. Upstream has no published patched version. Threat model: An untrusted deeply nested brace pattern exhausting a Node process call stack. Station-specific exploitability has not been ruled out; this is risk acceptance, not remediation or non-reachability proof. Recheck on every upstream release or dependency graph change and remove this exact exception when patched. All other critical/high identities remain blocking. Brian also explicitly authorized this exact exception through 2026-10-10 in thread 2476b495-8abe-4c47-be5a-57851a445325; production graph reachability is confirmed and Station exploitability remains unproven.",
+      "trackingIssue": "https://github.com/kontourai/station/issues/3150",
+      "expires": "2026-10-10"
+    },
+    {
+      "scope": "sdk",
+      "package": "http-cache-semantics",
+      "advisory": "GHSA-ch52-4w7c-c8xp",
+      "severity": "high",
+      "owner": "station-maintainers",
+      "reason": "Brian explicitly approved seven-day risk acceptance in thread ad2ad454-cf14-49b6-997e-296c38cbedc0 on 2026-10-03. Upstream has no published patched version. Threat model: An unauthenticated caller manipulating max-stale against a shared HTTP cache containing another user response. Station-specific exploitability has not been ruled out; this is risk acceptance, not remediation or non-reachability proof. Recheck on every upstream release or dependency graph change and remove this exact exception when patched. All other critical/high identities remain blocking. Brian also explicitly authorized this exact exception through 2026-10-10 in thread 2476b495-8abe-4c47-be5a-57851a445325; production graph reachability is confirmed and Station exploitability remains unproven.",
+      "trackingIssue": "https://github.com/kontourai/station/issues/3150",
+      "expires": "2026-10-10"
+    },
+    {
+      "scope": "shared",
+      "package": "http-cache-semantics",
+      "advisory": "GHSA-ch52-4w7c-c8xp",
+      "severity": "high",
+      "owner": "station-maintainers",
+      "reason": "Brian explicitly approved seven-day risk acceptance in thread ad2ad454-cf14-49b6-997e-296c38cbedc0 on 2026-10-03. Upstream has no published patched version. Threat model: An unauthenticated caller manipulating max-stale against a shared HTTP cache containing another user response. Station-specific exploitability has not been ruled out; this is risk acceptance, not remediation or non-reachability proof. Recheck on every upstream release or dependency graph change and remove this exact exception when patched. All other critical/high identities remain blocking. Brian also explicitly authorized this exact exception through 2026-10-10 in thread 2476b495-8abe-4c47-be5a-57851a445325; production graph reachability is confirmed and Station exploitability remains unproven.",
+      "trackingIssue": "https://github.com/kontourai/station/issues/3150",
+      "expires": "2026-10-10"
+    }
+  ],
   "residuals": [
     {
       "scope": "root",

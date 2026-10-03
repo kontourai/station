@@ -8,6 +8,7 @@ import {
   PAIRING_SCOPE_ORCHESTRATION_OPERATE,
   pairingScopeIncludes,
 } from '@kontourai/station-contracts/environment-security';
+import type { SelfHostedBrokerNativeClientSurfaceV2 } from '@kontourai/station-contracts/self-hosted-broker';
 import type { DeploymentAuthenticationService } from '../services/identity/deployment-authentication-service.js';
 
 export type RuntimePeerClass = 'loopback' | 'remote' | 'absent';
@@ -101,12 +102,129 @@ export function setRuntimeAuthenticatedRequestPrincipal(
   request: Request,
   principal: RuntimeAuthenticatedRequestPrincipal,
 ): void {
+  if (nativeDeviceProofPrincipals.has(request))
+    throw new Error('runtime_request_authority_conflict');
   authenticatedRequestPrincipals.set(request, Object.freeze({ ...principal }));
 }
 export function getRuntimeAuthenticatedRequestPrincipal(
   request: Request,
 ): RuntimeAuthenticatedRequestPrincipal | undefined {
   return authenticatedRequestPrincipals.get(request);
+}
+
+// ── RuntimeNativeDeviceProofPrincipal (#2893, inert foundation) ─────────────
+//
+// A SEPARATE server-minted principal for a proven native Device binding. It
+// is deliberately NOT a RuntimeAuthenticatedRequestPrincipal: it carries NO
+// `credential` string, no locality/mintKind, and no bearer/session source.
+// Its authority is the distinct `kind: 'native-device-proof'` discriminant,
+// so no credential-only helper can ever receive native authority by shape.
+
+export interface RuntimeNativeDeviceProofPrincipal {
+  /** Distinct authority/source discriminant; never a credential bearer. */
+  readonly kind: 'native-device-proof';
+  /** Server-resolved exact Device identity; never request supplied. */
+  readonly deviceId: string;
+  /** Server-resolved exact native binding identity. */
+  readonly bindingId: string;
+  /** The exact approved native surface this proof authorizes. */
+  readonly approvedSurface: SelfHostedBrokerNativeClientSurfaceV2;
+  /**
+   * Server-owned current-authority recheck. Callers must treat any `false`
+   * (or a throw) as stale and fail closed; the binding is re-proved at the
+   * seam that minted this principal.
+   */
+  readonly isCurrent: () => boolean;
+}
+
+const nativeDeviceProofPrincipals = new WeakMap<
+  Request,
+  RuntimeNativeDeviceProofPrincipal
+>();
+
+export function setRuntimeNativeDeviceProofPrincipal(
+  request: Request,
+  principal: RuntimeNativeDeviceProofPrincipal,
+): void {
+  if (
+    authenticatedRequestPrincipals.has(request) ||
+    nativeDeviceProofPrincipals.has(request)
+  )
+    throw new Error('runtime_request_authority_conflict');
+  if (
+    !principal ||
+    typeof principal !== 'object' ||
+    Object.keys(principal).sort().join(',') !==
+      'approvedSurface,bindingId,deviceId,isCurrent,kind' ||
+    principal.kind !== 'native-device-proof' ||
+    typeof principal.deviceId !== 'string' ||
+    !principal.deviceId ||
+    typeof principal.bindingId !== 'string' ||
+    !principal.bindingId ||
+    typeof principal.isCurrent !== 'function' ||
+    !validNativePrincipalSurface(principal.approvedSurface)
+  )
+    throw new Error('runtime_native_device_principal_invalid');
+  nativeDeviceProofPrincipals.set(
+    request,
+    Object.freeze({
+      ...principal,
+      approvedSurface: Object.freeze({ ...principal.approvedSurface }),
+    }),
+  );
+}
+
+function validNativePrincipalSurface(
+  value: unknown,
+): value is SelfHostedBrokerNativeClientSurfaceV2 {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const surface = value as Record<string, unknown>;
+  return (
+    Object.keys(surface).sort().join(',') ===
+      'appIdentifier,channel,clientInstanceId,keyThumbprint,kind' &&
+    surface.kind === 'station-native' &&
+    typeof surface.appIdentifier === 'string' &&
+    /^[A-Za-z0-9][A-Za-z0-9.-]{0,254}$/.test(surface.appIdentifier) &&
+    (surface.channel === 'dev' ||
+      surface.channel === 'stable' ||
+      surface.channel === 'beta' ||
+      surface.channel === 'nightly') &&
+    typeof surface.clientInstanceId === 'string' &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(
+      surface.clientInstanceId,
+    ) &&
+    typeof surface.keyThumbprint === 'string' &&
+    /^[A-Za-z0-9_-]{43}$/.test(surface.keyThumbprint)
+  );
+}
+
+export function getRuntimeNativeDeviceProofPrincipal(
+  request: Request,
+): RuntimeNativeDeviceProofPrincipal | undefined {
+  return nativeDeviceProofPrincipals.get(request);
+}
+
+/**
+ * Fail-closed currentness check. Absent principal, a `false` recheck, or a
+ * throwing recheck all mean "not current"; nothing here upgrades to true.
+ *
+ * Composition gap (deliberate, #2893): there is NO unified
+ * credential-or-native getter yet. `getRuntimeAuthenticatedRequestPrincipal`
+ * keeps returning only credential principals, so every existing
+ * credential-only helper (delegation resolution, scope checks, budget
+ * derivation, `isRuntimeRequestPrincipalCurrent`) refuses native authority
+ * by construction. When a unified getter is introduced it must be a typed
+ * discriminated union — it must NOT fabricate a credential string or a
+ * bearer descriptor for a native principal.
+ */
+export function isRuntimeNativeDeviceProofCurrent(request: Request): boolean {
+  const principal = nativeDeviceProofPrincipals.get(request);
+  if (!principal) return false;
+  try {
+    return principal.isCurrent() === true;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -218,6 +336,11 @@ export interface RuntimeSecurityAuditRecord {
 }
 
 export interface RuntimeHttpSecurityOptions {
+  nativeEnrollment?: {
+    capability(
+      request: Request,
+    ): import('../services/identity/native-enrollment-capability.js').NativeEnrollmentCapability;
+  };
   deploymentAuthentication?: DeploymentAuthenticationService;
   verifyCredential: (
     credential: string,
@@ -327,6 +450,15 @@ export interface RuntimeHttpSecurityOptions {
   mutationWindowMs?: number;
   /** LRU bound on distinct principal keys tracked in the rate Map. */
   maxBudgetPrincipals?: number;
+  /**
+   * #2893 opt-in native Device request-proof admission. Present only when
+   * the runtime composed the pilot; absent means a presented
+   * `X-Station-Native-Device-Proof` header refuses closed.
+   */
+  nativeDeviceProof?: Pick<
+    import('./native-device-request-authority.js').NativeDeviceRequestAuthority,
+    'admit' | 'resolveCurrent'
+  >;
 }
 
 function isPublicRuntimeRoute(method: string, path: string): boolean {
@@ -891,7 +1023,11 @@ function pathMatchesRoutePattern(path: string, pattern: string): boolean {
 }
 
 /** Budget principal source — which verified credential mode derived the key. */
-export type BudgetPrincipalSource = 'bearer' | 'session' | 'loopback';
+export type BudgetPrincipalSource =
+  | 'bearer'
+  | 'session'
+  | 'loopback'
+  | 'native-device';
 
 export const BUDGET_PRINCIPAL_VAR = 'stationBudgetPrincipal';
 
@@ -947,6 +1083,25 @@ export function setBudgetPrincipal(
   principal: BudgetPrincipal,
 ): void {
   store.set(BUDGET_PRINCIPAL_VAR, principal);
+}
+
+/**
+ * #2893 native Device budget source. The key is derived from the private
+ * peer's verified Station identity and the server-verified Device identity
+ * — never a synthetic credential string, a rotating binding ID or a one-use
+ * JTI — so one proven Device holds one budget however often it re-proves.
+ */
+export function deriveNativeDeviceBudgetPrincipal(
+  stationId: string,
+  deviceId: string,
+): BudgetPrincipal {
+  const digest = createHash('sha256')
+    .update(`${stationId}\n${deviceId}`)
+    .digest('hex');
+  return {
+    key: `native-device:${digest.slice(0, 16)}`,
+    source: 'native-device',
+  };
 }
 
 export function getBudgetPrincipal(store: {
@@ -1140,9 +1295,13 @@ import {
   INTERNAL_PROXY_PEER_HEADER,
   isTrustedInternalApiToken,
 } from '../utils/internal-api-token.js';
-import { requiredExternalSurfaceCapability } from './pairing-route-scopes.js';
+import {
+  pairingScopeSatisfiesHttpRoute,
+  requiredExternalSurfaceCapability,
+} from './pairing-route-scopes.js';
 
 export interface CurrentRuntimeRequestPrincipalSecurity {
+  verifyOperatorCredential?(credential: string): boolean;
   authorizeCredential(
     credential: string,
     request: { method: string; path: string },
@@ -1181,6 +1340,14 @@ export function isRuntimeRequestPrincipalCurrent(
   const grantedScope = security.resolveGrantedScope(principal.credential);
   return (
     grantedScope !== undefined &&
-    pairingScopeIncludes(grantedScope, capability.scope)
+    pairingScopeSatisfiesHttpRoute(
+      grantedScope,
+      capability.scope,
+      {
+        method: request.method,
+        path,
+      },
+      security.verifyOperatorCredential?.(principal.credential) === true,
+    )
   );
 }

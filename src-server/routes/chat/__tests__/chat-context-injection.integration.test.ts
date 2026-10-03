@@ -143,6 +143,7 @@ async function dispatchChatTurn(options: {
    */
   shape?: 'text' | 'attachment-only';
   ambientContext?: string;
+  skillExperienceContext?: string;
 }): Promise<{ body: string; modelInput: unknown; authoredInput: unknown }> {
   const conversations = new Map<string, { id: string; title?: string }>();
   const memoryAdapter = {
@@ -202,6 +203,9 @@ async function dispatchChatTurn(options: {
       input: chatInput,
       ...(options.ambientContext
         ? { ambientContext: options.ambientContext }
+        : {}),
+      ...(options.skillExperienceContext
+        ? { skillExperienceContext: options.skillExperienceContext }
         : {}),
       restOptions: prepared.options,
       injectContext: prepared.injectContext,
@@ -429,3 +433,22 @@ describe('per-turn context injection, route → adapter → provenance envelope 
     );
   });
 });
+
+test.each(['text', 'attachment-only'] as const)(
+  'private pinned Skill context reaches the real model composer for %s turns without changing authored input',
+  async (shape) => {
+    const result = await dispatchChatTurn({
+      hit: false,
+      guidelines: false,
+      shape,
+      skillExperienceContext: 'PINNED_DEPENDENCY_SENTINEL',
+    });
+    expect(JSON.stringify(result.modelInput)).toContain(
+      'PINNED_DEPENDENCY_SENTINEL',
+    );
+    expect(JSON.stringify(result.authoredInput)).not.toContain(
+      'PINNED_DEPENDENCY_SENTINEL',
+    );
+    expect(result.body).not.toContain('PINNED_DEPENDENCY_SENTINEL');
+  },
+);

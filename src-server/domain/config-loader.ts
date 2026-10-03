@@ -976,7 +976,11 @@ export class ConfigLoader {
     await this.ensureHomeSchema();
     this.assertIntegrationDefinitionWritable(id);
     return updateIntegrationConfig(this.projectHomeDir, id, (current) => {
-      const updated = update(current);
+      // Compare-and-update callers must see the same effective built-in
+      // identity as readers; the persisted projection below removes it again.
+      const updated = update(
+        this.withBuiltinIntegrationRuntimeIdentity(id, current),
+      );
       this.assertBuiltinIntegrationCredentialFree(id, updated);
       const next = this.builtinIntegrationPersistedProjection(id, updated);
       validator.validateToolDef(next);

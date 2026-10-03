@@ -8,7 +8,12 @@ prove.
 
 | Example | Focus |
 | --- | --- |
+| [Headless Agent](headless-agent/README.md) | Agent execution and observation without a Pane or plug-in manifest |
 | [Portable Author Kit](portable-author-kit/README.md) | Agent Plugins Skill plus Station Agent; no package dependencies |
+| [Visual Skill Experience](visual-skill-experience/README.md) | Portable Skill with validated visual definition and canonical Session integration |
+| [Rich Skill Experience](rich-skill-experience/README.md) | Isolated self-rendering pane with source-bound questions and stage preparation |
+| [Matt Pocock engineering collection (Station-curated)](matt-pocock-engineering/README.md) | Pinned attributed interview, specification and ticket workflows; model/tool/publication prerequisites remain explicit |
+| [Independent onboarding review](visual-project-inspection/README.md) | Original declarative project inspection through the public contract, without a core allowlist |
 | [Getting Started Starter](getting-started-starter/README.md) | Registry-installed first extension |
 | [Coding Starter](coding-starter/README.md) | Coding-oriented starter layout |
 | [Minimal Workspace](minimal-layout/README.md) | Small Workspace Pane and SDK basics |
