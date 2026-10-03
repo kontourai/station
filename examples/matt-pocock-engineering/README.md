@@ -28,9 +28,15 @@ station plugin install /absolute/path/to/matt-pocock-engineering
 ```
 
 Author validation has been executed. It establishes schema, portable Skill
-parsing and pinned bundled bytes. This README does not claim a published
-collection, installed model journey, browser/native qualification or a registry
-release. Those need their own receipts as explained in the
+parsing and pinned bundled bytes. One [recorded browser/model journey](qualification/browser-focus-board-20261003.json)
+at source1bd clarified a local Focus Board idea with Codex, produced a reviewed
+specification and published six local tickets after approval. Reload at source746
+retained its three immutable stage snapshots. Questions used ordinary chat text;
+this receipt does not qualify canonical questionnaire answers, later composer
+changes, application implementation, physical devices or a released collection.
+Only that observed [evaluation case](EVALUATION-CASES.json) passed; other planned
+cases remain not-run. Native, rich-pane, registry and release evidence retain
+their own scopes as explained in the
 [author learning path](../../docs/guides/authoring-skill-experiences.md).
 
 ## Move an idea into engineering work
