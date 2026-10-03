@@ -1002,7 +1002,7 @@ export function createPersonalTaskAnswerSupportModule(
     | 'projectService'
     | 'orchestrationService'
     | 'configLoader'
-    | 'appConfig'
+    | 'getLiveAppConfig'
   >,
 ): TaskAnswerSupportModule {
   return new TaskAnswerSupportModule({
@@ -1060,7 +1060,7 @@ export function createPersonalTaskAnswerSupportModule(
         ),
         veritasEvidenceDir:
           workspacePath &&
-          context.appConfig.surfaceTrustFromVeritasEvidence !== false
+          context.getLiveAppConfig().surfaceTrustFromVeritasEvidence !== false
             ? [
                 join(workspacePath, STATION_ARTIFACT_ROOTS.veritas, 'evidence'),
                 join(workspacePath, STATION_LEGACY_ROOTS.veritas, 'evidence'),
@@ -3074,8 +3074,8 @@ export function configureRuntimeRoutes(
     // environment variable — instead of a direct env read, so the Settings
     // row ("Device helper URL", with its provenance badge) and the Device
     // pane's setup copy name the same source the runtime actually consults.
-    // Live config first (a user can change the setting between boots); the
-    // boot snapshot is the fallback when no live reader answers.
+    // The helper service binds this address at construction. A saved change
+    // applies after a Station restart, as the Settings row states.
     const configuredDeviceHub = resolveEffectiveAppSetting(
       'mobileDeviceHubUrl',
       { config: context.getLiveAppConfig?.() ?? context.appConfig },
@@ -5656,7 +5656,7 @@ export function configureRuntimeRoutes(
           // so Trust lights up wherever Veritas has run.
           const veritasEvidenceDir =
             workspacePath &&
-            context.appConfig.surfaceTrustFromVeritasEvidence !== false
+            context.getLiveAppConfig().surfaceTrustFromVeritasEvidence !== false
               ? [
                   join(
                     workspacePath,

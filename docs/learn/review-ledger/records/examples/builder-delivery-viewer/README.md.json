@@ -24,7 +24,7 @@
 
     {"path":"examples/builder-delivery-viewer/src/index.tsx","digest":"dc45fd8191e3f040b8d19f1a62a26332ec3301590d9fb123c2f6327813772f87","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
-    {"path":"examples/registry/manifest.json","digest":"1a6cc7babffefe6a1d0dd44d71387dd6209857091bdf40cf556d29531ec8e32b","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    {"path":"examples/registry/manifest.json","digest":"7abfc33a3f2e281d8a15c3a72c64bcfbec502cb0feab23c3990894026dfd7b13","revision":"f249300b2162c4ef35f8978e4cf9ded407027304"},
 
     {"path":"pnpm-lock.yaml","digest":"4f9a974bd49f637fd690699b3bcd9b6ce915114eb4f52e2e6bdd5b0f3b699f2a","revision":"ea49cb8678208b9037f8e9ab3ceb2a95fe2647ff"},
 

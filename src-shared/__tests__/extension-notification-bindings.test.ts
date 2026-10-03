@@ -67,6 +67,13 @@ describe('extension notification bindings', () => {
       },
       {
         namespace: 'claude-code',
+        type: 'api/retry',
+        consumer: 'ui.claude.api-retry',
+        observedAgainst: ['claude-adapter'],
+        evidence: 'claude-sdk-api-retry-contract',
+      },
+      {
+        namespace: 'claude-code',
         type: 'thinking/tokens',
         consumer: 'ui.claude.thinking-tokens',
         observedAgainst: ['claude-adapter'],

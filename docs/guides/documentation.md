@@ -241,12 +241,15 @@ node scripts/migrate-review-ledger.mjs --base "$(git merge-base HEAD MERGE_HEAD)
 git add -A docs/learn && git commit --no-edit
 ```
 
-If the branch also re-reviewed a capture, `docs/learn/media.json` conflicts
-too, and a branch that re-reviewed only captures conflicts there alone. The
-command resolves that file itself. It merges each capture field by field
-against the merge base: the side that still has the old layout keeps its
-review fields, and any other field takes whichever side changed it. Where both
-sides changed one field differently, it names the field and stops without
+If the branch also re-reviewed a capture, `docs/learn/media.json` may conflict
+too. Git can instead auto-merge away the old review fields. For a branch with
+legacy capture reviews, use `git merge --no-commit origin/main` and run the
+folding command before committing, even when Git reports no conflict.
+
+The command reads both merge parents to recover those review fields and merges
+each capture field against the merge base. It preserves the working copy's
+metadata and review edits when Git already merged the file. Where both sides
+changed one metadata field differently, it names the field and stops without
 writing anything, so you resolve that field and rerun. It judges bindings to
 `media.json` against the bytes it writes, not the conflicted working copy.
 

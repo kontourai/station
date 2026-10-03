@@ -1134,6 +1134,14 @@ Shared query-factory entry for agent conversation lists. Use this when a feature
 
 ### `useApiQuery<T>(queryKey, queryFn, config?)`
 
+Station's config-change event invalidates Trust bundle/report and Task answer
+support queries within the current authority's query client. Trust readers
+refetch invalidated data when remounted; Task answer support retains its
+existing fresh-authorization mount policy. Disabled observers remain disabled.
+Trust requests carry cancellation through API-base resolution and transport.
+See [Trust query owners](../../packages/sdk/src/query-domains/trustBundles.ts)
+and [the config-change consumer](../../src-ui/src/hooks/useServerEvents.ts).
+
 Generic query hook for a caller-owned async function. It passes an AbortSignal;
 the function must use it and handle HTTP status, response validation and
 authority. The following host-supplied reader must already implement those
@@ -1182,6 +1190,27 @@ Re-exported from `@tanstack/react-query` for direct cache access.
 ## API Functions
 
 Imperative API calls — use in event handlers, slash commands, or anywhere hooks aren't available.
+
+### Turn steering and acknowledgement retries
+
+`steerOrchestrationTurn({ threadId, text, turnId?, clientInputId?, apiBase? })`
+sends input to an open turn. With an ID it uses the protected `steerTurnOnce`
+wire command, which older servers reject before invocation. Without an ID it
+retains legacy behavior. Use one stable `clientInputId` per intent and retain
+its original Session, turn and text when retrying an acknowledgement. The server
+journals the adapter attempt before invocation and returns a confirmed same-ID
+result without sending it again. `outcome: 'indeterminate'` means delivery cannot
+be confirmed; retain the input for review and do not automatically send it as a
+new turn. Before retrying uncertain input, call
+`inspectOrchestrationSteerInput({ threadId, text, turnId?, clientInputId, apiBase? })`.
+A confirmed result retires the pending message; `indeterminate` or an unsupported
+lookup keeps it held. Only `not-received` permits a protected same-ID first
+attempt. A successful save of the pending identity precedes a composer mutation;
+a failed save prevents engine invocation. Unsupported, busy, and no-active-turn outcomes remain
+explicit. See [Session API steering](session-api.md#lifecycle-control-commands) for the public
+command and engine-specific interruptive fallback; Station's composer offers a
+conservative safe-waiting fallback separately from native steering.
+
 
 `sendMessage`, `streamMessage`, `invokeAgent`, `invoke`, `callTool` and
 `fetchConfig` are legacy ambient-base helpers using direct `fetch`. They do not
