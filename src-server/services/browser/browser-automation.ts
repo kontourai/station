@@ -39,12 +39,12 @@
  * its method allow-list and parameter refusals apply here as to anyone.
  */
 
-import { BROWSER_SESSION_ID_PATTERN } from '@kontourai/station-contracts/workspace-browser-pane';
 import type {
   LiveSurfaceInput,
   LiveSurfaceInputResult,
   LiveSurfaceModifiers,
 } from '@kontourai/station-contracts/live-surface';
+import { BROWSER_SESSION_ID_PATTERN } from '@kontourai/station-contracts/workspace-browser-pane';
 import type { AgentController } from '../live-surface/control-lease.js';
 import { jpegSize } from '../live-surface/jpeg-size.js';
 import {
