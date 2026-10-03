@@ -88,7 +88,7 @@
 
     {"path":"src-server/services/spatial-board/spatial-board-store.ts","digest":"d5e9c1bf6380b16a83af74b7bcfb7fdf5c45a9f04068b78c394c7edf04394f4c","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 
-    {"path":"src-server/tools/station-control-delegation.ts","digest":"b924e289e8e485cf249ec99ebd3097b014f001f58942aa29f91e0196bbc5af70","revision":"ee7cb7c444fb45f465be3f4ea5c938e5a130145e"},
+    {"path":"src-server/tools/station-control-delegation.ts","digest":"8968805e6becbf85cb1316d6c9a3838e5d0d02203b27b7e69d95e2b080f1fec4","revision":"92d0ab926f74d804cb314dfadbbda9db73499015"},
 
     {"path":"src-ui/src/views/home/HomeRolePane.tsx","digest":"f83ed5b379bbddc5ba8b876e7c8c1200c91b06a1b8bd5f7f5023a3569979270f","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 

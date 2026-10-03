@@ -112,7 +112,7 @@
 
     {"path":"src-server/tools/station-control-catalog-tools.ts","digest":"bdbc3859eb839956ce824fea173bb4d1d366bb9adf068d294327a67c7a7a55a2","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/tools/station-control-delegation.ts","digest":"b924e289e8e485cf249ec99ebd3097b014f001f58942aa29f91e0196bbc5af70","revision":"ee7cb7c444fb45f465be3f4ea5c938e5a130145e"},
+    {"path":"src-server/tools/station-control-delegation.ts","digest":"8968805e6becbf85cb1316d6c9a3838e5d0d02203b27b7e69d95e2b080f1fec4","revision":"92d0ab926f74d804cb314dfadbbda9db73499015"},
 
     {"path":"src-server/tools/station-control-operations-tools.ts","digest":"9174a9e845abca770133b6300050562fbfb220cac01bd611698d56a949f0eb3a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
