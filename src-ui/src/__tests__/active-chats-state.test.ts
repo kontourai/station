@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import type { SkillExperienceDefinitionV1 } from '@kontourai/station-contracts/skill-experience';
 import { describe, expect, test } from 'vitest';
 import type { ChatUIState } from '../contexts/active-chats-state';
 import {
@@ -667,5 +669,99 @@ describe('queued follow-ups survive a reload (UX audit T3)', () => {
     ]);
     expect(rehydrated.s2?.queuedMessages).toEqual([]);
     expect(rehydrated.s2?.queuedMessageFailure).toBeUndefined();
+  });
+});
+
+describe('source-bound unsent visual skill persistence', () => {
+  test('retains a prepared chat without a conversation and refuses malformed restored intent', () => {
+    const definition: SkillExperienceDefinitionV1 = JSON.parse(
+      readFileSync(
+        new URL(
+          '../../../examples/visual-skill-experience/io.kontourai.station/experiences/stress-test-idea.json',
+          import.meta.url,
+        ),
+        'utf8',
+      ),
+    );
+    definition.inputs.push({
+      id: 'notes',
+      kind: 'attachments',
+      label: 'Notes',
+      required: false,
+      maxCount: 2,
+      provenance: {
+        origin: 'station-added',
+        explanation: 'Explicit file role.',
+      },
+    });
+    const draft = {
+      attachmentAssignments: { notes: ['composer-file-1'] },
+      namespace: 'station-authority-1',
+      apiBase: 'http://station.test',
+      definition,
+      start: {
+        identity: {
+          pluginId: 'example',
+          pluginVersion: '1.0.0',
+          experienceId: definition.id,
+          incarnation: 'installation-1',
+          materialization: 'materialization-1',
+          contentDigest: 'digest-1',
+          definitionDigest: 'definition-1',
+        },
+        inputs: { idea: 'My edited idea' },
+      },
+    };
+    const saved = serializeActiveChats({
+      'prepared-1': {
+        ...createDefaultChatState({
+          agentSlug: 'planner',
+          agentName: 'Planner',
+          title: 'New chat',
+          projectSlug: 'project-1',
+          requestedModel: 'model-1',
+        }),
+        skillExperienceDraft: draft,
+        skillExperienceMode: 'alongside',
+      },
+    });
+    expect(saved).toHaveLength(1);
+    expect(hydrateActiveChats(saved)['prepared-1']).toMatchObject({
+      skillExperienceDraft: {
+        namespace: draft.namespace,
+        apiBase: draft.apiBase,
+        start: draft.start,
+        attachmentAssignments: draft.attachmentAssignments,
+        definition: {
+          id: definition.id,
+          title: definition.title,
+          purpose: definition.purpose,
+          example: definition.example,
+          inputs: definition.inputs,
+          presentation: {
+            modes: definition.presentation.modes,
+            defaultMode: definition.presentation.defaultMode,
+          },
+        },
+      },
+      projectSlug: 'project-1',
+      requestedModel: 'model-1',
+      skillExperienceMode: 'alongside',
+    });
+    expect(saved[0]).not.toHaveProperty('grant');
+    expect(
+      hydrateActiveChats(saved)['prepared-1'].skillExperienceDraft,
+    ).not.toHaveProperty('definition.skills');
+    const malformed = {
+      ...saved[0],
+      skillExperienceDraft: {
+        ...draft,
+        definition: { ...definition, id: 'other' },
+      },
+    };
+    const restored = hydrateActiveChats([malformed]);
+    expect(restored['prepared-1'].skillExperienceDraft).toBeUndefined();
+    expect(restored['prepared-1'].skillExperienceDraftInvalid).toBe(true);
+    expect(serializeActiveChats(restored)).toHaveLength(1);
   });
 });

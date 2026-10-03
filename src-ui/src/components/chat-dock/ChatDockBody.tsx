@@ -76,8 +76,10 @@ import {
   transcriptShowsFailureSurface,
 } from '../../utils/sessionFailure';
 import { steerRefusalMessage } from '../../utils/steerTurn';
+import { Button } from '../Button';
 import { ChatEmptyState } from '../chat/ChatEmptyState';
-import { ChatInputArea } from '../chat/ChatInputArea';
+import type { ChatInputArea } from '../chat/ChatInputArea';
+import { ComposerStopButton } from '../chat/ComposerStopButton';
 import { durableMentionAuthority } from '../chat/composer-mentions';
 import { EphemeralMessage } from '../chat/EphemeralMessage';
 import type { ForkTurnSource } from '../chat/fork-turn-source';
@@ -95,6 +97,52 @@ import {
   retryAttachmentsFromParts,
 } from './retry-attachments';
 import { useChatStatusPill } from './useChatStatusPill';
+
+const loadChatInputArea = () =>
+  import('../chat/ChatInputArea').then((module) => ({
+    default: module.ChatInputArea,
+  }));
+
+function DeferredChatInputArea(
+  props: React.ComponentProps<typeof ChatInputArea>,
+) {
+  const pendingControls = (
+    <div className="chat-controls-row">
+      <div className="chat-input__activity" ref={props.activityRef}>
+        {props.activity}
+      </div>
+      <span className="chat-controls-row__spacer" />
+      {props.turnInFlight && (
+        <ComposerStopButton
+          onCancel={props.onCancel}
+          stopPending={props.stopPending}
+        />
+      )}
+    </div>
+  );
+  return (
+    <LazyBoundary
+      load={loadChatInputArea}
+      componentProps={props}
+      pending={
+        <div className="chat-input">
+          <SkeletonList count={2} label="Loading composer" />
+          {pendingControls}
+        </div>
+      }
+      unavailable={(retry) => (
+        <div className="chat-input">
+          <ErrorState
+            title="Could not load the composer"
+            description="Your draft is retained. Retry to continue writing."
+            action={<Button onClick={retry}>Retry composer</Button>}
+          />
+          {pendingControls}
+        </div>
+      )}
+    />
+  );
+}
 
 const loadChatMessageList = () =>
   import('../chat/ChatMessageList').then(({ ChatMessageList }) => ({
@@ -1752,7 +1800,7 @@ export function ChatDockBody({
               }
             />
           )}
-          <ChatInputArea
+          <DeferredChatInputArea
             activity={statusPill}
             activityRef={setScrollControlsTarget}
             hasQuotedContext={chatInput.quotes.length > 0}

@@ -42,11 +42,6 @@ function claimFirstSight(id: string): boolean {
   return true;
 }
 
-/** Test-only: reset the module-scope registry between test cases. */
-export function resetRevealedIdsForTest(): void {
-  revealedIds.clear();
-}
-
 /**
  * Returns `'reveal-once'` on the render pass that first sees `id` (and on
  * every re-render of that same component instance for that id, so the CSS

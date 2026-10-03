@@ -62,6 +62,7 @@ category.
 - [modality-ladder.md](modality-ladder.md) — The modality ladder
 - [motion.md](motion.md) — Motion grammar
 - [native-capabilities.md](native-capabilities.md) — Native platform capabilities
+- [native-relay-enrollment.md](native-relay-enrollment.md) — Native relay enrollment
 - [notification-delivery.md](notification-delivery.md) — Notification delivery on native shells
 - [offline-outbound-queue.md](offline-outbound-queue.md) — Offline outbound queue scope
 - [operator-device-access.md](operator-device-access.md) — Operator device access from a paired browser (#2894)
