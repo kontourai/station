@@ -34,7 +34,7 @@
 
     {"path":"packages/sdk/src/starter-work.ts","digest":"65bca96961b952f47978387676e0ec2d4b9131d38a4be72617b8d0f7983aafda","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
-    {"path":"src-server/providers/adapters/claude-adapter.ts","digest":"eb22032f3f7c7e3c8ca7456720e42187ed4a5e30cb0e0627c71a77574d316360","revision":"199c417252052306f2716252eef95287df19bfc1"},
+    {"path":"src-server/providers/adapters/claude-adapter.ts","digest":"1542f9bef00fa6157946331cffd6cd8eb3e744125361dca7ab48f090191ad372","revision":"bede4512a87f3e93d9a1f28416835b9146f7465c"},
 
     {"path":"src-server/providers/adapters/codex-adapter.ts","digest":"3dcbbfc821c7d5a35287ba8e2eb9a13b24cc4e0b4a59841fbb6b16bed846aa20","revision":"423cbe55b9e35e4cd8954fd441cb9f3c69740d66"},
 

@@ -16,7 +16,7 @@
 
     {"path":"src-server/providers/adapters/acp-mcp-passthrough.ts","digest":"bae3c16d36044bd319ec404432f98469e5140297f7875f2e139b95ea1b5e16b1","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/providers/adapters/claude-adapter.ts","digest":"eb22032f3f7c7e3c8ca7456720e42187ed4a5e30cb0e0627c71a77574d316360","revision":"199c417252052306f2716252eef95287df19bfc1"},
+    {"path":"src-server/providers/adapters/claude-adapter.ts","digest":"1542f9bef00fa6157946331cffd6cd8eb3e744125361dca7ab48f090191ad372","revision":"bede4512a87f3e93d9a1f28416835b9146f7465c"},
 
     {"path":"src-server/providers/adapters/claude-skills-materialization.ts","digest":"221b6098abf237f280d14480d9afc6913973b9a94b47593999ba70ff731f0280","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

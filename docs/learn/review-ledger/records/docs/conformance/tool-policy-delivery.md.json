@@ -36,7 +36,7 @@
 
     {"path":"src-server/providers/adapters/claude-adapter-events.ts","digest":"eb11b1d36afe3f0c3a6e01901d15024351992bc2377fecabe815480f180294ae","revision":"199c417252052306f2716252eef95287df19bfc1"},
 
-    {"path":"src-server/providers/adapters/claude-adapter.ts","digest":"eb22032f3f7c7e3c8ca7456720e42187ed4a5e30cb0e0627c71a77574d316360","revision":"199c417252052306f2716252eef95287df19bfc1"},
+    {"path":"src-server/providers/adapters/claude-adapter.ts","digest":"1542f9bef00fa6157946331cffd6cd8eb3e744125361dca7ab48f090191ad372","revision":"bede4512a87f3e93d9a1f28416835b9146f7465c"},
 
     {"path":"src-server/providers/adapters/claude-approval-mode.ts","digest":"79805e3f379ee92303e8966260523825ce2c4756affeefb956577189626d3385","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
