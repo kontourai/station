@@ -18,7 +18,7 @@
 
     {"path":"packages/sdk/src/query-domains/workspaceProjects.ts","digest":"5ad96ef66bdcd70027e22da621b69446dac81dc0820527e43314e0370f2d7b81","revision":"1da4798fab6730e9c81fb91d9d3dbbebc952f976"},
 
-    {"path":"src-server/routes/plugins/registry.ts","digest":"f3f5be48240bb62b1bd0e1a5a0349d5205a99891cf15c4e3930cb1250fd900a6","revision":"47fbbbd8f767858f60a0a323b74e26cb60abce62"},
+    {"path":"src-server/routes/plugins/registry.ts","digest":"472ef054a5948150ed8f52bb59fbef9ce19c9ec29964a4c2fa78d8d8ef3d8fbc","revision":"efa773acac88792cda31595f9afca4a37d3efebc"},
 
     {"path":"src-server/routes/projects/projects.ts","digest":"d87cdfa66a657cd27955762d9142eb32d477ce37d30e64e2b592a65a2f083847","revision":"e5efef30008198db7198fe9dac38f3ad632c6621"},
 

@@ -14,7 +14,7 @@
   "sources": [
     {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","digest":"0663ec8460f3271254bdeeba20df7518812da5b49781c0eb07c12a8f4a9d9bd8","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 
-    {"path":"docs/architecture/module-map.md","digest":"bc19269b0710219c166e937aa7f637e5e069ebfeee86518e1f10384f0ff5b8a0","revision":"d73d9f64333504f027a200482e978cc4445338da"},
+    {"path":"docs/architecture/module-map.md","digest":"d0be6b1c2c72aca9f8d17ea3a3796568b3a1cb9d2eb66fa391a68eaa445f451b","revision":"efa773acac88792cda31595f9afca4a37d3efebc"},
 
     {"path":"docs/design/orchestration-decomposition-map.md","digest":"862b155a3e78daace7b97c0fd5d1005d47c892b99328349d6a8b583378f857d6","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
 
@@ -34,7 +34,7 @@
 
     {"path":"docs/learn/walkthroughs.md","digest":"5e9132c4454e34d336fbc044491ec7f279926e057fe261654eafaafe05ea3b16","revision":"48fd2c0212f17cc11ba07ed86b52f253c63e3f68"},
 
-    {"path":"docs/reference/cli.md","digest":"62c03f1a50009e0973510034c314c46df560dddf761547e6798d86808eb116fd","revision":"020eb6a14e05313bb66724ec3504e613717e6ed1"},
+    {"path":"docs/reference/cli.md","digest":"76106a61e5e2d8924c8857876b8f38011be5f9af421bf6697cbe71a5e795971a","revision":"efa773acac88792cda31595f9afca4a37d3efebc"},
 
     {"path":"docs/reference/config.md","digest":"75eb18568340e206957366d15dafef202282bcb2d86d1b96c01a2922ffb1ddc6","revision":"45c71d38091f91e917006dacdc7e2a0bb3cd58a4"},
 

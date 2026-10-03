@@ -9,7 +9,7 @@
 
   "limits": "Source-reviewed means current documented claims, not all exported commands or every implementation branch. Existing source/SDK/API reviews support referenced owner semantics without rerunning full SDK scope.257 executed fixture tests/16files and an independent real synthetic HTTP operate/SDK comparison do not establish real provider enforcement, hosted/network/account/device/Windows/PTY journeys, production service operations, or destructive user-home recovery. No real home backup/reset/restore, cloud provision, transfer to a remote target, live model/securityprobe, GitHub write or release was performed. Shell examples with placeholders require operator prerequisites;3 JSON/TS fences only have syntax validation. The raw operate stream lacks auth; home reset lacks the backup/restore maintenance lease/home-registry check; triage terminal streams differ from redacted disk artifacts. These are documented current limits, not repaired code.",
 
-  "document": {"digest":"62c03f1a50009e0973510034c314c46df560dddf761547e6798d86808eb116fd","revision":"020eb6a14e05313bb66724ec3504e613717e6ed1"},
+  "document": {"digest":"76106a61e5e2d8924c8857876b8f38011be5f9af421bf6697cbe71a5e795971a","revision":"efa773acac88792cda31595f9afca4a37d3efebc"},
 
   "sources": [
     {"path":".github/workflows/publish-release.yml","digest":"177c206b2b12a2421bd83d3b803b7e7a4555a982725d2b2b775837fc6aa87db6","revision":"0fef6012b6853144e65d4ba2eb0db5fb6c2d1a05"},
@@ -66,7 +66,7 @@
 
     {"path":"packages/cli/src/commands/install-registry.ts","digest":"f718a3fb5c763792c60f9a488f2369a1806f281683e62f13525ed851bcf0ec74","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"packages/cli/src/commands/install.ts","digest":"ca98a0fa5d41930d6b3bb5d33000804411d82ec80650a7d97294cb7dcd020ac5","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"packages/cli/src/commands/install.ts","digest":"5c476173280f26004cb081d43a6e276530a09d048a19680d56c0acfd3bc7c188","revision":"c2b1caf535d375c5195cc8b8a66c9dc6ce83205d"},
 
     {"path":"packages/cli/src/commands/lifecycle.ts","digest":"ce8322baa64d2e25c711ec0816c6cb013c8742f651a265e1657239185dba9ecc","revision":"b49b1db1601f36c9457e0d9d7c766d15be6302f7"},
 

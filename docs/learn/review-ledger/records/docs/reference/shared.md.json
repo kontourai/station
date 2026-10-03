@@ -9,7 +9,7 @@
 
   "limits": "Selected documented contracts only, not every helper export or implementation branch. Syntax-only snippets are excerpts, not complete standalone programs. Existing parser/build tests use disposable fixtures and controlled dependency preparation. No real plugin install, registry or live MCP/provider/device outcome exercised. Earlier MCP and notification checks remain separately recorded; hashes are freshness checks, not semantic proof. Additional main merge b269a6cf9: structural reconciliation only; prior distinct anchors below are historical reviews, not approval of combined bytes. Active bindings retain existing anchors; combined dependency bytes remain stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"pnpm-lock.yaml\",\"ours\":{\"digest\":\"2907b97d6a2e98b4211695a78cf83b03419218f1dd95ce090ca753d9bdbad14a\",\"revision\":\"b50eeb9584c1808e429e59dcb3c3c2253307bbbe\"},\"main\":{\"digest\":\"29dbdce300fcd3d881ae511317af478da6e9c098a8e8cf51c6b2269a937525df\",\"revision\":\"df9188971e1a93d2c5525a7f5f38e3da93c9e4de\"}}].",
 
-  "document": {"digest":"19270961b8cd9ec650fb3d6dc6acc279030b0bdbbfebf99ad484b5d12d3eb82a","revision":"8924149a7e6ef1356fc078c9a387c6a60ada429a"},
+  "document": {"digest":"972645b56f6537f563d637933e4234f02dc62165d3a5f6f21863de4412232a00","revision":"efa773acac88792cda31595f9afca4a37d3efebc"},
 
   "sources": [
     {"path":"docs/design/mcp-ui-host.md","digest":"060ae4fc6877a186e8ea6d5073729e03f161dbe270b700f62741095560000195","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
@@ -36,7 +36,7 @@
 
     {"path":"packages/contracts/src/notification.ts","digest":"8ab242f152839490894494f48fd701c6dfd2b5d13fcad3d439eeb83c17463156","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/contracts/src/plugin.ts","digest":"98607c85d86241ccf638de4d207ebb64285752092eb7a827e4304c75df409b95","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"packages/contracts/src/plugin.ts","digest":"792d8276a237a79dbace80dc8171a578448b45bb720df125d674b1030207da30","revision":"c2b1caf535d375c5195cc8b8a66c9dc6ce83205d"},
 
     {"path":"packages/contracts/src/project.ts","digest":"81c1da22c4d64208ecd8d5dad2259958b296272dfb2537ec6b514c271a55fb11","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -102,7 +102,7 @@
 
     {"path":"src-server/services/notifications/notification-service.ts","digest":"dc0df39c89f0e28181353f544f15467c528fb9685622077cca74b672d2857c19","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/plugins/plugin-install-transaction.ts","digest":"01ba3b7fe2249e6215c6fb62c6372e21324c863bee37bcac6e739a7b0170db61","revision":"63833ae5666cb06da0b5671dc0e3bf63bdc1d0fa"},
+    {"path":"src-server/services/plugins/plugin-install-transaction.ts","digest":"467e7b1890294780e4d2a379624a4275add33e2dbb5a4505040f54d14bd79afc","revision":"efa773acac88792cda31595f9afca4a37d3efebc"},
 
     {"path":"src-ui/src/components/mcp-ui/MCPToolUIFrame.tsx","digest":"732a76fa3772bbc163f0c9c5b8da98c530614a27acfaba1b93fbecb497f240b3","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

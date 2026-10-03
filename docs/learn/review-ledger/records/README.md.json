@@ -16,7 +16,7 @@
 
     {"path":"docker-compose.yml","digest":"d8ae74f82e6fba7768be16dd601d1f98d0462b22576cb125023e0d868a99bfc8","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"docs/architecture/module-map.md","digest":"bc19269b0710219c166e937aa7f637e5e069ebfeee86518e1f10384f0ff5b8a0","revision":"d73d9f64333504f027a200482e978cc4445338da"},
+    {"path":"docs/architecture/module-map.md","digest":"d0be6b1c2c72aca9f8d17ea3a3796568b3a1cb9d2eb66fa391a68eaa445f451b","revision":"efa773acac88792cda31595f9afca4a37d3efebc"},
 
     {"path":"docs/guides/deployment.md","digest":"1edc373a6f45ca03a1f4e989e59cabe26d36afe4b5b06ccf9717f8b715bf99f2","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -26,7 +26,7 @@
 
     {"path":"docs/privacy-policy.md","digest":"fb5be7ad7342be17509e79e40a6e2dbbe7046ea7dbbe8db4ba637fcdbb21d403","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"docs/reference/cli.md","digest":"62c03f1a50009e0973510034c314c46df560dddf761547e6798d86808eb116fd","revision":"020eb6a14e05313bb66724ec3504e613717e6ed1"},
+    {"path":"docs/reference/cli.md","digest":"76106a61e5e2d8924c8857876b8f38011be5f9af421bf6697cbe71a5e795971a","revision":"efa773acac88792cda31595f9afca4a37d3efebc"},
 
     {"path":"install.sh","digest":"f2b2fbf2dba1198f08637b48ad3a1cd7ae684cee020621cd293668e6bbb8b4bc","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 

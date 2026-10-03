@@ -422,14 +422,12 @@ export function CommandPalette() {
                   content.destinationId,
                 );
                 if (!destination) return false;
-                // `showSurface` never consults a navigation guard — it does
-                // not go through `navigate()` at all — so a plugin command
-                // that reveals a region surface must not abort for one
-                // either (#1418/#1419 review, MEDIUM: checking guard
-                // PRESENCE regardless of destination or target over-aborted
-                // both this case and a same-pathname `navigate()` target).
+                // Match a built-in palette destination: region surfaces use
+                // the page verb, which updates the RegionModel directly and
+                // does not enter navigate()'s asynchronous guard flow. Guard
+                // preflight below remains specific to route destinations.
                 if (destination.regionSurface) {
-                  showSurface(destination.regionSurface);
+                  showSurfacePage(destination.regionSurface);
                   return true;
                 }
                 // Owner decision (#1419): a plugin-command navigation settles
@@ -494,7 +492,7 @@ export function CommandPalette() {
       selectedProject,
       pluginGenerationByName,
       navigate,
-      showSurface,
+      showSurfacePage,
     ],
   );
   const frecency = useSyncExternalStore(
@@ -948,7 +946,6 @@ export function CommandPalette() {
     settingsCommands,
     settingsLocaleFormatter,
     locale,
-    showSurface,
     pluginPaletteCommands,
     runPluginCommand,
     showSurfacePage,

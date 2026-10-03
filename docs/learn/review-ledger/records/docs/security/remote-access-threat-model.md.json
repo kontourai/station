@@ -50,11 +50,11 @@
 
     {"path":"src-server/runtime/bootstrap/runtime-service-bootstrap.ts","digest":"2cf5c807666f495b88ded90ba448c7e4e4e03733b2e2afed684409cd5ffc8356","revision":"56f4c4897a189eeb30430119a4f4895e95fbb541"},
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"21831e2e97672cb946b2e23f9e183477773a632390b02daf66b3e6cf3fe20e71","revision":"595059eafa17ef6b7a39217a405619ecbfac2270"},
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"88a3a2161a61eaee174d5404833230e31768afb8ea60fae898cfda39bb49ae09","revision":"efa773acac88792cda31595f9afca4a37d3efebc"},
 
     {"path":"src-server/security/coding-authority.ts","digest":"213af116a09a02c70ea15a8346b3d8fd2e25f279c975ef9b12d8ab21a519205d","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-server/security/pairing-route-scopes.ts","digest":"cd0d7cf06b6f68355d4e509648ac649c62bdf1cabd52b220e7578776b5e01873","revision":"d73d9f64333504f027a200482e978cc4445338da"},
+    {"path":"src-server/security/pairing-route-scopes.ts","digest":"5188e91b51f45578c8d64d05d71ec69114158ec73af91a69b3de5d316f46e6c8","revision":"efa773acac88792cda31595f9afca4a37d3efebc"},
 
     {"path":"src-server/security/runtime-request-security.ts","digest":"c3219b8afbdd24e8969fb407d2a0a0aa77c08a7656a0e147f64f99f0ed9af3c4","revision":"904729ae7f4058a2cd7dbaf11a4daaa6b8837d08"},
 

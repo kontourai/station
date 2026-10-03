@@ -14,9 +14,9 @@
   "sources": [
     {"path":"docs/reference/contracts.md","digest":"4866ba9ff58f7e07de00bd825943908f2d695568d183a88d3296e45403349e2e","revision":"d73d9f64333504f027a200482e978cc4445338da"},
 
-    {"path":"packages/contracts/package.json","digest":"0d013c2d4ed1b569b51a2068a3b1084b1e687f2a3c4ea23f2236871752dd84d4","revision":"88a7f8ed59c055ea6ac713120ba6069d33fbb892"},
+    {"path":"packages/contracts/package.json","digest":"2b52cd05c0425c00020227cb2bcd14ad0ae4efedcc3c02d63ec62655b33ffbef","revision":"efa773acac88792cda31595f9afca4a37d3efebc"},
 
-    {"path":"packages/contracts/package.json#/exports","digest":"068810cc8b3594e03c2fef6ca250d233e62e378fb6cf06d66b4832d7beae112a","revision":"88a7f8ed59c055ea6ac713120ba6069d33fbb892"},
+    {"path":"packages/contracts/package.json#/exports","digest":"7203143140cc89ad58fefca0f47632c876bc0c2231637841c2826335b9fe92ab","revision":"efa773acac88792cda31595f9afca4a37d3efebc"},
 
     {"path":"packages/contracts/package.json#/name","digest":"6651690272be849626fe9624fab178066983bd8ae56d23f946630f39e5b08a17","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"}
   ],

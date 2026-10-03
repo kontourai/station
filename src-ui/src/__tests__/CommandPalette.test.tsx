@@ -1588,7 +1588,7 @@ describe('CommandPalette plugin commands (#1418/#1419)', () => {
     }
   });
 
-  test('the navigate apply closure reveals a regionSurface destination without ever consulting a registered guard', async () => {
+  test('the navigate apply closure opens a regionSurface destination as a page without consulting a registered guard', async () => {
     pluginsMock = [
       {
         name: 'demo',
@@ -1619,14 +1619,15 @@ describe('CommandPalette plugin commands (#1418/#1419)', () => {
       Symbol('region-surface-guard'),
       () => {
         throw new Error(
-          'showSurface must never consult a navigation guard: it does not go through navigate() at all',
+          'showSurfacePage must not enter navigate() guard flow',
         );
       },
     );
     try {
       const applied = apply({ kind: 'navigate', destinationId: 'activity' });
       expect(applied).toBe(true);
-      expect(showSurfaceMock).toHaveBeenCalledWith('activity');
+      expect(showSurfacePageMock).toHaveBeenCalledWith('activity');
+      expect(showSurfaceMock).not.toHaveBeenCalled();
       expect(navigateMock).not.toHaveBeenCalled();
     } finally {
       unregister();

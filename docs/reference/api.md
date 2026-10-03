@@ -1742,6 +1742,14 @@ to admit the effect. The
 and [effect ledger](../../src-server/services/plugins/plugin-command-effects.ts)
 own these results:
 
+A `navigate` effect follows the built-in palette's destination behavior. A
+region-surface destination (`home` or `activity`) opens as its `main` page
+through the RegionModel; this is a synchronous action and does not enter
+`navigate()`'s asynchronous guard flow. Route destinations use the ordinary
+navigation guard predicate before navigation; a guard that would block the
+route settles the effect as `aborted` with a notice instead of opening the
+asynchronous discard dialog.
+
 ```json
 {
   "documentId": "document-4f2c9a",

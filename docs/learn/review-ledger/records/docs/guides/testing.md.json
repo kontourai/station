@@ -112,7 +112,7 @@
 
     {"path":"scripts/scripts-typecheck-coverage.mjs","digest":"47923e081d0c0e079d9d609495eabc363a81dea09b8da2b54e9933828764fc4e","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
-    {"path":"scripts/test-impact-manifest.mjs","digest":"6fd22302dee661b3b37ea175558dc38176f3e7c9778df0734448aff5b1fe38c4","revision":"b45e66e498207045e6f2d36a48075c702cbf4d92"},
+    {"path":"scripts/test-impact-manifest.mjs","digest":"87015ac4e8a59981bf0d600886c0a3e6538a1b3e7a0b105d0129218f1870e476","revision":"efa773acac88792cda31595f9afca4a37d3efebc"},
 
     {"path":"scripts/typecheck-aggregate.mjs","digest":"e77e37ce2ad7303f0dbab76261307517feee3edc12f0b7e7662327df521c5706","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
