@@ -285,6 +285,9 @@ Factories receive the new values the next time the plugin provider loading
 path constructs them; a successful settings save alone is not evidence that a
 running provider has changed.
 
+For local agent-assisted visual Skill conversion, review and evaluation, use
+[Author a visual skill experience](authoring-skill-experiences.md).
+
 ## Plugin registry
 
 The Registry page browses installable plugins from a JSON manifest.
@@ -304,6 +307,7 @@ and need registry access; a local catalog does not promise a network-free build.
 | `minimal-layout` | The smallest useful layout surface |
 | `demo-layout` | A tour of Station capabilities, no external services |
 | `smart-routing` | A provider plugin with no UI entrypoint |
+| `station-curated-matt-pocock-engineering` | Attributed pinned Skills and four visual entry definitions; agent, project/tracker setup and authority remain prerequisites |
 
 The fuller catalog at `examples/registry/manifest.json` adds examples that pull
 npm dependencies (`enterprise-layout`, `survey-review-workbench`,
