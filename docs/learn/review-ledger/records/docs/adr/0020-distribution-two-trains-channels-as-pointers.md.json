@@ -52,7 +52,7 @@
 
     {"path":"packages/shared/src/prebuilt-archive.ts","digest":"73f956c32b937353113b247025a4c7e7feba6e4f305703d4366593b9e5ba78d8","revision":"54e0ffb5c1ae765b4127f031e525793087fb9669"},
 
-    {"path":"scripts/lib/portable-publication.mjs","digest":"231738a88d5ed98843801e729a5d362f3a7ae75071f323948497d97649f2a004","revision":"51684c027d476a8ed882b73f3a608dfadfb91b04"}
+    {"path":"scripts/lib/portable-publication.mjs","digest":"bd3921ac4a297658473ee51e4af9256844c4c668bba1533ac39bc77fc62ad510","revision":"e3fa2cf8c4bdcb7d8438495ff3122028719b5bca"}
   ],
 
   "checks": [

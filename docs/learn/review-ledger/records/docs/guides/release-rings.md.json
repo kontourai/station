@@ -9,7 +9,7 @@
 
   "limits": "No actual signed Git tag, install, rollback, GitHub OIDC attestation or publication. Independent current source review covers described branches, not OS isolation or provider uptime.",
 
-  "document": {"digest":"953b4cb270a8b74a5f639bb006d6071750f9c5687139fd2bfa50dffebcd61cd1","revision":"94e8e5781a2c23d2bc828682a1157aef3934e897"},
+  "document": {"digest":"b3a94b87c9f165cb47bde3154a114f76502d7ae4f23c34c3f86706ef1ca70092","revision":"e3fa2cf8c4bdcb7d8438495ff3122028719b5bca"},
 
   "sources": [
     {"path":".github/workflows/build-ios.yml","digest":"b4afee0a3cf62cd46226b9b68b648d15d00524a9d7bc27449e640fac6e3f9b73","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
@@ -24,7 +24,7 @@
 
     {"path":".github/workflows/portable-server-archives.yml","digest":"c7c7ff935b2bd8df40440aa8a7b6fd4405304e99e87c4a892de073fe0ae72924","revision":"614c216de6de9d4c06ef56963853ccff52f2f685"},
 
-    {"path":".github/workflows/publish-release.yml","digest":"df26cbe98771750de81e5a1c9b8d4efc8689bc853d31622523d9d7dc15e95420","revision":"94e8e5781a2c23d2bc828682a1157aef3934e897"},
+    {"path":".github/workflows/publish-release.yml","digest":"177c206b2b12a2421bd83d3b803b7e7a4555a982725d2b2b775837fc6aa87db6","revision":"0fef6012b6853144e65d4ba2eb0db5fb6c2d1a05"},
 
     {"path":".github/workflows/release.yml","digest":"178d355f1c2141a4587db894e9f015983340a0c09a4f1c4f633c61503d58b577","revision":"94e8e5781a2c23d2bc828682a1157aef3934e897"},
 
