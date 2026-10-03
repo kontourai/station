@@ -339,9 +339,17 @@ describe('Marketplace source lifecycle through Registry routes', () => {
   test.each(['plugin', 'agent-plugin'] as const)(
     'hides %s provided Skill ownership from public catalog conflicts while retaining an operator control',
     async (kind) => {
-      const { request, home, config } = setup();
+      const { home, config } = setup();
       const publicRoot = await library('Public instructions');
-      await add(request, 'Public library', publicRoot);
+      let afterPublicRead: (() => void) | undefined;
+      class PublicLibrary extends FilesystemSkillRegistryProvider {
+        override async listAvailable() {
+          const items = await super.listAvailable();
+          afterPublicRead?.();
+          return items;
+        }
+      }
+      registerSkillRegistryProvider(new PublicLibrary([publicRoot]));
       const privateRoot = await library('Private package instructions');
       const source = `${kind}:private-provider` as const;
       const service = new SkillService(
@@ -379,13 +387,23 @@ describe('Marketplace source lifecycle through Registry routes', () => {
           installed: true,
         }),
       ]);
-      const listing = async (visible: boolean) => {
+      const listing = async (visible: boolean, revokeDuringRead = false) => {
+        let allowed = visible;
+        afterPublicRead = revokeDuringRead
+          ? () => {
+              allowed = false;
+            }
+          : undefined;
         const app = createRegistryRoutes(
           config,
           async () => {},
           undefined,
           service,
-          { logger, canSeePlugin: () => visible },
+          {
+            logger,
+            canSeePlugin: (_context, owner) =>
+              allowed && owner === 'private-provider',
+          },
         );
         const response = await app.request('/skills');
         expect(response.status).toBe(200);
@@ -401,6 +419,9 @@ describe('Marketplace source lifecycle through Registry routes', () => {
         installed: false,
         status: 'installed-name-conflict',
       });
+      const revoked = await listing(true, true);
+      expect(revoked.data[0]!.status).not.toBe('installed-name-conflict');
+      expect(revoked.data[0]!.installed).toBe(false);
     },
   );
 

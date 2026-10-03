@@ -100,6 +100,7 @@ test('filters by host source identity and keeps plugin ownership and offline sta
   expect(
     screen.getByText('Offline catalog. Last successful snapshot retained.'),
   ).toBeTruthy();
+  fireEvent.click(screen.getByText('Manage connected marketplaces'));
   expect(screen.getAllByRole('button', { name: 'Disable' })).toHaveLength(1);
   fireEvent.click(screen.getByRole('button', { name: 'Enable' }));
   expect(mutate).toHaveBeenCalledWith(

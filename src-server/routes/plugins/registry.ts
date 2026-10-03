@@ -744,26 +744,31 @@ export function createRegistryRoutes(
 
   app.get('/skills', async (c) => {
     registryOps.add(1, { operation: 'list-skills' });
-    const installed = skillService?.listSkills() ?? [];
-    const data = (await sources.catalog('skills', sourceVisible(c))).map(
-      (item) => {
-        const sameName = installed.find(
-          (skill) => skill.name === item.catalog?.itemId,
-        );
-        const owns =
-          !!sameName &&
-          sameName.provenance?.catalog?.sourceId === item.catalog?.sourceId;
-        return {
-          ...item,
-          installed: owns,
-          ...(PROTOTYPE_AFFECTING_KEYS.includes(item.catalog?.itemId ?? item.id)
-            ? { status: 'unsupported-skill-name' }
-            : sameName && !owns
-              ? { status: 'installed-name-conflict' }
-              : {}),
-        };
-      },
-    );
+    const catalog = await sources.catalog('skills', sourceVisible(c));
+    const installed = (skillService?.listSkills() ?? []).filter((skill) => {
+      if (skill.origin !== 'plugin') return true;
+      const owner = /^(?:plugin|agent-plugin):([^:]+)$/.exec(
+        skill.source ?? '',
+      )?.[1];
+      return !!owner && deps?.canSeePlugin?.(c, owner) === true;
+    });
+    const data = catalog.map((item) => {
+      const sameName = installed.find(
+        (skill) => skill.name === item.catalog?.itemId,
+      );
+      const owns =
+        !!sameName &&
+        sameName.provenance?.catalog?.sourceId === item.catalog?.sourceId;
+      return {
+        ...item,
+        installed: owns,
+        ...(PROTOTYPE_AFFECTING_KEYS.includes(item.catalog?.itemId ?? item.id)
+          ? { status: 'unsupported-skill-name' }
+          : sameName && !owns
+            ? { status: 'installed-name-conflict' }
+            : {}),
+      };
+    });
     const sourceStatus = sources
       .list()
       .filter((source) => source.kind === 'skills' && sourceVisible(c)(source));

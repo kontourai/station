@@ -263,6 +263,8 @@ plugin generation replacement/revocation are checked again before publication
 and use. A revoked provider cannot publish its in-flight result or fall back to
 its previously cached rows. Plugin-owned Skill catalogs also use the route's
 existing caller visibility projection, before inspection/acquisition reads.
+Installed-name/conflict projection also withholds provided plugin Skills from
+callers who cannot see the owning legacy or portable Agent Plugin.
 
 [Registry routes](../../src-server/routes/plugins/registry.ts) expose source
 management and source-qualified catalog tuples. The marketplace retains an
