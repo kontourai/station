@@ -408,4 +408,22 @@ describe('client API protocol admission (#2962)', () => {
     // A sibling in the same family is not exempt.
     expect((await request('/api/projects', noHeader)).status).toBe(426);
   });
+
+  it('audits each refusal without recording the raw header', async () => {
+    const { request, audits } = createHarness(RAISED);
+    await request('/api/projects', api('1'));
+    await request('/api/projects', api('not-a-number'));
+    await request('/api/projects', api('3'));
+    expect(audits).toHaveLength(2);
+    expect(audits[0]).toMatchObject({
+      event: 'station.auth.failure',
+      outcome: 'denied',
+      reason: 'client_protocol_unsupported',
+      clientProtocol: 1,
+      routeClass: 'protected',
+      path: '/api/projects',
+    });
+    expect(audits[1]).toMatchObject({ reason: 'client_protocol_invalid' });
+    expect(JSON.stringify(audits)).not.toContain('not-a-number');
+  });
 });

@@ -771,7 +771,23 @@ function configureRuntimeSecurity(
         c.req.header(CLIENT_PROTOCOL_HEADER),
         clientProtocolPolicy,
       );
-      if (refusal) return c.json(refusal.body, refusal.status);
+      if (refusal) {
+        // Operators see which clients are being turned away. The record
+        // carries the parsed protocol only, never the raw header value.
+        emitSecurityAudit(security, c, routeLabeler, {
+          event: 'station.auth.failure',
+          outcome: 'denied',
+          reason: refusal.body.error.code,
+          routeClass,
+          peerClass: effectivePeerClass,
+          transport: 'http',
+          timestamp: security.now?.() ?? Date.now(),
+          ...(refusal.body.error.clientProtocol === undefined
+            ? {}
+            : { clientProtocol: refusal.body.error.clientProtocol }),
+        });
+        return c.json(refusal.body, refusal.status);
+      }
     }
     const accountOperation =
       c.req.path === DEPLOYMENT_AUTHENTICATION_BASE_PATH ||
