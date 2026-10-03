@@ -1,7 +1,6 @@
 import type { SkillExperienceIdentityV1 } from '@kontourai/station-contracts/skill-experience';
 import type { PaneSkillExperienceHost } from '@kontourai/station-contracts/workspace-pane-host-contract';
 import { authenticatedFetch } from '@kontourai/station-sdk';
-import { createSkillExperiencePaneHost } from '@kontourai/station-sdk/workspace-pane';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useApiBase } from '../../contexts/ApiBaseContext';
 import { useConfig } from '../../contexts/ConfigContext';
@@ -11,6 +10,7 @@ import {
   type FramePaneHostOutboundMessage,
   useFramePaneHost,
 } from './framePaneHost';
+import { buildPluginFrameRuntime } from './plugin-frame-runtime';
 import '../mcp-ui/MCPToolUIFrame.css';
 
 const READY = 'plugin-host-ready';
@@ -220,7 +220,10 @@ export function PluginFrameHost({
               bundleCss: await css.text(),
               // This tiny runtime observes registration; it does not expose
               // host objects, credentials, or a CSP nonce to plugin code.
-              runtimeJs: `window.__stationCreateSkillExperiencePaneHost=${createSkillExperiencePaneHost.toString()};window.__stationPaneHostOrigin=${JSON.stringify(new URL(origin).origin)};addEventListener('load',()=>queueMicrotask(()=>parent.postMessage({method:'initialize',params:{exports:Object.keys(window.__station_ai_plugins?.[${JSON.stringify(plugin.name)}]?.components||{})}},'*')));`,
+              runtimeJs: buildPluginFrameRuntime(
+                new URL(origin).origin,
+                plugin.name,
+              ),
             },
           },
           origin,
