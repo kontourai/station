@@ -33,6 +33,7 @@
  */
 
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -529,8 +530,8 @@ node "$BASE_POLICY_DIRECTORY/scripts/codeql-sarif-policy.mjs" --input="$CODEQL_N
 const FORK_CHECKOUT_REPOSITORY = `\${{ github.event.pull_request.head.repo.full_name }}`;
 const FORK_CHECKOUT_REF = `\${{ github.event.pull_request.head.sha }}`;
 const FULL_REGRESSION_WORKFLOW = '.github/workflows/full-regression.yml';
-const FULL_REGRESSION_JOB_ID = 'full-regression';
-const FULL_REGRESSION_COMPLETION_STEP = 'Run canonical completion gate';
+const FULL_REGRESSION_JOB_ID = 'static';
+const FULL_REGRESSION_COMPLETION_STEP = 'Run full-regression phases';
 const ACTIONLINT_ARCHIVE = 'actionlint_1.7.12_linux_amd64.tar.gz';
 const ACTIONLINT_SHA256 =
   '8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8';
@@ -654,6 +655,13 @@ const MISSING_CALLEE_MESSAGE =
  */
 const UNTRUSTED_ACTION_CACHE_POLICY = Object.freeze({
   'actions/checkout': noCacheFindings,
+  // Reviewed pinned token action has no cache operations; landing's exact
+  // trusted-base topology separately owns its credential admission.
+  'actions/create-github-app-token': (step) =>
+    step.uses ===
+    'actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1'
+      ? []
+      : [UNREVIEWED_CACHE_ACTION_MESSAGE],
   'actions/upload-artifact': noCacheFindings,
   // Reads this run's own artifacts (#2709: the fast-checks plan and shard
   // receipts); it has no cache input or cache side effect.
@@ -2390,7 +2398,15 @@ function primaryCiRouterFindings(file, document) {
   for (const [jobId, job] of Object.entries(jobs)) {
     if (
       job?.permissions !== undefined &&
-      !hasOnlyReadContentsPermission(job.permissions)
+      !hasOnlyReadContentsPermission(job.permissions) &&
+      !(
+        jobId === 'full-regression' &&
+        job.if === EXACT_TARGET_SKIP_GUARDS['full-regression'] &&
+        job.uses === './.github/workflows/full-regression.yml' &&
+        hasExactKeys(job.permissions, ['contents', 'actions']) &&
+        job.permissions.contents === 'read' &&
+        job.permissions.actions === 'read'
+      )
     )
       findings.push({
         file,
@@ -2604,7 +2620,36 @@ function primaryCiRouterFindings(file, document) {
   return findings;
 }
 
+// This credentialed ingress executes only trusted base policy, never PR code.
+// Any topology/authority change requires review and a new policy digest.
+const LANDING_POLICY_SHA256 =
+  'd05e19dbf815735ee36b205ae07934277152f8d8c57543fb2ed08556f2316656';
+function orderedPolicy(value) {
+  if (Array.isArray(value)) return value.map(orderedPolicy);
+  if (value && typeof value === 'object')
+    return Object.fromEntries(
+      Object.keys(value)
+        .sort()
+        .map((key) => [key, orderedPolicy(value[key])]),
+    );
+  return value;
+}
 function baseControlledPrWorkflowFindings(file, document) {
+  if (file === '.github/workflows/landing-automation.yml') {
+    const digest = createHash('sha256')
+      .update(JSON.stringify(orderedPolicy(document)))
+      .digest('hex');
+    return digest === LANDING_POLICY_SHA256
+      ? []
+      : [
+          {
+            file,
+            jobId: 'arm',
+            message:
+              'landing automation must retain its exact reviewed trusted-base credential topology',
+          },
+        ];
+  }
   if (file === '.github/workflows/ci.yml') return [];
   if (
     !workflowHasTrigger(document, PULL_REQUEST_TARGET) &&

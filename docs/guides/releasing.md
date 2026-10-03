@@ -1,0 +1,177 @@
+# Integration, qualification, and releases
+
+Station integrates small changes quickly, qualifies the combined application
+on a schedule, and publishes deliberate releases from an immutable source.
+A merged PR is integration evidence. It does not establish release readiness.
+
+## Delivery stages
+
+| Stage | Evidence | Failure consequence |
+| --- | --- | --- |
+| Pull request | Affected tests, all typecheck lanes, lint, governance, security, critical browser smoke, and relevant platform checks | Blocks that PR |
+| Merge queue | Required checks against the synthesized combined candidate | Blocks incompatible integration |
+| Main qualification | Every full-regression phase and Android viewport tests | Opens or updates one repair episode; source remains unqualified |
+| Internal development | Local/dev build with focused and smoke evidence | Must be identified as unqualified; never advertised as Preview or Stable |
+| Nightly | Daily signed dogfood delivery after exact-source qualification and existing platform/provider gates | No publication without qualification |
+| Preview | Frozen qualified source, signed/staged inventory, installation and update evidence, owner-approved publication | Blocks publication |
+| Stable | The reviewed Preview source, qualified evidence and channel-specific packaging/provider checks | Blocks publication |
+
+The authorities are [CI](../../.github/workflows/ci.yml),
+[merge integration](../../.github/workflows/merge-queue-regression.yml), and
+[hosted qualification](../../.github/workflows/full-regression.yml).
+`Merge-queue regression` remains the required check's legacy name for ruleset
+compatibility; its workflow is now `Merge integration` and checks the candidate
+diff. The required `fast-checks`, security, Windows portable floor and relevant
+iOS checks retain their integration protections. The merge path does not run
+the full corpus.
+
+## Qualification cadence and evidence reuse
+
+[Main qualification](../../.github/workflows/main-qualification.yml) runs at
+00:17, 06:17, 12:17 and 18:17 UTC. It tests one exact workflow-event SHA from
+`main`, independently of platform publishing. Matrices do not cancel siblings
+on failure, and the phase driver continues through failed phases. A prerequisite
+failure, missing job or cancelled job remains incomplete evidence, never a pass.
+The full corpus includes files in the historical quarantine list.
+
+Qualification emits `source-qualification-<sha>-<run-id>` with a JSON receipt
+only after every planned job succeeds. The receipt names source, producer run,
+runner/Node environment, job results and any reused producer.
+The [evidence resolver](../../scripts/qualification-evidence.mjs) can reuse a
+successful run for the same exact source from an admitted main, Nightly,
+release or manual-CI workflow, within 24 hours. It requires the successful
+qualification job, all four ordinary corpus jobs and an unexpired receipt
+artifact. A reused run cannot become another reuse source and extend the
+original evidence's age. The same source binds the checked-in workflow,
+lockfile, toolchain pins and phase plan. A newer commit or expired/missing
+evidence runs fresh qualification. A newer failed qualification invalidates
+prior green evidence for that source. An API lookup failure also runs fresh;
+it cannot admit publication.
+
+Quiet intervals therefore avoid rerunning successful unchanged source. Failed
+source is revisited on the next interval, with all available failure logs kept.
+Dispatch a fresh diagnostic when investigating environment changes or confirming
+a repair; a receipt is bounded source/environment evidence, not physical-device
+or provider publication proof:
+
+```sh
+gh workflow run main-qualification.yml --repo kontourai/station --ref main -F force=true
+```
+
+GitHub schedules may be delayed or dropped under load. Check the most recent
+qualification's source and age rather than treating the clock as evidence.
+See [GitHub's schedule behavior](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule).
+
+## One repair sweep per failure episode
+
+[Qualification repair](../../.github/workflows/qualification-repair.yml) reacts
+to completed canonical main-qualification runs. It keeps one P1 issue titled
+`Main qualification repair`, with failed source/run, job outcomes, an owner,
+state and a deadline 24 hours after the episode opens.
+
+The first failure starts one bounded agent attempt. Further failures update the
+same episode without starting another agent. Out-of-order older successes cannot
+close a newer failure. After a repair lands and main CI succeeds, [Qualify landed repair](../../.github/workflows/qualification-after-repair.yml)
+dispatches one fresh main qualification. A later successful qualification closes
+the episode.
+A failed, incomplete or empty agent attempt records `needs-owner`; it does not
+relaunch itself. Review the previous attempt before explicitly retrying:
+
+```sh
+gh workflow run qualification-repair.yml --repo kontourai/station --ref main \
+  -f run_id=<completed-main-qualification-run-id> -F retry=true
+```
+
+The agent works from current main in a sibling worktree with the failing logs,
+uses focused checks, and gets one 40-minute attempt with a 40-path publication
+limit. Logs are evidence, never instructions. Workflow, governance, hooks,
+agent instructions and qualification policy changes require an owner handoff.
+A separate clean publishing job validates the patch and opens one normal PR;
+the agent receives no GitHub publishing credential. The publisher uses the
+existing release-app credential with repository-scoped contents/PR permissions
+so its PR triggers ordinary CI. Required checks and review remain authoritative.
+The model defaults to `gpt-6-sol`; `QUALIFICATION_REPAIR_MODEL` can select the
+owner-approved alternative. Missing agent/app credentials surface as a failed
+attempt rather than a successful repair.
+
+Treat startup, builds, authentication and data-integrity failures as immediate
+integration incidents. The owner can set repository variable
+`STATION_INTEGRATION_PAUSED=true` to fail subsequent merge-integration candidates,
+coordinate a repair PR, and clear it after verification. A repair deadline that
+passes without green qualification requires owner escalation; the tracker
+remains P1 and publication still requires source qualification. Broader failures
+receive the repair sweep while unrelated fast-green work can continue.
+
+## Landing without agent monitoring
+
+The `station-autoland` label expresses standing intent to land a PR. After a
+successful PR CI run, [Landing automation](../../.github/workflows/landing-automation.yml)
+checks its current head, same-repository ownership, draft/conflict status and
+label, then arms auto-merge once. Adding the label or marking a PR ready also
+triggers trusted-base automation, which first verifies successful CI for its
+current head. It does not poll the queue, bypass checks,
+merge main into contributors' branches or wake an agent for status observation.
+Repair PRs opt in automatically. Maintainers can label their own ready PRs;
+unlabelled lanes remain under their owner's control.
+
+A true conflict needs its owning session. A new successful CI run can re-arm an
+opted-in PR; a failing run cannot. The merge queue owns combined-candidate checks
+and the final merge. Use [the development guide](development.md#github-automation-token)
+for local automation credentials and the repository instructions for arm/confirm/stop.
+
+## Release procedure
+
+1. Choose a release-train base version from repository/provider state and freeze
+   a reviewed current-main SHA. Use the version authority in
+   [release rings](release-rings.md), not an arbitrary calendar bump.
+2. Run qualification for that source, or reuse an admitted exact-source receipt
+   within its original 24-hour lifetime. A green ancestor does not qualify the
+   candidate. A diagnostic test subset does not qualify it either.
+3. Create a new immutable signed `vX.Y.Z-preview.N` tag on that source. The
+   tag-triggered stage workflow qualifies the exact SHA and creates a draft
+   only after the platform, signing, provenance and inventory checks succeed.
+4. Inspect the draft and receipts. Exercise installation, startup, the critical
+   user journeys, upgrade and rollback on the supported release platforms.
+   Record unverified provider/device paths explicitly. Use
+   [native operations](native-releases.md) and [mobile release](mobile-release.md)
+   for their platform-specific authorities.
+5. Dispatch and approve `Publish Station release` for that draft tag. It validates
+   the draft, inventory and provenance, and re-admits exact-source qualification
+   before changing public release/update authorities. An old staged draft can
+   require fresh qualification; source qualification from an ancestor is refused. Confirm the actual public artifacts and installed behavior.
+6. Dogfood Preview. If a fix is required, create another immutable Preview tag
+   from the fixed source and repeat qualification and acceptance.
+7. Promote the same reviewed Preview commit with `vX.Y.Z`; source never changes
+   during promotion. Stable packaging may rebuild for channel identity/signing.
+   Source qualification can reuse the same valid receipt; artifact, installation,
+   update and external-provider evidence still has to match the Stable outputs.
+
+Nightly runs daily at 06:43 UTC, after the 06:17 qualification opportunity; it
+checks evidence rather than assuming the scheduled run has finished. It can run
+fresh qualification when necessary. Manual delivery remains available. Preview
+and Stable are evidence-driven owner decisions, not automatic calendar releases.
+No public release is created merely by merging a normal PR. Package-version
+PR maintenance still runs on main pushes; the manual package-publish operation
+also requires exact-source qualification. The separately authorized published
+pointer-repair break glass retains its existing inventory/provenance checks and
+can skip new qualification to restore an already-published update authority;
+normal draft publication cannot use that exception.
+
+Keep source qualification, staged artifacts, public provider receipts, installed
+runtime checks and rollback evidence separate in the handoff. Consult
+[release recovery](native-releases.md#stage-inspect-publish-and-roll-back) before
+withdrawing a release or repairing rolling pointers. Never move a failed tag.
+
+## Measure the change
+
+Use `npm run ci:health -- --hours=6` before and after rollout; retain the JSON
+and its collection limits. Compare PR-to-merge latency, runner time per merged
+PR, queue failures/removals, agent interventions and time from a qualification
+failure to restored green evidence. CI workflow durations are not agent token
+counts. Collect model usage from the repair run/provider rather than estimating
+it from queue events. See [CI health](testing.md#ci-health-history).
+
+Local tests establish receipt admission, failure aggregation, episode ordering,
+protected patch refusal and landing intent. Hosted scheduling, actual agent
+execution, PR publication and release/provider/device outcomes require their
+respective live runs; a source change or passing local gate is not that proof.

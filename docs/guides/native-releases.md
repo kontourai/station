@@ -1,5 +1,8 @@
 # Native release operations
 
+The [release process](releasing.md) owns integration, scheduled qualification,
+repair sweeps and promotion decisions. This guide owns platform operations.
+
 Station stages every supported package from one immutable `vMAJOR.MINOR.PATCH`
 or `vMAJOR.MINOR.PATCH-preview.N` tag. The tag workflow never publishes the
 GitHub Release. It uploads workflow artifacts while each platform builds, then
@@ -128,7 +131,7 @@ SemVer as well as the shared `day * 100 + build` numeric code.
 
 ## Native Nightly cohort
 
-`nightly.yml` keeps the source gate and canonical full-regression receipt and
+`nightly.yml` runs daily, keeps the source gate and exact-source qualification receipt, and
 runs the native work as two reusable phases, both only on `refs/heads/main`
 when the gated SHA is the workflow event SHA.
 
@@ -308,7 +311,7 @@ and `NOT_VERIFIED`. No staged portable artifact proves availability, an
 install, or an update; those outcomes remain `NOT_PUBLISHED`, `NOT_INSTALLED`,
 and `NOT_UPDATED` in the admitted inventory.
 
-Normal operation is the scheduled Nightly build, which fires every six hours,
+Normal operation is the scheduled Nightly build, which fires daily at 06:43 UTC,
 uses the current workflow event SHA, and skips native staging only when the
 cohort decision has the required platform markers and matching ledger rows.
 The tag alone is insufficient, as described above. To request that normal behavior

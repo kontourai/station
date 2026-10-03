@@ -124,6 +124,10 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Exercises the health CLI refusal before any GitHub request.
   'scripts/__tests__/ci-health.test.ts',
+  // Runs the evidence CLI against temporary Git roots and a loopback Actions API.
+  'scripts/__tests__/qualification-evidence.test.ts',
+  // Executes repair publication against real temporary checkouts and a loopback API.
+  'scripts/__tests__/qualification-repair.test.ts',
   'src-server/services/connections/__tests__/browser-code-login.test.ts',
   'scripts/__tests__/learning-atlas.browser.test.ts',
   // Starts a nested Vitest run of its probe under a simulated merge-queue env.
@@ -1552,15 +1556,9 @@ export function discoverVitestResourceGroups(options = {}) {
 }
 
 /**
- * Test quarantine (the merge-queue regression gate's escape valve).
- *
- * A quarantine entry names a test file that is flaky, not broken: the same
- * commit both passed and failed it. Quarantined files are EXCLUDED from the
- * merge-queue regression shards only (`run-vitest-corpus.mjs
- * --exclude-quarantined`, passed by `run-full-regression-phases.mjs`). They
- * STILL run in Nightly's canonical `full:regression`, which never reads this
- * list — so Nightly stays exposed to the flake while the queue stops holding
- * unrelated PRs hostage to it.
+ * Historical quarantine list for explicit diagnostic corpus exclusions.
+ * Hosted source qualification always includes these files. The merge queue
+ * now runs affected integration checks, not the full corpus.
  *
  * This is an overlay, not a partition member: a quarantined file keeps its
  * resource group above (`partitionVitestResourceSubset` and

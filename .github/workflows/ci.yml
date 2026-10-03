@@ -721,6 +721,9 @@ jobs:
         run: npm run ci:fast
 
   full-regression:
+    permissions:
+      contents: read
+      actions: read
     # Manual escape hatch only. Nightly and tagged releases call the same
     # reusable workflow with their own already-bound immutable source SHA.
     needs: [classify, fast-checks]

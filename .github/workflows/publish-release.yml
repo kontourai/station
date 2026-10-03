@@ -29,6 +29,7 @@ concurrency:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   resolve:
@@ -129,8 +130,16 @@ jobs:
             echo "policy_sha=$policy_sha"
           } >> "$GITHUB_OUTPUT"
 
-  publish:
+  qualification:
     needs: resolve
+    if: needs.resolve.outputs.pointer_repair_only != 'true'
+    uses: ./.github/workflows/full-regression.yml
+    with:
+      source_sha: ${{ needs.resolve.outputs.sha }}
+
+  publish:
+    needs: [resolve, qualification]
+    if: ${{ always() && !cancelled() && needs.resolve.result == 'success' && (needs.qualification.result == 'success' || needs.resolve.outputs.pointer_repair_only == 'true') }}
     runs-on: ubuntu-latest
     environment: native-release-publish
     permissions:

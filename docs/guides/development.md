@@ -438,17 +438,23 @@ GitHub's merge queue verifies the synthesized latest-main candidate.
 Do not run `npm run full:regression`
 locally merely because `main` moved.
 
-The reusable hosted workflow `.github/workflows/full-regression.yml` owns the
-canonical receipt. Nightly and tagged preview and stable promotions bind it to
-one exact source SHA before any artifact build or publication.
+The reusable hosted workflow `.github/workflows/full-regression.yml` qualifies
+one exact source through every canonical phase and the Android viewport suite.
+Main qualification runs every six hours; Nightly delivery runs daily. Nightly
+and tagged Preview/Stable require that qualification, with bounded reuse of
+exact-source evidence. See [the release process](releasing.md) for receipt
+admission, failure repair and promotion.
 A manual `workflow_dispatch` of CI remains the explicit diagnostic escape hatch.
 Escalate to public native or full E2E lanes only when selector/policy output
 names them or the final risk surface requires them.
 
-When recording a promotion-level Builder `tests-evidence` claim, use the
-hosted exact-SHA receipt whose command is `npm run full:regression`. Keep
-focused test commands in ordinary delivery evidence; they remain useful
-diagnostics but are not canonical promotion receipts.
+Keep hosted source qualification and local verification receipts separate in
+delivery evidence. Attach the hosted exact-SHA JSON and producer run, retaining
+any original reused-run binding. The hosted `station.source-qualification`
+schema is not a local version-3 verification receipt; consumer compatibility,
+including Builder admission, must be verified through that consumer rather
+than inferred from the attachment. Focused test commands remain diagnostics.
+See [receipt boundaries](../reference/verification-receipts.md#hosted-source-qualification).
 
 Useful focused commands:
 
