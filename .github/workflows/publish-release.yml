@@ -695,6 +695,7 @@ jobs:
           ROLLING_TAG: ${{ steps.host_plan.outputs.rolling_tag }}
           MANIFEST_ASSET: ${{ steps.host_plan.outputs.manifest_asset }}
           ROLLING_MANIFEST_URL: ${{ steps.host_plan.outputs.rolling_manifest_url }}
+          ALLOW_EMPTY_HOST_MANIFEST_BOOTSTRAP: ${{ inputs.allow_empty_host_manifest_bootstrap }}
         run: |
           set -euo pipefail
           signed="$RUNNER_TEMP/host-manifest/$MANIFEST_ASSET"
@@ -708,6 +709,23 @@ jobs:
             test -s "$prior/$MANIFEST_ASSET"
             had_prior=true
           fi
+          # The plan read the cacheable download URL, which can serve an older
+          # manifest than the release holds. Re-plan against the bytes just
+          # downloaded from the release itself, with the same not-regressing
+          # logic, and clobber only if that still says replace.
+          replan=$(node release-policy/scripts/portable-release-publication.mjs pointer-plan --ring "$RELEASE_RING" --candidate-version "$RELEASE_VERSION" --current "$prior/$MANIFEST_ASSET" --signed "$signed" --allow-empty-bootstrap "$ALLOW_EMPTY_HOST_MANIFEST_BOOTSTRAP")
+          if [ "$replan" = action=skip-older ]; then
+            message="$RELEASE_TAG is older than the manifest $ROLLING_TAG holds now (the plan read a stale copy); the host pointer never moves backwards, so it stays where it is"
+            echo "::warning::$message"
+            echo "$message" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          if [ "$replan" = action=unchanged ]; then
+            echo "$ROLLING_TAG already holds this run's manifest; re-verifying without replacing it"
+            node release-policy/scripts/portable-release-publication.mjs verify --ring "$RELEASE_RING" --manifest "$ROLLING_MANIFEST_URL" --expected-payload "$RUNNER_TEMP/host-manifest/station-server-manifest-payload.json"
+            exit 0
+          fi
+          [ "$replan" = action=replace ] || { echo "::error::unexpected pointer re-plan: $replan" >&2; exit 1; }
           mutation_started=false
           compensate_pointer() {
             status=$?

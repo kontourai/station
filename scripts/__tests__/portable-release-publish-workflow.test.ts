@@ -1256,6 +1256,10 @@ describe('publish-release.yml signs and moves the host pointer only behind the o
       expect(
         list[index(list, PLAN)].env?.ALLOW_EMPTY_HOST_MANIFEST_BOOTSTRAP,
       ).toBe(expr('inputs.allow_empty_host_manifest_bootstrap'));
+    // The replacement re-plans against the release's own bytes.
+    expect(replace.env?.ALLOW_EMPTY_HOST_MANIFEST_BOOTSTRAP).toBe(
+      expr('inputs.allow_empty_host_manifest_bootstrap'),
+    );
   });
 
   it('checks the staged payload and archives before any signing', () => {
@@ -1387,6 +1391,11 @@ describe('publish-release.yml signs and moves the host pointer only behind the o
         fetch?: boolean;
         /** Serve another version's validly signed manifest and payload. */
         swapTo?: string;
+        /**
+         * The cacheable download URL the plan reads serves this older,
+         * validly signed version while the release itself holds `served`.
+         */
+        staleCopy?: string;
       } = {},
     ) {
       const keys = keyring('stable');
@@ -1412,6 +1421,16 @@ describe('publish-release.yml signs and moves the host pointer only behind the o
           join(rolling, ASSET),
           readFileSync(keys.sign(assemblePayload('stable', served).output)),
         );
+      let planReads = join(rolling, ASSET);
+      if (options.staleCopy !== undefined) {
+        planReads = join(freshDir('cdn'), ASSET);
+        writeFileSync(
+          planReads,
+          readFileSync(
+            keys.sign(assemblePayload('stable', options.staleCopy).output),
+          ),
+        );
+      }
       const bin = freshDir('gh');
       writeFileSync(
         join(bin, 'gh'),
@@ -1469,7 +1488,7 @@ describe('publish-release.yml signs and moves the host pointer only behind the o
           GITHUB_STEP_SUMMARY: summary,
           ROLLING_TAG: 'portable-stable',
           MANIFEST_ASSET: ASSET,
-          ROLLING_MANIFEST_URL: join(rolling, ASSET),
+          ROLLING_MANIFEST_URL: planReads,
           ALLOW_EMPTY_HOST_MANIFEST_BOOTSTRAP: 'false',
         } as Record<string, string>,
       };
@@ -1543,6 +1562,50 @@ describe('publish-release.yml signs and moves the host pointer only behind the o
       expect(replaced.status, replaced.stderr).toBe(0);
       expect(readFileSync(ws.rollingFile)).toEqual(readFileSync(ws.signed));
       expect(replaced.stdout).toContain('verified 1.2.4');
+    });
+
+    it('never clobbers a newer pointer when the plan read a stale cached copy', () => {
+      // The release holds 1.3.0; the cached URL the plan reads still serves
+      // 1.2.0, so the plan says replace for the older candidate 1.2.5.
+      const ws = pointerWorkspace('1.2.5', '1.3.0', { staleCopy: '1.2.0' });
+      const before = readFileSync(ws.rollingFile);
+      const plan = runStep(stepRun(PLAN), ws);
+      expect(readFileSync(ws.output, 'utf8'), plan.stderr).toBe(
+        'action=replace\n',
+      );
+      const replaced = runStep(stepRun(REPLACE), ws);
+      expect(replaced.status, replaced.stderr).toBe(0);
+      expect(replaced.stdout).toContain(
+        '::warning::v1.2.5 is older than the manifest portable-stable holds now (the plan read a stale copy)',
+      );
+      expect(readFileSync(ws.rollingFile)).toEqual(before);
+      expect(readFileSync(join(ws.releases, '.log'), 'utf8')).not.toMatch(
+        /^upload /m,
+      );
+    });
+
+    it('refuses to clobber when the release holds the same version with other bytes', () => {
+      const ws = pointerWorkspace('1.2.4', 'same', { staleCopy: '1.2.3' });
+      // The same validly signed envelope, serialized differently.
+      writeFileSync(
+        ws.rollingFile,
+        JSON.stringify(
+          JSON.parse(readFileSync(ws.rollingFile, 'utf8')),
+          null,
+          1,
+        ),
+      );
+      const before = readFileSync(ws.rollingFile);
+      expect(before).not.toEqual(readFileSync(ws.signed));
+      const replaced = runStep(stepRun(REPLACE), ws);
+      expect(replaced.status).toBe(1);
+      expect(replaced.stderr).toContain(
+        'the rolling stable manifest already names 1.2.4 with different bytes than this run signed',
+      );
+      expect(readFileSync(ws.rollingFile)).toEqual(before);
+      expect(readFileSync(join(ws.releases, '.log'), 'utf8')).not.toMatch(
+        /^upload /m,
+      );
     });
 
     it('restores the previous manifest when the replaced pointer does not verify', () => {
