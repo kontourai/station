@@ -78,15 +78,15 @@
 
     {"path":"src-server/utils/private-sqlite.ts","digest":"2db8ea78c58db8e55a7aff6bff8768d7f0364b9025dd52eaa98a98e7a6d6061f","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-ui/src/views/account/account-entry-continuation.ts","digest":"b8daef294a50dfeebda2682768d23165399a486785da42fc47f919b5e2fdaf92","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
     {"path":"src-ui/src/views/account/AccountEntryView.tsx","digest":"9531a840fb63ea89dc0333ec52949977a76ec04950a9dcf5541623ff68f7c5e4","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
-    {"path":"src-ui/src/views/account/guest-account-authority.ts","digest":"b4b584ad13cb971c1aaedc584afa7e5a5ce52834624f055e762aab8b703a4c47","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
     {"path":"src-ui/src/views/account/GuestDeviceOnboarding.tsx","digest":"7e6a036f893841dc121f95d9761e587fde027d8508142698b6ae6b1fedc6b6c8","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-ui/src/views/account/GuestProjectAccessView.tsx","digest":"e8bbd1c403d5076532f3948ddc500bcb5f720bea8d43aa6fa09d177dfb8f627c","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"}
+    {"path":"src-ui/src/views/account/GuestProjectAccessView.tsx","digest":"e8bbd1c403d5076532f3948ddc500bcb5f720bea8d43aa6fa09d177dfb8f627c","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"src-ui/src/views/account/account-entry-continuation.ts","digest":"b8daef294a50dfeebda2682768d23165399a486785da42fc47f919b5e2fdaf92","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"src-ui/src/views/account/guest-account-authority.ts","digest":"b4b584ad13cb971c1aaedc584afa7e5a5ce52834624f055e762aab8b703a4c47","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"}
   ],
 
   "checks": [

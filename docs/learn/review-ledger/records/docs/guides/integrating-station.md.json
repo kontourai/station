@@ -12,9 +12,9 @@
   "document": {"digest":"19141922ec87bc6d1b7858f51e8d73004a3f86a6f320ac61ff71226d66969b1e","revision":"87b7b438cf0f881e850574ef6bbcffafe3d72a92"},
 
   "sources": [
-    {"path":"deploy/gcp-dev/bootstrap.sh","digest":"e6c628e0cbafedc499f4fe2ce923649c0b3e58d3a9abffa1d86ff3bfe27d5f5d","revision":"18002c0871ea8538605e922464aab5356c77593c"},
-
     {"path":"deploy/gcp-dev/README.md","digest":"b638bdfb5553e5bd7a04d415473b5adf02948e11a650f7f58f65ff6b54d7a0b0","revision":"18002c0871ea8538605e922464aab5356c77593c"},
+
+    {"path":"deploy/gcp-dev/bootstrap.sh","digest":"e6c628e0cbafedc499f4fe2ce923649c0b3e58d3a9abffa1d86ff3bfe27d5f5d","revision":"18002c0871ea8538605e922464aab5356c77593c"},
 
     {"path":"docs/guides/deployment-authentication.md","digest":"cd5a91770198de74499dd8e87bb4a27ba0a0769108bfd51d7f900bf571026fbf","revision":"daeb0902d1d0d28457a61b01e6dbdaab13fc0888"},
 
@@ -22,7 +22,7 @@
 
     {"path":"docs/guides/documentation.md","digest":"03c26a23b91b0e665d65bd89e7a8172d8131afa49624db9312c4602e272ba05f","revision":"68257f50971037b3fd9df5b134bbd599142cd6d8"},
 
-    {"path":"docs/guides/plugins.md","digest":"96f3de592ce3acd5b8b6c9dba1c8a971dda9da61425349ca8e8733824327755e","revision":"f249300b2162c4ef35f8978e4cf9ded407027304"},
+    {"path":"docs/guides/plugins.md","digest":"5ff1ca32c4a8610a038c7011a8c026fc7d78d722c154e2150421ba36168a3080","revision":"e6eb64ae0f00f85467f76030389782093ac47a0d"},
 
     {"path":"docs/guides/workspace-packages.md","digest":"4590c3915425e58b96a0ae8c36d825bf0409e7ddff1b7023f367f14a4aede9d1","revision":"5c18724d4ba50fd9b5f6c4043e7a00ebc893c70d"},
 
@@ -32,7 +32,7 @@
 
     {"path":"docs/reference/contracts.md","digest":"39c8d0250cc817f1dd72bc89748315533aa78be23cb2483f5294f49c6b2f8339","revision":"0961c433764c39dd7998c9418b9c157b6547292b"},
 
-    {"path":"docs/reference/sdk.md","digest":"f807f1c0fe8800211529b18058d8812dc59c4d0d338fb784135ac59edf8e39ea","revision":"4fe1570f32d9f2b90ddded8258c0793bbe3c2830"},
+    {"path":"docs/reference/sdk.md","digest":"9373d70956290ff9955c9327b133635727ba340d511dd095c09c414939110ac0","revision":"e6eb64ae0f00f85467f76030389782093ac47a0d"},
 
     {"path":"packages/contracts/src/deployment-authentication.ts","digest":"8855043167b011ccd430ec998ea644d1c9e16f86b98a9304162d2f86973a8a98","revision":"18002c0871ea8538605e922464aab5356c77593c"},
 
