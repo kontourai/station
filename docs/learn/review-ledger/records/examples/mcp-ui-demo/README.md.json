@@ -1,65 +1,75 @@
 {
   "path": "examples/mcp-ui-demo/README.md",
-
   "kind": "current",
-
   "state": "source-reviewed",
-
   "summary": "Full README and example-server claim review through stdio tool/resource registration, actual integration resolve/read routes and runtime mount, browser MCPToolUIFrame resolver/resource/bridge caller and shared CSP. Corrected web-only native refusal, default host enablement, script cwd prerequisite, credential requirement and require-versus-inherit approval behavior. Static demo sends no interactive messages; dedicated proxy versus opaque srcdoc boundary stated.",
-
-  "limits": "Complete for concrete documented claims and actual named callers, not an exhaustive security audit or every possible implementation path. No installed-plugin journey, external provider/registry mutation, public package distribution, native/device operation or cross-host qualification performed. Merge reconciliation preserves both prior review anchors below as historical evidence, not a new review of combined source bytes. Active bindings retain existing reviewed anchors; any mismatch with merged bytes remains stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"pnpm-lock.yaml\",\"ours\":{\"digest\":\"2907b97d6a2e98b4211695a78cf83b03419218f1dd95ce090ca753d9bdbad14a\",\"revision\":\"b50eeb9584c1808e429e59dcb3c3c2253307bbbe\"},\"main\":{\"digest\":\"fd7359aa74c6fa2ce27a20c84f69722273ec162933c580280bdca21dce9d28ff\",\"revision\":\"1e5f63186142dd36fcb720deb7660808dbf2f56b\"}},{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"ours\":{\"digest\":\"8da16e71c4909bef8f7cf21eb6cde9fbebc2b72997baeebbff7445db19fb237a\",\"revision\":\"904729ae7f4058a2cd7dbaf11a4daaa6b8837d08\"},\"main\":{\"digest\":\"e54cf49af965f2acabb5a7a97caead30fc8e4e3b619f5dea1cb7f6a464b2d901\",\"revision\":\"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac\"}}]. Additional main merge b269a6cf9: structural reconciliation only; prior distinct anchors below are historical reviews, not approval of combined bytes. Active bindings retain existing anchors; combined dependency bytes remain stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"ours\":{\"digest\":\"33e19d52230c0339923db1768b0cae89a71077634c4632f9a10c11f6a3e05f78\",\"revision\":\"83c4111b8c4dcda1e978d78bb191c974888c9ca4\"},\"main\":{\"digest\":\"e54cf49af965f2acabb5a7a97caead30fc8e4e3b619f5dea1cb7f6a464b2d901\",\"revision\":\"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac\"}},{\"path\":\"pnpm-lock.yaml\",\"ours\":{\"digest\":\"2907b97d6a2e98b4211695a78cf83b03419218f1dd95ce090ca753d9bdbad14a\",\"revision\":\"b50eeb9584c1808e429e59dcb3c3c2253307bbbe\"},\"main\":{\"digest\":\"29dbdce300fcd3d881ae511317af478da6e9c098a8e8cf51c6b2269a937525df\",\"revision\":\"df9188971e1a93d2c5525a7f5f38e3da93c9e4de\"}}].\n\nAdditional existing main limits (preserved verbatim): Complete for concrete documented claims and actual named callers, not an exhaustive security audit or every possible implementation path. No installed-plugin journey, external provider/registry mutation, public package distribution, native/device operation or cross-host qualification performed.\n\nStructural merge of 5fd2dd86ad0cd35018ce09537c1aa01ce58e0e55 and 8f9ea788561518398a488d35bb768b78a272e73b preserves both prior immutable document/source anchors and historical checks. Selecting an existing current-byte binding is structural reconciliation only, not semantic approval of merged inputs. No new digest/revision or coverage baseline was minted. Competing prior anchors remain pending semantic review and supported recording after the merge commit: [{\"path\":\"pnpm-lock.yaml\",\"ours\":{\"path\":\"pnpm-lock.yaml\",\"digest\":\"5827b0dac0aa1d3a2beb2a0ab719df8fcbd2fdac0bc4a4a7e01c4cae620ba122\",\"revision\":\"8e884d84b5609d130f29937159601c65d119b664\"},\"main\":{\"path\":\"pnpm-lock.yaml\",\"digest\":\"29dbdce300fcd3d881ae511317af478da6e9c098a8e8cf51c6b2269a937525df\",\"revision\":\"df9188971e1a93d2c5525a7f5f38e3da93c9e4de\"},\"active\":{\"path\":\"pnpm-lock.yaml\",\"digest\":\"5827b0dac0aa1d3a2beb2a0ab719df8fcbd2fdac0bc4a4a7e01c4cae620ba122\",\"revision\":\"8e884d84b5609d130f29937159601c65d119b664\"},\"decision\":\"oursMatch\"},{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"ours\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"33e19d52230c0339923db1768b0cae89a71077634c4632f9a10c11f6a3e05f78\",\"revision\":\"83c4111b8c4dcda1e978d78bb191c974888c9ca4\"},\"main\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"ed83b5af4f41e38ea85de7ba4d975066b1c15f136b215926bd5cd31a45183a21\",\"revision\":\"068722323b07f15f14280d43b1c05dbc2ca212eb\"},\"active\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"33e19d52230c0339923db1768b0cae89a71077634c4632f9a10c11f6a3e05f78\",\"revision\":\"83c4111b8c4dcda1e978d78bb191c974888c9ca4\"},\"decision\":\"neitherMatch\"}]",
-
-  "document": {"digest":"edac8e8ab2aa5125990f11157af06392b96fb00b7e837be65c6feba746088f1a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
-
+  "limits": "Complete for concrete documented claims and actual named callers, not an exhaustive security audit or every possible implementation path. No installed-plugin journey, external provider/registry mutation, public package distribution, native/device operation or cross-host qualification performed. Merge reconciliation preserves both prior review anchors below as historical evidence, not a new review of combined source bytes. Active bindings retain existing reviewed anchors; any mismatch with merged bytes remains stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"pnpm-lock.yaml\",\"ours\":{\"digest\":\"2907b97d6a2e98b4211695a78cf83b03419218f1dd95ce090ca753d9bdbad14a\",\"revision\":\"b50eeb9584c1808e429e59dcb3c3c2253307bbbe\"},\"main\":{\"digest\":\"fd7359aa74c6fa2ce27a20c84f69722273ec162933c580280bdca21dce9d28ff\",\"revision\":\"1e5f63186142dd36fcb720deb7660808dbf2f56b\"}},{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"ours\":{\"digest\":\"8da16e71c4909bef8f7cf21eb6cde9fbebc2b72997baeebbff7445db19fb237a\",\"revision\":\"904729ae7f4058a2cd7dbaf11a4daaa6b8837d08\"},\"main\":{\"digest\":\"e54cf49af965f2acabb5a7a97caead30fc8e4e3b619f5dea1cb7f6a464b2d901\",\"revision\":\"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac\"}}]. Additional main merge b269a6cf9: structural reconciliation only; prior distinct anchors below are historical reviews, not approval of combined bytes. Active bindings retain existing anchors; combined dependency bytes remain stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"ours\":{\"digest\":\"33e19d52230c0339923db1768b0cae89a71077634c4632f9a10c11f6a3e05f78\",\"revision\":\"83c4111b8c4dcda1e978d78bb191c974888c9ca4\"},\"main\":{\"digest\":\"e54cf49af965f2acabb5a7a97caead30fc8e4e3b619f5dea1cb7f6a464b2d901\",\"revision\":\"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac\"}},{\"path\":\"pnpm-lock.yaml\",\"ours\":{\"digest\":\"2907b97d6a2e98b4211695a78cf83b03419218f1dd95ce090ca753d9bdbad14a\",\"revision\":\"b50eeb9584c1808e429e59dcb3c3c2253307bbbe\"},\"main\":{\"digest\":\"29dbdce300fcd3d881ae511317af478da6e9c098a8e8cf51c6b2269a937525df\",\"revision\":\"df9188971e1a93d2c5525a7f5f38e3da93c9e4de\"}}].\n\nAdditional existing main limits (preserved verbatim): Complete for concrete documented claims and actual named callers, not an exhaustive security audit or every possible implementation path. No installed-plugin journey, external provider/registry mutation, public package distribution, native/device operation or cross-host qualification performed.\n\nStructural merge of 5fd2dd86ad0cd35018ce09537c1aa01ce58e0e55 and 8f9ea788561518398a488d35bb768b78a272e73b preserves both prior immutable document/source anchors and historical checks. Selecting an existing current-byte binding is structural reconciliation only, not semantic approval of merged inputs. No new digest/revision or coverage baseline was minted. Competing prior anchors remain pending semantic review and supported recording after the merge commit: [{\"path\":\"pnpm-lock.yaml\",\"ours\":{\"path\":\"pnpm-lock.yaml\",\"digest\":\"5827b0dac0aa1d3a2beb2a0ab719df8fcbd2fdac0bc4a4a7e01c4cae620ba122\",\"revision\":\"8e884d84b5609d130f29937159601c65d119b664\"},\"main\":{\"path\":\"pnpm-lock.yaml\",\"digest\":\"29dbdce300fcd3d881ae511317af478da6e9c098a8e8cf51c6b2269a937525df\",\"revision\":\"df9188971e1a93d2c5525a7f5f38e3da93c9e4de\"},\"active\":{\"path\":\"pnpm-lock.yaml\",\"digest\":\"5827b0dac0aa1d3a2beb2a0ab719df8fcbd2fdac0bc4a4a7e01c4cae620ba122\",\"revision\":\"8e884d84b5609d130f29937159601c65d119b664\"},\"decision\":\"oursMatch\"},{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"ours\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"33e19d52230c0339923db1768b0cae89a71077634c4632f9a10c11f6a3e05f78\",\"revision\":\"83c4111b8c4dcda1e978d78bb191c974888c9ca4\"},\"main\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"ed83b5af4f41e38ea85de7ba4d975066b1c15f136b215926bd5cd31a45183a21\",\"revision\":\"068722323b07f15f14280d43b1c05dbc2ca212eb\"},\"active\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"33e19d52230c0339923db1768b0cae89a71077634c4632f9a10c11f6a3e05f78\",\"revision\":\"83c4111b8c4dcda1e978d78bb191c974888c9ca4\"},\"decision\":\"neitherMatch\"}] Upstream merge review anchors retained as historical evidence only; merged source mismatches require semantic re-review: {\"document\":{\"digest\":\"edac8e8ab2aa5125990f11157af06392b96fb00b7e837be65c6feba746088f1a\",\"revision\":\"0c1f436037261c43eeca3e079f5106948360c591\"},\"sources\":[{\"path\":\"examples/mcp-ui-demo/server.mjs\",\"digest\":\"bcf0690795e3b8e915f132135d6c957f607ab59eb2fabfeaf923cb6ccff7d1d9\",\"revision\":\"0c1f436037261c43eeca3e079f5106948360c591\"},{\"path\":\"packages/shared/src/mcp-ui-csp.ts\",\"digest\":\"811062edc652c17556380fb3ed3776bda4d3f568e004225405f22528ddb3fc23\",\"revision\":\"0c1f436037261c43eeca3e079f5106948360c591\"},{\"path\":\"pnpm-lock.yaml\",\"digest\":\"5c3c9968c59ac5b4e7e5ec861c2873bfce11b7c60e7b28e8706db6b29d028ddb\",\"revision\":\"1e6450e0caa47975d33f505a1348bdc01ae1382e\"},{\"path\":\"src-server/routes/agents/tools.ts\",\"digest\":\"a80801f4a31e7761be350924011935a8b0a613847f5648de7308b828331d359e\",\"revision\":\"0c1f436037261c43eeca3e079f5106948360c591\"},{\"path\":\"src-server/runtime/mcp/__tests__/mcp-ui-resolver.test.ts\",\"digest\":\"4244fe6da0b1e7f0eeeb5a5fc928581453a83684ebd48afec9acec3d7e8df6db\",\"revision\":\"0c1f436037261c43eeca3e079f5106948360c591\"},{\"path\":\"src-server/runtime/mcp/mcp-ui-frame-server.ts\",\"digest\":\"eaf7b70c1248c4020af4fafd05c5e38c6e8fd03fd2955991965d0e94dd3cc77c\",\"revision\":\"0c1f436037261c43eeca3e079f5106948360c591\"},{\"path\":\"src-server/runtime/mcp/mcp-ui-resolver.ts\",\"digest\":\"b82399f787d6b71129684e5cb4fad8858846d5315d0c1077822ac1591199075e\",\"revision\":\"0c1f436037261c43eeca3e079f5106948360c591\"},{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"400dc75dd88a48bc411a4edb9c5f40f9d22ae0f1c5b68d8f748e7733efae5a0e\",\"revision\":\"cb3ebc3797508b3f46d66b8bc5ece89b32cb79ae\"},{\"path\":\"src-ui/src/components/mcp-ui/MCPToolUIFrame.tsx\",\"digest\":\"732a76fa3772bbc163f0c9c5b8da98c530614a27acfaba1b93fbecb497f240b3\",\"revision\":\"0c1f436037261c43eeca3e079f5106948360c591\"}],\"summary\":\"Full README and example-server claim review through stdio tool/resource registration, actual integration resolve/read routes and runtime mount, browser MCPToolUIFrame resolver/resource/bridge caller and shared CSP. Corrected web-only native refusal, default host enablement, script cwd prerequisite, credential requirement and require-versus-inherit approval behavior. Static demo sends no interactive messages; dedicated proxy versus opaque srcdoc boundary stated.\",\"limits\":\"Complete for concrete documented claims and actual named callers, not an exhaustive security audit or every possible implementation path. No installed-plugin journey, external provider/registry mutation, public package distribution, native/device operation or cross-host qualification performed.\"}",
+  "document": {
+    "digest": "edac8e8ab2aa5125990f11157af06392b96fb00b7e837be65c6feba746088f1a",
+    "revision": "0c1f436037261c43eeca3e079f5106948360c591"
+  },
   "sources": [
-    {"path":"examples/mcp-ui-demo/server.mjs","digest":"bcf0690795e3b8e915f132135d6c957f607ab59eb2fabfeaf923cb6ccff7d1d9","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
-
-    {"path":"packages/shared/src/mcp-ui-csp.ts","digest":"811062edc652c17556380fb3ed3776bda4d3f568e004225405f22528ddb3fc23","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
-
-    {"path":"pnpm-lock.yaml","digest":"5827b0dac0aa1d3a2beb2a0ab719df8fcbd2fdac0bc4a4a7e01c4cae620ba122","revision":"8e884d84b5609d130f29937159601c65d119b664"},
-
-    {"path":"src-server/routes/agents/tools.ts","digest":"a80801f4a31e7761be350924011935a8b0a613847f5648de7308b828331d359e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
-
-    {"path":"src-server/runtime/mcp/__tests__/mcp-ui-resolver.test.ts","digest":"4244fe6da0b1e7f0eeeb5a5fc928581453a83684ebd48afec9acec3d7e8df6db","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
-
-    {"path":"src-server/runtime/mcp/mcp-ui-frame-server.ts","digest":"eaf7b70c1248c4020af4fafd05c5e38c6e8fd03fd2955991965d0e94dd3cc77c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
-
-    {"path":"src-server/runtime/mcp/mcp-ui-resolver.ts","digest":"b82399f787d6b71129684e5cb4fad8858846d5315d0c1077822ac1591199075e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
-
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"9df5003fe71f07872ebf3ee800499419f189a003719bc7642bb6676b392b01c1","revision":"a058838c32094ebc98fa31929b76b7855bb7dd85"},
-
-    {"path":"src-ui/src/components/mcp-ui/MCPToolUIFrame.tsx","digest":"732a76fa3772bbc163f0c9c5b8da98c530614a27acfaba1b93fbecb497f240b3","revision":"0c1f436037261c43eeca3e079f5106948360c591"}
+    {
+      "path": "examples/mcp-ui-demo/server.mjs",
+      "digest": "bcf0690795e3b8e915f132135d6c957f607ab59eb2fabfeaf923cb6ccff7d1d9",
+      "revision": "0c1f436037261c43eeca3e079f5106948360c591"
+    },
+    {
+      "path": "packages/shared/src/mcp-ui-csp.ts",
+      "digest": "811062edc652c17556380fb3ed3776bda4d3f568e004225405f22528ddb3fc23",
+      "revision": "0c1f436037261c43eeca3e079f5106948360c591"
+    },
+    {
+      "path": "pnpm-lock.yaml",
+      "digest": "5827b0dac0aa1d3a2beb2a0ab719df8fcbd2fdac0bc4a4a7e01c4cae620ba122",
+      "revision": "8e884d84b5609d130f29937159601c65d119b664"
+    },
+    {
+      "path": "src-server/routes/agents/tools.ts",
+      "digest": "a80801f4a31e7761be350924011935a8b0a613847f5648de7308b828331d359e",
+      "revision": "0c1f436037261c43eeca3e079f5106948360c591"
+    },
+    {
+      "path": "src-server/runtime/mcp/__tests__/mcp-ui-resolver.test.ts",
+      "digest": "4244fe6da0b1e7f0eeeb5a5fc928581453a83684ebd48afec9acec3d7e8df6db",
+      "revision": "0c1f436037261c43eeca3e079f5106948360c591"
+    },
+    {
+      "path": "src-server/runtime/mcp/mcp-ui-frame-server.ts",
+      "digest": "eaf7b70c1248c4020af4fafd05c5e38c6e8fd03fd2955991965d0e94dd3cc77c",
+      "revision": "0c1f436037261c43eeca3e079f5106948360c591"
+    },
+    {
+      "path": "src-server/runtime/mcp/mcp-ui-resolver.ts",
+      "digest": "b82399f787d6b71129684e5cb4fad8858846d5315d0c1077822ac1591199075e",
+      "revision": "0c1f436037261c43eeca3e079f5106948360c591"
+    },
+    {
+      "path": "src-server/runtime/routes/runtime-routes.ts",
+      "digest": "9df5003fe71f07872ebf3ee800499419f189a003719bc7642bb6676b392b01c1",
+      "revision": "a058838c32094ebc98fa31929b76b7855bb7dd85"
+    },
+    {
+      "path": "src-ui/src/components/mcp-ui/MCPToolUIFrame.tsx",
+      "digest": "732a76fa3772bbc163f0c9c5b8da98c530614a27acfaba1b93fbecb497f240b3",
+      "revision": "0c1f436037261c43eeca3e079f5106948360c591"
+    }
   ],
-
   "checks": [
     "Prior receipt, retained without rerun: Example/documentation, snippets, voice smoke refusal, sessions renderer, Fieldwork, Survey and branding selection: 76 tests across seven files passed. These are bounded fixture checks, not every example or a live provider.",
-
     "Prior receipt, retained without rerun: Actual local stdio MCP client listed status_panel, read its ui resource and invoked its fixture label successfully; Station iframe/host journey not exercised.",
-
     "Prior receipt, retained without rerun: Reviewed source changes: Reviewed plugin event relay extraction into createPluginEventRelayGate and its caller. Visibility read failures still deny/log; unrelated route mounts, request authority and event contracts are unchanged.",
-
     "Source+caller review completed at frozen upstream f3954615e / integrated6fa523e4d; prior record source changes inspected before replacing hashes. No moving-main chase.",
-
     "Executed: static gate chain PASS including26example conformance and zero new a11y violations; docs links PASS415Markdown files; diff whitespace PASS.",
-
     "Executed: TypeScript AST printer comparison with comments removed confirms all five edited source/test files are comment-only against221888d35. No behavior or deadline changed; no additional typecheck solely for comment changes.",
-
     "Executed focused5files:66PASS in12.15s (Builder, Fieldwork, Survey plugin server route tests; plugin-public-server lifecycle/admission; MCP UI resolver). Fieldwork facade is mocked in its fixture; Survey public dependency routes executed with no skips; not an installed UI journey.",
-
     "Veritas readiness veritas-1790535084936: exit0,0FAIL/0WARN; proof:repo-governance, lint:check and verification:policy:gate PASS on eleven changed files. Last subsequent edit only wrapped/corrected placement prose; parent final CI owns combined revision.",
-
     "Reviewed exact runtime-routes delta from6676a48ee: plugin-event relay extraction, Project-default helper inlining, control-thread/defaultApproval authority additions and unused re-export removal. MCP tool/UI route mount and approval wiring unchanged.",
-
     "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits.",
-
     "Integration source review through e0314c727: pnpm-lock.yaml only removed the root bearing/forage importer entries, and the example's own dependencies are unchanged, so the prose is accurate. Source review is separate from executed test evidence.",
-
     "Integration source review through d72f79b08: #2904's runtime-routes changes are the full-access refusal identity middleware and the device revoke/scope-change full-access reset. The integration resolve/read routes, runtime mount, MCP UI resource handling, CSP and approvalPolicy require-versus-inherit behavior are untouched. Prose accurate. Source review is separate from executed test evidence.",
-
     "Integration source review through 42491ca6b: cf43e14d0 (#2731) adds recognizeCredential wiring in runtime-routes.ts. The integration resolve and read routes, the runtime mount and the README's instruction to include the Station's required credentials are unchanged. Prose accurate. Source review is separate from executed test evidence.",
-
     "Integration source review through 5731eba07: 3ab09593d (#2919) MCPToolUIFrame.tsx un-exports mcpUiToolCallDecision and the isDistinctFrameOrigin re-export with unchanged require/inherit/read-only behavior; prose accurate. Source review is separate from executed test evidence.",
-
     "2026-09-28 test-audit refresh: mcp-ui-resolver.test.ts folded near-duplicate cases (authoritative-empty catalog fallbacks, flat plus nested Survey keys) into existing tests; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
   ]
 }

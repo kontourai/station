@@ -60,7 +60,7 @@
 
     {"path":"src-ui/src/components/chat-dock/useChatDockOverlays.ts","digest":"ddc9e5110725ab4e806ae6abe91021397faf665cb4ba6703926d67170979b325","revision":"fdd1311dfc6f9bb5370219a598a46bf4359b248e"},
 
-    {"path":"src-ui/src/components/chat/ChatInputArea.tsx","digest":"3d88560ac4a659c6b5feaff9d1fa7e80f0a99c48eb6c8f942210596915afa791","revision":"a8b3f341a58336f2cf1812088968d13a0b10c056"},
+    {"path":"src-ui/src/components/chat/ChatInputArea.tsx","digest":"25c3a5c11346ec3681e2198c80f4fa404f94aedd125ef4878ad4512c6dfdc36b","revision":"82fea394a09cdf62071b073d09aa6cb08ebbca48"},
 
     {"path":"src-ui/src/components/chat/FileMentionAutocomplete.tsx","digest":"3f210b8a3c44c3e73efdba233f0763cebf8bfc1256bf97d0b76ac98a2e49be1d","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 

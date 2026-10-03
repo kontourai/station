@@ -1,211 +1,384 @@
 {
   "path": "docs/guides/release-channel-ports.md",
-
   "kind": "current",
-
   "state": "source-reviewed",
-
   "summary": "Channel default ports, runtime-home ownership and platform identities. Full baseline read. Traced generated port owner, worktree allocation, installer release-protocol mapping and shared root derivation. Compared current matrix with iOS channel delivery owner and explicit Dev simulator overlay; distinguished source configuration from provider prerequisites.",
-
-  "limits": "Bounded source and hermetic evidence only. No native compilation, app/device launch, signing, provisioning, OS/network policy change, store credentials or provider delivery. Full document reading does not certify all platform behavior. Additional main merge b269a6cf9: structural reconciliation only; prior distinct anchors below are historical reviews, not approval of combined bytes. Active bindings retain existing anchors; combined dependency bytes remain stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"src-desktop/src/lib.rs\",\"ours\":{\"digest\":\"8cd237bf9ba48b5623dc262d33544e86bd2e9ded6d0c566b977425085cfb78e2\",\"revision\":\"a71a583813b3f137da6a9716acc7e9b198df5847\"},\"main\":{\"digest\":\"8c75f82874099575e30e4b757be90a2ba22bbd8d2623813566b5b3f139124833\",\"revision\":\"3517d8f66db867fd982a8f9883ed85052c4e1fc1\"}},{\"path\":\"src-desktop/Cargo.toml\",\"ours\":{\"digest\":\"5d31862fd3f09724c9f92585576a8a2d1218c247fa6ca0130e4dbf8fac216f87\",\"revision\":\"34838898143e9a6048203520cdc6da3f78ecf49e\"},\"main\":{\"digest\":\"74e0f4e26dcd14a8d40422c9b7a8b0a1940728f04d3f6cfd1d5b020cb70f0b85\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"}},{\"path\":\"src-desktop/Cargo.lock\",\"ours\":{\"digest\":\"4aca56573d2f9652e3fbf275677598ddf99defd43999d42f3b6a4925cd9b1f7b\",\"revision\":\"34838898143e9a6048203520cdc6da3f78ecf49e\"},\"main\":{\"digest\":\"38624df3105a4d464e085d4034e32a78e7fe867334cfac2006d6d8b73a31fc4b\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"}},{\"path\":\"pnpm-lock.yaml\",\"ours\":{\"digest\":\"2907b97d6a2e98b4211695a78cf83b03419218f1dd95ce090ca753d9bdbad14a\",\"revision\":\"b50eeb9584c1808e429e59dcb3c3c2253307bbbe\"},\"main\":{\"digest\":\"29dbdce300fcd3d881ae511317af478da6e9c098a8e8cf51c6b2269a937525df\",\"revision\":\"df9188971e1a93d2c5525a7f5f38e3da93c9e4de\"}}].\n\nBounded source and hermetic evidence only. No native compilation, app/device launch, signing, provisioning, OS/network policy change, store credentials or provider delivery. Full document reading does not certify all platform behavior.\n\nMerge anchor history (structural reconciliation only; no semantic approval): source src-desktop/src/lib.rs ours={\"digest\":\"57a47dd3656d47a5c43eaf4001895942d350d61b6de896fa4d1d3da498bfd821\",\"revision\":\"d5e4502434838cc29b63091ae689474d6488cfe4\"}; origin/main={\"digest\":\"ad3b52011a9be6e6a18133b2367c04d0a6245907e5b7e13fa324bcd8b5255557\",\"revision\":\"464d602fb7fb5fa9bd0df9d241dc03495b398b96\"}. The merged source bytes require supported review after the merge commit.",
-
-  "document": {"digest":"b90cd2926db148fda6e028bab7d9a1746956db1a90e6fedcb0c7b9920c46f156","revision":"332b227345684d098aaaf3191ac0e9d927ac9401"},
-
+  "limits": "Bounded source and hermetic evidence only. No native compilation, app/device launch, signing, provisioning, OS/network policy change, store credentials or provider delivery. Full document reading does not certify all platform behavior. Additional main merge b269a6cf9: structural reconciliation only; prior distinct anchors below are historical reviews, not approval of combined bytes. Active bindings retain existing anchors; combined dependency bytes remain stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"src-desktop/src/lib.rs\",\"ours\":{\"digest\":\"8cd237bf9ba48b5623dc262d33544e86bd2e9ded6d0c566b977425085cfb78e2\",\"revision\":\"a71a583813b3f137da6a9716acc7e9b198df5847\"},\"main\":{\"digest\":\"8c75f82874099575e30e4b757be90a2ba22bbd8d2623813566b5b3f139124833\",\"revision\":\"3517d8f66db867fd982a8f9883ed85052c4e1fc1\"}},{\"path\":\"src-desktop/Cargo.toml\",\"ours\":{\"digest\":\"5d31862fd3f09724c9f92585576a8a2d1218c247fa6ca0130e4dbf8fac216f87\",\"revision\":\"34838898143e9a6048203520cdc6da3f78ecf49e\"},\"main\":{\"digest\":\"74e0f4e26dcd14a8d40422c9b7a8b0a1940728f04d3f6cfd1d5b020cb70f0b85\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"}},{\"path\":\"src-desktop/Cargo.lock\",\"ours\":{\"digest\":\"4aca56573d2f9652e3fbf275677598ddf99defd43999d42f3b6a4925cd9b1f7b\",\"revision\":\"34838898143e9a6048203520cdc6da3f78ecf49e\"},\"main\":{\"digest\":\"38624df3105a4d464e085d4034e32a78e7fe867334cfac2006d6d8b73a31fc4b\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"}},{\"path\":\"pnpm-lock.yaml\",\"ours\":{\"digest\":\"2907b97d6a2e98b4211695a78cf83b03419218f1dd95ce090ca753d9bdbad14a\",\"revision\":\"b50eeb9584c1808e429e59dcb3c3c2253307bbbe\"},\"main\":{\"digest\":\"29dbdce300fcd3d881ae511317af478da6e9c098a8e8cf51c6b2269a937525df\",\"revision\":\"df9188971e1a93d2c5525a7f5f38e3da93c9e4de\"}}].\n\nBounded source and hermetic evidence only. No native compilation, app/device launch, signing, provisioning, OS/network policy change, store credentials or provider delivery. Full document reading does not certify all platform behavior.\n\nMerge anchor history (structural reconciliation only; no semantic approval): source src-desktop/src/lib.rs ours={\"digest\":\"57a47dd3656d47a5c43eaf4001895942d350d61b6de896fa4d1d3da498bfd821\",\"revision\":\"d5e4502434838cc29b63091ae689474d6488cfe4\"}; origin/main={\"digest\":\"ad3b52011a9be6e6a18133b2367c04d0a6245907e5b7e13fa324bcd8b5255557\",\"revision\":\"464d602fb7fb5fa9bd0df9d241dc03495b398b96\"}. The merged source bytes require supported review after the merge commit. Upstream merge review anchors retained as historical evidence only; merged source mismatches require semantic re-review: {\"document\":{\"digest\":\"b90cd2926db148fda6e028bab7d9a1746956db1a90e6fedcb0c7b9920c46f156\",\"revision\":\"332b227345684d098aaaf3191ac0e9d927ac9401\"},\"sources\":[{\"path\":\".github/workflows/android-test.yml\",\"digest\":\"2a653b007047dfca16491297c7ce96455fd6571d5dad7a2fea40a62859a14146\",\"revision\":\"8012fb77b1b95d1461c59827bf9690884526f30c\"},{\"path\":\".github/workflows/build-android.yml\",\"digest\":\"5c20cca3946560c4c3c217c44ce6ea7686ce9254a4f576fe0c0e1596b440f7a7\",\"revision\":\"8012fb77b1b95d1461c59827bf9690884526f30c\"},{\"path\":\".github/workflows/desktop-clean-checkout.yml\",\"digest\":\"b1bf471f893030f7441245158c57fd287bbeadb232dbffe24f78418a1c1ed427\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\".github/workflows/nightly-native-stage.yml\",\"digest\":\"90a8d29da6c024c539a0abc1eb35ba490791780917e174eb7023d6fb45a90030\",\"revision\":\"8012fb77b1b95d1461c59827bf9690884526f30c\"},{\"path\":\".github/workflows/release.yml\",\"digest\":\"e9322e982c85dfb6b26188a6f6d0bc596f1f384e949bc50a59fe07d552e3c8f2\",\"revision\":\"fa59c15763af8e75ddf59a250cdb0d5f8913d116\"},{\"path\":\".github/workflows/testflight-delivery.yml\",\"digest\":\"b65be60d29e76e922b07ed19bd89576ef1cac76e20712dd28d140c72d36012bb\",\"revision\":\"8012fb77b1b95d1461c59827bf9690884526f30c\"},{\"path\":\"config/channel-platform-matrix.json\",\"digest\":\"813d8c4e7fa64f8c7bd87278b2f44e655f953030242c9f486cb903ada8527a13\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"config/channel-ports.json\",\"digest\":\"b57f2202d6b699d201df79f80e3dd7b3049b3a4c5b3455185e8d35c619a69bcf\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"config/portable-server-node-runtime.json\",\"digest\":\"740077d29cbbeb2a40f2fec363d06aacf111f2d2d29f50e71886dcb0a1306438\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"install.sh\",\"digest\":\"f2b2fbf2dba1198f08637b48ad3a1cd7ae684cee020621cd293668e6bbb8b4bc\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"package.json#/scripts/build:ios:simulator\",\"digest\":\"3255b2f2a3e1f765a3d6e35cf3ae515387a878e81f0235b5da5b9ce7fb6ac754\",\"revision\":\"f8a1bcaa554b0ebe0e08e7df78d5e3e6c2c6c1df\"},{\"path\":\"package.json#/scripts/channel-ports:check\",\"digest\":\"199f794cc84fc36a71366f1503f6b3520343fd664feab4790718d996932b6029\",\"revision\":\"c526c4a93bd752e4020ff51303125379f404bb4c\"},{\"path\":\"package.json#/scripts/install-script:check\",\"digest\":\"71f9c5895d8e19e1c1216cf5bf576168cf7a4d1d4a592024f3268febcbc4c6cd\",\"revision\":\"6f10c06b853f98e26779822e14e3ac108397e977\"},{\"path\":\"packages/cli/src/commands/desktop-companion.ts\",\"digest\":\"f33b07c369544b549f720ef7bc012cf35fb7cb1211162f78c61bb463170ffdb5\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"packages/cli/src/commands/dev-ports.ts\",\"digest\":\"8bc6030539f0ccf57eed8af8ea08d31d8be13f3d3897517e41f797778294898e\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"packages/cli/src/commands/helpers.ts\",\"digest\":\"f6e70cbfa9d41d834a8ad4f2faaa22b1f3568cf483a69b4ebcf657626f88e1e1\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"packages/cli/src/commands/lifecycle-code-root.ts\",\"digest\":\"f6b5b71d277613daa02c3a46d45082e7f5fd460f8fc794e111483ba4167ad28f\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"packages/cli/src/commands/lifecycle.ts\",\"digest\":\"ce8322baa64d2e25c711ec0816c6cb013c8742f651a265e1657239185dba9ecc\",\"revision\":\"b49b1db1601f36c9457e0d9d7c766d15be6302f7\"},{\"path\":\"packages/cli/src/commands/service-run.ts\",\"digest\":\"2b3560dd4f26026869b307587704c134cc63a81fe8295527131ba225d0486154\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"packages/cli/src/commands/service-windows.ts\",\"digest\":\"28e4f5acb3c03d08b41550290265ae2ee013f36f6e274a88d617727ea5d68581\",\"revision\":\"c8d9944f3aedde24e7acd1f862d5ee1163ffbe59\"},{\"path\":\"packages/cli/src/commands/service.ts\",\"digest\":\"66660b960af7fe541ec7c5a35f9e0c0ad4a0525060ac967372249b05108ed349\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"packages/shared/src/portable-server-targets.mjs\",\"digest\":\"71b45690e7857b34a2e244e5afa31fba2d07560669b0f2c99c9c3f3ee33dce6c\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"packages/shared/src/runtime-path-resolver.ts\",\"digest\":\"a03da100225a7908b1566d1ea0c43d3e99e424c879b9ab6bd997a75409ad156b\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"packages/shared/src/station-home-schema.ts\",\"digest\":\"db4b3e2883079cf1f4aa55f10b955f42b767e580bbf5a51350c75f3c56d4e1db\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"pnpm-lock.yaml\",\"digest\":\"5c3c9968c59ac5b4e7e5ec861c2873bfce11b7c60e7b28e8706db6b29d028ddb\",\"revision\":\"1e6450e0caa47975d33f505a1348bdc01ae1382e\"},{\"path\":\"scripts/__tests__/browser-preview-packaged-fixture.test.ts\",\"digest\":\"9b4629b23e89e0896de6a639f02e9282e1fb9a856bc80e9445ec193eb0aa20a5\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"scripts/apply-android-native-bootstrap.mjs\",\"digest\":\"de9e3a783c727ac349db61e94fd419c723a1de966ad4d0de1bbd08e30b02169b\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"scripts/apply-android-network-policy.mjs\",\"digest\":\"1808d3c50c9055a9db489322cd20448c3b66503c96fabf637a1d7e14bc606209\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"scripts/browser-preview-packaged-fixture.mjs\",\"digest\":\"d61f61b53c512e3c30510fdba25a77f4a983aa8316a7f8cc396443aff2dc6cd0\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"scripts/build-desktop.mjs\",\"digest\":\"882c850640e9a350c1b48f4290b947b506e0b1ef4a6cdf447c6330a88e393c99\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"scripts/channel-ports.mjs\",\"digest\":\"60371dd4ece531ee30f4361f652ef21b7061bf4984fe202fa79ae4f8ca3b2b3e\",\"revision\":\"b45e66e498207045e6f2d36a48075c702cbf4d92\"},{\"path\":\"scripts/check-android-16kb-alignment.mjs\",\"digest\":\"b3d12f75a5873e36f43b933b7b34c95a3628813bc338499b284bca8f93505839\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"scripts/dev-desktop.mts\",\"digest\":\"e5ad5e41f4d402d485492426a826ad9c6f095f5ae5da21c0fcee40eb51053798\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"scripts/install-script-generated.mjs\",\"digest\":\"b6cc8658bf3390211a0601fbfcb7081c9553d1e1814bed5c479cf1df6915a9e4\",\"revision\":\"614c216de6de9d4c06ef56963853ccff52f2f685\"},{\"path\":\"scripts/ios-testflight-channel.mjs\",\"digest\":\"302570f2b8fbc0fd49994c158753bc1ac41e27e6145864360a48f816c3e1e304\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"scripts/lib/android-build-manifest.mjs\",\"digest\":\"77bbc73278d58ac837fa16f3375ce34520e026d2f1305c01c4d61c9db3cb24dc\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"scripts/lib/browser-preview-packaged-fixture.mjs\",\"digest\":\"00898cf8ecb2fef8531c6d752a938080803b3c31021bd0fb3659597c77587102\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"scripts/lib/desktop-build-command.mjs\",\"digest\":\"967caa5ab2d1a982ccca59937fbaa3e39aa0dfc9ca50936cadb733b05e76fe1e\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"scripts/lib/desktop-build-manifest.mjs\",\"digest\":\"015ac1d81021c6e051933eb7f3ae062eb3c0f41b12ee0ba66c2b86f28cbe0abb\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"scripts/tauri-context.mjs\",\"digest\":\"f3f307cb4d906f60285e20f496474f24c87987074530971abfbd26a042f70ed4\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"scripts/templates/android/StationAndroidInsetsBridge.kt\",\"digest\":\"df1c07102503cbdb457b1a0f9b6016a31f44152602caa2043175b01ba6ffd292\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"scripts/verify-desktop-clean-checkout.mjs\",\"digest\":\"5931addf88d2c9fc83a5a10c545dce9f72d34d246d4d3894705896da3aa0d6bc\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"scripts/write-android-build-manifest.mjs\",\"digest\":\"502da61cf201f7541656d080efb5b0e9aeeb7d999100ea9485f50f1116d786c9\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"scripts/write-native-client-build-manifest.mjs\",\"digest\":\"c714550ba6e986fa63031d97b3ede83633078dfa964c8a2707faa534ac66152c\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"src-desktop/Cargo.lock\",\"digest\":\"38624df3105a4d464e085d4034e32a78e7fe867334cfac2006d6d8b73a31fc4b\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"src-desktop/Cargo.toml\",\"digest\":\"74e0f4e26dcd14a8d40422c9b7a8b0a1940728f04d3f6cfd1d5b020cb70f0b85\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"src-desktop/build.rs\",\"digest\":\"c84c7e3eb7611b715b601e3ff67863a60d4274198abe5605f8f347d9fd647883\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"src-desktop/capabilities/desktop-updater.json\",\"digest\":\"da96ec30038f7b1d6f70e783fab42333d136b75910c64cd86b538e350a341b05\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"src-desktop/src/lib.rs\",\"digest\":\"ad3b52011a9be6e6a18133b2367c04d0a6245907e5b7e13fa324bcd8b5255557\",\"revision\":\"464d602fb7fb5fa9bd0df9d241dc03495b398b96\"},{\"path\":\"src-desktop/src/service_state.rs\",\"digest\":\"0a8b8787be159c47a70e0b5c0448b58b384d2aea5dd9c304630b1b3127a864bc\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"src-desktop/src/tray.rs\",\"digest\":\"d8bd74ad3b9a20197b0ca221d33fa8558d9ce36b05167a5eb156796cfa2fa3c9\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"src-desktop/tauri.android.conf.json\",\"digest\":\"2ddc4bcf3945224ac542878d3549d8c757dcbed30f4f905ee6ef51352a73580f\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"src-desktop/tauri.android.dev.conf.json\",\"digest\":\"e056f8834528d66c73d1628568019c81bb5cd3245b881d9017f277b1348dd400\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"src-desktop/tauri.beta.conf.json\",\"digest\":\"91b0495f471651c383602046d4a2d4d32ff5cd5e4b7219cf4f7c9daf3486ccc5\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"src-desktop/tauri.conf.json\",\"digest\":\"24ce785160cae3c41db78a82861ee7e4934490bb6a7ed986b30a278cc19c8ab1\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"src-desktop/tauri.ios.conf.json\",\"digest\":\"878a187cbba46db6cbfcdeed91ec6f6dd33e5808507f3e9c5eb4963663341b0c\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"src-desktop/tauri.ios.dev.conf.json\",\"digest\":\"0396582e1474e3e56c326dc9e8ed351301dcd0158842dabe5bd1646a9d57cccf\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"src-desktop/tauri.nightly.conf.json\",\"digest\":\"7958e34fb92ec4938b550c12306bc6b300dcb302a69906753b70ff8ce1181262\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"src-server/tools/instance-registry-bridge.ts\",\"digest\":\"bb68aa5e87bf85c0262beda833b5d5a69a8f279fecc151e61a3c8be4bda45b13\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"src-ui/src/components/DesktopUpdateLaunchCheck.tsx\",\"digest\":\"7cfd1dcc6316d30b1b3777b04cc5cca179282e8aa108f3093bb99c77d2ef3cef\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"src-ui/src/core/PluginRegistry.ts\",\"digest\":\"4b87c6951d37298e6497639e1cc45294fd1239f06d4c6caf9f5ed540eef5ca2c\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"src-ui/src/platform/androidSafeArea.ts\",\"digest\":\"d9d5db24209f5a5c0848edbed5c8f9cfd82d903c45b85a11ba284c7e9f7005a6\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"src-ui/src/platform/native/desktopUpdate.ts\",\"digest\":\"5466704dd21299036d204fcd80babacd309958118a64781f4293cf6c4370cc01\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"src-ui/src/platform/native/tauri.ts\",\"digest\":\"b109e4dabde3780874e51d616a0d742bd47ef11b7897847a5933c922cb9ebeac\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"src-ui/src/views/settings/BuildProvenance.tsx\",\"digest\":\"5c92a6ca7c7c0e1c117f9657404d50af386ceda9a26c7e77b161a72797cf38b2\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"src-ui/src/views/settings/DesktopUpdateCheck.tsx\",\"digest\":\"90fcbc625fc0150158905c804e0cfbddbfff7a9a470b9a1ec44639be4290549b\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"src-ui/src/views/settings/SystemSection.tsx\",\"digest\":\"628ff7524f0002f310c0f83fedcc39790d1fa69b7998de046c6615004ae2b9f7\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"vite.config.ts\",\"digest\":\"2ad80ce74f16031e23bdee55790094bf36e257e9138ee8de2c2af6502e511c5d\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"}],\"summary\":\"Channel default ports, runtime-home ownership and platform identities. Full baseline read. Traced generated port owner, worktree allocation, installer release-protocol mapping and shared root derivation. Compared current matrix with iOS channel delivery owner and explicit Dev simulator overlay; distinguished source configuration from provider prerequisites.\",\"limits\":\"Bounded source and hermetic evidence only. No native compilation, app/device launch, signing, provisioning, OS/network policy change, store credentials or provider delivery. Full document reading does not certify all platform behavior.\"}",
+  "document": {
+    "digest": "b90cd2926db148fda6e028bab7d9a1746956db1a90e6fedcb0c7b9920c46f156",
+    "revision": "332b227345684d098aaaf3191ac0e9d927ac9401"
+  },
   "sources": [
-    {"path":".github/workflows/android-test.yml","digest":"2a653b007047dfca16491297c7ce96455fd6571d5dad7a2fea40a62859a14146","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
-
-    {"path":".github/workflows/build-android.yml","digest":"5c20cca3946560c4c3c217c44ce6ea7686ce9254a4f576fe0c0e1596b440f7a7","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
-
-    {"path":".github/workflows/desktop-clean-checkout.yml","digest":"b1bf471f893030f7441245158c57fd287bbeadb232dbffe24f78418a1c1ed427","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
-    {"path":".github/workflows/nightly-native-stage.yml","digest":"90a8d29da6c024c539a0abc1eb35ba490791780917e174eb7023d6fb45a90030","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
-
-    {"path":".github/workflows/release.yml","digest":"6ceff4507c2d55bb384c36cb7fba8be4b6eaaf0f0d408ecb990398fc00996c88","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
-
-    {"path":".github/workflows/testflight-delivery.yml","digest":"b65be60d29e76e922b07ed19bd89576ef1cac76e20712dd28d140c72d36012bb","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
-
-    {"path":"config/channel-platform-matrix.json","digest":"813d8c4e7fa64f8c7bd87278b2f44e655f953030242c9f486cb903ada8527a13","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
-    {"path":"config/channel-ports.json","digest":"b57f2202d6b699d201df79f80e3dd7b3049b3a4c5b3455185e8d35c619a69bcf","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
-    {"path":"config/portable-server-node-runtime.json","digest":"740077d29cbbeb2a40f2fec363d06aacf111f2d2d29f50e71886dcb0a1306438","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
-    {"path":"install.sh","digest":"f2b2fbf2dba1198f08637b48ad3a1cd7ae684cee020621cd293668e6bbb8b4bc","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
-    {"path":"package.json#/scripts/build:ios:simulator","digest":"3255b2f2a3e1f765a3d6e35cf3ae515387a878e81f0235b5da5b9ce7fb6ac754","revision":"f8a1bcaa554b0ebe0e08e7df78d5e3e6c2c6c1df"},
-
-    {"path":"package.json#/scripts/channel-ports:check","digest":"199f794cc84fc36a71366f1503f6b3520343fd664feab4790718d996932b6029","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
-
-    {"path":"package.json#/scripts/install-script:check","digest":"71f9c5895d8e19e1c1216cf5bf576168cf7a4d1d4a592024f3268febcbc4c6cd","revision":"6f10c06b853f98e26779822e14e3ac108397e977"},
-
-    {"path":"packages/cli/src/commands/desktop-companion.ts","digest":"f33b07c369544b549f720ef7bc012cf35fb7cb1211162f78c61bb463170ffdb5","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
-    {"path":"packages/cli/src/commands/dev-ports.ts","digest":"8bc6030539f0ccf57eed8af8ea08d31d8be13f3d3897517e41f797778294898e","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
-    {"path":"packages/cli/src/commands/helpers.ts","digest":"f6e70cbfa9d41d834a8ad4f2faaa22b1f3568cf483a69b4ebcf657626f88e1e1","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
-    {"path":"packages/cli/src/commands/lifecycle-code-root.ts","digest":"f6b5b71d277613daa02c3a46d45082e7f5fd460f8fc794e111483ba4167ad28f","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
-    {"path":"packages/cli/src/commands/lifecycle.ts","digest":"ce8322baa64d2e25c711ec0816c6cb013c8742f651a265e1657239185dba9ecc","revision":"b49b1db1601f36c9457e0d9d7c766d15be6302f7"},
-
-    {"path":"packages/cli/src/commands/service-run.ts","digest":"2b3560dd4f26026869b307587704c134cc63a81fe8295527131ba225d0486154","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
-    {"path":"packages/cli/src/commands/service-windows.ts","digest":"28e4f5acb3c03d08b41550290265ae2ee013f36f6e274a88d617727ea5d68581","revision":"c8d9944f3aedde24e7acd1f862d5ee1163ffbe59"},
-
-    {"path":"packages/cli/src/commands/service.ts","digest":"66660b960af7fe541ec7c5a35f9e0c0ad4a0525060ac967372249b05108ed349","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
-    {"path":"packages/shared/src/portable-server-targets.mjs","digest":"71b45690e7857b34a2e244e5afa31fba2d07560669b0f2c99c9c3f3ee33dce6c","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
-    {"path":"packages/shared/src/runtime-path-resolver.ts","digest":"a03da100225a7908b1566d1ea0c43d3e99e424c879b9ab6bd997a75409ad156b","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
-    {"path":"packages/shared/src/station-home-schema.ts","digest":"db4b3e2883079cf1f4aa55f10b955f42b767e580bbf5a51350c75f3c56d4e1db","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
-    {"path":"pnpm-lock.yaml","digest":"5827b0dac0aa1d3a2beb2a0ab719df8fcbd2fdac0bc4a4a7e01c4cae620ba122","revision":"8e884d84b5609d130f29937159601c65d119b664"},
-
-    {"path":"scripts/__tests__/browser-preview-packaged-fixture.test.ts","digest":"9b4629b23e89e0896de6a639f02e9282e1fb9a856bc80e9445ec193eb0aa20a5","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
-    {"path":"scripts/apply-android-native-bootstrap.mjs","digest":"de9e3a783c727ac349db61e94fd419c723a1de966ad4d0de1bbd08e30b02169b","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
-    {"path":"scripts/apply-android-network-policy.mjs","digest":"1808d3c50c9055a9db489322cd20448c3b66503c96fabf637a1d7e14bc606209","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
-    {"path":"scripts/browser-preview-packaged-fixture.mjs","digest":"d61f61b53c512e3c30510fdba25a77f4a983aa8316a7f8cc396443aff2dc6cd0","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
-    {"path":"scripts/build-desktop.mjs","digest":"882c850640e9a350c1b48f4290b947b506e0b1ef4a6cdf447c6330a88e393c99","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
-    {"path":"scripts/channel-ports.mjs","digest":"60371dd4ece531ee30f4361f652ef21b7061bf4984fe202fa79ae4f8ca3b2b3e","revision":"b45e66e498207045e6f2d36a48075c702cbf4d92"},
-
-    {"path":"scripts/check-android-16kb-alignment.mjs","digest":"b3d12f75a5873e36f43b933b7b34c95a3628813bc338499b284bca8f93505839","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
-    {"path":"scripts/dev-desktop.mts","digest":"e5ad5e41f4d402d485492426a826ad9c6f095f5ae5da21c0fcee40eb51053798","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
-    {"path":"scripts/install-script-generated.mjs","digest":"b6cc8658bf3390211a0601fbfcb7081c9553d1e1814bed5c479cf1df6915a9e4","revision":"614c216de6de9d4c06ef56963853ccff52f2f685"},
-
-    {"path":"scripts/ios-testflight-channel.mjs","digest":"302570f2b8fbc0fd49994c158753bc1ac41e27e6145864360a48f816c3e1e304","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
-    {"path":"scripts/lib/android-build-manifest.mjs","digest":"77bbc73278d58ac837fa16f3375ce34520e026d2f1305c01c4d61c9db3cb24dc","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
-    {"path":"scripts/lib/browser-preview-packaged-fixture.mjs","digest":"00898cf8ecb2fef8531c6d752a938080803b3c31021bd0fb3659597c77587102","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
-    {"path":"scripts/lib/desktop-build-command.mjs","digest":"967caa5ab2d1a982ccca59937fbaa3e39aa0dfc9ca50936cadb733b05e76fe1e","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
-    {"path":"scripts/lib/desktop-build-manifest.mjs","digest":"015ac1d81021c6e051933eb7f3ae062eb3c0f41b12ee0ba66c2b86f28cbe0abb","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
-    {"path":"scripts/tauri-context.mjs","digest":"f3f307cb4d906f60285e20f496474f24c87987074530971abfbd26a042f70ed4","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
-    {"path":"scripts/templates/android/StationAndroidInsetsBridge.kt","digest":"df1c07102503cbdb457b1a0f9b6016a31f44152602caa2043175b01ba6ffd292","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
-    {"path":"scripts/verify-desktop-clean-checkout.mjs","digest":"5931addf88d2c9fc83a5a10c545dce9f72d34d246d4d3894705896da3aa0d6bc","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
-    {"path":"scripts/write-android-build-manifest.mjs","digest":"502da61cf201f7541656d080efb5b0e9aeeb7d999100ea9485f50f1116d786c9","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
-    {"path":"scripts/write-native-client-build-manifest.mjs","digest":"c714550ba6e986fa63031d97b3ede83633078dfa964c8a2707faa534ac66152c","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
-    {"path":"src-desktop/Cargo.lock","digest":"6b27bee2d6f95c5f3039652d8f16d3f05575ec6c03512a3a223705050c854a63","revision":"6f7521ea2fc94d945814f683c64bdfccccb480bd"},
-
-    {"path":"src-desktop/Cargo.toml","digest":"0d9f144551f4b9e6e7d85976c7da5cc22aee133f708b48ee38087d9966264105","revision":"6f7521ea2fc94d945814f683c64bdfccccb480bd"},
-
-    {"path":"src-desktop/build.rs","digest":"28425e2f907fb0875014dccb6737d4bb98768f27a8c7a6f7d9e77b2a18cb0609","revision":"6f7521ea2fc94d945814f683c64bdfccccb480bd"},
-
-    {"path":"src-desktop/capabilities/desktop-updater.json","digest":"da96ec30038f7b1d6f70e783fab42333d136b75910c64cd86b538e350a341b05","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
-    {"path":"src-desktop/src/lib.rs","digest":"efb56af98923f91f077bce297fc781bd3526a0a0f07dd212a340992ccd56bac2","revision":"19e70a1db7d3faabe474a5324c7ac28d10ede7a3"},
-
-    {"path":"src-desktop/src/service_state.rs","digest":"0a8b8787be159c47a70e0b5c0448b58b384d2aea5dd9c304630b1b3127a864bc","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
-    {"path":"src-desktop/src/tray.rs","digest":"d8bd74ad3b9a20197b0ca221d33fa8558d9ce36b05167a5eb156796cfa2fa3c9","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
-    {"path":"src-desktop/tauri.android.conf.json","digest":"2ddc4bcf3945224ac542878d3549d8c757dcbed30f4f905ee6ef51352a73580f","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
-    {"path":"src-desktop/tauri.android.dev.conf.json","digest":"e056f8834528d66c73d1628568019c81bb5cd3245b881d9017f277b1348dd400","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
-    {"path":"src-desktop/tauri.beta.conf.json","digest":"91b0495f471651c383602046d4a2d4d32ff5cd5e4b7219cf4f7c9daf3486ccc5","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
-    {"path":"src-desktop/tauri.conf.json","digest":"24ce785160cae3c41db78a82861ee7e4934490bb6a7ed986b30a278cc19c8ab1","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
-    {"path":"src-desktop/tauri.ios.conf.json","digest":"878a187cbba46db6cbfcdeed91ec6f6dd33e5808507f3e9c5eb4963663341b0c","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
-    {"path":"src-desktop/tauri.ios.dev.conf.json","digest":"0396582e1474e3e56c326dc9e8ed351301dcd0158842dabe5bd1646a9d57cccf","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
-    {"path":"src-desktop/tauri.nightly.conf.json","digest":"7958e34fb92ec4938b550c12306bc6b300dcb302a69906753b70ff8ce1181262","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
-    {"path":"src-server/tools/instance-registry-bridge.ts","digest":"bb68aa5e87bf85c0262beda833b5d5a69a8f279fecc151e61a3c8be4bda45b13","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
-    {"path":"src-ui/src/components/DesktopUpdateLaunchCheck.tsx","digest":"7cfd1dcc6316d30b1b3777b04cc5cca179282e8aa108f3093bb99c77d2ef3cef","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
-    {"path":"src-ui/src/core/PluginRegistry.ts","digest":"4b87c6951d37298e6497639e1cc45294fd1239f06d4c6caf9f5ed540eef5ca2c","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
-    {"path":"src-ui/src/platform/androidSafeArea.ts","digest":"d9d5db24209f5a5c0848edbed5c8f9cfd82d903c45b85a11ba284c7e9f7005a6","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
-    {"path":"src-ui/src/platform/native/desktopUpdate.ts","digest":"5466704dd21299036d204fcd80babacd309958118a64781f4293cf6c4370cc01","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
-    {"path":"src-ui/src/platform/native/tauri.ts","digest":"afd3f0bfb8119ba93e822ad672147cb1c454f71951a428fffbbf5b5cdcddc90b","revision":"4cf503807d144ac197e10fcf4aee5e301b96e28d"},
-
-    {"path":"src-ui/src/views/settings/BuildProvenance.tsx","digest":"5c92a6ca7c7c0e1c117f9657404d50af386ceda9a26c7e77b161a72797cf38b2","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
-    {"path":"src-ui/src/views/settings/DesktopUpdateCheck.tsx","digest":"90fcbc625fc0150158905c804e0cfbddbfff7a9a470b9a1ec44639be4290549b","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
-    {"path":"src-ui/src/views/settings/SystemSection.tsx","digest":"628ff7524f0002f310c0f83fedcc39790d1fa69b7998de046c6615004ae2b9f7","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
-    {"path":"vite.config.ts","digest":"2ad80ce74f16031e23bdee55790094bf36e257e9138ee8de2c2af6502e511c5d","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"}
+    {
+      "path": ".github/workflows/android-test.yml",
+      "digest": "2a653b007047dfca16491297c7ce96455fd6571d5dad7a2fea40a62859a14146",
+      "revision": "8012fb77b1b95d1461c59827bf9690884526f30c"
+    },
+    {
+      "path": ".github/workflows/build-android.yml",
+      "digest": "5c20cca3946560c4c3c217c44ce6ea7686ce9254a4f576fe0c0e1596b440f7a7",
+      "revision": "8012fb77b1b95d1461c59827bf9690884526f30c"
+    },
+    {
+      "path": ".github/workflows/desktop-clean-checkout.yml",
+      "digest": "b1bf471f893030f7441245158c57fd287bbeadb232dbffe24f78418a1c1ed427",
+      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
+    },
+    {
+      "path": ".github/workflows/nightly-native-stage.yml",
+      "digest": "90a8d29da6c024c539a0abc1eb35ba490791780917e174eb7023d6fb45a90030",
+      "revision": "8012fb77b1b95d1461c59827bf9690884526f30c"
+    },
+    {
+      "path": ".github/workflows/release.yml",
+      "digest": "6ceff4507c2d55bb384c36cb7fba8be4b6eaaf0f0d408ecb990398fc00996c88",
+      "revision": "390a624e73d6d9726117e9928e79e7c149607e7b"
+    },
+    {
+      "path": ".github/workflows/testflight-delivery.yml",
+      "digest": "b65be60d29e76e922b07ed19bd89576ef1cac76e20712dd28d140c72d36012bb",
+      "revision": "8012fb77b1b95d1461c59827bf9690884526f30c"
+    },
+    {
+      "path": "config/channel-platform-matrix.json",
+      "digest": "813d8c4e7fa64f8c7bd87278b2f44e655f953030242c9f486cb903ada8527a13",
+      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
+    },
+    {
+      "path": "config/channel-ports.json",
+      "digest": "b57f2202d6b699d201df79f80e3dd7b3049b3a4c5b3455185e8d35c619a69bcf",
+      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
+    },
+    {
+      "path": "config/portable-server-node-runtime.json",
+      "digest": "740077d29cbbeb2a40f2fec363d06aacf111f2d2d29f50e71886dcb0a1306438",
+      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
+    },
+    {
+      "path": "install.sh",
+      "digest": "f2b2fbf2dba1198f08637b48ad3a1cd7ae684cee020621cd293668e6bbb8b4bc",
+      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
+    },
+    {
+      "path": "package.json#/scripts/build:ios:simulator",
+      "digest": "3255b2f2a3e1f765a3d6e35cf3ae515387a878e81f0235b5da5b9ce7fb6ac754",
+      "revision": "f8a1bcaa554b0ebe0e08e7df78d5e3e6c2c6c1df"
+    },
+    {
+      "path": "package.json#/scripts/channel-ports:check",
+      "digest": "199f794cc84fc36a71366f1503f6b3520343fd664feab4790718d996932b6029",
+      "revision": "c526c4a93bd752e4020ff51303125379f404bb4c"
+    },
+    {
+      "path": "package.json#/scripts/install-script:check",
+      "digest": "71f9c5895d8e19e1c1216cf5bf576168cf7a4d1d4a592024f3268febcbc4c6cd",
+      "revision": "6f10c06b853f98e26779822e14e3ac108397e977"
+    },
+    {
+      "path": "packages/cli/src/commands/desktop-companion.ts",
+      "digest": "f33b07c369544b549f720ef7bc012cf35fb7cb1211162f78c61bb463170ffdb5",
+      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
+    },
+    {
+      "path": "packages/cli/src/commands/dev-ports.ts",
+      "digest": "8bc6030539f0ccf57eed8af8ea08d31d8be13f3d3897517e41f797778294898e",
+      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
+    },
+    {
+      "path": "packages/cli/src/commands/helpers.ts",
+      "digest": "f6e70cbfa9d41d834a8ad4f2faaa22b1f3568cf483a69b4ebcf657626f88e1e1",
+      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
+    },
+    {
+      "path": "packages/cli/src/commands/lifecycle-code-root.ts",
+      "digest": "f6b5b71d277613daa02c3a46d45082e7f5fd460f8fc794e111483ba4167ad28f",
+      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
+    },
+    {
+      "path": "packages/cli/src/commands/lifecycle.ts",
+      "digest": "ce8322baa64d2e25c711ec0816c6cb013c8742f651a265e1657239185dba9ecc",
+      "revision": "b49b1db1601f36c9457e0d9d7c766d15be6302f7"
+    },
+    {
+      "path": "packages/cli/src/commands/service-run.ts",
+      "digest": "2b3560dd4f26026869b307587704c134cc63a81fe8295527131ba225d0486154",
+      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
+    },
+    {
+      "path": "packages/cli/src/commands/service-windows.ts",
+      "digest": "28e4f5acb3c03d08b41550290265ae2ee013f36f6e274a88d617727ea5d68581",
+      "revision": "c8d9944f3aedde24e7acd1f862d5ee1163ffbe59"
+    },
+    {
+      "path": "packages/cli/src/commands/service.ts",
+      "digest": "66660b960af7fe541ec7c5a35f9e0c0ad4a0525060ac967372249b05108ed349",
+      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
+    },
+    {
+      "path": "packages/shared/src/portable-server-targets.mjs",
+      "digest": "71b45690e7857b34a2e244e5afa31fba2d07560669b0f2c99c9c3f3ee33dce6c",
+      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
+    },
+    {
+      "path": "packages/shared/src/runtime-path-resolver.ts",
+      "digest": "a03da100225a7908b1566d1ea0c43d3e99e424c879b9ab6bd997a75409ad156b",
+      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
+    },
+    {
+      "path": "packages/shared/src/station-home-schema.ts",
+      "digest": "db4b3e2883079cf1f4aa55f10b955f42b767e580bbf5a51350c75f3c56d4e1db",
+      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
+    },
+    {
+      "path": "pnpm-lock.yaml",
+      "digest": "5827b0dac0aa1d3a2beb2a0ab719df8fcbd2fdac0bc4a4a7e01c4cae620ba122",
+      "revision": "8e884d84b5609d130f29937159601c65d119b664"
+    },
+    {
+      "path": "scripts/__tests__/browser-preview-packaged-fixture.test.ts",
+      "digest": "9b4629b23e89e0896de6a639f02e9282e1fb9a856bc80e9445ec193eb0aa20a5",
+      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
+    },
+    {
+      "path": "scripts/apply-android-native-bootstrap.mjs",
+      "digest": "de9e3a783c727ac349db61e94fd419c723a1de966ad4d0de1bbd08e30b02169b",
+      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
+    },
+    {
+      "path": "scripts/apply-android-network-policy.mjs",
+      "digest": "1808d3c50c9055a9db489322cd20448c3b66503c96fabf637a1d7e14bc606209",
+      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
+    },
+    {
+      "path": "scripts/browser-preview-packaged-fixture.mjs",
+      "digest": "d61f61b53c512e3c30510fdba25a77f4a983aa8316a7f8cc396443aff2dc6cd0",
+      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
+    },
+    {
+      "path": "scripts/build-desktop.mjs",
+      "digest": "882c850640e9a350c1b48f4290b947b506e0b1ef4a6cdf447c6330a88e393c99",
+      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
+    },
+    {
+      "path": "scripts/channel-ports.mjs",
+      "digest": "60371dd4ece531ee30f4361f652ef21b7061bf4984fe202fa79ae4f8ca3b2b3e",
+      "revision": "b45e66e498207045e6f2d36a48075c702cbf4d92"
+    },
+    {
+      "path": "scripts/check-android-16kb-alignment.mjs",
+      "digest": "b3d12f75a5873e36f43b933b7b34c95a3628813bc338499b284bca8f93505839",
+      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
+    },
+    {
+      "path": "scripts/dev-desktop.mts",
+      "digest": "e5ad5e41f4d402d485492426a826ad9c6f095f5ae5da21c0fcee40eb51053798",
+      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
+    },
+    {
+      "path": "scripts/install-script-generated.mjs",
+      "digest": "b6cc8658bf3390211a0601fbfcb7081c9553d1e1814bed5c479cf1df6915a9e4",
+      "revision": "614c216de6de9d4c06ef56963853ccff52f2f685"
+    },
+    {
+      "path": "scripts/ios-testflight-channel.mjs",
+      "digest": "302570f2b8fbc0fd49994c158753bc1ac41e27e6145864360a48f816c3e1e304",
+      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
+    },
+    {
+      "path": "scripts/lib/android-build-manifest.mjs",
+      "digest": "77bbc73278d58ac837fa16f3375ce34520e026d2f1305c01c4d61c9db3cb24dc",
+      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
+    },
+    {
+      "path": "scripts/lib/browser-preview-packaged-fixture.mjs",
+      "digest": "00898cf8ecb2fef8531c6d752a938080803b3c31021bd0fb3659597c77587102",
+      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
+    },
+    {
+      "path": "scripts/lib/desktop-build-command.mjs",
+      "digest": "967caa5ab2d1a982ccca59937fbaa3e39aa0dfc9ca50936cadb733b05e76fe1e",
+      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
+    },
+    {
+      "path": "scripts/lib/desktop-build-manifest.mjs",
+      "digest": "015ac1d81021c6e051933eb7f3ae062eb3c0f41b12ee0ba66c2b86f28cbe0abb",
+      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
+    },
+    {
+      "path": "scripts/tauri-context.mjs",
+      "digest": "f3f307cb4d906f60285e20f496474f24c87987074530971abfbd26a042f70ed4",
+      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
+    },
+    {
+      "path": "scripts/templates/android/StationAndroidInsetsBridge.kt",
+      "digest": "df1c07102503cbdb457b1a0f9b6016a31f44152602caa2043175b01ba6ffd292",
+      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
+    },
+    {
+      "path": "scripts/verify-desktop-clean-checkout.mjs",
+      "digest": "5931addf88d2c9fc83a5a10c545dce9f72d34d246d4d3894705896da3aa0d6bc",
+      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
+    },
+    {
+      "path": "scripts/write-android-build-manifest.mjs",
+      "digest": "502da61cf201f7541656d080efb5b0e9aeeb7d999100ea9485f50f1116d786c9",
+      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
+    },
+    {
+      "path": "scripts/write-native-client-build-manifest.mjs",
+      "digest": "c714550ba6e986fa63031d97b3ede83633078dfa964c8a2707faa534ac66152c",
+      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
+    },
+    {
+      "path": "src-desktop/Cargo.lock",
+      "digest": "6b27bee2d6f95c5f3039652d8f16d3f05575ec6c03512a3a223705050c854a63",
+      "revision": "6f7521ea2fc94d945814f683c64bdfccccb480bd"
+    },
+    {
+      "path": "src-desktop/Cargo.toml",
+      "digest": "0d9f144551f4b9e6e7d85976c7da5cc22aee133f708b48ee38087d9966264105",
+      "revision": "6f7521ea2fc94d945814f683c64bdfccccb480bd"
+    },
+    {
+      "path": "src-desktop/build.rs",
+      "digest": "28425e2f907fb0875014dccb6737d4bb98768f27a8c7a6f7d9e77b2a18cb0609",
+      "revision": "6f7521ea2fc94d945814f683c64bdfccccb480bd"
+    },
+    {
+      "path": "src-desktop/capabilities/desktop-updater.json",
+      "digest": "da96ec30038f7b1d6f70e783fab42333d136b75910c64cd86b538e350a341b05",
+      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
+    },
+    {
+      "path": "src-desktop/src/lib.rs",
+      "digest": "efb56af98923f91f077bce297fc781bd3526a0a0f07dd212a340992ccd56bac2",
+      "revision": "19e70a1db7d3faabe474a5324c7ac28d10ede7a3"
+    },
+    {
+      "path": "src-desktop/src/service_state.rs",
+      "digest": "0a8b8787be159c47a70e0b5c0448b58b384d2aea5dd9c304630b1b3127a864bc",
+      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
+    },
+    {
+      "path": "src-desktop/src/tray.rs",
+      "digest": "d8bd74ad3b9a20197b0ca221d33fa8558d9ce36b05167a5eb156796cfa2fa3c9",
+      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
+    },
+    {
+      "path": "src-desktop/tauri.android.conf.json",
+      "digest": "2ddc4bcf3945224ac542878d3549d8c757dcbed30f4f905ee6ef51352a73580f",
+      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
+    },
+    {
+      "path": "src-desktop/tauri.android.dev.conf.json",
+      "digest": "e056f8834528d66c73d1628568019c81bb5cd3245b881d9017f277b1348dd400",
+      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
+    },
+    {
+      "path": "src-desktop/tauri.beta.conf.json",
+      "digest": "91b0495f471651c383602046d4a2d4d32ff5cd5e4b7219cf4f7c9daf3486ccc5",
+      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
+    },
+    {
+      "path": "src-desktop/tauri.conf.json",
+      "digest": "24ce785160cae3c41db78a82861ee7e4934490bb6a7ed986b30a278cc19c8ab1",
+      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
+    },
+    {
+      "path": "src-desktop/tauri.ios.conf.json",
+      "digest": "878a187cbba46db6cbfcdeed91ec6f6dd33e5808507f3e9c5eb4963663341b0c",
+      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
+    },
+    {
+      "path": "src-desktop/tauri.ios.dev.conf.json",
+      "digest": "0396582e1474e3e56c326dc9e8ed351301dcd0158842dabe5bd1646a9d57cccf",
+      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
+    },
+    {
+      "path": "src-desktop/tauri.nightly.conf.json",
+      "digest": "7958e34fb92ec4938b550c12306bc6b300dcb302a69906753b70ff8ce1181262",
+      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
+    },
+    {
+      "path": "src-server/tools/instance-registry-bridge.ts",
+      "digest": "bb68aa5e87bf85c0262beda833b5d5a69a8f279fecc151e61a3c8be4bda45b13",
+      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
+    },
+    {
+      "path": "src-ui/src/components/DesktopUpdateLaunchCheck.tsx",
+      "digest": "7cfd1dcc6316d30b1b3777b04cc5cca179282e8aa108f3093bb99c77d2ef3cef",
+      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
+    },
+    {
+      "path": "src-ui/src/core/PluginRegistry.ts",
+      "digest": "4b87c6951d37298e6497639e1cc45294fd1239f06d4c6caf9f5ed540eef5ca2c",
+      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
+    },
+    {
+      "path": "src-ui/src/platform/androidSafeArea.ts",
+      "digest": "d9d5db24209f5a5c0848edbed5c8f9cfd82d903c45b85a11ba284c7e9f7005a6",
+      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
+    },
+    {
+      "path": "src-ui/src/platform/native/desktopUpdate.ts",
+      "digest": "5466704dd21299036d204fcd80babacd309958118a64781f4293cf6c4370cc01",
+      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
+    },
+    {
+      "path": "src-ui/src/platform/native/tauri.ts",
+      "digest": "afd3f0bfb8119ba93e822ad672147cb1c454f71951a428fffbbf5b5cdcddc90b",
+      "revision": "4cf503807d144ac197e10fcf4aee5e301b96e28d"
+    },
+    {
+      "path": "src-ui/src/views/settings/BuildProvenance.tsx",
+      "digest": "5c92a6ca7c7c0e1c117f9657404d50af386ceda9a26c7e77b161a72797cf38b2",
+      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
+    },
+    {
+      "path": "src-ui/src/views/settings/DesktopUpdateCheck.tsx",
+      "digest": "90fcbc625fc0150158905c804e0cfbddbfff7a9a470b9a1ec44639be4290549b",
+      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
+    },
+    {
+      "path": "src-ui/src/views/settings/SystemSection.tsx",
+      "digest": "628ff7524f0002f310c0f83fedcc39790d1fa69b7998de046c6615004ae2b9f7",
+      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
+    },
+    {
+      "path": "vite.config.ts",
+      "digest": "2ad80ce74f16031e23bdee55790094bf36e257e9138ee8de2c2af6502e511c5d",
+      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
+    }
   ],
-
   "checks": [
     "focused: PASS 99 tests / 7 files / 11.14s: channel-ports, channel-platform-matrix, ios-development-identity, android-build-manifest, check-android-16kb-alignment, verify-desktop-clean-checkout, documentation-foundations",
-
     "fixtureProbe: PASS exit0 actual helper/schema current refusal and benign initialization control; no sockets/native launch",
-
     "staticContext: PASS actual version/config/capability read with shared JSON merge helper; not host context CLI",
-
     "fullTauriContext: NOT_VERIFIED: CLI unconditionally invokes adb devices/xcdevice; omitted under no device operations scope",
-
     "veritas: PASS exit0, 0 failures / 0 warnings; governance, lint, verification-policy; protected attestation unchanged",
-
     "Upstream source review: Reviewed all nine script deltas: shard command, install-script freshness in static raw, portable builder/smoke, native echo diagnostic and portable output cleanup. Existing named local/promotion commands remain; new tooling documented without publication claim.",
-
     "Upstream source review: Reviewed generated channel/key blocks, Nightly public-manifest-only and coexistence admission, exact pin/channel checks, retained source-archive selector, final-location build and upgrade identity. This consumer is not the new per-platform prebuilt installer; docs preserve that limit.",
-
     "Upstream source review: Reviewed stateHome/projectHome propagation through inspect/start-stop/rollback/Windows supervisor settlement/uninstall. Selected service home remains authority; current guides retain exact selectors. No actual platform service mutation.",
-
     "Upstream source review: Reviewed source/runtime-home admission adds root-owned state directory to protected set; formatting elsewhere. Existing exact service manifest/probe contract retained; prebuilt state is not a runtime home.",
-
     "Upstream source review: Reviewed affected current owners: native startup callbacks and separate React mount, registered native grant/diagnostic commands and cleanup hooks, native notification feed manage/start/IPC, state-directory profile genesis. Updated readiness/recovery/tray/broker claims; no native/platform delivery proof.",
-
     "Upstream source review: Old/new bytes normalize identically with rustfmt--edition2021; formatting-only. Rust format receipt retained. No compiled-build claim.",
-
     "Upstream source review: Old/new bytes normalize identically with rustfmt--edition2021; formatting-only. Existing tray ownership/action claims unaffected. New alert reader documented separately from tray poller.",
-
     "Upstream source review: Reviewed releaseRings validation and generated shared table added alongside unchanged numeric channel-port projections. Current guide names generator and install-script projection; no port mutation executed.",
-
     "Upstream source review: Adds notificationServiceBundleId null for stable and exact Beta/Nightly NotificationService IDs. Mobile/setup docs now require both extensions and all three profiles; no current provider provisioning asserted.",
-
     "Upstream source review: Adds stable/preview/nightly release-ring-to-runtime/prerelease/launcher map; existing per-channel port/home numbers unchanged. Release-channel guide merged prose checked against values.",
-
     "Upstream source review: Reviewed four home propagation additions to cleanup and initial/confirmation/steady status calls. Keeps service probe/stop in prebuilt home root; no service-controller semantic change beyond target resolution.",
-
     "Upstream source review: Adds state to protected Station-root directories, matching Rust home admission. Current isolated-home guidance remains accurate; state is not admitted as runtime home.",
-
     "Upstream source review: Only frozen upstream delta adds guarded pinned pnpm JS bootstrap on Intel macOS and keeps pinned native setup elsewhere. Tagged native inventory/signing/publication claims unaffected; no hosted execution.",
-
     "Upstream source review: Reviewed new NotificationService secret/profile import, target generation/signing, exact extension count, embedded profile/entitlement audits and exported bytes. Mobile/setup corrected; icons and existing artifact/provider distinction retained.",
-
     "Frozen upstream guide delta reviewed against current owners;236focused checks passed in that review. Prior semantic scope and unverified live/platform limits retained.",
-
     "Reviewed source changes: Added docs:impact and focused impact/media tests to the documentation foundation lane. Runtime dependencies, package exports and configuration values are unchanged by these script additions.",
-
     "Reviewed integration deltas: packages/cli/src/commands/desktop-companion.ts: Uses shared Windows trust runner but explicitly retains the10-second per-tick override for registration and executable checks; no120-second repeating supervisor stall introduced. Read-only source review, no Windows execution. src-desktop/src/lib.rs: Frozen delta registers station_native_relay_grant_renew in the main Tauri command table. Existing reviewed capability, startup, tray, open-browser, push and credential boundaries otherwise unchanged by this delta.",
-
     "Landing review through d0d9d33f7: Reviewed host-selected platform-v2 archive admission and bundled/verifier Node paths, source-v1/default GitHub fallbacks, version promotion/rollback and ownership. Corrected current installer explanations; native/store/source-checkout claims retain their separate scope. Desktop-only module inclusion adds no IPC, startup call, mobile code or production account caller. Existing window, sidecar, routing, notification, recovery and store behavior is unchanged. Reviewed the changed canonical prose against these owners; purpose and prior evidence limits are retained. macOS context checks: 10 checked, none skipped/failed; no native vault test, IPC or physical-device execution in this review. Integration group: 477 passed and one archive-trigger omission failed in 420.29s. Expanded missing-input control: 20 passed/2 failed; after adding six workflow paths, archive suite 22/22 passed in 494ms. Earlier failure is retained; no live installer/publication claim.",
-
     "Reviewed landing deltas through 111744681: Registers three desktop main-window application-signaling commands. This does not register the separate account-key vault, wire a normal application consumer, alter mobile startup or establish physical-device execution.",
-
     "Integration source review through d1e0facc2: Removed deprecated re-export; shared build provenance owner and displayed values are unchanged. Existing prose remains accurate. Source review is separate from executed test evidence.",
-
     "Integration source review through e0314c727: #2867 (slice C) changed service handling. `station service install` from an archive's active version now runs `<install root>/current` and records `kind: \"archive\"` and `installRoot`. The installer stops that service, switches `current`, restarts it, and rolls back if the identity check fails; any other service still blocks upgrade (lifecycle.ts `archiveInstallRoot`, install.sh). Installs also record their ports and reuse them on upgrade. Corrected the stale \"under an installed service, upgrade refuses\" and \"services still run the source-release layout until slice C\" claims, added the archive-service upgrade, inactive-version and port rules and the uninstall refusal, and noted port reuse. Cargo.toml/lib.rs (notification-watch removal, rustls comment) and bearing/forage removal do not affect the channel identity matrix. Source review is separate from executed test evidence.",
-
     "Integration source review through 42491ca6b: 1cc8576b4 (#2907) makes fnv1a32 private in dev-ports.ts, with the same deterministic offset and scan callers. It deletes the test-only parseGitSource/extractPluginName from commands/helpers.ts. Neither change affects the worktree allocation or root derivation the guide describes. Prose accurate. Source review is separate from executed test evidence.",
-
     "Integration source review through 5731eba07: 3ab09593d (#2881) install.sh gains STATION_INSTALL_STAGE_ONLY and, when runtime/service-state.json exists and an archive service is active, only stages the version and hands off to the fixed service launcher (trial/rollback; refuses on pending or needs-operator update state); service.ts copies runtime/station-launcher.mjs at archive service install (non-win32); lifecycle-code-root.ts moves archive helpers to @kontourai/station-shared/prebuilt-archive (re-exported, no behavior change); channel-ports.mjs adds an optional outputRoot to sync/check; android-build-manifest.mjs and tauri-context.mjs only drop exports (#2914). Corrected the archive-service upgrade paragraph, which claimed the installer always stops the service, switches current and restarts it: it now says a running launcher service stages and hands off to a launcher trial, keeps the stop/switch/restart path otherwise, and notes that an unfinished or operator-blocked launcher update refuses the upgrade. Source review is separate from executed test evidence.",
-
     "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged."
   ]
 }

@@ -1,67 +1,100 @@
 {
   "path": "examples/builder-delivery-viewer/README.md",
-
   "kind": "current",
-
   "state": "source-reviewed",
-
   "summary": "Full README claim review through actual GET registrations, bounded descriptor reads, schema/public validator/report derivation, browser query/render and exact Flow run join; host server-module permission and lifecycle plus registry installation entry traced. Corrected workspace delivery companion path, artifact-only byte limits, unsorted discovery cap and filename-only seal meaning. Cache/transport and raw trusted server-code boundaries retained.",
-
-  "limits": "Complete for concrete documented claims and actual named callers, not an exhaustive security audit or every possible implementation path. No installed-plugin journey, external provider/registry mutation, public package distribution, native/device operation or cross-host qualification performed. Merge reconciliation preserves both prior review anchors below as historical evidence, not a new review of combined source bytes. Active bindings retain existing reviewed anchors; any mismatch with merged bytes remains stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"src-server/runtime/bootstrap/station-runtime.ts\",\"ours\":{\"digest\":\"d055b5251c1dd749a04c7024406f262a097b24f87f68caba2f8a83fdc257c779\",\"revision\":\"34838898143e9a6048203520cdc6da3f78ecf49e\"},\"main\":{\"digest\":\"4e02fdbdc3ab121af4b11113970aaca7f19ee98ad4e52bfdfc743ad74e6f9a90\",\"revision\":\"9f8b407fac4a9e5536d72ca49be3a0b77715e1d8\"}},{\"path\":\"pnpm-lock.yaml\",\"ours\":{\"digest\":\"2907b97d6a2e98b4211695a78cf83b03419218f1dd95ce090ca753d9bdbad14a\",\"revision\":\"b50eeb9584c1808e429e59dcb3c3c2253307bbbe\"},\"main\":{\"digest\":\"fd7359aa74c6fa2ce27a20c84f69722273ec162933c580280bdca21dce9d28ff\",\"revision\":\"1e5f63186142dd36fcb720deb7660808dbf2f56b\"}}]. Additional main merge b269a6cf9: structural reconciliation only; prior distinct anchors below are historical reviews, not approval of combined bytes. Active bindings retain existing anchors; combined dependency bytes remain stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"src-server/runtime/bootstrap/station-runtime.ts\",\"ours\":{\"digest\":\"9ff2f86499e6ed1a0d562c3a470536c57f97f9dc2bc66829c22d96fbb0ce29bc\",\"revision\":\"83c4111b8c4dcda1e978d78bb191c974888c9ca4\"},\"main\":{\"digest\":\"4e02fdbdc3ab121af4b11113970aaca7f19ee98ad4e52bfdfc743ad74e6f9a90\",\"revision\":\"9f8b407fac4a9e5536d72ca49be3a0b77715e1d8\"}},{\"path\":\"pnpm-lock.yaml\",\"ours\":{\"digest\":\"2907b97d6a2e98b4211695a78cf83b03419218f1dd95ce090ca753d9bdbad14a\",\"revision\":\"b50eeb9584c1808e429e59dcb3c3c2253307bbbe\"},\"main\":{\"digest\":\"29dbdce300fcd3d881ae511317af478da6e9c098a8e8cf51c6b2269a937525df\",\"revision\":\"df9188971e1a93d2c5525a7f5f38e3da93c9e4de\"}}].\n\nAdditional existing main limits (preserved verbatim): Complete for concrete documented claims and actual named callers, not an exhaustive security audit or every possible implementation path. No installed-plugin journey, external provider/registry mutation, public package distribution, native/device operation or cross-host qualification performed.\n\nStructural merge of 5dff1dc5d6661c9ced8a5ff40994b96f3e258e2e and d1f68396648a4d450f1d743e436df703be0935be preserves both prior immutable document/source anchors and historical checks. Selecting an existing current-byte binding is structural reconciliation only, not semantic approval of merged inputs. No new digest/revision or coverage baseline was minted. Competing prior anchors remain pending semantic review and supported recording after the merge commit: [{\"path\":\"pnpm-lock.yaml\",\"ours\":{\"path\":\"pnpm-lock.yaml\",\"digest\":\"5827b0dac0aa1d3a2beb2a0ab719df8fcbd2fdac0bc4a4a7e01c4cae620ba122\",\"revision\":\"8e884d84b5609d130f29937159601c65d119b664\"},\"main\":{\"path\":\"pnpm-lock.yaml\",\"digest\":\"29dbdce300fcd3d881ae511317af478da6e9c098a8e8cf51c6b2269a937525df\",\"revision\":\"df9188971e1a93d2c5525a7f5f38e3da93c9e4de\"},\"active\":{\"path\":\"pnpm-lock.yaml\",\"digest\":\"5827b0dac0aa1d3a2beb2a0ab719df8fcbd2fdac0bc4a4a7e01c4cae620ba122\",\"revision\":\"8e884d84b5609d130f29937159601c65d119b664\"},\"decision\":\"oursMatch\"},{\"path\":\"src-server/runtime/bootstrap/station-runtime.ts\",\"ours\":{\"path\":\"src-server/runtime/bootstrap/station-runtime.ts\",\"digest\":\"9ff2f86499e6ed1a0d562c3a470536c57f97f9dc2bc66829c22d96fbb0ce29bc\",\"revision\":\"83c4111b8c4dcda1e978d78bb191c974888c9ca4\"},\"main\":{\"path\":\"src-server/runtime/bootstrap/station-runtime.ts\",\"digest\":\"92d31dd655d7c0a62ce68dc6fd804268cda2f357bb775a512ee974d7c09564db\",\"revision\":\"1a235cd9bc482738abe4c3f011f73be86074d667\"},\"active\":{\"path\":\"src-server/runtime/bootstrap/station-runtime.ts\",\"digest\":\"9ff2f86499e6ed1a0d562c3a470536c57f97f9dc2bc66829c22d96fbb0ce29bc\",\"revision\":\"83c4111b8c4dcda1e978d78bb191c974888c9ca4\"},\"decision\":\"neitherMatch\"}]",
-
-  "document": {"digest":"9088109235e5da8959933a643ca29acd2c273e26ba3a36927acad5d9f59b1df5","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
-
+  "limits": "Complete for concrete documented claims and actual named callers, not an exhaustive security audit or every possible implementation path. No installed-plugin journey, external provider/registry mutation, public package distribution, native/device operation or cross-host qualification performed. Merge reconciliation preserves both prior review anchors below as historical evidence, not a new review of combined source bytes. Active bindings retain existing reviewed anchors; any mismatch with merged bytes remains stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"src-server/runtime/bootstrap/station-runtime.ts\",\"ours\":{\"digest\":\"d055b5251c1dd749a04c7024406f262a097b24f87f68caba2f8a83fdc257c779\",\"revision\":\"34838898143e9a6048203520cdc6da3f78ecf49e\"},\"main\":{\"digest\":\"4e02fdbdc3ab121af4b11113970aaca7f19ee98ad4e52bfdfc743ad74e6f9a90\",\"revision\":\"9f8b407fac4a9e5536d72ca49be3a0b77715e1d8\"}},{\"path\":\"pnpm-lock.yaml\",\"ours\":{\"digest\":\"2907b97d6a2e98b4211695a78cf83b03419218f1dd95ce090ca753d9bdbad14a\",\"revision\":\"b50eeb9584c1808e429e59dcb3c3c2253307bbbe\"},\"main\":{\"digest\":\"fd7359aa74c6fa2ce27a20c84f69722273ec162933c580280bdca21dce9d28ff\",\"revision\":\"1e5f63186142dd36fcb720deb7660808dbf2f56b\"}}]. Additional main merge b269a6cf9: structural reconciliation only; prior distinct anchors below are historical reviews, not approval of combined bytes. Active bindings retain existing anchors; combined dependency bytes remain stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"src-server/runtime/bootstrap/station-runtime.ts\",\"ours\":{\"digest\":\"9ff2f86499e6ed1a0d562c3a470536c57f97f9dc2bc66829c22d96fbb0ce29bc\",\"revision\":\"83c4111b8c4dcda1e978d78bb191c974888c9ca4\"},\"main\":{\"digest\":\"4e02fdbdc3ab121af4b11113970aaca7f19ee98ad4e52bfdfc743ad74e6f9a90\",\"revision\":\"9f8b407fac4a9e5536d72ca49be3a0b77715e1d8\"}},{\"path\":\"pnpm-lock.yaml\",\"ours\":{\"digest\":\"2907b97d6a2e98b4211695a78cf83b03419218f1dd95ce090ca753d9bdbad14a\",\"revision\":\"b50eeb9584c1808e429e59dcb3c3c2253307bbbe\"},\"main\":{\"digest\":\"29dbdce300fcd3d881ae511317af478da6e9c098a8e8cf51c6b2269a937525df\",\"revision\":\"df9188971e1a93d2c5525a7f5f38e3da93c9e4de\"}}].\n\nAdditional existing main limits (preserved verbatim): Complete for concrete documented claims and actual named callers, not an exhaustive security audit or every possible implementation path. No installed-plugin journey, external provider/registry mutation, public package distribution, native/device operation or cross-host qualification performed.\n\nStructural merge of 5dff1dc5d6661c9ced8a5ff40994b96f3e258e2e and d1f68396648a4d450f1d743e436df703be0935be preserves both prior immutable document/source anchors and historical checks. Selecting an existing current-byte binding is structural reconciliation only, not semantic approval of merged inputs. No new digest/revision or coverage baseline was minted. Competing prior anchors remain pending semantic review and supported recording after the merge commit: [{\"path\":\"pnpm-lock.yaml\",\"ours\":{\"path\":\"pnpm-lock.yaml\",\"digest\":\"5827b0dac0aa1d3a2beb2a0ab719df8fcbd2fdac0bc4a4a7e01c4cae620ba122\",\"revision\":\"8e884d84b5609d130f29937159601c65d119b664\"},\"main\":{\"path\":\"pnpm-lock.yaml\",\"digest\":\"29dbdce300fcd3d881ae511317af478da6e9c098a8e8cf51c6b2269a937525df\",\"revision\":\"df9188971e1a93d2c5525a7f5f38e3da93c9e4de\"},\"active\":{\"path\":\"pnpm-lock.yaml\",\"digest\":\"5827b0dac0aa1d3a2beb2a0ab719df8fcbd2fdac0bc4a4a7e01c4cae620ba122\",\"revision\":\"8e884d84b5609d130f29937159601c65d119b664\"},\"decision\":\"oursMatch\"},{\"path\":\"src-server/runtime/bootstrap/station-runtime.ts\",\"ours\":{\"path\":\"src-server/runtime/bootstrap/station-runtime.ts\",\"digest\":\"9ff2f86499e6ed1a0d562c3a470536c57f97f9dc2bc66829c22d96fbb0ce29bc\",\"revision\":\"83c4111b8c4dcda1e978d78bb191c974888c9ca4\"},\"main\":{\"path\":\"src-server/runtime/bootstrap/station-runtime.ts\",\"digest\":\"92d31dd655d7c0a62ce68dc6fd804268cda2f357bb775a512ee974d7c09564db\",\"revision\":\"1a235cd9bc482738abe4c3f011f73be86074d667\"},\"active\":{\"path\":\"src-server/runtime/bootstrap/station-runtime.ts\",\"digest\":\"9ff2f86499e6ed1a0d562c3a470536c57f97f9dc2bc66829c22d96fbb0ce29bc\",\"revision\":\"83c4111b8c4dcda1e978d78bb191c974888c9ca4\"},\"decision\":\"neitherMatch\"}] Upstream merge review anchors retained as historical evidence only; merged source mismatches require semantic re-review: {\"document\":{\"digest\":\"9088109235e5da8959933a643ca29acd2c273e26ba3a36927acad5d9f59b1df5\",\"revision\":\"c8bae67dac38dce6107177638464f9f9944fef92\"},\"sources\":[{\"path\":\"examples/builder-delivery-viewer/layout.json\",\"digest\":\"165e78760f23b4d9accd75c796466c0cea2d68217d8be2701916946e71fe1991\",\"revision\":\"c8bae67dac38dce6107177638464f9f9944fef92\"},{\"path\":\"examples/builder-delivery-viewer/package.json\",\"digest\":\"4a03ee37bb6050ee3df4e1e44493dafb5ba87a603b16cc5220b833063c677995\",\"revision\":\"8012fb77b1b95d1461c59827bf9690884526f30c\"},{\"path\":\"examples/builder-delivery-viewer/plugin.json\",\"digest\":\"b0c0fdfc602ab139aab3751c62ecc518b0eb80020456b33f8eebb070189cfd28\",\"revision\":\"c8bae67dac38dce6107177638464f9f9944fef92\"},{\"path\":\"examples/builder-delivery-viewer/server/__tests__/plugin-server.test.ts\",\"digest\":\"7e8e9b5098fb342e4d8c625025b7a95196217aa0ab162aafab233d5a296ddf3c\",\"revision\":\"c8bae67dac38dce6107177638464f9f9944fef92\"},{\"path\":\"examples/builder-delivery-viewer/server/plugin.mjs\",\"digest\":\"396442e759721a086fa7b37ca065da1a340b0d3851572b76e66b20d2d974162b\",\"revision\":\"c8bae67dac38dce6107177638464f9f9944fef92\"},{\"path\":\"examples/builder-delivery-viewer/src/index.tsx\",\"digest\":\"dc45fd8191e3f040b8d19f1a62a26332ec3301590d9fb123c2f6327813772f87\",\"revision\":\"c8bae67dac38dce6107177638464f9f9944fef92\"},{\"path\":\"examples/registry/manifest.json\",\"digest\":\"1a6cc7babffefe6a1d0dd44d71387dd6209857091bdf40cf556d29531ec8e32b\",\"revision\":\"c8bae67dac38dce6107177638464f9f9944fef92\"},{\"path\":\"pnpm-lock.yaml\",\"digest\":\"5c3c9968c59ac5b4e7e5ec861c2873bfce11b7c60e7b28e8706db6b29d028ddb\",\"revision\":\"1e6450e0caa47975d33f505a1348bdc01ae1382e\"},{\"path\":\"src-server/routes/plugins/plugin-lifecycle-routes.ts\",\"digest\":\"dceb171ba845c25ea19bb4bc1c032f62707efcf7a80c194c09e9908270db21bc\",\"revision\":\"c8bae67dac38dce6107177638464f9f9944fef92\"},{\"path\":\"src-server/routes/plugins/plugin-public-routes.ts\",\"digest\":\"5d088d683e1fc60155100743cf2fb67a6df25ded4914307ba54883d1097f157e\",\"revision\":\"c8bae67dac38dce6107177638464f9f9944fef92\"},{\"path\":\"src-server/runtime/bootstrap/station-runtime.ts\",\"digest\":\"92d31dd655d7c0a62ce68dc6fd804268cda2f357bb775a512ee974d7c09564db\",\"revision\":\"1a235cd9bc482738abe4c3f011f73be86074d667\"},{\"path\":\"src-server/services/plugins/__tests__/plugin-public-server.test.ts\",\"digest\":\"1b68eb4818b17281b1436829a86b4f1e35e3671f2ddf7f771e0a1f6ec8cb546f\",\"revision\":\"495d7cda0df2abf2d64ed377d3dcbf1ebc238169\"},{\"path\":\"src-server/services/plugins/plugin-install-transaction.ts\",\"digest\":\"d86ca9367f039174cd2aaaba83b65dc1df376f6474bd4a4f29be54341fd2c0e7\",\"revision\":\"495d7cda0df2abf2d64ed377d3dcbf1ebc238169\"},{\"path\":\"src-server/services/plugins/plugin-permissions.ts\",\"digest\":\"12fa3b2a465074275d4317cc1a356000b2c1a53af247b56c352db754a8727c7c\",\"revision\":\"495d7cda0df2abf2d64ed377d3dcbf1ebc238169\"},{\"path\":\"src-server/services/plugins/plugin-public-server.ts\",\"digest\":\"fe55098b43fd10dd3117e8099d38cc2ab6aad097dae79cfa81be328832be7189\",\"revision\":\"495d7cda0df2abf2d64ed377d3dcbf1ebc238169\"}],\"summary\":\"Full README claim review through actual GET registrations, bounded descriptor reads, schema/public validator/report derivation, browser query/render and exact Flow run join; host server-module permission and lifecycle plus registry installation entry traced. Corrected workspace delivery companion path, artifact-only byte limits, unsorted discovery cap and filename-only seal meaning. Cache/transport and raw trusted server-code boundaries retained.\",\"limits\":\"Complete for concrete documented claims and actual named callers, not an exhaustive security audit or every possible implementation path. No installed-plugin journey, external provider/registry mutation, public package distribution, native/device operation or cross-host qualification performed.\"}",
+  "document": {
+    "digest": "9088109235e5da8959933a643ca29acd2c273e26ba3a36927acad5d9f59b1df5",
+    "revision": "c8bae67dac38dce6107177638464f9f9944fef92"
+  },
   "sources": [
-    {"path":"examples/builder-delivery-viewer/layout.json","digest":"165e78760f23b4d9accd75c796466c0cea2d68217d8be2701916946e71fe1991","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
-
-    {"path":"examples/builder-delivery-viewer/package.json","digest":"4a03ee37bb6050ee3df4e1e44493dafb5ba87a603b16cc5220b833063c677995","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
-
-    {"path":"examples/builder-delivery-viewer/plugin.json","digest":"b0c0fdfc602ab139aab3751c62ecc518b0eb80020456b33f8eebb070189cfd28","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
-
-    {"path":"examples/builder-delivery-viewer/server/__tests__/plugin-server.test.ts","digest":"7e8e9b5098fb342e4d8c625025b7a95196217aa0ab162aafab233d5a296ddf3c","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
-
-    {"path":"examples/builder-delivery-viewer/server/plugin.mjs","digest":"396442e759721a086fa7b37ca065da1a340b0d3851572b76e66b20d2d974162b","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
-
-    {"path":"examples/builder-delivery-viewer/src/index.tsx","digest":"dc45fd8191e3f040b8d19f1a62a26332ec3301590d9fb123c2f6327813772f87","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
-
-    {"path":"examples/registry/manifest.json","digest":"1a6cc7babffefe6a1d0dd44d71387dd6209857091bdf40cf556d29531ec8e32b","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
-
-    {"path":"pnpm-lock.yaml","digest":"5827b0dac0aa1d3a2beb2a0ab719df8fcbd2fdac0bc4a4a7e01c4cae620ba122","revision":"8e884d84b5609d130f29937159601c65d119b664"},
-
-    {"path":"src-server/routes/plugins/plugin-lifecycle-routes.ts","digest":"dceb171ba845c25ea19bb4bc1c032f62707efcf7a80c194c09e9908270db21bc","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
-
-    {"path":"src-server/routes/plugins/plugin-public-routes.ts","digest":"5d088d683e1fc60155100743cf2fb67a6df25ded4914307ba54883d1097f157e","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
-
-    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"7c26b7e6d8f099d1076579d5d219dbe2e73eb37a928316ee44da285bb5762544","revision":"cc4f7016217bc65a2cf928481052ffeb68d49cb2"},
-
-    {"path":"src-server/services/plugins/__tests__/plugin-public-server.test.ts","digest":"1b68eb4818b17281b1436829a86b4f1e35e3671f2ddf7f771e0a1f6ec8cb546f","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
-
-    {"path":"src-server/services/plugins/plugin-install-transaction.ts","digest":"d86ca9367f039174cd2aaaba83b65dc1df376f6474bd4a4f29be54341fd2c0e7","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
-
-    {"path":"src-server/services/plugins/plugin-permissions.ts","digest":"12fa3b2a465074275d4317cc1a356000b2c1a53af247b56c352db754a8727c7c","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
-
-    {"path":"src-server/services/plugins/plugin-public-server.ts","digest":"fe55098b43fd10dd3117e8099d38cc2ab6aad097dae79cfa81be328832be7189","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"}
+    {
+      "path": "examples/builder-delivery-viewer/layout.json",
+      "digest": "165e78760f23b4d9accd75c796466c0cea2d68217d8be2701916946e71fe1991",
+      "revision": "c8bae67dac38dce6107177638464f9f9944fef92"
+    },
+    {
+      "path": "examples/builder-delivery-viewer/package.json",
+      "digest": "4a03ee37bb6050ee3df4e1e44493dafb5ba87a603b16cc5220b833063c677995",
+      "revision": "8012fb77b1b95d1461c59827bf9690884526f30c"
+    },
+    {
+      "path": "examples/builder-delivery-viewer/plugin.json",
+      "digest": "b0c0fdfc602ab139aab3751c62ecc518b0eb80020456b33f8eebb070189cfd28",
+      "revision": "c8bae67dac38dce6107177638464f9f9944fef92"
+    },
+    {
+      "path": "examples/builder-delivery-viewer/server/__tests__/plugin-server.test.ts",
+      "digest": "7e8e9b5098fb342e4d8c625025b7a95196217aa0ab162aafab233d5a296ddf3c",
+      "revision": "c8bae67dac38dce6107177638464f9f9944fef92"
+    },
+    {
+      "path": "examples/builder-delivery-viewer/server/plugin.mjs",
+      "digest": "396442e759721a086fa7b37ca065da1a340b0d3851572b76e66b20d2d974162b",
+      "revision": "c8bae67dac38dce6107177638464f9f9944fef92"
+    },
+    {
+      "path": "examples/builder-delivery-viewer/src/index.tsx",
+      "digest": "dc45fd8191e3f040b8d19f1a62a26332ec3301590d9fb123c2f6327813772f87",
+      "revision": "c8bae67dac38dce6107177638464f9f9944fef92"
+    },
+    {
+      "path": "examples/registry/manifest.json",
+      "digest": "1a6cc7babffefe6a1d0dd44d71387dd6209857091bdf40cf556d29531ec8e32b",
+      "revision": "c8bae67dac38dce6107177638464f9f9944fef92"
+    },
+    {
+      "path": "pnpm-lock.yaml",
+      "digest": "5827b0dac0aa1d3a2beb2a0ab719df8fcbd2fdac0bc4a4a7e01c4cae620ba122",
+      "revision": "8e884d84b5609d130f29937159601c65d119b664"
+    },
+    {
+      "path": "src-server/routes/plugins/plugin-lifecycle-routes.ts",
+      "digest": "dceb171ba845c25ea19bb4bc1c032f62707efcf7a80c194c09e9908270db21bc",
+      "revision": "c8bae67dac38dce6107177638464f9f9944fef92"
+    },
+    {
+      "path": "src-server/routes/plugins/plugin-public-routes.ts",
+      "digest": "5d088d683e1fc60155100743cf2fb67a6df25ded4914307ba54883d1097f157e",
+      "revision": "c8bae67dac38dce6107177638464f9f9944fef92"
+    },
+    {
+      "path": "src-server/runtime/bootstrap/station-runtime.ts",
+      "digest": "7c26b7e6d8f099d1076579d5d219dbe2e73eb37a928316ee44da285bb5762544",
+      "revision": "cc4f7016217bc65a2cf928481052ffeb68d49cb2"
+    },
+    {
+      "path": "src-server/services/plugins/__tests__/plugin-public-server.test.ts",
+      "digest": "1b68eb4818b17281b1436829a86b4f1e35e3671f2ddf7f771e0a1f6ec8cb546f",
+      "revision": "495d7cda0df2abf2d64ed377d3dcbf1ebc238169"
+    },
+    {
+      "path": "src-server/services/plugins/plugin-install-transaction.ts",
+      "digest": "d86ca9367f039174cd2aaaba83b65dc1df376f6474bd4a4f29be54341fd2c0e7",
+      "revision": "495d7cda0df2abf2d64ed377d3dcbf1ebc238169"
+    },
+    {
+      "path": "src-server/services/plugins/plugin-permissions.ts",
+      "digest": "12fa3b2a465074275d4317cc1a356000b2c1a53af247b56c352db754a8727c7c",
+      "revision": "495d7cda0df2abf2d64ed377d3dcbf1ebc238169"
+    },
+    {
+      "path": "src-server/services/plugins/plugin-public-server.ts",
+      "digest": "fe55098b43fd10dd3117e8099d38cc2ab6aad097dae79cfa81be328832be7189",
+      "revision": "495d7cda0df2abf2d64ed377d3dcbf1ebc238169"
+    }
   ],
-
   "checks": [
     "Prior receipt, retained without rerun: Example/documentation, snippets, voice smoke refusal, sessions renderer, Fieldwork, Survey and branding selection: 76 tests across seven files passed. These are bounded fixture checks, not every example or a live provider.",
-
     "Source+caller review completed at frozen upstream f3954615e / integrated6fa523e4d; prior record source changes inspected before replacing hashes. No moving-main chase.",
-
     "Executed: static gate chain PASS including26example conformance and zero new a11y violations; docs links PASS415Markdown files; diff whitespace PASS.",
-
     "Executed: TypeScript AST printer comparison with comments removed confirms all five edited source/test files are comment-only against221888d35. No behavior or deadline changed; no additional typecheck solely for comment changes.",
-
     "Executed focused5files:66PASS in12.15s (Builder, Fieldwork, Survey plugin server route tests; plugin-public-server lifecycle/admission; MCP UI resolver). Fieldwork facade is mocked in its fixture; Survey public dependency routes executed with no skips; not an installed UI journey.",
-
     "Veritas readiness veritas-1790535084936: exit0,0FAIL/0WARN; proof:repo-governance, lint:check and verification:policy:gate PASS on eleven changed files. Last subsequent edit only wrapped/corrected placement prose; parent final CI owns combined revision.",
-
     "Reviewed integration deltas: Corrected verified issue ownership: #36 was folded into #162, rather than unrelated current #501. Preserved plugin-readonly versus process-sandbox boundary.",
-
     "Landing delta f3954615e to 2400482c2 plus integrated corrections: Reviewed incoming test changes at their real callers: consolidated or stronger assertions preserve documented behavior. Source inspection does not renew executed-test receipts. Unused exports were removed without changing production callers; Survey tests now import their dependency unconditionally instead of skipping when unavailable.",
-
     "Required merge-queue recovery through 421517851: StationRuntime adds only verified native Pion/virtual-request readers at the existing optional ingress/session composition; other recorded bootstrap, plugin, task, settings and evidence owners are unchanged. Changed inputs reviewed: src-server/runtime/bootstrap/station-runtime.ts. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
-
     "Integration source review through e0314c727: plugin-install-transaction.ts added the `excludeGitMetadata` staging option for proposed sources (#2840), and the lockfile dropped bearing/forage. The README's registry installation, permission and descriptor claims do not depend on either. Source review is separate from executed test evidence."
   ]
 }

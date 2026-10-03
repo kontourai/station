@@ -1,83 +1,116 @@
 {
   "path": "README.md",
-
   "kind": "current",
-
   "state": "source-reviewed",
-
   "summary": "Read the complete entry point against the audited work/execution, engine, extension, CLI/distribution, installer and data-flow owners. Installation, provider use, artifact availability and gate outcomes are explicitly qualified.",
-
-  "limits": "Source review of the stated entry-point claims; linked guides have their own records. No new hosted publication, release installation, external provider or physical device qualification. Merge reconciliation preserves both prior review anchors below as historical evidence, not a new review of combined source bytes. Active bindings retain existing reviewed anchors; any mismatch with merged bytes remains stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"docs/reference/cli.md\",\"ours\":{\"digest\":\"eaea8f22af0b8823b27d60b48cec742ab153e7c05dea78a86ebacbbb0e5fb65a\",\"revision\":\"7fcc0a65c4067afc51dfc094037b4275177177d8\"},\"main\":{\"digest\":\"98f975022501b6d33e43422fc2652317fb84f72eab24522a582238bf244252ee\",\"revision\":\"4a1fc2197028ded07d0e389e98a30042ab7cadb5\"}},{\"path\":\"docs/architecture/module-map.md\",\"ours\":{\"digest\":\"52cd3cfb4c4e811e087ee89b0d844695e85a21a0e085409850936bd613653957\",\"revision\":\"801b6662aff67a25eff4927c1c50e92f4c9b4e53\"},\"main\":{\"digest\":\"8f082631ce14f9b1114110e69a7f336404340c0c8f58a02ebf2646973277a22b\",\"revision\":\"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac\"}},{\"path\":\"docs/guides/nightly.md\",\"ours\":{\"digest\":\"ca0edefb20627f48284c7527c1e696c5a32070ab1c48e2b2eefe7fff8024e108\",\"revision\":\"401e7c7ca5cf5b194b76a21a317fd8ec34591301\"},\"main\":{\"digest\":\"7a459f9e8b71560ce041403a37d667d004c15ae25017f2149de30a64649c569a\",\"revision\":\"ec29a8774f2c138bfd9e9818c0f0cc36fc5ebefe\"}}].\n\nAdditional existing main limits (preserved verbatim): Source review of the stated entry-point claims; linked guides have their own records. No new hosted publication, release installation, external provider or physical device qualification.\n\nStructural merge of 5fd2dd86ad0cd35018ce09537c1aa01ce58e0e55 and 8f9ea788561518398a488d35bb768b78a272e73b preserves both prior immutable document/source anchors and historical checks. Selecting an existing current-byte binding is structural reconciliation only, not semantic approval of merged inputs. No new digest/revision or coverage baseline was minted. Competing prior anchors remain pending semantic review and supported recording after the merge commit: [{\"path\":\"docs/architecture/module-map.md\",\"ours\":{\"path\":\"docs/architecture/module-map.md\",\"digest\":\"8d33787e4ca8472ad4d2d5c91d8eaea168553090163766c9b957ab9e48dd0f79\",\"revision\":\"a3ac8721653c1c4dc646f54a5401f03f02ba795f\"},\"main\":{\"path\":\"docs/architecture/module-map.md\",\"digest\":\"8f082631ce14f9b1114110e69a7f336404340c0c8f58a02ebf2646973277a22b\",\"revision\":\"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac\"},\"active\":{\"path\":\"docs/architecture/module-map.md\",\"digest\":\"8d33787e4ca8472ad4d2d5c91d8eaea168553090163766c9b957ab9e48dd0f79\",\"revision\":\"a3ac8721653c1c4dc646f54a5401f03f02ba795f\"},\"decision\":\"oursMatch\"},{\"path\":\"docs/guides/nightly.md\",\"ours\":{\"path\":\"docs/guides/nightly.md\",\"digest\":\"ca0edefb20627f48284c7527c1e696c5a32070ab1c48e2b2eefe7fff8024e108\",\"revision\":\"401e7c7ca5cf5b194b76a21a317fd8ec34591301\"},\"main\":{\"path\":\"docs/guides/nightly.md\",\"digest\":\"1d2d768b4dddb1cfae5f123b0322621f5e70565918118fb8027d7e840041aba3\",\"revision\":\"614c216de6de9d4c06ef56963853ccff52f2f685\"},\"active\":{\"path\":\"docs/guides/nightly.md\",\"digest\":\"ca0edefb20627f48284c7527c1e696c5a32070ab1c48e2b2eefe7fff8024e108\",\"revision\":\"401e7c7ca5cf5b194b76a21a317fd8ec34591301\"},\"decision\":\"neitherMatch\"},{\"path\":\"docs/guides/release-channel-ports.md\",\"ours\":{\"path\":\"docs/guides/release-channel-ports.md\",\"digest\":\"3483f6ad81e2f9c47e478a4c3156ac39656cc0371fd19902d05c43c2cf76c00d\",\"revision\":\"6b720068a6a3d8ccf6aa3260e8da6ee4cf99ea80\"},\"main\":{\"path\":\"docs/guides/release-channel-ports.md\",\"digest\":\"b90cd2926db148fda6e028bab7d9a1746956db1a90e6fedcb0c7b9920c46f156\",\"revision\":\"332b227345684d098aaaf3191ac0e9d927ac9401\"},\"active\":{\"path\":\"docs/guides/release-channel-ports.md\",\"digest\":\"b90cd2926db148fda6e028bab7d9a1746956db1a90e6fedcb0c7b9920c46f156\",\"revision\":\"332b227345684d098aaaf3191ac0e9d927ac9401\"},\"decision\":\"mainMatch\"},{\"path\":\"docs/reference/cli.md\",\"ours\":{\"path\":\"docs/reference/cli.md\",\"digest\":\"98f975022501b6d33e43422fc2652317fb84f72eab24522a582238bf244252ee\",\"revision\":\"4a1fc2197028ded07d0e389e98a30042ab7cadb5\"},\"main\":{\"path\":\"docs/reference/cli.md\",\"digest\":\"5db0e299c9a461a4e17cfb614d26f13f10c64260eae57d435b0f4088be8b325a\",\"revision\":\"1b73087d156d008468234fa83d218468d21add03\"},\"active\":{\"path\":\"docs/reference/cli.md\",\"digest\":\"5db0e299c9a461a4e17cfb614d26f13f10c64260eae57d435b0f4088be8b325a\",\"revision\":\"1b73087d156d008468234fa83d218468d21add03\"},\"decision\":\"mainMatch\"},{\"path\":\"packages/contracts/src/engine-capability-matrix.ts\",\"ours\":{\"path\":\"packages/contracts/src/engine-capability-matrix.ts\",\"digest\":\"e6d2c0397a5894f2f2c8aa175e9a6cd240c8a4445269041c982019245c5cc102\",\"revision\":\"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74\"},\"main\":{\"path\":\"packages/contracts/src/engine-capability-matrix.ts\",\"digest\":\"db82340760d09e965ac7ed17830f36060573fe48545995d4ad9149b755d36ea1\",\"revision\":\"518fae654af981373e872c2ab85438bb1b1b0e67\"},\"active\":{\"path\":\"packages/contracts/src/engine-capability-matrix.ts\",\"digest\":\"db82340760d09e965ac7ed17830f36060573fe48545995d4ad9149b755d36ea1\",\"revision\":\"518fae654af981373e872c2ab85438bb1b1b0e67\"},\"decision\":\"mainMatch\"}]",
-
-  "document": {"digest":"ecb3a3e0418f1f70ecd02ffc92dc46c5a11457c67a2464829e23c7b09ff8206d","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
+  "limits": "Source review of the stated entry-point claims; linked guides have their own records. No new hosted publication, release installation, external provider or physical device qualification. Merge reconciliation preserves both prior review anchors below as historical evidence, not a new review of combined source bytes. Active bindings retain existing reviewed anchors; any mismatch with merged bytes remains stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"docs/reference/cli.md\",\"ours\":{\"digest\":\"eaea8f22af0b8823b27d60b48cec742ab153e7c05dea78a86ebacbbb0e5fb65a\",\"revision\":\"7fcc0a65c4067afc51dfc094037b4275177177d8\"},\"main\":{\"digest\":\"98f975022501b6d33e43422fc2652317fb84f72eab24522a582238bf244252ee\",\"revision\":\"4a1fc2197028ded07d0e389e98a30042ab7cadb5\"}},{\"path\":\"docs/architecture/module-map.md\",\"ours\":{\"digest\":\"52cd3cfb4c4e811e087ee89b0d844695e85a21a0e085409850936bd613653957\",\"revision\":\"801b6662aff67a25eff4927c1c50e92f4c9b4e53\"},\"main\":{\"digest\":\"8f082631ce14f9b1114110e69a7f336404340c0c8f58a02ebf2646973277a22b\",\"revision\":\"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac\"}},{\"path\":\"docs/guides/nightly.md\",\"ours\":{\"digest\":\"ca0edefb20627f48284c7527c1e696c5a32070ab1c48e2b2eefe7fff8024e108\",\"revision\":\"401e7c7ca5cf5b194b76a21a317fd8ec34591301\"},\"main\":{\"digest\":\"7a459f9e8b71560ce041403a37d667d004c15ae25017f2149de30a64649c569a\",\"revision\":\"ec29a8774f2c138bfd9e9818c0f0cc36fc5ebefe\"}}].\n\nAdditional existing main limits (preserved verbatim): Source review of the stated entry-point claims; linked guides have their own records. No new hosted publication, release installation, external provider or physical device qualification.\n\nStructural merge of 5fd2dd86ad0cd35018ce09537c1aa01ce58e0e55 and 8f9ea788561518398a488d35bb768b78a272e73b preserves both prior immutable document/source anchors and historical checks. Selecting an existing current-byte binding is structural reconciliation only, not semantic approval of merged inputs. No new digest/revision or coverage baseline was minted. Competing prior anchors remain pending semantic review and supported recording after the merge commit: [{\"path\":\"docs/architecture/module-map.md\",\"ours\":{\"path\":\"docs/architecture/module-map.md\",\"digest\":\"8d33787e4ca8472ad4d2d5c91d8eaea168553090163766c9b957ab9e48dd0f79\",\"revision\":\"a3ac8721653c1c4dc646f54a5401f03f02ba795f\"},\"main\":{\"path\":\"docs/architecture/module-map.md\",\"digest\":\"8f082631ce14f9b1114110e69a7f336404340c0c8f58a02ebf2646973277a22b\",\"revision\":\"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac\"},\"active\":{\"path\":\"docs/architecture/module-map.md\",\"digest\":\"8d33787e4ca8472ad4d2d5c91d8eaea168553090163766c9b957ab9e48dd0f79\",\"revision\":\"a3ac8721653c1c4dc646f54a5401f03f02ba795f\"},\"decision\":\"oursMatch\"},{\"path\":\"docs/guides/nightly.md\",\"ours\":{\"path\":\"docs/guides/nightly.md\",\"digest\":\"ca0edefb20627f48284c7527c1e696c5a32070ab1c48e2b2eefe7fff8024e108\",\"revision\":\"401e7c7ca5cf5b194b76a21a317fd8ec34591301\"},\"main\":{\"path\":\"docs/guides/nightly.md\",\"digest\":\"1d2d768b4dddb1cfae5f123b0322621f5e70565918118fb8027d7e840041aba3\",\"revision\":\"614c216de6de9d4c06ef56963853ccff52f2f685\"},\"active\":{\"path\":\"docs/guides/nightly.md\",\"digest\":\"ca0edefb20627f48284c7527c1e696c5a32070ab1c48e2b2eefe7fff8024e108\",\"revision\":\"401e7c7ca5cf5b194b76a21a317fd8ec34591301\"},\"decision\":\"neitherMatch\"},{\"path\":\"docs/guides/release-channel-ports.md\",\"ours\":{\"path\":\"docs/guides/release-channel-ports.md\",\"digest\":\"3483f6ad81e2f9c47e478a4c3156ac39656cc0371fd19902d05c43c2cf76c00d\",\"revision\":\"6b720068a6a3d8ccf6aa3260e8da6ee4cf99ea80\"},\"main\":{\"path\":\"docs/guides/release-channel-ports.md\",\"digest\":\"b90cd2926db148fda6e028bab7d9a1746956db1a90e6fedcb0c7b9920c46f156\",\"revision\":\"332b227345684d098aaaf3191ac0e9d927ac9401\"},\"active\":{\"path\":\"docs/guides/release-channel-ports.md\",\"digest\":\"b90cd2926db148fda6e028bab7d9a1746956db1a90e6fedcb0c7b9920c46f156\",\"revision\":\"332b227345684d098aaaf3191ac0e9d927ac9401\"},\"decision\":\"mainMatch\"},{\"path\":\"docs/reference/cli.md\",\"ours\":{\"path\":\"docs/reference/cli.md\",\"digest\":\"98f975022501b6d33e43422fc2652317fb84f72eab24522a582238bf244252ee\",\"revision\":\"4a1fc2197028ded07d0e389e98a30042ab7cadb5\"},\"main\":{\"path\":\"docs/reference/cli.md\",\"digest\":\"5db0e299c9a461a4e17cfb614d26f13f10c64260eae57d435b0f4088be8b325a\",\"revision\":\"1b73087d156d008468234fa83d218468d21add03\"},\"active\":{\"path\":\"docs/reference/cli.md\",\"digest\":\"5db0e299c9a461a4e17cfb614d26f13f10c64260eae57d435b0f4088be8b325a\",\"revision\":\"1b73087d156d008468234fa83d218468d21add03\"},\"decision\":\"mainMatch\"},{\"path\":\"packages/contracts/src/engine-capability-matrix.ts\",\"ours\":{\"path\":\"packages/contracts/src/engine-capability-matrix.ts\",\"digest\":\"e6d2c0397a5894f2f2c8aa175e9a6cd240c8a4445269041c982019245c5cc102\",\"revision\":\"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74\"},\"main\":{\"path\":\"packages/contracts/src/engine-capability-matrix.ts\",\"digest\":\"db82340760d09e965ac7ed17830f36060573fe48545995d4ad9149b755d36ea1\",\"revision\":\"518fae654af981373e872c2ab85438bb1b1b0e67\"},\"active\":{\"path\":\"packages/contracts/src/engine-capability-matrix.ts\",\"digest\":\"db82340760d09e965ac7ed17830f36060573fe48545995d4ad9149b755d36ea1\",\"revision\":\"518fae654af981373e872c2ab85438bb1b1b0e67\"},\"decision\":\"mainMatch\"}] Upstream merge review anchors retained as historical evidence only; merged source mismatches require semantic re-review: {\"document\":{\"digest\":\"ecb3a3e0418f1f70ecd02ffc92dc46c5a11457c67a2464829e23c7b09ff8206d\",\"revision\":\"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74\"},\"sources\":[{\"path\":\"Dockerfile\",\"digest\":\"7cbabfe80425ae5b5e3c30c978e20e53274d9cbbb6d069fc6f87c126f664f0e4\",\"revision\":\"6a0d3e154170e88514a9ad71e1b7af587073aeb4\"},{\"path\":\"docker-compose.yml\",\"digest\":\"d8ae74f82e6fba7768be16dd601d1f98d0462b22576cb125023e0d868a99bfc8\",\"revision\":\"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74\"},{\"path\":\"docs/architecture/module-map.md\",\"digest\":\"8f082631ce14f9b1114110e69a7f336404340c0c8f58a02ebf2646973277a22b\",\"revision\":\"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac\"},{\"path\":\"docs/guides/deployment.md\",\"digest\":\"1edc373a6f45ca03a1f4e989e59cabe26d36afe4b5b06ccf9717f8b715bf99f2\",\"revision\":\"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74\"},{\"path\":\"docs/guides/nightly.md\",\"digest\":\"90c3bf5659d765aa697f10cb23f31f820cc603d7dab885a5b5dc9b20606681be\",\"revision\":\"fa59c15763af8e75ddf59a250cdb0d5f8913d116\"},{\"path\":\"docs/privacy-policy.md\",\"digest\":\"fb5be7ad7342be17509e79e40a6e2dbbe7046ea7dbbe8db4ba637fcdbb21d403\",\"revision\":\"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74\"},{\"path\":\"docs/reference/cli.md\",\"digest\":\"b2cdeea42fb4b6baacc5aa6a74692e4d60975f7b30c2ad49e2c4d89990138297\",\"revision\":\"24d0063f45516c1d6c7cddec670c60ef0185f1f2\"},{\"path\":\"install.sh\",\"digest\":\"f2b2fbf2dba1198f08637b48ad3a1cd7ae684cee020621cd293668e6bbb8b4bc\",\"revision\":\"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74\"},{\"path\":\"packages/cli/src/cli.ts\",\"digest\":\"ecf39393a34edc99d05222a41947a1ba086cf8fc60bac7fe3cdd4651e825881a\",\"revision\":\"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74\"},{\"path\":\"packages/cli/src/commands/lifecycle.ts\",\"digest\":\"ce8322baa64d2e25c711ec0816c6cb013c8742f651a265e1657239185dba9ecc\",\"revision\":\"b49b1db1601f36c9457e0d9d7c766d15be6302f7\"},{\"path\":\"packages/cli/src/distribution.ts\",\"digest\":\"6c36f09c162ba2cdc4a6cc98cb878ca5ac1be9177fbfe584340aee4b79c8b69b\",\"revision\":\"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74\"},{\"path\":\"packages/contracts/src/engine-capability-matrix.ts\",\"digest\":\"db82340760d09e965ac7ed17830f36060573fe48545995d4ad9149b755d36ea1\",\"revision\":\"518fae654af981373e872c2ab85438bb1b1b0e67\"},{\"path\":\"src-server/services/orchestration/flow-policy-sidecar.ts\",\"digest\":\"437b48f82ba45cedac66ea4c8c933758226ad017ca957313fb9353b3a9abbe44\",\"revision\":\"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74\"},{\"path\":\"src-server/services/privacy-inventory.ts\",\"digest\":\"469cc6a8bea5a9943040b373be225917c6aa8cbe5de5a5fe003e6ae2810752b9\",\"revision\":\"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74\"},{\"path\":\"src-ui/src/hooks/voiceWsUrl.ts\",\"digest\":\"4b609c4ad165efdf372f565aacdf1617ed9f0c793fbba7cca2005a0ab33f71b1\",\"revision\":\"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74\"},{\"path\":\"src-ui/src/providers/voice/NovaVoiceSessionAdapter.ts\",\"digest\":\"e0af5660bc581fae84121a3890cb5a180960213d761eef4a23319e5fa1bece2c\",\"revision\":\"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74\"},{\"path\":\"docs/guides/release-channel-ports.md\",\"digest\":\"b90cd2926db148fda6e028bab7d9a1746956db1a90e6fedcb0c7b9920c46f156\",\"revision\":\"332b227345684d098aaaf3191ac0e9d927ac9401\"}],\"summary\":\"Read the complete entry point against the audited work/execution, engine, extension, CLI/distribution, installer and data-flow owners. Installation, provider use, artifact availability and gate outcomes are explicitly qualified.\",\"limits\":\"Source review of the stated entry-point claims; linked guides have their own records. No new hosted publication, release installation, external provider or physical device qualification.\"}",
+  "document": {
+    "digest": "ecb3a3e0418f1f70ecd02ffc92dc46c5a11457c67a2464829e23c7b09ff8206d",
+    "revision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"
+  },
   "sources": [
-    {"path":"Dockerfile","digest":"7cbabfe80425ae5b5e3c30c978e20e53274d9cbbb6d069fc6f87c126f664f0e4","revision":"6a0d3e154170e88514a9ad71e1b7af587073aeb4"},
-
-    {"path":"docker-compose.yml","digest":"d8ae74f82e6fba7768be16dd601d1f98d0462b22576cb125023e0d868a99bfc8","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
-    {"path":"docs/architecture/module-map.md","digest":"e2c0aa862af3e5d22af4919dced8b06b2935cd95e17e29b504645dabf481514c","revision":"390e7e49c0412fd4d2604f588b8279779d98605a"},
-
-    {"path":"docs/guides/deployment.md","digest":"1edc373a6f45ca03a1f4e989e59cabe26d36afe4b5b06ccf9717f8b715bf99f2","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
-    {"path":"docs/guides/nightly.md","digest":"01544c3449f6a9131805f2a9d232acd1d16bbc035e92359215dfd528ba95e86c","revision":"e58fcedea713f7fc640bf51abe384f17503f72e4"},
-
-    {"path":"docs/guides/release-channel-ports.md","digest":"b90cd2926db148fda6e028bab7d9a1746956db1a90e6fedcb0c7b9920c46f156","revision":"332b227345684d098aaaf3191ac0e9d927ac9401"},
-
-    {"path":"docs/privacy-policy.md","digest":"fb5be7ad7342be17509e79e40a6e2dbbe7046ea7dbbe8db4ba637fcdbb21d403","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
-    {"path":"docs/reference/cli.md","digest":"b2cdeea42fb4b6baacc5aa6a74692e4d60975f7b30c2ad49e2c4d89990138297","revision":"24d0063f45516c1d6c7cddec670c60ef0185f1f2"},
-
-    {"path":"install.sh","digest":"f2b2fbf2dba1198f08637b48ad3a1cd7ae684cee020621cd293668e6bbb8b4bc","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
-    {"path":"packages/cli/src/cli.ts","digest":"ecf39393a34edc99d05222a41947a1ba086cf8fc60bac7fe3cdd4651e825881a","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
-    {"path":"packages/cli/src/commands/lifecycle.ts","digest":"ce8322baa64d2e25c711ec0816c6cb013c8742f651a265e1657239185dba9ecc","revision":"b49b1db1601f36c9457e0d9d7c766d15be6302f7"},
-
-    {"path":"packages/cli/src/distribution.ts","digest":"6c36f09c162ba2cdc4a6cc98cb878ca5ac1be9177fbfe584340aee4b79c8b69b","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
-    {"path":"packages/contracts/src/engine-capability-matrix.ts","digest":"db82340760d09e965ac7ed17830f36060573fe48545995d4ad9149b755d36ea1","revision":"518fae654af981373e872c2ab85438bb1b1b0e67"},
-
-    {"path":"src-server/services/orchestration/flow-policy-sidecar.ts","digest":"437b48f82ba45cedac66ea4c8c933758226ad017ca957313fb9353b3a9abbe44","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
-    {"path":"src-server/services/privacy-inventory.ts","digest":"469cc6a8bea5a9943040b373be225917c6aa8cbe5de5a5fe003e6ae2810752b9","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
-    {"path":"src-ui/src/hooks/voiceWsUrl.ts","digest":"4b609c4ad165efdf372f565aacdf1617ed9f0c793fbba7cca2005a0ab33f71b1","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
-    {"path":"src-ui/src/providers/voice/NovaVoiceSessionAdapter.ts","digest":"e0af5660bc581fae84121a3890cb5a180960213d761eef4a23319e5fa1bece2c","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"}
+    {
+      "path": "Dockerfile",
+      "digest": "7cbabfe80425ae5b5e3c30c978e20e53274d9cbbb6d069fc6f87c126f664f0e4",
+      "revision": "6a0d3e154170e88514a9ad71e1b7af587073aeb4"
+    },
+    {
+      "path": "docker-compose.yml",
+      "digest": "d8ae74f82e6fba7768be16dd601d1f98d0462b22576cb125023e0d868a99bfc8",
+      "revision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"
+    },
+    {
+      "path": "docs/architecture/module-map.md",
+      "digest": "e2c0aa862af3e5d22af4919dced8b06b2935cd95e17e29b504645dabf481514c",
+      "revision": "390e7e49c0412fd4d2604f588b8279779d98605a"
+    },
+    {
+      "path": "docs/guides/deployment.md",
+      "digest": "1edc373a6f45ca03a1f4e989e59cabe26d36afe4b5b06ccf9717f8b715bf99f2",
+      "revision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"
+    },
+    {
+      "path": "docs/guides/nightly.md",
+      "digest": "01544c3449f6a9131805f2a9d232acd1d16bbc035e92359215dfd528ba95e86c",
+      "revision": "e58fcedea713f7fc640bf51abe384f17503f72e4"
+    },
+    {
+      "path": "docs/guides/release-channel-ports.md",
+      "digest": "b90cd2926db148fda6e028bab7d9a1746956db1a90e6fedcb0c7b9920c46f156",
+      "revision": "332b227345684d098aaaf3191ac0e9d927ac9401"
+    },
+    {
+      "path": "docs/privacy-policy.md",
+      "digest": "fb5be7ad7342be17509e79e40a6e2dbbe7046ea7dbbe8db4ba637fcdbb21d403",
+      "revision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"
+    },
+    {
+      "path": "docs/reference/cli.md",
+      "digest": "b2cdeea42fb4b6baacc5aa6a74692e4d60975f7b30c2ad49e2c4d89990138297",
+      "revision": "24d0063f45516c1d6c7cddec670c60ef0185f1f2"
+    },
+    {
+      "path": "install.sh",
+      "digest": "f2b2fbf2dba1198f08637b48ad3a1cd7ae684cee020621cd293668e6bbb8b4bc",
+      "revision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"
+    },
+    {
+      "path": "packages/cli/src/cli.ts",
+      "digest": "ecf39393a34edc99d05222a41947a1ba086cf8fc60bac7fe3cdd4651e825881a",
+      "revision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"
+    },
+    {
+      "path": "packages/cli/src/commands/lifecycle.ts",
+      "digest": "ce8322baa64d2e25c711ec0816c6cb013c8742f651a265e1657239185dba9ecc",
+      "revision": "b49b1db1601f36c9457e0d9d7c766d15be6302f7"
+    },
+    {
+      "path": "packages/cli/src/distribution.ts",
+      "digest": "6c36f09c162ba2cdc4a6cc98cb878ca5ac1be9177fbfe584340aee4b79c8b69b",
+      "revision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"
+    },
+    {
+      "path": "packages/contracts/src/engine-capability-matrix.ts",
+      "digest": "db82340760d09e965ac7ed17830f36060573fe48545995d4ad9149b755d36ea1",
+      "revision": "518fae654af981373e872c2ab85438bb1b1b0e67"
+    },
+    {
+      "path": "src-server/services/orchestration/flow-policy-sidecar.ts",
+      "digest": "437b48f82ba45cedac66ea4c8c933758226ad017ca957313fb9353b3a9abbe44",
+      "revision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"
+    },
+    {
+      "path": "src-server/services/privacy-inventory.ts",
+      "digest": "469cc6a8bea5a9943040b373be225917c6aa8cbe5de5a5fe003e6ae2810752b9",
+      "revision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"
+    },
+    {
+      "path": "src-ui/src/hooks/voiceWsUrl.ts",
+      "digest": "4b609c4ad165efdf372f565aacdf1617ed9f0c793fbba7cca2005a0ab33f71b1",
+      "revision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"
+    },
+    {
+      "path": "src-ui/src/providers/voice/NovaVoiceSessionAdapter.ts",
+      "digest": "e0af5660bc581fae84121a3890cb5a180960213d761eef4a23319e5fa1bece2c",
+      "revision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"
+    }
   ],
-
   "checks": [
     "Independent delta review caught GitHub/public-manifest downgrade-policy scope and help-before-dispatch wording; corrected.",
-
     "Live metadata check on 2026-09-26: Nightly desktop includes macOS Apple-silicon and Windows x64 assets; retained versions are mixed. No asset installed.",
-
     "Public npm metadata confirmed the four linked package names exist; it does not certify checkout API parity with those releases.",
-
     "Reviewed source changes: Stop now forwards the resolved home into lifecycle state lookup. Reviewed source-checkout and prebuilt-archive distinctions; the current CLI reference already describes home-derived archive records. Reviewed the complete upstream delta: prebuilt archives use home-derived channel state and shared shipped builds, refuse rebuild/in-place upgrade, and carry home into status/stop/port checks. Updated the instance-registry explanation; source-checkout lifecycle remains distinct.",
-
     "Reviewed source changes: Read the full installer delta. Generated ring constants add signed-manifest-only nightly and explicit coexistence checks; stable/beta authenticated release flow remains. Builds now run in the final release directory before marking completion. Generic README/source CLI explanations remain accurate; platform-array manifest incompatibility is separately documented.",
-
     "Final entry-point review followed the affected canonical module/contract owners; no matching hash or file count was used as semantic proof.",
-
     "Reviewed integration deltas: packages/cli/src/commands/lifecycle.ts: Windows stop-hint home quoting becomes double quoted; cmd/PowerShell expansion caveat retained. Startup sibling readiness waits receive abort after first failure and a dead child refuses early with last identity/HTTP observation. Expected instance/boot/build identity and listener authority checks stay intact. src-server/services/privacy-inventory.ts: Narrowed generated linkage/tracking questions to inventory declarations and corrected generator direction; classification values unchanged. Final renderer suite: 30 passed. docs/architecture/module-map.md: Added and independently reviewed the native grant renewal supervisor against renderer/host callers and tests; corrected retained revision lookup and seal-source composition, and MCP policy filtering limits. All prior module reviews retained. docs/guides/nightly.md: Canonical owner completed its recorded claim review against actual callers; dependent reading routes remain accurate. Completed local install replacement/relaunch and archive-entry checks, macOS notarization ordering, cohort delivery/fence/recovery callers, and Windows signed payload/install/upgrade scope. Corrected rollback/relaunch overstatements. Frozen Windows trust/process/startup and target-aware staging deltas reviewed; source wiring is distinct from provider delivery.",
-
     "Landing source delta through 61d497e88: Reviewed corresponding canonical prose, the new dispatch-scope module/tree entry and regenerated 101-topic MCP content. Only affected claims changed; source links remain evidence routes, not proof of execution.",
-
     "Landing review through d0d9d33f7: Added an explicitly unwired desktop account-proof foundation under DeploymentAuthentication; existing module identities, interfaces and reading routes are unchanged. Updated installer support for platform-v2; publication remains owner-gated and no live release or installation is claimed. Updated prebuilt installer-owned upgrades and retained loose-archive/service refusals; unrelated command, API and triage contracts remain unchanged. Reviewed host-selected platform-v2 archive admission and bundled/verifier Node paths, source-v1/default GitHub fallbacks, version promotion/rollback and ownership. Corrected current installer explanations; native/store/source-checkout claims retain their separate scope. Reviewed schema-3/4 install-state admission, saved manifest URL precedence and installer-owned versions upgrades. Loose archives still refuse upgrades; existing home/instance, service and HTTP update boundaries are unchanged. Reviewed the changed canonical prose against these owners; purpose and prior evidence limits are retained. Integration group: 477 passed and one archive-trigger omission failed in 420.29s. Expanded missing-input control: 20 passed/2 failed; after adding six workflow paths, archive suite 22/22 passed in 494ms. Earlier failure is retained; no live installer/publication claim.",
-
     "Reviewed landing deltas through 111744681: Added the registered NativeApplicationSignaling interface with explicit unwired consumer/data/proof limits; clarified the normative depth definition. Existing module contracts are unchanged.",
-
     "Required merge-queue recovery through 421517851: reviewed current canonical prose/static MCP dependency changes; historical/policy classifications and unrelated documented behavior remain unchanged. Changed inputs reviewed: docs/architecture/module-map.md. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
-
     "Integration source review through e0314c727: install.sh now records service ports and stops, switches and restarts archive services under current. station upgrade no longer blocks on a service from the same install root. cli.md documents both changes, and module-map dropped the CollaborativeEditorPane and PluginForegroundRuns entries. The README's claims (stage before switching the current link, signed archive path, and the linked guides) are still accurate and it never referenced the removed entries. Source review is separate from executed test evidence.",
-
     "Integration source review through d72f79b08: #2904 added the cli.md entries for `station environment access devices|scope|scopes`, and in cli.ts describeCliError now prints explainFullAccessRefusal for approval-full-access-not-granted. The README's 'scoped, revocable access' device claims and its CLI/distribution entry points remain accurate. The README lists no per-command CLI output. Prose accurate. Source review is separate from executed test evidence.",
-
     "Integration source review through 42491ca6b: 1cc8576b4 (#2907) makes contributorCommandMessage in packages/cli/src/distribution.ts module-private. The change only removes an export: command admission and message behavior are unchanged. The README's CLI, distribution and installer claims do not depend on that export. Prose accurate. Source review is separate from executed test evidence.",
-
     "Integration source review through 84d56b9a8: e1af43c2c (#2880) adds a 'Recorded versus acknowledged decisions' subsection to docs/reference/cli.md under station delegate. The auto-merged cli.md reads coherently with the branch text. The README still correctly points to the CLI reference for target and credential setup. Prose accurate. Source review is separate from executed test evidence.",
-
     "Integration source review through 5731eba07: 3ab09593d (#2881) wraps install.sh in a brace group, adds stage-only mode, hands off to a launcher-run service and extends cli.md with archive self-update. The README's claims (verified installer via a temp file, staging before the current link switches, a separate prebuilt-archive path linked out) still hold. The cli.md merge is main-only additive text. Prose accurate. Source review is separate from executed test evidence."
   ]
 }

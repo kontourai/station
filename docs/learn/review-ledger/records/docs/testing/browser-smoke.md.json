@@ -12,7 +12,7 @@
   "document": {"digest":"2bc25a448c6189b75253f9b26a10665f40107d168858254c46752f8a2f559412","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
   "sources": [
-    {"path":".github/workflows/ci.yml","digest":"aedbb116a4ce043ec251ec20c47368aa89f77ebc1b5b526fecb9580af280bb91","revision":"de240170769fcf739c188b104f801d4371f8086d"},
+    {"path":".github/workflows/ci.yml","digest":"9b586bd70bb7c94986ce19ee41151ff768bad2a308a196a15047375c92f9646a","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
 
     {"path":"scripts/__tests__/ci-fast-checks-job-graph.test.ts","digest":"6b102e92ea63fb9103d801ec2ad0da304204de5c39d5cdb6540f7e21070c21e5","revision":"de240170769fcf739c188b104f801d4371f8086d"},
 

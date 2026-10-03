@@ -20,8 +20,9 @@ device receipts for current availability.
 
 `.github/workflows/nightly.yml` builds and publishes the Android nightly.
 
-**Cadence: every six hours, and only when `main` moved.** The schedule trigger
-fires at 00:00, 06:00, 12:00, and 18:00 UTC. The scheduled job compares `HEAD`
+**Cadence: daily at 06:43 UTC, with native publication only when `main` moved.**
+Main qualification runs independently every six hours; Nightly admits its
+exact-source evidence or runs fresh qualification. See [the release process](releasing.md). The scheduled job compares `HEAD`
 against the rolling `nightly` tag (the commit the last published nightly was
 cut from) and builds nothing when they match and the deploy ledger records
 that ship: a new version number over identical content is a version number
@@ -35,7 +36,7 @@ version code. Manual `rebuild_index` remains the exception for rebuilding a
 commit that already shipped, below.
 
 **What a tester should expect.** Queueing, separate stage timeouts, signing and
-provider processing determine delivery time. The six-hour schedule is not a
+provider processing determine delivery time. The daily schedule is not a
 promise that a build reaches a phone within a few hours. Play auto-update and
 tester eligibility are separate device/provider conditions. Read the final
 per-platform receipt and Play state; a job exit alone is not installation proof.

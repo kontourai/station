@@ -1,49 +1,67 @@
 {
   "path": "docs/privacy-policy.md",
-
   "kind": "generated",
-
   "state": "source-reviewed",
-
   "summary": "Reviewed the declared inventory, generated artifacts and stated operational boundaries, including OTel, identity and browser push gaps. Seven existing classification tuples remain unchanged; the page explicitly describes an incomplete, unapproved working inventory.",
-
-  "limits": "Source review covers the stated operational facts and generator behavior. Whole-inventory completeness, legal/store classification, provider practices and publication remain unverified and require separate owner work. No real login, export, phone delivery or submission. Additional main merge b269a6cf9: structural reconciliation only; prior distinct anchors below are historical reviews, not approval of combined bytes. Active bindings retain existing anchors; combined dependency bytes remain stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"pnpm-lock.yaml\",\"ours\":{\"digest\":\"2907b97d6a2e98b4211695a78cf83b03419218f1dd95ce090ca753d9bdbad14a\",\"revision\":\"b50eeb9584c1808e429e59dcb3c3c2253307bbbe\"},\"main\":{\"digest\":\"29dbdce300fcd3d881ae511317af478da6e9c098a8e8cf51c6b2269a937525df\",\"revision\":\"df9188971e1a93d2c5525a7f5f38e3da93c9e4de\"}},{\"path\":\"src-server/services/identity/local-account-provider.ts\",\"ours\":{\"digest\":\"1eadf45d7477da2ad97cd820a8723488f69fc27cf61cbca808bb934f0b066eca\",\"revision\":\"34838898143e9a6048203520cdc6da3f78ecf49e\"},\"main\":{\"digest\":\"adcca23a978ad7c38ca7cbcbf1d14b1241a12ab2991723a11cd1e1319668a2de\",\"revision\":\"c8bae67dac38dce6107177638464f9f9944fef92\"}}].",
-
-  "document": {"digest":"fb5be7ad7342be17509e79e40a6e2dbbe7046ea7dbbe8db4ba637fcdbb21d403","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
-
+  "limits": "Source review covers the stated operational facts and generator behavior. Whole-inventory completeness, legal/store classification, provider practices and publication remain unverified and require separate owner work. No real login, export, phone delivery or submission. Additional main merge b269a6cf9: structural reconciliation only; prior distinct anchors below are historical reviews, not approval of combined bytes. Active bindings retain existing anchors; combined dependency bytes remain stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"pnpm-lock.yaml\",\"ours\":{\"digest\":\"2907b97d6a2e98b4211695a78cf83b03419218f1dd95ce090ca753d9bdbad14a\",\"revision\":\"b50eeb9584c1808e429e59dcb3c3c2253307bbbe\"},\"main\":{\"digest\":\"29dbdce300fcd3d881ae511317af478da6e9c098a8e8cf51c6b2269a937525df\",\"revision\":\"df9188971e1a93d2c5525a7f5f38e3da93c9e4de\"}},{\"path\":\"src-server/services/identity/local-account-provider.ts\",\"ours\":{\"digest\":\"1eadf45d7477da2ad97cd820a8723488f69fc27cf61cbca808bb934f0b066eca\",\"revision\":\"34838898143e9a6048203520cdc6da3f78ecf49e\"},\"main\":{\"digest\":\"adcca23a978ad7c38ca7cbcbf1d14b1241a12ab2991723a11cd1e1319668a2de\",\"revision\":\"c8bae67dac38dce6107177638464f9f9944fef92\"}}]. Upstream merge review anchors retained as historical evidence only; merged source mismatches require semantic re-review: {\"document\":{\"digest\":\"fb5be7ad7342be17509e79e40a6e2dbbe7046ea7dbbe8db4ba637fcdbb21d403\",\"revision\":\"c8bae67dac38dce6107177638464f9f9944fef92\"},\"sources\":[{\"path\":\"pnpm-lock.yaml\",\"digest\":\"5c3c9968c59ac5b4e7e5ec861c2873bfce11b7c60e7b28e8706db6b29d028ddb\",\"revision\":\"1e6450e0caa47975d33f505a1348bdc01ae1382e\"},{\"path\":\"src-server/services/__tests__/privacy-inventory.test.ts\",\"digest\":\"d76754d2b6182ff1bb5f89a1fe3b61719c9654fea01485c5392317b588e3bd38\",\"revision\":\"c8bae67dac38dce6107177638464f9f9944fef92\"},{\"path\":\"src-server/services/identity/local-account-provider.ts\",\"digest\":\"adcca23a978ad7c38ca7cbcbf1d14b1241a12ab2991723a11cd1e1319668a2de\",\"revision\":\"c8bae67dac38dce6107177638464f9f9944fef92\"},{\"path\":\"src-server/services/identity/local-account-runtime.ts\",\"digest\":\"fe5b823f91b15a868e183a98f18639531c1ada051ac490268102a26c1f261124\",\"revision\":\"c8bae67dac38dce6107177638464f9f9944fef92\"},{\"path\":\"src-server/services/notifications/web-push-channel.ts\",\"digest\":\"693602d66e0bbea68b0122f97be012ca34f9456051c19e47a9bb13a335219054\",\"revision\":\"c8bae67dac38dce6107177638464f9f9944fef92\"},{\"path\":\"src-server/services/privacy-inventory.ts\",\"digest\":\"469cc6a8bea5a9943040b373be225917c6aa8cbe5de5a5fe003e6ae2810752b9\",\"revision\":\"c8bae67dac38dce6107177638464f9f9944fef92\"},{\"path\":\"src-server/services/usage-telemetry-service.ts\",\"digest\":\"477dd0b6487762648a027efc928cf3fc087fc5e406792728805996109148eb38\",\"revision\":\"c8bae67dac38dce6107177638464f9f9944fef92\"},{\"path\":\"src-server/telemetry.ts\",\"digest\":\"f682958dc24d74cfee413e2986b257df4177c5645386a0ec9ed5e3774bab090c\",\"revision\":\"c8bae67dac38dce6107177638464f9f9944fef92\"},{\"path\":\"src-ui/src/hooks/usePushNotifications.ts\",\"digest\":\"836ba76645a4c7f6637c76596993409d01b8ed1342d8783956de5418e4ea2be0\",\"revision\":\"c8bae67dac38dce6107177638464f9f9944fef92\"}],\"summary\":\"Reviewed the declared inventory, generated artifacts and stated operational boundaries, including OTel, identity and browser push gaps. Seven existing classification tuples remain unchanged; the page explicitly describes an incomplete, unapproved working inventory.\",\"limits\":\"Source review covers the stated operational facts and generator behavior. Whole-inventory completeness, legal/store classification, provider practices and publication remain unverified and require separate owner work. No real login, export, phone delivery or submission.\"}",
+  "document": {
+    "digest": "fb5be7ad7342be17509e79e40a6e2dbbe7046ea7dbbe8db4ba637fcdbb21d403",
+    "revision": "c8bae67dac38dce6107177638464f9f9944fef92"
+  },
   "sources": [
-    {"path":"pnpm-lock.yaml","digest":"5827b0dac0aa1d3a2beb2a0ab719df8fcbd2fdac0bc4a4a7e01c4cae620ba122","revision":"8e884d84b5609d130f29937159601c65d119b664"},
-
-    {"path":"src-server/services/__tests__/privacy-inventory.test.ts","digest":"d76754d2b6182ff1bb5f89a1fe3b61719c9654fea01485c5392317b588e3bd38","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
-
-    {"path":"src-server/services/identity/local-account-provider.ts","digest":"1eadf45d7477da2ad97cd820a8723488f69fc27cf61cbca808bb934f0b066eca","revision":"34838898143e9a6048203520cdc6da3f78ecf49e"},
-
-    {"path":"src-server/services/identity/local-account-runtime.ts","digest":"fe5b823f91b15a868e183a98f18639531c1ada051ac490268102a26c1f261124","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
-
-    {"path":"src-server/services/notifications/web-push-channel.ts","digest":"693602d66e0bbea68b0122f97be012ca34f9456051c19e47a9bb13a335219054","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
-
-    {"path":"src-server/services/privacy-inventory.ts","digest":"469cc6a8bea5a9943040b373be225917c6aa8cbe5de5a5fe003e6ae2810752b9","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
-
-    {"path":"src-server/services/usage-telemetry-service.ts","digest":"477dd0b6487762648a027efc928cf3fc087fc5e406792728805996109148eb38","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
-
-    {"path":"src-server/telemetry.ts","digest":"f682958dc24d74cfee413e2986b257df4177c5645386a0ec9ed5e3774bab090c","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
-
-    {"path":"src-ui/src/hooks/usePushNotifications.ts","digest":"836ba76645a4c7f6637c76596993409d01b8ed1342d8783956de5418e4ea2be0","revision":"c8bae67dac38dce6107177638464f9f9944fef92"}
+    {
+      "path": "pnpm-lock.yaml",
+      "digest": "5827b0dac0aa1d3a2beb2a0ab719df8fcbd2fdac0bc4a4a7e01c4cae620ba122",
+      "revision": "8e884d84b5609d130f29937159601c65d119b664"
+    },
+    {
+      "path": "src-server/services/__tests__/privacy-inventory.test.ts",
+      "digest": "d76754d2b6182ff1bb5f89a1fe3b61719c9654fea01485c5392317b588e3bd38",
+      "revision": "c8bae67dac38dce6107177638464f9f9944fef92"
+    },
+    {
+      "path": "src-server/services/identity/local-account-provider.ts",
+      "digest": "1eadf45d7477da2ad97cd820a8723488f69fc27cf61cbca808bb934f0b066eca",
+      "revision": "34838898143e9a6048203520cdc6da3f78ecf49e"
+    },
+    {
+      "path": "src-server/services/identity/local-account-runtime.ts",
+      "digest": "fe5b823f91b15a868e183a98f18639531c1ada051ac490268102a26c1f261124",
+      "revision": "c8bae67dac38dce6107177638464f9f9944fef92"
+    },
+    {
+      "path": "src-server/services/notifications/web-push-channel.ts",
+      "digest": "693602d66e0bbea68b0122f97be012ca34f9456051c19e47a9bb13a335219054",
+      "revision": "c8bae67dac38dce6107177638464f9f9944fef92"
+    },
+    {
+      "path": "src-server/services/privacy-inventory.ts",
+      "digest": "469cc6a8bea5a9943040b373be225917c6aa8cbe5de5a5fe003e6ae2810752b9",
+      "revision": "c8bae67dac38dce6107177638464f9f9944fef92"
+    },
+    {
+      "path": "src-server/services/usage-telemetry-service.ts",
+      "digest": "477dd0b6487762648a027efc928cf3fc087fc5e406792728805996109148eb38",
+      "revision": "c8bae67dac38dce6107177638464f9f9944fef92"
+    },
+    {
+      "path": "src-server/telemetry.ts",
+      "digest": "f682958dc24d74cfee413e2986b257df4177c5645386a0ec9ed5e3774bab090c",
+      "revision": "c8bae67dac38dce6107177638464f9f9944fef92"
+    },
+    {
+      "path": "src-ui/src/hooks/usePushNotifications.ts",
+      "digest": "836ba76645a4c7f6637c76596993409d01b8ed1342d8783956de5418e4ea2be0",
+      "revision": "c8bae67dac38dce6107177638464f9f9944fef92"
+    }
   ],
-
   "checks": [
     "Independent synthetic review caught flag loss and supplied-input inconsistency.",
-
     "Repair: 30 tests passed; old renderer produced 19 expected failures, exact restoration returned 30 passes.",
-
     "Final prose accepted independently; classifications/native artifact unchanged and all generated artifacts match.",
-
     "Final declared-question wording suite: 30 tests passed; no classifications or native artifact changed.",
-
     "Reviewed integration deltas: src-server/services/__tests__/privacy-inventory.test.ts: Assertions now verify the declared-inventory wording and separate generation from publication; all 30 tests passed. src-server/services/privacy-inventory.ts: Narrowed generated linkage/tracking questions to inventory declarations and corrected generator direction; classification values unchanged. Final renderer suite: 30 passed.",
-
     "Formatter-only change; emitted JavaScript is byte-identical.",
-
     "Integration source review through e0314c727: telemetry.ts inlined and un-exported resolveOtelResourceAttributes and the injectable hash hook, keeping the same random installation hash and `os.type` attributes behind the same endpoint gate. The lockfile only dropped bearing/forage. The generated OTel and telemetry disclosures remain accurate. Source review is separate from executed test evidence."
   ]
 }
