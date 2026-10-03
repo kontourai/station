@@ -1,0 +1,7 @@
+{
+  "revision": "78cae83646c51c21b8d21e3eca6704912fc594a6",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"useAgentsViewModel.ts changed only handleDuplicate: with unsaved edits it navigates to /agents/new once the prepared copy renders clean, instead of inside the discard prompt's continuation. The document's only claim about this file is that the editor reads the Agent tool catalog through useAgentToolsQuery; unchanged. No route, request or response shape changed."}
+  ]
+}

@@ -368,7 +368,7 @@
 
     {"path":"src-ui/src/lib/branding-theme.ts","digest":"6b0a440ba723e5af74ff8230c50b2f268a87a85aa3dadce7f12a1de13257cd9d","revision":"1e5f63186142dd36fcb720deb7660808dbf2f56b"},
 
-    {"path":"src-ui/src/views/agent-editor/useAgentsViewModel.ts","digest":"09128cce1a7fe91bcfbe64e378dce4d236938460d2d31ae3499cfa2234451505","revision":"61109781a84058b3a3895504ae2c1b29842e441e"},
+    {"path":"src-ui/src/views/agent-editor/useAgentsViewModel.ts","digest":"2d244cf60c3cea858eea29ada6c386957edbe278f8c9c7aa939902a0d69120c7","revision":"8143a7a8fdf0b23cf9a7dc780430788bf9d00da4"},
 
     {"path":"src-ui/src/views/layout-workspace-shape.ts","digest":"1ee63d8a83172c792bb13f00c2fedf804c005053fd8a32da3862b9c1205777b0","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

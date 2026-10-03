@@ -232,7 +232,7 @@
 
     {"path":"src-ui/src/components/session/SessionModelPicker.tsx","digest":"bd0b0496ff4a4a794ae1e5218f3cf536b825a51604a431e8c575cae79eb403d3","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/components/SplitPaneLayout.css","digest":"6433a2150e6308c6c3121af9c5beffdab52786e43723288790af24a41fdf630f","revision":"429c70d487f02c105a523de55b2f02f498520703"},
+    {"path":"src-ui/src/components/SplitPaneLayout.css","digest":"00e78e23711f9ced933d8122b89c2d543908729287dd3e3717d56cbbbf84601e","revision":"8143a7a8fdf0b23cf9a7dc780430788bf9d00da4"},
 
     {"path":"src-ui/src/components/SplitPaneLayout.tsx","digest":"afa5bac34d039da9bdb075158d39ca552af35b773c2ca0b7a5c79b5fd85681ff","revision":"cd7dabcd93bf05a27d66f74e667667dcf771d615"},
 

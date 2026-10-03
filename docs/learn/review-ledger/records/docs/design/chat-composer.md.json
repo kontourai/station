@@ -46,7 +46,7 @@
 
     {"path":"src-ui/src/components/chat-dock/ChatDockMobileOverflowSheet.tsx","digest":"a8bc823744ae5fbe11ca4d59391185963104e36549cf5fdc2b178afceb603650","revision":"af7dbb3005e9e1f29dd1450b0a06ec5703afb0d6"},
 
-    {"path":"src-ui/src/components/chat/chat.css","digest":"9ff5dc95b71dda67d80f7241591dab8294cb5252f6001b589dcc80cabbad14b7","revision":"f8dcd092359118c2f44bda770acccc1c45beb281"},
+    {"path":"src-ui/src/components/chat/chat.css","digest":"437e0855be26f58012c03b5684bac913804cd3ef0597df1d1f4ac68206567c3b","revision":"8143a7a8fdf0b23cf9a7dc780430788bf9d00da4"},
 
     {"path":"src-ui/src/index.css","digest":"e3bf9bb5c0dbeea17eb06bf2536ebcd445ce60875becb64ca97da08118422dcd","revision":"8fd71c3714eceeb651bd8e52f200aa1532fa33c6"},
 
