@@ -138,7 +138,7 @@
 
     {"path":"src-ui/src/__tests__/SkillsView.navigation.test.tsx","digest":"7d063868e930ad7fa87883704b779e7d6ac1bb251e7b32754ef2ee424cbd7c0a","revision":"fb82d3d9619cdb345148501d010222c8b1332662"},
 
-    {"path":"src-ui/src/__tests__/SkillsView.launch.test.tsx","digest":"d36ca0900ffc39def80df34e4c3876804a990ae4d39dbe9a463cf995c6d0a532","revision":"fb82d3d9619cdb345148501d010222c8b1332662"},
+    {"path":"src-ui/src/__tests__/SkillsView.launch.test.tsx","digest":"27d9ef6edf40b46f9f05a32475882aa5cee903c02c41c0962f6763a39b9f2414","revision":"39a9b348e9f283080439de010b5a0d26b507e3c3"},
 
     {"path":"src-ui/src/hooks/useActiveChatSessionLifecycle.ts","digest":"2a90e4f43cde95121b12aec4ae642905f1329e9e23e95f797a41cd6746da9349","revision":"4c9ba2382e94915895b19b7fdd08979d83807864"},
 
