@@ -49,7 +49,9 @@ export function PullRequestRow({
     <>
       <span className="pull-request-row__title">{title}</span>
       <span className="pull-request-row__meta">
-        <span className="pull-request-row__reference">{reference}</span>
+        {reference !== title && (
+          <span className="pull-request-row__reference">{reference}</span>
+        )}
         {chips.map((chip) => (
           <PullRequestChip key={chip.label} {...chip} />
         ))}

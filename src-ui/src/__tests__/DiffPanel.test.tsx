@@ -3,6 +3,7 @@
  */
 
 import {
+  cleanup,
   fireEvent,
   render,
   screen,
@@ -58,8 +59,26 @@ let createCommentCalls: Array<{
  */
 let deleteCommentCalls: Array<{ projectSlug: string; id: string }> = [];
 
+let refetchCalls = 0;
+/** What the toolbar's toggles asked the device-settings store to set. */
+let deviceSettingCalls: Array<[string, unknown]> = [];
+
+vi.mock('../contexts/DeviceSettingsContext', () => ({
+  useDeviceSettings: () => ({ diffStyle: 'unified', diffWrap: true }),
+  useDeviceSettingsActions: () => ({
+    setDeviceSetting: (key: string, value: unknown) => {
+      deviceSettingCalls.push([key, value]);
+    },
+  }),
+}));
+
 vi.mock('@kontourai/station-sdk', () => ({
-  useCodingDiffQuery: () => diffQueryResult,
+  useCodingDiffQuery: () => ({
+    ...diffQueryResult,
+    refetch: () => {
+      refetchCalls += 1;
+    },
+  }),
   useDiffCommentsQuery: () => ({ data: commentsQueryData }),
   useCreateDiffCommentMutation: () => ({
     mutate: (
@@ -171,6 +190,9 @@ ${additions}
 }
 
 afterEach(() => {
+  cleanup();
+  refetchCalls = 0;
+  deviceSettingCalls = [];
   diffQueryResult = { data: '', isLoading: false, error: null };
   commentsQueryData = [];
   createCommentCalls = [];
@@ -178,9 +200,49 @@ afterEach(() => {
 });
 
 describe('DiffPanel', () => {
-  test('renders the panel header', () => {
+  test('the toolbar is counts and four named icon tools; no eyebrow repeats the pane name', () => {
+    diffQueryResult = { data: SAMPLE_PATCH, isLoading: false, error: null };
     render(<DiffPanel workingDir="/repo" projectSlug="project" />);
-    expect(screen.getByText('Git Diff')).toBeTruthy();
+    expect(screen.queryByText(/git diff/i)).toBeNull();
+    const tools = [
+      'Collapse all files',
+      'Expand all files',
+      'Split view',
+      'Wrap lines',
+    ].map((name) => screen.getByRole('button', { name }));
+    for (const tool of tools) {
+      // Icon-only, named and tooltipped: no visible words on the bar.
+      expect(tool.textContent).toBe('');
+      expect(tool.getAttribute('title')).toBeTruthy();
+      expect(tool.querySelector('svg')).toBeTruthy();
+    }
+    // The two toggles say which way they are set; the two commands do not
+    // pretend to be toggles.
+    expect(tools[0].hasAttribute('aria-pressed')).toBe(false);
+    expect(tools[1].hasAttribute('aria-pressed')).toBe(false);
+    expect(tools[2].getAttribute('aria-pressed')).toBe('false');
+    expect(tools[3].getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(tools[2]);
+    expect(deviceSettingCalls).toContainEqual(['diffStyle', 'split']);
+    fireEvent.click(tools[3]);
+    expect(deviceSettingCalls).toContainEqual(['diffWrap', false]);
+  });
+
+  test('an empty patch is one quiet line, and an error offers Retry', () => {
+    render(<DiffPanel workingDir="/repo" projectSlug="project" />);
+    expect(screen.getByText('No changes').className).toContain(
+      'diff-panel__note',
+    );
+    expect(screen.queryByRole('button', { name: 'Wrap lines' })).toBeNull();
+    cleanup();
+    diffQueryResult = {
+      data: '',
+      isLoading: false,
+      error: { message: 'boom' },
+    };
+    render(<DiffPanel workingDir="/repo" projectSlug="project" />);
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(refetchCalls).toBe(1);
   });
 
   test('shows loading state', () => {

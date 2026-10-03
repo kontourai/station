@@ -113,7 +113,9 @@ export function ConversationPullRequestLinks({
         <ul className="conversation-pr-links__list">
           {visibleLinks.map((link) => {
             const status = link.status;
-            const reference = `${link.repository.owner}/${link.repository.name} #${link.ref}`;
+            // The host is part of the identity: the same number on two
+            // hosts is two pull requests.
+            const reference = `${link.host}/${link.repository.owner}/${link.repository.name} #${link.ref}`;
             return (
               <PullRequestRow
                 key={`${link.source}:${linkKey(link)}`}

@@ -174,15 +174,28 @@ test('keeps same-number links distinct and shows explicit, derived and Task prov
   const mutations = await mount(page);
   await expect(page.getByText('one.test/team/repo #17')).toBeVisible();
   await expect(page.getByText('two.test/another/repo #17')).toHaveCount(2);
-  await expect(page.getByText(/Derived from the current branch/)).toBeVisible();
-  await expect(page.getByText(/Declared by a Task/)).toBeVisible();
+  await expect(page.getByText('from branch', { exact: true })).toBeVisible();
+  await expect(page.getByText('from a Task', { exact: true })).toBeVisible();
   await expect(page.getByText(/permission expired/).first()).toBeVisible();
+  // The explicit link's Unlink is in its row menu; the Task-declared link
+  // of the same number has none.
   const second = page
     .getByRole('listitem')
-    .filter({ hasText: 'two.test/another/repo #17Explicit' });
-  await second.getByRole('button', { name: 'Unlink' }).click();
+    .filter({ hasText: 'two.test/another/repo #17' })
+    .filter({ hasText: 'linked' });
+  await second
+    .getByRole('button', { name: 'More actions for two.test/another/repo #17' })
+    .click();
+  await page.getByRole('menuitem', { name: 'Unlink' }).click();
   await expect(page.getByText('two.test/another/repo #17')).toHaveCount(1);
-  await expect(page.getByText(/Declared by a Task/)).toBeVisible();
+  await expect(page.getByText('from a Task', { exact: true })).toBeVisible();
+  // No refresh or link button is labelled on the bar; the field is behind +.
+  await expect(page.getByRole('button', { name: 'Refresh' })).toHaveText('');
+  await expect(page.getByRole('textbox')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Link a pull request' }).click();
+  await expect(
+    page.getByRole('textbox', { name: 'Pull request' }),
+  ).toBeVisible();
   expect(mutations).toMatchObject([
     {
       method: 'DELETE',

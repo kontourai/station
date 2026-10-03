@@ -1050,7 +1050,7 @@ function ReviewOwner({
             : intent?.action === 'approve'
               ? 'Approve'
               : 'Comment on'
-        } ${target.owner}/${target.repository} #${target.ref} at ${intent?.expectedHeadSha ?? ''}${intent?.action === 'merge' ? ` with ${humanise(intent.method).toLowerCase()}` : ''}, as the account signed in to ${siteName}?`}
+        } ${target.owner}/${target.repository} #${target.ref} at ${intent?.expectedHeadSha ?? ''}${intent?.action === 'merge' ? ` with ${(MERGE_METHOD_LABEL[intent.method] ?? humanise(intent.method)).toLowerCase()}` : ''}, as the account signed in to ${siteName}?`}
         confirmLabel={
           intent?.action === 'merge'
             ? intent.autoMerge

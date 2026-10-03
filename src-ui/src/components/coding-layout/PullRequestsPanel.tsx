@@ -318,7 +318,9 @@ export function PullRequestsPanel({
           <ul className="pull-requests-panel__list">
             {elsewhere.map((link) => {
               const status = link.status;
-              const reference = `${link.repository.owner}/${link.repository.name} #${link.ref}`;
+              // A link elsewhere names its host: two hosts may hold the
+              // same owner/name/number, and they are two pull requests.
+              const reference = `${link.host}/${link.repository.owner}/${link.repository.name} #${link.ref}`;
               return (
                 <PullRequestRow
                   key={`${link.source}:${linkKey(link)}`}
