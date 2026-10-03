@@ -231,6 +231,7 @@ function NativeRelayGrantControls({
       if (result.status === 'failed') throw new Error(result.failure.primary);
       return result;
     },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey }),
     onSettled: () => publishNativeRelaySetupChange(profile.name),
     onError: (cause) => {
       const code = cause instanceof Error ? cause.message : 'statusUnavailable';
@@ -738,6 +739,25 @@ function NativeRelayGrantSummary({ state }: { state: NativeRelayGrantState }) {
   );
 }
 
+function NativeRelaySetupQueryRefresh() {
+  const queryClient = useQueryClient();
+  useEffect(
+    () =>
+      subscribeNativeRelaySetupState((profileName) => {
+        void queryClient.invalidateQueries({
+          predicate: ({ queryKey }) =>
+            (queryKey[0] === 'native-relay-key-approval' ||
+              queryKey[0] === 'native-relay-grant' ||
+              queryKey[0] === 'native-relay-enrollment-recovery') &&
+            typeof queryKey[1] === 'string' &&
+            queryKey[1].toLowerCase() === profileName.toLowerCase(),
+        });
+      }),
+    [queryClient],
+  );
+  return null;
+}
+
 export function RelayRouteProfiles({
   onInvitationAccepted,
 }: {
@@ -745,20 +765,6 @@ export function RelayRouteProfiles({
 } = {}) {
   const { isTauri, channel, pairingDeepLinkScheme } = usePlatformProfile();
   const repository = isTauri ? nativeProfileRepository() : null;
-  const queryClient = useQueryClient();
-  useEffect(() => {
-    if (!repository) return;
-    return subscribeNativeRelaySetupState((profileName) => {
-      void queryClient.invalidateQueries({
-        predicate: ({ queryKey }) =>
-          (queryKey[0] === 'native-relay-key-approval' ||
-            queryKey[0] === 'native-relay-grant' ||
-            queryKey[0] === 'native-relay-enrollment-recovery') &&
-          typeof queryKey[1] === 'string' &&
-          queryKey[1].toLowerCase() === profileName.toLowerCase(),
-      });
-    });
-  }, [queryClient, repository]);
   const connectionContext = useConnections();
   const evidence = connectionContext.captureCredentialEvidence();
   const requestScope = useHostRequestAuthorityScope();
@@ -896,6 +902,7 @@ export function RelayRouteProfiles({
       className="relay-route-profiles native-relay-setup"
       aria-label="Saved broker routes"
     >
+      <NativeRelaySetupQueryRefresh />
       <h2 className="relay-route-profiles__heading">Your Stations</h2>
       <p className="connections-computers__note">
         Choose a Station, then finish the steps to access its shared projects.
