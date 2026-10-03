@@ -2209,9 +2209,11 @@ manifest's field name (`skills`).
 `fetchSkillExperienceInventory(apiBase, options?)` and
 `fetchSkillExperienceSession(apiBase, threadId, cursor?, options?)` are available
 from `@kontourai/station-sdk/client`. Both validate the returned inventory or
-session projection before exposing it and preserve HTTP failure details.
+session projection before exposing it and preserve HTTP failure details. The
+canonical reader loads after a successful feature response; a reader failure
+remains an error.
 `useSkillExperienceInventoryQuery(config?)` and
-`useSkillExperienceSessionQuery(threadId, config?)` are React Query hooks from
+`useSkillExperienceSessionQuery(threadId, config?, cursor?)` are React Query hooks from
 the SDK root. The session hook remains disabled until a canonical thread exists.
 The optional cursor reads older invocation snapshots; those rows do not grant
 current execution authority.

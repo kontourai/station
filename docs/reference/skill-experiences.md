@@ -259,6 +259,21 @@ package or model prose. Deliberate Session deletion removes its snapshots in the
 same deletion transaction. Snapshot storage is presentation data; commands,
 requests, turns, decisions and outputs remain canonical Session facts.
 
+## Native preparation and display
+
+An unsent chat retains source identity and scalar inputs in the existing scoped
+draft. Reload restores a bounded display preview, not author instructions or
+execution authority. SDK feature responses use the deferred canonical reader;
+Send refetches installed inventory and checks the captured complete preparation
+after asynchronous composer work. A changed preparation is retained for review.
+
+Attachment role choices use existing composer client IDs. The sender maps them
+to indices in the actual outgoing staged references; unassigned ordinary files
+can remain in the same message. Recorded stages show role labels and original
+turn file positions. The canonical transcript owns file contents and viewing.
+Switching guided, alongside and chat presentation retains the same conversation,
+questionnaire drafts and composer controls.
+
 ## Add an isolated rich pane
 
 Optional `presentation.richView` is
