@@ -1,8 +1,8 @@
 /**
  * @vitest-environment jsdom
  *
- * The chat pane's floating status pill, at the pane (ChatDockBody): a live
- * chat presents approval, connection and turn activity in ONE floating
+ * The chat pane's composer status pill, at the pane (ChatDockBody): a live
+ * chat presents approval, connection and turn activity in ONE composer
  * element, and none of the inline surfaces it replaced (the reconnect
  * banner above the composer, the "Awaiting tool approval" row, the typing
  * dots) render beside it. A replay keeps its inline rows.
@@ -11,6 +11,7 @@
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, render, screen, waitFor } from '@testing-library/react';
+import type { ReactNode } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 
 const agentsMock = vi.hoisted(() => ({ current: [] as any[] }));
@@ -110,7 +111,9 @@ vi.mock('../hooks/useTTS', () => ({
 }));
 
 vi.mock('../components/chat/ChatInputArea', () => ({
-  ChatInputArea: () => <div data-testid="chat-input-area" />,
+  ChatInputArea: ({ activity }: { activity?: ReactNode }) => (
+    <div data-testid="chat-input-area">{activity}</div>
+  ),
 }));
 
 vi.mock('../components/chat/QueuedMessages', () => ({
@@ -212,7 +215,7 @@ afterEach(() => {
 
 const pill = () => document.querySelector('[data-chat-status-pill]');
 
-describe('ChatDockBody floating status pill', () => {
+describe('ChatDockBody composer status pill', () => {
   test('a pending approval is the pill, and no inline approval row repeats it', async () => {
     renderDock(
       buildSession({

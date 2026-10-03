@@ -36,6 +36,7 @@ export const EXPECTED_LABEL_NAMES = Object.freeze([
   'stage:preview',
   'stage:source',
   'stage:stable',
+  'station-autoland',
   'wontfix',
 ]);
 export const RETIRED_LABELS = Object.freeze([

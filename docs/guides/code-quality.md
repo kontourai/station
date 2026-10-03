@@ -63,7 +63,8 @@ npm run transfer:gate      # or push; STATION_TRANSFER_BASELINE_ROOT overrides t
 
 The capture reports are diagnostic transfer evidence, not completion evidence.
 Nothing slower belongs here. `ci:fast` remains the bounded fifteen-minute feedback
-lane and `full:regression` remains the sole completion receipt; the hook holds
+lane. Local `full:regression` and the hosted exact-source qualification receipt
+remain completion authorities; see [the release process](releasing.md). The hook holds
 only the subset that is cheap enough to run on every push *and* whose failure
 would otherwise land on `main` and stop every other lane.
 
