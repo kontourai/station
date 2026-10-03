@@ -20,7 +20,7 @@
 
     {"path":"packages/contracts/src/project-settings-overrides.ts","digest":"cd938a190a0ab9297c54a99fb5a7580167a67b395e55a52115ac31e5af90d49a","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
 
-    {"path":"packages/contracts/src/settings-registry.ts","digest":"1b22ce258daf0a7e941b8aa8d738b701595ba0d1a162547c4c1f560a69dad582","revision":"d6a3158c22a62d9530592c6366a1624790ee9401"},
+    {"path":"packages/contracts/src/settings-registry.ts","digest":"8ef726636bf81a48e73b4b24d2897edecf7cdc836b9523a9431ca60470104f37","revision":"faad29d67dec3873fdb6a4d5d0e18168caa1237e"},
 
     {"path":"packages/sdk/src/__tests__/update-app-config.test.ts","digest":"ae86370e904beb0524e62d3699ab19a94cae239a504f718cc00fcc4ae39eb9db","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
 
@@ -38,9 +38,9 @@
 
     {"path":"src-ui/src/views/SettingsView.tsx","digest":"1ede27735768ba3e57c06aabe2313abe5369045a9020512f32099e22980225ef","revision":"00bada2726c33a49f7edc8803d08831b46b6deb3"},
 
-    {"path":"src-ui/src/views/settings/SettingDescription.tsx","digest":"7c0376011e9e19c7e686ecfe684096dc632663d1fadabe63a70012d4da571037","revision":"75785f43c80623e548f4ae8f5282be9585e203dd"},
+    {"path":"src-ui/src/views/settings/SettingDescription.tsx","digest":"2a4dca041b6216c6533e2bb712373365cf0854c6db315d601943853c71d5131b","revision":"faad29d67dec3873fdb6a4d5d0e18168caa1237e"},
 
-    {"path":"src-ui/src/views/settings/settings-catalog.ts","digest":"3237f2153b03149c49e99e749340177fb8b6f627e1a223bed5894665c681d259","revision":"d6a3158c22a62d9530592c6366a1624790ee9401"},
+    {"path":"src-ui/src/views/settings/settings-catalog.ts","digest":"a62a07d66995891c070572a63cff4979265cd80ffa246d3d98c0379646853a72","revision":"faad29d67dec3873fdb6a4d5d0e18168caa1237e"},
 
     {"path":"src-ui/src/views/settings/settings-pages.ts","digest":"51532779b04e0d2ee33b5f69ddd00e306bb63bde48d26d495bf82c45c67ba291","revision":"75785f43c80623e548f4ae8f5282be9585e203dd"}
   ],

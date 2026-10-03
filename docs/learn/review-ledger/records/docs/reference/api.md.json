@@ -22,7 +22,7 @@
 
     {"path":"packages/contracts/src/agent.ts","digest":"e325363bc2303d78102c7c4c45b118756d71d66cae3d801eee303761d0715b6c","revision":"423cbe55b9e35e4cd8954fd441cb9f3c69740d66"},
 
-    {"path":"packages/contracts/src/config.ts","digest":"05591bdbec9d2e5ea98e24330e0020afb26e270e7c4808f7bd757c232f724d31","revision":"d6a3158c22a62d9530592c6366a1624790ee9401"},
+    {"path":"packages/contracts/src/config.ts","digest":"016d47884b0a2a4b982df7c9fad67e86b9c6aa858dbdae51441ed00d9919005b","revision":"faad29d67dec3873fdb6a4d5d0e18168caa1237e"},
 
     {"path":"packages/contracts/src/connection.ts","digest":"022f4a09e8e82df9cb1845564ba1cacd6488dd97b88ac0f6a0981c3c4f570d90","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -294,7 +294,7 @@
 
     {"path":"src-server/services/orchestration/model-launch-planning.ts","digest":"597ddcbc218834b005f24a64634a54c805f3563333a9d4d965a36028556bce48","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"4582d45b868ea008447f5405bcedb1adf987b1e3ad7701e39de19fc6a8d8994c","revision":"4711f21b516d04300b15ad4da473e24bf2e7adb2"},
+    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"ac1c9c5cc9605dc344ca728b2cb570bf3ebd3e210c42a82b21ca478b27c3d4c7","revision":"f7b3c575969281e525b5c38ab0fd4cb8ef9e407a"},
 
     {"path":"src-server/services/orchestration/orchestration-session-state.ts","digest":"44a232d30c1d080f58b798e418a54d3adacb1086b3b6757a06f307370b703943","revision":"af3c8fbfee90c9179a0ac19659b76d24c707d574"},
 

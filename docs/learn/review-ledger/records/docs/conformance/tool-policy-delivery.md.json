@@ -32,7 +32,7 @@
 
     {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"061da89e00216d5c3250d7f13dc1dea5717765b50db7ebf8c49672208524a3d0","revision":"423cbe55b9e35e4cd8954fd441cb9f3c69740d66"},
 
-    {"path":"src-server/providers/adapters/claude-adapter-events.ts","digest":"74dcc48d1c1504d0e5e8d09896cdb5be1decfb962f87018c4272f1ff34d2a18e","revision":"89765352964045a079d13a17bee54ab2de7b83e0"},
+    {"path":"src-server/providers/adapters/claude-adapter-events.ts","digest":"52379d9c14939e3d20bd149ba54c72228249880a87ed5d1f92bf71050d2f07f3","revision":"f7b3c575969281e525b5c38ab0fd4cb8ef9e407a"},
 
     {"path":"src-server/providers/adapters/claude-adapter.ts","digest":"3b2845b046cad6902a72d173810082511f848cb4819c02e0d42a18e28d3b7d80","revision":"423cbe55b9e35e4cd8954fd441cb9f3c69740d66"},
 
