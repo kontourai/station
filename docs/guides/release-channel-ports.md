@@ -57,8 +57,12 @@ one standalone file, so `scripts/install-script-generated.mjs` projects that
 table, the pinned signing keys from `config/release-manifest-keys.json`,
 portable targets from `packages/shared/src/portable-server-targets.mjs`, and
 Node.js pins from `config/portable-server-node-runtime.json` into generated
-blocks; `npm run install-script:check` fails when they are
-stale, and `node scripts/install-script-generated.mjs --sync` rewrites them.
+blocks. It does the same for the Windows `install.ps1`: the channel list,
+the pinned win32-x64 Node.js zip, and the installer core bundled from
+`packages/shared/src/installer/` (which carries the signing keys and the
+shared manifest verifier). `npm run install-script:check` fails when either
+installer is stale, and `node scripts/install-script-generated.mjs --sync`
+rewrites them.
 
 `STATION_CHANNEL=nightly` installs only from a signed public manifest
 (`STATION_INSTALL_PUBLIC_MANIFEST_URL`) whose envelope names the pinned
@@ -91,7 +95,11 @@ A signed public manifest (schema 2) names prebuilt server archives by
 platform (`station-server-<os>-<arch>`). The shell installer supports macOS
 and Linux on x64 or arm64 and requires a matching tar.gz artifact and a
 compatible launcher-protocol range; the manifest's Windows zip is not a
-shell-installer target. `install.sh` verifies the manifest
+shell-installer target. The Windows zip is `install.ps1`'s (#2675 slice W),
+which so far implements only the stage-only mode
+(`STATION_INSTALL_STAGE_ONLY=1`): it verifies and seals a version under
+`versions/<version>` exactly as below, and refuses a full install, uninstall
+and service handling until the later slices land. `install.sh` verifies the manifest
 against the pinned keys, picks this host's archive, checks its size and
 sha256, its `.station-prebuilt-archive` marker and its `.station-release.json`
 provenance, and extracts it to

@@ -33,6 +33,17 @@ import {
 } from '../utils/approvalMode';
 import type { EffectiveModelSource } from '../utils/execution';
 import type { PlanArtifact } from '../utils/planArtifacts';
+import {
+  isPlainRecord,
+  optionalString,
+  plainRecordOrUndefined,
+  readAttachmentStages,
+  readFlowRunBinding,
+  readPlanArtifact,
+  readQueuedMessageFailure,
+  readUnsentMessages,
+  stringList,
+} from './persisted-chat-shape';
 
 export type ChatRole = 'user' | 'assistant' | 'system';
 
@@ -95,6 +106,8 @@ export type ChatContentPart = {
   sourceEventId?: string;
   // Flat `tool-invocation` tool-part fields — the single chat tool vocabulary.
   toolName?: string;
+  /** See `MessagePart.toolKind`: the engine's own category, when reported. */
+  toolKind?: string;
   purpose?: string;
   server?: string;
   originalName?: string;
@@ -112,6 +125,8 @@ export type ChatContentPart = {
   approvalThreadId?: string;
   /** #2316: see `MessagePart.approvalEventId`. */
   approvalEventId?: string;
+  /** See `MessagePart.approvalToolName`. */
+  approvalToolName?: string;
   /** #2915: see `MessagePart.approvalSessionGrant`. */
   approvalSessionGrant?: ToolRequestSessionGrant;
   cancelled?: boolean;
@@ -138,6 +153,8 @@ export type ChatMessage = {
   contentParts?: ChatContentPart[];
   traceId?: string;
   timestamp?: number;
+  /** See `ChatMessage.steerInterruptedRun` in types.ts. */
+  steerInterruptedRun?: boolean;
   model?: string;
   modelOptions?: Record<string, string | number | boolean>;
   /**
@@ -528,6 +545,14 @@ export type ChatUIState = {
    */
   pendingApprovalTurnIds?: Record<string, string>;
   /**
+   * Requests the user has answered from the approval queue whose
+   * `request.resolved` has not arrived yet. They are still open on the
+   * server (so they stay in `pendingApprovals`), but they no longer wait on
+   * the user: status surfaces count `pendingApprovals` minus these. A
+   * decision that fails to deliver takes its request back off this list.
+   */
+  answeredApprovals?: string[];
+  /**
    * #2880: recorded decisions the engine has reported NOT acknowledged
    * (`request.delivery` `unacknowledged`). A later `acknowledged` for the
    * same request removes it, and the list empties when the session ends or
@@ -814,38 +839,55 @@ export function createDefaultChatState(
 }
 
 export function hydrateActiveChats(
-  sessions: PersistedActiveChat[],
+  sessions: PersistedActiveChat[] | unknown,
 ): ActiveChatsMap {
   const chats: ActiveChatsMap = {};
-  for (const session of sessions) {
+  // Every nested field is read through a shape check: this payload can come
+  // from an older UI build or be corrupt, and a value render cannot read
+  // crashed the whole chat pane on every retry (see persisted-chat-shape.ts).
+  if (!Array.isArray(sessions)) return chats;
+  for (const candidate of sessions as unknown[]) {
+    if (
+      !isPlainRecord(candidate) ||
+      typeof candidate.sessionId !== 'string' ||
+      typeof candidate.agentSlug !== 'string'
+    ) {
+      continue;
+    }
+    const session = candidate as PersistedActiveChat;
+    const text = (value: unknown) => optionalString(value);
+    const queuedMessageFailure = readQueuedMessageFailure(
+      session.queuedMessageFailure,
+    );
+    const unsentMessages = readUnsentMessages(session.unsentMessages);
     chats[session.sessionId] = {
       input: '',
       attachments: [],
-      attachmentStages: session.attachmentStages || [],
-      queuedMessages: session.queuedMessages || [],
-      ...(session.queuedMessageFailure
-        ? { queuedMessageFailure: session.queuedMessageFailure }
-        : {}),
-      ...(session.unsentMessages?.length
-        ? { unsentMessages: session.unsentMessages }
-        : {}),
-      inputHistory: session.inputHistory || [],
+      attachmentStages: readAttachmentStages(session.attachmentStages),
+      queuedMessages: stringList(session.queuedMessages),
+      ...(queuedMessageFailure ? { queuedMessageFailure } : {}),
+      ...(unsentMessages.length ? { unsentMessages } : {}),
+      inputHistory: stringList(session.inputHistory),
       hasUnread: false,
       agentSlug: session.agentSlug,
-      conversationId: session.conversationId,
-      currentSessionId: session.currentSessionId,
-      conversationOpenPending: Boolean(session.conversationId),
-      createdAt: session.createdAt,
-      title: session.title,
-      model: session.model,
-      modelSource: session.modelSource,
-      requestedModel: session.requestedModel,
-      requestedModelSource: session.requestedModelSource,
+      conversationId: text(session.conversationId),
+      currentSessionId: text(session.currentSessionId),
+      conversationOpenPending: typeof session.conversationId === 'string',
+      createdAt:
+        typeof session.createdAt === 'number' ? session.createdAt : undefined,
+      title: text(session.title),
+      model: text(session.model),
+      modelSource: text(session.modelSource) as EffectiveModelSource,
+      requestedModel:
+        session.requestedModel === null ? null : text(session.requestedModel),
+      requestedModelSource: text(
+        session.requestedModelSource,
+      ) as EffectiveModelSource,
       // #2436: an approval posture never rides the model-options bags. A
       // pick persisted there (or in the unreleased #2334 fields) becomes a
       // queued pick the server records on the next send.
       requestedProviderOptions: withoutLegacyApprovalMode(
-        session.requestedProviderOptions,
+        plainRecordOrUndefined(session.requestedProviderOptions),
       ),
       ...(() => {
         const queued = isApprovalMode(session.queuedApprovalMode)
@@ -861,20 +903,29 @@ export function hydrateActiveChats(
               : {}),
           }
         : {}),
-      defaultModel: session.defaultModel,
-      defaultModelSource: session.defaultModelSource,
-      projectSlug: session.projectSlug,
-      projectName: session.projectName,
-      executionMode: session.executionMode,
-      executionScope: session.executionScope,
-      agentConnectionId: session.agentConnectionId,
-      providerId: session.providerId,
-      defaultProviderId: session.defaultProviderId,
-      provider: session.provider,
-      providerOptions: withoutLegacyApprovalMode(session.providerOptions) || {},
-      orchestrationSessionStarted: session.orchestrationSessionStarted || false,
-      orchestrationProvider: session.orchestrationProvider,
-      orchestrationModel: session.orchestrationModel,
+      defaultModel: text(session.defaultModel),
+      defaultModelSource: text(
+        session.defaultModelSource,
+      ) as EffectiveModelSource,
+      projectSlug: text(session.projectSlug),
+      projectName: text(session.projectName),
+      executionMode: text(session.executionMode) as ExecutionMode,
+      executionScope:
+        session.executionScope === 'project' ||
+        session.executionScope === 'global'
+          ? session.executionScope
+          : undefined,
+      agentConnectionId: text(session.agentConnectionId),
+      providerId: text(session.providerId),
+      defaultProviderId: text(session.defaultProviderId),
+      provider: text(session.provider) as EngineId,
+      providerOptions:
+        withoutLegacyApprovalMode(
+          plainRecordOrUndefined(session.providerOptions),
+        ) || {},
+      orchestrationSessionStarted: session.orchestrationSessionStarted === true,
+      orchestrationProvider: text(session.orchestrationProvider) as EngineId,
+      orchestrationModel: text(session.orchestrationModel),
       // archive#3300: never resurrect a LIVE status claim from storage. The
       // fields that could re-derive it (`orchestrationTurnOpen`, `status`,
       // `streamingMessage`, `openTurnId`) are deliberately not persisted, so
@@ -887,15 +938,16 @@ export function hydrateActiveChats(
         session.orchestrationStatus === 'running' ||
         session.orchestrationStatus === 'awaiting-approval'
           ? undefined
-          : session.orchestrationStatus,
-      sessionAutoApprove: session.sessionAutoApprove || [],
+          : text(session.orchestrationStatus),
+      sessionAutoApprove: stringList(session.sessionAutoApprove),
       // archive#1292: never read a persisted value here (even from an old
       // payload that still has the field) — a rehydrated session always
       // starts with no ephemeral notices.
       ephemeralMessages: [],
-      currentModeId: session.currentModeId,
-      planArtifact: session.planArtifact || null,
-      flowRun: session.flowRun || null,
+      currentModeId:
+        session.currentModeId === null ? null : text(session.currentModeId),
+      planArtifact: readPlanArtifact(session.planArtifact),
+      flowRun: readFlowRunBinding(session.flowRun),
     };
   }
   return chats;

@@ -1,0 +1,51 @@
+{
+  "path": "docs/reference/skill-experiences.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Reviewed the complete bounded visual Skill authoring contract against public types, closed schemas, real author build caller, portable parser and SDK-backed Skill identity checks. Source/digest expectations are author declarations, never host provenance or grants. Explicitly separates current author validation from activation, renderer, session persistence, composition and historical-run work.",
+
+  "limits": "Controlled local Node/macOS author-file tests and CLI build only. No installed runtime, model/provider, native/device, hosted schema URI or released-package proof. FIFO controls are POSIX-only and skip Windows; this is not hostile concurrent filesystem isolation or complete transitive Skill dependency discovery.",
+
+  "document": {"digest":"0b604c7b0c6cb225edba01a6dcd7652a378cf4d20d44a6b11da6530a19ed8d18","revision":"4846133db20d56a37c3941d83b0dca5444f21a52"},
+
+  "sources": [
+    {"path":"packages/contracts/src/skill-experience.ts","digest":"4e46998e7d18f942b60b2cfc9e8c1502ddf9b25e1b5c4f05a987bc23faa5d4a6","revision":"4846133db20d56a37c3941d83b0dca5444f21a52"},
+
+    {"path":"packages/contracts/src/agent-plugin.ts","digest":"2e3d120f5eae47814db06203169553f98b31a39263efae9d768762cf8452b1a9","revision":"4846133db20d56a37c3941d83b0dca5444f21a52"},
+
+    {"path":"schemas/agent-plugins/skill-experience-1.0.schema.json","digest":"7805eb30fd8e9757aa52e9974674355dfd02b518cd92362bc5c200c9b546a811","revision":"4846133db20d56a37c3941d83b0dca5444f21a52"},
+
+    {"path":"schemas/agent-plugins/io.kontourai.station-1.0.schema.json","digest":"e3ddeacd09b521057a214a203eb486d277b5be0256bfe2c99bee9696aed26ed5","revision":"4846133db20d56a37c3941d83b0dca5444f21a52"},
+
+    {"path":"packages/shared/src/skill-experience-author.ts","digest":"5227a059dbe7a2f557e0916ae58a796021b387ef0589c15d278b82a04852ed7b","revision":"4846133db20d56a37c3941d83b0dca5444f21a52"},
+
+    {"path":"packages/shared/src/regular-file.ts","digest":"e6b1a4bfa2c1379a327d70dc3b357aadfe2d814bab4f6a0e0dc0270560eb7a78","revision":"4846133db20d56a37c3941d83b0dca5444f21a52"},
+
+    {"path":"packages/shared/src/build.ts","digest":"20f919a4a98519ce20e8e2f0d5d498a4be8daeba1314a97ddae752fd36df4630","revision":"4846133db20d56a37c3941d83b0dca5444f21a52"},
+
+    {"path":"packages/shared/src/agent-plugin-manifest.ts","digest":"a1b0dab918c8787193cc23e0f5362fc3ea5be6885440b56522314329974d55ba","revision":"4846133db20d56a37c3941d83b0dca5444f21a52"},
+
+    {"path":"packages/shared/src/__tests__/skill-experience-author.test.ts","digest":"6cde4e5b29f27b5dd8eecea1e44153fa6462b627c367b4e8ac79102726650a5f","revision":"72ad2fb97f80c4b5bdccf534460a3aecf81e4d02"},
+
+    {"path":"examples/visual-skill-experience/plugin.json","digest":"0ff451e1841bd1be69321dd1fcebe88a472dcc4b6b19f14ec83061212171c128","revision":"4846133db20d56a37c3941d83b0dca5444f21a52"},
+
+    {"path":"examples/visual-skill-experience/io.kontourai.station/experiences/stress-test-idea.json","digest":"b09ffb2394b1f81a15df043bd9befbb19d0dbf30256781cb33da4cfe88c8e208","revision":"4846133db20d56a37c3941d83b0dca5444f21a52"},
+
+    {"path":"examples/visual-skill-experience/skills/stress-test-idea/SKILL.md","digest":"d5e7270b300e941d361be53562712fa04274a3076ba0201803d422832966e35d","revision":"4846133db20d56a37c3941d83b0dca5444f21a52"},
+
+    {"path":"src-server/__test-utils__/temp-dirs.ts","digest":"20c81129e9cd3db2df51d96b788515b8afde2a2740112ca25e101a6880f72cb1","revision":"cd4139fe26bdaac578c408aaa75784fff0391a5a"}
+  ],
+
+  "checks": [
+    "Source review of every documented field, bound, compatibility/error boundary and explicit deferred item.",
+
+    "Focused author/build/resource suite:61 tests passed; current author suite:20 tests passed after restoring mutation.",
+
+    "Replacing the nonblocking opener with a correctly imported blocking openSync preserved positive child builds; both FIFO cases failed with ETIMEDOUT while18 other tests passed. Restored committed bytes returned20 green.",
+
+    "Earlier actual source-built CLI validates original data-only example with exit0; shared typecheck, generated-validator freshness and28-example conformance passed."
+  ]
+}

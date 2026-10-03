@@ -2,7 +2,10 @@ import type {
   InterruptTurnResult,
   OrchestrationSessionSummary,
 } from '@kontourai/station-contracts/orchestration';
-import { PROVIDER_TURN_IN_PROGRESS_CODE } from '@kontourai/station-contracts/provider';
+import {
+  ATTACHMENT_INPUT_UNSUPPORTED_CODE,
+  PROVIDER_TURN_IN_PROGRESS_CODE,
+} from '@kontourai/station-contracts/provider';
 import { isFirstSendFailure } from '@kontourai/station-contracts/session-attention';
 import type { ConnectionConfig } from '@kontourai/station-contracts/tool';
 import {
@@ -139,6 +142,33 @@ function rejectedSendRollback(
       : {}),
     ...(rollbackMessages ? { messages: rollbackMessages } : {}),
   };
+}
+
+/**
+ * The refused send's one useful composer change: take the attachments back
+ * off so the text can go. Their server stages are released best-effort — an
+ * unreleased stage simply lapses at its TTL, which is the same outcome.
+ */
+async function removeRefusedAttachments(
+  apiBase: string,
+  sessionId: string,
+): Promise<void> {
+  const stages =
+    activeChatsStore.getSnapshot()[sessionId]?.attachmentStages ?? [];
+  activeChatsStore.updateChat(sessionId, {
+    attachments: [],
+    attachmentStages: [],
+  });
+  const stageIds = stages.flatMap((stage) =>
+    stage.stageId ? [stage.stageId] : [],
+  );
+  if (stageIds.length === 0) return;
+  const { cancelAttachmentStage } = await import(
+    '@kontourai/station-sdk/client'
+  );
+  await Promise.allSettled(
+    stageIds.map((stageId) => cancelAttachmentStage(apiBase, stageId)),
+  );
 }
 
 /**
@@ -799,26 +829,49 @@ export function useSendMessage(
           // A start the server could not confirm either way may have
           // created the session (Codex then refuses a resend: "thread …
           // already has an active writer"), so it gets no blind Retry.
+          // An attachment refusal gets no Retry — the same send is refused
+          // again — but the one composer change that makes the text sendable.
+          // (Other `retryable: false` classes, e.g. an engine sign-in, keep
+          // Retry here: after signing in on the host, it is the next step.)
           action:
-            terminalSession ||
-            foregroundIndeterminate ||
-            dispatchClaim ||
-            err.code === SESSION_START_INDETERMINATE_CODE
-              ? undefined
-              : {
-                  label: 'Retry',
-                  handler: () =>
-                    sendMessage(
-                      sessionId,
-                      agentSlug,
-                      latestState?.conversationId ?? conversationId,
-                      content,
-                      attachments,
-                      ambientContext,
-                      resolvedTurnId,
-                    ),
-                },
+            err.code === ATTACHMENT_INPUT_UNSUPPORTED_CODE && !dispatchClaim
+              ? {
+                  label: 'Remove attachments',
+                  handler: () => removeRefusedAttachments(apiBase, sessionId),
+                }
+              : terminalSession ||
+                  foregroundIndeterminate ||
+                  dispatchClaim ||
+                  err.code === SESSION_START_INDETERMINATE_CODE
+                ? undefined
+                : {
+                    label: 'Retry',
+                    handler: () =>
+                      sendMessage(
+                        sessionId,
+                        agentSlug,
+                        latestState?.conversationId ?? conversationId,
+                        content,
+                        attachments,
+                        ambientContext,
+                        resolvedTurnId,
+                      ),
+                  },
         });
+        // The engine just answered the image question for itself; the
+        // inventory read that carries its handshake answer is cached for
+        // minutes and may predate that answer. Re-read it so the composer's
+        // chips and Send gate reflect the refusal instead of "Ready".
+        if (err.code === ATTACHMENT_INPUT_UNSUPPORTED_CODE) {
+          invalidate(['connections', 'engines']);
+        }
+        // A send that did not take can turn a Draft into a first-send failure
+        // (or leave one). The composer reads that from the session list, which
+        // is otherwise fetched once — without this the model picker a refused
+        // first send should unlock stayed locked until a reload.
+        if (!foregroundIndeterminate && !dispatchClaim) {
+          invalidate(['orchestration-sessions']);
+        }
         if (foregroundIndeterminate) {
           invalidate(['orchestration-sessions']);
           invalidate(conversationQueries.inventory().queryKey);

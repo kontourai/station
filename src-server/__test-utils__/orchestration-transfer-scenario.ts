@@ -108,9 +108,9 @@ function fail(message: string): never {
 }
 
 async function until(predicate: () => boolean, description: string) {
-  const deadline = Date.now() + 5_000;
+  const deadline = performance.now() + 5_000;
   while (!predicate()) {
-    if (Date.now() > deadline) fail(`barrier timed out: ${description}`);
+    if (performance.now() > deadline) fail(`barrier timed out: ${description}`);
     await new Promise<void>((resolve) => setTimeout(resolve, 5));
   }
 }

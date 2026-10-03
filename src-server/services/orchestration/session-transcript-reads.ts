@@ -247,11 +247,12 @@ export class SessionTranscriptReads {
     });
     const page = rows.slice(0, pageSize);
     const receipts = page.flatMap(
-      ({ event, conversationId, taskId, model, processEpoch }) => {
+      ({ event, conversationId, taskId, model, processEpoch, accountKey }) => {
         if (event.payload.method !== 'token-usage.updated' || !event.observedAt)
           return [];
         const usage = event.payload;
         const common = {
+          ...(accountKey !== undefined ? { accountKey } : {}),
           sourceEventId: event.id,
           stationId,
           provider: event.provider,

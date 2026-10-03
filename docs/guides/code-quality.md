@@ -63,7 +63,8 @@ npm run transfer:gate      # or push; STATION_TRANSFER_BASELINE_ROOT overrides t
 
 The capture reports are diagnostic transfer evidence, not completion evidence.
 Nothing slower belongs here. `ci:fast` remains the bounded fifteen-minute feedback
-lane and `full:regression` remains the sole completion receipt; the hook holds
+lane. Local `full:regression` and the hosted exact-source qualification receipt
+remain completion authorities; see [the release process](releasing.md). The hook holds
 only the subset that is cheap enough to run on every push *and* whose failure
 would otherwise land on `main` and stop every other lane.
 
@@ -193,7 +194,7 @@ checks, while preserving global/system configuration. This lets a check inspect
 its intended subdirectory or temporary repository instead of inheriting the
 pushed repository's index and Git directory. A failed check still rejects the push.
 
-In hosted CI, required `fast-checks` aggregates the affected-test plan, four
+In hosted CI, required `fast-checks` aggregates the affected-test plan, one to four planned
 shards, and `fast-checks-statics`. It checks both job outcomes and receipts
 bound to the plan and source revision. Local `ci:fast` still runs its whole
 bounded lane; `STATION_CI_FAST_SCOPE=statics` is the hosted split's explicit

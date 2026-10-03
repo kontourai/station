@@ -14,6 +14,7 @@ import {
   useState,
 } from 'react';
 import { Button } from '../../components/Button';
+import { IconButton } from '../../components/IconButton';
 import {
   ArrowLeftGlyph,
   ArrowRightGlyph,
@@ -37,6 +38,7 @@ import {
   useRecentDriver,
 } from '../../float-over-chat/recentDriver';
 import { useAnnounceShownSource } from '../../float-over-chat/shownSources';
+import { useCoarsePointer } from '../../hooks/useCoarsePointer';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useMenuFocus } from '../../hooks/useMenuFocus';
 import {
@@ -50,7 +52,6 @@ import {
   BrowserConsoleDrawer,
   useBrowserConsole,
 } from './BrowserConsoleDrawer';
-import { BrowserIconButton } from './BrowserIconButton';
 import { BrowserLocalTargetsPanel } from './BrowserLocalTargetsPanel';
 import {
   type BrowserMenuItem,
@@ -76,7 +77,6 @@ import {
   browserPaneKeys,
   describeBrowserFailure,
 } from './browserPaneApi';
-import { useCoarsePointer } from './useCoarsePointer';
 import './BrowserPane.css';
 
 /**
@@ -983,7 +983,7 @@ function BrowserSessionPane({
               </span>
             )}
           </span>
-          <BrowserIconButton
+          <IconButton
             className="browser-pane__omni-reveal"
             aria-label="Back"
             title="Back"
@@ -991,8 +991,8 @@ function BrowserSessionPane({
             onClick={() => history.mutate('back')}
           >
             <ArrowLeftGlyph />
-          </BrowserIconButton>
-          <BrowserIconButton
+          </IconButton>
+          <IconButton
             className="browser-pane__omni-reveal"
             aria-label="Forward"
             title="Forward"
@@ -1000,15 +1000,15 @@ function BrowserSessionPane({
             onClick={() => history.mutate('forward')}
           >
             <ArrowRightGlyph />
-          </BrowserIconButton>
-          <BrowserIconButton
+          </IconButton>
+          <IconButton
             aria-label="Reload"
             title="Reload"
             disabled={!live || busy}
             onClick={() => history.mutate('reload')}
           >
             <RefreshGlyph />
-          </BrowserIconButton>
+          </IconButton>
         </div>
         <BrowserDriverChip
           tone={chipTone}
@@ -1017,7 +1017,7 @@ function BrowserSessionPane({
           releaseBlocked={pendingDialog !== undefined}
           onRelease={() => void control?.releaseControl()}
         />
-        <BrowserIconButton
+        <IconButton
           aria-label={consoleLabel}
           title={consoleLabel}
           aria-pressed={panel === 'console'}
@@ -1031,7 +1031,7 @@ function BrowserSessionPane({
               {errors > 9 ? '9+' : errors}
             </span>
           ) : null}
-        </BrowserIconButton>
+        </IconButton>
         <BrowserOverflowMenu label="More browser actions" items={menuItems}>
           <MoreGlyph />
         </BrowserOverflowMenu>

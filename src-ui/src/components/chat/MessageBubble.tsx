@@ -88,6 +88,9 @@ export interface MessageBubbleSession {
   isThinking?: boolean;
   /** `activeSession.pendingApprovals.length`; the row renders only the count. */
   pendingApprovalCount?: number;
+  /** The host's status pill presents activity and approvals; see
+   * `ChatMessageList.statusShownElsewhere`. */
+  activityShownElsewhere?: boolean;
 }
 
 type MessageContentPart = NonNullable<ChatMessage['contentParts']>[number];
@@ -702,7 +705,14 @@ function MessageBubbleComponent({
       <div
         style={{
           position: 'relative',
-          maxWidth: isMobile ? 'calc(100% - 52px)' : '70%',
+          // On a phone only the user's bubble keeps the reserved column for
+          // its ⋯ trigger; an answer spends the full width on its words and
+          // carries the trigger below it (chat.css `.message-row--compact`).
+          maxWidth: isMobile
+            ? msg.role === 'user'
+              ? 'calc(100% - 52px)'
+              : undefined
+            : '70%',
         }}
         className={`message ${msg.role}${msg.role === 'user' && msg.fromPrompt ? ' message--from-prompt' : ''}`}
       >
@@ -729,20 +739,31 @@ function MessageBubbleComponent({
             }
           />
         </div>
+        {msg.role === 'user' && msg.steerInterruptedRun && (
+          <div className="message__steer-note">
+            Sent by stopping the step that was running
+          </div>
+        )}
 
         {!isMobile && metadataAfter}
         {msg.role === 'assistant' && isLastMessage && (
           <>
-            {activeSession.isThinking && textContent && (
-              <div className="message__thinking">
-                <span className="loading-dots">
-                  <span style={{ animationDelay: '0s' }}>●</span>
-                  <span style={{ animationDelay: '0.2s' }}>●</span>
-                  <span style={{ animationDelay: '0.4s' }}>●</span>
-                </span>
-              </div>
-            )}
-            {activeSession.pendingApprovalCount !== undefined &&
+            {/* Paused on a decision is not working: the typing dots beside
+                "Awaiting tool approval" told two stories at once. */}
+            {activeSession.isThinking &&
+              textContent &&
+              !activeSession.activityShownElsewhere &&
+              (activeSession.pendingApprovalCount ?? 0) === 0 && (
+                <div className="message__thinking">
+                  <span className="loading-dots">
+                    <span style={{ animationDelay: '0s' }}>●</span>
+                    <span style={{ animationDelay: '0.2s' }}>●</span>
+                    <span style={{ animationDelay: '0.4s' }}>●</span>
+                  </span>
+                </div>
+              )}
+            {!activeSession.activityShownElsewhere &&
+              activeSession.pendingApprovalCount !== undefined &&
               activeSession.pendingApprovalCount > 0 && (
                 <div className="message__pending-approval">
                   <span>

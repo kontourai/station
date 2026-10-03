@@ -27,8 +27,6 @@ const importSkillsMock = vi
   .mockResolvedValue({ imported: 0, results: [] });
 const runSkillMock = vi.fn().mockResolvedValue(undefined);
 const uninstallSkillMock = vi.fn();
-const sendMessageMock = vi.fn().mockResolvedValue(undefined);
-const createChatSessionMock = vi.fn().mockReturnValue('session-1');
 const setDockStateMock = vi.fn();
 const setActiveChatMock = vi.fn();
 
@@ -93,8 +91,7 @@ vi.mock('../contexts/ApiBaseContext', () => ({
 }));
 
 vi.mock('../hooks/useActiveChatSessions', () => ({
-  useCreateChatSession: () => createChatSessionMock,
-  useSendMessage: () => sendMessageMock,
+  useLaunchChat: () => vi.fn().mockResolvedValue('session-1'),
 }));
 
 vi.mock('../contexts/ToastContext', () => ({
@@ -151,13 +148,18 @@ afterEach(() => {
   updateLocalSkillMock.mockClear();
   importSkillsMock.mockClear();
   runSkillMock.mockClear();
-  sendMessageMock.mockClear();
-  createChatSessionMock.mockClear();
   setDockStateMock.mockClear();
   setActiveChatMock.mockClear();
 });
 
 describe('SkillsView', () => {
+  function renderEditor() {
+    const rendered = render(<SkillsView />);
+    const edit = screen.queryByRole('button', { name: 'Edit skill' });
+    if (edit && !(edit as HTMLButtonElement).disabled) fireEvent.click(edit);
+    return rendered;
+  }
+
   function chooseImportFile(name: string, content: string) {
     const input = document.querySelector(
       'input[type="file"]',
@@ -179,7 +181,7 @@ describe('SkillsView', () => {
     localSkillsPendingMock = true;
     localSkillsMock = [];
 
-    render(<SkillsView />);
+    renderEditor();
 
     expect(screen.getByLabelText('Loading list')).toBeTruthy();
     expect(screen.queryByText('No installed skills yet')).toBeNull();
@@ -189,7 +191,7 @@ describe('SkillsView', () => {
     localSkillsPendingMock = false;
     localSkillsMock = [];
 
-    render(<SkillsView />);
+    renderEditor();
 
     expect(screen.getByText('No installed skills yet')).toBeTruthy();
     expect(screen.queryByLabelText('Loading list')).toBeNull();
@@ -204,7 +206,7 @@ describe('SkillsView', () => {
     localSkillsMock = [];
     localSkillsErrorMock = new Error('skills read failed');
 
-    render(<SkillsView />);
+    renderEditor();
 
     expect(screen.queryByText('No installed skills yet')).toBeNull();
     expect(screen.getByRole('alert')).toBeTruthy();
@@ -215,7 +217,7 @@ describe('SkillsView', () => {
   test('retries the skills read from the failure state', () => {
     localSkillsErrorMock = new Error('skills read failed');
 
-    render(<SkillsView />);
+    renderEditor();
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
 
     expect(refetchSkillsMock).toHaveBeenCalledTimes(1);
@@ -228,7 +230,7 @@ describe('SkillsView', () => {
         { filename: 'release-check.md', success: true, name: 'release-check' },
       ],
     });
-    render(<SkillsView />);
+    renderEditor();
 
     fireEvent.click(screen.getByRole('button', { name: 'Import .md' }));
     chooseImportFile('release-check.md', '# Release check');
@@ -244,13 +246,16 @@ describe('SkillsView', () => {
     expect(
       screen.getByText('release-check.md — imported as release-check'),
     ).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Open release-check' }));
+    expect(selectionState.select).toHaveBeenCalledWith('release-check');
+    expect(screen.queryByRole('dialog', { name: 'Import Skills' })).toBeNull();
   });
 
   test('renders an import rejection in the dialog', async () => {
     importSkillsMock.mockRejectedValueOnce(
       new Error('Import route unavailable'),
     );
-    render(<SkillsView />);
+    renderEditor();
 
     fireEvent.click(screen.getByRole('button', { name: 'Import .md' }));
     chooseImportFile('release-check.md', '# Release check');
@@ -285,7 +290,7 @@ describe('SkillsView', () => {
     importSkillsMock.mockImplementationOnce((files: never) =>
       importSkills('http://localhost', files),
     );
-    render(<SkillsView />);
+    renderEditor();
 
     fireEvent.click(screen.getByRole('button', { name: 'Import .md' }));
     chooseImportFile('release-check.md', '# Release check');
@@ -300,25 +305,116 @@ describe('SkillsView', () => {
   test('renders the create form when the URL selection is /skills/new', () => {
     selectionState.selectedId = 'new';
 
-    render(<SkillsView />);
+    renderEditor();
 
     expect(screen.getByText('New Skill')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Create' })).toBeTruthy();
     expect(screen.queryByText('No skill selected')).toBeNull();
   });
 
-  test('opens the create form when the add button is clicked', () => {
-    render(<SkillsView />);
+  test('requests the new-skill route when the add button is clicked', () => {
+    renderEditor();
 
     fireEvent.click(screen.getByRole('button', { name: 'New skill' }));
 
     expect(selectionState.select).toHaveBeenCalledWith('new');
-    expect(screen.getByText('New Skill')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Create' })).toBeTruthy();
+  });
+
+  test('starts with a skill overview and guards returning from unsaved authoring', () => {
+    selectionState.selectedId = 'plan-work';
+    localSkillsMock = [
+      {
+        name: 'plan-work',
+        description: 'Turn an idea into a plan',
+        origin: 'user',
+        writable: true,
+      },
+    ];
+    editableSkillMock = {
+      name: 'plan-work',
+      description: 'Turn an idea into a plan',
+      body: 'Plan {{idea}}',
+      variables: [{ name: 'idea', description: 'The change you want to make' }],
+    };
+    render(<SkillsView />);
+
+    expect(screen.getByRole('region', { name: 'Skill overview' })).toBeTruthy();
+    expect(screen.getByText('Required before starting')).toBeTruthy();
+    expect(screen.getByText('The change you want to make')).toBeTruthy();
+    expect(screen.queryByLabelText('Body')).toBeNull();
+    expect(
+      screen.getByRole('button', { name: 'Use in a new chat' }),
+    ).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit skill' }));
+    fireEvent.change(screen.getByLabelText('Body'), {
+      target: { value: 'Changed {{idea}}' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Back to overview' }));
+    expect(
+      screen.getByRole('dialog', { name: 'Unsaved Changes' }),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect((screen.getByLabelText('Body') as HTMLTextAreaElement).value).toBe(
+      'Changed {{idea}}',
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Back to overview' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+    expect(screen.getByRole('region', { name: 'Skill overview' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Edit skill' }));
+    expect((screen.getByLabelText('Body') as HTMLTextAreaElement).value).toBe(
+      'Plan {{idea}}',
+    );
+  });
+
+  test.each([
+    { defaultValue: '', required: true },
+    { defaultValue: '   ', required: true },
+    { defaultValue: 'staging', required: false },
+  ])(
+    'overview and start agree about the default $defaultValue',
+    ({ defaultValue, required }) => {
+      selectionState.selectedId = 'release-check';
+      localSkillsMock = [{ name: 'release-check', writable: true }];
+      editableSkillMock = {
+        name: 'release-check',
+        body: 'Ship to {{env}}',
+        variables: [{ name: 'env', default: defaultValue }],
+      };
+      render(<SkillsView />);
+      expect(
+        screen.getByText(
+          required ? 'Required before starting' : 'Default: staging',
+        ),
+      ).toBeTruthy();
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Use in a new chat' }),
+      );
+      expect(
+        (
+          screen.getByRole('button', {
+            name: 'Start chat',
+          }) as HTMLButtonElement
+        ).disabled,
+      ).toBe(required);
+    },
+  );
+
+  test('offers supported finding and file import from the library welcome', () => {
+    render(<SkillsView />);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Find skills in Registry' }),
+    );
+    expect(navigateMock).toHaveBeenCalledWith('/registry/skills');
+    fireEvent.click(screen.getByRole('button', { name: 'Import skill files' }));
+    expect(screen.getByRole('dialog', { name: 'Import Skills' })).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: 'Choose .md files' }),
+    ).toBeTruthy();
   });
 
   test('keeps the Registry Skills link in the skills body', () => {
-    render(<SkillsView />);
+    renderEditor();
 
     fireEvent.click(
       screen.getByRole('button', { name: 'Browse Registry Skills' }),
@@ -352,7 +448,7 @@ describe('SkillsView', () => {
       { name: 'unrecorded-skill', source: 'local', writable: true },
     ];
 
-    const { container } = render(<SkillsView />);
+    const { container } = renderEditor();
 
     const chips = Array.from(
       container.querySelectorAll('.skill-source-chip'),
@@ -400,7 +496,7 @@ describe('SkillsView', () => {
     ];
     editableSkillMock = { name: 'machine-skill', body: 'do the thing' };
 
-    render(<SkillsView />);
+    renderEditor();
 
     expect(screen.queryByText('Workspace-authored skill')).toBeNull();
     expect(screen.getAllByText('This machine').length).toBeGreaterThan(0);
@@ -423,7 +519,7 @@ describe('SkillsView', () => {
       editableSkillMock = detail ?? skill;
     }
 
-    test('offers export and test on a local skill', () => {
+    test('offers export on a local skill', () => {
       selectSkill(
         { name: 'release-check', description: 'Ship it', source: 'local' },
         {
@@ -434,11 +530,11 @@ describe('SkillsView', () => {
         },
       );
 
-      render(<SkillsView />);
+      renderEditor();
 
       // #3045: the header shows two labelled actions; Export folds into the
       // menu and is not a button on the row.
-      expect(screen.getByRole('button', { name: '▶ Test' })).toBeTruthy();
+      expect(screen.getByRole('button', { name: 'Save' })).toBeTruthy();
       expect(screen.queryByRole('button', { name: 'Export .md' })).toBeNull();
       fireEvent.click(
         screen.getByRole('button', { name: 'More skill actions' }),
@@ -465,9 +561,10 @@ describe('SkillsView', () => {
       URL.revokeObjectURL = vi.fn();
       uninstallSkillMock.mockClear();
       createLocalSkillMock.mockClear();
-      render(<SkillsView />);
+      renderEditor();
 
       expect(overflowItems(openOverflow('More skill actions'))).toEqual([
+        { name: 'Try draft in a new chat', danger: false },
         { name: 'Duplicate', danger: false },
         { name: 'Export .md', danger: false },
         { name: 'Remove', danger: true },
@@ -497,7 +594,7 @@ describe('SkillsView', () => {
         { name: 'release-check', source: 'local', body: 'Ship {{ticket}}' },
       );
 
-      render(<SkillsView />);
+      renderEditor();
       fireEvent.click(
         screen.getByRole('switch', { name: 'Runnable as a slash command' }),
       );
@@ -554,7 +651,7 @@ describe('SkillsView', () => {
         { name: 'release-check', source: 'local', body: 'Ship {{ticket}}' },
       );
 
-      render(<SkillsView />);
+      renderEditor();
       fireEvent.click(
         screen.getByRole('switch', { name: 'Runnable as a slash command' }),
       );
@@ -593,7 +690,7 @@ describe('SkillsView', () => {
         },
       );
 
-      render(<SkillsView />);
+      renderEditor();
       fireEvent.click(
         screen.getByRole('switch', { name: 'Runnable as a slash command' }),
       );
@@ -622,7 +719,7 @@ describe('SkillsView', () => {
         },
       );
 
-      render(<SkillsView />);
+      renderEditor();
 
       expect(screen.getByText('{{ticket}}')).toBeTruthy();
       expect(screen.queryByText('{{stale}}')).toBeNull();
@@ -640,7 +737,7 @@ describe('SkillsView', () => {
         { name: 'release-check', source: 'local', body: 'Ship it' },
       );
 
-      render(<SkillsView />);
+      renderEditor();
 
       // Both the list row and the editor footer say it, and neither says "0".
       expect(screen.getAllByText('run count unavailable').length).toBe(2);
@@ -657,7 +754,7 @@ describe('SkillsView', () => {
         { name: 'release-check', source: 'local', body: 'Ship it' },
       );
 
-      render(<SkillsView />);
+      renderEditor();
 
       expect(screen.getAllByText('3 runs · 100% success').length).toBe(2);
     });
@@ -665,7 +762,7 @@ describe('SkillsView', () => {
     // Slice 1 answers 409 for a command declared on a skill Station cannot
     // write. The editor says what would make it possible instead of offering a
     // switch that fails on save.
-    test('offers the install action, not a switch, on a read-only skill', () => {
+    test('offers read-only guidance instead of command authoring on a packaged skill', () => {
       selectSkill(
         {
           name: 'packaged-skill',
@@ -680,10 +777,10 @@ describe('SkillsView', () => {
         { name: 'packaged-skill', source: 'package', body: 'Read only' },
       );
 
-      render(<SkillsView />);
+      renderEditor();
 
       expect(
-        screen.getByText('Install to workspace to make this a command'),
+        screen.getByText(/Install it into your workspace to author it here/),
       ).toBeTruthy();
       expect(
         screen.queryByRole('switch', { name: 'Runnable as a slash command' }),
@@ -703,7 +800,7 @@ describe('SkillsView', () => {
         { name: 'release-check', source: 'local', body: 'Ship it' },
       );
 
-      render(<SkillsView />);
+      renderEditor();
 
       expect(
         screen.getByText("'/ship' is already answered by 'other-skill'"),
@@ -750,29 +847,6 @@ describe('SkillsView', () => {
       expect(screen.queryByRole('button', { name: 'Clear filter' })).toBeNull();
     });
 
-    test('a test run opens a dock session and counts the run', async () => {
-      selectSkill(
-        { name: 'release-check', source: 'local' },
-        { name: 'release-check', source: 'local', body: 'Ship it' },
-      );
-
-      render(<SkillsView />);
-      fireEvent.click(screen.getByRole('button', { name: '▶ Test' }));
-      fireEvent.click(screen.getByRole('button', { name: '▶ Send to Agent' }));
-
-      await waitFor(() =>
-        expect(runSkillMock).toHaveBeenCalledWith('release-check'),
-      );
-      expect(createChatSessionMock).toHaveBeenCalled();
-      expect(setDockStateMock).toHaveBeenCalledWith(true);
-      expect(sendMessageMock).toHaveBeenCalledWith(
-        'session-1',
-        'station',
-        undefined,
-        'Ship it',
-      );
-    });
-
     // `selected` changes the moment skill B is clicked, but the
     // form used to keep skill A's body until B's DETAIL arrived — so Test and
     // Export could operate on A's body under B's header, and a failed B read
@@ -786,7 +860,7 @@ describe('SkillsView', () => {
       localSkillsMock = [skillA, skillB];
       editableSkillMock = { name: 'skill-a', source: 'local', body: 'A body' };
 
-      const { rerender } = render(<SkillsView />);
+      const { rerender } = renderEditor();
       expect(screen.getByDisplayValue('A body')).toBeTruthy();
 
       // Skill B selected; its detail read is in flight.
@@ -800,8 +874,11 @@ describe('SkillsView', () => {
       ).toBeTruthy();
       expect(screen.queryByDisplayValue('A body')).toBeNull();
       expect(
-        (screen.getByRole('button', { name: '▶ Test' }) as HTMLButtonElement)
-          .disabled,
+        (
+          screen.getByRole('button', {
+            name: 'Use in a new chat',
+          }) as HTMLButtonElement
+        ).disabled,
       ).toBe(true);
       fireEvent.click(
         screen.getByRole('button', { name: 'More skill actions' }),
@@ -817,10 +894,7 @@ describe('SkillsView', () => {
         (screen.getByRole('menuitem', { name: 'Remove' }) as HTMLButtonElement)
           .disabled,
       ).toBe(true);
-      expect(
-        (screen.getByRole('button', { name: 'Save' }) as HTMLButtonElement)
-          .disabled,
-      ).toBe(true);
+      expect(screen.queryByRole('button', { name: 'Save' })).toBeNull();
     });
 
     // Review failure half: a detail read that FAILS must render the
@@ -834,14 +908,17 @@ describe('SkillsView', () => {
       editableSkillMock = undefined;
       detailErrorMock = new Error('detail read failed');
 
-      render(<SkillsView />);
+      renderEditor();
 
       expect(screen.getByRole('alert')).toBeTruthy();
       expect(screen.getByText('Unable to load skill')).toBeTruthy();
       expect(screen.getByText('detail read failed')).toBeTruthy();
       expect(
-        (screen.getByRole('button', { name: '▶ Test' }) as HTMLButtonElement)
-          .disabled,
+        (
+          screen.getByRole('button', {
+            name: 'Use in a new chat',
+          }) as HTMLButtonElement
+        ).disabled,
       ).toBe(true);
 
       fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
@@ -921,7 +998,7 @@ describe('SkillsView', () => {
     test("offers Save on a writable package the old derivation called read-only (source: 'registry')", () => {
       selectRow(REGISTRY_BUT_WRITABLE);
 
-      render(<SkillsView />);
+      renderEditor();
 
       expect(screen.getByRole('button', { name: 'Save' })).toBeTruthy();
       // Editable fields follow the same decision, not just the button.
@@ -938,23 +1015,20 @@ describe('SkillsView', () => {
     test("withholds Save on a package the server refuses, even though source is 'local'", () => {
       selectRow(LOCAL_BUT_NOT_WRITABLE);
 
-      render(<SkillsView />);
+      renderEditor();
 
       // The whole defect: this used to render a Save the route answers 409 for.
       expect(screen.queryByRole('button', { name: 'Save' })).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Edit skill' })).toBeNull();
       expect(
-        (
-          screen.getByLabelText('Description', {
-            selector: 'input',
-          }) as HTMLInputElement
-        ).disabled,
-      ).toBe(true);
+        screen.queryByLabelText('Description', { selector: 'input' }),
+      ).toBeNull();
     });
 
     test("states the SERVER's reason rather than an explanation composed here", () => {
       selectRow(LOCAL_BUT_NOT_WRITABLE);
 
-      render(<SkillsView />);
+      renderEditor();
 
       // The server's own sentence, verbatim. Prose composed in the view would be
       // a second derivation of a decision the view does not make.
@@ -984,7 +1058,7 @@ describe('SkillsView', () => {
       // `source: 'local'` here and offered Save.
       selectRow({ name: 'undecided', source: 'local' });
 
-      render(<SkillsView />);
+      renderEditor();
 
       expect(screen.queryByRole('button', { name: 'Save' })).toBeNull();
       // With no reason to state, the generic sentence is what is left — and it
@@ -1002,7 +1076,7 @@ describe('SkillsView', () => {
     test('a plugin-served skill is told to change the plugin, not to install it', () => {
       selectRow(SERVED_IN_PLACE);
 
-      render(<SkillsView />);
+      renderEditor();
 
       expect(
         screen.getByText(/The plugin that provides it is what to change\./),
@@ -1031,7 +1105,7 @@ describe('SkillsView', () => {
         },
       });
 
-      render(<SkillsView />);
+      renderEditor();
 
       expect(screen.getByText(/Rename it to author it here\./)).toBeTruthy();
       expect(screen.queryByText(/Install it into your workspace/)).toBeNull();
@@ -1059,14 +1133,14 @@ describe('SkillsView', () => {
         },
       });
 
-      const { container } = render(<SkillsView />);
+      const { container } = renderEditor();
 
       const note = container.querySelector('.skill-detail__source-note');
       expect(note).toBeTruthy();
       expect(note?.textContent ?? '').not.toContain(hostile);
       // The heading still identifies the skill — the name is displayed where a
       // reader expects a name, not inside Station's explanation.
-      expect(screen.getAllByDisplayValue(hostile).length).toBeGreaterThan(0);
+      expect(screen.getByRole('heading', { name: hostile })).toBeTruthy();
     });
 
     // This change adds reason codes the previous desktop build does not know,
@@ -1087,7 +1161,7 @@ describe('SkillsView', () => {
         },
       });
 
-      const { container } = render(<SkillsView />);
+      const { container } = renderEditor();
 
       const note = container.querySelector('.skill-detail__source-note');
       expect(note).toBeTruthy();
@@ -1119,7 +1193,7 @@ describe('SkillsView', () => {
         },
       });
 
-      const { container } = render(<SkillsView />);
+      const { container } = renderEditor();
 
       // Station's sentence contains none of the author's text...
       const note = container.querySelector('.skill-detail__source-note');
@@ -1148,7 +1222,7 @@ describe('SkillsView', () => {
         } as never,
       });
 
-      const { container } = render(<SkillsView />);
+      const { container } = renderEditor();
 
       expect(container.querySelector('.skill-detail__source-path')).toBeNull();
       expect(screen.getByText(/Rename it to author it here\./)).toBeTruthy();
@@ -1169,7 +1243,7 @@ describe('SkillsView', () => {
         },
       });
 
-      const { container } = render(<SkillsView />);
+      const { container } = renderEditor();
 
       expect(screen.getByText(/Rename it to author it here\./)).toBeTruthy();
       expect(
@@ -1197,7 +1271,7 @@ describe('SkillsView', () => {
         },
       });
 
-      const { container } = render(<SkillsView />);
+      const { container } = renderEditor();
 
       const text =
         container.querySelector('.skill-detail__source-note')?.textContent ??
@@ -1226,7 +1300,7 @@ describe('SkillsView', () => {
         },
       });
 
-      const { container } = render(<SkillsView />);
+      const { container } = renderEditor();
 
       expect(
         screen.getByText(/Rename the directory, or the skill's own name/),
@@ -1262,7 +1336,7 @@ describe('SkillsView', () => {
         },
       });
 
-      const { container } = render(<SkillsView />);
+      const { container } = renderEditor();
 
       expect(screen.getByText(/Check the path it sits at/)).toBeTruthy();
       expect(screen.queryByText(/Install it into your workspace/)).toBeNull();
@@ -1277,7 +1351,7 @@ describe('SkillsView', () => {
       selectionState.selectedId = 'new';
       localSkillsMock = [LOCAL_BUT_NOT_WRITABLE];
 
-      render(<SkillsView />);
+      renderEditor();
 
       expect(screen.getByRole('button', { name: 'Create' })).toBeTruthy();
     });

@@ -176,6 +176,23 @@ const pionExecutable = join(
 );
 process.umask(0o077);
 const root = mkdtempSync(join(tmpdir(), 'station-browser-transport-'));
+
+/**
+ * The exact version the root manifest pins for the native peer adapter, read
+ * rather than restated so a dependency bump cannot leave lab reports recording
+ * the previous provenance.
+ */
+function pinnedNodeDatachannelVersion(): string {
+  const manifest = JSON.parse(
+    readFileSync(
+      fileURLToPath(new URL('../package.json', import.meta.url)),
+      'utf8',
+    ),
+  ) as { dependencies?: Record<string, string> };
+  const version = manifest.dependencies?.['node-datachannel'];
+  assert.ok(version, 'the root manifest must pin node-datachannel');
+  return version;
+}
 const errors: unknown[] = [];
 const abort = new AbortController();
 const interrupt = () =>
@@ -2951,7 +2968,7 @@ try {
     ...(peerAdapter === 'pion'
       ? pionProvenance
       : {
-          nodeDatachannel: '0.33.3',
+          nodeDatachannel: pinnedNodeDatachannelVersion(),
           libdatachannel: datachannel.getLibraryVersion(),
         }),
     browserTurnTransport: browserTransport,

@@ -9,7 +9,7 @@
 
   "limits": "Connect root/health-probe dist outputs were absent before a package build in this fresh tree; no successful full connect build or installed-package import is claimed. Source/memory fixtures do not prove real browser/relay/native enrollment, restart custody, device transport or provider availability. Native diagnostic echo is identified only as a source export, not a validated physical-device diagnostic journey.",
 
-  "document": {"digest":"ad9c5fe804fe6d45843985d8afed0350ca9e482ef4d97e0fce0426e285cde3a4","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
+  "document": {"digest":"1888ee1f0beda6383006d4beb87ed09117b812a4b2697c1879e98775278d9434","revision":"e072551e073d5f60bc986e7a56824d53ff8d58bf"},
 
   "sources": [
     {"path":"packages/connect/package.json","digest":"880e5cac1c66ca9387136b8fff36a4f6aa8c0514d45780dcb8a8a38ff7c616ca","revision":"22ffd796d86ec7f841cb3c75764ed2a3fb7783b0"},
@@ -34,7 +34,13 @@
 
     {"path":"packages/connect/tsconfig.json","digest":"1dcde2ae94b6f60717ece7e76c02f9585a5193fc5fcace5bc62d6b5a02da2bdb","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"},
 
-    {"path":"src-ui/src/platform/native/stationProfileStorage.ts","digest":"63a70e008696ffb0628e38cec6f9a2847047303705652bdeac80683a1216d601","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"}
+    {"path":"src-ui/src/platform/native/stationProfileStorage.ts","digest":"63a70e008696ffb0628e38cec6f9a2847047303705652bdeac80683a1216d601","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"},
+
+    {"path":"packages/connect/src/react/ConnectionManagerModal.tsx","digest":"1b517a7aa90ee9370552911c00f8dd1d2cddd53f5179fb0a4593222c238e9088","revision":"798f82dbf79e09c4590d39bb0a7e58d8bc0125a0"},
+
+    {"path":"packages/connect/src/react/ConnectionManagerModalContent.tsx","digest":"f6c7ef50e01865453b0bad6b05abb11b715c84bf05e789273b92b920e93b4058","revision":"9dbe4f65b46fcab127f36e9d878a2c535f381fec"},
+
+    {"path":"packages/connect/src/react/connection-manager-modal-utils.ts","digest":"4ffe29b184ca50123b2b7d1b8c0742b8bde3d7a4b6b0510cda1897cf4eddefb6","revision":"798f82dbf79e09c4590d39bb0a7e58d8bc0125a0"}
   ],
 
   "checks": [

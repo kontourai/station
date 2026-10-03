@@ -8,6 +8,7 @@ import type {
 } from '@kontourai/station-contracts/workspace-pane-host';
 import { type ReactNode, useEffect, useState } from 'react';
 import { nextTabIndex } from '../utils/tab-navigation';
+import { WorkspacePaneFailure } from './WorkspacePaneFailure';
 import { WorkspacePaneFrame } from './WorkspacePaneFrame';
 import {
   type WorkspacePaneHostCatalogRequest,
@@ -167,15 +168,12 @@ export function WorkspacePaneHostTabs({
         />
       ) : null}
       {selectedPane && controller.state.rendererFailures[selected] && (
-        <section
+        <WorkspacePaneFailure
           className="workspace-pane-host__panel"
-          aria-label={`${paneLabel(selectedPane)} unavailable`}
-        >
-          <p>{paneLabel(selectedPane)} could not open.</p>
-          <button type="button" onClick={() => void retryPane(selected)}>
-            Retry pane
-          </button>
-        </section>
+          paneName={paneLabel(selectedPane)}
+          detail={controller.rendererFailureDetails[selected]}
+          onRetry={() => void retryPane(selected)}
+        />
       )}
       {(compact || !retainDesktopFrames ? [selected] : group.instanceIds).map(
         (instanceId) => {

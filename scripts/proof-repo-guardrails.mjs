@@ -1176,7 +1176,7 @@ for (const [relativePath, requiredImport] of [
   ],
   ['../src-ui/src/utils/execution.ts', '@kontourai/station-contracts/tool'],
   [
-    '../src-ui/src/views/ScheduleView.tsx',
+    '../src-ui/src/contexts/scheduler-job-dialog-store.ts',
     '@kontourai/station-contracts/scheduler',
   ],
   [

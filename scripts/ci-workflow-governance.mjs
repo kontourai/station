@@ -5,10 +5,7 @@
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { JSON_SCHEMA, load } from 'js-yaml';
-import {
-  FAST_CHECKS_PART_JOBS,
-  FAST_CHECKS_SHARD_COUNT,
-} from './lib/fast-checks-shards.mjs';
+import { FAST_CHECKS_PART_JOBS } from './lib/fast-checks-shards.mjs';
 
 /**
  * This is intentionally a canonical YAML subset, not a general YAML parser.
@@ -492,8 +489,11 @@ export const FAST_CHECKS_AGGREGATE_RUN =
   'node scripts/fast-checks-shard.mjs aggregate --plan-dir="$RUNNER_TEMP/fast-checks-plan" --receipts-dir="$RUNNER_TEMP/fast-checks-receipts"';
 export const FAST_CHECKS_PLAN_RUN =
   'npm run fast-checks:shard -- plan --out="$RUNNER_TEMP/fast-checks-plan/fast-checks-plan.json"';
-export const FAST_CHECKS_SLICE_RUN = `node scripts/fast-checks-shard.mjs slice --plan="$RUNNER_TEMP/fast-checks-plan/fast-checks-plan.json" --shard="$SHARD/${FAST_CHECKS_SHARD_COUNT}"`;
-export const FAST_CHECKS_SHARD_RUN = `npm run fast-checks:shard -- run --plan="$RUNNER_TEMP/fast-checks-plan/fast-checks-plan.json" --shard="$SHARD/${FAST_CHECKS_SHARD_COUNT}" --receipt=".kontourai/fast-checks/fast-checks-shard-receipt.json"`;
+export const FAST_CHECKS_MATRIX =
+  // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+  "${{ fromJSON(needs.fast-checks-plan.outputs.shards || '[1,2,3,4]') }}";
+export const FAST_CHECKS_SLICE_RUN = `node scripts/fast-checks-shard.mjs slice --plan="$RUNNER_TEMP/fast-checks-plan/fast-checks-plan.json" --shard="$SHARD/$SHARD_COUNT"`;
+export const FAST_CHECKS_SHARD_RUN = `npm run fast-checks:shard -- run --plan="$RUNNER_TEMP/fast-checks-plan/fast-checks-plan.json" --shard="$SHARD/$SHARD_COUNT" --receipt=".kontourai/fast-checks/fast-checks-shard-receipt.json"`;
 const FAST_CHECKS_AGGREGATE_NEEDS = ['classify', ...FAST_CHECKS_PART_JOBS];
 
 function needsList(job) {
@@ -624,7 +624,13 @@ export function collectRequiredBrowserSmokeFindings(workflowText) {
     detect >
       planSteps.findIndex((step) => step?.run === 'npm run dependencies:ci') ||
     JSON.stringify(plan?.outputs) !==
-      JSON.stringify({ legacy: FAST_CHECKS_LEGACY_OUTPUT }) ||
+      JSON.stringify({
+        legacy: FAST_CHECKS_LEGACY_OUTPUT,
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+        shards: '${{ steps.plan.outputs.shards }}',
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+        'shard-count': '${{ steps.plan.outputs.shard-count }}',
+      }) ||
     legacyLane.length !== 1 ||
     legacyLane[0].if !== FAST_CHECKS_LEGACY_STEP_IF ||
     legacyLane[0].env?.STATION_CI_FAST_SCOPE !== undefined
@@ -641,13 +647,10 @@ export function collectRequiredBrowserSmokeFindings(workflowText) {
     swallowsFailure(shard) ||
     !sameList(needsList(shard), ['fast-checks-plan']) ||
     shard.strategy?.['fail-fast'] !== false ||
-    !sameList(
-      matrix,
-      Array.from({ length: FAST_CHECKS_SHARD_COUNT }, (_, index) => index + 1),
-    )
+    matrix !== FAST_CHECKS_MATRIX
   )
     findings.push(
-      `fast-checks-shard must run all ${FAST_CHECKS_SHARD_COUNT} shards after the plan without swallowing failures.`,
+      'fast-checks-shard must run the planned matrix after the plan without swallowing failures.',
     );
   const shardRuns = steps(shard).filter(
     (step) => step?.run === FAST_CHECKS_SHARD_RUN,

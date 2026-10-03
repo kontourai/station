@@ -12,6 +12,13 @@ interface FileAttachmentInputProps {
   disabled?: boolean;
   supportsImages?: boolean;
   supportsFiles?: boolean;
+  /**
+   * Why nothing can be attached here (e.g. the engine's own "no images"
+   * answer). With it, the paperclip stays tappable and says so — a disabled
+   * button's `title` never reaches a touch user.
+   */
+  unavailableReason?: string;
+  onUnavailable?: (reason: string) => void;
 }
 
 export function FileAttachmentInput({
@@ -22,6 +29,8 @@ export function FileAttachmentInput({
   disabled,
   supportsImages,
   supportsFiles,
+  unavailableReason,
+  onUnavailable,
 }: FileAttachmentInputProps) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const { openPreview } = usePreview();
@@ -65,6 +74,8 @@ export function FileAttachmentInput({
   if (supportsFiles) accept.push('.pdf,.txt,.csv,.md,.json');
 
   const canAttach = supportsImages || supportsFiles;
+  const explainUnavailable =
+    !canAttach && !!unavailableReason && !!onUnavailable;
 
   const handleClearAll = () => {
     onClearAll();
@@ -102,6 +113,8 @@ export function FileAttachmentInput({
         onClick={() => {
           if (attachments.length > 0) {
             setShowPreview((open) => !open);
+          } else if (explainUnavailable) {
+            onUnavailable?.(unavailableReason!);
           } else {
             openFilePicker();
           }
@@ -109,20 +122,24 @@ export function FileAttachmentInput({
         onKeyDown={(e) => {
           if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault();
-            openFilePicker();
+            if (explainUnavailable) onUnavailable?.(unavailableReason!);
+            else openFilePicker();
           } else if (e.key === 'ArrowUp' && attachments.length > 0) {
             e.preventDefault();
             setShowPreview(true);
           }
         }}
-        disabled={disabled}
+        disabled={disabled && !explainUnavailable}
+        aria-disabled={explainUnavailable || undefined}
         tabIndex={0}
         title={
-          disabled && !canAttach
-            ? "Current model doesn't support attachments"
-            : attachments.length > 0
-              ? 'Review attachments'
-              : 'Attach files'
+          explainUnavailable
+            ? unavailableReason
+            : disabled && !canAttach
+              ? "Current model doesn't support attachments"
+              : attachments.length > 0
+                ? 'Review attachments'
+                : 'Attach files'
         }
         aria-label={
           attachments.length > 0

@@ -1,5 +1,8 @@
 # Signed release rings
 
+Start with [integration, qualification and releases](releasing.md) for the
+cadence, exact-source evidence, repair ownership and full release procedure.
+
 Station's default portable installer uses GitHub-attested release rings.
 Stable is the default;
 Beta is opt-in with `STATION_CHANNEL=beta`. Its public release protocol remains

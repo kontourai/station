@@ -765,7 +765,11 @@ describe('native release workflow topology', () => {
     const resolve = workflowJob(publish, 'resolve');
     const promotion = workflowJob(publish, 'publish');
     const source = namedStep(resolve, 'Resolve tag to one immutable commit');
-    expect(parsed.permissions).toEqual({ contents: 'read' });
+    expect(workflowJob(publish, 'qualification').uses).toBe(
+      './.github/workflows/full-regression.yml',
+    );
+    expect(promotion.needs).toEqual(['resolve', 'qualification']);
+    expect(parsed.permissions).toEqual({ contents: 'read', actions: 'read' });
     expect(source.run).toContain('gh release view "$desktop_updater_tag"');
     expect(source.run).not.toContain('2>/dev/null || true');
     expect(source.env?.ALLOW_PUBLISHED_POINTER_REPAIR).toBe(
@@ -797,7 +801,7 @@ describe('native release workflow topology', () => {
         'Publish and verify the rolling desktop updater channel',
       ).if,
     ).toBeUndefined();
-    expect(promotion.needs).toBe('resolve');
+    expect(promotion.needs).toEqual(['resolve', 'qualification']);
     expect(parsed.concurrency).toEqual({
       group: 'station-release-publish',
       'cancel-in-progress': false,
@@ -834,6 +838,7 @@ describe('native release workflow topology', () => {
     const policyEntries = policyEntryScripts();
     expect(policyEntries).toEqual({
       resolve: ['scripts/lib/native-release-config.mjs'],
+      qualification: [],
       publish: [
         'scripts/deploy-ledger.mjs',
         // #2959: the host-stream manifest signer and its publication checks.
@@ -853,6 +858,16 @@ describe('native release workflow topology', () => {
     const parsed = workflow(publish);
     expect(parsed.defaults).toBeUndefined();
     for (const [jobName, job] of Object.entries(parsed.jobs ?? {})) {
+      if (jobName === 'qualification') {
+        expect(job.uses).toBe('./.github/workflows/full-regression.yml');
+        expect(job.with?.source_sha).toBe(
+          githubExpression('needs.resolve.outputs.sha'),
+        );
+        expect(job.if).toBe(
+          "needs.resolve.outputs.pointer_repair_only != 'true'",
+        );
+        continue;
+      }
       // A job-level default working directory would silently re-root every
       // relative path below, including `release-policy/...`.
       expect(job.defaults, jobName).toBeUndefined();

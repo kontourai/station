@@ -179,7 +179,7 @@ describe('shared dialog header (station#1825 item 1)', () => {
         onClose={vi.fn()}
       />,
     );
-    const dialog = screen.getByRole('dialog', { name: 'Switch project' });
+    const dialog = screen.getByRole('dialog', { name: 'Projects' });
     const header = dialog.querySelector('.responsive-dialog-header');
     expect(header).toBeTruthy();
     const closeButton = screen.getByRole('button', {
