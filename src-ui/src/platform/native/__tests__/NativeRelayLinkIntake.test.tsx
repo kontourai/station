@@ -475,15 +475,15 @@ it('a bound delivery keeps invitation secret in host custody and requires indepe
     name: 'Confirm Station',
   });
   expect((approve as HTMLButtonElement).disabled).toBe(true);
-  fireEvent.change(screen.getByLabelText('Operator comparison code'), {
+  fireEvent.change(screen.getByLabelText('Owner’s code'), {
     target: { value: code },
   });
-  fireEvent.change(screen.getByLabelText('Full key ID confirmed by operator'), {
+  fireEvent.change(screen.getByLabelText('Owner’s key ID'), {
     target: { value: 'J'.repeat(43) },
   });
   fireEvent.click(screen.getByRole('checkbox'));
   expect((approve as HTMLButtonElement).disabled).toBe(true);
-  fireEvent.change(screen.getByLabelText('Full key ID confirmed by operator'), {
+  fireEvent.change(screen.getByLabelText('Owner’s key ID'), {
     target: { value: keyId },
   });
   expect((approve as HTMLButtonElement).disabled).toBe(false);
@@ -674,7 +674,7 @@ it.each(['confirmed', 'lost-reply', 'late-reply'] as const)(
       </NativeRelayLinkIntake>,
     );
     await screen.findByText('Station needs confirmation');
-    await screen.findByText('Connection invitation needed.');
+    expect(screen.queryByText('Connection invitation needed.')).toBeNull();
     const originalHeading = screen.getByRole('heading', {
       name: 'Your Stations',
     });
@@ -687,13 +687,12 @@ it.each(['confirmed', 'lost-reply', 'late-reply'] as const)(
       await modal.findByRole('button', { name: 'Check this Station' }),
     );
     await modal.findByRole('button', { name: 'Confirm Station' });
-    fireEvent.change(modal.getByLabelText('Operator comparison code'), {
+    fireEvent.change(modal.getByLabelText('Owner’s code'), {
       target: { value: code },
     });
-    fireEvent.change(
-      modal.getByLabelText('Full key ID confirmed by operator'),
-      { target: { value: keyId } },
-    );
+    fireEvent.change(modal.getByLabelText('Owner’s key ID'), {
+      target: { value: keyId },
+    });
     fireEvent.click(modal.getByRole('checkbox'));
     fireEvent.click(modal.getByRole('button', { name: 'Confirm Station' }));
     await screen.findByText('Station confirmed. Device access comes next.');
@@ -1187,10 +1186,10 @@ it('keeps resumed Device setup alive after the already-redeemed invitation deadl
   fireEvent.click(
     await screen.findByRole('button', { name: 'Check this Station' }),
   );
-  fireEvent.change(await screen.findByLabelText('Operator comparison code'), {
+  fireEvent.change(await screen.findByLabelText('Owner’s code'), {
     target: { value: code },
   });
-  fireEvent.change(screen.getByLabelText('Full key ID confirmed by operator'), {
+  fireEvent.change(screen.getByLabelText('Owner’s key ID'), {
     target: { value: keyId },
   });
   fireEvent.click(screen.getByRole('checkbox'));

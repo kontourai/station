@@ -344,7 +344,6 @@ export function RelayRouteKeyApproval({
       {!compactConfirmed && (
         <>
           <h3>Confirm this Station</h3>
-          <p>Match both values with the Station owner before confirming.</p>
         </>
       )}
       <div
@@ -364,7 +363,7 @@ export function RelayRouteKeyApproval({
                     ? 'Station identity unavailable'
                     : 'Station needs confirmation'}
         </strong>
-        {!compactConfirmed && (
+        {!compactConfirmed && status !== 'untrusted' && (
           <span>
             {status === 'approved'
               ? 'Identity confirmed. Device access is a separate step.'
@@ -529,23 +528,15 @@ export function RelayRouteKeyApproval({
           className="relay-route-key-approval__candidate"
           aria-label="Candidate from native verification"
         >
-          <p>
-            Ask the Station owner for the code and full key ID through a
-            separate trusted channel. Compare both before confirming.
-          </p>
-          <div className="native-relay-setup__code">
-            {groupedConfirmationCode(
-              normalizeConfirmationCode(candidate.confirmationCode) ??
-                candidate.confirmationCode,
-            )}
-          </div>
-          <div className="native-relay-setup__comparison-key">
-            <span>Station key ID</span>
-            <code>{candidate.keyId}</code>
-          </div>
+          <p>Get the code and key ID from the owner outside this app.</p>
+          {candidate.expiresAt <= Date.now() && (
+            <p role="status">
+              This check expired. Open a new invitation from the owner.
+            </p>
+          )}
 
           <label className="editor-field" htmlFor={`${id}-code`}>
-            <span className="editor-label">Operator comparison code</span>
+            <span className="editor-label">Owner’s code</span>
             <input
               id={`${id}-code`}
               className="editor-input"
@@ -557,9 +548,7 @@ export function RelayRouteKeyApproval({
             />
           </label>
           <label className="editor-field" htmlFor={`${id}-key-id`}>
-            <span className="editor-label">
-              Full key ID confirmed by operator
-            </span>
+            <span className="editor-label">Owner’s key ID</span>
             <input
               id={`${id}-key-id`}
               className="editor-input"
@@ -578,10 +567,7 @@ export function RelayRouteKeyApproval({
                 setSeparateChannelConfirmed(event.target.checked)
               }
             />
-            <span>
-              I compared both values with the Station owner through a separate
-              trusted channel.
-            </span>
+            <span>I checked both values with the owner.</span>
           </label>
           <Button
             variant="primary"
@@ -611,7 +597,17 @@ export function RelayRouteKeyApproval({
             Cancel confirmation
           </Button>
           <details>
-            <summary>Route and timing details</summary>
+            <summary>Station identity details</summary>
+            <div className="native-relay-setup__code">
+              {groupedConfirmationCode(
+                normalizeConfirmationCode(candidate.confirmationCode) ??
+                  candidate.confirmationCode,
+              )}
+            </div>
+            <div className="native-relay-setup__comparison-key">
+              <span>Station key ID</span>
+              <code>{candidate.keyId}</code>
+            </div>
             <dl>
               <div>
                 <dt>Saved route</dt>

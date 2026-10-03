@@ -249,6 +249,14 @@ function NativeRelayGrantControls({
     redeem.mutate(copy);
   }
 
+  if (
+    profile.configurationState !== 'configured' &&
+    !trust.isPending &&
+    !trust.isError &&
+    !trustMatchesRoute
+  )
+    return null;
+
   return (
     <section
       className="connections-computers__note"

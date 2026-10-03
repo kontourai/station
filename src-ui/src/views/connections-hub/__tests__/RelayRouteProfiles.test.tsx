@@ -2334,19 +2334,14 @@ describe('RelayRouteProfiles', () => {
     expect(screen.getByText('Station confirmed')).toBeTruthy();
     expect(screen.getByText('sha256:old-station-key')).toBeTruthy();
 
-    fireEvent.change(screen.getByLabelText('Operator comparison code'), {
+    fireEvent.change(screen.getByLabelText('Owner’s code'), {
       target: { value: 'ABCD-1234-EFGH-5678' },
     });
-    fireEvent.change(
-      screen.getByLabelText('Full key ID confirmed by operator'),
-      {
-        target: { value: rotatedCandidate.keyId },
-      },
-    );
+    fireEvent.change(screen.getByLabelText('Owner’s key ID'), {
+      target: { value: rotatedCandidate.keyId },
+    });
     fireEvent.click(
-      screen.getByLabelText(
-        /I compared both values with the Station owner through a separate trusted channel/,
-      ),
+      screen.getByLabelText(/I checked both values with the owner/),
     );
     fireEvent.click(screen.getByRole('button', { name: 'Confirm Station' }));
     await waitFor(() =>
@@ -2477,13 +2472,13 @@ describe('RelayRouteProfiles', () => {
     });
     const routeDetails = candidateRegion.querySelector('details');
     const operatorCode = screen.getByRole('textbox', {
-      name: 'Operator comparison code',
+      name: 'Owner’s code',
     });
     const operatorKeyId = screen.getByRole('textbox', {
-      name: 'Full key ID confirmed by operator',
+      name: 'Owner’s key ID',
     });
     const separateChannelAttestation = screen.getByRole('checkbox', {
-      name: /I compared both values with the Station owner through a separate trusted channel/,
+      name: /I checked both values with the owner/,
     });
     const approveButton = screen.getByRole('button', {
       name: 'Confirm Station',
@@ -2497,12 +2492,12 @@ describe('RelayRouteProfiles', () => {
       within(candidateRegion)
         .getByText('sha256:full-station-key-id')
         .closest('details'),
-    ).toBeNull();
+    ).toBe(routeDetails);
     expect(
       within(candidateRegion)
         .getByText('ABCD-1234-EFGH-5678')
         .closest('details'),
-    ).toBeNull();
+    ).toBe(routeDetails);
     expect(
       within(candidateRegion).getByText(stationId).closest('details'),
     ).toBe(routeDetails);

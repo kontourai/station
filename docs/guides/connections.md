@@ -237,8 +237,11 @@ matching device details. The host retains the secret; the UI receives public
 metadata and an opaque handle. Choose **Check this Station**. Compare the code
 and full key ID with the owner through a separate trusted channel, enter both,
 and explicitly **Confirm Station**. Both values and the separate-channel check
-remain required. Technical inspection and confirmation management are under
-**Confirmation details**.
+remain required. Setup shows the current step first; connection controls appear
+after confirmation. The form asks for **Owner’s code** and **Owner’s key ID**.
+The received values, route identifiers and deadline are collapsed under
+**Station identity details**. An expired check asks for a new invitation.
+After confirmation, inspection and removal are under **Confirmation details**.
 
 **Continue to device approval** is a separate action. A confirmed routing grant
 opens Device setup. The consumed invitation’s expiry no longer closes that
