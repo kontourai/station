@@ -190,11 +190,11 @@
 
     {"path":"packages/sdk/src/providers.tsx","digest":"c2e1919b3feade010b3e393920ae4852b88d71921cddfb9716e164049b9acf3b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/sdk/src/query-core.ts","digest":"fd13ab3d8f8f7e9cfb224fdc47baea62682389194ffcfcf7d038934bf299ae9b","revision":"df950bd9f41b1227b3de566dbf5e396aa8bf3a2a"},
+    {"path":"packages/sdk/src/query-core.ts","digest":"f61dfd3363e3afe8bcf0ca97330e4e799e44aeb0d1348a212a117d1f755873e9","revision":"9bb90045b7aeb926e7003b27fc4fd62252638524"},
 
     {"path":"packages/sdk/src/query-domains/agentAdmin.ts","digest":"d17ef2aeb91c21d5cf1e207289bd2936b2896752d5254cea6b94a9c82aaf62fb","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/sdk/src/query-domains/analytics.ts","digest":"161c2036c67cee1ad73353aec04ca5dd82e2d38dca8d080352b9283e1f1a7fe8","revision":"91d79c3f0ce9ca5ae304e4248b67b6189103016e"},
+    {"path":"packages/sdk/src/query-domains/analytics.ts","digest":"315c15570c1246b28ca9bd46646da489c667981dbedaa2018f8811fa9b61a895","revision":"5e6fbfedca2315119d1d20a7829252899c52c15a"},
 
     {"path":"packages/sdk/src/query-domains/chatRuntimeCoding.ts","digest":"8e4e9edcf70f9a46b8a47d1920a218ca6283f16b4e25495c850b02e2cf281b0d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -202,7 +202,7 @@
 
     {"path":"packages/sdk/src/query-domains/chatRuntimeOrchestration.ts","digest":"d4341001f4cb290b64a3171e8b284e12410463726f6aa3b3590c4be2094d30f4","revision":"42019764437469e865189dfd8ad8b1762b77a97a"},
 
-    {"path":"packages/sdk/src/query-domains/devicePairingRequests.ts","digest":"fbf01bc51c67e72cd3fbb7b66dfe280c24fb7629462e5b15da8779887e08abd3","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+    {"path":"packages/sdk/src/query-domains/devicePairingRequests.ts","digest":"be679fb0964921f7a7e7ec77433cd198f89772b8c1e13450e4fc39204dbdd4a3","revision":"9bb90045b7aeb926e7003b27fc4fd62252638524"},
 
     {"path":"packages/sdk/src/query-domains/knowledgeStores.ts","digest":"52d61ed41a6e407387005a60f4c0504016471de1c42eed9d22ec7146a98516d6","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
