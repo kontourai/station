@@ -6,7 +6,7 @@
 .chat-start__composer textarea {
   width: 100%;
   box-sizing: border-box;
-  min-height: calc(var(--k-space-8) * 3);
+  min-height: calc(var(--k-space-6) * 3);
   resize: vertical;
   background: var(--k-panel);
   color: var(--k-text);
