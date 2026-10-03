@@ -320,7 +320,7 @@
 
     {"path":"src-server/routes/orchestration/workspace-pane-host-actions.ts","digest":"9cc22e24b04ae9ac07dcdedf4702081bc21ca6986a54fa909eb336d5801b33b9","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/routes/plugins/__tests__/registry-marketplaces.routes.test.ts","digest":"cfba0ef6fb4466b847f8678d9deee537c1dbe02ab27a6dfb87aa93b925da71aa","revision":"377307346728da5b8a08c939cabc759b7d606125"},
+    {"path":"src-server/routes/plugins/__tests__/registry-marketplaces.routes.test.ts","digest":"cfba0ef6fb4466b847f8678d9deee537c1dbe02ab27a6dfb87aa93b925da71aa","revision":"c05206228b5fd24509ee5a2e53e51d6b12afb3d8"},
 
     {"path":"src-server/routes/plugins/plugin-config-routes.ts","digest":"42dda4eeb196c8b63c081f059822f9f56187b1da9d8f84ec4c09cacc3d95f5a4","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -800,11 +800,11 @@
 
     {"path":"src-server/voice/voice-session.ts","digest":"957f092791868376ee49c32261dc73d32fa25a8bdbfe5d79d6b70265ea685b28","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-shared/__tests__/extension-notification-bindings.test.ts","digest":"d4c9e9eb36e6bb05162ae49ea8cdddac29b11cf4b503078fc9451cee0b1f514e","revision":"89765352964045a079d13a17bee54ab2de7b83e0"},
+    {"path":"src-shared/__tests__/extension-notification-bindings.test.ts","digest":"d4c9e9eb36e6bb05162ae49ea8cdddac29b11cf4b503078fc9451cee0b1f514e","revision":"306ebf4317397e0b06c543c69b4f770184f50654"},
 
     {"path":"src-shared/collaborative-edit-limits.ts","digest":"a8f42aba2e6bea3c88190357a8e2d9c59c824584bac3e100fad51c5cb3028529","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-shared/extension-notification-bindings.ts","digest":"23059844999bc5d7f2e7f8f4137b965e6f98129207fd765eb871d46ce976c11b","revision":"89765352964045a079d13a17bee54ab2de7b83e0"},
+    {"path":"src-shared/extension-notification-bindings.ts","digest":"23059844999bc5d7f2e7f8f4137b965e6f98129207fd765eb871d46ce976c11b","revision":"306ebf4317397e0b06c543c69b4f770184f50654"},
 
     {"path":"src-ui/src/__tests__/deliveryFeed.nativeConsumer.test.ts","digest":"d966359769aef709ce188ff027309928a73dbe1ac340bb54f9b9db14640c8871","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -842,13 +842,13 @@
 
     {"path":"src-ui/src/float-over-chat/FloatOverChatHost.tsx","digest":"81c979aa34b061b5c9ca39dea2fe8327e387f97ceb079918039dd5311275ae3e","revision":"e5d9b68a5a99edfb53c307ebc86f2890a3200d00"},
 
-    {"path":"src-ui/src/hooks/orchestration/extensionHandlers.ts","digest":"0a85524d3c1ff8ef7b46900ed86b639b2308322dd9e11aeedc5de959ecf007c3","revision":"89765352964045a079d13a17bee54ab2de7b83e0"},
+    {"path":"src-ui/src/hooks/orchestration/extensionHandlers.ts","digest":"0a85524d3c1ff8ef7b46900ed86b639b2308322dd9e11aeedc5de959ecf007c3","revision":"306ebf4317397e0b06c543c69b4f770184f50654"},
 
-    {"path":"src-ui/src/hooks/orchestration/queueDrain.ts","digest":"5172f08676c5ae320d10b42f23f7b5158ab77172a54c537235de9156ea504eb8","revision":"89765352964045a079d13a17bee54ab2de7b83e0"},
+    {"path":"src-ui/src/hooks/orchestration/queueDrain.ts","digest":"5172f08676c5ae320d10b42f23f7b5158ab77172a54c537235de9156ea504eb8","revision":"306ebf4317397e0b06c543c69b4f770184f50654"},
 
     {"path":"src-ui/src/hooks/orchestration/replay/observe.ts","digest":"edbe10fd612c9a33d91709961c6e86886950edacf14d51b2dfac760fdcb848a9","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/hooks/orchestration/turnHandlers.ts","digest":"4763f7c3bb1b29b3892b84ab4bee0484334667a540be36d7a5b6a21aca3bde82","revision":"89765352964045a079d13a17bee54ab2de7b83e0"},
+    {"path":"src-ui/src/hooks/orchestration/turnHandlers.ts","digest":"4763f7c3bb1b29b3892b84ab4bee0484334667a540be36d7a5b6a21aca3bde82","revision":"306ebf4317397e0b06c543c69b4f770184f50654"},
 
     {"path":"src-ui/src/hooks/useActiveChatSessionMessaging.ts","digest":"9318eb8735235a5cf39ece24756ba0a90405a79b9c24982199f65326b4c4c6b2","revision":"34d62da501fa53187b7062288f6e1dbaec8c20ed"},
 

@@ -188,7 +188,7 @@
 
     {"path":"src-server/routes/orchestration/runs.ts","digest":"f247aba8556b954a0fbbbb46b89870c75b736340cf9c0b4f1c617005bf31aebd","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/routes/plugins/__tests__/registry-marketplaces.routes.test.ts","digest":"cfba0ef6fb4466b847f8678d9deee537c1dbe02ab27a6dfb87aa93b925da71aa","revision":"377307346728da5b8a08c939cabc759b7d606125"},
+    {"path":"src-server/routes/plugins/__tests__/registry-marketplaces.routes.test.ts","digest":"cfba0ef6fb4466b847f8678d9deee537c1dbe02ab27a6dfb87aa93b925da71aa","revision":"c05206228b5fd24509ee5a2e53e51d6b12afb3d8"},
 
     {"path":"src-server/routes/plugins/__tests__/registry-skill-acquisition.routes.test.ts","digest":"a4012a90f751727331c2f6ca68299471dd55b5009e5cca7ceae6a7c36ee97be9","revision":"cae2f34dee0e883caffbcbc0190db69470433c43"},
 
