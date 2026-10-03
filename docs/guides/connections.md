@@ -278,6 +278,13 @@ establishes Device configuration only, not an account session or membership.
 See [native enrollment](../design/native-relay-enrollment.md) for the separate
 Station, routing, Device and account owners and current qualification limits.
 
+If a Device request expires, close the expired request before starting another.
+A newer connection can close an old expired candidate when it still points to
+the same Station and installation with unchanged trust. It does not restart
+account submission or renew the old Device request. Staged delivery or an
+uncertain activation needs its own status recovery; keep that setup open.
+
+
 Configured routes are not selected automatically. A configured row says
 **Device configured · not selected** until you choose **Use this Station**. A
 selected configured row distinguishes **account sign-in required** from
