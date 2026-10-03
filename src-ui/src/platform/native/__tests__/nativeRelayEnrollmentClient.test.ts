@@ -11,6 +11,7 @@ import {
 } from '@kontourai/station-contracts/native-relay-enrollment';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { createNativeRelayEnrollmentClient } from '../nativeRelayEnrollmentClient';
+import { subscribeNativeRelaySetupState } from '../nativeRelaySetupState';
 
 const transport = vi.hoisted(() => ({ open: vi.fn() }));
 vi.mock('../nativeEnrollmentSignalingBridge', () => ({
@@ -277,11 +278,17 @@ function fixture(
 
 test('uses prepared host bytes and keeps successful owned publication through UI cleanup', async () => {
   const f = fixture();
+  const refreshed: string[] = [];
+  const unsubscribe = subscribeNativeRelaySetupState((name) =>
+    refreshed.push(name),
+  );
   await f.client.begin();
   await f.client.login({ username: 'zach', password: 'user-entered' });
   await f.client.finalize();
   const result = await f.client.activate();
   expect(result).toMatchObject({ state: 'active', profileRevision: 8 });
+  unsubscribe();
+  expect(refreshed).toEqual(['Pilot']);
   expect(f.requests.map((request) => request.body)).toEqual(
     Array(4).fill('{"host":"exact"}'),
   );

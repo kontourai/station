@@ -212,6 +212,7 @@ vi.mock('../../../platform/PlatformProfileContext', () => ({
   }),
   nativeProfileRepository: () =>
     mocks.repository ?? {
+      refresh: async () => false,
       getRelayRouteProfiles: () => mocks.profiles,
       subscribeRelayRouteProfiles: (listener: () => void) => {
         mocks.listeners.add(listener);
@@ -1021,7 +1022,37 @@ describe('RelayRouteProfiles', () => {
   });
 
   test('runs the explicit enrollment, registration, approval, staging and activation journey', async () => {
-    configureEnrollmentReadyRoute();
+    const { liveStore } = configureEnrollmentReadyRoute();
+    const repository = new NativeStationProfileStorage(
+      {
+        invoke: async <T,>(command: string) => {
+          if (command !== 'station_profile_store_read')
+            throw new Error('Unexpected profile operation');
+          return structuredClone(liveStore) as T;
+        },
+      },
+      defaultStorage,
+      true,
+    );
+    await repository.hydrate();
+    mocks.repository = repository;
+    const originalHost = mocks.enrollmentInvoke.getMockImplementation()!;
+    mocks.enrollmentInvoke.mockImplementation(async (command, args) => {
+      const result = await originalHost(command, args);
+      if (command === 'station_native_enrollment_activation_accept') {
+        liveStore.revision = 13;
+        Object.assign(liveStore.profiles[0]!, {
+          configurationState: 'configured',
+          environmentId: stationId,
+          updatedAt: 3,
+          credentialRef: {
+            kind: 'station-bearer',
+            id: 'native-enrollment:configured-test-reference',
+          },
+        });
+      }
+      return result;
+    });
     mocks.finalizeResponses.push({ state: 'pending' }, { state: 'delivered' });
     const rendered = renderRoutes();
 
@@ -1104,8 +1135,11 @@ describe('RelayRouteProfiles', () => {
     fireEvent.click(
       screen.getByRole('button', { name: 'Finish device setup' }),
     );
-    await screen.findByText(/Device configured/);
-    expect(screen.getByText('Device setup required')).toBeTruthy();
+    await screen.findByText('Device configured · not selected');
+    expect(screen.queryByText('Device setup required')).toBeNull();
+    expect(repository.getRelayRouteProfiles()[0]?.configurationState).toBe(
+      'configured',
+    );
     expect(
       screen.getByText(/Account sign-in and Project access remain separate/),
     ).toBeTruthy();

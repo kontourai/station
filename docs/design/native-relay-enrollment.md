@@ -195,6 +195,12 @@ revision; its fixed currentness lookup checks the actual local profile, grant,
 trust and Device candidate independently of RTC. Partial writes retain their
 exact credential reference for reconciliation. Explicit cancellation invalidates
 in-flight captures and retires only that owned reference.
+The publication handoff rechecks the same routing grant after the profile gains
+its Device credential. This path accepts only the enrollment's exact credential
+reference and matching Station identity in the published profile. Ordinary
+invitation redemption still requires an unconfigured profile. Paired application
+operations separately verify the active native Device identity and current signed
+Device receipt before using that route.
 Active receipt deadline validation permits at most five seconds of positive
 clock skew beyond Station's 30-second receipt window, matching the existing
 status timestamp allowance. Already expired receipts and deadlines beyond that

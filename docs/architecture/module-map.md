@@ -878,9 +878,10 @@ cancelled late grants use exact-grant retirement and durable cleanup.
 The invitation review has its own React Query client so cold intake can precede
 the main providers. [Native setup refresh hints](../../src-ui/src/platform/native/nativeRelaySetupState.ts)
 notify the mounted [saved Station list](../../src-ui/src/views/connections-hub/RelayRouteProfiles.tsx)
-when confirmation, redemption or cleanup operations settle. The hint names
-only the saved profile. Consumers invalidate that profile’s trust, routing-grant
-and enrollment-recovery queries and validate fresh host responses; the hint
+when confirmation, redemption, Device activation or cleanup operations settle.
+The hint names only the saved profile. Consumers refresh native profile metadata,
+invalidate that profile’s trust, routing-grant and enrollment-recovery queries,
+and validate fresh host responses; the hint
 contains no credential, approval result or application authority. Closing the
 review does not remount the protected root, and late replies still trigger
 the host-state refresh.

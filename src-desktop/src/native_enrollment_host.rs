@@ -330,10 +330,11 @@ fn current_for_route(
     expected: &NativeEnrollmentRouteCapture,
     purpose: &str,
 ) -> Result<()> {
-    native_relay_redemption::with_current_native_enrollment_route(
+    native_relay_redemption::with_owned_native_enrollment_route(
         app,
         &attempt.owner.profile_name,
         expected.context.profile.revision,
+        attempt.credential_reference.as_ref(),
         |live| {
             if live != *expected {
                 return Err(REFUSED.into());
@@ -464,10 +465,11 @@ impl AuthenticatedEnrollmentActivation {
         }
         let mut expected = self.route.clone();
         expected.context.profile.revision = revision;
-        native_relay_redemption::with_current_native_enrollment_route(
+        native_relay_redemption::with_owned_native_enrollment_route(
             app,
             &expected.context.profile.profile_name,
             revision,
+            Some(&self.reference),
             |live| {
                 if live == expected {
                     Ok(())
@@ -491,12 +493,13 @@ fn aborted(app: &AppHandle, id: &str) -> Result<bool> {
     Ok(flag || load(id)?.cancel_requested)
 }
 fn current(app: &AppHandle, attempt: &Attempt) -> Result<NativeEnrollmentRouteCapture> {
-    native_relay_redemption::with_current_native_enrollment_route(
+    native_relay_redemption::with_owned_native_enrollment_route(
         app,
         &attempt.owner.profile_name,
         attempt
             .current_profile_revision
             .unwrap_or(attempt.owner.profile_revision),
+        attempt.credential_reference.as_ref(),
         |route| {
             if matches(attempt, &route) {
                 Ok(route)
@@ -1273,7 +1276,7 @@ pub(crate) async fn station_native_enrollment_transition_current(
         if attempt.cancelled || aborted(&app,&enrollment_handle)? || attempt.transition_handle.as_deref()!=Some(transition_handle.as_str()) || attempt.current_profile_revision!=Some(expected_profile_revision){return Err(REFUSED.into());}
         let route=current(&app,&attempt)?;
         let candidate=attempt.candidate.as_ref().ok_or_else(||REFUSED.to_owned())?;
-        native_relay_redemption::with_existing_native_device_candidate(&app,&attempt.owner.profile_name,expected_profile_revision,|captured|{
+        native_relay_redemption::with_owned_enrollment_device_candidate(&app,&attempt.owner.profile_name,expected_profile_revision,attempt.credential_reference.as_ref().ok_or_else(||REFUSED.to_owned())?,|captured|{
             if captured.context!=route.context || captured.grant_digest!=route.grant_digest || serde_json::to_value(&captured.candidate).map_err(|_|REFUSED.to_owned())?!=serde_json::to_value(candidate).map_err(|_|REFUSED.to_owned())?{return Err(REFUSED.into());}
             let manager=crate::native_device_binding_candidate::NativeDeviceBindingCandidateManager::system();
             let observed=manager.receipt_observation(&captured.authority,&captured.candidate)?.ok_or_else(||REFUSED.to_owned())?;

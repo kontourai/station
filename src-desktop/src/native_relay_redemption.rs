@@ -356,6 +356,21 @@ fn with_locked_saved_relay_profile_store<T>(
         &std::path::Path,
     ) -> RedemptionResult<T>,
 ) -> RedemptionResult<T> {
+    with_locked_saved_enrollment_profile_store(app, profile_name, None, false, operation)
+}
+
+fn with_locked_saved_enrollment_profile_store<T>(
+    app: &AppHandle,
+    profile_name: &str,
+    enrollment_reference: Option<&super::NativeCredentialReference>,
+    paired_device: bool,
+    operation: impl FnOnce(
+        NativeRelayProfileSnapshot,
+        LockedTrustProfileSnapshot,
+        &super::CredentialProfileStore,
+        &std::path::Path,
+    ) -> RedemptionResult<T>,
+) -> RedemptionResult<T> {
     let path =
         super::station_profiles_path(app).map_err(|_| NativeRedemptionError::StaleProfile)?;
     let _profile_lock = super::lock_station_profiles_for_app(app, &path)
@@ -373,7 +388,22 @@ fn with_locked_saved_relay_profile_store<T>(
         "dev" => NativeProofKeyChannel::Dev,
         _ => return Err(NativeRedemptionError::InvalidProfile),
     };
-    let profile = snapshot_from_saved_profile(&store, profile_name, &app_identifier, channel)?;
+    let paired_reference = if paired_device {
+        store
+            .profiles
+            .iter()
+            .find(|profile| profile.name.eq_ignore_ascii_case(profile_name))
+            .and_then(|profile| profile.credential_ref.as_ref())
+    } else {
+        None
+    };
+    let profile = snapshot_from_owned_enrollment_profile(
+        &store,
+        profile_name,
+        &app_identifier,
+        channel,
+        enrollment_reference.or(paired_reference),
+    )?;
     let binding = TrustProfileBinding {
         profile_owner_id: profile.profile_name.clone(),
         app_identifier: profile.app_identifier.clone(),
@@ -3173,6 +3203,42 @@ fn is_contract_loopback(url: &url::Url) -> bool {
     }
 }
 
+fn snapshot_from_owned_enrollment_profile(
+    store: &super::CredentialProfileStore,
+    profile_name: &str,
+    app_identifier: &str,
+    channel: NativeProofKeyChannel,
+    reference: Option<&super::NativeCredentialReference>,
+) -> RedemptionResult<NativeRelayProfileSnapshot> {
+    let Some(reference) = reference else {
+        return snapshot_from_saved_profile(store, profile_name, app_identifier, channel);
+    };
+    let mut route_store = store.clone();
+    let profile = route_store
+        .profiles
+        .iter_mut()
+        .find(|profile| profile.name.eq_ignore_ascii_case(profile_name))
+        .ok_or(NativeRedemptionError::InvalidProfile)?;
+    if profile.credential_ref.is_some() {
+        if profile.credential_ref.as_ref() != Some(reference)
+            || !matches!(
+                profile.configuration_state.as_str(),
+                "requires-auth" | "configured"
+            )
+            || profile
+                .relay_route
+                .as_ref()
+                .map(|route| route.station_id.as_str())
+                != profile._environment_id.as_deref()
+        {
+            return Err(NativeRedemptionError::InvalidProfile);
+        }
+        profile.credential_ref = None;
+        profile.configuration_state = "unconfigured".into();
+    }
+    snapshot_from_saved_profile(&route_store, profile_name, app_identifier, channel)
+}
+
 pub(crate) fn snapshot_from_saved_profile(
     store: &super::CredentialProfileStore,
     profile_name: &str,
@@ -3410,6 +3476,82 @@ mod tests {
     const STATION_ID: &str = "11111111-1111-4111-8111-111111111111";
     const ENROLLMENT_ID: &str = "22222222-2222-4222-8222-222222222222";
     const INSTANCE_ID: &str = "33333333-3333-4333-8333-333333333333";
+
+    #[test]
+    fn enrollment_route_survives_only_its_owned_profile_publication() {
+        let reference = super::super::NativeCredentialReference {
+            kind: "station-bearer".into(),
+            id: format!("native-enrollment:{}", uuid::Uuid::new_v4()),
+        };
+        let fresh = serde_json::json!({
+            "schemaVersion": 1, "revision": 1, "defaultProfile": null, "projectProfiles": {},
+            "profiles": [{"schemaVersion": 1, "name": "relay", "endpoint": "https://station.example",
+                "relayRoute": {"brokerOrigin": "https://broker.example", "stationId": STATION_ID,
+                    "enrollmentId": ENROLLMENT_ID}, "clientInstanceId": INSTANCE_ID,
+                "setupSource": "manual", "configurationState": "unconfigured", "createdAt": 1, "updatedAt": 1}]
+        }).to_string();
+        let store = super::super::parse_station_profile_store(&fresh).unwrap();
+        let original = snapshot_from_saved_profile(
+            &store,
+            "relay",
+            "io.kontourai.station.dev.instance",
+            NativeProofKeyChannel::Dev,
+        )
+        .unwrap();
+        for state in ["requires-auth", "configured"] {
+            let published = super::super::native_enrollment_next_store(
+                &store,
+                "relay",
+                &reference,
+                STATION_ID,
+                INSTANCE_ID,
+                state,
+            )
+            .unwrap();
+            let published = super::super::parse_station_profile_store(&published).unwrap();
+            assert!(snapshot_from_saved_profile(
+                &published,
+                "relay",
+                "io.kontourai.station.dev.instance",
+                NativeProofKeyChannel::Dev
+            )
+            .is_err());
+            let route = snapshot_from_owned_enrollment_profile(
+                &published,
+                "relay",
+                "io.kontourai.station.dev.instance",
+                NativeProofKeyChannel::Dev,
+                Some(&reference),
+            )
+            .unwrap();
+            assert_eq!(route.station_id, original.station_id);
+            assert_eq!(route.enrollment_id, original.enrollment_id);
+            assert_eq!(route.client_instance_id, original.client_instance_id);
+            assert_eq!(route.revision, published.revision);
+            let foreign = super::super::NativeCredentialReference {
+                kind: reference.kind.clone(),
+                id: format!("native-enrollment:{}", uuid::Uuid::new_v4()),
+            };
+            assert!(snapshot_from_owned_enrollment_profile(
+                &published,
+                "relay",
+                "io.kontourai.station.dev.instance",
+                NativeProofKeyChannel::Dev,
+                Some(&foreign)
+            )
+            .is_err());
+            let mut replaced = published.clone();
+            replaced.profiles[0]._environment_id = Some(ENROLLMENT_ID.into());
+            assert!(snapshot_from_owned_enrollment_profile(
+                &replaced,
+                "relay",
+                "io.kontourai.station.dev.instance",
+                NativeProofKeyChannel::Dev,
+                Some(&reference)
+            )
+            .is_err());
+        }
+    }
 
     struct MemoryAuthority(Mutex<NativeRedemptionContext>);
 
@@ -8356,6 +8498,24 @@ pub(crate) fn with_existing_native_device_candidate<T>(
         app,
         profile_name,
         expected_profile_revision,
+        None,
+        |authority, manager, keys| manager.existing_candidate(authority, keys),
+        operation,
+    )
+}
+
+pub(crate) fn with_owned_enrollment_device_candidate<T>(
+    app: &AppHandle,
+    profile_name: &str,
+    expected_profile_revision: u64,
+    reference: &super::NativeCredentialReference,
+    operation: impl FnOnce(NativeDeviceReceiptCapture) -> Result<T, String>,
+) -> Result<T, String> {
+    with_current_native_device_candidate(
+        app,
+        profile_name,
+        expected_profile_revision,
+        Some(reference),
         |authority, manager, keys| manager.existing_candidate(authority, keys),
         operation,
     )
@@ -8371,6 +8531,7 @@ pub(crate) fn adopt_authenticated_native_enrollment(
         app,
         profile_name,
         expected_profile_revision,
+        Some(authenticated.reference()),
         |authority, manager, keys| {
             manager.adopt_authenticated_enrollment(authority, authenticated, keys)
         },
@@ -8382,6 +8543,7 @@ fn with_current_native_device_candidate<T>(
     app: &AppHandle,
     profile_name: &str,
     expected_profile_revision: u64,
+    enrollment_reference: Option<&super::NativeCredentialReference>,
     candidate_operation: impl FnOnce(
         &crate::native_device_binding_candidate::NativeDeviceBindingCandidateAuthority,
         &crate::native_device_binding_candidate::NativeDeviceBindingCandidateManager<
@@ -8394,9 +8556,11 @@ fn with_current_native_device_candidate<T>(
     >,
     operation: impl FnOnce(NativeDeviceReceiptCapture) -> Result<T, String>,
 ) -> Result<T, String> {
-    let result = with_locked_saved_relay_profile_store(
+    let result = with_locked_saved_enrollment_profile_store(
         app,
         profile_name,
+        enrollment_reference,
+        true,
         |profile, locked_snapshot, store, path| {
             if profile.revision != expected_profile_revision {
                 return Err(NativeRedemptionError::StaleProfile);
@@ -9033,11 +9197,31 @@ pub(crate) fn with_current_native_enrollment_route<T>(
     profile_revision: u64,
     operation: impl FnOnce(NativeEnrollmentRouteCapture) -> Result<T, String>,
 ) -> Result<T, String> {
-    let contexts = AppNativeRedemptionContextProvider::new(app.clone());
+    with_owned_native_enrollment_route(app, profile_name, profile_revision, None, operation)
+}
+
+pub(crate) fn with_owned_native_enrollment_route<T>(
+    app: &AppHandle,
+    profile_name: &str,
+    profile_revision: u64,
+    reference: Option<&super::NativeCredentialReference>,
+    operation: impl FnOnce(NativeEnrollmentRouteCapture) -> Result<T, String>,
+) -> Result<T, String> {
     let grants = native_relay_grant_vault();
     let now = native_now_ms().map_err(|_| "native_enrollment_route_refused".to_owned())?;
-    contexts
-        .with_current_context(profile_name, |context| {
+    with_locked_saved_enrollment_profile_store(
+        app,
+        profile_name,
+        reference,
+        false,
+        |profile, locked, _, _| {
+            let approved = NativeStationTrustStore::system()
+                .approved_descriptor_for_locked_profile(&locked)
+                .map_err(|_| NativeRedemptionError::StationTrustRequired)?;
+            let context = NativeRedemptionContext {
+                station_trust: approved_station_trust(&profile, approved)?,
+                profile,
+            };
             validate_profile_context(&context)?;
             if context.profile.revision != profile_revision {
                 return Err(NativeRedemptionError::StaleProfile);
@@ -9073,8 +9257,9 @@ pub(crate) fn with_current_native_enrollment_route<T>(
                 grant_expires_at: grant.expires_at,
             };
             Ok(operation(capture))
-        })
-        .map_err(|_| "native_enrollment_route_refused".to_owned())?
+        },
+    )
+    .map_err(|_| "native_enrollment_route_refused".to_owned())?
 }
 
 pub(crate) fn read_native_relay_ice_configuration(

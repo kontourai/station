@@ -9,6 +9,7 @@ import {
 } from '@kontourai/station-contracts/native-relay-enrollment';
 import { z } from 'zod/v3';
 import { createNativeEnrollmentSignalingBridge } from './nativeEnrollmentSignalingBridge';
+import { publishNativeRelaySetupChange } from './nativeRelaySetupState';
 import type { TauriInvoker } from './nativeRelaySignalingBridge';
 import { invokeTauri } from './tauriInvoke';
 
@@ -278,6 +279,12 @@ export function createNativeRelayEnrollmentClient(
       return outcome;
     } finally {
       busy = false;
+      if (
+        prepareCommand === 'station_native_enrollment_activate_prepare' ||
+        prepareCommand === 'station_native_enrollment_status_prepare' ||
+        prepareCommand === 'station_native_enrollment_cancel_prepare'
+      )
+        publishNativeRelaySetupChange(profileName);
     }
   };
   const acceptState = async (

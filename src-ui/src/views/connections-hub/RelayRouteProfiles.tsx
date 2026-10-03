@@ -744,6 +744,13 @@ function NativeRelaySetupQueryRefresh() {
   useEffect(
     () =>
       subscribeNativeRelaySetupState((profileName) => {
+        void nativeProfileRepository()
+          .refresh()
+          .catch(() => {
+            console.warn(
+              'Saved Station refresh failed; retaining the last known-good list.',
+            );
+          });
         void queryClient.invalidateQueries({
           predicate: ({ queryKey }) =>
             (queryKey[0] === 'native-relay-key-approval' ||

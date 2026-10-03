@@ -1,309 +1,181 @@
 {
   "path": "docs/guides/mobile-release.md",
+
   "kind": "current",
+
   "state": "source-reviewed",
+
   "summary": "Completed all remaining documented claims through actual release/TestFlight and client callers: optional feed reads versus compile inclusion, pinned-origin fetch and HTTPS action validation, conditional writes/readback/compensation and ambiguous outcomes, container alias publication, three-profile/extension entitlement export checks, native credential persistence rejection and iOS accessibility, and pinned OIDC/Secret Manager action behavior. Corrected guarantees to the checks performed.",
-  "limits": "No native build, real device, Keychain/Keystore write, signed artifact, Linux/Windows launch, provider account mutation, publication, upgrade or rollback executed in this continuation. Fixture and source checks do not establish live outcomes. Parent owns combined CI and final ledger integration.\n\nStructural merge of 5fd2dd86ad0cd35018ce09537c1aa01ce58e0e55 and 8f9ea788561518398a488d35bb768b78a272e73b preserves both prior immutable document/source anchors and historical checks. Selecting an existing current-byte binding is structural reconciliation only, not semantic approval of merged inputs. No new digest/revision or coverage baseline was minted. Competing prior anchors remain pending semantic review and supported recording after the merge commit: [{\"path\":\".github/workflows/nightly.yml\",\"ours\":{\"path\":\".github/workflows/nightly.yml\",\"digest\":\"b7e07d02c9583bad18f20d2a362a6c70a7f1e4fb425d7c06d6d313d2be824dca\",\"revision\":\"401e7c7ca5cf5b194b76a21a317fd8ec34591301\"},\"main\":{\"path\":\".github/workflows/nightly.yml\",\"digest\":\"555ac154d3eb7983e8dd5c6f3ff5f73e4f48ac6aac1800747fbbbc5ce4d36801\",\"revision\":\"ec29a8774f2c138bfd9e9818c0f0cc36fc5ebefe\"},\"active\":{\"path\":\".github/workflows/nightly.yml\",\"digest\":\"b7e07d02c9583bad18f20d2a362a6c70a7f1e4fb425d7c06d6d313d2be824dca\",\"revision\":\"401e7c7ca5cf5b194b76a21a317fd8ec34591301\"},\"decision\":\"oursMatch\"},{\"path\":\"src-desktop/Cargo.lock\",\"ours\":{\"path\":\"src-desktop/Cargo.lock\",\"digest\":\"d07581565c34d28f701e69cc8234c8f9a7a5ddd88657ecfdafc08e246c128b40\",\"revision\":\"e33331ee19520c8bd546c878fdd503063a682634\"},\"main\":{\"path\":\"src-desktop/Cargo.lock\",\"digest\":\"38624df3105a4d464e085d4034e32a78e7fe867334cfac2006d6d8b73a31fc4b\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},\"active\":{\"path\":\"src-desktop/Cargo.lock\",\"digest\":\"d07581565c34d28f701e69cc8234c8f9a7a5ddd88657ecfdafc08e246c128b40\",\"revision\":\"e33331ee19520c8bd546c878fdd503063a682634\"},\"decision\":\"oursMatch\"},{\"path\":\"src-desktop/Cargo.toml\",\"ours\":{\"path\":\"src-desktop/Cargo.toml\",\"digest\":\"1bd5b1cfcc31ff425e990407c5b919b9688d5e1b264c0ca60fb969fadf3ce600\",\"revision\":\"b1b2d1fd15ddfd6dea0be7371a81d5008f6ffbf7\"},\"main\":{\"path\":\"src-desktop/Cargo.toml\",\"digest\":\"74e0f4e26dcd14a8d40422c9b7a8b0a1940728f04d3f6cfd1d5b020cb70f0b85\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},\"active\":{\"path\":\"src-desktop/Cargo.toml\",\"digest\":\"1bd5b1cfcc31ff425e990407c5b919b9688d5e1b264c0ca60fb969fadf3ce600\",\"revision\":\"b1b2d1fd15ddfd6dea0be7371a81d5008f6ffbf7\"},\"decision\":\"oursMatch\"},{\"path\":\"src-desktop/src/lib.rs\",\"ours\":{\"path\":\"src-desktop/src/lib.rs\",\"digest\":\"55b2e5849868789c486b8ee0c489080f50fe66d06f2d74b0ec1de6ded0d5411d\",\"revision\":\"b1b2d1fd15ddfd6dea0be7371a81d5008f6ffbf7\"},\"main\":{\"path\":\"src-desktop/src/lib.rs\",\"digest\":\"8c75f82874099575e30e4b757be90a2ba22bbd8d2623813566b5b3f139124833\",\"revision\":\"3517d8f66db867fd982a8f9883ed85052c4e1fc1\"},\"active\":{\"path\":\"src-desktop/src/lib.rs\",\"digest\":\"55b2e5849868789c486b8ee0c489080f50fe66d06f2d74b0ec1de6ded0d5411d\",\"revision\":\"b1b2d1fd15ddfd6dea0be7371a81d5008f6ffbf7\"},\"decision\":\"oursMatch\"}]\n\nNo native build, real device, Keychain/Keystore write, signed artifact, Linux/Windows launch, provider account mutation, publication, upgrade or rollback executed in this continuation. Fixture and source checks do not establish live outcomes. Parent owns combined CI and final ledger integration.\n\nMerge anchor history (structural reconciliation only; no semantic approval): source src-desktop/src/lib.rs ours={\"digest\":\"57a47dd3656d47a5c43eaf4001895942d350d61b6de896fa4d1d3da498bfd821\",\"revision\":\"d5e4502434838cc29b63091ae689474d6488cfe4\"}; origin/main={\"digest\":\"ad3b52011a9be6e6a18133b2367c04d0a6245907e5b7e13fa324bcd8b5255557\",\"revision\":\"464d602fb7fb5fa9bd0df9d241dc03495b398b96\"}. The merged source bytes require supported review after the merge commit. Upstream merge review anchors retained as historical evidence only; merged source mismatches require semantic re-review: {\"document\":{\"digest\":\"e023c537a26d21fc5670e6ff044521dec517957c3ed66e7d6838c1ae89011205\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},\"sources\":[{\"path\":\".github/workflows/build-ios.yml\",\"digest\":\"b4afee0a3cf62cd46226b9b68b648d15d00524a9d7bc27449e640fac6e3f9b73\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\".github/workflows/internal-testflight.yml\",\"digest\":\"b1d770e14eb25d9677b098ab1b08db09a3401f4a1aaf88fd1f908e16cdd9a4b4\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\".github/workflows/nightly-native-cohort.yml\",\"digest\":\"316bd0d98f7370e8b795e28f5a202dcd3fa878f5685d19eda53e73f57b864aaf\",\"revision\":\"8012fb77b1b95d1461c59827bf9690884526f30c\"},{\"path\":\".github/workflows/nightly-native-stage.yml\",\"digest\":\"90a8d29da6c024c539a0abc1eb35ba490791780917e174eb7023d6fb45a90030\",\"revision\":\"8012fb77b1b95d1461c59827bf9690884526f30c\"},{\"path\":\".github/workflows/nightly.yml\",\"digest\":\"4b0cb6bcc5e169bcad830d8a56f7de030864ab0d23cfe64ce1b9880845f45592\",\"revision\":\"fa59c15763af8e75ddf59a250cdb0d5f8913d116\"},{\"path\":\".github/workflows/publish-release.yml\",\"digest\":\"8811d948692207aff9c3987ed9c5ecfd7778770dfbb76b4d80cb7773713f6fa1\",\"revision\":\"fa59c15763af8e75ddf59a250cdb0d5f8913d116\"},{\"path\":\".github/workflows/release.yml\",\"digest\":\"e9322e982c85dfb6b26188a6f6d0bc596f1f384e949bc50a59fe07d552e3c8f2\",\"revision\":\"fa59c15763af8e75ddf59a250cdb0d5f8913d116\"},{\"path\":\".github/workflows/testflight-delivery.yml\",\"digest\":\"b65be60d29e76e922b07ed19bd89576ef1cac76e20712dd28d140c72d36012bb\",\"revision\":\"8012fb77b1b95d1461c59827bf9690884526f30c\"},{\"path\":\".gitignore\",\"digest\":\"a14e84f5b88d0d6fcd61e57cb71335e8b4400d53a35ae84048458a669ac05ccc\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"config/channel-platform-matrix.json\",\"digest\":\"813d8c4e7fa64f8c7bd87278b2f44e655f953030242c9f486cb903ada8527a13\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"config/release-platform-matrix.json\",\"digest\":\"98c281ce785e766ee9d4b32f401e17ddffba02e5fdd2cdc9fc6d3ebedcf8e94b\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"install.sh\",\"digest\":\"f2b2fbf2dba1198f08637b48ad3a1cd7ae684cee020621cd293668e6bbb8b4bc\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"ops/nightly/install-macos.zsh\",\"digest\":\"70db095f76a9397adaccbab4a78374a2e562a76af2e0f595a30b5f09328776f3\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"patches/android-native-keyring-store/src/by_service/cred.rs\",\"digest\":\"780472c84c59241c7bb0a54dc8d39032ae683cff9b4220f6b5a069243c9a1e14\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"patches/android-native-keyring-store/src/by_store/cred.rs\",\"digest\":\"41738684ee143f81095c32cad36099b47552e15c62857de7f16c7a1875871d5c\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"patches/android-native-keyring-store/src/by_store/vault.rs\",\"digest\":\"0dacbf7046023cf63235ad389c09e4124203f67eb24cb0dfe5b2c3e08022d7ca\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"patches/android-native-keyring-store/src/error.rs\",\"digest\":\"1650ecb5d09003ba19eed28f0491210d96d3541c83848e4ccafc8f878459aac2\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"patches/android-native-keyring-store/src/shared_preferences.rs\",\"digest\":\"5ed949a0dcfc366029e21c890716031cd1b9cc05465419d51e33eae2c5011f88\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"schemas/release-artifact-manifest.schema.json\",\"digest\":\"07221e98f2132afb9e1b50f52b713327e634b66772a9fdc01e5ff026b0f0f5ae\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"scripts/__tests__/ensure-ios-agent-activity-extension.test.ts\",\"digest\":\"866e000cc1d4b2e62d6124bc0a8bf74e4014564b471602603ab7cecdf18c143b\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"scripts/__tests__/ios-exported-entitlements.test.ts\",\"digest\":\"c90c77bff126bd526c575dd6524553097e6f514e2f0929bd12f3e2657425e0fc\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"scripts/__tests__/ios-store-signing-config.test.ts\",\"digest\":\"ca2d9c0cd7aab6663e3ad0d38ace6563d3fb9c6bccfd2db8addb11407bbac50d\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"scripts/__tests__/native-update-feed.test.ts\",\"digest\":\"11e779e2c9940210a8f94dfa9cfddfda4bf8f2bdf58d0118f5c64547bd1aa0b2\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"scripts/__tests__/publish-mobile-feed-transaction.test.ts\",\"digest\":\"6fe34e378cf37fa4fe2a6a3736706a59d62785a9b8cafc1c3c459d61cc32c60c\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"scripts/__tests__/release-artifacts.test.ts\",\"digest\":\"cbc2d4fb766186bbf2a95f343bf6f6c07c38afec8731bf649e5d211ca4ce7e64\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"scripts/__tests__/release-workflow.test.ts\",\"digest\":\"2b899fdd5b06966e07e391e65cec71bb78696228febfea25e9c41f3d5c455b02\",\"revision\":\"fa59c15763af8e75ddf59a250cdb0d5f8913d116\"},{\"path\":\"scripts/app-store-connect-receipt.mjs\",\"digest\":\"c70c7c9b86be2658f294f930a37f70c28d41671a041f7f87185c4c1e7df98812\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"scripts/apply-android-release-signing.mjs\",\"digest\":\"84b9052389391a98cd8e157bb371979d40269f642ccb7e078a4179b7f284d64c\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"scripts/check-ios-store-profile.mjs\",\"digest\":\"7467a49dc8616e9472ab7b37fad9648b96e58fe7a0268e7261094dcb0eae7e5d\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"scripts/ensure-ios-agent-activity-extension.mjs\",\"digest\":\"8d6a311a638629b54b3ae592572197b8681f623510784bab2302d82eabd29a6d\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"scripts/ios-channel-icons.mjs\",\"digest\":\"f7e3a770d2476b55ff5ed555a55c8c6251bef0f50e65b5083d604d70c3e32537\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"scripts/ios-exported-entitlements.mjs\",\"digest\":\"af64ec411d76e4d926967e10db8fbc9e7f7f3555f11f19aa1260918851239257\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"scripts/ios-local-release-preflight.mjs\",\"digest\":\"4d0ab7330ebef6799f54c2bae28cd0b76f575d1cc3d096c3ba91e9ae3557755f\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"scripts/ios-store-signing-config.mjs\",\"digest\":\"6925f7a23762e4176dc170703fd59ed579840803e03a89f4d6ab0ad88fa17297\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"scripts/ios-testflight-channel.mjs\",\"digest\":\"302570f2b8fbc0fd49994c158753bc1ac41e27e6145864360a48f816c3e1e304\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"scripts/ios-testflight-internal-authority.mjs\",\"digest\":\"480c939736cba2acf4292b421283afbbc48a0334d807c73bdf5eda5276bd7ef2\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"scripts/ios-testflight-readiness.mjs\",\"digest\":\"dadb2c4e200865e81384ff448c62ef3a577e0745e1b9572139c2eba3a4d0143c\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"scripts/lib/native-release-config.mjs\",\"digest\":\"e26ea6f37e258847dbd060dc54f881a70b62bd054d36f613c93147b16a135d67\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"scripts/lib/release-artifacts.mjs\",\"digest\":\"ed7ccc65b9de85f59a0af871e3e2405d18df4df63d544bd8479c9eb3b394995d\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"scripts/lib/release-variants.mjs\",\"digest\":\"37971798872193d2eac0eefd67049401211254bb5b048f6b8257123909c5968e\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"scripts/native-update-feed.mjs\",\"digest\":\"5331b5766432d532131d71c0227f7d7cf2be1574fe1345c69cc6e4e8fc9b1f27\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"scripts/publish-mobile-feed-transaction.sh\",\"digest\":\"e983e732ff706b8b2c7fbd4e13001331de7341c7aaed0d66656ddfc99cd7a34f\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"scripts/release-artifacts.mjs\",\"digest\":\"24d1dfe35f71d064b714624d4a1fd25cd9cab96dde28d9c195f221e93ed4b9e0\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"scripts/release-platform-matrix.mjs\",\"digest\":\"c7a97e393c6cb12edaee3f360ee922f6bd1fc2ab257c0c3f3872313b31bc5b35\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"src-desktop/Cargo.lock\",\"digest\":\"38624df3105a4d464e085d4034e32a78e7fe867334cfac2006d6d8b73a31fc4b\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"src-desktop/Cargo.toml\",\"digest\":\"74e0f4e26dcd14a8d40422c9b7a8b0a1940728f04d3f6cfd1d5b020cb70f0b85\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"src-desktop/ios/StationNotificationService/NotificationService.swift\",\"digest\":\"5789171c146635064aecf59cc854e742a8726e8fbf9d158c8cf78a38d2ff468a\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"src-desktop/src/lib.rs\",\"digest\":\"ad3b52011a9be6e6a18133b2367c04d0a6245907e5b7e13fa324bcd8b5255557\",\"revision\":\"464d602fb7fb5fa9bd0df9d241dc03495b398b96\"},{\"path\":\"src-server/services/notifications/agent-activity-publisher.ts\",\"digest\":\"3753a4c2bf54fbe7024f0cd658b5a69e9e2c8e0a03c00b9e8592ab6096ee0712\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"src-ui/src/__tests__/CoreUpdateLaunchCheck.test.tsx\",\"digest\":\"d4b04ded0daf9782f355af8c27f7f2b07d4ed1a8263dad862a71f4b9708bea58\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"src-ui/src/components/CoreUpdateLaunchCheck.tsx\",\"digest\":\"97dbb424d7dcdb9a111cd789df399ace5f50468ccc1015d0a9ec9594656e495e\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},{\"path\":\"package.json#/scripts/mobile:permissions:gate\",\"digest\":\"388ab98f993e01ae62702b6901800b488c2ca0c767a5dbf851c481e37074aca9\",\"revision\":\"c526c4a93bd752e4020ff51303125379f404bb4c\"}],\"summary\":\"Completed all remaining documented claims through actual release/TestFlight and client callers: optional feed reads versus compile inclusion, pinned-origin fetch and HTTPS action validation, conditional writes/readback/compensation and ambiguous outcomes, container alias publication, three-profile/extension entitlement export checks, native credential persistence rejection and iOS accessibility, and pinned OIDC/Secret Manager action behavior. Corrected guarantees to the checks performed.\",\"limits\":\"No native build, real device, Keychain/Keystore write, signed artifact, Linux/Windows launch, provider account mutation, publication, upgrade or rollback executed in this continuation. Fixture and source checks do not establish live outcomes. Parent owns combined CI and final ledger integration.\"}",
-  "document": {
-    "digest": "e023c537a26d21fc5670e6ff044521dec517957c3ed66e7d6838c1ae89011205",
-    "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
-  },
+
+  "limits": "No native build, real device, Keychain/Keystore write, signed artifact, Linux/Windows launch, provider account mutation, publication, upgrade or rollback executed in this continuation. Fixture and source checks do not establish live outcomes. Parent owns combined CI and final ledger integration.\n\nStructural merge of 5fd2dd86ad0cd35018ce09537c1aa01ce58e0e55 and 8f9ea788561518398a488d35bb768b78a272e73b preserves both prior immutable document/source anchors and historical checks. Selecting an existing current-byte binding is structural reconciliation only, not semantic approval of merged inputs. No new digest/revision or coverage baseline was minted. Competing prior anchors remain pending semantic review and supported recording after the merge commit: [{\"path\":\".github/workflows/nightly.yml\",\"ours\":{\"path\":\".github/workflows/nightly.yml\",\"digest\":\"b7e07d02c9583bad18f20d2a362a6c70a7f1e4fb425d7c06d6d313d2be824dca\",\"revision\":\"401e7c7ca5cf5b194b76a21a317fd8ec34591301\"},\"main\":{\"path\":\".github/workflows/nightly.yml\",\"digest\":\"555ac154d3eb7983e8dd5c6f3ff5f73e4f48ac6aac1800747fbbbc5ce4d36801\",\"revision\":\"ec29a8774f2c138bfd9e9818c0f0cc36fc5ebefe\"},\"active\":{\"path\":\".github/workflows/nightly.yml\",\"digest\":\"b7e07d02c9583bad18f20d2a362a6c70a7f1e4fb425d7c06d6d313d2be824dca\",\"revision\":\"401e7c7ca5cf5b194b76a21a317fd8ec34591301\"},\"decision\":\"oursMatch\"},{\"path\":\"src-desktop/Cargo.lock\",\"ours\":{\"path\":\"src-desktop/Cargo.lock\",\"digest\":\"d07581565c34d28f701e69cc8234c8f9a7a5ddd88657ecfdafc08e246c128b40\",\"revision\":\"e33331ee19520c8bd546c878fdd503063a682634\"},\"main\":{\"path\":\"src-desktop/Cargo.lock\",\"digest\":\"38624df3105a4d464e085d4034e32a78e7fe867334cfac2006d6d8b73a31fc4b\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},\"active\":{\"path\":\"src-desktop/Cargo.lock\",\"digest\":\"d07581565c34d28f701e69cc8234c8f9a7a5ddd88657ecfdafc08e246c128b40\",\"revision\":\"e33331ee19520c8bd546c878fdd503063a682634\"},\"decision\":\"oursMatch\"},{\"path\":\"src-desktop/Cargo.toml\",\"ours\":{\"path\":\"src-desktop/Cargo.toml\",\"digest\":\"1bd5b1cfcc31ff425e990407c5b919b9688d5e1b264c0ca60fb969fadf3ce600\",\"revision\":\"b1b2d1fd15ddfd6dea0be7371a81d5008f6ffbf7\"},\"main\":{\"path\":\"src-desktop/Cargo.toml\",\"digest\":\"74e0f4e26dcd14a8d40422c9b7a8b0a1940728f04d3f6cfd1d5b020cb70f0b85\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},\"active\":{\"path\":\"src-desktop/Cargo.toml\",\"digest\":\"1bd5b1cfcc31ff425e990407c5b919b9688d5e1b264c0ca60fb969fadf3ce600\",\"revision\":\"b1b2d1fd15ddfd6dea0be7371a81d5008f6ffbf7\"},\"decision\":\"oursMatch\"},{\"path\":\"src-desktop/src/lib.rs\",\"ours\":{\"path\":\"src-desktop/src/lib.rs\",\"digest\":\"55b2e5849868789c486b8ee0c489080f50fe66d06f2d74b0ec1de6ded0d5411d\",\"revision\":\"b1b2d1fd15ddfd6dea0be7371a81d5008f6ffbf7\"},\"main\":{\"path\":\"src-desktop/src/lib.rs\",\"digest\":\"8c75f82874099575e30e4b757be90a2ba22bbd8d2623813566b5b3f139124833\",\"revision\":\"3517d8f66db867fd982a8f9883ed85052c4e1fc1\"},\"active\":{\"path\":\"src-desktop/src/lib.rs\",\"digest\":\"55b2e5849868789c486b8ee0c489080f50fe66d06f2d74b0ec1de6ded0d5411d\",\"revision\":\"b1b2d1fd15ddfd6dea0be7371a81d5008f6ffbf7\"},\"decision\":\"oursMatch\"}]\n\nNo native build, real device, Keychain/Keystore write, signed artifact, Linux/Windows launch, provider account mutation, publication, upgrade or rollback executed in this continuation. Fixture and source checks do not establish live outcomes. Parent owns combined CI and final ledger integration.\n\nMerge anchor history (structural reconciliation only; no semantic approval): source src-desktop/src/lib.rs ours={\"digest\":\"57a47dd3656d47a5c43eaf4001895942d350d61b6de896fa4d1d3da498bfd821\",\"revision\":\"d5e4502434838cc29b63091ae689474d6488cfe4\"}; origin/main={\"digest\":\"ad3b52011a9be6e6a18133b2367c04d0a6245907e5b7e13fa324bcd8b5255557\",\"revision\":\"464d602fb7fb5fa9bd0df9d241dc03495b398b96\"}. The merged source bytes require supported review after the merge commit.",
+
+  "document": {"digest":"e023c537a26d21fc5670e6ff044521dec517957c3ed66e7d6838c1ae89011205","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
   "sources": [
-    {
-      "path": ".github/workflows/build-ios.yml",
-      "digest": "b4afee0a3cf62cd46226b9b68b648d15d00524a9d7bc27449e640fac6e3f9b73",
-      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
-    },
-    {
-      "path": ".github/workflows/internal-testflight.yml",
-      "digest": "b1d770e14eb25d9677b098ab1b08db09a3401f4a1aaf88fd1f908e16cdd9a4b4",
-      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
-    },
-    {
-      "path": ".github/workflows/nightly-native-cohort.yml",
-      "digest": "316bd0d98f7370e8b795e28f5a202dcd3fa878f5685d19eda53e73f57b864aaf",
-      "revision": "8012fb77b1b95d1461c59827bf9690884526f30c"
-    },
-    {
-      "path": ".github/workflows/nightly-native-stage.yml",
-      "digest": "90a8d29da6c024c539a0abc1eb35ba490791780917e174eb7023d6fb45a90030",
-      "revision": "8012fb77b1b95d1461c59827bf9690884526f30c"
-    },
-    {
-      "path": ".github/workflows/nightly.yml",
-      "digest": "b7e07d02c9583bad18f20d2a362a6c70a7f1e4fb425d7c06d6d313d2be824dca",
-      "revision": "401e7c7ca5cf5b194b76a21a317fd8ec34591301"
-    },
-    {
-      "path": ".github/workflows/publish-release.yml",
-      "digest": "b1f8a7f84db1576cd6e3f7ddd499f435d66e2ea5974a68e20a4508759ac695a6",
-      "revision": "8012fb77b1b95d1461c59827bf9690884526f30c"
-    },
-    {
-      "path": ".github/workflows/release.yml",
-      "digest": "6ceff4507c2d55bb384c36cb7fba8be4b6eaaf0f0d408ecb990398fc00996c88",
-      "revision": "12e161f7032b17c2f97702c0c41116b0c82bbb91"
-    },
-    {
-      "path": ".github/workflows/testflight-delivery.yml",
-      "digest": "b65be60d29e76e922b07ed19bd89576ef1cac76e20712dd28d140c72d36012bb",
-      "revision": "8012fb77b1b95d1461c59827bf9690884526f30c"
-    },
-    {
-      "path": ".gitignore",
-      "digest": "a14e84f5b88d0d6fcd61e57cb71335e8b4400d53a35ae84048458a669ac05ccc",
-      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
-    },
-    {
-      "path": "config/channel-platform-matrix.json",
-      "digest": "813d8c4e7fa64f8c7bd87278b2f44e655f953030242c9f486cb903ada8527a13",
-      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
-    },
-    {
-      "path": "config/release-platform-matrix.json",
-      "digest": "98c281ce785e766ee9d4b32f401e17ddffba02e5fdd2cdc9fc6d3ebedcf8e94b",
-      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
-    },
-    {
-      "path": "install.sh",
-      "digest": "f2b2fbf2dba1198f08637b48ad3a1cd7ae684cee020621cd293668e6bbb8b4bc",
-      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
-    },
-    {
-      "path": "ops/nightly/install-macos.zsh",
-      "digest": "70db095f76a9397adaccbab4a78374a2e562a76af2e0f595a30b5f09328776f3",
-      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
-    },
-    {
-      "path": "package.json#/scripts/mobile:permissions:gate",
-      "digest": "388ab98f993e01ae62702b6901800b488c2ca0c767a5dbf851c481e37074aca9",
-      "revision": "c526c4a93bd752e4020ff51303125379f404bb4c"
-    },
-    {
-      "path": "patches/android-native-keyring-store/src/by_service/cred.rs",
-      "digest": "780472c84c59241c7bb0a54dc8d39032ae683cff9b4220f6b5a069243c9a1e14",
-      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
-    },
-    {
-      "path": "patches/android-native-keyring-store/src/by_store/cred.rs",
-      "digest": "41738684ee143f81095c32cad36099b47552e15c62857de7f16c7a1875871d5c",
-      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
-    },
-    {
-      "path": "patches/android-native-keyring-store/src/by_store/vault.rs",
-      "digest": "0dacbf7046023cf63235ad389c09e4124203f67eb24cb0dfe5b2c3e08022d7ca",
-      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
-    },
-    {
-      "path": "patches/android-native-keyring-store/src/error.rs",
-      "digest": "1650ecb5d09003ba19eed28f0491210d96d3541c83848e4ccafc8f878459aac2",
-      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
-    },
-    {
-      "path": "patches/android-native-keyring-store/src/shared_preferences.rs",
-      "digest": "5ed949a0dcfc366029e21c890716031cd1b9cc05465419d51e33eae2c5011f88",
-      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
-    },
-    {
-      "path": "schemas/release-artifact-manifest.schema.json",
-      "digest": "07221e98f2132afb9e1b50f52b713327e634b66772a9fdc01e5ff026b0f0f5ae",
-      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
-    },
-    {
-      "path": "scripts/__tests__/ensure-ios-agent-activity-extension.test.ts",
-      "digest": "866e000cc1d4b2e62d6124bc0a8bf74e4014564b471602603ab7cecdf18c143b",
-      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
-    },
-    {
-      "path": "scripts/__tests__/ios-exported-entitlements.test.ts",
-      "digest": "c90c77bff126bd526c575dd6524553097e6f514e2f0929bd12f3e2657425e0fc",
-      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
-    },
-    {
-      "path": "scripts/__tests__/ios-store-signing-config.test.ts",
-      "digest": "ca2d9c0cd7aab6663e3ad0d38ace6563d3fb9c6bccfd2db8addb11407bbac50d",
-      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
-    },
-    {
-      "path": "scripts/__tests__/native-update-feed.test.ts",
-      "digest": "11e779e2c9940210a8f94dfa9cfddfda4bf8f2bdf58d0118f5c64547bd1aa0b2",
-      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
-    },
-    {
-      "path": "scripts/__tests__/publish-mobile-feed-transaction.test.ts",
-      "digest": "6fe34e378cf37fa4fe2a6a3736706a59d62785a9b8cafc1c3c459d61cc32c60c",
-      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
-    },
-    {
-      "path": "scripts/__tests__/release-artifacts.test.ts",
-      "digest": "cbc2d4fb766186bbf2a95f343bf6f6c07c38afec8731bf649e5d211ca4ce7e64",
-      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
-    },
-    {
-      "path": "scripts/__tests__/release-workflow.test.ts",
-      "digest": "bae8939a7bc0134f682c457adfc56796419b6fbc8537e1b083be357af19b8fce",
-      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
-    },
-    {
-      "path": "scripts/app-store-connect-receipt.mjs",
-      "digest": "c70c7c9b86be2658f294f930a37f70c28d41671a041f7f87185c4c1e7df98812",
-      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
-    },
-    {
-      "path": "scripts/apply-android-release-signing.mjs",
-      "digest": "84b9052389391a98cd8e157bb371979d40269f642ccb7e078a4179b7f284d64c",
-      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
-    },
-    {
-      "path": "scripts/check-ios-store-profile.mjs",
-      "digest": "7467a49dc8616e9472ab7b37fad9648b96e58fe7a0268e7261094dcb0eae7e5d",
-      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
-    },
-    {
-      "path": "scripts/ensure-ios-agent-activity-extension.mjs",
-      "digest": "8d6a311a638629b54b3ae592572197b8681f623510784bab2302d82eabd29a6d",
-      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
-    },
-    {
-      "path": "scripts/ios-channel-icons.mjs",
-      "digest": "f7e3a770d2476b55ff5ed555a55c8c6251bef0f50e65b5083d604d70c3e32537",
-      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
-    },
-    {
-      "path": "scripts/ios-exported-entitlements.mjs",
-      "digest": "af64ec411d76e4d926967e10db8fbc9e7f7f3555f11f19aa1260918851239257",
-      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
-    },
-    {
-      "path": "scripts/ios-local-release-preflight.mjs",
-      "digest": "4d0ab7330ebef6799f54c2bae28cd0b76f575d1cc3d096c3ba91e9ae3557755f",
-      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
-    },
-    {
-      "path": "scripts/ios-store-signing-config.mjs",
-      "digest": "6925f7a23762e4176dc170703fd59ed579840803e03a89f4d6ab0ad88fa17297",
-      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
-    },
-    {
-      "path": "scripts/ios-testflight-channel.mjs",
-      "digest": "302570f2b8fbc0fd49994c158753bc1ac41e27e6145864360a48f816c3e1e304",
-      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
-    },
-    {
-      "path": "scripts/ios-testflight-internal-authority.mjs",
-      "digest": "480c939736cba2acf4292b421283afbbc48a0334d807c73bdf5eda5276bd7ef2",
-      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
-    },
-    {
-      "path": "scripts/ios-testflight-readiness.mjs",
-      "digest": "dadb2c4e200865e81384ff448c62ef3a577e0745e1b9572139c2eba3a4d0143c",
-      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
-    },
-    {
-      "path": "scripts/lib/native-release-config.mjs",
-      "digest": "e26ea6f37e258847dbd060dc54f881a70b62bd054d36f613c93147b16a135d67",
-      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
-    },
-    {
-      "path": "scripts/lib/release-artifacts.mjs",
-      "digest": "ed7ccc65b9de85f59a0af871e3e2405d18df4df63d544bd8479c9eb3b394995d",
-      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
-    },
-    {
-      "path": "scripts/lib/release-variants.mjs",
-      "digest": "37971798872193d2eac0eefd67049401211254bb5b048f6b8257123909c5968e",
-      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
-    },
-    {
-      "path": "scripts/native-update-feed.mjs",
-      "digest": "5331b5766432d532131d71c0227f7d7cf2be1574fe1345c69cc6e4e8fc9b1f27",
-      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
-    },
-    {
-      "path": "scripts/publish-mobile-feed-transaction.sh",
-      "digest": "e983e732ff706b8b2c7fbd4e13001331de7341c7aaed0d66656ddfc99cd7a34f",
-      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
-    },
-    {
-      "path": "scripts/release-artifacts.mjs",
-      "digest": "24d1dfe35f71d064b714624d4a1fd25cd9cab96dde28d9c195f221e93ed4b9e0",
-      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
-    },
-    {
-      "path": "scripts/release-platform-matrix.mjs",
-      "digest": "c7a97e393c6cb12edaee3f360ee922f6bd1fc2ab257c0c3f3872313b31bc5b35",
-      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
-    },
-    {
-      "path": "src-desktop/Cargo.lock",
-      "digest": "6b27bee2d6f95c5f3039652d8f16d3f05575ec6c03512a3a223705050c854a63",
-      "revision": "6f7521ea2fc94d945814f683c64bdfccccb480bd"
-    },
-    {
-      "path": "src-desktop/Cargo.toml",
-      "digest": "0d9f144551f4b9e6e7d85976c7da5cc22aee133f708b48ee38087d9966264105",
-      "revision": "6f7521ea2fc94d945814f683c64bdfccccb480bd"
-    },
-    {
-      "path": "src-desktop/ios/StationNotificationService/NotificationService.swift",
-      "digest": "5789171c146635064aecf59cc854e742a8726e8fbf9d158c8cf78a38d2ff468a",
-      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
-    },
-    {
-      "path": "src-desktop/src/lib.rs",
-      "digest": "efb56af98923f91f077bce297fc781bd3526a0a0f07dd212a340992ccd56bac2",
-      "revision": "19e70a1db7d3faabe474a5324c7ac28d10ede7a3"
-    },
-    {
-      "path": "src-desktop/src/native_secure_entry.rs",
-      "digest": "d6ff8051df4be60ff738f524488fe877b0711b95aa606cb70b378e74962bd209",
-      "revision": "8d92d732808201554ba801334e2a19f7081fd09d"
-    },
-    {
-      "path": "src-server/services/notifications/agent-activity-publisher.ts",
-      "digest": "3753a4c2bf54fbe7024f0cd658b5a69e9e2c8e0a03c00b9e8592ab6096ee0712",
-      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
-    },
-    {
-      "path": "src-ui/src/__tests__/CoreUpdateLaunchCheck.test.tsx",
-      "digest": "d4b04ded0daf9782f355af8c27f7f2b07d4ed1a8263dad862a71f4b9708bea58",
-      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
-    },
-    {
-      "path": "src-ui/src/components/CoreUpdateLaunchCheck.tsx",
-      "digest": "97dbb424d7dcdb9a111cd789df399ace5f50468ccc1015d0a9ec9594656e495e",
-      "revision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"
-    }
+    {"path":".github/workflows/build-ios.yml","digest":"b4afee0a3cf62cd46226b9b68b648d15d00524a9d7bc27449e640fac6e3f9b73","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":".github/workflows/internal-testflight.yml","digest":"b1d770e14eb25d9677b098ab1b08db09a3401f4a1aaf88fd1f908e16cdd9a4b4","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":".github/workflows/nightly-native-cohort.yml","digest":"316bd0d98f7370e8b795e28f5a202dcd3fa878f5685d19eda53e73f57b864aaf","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
+
+    {"path":".github/workflows/nightly-native-stage.yml","digest":"90a8d29da6c024c539a0abc1eb35ba490791780917e174eb7023d6fb45a90030","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
+
+    {"path":".github/workflows/nightly.yml","digest":"b7e07d02c9583bad18f20d2a362a6c70a7f1e4fb425d7c06d6d313d2be824dca","revision":"401e7c7ca5cf5b194b76a21a317fd8ec34591301"},
+
+    {"path":".github/workflows/publish-release.yml","digest":"8811d948692207aff9c3987ed9c5ecfd7778770dfbb76b4d80cb7773713f6fa1","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
+
+    {"path":".github/workflows/release.yml","digest":"e9322e982c85dfb6b26188a6f6d0bc596f1f384e949bc50a59fe07d552e3c8f2","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
+
+    {"path":".github/workflows/testflight-delivery.yml","digest":"b65be60d29e76e922b07ed19bd89576ef1cac76e20712dd28d140c72d36012bb","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
+
+    {"path":".gitignore","digest":"a14e84f5b88d0d6fcd61e57cb71335e8b4400d53a35ae84048458a669ac05ccc","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"config/channel-platform-matrix.json","digest":"813d8c4e7fa64f8c7bd87278b2f44e655f953030242c9f486cb903ada8527a13","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"config/release-platform-matrix.json","digest":"98c281ce785e766ee9d4b32f401e17ddffba02e5fdd2cdc9fc6d3ebedcf8e94b","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"install.sh","digest":"f2b2fbf2dba1198f08637b48ad3a1cd7ae684cee020621cd293668e6bbb8b4bc","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"ops/nightly/install-macos.zsh","digest":"70db095f76a9397adaccbab4a78374a2e562a76af2e0f595a30b5f09328776f3","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"package.json#/scripts/mobile:permissions:gate","digest":"388ab98f993e01ae62702b6901800b488c2ca0c767a5dbf851c481e37074aca9","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
+
+    {"path":"patches/android-native-keyring-store/src/by_service/cred.rs","digest":"780472c84c59241c7bb0a54dc8d39032ae683cff9b4220f6b5a069243c9a1e14","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"patches/android-native-keyring-store/src/by_store/cred.rs","digest":"41738684ee143f81095c32cad36099b47552e15c62857de7f16c7a1875871d5c","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"patches/android-native-keyring-store/src/by_store/vault.rs","digest":"0dacbf7046023cf63235ad389c09e4124203f67eb24cb0dfe5b2c3e08022d7ca","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"patches/android-native-keyring-store/src/error.rs","digest":"1650ecb5d09003ba19eed28f0491210d96d3541c83848e4ccafc8f878459aac2","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"patches/android-native-keyring-store/src/shared_preferences.rs","digest":"5ed949a0dcfc366029e21c890716031cd1b9cc05465419d51e33eae2c5011f88","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"schemas/release-artifact-manifest.schema.json","digest":"07221e98f2132afb9e1b50f52b713327e634b66772a9fdc01e5ff026b0f0f5ae","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/__tests__/ensure-ios-agent-activity-extension.test.ts","digest":"866e000cc1d4b2e62d6124bc0a8bf74e4014564b471602603ab7cecdf18c143b","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/__tests__/ios-exported-entitlements.test.ts","digest":"c90c77bff126bd526c575dd6524553097e6f514e2f0929bd12f3e2657425e0fc","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/__tests__/ios-store-signing-config.test.ts","digest":"ca2d9c0cd7aab6663e3ad0d38ace6563d3fb9c6bccfd2db8addb11407bbac50d","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/__tests__/native-update-feed.test.ts","digest":"11e779e2c9940210a8f94dfa9cfddfda4bf8f2bdf58d0118f5c64547bd1aa0b2","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/__tests__/publish-mobile-feed-transaction.test.ts","digest":"6fe34e378cf37fa4fe2a6a3736706a59d62785a9b8cafc1c3c459d61cc32c60c","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/__tests__/release-artifacts.test.ts","digest":"cbc2d4fb766186bbf2a95f343bf6f6c07c38afec8731bf649e5d211ca4ce7e64","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/__tests__/release-workflow.test.ts","digest":"2b899fdd5b06966e07e391e65cec71bb78696228febfea25e9c41f3d5c455b02","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
+
+    {"path":"scripts/app-store-connect-receipt.mjs","digest":"c70c7c9b86be2658f294f930a37f70c28d41671a041f7f87185c4c1e7df98812","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/apply-android-release-signing.mjs","digest":"84b9052389391a98cd8e157bb371979d40269f642ccb7e078a4179b7f284d64c","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/check-ios-store-profile.mjs","digest":"7467a49dc8616e9472ab7b37fad9648b96e58fe7a0268e7261094dcb0eae7e5d","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/ensure-ios-agent-activity-extension.mjs","digest":"8d6a311a638629b54b3ae592572197b8681f623510784bab2302d82eabd29a6d","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/ios-channel-icons.mjs","digest":"f7e3a770d2476b55ff5ed555a55c8c6251bef0f50e65b5083d604d70c3e32537","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/ios-exported-entitlements.mjs","digest":"af64ec411d76e4d926967e10db8fbc9e7f7f3555f11f19aa1260918851239257","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/ios-local-release-preflight.mjs","digest":"4d0ab7330ebef6799f54c2bae28cd0b76f575d1cc3d096c3ba91e9ae3557755f","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/ios-store-signing-config.mjs","digest":"6925f7a23762e4176dc170703fd59ed579840803e03a89f4d6ab0ad88fa17297","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/ios-testflight-channel.mjs","digest":"302570f2b8fbc0fd49994c158753bc1ac41e27e6145864360a48f816c3e1e304","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/ios-testflight-internal-authority.mjs","digest":"480c939736cba2acf4292b421283afbbc48a0334d807c73bdf5eda5276bd7ef2","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/ios-testflight-readiness.mjs","digest":"dadb2c4e200865e81384ff448c62ef3a577e0745e1b9572139c2eba3a4d0143c","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/lib/native-release-config.mjs","digest":"e26ea6f37e258847dbd060dc54f881a70b62bd054d36f613c93147b16a135d67","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/lib/release-artifacts.mjs","digest":"ed7ccc65b9de85f59a0af871e3e2405d18df4df63d544bd8479c9eb3b394995d","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/lib/release-variants.mjs","digest":"37971798872193d2eac0eefd67049401211254bb5b048f6b8257123909c5968e","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/native-update-feed.mjs","digest":"5331b5766432d532131d71c0227f7d7cf2be1574fe1345c69cc6e4e8fc9b1f27","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/publish-mobile-feed-transaction.sh","digest":"e983e732ff706b8b2c7fbd4e13001331de7341c7aaed0d66656ddfc99cd7a34f","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/release-artifacts.mjs","digest":"24d1dfe35f71d064b714624d4a1fd25cd9cab96dde28d9c195f221e93ed4b9e0","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/release-platform-matrix.mjs","digest":"c7a97e393c6cb12edaee3f360ee922f6bd1fc2ab257c0c3f3872313b31bc5b35","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"src-desktop/Cargo.lock","digest":"6b27bee2d6f95c5f3039652d8f16d3f05575ec6c03512a3a223705050c854a63","revision":"6f7521ea2fc94d945814f683c64bdfccccb480bd"},
+
+    {"path":"src-desktop/Cargo.toml","digest":"0d9f144551f4b9e6e7d85976c7da5cc22aee133f708b48ee38087d9966264105","revision":"6f7521ea2fc94d945814f683c64bdfccccb480bd"},
+
+    {"path":"src-desktop/ios/StationNotificationService/NotificationService.swift","digest":"5789171c146635064aecf59cc854e742a8726e8fbf9d158c8cf78a38d2ff468a","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"src-desktop/src/lib.rs","digest":"efb56af98923f91f077bce297fc781bd3526a0a0f07dd212a340992ccd56bac2","revision":"19e70a1db7d3faabe474a5324c7ac28d10ede7a3"},
+
+    {"path":"src-desktop/src/native_secure_entry.rs","digest":"d6ff8051df4be60ff738f524488fe877b0711b95aa606cb70b378e74962bd209","revision":"8d92d732808201554ba801334e2a19f7081fd09d"},
+
+    {"path":"src-server/services/notifications/agent-activity-publisher.ts","digest":"3753a4c2bf54fbe7024f0cd658b5a69e9e2c8e0a03c00b9e8592ab6096ee0712","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"src-ui/src/__tests__/CoreUpdateLaunchCheck.test.tsx","digest":"d4b04ded0daf9782f355af8c27f7f2b07d4ed1a8263dad862a71f4b9708bea58","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"src-ui/src/components/CoreUpdateLaunchCheck.tsx","digest":"97dbb424d7dcdb9a111cd789df399ace5f50468ccc1015d0a9ec9594656e495e","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"}
   ],
+
   "checks": [
     "Prior review receipt (not rerun here): focused: PASS116tests7files2.03s: native-release-config, release-ring-workflow, nightly-cohort-decision, ios-testflight-readiness, app-store-connect-receipt, release-platform-matrix, documentation-foundations",
+
     "Prior review receipt (not rerun here): matrix: PASS node scripts/release-platform-matrix.mjs; config validation only, no projection as live truth",
+
     "Prior review receipt (not rerun here): actualAssemblyCli: FAIL exit1 readFileSync is not defined; expected finding, not fixed; no output/assets produced",
+
     "Prior review receipt (not rerun here): veritas: PASS exit0/0failures/0warnings; proof:repo-governance/lint:check/verification-policy; protected hashes unchanged",
+
     "Prior review receipt (not rerun here): Upstream source review: Reviewed all nine script deltas: shard command, install-script freshness in static raw, portable builder/smoke, native echo diagnostic and portable output cleanup. Existing named local/promotion commands remain; new tooling documented without publication claim.",
+
     "Prior review receipt (not rerun here): Upstream source review: Reviewed generated channel/key blocks, Nightly public-manifest-only and coexistence admission, exact pin/channel checks, retained source-archive selector, final-location build and upgrade identity. This consumer is not the new per-platform prebuilt installer; docs preserve that limit.",
+
     "Prior review receipt (not rerun here): Upstream source review: Reviewed affected current owners: native startup callbacks and separate React mount, registered native grant/diagnostic commands and cleanup hooks, native notification feed manage/start/IPC, state-directory profile genesis. Updated readiness/recovery/tray/broker claims; no native/platform delivery proof.",
+
     "Prior review receipt (not rerun here): Upstream source review: Adds notificationServiceBundleId null for stable and exact Beta/Nightly NotificationService IDs. Mobile/setup docs now require both extensions and all three profiles; no current provider provisioning asserted.",
+
     "Prior review receipt (not rerun here): Upstream source review: Only frozen upstream delta adds guarded pinned pnpm JS bootstrap on Intel macOS and keeps pinned native setup elsewhere. Tagged native inventory/signing/publication claims unaffected; no hosted execution.",
+
     "Prior review receipt (not rerun here): Upstream source review: Reviewed new NotificationService secret/profile import, target generation/signing, exact extension count, embedded profile/entitlement audits and exported bytes. Mobile/setup corrected; icons and existing artifact/provider distinction retained.",
+
     "Prior review receipt (not rerun here): Upstream source review: Only adds dist-portable-server generated directory; existing native/package artifact boundaries unchanged.",
+
     "Prior review receipt (not rerun here): Frozen upstream guide delta reviewed against current owners;236focused checks passed in that review. Prior semantic scope and unverified live/platform limits retained.",
+
     "Prior review receipt (not rerun here): Reviewed source changes: Added docs:impact and focused impact/media tests to the documentation foundation lane. Runtime dependencies, package exports and configuration values are unchanged by these script additions.",
+
     "Prior review receipt (not rerun here): Added only a tracked documentation PNG exception; native capture/private artifact rules are unchanged.",
+
     "Executed before frozen merge: 191 tests/10 files PASS in 62.69s: native-update-feed, publish-mobile-feed-transaction, release-cohort, verify-release-cohort, windows-nightly, ios-channel-icons, macos-notarized-artifacts, macos-build-only-artifact, macos-build-only-cleanup, CoreUpdateLaunchCheck. Fixture/process boundaries only; relevant tested owners unchanged by frozen merge.",
+
     "Executed at merged frozen source: 24 tests/3 files PASS in 8.92s: nativeRelayGrantRenewalAdapter, nativeRelayGrantRenewalSupervisor, RelayRouteProfiles. Injected native boundaries; no native shell.",
+
     "Executed: docs:links:check PASS 415 Markdown files; git diff --check PASS. Final doctor wording only refines plain prose and adds no links.",
+
     "Frozen deltas 2317f4ed3, 73e3cdac8, ae8f5d44f and 1bf1a1e98 reviewed through registered IPC, actual renderer/startup/staging callers. Package docs-script additions and tracked learning PNG exception also reviewed; no native semantic impact.",
+
     "All remaining concrete claims and full-page consistency reviewed. This is source-reviewed documentation, not every branch of each named owner or physical/provider acceptance.",
+
     "Veritas readiness veritas-1790533833943 on the three-file native delta before final Doctor wording refinement: exit0, 0 FAIL/1 WARN. repo-governance and lint PASS. Optional verification-policy exit80: five product laws behavior/fault-injection PASS; mobile-context primary-actions behavior PASS but fault-injection structured Vitest observation timed out after25916ms (INFRASTRUCTURE_ERROR), not a product failure or passing rejection proof. No rerun; root owns combined CI.",
+
     "Primary external documentation reviewed read-only on2026-09-27: Apple API keys https://developer.apple.com/help/app-store-connect/get-started/app-store-connect-api/ ; Apple screenshot specifications https://developer.apple.com/help/app-store-connect/reference/app-information/screenshot-specifications/ ; Apple privacy https://developer.apple.com/app-store/user-privacy-and-data-use/ ; Google preview assets https://support.google.com/googleplay/android-developer/answer/9866151 ; Google categories https://support.google.com/googleplay/android-developer/answer/9859673 ; Google deployment-pipeline WIF https://docs.cloud.google.com/iam/docs/workload-identity-federation-with-deployment-pipelines . No account query or mutation.",
+
     "Pinned action source read: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 action.yml (post-job cleanup default true); get-secretmanager-secrets@bc9c54b29fdffb8a47776820a7d26e77b379d262 action.yml (outputs available to later steps, min mask length4). Declarations do not prove live IAM policy or immediate credential erasure.",
+
     "Landing source delta through 61d497e88: Reviewed portable Nightly call bindings, dry-run default, publication ordering and tests. Documented signing prerequisites and platform-array v2/current-installer boundary. Container metadata still rejects Nightly; shared packaged metadata accepts it. Live GitHub environment policy, publication, five-platform builds and installer consumption are not newly verified.",
+
     "Landing review through d0d9d33f7: Reviewed host-selected platform-v2 archive admission and bundled/verifier Node paths, source-v1/default GitHub fallbacks, version promotion/rollback and ownership. Corrected current installer explanations; native/store/source-checkout claims retain their separate scope. Desktop-only module inclusion adds no IPC, startup call, mobile code or production account caller. Existing window, sidecar, routing, notification, recovery and store behavior is unchanged. macOS context checks: 10 checked, none skipped/failed; no native vault test, IPC or physical-device execution in this review. Integration group: 477 passed and one archive-trigger omission failed in 420.29s. Expanded missing-input control: 20 passed/2 failed; after adding six workflow paths, archive suite 22/22 passed in 494ms. Earlier failure is retained; no live installer/publication claim.",
+
     "Reviewed landing deltas through 111744681: Registers three desktop main-window application-signaling commands. This does not register the separate account-key vault, wire a normal application consumer, alter mobile startup or establish physical-device execution.",
+
     "Integration source review through d1e0facc2: Update evidence now exercises the owning component; no physical update receipt inferred. Version/feed helpers are private; native update validation is unchanged. Existing prose remains accurate. Source review is separate from executed test evidence.",
+
     "Integration source review through e0314c727: lib.rs removed the notification_watch host poller, and the Cargo.toml rustls comment now names the native request agent. install.sh/install-macos.zsh/package.json changes do not touch mobile claims. Corrected the remote-push paragraph by dropping the reference to a 'Rust watcher' that no longer exists. Source review is separate from executed test evidence.",
+
     "Integration source review through 5731eba07: 3ab09593d (#2914) native-update-feed.mjs removes the validateUpdateConfig alias (tests call resolveNativeUpdateAuthority), publish-mobile-feed-transaction tests drop helper-only fixture cases, install-macos.zsh adds `--` to print; (#2881) install.sh changes are archive-service only; publisher/wrapper behavior described is unchanged; prose accurate. Source review is separate from executed test evidence.",
+
     "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged."
   ]
 }
