@@ -280,8 +280,8 @@ describe('Marketplace source lifecycle through Registry routes', () => {
       expect(
         (
           await request('/sources', 'POST', {
-            displayName: 'Unavailable plugins',
-            adapter: 'manifest',
+            displayName: 'Unavailable catalog',
+            adapter: kind === 'plugins' ? 'manifest' : 'directory',
             location: missing,
           })
         ).status,
