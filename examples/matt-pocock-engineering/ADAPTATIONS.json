@@ -1,0 +1,38 @@
+[
+  {
+    "path": "skills/wayfinder/SKILL.md",
+    "change": "Removed nonportable disable-model-invocation frontmatter; original retained under upstream/ and agents/openai.yaml policy retained. Explicit user selection is required; no automatic transition is authorized."
+  },
+  {
+    "path": "skills/setup-matt-pocock-skills/SKILL.md",
+    "change": "Removed nonportable disable-model-invocation frontmatter; original retained under upstream/ and agents/openai.yaml policy retained. Explicit user selection is required; no automatic transition is authorized."
+  },
+  {
+    "path": "skills/to-tickets/SKILL.md",
+    "change": "Removed nonportable disable-model-invocation frontmatter; original retained under upstream/ and agents/openai.yaml policy retained. Explicit user selection is required; no automatic transition is authorized."
+  },
+  {
+    "path": "skills/improve-codebase-architecture/SKILL.md",
+    "change": "Removed nonportable disable-model-invocation frontmatter; original retained under upstream/ and agents/openai.yaml policy retained. Explicit user selection is required; no automatic transition is authorized."
+  },
+  {
+    "path": "skills/to-spec/SKILL.md",
+    "change": "Removed nonportable disable-model-invocation frontmatter; original retained under upstream/ and agents/openai.yaml policy retained. Explicit user selection is required; no automatic transition is authorized."
+  },
+  {
+    "path": "skills/triage/SKILL.md",
+    "change": "Removed nonportable disable-model-invocation frontmatter; original retained under upstream/ and agents/openai.yaml policy retained. Explicit user selection is required; no automatic transition is authorized."
+  },
+  {
+    "path": "skills/grill-with-docs/SKILL.md",
+    "change": "Removed nonportable disable-model-invocation frontmatter; original retained under upstream/ and agents/openai.yaml policy retained. Explicit user selection is required; no automatic transition is authorized."
+  },
+  {
+    "path": "skills/implement/SKILL.md",
+    "change": "Removed nonportable disable-model-invocation frontmatter; original retained under upstream/ and agents/openai.yaml policy retained. Explicit user selection is required; no automatic transition is authorized."
+  },
+  {
+    "path": "skills/grill-me/SKILL.md",
+    "change": "Removed nonportable disable-model-invocation frontmatter; original retained under upstream/ and agents/openai.yaml policy retained. Explicit user selection is required; no automatic transition is authorized."
+  }
+]
