@@ -225,6 +225,47 @@ export function resolveDocumentationFreshness({
       .filter(Boolean),
   );
   const head = git(root, ['rev-parse', 'HEAD']).trim();
+  // One log of the range, not one per note and input: each spawn costs more
+  // than the walk on a busy host. Unlike a path-limited log this keeps commits
+  // on simplified-away side branches, which only adds candidates to recheck.
+  let rangeTouches;
+  const commitsTouching = (file) => {
+    if (!rangeTouches) {
+      rangeTouches = new Map();
+      let commit;
+      for (const line of git(root, [
+        '-c',
+        'core.quotePath=false',
+        'log',
+        '--no-merges',
+        '--format=\u0001%H',
+        '--name-only',
+        `${selection.mergeBase}..HEAD`,
+        `^${base}`,
+      ]).split('\n')) {
+        if (line.startsWith('\u0001')) commit = line.slice(1);
+        else if (line && commit) {
+          if (!rangeTouches.has(line)) rangeTouches.set(line, []);
+          rangeTouches.get(line).push(commit);
+        }
+      }
+    }
+    return rangeTouches.get(file) ?? [];
+  };
+  const commitsAfter = new Map();
+  const reachableAfter = (from) => {
+    if (!commitsAfter.has(from))
+      commitsAfter.set(
+        from,
+        new Set(
+          git(root, ['rev-list', `${from}..HEAD`, `^${base}`])
+            .trim()
+            .split('\n')
+            .filter(Boolean),
+        ),
+      );
+    return commitsAfter.get(from);
+  };
   if (current.ledger?.layoutVersion === 3) {
     const baseState = readReviewStateAt(root, base);
     for (const [kind, [before, now]] of Object.entries(entries)) {
@@ -291,18 +332,10 @@ export function resolveDocumentationFreshness({
                 ? rangeCommits.has(note.revision)
                 : note.revision === head;
               if (!introduced && validRevision) return true;
-              const later = git(root, [
-                'log',
-                '--no-merges',
-                '--format=%H',
-                `${introduced || head}..HEAD`,
-                `^${base}`,
-                '--',
-                bindingFile(input),
-              ])
-                .trim()
-                .split('\n')
-                .filter(Boolean);
+              const after = reachableAfter(introduced || head);
+              const later = commitsTouching(bindingFile(input)).filter(
+                (commit) => after.has(commit),
+              );
               const changedLater = later.some(
                 (commit) =>
                   touchedReviewInputs(
