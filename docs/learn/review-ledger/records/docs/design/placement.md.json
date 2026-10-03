@@ -12,7 +12,7 @@
   "document": {"digest":"382a4910c41cd209779e2bedfd5cda4675d93217aa10f1879e8719f64c955375","revision":"82fea394a09cdf62071b073d09aa6cb08ebbca48"},
 
   "sources": [
-    {"path":"packages/contracts/src/device-settings.ts","digest":"2b9e93111cf57f06a8846948e75767b36325bdf35cb59324b4be3f5dbd4627e4","revision":"89765352964045a079d13a17bee54ab2de7b83e0"},
+    {"path":"packages/contracts/src/device-settings.ts","digest":"3b2bdcd7609a53ff108005b46cefb2cca4d8b4095ed534900873eaff60b14b12","revision":"09c6f7979363346b0182ff0900d5bb0c21ddb0e1"},
 
     {"path":"packages/contracts/src/engine-capability-matrix.ts","digest":"db82340760d09e965ac7ed17830f36060573fe48545995d4ad9149b755d36ea1","revision":"518fae654af981373e872c2ab85438bb1b1b0e67"},
 
