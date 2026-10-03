@@ -20,7 +20,9 @@
 
     {"path":"src-ui/src/components/plugins/framePaneHost.tsx","digest":"c5a270f6b98199ad7e04f8283e3e259b252a6908ba51331175feb34e77417fc2","revision":"8540fafb86b969775254b898711ad3ae40ccc39d"},
 
-    {"path":"src-ui/src/workspace-panes/inProcessPaneHost.tsx","digest":"1da9d2ca44fc97a740f3b8025678e5bcb4d4c929df6c1e0c6445d00c2bc7bd3e","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"}
+    {"path":"src-ui/src/workspace-panes/inProcessPaneHost.tsx","digest":"1da9d2ca44fc97a740f3b8025678e5bcb4d4c929df6c1e0c6445d00c2bc7bd3e","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/components/plugins/plugin-frame-runtime.ts","digest":"1254690e9a2426b4ca75612ff064a93781630679bd57e38d456eed4c129966ae","revision":"1188208f32995f08e02bc87c2a0063184540fb6a"}
   ],
 
   "checks": [
