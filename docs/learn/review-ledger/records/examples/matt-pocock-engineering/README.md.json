@@ -20,7 +20,7 @@
 
     {"path":"packages/shared/src/skill-experience-author.ts","digest":"78eff8e23674a648d904c12919b137ff62c04520fc3f164f66a482102047754b","revision":"f2bb7d8a1e4b56ac783fb9d0cfe167fe7a0fdde5"},
 
-    {"path":"examples/matt-pocock-engineering/EVALUATION-CASES.json","digest":"3b1e5097f0003432f3ebff12b4e4c25762b4af7ae5439d86d35130a769f820bb","revision":"4131b514cf6f6507d6a7faa45a95ba22deff6e87"},
+    {"path":"examples/matt-pocock-engineering/EVALUATION-CASES.json","digest":"e4904582a2d1a7f6fca50f268d9eff5515c1f73d45e1f8c51b9f0e52b416f36a","revision":"f001e226f40b1483bae77de036d70596952aef94"},
 
     {"path":"examples/matt-pocock-engineering/qualification/browser-focus-board-20261003.json","digest":"600a46df6d2c9f80f1b201bf2d48db78a8122e71db199b0a68149cbee83119f7","revision":"dbc0939f81dc3aa566b257653a255f4e4a331886"}
   ],
