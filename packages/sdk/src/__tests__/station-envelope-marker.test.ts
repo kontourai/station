@@ -1,14 +1,21 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { _setApiBase } from '../api-core';
 import {
   cancelAttachmentStage,
   getAttachmentStagingCapability,
+  uploadAttachmentStage,
+  xhrAttachmentStageUpload,
 } from '../client/attachment-staging';
 import { ChatHttpError } from '../client/chatHttpError';
 import {
   getConversationHandoffStatus,
   sendExecutionMessage,
 } from '../client/execution';
-import { getJson, setClientCredentialResolver } from '../client/http';
+import {
+  getJson,
+  notifyCredentialChanged,
+  setClientCredentialResolver,
+} from '../client/http';
 import {
   isStationAnswer,
   observeStationResponse,
@@ -235,6 +242,97 @@ describe("#2842 Station's own refusal is identified by the response marker", () 
     expect(error.stationEnvelope).toBe(false);
   });
 
+  describe('the attachment upload, through the XHR transport', () => {
+    /** A browser XHR answering one upload with a fixed status and headers. */
+    function stubXhr(status: number, body: unknown, headers: string): void {
+      class FakeXhr {
+        status = 0;
+        responseText = '';
+        upload = { onprogress: null };
+        onerror: (() => void) | null = null;
+        onabort: (() => void) | null = null;
+        onload: (() => void) | null = null;
+        open() {}
+        setRequestHeader() {}
+        abort() {}
+        getAllResponseHeaders() {
+          return headers;
+        }
+        send() {
+          this.status = status;
+          this.responseText = JSON.stringify(body);
+          queueMicrotask(() => this.onload?.());
+        }
+      }
+      vi.stubGlobal('XMLHttpRequest', FakeXhr);
+    }
+    const upload = () =>
+      uploadAttachmentStage(
+        STATION,
+        { stageId: 's1', uploadGrant: 'grant' } as never,
+        'data:text/plain;base64,aGk=',
+        { transport: xhrAttachmentStageUpload },
+      );
+
+    it('a gateway JSON 413 without the marker is not Station’s after a marked success', async () => {
+      await seeMarkedSuccess(STATION);
+      stubXhr(
+        413,
+        { success: false, error: 'Request entity too large' },
+        'content-type: application/json\r\n',
+      );
+
+      const error = await refusalOf(upload);
+
+      expect(error.status).toBe(413);
+      expect(error.stationEnvelope).toBe(false);
+    });
+
+    it('a marked 413 from Station is Station’s own', async () => {
+      await seeMarkedSuccess(STATION);
+      stubXhr(
+        413,
+        { success: false, error: 'Attachment too large', code: 'too_large' },
+        `content-type: application/json\r\n${MARKER}: 1\r\n`,
+      );
+
+      const error = await refusalOf(upload);
+
+      expect(error).toMatchObject({ status: 413, code: 'too_large' });
+      expect(error.stationEnvelope).toBe(true);
+    });
+  });
+
+  it('a credential change for an origin forgets what it said', async () => {
+    await seeMarkedSuccess(STATION);
+    notifyCredentialChanged(STATION);
+    vi.mocked(fetch).mockResolvedValue(json(REFUSAL, 403, false));
+
+    const error = await refusalOf(() => sendExecutionMessage(STATION, message));
+
+    // Read by shape again until the origin sends the marker anew.
+    expect(error.stationEnvelope).toBe(true);
+  });
+
+  it('switching to another Station forgets every origin; setting the same base does not', async () => {
+    _setApiBase(STATION);
+    await seeMarkedSuccess(STATION);
+    _setApiBase(STATION);
+    // A fresh Response per call: a body can be read once.
+    vi.mocked(fetch).mockImplementation(async () => json(REFUSAL, 403, false));
+    expect(
+      (await refusalOf(() => sendExecutionMessage(STATION, message)))
+        .stationEnvelope,
+    ).toBe(false);
+
+    _setApiBase(OLD_STATION);
+
+    expect(
+      (await refusalOf(() => sendExecutionMessage(STATION, message)))
+        .stationEnvelope,
+    ).toBe(true);
+  });
+
   it('a response that never passed a request seam is attributed by its own url', () => {
     observeStationResponse(`${STATION}/api/x`, {
       headers: new Headers({ [MARKER]: '1' }),
@@ -249,6 +347,27 @@ describe("#2842 Station's own refusal is identified by the response marker", () 
     expect(isStationAnswer({ headers: new Headers() }, REFUSAL)).toBe(true);
     expect(isStationAnswer({}, REFUSAL)).toBe(true);
     expect(isStationAnswer({}, '<html>')).toBe(false);
+  });
+
+  it('an origin that sends the marker again is the last forgotten, not the first', () => {
+    const marked = { headers: new Headers({ [MARKER]: '1' }) };
+    const unmarked = (origin: string) => ({
+      url: `${origin}/api/y`,
+      headers: new Headers(),
+    });
+    const origin = (index: number) => `http://station-${index}.test`;
+    const LIMIT = 64;
+
+    for (let index = 0; index < LIMIT; index += 1) {
+      observeStationResponse(`${origin(index)}/api/x`, marked);
+    }
+    // The oldest origin answers again, so it is now the most recent.
+    observeStationResponse(`${origin(0)}/api/x`, marked);
+    observeStationResponse(`${origin(LIMIT)}/api/x`, marked);
+
+    expect(isStationAnswer(unmarked(origin(0)), REFUSAL)).toBe(false);
+    // The origin seen longest ago is now the second one, and it went.
+    expect(isStationAnswer(unmarked(origin(1)), REFUSAL)).toBe(true);
   });
 
   it('remembers a bounded number of origins; a forgotten one is read by shape again', () => {

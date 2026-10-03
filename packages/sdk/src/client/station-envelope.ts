@@ -30,6 +30,14 @@ export interface StationEnvelopeResponse {
  * Origins that have sent the marker. Bounded: past the limit the origin seen
  * longest ago is forgotten, and a forgotten origin is read by shape until its
  * next marked response, which is the behavior before the marker existed.
+ *
+ * What this memory cannot tell apart: an origin that once sent the marker and
+ * now serves an older Station (a downgrade, or a mixed-version rolling deploy
+ * behind one origin). Until the origin is forgotten, that older Station's
+ * unmarked refusals read as an intermediary's, so a definitive refusal is
+ * retried instead of dropped; a queued message can then be resent and refused
+ * again until the client switches Station, its credential changes, or the
+ * page reloads. The failure is a retry, never a dropped message.
  */
 const MAX_MARKING_ORIGINS = 64;
 const markingOrigins = new Set<string>();
@@ -134,7 +142,19 @@ export function isStationAnswer(
   return origin === undefined || !markingOrigins.has(origin);
 }
 
-/** Forget every observed origin. For tests, which share one module. */
+/**
+ * Forget what one origin has said, so its next answer is read afresh. Called
+ * when the credential for that origin changes (`notifyCredentialChanged`).
+ */
+export function forgetStationOrigin(url: string): void {
+  const origin = originOf(url);
+  if (origin !== undefined) markingOrigins.delete(origin);
+}
+
+/**
+ * Forget every observed origin. Called when the client switches to another
+ * Station (`_setApiBase` with a new base), and by tests, which share one module.
+ */
 export function resetStationEnvelopeObservations(): void {
   markingOrigins.clear();
 }

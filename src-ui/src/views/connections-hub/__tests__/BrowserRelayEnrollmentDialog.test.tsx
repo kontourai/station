@@ -1,5 +1,6 @@
 /** @vitest-environment jsdom */
 
+import { StationHttpError } from '@kontourai/station-sdk/client';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, expect, it, vi } from 'vitest';
 
@@ -169,4 +170,40 @@ it('accepts an optional Project invitation after Device activation and before le
     expect.objectContaining({ connection, token }),
   );
   expect(mocks.close).not.toHaveBeenCalled();
+});
+
+// #2708 A-3b: a refused invitation shows the server's reason, not the
+// field-qualified message the SDK throws for CLI readers.
+it('a refused Project invitation reads as its reason, not its field key', async () => {
+  mocks.complete = true;
+  mocks.capture.mockReturnValue({ transport: vi.fn(), isCurrent: () => true });
+  mocks.join.mockRejectedValue(
+    new StationHttpError(400, 'Validation failed: token Invitation expired.', {
+      details: {
+        formErrors: [],
+        fieldErrors: { token: ['Invitation expired.'] },
+      },
+    }),
+  );
+  render(
+    <BrowserRelayEnrollmentDialog
+      connection={connection}
+      onClose={mocks.close}
+    />,
+  );
+  fireEvent.change(screen.getByLabelText('Station account name'), {
+    target: { value: 'zach' },
+  });
+  fireEvent.change(screen.getByLabelText('Password'), {
+    target: { value: 'local-password' },
+  });
+  fireEvent.change(
+    screen.getByLabelText('Project invitation token (optional)'),
+    {
+      target: { value: 'T'.repeat(43) },
+    },
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Verify account' }));
+  expect(await screen.findByText('Invitation expired.')).toBeTruthy();
+  expect(screen.queryByText(/Validation failed/)).toBeNull();
 });

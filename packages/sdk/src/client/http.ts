@@ -38,7 +38,10 @@ import {
   StationRequestTimeoutError,
   unlessDeadline,
 } from './request-deadline';
-import { observeStationResponse } from './station-envelope';
+import {
+  forgetStationOrigin,
+  observeStationResponse,
+} from './station-envelope';
 
 // Defined beside the envelope rule that builds it (#2708), so the rule and
 // the error need no import cycle; every existing `./http` import still works.
@@ -1344,6 +1347,8 @@ function removeCredentialChangeListener(
  * origin (`https://host:port`) or a full request URL on that origin works.
  */
 export function notifyCredentialChanged(origin: string): void {
+  // A new credential may reach a different Station at the same origin.
+  forgetStationOrigin(origin);
   const listeners = credentialChangeListeners.get(requestOrigin(origin));
   if (!listeners) return;
   for (const listener of listeners) listener();

@@ -18,7 +18,7 @@ import {
   mutateJson,
 } from './http';
 import { unlessDeadline } from './request-deadline';
-import { isStationAnswer } from './station-envelope';
+import { isStationAnswer, observeStationResponse } from './station-envelope';
 
 const ROOT = '/api/orchestration/attachment-staging';
 
@@ -227,8 +227,10 @@ export async function uploadAttachmentStage(
         body: dataUrl,
         signal: opts?.signal,
       });
+  // Neither branch passes the SDK request seams, and an XHR-built Response
+  // has no url, so the upload is attributed to its request url here (#2842).
   return await read<StagedAttachmentReference>(
-    response,
+    observeStationResponse(url, response),
     'Attachment staging could not be uploaded.',
   );
 }
