@@ -67,7 +67,12 @@ rewrites them.
 `STATION_CHANNEL=nightly` installs only from a signed public manifest
 (`STATION_INSTALL_PUBLIC_MANIFEST_URL`) whose envelope names the pinned
 nightly key; the authenticated GitHub-release path serves stable and beta
-only. This is the installer contract; publication is tracked separately in #2675. Nightly has no
+only. This is the installer contract; publication is tracked separately in #2675. Stable and
+beta also accept a signed public manifest through the same variable. The
+release workflows can publish one per ring (`portable-stable`,
+`portable-preview`) once the owner enables them; see
+[signed host-stream manifests](release-rings.md#signed-host-stream-manifests).
+The default path for stable and beta is still the authenticated one. Nightly has no
 public/runtime name split: the ring, the runtime, and the provenance channel
 are all `nightly`, and its version is `X.Y.Z-nightly.<code>` with `<code>`
 reserved by `nightly-version-code`. `STATION_VERSION` accepts an exact
