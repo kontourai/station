@@ -892,3 +892,9 @@ Withdrawal or rotation of the Station routing generation invalidates them,
 including invitations without time expiry. Device approval and Station key
 confirmation still apply. Connection grants remain short-lived; their lifetime
 starts at redemption. Existing persisted invitations retain their old deadlines.
+
+Update the broker, operator connector, and native receiver together for the
+24-hour default. Older receiver/connector builds enforce a five-minute ceiling;
+use `--expires-in 5m` with the updated operator CLI until those clients are
+updated. Longer invitation expiry does not extend identity checks, enrollment
+requests, account sessions, or short-lived connection proofs.
