@@ -38,7 +38,7 @@
       "alt": "The Models page shows the settings for an example local model connection.",
       "caption": "Inspect a model connection.",
       "scenario": "Connections \u2192 Models",
-      "evidence": "Actual UI with sample API responses and display name. Ready is fixture data; no connection or model test ran. Historical capture: predates current intent-first labels and the credential/charge disclosure before Create; see the current Connections guide. Capture identity retained.",
+      "evidence": "Actual UI with sample API responses and display name. Ready is fixture data; no connection or model test ran. Historical capture: predates current intent-first labels and the credential/charge disclosure before Create; see the current Connections guide. Capture identity retained. It does not show the guided engine proxy controls or Check connection action added later.",
       "capturedRevision": "bb07a2df88272a983e6e1c94dd27ca2480faef51",
       "documents": [
         "docs/guides/connections.md",
@@ -82,7 +82,7 @@
       "alt": "Browse the example model and engine settings.",
       "caption": "Browse Models and Engines without testing or invoking a provider.",
       "scenario": "Connections \u2192 Models and Engines",
-      "evidence": "13.76-second silent recording of actual Models/Engines navigation, with controlled connection GET fixtures and sample display name only. Pauses on configuration/setup states; no provider test/login/inference. Temporal trim removes initial loading; raw capture digest and interval retained. Historical capture: predates current intent-first labels and the credential/charge disclosure before Create; see the current Connections guide. Capture identity retained.",
+      "evidence": "13.76-second silent recording of actual Models/Engines navigation, with controlled connection GET fixtures and sample display name only. Pauses on configuration/setup states; no provider test/login/inference. Temporal trim removes initial loading; raw capture digest and interval retained. Historical capture: predates current intent-first labels and the credential/charge disclosure before Create; see the current Connections guide. Capture identity retained. It does not show the guided engine proxy controls or Check connection action added later.",
       "capturedRevision": "f56c28a44bb777b192e033a82c5474ceb54482ad",
       "documents": [
         "docs/guides/connections.md"
