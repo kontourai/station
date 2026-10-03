@@ -50,7 +50,7 @@
 
     {"path":"packages/contracts/src/native-relay-link.ts","digest":"b96acfafc45696ee2bbce80993e874323b19eee9fae4741d5e5600ca3c57ecc7","revision":"e33331ee19520c8bd546c878fdd503063a682634"},
 
-    {"path":"packages/contracts/src/orchestration.ts","digest":"bcdbd46c9f1a19e50df85776c2298276809136ece2e074d47f1b4a3e72166c14","revision":"4711f21b516d04300b15ad4da473e24bf2e7adb2"},
+    {"path":"packages/contracts/src/orchestration.ts","digest":"38645fafc6f70784e9d4214d0e330c880da2a120352705a167068e07bd8a7bae","revision":"09ee812c0e373dbd9b21877260184154c12110bd"},
 
     {"path":"packages/contracts/src/plugin.ts","digest":"98607c85d86241ccf638de4d207ebb64285752092eb7a827e4304c75df409b95","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
