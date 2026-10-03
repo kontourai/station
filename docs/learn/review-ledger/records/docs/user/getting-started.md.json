@@ -190,7 +190,7 @@
 
     {"path":"src-ui/src/components/NewChatAction.tsx","digest":"d2d026c7b81e25c93c966350bd2df6cac1fcbf21f59034f06619d57427d32c3d","revision":"ed4b7b2c4440e328d5367f3d8f4a319a81dfba7e"},
 
-    {"path":"src-ui/src/hooks/useRecentAgents.ts","digest":"8fe1d94f923fe4c8adf3d489e47dc06d67b63f2b0adcd6796ac2c4ec2c54ba7d","revision":"ed4b7b2c4440e328d5367f3d8f4a319a81dfba7e"},
+    {"path":"src-ui/src/hooks/useRecentAgents.ts","digest":"fc916c69d969eff75647a32cdbb3df36e3479189e86c1d2b6266c07731bfb952","revision":"bd88b3c4690b302c4e23ac6aea32c588f915c268"},
 
     {"path":"src-ui/src/views/project-settings/AgentsSection.tsx","digest":"1a9a82c1d0bfb28a7b48562df3ab82a9a5cc4b882fe398cee99d37f7b9c9db87","revision":"ed4b7b2c4440e328d5367f3d8f4a319a81dfba7e"},
 
