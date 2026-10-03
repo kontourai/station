@@ -1144,6 +1144,11 @@ pub(crate) struct NativeEnrollmentActivationAccepted {
     transition_handle: String,
 }
 
+fn active_receipt_deadline_current(expires_at: u64, received_at: u64) -> bool {
+    // Station signs a 30-second receipt; status already permits five seconds of clock skew.
+    expires_at > received_at && expires_at <= received_at.saturating_add(30_000 + 5_000)
+}
+
 fn accept_active(
     app: &AppHandle,
     capture: RequestCapture,
@@ -1177,8 +1182,7 @@ fn accept_active(
         || receipt.response_peer_nonce != capture.nonce
         || receipt.station_signing_generation != attempt.trust_generation
         || receipt.receipt_digest != *expected_ack
-        || receipt.receipt_expires_at <= time()
-        || receipt.receipt_expires_at > time() + 30000
+        || !active_receipt_deadline_current(receipt.receipt_expires_at, time())
         || aborted(app, &capture.attempt)?
     {
         return Err(REFUSED.into());
@@ -1686,5 +1690,32 @@ mod tests {
             attempt.owner.client_attempt_id
         );
         assert!(legacy.candidate == attempt.candidate);
+    }
+}
+
+#[cfg(test)]
+mod activation_receipt_time_tests {
+    use super::active_receipt_deadline_current;
+
+    #[test]
+    fn signed_activation_deadline_accepts_bounded_positive_clock_skew() {
+        let received_at = 1_000_000;
+        assert!(active_receipt_deadline_current(
+            received_at + 30_190,
+            received_at
+        ));
+        assert!(active_receipt_deadline_current(
+            received_at + 35_000,
+            received_at
+        ));
+        assert!(!active_receipt_deadline_current(
+            received_at + 35_001,
+            received_at
+        ));
+        assert!(!active_receipt_deadline_current(received_at, received_at));
+        assert!(!active_receipt_deadline_current(
+            received_at - 1,
+            received_at
+        ));
     }
 }

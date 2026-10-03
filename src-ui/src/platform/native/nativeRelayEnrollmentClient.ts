@@ -137,6 +137,7 @@ export function createNativeRelayEnrollmentClient(
   let completed = false;
   let enrollmentExpiresAt: number | undefined;
   let cleanupRequired = false;
+  let deliveryRetained = false;
   let pendingPublication:
     | NativeRelayEnrollmentHostActivationAccepted
     | undefined;
@@ -147,6 +148,10 @@ export function createNativeRelayEnrollmentClient(
       await invoke.invoke('station_native_enrollment_abort', {
         enrollmentHandle,
       });
+  };
+  const abortUnstaged = async () => {
+    // Closing a renderer does not cancel a staged or uncertain Device activation.
+    if (!deliveryRetained) await abortOwned();
   };
   const requireHandle = () => {
     if (!enrollmentHandle) throw new Error('native_enrollment_not_started');
@@ -232,13 +237,20 @@ export function createNativeRelayEnrollmentClient(
             enrollmentHandle = frame.enrollmentHandle;
           }
           if (signal.aborted) {
-            await abortOwned();
+            await abortUnstaged();
             signal.throwIfAborted();
           }
           return frame;
         },
         async (requestHandle, response) => {
           const result = await accept(requestHandle, response);
+          if (
+            typeof result === 'object' &&
+            result !== null &&
+            'state' in result &&
+            result.state === 'staged'
+          )
+            deliveryRetained = true;
           if (
             typeof result === 'object' &&
             result !== null &&
@@ -256,7 +268,7 @@ export function createNativeRelayEnrollmentClient(
             pendingPublication = undefined;
           }
           if (signal.aborted) {
-            await abortOwned();
+            await abortUnstaged();
             signal.throwIfAborted();
           }
           return result;
@@ -324,6 +336,10 @@ export function createNativeRelayEnrollmentClient(
         if (enrollmentHandle && enrollmentHandle !== attempt.enrollmentHandle)
           throw new Error('native_enrollment_attempt_changed');
         enrollmentHandle = attempt.enrollmentHandle;
+        deliveryRetained =
+          attempt.phase === 'staged' ||
+          attempt.phase === 'activation-unknown' ||
+          attempt.phase === 'active';
         enrollmentExpiresAt = attempt.expiresAt;
         cleanupRequired =
           attempt.phase === 'cancel-required' ||
@@ -453,7 +469,7 @@ export function createNativeRelayEnrollmentClient(
       ),
     abort: abortOwned,
     dispose: async () => {
-      if (!pendingPublication) await abortOwned();
+      if (!pendingPublication) await abortUnstaged();
     },
   });
 }

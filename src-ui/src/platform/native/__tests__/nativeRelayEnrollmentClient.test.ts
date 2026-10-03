@@ -29,79 +29,87 @@ const VERSION = NATIVE_RELAY_ENROLLMENT_VERSION;
 beforeEach(() => vi.clearAllMocks());
 
 function fixture(
-  options: { status?: number; activationFailure?: unknown } = {},
+  options: {
+    status?: number;
+    activationFailure?: unknown;
+    recoveryExpired?: boolean;
+    abortOnDelivery?: boolean;
+  } = {},
 ) {
   const lifetime = new AbortController();
   let liveRevision = 7;
   let peerSequence = 0;
   let failTransition = false;
   let failOpen = false;
+  let retainedPhase = 'candidate';
   const openedRevisions: number[] = [];
   const requests: { path: string; body: string }[] = [];
-  transport.open.mockImplementation(async (capturedRevision: number) => {
-    openedRevisions.push(capturedRevision);
-    if (failOpen) {
-      failOpen = false;
-      throw new Error('ice_unavailable');
-    }
-    const listeners: Array<
-      { message: (value: unknown) => void; closed: () => void } | undefined
-    > = [];
-    let closed = false;
-    const pair = [0, 1].map(
-      (side): ApplicationChannel => ({
-        send(value) {
-          queueMicrotask(() => {
-            if (!closed) listeners[1 - side]?.message(value);
-          });
-        },
-        close() {
-          if (closed) return;
-          closed = true;
-          queueMicrotask(() =>
-            listeners.forEach((listener) => listener?.closed()),
+  transport.open.mockImplementation(
+    async (capturedRevision: number, signal: AbortSignal) => {
+      openedRevisions.push(capturedRevision);
+      if (failOpen) {
+        failOpen = false;
+        throw new Error('ice_unavailable');
+      }
+      const listeners: Array<
+        { message: (value: unknown) => void; closed: () => void } | undefined
+      > = [];
+      let closed = false;
+      const pair = [0, 1].map(
+        (side): ApplicationChannel => ({
+          send(value) {
+            queueMicrotask(() => {
+              if (!closed) listeners[1 - side]?.message(value);
+            });
+          },
+          close() {
+            if (closed) return;
+            closed = true;
+            queueMicrotask(() =>
+              listeners.forEach((listener) => listener?.closed()),
+            );
+          },
+          subscribe(message, onClosed) {
+            listeners[side] = { message, closed: onClosed };
+            return () => {
+              listeners[side] = undefined;
+            };
+          },
+        }),
+      );
+      serveApplicationChannel(pair[1]!, ORIGIN, {
+        signal,
+        fetch: async (request) => {
+          const path = new URL(request.url).pathname;
+          requests.push({ path, body: await request.text() });
+          return Response.json(
+            {
+              state: path.endsWith('/login')
+                ? 'pending'
+                : path.endsWith('/activate')
+                  ? 'active'
+                  : 'response',
+              path,
+            },
+            { status: options.status ?? 200 },
           );
         },
-        subscribe(message, onClosed) {
-          listeners[side] = { message, closed: onClosed };
-          return () => {
-            listeners[side] = undefined;
-          };
+      });
+      return {
+        peer: {
+          peerHandle: String.fromCharCode(65 + peerSequence++).repeat(43),
+          stationAudience: ORIGIN,
+          expiresAt: Date.now() + 30_000,
         },
-      }),
-    );
-    serveApplicationChannel(pair[1]!, ORIGIN, {
-      signal: lifetime.signal,
-      fetch: async (request) => {
-        const path = new URL(request.url).pathname;
-        requests.push({ path, body: await request.text() });
-        return Response.json(
-          {
-            state: path.endsWith('/login')
-              ? 'pending'
-              : path.endsWith('/activate')
-                ? 'active'
-                : 'response',
-            path,
-          },
-          { status: options.status ?? 200 },
-        );
-      },
-    });
-    return {
-      peer: {
-        peerHandle: String.fromCharCode(65 + peerSequence++).repeat(43),
-        stationAudience: ORIGIN,
-        expiresAt: Date.now() + 30_000,
-      },
-      channel: pair[0]!,
-      assertCurrent: async () => {
-        if (liveRevision !== capturedRevision)
-          throw new Error('old_profile_revision');
-      },
-      close: async () => pair[0]!.close(),
-    };
-  });
+        channel: pair[0]!,
+        assertCurrent: async () => {
+          if (liveRevision !== capturedRevision)
+            throw new Error('old_profile_revision');
+        },
+        close: async () => pair[0]!.close(),
+      };
+    },
+  );
   const calls: { command: string; args?: Record<string, unknown> }[] = [];
   const invoke = vi.fn(
     async (command: string, args?: Record<string, unknown>) => {
@@ -110,6 +118,7 @@ function fixture(
         const purpose = command
           .replace('station_native_enrollment_', '')
           .replace('_prepare', '');
+        if (purpose === 'activate') retainedPhase = 'activation-unknown';
         return {
           version: 'station-native-enrollment-request/v1',
           requestHandle: 'r'.repeat(43),
@@ -154,16 +163,20 @@ function fixture(
           enrollmentHandle: ENROLLMENT,
           state: 'pending',
         };
-      if (command.endsWith('_delivery_accept'))
+      if (command.endsWith('_delivery_accept')) {
+        retainedPhase = 'staged';
+        if (options.abortOnDelivery) lifetime.abort();
         return {
           version: VERSION,
           enrollmentHandle: ENROLLMENT,
           state: 'staged',
         };
+      }
       if (command.endsWith('_activation_accept')) {
         if (options.activationFailure !== undefined)
           throw options.activationFailure;
         liveRevision = 8;
+        retainedPhase = 'active';
         return {
           version: VERSION,
           enrollmentHandle: ENROLLMENT,
@@ -193,6 +206,7 @@ function fixture(
       }
       if (command.endsWith('_status_accept')) {
         liveRevision = 8;
+        retainedPhase = 'active';
         return {
           version: VERSION,
           enrollmentHandle: ENROLLMENT,
@@ -207,22 +221,28 @@ function fixture(
           attempts: [
             {
               enrollmentHandle: ENROLLMENT,
-              phase: 'active',
+              phase: retainedPhase,
               profileRevision: liveRevision,
-              expiresAt: Date.now() + 30_000,
+              expiresAt: Date.now() + (options.recoveryExpired ? -1 : 30_000),
               registrationAvailable: true,
               candidate: null,
-              transition: {
-                version: VERSION,
-                enrollmentHandle: ENROLLMENT,
-                state: 'active',
-                profileRevision: liveRevision,
-                transitionHandle: TRANSITION,
-              },
+              transition:
+                retainedPhase === 'active'
+                  ? {
+                      version: VERSION,
+                      enrollmentHandle: ENROLLMENT,
+                      state: 'active',
+                      profileRevision: liveRevision,
+                      transitionHandle: TRANSITION,
+                    }
+                  : null,
             },
           ],
         };
-      if (command.endsWith('_abort')) return;
+      if (command.endsWith('_abort')) {
+        retainedPhase = 'cancel-required';
+        return;
+      }
       throw new Error(`Unexpected fixed host command: ${command}`);
     },
   );
@@ -249,7 +269,7 @@ function fixture(
         profileName: 'Pilot',
         expectedProfileRevision: liveRevision,
         stationAudience: ORIGIN,
-        signal: lifetime.signal,
+        signal: new AbortController().signal,
         invoke: { invoke },
       }),
   };
@@ -309,14 +329,68 @@ test('reconciles a successful activation response refused by native acceptance t
   expect(f.calls.some((call) => call.command.endsWith('_abort'))).toBe(false);
 });
 
-test('explicit cancellation before completed publication invalidates the actual host attempt', async () => {
-  const f = fixture();
+test('renderer disposal after server activation success preserves the same expired attempt for status reconciliation', async () => {
+  const f = fixture({
+    activationFailure: 'native_enrollment_operation_refused',
+    recoveryExpired: true,
+  });
   await f.client.begin();
-  await f.client.abort();
-  expect(f.calls.find((call) => call.command.endsWith('_abort'))?.args).toEqual(
-    { enrollmentHandle: ENROLLMENT },
+  await f.client.login({ username: 'zach', password: 'user-entered' });
+  await f.client.finalize();
+  await expect(f.client.activate()).rejects.toThrow(
+    'native_enrollment_operation_refused',
   );
+  f.lifetime.abort();
+  await f.client.dispose();
+  expect(f.calls.some((call) => call.command.endsWith('_abort'))).toBe(false);
+  const restarted = f.recreatedClient();
+  await expect(restarted.resume(ENROLLMENT)).resolves.toMatchObject({
+    enrollmentHandle: ENROLLMENT,
+    phase: 'activation-unknown',
+  });
+  await expect(restarted.status()).resolves.toMatchObject({
+    state: 'active',
+    profileRevision: 8,
+  });
+  expect(
+    f.requests.filter((request) => request.path.endsWith('/activate')),
+  ).toHaveLength(1);
 });
+
+test('signal cancellation during staging preserves the delivery for a new renderer', async () => {
+  const f = fixture({ abortOnDelivery: true });
+  await f.client.begin();
+  await f.client.login({ username: 'zach', password: 'user-entered' });
+  await expect(f.client.finalize()).rejects.toThrow();
+  await f.client.dispose();
+  expect(f.calls.some((call) => call.command.endsWith('_abort'))).toBe(false);
+  await expect(f.recreatedClient().resume(ENROLLMENT)).resolves.toMatchObject({
+    enrollmentHandle: ENROLLMENT,
+    phase: 'staged',
+  });
+});
+
+test.each(['candidate', 'staged'])(
+  'explicit cancellation of %s still invalidates the owned host attempt',
+  async (phase) => {
+    const f = fixture();
+    await f.client.begin();
+    if (phase === 'staged') {
+      await f.client.login({ username: 'zach', password: 'user-entered' });
+      await f.client.finalize();
+    }
+    await f.client.abort();
+    expect(
+      f.calls.find((call) => call.command.endsWith('_abort'))?.args,
+    ).toEqual({ enrollmentHandle: ENROLLMENT });
+    await expect(f.recreatedClient().resume(ENROLLMENT)).resolves.toMatchObject(
+      {
+        enrollmentHandle: ENROLLMENT,
+        phase: 'cancel-required',
+      },
+    );
+  },
+);
 
 test('revalidates an unknown owned publication before opening a recovery peer', async () => {
   const f = fixture();

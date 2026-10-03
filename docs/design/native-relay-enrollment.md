@@ -129,6 +129,10 @@ its verified tuple after network cleanup, so accepting a signed response does
 not require a still-open RTC connection. Status/recovery signs a new current
 peer nonce while preserving the original owner, recipient and candidate.
 Network cleanup is distinct from explicit user cancellation.
+Once delivery is staged, renderer disposal or signal cleanup preserves the
+owned attempt for status reconciliation, including after a successful server
+activation response that native acceptance could not confirm. Explicit user
+cancellation still requests retirement of that exact attempt.
 
 Device setup has a five-minute deadline, clipped to the routing grant and
 recipient deadline. The accepted host challenge exposes only that public expiry
@@ -191,6 +195,11 @@ revision; its fixed currentness lookup checks the actual local profile, grant,
 trust and Device candidate independently of RTC. Partial writes retain their
 exact credential reference for reconciliation. Explicit cancellation invalidates
 in-flight captures and retires only that owned reference.
+Active receipt deadline validation permits at most five seconds of positive
+clock skew beyond Station's 30-second receipt window, matching the existing
+status timestamp allowance. Already expired receipts and deadlines beyond that
+bounded window remain refused; signature, tuple and host currentness checks
+still apply.
 
 The sealed bundle contains the Device bearer only. Activation does not create an
 account continuation or Project membership. The native account challenge/exchange
