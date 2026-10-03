@@ -104,6 +104,13 @@ const registryItems = {
       description: 'Registry skill',
       source: 'GitHub',
     },
+    {
+      id: 'prototype',
+      displayName: 'Prototype',
+      description: 'Build a prototype',
+      source: 'GitHub',
+      status: 'unsupported-skill-name',
+    },
   ],
   layouts: [
     {
@@ -368,6 +375,37 @@ function expectInstalledToast(message: string, pluginName: string) {
 }
 
 describe('RegistryView', () => {
+  test('keeps unsupported skill details visible without offering installation or blocking a valid sibling', () => {
+    render(<RegistryView initialTab="skills" />);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'View Prototype details' }),
+    );
+    const detail = screen.getByTestId('registry-detail');
+    expect(within(detail).queryByText('Available')).toBeNull();
+    expect(
+      within(detail).getByText(
+        'This skill uses a name reserved by Station. Ask its publisher for a supported name before installing.',
+      ),
+    ).toBeTruthy();
+    const unavailable = within(detail).getByRole('button', {
+      name: 'Unavailable',
+    });
+    expect(unavailable).toHaveProperty('disabled', true);
+    fireEvent.click(unavailable);
+    expect(mutationCalls).toEqual([]);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'View Skill One details' }),
+    );
+    fireEvent.click(
+      within(screen.getByTestId('registry-detail')).getByRole('button', {
+        name: 'Install to workspace',
+      }),
+    );
+    expect(mutationCalls).toEqual([
+      { tab: 'skills', id: 'skill-one', action: 'install' },
+    ]);
+  });
+
   test('updates the URL when switching Registry tabs', () => {
     render(<RegistryView />);
 

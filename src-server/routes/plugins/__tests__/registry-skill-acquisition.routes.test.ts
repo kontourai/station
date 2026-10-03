@@ -1,9 +1,18 @@
 import { createHash } from 'node:crypto';
-import { access, mkdir, readFile, stat } from 'node:fs/promises';
+import {
+  access,
+  mkdir,
+  readdir,
+  readFile,
+  stat,
+  writeFile,
+} from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { ConfigLoader } from '../../../domain/config-loader.js';
+import type { ISkillRegistryProvider } from '../../../providers/provider-interfaces.js';
+import { FilesystemSkillRegistryProvider } from '../../../providers/registries/filesystem-skill-registry.js';
 import { GitHubSkillRegistryProvider } from '../../../providers/registries/github-skill-registry.js';
 import {
   clearAll,
@@ -23,6 +32,9 @@ const markdown = Buffer.from(
 );
 const binary = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0, 0xff, 0x80, 0x0a]);
 const script = Buffer.from('#!/bin/sh\nprintf example\n');
+const prototypeMarkdown = Buffer.from(
+  '---\nname: prototype\ndescription: Build a prototype\n---\n\nPlan a prototype.',
+);
 
 function blobSha(bytes: Buffer): string {
   return createHash('sha1')
@@ -39,6 +51,7 @@ function networkFixture(
     missingAsset?: boolean;
     missingMarkdown?: boolean;
     additionalFiles?: Array<{ path: string; bytes: Buffer }>;
+    additionalSkills?: Array<{ directory: string; markdown: Buffer }>;
   } = {},
 ) {
   let branchMoved = false;
@@ -78,6 +91,14 @@ function networkFixture(
           sha: blobSha(script),
         },
       ];
+      for (const skill of options.additionalSkills ?? []) {
+        entries.push({
+          path: `skills/${skill.directory}/SKILL.md`,
+          type: 'blob',
+          mode: '100644',
+          sha: blobSha(skill.markdown),
+        });
+      }
       for (const file of options.additionalFiles ?? []) {
         entries.push({
           path: `skills/productivity/grilling/${file.path}`,
@@ -105,6 +126,10 @@ function networkFixture(
     const pinnedRoot = `https://raw.githubusercontent.com/example/skills/${firstCommit}/skills/`;
     if (url.startsWith(pinnedRoot)) {
       const path = decodeURIComponent(url.slice(pinnedRoot.length));
+      const extraSkill = options.additionalSkills?.find(
+        (skill) => path === `${skill.directory}/SKILL.md`,
+      );
+      if (extraSkill) return new Response(extraSkill.markdown);
       const extra = options.additionalFiles?.find(
         (file) => path === `productivity/grilling/${file.path}`,
       );
@@ -145,7 +170,12 @@ function networkFixture(
   };
 }
 
-function setup() {
+function setup(
+  provider: ISkillRegistryProvider = new GitHubSkillRegistryProvider({
+    owner: 'example',
+    repo: 'skills',
+  }),
+) {
   clearAll();
   const home = makeTempDir('registry-skill-acquisition-');
   const configLoader = new ConfigLoader({ projectHomeDir: home });
@@ -153,9 +183,7 @@ function setup() {
     configLoader,
     createLogger({ name: 'registry-acquisition-test' }),
   );
-  registerSkillRegistryProvider(
-    new GitHubSkillRegistryProvider({ owner: 'example', repo: 'skills' }),
-  );
+  registerSkillRegistryProvider(provider);
   const app = createRegistryRoutes(
     configLoader,
     async () => {},
@@ -179,7 +207,109 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('GitHub skill acquisition through Registry routes', () => {
+describe('Registry skill acquisition and host compatibility', () => {
+  test('projects host name compatibility over a filesystem provider availability claim', async () => {
+    const source = makeTempDir('registry-filesystem-compatibility-');
+    for (const [name, bytes] of [
+      ['grill-me', markdown],
+      ['prototype', prototypeMarkdown],
+    ] as const) {
+      await mkdir(join(source, name));
+      await writeFile(join(source, name, 'SKILL.md'), bytes);
+    }
+    class ClaimedAvailableFilesystemRegistry extends FilesystemSkillRegistryProvider {
+      override async listAvailable() {
+        return (await super.listAvailable()).map((item) => ({
+          ...item,
+          status: 'available',
+        }));
+      }
+    }
+    const { app, home } = setup(
+      new ClaimedAvailableFilesystemRegistry([source]),
+    );
+    const listed = await app.request('/skills');
+    expect(listed.status).toBe(200);
+    expect(await listed.json()).toEqual({
+      success: true,
+      data: expect.arrayContaining([
+        expect.objectContaining({
+          id: 'grill-me',
+          status: 'available',
+          source,
+        }),
+        expect.objectContaining({
+          id: 'prototype',
+          status: 'unsupported-skill-name',
+          source,
+        }),
+      ]),
+    });
+    const refused = await app.request('/skills/install', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: 'prototype' }),
+    });
+    expect(refused.status).toBe(400);
+    expect(await readdir(home)).toEqual([]);
+    expect((await install(app)).status).toBe(200);
+    expect(await readFile(join(home, 'skills/grill-me/SKILL.md'))).toEqual(
+      markdown,
+    );
+  });
+
+  test('keeps a reserved-name skill inspectable without blocking its valid sibling or permitting an install', async () => {
+    networkFixture({
+      additionalSkills: [
+        { directory: 'engineering/prototype', markdown: prototypeMarkdown },
+      ],
+    });
+    const { app, home, skillService } = setup();
+    const listed = await app.request('/skills');
+    expect(listed.status).toBe(200);
+    expect(await listed.json()).toEqual({
+      success: true,
+      data: [
+        expect.objectContaining({ id: 'grill-me' }),
+        expect.objectContaining({
+          id: 'prototype',
+          status: 'unsupported-skill-name',
+          source: `https://github.com/example/skills/tree/${firstCommit}/skills/engineering/prototype`,
+        }),
+      ],
+    });
+    const content = await app.request('/skills/prototype/content');
+    expect(content.status).toBe(200);
+    expect(await content.json()).toEqual({
+      success: true,
+      data: 'Plan a prototype.',
+    });
+    const refused = await app.request('/skills/install', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: 'prototype' }),
+    });
+    expect(refused.status).toBe(400);
+    expect(await refused.json()).toEqual({
+      success: false,
+      code: 'unsupported-skill-name',
+      message:
+        'This skill uses a name reserved by Station. Ask its publisher for a supported name before installing.',
+    });
+    expect(await readdir(home)).toEqual([]);
+    expect(skillService.listSkills()).toEqual([]);
+    expect((await install(app)).status).toBe(200);
+    expect(await readFile(join(home, 'skills/grill-me/SKILL.md'))).toEqual(
+      markdown,
+    );
+    expect(skillService.listSkills()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: 'grill-me', installed: true }),
+      ]),
+    );
+    await expect(access(join(home, 'skills/prototype'))).rejects.toThrow();
+  });
+
   test('installs a nested skill by its declared name with binary assets from the listed immutable snapshot', async () => {
     const network = networkFixture();
     const { app, home, configLoader, skillService } = setup();
@@ -234,6 +364,39 @@ describe('GitHub skill acquisition through Registry routes', () => {
     ['truncated tree', { truncated: true }],
     ['ambiguous name', { duplicate: true }],
     ['missing declared skill', { missingMarkdown: true }],
+    [
+      'ambiguous reserved name',
+      {
+        additionalSkills: [
+          { directory: 'engineering/prototype', markdown: prototypeMarkdown },
+          { directory: 'other/prototype', markdown: prototypeMarkdown },
+        ],
+      },
+    ],
+    [
+      'unsafe declared name',
+      {
+        additionalSkills: [
+          {
+            directory: 'engineering/unsafe',
+            markdown: Buffer.from(
+              '---\nname: bad/name\ndescription: Invalid package name\n---\n\nBad name.',
+            ),
+          },
+        ],
+      },
+    ],
+    [
+      'malformed skill header',
+      {
+        additionalSkills: [
+          {
+            directory: 'engineering/malformed',
+            markdown: Buffer.from('---\nname: [broken\n---\n\nBad YAML.'),
+          },
+        ],
+      },
+    ],
   ])(
     'refuses %s without presenting a partial successful catalog',
     async (_name, options) => {

@@ -8,7 +8,10 @@ import type {
 } from '@kontourai/station-contracts/catalog';
 import { validateWorkspacePackagePaths } from '@kontourai/station-shared/workspace-package';
 import { parseFrontmatter } from 'agent-skills-ts-sdk';
-import { assertSafeSkillName } from '../../domain/skill-paths.js';
+import {
+  assertSafeSkillName,
+  PROTOTYPE_AFFECTING_KEYS,
+} from '../../domain/skill-paths.js';
 import type { ISkillRegistryProvider } from '../provider-interfaces.js';
 
 interface GitHubTreeItem {
@@ -156,7 +159,8 @@ export class GitHubSkillRegistryProvider implements ISkillRegistryProvider {
           );
           const { metadata } = parseFrontmatter(markdown);
           const id = metadata.name || basename(directory);
-          assertSafeSkillName(id);
+          const unsupportedName = PROTOTYPE_AFFECTING_KEYS.includes(id);
+          if (!unsupportedName) assertSafeSkillName(id);
           return {
             directory,
             markdown,
@@ -166,6 +170,7 @@ export class GitHubSkillRegistryProvider implements ISkillRegistryProvider {
               description: metadata.description || '',
               version: metadata.metadata?.version || undefined,
               installed: false,
+              ...(unsupportedName ? { status: 'unsupported-skill-name' } : {}),
               source: `https://github.com/${this.owner}/${this.repo}/tree/${commit.sha}/${directory}`,
             },
           };

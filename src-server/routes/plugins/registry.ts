@@ -22,6 +22,7 @@ import { join } from 'node:path';
 import { type Context, Hono } from 'hono';
 import { unregisterPluginEngineConnections } from '../../domain/agent-registry.js';
 import type { ConfigLoader } from '../../domain/config-loader.js';
+import { PROTOTYPE_AFFECTING_KEYS } from '../../domain/skill-paths.js';
 import {
   getAgentRegistryProvider,
   getIntegrationRegistryProvider,
@@ -640,11 +641,18 @@ export function createRegistryRoutes(
       entries.map(async (e) => e.provider.listAvailable()),
     );
     const seen = new Set<string>();
-    const data = results.flat().filter((item) => {
-      if (seen.has(item.id)) return false;
-      seen.add(item.id);
-      return true;
-    });
+    const data = results
+      .flat()
+      .filter((item) => {
+        if (seen.has(item.id)) return false;
+        seen.add(item.id);
+        return true;
+      })
+      .map((item) =>
+        PROTOTYPE_AFFECTING_KEYS.includes(item.id)
+          ? { ...item, status: 'unsupported-skill-name' }
+          : item,
+      );
     return c.json({ success: true, data });
   });
 
@@ -657,6 +665,17 @@ export function createRegistryRoutes(
   app.post('/skills/install', validate(skillInstallSchema), async (c) => {
     const { id } = getBody(c);
     registryOps.add(1, { operation: 'install-skill', item: id });
+    if (PROTOTYPE_AFFECTING_KEYS.includes(id)) {
+      return c.json(
+        {
+          success: false,
+          code: 'unsupported-skill-name',
+          message:
+            'This skill uses a name reserved by Station. Ask its publisher for a supported name before installing.',
+        },
+        400,
+      );
+    }
     if (!skillService)
       return c.json(
         { success: false, message: 'SkillService not available' },

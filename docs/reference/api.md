@@ -2024,11 +2024,22 @@ A successful catalog snapshot is cached for five minutes; an expired snapshot is
 returned as successful when refresh fails. Such failures currently fail the catalog
 request; independent source status and partial results are not exposed yet.
 
+A readable Skill whose declared name is reserved by Station remains in the catalog
+with `status: "unsupported-skill-name"`. The returned catalog derives this host
+compatibility status independently of provider availability claims. Its instructions
+remain readable through
+`GET /api/registry/skills/:id/content`; the Registry shows it as unavailable for
+installation with an explanation. This is host compatibility, not a failed source
+read. Duplicate names, unsafe non-reserved names, malformed headers, and incomplete
+discovery still fail the source rather than hiding entries.
+
 ### Install Skill from Registry
 
 `POST /api/registry/skills/install` accepts `{id}` and returns SkillService's
 result. It attempts a Skill reload after success; a caught reload failure does
-not change the install result.
+not change the install result. A reserved name returns a 400 envelope with
+`code: "unsupported-skill-name"` before SkillService or staged filesystem effects.
+The provider and SkillService also retain their independent storage-name guards.
 
 For a GitHub Skill, the provider copies the selected directory's files from one
 catalog snapshot, including binary assets and executable files, through SkillService's
