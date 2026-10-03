@@ -9,7 +9,7 @@
 
   "limits": "No claim of live provider/audio/physical device/native shell, external forge acceptance, registry publication/install, production account/relay enrollment, cloud deployment or visual accessibility verification.154 code fences parse syntactically; fragment syntax/export presence is not general assignability or end-to-end execution proof. Default SDK host gaps (#2780), active-tab/voice lifecycle (#2806/#2807), notification long-delay wakeup (#2810), optional stale-mutation policy (#2815), disabled production fetch proxy and documented legacy error/guard limits remain current behavior or tracked recommendations. Exact statement/source hashes only establish future drift detection; they do not make later changes semantically correct automatically.",
 
-  "document": {"digest":"b7aacaa38e41f5095d1487768fe1efb013e769d3ea5a86f2fd4770b1917a69bc","revision":"2db57f47f24b9f549b9612e1aa24a77df39c3b2f"},
+  "document": {"digest":"5eff62fbd8f4b06915591ebf834e1de272e78fff373b38d7e1124f38e0967c55","revision":"1b90e22d25437825627a9d0850262f9bbed113b7"},
 
   "sources": [
     {"path":"docs/design/mcp-ui-host.md","digest":"060ae4fc6877a186e8ea6d5073729e03f161dbe270b700f62741095560000195","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
@@ -54,7 +54,7 @@
 
     {"path":"packages/sdk/src/api-agent-runtime.ts","digest":"4b5cff321da3b39dca67b50c39d64090b9f794f95d52b0e1d6504c18dfedfc14","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
-    {"path":"packages/sdk/src/api-core.ts","digest":"a48681c1b98cd1d44065eed3e94bccc1bee906ef27722d6ebf04d27130469bd4","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"packages/sdk/src/api-core.ts","digest":"6387367214cde7e65f20c10cee8b72acfee74ded5edbb69b759dc15a02b6fb3b","revision":"99d242ffc7c9a5522d0ae0e9d3b208b3b4926ccf"},
 
     {"path":"packages/sdk/src/api-knowledge-utils.ts","digest":"51ac4128df2931f3be10e2d158c70afdfc5fd00fcea0ce28f7dcf2a84206d9fa","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -62,39 +62,39 @@
 
     {"path":"packages/sdk/src/boot.ts","digest":"d8e66bcd58f9788052745d4ac31d0ff1a0f498e477adc5f1afc80099115534a4","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/sdk/src/client/account-authentication.ts","digest":"7a1e7d854d7a40cc8a2478057fccc9de1f4761901559cf575eb9744bf66c1640","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+    {"path":"packages/sdk/src/client/account-authentication.ts","digest":"526e71bc3b0ba5e2063939f607c081ff6bbba0691c6e21b7a772206e8289c299","revision":"59dd5f220c057d2052ad5bf075ea060793f85225"},
 
     {"path":"packages/sdk/src/client/agents.ts","digest":"1670556a8a665c596e874bf1d7ebce2497e2497c74f20ccaa7a3cb9e92b9848c","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
-    {"path":"packages/sdk/src/client/answer-basis.ts","digest":"5fa74c20055b723ee78a3b935cf3faa528f2ff3f6f70b867de9a77eacda5d59c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"packages/sdk/src/client/answer-basis.ts","digest":"f4610da94d1b6dc44c83edb176b6e76169e8dd58fd826e55cef973b0c08a61df","revision":"59dd5f220c057d2052ad5bf075ea060793f85225"},
 
     {"path":"packages/sdk/src/client/api-error-message.ts","digest":"478cd8ae933e2534071bea1a4633390b7487b7e663e953d244ff7cc9843c1471","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"packages/sdk/src/client/application-session-native.ts","digest":"ff240974f061a8f3ee3a319fdf2b4eb83e043304ff966e80c4cdf5ed0bdfcecc","revision":"3517d8f66db867fd982a8f9883ed85052c4e1fc1"},
 
-    {"path":"packages/sdk/src/client/application-session.ts","digest":"47e755613e8c9008336e854ce799b1411f44017b5250958cadd0401d16c2c501","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"packages/sdk/src/client/application-session.ts","digest":"e99f9213d5664cb43887c1785a0ed5a332d52616f143fb08b7184d93c8a43819","revision":"59dd5f220c057d2052ad5bf075ea060793f85225"},
 
-    {"path":"packages/sdk/src/client/authority-observation.ts","digest":"c9e1b95c05783dd3f7e60274f6ec066da3f12376baf1d3bc40fa67bfe4c0a794","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"packages/sdk/src/client/authority-observation.ts","digest":"4d75d82ecc30c3a1275bb179256184657eaab000600e554e5549500cbe6f01a2","revision":"59dd5f220c057d2052ad5bf075ea060793f85225"},
 
-    {"path":"packages/sdk/src/client/chatHttpError.ts","digest":"44a164e41165fc1aafb03610125805aebc4750d82562f281ed6ddd374b3d2e4a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"packages/sdk/src/client/chatHttpError.ts","digest":"9e1cadb09735e00cdbdb11ca1d8c32c7eecab8aa675a62f8f681106015ef18a0","revision":"8f03da14fc2948f59e30a75e034d7d679338331c"},
 
-    {"path":"packages/sdk/src/client/checkpoint-restore.ts","digest":"01d7fab2e8edef57c5c622c305bd6479d173233fe27e61f4f85f831ea7664529","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+    {"path":"packages/sdk/src/client/checkpoint-restore.ts","digest":"0f0c2aff13ad3e52e5f694ec4a229a2e87148f051bacef7f1350df77b0a88fff","revision":"59dd5f220c057d2052ad5bf075ea060793f85225"},
 
     {"path":"packages/sdk/src/client/cloud-move.ts","digest":"f7404988ec3cb8cd76a14b1126cbc27d87952901fa1218cd6670fa5745d054b0","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
-    {"path":"packages/sdk/src/client/conversation-pull-request-links.ts","digest":"1347875a4998101f49c9ae77fb6377e2b325e6c6f710b10f89c08c86e106baec","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"packages/sdk/src/client/conversation-pull-request-links.ts","digest":"44b114e3adab3801fdd97b8dac8d08606d4bd3ee0f1363e0a965ee350d395294","revision":"59dd5f220c057d2052ad5bf075ea060793f85225"},
 
     {"path":"packages/sdk/src/client/conversations.ts","digest":"9a7ae77eaeaebc56e33e05339fdb90bc4d8d04f3ba8c360fc8487ba3f8c4cfa5","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
-    {"path":"packages/sdk/src/client/execution.ts","digest":"e70868b9e5f5495e542a872093749d25042588af482cec1d50c70c2df00004a9","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+    {"path":"packages/sdk/src/client/execution.ts","digest":"02defbe999179593f7f871febd05b1946381b3d64f540ccf0ffdc11756975d35","revision":"8f03da14fc2948f59e30a75e034d7d679338331c"},
 
-    {"path":"packages/sdk/src/client/flow-gate-evaluations.ts","digest":"5790b6a82e9e2dd574e34922666ffc3bf577b8dc895dab3dfb8fc580c95d5d57","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"packages/sdk/src/client/flow-gate-evaluations.ts","digest":"c64a9587c8be02a7a607c6b998594c7ff696bd12db831dcfba850edcac70b711","revision":"59dd5f220c057d2052ad5bf075ea060793f85225"},
 
     {"path":"packages/sdk/src/client/input-reply.ts","digest":"7bf648d6169a1648ab24287c2e61e3464b1fb51958158c9d418d4831023ed249","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"packages/sdk/src/client/knowledge.ts","digest":"3b99041b2b4df1ae1a08ea6584eaec86a649756ffb134a817666ec6919fda743","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
-    {"path":"packages/sdk/src/client/learning-source.ts","digest":"e7250cbdd1d308ca10b197663affe679702ec97c5672685e3fd38e1b6c3e88f4","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"packages/sdk/src/client/learning-source.ts","digest":"8ed1cdac489fab5420f3dbce75bebd1129d96d7bb2880bba46616667547a7385","revision":"59dd5f220c057d2052ad5bf075ea060793f85225"},
 
     {"path":"packages/sdk/src/client/local-accounts.ts","digest":"d5c3462a067e9a89b86d27ec791badd4e37f3fd27c08c58ed0957ee1d71f2d65","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -110,11 +110,11 @@
 
     {"path":"packages/sdk/src/client/project-task-rooms.ts","digest":"a3a9664a9235b566536f167ff888a73d918f160bc7a70ca0eb3d0f6a2872d11f","revision":"ee7cb7c444fb45f465be3f4ea5c938e5a130145e"},
 
-    {"path":"packages/sdk/src/client/projects.ts","digest":"9fd218a7c499cab4fcc9d04e04ca8ff4a7cd7465d2c4176d3b4434cf627c2ffa","revision":"1da4798fab6730e9c81fb91d9d3dbbebc952f976"},
+    {"path":"packages/sdk/src/client/projects.ts","digest":"94f2434565ed7f81ba8ae0f66d6082a6908838401ae5174db1cad713d60c1347","revision":"99d242ffc7c9a5522d0ae0e9d3b208b3b4926ccf"},
 
-    {"path":"packages/sdk/src/client/pull-request-review.ts","digest":"041031116030811215c0edcc98bf8948fe5e112bf4c212c5fe287494b5bd7fc7","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"packages/sdk/src/client/pull-request-review.ts","digest":"ed1fc504bc98b999946ed1ebb389d99c7d3ab414fda327fd1900cca2b2c71279","revision":"59dd5f220c057d2052ad5bf075ea060793f85225"},
 
-    {"path":"packages/sdk/src/client/quote-source.ts","digest":"0baf934bccd7b06e0569df5e4b1b9ffd150d3f8b0c0a6ba01d097a8d410ea5eb","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"packages/sdk/src/client/quote-source.ts","digest":"28fc37fd3c2c0dfc486be47c97994adf18f71934a487b95c50008f90037a8f0d","revision":"59dd5f220c057d2052ad5bf075ea060793f85225"},
 
     {"path":"packages/sdk/src/client/relay-enrollment.ts","digest":"2724b990a62f6c0c53250fc0948e68f7244165aba00c7eb57e52625c0b1a6ea5","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -200,7 +200,7 @@
 
     {"path":"packages/sdk/src/query-domains/chatRuntimeConversations.ts","digest":"d551717fd5bdd3e04d737064dbe04b6ca27aafc771ebdee1c19247b0488fe9b4","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
-    {"path":"packages/sdk/src/query-domains/chatRuntimeOrchestration.ts","digest":"d4341001f4cb290b64a3171e8b284e12410463726f6aa3b3590c4be2094d30f4","revision":"42019764437469e865189dfd8ad8b1762b77a97a"},
+    {"path":"packages/sdk/src/query-domains/chatRuntimeOrchestration.ts","digest":"e5c709f79d36eab6b51b894f50ded580fc847fc2a8d62b37159dcecc7b332b0a","revision":"8f03da14fc2948f59e30a75e034d7d679338331c"},
 
     {"path":"packages/sdk/src/query-domains/devicePairingRequests.ts","digest":"be679fb0964921f7a7e7ec77433cd198f89772b8c1e13450e4fc39204dbdd4a3","revision":"9bb90045b7aeb926e7003b27fc4fd62252638524"},
 
@@ -340,7 +340,7 @@
 
     {"path":"src-server/runtime/routes/runtime-route-support.ts","digest":"6a4c97a6eb7f6bbce23da80e037ffb76ca1da14f53e54b2a934a4e64e60f2052","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"90e94e3a617cb7c9642c029f8dd1c58fbebeca19e29dbd1b097af41952fe4b93","revision":"cf12c0d848d0dc068f3dcaa530e9a1f213618834"},
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"36520718c532907b7e3359b8df56c2ec8fa6b3c66fed0ebecc48f9c46fa84757","revision":"1b90e22d25437825627a9d0850262f9bbed113b7"},
 
     {"path":"src-server/runtime/routes/workspace-pane-host-actions.ts","digest":"47243c2ce659cae374048d91ff97faa62921d3b1ce2475199a56cd776bd0ca10","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -428,7 +428,7 @@
 
     {"path":"src-ui/src/components/chat-dock/ConversationOpenRevalidator.tsx","digest":"bd291520573de4237b0c245375b4487dcd96545bf655b4112954ecb80da81ee4","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/components/chat/CheckpointRestoreButton.tsx","digest":"a17fed2fc8f712386a4eb64756b500c32a1a712721c65b3f5dab1ee0ea033bab","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-ui/src/components/chat/CheckpointRestoreButton.tsx","digest":"e7d964a29494717f91127e549b6b30dcef29c82063ae26dafb500a9d7328bf03","revision":"f9d07cd291c9a91ea04800a84167ac4a43a8ca69"},
 
     {"path":"src-ui/src/components/chat/QuoteSourceLink.tsx","digest":"14b2b534af47415c4b5a102dca20ee7bf42c800963d1ff01306e48a088c00106","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -440,7 +440,7 @@
 
     {"path":"src-ui/src/components/search/WorkspaceSearchPalette.tsx","digest":"a4da9be6036a79df95e09258757ff682c1dd40e47661c0f31fbb27c24992f61e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/contexts/AuthorityQueryContext.tsx","digest":"f62bda5353e068d89a300e57fa9fa6d359516aefce3e3f8b61530d72bdfd5ade","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-ui/src/contexts/AuthorityQueryContext.tsx","digest":"69ad7bd034839864bf4d1c2c9ce0a49c7aa434bd8d03140f25bfafaf71e7cf6b","revision":"f9d07cd291c9a91ea04800a84167ac4a43a8ca69"},
 
     {"path":"src-ui/src/contexts/chat-drafts-store.ts","digest":"39516378bc15b4601413a4305f0098fb92354a1145cb62a7f86a42697fb9d4ad","revision":"d6a3158c22a62d9530592c6366a1624790ee9401"},
 

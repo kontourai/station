@@ -9,7 +9,7 @@
 
   "limits": "No provisioning, installs, service control, network-policy changes, real credentials, Docker pull/build/run, VM, TLS issuance or live-host operations. Existing fixture tests and read-only configuration checks only. Full reading does not certify every deployment outcome.",
 
-  "document": {"digest":"1edc373a6f45ca03a1f4e989e59cabe26d36afe4b5b06ccf9717f8b715bf99f2","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+  "document": {"digest":"f82f910619b0a538045ae2f363cb87f29380318d2776cc11ba7e416f4acc20c6","revision":"4adb936cab554fead3f5a45d1ff4d00670d59219"},
 
   "sources": [
     {"path":".dockerignore","digest":"cf0bf85d64e0b5e2afd30bc1bf622e3eaa60fb263bc80a274eff2f5f49486c04","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
@@ -84,7 +84,7 @@
 
     {"path":"src-server/runtime/mcp/mcp-manager.ts","digest":"c6569ade67cb9b48930cac5ca09521ba0836161c462f7b5a7c684b6eb8db1d3c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"90e94e3a617cb7c9642c029f8dd1c58fbebeca19e29dbd1b097af41952fe4b93","revision":"cf12c0d848d0dc068f3dcaa530e9a1f213618834"},
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"36520718c532907b7e3359b8df56c2ec8fa6b3c66fed0ebecc48f9c46fa84757","revision":"1b90e22d25437825627a9d0850262f9bbed113b7"},
 
     {"path":"src-server/services/orchestration/__tests__/home-reference-recovery.test.ts","digest":"fb52355a2508fffa30621e7fd7a131f809fb4c4eeebf9b59bc0fe8a95435dbaf","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

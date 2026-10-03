@@ -20,7 +20,7 @@
 
     {"path":"src-server/services/connections/self-hosted-broker-service.ts","digest":"408c9acaacc694e5dd56d93289701fc54a3f9c688470f33b88d982c3f470a263","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"},
 
-    {"path":"src-server/services/connections/virtual-application.ts","digest":"e23d2888c8a9e78057d80d7debdde0a0e29d25f1812c9c716e9d74c2dc636be6","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
+    {"path":"src-server/services/connections/virtual-application.ts","digest":"4f5b04f412f414d36d3ba402751788f75262386866a41aff81f256cb1e0315e8","revision":"99d242ffc7c9a5522d0ae0e9d3b208b3b4926ccf"},
 
     {"path":"packages/connect/src/core/nativeApplicationTransport.ts","digest":"4b8c27dd3b7b179c69f57372e4fe3dc210c98483f5cd1caa4482d18b8ff76816","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
 

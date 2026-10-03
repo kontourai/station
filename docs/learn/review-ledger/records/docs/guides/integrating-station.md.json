@@ -18,7 +18,7 @@
 
     {"path":"docs/guides/deployment-authentication.md","digest":"cd5a91770198de74499dd8e87bb4a27ba0a0769108bfd51d7f900bf571026fbf","revision":"daeb0902d1d0d28457a61b01e6dbdaab13fc0888"},
 
-    {"path":"docs/guides/deployment.md","digest":"1edc373a6f45ca03a1f4e989e59cabe26d36afe4b5b06ccf9717f8b715bf99f2","revision":"18002c0871ea8538605e922464aab5356c77593c"},
+    {"path":"docs/guides/deployment.md","digest":"f82f910619b0a538045ae2f363cb87f29380318d2776cc11ba7e416f4acc20c6","revision":"4adb936cab554fead3f5a45d1ff4d00670d59219"},
 
     {"path":"docs/guides/documentation.md","digest":"9e299a73ec55cd8792f40d976dda64b1af1c8b206a24ebfd638ca0db3ab12633","revision":"cda5879b28558d002561d656b869c4f7b05bc4ca"},
 
@@ -26,13 +26,13 @@
 
     {"path":"docs/guides/workspace-packages.md","digest":"4590c3915425e58b96a0ae8c36d825bf0409e7ddff1b7023f367f14a4aede9d1","revision":"5c18724d4ba50fd9b5f6c4043e7a00ebc893c70d"},
 
-    {"path":"docs/reference/api.md","digest":"b2ec0fde2325ba3d212a539496721e3cc87cb493bae04a18d753e38529e8f9fa","revision":"a89d77c455f60f24a368c649cfe34200a3ae3110"},
+    {"path":"docs/reference/api.md","digest":"3b85ba8a6483d7348120a7692868b7ea826cc5e8c38ab8b27cfa378f253d2099","revision":"99d242ffc7c9a5522d0ae0e9d3b208b3b4926ccf"},
 
     {"path":"docs/reference/cli.md","digest":"b2cdeea42fb4b6baacc5aa6a74692e4d60975f7b30c2ad49e2c4d89990138297","revision":"24d0063f45516c1d6c7cddec670c60ef0185f1f2"},
 
     {"path":"docs/reference/contracts.md","digest":"4fc6322a0a4f02149563c235375f8c699cb09ffceec16ac9c3416b84bff518f0","revision":"1e6450e0caa47975d33f505a1348bdc01ae1382e"},
 
-    {"path":"docs/reference/sdk.md","digest":"b7aacaa38e41f5095d1487768fe1efb013e769d3ea5a86f2fd4770b1917a69bc","revision":"2db57f47f24b9f549b9612e1aa24a77df39c3b2f"},
+    {"path":"docs/reference/sdk.md","digest":"5eff62fbd8f4b06915591ebf834e1de272e78fff373b38d7e1124f38e0967c55","revision":"1b90e22d25437825627a9d0850262f9bbed113b7"},
 
     {"path":"packages/contracts/src/deployment-authentication.ts","digest":"8855043167b011ccd430ec998ea644d1c9e16f86b98a9304162d2f86973a8a98","revision":"18002c0871ea8538605e922464aab5356c77593c"},
 

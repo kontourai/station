@@ -60,9 +60,9 @@
 
     {"path":"packages/sdk/src/client/application-session-native.ts","digest":"ff240974f061a8f3ee3a319fdf2b4eb83e043304ff966e80c4cdf5ed0bdfcecc","revision":"3517d8f66db867fd982a8f9883ed85052c4e1fc1"},
 
-    {"path":"packages/sdk/src/client/http.ts","digest":"9892699e68483e0df3dd67ce71956994e98a43755a0c931dd6c3c5660caee00e","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+    {"path":"packages/sdk/src/client/http.ts","digest":"1a972988f609e649ef5667c2d553a510644eb38718c1d1f7ec6fa376899e74b5","revision":"99d242ffc7c9a5522d0ae0e9d3b208b3b4926ccf"},
 
-    {"path":"packages/sdk/src/client/learning-source.ts","digest":"e7250cbdd1d308ca10b197663affe679702ec97c5672685e3fd38e1b6c3e88f4","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"packages/sdk/src/client/learning-source.ts","digest":"8ed1cdac489fab5420f3dbce75bebd1129d96d7bb2880bba46616667547a7385","revision":"59dd5f220c057d2052ad5bf075ea060793f85225"},
 
     {"path":"packages/sdk/src/client/project-identity.ts","digest":"994c9dda32a7fccc85e9313362cc0ec6e3322b592a9a8c7cf31c651dab2eb18e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -322,7 +322,7 @@
 
     {"path":"src-server/runtime/bootstrap/native-device-proof-runtime.ts","digest":"df3f652f18e5e069d221d4db40f47981357918a3af52d867952f8a4f2542b0a6","revision":"3517d8f66db867fd982a8f9883ed85052c4e1fc1"},
 
-    {"path":"src-server/runtime/bootstrap/runtime-http.ts","digest":"400f3e49be7138980b286334db40de4fa4a6fbaa1ea37c285ae9774ddc5fbbb7","revision":"2c5134e4bfc4db4d19877df92119078a80bf27e7"},
+    {"path":"src-server/runtime/bootstrap/runtime-http.ts","digest":"d0a0701a4b0893551ceb128a306b64e59c51cf62ecc04b732839cace06209439","revision":"8f03da14fc2948f59e30a75e034d7d679338331c"},
 
     {"path":"src-server/runtime/bootstrap/runtime-initialize.ts","digest":"93c4b8f2102f0b78a9ffe5e97bc8b96405a637b8e44d2f1808717a0411d0b903","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -356,7 +356,7 @@
 
     {"path":"src-server/runtime/routes/runtime-route-support.ts","digest":"6a4c97a6eb7f6bbce23da80e037ffb76ca1da14f53e54b2a934a4e64e60f2052","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"90e94e3a617cb7c9642c029f8dd1c58fbebeca19e29dbd1b097af41952fe4b93","revision":"cf12c0d848d0dc068f3dcaa530e9a1f213618834"},
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"36520718c532907b7e3359b8df56c2ec8fa6b3c66fed0ebecc48f9c46fa84757","revision":"1b90e22d25437825627a9d0850262f9bbed113b7"},
 
     {"path":"src-server/runtime/routes/workspace-pane-host-actions.ts","digest":"47243c2ce659cae374048d91ff97faa62921d3b1ce2475199a56cd776bd0ca10","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -422,7 +422,7 @@
 
     {"path":"src-server/services/connections/runtime-auth-health-monitor.ts","digest":"51da6f48f16cdf3c7f6f645cd209627c249a8b43e573a6685c2f6a6b73128795","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/connections/virtual-application.ts","digest":"e23d2888c8a9e78057d80d7debdde0a0e29d25f1812c9c716e9d74c2dc636be6","revision":"3517d8f66db867fd982a8f9883ed85052c4e1fc1"},
+    {"path":"src-server/services/connections/virtual-application.ts","digest":"4f5b04f412f414d36d3ba402751788f75262386866a41aff81f256cb1e0315e8","revision":"99d242ffc7c9a5522d0ae0e9d3b208b3b4926ccf"},
 
     {"path":"src-server/services/devices/device-access.ts","digest":"c76352871e23a808e20d299d3ab64ee8295c58eede99b2d4945c30a210b7ed96","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -794,7 +794,7 @@
 
     {"path":"src-ui/src/components/search/WorkspaceSearchPalette.tsx","digest":"a4da9be6036a79df95e09258757ff682c1dd40e47661c0f31fbb27c24992f61e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/components/setup/ExistingSetupImportStepper.tsx","digest":"b5a7f87f62d7a4216acbd3c8f75bc59e49b880edda92b51225df889ba654816d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-ui/src/components/setup/ExistingSetupImportStepper.tsx","digest":"f3390de19e03169fc210cc3f83ee09268552ae6d4730e139a0ff550bd666206a","revision":"99d242ffc7c9a5522d0ae0e9d3b208b3b4926ccf"},
 
     {"path":"src-ui/src/contexts/ApiBaseContext.tsx","digest":"3605f56290eb2b613aa26eb476a7801cba350dea1acd4736301a6afaaa8bdfe8","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

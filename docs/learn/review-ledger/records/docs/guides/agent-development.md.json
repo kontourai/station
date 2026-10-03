@@ -26,7 +26,7 @@
 
     {"path":"packages/sdk/src/client/execution.ts","digest":"02defbe999179593f7f871febd05b1946381b3d64f540ccf0ffdc11756975d35","revision":"8f03da14fc2948f59e30a75e034d7d679338331c"},
 
-    {"path":"packages/sdk/src/client/http.ts","digest":"a5b6aab76a026713b995e37745c777db0c574349ee3a05d3961f8460108c2bac","revision":"59dd5f220c057d2052ad5bf075ea060793f85225"},
+    {"path":"packages/sdk/src/client/http.ts","digest":"1a972988f609e649ef5667c2d553a510644eb38718c1d1f7ec6fa376899e74b5","revision":"99d242ffc7c9a5522d0ae0e9d3b208b3b4926ccf"},
 
     {"path":"packages/shared/src/build.ts","digest":"20f919a4a98519ce20e8e2f0d5d498a4be8daeba1314a97ddae752fd36df4630","revision":"1e6450e0caa47975d33f505a1348bdc01ae1382e"},
 

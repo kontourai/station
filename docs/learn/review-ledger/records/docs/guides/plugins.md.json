@@ -20,7 +20,7 @@
 
     {"path":"packages/cli/src/dev/server.ts","digest":"c5b9e90a6057a165ae81bfcd251eb06dc1d23a2c7fa7399cb34918f72482979c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/sdk/src/api-core.ts","digest":"a48681c1b98cd1d44065eed3e94bccc1bee906ef27722d6ebf04d27130469bd4","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"packages/sdk/src/api-core.ts","digest":"6387367214cde7e65f20c10cee8b72acfee74ded5edbb69b759dc15a02b6fb3b","revision":"99d242ffc7c9a5522d0ae0e9d3b208b3b4926ccf"},
 
     {"path":"packages/sdk/src/hooks/operations.ts","digest":"02dbff5afebdbe657824c6718e11773b39a9f454062b43e6391c877fcf12d994","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

@@ -36,7 +36,7 @@
 
     {"path":"packages/contracts/src/workspace-home-role.ts","digest":"afdd6ec33526422a7a455cfc575cdd5d662277a8a5c356db6f5b2b564de038f4","revision":"6bda463a0c9cb44b7f2686c6d47b4552f79220f2"},
 
-    {"path":"packages/sdk/src/client/delegations.ts","digest":"148d12ffed1091b83149a7d0caa834088f58eebf295ce4c97b697ec1fad747db","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+    {"path":"packages/sdk/src/client/delegations.ts","digest":"67e1b83d4ff940b2eea7e323853adaa2a51005ca9f02209f7ea1a047abfed3a1","revision":"59dd5f220c057d2052ad5bf075ea060793f85225"},
 
     {"path":"packages/shared/src/workspace-package-io.ts","digest":"39be3f0a5c1621a8421073c2fbf80ac835d4dd2dfb71e1a41d943af4fdcf41d7","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 
@@ -70,7 +70,7 @@
 
     {"path":"src-server/runtime/bootstrap/personal-home-authority-database.ts","digest":"8d7f81a7cef515dfff921152c74d03028409708395de6c280f2e013c70e84f7f","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"90e94e3a617cb7c9642c029f8dd1c58fbebeca19e29dbd1b097af41952fe4b93","revision":"cf12c0d848d0dc068f3dcaa530e9a1f213618834"},
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"36520718c532907b7e3359b8df56c2ec8fa6b3c66fed0ebecc48f9c46fa84757","revision":"1b90e22d25437825627a9d0850262f9bbed113b7"},
 
     {"path":"src-server/services/orchestration/delegation-attempt-claim-store.ts","digest":"50dcada7bbbd9f55739a41f024393046c3845e1979aae4113ca9e4eb57f94171","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 

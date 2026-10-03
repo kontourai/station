@@ -110,7 +110,7 @@
 
     {"path":"src-server/services/connections/native-v2-pion-application-adapter.ts","digest":"781f0ffca73205d3a35391ddb9f8a5dd8204eb710867c2f8c0030592fa1ddfc5","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
 
-    {"path":"src-server/services/connections/virtual-application.ts","digest":"e23d2888c8a9e78057d80d7debdde0a0e29d25f1812c9c716e9d74c2dc636be6","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
+    {"path":"src-server/services/connections/virtual-application.ts","digest":"4f5b04f412f414d36d3ba402751788f75262386866a41aff81f256cb1e0315e8","revision":"99d242ffc7c9a5522d0ae0e9d3b208b3b4926ccf"},
 
     {"path":"src-server/runtime/bootstrap/__tests__/self-hosted-broker-pion-runtime-native.test.ts","digest":"6784c9f57b329a5094f402f66f0bcd11ca06907cdbefe8987e4ce2e3d627df2d","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
