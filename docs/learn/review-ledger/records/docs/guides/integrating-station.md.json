@@ -22,11 +22,11 @@
 
     {"path":"docs/guides/documentation.md","digest":"35dd6dd9ae31089fcab2adaf2d58595f809a9e93cf85025c430b71350c576c15","revision":"595059eafa17ef6b7a39217a405619ecbfac2270"},
 
-    {"path":"docs/guides/plugins.md","digest":"3c6cd34042f745e8b187f5df5c75ad567a6851432e5e1a9e9ba07369a0067edb","revision":"efa773acac88792cda31595f9afca4a37d3efebc"},
+    {"path":"docs/guides/plugins.md","digest":"210ccfdc9f5a6eb1eb14bcf5726de104aa5ad6c407032e7febfc67b3fb3089e8","revision":"933a4db2063d3ee5d86bd54f8bbcc3d1b85332ca"},
 
     {"path":"docs/guides/workspace-packages.md","digest":"4590c3915425e58b96a0ae8c36d825bf0409e7ddff1b7023f367f14a4aede9d1","revision":"5c18724d4ba50fd9b5f6c4043e7a00ebc893c70d"},
 
-    {"path":"docs/reference/api.md","digest":"ea8b5c74ed1cedd40cd93c10b7a59aed2f6f1d6f119529368f049b2544a63200","revision":"efa773acac88792cda31595f9afca4a37d3efebc"},
+    {"path":"docs/reference/api.md","digest":"a7efad734748e76a9d79e4e301c5b6dc8435d6c194934615ded191266b2151d2","revision":"933a4db2063d3ee5d86bd54f8bbcc3d1b85332ca"},
 
     {"path":"docs/reference/cli.md","digest":"76106a61e5e2d8924c8857876b8f38011be5f9af421bf6697cbe71a5e795971a","revision":"efa773acac88792cda31595f9afca4a37d3efebc"},
 

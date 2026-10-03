@@ -462,7 +462,7 @@
 
     {"path":"src-server/voice/voice-session.ts","digest":"957f092791868376ee49c32261dc73d32fa25a8bdbfe5d79d6b70265ea685b28","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/components/CommandPalette.tsx","digest":"6426dd8ea32d6d70062b6f8b2c88046e610ea198e09fa29278a9f78ad8666a70","revision":"efa773acac88792cda31595f9afca4a37d3efebc"},
+    {"path":"src-ui/src/components/CommandPalette.tsx","digest":"ae47a64fc5a025c443af7d145ecab230f4ae919bef76b7cba101af8785e2891f","revision":"933a4db2063d3ee5d86bd54f8bbcc3d1b85332ca"},
 
     {"path":"src-ui/src/components/EnvironmentPicker.tsx","digest":"3b9e4c1fb8f7763b5429b3f881af81679c666a982f4f486a48f20110a8680290","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
