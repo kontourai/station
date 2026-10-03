@@ -128,15 +128,23 @@
 
     {"path":"tests/helpers/live-station-task.ts","digest":"f8e8de76e6e499512e39b2eab7da91ebca7d8a98622981a1d6d3acb28ee74b9f","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/views/SkillsView.tsx","digest":"01b46a8aa9580a4dfa9a3f9f6fc062ff4069d13d7f27d192f93a143385f36c60","revision":"2dceb46beab0a18aa5c649875406491b1ff57dec"},
+    {"path":"src-ui/src/views/SkillsView.tsx","digest":"3527a039a8714b5a993976326342c9f1b96f874884e0b65d8e7b6d63aeef74e5","revision":"fb82d3d9619cdb345148501d010222c8b1332662"},
 
     {"path":"src-ui/src/components/modals/SkillRunModal.tsx","digest":"d8e938a9a5a8306c4cf41afdda2e1e068e22050a5f189debbd59da8ba2a68c28","revision":"c1841d01497260f6e3c951d4439553bfc9663e04"},
 
     {"path":"src-ui/src/components/modals/ImportSkillsModal.tsx","digest":"65dae4a6ca3633c3109dac6efee0cf43823fec76402f6c927796be3f4949ac19","revision":"224e1f29005a8afc5495fe69e55445e8d0d4e12c"},
 
-    {"path":"src-ui/src/__tests__/SkillsView.test.tsx","digest":"b11dee605fd132ca7e483d630ce458ea877febd1b5f551f12b78d5c2d38c99bf","revision":"2dceb46beab0a18aa5c649875406491b1ff57dec"},
+    {"path":"src-ui/src/__tests__/SkillsView.test.tsx","digest":"a1a646de354d8db524e0c14728f60ee6945fb6cfc55e261f0d0b3d3caab27d87","revision":"fb82d3d9619cdb345148501d010222c8b1332662"},
 
-    {"path":"src-ui/src/__tests__/SkillsView.navigation.test.tsx","digest":"d8df0c0302ca63d49d30894b4c66b321108d87fe89fc3957d0831669a9846c9b","revision":"2dceb46beab0a18aa5c649875406491b1ff57dec"}
+    {"path":"src-ui/src/__tests__/SkillsView.navigation.test.tsx","digest":"7d063868e930ad7fa87883704b779e7d6ac1bb251e7b32754ef2ee424cbd7c0a","revision":"fb82d3d9619cdb345148501d010222c8b1332662"},
+
+    {"path":"src-ui/src/__tests__/SkillsView.launch.test.tsx","digest":"d36ca0900ffc39def80df34e4c3876804a990ae4d39dbe9a463cf995c6d0a532","revision":"fb82d3d9619cdb345148501d010222c8b1332662"},
+
+    {"path":"src-ui/src/hooks/useActiveChatSessionLifecycle.ts","digest":"2a90e4f43cde95121b12aec4ae642905f1329e9e23e95f797a41cd6746da9349","revision":"4c9ba2382e94915895b19b7fdd08979d83807864"},
+
+    {"path":"src-ui/src/hooks/useActiveChatSessionMessaging.ts","digest":"53af6df5a169a76a3eb936293dff7b0064b8596b6d5ddec1efa738ac6b0002e2","revision":"31cac46a69cdd1f5b1f6da671dc6d30cae2fdb95"},
+
+    {"path":"src-ui/src/lib/foregroundMessageDispatch.ts","digest":"8dd461fc84dda8844b89d1cc72d2c2da72aab7d5f0b0a07803405627f6f2ab23","revision":"797b97599f89df6555282de2d42af11e4aee4f08"}
   ],
 
   "checks": [
