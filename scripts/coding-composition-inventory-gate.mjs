@@ -139,6 +139,9 @@ const expectedDependencies = new Map(
     'src-ui/src/components/coding-layout/DiffCommentThread.tsx': 'git-review',
     'src-ui/src/components/coding-layout/DiffPanel.css': 'presentation',
     'src-ui/src/components/coding-layout/DiffPanel.tsx': 'git-review',
+    // The Diff toolbar's four glyphs, kept out of the entry's shared Glyph
+    // module: drawn pixels, nothing decided.
+    'src-ui/src/components/coding-layout/diffGlyphs.tsx': 'presentation',
     'src-ui/src/components/coding-layout/FileContentViewer.tsx':
       'privileged-renderer',
     'src-ui/src/components/coding-layout/FileTreeContextMenu.tsx':

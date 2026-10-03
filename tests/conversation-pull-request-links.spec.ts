@@ -54,10 +54,14 @@ createRoot(document.getElementById('root')).render(<QueryClientProvider client={
     ],
   });
   script = result.outputFiles[0].text;
+  // The rows and icons carry 44px hit areas as pseudo-elements that reach
+  // past their 28–30px boxes; a pane gives them its 12px gutter, and so does
+  // this mount, or the bare <main> would report a horizontal overflow the
+  // product never shows.
   const styles = await build({
     stdin: {
       contents:
-        '@import "./src-ui/src/index.css";@import "./src-ui/src/components/IconButton.css";@import "./src-ui/src/components/ActionOverflowMenu.css";@import "./src-ui/src/components/header/HeaderMenu.css";@import "./src-ui/src/components/pull-requests/pull-request-chips.css";@import "./src-ui/src/components/pull-requests/PullRequestRow.css";@import "./src-ui/src/components/pull-requests/LinkPullRequestField.css";@import "./src-ui/src/components/pull-requests/ConversationPullRequestLinks.css";@import "./src-ui/src/components/coding-layout/PullRequestDependencyStacks.css";',
+        '@import "./src-ui/src/index.css";@import "./src-ui/src/components/IconButton.css";@import "./src-ui/src/components/ActionOverflowMenu.css";@import "./src-ui/src/components/header/HeaderMenu.css";@import "./src-ui/src/components/pull-requests/pull-request-chips.css";@import "./src-ui/src/components/pull-requests/PullRequestRow.css";@import "./src-ui/src/components/pull-requests/LinkPullRequestField.css";@import "./src-ui/src/components/pull-requests/ConversationPullRequestLinks.css";@import "./src-ui/src/components/coding-layout/PullRequestDependencyStacks.css";main{padding:0 12px;box-sizing:border-box}',
       resolveDir: ROOT,
       loader: 'css',
     },

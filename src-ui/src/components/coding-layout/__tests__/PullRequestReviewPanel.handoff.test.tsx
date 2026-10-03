@@ -206,9 +206,7 @@ afterEach(() => {
 describe('review handoffs to the open chat', () => {
   test('Add to chat reaches the chat the navigation names by conversation id (D2)', async () => {
     mount();
-    fireEvent.click(
-      await screen.findByRole('button', { name: 'Add to chat', exact: true }),
-    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Add to chat' }));
     expect(screen.getByText('Added to draft').getAttribute('role')).toBe(
       'status',
     );
@@ -238,18 +236,14 @@ describe('review handoffs to the open chat', () => {
       'Check "Windows PR portable floor" failed on kontourai/station #2049: https://github.com/kontourai/station/actions/runs/3/job/4',
     );
     // A second add appends under a blank line rather than replacing.
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Add to chat', exact: true }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Add to chat' }));
     expect(drafts.get('agent:123')?.split('\n\n')).toHaveLength(2);
   });
 
   test('says "That chat is gone" when the named chat is in no store entry', async () => {
     activeChatsStore.removeChat('agent:123');
     mount();
-    fireEvent.click(
-      await screen.findByRole('button', { name: 'Add to chat', exact: true }),
-    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Add to chat' }));
     expect(screen.getByText('That chat is gone').getAttribute('role')).toBe(
       'status',
     );
@@ -260,7 +254,7 @@ describe('review handoffs to the open chat', () => {
 describe('merge is one menu', () => {
   test('the row holds Post comment and Approve; Merge is a menu with the method as a choice', async () => {
     mount();
-    await screen.findByRole('button', { name: 'Approve', exact: true });
+    await screen.findByRole('button', { name: 'Approve' });
     // The old labelled trio and the select are gone.
     for (const name of [
       'Approve this head',
@@ -296,9 +290,7 @@ describe('merge is one menu', () => {
     expect(dialog.textContent).toContain('with squash and merge');
     expect(dialog.textContent).toContain(HEAD);
     expect(dialog.textContent).not.toMatch(/forge operator|inspected head/);
-    fireEvent.click(
-      within(dialog).getByRole('button', { name: 'Merge', exact: true }),
-    );
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Merge' }));
     await waitFor(() =>
       expect(mergeReviewedPullRequest).toHaveBeenCalledWith(
         'http://station.test',

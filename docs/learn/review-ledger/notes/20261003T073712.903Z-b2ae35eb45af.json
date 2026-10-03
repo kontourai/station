@@ -1,0 +1,7 @@
+{
+  "revision": "f114b42162757399cb32b714f860c67c95011988",
+
+  "notes": [
+    {"path":"docs/patterns/backend.md","note":"Design round: stale only through the shared inventory file; this change touches no server module and the backend pattern makes no claim about the Diff pane. No prose change."}
+  ]
+}

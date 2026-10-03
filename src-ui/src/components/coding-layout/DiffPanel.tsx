@@ -39,13 +39,13 @@ import {
   browserEpochMs,
   emitDiffCommitPerformanceMark,
 } from '../../performance/interactive-workspace-performance-hooks';
+import { SkeletonBlock } from '../state';
 import {
   CollapseAllGlyph,
   ColumnsGlyph,
   ExpandAllGlyph,
   WrapGlyph,
-} from '../icons/Glyph';
-import { SkeletonBlock } from '../state';
+} from './diffGlyphs';
 
 type DiffCommentSide = DiffComment['side'];
 

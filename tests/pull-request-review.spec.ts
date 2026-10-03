@@ -383,10 +383,12 @@ for (const [label, width, panel] of [
     await page.setViewportSize({ width, height: 900 });
     await mount(page, 'github');
     if (panel) {
+      // The side panel: a container of the panel's width at the left edge,
+      // so an edge the pane runs past is an edge the assertions can see.
       await page.evaluate((w) => {
         const root = document.getElementById('root') as HTMLElement;
         root.style.width = `${w}px`;
-        root.style.marginLeft = 'auto';
+        root.style.overflow = 'hidden';
       }, panel);
     }
     const limit = panel ?? width;

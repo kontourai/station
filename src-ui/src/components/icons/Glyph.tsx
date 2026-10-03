@@ -2,7 +2,12 @@ interface GlyphProps {
   className?: string;
 }
 
-function glyph(path: string) {
+/**
+ * One 16px stroke glyph from a path. Exported so a lazily loaded surface can
+ * keep its own glyphs in its own chunk (the Diff pane's toolbar) rather than
+ * adding them to this eagerly loaded module.
+ */
+export function glyph(path: string) {
   return function Glyph({ className }: GlyphProps) {
     return (
       <svg
@@ -71,22 +76,6 @@ export const ChartGlyph = /* @__PURE__ */ glyph(
 );
 export const CheckGlyph = /* @__PURE__ */ glyph('m3 8 3.2 3.2L13 4.5');
 export const CloseGlyph = /* @__PURE__ */ glyph('M3.5 3.5l9 9m0-9-9 9');
-/** Two chevrons closing on a line: fold every file of a diff. */
-export const CollapseAllGlyph = /* @__PURE__ */ glyph(
-  'm4.5 5.5 3.5-3 3.5 3M4.5 10.5l3.5 3 3.5-3M3 8h10',
-);
-/** Two chevrons opening from a line: unfold every file of a diff. */
-export const ExpandAllGlyph = /* @__PURE__ */ glyph(
-  'm4.5 3 3.5 3 3.5-3M4.5 13l3.5-3 3.5 3M3 8h10',
-);
-/** Two columns: a side-by-side diff. */
-export const ColumnsGlyph = /* @__PURE__ */ glyph(
-  'M2.5 3h11v10h-11V3Zm5.5 0v10',
-);
-/** A line turning back under itself: soft-wrapped lines. */
-export const WrapGlyph = /* @__PURE__ */ glyph(
-  'M2.5 4h11M2.5 8h8.5a2 2 0 0 1 0 4H8.5m0 0 1.5-1.5M8.5 12l1.5 1.5M2.5 12h3',
-);
 /** Angle brackets and slash — the Coding pane tile. */
 export const CodeGlyph = /* @__PURE__ */ glyph(
   'm5 5-3 3 3 3m6-6 3 3-3 3M9.5 3.5l-3 9',
