@@ -1382,7 +1382,7 @@ describe('merge-queue-friendly review ledger layout (#2936)', () => {
     expect(f.read(MEDIA)).toContain('<<<<<<<');
   });
 
-  it('folds a branch that re-reviewed a capture in media.json, resolving that conflict too', () => {
+  it('folds a branch that re-reviewed a capture in media.json across Git merge outcomes', () => {
     const f = fixture();
     const { legacyLedger, legacyMedia } = legacyLayout(f.root);
     const legacyText = (media: unknown) =>
