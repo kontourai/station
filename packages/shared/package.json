@@ -40,6 +40,7 @@
     "./tool-server-credential-store": "./src/tool-server-credential-store.ts",
     "./guidance-assets": "./src/guidance-assets.ts",
     "./mcp": "./src/mcp.ts",
+    "./mcp-tool-selection": "./src/mcp-tool-selection.ts",
     "./mcp-ui-csp": "./src/mcp-ui-csp.ts",
     "./node-runtime": "./src/node-runtime.ts",
     "./owned-dependency-installer": "./src/owned-dependency-installer.ts",
@@ -98,7 +99,8 @@
     "./release-manifest": "./src/release-manifest.mjs",
     "./prebuilt-archive": "./src/prebuilt-archive.ts",
     "./service-launcher-protocol": "./src/service-launcher-protocol.ts",
-    "./harness-questions": "./src/harness-questions.ts"
+    "./harness-questions": "./src/harness-questions.ts",
+    "./skill-experience-workflow": "./src/skill-experience-workflow.ts"
   },
   "publishConfig": {
     "access": "public"

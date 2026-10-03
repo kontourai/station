@@ -6,3 +6,4 @@ export interface SchemaValidator {
 export const validateManifest: SchemaValidator;
 export const validateStationExtension: SchemaValidator;
 export const validateSkillExperience: SchemaValidator;
+export const validateSkillExperienceReview: SchemaValidator;
