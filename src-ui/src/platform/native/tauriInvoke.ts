@@ -10,8 +10,8 @@ export async function invokeTauri<T>(
 /** Listen for a Tauri event; resolves to its unlisten function. */
 export async function listenTauri(
   event: string,
-  handler: () => void,
+  handler: (payload: unknown) => void,
 ): Promise<() => void> {
   const { listen } = await import('@tauri-apps/api/event');
-  return listen(event, () => handler());
+  return listen<unknown>(event, (received) => handler(received.payload));
 }

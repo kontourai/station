@@ -1,5 +1,5 @@
 import type { NativeRelayLinkDelivery } from '@kontourai/station-contracts/native-relay-link';
-import { invokeTauri } from './tauriInvoke';
+import { invokeTauri, listenTauri } from './tauriInvoke';
 
 const invalid = () =>
   new Error('Station could not verify native link metadata.');
@@ -136,7 +136,6 @@ export async function subscribeNativeRelayLinks(
   receive: (value: NativeRelayLinkDelivery) => void,
   allowDevelopmentHttp: boolean,
 ): Promise<() => void> {
-  const { listen } = await import('@tauri-apps/api/event');
   let eventVersion = 0;
   const emit = (raw: unknown) => {
     try {
@@ -149,11 +148,11 @@ export async function subscribeNativeRelayLinks(
       });
     }
   };
-  const unlisten = await listen<unknown>(
+  const unlisten = await listenTauri(
     'station://native-relay-link',
-    (event) => {
+    (payload) => {
       eventVersion++;
-      emit(event.payload);
+      emit(payload);
     },
   );
   try {
