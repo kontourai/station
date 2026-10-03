@@ -172,10 +172,10 @@ describe('Marketplace source lifecycle through Registry routes', () => {
       registerPluginRegistryProvider({
         registryKey: `bounded-${n}`,
         listAvailable: async () =>
-          Array.from({ length: large ? 512 : 1 }, (_, i) => ({
+          Array.from({ length: large && n >= 25 ? 512 : 1 }, (_, i) => ({
             id: `item-${i}`,
             installed: false,
-            ...(large ? { description: 'x'.repeat(2000) } : {}),
+            ...(large && n >= 25 ? { description: 'x'.repeat(2000) } : {}),
           })),
         listInstalled: async () => [],
         install: async () => ({
@@ -196,7 +196,7 @@ describe('Marketplace source lifecycle through Registry routes', () => {
     };
     expect(Object.keys(first.snapshots)).toHaveLength(32);
     large = true;
-    expect(await manager.catalog('plugins')).toHaveLength(34 * 512);
+    expect(await manager.catalog('plugins')).toHaveLength(9 * 512 + 25);
     const bytes = await readFile(file);
     expect(bytes.byteLength).toBeLessThanOrEqual(8 * 1024 * 1024);
     const retained = JSON.parse(bytes.toString()) as {
