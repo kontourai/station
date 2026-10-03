@@ -16,7 +16,7 @@
 
     {"path":"schemas/agent-plugins/1.0.0/plugin.schema.json","digest":"0a4aad95ce337878ad38802ebf0daa3fde76abe3f65400c86bcbb1ec0b3ab883","revision":"e1e8339750ff5b7210254866bd2d853454efaf04"},
 
-    {"path":"scripts/generate-agent-plugin-validators.mjs","digest":"01da5f101352bfaf7b1819d56c14b286f37848afffe2cd1d66ed891ab4540bd8","revision":"1e6450e0caa47975d33f505a1348bdc01ae1382e"},
+    {"path":"scripts/generate-agent-plugin-validators.mjs","digest":"2b21104af3b036b928fbe0f253f12142250c452ef23a909b484e44b4b2e60472","revision":"d4944ee82b611c537951425d63539e8d5e597a5d"},
 
     {"path":"src-server/services/plugins/agent-plugin-loader.ts","digest":"91dd9928c383d1db4197a5c2e4cf7f80bcbcfb15a6ffad5ffeb1d27362d9c5b6","revision":"e1e8339750ff5b7210254866bd2d853454efaf04"}
   ],
