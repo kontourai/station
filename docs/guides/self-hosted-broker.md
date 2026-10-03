@@ -496,8 +496,8 @@ application authority. Equal/future generations, missing history, expired
 clocks, unsupported endpoints and all failed requests remain ineligible for
 this basis. Host cleanup must persist its distinct scope-observation basis and
 retain exact owner/profile/vault fences before removing old local custody.
-The linked native review checks for older saved generations before redemption,
-including a single older grant, and exposes **Review saved connections**, followed by an
+The linked native review checks for any saved grant before redemption,
+including a single grant from the same generation, and exposes **Review saved connections**, followed by an
 explicit **Remove saved connections** confirmation. Management metadata can list
 multiple matching grants, while operational status continues to refuse
 ambiguity. The host retains the pending invitation without consuming it,

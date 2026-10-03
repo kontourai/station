@@ -76,7 +76,7 @@ codes, with no response bodies or raw error text. The adapter still rejects
 multiple grants and foreign or malformed metadata; it never chooses a grant
 to make qualification proceed.
 
-Before linked redemption, even one older-generation saved grant blocks
+Before linked redemption, even one saved grant blocks
 redemption and keeps the invitation available for explicit cleanup. Multiple
 saved grants and pending cleanup also expose recovery. **Review saved
 connections** opens a management-only preview for the same saved route and
