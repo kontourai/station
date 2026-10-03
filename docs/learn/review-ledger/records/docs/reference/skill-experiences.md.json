@@ -76,7 +76,9 @@
 
     {"path":"src-ui/src/lib/foregroundMessageDispatch.ts","digest":"e2eb4d3d4647f06dcd2275f7d95ea43cfa4abd66beaf1b6d96a656aaa71019bb","revision":"1f43155ddcfe86c48422d3f4b0041ddbdad16c3d"},
 
-    {"path":"packages/sdk/src/client/skill-experiences.ts","digest":"96e9bbfa542662b64db6757e8bd2242253ad222dba6ea8576bcbd86b866db766","revision":"6a847d3c029f4f3e5c1dbe82f2459194573d43e9"}
+    {"path":"packages/sdk/src/client/skill-experiences.ts","digest":"96e9bbfa542662b64db6757e8bd2242253ad222dba6ea8576bcbd86b866db766","revision":"6a847d3c029f4f3e5c1dbe82f2459194573d43e9"},
+
+    {"path":"src-ui/src/components/skill-experiences/SkillExperienceForm.tsx","digest":"a996cc6dd08fe68f3260b0b7d7f928dd292af7bf6a2d1954419253273970e0a8","revision":"5fbf250d4a967a71b0d5e6544d6680cc66797735"}
   ],
 
   "checks": [
