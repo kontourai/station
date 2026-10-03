@@ -1589,6 +1589,20 @@ button:hover {
     opacity: 1;
     pointer-events: auto;
   }
+
+  /* The send-blocked line's one fix, "Remove attachments". Its 44px floor
+     comes from the width-gated mobile block's shared action-row rule, which a
+     touch tablet wider than 768px and taller than 540px never reaches. The
+     floor is a property of the pointer, not the width, and a pointer that
+     cannot hover is the touch one. This is deliberately ONE control, not the
+     whole action-row vocabulary: that rule's selectors also match header,
+     footer and toolbar rows (the 38px dock header's actions, live-work rows,
+     the inbox footer, tool-call actions) that have no wrap rule or coverage at
+     this width. */
+  .chat-input__blocked-actions > button {
+    min-height: 44px;
+    min-width: 44px;
+  }
 }
 
 .chat-dock__placement-grab:active {
