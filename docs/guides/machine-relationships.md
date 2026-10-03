@@ -96,11 +96,13 @@ checks the grant each time it hands the engine a posture: at every turn while
 a decision stands, at the session's next start, and on the first turns after
 the grant was taken back even when no decision stands (for example a session
 at full access only because of its Agent's or the Station's default). A turn
-already running finishes; the next turn is confined.
+already running finishes, but it cannot be given new instructions by steering:
+Station refuses the steer and keeps the message for the next turn, which is
+confined.
 
-The command lists each session whose engine is still running as "still
-unconfined" until its next turn, and a conversation with no engine running as
-re-confined. The desktop app's notice offers **Stop now** on each running
+The command lists each session whose engine is still running unconfined as
+"still unconfined" until its next turn, and a conversation whose sessions are
+stopped or have already taken a confined turn as re-confined. The desktop app's notice offers **Stop now** on each running
 session, which stops its engine at once; its next start is confined.
 
 Some conversations stay at full access, and the command lists them without

@@ -529,11 +529,21 @@ A session spawned before this change has nothing recorded.
     when its engine is not running. Codex already moved its sandbox per turn
     (`planCodexTurnSandbox`), so it needs no respawn either.
   - Until that next turn a running engine keeps its posture, and a turn
-    already running finishes in it. Each session whose engine is running is
-    listed as `stillUnconfined` (`next-turn`), one entry per running session,
-    named by that session. A conversation with no engine running is listed
-    as `reconfined`. Stations from before #2898 answered `engine-restart` for
-    a running engine with no decision standing; clients still read it.
+    already running finishes in it. That turn cannot be extended: a
+    `steerTurn` into a turn accepted under a confinement that no longer
+    holds is refused with `confinement-changed`, and the clients keep the
+    message for the next turn (`steerRefusalMessage`). Station records the
+    confinement of each engine's last accepted turn
+    (`acceptedTurnConfinement`); an engine whose last turn ran under a
+    confinement that no longer holds is listed as `stillUnconfined`
+    (`next-turn`), one entry per such session, named by that session. A
+    conversation with no such engine (none running, or each already
+    re-confined by a turn) is listed as `reconfined`. Stations from before
+    #2898 answered `engine-restart` for a running engine with no decision
+    standing; clients still read it.
+  - Version skew (accepted): a connect build from before #2898 drops
+    `next-turn` entries, and running sessions with a decision standing are
+    no longer in `reconfined`, so such a client under-lists them.
   - **Stop now.** The revocation notice in the paired-devices panels offers
     "Stop now" on each `next-turn` entry. It sends the ordinary
     `stopSession` command for that session, with the credential the

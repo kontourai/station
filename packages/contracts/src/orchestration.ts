@@ -409,6 +409,16 @@ export type SteerTurnResult =
        */
       outcome: 'concurrent-steer';
       threadId: string;
+    }
+  | {
+      /**
+       * #2898: the running turn started under a confinement that no longer
+       * holds (the full access that unconfined it was revoked). It finishes
+       * as it is, but takes no new instructions; send them as a new turn,
+       * which runs confined. Nothing was delivered.
+       */
+      outcome: 'confinement-changed';
+      threadId: string;
     };
 
 export type SteerInputInspectionResult =

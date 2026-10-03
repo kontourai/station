@@ -59,4 +59,15 @@ describe('steerRefusalMessage (station#4075 stage 2 review round 2)', () => {
     );
     expect(message).not.toMatch(/ended/i);
   });
+
+  // #2898: a revoked grant keeps the running turn from being extended.
+  it('confinement-changed says nothing was added and the message waits for a confined turn', () => {
+    const result: Exclude<SteerTurnResult, { outcome: 'steered' }> = {
+      outcome: 'confinement-changed',
+      threadId: 'thread-1',
+    };
+    expect(steerRefusalMessage(result)).toBe(
+      'Access to this conversation changed, so the running turn can’t take new instructions. Your message was not added to it and is kept for the next turn, which runs confined.',
+    );
+  });
 });

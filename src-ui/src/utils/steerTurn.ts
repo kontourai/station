@@ -25,6 +25,8 @@ export function steerRefusalMessage(
       return 'The turn ended before the steer could be sent.';
     case 'concurrent-steer':
       return 'Another steer is in progress — try again in a moment.';
+    case 'confinement-changed':
+      return 'Access to this conversation changed, so the running turn can’t take new instructions. Your message was not added to it and is kept for the next turn, which runs confined.';
     default: {
       const exhaustive: never = result;
       return exhaustive;

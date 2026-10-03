@@ -157,10 +157,41 @@ class RecordingEngine implements ProviderAdapterShape {
 
   /** When set, every turn completes (the session goes idle and is reused, #2540). */
   completeTurns = false;
+  /** When set, every turn starts and stays open (#2898 steering). */
+  openTurns = false;
+  readonly steers: Array<{ threadId: string; input: string; turnId?: string }> =
+    [];
+
+  async steerTurn(threadId: string, input: string, turnId?: string) {
+    this.steers.push({ threadId, input, ...(turnId ? { turnId } : {}) });
+  }
+
+  /** Ends the open turn `turnId` on `threadId`. */
+  completeTurn(threadId: string, turnId: string) {
+    this.events.push({
+      provider: this.provider,
+      threadId,
+      turnId,
+      createdAt: new Date().toISOString(),
+      eventId: `${turnId}:completed`,
+      method: 'turn.completed',
+      outputText: 'done',
+    } as CanonicalRuntimeEvent);
+  }
 
   async sendTurn(input: ProviderSendTurnInput) {
     this.turns.push(input);
     const turnId = `${this.provider}-turn-${this.turns.length}`;
+    if (this.openTurns)
+      this.events.push({
+        provider: this.provider,
+        threadId: input.threadId,
+        turnId,
+        createdAt: new Date().toISOString(),
+        eventId: `${turnId}:started`,
+        method: 'turn.started',
+        prompt: input.input,
+      } as CanonicalRuntimeEvent);
     if (this.completeTurns) {
       const base = {
         provider: this.provider,
@@ -1763,6 +1794,69 @@ describe('#1796 G3: revoking a device resets the full access it granted', () => 
     },
   );
 
+  /**
+   * #2898 review: a turn that started unconfined finishes, but cannot be
+   * given new instructions by steering once the grant is revoked. A turn
+   * started after the revocation runs confined and can be steered.
+   */
+  test('a turn running unconfined is not extended by steering after a revoke; a confined turn is', async () => {
+    const f = await fixture({ agents: { 'claude-agent': 'never' } });
+    f.claude.openTurns = true;
+    const laptop = f.pair('Laptop', true);
+    const { conversationId } = await f.chat(
+      f.bearer(laptop.credential),
+      'claude-agent',
+    );
+    const threadId = f.claude.starts.at(-1)!.threadId;
+    const firstTurn = `claude-turn-${f.claude.turns.length}`;
+    // `dispatch` answers with the command's own result.
+    const steer = async (input: string) => ({
+      result: await f.service.dispatch({ type: 'steerTurn', threadId, input }),
+    });
+    await vi.waitFor(async () =>
+      expect((await steer('before')).result).toMatchObject({
+        outcome: 'steered',
+      }),
+    );
+    expect(f.claude.steers).toHaveLength(1);
+
+    const removed = await removeFullAccess(f, laptop.device.id);
+    expect(bare(removed.body.fullAccessRevocation).stillUnconfined).toEqual([
+      { conversationId, until: 'next-turn' },
+    ]);
+
+    expect((await steer('after')).result).toEqual({
+      outcome: 'confinement-changed',
+      threadId,
+    });
+    expect(f.claude.steers).toHaveLength(1);
+
+    // The unconfined turn ends; the next one runs confined and can be steered.
+    f.claude.completeTurn(threadId, firstTurn);
+    await vi.waitFor(async () =>
+      expect((await steer('between')).result).toMatchObject({
+        outcome: 'no-active-turn',
+      }),
+    );
+    await f.service.dispatch({
+      type: 'sendTurn',
+      input: { threadId, input: 'next' },
+    });
+    expect(f.claude.turns.at(-1)).toMatchObject({
+      confinement: 'workspace',
+      modelOptions: { approvalMode: 'auto' },
+    });
+    await vi.waitFor(async () =>
+      expect((await steer('confined')).result).toMatchObject({
+        outcome: 'steered',
+      }),
+    );
+    expect(f.claude.steers.map((entry) => entry.input)).toEqual([
+      'before',
+      'confined',
+    ]);
+  });
+
   test('a running session listed unconfined can be stopped at once, and its next start is confined', async () => {
     const f = await fixture({ agents: { 'claude-agent': 'never' } });
     f.claude.completeTurns = true;
@@ -2210,10 +2304,16 @@ describe('#1796 G3: revoking a device resets the full access it granted', () => 
       reset: [{ conversationId, was: 'never' }],
       stillUnconfined: [{ conversationId, until: 'next-turn' }],
     });
+    // A turn since then ran confined, on the same running engine: a re-run
+    // lists it as re-confined, with nothing left to stop.
+    expect(await nextTurn(f, threadId)).toMatchObject({
+      confinement: 'workspace',
+    });
     const again = await retry();
     expect(bare(again.body.fullAccessRevocation)).toMatchObject({
       reset: [],
-      stillUnconfined: [{ conversationId, until: 'next-turn' }],
+      reconfined: [{ conversationId }],
+      stillUnconfined: [],
     });
     expect(decisions(f, threadId).map((event) => event.approvalMode)).toEqual([
       'never',

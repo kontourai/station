@@ -57,6 +57,7 @@ import type {
   EngineId,
   ProviderSendTurnInput,
   ProviderSession,
+  StationConfinement,
 } from '@kontourai/station-contracts/provider';
 import {
   FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
@@ -1693,6 +1694,17 @@ export class OrchestrationService {
    * in flight for this thread, at all.
    */
   private readonly inFlightSteers = new Set<string>();
+  /**
+   * #2898: the confinement of the last turn each live engine accepted, and
+   * that turn's id. A revocation compares it with the confinement that holds
+   * now: an engine whose last turn ran under a confinement that no longer
+   * holds is still unconfined (listed, and its running turn cannot be
+   * steered). Cleared with the engine, like `ApprovalPosture.forgetThread`.
+   */
+  private readonly acceptedTurnConfinement = new Map<
+    string,
+    { turnId: string; confinement: StationConfinement }
+  >();
   private readonly sessionReadModel = new Map<string, ProviderSession>();
   /**
    * #484 phase A follow-up: per-thread verdict cache for the central
@@ -6850,6 +6862,10 @@ export class OrchestrationService {
               throw error;
             }
             obtainedResult = result;
+            this.acceptedTurnConfinement.set(turnInput.threadId, {
+              turnId: result.turnId,
+              confinement: turnInput.confinement ?? 'workspace',
+            });
             // Durable provider acceptance is the authoritative no-replay
             // boundary. Everything below is projection/observation and may
             // fail without making this client turn executable again.
@@ -7155,6 +7171,23 @@ export class OrchestrationService {
           ) {
             const result: SteerTurnResult = {
               outcome: 'no-active-turn',
+              threadId: command.threadId,
+            };
+            orchestrationSteerDispatches.add(1, {
+              outcome: result.outcome,
+              engine: engineId,
+            });
+            steerMetricRecorded = true;
+            this.persistReceipt(receipt);
+            return { receipt, result };
+          }
+          // #2898: a turn that started under a confinement which no longer
+          // holds (its device grantor lost full access) finishes as it is,
+          // but is not given new instructions: those go in a new turn, which
+          // runs confined.
+          if (this.runsUnderStaleConfinement(command.threadId, activeTurnId)) {
+            const result: SteerTurnResult = {
+              outcome: 'confinement-changed',
               threadId: command.threadId,
             };
             orchestrationSteerDispatches.add(1, {
@@ -9076,17 +9109,21 @@ export class OrchestrationService {
     // decision's mode is re-applied under `workspace`, and with no decision
     // the turn re-applies the mode its engine runs (#2898, the confinement
     // change exception to #2144 slice 6); or from its next start or respawn.
-    // A running engine is listed as still unconfined until that next turn,
-    // one entry per running session, so the operator can stop it at once; a
-    // conversation with none running is listed as re-confined. Everything is
+    // A running engine whose last turn ran under the confinement that no
+    // longer holds is listed as still unconfined until that next turn, one
+    // entry per running session, so the operator can stop it at once. A
+    // conversation with none such (no engine running, or one already
+    // re-confined by a turn) is listed as re-confined. Everything is
     // listed as still unconfined when this Station cannot check the grant.
     // A standing `never` from someone else keeps the conversation unconfined
     // anyway and is listed as still at full access.
     for (const [conversationId, seed, granted] of grantedConversations) {
       const standing = this.approvalPosture.decision(seed);
       if (standing?.approvalMode === 'never') continue;
-      const running = [...new Set(granted)].filter((threadId) =>
-        this.sessionAdapters.has(threadId),
+      const running = [...new Set(granted)].filter(
+        (threadId) =>
+          this.sessionAdapters.has(threadId) &&
+          this.runsUnderStaleConfinement(threadId),
       );
       if (!this.options.isFullAccessGrantorCurrent)
         stillUnconfined.push({ conversationId, until: 'grant-not-checked' });
@@ -9179,6 +9216,34 @@ export class OrchestrationService {
         threadId,
         this.readStartConfinementStamp(threadId),
       ) === 'host'
+    );
+  }
+
+  /**
+   * #2898: whether `threadId`'s engine last ran a turn under a confinement
+   * that no longer holds: the confinement of its last accepted turn (when
+   * `turnId` is given, only if it is that turn), else the one it started
+   * under, against the one a turn would get now. A host stamp whose device
+   * grantor lost `approval:full-access` makes them differ.
+   */
+  private runsUnderStaleConfinement(
+    threadId: string,
+    turnId?: string,
+  ): boolean {
+    const accepted = this.acceptedTurnConfinement.get(threadId);
+    const ran =
+      accepted && (turnId === undefined || accepted.turnId === turnId)
+        ? accepted.confinement
+        : this.approvalPosture.standingConfinement(
+            threadId,
+            this.readStartConfinementStampAsWritten(threadId),
+          );
+    return (
+      ran !==
+      this.approvalPosture.standingConfinement(
+        threadId,
+        this.readStartConfinementStamp(threadId),
+      )
     );
   }
 
@@ -9662,6 +9727,7 @@ export class OrchestrationService {
       // #2409: a respawned engine starts at whatever its start resolves, so
       // nothing Station set on the exited one is still in effect.
       this.approvalPosture.forgetThread(event.threadId);
+      this.acceptedTurnConfinement.delete(event.threadId);
     }
     if (
       event.method === 'turn.completed' ||
@@ -9969,6 +10035,7 @@ export class OrchestrationService {
         // starts at whatever its own start resolves.
         this.clientOriginTurns.clearThread(threadId);
         this.approvalPosture.forgetThread(threadId);
+        this.acceptedTurnConfinement.delete(threadId);
         this.options.logger.debug('Parked idle session engine', { threadId });
         return true;
       },

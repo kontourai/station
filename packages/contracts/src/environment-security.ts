@@ -1246,8 +1246,14 @@ export interface FullAccessRevocationReport {
   }[];
   /**
    * Conversations with a session this device's grant had unconfined and no
-   * engine of it running: each runs confined (`workspace`) from its next
-   * start.
+   * engine of it still unconfined: none is running, or each running one has
+   * already taken a turn under `workspace`. Each runs confined from its next
+   * turn or start.
+   *
+   * Version skew (#2898): before #2898 this also held conversations whose
+   * engine was running with a decision standing; those are now in
+   * `stillUnconfined`, which a connect build from before #2898 drops (it
+   * does not know `next-turn`). Such a client under-lists them.
    */
   readonly reconfined: readonly {
     readonly conversationId: string;
@@ -1256,11 +1262,14 @@ export interface FullAccessRevocationReport {
   }[];
   /**
    * The same kind of session, still unconfined:
-   * - `next-turn` (#2898): its engine is running. A turn already running
-   *   finishes at the posture it started with; the session's next turn runs
-   *   confined, whether or not a decision stands. One entry per running
+   * - `next-turn` (#2898): its engine is running and its last turn ran
+   *   under the confinement the grant no longer gives. A turn already
+   *   running finishes at the posture it started with, and cannot be
+   *   steered (`confinement-changed`); the session's next turn runs
+   *   confined, whether or not a decision stands. One entry per such
    *   session, whose `sessionId` is that session, so a client can stop it
-   *   at once (`stopSession`).
+   *   at once (`stopSession`). Clients from before #2898 drop these
+   *   entries.
    * - `grant-not-checked`: this Station does not check the grant at each
    *   turn.
    * - `engine-restart`: sent only by Stations from before #2898, where a
