@@ -12,7 +12,7 @@
   "document": {"digest":"108f08839833e66e6ac3d7c5b61bc59c9cb7de5dc999f58ee6aa52ac5aa52441","revision":"2ab3c6e171e1cae8222f85e17416538a99019390"},
 
   "sources": [
-    {"path":"docs/guides/connections.md","digest":"ba9a331b32dd9c790aa786d80b9f94b3e0382128a0570ffe93ea69a1c07f4757","revision":"7ba2210adab26697e60d5d1969fe8f257f1192da"},
+    {"path":"docs/guides/connections.md","digest":"dbfc291d887633cdf206971a432a8934a5b3973e86fe7e3189788bce3b6dae85","revision":"8ab03a57f206c1bed24792db4ccf38858a028de6"},
 
     {"path":"packages/connect/src/core/applicationChannel.ts","digest":"572c3b2ab6630c448abff1c49f99a2371425b64c818e5cce2d132fe348afb0c1","revision":"7abc84fcb97288d80f1b25cfc99de23d93817d4c"},
 

@@ -36,11 +36,11 @@
 
     {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"f44a4e94ca0f335cfc5ee2a803ed1659f140e149b0cd0e66e4c9b5bef9179718","revision":"4f3acdc5478e27a733c06e91a202a325817c2f53"},
 
-    {"path":"src-server/providers/adapters/claude-adapter.ts","digest":"37e1c06d5a117c40258e38da79c424fce7720236c486fbceb9a1c29c1548a0f4","revision":"4f3acdc5478e27a733c06e91a202a325817c2f53"},
+    {"path":"src-server/providers/adapters/claude-adapter.ts","digest":"5b2e3416cee5ab26594e7f364c8c5f3ed0b840513b46688bab669b8a498ea4e4","revision":"17bb91c74e1ae41176acf1ed6fcd04e11c5eda08"},
 
     {"path":"src-server/providers/adapters/codex-adapter-transport.ts","digest":"ddc57bdc7eead816bff59653f324a25f2349d9ff9478005264cac8e7a099b4fc","revision":"0bf65df71b04f48768c1f5bdb16db77e361a3177"},
 
-    {"path":"src-server/providers/adapters/codex-adapter.ts","digest":"3dcbbfc821c7d5a35287ba8e2eb9a13b24cc4e0b4a59841fbb6b16bed846aa20","revision":"423cbe55b9e35e4cd8954fd441cb9f3c69740d66"},
+    {"path":"src-server/providers/adapters/codex-adapter.ts","digest":"2cf384886a01f4c8a473ba664b42bb6843d9311db735456621428a8b336f2e32","revision":"17bb91c74e1ae41176acf1ed6fcd04e11c5eda08"},
 
     {"path":"src-server/providers/adapters/codex-approval-mode.ts","digest":"72b03e79d4d54962b60769c3749da7f421a822e271edebb0c6a9adbc0deaa321","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -76,7 +76,7 @@
 
     {"path":"src-server/runtime/bootstrap/runtime-startup.ts","digest":"80cf34735ed30ab3bf64a9be2f23b724189266d74e5eb5073c3ebf60af1a0a4a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"526128683c1bb08bf9f5e1dc7f1ed50b4d7d6d1f96bcf54484c263a82d9217f0","revision":"88a7f8ed59c055ea6ac713120ba6069d33fbb892"},
+    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"3a49ffd37f39e4a14a7c11bb088c4c5d3e5b39d4f0f1a705c280c5c3da77f71e","revision":"cbc2079af1af80cab8189da6ac6e7ac477aceb60"},
 
     {"path":"src-server/runtime/mcp/__tests__/station-control-dispatch-scope.test.ts","digest":"5c90078ba35ab314048e6efa0533de427b92fdc22f26425174cdbcdb144db30e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -146,7 +146,7 @@
 
     {"path":"src-ui/src/views/provider-settings/ProviderConnectionForm.tsx","digest":"0ad7474fb672c1eafa97d2a517089f499b7dadcb9b7ac3366b75976bbedd7d2a","revision":"54fc4a556486e17d1f4f0546c02be91fedf3b6b7"},
 
-    {"path":"src-ui/src/views/provider-settings/providerCatalog.tsx","digest":"a478a2c4eec9ffd77237e5895b315d625d8a260daf1c63b4785b1d6e25b17758","revision":"0c1f436037261c43eeca3e079f5106948360c591"}
+    {"path":"src-ui/src/views/provider-settings/providerCatalog.tsx","digest":"d509d40c3c8573eafd2bd693dd015b54da5cfc7b336265f75d85cece5d8c5410","revision":"8ab03a57f206c1bed24792db4ccf38858a028de6"}
   ],
 
   "checks": [

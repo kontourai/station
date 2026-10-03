@@ -517,6 +517,20 @@ export function resolveProviderPresentation(
     };
   }
 
+  if (
+    input.kind === 'agent' &&
+    input.readinessEvidence?.smoke.status === 'failed' &&
+    input.readinessEvidence.smoke.freshness === 'fresh'
+  ) {
+    return {
+      brand,
+      readiness: 'Check failed',
+      tone: 'error',
+      detail:
+        'The last connection check did not complete. Check your connection settings and try again.',
+      actionLabel: 'Check connection',
+    };
+  }
   if (input.setup?.state === 'ready') {
     return {
       brand,

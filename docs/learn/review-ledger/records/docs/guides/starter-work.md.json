@@ -12,7 +12,7 @@
   "document": {"digest":"1300918a521f942a809ce0c08355c3e3a8940928d792d41c2b817ea44d4e0839","revision":"a15d7b09e3b1a1434ac3d51a25d52773d30746a7"},
 
   "sources": [
-    {"path":"docs/learn/media.json","digest":"692a998fa632e3a710e6eee3245d6fdd1f8ba18a1177a344b95d1b1ebb64858b","revision":"48fd2c0212f17cc11ba07ed86b52f253c63e3f68"},
+    {"path":"docs/learn/media.json","digest":"faedf39058f6d7465015021824bbd9cd50f98aeb112db43b2d75d2df03f96713","revision":"1bfeea5075fee1e9e8b5056b5116e37e68a445f9"},
 
     {"path":"docs/learn/media.json#/captures/0","digest":"1d9e84ec3e04ca70b00f9f6c19301264c638e901b32e5e70ccacc858d402ca9d","revision":"4dbf9acbcab04c4695c8ca9799bc1422526cd382"},
 
@@ -34,9 +34,9 @@
 
     {"path":"packages/sdk/src/starter-work.ts","digest":"65bca96961b952f47978387676e0ec2d4b9131d38a4be72617b8d0f7983aafda","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
-    {"path":"src-server/providers/adapters/claude-adapter.ts","digest":"37e1c06d5a117c40258e38da79c424fce7720236c486fbceb9a1c29c1548a0f4","revision":"4f3acdc5478e27a733c06e91a202a325817c2f53"},
+    {"path":"src-server/providers/adapters/claude-adapter.ts","digest":"5b2e3416cee5ab26594e7f364c8c5f3ed0b840513b46688bab669b8a498ea4e4","revision":"17bb91c74e1ae41176acf1ed6fcd04e11c5eda08"},
 
-    {"path":"src-server/providers/adapters/codex-adapter.ts","digest":"3dcbbfc821c7d5a35287ba8e2eb9a13b24cc4e0b4a59841fbb6b16bed846aa20","revision":"423cbe55b9e35e4cd8954fd441cb9f3c69740d66"},
+    {"path":"src-server/providers/adapters/codex-adapter.ts","digest":"2cf384886a01f4c8a473ba664b42bb6843d9311db735456621428a8b336f2e32","revision":"17bb91c74e1ae41176acf1ed6fcd04e11c5eda08"},
 
     {"path":"src-server/routes/__tests__/starter-work.routes.test.ts","digest":"059f5ea4cb14577a65bbf5ad439f90ceb510e63bdbb2423238ef1fdbb1018552","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
 

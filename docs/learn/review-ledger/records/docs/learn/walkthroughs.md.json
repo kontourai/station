@@ -16,13 +16,13 @@
 
     {"path":"docs/learn/media.json#/captures/1","digest":"fdeee7f06bef156ab77d5fcb5ab515098f5585e03e530aaca6a08fc828cd89ff","revision":"ce24f8c26d86cbeee9ed42127b2f1c70960c9829"},
 
-    {"path":"docs/learn/media.json#/captures/2","digest":"f2a946d384b5a3a18d0c1711604b220f6435ec6e2b0b484a5e2ed03ba6966018","revision":"48fd2c0212f17cc11ba07ed86b52f253c63e3f68"},
+    {"path":"docs/learn/media.json#/captures/2","digest":"5470aa9ee78e79728c5b5d4039671953a9a9c58b2f019be1c534be8c7f5baffb","revision":"1bfeea5075fee1e9e8b5056b5116e37e68a445f9"},
 
     {"path":"docs/learn/media.json#/captures/3","digest":"75f3273ae5d8cb21aa6612ef17f80d01155cf729dd5267763b888f5a2ca8c55a","revision":"4dbf9acbcab04c4695c8ca9799bc1422526cd382"},
 
     {"path":"docs/learn/media.json#/captures/4","digest":"dfc26872dbfdc817f3357443a00abacdc81b64eed43326ecb0e5b7569a0ec62a","revision":"4dbf9acbcab04c4695c8ca9799bc1422526cd382"},
 
-    {"path":"docs/learn/media.json#/captures/5","digest":"7c11e8f94b32caff1d5c61c7f5076398f689e47a97adf8f9cf20c766815f668e","revision":"48fd2c0212f17cc11ba07ed86b52f253c63e3f68"},
+    {"path":"docs/learn/media.json#/captures/5","digest":"3ccaabed0a3689ea4f51e0f50fa234849ddbdb4191d3ab54a863f99cf8c21ef9","revision":"1bfeea5075fee1e9e8b5056b5116e37e68a445f9"},
 
     {"path":"docs/learn/media.json#/captures/6","digest":"d439fffbb12f94d32532b32a4e15363981c8ed65c3c4e0bf31c10fb92db60616","revision":"4dbf9acbcab04c4695c8ca9799bc1422526cd382"},
 
@@ -92,7 +92,7 @@
 
     {"path":"src-ui/src/pages/NotificationsPage.tsx","digest":"afda200c80afb1a0578d72389ec5d1284784b053e4575a181aefb8250027800a","revision":"c529c7acb0f882a9872308f65fcb7b744746ea76"},
 
-    {"path":"src-ui/src/views/AgentConnectionView.tsx","digest":"8ec56bd2a4de7fc240781373aafdec325c2d3fc75ea3945c51258f90cf204d77","revision":"91d79c3f0ce9ca5ae304e4248b67b6189103016e"},
+    {"path":"src-ui/src/views/AgentConnectionView.tsx","digest":"fc0ee663a6a779cb08eeec17f8ab43ea600513862ab2b0fa0ee0ffe12541b083","revision":"9d4e357bf1674b41d67dc27e707d400c1ce5ce30"},
 
     {"path":"src-ui/src/views/ConnectionsSectionFrame.tsx","digest":"78a8cef4a703a2eb9f0382386d738ecd1f0909a4b11a7219771ac0e92f2c7b6c","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
 

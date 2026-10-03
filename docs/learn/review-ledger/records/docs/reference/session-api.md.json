@@ -9,7 +9,7 @@
 
   "limits": "Source and fixture evidence do not establish installed native CLI compatibility, a live engine turn, physical UI behavior, or hosted deployment. No version-specific native fork qualification is claimed.",
 
-  "document": {"digest":"7221e506f4609db018591285bc8e58321e6e1cde85f439008b80bb61e2a8df1d","revision":"37f0ed25455007f32bdf69468451bf9dd85f9fde"},
+  "document": {"digest":"5315766ed3f76a9febba78fb0a30339cbbc2beda1361385569b68784774d95ed","revision":"c2c9451ccca92e0196c95ced0a1a2cce53347770"},
 
   "sources": [
     {"path":"packages/sdk/src/client/chatHttpError.ts","digest":"44a164e41165fc1aafb03610125805aebc4750d82562f281ed6ddd374b3d2e4a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
@@ -22,13 +22,13 @@
 
     {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"f44a4e94ca0f335cfc5ee2a803ed1659f140e149b0cd0e66e4c9b5bef9179718","revision":"4f3acdc5478e27a733c06e91a202a325817c2f53"},
 
-    {"path":"src-server/providers/adapters/claude-adapter.ts","digest":"37e1c06d5a117c40258e38da79c424fce7720236c486fbceb9a1c29c1548a0f4","revision":"4f3acdc5478e27a733c06e91a202a325817c2f53"},
+    {"path":"src-server/providers/adapters/claude-adapter.ts","digest":"5b2e3416cee5ab26594e7f364c8c5f3ed0b840513b46688bab669b8a498ea4e4","revision":"17bb91c74e1ae41176acf1ed6fcd04e11c5eda08"},
 
     {"path":"src-server/providers/adapters/codex-adapter-transport.ts","digest":"ddc57bdc7eead816bff59653f324a25f2349d9ff9478005264cac8e7a099b4fc","revision":"0bf65df71b04f48768c1f5bdb16db77e361a3177"},
 
     {"path":"src-server/providers/adapters/codex-adapter-types.ts","digest":"f198dc43900198c9f803f64173dcf911d3a76c831a1ec659e28d63542279cddf","revision":"0bf65df71b04f48768c1f5bdb16db77e361a3177"},
 
-    {"path":"src-server/providers/adapters/codex-adapter.ts","digest":"3dcbbfc821c7d5a35287ba8e2eb9a13b24cc4e0b4a59841fbb6b16bed846aa20","revision":"423cbe55b9e35e4cd8954fd441cb9f3c69740d66"},
+    {"path":"src-server/providers/adapters/codex-adapter.ts","digest":"2cf384886a01f4c8a473ba664b42bb6843d9311db735456621428a8b336f2e32","revision":"17bb91c74e1ae41176acf1ed6fcd04e11c5eda08"},
 
     {"path":"src-server/providers/adapters/harness-questions.ts","digest":"0d14a00544c45b7ac4a7b1da025126dc1bd97d299b5c9eea4c271c6d6c5f8c19","revision":"0bf65df71b04f48768c1f5bdb16db77e361a3177"},
 
