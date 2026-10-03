@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import type {
+  SDKAssistantMessage,
   SDKTaskNotificationMessage,
   SDKTaskProgressMessage,
   SDKTaskStartedMessage,
@@ -9,6 +10,7 @@ import {
   applyChildWorkDelta,
   type ChildWorkDelta,
   type ChildWorkItem,
+  type ChildWorkModel,
   type ChildWorkParent,
   type ChildWorkRegistryState,
   type ChildWorkResult,
@@ -82,7 +84,16 @@ export interface ClaudeChildWorkState {
   runs: Map<string, string>;
   /** Set once the session has ended; only real terminals are mapped after. */
   closed: boolean;
+  /**
+   * #3163: a child's own reply model that arrived before its `task_started`,
+   * keyed by the spawning `tool_use_id`. Consumed by `task_started`; bounded,
+   * oldest first, so a reply whose task never registers can't pin memory.
+   */
+  pendingReplyModels: Map<string, ChildWorkModel>;
 }
+
+/** Bound on `pendingReplyModels`. */
+export const CLAUDE_PENDING_REPLY_MODELS_MAX = 64;
 
 /** The slice of the adapter's per-session record this module reads. */
 export interface ClaudeChildWorkRecord {
@@ -105,6 +116,7 @@ function stateOf(record: ClaudeChildWorkRecord): ClaudeChildWorkState {
     stopRequested: new Set(),
     runs: new Map(),
     closed: false,
+    pendingReplyModels: new Map(),
   };
   return record.childWork;
 }
@@ -281,6 +293,22 @@ export function observeClaudeTaskStarted(
   const title = nonEmpty(message.description);
   const kindLabel =
     nonEmpty(message.subagent_type) ?? nonEmpty(message.task_type);
+  // #3163: a reply that beat this task_started already named the model.
+  const model = message.tool_use_id
+    ? takePendingReplyModel(state, message.tool_use_id)
+    : undefined;
+  // #3163: an agent's transcript lives under the parent Claude session by
+  // agent id (its task id). Only `local_agent` tasks have one; a shell task's
+  // output is not a conversation. The contract drops a malformed ref.
+  const sessionId = nonEmpty(message.session_id);
+  const transcript =
+    message.task_type === 'local_agent' && sessionId
+      ? {
+          kind: 'claude-subagent' as const,
+          sessionId,
+          agentId: message.task_id,
+        }
+      : undefined;
   const item: ChildWorkItem = {
     producer: 'engine-subagent',
     reporterThreadId: context.record.session.threadId,
@@ -289,6 +317,8 @@ export function observeClaudeTaskStarted(
     ...(Object.keys(parent).length > 0 ? { parent } : {}),
     ...(title ? { title } : {}),
     ...(kindLabel ? { kindLabel } : {}),
+    ...(model ? { model } : {}),
+    ...(transcript ? { transcript } : {}),
     ...(typeof message.is_backgrounded === 'boolean'
       ? { backgrounded: message.is_backgrounded }
       : {}),
@@ -307,6 +337,74 @@ export function observeClaudeTaskStarted(
     reporterThreadId: context.record.session.threadId,
     running: [...runningChildren(context.record), item],
   });
+}
+
+function takePendingReplyModel(
+  state: ClaudeChildWorkState,
+  toolUseId: string,
+): ChildWorkModel | undefined {
+  const model = state.pendingReplyModels.get(toolUseId);
+  state.pendingReplyModels.delete(toolUseId);
+  return model;
+}
+
+/** The model a reply frame names, when it is a real model id. */
+function replyModel(message: SDKAssistantMessage): string | undefined {
+  const model = message.message?.model;
+  return typeof model === 'string' ? nonEmpty(model.trim()) : undefined;
+}
+
+/**
+ * #3163: an assistant frame produced INSIDE a subagent
+ * (`parent_tool_use_id` is the tool call that spawned it). Its `model` is
+ * that child's own model, whatever its agent definition or the Agent tool's
+ * input chose. It is attributed by the spawning tool call, so a nested
+ * subagent's reply sets the nested child's model, never its parent's or the
+ * session's. A top-level frame (`parent_tool_use_id` null) is the session's
+ * own and is ignored here.
+ *
+ * A reply can beat its `task_started` to the stream: the model is held,
+ * bounded, until that task registers.
+ */
+export function observeClaudeSubagentReply(
+  context: ClaudeChildWorkContext,
+  message: SDKAssistantMessage,
+): void {
+  const state = stateOf(context.record);
+  const toolUseId = message.parent_tool_use_id;
+  if (state.closed || !toolUseId) return;
+  const id = replyModel(message);
+  if (!id) return;
+  const model: ChildWorkModel = { id, source: 'subagent-reply' };
+  const spawned = childWorkForReporter(
+    state.registry,
+    context.record.session.threadId,
+  ).find(
+    (item) =>
+      item.producer === 'engine-subagent' &&
+      item.parent?.toolCallId === toolUseId,
+  );
+  // A resumed agent keeps replying under its ORIGINAL spawn's tool call
+  // (captured: `nested-agent`), so the reply belongs to that task's current
+  // run, which is keyed by the resume's own call.
+  const existing = spawned
+    ? itemFor(
+        context.record,
+        childIdFor(context.record, taskIdOf(context.record, spawned.childId)),
+      )
+    : undefined;
+  if (!existing) {
+    state.pendingReplyModels.delete(toolUseId);
+    state.pendingReplyModels.set(toolUseId, model);
+    if (state.pendingReplyModels.size > CLAUDE_PENDING_REPLY_MODELS_MAX) {
+      const oldest = state.pendingReplyModels.keys().next().value;
+      if (oldest !== undefined) state.pendingReplyModels.delete(oldest);
+    }
+    return;
+  }
+  if (existing.status !== 'running') return;
+  // The contract's reducer publishes nothing when the model is unchanged.
+  emit(context, { kind: 'upsert', item: { ...existing, model } });
 }
 
 /** `task_progress`: the latest status line and running usage. */
@@ -437,6 +535,8 @@ function settle(
     ...(existing?.parent ? { parent: existing.parent } : {}),
     ...(existing?.title ? { title: existing.title } : {}),
     ...(existing?.kindLabel ? { kindLabel: existing.kindLabel } : {}),
+    ...(existing?.model ? { model: existing.model } : {}),
+    ...(existing?.transcript ? { transcript: existing.transcript } : {}),
     ...(existing?.backgrounded !== undefined
       ? { backgrounded: existing.backgrounded }
       : {}),
@@ -510,5 +610,6 @@ export function settleOpenClaudeChildren(
   }
   state.closed = true;
   state.stopRequested.clear();
+  state.pendingReplyModels.clear();
   return open.map((item) => taskIdOf(context.record, item.childId));
 }

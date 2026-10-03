@@ -102,6 +102,11 @@ export function replayClaudeTaskCapture(
     extraProbes?: Record<number, string>;
     /** Stop after mapping this line index, with no session end. */
     stopAfterLine?: number;
+    /**
+     * Rewrites the capture's lines before replay (e.g. one field of one
+     * message), keeping every other line exactly as captured.
+     */
+    rewrite?: (lines: ClaudeTaskCaptureLine[]) => ClaudeTaskCaptureLine[];
   } = {},
 ): { events: CanonicalRuntimeEvent[]; record: ClaudeMessageState } {
   const threadId = options.threadId ?? 'thread-claude';
@@ -134,7 +139,8 @@ export function replayClaudeTaskCapture(
     }
     if (probe === 'ITERATOR END') endSession();
   };
-  const lines = loadClaudeTaskCapture(name);
+  const captured = loadClaudeTaskCapture(name);
+  const lines = options.rewrite ? options.rewrite(captured) : captured;
   const last = options.stopAfterLine ?? lines.length - 1;
   lines.slice(0, last + 1).forEach((line, index) => {
     const extra = options.extraProbes?.[index];

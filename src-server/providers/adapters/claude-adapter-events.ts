@@ -26,6 +26,7 @@ import {
 import {
   type ClaudeChildWorkContext,
   type ClaudeChildWorkState,
+  observeClaudeSubagentReply,
   observeClaudeTaskNotification,
   observeClaudeTaskProgress,
   observeClaudeTaskStarted,
@@ -1031,8 +1032,12 @@ export function mapClaudeSdkMessage({
     // Surface top-level tool calls as canonical tool.started events so the
     // UI shows "Running Bash…"-style activity immediately, even for fast
     // tools that never emit SDK `tool_progress`. Subagent-internal calls
-    // (`parent_tool_use_id != null`) stay out of the main transcript.
-    if (message.parent_tool_use_id !== null) return;
+    // (`parent_tool_use_id != null`) stay out of the main transcript; their
+    // model is that subagent's own (#3163).
+    if (message.parent_tool_use_id !== null) {
+      observeClaudeSubagentReply(childWorkContext, message);
+      return;
+    }
     const content = message.message?.content;
     if (!Array.isArray(content)) return;
     for (const block of content) {

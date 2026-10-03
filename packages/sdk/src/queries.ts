@@ -242,6 +242,7 @@ export {
   unregisterNativePush,
   unsubscribePushNotifications,
   useAcknowledgeConversationMutation,
+  useChildWorkTranscriptQuery,
   useCodingDiffQuery,
   useCodingFileContentQuery,
   useCodingFilesQuery,

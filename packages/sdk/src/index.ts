@@ -801,6 +801,7 @@ export {
   useBrandingQuery,
   useBulkApproveProposedChangesMutation,
   useBulkRejectProposedChangesMutation,
+  useChildWorkTranscriptQuery,
   useClearAppHomeProfileMutation,
   useClearFeedbackAnalysisMutation,
   useClearNotificationActivityMutation,

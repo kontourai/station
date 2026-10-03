@@ -1,4 +1,5 @@
 import type {
+  ChildWorkModel,
   ChildWorkStatus,
   ChildWorkUsage,
 } from '@kontourai/station-contracts/child-work';
@@ -15,6 +16,7 @@ import {
 import { type CSSProperties, useMemo, useState } from 'react';
 import { Button } from '../../components/Button';
 import { AgentGlyph } from '../../components/icons/Glyph';
+import { ChildWorkTranscript } from './ChildWorkTranscript';
 import type {
   ChildWorkProvenance,
   ChildWorkRowModel,
@@ -69,6 +71,13 @@ function usageClauses(usage: ChildWorkUsage | undefined): string[] {
     clauses.push(`ran ${formatElapsed(usage.durationMs)}`);
   return clauses;
 }
+
+/** #3163: where the model shown came from, in the engine's terms. */
+const CHILD_WORK_MODEL_SOURCE_TEXT: Record<ChildWorkModel['source'], string> = {
+  'subagent-reply': "Reported on the subagent's own reply",
+  'spawn-result': 'Reported by the engine when it spawned the subagent',
+  'child-thread': "Reported by the subagent's own thread",
+};
 
 function provenanceText(provenance: ChildWorkProvenance): string {
   switch (provenance.kind) {
@@ -132,6 +141,7 @@ export function ChildWorkRow({
   onOpenSession: (threadId: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [transcriptOpen, setTranscriptOpen] = useState(false);
   const { item } = row;
   const running = item.status === 'running';
   const interrupt = useInterruptDelegatedTaskMutation();
@@ -165,6 +175,11 @@ export function ChildWorkRow({
     ...(elapsedMs !== undefined ? [formatElapsed(elapsedMs)] : []),
     ...usageClauses(item.usage),
   ].join(' · ');
+  // #3163: an engine subagent's OWN model, or the plain fact that its engine
+  // did not report one. Never the parent's. A delegate is a session of its
+  // own, whose model that session shows.
+  const model = isDelegate ? undefined : (item.model ?? null);
+  const transcript = isDelegate ? undefined : item.transcript;
   const summary = item.result?.summary;
   const handle = item.result?.handle;
   const sessionHandle = handle?.kind === 'session' ? handle : undefined;
@@ -203,6 +218,17 @@ export function ChildWorkRow({
         <span className="child-work-row__text">
           <strong className="child-work-row__title">{row.title}</strong>
           <span className="child-work-row__meta">{meta}</span>
+          {model !== undefined && (
+            <span
+              className="child-work-row__model"
+              data-reported={model ? 'true' : 'false'}
+              title={
+                model ? CHILD_WORK_MODEL_SOURCE_TEXT[model.source] : undefined
+              }
+            >
+              {model ? model.id : 'model not reported'}
+            </span>
+          )}
           {running && item.progress && (
             <span className="child-work-row__progress">{item.progress}</span>
           )}
@@ -238,8 +264,17 @@ export function ChildWorkRow({
           )}
         </div>
       )}
-      {(sessionHandle || row.stop) && (
+      {(sessionHandle || transcript || row.stop) && (
         <div className="child-work-row__actions">
+          {transcript && (
+            <Button
+              size="sm"
+              aria-expanded={transcriptOpen}
+              onClick={() => setTranscriptOpen((current) => !current)}
+            >
+              {transcriptOpen ? 'Hide transcript' : 'View transcript'}
+            </Button>
+          )}
           {sessionHandle && (
             <Button
               size="sm"
@@ -278,6 +313,14 @@ export function ChildWorkRow({
               Nothing to stop yet — try again.
             </span>
           )}
+        </div>
+      )}
+      {transcript && transcriptOpen && (
+        <div className="child-work-row__detail">
+          <ChildWorkTranscript
+            threadId={item.reporterThreadId}
+            childId={item.childId}
+          />
         </div>
       )}
     </li>

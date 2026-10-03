@@ -89,6 +89,128 @@ export interface ChildWorkUsage {
   durationMs?: number;
 }
 
+/**
+ * #3163: where a child's model came from. Every source is the engine's own
+ * report about THIS child. The parent's model is never a source, even when
+ * the child is documented to inherit it: an unreported model stays absent and
+ * renders as "model not reported".
+ */
+export type ChildWorkModelSource =
+  /**
+   * Claude: `message.model` on an assistant message the child itself
+   * produced (`parent_tool_use_id` is the tool call that spawned it). This is
+   * the API's resolved model, so it reflects an agent definition's or the
+   * Agent tool's model choice.
+   */
+  | 'subagent-reply'
+  /** Codex: `model` on the completed `spawnAgent` call that created the child. */
+  | 'spawn-result'
+  /** Codex: `thread.model` on the child thread's own `thread/started`. */
+  | 'child-thread';
+
+export const CHILD_WORK_MODEL_SOURCES: readonly ChildWorkModelSource[] = [
+  'subagent-reply',
+  'spawn-result',
+  'child-thread',
+];
+
+/** Bound on a reported model id; a longer one is not a model id and is dropped. */
+export const CHILD_WORK_MODEL_ID_MAX_CHARS = 200;
+
+export interface ChildWorkModel {
+  id: string;
+  source: ChildWorkModelSource;
+}
+
+/**
+ * #3163: the identity of a child's own transcript, resolved on the server.
+ * It names the engine's records by id and never by a file path, so a client
+ * can't steer a read at an arbitrary file.
+ *
+ * `claude-subagent`: Claude Code keeps every subagent's transcript under the
+ * parent Claude session (`session_id` on `task_started`) by agent id (the
+ * `local_agent` task's `task_id`).
+ */
+export type ChildWorkTranscriptRef = {
+  kind: 'claude-subagent';
+  sessionId: string;
+  agentId: string;
+};
+
+/** A Claude session id: a UUID, as the SDK's own transcript reader requires. */
+const CLAUDE_SESSION_ID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** A Claude agent id: one path-safe segment (`agent-<id>.jsonl`). */
+const CLAUDE_AGENT_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
+
+/** The ref when it is well-formed, else undefined. Never trusts a path. */
+export function parseChildWorkTranscriptRef(
+  value: unknown,
+): ChildWorkTranscriptRef | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    return undefined;
+  const raw = value as Record<string, unknown>;
+  if (
+    raw.kind !== 'claude-subagent' ||
+    typeof raw.sessionId !== 'string' ||
+    typeof raw.agentId !== 'string' ||
+    !CLAUDE_SESSION_ID_PATTERN.test(raw.sessionId) ||
+    !CLAUDE_AGENT_ID_PATTERN.test(raw.agentId)
+  ) {
+    return undefined;
+  }
+  return {
+    kind: 'claude-subagent',
+    sessionId: raw.sessionId,
+    agentId: raw.agentId,
+  };
+}
+
+/** The model when it is a real reported id, else undefined. */
+function parseChildWorkModel(value: unknown): ChildWorkModel | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    return undefined;
+  const raw = value as Record<string, unknown>;
+  const id = typeof raw.id === 'string' ? raw.id.trim() : '';
+  if (
+    id.length === 0 ||
+    id.length > CHILD_WORK_MODEL_ID_MAX_CHARS ||
+    // Claude labels a locally synthesized reply (an API error, an
+    // interruption) `<synthetic>`: no model produced it.
+    (id.startsWith('<') && id.endsWith('>')) ||
+    !CHILD_WORK_MODEL_SOURCES.includes(raw.source as ChildWorkModelSource)
+  ) {
+    return undefined;
+  }
+  return { id, source: raw.source as ChildWorkModelSource };
+}
+
+/** Bound on the transcript messages one page may carry. */
+export const CHILD_WORK_TRANSCRIPT_PAGE_MAX = 50;
+/** Bound on one transcript entry's text; a longer one is cut and flagged. */
+export const CHILD_WORK_TRANSCRIPT_TEXT_MAX_CHARS = 4_000;
+/** Bound on the entries one transcript message may contribute. */
+export const CHILD_WORK_TRANSCRIPT_ENTRIES_PER_MESSAGE_MAX = 20;
+
+/** One read-only line of a child's transcript. */
+export type ChildWorkTranscriptEntry = {
+  /** Index of the transcript message this entry came from. */
+  message: number;
+  truncated?: true;
+} & (
+  | { kind: 'text'; role: 'user' | 'assistant'; text: string }
+  | { kind: 'tool-call'; name: string; input?: string }
+  | { kind: 'tool-result'; text?: string; isError?: true }
+  /** Blocks of one message past the per-message bound. */
+  | { kind: 'omitted'; count: number }
+);
+
+export interface ChildWorkTranscriptPage {
+  entries: ChildWorkTranscriptEntry[];
+  /** Message offset of the next page; absent on the last page. */
+  nextOffset?: number;
+}
+
 export type ChildWorkResultHandle =
   | { kind: 'transcript-file'; path: string }
   | { kind: 'session'; threadId: string; conversationId?: string };
@@ -108,6 +230,10 @@ export interface ChildWorkItem extends ChildWorkKey {
   title?: string;
   /** The producer's own name for the kind of child (e.g. a subagent type). */
   kindLabel?: string;
+  /** #3163: the child's OWN model, as its engine reported it. Absent when unreported. */
+  model?: ChildWorkModel;
+  /** #3163: where the child's own transcript can be read, when it has one. */
+  transcript?: ChildWorkTranscriptRef;
   /** The child outlived (or will outlive) the turn that spawned it. */
   backgrounded?: boolean;
   /** Latest one-line status while running. */
@@ -279,6 +405,10 @@ function normalizeItem(item: ChildWorkItem): ChildWorkItem {
   if (depth !== undefined) next.depth = depth;
   if (item.title !== undefined) next.title = item.title;
   if (item.kindLabel !== undefined) next.kindLabel = item.kindLabel;
+  const model = parseChildWorkModel(item.model);
+  if (model) next.model = model;
+  const transcript = parseChildWorkTranscriptRef(item.transcript);
+  if (transcript) next.transcript = transcript;
   if (item.backgrounded !== undefined) next.backgrounded = item.backgrounded;
   if (item.progress !== undefined) next.progress = item.progress;
   if (usage) next.usage = usage;

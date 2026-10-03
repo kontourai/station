@@ -17,6 +17,16 @@ const stopMutate = vi.fn();
 // `.data` (a real `ProviderTaskStopResult`, e.g. `no-active-task`) — every
 // other test relies on the plain default shape set in `beforeEach`.
 const useStopProviderTaskMutation = vi.fn();
+// #3163: the transcript query, driven with the contract's page shape.
+const useChildWorkTranscriptQuery = vi.fn();
+const fetchNextPage = vi.fn();
+const { FakeStationHttpError } = vi.hoisted(() => ({
+  FakeStationHttpError: class extends Error {
+    constructor(readonly status: number) {
+      super(`HTTP ${status}`);
+    }
+  },
+}));
 
 vi.mock('@kontourai/station-sdk', () => ({
   useOrchestrationSessionQuery: (...args: unknown[]) =>
@@ -29,6 +39,9 @@ vi.mock('@kontourai/station-sdk', () => ({
   }),
   useStopProviderTaskMutation: (...args: unknown[]) =>
     useStopProviderTaskMutation(...args),
+  useChildWorkTranscriptQuery: (...args: unknown[]) =>
+    useChildWorkTranscriptQuery(...args),
+  StationHttpError: FakeStationHttpError,
 }));
 
 import { ChildWorkRow } from '../ChildWorkRow';
@@ -248,5 +261,116 @@ test('a truncated summary says so; a delegate’s usage is read only once the ro
   expect(useOrchestrationSessionQuery).toHaveBeenCalledWith(
     'd-1',
     expect.objectContaining({ enabled: true }),
+  );
+});
+
+const transcriptQuery = (overrides: Record<string, unknown> = {}) => ({
+  data: undefined,
+  error: null,
+  isPending: false,
+  isError: false,
+  isSuccess: false,
+  hasNextPage: false,
+  isFetchingNextPage: false,
+  isFetchNextPageError: false,
+  fetchNextPage,
+  ...overrides,
+});
+
+const TRANSCRIPT = {
+  kind: 'claude-subagent' as const,
+  sessionId: '00000000-0000-4000-8000-000000000003',
+  agentId: 'task-1',
+};
+
+test('#3163: an engine subagent shows its own reported model, with where it came from', () => {
+  const { container } = mount(
+    row({
+      model: { id: 'claude-sonnet-4-5-20250929', source: 'subagent-reply' },
+    }),
+  );
+  const model = container.querySelector('.child-work-row__model');
+  expect(model?.textContent).toBe('claude-sonnet-4-5-20250929');
+  expect(model?.getAttribute('title')).toBe(
+    "Reported on the subagent's own reply",
+  );
+});
+
+test('#3163: an unreported model says so, and nothing else stands in for it', () => {
+  const { container } = mount(row({ kindLabel: 'general-purpose' }));
+  const model = container.querySelector('.child-work-row__model');
+  expect(model?.textContent).toBe('model not reported');
+  expect(model?.getAttribute('data-reported')).toBe('false');
+  expect(model?.getAttribute('title')).toBeNull();
+});
+
+test('#3163: a Station delegate claims no model on its row (its session shows its own)', () => {
+  const { container } = mount(
+    row({ producer: 'station-delegate', childId: 'delegate-1' }),
+  );
+  expect(container.querySelector('.child-work-row__model')).toBeNull();
+});
+
+test('#3163: a child without a transcript offers none', () => {
+  useChildWorkTranscriptQuery.mockReturnValue(transcriptQuery());
+  mount(row());
+  expect(screen.queryByRole('button', { name: 'View transcript' })).toBeNull();
+  expect(useChildWorkTranscriptQuery).not.toHaveBeenCalled();
+});
+
+test('#3163: View transcript reads the child by session and id, renders it read-only, and pages on request', () => {
+  useChildWorkTranscriptQuery.mockReturnValue(
+    transcriptQuery({
+      isSuccess: true,
+      hasNextPage: true,
+      data: {
+        pages: [
+          {
+            entries: [
+              { message: 0, kind: 'text', role: 'user', text: 'Reply INNER' },
+              {
+                message: 1,
+                kind: 'tool-call',
+                name: 'Agent',
+                input: '{"prompt":"x"}',
+              },
+              { message: 2, kind: 'tool-result', text: 'INNER DONE' },
+              { message: 3, kind: 'text', role: 'assistant', text: 'DONE' },
+            ],
+            nextOffset: 30,
+          },
+        ],
+      },
+    }),
+  );
+  mount(row({ status: 'completed', transcript: TRANSCRIPT }));
+  // Closed: nothing is read.
+  expect(useChildWorkTranscriptQuery).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'View transcript' }));
+  expect(useChildWorkTranscriptQuery).toHaveBeenCalledWith({
+    threadId: 'exec-1',
+    childId: 'task-1',
+  });
+  const region = screen.getByRole('region', { name: 'Subagent transcript' });
+  expect(region.textContent).toContain('Reply INNER');
+  expect(region.textContent).toContain('Tool · Agent');
+  expect(region.textContent).toContain('INNER DONE');
+  expect(region.querySelectorAll('textarea, input')).toHaveLength(0);
+  fireEvent.click(screen.getByRole('button', { name: 'Load more' }));
+  expect(fetchNextPage).toHaveBeenCalledTimes(1);
+  fireEvent.click(screen.getByRole('button', { name: 'Hide transcript' }));
+  expect(
+    screen.queryByRole('region', { name: 'Subagent transcript' }),
+  ).toBeNull();
+});
+
+test('#3163: a transcript the engine no longer has says so', () => {
+  useChildWorkTranscriptQuery.mockReturnValue(
+    transcriptQuery({ isError: true, error: new FakeStationHttpError(503) }),
+  );
+  mount(row({ status: 'completed', transcript: TRANSCRIPT }));
+  fireEvent.click(screen.getByRole('button', { name: 'View transcript' }));
+  expect(screen.getByRole('alert').textContent).toBe(
+    'The engine no longer has this transcript.',
   );
 });
