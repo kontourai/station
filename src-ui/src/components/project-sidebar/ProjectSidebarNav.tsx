@@ -9,20 +9,6 @@ import { useShowSurfacePage } from '../../contexts/useShowSurface';
 import { useSurfaceVisibilityFlags } from '../../hooks/useSurfaceVisibilityFlags';
 import { destinationIcon } from './nav-items';
 
-/**
- * The panel's destination rows. #2059 (design record D3): the left panel
- * lists PLACES only, so this is a flat list with no group headers — the
- * `Customize` and `System` disclosure groups went with the eleven
- * configuration destinations they held, which are now reached through the
- * footer's gear (Settings' Manage group) and the command palette. The
- * registry's `sidebar` field is the seam; routes, pages and palette entries
- * did not move.
- *
- * What survives here is the row itself: `aria-current` for the place that is
- * the current page (a routed destination, or a region surface occupying
- * `main` at `/`), and the pending-route mark. Activity is the only row today;
- * Boards join it in slice 4 (#2061).
- */
 interface ProjectSidebarNavProps {
   collapsed: boolean;
   isMobile: boolean;

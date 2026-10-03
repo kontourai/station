@@ -92,6 +92,33 @@ has no Station pre-tool interception seam. Muse is also unsupported. An
 unknown engine receives an unsupported matrix entry; that does not mean Station
 intercepts or blocks all of that engine's tool calls.
 
+## Selected MCP tools
+
+The Agent editor's tool selection is separate from approval grants.
+`ResolvedAgentToolServer.allowedTools` carries exact selected MCP names; omission
+means all, and an empty array means none. Claude removes known unselected tools
+with `disallowedTools`, and its `PreToolUse` hook also refuses unknown/new MCP
+names outside the selection. Codex receives `enabled_tools` and `disabled_tools`.
+The Station Control HTTP token pins its selected names; the Claude in-process
+server serves the same filtered registrations. A direct call to an omitted
+Station Control tool cannot reach its callback. These filters do not relax the
+existing per-call authority table.
+
+Probe receipts store server-qualified names. The shared
+[selection translator](../../packages/shared/src/mcp-tool-selection.ts)
+resolves original, qualified and legacy normalized identities for external
+Agent selection, integration disablement and App calls. Native available filters
+also retain their framework-specific runtime/original-name matching.
+Codex applies authored selection flags on the thread after reading its effective
+MCP configuration, including same-name inherited disabled/subset flags. Replacing
+an inherited allowlist requires a known integration inventory; missing inventory
+is a startup refusal with an instruction to check the integration's tools.
+
+Generic connected engines receive no restricted integration when their protocol
+cannot enforce its individual-tool selection. The undelivered receipt reports
+`engine-unsupported`. This is not a claim that Station controls those engines'
+own tools or configurations.
+
 ## Accepted gap: a trusted workspace's settings can grant a Claude tool call (#1545)
 
 In Ask mode (`approvalMode: 'ask'` → the SDK's `permissionMode: 'default'`) the
@@ -449,7 +476,8 @@ own included, so it contradicts the copy in the other direction.
 
 Nothing Station wires itself depends on the cascade either way:
 `resolveAgentToolServers` builds `mcpServers` explicitly, station-control
-included, and passes it with `strictMcpConfig`; Station's `PreToolUse` hook is
+included. Legacy/replacement selection passes `strictMcpConfig`; additive
+selection preserves Claude's MCP discovery. Station's `PreToolUse` hook is
 the SDK `hooks` *option*, not a settings file. The one Station-owned Claude spawn
 that does narrow is the model-catalog probe, pinned at `settingSources: []` — it
 runs no tools and wants no ambient configuration at all. The session's unset

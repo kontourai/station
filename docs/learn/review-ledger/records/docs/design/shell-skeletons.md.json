@@ -14,7 +14,7 @@
   "sources": [
     {"path":"scripts/shell-conformance-ratchet.mjs","digest":"6f4dd399649c9fc64ed9416a23a9a437abd19b270c129bd7bcb83ec2e2b54469","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},
 
-    {"path":"src-ui/src/app-shell/page-frame-registry.ts","digest":"2719ea14bce13acd91b785e0c2728e3b7dc1c904400eadeadd80b015e6fa1bdb","revision":"342094bf078ddd81dfcdcf4e77d9cfd84d32f746"},
+    {"path":"src-ui/src/app-shell/page-frame-registry.ts","digest":"f7c858e6d53e55db464ffc7e9af1594fc9b7df4695a7a9932ad8f4cb6d92c378","revision":"75785f43c80623e548f4ae8f5282be9585e203dd"},
 
     {"path":"src-ui/src/components/SplitPaneLayout.tsx","digest":"afa5bac34d039da9bdb075158d39ca552af35b773c2ca0b7a5c79b5fd85681ff","revision":"cd7dabcd93bf05a27d66f74e667667dcf771d615"},
 

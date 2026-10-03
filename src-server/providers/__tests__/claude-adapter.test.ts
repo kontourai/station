@@ -9,6 +9,7 @@ import {
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import type { ResolvedAgentToolServer } from '@kontourai/station-contracts/provider';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import {
@@ -2106,7 +2107,11 @@ describe('ClaudeAdapter', () => {
       options: {
         modelOptions?: Record<string, unknown>;
         query?: ReturnType<typeof createControlledMockQuery>;
-        agent?: { slug: string; autoApprove?: string[] };
+        agent?: {
+          slug: string;
+          autoApprove?: string[];
+          toolServers?: ResolvedAgentToolServer[];
+        };
         metadata?: Record<string, unknown>;
         /** #2947: the staged evaluator the PreToolUse hook runs. */
         preToolPolicy?: StagedPreToolPolicyEvaluator;
@@ -3419,6 +3424,63 @@ describe('ClaudeAdapter', () => {
         expect(safety.kind).toBe('prompted');
         if (safety.kind === 'prompted') await safety.answer('decline');
         await adapter.stopSession('thread-guardian-chain');
+      });
+
+      test('an unselected MCP tool is denied at the hook before the guardian, and no allow is kept for it (#3155)', async () => {
+        const { evaluator, reviewToolCall } = guardianPolicy('allow');
+        const { adapter, askFrame, hook } = await grantHarness(
+          'thread-guardian-mcp-unselected',
+          {
+            agent: {
+              slug: 'engine-lab',
+              toolServers: [
+                {
+                  id: 'weather',
+                  transport: 'stdio',
+                  command: process.execPath,
+                  allowedTools: ['read'],
+                  toolNames: ['read', 'write'],
+                },
+              ],
+            },
+            preToolPolicy: evaluator,
+          },
+        );
+        await expect(
+          hook('mcp__weather__write', { city: 'Oslo' }, 'toolu_unselected'),
+        ).resolves.toMatchObject({
+          hookSpecificOutput: {
+            permissionDecision: 'deny',
+            permissionDecisionReason: 'Tool not selected for this agent.',
+          },
+        });
+        expect(reviewToolCall).not.toHaveBeenCalled();
+        // Were the engine to ask about it anyway, nothing answers for it.
+        const asked = await askFrame({
+          tool_name: 'mcp__weather__write',
+          input: { city: 'Oslo' },
+          tool_use_id: 'toolu_unselected',
+        });
+        expect(asked.kind).toBe('prompted');
+        if (asked.kind === 'prompted') await asked.answer('decline');
+
+        // Positive control: a selected tool goes to the guardian, whose
+        // allow answers the plain ask.
+        await expect(
+          hook('mcp__weather__read', { city: 'Oslo' }, 'toolu_selected'),
+        ).resolves.toEqual({ continue: true });
+        expect(reviewToolCall).toHaveBeenCalledTimes(1);
+        await expect(
+          askFrame({
+            tool_name: 'mcp__weather__read',
+            input: { city: 'Oslo' },
+            tool_use_id: 'toolu_selected',
+          }),
+        ).resolves.toMatchObject({
+          kind: 'allowed',
+          result: { behavior: 'allow' },
+        });
+        await adapter.stopSession('thread-guardian-mcp-unselected');
       });
 
       test('at most 256 unanswered allows are kept: the oldest is dropped and prompts', async () => {
@@ -7777,6 +7839,71 @@ describe('ClaudeAdapter', () => {
   });
 
   describe('#1157: agent-authored MCP tool servers (Claude Agent SDK mcpServers channel)', () => {
+    test('adds selected tools without suppressing harness discovery and denies an unselected or newly published MCP call', async () => {
+      mockQuery.mockReturnValue(createMockQuery([]));
+      const adapter = new ClaudeAdapter();
+      await adapter.startSession({
+        provider: 'claude',
+        threadId: 'tool-picker',
+        agent: {
+          slug: 'my-agent',
+          toolServerMode: 'add',
+          toolServerLoading: 'on-demand',
+          toolServers: [
+            {
+              id: 'weather',
+              transport: 'stdio',
+              command: process.execPath,
+              allowedTools: ['read'],
+              toolNames: ['read', 'write'],
+            },
+          ],
+        },
+      });
+      const { options } = mockQuery.mock.calls[0][0];
+      expect(options.strictMcpConfig).toBe(false);
+      expect(options.env.ENABLE_TOOL_SEARCH).toBe('true');
+      expect(options.disallowedTools).toEqual(['mcp__weather__write']);
+      const hook = options.hooks.PreToolUse[0].hooks[0];
+      for (const name of ['write', 'new_tool']) {
+        const refused = await hook(
+          {
+            hook_event_name: 'PreToolUse',
+            tool_name: `mcp__weather__${name}`,
+            tool_input: {},
+            tool_use_id: name,
+          },
+          '',
+          {},
+        );
+        expect(refused.hookSpecificOutput.permissionDecision).toBe('deny');
+      }
+      expect(
+        await hook(
+          {
+            hook_event_name: 'PreToolUse',
+            tool_name: 'mcp__weather__read',
+            tool_input: {},
+            tool_use_id: 'read',
+          },
+          '',
+          {},
+        ),
+      ).toEqual({});
+      expect(
+        await hook(
+          {
+            hook_event_name: 'PreToolUse',
+            tool_name: 'mcp__existing__read',
+            tool_input: {},
+            tool_use_id: 'existing',
+          },
+          '',
+          {},
+        ),
+      ).toEqual({});
+    });
+
     test('startSession maps input.agent.toolServers into Options.mcpServers/strictMcpConfig, with a matching capabilityDelivery.toolServers receipt', async () => {
       mockQuery.mockReturnValue(createMockQuery([]));
       const adapter = new ClaudeAdapter();

@@ -43,6 +43,48 @@ describe('handleExtensionNotificationEvent', () => {
     vi.resetModules();
   });
 
+  test('reported retry stays transient and clears when tools resume', async () => {
+    activeChatsStore.updateChat(threadId, {
+      orchestrationTurnOpen: true,
+      openTurnId: 't1',
+    });
+    handleExtensionNotificationEvent({
+      eventId: 'retry-1',
+      provider: 'claude',
+      threadId,
+      createdAt: '2026-10-02T17:00:00.000Z',
+      turnId: 't1',
+      method: 'extension.notification',
+      namespace: 'claude-code',
+      type: 'api/retry',
+      payload: { attempt: 2, delayMs: 1500, reason: 'Rate limited' },
+    });
+    const chat = activeChatsStore.getSnapshot()[threadId];
+    expect(chat.activityHint).toEqual({
+      kind: 'retrying',
+      attempt: 2,
+      delayMs: 1500,
+      detail: 'Rate limited',
+    });
+    expect(chat.messages ?? []).toHaveLength(0);
+    const { handleToolStartedEvent } = await import('../streamHandlers');
+    handleToolStartedEvent({
+      eventId: 'tool-1',
+      provider: 'claude',
+      threadId,
+      createdAt: '2026-10-02T17:00:02.000Z',
+      turnId: 't1',
+      method: 'tool.started',
+      itemId: 'call-1',
+      toolCallId: 'call-1',
+      toolName: 'bash',
+      arguments: {},
+    });
+    expect(
+      activeChatsStore.getSnapshot()[threadId].activityHint,
+    ).toBeUndefined();
+  });
+
   test('_kiro.dev/mcp/oauth_request renders an ephemeral message with a clickable auth link', () => {
     handleExtensionNotificationEvent({
       eventId: 'evt-1',

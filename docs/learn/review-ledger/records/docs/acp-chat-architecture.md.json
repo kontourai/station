@@ -12,9 +12,9 @@
   "document": {"digest":"87b0ed372ef7d96462c84e94492a525319dfda23e702a80bb8b83a9c88c3874c","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
 
   "sources": [
-    {"path":"docs/guides/acp.md","digest":"85558f967e079ca66b7db8cc03183601f7774f4122f6fa74ea48fe8a04013db0","revision":"706352700c31dd3db23fc25f28823fd67abcde16"},
+    {"path":"docs/guides/acp.md","digest":"a36df486697444605029540536cda0506142a801fa4be469031ac4be09a80954","revision":"e15fe01696dceae30228b1a82f7df16592bace49"},
 
-    {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"ba6f62077e0977fc6a1170a929d51ad4b363e2cc920875fb35fd1d87fdff4cc8","revision":"706352700c31dd3db23fc25f28823fd67abcde16"}
+    {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"061da89e00216d5c3250d7f13dc1dea5717765b50db7ebf8c49672208524a3d0","revision":"423cbe55b9e35e4cd8954fd441cb9f3c69740d66"}
   ],
 
   "checks": [

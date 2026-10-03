@@ -5,6 +5,7 @@
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { AgentAddModal } from '../views/AgentAddModal';
+import { createEmptyAgentForm } from '../views/agent-editor/agentsViewUtils';
 import { ProjectKnowledgeViewerModal } from '../views/project-page/ProjectKnowledgeViewerModal';
 
 afterEach(cleanup);
@@ -29,10 +30,7 @@ describe('responsive surface adoption', () => {
         type="skills"
         availableTools={[]}
         availableSkills={[]}
-        form={{
-          tools: { mcpServers: [], available: [] },
-          skills: [],
-        }}
+        form={createEmptyAgentForm()}
         setForm={vi.fn()}
         onClose={vi.fn()}
       />,

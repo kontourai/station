@@ -831,6 +831,7 @@ export interface ClaudeAdapterOptions {
   createInProcessStationControl?: (
     threadId: string,
     tenantExecutionContext?: TenantExecutionContext,
+    allowedTools?: readonly string[],
   ) => unknown;
   /**
    * #90 D14: serves the built-in browser tools (`station-browser`) IN-PROCESS
@@ -2657,6 +2658,14 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     if (toolServers === undefined) return {};
 
     const tenantExecutionContext = input.tenantExecutionContext;
+    const control = toolServers.find(
+      (server) => server.id === 'station-control',
+    );
+    const selectedControlTools = control?.disabledTools?.length
+      ? (control.allowedTools ?? control.toolNames ?? []).filter(
+          (name) => !control.disabledTools!.includes(name),
+        )
+      : control?.allowedTools;
     const { servers, skipped } = resolveClaudeMcpServers(
       toolServers,
       {
@@ -2669,10 +2678,16 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         ...(this.options.createInProcessStationControl
           ? {
               inProcess: () =>
-                this.options.createInProcessStationControl!(
-                  input.threadId,
-                  tenantExecutionContext,
-                ),
+                selectedControlTools !== undefined
+                  ? this.options.createInProcessStationControl!(
+                      input.threadId,
+                      tenantExecutionContext,
+                      selectedControlTools,
+                    )
+                  : this.options.createInProcessStationControl!(
+                      input.threadId,
+                      tenantExecutionContext,
+                    ),
             }
           : {}),
         ...(tenantExecutionContext ? { tenantExecutionContext } : {}),
@@ -2787,6 +2802,25 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     };
     return {
       cwd: input.cwd,
+      ...(input.agent?.toolServers?.some(
+        (server) =>
+          server.allowedTools !== undefined || server.disabledTools?.length,
+      )
+        ? {
+            disallowedTools: input.agent.toolServers.flatMap((server) =>
+              [
+                ...new Set([
+                  ...(server.disabledTools ?? []),
+                  ...(server.allowedTools !== undefined
+                    ? (server.toolNames ?? []).filter(
+                        (name) => !server.allowedTools!.includes(name),
+                      )
+                    : []),
+                ]),
+              ].map((name) => `mcp__${server.id}__${name}`),
+            ),
+          }
+        : {}),
       model: input.modelId,
       // #1551: run the Claude Code the user installed. Omitted when none
       // resolved, which is the SDK's documented "use the built-in executable"
@@ -2826,19 +2860,12 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       ...(skillsOverlayDir
         ? { additionalDirectories: [skillsOverlayDir] }
         : {}),
-      // Station#1157: only set when the agent authored toolServers (see
-      // resolveAgentToolServers) — an unauthored session leaves both
-      // options unset, matching Claude's own default MCP discovery
-      // (project/user .mcp.json, settings) exactly as before this
-      // feature. `strictMcpConfig: true` is required alongside an
-      // authored (even empty) `mcpServers`: an authored empty array is the
-      // agent explicitly disabling every tool server, and without
-      // strictMcpConfig the SDK would still auto-discover the connection's
-      // own local MCP config underneath it.
+      // Additive selection keeps the harness's discovery; legacy and explicit
+      // replacement keep an authored-empty list authoritative.
       ...(mcpServers !== undefined
         ? {
             mcpServers: { ...mcpServers, ...builtinServers },
-            strictMcpConfig: true,
+            strictMcpConfig: input.agent?.toolServerMode !== 'add',
           }
         : builtinServers !== undefined
           ? // #90 D14: Station's own built-ins alone never switch the SDK
@@ -2902,6 +2929,12 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         ...(augmentedEnv ?? process.env),
         ...connectionEnv,
         ...appHomeEnv,
+        ...(input.agent?.toolServerLoading
+          ? {
+              ENABLE_TOOL_SEARCH:
+                input.agent.toolServerLoading === 'always' ? 'false' : 'true',
+            }
+          : {}),
         TMPDIR: ensureEngineSpawnTmpDir(),
       }),
       // #2932: the SDK reads stdout from the process this returns, after
@@ -3127,7 +3160,12 @@ export class ClaudeAdapter implements ProviderAdapterShape {
             this.cancelPendingRequest(record, input.threadId, requestId);
         });
       },
-      ...(preToolPolicy && input.agent
+      ...(input.agent &&
+      (preToolPolicy ||
+        input.agent.toolServers?.some(
+          (server) =>
+            server.allowedTools !== undefined || server.disabledTools?.length,
+        ))
         ? {
             hooks: {
               PreToolUse: [
@@ -3137,8 +3175,41 @@ export class ClaudeAdapter implements ProviderAdapterShape {
                       DEFAULT_PRE_TOOL_POLICY_TIMEOUT_MS,
                   ),
                   hooks: [
-                    async (hookInput) =>
-                      evaluateClaudePreToolPolicy(
+                    async (hookInput) => {
+                      if (
+                        'tool_name' in hookInput &&
+                        typeof hookInput.tool_name === 'string'
+                      ) {
+                        const rawToolName = hookInput.tool_name;
+                        const server = input.agent?.toolServers?.find((entry) =>
+                          rawToolName.startsWith(`mcp__${entry.id}__`),
+                        );
+                        const name = server
+                          ? hookInput.tool_name.slice(
+                              `mcp__${server.id}__`.length,
+                            )
+                          : undefined;
+                        if (
+                          server &&
+                          name !== undefined &&
+                          (server.disabledTools?.includes(name) ||
+                            (server.allowedTools !== undefined &&
+                              !server.allowedTools.includes(name)))
+                        )
+                          return {
+                            hookSpecificOutput: {
+                              hookEventName: 'PreToolUse' as const,
+                              permissionDecision: 'deny' as const,
+                              permissionDecisionReason:
+                                'Tool not selected for this agent.',
+                            },
+                          };
+                      }
+                      // #2947: an unselected MCP tool is denied above,
+                      // before the staged evaluator runs, so the guardian
+                      // is never asked and no allow is kept for it.
+                      if (!preToolPolicy) return {};
+                      return evaluateClaudePreToolPolicy(
                         preToolPolicy,
                         hookInput as {
                           tool_name: string;
@@ -3153,7 +3224,8 @@ export class ClaudeAdapter implements ProviderAdapterShape {
                         this.options.preToolPolicyTimeoutMs ??
                           DEFAULT_PRE_TOOL_POLICY_TIMEOUT_MS,
                         rememberPolicyAllow,
-                      ),
+                      );
+                    },
                   ],
                 },
               ],
@@ -3198,7 +3270,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       //
       // Nothing Station wires itself depends on the cascade either way:
       // `resolveAgentToolServers` builds `mcpServers` explicitly (station-control
-      // included) and passes `strictMcpConfig`, and Station's `PreToolUse` hook is
+      // included) and makes replacement selections strict; Station's `PreToolUse` hook is
       // the SDK `hooks` OPTION, not a settings file. The model-catalog probe in
       // `listModelCatalog` does pin `settingSources: []` — it runs no tools and
       // wants no ambient configuration at all.
