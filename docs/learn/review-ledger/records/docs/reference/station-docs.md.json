@@ -72,7 +72,7 @@
 
     {"path":"src-server/runtime/mcp/mcp-ui-resolver.ts","digest":"b82399f787d6b71129684e5cb4fad8858846d5315d0c1077822ac1591199075e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/agents/skill-service.ts","digest":"b422d6e8444abe623ad16f39e37a535e9d6b6b3bdb8f009d621b493c2b22c369","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/agents/skill-service.ts","digest":"036d075316efb30c94191ded896d3c69c9169f23e053f3fba34ef1b4283d161e","revision":"2867eea7c9a4838e2a59cdbf6ec7f940b7d4cf26"},
 
     {"path":"src-server/services/connections/fleet-contribution-manifest.ts","digest":"b652110a8ae06e2a05b9274128160b5c698a51a0cfa0a68a66664d71e1de72a5","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -86,7 +86,7 @@
 
     {"path":"src-server/services/orchestration/session-agent-resolution.ts","digest":"9782644b16fc2b7480f868339465b2acae5b7d59d880c718a2d5453213171009","revision":"69eb5db90072c149c16115135f495ac538155e71"},
 
-    {"path":"src-server/services/plugins/plugin-install-transaction.ts","digest":"d86ca9367f039174cd2aaaba83b65dc1df376f6474bd4a4f29be54341fd2c0e7","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
+    {"path":"src-server/services/plugins/plugin-install-transaction.ts","digest":"01ba3b7fe2249e6215c6fb62c6372e21324c863bee37bcac6e739a7b0170db61","revision":"63833ae5666cb06da0b5671dc0e3bf63bdc1d0fa"},
 
     {"path":"src-server/services/plugins/plugin-permissions.ts","digest":"12fa3b2a465074275d4317cc1a356000b2c1a53af247b56c352db754a8727c7c","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
@@ -104,7 +104,7 @@
 
     {"path":"src-server/tools/station-control-platform-tools.ts","digest":"a209f508dffc890f68c90ef5393125ff4a4d68f020c66b55c4abb84812727f5d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/tools/station-docs-content.ts","digest":"c112f831517ab8df9af25fba576016ccdc41f3fdb711660418566bd9342cca3c","revision":"e403554362186ebc38993487e46a7c4acf1004f8"},
+    {"path":"src-server/tools/station-docs-content.ts","digest":"a1adaadda669e0d2dcf875cda5fbbd470d2dd8c64b43dce60eb9879c99e49f77","revision":"e6ab9e3d8f1d026d102868e39a182eeb6cc10197"},
 
     {"path":"src-server/tools/station-docs-mcp-server.ts","digest":"6c3b7b2586bed5225ba1b32ddae94e61d5cc087083157d0f6e62d6ddf1490872","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

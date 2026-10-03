@@ -386,7 +386,7 @@
 
     {"path":"src-server/services/plugins/plugin-catalog-installation.ts","digest":"4663e57bee8360c76be9b0e5f20daddce153e11103045627d8b8c55df58a9363","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/plugins/plugin-install-transaction.ts","digest":"5028c962d174cb02f6600d60fad1e3eb7c9f3cfdd55b7a8bbec7467ec98886d5","revision":"2867eea7c9a4838e2a59cdbf6ec7f940b7d4cf26"},
+    {"path":"src-server/services/plugins/plugin-install-transaction.ts","digest":"01ba3b7fe2249e6215c6fb62c6372e21324c863bee37bcac6e739a7b0170db61","revision":"63833ae5666cb06da0b5671dc0e3bf63bdc1d0fa"},
 
     {"path":"src-server/services/plugins/workspace-pane-host-actions.ts","digest":"75590eb71c83be080b9f8b7fb080bc6276c18202b48f91f80cda8eff461c9474","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -522,9 +522,9 @@
 
     {"path":"packages/contracts/src/catalog.ts","digest":"7c18a88495a7f46c113fc67436a0ecf851bf006e599e42a608a2001f32c205de","revision":"93b4a941961ba7cef7c3faeee989dfaef6f80370"},
 
-    {"path":"src-server/providers/registries/registry-source-manager.ts","digest":"20ddd38eb743e421e4ff41f6d9e5221fbdb2e8fde598685872ce5b9cebc748b1","revision":"93b4a941961ba7cef7c3faeee989dfaef6f80370"},
+    {"path":"src-server/providers/registries/registry-source-manager.ts","digest":"6354f2b2a03af2f1be2a6acd87c647be6abbad09b8e342fe38ca6481f110fced","revision":"27e102c04a86e76e1ab20cfcd7ee02d55eeff9df"},
 
-    {"path":"src-server/providers/registries/registry-source-configuration.ts","digest":"6b741d13e5427b2e67ccc0a5f507bbf6cc308073fd0c363a11b2aa91a1ede698","revision":"2867eea7c9a4838e2a59cdbf6ec7f940b7d4cf26"},
+    {"path":"src-server/providers/registries/registry-source-configuration.ts","digest":"c18ab5a6d6f6163df087ab5d344544fa9c86d660b535a5bb9a9f8c0289172a93","revision":"27e102c04a86e76e1ab20cfcd7ee02d55eeff9df"},
 
     {"path":"src-server/providers/registries/registry-catalog-installed-state.ts","digest":"56210cc44ce38f67ad13ab2d27e0c340d7a2215a1c606b23c0d84ffc2e4294d6","revision":"2867eea7c9a4838e2a59cdbf6ec7f940b7d4cf26"},
 
@@ -532,11 +532,11 @@
 
     {"path":"src-server/providers/registries/json-manifest-registry.ts","digest":"278b9454c712425274a2566d9becbcfc0acb68d86216484f37ab472faad19eac","revision":"2867eea7c9a4838e2a59cdbf6ec7f940b7d4cf26"},
 
-    {"path":"src-server/routes/plugins/registry.ts","digest":"e192a5e4849fe25a7283daace8d6a73cb57650c1ca3d77f1baa3fd9a07a5f6e7","revision":"2867eea7c9a4838e2a59cdbf6ec7f940b7d4cf26"},
+    {"path":"src-server/routes/plugins/registry.ts","digest":"0e18a1298ce72d4cf3a405460a2acedff734c35f726b8bc361f7ad0e9e708f35","revision":"6497ed355774f69d9f1d0832f715ac536efb162e"},
 
     {"path":"src-server/services/agents/skill-service.ts","digest":"036d075316efb30c94191ded896d3c69c9169f23e053f3fba34ef1b4283d161e","revision":"2867eea7c9a4838e2a59cdbf6ec7f940b7d4cf26"},
 
-    {"path":"src-server/routes/plugins/__tests__/registry-marketplaces.routes.test.ts","digest":"9a82743ba2b3a9626a92c47e46d2fbca1240b90828f6b7e4950f40d3b32fc1ea","revision":"93b4a941961ba7cef7c3faeee989dfaef6f80370"}
+    {"path":"src-server/routes/plugins/__tests__/registry-marketplaces.routes.test.ts","digest":"1bee62e2552db42e5e304557be3da54832c807509d25de7d18facd2cc2d2cabc","revision":"e3f67db22db60734c0c49df624c97e92a8fcddaa"}
   ],
 
   "checks": [

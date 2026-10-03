@@ -92,7 +92,7 @@
 
     {"path":"src-server/security/station-control-request-authority.ts","digest":"b522bde2d245f4d682cf1468329f5314fbfd5f5abb431cc916b88b56aa7c9ec6","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/agents/skill-service.ts","digest":"b422d6e8444abe623ad16f39e37a535e9d6b6b3bdb8f009d621b493c2b22c369","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/agents/skill-service.ts","digest":"036d075316efb30c94191ded896d3c69c9169f23e053f3fba34ef1b4283d161e","revision":"2867eea7c9a4838e2a59cdbf6ec7f940b7d4cf26"},
 
     {"path":"src-server/services/connections/connection-env.ts","digest":"80e4ce2713521a60ffb7c87b5fa027399eeecf1407e63453f33dc7a55f18430b","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 

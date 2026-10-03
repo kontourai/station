@@ -9,7 +9,7 @@
 
   "limits": "No actual plugin installation, native/device/audio journey, public package distribution, provider operation or cross-host qualification. Source/fixture checks do not establish those outcomes.",
 
-  "document": {"digest":"c4d9fea220b43d622b7ec2bfb106e5ba400095a00a97a6aba3e8ab583fea0e8a","revision":"ed05e6f6c98c5b2bb994a88ff8fa8e1421639269"},
+  "document": {"digest":"bbdbc0a92897c3cb8e82dc51e621db90054a1c96b481e6a98c595579f9ecbb4d","revision":"0814cc6ddb168cff69e5572b185a853540a4f6e0"},
 
   "sources": [
     {"path":"examples/registry/default.json","digest":"cfad94ca0675644a0a8dd45ba204ea43c8813bb40c5ca3b4e4fa54956c2f4545","revision":"ed05e6f6c98c5b2bb994a88ff8fa8e1421639269"},
@@ -22,7 +22,7 @@
 
     {"path":"src-server/providers/registries/default-registry.ts","digest":"37610478ac1fcc60b9a777d7a9cbd05ee88f9f20b5d3ce57f5806907332600c8","revision":"ed05e6f6c98c5b2bb994a88ff8fa8e1421639269"},
 
-    {"path":"src-server/routes/plugins/registry.ts","digest":"182f1ca8372a27bd8f40e5b9ca8faec49b24cd1e4959b4a8aa1250def71e91dc","revision":"c191c6d08ae926b8d038cf5e2a4b494beee19243"},
+    {"path":"src-server/routes/plugins/registry.ts","digest":"0e18a1298ce72d4cf3a405460a2acedff734c35f726b8bc361f7ad0e9e708f35","revision":"6497ed355774f69d9f1d0832f715ac536efb162e"},
 
     {"path":"src-server/services/plugins/plugin-install-consent.ts","digest":"6e34e0844061dd5311e027973b1919483bf29047e18721ecae8b72ece98765ed","revision":"ed05e6f6c98c5b2bb994a88ff8fa8e1421639269"}
   ],

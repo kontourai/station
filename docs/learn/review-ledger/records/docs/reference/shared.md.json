@@ -26,7 +26,7 @@
 
     {"path":"packages/contracts/src/auth.ts","digest":"999ef78ea6f5150965f80e9c8e8873a257e34bea9c563f533f7519693f52b92e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/contracts/src/catalog.ts","digest":"900d7d8a0807404f5e6ed1f17049edf1aedf4685906ec52f0bc5fb1a63f36264","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"packages/contracts/src/catalog.ts","digest":"7c18a88495a7f46c113fc67436a0ecf851bf006e599e42a608a2001f32c205de","revision":"93b4a941961ba7cef7c3faeee989dfaef6f80370"},
 
     {"path":"packages/contracts/src/config.ts","digest":"d7eb4b693fdae3966c9ec13321f50eb92c3da6c4bf6d62b9e7f9679b05f276f2","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -102,7 +102,7 @@
 
     {"path":"src-server/services/notifications/notification-service.ts","digest":"dc0df39c89f0e28181353f544f15467c528fb9685622077cca74b672d2857c19","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/plugins/plugin-install-transaction.ts","digest":"d86ca9367f039174cd2aaaba83b65dc1df376f6474bd4a4f29be54341fd2c0e7","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
+    {"path":"src-server/services/plugins/plugin-install-transaction.ts","digest":"01ba3b7fe2249e6215c6fb62c6372e21324c863bee37bcac6e739a7b0170db61","revision":"63833ae5666cb06da0b5671dc0e3bf63bdc1d0fa"},
 
     {"path":"src-ui/src/components/mcp-ui/MCPToolUIFrame.tsx","digest":"732a76fa3772bbc163f0c9c5b8da98c530614a27acfaba1b93fbecb497f240b3","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

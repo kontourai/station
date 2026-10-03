@@ -162,7 +162,7 @@
 
     {"path":"src-server/security/websocket-auth.ts","digest":"e8d876654158a8403c26ae104eadc42b81558cd4a17e5b263f9e42b1ddf784d8","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/agents/skill-service.ts","digest":"b422d6e8444abe623ad16f39e37a535e9d6b6b3bdb8f009d621b493c2b22c369","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/agents/skill-service.ts","digest":"036d075316efb30c94191ded896d3c69c9169f23e053f3fba34ef1b4283d161e","revision":"2867eea7c9a4838e2a59cdbf6ec7f940b7d4cf26"},
 
     {"path":"src-server/services/connections/__tests__/credential-usage.test.ts","digest":"7aa83feee3854f793370294beb777070ee84635554ad5fef0b94306409e34b0a","revision":"9eec73db9183c76ac49c8584171ff3c45463f518"},
 

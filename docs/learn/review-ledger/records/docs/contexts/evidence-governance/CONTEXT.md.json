@@ -54,7 +54,7 @@
 
     {"path":"src-server/services/orchestration/session-command-module.ts","digest":"a187447cec48eca40e8933bce7600c5e00baebfae55c4ecf2ca4ef5d70626622","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/plugins/plugin-install-transaction.ts","digest":"d86ca9367f039174cd2aaaba83b65dc1df376f6474bd4a4f29be54341fd2c0e7","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
+    {"path":"src-server/services/plugins/plugin-install-transaction.ts","digest":"01ba3b7fe2249e6215c6fb62c6372e21324c863bee37bcac6e739a7b0170db61","revision":"63833ae5666cb06da0b5671dc0e3bf63bdc1d0fa"},
 
     {"path":"src-ui/src/components/review/ReviewLayout.tsx","digest":"7963493f35ba9c01b90b75afa5c70f53eeffea4e0b514b929abdac0ee6fe40de","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
