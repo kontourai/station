@@ -27,10 +27,8 @@ import { useNavigation } from '../../contexts/NavigationContext';
 import { useUnsavedGuard } from '../../hooks/useUnsavedGuard';
 import { openExternalLink } from '../../platform/openExternalLink';
 import { relativeTimeAgo } from '../../utils/relativeTime';
-// The Browser pane's round icon control, until the shared `IconButton` (a
-// sibling change) lands; this import moves there with it.
-import { BrowserIconButton } from '../../workspace-panes/browser-pane/BrowserIconButton';
 import { Button } from '../Button';
+import { IconButton } from '../IconButton';
 import {
   ArrowLeftGlyph,
   ArrowRightGlyph,
@@ -227,14 +225,14 @@ function CheckList({ checks }: { checks: readonly PullRequestCheck[] }) {
             ) : null}
           </span>
           {check.url ? (
-            <BrowserIconButton
+            <IconButton
               className="pull-request-review__icon"
               aria-label={`Open ${check.name} details`}
               title={`Open ${check.name} details`}
               onClick={() => void openExternalLink(check.url!)}
             >
               <ExternalLinkGlyph />
-            </BrowserIconButton>
+            </IconButton>
           ) : null}
         </li>
       ))}
@@ -402,14 +400,14 @@ function ForgeComment({ comment }: { comment: PullRequestReviewComment }) {
           on {where} of <code>{comment.path}</code>
         </span>
         {comment.url ? (
-          <BrowserIconButton
+          <IconButton
             className="pull-request-review__icon"
             aria-label="Open this comment on the forge"
             title="Open this comment on the forge"
             onClick={() => void openExternalLink(comment.url!)}
           >
             <ExternalLinkGlyph />
-          </BrowserIconButton>
+          </IconButton>
         ) : null}
       </div>
       <div className="pull-request-review__body">{comment.body}</div>
@@ -765,14 +763,14 @@ function ReviewOwner({
     <section className="pull-request-review" aria-label="Pull request review">
       <div className="pull-request-review__bar">
         {onBack && (
-          <BrowserIconButton
+          <IconButton
             className="pull-request-review__icon"
             aria-label="Back to pull requests"
             title="Back to pull requests"
             onClick={() => guard(onBack)}
           >
             <ArrowLeftGlyph />
-          </BrowserIconButton>
+          </IconButton>
         )}
         <h2 className="pull-request-review__title">
           {data?.pullRequest.title ?? `#${target.ref}`}
@@ -793,7 +791,7 @@ function ReviewOwner({
               Add to chat
             </Button>
           )}
-          <BrowserIconButton
+          <IconButton
             className="pull-request-review__icon"
             aria-label="Refresh"
             title="Refresh the review from the provider"
@@ -801,19 +799,19 @@ function ReviewOwner({
             onClick={() => void review.refetch()}
           >
             <RefreshGlyph />
-          </BrowserIconButton>
+          </IconButton>
           {data?.pullRequest.url ? (
             // The way to the forge stays on the bar. In the Station app the
             // host opens what its policy admits (#2480), and any refusal shows
             // the link with a Copy action rather than nothing.
-            <BrowserIconButton
+            <IconButton
               className="pull-request-review__icon"
               aria-label={pullRequestExternalLabel(data.pullRequest.url)}
               title={pullRequestExternalLabel(data.pullRequest.url)}
               onClick={() => void openExternalLink(data.pullRequest.url)}
             >
               <ExternalLinkGlyph />
-            </BrowserIconButton>
+            </IconButton>
           ) : null}
         </div>
       </div>
