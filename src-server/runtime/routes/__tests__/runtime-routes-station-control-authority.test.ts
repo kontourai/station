@@ -92,6 +92,8 @@ const HOSTED_ENV = 'STATION_HOSTED_TENANT_REGISTRY_FILE';
 /** The `/commands` commands held to the caller's scope (slices C1 and C3). */
 const SCOPED_COMMANDS = [
   'steerTurn',
+  'steerTurnOnce',
+  'inspectSteerInput',
   'adoptSession',
   'interruptTurn',
   'stopSession',
@@ -412,8 +414,10 @@ describe('configureRuntimeRoutes: the station-control authority guard', () => {
     support.hostThreads.add('person-thread-host');
     support.slugOnly.set('op-thread-slug', 'project-a-slug');
     const bodyFor = (type: ScopedCommand, threadId: string) =>
-      type === 'steerTurn'
-        ? { type, threadId, input: 'also check the tests' }
+      type === 'steerTurn' ||
+      type === 'steerTurnOnce' ||
+      type === 'inspectSteerInput'
+        ? { type, threadId, input: 'also check the tests', clientInputId: 'i' }
         : type === 'adoptSession'
           ? { type, sourceThreadId: threadId }
           : { type, threadId };
@@ -533,12 +537,14 @@ describe('configureRuntimeRoutes: the station-control authority guard', () => {
             bodyFor(type, threadId),
           ),
         ]).toEqual([type, label, expected]);
-      // The admitted commands reached the service through the real route;
-      // the refused ones never did.
+      // The admitted commands reached the service through the real route
+      // (which hands a receipted steer on as a steer); the refused ones
+      // never did.
+      const handedOn = type === 'steerTurnOnce' ? 'steerTurn' : type;
       expect(support.dispatched).toEqual(
         cases
           .filter(([, , , expected]) => expected === 'passed-guard')
-          .map(([, , threadId]) => `${type} ${threadId}`),
+          .map(([, , threadId]) => `${handedOn} ${threadId}`),
       );
     }
 

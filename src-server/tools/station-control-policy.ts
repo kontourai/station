@@ -1223,11 +1223,15 @@ function approvalCommandRefusal(
  *
  * Slice C3: `interruptTurn`, `stopSession` and `discardDraft` act on another
  * session as surely as a steer (stop its turn, end it, discard it), so they
- * stay in scope too. Every other command on the leaf is an approval command,
+ * stay in scope too, as do `steerTurnOnce` and `inspectSteerInput`. Every other command on the leaf is an approval command,
  * which needs a bound operator.
  */
 export const SCOPED_THREAD_COMMAND_FIELD: Readonly<Record<string, string>> = {
   steerTurn: 'threadId',
+  // The receipted steer (#3127) is a steer; inspecting a steer's input reads
+  // another session's live turn.
+  steerTurnOnce: 'threadId',
+  inspectSteerInput: 'threadId',
   adoptSession: 'sourceThreadId',
   interruptTurn: 'threadId',
   stopSession: 'threadId',
