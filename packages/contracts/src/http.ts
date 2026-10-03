@@ -77,8 +77,9 @@ export const AUTH_RATE_LIMITED_ERROR_CODE = 'authentication_rate_limited';
 
 /**
  * The response header a Station runtime puts on every JSON body it writes
- * itself, success or refusal (#2842): its HTTP app's answers and the virtual
- * application ingress's own refusals. Its presence says the Station at the
+ * itself, success or refusal (#2842): its HTTP app's answers, and the
+ * refusals it writes outside that app (the virtual application ingress and the
+ * self-hosted broker's gated application). Its presence says the Station at the
  * other end of this connection wrote the body; a reverse proxy, gateway or
  * tunnel answering in between does not send it, whatever its JSON looks like.
  *

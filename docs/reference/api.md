@@ -1423,8 +1423,12 @@ exposes it. Because there is no universal envelope, a reverse proxy or gateway
 can answer with JSON in a Station shape; the header is how a client tells
 Station's own answer from one written in between. The header is set by
 [one middleware](../../src-server/runtime/bootstrap/runtime-http.ts) around
-every handler; the [virtual application ingress](../../src-server/services/connections/virtual-application.ts)
-sets it on the few refusals it writes before a request reaches that app. It
+every handler. The refusals Station writes outside that app set it
+themselves: the [virtual application ingress](../../src-server/services/connections/virtual-application.ts)
+(its admission refusals, and the 502 that replaces an app answer which tried
+to set a cookie) and the self-hosted broker's
+[gated application](../../src-server/runtime/bootstrap/self-hosted-broker-pion-runtime.ts)
+(retired trust, forbidden origin). It
 describes one hop: a response relayed from another Station through
 `fetchRemoteStation` leaves without it. Non-JSON bodies (event streams, files,
 plain text) do not carry it. A Station older than the header never sends it,

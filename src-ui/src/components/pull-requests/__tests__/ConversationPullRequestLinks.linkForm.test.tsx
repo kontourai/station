@@ -1,9 +1,12 @@
 // @vitest-environment jsdom
 
 import { StationHttpError } from '@kontourai/station-sdk/client';
-import { getConversationPullRequestLinks } from '@kontourai/station-sdk/conversation-pull-request-links';
+import {
+  getConversationPullRequestLinks,
+  linkConversationPullRequest,
+} from '@kontourai/station-sdk/conversation-pull-request-links';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 
 /**
@@ -85,4 +88,33 @@ test('an unavailable read shows its reason, not its field key', async () => {
   );
   expect(await screen.findByText('Unknown conversation.')).toBeTruthy();
   expect(screen.queryByText(/conversationId/)).toBeNull();
+});
+
+test('a refused link shows its reason, not its field key', async () => {
+  vi.mocked(linkConversationPullRequest).mockRejectedValueOnce(
+    new StationHttpError(
+      400,
+      'Validation failed: ref Use a pull request number.',
+      {
+        details: {
+          formErrors: [],
+          fieldErrors: { ref: ['Use a pull request number.'] },
+        },
+      },
+    ),
+  );
+  renderLinks();
+  await screen.findByText('Nothing is linked to this conversation yet.');
+  for (const [label, value] of [
+    ['Provider', 'github'],
+    ['Host', 'github.com'],
+    ['Owner', 'kontourai'],
+    ['Repository', 'station'],
+    ['Pull request number', '12'],
+  ] as const)
+    fireEvent.change(screen.getByLabelText(label), { target: { value } });
+  fireEvent.click(screen.getByRole('button', { name: 'Link pull request' }));
+  expect((await screen.findByRole('alert')).textContent).toBe(
+    'Use a pull request number.',
+  );
 });

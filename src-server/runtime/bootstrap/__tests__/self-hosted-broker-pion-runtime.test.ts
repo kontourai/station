@@ -585,6 +585,59 @@ describe('self-hosted broker pion factory', () => {
     }
   });
 
+  // #2842: the gated application answers these two refusals itself, outside
+  // the Hono app, so they must carry the marker the app would have added.
+  test("the gated application's own refusals are marked as this Station's answer", async () => {
+    const clientOrigin = 'https://browser.example';
+    const { h, runtime } = await harness({ offerBrowserOrigin: clientOrigin });
+    await runtime.start();
+    try {
+      await h.admitted;
+      const mod = (await import(
+        '@kontourai/station-connect/application-channel'
+      )) as unknown as {
+        __captured: Array<{
+          application: { fetch(request: Request): Promise<Response> };
+        }>;
+      };
+      const base = mod.__captured.length;
+      h.acceptCallback!({
+        send: vi.fn(),
+        close: vi.fn(),
+        subscribe: () => () => undefined,
+      } as never);
+      await waitFor(() => mod.__captured.length > base);
+      const dispatch = mod.__captured.at(-1)!.application.fetch;
+
+      const forbidden = await dispatch(
+        new Request('https://station.example/api/projects', {
+          headers: { Origin: 'https://other.example' },
+        }),
+      );
+      expect(forbidden.status).toBe(403);
+      expect(await forbidden.json()).toEqual({
+        error: { code: 'broker_application_origin_forbidden' },
+      });
+      expect(forbidden.headers.get('x-station-envelope')).toBe('1');
+      expect(forbidden.headers.get('cache-control')).toBe('no-store');
+
+      h.current = null;
+      const retired = await dispatch(
+        new Request('https://station.example/api/projects', {
+          headers: { Origin: clientOrigin },
+        }),
+      );
+      expect(retired.status).toBe(503);
+      expect(await retired.json()).toEqual({
+        error: { code: 'broker_trust_retired' },
+      });
+      expect(retired.headers.get('x-station-envelope')).toBe('1');
+    } finally {
+      h.live = false;
+      await runtime.shutdown().catch(() => undefined);
+    }
+  });
+
   test('lost withdraw reply still closes peers and reports failure', async () => {
     const { h, runtime } = await harness();
     await runtime.start();

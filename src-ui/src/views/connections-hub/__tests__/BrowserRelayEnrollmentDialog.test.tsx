@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   signal: null as AbortSignal | null,
   complete: false,
   join: vi.fn(),
+  enrollError: null as Error | null,
 }));
 
 vi.mock('../../../lib/browserRelayRouteBinding', () => ({
@@ -30,6 +31,7 @@ vi.mock('../../../lib/browserRelayEnrollmentController', () => ({
     ) {
       mocks.credentials = { ...credentials };
       mocks.signal = signal;
+      if (mocks.enrollError) return Promise.reject(mocks.enrollError);
       if (mocks.complete) {
         this.options.onState('enrolled');
         return Promise.resolve({ state: 'active' });
@@ -77,6 +79,7 @@ beforeEach(() => {
   mocks.signal = null;
   mocks.complete = false;
   mocks.join.mockReset();
+  mocks.enrollError = null;
 });
 
 it('refuses to send account credentials when the encrypted Station route is absent', async () => {
@@ -205,5 +208,34 @@ it('a refused Project invitation reads as its reason, not its field key', async 
   );
   fireEvent.click(screen.getByRole('button', { name: 'Verify account' }));
   expect(await screen.findByText('Invitation expired.')).toBeTruthy();
+  expect(screen.queryByText(/Validation failed/)).toBeNull();
+});
+
+it('a refused account verification reads as its reason, not its field key', async () => {
+  mocks.capture.mockReturnValue({ transport: vi.fn(), isCurrent: () => true });
+  mocks.enrollError = new StationHttpError(
+    400,
+    'Validation failed: username Use letters and numbers only.',
+    {
+      details: {
+        formErrors: [],
+        fieldErrors: { username: ['Use letters and numbers only.'] },
+      },
+    },
+  );
+  render(
+    <BrowserRelayEnrollmentDialog
+      connection={connection}
+      onClose={mocks.close}
+    />,
+  );
+  fireEvent.change(screen.getByLabelText('Station account name'), {
+    target: { value: 'zach!' },
+  });
+  fireEvent.change(screen.getByLabelText('Password'), {
+    target: { value: 'local-password' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Verify account' }));
+  expect(await screen.findByText('Use letters and numbers only.')).toBeTruthy();
   expect(screen.queryByText(/Validation failed/)).toBeNull();
 });
