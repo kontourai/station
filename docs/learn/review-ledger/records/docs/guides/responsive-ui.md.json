@@ -66,7 +66,7 @@
 
     {"path":"src-ui/src/components/ResponsiveDialogSurface.tsx","digest":"ff389dc7c2632309151df7065f56f8434712b5cba120324bbba48c7693a56612","revision":"f4eb9345e808edfbcadd25b1cf88a69db088f117"},
 
-    {"path":"src-ui/src/components/chat-dock/ChatDock.tsx","digest":"ea96d9b1e01df4219ee45a05f4b894bf7db7dc7f55ade3d3fcd063c6ecfb88a5","revision":"bc542083c3919bc80d36e5e165dc6da009c6ac05"},
+    {"path":"src-ui/src/components/chat-dock/ChatDock.tsx","digest":"0c41986126b195f272d358896d8e638f18f312fe40b618bb7b9c1247bb93776c","revision":"397b4cb16ee64b1693eddff490ac75947d250436"},
 
     {"path":"src-ui/src/components/chat-dock/ChatDockInboxRows.tsx","digest":"0850b9f30797c40cbc19c8817bf574d046065a600163d1925d50fbcc4d4c0c2c","revision":"b14f1b80ec27c38844b3d16e8a4bdfe624a778c9"},
 
@@ -86,7 +86,7 @@
 
     {"path":"src-ui/src/components/inbox-row/InboxRowStatus.tsx","digest":"d7cc9d13090f4c7d529e76bcd4828113375a1c52711ba6009d6e0cb8cad85418","revision":"b14f1b80ec27c38844b3d16e8a4bdfe624a778c9"},
 
-    {"path":"src-ui/src/contexts/navigation-store.ts","digest":"2486db91eb4f818fec69048dcd202c7a7ffc5a9517c2cb11fa7728197f919607","revision":"4d59eb1868139f2faeaf1a1467811c22726f741c"},
+    {"path":"src-ui/src/contexts/navigation-store.ts","digest":"b4958508ce13d04645a71a738cc6b3d9da50a3b6526738650e8acc2f5e3e4063","revision":"6e9f37f483fa1372c3c185be88002e24a08bfc3e"},
 
     {"path":"src-ui/src/hooks/useIsMobile.ts","digest":"6cedc0e8a70136acb36e40078106a880663ea10b9d5d7da97a503c9c39b20ddd","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -98,7 +98,7 @@
 
     {"path":"src-ui/src/lib/accent-contrast.ts","digest":"54291f7600d527c9ea3f9a4af8eca21f0c56a046cf0776292766c4d2b0ac768b","revision":"2b22c2609a75d0f40b77472fe918de3c34094b69"},
 
-    {"path":"src-ui/src/lib/device-settings-store.ts","digest":"2c9c1dfb7259dbe56a3c101aba0c370c481516a6e0b67a666655a518d2a90fd7","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"src-ui/src/lib/device-settings-store.ts","digest":"35154d1a280a19606705efe1591f6fc4cd5127ba5f688aac54665ba87b483b74","revision":"ef69511d6f8027fe0b5f9fb0d6afc95f2a3a2c38"},
 
     {"path":"src-ui/src/main.tsx","digest":"d00e280a16d70b37c42498476af7d21dc192a9d9ea62e337e71094c54cf39a33","revision":"4cf503807d144ac197e10fcf4aee5e301b96e28d"},
 

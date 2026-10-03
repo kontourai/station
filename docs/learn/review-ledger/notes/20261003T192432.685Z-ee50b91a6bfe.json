@@ -1,0 +1,7 @@
+{
+  "revision": "397b4cb16ee64b1693eddff490ac75947d250436",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Upstream record taken on merge; setLayout's from/preserveChatProjectDefault options, the in-place preview write and the inbox count publication change no user-facing step here. No prose change."}
+  ]
+}
