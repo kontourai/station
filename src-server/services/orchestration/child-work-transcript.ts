@@ -74,7 +74,7 @@ function itemsOf(
  * every persisted delta (not the bounded registry), so neither a session
  * exit nor settled-child eviction hides a child's transcript.
  */
-export function childTranscriptRefFromHistory(
+function childTranscriptRefFromHistory(
   threadId: string,
   childId: string,
   events: readonly CanonicalRuntimeEvent[],

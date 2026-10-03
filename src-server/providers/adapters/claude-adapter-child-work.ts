@@ -93,7 +93,7 @@ export interface ClaudeChildWorkState {
 }
 
 /** Bound on `pendingReplyModels`. */
-export const CLAUDE_PENDING_REPLY_MODELS_MAX = 64;
+const CLAUDE_PENDING_REPLY_MODELS_MAX = 64;
 
 /** The slice of the adapter's per-session record this module reads. */
 export interface ClaudeChildWorkRecord {
