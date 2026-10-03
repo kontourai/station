@@ -588,3 +588,35 @@ test.each(['inspector', 'chat'] as const)(
     expect(text).not.toContain('⚠️ No conversation found with session ID: 1234');
   },
 );
+
+// Same mapping, but this view cannot answer anything: a request bound to a
+// tool call must not offer Approve/Deny here.
+test.each(['inspector', 'chat'] as const)(
+  '%s: a pending tool request offers no answer controls in the read-only transcript',
+  (presentation) => {
+    renderAttached({
+      presentation,
+      events: [
+        ev({ method: 'turn.started', turnId: 'r3', prompt: 'clean up' }),
+        ev({
+          method: 'tool.started',
+          turnId: 'r3',
+          toolCallId: 'c1',
+          toolName: 'Bash',
+          args: { command: 'rm -rf build' },
+        } as never),
+        ev({
+          method: 'request.opened',
+          turnId: 'r3',
+          requestId: 'rq1',
+          requestType: 'approval',
+          toolCallId: 'c1',
+          title: 'Allow Bash',
+        } as never),
+      ],
+    });
+    expect(screen.getAllByText(/Bash/).length).toBeGreaterThan(0);
+    expect(screen.queryByRole('button', { name: /allow once/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^deny/i })).toBeNull();
+  },
+);

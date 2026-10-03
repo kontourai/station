@@ -61,6 +61,22 @@ function reservationFailure(
  * adopt it into a real Station-owned continuation — plus the imported
  * transcript. Split out of `SessionsView` per archive#1204.
  */
+type TranscriptPart = ReturnType<typeof conversationPartToContentParts>[number];
+
+/** A part as a read-only transcript shows it: never answerable from here. */
+function withoutApprovalBinding(part: TranscriptPart): TranscriptPart {
+  const {
+    needsApproval: _needsApproval,
+    approvalId: _approvalId,
+    approvalThreadId: _approvalThreadId,
+    approvalEventId: _approvalEventId,
+    approvalToolName: _approvalToolName,
+    approvalSessionGrant: _approvalSessionGrant,
+    ...rest
+  } = part as TranscriptPart & Record<string, unknown>;
+  return rest as TranscriptPart;
+}
+
 export function AttachedSessionDetail({
   apiBase,
   chatFontSize = 14,
@@ -521,11 +537,13 @@ export function AttachedSessionDetail({
           ) : (
             messages.map((message, index) => {
               // Chat's own mapping, so a runtime error's code (its
-              // translated copy), a file's reference, a cancelled or
-              // approval-bound call render here as they do in the dock.
-              const contentParts = message.parts.flatMap(
-                conversationPartToContentParts,
-              );
+              // translated copy), a file's reference and a cancelled call
+              // render here as they do in the dock — minus the approval
+              // binding: this view is read-only, and a bound part would
+              // offer Approve/Deny that nothing here can answer.
+              const contentParts = message.parts
+                .flatMap(conversationPartToContentParts)
+                .map(withoutApprovalBinding);
               if (presentation === 'chat')
                 return (
                   <MessageBubble
