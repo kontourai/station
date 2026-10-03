@@ -2711,8 +2711,9 @@ is required. Older/source-home usage without `accountKey` remains unattributed.
 
 `GET /api/analytics/usage-rollup` accepts `provider=claude|codex` and `localOnly=1`
 for engine activity. Filtering precedes folding and pagination, while coverage
-remains explicit. This is Station engine history across accounts, not billing or
-per-profile attribution.
+remains explicit. Without a credential-profile filter, this is Station engine
+history across accounts. A profile filter selects attributed receipts and
+excludes unattributed usage; neither view is a provider billing statement.
 
 ## Read engine sign-in profiles
 
@@ -2779,7 +2780,7 @@ station-native-device-proof-self-receipt-error/v1`. Only this versioned
 `not_found` response establishes a binding lookup absence; an unrelated route
 or proxy error is an unavailable observation.
 
-The Desktop [native relay owner](../../src-desktop/src/native_relay_redemption.rs)
+The desktop and mobile [native relay owner](../../src-desktop/src/native_relay_redemption.rs)
 also registers the main-window `station_native_device_binding_self_receipt`
 command. Its inputs are only a saved profile name and expected revision; it
 reads the fixed endpoint using the current host-authorized Device bearer and
@@ -2799,12 +2800,33 @@ or connected assertion. Browser RTC remains renderer-owned.
 
 The separate [account owner](../../src-desktop/src/native_account_operations.rs)
 registers challenge/key preparation, complete local username/password exchange
-body preparation, and canonical GET/HEAD Project account headers. It constructs
+body preparation, canonical GET/HEAD member-read account headers, and fixed
+invitation-acceptance and native-continuation revocation requests. It constructs
 account claims using independent key custody and current host owners, with
 bounded one-exchange handles, replay/expiry and post-sign key fencing. These
 structured commands do not mint a principal or replace the server's current
 provider/Device/Project checks. See [native account continuation](sdk.md#native-station-account-continuation-opt-in)
 for the typed provider and account-body-before-Device-signing ordering.
+
+The selected native relay member route permits only bounded Station observations
+and Project/shared-work reads, plus its fixed account operations. Ordinary SDK
+mutations are refused; operator and compute surfaces are unsupported. Native
+continuation revocation retires that continuation and its provider session,
+without retiring Device custody. These are source-composed contracts, not a
+fresh native enrollment, physical-device, or published application receipt.
+
+A separate `STATION_NATIVE_ENROLLMENT_PILOT=1` composition mounts the seven
+`POST /.well-known/station/v1/relay/native-enrollment/` leaves: `begin`, `login`,
+`register`, `finalize`, `activate`, `status`, and `cancel`. The runtime requires
+the Device-proof pilot, configured native relay and supported pending account
+provider. Private current Pion provenance and an approved native installation
+surface admit bootstrap requests; after `begin`, candidate proof fences each
+ceremony operation. Public route classification does not waive those checks.
+Operator-only surface
+approval and pending-enrollment approval live under
+`/api/pairing/native-relay-surfaces` and `/api/pairing/native-relay-enrollments`.
+See [native enrollment](../design/native-relay-enrollment.md) for credential
+sealing, activation, cancellation, recovery and evidence limits.
 ---
 
 

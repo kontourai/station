@@ -34,7 +34,10 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 | [InstalledPluginInventory](#installedplugininventory) | Keep valid and rejected installed plugin directories visible from one filesystem-backed inventory. | `src-server/services/plugins/installed-plugin-inventory.ts` |
 | [PackageMcpAdmissionJournal](#packagemcpadmissionjournal) | Retain package-incarnation admission evidence without inventing destructive retirement authority. | `src-server/services/plugins/package-mcp-admission.ts` |
 | [DesktopStartupReadiness](#desktopstartupreadiness) | Admit the main desktop window only after an exact sidecar identity ticket commits. | `src-desktop/src/startup_readiness.rs` |
-| [NativeRelayGrantRenewalSupervisor](#nativerelaygrantrenewalsupervisor) | Maintain existing saved-route grants while Desktop is visible, without granting new trust or application access. | `src-ui/src/platform/native/nativeRelayGrantRenewalSupervisor.ts` |
+| [NativeRelayGrantRenewalSupervisor](#nativerelaygrantrenewalsupervisor) | Maintain existing saved-route grants while a native renderer is visible, without granting new trust or application access. | `src-ui/src/platform/native/nativeRelayGrantRenewalSupervisor.ts` |
+| [Native relay enrollment](#native-relay-enrollment) | Enroll one explicitly approved Device without exposing its credential to the WebView. | `src-desktop/src/native_enrollment_host.rs` |
+| [Native relay link intake](#native-relay-link-intake) | Review untrusted routing intent and keep bound invitation secrets in native custody. | `src-desktop/src/native_relay_link_intake.rs` |
+| [Native relay account and requests](#native-relay-account-and-requests) | Compose selected Device transport with separate person sessions and bounded member reads. | `src-ui/src/platform/native/nativeRelayConnectionOwner.ts` |
 | [NativeApplicationSignaling](#nativeapplicationsignaling) | Own a native peer transcript and one bounded Device request proof for the opt-in application transport. | `src-desktop/src/native_application_peer.rs` |
 | [PendingPairingCompletion](#pendingpairingcompletion) | Complete one accepted device-pairing request once, with shared subscribers and bounded retry. | `packages/connect/src/core/pendingPairingCompletion.ts` |
 | [SessionQueryModule](#sessionquerymodule) | Authorize and project one conversation from one ordered event stream. | `src-server/services/orchestration/session-query-module.ts` |
@@ -109,29 +112,34 @@ native application peer, an approved account-bound Device and provider session
 verification. Missing browser `Origin` alone never selects native authority.
 The [native Connect transport](../../packages/connect/src/core/nativeApplicationTransport.ts)
 and [SDK client](../../packages/sdk/src/client/application-session-native.ts)
-consume host-supplied trust and structured peer/account operations. Their source
-composition does not enable ordinary Desktop sign-in or a default native route.
+consume host-supplied trust and structured peer/account operations. The ordinary
+selected native route now composes these owners for separate account sign-in,
+invitation acceptance and bounded member reads. This source integration does not
+establish physical iOS or released Nightly qualification.
 
-The desktop [native account-proof key owner](../../src-desktop/src/native_account_proof_key.rs)
+The native [account-proof key owner](../../src-desktop/src/native_account_proof_key.rs)
 is a separate foundation. It stores a software P-256 key through the existing
 OS keyring adapter, under an account-proof namespace distinct from broker
 routing keys. Its owner tuple names the app, channel, client instance, Station
 and approved Device; validating that tuple's shape does not establish actual
 Device approval. The separate [account operation owner](../../src-desktop/src/native_account_operations.rs)
-registers three bounded main-window commands for public-key/challenge preparation,
-local username/password exchange-body preparation and GET/HEAD Project account
-headers. It derives identity/hashes/JTI/time from the reconciled host owner,
+registers bounded commands for public-key/challenge preparation, local
+username/password exchange-body preparation, supported GET/HEAD account proofs,
+and fixed invitation-acceptance and session-revocation bodies. The prepared
+context exposes its actual host deadline; the SDK clamps the continuation's
+usable expiry to that deadline and the server's expiry. It derives identity/hashes/JTI/time from the reconciled host owner,
 fences handles/replay/expiry/key identity and exposes no raw signing input.
 The SDK's typed proof-provider path validates and retains the ordered body before
-the Device transport signs its complete bytes. This does not establish mobile
-custody, default sign-in or hardware-backed non-exportability. Follow
-[native capability boundaries](../design/native-capabilities.md) before wiring
-this owner into an application flow.
+the Device transport signs its complete bytes. Commands are registered on desktop
+and mobile, and the ordinary selected-route owner uses them. OS-keyring software
+custody does not establish hardware-backed non-exportability; physical iOS and
+process-lifecycle qualification remain separate. Follow the
+[native capability boundaries](../design/native-capabilities.md).
 
 The [Device proof key vault](../../src-desktop/src/native_device_proof_key.rs)
 uses a separate keyring namespace and adds the Device binding ID to its owner.
 Both vaults share a [private custody core](../../src-desktop/src/native_proof_key_core.rs)
-while preserving the account vault's stored format. The Desktop-only
+while preserving the account vault's stored format. The native
 [candidate manager](../../src-desktop/src/native_device_binding_candidate.rs)
 persists a provisional owner snapshot and binding ID in a separate private
 Keychain namespace before it creates the Device proof key. The main-window
@@ -861,6 +869,90 @@ this Tauri interface. Source and service tests do not establish
 executed IPC, native keyring behavior or a packaged/device journey. See the
 [native command contract](../design/native-capabilities.md#desktop-application-signaling-commands).
 
+## Native relay enrollment
+
+The [host coordinator](../../src-desktop/src/native_enrollment_host.rs) owns one
+profile-bound enrollment attempt, its OS journal, recipient key, exact Device
+candidate and activation publication. The
+[contract](../../packages/contracts/src/native-relay-enrollment.ts) exposes
+public preparations and opaque operation handles. The
+[UI controller](../../src-ui/src/platform/native/nativeRelayEnrollmentClient.ts)
+and [wizard](../../src-ui/src/views/connections-hub/NativeRelayEnrollmentWizard.tsx)
+use fixed host operations through a fresh verified encrypted peer. Network
+cleanup does not cancel a staged or committed enrollment. Explicit cancellation
+retires only the owned attempt. Recovery reads host state; an active transition
+must pass the host's currentness lookup before accepting its profile revision.
+Expired candidates can use a newer routing generation only for signed terminal
+cleanup under the unchanged broker, Station, enrollment, installation and trust.
+The original ceremony remains bound to its old generation; no active or staged
+Device can use this exception.
+
+The [Station service](../../src-server/services/identity/native-relay-enrollment-service.ts)
+requires supported pending account verification and a real operator's approval
+of the exact person/Device candidate. Signed, HPKE-encrypted delivery contains
+the Device credential only. Activation grants neither an account continuation
+nor Project membership. The [native enrollment record](../design/native-relay-enrollment.md)
+traces cryptography, journals, revocation and the evidence boundaries. Combined
+Rust tests and mounted frontend/server composition pass; fresh packaged iOS,
+actual process recovery and two-person public delivery remain unqualified.
+
+## Native relay link intake
+
+The [host intake](../../src-desktop/src/native_relay_link_intake.rs) owns bounded
+invitation custody, public pending handles, cancellation and expiry. The
+[typed envelope](../../packages/contracts/src/native-relay-link.ts) separates a
+public first-contact route intent from an invitation bound to an already
+approved native installation. The application address is an untrusted routing
+hint. Opening a link grants no trust, Device, account, Project or execution
+authority and does not select a Station.
+
+iOS uses a distinct relay scheme and a
+[Station-owned delivery boundary](../../src-desktop/src/native_relay_ios_launch.rs)
+instead of the generic deep-link runtime, which retains its last raw URL. The
+owned boundary captures cold launch options and consumes relay URLs before
+the upstream warm URL parser. Pairing remains a separate journey. Android
+does not register these relay schemes. Existing native candidate comparison,
+explicit trust approval and grant redemption remain the authorization owners;
+cancelled late grants use exact-grant retirement and durable cleanup.
+
+The invitation review has its own React Query client so cold intake can precede
+the main providers. [Native setup refresh hints](../../src-ui/src/platform/native/nativeRelaySetupState.ts)
+notify the mounted [saved Station list](../../src-ui/src/views/connections-hub/RelayRouteProfiles.tsx)
+when confirmation, redemption, Device activation or cleanup operations settle.
+The hint names only the saved profile. Consumers refresh native profile metadata,
+invalidate that profile’s trust, routing-grant and enrollment-recovery queries,
+and validate fresh host responses; the hint
+contains no credential, approval result or application authority. Closing the
+review does not remount the protected root, and late replies still trigger
+the host-state refresh.
+
+Host and codec tests qualify their recorded source boundaries. The iOS-specific
+callback ABI, installed cold/warm delivery, secret-log inspection and physical
+collaborator journey require separate evidence. See the
+[enrollment design](../design/native-relay-enrollment.md#native-link-intake)
+for those limits.
+
+## Native relay account and requests
+
+The [selected connection owner](../../src-ui/src/platform/native/nativeRelayConnectionOwner.ts)
+composes an opaque host Device binding with the
+[application runtime](../../src-ui/src/platform/native/nativeRelayApplicationRuntime.ts).
+Each request obtains fresh short-lived ICE and a verified Station peer; there
+is no direct HTTP fallback. Exact supported health, authority and member Project
+reads are admitted before allocation. Operator Workspace resources and writes
+remain unsupported. The CLI does not select these routes as defaults.
+
+The [account bridge](../../src-ui/src/platform/native/nativeAccountSessionBridge.ts)
+uses the SDK native continuation client and fixed host proof operations. The
+person session is independent of Device custody. The public account scope
+qualifies query caches and requests by the current selected owner and session;
+account rejection retires that scope without erasing the approved Device.
+Changing the saved route, trust or binding fences prior results. The
+[ApiBaseProvider](../../src-ui/src/contexts/ApiBaseContext.tsx) mounts this owner
+into ordinary SDK requests and health probes. Its executed composition tests
+mock native IPC and peers; they do not prove an installed client, arbitrary
+provider support or a physical iPhone journey.
+
 ## NativeRelayGrantRenewalSupervisor
 
 **Purpose and Interface.** The [supervisor](../../src-ui/src/platform/native/nativeRelayGrantRenewalSupervisor.ts)
@@ -871,10 +963,13 @@ constructor inputs; the currently selected Station does not choose which grants
 are maintained.
 
 **Composition and lifetime.** [ApiBaseProvider](../../src-ui/src/contexts/ApiBaseContext.tsx)
-constructs it only for Desktop Tauri, starts it from the owning effect and stops
+constructs it for desktop and mobile Tauri, starts it from the owning effect and stops
 it on cleanup. It listens for saved-profile changes, online, focus, pageshow and
 visibility changes. The work pump runs while the renderer is visible; waking
-requests fresh host status. `stop()` removes listeners and timers and invalidates
+requests fresh host status. Visibility is rechecked after asynchronous status
+lookup before a renewal starts. A host RPC already issued may finish after
+hiding; this is foreground scheduling, not background continuity.
+`stop()` removes listeners and timers and invalidates
 route entries. More than 64 saved routes pauses all maintenance and reports a
 route-limit issue, rather than silently maintaining a subset. The saved-route
 view explains that limit.
@@ -1399,8 +1494,10 @@ other's backup; the traversal and caps below describe `home backup`.
 **Ownership and backup.** [StationHomeLifecycle](../../packages/shared/src/station-home-lifecycle.ts)
 tracks runtime owners by PID and birth identity and gives maintenance exclusive
 ownership against cooperating runtimes. Dead owners can be reclaimed;
-unverifiable owners remain fenced. The lease can represent multiple runtime
-owners, while individual callers can impose stricter same-home policy.
+unverifiable owners remain fenced. Runtime publication makes bounded exact
+birth-probe retries for its own PID before refusing startup; probes of other
+owners do not retry or fall back to PID-only authority. The lease can represent
+multiple runtime owners, while individual callers can impose stricter same-home policy.
 [StationRuntime](../../src-server/runtime/bootstrap/station-runtime.ts) retains
 its lease through persistence shutdown. CLI wrappers also check lifecycle
 observations for useful offline diagnostics. These checks do not stop an

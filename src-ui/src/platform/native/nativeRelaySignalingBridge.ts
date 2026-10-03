@@ -97,12 +97,98 @@ const sameTrust = (
 
 export interface NativeRelaySignalingBridgeOptions {
   readonly bindingCommand: string;
+  readonly bindingArguments?: 'request' | 'flat';
   readonly openCommand: string;
   readonly readCommand: string;
   readonly errorPrefix: string;
   readonly profileName: string;
   readonly profileRevision: number;
   readonly invoke: TauriInvoker;
+}
+
+export interface NativeRelayTrustOwner {
+  current(): ApprovedStationConnectionTrust | null;
+  isCurrent(value: ApprovedStationConnectionTrust): boolean;
+  recheck(
+    value: ApprovedStationConnectionTrust,
+    stage: 'checkpoint' | 'before-remote-description',
+  ): Promise<boolean>;
+}
+
+/** Reads current host-owned routing and signing trust without allocating a peer. */
+export async function createNativeRelayBindingOwner(
+  options: Pick<
+    NativeRelaySignalingBridgeOptions,
+    | 'bindingCommand'
+    | 'bindingArguments'
+    | 'errorPrefix'
+    | 'profileName'
+    | 'profileRevision'
+    | 'invoke'
+  >,
+): Promise<{ binding: NativeRelayBindingDto; trust: NativeRelayTrustOwner }> {
+  const { bindingCommand, errorPrefix, profileName, profileRevision, invoke } =
+    options;
+  if (!profileName.trim() || !safeInteger(profileRevision))
+    throw new Error(`${errorPrefix}_profile_invalid`);
+  const request = { profileName, expectedProfileRevision: profileRevision };
+  const fetchBinding = async () =>
+    validateNativeRelayBinding(
+      (await invoke.invoke(
+        bindingCommand,
+        options.bindingArguments === 'flat' ? request : { request },
+      )) as NativeRelayBindingDto,
+      profileName,
+      profileRevision,
+      errorPrefix,
+    );
+  const initialValue = await fetchBinding();
+  const initial = Object.freeze({
+    ...initialValue,
+    scope: Object.freeze({ ...initialValue.scope }),
+    surface: Object.freeze({ ...initialValue.surface }),
+    signingKey: Object.freeze({ ...initialValue.signingKey }),
+  });
+  const trust: ApprovedStationConnectionTrust = Object.freeze({
+    stationId: initial.stationId,
+    enrollmentId: initial.enrollmentId,
+    generation: initial.generation,
+    signingKey: Object.freeze({ ...initial.signingKey }),
+  });
+  let current: ApprovedStationConnectionTrust | null = trust;
+  return {
+    binding: initial,
+    trust: {
+      current: () => current,
+      isCurrent: (expected) => !!current && sameTrust(current, expected),
+      async recheck(
+        expected,
+        _stage: 'checkpoint' | 'before-remote-description',
+      ) {
+        try {
+          const fresh = await fetchBinding();
+          const same =
+            fresh.trustRevision === initial.trustRevision &&
+            fresh.scope.routingGeneration === initial.scope.routingGeneration &&
+            JSON.stringify(fresh.surface) === JSON.stringify(initial.surface) &&
+            sameTrust(
+              {
+                stationId: fresh.stationId,
+                enrollmentId: fresh.enrollmentId,
+                generation: fresh.generation,
+                signingKey: fresh.signingKey,
+              },
+              expected,
+            );
+          current = same ? trust : null;
+          return same;
+        } catch {
+          current = null;
+          return false;
+        }
+      },
+    },
+  };
 }
 
 /**
@@ -115,17 +201,9 @@ export async function createNativeRelaySignalingBridge(
   options: NativeRelaySignalingBridgeOptions,
 ): Promise<{
   signaling: NativeDiagnosticSignaling;
-  trust: {
-    current(): ApprovedStationConnectionTrust | null;
-    isCurrent(value: ApprovedStationConnectionTrust): boolean;
-    recheck(
-      value: ApprovedStationConnectionTrust,
-      stage: 'checkpoint' | 'before-remote-description',
-    ): Promise<boolean>;
-  };
+  trust: NativeRelayTrustOwner;
 }> {
   const {
-    bindingCommand,
     openCommand,
     readCommand,
     errorPrefix,
@@ -133,26 +211,9 @@ export async function createNativeRelaySignalingBridge(
     profileRevision,
     invoke,
   } = options;
-  if (!profileName.trim() || !safeInteger(profileRevision))
-    throw new Error(`${errorPrefix}_profile_invalid`);
   const request = { profileName, expectedProfileRevision: profileRevision };
-  const fetchBinding = async () =>
-    validateNativeRelayBinding(
-      (await invoke.invoke(bindingCommand, {
-        request,
-      })) as NativeRelayBindingDto,
-      profileName,
-      profileRevision,
-      errorPrefix,
-    );
-  const initial = await fetchBinding();
-  const trust: ApprovedStationConnectionTrust = Object.freeze({
-    stationId: initial.stationId,
-    enrollmentId: initial.enrollmentId,
-    generation: initial.generation,
-    signingKey: Object.freeze({ ...initial.signingKey }),
-  });
-  let current: ApprovedStationConnectionTrust | null = trust;
+  const { binding: initial, trust } =
+    await createNativeRelayBindingOwner(options);
   const signaling: NativeDiagnosticSignaling = Object.freeze({
     scope: Object.freeze({ ...initial.scope }),
     surface: Object.freeze({ ...initial.surface }),
@@ -220,35 +281,6 @@ export async function createNativeRelaySignalingBridge(
   });
   return {
     signaling,
-    trust: {
-      current: () => current,
-      isCurrent: (expected) => !!current && sameTrust(current, expected),
-      async recheck(
-        expected,
-        _stage: 'checkpoint' | 'before-remote-description',
-      ) {
-        try {
-          const fresh = await fetchBinding();
-          const same =
-            fresh.trustRevision === initial.trustRevision &&
-            fresh.scope.routingGeneration === initial.scope.routingGeneration &&
-            JSON.stringify(fresh.surface) === JSON.stringify(initial.surface) &&
-            sameTrust(
-              {
-                stationId: fresh.stationId,
-                enrollmentId: fresh.enrollmentId,
-                generation: fresh.generation,
-                signingKey: fresh.signingKey,
-              },
-              expected,
-            );
-          current = same ? trust : null;
-          return same;
-        } catch {
-          current = null;
-          return false;
-        }
-      },
-    },
+    trust,
   };
 }
