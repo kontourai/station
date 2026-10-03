@@ -25,6 +25,7 @@ import {
   NativeRelayGrantStatusError,
   nativeRelayGrantAdapter,
 } from './nativeRelayGrantAdapter';
+import { publishNativeRelaySetupChange } from './nativeRelaySetupState';
 import { nativeRelayKeyApproval } from './relayKeyApproval';
 import '../../views/connections-hub/ComputersSection.css';
 
@@ -188,13 +189,15 @@ function Review({
         throw new Error('Saved connections need review.');
       }
       step = 'host-redemption';
-      const result = await nativeRelayGrantAdapter.redeemLinked({
-        pendingId: delivery.pendingId,
-        profileName: profile.name,
-        expectedUpdatedAt: profile.updatedAt,
-        expectedProfileRevision: status.profileRevision,
-        expectedRoute: selection.expectedRoute,
-      });
+      const result = await nativeRelayGrantAdapter
+        .redeemLinked({
+          pendingId: delivery.pendingId,
+          profileName: profile.name,
+          expectedUpdatedAt: profile.updatedAt,
+          expectedProfileRevision: status.profileRevision,
+          expectedRoute: selection.expectedRoute,
+        })
+        .finally(() => publishNativeRelaySetupChange(profile.name));
       if (!active.current) return;
       if (result.status === 'failed') {
         setRoutingFailure(result.failure.primary);
@@ -220,7 +223,11 @@ function Review({
         setError(
           code === 'saved-connections-require-review'
             ? 'A connection is already saved on this device. Review it before using this invitation.'
-            : 'The connection wasn’t confirmed. Close this screen and check the Station’s status before using another invitation.',
+            : code === 'grant-status-ambiguous'
+              ? 'More than one connection is saved on this device. Review and remove them before using this invitation.'
+              : code === 'connection-cleanup-pending'
+                ? 'A previous connection cleanup still needs attention. Review saved connections before continuing.'
+                : 'The connection wasn’t confirmed. Close this screen and check the Station’s status before using another invitation.',
         );
       }
     } finally {

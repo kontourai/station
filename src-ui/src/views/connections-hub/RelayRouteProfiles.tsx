@@ -28,6 +28,10 @@ import {
   nativeRelayGrantAdapter,
 } from '../../platform/native/nativeRelayGrantAdapter';
 import { MAX_NATIVE_RELAY_ROUTES_TO_SUPERVISE } from '../../platform/native/nativeRelayGrantRenewalSupervisor';
+import {
+  publishNativeRelaySetupChange,
+  subscribeNativeRelaySetupState,
+} from '../../platform/native/nativeRelaySetupState';
 import { nativeRelayKeyApproval } from '../../platform/native/relayKeyApproval';
 import {
   nativeProfileRepository,
@@ -227,7 +231,7 @@ function NativeRelayGrantControls({
       if (result.status === 'failed') throw new Error(result.failure.primary);
       return result;
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey }),
+    onSettled: () => publishNativeRelaySetupChange(profile.name),
     onError: (cause) => {
       const code = cause instanceof Error ? cause.message : 'statusUnavailable';
       setError(
@@ -741,6 +745,20 @@ export function RelayRouteProfiles({
 } = {}) {
   const { isTauri, channel, pairingDeepLinkScheme } = usePlatformProfile();
   const repository = isTauri ? nativeProfileRepository() : null;
+  const queryClient = useQueryClient();
+  useEffect(() => {
+    if (!repository) return;
+    return subscribeNativeRelaySetupState((profileName) => {
+      void queryClient.invalidateQueries({
+        predicate: ({ queryKey }) =>
+          (queryKey[0] === 'native-relay-key-approval' ||
+            queryKey[0] === 'native-relay-grant' ||
+            queryKey[0] === 'native-relay-enrollment-recovery') &&
+          typeof queryKey[1] === 'string' &&
+          queryKey[1].toLowerCase() === profileName.toLowerCase(),
+      });
+    });
+  }, [queryClient, repository]);
   const connectionContext = useConnections();
   const evidence = connectionContext.captureCredentialEvidence();
   const requestScope = useHostRequestAuthorityScope();

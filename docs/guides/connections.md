@@ -250,6 +250,13 @@ If a connection is already saved, the next invitation stops before redemption
 and offers a review of those saved connections. Removing them requires an
 explicit confirmation; the new invitation is not consumed during review.
 
+Station confirmation and connection changes made in the invitation dialog
+refresh **Your Stations** automatically. The card rechecks native host state
+after setup operations settle, including an uncertain or late reply. Closing
+the dialog preserves the mounted application and its selected Station and
+account session. A refreshed card does not select a Station, approve a Device
+or grant account or Project access.
+
 The saved Station card shows that the connection invitation is stored on this
 device. Its collapsed expiry details describe the local credential; they do not
 show whether the Station is online or the connection will work.

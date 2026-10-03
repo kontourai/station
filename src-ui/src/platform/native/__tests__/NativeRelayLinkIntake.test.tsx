@@ -2,6 +2,7 @@
 import type { StationProfileStore } from '@kontourai/station-contracts';
 import type { NativeRelayLinkDelivery } from '@kontourai/station-contracts/native-relay-link';
 import { emptyStationProfileStore } from '@kontourai/station-contracts/station-profile';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   act,
   cleanup,
@@ -9,6 +10,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
 import { StrictMode, useEffect } from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
@@ -42,6 +44,14 @@ vi.mock('../../PlatformProfileContext', () => ({
     return host.repository;
   },
 }));
+vi.mock('@kontourai/station-connect', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@kontourai/station-connect')>()),
+  useConnections: () => ({
+    connections: [],
+    captureCredentialEvidence: () => null,
+    isCredentialEvidenceCurrent: () => false,
+  }),
+}));
 vi.mock(
   '@kontourai/station-connect/connection-trust',
   async (importOriginal) => ({
@@ -55,6 +65,7 @@ vi.mock(
   }),
 );
 
+import { RelayRouteProfiles } from '../../../views/connections-hub/RelayRouteProfiles';
 import { NativeRelayLinkIntake } from '../NativeRelayLinkIntake';
 
 const route = {
@@ -625,6 +636,99 @@ it.each([8, 9])(
   },
 );
 
+it.each(['confirmed', 'lost-reply', 'late-reply'] as const)(
+  'warm invitation %s refreshes the mounted Your Stations owner after Station confirmation and grant settlement',
+  async (outcome) => {
+    const { bound, code, keyId } = await configureBoundFlow();
+    host.launch = null;
+    const original = host.invoke.getMockImplementation();
+    let releaseReply: (() => void) | undefined;
+    if (outcome !== 'confirmed') {
+      host.invoke.mockImplementation(async (command, args) => {
+        const result = await original?.(command, args);
+        if (command === 'station_native_relay_link_redeem') {
+          if (outcome === 'lost-reply')
+            throw new Error('private-native-transport-error');
+          await new Promise<void>((resolve) => {
+            releaseReply = resolve;
+          });
+        }
+        return result;
+      });
+    }
+    const mainClient = new QueryClient({
+      defaultOptions: {
+        queries: {
+          retry: false,
+          staleTime: Infinity,
+          refetchOnWindowFocus: false,
+        },
+      },
+    });
+    render(
+      <NativeRelayLinkIntake>
+        <QueryClientProvider client={mainClient}>
+          <ProtectedRoot />
+          <RelayRouteProfiles />
+        </QueryClientProvider>
+      </NativeRelayLinkIntake>,
+    );
+    await screen.findByText('Station needs confirmation');
+    await screen.findByText('Connection invitation needed.');
+    const originalHeading = screen.getByRole('heading', {
+      name: 'Your Stations',
+    });
+    await emit(bound);
+    const modal = within(await screen.findByRole('dialog'));
+    fireEvent.click(
+      await modal.findByRole('button', { name: 'Share device details' }),
+    );
+    fireEvent.click(
+      await modal.findByRole('button', { name: 'Check this Station' }),
+    );
+    await modal.findByRole('button', { name: 'Confirm Station' });
+    fireEvent.change(modal.getByLabelText('Operator comparison code'), {
+      target: { value: code },
+    });
+    fireEvent.change(
+      modal.getByLabelText('Full key ID confirmed by operator'),
+      { target: { value: keyId } },
+    );
+    fireEvent.click(modal.getByRole('checkbox'));
+    fireEvent.click(modal.getByRole('button', { name: 'Confirm Station' }));
+    await screen.findByText('Station confirmed. Device access comes next.');
+    fireEvent.click(
+      modal.getByRole('button', { name: 'Continue to device approval' }),
+    );
+    if (outcome === 'late-reply') {
+      await waitFor(() => expect(releaseReply).toBeTypeOf('function'));
+      fireEvent.click(modal.getByRole('button', { name: 'Close' }));
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+      await act(async () => releaseReply?.());
+    } else {
+      await modal.findByText(
+        outcome === 'confirmed'
+          ? 'Connection invitation accepted. The Station owner still needs to approve this device.'
+          : 'The connection wasn’t confirmed. Close this screen and check the Station’s status before using another invitation.',
+      );
+      fireEvent.click(modal.getByRole('button', { name: 'Close' }));
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    }
+    await screen.findByText(/Invitation saved on this device/);
+    expect(screen.queryByText('Station needs confirmation')).toBeNull();
+    expect(screen.queryByText('Connection invitation needed.')).toBeNull();
+    expect(screen.getByText('Station confirmed')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Your Stations' })).toBe(
+      originalHeading,
+    );
+    expect(host.retired).not.toHaveBeenCalled();
+    expect(host.account).toBe('opaque-account-session');
+    expect(document.body.textContent).not.toContain(
+      'private-native-transport-error',
+    );
+  },
+);
+
 it.each(['observed', 'pending', 'changed', 'unsafe-preview'] as const)(
   'explicit connection reset uses validated management metadata and preserves refusal for %s',
   async (outcome) => {
@@ -877,6 +981,12 @@ it.each([
       }),
     );
     await screen.findByText(`Connection error: grant-status-${code}`);
+    if (code === 'ambiguous')
+      expect(
+        screen.getByText(
+          /More than one connection is saved on this device. Review and remove them/,
+        ),
+      ).toBeTruthy();
     expect(screen.getByText('Connection step: grant-status')).toBeTruthy();
     expect(document.body.textContent).not.toContain(trap);
     expect(screen.queryByText(/Connection invitation accepted/)).toBeNull();

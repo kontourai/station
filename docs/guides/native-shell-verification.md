@@ -68,6 +68,13 @@ before redemption, accepted grant write/readback, exact retirement/cleanup,
 then status after deletion. Missing records and unavailable/locked storage must
 remain distinct. Retain the artifact SHA, app identity and native evidence;
 an in-memory backend or host typecheck cannot qualify mobile custody.
+A warm invitation review uses a separate query client from **Your Stations**.
+Qualification must confirm that Station confirmation, redemption and cleanup
+refresh the existing card after dialog dismissal, including uncertain and late
+replies, without remounting the application or changing its selected Station
+and account session. The refresh hint is profile metadata only; visible status
+still comes from a fresh validated native-host read. Mounted UI tests establish
+this frontend boundary, not installed iOS qualification.
 Before linked redemption, optional connection troubleshooting can classify a
 refused grant-status response as shape, profile, route, ambiguous, scope,
 metadata or cleanup. Unrecognized invoke failures report `unknown`; the existing

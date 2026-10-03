@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useId, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import { cancelNativeRelayLink } from '../../platform/native/nativeRelayLinkAdapter';
+import { publishNativeRelaySetupChange } from '../../platform/native/nativeRelaySetupState';
 import {
   nativeRelayKeyApproval,
   type RelayKeyApprovalSurface,
@@ -83,6 +84,7 @@ export function RelayRouteKeyApproval({
     ]);
   };
   const begin = useMutation({
+    onSettled: () => publishNativeRelaySetupChange(profileName),
     mutationFn: (attemptId: number) => {
       if (linkedInvitation) {
         if (
@@ -132,6 +134,7 @@ export function RelayRouteKeyApproval({
     },
   });
   const cancel = useMutation({
+    onSettled: () => publishNativeRelaySetupChange(profileName),
     mutationFn: () =>
       linkedInvitation
         ? cancelNativeRelayLink(linkedInvitation.pendingId)
@@ -168,6 +171,7 @@ export function RelayRouteKeyApproval({
       ),
   });
   const approve = useMutation({
+    onSettled: () => publishNativeRelaySetupChange(profileName),
     mutationFn: ({
       candidate,
       normalizedCode,
@@ -202,6 +206,7 @@ export function RelayRouteKeyApproval({
     },
   });
   const revoke = useMutation({
+    onSettled: () => publishNativeRelaySetupChange(profileName),
     mutationFn: (input: { expectedTrustRevision: number; fullKeyId: string }) =>
       nativeRelayKeyApproval.revoke({
         profileName,

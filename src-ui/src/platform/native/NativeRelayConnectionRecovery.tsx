@@ -5,6 +5,7 @@ import {
   type NativeRelayGrantAdapter,
   nativeRelayGrantAdapter,
 } from './nativeRelayGrantAdapter';
+import { publishNativeRelaySetupChange } from './nativeRelaySetupState';
 
 export function NativeRelayConnectionRecovery({
   selection,
@@ -19,6 +20,7 @@ export function NativeRelayConnectionRecovery({
     mutationFn: () => nativeRelayGrantAdapter.recoveryPreview(selection),
   });
   const reset = useMutation({
+    onSettled: () => publishNativeRelaySetupChange(selection.profileName),
     mutationFn: () => {
       if (!preview.data) throw new Error('Recovery preview is unavailable.');
       return nativeRelayGrantAdapter.resetConnectionInvitation({
