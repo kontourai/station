@@ -18,7 +18,7 @@ export function RelaySetupHelp({
       placement={placement}
       className="relay-setup-help"
       trigger={
-        <Tooltip label={label} placement="bottom">
+        <Tooltip label={label} placement="left">
           <Button
             variant="ghost"
             className="relay-setup-help__trigger"

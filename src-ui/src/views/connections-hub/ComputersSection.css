@@ -425,3 +425,25 @@
 .native-relay-setup .button:hover:not(:disabled) {
   box-shadow: none;
 }
+
+.relay-setup-help:has(.popover__panel) .tooltip {
+  display: none;
+}
+.native-relay-member-shell {
+  height: 100dvh;
+  overflow: auto;
+  padding: var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left);
+}
+.native-relay-member-shell .theme-toggle {
+  min-width: 44px;
+  min-height: 44px;
+  color: var(--k-text-muted);
+  border-radius: var(--k-radius-control);
+}
+.native-relay-member-shell .theme-toggle:focus-visible {
+  outline: var(--k-border-thick) solid var(--k-focus);
+  outline-offset: var(--k-border-thick);
+}
+.native-relay-setup [role="alert"] {
+  color: var(--k-negative);
+}

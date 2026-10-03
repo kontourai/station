@@ -14,6 +14,7 @@ import {
 } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
+import { ThemeToggle } from '../../components/header/ThemeToggle';
 import { PageFrame } from '../../components/page-frame';
 import { Empty, ErrorState, SkeletonBlock } from '../../components/state';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
@@ -306,7 +307,11 @@ function NativeRelayMemberContent() {
   if (!route) return null;
   return (
     <PageFrame
-      spec={{ title: activeConnection.name, width: 'full' }}
+      spec={{
+        title: activeConnection.name,
+        width: 'full',
+        actions: <ThemeToggle />,
+      }}
       routeIdentity={`native-relay:${activeConnection.id}`}
     >
       <main className="project-page">
@@ -358,7 +363,9 @@ export function NativeRelayMemberShell() {
     <LocaleProvider>
       <NavigationProvider>
         <ToastProvider>
-          <NativeRelayMemberContent />
+          <div className="native-relay-member-shell native-relay-setup">
+            <NativeRelayMemberContent />
+          </div>
         </ToastProvider>
       </NavigationProvider>
     </LocaleProvider>

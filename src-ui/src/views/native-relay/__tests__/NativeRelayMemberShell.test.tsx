@@ -298,7 +298,7 @@ it('reads published task content through the real member SDK without starting op
   );
   expect(fetch).not.toHaveBeenCalled();
 });
-it('keeps accountless native recovery open without any protected or operator request', () => {
+it('keeps accountless recovery and device theme controls open without protected or operator requests', () => {
   state.scope = null;
   render(<NativeRelayMemberShell />);
   expect(
@@ -308,6 +308,15 @@ it('keeps accountless native recovery open without any protected or operator req
   expect(
     screen.getByText('Finish the steps above to see your shared projects.'),
   ).toBeDefined();
+  const previousTheme = document.documentElement.dataset.theme;
+  fireEvent.click(
+    screen.getByRole('button', { name: /Switch to (light|dark) mode/ }),
+  );
+  expect(document.documentElement.dataset.theme).not.toBe(previousTheme);
+  fireEvent.click(
+    screen.getByRole('button', { name: `Switch to ${previousTheme} mode` }),
+  );
+  expect(document.documentElement.dataset.theme).toBe(previousTheme);
   expect(state.transport).not.toHaveBeenCalled();
   expect(fetch).not.toHaveBeenCalled();
 });
