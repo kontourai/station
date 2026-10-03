@@ -43,3 +43,7 @@ c7b354a90db1e78e1203e2bff4e2bf9e1408fe29:src-desktop/src/native_station_key_cust
 # locations; the current source assembles them from parts. Not credentials.
 66b88eb51bc2a35979ec3a3274eebbbb734ad6f0:src-server/services/remote-stations/__tests__/remote-station-forwarder.test.ts:generic-api-key:14
 66b88eb51bc2a35979ec3a3274eebbbb734ad6f0:src-server/runtime/routes/__tests__/runtime-routes-peer-bearer-unreachable.test.ts:generic-api-key:59
+
+# #3176: owner-attested synthetic public provider identity, not a credential.
+# Exact historical location only; fresh-context control remains detected.
+0814cc6ddb168cff69e5572b185a853540a4f6e0:src-server/routes/plugins/__tests__/registry-marketplaces.routes.test.ts:generic-api-key:430

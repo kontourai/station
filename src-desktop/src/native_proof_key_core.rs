@@ -96,9 +96,13 @@ impl KeyringSecretBackend {
         Self(service)
     }
 
-    fn entry(&self, account: &str) -> ProofKeyResult<keyring_core::Entry> {
+    fn entry(
+        &self,
+        account: &str,
+    ) -> ProofKeyResult<crate::native_secure_entry::NativeSecureEntry> {
         super::initialize_credential_store().map_err(|_| ProofKeyError::Store)?;
-        keyring_core::Entry::new(self.0, account).map_err(|_| ProofKeyError::Store)
+        crate::native_secure_entry::NativeSecureEntry::new(self.0, account)
+            .map_err(|_| ProofKeyError::Store)
     }
 }
 

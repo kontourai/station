@@ -27,8 +27,39 @@ returned as a `PreToolUse` allow. After a hook allow, Claude Code 2.1.278
 ask rules, safety checks and user-interaction tools, so the allow would have
 skipped its working-directory check. The hook states no
 opinion, and the engine asks `canUseTool` for anything it does not allow
-itself. On ACP, a `toolGrant` allow or pattern match never answers a plan exit
-(`switch_mode` kind or `ExitPlanMode`). A session answer to an ACP plan exit is
+itself.
+
+An approval-guardian allow is handled the same way (#2947). The guardian is
+shown the Agent's name, the tool's name and the call's arguments. On ACP it
+is also shown the call's title as the tool description; the Claude hook
+passes no description. It is not shown the session's working directories, its permission
+mode, or why the engine would ask, so its allow speaks for the call as
+written and not for an escalation. On Claude Code the hook states no opinion
+for a guardian allow, and the adapter keeps the allow under the engine's
+tool-use id, with the tool's name and a digest of the input the guardian
+reviewed (SHA-256 of the input's JSON with object keys sorted). If the engine
+then asks `canUseTool` about that call of that tool with the same input, the
+allow answers it only where `toolRequestIsPlainCall` holds, and it is used
+once. A different input, which another `PreToolUse` hook's `updatedInput` can
+produce, consumes the allow without using it, and the request prompts. A
+chained Bash command is a plain call, so a guardian allow answers it,
+including what the chained-command gaps below leave invisible. When an allow
+is not applied the adapter logs that and why. An escalation, a plan exit or a question reaches a person, and a
+call the engine allows itself never consults the allow. The guardian is asked
+once per call. At most 256 unanswered allows are kept per session; beyond
+that the oldest is dropped, and a call whose allow was dropped prompts. A
+guardian deny (enforce mode) is still a `PreToolUse` deny. What a hook allow
+skipped was read in the bundled 2.1.278 binary and not reproduced in a live
+session: after one the engine re-checks deny rules, ask rules, user-interaction
+tools, safety checks, the MCP organization ceiling and a sandbox override, and
+nothing else, so a working-directory ask and a plan-mode refusal were skipped.
+
+On ACP, no staged-evaluator allow (a `toolGrant`, a pattern match or a
+guardian allow) answers a request addressed to a person
+(`toolRequestNeedsPerson`: a plan exit by `switch_mode` kind or
+`ExitPlanMode`, `AskUserQuestion`, `SandboxNetworkAccess`). ACP reports no
+other escalation signal, so there a guardian allow still answers every other
+call. A session answer to an ACP plan exit is
 an `accept` and mints no Station session grant. Its response mapper prefers
 `allow_once` but falls back to `allow_always` when that is the only allow option,
 so Station cannot guarantee one-call behavior in that agent;
