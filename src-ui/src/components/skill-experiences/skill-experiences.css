@@ -102,6 +102,9 @@
   gap: var(--k-space-2);
 }
 
+.chat-dock__content-area {
+  container-type: inline-size;
+}
 .skill-experience-workspace {
   display: flex;
   flex-direction: column;
@@ -118,7 +121,7 @@
   max-height: 35vh;
   overflow: auto;
 }
-@media (min-width: 768px) {
+@container (min-width: 768px) {
   .skill-experience-workspace[data-presentation="alongside"] {
     flex-direction: row;
   }

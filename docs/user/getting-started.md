@@ -173,6 +173,15 @@ available. **Browse marketplaces** opens Registry while retaining the picker
 inputs and choices. Return or browser Back refetches the inventory and setup;
 it never installs a plugin or starts the skill automatically.
 
+A source can declare other named stages or a rich view. Preparing a named stage
+keeps this conversation and checks the same installed package. **Open declared
+rich view** uses its existing workspace pane occurrence and isolated host;
+when the pane, source or permission is unavailable, the guided controls remain
+available. Rich views can answer current nonsecret question rounds and prepare
+an unsent next stage. Secret questions and tool approvals use the ordinary
+conversation controls.
+
+
 ### Finish setup and return
 
 If New Chat offers **Connect**, **Set up**, **Edit agent**, or **Set up

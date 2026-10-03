@@ -37,6 +37,7 @@ import type { HarnessQuestionAnswers } from '@kontourai/station-contracts/harnes
  * of being replaced with a generic status message.
  */
 import type { AdoptedSessionResult } from '@kontourai/station-contracts/orchestration';
+import type { SkillExperienceIdentityV1 } from '@kontourai/station-contracts/skill-experience';
 import { envelopeError } from './api-error-message';
 import {
   type ClientRequestOptions,
@@ -87,6 +88,10 @@ export type ApprovalDecision =
   | 'cancel';
 
 export interface RespondToRequestInput {
+  expectedSkillExperience?: {
+    identity: SkillExperienceIdentityV1;
+    eventId: string;
+  };
   threadId: string;
   requestId: string;
   expectedRequestEventId?: string;

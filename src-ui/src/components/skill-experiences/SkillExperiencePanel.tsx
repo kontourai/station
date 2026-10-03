@@ -1,7 +1,11 @@
-import { useSkillExperienceSessionQuery } from '@kontourai/station-sdk';
+import {
+  useSkillExperienceInventoryQuery,
+  useSkillExperienceSessionQuery,
+} from '@kontourai/station-sdk';
 import {
   skillExperienceInputDefaults,
   skillExperienceInputErrors,
+  skillExperiencesCanExecute,
 } from '@kontourai/station-shared/skill-experience-values';
 import { useState } from 'react';
 import {
@@ -12,11 +16,18 @@ import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useAuthorityPersistence } from '../../contexts/AuthorityPersistenceContext';
 import type { ChatSession } from '../../types';
 import { Button } from '../Button';
+import { LazyBoundary } from '../LazyBoundary';
 import { SkillExperienceForm } from './SkillExperienceForm';
 import './skill-experiences.css';
 
+const loadRichExperiencePane = () =>
+  import('./RichExperiencePane').then((module) => ({
+    default: module.RichExperiencePane,
+  }));
+
 export function SkillExperiencePanel({ session }: { session: ChatSession }) {
   const { updateChat } = useActiveChatActions();
+  const [richOpened, setRichOpened] = useState(false);
   const authority = useHostRequestAuthorityScope();
   const { namespace, status } = useAuthorityPersistence();
   const threadId = session.currentSessionId ?? session.conversationId;
@@ -44,6 +55,11 @@ export function SkillExperiencePanel({ session }: { session: ChatSession }) {
   const invocation = view.data?.current;
   const snapshot = invocation?.snapshot;
   const definition = draft?.definition ?? snapshot?.definition;
+  const stages = useSkillExperienceInventoryQuery({
+    enabled: Boolean(snapshot?.definition.transitions?.length),
+    refetchOnMount: 'always',
+  });
+
   const mode =
     session.skillExperienceMode ??
     definition?.presentation.defaultMode ??
@@ -174,7 +190,8 @@ export function SkillExperiencePanel({ session }: { session: ChatSession }) {
                   )
                     return;
                   updateChat(session.id, {
-                    input: `Continue ${snapshot.definition.title}.`,
+                    input:
+                      session.input || `Continue ${snapshot.definition.title}.`,
                     skillExperienceDraft: {
                       namespace,
                       apiBase: authority.apiBase,
@@ -192,7 +209,101 @@ export function SkillExperiencePanel({ session }: { session: ChatSession }) {
               >
                 Prepare another stage in this conversation
               </Button>
+              {!!snapshot?.definition.transitions?.length && (
+                <div className="skill-experience-panel__actions">
+                  {stages.error && (
+                    <p role="alert">
+                      The available stages could not be checked.{' '}
+                      <Button onClick={() => void stages.refetch()}>
+                        Retry stages
+                      </Button>
+                    </p>
+                  )}
+                  {snapshot.definition.transitions.map((stage) => {
+                    const selected = stages.data?.experiences.find(
+                      (entry) =>
+                        entry.definition.id === stage.experienceId &&
+                        entry.identity.pluginId ===
+                          snapshot.identity.pluginId &&
+                        entry.identity.pluginVersion ===
+                          snapshot.identity.pluginVersion &&
+                        entry.identity.incarnation ===
+                          snapshot.identity.incarnation &&
+                        entry.identity.materialization ===
+                          snapshot.identity.materialization &&
+                        entry.identity.contentDigest ===
+                          snapshot.identity.contentDigest,
+                    );
+                    return (
+                      <Button
+                        key={stage.experienceId}
+                        disabled={
+                          !selected ||
+                          !skillExperiencesCanExecute(stages.data) ||
+                          stages.isFetching ||
+                          Boolean(stages.error) ||
+                          invocation?.availability.status !== 'available' ||
+                          !authority?.isCurrent() ||
+                          status !== 'verified' ||
+                          !namespace
+                        }
+                        onClick={() => {
+                          if (
+                            !selected ||
+                            !invocation ||
+                            !authority?.isCurrent() ||
+                            !namespace
+                          )
+                            return;
+                          updateChat(session.id, {
+                            input:
+                              session.input ||
+                              `Continue ${selected.definition.title}.`,
+                            skillExperienceMode:
+                              selected.definition.presentation.defaultMode,
+                            skillExperienceDraft: {
+                              namespace,
+                              apiBase: authority.apiBase,
+                              definition: selected.definition,
+                              start: {
+                                identity: selected.identity,
+                                inputs: skillExperienceInputDefaults(
+                                  selected.definition,
+                                ),
+                                expectedPreviousInvocationEventId:
+                                  invocation.eventId,
+                              },
+                            },
+                          });
+                        }}
+                      >
+                        Prepare {stage.label}
+                      </Button>
+                    );
+                  })}
+                </div>
+              )}
             </>
+          )}
+        </>
+      )}
+      {snapshot?.definition.presentation.richView && invocation && (
+        <>
+          <Button onClick={() => setRichOpened(true)}>
+            Open declared rich view
+          </Button>
+          {richOpened && (
+            <div hidden={mode === 'chat'}>
+              <LazyBoundary
+                load={loadRichExperiencePane}
+                componentProps={{
+                  session,
+                  invocation,
+                  active: mode !== 'chat',
+                }}
+                pending={<p role="status">Loading declared rich view…</p>}
+              />
+            </div>
           )}
         </>
       )}

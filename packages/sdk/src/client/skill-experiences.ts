@@ -1,4 +1,5 @@
 import type {
+  SkillExperienceIdentityV1,
   SkillExperienceInventoryV1,
   SkillExperienceSessionViewV1,
 } from '@kontourai/station-contracts/skill-experience';
@@ -61,13 +62,25 @@ export async function fetchSkillExperienceSession(
   apiBase: string,
   threadId: string,
   cursor?: string,
-  opts?: ClientRequestOptions,
+  opts?: ClientRequestOptions & {
+    expectedSkillExperience?: {
+      identity: SkillExperienceIdentityV1;
+      eventId: string;
+    };
+  },
 ): Promise<SkillExperienceSessionViewV1> {
-  const query = cursor ? `?cursor=${encodeURIComponent(cursor)}` : '';
+  const { expectedSkillExperience, ...requestOptions } = opts ?? {};
+  const query = new URLSearchParams();
+  if (cursor) query.set('cursor', cursor);
+  if (expectedSkillExperience)
+    query.set(
+      'expectedSkillExperience',
+      JSON.stringify(expectedSkillExperience),
+    );
   return read(
     await getJson(
-      `${apiBase}/api/orchestration/sessions/${encodeURIComponent(threadId)}/skill-experience${query}`,
-      opts,
+      `${apiBase}/api/orchestration/sessions/${encodeURIComponent(threadId)}/skill-experience${query.size ? `?${query}` : ''}`,
+      requestOptions,
     ),
     readSkillExperienceSession,
   );

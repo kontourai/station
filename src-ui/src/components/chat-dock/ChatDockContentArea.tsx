@@ -220,6 +220,7 @@ function ChatDockContentAreaImpl({
       >
         {activeSession && (
           <LazyBoundary
+            key={activeSession.id}
             load={loadSkillExperiencePanel}
             componentProps={{ session: activeSession }}
             pending={null}

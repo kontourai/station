@@ -198,6 +198,17 @@ describe('visual skill HTTP boundary', () => {
       fetchSkillExperienceSession('http://station.test', 'thread-1'),
     ).rejects.toThrow(/unsupported/);
   });
+  test('refuses a history page that claims older stages without a continuation cursor', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn<typeof fetch>()
+        .mockResolvedValue(response({ ...session, hasMore: true })),
+    );
+    await expect(
+      fetchSkillExperienceSession('http://station.test', 'thread-1'),
+    ).rejects.toThrow(/unsupported/);
+  });
   test('reads historical missing snapshots without treating them as execution authority', async () => {
     vi.stubGlobal(
       'fetch',
@@ -223,6 +234,54 @@ describe('visual skill HTTP boundary', () => {
       current: session.current,
       hasMore: true,
       nextCursor: 'older cursor',
+    });
+  });
+  test('binds a rich session read to the exact current invocation and preserves cursor encoding', async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(response(session));
+    vi.stubGlobal('fetch', fetchMock);
+    const expectedSkillExperience = {
+      identity: entry.identity,
+      eventId: 'event-1',
+    };
+    await fetchSkillExperienceSession(
+      'http://station.test',
+      'thread/1',
+      'older cursor',
+      { expectedSkillExperience },
+    );
+    const requested = new URL(String(fetchMock.mock.calls[0][0]));
+    expect(requested.pathname).toBe(
+      '/api/orchestration/sessions/thread%2F1/skill-experience',
+    );
+    expect(requested.searchParams.get('cursor')).toBe('older cursor');
+    expect(
+      JSON.parse(
+        requested.searchParams.get('expectedSkillExperience') ?? 'null',
+      ),
+    ).toEqual(expectedSkillExperience);
+  });
+  test('preserves a structured HTTP source refusal', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof fetch>().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            success: false,
+            error: 'The source was revoked.',
+            code: 'SOURCE_REVOKED',
+          }),
+          { status: 409 },
+        ),
+      ),
+    );
+    await expect(
+      fetchSkillExperienceSession('http://station.test', 'thread-1'),
+    ).rejects.toMatchObject({
+      status: 409,
+      code: 'SOURCE_REVOKED',
+      message: 'The source was revoked.',
     });
   });
   test('retains HTTP denial detail even when the body is not JSON', async () => {

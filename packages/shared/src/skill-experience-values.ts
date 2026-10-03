@@ -276,6 +276,7 @@ function sessionView(value: unknown): value is SkillExperienceSessionViewV1 {
     value.history.length <= 100 &&
     value.history.every(invocation) &&
     typeof value.hasMore === 'boolean' &&
+    (!value.hasMore || text(value.nextCursor)) &&
     (value.nextCursor === undefined || text(value.nextCursor))
   );
 }

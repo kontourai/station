@@ -58,7 +58,7 @@ import {
   ResponsiveDialogSurface,
 } from '../ResponsiveDialogSurface';
 import { ModelPickerDialogFrame } from '../session/ModelPickerDialogFrame';
-import { SkillExperienceForm } from '../skill-experiences/SkillExperienceForm';
+import { SkillExperiencePicker } from '../skill-experiences/SkillExperiencePicker';
 import { describeReadFailure, Empty, ErrorState, SkeletonList } from '../state';
 import { AutomaticEnginePreparation } from './AutomaticEnginePreparation';
 import {
@@ -1078,83 +1078,30 @@ export function NewChatModal({
         )}
 
         {!mode && !startWithDefault && !initialPrompt && (
-          <section
-            className="skill-experience-cards"
-            aria-label="Visual skills"
-          >
-            <h4>Visual skills</h4>
-            {experienceInventory.isPending ? (
-              <p role="status">Loading visual skills…</p>
-            ) : experienceInventory.error ? (
-              <p role="alert">
-                Visual skills could not be loaded.{' '}
-                <Button onClick={() => void experienceInventory.refetch()}>
-                  Retry
-                </Button>
-              </p>
-            ) : !experienceInventory.data?.experiences.length ? (
-              <p>No visual skills installed.</p>
-            ) : (
-              experienceInventory.data.experiences.map((entry) => (
-                <button
-                  key={`${entry.identity.pluginId}:${entry.definition.id}`}
-                  type="button"
-                  className="skill-experience-card"
-                  aria-pressed={experience === entry}
-                  onClick={() => {
-                    setExperience(entry);
-                    setExperienceInputs(
-                      skillExperienceInputDefaults(entry.definition),
-                    );
-                  }}
-                >
-                  <strong>{entry.definition.title}</strong>
-                  <span>{entry.definition.purpose}</span>
-                  <span>
-                    {entry.identity.pluginId} · {entry.identity.pluginVersion}
-                  </span>
-                </button>
-              ))
-            )}
-            {experience && (
-              <>
-                <p>{experience.definition.example}</p>
-                <SkillExperienceForm
-                  definition={experience.definition}
-                  values={experienceInputs}
-                  onChange={setExperienceInputs}
-                />
-                {!skillExperiencesCanExecute(experienceInventory.data) && (
-                  <p role="alert">
-                    This Station provides previews only. It cannot start visual
-                    skills.
-                  </p>
-                )}
-                {!currentExperience && (
-                  <p role="alert">
-                    The selected source changed or is unavailable. Choose it
-                    again; your inputs are retained.
-                  </p>
-                )}
-                <p>
-                  Choose an Agent below to prepare this skill in its chat
-                  composer. Attach required files there, then send explicitly.
-                </p>
-                <Button onClick={() => setExperience(null)}>
-                  Use ordinary chat
-                </Button>
-              </>
-            )}
-            <Button
-              onClick={() => {
-                preservedAgentSlug.current = flatList[selectedAgentIndex]?.slug;
-                preserveSetupContext.current = true;
-                setupReturn.begin('/registry');
-              }}
-            >
-              Browse marketplaces
-            </Button>
-          </section>
+          <SkillExperiencePicker
+            query={experienceInventory}
+            selected={experience}
+            current={Boolean(currentExperience)}
+            inputs={experienceInputs}
+            onChange={setExperienceInputs}
+            onSelect={(entry) => {
+              if (
+                experience &&
+                sameSkillExperienceIdentity(experience.identity, entry.identity)
+              )
+                return;
+              setExperience(entry);
+              setExperienceInputs(
+                skillExperienceInputDefaults(entry.definition),
+              );
+            }}
+            onRemove={() => setExperience(null)}
+            onBrowse={() => {
+              preservedAgentSlug.current = flatList[selectedAgentIndex]?.slug;
+              preserveSetupContext.current = true;
+              setupReturn.begin('/registry');
+            }}
+          />
         )}
 
         {/* Context picker */}

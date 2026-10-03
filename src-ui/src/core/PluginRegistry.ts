@@ -12,6 +12,7 @@ import {
 } from '@kontourai/station-sdk';
 import { createElement } from 'react';
 import { isolatedPluginLayout } from '../components/plugins/isolatedPluginLayout';
+import type { PluginFrameHostProps } from '../components/plugins/PluginFrameHost';
 import { nativePlatformPromise } from '../platform/native';
 import { resolveCspNonce } from '../utils/csp';
 import { log } from '../utils/logger';
@@ -63,6 +64,10 @@ interface RegisteredPluginLayout {
   readonly owner: PluginLayoutOwner;
   readonly isolated?: boolean;
   isolatedLayouts?: WeakMap<LayoutCatalogContribution, LayoutComponent>;
+  experienceLayouts?: WeakMap<
+    NonNullable<PluginFrameHostProps['skillExperience']>,
+    LayoutComponent
+  >;
   readonly plugin?: {
     readonly name: string;
     readonly declaredSlug: string;
@@ -888,6 +893,10 @@ export class PluginRegistry {
   getTrustedLayout(
     name: string,
     contribution: LayoutCatalogContribution | undefined,
+    experience?: Pick<
+      PluginFrameHostProps,
+      'skillExperience' | 'skillExperienceIdentity'
+    >,
   ): LayoutComponent | null {
     const registration = this.layouts.get(name);
     if (!registration || !contribution) return null;
@@ -897,10 +906,49 @@ export class PluginRegistry {
         owner,
         this.registryGeneration,
         contribution,
-        registration.isolated,
+        registration.isolated || Boolean(experience?.skillExperience),
       )
     )
       return null;
+    if (experience?.skillExperience) {
+      const identity = experience.skillExperienceIdentity;
+      if (
+        !identity ||
+        identity.pluginId !== owner.pluginId ||
+        identity.pluginVersion !== owner.version
+      )
+        return null;
+      const metadata = this.pluginMeta.get(owner.pluginId);
+      const plugin = registration.plugin ?? {
+        name: owner.pluginId,
+        declaredSlug: name,
+        granted: metadata?.permissions?.granted,
+      };
+      registration.experienceLayouts ??= new WeakMap();
+      const existing = registration.experienceLayouts.get(
+        experience.skillExperience,
+      );
+      if (existing) return existing;
+      const props: PluginFrameHostProps = {
+        plugin,
+        ...experience,
+        authorize: () =>
+          authorizesPluginLayout(
+            owner,
+            this.registryGeneration,
+            contribution,
+            true,
+          ),
+        onObservation: (exports) => {
+          if (!exports.includes(plugin.declaredSlug))
+            this.markIsolatedPluginFailed(plugin.name);
+        },
+        onFailure: () => this.markIsolatedPluginFailed(plugin.name),
+      };
+      const component: LayoutComponent = () => isolatedPluginLayout(props);
+      registration.experienceLayouts.set(experience.skillExperience, component);
+      return component;
+    }
     if (registration.isolated && registration.plugin) {
       // Preserve React component and callback identity across host renders.
       // Weak keys retain the exact authority binding without keeping retired

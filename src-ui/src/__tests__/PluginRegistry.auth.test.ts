@@ -154,6 +154,51 @@ describe('PluginRegistry remote authentication', () => {
       },
       provenance: { origin: 'plugin' as const, pluginId: 'remote-layout' },
     };
+    const capability = { read: vi.fn(), answer: vi.fn(), continue: vi.fn() };
+    const experienceIdentity = {
+      pluginId: 'remote-layout',
+      pluginVersion: '1.0.0',
+      experienceId: 'interview',
+      incarnation: 'installed-1',
+      materialization: 'materialization-1',
+      contentDigest: 'digest-1',
+      definitionDigest: 'definition-1',
+    };
+    const richLayout = registry.getTrustedLayout('remote-panel', contribution, {
+      skillExperience: capability,
+      skillExperienceIdentity: experienceIdentity,
+    });
+    expect(richLayout).not.toBeNull();
+    expect(
+      registry.getTrustedLayout('remote-panel', contribution, {
+        skillExperience: capability,
+        skillExperienceIdentity: experienceIdentity,
+      }),
+    ).toBe(richLayout);
+    expect(
+      registry.getTrustedLayout('remote-panel', contribution, {
+        skillExperience: { ...capability },
+        skillExperienceIdentity: experienceIdentity,
+      }),
+    ).not.toBe(richLayout);
+    expect(
+      registry.getTrustedLayout('remote-panel', contribution, {
+        skillExperience: capability,
+        skillExperienceIdentity: {
+          ...experienceIdentity,
+          pluginId: 'other-plugin',
+        },
+      }),
+    ).toBeNull();
+    expect(
+      registry.getTrustedLayout('remote-panel', contribution, {
+        skillExperience: capability,
+        skillExperienceIdentity: {
+          ...experienceIdentity,
+          pluginVersion: 'replacement-version',
+        },
+      }),
+    ).toBeNull();
     const layout = registry.getTrustedLayout('remote-panel', contribution);
     expect(layout).not.toBeNull();
     // A new component type on each lookup remounts the iframe on every host render.

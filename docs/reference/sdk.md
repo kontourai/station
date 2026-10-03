@@ -2199,6 +2199,29 @@ completion. See [Visual skill experiences](skill-experiences.md) for source and
 authoring boundaries. These source exports require a published SDK release
 before external consumers can import them.
 
+
+An explicitly declared `presentation.richView` can opt into the existing
+isolated plugin pane host. `createSkillExperiencePaneHost` from
+`@kontourai/station-sdk/workspace-pane` supplies occurrence-bound `read`,
+`answer` and `continue` methods. The shell fixes the conversation and source;
+plugin code cannot choose another thread. The read's `viewJson` preserves the
+public session projection and adds bounded nonsecret pending questionnaires
+with their exact request/event identities. It includes neither transcript
+contents, answers nor tool grants. Secret questions and tool approvals stay
+with canonical conversation controls.
+
+Rich session reads use the optional `expectedSkillExperience: { identity,
+eventId }` request option; rich answers carry that same precondition through
+`respondToRequest`. The server checks the current invocation and holds the
+fresh `agents.invoke` grant through the operation. Ordinary user controls omit
+that option. Rich continuation only prepares a declared stage and its inputs
+in the existing unsent chat draft; explicit composer Send remains the execution
+owner. The source-bound bundle request and current pane contribution must also
+qualify before the host transfers code. The frame supplies the nonsecret
+`window.__stationPaneHostOrigin` origin bootstrap; self-rendering pane code
+uses it with the SDK helper. This does not establish that arbitrary React
+component bundles can render in the isolated frame.
+
 ---
 
 ## Context Providers
