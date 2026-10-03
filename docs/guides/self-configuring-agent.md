@@ -64,6 +64,13 @@ Interrupting a delegated task follows the same scope as a follow-up to it.
 The same applies to the Session commands that act on another Session: steer
 and steer-input inspection, adopt, interrupt, stop and draft discard.
 
+A dispatch, delegation or follow-up from a caller that is not a bound operator
+cannot carry an approval mode. That covers `setApprovalMode` and the
+`approvalMode`, `mode`, `permissionMode` and `autoMode` model options, whatever
+their value. Station refuses such a request with
+`station_control_posture_not_allowed` rather than adjusting it. The Session
+runs with its Agent's saved default.
+
 Saved-Environment discovery and remote dispatch require a bound operator caller.
 Remote task listings, task reads, event reads, and interrupts carry the same
 restriction.
