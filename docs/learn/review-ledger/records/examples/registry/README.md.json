@@ -22,7 +22,7 @@
 
     {"path":"src-server/providers/registries/default-registry.ts","digest":"37610478ac1fcc60b9a777d7a9cbd05ee88f9f20b5d3ce57f5806907332600c8","revision":"ed05e6f6c98c5b2bb994a88ff8fa8e1421639269"},
 
-    {"path":"src-server/routes/plugins/registry.ts","digest":"108c233206c8523864c0f6ef7a9f5c10a5e71dd7ec30d260cd926ae2c2bf6f01","revision":"3e8559159112366b1dfa4e051dea7d4852c73c47"},
+    {"path":"src-server/routes/plugins/registry.ts","digest":"f3f5be48240bb62b1bd0e1a5a0349d5205a99891cf15c4e3930cb1250fd900a6","revision":"47fbbbd8f767858f60a0a323b74e26cb60abce62"},
 
     {"path":"src-server/services/plugins/plugin-install-consent.ts","digest":"6e34e0844061dd5311e027973b1919483bf29047e18721ecae8b72ece98765ed","revision":"ed05e6f6c98c5b2bb994a88ff8fa8e1421639269"}
   ],

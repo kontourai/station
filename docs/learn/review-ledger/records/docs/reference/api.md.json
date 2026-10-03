@@ -78,7 +78,7 @@
 
     {"path":"packages/shared/src/runtime-path-resolver.ts","digest":"a03da100225a7908b1566d1ea0c43d3e99e424c879b9ab6bd997a75409ad156b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"scripts/plugin-identity-enumeration-scan.mjs","digest":"c8b4144dcf7f69e3c6038410bf9f8ec2920eee95642a2c443573fb7ac32f4d21","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"scripts/plugin-identity-enumeration-scan.mjs","digest":"25886e0bb5becfd46c5b6ccdc753438f0f2cb7976174812b3ac12758fdae16a7","revision":"8d7aae8989f68cf5129b6bd9094c3206af596b5a"},
 
     {"path":"src-desktop/src/lib.rs","digest":"ad3b52011a9be6e6a18133b2367c04d0a6245907e5b7e13fa324bcd8b5255557","revision":"464d602fb7fb5fa9bd0df9d241dc03495b398b96"},
 
@@ -182,7 +182,7 @@
 
     {"path":"src-server/routes/plugins/plugin-host-approval-routes.ts","digest":"5c978a2eac36bceb4001ae8a294172e8911aa0eaacfa81c74134ee27898ee3c4","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/routes/plugins/plugin-identity-enumeration.ts","digest":"3ef1a184c8b985f6df2a080e708c3077b70475630d50c004a5f6058572618c9e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/routes/plugins/plugin-identity-enumeration.ts","digest":"421922a398f11291bfffd27b5d78b5da503f6642ae8138111f1640a5c162cacd","revision":"8d7aae8989f68cf5129b6bd9094c3206af596b5a"},
 
     {"path":"src-server/routes/plugins/plugin-install-routes.ts","digest":"b5696f343313b1a6ded1a1fd00d15be70ddb1bd7f35a63fc60eafb856ec90bf9","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -196,7 +196,7 @@
 
     {"path":"src-server/routes/plugins/plugins.ts","digest":"fbaf259293b5a5f7ae43c76aae4d8676c35ab5e92157284cbd39d4f13622fb2f","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/routes/plugins/registry.ts","digest":"108c233206c8523864c0f6ef7a9f5c10a5e71dd7ec30d260cd926ae2c2bf6f01","revision":"3e8559159112366b1dfa4e051dea7d4852c73c47"},
+    {"path":"src-server/routes/plugins/registry.ts","digest":"f3f5be48240bb62b1bd0e1a5a0349d5205a99891cf15c4e3930cb1250fd900a6","revision":"47fbbbd8f767858f60a0a323b74e26cb60abce62"},
 
     {"path":"src-server/routes/projects/fs.ts","digest":"73b84dab3f633c021406ad629cee445610a2cf44f43b93dc8b81e3d70d8efac4","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -394,7 +394,7 @@
 
     {"path":"src-server/services/agents/skill-service.ts","digest":"036d075316efb30c94191ded896d3c69c9169f23e053f3fba34ef1b4283d161e","revision":"2867eea7c9a4838e2a59cdbf6ec7f940b7d4cf26"},
 
-    {"path":"src-server/routes/plugins/__tests__/registry-marketplaces.routes.test.ts","digest":"7632b6b905e0983deca21c0fd615e304aee7d4a1fe5b8a2773a0e27400c9c435","revision":"5ec5c7ecd298e3e611e3a3df001d5aee954b389d"}
+    {"path":"src-server/routes/plugins/__tests__/registry-marketplaces.routes.test.ts","digest":"e27ac6e7d215519add21ad0de4869b02e8e1542b87ad76dfb7f6957bd9713ac2","revision":"47fbbbd8f767858f60a0a323b74e26cb60abce62"}
   ],
 
   "checks": [
