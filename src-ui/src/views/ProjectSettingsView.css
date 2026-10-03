@@ -247,34 +247,22 @@
   font-family: var(--font-mono);
   font-size: 0.76rem;
   line-height: 1.5;
-  /* One line: the parent gives way first and the leaf folder stays in view.
-     The whole path is the element's text and its title. */
-  display: flex;
-  min-width: 0;
+  /* One line of inline text, cut at its START: an rtl line overflows on the
+     left and puts the ellipsis there, so the leaf folder stays in view and a
+     cut path always shows "…". A path that fits starts at the left. The
+     parent and leaf are inline spans (not flex items), so the path reads and
+     copies as one string. The whole path is also the element's title. */
   overflow: hidden;
   white-space: nowrap;
-}
-.project-settings__identity-path--unset {
-  display: block;
-  white-space: normal;
-}
-/* rtl puts the ellipsis at the START of the parent; the inner `dir="ltr"`
-   span isolates the text so its character order survives (same treatment as
-   `.project-page__dir-parent`). */
-.project-settings__identity-path-parent {
-  flex: 0 1 auto;
-  min-width: 0;
-  overflow: hidden;
   text-overflow: ellipsis;
   direction: rtl;
+  text-align: left;
 }
-/* The leaf never yields to the parent; only a leaf wider than the whole line
-   is itself cut. */
+.project-settings__identity-path--unset {
+  white-space: normal;
+  direction: ltr;
+}
 .project-settings__identity-path-leaf {
-  flex: 0 0 auto;
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
   color: var(--text-secondary);
 }
 .project-settings__identity-card {

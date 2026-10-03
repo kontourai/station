@@ -96,18 +96,17 @@ export function ProjectPageHeader({
                 >
                   {hasWorkingDirectory ? (
                     <span className="project-page__dir-path">
-                      {/* rtl only for start-side ellipsis; the inner ltr
-                          isolate restores character order (same treatment as
-                          the chat dock's dir split — #304). */}
-                      <span className="project-page__dir-parent">
-                        <span
-                          dir="ltr"
-                          className="project-page__dir-parent-text"
-                        >
+                      {/* rtl only for the start-side ellipsis; the ltr isolate
+                          restores character order (#304). Parent and leaf stay
+                          inline so the path reads and copies as one string. */}
+                      <span dir="ltr" className="project-page__dir-path-text">
+                        <span className="project-page__dir-parent">
                           {parentPath}
                         </span>
+                        <span className="project-page__dir-leaf">
+                          {leafName}
+                        </span>
                       </span>
-                      <span className="project-page__dir-leaf">{leafName}</span>
                     </span>
                   ) : (
                     <span className="project-page__dir-path project-page__dir-path--unset">

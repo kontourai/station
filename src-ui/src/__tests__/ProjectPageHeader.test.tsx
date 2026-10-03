@@ -65,16 +65,20 @@ describe('ProjectPageHeader working directory (station#3317)', () => {
     renderHeader();
 
     const parent = document.querySelector(
-      '.project-page__dir-parent-text',
+      '.project-page__dir-parent',
     ) as HTMLElement;
     const leaf = document.querySelector(
       '.project-page__dir-leaf',
     ) as HTMLElement;
     expect(parent.textContent).toBe('/Users/me/dev/github/');
     expect(leaf.textContent).toBe('station');
-    // The bidi isolate that keeps `~`/`/` from reordering under the parent's
-    // rtl start-ellipsis (archive#304) — same contract as the chat dock split.
-    expect(parent.getAttribute('dir')).toBe('ltr');
+    // The bidi isolate that keeps `~`/`/` from reordering under the line's
+    // rtl start-ellipsis (archive#304); parent and leaf both sit inside it.
+    const isolate = document.querySelector(
+      '.project-page__dir-path-text',
+    ) as HTMLElement;
+    expect(isolate.getAttribute('dir')).toBe('ltr');
+    expect(isolate.textContent).toBe('/Users/me/dev/github/station');
   });
 
   test('edit affordance is rendered, not hover-revealed, and opens the editor', () => {

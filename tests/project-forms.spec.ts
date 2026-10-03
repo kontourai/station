@@ -1,4 +1,4 @@
-import { expect, type Page, test } from '@playwright/test';
+import { expect, type Locator, type Page, test } from '@playwright/test';
 import { STARTER_CATALOG } from './fixtures/project-layout-catalog';
 import { MIN_TOUCH_TARGET_PX } from './helpers/touch-target';
 import { installVisualViewportFixture } from './helpers/visual-viewport';
@@ -184,6 +184,97 @@ async function fillStable(page: Page, selector: string, value: string) {
   throw new Error(`Failed to fill stable input: ${selector}`);
 }
 
+const DEEP_SEGMENTS = Array.from(
+  { length: 9 },
+  (_, index) => `deeply-nested-directory-segment-${index}`,
+).join('/');
+
+/** Working directories past 200 characters, in the shapes that broke #2799. */
+const LONG_WORKING_DIRECTORIES = {
+  'no spaces': `/private/var/folders/zz/${DEEP_SEGMENTS}/station-project-home`,
+  'with spaces': `/Users/someone/Library/Application Support/${DEEP_SEGMENTS.replaceAll('-', ' ')}/station project home`,
+  'one unbroken segment': `/tmp/${'unbroken'.repeat(28)}`,
+} as const;
+
+/** Serves the `long-path` Project with whatever directory the test sets. */
+async function routeLongPathProject(page: Page) {
+  const project = { workingDirectory: '' };
+  await page.route(/\/api\/projects\/long-path(?:\?|$)/, async (route) => {
+    await route.fulfill(
+      json({
+        success: true,
+        data: {
+          id: 'p-long-path',
+          slug: 'long-path',
+          name: 'Long Path Project',
+          workingDirectory: project.workingDirectory,
+          layouts: [],
+          hasWorkingDirectory: true,
+          layoutCount: 0,
+          hasKnowledge: false,
+          createdAt: '2026-07-20T00:00:00.000Z',
+          updatedAt: '2026-07-20T00:00:00.000Z',
+        },
+      }),
+    );
+  });
+  return project;
+}
+
+/**
+ * A start-truncated path line: read, copied and drawn as one path. Laid out as
+ * flex items, the parent and leaf read (innerText) and copied (a selection)
+ * as two lines, so a pasted path carried a line break (#2799 review).
+ */
+async function expectPathReadsWhole(
+  line: Locator,
+  parts: { parent: string; leaf: string },
+  value: string,
+  label: string,
+  context: string,
+) {
+  expect(
+    await line.evaluate((node) => {
+      const selection = window.getSelection()!;
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      selection.removeAllRanges();
+      selection.addRange(range);
+      const selected = selection.toString();
+      selection.removeAllRanges();
+      return { innerText: (node as HTMLElement).innerText, selected };
+    }),
+    `${context}: read and copied text`,
+  ).toEqual({ innerText: value, selected: value });
+
+  // The line keeps its end: the leaf finishes at the line's right edge, and
+  // only a leaf wider than the whole line starts outside it.
+  const lineBox = (await line.boundingBox())!;
+  const leaf = (await line.locator(parts.leaf).boundingBox())!;
+  expect(
+    Math.abs(leaf.x + leaf.width - (lineBox.x + lineBox.width)),
+    `${context}: leaf ends the line`,
+  ).toBeLessThanOrEqual(1);
+  expect(leaf.width, `${context}: leaf width`).toBeGreaterThan(40);
+  if (label === 'one unbroken segment') return;
+  expect(leaf.x, `${context}: leaf folder shown whole`).toBeGreaterThanOrEqual(
+    lineBox.x - 0.5,
+  );
+  // The parent's last separator is drawn against the leaf. Without the ltr
+  // isolate the rtl line moves it to the far (cut) end.
+  const separator = await line.locator(parts.parent).evaluate((node) => {
+    const text = node.firstChild!;
+    const range = document.createRange();
+    range.setStart(text, text.textContent!.length - 1);
+    range.setEnd(text, text.textContent!.length);
+    return range.getBoundingClientRect().right;
+  });
+  expect(
+    Math.abs(separator - leaf.x),
+    `${context}: separator adjoins the leaf`,
+  ).toBeLessThanOrEqual(1);
+}
+
 test.describe('Project forms', () => {
   test.beforeEach(async ({ page }) => {
     await seedProjectFormRoutes(page);
@@ -256,35 +347,7 @@ test.describe('Project forms', () => {
     // Three paths at three widths, every measurement a browser round trip:
     // about 10s on a quiet host, past the 30s default on a loaded one.
     test.setTimeout(90_000);
-    const deep = Array.from(
-      { length: 9 },
-      (_, index) => `deeply-nested-directory-segment-${index}`,
-    ).join('/');
-    const paths = {
-      'no spaces': `/private/var/folders/zz/${deep}/station-project-home`,
-      'with spaces': `/Users/someone/Library/Application Support/${deep.replaceAll('-', ' ')}/station project home`,
-      'one unbroken segment': `/tmp/${'unbroken'.repeat(28)}`,
-    };
-    let workingDirectory = '';
-    await page.route(/\/api\/projects\/long-path(?:\?|$)/, async (route) => {
-      await route.fulfill(
-        json({
-          success: true,
-          data: {
-            id: 'p-long-path',
-            slug: 'long-path',
-            name: 'Long Path Project',
-            workingDirectory,
-            layouts: [],
-            hasWorkingDirectory: true,
-            layoutCount: 0,
-            hasKnowledge: false,
-            createdAt: '2026-07-20T00:00:00.000Z',
-            updatedAt: '2026-07-20T00:00:00.000Z',
-          },
-        }),
-      );
-    });
+    const project = await routeLongPathProject(page);
 
     const section = page.locator('#section-workspace');
     const box = async (selector: string, context: string) => {
@@ -312,9 +375,9 @@ test.describe('Project forms', () => {
       'unset preview text shown whole at 320px',
     ).toBe(true);
 
-    for (const [label, value] of Object.entries(paths)) {
+    for (const [label, value] of Object.entries(LONG_WORKING_DIRECTORIES)) {
       expect(value.length, `${label}: fixture length`).toBeGreaterThan(200);
-      workingDirectory = value;
+      project.workingDirectory = value;
       await page.goto('/projects/long-path/edit');
       await expect(section.locator('#project-working-directory')).toHaveValue(
         value,
@@ -371,33 +434,16 @@ test.describe('Project forms', () => {
           `${context}: preview path is one line`,
         ).toBeLessThan(30);
         await expect(previewPath).toHaveAttribute('title', value);
-        // The text is the path exactly once, parent then leaf.
-        await expect(previewPath).toHaveText(value, { useInnerText: false });
-        const leaf = await inside('.project-settings__identity-path-leaf');
-        expect(leaf.width, `${context}: leaf width`).toBeGreaterThan(40);
-        if (label !== 'one unbroken segment') {
-          expect(
-            await section
-              .locator('.project-settings__identity-path-leaf')
-              .evaluate((node) => node.scrollWidth <= node.clientWidth),
-            `${context}: leaf folder shown whole`,
-          ).toBe(true);
-          // The parent's last separator is drawn against the leaf. Without
-          // the ltr isolate the rtl parent moves it to the far (cut) end.
-          const separator = await section
-            .locator('.project-settings__identity-path-parent > span')
-            .evaluate((node) => {
-              const text = node.firstChild!;
-              const range = document.createRange();
-              range.setStart(text, text.textContent!.length - 1);
-              range.setEnd(text, text.textContent!.length);
-              return range.getBoundingClientRect().right;
-            });
-          expect(
-            Math.abs(separator - leaf.x),
-            `${context}: separator adjoins the leaf`,
-          ).toBeLessThanOrEqual(1);
-        }
+        await expectPathReadsWhole(
+          previewPath,
+          {
+            parent: '.project-settings__identity-path-parent',
+            leaf: '.project-settings__identity-path-leaf',
+          },
+          value,
+          label,
+          context,
+        );
         const savedAs = section
           .locator('.project-settings__path-pill')
           .filter({ hasText: 'saved as' });
@@ -445,6 +491,44 @@ test.describe('Project forms', () => {
               body.scrollWidth <= body.clientWidth
             );
           }),
+          `${context}: no horizontal overflow`,
+        ).toBe(true);
+      }
+    }
+  });
+
+  /**
+   * The Project page header draws the same start-truncated path (#304's
+   * treatment) and had the same flex split: its failed-copy hint tells the
+   * user to select the path by hand, which pasted a line break (#2799 review).
+   */
+  test('the Project page header path reads and copies as one path with its leaf in view at 360px, 768px and 1280px (#2799)', async ({
+    page,
+  }) => {
+    test.setTimeout(90_000);
+    const project = await routeLongPathProject(page);
+    for (const [label, value] of Object.entries(LONG_WORKING_DIRECTORIES)) {
+      project.workingDirectory = value;
+      await page.goto('/projects/long-path');
+      const line = page.locator('.project-page__dir-path');
+      await expect(line).toBeVisible();
+      for (const width of [360, 768, 1280]) {
+        const context = `${label} at ${width}px`;
+        await page.setViewportSize({ width, height: 900 });
+        await expectPathReadsWhole(
+          line,
+          {
+            parent: '.project-page__dir-parent',
+            leaf: '.project-page__dir-leaf',
+          },
+          value,
+          label,
+          context,
+        );
+        expect(
+          await page.evaluate(
+            () => document.documentElement.scrollWidth <= window.innerWidth,
+          ),
           `${context}: no horizontal overflow`,
         ).toBe(true);
       }

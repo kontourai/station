@@ -382,17 +382,19 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
                     className="project-settings__identity-path"
                     title={workingDirectory}
                   >
-                    {/* rtl only for the start-side ellipsis; the inner ltr
-                        isolate restores character order (the Project page
-                        header's treatment, #304). */}
-                    <span className="project-settings__identity-path-parent">
-                      <span dir="ltr">{workingDirectoryParent}</span>
-                    </span>
-                    {workingDirectoryLeaf && (
-                      <span className="project-settings__identity-path-leaf">
-                        {workingDirectoryLeaf}
+                    {/* The line is rtl only for the start-side ellipsis; the
+                        ltr isolate restores character order (#304). Both parts
+                        stay inline, so the path reads and copies as one. */}
+                    <span dir="ltr">
+                      <span className="project-settings__identity-path-parent">
+                        {workingDirectoryParent}
                       </span>
-                    )}
+                      {workingDirectoryLeaf && (
+                        <span className="project-settings__identity-path-leaf">
+                          {workingDirectoryLeaf}
+                        </span>
+                      )}
+                    </span>
                   </div>
                 ) : (
                   <div className="project-settings__identity-path project-settings__identity-path--unset">
