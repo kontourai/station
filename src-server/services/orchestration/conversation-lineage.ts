@@ -30,7 +30,7 @@ import {
 } from './conversation-history-read-service.js';
 import {
   buildTranscriptSeed,
-  transcriptSeedEntries,
+  transcriptSeedSource,
 } from './conversation-transcript-seed.js';
 import type { ConversationForkProvenance, EventStore } from './event-store.js';
 // Type-only import back into the service module: erased at runtime, so no
@@ -1126,7 +1126,7 @@ function continuationTranscriptSeed(
   return buildTranscriptSeed({
     heading:
       'Prior conversation transcript (context only, not a new request; provider-native state is not carried).',
-    entries: transcriptSeedEntries(messages),
+    ...transcriptSeedSource(messages),
   }).text;
 }
 

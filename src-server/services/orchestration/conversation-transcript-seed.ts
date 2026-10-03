@@ -26,22 +26,34 @@ export const TRANSCRIPT_SEED_MAX_TOKEN_BUDGET = 64_000;
 export const TRANSCRIPT_SEED_MIN_TOKEN_BUDGET = 1_000;
 
 /**
- * No Station tool can page through a conversation's lineage for the engine
- * that receives the seed (`get_conversation_messages` reads one Session,
- * unpaged, and only Agents that author station-control have it), so the seed
- * says the omitted history is unavailable rather than naming a tool.
+ * What the seed says about omitted messages. It names no read tool and claims
+ * no unavailability: whether the receiving engine can call Station Control's
+ * `get_conversation_messages` is decided after the seed is built (the target
+ * Agent's authored or connection-default tool servers, the engine's delivery
+ * channel, and, for ACP, a live per-connection capability), and that tool
+ * reads one Session, unpaged. The stored conversation is the one fact true
+ * for every target.
  */
-export const TRANSCRIPT_SEED_OMITTED_UNAVAILABLE =
-  'The omitted messages are not available to you in this session; ask the user if you need earlier detail.';
+export const TRANSCRIPT_SEED_OMITTED_NOTICE =
+  'They are not included here; the full conversation remains stored in Station.';
+
+/** Upper bound for a caller-supplied label (a title, an Agent) in a heading. */
+export const TRANSCRIPT_SEED_LABEL_MAX_BYTES = 200;
 
 export interface TranscriptSeedEntry {
   role: 'user' | 'assistant';
   text: string;
 }
 
+export interface TranscriptSeedSource {
+  entries: TranscriptSeedEntry[];
+  /** User or assistant rows with no text to carry (tool, reasoning, error). */
+  nonTextMessages: number;
+}
+
 export interface TranscriptSeed {
   text: string;
-  /** Messages with text that the seed considered. */
+  /** User and assistant messages with text that the seed considered. */
   totalMessages: number;
   /** Messages present in the seed, including a shortened newest message. */
   includedMessages: number;
@@ -56,11 +68,13 @@ export interface TranscriptSeed {
  * reasoning, tool rows or runtime errors. A legacy file-store message with a
  * string `content` is read as its text.
  */
-export function transcriptSeedEntries(
+export function transcriptSeedSource(
   messages: readonly ConversationMessage[],
-): TranscriptSeedEntry[] {
-  return messages.flatMap((message) => {
-    if (message.role !== 'user' && message.role !== 'assistant') return [];
+): TranscriptSeedSource {
+  const entries: TranscriptSeedEntry[] = [];
+  let nonTextMessages = 0;
+  for (const message of messages) {
+    if (message.role !== 'user' && message.role !== 'assistant') continue;
     const legacy = (message as { content?: unknown }).content;
     const text =
       typeof legacy === 'string'
@@ -75,8 +89,31 @@ export function transcriptSeedEntries(
             .map((part) => part.text!.trim())
             .filter(Boolean)
             .join('\n');
-    return text ? [{ role: message.role, text }] : [];
-  });
+    if (text) entries.push({ role: message.role, text });
+    else nonTextMessages += 1;
+  }
+  return { entries, nonTextMessages };
+}
+
+/**
+ * Bound caller-supplied heading text by UTF-8 bytes, cutting on code points
+ * and ending with a visible ellipsis, so no title can crowd out the seed.
+ */
+export function boundTranscriptSeedLabel(
+  text: string,
+  maxBytes = TRANSCRIPT_SEED_LABEL_MAX_BYTES,
+): string {
+  if (Buffer.byteLength(text, 'utf8') <= maxBytes) return text;
+  const ellipsis = '…';
+  let bytes = Buffer.byteLength(ellipsis, 'utf8');
+  let kept = '';
+  for (const char of text) {
+    const size = Buffer.byteLength(char, 'utf8');
+    if (bytes + size > maxBytes) break;
+    kept += char;
+    bytes += size;
+  }
+  return `${kept}${ellipsis}`;
 }
 
 function label(entry: TranscriptSeedEntry): string {
@@ -91,18 +128,24 @@ function disclosure(input: {
   total: number;
   included: number;
   omitted: number;
+  nonText: number;
   shortened: boolean;
 }): string {
   const lines: string[] = [];
   if (input.total === 0) {
-    lines.push('There are no earlier messages.');
+    lines.push('There are no earlier user or assistant text messages.');
   } else if (input.omitted === 0) {
     lines.push(
-      `All ${input.total} earlier messages are included below, oldest first.`,
+      `All ${input.total} earlier user and assistant text messages are included below, oldest first.`,
     );
   } else {
     lines.push(
-      `Only the ${input.included} most recent of ${input.total} messages fit the size limit and are included below, oldest first. The ${input.omitted} earlier messages are omitted. ${TRANSCRIPT_SEED_OMITTED_UNAVAILABLE}`,
+      `Only the ${input.included} most recent of ${input.total} user and assistant text messages fit the size limit and are included below, oldest first. The ${input.omitted} earlier ones are omitted. ${TRANSCRIPT_SEED_OMITTED_NOTICE}`,
+    );
+  }
+  if (input.nonText > 0) {
+    lines.push(
+      `${input.nonText} other user or assistant messages had no text to carry (only tool activity, reasoning or errors) and are not included.`,
     );
   }
   if (input.shortened) {
@@ -118,9 +161,27 @@ function render(heading: string, head: string, body: string[]): string {
 }
 
 /**
+ * The backtick fence still open at the end of `text`, if any: CommonMark's
+ * rule that a fence closes on a line of at least as many backticks and
+ * nothing else.
+ */
+function openFence(text: string): string | null {
+  let open: string | null = null;
+  for (const line of text.split('\n')) {
+    const fence = /^ {0,3}(`{3,})/.exec(line)?.[1];
+    if (!fence) continue;
+    if (open === null) open = fence;
+    else if (fence.length >= open.length && /^ {0,3}`+\s*$/.test(line))
+      open = null;
+  }
+  return open;
+}
+
+/**
  * Keep the largest beginning-and-end of `entry` whose rendering fits
  * `available` estimated tokens, cutting on code points so no surrogate pair
- * is split. Returns null when not even the marker fits.
+ * is split. A code fence the cut leaves open is closed before the marker and
+ * reopened after it. Returns null when not even the marker fits.
  */
 function shortenNewest(
   entry: TranscriptSeedEntry,
@@ -134,7 +195,11 @@ function shortenNewest(
     const tail = tailLength
       ? chars.slice(chars.length - tailLength).join('')
       : '';
-    return `${label(entry)}: ${head}\n[… ${chars.length - keep} characters omitted from the middle of this message …]\n${tail}`;
+    const headFence = openFence(head);
+    const tailFence = tailLength
+      ? openFence(chars.slice(0, chars.length - tailLength).join(''))
+      : null;
+    return `${label(entry)}: ${head}${headFence ? `\n${headFence}` : ''}\n[… ${chars.length - keep} characters omitted from the middle of this message …]\n${tailFence ? `${tailFence}\n` : ''}${tail}`;
   };
   let low = 0;
   let high = chars.length - 1;
@@ -155,6 +220,7 @@ function shortenNewest(
 export function buildTranscriptSeed(input: {
   heading: string;
   entries: readonly TranscriptSeedEntry[];
+  nonTextMessages?: number;
   budgetTokens?: number;
 }): TranscriptSeed {
   const budget = input.budgetTokens ?? TRANSCRIPT_SEED_DEFAULT_TOKEN_BUDGET;
@@ -169,10 +235,11 @@ export function buildTranscriptSeed(input: {
   }
   const entries = input.entries;
   const total = entries.length;
+  const nonText = input.nonTextMessages ?? 0;
   // Reserve the widest disclosure (every counter at its maximum, both
   // notices) so the real one can never push the seed over the budget.
   const reserve = approxInjectedTokens(
-    `${input.heading}\n${disclosure({ total, included: total, omitted: total, shortened: true })}\n\n`,
+    `${input.heading}\n${disclosure({ total, included: total, omitted: total, nonText, shortened: true })}\n\n`,
   );
   if (reserve > budget) {
     throw new RangeError(
@@ -199,7 +266,7 @@ export function buildTranscriptSeed(input: {
   const omitted = total - body.length;
   const text = render(
     input.heading,
-    disclosure({ total, included: body.length, omitted, shortened }),
+    disclosure({ total, included: body.length, omitted, nonText, shortened }),
     body,
   );
   return {

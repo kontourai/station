@@ -17,9 +17,9 @@ import {
   TRANSCRIPT_SEED_DEFAULT_TOKEN_BUDGET,
   TRANSCRIPT_SEED_MAX_TOKEN_BUDGET,
   TRANSCRIPT_SEED_MIN_TOKEN_BUDGET,
-  TRANSCRIPT_SEED_OMITTED_UNAVAILABLE,
+  TRANSCRIPT_SEED_OMITTED_NOTICE,
   type TranscriptSeedEntry,
-  transcriptSeedEntries,
+  transcriptSeedSource,
 } from '../conversation-transcript-seed.js';
 import { EventStore } from '../event-store.js';
 
@@ -75,12 +75,14 @@ function expectSeedInvariants(
   const omitted = count - included;
   if (omitted > 0) {
     expect(seed).toContain(
-      `Only the ${included} most recent of ${count} messages`,
+      `Only the ${included} most recent of ${count} user and assistant text messages`,
     );
-    expect(seed).toContain(`The ${omitted} earlier messages are omitted.`);
-    expect(seed).toContain(TRANSCRIPT_SEED_OMITTED_UNAVAILABLE);
+    expect(seed).toContain(`The ${omitted} earlier ones are omitted.`);
+    expect(seed).toContain(TRANSCRIPT_SEED_OMITTED_NOTICE);
   } else {
-    expect(seed).toContain(`All ${count} earlier messages are included`);
+    expect(seed).toContain(
+      `All ${count} earlier user and assistant text messages are included`,
+    );
     expect(seed).not.toContain('omitted');
   }
   return { included, omitted };
@@ -178,7 +180,7 @@ describe('buildTranscriptSeed', () => {
     expect(result.text).toContain(
       'The most recent message was too long to include whole',
     );
-    expect(result.text).toContain('The 2 earlier messages are omitted.');
+    expect(result.text).toContain('The 2 earlier ones are omitted.');
     expect(result.text).not.toContain(start(1));
     expect(result.text).not.toContain(start(0));
     // The kept head and tail are the message's own text, split on code
@@ -262,10 +264,107 @@ describe('buildTranscriptSeed', () => {
         createdAt: '2026-10-01T00:00:04.000Z',
       },
     ]);
-    expect(transcriptSeedEntries(messages)).toEqual([
-      { role: 'user', text: 'visible question' },
-      { role: 'assistant', text: 'visible answer' },
+    expect(transcriptSeedSource(messages)).toEqual({
+      entries: [
+        { role: 'user', text: 'visible question' },
+        { role: 'assistant', text: 'visible answer' },
+      ],
+      nonTextMessages: 0,
+    });
+  });
+
+  test('a shortened message never leaves a code fence open across the marker', () => {
+    const code = Array.from(
+      { length: 4_000 },
+      (_, line) => `const value${line} = ${line};`,
+    ).join('\n');
+    const fence = '`'.repeat(3);
+    const result = buildTranscriptSeed({
+      heading: 'Prior conversation transcript.',
+      entries: [
+        {
+          role: 'assistant',
+          text: `Here is the file:\n\n${fence}ts\n${code}\n${fence}\n\nThat is all.`,
+        },
+      ],
+      budgetTokens: TRANSCRIPT_SEED_MIN_TOKEN_BUDGET,
+    });
+    expect(result.newestShortened).toBe(true);
+    const fenceLines = (text: string) =>
+      text.split('\n').filter((line) => /^ {0,3}```/.test(line)).length;
+    const [beforeMarker, afterMarker] = result.text.split(
+      /\[… \d+ characters omitted from the middle of this message …\]/,
+    );
+    // The fence the head opened is closed before the marker, and the tail,
+    // which starts inside the same block, reopens it.
+    expect(fenceLines(beforeMarker!) % 2).toBe(0);
+    expect(fenceLines(afterMarker!) % 2).toBe(0);
+    expect(afterMarker).toMatch(/^\n```\n/);
+  });
+});
+
+describe('messages with no text to carry (#3164 review)', () => {
+  const event = (overrides: Record<string, unknown>) =>
+    ({
+      provider: 'claude',
+      threadId: 'thread-b',
+      createdAt: '2026-10-01T00:00:00.000Z',
+      ...overrides,
+    }) as never;
+  /** A reasoning-only turn and an error-only turn, as adapters persist them. */
+  const nonTextTurns = [
+    event({ eventId: 'r-done', method: 'turn.started', turnId: 'turn-r' }),
+    event({
+      eventId: 'r-reason',
+      method: 'content.reasoning-delta',
+      turnId: 'turn-r',
+      itemId: 'reason-1',
+      delta: 'thinking only',
+    }),
+    event({ eventId: 'r-end', method: 'turn.completed', turnId: 'turn-r' }),
+    event({ eventId: 'e-start', method: 'turn.started', turnId: 'turn-e' }),
+    event({
+      eventId: 'e-error',
+      method: 'runtime.error',
+      turnId: 'turn-e',
+      severity: 'error',
+      message: 'engine failed',
+    }),
+    event({ eventId: 'e-end', method: 'turn.completed', turnId: 'turn-e' }),
+  ];
+
+  test('counts them separately instead of claiming every message is included', () => {
+    const messages = projectRuntimeEventsToMessages([
+      event({
+        eventId: 't-start',
+        method: 'turn.started',
+        turnId: 'turn-t',
+        prompt: 'a real question',
+      }),
+      ...nonTextTurns,
     ]);
+    const source = transcriptSeedSource(messages);
+    expect(source.nonTextMessages).toBe(2);
+    const seed = buildTranscriptSeed({ heading: 'Prior.', ...source }).text;
+    expect(seed).toContain(
+      'All 1 earlier user and assistant text messages are included',
+    );
+    expect(seed).toContain(
+      '2 other user or assistant messages had no text to carry',
+    );
+  });
+
+  test('a conversation with no text says so without claiming it is empty', () => {
+    const seed = buildTranscriptSeed({
+      heading: 'Prior.',
+      ...transcriptSeedSource(projectRuntimeEventsToMessages(nonTextTurns)),
+    }).text;
+    expect(seed).toContain(
+      'There are no earlier user or assistant text messages.',
+    );
+    expect(seed).toContain(
+      '2 other user or assistant messages had no text to carry',
+    );
   });
 });
 
@@ -393,6 +492,50 @@ describe('handoff and continuation seeds (#3164)', () => {
     expect(observed.included).toBeGreaterThan(0);
   });
 
+  test('a continuation seed counts messages that had no text to carry', async () => {
+    appendTurns(store, ROOT, [40, 40]);
+    store.appendEvent({
+      eventId: 'reasoning-only-started',
+      provider: 'claude',
+      threadId: ROOT,
+      method: 'turn.started',
+      turnId: 'reasoning-only',
+      createdAt: '2026-10-01T01:00:00.000Z',
+    });
+    store.appendEvent({
+      eventId: 'reasoning-only-delta',
+      provider: 'claude',
+      threadId: ROOT,
+      method: 'content.reasoning-delta',
+      turnId: 'reasoning-only',
+      itemId: 'reasoning-only-item',
+      delta: 'thinking only',
+      createdAt: '2026-10-01T01:00:01.000Z',
+    });
+    store.appendEvent({
+      eventId: 'reasoning-only-completed',
+      provider: 'claude',
+      threadId: ROOT,
+      method: 'turn.completed',
+      turnId: 'reasoning-only',
+      finishReason: 'stop',
+      createdAt: '2026-10-01T01:00:02.000Z',
+    });
+
+    const resolved = await lineage().resolveConversationContinuation(
+      ROOT,
+      INTERNAL_SESSION_READ_SCOPE,
+      { provider: 'codex' },
+    );
+
+    expect(resolved.transcriptSeed).toContain(
+      'All 2 earlier user and assistant text messages are included',
+    );
+    expect(resolved.transcriptSeed).toContain(
+      '1 other user or assistant messages had no text to carry',
+    );
+  });
+
   test('an Agent/engine handoff seeds whole newest messages under the default budget', async () => {
     const messageSizes = sizes(120, 9, 3_000);
     appendTurns(store, ROOT, messageSizes);
@@ -451,5 +594,30 @@ describe('fork replay seed (#3164)', () => {
     expect(observed.omitted).toBeGreaterThan(0);
     // Nothing after the branch point leaks in.
     expect(seed).not.toContain(start(60));
+  });
+
+  test.each([
+    ['a long title', 'x'.repeat(32_000)],
+    ['an emoji title', '🙂'.repeat(8_000)],
+  ])('%s is bounded in the heading instead of failing the fork', (_, title) => {
+    const seed = renderForkTranscript({
+      sourceTitle: title,
+      sourceAgent: 'Claude',
+      messages: [
+        {
+          id: 'u',
+          role: 'user',
+          parts: [{ type: 'text', text: body(0, 50) }],
+        },
+      ],
+    });
+    expect(approxInjectedTokens(seed)).toBeLessThanOrEqual(
+      TRANSCRIPT_SEED_DEFAULT_TOKEN_BUDGET,
+    );
+    const heading = seed.split('\n')[0]!;
+    expect(heading).toContain('…, on Claude)');
+    expect(Buffer.byteLength(heading, 'utf8')).toBeLessThan(1_000);
+    expect(heading).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/);
+    expect(seed).toContain(start(0));
   });
 });

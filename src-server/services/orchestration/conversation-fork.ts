@@ -1,7 +1,8 @@
 import type { ConversationMessage } from '@kontourai/station-shared/conversation-message';
 import {
+  boundTranscriptSeedLabel,
   buildTranscriptSeed,
-  transcriptSeedEntries,
+  transcriptSeedSource,
 } from './conversation-transcript-seed.js';
 
 export const FORK_REPLAY_DISCLOSURE =
@@ -61,7 +62,9 @@ export function renderForkTranscript(input: {
   messages: ConversationMessage[];
 }): string {
   return buildTranscriptSeed({
-    heading: `Continued from a previous conversation (${input.sourceTitle}, on ${input.sourceAgent}); the transcript is context only, not a new request.`,
-    entries: transcriptSeedEntries(input.messages),
+    // Titles and Agent slugs are caller-supplied and unbounded; bound them so
+    // the heading can never exceed the seed budget.
+    heading: `Continued from a previous conversation (${boundTranscriptSeedLabel(input.sourceTitle)}, on ${boundTranscriptSeedLabel(input.sourceAgent)}); the transcript is context only, not a new request.`,
+    ...transcriptSeedSource(input.messages),
   }).text;
 }
