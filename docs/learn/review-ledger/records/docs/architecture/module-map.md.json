@@ -806,13 +806,13 @@
 
     {"path":"src-ui/src/hooks/orchestration/extensionHandlers.ts","digest":"b2fb2142c3e942865a9b307964543007085784af2e04937ca44a76ff4f8cd0c1","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/hooks/orchestration/queueDrain.ts","digest":"428804b4d68474f9c5e86c702b2f00c4793e245145587a8813c42279580eafae","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-ui/src/hooks/orchestration/queueDrain.ts","digest":"5768abee52d461812af52de180717808db3e9903b55c915f96be0b31afb7f772","revision":"5fc85d8d71371bd510355f6ae98a9ae3eed1ea7a"},
 
     {"path":"src-ui/src/hooks/orchestration/replay/observe.ts","digest":"edbe10fd612c9a33d91709961c6e86886950edacf14d51b2dfac760fdcb848a9","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"src-ui/src/hooks/orchestration/turnHandlers.ts","digest":"35c1410cc3af47e8253c64eaed03e3581fa2aa42ec25755ee3807d8b5696a338","revision":"bc671142a7ae70587daf5bb0d94732e8ca74600a"},
 
-    {"path":"src-ui/src/hooks/useActiveChatSessionMessaging.ts","digest":"53af6df5a169a76a3eb936293dff7b0064b8596b6d5ddec1efa738ac6b0002e2","revision":"4e4453cb3140e7f075e2a53468d475f950837221"},
+    {"path":"src-ui/src/hooks/useActiveChatSessionMessaging.ts","digest":"62ea015fc2d998bc8930daf9e104f0ba7fd43c651329b18bf35a4370594360ea","revision":"5029eb30c3214891b8cf5b6b6cad3dc82b603677"},
 
     {"path":"src-ui/src/hooks/useOutboundQueueFlush.ts","digest":"4d1c55ae87eafc2fc46ff96fc8d3a8c6b3f9816e38423239e629991efaa86dc4","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

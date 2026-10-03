@@ -82,7 +82,7 @@
 
     {"path":"src-ui/src/components/attention/RequestInspectionDialog.tsx","digest":"57aa853ab758d299d83b7e783816f9930d9a191faef8122dbc19ee0a8934c817","revision":"3f6a2ef106d0d4b08be749d1e9273d9c1a61bbd4"},
 
-    {"path":"src-ui/src/components/header/Header.tsx","digest":"ce3ac4d0fb13aeeb8fa40aaa1474a552b9b92213b80a96bccdf7fad34905c9f2","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
+    {"path":"src-ui/src/components/header/Header.tsx","digest":"6f6a5020fab5d5295a0561c87651162d390dfdbec2138bc144ab6199d442b753","revision":"502a33b8a8b76dbd9a91fc0c72f8cf7272d8f313"},
 
     {"path":"src-ui/src/components/header/useHeaderViewModel.ts","digest":"589545ed487887bf4f8dd17aaaf236e5a74976589c00b7167a0bbb6998554061","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
 
@@ -98,7 +98,7 @@
 
     {"path":"src-ui/src/components/TasksLayout.tsx","digest":"a4adf70ce83c23e2fb4819aeae36bca2958f2c43941276bb0199b8a630ee76ec","revision":"2ff9f47beb496145a4ac4752a1f1fe5f4c9dd694"},
 
-    {"path":"src-ui/src/index.css","digest":"e3bf9bb5c0dbeea17eb06bf2536ebcd445ce60875becb64ca97da08118422dcd","revision":"8fd71c3714eceeb651bd8e52f200aa1532fa33c6"},
+    {"path":"src-ui/src/index.css","digest":"810cff865aad9c44484991043c8107d5439505e3d960c307f0f95d2cebf2a744","revision":"502a33b8a8b76dbd9a91fc0c72f8cf7272d8f313"},
 
     {"path":"src-ui/src/lib/starter-work-operation-store.ts","digest":"d3c5ace0dae590debb023c5954ae91564e94d343fc08a19da311522f340daf68","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
 

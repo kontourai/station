@@ -9,7 +9,7 @@
 
   "limits": "Current HTTP schemas and send/per-Agent caller boundaries were checked. Dated UI observations and mobile policy are preserved; no exhaustive composer, approval, accessibility, or physical-device certification.",
 
-  "document": {"digest":"5a000d8e67ec71098b35638d33013a75090a8bfee6375efc56102481be10fd9d","revision":"f8dcd092359118c2f44bda770acccc1c45beb281"},
+  "document": {"digest":"b29085c8fb665ebfc52af87b9ab1f85419c9b1ae570b95e05713fd5e54fc6dd5","revision":"d3ee43d2f1776cdd27ffcd6ba33ac6fb0687cd93"},
 
   "sources": [
     {"path":"packages/contracts/src/orchestration.ts","digest":"f79a810c3e7b70428d68b26557d3eb3cc7f6d60d8c58773350ed967965390068","revision":"42019764437469e865189dfd8ad8b1762b77a97a"},
@@ -18,7 +18,7 @@
 
     {"path":"src-server/routes/orchestration/orchestration.ts","digest":"3976ce75117d6cbfcb2d61733068a738c46de966a3106e5a76190d03b31e63e6","revision":"71c69cadad789baff389812ff52e9efae397c316"},
 
-    {"path":"src-ui/src/hooks/useActiveChatSessionMessaging.ts","digest":"53af6df5a169a76a3eb936293dff7b0064b8596b6d5ddec1efa738ac6b0002e2","revision":"4e4453cb3140e7f075e2a53468d475f950837221"},
+    {"path":"src-ui/src/hooks/useActiveChatSessionMessaging.ts","digest":"62ea015fc2d998bc8930daf9e104f0ba7fd43c651329b18bf35a4370594360ea","revision":"5029eb30c3214891b8cf5b6b6cad3dc82b603677"},
 
     {"path":"src-ui/src/lib/foregroundMessageDispatch.ts","digest":"8dd461fc84dda8844b89d1cc72d2c2da72aab7d5f0b0a07803405627f6f2ab23","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -46,13 +46,13 @@
 
     {"path":"src-ui/src/components/chat-dock/ChatDockMobileOverflowSheet.tsx","digest":"a8bc823744ae5fbe11ca4d59391185963104e36549cf5fdc2b178afceb603650","revision":"af7dbb3005e9e1f29dd1450b0a06ec5703afb0d6"},
 
-    {"path":"src-ui/src/components/chat/chat.css","digest":"9ff5dc95b71dda67d80f7241591dab8294cb5252f6001b589dcc80cabbad14b7","revision":"f8dcd092359118c2f44bda770acccc1c45beb281"},
+    {"path":"src-ui/src/components/chat/chat.css","digest":"3d0f02b669a3f99ee1f75fe1fe14ce11985f14af6f4966f4cdaf57249e218008","revision":"502a33b8a8b76dbd9a91fc0c72f8cf7272d8f313"},
 
-    {"path":"src-ui/src/index.css","digest":"e3bf9bb5c0dbeea17eb06bf2536ebcd445ce60875becb64ca97da08118422dcd","revision":"8fd71c3714eceeb651bd8e52f200aa1532fa33c6"},
+    {"path":"src-ui/src/index.css","digest":"810cff865aad9c44484991043c8107d5439505e3d960c307f0f95d2cebf2a744","revision":"502a33b8a8b76dbd9a91fc0c72f8cf7272d8f313"},
 
     {"path":"src-ui/src/views/home/work-status.ts","digest":"ff0100dddce220275b7d9f0183fb2c44bac835eb0fbb67e071be63f4c127b120","revision":"d1f68396648a4d450f1d743e436df703be0935be"},
 
-    {"path":"src-ui/src/views/home/work-facts.ts","digest":"db1a8431cf1408a6c707ba4782bb52a6b803c3779ea08492545afe831ed8bb3b","revision":"d1f68396648a4d450f1d743e436df703be0935be"},
+    {"path":"src-ui/src/views/home/work-facts.ts","digest":"d79596e1c924b9d723fce689c54653eebf6e58750fead5c56bdff4cf9bbc385c","revision":"4dfffd7e7543e17e45eefdf8b8f66b8b80349311"},
 
     {"path":"src-ui/src/hooks/useLongPress.ts","digest":"f559399edd7656e922502582eaba09ab20d9c25ea91c142c9b0d65b1b9f3d3df","revision":"8f9ea788561518398a488d35bb768b78a272e73b"},
 

@@ -424,7 +424,7 @@
 
     {"path":"src-ui/src/components/attention/NeedsInputReply.tsx","digest":"ab0b8da0cf2a028f663b3ec521d1e5888636123168b3c3b9cba5aad5c9a122cc","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/components/chat-dock/conversationOpenController.ts","digest":"b9d8d43057e6a311366de908504c8d9f806cc78828c72be2b3ac7805a2e5a157","revision":"74141966c510f72845b72b7b4c8d2a2128079034"},
+    {"path":"src-ui/src/components/chat-dock/conversationOpenController.ts","digest":"b7e3fec4403700cbd9bd4d60491ff647ab60dec69aeefb68ad39eac1ed8db02b","revision":"872e12faec64bc4967cd0c3b6595c7cfd9574adc"},
 
     {"path":"src-ui/src/components/chat-dock/ConversationOpenRevalidator.tsx","digest":"bd291520573de4237b0c245375b4487dcd96545bf655b4112954ecb80da81ee4","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -458,13 +458,13 @@
 
     {"path":"src-ui/src/core/SDKAdapter.tsx","digest":"6b97757f9bfe3c29837ba06546c68a7a05c18447466f1535768dc936f4d86feb","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/hooks/orchestration/queueDrain.ts","digest":"428804b4d68474f9c5e86c702b2f00c4793e245145587a8813c42279580eafae","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-ui/src/hooks/orchestration/queueDrain.ts","digest":"5768abee52d461812af52de180717808db3e9903b55c915f96be0b31afb7f772","revision":"5fc85d8d71371bd510355f6ae98a9ae3eed1ea7a"},
 
-    {"path":"src-ui/src/hooks/orchestration/snapshotHandlers.ts","digest":"ba834cfbb80f42b1742554455e2159f790f0149dba41039d68c6c91a1b5ff478","revision":"392b955a316234ea7972c96b5930b0b27db06ea6"},
+    {"path":"src-ui/src/hooks/orchestration/snapshotHandlers.ts","digest":"03a391eb8ad154106283deb550bb4d3c56cf50c5c816d87f6717f598af9e2b99","revision":"872e12faec64bc4967cd0c3b6595c7cfd9574adc"},
 
     {"path":"src-ui/src/hooks/useActiveChatSessionLifecycle.ts","digest":"2a90e4f43cde95121b12aec4ae642905f1329e9e23e95f797a41cd6746da9349","revision":"389d349629e5834edf691e2e986675ec566ceadc"},
 
-    {"path":"src-ui/src/hooks/useActiveChatSessionMessaging.ts","digest":"53af6df5a169a76a3eb936293dff7b0064b8596b6d5ddec1efa738ac6b0002e2","revision":"4e4453cb3140e7f075e2a53468d475f950837221"},
+    {"path":"src-ui/src/hooks/useActiveChatSessionMessaging.ts","digest":"62ea015fc2d998bc8930daf9e104f0ba7fd43c651329b18bf35a4370594360ea","revision":"5029eb30c3214891b8cf5b6b6cad3dc82b603677"},
 
     {"path":"src-ui/src/hooks/useChatInput.ts","digest":"31ed118293149ecc8a7aa42edbb1309eedd1b362370d170ddee1036d6ee98a6c","revision":"74db2e79bbb82782cffb1834eb904546edfb536a"},
 

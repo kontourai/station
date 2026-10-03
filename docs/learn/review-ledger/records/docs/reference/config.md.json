@@ -132,7 +132,7 @@
 
     {"path":"src-ui/src/components/chat-dock/ChatDock.tsx","digest":"f92052af5abd7736675c6a27499a8a43ded8167dcecff4b0e4e775c2614562f3","revision":"4d59eb1868139f2faeaf1a1467811c22726f741c"},
 
-    {"path":"src-ui/src/components/chat-dock/ChatDockBody.tsx","digest":"a1f59f67b4cf904739aeed69ae0d37914149f2777639dbd1c5520ea9b26f23f5","revision":"82fea394a09cdf62071b073d09aa6cb08ebbca48"},
+    {"path":"src-ui/src/components/chat-dock/ChatDockBody.tsx","digest":"36b424a224d78e8e2f0412025097afd29b31fe2c77336b557e23ff68d63a0f97","revision":"5029eb30c3214891b8cf5b6b6cad3dc82b603677"},
 
     {"path":"src-ui/src/components/chat-dock/retry-attachments.ts","digest":"e35fc0d7d193cd614829fddbf3f822b4118510a0776e5f8853fdcb8bf1ea3d93","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
