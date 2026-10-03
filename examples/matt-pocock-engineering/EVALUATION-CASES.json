@@ -74,11 +74,7 @@
     {
       "caseId": "browser-focus-board-20261003",
       "experienceId": "grill-me",
-      "stages": [
-        "grill-me",
-        "to-spec",
-        "to-tickets"
-      ],
+      "stages": ["grill-me", "to-spec", "to-tickets"],
       "kind": "browser-model-journey",
       "scenario": "One local Focus Board idea proceeds through real Codex clarification, reviewed specification and six approved local ticket files.",
       "expected": "Retain answers and immutable stage history, wait for review before local file publication, and do not implement the app.",
