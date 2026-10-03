@@ -201,6 +201,12 @@ reference and matching Station identity in the published profile. Ordinary
 invitation redemption still requires an unconfigured profile. Paired application
 operations separately verify the active native Device identity and current signed
 Device receipt before using that route.
+Existing-grant status, renewal, signaling and ICE configuration use the same
+host-owned routing custody after publication. They accept the saved credential
+reference only with the matching published Station identity; that metadata adds
+no account, Project or Device authority. Redemption keeps its fresh-profile path.
+Saved enrollment recovery resolves its own credential reference from the journal
+and refuses ambiguous references before checking the current route.
 Active receipt deadline validation permits at most five seconds of positive
 clock skew beyond Station's 30-second receipt window, matching the existing
 status timestamp allowance. Already expired receipts and deadlines beyond that

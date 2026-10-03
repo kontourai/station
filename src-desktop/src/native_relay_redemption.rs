@@ -329,6 +329,7 @@ pub(crate) trait NativeRedemptionContextProvider: Send + Sync {
 /// trust-store seam.
 pub(crate) struct AppNativeRedemptionContextProvider {
     app: AppHandle,
+    existing_route: bool,
 }
 
 fn with_locked_saved_relay_profile<T>(
@@ -363,7 +364,7 @@ fn with_locked_saved_enrollment_profile_store<T>(
     app: &AppHandle,
     profile_name: &str,
     enrollment_reference: Option<&super::NativeCredentialReference>,
-    paired_device: bool,
+    allow_published_profile: bool,
     operation: impl FnOnce(
         NativeRelayProfileSnapshot,
         LockedTrustProfileSnapshot,
@@ -388,7 +389,7 @@ fn with_locked_saved_enrollment_profile_store<T>(
         "dev" => NativeProofKeyChannel::Dev,
         _ => return Err(NativeRedemptionError::InvalidProfile),
     };
-    let paired_reference = if paired_device {
+    let published_reference = if allow_published_profile {
         store
             .profiles
             .iter()
@@ -402,7 +403,7 @@ fn with_locked_saved_enrollment_profile_store<T>(
         profile_name,
         &app_identifier,
         channel,
-        enrollment_reference.or(paired_reference),
+        enrollment_reference.or(published_reference),
     )?;
     let binding = TrustProfileBinding {
         profile_owner_id: profile.profile_name.clone(),
@@ -426,7 +427,18 @@ fn with_locked_saved_enrollment_profile_store<T>(
 
 impl AppNativeRedemptionContextProvider {
     pub(crate) fn new(app: AppHandle) -> Self {
-        Self { app }
+        Self {
+            app,
+            existing_route: false,
+        }
+    }
+
+    // Existing grant custody survives Device publication; it grants no account or Device authority.
+    fn for_existing_route(app: AppHandle) -> Self {
+        Self {
+            app,
+            existing_route: true,
+        }
     }
 }
 
@@ -436,21 +448,27 @@ impl NativeRedemptionContextProvider for AppNativeRedemptionContextProvider {
         profile_name: &str,
         operation: impl FnOnce(NativeRedemptionContext) -> RedemptionResult<T>,
     ) -> RedemptionResult<T> {
-        with_locked_saved_relay_profile(&self.app, profile_name, |profile, locked_snapshot| {
-            let mut trust_store = NativeStationTrustStore::system();
-            let approved = trust_store
-                .approved_descriptor_for_locked_profile(&locked_snapshot)
-                .map_err(|error| match error {
-                    crate::native_station_key_custody::CandidateError::TrustStore => {
-                        NativeRedemptionError::StationTrustUnavailable
-                    }
-                    _ => NativeRedemptionError::StationTrustRequired,
-                })?;
-            operation(NativeRedemptionContext {
-                station_trust: approved_station_trust(&profile, approved)?,
-                profile,
-            })
-        })
+        with_locked_saved_enrollment_profile_store(
+            &self.app,
+            profile_name,
+            None,
+            self.existing_route,
+            |profile, locked_snapshot, _, _| {
+                let mut trust_store = NativeStationTrustStore::system();
+                let approved = trust_store
+                    .approved_descriptor_for_locked_profile(&locked_snapshot)
+                    .map_err(|error| match error {
+                        crate::native_station_key_custody::CandidateError::TrustStore => {
+                            NativeRedemptionError::StationTrustUnavailable
+                        }
+                        _ => NativeRedemptionError::StationTrustRequired,
+                    })?;
+                operation(NativeRedemptionContext {
+                    station_trust: approved_station_trust(&profile, approved)?,
+                    profile,
+                })
+            },
+        )
     }
 }
 
@@ -8244,30 +8262,36 @@ pub(crate) async fn station_native_relay_grant_status(
     }
     tauri::async_runtime::spawn_blocking(move || {
         let grants = native_relay_grant_vault();
-        with_locked_saved_relay_profile(&app, &profile_name, |profile, _locked_snapshot| {
-            let owner = NativeProofKeyOwner::new(
-                &profile.app_identifier,
-                profile.channel,
-                &profile.client_instance_id,
-            )
-            .map_err(|_| NativeRedemptionError::InvalidProfile)?;
-            Ok(NativeRelayGrantState::for_saved_profile(
-                &profile,
-                grants.metadata_for_profile_route(
-                    &owner,
-                    &profile.broker_origin,
-                    &profile.station_id,
-                    &profile.enrollment_id,
-                    native_now_ms_or_zero(),
-                )?,
-                grants.cleanup_statuses_for_profile_route(
-                    &owner,
-                    &profile.broker_origin,
-                    &profile.station_id,
-                    &profile.enrollment_id,
-                )?,
-            ))
-        })
+        with_locked_saved_enrollment_profile_store(
+            &app,
+            &profile_name,
+            None,
+            true,
+            |profile, _locked_snapshot, _, _| {
+                let owner = NativeProofKeyOwner::new(
+                    &profile.app_identifier,
+                    profile.channel,
+                    &profile.client_instance_id,
+                )
+                .map_err(|_| NativeRedemptionError::InvalidProfile)?;
+                Ok(NativeRelayGrantState::for_saved_profile(
+                    &profile,
+                    grants.metadata_for_profile_route(
+                        &owner,
+                        &profile.broker_origin,
+                        &profile.station_id,
+                        &profile.enrollment_id,
+                        native_now_ms_or_zero(),
+                    )?,
+                    grants.cleanup_statuses_for_profile_route(
+                        &owner,
+                        &profile.broker_origin,
+                        &profile.station_id,
+                        &profile.enrollment_id,
+                    )?,
+                ))
+            },
+        )
         .map_err(|_| "Station could not read native relay grant status.".to_owned())
     })
     .await
@@ -8958,31 +8982,37 @@ pub(crate) async fn station_native_relay_grant_revoke(
         let grants = native_relay_grant_vault();
         let (owner, broker_origin, station_id, enrollment_id, staged) =
             with_native_relay_route_operation_lock(|| {
-                with_locked_saved_relay_profile(&app, &profile_name, |profile, _| {
-                    if profile.revision != expected_profile_revision {
-                        return Err(NativeRedemptionError::StaleProfile);
-                    }
-                    let owner = NativeProofKeyOwner::new(
-                        &profile.app_identifier,
-                        profile.channel,
-                        &profile.client_instance_id,
-                    )
-                    .map_err(|_| NativeRedemptionError::InvalidProfile)?;
-                    let staged = grants.stage_removed_profile_route_cleanup(
-                        &owner,
-                        &profile.broker_origin,
-                        &profile.station_id,
-                        &profile.enrollment_id,
-                        native_now_ms_or_zero(),
-                    )?;
-                    Ok((
-                        owner,
-                        profile.broker_origin.clone(),
-                        profile.station_id.clone(),
-                        profile.enrollment_id.clone(),
-                        staged,
-                    ))
-                })
+                with_locked_saved_enrollment_profile_store(
+                    &app,
+                    &profile_name,
+                    None,
+                    true,
+                    |profile, _, _, _| {
+                        if profile.revision != expected_profile_revision {
+                            return Err(NativeRedemptionError::StaleProfile);
+                        }
+                        let owner = NativeProofKeyOwner::new(
+                            &profile.app_identifier,
+                            profile.channel,
+                            &profile.client_instance_id,
+                        )
+                        .map_err(|_| NativeRedemptionError::InvalidProfile)?;
+                        let staged = grants.stage_removed_profile_route_cleanup(
+                            &owner,
+                            &profile.broker_origin,
+                            &profile.station_id,
+                            &profile.enrollment_id,
+                            native_now_ms_or_zero(),
+                        )?;
+                        Ok((
+                            owner,
+                            profile.broker_origin.clone(),
+                            profile.station_id.clone(),
+                            profile.enrollment_id.clone(),
+                            staged,
+                        ))
+                    },
+                )
                 .map_err(|_| "Station could not stage native relay grant revocation.".to_owned())
             })?;
         let context = AppNativeRedemptionContextProvider::new(app.clone());
@@ -9037,7 +9067,7 @@ pub(crate) async fn station_native_relay_grant_renew(
     }
     tauri::async_runtime::spawn_blocking(move || {
         with_native_relay_route_operation_lock(|| {
-            let context = AppNativeRedemptionContextProvider::new(app);
+            let context = AppNativeRedemptionContextProvider::for_existing_route(app);
             let proof_keys = NativeRelayProofKeyVault::new();
             let http = UreqNativeBrokerTransport::new();
             let grants = native_relay_grant_vault();
@@ -9267,14 +9297,7 @@ pub(crate) fn read_native_relay_ice_configuration(
     profile_name: &str,
     expected_profile_revision: u64,
 ) -> RedemptionResult<crate::native_relay_ice::NativeRelayIceConfiguration> {
-    let captured = with_current_native_enrollment_route(
-        app,
-        profile_name,
-        expected_profile_revision,
-        |capture| Ok(capture),
-    )
-    .map_err(|_| NativeRedemptionError::StaleProfile)?;
-    let contexts = AppNativeRedemptionContextProvider::new(app.clone());
+    let contexts = AppNativeRedemptionContextProvider::for_existing_route(app.clone());
     let proof_keys = NativeRelayProofKeyVault::new();
     let http = UreqNativeBrokerTransport {
         timeout: Duration::from_secs(10),
@@ -9289,17 +9312,6 @@ pub(crate) fn read_native_relay_ice_configuration(
     );
     let (context, owner, grant) =
         service.load_current_grant(profile_name, expected_profile_revision)?;
-    let exact_grant = Zeroizing::new(
-        serde_json::to_vec(&grant).map_err(|_| NativeRedemptionError::GrantInvalid)?,
-    );
-    let digest = URL_SAFE_NO_PAD.encode(ring::digest::digest(&ring::digest::SHA256, &exact_grant));
-    if context != captured.context
-        || grant.credential.id != captured.grant_id
-        || grant.expires_at != captured.grant_expires_at
-        || digest != captured.grant_digest
-    {
-        return Err(NativeRedemptionError::StaleProfile);
-    }
     let challenge = NativeBrokerRequestProofChallenge::from_request(
         native_request_identity(&grant),
         NativeBrokerRequestBody::IceConfiguration,
@@ -9333,7 +9345,7 @@ fn run_native_relay_binding_request(
     app: AppHandle,
     request: NativeRelayDiagnosticBindingInput,
 ) -> Result<NativeRelayDiagnosticBinding, String> {
-    let contexts = AppNativeRedemptionContextProvider::new(app);
+    let contexts = AppNativeRedemptionContextProvider::for_existing_route(app);
     let grants = native_relay_grant_vault();
     let now = native_now_ms().map_err(|_| "Station could not verify native relay state.")?;
     contexts
@@ -9376,7 +9388,7 @@ pub(crate) fn native_application_signal_open(
     app: AppHandle,
     request: NativeRelaySignalOpenRequest,
 ) -> RedemptionResult<NativeRelaySignalOpened> {
-    let context = AppNativeRedemptionContextProvider::new(app);
+    let context = AppNativeRedemptionContextProvider::for_existing_route(app);
     let proof_keys = NativeRelayProofKeyVault::new();
     let http = UreqNativeBrokerTransport::new();
     let grants = native_relay_grant_vault();
@@ -9403,7 +9415,7 @@ pub(crate) fn native_application_signal_read(
     app: AppHandle,
     request: NativeRelaySignalReadRequest,
 ) -> RedemptionResult<NativeRelaySignalAnswer> {
-    let context = AppNativeRedemptionContextProvider::new(app);
+    let context = AppNativeRedemptionContextProvider::for_existing_route(app);
     let proof_keys = NativeRelayProofKeyVault::new();
     let http = UreqNativeBrokerTransport::new();
     let grants = native_relay_grant_vault();

@@ -997,8 +997,20 @@ pub(crate) async fn station_native_enrollment_resume(
     crate::native_relay_key_approval::require_main_app_window(&window, &app)?;
     tauri::async_runtime::spawn_blocking(move||{
         let _operation=HOST_OPERATION.lock().map_err(|_|REFUSED.to_owned())?;
-        let selected=native_relay_redemption::with_current_native_enrollment_route(&app,&profile_name,expected_profile_revision, |route|Ok(route))?;
-        let rows=index(&app)?;let mut result=vec![];
+        let rows=index(&app)?;
+        let mut reference=None;
+        for row in rows.iter().filter(|row|row.seed.owner.profile_name==profile_name) {
+            let attempt=match entry(&row.id)?.get_password(){Ok(_)=>load(&row.id)?,Err(keyring_core::Error::NoEntry)=>row.seed.clone(),Err(_)=>return Err(REFUSED.into())};
+            if !attempt.cancelled {
+                if let Some(owned)=attempt.credential_reference {
+                    load_owned(&app,&row.id)?;
+                    if reference.as_ref().is_some_and(|existing|existing!=&owned){return Err(REFUSED.into());}
+                    reference=Some(owned);
+                }
+            }
+        }
+        let selected=native_relay_redemption::with_owned_native_enrollment_route(&app,&profile_name,expected_profile_revision,reference.as_ref(), |route|Ok(route))?;
+        let mut result=vec![];
         for row in rows.into_iter().filter(|r|r.seed.owner.profile_name==profile_name) {
             let (attempt, stored)=match entry(&row.id)?.get_password(){Ok(_)=>(load(&row.id)?,true),Err(keyring_core::Error::NoEntry)=>(row.seed,false),Err(_)=>return Err(REFUSED.into())};
             if attempt.cancelled {finish_terminal_cleanup(&app,&row.id,&attempt)?;continue;}
