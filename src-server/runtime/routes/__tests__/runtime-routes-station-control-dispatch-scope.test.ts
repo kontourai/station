@@ -1469,6 +1469,16 @@ describe('configureRuntimeRoutes: station-control dispatch stays in scope (slice
   // nothing, so `ask` is refused as surely as `auto`).
 
   const POSTURE = 'station_control_posture_not_allowed';
+  /**
+   * The option keys the matrix drives, written out rather than read from
+   * `POSTURE_OPTION_KEYS`, so dropping a key from the source fails its row.
+   */
+  const POSTURE_OPTION_KEY_LITERALS = [
+    'approvalMode',
+    'mode',
+    'permissionMode',
+    'autoMode',
+  ] as const;
   /** The posture each route's body can carry, by field path. */
   const withOptions = (key: string) =>
     ({
@@ -1482,7 +1492,7 @@ describe('configureRuntimeRoutes: station-control dispatch stays in scope (slice
     place: (options: Record<string, unknown>) => Record<string, unknown>,
   ): Record<string, Record<string, unknown>> =>
     Object.fromEntries(
-      POSTURE_OPTION_KEYS.map((key) => [
+      POSTURE_OPTION_KEY_LITERALS.map((key) => [
         `${path}.${key}`,
         place({ [key]: withOptions(key) }),
       ]),
