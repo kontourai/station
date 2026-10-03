@@ -3,9 +3,7 @@ import type {
   PullRequestLinkIdentity,
 } from '@kontourai/station-contracts/conversation-pull-request-links';
 import { useState } from 'react';
-// The Browser pane's round icon control, until the shared `IconButton` (a
-// sibling change) lands; this import moves there with it.
-import { BrowserIconButton } from '../../workspace-panes/browser-pane/BrowserIconButton';
+import { IconButton } from '../IconButton';
 import { PlusGlyph, RefreshGlyph } from '../icons/Glyph';
 import { SkeletonList } from '../state';
 import { LinkPullRequestField } from './LinkPullRequestField';
@@ -63,7 +61,7 @@ export function ConversationPullRequestLinks({
       <header className="conversation-pr-links__bar">
         <h3>Linked pull requests</h3>
         <div className="conversation-pr-links__tools">
-          <BrowserIconButton
+          <IconButton
             className="conversation-pr-links__icon"
             aria-label="Link a pull request"
             title="Link a pull request"
@@ -73,8 +71,8 @@ export function ConversationPullRequestLinks({
             onClick={() => setLinking((value) => !value)}
           >
             <PlusGlyph />
-          </BrowserIconButton>
-          <BrowserIconButton
+          </IconButton>
+          <IconButton
             className="conversation-pr-links__icon"
             aria-label="Refresh"
             title="Refresh"
@@ -82,7 +80,7 @@ export function ConversationPullRequestLinks({
             onClick={() => void links.refetch()}
           >
             <RefreshGlyph />
-          </BrowserIconButton>
+          </IconButton>
         </div>
       </header>
       {linking && (
