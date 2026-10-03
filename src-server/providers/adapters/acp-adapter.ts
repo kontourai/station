@@ -909,7 +909,14 @@ export class AcpAdapter implements ProviderAdapterShape {
         agentToolServers !== undefined ? 'agent' : 'connection-default';
       const requestedToolServerIds =
         agentToolServers !== undefined
-          ? agentToolServers.map((server) => server.id)
+          ? [
+              ...new Set([
+                ...(input.agent?.toolServerMode === 'add'
+                  ? (config.provideToolServers ?? [])
+                  : []),
+                ...agentToolServers.map((server) => server.id),
+              ]),
+            ]
           : config.provideToolServers;
 
       // archive#1684 — THE LIVE GATE for the built-in station-control server.
@@ -1004,7 +1011,11 @@ export class AcpAdapter implements ProviderAdapterShape {
                   const match = agentToolServers.find(
                     (server) => server.id === id,
                   );
-                  return match ? toPassthroughToolDef(match) : null;
+                  return match
+                    ? toPassthroughToolDef(match)
+                    : input.agent?.toolServerMode === 'add'
+                      ? (this.options.resolveToolServer?.(id) ?? null)
+                      : null;
                 }
               : (this.options.resolveToolServer ?? (async () => null)),
           logger,

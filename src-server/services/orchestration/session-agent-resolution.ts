@@ -52,10 +52,16 @@ import {
   SYSTEM_PROMPT_CAPABILITY_ID,
 } from '@kontourai/station-contracts/provider';
 import type { ToolDef } from '@kontourai/station-contracts/tool';
+import {
+  mcpToolDisabled,
+  originalMcpToolName,
+  selectedMcpTools,
+} from '@kontourai/station-shared/mcp-tool-selection';
 import { STATION_CAPABILITY_DISCOVERY_GUIDANCE } from '../../runtime/agents/station-capability-discovery.js';
 import { isBuiltinStationControl } from '../../runtime/bootstrap/station-control-runtime-env.js';
 import { SC_AUTO_APPROVED_TOOLS } from '../../runtime/tools/runtime-control-tools.js';
 import { agentCapabilityUndelivered } from '../../telemetry/metrics.js';
+import { stationControlToolCatalog } from '../../tools/station-control-mcp-server.js';
 
 interface SessionAgentResolverOptions {
   /** Load an agent's spec by slug; `null` for an unknown/not-on-disk agent. */
@@ -293,7 +299,11 @@ export function createSessionAgentResolver(
       const definition: ResolvedAgentDefinition = { slug };
       const report: SessionCapabilityDeliveryMetadata = { agentSlug: slug };
 
-      const authoredToolServers = spec.tools?.mcpServers;
+      if (spec.tools?.mcpLoading !== undefined)
+        definition.toolServerLoading = spec.tools.mcpLoading;
+      const authoredToolServers =
+        spec.tools?.mcpServers ??
+        (spec.tools?.mcpMode !== undefined ? [] : undefined);
       if (authoredToolServers !== undefined) {
         // Station#1157 (extended archive#1195): the canonical built-in
         // station-control server is the ONE exemption from the blanket
@@ -376,6 +386,34 @@ export function createSessionAgentResolver(
               if (toolDef.enabled === false) {
                 return { ok: false, reason: 'disabled' };
               }
+              const names =
+                id === 'station-control'
+                  ? stationControlToolCatalog().map((tool) => tool.name)
+                  : (toolDef.probe?.toolNames ?? []).map((name) =>
+                      originalMcpToolName(id, name),
+                    );
+              const selected =
+                spec.tools?.available === undefined
+                  ? undefined
+                  : selectedMcpTools(
+                      id,
+                      names,
+                      spec.tools.available,
+                      authoredToolServers,
+                    );
+              const disabled = names.filter((name) =>
+                mcpToolDisabled(id, name, toolDef.disabledTools),
+              );
+              for (const name of toolDef.disabledTools ?? []) {
+                if (!names.some((raw) => mcpToolDisabled(id, raw, [name])))
+                  disabled.push(originalMcpToolName(id, name));
+              }
+              if (
+                input.provider === 'acp' &&
+                (selected !== undefined || disabled.length)
+              )
+                return { ok: false, reason: 'engine-unsupported' };
+
               if (toolDef.env && Object.keys(toolDef.env).length > 0) {
                 const exemptBuiltinStationControl =
                   builtinStationControlDelivery !== undefined &&
@@ -393,6 +431,13 @@ export function createSessionAgentResolver(
                   command: toolDef.command,
                   args: toolDef.args,
                   endpoint: toolDef.endpoint,
+                  ...(disabled.length ? { disabledTools: disabled } : {}),
+                  ...(spec.tools?.available !== undefined ||
+                  spec.tools?.mcpMode !== undefined ||
+                  disabled.length
+                    ? { toolNames: names }
+                    : {}),
+                  ...(selected !== undefined ? { allowedTools: selected } : {}),
                 },
               };
             },
@@ -405,6 +450,8 @@ export function createSessionAgentResolver(
         // authored-empty override that never happened.
         if (channels.toolServers) {
           definition.toolServers = resolved;
+          if (spec.tools?.mcpMode !== undefined)
+            definition.toolServerMode = spec.tools.mcpMode;
         }
         recordUndelivered(input.provider, undelivered);
         report.toolServers = {

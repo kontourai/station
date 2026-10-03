@@ -4,16 +4,15 @@ import { CheckboxGlyph } from '../components/Checkbox';
 import { Dialog } from '../components/Dialog';
 import { SkeletonList } from '../components/state';
 import type { Tool } from '../types';
+import type { AgentFormData } from './agent-editor/types';
+import { addIntegration, removeIntegration } from './agent-editor/utils';
 
 interface AgentAddModalProps {
   type: 'integrations' | 'skills';
   availableTools: Tool[];
   availableSkills: any[];
-  form: {
-    tools: { mcpServers: string[]; available: string[] };
-    skills: string[];
-  };
-  setForm: React.Dispatch<React.SetStateAction<any>>;
+  form: AgentFormData;
+  setForm: React.Dispatch<React.SetStateAction<AgentFormData>>;
   onClose: () => void;
   isLoading?: boolean;
 }
@@ -82,35 +81,13 @@ export function AgentAddModal({
                   key={integration.id}
                   className={`editor__tool-item${enabled ? ' editor__tool-item--active' : ''}`}
                   aria-pressed={enabled}
+                  disabled={!enabled && integration.enabled === false}
                   onClick={() => {
-                    setForm((f: any) => {
-                      const servers = new Set(f.tools.mcpServers);
-                      const avail = [...f.tools.available];
-                      if (servers.has(integration.id)) {
-                        servers.delete(integration.id);
-                        return {
-                          ...f,
-                          tools: {
-                            ...f.tools,
-                            mcpServers: [...servers],
-                            available: avail.filter(
-                              (p: string) =>
-                                !p.startsWith(`${integration.id}_`),
-                            ),
-                          },
-                        };
-                      }
-                      servers.add(integration.id);
-                      avail.push(`${integration.id}_*`);
-                      return {
-                        ...f,
-                        tools: {
-                          ...f.tools,
-                          mcpServers: [...servers],
-                          available: avail,
-                        },
-                      };
-                    });
+                    setForm((current) =>
+                      enabled
+                        ? removeIntegration(current, integration.id)
+                        : addIntegration(current, integration.id),
+                    );
                   }}
                 >
                   <CheckboxGlyph checked={enabled} />

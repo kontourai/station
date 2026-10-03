@@ -2,6 +2,7 @@ import { useAwsProfilesQuery } from '@kontourai/station-sdk';
 import { Fragment, useId, useMemo } from 'react';
 import { Button } from '../../components/Button';
 import { ConnectionReadinessNotice } from '../../components/connections/ConnectionReadinessNotice';
+import { InfoTip } from '../../components/InfoTip';
 import { CheckGlyph, CloseGlyph } from '../../components/icons/Glyph';
 import { ResponsiveSurfaceActions } from '../../components/ResponsiveDialogSurface';
 import { Empty, ErrorState, SkeletonBlock } from '../../components/state';
@@ -31,6 +32,7 @@ export function DefaultModelField({
   options,
   placeholder,
   hint,
+  hintPlacement = 'inline',
   onChange,
 }: {
   id: string;
@@ -44,13 +46,23 @@ export function DefaultModelField({
   options: Array<{ id: string; name: string }>;
   placeholder: string;
   hint: string;
+  hintPlacement?: 'inline' | 'tooltip';
   onChange: (value: string) => void;
 }) {
   return (
     <div className="editor-field">
-      <label className="editor-label" htmlFor={id}>
-        {label}
-      </label>
+      {hintPlacement === 'tooltip' ? (
+        <div className="editor-label-row">
+          <label className="editor-label" htmlFor={id}>
+            {label}
+          </label>
+          <InfoTip label={label}>{hint}</InfoTip>
+        </div>
+      ) : (
+        <label className="editor-label" htmlFor={id}>
+          {label}
+        </label>
+      )}
       {options.length > 0 ? (
         <select
           id={id}
@@ -75,7 +87,9 @@ export function DefaultModelField({
           onChange={(event) => onChange(event.target.value)}
         />
       )}
-      <div className="editor-field-hint">{hint}</div>
+      {hintPlacement === 'inline' && (
+        <div className="editor-field-hint">{hint}</div>
+      )}
     </div>
   );
 }
@@ -95,20 +109,31 @@ export function ProviderRegionField({
   id,
   value,
   hint,
+  hintPlacement = 'inline',
   disabled,
   onChange,
 }: {
   id: string;
   value: string;
   hint?: string;
+  hintPlacement?: 'inline' | 'tooltip';
   disabled?: boolean;
   onChange: (value: string) => void;
 }) {
   return (
     <div className="editor-field">
-      <label className="editor-label" htmlFor={id}>
-        Region
-      </label>
+      {hint && hintPlacement === 'tooltip' ? (
+        <div className="editor-label-row">
+          <label className="editor-label" htmlFor={id}>
+            Region
+          </label>
+          <InfoTip label="Region">{hint}</InfoTip>
+        </div>
+      ) : (
+        <label className="editor-label" htmlFor={id}>
+          Region
+        </label>
+      )}
       <input
         id={id}
         className="editor-input"
@@ -118,7 +143,9 @@ export function ProviderRegionField({
         disabled={disabled}
         onChange={(event) => onChange(event.target.value)}
       />
-      {hint ? <div className="editor-hint">{hint}</div> : null}
+      {hint && hintPlacement === 'inline' ? (
+        <div className="editor-hint">{hint}</div>
+      ) : null}
     </div>
   );
 }
