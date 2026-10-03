@@ -44,7 +44,7 @@
 
     {"path":"src-server/routes/agents/skills.ts","digest":"e39a612adc1d35767a9149cc5079d2c2732b4a2848171e2115ce3d4e4c25c62d","revision":"a366557a12a4f5e6a41d38ce92aacbd0ab32193b"},
 
-    {"path":"src-server/routes/agents/__tests__/skill-experiences.routes.test.ts","digest":"beb8fc82f360b8ce7ca2a2bb789dac384eff8ba6031707b798a06dcc43a94827","revision":"f2bb7d8a1e4b56ac783fb9d0cfe167fe7a0fdde5"},
+    {"path":"src-server/routes/agents/__tests__/skill-experiences.routes.test.ts","digest":"25f91dde6ecca6a5bf5839088c945d52454f313ea757d51d77b2410fc7abae9a","revision":"9f993f436f37659ce5b7c005e7b616d83474ac44"},
 
     {"path":"src-server/services/orchestration/skill-experience-runtime.ts","digest":"e5ebf3cd2498f7bb06d751e584540630749c77c0008bb523829a32178dbefefb","revision":"f2bb7d8a1e4b56ac783fb9d0cfe167fe7a0fdde5"},
 
