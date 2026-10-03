@@ -104,7 +104,8 @@ produce file/field-specific errors. The handwritten
 
 This is a local author boundary, not hostile concurrent filesystem isolation
 or runtime admission. The existing portable runtime parser can accept a valid
-declaration without reading its files; the installed inventory independently repeats source validation after package admission.
+declaration without reading its files; the installed inventory independently
+repeats source validation after package admission.
 It continues to own portable Skill parsing and availability.
 
 Adaptive interview declarations name supported answer kinds and a maximum
