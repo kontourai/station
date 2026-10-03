@@ -51,7 +51,7 @@ function assertUnique(values: string[], location: string): void {
     throw new Error(`Skill experience ${location}: duplicate identity`);
 }
 
-/** Author build validation only; no imports, fetching, activation or permission grants. */
+/** Read inert definitions and their bundled Skills; no activation or permission grants. */
 export function readValidatedSkillExperiences(
   pluginDir: string,
   manifest: AgentPluginManifestV1,

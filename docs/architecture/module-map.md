@@ -302,7 +302,7 @@ bind validated definitions to an exact package incarnation/materialization;
 SkillService applies the current discovered Skill precedence. Neither that
 snapshot nor author capability requirements authorize execution. The controlled
 route proof is `src-server/routes/agents/__tests__/skill-experiences.routes.test.ts`.
- Directory/git install validates recognized packages through the same loader
+Directory/git install validates recognized packages through the same loader
 while the legacy parser remains an explicit #346 fallback. Behavioral and
 real-child-process evidence lives in `agent-plugin-loader.test.ts`,
 `plugin-install-transaction.test.ts`, and `mcp-v2.test.ts`. **Do not reintroduce:**
