@@ -9,7 +9,7 @@
 
   "limits": "Source review of every current documented claim is not exhaustive endpoint coverage or formal validation of every implementation branch. No live provider/model/MCP/registry/AWS pricing or IAM, git remote update/install/restart, native browser/Windows shell/device, Tailscale Serve, hosted or account enrollment outcome was exercised. Current limitations are stated, including placeholder measurements, hidden legacy failure-to-empty results, cooperative abort, pending activation/cleanup, raw pricing units, retained proxy/path gaps, and provider/executor boundaries.37 fences parse and12 exported request-schema examples pass; syntax/shape is not runtime authentication or execution proof. Exact hashes detect later drift and never substitute for semantic delta review.",
 
-  "document": {"digest":"eea4da022bf934498a57d980ecb76ffdea19ba1987b0691291b8c5587ffbd82f","revision":"42c0e9686015ccb23936b0c671313e66cd876395"},
+  "document": {"digest":"17e0b91782105f51a84b4c87aab54e7e269410b04e58216f49e24aca4deeacf1","revision":"674ccd9011dff6a29286c8b91123f90065a3c2f8"},
 
   "sources": [
     {"path":"packages/cli/src/commands/environment.ts","digest":"e0f0a2b430058c5bbd399df755dbc098b5356474206f473fa24ffbb3d77c7331","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
@@ -196,7 +196,7 @@
 
     {"path":"src-server/routes/plugins/plugins.ts","digest":"fbaf259293b5a5f7ae43c76aae4d8676c35ab5e92157284cbd39d4f13622fb2f","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/routes/plugins/registry.ts","digest":"d2ad68bbcc5573372f17968589a0b7875ad7ba52974cd8b2a043626ca6a9ccd5","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/routes/plugins/registry.ts","digest":"182f1ca8372a27bd8f40e5b9ca8faec49b24cd1e4959b4a8aa1250def71e91dc","revision":"c191c6d08ae926b8d038cf5e2a4b494beee19243"},
 
     {"path":"src-server/routes/projects/fs.ts","digest":"73b84dab3f633c021406ad629cee445610a2cf44f43b93dc8b81e3d70d8efac4","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -371,6 +371,10 @@
     {"path":"src-ui/src/views/agent-editor/useAgentsViewModel.ts","digest":"09128cce1a7fe91bcfbe64e378dce4d236938460d2d31ae3499cfa2234451505","revision":"61109781a84058b3a3895504ae2c1b29842e441e"},
 
     {"path":"src-ui/src/views/layout-workspace-shape.ts","digest":"1ee63d8a83172c792bb13f00c2fedf804c005053fd8a32da3862b9c1205777b0","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/providers/registries/github-skill-registry.ts","digest":"4ce34af64065b6443c28b409339af2bd31b1cda0d432f19384a9e074fbd1d4cd","revision":"7be721b29fb6742b6e66cf8f952782481b3f0fe0"},
+
+    {"path":"src-server/routes/plugins/__tests__/registry-skill-acquisition.routes.test.ts","digest":"52ed271e4c36d967b31c50ecb89b0fbe5f8937b835b87a29c076bf839dc39a1c","revision":"7be721b29fb6742b6e66cf8f952782481b3f0fe0"},
 
     {"path":"src-server/services/projects/task-room-work-module.ts","digest":"acf9afa37babc44c9281e95040e057726a71b03c0ab49e98989e59069f450f9c","revision":"81ffd01123b6ad2a2591308e02a0c5f1cddc2feb"},
 
