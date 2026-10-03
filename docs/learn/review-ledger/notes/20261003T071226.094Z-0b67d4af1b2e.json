@@ -1,0 +1,7 @@
+{
+  "revision": "913da0b4838c0c929420ce1a4de4f37e8efa14fb",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Checked the dock layering and navigation claims against navigation-store.ts and ChatDock.tsx: the Needs-you publication and the in-place preview write do not change the dock's layers, portals or breakpoints. No prose change."}
+  ]
+}

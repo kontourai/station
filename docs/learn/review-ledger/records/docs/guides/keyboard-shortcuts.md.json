@@ -20,7 +20,7 @@
 
     {"path":"src-ui/src/hooks/useIsMobile.ts","digest":"6cedc0e8a70136acb36e40078106a880663ea10b9d5d7da97a503c9c39b20ddd","revision":"5bc39d324d26c7d17fc8ee142408ff36d6f80f7b"},
 
-    {"path":"src-ui/src/lib/device-settings-store.ts","digest":"2c9c1dfb7259dbe56a3c101aba0c370c481516a6e0b67a666655a518d2a90fd7","revision":"7ee8992ddf9ca89f60546a72199bce8e2d25da43"},
+    {"path":"src-ui/src/lib/device-settings-store.ts","digest":"35154d1a280a19606705efe1591f6fc4cd5127ba5f688aac54665ba87b483b74","revision":"ef69511d6f8027fe0b5f9fb0d6afc95f2a3a2c38"},
 
     {"path":"src-ui/src/settings/shortcutPreferences.ts","digest":"4a734f717d38f9f63daf255d0bc448384df825f98a6a73ca13b562044e56ed27","revision":"5bc39d324d26c7d17fc8ee142408ff36d6f80f7b"},
 

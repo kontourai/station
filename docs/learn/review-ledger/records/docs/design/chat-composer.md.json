@@ -34,11 +34,11 @@
 
     {"path":"src-ui/src/components/inbox-row/InboxRowStatus.tsx","digest":"d7cc9d13090f4c7d529e76bcd4828113375a1c52711ba6009d6e0cb8cad85418","revision":"b14f1b80ec27c38844b3d16e8a4bdfe624a778c9"},
 
-    {"path":"src-ui/src/contexts/navigation-store.ts","digest":"2486db91eb4f818fec69048dcd202c7a7ffc5a9517c2cb11fa7728197f919607","revision":"4d59eb1868139f2faeaf1a1467811c22726f741c"},
+    {"path":"src-ui/src/contexts/navigation-store.ts","digest":"b4958508ce13d04645a71a738cc6b3d9da50a3b6526738650e8acc2f5e3e4063","revision":"6e9f37f483fa1372c3c185be88002e24a08bfc3e"},
 
     {"path":"tests/cross-runtime-chat-switching.spec.ts","digest":"0aeb646fe962c41108316c65360c405268ea7061ea2504e7441b51a0a9bd2878","revision":"8fd71c3714eceeb651bd8e52f200aa1532fa33c6"},
 
-    {"path":"src-ui/src/components/chat-dock/ChatDock.tsx","digest":"f92052af5abd7736675c6a27499a8a43ded8167dcecff4b0e4e775c2614562f3","revision":"4d59eb1868139f2faeaf1a1467811c22726f741c"},
+    {"path":"src-ui/src/components/chat-dock/ChatDock.tsx","digest":"15dfcd9f142e6f18c9d659316fa3f67f15f557845a5bc10b2d1b28ceb2bac91d","revision":"6e9f37f483fa1372c3c185be88002e24a08bfc3e"},
 
     {"path":"src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx","digest":"66f0394440649ebf2fd68d1292cd7e009ca0a449d85681a2ee1d36a0d192e107","revision":"b14f1b80ec27c38844b3d16e8a4bdfe624a778c9"},
 

@@ -9,10 +9,10 @@
 
   "limits": "Complete for concrete documented claims and actual named callers, not an exhaustive security audit or every possible implementation path. No installed-plugin journey, external provider/registry mutation, public package distribution, native/device operation or cross-host qualification performed. Historical screenshots, bundle measurements, real gesture/history and physical-device receipts were not renewed. One focused first-lazy-mount case remains FAIL with unknown cause; no deadline increase or rerun. The fresh browser evidence is only the real-Chromium CSS/toolbar geometry fixture.",
 
-  "document": {"digest":"382a4910c41cd209779e2bedfd5cda4675d93217aa10f1879e8719f64c955375","revision":"82fea394a09cdf62071b073d09aa6cb08ebbca48"},
+  "document": {"digest":"c41e3d0c5c22ff96119bfd1d034b402c4dead27c818bc2b8fcc050e47c48e928","revision":"6e9f37f483fa1372c3c185be88002e24a08bfc3e"},
 
   "sources": [
-    {"path":"packages/contracts/src/device-settings.ts","digest":"5f6cf575d9474dd624f3b77272538d70cceb43ee355109dc655851ac0a195bcb","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"packages/contracts/src/device-settings.ts","digest":"b167282df27e68665d8a99a223f14271816fdfbeec38408d25fb3d1f369e0bb3","revision":"c6e3245e902156daf2862b84e379efc0481faaac"},
 
     {"path":"packages/contracts/src/engine-capability-matrix.ts","digest":"db82340760d09e965ac7ed17830f36060573fe48545995d4ad9149b755d36ea1","revision":"518fae654af981373e872c2ab85438bb1b1b0e67"},
 
@@ -34,13 +34,13 @@
 
     {"path":"src-ui/src/app-shell/project-layout-kind.ts","digest":"7bcad7adebc9f9b0c3270523bfb6b5976b2fc85177d36237afe00631fb826305","revision":"2694ff185bfb985714d2c76bac302fb2db3959dd"},
 
-    {"path":"src-ui/src/app-shell/ProjectLayoutRenderer.tsx","digest":"560d6ad98c5e873842fe95fbe16eabcbeb9ef6704a45a0f817f93a61e802b4b6","revision":"10385e24810354a1820f8fe14fbb30cb1124bf0c"},
+    {"path":"src-ui/src/app-shell/ProjectLayoutRenderer.tsx","digest":"48e6cacc92dd6f741e2715212582977b66f0aa8dcc31c018825f227b30e6bb8c","revision":"14b9ccfbecf87ae603643fcbe18d8956b535c2c2"},
 
     {"path":"src-ui/src/app-shell/RegionShells.tsx","digest":"d50ca5c63c0008b1b6783894ad8971f1bbf9c3ba7bc4c34eb1aacfc2e515226b","revision":"791bf6c6aae390aadba2c5bc9e11cf6db0e3e893"},
 
     {"path":"src-ui/src/App.tsx","digest":"8adeb594b372c2fb6dfa134c8f7ed472e56afae50f78a3becf59e4c3d272edf5","revision":"d6a3158c22a62d9530592c6366a1624790ee9401"},
 
-    {"path":"src-ui/src/components/chat-dock/ChatDock.tsx","digest":"f92052af5abd7736675c6a27499a8a43ded8167dcecff4b0e4e775c2614562f3","revision":"4d59eb1868139f2faeaf1a1467811c22726f741c"},
+    {"path":"src-ui/src/components/chat-dock/ChatDock.tsx","digest":"15dfcd9f142e6f18c9d659316fa3f67f15f557845a5bc10b2d1b28ceb2bac91d","revision":"6e9f37f483fa1372c3c185be88002e24a08bfc3e"},
 
     {"path":"src-ui/src/components/chat-dock/DockShell.tsx","digest":"1961ea14eef051a37498d1e172a5e4ae52eefd07334cb71bfa1fda44064ccfb7","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -78,7 +78,7 @@
 
     {"path":"src-ui/src/contexts/__tests__/RegionModelContext-phone-layer.test.tsx","digest":"1e5ba5ee73ae0d145b3834b11fb3835c4a19b1f07ec53c5fe3d82a7f44507eb5","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/contexts/navigation-store.ts","digest":"2486db91eb4f818fec69048dcd202c7a7ffc5a9517c2cb11fa7728197f919607","revision":"4d59eb1868139f2faeaf1a1467811c22726f741c"},
+    {"path":"src-ui/src/contexts/navigation-store.ts","digest":"b4958508ce13d04645a71a738cc6b3d9da50a3b6526738650e8acc2f5e3e4063","revision":"6e9f37f483fa1372c3c185be88002e24a08bfc3e"},
 
     {"path":"src-ui/src/contexts/RegionModelContext.tsx","digest":"cfe2b91b0e6b975623897be596556ed668fe3025983972e043ba0a54526ae934","revision":"0ab9b2a8123e608900bae2492b40c0b35483ac2d"},
 
@@ -100,7 +100,7 @@
 
     {"path":"src-ui/src/layouts/index.tsx","digest":"b228a1f6ed2fa48a803755023df6b0cd07b9da0a38a3cb8cdfe6c56c68c581e2","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/lib/device-settings-store.ts","digest":"2c9c1dfb7259dbe56a3c101aba0c370c481516a6e0b67a666655a518d2a90fd7","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"src-ui/src/lib/device-settings-store.ts","digest":"35154d1a280a19606705efe1591f6fc4cd5127ba5f688aac54665ba87b483b74","revision":"ef69511d6f8027fe0b5f9fb0d6afc95f2a3a2c38"},
 
     {"path":"src-ui/src/regions/__tests__/region-arrangement-record.test.ts","digest":"ae69b3a3f2ca0fe2eb0be804af9f5a0e0fee85b74623a383738d06a7215a342d","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -144,7 +144,7 @@
 
     {"path":"src-ui/src/workspace-panes/useDockProject.ts","digest":"c23ae2160b25f249c27c5e83f6d3df8f0994de980b8d84b4d225ca6db9394260","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/workspace-panes/workspacePaneHostController.ts","digest":"c5d4c8407ea43b08b5072d89a0ec0ade61750298fea9282fce42325852d8fe8a","revision":"791bf6c6aae390aadba2c5bc9e11cf6db0e3e893"},
+    {"path":"src-ui/src/workspace-panes/workspacePaneHostController.ts","digest":"670c3307f4cb564f9c9cf69a7e74002abd9bac6355b49af9494d80fe4622641a","revision":"6e9f37f483fa1372c3c185be88002e24a08bfc3e"},
 
     {"path":"src-ui/src/workspace-panes/workspacePaneHostStorage.ts","digest":"7e4eff4612599876fd997d9e1f7ce33e644ace58c11b8bf9c8306801695f2d26","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
