@@ -75,6 +75,7 @@ export interface RegistryCatalogActions {
   ) => void;
   onUseLayout: (id: string) => void;
   manageSkills: () => void;
+  openSkill?: (name: string) => void;
   managePlugins: () => void;
   openProjects: () => void;
   retryInstalled: () => void;
@@ -114,6 +115,7 @@ export function RegistryCatalog({
     runLayoutAction: actions.runLayoutAction,
     onUseLayout: actions.onUseLayout,
     managePlugins: actions.managePlugins,
+    openSkill: actions.openSkill,
     openProjects: actions.openProjects,
   };
   // The tab decides the description; the frame decides where it renders.
@@ -189,7 +191,7 @@ export function RegistryCatalog({
               query={search}
               onClearFilter={() => actions.setSearch('')}
             />
-            {!isLoading && !loadError && filtered.length > 0 && (
+            {!isLoading && !loadError && (
               <>
                 {selectedItem && selectedItemId && (
                   <RegistryCatalogDetail
@@ -202,6 +204,10 @@ export function RegistryCatalog({
                     actions={itemActions}
                   />
                 )}
+              </>
+            )}
+            {!isLoading && !loadError && filtered.length > 0 && (
+              <>
                 <div className="page__card-grid">
                   {filtered.map((item) => {
                     const id = getRegistryItemId(item);

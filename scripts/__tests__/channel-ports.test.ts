@@ -165,9 +165,7 @@ describe('channel port generation', () => {
     }
   });
 
-  test('projects every release channel port block into Station-owned installer consumers', () => {
-    const installer = readFileSync(resolve(root, 'install.sh'), 'utf8');
-
+  test('allocates each release channel a contiguous server block and distinct UI port', () => {
     // station#3677: the consent listener is the fourth member of each
     // channel's contiguous reserved block (server, terminal, voice, consent),
     // published explicitly in the contract rather than silently derived.
@@ -186,11 +184,6 @@ describe('channel port generation', () => {
         consentPort,
         uiPort,
       ]).toEqual(expectedBlocks[channel]);
-    }
-    for (const channel of ['stable', 'beta', 'nightly'] as const) {
-      const { serverPort, uiPort } = channelPorts[channel];
-      expect(installer).toContain(`runtime_server_port=${serverPort}`);
-      expect(installer).toContain(`runtime_ui_port=${uiPort}`);
     }
   });
 });

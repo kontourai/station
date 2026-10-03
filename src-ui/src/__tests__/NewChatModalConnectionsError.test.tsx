@@ -16,6 +16,10 @@ import { GLOBAL_CONTEXT } from '../components/modals/new-chat-modal-utils';
 // Minimal SDK mock: NewChatModal's Enable action posts through this mutation,
 // and a mocked `useNewChatSelectionModel` below removes every other query.
 vi.mock('@kontourai/station-sdk', () => ({
+  useSkillExperienceInventoryQuery: () => ({
+    data: { experiences: [], diagnostics: [] },
+    refetch: vi.fn(),
+  }),
   useMaterializeEngineAgentMutation: () => ({ mutateAsync: vi.fn() }),
   authenticatedFetch: vi.fn(async () => ({ ok: false })),
 }));
