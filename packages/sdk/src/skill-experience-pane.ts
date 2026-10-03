@@ -1,8 +1,17 @@
 import type { PaneSkillExperienceHost } from '@kontourai/station-contracts/workspace-pane-host-contract';
 
+interface PaneMessageTarget {
+  postMessage(message: unknown, targetOrigin: string): void;
+}
+
+declare const window: {
+  addEventListener(type: 'message', listener: (event: MessageEvent) => void): void;
+  removeEventListener(type: 'message', listener: (event: MessageEvent) => void): void;
+};
+
 /** Narrow frame transport. Session, event scope and source identity stay in the host. */
 export function createSkillExperiencePaneHost(
-  target: Window,
+  target: PaneMessageTarget,
   origin: string,
 ): PaneSkillExperienceHost & { dispose(): void } {
   const pending = new Map<
