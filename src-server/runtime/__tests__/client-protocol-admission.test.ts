@@ -158,7 +158,7 @@ describe('client API protocol admission (#2962)', () => {
     const handshake = await (
       await request(PUBLIC_STATION_HANDSHAKE_PATH)
     ).json();
-    expect(handshake.compatibility.minClientProtocol).toBe(1);
+    expect(handshake).toHaveProperty('compatibility.minClientProtocol', 1);
     expect((await request('/api/projects', api())).status).toBe(200);
     expect((await request('/api/projects', api('1'))).status).toBe(200);
   });
@@ -185,7 +185,10 @@ describe('client API protocol admission (#2962)', () => {
         serverVersion: '9.9.9',
       },
     });
-    expect(body.error.message).toContain('needs client protocol 2');
+    expect(body).toHaveProperty(
+      'error.message',
+      expect.stringContaining('needs client protocol 2'),
+    );
     expect(reached).toHaveLength(3);
   });
 
@@ -196,9 +199,12 @@ describe('client API protocol admission (#2962)', () => {
     const atTwo = createHarness(RAISED);
     const refused = await atTwo.request('/api/projects', api());
     expect(refused.status).toBe(426);
-    const { error } = await refused.json();
-    expect(error.clientProtocol).toBe(1);
-    expect(error.message).toContain('did not say which protocol it speaks');
+    const body = await refused.json();
+    expect(body).toHaveProperty('error.clientProtocol', 1);
+    expect(body).toHaveProperty(
+      'error.message',
+      expect.stringContaining('did not say which protocol it speaks'),
+    );
     expect(atTwo.reached).toEqual([]);
   });
 
@@ -219,7 +225,8 @@ describe('client API protocol admission (#2962)', () => {
     ]) {
       const response = await request('/api/projects', api(value));
       expect(response.status, `value ${JSON.stringify(value)}`).toBe(400);
-      expect((await response.json()).error.code).toBe(
+      expect(await response.json()).toHaveProperty(
+        'error.code',
         'client_protocol_invalid',
       );
     }
@@ -293,7 +300,10 @@ describe('client API protocol admission (#2962)', () => {
     ]) {
       const old = await request(path, { method: 'POST' });
       expect(old.status, path).toBe(426);
-      expect((await old.json()).error.code).toBe('client_protocol_unsupported');
+      expect(await old.json()).toHaveProperty(
+        'error.code',
+        'client_protocol_unsupported',
+      );
       const current = await request(path, {
         method: 'POST',
         headers: { [CLIENT_PROTOCOL_HEADER]: '2' },
@@ -313,10 +323,10 @@ describe('client API protocol admission (#2962)', () => {
       headers: { [CLIENT_PROTOCOL_HEADER]: '1' },
     });
     expect(handshake.status).toBe(200);
-    expect((await handshake.json()).compatibility).toMatchObject({
-      minClientProtocol: 2,
-      serverVersion: '9.9.9',
-    });
+    expect(await handshake.json()).toHaveProperty(
+      'compatibility',
+      expect.objectContaining({ minClientProtocol: 2, serverVersion: '9.9.9' }),
+    );
     const liveness = await request('/api/system/liveness');
     expect(liveness.status).toBe(200);
     expect(await liveness.json()).toEqual({ live: true });
@@ -393,7 +403,10 @@ describe('client API protocol admission (#2962)', () => {
     const handshake = await (
       await request(PUBLIC_STATION_HANDSHAKE_PATH)
     ).json();
-    expect(handshake.compatibility.capabilities.clientProtocolHeader).toBe(1);
+    expect(handshake).toHaveProperty(
+      'compatibility.capabilities.clientProtocolHeader',
+      1,
+    );
     const preflight = await request('/api/projects', {
       method: 'OPTIONS',
       headers: {
