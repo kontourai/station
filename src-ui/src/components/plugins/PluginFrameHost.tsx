@@ -11,6 +11,7 @@ import {
   type FramePaneHostOutboundMessage,
   useFramePaneHost,
 } from './framePaneHost';
+import '../mcp-ui/MCPToolUIFrame.css';
 
 const READY = 'plugin-host-ready';
 const RESOURCE = 'plugin-resource-ready';
