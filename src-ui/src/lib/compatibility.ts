@@ -108,6 +108,8 @@ export async function checkHostCompatibility(
   const abort = () => controller.abort();
   signal?.addEventListener('abort', abort, { once: true });
   const timeout = setTimeout(abort, COMPATIBILITY_PROBE_TIMEOUT_MS);
+  // A failed re-handshake must not retain a previous host's CORS capability.
+  observeClientProtocolSupport(url, undefined);
   try {
     const response = await transport(
       new URL(PUBLIC_STATION_HANDSHAKE_PATH, url),
@@ -124,8 +126,12 @@ export async function checkHostCompatibility(
       };
     }
     const handshake = (await response.json()) as { compatibility?: unknown };
-    observeClientProtocolSupport(url, handshake?.compatibility);
-    return evaluateCompatibility(policy, handshake?.compatibility);
+    const result = evaluateCompatibility(policy, handshake?.compatibility);
+    observeClientProtocolSupport(
+      url,
+      result.verdict === 'unknown' ? undefined : handshake?.compatibility,
+    );
+    return result;
   } catch {
     const timedOut = controller.signal.aborted && !signal?.aborted;
     return {

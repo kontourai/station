@@ -2684,6 +2684,10 @@ minClientProtocol, protocolVersion, serverVersion}}` before credential checks.
 Both refusals emit `station.auth.failure` with the refusal code as reason;
 only the parsed protocol is recorded, never the raw header. This compatibility
 signal grants no authority, and passing it does not skip authentication.
+Protocol refusals count toward that budget because they are unauthenticated
+denials. Once exhausted, their audits are suppressed while responses remain
+400/426; a subsequent authentication attempt shares the exhausted budget.
+Successful authentication or window expiry clears it.
 
 The public handshake and proof remain reachable. The landing page, `/doc`,
 `/ui`, and integration icons are exempt because navigation and image requests
@@ -2708,7 +2712,9 @@ admission does not replace authentication or scope. See
 The preflight allow-list includes `X-Station-Client-Protocol`. Cross-origin
 browser callers send it only after observing
 `compatibility.capabilities.clientProtocolHeader >= 1` on that host's public
-handshake. Older or unobserved hosts receive an unlabelled request, interpreted
+handshake. The UI forgets the prior origin observation before re-handshaking;
+non-OK responses, invalid JSON and transport errors leave it cleared.
+Older or unobserved hosts receive an unlabelled request, interpreted
 as protocol 1. Same-origin requests, Node callers and host-owned transports
 can carry it without that preflight condition.
 

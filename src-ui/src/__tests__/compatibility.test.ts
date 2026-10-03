@@ -3,6 +3,10 @@ import {
   STATION_COMPAT_PROTOCOL_VERSION,
   type StationClientCompatibilityPolicy,
 } from '@kontourai/station-contracts';
+import {
+  clientProtocolHeaders,
+  resetClientProtocolObservations,
+} from '@kontourai/station-shared/client-protocol';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   CLIENT_COMPATIBILITY_POLICY,
@@ -33,7 +37,11 @@ const serverBlock = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  resetClientProtocolObservations();
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
 
 describe('evaluateCompatibility', () => {
   it('accepts a host inside the window both sides declare', () => {
@@ -216,10 +224,33 @@ describe('checkHostCompatibility', () => {
   ] as const)(
     'blocks %s with an actionable verification state',
     async (_label, respond) => {
-      vi.spyOn(globalThis, 'fetch').mockImplementationOnce(respond as never);
+      vi.stubGlobal('location', {
+        href: 'https://client.example.test/',
+        origin: 'https://client.example.test',
+      });
+      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+        Response.json({
+          compatibility: serverBlock({
+            capabilities: { clientProtocolHeader: 1 },
+          }),
+        }),
+      );
+      await checkHostCompatibility(
+        'https://station.example.test',
+        undefined,
+        policy(3, 3),
+      );
+      expect(
+        clientProtocolHeaders('https://station.example.test/api/projects'),
+      ).toHaveProperty('X-Station-Client-Protocol');
+      vi.mocked(fetch).mockImplementationOnce(respond as never);
       await expect(
         checkHostCompatibility('https://station.example.test'),
       ).resolves.toMatchObject({ verdict: 'unknown', blocking: true });
+      expect(
+        clientProtocolHeaders('https://station.example.test/api/projects'),
+        'failed re-handshake must forget cross-origin header acceptance',
+      ).toEqual({});
     },
   );
 });

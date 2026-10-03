@@ -438,7 +438,43 @@ describe('client API protocol admission (#2962)', () => {
     expect((await request('/api/projects', noHeader)).status).toBe(426);
   });
 
-  it('audits each refusal without recording the raw header', async () => {
+  it('bounds unauthenticated protocol refusal audits by the shared peer denial budget', async () => {
+    const { request, audits, reached } = createHarness(RAISED);
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      const protocol = attempt % 2 === 0 ? 'invalid' : '1';
+      const response = await request('/api/projects', {
+        headers: { [CLIENT_PROTOCOL_HEADER]: protocol },
+      });
+      expect(response.status).toBe(protocol === 'invalid' ? 400 : 426);
+    }
+    expect(
+      audits,
+      '100 refusals from one peer must emit only 10 audits',
+    ).toHaveLength(10);
+    expect(reached).toEqual([]);
+    // Protocol refusals spend the existing authentication failure budget too.
+    expect(
+      (
+        await request('/api/projects', {
+          headers: { [CLIENT_PROTOCOL_HEADER]: '2' },
+        })
+      ).status,
+    ).toBe(429);
+    expect(
+      (
+        await request(
+          '/api/projects',
+          { headers: { [CLIENT_PROTOCOL_HEADER]: 'invalid' } },
+          '203.0.113.10',
+        )
+      ).status,
+    ).toBe(400);
+    expect(
+      audits.filter((record) => record.reason === 'client_protocol_invalid'),
+    ).toHaveLength(6);
+  });
+
+  it('audits refusals within the budget without recording the raw header', async () => {
     const { request, audits } = createHarness(RAISED);
     await request('/api/projects', api('1'));
     await request('/api/projects', api('not-a-number'));

@@ -281,6 +281,8 @@ export async function probeServerConnection(
   // identity read is a Station that is slow to give this device a turn — the
   // address demonstrably answers — not one that cannot be reached.
   let handshakeAnswered = false;
+  // A failed re-handshake must not retain a previous host's CORS capability.
+  observeClientProtocolSupport(url, undefined);
   try {
     const handshakeResponse = await healthFetch(
       new URL(PUBLIC_STATION_HANDSHAKE_PATH, url),
@@ -318,9 +320,6 @@ export async function probeServerConnection(
       // transport failure, which is the same lie in a different place.
       return { ok: false, reason: 'unexpected-response' };
     }
-    // What this host says about the client-protocol header decides whether
-    // the protected request below, and later ones, may carry it cross-origin.
-    observeClientProtocolSupport(url, handshake.compatibility);
     // A host upgraded or downgraded under a live client shows up here. The
     // verdict is deliberately evaluated before the schema checks below can
     // collapse it into the same undifferentiated failure: a `compatibility`
@@ -346,6 +345,8 @@ export async function probeServerConnection(
     ) {
       return { ok: false, reason: 'identity-mismatch' };
     }
+    // Only a verified handshake restores cross-origin header acceptance.
+    observeClientProtocolSupport(url, handshake.compatibility);
     handshakeAnswered = true;
     const identityResponse = await stationAuthenticatedFetch(
       new URL('/api/system/identity', url),

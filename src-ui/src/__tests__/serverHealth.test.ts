@@ -1,5 +1,8 @@
 import { HEALTH_PROBE_TIMEOUT_MS } from '@kontourai/station-connect';
-import { resetClientProtocolObservations } from '@kontourai/station-shared/client-protocol';
+import {
+  clientProtocolHeaders,
+  resetClientProtocolObservations,
+} from '@kontourai/station-shared/client-protocol';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   checkServerHealth,
@@ -159,6 +162,50 @@ describe('probeServerConnection', () => {
     expect(transport).toHaveBeenCalledTimes(1);
     expect(direct).not.toHaveBeenCalled();
   });
+
+  it.each([
+    ['404', () => Promise.resolve(new Response(null, { status: 404 }))],
+    ['invalid JSON', () => Promise.resolve(new Response('<html>'))],
+    ['transport error', () => Promise.reject(new TypeError('offline'))],
+    ['null JSON', () => Promise.resolve(Response.json(null))],
+  ] as const)(
+    'forgets cross-origin header acceptance after a %s re-handshake',
+    async (_label, respond) => {
+      const url = 'https://station.example.test';
+      vi.stubGlobal('location', {
+        href: 'https://client.example.test/',
+        origin: 'https://client.example.test',
+      });
+      vi.spyOn(globalThis, 'fetch')
+        .mockResolvedValueOnce(
+          Response.json({
+            ...handshake,
+            compatibility: {
+              ...handshake.compatibility,
+              capabilities: { clientProtocolHeader: 1 },
+            },
+          }),
+        )
+        .mockResolvedValueOnce(Response.json({ bootId: 'boot-1' }));
+      const probe = () =>
+        probeServerConnection(
+          url,
+          'fixture-credential',
+          'environment-1',
+          new AbortController().signal,
+        );
+      expect(await probe()).toEqual({ ok: true, bootId: 'boot-1' });
+      expect(clientProtocolHeaders(`${url}/api/projects`)).toHaveProperty(
+        'X-Station-Client-Protocol',
+      );
+      vi.mocked(fetch).mockImplementationOnce(respond);
+      expect((await probe()).ok).toBe(false);
+      expect(
+        clientProtocolHeaders(`${url}/api/projects`),
+        'failed re-handshake must forget cross-origin header acceptance',
+      ).toEqual({});
+    },
+  );
 
   it('returns verified boot identity after an authenticated handshake', async () => {
     vi.spyOn(globalThis, 'fetch')

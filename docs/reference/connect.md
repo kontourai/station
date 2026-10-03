@@ -594,7 +594,10 @@ before protected requests. The shared
 [header policy](../../packages/shared/src/client-protocol.ts) sends
 `X-Station-Client-Protocol` cross-origin in a browser only after that host
 advertises a numeric capability of at least 1. An absent capability removes
-the process-local observation; it is not persisted across page loads.
+the process-local observation; it is not persisted across page loads. The UI
+also clears the previous observation before re-handshaking. A non-OK response,
+invalid JSON or transport error leaves it cleared, so the next cross-origin
+request carries no protocol header.
 Same-origin, Node and host-owned transport requests can carry the header
 without CORS negotiation. The SDK replaces any caller-supplied copy with its
 build's protocol. These declarations grant no credential or scope.
@@ -604,7 +607,10 @@ access-request and exchange before credentials: below `minClientProtocol` is
 `426 client_protocol_unsupported`, malformed is `400 client_protocol_invalid`,
 and absent means protocol 1. The handshake remains reachable. A protocol
 refusal requires correcting/updating the client rather than re-pairing to gain
-authority. The separate native Rust pairing exchange and direct fetch callers
+authority. Protocol refusals share the direct-peer authentication failure
+budget (default: 10 per 60 seconds): each audited refusal counts toward it,
+and further protocol audits are suppressed while 400/426 responses continue.
+The separate native Rust pairing exchange and direct fetch callers
 remain undeclared; terminal/voice WebSockets are outside this HTTP check.
 
 See the [remote access threat model](../security/remote-access-threat-model.md)

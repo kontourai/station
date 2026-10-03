@@ -772,20 +772,23 @@ function configureRuntimeSecurity(
         clientProtocolPolicy,
       );
       if (refusal) {
-        // Operators see which clients are being turned away. The record
-        // carries the parsed protocol only, never the raw header value.
-        emitSecurityAudit(security, c, routeLabeler, {
-          event: 'station.auth.failure',
-          outcome: 'denied',
-          reason: refusal.body.error.code,
-          routeClass,
-          peerClass: effectivePeerClass,
-          transport: 'http',
-          timestamp: security.now?.() ?? Date.now(),
-          ...(refusal.body.error.clientProtocol === undefined
-            ? {}
-            : { clientProtocol: refusal.body.error.clientProtocol }),
-        });
+        // Share the direct-peer denial budget with authentication failures.
+        // Keep answering protocol refusals after the audit budget is exhausted.
+        if (limiter.retryAfterSeconds(limiterKey) === undefined) {
+          limiter.recordFailure(limiterKey);
+          emitSecurityAudit(security, c, routeLabeler, {
+            event: 'station.auth.failure',
+            outcome: 'denied',
+            reason: refusal.body.error.code,
+            routeClass,
+            peerClass: effectivePeerClass,
+            transport: 'http',
+            timestamp: security.now?.() ?? Date.now(),
+            ...(refusal.body.error.clientProtocol === undefined
+              ? {}
+              : { clientProtocol: refusal.body.error.clientProtocol }),
+          });
+        }
         return c.json(refusal.body, refusal.status);
       }
     }
