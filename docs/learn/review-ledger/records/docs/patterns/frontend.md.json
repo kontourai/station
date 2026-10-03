@@ -28,7 +28,7 @@
 
     {"path":"packages/sdk/src/queryFactories.ts","digest":"1359417720b7dd3507f5909d835d7f9c06200e2cadaa7c3c66e754cb1a5ee8ea","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
-    {"path":"packages/shared/package.json","digest":"45a3e54c719ca24083dcd1deb3c547f06effb31cba0ba723662006d82c3be741","revision":"6601a6595d1103210663e99bbc68ec889c296b1b"},
+    {"path":"packages/shared/package.json","digest":"5c970a933f53f35ceb5b344fe399e1339ececc9fae1a5eb3b7c592fb1beeccbf","revision":"19aff2a08b9739ad9ffbda39ff8cb19b026fda82"},
 
     {"path":"packages/shared/package.json#/exports/.~1build","digest":"7ad7900a109bea8e9d548359becc3f0e887fba3634cff5d171fe108df0b29d24","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
 
