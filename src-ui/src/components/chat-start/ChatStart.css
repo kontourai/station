@@ -26,8 +26,8 @@
   min-height: 44px;
   max-width: 100%;
 }
-.chat-start__controls .button--primary {
-  margin-left: auto;
+.chat-start__send {
+  justify-content: flex-end;
 }
 .chat-start__recent-heading {
   display: flex;

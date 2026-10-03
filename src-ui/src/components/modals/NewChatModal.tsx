@@ -62,6 +62,7 @@ import { LayoutIcon } from '../icons/LayoutIcon';
 import {
   ResponsiveDialogCloseButton,
   ResponsiveDialogSurface,
+  ResponsiveSurfaceActions,
 } from '../ResponsiveDialogSurface';
 import { ModelPickerDialogFrame } from '../session/ModelPickerDialogFrame';
 import { SkillExperiencePicker } from '../skill-experiences/SkillExperiencePicker';
@@ -1457,6 +1458,8 @@ export function NewChatModal({
                   <ArrowDownGlyph className="choice-caret" />
                 </button>
               )}
+            </div>
+            <ResponsiveSurfaceActions className="chat-start__send">
               <Button
                 type="submit"
                 variant="primary"
@@ -1481,7 +1484,7 @@ export function NewChatModal({
               >
                 Send
               </Button>
-            </div>
+            </ResponsiveSurfaceActions>
           </form>
           {(selectFeedback || returnError || runtimeError || modelsError) && (
             <p role="alert">

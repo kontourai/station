@@ -5,6 +5,7 @@ import type { HomeWorkItem } from '../../views/home/home-view-model';
 import type { WorkFactsById } from '../../views/home/work-facts';
 import { Button } from '../Button';
 import { InboxRow } from '../chat-dock/ChatDockInboxRows';
+import { Empty, ErrorState, SkeletonList } from '../state';
 
 export function RecentChatList({
   items,
@@ -46,17 +47,26 @@ export function RecentChatList({
           View all
         </Button>
       </div>
-      {pending && <p role="status">Loading recent chats…</p>}
+      {pending && <SkeletonList count={2} label="Loading recent chats" />}
       {error && (
-        <p role="alert">
-          Could not load all recent chats.{' '}
-          <Button variant="link" onClick={onRetry}>
-            Try again
-          </Button>
-        </p>
+        <ErrorState
+          variant="compact"
+          title="Could not load recent chats"
+          action={
+            onRetry ? (
+              <Button variant="link" onClick={onRetry}>
+                Try again
+              </Button>
+            ) : undefined
+          }
+        />
       )}
       {!pending && !error && recent.length === 0 && (
-        <p>No chats here yet. Start with a message above.</p>
+        <Empty
+          variant="compact"
+          label="Start something new"
+          description="Write a message above to begin."
+        />
       )}
       <ul>
         {recent.map((item) => (
