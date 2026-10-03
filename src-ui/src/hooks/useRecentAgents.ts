@@ -20,3 +20,30 @@ export function trackRecentAgent(slug: string): void {
   );
   telemetry.track('agent:selected', { slug });
 }
+
+export function getContextAgent(
+  namespace: string | null,
+  context: string,
+): string | undefined {
+  if (!namespace) return undefined;
+  try {
+    return (
+      localStorage.getItem(contextAgentKey(namespace, context)) || undefined
+    );
+  } catch {
+    return undefined;
+  }
+}
+
+export function trackContextAgent(
+  namespace: string | null,
+  context: string,
+  slug: string,
+): void {
+  if (namespace)
+    localStorage.setItem(contextAgentKey(namespace, context), slug);
+}
+
+function contextAgentKey(namespace: string, context: string): string {
+  return `chatAgent:${JSON.stringify([namespace, context])}`;
+}

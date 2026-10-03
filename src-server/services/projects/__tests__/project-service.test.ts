@@ -1,6 +1,7 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { agentId } from '@kontourai/station-contracts/agent-identity';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
   captureLoggerLines,
@@ -814,4 +815,39 @@ describe('ProjectService', () => {
     );
     expect(svc.listProjects()[0]?.position).toBeUndefined();
   });
+});
+
+test('a project default Agent survives a file-backed reload, an unrelated update, and explicit clearing', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'station-project-default-agent-'));
+  tmpHomes.push(home);
+  const adapter = new FileStorageAdapter(home);
+  const service = new ProjectService(adapter);
+  await service.createProject({
+    name: 'Default agent',
+    slug: 'default-agent',
+    workingDirectory: home,
+    defaultAgent: agentId('codex'),
+  });
+  const reloaded = new ProjectService(new FileStorageAdapter(home));
+  expect((await reloaded.getProject('default-agent')).defaultAgent).toBe(
+    'codex',
+  );
+  await reloaded.updateProject('default-agent', { name: 'Renamed' });
+  expect((await reloaded.getProject('default-agent')).defaultAgent).toBe(
+    'codex',
+  );
+  await reloaded.updateProject('default-agent', {
+    defaultAgent: agentId('claude'),
+  });
+  expect((await reloaded.getProject('default-agent')).defaultAgent).toBe(
+    'claude',
+  );
+  await reloaded.updateProject('default-agent', { defaultAgent: null });
+  expect(
+    (
+      await new ProjectService(new FileStorageAdapter(home)).getProject(
+        'default-agent',
+      )
+    ).defaultAgent,
+  ).toBeUndefined();
 });
