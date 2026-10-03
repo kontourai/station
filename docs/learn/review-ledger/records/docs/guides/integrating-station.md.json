@@ -20,7 +20,7 @@
 
     {"path":"docs/guides/deployment.md","digest":"1edc373a6f45ca03a1f4e989e59cabe26d36afe4b5b06ccf9717f8b715bf99f2","revision":"18002c0871ea8538605e922464aab5356c77593c"},
 
-    {"path":"docs/guides/documentation.md","digest":"9e299a73ec55cd8792f40d976dda64b1af1c8b206a24ebfd638ca0db3ab12633","revision":"cda5879b28558d002561d656b869c4f7b05bc4ca"},
+    {"path":"docs/guides/documentation.md","digest":"03c26a23b91b0e665d65bd89e7a8172d8131afa49624db9312c4602e272ba05f","revision":"68257f50971037b3fd9df5b134bbd599142cd6d8"},
 
     {"path":"docs/guides/plugins.md","digest":"96f3de592ce3acd5b8b6c9dba1c8a971dda9da61425349ca8e8733824327755e","revision":"f249300b2162c4ef35f8978e4cf9ded407027304"},
 
@@ -32,7 +32,7 @@
 
     {"path":"docs/reference/contracts.md","digest":"70344cfb002eb7ffa3ca50cb2beb564f5f44dd15760eafcb06654b33194aa9e3","revision":"56f4c4897a189eeb30430119a4f4895e95fbb541"},
 
-    {"path":"docs/reference/sdk.md","digest":"b7aacaa38e41f5095d1487768fe1efb013e769d3ea5a86f2fd4770b1917a69bc","revision":"2db57f47f24b9f549b9612e1aa24a77df39c3b2f"},
+    {"path":"docs/reference/sdk.md","digest":"f807f1c0fe8800211529b18058d8812dc59c4d0d338fb784135ac59edf8e39ea","revision":"4fe1570f32d9f2b90ddded8258c0793bbe3c2830"},
 
     {"path":"packages/contracts/src/deployment-authentication.ts","digest":"8855043167b011ccd430ec998ea644d1c9e16f86b98a9304162d2f86973a8a98","revision":"18002c0871ea8538605e922464aab5356c77593c"},
 

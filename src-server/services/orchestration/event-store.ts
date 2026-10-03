@@ -33,6 +33,7 @@ import type {
 import type {
   OrchestrationCommandReceipt,
   RuntimeEventElisionReason,
+  SteerTurnResult,
 } from '@kontourai/station-contracts/orchestration';
 import {
   type ProviderSession,
@@ -1948,6 +1949,13 @@ export class EventStore {
     applyWalJournalMode(this.db, { store: 'orchestration event store' });
     try {
       this.db.exec(ORCHESTRATION_EVENT_STORE_MIGRATION);
+      this.db.exec(`CREATE TABLE IF NOT EXISTS orchestration_steer_inputs (
+        thread_id TEXT NOT NULL,
+        client_input_id TEXT NOT NULL,
+        input_digest TEXT NOT NULL,
+        confirmed_turn_id TEXT,
+        PRIMARY KEY (thread_id, client_input_id)
+      )`);
       this.db.exec(PACKAGE_MCP_ADMISSION_SCHEMA);
       this.db.exec(REGISTRY_TRUST_POLICY_SCHEMA);
       this.db
@@ -11049,6 +11057,83 @@ export class EventStore {
       );
   }
 
+  /** A pending steer claim is never reclaimed: its engine may have accepted it. */
+  readSteerInput(input: {
+    threadId: string;
+    clientInputId: string;
+    input: string;
+    turnId?: string;
+  }):
+    | Extract<SteerTurnResult, { outcome: 'steered' | 'indeterminate' }>
+    | undefined {
+    const row = this.db
+      .prepare(
+        `SELECT input_digest, confirmed_turn_id FROM orchestration_steer_inputs WHERE thread_id = ? AND client_input_id = ?`,
+      )
+      .get(input.threadId, input.clientInputId) as
+      | { input_digest: string; confirmed_turn_id: string | null }
+      | undefined;
+    if (!row) return undefined;
+    if (
+      row.input_digest === this.steerInputDigest(input) &&
+      row.confirmed_turn_id !== null
+    ) {
+      return {
+        outcome: 'steered',
+        threadId: input.threadId,
+        turnId: row.confirmed_turn_id,
+      };
+    }
+    return {
+      outcome: 'indeterminate',
+      threadId: input.threadId,
+      clientInputId: input.clientInputId,
+    };
+  }
+
+  claimSteerInput(input: {
+    threadId: string;
+    clientInputId: string;
+    input: string;
+    turnId?: string;
+  }): boolean {
+    const result = this.db
+      .prepare(
+        `INSERT OR IGNORE INTO orchestration_steer_inputs (thread_id, client_input_id, input_digest) VALUES (?, ?, ?)`,
+      )
+      .run(input.threadId, input.clientInputId, this.steerInputDigest(input));
+    return sqliteRunChanges(result) === 1;
+  }
+
+  confirmSteerInput(
+    input: {
+      threadId: string;
+      clientInputId: string;
+      input: string;
+      turnId?: string;
+    },
+    confirmedTurnId: string,
+  ): void {
+    const result = this.db
+      .prepare(
+        `UPDATE orchestration_steer_inputs SET confirmed_turn_id = ? WHERE thread_id = ? AND client_input_id = ? AND input_digest = ? AND confirmed_turn_id IS NULL`,
+      )
+      .run(
+        confirmedTurnId,
+        input.threadId,
+        input.clientInputId,
+        this.steerInputDigest(input),
+      );
+    if (sqliteRunChanges(result) !== 1)
+      throw new Error('Steer delivery confirmation was not recorded.');
+  }
+
+  private steerInputDigest(input: { input: string; turnId?: string }): string {
+    return createHash('sha256')
+      .update(JSON.stringify([input.input, input.turnId ?? null]))
+      .digest('hex');
+  }
+
   readCommandReceipt(commandId: string): OrchestrationCommandReceipt | null {
     const row = this.db
       .prepare(
@@ -11643,6 +11728,9 @@ export class EventStore {
         .prepare(
           'DELETE FROM orchestration_command_receipts WHERE thread_id = ?',
         )
+        .run(threadId);
+      this.db
+        .prepare('DELETE FROM orchestration_steer_inputs WHERE thread_id = ?')
         .run(threadId);
       this.db
         .prepare('DELETE FROM orchestration_request_state WHERE thread_id = ?')
@@ -12754,6 +12842,17 @@ interface CommandReceiptRow {
   status: OrchestrationCommandReceipt['status'];
   created_at: string;
   client_origin: string | null;
+}
+
+function sqliteRunChanges(result: unknown): number {
+  if (
+    typeof result !== 'object' ||
+    result === null ||
+    !('changes' in result) ||
+    (typeof result.changes !== 'number' && typeof result.changes !== 'bigint')
+  )
+    throw new Error('SQLite write returned an invalid change count.');
+  return Number(result.changes);
 }
 
 function recoveryTransition(result: {

@@ -1,6 +1,7 @@
 import type { ConversationTurnActivity } from '@kontourai/station-contracts/orchestration';
 import type { ChatActivityHint } from '../../contexts/active-chats-state';
 import type { ChatStreamStatus } from '../../hooks/orchestration/useChatStreamStatus';
+import { retryActivityLabel } from '../../utils/chat-activity';
 import { openTurnStartedAtMs } from '../../utils/conversation-activity';
 import type { LiveStatusGlyphKind, LiveStatusTone } from './LiveStatusGlyph';
 
@@ -129,16 +130,27 @@ export function deriveChatStatus(
   const details: ChatStatus['details'] = [];
   const running =
     activity?.openTurn && (activity.runningTools?.length ?? 0) > 0;
-  const label = running
+  let label = running
     ? 'Working'
     : input.activityHint?.kind === 'thinking'
       ? 'Thinking'
       : input.activityHint?.kind === 'compacting'
         ? 'Compacting'
-        : 'Working';
+        : input.activityHint?.kind === 'requesting'
+          ? 'Preparing'
+          : 'Working';
+  if (input.activityHint?.kind === 'retrying') {
+    label = 'Retrying';
+    details.push({ text: retryActivityLabel(input.activityHint) });
+  }
   const silentSince = epochMs(activity?.progressSilence?.silentSinceEventAt);
-  if (silentSince !== undefined)
-    details.push({ text: 'No output for', since: silentSince });
+  if (silentSince !== undefined && input.activityHint?.kind !== 'retrying') {
+    if (!running) label = 'Still waiting';
+    details.push({
+      text: 'No response from the engine for',
+      since: silentSince,
+    });
+  }
   return {
     kind: 'working',
     tone: 'active',

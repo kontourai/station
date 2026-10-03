@@ -108,9 +108,9 @@
 
     {"path":"src-server/services/orchestration/session-lifecycle-service.ts","digest":"bbfb45fc9d241f43c63c30fdf9a6b6696390b7ab44cbfc6c3b24966e7895b179","revision":"4e19fa6ac6b87dff5b671d3c90d3a5b48b5e6ec5"},
 
-    {"path":"src-server/services/orchestration/turn-progress-tracker.ts","digest":"d13289b347f86e451233a3ce22ee1a68b76c243f887fc2a689be650d423ed78b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/orchestration/turn-progress-tracker.ts","digest":"b58f46b940884562170520ea71e1df93aef09725de4fd6f1fcf234f9d1ad9faf","revision":"89765352964045a079d13a17bee54ab2de7b83e0"},
 
-    {"path":"src-server/services/orchestration/turn-stall-watchdog.ts","digest":"11df4b14703e5376a92a9f469ffec78fd88a218745725c509bcd90dfa4e9c655","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/orchestration/turn-stall-watchdog.ts","digest":"c8d4f1769c0edfa03e5695d67cade94600ee4cf67c3549d5bd00c8b080041cb7","revision":"89765352964045a079d13a17bee54ab2de7b83e0"},
 
     {"path":"src-server/services/pull-requests/__tests__/pull-request-review.test.ts","digest":"3468a46e4a56d93f46e2cb4973a2c265c818f244798b35dbfe832a700f507af9","revision":"04f7c604a7cb98c981198b77fb07f1c62d32fd2a"},
 

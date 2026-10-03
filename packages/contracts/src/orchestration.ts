@@ -55,6 +55,15 @@ export type OrchestrationStartSessionInput = Omit<
   'credentialProfileRef' | 'reviewIsolation' | 'confinement'
 >;
 
+/** Public wire discriminant guarantees old servers refuse before any provider effect. */
+export interface ReceiptProtectedSteerCommand {
+  type: 'steerTurnOnce';
+  threadId: string;
+  input: string;
+  turnId?: string;
+  clientInputId: string;
+}
+
 export type OrchestrationCommand =
   | { type: 'startSession'; input: OrchestrationStartSessionInput }
   | {
@@ -76,7 +85,21 @@ export type OrchestrationCommand =
        */
       clientTurnId?: string;
     }
-  | { type: 'steerTurn'; threadId: string; input: string; turnId?: string }
+  | {
+      /** Read-only receipt lookup; never claims or dispatches an input. */
+      type: 'inspectSteerInput';
+      threadId: string;
+      input: string;
+      turnId?: string;
+      clientInputId: string;
+    }
+  | {
+      type: 'steerTurn';
+      threadId: string;
+      input: string;
+      turnId?: string;
+      clientInputId?: string;
+    }
   | {
       type: 'respondToRequest';
       /** Frame-origin action: admit this exact current package and its agents.invoke grant. */
@@ -359,6 +382,12 @@ export const PENDING_TURN_INTERRUPT_TTL_MS = 60_000;
 
 export type SteerTurnResult =
   | {
+      /** Delivery may have happened; this input must not be sent again. */
+      outcome: 'indeterminate';
+      threadId: string;
+      clientInputId: string;
+    }
+  | {
       /**
        * The input was enqueued to the live runtime iterable and durably
        * recorded in the transcript. The provider SDK exposes no delivery ack.
@@ -387,6 +416,10 @@ export type SteerTurnResult =
       outcome: 'concurrent-steer';
       threadId: string;
     };
+
+export type SteerInputInspectionResult =
+  | Extract<SteerTurnResult, { outcome: 'steered' | 'indeterminate' }>
+  | { outcome: 'not-received'; threadId: string; clientInputId: string };
 
 /** Path- and provider-cursor-free response for attached-session adoption. */
 export interface AdoptedSessionResult {
