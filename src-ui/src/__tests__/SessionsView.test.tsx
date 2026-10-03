@@ -19,8 +19,10 @@ import {
 } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { activeChatsStore } from '../contexts/active-chats-store';
+import { chatDraftsStore } from '../contexts/chat-drafts-store';
 import { NavigationProvider } from '../contexts/NavigationContext';
 import { ToastProvider } from '../contexts/ToastContext';
+import { setStreamConnectionState } from '../hooks/orchestration/streamConnectionState';
 import { ATTACHED_SESSION_CONTINUATION_STORAGE_KEY } from '../lib/attached-session-continuation-store';
 
 // The native transport is mocked; positive continuation fixtures explicitly
@@ -37,6 +39,7 @@ const interruptTurn = vi.fn().mockResolvedValue(undefined);
 const delegateTask = vi.fn();
 const resetDelegation = vi.fn();
 const refetchSessions = vi.fn().mockResolvedValue(undefined);
+const readRoutedSession = vi.fn();
 const adoptSession = vi.fn();
 // #2312: the server command a Drafts row's discard dispatches.
 const discardDraftCommand = vi.fn();
@@ -190,6 +193,8 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => {
         refetch: refetchSessions,
       };
     },
+    fetchOrchestrationSession: (threadId: string, apiBase: string) =>
+      readRoutedSession(threadId, apiBase),
     usePairedDevicesQuery,
     usePullRequestContextQuery: () => ({ data: { available: false } }),
     usePullRequestsQuery: () => ({ data: undefined }),
@@ -325,6 +330,7 @@ function renderView(
   focusHint?: 'evidence',
   intentToken?: number,
   onFocusConsumed?: () => void,
+  apiBase = 'http://test.local',
 ) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -338,7 +344,7 @@ function renderView(
     <QueryClientProvider client={client}>
       <NavigationProvider>
         <SessionsView
-          apiBase="http://test.local"
+          apiBase={apiBase}
           sessionId={nextSessionId}
           focusHint={nextFocusHint}
           intentToken={nextIntentToken}
@@ -417,6 +423,16 @@ function filterToProject(title: string) {
 
 describe('SessionsView', () => {
   beforeEach(() => {
+    for (const key of Object.keys(chatDraftsStore.getSnapshot()))
+      chatDraftsStore.clear(key);
+    for (const session of sessions)
+      chatDraftsStore.clearActivityDraft(
+        'http://test.local',
+        String(session.threadId),
+      );
+    chatDraftsStore.clearActivityDraft('http://test.local', 'thread-alpha');
+    chatDraftsStore.clearActivityDraft('http://test.local', 'thread-beta');
+    setStreamConnectionState('http://test.local', 'unknown');
     window.localStorage.clear();
     showToast.mockReset();
     Object.defineProperty(window.navigator, 'locks', {
@@ -436,6 +452,9 @@ describe('SessionsView', () => {
     resetDelegation.mockReset();
     refetchSessions.mockReset();
     refetchSessions.mockResolvedValue(undefined);
+    readRoutedSession
+      .mockReset()
+      .mockRejectedValue(new Error('Exact activity lookup unavailable.'));
     adoptSession.mockReset();
     discardDraftCommand.mockReset();
     getStarterWork.mockReset();
@@ -1256,11 +1275,15 @@ describe('SessionsView', () => {
   });
 
   test('selects a routed session when it arrives after a cold empty result', async () => {
+    readRoutedSession.mockImplementation(() => new Promise(() => {}));
     const routedSession = sessions[0];
     sessions = [];
     const view = renderView('thread-alpha');
 
     expect(screen.queryByTestId('session-detail')).toBeNull();
+    expect(
+      screen.queryByText("This activity isn't in the current list"),
+    ).toBeNull();
 
     sessions = [routedSession];
     view.rerender(
@@ -1281,6 +1304,57 @@ describe('SessionsView', () => {
         'Worker task',
       ),
     );
+  });
+
+  test('reads and admits the exact routed session outside the current inventory', async () => {
+    const exact = sessions[0];
+    sessions = sessions.slice(1);
+    readRoutedSession.mockResolvedValue({ session: exact, events: [] });
+    renderView('thread-alpha');
+    await waitFor(() =>
+      expect(screen.getByTestId('session-detail').textContent).toContain(
+        'Worker task',
+      ),
+    );
+    expect(readRoutedSession).toHaveBeenCalledWith(
+      'thread-alpha',
+      'http://test.local',
+    );
+    expect(screen.getByLabelText('Continue delegated task')).toBeTruthy();
+  });
+
+  test('an unavailable exact lookup offers Retry and a working return to the list', async () => {
+    showSurfaceStub.mockClear();
+    renderView('missing-thread');
+    await screen.findByText("This activity isn't in the current list");
+    expect(screen.queryByTestId('session-detail')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    await waitFor(() => expect(readRoutedSession).toHaveBeenCalledTimes(2));
+    expect(refetchSessions).toHaveBeenCalledOnce();
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'Back to activity list',
+      }),
+    );
+    expect(
+      screen.queryByText("This activity isn't in the current list"),
+    ).toBeNull();
+    expect(showSurfaceStub).toHaveBeenCalledWith('activity', {});
+    fireEvent.click(screen.getByRole('button', { name: /Worker task/ }));
+    expect(screen.getByLabelText('Continue delegated task')).toBeTruthy();
+  });
+
+  test('a successful lookup of a different session never admits it as the routed item', async () => {
+    const wrong = {
+      ...sessions[0],
+      threadId: 'wrong-thread',
+      displayTitle: 'Wrong activity',
+    };
+    sessions = sessions.slice(1);
+    readRoutedSession.mockResolvedValue({ session: wrong, events: [] });
+    renderView('thread-alpha');
+    await screen.findByText("This activity isn't in the current list");
+    expect(screen.queryByTestId('session-detail')).toBeNull();
   });
 
   test('keeps the list unselected when a requested session is missing', () => {
@@ -1305,6 +1379,151 @@ describe('SessionsView', () => {
     );
   });
 
+  describe('session-owned follow-up drafts', () => {
+    function prepareSessions() {
+      const base = sessions[0];
+      sessions = ['A', 'B'].map((name) => ({
+        ...base,
+        threadId: `owner-${name}`,
+        displayTitle: `Owner ${name}`,
+        delegation: undefined,
+        lifecycleState: 'idle',
+        status: 'ready',
+        hasActiveTurn: false,
+      }));
+    }
+
+    test('keeps A and B drafts separate across selection and remount', () => {
+      prepareSessions();
+      const view = renderView('owner-A');
+      fireEvent.change(screen.getByLabelText('Send input to session'), {
+        target: { value: 'Draft A' },
+      });
+      expect(chatDraftsStore.getSnapshot()).toEqual({});
+      fireEvent.click(screen.getByRole('button', { name: 'Owner B' }));
+      expect(
+        (screen.getByLabelText('Send input to session') as HTMLTextAreaElement)
+          .value,
+      ).toBe('');
+      fireEvent.change(screen.getByLabelText('Send input to session'), {
+        target: { value: 'Draft B' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Owner A' }));
+      expect(
+        (screen.getByLabelText('Send input to session') as HTMLTextAreaElement)
+          .value,
+      ).toBe('Draft A');
+      view.unmount();
+      renderView('owner-B');
+      expect(
+        (screen.getByLabelText('Send input to session') as HTMLTextAreaElement)
+          .value,
+      ).toBe('Draft B');
+    });
+
+    test('keeps identical session ids separate between Stations', () => {
+      prepareSessions();
+      const a = renderView(
+        'owner-A',
+        undefined,
+        undefined,
+        undefined,
+        'https://station-a.example',
+      );
+      fireEvent.change(screen.getByLabelText('Send input to session'), {
+        target: { value: 'Station A draft' },
+      });
+      a.unmount();
+      const b = renderView(
+        'owner-A',
+        undefined,
+        undefined,
+        undefined,
+        'https://station-b.example',
+      );
+      expect(
+        (screen.getByLabelText('Send input to session') as HTMLTextAreaElement)
+          .value,
+      ).toBe('');
+      b.unmount();
+      renderView(
+        'owner-A',
+        undefined,
+        undefined,
+        undefined,
+        'https://station-a.example',
+      );
+      expect(
+        (screen.getByLabelText('Send input to session') as HTMLTextAreaElement)
+          .value,
+      ).toBe('Station A draft');
+      chatDraftsStore.clearActivityDraft(
+        'https://station-a.example',
+        'owner-A',
+      );
+    });
+
+    test('a late A send stays pending for A and preserves B and newer A drafts', async () => {
+      prepareSessions();
+      let finishSend = () => {};
+      sendTurn.mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            finishSend = resolve;
+          }),
+      );
+      renderView('owner-A');
+      fireEvent.change(screen.getByLabelText('Send input to session'), {
+        target: { value: 'Submitted A' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+      await waitFor(() =>
+        expect(sendTurn).toHaveBeenCalledWith({
+          apiBase: 'http://test.local',
+          threadId: 'owner-A',
+          text: 'Submitted A',
+        }),
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Owner B' }));
+      expect(
+        (screen.getByLabelText('Send input to session') as HTMLTextAreaElement)
+          .value,
+      ).toBe('');
+      fireEvent.change(screen.getByLabelText('Send input to session'), {
+        target: { value: 'Draft B' },
+      });
+      expect(
+        screen.getByRole('button', { name: 'Send' }).hasAttribute('disabled'),
+      ).toBe(false);
+      fireEvent.click(screen.getByRole('button', { name: 'Owner A' }));
+      expect(
+        screen
+          .getByRole('button', { name: 'Sending…' })
+          .hasAttribute('disabled'),
+      ).toBe(true);
+      fireEvent.change(screen.getByLabelText('Send input to session'), {
+        target: { value: 'Newer A' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Owner B' }));
+      await act(async () => {
+        finishSend();
+      });
+      expect(
+        (screen.getByLabelText('Send input to session') as HTMLTextAreaElement)
+          .value,
+      ).toBe('Draft B');
+      fireEvent.click(screen.getByRole('button', { name: 'Owner A' }));
+      expect(
+        (screen.getByLabelText('Send input to session') as HTMLTextAreaElement)
+          .value,
+      ).toBe('Newer A');
+      expect(
+        screen.getByRole('button', { name: 'Send' }).hasAttribute('disabled'),
+      ).toBe(false);
+      expect(sendTurn).toHaveBeenCalledTimes(1);
+    });
+  });
+
   test('surfaces an open request and resolves it', async () => {
     feedEvents = [
       {
@@ -1321,6 +1540,11 @@ describe('SessionsView', () => {
     fireEvent.click(screen.getByRole('button', { name: /Worker task/ }));
 
     const request = screen.getByTestId('session-request');
+    expect(
+      request.compareDocumentPosition(
+        screen.getByTestId('session-transcript'),
+      ) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
     expect(within(request).getByText('Allow write')).toBeTruthy();
     expect(request.textContent).not.toContain('req-7');
     fireEvent.click(within(request).getByRole('button', { name: 'Approve' }));
@@ -1368,6 +1592,27 @@ describe('SessionsView', () => {
         apiBase: 'http://test.local',
       }),
     );
+  });
+
+  test('shows current work and transcript-stream health while keeping session metadata collapsed', () => {
+    sessions[0] = {
+      ...sessions[0],
+      lifecycleState: 'running',
+      hasActiveTurn: true,
+      conversationActivity: { runningTools: [{ name: 'Bash' }] },
+    };
+    setStreamConnectionState('http://test.local', 'caught-up');
+    renderView('thread-alpha');
+    const detail = screen.getByTestId('session-detail');
+    expect(within(detail).getByText('Live · Using Bash')).toBeTruthy();
+    expect(
+      within(detail).getByText('Session info').closest('details')?.open,
+    ).toBe(false);
+    act(() => {
+      setStreamConnectionState('http://test.local', 'interrupted');
+    });
+    expect(within(detail).getByText('Reconnecting… · Using Bash')).toBeTruthy();
+    expect(within(detail).queryByText('Live · Using Bash')).toBeNull();
   });
 
   test("lists the project's non-terminal workflow sidecar tasks under 'Project workflows' (no per-session join key)", async () => {
@@ -4031,6 +4276,28 @@ describe('SessionsView', () => {
         lastEventAt: at,
       };
     }
+
+    test('shows a Draft’s creation age even after runtime housekeeping updates it', () => {
+      const old = draftSession('old-draft', 'Old draft', 72 * HOUR);
+      sessions = [
+        {
+          ...old,
+          updatedAt: new Date().toISOString(),
+          lastEventAt: new Date().toISOString(),
+        },
+      ];
+      renderView();
+      fireEvent.click(screen.getByRole('button', { name: /1 older draft$/ }));
+      const row = screen.getByRole('button', {
+        name: 'Old draft',
+      });
+      const time = row.closest('.split-pane__item-row')?.querySelector('time');
+      expect(time?.getAttribute('datetime')).toBe(old.createdAt);
+      expect(time?.textContent).toBe('3d');
+      expect(
+        within(row).getByTestId('activity-row-meta').textContent,
+      ).toContain('3d ago');
+    });
 
     test('discards a Draft through the server command; only Drafts offer it', async () => {
       discardDraftCommand.mockResolvedValue({

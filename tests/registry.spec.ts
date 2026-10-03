@@ -286,32 +286,22 @@ test.describe('Registry page', () => {
   // reaches this surface — and the whole path is walked by pressing, because a
   // fold is exactly the shape that can drop a surface while every individual
   // list still looks complete.
-  test('Settings reaches Registry through the Plugins entry it folds into', async ({
-    page,
-  }) => {
-    await expect(
-      page.getByRole('navigation', { name: 'Primary navigation' }),
-    ).toBeVisible({ timeout: 10_000 });
-    await expect(
-      page
-        .getByRole('navigation', { name: 'Primary navigation' })
-        .getByRole('button', { name: 'Registry', exact: true }),
-    ).toHaveCount(0);
-
-    await page
-      .getByRole('navigation', { name: 'Primary navigation' })
-      .getByRole('button', { name: 'Settings', exact: true })
-      .click();
-    const sections = page.getByRole('navigation', {
-      name: 'Settings sections',
+  test('Customize reaches Registry through Plugins', async ({ page }) => {
+    const navigation = page.getByRole('navigation', {
+      name: 'Primary navigation',
     });
-    await expect(sections).toBeVisible({ timeout: 10_000 });
-    // The fold is a real fold: Registry has no row of its own to press.
+    await expect(navigation).toBeVisible({ timeout: 10_000 });
     await expect(
-      sections.getByRole('link', { name: 'Registry', exact: true }),
+      navigation.getByRole('button', { name: 'Registry', exact: true }),
     ).toHaveCount(0);
-
-    await sections.getByRole('link', { name: 'Plugins', exact: true }).click();
+    await navigation
+      .getByRole('button', { name: 'Customize', exact: true })
+      .click();
+    const chooser = page.getByRole('dialog', { name: 'Customize' });
+    await expect(
+      chooser.getByRole('link', { name: 'Registry', exact: true }),
+    ).toHaveCount(0);
+    await chooser.getByRole('link', { name: 'Plugins', exact: true }).click();
     await expect(page).toHaveURL(/\/plugins$/);
     await page
       .getByRole('button', { name: 'Browse Registry', exact: true })

@@ -35,3 +35,8 @@
   color: var(--text-tertiary);
   font-size: var(--text-xs);
 }
+
+/* Reserve the menu's target even before hover so it cannot cover user text. */
+.message.user:has(.turn-footer__overflow-trigger) {
+  padding-inline-end: calc(44px + var(--k-space-3));
+}

@@ -13,10 +13,8 @@ import {
 import { useState } from 'react';
 import { useNavigation } from '../../contexts/NavigationContext';
 import { openExternalLink } from '../../platform/openExternalLink';
-// The Browser pane's round icon control, until the shared `IconButton` (a
-// sibling change) lands; this import moves there with it.
-import { BrowserIconButton } from '../../workspace-panes/browser-pane/BrowserIconButton';
 import type { OverflowAction } from '../ActionOverflowMenu';
+import { IconButton } from '../IconButton';
 import { ArrowRightGlyph, PlusGlyph, RefreshGlyph } from '../icons/Glyph';
 import { LazyBoundary } from '../LazyBoundary';
 import { LinkPullRequestField } from '../pull-requests/LinkPullRequestField';
@@ -272,7 +270,7 @@ export function PullRequestsPanel({
         </fieldset>
         <div className="pull-requests-panel__tools">
           {activeChat && chatLinks.canWrite && (
-            <BrowserIconButton
+            <IconButton
               className="pull-requests-panel__icon"
               aria-label="Link a pull request"
               title="Link a pull request to this chat"
@@ -281,9 +279,9 @@ export function PullRequestsPanel({
               onClick={() => setLinking((value) => !value)}
             >
               <PlusGlyph />
-            </BrowserIconButton>
+            </IconButton>
           )}
-          <BrowserIconButton
+          <IconButton
             className="pull-requests-panel__icon"
             aria-label="Refresh"
             title="Refresh"
@@ -294,7 +292,7 @@ export function PullRequestsPanel({
             }}
           >
             <RefreshGlyph />
-          </BrowserIconButton>
+          </IconButton>
         </div>
       </div>
       {linking && activeChat && (

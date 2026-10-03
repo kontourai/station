@@ -81,6 +81,7 @@ interface ChatDockMobileHeaderProps {
   showDrawerToggle: boolean;
   showConnection: boolean;
   sessionTitle: string;
+  sessionProjectMismatchLabel?: string | null;
   agentIdentity: { name: string; slug: string; icon?: string } | null;
   branchLabel: string | null;
   projectScope?: { name: string; onClear: () => void };
@@ -102,6 +103,7 @@ export function ChatDockMobileHeader({
   showDrawerToggle,
   showConnection,
   sessionTitle,
+  sessionProjectMismatchLabel,
   agentIdentity,
   branchLabel,
   projectScope,
@@ -122,6 +124,19 @@ export function ChatDockMobileHeader({
   const projectTriggerRef = useRef<HTMLButtonElement>(null);
   const chatActionsTriggerRef = useRef<HTMLButtonElement>(null);
   const titleDescriptionId = useId();
+  const activityDescriptionId = useId();
+  // The dot on ⋯ used to be decoration only: an unexplained orange mark on
+  // the chat-actions button. It means chats (this one included) are working
+  // or have unread replies — the sheet's Chats row is where they are — so it
+  // says so, as the button's description rather than its name.
+  const activitySummary = [
+    activeCount > 0
+      ? `${activeCount} ${activeCount === 1 ? 'chat' : 'chats'} working`
+      : null,
+    unreadCount > 0 ? `${unreadCount} unread` : null,
+  ]
+    .filter(Boolean)
+    .join(', ');
   return (
     <div
       className="chat-dock__header chat-dock__mobile-header"
@@ -175,7 +190,7 @@ export function ChatDockMobileHeader({
                 className="chat-dock__mobile-project-caption"
                 aria-hidden="true"
               >
-                Project
+                New chats
               </span>
               <span className="chat-dock__mobile-project-name">
                 {projectSwitcher.projectName}
@@ -200,7 +215,9 @@ export function ChatDockMobileHeader({
         className="chat-dock__mobile-identity"
         data-dock-drag-passthrough=""
         aria-label={
-          agentIdentity ? `Switch task — ${agentIdentity.name}` : 'Switch task'
+          agentIdentity
+            ? `Chats and tasks — ${agentIdentity.name}`
+            : 'Chats and tasks'
         }
         aria-describedby={titleDescriptionId}
         onClick={onOpenTaskSwitcher}
@@ -216,6 +233,8 @@ export function ChatDockMobileHeader({
           {agentIdentity && (
             <span className="chat-dock__mobile-eyebrow" aria-hidden="true">
               {agentIdentity.name}
+              {sessionProjectMismatchLabel &&
+                ` · ${sessionProjectMismatchLabel}`}
             </span>
           )}
         </span>
@@ -227,12 +246,24 @@ export function ChatDockMobileHeader({
         aria-haspopup="dialog"
         aria-expanded={isOverflowOpen}
         aria-label="Chat actions"
+        aria-describedby={activitySummary ? activityDescriptionId : undefined}
+        title={
+          activitySummary ? `Chat actions — ${activitySummary}` : undefined
+        }
         data-no-dock-drag=""
         onClick={() => setIsOverflowOpen((open) => !open)}
       >
         <span aria-hidden="true">⋯</span>
-        {(activeCount > 0 || unreadCount > 0) && (
-          <span className="chat-dock__mobile-activity-dot" aria-hidden="true" />
+        {activitySummary && (
+          <>
+            <span
+              className="chat-dock__mobile-activity-dot"
+              aria-hidden="true"
+            />
+            <span id={activityDescriptionId} className="sr-only">
+              {activitySummary}
+            </span>
+          </>
         )}
       </button>
       {isOverflowOpen && (

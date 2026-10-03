@@ -2,7 +2,6 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
-  readFileSync,
   realpathSync,
   rmSync,
   writeFileSync,
@@ -1007,13 +1006,12 @@ overrides:
 });
 
 describe('scoped audit policy composition', () => {
-  function committedConfig() {
-    return JSON.parse(
-      readFileSync(
-        new URL('../dependency-advisory-exceptions.json', import.meta.url),
-        'utf8',
-      ),
-    );
+  function compositionConfig() {
+    return {
+      version: 2,
+      exceptions: [validException()],
+      residuals: [validResidual()],
+    };
   }
 
   function cleanAudit() {
@@ -1073,10 +1071,10 @@ describe('scoped audit policy composition', () => {
     { scopes: ['shared'] },
     { scopes: ['sdk', 'shared'] },
   ])(
-    'evaluates a clean narrowed $scopes scan with the committed root residuals',
+    'evaluates a clean narrowed $scopes scan with unscanned root records',
     async ({ scopes }) => {
       const documents = await partialDocuments(scopes);
-      const result = evaluateAuditPolicy(documents, committedConfig(), {
+      const result = evaluateAuditPolicy(documents, compositionConfig(), {
         now: NOW,
       });
       expect(result.exceptionErrors).toEqual([]);
@@ -1099,9 +1097,9 @@ describe('scoped audit policy composition', () => {
   ])(
     'validates unscanned global %s rules: %j',
     async (kind, override, message) => {
-      const config = committedConfig();
-      config.exceptions.push(validException());
-      Object.assign(config[kind as string][0], override);
+      const config = compositionConfig();
+      if (kind === 'exceptions') Object.assign(config.exceptions[0], override);
+      else Object.assign(config.residuals[0], override);
       const result = evaluateAuditPolicy(
         await partialDocuments(['sdk']),
         config,
@@ -1114,7 +1112,7 @@ describe('scoped audit policy composition', () => {
   );
 
   it('still rejects unused exceptions and residuals in the audited scope', async () => {
-    const config = committedConfig();
+    const config = compositionConfig();
     config.exceptions.push(validException({ scope: 'sdk' }));
     config.residuals.push(validResidual({ scope: 'sdk' }));
     const result = evaluateAuditPolicy(
@@ -1139,7 +1137,7 @@ describe('scoped audit policy composition', () => {
       audit.metadata.vulnerabilities.high = severity === 'high' ? 1 : 0;
       audit.metadata.vulnerabilities.critical = severity === 'critical' ? 1 : 0;
       documents[0].audit = audit;
-      const result = evaluateAuditPolicy(documents, committedConfig(), {
+      const result = evaluateAuditPolicy(documents, compositionConfig(), {
         now: NOW,
       });
       expect(result.exceptionErrors).toEqual([]);
@@ -1153,7 +1151,7 @@ describe('scoped audit policy composition', () => {
   it('blocks an untracked production residual in a narrowed scan', async () => {
     const documents = await partialDocuments(['shared']);
     Object.assign(documents[1], productionLowDocument(), { scope: 'shared' });
-    const result = evaluateAuditPolicy(documents, committedConfig(), {
+    const result = evaluateAuditPolicy(documents, compositionConfig(), {
       now: NOW,
     });
     expect(result.exceptionErrors).toEqual([]);
@@ -1164,16 +1162,20 @@ describe('scoped audit policy composition', () => {
   });
 
   it('does not report production residuals unused after only a full-graph audit', () => {
+    const config = compositionConfig();
     const result = evaluateAuditPolicy(
       [{ scope: 'root', reachability: 'full', audit: cleanAudit() }],
-      committedConfig(),
+      // A clean audit leaves every configured exception unused too; the
+      // assertion is about residuals, so compose from the fixture
+      // with only its exceptions cleared rather than assuming it ships none.
+      { ...config, exceptions: [] },
       { now: NOW },
     );
     expect(result.exceptionErrors).toEqual([]);
     expect(result.ok).toBe(true);
   });
 
-  it('still enforces every committed residual on full scheduled audits', async () => {
+  it('enforces configured records in every scope on full scheduled audits', async () => {
     const decision = dependencyAuditDecision({
       env: { GITHUB_ACTIONS: 'true', GITHUB_EVENT_NAME: 'schedule' },
     });
@@ -1183,14 +1185,19 @@ describe('scoped audit policy composition', () => {
       () => ({}),
     );
     expect(documents).toHaveLength(6);
-    const config = committedConfig();
-    config.exceptions.push(validException());
+    const config = compositionConfig();
+    config.exceptions.push(validException({ scope: 'sdk' }));
+    config.residuals.push(validResidual({ scope: 'shared' }));
     const result = evaluateAuditPolicy(documents, config, { now: NOW });
     expect(result.ok).toBe(false);
     expect(result.exceptionErrors).toEqual([
-      expect.stringContaining('unused exception for root:'),
-      ...config.residuals.map(() =>
-        expect.stringContaining('unused residual for root:'),
+      // Every configured exception is unused by
+      // the clean audit; each scope retains its own unused-record diagnosis.
+      ...config.exceptions.map((entry) =>
+        expect.stringContaining(`unused exception for ${entry.scope}:`),
+      ),
+      ...config.residuals.map((entry) =>
+        expect.stringContaining(`unused residual for ${entry.scope}:`),
       ),
     ]);
   });

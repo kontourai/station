@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeAll, describe, expect, test, vi } from 'vitest';
 import { AcpSessionModeChip } from '../components/badges/AcpSessionModeChip';
 
@@ -47,6 +47,22 @@ describe('AcpSessionModeChip', () => {
     expect(
       screen.queryByRole('button', { name: /^Approval mode:/ }),
     ).toBeNull();
+  });
+
+  test('captions the chip "Mode" like its Agent and Model neighbours', () => {
+    render(
+      <AcpSessionModeChip
+        modes={MODES}
+        currentModeId="build"
+        onChange={vi.fn()}
+      />,
+    );
+    const chip = screen.getByRole('button', { name: /^Session mode: Build\./ });
+    // The caption is the rail's shared caption element, not free text: the
+    // Agent/Model/Approval chips render the same class above their value.
+    const caption = within(chip).getByText('Mode');
+    expect(caption.className).toBe('chat-input__chip-caption');
+    expect(within(chip).getByText('Build')).toBeTruthy();
   });
 
   test('selecting an advertised mode reports that id', async () => {

@@ -1,12 +1,15 @@
 import { useState } from 'react';
-import { isCleartextNonLoopback, normalizeHostInput } from '../core/hostInput';
+import {
+  httpConnectionConsentRequired,
+  normalizeHostInput,
+} from '../core/hostInput';
 
 /** A device-local exception for one origin; never a blanket HTTP preference. */
 export function useHttpConnectionConsent(address: string) {
   const [, refresh] = useState(0);
   const [error, setError] = useState('');
   const normalized = normalizeHostInput(address);
-  const required = isCleartextNonLoopback(normalized);
+  const required = httpConnectionConsentRequired(normalized);
   let origin = '';
   try {
     origin = new URL(normalized).origin;

@@ -279,15 +279,12 @@ function DevicePairingActions({ item }: { item: DevicePairingAttentionItem }) {
   // the remedy the panel prints for the same refusal instead of dead buttons.
   if (!item.viewerCanDecide) {
     return (
-      <>
-        <div
-          className="attention-item__detail"
-          data-testid="attention-pairing-remedy"
-        >
-          {pairingApprovalRemedy(item)}
-        </div>
-        <OpenConnectionsLink href={item.openHref} />
-      </>
+      <div
+        className="attention-item__detail"
+        data-testid="attention-pairing-remedy"
+      >
+        {pairingApprovalRemedy(item)}
+      </div>
     );
   }
   return (
@@ -310,7 +307,6 @@ function DevicePairingActions({ item }: { item: DevicePairingAttentionItem }) {
           Deny
         </button>
       </div>
-      <OpenConnectionsLink href={item.openHref} />
       <MutationError
         error={describePairingActionError(
           confirmMutation.error,
@@ -895,14 +891,6 @@ function OpenModelConnectionsLink({ href }: { href: string }) {
   return (
     <a className="attention-open-link" href={href}>
       Open model connections
-    </a>
-  );
-}
-
-function OpenConnectionsLink({ href }: { href: string }) {
-  return (
-    <a className="attention-open-link" href={href}>
-      Open connections
     </a>
   );
 }

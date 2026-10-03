@@ -34,7 +34,12 @@ vi.mock('shiki/engine/javascript', async (importOriginal) => {
   };
 });
 
-type WorkerResponse = { id: number; html?: string; error?: string };
+type WorkerResponse = {
+  id: number;
+  html?: string;
+  tokens?: Array<Array<{ content: string; color?: string }>>;
+  error?: string;
+};
 
 async function loadWorker() {
   const posted: WorkerResponse[] = [];
@@ -50,7 +55,12 @@ async function loadWorker() {
   vi.resetModules();
   await import('../highlight/highlight-worker');
   if (!handler) throw new Error('the worker registered no message handler');
-  const send = async (request: { id: number; code: string; lang: string }) => {
+  const send = async (request: {
+    id: number;
+    code: string;
+    lang: string;
+    format?: 'tokens';
+  }) => {
     handler?.({ data: request } as MessageEvent);
     await vi.waitFor(() =>
       expect(posted.some((message) => message.id === request.id)).toBe(true),
@@ -93,6 +103,31 @@ describe('chat highlight worker', () => {
     expect(constColour).toBeTruthy();
     expect(numberColour).toBeTruthy();
     expect(constColour).not.toBe(numberColour);
+  }, 30_000);
+
+  test('answers a File Preview token request with lines that reproduce the source', async () => {
+    const { send } = await loadWorker();
+    const code = 'const answer = 42;\nfunction greet() {}';
+    const response = await send({
+      id: 7,
+      code,
+      lang: 'typescript',
+      format: 'tokens',
+    });
+
+    expect(response.error).toBeUndefined();
+    // Tokens, not HTML: the preview renders them as React text.
+    expect(response.html).toBeUndefined();
+    const lines = response.tokens ?? [];
+    expect(lines.map((line) => line.map((t) => t.content).join(''))).toEqual(
+      code.split('\n'),
+    );
+    const colourOf = (text: string) =>
+      lines.flat().find((token) => token.content.trim() === text)?.color;
+    // github-dark's keyword and entity foregrounds, upper-cased as the pane
+    // expects to look them up.
+    expect(colourOf('const')).toBe('#F97583');
+    expect(colourOf('greet')).toBe('#B392F0');
   }, 30_000);
 
   test('loads a language outside the preload list on demand', async () => {

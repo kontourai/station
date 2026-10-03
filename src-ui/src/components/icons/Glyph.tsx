@@ -92,6 +92,9 @@ export const CodeGlyph = /* @__PURE__ */ glyph(
   'm5 5-3 3 3 3m6-6 3 3-3 3M9.5 3.5l-3 9',
 );
 /** #2312: discard (delete) — a bin, not the Archive box, which implies recoverable. */
+export const CopyGlyph = /* @__PURE__ */ glyph(
+  'M5.5 5.5V3.5A1 1 0 0 1 6.5 2.5h6a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1h-2M3.5 5.5h6a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1h-6a1 1 0 0 1-1-1v-6a1 1 0 0 1 1-1Z',
+);
 export const DiscardGlyph = /* @__PURE__ */ glyph(
   'M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.5h5.8l.6-8.5M7 7v4M9 7v4',
 );

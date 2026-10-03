@@ -125,6 +125,7 @@ import type {
   ProviderTurnStartResult,
 } from '../../providers/adapter-shape.js';
 import {
+  AttachmentInputUnsupportedError,
   ProviderTurnEndedError,
   SendTurnRefusedError,
 } from '../../providers/adapter-shape.js';
@@ -7549,13 +7550,17 @@ export class OrchestrationService {
         // #2300/#2324: a retryable adapter refusal's code is forwarded so the
         // client's queue keeps the send for a retry instead of dropping it
         // as a definitive rejection.
+        // An attachment refusal's code is forwarded (NOT retryable) so the
+        // client can say the same send will be refused again instead of
+        // offering a blind retry.
         error instanceof SessionEndedError ||
           error instanceof SessionStopWhileStartingError ||
           error instanceof DraftDiscardRefusedError ||
           error instanceof DraftDiscardedError ||
           error instanceof DraftDiscardBusyError ||
           error instanceof RequestEventGuardError ||
-          error instanceof ReceiverExecutionRefusal
+          error instanceof ReceiverExecutionRefusal ||
+          error instanceof AttachmentInputUnsupportedError
           ? error.code
           : retryableAdapterRefusalCode(error),
       );

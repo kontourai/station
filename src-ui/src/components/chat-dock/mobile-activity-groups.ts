@@ -91,7 +91,7 @@ export function snoozeKeyFor(item: HomeWorkItem): string {
  * nothing. Same label, two derivations, contradicting counts.
  *
  * The groups are a straight rename of the shared partition's lanes:
- * needsYou/running/idle (`liveLaneFor`), drafts ("Drafts", #2310),
+ * needsYou/running/idle (`workStatus`), drafts ("Drafts", #2310),
  * recentlyFinished ("Just finished"), snoozed, settled ("Earlier") — the
  * same mapping the Sessions lanes use (`sessions-lane-model.ts`). An
  * unfinished-but-idle item (`Ready`/`Recent`/`Current`/`Unanswerable`) is

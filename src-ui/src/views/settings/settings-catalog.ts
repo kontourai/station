@@ -324,7 +324,7 @@ const SETTINGS_CATALOG_SOURCE = [
     id: 'default-model',
     title: 'Default model',
     section: 'agent-runs',
-    configKeys: ['defaultModel'],
+    configKeys: ['defaultModel', 'defaultLLMProvider'],
   },
   {
     id: 'default-region',
@@ -556,9 +556,9 @@ const SETTINGS_CATALOG_SOURCE = [
   },
   {
     id: 'mobile-pairing',
-    title: 'Mobile pairing & network discovery',
+    title: 'Device pairing',
     section: 'pairing',
-    configKeys: ['featureSettings'],
+    configKeys: [],
   },
   {
     id: 'open-last-station',
@@ -637,6 +637,7 @@ const SETTING_SCOPE_OVERRIDES: Readonly<
   'telemetry-destination': 'informational',
   'deployed-build': 'informational',
   'message-context': 'temporary',
+  'mobile-pairing': 'informational',
 };
 
 /**
