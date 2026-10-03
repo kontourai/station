@@ -63,23 +63,15 @@ describe('deriveChatStatus — one status, by priority', () => {
     expect(deriveChatStatus(base)).toBeUndefined();
   });
 
-  test('a running tool names itself, as written', () => {
+  test('thinking is explicit when no tool is executing', () => {
     expect(
       deriveChatStatus({
         ...base,
         turnLive: true,
-        activity: {
-          ...openTurn,
-          runningTools: [
-            {
-              name: 'npm run gate:for -- Dockerfile',
-              callId: 'x',
-              startedAt: '2026-09-29T00:01:00Z',
-            },
-          ],
-        },
+        activity: openTurn,
+        activityHint: { kind: 'thinking' },
       })?.label,
-    ).toBe('Running npm run gate:for -- Dockerfile');
+    ).toBe('Thinking');
   });
 
   test('paused for the user without a request is "Waiting on you", not an approval', () => {
@@ -171,7 +163,33 @@ describe('ChatStatusPill', () => {
     expect(live.textContent).toBe('Working');
   });
 
-  test('a change of tool is not a new announcement', () => {
+  test('compact approvals announce the pending count and count changes', () => {
+    const view = render(
+      <ChatStatusPill
+        status={deriveChatStatus({ ...base, approvalCount: 3 })}
+        onRevealApproval={() => {}}
+      />,
+    );
+    expect(
+      document.querySelector('.chat-status-pill__label')?.textContent,
+    ).toBe('Approval needed');
+    expect(screen.getByRole('status').textContent).toBe('3 approvals needed');
+    expect(
+      screen.getByRole('button', { name: /3 approvals needed/ }),
+    ).toBeTruthy();
+    view.rerender(
+      <ChatStatusPill
+        status={deriveChatStatus({ ...base, approvalCount: 4 })}
+        onRevealApproval={() => {}}
+      />,
+    );
+    expect(screen.getByRole('status').textContent).toBe('4 approvals needed');
+    expect(
+      screen.getByRole('button', { name: /4 approvals needed/ }),
+    ).toBeTruthy();
+  });
+
+  test('long and changing tool names keep a compact Working label and announcement', () => {
     const running = (name: string) =>
       deriveChatStatus({
         ...base,
@@ -186,7 +204,19 @@ describe('ChatStatusPill', () => {
     const view = render(<ChatStatusPill status={running('bash')} />);
     const live = () => screen.getByRole('status').textContent;
     expect(live()).toBe('Working');
-    view.rerender(<ChatStatusPill status={running('npm test')} />);
+    expect(
+      document.querySelector('.chat-status-pill__label')?.textContent,
+    ).toBe('Working');
+    view.rerender(
+      <ChatStatusPill
+        status={running(
+          'npm run gate:for -- a/very/long/project/path/Dockerfile',
+        )}
+      />,
+    );
     expect(live()).toBe('Working');
+    expect(
+      document.querySelector('.chat-status-pill__label')?.textContent,
+    ).toBe('Working');
   });
 });

@@ -38,6 +38,35 @@ The shared popover shell opens toward the roomier viewport edge, including when
 the dock is maximized. A narrow Activity region shows its list or its selected
 detail, with a Back to list control, instead of squeezing both columns.
 
+## Chat controls and attention
+
+Live approval, connection, and working status sit above the composer, on the
+right of the Agent, Model, and Approval controls. Scroll to bottom appears
+immediately to the right of that status and moves with it as the draft grows.
+When the chat pane is narrow, the status and scroll control are centered
+together in a row above the settings. Scroll-button hover changes its background
+without enlarging its target. The desktop header exposes Collapse chat list /
+Expand chat list directly, with its current state available to assistive technology.
+
+The pill uses compact state labels such as Working, Thinking, and Reconnecting;
+it does not expand to display tool names. State changes animate its width with
+the shared motion token, while the clock reserves a stable text column. Running
+tool rows and batches show a subtle reflection sweeping left to right; settled
+calls and approval requests stay still. Reduced motion disables the reflection
+and makes pill size changes immediate.
+
+User-message action menus reserve padding before hover so their targets cannot
+cover the text. Individual tool failures remain on their transcript rows rather
+than creating global toasts. Turn attention and approval notifications keep their
+existing ownership. Toasts show a short headline, explicit actions where available,
+and a closed Details disclosure for longer messages or diagnostics; opening the
+chat is a button. Tool approval previews remain visible before a decision.
+
+These controls are owned by [ChatInputArea](../../src-ui/src/components/chat/ChatInputArea.tsx),
+[ChatMessageList](../../src-ui/src/components/chat/ChatMessageList.tsx),
+[ChatDockHeader](../../src-ui/src/components/chat-dock/ChatDockHeader.tsx), and
+[NotificationContainer](../../src-ui/src/components/notifications/NotificationContainer.tsx).
+
 ## 1. The principle: if an agent can't drive it, it's broken
 
 Station's thesis is agents doing real work with receipts. That obligates Station's own UI

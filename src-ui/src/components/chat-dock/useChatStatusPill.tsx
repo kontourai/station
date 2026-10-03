@@ -32,7 +32,7 @@ function ReportUnavailable({ onUnavailable }: { onUnavailable: () => void }) {
 }
 
 /**
- * The chat pane's floating status pill, derived from the chat's own record
+ * The chat pane's composer status pill, derived from the chat's own record
  * (`deriveChatStatus`). Once the pill is actually on screen and presenting
  * this chat's approvals, it claims the chat's threads, so the app-wide
  * approval queue does not float a second copy of the same decision over the

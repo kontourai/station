@@ -9,7 +9,7 @@
 
   "limits": "Complete for concrete documented claims and actual named callers, not an exhaustive security audit or every possible implementation path. No installed-plugin journey, external provider/registry mutation, public package distribution, native/device operation or cross-host qualification performed. Historical screenshots, bundle measurements, real gesture/history and physical-device receipts were not renewed. One focused first-lazy-mount case remains FAIL with unknown cause; no deadline increase or rerun. The fresh browser evidence is only the real-Chromium CSS/toolbar geometry fixture.",
 
-  "document": {"digest":"c0c0ec5bfeea94fc2648c9de704fa68b68199b0f6b47a6dc72e6ba680a213bff","revision":"0ab9b2a8123e608900bae2492b40c0b35483ac2d"},
+  "document": {"digest":"382a4910c41cd209779e2bedfd5cda4675d93217aa10f1879e8719f64c955375","revision":"82fea394a09cdf62071b073d09aa6cb08ebbca48"},
 
   "sources": [
     {"path":"packages/contracts/src/device-settings.ts","digest":"5f6cf575d9474dd624f3b77272538d70cceb43ee355109dc655851ac0a195bcb","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},

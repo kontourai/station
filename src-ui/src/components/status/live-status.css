@@ -108,20 +108,20 @@
    it never covers the header's `…` menu. Floating (absolute), so appearing,
    changing and leaving move nothing in the transcript. */
 .chat-status-pill-host {
-  position: absolute;
+  position: relative;
   z-index: 3;
-  top: 8px;
-  right: 12px;
   display: flex;
-  max-width: min(78%, 360px);
+  min-width: 0;
+  max-width: 100%;
   flex-direction: column;
   align-items: flex-end;
   gap: 6px;
   pointer-events: none;
 }
 
-.chat-status-pill {
+.chat-status-pill-host .chat-status-pill {
   display: inline-flex;
+  width: 100%;
   max-width: 100%;
   min-height: 32px;
   align-items: center;
@@ -138,6 +138,9 @@
   pointer-events: auto;
   text-align: left;
   transform-origin: right center;
+}
+
+.chat-status-pill[data-entering="true"] {
   animation: chat-status-pill-in var(--motion-slow) var(--ease-spring) both;
 }
 
@@ -149,7 +152,7 @@ button.chat-status-pill {
    meets the 44px floor the rest of the chrome keeps (the app-wide approval
    trigger it stands in for was 44px). The read-only pill stays compact. */
 @media (max-width: 768px), (pointer: coarse) {
-  button.chat-status-pill {
+  .chat-status-pill-host button.chat-status-pill {
     min-height: 44px;
   }
 }
@@ -211,8 +214,10 @@ button.chat-status-pill {
 
 .chat-status-pill__clock {
   flex-shrink: 0;
+  min-width: 5ch;
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
+  text-align: right;
 }
 
 .chat-status-pill__count {
@@ -245,7 +250,11 @@ button.chat-status-pill {
 }
 
 .chat-status-pill__details {
-  max-width: 100%;
+  position: absolute;
+  bottom: calc(100% + var(--k-space-2));
+  right: 0;
+  width: max-content;
+  max-width: min(calc(100cqw - var(--k-space-6) - var(--k-space-5)), 360px);
   padding: 8px 12px;
   border: 1px solid var(--border-primary);
   border-radius: 10px;
