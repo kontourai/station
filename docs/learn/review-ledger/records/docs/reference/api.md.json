@@ -196,7 +196,7 @@
 
     {"path":"src-server/routes/plugins/plugins.ts","digest":"fbaf259293b5a5f7ae43c76aae4d8676c35ab5e92157284cbd39d4f13622fb2f","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/routes/plugins/registry.ts","digest":"29d44d1d16b1137279d8f3914b21b0c48866aa7a820b5a48893ef1e22e212125","revision":"7be721b29fb6742b6e66cf8f952782481b3f0fe0"},
+    {"path":"src-server/routes/plugins/registry.ts","digest":"182f1ca8372a27bd8f40e5b9ca8faec49b24cd1e4959b4a8aa1250def71e91dc","revision":"c191c6d08ae926b8d038cf5e2a4b494beee19243"},
 
     {"path":"src-server/routes/projects/fs.ts","digest":"73b84dab3f633c021406ad629cee445610a2cf44f43b93dc8b81e3d70d8efac4","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
