@@ -623,6 +623,7 @@ export function applyOrchestrationSnapshot(
   for (const { threadId, updates } of plan.sessionUpdates) {
     let approvalToasts: Map<string, string> | undefined;
     let pendingApprovalTurnIds: Record<string, string> | undefined;
+    const placeholders = new Map<string, string>();
     if (updates.pendingApprovals) {
       const openIds = new Set(updates.pendingApprovals);
       // #3071: the server's list already excludes what a turn's abort
@@ -648,6 +649,7 @@ export function applyOrchestrationSnapshot(
           0,
         );
         approvalToasts.set(requestId, toastId);
+        placeholders.set(requestId, toastId);
       }
     }
     // One write per thread. Each `updateChat` copies the whole chat map and
@@ -666,6 +668,18 @@ export function applyOrchestrationSnapshot(
           )
         : {}),
     });
+    // The snapshot has only ids; swap each placeholder for the real approval
+    // toast once the request's payload is read (loaded on demand, off the
+    // entry chunk).
+    if (!replayId && options?.apiBase && placeholders.size > 0) {
+      const { apiBase } = options;
+      // A failed chunk load leaves the placeholder in place.
+      void import('./hydrateOpenApprovalToasts')
+        .then((module) =>
+          module.hydrateOpenApprovalToasts(apiBase, threadId, placeholders),
+        )
+        .catch(() => {});
+    }
   }
 
   for (const threadId of plan.exitedThreadIds) {

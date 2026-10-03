@@ -30,7 +30,7 @@
 
     {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"90e94e3a617cb7c9642c029f8dd1c58fbebeca19e29dbd1b097af41952fe4b93","revision":"cf12c0d848d0dc068f3dcaa530e9a1f213618834"},
 
-    {"path":"src-server/tools/station-control-delegation.ts","digest":"b924e289e8e485cf249ec99ebd3097b014f001f58942aa29f91e0196bbc5af70","revision":"a258f06c1515ccdde83e198862ae8efe43d71207"},
+    {"path":"src-server/tools/station-control-delegation.ts","digest":"8968805e6becbf85cb1316d6c9a3838e5d0d02203b27b7e69d95e2b080f1fec4","revision":"92d0ab926f74d804cb314dfadbbda9db73499015"},
 
     {"path":"src-server/services/orchestration/project-task-room-runtime.ts","digest":"feb48a41131f04260c92e3a7757eda5aa61799a7015b3386a931d950250e3d58","revision":"9f8b407fac4a9e5536d72ca49be3a0b77715e1d8"},
 

@@ -14,7 +14,7 @@
   "sources": [
     {"path":"docs/architecture/module-map.md","digest":"19cd1dda1107382cf0548867f8343cd0933337d64b1f8a6efe2cc273f1af4069","revision":"4fe1570f32d9f2b90ddded8258c0793bbe3c2830"},
 
-    {"path":"docs/contexts/agent-runtime/CONTEXT.md","digest":"65e814615ee79543753261e413d46c6eef26dd2ac6f8d664fc37daaa70908164","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","digest":"9c8de287060ce797e03b746a3d78cd4ff9320ef52239877c033585e998c109f4","revision":"6e753daf7477fffa310453a9d6e37cb1a850e76b"},
 
     {"path":"docs/contexts/evidence-governance/CONTEXT.md","digest":"976207569e04724170b807f2585f4b93359a37107399fd0f81072217384b153c","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 

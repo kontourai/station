@@ -9,7 +9,7 @@
 
   "limits": "Source and fixture evidence do not establish installed native CLI compatibility, a live engine turn, physical UI behavior, or hosted deployment. No version-specific native fork qualification is claimed.",
 
-  "document": {"digest":"0771439ae1be0914629e831778103b8978bab3af443d0f00a1f8d0e5ccd0d7f3","revision":"4711f21b516d04300b15ad4da473e24bf2e7adb2"},
+  "document": {"digest":"84a2e2445688aeeafc265a6285e5c71064cdc3b222a678e64be2536cf666bfd0","revision":"dcf86d0c19c03bf7271740487040d320cfca213b"},
 
   "sources": [
     {"path":"scripts/session-api-roundtrip.mjs","digest":"6bd268998fc936dacbdd1359cab376b5b7309449d65eaa9a43f9263bbcf88e0c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},

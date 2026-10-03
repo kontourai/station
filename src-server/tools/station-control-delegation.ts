@@ -5829,10 +5829,22 @@ export async function executeExecutionTargetMessage(
       ) {
         return { sessionId: conversationId, startRequired: false };
       }
+      // The service forwards `ConversationLineage`'s result as-is, including
+      // `retirePredecessorSessionId`, which its declared return type omits.
       return await orchestrationService.resolveConversationContinuation(
         conversationId,
         readAuthority,
         requested,
+      );
+    },
+    retireSession: async (_access: EnvironmentAccess, sessionId: string) => {
+      await orchestrationService.dispatchWithReceipt(
+        { type: 'stopSession', threadId: sessionId },
+        dispatchContextForAuthority(
+          readAuthority,
+          input.clientOrigin,
+          input.principal,
+        ),
       );
     },
     prepareConversationHandoff: async (access: EnvironmentAccess, handoff) => {
