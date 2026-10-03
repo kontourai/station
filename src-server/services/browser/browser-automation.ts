@@ -170,6 +170,12 @@ export const BROWSER_STATUS_PAGE_MAX = 20;
  * newest-created first and resume strictly after that (createdAt, id) pair,
  * not at an offset, so a session opened, closed or driven between two calls
  * never makes one that was already there repeat or go missing.
+ *
+ * A cursor is an unauthenticated position marker, not a capability: it only
+ * sets where listing resumes. Any well-formed pair is accepted, including
+ * one a caller made up or one from another Project's listing; what a page
+ * may contain is decided by the ownership filter alone (`owns`), never by
+ * the cursor.
  */
 interface StatusCursor {
   createdAt: string;
@@ -1360,7 +1366,8 @@ export class BrowserAutomation {
   /**
    * One page of the sessions this authority may drive, newest-created
    * first. `limit` outside 1..{@link BROWSER_STATUS_PAGE_MAX} and a cursor
-   * this method did not mint are refused, never clamped or ignored.
+   * that is not a well-formed position are refused, never clamped or
+   * ignored. A well-formed cursor only sets where listing resumes.
    */
   async status(
     authority: BrowserAgentAuthority,
@@ -1381,7 +1388,7 @@ export class BrowserAutomation {
     if (page.cursor !== undefined && !after)
       return refuse(
         'invalid-request',
-        'cursor is not one browser_status returned. Call browser_status without a cursor to start from the newest session.',
+        'cursor is not a browser_status position. Pass a nextCursor that browser_status returned, or call it without a cursor to start from the newest session.',
       );
     const remaining = this.deps.sessions
       .listSessions(

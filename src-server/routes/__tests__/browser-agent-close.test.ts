@@ -568,7 +568,7 @@ describe('browser_status paging (#90)', () => {
       /cursor/,
     ],
   ])(
-    '%j is refused invalid-request, not truncated or ignored',
+    'malformed %j is refused invalid-request, not truncated or ignored',
     async (body, message) => {
       const h = harness();
       const token = h.startAgent('exec-1', {
@@ -582,6 +582,53 @@ describe('browser_status paging (#90)', () => {
       expect(answer).not.toHaveProperty('sessions');
     },
   );
+
+  test('a cursor is only a position: a forged or another Project’s cursor never lists a foreign session', async () => {
+    const h = harness();
+    const alpha = h.startAgent('exec-a', {
+      principalId: OPERATOR_ID,
+      conversationId: 'conv-A',
+    });
+    const beta = h.startAgent('exec-b', {
+      principalId: OPERATOR_ID,
+      conversationId: 'conv-B',
+      project: BETA,
+    });
+    const alphaIds: string[] = [];
+    const betaIds: string[] = [];
+    // Interleaved, so a cursor from one Project falls between the other's.
+    for (let i = 0; i < 4; i += 1) {
+      alphaIds.push(await h.agentOpen(alpha, `https://example.com/a${i}`));
+      betaIds.push(await h.agentOpen(beta, `https://example.com/b${i}`));
+    }
+    const pageOf = async (token: string, cursor: string) => {
+      const page = await h.tool(token, 'status', { limit: 20, cursor });
+      expect(page).toMatchObject({ ok: true });
+      return (page.sessions as StatusEntry[]).map((s) => s.browserSessionId);
+    };
+
+    // Well-formed but never minted: it only sets where listing resumes.
+    const forged = Buffer.from(
+      JSON.stringify([
+        '9999-01-01T00:00:00.000Z',
+        'bs_ffffffff-ffff-ffff-ffff-ffffffffffff',
+      ]),
+    ).toString('base64url');
+    expect(await pageOf(alpha, forged)).toEqual([...alphaIds].reverse());
+    expect(await pageOf(beta, forged)).toEqual([...betaIds].reverse());
+
+    // Alpha's own cursor, replayed by the Beta caller.
+    const first = await h.tool(alpha, 'status', { limit: 2 });
+    expect(typeof first.nextCursor).toBe('string');
+    const replayed = await pageOf(beta, first.nextCursor as string);
+    expect(replayed.length).toBeGreaterThan(0);
+    expect(replayed.every((id) => betaIds.includes(id))).toBe(true);
+    // And Beta's cursor replayed by Alpha.
+    const betaFirst = await h.tool(beta, 'status', { limit: 2 });
+    const back = await pageOf(alpha, betaFirst.nextCursor as string);
+    expect(back.length).toBeGreaterThan(0);
+    expect(back.every((id) => alphaIds.includes(id))).toBe(true);
+  });
 
   test('limit 20 is the most one page lists', async () => {
     const h = harness();

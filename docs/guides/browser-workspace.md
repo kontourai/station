@@ -98,11 +98,14 @@ satisfy that caller contract. A tool-supplied Session or Project ID cannot
 create authority.
 
 `browser_status` lists the caller's sessions newest-created first, at most 20
-per page (`limit` 1–20; a larger or fractional limit or an unrecognized
-`cursor` is refused `invalid-request`). Each page's `nextCursor` resumes after
-the last session it listed, so a session opened, closed or driven between
-calls does not make an earlier one repeat or go missing; it is `null` on the
-last page. `browser_close` closes a session through the same registry effect as
+per page (`limit` 1–20; a larger or fractional limit or a malformed `cursor`
+is refused `invalid-request`). Each page's `nextCursor` resumes after the last
+session it listed, so a session opened, closed or driven between calls does
+not make an earlier one repeat or go missing; it is `null` on the last page. A
+cursor is an unauthenticated position marker, not a capability: any
+well-formed one is accepted and only sets where listing resumes, while what a
+page may contain is still limited to the caller's own Project profile.
+`browser_close` closes a session through the same registry effect as
 the pane's **Close session**, recorded with the Agent as actor, and only when an
 Agent opened the session, it is bound to the caller's own conversation, and no
 person or other Agent Session holds control. Otherwise it is refused
