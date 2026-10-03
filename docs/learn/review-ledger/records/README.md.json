@@ -44,7 +44,7 @@
 
     {"path":"src-ui/src/providers/voice/NovaVoiceSessionAdapter.ts","digest":"e0af5660bc581fae84121a3890cb5a180960213d761eef4a23319e5fa1bece2c","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"docs/guides/release-channel-ports.md","digest":"bdf05919cd734e87b183113da0d55a7c0fcd1fa980af544adb12467d5830f04a","revision":"75135a1d44bf47412b85e454f9370ed4015f5d91"}
+    {"path":"docs/guides/release-channel-ports.md","digest":"2d4b76cdb9f3d20c261abc0ae4b4deee424f732b04ae451bd4b5cc8c8896b3a0","revision":"94e8e5781a2c23d2bc828682a1157aef3934e897"}
   ],
 
   "checks": [

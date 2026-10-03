@@ -22,9 +22,9 @@
 
     {"path":".github/workflows/nightly.yml","digest":"4b0cb6bcc5e169bcad830d8a56f7de030864ab0d23cfe64ce1b9880845f45592","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
 
-    {"path":".github/workflows/publish-release.yml","digest":"23195a92028651edffd70c006fc2a02a08a4591711aeb7fff8b491f3297c3f57","revision":"780dbbe2bb02372ad22a92e269e2fc3fa62bcd22"},
+    {"path":".github/workflows/publish-release.yml","digest":"df26cbe98771750de81e5a1c9b8d4efc8689bc853d31622523d9d7dc15e95420","revision":"94e8e5781a2c23d2bc828682a1157aef3934e897"},
 
-    {"path":".github/workflows/release.yml","digest":"d97d79d3c0ce4095b2ed65f98bc348daa1337e47f2a802bf6b2360a3e0938a6c","revision":"51684c027d476a8ed882b73f3a608dfadfb91b04"},
+    {"path":".github/workflows/release.yml","digest":"178d355f1c2141a4587db894e9f015983340a0c09a4f1c4f633c61503d58b577","revision":"94e8e5781a2c23d2bc828682a1157aef3934e897"},
 
     {"path":".github/workflows/testflight-delivery.yml","digest":"b65be60d29e76e922b07ed19bd89576ef1cac76e20712dd28d140c72d36012bb","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
 
@@ -44,7 +44,7 @@
 
     {"path":"scripts/__tests__/release-artifacts.test.ts","digest":"be144f4783d2914d90e54413c38ae2c0b3f2b9a1b22e00076813f2226e99874f","revision":"780dbbe2bb02372ad22a92e269e2fc3fa62bcd22"},
 
-    {"path":"scripts/__tests__/release-workflow.test.ts","digest":"b73030f0004f692abec0e0721a61820b67d3840485a85c5fcf518cf38b265965","revision":"780dbbe2bb02372ad22a92e269e2fc3fa62bcd22"},
+    {"path":"scripts/__tests__/release-workflow.test.ts","digest":"c61137c8c48d546630bfe84f710ffefa1c6554f1a76cfc6d56028ef26e9d6a5d","revision":"94e8e5781a2c23d2bc828682a1157aef3934e897"},
 
     {"path":"scripts/app-store-connect-receipt.mjs","digest":"c70c7c9b86be2658f294f930a37f70c28d41671a041f7f87185c4c1e7df98812","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 

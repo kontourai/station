@@ -9,7 +9,7 @@
 
   "limits": "No native build, real device, Keychain/Keystore write, signed artifact, Linux/Windows launch, provider account mutation, publication, upgrade or rollback executed in this continuation. Fixture and source checks do not establish live outcomes. Parent owns combined CI and final ledger integration.",
 
-  "document": {"digest":"a9c5b787f2209c269b6cefa0794bfa5c9bbe9a989290ead22ed7c0c69cdf2d81","revision":"6a99df951adb1f51fde5c39f0e3f1aefcbdb79ff"},
+  "document": {"digest":"f3d0cde15340fa54319b8898b0f98fb5cce4c9a09fed48d00d9aa381d809b4bf","revision":"94e8e5781a2c23d2bc828682a1157aef3934e897"},
 
   "sources": [
     {"path":".github/workflows/build-ios.yml","digest":"b4afee0a3cf62cd46226b9b68b648d15d00524a9d7bc27449e640fac6e3f9b73","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
@@ -24,9 +24,9 @@
 
     {"path":".github/workflows/portable-server-archives.yml","digest":"c7c7ff935b2bd8df40440aa8a7b6fd4405304e99e87c4a892de073fe0ae72924","revision":"614c216de6de9d4c06ef56963853ccff52f2f685"},
 
-    {"path":".github/workflows/publish-release.yml","digest":"23195a92028651edffd70c006fc2a02a08a4591711aeb7fff8b491f3297c3f57","revision":"780dbbe2bb02372ad22a92e269e2fc3fa62bcd22"},
+    {"path":".github/workflows/publish-release.yml","digest":"df26cbe98771750de81e5a1c9b8d4efc8689bc853d31622523d9d7dc15e95420","revision":"94e8e5781a2c23d2bc828682a1157aef3934e897"},
 
-    {"path":".github/workflows/release.yml","digest":"d97d79d3c0ce4095b2ed65f98bc348daa1337e47f2a802bf6b2360a3e0938a6c","revision":"51684c027d476a8ed882b73f3a608dfadfb91b04"},
+    {"path":".github/workflows/release.yml","digest":"178d355f1c2141a4587db894e9f015983340a0c09a4f1c4f633c61503d58b577","revision":"94e8e5781a2c23d2bc828682a1157aef3934e897"},
 
     {"path":".github/workflows/testflight-delivery.yml","digest":"b65be60d29e76e922b07ed19bd89576ef1cac76e20712dd28d140c72d36012bb","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
 
@@ -78,7 +78,7 @@
 
     {"path":"scripts/__tests__/release-manifest-vectors.test.ts","digest":"2d2416f7ea846fd8ba91d4ddacec28219107af7d4269d597d3f3424758babfd6","revision":"614c216de6de9d4c06ef56963853ccff52f2f685"},
 
-    {"path":"scripts/__tests__/release-workflow.test.ts","digest":"b73030f0004f692abec0e0721a61820b67d3840485a85c5fcf518cf38b265965","revision":"780dbbe2bb02372ad22a92e269e2fc3fa62bcd22"},
+    {"path":"scripts/__tests__/release-workflow.test.ts","digest":"c61137c8c48d546630bfe84f710ffefa1c6554f1a76cfc6d56028ef26e9d6a5d","revision":"94e8e5781a2c23d2bc828682a1157aef3934e897"},
 
     {"path":"scripts/__tests__/verify-release-cohort.test.ts","digest":"d4fa543fe60e8e708c7a926ab704ff70335870489952ce71525fc843541ae213","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
