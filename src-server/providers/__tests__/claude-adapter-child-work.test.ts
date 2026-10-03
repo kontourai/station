@@ -621,11 +621,13 @@ describe('#3163 Claude subagent model and transcript identity', () => {
       lines: ReturnType<typeof loadClaudeTaskCapture>,
     ) => {
       const rewritten = withSubagentModels({ [outerCall]: OUTER_MODEL })(lines);
-      const lastOwnReply = rewritten.findLastIndex(
-        (line) =>
-          view(line).type === 'assistant' &&
-          view(line).parent_tool_use_id === outerCall,
+      const ownReplies = rewritten.flatMap((line, index) =>
+        view(line).type === 'assistant' &&
+        view(line).parent_tool_use_id === outerCall
+          ? [index]
+          : [],
       );
+      const lastOwnReply = ownReplies[ownReplies.length - 1];
       const own = rewritten[lastOwnReply].message as unknown as {
         message: Record<string, unknown>;
       };

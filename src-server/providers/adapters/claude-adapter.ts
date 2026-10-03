@@ -670,6 +670,8 @@ type ClaudeSessionRecord = {
    * so `sendTurn` can reset it per-turn. See that field's docblock.
    */
   lastReportedModel?: string;
+  /** #3163: mirrors `ClaudeMessageState.claudeConfigHome`. */
+  claudeConfigHome?: string;
   /**
    * archive#1174: set only when this session's skills were materialized
    * into the Station-owned cwd-less overlay (see claude-skills-overlay.ts)
