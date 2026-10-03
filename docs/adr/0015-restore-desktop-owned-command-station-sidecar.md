@@ -84,20 +84,24 @@ records which of these items were later executed on packaged builds.
 
 ### Known test gap
 
-The teardown idempotency guard (an `AtomicBool` swap) and its service-mode
-early return are correct by construction but have no direct test: driving them
-requires a Tauri `AppHandle`. The guard matters because a normal quit fires
-both `WindowEvent::Destroyed` and `RunEvent::Exit`. The reachable half is
-covered by a test that spawns two real children and proves the owned sidecar is
-reaped while an attached service is not signalled.
+The teardown idempotency guard (an `AtomicBool` swap) matters because a normal
+quit fires both `WindowEvent::Destroyed` and `RunEvent::Exit`. Since #2961 the
+ownership-gated half of teardown (`shut_down_owned_sidecar`) is separated from
+the Tauri `AppHandle` and covered by a test that drives it against real child
+processes: the owned sidecar is reaped, while a Service, Unowned, or None owner
+signals nothing. The `AppHandle` wrapper (`teardown_sidecar`) and the tray kick
+remain untested.
 
 ## Implementation note (#2961)
 
 [ADR 0020](0020-distribution-two-trains-channels-as-pointers.md) D4 replaced
 the read-then-claim sequence in the Decision above with one atomic host-owner
-claim. Desktop no longer reads service candidates before claiming: the shared
-module refuses the sidecar claim while any live service or other sidecar holds
-the home and returns that owner, and `service install` and the service
+claim. The launch no longer decides ownership from a read: the shared module
+refuses the sidecar claim while any live service or other sidecar holds the
+home and returns that owner. Two reads remain and neither selects a sidecar:
+runtime preparation's service-owned check (it only leaves a service-owned home
+unprepared) and the status refresh that re-derives a non-sidecar owner for
+display. Also, `service install` and the service
 supervisor claim through the same primitive, so a live sidecar also blocks
 them. The service-owner report, no automatic attachment, and the lifetime
 split are unchanged.

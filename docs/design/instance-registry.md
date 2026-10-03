@@ -252,7 +252,10 @@ Two disclosed limits of the discipline (verified by probe, not assumed):
   remains a user choice. Any other refusal (another desktop's sidecar,
   several owners) or an unreadable registry selects no owner and spawns
   nothing. A preparation that found a live service skips the claim and only
-  observes the owner for display. The supervisor re-claims before every
+  observes the owner for display. The display-only reads are runtime
+  preparation's service-owned check and the status refresh; neither can
+  select a sidecar (`adoptable_refreshed_owner` maps that decision to
+  `Unowned`). The supervisor re-claims before every
   respawn, publishes the listening child through the same claim
   (`publishSidecar`), and releases with the owner-checked
   `removeOwnedInstance` (`releaseSidecar`). Rust never writes
