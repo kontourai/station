@@ -9,7 +9,7 @@
 
   "limits": "Source review of every current documented claim is not exhaustive endpoint coverage or formal validation of every implementation branch. No live provider/model/MCP/registry/AWS pricing or IAM, git remote update/install/restart, native browser/Windows shell/device, Tailscale Serve, hosted or account enrollment outcome was exercised. Current limitations are stated, including placeholder measurements, hidden legacy failure-to-empty results, cooperative abort, pending activation/cleanup, raw pricing units, retained proxy/path gaps, and provider/executor boundaries.37 fences parse and12 exported request-schema examples pass; syntax/shape is not runtime authentication or execution proof. Exact hashes detect later drift and never substitute for semantic delta review.",
 
-  "document": {"digest":"a5bdf74924319e921427a2e010c0ee821e5c932acebaa5570a360788384f7097","revision":"5e6fbfedca2315119d1d20a7829252899c52c15a"},
+  "document": {"digest":"3e966c2cc82ae8685df26836668778e4a4dcbdf80cbd2d90d52505a63f73b531","revision":"508065f5e3732043063471fc4080cb22d8439a09"},
 
   "sources": [
     {"path":"packages/cli/src/commands/environment.ts","digest":"e0f0a2b430058c5bbd399df755dbc098b5356474206f473fa24ffbb3d77c7331","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
@@ -90,9 +90,9 @@
 
     {"path":"src-desktop/src/native_relay_redemption.rs","digest":"87ad20dc50fab39c24c7afe527c8be853b5e464f01fca6739d119cb73dbc45e4","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
 
-    {"path":"src-server/analytics/usage-aggregator-state.ts","digest":"16b6984c0504d01c465396941f601d03d2a5928293a2a1f95448ecc566c14753","revision":"5e6fbfedca2315119d1d20a7829252899c52c15a"},
+    {"path":"src-server/analytics/usage-aggregator-state.ts","digest":"1d970d1cd0ad7f5d5c8d29d4b6ed1f238743c8ae5eb57bc95529225864ddf154","revision":"35ed35c0afcb53f5918d40ebd6a761ba44ec37c3"},
 
-    {"path":"src-server/analytics/usage-aggregator.ts","digest":"1f2fb75995a05a5ed0b3fcd207abff32bace60c33b495bc9d93e0006cd393a66","revision":"5e6fbfedca2315119d1d20a7829252899c52c15a"},
+    {"path":"src-server/analytics/usage-aggregator.ts","digest":"7f67a063a1e9c811b19f83af0cb31f76a3a835f7e759fb24eee5cdf95fa915f3","revision":"508065f5e3732043063471fc4080cb22d8439a09"},
 
     {"path":"src-server/analytics/usage-rollup-service.ts","digest":"72854055e8cc4f894e5bcc1c89287eb7a6eae4e3a43ca92df0a16f29a4aae4bc","revision":"16115fc6e0cb1bd66d4053aad666c77f26349d4f"},
 

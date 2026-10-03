@@ -34,7 +34,7 @@
 
     {"path":"src-ui/src/core/PluginRegistry.ts","digest":"4b87c6951d37298e6497639e1cc45294fd1239f06d4c6caf9f5ed540eef5ca2c","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
-    {"path":"src-ui/src/pages/ProfilePage.tsx","digest":"7cd82789c471a04dcd08d3ab5200f580e4f2845b122c8b9f3cb1a5f7432ecb0e","revision":"588eae2a9ce0653a1ea92b44de34c56bce5a5c78"}
+    {"path":"src-ui/src/pages/ProfilePage.tsx","digest":"e3b9d809e87f4c7d492af5d4278b2fa4be7ca3774632dbd5d896f16d0dcd3dad","revision":"35ed35c0afcb53f5918d40ebd6a761ba44ec37c3"}
   ],
 
   "checks": [
