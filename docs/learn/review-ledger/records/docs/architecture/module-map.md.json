@@ -916,7 +916,7 @@
 
     {"path":"src-server/routes/plugins/registry.ts","digest":"f3f5be48240bb62b1bd0e1a5a0349d5205a99891cf15c4e3930cb1250fd900a6","revision":"47fbbbd8f767858f60a0a323b74e26cb60abce62"},
 
-    {"path":"src-server/routes/plugins/__tests__/registry-marketplaces.routes.test.ts","digest":"e27ac6e7d215519add21ad0de4869b02e8e1542b87ad76dfb7f6957bd9713ac2","revision":"47fbbbd8f767858f60a0a323b74e26cb60abce62"}
+    {"path":"src-server/routes/plugins/__tests__/registry-marketplaces.routes.test.ts","digest":"34259ae52213d3ac1532f51aab7e8772181749d49e9d9c3f40c29ac58da4182e","revision":"925b1fbe35ddb7a6c387a87a06c8b367128f9ef0"}
   ],
 
   "checks": [
