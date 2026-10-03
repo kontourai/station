@@ -15,9 +15,10 @@ import {
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import { ThemeToggle } from '../../components/header/ThemeToggle';
-import { PageFrame } from '../../components/page-frame';
+import { PageFrame, PageFrameActions } from '../../components/page-frame';
 import { Empty, ErrorState, SkeletonBlock } from '../../components/state';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
+import { KeyboardShortcutsProvider } from '../../contexts/KeyboardShortcutsContext';
 import {
   NavigationProvider,
   useNavigation,
@@ -310,10 +311,12 @@ function NativeRelayMemberContent() {
       spec={{
         title: activeConnection.name,
         width: 'full',
-        actions: <ThemeToggle />,
       }}
       routeIdentity={`native-relay:${activeConnection.id}`}
     >
+      <PageFrameActions>
+        <ThemeToggle />
+      </PageFrameActions>
       <main className="project-page">
         <div className="project-page__inner">
           <QueryClientProvider client={recoveryClient}>
@@ -363,9 +366,11 @@ export function NativeRelayMemberShell() {
     <LocaleProvider>
       <NavigationProvider>
         <ToastProvider>
-          <div className="native-relay-member-shell native-relay-setup">
-            <NativeRelayMemberContent />
-          </div>
+          <KeyboardShortcutsProvider>
+            <div className="native-relay-member-shell native-relay-setup">
+              <NativeRelayMemberContent />
+            </div>
+          </KeyboardShortcutsProvider>
         </ToastProvider>
       </NavigationProvider>
     </LocaleProvider>
