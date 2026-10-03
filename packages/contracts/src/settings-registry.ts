@@ -1,5 +1,5 @@
 import { CLEAN_ID_PATTERN } from './agent-identity.js';
-import type { AppConfig } from './config.js';
+import { type AppConfig, templateVariableFormatError } from './config.js';
 
 /**
  * Station#settings-revamp slice 1 — the declarative settings registry
@@ -233,9 +233,9 @@ export const APP_SETTINGS_REGISTRY = [
     scope: 'station',
     descriptor: { kind: 'string' },
     label: 'Registry URL',
-    help: 'The Registry page loads its catalog of agents, skills, and plugins from here.',
+    help: 'After a restart, the Registry page loads its catalog of agents, skills, and plugins from here.',
     description:
-      'Where the Registry page loads its catalog of agents, skills, and plugins. Leave empty for the default catalog.',
+      'Where the Registry page loads its catalog of agents, skills, and plugins after the next Station restart. Leave empty for the default catalog.',
   }),
   defineSetting({
     key: 'registryTrust',
@@ -277,9 +277,9 @@ export const APP_SETTINGS_REGISTRY = [
     scope: 'station',
     descriptor: { kind: 'string' },
     label: 'Device helper URL',
-    help: 'Station lists this machine’s simulators and emulators through the device helper at this address.',
+    help: 'After a restart, Station lists this machine’s simulators and emulators through the device helper at this address.',
     description:
-      'HTTP address of the local device helper Station uses to list and capture simulators and emulators. Loopback addresses on a high port only — http://127.0.0.1:<port>, and not port 3000 or 3141. Leave empty when no helper runs on this machine.',
+      'HTTP address of the local device helper Station uses to list and capture simulators and emulators after the next Station restart. Loopback addresses on a high port only — http://127.0.0.1:<port>, and not port 3000 or 3141. Leave empty when no helper runs on this machine.',
     placeholder: 'http://127.0.0.1:<port>',
     envFallback: 'STATION_MOBILE_DEVICE_HUB_URL',
   }),
@@ -288,9 +288,9 @@ export const APP_SETTINGS_REGISTRY = [
     scope: 'station',
     descriptor: { kind: 'boolean' },
     label: 'Disable default skill registries',
-    help: 'Only the skill registries you add yourself appear, and Station’s built-in catalogs are skipped.',
+    help: 'After a restart, only the skill registries you add yourself appear, and Station’s built-in catalogs are skipped.',
     description:
-      'Skip Station’s built-in skill catalogs so only registries you add yourself appear.',
+      'Skip Station’s built-in skill catalogs after the next Station restart so only registries you add yourself appear.',
   }),
   defineSetting({
     key: 'approvalGuardian',
@@ -747,6 +747,14 @@ export function sanitizeAppConfigUpdate(
     if (violation) {
       violations.push({ key, message: violation });
       continue;
+    }
+
+    if (key === 'templateVariables') {
+      const error = templateVariableFormatError(value);
+      if (error) {
+        violations.push({ key, message: `templateVariables: ${error}` });
+        continue;
+      }
     }
 
     accepted[key] = value;

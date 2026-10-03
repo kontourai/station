@@ -32,7 +32,13 @@
 
     "packages/connect/tsconfig.json",
 
-    "src-ui/src/platform/native/stationProfileStorage.ts"
+    "src-ui/src/platform/native/stationProfileStorage.ts",
+
+    "packages/connect/src/react/ConnectionManagerModal.tsx",
+
+    "packages/connect/src/react/ConnectionManagerModalContent.tsx",
+
+    "packages/connect/src/react/connection-manager-modal-utils.ts"
   ],
 
   "checks": [

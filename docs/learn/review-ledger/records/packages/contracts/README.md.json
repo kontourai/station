@@ -10,15 +10,17 @@
   "limits": "No exhaustive semantic or compatibility audit of all contract exports, external runtime matrix or npm publication proof. Existing pure helpers are described, not authorization to move new general-purpose services into contracts.",
 
   "sources": [
-    "packages/contracts/package.json",
-
     "packages/contracts/src/child-work.ts",
 
     "packages/contracts/src/index.ts",
 
     "packages/contracts/src/live-surface.ts",
 
-    "packages/contracts/src/task-basis-mcp.ts"
+    "packages/contracts/src/task-basis-mcp.ts",
+
+    "packages/contracts/package.json#/exports",
+
+    "packages/contracts/package.json#/files"
   ],
 
   "checks": [

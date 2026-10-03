@@ -118,7 +118,21 @@
 
     "src-ui/src/hooks/orchestration/ensureOrchestrationEventStream.ts",
 
-    "packages/contracts/src/task-room-work.ts"
+    "packages/contracts/src/task-room-work.ts",
+
+    "src-server/services/connections/engine-account-history.ts",
+
+    "src-server/services/connections/__tests__/engine-account-history.test.ts",
+
+    "src-server/services/orchestration/__tests__/engine-account-usage-attribution.test.ts",
+
+    "src-server/analytics/usage-rollup-service.ts",
+
+    "src-server/services/orchestration/session-transcript-reads.ts",
+
+    "packages/contracts/src/usage-rollup.ts",
+
+    "packages/contracts/src/skill-experience.ts"
   ],
 
   "checks": [

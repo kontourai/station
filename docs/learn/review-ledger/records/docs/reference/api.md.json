@@ -356,7 +356,27 @@
 
     "src-ui/src/views/agent-editor/useAgentsViewModel.ts",
 
-    "src-ui/src/views/layout-workspace-shape.ts"
+    "src-ui/src/views/layout-workspace-shape.ts",
+
+    "packages/contracts/src/usage-rollup.ts",
+
+    "src-server/analytics/usage-rollup-service.ts",
+
+    "src-server/services/connections/__tests__/engine-account-history.test.ts",
+
+    "src-server/services/connections/engine-account-history.ts",
+
+    "src-server/services/orchestration/__tests__/engine-account-usage-attribution.test.ts",
+
+    "src-server/services/orchestration/session-transcript-reads.ts",
+
+    "src-server/providers/registries/github-skill-registry.ts",
+
+    "src-server/routes/plugins/__tests__/registry-skill-acquisition.routes.test.ts",
+
+    "src-server/services/projects/task-room-work-module.ts",
+
+    "src-server/services/projects/task-room-context.ts"
   ],
 
   "checks": [

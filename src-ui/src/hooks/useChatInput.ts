@@ -2,6 +2,7 @@ import {
   ACP_MODEL_OVERRIDE_PER_TURN,
   resolveEngineCapabilityMatrix,
 } from '@kontourai/station-contracts/engine-capability-matrix';
+import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
 import { EXECUTION_MODE } from '@kontourai/station-contracts/tool';
 import { setOrchestrationApprovalMode } from '@kontourai/station-sdk';
 import { CHAT_INPUT_MAX_CHARS } from '@shared/chat-input-limits';
@@ -23,6 +24,7 @@ import {
   useActiveChatSelector,
 } from '../contexts/ActiveChatsContext';
 import { useAgent } from '../contexts/AgentsContext';
+import { isTurnInFlight } from '../contexts/active-chats-state';
 import { activeChatsStore } from '../contexts/active-chats-store';
 import { chatDraftsStore } from '../contexts/chat-drafts-store';
 import { conversationOpenPhase } from '../contexts/conversation-open-policy';
@@ -43,6 +45,7 @@ import {
   isFullAccessRefusal,
   supersededPickNote,
 } from '../utils/approvalMode';
+import { conversationAwaitsFirstTurn } from '../utils/conversationFirstTurn';
 import {
   type BindingStatus,
   type EffectiveModelSource,
@@ -88,13 +91,14 @@ type ComposerChatSlice = Pick<
   | 'providerId'
   | 'defaultProviderId'
   | 'orchestrationProvider'
->;
+> & { turnInFlight: boolean };
 
 function selectComposerSlice(
   state: ChatUIState | null,
 ): ComposerChatSlice | null {
   if (!state) return null;
   return {
+    turnInFlight: isTurnInFlight(state),
     conversationOpenState: state.conversationOpenState,
     conversationOpenPending: state.conversationOpenPending,
     conversationOpenFailed: state.conversationOpenFailed,
@@ -121,6 +125,16 @@ interface UseChatInputOptions {
   sessionId: string | null;
   agentSlug: string | null;
   conversationId?: string;
+  /**
+   * The server's summary of the chat's current Session. With the chat's own
+   * turn state it says whether the conversation has never run a turn (see
+   * `conversationAwaitsFirstTurn`): such a conversation has no engine history
+   * a model switch could strand.
+   */
+  orchestrationSession?: Pick<
+    OrchestrationSessionSummary,
+    'draft' | 'terminalAttribution'
+  > | null;
   availableModels: SelectableModel[];
   modelsStale?: boolean;
   bindingStatus?: BindingStatus;
@@ -158,6 +172,8 @@ interface UseChatInputOptions {
     images: boolean;
     files: boolean;
     imageRefusal?: string;
+    /** Attach-time note when image support is not confirmed. */
+    imageCaveat?: string;
   };
   /** Exact workspace authority used to resolve persisted file mentions. */
   workingDirectory?: string | null;
@@ -174,6 +190,7 @@ export function useChatInput({
   sessionId,
   agentSlug,
   conversationId,
+  orchestrationSession,
   availableModels,
   modelsStale = false,
   bindingStatus,
@@ -377,10 +394,19 @@ export function useChatInput({
       ? { engineId: 'station' }
       : (runtimeConnection ?? { type: activeChatState?.provider }),
   ).modelSelection;
+  // ACP applies a model only at session start. The server honours a changed
+  // model on the next send by starting a successor session with it
+  // (`conversation-lineage.ts` `needsModelRestart`), which is free for a
+  // conversation that never ran a turn — nothing to carry over — so only a
+  // conversation with engine history keeps the picker closed.
   const continuationOverrideUnsupported =
     Boolean(conversationId) &&
     activeChatState?.provider === 'acp' &&
-    !ACP_MODEL_OVERRIDE_PER_TURN;
+    !ACP_MODEL_OVERRIDE_PER_TURN &&
+    !conversationAwaitsFirstTurn(
+      orchestrationSession,
+      activeChatState?.turnInFlight ?? false,
+    );
   const modelSelectionReason = continuationOverrideUnsupported
     ? 'This engine can choose a model for a new chat, but cannot change it in an existing conversation.'
     : engineModelSelection.state === 'unsupported'
@@ -555,7 +581,7 @@ export function useChatInput({
       if (
         sent === true ||
         postSendState?.status === 'queued' ||
-        postSendState?.queuedMessages?.includes(text.trim())
+        (sent !== false && postSendState?.queuedMessages?.includes(text.trim()))
       ) {
         if (
           (postSendState?.input && postSendState.input !== input) ||
@@ -642,6 +668,12 @@ export function useChatInput({
     [sessionId, updateChat],
   );
 
+  // Only when nothing at all can be attached: the paperclip then explains
+  // the engine's own answer on tap instead of sitting silently disabled.
+  const attachUnavailableReason =
+    !attachmentCapabilities.images && !attachmentCapabilities.files
+      ? attachmentCapabilities.imageRefusal
+      : undefined;
   const {
     error: attachmentError,
     selectFiles: selectAttachmentFiles,
@@ -652,6 +684,8 @@ export function useChatInput({
     cancel: cancelAttachmentStage,
     remove: removeAttachmentStage,
     sendBlockedReason,
+    attachmentNotice,
+    removalUnblocksSend,
   } = useComposerAttachments({
     apiBase,
     requestScope: mentionRequestScope,
@@ -1092,6 +1126,9 @@ export function useChatInput({
       attachmentError,
       attachmentStages,
       sendBlockedReason,
+      attachmentNotice,
+      attachUnavailableReason,
+      removalUnblocksSend,
       currentModel,
       canModelSelect,
       modelSelectionReason,
@@ -1136,6 +1173,9 @@ export function useChatInput({
       attachmentError,
       attachmentStages,
       sendBlockedReason,
+      attachmentNotice,
+      attachUnavailableReason,
+      removalUnblocksSend,
       currentModel,
       canModelSelect,
       modelSelectionReason,

@@ -1685,6 +1685,16 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/coding-stack-navigation.spec.ts',
+    bucket: 'extended',
+    surface: 'Coding',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'The Coding layout as a navigation stack (#928 coding stack): Chat in the centre with its collapsible inbox, drill-in panes as history entries (browser Back/Forward, the stack bar and its chords), reload on a drill-in, reduced motion, and the phone keeping Chat in its dock.',
+    exceptions: [],
+  },
+  {
     path: 'tests/coding-layout-plan-panel.spec.ts',
     bucket: 'extended',
     surface: 'Projects',

@@ -1,0 +1,27 @@
+{
+  "path": "docs/guides/authoring-skill-experiences.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Reviewed public author inspection/review, portable materialization, definition source labels and explicit workflow stops against owning files. Read actual pinned source requirements for Grill Me, grilling, domain modelling, specification, tickets, setup and implementation dependencies.",
+
+  "limits": "Local author schema/source/transcript assertions only. Curated model evaluations, fresh published external consumer, installed browser/native/mobile, rich interface and release qualification remain NOT_VERIFIED.",
+
+  "sources": [
+    "packages/shared/src/skill-experience-workflow.ts",
+
+    "packages/shared/src/__tests__/skill-experience-workflow.test.ts",
+
+    "packages/cli/src/commands/experience.ts",
+
+    "packages/cli/src/cli.ts",
+
+    "packages/cli/src/help.ts"
+  ],
+
+  "checks": [
+    "Focused author/workflow tests 29 passed; CLI typecheck passed; direct supported CLI inspection succeeds and unknown entry refuses; gap-review mutation caught one intended failure and restored green."
+  ]
+}

@@ -281,6 +281,14 @@ describe('bootstrapRuntimeDefaultAgent', () => {
         name: 'default',
       }),
     );
+    const instructions =
+      framework.createTempAgent.mock.calls[0]?.[0]?.instructions;
+    expect(instructions()).toContain(
+      'discover relevant installed skills and available tools',
+    );
+    expect(instructions()).toContain(
+      'Do not install, enable, or expand permissions',
+    );
     // archive#1834: the temp default agent must carry the REAL tool gate,
     // registered under its slug so chat streams can attach approval
     // requesters. Prove the wired hooks enforce the spec's autoApprove:

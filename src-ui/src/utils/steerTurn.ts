@@ -17,6 +17,8 @@ export function steerRefusalMessage(
   result: Exclude<SteerTurnResult, { outcome: 'steered' }>,
 ): string {
   switch (result.outcome) {
+    case 'indeterminate':
+      return 'Steering delivery is unconfirmed. Your message is retained for review and will not be sent again automatically.';
     case 'unsupported-engine':
       return `${result.engineName} does not support mid-turn steering.`;
     case 'no-active-turn':

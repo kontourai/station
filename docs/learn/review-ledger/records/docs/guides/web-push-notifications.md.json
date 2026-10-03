@@ -78,7 +78,11 @@
 
     "src-ui/src/views/settings/PairingSection.tsx",
 
-    "src-ui/src/views/settings/VoiceFeaturesSection.tsx"
+    "src-ui/src/views/settings/VoiceFeaturesSection.tsx",
+
+    "src-ui/src/contexts/PushNotificationsContext.tsx",
+
+    "src-ui/src/App.tsx"
   ],
 
   "checks": [

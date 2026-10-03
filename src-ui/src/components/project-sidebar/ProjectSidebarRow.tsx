@@ -168,7 +168,7 @@ export function ProjectSidebarRow({
           type="button"
           className={btnClass}
           onClick={handleClick}
-          title={collapsed ? project.name : undefined}
+          title={`Open ${project.name} workspace`}
         >
           <span
             className="sidebar__project-accent"
@@ -223,7 +223,7 @@ export function ProjectSidebarRow({
               SEAM — member avatars (#2066, design record D5). The record
               draws "[J][M]" here, but presence is what it draws: the avatars
               of members PRESENT. No per-project presence authority exists in
-              the UI today — `LiveCollaboratorsSection` reads a host-wide
+              the UI today — the footer presence tray reads a host-wide
               projection (connected clients, not people, and not per project),
               and task-room presence is scoped to a task room. The only
               per-project membership read, `useProjectAccess`, is an

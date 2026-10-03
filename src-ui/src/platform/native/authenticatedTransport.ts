@@ -10,7 +10,10 @@ import {
 
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { Channel, invoke } from '@tauri-apps/api/core';
-import { readNativeCommandError } from './nativeCommandError';
+import {
+  type NativeHttpCapacitySnapshot,
+  readNativeCommandError,
+} from './nativeCommandError';
 
 type ClientAuthenticatedTransport = (
   input: Parameters<typeof fetch>[0],
@@ -47,6 +50,24 @@ type BrokerMessage =
   | { type: 'error'; code: string; detail?: string };
 
 const encoder = new TextEncoder();
+const CAPACITY_RETRY_LIMIT = 6;
+const CAPACITY_RETRY_MAX_DELAY_MS = 4_000;
+
+function waitForCapacityRetry(
+  delayMs: number,
+  signal?: AbortSignal | null,
+): Promise<void> {
+  return new Promise((resolve) => {
+    const finish = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', finish);
+      resolve();
+    };
+    const timer = setTimeout(finish, delayMs);
+    signal?.addEventListener('abort', finish, { once: true });
+    if (signal?.aborted) finish();
+  });
+}
 
 async function requestBody(
   body: BodyInit | null | undefined,
@@ -143,13 +164,18 @@ export const nativeAuthenticatedTransport: ClientAuthenticatedTransport =
     // sentence). Leaving `.code` unset for the uncoded case is what keeps
     // `classifyNativeTransportRefusal`'s "no code" path — the one it
     // already falls back to conservatively — honest.
-    const fail = (code: string | undefined, detail?: string) => {
+    const fail = (
+      code: string | undefined,
+      detail?: string,
+      capacity?: NativeHttpCapacitySnapshot,
+    ) => {
       if (finished) return;
       finished = true;
       cleanup();
       const error = Object.assign(
         new Error(`Native Station request failed: ${detail ?? code}`),
         code === undefined ? {} : { code },
+        capacity ? { capacity } : {},
       );
       if (!settled) {
         settled = true;
@@ -168,10 +194,13 @@ export const nativeAuthenticatedTransport: ClientAuthenticatedTransport =
         if (!settled) {
           settled = true;
           resolveResponse?.(
-            new Response(stream, {
-              status: message.status,
-              headers: message.headers,
-            }),
+            new Response(
+              [204, 205, 304].includes(message.status) ? null : stream,
+              {
+                status: message.status,
+                headers: message.headers,
+              },
+            ),
           );
         }
       } else if (message.type === 'chunk') {
@@ -214,30 +243,65 @@ export const nativeAuthenticatedTransport: ClientAuthenticatedTransport =
     // Body serialization can await a Blob read; never dispatch a stale
     // authority after that wait.
     authorityGuard?.();
-    if (!finished) {
-      void invoke('station_native_http_request', {
-        request: {
-          requestId,
-          url,
-          method: init?.method ?? request?.method ?? 'GET',
-          headers: Object.fromEntries(headers.entries()),
-          body,
-          ...(expectedBindingId ? { expectedBindingId } : {}),
-          ...(livenessProbe ? { livenessProbe: true } : {}),
-        },
-        channel,
-      }).catch((error) => {
-        // archive#1818: this used to be `fail(String(error))`, which
-        // stringified a `NativeCommandError` rejection object to
-        // `"[object Object]"` and discarded its `code` either way — the
-        // exact reason `credential_missing` /
-        // `credential_store_unreadable` never reached
-        // `classifyNativeTransportRefusal`. `readNativeCommandError`
-        // preserves both the code (when the command has been converted to
-        // carry one) and the human text.
-        const { code, message } = readNativeCommandError(error);
-        fail(code, message);
-      });
-    }
+    const nativeRequest = {
+      requestId,
+      url,
+      method: init?.method ?? request?.method ?? 'GET',
+      headers: Object.fromEntries(headers.entries()),
+      body,
+      ...(expectedBindingId ? { expectedBindingId } : {}),
+      ...(livenessProbe ? { livenessProbe: true } : {}),
+    };
+    const isStreamRequest = headers
+      .get('accept')
+      ?.split(',')
+      .some(
+        (media) =>
+          media.split(';')[0]?.trim().toLowerCase() === 'text/event-stream',
+      );
+    const dispatch = async () => {
+      for (let retry = 0; !finished; retry += 1) {
+        try {
+          if (retry > 0) authorityGuard?.();
+          await invoke('station_native_http_request', {
+            request: nativeRequest,
+            channel,
+          });
+          return;
+        } catch (error) {
+          const { code, message, capacity } = readNativeCommandError(error);
+          // Only this host-issued snapshot proves queue rejection before HTTP
+          // dispatch. Channel failures and legacy capacity errors are not replayed.
+          if (finished) return;
+          if (
+            settled ||
+            livenessProbe ||
+            isStreamRequest ||
+            !capacity ||
+            capacity.pendingRequests < capacity.pendingLimit
+          ) {
+            fail(code, message, capacity);
+            return;
+          }
+          if (retry >= CAPACITY_RETRY_LIMIT) {
+            fail(
+              code,
+              `${message} Automatic retries could not find space after ${retry} retries.`,
+              capacity,
+            );
+            return;
+          }
+          const delay = Math.min(
+            CAPACITY_RETRY_MAX_DELAY_MS,
+            Math.max(250, capacity.retryAfterMs) * 2 ** retry,
+          );
+          await waitForCapacityRetry(
+            delay + Math.random() * delay * 0.25,
+            signal,
+          );
+        }
+      }
+    };
+    void dispatch();
     return await responseReady;
   };

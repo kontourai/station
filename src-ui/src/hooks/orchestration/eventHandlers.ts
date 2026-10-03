@@ -6,6 +6,7 @@ import {
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { backgroundTasksStore } from '../../contexts/background-tasks-store';
 import { childWorkGlobalStore } from '../../contexts/child-work-global-store';
+import { toastStore } from '../../contexts/ToastContext';
 import { deviceSettingsStore } from '../../lib/device-settings-store';
 import {
   handleRequestDeliveryEvent,
@@ -29,7 +30,10 @@ import {
   handleWorkflowStateChangedEvent,
 } from './governanceHandlers';
 import { handlePlanUpdatedEvent } from './planHandlers';
-import { drainQueuedMessageOnTurnCompleted } from './queueDrain';
+import {
+  drainQueuedMessageOnTurnCompleted,
+  resumePendingSendNowOnTurnTerminal,
+} from './queueDrain';
 import { recordReplayRuntime } from './replay/capture-tap';
 import { isReplayThread } from './replay/replay-registry';
 import { recordSequencedLiveEvent } from './sequencedLiveEvents';
@@ -158,6 +162,13 @@ export function handleOrchestrationEvent(
     // #2459: the Agents pane's "All" scope — every session's engine
     // subagents, including sessions no chat has open (a CLI delegate).
     childWorkGlobalStore.ingest(apiBase, event);
+    // A settled request's approval toast goes whether or not any chat still
+    // routes this thread: the toast (and the header "Approval needed" count
+    // built from it) is global, and the chat that raised it may be closed
+    // or rebound. `handleRequestResolvedEvent` does the chat's own
+    // bookkeeping when there is one.
+    if (event.method === 'request.resolved')
+      toastStore.dismissApprovalRequest(event.threadId, event.requestId);
   }
 
   if (replayThread) {
@@ -250,9 +261,11 @@ function dispatchProjectedOrchestrationEvent(
       return;
     case 'turn.completed':
       handleTurnCompletedEvent(apiBase, event, provenance);
+      resumePendingSendNowOnTurnTerminal(apiBase, event.threadId, event.turnId);
       return;
     case 'turn.aborted':
       handleTurnAbortedEvent(event);
+      resumePendingSendNowOnTurnTerminal(apiBase, event.threadId, event.turnId);
       return;
     case 'runtime.error':
       handleRuntimeErrorEvent(event);
@@ -275,6 +288,13 @@ function dispatchProjectedOrchestrationEvent(
         !isDeferredRetriableTurnError(event) &&
         !isReplayThread(event.threadId)
       ) {
+        const terminalTurnId = event.details?.turnId ?? event.turnId;
+        if (typeof terminalTurnId === 'string')
+          resumePendingSendNowOnTurnTerminal(
+            apiBase,
+            event.threadId,
+            terminalTurnId,
+          );
         drainQueuedMessageOnTurnCompleted(
           apiBase,
           activeChatsStore.getChatKeyForExecutionSession(event.threadId) ??

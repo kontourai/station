@@ -58,6 +58,7 @@ import type {
   ProviderTurnStartResult,
 } from '../../../providers/adapter-shape.js';
 import {
+  AttachmentInputUnsupportedError,
   ProviderTurnEndedError,
   ProviderTurnInProgressError,
   SendTurnRefusedError,
@@ -13616,7 +13617,10 @@ describe('OrchestrationService', () => {
       turnId: 'turn-1',
       createdAt: '2026-07-23T00:00:01.000Z',
       method: 'turn.started',
-      prompt: 'Continue the Station history fix',
+      // Markdown in the first message: every conversation read path (the
+      // session query module AND the lineage's readSessionConversation /
+      // list folds) must title it as plain text.
+      prompt: 'Continue the **Station** `history` fix',
     });
     eventStore.appendEvent({
       eventId: 'conversation-completed',
@@ -14918,6 +14922,41 @@ describe('OrchestrationService', () => {
     });
     expect(followUp).toMatchObject({ threadId: 'thread-refused-turn' });
     expect(claude.sendTurn).toHaveBeenCalledTimes(2);
+  });
+
+  test('an attachment refusal forwards its non-retryable code through the dispatch wrapper', async () => {
+    await service.dispatch({
+      type: 'startSession',
+      input: {
+        threadId: 'thread-attachment-refused',
+        provider: 'claude',
+        modelId: 'claude-sonnet',
+      },
+    });
+    claude.sendTurn.mockClear();
+    claude.sendTurn.mockRejectedValueOnce(
+      new AttachmentInputUnsupportedError(
+        'This engine did not advertise image attachment support.',
+      ),
+    );
+    const failure = await service
+      .dispatchWithReceipt({
+        type: 'sendTurn',
+        input: { threadId: 'thread-attachment-refused', input: 'inspect' },
+      })
+      .then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+    expect(failure).toBeInstanceOf(OrchestrationCommandDispatchError);
+    const dispatchError = failure as OrchestrationCommandDispatchError;
+    // The literal, not the constant: the client's translation keys on it.
+    expect(dispatchError.code).toBe('attachment_input_unsupported');
+    // Deterministic: the same attachments are refused again, so the wrapper
+    // must not mark it retryable the way it marks a transient refusal.
+    expect(dispatchError.retryable).toBe(false);
+    expect(dispatchError.receipt.status).toBe('rejected');
+    expect(dispatchError.outcome).toBeUndefined();
   });
 
   test("#2300: Muse's slot-releasing refusal keeps its retryable code through the dispatch wrapper", async () => {
@@ -22383,6 +22422,109 @@ describe('OrchestrationService', () => {
     });
 
     expect(codex.interruptTurn).not.toHaveBeenCalled();
+  });
+
+  test('stable steer input is delivered once across repeated commands and a reopened store', async () => {
+    claude.sessions.set('steer-once', {
+      provider: 'claude',
+      threadId: 'steer-once',
+      status: 'running',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+    eventStore.appendEvent({
+      eventId: 'steer-once-start',
+      provider: 'claude',
+      threadId: 'steer-once',
+      turnId: 'live',
+      createdAt: new Date().toISOString(),
+      method: 'turn.started',
+      prompt: 'initial',
+    });
+    const options = {
+      adapterRegistry: createRegistry([claude]),
+      eventBus,
+      eventStore,
+      logger: { debug: vi.fn(), warn: vi.fn() },
+    };
+    const routing = new OrchestrationService(options);
+    const command = {
+      type: 'steerTurn' as const,
+      threadId: 'steer-once',
+      turnId: 'live',
+      input: 'redirect',
+      clientInputId: 'input-1',
+    };
+    const first = await routing.dispatch(command);
+    const reopened = new EventStore(join(tmp, 'orchestration.sqlite'));
+    try {
+      const restarted = new OrchestrationService({
+        ...options,
+        eventStore: reopened,
+      });
+      expect(await restarted.dispatch(command)).toEqual(first);
+      expect(claude.steerTurn).toHaveBeenCalledTimes(1);
+      expect(
+        await restarted.dispatch({ ...command, input: 'different input' }),
+      ).toMatchObject({ outcome: 'indeterminate' });
+      expect(claude.steerTurn).toHaveBeenCalledTimes(1);
+    } finally {
+      reopened.close();
+    }
+  });
+
+  test('a steer with unknown adapter acknowledgement remains durably held and is never replayed', async () => {
+    claude.sessions.set('steer-uncertain', {
+      provider: 'claude',
+      threadId: 'steer-uncertain',
+      status: 'running',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+    eventStore.appendEvent({
+      eventId: 'steer-uncertain-start',
+      provider: 'claude',
+      threadId: 'steer-uncertain',
+      turnId: 'live',
+      createdAt: new Date().toISOString(),
+      method: 'turn.started',
+      prompt: 'initial',
+    });
+    claude.steerTurn.mockRejectedValueOnce(
+      new Error('transport acknowledgement lost'),
+    );
+    const options = {
+      adapterRegistry: createRegistry([claude]),
+      eventBus,
+      eventStore,
+      logger: { debug: vi.fn(), warn: vi.fn() },
+    };
+    const routing = new OrchestrationService(options);
+    const command = {
+      type: 'steerTurn' as const,
+      threadId: 'steer-uncertain',
+      turnId: 'live',
+      input: 'redirect',
+      clientInputId: 'input-2',
+    };
+    expect(await routing.dispatch(command)).toEqual({
+      outcome: 'indeterminate',
+      threadId: command.threadId,
+      clientInputId: command.clientInputId,
+    });
+    const reopened = new EventStore(join(tmp, 'orchestration.sqlite'));
+    try {
+      const restarted = new OrchestrationService({
+        ...options,
+        eventStore: reopened,
+      });
+      expect(await restarted.dispatch(command)).toMatchObject({
+        outcome: 'indeterminate',
+      });
+      expect(claude.steerTurn).toHaveBeenCalledTimes(1);
+    } finally {
+      reopened.close();
+    }
   });
 
   test('enforces mid-turn steer capability and active-turn state before adapter dispatch', async () => {

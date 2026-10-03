@@ -42,7 +42,43 @@
 
     "src-server/utils/pricing.ts",
 
-    "src-shared/monitoring-keys.ts"
+    "src-shared/monitoring-keys.ts",
+
+    "src-ui/src/pages/ProfilePage.tsx",
+
+    "src-ui/src/components/profile/StationPeoplePanel.tsx",
+
+    "src-ui/src/components/usage-stats/UsageRollupPanel.tsx",
+
+    "src-ui/src/components/usage-stats/UsageStatsPanel.tsx",
+
+    "src-ui/src/components/ActivityTimeline.tsx",
+
+    "packages/sdk/src/query-domains/analytics.ts",
+
+    "packages/sdk/src/query-domains/devicePairingRequests.ts",
+
+    "src-server/analytics/usage-aggregator.ts",
+
+    "src-server/analytics/usage-aggregator-state.ts",
+
+    "packages/shared/src/usage-fold.ts",
+
+    "packages/shared/src/usage-rollup.ts",
+
+    "src-server/providers/adapters/muse-serve-session.ts",
+
+    "src-server/providers/__tests__/muse-serve-adapter.test.ts",
+
+    "src-server/providers/sessions/claude-transcript-session-source.ts",
+
+    "src-server/services/orchestration/event-store.ts",
+
+    "src-ui/src/pages/ProfilePage.css",
+
+    "src-ui/src/components/badges/AchievementsBadge.tsx",
+
+    "src-ui/src/components/badges/AchievementsBadge.test.tsx"
   ],
 
   "checks": [

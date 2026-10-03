@@ -108,7 +108,15 @@
 
     "src-desktop/src/native_account_proof_key.rs",
 
-    "src-desktop/src/native_device_binding_candidate.rs"
+    "src-desktop/src/native_device_binding_candidate.rs",
+
+    "src-ui/src/platform/native/authenticatedTransport.ts",
+
+    "src-ui/src/platform/native/nativeCommandError.ts",
+
+    "src-ui/src/platform/native/__tests__/authenticatedTransport.test.ts",
+
+    "src-ui/src/lib/queryDefaults.ts"
   ],
 
   "checks": [

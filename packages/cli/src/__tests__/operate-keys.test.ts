@@ -139,6 +139,94 @@ describe('operate/state: keypress -> intent (table-driven)', () => {
     });
   });
 
+  it('#3071: a request its turn’s abort settled leaves the pane, and a decision is bound to the request event it showed', () => {
+    let state = initialState({ focusedThreadId: 'thread-1' });
+    const event = (fields: Record<string, unknown>) => ({
+      type: 'event' as const,
+      event: { threadId: 'thread-1', provider: 'claude', ...fields },
+    });
+    state = reduce(
+      state,
+      event({ eventId: 'evt-start', method: 'turn.started', turnId: 'turn-1' }),
+    );
+    state = reduce(
+      state,
+      event({
+        eventId: 'evt-open-dead',
+        method: 'request.opened',
+        requestId: 'req-dead',
+        requestType: 'approval',
+        title: 'Allow Bash',
+      }),
+    );
+    expect(
+      state.sessions['thread-1'].approvals.map((row) => row.requestId),
+    ).toEqual(['req-dead']);
+    // Station restarted mid-turn: recovery's abort, with no resolution (a
+    // log from before recovery wrote one).
+    state = reduce(
+      state,
+      event({
+        eventId: 'turn-interrupted-abort:b1',
+        method: 'turn.aborted',
+        turnId: 'turn-1',
+        recoveryTerminal: true,
+      }),
+    );
+    expect(state.sessions['thread-1'].approvals).toEqual([]);
+    expect(
+      reduce(state, { type: 'keypress', key: key({ sequence: 'a' }) })
+        .pendingIntent,
+    ).toBeNull();
+
+    state = reduce(
+      state,
+      event({
+        eventId: 'evt-open-live',
+        method: 'request.opened',
+        requestId: 'req-live',
+        requestType: 'approval',
+        title: 'Allow Edit',
+      }),
+    );
+    expect(
+      reduce(state, { type: 'keypress', key: key({ sequence: 'a' }) })
+        .pendingIntent,
+    ).toEqual({
+      type: 'respond-approval',
+      threadId: 'thread-1',
+      requestId: 'req-live',
+      expectedRequestEventId: 'evt-open-live',
+      decision: 'accept',
+    });
+  });
+
+  it('#3071: a decision on a question is not bound to its event, so the server still refuses to close it unseen', () => {
+    let state = initialState({ focusedThreadId: 'thread-1' });
+    state = reduce(state, {
+      type: 'event',
+      event: {
+        threadId: 'thread-1',
+        provider: 'codex',
+        eventId: 'evt-question',
+        method: 'request.opened',
+        requestId: 'req-question',
+        requestType: 'approval',
+        title: 'The agent has questions for you',
+        payload: { questionnaire: { questions: [] } },
+      },
+    });
+    expect(
+      reduce(state, { type: 'keypress', key: key({ sequence: 'd' }) })
+        .pendingIntent,
+    ).toEqual({
+      type: 'respond-approval',
+      threadId: 'thread-1',
+      requestId: 'req-question',
+      decision: 'decline',
+    });
+  });
+
   it("'s' emits respond-approval(acceptForSession)", () => {
     const state = reduce(stateWithTwoSessionsAndApprovals(), {
       type: 'keypress',

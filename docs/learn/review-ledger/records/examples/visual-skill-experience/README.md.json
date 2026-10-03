@@ -1,0 +1,37 @@
+{
+  "path": "examples/visual-skill-experience/README.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Read complete README and handwritten portable manifest, original interview Skill and JSON experience. Verified no code entrypoint, exact Skill digest/name, typed initial idea, adaptive round descriptors and explicitly Station-added optional summary. The example demonstrates author validation through the same shared build path.",
+
+  "limits": "No third-party Skill collection redistribution, installed experience, renderer, model/provider, native or cross-client runtime qualification. Schema URI and public package release are not claimed.",
+
+  "sources": [
+    "examples/visual-skill-experience/plugin.json",
+
+    "examples/visual-skill-experience/io.kontourai.station/experiences/stress-test-idea.json",
+
+    "examples/visual-skill-experience/skills/stress-test-idea/SKILL.md",
+
+    "packages/shared/src/build.ts",
+
+    "packages/shared/src/skill-experience-author.ts",
+
+    "packages/shared/src/__tests__/skill-experience-author.test.ts",
+
+    "docs/reference/skill-experiences.md",
+
+    "src-server/__test-utils__/temp-dirs.ts"
+  ],
+
+  "checks": [
+    "Actual source-built CLI plugin build on original example exits0.",
+
+    "Owner build/refusal tests execute real copied package files; malformed/schema/version/source identity, symlink, missing/oversized and FIFO inputs fail at the real build seam.",
+
+    "Examples conformance passed all28 examples; no generated image or interactive runtime is asserted."
+  ]
+}

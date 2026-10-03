@@ -92,6 +92,14 @@ binding, verifies the caller and current Environment, resolves the current Agent
 and only then sends the turn. Optional `model.override` and `model.options` apply
 only when that engine supports them; omission retains the current model choice.
 
+On either route, when the bound engine is an ACP engine, a send whose
+attachments it cannot take (its handshake did not advertise image input, or a
+non-image file) is refused before any engine effect with
+`code: "attachment_input_unsupported"`. The same request is refused again, so it
+is not a retry candidate. Staged uploads the refused send had bound are released
+from that turn, so the same references can be sent on another turn. Codex and Muse refuse a non-image file with a plain
+error that carries no code.
+
 A completed turn does not discard the conversation. If the next turn needs a new
 execution Session, it remains linked beneath the same Conversation. Station-native
 prompt history reads existing authorized native memory segments across that
@@ -105,7 +113,7 @@ memory paths or another Session's memory identity.
 ## Lifecycle control commands
 
 `POST /api/orchestration/commands` is a control surface, not an execution selector.
-It accepts `adoptSession`, `interruptTurn`, `steerTurn`, `respondToRequest`,
+It accepts `adoptSession`, `interruptTurn`, `steerTurn`, `steerTurnOnce`, `inspectSteerInput`, `respondToRequest`,
 `setApprovalMode`, `discardDraft`, and `stopSession`. Commands use the execution
 Session ID as `threadId`, not an assumed copy of the Conversation ID.
 Public `startSession` and `sendTurn` commands do not exist; adapter dispatch remains
@@ -201,13 +209,61 @@ names the host in its title, so every new host prompts; a call with
 exactly `dangerouslyDisableSandbox`, `requiresUserInteraction` or `Your
 organization requires approval for this tool`; and a request flagged
 `suppressAlwaysAllowRule`, `defaultToNo` or `requiresUserInteraction`. Agent
-SDK 0.3.278 forwards the first two; `requiresUserInteraction` applies once an
-SDK forwards it. `request.opened` carries the sanitised `decisionReason` and any
-of the flags that are set. Not covered yet: a Bash safety check and a plain
-`permissions.ask` rule reach Station with no signal the SDK forwards, so a
-Bash tool grant or pattern can still answer them. A session answer never
-writes the engine's settings files: every forwarded suggestion is sent with
-`destination: 'session'`.
+SDK 0.3.278 forwards the first two; Station reads `requiresUserInteraction`
+from the engine's own request. `request.opened` carries the sanitised
+`decisionReason` and any of the flags that are set.
+
+Station also reads the engine's structured reason for each ask, which the
+SDK does not forward, from the engine's `can_use_tool` request (#2932). The
+same rule applies: these always prompt, under a tool grant or `autoApprove`
+of `*`, and offer no session option unless the engine suggested a directory
+to forward.
+
+- An ask with a reason type other than `other` and `subcommandResults`: an
+  ask rule (`rule`), a safety check (`safetyCheck`), a sandbox override, a
+  path outside the working directories, and the mode, hook, classifier,
+  permission-prompt-tool and headless-agent types, plus any type a later
+  engine adds.
+- An ask whose `classifier_approvable` is set, which the engine does exactly
+  when a safety check is involved, in any part of a chained command too.
+- An ask with a `decision_reason_code`.
+- Every PowerShell ask. PowerShell wraps an ordinary command and one with a
+  security warning in the same `subcommandResults` shape.
+- A chained Bash command (`subcommandResults`: `a && b`, `a; b`, a pipeline)
+  whose request carries `classifier_approvable`, any `decisionReason` text, a
+  `matchedAskRule`, a blocked path, a directory suggestion, a sandbox
+  override or an ask flag.
+- An ask of type `other` whose reason is not exactly `This command requires
+  approval`, the text Claude Code 2.1.278 sends for an ordinary single Bash
+  command.
+- An ask whose request Station could not read. This fails closed: a changed
+  or missing request costs a prompt, never a grant.
+
+An ask with no reason type is a plain call: that is what the engine sends for
+an ordinary MCP tool call, WebFetch, and a file edit inside the working
+directories. A Bash or PowerShell ask with no reason type prompts: the
+ordinary Bash ask carries `other`, and the Bash asks the engine sends without
+a type are path checks, which carry a blocked path. `request.opened` carries the result as `claudeAsk`: an object
+with `decisionReasonType`, `classifierApprovable` and `decisionReasonCode`
+where the engine set them, or `null` when the request could not be read.
+Other engines send no `claudeAsk`.
+
+A chained Bash command with none of those signals is a plain call, so a Bash
+grant or an `autoApprove` pattern answers it. The engine does not send the
+reasons of a chain's parts, which leaves an accepted gap. A safety check on
+any part always prompts, and an ask rule on a single command always prompts.
+Inside a chained command these carry no signal and are answered: (i) any
+`permissions.ask` rule that applies to the chain or to one of its parts,
+exact or prefix, whenever more than one part needs approval; (ii) a write or delete outside the working directories in an
+`&&` or `;` chain, or in a pipeline with an output redirect; (iii) a part's
+warning that is not a safety check. These gaps exist on `main` today, and
+closing them needs the engine to send the nested reasons (the
+[delivery boundary](../conformance/tool-policy-delivery.md) has the captured
+shapes). The ordinary Bash ask is recognised by its text: if a later engine
+rewords it, ordinary Bash calls prompt until Station is updated.
+
+A session answer never writes the engine's settings files: every forwarded
+suggestion is sent with `destination: 'session'`.
 
 The command records the decision: the adapter publishes `request.resolved`
 when Station records it, on every engine. Whether the engine then received it
@@ -238,13 +294,74 @@ answered request leaves the inbox when the decision is recorded; an
 unacknowledged decision surfaces as a `runtime.warning` on its session, not
 as a reopened request.
 
+A request also closes, with no decision, when the turn it belonged to is
+aborted. Two aborts count, and they settle different sets
+([`requestIdsSettledByTurnAbort`](../../packages/shared/src/request-settlement.ts)):
+
+- **Station restarted mid-turn.**
+  [Interrupted-turn recovery](../../src-server/services/orchestration/interrupted-turn-recovery.ts)
+  records `request.resolved` with status `expired` and `response.reason:
+  'turn-interrupted'` for every request still open that was opened since the
+  dead turn started and before any other turn started, then aborts the turn
+  (`turn.aborted` with `recoveryTerminal`). The session reads `needs_input` with transition reason
+  `runtime_exit`, not `review_pending`. A log written before recovery recorded
+  those resolutions holds the abort with the request still open; every server
+  read treats that request as settled all the same.
+- **A live turn was stopped**: `turn.aborted`, or the
+  `turn.completed` with `finishReason: 'cancelled'` an engine publishes to
+  confirm a stop. This settles only a request whose `request.opened` names
+  that turn in `turnId`. Claude Code stamps it on the main thread's requests,
+  and Muse and Station's own engine on their turn's; a request with no
+  `turnId` (Codex and ACP today, and a subagent's on Claude Code or Muse) is
+  left open by this rule, because work that outlives the turn may still be
+  waiting on it. Separately, the adapters read for this change (Claude Code,
+  Codex, ACP) resolve the requests they hold `cancelled` when they stop a
+  turn or session, a subagent's included on Claude Code; that publication,
+  not this rule, is what normally closes them.
+
+A turn that fails without being aborted (`runtime.error` or `session.exited`
+alone) settles nothing, and neither does an ordinary `turn.completed` or a
+request opened before the turn started.
+
+A settled request is refused by Station itself: `respondToRequest` returns
+`409` with code `request_event_changed`, with or without
+`expectedRequestEventId`, and no adapter is called.
+[Request inspection](#inspect-an-exact-attention-request) reports it `resolved`. The session summary
+(`pendingReview`, `openRequestIds`), the attention inbox, the request's
+replayed outcome, and the CLI's `approvals list` and `operate` leave it out.
+A client that folds raw events without the shared rule still sees it open.
+
 ### Other command types
 
 The remaining controls are defined by
 `src-server/routes/orchestration/orchestration.ts`:
 
-- `steerTurn`: `{ type: 'steerTurn', threadId, input, turnId? }` sends steering
-  input where the engine supports it.
+- `steerTurn`: `{ type: 'steerTurn', threadId, input, turnId?, clientInputId? }` sends steering
+  input where the engine supports it. An ACP engine without a native steer
+  method is steered by cancelling and re-prompting the running turn; that
+  steer's `turn.started` carries `steerInterruptedRun: true`.
+  On this server, a stable `clientInputId` makes acknowledgement retries safe: a durable claim
+  precedes the adapter call, confirmed same-ID input returns its stored result,
+  and an unresolved or mismatched claim returns `outcome: 'indeterminate'`
+  without invoking the engine again. Retain the original `threadId`, `turnId`
+  and input on retry. Never turn an indeterminate steer into an automatic new
+  turn; retain it for review. The digest-only claim survives restart and is
+  removed with its Session. Calls without this optional ID retain the legacy
+  behavior and cannot claim transport idempotency.
+
+- `steerTurnOnce`: `{ type: 'steerTurnOnce', threadId, input, turnId?, clientInputId }`
+  requires a stable ID and normalizes to the same internal `steerTurn` command
+  before authorization and dispatch. Older servers reject this distinct wire
+  type before any engine invocation; they cannot silently discard the ID. The
+  receipt's `commandType` remains `steerTurn`. Use this variant for retry-safe
+  clients that may connect to older servers.
+- `inspectSteerInput`: `{ type: 'inspectSteerInput', threadId, input, turnId?, clientInputId }`
+  reads the original journal identity and returns `steered`, `indeterminate` or
+  `not-received`. It creates a standard command audit receipt, but never resolves
+  an adapter or invokes an engine. Inspect uncertain delivery first; only
+  `not-received` permits a protected same-ID first attempt. An unsupported lookup
+  or unresolved claim must remain held.
+
 - `setApprovalMode`: `{ type: 'setApprovalMode', threadId, approvalMode,
   basedOnSequence }` records an ordered posture decision. `basedOnSequence` is
   required: use the latest observed decision sequence, or `null` when none was
@@ -337,7 +454,7 @@ failures can occur before a receipt exists. Acceptance is not turn completion:
   "receipt": {
     "commandId": "uuid, generated server-side",
     "threadId": "string",
-    "commandType": "adoptSession | interruptTurn | steerTurn | respondToRequest | setApprovalMode | discardDraft | stopSession",
+    "commandType": "adoptSession | interruptTurn | steerTurn | inspectSteerInput | respondToRequest | setApprovalMode | discardDraft | stopSession",
     "status": "accepted | rejected | failed",
     "createdAt": "ISO 8601 timestamp"
   }

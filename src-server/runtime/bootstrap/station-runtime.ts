@@ -103,6 +103,7 @@ import { CodexAdapter } from '../../providers/adapters/codex-adapter.js';
 import { MuseAdapter } from '../../providers/adapters/muse-adapter.js';
 import { OllamaAdapter } from '../../providers/adapters/ollama-adapter.js';
 import {
+  CredentialProfileEnvironmentError,
   claudeAppHomeEnv,
   codexAppHomeEnv,
   ensureAppHomeProfile,
@@ -798,19 +799,17 @@ export class StationRuntime {
             'claude',
             profileRef,
           );
-          return claudeAppHomeEnv(dir);
+          return { env: claudeAppHomeEnv(dir), profileRef };
         }
         const useAppHome = appHomeActive(
           appConfig.agentConnections?.claude?.config,
         );
-        if (!useAppHome) return undefined;
+        if (!useAppHome) return { profileRef: null };
         const { dir } = await ensureAppHomeProfile('claude');
-        return claudeAppHomeEnv(dir);
+        return { env: claudeAppHomeEnv(dir), profileRef: null };
       } catch (error) {
         if (selectedProfileRef) {
-          throw new Error(
-            'Credential profile environment could not be prepared.',
-          );
+          throw new CredentialProfileEnvironmentError();
         }
         (this.logger?.warn as ((...a: unknown[]) => void) | undefined)?.(
           `App home profile: failed to resolve the claude app-home env; continuing with the global Claude Code config: ${errorMessage(error)}`,
@@ -904,19 +903,17 @@ export class StationRuntime {
             'codex',
             profileRef,
           );
-          return codexAppHomeEnv(dir);
+          return { env: codexAppHomeEnv(dir), profileRef };
         }
         const useAppHome = appHomeActive(
           appConfig.agentConnections?.codex?.config,
         );
-        if (!useAppHome) return undefined;
+        if (!useAppHome) return { profileRef: null };
         const { dir } = await ensureAppHomeProfile('codex');
-        return codexAppHomeEnv(dir);
+        return { env: codexAppHomeEnv(dir), profileRef: null };
       } catch (error) {
         if (selectedProfileRef) {
-          throw new Error(
-            'Credential profile environment could not be prepared.',
-          );
+          throw new CredentialProfileEnvironmentError();
         }
         (this.logger?.warn as ((...a: unknown[]) => void) | undefined)?.(
           `App home profile: failed to resolve the codex app-home env; continuing with the global Codex config: ${errorMessage(error)}`,
@@ -943,12 +940,17 @@ export class StationRuntime {
     // constructor body (same lazy-capture posture as
     // `getStationControlEnv` above), but this closure is only invoked at
     // `startSession` time, well after construction completes.
-    mintStationControlMcpAuth: (threadId: string, tenantExecutionContext) => {
+    mintStationControlMcpAuth: (
+      threadId: string,
+      tenantExecutionContext,
+      allowedTools,
+    ) => {
       const { token } = mintStationControlMcpToken(
         threadId,
         'url-token',
         undefined,
         tenantExecutionContext,
+        allowedTools,
       );
       return buildStationControlMcpUrl(this.port, token);
     },

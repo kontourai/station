@@ -38,10 +38,10 @@ describe('api-knowledge-utils', () => {
         before: '2026-01-31',
         pathPrefix: 'docs/',
         status: 'indexed',
-        metadata: { owner: 'brian', version: 2 },
+        metadata: { owner: 'casey', version: 2 },
       }),
     ).toBe(
-      'tags=alpha%2Cbeta&after=2026-01-01&before=2026-01-31&pathPrefix=docs%2F&status=indexed&metadata.owner=brian&metadata.version=2',
+      'tags=alpha%2Cbeta&after=2026-01-01&before=2026-01-31&pathPrefix=docs%2F&status=indexed&metadata.owner=casey&metadata.version=2',
     );
   });
 

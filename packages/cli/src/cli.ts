@@ -56,6 +56,7 @@ import {
   explainFullAccessRefusal,
   explainRequestFailure,
 } from './commands/errors.js';
+import { runExperienceCommand } from './commands/experience.js';
 import { exportConfig } from './commands/export.js';
 import {
   DEFAULT_SERVER_PORT,
@@ -793,6 +794,9 @@ function buildProgram(
   register('plugin', async (args) => {
     const [sub, ...subArgs] = args;
     switch (sub) {
+      case 'experience':
+        runExperienceCommand(subArgs);
+        break;
       case 'install': {
         const parsed = parseCoreArgs(subArgs);
         const skipArg = subArgs.find((a) => a.startsWith('--skip='));

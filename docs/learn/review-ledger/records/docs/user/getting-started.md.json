@@ -94,7 +94,89 @@
 
     "docs/learn/media.json#/captures/3",
 
-    "docs/learn/media.json#/captures/4"
+    "docs/learn/media.json#/captures/4",
+
+    "src-ui/src/__tests__/SchedulerJobDialogHost.authority.test.tsx",
+
+    "src-ui/src/__tests__/useNewChatSelectionModel.revalidation.test.tsx",
+
+    "src-ui/src/components/chat-dock/ChatDockModalStack.tsx",
+
+    "src-ui/src/components/chat-dock/useChatDockOverlays.ts",
+
+    "src-ui/src/components/home/HomeChatStartForm.tsx",
+
+    "src-ui/src/components/modals/AutomaticEnginePreparation.tsx",
+
+    "src-ui/src/components/scheduler/JobFormModal.tsx",
+
+    "src-ui/src/components/scheduler/SchedulerJobDialogHost.tsx",
+
+    "src-ui/src/contexts/NavigationContext.tsx",
+
+    "src-ui/src/contexts/scheduler-job-dialog-store.ts",
+
+    "src-ui/src/hooks/useNewChatSelectionModel.ts",
+
+    "src-ui/src/lib/newChatIntent.ts",
+
+    "src-ui/src/platform/native/__tests__/authenticatedTransport.test.ts",
+
+    "src-ui/src/platform/native/authenticatedTransport.ts",
+
+    "src-ui/src/views/ScheduleView.css",
+
+    "src-ui/src/components/chat-dock/MobileTaskSwitcher.tsx",
+
+    "src-ui/src/components/chat-dock/ChatDockProjectSwitcherSheet.tsx",
+
+    "src-ui/src/components/chat-dock/ChatDockProjectContext.tsx",
+
+    "src-ui/src/components/PickerCreateAction.tsx",
+
+    "src-ui/src/components/PickerCreateAction.css",
+
+    "src-ui/src/components/inbox-row/InboxRowStatus.tsx",
+
+    "src-ui/src/contexts/navigation-store.ts",
+
+    "tests/cross-runtime-chat-switching.spec.ts",
+
+    "src-ui/src/components/chat-dock/ChatDock.tsx",
+
+    "src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx",
+
+    "src-ui/src/components/chat-dock/ChatDockInboxRows.tsx",
+
+    "src-ui/src/components/chat-dock/ChatDockMobileOverflowSheet.tsx",
+
+    "src-ui/src/components/chat/chat.css",
+
+    "src-ui/src/views/home/work-status.ts",
+
+    "src-ui/src/views/home/work-facts.ts",
+
+    "src-ui/src/hooks/useLongPress.ts",
+
+    "tests/helpers/long-press.ts",
+
+    "src-ui/src/views/SkillsView.tsx",
+
+    "src-ui/src/components/modals/SkillRunModal.tsx",
+
+    "src-ui/src/components/modals/ImportSkillsModal.tsx",
+
+    "src-ui/src/__tests__/SkillsView.test.tsx",
+
+    "src-ui/src/__tests__/SkillsView.navigation.test.tsx",
+
+    "src-ui/src/__tests__/SkillsView.launch.test.tsx",
+
+    "src-ui/src/hooks/useActiveChatSessionLifecycle.ts",
+
+    "src-ui/src/hooks/useActiveChatSessionMessaging.ts",
+
+    "src-ui/src/lib/foregroundMessageDispatch.ts"
   ],
 
   "checks": [

@@ -898,7 +898,9 @@
 
     "tests/helpers/journey-profile.ts",
 
-    "src-server/services/orchestration/__tests__/project-task-room-runtime.test.ts"
+    "src-server/services/orchestration/__tests__/project-task-room-runtime.test.ts",
+
+    "src-server/services/projects/task-room-context.ts"
   ],
 
   "checks": [

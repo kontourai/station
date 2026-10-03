@@ -9,8 +9,8 @@ import {
   useQueryClient,
 } from '@tanstack/react-query';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
+import { IconButton } from '../../components/IconButton';
 import { ArrowDownGlyph, DiscardGlyph } from '../../components/icons/Glyph';
-import { BrowserIconButton } from './BrowserIconButton';
 import {
   type BrowserPaneApi,
   browserPaneKeys,
@@ -266,7 +266,7 @@ export function BrowserConsoleDrawer({
           </select>
           <ArrowDownGlyph className="choice-caret browser-pane__caret" />
         </span>
-        <BrowserIconButton
+        <IconButton
           aria-label="Clear console"
           title="Clear console"
           disabled={!data || data.entries.length === 0}
@@ -276,7 +276,7 @@ export function BrowserConsoleDrawer({
           }
         >
           <DiscardGlyph />
-        </BrowserIconButton>
+        </IconButton>
       </div>
       {data && data.dropped > 0 ? (
         <p className="browser-pane__hint" role="status">

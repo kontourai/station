@@ -26,8 +26,6 @@
 
     "packages/sdk/src/queryFactories.ts",
 
-    "packages/shared/package.json",
-
     "pnpm-lock.yaml",
 
     "scripts/mobile-css-ratchet.mjs",
@@ -82,7 +80,41 @@
 
     "src-ui/src/components/ActionOverflowMenu.tsx",
 
-    "tests/helpers/visible-action-count.ts"
+    "tests/helpers/visible-action-count.ts",
+
+    "src-ui/src/components/chat-dock/MobileTaskSwitcher.tsx",
+
+    "src-ui/src/components/chat-dock/ChatDockProjectSwitcherSheet.tsx",
+
+    "src-ui/src/components/chat-dock/ChatDockProjectContext.tsx",
+
+    "src-ui/src/components/PickerCreateAction.tsx",
+
+    "src-ui/src/components/PickerCreateAction.css",
+
+    "src-ui/src/components/inbox-row/InboxRowStatus.tsx",
+
+    "src-ui/src/contexts/navigation-store.ts",
+
+    "tests/cross-runtime-chat-switching.spec.ts",
+
+    "src-ui/src/components/chat-dock/ChatDock.tsx",
+
+    "src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx",
+
+    "src-ui/src/components/chat-dock/ChatDockInboxRows.tsx",
+
+    "src-ui/src/components/chat-dock/ChatDockMobileOverflowSheet.tsx",
+
+    "src-ui/src/components/chat/chat.css",
+
+    "src-ui/src/views/home/work-status.ts",
+
+    "src-ui/src/views/home/work-facts.ts",
+
+    "src-ui/src/hooks/useLongPress.ts",
+
+    "tests/helpers/long-press.ts"
   ],
 
   "checks": [

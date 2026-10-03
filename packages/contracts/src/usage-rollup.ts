@@ -28,6 +28,8 @@ export interface UsageReceipt {
   stationId: string;
   provider: string;
   model?: string;
+  /** Opaque engine/profile attribution; absent means the account is unknown. */
+  accountKey?: string;
   threadId?: string;
   turnId?: string;
   conversationId?: string;

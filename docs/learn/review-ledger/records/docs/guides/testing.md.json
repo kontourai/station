@@ -128,7 +128,13 @@
 
     "tests/tauri-shell/native-project-runtime-fixture.ts",
 
-    "vitest.setup.ts"
+    "vitest.setup.ts",
+
+    "scripts/ci-health.mjs",
+
+    "scripts/__tests__/ci-health.test.ts",
+
+    "tests/screenshots.spec.ts"
   ],
 
   "checks": [

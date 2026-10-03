@@ -22,12 +22,35 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const { mockQuery } = vi.hoisted(() => ({ mockQuery: vi.fn() }));
 
-vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
-  deleteSession: vi.fn(),
-  forkSession: vi.fn(),
-  listSessions: vi.fn(),
-  query: mockQuery,
-}));
+// #2932: the adapter reads each permission ask off the engine's stdout. Its
+// real spawn wrapper and tap run over a fake child, and `query` wraps
+// `canUseTool` so each call here first gets a frame on that stdout.
+vi.mock(
+  '../../../providers/adapters/claude-code-spawn.js',
+  async (importOriginal) => {
+    const { fakeEngineProcessModule } = await import(
+      '../../../providers/__tests__/claude-engine-process-test-utils.js'
+    );
+    return fakeEngineProcessModule(
+      await importOriginal<
+        typeof import('../../../providers/adapters/claude-code-spawn.js')
+      >(),
+    );
+  },
+);
+
+vi.mock('@anthropic-ai/claude-agent-sdk', async () => {
+  const { withRecordedClaudeAsks } = await import(
+    '../../../providers/__tests__/claude-engine-process-test-utils.js'
+  );
+  return {
+    deleteSession: vi.fn(),
+    forkSession: vi.fn(),
+    listSessions: vi.fn(),
+    query: (args: { options?: unknown }) =>
+      mockQuery(withRecordedClaudeAsks(args)),
+  };
+});
 
 // Host CLI discovery and version probes: none of that is under test, and all
 // of it would make the result depend on the developer's machine.

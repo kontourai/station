@@ -1,0 +1,7 @@
+{
+  "revision": "27f4907c1fc93ceb348d537d3f0f985ba1e97a6c",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Re-reviewed merged Settings navigation against the module map: phone section selection uses the same registry and canonical unsaved-navigation guard as the desktop rail; Station/device scopes retain their own sections. No module ownership change. Source review, not native release proof.","inputs":["docs/architecture/module-map.md"]}
+  ]
+}

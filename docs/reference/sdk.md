@@ -122,7 +122,12 @@ that the default Station host supplies its optional context.
 `submitTaskRoomAgentRequest`, `TaskRoomWorkProtocolError` and
 `TaskRoomWorkNotSentError`. Submission takes `(apiBase, taskId, projectSlug,
 taskCreatedAt, input, options?)`; input contains `operationId`, `agentId` and
-`prompt`. A fresh versioned request-list read precedes the additive delegation
+`prompt`, with optional `context: { version: 'station.task-room-context/v1', digest }`.
+The request-list result includes `contextVersion` and an authorized brief snapshot
+(or `null`) on supporting servers. Submission negotiates that version, forwards
+only the reference, and verifies that the acknowledgement retains its digest and
+Task incarnation. It does not substitute a newer brief on a retry.
+A fresh versioned request-list read precedes the additive delegation
 create field, so an older Station never silently receives an ordinary
 delegation instead. The response must match the Task and submitted intent.
 The server also checks the expected Task incarnation.
@@ -139,7 +144,10 @@ not currently published through room SSE. Mutation retries are disabled.
 Send refreshes Project-scoped delegation options and requires the selected
 agent to be ready before the version negotiation and create.
 
-`TaskRoomWorkNotSentError` identifies a failed preflight with no create sent.
+`TaskRoomWorkNotSentError` identifies a failed preflight with no create sent,
+or an explicit pre-invocation context refusal from a supporting server. Refresh
+the brief before starting a new intent; preserve a prior unknown request when
+a retry itself was not sent.
 After the create starts, an error can mean the execution already exists.
 Retain the exact operation and intent for an explicit retry or inspection;
 never generate a replacement operation automatically. A retry preflight failure
@@ -356,7 +364,7 @@ Custom-host state slot; currently unbound in Station's default adapter.
 
 #### `useSendToChat(agent: QualifiedPluginAgentId | AgentId): (message: string) => void`
 
-Convenience hook. Returns a function that creates a session, opens the dock, and sends a message — all in one call.
+Convenience hook. Returns a function that creates a session, shows Chat, and sends a message — all in one call. Showing Chat opens the dock, except in a layout whose centre is Chat (the built-in Coding layout on desktop), where it shows that Chat page and leaves the dock alone.
 
 Name an Agent your plugin contributes as `'<plugin>:<agent>'`. The hook derives
 the Agent's identity from it and sends only when the named plugin contributed
@@ -867,7 +875,12 @@ Fetches conversation stats. Disabled when either param is undefined.
 
 ### `useUsageQuery(config?)`
 
-Fetches usage analytics.
+Fetches the retained Station-wide usage snapshot. Usage, period usage, receipt
+rollup, achievement, and Insights hooks poll every 30 seconds while observed,
+refetch on stale mount/focus, and accept caller configuration overrides. Active
+server reads refresh the lifetime snapshot at most once a minute. A request's
+success is not proof of complete provider reporting; retain source coverage and
+snapshot metadata. A rescan invalidates all analytics and Insights queries.
 
 ### `useAchievementsQuery(config?)`
 
@@ -1121,6 +1134,14 @@ Shared query-factory entry for agent conversation lists. Use this when a feature
 
 ### `useApiQuery<T>(queryKey, queryFn, config?)`
 
+Station's config-change event invalidates Trust bundle/report and Task answer
+support queries within the current authority's query client. Trust readers
+refetch invalidated data when remounted; Task answer support retains its
+existing fresh-authorization mount policy. Disabled observers remain disabled.
+Trust requests carry cancellation through API-base resolution and transport.
+See [Trust query owners](../../packages/sdk/src/query-domains/trustBundles.ts)
+and [the config-change consumer](../../src-ui/src/hooks/useServerEvents.ts).
+
 Generic query hook for a caller-owned async function. It passes an AbortSignal;
 the function must use it and handle HTTP status, response validation and
 authority. The following host-supplied reader must already implement those
@@ -1169,6 +1190,27 @@ Re-exported from `@tanstack/react-query` for direct cache access.
 ## API Functions
 
 Imperative API calls — use in event handlers, slash commands, or anywhere hooks aren't available.
+
+### Turn steering and acknowledgement retries
+
+`steerOrchestrationTurn({ threadId, text, turnId?, clientInputId?, apiBase? })`
+sends input to an open turn. With an ID it uses the protected `steerTurnOnce`
+wire command, which older servers reject before invocation. Without an ID it
+retains legacy behavior. Use one stable `clientInputId` per intent and retain
+its original Session, turn and text when retrying an acknowledgement. The server
+journals the adapter attempt before invocation and returns a confirmed same-ID
+result without sending it again. `outcome: 'indeterminate'` means delivery cannot
+be confirmed; retain the input for review and do not automatically send it as a
+new turn. Before retrying uncertain input, call
+`inspectOrchestrationSteerInput({ threadId, text, turnId?, clientInputId, apiBase? })`.
+A confirmed result retires the pending message; `indeterminate` or an unsupported
+lookup keeps it held. Only `not-received` permits a protected same-ID first
+attempt. A successful save of the pending identity precedes a composer mutation;
+a failed save prevents engine invocation. Unsupported, busy, and no-active-turn outcomes remain
+explicit. See [Session API steering](session-api.md#lifecycle-control-commands) for the public
+command and engine-specific interruptive fallback; Station's composer offers a
+conservative safe-waiting fallback separately from native steering.
+
 
 `sendMessage`, `streamMessage`, `invokeAgent`, `invoke`, `callTool` and
 `fetchConfig` are legacy ambient-base helpers using direct `fetch`. They do not
@@ -3702,6 +3744,16 @@ resolves the checkout from the project alone. `QueryConfig.refetchOnWindowFocus`
 opts one read back into refetching a stale answer when the window returns;
 Station's client default leaves it off.
 
+`usePullRequestContextQuery({ project, thread }, config)` reads the Session's
+recorded checkout context. Its available result includes the local `branch` and
+optional `pushTargetOwner`, the owner selected by the branch's push-remote
+configuration and push URL. The repository identity still names the PR read
+target. Mergeability rows optionally include `sourceOwner` from GitHub's head
+repository owner; GitLab omits it. A conflict indicator matches the local branch
+and compares these owners case-insensitively when both are present. If either
+owner is absent, it matches on branch alone; the upstream branch name is never
+a substitute for the local branch.
+
 ## Conversation pull-request links
 
 `@kontourai/station-sdk/conversation-pull-request-links` reads, links, and
@@ -3810,10 +3862,28 @@ The additive `@kontourai/station-sdk/engine-accounts` entry exposes account,
 selected quota and live login queries, explicit login/account-create mutations,
 and engine activity queries. Every caller supplies a captured `ApiRequestScope`;
 keys partition API base, authority, engine connection and profile. Login retries
-are disabled and live status polls only while a login is pending. Quota refresh
-is explicit. Strict contracts live in
-`@kontourai/station-contracts/engine-accounts`.
+are disabled and live status polls only while a login is pending. Quota refresh runs every minute while the account query is mounted and visible, and can also be requested explicitly. Strict contracts live in
+`@kontourai/station-contracts/engine-accounts`. Quota queries strictly parse
+optional account/credit/model, Claude spending/breakdown/limit metadata and
+response-shape audit fields and bounded hourly allowance history on both
+known and unknown quota variants. `useEngineActivityQuery` accepts an optional
+credential profile filter: `null` selects the default profile, a string selects
+a saved profile, and an omitted filter includes all engine accounts. Older
+usage without an account observation remains excluded from profile totals. Consumers must not treat unknown quota as zero
+or credit balances as dollars. Window durations come from the provider, rather
+than inferring five hours from the primary position.
 
 These exports require a release containing this change; current source presence
 is not evidence of npm publication. The Connections guide owns account-viewing,
 sign-in, permission and cost-attribution limits.
+
+
+### Paired-person profile reads
+
+`usePairedDevicesQuery(apiBase?, config?)` accepts `requestScope` and
+`requireRequestScope`. Scoped cache keys include API base and authority key;
+the HTTP reader checks that captured authority before consuming the response.
+With required scope absent, the observer is disabled under an isolated key.
+The default poll pauses after HTTP 401/403; explicit retry or Profile-page remount can reauthorize the read. `QueryConfig.refetchIntervalForError` can return `false` to pause polling or a number for an error-specific interval; `undefined` preserves the numeric interval. The Profile page uses this mode for approved person bindings and current
+connection projections. This list requires the pairing route's existing access
+and does not share another person's usage statistics.

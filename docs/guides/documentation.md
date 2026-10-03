@@ -239,6 +239,18 @@ For the older single-file layout, use
 `node scripts/migrate-review-ledger.mjs --base "$(git merge-base HEAD MERGE_HEAD)"`
 first to fold that file and capture metadata, then run `--path-only`.
 
+If the branch also re-reviewed a capture, `docs/learn/media.json` may conflict
+too. Git can instead auto-merge away the old review fields. For a branch with
+legacy capture reviews, use `git merge --no-commit origin/main` and run that
+folding command before committing, even when Git reports no conflict.
+
+The command reads both merge parents to recover those review fields and merges
+each capture field against the merge base. It preserves the working copy's
+metadata and review edits when Git already merged the file. Where both sides
+changed one metadata field differently, it names the field and stops without
+writing anything, so you resolve that field and rerun. It judges bindings to
+`media.json` against the bytes it writes, not the conflicted working copy.
+
 Nightly's [freshness sweep](../../.github/workflows/docs-freshness-sweep.yml)
 tracks outstanding reviews on main in one issue. It never fails a required
 check. Land broad semantic audits in subsystem slices to keep review scope

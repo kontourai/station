@@ -12,8 +12,6 @@
   "sources": [
     "packages/contracts/src/task-room-work.ts",
 
-    "packages/contracts/package.json",
-
     "packages/sdk/src/client/task-room-work.ts",
 
     "packages/sdk/src/client/project-task-rooms.ts",
@@ -56,7 +54,11 @@
 
     "src-server/runtime/bootstrap/station-runtime.ts",
 
-    "src-server/runtime/routes/__tests__/runtime-routes-project-task-room-principal.test.ts"
+    "src-server/runtime/routes/__tests__/runtime-routes-project-task-room-principal.test.ts",
+
+    "src-server/services/projects/task-room-context.ts",
+
+    "packages/contracts/package.json#/exports/.~1task-room-work"
   ],
 
   "checks": [

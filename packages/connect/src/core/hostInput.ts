@@ -43,9 +43,27 @@ export function isCleartextNonLoopback(url: string): boolean {
   }
 }
 
+/** Match native credential custody's numeric-loopback HTTP exception. */
+export function httpConnectionConsentRequired(address: string): boolean {
+  try {
+    const url = new URL(address);
+    if (url.protocol !== 'http:') return false;
+    // A served Station keeps its same-origin browser session. Native shells
+    // have a separate app origin and must satisfy credential custody instead.
+    if (typeof window !== 'undefined' && url.origin === window.location.origin)
+      return false;
+    // Native credential custody exempts numeric loopback, not DNS names.
+    return !(
+      /^127(?:\.\d{1,3}){3}$/.test(url.hostname) || url.hostname === '[::1]'
+    );
+  } catch {
+    return false;
+  }
+}
+
 /** Exact device-approved HTTP origin; absence always keeps HTTPS required. */
 export function httpDevelopmentOrigin(address: string): string | undefined {
-  if (!isCleartextNonLoopback(address)) return undefined;
+  if (!httpConnectionConsentRequired(address)) return undefined;
   try {
     const origin = new URL(address).origin;
     return localStorage.getItem(`station-http-development:${origin}`) ===

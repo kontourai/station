@@ -13,6 +13,7 @@ import {
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
+import { createRequire } from 'node:module';
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { PORTABLE_SERVER_TARGETS } from '../../packages/shared/src/portable-server-targets.mjs';
@@ -28,6 +29,7 @@ import {
   platformPayload,
   signEnvelope,
 } from './fixtures/release-manifest-v2.js';
+import { extractInstallerCore } from './fixtures/windows-archive.js';
 
 /**
  * One golden corpus for the schema v2 release manifest (#2675), run through
@@ -515,6 +517,40 @@ function installOutcome(
   return reason ? reason[1] : `no verdict: ${result.stderr}`;
 }
 
+/**
+ * install.ps1's decision (#2675 slice W): its installer core, decoded from
+ * the block install.ps1 embeds and loaded as the CommonJS module it is, with
+ * `keys` in place of the pinned table it bundles. Like the shared API it
+ * accepts schema 2 only.
+ */
+type InstallerCore = {
+  verifyInstallManifest: (
+    envelope: unknown,
+    keys: unknown,
+    options: { expectedChannel: string; allowTestUrls: boolean },
+  ) => unknown;
+};
+let installerCore: InstallerCore | undefined;
+function coreOutcome(
+  envelope: Record<string, unknown>,
+  keys: unknown = KEYS,
+): Outcome {
+  installerCore ??= createRequire(import.meta.url)(
+    extractInstallerCore(makeTempDir('station-installer-core-')),
+  ) as InstallerCore;
+  const channel = (envelope.payload as { channel?: unknown } | undefined)
+    ?.channel;
+  try {
+    installerCore.verifyInstallManifest(envelope, keys, {
+      expectedChannel: typeof channel === 'string' ? channel : 'nightly',
+      allowTestUrls: false,
+    });
+    return 'accept';
+  } catch (error) {
+    return (error as Error).message;
+  }
+}
+
 describe('release manifest golden vectors (#2675)', () => {
   it.each(VECTORS)(
     '$name',
@@ -544,6 +580,7 @@ describe('release manifest golden vectors (#2675)', () => {
       expect(installOutcome(dir, value)).toBe(
         installExpected ?? sharedExpected ?? expected,
       );
+      expect(coreOutcome(value)).toBe(sharedExpected ?? expected);
     },
   );
 

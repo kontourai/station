@@ -12,6 +12,7 @@ import type { FlowRunFreshness } from '@kontourai/station-contracts/runtime-even
 import { type ExecutionMode } from '@kontourai/station-contracts/tool';
 import type { TurnChangedFiles } from '@kontourai/station-contracts/turn-changed-files';
 import type { UIBlock } from '@kontourai/station-contracts/ui-block';
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import type { ToolRequestSessionGrant } from '@kontourai/station-shared/tool-request-preview';
 import type {
   ComposerAttachmentStageSnapshot,
@@ -33,6 +34,17 @@ import {
 } from '../utils/approvalMode';
 import type { EffectiveModelSource } from '../utils/execution';
 import type { PlanArtifact } from '../utils/planArtifacts';
+import {
+  isPlainRecord,
+  optionalString,
+  plainRecordOrUndefined,
+  readAttachmentStages,
+  readFlowRunBinding,
+  readPlanArtifact,
+  readQueuedMessageFailure,
+  readUnsentMessages,
+  stringList,
+} from './persisted-chat-shape';
 
 export type ChatRole = 'user' | 'assistant' | 'system';
 
@@ -95,6 +107,8 @@ export type ChatContentPart = {
   sourceEventId?: string;
   // Flat `tool-invocation` tool-part fields — the single chat tool vocabulary.
   toolName?: string;
+  /** See `MessagePart.toolKind`: the engine's own category, when reported. */
+  toolKind?: string;
   purpose?: string;
   server?: string;
   originalName?: string;
@@ -112,6 +126,8 @@ export type ChatContentPart = {
   approvalThreadId?: string;
   /** #2316: see `MessagePart.approvalEventId`. */
   approvalEventId?: string;
+  /** See `MessagePart.approvalToolName`. */
+  approvalToolName?: string;
   /** #2915: see `MessagePart.approvalSessionGrant`. */
   approvalSessionGrant?: ToolRequestSessionGrant;
   cancelled?: boolean;
@@ -138,6 +154,8 @@ export type ChatMessage = {
   contentParts?: ChatContentPart[];
   traceId?: string;
   timestamp?: number;
+  /** See `ChatMessage.steerInterruptedRun` in types.ts. */
+  steerInterruptedRun?: boolean;
   model?: string;
   modelOptions?: Record<string, string | number | boolean>;
   /**
@@ -203,7 +221,9 @@ export type StreamingMessage = {
  * finalize/abort. Never persisted.
  */
 export type ChatActivityHint = {
-  kind: 'thinking' | 'compacting' | 'requesting';
+  kind: 'thinking' | 'compacting' | 'requesting' | 'retrying';
+  attempt?: number;
+  delayMs?: number;
   detail?: string;
 };
 
@@ -275,6 +295,15 @@ export type ChatUIState = {
   /** Byte-free attachment supervision projection, safe across reload/reconnect. */
   attachmentStages?: ComposerAttachmentStageSnapshot[];
   queuedMessages: string[];
+  queuedMessageMetadata?: PendingMessageMetadata[];
+  pendingQueueDispatch?: { content: string; metadata: PendingMessageMetadata };
+  pendingSendNow?: {
+    messageId: string;
+    threadId: string;
+    turnId: string;
+    terminalConfirmed?: true;
+  };
+  queueSendNowPending?: boolean;
   /** Durable offline turns, projected from IndexedDB after every app launch. */
   outboundQueuedTurns?: Array<{
     clientTurnId: string;
@@ -517,6 +546,25 @@ export type ChatUIState = {
   sessionAutoApprove?: string[];
   pendingApprovals?: string[];
   /**
+   * #3071: the turn each request in `pendingApprovals` names
+   * (`request.opened.turnId`), for the requests that name one. It is what
+   * the shared settle rule (`requestIdsSettledByTurnAbort`) reads when a
+   * turn ends by abort or cancellation: a request naming that turn is
+   * settled with no `request.resolved`, one naming no turn is kept. A
+   * request learned from a snapshot's `openRequestIds` has no entry; a live
+   * abort cannot settle what it cannot name, so that request stays until a
+   * `request.resolved`, the next snapshot, or the server refusing its answer.
+   */
+  pendingApprovalTurnIds?: Record<string, string>;
+  /**
+   * Requests the user has answered from the approval queue whose
+   * `request.resolved` has not arrived yet. They are still open on the
+   * server (so they stay in `pendingApprovals`), but they no longer wait on
+   * the user: status surfaces count `pendingApprovals` minus these. A
+   * decision that fails to deliver takes its request back off this list.
+   */
+  answeredApprovals?: string[];
+  /**
    * #2880: recorded decisions the engine has reported NOT acknowledged
    * (`request.delivery` `unacknowledged`). A later `acknowledged` for the
    * same request removes it, and the list empties when the session ends or
@@ -686,6 +734,14 @@ export type PersistedActiveChat = {
    * turn the user is still waiting to send.
    */
   queuedMessages?: string[];
+  queuedMessageMetadata?: PendingMessageMetadata[];
+  pendingQueueDispatch?: { content: string; metadata: PendingMessageMetadata };
+  pendingSendNow?: {
+    messageId: string;
+    threadId: string;
+    turnId: string;
+    terminalConfirmed?: true;
+  };
   queuedMessageFailure?: {
     /** Local queue review required after an execution binding change. */
     reviewReason?: 'execution-binding-changed';
@@ -803,38 +859,108 @@ export function createDefaultChatState(
 }
 
 export function hydrateActiveChats(
-  sessions: PersistedActiveChat[],
+  sessions: PersistedActiveChat[] | unknown,
 ): ActiveChatsMap {
   const chats: ActiveChatsMap = {};
-  for (const session of sessions) {
+  // Every nested field is read through a shape check: this payload can come
+  // from an older UI build or be corrupt, and a value render cannot read
+  // crashed the whole chat pane on every retry (see persisted-chat-shape.ts).
+  if (!Array.isArray(sessions)) return chats;
+  for (const candidate of sessions as unknown[]) {
+    if (
+      !isPlainRecord(candidate) ||
+      typeof candidate.sessionId !== 'string' ||
+      typeof candidate.agentSlug !== 'string'
+    ) {
+      continue;
+    }
+    const session = candidate as PersistedActiveChat;
+    const text = (value: unknown) => optionalString(value);
+    const queuedMessageFailure = readQueuedMessageFailure(
+      session.queuedMessageFailure,
+    );
+    const unsentMessages = readUnsentMessages(session.unsentMessages);
+    const dispatch = session.pendingQueueDispatch;
+    const pendingDispatch =
+      typeof dispatch?.content === 'string' &&
+      typeof dispatch.metadata?.id === 'string'
+        ? dispatch
+        : undefined;
     chats[session.sessionId] = {
       input: '',
       attachments: [],
-      attachmentStages: session.attachmentStages || [],
-      queuedMessages: session.queuedMessages || [],
-      ...(session.queuedMessageFailure
-        ? { queuedMessageFailure: session.queuedMessageFailure }
+      ...(typeof session.pendingSendNow?.messageId === 'string' &&
+      typeof session.pendingSendNow.threadId === 'string' &&
+      typeof session.pendingSendNow.turnId === 'string'
+        ? { pendingSendNow: session.pendingSendNow }
         : {}),
-      ...(session.unsentMessages?.length
-        ? { unsentMessages: session.unsentMessages }
+      attachmentStages: readAttachmentStages(session.attachmentStages),
+      queuedMessages: [
+        ...(pendingDispatch ? [pendingDispatch.content] : []),
+        ...stringList(session.queuedMessages),
+      ],
+      ...(pendingDispatch ? { queueDrainHeldForOpen: true } : {}),
+      queuedMessageMetadata: [
+        ...(pendingDispatch ? [pendingDispatch.metadata] : []),
+        ...stringList(session.queuedMessages).map<PendingMessageMetadata>(
+          (_, index) => {
+            const metadata = session.queuedMessageMetadata?.[index];
+            return {
+              id:
+                typeof metadata?.id === 'string'
+                  ? metadata.id
+                  : randomCorrelationId(),
+              mode: metadata?.mode === 'steer' ? 'steer' : 'queue',
+              ...(metadata?.delivery === 'steering' ||
+              metadata?.delivery === 'indeterminate'
+                ? { delivery: 'indeterminate' as const }
+                : {}),
+              ...(typeof metadata?.steerThreadId === 'string'
+                ? { steerThreadId: metadata.steerThreadId }
+                : {}),
+              ...(typeof metadata?.steerTurnId === 'string'
+                ? { steerTurnId: metadata.steerTurnId }
+                : {}),
+            };
+          },
+        ),
+      ],
+      ...(queuedMessageFailure ? { queuedMessageFailure } : {}),
+      ...(!text(session.conversationId) &&
+      (pendingDispatch || stringList(session.queuedMessages).length)
+        ? {
+            conversationOpenFailed: true,
+            queuedMessageFailure: {
+              code: 'unconfirmed-first-send',
+              message:
+                'The first turn was not confirmed. Your messages are retained; open the confirmed conversation before sending them.',
+              at: Date.now(),
+            },
+            queueDrainHeldForOpen: true,
+          }
         : {}),
-      inputHistory: session.inputHistory || [],
+      ...(unsentMessages.length ? { unsentMessages } : {}),
+      inputHistory: stringList(session.inputHistory),
       hasUnread: false,
       agentSlug: session.agentSlug,
-      conversationId: session.conversationId,
-      currentSessionId: session.currentSessionId,
-      conversationOpenPending: Boolean(session.conversationId),
-      createdAt: session.createdAt,
-      title: session.title,
-      model: session.model,
-      modelSource: session.modelSource,
-      requestedModel: session.requestedModel,
-      requestedModelSource: session.requestedModelSource,
+      conversationId: text(session.conversationId),
+      currentSessionId: text(session.currentSessionId),
+      conversationOpenPending: typeof session.conversationId === 'string',
+      createdAt:
+        typeof session.createdAt === 'number' ? session.createdAt : undefined,
+      title: text(session.title),
+      model: text(session.model),
+      modelSource: text(session.modelSource) as EffectiveModelSource,
+      requestedModel:
+        session.requestedModel === null ? null : text(session.requestedModel),
+      requestedModelSource: text(
+        session.requestedModelSource,
+      ) as EffectiveModelSource,
       // #2436: an approval posture never rides the model-options bags. A
       // pick persisted there (or in the unreleased #2334 fields) becomes a
       // queued pick the server records on the next send.
       requestedProviderOptions: withoutLegacyApprovalMode(
-        session.requestedProviderOptions,
+        plainRecordOrUndefined(session.requestedProviderOptions),
       ),
       ...(() => {
         const queued = isApprovalMode(session.queuedApprovalMode)
@@ -850,20 +976,29 @@ export function hydrateActiveChats(
               : {}),
           }
         : {}),
-      defaultModel: session.defaultModel,
-      defaultModelSource: session.defaultModelSource,
-      projectSlug: session.projectSlug,
-      projectName: session.projectName,
-      executionMode: session.executionMode,
-      executionScope: session.executionScope,
-      agentConnectionId: session.agentConnectionId,
-      providerId: session.providerId,
-      defaultProviderId: session.defaultProviderId,
-      provider: session.provider,
-      providerOptions: withoutLegacyApprovalMode(session.providerOptions) || {},
-      orchestrationSessionStarted: session.orchestrationSessionStarted || false,
-      orchestrationProvider: session.orchestrationProvider,
-      orchestrationModel: session.orchestrationModel,
+      defaultModel: text(session.defaultModel),
+      defaultModelSource: text(
+        session.defaultModelSource,
+      ) as EffectiveModelSource,
+      projectSlug: text(session.projectSlug),
+      projectName: text(session.projectName),
+      executionMode: text(session.executionMode) as ExecutionMode,
+      executionScope:
+        session.executionScope === 'project' ||
+        session.executionScope === 'global'
+          ? session.executionScope
+          : undefined,
+      agentConnectionId: text(session.agentConnectionId),
+      providerId: text(session.providerId),
+      defaultProviderId: text(session.defaultProviderId),
+      provider: text(session.provider) as EngineId,
+      providerOptions:
+        withoutLegacyApprovalMode(
+          plainRecordOrUndefined(session.providerOptions),
+        ) || {},
+      orchestrationSessionStarted: session.orchestrationSessionStarted === true,
+      orchestrationProvider: text(session.orchestrationProvider) as EngineId,
+      orchestrationModel: text(session.orchestrationModel),
       // archive#3300: never resurrect a LIVE status claim from storage. The
       // fields that could re-derive it (`orchestrationTurnOpen`, `status`,
       // `streamingMessage`, `openTurnId`) are deliberately not persisted, so
@@ -876,15 +1011,16 @@ export function hydrateActiveChats(
         session.orchestrationStatus === 'running' ||
         session.orchestrationStatus === 'awaiting-approval'
           ? undefined
-          : session.orchestrationStatus,
-      sessionAutoApprove: session.sessionAutoApprove || [],
+          : text(session.orchestrationStatus),
+      sessionAutoApprove: stringList(session.sessionAutoApprove),
       // archive#1292: never read a persisted value here (even from an old
       // payload that still has the field) — a rehydrated session always
       // starts with no ephemeral notices.
       ephemeralMessages: [],
-      currentModeId: session.currentModeId,
-      planArtifact: session.planArtifact || null,
-      flowRun: session.flowRun || null,
+      currentModeId:
+        session.currentModeId === null ? null : text(session.currentModeId),
+      planArtifact: readPlanArtifact(session.planArtifact),
+      flowRun: readFlowRunBinding(session.flowRun),
     };
   }
   return chats;
@@ -896,9 +1032,10 @@ export function hydrateActiveChats(
  *
  * A chat is promoted to a conversation by its first successful turn
  * (`useActiveChatSessionMessaging`'s success path assigns the receipt's
- * `conversationId`), and `serializeActiveChats` below persists exactly the
- * chats that reached that point. Until then the session id is the only handle
- * anything has on it, and it is the id `useChatDockActiveChatSync` matches on
+ * `conversationId`). Serialization also retains authored pending messages
+ * before that receipt, holding them for identity verification after reload.
+ * Until then the session id is the only handle anything has on the chat, and
+ * it is the id `useChatDockActiveChatSync` matches on
  * (`session.conversationId === activeChat || session.id === activeChat`), so
  * both halves resolve to the same chat.
  *
@@ -919,10 +1056,10 @@ export function activeChatDurableId(
  * Whether a chat is DURABLE — whether anything about it outlives a reload.
  *
  * A chat is promoted to a conversation by its first successful turn, and a
- * chat holding unsent records has a durable record of its own even before that
- * (archive#3706). A chat with neither is a draft the store admits to its live
- * map and never writes: the next load rehydrates only what `serializeActiveChats`
- * put in storage, so such a chat simply is not there any more.
+ * chat holding unsent records or authored pending messages has durable work
+ * even before that receipt. A chat with neither is a draft the store admits to
+ * its live map and never writes; a retained queue without a confirmed
+ * conversation identity is held for review after reload.
  *
  * Exported because it is half of the answer to "what counts as open work" —
  * see `activeChatHasWork` below.
@@ -930,10 +1067,17 @@ export function activeChatDurableId(
 export function isDurableActiveChat(chat: {
   conversationId?: string;
   unsentMessages?: unknown[];
+  queuedMessages?: unknown[];
+  pendingQueueDispatch?: { content: string };
   replay?: unknown;
 }): boolean {
   if (chat.replay) return false;
-  return Boolean(chat.conversationId || chat.unsentMessages?.length);
+  return Boolean(
+    chat.conversationId ||
+      chat.unsentMessages?.length ||
+      chat.queuedMessages?.length ||
+      chat.pendingQueueDispatch,
+  );
 }
 
 /**
@@ -951,10 +1095,10 @@ export function isDurableActiveChat(chat: {
  * and the dispatch receipt arriving, a first turn has messages but no
  * conversation id yet (`useActiveChatSessionMessaging` assigns it from the
  * receipt). Counting that chat as nothing would blink a live turn out of the
- * sidebar and back. Everything else a chat can hold mid-turn (a queued
- * follow-up, a streaming reply) implies a sent message, so `messages` is the
- * whole of it; an unsent draft in the composer is deliberately NOT work, on
- * the same evidence B9 rests on — it does not survive a reload either.
+ * sidebar and back. Authored queued follow-ups are durable work even before
+ * that first receipt arrives; hydration holds them until their conversation
+ * identity is confirmed. An unsent draft in the composer is deliberately
+ * excluded from this work count.
  */
 export function activeChatHasWork(chat: {
   conversationId?: string;
@@ -975,6 +1119,9 @@ export function serializeActiveChats(
       currentSessionId: chat.currentSessionId,
       agentSlug: chat.agentSlug!,
       queuedMessages: chat.queuedMessages || [],
+      queuedMessageMetadata: chat.queuedMessageMetadata,
+      pendingQueueDispatch: chat.pendingQueueDispatch,
+      pendingSendNow: chat.pendingSendNow,
       ...(chat.queuedMessageFailure
         ? { queuedMessageFailure: chat.queuedMessageFailure }
         : {}),
@@ -1064,6 +1211,30 @@ export function boundQueuedMessages(queued: readonly string[]): {
   return { kept, dropped };
 }
 
+export interface PendingMessageMetadata {
+  id: string;
+  mode: 'queue' | 'steer';
+  delivery?: 'steering' | 'indeterminate';
+  steerThreadId?: string;
+  steerTurnId?: string;
+}
+
+function reconcilePendingMetadata(
+  messages: string[],
+  previous: Pick<ChatUIState, 'queuedMessages' | 'queuedMessageMetadata'>,
+): PendingMessageMetadata[] {
+  const remaining = previous.queuedMessages.map((message, index) => ({
+    message,
+    metadata: previous.queuedMessageMetadata?.[index],
+  }));
+  return messages.map((message) => {
+    const index = remaining.findIndex((entry) => entry.message === message);
+    const matched =
+      index >= 0 ? remaining.splice(index, 1)[0].metadata : undefined;
+    return matched ?? { id: randomCorrelationId(), mode: 'queue' };
+  });
+}
+
 export function mergeChatUpdates(
   current: ChatUIState,
   updates: Partial<ChatUIState>,
@@ -1087,7 +1258,14 @@ export function mergeChatUpdates(
   const chat: ChatUIState = {
     ...current,
     ...nextUpdates,
-    ...(bounded.kept ? { queuedMessages: bounded.kept } : {}),
+    ...(bounded.kept
+      ? {
+          queuedMessages: bounded.kept,
+          queuedMessageMetadata: nextUpdates.queuedMessageMetadata
+            ? nextUpdates.queuedMessageMetadata.slice(bounded.dropped.length)
+            : reconcilePendingMetadata(bounded.kept, current),
+        }
+      : {}),
     // #2304: clears the open turn's start for every writer that closes the
     // turn fold (terminal events, session exit, a snapshot reporting
     // `hasActiveTurn: false`, conversation switch). A snapshot that reseeds
@@ -1181,6 +1359,9 @@ export function mergeChatUpdates(
     // survival then depended on some unrelated persistent update happening to
     // fire before the tab went away — which is not retention, it is luck.
     'queuedMessages' in nextUpdates ||
+    'queuedMessageMetadata' in nextUpdates ||
+    'pendingQueueDispatch' in nextUpdates ||
+    'pendingSendNow' in nextUpdates ||
     'queuedMessageFailure' in nextUpdates ||
     // archive#3706: this field IS part of the persisted
     // shape, and a Dismiss writes ONLY it — without this line the dismiss
@@ -1286,11 +1467,15 @@ export function removeQueuedMessageState(
   chat: ChatUIState,
   index: number,
 ): ChatUIState {
+  if (chat.queueSendNowPending || chat.queueDrainSettling) return chat;
   const queuedMessages = [...(chat.queuedMessages || [])];
+  const queuedMessageMetadata = [...(chat.queuedMessageMetadata || [])];
   queuedMessages.splice(index, 1);
+  queuedMessageMetadata.splice(index, 1);
   return {
     ...chat,
     queuedMessages,
+    queuedMessageMetadata,
   };
 }
 
@@ -1299,6 +1484,12 @@ export function editQueuedMessageState(
   index: number,
   newContent: string,
 ): ChatUIState {
+  if (
+    chat.queueSendNowPending ||
+    chat.queueDrainSettling ||
+    chat.queuedMessageMetadata?.[index]?.delivery
+  )
+    return chat;
   const queuedMessages = [...(chat.queuedMessages || [])];
   queuedMessages[index] = newContent;
   return {
@@ -1321,6 +1512,7 @@ export function reorderQueuedMessageState(
   fromIndex: number,
   toIndex: number,
 ): ChatUIState {
+  if (chat.queueSendNowPending || chat.queueDrainSettling) return chat;
   const queuedMessages = chat.queuedMessages || [];
   const length = queuedMessages.length;
   if (fromIndex < 0 || fromIndex >= length) {
@@ -1333,16 +1525,24 @@ export function reorderQueuedMessageState(
   const nextQueuedMessages = [...queuedMessages];
   const [moved] = nextQueuedMessages.splice(fromIndex, 1);
   nextQueuedMessages.splice(clampedToIndex, 0, moved);
+  const metadata = [...(chat.queuedMessageMetadata ?? [])];
+  if (metadata.length === length) {
+    const [movedMetadata] = metadata.splice(fromIndex, 1);
+    metadata.splice(clampedToIndex, 0, movedMetadata);
+  }
   return {
     ...chat,
+    queuedMessageMetadata: metadata,
     queuedMessages: nextQueuedMessages,
   };
 }
 
 export function clearQueueState(chat: ChatUIState): ChatUIState {
+  if (chat.queueSendNowPending || chat.queueDrainSettling) return chat;
   return {
     ...chat,
     queuedMessages: [],
+    queuedMessageMetadata: [],
   };
 }
 

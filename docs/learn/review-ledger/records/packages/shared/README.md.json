@@ -10,8 +10,6 @@
   "limits": "No independent npm installation or registry publication, arbitrary loader compatibility, full package build or live plugin activation. Registry signing fixture does not establish real key custody.",
 
   "sources": [
-    "packages/shared/package.json",
-
     "packages/shared/src/build.ts",
 
     "packages/shared/src/index.ts",
@@ -20,7 +18,15 @@
 
     "packages/shared/src/plugin-registry-signature.ts",
 
-    "packages/shared/src/plugin-tree-digest.ts"
+    "packages/shared/src/plugin-tree-digest.ts",
+
+    "packages/shared/package.json#/engines",
+
+    "packages/shared/package.json#/exports",
+
+    "packages/shared/package.json#/files",
+
+    "packages/shared/package.json#/name"
   ],
 
   "checks": [

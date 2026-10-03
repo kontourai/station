@@ -157,7 +157,7 @@ export function filterSkills(
  * — a claim the loader contradicted on every row (#1582 D6).
  */
 export const SKILLS_SUBTITLE =
-  'Every skill Station loaded, grouped by where it came from. Author your own here; install more from Registry.';
+  'Find reusable instructions, understand what they need, and use them with an agent. Add more through Registry or import a skill file.';
 
 /**
  * Where the loader found a skill, in the user's words.
@@ -231,6 +231,7 @@ export function buildSkillListItems(skills: readonly Skill[]) {
     // Only facts the LISTING carries: it has no `category`/`tags`, and a row
     // that printed an always-absent field would be a permanent blank.
     const subtitle = [
+      skill.description,
       commandWord ? `/${commandWord}` : null,
       formatSkillStatsSummary(skill),
     ]

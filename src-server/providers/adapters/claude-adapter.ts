@@ -46,6 +46,7 @@ import {
   validateHarnessQuestionAnswers,
 } from '@kontourai/station-shared/harness-questions';
 import {
+  type ClaudeAskReason,
   sessionGrantPermissionUpdates,
   type ToolRequestGrantInput,
   type ToolRequestSessionGrant,
@@ -91,6 +92,11 @@ import {
   ProviderTurnInProgressError,
   SendTurnRefusedError,
 } from '../adapter-shape.js';
+import {
+  CredentialProfileEnvironmentError,
+  type ResolvedAppHome,
+  usageCredentialAccountKey,
+} from '../app-home/app-home-profiles.js';
 import { detectClaudeAuthState } from '../auth/claude-auth.js';
 import type { CliCommandResult } from '../auth/cli-auth.js';
 import {
@@ -134,6 +140,11 @@ import {
   mapPermissionModeToApprovalMode,
   resolveClaudePermissionMode,
 } from './claude-approval-mode.js';
+import {
+  type ClaudeEngineProcess,
+  claudeExitDetailWithStderr,
+  createClaudeEngineProcess,
+} from './claude-code-spawn.js';
 import {
   type ClaudeToolServerSkip,
   resolveClaudeMcpServers,
@@ -588,6 +599,8 @@ function claudeModelCapabilities(
 
 type ClaudeSessionRecord = {
   session: ProviderSession;
+  /** #2932: the redacted end of the engine's stderr (claude-code-spawn.ts). */
+  engineStderrTail?: () => string;
   promptQueue: AsyncUserMessageQueue;
   query: Query;
   pendingRequests: Map<string, PendingRequest>;
@@ -776,7 +789,7 @@ export interface ClaudeAdapterOptions {
    */
   getAppHomeEnv?: (
     credentialProfileRef?: string,
-  ) => Promise<Record<string, string> | undefined>;
+  ) => Promise<ResolvedAppHome | undefined>;
   /**
    * station#2072: per-connection env overrides + explicit config home,
    * resolved from `AgentConnectionSettings.config` (`env` map and
@@ -818,6 +831,7 @@ export interface ClaudeAdapterOptions {
   createInProcessStationControl?: (
     threadId: string,
     tenantExecutionContext?: TenantExecutionContext,
+    allowedTools?: readonly string[],
   ) => unknown;
   /**
    * #90 D14: serves the built-in browser tools (`station-browser`) IN-PROCESS
@@ -1131,9 +1145,10 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         input.threadId,
         input.agent,
       );
-    const appHomeEnv = sourceCursor
+    const resolvedHome = sourceCursor
       ? undefined
       : await this.resolveAppHomeEnv(input.credentialProfileRef);
+    const appHomeEnv = resolvedHome?.env;
     // station#2072: the connection env's routing keys apply to every SDK
     // spawn, but its config-home key must NOT apply where the app-home env
     // is deliberately absent (adoption and source-affinity resume —
@@ -1158,6 +1173,9 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       augmentedEnv,
       preToolPolicy,
       claudeExecutable,
+      resolvedHome
+        ? usageCredentialAccountKey(this.provider, resolvedHome.profileRef)
+        : undefined,
     );
   }
 
@@ -1347,12 +1365,16 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     augmentedEnv?: Record<string, string | undefined>,
     preToolPolicy?: StagedPreToolPolicyEvaluator,
     claudeExecutable?: string | null,
+    usageAccountKey?: string,
   ): ProviderSession {
     const now = new Date().toISOString();
     const promptQueue = new AsyncUserMessageQueue();
     const permissionMode = this.resolvePermissionMode(input.modelOptions);
     const appHome: 'profile' | 'global' = appHomeEnv ? 'profile' : 'global';
     const toolServers = this.resolveAgentToolServers(input);
+    // #2932: Station owns the engine spawn so it can read the permission
+    // asks on the engine's stdout (see claude-code-spawn.ts).
+    const engineProcess = createClaudeEngineProcess();
     let sdkQuery: ReturnType<typeof query>;
     try {
       // After station-control, so the browser server reuses its credential.
@@ -1361,6 +1383,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         prompt: promptQueue,
         options: this.buildOptions(
           input,
+          engineProcess,
           persistSession,
           permissionMode,
           appHomeEnv,
@@ -1405,6 +1428,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       allowsBypassPermissions: permissionMode === 'bypassPermissions',
       currentModelOptions: claudeAppliedModelOptions(input.modelOptions),
       skillsOverlayDir,
+      engineStderrTail: engineProcess.stderrTail,
     };
     // #2316/#2348: a subagent that ended can no longer be waiting on the
     // permission requests it raised; withdraw exactly those. Its siblings'
@@ -1424,10 +1448,15 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       method: 'session.started',
       sessionId: input.threadId,
       initialState: 'created',
-      metadata: { ...input.metadata, cwd: input.cwd },
+      metadata: {
+        ...input.metadata,
+        cwd: input.cwd,
+        usageAccountKey,
+      },
     });
     const baseConfiguredMetadata: Record<string, unknown> = {
       ...input.metadata,
+      usageAccountKey,
       ...effectiveModelMetadata(input.modelId, record.currentModelOptions),
       // Explicit resolved values (not just the raw modelOptions spread
       // above) so the durable record reflects what the adapter actually
@@ -1945,6 +1974,14 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     // confirms what happened; a second Stop must not clear the first one's
     // still-pending receipt either.
     await record.query.interrupt();
+    // #3071: the SDK can ask for one more permission while that interrupt is
+    // in flight. Whatever was raised in the gap is settled before the abort
+    // by the same rule as above, a subagent's included: every reader of the
+    // transcript retires every approval on `turn.aborted`
+    // (`approvalRetiredBy`), so a request left pending here would be live
+    // with no surface showing it. A background subagent that survives the
+    // stop loses that one call and asks again.
+    this.cancelPendingRequests(record, threadId);
     this.publish({
       eventId: crypto.randomUUID(),
       provider: this.provider,
@@ -2577,6 +2614,14 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     if (toolServers === undefined) return {};
 
     const tenantExecutionContext = input.tenantExecutionContext;
+    const control = toolServers.find(
+      (server) => server.id === 'station-control',
+    );
+    const selectedControlTools = control?.disabledTools?.length
+      ? (control.allowedTools ?? control.toolNames ?? []).filter(
+          (name) => !control.disabledTools!.includes(name),
+        )
+      : control?.allowedTools;
     const { servers, skipped } = resolveClaudeMcpServers(
       toolServers,
       {
@@ -2589,10 +2634,16 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         ...(this.options.createInProcessStationControl
           ? {
               inProcess: () =>
-                this.options.createInProcessStationControl!(
-                  input.threadId,
-                  tenantExecutionContext,
-                ),
+                selectedControlTools !== undefined
+                  ? this.options.createInProcessStationControl!(
+                      input.threadId,
+                      tenantExecutionContext,
+                      selectedControlTools,
+                    )
+                  : this.options.createInProcessStationControl!(
+                      input.threadId,
+                      tenantExecutionContext,
+                    ),
             }
           : {}),
         ...(tenantExecutionContext ? { tenantExecutionContext } : {}),
@@ -2647,6 +2698,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
 
   private buildOptions(
     input: ProviderSessionStartInput,
+    engineProcess: ClaudeEngineProcess,
     persistSession = false,
     permissionMode?: PermissionMode,
     appHomeEnv?: Record<string, string>,
@@ -2661,6 +2713,25 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     const modelOptions = claudeAppliedModelOptions(input.modelOptions);
     return {
       cwd: input.cwd,
+      ...(input.agent?.toolServers?.some(
+        (server) =>
+          server.allowedTools !== undefined || server.disabledTools?.length,
+      )
+        ? {
+            disallowedTools: input.agent.toolServers.flatMap((server) =>
+              [
+                ...new Set([
+                  ...(server.disabledTools ?? []),
+                  ...(server.allowedTools !== undefined
+                    ? (server.toolNames ?? []).filter(
+                        (name) => !server.allowedTools!.includes(name),
+                      )
+                    : []),
+                ]),
+              ].map((name) => `mcp__${server.id}__${name}`),
+            ),
+          }
+        : {}),
       model: input.modelId,
       // #1551: run the Claude Code the user installed. Omitted when none
       // resolved, which is the SDK's documented "use the built-in executable"
@@ -2700,19 +2771,12 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       ...(skillsOverlayDir
         ? { additionalDirectories: [skillsOverlayDir] }
         : {}),
-      // Station#1157: only set when the agent authored toolServers (see
-      // resolveAgentToolServers) — an unauthored session leaves both
-      // options unset, matching Claude's own default MCP discovery
-      // (project/user .mcp.json, settings) exactly as before this
-      // feature. `strictMcpConfig: true` is required alongside an
-      // authored (even empty) `mcpServers`: an authored empty array is the
-      // agent explicitly disabling every tool server, and without
-      // strictMcpConfig the SDK would still auto-discover the connection's
-      // own local MCP config underneath it.
+      // Additive selection keeps the harness's discovery; legacy and explicit
+      // replacement keep an authored-empty list authoritative.
       ...(mcpServers !== undefined
         ? {
             mcpServers: { ...mcpServers, ...builtinServers },
-            strictMcpConfig: true,
+            strictMcpConfig: input.agent?.toolServerMode !== 'add',
           }
         : builtinServers !== undefined
           ? // #90 D14: Station's own built-ins alone never switch the SDK
@@ -2776,9 +2840,27 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         ...(augmentedEnv ?? process.env),
         ...connectionEnv,
         ...appHomeEnv,
+        ...(input.agent?.toolServerLoading
+          ? {
+              ENABLE_TOOL_SEARCH:
+                input.agent.toolServerLoading === 'always' ? 'false' : 'true',
+            }
+          : {}),
         TMPDIR: ensureEngineSpawnTmpDir(),
       }),
+      // #2932: the SDK reads stdout from the process this returns, after
+      // Station's tap has recorded each permission ask on it.
+      spawnClaudeCodeProcess: engineProcess.spawn,
       canUseTool: async (toolName, toolInput, options) => {
+        // #2932: the structured reason of this ask, read from its frame and
+        // consumed here. Null when no frame was recorded for the request
+        // id: that ask counts as an escalation and prompts.
+        const recordedAsk = engineProcess.asks.take(options.requestId);
+        const { requiresUserInteraction, ...recordedReason } =
+          recordedAsk ?? {};
+        const claudeAsk: ClaudeAskReason | null = recordedAsk
+          ? recordedReason
+          : null;
         const questionnaire =
           toolName === 'AskUserQuestion'
             ? claudeQuestionnaire(toolInput)
@@ -2792,8 +2874,11 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         const record = this.requireSession(input.threadId);
         // #2932: the engine's ask flags. Agent SDK 0.3.278 forwards
         // suppressAlwaysAllowRule and defaultToNo; requiresUserInteraction is
-        // read when an SDK forwards it.
-        const askFlags = claudeAskFlags(options);
+        // read from the frame, or from the options if an SDK forwards it.
+        const askFlags = claudeAskFlags({
+          ...options,
+          ...(requiresUserInteraction ? { requiresUserInteraction } : {}),
+        });
         // #2932: the reason is sanitised once, and that one value is both
         // matched here and published, so the surfaces compute the same
         // grant. Sanitising leaves the plain-text literals unchanged.
@@ -2807,6 +2892,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           toolInput,
           decisionReason,
           ...askFlags,
+          claudeAsk,
         };
         // Fix (external autoApprove parity): match Station's own
         // engine — which honors the session agent's
@@ -2823,7 +2909,11 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         // a directory widening, a rule-forced ask, a read or edit safety
         // check) or a plan exit: those always reach a person, even for `*`.
         // #2932 adds a sandbox override, a sandbox network-host ask, the
-        // engine's literal escalation reasons and its ask flags.
+        // engine's literal escalation reasons, its ask flags and its
+        // structured reason: a safety check, an ask rule on a single
+        // command, any PowerShell ask, or an ask whose frame was not read.
+        // A chained Bash command hides its parts' ask rules (see
+        // `claudeAskEscalates`).
         if (
           !questionnaire &&
           toolRequestIsPlainCall(request) &&
@@ -2877,6 +2967,14 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           provider: this.provider,
           threadId: input.threadId,
           createdAt: new Date().toISOString(),
+          // #3071: names the turn only for a request the turn ITSELF is
+          // waiting on (the main thread's). A turn's abort settles the
+          // requests that name it, for every reader of the log. A subagent's
+          // request names no turn: a background subagent can outlive the
+          // turn, a stop included, so the turn's abort must not close it.
+          ...(!options.agentID && record.activeTurnId
+            ? { turnId: record.activeTurnId }
+            : {}),
           requestId,
           method: 'request.opened',
           requestType: 'approval',
@@ -2907,6 +3005,8 @@ export class ClaudeAdapter implements ProviderAdapterShape {
             // input; the sanitised reason text the adapter matched.
             ...(decisionReason !== undefined ? { decisionReason } : {}),
             ...askFlags,
+            // The structured reason, or null when its frame was not read.
+            claudeAsk,
             ...(record.currentPermissionMode
               ? { permissionMode: record.currentPermissionMode }
               : {}),
@@ -2940,7 +3040,12 @@ export class ClaudeAdapter implements ProviderAdapterShape {
             this.cancelPendingRequest(record, input.threadId, requestId);
         });
       },
-      ...(preToolPolicy && input.agent
+      ...(input.agent &&
+      (preToolPolicy ||
+        input.agent.toolServers?.some(
+          (server) =>
+            server.allowedTools !== undefined || server.disabledTools?.length,
+        ))
         ? {
             hooks: {
               PreToolUse: [
@@ -2950,8 +3055,38 @@ export class ClaudeAdapter implements ProviderAdapterShape {
                       DEFAULT_PRE_TOOL_POLICY_TIMEOUT_MS,
                   ),
                   hooks: [
-                    async (hookInput) =>
-                      evaluateClaudePreToolPolicy(
+                    async (hookInput) => {
+                      if (
+                        'tool_name' in hookInput &&
+                        typeof hookInput.tool_name === 'string'
+                      ) {
+                        const rawToolName = hookInput.tool_name;
+                        const server = input.agent?.toolServers?.find((entry) =>
+                          rawToolName.startsWith(`mcp__${entry.id}__`),
+                        );
+                        const name = server
+                          ? hookInput.tool_name.slice(
+                              `mcp__${server.id}__`.length,
+                            )
+                          : undefined;
+                        if (
+                          server &&
+                          name !== undefined &&
+                          (server.disabledTools?.includes(name) ||
+                            (server.allowedTools !== undefined &&
+                              !server.allowedTools.includes(name)))
+                        )
+                          return {
+                            hookSpecificOutput: {
+                              hookEventName: 'PreToolUse' as const,
+                              permissionDecision: 'deny' as const,
+                              permissionDecisionReason:
+                                'Tool not selected for this agent.',
+                            },
+                          };
+                      }
+                      if (!preToolPolicy) return {};
+                      return evaluateClaudePreToolPolicy(
                         preToolPolicy,
                         hookInput as {
                           tool_name: string;
@@ -2965,7 +3100,8 @@ export class ClaudeAdapter implements ProviderAdapterShape {
                         },
                         this.options.preToolPolicyTimeoutMs ??
                           DEFAULT_PRE_TOOL_POLICY_TIMEOUT_MS,
-                      ),
+                      );
+                    },
                   ],
                 },
               ],
@@ -3010,7 +3146,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       //
       // Nothing Station wires itself depends on the cascade either way:
       // `resolveAgentToolServers` builds `mcpServers` explicitly (station-control
-      // included) and passes `strictMcpConfig`, and Station's `PreToolUse` hook is
+      // included) and makes replacement selections strict; Station's `PreToolUse` hook is
       // the SDK `hooks` OPTION, not a settings file. The model-catalog probe in
       // `listModelCatalog` does pin `settingSources: []` — it runs no tools and
       // wants no ambient configuration at all.
@@ -3216,7 +3352,12 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           record.terminalResultObserved === 'binding-dead' ? 'dead' : 'error';
         return;
       }
-      const detail = errorMessage(error);
+      // The SDK folds the engine's stderr into an exit error only for its
+      // own spawn; Station's spawn kept the tail, so add it here.
+      const detail = claudeExitDetailWithStderr(
+        errorMessage(error),
+        record.engineStderrTail?.(),
+      );
       const message = record.session.model
         ? `Claude model "${record.session.model}" failed: ${detail}`
         : detail;
@@ -3269,14 +3410,15 @@ export class ClaudeAdapter implements ProviderAdapterShape {
    */
   private async resolveAppHomeEnv(
     credentialProfileRef?: string,
-  ): Promise<Record<string, string> | undefined> {
+  ): Promise<ResolvedAppHome | undefined> {
     try {
       return await this.options.getAppHomeEnv?.(credentialProfileRef);
     } catch (error) {
-      if (credentialProfileRef) {
-        throw new Error(
-          'Credential profile environment could not be prepared.',
-        );
+      if (
+        credentialProfileRef ||
+        error instanceof CredentialProfileEnvironmentError
+      ) {
+        throw new CredentialProfileEnvironmentError();
       }
       (this.options.logger ?? console).warn?.(
         `Claude app-home profile lookup failed; continuing with the global Claude Code config: ${errorMessage(error)}`,

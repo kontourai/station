@@ -18,7 +18,65 @@
 
     "src-ui/src/hooks/useActiveChatSessionMessaging.ts",
 
-    "src-ui/src/lib/foregroundMessageDispatch.ts"
+    "src-ui/src/lib/foregroundMessageDispatch.ts",
+
+    "src-ui/src/components/chat-dock/MobileTaskSwitcher.tsx",
+
+    "src-ui/src/components/chat-dock/ChatDockProjectSwitcherSheet.tsx",
+
+    "src-ui/src/components/chat-dock/ChatDockProjectContext.tsx",
+
+    "src-ui/src/components/PickerCreateAction.tsx",
+
+    "src-ui/src/components/PickerCreateAction.css",
+
+    "src-ui/src/components/inbox-row/InboxRowStatus.tsx",
+
+    "src-ui/src/contexts/navigation-store.ts",
+
+    "tests/cross-runtime-chat-switching.spec.ts",
+
+    "src-ui/src/components/chat-dock/ChatDock.tsx",
+
+    "src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx",
+
+    "src-ui/src/components/chat-dock/ChatDockInboxRows.tsx",
+
+    "src-ui/src/components/chat-dock/ChatDockMobileOverflowSheet.tsx",
+
+    "src-ui/src/components/chat/chat.css",
+
+    "src-ui/src/index.css",
+
+    "src-ui/src/views/home/work-status.ts",
+
+    "src-ui/src/views/home/work-facts.ts",
+
+    "src-ui/src/hooks/useLongPress.ts",
+
+    "tests/helpers/long-press.ts",
+
+    "src-ui/src/components/chat/ChatInputArea.tsx",
+
+    "src-ui/src/components/chat/QueuedMessages.tsx",
+
+    "src-ui/src/components/chat/ComposerIconAction.tsx",
+
+    "src-ui/src/components/chat/PortableDraftsMenu.tsx",
+
+    "src-ui/src/components/chat/ChatSettingsPanel.tsx",
+
+    "packages/contracts/src/device-settings.ts",
+
+    "src-ui/src/components/status/chatStatus.ts",
+
+    "src-server/services/orchestration/event-store.ts",
+
+    "src-ui/src/__tests__/ChatInputArea.test.tsx",
+
+    "src-ui/src/__tests__/ChatDockBody.sessionFailureBanner.test.tsx",
+
+    "src-ui/src/components/chat/QueuedMessages.css"
   ],
 
   "checks": [

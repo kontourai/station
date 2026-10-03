@@ -128,6 +128,13 @@ Station ships the reserved, non-deletable `station` Agent for operating the
 workspace through Station Control. Its engine binding, model readiness, tool
 delivery, and caller authority still determine which operations can proceed.
 
+Its task guidance asks it to discover suitable installed skills and available
+tools when useful, within the capabilities already supplied to it. Read-only
+Station Control catalogs support that discovery where the engine can receive
+them. This guidance installs nothing, enables nothing and grants no new access;
+ordinary authored agents and direct CLI aliases retain their own configuration.
+
+
 Its Station tools cannot install a plugin. An install is approved by a person who has read its preview — its permissions and the parts that run in Station’s own page — on the Plugins page or with `station plugin install <source>`. Asked to install one, the assistant points to that review. It proposes instead: `propose_plugin_install`, `update_plugin` and `remove_plugin` leave an ask that a person completes from Plugins.
 
 That capability comes entirely from the `station-control` MCP tool server. `station-control` calls Station's own API, so it needs a credential for this running instance. A credential can only be handed to an engine over a channel that has been reviewed as not crossing the secret boundary.
@@ -212,6 +219,18 @@ credentials or live state. This is not an exhaustive server inventory: the
 has its own delivery and authorization boundary.
 
 Third-party MCP servers are configured as integrations and can be attached to an Agent. Delivery to an external engine follows that engine's transport and credential-custody policy; an empty environment does not grant a server arbitrary authority. The built-in Station Docs server has a verified runtime identity and no credential requirement. Station Control is a separate capability with its own authorization and delivery requirements.
+
+Open an Agent's Tools section and choose **Station** or **Add**.
+Expand an integration to search and choose Read only, All, None, or individual
+tools. Choose a tool group to narrow the checklist; Read only, All, and None
+apply to that group and preserve choices elsewhere. Station additions start
+read-only where individual selection is supported.
+The shield opens approvals; the gear opens harness settings. Browser and workflow
+options are under Advanced. Changes apply to new chats.
+Claude and Codex can keep their configured harness MCP integrations while adding
+Station's selections. Claude also offers native on-demand tool loading. Generic
+connected engines receive whole integrations and disclose unsupported restrictions.
+The [Agent guide](../guides/agents.md#mcp-tool-configuration) owns setup and limits.
 
 Mutating tools remain subject to their authorization and approval rules.
 Inspect the specific tool result and the approval or execution evidence

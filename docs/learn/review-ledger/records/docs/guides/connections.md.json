@@ -256,7 +256,41 @@
 
     "packages/sdk/src/engine-accounts.ts",
 
-    "src-ui/src/__tests__/EngineAccountOverview.test.tsx"
+    "src-ui/src/__tests__/EngineAccountOverview.test.tsx",
+
+    "packages/connect/src/__tests__/DevicePairingPanel.test.tsx",
+
+    "packages/connect/src/core/hostInput.ts",
+
+    "packages/connect/src/react/connection-manager-modal-utils.ts",
+
+    "packages/connect/src/react/HttpConnectionConsent.tsx",
+
+    "packages/contracts/src/usage-rollup.ts",
+
+    "src-server/analytics/usage-rollup-service.ts",
+
+    "src-server/services/connections/__tests__/credential-usage.test.ts",
+
+    "src-server/services/connections/__tests__/engine-account-history.test.ts",
+
+    "src-server/services/connections/credential-usage-metadata.ts",
+
+    "src-server/services/connections/engine-account-history.ts",
+
+    "src-server/services/orchestration/__tests__/engine-account-usage-attribution.test.ts",
+
+    "src-server/services/orchestration/session-transcript-reads.ts",
+
+    "src-ui/src/components/header/HeaderActions.tsx",
+
+    "src-ui/src/components/header/StationSwitcherMenu.tsx",
+
+    "src-ui/src/components/OnboardingGate.tsx",
+
+    "src-ui/src/platform/native/__tests__/pairingTransport.test.ts",
+
+    "src-ui/src/platform/native/pairingTransport.ts"
   ],
 
   "checks": [

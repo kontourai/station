@@ -1,3 +1,4 @@
+import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import type { ConversationTurnActivity } from '@kontourai/station-contracts/orchestration';
 import { useEffect, useState } from 'react';
 import { formatToolName } from '../../utils/chat-progress';
@@ -28,11 +29,18 @@ function epochMs(value: string | undefined): number | undefined {
   return Number.isNaN(ms) ? undefined : ms;
 }
 
+/**
+ * A tool line in three pieces so the tool's name — which can be a whole
+ * command line — is the one part that shrinks to an ellipsis, while the
+ * lead ("Running") and the outcome or elapsed time stay readable.
+ */
+type ToolLine = { lead: string; name: string; tail: string };
+
 type TurnActivityProgressParts = {
   /** "Running bash · 4m 10s", with "(+1 more)" for parallel calls. */
-  running?: string;
+  running?: ToolLine;
   /** "Last: bash · failed", only between tools of the open turn. */
-  lastTool?: string;
+  lastTool?: ToolLine;
   /** "No output for 12m 3s", only while the watchdog holds an observation. */
   silence?: string;
 };
@@ -59,11 +67,15 @@ function describeTurnActivity(
   if (current) {
     const startedAt = epochMs(current.startedAt);
     const others = running.length - 1;
-    parts.running = `Running ${formatToolName(current.name)}${
-      startedAt === undefined
-        ? ''
-        : ` · ${formatActivityDuration(now - startedAt)}`
-    }${others > 0 ? ` (+${others} more)` : ''}`;
+    parts.running = {
+      lead: 'Running ',
+      name: formatToolName(current.name),
+      tail: `${
+        startedAt === undefined
+          ? ''
+          : ` · ${formatActivityDuration(now - startedAt)}`
+      }${others > 0 ? ` (+${others} more)` : ''}`,
+    };
   } else if (activity.lastTool) {
     // `lastTool` is the newest terminal on ANY child, in or out of a turn.
     // Only one that settled inside this turn says what this turn is between.
@@ -74,14 +86,16 @@ function describeTurnActivity(
       turnStartedAt !== undefined &&
       completedAt >= turnStartedAt
     ) {
-      parts.lastTool = `Last: ${formatToolName(activity.lastTool.name)} · ${
-        OUTCOME_WORDS[activity.lastTool.outcome]
-      }`;
+      parts.lastTool = {
+        lead: 'Last: ',
+        name: formatToolName(activity.lastTool.name),
+        tail: ` · ${OUTCOME_WORDS[activity.lastTool.outcome]}`,
+      };
     }
   }
   const silentSince = epochMs(activity.progressSilence?.silentSinceEventAt);
   if (silentSince !== undefined) {
-    parts.silence = `No output for ${formatActivityDuration(now - silentSince)}`;
+    parts.silence = `No response from ${engineDisplayLabel(activity.progressSilence?.provider ?? '') ?? 'the engine'} for ${formatActivityDuration(now - silentSince)}. Still waiting.`;
   }
   return parts;
 }
@@ -132,7 +146,16 @@ export function TurnActivityProgress({
       data-testid="turn-activity-progress"
       aria-live="off"
     >
-      {tool ? <span className="elapsed-wait">{tool}</span> : null}
+      {tool ? (
+        <span
+          className="elapsed-wait turn-activity-progress__tool"
+          title={`${tool.lead}${tool.name}${tool.tail}`}
+        >
+          <span className="turn-activity-progress__fixed">{tool.lead}</span>
+          <span className="turn-activity-progress__name">{tool.name}</span>
+          <span className="turn-activity-progress__fixed">{tool.tail}</span>
+        </span>
+      ) : null}
       {parts.silence ? (
         <span
           className="elapsed-wait"

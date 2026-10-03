@@ -1,0 +1,7 @@
+{
+  "revision": "7e8519008b556d901570139123f56890cf07a113",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed slice H follow-up against ci-health collector, snapshot metrics, rendering, history parser and regression tests. Verified exact merge-queue bot login; force-push/event-time classification with commit-date fallback; unfinished wait/concurrency cutoff, incomplete marker and completed-group exclusion; failure-only headline with cancellation/timeout counts; cancelled-duration exclusion, exact origin matching and CRLF history. Focused ci-health and mutation-runner tests passed, as did scripts/e2e typechecks, fixture guard, lint and code-health gate. Live GitHub collection was not exercised.","inputs":["docs/guides/testing.md"]}
+  ]
+}

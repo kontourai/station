@@ -120,6 +120,26 @@ Action inventories allow explicit deferred cases. The
 named page-local responsive rules. A green ratchet is structural evidence,
 not a universal accessibility, keyboard or device certificate.
 
+### Mobile sheet typography
+
+At the shared mobile breakpoint, `responsive-surface-panel` raises the compact
+Station text aliases to the published Kontour UI tokens: supporting text uses
+`--k-text-md` (14px), and shared sheet headings and action-menu labels use
+`--k-text-lg` (18px). Desktop density remains owned by each surface. The task
+picker uses 18px titles with up to two lines, Agent icons, 14px project/status
+metadata, and a pinned circular add action. Project names wrap, and both pickers
+reuse [PickerCreateAction](../../src-ui/src/components/PickerCreateAction.tsx)
+for the same 52px icon button, accessible name, hover label and footer geometry.
+Creation controls remain outside the scrolling lists. The task picker presents
+Input/Approval compactly and keeps reasons readable in full through details;
+Git and PR data are read only when that details surface opens.
+
+Shared panel entrances fade and translate upward by `--k-space-4` on mobile,
+without scaling touch targets. Existing surfaces with a directional entrance
+keep their own motion. The global reduced-motion reset still applies. Source
+rules describe the treatment; browser checks at narrow widths, both themes,
+long content and short heights establish whether controls remain reachable.
+
 ### Action rows
 
 A header, toolbar or action row shows at most two labelled actions. Further

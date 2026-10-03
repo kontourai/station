@@ -26,8 +26,6 @@
 
     "packages/sdk/src/queryFactories.ts",
 
-    "packages/shared/package.json",
-
     "pnpm-lock.yaml",
 
     "scripts/mobile-css-ratchet.mjs",

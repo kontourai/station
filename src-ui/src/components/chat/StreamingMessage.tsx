@@ -7,6 +7,7 @@ import type {
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useStreamingContent } from '../../hooks/useStreamingContent';
 import { useStreamingHaptics } from '../../hooks/useStreamingHaptics';
+import { retryActivityLabel } from '../../utils/chat-activity';
 import { deriveToolProgressSummary } from '../../utils/chat-progress';
 import { openTurnStartedAtMs } from '../../utils/conversation-activity';
 import type { OwnerAttribution } from '../../utils/ownerAttribution';
@@ -16,7 +17,10 @@ import { FilePartPreview } from './FilePartPreview';
 import { MessageAttribution } from './message-bubble/MessageAttribution';
 import { INLINE_RUN_LIMIT } from './message-bubble/MessageContent';
 import { StreamingMarkdown } from './StreamingMarkdown';
-import { ToolCallBatchBoundary } from './ToolCallBatchBoundary';
+import {
+  ToolCallBatchBoundary,
+  usePreloadToolCallBatch,
+} from './ToolCallBatchBoundary';
 import { TurnActivityProgress } from './TurnActivityProgress';
 import { splitToolCallRuns } from './tool-call-runs';
 import { UIBlockRenderer } from './UIBlockRenderer';
@@ -82,6 +86,8 @@ export function deriveActivityLabel(
   activityHint: ChatActivityHint | undefined,
   hasReasoningPart: boolean,
 ): string {
+  if (activityHint?.kind === 'retrying')
+    return retryActivityLabel(activityHint);
   if (activityHint?.kind === 'thinking') {
     return activityHint.detail
       ? `Thinking… ${activityHint.detail}`
@@ -150,13 +156,20 @@ export function StreamingMessageView({
     );
   const activityLabel = deriveActivityLabel(activityHint, hasReasoningPart);
   const workingLabel =
-    progressSummary && !renderToolCall ? progressSummary.label : activityLabel;
+    activityHint?.kind === 'retrying'
+      ? activityLabel
+      : progressSummary && !renderToolCall
+        ? progressSummary.label
+        : activityLabel;
   // Consecutive tool-call parts collapse into one batch while the turn is
   // still streaming too — classification (inside the lazy ToolCallBatch
   // chunk) marks a batch in-progress (latest-call headline) whenever one
   // of its calls is still `running`, so the collapsed summary never
   // claims a batch is done before it is.
   const blocks = useMemo(() => splitToolCallRuns(contentParts), [contentParts]);
+  usePreloadToolCallBatch(
+    blocks.some((block) => block.type === 'tool-call-run'),
+  );
   useEffect(() => {
     // The numeric revision is intentionally read here: it is the O(1)
     // dependency that replaces rebuilding the complete transcript string.
@@ -253,7 +266,8 @@ export function StreamingMessageView({
         )}
 
         {!suppressActivity &&
-          (statusLabel ||
+          (activityHint?.kind === 'retrying' ||
+            statusLabel ||
             workingStartedAt !== undefined ||
             elapsedMs !== undefined ||
             (!hasAnswerText && !(progressSummary && renderToolCall))) && (
@@ -263,14 +277,18 @@ export function StreamingMessageView({
               title={progressSummary?.toolName}
             >
               {!statusLabel && <LoadingDots />}
-              {statusLabel ||
-              elapsedMs !== undefined ||
-              workingStartedAt !== undefined ? (
+              {activityHint?.kind === 'retrying' ? (
+                <span className="elapsed-wait">{activityLabel}</span>
+              ) : statusLabel ||
+                elapsedMs !== undefined ||
+                workingStartedAt !== undefined ? (
                 <ElapsedWait
-                  label={
-                    statusLabel ??
-                    `${workingLabel.replace(/[.\u2026]+$/u, '')} for`
-                  }
+                  // The clock is the TURN's (server open-turn start), so the
+                  // timed label names the turn, never the current phase:
+                  // "Thinking for 6:59" claimed seven minutes of thinking
+                  // across a turn that spent them running a command. What
+                  // the turn is doing now is the progress row's to say.
+                  label={statusLabel ?? 'Working for'}
                   separator={statusLabel ? ' · ' : ' '}
                   startedAt={statusLabel ? mountedAt : workingStartedAt}
                   elapsedMs={elapsedMs}

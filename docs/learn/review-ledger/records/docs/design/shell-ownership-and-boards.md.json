@@ -20,7 +20,11 @@
 
     "src-ui/src/components/project-sidebar/ProjectSidebarBoards.tsx",
 
-    "src-ui/src/views/PersonalBoardView.tsx"
+    "src-ui/src/views/PersonalBoardView.tsx",
+
+    "src-ui/src/components/session-detail/useSessionTranscriptScroll.ts",
+
+    "src-ui/src/contexts/chat-drafts-store.ts"
   ],
 
   "checks": [

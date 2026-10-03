@@ -25,7 +25,7 @@ import {
  * `lifecycleState` is how two surfaces come to disagree about one session —
  * so the sessions are converted to `HomeWorkItem`s by Home's own adapter
  * (`buildOrchestrationItems`) and handed to Home's own partition, including
- * its live split into Needs you / Running / Idle (`liveLaneFor`). Everything
+ * its live split into Needs you / Running / Idle (`workStatus`). Everything
  * lane-specific to this surface is the lane ORDER and labels, which are
  * presentation.
  */
@@ -89,7 +89,7 @@ const NO_SNOOZE: ReadonlyMap<string, number> = new Map();
 // the mobile activity groups adopted the same pattern (archive#3227 A6), so
 // the two store-less surfaces share one seeding rule instead of two copies.
 
-// "Needs you" is `liveLaneFor`'s `Needs attention` lane — the fold
+// "Needs you" is `workStatus`'s `Needs attention` lane — the fold
 // `orchestrationLifecycleLabel` already computes from `pendingReview`/
 // `needs_input`/`review_pending`/`blocked`, gated on `answerability` so a
 // session nothing can answer is NOT claimed as yours to act on (it is Idle,

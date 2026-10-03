@@ -36,7 +36,9 @@
 
     "scripts/run-verification.mjs",
 
-    "scripts/verification-lanes.mjs"
+    "scripts/verification-lanes.mjs",
+
+    "scripts/__tests__/trust-reconcile-manifest.test.ts"
   ],
 
   "checks": [

@@ -2,6 +2,7 @@ import { useAwsProfilesQuery } from '@kontourai/station-sdk';
 import { Fragment, useId, useMemo } from 'react';
 import { Button } from '../../components/Button';
 import { ConnectionReadinessNotice } from '../../components/connections/ConnectionReadinessNotice';
+import { InfoTip } from '../../components/InfoTip';
 import { CheckGlyph, CloseGlyph } from '../../components/icons/Glyph';
 import { ResponsiveSurfaceActions } from '../../components/ResponsiveDialogSurface';
 import { Empty, ErrorState, SkeletonBlock } from '../../components/state';
@@ -31,6 +32,7 @@ export function DefaultModelField({
   options,
   placeholder,
   hint,
+  hintPlacement = 'inline',
   onChange,
 }: {
   id: string;
@@ -44,13 +46,23 @@ export function DefaultModelField({
   options: Array<{ id: string; name: string }>;
   placeholder: string;
   hint: string;
+  hintPlacement?: 'inline' | 'tooltip';
   onChange: (value: string) => void;
 }) {
   return (
     <div className="editor-field">
-      <label className="editor-label" htmlFor={id}>
-        {label}
-      </label>
+      {hintPlacement === 'tooltip' ? (
+        <div className="editor-label-row">
+          <label className="editor-label" htmlFor={id}>
+            {label}
+          </label>
+          <InfoTip label={label}>{hint}</InfoTip>
+        </div>
+      ) : (
+        <label className="editor-label" htmlFor={id}>
+          {label}
+        </label>
+      )}
       {options.length > 0 ? (
         <select
           id={id}
@@ -75,7 +87,9 @@ export function DefaultModelField({
           onChange={(event) => onChange(event.target.value)}
         />
       )}
-      <div className="editor-field-hint">{hint}</div>
+      {hintPlacement === 'inline' && (
+        <div className="editor-field-hint">{hint}</div>
+      )}
     </div>
   );
 }
@@ -95,20 +109,31 @@ export function ProviderRegionField({
   id,
   value,
   hint,
+  hintPlacement = 'inline',
   disabled,
   onChange,
 }: {
   id: string;
   value: string;
   hint?: string;
+  hintPlacement?: 'inline' | 'tooltip';
   disabled?: boolean;
   onChange: (value: string) => void;
 }) {
   return (
     <div className="editor-field">
-      <label className="editor-label" htmlFor={id}>
-        Region
-      </label>
+      {hint && hintPlacement === 'tooltip' ? (
+        <div className="editor-label-row">
+          <label className="editor-label" htmlFor={id}>
+            Region
+          </label>
+          <InfoTip label="Region">{hint}</InfoTip>
+        </div>
+      ) : (
+        <label className="editor-label" htmlFor={id}>
+          Region
+        </label>
+      )}
       <input
         id={id}
         className="editor-input"
@@ -118,7 +143,9 @@ export function ProviderRegionField({
         disabled={disabled}
         onChange={(event) => onChange(event.target.value)}
       />
-      {hint ? <div className="editor-hint">{hint}</div> : null}
+      {hint && hintPlacement === 'inline' ? (
+        <div className="editor-hint">{hint}</div>
+      ) : null}
     </div>
   );
 }
@@ -582,6 +609,10 @@ export function ProviderConnectionForm({
                 onSetConfigField('apiKey', event.target.value)
               }
             />
+            <div className="editor-field-hint">
+              OpenAI requires an API key. For a custom server, follow its
+              authentication requirements; some servers need no key.
+            </div>
             {apiKeyConfigured && (
               <div className="editor-field-hint">
                 A secret is saved. Station never sends it back to this device.
@@ -605,7 +636,7 @@ export function ProviderConnectionForm({
             value={(form.config.defaultModel as string) ?? ''}
             options={modelOptions}
             placeholder="The model id this server accepts"
-            hint="Used when an agent names no model of its own, and it is the model Test Connection sends its one minimal chat request to — the only check a server that offers no model list can pass."
+            hint="Used when an agent does not choose its own model, and for testing a service that cannot list models."
             onChange={(next) => onSetConfigField('defaultModel', next)}
           />
         </>
@@ -811,6 +842,18 @@ export function ProviderConnectionForm({
         </label>
       </div>
 
+      {isNew ? (
+        <p
+          id="provider-create-disclosure"
+          className="provider-detail__disclosure"
+        >
+          Create saves this connection and checks its model list. If the service
+          cannot list models, Station may send a small test prompt using the
+          default model. Your provider may charge for that request. A saved
+          connection is ready only after its check succeeds.
+        </p>
+      ) : null}
+
       {!isNew && selectedProviderId && (
         <div
           style={{
@@ -836,10 +879,9 @@ export function ProviderConnectionForm({
             id="provider-test-disclosure"
             className="provider-detail__disclosure"
           >
-            Asks this connection for its model list. If it offers none, Station
-            sends one minimal chat request (max_tokens 1) using the default
-            model — the only way to prove it can run work. Some providers bill
-            for that request.
+            Checks this service's model list. If it cannot list models, Station
+            sends a small test prompt using the default model. Your provider may
+            charge for that request.
           </p>
           {testResult && (
             <div

@@ -32,7 +32,13 @@ not mean every deployment mounts or admits it.
 request projection. A client must verify `station.task-room-work/v1` before
 sending an additive `taskRoomRequest` through `POST /api/orchestration/delegations`.
 That object requires `taskId`, `taskCreatedAt` and a stable `operationId`;
-the normal prompt and execution target remain outside it. This initial path
+the normal prompt and execution target remain outside it. Supporting servers
+also advertise `contextVersion: 'station.task-room-context/v1'` and an authorized
+Task/shared-document snapshot in the read response. A create can supply only its
+`context: { version, digest }` reference. The server captures and saves that exact
+brief for a new operation; an existing operation reuses its saved snapshot.
+A stale/unavailable context is refused before invocation, and changed context
+under an existing operation conflicts. This initial path
 admits current-Station execution in the exact Task Project, with the existing
 read/operate, readiness and provider-effect authority gates. A request receipt
 does not establish Task completion or result quality.
@@ -933,7 +939,9 @@ kind/name does not invent a new engine adapter.
 Creation normally returns 201, update 200, with `{success: true, data}`. A saved
 configuration awaiting runtime activation returns 202 and
 `configurationActivation`, as with Agent writes. The returned definition is
-redacted. Invalid saves return a structured 400 response.
+redacted. Invalid saves return a structured 400 response. A POST whose `id`
+names an existing Model connection returns 409 and changes nothing; replacing
+it, including its stored API key, is a PUT.
 
 ### Delete or Reset a Connection
 
@@ -1178,7 +1186,18 @@ per-invocation receipts. An unavailable aggregator returns a 500 error.
 ### Get Usage Statistics
 
 `GET /api/analytics/usage` returns `{success: true, data: stats}` with lifetime,
-Agent, model, and date aggregates. The date map is `byDate`, not `byDay`.
+Agent, model, and date aggregates. Active reads rebuild the retained snapshot
+at most once a minute, sharing an in-flight rebuild with other readers.
+`snapshot.rescannedAt` identifies the completed source scan;
+`snapshot.engineUsage` distinguishes available, unavailable, and unconfigured
+engine sources, and `snapshot.skippedMessages` counts unreadable message rows.
+`snapshot.missingMessageCosts` counts saved assistant/usage rows without a valid
+cost, while `snapshot.costCoverageChecked` becomes false after incremental
+writes or enrichment until a rebuild. `snapshot.retainedUsage` flags retained
+message, token or cost totals larger than the currently rescanned corpus
+(ignoring cost rounding differences).
+A completed scan does not prove historical totals or every provider's accounting
+are complete. The date map is `byDate`, not `byDay`.
 Optional `from`/`to` date strings filter `byDate` and add `rangeSummary`; other
 fields retain their existing aggregate scope. Do not relabel those other fields
 as totals for the selected window.
@@ -1186,8 +1205,10 @@ as totals for the selected window.
 ### Get Achievements
 
 `GET /api/analytics/achievements` returns
-`{success: true, data: achievements}` from the aggregator. The achievement
-schema and unlock rules belong to that owner, not a fixed list in this page.
+`{success: true, data: achievements}` from the same refreshed aggregate snapshot. The achievement
+schema and unlock rules belong to that owner, not a fixed list in this page. Cost
+milestones with unavailable measurement carry `measurementUnavailableReason`,
+omit numeric progress, and remain locked; a reported zero remains eligible.
 
 ### Rescan Analytics
 
@@ -2014,11 +2035,65 @@ error is currently caught, so success is not proof that local cleanup completed.
 `GET /api/registry/skills` merges registered Skill catalogs and deduplicates IDs,
 keeping the first occurrence. No registered providers gives an empty list.
 
+The built-in [GitHub Skill provider](../../src-server/providers/registries/github-skill-registry.ts)
+resolves its configured branch to a commit and reads that commit's tree and immutable
+blobs. It discovers complete nested Skill directories by their declared names and
+refuses duplicate names, truncated trees, unreadable Skill files, and refresh failures.
+A successful catalog snapshot is cached for five minutes; an expired snapshot is not
+returned as successful when refresh fails. Such failures currently fail the catalog
+request; independent source status and partial results are not exposed yet.
+
+A readable Skill whose declared name is reserved by Station remains in the catalog
+with `status: "unsupported-skill-name"`. The returned catalog derives this host
+compatibility status independently of provider availability claims. Its instructions
+remain readable through
+`GET /api/registry/skills/:id/content`; the Registry shows it as unavailable for
+installation with an explanation. This is host compatibility, not a failed source
+read. A document the SDK can read safely, with an unambiguous declared name and
+nonempty description, can also remain visible as `unsupported-skill-format` when
+Station's strict Skill parser rejects its metadata format. Inspection returns the
+original pinned Markdown, including unsupported metadata such as nested credits; it
+does not remove or rewrite those fields. The raw document parser still rejects
+malformed/ambiguous YAML and unsupported anchors, aliases, or tags. Bad required
+fields, duplicate names, unsafe non-reserved names, unreadable files, and incomplete
+discovery fail the source rather than hiding entries.
+
 ### Install Skill from Registry
 
 `POST /api/registry/skills/install` accepts `{id}` and returns SkillService's
 result. It attempts a Skill reload after success; a caught reload failure does
-not change the install result.
+not change the install result. `prototype` and `constructor` return a 400 envelope
+with `code: "unsupported-skill-name"` before SkillService or staged filesystem
+effects. `__proto__` is rejected by the route's directory-name schema with its
+ordinary validation 400 envelope before the custom reserved-name code runs. The
+provider and SkillService retain their independent storage-name guards.
+
+An unsupported-format package raises a typed refusal at the GitHub acquisition
+owner before package bytes are written. Existing SkillService cleanup removes its
+transient stage; the API returns 400 with `code: "unsupported-skill-format"`, without
+a published or leftover package. An empty parent directory can remain. No aggregate
+catalog preflight is required: a default filesystem-first local install can succeed
+while GitHub discovery fails, and that discovery request still reports failure.
+
+For a GitHub Skill, the provider copies the selected directory's files from one
+catalog snapshot, including binary assets and executable files, through SkillService's
+validated staging/publication path. Portable path preflight checks NFC-normalized,
+lowercased names and file/directory collisions. The provider then creates each planned
+parent directory exclusively, reusing only exact spellings created by that acquisition;
+this refuses additional aliases detected by the destination filesystem. Files are also
+created exclusively, so acquisition cannot overwrite a staged path. Blob integrity,
+path validation, or acquisition failure prevents publication. Mac route tests execute
+Greek sigma, sharp-s, and ligature directory alias refusals; Windows filesystem behavior
+has not been executed. Only files inside that directory are acquired; references to other Skills
+do not install those Skills automatically. This does not bind an old UI selection to a
+revision after a catalog refresh, and the route's bare ID does not distinguish
+equal-name entries across providers. The default runtime composes filesystem and
+GitHub providers through `MultiSourceSkillRegistryProvider`; source-qualified
+selection, per-source failures, and aggregate fallback behavior remain pending. The
+acquisition tests exercise real routes and SkillService, including the default
+filesystem-first composition's local install during a GitHub outage. They do not
+qualify source-qualified selection or independent per-source browsing/status.
+Network deadlines and download budgets remain separate qualification work.
 
 ### Uninstall Skill from Registry
 
@@ -2444,9 +2519,9 @@ DELETE /api/analytics/usage
 ```
 
 Returns `{success: true, message: "Usage stats reset"}` after resetting the
-existing aggregate stats file to `{}`. It does not delete conversations,
+aggregate stats file to a valid empty accumulator. It does not delete conversations,
 monitoring logs, or invocation receipts; later updates/rescans can rebuild
-statistics from retained sources. See the
+statistics from retained sources; the next active usage read also rebuilds it. See the
 [aggregator reset](../../src-server/analytics/usage-aggregator.ts).
 
 ---
@@ -2572,6 +2647,17 @@ selected profile's provider quota. Omit the reference to inspect the connection'
 default account. This token-backed read requires `access:manage`; an engine-login
 grant alone does not admit it. The result is either normalized quota windows,
 plan, fetched time and provider exhaustion verdict, or an explicit unknown reason.
+Both variants can include optional `metadata`: Codex identity/credits/model and
+reset-credit facts, Claude extra usage/spending/weekly breakdown/limit annotations, and bounded response-shape `capture`
+(source, credential storage kind, unmapped/excluded field paths, truncation). Windows optionally carry
+`durationSeconds`, `resetAfterSeconds`, `allowed`, `limitReached`, `model` and
+`meteredFeature`. Raw response values for unmapped fields are never returned;
+full quota metadata is not persisted; only bounded allowance observations are retained. See the [capture inventory](../guides/connections.md#sign-an-engine-profile-in-from-a-device)
+for scope and live-verification limits.
+
+The optional `history` contains bounded hourly allowance observations for the
+selected profile. `status: unavailable` reports persistence failure without
+making the live limits unreadable. Full metadata and identity remain live only.
 
 `GET|POST|DELETE /api/connections/agent/:id/account-login?profileRef=<ref>` requires
 an existing saved profile and `engine:login` or a verified operator. No default
@@ -2580,6 +2666,12 @@ POST `{code}` relays a Claude browser code to its CLI stdin. GET projects status
 DELETE cancels. The server checks current authority before private work and
 publication. Credentials and private CLI output are never returned. Refused
 starts return a safe reason, with Codex outcomes when available.
+
+
+`GET /api/analytics/usage-rollup?provider=codex&credentialProfileRef=<ref>` filters
+attributed account receipts before aggregation. An empty `credentialProfileRef`
+selects the default profile; omitting it includes all accounts. An engine filter
+is required. Older/source-home usage without `accountKey` remains unattributed.
 
 `GET /api/analytics/usage-rollup` accepts `provider=claude|codex` and `localOnly=1`
 for engine activity. Filtering precedes folding and pagination, while coverage

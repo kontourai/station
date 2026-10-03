@@ -440,6 +440,9 @@ export async function runOperateShell(
             await respondToRequest(options.apiBase, {
               threadId: intent.threadId,
               requestId: intent.requestId,
+              ...(intent.expectedRequestEventId
+                ? { expectedRequestEventId: intent.expectedRequestEventId }
+                : {}),
               decision: intent.decision,
             });
           } catch (error) {

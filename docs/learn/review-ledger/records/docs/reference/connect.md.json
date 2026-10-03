@@ -102,7 +102,11 @@
 
     "src-ui/src/platform/native/pairingTransport.ts",
 
-    "src-ui/src/platform/native/stationProfileStorage.ts"
+    "src-ui/src/platform/native/stationProfileStorage.ts",
+
+    "packages/connect/src/react/connection-manager-modal/ConnectionListPanel.tsx",
+
+    "packages/connect/src/react/connection-manager-modal-utils.ts"
   ],
 
   "checks": [

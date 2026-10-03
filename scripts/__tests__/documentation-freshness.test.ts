@@ -1378,7 +1378,7 @@ describe('merge-queue-friendly review ledger layout (#2936)', () => {
     expect(f.read(MEDIA)).toContain('<<<<<<<');
   });
 
-  it('folds a branch that re-reviewed a capture in media.json, resolving that conflict too', () => {
+  it('folds a branch that re-reviewed a capture in media.json across Git merge outcomes', () => {
     const f = fixture();
     const { legacyLedger, legacyMedia } = legacyLayout(f.root);
     const legacyText = (media: unknown) =>
@@ -1436,13 +1436,13 @@ describe('merge-queue-friendly review ledger layout (#2936)', () => {
     ]) {
       git(f.root, ['switch', '-q', branch]);
       expect(merge(f.root, other).status).toBe(1);
-      expect(conflicted(f.root).sort()).toEqual(
-        [LEGACY_REVIEW_LEDGER, MEDIA].sort(),
-      );
-      // No hand resolution: the command resolves media.json itself.
+      const conflicts = conflicted(f.root);
+      expect(conflicts).toContain(LEGACY_REVIEW_LEDGER);
+      // Git 2.55 can auto-merge media.json; either path must preserve the capture review.
       const folded = run(f.root, 'migrate-review-ledger.mjs', ['--base', base]);
       expect(folded.status, folded.stderr).toBe(0);
-      expect(folded.stdout).toContain('Resolved the docs/learn/media.json');
+      if (conflicts.includes(MEDIA))
+        expect(folded.stdout).toContain('Resolved the docs/learn/media.json');
       // Judged against the bytes it writes, the citer is not reported stale.
       expect(folded.stdout).not.toContain('Both sides rebound');
       commit(f.root, `merge into ${branch}`);

@@ -7,6 +7,8 @@ import { _getApiBase } from './api-core.js';
 import { mutateJson } from './client/http.js';
 
 export type {
+  WorkspaceFileChanges,
+  WorkspaceFileChangesRequest,
   WorkspaceFileExistence,
   WorkspaceFilePreview,
   WorkspaceFilePreviewLineRange,
@@ -19,6 +21,7 @@ export type {
 export {
   isWorkspaceFilePreviewImageDataUrl,
   parseWorkspaceOpenFilePreviewIntent,
+  WORKSPACE_FILE_CHANGES_MAX_BYTES,
   WORKSPACE_FILE_EXISTENCE_MAX_PATHS,
   WORKSPACE_FILE_PREVIEW_MAX_BYTES,
   WORKSPACE_FILE_PREVIEW_MAX_IMAGE_DIMENSION,
@@ -32,12 +35,17 @@ export {
   WORKSPACE_FILE_PREVIEW_PANE_VERSION,
 } from '@kontourai/station-contracts/workspace-file-preview';
 export {
+  isRepositoryBusyError,
   type ProjectWorkspacePaneAvailabilityProjection,
   type ProjectWorkspacePaneCatalog,
   previewProjectWorkspaceFile,
+  readProjectWorkspaceFileChanges,
 } from './client/projects';
 export { listExistingProjectWorkspaceFiles } from './client/workspace-file-existence';
-export { useProjectWorkspaceFilePreviewQuery } from './query-domains/workspaceProjects';
+export {
+  useProjectWorkspaceFileChangesQuery,
+  useProjectWorkspaceFilePreviewQuery,
+} from './query-domains/workspaceProjects';
 
 export interface WorkspaceFilePreviewDownload {
   filename: string;

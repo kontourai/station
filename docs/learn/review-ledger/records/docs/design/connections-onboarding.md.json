@@ -60,7 +60,11 @@
 
     "src-ui/src/views/connections-hub/connection-sections.ts",
 
-    "src-ui/src/views/provider-settings/providerCatalog.tsx"
+    "src-ui/src/views/provider-settings/providerCatalog.tsx",
+
+    "src-ui/src/components/modals/NewChatModal.tsx",
+
+    "src-ui/src/components/modals/AutomaticEnginePreparation.tsx"
   ],
 
   "checks": [

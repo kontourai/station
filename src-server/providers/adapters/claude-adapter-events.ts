@@ -645,6 +645,36 @@ export function mapClaudeSdkMessage({
     return;
   }
 
+  if (message.type === 'system' && message.subtype === 'api_retry') {
+    // SDK retry notices contain structured counters; only this bounded
+    // display projection crosses into chat, never error bodies or logs.
+    const reason = message.no_response
+      ? 'No response headers'
+      : message.error_status === null
+        ? 'Connection failed'
+        : message.error === 'rate_limit'
+          ? 'Rate limited'
+          : message.error === 'overloaded'
+            ? 'Provider overloaded'
+            : 'Provider request failed';
+    publish({
+      eventId: crypto.randomUUID(),
+      provider,
+      threadId: record.session.threadId,
+      createdAt,
+      turnId: record.activeTurnId,
+      method: 'extension.notification',
+      namespace: CLAUDE_EXTENSION_NAMESPACE,
+      type: 'api/retry',
+      payload: {
+        attempt: message.attempt,
+        delayMs: message.retry_delay_ms,
+        reason,
+      },
+    });
+    return;
+  }
+
   if (message.type === 'system' && message.subtype === 'thinking_tokens') {
     publish({
       eventId: crypto.randomUUID(),
@@ -1506,9 +1536,10 @@ export function withdrawnSubagentPermissionResult(): PermissionResult {
  * (`suppress_always_allow_rule`, `default_to_no`,
  * `requires_user_interaction`). Agent SDK 0.3.278, the one the lockfile
  * resolves, forwards and types `suppressAlwaysAllowRule` and `defaultToNo`
- * but still drops `requires_user_interaction`; it is read here under the
- * name the other two follow, so an SDK that forwards it needs no change.
- * Each is copied only when it is `true`.
+ * but still drops `requires_user_interaction`. The adapter reads that one
+ * from the engine's frame and passes it in under the name the other two
+ * follow, so an SDK that forwards it needs no change. Each is copied only
+ * when it is `true`.
  */
 export function claudeAskFlags(options: object): {
   suppressAlwaysAllowRule?: true;

@@ -1,12 +1,15 @@
 // @vitest-environment jsdom
-import { renderHook } from '@testing-library/react';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { act, cleanup, renderHook } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { AgentData } from '../contexts/AgentsContext';
 import type { ProjectMetadata } from '../contexts/ProjectsContext';
 import { useNewChatSelectionModel } from '../hooks/useNewChatSelectionModel';
 
 const state = vi.hoisted(() => ({
   agents: [] as unknown[],
+  reconciling: false,
+  readRevision: 0,
+  refetchAgents: vi.fn(async () => ({})),
   projects: [] as unknown[],
   picker: {
     agentConnections: [] as unknown[],
@@ -27,8 +30,9 @@ vi.mock('@kontourai/station-sdk', () => ({
     data: state.agents,
     isFetching: false,
     error: null,
-    catalogState: 'current',
-    refetch: async () => ({}),
+    catalogState: state.reconciling ? 'reconciling' : undefined,
+    dataUpdatedAt: state.readRevision,
+    refetch: state.refetchAgents,
   }),
   useProjectsQuery: () => ({
     data: state.projects,
@@ -78,12 +82,57 @@ const PROJECT = {
   layoutCount: 0,
 } as ProjectMetadata;
 beforeEach(() => {
+  state.reconciling = false;
+  state.readRevision = 0;
+  state.refetchAgents.mockReset();
+  state.refetchAgents.mockImplementation(async () => ({}));
   state.agents = [OLD];
   state.projects = [PROJECT];
   state.picker = { agentConnections: [], modelConnections: [] };
 });
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 
 describe('returned New Chat uses current canonical rows within caller scope', () => {
+  test('refreshes unchanged retained rows until the goal catalog is current', async () => {
+    vi.useFakeTimers();
+    state.reconciling = true;
+    const view = renderHook(() =>
+      useNewChatSelectionModel({
+        agents: [OLD],
+        projects: [PROJECT],
+        selectedContext: 'alpha',
+        revalidateSelection: true,
+      }),
+    );
+    expect(view.result.current.setupFetching).toBe(true);
+    state.refetchAgents.mockImplementationOnce(async () => {
+      state.readRevision++;
+      view.rerender();
+      return {};
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(1000);
+    });
+    expect(state.refetchAgents).toHaveBeenCalledTimes(1);
+    state.refetchAgents.mockImplementationOnce(async () => {
+      state.reconciling = false;
+      state.readRevision++;
+      view.rerender();
+      return {};
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(1000);
+    });
+    expect(state.refetchAgents).toHaveBeenCalledTimes(2);
+    expect(view.result.current.setupFetching).toBe(false);
+    await act(async () => {
+      vi.advanceTimersByTime(60_000);
+    });
+    expect(state.refetchAgents).toHaveBeenCalledTimes(2);
+  });
   test('same Agent ID cannot retain old readiness or Model configuration', () => {
     const view = renderHook(
       ({ returned }) =>

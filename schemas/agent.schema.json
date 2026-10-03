@@ -124,6 +124,11 @@
             ]
           }
         },
+        "mcpMode": { "type": "string", "enum": ["add", "replace"] },
+        "mcpLoading": {
+          "type": "string",
+          "enum": ["on-demand", "always"]
+        },
         "env": {
           "type": "object",
           "description": "Agent-level env var overrides for MCP servers",

@@ -1,0 +1,11 @@
+{
+  "revision": "5ae6db513f1bf69d928af57be4e6c38316e99fb8",
+
+  "notes": [
+    {"path":"docs/learn/walkthroughs.md","note":"Historical sample capture labels explicitly distinguished from current discovery copy; current hover contrast explained against the preserved checks.","inputs":["docs/learn/walkthroughs.md"]},
+
+    {"path":"docs/learn/media/connections-models.png","note":"Inspected preserved original screenshot. Changed billing prose and headings still describe the same controls and paid-test boundary; walkthrough identifies older wording. Original capture revision and evidence are retained.","inputs":["docs/learn/media/connections-models.png"]},
+
+    {"path":"docs/learn/media/connections-tour.webm","note":"Inspected preserved original navigation recording frame. This remains a historical sample Models/Engines tour with no provider test or login; walkthrough explicitly distinguishes its older wording. Capture provenance retained.","inputs":["docs/learn/media/connections-tour.webm"]}
+  ]
+}

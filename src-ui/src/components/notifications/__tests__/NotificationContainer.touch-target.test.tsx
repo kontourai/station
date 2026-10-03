@@ -6,7 +6,7 @@
  * touch-target net is a DESCENDANT selector
  * (`:is([class*="__actions"], [class*="__footer"], [class*="__toolbar"],...)
  * > :is(button, a, .button, [role="button"])`), so it only reaches a control
- * that is a CHILD of one of those named wrappers. Three controls in this
+ * that is a CHILD of one of those named wrappers. Two controls in this
  * component sit outside its reach:
  *
  * - `.notification-container__dismiss-all` (`NotificationContainer.tsx`) is a
@@ -20,24 +20,11 @@
  *   *different* breakpoint from the shell's `@media (max-width: 768px)`, so a
  *   viewport between 641px and 768px (and 915x412, the exact landscape-phone
  *   geometry archive#3453 measured) got the un-overridden 32x32 declaration.
- * - `.toast-card__link` ( finding) sits inside
- *   `.toast-card__conversation`, not `.toast-card__actions`, so the net
- *   cannot reach it either — and it had no override anywhere at all, at any
- *   viewport, the same as `.notification-container__dismiss-all`. It renders
- *   whenever a notification carries `conversationTitle` + `onNavigate`,
- *   which `toolActivityNotifications.ts` sets on essentially every
- *   tool-activity toast and `ToastContext.tsx` sets unconditionally
- *   (`conversationTitle` defaults to `'Conversation'`) for approvals — not a
- *   rare shape. An earlier version of this file's fixture set neither field,
- *   so this control never appeared in the enumerated audit below at all:
- *   the check's own docblock claimed "every interactive control" while
- *   deriving that claim from the fixture, not the component.
- *
  * Same check shape as `BannerHost.touch-target.test.tsx`: render the REAL
  * `NotificationContainer` (via `@testing-library/react`, jsdom) with a
  * fixture that exercises `.notification-container__dismiss-all` and every
- * `.toast-card` control (`.toast-card__dismiss`, `.toast-card__action`,
- * `.toast-card__link`), inject the resulting markup into a real Chromium
+ * `.toast-card` control (`.toast-card__dismiss`, `.toast-card__action`),
+ * inject the resulting markup into a real Chromium
  * page carrying the REAL, unmodified source stylesheets (`index.css`'s
  * global net + `NotificationContainer.css`'s own rules, `@import`s fully
  * resolved), and enumerate EVERY `button, a` under `.notification-container`
@@ -127,11 +114,12 @@ vi.mock('../../../contexts/NavigationContext', () => {
  * carries an action button so `.toast-card__action` is in the same audit —
  * it is already reached by the global net (a child of `.toast-card__actions`,
  * which matches `[class*="__actions"]`) and is included as a passing control,
- * not a suspected defect. The mid card carries `conversationTitle` +
- * `onNavigate` (the real shape `toolActivityNotifications.ts` sets on a
- * tool-activity toast), which is what makes `NotificationContainer.tsx`
- * render `.toast-card__link` — the fix-round finding that was previously
- * invisible to this audit because no fixture notification set those fields.
+ * not a suspected defect. The mid card uses the `conversationTitle` +
+ * `onNavigate` shape of real turn-activity toasts, which makes
+ * `NotificationContainer.tsx` render its primary “Open chat” action. Both
+ * action buttons are children of `.toast-card__actions`, so the global
+ * touch-target net reaches them; the exact control list below keeps that
+ * caller shape covered as the component changes.
  */
 function presentFixtureNotifications(): void {
   const now = Date.now();
@@ -146,8 +134,8 @@ function presentFixtureNotifications(): void {
     },
     {
       id: 'station-3513:mid',
-      message: 'Dev Agent finished shell exec',
-      type: 'tool-activity',
+      message: 'Dev Agent (Codex) finished',
+      type: 'turn-activity',
       timestamp: now,
       dismissed: false,
       conversationTitle: 'Repo Chat',
@@ -273,14 +261,10 @@ describe.skipIf(!chromiumAvailable || wslQuarantinedHost)(
           }
           // Exact, ORDERED membership — see BannerHost.touch-target.test.tsx
           // for why a bare count cannot substitute for this, and why it
-          // matters even more here: this exact list is what caught
-          // `.toast-card__link` being silently absent from every prior
-          // version of this fixture. DOM order here is fixed by
+          // matters even more here. DOM order here is fixed by
           // NotificationContainer.tsx's render: dismiss-all first, then the
-          // toast stack front-to-back; within one card, `.toast-card__link`
-          // (inside the header's content div, when conversationTitle +
-          // onNavigate are set) before that card's own dismiss button,
-          // before its (optional) action row.
+          // toast stack front-to-back; within one card, the header's dismiss
+          // button comes before its optional action row.
           expect(
             classNames,
             `expected exactly these controls under .notification-container, ` +
@@ -291,8 +275,8 @@ describe.skipIf(!chromiumAvailable || wslQuarantinedHost)(
             'notification-container__dismiss-all',
             'toast-card__dismiss',
             'toast-card__action toast-card__action--secondary',
-            'toast-card__link',
             'toast-card__dismiss',
+            'toast-card__action toast-card__action--primary',
             'toast-card__dismiss',
           ]);
 

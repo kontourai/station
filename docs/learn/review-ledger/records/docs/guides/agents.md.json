@@ -166,7 +166,35 @@
 
     "src-ui/src/components/chat/HarnessQuestionRequest.tsx",
 
-    "src-ui/src/components/chat/harnessQuestionDrafts.ts"
+    "src-ui/src/components/chat/harnessQuestionDrafts.ts",
+
+    "src-ui/src/views/agent-editor/AgentEditorToolsTab.tsx",
+
+    "src-ui/src/views/agent-editor/utils.ts",
+
+    "src-server/tools/station-control-mcp-server.ts",
+
+    "src-ui/src/__tests__/AgentEditorToolsTab.browser.test.tsx",
+
+    "src-ui/src/components/InfoTip.tsx",
+
+    "src-ui/src/components/InfoTip.css",
+
+    "src-ui/src/__tests__/InfoTip.test.tsx",
+
+    "src-ui/src/views/agent-editor/AgentEditorEngineSelection.tsx",
+
+    "src-ui/src/views/agent-editor/AgentEditorApprovalDefault.tsx",
+
+    "src-ui/src/views/agent-editor/AgentEditorCredentialProfile.tsx",
+
+    "src-ui/src/views/agent-editor/AgentEditorProjectOwnership.tsx",
+
+    "src-ui/src/views/agent-editor/AgentEditorModelSection.tsx",
+
+    "src-ui/src/views/agent-editor/AgentEditorModelOptionsSection.tsx",
+
+    "src-ui/src/views/agent-editor/AgentEditorPromptTab.tsx"
   ],
 
   "checks": [

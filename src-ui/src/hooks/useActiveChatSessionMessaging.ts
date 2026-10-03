@@ -2,7 +2,10 @@ import type {
   InterruptTurnResult,
   OrchestrationSessionSummary,
 } from '@kontourai/station-contracts/orchestration';
-import { PROVIDER_TURN_IN_PROGRESS_CODE } from '@kontourai/station-contracts/provider';
+import {
+  ATTACHMENT_INPUT_UNSUPPORTED_CODE,
+  PROVIDER_TURN_IN_PROGRESS_CODE,
+} from '@kontourai/station-contracts/provider';
 import { isFirstSendFailure } from '@kontourai/station-contracts/session-attention';
 import type { ConnectionConfig } from '@kontourai/station-contracts/tool';
 import {
@@ -142,6 +145,33 @@ function rejectedSendRollback(
 }
 
 /**
+ * The refused send's one useful composer change: take the attachments back
+ * off so the text can go. Their server stages are released best-effort — an
+ * unreleased stage simply lapses at its TTL, which is the same outcome.
+ */
+async function removeRefusedAttachments(
+  apiBase: string,
+  sessionId: string,
+): Promise<void> {
+  const stages =
+    activeChatsStore.getSnapshot()[sessionId]?.attachmentStages ?? [];
+  activeChatsStore.updateChat(sessionId, {
+    attachments: [],
+    attachmentStages: [],
+  });
+  const stageIds = stages.flatMap((stage) =>
+    stage.stageId ? [stage.stageId] : [],
+  );
+  if (stageIds.length === 0) return;
+  const { cancelAttachmentStage } = await import(
+    '@kontourai/station-sdk/client'
+  );
+  await Promise.allSettled(
+    stageIds.map((stageId) => cancelAttachmentStage(apiBase, stageId)),
+  );
+}
+
+/**
  * #2310 review H1/F4: whether the cached session list still describes one of
  * these identities as having never taken a send — a Draft, or a Failed row
  * whose only failure is that its sends did not take (`send_refused` /
@@ -242,10 +272,17 @@ export function useSendMessage(
       // #2309: "is a turn busy" is the server's open turn (on any device, in
       // any lineage child) or this composer's own unacknowledged send. A
       // server that sends no activity record keeps the legacy local status.
-      const turnBusy =
-        serverTurnLive(currentState) ?? currentState?.status === 'sending';
+      const turnBusy = isTurnInFlight(currentState);
 
       if (turnBusy && currentState) {
+        if (attachments?.length) {
+          addEphemeralMessage(sessionId, {
+            role: 'system',
+            content:
+              'Messages with attachments cannot be queued during a turn yet. Your message is still in the composer; send it when the turn finishes.',
+          });
+          return false;
+        }
         if (options?.skipInMemoryQueueOnBusy) {
           return options?.dispatch
             ? ({
@@ -258,6 +295,8 @@ export function useSendMessage(
         // rather than being folded into a reply they did not ask for.
         const steeringCapable =
           !options?.queueOnBusy &&
+          !currentState.queueSendNowPending &&
+          !currentState.queueDrainSettling &&
           currentState.conversationActivity?.openTurn?.trigger !== 'provider' &&
           sessionAdapterSupportsSteering(
             currentState.agentConnectionId,
@@ -269,6 +308,17 @@ export function useSendMessage(
           clearInput(sessionId);
           updateChat(sessionId, {
             queuedMessages: [...(currentState.queuedMessages || []), content],
+            queuedMessageMetadata: [
+              ...(currentState.queuedMessageMetadata ??
+                currentState.queuedMessages.map(() => ({
+                  id: randomCorrelationId(),
+                  mode: 'queue' as const,
+                }))),
+              {
+                id: randomCorrelationId(),
+                mode: options?.queueOnBusy ? 'queue' : 'steer',
+              },
+            ],
           });
           return;
         }
@@ -294,47 +344,128 @@ export function useSendMessage(
       }
 
       if (steerOpenTurn && currentState) {
-        // Inject into the live turn. Do not fall through to sendTurn — that
-        // would start a second turn and wipe the in-flight stream.
+        const clientInputId = randomCorrelationId();
+        const openTurn = currentState.conversationActivity?.openTurn;
+        const target = {
+          threadId:
+            openTurn?.threadId ?? currentState.currentSessionId ?? sessionId,
+          turnId: openTurn?.turnId ?? currentState.openTurnId,
+        };
+        const claimState = activeChatsStore.getSnapshot()[sessionId];
+        if (!claimState) return false;
         clearInput(sessionId);
+        updateChat(sessionId, {
+          queuedMessages: [...claimState.queuedMessages, content],
+          queuedMessageMetadata: [
+            ...(claimState.queuedMessageMetadata ?? []),
+            {
+              id: clientInputId,
+              mode: 'steer',
+              delivery: 'steering',
+              steerThreadId: target.threadId,
+              steerTurnId: target.turnId,
+            },
+          ],
+          queueSendNowPending: true,
+        });
+        if (!activeChatsStore.flushPendingSave()) {
+          const held = activeChatsStore.getSnapshot()[sessionId];
+          updateChat(sessionId, {
+            queueSendNowPending: false,
+            queuedMessageMetadata: held?.queuedMessageMetadata?.map((entry) =>
+              entry.id === clientInputId
+                ? { ...entry, delivery: 'indeterminate' }
+                : entry,
+            ),
+            queuedMessageFailure: {
+              code: 'steering-save-failed',
+              message:
+                'Could not save pending steering. It was not sent; your message remains held.',
+              at: Date.now(),
+            },
+          });
+          return false;
+        }
+        const removeClaim = () => {
+          const latest = activeChatsStore.getSnapshot()[sessionId];
+          const index =
+            latest?.queuedMessageMetadata?.findIndex(
+              (entry) => entry.id === clientInputId,
+            ) ?? -1;
+          if (!latest || index < 0) return;
+          updateChat(sessionId, {
+            queuedMessages: latest.queuedMessages.filter(
+              (_, position) => position !== index,
+            ),
+            queuedMessageMetadata: latest.queuedMessageMetadata?.filter(
+              (_, position) => position !== index,
+            ),
+          });
+        };
+        const holdUnconfirmed = () => {
+          const latest = activeChatsStore.getSnapshot()[sessionId];
+          updateChat(sessionId, {
+            queuedMessageMetadata: latest?.queuedMessageMetadata?.map(
+              (entry) =>
+                entry.id === clientInputId
+                  ? { ...entry, delivery: 'indeterminate' }
+                  : entry,
+            ),
+          });
+          addEphemeralMessage(sessionId, {
+            role: 'system',
+            content:
+              'Steering delivery was not confirmed. Your message is held; retry steering to check the same delivery.',
+          });
+        };
         try {
-          // #2309: the server's open turn names the lineage child running
-          // it and the exact turn; the local stamp is the older-server path.
-          const openTurn = currentState.conversationActivity?.openTurn;
           const result = await steerOrchestrationTurn({
-            threadId:
-              openTurn?.threadId ?? currentState.currentSessionId ?? sessionId,
+            ...target,
             text: content,
-            turnId: openTurn?.turnId ?? currentState.openTurnId,
+            clientInputId,
             apiBase,
           });
           if (result.outcome === 'steered') {
-            return options?.dispatch
-              ? ({
-                  kind: 'accepted',
-                  providerTurnId: result.turnId,
-                } satisfies OutboundDispatchTransportResult)
-              : true;
+            removeClaim();
+            addEphemeralMessage(sessionId, {
+              role: 'system',
+              content: 'Steering sent.',
+            });
+            return true;
           }
+          if (result.outcome === 'indeterminate') {
+            holdUnconfirmed();
+            return true;
+          }
+          removeClaim();
           addEphemeralMessage(sessionId, {
             role: 'system',
             content: steerRefusalMessage(result),
           });
+          const latest = activeChatsStore.getSnapshot()[sessionId];
+          if ((latest?.input ?? '') === '')
+            updateChat(sessionId, { input: submittedDraft });
+          return false;
         } catch (error) {
-          addEphemeralMessage(sessionId, {
-            role: 'system',
-            content: `Could not send steer: ${error instanceof Error ? error.message : String(error)}`,
-          });
+          if (isProvablyNotSent(error)) {
+            removeClaim();
+            const latest = activeChatsStore.getSnapshot()[sessionId];
+            if ((latest?.input ?? '') === '')
+              updateChat(sessionId, { input: submittedDraft });
+            return false;
+          }
+          holdUnconfirmed();
+          return true;
+        } finally {
+          updateChat(sessionId, { queueSendNowPending: false });
+          const latest = activeChatsStore.getSnapshot()[sessionId];
+          if (
+            latest &&
+            !isTurnInFlight(latest) &&
+            latest.orchestrationStatus !== 'aborted'
+          )
+            drainQueuedMessageOnTurnCompleted(apiBase, sessionId);
         }
-        const latest = activeChatsStore.getSnapshot()[sessionId];
-        if ((latest?.input ?? '') === '') {
-          updateChat(sessionId, { input: submittedDraft });
-        }
-        return options?.dispatch
-          ? ({
-              kind: 'not-invoked',
-            } satisfies OutboundDispatchTransportResult)
-          : undefined;
       }
 
       const transaction = prepareSendTransaction({
@@ -799,26 +930,49 @@ export function useSendMessage(
           // A start the server could not confirm either way may have
           // created the session (Codex then refuses a resend: "thread …
           // already has an active writer"), so it gets no blind Retry.
+          // An attachment refusal gets no Retry — the same send is refused
+          // again — but the one composer change that makes the text sendable.
+          // (Other `retryable: false` classes, e.g. an engine sign-in, keep
+          // Retry here: after signing in on the host, it is the next step.)
           action:
-            terminalSession ||
-            foregroundIndeterminate ||
-            dispatchClaim ||
-            err.code === SESSION_START_INDETERMINATE_CODE
-              ? undefined
-              : {
-                  label: 'Retry',
-                  handler: () =>
-                    sendMessage(
-                      sessionId,
-                      agentSlug,
-                      latestState?.conversationId ?? conversationId,
-                      content,
-                      attachments,
-                      ambientContext,
-                      resolvedTurnId,
-                    ),
-                },
+            err.code === ATTACHMENT_INPUT_UNSUPPORTED_CODE && !dispatchClaim
+              ? {
+                  label: 'Remove attachments',
+                  handler: () => removeRefusedAttachments(apiBase, sessionId),
+                }
+              : terminalSession ||
+                  foregroundIndeterminate ||
+                  dispatchClaim ||
+                  err.code === SESSION_START_INDETERMINATE_CODE
+                ? undefined
+                : {
+                    label: 'Retry',
+                    handler: () =>
+                      sendMessage(
+                        sessionId,
+                        agentSlug,
+                        latestState?.conversationId ?? conversationId,
+                        content,
+                        attachments,
+                        ambientContext,
+                        resolvedTurnId,
+                      ),
+                  },
         });
+        // The engine just answered the image question for itself; the
+        // inventory read that carries its handshake answer is cached for
+        // minutes and may predate that answer. Re-read it so the composer's
+        // chips and Send gate reflect the refusal instead of "Ready".
+        if (err.code === ATTACHMENT_INPUT_UNSUPPORTED_CODE) {
+          invalidate(['connections', 'engines']);
+        }
+        // A send that did not take can turn a Draft into a first-send failure
+        // (or leave one). The composer reads that from the session list, which
+        // is otherwise fetched once — without this the model picker a refused
+        // first send should unlock stayed locked until a reload.
+        if (!foregroundIndeterminate && !dispatchClaim) {
+          invalidate(['orchestration-sessions']);
+        }
         if (foregroundIndeterminate) {
           invalidate(['orchestration-sessions']);
           invalidate(conversationQueries.inventory().queryKey);
