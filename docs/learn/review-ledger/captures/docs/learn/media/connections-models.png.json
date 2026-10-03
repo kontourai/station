@@ -8,7 +8,7 @@
 
     {"path":"src-ui/src/components/SplitPaneLayout.css","digest":"6433a2150e6308c6c3121af9c5beffdab52786e43723288790af24a41fdf630f","revision":"429c70d487f02c105a523de55b2f02f498520703"},
 
-    {"path":"src-ui/src/components/SplitPaneLayout.tsx","digest":"afa5bac34d039da9bdb075158d39ca552af35b773c2ca0b7a5c79b5fd85681ff","revision":"c95c15c1da61afdef33a3aa6678286a794a98ef0"},
+    {"path":"src-ui/src/components/SplitPaneLayout.tsx","digest":"7e4dcca63fe70f9028993f20cccb7fe81d49ad86e461fc8d0086940d22229174","revision":"d758004192808d6c9f8ce2e2554701379d8900b1"},
 
     {"path":"src-ui/src/index.css","digest":"e3bf9bb5c0dbeea17eb06bf2536ebcd445ce60875becb64ca97da08118422dcd","revision":"8fd71c3714eceeb651bd8e52f200aa1532fa33c6"},
 
