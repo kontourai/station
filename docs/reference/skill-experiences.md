@@ -58,6 +58,11 @@ document does not assert that the URI is already hosted or the package released.
 | `outputs` | Expected markdown, JSON, files, or decision summary; required or optional status |
 | `presentation` | Guided/alongside modes and a default contained in those modes; optional `richView` links a same-package plugin-component Workspace Pane |
 
+Input IDs reserve `constructor`, `prototype` and `__proto__`; author validation
+reports an explicit refusal before such a definition enters inventory. Scalar
+and attachment maps use own JSON keys, so omitted optional/default inputs never
+inherit object members.
+
 Input, context, and output provenance distinguishes `skill-declared` (with an
 existing local `skillRef`), `reviewer-inferred`, and `station-added`. Each needs
 an explanation. Those are author assertions to review, not Station approval or
@@ -196,7 +201,9 @@ before Session or provider effects.
 checks the current invocation, declared input IDs/defaults/constraints, actual
 Project/conversation context and canonical attachment indices. Text constraints
 count Unicode code points. Attachments name indices in the hydrated outgoing
-attachment array, never paths or alternate custody. Unknown roles, duplicate
+attachment array, never paths or alternate custody. Initial and continued model
+context carries the role-to-index assignments and declared labels, explicitly
+referring to the original invocation's attachments. Unknown roles, duplicate
 indices, missing required inputs and out-of-range indices fail. The entry Skill
 and its explicitly declared dependencies supply bounded instructions; no
 alphabetical entry is inferred for a multi-Skill definition. Source references can form cycles; a finite visited-set closure delivers each

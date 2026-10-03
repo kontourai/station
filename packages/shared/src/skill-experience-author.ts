@@ -88,6 +88,24 @@ export function readValidatedSkillExperiences(
         cause,
       });
     }
+    if (
+      candidate &&
+      typeof candidate === 'object' &&
+      'inputs' in candidate &&
+      Array.isArray(candidate.inputs)
+    ) {
+      for (const input of candidate.inputs) {
+        if (
+          input &&
+          typeof input === 'object' &&
+          typeof input.id === 'string' &&
+          ['constructor', 'prototype', '__proto__'].includes(input.id)
+        )
+          throw new Error(
+            `Skill experience ${contribution.source}/inputs/${input.id}: reserved input identity is unsupported`,
+          );
+      }
+    }
     if (!validateSkillExperience(candidate)) {
       const first = validateSkillExperience.errors?.[0];
       throw new Error(

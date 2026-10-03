@@ -38,10 +38,18 @@ export class SkillExperienceRuntime {
   admitSelection<T>(
     identity: SkillExperienceIdentityV1,
     effect: () => Promise<T>,
+    binding?: { threadId: string; previousEventId?: string },
   ): Promise<T> {
     let invoked = false;
     return this.source
       .withSkillExperience(identity, async () => {
+        if (
+          binding &&
+          this.current(binding.threadId)?.id !== binding.previousEventId
+        )
+          throw new SkillExperienceUnavailableError(
+            'The current Skill experience changed before dispatch.',
+          );
         invoked = true;
         return effect();
       })
@@ -105,7 +113,7 @@ export class SkillExperienceRuntime {
         ? event.payload.metadata?.[SKILL_EXPERIENCE_METADATA_KEY]
         : undefined,
     );
-    if (!reference)
+    if (!reference || reference.snapshotSessionId !== event.payload.threadId)
       throw new SkillExperienceUnavailableError(
         'The current Skill experience cannot be verified.',
       );
@@ -120,12 +128,18 @@ export class SkillExperienceRuntime {
     let invoked = false;
     return this.source
       .withSkillExperience(snapshot.identity, async (_definition, content) => {
+        if (this.current(threadId)?.id !== event.id)
+          throw new SkillExperienceUnavailableError(
+            'The current Skill experience changed before dispatch.',
+          );
         invoked = true;
         return effect(
           this.context(
             content,
             snapshot.inputs,
             snapshot.questionnaireDelivery,
+            snapshot.attachmentInputs,
+            snapshot.definition,
           ),
         );
       })
@@ -140,8 +154,10 @@ export class SkillExperienceRuntime {
     content: string,
     inputs: Record<string, string>,
     delivery: 'canonical-request' | 'chat-fallback',
+    attachmentInputs?: Record<string, number[]>,
+    definition?: SkillExperienceDefinitionV1,
   ): string {
-    return `Use the explicitly selected entry Skill below. All its declared Skill dependencies are supplied as pinned inline context: interpret calls to those Skills using these exact texts, without resolving an unqualified global Skill name. Scripts and references stay in the pinned package resource root and require the Agent's ordinary tools and permissions. If a required tool or resource is unavailable, say so and use the canonical chat controls; do not claim its work completed.\n\n${content}\n\nExperience inputs (user data):\n${JSON.stringify(inputs)}\n\n${delivery === 'canonical-request' ? 'Use the engine question request when available for adaptive questions.' : 'Ask adaptive questions in chat; the user answers in the ordinary composer.'}`;
+    return `Use the explicitly selected entry Skill below. All its declared Skill dependencies are supplied as pinned inline context: interpret calls to those Skills using these exact texts, without resolving an unqualified global Skill name. Scripts and references stay in the pinned package resource root and require the Agent's ordinary tools and permissions. If a required tool or resource is unavailable, say so and use the canonical chat controls; do not claim its work completed.\n\n${content}\n\nDeclared input labels (presentation expectations, not grants):\n${JSON.stringify(definition?.inputs.map((field) => ({ id: field.id, label: field.label, kind: field.kind })) ?? [])}\n\nExperience inputs (user data):\n${JSON.stringify(inputs)}\n\nInitial invocation attachment assignments (zero-based indices in that invocation's canonical attachment array, not paths or indices of later turns):\n${JSON.stringify(attachmentInputs ?? {})}\n\n${delivery === 'canonical-request' ? 'Use the engine question request when available for adaptive questions.' : 'Ask adaptive questions in chat; the user answers in the ordinary composer.'}`;
   }
   async start<T>(
     input: {
@@ -225,7 +241,11 @@ export class SkillExperienceRuntime {
             );
         for (const field of definition.inputs) {
           if (field.kind === 'attachments') {
-            const indices = input.selection.attachmentInputs?.[field.id] ?? [];
+            const indices =
+              input.selection.attachmentInputs &&
+              Object.hasOwn(input.selection.attachmentInputs, field.id)
+                ? input.selection.attachmentInputs[field.id]
+                : [];
             if (
               (field.required && !indices.length) ||
               indices.length > field.maxCount ||
@@ -241,7 +261,12 @@ export class SkillExperienceRuntime {
             attachmentInputs[field.id] = indices;
             continue;
           }
-          const value = input.selection.inputs[field.id] ?? field.default ?? '';
+          const value =
+            (Object.hasOwn(input.selection.inputs, field.id)
+              ? input.selection.inputs[field.id]
+              : undefined) ??
+            field.default ??
+            '';
           const textLength = Array.from(value).length;
           if (
             (field.required && !value.trim()) ||
@@ -273,6 +298,8 @@ export class SkillExperienceRuntime {
           content,
           inputs,
           input.questionnaireDelivery,
+          attachmentInputs,
+          definition,
         );
         return effect(reference, prompt);
       },
@@ -282,72 +309,80 @@ export class SkillExperienceRuntime {
     threadId: string,
     cursor?: string,
     limit = 20,
+    expected?: { identity: SkillExperienceIdentityV1; eventId: string },
   ): Promise<SkillExperienceSessionViewV1> {
     const inventory = await this.source
       .listSkillExperiences()
       .catch(() => null);
-    const current = this.current(threadId);
-    const events = this.store.listSkillExperienceEvents(
-      threadId,
-      cursor,
-      limit + 1,
-    );
-    const project = async (event: {
-      id: string;
-      payload: CanonicalRuntimeEvent;
-    }): Promise<SkillExperienceSessionInvocationV1> => {
-      const reference = parseExperienceReference(
-        event.payload.method === 'turn.started'
-          ? event.payload.metadata?.[SKILL_EXPERIENCE_METADATA_KEY]
-          : undefined,
+    const read = async (): Promise<SkillExperienceSessionViewV1> => {
+      const current = this.current(threadId);
+      const events = this.store.listSkillExperienceEvents(
+        threadId,
+        cursor,
+        limit + 1,
       );
-      const base = {
-        eventId: event.id,
-        threadId: event.payload.threadId,
-        ...(event.payload.turnId ? { turnId: event.payload.turnId } : {}),
-        ...(reference ? { reference } : {}),
-      };
-      try {
-        if (!reference) throw new Error('Invalid retained reference');
-        const snapshot = this.store
-          .createSkillExperienceSnapshots()
-          .read(reference);
+      const project = async (event: {
+        id: string;
+        payload: CanonicalRuntimeEvent;
+      }): Promise<SkillExperienceSessionInvocationV1> => {
+        const reference = parseExperienceReference(
+          event.payload.method === 'turn.started'
+            ? event.payload.metadata?.[SKILL_EXPERIENCE_METADATA_KEY]
+            : undefined,
+        );
+        const base = {
+          eventId: event.id,
+          threadId: event.payload.threadId,
+          ...(event.payload.turnId ? { turnId: event.payload.turnId } : {}),
+          ...(reference ? { reference } : {}),
+        };
         try {
           if (
-            !inventory?.experiences.some((entry) =>
-              experienceIdentityEqual(entry.identity, snapshot.identity),
-            )
+            !reference ||
+            reference.snapshotSessionId !== event.payload.threadId
           )
-            throw new Error('Source unavailable');
-          return { ...base, snapshot, availability: { status: 'available' } };
+            throw new Error('Invalid retained reference');
+          const snapshot = this.store
+            .createSkillExperienceSnapshots()
+            .read(reference);
+          try {
+            if (
+              !inventory?.experiences.some((entry) =>
+                experienceIdentityEqual(entry.identity, snapshot.identity),
+              )
+            )
+              throw new Error('Source unavailable');
+            return { ...base, snapshot, availability: { status: 'available' } };
+          } catch {
+            return {
+              ...base,
+              snapshot,
+              availability: {
+                status: 'source-unavailable',
+                message:
+                  'This installed Skill source is no longer available. History remains readable.',
+              },
+            };
+          }
         } catch {
           return {
             ...base,
-            snapshot,
+            snapshot: null,
             availability: {
-              status: 'source-unavailable',
-              message:
-                'This installed Skill source is no longer available. History remains readable.',
+              status: 'snapshot-unavailable',
+              message: 'The retained experience snapshot is unavailable.',
             },
           };
         }
-      } catch {
-        return {
-          ...base,
-          snapshot: null,
-          availability: {
-            status: 'snapshot-unavailable',
-            message: 'The retained experience snapshot is unavailable.',
-          },
-        };
-      }
+      };
+      const history = await Promise.all(events.slice(0, limit).map(project));
+      return {
+        current: current ? await project(current) : null,
+        history,
+        hasMore: events.length > limit,
+        ...(events.length > limit ? { nextCursor: events[limit - 1].id } : {}),
+      };
     };
-    const history = await Promise.all(events.slice(0, limit).map(project));
-    return {
-      current: current ? await project(current) : null,
-      history,
-      hasMore: events.length > limit,
-      ...(events.length > limit ? { nextCursor: events[limit - 1].id } : {}),
-    };
+    return expected ? this.admitFrame(threadId, expected, read) : read();
   }
 }

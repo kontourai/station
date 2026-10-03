@@ -1,11 +1,11 @@
 {
   "$schema": "https://kontour.ai/schemas/agent-plugins/skill-experience/1.0/schema.json",
   "schemaVersion": "1.0",
-  "id": "grill-me",
+  "id": "implement",
   "version": "1.0.0",
-  "title": "Clarify an idea",
-  "purpose": "Stress-test a plan until every dependent decision is settled.",
-  "example": "I want a small team to review incoming feature requests.",
+  "title": "Implement reviewed tickets",
+  "purpose": "Implement user-selected reviewed work with pre-agreed testing seams, review the changes and commit on the current branch.",
+  "example": "Implement these two reviewed tickets in this Project, using the test seams we agreed.",
   "authors": [
     {
       "name": "Station (visual curation)"
@@ -17,15 +17,27 @@
   ],
   "skills": [
     {
-      "id": "grill-me",
-      "name": "grill-me",
-      "path": "./skills/grill-me/SKILL.md",
-      "sha256": "e0a2070992b1ed7f4d4d8504e0fae0cf9c96c8bab4dd50c37989b0f4c7ff1010",
-      "dependsOn": ["grilling"],
+      "id": "implement",
+      "name": "implement",
+      "path": "./skills/implement/SKILL.md",
+      "sha256": "dc27831f466b865bf9e95f28c9361e9e99d59bcfb72a9585aa49a6829b3de3f8",
+      "dependsOn": ["code-review", "tdd"],
       "upstream": {
         "repository": "https://github.com/mattpocock/skills",
         "revision": "d81f3a183412e71a5b1e84ca21bc1a35eea03a60",
-        "path": "skills/productivity/grill-me/SKILL.md"
+        "path": "skills/engineering/implement/SKILL.md"
+      }
+    },
+    {
+      "id": "to-tickets",
+      "name": "to-tickets",
+      "path": "./skills/to-tickets/SKILL.md",
+      "sha256": "611ff3528bbf210d964c794f1994c0343b03e27be9bacc70794727d1104a7f06",
+      "dependsOn": ["setup-matt-pocock-skills"],
+      "upstream": {
+        "repository": "https://github.com/mattpocock/skills",
+        "revision": "d81f3a183412e71a5b1e84ca21bc1a35eea03a60",
+        "path": "skills/engineering/to-tickets/SKILL.md"
       }
     },
     {
@@ -65,6 +77,18 @@
       }
     },
     {
+      "id": "grill-me",
+      "name": "grill-me",
+      "path": "./skills/grill-me/SKILL.md",
+      "sha256": "e0a2070992b1ed7f4d4d8504e0fae0cf9c96c8bab4dd50c37989b0f4c7ff1010",
+      "dependsOn": ["grilling"],
+      "upstream": {
+        "repository": "https://github.com/mattpocock/skills",
+        "revision": "d81f3a183412e71a5b1e84ca21bc1a35eea03a60",
+        "path": "skills/productivity/grill-me/SKILL.md"
+      }
+    },
+    {
       "id": "grill-with-docs",
       "name": "grill-with-docs",
       "path": "./skills/grill-with-docs/SKILL.md",
@@ -86,18 +110,6 @@
         "repository": "https://github.com/mattpocock/skills",
         "revision": "d81f3a183412e71a5b1e84ca21bc1a35eea03a60",
         "path": "skills/productivity/grilling/SKILL.md"
-      }
-    },
-    {
-      "id": "implement",
-      "name": "implement",
-      "path": "./skills/implement/SKILL.md",
-      "sha256": "dc27831f466b865bf9e95f28c9361e9e99d59bcfb72a9585aa49a6829b3de3f8",
-      "dependsOn": ["code-review", "tdd"],
-      "upstream": {
-        "repository": "https://github.com/mattpocock/skills",
-        "revision": "d81f3a183412e71a5b1e84ca21bc1a35eea03a60",
-        "path": "skills/engineering/implement/SKILL.md"
       }
     },
     {
@@ -179,18 +191,6 @@
       }
     },
     {
-      "id": "to-tickets",
-      "name": "to-tickets",
-      "path": "./skills/to-tickets/SKILL.md",
-      "sha256": "611ff3528bbf210d964c794f1994c0343b03e27be9bacc70794727d1104a7f06",
-      "dependsOn": ["setup-matt-pocock-skills"],
-      "upstream": {
-        "repository": "https://github.com/mattpocock/skills",
-        "revision": "d81f3a183412e71a5b1e84ca21bc1a35eea03a60",
-        "path": "skills/engineering/to-tickets/SKILL.md"
-      }
-    },
-    {
       "id": "triage",
       "name": "triage",
       "path": "./skills/triage/SKILL.md",
@@ -223,61 +223,68 @@
   ],
   "requiredContext": [
     {
+      "kind": "project",
+      "required": true,
+      "provenance": {
+        "origin": "station-added",
+        "explanation": "This visual implementation stage requires an explicitly selected Project. Agent tools and project write authority still apply."
+      }
+    },
+    {
       "kind": "conversation",
       "required": false,
       "provenance": {
-        "origin": "skill-declared",
-        "skillRef": "grilling",
-        "explanation": "Use current conversation decisions and referenced reviewed outputs; later steps must not invent replacements."
+        "origin": "station-added",
+        "explanation": "A reviewed ticket reference can be supplied in a new conversation; a stage continuation preserves current decisions."
       }
     }
   ],
-  "capabilities": ["conversation", "artifact-output"],
+  "capabilities": [
+    "conversation",
+    "artifact-output",
+    "project-read",
+    "file-read"
+  ],
   "inputs": [
     {
-      "id": "context",
+      "id": "tickets",
       "kind": "text",
-      "label": "Idea or reviewed context reference",
-      "description": "For a later stage, continue the existing conversation and name the reviewed spec or decisions.",
+      "label": "Reviewed specification or tickets to implement",
+      "description": "Name the exact work and pre-agreed testing seams. Selecting this stage does not start implementation until you send.",
       "required": true,
       "minLength": 1,
       "maxLength": 16000,
       "provenance": {
         "origin": "skill-declared",
-        "skillRef": "grilling",
-        "explanation": "The interview needs a plan; synthesis/tickets use existing conversation or an explicit reference."
+        "skillRef": "implement",
+        "explanation": "Upstream implements the specification or tickets described by the user, using pre-agreed testing seams."
       }
     }
   ],
   "interaction": {
-    "pattern": "interview",
+    "pattern": "transform",
     "stopConditions": [
-      "Wait for answers to the independent frontier before asking dependent questions.",
-      "When the frontier is empty, wait for shared-understanding confirmation before acting."
+      "Only implement the work the user explicitly selected.",
+      "Use TDD where possible at pre-agreed seams; run typechecks and focused tests, then the full suite at the end.",
+      "Review the work with the bundled code-review instructions before committing to the current branch.",
+      "If required tools, testing seams or branch/project authority are unavailable, report the missing prerequisite instead of claiming completion."
     ],
     "unsupportedBehavior": [
-      "Literal dependency detection is conservative; inspect source and setup.",
-      "Environment facts require a capable agent with subagents; do not substitute user guesses.",
-      "Tools, file writes, tracker access and publication depend on the selected agent and its permissions.",
-      "Guided view only renders canonical requests; prose question rounds remain answerable in chat.",
-      "Automatic progression or implementation is not authorized by choosing an experience.",
-      "A frontier with more than 12 questions must use chat without dropping questions; the display bound is Station-added, not an upstream interview limit.",
-      "User-invoked Skills are only entered by explicit user selection; their nonportable disable-model-invocation flag is removed in adapted frontmatter and original source is retained under upstream/. Do not auto-invoke setup or implementation."
-    ],
-    "questionRounds": {
-      "answerKinds": ["text", "single-choice", "multi-choice"],
-      "maxQuestionsPerRound": 12
-    }
+      "Selecting a previous stage never authorizes implementation automatically.",
+      "Worktree, branch, file writes and commits follow the selected Agent\u2019s ordinary policy and repository instructions.",
+      "The interface does not infer successful tests, review or commits from model prose."
+    ]
   },
   "outputs": [
     {
-      "id": "decisions",
-      "label": "Reviewed decisions",
-      "kind": "decision-summary",
-      "required": false,
+      "id": "implementation",
+      "label": "Implementation, review and actual commit outcome",
+      "kind": "markdown",
+      "required": true,
       "provenance": {
-        "origin": "station-added",
-        "explanation": "Optional presentation of canonical decisions; upstream promises shared understanding, not an exported summary."
+        "origin": "skill-declared",
+        "skillRef": "implement",
+        "explanation": "The source requests implementation, checks, review and a current-branch commit. Only actual canonical tool outcomes establish those effects."
       }
     }
   ],
@@ -285,23 +292,6 @@
     "modes": ["guided", "alongside"],
     "defaultMode": "guided"
   },
-  "entrySkillId": "grill-me",
-  "transitions": [
-    {
-      "experienceId": "grill-with-docs",
-      "label": "Clarify project decisions",
-      "provenance": {
-        "origin": "station-added",
-        "explanation": "Station offers this optional next stage after the user reviews current work. Selecting it prepares a draft; sending and concrete tool actions remain explicit user decisions."
-      }
-    },
-    {
-      "experienceId": "to-spec",
-      "label": "Write a specification",
-      "provenance": {
-        "origin": "station-added",
-        "explanation": "Station offers this optional next stage after the user reviews current work. Selecting it prepares a draft; sending and concrete tool actions remain explicit user decisions."
-      }
-    }
-  ]
+  "entrySkillId": "implement",
+  "transitions": []
 }

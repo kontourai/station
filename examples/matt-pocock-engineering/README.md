@@ -1,8 +1,10 @@
 # Station-curated Matt Pocock engineering collection
 
-This ordinary Agent Plugin supplies four visual entry points: **Clarify an
-idea**, **Clarify project decisions**, **Write a specification**, and **Break a
-specification into tickets**. Each can be selected independently. The package
+This ordinary Agent Plugin supplies five visual entry points: **Clarify an
+idea**, **Clarify project decisions**, **Write a specification**, **Break a
+specification into tickets**, and **Implement reviewed tickets**. Each can be
+selected independently. Authored optional stage choices prepare the next draft
+in the same conversation; they never send or implement automatically. The package
 is Station-curated; Matt Pocock authored the upstream Skills, not these visual
 interfaces, and no endorsement is implied.
 
@@ -64,8 +66,10 @@ or modify a parent issue. The configured tracker, local files and actual
 publication actions retain the agent's normal authority boundary.
 
 Implementation is a separate user decision. After reviewing the work
-breakdown, explicitly invoke the bundled `implement` Skill with selected ticket
-references and confirm project, branch, tools and pre-agreed testing seams.
+breakdown, explicitly choose **Implement reviewed tickets**, supply the selected
+ticket references and confirm Project, branch, tools and pre-agreed testing seams
+before sending. This authored stage calls the bundled `implement` entry; it is
+never an automatic transition from tickets.
 It uses `tdd` where possible, checks the work, invokes `code-review` and commits
 to the current branch. Installing or finishing a visual experience grants none
 of these actions. Starting implementation does not reset reviewed decisions.

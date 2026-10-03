@@ -1816,6 +1816,8 @@ export function createOrchestrationRoutes(
 
   app.get('/sessions/:threadId/skill-experience', async (c) => {
     try {
+      if (deps.isRequestPrincipalCurrent?.(c.req.raw) === false)
+        return c.json({ success: false, error: 'Session not found' }, 404);
       const query = z
         .object({
           expectedSkillExperience: z.string().max(2048).optional(),
@@ -1835,6 +1837,8 @@ export function createOrchestrationRoutes(
         query.limit,
         expected,
       );
+      if (deps.isRequestPrincipalCurrent?.(c.req.raw) === false)
+        return c.json({ success: false, error: 'Session not found' }, 404);
       return data
         ? c.json({ success: true, data })
         : c.json({ success: false, error: 'Session not found' }, 404);

@@ -5827,11 +5827,12 @@ export class OrchestrationService {
     if (!this.sessionAuthz.canReadSession(threadId, authority)) return null;
     if (!this.skillExperienceRuntime)
       throw new Error('Skill experience execution is unavailable.');
-    const read = () =>
-      this.skillExperienceRuntime!.read(threadId, cursor, limit);
-    const view = expected
-      ? await this.skillExperienceRuntime.admitFrame(threadId, expected, read)
-      : await read();
+    const view = await this.skillExperienceRuntime.read(
+      threadId,
+      cursor,
+      limit,
+      expected,
+    );
     if (
       !this.sessionAuthz.canReadSession(threadId, authority) ||
       [...view.history, ...(view.current ? [view.current] : [])].some(
@@ -6647,6 +6648,12 @@ export class OrchestrationService {
                             ? this.skillExperienceRuntime.admitSelection(
                                 internal.skillExperience.identity,
                                 effect,
+                                {
+                                  threadId: turnInput.threadId,
+                                  previousEventId:
+                                    internal.skillExperience
+                                      .expectedPreviousInvocationEventId,
+                                },
                               )
                             : this.withCurrentSkillExperience(
                                 turnInput.threadId,

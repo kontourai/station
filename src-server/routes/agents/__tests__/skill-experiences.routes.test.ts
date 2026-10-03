@@ -32,6 +32,7 @@ import {
 } from '../../../__test-utils__/orchestration-gate-test-harness.js';
 import { readJson } from '../../../__test-utils__/read-json.js';
 import { ConfigLoader } from '../../../domain/config-loader.js';
+import type { ProviderAdapterMetadata } from '../../../providers/adapter-shape.js';
 import { SkillService } from '../../../services/agents/skill-service.js';
 import {
   type ExecutionTargetExecutionDependencies,
@@ -63,10 +64,13 @@ afterEach(() => {
   }
 });
 
-async function installedExperience(change?: (source: string) => void) {
+async function installedExperience(
+  change?: (source: string) => void,
+  example = 'examples/visual-skill-experience',
+) {
   const home = mkdtempSync(join(tmpdir(), 'station-experience-route-'));
   const source = join(home, 'source');
-  cpSync(resolve('examples/visual-skill-experience'), source, {
+  cpSync(resolve(example), source, {
     recursive: true,
   });
   change?.(source);
@@ -382,12 +386,19 @@ test('journal-observed legacy packages cannot invent managed materialization ide
 });
 
 class ExperienceAdapter extends GateTestAdapter {
+  override readonly metadata: ProviderAdapterMetadata = {
+    displayName: 'Claude Code',
+    description: 'Recording engine for pinned experience delivery',
+    capabilities: ['agent-runtime', 'file-input', 'image-input'],
+  };
   readonly turns: ProviderSendTurnInput[] = [];
   readonly decisions: string[] = [];
-  override async hasSession() {
-    return true;
+  readonly sessions = new Set<string>();
+  override async hasSession(threadId?: string) {
+    return Boolean(threadId && this.sessions.has(threadId));
   }
   override async startSession(input: ProviderSessionStartInput) {
+    this.sessions.add(input.threadId);
     this.events.push({
       eventId: `${input.threadId}:configured`,
       provider: this.provider,
@@ -410,6 +421,7 @@ class ExperienceAdapter extends GateTestAdapter {
       method: 'turn.started',
       createdAt: new Date().toISOString(),
       metadata: input.metadata,
+      attachments: input.attachments,
       prompt: input.displayInput ?? input.input,
     });
     return { threadId: input.threadId, turnId };
@@ -426,8 +438,9 @@ class ExperienceAdapter extends GateTestAdapter {
 async function experienceRuntime(
   projectEnvironment?: EnvironmentRef,
   change?: (source: string) => void,
+  example?: string,
 ) {
-  const fixture = await installedExperience(change);
+  const fixture = await installedExperience(change, example);
   await fixture.activate();
   const inventory = await fixture.inventory();
   const adapter = new ExperienceAdapter();
@@ -979,4 +992,409 @@ test('rich actions bind the exact invocation and fresh plugin grant while ordina
   } finally {
     await fixture.service.shutdown();
   }
+});
+
+test('the actual curated package loads explicit stages and delivers its pinned grilling source through real foreground execution', async () => {
+  const fixture = await experienceRuntime(
+    undefined,
+    undefined,
+    'examples/matt-pocock-engineering',
+  );
+  try {
+    const inventory = await fixture.inventory();
+    expect(inventory.diagnostics).toEqual([]);
+    expect(inventory.experiences.map((entry) => entry.definition.id)).toEqual(
+      expect.arrayContaining([
+        'grill-me',
+        'grill-with-docs',
+        'to-spec',
+        'to-tickets',
+        'implement',
+      ]),
+    );
+    const grilling = readFileSync(
+      'examples/matt-pocock-engineering/skills/grilling/SKILL.md',
+      'utf8',
+    );
+    const selected = await selectedTurn(fixture, {
+      context: 'Plan a careful feature review process',
+    });
+    expect(
+      selected.status,
+      JSON.stringify(await readJson(selected.clone())),
+    ).toBe(200);
+    expect(fixture.adapter.turns[0]!.input).toContain(grilling);
+    expect(fixture.adapter.turns[0]!.input).toContain(
+      'Selected entry Skill: grill-me',
+    );
+    const implementation = inventory.experiences.find(
+      (entry) => entry.definition.id === 'implement',
+    )!;
+    expect(implementation.definition.entrySkillId).toBe('implement');
+    expect(implementation.definition.requiredContext).toContainEqual(
+      expect.objectContaining({ kind: 'project', required: true }),
+    );
+    expect(fixture.adapter.turns).toHaveLength(1);
+    const tickets = inventory.experiences.find(
+      (entry) => entry.definition.id === 'to-tickets',
+    )!;
+    expect(
+      tickets.definition.transitions?.map((stage) => stage.experienceId),
+    ).toEqual(['implement']);
+  } finally {
+    await fixture.service.shutdown();
+  }
+});
+
+test('an exact foreground retry returns the canonical accepted turn without invoking its Skill or provider again', async () => {
+  const fixture = await experienceRuntime();
+  try {
+    const first = await selectedTurn(fixture);
+    const firstBody = await readJson<{
+      success: boolean;
+      data: {
+        conversationId: string;
+        sessionId: string;
+        providerTurnId: string;
+      };
+    }>(first);
+    expect(first.status, JSON.stringify(firstBody)).toBe(200);
+    await vi.waitFor(() =>
+      expect(
+        fixture.store.listSkillExperienceEvents('experience-session'),
+      ).toHaveLength(1),
+    );
+    const retry = await fixture.routes.request('/chat', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        target: { environment: { kind: 'current' }, agent: 'claude' },
+        conversationId: 'experience-session',
+        message: 'Start this interview',
+        clientTurnId: 'experience-client-turn',
+        skillExperience: {
+          identity: fixture.identity,
+          inputs: { idea: 'A careful review process' },
+        },
+      }),
+    });
+    expect(retry.status, JSON.stringify(await readJson(retry.clone()))).toBe(
+      200,
+    );
+    const retried = await readJson(retry);
+    expect(retried).toMatchObject({
+      success: true,
+      data: {
+        conversationId: firstBody.data.conversationId,
+        sessionId: firstBody.data.sessionId,
+        providerTurnId: firstBody.data.providerTurnId,
+      },
+    });
+    expect(fixture.adapter.turns).toHaveLength(1);
+    expect(
+      fixture.store.listSkillExperienceEvents('experience-session'),
+    ).toHaveLength(1);
+  } finally {
+    await fixture.service.shutdown();
+  }
+});
+
+test('initial and continued model input retain the declared attachment role assignments without embedding attachment bytes or local attachment paths in context', async () => {
+  const fixture = await experienceRuntime(undefined, (source) => {
+    const file = join(
+      source,
+      'io.kontourai.station/experiences/stress-test-idea.json',
+    );
+    const definition: import('@kontourai/station-contracts/skill-experience').SkillExperienceDefinitionV1 =
+      JSON.parse(readFileSync(file, 'utf8'));
+    definition.inputs.push(
+      ...['reference', 'candidate'].map((id) => ({
+        id,
+        kind: 'attachments' as const,
+        label: id,
+        required: true,
+        maxCount: 1,
+        provenance: {
+          origin: 'station-added' as const,
+          explanation: 'The user assigns documents for comparison.',
+        },
+      })),
+    );
+    writeFileSync(file, JSON.stringify(definition));
+  });
+  try {
+    const documents = ['baseline', 'candidate'].map((text, index) => ({
+      kind: 'file',
+      name: `document-${index}.txt`,
+      mimeType: 'text/plain',
+      size: Buffer.byteLength(text),
+      dataUrl: `data:text/plain;base64,${Buffer.from(text).toString('base64')}`,
+    }));
+    const response = await fixture.routes.request('/chat', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        target: { environment: { kind: 'current' }, agent: 'claude' },
+        message: 'Compare the documents',
+        clientTurnId: 'attachment-role-turn',
+        attachments: documents,
+        skillExperience: {
+          identity: fixture.identity,
+          inputs: { idea: 'Review the changes' },
+          attachmentInputs: { reference: [1], candidate: [0] },
+        },
+      }),
+    });
+    expect(
+      response.status,
+      JSON.stringify(await readJson(response.clone())),
+    ).toBe(200);
+    expect(fixture.adapter.turns[0]!.input).toContain(
+      '"reference":[1],"candidate":[0]',
+    );
+    expect(fixture.adapter.turns[0]!.attachments).toEqual(documents);
+    expect(fixture.adapter.turns[0]!.input).not.toContain('data:text/plain');
+    await vi.waitFor(() =>
+      expect(
+        fixture.store.listSkillExperienceEvents('experience-session'),
+      ).toHaveLength(1),
+    );
+    await fixture.service.dispatchWithReceipt(
+      {
+        type: 'sendTurn',
+        input: {
+          threadId: 'experience-session',
+          input: 'Continue the review',
+          clientTurnId: 'continued-attachment-roles',
+        },
+      },
+      { userId: 'experience-owner' },
+    );
+    expect(fixture.adapter.turns[1]!.input).toContain(
+      '"reference":[1],"candidate":[0]',
+    );
+    const view = await fixture.service.readSkillExperience(
+      'experience-session',
+      INTERNAL_SESSION_READ_SCOPE,
+    );
+    expect(view?.current?.snapshot?.attachmentInputs).toEqual({
+      reference: [1],
+      candidate: [0],
+    });
+  } finally {
+    await fixture.service.shutdown();
+  }
+});
+
+test('declared stage selection follows canonical child Session lineage and preserves ordered immutable history', async () => {
+  const fixture = await experienceRuntime(undefined, (source) => {
+    const file = join(
+      source,
+      'io.kontourai.station/experiences/stress-test-idea.json',
+    );
+    const definition: import('@kontourai/station-contracts/skill-experience').SkillExperienceDefinitionV1 =
+      JSON.parse(readFileSync(file, 'utf8'));
+    definition.entrySkillId = 'interview';
+    definition.transitions = [
+      {
+        experienceId: 'write-brief',
+        label: 'Write a brief',
+        provenance: {
+          origin: 'station-added',
+          explanation: 'An explicit next stage after reviewing decisions.',
+        },
+      },
+    ];
+    writeFileSync(file, JSON.stringify(definition));
+    const content =
+      '---\nname: write-brief\ndescription: Write a reviewed brief\n---\nBRIEF_STAGE_SENTINEL: summarize the reviewed decisions.\n';
+    mkdirSync(join(source, 'skills/write-brief'));
+    writeFileSync(join(source, 'skills/write-brief/SKILL.md'), content);
+    const next = {
+      ...definition,
+      id: 'write-brief',
+      title: 'Write a brief',
+      skills: [
+        {
+          id: 'writer',
+          name: 'write-brief',
+          path: './skills/write-brief/SKILL.md',
+          sha256: createHash('sha256').update(content).digest('hex'),
+        },
+      ],
+      entrySkillId: 'writer',
+      transitions: [],
+      requiredContext: [
+        {
+          kind: 'conversation',
+          required: true,
+          provenance: {
+            origin: 'station-added',
+            explanation:
+              'Continue reviewed decisions in the same conversation.',
+          },
+        },
+      ],
+      inputs: [
+        {
+          ...definition.inputs[0]!,
+          provenance: {
+            origin: 'station-added',
+            explanation: 'The user confirms the context for this next stage.',
+          },
+        },
+      ],
+      interaction: {
+        pattern: 'transform',
+        stopConditions: ['Reviewed brief complete.'],
+        unsupportedBehavior: ['No automatic next stage.'],
+      },
+      outputs: [
+        {
+          ...definition.outputs[0]!,
+          provenance: {
+            origin: 'station-added',
+            explanation: 'A reviewed written brief.',
+          },
+        },
+      ],
+    };
+    writeFileSync(
+      join(source, 'io.kontourai.station/experiences/write-brief.json'),
+      JSON.stringify(next),
+    );
+    const manifestFile = join(source, 'plugin.json');
+    const manifest = JSON.parse(readFileSync(manifestFile, 'utf8'));
+    manifest.extensions['io.kontourai.station'].experiences.push({
+      version: '1.0',
+      id: 'write-brief',
+      source: './io.kontourai.station/experiences/write-brief.json',
+    });
+    writeFileSync(manifestFile, JSON.stringify(manifest));
+  });
+  try {
+    const initial = await selectedTurn(fixture);
+    expect(
+      initial.status,
+      JSON.stringify(await readJson(initial.clone())),
+    ).toBe(200);
+    await vi.waitFor(() =>
+      expect(
+        fixture.store.listSkillExperienceEvents('experience-session'),
+      ).toHaveLength(1),
+    );
+    const firstEvent =
+      fixture.store.listSkillExperienceEvents('experience-session')[0]!;
+    fixture.adapter.events.push({
+      eventId: 'first-completed',
+      provider: 'claude',
+      threadId: 'experience-session',
+      turnId: 'turn:1',
+      method: 'turn.completed',
+      createdAt: new Date().toISOString(),
+    });
+    fixture.adapter.events.push({
+      eventId: 'first-session-exited',
+      provider: 'claude',
+      threadId: 'experience-session',
+      sessionId: 'experience-session',
+      method: 'session.exited',
+      exitCode: 0,
+      createdAt: new Date().toISOString(),
+    });
+    fixture.adapter.sessions.delete('experience-session');
+    await vi.waitFor(() =>
+      expect(
+        fixture.store
+          .listEvents('experience-session')
+          .some((event) => event.id === 'first-session-exited'),
+      ).toBe(true),
+    );
+    const target = (await fixture.inventory()).experiences.find(
+      (entry) => entry.definition.id === 'write-brief',
+    )!;
+    const response = await fixture.routes.request('/chat', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        target: { environment: { kind: 'current' }, agent: 'claude' },
+        conversationId: 'experience-session',
+        message: 'Write the reviewed brief',
+        clientTurnId: 'brief-turn',
+        skillExperience: {
+          identity: target.identity,
+          inputs: { idea: 'Use the agreed decisions' },
+          expectedPreviousInvocationEventId: firstEvent.id,
+        },
+      }),
+    });
+    expect(
+      response.status,
+      JSON.stringify(await readJson(response.clone())),
+    ).toBe(200);
+    await vi.waitFor(() =>
+      expect(
+        fixture.store.listSkillExperienceEvents('experience-session'),
+      ).toHaveLength(2),
+    );
+    expect(fixture.adapter.turns[1]!.input).toContain('BRIEF_STAGE_SENTINEL');
+    expect(fixture.adapter.turns[1]!.threadId).not.toBe('experience-session');
+    const child = fixture.adapter.turns[1]!.threadId;
+    const view = await fixture.service.readSkillExperience(
+      child,
+      INTERNAL_SESSION_READ_SCOPE,
+      undefined,
+      1,
+    );
+    expect(view?.current?.threadId).toBe(child);
+    expect(view?.current?.snapshot?.previousInvocationEventId).toBe(
+      firstEvent.id,
+    );
+    expect(view?.hasMore).toBe(true);
+    const older = await fixture.service.readSkillExperience(
+      child,
+      INTERNAL_SESSION_READ_SCOPE,
+      view?.nextCursor,
+      1,
+    );
+    expect(older?.history[0]?.eventId).toBe(firstEvent.id);
+    expect(older?.current?.snapshot?.identity.experienceId).toBe('write-brief');
+    const reference = view!.current!.reference!;
+    await fixture.service.shutdown();
+    fixture.store.deleteThread(child);
+    expect(() =>
+      fixture.store.createSkillExperienceSnapshots().read(reference),
+    ).toThrow(/missing|corrupt/);
+  } finally {
+    await fixture.service.shutdown();
+  }
+});
+
+test('reserved optional input identities produce an explicit definition-invalid inventory diagnostic', async () => {
+  const fixture = await installedExperience((source) => {
+    const file = join(
+      source,
+      'io.kontourai.station/experiences/stress-test-idea.json',
+    );
+    const definition = JSON.parse(readFileSync(file, 'utf8'));
+    definition.inputs[0] = {
+      ...definition.inputs[0],
+      id: 'constructor',
+      required: false,
+      default: 'A declared default',
+    };
+    writeFileSync(file, JSON.stringify(definition));
+  });
+  await fixture.activate();
+  expect(await fixture.inventory()).toMatchObject({
+    experiences: [],
+    diagnostics: [
+      expect.objectContaining({
+        code: 'definition-invalid',
+        message: expect.stringContaining(
+          'inputs/constructor: reserved input identity',
+        ),
+      }),
+    ],
+  });
 });

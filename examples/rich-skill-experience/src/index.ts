@@ -28,6 +28,7 @@ function mount() {
   const createHost = window.__stationCreateSkillExperiencePaneHost;
   const root = document.getElementById('app');
   if (!origin || !createHost || !root) return;
+  root.classList.add('rich-skill-experience');
   const host = createHost(window.parent, origin);
   window.addEventListener('pagehide', () => host.dispose(), { once: true });
   root.append(element('h1', 'Interview review'));
