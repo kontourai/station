@@ -45,12 +45,13 @@ For full field reference see [docs/reference/config.md](../reference/config.md).
 
 ### MCP Tool Configuration
 
-Open an Agent's **Tools** section to add integrations. **Add Station tools**
+Open an Agent's **Tools** section to add integrations. **Station**
 adds read-only built-in controls; expand the row to choose **Read only**, **All**,
 **None**, or individual tools. Use the group picker to narrow Station controls to
 Knowledge, Projects, Tasks, Scheduling, and other areas. The three shortcuts apply
-to the chosen group and preserve choices elsewhere. Search narrows the checklist. **Approvals**
-reveals automatic-approval settings separately. Saved changes apply to new chats.
+to the chosen group and preserve choices elsewhere. Search narrows the checklist. The shield opens approval settings; the gear
+opens harness settings. **Advanced** contains browser and workflow options.
+Saved changes apply to new chats.
 
 Station Control publishes native MCP titles and behavioral annotations. The
 `ai.kontour/tool-group` vendor metadata organizes the picker; third-party
