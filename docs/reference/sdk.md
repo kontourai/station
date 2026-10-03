@@ -1804,6 +1804,10 @@ registering a provider neither installs its content nor grants permission.
 Skill providers can expose `getPackageRevision` and enforce its value in
 `install`'s `expectedPackageRevision`. Plugin providers resolve fresh package
 source/claims through the existing installer and applied trust policy.
+`getCatalogSnapshot()` can return `PluginRegistryCatalogSnapshot`: the item
+rows, package source/claim pairs and revision from one fresh observation.
+Station manifest providers use that observation together; metadata and claims
+remain untrusted until the existing acquisition authority verifies them.
 
 ### `usePluginsQuery(config?)`
 

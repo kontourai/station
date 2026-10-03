@@ -120,7 +120,11 @@ describe('Marketplace source lifecycle through Registry routes', () => {
           ? '{bad'
           : shape === 'unsupported'
             ? JSON.stringify({ version: 2, sources: [], disabled: [] })
-            : ' '.repeat(8 * 1024 * 1024 + 1);
+            : JSON.stringify({
+                version: 1,
+                sources: [],
+                disabled: ['x'.repeat(8 * 1024 * 1024)],
+              });
       await writeFile(file, bytes);
       expect(() => new RegistrySourceManager(home)).toThrow(
         'Registry source configuration',

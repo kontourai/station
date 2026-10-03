@@ -22,7 +22,6 @@ import {
   pluginProviderSourceGeneration,
 } from './registry.js';
 import { readRegistryCatalogInstalledState } from './registry-catalog-installed-state.js';
-
 import {
   digest,
   RegistryCatalogRefusal,

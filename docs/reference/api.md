@@ -2035,7 +2035,11 @@ managed through the plugin's existing enable/disable/revoke lifecycle.
 
 [The source manager](../../src-server/providers/registries/registry-source-manager.ts)
 keeps versioned configuration and last successful catalog snapshots in
-`config/registry-sources.json`. Provider visibility and generation fences remain
+`config/registry-sources.json`: a regular file bounded to 8 MiB, 32 user-added
+sources and 32 retained snapshots, each with at most 512 rows. Corrupt,
+unsupported, oversized and nonregular configuration is refused without
+replacing the existing bytes. Offline plugin rows use current local installed
+inventory and source ownership aliases. Provider visibility and generation fences remain
 owned by the existing provider registry. Source status is `ready`, `stale`,
 `error`, `disabled` or `unknown`; it includes checked/last successful times and
 an explicit error when refresh fails. Cached data is discovery evidence;

@@ -366,6 +366,7 @@ export interface SkillRegistryProvider {
   getContent?(id: string): Promise<string | null>;
 }
 
+/** Rows and package claims from one fresh observation of a catalog revision. */
 export interface PluginRegistryCatalogSnapshot {
   revision: string;
   items: RegistryItem[];
