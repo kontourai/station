@@ -45,8 +45,8 @@ right of the Agent, Model, and Approval controls. Scroll to bottom appears
 immediately to the right of that status and moves with it as the draft grows.
 When the chat pane is narrow, the status and scroll control are centered
 together in a row above the settings. Scroll-button hover changes its background
-without enlarging its target. The desktop header exposes Collapse chat list /
-Expand chat list directly, with its current state available to assistive technology.
+without enlarging its target. The desktop header exposes Hide inbox /
+Show inbox directly, as an icon button whose pressed state is available to assistive technology; its one labelled action is New, and "Open chat…" is the first row of its ⋯ menu.
 
 The pill uses compact state labels such as Working, Thinking, and Reconnecting;
 it does not expand to display tool names. State changes animate its width with
@@ -238,9 +238,10 @@ right, outside the scrolling list. Its accessible name and hover label are
 **New chat**. It uses the same direct-chat or agent-choice flow as Chat actions;
 opening it sends no message. Rows show the catalog's Agent icon, conversation
 title, Project, and a right-aligned status/time. Unresolved Agents retain their
-name. **Input** and **Approval** are compact presentations of the existing
-answer/approval states. Running time uses the recorded open-turn start; without
-one, the displayed time is labelled as last activity. One ellipsis opens the
+name. The status line is the ladder's own words (`Needs answer`, `Needs
+approval`, …, the same words the dock row prints). Running time uses the
+recorded open-turn start; without one, the row's compact time trails the status
+line (`· 2m`). One ellipsis opens the
 existing details/actions sheet, including Git and PR reads on demand.
 
 The **Projects** picker uses the same **+** component, named **New project**,
