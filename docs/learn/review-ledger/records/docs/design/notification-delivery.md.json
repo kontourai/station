@@ -44,7 +44,7 @@
 
     {"path":"src-desktop/plugins/agent-activity/ios/Sources/StationNotificationServiceCore/SealedAlertDelivery.swift","digest":"fac89631a85638abd83cf3f9a19ae2b9e1e4475b31f0d010e70d7102ceb17896","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
 
-    {"path":"src-desktop/src/lib.rs","digest":"c98156ab945eb55a1499c3b79c24417865d042347a985d1b808aafb13131f256","revision":"9623ad155b409f289f9fd6083db80372819c2a26"},
+    {"path":"src-desktop/src/lib.rs","digest":"05c0b0e88a429f334d6b20631473c3be8b117ba750c7d28d73ca2a132a92cba0","revision":"87ca1419745027f758d5a9a8efbdc235bb113438"},
 
     {"path":"src-desktop/src/local_access_watch.rs","digest":"4499c78676d1f7dd5a3b580ba2bf82dedd3ef14fb8cd8273fcd1b24fc23429be","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
 

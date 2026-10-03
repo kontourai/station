@@ -32,7 +32,7 @@
 
     {"path":"packages/cli/src/commands/cloud.ts","digest":"7c50391b36b9c61736cc806b55296bed80d4c376921295ff406bdea000e9cd51","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 
-    {"path":"packages/contracts/src/environment-security.ts","digest":"2df95e81e22dc7f7f5e6956c749a19ed01bba6b62c931e672b5a89abd235c6df","revision":"054d4f861db7de6e1eb419593e7b21b34d3c08ce"},
+    {"path":"packages/contracts/src/environment-security.ts","digest":"5321281ba84da29a4ba2681d344a91f08590c75d6386412a7e8d3dfba827a41a","revision":"965dfe953d3566dba61149eeaf956aed07a65bcf"},
 
     {"path":"packages/contracts/src/workspace-home-role.ts","digest":"afdd6ec33526422a7a455cfc575cdd5d662277a8a5c356db6f5b2b564de038f4","revision":"6bda463a0c9cb44b7f2686c6d47b4552f79220f2"},
 

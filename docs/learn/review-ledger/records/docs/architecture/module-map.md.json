@@ -156,7 +156,7 @@
 
     {"path":"scripts/test-fixture-policy.mjs","digest":"fbe0e2438328249f4c047171503c0ffa8d366e9468418037cf0b211e090a48eb","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-desktop/src/lib.rs","digest":"c98156ab945eb55a1499c3b79c24417865d042347a985d1b808aafb13131f256","revision":"9623ad155b409f289f9fd6083db80372819c2a26"},
+    {"path":"src-desktop/src/lib.rs","digest":"05c0b0e88a429f334d6b20631473c3be8b117ba750c7d28d73ca2a132a92cba0","revision":"87ca1419745027f758d5a9a8efbdc235bb113438"},
 
     {"path":"src-desktop/src/login_shell.rs","digest":"383da9b8cc506165bed9da14ba157d3e3a2f68a7495a708aac9025e4ed99cb2c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -352,7 +352,7 @@
 
     {"path":"src-server/runtime/bootstrap/native-device-proof-runtime.ts","digest":"54bb568bc83d313232b95afaff825e92965fb0d6cb92b5bad3fae295aed7c8f8","revision":"a72f474ba3d42a59409d95d36eb9e0264b599e33"},
 
-    {"path":"src-server/runtime/bootstrap/runtime-http.ts","digest":"cdfffc4dc4fa6b5581595ef57780cedff21b645ab3f284cf9afc086a2f1d45e2","revision":"9623ad155b409f289f9fd6083db80372819c2a26"},
+    {"path":"src-server/runtime/bootstrap/runtime-http.ts","digest":"5f198f2fd096d05a0103b7fb8eb15265c3e939af21cba938792d01f3e656b3d1","revision":"a22fe5d30cc285e8b717a19e4e282d46108a2909"},
 
     {"path":"src-server/runtime/bootstrap/runtime-initialize.ts","digest":"bd381c9d60f70ac986c9eee0977752d883f52a018842fee300d3e352933aea6d","revision":"56f4c4897a189eeb30430119a4f4895e95fbb541"},
 

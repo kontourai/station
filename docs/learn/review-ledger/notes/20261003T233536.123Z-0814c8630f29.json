@@ -1,0 +1,9 @@
+{
+  "revision": "f951ee234175769e0b4e725eb3f18726a40831c2",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"EXECUTED #2962 dependency review: compared the new capability-gated protocol-carriage and 400/426 paragraphs in docs/reference/connect.md with the glossary Station/Device/access-route and saved Station/profile vocabulary. Compatibility declares a client build and grants no credential or scope; saved endpoint/credential-reference identity and naming policy are unchanged. No glossary claim describes universal protocol carriage, so prose remains accurate. NOT_VERIFIED: no new runtime/UI terminology or device journey."},
+
+    {"path":"docs/guides/integrating-station.md","note":"EXECUTED #2962 dependency review: compared docs/reference/api.md new client admission and CORS sections with Start with one useful integration, specifically the API/SDK/contracts route and exact client/server versions plus authorized/refused-request evidence. New 400/426 compatibility refusals fit that requirement and add no generic API key or hosted readiness. Cloud/adapter/commercial targets are unrelated to this API delta and remain prospective. NOT_VERIFIED: no live adopter, provider or cloud integration."}
+  ]
+}

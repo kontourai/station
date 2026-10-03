@@ -9,16 +9,22 @@
 
   "limits": "No full delegation/read-scope/security audit, real mutual pairing ceremony, SSH remote or target-execution proof.",
 
-  "document": {"digest":"c2844918dc78fd9924dd1fd1f9dfe649ef85d4ad1e6d7d89af148d17b84d239e","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+  "document": {"digest":"77fade06b007c99c629fdebeac9bfdb22f82484a25bb1f6a7d43982fed777848","revision":"f951ee234175769e0b4e725eb3f18726a40831c2"},
 
   "sources": [
-    {"path":"packages/contracts/src/environment-security.ts","digest":"2df95e81e22dc7f7f5e6956c749a19ed01bba6b62c931e672b5a89abd235c6df","revision":"054d4f861db7de6e1eb419593e7b21b34d3c08ce"},
+    {"path":"packages/contracts/src/environment-security.ts","digest":"5321281ba84da29a4ba2681d344a91f08590c75d6386412a7e8d3dfba827a41a","revision":"965dfe953d3566dba61149eeaf956aed07a65bcf"},
 
     {"path":"src-server/services/peers/peer-credential-store.ts","digest":"08c2e2a1069e62cdc8196dffe4ed7a9c0dfc709047431d775e70c3c30e2378c3","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
     {"path":"src-server/tools/station-control-delegation.ts","digest":"e5e4d1979cfa4997ce4b808f5268e69bbd0926f5c838ac1388bbdd5009389467","revision":"56f4c4897a189eeb30430119a4f4895e95fbb541"},
 
-    {"path":"src-server/services/remote-stations/remote-station-forwarder.ts","digest":"d7dd70947247259c8564783e5e5dd30dbbd2ad5f569fa36cc7f9df4979040cf6","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"}
+    {"path":"src-server/services/remote-stations/remote-station-forwarder.ts","digest":"d7dd70947247259c8564783e5e5dd30dbbd2ad5f569fa36cc7f9df4979040cf6","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+
+    {"path":"packages/shared/src/client-protocol.ts","digest":"3813725295587b37d4a84509e90cf403423d7a5b16afc2ef0c5797cd3d28aadf","revision":"965dfe953d3566dba61149eeaf956aed07a65bcf"},
+
+    {"path":"src-server/security/client-protocol-admission.ts","digest":"30fe8b4eb670e5f73cf43c736fe1d2c86ea3cf91f98a843edb20f7885d8b828a","revision":"18ca128e2591c8773fd4a109991661d576c29b4a"},
+
+    {"path":"src-server/runtime/__tests__/client-protocol-admission.test.ts","digest":"1b0a8e5331791cddd41ce37aa72d3da09cc7ee4be0ff226a1201e811836d9223","revision":"f064416973767bd2e7ff5c9168659decc1df12a6"}
   ],
 
   "checks": [

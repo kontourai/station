@@ -9,7 +9,7 @@
 
   "limits": "Decision record only; no behavior ships with it. Context statements describe origin/main on 2026-09-29 and were checked against the listed sources; the decisions are implemented and proven by #2959-#2962, not by this record.",
 
-  "document": {"digest":"9ef4b5ec4ab7fb3603a25fdb6673f8f9b62753334370bd3d109a0d4dab349418","revision":"822faf4ece39a77cd8977830c4f3d96611946892"},
+  "document": {"digest":"47d990a51c06294c336eb433746f16f7a9dabb40df56de4f51c6197aec3fbf1e","revision":"f951ee234175769e0b4e725eb3f18726a40831c2"},
 
   "sources": [
     {"path":"install.sh","digest":"f2b2fbf2dba1198f08637b48ad3a1cd7ae684cee020621cd293668e6bbb8b4bc","revision":"54e0ffb5c1ae765b4127f031e525793087fb9669"},
@@ -18,9 +18,9 @@
 
     {"path":"src-server/routes/system/archive-update.ts","digest":"11cd46218325618ceefcd54079f5012b981eb6b1c2872d562434523de1ef63e9","revision":"ce2b6c35d2cb46e08b3b0f162df6e2c581dd03a9"},
 
-    {"path":"packages/contracts/src/environment-security.ts","digest":"2df95e81e22dc7f7f5e6956c749a19ed01bba6b62c931e672b5a89abd235c6df","revision":"054d4f861db7de6e1eb419593e7b21b34d3c08ce"},
+    {"path":"packages/contracts/src/environment-security.ts","digest":"5321281ba84da29a4ba2681d344a91f08590c75d6386412a7e8d3dfba827a41a","revision":"965dfe953d3566dba61149eeaf956aed07a65bcf"},
 
-    {"path":"src-ui/src/lib/compatibility.ts","digest":"4c3ddfb66d0c660278dbb12f3dcc66fbb4a7c3c24a882c3d65afe3c89bd9dac3","revision":"54e0ffb5c1ae765b4127f031e525793087fb9669"},
+    {"path":"src-ui/src/lib/compatibility.ts","digest":"87b32674564a146887a4eb127962dce0d96480ab6b92a43a4f15762067cc0d42","revision":"965dfe953d3566dba61149eeaf956aed07a65bcf"},
 
     {"path":"packages/shared/src/station-home-schema.ts","digest":"db4b3e2883079cf1f4aa55f10b955f42b767e580bbf5a51350c75f3c56d4e1db","revision":"54e0ffb5c1ae765b4127f031e525793087fb9669"},
 
@@ -52,7 +52,13 @@
 
     {"path":"packages/shared/src/prebuilt-archive.ts","digest":"73f956c32b937353113b247025a4c7e7feba6e4f305703d4366593b9e5ba78d8","revision":"54e0ffb5c1ae765b4127f031e525793087fb9669"},
 
-    {"path":"scripts/lib/portable-publication.mjs","digest":"bd3921ac4a297658473ee51e4af9256844c4c668bba1533ac39bc77fc62ad510","revision":"e3fa2cf8c4bdcb7d8438495ff3122028719b5bca"}
+    {"path":"scripts/lib/portable-publication.mjs","digest":"bd3921ac4a297658473ee51e4af9256844c4c668bba1533ac39bc77fc62ad510","revision":"e3fa2cf8c4bdcb7d8438495ff3122028719b5bca"},
+
+    {"path":"packages/shared/src/client-protocol.ts","digest":"3813725295587b37d4a84509e90cf403423d7a5b16afc2ef0c5797cd3d28aadf","revision":"965dfe953d3566dba61149eeaf956aed07a65bcf"},
+
+    {"path":"src-server/security/client-protocol-admission.ts","digest":"30fe8b4eb670e5f73cf43c736fe1d2c86ea3cf91f98a843edb20f7885d8b828a","revision":"18ca128e2591c8773fd4a109991661d576c29b4a"},
+
+    {"path":"src-server/runtime/__tests__/client-protocol-admission.test.ts","digest":"1b0a8e5331791cddd41ce37aa72d3da09cc7ee4be0ff226a1201e811836d9223","revision":"f064416973767bd2e7ff5c9168659decc1df12a6"}
   ],
 
   "checks": [
