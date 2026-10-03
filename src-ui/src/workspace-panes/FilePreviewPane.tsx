@@ -1486,10 +1486,10 @@ export function FilePreviewPane({
         // before the host's close, and the pane draws no bar of its own.
         <>
           {headSlots.leading
-            ? createPortal(<>{segmented}</>, headSlots.leading)
+            ? createPortal(segmented, headSlots.leading)
             : null}
           {headSlots.trailing
-            ? createPortal(<>{barActions}</>, headSlots.trailing)
+            ? createPortal(barActions, headSlots.trailing)
             : null}
         </>
       ) : (
