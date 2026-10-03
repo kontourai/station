@@ -14,11 +14,11 @@
   "sources": [
     {"path":"docs/adr/0014-the-chat-convergence-landed-unconditionally-not-behind-the-flag.md","digest":"fcfab157ba077c62207e694125fbdf2dbfa6731547b1b7f862fa17bf1a75fc30","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"docs/reference/session-api.md","digest":"b1768e5b06eb190cb374bc359adf8285f8c2cd3dec739f8de674df9fbc8655da","revision":"4f3acdc5478e27a733c06e91a202a325817c2f53"},
+    {"path":"docs/reference/session-api.md","digest":"58c3a5793218bafb50c65057db326297a5b697f0868909749a6d43fd76e64353","revision":"813e59fd6645e9ca31bf19ea9a1ad2d7d950cc10"},
 
     {"path":"packages/cli/src/commands/session-client.ts","digest":"0328bc971c138d5a5d4f0077f4faa39d5450b0827035b7b8f9eb78fb700b4cd8","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"755ec9f2a3b4e0523ad5fd4126605f4433a4ac90b0075160d21acb280359c704","revision":"c6ebec77b17b679e630a3857b10a6f814d7fb436"},
+    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"c29610afa866d920a2a2a7b5b62e63ed54be3d355127a83c3ccca021d17d68d6","revision":"813e59fd6645e9ca31bf19ea9a1ad2d7d950cc10"},
 
     {"path":"src-server/runtime/bootstrap/station-features.ts","digest":"55c74fed5caae236c699dfc66ac63bb298b40abe1efd1b59dcf40a95e27842da","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
