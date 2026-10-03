@@ -12,7 +12,7 @@
   "document": {"digest":"78a9d4be24cfd3184349e887388ebbcd02ef6d3faec6c43feeff0fa7f6daaa03","revision":"87e00f98c19bdf691cd4530e63d3e8e48d6fd906"},
 
   "sources": [
-    {"path":"docs/architecture/module-map.md","digest":"8672fe5fd47d9b1e38bd147e13f267335ec9e0141dfcbcf080327ceabbc0f99b","revision":"56f4c4897a189eeb30430119a4f4895e95fbb541"},
+    {"path":"docs/architecture/module-map.md","digest":"ad64be68b644bb1af7780f561388cfd2b9634d4842b0fcbd363fcf83a65ded36","revision":"d27879790bd20161d531bde3fc7655a746500b08"},
 
     {"path":"docs/guides/documentation.md","digest":"9e299a73ec55cd8792f40d976dda64b1af1c8b206a24ebfd638ca0db3ab12633","revision":"cda5879b28558d002561d656b869c4f7b05bc4ca"},
 
