@@ -29,7 +29,7 @@ const VERSION = NATIVE_RELAY_ENROLLMENT_VERSION;
 beforeEach(() => vi.clearAllMocks());
 
 function fixture(
-  options: { status?: number; challengeFailure?: unknown } = {},
+  options: { status?: number; activationFailure?: unknown } = {},
 ) {
   const lifetime = new AbortController();
   let liveRevision = 7;
@@ -77,7 +77,11 @@ function fixture(
         requests.push({ path, body: await request.text() });
         return Response.json(
           {
-            state: path.endsWith('/login') ? 'pending' : 'response',
+            state: path.endsWith('/login')
+              ? 'pending'
+              : path.endsWith('/activate')
+                ? 'active'
+                : 'response',
             path,
           },
           { status: options.status ?? 200 },
@@ -117,11 +121,6 @@ function fixture(
           body: '{"host":"exact"}',
         };
       }
-      if (
-        command.endsWith('_challenge_accept') &&
-        options.challengeFailure !== undefined
-      )
-        throw options.challengeFailure;
       if (command.endsWith('_challenge_accept'))
         return {
           version: VERSION,
@@ -162,6 +161,8 @@ function fixture(
           state: 'staged',
         };
       if (command.endsWith('_activation_accept')) {
+        if (options.activationFailure !== undefined)
+          throw options.activationFailure;
         liveRevision = 8;
         return {
           version: VERSION,
@@ -190,7 +191,8 @@ function fixture(
           transitionHandle: TRANSITION,
         };
       }
-      if (command.endsWith('_status_accept'))
+      if (command.endsWith('_status_accept')) {
+        liveRevision = 8;
         return {
           version: VERSION,
           enrollmentHandle: ENROLLMENT,
@@ -198,6 +200,7 @@ function fixture(
           profileRevision: liveRevision,
           transitionHandle: TRANSITION,
         };
+      }
       if (command === 'station_native_enrollment_resume')
         return {
           version: VERSION,
@@ -274,6 +277,38 @@ test('uses prepared host bytes and keeps successful owned publication through UI
   expect(f.calls.some((call) => call.command.endsWith('_abort'))).toBe(false);
 });
 
+test('reconciles a successful activation response refused by native acceptance through status without another activation', async () => {
+  const f = fixture({
+    activationFailure: 'native_enrollment_operation_refused',
+  });
+  await f.client.begin();
+  await f.client.login({ username: 'zach', password: 'user-entered' });
+  await f.client.finalize();
+  let failure: unknown;
+  try {
+    await f.client.activate();
+  } catch (cause) {
+    failure = cause;
+  }
+  expect(nativeEnrollmentFailureDiagnostic(failure)).toEqual({
+    stage: 'host-accept',
+    code: 'native_enrollment_operation_refused',
+    httpStatus: 200,
+  });
+  await expect(f.client.status()).resolves.toMatchObject({
+    state: 'active',
+    profileRevision: 8,
+  });
+  expect(
+    f.requests.filter((request) => request.path.endsWith('/activate')),
+  ).toHaveLength(1);
+  expect(
+    f.requests.filter((request) => request.path.endsWith('/status')),
+  ).toHaveLength(1);
+  await f.client.dispose();
+  expect(f.calls.some((call) => call.command.endsWith('_abort'))).toBe(false);
+});
+
 test('explicit cancellation before completed publication invalidates the actual host attempt', async () => {
   const f = fixture();
   await f.client.begin();
@@ -341,59 +376,72 @@ test('a recreated client resumes the exact host journal attempt without allocati
   expect(f.calls.some((call) => call.command.endsWith('_abort'))).toBe(false);
 });
 
-test('Device Begin retains HTTP status and allowlisted host refusal from the real channel exchange', async () => {
-  const failure = new Error('native_enrollment_operation_refused');
-  const f = fixture({ status: 409, challengeFailure: failure });
-  await expect(f.client.begin()).rejects.toBe(failure);
-  expect(nativeEnrollmentFailureDiagnostic(failure)).toEqual({
-    stage: 'host-accept',
-    code: 'native_enrollment_operation_refused',
+test('Device Begin refuses non-success HTTP before native acceptance and keeps the status', async () => {
+  const f = fixture({ status: 409 });
+  let refused: unknown;
+  try {
+    await f.client.begin();
+  } catch (cause) {
+    refused = cause;
+  }
+  expect(nativeEnrollmentFailureDiagnostic(refused)).toEqual({
+    stage: 'application-response',
+    code: 'native_enrollment_application_refused',
     httpStatus: 409,
   });
   expect(f.requests).toHaveLength(1);
+  expect(
+    f.calls.some((call) => call.command.endsWith('_challenge_accept')),
+  ).toBe(false);
   await f.client.abort();
   expect(
     f.calls.some((call) => call.command === 'station_native_enrollment_abort'),
   ).toBe(true);
 });
 
-test('expired saved candidate permits terminal cleanup without resuming login', async () => {
-  const f = fixture();
-  const candidateResult = await f.client.begin();
-  transport.open.mockClear();
-  // The host owns the expired attempt and its public candidate projection.
-  const invoke = vi.fn(async (command: string) => {
-    if (command === 'station_native_enrollment_resume')
-      return {
-        version: VERSION,
-        attempts: [
-          {
-            enrollmentHandle: ENROLLMENT,
-            phase: 'candidate',
-            profileRevision: 7,
-            expiresAt: Date.now() - 1,
-            registrationAvailable: true,
-            candidate: candidateResult.candidate,
-            transition: null,
-          },
-        ],
-      };
-    throw new Error('unexpected_operation');
-  });
-  const client = createNativeRelayEnrollmentClient({
-    profileName: 'Pilot',
-    expectedProfileRevision: 7,
-    stationAudience: ORIGIN,
-    signal: new AbortController().signal,
-    invoke: { invoke },
-  });
-  const restored = await client.resume(ENROLLMENT);
-  expect(restored.phase).toBe('cancel-required');
-  await expect(
-    client.login({ username: 'zach', password: 'must not leave client' }),
-  ).rejects.toThrow('native_enrollment_expired');
-  expect(transport.open).not.toHaveBeenCalled();
-  expect(invoke.mock.calls.map(([command]) => command)).toEqual([
-    'station_native_enrollment_resume',
-  ]);
-});
+test.each([
+  ['candidate', 'cancel-required'],
+  ['staged', 'activation-unknown'],
+])(
+  'expired saved %s permits only its recovery path without resuming login',
+  async (phase, restoredPhase) => {
+    const f = fixture();
+    const candidateResult = await f.client.begin();
+    transport.open.mockClear();
+    // The host owns the expired attempt and its public candidate projection.
+    const invoke = vi.fn(async (command: string) => {
+      if (command === 'station_native_enrollment_resume')
+        return {
+          version: VERSION,
+          attempts: [
+            {
+              enrollmentHandle: ENROLLMENT,
+              phase,
+              profileRevision: 7,
+              expiresAt: Date.now() - 1,
+              registrationAvailable: true,
+              candidate: candidateResult.candidate,
+              transition: null,
+            },
+          ],
+        };
+      throw new Error('unexpected_operation');
+    });
+    const client = createNativeRelayEnrollmentClient({
+      profileName: 'Pilot',
+      expectedProfileRevision: 7,
+      stationAudience: ORIGIN,
+      signal: new AbortController().signal,
+      invoke: { invoke },
+    });
+    const restored = await client.resume(ENROLLMENT);
+    expect(restored.phase).toBe(restoredPhase);
+    await expect(
+      client.login({ username: 'zach', password: 'must not leave client' }),
+    ).rejects.toThrow('native_enrollment_expired');
+    expect(transport.open).not.toHaveBeenCalled();
+    expect(invoke.mock.calls.map(([command]) => command)).toEqual([
+      'station_native_enrollment_resume',
+    ]);
+  },
+);

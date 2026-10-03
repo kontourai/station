@@ -114,7 +114,9 @@ closes. Preparing or sending another request still requires a live channel.
 peer and fixed prepared operation for each exchange. Connect copies the exact
 POST target, JSON body and headers, pins them to that peer, bounds the request
 at 16 KiB and JSON response at 64 KiB, and forwards the opaque request handle,
-response and HTTP status to host acceptance. It uses the encrypted application
+successful response and HTTP status to host acceptance. Non-success responses
+retain only an exact allowlisted refusal code, or a fixed generic refusal, at
+the application-response stage. It uses the encrypted application
 channel with no direct HTTP or cookie fallback. The exchange deadline is 45
 seconds, in addition to the peer deadline.
 

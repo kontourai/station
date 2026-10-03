@@ -144,7 +144,13 @@ installation surface, distinct proof key and purpose-bound signature before
 signing a terminal response. Native custody is cleaned only after accepting
 that response. Then the user can request a fresh challenge with the existing
 routing grant and enter account details again. A lost activation result still
-requires a status check before cancellation or a new setup.
+requires a status check before cancellation or a new setup. After an uncertain
+activation result, the UI offers **Check Device status** instead of another
+activation or cancellation. A signed pending response keeps this check available;
+only verified active or terminal status resolves the attempt. Troubleshooting
+shows the fixed failure stage, allowlisted code and HTTP status, never a raw
+server error or credential. An expired saved delivery also checks status first;
+its local deadline does not establish whether Station already committed it.
 
 A newer routing generation can carry terminal status or cancellation of an
 expired saved candidate when the broker, Station application address, Station

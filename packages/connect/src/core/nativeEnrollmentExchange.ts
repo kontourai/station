@@ -41,6 +41,37 @@ const PATHS = new Set<string>([
 const HANDLE = /^[A-Za-z0-9_-]{43}$/u;
 const BODY_LIMIT = 16 * 1024;
 const RESPONSE_LIMIT = 64 * 1024;
+const REFUSAL_CODES = new Set([
+  'native_enrollment_invalid',
+  'native_enrollment_expired',
+  'native_enrollment_unsupported',
+  'native_enrollment_unavailable',
+  'native_enrollment_approval_required',
+  'native_enrollment_replayed',
+  'native_enrollment_busy',
+  'operator_required',
+]);
+
+function responseRefusalCode(value: unknown): string {
+  if (
+    typeof value !== 'object' ||
+    value === null ||
+    Object.keys(value).length !== 1 ||
+    !('error' in value)
+  )
+    return 'native_enrollment_application_refused';
+  const error = value.error;
+  if (
+    typeof error !== 'object' ||
+    error === null ||
+    Object.keys(error).length !== 1 ||
+    !('code' in error) ||
+    typeof error.code !== 'string' ||
+    !REFUSAL_CODES.has(error.code)
+  )
+    return 'native_enrollment_application_refused';
+  return error.code;
+}
 
 /** The native bridge owns peer admission and retained response-operation captures. */
 export interface NativeEnrollmentOpenedPeer {
@@ -198,6 +229,7 @@ export function createNativeEnrollmentExchange(
       httpStatus = response.status;
       stage = 'application-response';
       const value = await readBoundedResponse(response, signal);
+      if (!response.ok) throw new Error(responseRefusalCode(value));
       stage = 'currentness';
       await assertCurrent();
       stage = 'host-accept';

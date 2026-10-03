@@ -97,6 +97,41 @@ function prepared(): NativeRelayEnrollmentPreparedRequest {
 
 describe('native enrollment one-request exchange', () => {
   test.each([
+    [
+      { error: { code: 'native_enrollment_invalid' } },
+      'native_enrollment_invalid',
+    ],
+    [
+      { error: { code: 'private-token=SECRET' } },
+      'native_enrollment_application_refused',
+    ],
+    [
+      { error: { code: 'native_enrollment_invalid', token: 'SECRET' } },
+      'native_enrollment_application_refused',
+    ],
+  ])(
+    'keeps only fixed server refusal codes before host acceptance',
+    async (body, code) => {
+      const f = fixture(() => Response.json(body, { status: 400 }));
+      const accept = vi.fn();
+      let failure: unknown;
+      try {
+        await f.exchange(async () => prepared(), accept);
+      } catch (cause) {
+        failure = cause;
+      }
+      expect(nativeEnrollmentFailureDiagnostic(failure)).toEqual({
+        stage: 'application-response',
+        code,
+        httpStatus: 400,
+      });
+      expect(accept).not.toHaveBeenCalled();
+      expect(f.close).toHaveBeenCalledOnce();
+      expect(String(failure)).not.toContain('SECRET');
+    },
+  );
+
+  test.each([
     ['browser_transport_timeout', 'browser_transport_timeout'],
     ['browser_transport_failed', 'browser_transport_failed'],
     ['raw browser failure with a private URL', 'unknown'],
@@ -225,19 +260,12 @@ describe('native enrollment one-request exchange', () => {
     ).rejects.toThrow('native_enrollment_request_invalid');
     expect(f.close).toHaveBeenCalledOnce();
   });
-  test('keeps acceptance failure and HTTP status when both cleanup owners fail without exposing traps', async () => {
+  test('keeps safe HTTP refusal when both cleanup owners fail without exposing traps', async () => {
     const secret = 'https://secret.invalid/?password=SECRET-JWS-SDP';
     const f = fixture(() =>
       Response.json({ message: secret }, { status: 403 }),
     );
-    const primary = new Error('native_enrollment_operation_refused');
-    const accept = vi.fn(
-      async (_handle: string, body: unknown, status: number) => {
-        expect(body).toEqual({ message: secret });
-        expect(status).toBe(403);
-        throw primary;
-      },
-    );
+    const accept = vi.fn();
     f.channel.close = () => {
       throw new Error(secret);
     };
@@ -248,11 +276,11 @@ describe('native enrollment one-request exchange', () => {
     } catch (cause) {
       failure = cause;
     }
-    expect(failure).toBe(primary);
+    expect(accept).not.toHaveBeenCalled();
     expect(f.close).toHaveBeenCalledOnce();
     expect(nativeEnrollmentFailureDiagnostic(failure)).toEqual({
-      stage: 'host-accept',
-      code: 'native_enrollment_operation_refused',
+      stage: 'application-response',
+      code: 'native_enrollment_application_refused',
       httpStatus: 403,
       cleanup: [
         { stage: 'channel-close', code: 'unknown' },

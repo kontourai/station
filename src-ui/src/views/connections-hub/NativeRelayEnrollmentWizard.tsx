@@ -79,21 +79,6 @@ function hasUnknownActivationPublication(cause: unknown): boolean {
   );
 }
 
-function retainUnknownActivation(
-  cause: unknown,
-  setPhase: (phase: EnrollmentPhase) => void,
-  setNotice: (notice: string) => void,
-  setError: (message: string | null) => void,
-): boolean {
-  if (!hasUnknownActivationPublication(cause)) return false;
-  setPhase('verifying');
-  setError(null);
-  setNotice(
-    'Station may have completed Device activation, but could not confirm the result. Keep setup open and check Device status again.',
-  );
-  return true;
-}
-
 export function NativeRelayEnrollmentWizard({
   profile,
   onEnrollmentStart,
@@ -120,6 +105,7 @@ export function NativeRelayEnrollmentWizard({
   const credentialsRef = useRef<LoginCredentials | null>(null);
   const terminalRef = useRef(false);
   const attemptStartedRef = useRef(false);
+  const activationUncertainRef = useRef(false);
   const route = profile.relayRoute!;
   const selection = {
     brokerOrigin: route.brokerOrigin,
@@ -170,6 +156,14 @@ export function NativeRelayEnrollmentWizard({
     )
       setPhase('expired');
     reportEnrollmentFailure(cause, setError);
+  }
+
+  function reportActivationUncertainty(cause: unknown) {
+    activationUncertainRef.current = true;
+    setBeginDiagnostic(nativeEnrollmentFailureDiagnostic(cause));
+    setPhase('verifying');
+    setError(null);
+    setNotice(null);
   }
 
   async function validatedProfileRevision(
@@ -306,7 +300,7 @@ export function NativeRelayEnrollmentWizard({
   const setupDiagnostic =
     phase === 'idle' && recovery.isError
       ? nativeEnrollmentFailureDiagnostic(recovery.error)
-      : error
+      : error || phase === 'verifying'
         ? beginDiagnostic
         : undefined;
 
@@ -358,6 +352,7 @@ export function NativeRelayEnrollmentWizard({
           'The saved Device delivery is staged. Review it before explicitly activating this Device.',
         );
       } else if (attempt.phase === 'activation-unknown') {
+        activationUncertainRef.current = true;
         setPhase('verifying');
         setNotice('Checking the saved Device activation with Station.');
         checkStatus.mutate();
@@ -377,6 +372,7 @@ export function NativeRelayEnrollmentWizard({
   });
 
   async function finishTerminalSetup() {
+    activationUncertainRef.current = false;
     terminalRef.current = true;
     setPhase('idle');
     setCandidate(null);
@@ -450,15 +446,25 @@ export function NativeRelayEnrollmentWizard({
         setPhase('configured');
         setNotice('Station confirmed this Device is configured.');
       } else if (result.state === 'pending') {
-        setPhase('pending');
-        setNotice('The Station operator has not completed approval yet.');
+        if (activationUncertainRef.current) {
+          setNotice(
+            'Station has not confirmed activation yet. Check Device status again.',
+          );
+        } else {
+          setPhase('pending');
+          setNotice('The Station operator has not completed approval yet.');
+        }
       } else {
         void finishTerminalSetup();
       }
     },
     onError: (cause) => {
-      if (!retainUnknownActivation(cause, setPhase, setNotice, setError))
-        reportStepFailure(cause);
+      if (
+        activationUncertainRef.current ||
+        hasUnknownActivationPublication(cause)
+      )
+        reportActivationUncertainty(cause);
+      else reportStepFailure(cause);
     },
   });
 
@@ -499,10 +505,7 @@ export function NativeRelayEnrollmentWizard({
         setError('Station did not activate this Device.');
       }
     },
-    onError: (cause) => {
-      if (!retainUnknownActivation(cause, setPhase, setNotice, setError))
-        reportStepFailure(cause);
-    },
+    onError: reportActivationUncertainty,
   });
 
   function requireClient(): EnrollmentClient {
@@ -530,6 +533,7 @@ export function NativeRelayEnrollmentWizard({
     controllerRef.current = null;
     if (terminalRef.current) return;
     attemptStartedRef.current = false;
+    activationUncertainRef.current = false;
     onEnrollmentCancel();
     setCandidate(null);
     setRegistrationAvailable(false);
@@ -624,6 +628,7 @@ export function NativeRelayEnrollmentWizard({
                 >
                   {attempt.phase !== 'active' &&
                   attempt.phase !== 'activation-unknown' &&
+                  attempt.phase !== 'staged' &&
                   attempt.expiresAt <= Date.now()
                     ? 'Close expired'
                     : 'Resume'}{' '}
@@ -819,10 +824,11 @@ export function NativeRelayEnrollmentWizard({
       {phase === 'verifying' ? (
         <section aria-label="Device activation status unknown">
           <p>
-            Station may have completed Device activation, but the current status
-            has not been confirmed. Check again before starting another setup.
+            Station couldn’t confirm whether device setup finished. Check its
+            status before starting another setup.
           </p>
           <Button
+            variant="primary"
             disabled={busy}
             pending={checkStatus.isPending}
             onClick={() => checkStatus.mutate()}

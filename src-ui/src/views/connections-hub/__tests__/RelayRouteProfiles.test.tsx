@@ -1433,25 +1433,145 @@ describe('RelayRouteProfiles', () => {
     expect(document.body.textContent).not.toContain(trap);
   });
 
-  test('signed terminal status after uncertain activation closes the request before new setup', async () => {
+  test.each(['activation-unknown', 'staged'] as const)(
+    'signed terminal status after expired %s closes the request before new setup',
+    async (phase) => {
+      configureEnrollmentReadyRoute();
+      mocks.recoveryAttempts.push({
+        enrollmentHandle,
+        phase,
+        profileRevision: 12,
+        expiresAt: Date.now() - 1,
+        registrationAvailable: true,
+        candidate: enrollmentCandidate,
+        transition: null,
+      });
+      const original = mocks.enrollmentInvoke.getMockImplementation()!;
+      mocks.enrollmentInvoke.mockImplementation(async (command, args) => {
+        if (command === 'station_native_enrollment_status_accept') {
+          mocks.recoveryAttempts.length = 0;
+          return {
+            version: NATIVE_RELAY_ENROLLMENT_VERSION,
+            enrollmentHandle,
+            state: 'expired',
+          };
+        }
+        return original(command, args);
+      });
+      renderRoutes();
+      fireEvent.click(
+        await screen.findByRole('button', {
+          name: 'Resume Device 44444444-4444-4444-8444-444444444444',
+        }),
+      );
+      await screen.findByRole('button', { name: 'Request device access' });
+      expect(
+        screen.queryByRole('button', { name: 'Check Device status' }),
+      ).toBeNull();
+      expect(mocks.enrollmentInvoke).not.toHaveBeenCalledWith(
+        'station_native_enrollment_cancel_prepare',
+        expect.anything(),
+      );
+    },
+  );
+
+  test.each(['active', 'pending', 'invalid'] as const)(
+    'reconciles expired staged delivery with %s status before cancellation',
+    async (outcome) => {
+      configureEnrollmentReadyRoute();
+      mocks.recoveryAttempts.push({
+        enrollmentHandle,
+        phase: 'staged',
+        profileRevision: 12,
+        expiresAt: Date.now() - 1,
+        registrationAvailable: false,
+        candidate: enrollmentCandidate,
+        transition: null,
+      });
+      const original = mocks.enrollmentInvoke.getMockImplementation()!;
+      mocks.enrollmentInvoke.mockImplementation(async (command, args) => {
+        if (command === 'station_native_enrollment_status_accept') {
+          if (outcome === 'invalid')
+            throw captureNativeEnrollmentFailure(
+              'native_enrollment_invalid',
+              'application-response',
+              400,
+            );
+          if (outcome === 'active')
+            return {
+              version: NATIVE_RELAY_ENROLLMENT_VERSION,
+              enrollmentHandle,
+              state: 'active',
+              profileRevision: 13,
+              transitionHandle: enrollmentTransitionHandle,
+            };
+        }
+        return original(command, args);
+      });
+      renderRoutes();
+      fireEvent.click(
+        await screen.findByRole('button', {
+          name: 'Resume Device 44444444-4444-4444-8444-444444444444',
+        }),
+      );
+      if (outcome === 'active') await screen.findByText(/Device configured/);
+      else {
+        if (outcome === 'pending')
+          await screen.findByText(/Station has not confirmed activation yet/);
+        else
+          await screen.findByText(
+            /Stage: application-response. Code: native_enrollment_invalid/,
+          );
+        expect(
+          screen.getByRole('button', { name: 'Check Device status' }),
+        ).toBeTruthy();
+        expect(
+          screen.queryByRole('button', { name: 'Finish device setup' }),
+        ).toBeNull();
+        expect(
+          screen.queryByRole('button', { name: 'Cancel Device setup' }),
+        ).toBeNull();
+      }
+      expect(
+        mocks.enrollmentInvoke.mock.calls.some(
+          ([command]) =>
+            command === 'station_native_enrollment_activate_prepare' ||
+            command === 'station_native_enrollment_cancel_prepare' ||
+            command === 'station_native_enrollment_abort',
+        ),
+      ).toBe(false);
+    },
+  );
+
+  test('checks uncertain activation after a successful server reply without retrying Finish or cancelling the Device', async () => {
     configureEnrollmentReadyRoute();
     mocks.recoveryAttempts.push({
       enrollmentHandle,
-      phase: 'activation-unknown',
+      phase: 'staged',
       profileRevision: 12,
-      expiresAt: Date.now() - 1,
-      registrationAvailable: true,
+      expiresAt: Date.now() + 60_000,
+      registrationAvailable: false,
       candidate: enrollmentCandidate,
       transition: null,
     });
     const original = mocks.enrollmentInvoke.getMockImplementation()!;
+    let statusChecks = 0;
     mocks.enrollmentInvoke.mockImplementation(async (command, args) => {
+      if (command === 'station_native_enrollment_activation_accept')
+        throw captureNativeEnrollmentFailure(
+          'native_enrollment_operation_refused',
+          'host-accept',
+          200,
+        );
       if (command === 'station_native_enrollment_status_accept') {
-        mocks.recoveryAttempts.length = 0;
+        statusChecks++;
+        if (statusChecks === 1) return original(command, args);
         return {
           version: NATIVE_RELAY_ENROLLMENT_VERSION,
           enrollmentHandle,
-          state: 'expired',
+          state: 'active',
+          profileRevision: 13,
+          transitionHandle: enrollmentTransitionHandle,
         };
       }
       return original(command, args);
@@ -1462,14 +1582,42 @@ describe('RelayRouteProfiles', () => {
         name: 'Resume Device 44444444-4444-4444-8444-444444444444',
       }),
     );
-    await screen.findByRole('button', { name: 'Request device access' });
-    expect(
-      screen.queryByRole('button', { name: 'Check Device status' }),
-    ).toBeNull();
-    expect(mocks.enrollmentInvoke).not.toHaveBeenCalledWith(
-      'station_native_enrollment_cancel_prepare',
-      expect.anything(),
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Finish device setup' }),
     );
+    const check = await screen.findByRole('button', {
+      name: 'Check Device status',
+    });
+    expect(
+      screen.getByText(
+        /Stage: host-accept. Code: native_enrollment_operation_refused/,
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText('HTTP status: 200')).toBeTruthy();
+    expect(
+      screen.queryByRole('button', { name: 'Finish device setup' }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: 'Cancel Device setup' }),
+    ).toBeNull();
+    fireEvent.click(check);
+    await screen.findByText(/Station has not confirmed activation yet/);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Check Device status' }),
+    );
+    await screen.findByText(/Device configured/);
+    expect(
+      mocks.enrollmentInvoke.mock.calls.filter(
+        ([command]) => command === 'station_native_enrollment_activate_prepare',
+      ),
+    ).toHaveLength(1);
+    expect(
+      mocks.enrollmentInvoke.mock.calls.some(
+        ([command]) =>
+          command === 'station_native_enrollment_abort' ||
+          command === 'station_native_enrollment_cancel_prepare',
+      ),
+    ).toBe(false);
   });
 
   test('expired saved setup offers cleanup and never account submission', async () => {

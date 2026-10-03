@@ -47,6 +47,15 @@ can show an optional troubleshooting disclosure containing a fixed operation
 stage, an allowlisted code (or `unknown`), an integer HTTP status when a response
 was received, and at most two cleanup stage/code entries. It displays no raw
 error text, response body, URL, proof, credential or owner identifier.
+Non-success HTTP responses are refused before native host acceptance. Only a
+closed error envelope with an allowlisted server code contributes its code;
+other bodies become `native_enrollment_application_refused`. The diagnostic
+retains the `application-response` stage and HTTP status.
+
+After an uncertain activation, **Check Device status** remains available through
+pending or refused status checks. Expired saved deliveries also reconcile status
+before terminal cleanup. The UI reports configured only after active status
+passes the host's transition currentness check; it does not retry activation.
 
 The automatic saved-setup recovery check uses the same disclosure, including
 failures before client construction: route status, saved-route currentness and

@@ -260,6 +260,8 @@ export function createNativeRelayEnrollmentClient(
       );
       if (publication) completed = true;
       return outcome;
+    } catch (cause) {
+      throw captureNativeEnrollmentFailure(cause, 'currentness');
     } finally {
       busy = false;
     }
@@ -332,6 +334,8 @@ export function createNativeRelayEnrollmentClient(
           profileRevision = attempt.transition.profileRevision;
           pendingPublication = undefined;
         }
+        if (attempt.phase === 'staged' && cleanupRequired)
+          return { ...attempt, phase: 'activation-unknown' as const };
         return cleanupRequired && attempt.phase !== 'activation-unknown'
           ? { ...attempt, phase: 'cancel-required' as const }
           : attempt;
