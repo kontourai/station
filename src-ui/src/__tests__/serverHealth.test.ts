@@ -1,4 +1,5 @@
 import { HEALTH_PROBE_TIMEOUT_MS } from '@kontourai/station-connect';
+import { resetClientProtocolObservations } from '@kontourai/station-shared/client-protocol';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   checkServerHealth,
@@ -21,6 +22,8 @@ const handshake = {
 
 afterEach(() => {
   setStationHealthRouteResolver(undefined);
+  resetClientProtocolObservations();
+  vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
 
@@ -497,6 +500,44 @@ describe('probeServerConnection', () => {
           new AbortController().signal,
         ),
       ).resolves.toEqual({ ok: false, reason: 'client-protocol-unsupported' });
+    });
+
+    it('carries the client-protocol header cross-origin only once the handshake advertised it (#2962)', async () => {
+      // The probe runs in a page served from another origin.
+      vi.stubGlobal('location', {
+        href: 'https://ui.example.test/',
+        origin: 'https://ui.example.test',
+      });
+      const protectedHeaders: Array<string | null> = [];
+      for (const capabilities of [
+        { remoteAuth: 1 },
+        { remoteAuth: 1, clientProtocolHeader: 1 },
+      ]) {
+        vi.spyOn(globalThis, 'fetch')
+          .mockResolvedValueOnce(
+            Response.json({
+              ...handshake,
+              compatibility: { ...handshake.compatibility, capabilities },
+            }),
+          )
+          .mockResolvedValueOnce(
+            Response.json({ environmentId: 'environment-1' }),
+          );
+        await probeServerConnection(
+          'https://station.example.test',
+          'fixture-credential',
+          'environment-1',
+          new AbortController().signal,
+        );
+        const identityCall = vi.mocked(fetch).mock.calls.at(-1);
+        protectedHeaders.push(
+          new Headers(
+            (identityCall?.[1] as RequestInit | undefined)?.headers,
+          ).get('X-Station-Client-Protocol'),
+        );
+        vi.restoreAllMocks();
+      }
+      expect(protectedHeaders).toEqual([null, '1']);
     });
 
     it('does not read an uncoded 426 as a client-protocol refusal', async () => {

@@ -40,7 +40,10 @@ import {
   STATION_PROOF_PROTOCOL_VERSION,
   type StationCompatibility,
 } from '@kontourai/station-contracts';
-import { PAIRING_SCOPE_APPROVAL_FULL_ACCESS } from '@kontourai/station-contracts/environment-security';
+import {
+  CLIENT_PROTOCOL_HEADER_CAPABILITY,
+  PAIRING_SCOPE_APPROVAL_FULL_ACCESS,
+} from '@kontourai/station-contracts/environment-security';
 import {
   assertExistingSecurityDirectory,
   EnvironmentSecurityRecordError,
@@ -94,6 +97,9 @@ export const HOST_STATION_COMPATIBILITY: StationCompatibility = {
     remoteAuth: REMOTE_AUTH_PROTOCOL_VERSION,
     devicePairing: DEVICE_PAIRING_PROTOCOL_VERSION,
     environmentProof: STATION_PROOF_PROTOCOL_VERSION,
+    // This host's CORS allow-list (runtime-http.ts) carries the header, so a
+    // browser on another origin may start sending it here (#2962).
+    [CLIENT_PROTOCOL_HEADER_CAPABILITY]: 1,
   },
 };
 

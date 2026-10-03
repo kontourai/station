@@ -2,6 +2,10 @@ import {
   CLIENT_PROTOCOL_HEADER,
   STATION_COMPAT_PROTOCOL_VERSION,
 } from '@kontourai/station-contracts/environment-security';
+import {
+  observeClientProtocolSupport,
+  resetClientProtocolObservations,
+} from '@kontourai/station-shared/client-protocol';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   authenticatedFetch,
@@ -16,6 +20,7 @@ const STATION = 'https://station.example.test';
 
 afterEach(() => {
   setClientCredentialResolver(undefined);
+  resetClientProtocolObservations();
   vi.unstubAllGlobals();
 });
 
@@ -111,6 +116,44 @@ describe('SDK client protocol header (#2962)', () => {
       '1',
       '1',
       '1',
+    ]);
+  });
+
+  it('sends the header cross-origin only after that host advertised it', async () => {
+    servePageFrom('https://ui.example.test');
+    const fetch = vi.fn(async () => new Response('{}'));
+    vi.stubGlobal('fetch', fetch);
+
+    // A host without the capability (including every pre-#2962 host).
+    observeClientProtocolSupport(STATION, {
+      serverVersion: '1.0.0',
+      protocolVersion: 1,
+      minClientProtocol: 1,
+      capabilities: { remoteAuth: 1 },
+    });
+    await getJson(`${STATION}/api/tasks`, { authentication: 'omit' });
+
+    observeClientProtocolSupport(STATION, {
+      serverVersion: '1.0.0',
+      protocolVersion: 1,
+      minClientProtocol: 1,
+      capabilities: { clientProtocolHeader: 1 },
+    });
+    await getJson(`${STATION}/api/tasks`, { authentication: 'omit' });
+    // Another origin is not covered by this host's advertisement.
+    await getJson('https://third.example.test/api/tasks', {
+      authentication: 'omit',
+    });
+
+    // A later handshake that drops the capability withdraws it.
+    observeClientProtocolSupport(STATION, undefined);
+    await getJson(`${STATION}/api/tasks`, { authentication: 'omit' });
+
+    expect(fetch.mock.calls.map((call) => sentProtocol(call))).toEqual([
+      null,
+      '1',
+      null,
+      null,
     ]);
   });
 });

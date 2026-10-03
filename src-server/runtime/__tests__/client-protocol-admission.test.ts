@@ -359,4 +359,23 @@ describe('client API protocol admission (#2962)', () => {
       ALLOWED_ORIGIN,
     );
   });
+
+  it('advertises the header in its handshake exactly because it allow-lists it', async () => {
+    const { request } = createHarness();
+    const handshake = await (
+      await request(PUBLIC_STATION_HANDSHAKE_PATH)
+    ).json();
+    expect(handshake.compatibility.capabilities.clientProtocolHeader).toBe(1);
+    const preflight = await request('/api/projects', {
+      method: 'OPTIONS',
+      headers: {
+        Origin: ALLOWED_ORIGIN,
+        'Access-Control-Request-Method': 'GET',
+        'Access-Control-Request-Headers': 'x-station-client-protocol',
+      },
+    });
+    expect(preflight.headers.get('Access-Control-Allow-Headers')).toContain(
+      'X-Station-Client-Protocol',
+    );
+  });
 });

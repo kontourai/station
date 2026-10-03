@@ -47,6 +47,8 @@ describe('public handshake compatibility block', () => {
         remoteAuth: REMOTE_AUTH_PROTOCOL_VERSION,
         devicePairing: DEVICE_PAIRING_PROTOCOL_VERSION,
         environmentProof: STATION_PROOF_PROTOCOL_VERSION,
+        // Literal on purpose: clients key on this exact name (#2962).
+        clientProtocolHeader: 1,
       },
     });
   });

@@ -20,6 +20,7 @@ import {
   type StationClientCompatibilityPolicy,
   type StationCompatibilityResult,
 } from '@kontourai/station-contracts/environment-security';
+import { observeClientProtocolSupport } from '@kontourai/station-shared/client-protocol';
 
 /** Deliberately short: this gates a button press, not a background poll. */
 const COMPATIBILITY_PROBE_TIMEOUT_MS = 5_000;
@@ -123,6 +124,7 @@ export async function checkHostCompatibility(
       };
     }
     const handshake = (await response.json()) as { compatibility?: unknown };
+    observeClientProtocolSupport(url, handshake?.compatibility);
     return evaluateCompatibility(policy, handshake?.compatibility);
   } catch {
     const timedOut = controller.signal.aborted && !signal?.aborted;

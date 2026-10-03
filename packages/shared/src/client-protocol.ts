@@ -1,7 +1,56 @@
 import {
   CLIENT_PROTOCOL_HEADER,
+  CLIENT_PROTOCOL_HEADER_CAPABILITY,
   STATION_COMPAT_PROTOCOL_VERSION,
 } from '@kontourai/station-contracts/environment-security';
+
+/**
+ * Origins whose handshake advertised {@link CLIENT_PROTOCOL_HEADER_CAPABILITY}.
+ * Process-local on purpose: a host can be downgraded, so the observation is
+ * never persisted, and a fresh page load observes the handshake again.
+ */
+const hostsAllowingClientProtocol = new Set<string>();
+
+function originOf(url: string | URL): string | undefined {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Record what the host at `url` said about the header in its handshake
+ * `compatibility` block (or forget it, when it no longer says so). Call it
+ * wherever a client reads a handshake, before it sends credentialed requests.
+ */
+export function observeClientProtocolSupport(
+  url: string | URL,
+  compatibility: unknown,
+): void {
+  const origin = originOf(url);
+  if (!origin) return;
+  const capabilities =
+    compatibility && typeof compatibility === 'object'
+      ? (compatibility as { capabilities?: unknown }).capabilities
+      : undefined;
+  const advertised =
+    capabilities && typeof capabilities === 'object'
+      ? (capabilities as Record<string, unknown>)[
+          CLIENT_PROTOCOL_HEADER_CAPABILITY
+        ]
+      : undefined;
+  if (typeof advertised === 'number' && advertised >= 1) {
+    hostsAllowingClientProtocol.add(origin);
+  } else {
+    hostsAllowingClientProtocol.delete(origin);
+  }
+}
+
+/** Test seam: forget every observed host. */
+export function resetClientProtocolObservations(): void {
+  hostsAllowingClientProtocol.clear();
+}
 
 /**
  * The client API protocol header this build sends to a Station at `url`, or
@@ -15,9 +64,11 @@ import {
  * - outside a browser page (the CLI, MCP servers and other Node callers);
  * - through a host-owned transport (`viaTransport`), which is not subject to
  *   CORS and whose header allow-list ships in the same build as this code;
- * - to the page's own origin, the host that served it.
- * A cross-origin browser request stays unlabelled, and a host reads it as
- * the legacy protocol until hosts advertise that they accept the header.
+ * - to the page's own origin, the host that served it;
+ * - to a host whose handshake advertised
+ *   {@link CLIENT_PROTOCOL_HEADER_CAPABILITY}, i.e. one that allow-lists it.
+ * A cross-origin browser request to any other host stays unlabelled, and a
+ * host reads it as the legacy protocol.
  */
 export function clientProtocolHeaders(
   url: string | URL,
@@ -38,7 +89,8 @@ function canCarryClientProtocol(
   ).location;
   if (typeof page?.href !== 'string') return true;
   try {
-    return new URL(url, page.href).origin === page.origin;
+    const target = new URL(url, page.href).origin;
+    return target === page.origin || hostsAllowingClientProtocol.has(target);
   } catch {
     return false;
   }

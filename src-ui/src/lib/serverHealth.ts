@@ -9,7 +9,10 @@ import {
 } from '@kontourai/station-connect';
 import { PUBLIC_STATION_HANDSHAKE_PATH } from '@kontourai/station-contracts/environment-security';
 import { authenticatedFetch } from '@kontourai/station-sdk';
-import { clientProtocolHeaders } from '@kontourai/station-shared/client-protocol';
+import {
+  clientProtocolHeaders,
+  observeClientProtocolSupport,
+} from '@kontourai/station-shared/client-protocol';
 import { isBlockingCompatibility } from './compatibilityLoader';
 import { isStationUiProxyUnavailableResponse } from './station-ui-proxy';
 
@@ -315,6 +318,9 @@ export async function probeServerConnection(
       // transport failure, which is the same lie in a different place.
       return { ok: false, reason: 'unexpected-response' };
     }
+    // What this host says about the client-protocol header decides whether
+    // the protected request below, and later ones, may carry it cross-origin.
+    observeClientProtocolSupport(url, handshake.compatibility);
     // A host upgraded or downgraded under a live client shows up here. The
     // verdict is deliberately evaluated before the schema checks below can
     // collapse it into the same undifferentiated failure: a `compatibility`

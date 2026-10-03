@@ -655,6 +655,16 @@ export const STATION_COMPAT_MIN_SERVER_PROTOCOL = 1;
 export const CLIENT_PROTOCOL_HEADER = 'X-Station-Client-Protocol';
 
 /**
+ * Key in {@link StationCompatibility.capabilities} (value: the version of this
+ * header contract, 1) by which a host says it allow-lists
+ * {@link CLIENT_PROTOCOL_HEADER} in its CORS preflight. A browser client sends
+ * the header cross-origin only to a host it has seen advertise this, because a
+ * host released before the header would refuse the preflight and strand a
+ * client that is otherwise compatible with it.
+ */
+export const CLIENT_PROTOCOL_HEADER_CAPABILITY = 'clientProtocolHeader';
+
+/**
  * The protocol a request WITHOUT {@link CLIENT_PROTOCOL_HEADER} is read as:
  * every client built before the header existed spoke protocol 1. Absence is
  * therefore admitted while a host's minimum is 1 and refused once it rises.
