@@ -81,6 +81,7 @@ function renderAttached({
   capabilityRecoveryExhausted,
   onRetryCapabilityRecovery,
   session: sessionOverrides,
+  events,
 }: {
   presentation?: 'inspector' | 'chat';
   onAdopted?: (...args: any[]) => void;
@@ -92,6 +93,7 @@ function renderAttached({
   capabilityRecoveryExhausted?: boolean;
   onRetryCapabilityRecovery?: () => void;
   session?: Record<string, unknown>;
+  events?: CanonicalRuntimeEvent[];
 } = {}) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -125,15 +127,25 @@ function renderAttached({
           }
           onAdopted={onAdopted}
           getSelectionIntent={() => 0}
-          events={[
-            ev({ method: 'turn.started', turnId: 'r1', prompt: 'list files' }),
-            ev({ method: 'content.text-delta', itemId: 'i1', delta: 'Sure.' }),
-            ev({
-              method: 'turn.completed',
-              turnId: 'r1',
-              finishReason: 'stop',
-            }),
-          ]}
+          events={
+            events ?? [
+              ev({
+                method: 'turn.started',
+                turnId: 'r1',
+                prompt: 'list files',
+              }),
+              ev({
+                method: 'content.text-delta',
+                itemId: 'i1',
+                delta: 'Sure.',
+              }),
+              ev({
+                method: 'turn.completed',
+                turnId: 'r1',
+                finishReason: 'stop',
+              }),
+            ]
+          }
           connected={connected}
           upgradeRequired={upgradeRequired}
           streamError={streamError}
@@ -551,3 +563,28 @@ describe('AttachedSessionDetail permission-posture row badge (station#1424)', ()
     vi.restoreAllMocks();
   });
 });
+
+// The attached transcript used to map projected parts with its own subset of
+// fields, so a coded runtime error lost its code and rendered the engine's raw
+// sentence where the dock and the Station-owned detail translate it.
+test.each(['inspector', 'chat'] as const)(
+  '%s: a coded runtime error renders the translated copy, as in chat',
+  (presentation) => {
+    renderAttached({
+      presentation,
+      events: [
+        ev({ method: 'turn.started', turnId: 'r2', prompt: 'Retry the build' }),
+        ev({
+          method: 'runtime.error',
+          turnId: 'r2',
+          severity: 'error',
+          code: 'engine-session-binding-dead',
+          message: 'No conversation found with session ID: 1234',
+        } as never),
+      ],
+    });
+    const text = document.body.textContent ?? '';
+    expect(text).toMatch(/could not reopen|session was lost/i);
+    expect(text).not.toContain('⚠️ No conversation found with session ID: 1234');
+  },
+);

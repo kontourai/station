@@ -16,6 +16,7 @@ import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtim
 import { useMutation } from '@tanstack/react-query';
 import { useId, useRef, useState } from 'react';
 import { useToast } from '../../contexts/ToastContext';
+import { conversationPartToContentParts } from '../../hooks/orchestration/conversationTranscriptParts';
 import type { OrchestrationEvent } from '../../hooks/orchestration/types';
 import type { useMobileVisualViewport } from '../../hooks/useMobileVisualViewport';
 import {
@@ -519,17 +520,12 @@ export function AttachedSessionDetail({
             </p>
           ) : (
             messages.map((message, index) => {
-              const contentParts = message.parts.map((part) => ({
-                type: part.type,
-                content: part.text,
-                toolCallId: part.toolCallId,
-                toolName: part.toolName,
-                toolKind: part.toolKind,
-                args: part.args,
-                result: part.result,
-                state: part.state,
-                isError: part.isError,
-              }));
+              // Chat's own mapping, so a runtime error's code (its
+              // translated copy), a file's reference, a cancelled or
+              // approval-bound call render here as they do in the dock.
+              const contentParts = message.parts.flatMap(
+                conversationPartToContentParts,
+              );
               if (presentation === 'chat')
                 return (
                   <MessageBubble
