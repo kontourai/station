@@ -106,7 +106,10 @@ test('filters by host source identity and keeps plugin ownership and offline sta
     { id: 'community', action: 'enable' },
     expect.any(Object),
   );
-  fireEvent.click(screen.getByRole('button', { name: 'Remove source' }));
+  fireEvent.click(
+    screen.getByRole('button', { name: 'More actions for Community' }),
+  );
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Remove source' }));
   expect(mutate).toHaveBeenLastCalledWith(
     { id: 'community', action: 'remove' },
     expect.any(Object),

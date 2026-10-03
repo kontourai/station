@@ -486,6 +486,7 @@ describe('Marketplace source lifecycle through Registry routes', () => {
       },
     ]);
     const selected = (await catalog(request))[0]!;
+    expect(selected.catalogSourceName).toBe('private-skill-plugin');
     const denied = createRegistryRoutes(
       config,
       async () => {},

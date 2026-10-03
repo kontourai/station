@@ -2,6 +2,7 @@ import type { RegistryCatalogTab } from '@kontourai/station-sdk';
 import { useRegistrySkillContentQuery } from '@kontourai/station-sdk';
 import { Button } from '../Button';
 import { IntegrationGlyph } from '../icons/IntegrationGlyph';
+import { SkeletonBlock } from '../state';
 import {
   type RegistryLayoutAction,
   RegistryLayoutActions,
@@ -276,7 +277,7 @@ function RegistrySkillInstructions({ id }: { id: string }) {
     <details>
       <summary>Read skill instructions</summary>
       {content.isLoading ? (
-        <p role="status">Loading instructions…</p>
+        <SkeletonBlock count={3} label="Loading instructions" />
       ) : content.error ? (
         <p role="alert">{content.error.message}</p>
       ) : (

@@ -4,8 +4,10 @@ import {
   useRegistrySourcesQuery,
 } from '@kontourai/station-sdk';
 import { useState } from 'react';
+import { ActionRow } from '../ActionRow';
 import { Button } from '../Button';
 import { Dialog } from '../Dialog';
+import { SkeletonList } from '../state';
 
 export function MarketplaceSources({
   selected,
@@ -93,7 +95,9 @@ export function MarketplaceSources({
           requires its own installation and approval. Publisher metadata does
           not establish Station endorsement.
         </p>
-        {sources.isLoading && <p role="status">Loading marketplaces…</p>}
+        {sources.isLoading && (
+          <SkeletonList count={3} label="Loading marketplaces" />
+        )}
         {(sources.data ?? []).map((source) => (
           <article key={source.id} className="marketplaces__source">
             <div>
@@ -115,34 +119,46 @@ export function MarketplaceSources({
               )}
               {source.error && <p role="status">{source.error}</p>}
             </div>
-            <div className="marketplaces__actions">
-              <Button
-                variant="secondary"
-                disabled={mutation.isPending || !source.enabled}
-                onClick={() => act(source, 'refresh')}
-              >
-                Refresh
-              </Button>
-              {source.origin !== 'plugin' && (
-                <Button
-                  variant="secondary"
-                  disabled={mutation.isPending}
-                  onClick={() =>
-                    act(source, source.enabled ? 'disable' : 'enable')
-                  }
-                >
-                  {source.enabled ? 'Disable' : 'Enable'}
-                </Button>
-              )}
-              {source.origin === 'user' && (
-                <Button
-                  variant="secondary"
-                  disabled={mutation.isPending}
-                  onClick={() => act(source, 'remove')}
-                >
-                  Remove source
-                </Button>
-              )}
+            <div>
+              <ActionRow
+                className="marketplaces__actions"
+                overflowLabel={`More actions for ${source.displayName}`}
+                primary={
+                  <Button
+                    variant="secondary"
+                    disabled={mutation.isPending || !source.enabled}
+                    onClick={() => act(source, 'refresh')}
+                  >
+                    Refresh
+                  </Button>
+                }
+                secondary={
+                  source.origin !== 'plugin' ? (
+                    <Button
+                      variant="secondary"
+                      disabled={mutation.isPending}
+                      onClick={() =>
+                        act(source, source.enabled ? 'disable' : 'enable')
+                      }
+                    >
+                      {source.enabled ? 'Disable' : 'Enable'}
+                    </Button>
+                  ) : undefined
+                }
+                overflow={
+                  source.origin === 'user'
+                    ? [
+                        {
+                          key: 'remove',
+                          label: 'Remove source',
+                          tone: 'danger',
+                          disabled: mutation.isPending,
+                          onSelect: () => act(source, 'remove'),
+                        },
+                      ]
+                    : []
+                }
+              />
               {source.origin === 'plugin' && (
                 <p>
                   Enable, disable, or revoke this source through its owning
