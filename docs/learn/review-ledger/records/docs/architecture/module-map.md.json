@@ -892,7 +892,7 @@
 
     {"path":"src-ui/src/platform/native/nativeRelayGrantRenewalSupervisor.ts","digest":"a7a28335632f47d95b026e4f7edc9011bdabef0adafa8815339f436fd69aa2a3","revision":"63b38388826be9b989d3a94c88052e65c69b2d63"},
 
-    {"path":"src-ui/src/platform/native/nativeRelayLinkAdapter.ts","digest":"7cc86f65b430a45644c9af1ba4ea2cd8023884ea572ac436f43ce66611bfe31f","revision":"00e6787a016649c527aa862f9e15327b06e2d6e3"},
+    {"path":"src-ui/src/platform/native/nativeRelayLinkAdapter.ts","digest":"50f83052280c417eae3d4851c6579e51a4ce56ef2b41f46791b6fc20a7410860","revision":"717e78b32fa5e74371172680cf8a0bb23cf63894"},
 
     {"path":"src-ui/src/platform/native/rendererLiveness.tsx","digest":"8a47896392329e0bce4fc0ca3ce544171cff1e2df6bcb77097c97ff26ce78c63","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
