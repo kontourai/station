@@ -26,13 +26,13 @@
 
     {"path":"docs/guides/workspace-packages.md","digest":"4590c3915425e58b96a0ae8c36d825bf0409e7ddff1b7023f367f14a4aede9d1","revision":"5c18724d4ba50fd9b5f6c4043e7a00ebc893c70d"},
 
-    {"path":"docs/reference/api.md","digest":"d9dd944978df14e9a51ce0c890315bd617b88f2da3d22e929c1b77526134c8fe","revision":"19aa9bdb06557d00f5a73aa279eb4aef1b5821c5"},
+    {"path":"docs/reference/api.md","digest":"c32c14f4fd0ed44fc102b14a995b1d97e07e83a6a2f64b3b4f1ade66976b24d1","revision":"028b862d15803c3a48835426e01d76e8ccbbb0a0"},
 
     {"path":"docs/reference/cli.md","digest":"b2cdeea42fb4b6baacc5aa6a74692e4d60975f7b30c2ad49e2c4d89990138297","revision":"24d0063f45516c1d6c7cddec670c60ef0185f1f2"},
 
     {"path":"docs/reference/contracts.md","digest":"08a0571d33304f6af994b0a4e602e5e48e331c5eac7d2985cb9bda6a6c0199f3","revision":"ea49cb8678208b9037f8e9ab3ceb2a95fe2647ff"},
 
-    {"path":"docs/reference/sdk.md","digest":"692b0f9f08a34bc0a4d48f908488a6c083d8087fa0370893acb45bcb6f20fead","revision":"a058838c32094ebc98fa31929b76b7855bb7dd85"},
+    {"path":"docs/reference/sdk.md","digest":"2c743d95c28a4eb686955875adb417a2fa57ff98c72671a1d716b5bec048c1ce","revision":"028b862d15803c3a48835426e01d76e8ccbbb0a0"},
 
     {"path":"packages/contracts/src/deployment-authentication.ts","digest":"e4665bfa103bf73250bf5d06776ed48fde193b57adfdfec91634568024745050","revision":"6c81ee1abdc1d8bbb91eb0c1565fa280d232c65e"},
 

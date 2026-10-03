@@ -128,7 +128,7 @@
 
     {"path":"src-server/routes/spatial-board.ts","digest":"461e485ff2a4597e62552c2ae8c9067b9da58347c737be91f925afecf8bab5da","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
-    {"path":"tests/screenshots.spec.ts","digest":"621c70bf469a7b48111152204ea1f3654bdb9d4090e8d4f7f25634d9b38c40f6","revision":"d2b65cb482b664c258ccc809fabd92bc279354dc"},
+    {"path":"tests/screenshots.spec.ts","digest":"83983f57915b3a64af96da2800b3a9a46e9bd8361b433006983851be2c6e9dd7","revision":"e47c752ea766fd8cc107d0a37d8d156775c280c7"},
 
     {"path":"tests/tauri-shell/native-project-acceptance-webview.ts","digest":"4ab4a1f98e3d2e677da5bda05f7bb9d6e8186f684f88f63faa23841b179911a8","revision":"2e4f061f91ffb0338e45de62382cf6da59cd5c76"},
 
