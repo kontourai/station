@@ -373,7 +373,7 @@ test('group changes preserve disabled choices and existing wildcard approvals ou
       engineId="codex"
     />,
   );
-  fireEvent.click(screen.getByRole('button', { name: /Station tools/ }));
+  fireEvent.click(screen.getByRole('button', { name: /^Station tools/ }));
   fireEvent.change(screen.getByLabelText('Tool group for Station tools'), {
     target: { value: 'Knowledge' },
   });
