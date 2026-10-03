@@ -892,6 +892,11 @@ describe('pairing-route-scopes: table-driven lookups', () => {
     ['HEAD', '/monitoring/fleet-serve-receipts', 'access:manage'],
     ['GET', '/monitoring/stats', 'orchestration:read'],
     ['GET', '/monitoring/metrics', 'orchestration:read'],
+    ['GET', '/api/registry/sources', 'access:manage'],
+    ['POST', '/api/registry/sources', 'access:manage'],
+    ['PATCH', '/api/registry/sources/source-1', 'access:manage'],
+    ['POST', '/api/registry/sources/source-1/refresh', 'access:manage'],
+    ['DELETE', '/api/registry/sources/source-1', 'access:manage'],
     ['GET', '/api/registry/kits', 'orchestration:read'],
     ['GET', '/api/registry/kits/example/layout', 'orchestration:read'],
     ['POST', '/api/registry/kits/example/disable', 'orchestration:operate'],
@@ -1295,6 +1300,49 @@ describe('pairing-route-scopes: table-driven lookups', () => {
         ),
       ).resolves.toBe(true);
     }
+  });
+
+  test('standard paired credentials cannot manage host marketplace sources', async () => {
+    const standardResolver = {
+      verifyCredential: vi.fn(async () => true),
+      resolveGrantedScope: vi.fn(async () =>
+        pairingScopePresetString('standard'),
+      ),
+    };
+    const operatorResolver = {
+      verifyCredential: vi.fn(async () => true),
+      resolveGrantedScope: vi.fn(async () => DEFAULT_GRANT_PAIRING_SCOPE),
+    };
+    for (const [method, path] of [
+      ['GET', '/api/registry/sources'],
+      ['POST', '/api/registry/sources'],
+      ['PATCH', '/api/registry/sources/source-1'],
+      ['POST', '/api/registry/sources/source-1/refresh'],
+      ['DELETE', '/api/registry/sources/source-1'],
+    ] as const) {
+      const requiredScope = requiredPairingScope(method, path)!;
+      await expect(
+        credentialAuthorizedForScope(
+          standardResolver,
+          requiredScope,
+          'remote-standard-credential',
+        ),
+      ).resolves.toBe(false);
+      await expect(
+        credentialAuthorizedForScope(
+          operatorResolver,
+          requiredScope,
+          'operator-credential',
+        ),
+      ).resolves.toBe(true);
+    }
+    await expect(
+      credentialAuthorizedForScope(
+        standardResolver,
+        requiredPairingScope('GET', '/api/registry/skills')!,
+        'remote-standard-credential',
+      ),
+    ).resolves.toBe(true);
   });
 
   test('a bare prefix segment collision does not falsely match (path boundary correctness)', () => {
