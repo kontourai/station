@@ -26,7 +26,7 @@
 
     {"path":"packages/sdk/src/mobile-device.ts","digest":"fd72000c45dad09b9d232f7343442f4a0abe873b14eaf9c7a5f1eb3ff1fc4efe","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
-    {"path":"src-server/routes/browser-agent.ts","digest":"eeb2e59964215e55e882e2fe2d501fbe5988b63ec6696158702f80d484a396e0","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/routes/browser-agent.ts","digest":"ed1378aa44833d002a1c943e3d6a6a41d24c6baef267023773f477565083c85d","revision":"cccc3b5a7758957a9f94283d940453ca086a8258"},
 
     {"path":"src-server/routes/browser.ts","digest":"e12b8389875a1696d0f23891aac7213753c9f9c74833e24ebd31829ffe2b2f12","revision":"e5d9b68a5a99edfb53c307ebc86f2890a3200d00"},
 
@@ -48,7 +48,7 @@
 
     {"path":"src-server/services/browser/browser-agent-authority.ts","digest":"e39f5e30689677a94ecff53ffc07a199aacdb10b3232de7fd7d8f3e74dc73daf","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/browser/browser-automation.ts","digest":"db5b7be0a1956036c8a584e7913f7af4addf9d94abfd82d8b06d089cd2e03637","revision":"930a4b5e4b5325ecd0941e7f85742c610544581d"},
+    {"path":"src-server/services/browser/browser-automation.ts","digest":"5230bb19cdd7ddddfef0335d21b93178500842430fead799a698ef39d8834c06","revision":"c5ba4601fc093dbaac618a601a442336b2a5ebaa"},
 
     {"path":"src-server/services/browser/browser-egress-proxy.ts","digest":"87d315f8362d7fd1a8f9c43f3086162459296fcf2e9de8d67967e0e60d09f9a8","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -102,7 +102,7 @@
 
     {"path":"src-server/tools/station-browser-mcp-server.ts","digest":"52c8ed2dbdf382a614021558ae9f91e5d52c2f157e264a4ae1c07b70d5ff4a66","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/tools/station-control-browser-tools.ts","digest":"c50e59f6e0ae041e64fbc426d041cbe1c9cc5ae3c6b094c38dc3524dded81a10","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/tools/station-control-browser-tools.ts","digest":"206cb92486ac5e19e87a8710434a24c2bf48f9dee84dab0bc61c85f5410535a8","revision":"cccc3b5a7758957a9f94283d940453ca086a8258"},
 
     {"path":"src-ui/src/float-over-chat/FloatOverChatHost.tsx","digest":"81c979aa34b061b5c9ca39dea2fe8327e387f97ceb079918039dd5311275ae3e","revision":"e5d9b68a5a99edfb53c307ebc86f2890a3200d00"},
 
