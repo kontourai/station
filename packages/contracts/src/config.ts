@@ -352,3 +352,33 @@ export interface TemplateVariable {
   value?: string;
   format?: string;
 }
+
+/** Validate the JSON date/time options used by template-variable consumers. */
+export function templateVariableFormatError(
+  variables: unknown,
+): string | undefined {
+  if (!Array.isArray(variables)) return undefined;
+  for (const value of variables) {
+    if (!value || typeof value !== 'object') continue;
+    const variable = value as Record<string, unknown>;
+    const type = variable.type;
+    if (type !== 'date' && type !== 'time' && type !== 'datetime') continue;
+    if (variable.format === undefined || variable.format === '') continue;
+    try {
+      if (typeof variable.format !== 'string')
+        throw new Error('invalid format');
+      const options: unknown = JSON.parse(variable.format);
+      if (!options || typeof options !== 'object' || Array.isArray(options))
+        throw new Error('invalid options');
+      const date = new Date(0);
+      if (type === 'date') date.toLocaleDateString(undefined, options);
+      else if (type === 'time') date.toLocaleTimeString(undefined, options);
+      else date.toLocaleString(undefined, options);
+    } catch {
+      const name =
+        typeof variable.key === 'string' ? variable.key : 'template variable';
+      return `Format for "${name}" must be a JSON object with valid ${type} options.`;
+    }
+  }
+  return undefined;
+}

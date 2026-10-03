@@ -85,6 +85,7 @@ import {
   realpath,
   rm,
   symlink,
+  utimes,
   writeFile,
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -885,6 +886,14 @@ export async function openRepositorySnapshot(
       if (stats) {
         // A copy: git may refresh it, and the member's is never written.
         await copyFile(index, join(dir, 'index'), constants.COPYFILE_FICLONE);
+        // With the index's own timestamp, not the copy's. git trusts an
+        // entry's cached size and mtime unless the file was modified in the
+        // same second the index was written (a "racy" entry, re-read by
+        // content). A fresh copy is newer than every entry, so a file
+        // rewritten to the same size within a second of the index landing
+        // (a checkout, a commit, a `git add`) read as unchanged: measured on
+        // APFS, 3 of 20 runs of the Changes read's own tests.
+        await utimes(join(dir, 'index'), stats.atime, stats.mtime);
         // A split index names its shared half by file name beside it.
         for await (const entry of await opendir(gitDir)) {
           if (entry.isFile() && entry.name.startsWith('sharedindex.')) {

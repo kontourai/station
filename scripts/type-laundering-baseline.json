@@ -2937,12 +2937,6 @@
       "reason": "legacy-cast"
     },
     {
-      "file": "src-ui/src/views/SkillsView.tsx",
-      "rule": "as-any",
-      "fingerprint": "520cb054279bfcb89ba8a064295fddcb68481287a0c5cadd6e69d7b286a35cb1",
-      "reason": "legacy-cast"
-    },
-    {
       "file": "src-ui/src/views/agent-editor/AgentEditorStateViews.tsx",
       "rule": "as-any",
       "fingerprint": "46109da6537786e534b06a008b104327a219bdf3ba3c5ab47f7829ec8217243a",

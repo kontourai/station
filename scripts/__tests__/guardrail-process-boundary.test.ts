@@ -155,12 +155,16 @@ const PRODUCTION_ACCEPT_GATES: ReadonlyArray<{
     reason:
       'reads the repo-wide channel port assignment; a synthetic tree proves nothing the real assignment does not',
     brokenTree: {
-      // The config read is at module TOP LEVEL (channel-ports.mjs:4-7),
-      // ahead of the guard — so an empty dir fails at import and proves
-      // nothing. Giving the scratch dir the real config gets the process past
-      // that, and `--check` then reaches checkGeneratedChannelPorts, whose
-      // first read is behind the guard.
-      productionFiles: ['config/channel-ports.json'],
+      // Both config reads are at module TOP LEVEL (channel-ports.mjs:4-7 and
+      // the release-manifest keys at channel-ports.mjs:110), ahead of the
+      // guard — so an empty dir fails at import and proves nothing. Giving
+      // the scratch dir both real configs gets the process past that, and
+      // `--check` then reaches checkGeneratedChannelPorts, whose first read
+      // is behind the guard.
+      productionFiles: [
+        'config/channel-ports.json',
+        'config/release-manifest-keys.json',
+      ],
       ownInput: 'packages/shared/src/channel-ports.generated.ts',
       readSite: 'channel-ports.mjs:136-143 (checkGeneratedChannelPorts)',
       guard: 'channel-ports.mjs:146',

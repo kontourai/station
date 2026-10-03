@@ -168,15 +168,9 @@ function fulfillGalleryConnectionsFixture(route: Route): Promise<void> {
 }
 
 /**
- * #1536 F: the gallery seeds exactly ONE Station and reaches it, which is the
- * state whose chip collapsed to its status dot — a fact that does not change
- * while you work, in the row that runs out of width first. So the state and the
- * identity are no longer visible text HERE; they are the accessible name and
- * the tooltip, which is the only channel a dot leaves for the identity.
- *
- * Both are asserted, not just one: the name is what the product's own E2E
- * selectors key on (`/^Manage Stations/`), and the title is what a pointer user
- * can actually read. A chip that dropped either would still pass a class check.
+ * The gallery seeds one connected profile. Pin its visible saved name and
+ * accessible status before capturing so broken connection chrome cannot
+ * become a baseline.
  */
 async function assertGalleryConnectionChrome(page: Page): Promise<void> {
   const chip = page.getByTestId('app-toolbar-connection');
@@ -184,11 +178,9 @@ async function assertGalleryConnectionChrome(page: Page): Promise<void> {
     timeout: 10_000,
   });
   await expect(chip).toHaveClass(/app-toolbar__conn--compact/);
-  // Since #2426 the healthy compact chip shows a short visible Station label
-  // (`Station · <name>`), and the accessible name carries that visible text
-  // after the state (WCAG 2.5.3).
-  const visible = `Station · ${GALLERY_CONNECTION_NAME}`;
-  const named = `Manage Stations — Connected · ${visible}`;
+  // The accessible name contains the visible saved name (WCAG 2.5.3).
+  const visible = GALLERY_CONNECTION_NAME;
+  const named = `Choose Station — Connected · ${visible}`;
   await expect(chip).toHaveAttribute('aria-label', named);
   await expect(chip).toHaveAttribute('title', named);
   await expect(chip.locator('.app-toolbar__conn-label')).toHaveText(visible);
@@ -251,6 +243,8 @@ async function assertNoStrayProjectModal(page: Page, timeoutMs = 10_000) {
  *    relative "just now" — the one remaining live-clock-derived label this
  *    gallery ever renders a toast for
  *    (`motion-reduced-notification`).
+ *  - The Profile's completed rebuild timestamp. The unavailable-time
+ *    fallback stays visible; only a live "Snapshot rebuilt ..." line is hidden.
  *  - `.chat-dock__mobile-conn` (ChatDockMobileHeader.tsx via
  *    `ChatDockMobileConnection.tsx`): the mobile chat dock's OWN
  *    connected/connecting/error/needs-credential indicator — the same
@@ -276,6 +270,12 @@ async function assertNoStrayProjectModal(page: Page, timeoutMs = 10_000) {
  * previously injected style tag) and as close to the shot as practical.
  */
 async function hideVolatileChrome(page: Page) {
+  await page
+    .locator('.profile-usage-status p')
+    .filter({ hasText: /^Snapshot rebuilt / })
+    .evaluateAll((elements) => {
+      for (const element of elements) element.style.visibility = 'hidden';
+    });
   await page.addStyleTag({
     content: `
       .time-filter-wrapper { visibility: hidden !important; }
@@ -1192,12 +1192,12 @@ function overlayDockProjectMismatchHooks(): Pick<
         await expect(badge).toHaveText('');
         await badge.click();
         await expect(
-          page.getByRole('dialog', { name: 'Switch project' }),
+          page.getByRole('dialog', { name: 'Projects' }),
         ).toBeVisible({ timeout: 10_000 });
         await page.getByRole('button', { name: 'Switch to Project A' }).click();
-        await expect(
-          page.getByRole('dialog', { name: 'Switch project' }),
-        ).toBeHidden({ timeout: 10_000 });
+        await expect(page.getByRole('dialog', { name: 'Projects' })).toBeHidden(
+          { timeout: 10_000 },
+        );
         // The badge now names the BOUND project (by design it never
         // follows the active session) — while the facts
         // row leads with the session's own, muted, differing project name.
@@ -1320,6 +1320,9 @@ const SCREENS: Screen[] = [
       waitFor: '[data-testid="app-toolbar-connection"]',
       afterGoto: async (page) => {
         await page.getByTestId('app-toolbar-connection').click();
+        await page
+          .getByRole('menuitem', { name: 'Manage Stations', exact: true })
+          .click();
         const dialog = page.getByRole('dialog');
         await dialog
           .getByRole('button', { name: 'Add a Station address', exact: true })
@@ -1356,9 +1359,17 @@ const SCREENS: Screen[] = [
         );
         try {
           await page.getByTestId('app-toolbar-connection').click();
+          await page
+            .getByRole('menuitem', { name: 'Manage Stations', exact: true })
+            .click();
           const dialog = page.getByRole('dialog');
           await dialog
-            .getByRole('button', { name: 'Request access', exact: true })
+            .getByRole('button', {
+              name: `More actions for ${GALLERY_CONNECTION_NAME}`,
+            })
+            .click();
+          await dialog
+            .getByRole('menuitem', { name: 'Reconnect', exact: true })
             .click();
           await dialog
             .getByRole('button', { name: 'Request access', exact: true })
@@ -2266,14 +2277,14 @@ const SCREENS: Screen[] = [
         await expect(badge).toHaveText('');
         await badge.click();
         await expect(
-          page.getByRole('dialog', { name: 'Switch project' }),
+          page.getByRole('dialog', { name: 'Projects' }),
         ).toBeVisible({ timeout: 10_000 });
         await page
           .getByRole('button', { name: 'Switch to Demo Project' })
           .click();
-        await expect(
-          page.getByRole('dialog', { name: 'Switch project' }),
-        ).toBeHidden({ timeout: 10_000 });
+        await expect(page.getByRole('dialog', { name: 'Projects' })).toBeHidden(
+          { timeout: 10_000 },
+        );
         // Scoped to the badge's own class: the project sidebar (seeded
         // from the same `/api/projects` mock) also renders a same-named
         // button.
@@ -2310,7 +2321,7 @@ const SCREENS: Screen[] = [
         await trigger.waitFor({ timeout: 10_000 });
         await trigger.click();
         await expect(
-          page.getByRole('dialog', { name: 'Switch project' }),
+          page.getByRole('dialog', { name: 'Projects' }),
         ).toBeVisible({ timeout: 10_000 });
         await expect(
           page.getByRole('button', { name: 'Switch to Demo Project' }),
@@ -2424,6 +2435,25 @@ const SCREENS: Screen[] = [
     viewport: { width: 320, height: 568 },
     afterGoto: async (page) => {
       await assertNoStrayProjectModal(page);
+      const brand = page.locator('.app-toolbar__brand');
+      await expect(brand).toBeVisible();
+      const geometry = await brand.evaluate((element) => {
+        const toolbar = element.closest('.app-toolbar')!;
+        return {
+          name: element.textContent,
+          available: element.clientWidth,
+          required: element.scrollWidth,
+          gap: getComputedStyle(toolbar).gap,
+          children: Array.from(toolbar.children).map((child) => ({
+            className: child.className,
+            width: child.getBoundingClientRect().width,
+          })),
+        };
+      });
+      expect(
+        geometry.required <= geometry.available + 1,
+        JSON.stringify(geometry),
+      ).toBe(true);
       await expect(page.locator('.chat-dock')).toBeVisible({
         timeout: 10_000,
       });

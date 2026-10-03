@@ -897,8 +897,8 @@ describe('resolveComposerImageSupport (station#3344)', () => {
     expect(
       resolveComposerImageSupport(ENGINE_CAPABILITY_MATRICES.acp, {
         connectionCapabilities: [...ACP_ADAPTER_CAPABILITIES_FIXTURE],
-      }),
-    ).toEqual({ attachable: true });
+      }).attachable,
+    ).toBe(true);
   });
 
   describe('a runtime_observation cell reads the live handshake', () => {
@@ -907,11 +907,36 @@ describe('resolveComposerImageSupport (station#3344)', () => {
       connectionLabel: 'Kiro',
     };
 
-    test('observed true attaches', () => {
+    test('observed true attaches, with a caveat until the model is known', () => {
+      // OpenCode advertises images engine-wide and then swaps the image for
+      // an error text when the selected model cannot read it — so an engine
+      // "yes" is not the model's answer.
       expect(
         resolveComposerImageSupport(ENGINE_CAPABILITY_MATRICES.acp, {
           ...acpConnection,
           observedImagePrompt: true,
+          modelLabel: 'big-pickle',
+          modelSupportVaries: true,
+        }),
+      ).toEqual({
+        attachable: true,
+        caveat:
+          "Kiro accepts images, but Station can't confirm big-pickle can read them.",
+      });
+      expect(
+        resolveComposerImageSupport(ENGINE_CAPABILITY_MATRICES.acp, {
+          ...acpConnection,
+          observedImagePrompt: true,
+          modelSupport: 'yes',
+          modelSupportVaries: true,
+        }),
+      ).toEqual({ attachable: true });
+      // An engine serving one provider's models: its "yes" is not noise-worthy.
+      expect(
+        resolveComposerImageSupport(ENGINE_CAPABILITY_MATRICES.acp, {
+          ...acpConnection,
+          observedImagePrompt: true,
+          modelLabel: 'kiro-model',
         }),
       ).toEqual({ attachable: true });
     });
@@ -928,13 +953,17 @@ describe('resolveComposerImageSupport (station#3344)', () => {
       });
     });
 
-    test('unobserved attaches — a handshake nobody has run is not a refusal', () => {
+    test('unobserved attaches — a handshake nobody has run is not a refusal, and says so', () => {
       expect(
         resolveComposerImageSupport(
           ENGINE_CAPABILITY_MATRICES.acp,
           acpConnection,
         ),
-      ).toEqual({ attachable: true });
+      ).toEqual({
+        attachable: true,
+        caveat:
+          'Kiro has not reported whether it accepts images yet. Station checks when you send.',
+      });
     });
 
     test('an observation is ignored by an engine whose cell is `declared`', () => {

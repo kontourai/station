@@ -92,3 +92,27 @@ test('a local optimistic input keeps its identity and is not duplicated by its t
   start('turn-2', 'A second message from the other client');
   expect(activeChatsStore.getSnapshot()[id].messages).toHaveLength(2);
 });
+
+test('a live steer that stopped the running step carries that onto its row', () => {
+  activeChatsStore.initChat(id, {
+    agentSlug: 'opencode',
+    agentName: 'OpenCode',
+    title: 'Steer',
+  });
+  start('turn-1', 'run the gates');
+  handleTurnStartedEvent({
+    eventId: 'event-steer',
+    method: 'turn.started',
+    provider: 'acp',
+    threadId: id,
+    turnId: 'turn-1',
+    createdAt: '2026-09-12T00:00:05Z',
+    prompt: 'Still going?',
+    inputKind: 'steer',
+    steerInterruptedRun: true,
+  });
+  const steerRow = activeChatsStore
+    .getSnapshot()
+    [id].messages?.find((message) => message.content === 'Still going?');
+  expect(steerRow?.steerInterruptedRun).toBe(true);
+});

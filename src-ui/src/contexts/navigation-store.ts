@@ -15,6 +15,7 @@ import {
   parseOpenFilePreviewIntent,
   serializeOpenFilePreviewIntent,
 } from '../workspace-panes/openFilePreviewIntent';
+import { MAIN_PAGE_HISTORY_KEY } from './main-page-history';
 import { parseSurfaceDeepLink } from './surface-deep-link';
 
 /** An exact temporary return location, owned and restored by this navigator. */
@@ -77,6 +78,15 @@ const NAVIGATION_INDEX_KEY = '__stationNavigationIndex';
  * mine?"; bounded so a long session does not grow it without limit.
  */
 const MAX_REMEMBERED_ENTRY_LOCATIONS = 64;
+
+/**
+ * The navigation entry a history state belongs to. A same-URL layer pushed by
+ * copying the state it lands on (a dialog's Back marker) carries the index of
+ * the entry beneath it, so two states with one index are one entry.
+ */
+export function navigationEntryIndex(value: unknown): number | undefined {
+  return historyIndex(value);
+}
 
 function historyIndex(value: unknown): number | undefined {
   if (!value || typeof value !== 'object' || Array.isArray(value))
@@ -227,6 +237,28 @@ class NavigationStore {
   private restoringPop = false;
   private replayingPop = false;
   private pendingPopDelta: number | undefined;
+  /**
+   * True from the moment a guarded traversal is being travelled back
+   * (`history.go(-delta)`) until that bounce lands. The entry the browser is
+   * on meanwhile is one the user has not been admitted to: a `popstate`
+   * listener that acts on an entry's state must not act on this one.
+   */
+  get traversalAwaitsGuard(): boolean {
+    return this.restoringPop;
+  }
+  private departedHistoryIndex = 0;
+  /**
+   * The navigation index of the entry the traversal being handled LEFT. The
+   * store's index is the live entry's at every moment — `navigate`, a
+   * collapsed dialog layer's adoption and each traversal all move it — so
+   * this is read at the top of the handler, before the landing moves it. A
+   * listener registered after the store's compares it with the landed
+   * entry's index to tell a move between entries from a move within one (a
+   * dialog layer shares the index of the entry beneath it).
+   */
+  get traversalDepartedIndex(): number {
+    return this.departedHistoryIndex;
+  }
   /**
    * The location of each history entry this page load has observed, keyed by
    * the store's own entry index. The browser exposes only the CURRENT entry's
@@ -407,6 +439,7 @@ class NavigationStore {
   };
 
   private handlePopState = (event: PopStateEvent) => {
+    this.departedHistoryIndex = this.historyIndex;
     const targetIndex = historyIndex(event.state);
     if (targetIndex !== undefined && targetIndex !== this.historyIndex)
       this.navigationGeneration = {};
@@ -495,6 +528,12 @@ class NavigationStore {
       return;
     }
 
+    // A same-URL traversal between two entries of this store's own (`main`'s
+    // page entries, #2986) is still a move along the stack: without this the
+    // index stays on the entry left, and the next guarded Back computes its
+    // restore delta from the wrong place. A dialog layer shares the index of
+    // the entry beneath it, so for that traversal this assigns what it had.
+    if (targetIndex !== undefined) this.historyIndex = targetIndex;
     this.commitState(newState);
   };
 
@@ -783,7 +822,11 @@ class NavigationStore {
       .catch(() => false);
   }
 
-  navigate(pathname: string, params?: Record<string, string | null>) {
+  navigate(
+    pathname: string,
+    params?: Record<string, string | null>,
+    options?: { preserveChatProjectDefault?: boolean },
+  ) {
     const target = parseNavigationTarget(pathname, window.location.href);
     if (
       !this.navigationGuardBypass &&
@@ -793,7 +836,7 @@ class NavigationStore {
       this.runNavigationGuards(() => {
         this.navigationGuardBypass = true;
         try {
-          this.navigate(pathname, params);
+          this.navigate(pathname, params, options);
         } finally {
           this.navigationGuardBypass = false;
         }
@@ -890,12 +933,27 @@ class NavigationStore {
     // cleanup treat the destination as its own marker and immediately Back
     // out of the navigation (observed from New Chat's Connect repair).
     delete nextHistoryState[DIALOG_HISTORY_KEY];
+    // Likewise `main`'s page stamp: it says what the entry being LEFT showed.
+    // The region model stamps the destination itself when it is `/`.
+    delete nextHistoryState[MAIN_PAGE_HISTORY_KEY];
     window.history.pushState(nextHistoryState, '', url.toString());
     this.historyIndex = nextIndex;
     // A push discards every forward entry the browser held.
     for (const index of [...this.entryLocations.keys()])
       if (index > nextIndex) this.entryLocations.delete(index);
-    this.commitState(this.parseUrl(), true);
+    const next = this.parseUrl();
+    const previousProject = this.state.selectedProject;
+    this.commitState(next, true);
+    if (
+      !options?.preserveChatProjectDefault &&
+      next.selectedProject &&
+      (next.selectedProject !== previousProject ||
+        (target.pathname === `/projects/${next.selectedProject}` &&
+          !target.search &&
+          !params))
+    ) {
+      deviceSettingsStore.set('chatDockProjectSlug', next.selectedProject);
+    }
     this.notify();
     window.dispatchEvent(new PopStateEvent('popstate'));
     this.isNavigating = false;
@@ -997,6 +1055,7 @@ class NavigationStore {
       openFilePreviewIntent?: OpenFilePreviewIntent;
       /** The Files pane's own row write; absent for any other writer. */
       from?: 'pane';
+      preserveChatProjectDefault?: boolean;
     },
   ) {
     this.lastProject = projectSlug;
@@ -1054,7 +1113,7 @@ class NavigationStore {
         }
         return;
       }
-      this.navigate(pathname, previewFields);
+      this.navigate(pathname, previewFields, options);
     } finally {
       this.nextPreviewIntentFrom = null;
     }

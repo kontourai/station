@@ -1,6 +1,7 @@
 import { APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE } from '@kontourai/station-contracts/orchestration';
 import { PRINCIPAL_UNRESOLVED_CODE } from '@kontourai/station-contracts/principal';
 import {
+  ATTACHMENT_INPUT_UNSUPPORTED_CODE,
   ENGINE_SESSION_BINDING_DEAD_CODE,
   ENGINE_TURN_FAILED_CODE,
   MUSE_TURN_IDLE_TIMEOUT_CODE,
@@ -367,6 +368,20 @@ export function translateChatError(
     };
   }
 
+  // The engine cannot take the attachments, refused before anything reached
+  // it. Deterministic: sending the same attachments again is refused again,
+  // so this carries no "temporary" hint and callers withhold Retry
+  // (`retryable: false`). The server's sentence names what the engine did not
+  // advertise; the hint names the two things that actually change the answer.
+  if (code === ATTACHMENT_INPUT_UNSUPPORTED_CODE) {
+    return {
+      title: "This engine can't take these attachments",
+      body: `${text || 'This engine cannot take the attached files.'} Nothing was sent.`,
+      hint: 'Remove the attachments to send your text, or switch to an engine or model that accepts them.',
+      retryable: false,
+    };
+  }
+
   // #1796: full access refused before anything ran. Canned words only: the
   // server's prose is not rendered here (this surface is Markdown), and
   // nothing about it is temporary. The foreground send renders a structured
@@ -501,9 +516,9 @@ export function translateChatError(
   switch (code) {
     case 'transport_capacity':
       return {
-        title: 'Station is handling too many requests',
+        title: 'Station connection is busy',
         body: text || 'This Station has too many concurrent requests.',
-        hint: 'Retry your request in a moment.',
+        hint: 'Wait for current requests to finish, then Retry.',
       };
     case 'transport_timeout':
       return {

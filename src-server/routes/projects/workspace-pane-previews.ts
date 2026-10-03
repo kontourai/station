@@ -11,6 +11,10 @@ import { type Context, Hono } from 'hono';
 import { z } from 'zod/v3';
 import { assertSafeLayoutPathSegment } from '../../domain/storage-adapter.js';
 import type { ProjectService } from '../../services/projects/project-service.js';
+import {
+  WorkspaceFileChangesQueueFullError,
+  WorkspaceFileChangesService,
+} from '../../services/projects/workspace-file-changes-service.js';
 import { WorkspaceFilePreviewService } from '../../services/projects/workspace-file-preview-service.js';
 import { expandTilde } from '../../utils/paths.js';
 import { getBody, param, validate } from '../schemas/schemas.js';
@@ -39,6 +43,12 @@ const workspaceFilePreviewSchema = z
 // Keep this leaf narrower than the regular preview request: line ranges have
 // no meaning for an attachment handoff.
 const workspaceFilePreviewDownloadSchema = z
+  .object({ path: z.string(), thread: threadField })
+  .strict();
+
+// One file's changes against HEAD: the same path and session fields as a
+// download handoff, and nothing that could name a revision or a pathspec.
+const workspaceFileChangesSchema = z
   .object({ path: z.string(), thread: threadField })
   .strict();
 
@@ -82,6 +92,7 @@ export function createWorkspacePanePreviewRoutes(
   projectService: Pick<ProjectService, 'getProject'>,
   previewService = new WorkspaceFilePreviewService(),
   sessionWorkspaceDirectory?: SessionWorkspaceDirectory,
+  changesService = new WorkspaceFileChangesService(previewService),
 ) {
   const app = new Hono();
 
@@ -156,6 +167,94 @@ export function createWorkspacePanePreviewRoutes(
         'Cross-Origin-Resource-Policy': 'same-origin',
         'Content-Security-Policy': 'sandbox',
       });
+    },
+  );
+
+  app.post(
+    '/changes',
+    validate(workspaceFileChangesSchema, { maxBodyBytes: 4096 }),
+    async (c) => {
+      const slug = slugOf(c);
+      if (typeof slug !== 'string') return slug;
+      const { path, thread } = getBody(c) as { path: string; thread?: string };
+      const workingDirectory = await directoryFor(c, slug, thread);
+      if (!workingDirectory) {
+        return c.json(
+          { success: false, error: 'Project workspace is unavailable' },
+          404,
+        );
+      }
+      const busy = () => {
+        // Not a refusal, and not a result: the repository was being written
+        // (a commit landing, a `.git` swapped under the read) each time
+        // Station read it, and a read is only answered from one that held
+        // still; or this workspace's queue of waiting reads is full. The
+        // same answer as the coding git reads.
+        c.header('Retry-After', '1');
+        return c.json(
+          {
+            success: false,
+            error:
+              'The repository was being changed while Station read it. Nothing is wrong with it; try again in a moment',
+            code: 'repository-busy',
+            retryable: true,
+          },
+          503,
+        );
+      };
+      let changes: Awaited<ReturnType<typeof changesService.changes>>;
+      try {
+        changes = await changesService.changes(workingDirectory, path, {
+          // A reader that navigated away stops waiting for its turn.
+          signal: c.req.raw.signal,
+        });
+      } catch (error) {
+        if (c.req.raw.signal.aborted) {
+          // Nobody is listening; nothing is said.
+          return new Response(null, { status: 499 });
+        }
+        if (error instanceof WorkspaceFileChangesQueueFullError) return busy();
+        const failure = error as { killed?: unknown; signal?: unknown };
+        if (
+          error instanceof Error &&
+          /workspace|symlink|relative|name a file/.test(error.message)
+        ) {
+          // The preview's own refusal; never mirror the rejected input.
+          return c.json(
+            { success: false, error: 'Invalid file preview path' },
+            400,
+          );
+        }
+        return failure?.killed === true || failure?.signal === 'SIGTERM'
+          ? c.json(
+              {
+                success: false,
+                error: 'git did not answer in time and was stopped.',
+                code: 'git-timeout',
+              },
+              504,
+            )
+          : c.json(
+              { success: false, error: 'git could not read this file.' },
+              502,
+            );
+      }
+      if (!changes) {
+        return c.json(
+          { success: false, error: 'Project workspace is unavailable' },
+          404,
+        );
+      }
+      if (changes.state === 'busy') return busy();
+      if (changes.state === 'not-found') {
+        // Neither tracked, in HEAD, nor in the work tree: as the preview
+        // answers a file that is not there.
+        return c.json(
+          { success: false, error: 'File not found', code: 'file-not-found' },
+          404,
+        );
+      }
+      return c.json({ success: true, data: changes });
     },
   );
 

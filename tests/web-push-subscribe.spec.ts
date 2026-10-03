@@ -35,11 +35,13 @@ async function goToNotificationsSettings(
   // this used to dispatch against is `display: none` there.
   await openHeaderSettings(page);
   await page.waitForSelector('.settings__section-nav', { timeout: 10_000 });
-  await page.getByRole('link', { name: 'Notifications', exact: true }).click();
+  await page
+    .getByRole('link', { name: 'Notifications & voice', exact: true })
+    .click();
 }
 
 test.describe('Web Push subscribe/unsubscribe', () => {
-  test('subscribe reaches push-subscribe with the caller device credential; unsubscribe stops further subscribe attempts', async ({
+  test('subscribe uses the device credential; switching push off unsubscribes and keeps it off', async ({
     context,
     page,
     baseURL,
@@ -56,6 +58,10 @@ test.describe('Web Push subscribe/unsubscribe', () => {
       let currentSubscription: unknown = null;
       const fakeSubscription = {
         endpoint: 'https://push.example.test/fake-subscription-endpoint',
+        options: {
+          userVisibleOnly: true,
+          applicationServerKey: null as ArrayBuffer | null,
+        },
         toJSON: () => ({
           endpoint: 'https://push.example.test/fake-subscription-endpoint',
           keys: {
@@ -71,7 +77,21 @@ test.describe('Web Push subscribe/unsubscribe', () => {
       const fakeRegistration = {
         pushManager: {
           getSubscription: async () => currentSubscription,
-          subscribe: async () => {
+          subscribe: async (options: PushSubscriptionOptionsInit) => {
+            const key = options.applicationServerKey;
+            if (typeof key === 'string')
+              throw new Error(
+                'Push fixture requires the decoded applicationServerKey',
+              );
+            fakeSubscription.options.applicationServerKey = ArrayBuffer.isView(
+              key,
+            )
+              ? new Uint8Array(
+                  key.buffer,
+                  key.byteOffset,
+                  key.byteLength,
+                ).slice().buffer
+              : (key ?? null);
             currentSubscription = fakeSubscription;
             return fakeSubscription;
           },
@@ -95,7 +115,10 @@ test.describe('Web Push subscribe/unsubscribe', () => {
       });
       Object.defineProperty(navigator, 'serviceWorker', {
         configurable: true,
-        value: { register: async () => fakeRegistration },
+        value: {
+          register: async () => fakeRegistration,
+          getRegistration: async () => fakeRegistration,
+        },
       });
     });
 
@@ -154,6 +177,13 @@ test.describe('Web Push subscribe/unsubscribe', () => {
     // Install the simulated credential only for the operation under test.
     // Sending an intentionally fake credential during app bootstrap correctly
     // trips server auth rate limiting and obscures the push-client contract.
+    const bootstrapCredential = (await context.cookies(origin)).find(
+      (cookie) => cookie.name === 'station-device',
+    );
+    if (!bootstrapCredential)
+      throw new Error(
+        'Authenticated browser fixture is required before credential isolation',
+      );
     await context.addCookies([
       {
         name: 'station-device',
@@ -180,7 +210,19 @@ test.describe('Web Push subscribe/unsubscribe', () => {
       `station-device=${FAKE_DEVICE_CREDENTIAL}`,
     );
 
-    await page.getByRole('button', { name: 'Unsubscribe' }).click();
+    const pushSwitch = page.getByRole('switch', {
+      name: 'Push notifications',
+      exact: true,
+    });
+    await pushSwitch.click();
+    await expect(pushSwitch).toHaveAttribute('aria-checked', 'false');
+    await expect.poll(() => unsubscribeCalls).toBe(1);
+    await expect(enableButton).toHaveCount(0);
+
+    await context.addCookies([bootstrapCredential]);
+    await page.reload();
+    await expect(pushSwitch).toHaveAttribute('aria-checked', 'false');
+    await pushSwitch.click();
 
     await expect(enableButton).toBeVisible();
     expect(unsubscribeCalls).toBe(1);

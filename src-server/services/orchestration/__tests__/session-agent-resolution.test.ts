@@ -316,6 +316,17 @@ describe('createSessionAgentResolver', () => {
       'station-control',
       'station-docs',
     ]);
+    expect(
+      result.metadata?.[SESSION_CAPABILITY_DELIVERY_METADATA_KEY],
+    ).toMatchObject({
+      systemPrompt: {
+        channel: 'first-turn',
+        firstTurnInstructions: expect.stringContaining(
+          'discover relevant installed skills and available tools',
+        ),
+      },
+    });
+
     expect(result.agent?.autoApprove).toContain(
       'station-control_list_projects',
     );

@@ -5,8 +5,10 @@ import {
   useMemo,
   useState,
 } from 'react';
+import { PlugGlyph } from '../icons/Glyph';
 import { LazyBoundary } from '../LazyBoundary';
 import type { ToolCallBatchSheetProps } from './ToolCallBatchSheet';
+import { KIND_GLYPH } from './ToolCallDisplay';
 import { classifyToolCallRun } from './tool-call-groups';
 import type { ToolCallLike, ToolCallRun } from './tool-call-runs';
 import './chat.css';
@@ -74,6 +76,10 @@ export function ToolCallBatch<P extends ToolCallLike>({
     const only = group.calls[0];
     return <>{renderCall(only.part, only.index)}</>;
   }
+  // The same anatomy as a single row — kind glyph, label, chevron — so a
+  // solo call that gains a sibling changes its words, not its shape.
+  const kinds = new Set(group.calls.map((call) => call.kind));
+  const Glyph = kinds.size === 1 ? KIND_GLYPH[group.calls[0]!.kind] : PlugGlyph;
 
   return (
     <div className="tool-call-batch">
@@ -84,6 +90,9 @@ export function ToolCallBatch<P extends ToolCallLike>({
         aria-expanded={isOpen}
         onClick={() => setIsOpen(true)}
       >
+        <span className="tool-call__glyph" aria-hidden="true">
+          <Glyph />
+        </span>
         {group.inProgress && (
           <span className="tool-call-batch__pulse" aria-hidden="true" />
         )}

@@ -29,7 +29,17 @@
  * Read-only against the isolated temp-home instance apart from this browser
  * context's own `regionArrangement` device setting (localStorage).
  */
+
+import {
+  LIVE_ACTIVITY_SCHEMA_VERSION,
+  parseLiveActivityProjection,
+} from '@kontourai/station-contracts/live-activity';
 import { expect, test } from '@playwright/test';
+import { test as fixtureTest } from './helpers/fixture-audit';
+import {
+  installMockOrchestrationSse,
+  seedOrchestrationRoutes,
+} from './helpers/orchestration';
 import {
   chatDockShell,
   chooseSurfaceInEmptyRegion,
@@ -498,4 +508,113 @@ test.describe('Activity surface at 390x844', () => {
     await expect(heading).toBeInViewport();
     await expect(page).not.toHaveURL(/maximize=true/);
   });
+});
+
+fixtureTest.describe('Live work in the sidebar footer', () => {
+  fixtureTest.beforeEach(async ({ page }) => {
+    await seedOrchestrationRoutes(page);
+    await installMockOrchestrationSse(page);
+    const observedAt = Date.now();
+    const liveProjection = {
+      schemaVersion: LIVE_ACTIVITY_SCHEMA_VERSION,
+      observedAt,
+      connectedClients: 4,
+      participants: Array.from({ length: 4 }, (_, index) => ({
+        id: (index + 1).toString(16).padStart(24, '0'),
+        actor: { kind: 'human', label: `Participant ${index + 1}` },
+        scope: { projectId: 'p1', projectSlug: 'demo', taskId: '77' },
+        work: {
+          workName: 'Reviewing work',
+          workState: 'reviewing',
+          startedAt: observedAt,
+        },
+      })),
+    };
+    if (!parseLiveActivityProjection(liveProjection))
+      throw new Error('Invalid live presence fixture');
+    await page.route('**/api/live-activity', (route) =>
+      route.fulfill({ json: { success: true, data: liveProjection } }),
+    );
+    await page.route('**/api/orchestration/sessions/read-model*', (route) =>
+      route.fulfill({
+        json: {
+          success: true,
+          data: [1, 2].map((index) => ({
+            provider: 'station',
+            threadId: `station:footer-${index}`,
+            status: 'busy',
+            controlMode: 'station-owned',
+            lifecycleState: 'running',
+            hasActiveTurn: true,
+            isLoaded: true,
+            isPersisted: true,
+            eventCount: 1,
+            createdAt: new Date(observedAt).toISOString(),
+            updatedAt: new Date(observedAt).toISOString(),
+          })),
+        },
+      }),
+    );
+    await page.goto('/settings');
+  });
+
+  fixtureTest(
+    'populated live work fits the sidebar beside its three footer actions',
+    async ({ page }, testInfo) => {
+      await page.setViewportSize({ width: 1280, height: 900 });
+      const footer = page.locator('.sidebar__footer');
+      const presence = footer.getByRole('button', {
+        name: /4 participants.*2 active sessions/,
+      });
+      await expect(presence).toBeVisible();
+      const bounds = (await footer.boundingBox())!;
+      for (const name of ['Schedule', 'Customize', 'Settings']) {
+        const box = (await footer
+          .getByRole('button', { name, exact: true })
+          .boundingBox())!;
+        expect(box.x).toBeGreaterThanOrEqual(bounds.x);
+        expect(box.x + box.width).toBeLessThanOrEqual(bounds.x + bounds.width);
+      }
+      await page.screenshot({
+        path: testInfo.outputPath('footer-populated-desktop.png'),
+      });
+      await page.getByRole('button', { name: 'Collapse sidebar' }).click();
+      await expect(presence).toBeVisible();
+      for (const name of ['Schedule', 'Customize', 'Settings']) {
+        await expect(
+          footer.getByRole('button', { name, exact: true }),
+        ).toBeVisible();
+      }
+    },
+  );
+
+  fixtureTest(
+    'opening live Activity closes mobile navigation and reveals the work',
+    async ({ page }, testInfo) => {
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page.getByRole('button', { name: 'Toggle menu' }).click();
+      const navigation = page.getByRole('navigation', {
+        name: 'Mobile navigation',
+      });
+      const presence = navigation.getByRole('button', {
+        name: /4 participants.*2 active sessions/,
+      });
+      await expect(presence).toBeVisible();
+      await presence.click();
+      await page
+        .getByRole('button', { name: 'Open Activity', exact: true })
+        .click();
+      await expect(navigation).toBeHidden();
+      await expect(
+        page.getByRole('heading', { name: 'Activity', exact: true }),
+      ).toBeVisible();
+      await expect(
+        page.getByText('Running · 2', { exact: true }),
+      ).toBeVisible();
+      expect(await documentFitsViewportWidth(page)).toBe(true);
+      await page.screenshot({
+        path: testInfo.outputPath('footer-activity-mobile.png'),
+      });
+    },
+  );
 });

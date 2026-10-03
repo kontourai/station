@@ -7,6 +7,7 @@ import {
 import { EXECUTION_MODE } from '@kontourai/station-contracts/tool';
 import {
   type OrchestrationSessionSummary,
+  useEngineConnectionsQuery,
   useModelPickerCatalogQuery,
   useProjectLayoutsQuery,
 } from '@kontourai/station-sdk';
@@ -33,6 +34,18 @@ import {
 } from '../../utils/modelCapabilities';
 
 type ModelOption = { id: string; name: string };
+
+/**
+ * Engines whose handshake answers image support for the whole engine while
+ * the model it routes to decides whether an image is read, keyed by the
+ * registry connection id. OpenCode is the observed case: its ACP handshake
+ * says `image: true`, then `provider/transform.ts` swaps the image for an
+ * error text when the selected model lacks image input, and nothing in ACP
+ * reports per-model modalities. Parsing model ids for "several providers"
+ * was a guess in both directions (single-prefix routers, `org/model` ids), so
+ * this names the evidence instead; an engine without it gets no note.
+ */
+const PER_MODEL_IMAGE_SUPPORT_ENGINES = new Set(['opencode']);
 const EMPTY_CONNECTIONS: never[] = [];
 const EMPTY_ORCHESTRATION_SESSIONS: never[] = [];
 
@@ -433,6 +446,16 @@ export function useChatDockViewModel({
     activeSessionForHook?.executionMode === EXECUTION_MODE.STATION
       ? ENGINE_CAPABILITY_MATRICES.station
       : resolveEngineCapabilityMatrix(agentConnectionId, runtimeConnection);
+  // The live handshake answer lives on the connection's capability
+  // inventory, which the credential-free picker projection above does not
+  // carry — reading it off `runtimeConnection` always found nothing, so a
+  // Grok Build chat (handshake: `promptCapabilities.image: false`) attached
+  // images and only learned otherwise on send. The engine inventory query is
+  // the same read the send path already subscribes to.
+  const { data: engineConnections } = useEngineConnectionsQuery();
+  const observedImagePrompt = engineConnections?.find(
+    (connection) => connection.id === agentConnectionId,
+  )?.capabilityInventory?.sessionSurfaces?.promptImage;
   const composerImageSupport = resolveComposerImageSupport(
     engineCapabilityMatrix,
     {
@@ -442,17 +465,15 @@ export function useChatDockViewModel({
             connectionLabel: runtimeConnection.name,
             // Present only for an engine whose cell demands an observation
             // (ACP); `undefined` stays unobserved, never a refusal.
-            ...(typeof runtimeConnection.capabilityInventory?.sessionSurfaces
-              ?.promptImage === 'boolean'
-              ? {
-                  observedImagePrompt:
-                    runtimeConnection.capabilityInventory.sessionSurfaces
-                      .promptImage,
-                }
+            ...(typeof observedImagePrompt === 'boolean'
+              ? { observedImagePrompt }
               : {}),
           }
         : {}),
       modelSupport: selectedModelImageSupport,
+      modelSupportVaries: PER_MODEL_IMAGE_SUPPORT_ENGINES.has(
+        agentConnectionId ?? '',
+      ),
       ...(typeof currentModelId === 'string'
         ? { modelLabel: currentModelId }
         : {}),
@@ -460,6 +481,7 @@ export function useChatDockViewModel({
   );
   const modelSupportsAttachments = composerImageSupport.attachable;
   const imageAttachmentRefusal = composerImageSupport.refusal;
+  const imageAttachmentCaveat = composerImageSupport.caveat;
   const fileAttachmentsSupported =
     runtimeConnection?.capabilities.includes('file-input') ?? false;
   const unreadCount = countOpenChatAttention(sessions);
@@ -479,6 +501,7 @@ export function useChatDockViewModel({
     executionSummary,
     gitStatus,
     fileAttachmentsSupported,
+    imageAttachmentCaveat,
     imageAttachmentRefusal,
     modelSupportsAttachments,
     modelProviderLabel,

@@ -482,7 +482,7 @@ export function wireApprovalInboxNotifications(
               sessionKind: ORCHESTRATION_SESSION_KIND,
               threadId: event.threadId,
               // Raw, not the display form: this is provenance for consumers,
-              // and `grantToolName` above is the display form for the button.
+              // and `grantLabel` above is the display form for the button.
               toolName: toolRequestFromPayload(event.payload).toolName,
             },
           },

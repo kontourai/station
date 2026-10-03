@@ -28,6 +28,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { engineConnectionId } from '@kontourai/station-contracts/agent-identity';
+import type { AppConfig } from '@kontourai/station-contracts/config';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ConfigLoader } from '../config-loader.js';
 import {
@@ -569,6 +570,22 @@ describe('config-loader-app', () => {
       'app config exceeds the byte limit',
     );
     expect(listener).toHaveBeenCalledWith(1);
+  });
+
+  it('rejects a malformed date format in a hand-edited config before instructions can consume it', async () => {
+    const configDir = join(tempDir, 'config');
+    mkdirSync(configDir, { recursive: true });
+    const config: AppConfig = {
+      defaultModel: 'model',
+      invokeModel: 'model',
+      structureModel: 'model',
+      systemPrompt: 'Today is {{DAY}}',
+      templateVariables: [{ key: 'DAY', type: 'date', format: 'YYYY-MM-DD' }],
+    };
+    writeFileSync(join(configDir, 'app.json'), JSON.stringify(config));
+    await expect(loadAppConfigFile(tempDir)).rejects.toThrow(
+      'Format for "DAY"',
+    );
   });
 
   // station#settings-revamp slice-1 review finding 1: a file polluted by

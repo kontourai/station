@@ -1,13 +1,11 @@
 import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
-import { createElement } from 'react';
-import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, test } from 'vitest';
-import { LifecycleStatusChip } from '../components/home/LifecycleStatusChip';
 import {
   HOME_LIFECYCLE_LABELS,
   type HomeLifecycleLabel,
 } from '../utils/lifecycle-priority';
 import { sessionStatusWord } from '../utils/session-state';
+import { workStatus } from '../views/home/work-status';
 import {
   partitionSessionLanes,
   type SessionLaneId,
@@ -233,15 +231,16 @@ describe('a row word can never contradict its lane heading', () => {
 });
 
 /**
- * The same invariant for the lifecycle CHIP (Home rows, the dock inbox, the
- * mobile switcher), which does not go through `sessionStatusWord`. The owner's
- * report — "'Active' feels incorrect when there's no activity" — held for the
- * chip too: rows under the Running lane read "Active". Lane and permitted
- * chip words are written out here, independently of `liveLaneFor` and the
- * chip, so neither can agree with this table by construction.
+ * The same invariant for the inbox row's status word (Home rows, the dock
+ * inbox, the mobile switcher), which does not go through `sessionStatusWord`
+ * but through the status ladder (`workStatus`). The owner's report —
+ * "'Active' feels incorrect when there's no activity" — held for these rows
+ * too: rows under the Running lane read "Active". Lane and permitted words
+ * are written out here, independently of the ladder, so it cannot agree
+ * with this table by construction.
  */
-describe('a lifecycle chip never contradicts its lane', () => {
-  const CHIP_LANE: Record<HomeLifecycleLabel, string> = {
+describe('a row status word never contradicts its lane', () => {
+  const WORD_LANE: Record<HomeLifecycleLabel, string> = {
     'Needs attention': 'needsYou',
     Running: 'running',
     Ready: 'idle',
@@ -253,37 +252,45 @@ describe('a lifecycle chip never contradicts its lane', () => {
     Failed: 'finished',
     Stopped: 'finished',
   };
-  // '' = no chip (the row shows only its recency).
-  const CHIP_VOCABULARY: Record<string, ReadonlySet<string>> = {
-    needsYou: new Set(['Attention needed']),
+  const WORD_VOCABULARY: Record<string, ReadonlySet<string>> = {
+    needsYou: new Set(['Waiting on you']),
     running: new Set(['Running']),
-    idle: new Set(['', "Can't answer here"]),
+    idle: new Set(['Idle', "Can't answer here"]),
     drafts: new Set(['Draft']),
     finished: new Set(['Done', 'Failed', 'Stopped']),
   };
-  const chipWord = (lifecycle: HomeLifecycleLabel) =>
-    renderToStaticMarkup(createElement(LifecycleStatusChip, { lifecycle }))
-      .replace(/<svg[\s\S]*?<\/svg>/g, '')
-      .replace(/<[^>]+>/g, '')
-      .replace(/&#x27;|&#39;/g, "'")
-      .trim();
+  const statusOf = (lifecycleLabel: HomeLifecycleLabel) =>
+    workStatus(
+      {
+        id: 'row',
+        kind: 'orchestration',
+        kindLabel: 'Session',
+        title: 'Row',
+        projectLabel: 'p',
+        agentLabel: 'a',
+        modelLabel: 'm',
+        updatedAt: 0,
+        lifecycleLabel,
+      },
+      0,
+    );
 
   test.each([...HOME_LIFECYCLE_LABELS])(
-    '%s renders a word its lane permits',
+    '%s reads a word its lane permits',
     (lifecycle) => {
-      const lane = CHIP_LANE[lifecycle];
-      const word = chipWord(lifecycle);
+      const { lane, word } = statusOf(lifecycle);
+      expect(lane).toBe(WORD_LANE[lifecycle]);
       expect(
-        CHIP_VOCABULARY[lane].has(word),
-        `${lifecycle} sits in ${lane} but its chip says "${word}"`,
+        WORD_VOCABULARY[lane].has(word),
+        `${lifecycle} sits in ${lane} but its row says "${word}"`,
       ).toBe(true);
     },
   );
 
   test('a Running-lane row reads "Running", never "Active"', () => {
-    expect(chipWord('Running')).toBe('Running');
+    expect(statusOf('Running').word).toBe('Running');
     for (const lifecycle of HOME_LIFECYCLE_LABELS) {
-      expect(chipWord(lifecycle)).not.toBe('Active');
+      expect(statusOf(lifecycle).word).not.toBe('Active');
     }
   });
 });

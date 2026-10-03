@@ -28,6 +28,7 @@
     }
   ],
   "scripts": {
+    "ci:health": "node scripts/ci-health.mjs",
     "broker:self-hosted": "tsx scripts/self-hosted-broker.ts",
     "connector:identity": "tsx scripts/self-hosted-connector-identity.ts",
     "connector:invite": "tsx scripts/native-relay-invite.ts",

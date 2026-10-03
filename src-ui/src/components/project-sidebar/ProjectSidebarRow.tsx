@@ -168,7 +168,7 @@ export function ProjectSidebarRow({
           type="button"
           className={btnClass}
           onClick={handleClick}
-          title={collapsed ? project.name : undefined}
+          title={`Open ${project.name} workspace`}
         >
           <span
             className="sidebar__project-accent"
