@@ -9,10 +9,10 @@
 
   "limits": "Complete for concrete documented claims and actual named callers, not an exhaustive security audit or every possible implementation path. No installed-plugin journey, external provider/registry mutation, public package distribution, native/device operation or cross-host qualification performed. Historical screenshots, bundle measurements, real gesture/history and physical-device receipts were not renewed. One focused first-lazy-mount case remains FAIL with unknown cause; no deadline increase or rerun. The fresh browser evidence is only the real-Chromium CSS/toolbar geometry fixture.",
 
-  "document": {"digest":"2c49a35e90f0a6c21773a83018b4ea6eff991a6b5ee48eb7d1ab60ae4307fafa","revision":"92977a2a51bf0d4410bc5871cba4b2f5e87410c9"},
+  "document": {"digest":"10bef7521a70fd2890f8991946fb930a704fec231a37055d8d75f01c0ed5226d","revision":"14b9ccfbecf87ae603643fcbe18d8956b535c2c2"},
 
   "sources": [
-    {"path":"packages/contracts/src/device-settings.ts","digest":"8283b33e0f72dcb620ae84bd16f2d9ea7ab0d1267d8745ac9886e5fd68debe75","revision":"b4f9d6090ab55af6bcab4e1805fbe8316ef1659a"},
+    {"path":"packages/contracts/src/device-settings.ts","digest":"b167282df27e68665d8a99a223f14271816fdfbeec38408d25fb3d1f369e0bb3","revision":"c6e3245e902156daf2862b84e379efc0481faaac"},
 
     {"path":"packages/contracts/src/engine-capability-matrix.ts","digest":"e6d2c0397a5894f2f2c8aa175e9a6cd240c8a4445269041c982019245c5cc102","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -32,7 +32,7 @@
 
     {"path":"src-ui/src/__tests__/region-model.test.ts","digest":"e0fd40bee4af21a9a3adccd90e0df1e69afb36da7e19799d06ab3c423f9fd7a6","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/app-shell/ProjectLayoutRenderer.tsx","digest":"f1bbfad5455acb308869d2dd9a24688bb27a9f1d23de8ae59451f40d257d6a2d","revision":"b4f9d6090ab55af6bcab4e1805fbe8316ef1659a"},
+    {"path":"src-ui/src/app-shell/ProjectLayoutRenderer.tsx","digest":"48e6cacc92dd6f741e2715212582977b66f0aa8dcc31c018825f227b30e6bb8c","revision":"14b9ccfbecf87ae603643fcbe18d8956b535c2c2"},
 
     {"path":"src-ui/src/app-shell/RegionShells.tsx","digest":"1ef7d183b06ac39f704660542495e0fddd62bdaffb1d2d1ea38847d3b06af8e3","revision":"2694ff185bfb985714d2c76bac302fb2db3959dd"},
 
@@ -80,7 +80,7 @@
 
     {"path":"src-ui/src/contexts/__tests__/RegionModelContext-phone-layer.test.tsx","digest":"1e5ba5ee73ae0d145b3834b11fb3835c4a19b1f07ec53c5fe3d82a7f44507eb5","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/contexts/navigation-store.ts","digest":"6a6c2ac904ced8acf3c9af32018e9d99ae304dbeb476fa3995ff268066689f1c","revision":"b4f9d6090ab55af6bcab4e1805fbe8316ef1659a"},
+    {"path":"src-ui/src/contexts/navigation-store.ts","digest":"f88b92b35397cd8041c77bef401b75c1c8791b352e02075383dcd4a4ebd4f46a","revision":"c6e3245e902156daf2862b84e379efc0481faaac"},
 
     {"path":"src-ui/src/contexts/useDismissPhoneLayer.ts","digest":"9ebdbb98dd1fe419fb92f7ee1210efbe7bd141c53697ddf9453478d9e8ff3720","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
