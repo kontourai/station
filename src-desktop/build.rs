@@ -22,6 +22,108 @@ fn main() {
             .windows_attributes(tauri_build::WindowsAttributes::new_without_app_manifest());
     }
     tauri_build::try_build(attributes).expect("build Tauri resources");
+    configure_ios_relay_association();
+}
+
+fn configure_ios_relay_association() {
+    #[cfg(target_os = "macos")]
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("ios") {
+        if std::env::var_os("TAURI_IOS_PROJECT_PATH").is_none() {
+            return;
+        }
+        let deep_link: serde_json::Value = tauri_plugin::plugin_config("deep-link")
+            .expect("iOS deep-link configuration is required for pairing and relay delivery");
+        let mobile = deep_link
+            .get("mobile")
+            .and_then(serde_json::Value::as_array)
+            .expect("iOS deep-link mobile configuration is required");
+        assert_eq!(mobile.len(), 1, "iOS must register one exact app channel");
+        let schemes = mobile[0]
+            .get("scheme")
+            .and_then(serde_json::Value::as_array)
+            .expect("iOS pairing scheme is required");
+        assert_eq!(
+            schemes.len(),
+            1,
+            "iOS must register one exact pairing scheme"
+        );
+        let pairing = schemes[0]
+            .as_str()
+            .expect("iOS pairing scheme must be a string");
+        assert!(
+            matches!(
+                pairing,
+                "station-stable" | "station-beta" | "station-nightly"
+            ) || pairing.starts_with("station-dev-"),
+            "unsupported iOS Station pairing scheme"
+        );
+        tauri_plugin::mobile::update_info_plist(|info| {
+            if !info.contains_key("CFBundleURLTypes") {
+                info.insert("CFBundleURLTypes".into(), Vec::<plist::Value>::new().into());
+            }
+            let associations = info
+                .get_mut("CFBundleURLTypes")
+                .expect("iOS pairing associations must exist")
+                .as_array_mut()
+                .expect("iOS pairing associations must be an array");
+            associations.retain(|value| {
+                !value
+                    .as_dictionary()
+                    .and_then(|item| item.get("CFBundleURLSchemes"))
+                    .and_then(|value| value.as_array())
+                    .is_some_and(|schemes| {
+                        schemes.iter().any(|scheme| {
+                            scheme
+                                .as_string()
+                                .is_some_and(|scheme| scheme.starts_with("station-relay-"))
+                        })
+                    })
+            });
+            // Dependency build scripts can be restored from Cargo cache while
+            // xcodegen has regenerated Info.plist. Reconstruct the exact
+            // configured pairing entry instead of relying on build order.
+            if associations.is_empty() {
+                let mut entry = plist::Dictionary::new();
+                entry.insert("CFBundleURLName".into(), pairing.to_string().into());
+                entry.insert(
+                    "CFBundleURLSchemes".into(),
+                    vec![pairing.to_string().into()].into(),
+                );
+                associations.push(entry.into());
+            }
+            let mut relay = associations
+                .first()
+                .and_then(|value| value.as_dictionary())
+                .cloned()
+                .expect("iOS pairing association must be a dictionary");
+            let schemes = relay
+                .get("CFBundleURLSchemes")
+                .and_then(|value| value.as_array())
+                .expect("iOS pairing scheme is required");
+            assert_eq!(
+                associations.len(),
+                1,
+                "iOS must register one exact app channel"
+            );
+            assert_eq!(
+                schemes.len(),
+                1,
+                "iOS must register one exact pairing scheme"
+            );
+            let registered_pairing = schemes[0]
+                .as_string()
+                .expect("iOS pairing scheme must be a string");
+            assert_eq!(
+                registered_pairing, pairing,
+                "iOS pairing association must match the active channel"
+            );
+            let scheme = pairing.replacen("station-", "station-relay-", 1);
+            relay.insert("CFBundleURLName".into(), scheme.clone().into());
+            relay.insert("CFBundleURLSchemes".into(), vec![scheme.into()].into());
+            associations.push(relay.into());
+        })
+        .expect("configure iOS-only native relay association");
+    }
 }
 
 /// Native targets cannot trust a backend (a phone can be unpaired or attached

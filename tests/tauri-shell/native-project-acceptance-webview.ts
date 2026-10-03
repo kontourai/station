@@ -128,6 +128,7 @@ export async function cleanupNativeProjectProfiles(input: {
 interface AccountContextPrepared {
   readonly version: 'station-native-account-operation/v1';
   readonly accountContextHandle: string;
+  readonly contextExpiresAtMs: number;
   readonly publicKey: {
     readonly kty: 'EC';
     readonly crv: 'P-256';
@@ -302,6 +303,8 @@ export async function establishNativeProjectAccountSession(input: {
   if (
     prepared.version !== 'station-native-account-operation/v1' ||
     !prepared.accountContextHandle ||
+    !Number.isSafeInteger(prepared.contextExpiresAtMs) ||
+    prepared.contextExpiresAtMs <= Date.now() ||
     prepared.target.kind !== 'station-native' ||
     prepared.target.stationId.length === 0 ||
     prepared.target.audience !== input.stationOrigin ||
@@ -354,6 +357,7 @@ export async function establishNativeProjectAccountSession(input: {
   });
   const proofProvider: NativeApplicationSessionProofProvider = Object.freeze({
     kind: 'station-native-host-proof-provider/v1',
+    contextExpiresAtMs: prepared.contextExpiresAtMs,
     publicKey: Object.freeze({ ...prepared.publicKey }),
     async prepareExchange(
       exchange: Parameters<
