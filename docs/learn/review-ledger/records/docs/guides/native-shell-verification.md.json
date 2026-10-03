@@ -50,7 +50,7 @@
 
     {"path":"scripts/lib/windows-nightly.mjs","digest":"6ad16d115434c40d429c7ed7323c6b8659b6edd284530bac01cebd4fafa5dedd","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"scripts/native-fresh-relay-fixture.ts","digest":"28ae6e27c47c40c95928b7b68b944c3378a06db9f711103f2a9ba70e0e895300","revision":"e0ed479b4a907eb23a4aa1a788a4921e14f5f3bb"},
+    {"path":"scripts/native-fresh-relay-fixture.ts","digest":"d9f4f79eb7f4b46e575d2b1bd80ff3311ed78668a6f4b0b8a4df1edaf70906bf","revision":"92bfe7c3dce4d852c22f5c1175ebdfb9981ca0a1"},
 
     {"path":"scripts/run-tauri-shell-e2e.mjs","digest":"f1e6230b040d8affe5cc8214bd311b8035927517dc3d904325e7ee91650f5add","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
 
@@ -134,7 +134,7 @@
 
     {"path":"tests/tauri-shell/native-fresh-relay-acceptance-webview.ts","digest":"3618b4a5b6517ced5f38e274952dac2cbfd7a276bba743581dbc30c1a305080e","revision":"058b19b63d88ffc68b5af83c3dda88ac9add9c63"},
 
-    {"path":"tests/tauri-shell/native-fresh-relay-fixture.md","digest":"65912260b16dafb5e1a61de529c28b20e2ccc7f257352b04128713c3735bda2d","revision":"e0ed479b4a907eb23a4aa1a788a4921e14f5f3bb"},
+    {"path":"tests/tauri-shell/native-fresh-relay-fixture.md","digest":"a94e1fe6d17e507eb7c476063331a309bc40e570236723915d45eec61288b32d","revision":"7698b96f8c3b5d9c4ffe81030a3db5d9bad686ce"},
 
     {"path":"tests/tauri-shell/native-project-acceptance-webview.ts","digest":"4ab4a1f98e3d2e677da5bda05f7bb9d6e8186f684f88f63faa23841b179911a8","revision":"2e4f061f91ffb0338e45de62382cf6da59cd5c76"},
 

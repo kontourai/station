@@ -50,7 +50,7 @@
 
     {"path":"scripts/lib/turn-fixture.ts","digest":"cce759228189ccf1849d9e339a08ca6bbf82558d0a1a501e9e3c1723237d6917","revision":"60a7e0cc312d3dd061f5f30babcf966131b6129e"},
 
-    {"path":"scripts/native-fresh-relay-fixture.ts","digest":"28ae6e27c47c40c95928b7b68b944c3378a06db9f711103f2a9ba70e0e895300","revision":"e0ed479b4a907eb23a4aa1a788a4921e14f5f3bb"},
+    {"path":"scripts/native-fresh-relay-fixture.ts","digest":"d9f4f79eb7f4b46e575d2b1bd80ff3311ed78668a6f4b0b8a4df1edaf70906bf","revision":"92bfe7c3dce4d852c22f5c1175ebdfb9981ca0a1"},
 
     {"path":"scripts/native-relay-diagnostic-echo-lab.ts","digest":"66ea51d710a67c1675c9290cac13ec03b314a9e37069a5d0fe87f1bfd39c1442","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
@@ -170,7 +170,7 @@
 
     {"path":"src-ui/src/views/connections-hub/RelayRouteProfiles.tsx","digest":"f77bea26e724dc0dcc49103ffc478ca5428f81d3be1ba092e30201cdf9439680","revision":"ccf76b6ebf226cf9b7100fc5dd3de0948badd7bf"},
 
-    {"path":"tests/tauri-shell/native-fresh-relay-fixture.md","digest":"65912260b16dafb5e1a61de529c28b20e2ccc7f257352b04128713c3735bda2d","revision":"e0ed479b4a907eb23a4aa1a788a4921e14f5f3bb"},
+    {"path":"tests/tauri-shell/native-fresh-relay-fixture.md","digest":"a94e1fe6d17e507eb7c476063331a309bc40e570236723915d45eec61288b32d","revision":"7698b96f8c3b5d9c4ffe81030a3db5d9bad686ce"},
 
     {"path":"tests/tauri-shell/native-project-acceptance-webview.ts","digest":"4ab4a1f98e3d2e677da5bda05f7bb9d6e8186f684f88f63faa23841b179911a8","revision":"2e4f061f91ffb0338e45de62382cf6da59cd5c76"},
 

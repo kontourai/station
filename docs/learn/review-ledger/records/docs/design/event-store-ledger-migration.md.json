@@ -12,7 +12,7 @@
   "document": {"digest":"6aff5fb02eed6dbab5e770c36852398841c1b0d6eab95bb7a9f00ad5fc6f0452","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
   "sources": [
-    {"path":"docs/architecture/module-map.md","digest":"8d33787e4ca8472ad4d2d5c91d8eaea168553090163766c9b957ab9e48dd0f79","revision":"a3ac8721653c1c4dc646f54a5401f03f02ba795f"},
+    {"path":"docs/architecture/module-map.md","digest":"e2c0aa862af3e5d22af4919dced8b06b2935cd95e17e29b504645dabf481514c","revision":"390e7e49c0412fd4d2604f588b8279779d98605a"},
 
     {"path":"src-server/services/orchestration/adoption-ledger.ts","digest":"fdf620001ececec0d9dd14dce71f3507a1adcf608c80122c216912b667d4fcd8","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

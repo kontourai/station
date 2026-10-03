@@ -76,7 +76,7 @@
 
     {"path":"src-ui/src/platform/native/nativeRelayConnectionOwner.ts","digest":"5d903aece1a1a64aa5eb0eb470a3479b6ca8552df53cf9bc47235e4cda2d726d","revision":"2835c77d95f1902ec333eee0c5f57d19fd9f5077"},
 
-    {"path":"tests/tauri-shell/native-fresh-relay-fixture.md","digest":"65912260b16dafb5e1a61de529c28b20e2ccc7f257352b04128713c3735bda2d","revision":"e0ed479b4a907eb23a4aa1a788a4921e14f5f3bb"},
+    {"path":"tests/tauri-shell/native-fresh-relay-fixture.md","digest":"a94e1fe6d17e507eb7c476063331a309bc40e570236723915d45eec61288b32d","revision":"7698b96f8c3b5d9c4ffe81030a3db5d9bad686ce"},
 
     {"path":"tests/tauri-shell/native-project-acceptance-webview.ts","digest":"4ab4a1f98e3d2e677da5bda05f7bb9d6e8186f684f88f63faa23841b179911a8","revision":"2e4f061f91ffb0338e45de62382cf6da59cd5c76"},
 

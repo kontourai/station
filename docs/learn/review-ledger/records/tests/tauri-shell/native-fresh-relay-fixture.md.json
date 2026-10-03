@@ -9,12 +9,12 @@
 
   "limits": "The isolated normal Linux Node runtime and real loopback Project/shared-work publisher executed in the preserved failed fresh-d8dd-20261001 run. Public connector registration never occurred: its initial lease expired before process spawn, exact credentials/scope matched, actual register/withdraw and cleanup returned 401. Actual fresh native host ceremony, main WebView, ordinary UI driver, physical iOS Nightly and Zach acceptance remain NOT_VERIFIED. Pion staging/build and a matching artifact digest do not establish an application peer. Node guard is not an OS sandbox; routing revocation is not instantaneous TURN credential revocation or a financial spend cap.",
 
-  "document": {"digest":"65912260b16dafb5e1a61de529c28b20e2ccc7f257352b04128713c3735bda2d","revision":"e0ed479b4a907eb23a4aa1a788a4921e14f5f3bb"},
+  "document": {"digest":"a94e1fe6d17e507eb7c476063331a309bc40e570236723915d45eec61288b32d","revision":"7698b96f8c3b5d9c4ffe81030a3db5d9bad686ce"},
 
   "sources": [
     {"path":"scripts/lib/native-fresh-relay-fixture.ts","digest":"4673c2cc2af412718ed9aeebcd64afd8a248e38c1646b7d8131b66175dcb390f","revision":"e0ed479b4a907eb23a4aa1a788a4921e14f5f3bb"},
 
-    {"path":"scripts/native-fresh-relay-fixture.ts","digest":"28ae6e27c47c40c95928b7b68b944c3378a06db9f711103f2a9ba70e0e895300","revision":"e0ed479b4a907eb23a4aa1a788a4921e14f5f3bb"},
+    {"path":"scripts/native-fresh-relay-fixture.ts","digest":"d9f4f79eb7f4b46e575d2b1bd80ff3311ed78668a6f4b0b8a4df1edaf70906bf","revision":"92bfe7c3dce4d852c22f5c1175ebdfb9981ca0a1"},
 
     {"path":"scripts/__tests__/native-fresh-relay-fixture.test.ts","digest":"d83a98df30452d0a0164d5db0a89e0065ff88f2fa329c32d3d4ddd6133f78a6b","revision":"564e13c2309f192e8ae5077339b39f423cf238b2"},
 
