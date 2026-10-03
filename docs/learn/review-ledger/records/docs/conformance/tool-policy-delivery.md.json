@@ -20,7 +20,7 @@
 
     {"path":"packages/shared/src/redaction.ts","digest":"ddce9bcf50fe2f19b9922149fefa5b34a490396d8b05ea6d2218786e972d9479","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"packages/shared/src/runtime-event-projection.ts","digest":"30844f3ebb0ddd1b51089aa16c1edb39f2aa668d1088bf3e3e5a00e7cc6bd2e9","revision":"bc671142a7ae70587daf5bb0d94732e8ca74600a"},
+    {"path":"packages/shared/src/runtime-event-projection.ts","digest":"6b5f7cb8ebc1c2b30f1b84c3666c22f23b58f71bcca93b7aafcad76c5f476387","revision":"89765352964045a079d13a17bee54ab2de7b83e0"},
 
     {"path":"packages/shared/src/tool-request-preview.ts","digest":"b97e5705a45c2299f4661cc70ea845473b37765cd5405d0028a4d9d29c25685f","revision":"d28597b948558f03decf72957db69fa4510b5d93"},
 
@@ -32,7 +32,7 @@
 
     {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"b67b8535152f5964f1491089851480aadca7d18ff7106a0300a526dbabe82f65","revision":"b2d3503cd33490cf074a99eae94562607360f72b"},
 
-    {"path":"src-server/providers/adapters/claude-adapter-events.ts","digest":"7f4d51f441897955e89406fa876e73af3b894bbe1c31c2699a16bac59890e963","revision":"835201d7c73568b7889f267cc5634fa16f73e575"},
+    {"path":"src-server/providers/adapters/claude-adapter-events.ts","digest":"74dcc48d1c1504d0e5e8d09896cdb5be1decfb962f87018c4272f1ff34d2a18e","revision":"89765352964045a079d13a17bee54ab2de7b83e0"},
 
     {"path":"src-server/providers/adapters/claude-adapter.ts","digest":"1eb6048188a2a5d01b67738ab6b5d22f9fa85d93bd00b3e622423798b965e8fb","revision":"3d33d71792203d38262ac5fd80261d12bd31e1ed"},
 
