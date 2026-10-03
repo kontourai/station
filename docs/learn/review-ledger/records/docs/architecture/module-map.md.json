@@ -118,7 +118,7 @@
 
     {"path":"packages/shared/src/workspace-package.ts","digest":"34c9a91798a6b8259dc7106387c94ffafe970aa43707887923c651d4313b4a40","revision":"5c18724d4ba50fd9b5f6c4043e7a00ebc893c70d"},
 
-    {"path":"pnpm-lock.yaml","digest":"4f9a974bd49f637fd690699b3bcd9b6ce915114eb4f52e2e6bdd5b0f3b699f2a","revision":"ea49cb8678208b9037f8e9ab3ceb2a95fe2647ff"},
+    {"path":"pnpm-lock.yaml","digest":"e5666b03a0bedc8656564f5371ea01b19879ac4a8ed732280e1d0903025de0c5","revision":"fdca33b1896b280299ba72fc70a3c9b9cda7f3af"},
 
     {"path":"scripts/__tests__/startup-readiness-static.test.ts","digest":"04a33c59977c6a5b079cbd452bece433bab6dd0296980330b06393737410d2df","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -588,7 +588,7 @@
 
     {"path":"src-server/services/orchestration/attached-session-adoption.ts","digest":"ba6372d4e5bd961ae6c61d779eeb21dff966f1efc7c73fc2e69bb786fd535b50","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
-    {"path":"src-server/services/orchestration/conversation-lineage.ts","digest":"530f61de27ec07453f2343ed61091ff9c23f2df8280b64759fa8c7869d5dc139","revision":"819bdc965ae4e055d43609f4680c1900293b8796"},
+    {"path":"src-server/services/orchestration/conversation-lineage.ts","digest":"7280f9906fb68b76b56471b98f490e2b4e57e3ab30e87d1b03807d4e15e102ff","revision":"2b31d6dd3b08301c81fa89dd566b144e78794bd3"},
 
     {"path":"src-server/services/orchestration/conversation-session-lineage.ts","digest":"d93b1e9fcace4cd71dc02b2292eae908f42d7533235d68aa8abf22654bb912de","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
