@@ -1,4 +1,7 @@
-import type { BrowserPaneAccessView } from '@kontourai/station-contracts/workspace-browser-pane';
+import type {
+  BrowserPaneAccessView,
+  BrowserSessionView,
+} from '@kontourai/station-contracts/workspace-browser-pane';
 import { expect, type Page } from '@playwright/test';
 import { agentConnectionFixture } from './helpers/connection-fixtures';
 import { rejectUnexpectedFixtureRequest, test } from './helpers/fixture-audit';
@@ -141,6 +144,18 @@ async function mockShell(page: Page) {
         browser: 'not-ready',
       };
       return route.fulfill(json({ success: true, data: access }));
+    }
+    if (
+      route.request().method() === 'GET' &&
+      path === '/api/browser/sessions' &&
+      PROJECTS.some(
+        (project) =>
+          project.slug ===
+          new URL(route.request().url()).searchParams.get('projectSlug'),
+      )
+    ) {
+      const sessions: BrowserSessionView[] = [];
+      return route.fulfill(json({ success: true, data: sessions }));
     }
     const projectMatch = path.match(/^\/api\/projects\/([^/]+)$/);
     if (projectMatch) {
