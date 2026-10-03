@@ -10,6 +10,7 @@ import {
 } from '@kontourai/station-shared/return-focus';
 import {
   lazy,
+  type ReactNode,
   Suspense,
   useCallback,
   useEffect,
@@ -84,6 +85,7 @@ interface ConnectionManagerModalContentProps {
     signal?: AbortSignal,
   ) => Promise<StationCompatibilityResult>;
   initialPanel?: ConnectionManagerPanel;
+  listFooterContent?: ReactNode;
   /** A decoded, one-time pairing payload awaiting the user's confirmation. */
   initialPairingPayload?: string;
   pairingLinkError?: string;
@@ -183,6 +185,7 @@ export function ConnectionManagerModalContent({
   guardConnectionChange,
   checkCompatibility,
   initialPanel = 'list',
+  listFooterContent,
   initialPairingPayload,
   pairingLinkError,
   onPairingReviewDismissed,
@@ -1092,6 +1095,7 @@ export function ConnectionManagerModalContent({
               restorePairingCodeFocusRef.current = true;
               setPanel('pair-code');
             }}
+            listFooterContent={listFooterContent}
             onPairPhone={() => {
               setHostPairingReturnPanel('list');
               setPanel('pair-host');

@@ -1581,8 +1581,8 @@ The constructor also accepts `NativeApplicationSessionProofProvider`, identified
 by `kind: station-native-host-proof-provider/v1`. Its `prepareExchange` operation
 takes only opaque challenge data and local username/password credentials and
 returns the complete host-prepared exchange body plus matching proof header.
-`requestHeaders` takes opaque continuation data and a canonical GET/HEAD Project
-target. The client checks the returned signature, public key, target, nonce,
+`requestHeaders` takes opaque continuation data and a canonical GET/HEAD
+target from the fixed Station health and member Project read inventory. The client checks the returned signature, public key, target, nonce,
 hashes, body order and headers before dispatch. The ordered host credentials
 body is retained: its hash must match Node's `JSON.stringify` of the credentials
 the server parses, including Unicode. Other provider credential shapes are
@@ -1591,20 +1591,72 @@ unsupported by this native provider path.
 Prepare the account exchange body before application-channel body freezing;
 the later Device proof binds that complete body, including the account proof.
 Native IPC uses these structured operations, never an adapter for `sign(bytes)`.
-The Desktop account operation handle is bounded, owner/epoch-fenced and allows
+The native account operation handle is bounded, owner/epoch-fenced and allows
 one exchange. An unknown exchange outcome requires an explicit new context and
 challenge; it is not retried automatically. Expiry hints cannot extend host
 lifetimes. Provider sessions, replay, Device binding and Project membership are
-still verified by the server. This source interface does not enable ordinary
-native sign-in or qualify a packaged/native IPC journey.
+still verified by the server. This interface alone does not enable sign-in or
+qualify a packaged/native IPC journey. Station now composes it through the
+[production account bridge](../../src-ui/src/platform/native/nativeAccountSessionBridge.ts),
+[selected connection owner](../../src-ui/src/platform/native/nativeRelayConnectionOwner.ts),
+and [ApiBaseContext](../../src-ui/src/contexts/ApiBaseContext.tsx). The ordinary
+[account panel](../../src-ui/src/views/connections-hub/RelayRouteProfiles.tsx)
+uses that owner for sign-in, typed invitation acceptance and remote logout.
+Public scope lives only in the process and partitions the
+[ephemeral member shell](../../src-ui/src/views/native-relay/NativeRelayMemberShell.tsx);
+authority loss clears its cache. Those source consumers and a reachable
+simulator UI entry do not establish a fresh or physical native journey.
 
 ```ts
 import { NativeApplicationSessionClient } from '@kontourai/station-sdk/application-session-native';
 
 const accounts = new NativeApplicationSessionClient(encryptedTransport, () => trustedSnapshot, key);
 const continuation = await accounts.exchange({ username, password });
-const headers = await accounts.headers(continuation, { method: 'GET', path: '/api/example' });
+const headers = await accounts.headers(continuation, { method: 'GET', path: '/api/projects' });
 ```
+
+The native preparation RPC returns `contextExpiresAtMs`, the host's actual
+preparation deadline clipped to its captured routing grant. The production
+bridge requires this closed DTO field and passes it to the proof provider.
+The SDK captures that optional provider deadline once, clamps the continuation
+and public account expiry to the earlier host/server deadline, and refuses
+later read, invitation-acceptance or revoke preparation at that deadline. A
+delayed sign-in never extends the host context. Compatibility SDK signers
+without a native context deadline retain their existing behavior; production
+native RPCs always supply it. Removing local account scope does not remove
+Device custody.
+
+The host proof provider may implement `prepareInvitationAcceptance({continuation, token})`.
+`NativeApplicationSessionClient.prepareInvitationAcceptance(continuation, token)`
+validates the exact token-only body and host account signature, rejects reused
+JTIs or changed targets, and returns frozen body/headers for **only**
+`POST /api/account-auth/accept-invitation`. It does not broaden the existing
+GET/HEAD `requestHeaders` operation or accept generic signing bytes.
+`requestHeaders` remains limited to Station health/authority, Project list/detail and
+Project-scoped shared-work document/history/publication. Only well-known/status/
+identity observations may omit account material; authority and member reads
+require the current separate account, and invalid supplied account material
+never falls back to Device-only access. Send the prepared invitation
+body through the current native application transport: the separate Device
+proof authenticates its exact bytes, and the server independently rechecks the
+real account, Device binding and invitation/membership owner. No browser Origin
+or cookie conversion is part of this request.
+
+The optional host operation `prepareRevocation({continuation})` and client
+`prepareRevocation(continuation)` return a frozen empty body and validated proof
+headers for only `POST /api/account-auth/continuations/native/revoke`. The server
+requires the current native Device and separate account continuation, removes
+that exact continuation before awaiting actual provider revocation, and confirms
+that provider session is no longer valid before returning `{revoked: true}`.
+Device custody and grants remain intact. The native bridge's `logout()` clears
+local account scope even when the remote outcome is uncertain; a rejected or
+lost acknowledgment never means remote logout completed. Its `retire()` remains
+local removal only. A new account context is required for reauthentication.
+
+The native bridge parses invitation acceptance into
+`ProjectInvitationAcceptance` from the shared `project-membership` contract:
+exact Station/local/portable Project scope and `grantsDeviceAccess: false`.
+An arbitrary HTTP 200 or a foreign Station response does not confirm membership.
 
 ### Fresh relay enrollment proof helpers
 
@@ -1663,9 +1715,13 @@ can exceed that aggregate bound; the helper refuses it before invoking the signe
 The source-opt-in server pilot under #2893 stores operator-approved bindings,
 verifies the JWS and exact body against private native peer provenance, consumes
 replay state before dispatch, and applies independent current Device, account
-and Project authorization. Its protected surface is limited to native account
-challenge/exchange and Project reads. No product UI or Tauri signing command
-consumes this helper yet; it does not establish a packaged native journey.
+and Project authorization. The source-opt-in native producer permits only
+fixed account challenge/exchange/revoke, invitation acceptance, neutral Station
+health observations, and member Project/shared-work document/history/publication
+reads. Each write control has a separate fixed host preparation operation; the
+read signer remains GET/HEAD only. Operator configuration, terminal, catalog,
+and contribution writes are excluded. Source and focused runtime checks do not
+establish a packaged or physical-device native journey.
 
 `listProjectViews(apiBase, options)` and `getProjectView(apiBase, slug, options)`
 from `@kontourai/station-sdk/client` return either the personal/operator Project

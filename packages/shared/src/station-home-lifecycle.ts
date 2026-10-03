@@ -18,9 +18,9 @@ import {
   type FileMutationLockOptions,
 } from './lifecycle-events.js';
 import {
-  exactProcessIdentity,
   type ProcessIdentityDependencies,
   probeExactProcessIdentity,
+  resolveOwnProcessIdentity,
 } from './process-identity.mjs';
 
 const LEASE_VERSION = 1 as const;
@@ -224,12 +224,16 @@ export function acquireStationHomeRuntimeLease(
   const releaseMutation = acquireFileMutationLock(paths.lock);
   try {
     listLiveLeases(paths.leases, hooks.processIdentity);
-    const identity = exactProcessIdentity(process.pid, hooks.processIdentity);
-    if (!identity) {
+    const identityProbe = resolveOwnProcessIdentity(
+      process.pid,
+      hooks.processIdentity,
+    );
+    if (identityProbe.state !== 'exact') {
       throw new StationHomeLifecycleUnavailableError(
         'Current runtime process identity is unavailable',
       );
     }
+    const identity = identityProbe.identity;
     const ownerId = randomUUID();
     const path = join(paths.leases, `${ownerId}.json`);
     publishLease(path, {

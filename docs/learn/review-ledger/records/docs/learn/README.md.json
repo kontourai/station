@@ -26,7 +26,7 @@
 
     {"path":"scripts/build-learning-guide.mjs","digest":"3a3462887203d43998cd6817e300a59c9856c2710d697274a597d4076ce969dd","revision":"8199fd1541fc2af0053845c9253ed0962dd7fbb8"},
 
-    {"path":"scripts/documentation-impact.mjs","digest":"4d9cc897cbbf6046574acd80239d54cc53c7f01632dc6d71ddaf24d0fb6316ab","revision":"8199fd1541fc2af0053845c9253ed0962dd7fbb8"},
+    {"path":"scripts/documentation-impact.mjs","digest":"a60bf5659ff78f92a2b598211ff3144f5cda714e602e99c14cb4686ebfaf6bde","revision":"e8b72ea25ff33bef8d17412bac9548787e2d200d"},
 
     {"path":"scripts/lib/documentation-freshness.mjs","digest":"1015b8a88ace1d10171a04a1b5da6a192b0397174fa51127c66211736c06ab74","revision":"8199fd1541fc2af0053845c9253ed0962dd7fbb8"},
 
@@ -36,7 +36,7 @@
 
     {"path":"scripts/lib/learning-media.mjs","digest":"6d3bfbc02e925e382beb9be69fcb60427fda18987dfc6b61ec7cd4a119a3e40e","revision":"8199fd1541fc2af0053845c9253ed0962dd7fbb8"},
 
-    {"path":"scripts/lib/review-ledger-store.mjs","digest":"0ae9f94081af3b929fb17cc93bc222e9ce84227fe3832aa1beb1fbbc8dd3884a","revision":"8199fd1541fc2af0053845c9253ed0962dd7fbb8"},
+    {"path":"scripts/lib/review-ledger-store.mjs","digest":"444d83be0ef4e28ed9acc3db60a705ab01e8e094d6da7cbe23f34b6d60990d8a","revision":"870f87665091ffd778281fd578835377526b7bb1"},
 
     {"path":"scripts/record-documentation-review.mjs","digest":"2541d1547706a30bf5cd19927d4b0567b00ae379e4f61ddcd7d36da382f6f54f","revision":"8199fd1541fc2af0053845c9253ed0962dd7fbb8"},
 
