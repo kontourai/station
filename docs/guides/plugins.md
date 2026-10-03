@@ -331,7 +331,10 @@ through the owning plugin. Source configuration is a regular file bounded to
 at most 512 rows in each snapshot. Corrupt, oversized, unsupported and
 nonregular configuration is refused without replacing its bytes; restore the
 existing file before continuing. Plugin catalog rows and package claims from
-a Station manifest are read together from one fresh observation. See [marketplace APIs](../reference/api.md#manage-marketplaces)
+a Station manifest are read together from one fresh observation. Existing
+bare-item registry aliases can become source-qualified on a reviewed update
+only when the original item ID and registry key match. The update retains the
+existing plugin data owner; a different registry key cannot claim it. See [marketplace APIs](../reference/api.md#manage-marketplaces)
 and the published provider types in `@kontourai/station-contracts/catalog`.
 
 A configured value always wins over the bundle. Relative paths resolve against

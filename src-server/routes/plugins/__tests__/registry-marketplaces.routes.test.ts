@@ -660,6 +660,42 @@ describe('Marketplace source lifecycle through Registry routes', () => {
       writeRegistryInstallAliases(home, {
         shared: readRegistryInstallAliases(home)[first.id]!,
       });
+      const otherManifest = join(root, 'other-catalog.json');
+      await writeFile(
+        otherManifest,
+        JSON.stringify({
+          version: 1,
+          plugins: [{ id: 'shared', source: './shared', version: '1.0.0' }],
+        }),
+      );
+      const connected = await call('/sources', {
+        displayName: 'Other catalog',
+        adapter: 'manifest',
+        location: otherManifest,
+      });
+      expect(connected.status).toBe(201);
+      const otherSource = ((await connected.json()) as { data: RegistrySource })
+        .data;
+      const otherItem = (
+        (await (await call('/plugins')).json()) as { data: RegistryItem[] }
+      ).data.find((item) => item.catalog?.sourceId === otherSource.id)!;
+      const refused = await call('/plugins/install', {
+        id: otherItem.id,
+        dataPolicy: 'preserve',
+        consent: {
+          permissions: [],
+          contentDigest: computePluginContentDigest(root, 'shared'),
+          dependencies: [],
+        },
+      });
+      expect(refused.status).toBe(500);
+      expect(await refused.json()).toMatchObject({
+        success: false,
+        message: expect.stringContaining('already linked'),
+      });
+      expect(
+        resolveInstalledPluginRoot(join(home, 'plugins'), 'shared')!.dataScope,
+      ).toEqual(before.dataScope);
       await writeVersion('2.0.0');
       const revised = (
         (await (await call('/plugins')).json()) as { data: RegistryItem[] }

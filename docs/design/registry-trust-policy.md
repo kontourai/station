@@ -72,7 +72,9 @@ publisher signature continues to bind its original catalog item ID and
 `registryKey`; the UI's selection token never replaces the signed item ID.
 Changed selection metadata or provider authority refuses before effects.
 Registry aliases identify the same source/item across refreshed catalog
-revisions while refusing an alternative source with the same name.
+revisions while refusing an alternative source with the same name. An older
+bare-item alias can become source-qualified only when its original item ID
+and registry key match; that migration retains the existing plugin data owner.
 
 The signature payload binds the schema target, registry identity, plugin name,
 version, source, and source-tree digest. The manifest is validated separately.

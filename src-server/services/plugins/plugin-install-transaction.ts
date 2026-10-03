@@ -2202,17 +2202,23 @@ export async function synchronizePluginAgentDefinitions(options: {
   }
 }
 
-function sameRegistryCatalogItem(left: string, right: string): boolean {
+function sameRegistryCatalogItem(
+  left: string,
+  right: string,
+  leftRegistryKey: string,
+  rightRegistryKey: string,
+): boolean {
   if (left === right) return true;
   const a = readRegistryCatalogSelection(left);
   const b = readRegistryCatalogSelection(right);
-  return (
-    !!a &&
-    !!b &&
-    a.sourceId === b.sourceId &&
-    a.itemId === b.itemId &&
-    a.kind === b.kind
-  );
+  if (a && b)
+    return (
+      a.sourceId === b.sourceId && a.itemId === b.itemId && a.kind === b.kind
+    );
+  if (leftRegistryKey !== rightRegistryKey) return false;
+  return a
+    ? a.kind === 'plugins' && a.itemId === right
+    : b?.kind === 'plugins' && b.itemId === left;
 }
 
 function assertRegistryAliasAvailable(
@@ -2221,8 +2227,8 @@ function assertRegistryAliasAvailable(
   registryKey: string,
   pluginName: string,
 ): void {
-  const existingAlias = Object.entries(aliases).find(([id]) =>
-    sameRegistryCatalogItem(id, registryId),
+  const existingAlias = Object.entries(aliases).find(([id, alias]) =>
+    sameRegistryCatalogItem(id, registryId, alias.registryKey, registryKey),
   )?.[1];
   if (
     existingAlias &&
@@ -2236,7 +2242,12 @@ function assertRegistryAliasAvailable(
 
   for (const [existingRegistryId, alias] of Object.entries(aliases)) {
     if (
-      !sameRegistryCatalogItem(existingRegistryId, registryId) &&
+      !sameRegistryCatalogItem(
+        existingRegistryId,
+        registryId,
+        alias.registryKey,
+        registryKey,
+      ) &&
       alias.pluginName === pluginName
     ) {
       throw new Error(
@@ -2264,8 +2275,8 @@ function assertRegistryInstallTargetAvailable(
   assertRegistryAliasAvailable(aliases, registryId, registryKey, pluginName);
 
   const pluginDir = join(pluginsDir, pluginName);
-  const existingAlias = Object.entries(aliases).find(([id]) =>
-    sameRegistryCatalogItem(id, registryId),
+  const existingAlias = Object.entries(aliases).find(([id, alias]) =>
+    sameRegistryCatalogItem(id, registryId, alias.registryKey, registryKey),
   )?.[1];
   const ownsExistingTarget =
     existingAlias?.pluginName === pluginName &&
@@ -2296,8 +2307,9 @@ function rememberRegistryInstall(
 
   const aliases = readRegistryInstallAliases(projectHomeDir);
   assertRegistryAliasAvailable(aliases, registryId, registryKey, pluginName);
-  for (const id of Object.keys(aliases))
-    if (sameRegistryCatalogItem(id, registryId)) delete aliases[id];
+  for (const [id, alias] of Object.entries(aliases))
+    if (sameRegistryCatalogItem(id, registryId, alias.registryKey, registryKey))
+      delete aliases[id];
   aliases[registryId] = { pluginName, registryKey };
   writeRegistryInstallAliases(projectHomeDir, aliases);
 }
