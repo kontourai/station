@@ -29,12 +29,14 @@ import {
   type StationAgentPluginExtensionV1,
 } from '@kontourai/station-contracts/agent-plugin';
 import { isCanonicalPluginId } from '@kontourai/station-contracts/plugin';
+import type { SkillExperienceInventoryV1 } from '@kontourai/station-contracts/skill-experience';
 import type { ToolDef, ToolMetadata } from '@kontourai/station-contracts/tool';
 import { parseAgentPluginManifest } from '@kontourai/station-shared/agent-plugin-manifest';
 import {
   bindMCPDefinitionAdmission,
   MCPLocalCustodyError,
 } from '@kontourai/station-shared/mcp';
+import { readValidatedSkillExperiences } from '@kontourai/station-shared/skill-experience-author';
 import {
   frontmatterToProperties,
   parseFrontmatter,
@@ -45,7 +47,11 @@ import { isRecord } from '../../utils/is-record.js';
 import type { CanonicalSkillSource } from '../flow/flow-agents-skills-source.js';
 import { assertSafeContextText } from '../orchestration/context-safety.js';
 import type { PackageMcpAdmissionJournal } from './package-mcp-admission.js';
-import { computePluginContentDigest } from './plugin-content-integrity.js';
+import {
+  computePluginContentDigest,
+  computePluginContentDigestAsync,
+  withPluginContentLock,
+} from './plugin-content-integrity.js';
 import {
   localManagedPluginAliases,
   PluginIncarnationError,
@@ -678,6 +684,183 @@ export class AgentPluginLoader {
     return loaded;
   }
 
+  async listSkillExperiences(): Promise<SkillExperienceInventoryV1> {
+    const inventory: SkillExperienceInventoryV1 = {
+      experiences: [],
+      diagnostics: [],
+    };
+    const candidates = new Map(
+      this.recognizedInstalledPackageRoots().map(({ directoryName, root }) => [
+        directoryName,
+        root,
+      ]),
+    );
+    const selectedInstallations = this.options
+      .journal?.()
+      .selectedInstallations();
+    if (selectedInstallations?.state === 'unavailable')
+      throw new Error('Installed package inventory is unavailable.');
+    if (selectedInstallations?.state === 'observed') {
+      for (const installation of selectedInstallations.installations) {
+        try {
+          const root = this.selectedRoot(
+            installation.pluginId,
+            'legacy-scan-exclusion',
+          );
+          if (root) candidates.set(installation.pluginId, root.packageRoot);
+          else
+            inventory.diagnostics.push({
+              pluginId: installation.pluginId,
+              code: 'unavailable',
+              message: 'The selected installed package source is unavailable.',
+            });
+        } catch (error) {
+          inventory.diagnostics.push({
+            pluginId: installation.pluginId,
+            code: 'unavailable',
+            message: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+    }
+    for (const [directoryName, root] of candidates) {
+      await withPluginContentLock(this.pluginsDir, directoryName, async () => {
+        const reports: AgentPluginLoadReport[] = [];
+        let declared = false;
+        try {
+          const raw: unknown = JSON.parse(
+            readBoundedRegularFile(
+              resolveContainedPath(root, join(root, 'plugin.json')),
+            ),
+          );
+          if (isRecord(raw) && typeof raw.$schema !== 'string') {
+            const selected = this.options
+              .journal?.()
+              .currentInstallation(directoryName);
+            if (
+              selected?.state === 'observed' &&
+              (await computePluginContentDigestAsync(
+                dirname(root),
+                basename(root),
+              )) !== selected.installation.contentDigest
+            )
+              inventory.diagnostics.push({
+                pluginId: directoryName,
+                code: 'unavailable',
+                message:
+                  'The selected installed package manifest changed from its admitted revision.',
+              });
+            return;
+          }
+          const parsed = this.parseManifest(root, raw, reports);
+          if (!parsed?.stationExtension) {
+            for (const report of reports.filter(
+              (entry) =>
+                entry.code === 'station-extension-invalid' ||
+                entry.code === 'manifest-invalid',
+            ))
+              inventory.diagnostics.push({
+                pluginId: directoryName,
+                code: 'definition-invalid',
+                message: report.message,
+              });
+            return;
+          }
+          const contributions = parsed.stationExtension.experiences ?? [];
+          if (contributions.length === 0) return;
+          declared = true;
+          const journal = this.options.journal?.();
+          const selected = journal?.currentInstallation(directoryName);
+          const materialization =
+            selected?.state === 'observed'
+              ? selected.installation.materialization
+              : undefined;
+          if (
+            parsed.manifest.name !== directoryName ||
+            !parsed.manifest.version ||
+            selected?.state !== 'observed' ||
+            !materialization ||
+            !selected.installation.dataScope ||
+            !journal?.admissionOpen(selected.installation) ||
+            this.selectedRoot(directoryName)?.packageRoot !== root
+          ) {
+            inventory.diagnostics.push({
+              pluginId: directoryName,
+              code: 'unavailable',
+              message:
+                'The installed package needs current activation before its experiences are available.',
+            });
+            return;
+          }
+          const installation = selected.installation;
+          const contentDigest = await computePluginContentDigestAsync(
+            dirname(root),
+            basename(root),
+          );
+          if (!contentDigest || contentDigest !== installation.contentDigest) {
+            inventory.diagnostics.push({
+              pluginId: directoryName,
+              code: 'unavailable',
+              message:
+                'Installed package bytes differ from the admitted revision; inspect and activate the package again.',
+            });
+            return;
+          }
+          const definitions = readValidatedSkillExperiences(
+            root,
+            parsed.manifest,
+            parsed.stationExtension,
+          );
+          const current = journal.currentInstallation(directoryName);
+          if (
+            current.state !== 'observed' ||
+            current.installation.incarnation !== installation.incarnation ||
+            current.installation.materialization !==
+              installation.materialization ||
+            !journal.admissionOpen(current.installation) ||
+            this.selectedRoot(directoryName)?.packageRoot !== root ||
+            (await computePluginContentDigestAsync(
+              dirname(root),
+              basename(root),
+            )) !== contentDigest
+          ) {
+            inventory.diagnostics.push({
+              pluginId: directoryName,
+              code: 'unavailable',
+              message:
+                'The installed package changed while its experiences were being read.',
+            });
+            return;
+          }
+          for (const definition of definitions) {
+            const definitionDigest = createHash('sha256')
+              .update(JSON.stringify(definition))
+              .digest('hex');
+            inventory.experiences.push({
+              identity: {
+                pluginId: directoryName,
+                pluginVersion: parsed.manifest.version,
+                experienceId: definition.id,
+                incarnation: installation.incarnation,
+                materialization,
+                contentDigest,
+                definitionDigest,
+              },
+              definition,
+            });
+          }
+        } catch (error) {
+          inventory.diagnostics.push({
+            pluginId: directoryName,
+            code: declared ? 'definition-invalid' : 'unavailable',
+            message: error instanceof Error ? error.message : String(error),
+          });
+        }
+      });
+    }
+    return inventory;
+  }
+
   skillSources(
     composition?: PluginActivationComposition,
   ): CanonicalSkillSource[] {
@@ -716,6 +899,17 @@ export class AgentPluginLoader {
               return false;
             }
           },
+          ...(selectedAtCapture?.state === 'observed' &&
+          selectedAtCapture.installation.materialization
+            ? {
+                packageRevision: {
+                  incarnation: selectedAtCapture.installation.incarnation,
+                  materialization:
+                    selectedAtCapture.installation.materialization,
+                  contentDigest: selectedAtCapture.installation.contentDigest,
+                },
+              }
+            : {}),
           label: `agent-plugin:${directoryName}` as const,
           ...(plugin?.manifest.version
             ? { version: plugin.manifest.version }

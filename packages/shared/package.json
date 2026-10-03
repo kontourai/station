@@ -86,6 +86,7 @@
     "./setup-import-bounds": "./src/setup-import-bounds.ts",
     "./random-id": "./src/random-id.ts",
     "./terminal-capability": "./src/terminal-capability.ts",
+    "./skill-experience-author": "./src/skill-experience-author.ts",
     "./agent-plugin-manifest": "./src/agent-plugin-manifest.ts",
     "./plugin-tree-digest": "./src/plugin-tree-digest.ts",
     "./plugin-scaffold": "./src/plugin-scaffold.ts",

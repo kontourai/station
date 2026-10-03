@@ -97,3 +97,28 @@ export interface SkillExperienceDefinitionV1 {
     defaultMode: 'guided' | 'alongside';
   };
 }
+
+/** Host-observed package identity. A catalog entry is not execution authority. */
+export interface SkillExperienceIdentityV1 {
+  pluginId: string;
+  pluginVersion: string;
+  experienceId: string;
+  incarnation: string;
+  materialization: string;
+  contentDigest: string;
+  definitionDigest: string;
+}
+
+export interface InstalledSkillExperienceV1 {
+  identity: SkillExperienceIdentityV1;
+  definition: SkillExperienceDefinitionV1;
+}
+
+export interface SkillExperienceInventoryV1 {
+  experiences: InstalledSkillExperienceV1[];
+  diagnostics: Array<{
+    pluginId: string;
+    code: 'unavailable' | 'definition-invalid';
+    message: string;
+  }>;
+}

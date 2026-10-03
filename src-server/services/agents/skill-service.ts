@@ -1,3 +1,4 @@
+import type { SkillExperienceInventoryV1 } from '@kontourai/station-contracts/skill-experience';
 import { errorMessage } from '../../utils/error-message.js';
 import type { PluginActivationComposition } from '../plugins/plugin-activation-composition.js';
 /**
@@ -454,6 +455,36 @@ export class SkillPublicationIndeterminateError extends Error {
 }
 
 export class SkillService {
+  private readonly experienceInventory?: () => Promise<SkillExperienceInventoryV1>;
+
+  async listSkillExperiences(): Promise<SkillExperienceInventoryV1> {
+    const inventory = (await this.experienceInventory?.()) ?? {
+      experiences: [],
+      diagnostics: [],
+    };
+    const experiences = inventory.experiences.filter((entry) => {
+      const matches = entry.definition.skills.every((skill) => {
+        const registered = this.registry.get(skill.name);
+        const source = this.canonicalSourceFor(registered?.location);
+        return (
+          source?.label === `agent-plugin:${entry.identity.pluginId}` &&
+          source.version === entry.identity.pluginVersion &&
+          source.packageRevision?.incarnation === entry.identity.incarnation &&
+          source.packageRevision.materialization ===
+            entry.identity.materialization &&
+          source.packageRevision.contentDigest === entry.identity.contentDigest
+        );
+      });
+      if (!matches)
+        inventory.diagnostics.push({
+          pluginId: entry.identity.pluginId,
+          code: 'unavailable',
+          message: `${entry.definition.title}: a required bundled Skill is unavailable or overridden in the current scope.`,
+        });
+      return matches;
+    });
+    return { experiences, diagnostics: inventory.diagnostics };
+  }
   private registry = new Map<string, RegisteredSkill>();
   /** Read-only package-contributed skill roots (e.g. flow-agents, S3). */
   private readonly canonicalSourceProvider: (
@@ -517,6 +548,7 @@ export class SkillService {
             composition?: PluginActivationComposition,
           ) => CanonicalSkillSource[]);
       usage?: SkillUsageService;
+      experienceInventory?: () => Promise<SkillExperienceInventoryV1>;
       /**
        * Plugin-contributed command skills, scanned IN PLACE as read-only
        * entries. Absent means only the on-disk roots are discovered.
@@ -533,6 +565,7 @@ export class SkillService {
       >;
     } = {},
   ) {
+    this.experienceInventory = options.experienceInventory;
     const canonicalSources = options.canonicalSources;
     this.canonicalSourceProvider =
       typeof canonicalSources === 'function'

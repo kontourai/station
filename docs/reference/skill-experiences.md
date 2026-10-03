@@ -1,9 +1,9 @@
 # Visual skill experience authoring contract
 
-**Status: authoring foundation.** The v1 public types, local JSON schemas,
-and author build validation are implemented. Installing this declaration does
-not yet expose an experience in New Chat or render a guided workflow. Runtime
-loading and canonical session integration are tracked in #3130 and #3131;
+**Status: authoring and installed inventory.** The v1 public types, local JSON
+schemas, author build validation, and admitted installed inventory are implemented.
+Installing this declaration does not yet expose an experience in New Chat or
+render a guided workflow. Canonical session integration is tracked in #3131;
 stage composition and historical run compatibility remain work in #3129.
 
 The [Agent Plugins contract](agent-plugins.md) owns portable Skills and MCP.
@@ -104,7 +104,8 @@ produce file/field-specific errors. The handwritten
 
 This is a local author boundary, not hostile concurrent filesystem isolation
 or runtime admission. The existing portable runtime parser can accept a valid
-declaration without reading its files; runtime experience loading is deferred.
+declaration without reading its files; the installed inventory independently
+repeats source validation after package admission.
 It continues to own portable Skill parsing and availability.
 
 Adaptive interview declarations name supported answer kinds and a maximum
@@ -112,6 +113,40 @@ question count per round; they do not predict future questions. Actual questions
 must come from canonical harness input requests. A future renderer must use
 their exact request/thread/event identities and answers; model prose alone
 cannot create an authorized input request.
+
+## Read installed experiences
+
+`GET /api/skills/experiences` uses the existing Skill routes and returns
+`SkillExperienceInventoryV1`: validated definitions and named diagnostics.
+[AgentPluginLoader.listSkillExperiences](../../src-server/services/plugins/agent-plugin-loader.ts)
+reads ordinary installed Agent Plugins through the existing materialization and
+admission journal. Pending activation, retirement/revocation, missing custody,
+changed package bytes, invalid definitions, unsupported versions, missing local
+dependencies, and escaping source files cannot publish an available entry.
+Legacy direct packages need the existing managed activation path first.
+
+The read holds the existing package-content lease and uses yielding whole-tree
+digest observations before and after definition validation. It does not import
+package code or acquire grants. The returned identity includes the observed
+plugin ID/version, experience ID, installation incarnation, materialization,
+whole-package content digest, and SHA-256 of `JSON.stringify` of the validated
+definition. This normalized definition digest identifies the returned snapshot;
+it is separate from each bundled Skill's byte digest. A catalog snapshot never
+authorizes a later execution; that owner must revalidate its identity at start.
+
+[SkillService](../../src-server/services/agents/skill-service.ts) applies the
+current discovered Skill scope and precedence. Every named Skill must still
+resolve to the same owning package/version. A local or Project override makes
+the pinned visual experience unavailable instead of substituting new instructions.
+Experience identity is qualified by its owning package, so two packages cannot
+silently claim one unqualified run identity. This endpoint describes the current
+runtime discovery scope; it does not accept an arbitrary Project or grant context.
+
+The [route tests](../../src-server/routes/agents/__tests__/skill-experiences.routes.test.ts)
+exercise real local installation, activation, retirement, source mutations,
+malformed definitions, an ordinary third-party name, and local precedence.
+They establish the controlled API/inventory path, not a model run, browser or
+native renderer, historical resume, or release qualification.
 
 ## Compatibility and state decisions
 

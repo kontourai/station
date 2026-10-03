@@ -22,6 +22,17 @@ The [export map](../../packages/shared/package.json) selects source files, mostl
 requirements. The type excerpts below are not exhaustive replacements for their
 owning declarations; import the canonical type rather than copying an interface.
 
+## Skill experience validation
+
+`@kontourai/station-shared/skill-experience-author` owns
+`readValidatedSkillExperiences` and `validateAuthoredSkillExperiences`.
+The reader returns typed definitions after closed-schema and bounded,
+contained bundled Skill validation; the validation wrapper discards that result.
+The author build and installed inventory use the same reader. It does not
+activate a package, grant resources, or authorize execution. Installed identity
+and current admission remain with the server's package journal/loader. See the
+[experience contract](skill-experiences.md) for the exact bounds and refusal path.
+
 ## Harness question helpers
 
 `@kontourai/station-shared/harness-questions` owns the browser-safe
