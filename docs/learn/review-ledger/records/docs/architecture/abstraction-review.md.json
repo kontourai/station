@@ -28,7 +28,7 @@
 
     {"path":"docs/guides/monitoring.md","digest":"b015e5cd44b250ca16a49aaae95721d5529325200b70d1ff32056c515c0fd06c","revision":"a11755821186eaeb034b77e970dfa372c5c7f789"},
 
-    {"path":"docs/guides/web-push-notifications.md","digest":"0cbcb969978124e0abd486c88b650cba7d5c7ee64c571f214c3bf2a21decfcd6","revision":"1aecbf35557098c1502ee4575c7e332fb1e9d60c"},
+    {"path":"docs/guides/web-push-notifications.md","digest":"0cbcb969978124e0abd486c88b650cba7d5c7ee64c571f214c3bf2a21decfcd6","revision":"f0a0b5b5277589e998f5a7e08e7c7fc2229c6b5f"},
 
     {"path":"docs/learn/README.md","digest":"0ac8f8ac857022280619dd19947686c17b2bda0f1d6a954b1591b0c65fe81404","revision":"e6db304484770666a5dad430b4beae94cdefe69a"},
 
@@ -84,7 +84,7 @@
 
     {"path":"src-server/services/plugins/plugin-installation-generation-fence.ts","digest":"7a5b3eca67a7accb179a918ac78c3572e13d5df0644205f9ef589f4bc6bdd5ed","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 
-    {"path":"src-ui/src/views/settings/KnowledgeStoreSection.tsx","digest":"56f97a6e2ea290893e0103cbeeadc63b5defa436c6df49e949d5082922881d4c","revision":"1aecbf35557098c1502ee4575c7e332fb1e9d60c"}
+    {"path":"src-ui/src/views/settings/KnowledgeStoreSection.tsx","digest":"56f97a6e2ea290893e0103cbeeadc63b5defa436c6df49e949d5082922881d4c","revision":"d6a3158c22a62d9530592c6366a1624790ee9401"}
   ],
 
   "checks": [

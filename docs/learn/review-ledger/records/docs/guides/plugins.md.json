@@ -78,7 +78,7 @@
 
     {"path":"src-server/runtime/plugins/plugin-operational-event-subscriptions.ts","digest":"08949bac5c6e237fc6ed6ee8c39def251ef1088bfeb67341f6472d7519d8ce57","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/agents/skill-service.ts","digest":"9f92c44195a5c87a63c1a14a3079b3cc91e00149f2b2f4e400a72189bb64d7f6","revision":"adbeb32e99a86e9a8b6fca370b944f3b2147ca9f"},
+    {"path":"src-server/services/agents/skill-service.ts","digest":"9f92c44195a5c87a63c1a14a3079b3cc91e00149f2b2f4e400a72189bb64d7f6","revision":"569b7dcead02252ba2786c9f326bb54daebbbde2"},
 
     {"path":"src-server/services/operational-events/operational-event-subscriptions.ts","digest":"e535fc6100ad5d56430e59e2a13598f96edc6329bf8adbddf63d34f36d4e21a5","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

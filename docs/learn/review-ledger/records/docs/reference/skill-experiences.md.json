@@ -54,7 +54,7 @@
 
     {"path":"src-server/runtime/conversation/authorized-turn-correlation.ts","digest":"1c837e169f84074062b8467fc8d6653ff8b8512b491baa86ca3b00b727a37d63","revision":"56f4c4897a189eeb30430119a4f4895e95fbb541"},
 
-    {"path":"src-server/services/agents/skill-service.ts","digest":"9f92c44195a5c87a63c1a14a3079b3cc91e00149f2b2f4e400a72189bb64d7f6","revision":"adbeb32e99a86e9a8b6fca370b944f3b2147ca9f"},
+    {"path":"src-server/services/agents/skill-service.ts","digest":"9f92c44195a5c87a63c1a14a3079b3cc91e00149f2b2f4e400a72189bb64d7f6","revision":"569b7dcead02252ba2786c9f326bb54daebbbde2"},
 
     {"path":"src-server/services/orchestration/client-origin-propagation.ts","digest":"347ca06b63592fd53a0f45c9d7b38cf1625c3f079e65f4deea998d7f9519e141","revision":"8540fafb86b969775254b898711ad3ae40ccc39d"},
 
