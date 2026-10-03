@@ -149,6 +149,8 @@
             "updater-public-key",
             "portable-checksum",
             "release-ring",
+            "host-archive",
+            "host-manifest-payload",
             "container-descriptor",
             "sbom-portable",
             "sbom-desktop",
