@@ -9,7 +9,7 @@
 
   "limits": "Source review of every current documented claim is not exhaustive endpoint coverage or formal validation of every implementation branch. No live provider/model/MCP/registry/AWS pricing or IAM, git remote update/install/restart, native browser/Windows shell/device, Tailscale Serve, hosted or account enrollment outcome was exercised. Current limitations are stated, including placeholder measurements, hidden legacy failure-to-empty results, cooperative abort, pending activation/cleanup, raw pricing units, retained proxy/path gaps, and provider/executor boundaries.37 fences parse and12 exported request-schema examples pass; syntax/shape is not runtime authentication or execution proof. Exact hashes detect later drift and never substitute for semantic delta review.",
 
-  "document": {"digest":"f60bf03921b3c463fc176ab9a628fdcdccd4d53c6dc86a01cec98d3f7062b3a2","revision":"6497ed355774f69d9f1d0832f715ac536efb162e"},
+  "document": {"digest":"49c79788350bb12ab129147863cc51d2d27439c28793ddf21f489b2f2c2f8ed4","revision":"cae2f34dee0e883caffbcbc0190db69470433c43"},
 
   "sources": [
     {"path":"packages/cli/src/commands/environment.ts","digest":"e0f0a2b430058c5bbd399df755dbc098b5356474206f473fa24ffbb3d77c7331","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
@@ -374,7 +374,7 @@
 
     {"path":"src-server/providers/registries/github-skill-registry.ts","digest":"c2895537e76722b6064ce7e6704a7c9edaa08edc5ce431f02fb162278840c0df","revision":"0814cc6ddb168cff69e5572b185a853540a4f6e0"},
 
-    {"path":"src-server/routes/plugins/__tests__/registry-skill-acquisition.routes.test.ts","digest":"29513e3535da9bd219f3c743575a6ab8f37d4d550bce829ece779966fa4e14da","revision":"0814cc6ddb168cff69e5572b185a853540a4f6e0"},
+    {"path":"src-server/routes/plugins/__tests__/registry-skill-acquisition.routes.test.ts","digest":"a4012a90f751727331c2f6ca68299471dd55b5009e5cca7ceae6a7c36ee97be9","revision":"cae2f34dee0e883caffbcbc0190db69470433c43"},
 
     {"path":"src-server/services/projects/task-room-work-module.ts","digest":"acf9afa37babc44c9281e95040e057726a71b03c0ab49e98989e59069f450f9c","revision":"81ffd01123b6ad2a2591308e02a0c5f1cddc2feb"},
 
