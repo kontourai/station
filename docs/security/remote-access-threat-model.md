@@ -314,13 +314,18 @@ default to the historical four-token grant rather than Standard:
   pairing request.
 
 Beyond the presets, the operator adds elevated scopes to an already-paired
-device, never at pairing: in the desktop app (**Paired devices** → the device
-→ **Change access**) or on the Station host with `station environment access
-scope <device> --add|--remove|--set <scope>` (#1796). Both use
+device, never at pairing, on the Station host with `station environment access
+scope <device> --add|--remove|--set <scope>` (#1796). That uses
 `POST /api/pairing/devices/:id/scope`, which only the operator credential
 reaches; the CLI verbs additionally refuse any non-loopback target before
 reading a credential, so a paired remote CLI cannot run them, and there is no
-remote operator authentication. `access:manage` is not grantable this way.
+remote operator authentication. The **Paired devices** panel offers **Change
+access**, but the host desktop app presents its local-grant device credential,
+not the operator credential, so the route answers it 401. From the panel,
+only a browser that presents the operator credential itself, as its saved
+connection credential or pasted for the write, reaches it
+([operator device access](../design/operator-device-access.md), #2894).
+`access:manage` is not grantable this way.
 Each change is sent with the scope it replaces (`expectedScope`) and a
 concurrent change returns 409 `scope_changed` instead of being overwritten;
 the change drops the device's live terminal and voice leases. One such scope,
@@ -1096,6 +1101,17 @@ grepping for approvals does not return both. Neither carries device or network
 identity. That is the only signal distinguishing an ordinary first-run approval
 from the residue being exercised, which is why it is covered by tests rather
 than left to inspection.
+
+**Detection for off-host operator-credential use (#2894 S1).** The four
+device-admin routes (`GET /api/pairing/devices`, scope change, revoke and
+record removal) record each raw operator-credential use with its host position.
+An off-host use, including one through Station's UI proxy from another machine
+or a `tailscale serve` mapping straight at the API port, is still allowed. It
+is logged at warn as `station.pairing.operator_credential_used` with a
+per-process count and counted in
+`station.device_pairing.operator_credential_uses` by route and position, with
+no device or network identity. Refusing it is a later step of
+[operator device access](../design/operator-device-access.md).
 
 **The rest of the family, assessed then.** These were reachable on the
 old floor, each because it was the operator's own panel doing its job before any
