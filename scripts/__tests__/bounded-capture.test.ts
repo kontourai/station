@@ -1,8 +1,7 @@
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { describe, expect, test } from 'vitest';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
   CAPTURE_MAX_BYTES,
   CaptureOverflowError,
@@ -18,6 +17,8 @@ function emit(bytes: number): string[] {
 }
 
 describe('bounded synchronous capture (#2787)', () => {
+  const makeTempDir = trackTempDirs();
+
   test('the bound is 64 MiB', () => {
     // Pinned as a literal: every assertion below that derives from the
     // constant would follow it anywhere, including back down to 1 MiB.
@@ -133,47 +134,43 @@ describe('bounded synchronous capture (#2787)', () => {
   });
 
   test('the ratchet family reads a tracked-file listing larger than 1 MiB whole', () => {
-    const root = mkdtempSync(join(tmpdir(), 'station-ratchet-ls-files-'));
-    try {
-      const git = (args: string[], input?: string) =>
-        execFileSyncBounded('git', args, {
-          cwd: root,
-          encoding: 'utf8',
-          ...(input === undefined ? {} : { input }),
-        });
-      git(['init', '-q']);
-      // Index entries only: `git ls-files` lists them with no files on disk.
-      const blob = git(['hash-object', '-w', '--stdin'], '').trim();
-      const count = 6000;
-      const names = Array.from(
-        { length: count },
-        (_, index) => `pad/${'p'.repeat(200)}-${index}.txt`,
-      );
-      expect(Buffer.byteLength(names.join('\n'))).toBeGreaterThan(
-        NODE_DEFAULT_MAX_BUFFER,
-      );
-      git(
-        ['update-index', '--add', '--index-info'],
-        names.map((name) => `100644 ${blob}\t${name}\n`).join(''),
-      );
+    const root = makeTempDir('station-ratchet-ls-files-');
+    const git = (args: string[], input?: string) =>
+      execFileSyncBounded('git', args, {
+        cwd: root,
+        encoding: 'utf8',
+        ...(input === undefined ? {} : { input }),
+      });
+    git(['init', '-q']);
+    // Index entries only: `git ls-files` lists them with no files on disk.
+    const blob = git(['hash-object', '-w', '--stdin'], '').trim();
+    const count = 6000;
+    const names = Array.from(
+      { length: count },
+      (_, index) => `pad/${'p'.repeat(200)}-${index}.txt`,
+    );
+    expect(Buffer.byteLength(names.join('\n'))).toBeGreaterThan(
+      NODE_DEFAULT_MAX_BUFFER,
+    );
+    git(
+      ['update-index', '--add', '--index-info'],
+      names.map((name) => `100644 ${blob}\t${name}\n`).join(''),
+    );
 
-      // gitLsFiles lists from process.cwd(), so drive the production module
-      // in a child whose cwd is the scratch repository.
-      const ratchetUtils = pathToFileURL(
-        resolve('scripts/lib/ratchet-utils.mjs'),
-      ).href;
-      const listed = execFileSyncBounded(
-        process.execPath,
-        [
-          '--input-type=module',
-          '-e',
-          `const { gitLsFiles } = await import(${JSON.stringify(ratchetUtils)}); process.stdout.write(String(gitLsFiles([]).length));`,
-        ],
-        { cwd: root, encoding: 'utf8' },
-      );
-      expect(Number(listed)).toBe(count);
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-    }
+    // gitLsFiles lists from process.cwd(), so drive the production module
+    // in a child whose cwd is the scratch repository.
+    const ratchetUtils = pathToFileURL(
+      resolve('scripts/lib/ratchet-utils.mjs'),
+    ).href;
+    const listed = execFileSyncBounded(
+      process.execPath,
+      [
+        '--input-type=module',
+        '-e',
+        `const { gitLsFiles } = await import(${JSON.stringify(ratchetUtils)}); process.stdout.write(String(gitLsFiles([]).length));`,
+      ],
+      { cwd: root, encoding: 'utf8' },
+    );
+    expect(Number(listed)).toBe(count);
   });
 });
