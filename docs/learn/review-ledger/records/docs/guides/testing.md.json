@@ -9,7 +9,7 @@
 
   "limits": "Full reading and bounded source review are not all-platform execution or universal semantic certification. No hosted CI, cloud, release or real provider/device proof. Protected policy activation is limited to the approved documentation additions in this branch.",
 
-  "document": {"digest":"fcf772e655d97aab25b3d96d3990df29edfb5beda59ecb11d58197b6d093b069","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
+  "document": {"digest":"0cb4253b939858eac42d6d28b75eb82fd8556ed133277f566bc2f196f4b6d749","revision":"01c8161b147ae157927f5d9f60ec07ea9d2c6065"},
 
   "sources": [
     {"path":".agents/skills/documentation-audit/SKILL.md","digest":"2f5e193ebfb24a08597fd9dc31663a7d293bceaf1847e2df508b093e898845a6","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
