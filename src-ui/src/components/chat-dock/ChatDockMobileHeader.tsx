@@ -81,6 +81,7 @@ interface ChatDockMobileHeaderProps {
   showDrawerToggle: boolean;
   showConnection: boolean;
   sessionTitle: string;
+  sessionProjectMismatchLabel?: string | null;
   agentIdentity: { name: string; slug: string; icon?: string } | null;
   branchLabel: string | null;
   projectScope?: { name: string; onClear: () => void };
@@ -102,6 +103,7 @@ export function ChatDockMobileHeader({
   showDrawerToggle,
   showConnection,
   sessionTitle,
+  sessionProjectMismatchLabel,
   agentIdentity,
   branchLabel,
   projectScope,
@@ -188,7 +190,7 @@ export function ChatDockMobileHeader({
                 className="chat-dock__mobile-project-caption"
                 aria-hidden="true"
               >
-                Project
+                New chats
               </span>
               <span className="chat-dock__mobile-project-name">
                 {projectSwitcher.projectName}
@@ -213,7 +215,9 @@ export function ChatDockMobileHeader({
         className="chat-dock__mobile-identity"
         data-dock-drag-passthrough=""
         aria-label={
-          agentIdentity ? `Switch task — ${agentIdentity.name}` : 'Switch task'
+          agentIdentity
+            ? `Chats and tasks — ${agentIdentity.name}`
+            : 'Chats and tasks'
         }
         aria-describedby={titleDescriptionId}
         onClick={onOpenTaskSwitcher}
@@ -229,6 +233,8 @@ export function ChatDockMobileHeader({
           {agentIdentity && (
             <span className="chat-dock__mobile-eyebrow" aria-hidden="true">
               {agentIdentity.name}
+              {sessionProjectMismatchLabel &&
+                ` · ${sessionProjectMismatchLabel}`}
             </span>
           )}
         </span>
