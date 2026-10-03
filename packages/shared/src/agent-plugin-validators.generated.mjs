@@ -3,7 +3,7 @@
  * Ajv 8.20.0; esbuild 0.28.2.
  * schemas/agent-plugins/1.0.0/plugin.schema.json sha256:0a4aad95ce337878ad38802ebf0daa3fde76abe3f65400c86bcbb1ec0b3ab883
  * schemas/agent-plugins/io.kontourai.station-1.0.schema.json sha256:e3ddeacd09b521057a214a203eb486d277b5be0256bfe2c99bee9696aed26ed5
- * schemas/agent-plugins/skill-experience-1.0.schema.json sha256:7805eb30fd8e9757aa52e9974674355dfd02b518cd92362bc5c200c9b546a811
+ * schemas/agent-plugins/skill-experience-1.0.schema.json sha256:d4228ac5c699c765b06a7fa53b0aee5d4ad0d4977b8c139c23802b2d27bb73cc
  */
 /*! Bundled Ajv runtime helper.
 The MIT License (MIT)
@@ -6078,6 +6078,31 @@ var schema59 = {
           uniqueItems: true,
         },
         defaultMode: { enum: ['guided', 'alongside'] },
+        richView: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['version', 'kind', 'descriptorId'],
+          properties: {
+            version: { const: '1.0' },
+            kind: { const: 'workspace-pane' },
+            descriptorId: { type: 'string', minLength: 1, maxLength: 256 },
+          },
+        },
+      },
+    },
+    entrySkillId: { $ref: '#/$defs/id' },
+    transitions: {
+      type: 'array',
+      maxItems: 32,
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['experienceId', 'label', 'provenance'],
+        properties: {
+          experienceId: { $ref: '#/$defs/id' },
+          label: { type: 'string', minLength: 1, maxLength: 128 },
+          provenance: { $ref: '#/$defs/provenance' },
+        },
       },
     },
   },
@@ -11299,7 +11324,13 @@ function validate43(
           errors++;
         }
         for (const key12 in data77) {
-          if (!(key12 === 'modes' || key12 === 'defaultMode')) {
+          if (
+            !(
+              key12 === 'modes' ||
+              key12 === 'defaultMode' ||
+              key12 === 'richView'
+            )
+          ) {
             const err253 = {
               instancePath: instancePath + '/presentation',
               schemaPath: '#/properties/presentation/additionalProperties',
@@ -11442,8 +11473,190 @@ function validate43(
             errors++;
           }
         }
+        if (data77.richView !== void 0) {
+          let data81 = data77.richView;
+          if (data81 && typeof data81 == 'object' && !Array.isArray(data81)) {
+            if (data81.version === void 0) {
+              const err260 = {
+                instancePath: instancePath + '/presentation/richView',
+                schemaPath:
+                  '#/properties/presentation/properties/richView/required',
+                keyword: 'required',
+                params: { missingProperty: 'version' },
+                message: "must have required property 'version'",
+              };
+              if (vErrors === null) {
+                vErrors = [err260];
+              } else {
+                vErrors.push(err260);
+              }
+              errors++;
+            }
+            if (data81.kind === void 0) {
+              const err261 = {
+                instancePath: instancePath + '/presentation/richView',
+                schemaPath:
+                  '#/properties/presentation/properties/richView/required',
+                keyword: 'required',
+                params: { missingProperty: 'kind' },
+                message: "must have required property 'kind'",
+              };
+              if (vErrors === null) {
+                vErrors = [err261];
+              } else {
+                vErrors.push(err261);
+              }
+              errors++;
+            }
+            if (data81.descriptorId === void 0) {
+              const err262 = {
+                instancePath: instancePath + '/presentation/richView',
+                schemaPath:
+                  '#/properties/presentation/properties/richView/required',
+                keyword: 'required',
+                params: { missingProperty: 'descriptorId' },
+                message: "must have required property 'descriptorId'",
+              };
+              if (vErrors === null) {
+                vErrors = [err262];
+              } else {
+                vErrors.push(err262);
+              }
+              errors++;
+            }
+            for (const key13 in data81) {
+              if (
+                !(
+                  key13 === 'version' ||
+                  key13 === 'kind' ||
+                  key13 === 'descriptorId'
+                )
+              ) {
+                const err263 = {
+                  instancePath: instancePath + '/presentation/richView',
+                  schemaPath:
+                    '#/properties/presentation/properties/richView/additionalProperties',
+                  keyword: 'additionalProperties',
+                  params: { additionalProperty: key13 },
+                  message: 'must NOT have additional properties',
+                };
+                if (vErrors === null) {
+                  vErrors = [err263];
+                } else {
+                  vErrors.push(err263);
+                }
+                errors++;
+              }
+            }
+            if (data81.version !== void 0) {
+              if ('1.0' !== data81.version) {
+                const err264 = {
+                  instancePath: instancePath + '/presentation/richView/version',
+                  schemaPath:
+                    '#/properties/presentation/properties/richView/properties/version/const',
+                  keyword: 'const',
+                  params: { allowedValue: '1.0' },
+                  message: 'must be equal to constant',
+                };
+                if (vErrors === null) {
+                  vErrors = [err264];
+                } else {
+                  vErrors.push(err264);
+                }
+                errors++;
+              }
+            }
+            if (data81.kind !== void 0) {
+              if ('workspace-pane' !== data81.kind) {
+                const err265 = {
+                  instancePath: instancePath + '/presentation/richView/kind',
+                  schemaPath:
+                    '#/properties/presentation/properties/richView/properties/kind/const',
+                  keyword: 'const',
+                  params: { allowedValue: 'workspace-pane' },
+                  message: 'must be equal to constant',
+                };
+                if (vErrors === null) {
+                  vErrors = [err265];
+                } else {
+                  vErrors.push(err265);
+                }
+                errors++;
+              }
+            }
+            if (data81.descriptorId !== void 0) {
+              let data84 = data81.descriptorId;
+              if (typeof data84 === 'string') {
+                if (func2(data84) > 256) {
+                  const err266 = {
+                    instancePath:
+                      instancePath + '/presentation/richView/descriptorId',
+                    schemaPath:
+                      '#/properties/presentation/properties/richView/properties/descriptorId/maxLength',
+                    keyword: 'maxLength',
+                    params: { limit: 256 },
+                    message: 'must NOT have more than 256 characters',
+                  };
+                  if (vErrors === null) {
+                    vErrors = [err266];
+                  } else {
+                    vErrors.push(err266);
+                  }
+                  errors++;
+                }
+                if (func2(data84) < 1) {
+                  const err267 = {
+                    instancePath:
+                      instancePath + '/presentation/richView/descriptorId',
+                    schemaPath:
+                      '#/properties/presentation/properties/richView/properties/descriptorId/minLength',
+                    keyword: 'minLength',
+                    params: { limit: 1 },
+                    message: 'must NOT have fewer than 1 characters',
+                  };
+                  if (vErrors === null) {
+                    vErrors = [err267];
+                  } else {
+                    vErrors.push(err267);
+                  }
+                  errors++;
+                }
+              } else {
+                const err268 = {
+                  instancePath:
+                    instancePath + '/presentation/richView/descriptorId',
+                  schemaPath:
+                    '#/properties/presentation/properties/richView/properties/descriptorId/type',
+                  keyword: 'type',
+                  params: { type: 'string' },
+                  message: 'must be string',
+                };
+                if (vErrors === null) {
+                  vErrors = [err268];
+                } else {
+                  vErrors.push(err268);
+                }
+                errors++;
+              }
+            }
+          } else {
+            const err269 = {
+              instancePath: instancePath + '/presentation/richView',
+              schemaPath: '#/properties/presentation/properties/richView/type',
+              keyword: 'type',
+              params: { type: 'object' },
+              message: 'must be object',
+            };
+            if (vErrors === null) {
+              vErrors = [err269];
+            } else {
+              vErrors.push(err269);
+            }
+            errors++;
+          }
+        }
       } else {
-        const err260 = {
+        const err270 = {
           instancePath: instancePath + '/presentation',
           schemaPath: '#/properties/presentation/type',
           keyword: 'type',
@@ -11451,15 +11664,344 @@ function validate43(
           message: 'must be object',
         };
         if (vErrors === null) {
-          vErrors = [err260];
+          vErrors = [err270];
         } else {
-          vErrors.push(err260);
+          vErrors.push(err270);
+        }
+        errors++;
+      }
+    }
+    if (data.entrySkillId !== void 0) {
+      let data85 = data.entrySkillId;
+      if (typeof data85 === 'string') {
+        if (func2(data85) > 128) {
+          const err271 = {
+            instancePath: instancePath + '/entrySkillId',
+            schemaPath: '#/$defs/id/maxLength',
+            keyword: 'maxLength',
+            params: { limit: 128 },
+            message: 'must NOT have more than 128 characters',
+          };
+          if (vErrors === null) {
+            vErrors = [err271];
+          } else {
+            vErrors.push(err271);
+          }
+          errors++;
+        }
+        if (func2(data85) < 1) {
+          const err272 = {
+            instancePath: instancePath + '/entrySkillId',
+            schemaPath: '#/$defs/id/minLength',
+            keyword: 'minLength',
+            params: { limit: 1 },
+            message: 'must NOT have fewer than 1 characters',
+          };
+          if (vErrors === null) {
+            vErrors = [err272];
+          } else {
+            vErrors.push(err272);
+          }
+          errors++;
+        }
+        if (!pattern5.test(data85)) {
+          const err273 = {
+            instancePath: instancePath + '/entrySkillId',
+            schemaPath: '#/$defs/id/pattern',
+            keyword: 'pattern',
+            params: { pattern: '^[a-z0-9](?:[a-z0-9._:-]*[a-z0-9])?$' },
+            message:
+              'must match pattern "^[a-z0-9](?:[a-z0-9._:-]*[a-z0-9])?$"',
+          };
+          if (vErrors === null) {
+            vErrors = [err273];
+          } else {
+            vErrors.push(err273);
+          }
+          errors++;
+        }
+      } else {
+        const err274 = {
+          instancePath: instancePath + '/entrySkillId',
+          schemaPath: '#/$defs/id/type',
+          keyword: 'type',
+          params: { type: 'string' },
+          message: 'must be string',
+        };
+        if (vErrors === null) {
+          vErrors = [err274];
+        } else {
+          vErrors.push(err274);
+        }
+        errors++;
+      }
+    }
+    if (data.transitions !== void 0) {
+      let data86 = data.transitions;
+      if (Array.isArray(data86)) {
+        if (data86.length > 32) {
+          const err275 = {
+            instancePath: instancePath + '/transitions',
+            schemaPath: '#/properties/transitions/maxItems',
+            keyword: 'maxItems',
+            params: { limit: 32 },
+            message: 'must NOT have more than 32 items',
+          };
+          if (vErrors === null) {
+            vErrors = [err275];
+          } else {
+            vErrors.push(err275);
+          }
+          errors++;
+        }
+        const len12 = data86.length;
+        for (let i19 = 0; i19 < len12; i19++) {
+          let data87 = data86[i19];
+          if (data87 && typeof data87 == 'object' && !Array.isArray(data87)) {
+            if (data87.experienceId === void 0) {
+              const err276 = {
+                instancePath: instancePath + '/transitions/' + i19,
+                schemaPath: '#/properties/transitions/items/required',
+                keyword: 'required',
+                params: { missingProperty: 'experienceId' },
+                message: "must have required property 'experienceId'",
+              };
+              if (vErrors === null) {
+                vErrors = [err276];
+              } else {
+                vErrors.push(err276);
+              }
+              errors++;
+            }
+            if (data87.label === void 0) {
+              const err277 = {
+                instancePath: instancePath + '/transitions/' + i19,
+                schemaPath: '#/properties/transitions/items/required',
+                keyword: 'required',
+                params: { missingProperty: 'label' },
+                message: "must have required property 'label'",
+              };
+              if (vErrors === null) {
+                vErrors = [err277];
+              } else {
+                vErrors.push(err277);
+              }
+              errors++;
+            }
+            if (data87.provenance === void 0) {
+              const err278 = {
+                instancePath: instancePath + '/transitions/' + i19,
+                schemaPath: '#/properties/transitions/items/required',
+                keyword: 'required',
+                params: { missingProperty: 'provenance' },
+                message: "must have required property 'provenance'",
+              };
+              if (vErrors === null) {
+                vErrors = [err278];
+              } else {
+                vErrors.push(err278);
+              }
+              errors++;
+            }
+            for (const key14 in data87) {
+              if (
+                !(
+                  key14 === 'experienceId' ||
+                  key14 === 'label' ||
+                  key14 === 'provenance'
+                )
+              ) {
+                const err279 = {
+                  instancePath: instancePath + '/transitions/' + i19,
+                  schemaPath:
+                    '#/properties/transitions/items/additionalProperties',
+                  keyword: 'additionalProperties',
+                  params: { additionalProperty: key14 },
+                  message: 'must NOT have additional properties',
+                };
+                if (vErrors === null) {
+                  vErrors = [err279];
+                } else {
+                  vErrors.push(err279);
+                }
+                errors++;
+              }
+            }
+            if (data87.experienceId !== void 0) {
+              let data88 = data87.experienceId;
+              if (typeof data88 === 'string') {
+                if (func2(data88) > 128) {
+                  const err280 = {
+                    instancePath:
+                      instancePath + '/transitions/' + i19 + '/experienceId',
+                    schemaPath: '#/$defs/id/maxLength',
+                    keyword: 'maxLength',
+                    params: { limit: 128 },
+                    message: 'must NOT have more than 128 characters',
+                  };
+                  if (vErrors === null) {
+                    vErrors = [err280];
+                  } else {
+                    vErrors.push(err280);
+                  }
+                  errors++;
+                }
+                if (func2(data88) < 1) {
+                  const err281 = {
+                    instancePath:
+                      instancePath + '/transitions/' + i19 + '/experienceId',
+                    schemaPath: '#/$defs/id/minLength',
+                    keyword: 'minLength',
+                    params: { limit: 1 },
+                    message: 'must NOT have fewer than 1 characters',
+                  };
+                  if (vErrors === null) {
+                    vErrors = [err281];
+                  } else {
+                    vErrors.push(err281);
+                  }
+                  errors++;
+                }
+                if (!pattern5.test(data88)) {
+                  const err282 = {
+                    instancePath:
+                      instancePath + '/transitions/' + i19 + '/experienceId',
+                    schemaPath: '#/$defs/id/pattern',
+                    keyword: 'pattern',
+                    params: { pattern: '^[a-z0-9](?:[a-z0-9._:-]*[a-z0-9])?$' },
+                    message:
+                      'must match pattern "^[a-z0-9](?:[a-z0-9._:-]*[a-z0-9])?$"',
+                  };
+                  if (vErrors === null) {
+                    vErrors = [err282];
+                  } else {
+                    vErrors.push(err282);
+                  }
+                  errors++;
+                }
+              } else {
+                const err283 = {
+                  instancePath:
+                    instancePath + '/transitions/' + i19 + '/experienceId',
+                  schemaPath: '#/$defs/id/type',
+                  keyword: 'type',
+                  params: { type: 'string' },
+                  message: 'must be string',
+                };
+                if (vErrors === null) {
+                  vErrors = [err283];
+                } else {
+                  vErrors.push(err283);
+                }
+                errors++;
+              }
+            }
+            if (data87.label !== void 0) {
+              let data89 = data87.label;
+              if (typeof data89 === 'string') {
+                if (func2(data89) > 128) {
+                  const err284 = {
+                    instancePath:
+                      instancePath + '/transitions/' + i19 + '/label',
+                    schemaPath:
+                      '#/properties/transitions/items/properties/label/maxLength',
+                    keyword: 'maxLength',
+                    params: { limit: 128 },
+                    message: 'must NOT have more than 128 characters',
+                  };
+                  if (vErrors === null) {
+                    vErrors = [err284];
+                  } else {
+                    vErrors.push(err284);
+                  }
+                  errors++;
+                }
+                if (func2(data89) < 1) {
+                  const err285 = {
+                    instancePath:
+                      instancePath + '/transitions/' + i19 + '/label',
+                    schemaPath:
+                      '#/properties/transitions/items/properties/label/minLength',
+                    keyword: 'minLength',
+                    params: { limit: 1 },
+                    message: 'must NOT have fewer than 1 characters',
+                  };
+                  if (vErrors === null) {
+                    vErrors = [err285];
+                  } else {
+                    vErrors.push(err285);
+                  }
+                  errors++;
+                }
+              } else {
+                const err286 = {
+                  instancePath: instancePath + '/transitions/' + i19 + '/label',
+                  schemaPath:
+                    '#/properties/transitions/items/properties/label/type',
+                  keyword: 'type',
+                  params: { type: 'string' },
+                  message: 'must be string',
+                };
+                if (vErrors === null) {
+                  vErrors = [err286];
+                } else {
+                  vErrors.push(err286);
+                }
+                errors++;
+              }
+            }
+            if (data87.provenance !== void 0) {
+              if (
+                !validate44(data87.provenance, {
+                  instancePath:
+                    instancePath + '/transitions/' + i19 + '/provenance',
+                  parentData: data87,
+                  parentDataProperty: 'provenance',
+                  rootData,
+                  dynamicAnchors,
+                })
+              ) {
+                vErrors =
+                  vErrors === null
+                    ? validate44.errors
+                    : vErrors.concat(validate44.errors);
+                errors = vErrors.length;
+              }
+            }
+          } else {
+            const err287 = {
+              instancePath: instancePath + '/transitions/' + i19,
+              schemaPath: '#/properties/transitions/items/type',
+              keyword: 'type',
+              params: { type: 'object' },
+              message: 'must be object',
+            };
+            if (vErrors === null) {
+              vErrors = [err287];
+            } else {
+              vErrors.push(err287);
+            }
+            errors++;
+          }
+        }
+      } else {
+        const err288 = {
+          instancePath: instancePath + '/transitions',
+          schemaPath: '#/properties/transitions/type',
+          keyword: 'type',
+          params: { type: 'array' },
+          message: 'must be array',
+        };
+        if (vErrors === null) {
+          vErrors = [err288];
+        } else {
+          vErrors.push(err288);
         }
         errors++;
       }
     }
   } else {
-    const err261 = {
+    const err289 = {
       instancePath,
       schemaPath: '#/type',
       keyword: 'type',
@@ -11467,9 +12009,9 @@ function validate43(
       message: 'must be object',
     };
     if (vErrors === null) {
-      vErrors = [err261];
+      vErrors = [err289];
     } else {
-      vErrors.push(err261);
+      vErrors.push(err289);
     }
     errors++;
   }

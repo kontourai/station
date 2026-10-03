@@ -66,6 +66,14 @@ export interface SkillExperienceDefinitionV1 {
   authors: Array<AgentPluginAuthor & { name: string }>;
   /** The owning plugin name/version comes from plugin.json. */
   skills: SkillExperienceSourceV1[];
+  /** Required by execution when several bundled Skills are declared. */
+  entrySkillId?: string;
+  /** Optional explicit user-selected stages within this same package. */
+  transitions?: Array<{
+    experienceId: string;
+    label: string;
+    provenance: SkillExperienceProvenanceV1;
+  }>;
   requiredContext: Array<{
     kind: 'project' | 'conversation';
     required: boolean;
@@ -95,6 +103,7 @@ export interface SkillExperienceDefinitionV1 {
   presentation: {
     modes: Array<'guided' | 'alongside'>;
     defaultMode: 'guided' | 'alongside';
+    richView?: { version: '1.0'; kind: 'workspace-pane'; descriptorId: string };
   };
 }
 
@@ -115,6 +124,8 @@ export interface InstalledSkillExperienceV1 {
 }
 
 export interface SkillExperienceInventoryV1 {
+  /** Advertised only when canonical foreground execution is installed. */
+  executionContract?: '1.0';
   experiences: InstalledSkillExperienceV1[];
   diagnostics: Array<{
     pluginId: string;
@@ -128,6 +139,8 @@ export interface SkillExperienceStartInputV1 {
   identity: SkillExperienceIdentityV1;
   inputs: Record<string, string>;
   expectedPreviousInvocationEventId?: string;
+  /** Indices into the canonical attachment array, never file paths or authority. */
+  attachmentInputs?: Record<string, number[]>;
 }
 
 /** Immutable presentation snapshot for one canonical foreground dispatch. */
@@ -137,6 +150,7 @@ export interface SkillExperienceInvocationV1 {
   definition: SkillExperienceDefinitionV1;
   inputs: Record<string, string>;
   clientTurnId: string;
+  attachmentInputs?: Record<string, number[]>;
   previousInvocationEventId?: string;
   /** Describes the host's question bridge; actual questions require request.opened. */
   questionnaireDelivery: 'canonical-request' | 'chat-fallback';
@@ -146,6 +160,7 @@ export interface SkillExperienceInvocationV1 {
 export interface SkillExperienceInvocationReferenceV1 {
   version: '1.0';
   invocationId: string;
+  snapshotSessionId: string;
   snapshotDigest: string;
   identity: SkillExperienceIdentityV1;
 }

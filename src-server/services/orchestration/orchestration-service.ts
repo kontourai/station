@@ -96,6 +96,10 @@ import {
   SESSION_LIFECYCLE_TRANSITIONS,
 } from '@kontourai/station-contracts/session-lifecycle';
 import type { DeclaredOutputDescriptor } from '@kontourai/station-contracts/session-output-declaration';
+import type {
+  SkillExperienceInvocationReferenceV1,
+  SkillExperienceStartInputV1,
+} from '@kontourai/station-contracts/skill-experience';
 import {
   INTERNAL_SESSION_READ_SCOPE,
   type InternalSessionReadScope,
@@ -385,6 +389,11 @@ import {
   runSessionStartWithBoundary,
   type SessionTurnBoundaryAuthority,
 } from './session-turn-boundary.js';
+import {
+  SkillExperienceRuntime,
+  type SkillExperienceSource,
+  SkillExperienceUnavailableError,
+} from './skill-experience-runtime.js';
 import type { TurnDeduplicator } from './turn-deduplicator.js';
 import { TurnProgressTracker } from './turn-progress-tracker.js';
 import { TurnProvenanceSidecar } from './turn-provenance-sidecar.js';
@@ -417,6 +426,7 @@ function telemetryEngine(
  * from an HTTP route.
  */
 interface OrchestrationDispatchInternalOptions {
+  skillExperience?: SkillExperienceStartInputV1;
   /** Request authority forwarded only by the server-owned foreground resolver. */
   nativeMemoryReadAuthority?: SessionReadAuthority;
   sessionStartAdmission?: SessionCommandInternalOptions['sessionStartAdmission'];
@@ -5797,6 +5807,52 @@ export class OrchestrationService {
       | undefined;
   }
 
+  private skillExperienceRuntime?: SkillExperienceRuntime;
+  registerSkillExperienceSource(source: SkillExperienceSource): boolean {
+    if (!this.options.eventStore) return false;
+    this.skillExperienceRuntime = new SkillExperienceRuntime(
+      this.options.eventStore,
+      source,
+    );
+    return true;
+  }
+  async readSkillExperience(
+    threadId: string,
+    authority: SessionReadScope,
+    cursor?: string,
+    limit?: number,
+  ) {
+    if (!this.sessionAuthz.canReadSession(threadId, authority)) return null;
+    if (!this.skillExperienceRuntime)
+      throw new Error('Skill experience execution is unavailable.');
+    const view = await this.skillExperienceRuntime.read(
+      threadId,
+      cursor,
+      limit,
+    );
+    if (
+      !this.sessionAuthz.canReadSession(threadId, authority) ||
+      [...view.history, ...(view.current ? [view.current] : [])].some(
+        (item) => !this.sessionAuthz.canReadSession(item.threadId, authority),
+      )
+    )
+      return null;
+    return view;
+  }
+  private withCurrentSkillExperience<T>(
+    threadId: string,
+    effect: () => Promise<T>,
+  ): Promise<T> {
+    if (this.skillExperienceRuntime)
+      return this.skillExperienceRuntime.admitCurrent(threadId, effect);
+    if (
+      this.options.eventStore?.listSkillExperienceEvents(threadId, undefined, 1)
+        .length
+    )
+      throw new Error('Skill experience execution is unavailable.');
+    return effect();
+  }
+
   /** Register a server-owned per-turn admission observer. */
   registerTurnAdmission(admission: OrchestrationTurnAdmission): () => void {
     this.turnAdmissions.add(admission);
@@ -6337,6 +6393,52 @@ export class OrchestrationService {
                         }
                       };
                       assertInputRequestCurrent();
+                      let experienceReference:
+                        | SkillExperienceInvocationReferenceV1
+                        | undefined;
+                      if (internal?.skillExperience) {
+                        if (
+                          !this.skillExperienceRuntime ||
+                          !turnInput.clientTurnId
+                        )
+                          throw new Error(
+                            'Skill experience execution requires its supported contract and a client turn id.',
+                          );
+                        await this.skillExperienceRuntime.start(
+                          {
+                            threadId: turnInput.threadId,
+                            clientTurnId: turnInput.clientTurnId,
+                            selection: internal.skillExperience,
+                            hasProject:
+                              typeof this.readLatestSessionStartMetadata(
+                                turnInput.threadId,
+                              )?.projectSlug === 'string',
+                            hasConversation: Boolean(
+                              this.options.eventStore?.firstTurnStartedWithPrompt(
+                                turnInput.threadId,
+                              ) ||
+                                this.options.eventStore?.conversationForSession(
+                                  turnInput.threadId,
+                                )?.predecessorSessionId ||
+                                internal.skillExperience
+                                  .expectedPreviousInvocationEventId,
+                            ),
+                            attachmentCount: turnInput.attachments?.length ?? 0,
+                            questionnaireDelivery:
+                              adapter.provider === 'claude' ||
+                              adapter.provider === 'codex'
+                                ? 'canonical-request'
+                                : 'chat-fallback',
+                          },
+                          async (reference, prompt) => {
+                            experienceReference = reference;
+                            turnInput = {
+                              ...turnInput,
+                              input: `${prompt}\n\n${turnInput.input}`,
+                            };
+                          },
+                        );
+                      }
                       const begun = boundary.beginInvocation(
                         new Date().toISOString(),
                       );
@@ -6363,6 +6465,7 @@ export class OrchestrationService {
                           turnInput.threadId,
                           context?.clientOrigin,
                           context?.principal,
+                          experienceReference,
                         );
                         // The Station-agent adapter owns the canonical provider
                         // turn id for this engine, so mint it before crossing its
@@ -6500,15 +6603,27 @@ export class OrchestrationService {
                             : undefined;
                         if (nativeForeground && !turnCorrelation)
                           throw new ForegroundInvocationUnavailableError();
-                        const sendAdapter = () => {
+                        const sendAdapter = async () => {
                           assertInputRequestCurrent();
-                          providerInvoked = true;
-                          return nativeForeground
-                            ? runWithNativeForegroundRelay(
-                                nativeForeground,
-                                () => adapter.sendTurn(turnInput),
+                          const effect = () => {
+                            providerInvoked = true;
+                            return nativeForeground
+                              ? runWithNativeForegroundRelay(
+                                  nativeForeground,
+                                  () => adapter.sendTurn(turnInput),
+                                )
+                              : adapter.sendTurn(turnInput);
+                          };
+                          return internal?.skillExperience &&
+                            this.skillExperienceRuntime
+                            ? this.skillExperienceRuntime.admitSelection(
+                                internal.skillExperience.identity,
+                                effect,
                               )
-                            : adapter.sendTurn(turnInput);
+                            : this.withCurrentSkillExperience(
+                                turnInput.threadId,
+                                effect,
+                              );
                         };
                         if (
                           nativeTurn &&
@@ -6573,6 +6688,7 @@ export class OrchestrationService {
                           accepted.turnId,
                           context?.clientOrigin,
                           context?.principal,
+                          experienceReference,
                         );
                         if (earlyOriginEvent) {
                           this.projectAndPublishEvent(earlyOriginEvent);
@@ -6625,7 +6741,8 @@ export class OrchestrationService {
                         }
                         if (
                           !providerInvoked &&
-                          error instanceof ReceiverExecutionRefusal
+                          (error instanceof ReceiverExecutionRefusal ||
+                            error instanceof SkillExperienceUnavailableError)
                         ) {
                           // The post-preparation offer/binding recheck refused
                           // BEFORE the provider effect ran (`providerInvoked`
@@ -7184,10 +7301,12 @@ export class OrchestrationService {
                 context?.principal,
               );
               try {
-                await adapter.steerTurn(
-                  command.threadId,
-                  command.input,
-                  activeTurnId,
+                await this.withCurrentSkillExperience(command.threadId, () =>
+                  adapter.steerTurn!(
+                    command.threadId,
+                    command.input,
+                    activeTurnId,
+                  ),
                 );
               } catch (steerError) {
                 // Mirrors sendTurn's own `!providerAccepted` branch above
@@ -7420,18 +7539,22 @@ export class OrchestrationService {
                     : {}),
                 }
               : undefined;
-          await (requestContext
-            ? adapter.respondToRequest(
-                command.threadId,
-                command.requestId,
-                decision,
-                requestContext,
-              )
-            : adapter.respondToRequest(
-                command.threadId,
-                command.requestId,
-                decision,
-              ));
+          const answer = () =>
+            requestContext
+              ? adapter.respondToRequest(
+                  command.threadId,
+                  command.requestId,
+                  decision,
+                  requestContext,
+                )
+              : adapter.respondToRequest(
+                  command.threadId,
+                  command.requestId,
+                  decision,
+                );
+          await (decision === 'accept' || decision === 'acceptForSession'
+            ? this.withCurrentSkillExperience(command.threadId, answer)
+            : answer());
           this.assertAdapterCurrentAfterCommand(adapter);
           if (editModeAnswer && editModeAnswer !== 'downgrade')
             this.recordEditModeAutoPosture(

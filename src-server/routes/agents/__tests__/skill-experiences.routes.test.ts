@@ -9,12 +9,24 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
+import type {
+  ProviderSendTurnInput,
+  ProviderSessionStartInput,
+} from '@kontourai/station-contracts/provider';
+import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import type { SkillExperienceInventoryV1 } from '@kontourai/station-contracts/skill-experience';
-import { afterEach, expect, test } from 'vitest';
+import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
+import { afterEach, expect, test, vi } from 'vitest';
+import {
+  createGateTestRegistry,
+  GateTestAdapter,
+} from '../../../__test-utils__/orchestration-gate-test-harness.js';
 import { readJson } from '../../../__test-utils__/read-json.js';
 import { ConfigLoader } from '../../../domain/config-loader.js';
 import { SkillService } from '../../../services/agents/skill-service.js';
+import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
+import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
 import { AgentPluginLoader } from '../../../services/plugins/agent-plugin-loader.js';
 import {
   pluginActivationDescriptorDigest,
@@ -23,6 +35,7 @@ import {
 import { computePluginContentDigest } from '../../../services/plugins/plugin-content-integrity.js';
 import { createLocalPluginInstallationService } from '../../../services/plugins/plugin-installation-local.js';
 import { readPluginManifestFile } from '../../../services/plugins/plugin-manifest-loader.js';
+import { createOrchestrationRoutes } from '../../orchestration/orchestration.js';
 import { createSkillRoutes } from '../skills.js';
 
 const scratch: Array<{ home: string; store: EventStore }> = [];
@@ -74,6 +87,8 @@ async function installedExperience(change?: (source: string) => void) {
   const skills = new SkillService(config, logger, {
     canonicalSources: () => loader.skillSources(),
     experienceInventory: () => loader.listSkillExperiences(),
+    experienceSource: (identity, effect) =>
+      loader.withSkillExperience(identity, effect),
   });
   const routes = createSkillRoutes(skills, () => home);
   const current = journal.currentInstallation(pluginId);
@@ -95,6 +110,7 @@ async function installedExperience(change?: (source: string) => void) {
   }
   return {
     home,
+    store,
     source,
     plugins,
     pluginId,
@@ -332,6 +348,8 @@ test('journal-observed legacy packages cannot invent managed materialization ide
     {
       canonicalSources: () => loader.skillSources(),
       experienceInventory: () => loader.listSkillExperiences(),
+      experienceSource: (identity, effect) =>
+        loader.withSkillExperience(identity, effect),
     },
   );
   await skills.discoverSkills(home);
@@ -344,4 +362,316 @@ test('journal-observed legacy packages cannot invent managed materialization ide
     experiences: [],
     diagnostics: [{ code: 'unavailable' }],
   });
+});
+
+class ExperienceAdapter extends GateTestAdapter {
+  readonly turns: ProviderSendTurnInput[] = [];
+  readonly decisions: string[] = [];
+  override async hasSession() {
+    return true;
+  }
+  override async startSession(input: ProviderSessionStartInput) {
+    this.events.push({
+      eventId: `${input.threadId}:configured`,
+      provider: this.provider,
+      threadId: input.threadId,
+      sessionId: input.threadId,
+      method: 'session.configured',
+      createdAt: new Date().toISOString(),
+      metadata: input.metadata,
+    });
+    return super.startSession(input);
+  }
+  override async sendTurn(input: ProviderSendTurnInput) {
+    this.turns.push(input);
+    const turnId = `turn:${this.turns.length}`;
+    this.events.push({
+      eventId: `${input.threadId}:${turnId}`,
+      provider: this.provider,
+      threadId: input.threadId,
+      turnId,
+      method: 'turn.started',
+      createdAt: new Date().toISOString(),
+      metadata: input.metadata,
+      prompt: input.input,
+    });
+    return { threadId: input.threadId, turnId };
+  }
+  override async respondToRequest(
+    _threadId?: string,
+    _requestId?: string,
+    decision?: string,
+  ) {
+    this.decisions.push(decision ?? '');
+  }
+}
+
+async function experienceRuntime() {
+  const fixture = await installedExperience();
+  await fixture.activate();
+  const inventory = await fixture.inventory();
+  const adapter = new ExperienceAdapter();
+  const eventBus = new EventBus();
+  const service = new OrchestrationService({
+    eventStore: fixture.store,
+    eventBus,
+    adapterRegistry: createGateTestRegistry(adapter),
+    logger: { debug: vi.fn(), warn: vi.fn() },
+  });
+  expect(service.registerSkillExperienceSource(fixture.skills)).toBe(true);
+  fixture.skills.enableExperienceExecution();
+  service.initialize();
+  const started = await service.startSessionInternal(
+    {
+      type: 'start-session',
+      input: {
+        provider: 'claude',
+        threadId: 'experience-session',
+        metadata: { userId: 'experience-owner' },
+      },
+    },
+    { userId: 'experience-owner' },
+    {},
+  );
+  if (started.status !== 'accepted') throw new Error(started.message);
+  await vi.waitFor(() =>
+    expect(
+      fixture.store
+        .listEvents('experience-session')
+        .some((event) => event.method === 'session.configured'),
+    ).toBe(true),
+  );
+  const routes = createOrchestrationRoutes(service, {
+    eventBus,
+    logger: { debug: vi.fn() },
+    getUserId: () => 'experience-owner',
+    executeForegroundMessage: async (input) => {
+      const result = await service.dispatchWithReceipt(
+        {
+          type: 'sendTurn',
+          input: {
+            threadId: 'experience-session',
+            input: input.message,
+            clientTurnId: input.clientTurnId,
+          },
+        },
+        { userId: input.userId, principal: input.principal },
+        { skillExperience: input.skillExperience },
+      );
+      if (!result.result || !('turnId' in result.result))
+        throw new Error('No accepted turn');
+      return {
+        conversationId: 'experience-session',
+        sessionId: 'experience-session',
+        providerTurnId: result.result.turnId,
+        target: { kind: 'agent', id: 'claude' },
+      };
+    },
+  });
+  return {
+    ...fixture,
+    adapter,
+    eventBus,
+    service,
+    routes,
+    identity: inventory.experiences[0]!.identity,
+  };
+}
+
+async function selectedTurn(
+  fixture: Awaited<ReturnType<typeof experienceRuntime>>,
+  inputs: Record<string, string> = { idea: 'A careful review process' },
+) {
+  const response = await fixture.routes.request('/chat', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      target: { environment: { kind: 'current' }, agent: 'claude' },
+      message: 'Start this interview',
+      clientTurnId: 'experience-client-turn',
+      skillExperience: { identity: fixture.identity, inputs },
+    }),
+  });
+  return response;
+}
+
+test('foreground selection reaches the real provider, retains only the accepted canonical turn and survives restart as inert history', async () => {
+  const fixture = await experienceRuntime();
+  try {
+    expect((await fixture.inventory()).executionContract).toBe('1.0');
+    const selected = await selectedTurn(fixture);
+    expect(
+      selected.status,
+      JSON.stringify(await readJson(selected.clone())),
+    ).toBe(200);
+    await vi.waitFor(() =>
+      expect(
+        fixture.store.listSkillExperienceEvents('experience-session'),
+      ).toHaveLength(1),
+    );
+    expect(fixture.adapter.turns[0]!.input).toContain(
+      'A careful review process',
+    );
+    expect(fixture.adapter.turns[0]!.input).toContain('stress-test-idea');
+    const view = await fixture.service.readSkillExperience(
+      'experience-session',
+      INTERNAL_SESSION_READ_SCOPE,
+    );
+    expect(view?.current).toMatchObject({
+      eventId: 'experience-session:turn:1',
+      turnId: 'turn:1',
+      availability: { status: 'available' },
+      snapshot: {
+        inputs: { idea: 'A careful review process' },
+        clientTurnId: 'experience-client-turn',
+        questionnaireDelivery: 'canonical-request',
+      },
+    });
+    expect(view?.current?.reference?.snapshotSessionId).toBe(
+      'experience-session',
+    );
+    const other = new EventStore(join(fixture.home, 'events.sqlite'));
+    try {
+      expect(
+        other.createSkillExperienceSnapshots().read(view!.current!.reference!),
+      ).toMatchObject({ inputs: { idea: 'A careful review process' } });
+    } finally {
+      other.close();
+    }
+    const unauthorized = createOrchestrationRoutes(fixture.service, {
+      eventBus: fixture.eventBus,
+      logger: { debug: vi.fn() },
+      getUserId: () => 'another-owner',
+    });
+    expect(
+      (
+        await unauthorized.request(
+          '/sessions/experience-session/skill-experience',
+        )
+      ).status,
+    ).toBe(404);
+  } finally {
+    await fixture.service.shutdown();
+  }
+});
+
+test('changed sources block ordinary send and accepting a request while cancellation still reaches the provider', async () => {
+  const fixture = await experienceRuntime();
+  try {
+    const selected = await selectedTurn(fixture);
+    expect(
+      selected.status,
+      JSON.stringify(await readJson(selected.clone())),
+    ).toBe(200);
+    await vi.waitFor(() =>
+      expect(
+        fixture.store.listSkillExperienceEvents('experience-session'),
+      ).toHaveLength(1),
+    );
+    const root = fixture.loader.skillSources()[0]!.containmentRoot!;
+    writeFileSync(
+      join(root, 'skills/stress-test-idea/SKILL.md'),
+      'changed source',
+    );
+    await expect(
+      fixture.service.dispatchWithReceipt(
+        {
+          type: 'sendTurn',
+          input: {
+            threadId: 'experience-session',
+            input: 'continue',
+            clientTurnId: 'continued-turn',
+          },
+        },
+        { userId: 'experience-owner' },
+      ),
+    ).rejects.toThrow(/source|revision|unavailable/i);
+    expect(fixture.adapter.turns).toHaveLength(1);
+    fixture.adapter.events.push({
+      eventId: 'request-event',
+      provider: 'claude',
+      threadId: 'experience-session',
+      turnId: 'turn:1',
+      method: 'request.opened',
+      requestId: 'request-one',
+      requestType: 'approval',
+      createdAt: new Date().toISOString(),
+    } as CanonicalRuntimeEvent);
+    await vi.waitFor(() =>
+      expect(
+        fixture.store.readCurrentRequestEvent(
+          'experience-session',
+          'request-one',
+        ).state,
+      ).toBe('found'),
+    );
+    await expect(
+      fixture.service.dispatchWithReceipt(
+        {
+          type: 'respondToRequest',
+          threadId: 'experience-session',
+          requestId: 'request-one',
+          decision: 'accept',
+        },
+        { userId: 'experience-owner' },
+      ),
+    ).rejects.toThrow(/source|revision|unavailable/i);
+    expect(fixture.adapter.decisions).toEqual([]);
+    await fixture.service.dispatchWithReceipt(
+      {
+        type: 'respondToRequest',
+        threadId: 'experience-session',
+        requestId: 'request-one',
+        decision: 'decline',
+      },
+      { userId: 'experience-owner' },
+    );
+    expect(fixture.adapter.decisions).toEqual(['decline']);
+    const view = await fixture.service.readSkillExperience(
+      'experience-session',
+      INTERNAL_SESSION_READ_SCOPE,
+    );
+    expect(view?.current).toMatchObject({
+      snapshot: { inputs: { idea: 'A careful review process' } },
+      availability: { status: 'source-unavailable' },
+    });
+  } finally {
+    await fixture.service.shutdown();
+  }
+});
+
+test('invalid declared inputs and unsupported dispatch leave no canonical experience invocation', async () => {
+  const fixture = await experienceRuntime();
+  try {
+    const invalid = await selectedTurn(fixture, { forgedField: 'data' });
+    expect(
+      invalid.status,
+      JSON.stringify(await readJson(invalid.clone())),
+    ).toBe(400);
+    expect(fixture.adapter.turns).toEqual([]);
+    expect(
+      fixture.store.listSkillExperienceEvents('experience-session'),
+    ).toEqual([]);
+    const body = {
+      target: {
+        environment: { kind: 'saved', id: 'other-station' },
+        agent: 'claude',
+      },
+      message: 'start',
+      clientTurnId: 'client',
+      skillExperience: { identity: fixture.identity, inputs: { idea: 'test' } },
+    };
+    expect(
+      (
+        await fixture.routes.request('/chat', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(body),
+        })
+      ).status,
+    ).toBe(400);
+    expect(fixture.adapter.turns).toEqual([]);
+  } finally {
+    await fixture.service.shutdown();
+  }
 });

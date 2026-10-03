@@ -29,7 +29,11 @@ import {
   type StationAgentPluginExtensionV1,
 } from '@kontourai/station-contracts/agent-plugin';
 import { isCanonicalPluginId } from '@kontourai/station-contracts/plugin';
-import type { SkillExperienceInventoryV1 } from '@kontourai/station-contracts/skill-experience';
+import type {
+  SkillExperienceDefinitionV1,
+  SkillExperienceIdentityV1,
+  SkillExperienceInventoryV1,
+} from '@kontourai/station-contracts/skill-experience';
 import type { ToolDef, ToolMetadata } from '@kontourai/station-contracts/tool';
 import { parseAgentPluginManifest } from '@kontourai/station-shared/agent-plugin-manifest';
 import {
@@ -859,6 +863,100 @@ export class AgentPluginLoader {
       });
     }
     return inventory;
+  }
+
+  async withSkillExperience<T>(
+    identity: SkillExperienceIdentityV1,
+    effect: (
+      definition: SkillExperienceDefinitionV1,
+      entryContent: string,
+    ) => Promise<T>,
+  ): Promise<T> {
+    return withPluginContentLock(
+      this.pluginsDir,
+      identity.pluginId,
+      async () => {
+        const root = this.selectedRoot(identity.pluginId)?.packageRoot;
+        const journal = this.options.journal?.();
+        const current = journal?.currentInstallation(identity.pluginId);
+        if (
+          !root ||
+          !journal ||
+          current?.state !== 'observed' ||
+          current.installation.incarnation !== identity.incarnation ||
+          current.installation.materialization !== identity.materialization ||
+          current.installation.contentDigest !== identity.contentDigest ||
+          !journal.admissionOpen(current.installation) ||
+          (await computePluginContentDigestAsync(
+            dirname(root),
+            basename(root),
+          )) !== identity.contentDigest
+        )
+          throw new Error(
+            'The selected Skill experience source is no longer available.',
+          );
+        const parsed = this.parseManifest(
+          root,
+          JSON.parse(
+            readBoundedRegularFile(
+              resolveContainedPath(root, join(root, 'plugin.json')),
+            ),
+          ),
+          [],
+        );
+        if (
+          !parsed?.stationExtension ||
+          parsed.manifest.version !== identity.pluginVersion ||
+          parsed.manifest.name !== identity.pluginId
+        )
+          throw new Error('The selected Skill experience package changed.');
+        const definition = readValidatedSkillExperiences(
+          root,
+          parsed.manifest,
+          parsed.stationExtension,
+        ).find((value) => value.id === identity.experienceId);
+        if (
+          !definition ||
+          createHash('sha256')
+            .update(JSON.stringify(definition))
+            .digest('hex') !== identity.definitionDigest
+        )
+          throw new Error('The selected Skill experience definition changed.');
+        const entry =
+          definition.skills.find(
+            (skill) => skill.id === definition.entrySkillId,
+          ) ??
+          (definition.skills.length === 1 ? definition.skills[0] : undefined);
+        if (!entry)
+          throw new Error('This experience needs an explicit entry Skill.');
+        const content = readBoundedRegularFile(
+          resolveContainedPath(root, join(root, entry.path)),
+        );
+        const reserved = journal.reserve(current.installation, 'app');
+        if (reserved.state !== 'reserved')
+          throw new Error('The Skill experience source is retiring.');
+        let entered = false;
+        try {
+          if (
+            !reserved.claim.isCurrent() ||
+            this.selectedRoot(identity.pluginId)?.packageRoot !== root ||
+            (await computePluginContentDigestAsync(
+              dirname(root),
+              basename(root),
+            )) !== identity.contentDigest ||
+            reserved.claim.enterEffectBoundary().state !== 'applied'
+          )
+            throw new Error(
+              'The Skill experience source changed before dispatch.',
+            );
+          entered = true;
+          return await effect(definition, content);
+        } finally {
+          if (entered) reserved.claim.observeLocalSettlement();
+          else reserved.claim.releaseNotStarted();
+        }
+      },
+    );
   }
 
   skillSources(

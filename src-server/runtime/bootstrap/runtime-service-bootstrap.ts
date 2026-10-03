@@ -208,6 +208,12 @@ export function createRuntimeServiceBundle(
       // Canonical Flow Agents skills (deliver, plan-work, verify-work, …)
       // from the installed package become browsable/assignable Station
       // skills — a read-only source adapter, no copied content (S3 item 3).
+      ...(agentPluginLoader
+        ? {
+            experienceSource: (identity, effect) =>
+              agentPluginLoader.withSkillExperience(identity, effect),
+          }
+        : {}),
       experienceInventory: () =>
         agentPluginLoader?.listSkillExperiences() ??
         Promise.resolve({ experiences: [], diagnostics: [] }),
