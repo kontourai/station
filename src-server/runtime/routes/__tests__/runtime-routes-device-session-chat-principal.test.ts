@@ -1438,13 +1438,16 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       expect(
         (await projectRead(`/api/tasks/${sharedTaskId}/room/history`)).status,
       ).toBe(403);
+      // #3114 admits `publication` through the account-bound device gate; the
+      // operator-only publication read then refuses this guest with the shared
+      // Task routes' uniform not-found, which hides the Task's existence.
       expect(
         (
           await projectRead(
             `/api/projects/example/shared-work/${sharedTaskId}/publication`,
           )
         ).status,
-      ).toBe(403);
+      ).toBe(404);
       expect(
         (
           await h.app.request(
