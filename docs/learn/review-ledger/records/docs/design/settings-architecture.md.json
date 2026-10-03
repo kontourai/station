@@ -42,7 +42,7 @@
 
     {"path":"src-ui/src/views/settings/SettingDescription.tsx","digest":"7c0376011e9e19c7e686ecfe684096dc632663d1fadabe63a70012d4da571037","revision":"75785f43c80623e548f4ae8f5282be9585e203dd"},
 
-    {"path":"src-ui/src/components/project-sidebar/CustomizeDialog.tsx","digest":"dede5e523bdfd9cfd35d47713c093955a3b28756c17ff79b47d834b5bb63606e","revision":"75785f43c80623e548f4ae8f5282be9585e203dd"}
+    {"path":"src-ui/src/components/project-sidebar/CustomizeDialog.tsx","digest":"3db76b75e91d1cf6f1d418b0aada9566de3b5210d27530877e52b1a9a0b3f92e","revision":"b2f50f803b524348c434b47dd69b5c158bfe45bb"}
   ],
 
   "checks": [
