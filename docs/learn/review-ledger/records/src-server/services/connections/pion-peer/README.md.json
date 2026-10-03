@@ -28,7 +28,7 @@
 
     {"path":"src-server/routes/connections/self-hosted-broker.ts","digest":"8a81abcb1d765efe8fee54b06346efc83d05b9562712d03e06c02ba72457a1dd","revision":"70e9b50c5329411de0b7b432408f0722407a0208"},
 
-    {"path":"src-server/runtime/bootstrap/self-hosted-broker-pion-runtime.ts","digest":"d0eaf0a7651d34680ab4ee3398f7c1f1f9924534ad0e26f9a8e7bff14fef7120","revision":"55606e0498d0cbd6e7edad154f82dce3c102b186"},
+    {"path":"src-server/runtime/bootstrap/self-hosted-broker-pion-runtime.ts","digest":"7eceb541e24aeb96ba8d48cf40f6ecf1ac387265141fb402314148ffcd18ddd9","revision":"cd7fc0c8c53bad1b4197037f5f2f14a55f319f91"},
 
     {"path":"src-server/runtime/bootstrap/self-hosted-broker-runtime.ts","digest":"bf1a6e8cbaa90f70068cb932c5fbfece01180b2624ff66c0847f3ea326ce5309","revision":"f57565382a6ff45cb87c52b04cced05fc7589e56"},
 

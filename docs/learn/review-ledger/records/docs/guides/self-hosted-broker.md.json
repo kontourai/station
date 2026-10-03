@@ -84,11 +84,11 @@
 
     {"path":"src-server/runtime/bootstrap/__tests__/self-hosted-broker-pion-runtime-native.test.ts","digest":"6784c9f57b329a5094f402f66f0bcd11ca06907cdbefe8987e4ce2e3d627df2d","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
-    {"path":"src-server/runtime/bootstrap/__tests__/self-hosted-broker-pion-runtime.test.ts","digest":"b8a12b60f5212d7f3b7f8b6cff814bdc14923cf5ba1a31ddc9e20f3d56464e0c","revision":"55606e0498d0cbd6e7edad154f82dce3c102b186"},
+    {"path":"src-server/runtime/bootstrap/__tests__/self-hosted-broker-pion-runtime.test.ts","digest":"35134654e1721e269e418fe8fcc75098093606e07d221b9309f2cf66c946912e","revision":"cd7fc0c8c53bad1b4197037f5f2f14a55f319f91"},
 
     {"path":"src-server/runtime/bootstrap/__tests__/self-hosted-connector-config.test.ts","digest":"e6ec2fe6f254369e7b0da6563ff205d63ab714186bbb24e1527919b7e191957d","revision":"8aacc3bd625dd38c7b10bd7c88b7db4f03792a73"},
 
-    {"path":"src-server/runtime/bootstrap/self-hosted-broker-pion-runtime.ts","digest":"d0eaf0a7651d34680ab4ee3398f7c1f1f9924534ad0e26f9a8e7bff14fef7120","revision":"55606e0498d0cbd6e7edad154f82dce3c102b186"},
+    {"path":"src-server/runtime/bootstrap/self-hosted-broker-pion-runtime.ts","digest":"7eceb541e24aeb96ba8d48cf40f6ecf1ac387265141fb402314148ffcd18ddd9","revision":"cd7fc0c8c53bad1b4197037f5f2f14a55f319f91"},
 
     {"path":"src-server/runtime/bootstrap/self-hosted-broker-runtime.ts","digest":"bf1a6e8cbaa90f70068cb932c5fbfece01180b2624ff66c0847f3ea326ce5309","revision":"f57565382a6ff45cb87c52b04cced05fc7589e56"},
 
@@ -124,7 +124,7 @@
 
     {"path":"src-server/services/connections/self-hosted-broker-service.ts","digest":"14d84787028115548c0b594e20b5077ce47b24f1e72785332d9486f83b946241","revision":"70e9b50c5329411de0b7b432408f0722407a0208"},
 
-    {"path":"src-server/services/connections/virtual-application.ts","digest":"e23d2888c8a9e78057d80d7debdde0a0e29d25f1812c9c716e9d74c2dc636be6","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
+    {"path":"src-server/services/connections/virtual-application.ts","digest":"4f5b04f412f414d36d3ba402751788f75262386866a41aff81f256cb1e0315e8","revision":"99d242ffc7c9a5522d0ae0e9d3b208b3b4926ccf"},
 
     {"path":"src-server/services/identity/relay-enrollment-service.ts","digest":"f4abb50060321e593e55eac98c1adcfffa2440caecc90e4df26b7537d8d61fed","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 

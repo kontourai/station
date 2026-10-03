@@ -16,7 +16,7 @@
 
     {"path":"docs/ui/responsive-surfaces.json","digest":"ed85a588d1029bca3f050c4225772a2b58c42e944af63014960389794d0b24c5","revision":"d1708e0a66e7328c9c62a95865f1bb1dcfbeb8d1"},
 
-    {"path":"packages/sdk/src/client/http.ts","digest":"9892699e68483e0df3dd67ce71956994e98a43755a0c931dd6c3c5660caee00e","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+    {"path":"packages/sdk/src/client/http.ts","digest":"1a972988f609e649ef5667c2d553a510644eb38718c1d1f7ec6fa376899e74b5","revision":"99d242ffc7c9a5522d0ae0e9d3b208b3b4926ccf"},
 
     {"path":"packages/sdk/src/index.ts","digest":"f73107a4c0e92647e409563d7ccf7472bea46c81cf67864d9c160c979f39ca75","revision":"34d62da501fa53187b7062288f6e1dbaec8c20ed"},
 
@@ -40,7 +40,7 @@
 
     {"path":"src-server/routes/agents/agents.ts","digest":"06d20a294112b76993e9a1efd4ab9ce639242ab9116e04a7f1cbb7f68153ba23","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-server/runtime/bootstrap/runtime-http.ts","digest":"bf1b7671bc40fe53615a39f8e9f12b5ad27beace97a86fc50e2ebb4e9717d20e","revision":"54ca710a3594bf1f3b7ac3d4464a2db2edc6e6c0"},
+    {"path":"src-server/runtime/bootstrap/runtime-http.ts","digest":"ef738a958ef141e0c56aac9447bde629abd04530d47e3299c5027d73e7526645","revision":"cd7fc0c8c53bad1b4197037f5f2f14a55f319f91"},
 
     {"path":"src-server/runtime/streaming/StreamPipeline.ts","digest":"cdf3e6786b92a321ffa13c413f25b8b7bf367436b389f7212492cb2eccf1c6f2","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 

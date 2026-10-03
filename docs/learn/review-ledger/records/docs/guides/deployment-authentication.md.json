@@ -18,9 +18,9 @@
 
     {"path":"packages/sdk/src/client/application-session-native.ts","digest":"300c8da40100c1d2659a8324654ee9216129b58ab5756b3724080f72e4b0bbcf","revision":"2e4f061f91ffb0338e45de62382cf6da59cd5c76"},
 
-    {"path":"packages/sdk/src/client/application-session.ts","digest":"47e755613e8c9008336e854ce799b1411f44017b5250958cadd0401d16c2c501","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"packages/sdk/src/client/application-session.ts","digest":"e99f9213d5664cb43887c1785a0ed5a332d52616f143fb08b7184d93c8a43819","revision":"59dd5f220c057d2052ad5bf075ea060793f85225"},
 
-    {"path":"packages/sdk/src/client/projects.ts","digest":"9fd218a7c499cab4fcc9d04e04ca8ff4a7cd7465d2c4176d3b4434cf627c2ffa","revision":"1da4798fab6730e9c81fb91d9d3dbbebc952f976"},
+    {"path":"packages/sdk/src/client/projects.ts","digest":"94f2434565ed7f81ba8ae0f66d6082a6908838401ae5174db1cad713d60c1347","revision":"99d242ffc7c9a5522d0ae0e9d3b208b3b4926ccf"},
 
     {"path":"pnpm-lock.yaml","digest":"4f9a974bd49f637fd690699b3bcd9b6ce915114eb4f52e2e6bdd5b0f3b699f2a","revision":"ea49cb8678208b9037f8e9ab3ceb2a95fe2647ff"},
 
@@ -40,9 +40,9 @@
 
     {"path":"src-server/runtime/bootstrap/native-device-proof-runtime.ts","digest":"54bb568bc83d313232b95afaff825e92965fb0d6cb92b5bad3fae295aed7c8f8","revision":"a72f474ba3d42a59409d95d36eb9e0264b599e33"},
 
-    {"path":"src-server/runtime/bootstrap/runtime-http.ts","digest":"bf1b7671bc40fe53615a39f8e9f12b5ad27beace97a86fc50e2ebb4e9717d20e","revision":"54ca710a3594bf1f3b7ac3d4464a2db2edc6e6c0"},
+    {"path":"src-server/runtime/bootstrap/runtime-http.ts","digest":"ef738a958ef141e0c56aac9447bde629abd04530d47e3299c5027d73e7526645","revision":"cd7fc0c8c53bad1b4197037f5f2f14a55f319f91"},
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"21831e2e97672cb946b2e23f9e183477773a632390b02daf66b3e6cf3fe20e71","revision":"595059eafa17ef6b7a39217a405619ecbfac2270"},
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"705fa6dfbd0ddff530ac60ba82dea54e1c072132348b23383190049850416786","revision":"cd7fc0c8c53bad1b4197037f5f2f14a55f319f91"},
 
     {"path":"src-server/security/native-device-request-authority.ts","digest":"1c45b668b337e71894ff067e35213f415cfc830aa6603efbf13f615114087d02","revision":"d4b8f59be510d5eb8220bc5a883dd1691cfa2679"},
 
@@ -50,7 +50,7 @@
 
     {"path":"src-server/services/connections/native-v2-pion-application-adapter.ts","digest":"4c2c4ce56b35cdedb57187141df0ac4d24bbb0c69da1dbe541acf54faf843dd7","revision":"55606e0498d0cbd6e7edad154f82dce3c102b186"},
 
-    {"path":"src-server/services/connections/virtual-application.ts","digest":"e23d2888c8a9e78057d80d7debdde0a0e29d25f1812c9c716e9d74c2dc636be6","revision":"3517d8f66db867fd982a8f9883ed85052c4e1fc1"},
+    {"path":"src-server/services/connections/virtual-application.ts","digest":"4f5b04f412f414d36d3ba402751788f75262386866a41aff81f256cb1e0315e8","revision":"99d242ffc7c9a5522d0ae0e9d3b208b3b4926ccf"},
 
     {"path":"src-server/services/identity/__tests__/application-session-service.test.ts","digest":"f154555f7c8e0b0c5a6ec8f8dff0ae861342be684c1e5e08040f321ef0ff11b5","revision":"3517d8f66db867fd982a8f9883ed85052c4e1fc1"},
 
@@ -78,7 +78,7 @@
 
     {"path":"src-server/utils/private-sqlite.ts","digest":"2db8ea78c58db8e55a7aff6bff8768d7f0364b9025dd52eaa98a98e7a6d6061f","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-ui/src/views/account/AccountEntryView.tsx","digest":"9531a840fb63ea89dc0333ec52949977a76ec04950a9dcf5541623ff68f7c5e4","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"src-ui/src/views/account/AccountEntryView.tsx","digest":"075102e16f725b97064957a677526602ad26d4ff6a50b01bcef9482c85ba1503","revision":"f9d07cd291c9a91ea04800a84167ac4a43a8ca69"},
 
     {"path":"src-ui/src/views/account/GuestDeviceOnboarding.tsx","digest":"7e6a036f893841dc121f95d9761e587fde027d8508142698b6ae6b1fedc6b6c8","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
