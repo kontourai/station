@@ -39,6 +39,12 @@ import {
   browserEpochMs,
   emitDiffCommitPerformanceMark,
 } from '../../performance/interactive-workspace-performance-hooks';
+import {
+  CollapseAllGlyph,
+  ColumnsGlyph,
+  ExpandAllGlyph,
+  WrapGlyph,
+} from '../icons/Glyph';
 import { SkeletonBlock } from '../state';
 
 type DiffCommentSide = DiffComment['side'];
@@ -280,12 +286,14 @@ export function DiffPanel({
     data: diff = '',
     isLoading: loading,
     error: queryError,
+    refetch,
   } = useCodingDiffQuery({ projectSlug, workingDir }, apiBase);
   return (
     <ObservedDiffPanel
       diff={diff}
       loading={loading}
       error={queryError?.message || null}
+      onRetry={() => void refetch()}
       observationKey={workingDir}
       projectSlug={projectSlug}
     />
@@ -297,6 +305,7 @@ export function ObservedDiffPanel({
   diff,
   loading = false,
   error = null,
+  onRetry,
   observationKey,
   projectSlug,
   providerComments,
@@ -304,6 +313,8 @@ export function ObservedDiffPanel({
   diff: string;
   loading?: boolean;
   error?: string | null;
+  /** Re-read after an error; the error line offers it when given. */
+  onRetry?: () => void;
   observationKey: string;
   projectSlug?: string;
   /**
@@ -713,31 +724,14 @@ export function ObservedDiffPanel({
   return (
     <div
       ref={performanceSurfaceRef}
+      className="diff-panel"
       data-station-performance-surface="worktree-diff"
-      style={{ height: '100%', display: 'flex', flexDirection: 'column' }}
     >
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: '8px',
-          padding: '6px 12px 4px',
-          flexShrink: 0,
-        }}
-      >
-        <span
-          style={{
-            fontSize: '11px',
-            fontWeight: 600,
-            color: 'var(--text-muted)',
-            textTransform: 'uppercase',
-            letterSpacing: '0.05em',
-          }}
-        >
-          Git Diff
-        </span>
-        {hasDiff && (
+      {/* One row: the counts, then four icon tools. The pane head names the
+          pane; nothing here repeats it. Two of the tools are toggles and say
+          so (`aria-pressed`); none carries a visible word. */}
+      {hasDiff && (
+        <div className="diff-panel__bar">
           <span className="diff-stat">
             <span className="diff-stat__files">
               {files.length} {files.length === 1 ? 'file' : 'files'}
@@ -749,71 +743,74 @@ export function ObservedDiffPanel({
               −{totalCounts.deletions}
             </span>
           </span>
-        )}
-        {hasDiff && (
-          <div style={{ display: 'flex', gap: '4px' }}>
+          <div className="diff-panel__tools">
             <button
               type="button"
               onClick={collapseAllFiles}
               title="Collapse all files"
               aria-label="Collapse all files"
-              className="diff-toggle"
+              className="diff-tool"
             >
-              Collapse all
+              <CollapseAllGlyph />
             </button>
             <button
               type="button"
               onClick={expandAllFiles}
               title="Expand all files"
               aria-label="Expand all files"
-              className="diff-toggle"
+              className="diff-tool"
             >
-              Expand all
+              <ExpandAllGlyph />
             </button>
             <button
               type="button"
               onClick={() =>
                 setDiffStyle(diffStyle === 'unified' ? 'split' : 'unified')
               }
-              title={`Switch to ${diffStyle === 'unified' ? 'split' : 'unified'} view`}
-              aria-label={`Diff view: ${diffStyle} (click to switch)`}
-              className="diff-toggle"
+              title="Split view"
+              aria-label="Split view"
+              aria-pressed={diffStyle === 'split'}
+              className="diff-tool"
             >
-              {diffStyle === 'unified' ? 'Unified' : 'Split'}
+              <ColumnsGlyph />
             </button>
             <button
               type="button"
               onClick={() => setWrap(!wrap)}
-              title={wrap ? 'Disable line wrap' : 'Enable line wrap'}
+              title="Wrap lines"
+              aria-label="Wrap lines"
               aria-pressed={wrap}
-              aria-label="Toggle line wrap"
-              className={
-                wrap ? 'diff-toggle diff-toggle--active' : 'diff-toggle'
-              }
+              className="diff-tool"
             >
-              Wrap
+              <WrapGlyph />
             </button>
           </div>
-        )}
-      </div>
-      <div style={{ flex: 1, overflowY: 'auto', padding: '4px 12px 12px' }}>
+        </div>
+      )}
+      <div className="diff-panel__body">
         {loading && <SkeletonBlock count={2} label="Loading diff" />}
         {error && (
-          <div style={{ fontSize: '12px', color: 'var(--error-text)' }}>
+          <p className="diff-panel__note diff-panel__note--error" role="alert">
             {error}
-          </div>
+            {onRetry && (
+              <>
+                {' '}
+                <button
+                  type="button"
+                  className="button button--link"
+                  onClick={onRetry}
+                >
+                  Retry
+                </button>
+              </>
+            )}
+          </p>
         )}
         {hasDiff && codeView}
         {!loading && !error && !hasDiff && (
-          <div
-            style={{
-              padding: '12px',
-              fontSize: '12px',
-              color: 'var(--text-muted)',
-            }}
-          >
+          <p className="diff-panel__note">
             {hasPatchText ? 'Unable to parse diff.' : 'No changes'}
-          </div>
+          </p>
         )}
       </div>
     </div>
