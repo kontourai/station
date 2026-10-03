@@ -101,7 +101,6 @@ const FRAMES: Record<NavigationView['type'], PageFrameSpec | null> = {
     // #2144: says what the page holds, not which storage tiers it spans —
     // "Station configuration" is a banned noun on this page (the epic's
     // naming rule), and the tiers are each box's own caption to state.
-    subtitle: 'Everything Station honors, and where each choice is saved',
     width: 'narrow',
   },
   profile: {

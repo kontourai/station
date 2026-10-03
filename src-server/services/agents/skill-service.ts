@@ -2406,22 +2406,93 @@ export class SkillService {
     name: string,
     projectHomeDir: string,
     projectSlug?: string,
+    expectedInstalledRevision?: string,
+    canUseSource?: (
+      source: import('@kontourai/station-contracts/catalog').RegistrySource,
+    ) => boolean,
   ): Promise<{ success: boolean; message: string }> {
     skillOps.add(1, { operation: 'install' });
-    const { getSkillRegistryProviders } = await import(
-      '../../providers/registries/registry.js'
+    const {
+      readRegistryCatalogSelection,
+      registrySourceManager,
+      RegistryCatalogRefusal,
+    } = await import('../../providers/registries/registry-source-manager.js');
+    const selection = readRegistryCatalogSelection(name);
+    if (selection) {
+      if (selection.kind !== 'skills')
+        throw new Error('Selected catalog item is not a skill.');
+      const manager = registrySourceManager(projectHomeDir);
+      const source = manager
+        .list()
+        .find((source) => source.id === selection.sourceId);
+      if (source && canUseSource?.(source) === false)
+        throw new RegistryCatalogRefusal(
+          'source-forbidden',
+          'Selected marketplace is not available to this caller.',
+        );
+      const resolved = await manager.resolve(name);
+      if (canUseSource?.(resolved.entry.source) === false)
+        throw new RegistryCatalogRefusal(
+          'source-forbidden',
+          'Selected marketplace is not available to this caller.',
+        );
+      return installSkillFromRegistry({
+        name: selection.itemId,
+        projectHomeDir,
+        projectSlug,
+        configLoader: this.configLoader,
+        providers: [
+          {
+            provider: resolved.entry
+              .provider as import('../../providers/provider-interfaces.js').ISkillRegistryProvider,
+          },
+        ],
+        selected: {
+          catalog: selection,
+          source:
+            resolved.item.source ??
+            resolved.entry.source.location ??
+            resolved.entry.source.displayName,
+          packageRevision: resolved.item.packageRevision,
+          item: resolved.item,
+          assertCurrent: async () => {
+            if (canUseSource?.(resolved.entry.source) === false)
+              throw new RegistryCatalogRefusal(
+                'source-forbidden',
+                'Selected marketplace is not available to this caller.',
+              );
+            await manager.resolve(name);
+            if (canUseSource?.(resolved.entry.source) === false)
+              throw new RegistryCatalogRefusal(
+                'source-forbidden',
+                'Selected marketplace is not available to this caller.',
+              );
+          },
+        },
+        expectedInstalledRevision,
+        rediscover: async () =>
+          this.rediscoverAfterWrite(projectHomeDir, projectSlug),
+      });
+    }
+    const manager = registrySourceManager(projectHomeDir);
+    const matches = (await manager.catalog('skills', canUseSource)).filter(
+      (item) => item.catalog?.itemId === name,
     );
-    // `installSkillFromRegistry` owns the capability itself.  Do not add an
-    // outer lock here: file capabilities are non-reentrant by design.
-    return installSkillFromRegistry({
-      name,
+    if (matches.length !== 1)
+      return {
+        success: false,
+        message:
+          matches.length > 1
+            ? 'Skill name is present in multiple marketplaces. Select its source before installing.'
+            : 'No available marketplace contains this skill.',
+      };
+    return this.installSkill(
+      matches[0]!.id,
       projectHomeDir,
       projectSlug,
-      configLoader: this.configLoader,
-      providers: getSkillRegistryProviders(),
-      rediscover: async () =>
-        this.rediscoverAfterWrite(projectHomeDir, projectSlug),
-    });
+      expectedInstalledRevision,
+      canUseSource,
+    );
   }
 
   async removeSkill(

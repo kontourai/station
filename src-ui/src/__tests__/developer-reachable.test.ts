@@ -19,7 +19,6 @@ import {
   DEVELOPER_TOOLS_FLAG,
 } from '../app-shell/destination-registry';
 import { getPathForView, resolveViewFromPath } from '../app-shell/routing';
-import { settingsSectionNavItems } from '../views/SettingsView';
 
 /**
  * The /developer surface (Slice F) replaced the old Monitoring sidebar entry.
@@ -51,14 +50,13 @@ describe('the developer surface is a destination', () => {
   });
 
   test('is offered as a Settings navigation row pointing at its route while developer tools are enabled', () => {
-    const developer = settingsSectionNavItems(
-      (section) => `/settings?view=${section}`,
-      APP_DESTINATION_REGISTRY.getSettingsNav(flagsState.flags),
+    const developer = APP_DESTINATION_REGISTRY.getCustomizeNav(
+      flagsState.flags,
     ).find((item) => item.label === 'Developer');
     expect(developer).toBeTruthy();
     // The row is what a reader presses, so the assertion is the HREF it
     // presses through to, not merely that a row with the word exists.
-    expect(developer?.href).toBe('/developer');
+    expect(developer?.route).toBe('/developer');
   });
 
   test('stays a deep-linkable route, but not an advertised one, while developer tools are disabled (station#3313)', () => {
@@ -66,10 +64,9 @@ describe('the developer surface is a destination', () => {
     // The route still resolves — gating is advertisement-only.
     expect(resolveViewFromPath('/developer')).toEqual({ type: 'developer' });
     expect(
-      settingsSectionNavItems(
-        (section) => `/settings?view=${section}`,
-        APP_DESTINATION_REGISTRY.getSettingsNav(flagsState.flags),
-      ).map((item) => item.label),
+      APP_DESTINATION_REGISTRY.getCustomizeNav(flagsState.flags).map(
+        (item) => item.label,
+      ),
     ).not.toContain('Developer');
   });
 });

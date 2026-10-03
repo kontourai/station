@@ -31,6 +31,8 @@ export function SessionDetailHeader({
   isStopped,
   isStreaming,
   connected,
+  connectionLabel,
+  currentActivity,
   stopTaskPending,
   onRequestStop,
   onOpenInChat,
@@ -49,6 +51,8 @@ export function SessionDetailHeader({
   isStopped: boolean;
   isStreaming: boolean;
   connected: boolean;
+  connectionLabel?: string;
+  currentActivity?: string;
   stopTaskPending: boolean;
   /** Opens the stop confirmation; never stops directly. */
   onRequestStop: () => void;
@@ -122,21 +126,25 @@ export function SessionDetailHeader({
             tone={sessionStateTone(state)}
             className="sessions-detail__status"
           />
-          {!isStopped && !connected && (
+          {!isStopped && (
             <span className="sessions-detail__live-indicator" role="status">
-              Connecting…
+              {connectionLabel ?? (connected ? 'Live' : 'Connecting…')}
+              {currentActivity && <> · {currentActivity}</>}
             </span>
           )}
         </div>
         {clauses.length > 0 && (
-          <p className="sessions-detail__meta-line">
-            {clauses.map((clause, index) => (
-              <Fragment key={`${index}:${clause}`}>
-                {index > 0 && ' · '}
-                <span>{clause}</span>
-              </Fragment>
-            ))}
-          </p>
+          <details className="sessions-detail__metadata">
+            <summary>Session info</summary>
+            <p className="sessions-detail__meta-line">
+              {clauses.map((clause, index) => (
+                <Fragment key={`${index}:${clause}`}>
+                  {index > 0 && ' · '}
+                  <span>{clause}</span>
+                </Fragment>
+              ))}
+            </p>
+          </details>
         )}
       </div>
       <div className="sessions-detail__actions">

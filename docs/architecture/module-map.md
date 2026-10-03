@@ -77,6 +77,7 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 | [KnowledgeSourceObservation](#knowledgesourceobservation) | Observe one registered canonical record without bootstrap, repair, or learning authority. | `src-server/knowledge-store/knowledge-store-provider.ts` |
 | [PluginCompositionModule](#plugincompositionmodule) | Stage and atomically activate scoped, reversible plugin capability graphs. | `src-server/services/plugins/plugin-composition.ts` |
 | [PluginGrantReconciliation](#plugingrantreconciliation) | Converge runtime capability generations after a durable plugin grant change. | `src-server/services/plugins/plugin-grant-reconciliation.ts` |
+| [RegistrySourceManager](#registrysourcemanager) | Persist connected catalogs and bind discovery, inspection and acquisition to the exact current source. | `src-server/providers/registries/registry-source-manager.ts` |
 | [RegistrySupplyChainPolicy](#registrysupplychainpolicy) | Verify registry package signatures and prepare exact pins and rollback sources. | `src-server/services/plugins/registry-supply-chain.ts` |
 | [ReviewEvidenceModule](#reviewevidencemodule) | Run independent read-only reviewers over one exact revision range and retain attributable findings without minting a verdict. | `src-server/services/evidence/review-evidence-module.ts` |
 | [VerificationCoordinator](#verificationcoordinator) | Coordinate one provenance-bound verification request through admission, execution, and receipt publication. | `scripts/lib/verification-coordinator.mjs` |
@@ -247,6 +248,45 @@ synthesized. See [protected application
 dispatch](../design/connection-broker.md#protected-application-dispatch) for lifecycle,
 limits and the remaining encrypted-path acceptance.
 
+## RegistrySourceManager
+
+[The source manager](../../src-server/providers/registries/registry-source-manager.ts)
+composes the existing visible Skill/plugin providers with user-added local
+Skill directories, public GitHub libraries and local/HTTPS Station manifests.
+It persists source configuration and last successful bounded snapshots under
+the Station home. [The configuration reader](../../src-server/providers/registries/registry-source-configuration.ts)
+refuses corrupt/unsupported or nonregular files and bounds the file to 8 MiB
+and retained snapshots to 32. [Installed-state projection](../../src-server/providers/registries/registry-catalog-installed-state.ts)
+uses the current local inventory and source ownership aliases for live and
+offline plugin rows. Manifest providers supply one fresh coherent observation
+for rows, source locations and untrusted publisher claims. A snapshot is discovery evidence; source removal/disable and
+plugin generation replacement/revocation are checked again before publication
+and use. A revoked provider cannot publish its in-flight result or fall back to
+its previously cached rows. Plugin-owned Skill catalogs also use the route's
+existing caller visibility projection, before inspection/acquisition reads.
+Installed-name/conflict projection also withholds provided plugin Skills from
+callers who cannot see the owning legacy or portable Agent Plugin.
+
+[Registry routes](../../src-server/routes/plugins/registry.ts) expose source
+management and source-qualified catalog tuples. The marketplace retains an
+inspected selection through filtering/refresh, preserves equal names, names
+partial/stale sources and returns installed content to the existing Library.
+[SkillService](../../src-server/services/agents/skill-service.ts) sends exactly
+one selected provider through the existing staging/publication owner, records
+its reviewed source/catalog revision and observed package digest, and stages
+updates before replacing the installed tree. Plugin acquisition retains the
+ordinary preview/consent/installer, raw publisher-signed item ID, source key and
+applied trust policy; host source IDs cannot authenticate a publisher.
+
+The public shapes and provider interfaces are in
+[`catalog`](../../packages/contracts/src/catalog.ts). SDK source actions
+invalidate the existing Registry query family. Route tests exercise source
+collision, unavailable sources, revision changes, retained installed packages,
+signed acquisition, caller projection and provider revocation; UI tests cover
+source actions and retained selection. These are local behavioral evidence,
+not hosted marketplace, native device, release or arbitrary private-source
+qualification. Other index formats and credential-bearing URLs are refused.
+
 ## Registry trust policy decisions
 
 [Registry trust policy](../../src-server/services/plugins/registry-trust-policy.ts) owns
@@ -340,7 +380,7 @@ commands/URLs/headers.
 
 **Intent and Interface.** `createDestinationRegistry(definitions)` composes one
 immutable destination inventory. Callers read registered destinations, advertised
-destinations for an explicit flag set, ordered sidebar, Settings-navigation or
+destinations for an explicit flag set, ordered sidebar, Customize-navigation or
 command-palette projections, exact root routes, and the destination owning a
 `NavigationView`. Labels and badges resolve when projected, after locale, branding, and
 live attention facts exist. The built-in application composition is
@@ -348,9 +388,9 @@ live attention facts exist. The built-in application composition is
 
 **Contract.** Composition rejects empty or duplicate IDs, non-absolute routes, duplicate
 exact-route owners, duplicate management-view owners, and duplicate sidebar or palette
-order slots. Settings rows have unique order within each group and cannot also be
+order slots. Customize rows have unique order within each group and cannot also be
 sidebar entries or hidden from navigation. Composition and filtering do not invoke
-labels or badges; Settings projection resolves its optional label/route overrides. A
+labels or badges; Customize projection resolves its optional label/route overrides. A
 flag-gated surface stays registered and routable while `getAdvertised` hides it.
 Developer advertisement uses the device-scoped `device:developer-tools` flag; other
 flags can come from server previews. `hiddenFromNav` removes the sidebar affordance;
@@ -361,7 +401,7 @@ palette after static destination projection.
 
 **Seam, Implementation, callers, and tests.** The UI shell composes built-in
 descriptors. `routing.ts` consumes exact routes and semantic management ownership;
-`ProjectSidebarNav`, `CommandPalette`, and notification header badge consume their
+`ProjectSidebarNav`, `CustomizeDialog`, `CommandPalette`, and notification header badge consume their
 ordered projections. Icons are a presentation Adapter keyed by the registry's finite
 icon vocabulary. Future trusted plugin surface contributions must enter at registry
 composition and pass the same validation; there is no mutable global `register()`
@@ -1925,6 +1965,15 @@ before terminal publication. [Tracking helpers](../../src-server/services/operat
 use stable handoff identities and catch observation-storage failures so those
 failures do not replace the wrapped domain result. The SDK/Activity UI consume
 these browser-safe records, not the private file store.
+
+The [Activity section](../../src-ui/src/components/action-operations/ActionOperationsSection.tsx)
+keeps platform actions separate from filtered sessions: operation records have
+account and optional machine/Session scope, without the Project or client-origin
+attribution those filters need. Its disclosure shows running and attention counts,
+opens for work needing attention, and keeps recent history collapsed separately.
+Terminal operation status owns the outcome text; retained progress does not make
+a succeeded, failed or cancelled operation read as still working. Active
+`reconciliation-required` operations remain visible as needing attention.
 
 [Service tests](../../src-server/services/operations/__tests__/action-operation-service.test.ts),
 [tracker tests](../../src-server/services/operations/__tests__/action-operation-tracker.test.ts)

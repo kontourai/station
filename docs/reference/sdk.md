@@ -1134,6 +1134,14 @@ Shared query-factory entry for agent conversation lists. Use this when a feature
 
 ### `useApiQuery<T>(queryKey, queryFn, config?)`
 
+Station's config-change event invalidates Trust bundle/report and Task answer
+support queries within the current authority's query client. Trust readers
+refetch invalidated data when remounted; Task answer support retains its
+existing fresh-authorization mount policy. Disabled observers remain disabled.
+Trust requests carry cancellation through API-base resolution and transport.
+See [Trust query owners](../../packages/sdk/src/query-domains/trustBundles.ts)
+and [the config-change consumer](../../src-ui/src/hooks/useServerEvents.ts).
+
 Generic query hook for a caller-owned async function. It passes an AbortSignal;
 the function must use it and handle HTTP status, response validation and
 authority. The following host-supplied reader must already implement those
@@ -1790,6 +1798,29 @@ status, not the preview requirement list. An absent status on an older server is
 unknown; it must not be replaced with an empty list or inferred from preview.
 Each present dependency row has an `id` and typed `pendingConsent` permission/tier
 entries. Trusted permissions still require separate host-owned approval.
+
+### Marketplace source hooks
+
+`useRegistrySourcesQuery()` reads `GET /api/registry/sources` through the current
+SDK request scope. `useRegistrySourceActionMutation()` accepts `{action, id?,
+source?}` with `add`, `enable`, `disable`, `remove` or `refresh`; `add` supplies
+`{displayName, adapter, location}`. Mutations invalidate Registry queries.
+`useRegistrySkillContentQuery(id)` inspects the unchanged opaque catalog
+selection ID and is disabled without an ID. These hooks use the existing
+React Query/request authority rather than a separate marketplace cache.
+
+Published `RegistrySource`, `RegistryCatalogSelection`, `SkillRegistryProvider`
+and `PluginRegistryProvider` types live in `@kontourai/station-contracts/catalog`.
+A provider's catalog metadata is untrusted publisher input. Source identity,
+selection/revision binding and current plugin visibility remain host-owned;
+registering a provider neither installs its content nor grants permission.
+Skill providers can expose `getPackageRevision` and enforce its value in
+`install`'s `expectedPackageRevision`. Plugin providers resolve fresh package
+source/claims through the existing installer and applied trust policy.
+`getCatalogSnapshot()` can return `PluginRegistryCatalogSnapshot`: the item
+rows, package source/claim pairs and revision from one fresh observation.
+Station manifest providers use that observation together; metadata and claims
+remain untrusted until the existing acquisition authority verifies them.
 
 ### `usePluginsQuery(config?)`
 
