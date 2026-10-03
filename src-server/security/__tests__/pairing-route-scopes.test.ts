@@ -806,6 +806,11 @@ describe('pairing-route-scopes: table-driven lookups', () => {
     ['GET', '/api/orchestration/runs', 'orchestration:read'],
     [
       'GET',
+      '/api/orchestration/sessions/thread-1/skill-experience',
+      'orchestration:read',
+    ],
+    [
+      'GET',
       '/api/starter-work/inspect-approval/candidate',
       'orchestration:read',
     ],
