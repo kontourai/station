@@ -146,6 +146,25 @@ that response. Then the user can request a fresh challenge with the existing
 routing grant and enter account details again. A lost activation result still
 requires a status check before cancellation or a new setup.
 
+A newer routing generation can carry terminal status or cancellation of an
+expired saved candidate when the broker, Station application address, Station
+and enrollment IDs, approved installation surface and Station trust are
+unchanged. The [native host](../../src-desktop/src/native_enrollment_host.rs)
+keeps the original challenge, recipient and proof-key owner. Only the transport
+and response peer nonce are fresh. The saved profile must have no Device
+credential, and the attempt must have no staged delivery or possible activation.
+Only a signed terminal response can release its custody; this path never returns
+pending or active authority, retries credentials, or renews the old ceremony.
+
+New journal rows retain their broker origin. Older rows can recover only when
+[Station trust custody](../../src-desktop/src/native_station_key_custody.rs)
+proves the original trust revision still has exactly one approved binding for
+that profile, installation, Station and enrollment. Ambiguous or changed
+approvals fail closed. Login, registration, finalization and activation retain
+their exact-generation checks. A committed Device whose activation result was
+lost needs the separate activation-publication recovery path, not this expired
+candidate cleanup.
+
 The [service](../../src-server/services/identity/native-relay-enrollment-service.ts)
 uses the supported provider's private pending session owner. The local username
 provider adds invitation-gated registration using its maintained signup and

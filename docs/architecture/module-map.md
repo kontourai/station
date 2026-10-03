@@ -842,6 +842,10 @@ use fixed host operations through a fresh verified encrypted peer. Network
 cleanup does not cancel a staged or committed enrollment. Explicit cancellation
 retires only the owned attempt. Recovery reads host state; an active transition
 must pass the host's currentness lookup before accepting its profile revision.
+Expired candidates can use a newer routing generation only for signed terminal
+cleanup under the unchanged broker, Station, enrollment, installation and trust.
+The original ceremony remains bound to its old generation; no active or staged
+Device can use this exception.
 
 The [Station service](../../src-server/services/identity/native-relay-enrollment-service.ts)
 requires supported pending account verification and a real operator's approval

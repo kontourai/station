@@ -5259,6 +5259,34 @@ fn native_enrollment_next_store(
     serde_json::to_string(&next).map_err(|_| "The enrollment profile update is invalid".into())
 }
 
+fn native_enrollment_terminal_profile_current(
+    app: &AppHandle,
+    name: &str,
+    expected_revision: u64,
+) -> Result<(), String> {
+    let path = station_profiles_path(app)?;
+    let _lock = lock_station_profiles_for_app(app, &path)?;
+    let store = parse_station_profile_store(
+        &read_station_profile_store(&path).map_err(|_| "The enrollment profile is unavailable")?,
+    )?;
+    native_enrollment_terminal_profile_check(&store, name, expected_revision)
+}
+
+fn native_enrollment_terminal_profile_check(
+    store: &CredentialProfileStore,
+    name: &str,
+    expected_revision: u64,
+) -> Result<(), String> {
+    let profile = selected_profile_from_store(store, name)?;
+    if store.revision != expected_revision
+        || profile.credential_ref.is_some()
+        || profile.configuration_state != "unconfigured"
+    {
+        return Err("native_enrollment_operation_refused".into());
+    }
+    Ok(())
+}
+
 fn native_enrollment_owned_revision(
     app: &AppHandle,
     name: &str,
@@ -17957,6 +17985,13 @@ mod tests {
         station_profile_store_write_with_host(&host, &authority, &pending, fresh, 0, None).unwrap();
         let current =
             parse_station_profile_store(&read_station_profile_store(&path).unwrap()).unwrap();
+        assert!(
+            native_enrollment_terminal_profile_check(&current, "relay", current.revision).is_ok()
+        );
+        assert!(
+            native_enrollment_terminal_profile_check(&current, "relay", current.revision + 1)
+                .is_err()
+        );
         let staged = native_enrollment_next_store(
             &current,
             "relay",
@@ -17966,6 +18001,13 @@ mod tests {
             "requires-auth",
         )
         .unwrap();
+        let delivered_profile = parse_station_profile_store(&staged).unwrap();
+        assert!(native_enrollment_terminal_profile_check(
+            &delivered_profile,
+            "relay",
+            delivered_profile.revision
+        )
+        .is_err());
         station_profile_store_write_with_host(
             &host,
             &authority,

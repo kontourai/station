@@ -102,7 +102,7 @@ function pair() {
   server.other = client;
   return { client, server };
 }
-async function fixture() {
+async function fixture(initialGeneration = 1) {
   const home = makeTempDir('native-enrollment-integration-');
   const security = new EnvironmentSecurityService({ homeDir: home });
   const { environmentId: stationId, credential: operator } =
@@ -171,6 +171,7 @@ async function fixture() {
     authentication: accounts.service,
     signing,
     operatorSecurity: security,
+    now: () => Date.now(),
   });
   const app = new Hono();
   configureRuntimeHttp({
@@ -219,7 +220,7 @@ async function fixture() {
   const scope = {
     stationId,
     enrollmentId: trust.enrollmentId,
-    routingGeneration: 1,
+    routingGeneration: initialGeneration,
   };
   const operatorPost = (path: string, body: unknown, bearer = operator) =>
     app.request(`${ORIGIN}${path}`, {
@@ -284,8 +285,44 @@ async function fixture() {
     },
     { startAdapter: start, serve: serveApplicationChannel },
   );
+  let transportScope = scope;
+  let transportSurface = surface;
+  async function replaceTransport(generation: number, installation = surface) {
+    const next = { ...scope, routingGeneration: generation };
+    if (
+      !registry
+        .approvedSurfaces()
+        .some(
+          (approval) =>
+            nativeEnrollmentCanonical(approval.scope) ===
+              nativeEnrollmentCanonical(next) &&
+            nativeEnrollmentCanonical(approval.surface) ===
+              nativeEnrollmentCanonical(installation),
+        )
+    ) {
+      const approved = await operatorPost(
+        '/api/pairing/native-relay-surfaces',
+        {
+          operation: 'approve',
+          tuple: { scope: next, surface: installation },
+        },
+      );
+      expect(approved.status, await approved.clone().text()).toBe(200);
+    }
+    transportScope = next;
+    transportSurface = installation;
+  }
   async function exchange(path: string, body: unknown, nonce = opaque()) {
-    const captured = registry.approvedSurfaces()[0]!;
+    const captured = registry
+      .approvedSurfaces()
+      .find(
+        (approval) =>
+          nativeEnrollmentCanonical(approval.scope) ===
+            nativeEnrollmentCanonical(transportScope) &&
+          nativeEnrollmentCanonical(approval.surface) ===
+            nativeEnrollmentCanonical(transportSurface),
+      );
+    if (!captured) throw new Error('transport approval missing');
     const descriptor = signing.readDescriptor()!;
     const { stationConnectionSigningKeyId } = await import(
       '@kontourai/station-shared/connection-proof'
@@ -293,11 +330,11 @@ async function fixture() {
     await resolved.adapter.answer(
       {
         version: 'station-broker-native-connection-offer/v2',
-        scope,
-        surface,
+        scope: transportScope,
+        surface: transportSurface,
         stationSigningKeyId: await stationConnectionSigningKeyId(descriptor),
         stationSigningGeneration: descriptor.generation,
-        clientId: surface.clientInstanceId,
+        clientId: transportSurface.clientInstanceId,
         nonce,
         offerSdp: OFFER,
         expiresAt: Date.now() + 60000,
@@ -512,6 +549,7 @@ async function fixture() {
     registered,
     activate,
     exchange,
+    replaceTransport,
   };
 }
 
@@ -707,3 +745,106 @@ test('expired before registration can confirm owned cancellation without account
     ),
   ).toBeNull();
 });
+
+test('newer routing generation closes only the expired original Device ceremony', async () => {
+  let now = Date.now();
+  vi.spyOn(Date, 'now').mockImplementation(() => now);
+  const h = await fixture();
+  await h.replaceTransport(2);
+  const payload = {
+    enrollmentId: h.challenge.enrollmentId,
+    candidate: h.candidate,
+  };
+  const live = await h.proved('cancel', payload);
+  expect(live.response.status, live.raw).toBe(400);
+  const login = await h.proved('register', {
+    ...payload,
+    credentials: { username: 'zach', password: 'not-authorized-by-new-route' },
+    invitation: h.invite.token,
+  });
+  expect(login.response.status, login.raw).toBe(400);
+  now += 60_000;
+  const newer = await h.exchange(`${BASE}/begin`, {
+    version: VERSION,
+    clientAttemptId: opaque(),
+    peerNonce: opaque(),
+    expiresAt: now + 300_000,
+    recipient: h.challenge.recipient,
+  });
+  expect(newer.response.status, newer.raw).toBe(200);
+  now = h.challenge.expiresAt + 1;
+  const closed = await h.proved('cancel', payload);
+  expect(closed.response.status, closed.raw).toBe(200);
+  expect(h.journal.get(newer.data.enrollmentId)?.state).toBe('challenge');
+  expect(h.journal.get(newer.data.enrollmentId)?.expiresAt).toBeGreaterThan(
+    now,
+  );
+  expect(closed.data.state).toBe('cancelled');
+  expect(closed.data.binding.scope).toEqual(h.challenge.scope);
+  expect(closed.data.responsePeerNonce).toBe(closed.nonce);
+  expect(
+    h.journal.get(h.challenge.enrollmentId)?.providerSessionId,
+  ).toBeUndefined();
+  expect(
+    h.pairing.resolveActiveRelayEnrollmentDevice(
+      h.candidate.deviceId,
+      h.challenge.enrollmentId,
+    ),
+  ).toBeNull();
+  expect(await h.membership.previewInvitation(h.invite.token)).toMatchObject({
+    projectName: 'Shared Example',
+  });
+});
+
+test('successor route cannot finalize, activate or cancel a committed Device ceremony', async () => {
+  const h = await fixture();
+  const delivery = await h.registered();
+  await h.replaceTransport(2);
+  const finalize = await h.proved('finalize', {
+    enrollmentId: h.challenge.enrollmentId,
+  });
+  expect(finalize.response.status, finalize.raw).toBe(400);
+  const activation = await h.activate(delivery);
+  expect(activation.response.status, activation.raw).toBe(400);
+  await h.replaceTransport(1);
+  const active = await h.activate(delivery);
+  expect(active.response.status, active.raw).toBe(200);
+  await h.replaceTransport(2);
+  vi.spyOn(Date, 'now').mockReturnValue(h.challenge.expiresAt + 1);
+  for (const purpose of ['status', 'cancel']) {
+    const refused = await h.proved(purpose, {
+      enrollmentId: h.challenge.enrollmentId,
+      candidate: h.candidate,
+    });
+    expect(refused.response.status, refused.raw).toBe(400);
+  }
+  expect(h.journal.get(h.challenge.enrollmentId)?.state).toBe('committed');
+  expect(
+    h.pairing.resolveActiveRelayEnrollmentDevice(
+      h.candidate.deviceId,
+      h.challenge.enrollmentId,
+    ),
+  ).not.toBeNull();
+});
+
+test.each(['backward', 'different-installation'] as const)(
+  'expired terminal recovery refuses %s transport',
+  async (kind) => {
+    let now = Date.now();
+    vi.spyOn(Date, 'now').mockImplementation(() => now);
+    const h = await fixture(2);
+    await h.replaceTransport(
+      kind === 'backward' ? 1 : 3,
+      kind === 'different-installation'
+        ? { ...h.candidate.surface, clientInstanceId: randomUUID() }
+        : h.candidate.surface,
+    );
+    now = h.challenge.expiresAt + 1;
+    const refused = await h.proved('cancel', {
+      enrollmentId: h.challenge.enrollmentId,
+      candidate: h.candidate,
+    });
+    expect(refused.response.status, refused.raw).toBe(400);
+    expect(h.journal.get(h.challenge.enrollmentId)?.state).toBe('challenge');
+  },
+);

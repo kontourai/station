@@ -64,6 +64,8 @@ struct Attempt {
     surface: crate::native_enrollment::NativeEnrollmentSurface,
     trust_revision: u64,
     trust_generation: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    broker_origin: Option<String>,
     recipient_handle: String,
     recipient: crate::native_enrollment::NativeEnrollmentRecipient,
     challenge: Option<NativeEnrollmentChallenge>,
@@ -237,6 +239,122 @@ fn matches(attempt: &Attempt, capture: &NativeEnrollmentRouteCapture) -> bool {
         && attempt.owner.grant_digest == capture.grant_digest
         && attempt.owner.grant_id == capture.grant_id
 }
+fn terminal_successor_matches(
+    attempt: &Attempt,
+    route: &NativeEnrollmentRouteCapture,
+    purpose: &str,
+    broker_origin: &str,
+    now: u64,
+) -> bool {
+    let profile = &route.context.profile;
+    let Some(challenge) = &attempt.challenge else {
+        return false;
+    };
+    !attempt.cancelled
+        && matches!(purpose, "status" | "cancel")
+        && attempt.expires_at <= now
+        && challenge.expires_at <= now
+        && attempt.candidate.is_some()
+        && attempt.delivery.is_none()
+        && attempt.bundle.is_none()
+        && attempt.credential_reference.is_none()
+        && attempt.transition_handle.is_none()
+        && attempt.activation_proof_digest.is_none()
+        && profile.revision >= attempt.owner.profile_revision
+        && attempt.owner.profile_name == profile.profile_name
+        && attempt.owner.app_identifier == profile.app_identifier
+        && attempt.owner.channel == profile.channel.keyring_label()
+        && attempt.owner.station_origin == profile.station_endpoint
+        && attempt.owner.station_id == profile.station_id
+        && attempt.scope.station_id == route.scope.station_id
+        && attempt.scope.enrollment_id == route.scope.enrollment_id
+        && attempt.scope.routing_generation < route.scope.routing_generation
+        && attempt.surface == route.surface
+        && attempt.trust_revision == route.context.station_trust.revision
+        && attempt.trust_generation == route.context.station_trust.generation
+        && attempt
+            .broker_origin
+            .as_deref()
+            .is_none_or(|saved| saved == broker_origin)
+        && broker_origin == profile.broker_origin
+}
+
+fn load_for_route(
+    app: &AppHandle,
+    id: &str,
+    route: &NativeEnrollmentRouteCapture,
+    purpose: &str,
+) -> Result<Attempt> {
+    let attempt = load(id)?;
+    if attempt.scope.routing_generation == route.scope.routing_generation {
+        let owned = load_owned(app, id)?;
+        return if matches(&owned, route) {
+            Ok(owned)
+        } else {
+            Err(REFUSED.into())
+        };
+    }
+    let broker = if let Some(origin) = &attempt.broker_origin {
+        origin.clone()
+    } else {
+        let profile = &route.context.profile;
+        crate::native_station_key_custody::NativeStationTrustStore::system()
+            .unique_approved_broker_origin(
+                &crate::native_station_key_custody::TrustProfileBinding {
+                    profile_owner_id: attempt.owner.profile_name.clone(),
+                    app_identifier: attempt.owner.app_identifier.clone(),
+                    channel: attempt.owner.channel.clone(),
+                    client_instance_id: attempt.surface.client_instance_id.clone(),
+                    broker_origin: profile.broker_origin.clone(),
+                    station_id: attempt.owner.station_id.clone(),
+                    enrollment_id: attempt.scope.enrollment_id.clone(),
+                },
+                attempt.trust_revision,
+            )
+            .map_err(|_| REFUSED.to_owned())?
+    };
+    if !terminal_successor_matches(&attempt, route, purpose, &broker, time()) {
+        return Err(REFUSED.into());
+    }
+    crate::native_enrollment_terminal_profile_current(
+        app,
+        &attempt.owner.profile_name,
+        route.context.profile.revision,
+    )?;
+    Ok(attempt)
+}
+
+fn current_for_route(
+    app: &AppHandle,
+    attempt: &Attempt,
+    expected: &NativeEnrollmentRouteCapture,
+    purpose: &str,
+) -> Result<()> {
+    native_relay_redemption::with_current_native_enrollment_route(
+        app,
+        &attempt.owner.profile_name,
+        expected.context.profile.revision,
+        |live| {
+            if live != *expected {
+                return Err(REFUSED.into());
+            }
+            if matches(attempt, &live)
+                || terminal_successor_matches(
+                    attempt,
+                    &live,
+                    purpose,
+                    &live.context.profile.broker_origin,
+                    time(),
+                )
+            {
+                Ok(())
+            } else {
+                Err(REFUSED.into())
+            }
+        },
+    )
+}
+
 #[derive(Clone)]
 struct RequestCapture {
     route: NativeEnrollmentRouteCapture,
@@ -429,8 +547,8 @@ fn prepare(
     if purpose != "cancel" && purpose != "status" && aborted(app, attempt)? {
         return Err(REFUSED.into());
     }
-    let retained = load_owned(app, attempt)?;
-    if retained.cancelled || !matches(&retained, &route) {
+    let retained = load_for_route(app, attempt, &route, purpose)?;
+    if retained.cancelled {
         return Err(REFUSED.into());
     }
     let id = random()?;
@@ -505,21 +623,9 @@ fn consume_request(app: &AppHandle, id: &str, purpose: &str) -> Result<RequestCa
     if value.purpose != "cancel" && value.purpose != "status" && aborted(app, &value.attempt)? {
         return Err(REFUSED.into());
     }
-    let attempt = load_owned(app, &value.attempt)?;
-    native_relay_redemption::with_current_native_enrollment_route(
-        app,
-        &attempt.owner.profile_name,
-        attempt
-            .current_profile_revision
-            .unwrap_or(attempt.owner.profile_revision),
-        |live| {
-            if live == value.route && matches(&attempt, &live) {
-                Ok(value.clone())
-            } else {
-                Err(REFUSED.into())
-            }
-        },
-    )
+    let attempt = load_for_route(app, &value.attempt, &value.route, purpose)?;
+    current_for_route(app, &attempt, &value.route, purpose)?;
+    Ok(value)
 }
 fn point(capture: &RequestCapture) -> NativeEnrollmentPublicJwk {
     let p = &capture.route.context.station_trust.signing_key;
@@ -565,13 +671,11 @@ fn sign_payload(
     mut payload: serde_json::Value,
 ) -> Result<NativeEnrollmentPreparedRequest> {
     let (route, nonce, _) = capture_peer(app, peer)?;
-    let attempt = load_owned(app, attempt_id)?;
+    let attempt = load_for_route(app, attempt_id, &route, purpose)?;
     if purpose != "cancel" && purpose != "status" && attempt.expires_at <= time() {
         return Err("native_enrollment_expired".into());
     }
-    if !matches(&attempt, &route) {
-        return Err(REFUSED.into());
-    }
+    current_for_route(app, &attempt, &route, purpose)?;
     let challenge = attempt
         .challenge
         .as_ref()
@@ -618,7 +722,7 @@ pub(crate) async fn station_native_enrollment_begin_prepare(
             if rows.len()>=16{return Err(REFUSED.into());}
             let id=random()?;let p=&route.context.profile;let created=time();
             let owner=NativeEnrollmentRecipientOwner{client_attempt_id:id.clone(),app_identifier:p.app_identifier.clone(),channel:p.channel.keyring_label().into(),profile_name:p.profile_name.clone(),profile_revision:p.revision,station_id:p.station_id.clone(),station_origin:p.station_endpoint.clone(),route_generation:route.scope.routing_generation,grant_id:route.grant_id.clone(),grant_digest:route.grant_digest.clone(),peer_nonce:nonce};
-            let seed=Attempt{version:VERSION.into(),owner,scope:route.scope.clone(),surface:route.surface.clone(),trust_revision:route.context.station_trust.revision,trust_generation:route.context.station_trust.generation,recipient_handle:String::new(),recipient:native_enrollment::NativeEnrollmentRecipient{suite:native_enrollment::NativeEnrollmentSuite{kem:16,kdf:1,aead:1},public_key:String::new()},challenge:None,binding_id:None,candidate:None,cancelled:false,cancel_requested:false,delivery:None,bundle:None,credential_reference:None,current_profile_revision:None,transition_handle:None,activation_proof_digest:None,created_at:created,expires_at:(created+300000).min(route.grant_expires_at)};
+            let seed=Attempt{version:VERSION.into(),owner,scope:route.scope.clone(),surface:route.surface.clone(),trust_revision:route.context.station_trust.revision,trust_generation:route.context.station_trust.generation,broker_origin:Some(route.context.profile.broker_origin.clone()),recipient_handle:String::new(),recipient:native_enrollment::NativeEnrollmentRecipient{suite:native_enrollment::NativeEnrollmentSuite{kem:16,kdf:1,aead:1},public_key:String::new()},challenge:None,binding_id:None,candidate:None,cancelled:false,cancel_requested:false,delivery:None,bundle:None,credential_reference:None,current_profile_revision:None,transition_handle:None,activation_proof_digest:None,created_at:created,expires_at:(created+300000).min(route.grant_expires_at)};
             rows.push(IndexEntry{id:id.clone(),seed:seed.clone()});save_index(&app,&rows)?;
             save(&id,&seed)?;id
         }};
@@ -824,7 +928,7 @@ pub(crate) async fn station_native_enrollment_status_prepare(
     crate::native_relay_key_approval::require_main_app_window(&window, &app)?;
     tauri::async_runtime::spawn_blocking(move || {
         let _operation = HOST_OPERATION.lock().map_err(|_| REFUSED.to_owned())?;
-        let attempt = load_owned(&app, &enrollment_handle)?;
+        let attempt = load(&enrollment_handle)?;
         let id = &attempt
             .challenge
             .as_ref()
@@ -890,12 +994,13 @@ pub(crate) async fn station_native_enrollment_resume(
     crate::native_relay_key_approval::require_main_app_window(&window, &app)?;
     tauri::async_runtime::spawn_blocking(move||{
         let _operation=HOST_OPERATION.lock().map_err(|_|REFUSED.to_owned())?;
-        native_relay_redemption::with_current_native_enrollment_route(&app,&profile_name,expected_profile_revision, |_|Ok(()))?;
+        let selected=native_relay_redemption::with_current_native_enrollment_route(&app,&profile_name,expected_profile_revision, |route|Ok(route))?;
         let rows=index(&app)?;let mut result=vec![];
         for row in rows.into_iter().filter(|r|r.seed.owner.profile_name==profile_name) {
-            let attempt=match entry(&row.id)?.get_password(){Ok(_)=>load_owned(&app,&row.id)?,Err(keyring_core::Error::NoEntry)=>row.seed,Err(_)=>return Err(REFUSED.into())};
+            let (attempt, stored)=match entry(&row.id)?.get_password(){Ok(_)=>(load(&row.id)?,true),Err(keyring_core::Error::NoEntry)=>(row.seed,false),Err(_)=>return Err(REFUSED.into())};
             if attempt.cancelled {finish_terminal_cleanup(&app,&row.id,&attempt)?;continue;}
-            let route=current(&app,&attempt)?;if route.context.profile.revision!=expected_profile_revision{return Err(REFUSED.into());}
+            let attempt=if stored {load_for_route(&app,&row.id,&selected,"status")?} else {attempt};
+            current_for_route(&app,&attempt,&selected,"status")?;
             let phase=if attempt.cancel_requested{"cancel-required"}else if attempt.transition_handle.is_some(){"active"}else if attempt.activation_proof_digest.is_some(){"activation-unknown"}else if attempt.delivery.is_some(){"staged"}else if attempt.candidate.is_some(){"candidate"}else{"begin-required"};
             let transition = if phase == "active" {
                 Some(NativeEnrollmentActivationAccepted {
@@ -1202,13 +1307,14 @@ pub(crate) async fn station_native_enrollment_status_accept(
         if purpose!="status" && purpose!="cancel" {return Err(REFUSED.into());}
         let capture=consume_request(&app,&request_handle,&purpose)?;
         if response.get("state").and_then(serde_json::Value::as_str)==Some("active") {
-            if purpose=="cancel" {return Err(REFUSED.into());}
+            if purpose=="cancel" || load(&capture.attempt)?.scope!=capture.route.scope {return Err(REFUSED.into());}
             return serde_json::to_value(accept_active(&app,capture,response)?).map_err(|_|REFUSED.to_owned());
         }
-        let mut attempt=load_owned(&app,&capture.attempt)?;
+        let mut attempt=load_for_route(&app,&capture.attempt,&capture.route,&purpose)?;
         let signed:InactiveStatus=signed_response(&capture,response,"station-native-relay-enrollment-status+jws")?;
         if signed.version!=VERSION || !["pending","cancelled","expired","revoked"].contains(&signed.state.as_str()) || signed.binding!=attempt.challenge.as_ref().ok_or_else(||REFUSED.to_owned())?.binding() || Some(&signed.candidate)!=attempt.candidate.as_ref() || signed.response_peer_nonce!=capture.nonce || signed.station_signing_generation!=attempt.trust_generation || signed.observed_at>time()+5000 || time().saturating_sub(signed.observed_at)>30000 {return Err(REFUSED.into());}
-        current(&app,&attempt)?;
+        if attempt.scope!=capture.route.scope && signed.state=="pending" {return Err(REFUSED.into());}
+        current_for_route(&app,&attempt,&capture.route,&purpose)?;
         if signed.state!="pending" {
             if let Some(reference)=&attempt.credential_reference {crate::retire_owned_native_enrollment(&app,&attempt.owner.profile_name,reference)?;}
             attempt.cancelled=true;attempt.bundle=None;save(&capture.attempt,&attempt)?;
@@ -1228,7 +1334,7 @@ pub(crate) async fn station_native_enrollment_cancel_prepare(
     crate::native_relay_key_approval::require_main_app_window(&window, &app)?;
     tauri::async_runtime::spawn_blocking(move || {
         let _operation = HOST_OPERATION.lock().map_err(|_| REFUSED.to_owned())?;
-        let attempt = load_owned(&app, &enrollment_handle)?;
+        let attempt = load(&enrollment_handle)?;
         let id = &attempt
             .challenge
             .as_ref()
@@ -1281,4 +1387,304 @@ pub(crate) async fn station_native_enrollment_abort(
     })
     .await
     .map_err(|_| REFUSED.to_owned())?
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::native_enrollment::{
+        NativeEnrollmentRecipient, NativeEnrollmentScope, NativeEnrollmentSuite,
+        NativeEnrollmentSurface,
+    };
+    use crate::native_relay_proof_key::P256PublicJwk;
+    use crate::native_relay_redemption::{
+        ApprovedNativeStationTrust, NativeRedemptionContext, NativeRelayProfileSnapshot,
+        NativeStationTrustStatus,
+    };
+    use hpke::{Deserializable, Kem, Serializable};
+
+    fn public_point(byte: u8) -> Vec<u8> {
+        type P256 = hpke::kem::DhP256HkdfSha256;
+        let secret = <P256 as Kem>::PrivateKey::from_bytes(&[byte; 32]).unwrap();
+        P256::sk_to_pk(&secret).to_bytes().to_vec()
+    }
+
+    fn fixture() -> (Attempt, NativeEnrollmentRouteCapture) {
+        let scope = NativeEnrollmentScope {
+            station_id: "22222222-2222-4222-8222-222222222222".into(),
+            enrollment_id: "33333333-3333-4333-8333-333333333333".into(),
+            routing_generation: 11,
+        };
+        let surface = NativeEnrollmentSurface {
+            kind: "station-native".into(),
+            app_identifier: "io.kontourai.station.nightly".into(),
+            channel: "nightly".into(),
+            client_instance_id: "44444444-4444-4444-8444-444444444444".into(),
+            key_thumbprint: "K".repeat(43),
+        };
+        let device = public_point(2);
+        let proof_key = NativeEnrollmentPublicJwk {
+            kty: "EC".into(),
+            crv: "P-256".into(),
+            x: URL_SAFE_NO_PAD.encode(&device[1..33]),
+            y: URL_SAFE_NO_PAD.encode(&device[33..]),
+        };
+        let recipient = NativeEnrollmentRecipient {
+            suite: NativeEnrollmentSuite {
+                kem: 16,
+                kdf: 1,
+                aead: 1,
+            },
+            public_key: URL_SAFE_NO_PAD.encode(public_point(3)),
+        };
+        let candidate = NativeEnrollmentCandidate {
+            version: "station-native-device-binding-candidate/v1".into(),
+            station_id: scope.station_id.clone(),
+            device_id: "55555555-5555-4555-8555-555555555555".into(),
+            binding_id: "66666666-6666-4666-8666-666666666666".into(),
+            surface: surface.clone(),
+            device_proof_key_thumbprint: hash(&serde_jcs::to_vec(&proof_key).unwrap()),
+            device_proof_jwk: proof_key,
+        };
+        let challenge = NativeEnrollmentChallenge {
+            version: VERSION.into(),
+            station_id: scope.station_id.clone(),
+            station_audience: "https://station.example".into(),
+            scope: scope.clone(),
+            surface: surface.clone(),
+            peer_nonce: "N".repeat(43),
+            enrollment_id: "E".repeat(43),
+            reserved_device_id: candidate.device_id.clone(),
+            recipient: recipient.clone(),
+            nonce: "Q".repeat(43),
+            expires_at: 1000,
+            client_attempt_id: "A".repeat(43),
+            response_peer_nonce: "N".repeat(43),
+            requested_scope: "orchestration:read".into(),
+            registration_available: true,
+            station_signing_generation: 4,
+        };
+        let attempt = Attempt {
+            version: VERSION.into(),
+            owner: NativeEnrollmentRecipientOwner {
+                client_attempt_id: challenge.client_attempt_id.clone(),
+                app_identifier: surface.app_identifier.clone(),
+                channel: surface.channel.clone(),
+                profile_name: "relay".into(),
+                profile_revision: 2,
+                station_id: scope.station_id.clone(),
+                station_origin: challenge.station_audience.clone(),
+                route_generation: 11,
+                grant_id: "G".repeat(22),
+                grant_digest: "D".repeat(43),
+                peer_nonce: challenge.peer_nonce.clone(),
+            },
+            scope: scope.clone(),
+            surface: surface.clone(),
+            trust_revision: 3,
+            trust_generation: 4,
+            broker_origin: Some("https://broker.example".into()),
+            recipient_handle: "R".repeat(43),
+            recipient,
+            challenge: Some(challenge),
+            binding_id: Some(candidate.binding_id.clone()),
+            candidate: Some(candidate),
+            cancelled: false,
+            cancel_requested: true,
+            delivery: None,
+            bundle: None,
+            credential_reference: None,
+            current_profile_revision: None,
+            transition_handle: None,
+            activation_proof_digest: None,
+            created_at: 500,
+            expires_at: 1000,
+        };
+        let station = public_point(1);
+        let route = NativeEnrollmentRouteCapture {
+            context: NativeRedemptionContext {
+                profile: NativeRelayProfileSnapshot {
+                    revision: 7,
+                    profile_name: "relay".into(),
+                    station_endpoint: "https://station.example".into(),
+                    broker_origin: "https://broker.example".into(),
+                    station_id: scope.station_id.clone(),
+                    enrollment_id: scope.enrollment_id.clone(),
+                    app_identifier: surface.app_identifier.clone(),
+                    channel: NativeProofKeyChannel::Nightly,
+                    client_instance_id: surface.client_instance_id.clone(),
+                },
+                station_trust: ApprovedNativeStationTrust {
+                    revision: 3,
+                    status: NativeStationTrustStatus::Approved,
+                    station_endpoint: "https://station.example".into(),
+                    station_id: scope.station_id.clone(),
+                    enrollment_id: scope.enrollment_id.clone(),
+                    generation: 4,
+                    signing_key: P256PublicJwk::from_verified_p256_coordinates(
+                        URL_SAFE_NO_PAD.encode(&station[1..33]),
+                        URL_SAFE_NO_PAD.encode(&station[33..]),
+                    ),
+                },
+            },
+            scope: NativeEnrollmentScope {
+                routing_generation: 12,
+                ..scope
+            },
+            surface,
+            grant_digest: "H".repeat(43),
+            grant_id: "J".repeat(22),
+            grant_expires_at: 10000,
+        };
+        (attempt, route)
+    }
+
+    #[test]
+    fn expired_candidate_successor_admission_is_terminal_only() {
+        let (attempt, route) = fixture();
+        assert!(terminal_successor_matches(
+            &attempt,
+            &route,
+            "cancel",
+            "https://broker.example",
+            2000
+        ));
+        assert!(terminal_successor_matches(
+            &attempt,
+            &route,
+            "status",
+            "https://broker.example",
+            2000
+        ));
+        for purpose in ["begin", "login", "register", "finalize", "activate"] {
+            assert!(
+                !terminal_successor_matches(
+                    &attempt,
+                    &route,
+                    purpose,
+                    "https://broker.example",
+                    2000
+                ),
+                "{purpose}"
+            );
+        }
+    }
+
+    #[test]
+    fn terminal_successor_refuses_other_owners_unexpired_and_possible_activation() {
+        let (attempt, route) = fixture();
+        assert!(!terminal_successor_matches(
+            &attempt,
+            &route,
+            "cancel",
+            "https://different-broker.example",
+            2000
+        ));
+        assert!(!terminal_successor_matches(
+            &attempt,
+            &route,
+            "cancel",
+            "https://broker.example",
+            999
+        ));
+        for variant in [
+            "same",
+            "backward",
+            "station",
+            "enrollment",
+            "origin",
+            "profile",
+            "installation",
+            "trust",
+            "key",
+        ] {
+            let mut changed = route.clone();
+            match variant {
+                "same" => changed.scope.routing_generation = 11,
+                "backward" => changed.scope.routing_generation = 10,
+                "station" => changed.context.profile.station_id = "foreign".into(),
+                "enrollment" => changed.scope.enrollment_id = "foreign".into(),
+                "origin" => {
+                    changed.context.profile.station_endpoint = "https://foreign.example".into()
+                }
+                "profile" => changed.context.profile.profile_name = "foreign".into(),
+                "installation" => {
+                    changed.surface.client_instance_id =
+                        "77777777-7777-4777-8777-777777777777".into()
+                }
+                "trust" => changed.context.station_trust.revision += 1,
+                "key" => changed.context.station_trust.generation += 1,
+                _ => unreachable!(),
+            }
+            assert!(
+                !terminal_successor_matches(
+                    &attempt,
+                    &changed,
+                    "cancel",
+                    "https://broker.example",
+                    2000
+                ),
+                "{variant}"
+            );
+        }
+        for variant in [
+            "candidate-missing",
+            "credential",
+            "transition",
+            "activation",
+            "delivery",
+        ] {
+            let mut changed = attempt.clone();
+            match variant {
+                "candidate-missing" => changed.candidate = None,
+                "credential" => {
+                    changed.credential_reference = Some(crate::NativeCredentialReference {
+                        id: "native-enrollment:77777777-7777-4777-8777-777777777777".into(),
+                        kind: "station-bearer".into(),
+                    })
+                }
+                "transition" => changed.transition_handle = Some("T".repeat(43)),
+                "activation" => changed.activation_proof_digest = Some("A".repeat(43)),
+                "delivery" => {
+                    changed.delivery = Some(native_enrollment::NativeEnrollmentDeliveryMetadata {
+                        version: VERSION.into(),
+                        state: "staged".into(),
+                        binding: changed.challenge.as_ref().unwrap().binding(),
+                        candidate: changed.candidate.clone().unwrap(),
+                        activation_nonce: "A".repeat(43),
+                        bundle_digest: "B".repeat(43),
+                        expires_at: 1000,
+                        response_peer_nonce: "N".repeat(43),
+                        station_signing_generation: 4,
+                    })
+                }
+                _ => unreachable!(),
+            }
+            assert!(
+                !terminal_successor_matches(
+                    &changed,
+                    &route,
+                    "cancel",
+                    "https://broker.example",
+                    2000
+                ),
+                "{variant}"
+            );
+        }
+    }
+
+    #[test]
+    fn legacy_journal_without_broker_origin_remains_readable() {
+        let (attempt, _) = fixture();
+        let mut encoded = serde_json::to_value(&attempt).unwrap();
+        encoded.as_object_mut().unwrap().remove("brokerOrigin");
+        let legacy: Attempt = serde_json::from_value(encoded).unwrap();
+        assert!(legacy.broker_origin.is_none());
+        assert_eq!(legacy.scope.routing_generation, 11);
+        assert_eq!(
+            legacy.owner.client_attempt_id,
+            attempt.owner.client_attempt_id
+        );
+        assert!(legacy.candidate == attempt.candidate);
+    }
 }

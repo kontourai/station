@@ -625,6 +625,41 @@ impl<B: StationTrustBackend, C: StationTrustClock> NativeStationTrustStore<B, C>
         })
     }
 
+    pub(crate) fn unique_approved_broker_origin(
+        &mut self,
+        expected: &TrustProfileBinding,
+        expected_revision: u64,
+    ) -> CandidateResult<String> {
+        let _guard = STATION_TRUST_OPERATION
+            .lock()
+            .map_err(|_| CandidateError::TrustStore)?;
+        let account = trust_account(expected)?;
+        let stored = self.read_record(&account, &expected.station_id)?;
+        if expected_revision == 0
+            || stored.revision != expected_revision
+            || stored.status != Some(StationTrustStatus::Approved)
+            || stored
+                .trust
+                .as_ref()
+                .is_none_or(|trust| trust.enrollment_id != expected.enrollment_id)
+        {
+            return Err(CandidateError::ProfileStale);
+        }
+        let mut matching = stored.approved_bindings.iter().filter(|binding| {
+            binding.profile_owner_id == expected.profile_owner_id
+                && binding.app_identifier == expected.app_identifier
+                && binding.channel == expected.channel
+                && binding.client_instance_id == expected.client_instance_id
+                && binding.station_id == expected.station_id
+                && binding.enrollment_id == expected.enrollment_id
+        });
+        let only = matching.next().ok_or(CandidateError::ProfileStale)?;
+        if matching.next().is_some() || only.broker_origin != expected.broker_origin {
+            return Err(CandidateError::ProfileStale);
+        }
+        Ok(only.broker_origin.clone())
+    }
+
     pub(crate) fn current_state<P: LockedTrustProfileProvider>(
         &mut self,
         provider: &P,
@@ -2040,6 +2075,61 @@ mod tests {
         assert_eq!(receipt.revision, 2);
         assert_eq!(receipt.generation, 4);
         assert_eq!(receipt.key_id, rotated_key);
+    }
+
+    #[test]
+    fn legacy_enrollment_broker_requires_one_unchanged_approved_binding() {
+        let backend = MemoryTrustBackend::default();
+        let original = binding();
+        let expected = trust_binding(&original);
+        let profile = locked_profile(&original);
+        let mut store = NativeStationTrustStore::with_backend(backend);
+        let candidate = verified_for_store(0, 3);
+        let code = candidate.confirmation_code().to_owned();
+        let key_id = candidate.key_id().to_owned();
+        let receipt = store.approve(&profile, candidate, &code, &key_id).unwrap();
+        assert_eq!(
+            store
+                .unique_approved_broker_origin(&expected, receipt.revision)
+                .unwrap(),
+            expected.broker_origin
+        );
+        assert!(store
+            .unique_approved_broker_origin(&expected, receipt.revision + 1)
+            .is_err());
+        let mut wrong = expected.clone();
+        wrong.client_instance_id = "77777777-7777-4777-8777-777777777777".into();
+        assert!(store
+            .unique_approved_broker_origin(&wrong, receipt.revision)
+            .is_err());
+        wrong = expected.clone();
+        wrong.broker_origin = "https://different-broker.example".into();
+        assert!(store
+            .unique_approved_broker_origin(&wrong, receipt.revision)
+            .is_err());
+
+        let mut alternate = original;
+        alternate.broker_origin = "https://different-broker.example".into();
+        alternate.expected_trust_revision = receipt.revision;
+        let profile = locked_profile(&alternate);
+        let mut pending = PendingStationKeyChallenge::with_challenge(
+            alternate,
+            URL_SAFE_NO_PAD.encode([8u8; 32]),
+        )
+        .unwrap();
+        let compact = signed_candidate(&mut pending, |claims| {
+            claims.candidate.generation = 4;
+        });
+        let candidate = pending.verify(&compact, NOW).unwrap();
+        let code = candidate.confirmation_code().to_owned();
+        let key_id = candidate.key_id().to_owned();
+        let updated = store.approve(&profile, candidate, &code, &key_id).unwrap();
+        assert!(store
+            .unique_approved_broker_origin(&expected, receipt.revision)
+            .is_err());
+        assert!(store
+            .unique_approved_broker_origin(&expected, updated.revision)
+            .is_err());
     }
 
     #[test]

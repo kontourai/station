@@ -155,13 +155,18 @@ export class NativeRelayEnrollmentService {
   #matches(
     record: NativeEnrollmentRecord,
     cap: NativeEnrollmentCapability,
+    terminalRecovery = false,
   ): void {
     const f = cap.facts;
     if (
       record.binding.stationId !== f.stationId ||
       record.binding.stationAudience !== f.requestOrigin ||
       record.binding.scope.enrollmentId !== f.connectionEnrollmentId ||
-      record.binding.scope.routingGeneration !== f.routingGeneration ||
+      (record.binding.scope.routingGeneration !== f.routingGeneration &&
+        !(
+          terminalRecovery &&
+          record.binding.scope.routingGeneration < f.routingGeneration
+        )) ||
       nativeEnrollmentCanonical(record.binding.surface) !==
         nativeEnrollmentCanonical(f.surface)
     )
@@ -283,7 +288,12 @@ export class NativeRelayEnrollmentService {
       | 'cancel',
     candidate = record.candidate,
   ): Promise<void> {
-    this.#matches(record, cap);
+    const terminalRecovery =
+      (purpose === 'status' || purpose === 'cancel') &&
+      record.expiresAt <= this.#now() &&
+      record.state !== 'committed' &&
+      record.ackDigest === undefined;
+    this.#matches(record, cap, terminalRecovery);
     if (!candidate) throw new NativeRelayEnrollmentRefusal('invalid');
     const { proof: compact, ...payload } = body;
     let proofIdentity: { jti: string; expiresAt: number };
