@@ -248,30 +248,61 @@ async function expectPathReadsWhole(
   ).toEqual({ innerText: value, selected: value });
 
   // The line keeps its end: the leaf finishes at the line's right edge, and
-  // only a leaf wider than the whole line starts outside it.
-  const lineBox = (await line.boundingBox())!;
-  const leaf = (await line.locator(parts.leaf).boundingBox())!;
-  expect(
-    Math.abs(leaf.x + leaf.width - (lineBox.x + lineBox.width)),
-    `${context}: leaf ends the line`,
-  ).toBeLessThanOrEqual(1);
-  expect(leaf.width, `${context}: leaf width`).toBeGreaterThan(40);
-  if (label === 'one unbroken segment') return;
-  expect(leaf.x, `${context}: leaf folder shown whole`).toBeGreaterThanOrEqual(
-    lineBox.x - 0.5,
-  );
-  // The parent's last separator is drawn against the leaf. Without the ltr
-  // isolate the rtl line moves it to the far (cut) end.
-  const separator = await line.locator(parts.parent).evaluate((node) => {
-    const text = node.firstChild!;
+  // it is cut only when it alone is wider than the line (the Project page
+  // header gives a phone about 140px, less than many folder names). One
+  // snapshot: the shell's sidebar can still be settling after a resize.
+  const geometry = await line.evaluate((node, selectors) => {
+    const lineBox = node.getBoundingClientRect();
+    const leaf = node.querySelector(selectors.leaf)!.getBoundingClientRect();
+    const text = node.querySelector(selectors.parent)!.firstChild!;
     const range = document.createRange();
     range.setStart(text, text.textContent!.length - 1);
     range.setEnd(text, text.textContent!.length);
-    return range.getBoundingClientRect().right;
+    return {
+      lineLeft: lineBox.left,
+      lineRight: lineBox.right,
+      lineWidth: lineBox.width,
+      leafLeft: leaf.left,
+      leafRight: leaf.right,
+      leafWidth: leaf.width,
+      separatorRight: range.getBoundingClientRect().right,
+    };
+  }, parts);
+  expect(
+    Math.abs(geometry.leafRight - geometry.lineRight),
+    `${context}: leaf ends the line`,
+  ).toBeLessThanOrEqual(1);
+  if (geometry.leafLeft < geometry.lineLeft - 0.5) {
+    expect(
+      geometry.leafWidth,
+      `${context}: leaf cut only when wider than the line`,
+    ).toBeGreaterThan(geometry.lineWidth);
+    return;
+  }
+  expect(label, `${context}: leaf shown whole`).not.toBe(
+    'one unbroken segment',
+  );
+  // The parent's last separator is drawn against the leaf. Without the ltr
+  // isolate the rtl line moves it to the far (cut) end.
+  expect(
+    Math.abs(geometry.separatorRight - geometry.leafLeft),
+    `${context}: separator adjoins the leaf`,
+  ).toBeLessThanOrEqual(1);
+}
+
+/** A path that fits is not pushed right by the rtl line: it starts at the left. */
+async function expectShortPathStartsLeft(line: Locator, context: string) {
+  const { start, left } = await line.evaluate((node) => {
+    const range = document.createRange();
+    range.selectNodeContents(node);
+    return {
+      start: range.getClientRects()[0]!.left,
+      left: node.getBoundingClientRect().left,
+    };
   });
   expect(
-    Math.abs(separator - leaf.x),
-    `${context}: separator adjoins the leaf`,
+    Math.abs(start - left),
+    `${context}: short path starts at the left`,
   ).toBeLessThanOrEqual(1);
 }
 
@@ -495,6 +526,14 @@ test.describe('Project forms', () => {
         ).toBe(true);
       }
     }
+    project.workingDirectory = '/srv/demo';
+    await page.goto('/projects/long-path/edit');
+    const short = section.locator('.project-settings__identity-path');
+    await expect(short).toHaveText('/srv/demo');
+    for (const width of [360, 1280]) {
+      await page.setViewportSize({ width, height: 900 });
+      await expectShortPathStartsLeft(short, `short path at ${width}px`);
+    }
   });
 
   /**
@@ -532,6 +571,14 @@ test.describe('Project forms', () => {
           `${context}: no horizontal overflow`,
         ).toBe(true);
       }
+    }
+    project.workingDirectory = '/srv/demo';
+    await page.goto('/projects/long-path');
+    const short = page.locator('.project-page__dir-path');
+    await expect(short).toHaveText('/srv/demo');
+    for (const width of [360, 1280]) {
+      await page.setViewportSize({ width, height: 900 });
+      await expectShortPathStartsLeft(short, `short path at ${width}px`);
     }
   });
 
