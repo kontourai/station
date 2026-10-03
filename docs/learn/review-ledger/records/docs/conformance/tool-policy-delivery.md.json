@@ -30,7 +30,7 @@
 
     {"path":"src-server/providers/__tests__/tool-policy-delivery-tripwire.test.ts","digest":"3f35d0f1dd97e1fad8d28fcffafcaef9e001e2edc45f982e471dcf8e11c5f2df","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"061da89e00216d5c3250d7f13dc1dea5717765b50db7ebf8c49672208524a3d0","revision":"423cbe55b9e35e4cd8954fd441cb9f3c69740d66"},
+    {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"fe880ea995eb5f60ce41efe553707a1f88f5f2edcf5b120ce23d03224cd3a15b","revision":"441560f766fdcc4c341d1ec467af4c47f7c73677"},
 
     {"path":"src-server/providers/adapters/claude-adapter-events.ts","digest":"74dcc48d1c1504d0e5e8d09896cdb5be1decfb962f87018c4272f1ff34d2a18e","revision":"89765352964045a079d13a17bee54ab2de7b83e0"},
 
