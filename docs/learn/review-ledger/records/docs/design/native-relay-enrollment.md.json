@@ -16,7 +16,7 @@
 
     {"path":"packages/connect/src/core/nativeEnrollmentExchange.ts","digest":"b8aaafada3519b01f33cf5ccbe8826d92d86f34dc5f856b5749cd2ba72023a63","revision":"13ab0b8cc55ca7db5568879e7dced0e5a2e0f3e4"},
 
-    {"path":"packages/connect/src/core/nativeRelayLink.ts","digest":"b810e954f0908cbad89aacfc4477d984a87f3188324f44a64084510cdcacddea","revision":"63da6d9d2de45c58fbd0f16a4a53690c09909b6d"},
+    {"path":"packages/connect/src/core/nativeRelayLink.ts","digest":"b2195a228a6091f73e96ee72a86eb44ca89d26e5123fd7d0d71f44a3a4195fe9","revision":"70e9b50c5329411de0b7b432408f0722407a0208"},
 
     {"path":"packages/contracts/src/native-relay-enrollment.ts","digest":"39289764a99e5fd01e6a2ddc474b5dc1977a4b134ca217492357cf2ff1c6dfdd","revision":"d1641ccc68fe995c21d633ac2352d4123f40a273"},
 
@@ -24,9 +24,9 @@
 
     {"path":"src-desktop/src/native_relay_ios_launch.rs","digest":"135f11afc3cc411a915de32a9c399487a8ca3f4eb1bf0afc381abf30c3f4ab66","revision":"b1b2d1fd15ddfd6dea0be7371a81d5008f6ffbf7"},
 
-    {"path":"src-desktop/src/native_relay_link_intake.rs","digest":"2bfe33f4aea9a9c4b9dacf813c12fce677b0a81d1fdc4b040ee49e9618fabd8c","revision":"245e191835452b08664cb4647195649fd2263d97"},
+    {"path":"src-desktop/src/native_relay_link_intake.rs","digest":"4312358df5c8918b9a60bcacea47931a18981534cd428804b49dd6b37db0ee0c","revision":"70e9b50c5329411de0b7b432408f0722407a0208"},
 
-    {"path":"src-desktop/src/native_relay_redemption.rs","digest":"6b3bedc842564ff261818e413de51f49507719d1335c93dda3d7f4e3f632e3f2","revision":"22fa92e143563a7c82202c0eb9d9e71c48d4a5b4"},
+    {"path":"src-desktop/src/native_relay_redemption.rs","digest":"dbf3c222dce269cb71deba9d86e1f9b51f58f8d1abc77f3f4583556f160ae115","revision":"70e9b50c5329411de0b7b432408f0722407a0208"},
 
     {"path":"src-desktop/src/native_secure_entry.rs","digest":"d6ff8051df4be60ff738f524488fe877b0711b95aa606cb70b378e74962bd209","revision":"8d92d732808201554ba801334e2a19f7081fd09d"},
 

@@ -76,9 +76,9 @@
 
     {"path":"src-desktop/src/native_relay_ios_launch.rs","digest":"135f11afc3cc411a915de32a9c399487a8ca3f4eb1bf0afc381abf30c3f4ab66","revision":"b1b2d1fd15ddfd6dea0be7371a81d5008f6ffbf7"},
 
-    {"path":"src-desktop/src/native_relay_link_intake.rs","digest":"2bfe33f4aea9a9c4b9dacf813c12fce677b0a81d1fdc4b040ee49e9618fabd8c","revision":"245e191835452b08664cb4647195649fd2263d97"},
+    {"path":"src-desktop/src/native_relay_link_intake.rs","digest":"4312358df5c8918b9a60bcacea47931a18981534cd428804b49dd6b37db0ee0c","revision":"70e9b50c5329411de0b7b432408f0722407a0208"},
 
-    {"path":"src-desktop/src/native_relay_redemption.rs","digest":"6b3bedc842564ff261818e413de51f49507719d1335c93dda3d7f4e3f632e3f2","revision":"22fa92e143563a7c82202c0eb9d9e71c48d4a5b4"},
+    {"path":"src-desktop/src/native_relay_redemption.rs","digest":"dbf3c222dce269cb71deba9d86e1f9b51f58f8d1abc77f3f4583556f160ae115","revision":"70e9b50c5329411de0b7b432408f0722407a0208"},
 
     {"path":"src-desktop/src/native_secure_entry.rs","digest":"d6ff8051df4be60ff738f524488fe877b0711b95aa606cb70b378e74962bd209","revision":"8d92d732808201554ba801334e2a19f7081fd09d"},
 

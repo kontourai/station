@@ -88,7 +88,7 @@
 
     {"path":"src-desktop/src/native_device_binding_candidate.rs","digest":"83e1d464487d41fb5dc361259a2b80bfb91e0711cdc3c9a6c52e3f8726b76ffc","revision":"34838898143e9a6048203520cdc6da3f78ecf49e"},
 
-    {"path":"src-desktop/src/native_relay_redemption.rs","digest":"6b3bedc842564ff261818e413de51f49507719d1335c93dda3d7f4e3f632e3f2","revision":"22fa92e143563a7c82202c0eb9d9e71c48d4a5b4"},
+    {"path":"src-desktop/src/native_relay_redemption.rs","digest":"dbf3c222dce269cb71deba9d86e1f9b51f58f8d1abc77f3f4583556f160ae115","revision":"70e9b50c5329411de0b7b432408f0722407a0208"},
 
     {"path":"src-server/analytics/usage-aggregator-state.ts","digest":"eafbfa911453fec372d124ae9072826f16a57864055e2a262f45ec3312b0e659","revision":"a11755821186eaeb034b77e970dfa372c5c7f789"},
 

@@ -36,7 +36,7 @@
 
     {"path":"src-desktop/src/native_proof_key_core.rs","digest":"f66b190b738f1e3fe0623e5c8140797cd413fcb0701d6f3004e3c652c7b60a59","revision":"8d92d732808201554ba801334e2a19f7081fd09d"},
 
-    {"path":"src-desktop/src/native_relay_redemption.rs","digest":"6b3bedc842564ff261818e413de51f49507719d1335c93dda3d7f4e3f632e3f2","revision":"22fa92e143563a7c82202c0eb9d9e71c48d4a5b4"},
+    {"path":"src-desktop/src/native_relay_redemption.rs","digest":"dbf3c222dce269cb71deba9d86e1f9b51f58f8d1abc77f3f4583556f160ae115","revision":"70e9b50c5329411de0b7b432408f0722407a0208"},
 
     {"path":"src-desktop/src/native_secure_entry.rs","digest":"d6ff8051df4be60ff738f524488fe877b0711b95aa606cb70b378e74962bd209","revision":"8d92d732808201554ba801334e2a19f7081fd09d"},
 
@@ -60,7 +60,7 @@
 
     {"path":"src-server/services/connections/self-hosted-broker-connector.ts","digest":"16c715c1e4b9243a2f6e7b74d1d67e7ca3cda2a7fcd4ec6575bfdb5577ba5d92","revision":"cf8683338fc1a537f8be0082ddaa3c3fafcbfb17"},
 
-    {"path":"src-server/services/connections/self-hosted-broker-service.ts","digest":"304ae2cf20a7935f52bb227385c2f0fb2066e7eb4c1c2c03e581e30515173e3e","revision":"bd945f156a8a59964bab11fe68d36613177c7143"},
+    {"path":"src-server/services/connections/self-hosted-broker-service.ts","digest":"14d84787028115548c0b594e20b5077ce47b24f1e72785332d9486f83b946241","revision":"70e9b50c5329411de0b7b432408f0722407a0208"},
 
     {"path":"src-server/services/connections/virtual-application.ts","digest":"e23d2888c8a9e78057d80d7debdde0a0e29d25f1812c9c716e9d74c2dc636be6","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
 

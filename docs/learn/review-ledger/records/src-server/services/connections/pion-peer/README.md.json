@@ -22,17 +22,17 @@
 
     {"path":"src-desktop/src/native_relay_proof_key.rs","digest":"e33c7395002ae8d230afa984115212ac58b53725b51c54265ce7a3a0c9174608","revision":"d5e4502434838cc29b63091ae689474d6488cfe4"},
 
-    {"path":"src-desktop/src/native_relay_redemption.rs","digest":"6b3bedc842564ff261818e413de51f49507719d1335c93dda3d7f4e3f632e3f2","revision":"22fa92e143563a7c82202c0eb9d9e71c48d4a5b4"},
+    {"path":"src-desktop/src/native_relay_redemption.rs","digest":"dbf3c222dce269cb71deba9d86e1f9b51f58f8d1abc77f3f4583556f160ae115","revision":"70e9b50c5329411de0b7b432408f0722407a0208"},
 
     {"path":"src-desktop/src/native_station_key_custody.rs","digest":"ede5f4ea69dcb8fc6ad5570d70fdc5cae848467335d6c393277c6dbc8fe2ccf5","revision":"a516c638f82e312fe84fe7f8dd8cd5094b2567a5"},
 
-    {"path":"src-server/routes/connections/self-hosted-broker.ts","digest":"eab2a2d75edf8a2fc9c4f790aa0a4c59e065f8a134904393880896fd01cdfbd3","revision":"bd945f156a8a59964bab11fe68d36613177c7143"},
+    {"path":"src-server/routes/connections/self-hosted-broker.ts","digest":"8a81abcb1d765efe8fee54b06346efc83d05b9562712d03e06c02ba72457a1dd","revision":"70e9b50c5329411de0b7b432408f0722407a0208"},
 
     {"path":"src-server/runtime/bootstrap/self-hosted-broker-pion-runtime.ts","digest":"d0eaf0a7651d34680ab4ee3398f7c1f1f9924534ad0e26f9a8e7bff14fef7120","revision":"55606e0498d0cbd6e7edad154f82dce3c102b186"},
 
     {"path":"src-server/runtime/bootstrap/self-hosted-broker-runtime.ts","digest":"bf1a6e8cbaa90f70068cb932c5fbfece01180b2624ff66c0847f3ea326ce5309","revision":"f57565382a6ff45cb87c52b04cced05fc7589e56"},
 
-    {"path":"src-server/runtime/bootstrap/self-hosted-connector-config.ts","digest":"57fb0a7a6820b8b5b78c02a653e2e7c9f6ef68d7a747f7b55eff2b2151fe2da8","revision":"55606e0498d0cbd6e7edad154f82dce3c102b186"},
+    {"path":"src-server/runtime/bootstrap/self-hosted-connector-config.ts","digest":"70ff7d48537ce8caae62b57449d990dbce05fe151c6eb8127f567f0b289ac98d","revision":"70e9b50c5329411de0b7b432408f0722407a0208"},
 
     {"path":"src-server/services/connections/pion-application-adapter.ts","digest":"656c2d512795679c80b3193b64dd4d5f41da4e24d95bf4dda935fa70761e88c6","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
@@ -46,11 +46,11 @@
 
     {"path":"src-server/services/connections/pion-peer/main.go","digest":"83c91702c8b30efb4a1b2439a4f23703f28a4c9889b47824453c08e927269077","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
-    {"path":"src-server/services/connections/self-hosted-broker-client.ts","digest":"7209d7d732512ad185cf0c8e70faa402b4c034d14d810fc5c0ed6ff4335f0987","revision":"55606e0498d0cbd6e7edad154f82dce3c102b186"},
+    {"path":"src-server/services/connections/self-hosted-broker-client.ts","digest":"a49988c4c0ff373806f7a15d3f6ce8451a639847c0cd1eeed8f3119436e7bba2","revision":"70e9b50c5329411de0b7b432408f0722407a0208"},
 
     {"path":"src-server/services/connections/self-hosted-broker-connector.ts","digest":"16c715c1e4b9243a2f6e7b74d1d67e7ca3cda2a7fcd4ec6575bfdb5577ba5d92","revision":"cf8683338fc1a537f8be0082ddaa3c3fafcbfb17"},
 
-    {"path":"src-server/services/connections/self-hosted-broker-service.ts","digest":"304ae2cf20a7935f52bb227385c2f0fb2066e7eb4c1c2c03e581e30515173e3e","revision":"bd945f156a8a59964bab11fe68d36613177c7143"},
+    {"path":"src-server/services/connections/self-hosted-broker-service.ts","digest":"14d84787028115548c0b594e20b5077ce47b24f1e72785332d9486f83b946241","revision":"70e9b50c5329411de0b7b432408f0722407a0208"},
 
     {"path":"src-server/services/infra/process-utils.ts","digest":"ee4b40d76a59bc8c4af9dd2a5ea9622007d84e2aa5254fdf579c52b6a8e6b5ba","revision":"c8bae67dac38dce6107177638464f9f9944fef92"}
   ],
