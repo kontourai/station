@@ -81,6 +81,10 @@ function expectSeedInvariants(
       `The ${omitted} earlier ${omitted === 1 ? 'one is' : 'ones are'} omitted.`,
     );
     expect(seed).toContain(TRANSCRIPT_SEED_OMITTED_NOTICE);
+    // Whether the receiving engine can read further is unknown when the seed
+    // is built, so the seed must not claim the history is unreachable.
+    expect(seed).not.toMatch(/not available|unavailable/i);
+    expect(seed).toContain('the full conversation remains stored in Station');
   } else {
     expect(seed).toContain(
       count === 1
