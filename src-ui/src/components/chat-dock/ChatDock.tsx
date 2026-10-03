@@ -449,6 +449,8 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   // Get data from contexts
   const { apiBase } = useApiBase();
   const requestAuthority = useHostRequestAuthorityScope();
+  // #3159: inbox rows drag a conversation reference under this scope;
+  // stable across renders for the inbox panel's `memo()`.
   const [pendingGoalSend, setPendingGoalSend] = useState<{
     sessionId: string;
     prompt: string;
@@ -634,6 +636,25 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
         ]),
       ),
     [inventory.data],
+  );
+  // #3159: an inbox row whose conversation the inventory marks referenceable
+  // can be dragged onto a composer of this Station access scope. Stable
+  // across renders for the inbox panel's `memo()`.
+  const referenceApiBase = requestAuthority?.apiBase;
+  const referenceAuthorityKey = requestAuthority?.authorityKey;
+  const inboxReferenceDrag = useMemo(
+    () =>
+      referenceApiBase !== undefined && referenceAuthorityKey !== undefined
+        ? {
+            scope: {
+              apiBase: referenceApiBase,
+              authorityKey: referenceAuthorityKey,
+            },
+            isReferenceable: (id: string) =>
+              inventoryById.get(id)?.referenceEligibility?.eligible === true,
+          }
+        : undefined,
+    [referenceApiBase, referenceAuthorityKey, inventoryById],
   );
   // The chats open in this tab as the inbox lists them, for the context
   // meter's membership check.
@@ -2532,6 +2553,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                         agents,
                         gitLocationByThreadId,
                         workFacts,
+                        referenceDrag: inboxReferenceDrag,
                         activeChatSessionId:
                           importedSessionId ?? activeSessionId,
                         openChatSessionIds: openInboxChatSessionIds,

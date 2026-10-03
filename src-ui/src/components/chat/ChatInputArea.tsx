@@ -51,6 +51,11 @@ import {
   reconcileComposerDisplay,
   sessionReferenceBlockReason,
 } from './composer-mentions';
+import {
+  CONVERSATION_REFERENCE_DRAG_TYPE,
+  draggedConversationReference,
+  endConversationReferenceDrag,
+} from './conversationReferenceDrag';
 import './chat.css';
 import { SkeletonBlock, SkeletonList } from '../state';
 
@@ -1127,19 +1132,22 @@ export function ChatInputArea({
             onDragOver={(event) => {
               if (
                 !event.dataTransfer.types.includes(
-                  'application/x-station-conversation-reference',
+                  CONVERSATION_REFERENCE_DRAG_TYPE,
                 )
               )
                 return;
               const conversationId = event.dataTransfer.getData(
-                'application/x-station-conversation-reference',
+                CONVERSATION_REFERENCE_DRAG_TYPE,
               );
               const candidate =
                 draggedSessionReference.current?.id === conversationId &&
                 draggedSessionReference.current.ownerKey ===
                   sessionReferenceOwnerKey
                   ? draggedSessionReference.current
-                  : null;
+                  : draggedConversationReference(
+                      conversationId,
+                      mentionRequestScope,
+                    );
               if (
                 (!conversationId || candidate) &&
                 !sessionReferenceBlockReason({
@@ -1154,17 +1162,23 @@ export function ChatInputArea({
             }}
             onDrop={(event) => {
               const conversationId = event.dataTransfer.getData(
-                'application/x-station-conversation-reference',
+                CONVERSATION_REFERENCE_DRAG_TYPE,
               );
               if (!conversationId) return;
               event.preventDefault();
+              // The picker's own drag, or an Activity or inbox row this
+              // window is dragging from the same Station access scope.
               const candidate =
                 draggedSessionReference.current?.id === conversationId &&
                 draggedSessionReference.current.ownerKey ===
                   sessionReferenceOwnerKey
                   ? draggedSessionReference.current
-                  : null;
+                  : draggedConversationReference(
+                      conversationId,
+                      mentionRequestScope,
+                    );
               draggedSessionReference.current = null;
+              endConversationReferenceDrag();
               if (!candidate) return;
               const reason = sessionReferenceBlockReason({
                 value: input,

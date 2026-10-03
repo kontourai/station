@@ -48,6 +48,10 @@ import {
   snoozeWakeAt,
 } from './mobile-activity-groups';
 import './ChatDockInboxPanel.css';
+import {
+  endConversationReferenceDrag,
+  startConversationReferenceDrag,
+} from '../chat/conversationReferenceDrag';
 import '../inbox-row/InboxRow.css';
 // The danger row treatment the sheet's Discard shares with every overflow.
 import '../ActionOverflowMenu.css';
@@ -413,6 +417,15 @@ interface InboxRowProps {
    */
   detailsOpen?: boolean;
   onDetailsOpenChange?: (open: boolean) => void;
+  /**
+   * #3159: with it, a row whose conversation may be referenced (the
+   * conversation inventory's `referenceEligibility`, by `item.id`) can be
+   * dragged onto a composer of the same Station access scope.
+   */
+  referenceDrag?: {
+    scope: { apiBase: string; authorityKey: string };
+    isReferenceable: (conversationId: string) => boolean;
+  };
 }
 
 /**
@@ -460,6 +473,7 @@ export function InboxRow({
   rowKey,
   detailsOpen: controlledDetailsOpen,
   onDetailsOpenChange,
+  referenceDrag,
 }: InboxRowProps) {
   const iconAgent = inboxRowIconAgent(item, agents);
   const discardThreadId = onDraftDiscarded ? draftDiscardThreadId(item) : null;
@@ -689,6 +703,18 @@ export function InboxRow({
         aria-describedby={describedBy}
         aria-current={isCurrent ? 'true' : undefined}
         onClick={() => onActivate(item)}
+        {...(referenceDrag?.isReferenceable(item.id)
+          ? {
+              draggable: true,
+              onDragStart: (event: React.DragEvent<HTMLElement>) =>
+                startConversationReferenceDrag(event, {
+                  id: item.id,
+                  title: item.title,
+                  ...referenceDrag.scope,
+                }),
+              onDragEnd: endConversationReferenceDrag,
+            }
+          : {})}
       >
         {size === 'slim' ? (
           <>
@@ -926,6 +952,8 @@ export interface InboxGroupListProps {
    * records read once. Referentially stable, like the other shared props.
    */
   workFacts?: WorkFactsById;
+  /** See `InboxRowProps.referenceDrag`. */
+  referenceDrag?: InboxRowProps['referenceDrag'];
 }
 
 /** Snoozed and settled ("Earlier") work renders as the slim one-line row. */
@@ -952,6 +980,7 @@ export function InboxGroupList({
   chrome,
   actionsInDetails,
   workFacts,
+  referenceDrag,
 }: InboxGroupListProps) {
   const [olderDraftsOpen, setOlderDraftsOpen] = useState(false);
   // Owned here, by item id, so the sheet outlives the row's remount when
@@ -1002,6 +1031,7 @@ export function InboxGroupList({
       chrome={chrome}
       actionsInDetails={actionsInDetails}
       facts={workFacts?.get(item.id)}
+      referenceDrag={referenceDrag}
       detailsOpen={detailsFor === item.id}
       onDetailsOpenChange={(open) => setDetailsFor(open ? item.id : null)}
       size={!actionsInDetails && SLIM_GROUPS.has(group.id) ? 'slim' : 'card'}

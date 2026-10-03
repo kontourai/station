@@ -19,6 +19,10 @@ import {
 } from 'react';
 import { ActionOperationsSection } from '../components/action-operations/ActionOperationsSection';
 import { Button } from '../components/Button';
+import {
+  endConversationReferenceDrag,
+  startConversationReferenceDrag,
+} from '../components/chat/conversationReferenceDrag';
 import { DelegationLauncher } from '../components/chat-dock/DelegationLauncher';
 import { DiscardDraftButton } from '../components/drafts/DiscardDraftButton';
 import { AgentIcon } from '../components/icons/AgentIcon';
@@ -279,8 +283,17 @@ export function SessionsView({
   intentToken,
   onFocusConsumed,
   onOpenInChat,
+  referenceDrag,
 }: {
   apiBase: string;
+  /**
+   * #3159: with it, a row whose conversation may be referenced can be
+   * dragged onto a composer of the same Station access scope.
+   */
+  referenceDrag?: {
+    scope: { apiBase: string; authorityKey: string };
+    isReferenceable: (conversationId: string) => boolean;
+  };
   sessionId?: string;
   /**
    * Region-owned one-shot intent for a selected session's evidence:
@@ -919,6 +932,18 @@ export function SessionsView({
           icon: <AgentIcon agent={sessionIconAgent(s, agents)} size="small" />,
           openChat: openConversationIds.has(s.threadId),
           badge: <SessionPullRequestConflictChip session={s} />,
+          ...(referenceDrag?.isReferenceable(s.conversationId ?? s.threadId)
+            ? {
+                onDragStart: (event: React.DragEvent<HTMLElement>) =>
+                  startConversationReferenceDrag(event, {
+                    id: s.conversationId ?? s.threadId,
+                    title: sessionTitle(s),
+                    ...(s.projectSlug ? { projectSlug: s.projectSlug } : {}),
+                    ...referenceDrag.scope,
+                  }),
+                onDragEnd: endConversationReferenceDrag,
+              }
+            : {}),
           ...(group ? { group } : {}),
           // Interactive controls live in `trailing`, a sibling of the row
           // button, because a button may not contain interactive content.

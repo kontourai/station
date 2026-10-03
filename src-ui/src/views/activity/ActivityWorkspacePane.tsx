@@ -1,4 +1,7 @@
 import { isCanonicalWorkspaceActivityPaneInstance } from '@kontourai/station-contracts/workspace-activity-pane';
+import { useConversationInventoryQuery } from '@kontourai/station-sdk';
+import { useMemo } from 'react';
+import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useShowSurface } from '../../contexts/useShowSurface';
 import type { BuiltinWorkspacePaneProps } from '../../workspace-panes/builtinWorkspacePaneRegistry';
 import { WorkspacePaneBindingUnavailable } from '../../workspace-panes/WorkspacePaneBindingUnavailable';
@@ -29,6 +32,26 @@ import { useActivityWorkspacePaneBinding } from './ActivityWorkspacePaneBinding'
 export function ActivityWorkspacePane({ instance }: BuiltinWorkspacePaneProps) {
   const binding = useActivityWorkspacePaneBinding();
   const showSurface = useShowSurface();
+  // #3159: rows the conversation inventory marks referenceable can be
+  // dragged onto a composer of the same Station access scope.
+  const requestAuthority = useHostRequestAuthorityScope();
+  const inventory = useConversationInventoryQuery();
+  const referenceApiBase = requestAuthority?.apiBase;
+  const referenceAuthorityKey = requestAuthority?.authorityKey;
+  const referenceDrag = useMemo(() => {
+    if (referenceApiBase === undefined || referenceAuthorityKey === undefined)
+      return undefined;
+    const referenceable = new Set(
+      (inventory.data ?? [])
+        .filter((conversation) => conversation.referenceEligibility?.eligible)
+        .map((conversation) => conversation.id),
+    );
+    return {
+      scope: { apiBase: referenceApiBase, authorityKey: referenceAuthorityKey },
+      isReferenceable: (conversationId: string) =>
+        referenceable.has(conversationId),
+    };
+  }, [referenceApiBase, referenceAuthorityKey, inventory.data]);
   if (!isCanonicalWorkspaceActivityPaneInstance(instance))
     return (
       <WorkspacePaneBindingUnavailable
@@ -44,6 +67,7 @@ export function ActivityWorkspacePane({ instance }: BuiltinWorkspacePaneProps) {
       focusHint={binding.focusHint}
       intentToken={binding.intentToken}
       onFocusConsumed={binding.onFocusConsumed}
+      referenceDrag={referenceDrag}
     />
   );
 }
