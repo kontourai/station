@@ -13,6 +13,10 @@ import {
   MCPLocalCustodyError,
   type MCPToolInfo,
 } from '@kontourai/station-shared/mcp';
+import {
+  mcpToolDisabled,
+  originalMcpToolName,
+} from '@kontourai/station-shared/mcp-tool-selection';
 import { DEFAULT_SERVER_PORT } from '@kontourai/station-shared/ports';
 import type { Tool } from '@voltagent/core';
 import type { ConfigLoader } from '../../domain/config-loader.js';
@@ -577,7 +581,15 @@ export async function loadAgentTools(
           },
         );
         const enabledTools = mcpTools.filter(
-          (tool) => !toolDef.disabledTools?.includes(tool.name),
+          (tool) =>
+            !mcpToolDisabled(
+              toolId,
+              originalMcpToolName(
+                toolId,
+                toolNameMapping.get(tool.name)?.original ?? tool.name,
+              ),
+              toolDef.disabledTools,
+            ),
         );
         tools.push(
           ...wrapPlatformMutationGatedTools(

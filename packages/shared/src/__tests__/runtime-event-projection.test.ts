@@ -607,6 +607,36 @@ describe('projectRuntimeEventsToMessages', () => {
     });
   });
 
+  it('a Codex reported retry does not create a failure part in the restored transcript', () => {
+    const messages = projectRuntimeEventsToMessages([
+      ev({ provider: 'codex', method: 'turn.started', turnId: 'r1' }),
+      ev({
+        provider: 'codex',
+        method: 'runtime.error',
+        turnId: 'r1',
+        severity: 'error',
+        retriable: true,
+        message: 'request timeout',
+      }),
+      ev({
+        provider: 'codex',
+        method: 'content.text-delta',
+        turnId: 'r1',
+        delta: 'Recovered answer',
+      }),
+      ev({
+        provider: 'codex',
+        method: 'turn.completed',
+        turnId: 'r1',
+        finishReason: 'stop',
+      }),
+    ]);
+    expect(messages).toHaveLength(1);
+    expect(messages[0].parts).toEqual([
+      { type: 'text', text: 'Recovered answer' },
+    ]);
+  });
+
   it('surfaces runtime errors inline instead of rendering blank', () => {
     const messages = projectRuntimeEventsToMessages([
       ev({ method: 'turn.started', turnId: 'r1' }),

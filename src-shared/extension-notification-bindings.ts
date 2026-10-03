@@ -6,6 +6,7 @@ export type ExtensionNotificationConsumer =
   | 'ui.kiro.compaction-status'
   | 'ui.kiro.clear-status'
   | 'ui.claude.thinking-tokens'
+  | 'ui.claude.api-retry'
   | 'ui.claude.session-status'
   | 'ui.claude.task-registry'
   | 'ui.claude.task-settled'
@@ -17,11 +18,12 @@ export type ExtensionHandshakeVariant =
   | 'claude-adapter'
   | 'xai-acp';
 
-/** Evidence tags: each names the issue whose live runtime observation backs the tuple(s) it is attached to. */
+/** Evidence tags identify a runtime observation or a pinned SDK protocol contract. */
 export type ExtensionNotificationEvidence =
   | 'station#1815-runtime-observation'
   | 'station#4084-runtime-observation'
-  | 'station#1935-runtime-observation';
+  | 'station#1935-runtime-observation'
+  | 'claude-sdk-api-retry-contract';
 
 export interface ExtensionNotificationBinding {
   readonly namespace: string;
@@ -80,6 +82,15 @@ const DECLARED_EXTENSION_NOTIFICATION_BINDINGS = [
     consumer: 'acp.turn-error-cause',
     observedAgainst: ['kiro-v2'],
     evidence: 'station#4084-runtime-observation',
+  },
+  {
+    // SDKAPIRetryMessage in the pinned Claude Agent SDK; adapter publishes
+    // only attempt, delay, and a safe display reason from that typed signal.
+    namespace: 'claude-code',
+    type: 'api/retry',
+    consumer: 'ui.claude.api-retry',
+    observedAgainst: ['claude-adapter'],
+    evidence: 'claude-sdk-api-retry-contract',
   },
   {
     namespace: 'claude-code',

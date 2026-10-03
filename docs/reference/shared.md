@@ -15,12 +15,24 @@ For runtime helpers, use explicit subpaths:
 - `@kontourai/station-shared/build`
 - `@kontourai/station-shared/git`
 - `@kontourai/station-shared/mcp`
+- `@kontourai/station-shared/mcp-tool-selection` — browser-safe original/qualified/runtime MCP identities and selection matching
 
 The [export map](../../packages/shared/package.json) selects source files, mostly
 `.ts` with a few `.mjs` Node leaves, and declares Node 24.x. See the
 [package README](../../packages/shared/README.md) for distribution and build
 requirements. The type excerpts below are not exhaustive replacements for their
 owning declarations; import the canonical type rather than copying an interface.
+
+## Skill experience authoring
+
+`@kontourai/station-shared/skill-experience-workflow` exports local
+`inspectSkillLibrary`, `skillExperiencePackageDigest` and
+`readSkillExperienceReview`, `reviewSkillExperiencePackage`, plus the inspection/review types. These Node
+filesystem helpers emit bounded source review leads and validate author
+assertions against actual package/source/transcript bytes. They do not run a
+model, grant tools, install a plugin or establish runtime/release qualification.
+Use the [author learning path](../guides/authoring-skill-experiences.md) for
+proposal, preview, evaluation and revision review.
 
 ## Harness question helpers
 

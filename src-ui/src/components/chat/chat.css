@@ -1979,6 +1979,353 @@
 /* The footer's controls are nested inside their own components, so the
    inventory-wide direct-child 44px floor cannot reach them — apply it
    explicitly on touch viewports. */
+
+/* #1132 defect 2: below this width the toolbar's action cluster no longer fits,
+   and the connection chip's label is what it can give up.
+
+   MEASURED, on a running app in the `error` state ("Can't connect"), which is
+   the state in which reaching Settings matters most. `.app-toolbar__actions` is
+   `flex-shrink: 0` and `.app-toolbar__brand` bottoms out, so the row's left
+   side ends at x=126 and the cluster's own width is viewport-independent: with
+   this chip labelled it measures 259px, putting `Open settings` at x=340..384
+   at EVERY viewport up to 402 (266px and x=348..392 before station#1401's
+   padding trim, in the same `error` state). #1401 released this chip's 116px `min-width`
+   reservation, and that is what keeps 390, 402 and 412 reachable today; what it
+   left behind is the arithmetic below.
+
+   THE BOUND. The widest the cluster can get: 126 (left side at its floor) +
+   112 (this chip — an 85px `max-width` label plus 27px of measured furniture:
+   button padding, the 7px dot, its gap) + 4 + 58 (notifications carrying its
+   widest badge: 34px of button plus a 23.91px badge — that is "99"'s width,
+   which the `9+` cap makes unrenderable (the cap's own string is 23.80px), so
+   the budget is ~1px conservative rather than exact. These figures are macOS
+   measurements and glyph metrics differ by platform — the same capped badge is
+   25.34px on a Linux runner, where "+" is wider than a digit rather than
+   narrower — so treat them as this platform's arithmetic. What holds
+   everywhere is that the badge stops growing at the cap (pinned in
+   `HeaderActions.connection-reflow.test.tsx`, in the COUNT rather than in
+   pixels). Its pixel size against this 23.91 allowance is enforced by
+   nothing: the e2e never renders a badge, and at its 360px case the label is
+   suppressed anyway, so the row there sits nowhere near this bound. That gap
+   is station#1721. The two-character worst
+   case that HeaderActions.tsx's "9+" cap creates — uncapped this member is
+   unbounded and so is this paragraph) + 4 + 44 (More actions) + 4 + 44 (Open
+   settings) = 396px, of which the last control's own CENTRE sits at 374. At
+   374px and below that centre is outside the viewport and
+   `document.elementFromPoint` returns null — unreachable rather than merely
+   clipped, which is the defect.
+
+   station#1401: this bound was 404/382 until the mobile touch block trimmed
+   `.app-toolbar__icon-btn` padding from 8px to 6px. The 44px floor means that
+   trim changes nothing for the glyph-only controls; the two content-sized
+   members each give back 4px, measured in this fixture as chip 105 -> 101 and
+   badged notifications 62 -> 58, cluster content 267 -> 259. So the label now
+   survives eight more pixels of viewport, and 375-382 keeps a state the row
+   used to hide. It does not close #1401's own band — that still needs a
+   control to leave the row — it moves where it starts.
+
+   382 is ARITHMETIC, not a swept width: it is where the worst case lands, and
+   the worst case is a label at the 85px ceiling beside a two-character badge.
+   What was swept live, in the `error` state whose label is 79px and whose
+   badge was one digit, is narrower: that sweep read the `Open settings` centre
+   at x=370 at 360px, resolving to `null`, and station#1401's padding trim
+   moves it 8px left — DERIVED from the trim, not re-swept. What is measured
+   rather than computed is the 375px case in
+   `tests/toolbar-reachability.spec.ts`, which drives the real app at the
+   first width this breakpoint admits. So this breakpoint engages a little above where the swept state
+   alone would need it, which is what a bound is for.
+
+   Dropping the label reclaims 66px (the chip falls to its 44px touch floor) and
+   puts Open settings at x=282..326 — inside every viewport down to 326px. The
+   dot still carries the state by SHAPE (archive#3297, which is the channel
+   transient reachability was deliberately given when it stopped bannering), and
+   the accessible name is untouched: `connAccessibleName` is the BUTTON's
+   `aria-label` (HeaderActions.tsx), not this span's text, so a screen reader
+   still reads the full "Manage Stations — Can't connect · Dev Server".
+   `flex-shrink: 0` stays — archive#3766's cluster that clipped ITSELF away
+   while staying in the accessibility tree is not coming back.
+
+   Between 375 and 395px the row is still clipped at its right edge while every
+   control keeps its centre (383-403 before station#1401's padding trim): the over-subscription #1401 describes, which needs
+   a control to leave the row rather than a width tweak. Two classes, not one:
+   this block cascades after the breakpoint above and would win a tie on order
+   alone, and a tie decided by order is how the last owner of this cluster's
+   flex behaviour was lost (archive#3766). */
+@media (max-width: 374px) {
+  .app-toolbar__conn .app-toolbar__conn-state {
+    display: none;
+  }
+}
+
+/* Mobile transcripts spend their width on the words. Secondary controls open
+   a sheet from one separate touch target, outside the message bubble. */
+.message-row--compact {
+  gap: 8px;
+}
+/* An answer's trigger goes under the answer, not beside it. Beside it, every
+   answer reserved a 52px column for one 44px button — the text column ended
+   ~85% across a 412px phone — and because the answer was a shrink-to-fit
+   flex item, each row ended wherever its own content did, so rows (and
+   their tool-row chevrons) ended at different widths from one answer to
+   the next. The user's bubble is right-aligned and short; it keeps the
+   side-by-side layout. */
+.message-row--compact:not(.message-row--user) {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+}
+.message-row--compact:not(.message-row--user) > .message {
+  /* Exactly the row: not a shrink-to-fit box (`.message.assistant` is
+     `align-self: flex-start`, which let a wide table grow the answer past the
+     screen) and not capped at the base 80%. */
+  align-self: stretch;
+  max-width: none;
+}
+.message-row--compact:not(.message-row--user) > .message-details__trigger {
+  align-self: flex-end;
+  margin-top: -10px;
+}
+.message-row--compact .message {
+  padding: 10px 14px;
+}
+.message-row--compact .message.assistant {
+  background: transparent;
+  border: 0;
+  padding: 10px 0;
+}
+.message-details__trigger {
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  background: transparent;
+  /* A control, so it must stand off the surface at 3:1 (WCAG 1.4.11);
+     --text-muted read as a faint smudge under each answer. */
+  color: var(--text-secondary);
+  border-radius: var(--radius-md);
+}
+.message-details__panel {
+  width: min(480px, 100%);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+.message-details__body {
+  padding: 16px;
+  overflow-y: auto;
+}
+.message-details__body .turn-footer {
+  flex-direction: column;
+  align-items: stretch;
+}
+.message-details__body .turn-footer__actions {
+  flex-wrap: wrap;
+  opacity: 1;
+  height: auto;
+  overflow: visible;
+  pointer-events: auto;
+}
+
+.message-details__body .message__copy-btn,
+.message-details__body .message__rating,
+.message-details__body .message__trace {
+  position: static;
+  opacity: 1;
+}
+
+.chat-stream-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  min-height: 44px;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
+/* #2880: the decision-delivery note can carry two sentences (a refused reply
+   and an unacknowledged one); they stack as lines, not side-by-side columns. */
+.chat-stream-status[data-chat-decision-delivery] {
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: var(--k-space-1);
+}
+
+.source-quote-selection {
+  position: fixed;
+  z-index: var(--layer-surface-popover);
+  max-width: min(280px, calc(100vw - 16px));
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  padding: 4px;
+}
+.source-quote-selection .button,
+.source-quote-draft .button {
+  min-height: 44px;
+}
+.source-quote-drafts {
+  max-height: 180px;
+  overflow: auto;
+  flex-shrink: 0;
+}
+.source-quote-draft {
+  border: 1px solid var(--border-primary);
+  padding: 8px;
+}
+.source-quote-draft blockquote {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin: 0;
+  max-height: 70px;
+  overflow: auto;
+}
+.source-quote-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.app-toolbar__station-switcher {
+  position: fixed;
+  z-index: var(--layer-navigation);
+  width: min(280px, calc(100vw - 24px));
+}
+.station-switcher__profiles {
+  max-height: min(52vh, calc(100dvh - 180px));
+  overflow-y: auto;
+}
+.station-switcher__row {
+  min-height: 44px;
+}
+.station-switcher__identity {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.station-switcher__status {
+  font-size: var(--k-text-xs);
+  color: var(--k-text-muted);
+}
+
+/* The Agent/Model/Mode rail has no fill of its own and sits flush on the
+   transcript's bottom edge, so a line scrolled to that edge was sliced
+   mid-glyph right against the chips and read as text running under them — on
+   a phone and in a desktop dock alike. Fade the transcript out over its own
+   bottom gutter instead: at rest at the bottom only padding is in the fade,
+   and mid-scroll the cut line dissolves before it reaches the rail. A static
+   mask on the scroller, no animation and no blur. */
+.chat-messages {
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    #000 calc(100% - 16px),
+    transparent
+  );
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 16px), transparent);
+}
+
+/* Compact actions keep their names reachable by hover, focus and touch hold. */
+.composer-icon-action {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+.composer-icon-action .button {
+  min-width: var(--k-space-6);
+  padding: var(--k-space-1);
+}
+.composer-icon-action__label {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  z-index: var(--k-z-popover);
+  visibility: hidden;
+  white-space: nowrap;
+  pointer-events: none;
+  padding: var(--k-space-2);
+  border-radius: var(--k-radius-control);
+  color: var(--k-text);
+  background: var(--k-panel-raised);
+  font-size: var(--k-text-sm);
+}
+.composer-icon-action:hover .composer-icon-action__label,
+.composer-icon-action:focus-within .composer-icon-action__label,
+.composer-icon-action[data-label-visible] .composer-icon-action__label {
+  visibility: visible;
+}
+.chat-input__send-group {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-1);
+  flex: 0 0 auto;
+}
+.chat-input__send-mode {
+  min-height: var(--k-space-6);
+  gap: var(--k-space-1);
+}
+
+.chat-input .chat-input__send-btn {
+  width: auto;
+  min-width: 44px;
+  gap: var(--k-space-1);
+  padding: 0 var(--k-space-3);
+  border-radius: var(--k-radius-control);
+  font-size: var(--k-text-sm);
+}
+
+.chat-input .chat-controls-row {
+  flex-wrap: wrap;
+}
+.chat-input__send-group {
+  margin-inline-start: auto;
+}
+.chat-input__mode-option {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  text-align: start;
+}
+
+.chat-input .chat-input__stop-btn {
+  border: var(--k-border-thin) solid var(--k-line);
+  border-radius: var(--k-radius-control);
+  background: var(--k-panel-raised);
+  color: var(--k-negative);
+  margin-inline-end: var(--k-space-1);
+}
+.chat-input .chat-input__stop-btn:hover:not(:disabled) {
+  background: var(--k-negative-soft);
+}
+.chat-input__send-group {
+  gap: 0;
+}
+.chat-input__send-group:has(.chat-input__send-mode) .chat-input__send-btn {
+  border-start-end-radius: 0;
+  border-end-end-radius: 0;
+}
+.chat-input__send-mode {
+  height: 44px;
+  border-start-start-radius: 0;
+  border-end-start-radius: 0;
+}
+
+.chat-input__submit-controls {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+}
+.chat-input__submit-controls[data-concealed] {
+  visibility: hidden;
+  pointer-events: none;
+}
+.chat-input__mode-slot {
+  display: none;
+}
+
 @media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
   .app-toolbar__action--secondary.app-toolbar__action--secondary {
     display: none;
@@ -2339,251 +2686,37 @@
     min-height: 44px;
     min-width: 44px;
   }
-}
 
-/* #1132 defect 2: below this width the toolbar's action cluster no longer fits,
-   and the connection chip's label is what it can give up.
+  .composer-icon-action .button,
+  .chat-input__send-mode {
+    min-height: 44px;
+    min-width: 44px;
+  }
 
-   MEASURED, on a running app in the `error` state ("Can't connect"), which is
-   the state in which reaching Settings matters most. `.app-toolbar__actions` is
-   `flex-shrink: 0` and `.app-toolbar__brand` bottoms out, so the row's left
-   side ends at x=126 and the cluster's own width is viewport-independent: with
-   this chip labelled it measures 259px, putting `Open settings` at x=340..384
-   at EVERY viewport up to 402 (266px and x=348..392 before station#1401's
-   padding trim, in the same `error` state). #1401 released this chip's 116px `min-width`
-   reservation, and that is what keeps 390, 402 and 412 reachable today; what it
-   left behind is the arithmetic below.
-
-   THE BOUND. The widest the cluster can get: 126 (left side at its floor) +
-   112 (this chip — an 85px `max-width` label plus 27px of measured furniture:
-   button padding, the 7px dot, its gap) + 4 + 58 (notifications carrying its
-   widest badge: 34px of button plus a 23.91px badge — that is "99"'s width,
-   which the `9+` cap makes unrenderable (the cap's own string is 23.80px), so
-   the budget is ~1px conservative rather than exact. These figures are macOS
-   measurements and glyph metrics differ by platform — the same capped badge is
-   25.34px on a Linux runner, where "+" is wider than a digit rather than
-   narrower — so treat them as this platform's arithmetic. What holds
-   everywhere is that the badge stops growing at the cap (pinned in
-   `HeaderActions.connection-reflow.test.tsx`, in the COUNT rather than in
-   pixels). Its pixel size against this 23.91 allowance is enforced by
-   nothing: the e2e never renders a badge, and at its 360px case the label is
-   suppressed anyway, so the row there sits nowhere near this bound. That gap
-   is station#1721. The two-character worst
-   case that HeaderActions.tsx's "9+" cap creates — uncapped this member is
-   unbounded and so is this paragraph) + 4 + 44 (More actions) + 4 + 44 (Open
-   settings) = 396px, of which the last control's own CENTRE sits at 374. At
-   374px and below that centre is outside the viewport and
-   `document.elementFromPoint` returns null — unreachable rather than merely
-   clipped, which is the defect.
-
-   station#1401: this bound was 404/382 until the mobile touch block trimmed
-   `.app-toolbar__icon-btn` padding from 8px to 6px. The 44px floor means that
-   trim changes nothing for the glyph-only controls; the two content-sized
-   members each give back 4px, measured in this fixture as chip 105 -> 101 and
-   badged notifications 62 -> 58, cluster content 267 -> 259. So the label now
-   survives eight more pixels of viewport, and 375-382 keeps a state the row
-   used to hide. It does not close #1401's own band — that still needs a
-   control to leave the row — it moves where it starts.
-
-   382 is ARITHMETIC, not a swept width: it is where the worst case lands, and
-   the worst case is a label at the 85px ceiling beside a two-character badge.
-   What was swept live, in the `error` state whose label is 79px and whose
-   badge was one digit, is narrower: that sweep read the `Open settings` centre
-   at x=370 at 360px, resolving to `null`, and station#1401's padding trim
-   moves it 8px left — DERIVED from the trim, not re-swept. What is measured
-   rather than computed is the 375px case in
-   `tests/toolbar-reachability.spec.ts`, which drives the real app at the
-   first width this breakpoint admits. So this breakpoint engages a little above where the swept state
-   alone would need it, which is what a bound is for.
-
-   Dropping the label reclaims 66px (the chip falls to its 44px touch floor) and
-   puts Open settings at x=282..326 — inside every viewport down to 326px. The
-   dot still carries the state by SHAPE (archive#3297, which is the channel
-   transient reachability was deliberately given when it stopped bannering), and
-   the accessible name is untouched: `connAccessibleName` is the BUTTON's
-   `aria-label` (HeaderActions.tsx), not this span's text, so a screen reader
-   still reads the full "Manage Stations — Can't connect · Dev Server".
-   `flex-shrink: 0` stays — archive#3766's cluster that clipped ITSELF away
-   while staying in the accessibility tree is not coming back.
-
-   Between 375 and 395px the row is still clipped at its right edge while every
-   control keeps its centre (383-403 before station#1401's padding trim): the over-subscription #1401 describes, which needs
-   a control to leave the row rather than a width tweak. Two classes, not one:
-   this block cascades after the breakpoint above and would win a tie on order
-   alone, and a tie decided by order is how the last owner of this cluster's
-   flex behaviour was lost (archive#3766). */
-@media (max-width: 374px) {
-  .app-toolbar__conn .app-toolbar__conn-state {
+  .chat-input__send-label,
+  .chat-input__mode-label {
     display: none;
+  }
+  .chat-input .chat-input__send-btn,
+  .chat-input__send-mode {
+    width: 44px;
+    min-width: 44px;
+    padding: 0;
+  }
+  .chat-input__mode-slot {
+    display: block;
+    width: 44px;
+    height: 44px;
   }
 }
 
-/* Mobile transcripts spend their width on the words. Secondary controls open
-   a sheet from one separate touch target, outside the message bubble. */
-.message-row--compact {
-  gap: 8px;
-}
-/* An answer's trigger goes under the answer, not beside it. Beside it, every
-   answer reserved a 52px column for one 44px button — the text column ended
-   ~85% across a 412px phone — and because the answer was a shrink-to-fit
-   flex item, each row ended wherever its own content did, so rows (and
-   their tool-row chevrons) ended at different widths from one answer to
-   the next. The user's bubble is right-aligned and short; it keeps the
-   side-by-side layout. */
-.message-row--compact:not(.message-row--user) {
-  flex-direction: column;
-  align-items: stretch;
-  gap: 0;
-}
-.message-row--compact:not(.message-row--user) > .message {
-  /* Exactly the row: not a shrink-to-fit box (`.message.assistant` is
-     `align-self: flex-start`, which let a wide table grow the answer past the
-     screen) and not capped at the base 80%. */
-  align-self: stretch;
-  max-width: none;
-}
-.message-row--compact:not(.message-row--user) > .message-details__trigger {
-  align-self: flex-end;
-  margin-top: -10px;
-}
-.message-row--compact .message {
-  padding: 10px 14px;
-}
-.message-row--compact .message.assistant {
-  background: transparent;
-  border: 0;
-  padding: 10px 0;
-}
-.message-details__trigger {
-  flex: 0 0 44px;
-  width: 44px;
-  height: 44px;
-  border: 0;
-  background: transparent;
-  /* A control, so it must stand off the surface at 3:1 (WCAG 1.4.11);
-     --text-muted read as a faint smudge under each answer. */
-  color: var(--text-secondary);
-  border-radius: var(--radius-md);
-}
-.message-details__panel {
-  width: min(480px, 100%);
-  background: var(--bg-primary);
-  color: var(--text-primary);
-}
-.message-details__body {
-  padding: 16px;
-  overflow-y: auto;
-}
-.message-details__body .turn-footer {
-  flex-direction: column;
-  align-items: stretch;
-}
-.message-details__body .turn-footer__actions {
-  flex-wrap: wrap;
-  opacity: 1;
-  height: auto;
-  overflow: visible;
-  pointer-events: auto;
+.chat-input .chat-input__send-btn--active {
+  background: var(--k-action);
+  color: var(--k-action-contrast);
 }
 
-.message-details__body .message__copy-btn,
-.message-details__body .message__rating,
-.message-details__body .message__trace {
-  position: static;
-  opacity: 1;
-}
-
-.chat-stream-status {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 8px 12px;
-  min-height: 44px;
-  font-size: 0.875rem;
-  color: var(--text-secondary);
-}
-
-/* #2880: the decision-delivery note can carry two sentences (a refused reply
-   and an unacknowledged one); they stack as lines, not side-by-side columns. */
-.chat-stream-status[data-chat-decision-delivery] {
-  flex-direction: column;
-  align-items: flex-start;
-  justify-content: flex-start;
-  gap: var(--k-space-1);
-}
-
-.source-quote-selection {
-  position: fixed;
-  z-index: var(--layer-surface-popover);
-  max-width: min(280px, calc(100vw - 16px));
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-primary);
-  border-radius: 8px;
-  padding: 4px;
-}
-.source-quote-selection .button,
-.source-quote-draft .button {
-  min-height: 44px;
-}
-.source-quote-drafts {
-  max-height: 180px;
-  overflow: auto;
-  flex-shrink: 0;
-}
-.source-quote-draft {
-  border: 1px solid var(--border-primary);
-  padding: 8px;
-}
-.source-quote-draft blockquote {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  margin: 0;
-  max-height: 70px;
-  overflow: auto;
-}
-.source-quote-text {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-
-.app-toolbar__station-switcher {
-  position: fixed;
-  z-index: var(--layer-navigation);
-  width: min(280px, calc(100vw - 24px));
-}
-.station-switcher__profiles {
-  max-height: min(52vh, calc(100dvh - 180px));
-  overflow-y: auto;
-}
-.station-switcher__row {
-  min-height: 44px;
-}
-.station-switcher__identity {
-  display: grid;
-  flex: 1;
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-.station-switcher__status {
-  font-size: var(--k-text-xs);
-  color: var(--k-text-muted);
-}
-
-/* The Agent/Model/Mode rail has no fill of its own and sits flush on the
-   transcript's bottom edge, so a line scrolled to that edge was sliced
-   mid-glyph right against the chips and read as text running under them — on
-   a phone and in a desktop dock alike. Fade the transcript out over its own
-   bottom gutter instead: at rest at the bottom only padding is in the fade,
-   and mid-scroll the cut line dissolves before it reaches the rail. A static
-   mask on the scroller, no animation and no blur. */
-.chat-messages {
-  -webkit-mask-image: linear-gradient(
-    to bottom,
-    #000 calc(100% - 16px),
-    transparent
-  );
-  mask-image: linear-gradient(to bottom, #000 calc(100% - 16px), transparent);
+.chat-input .chat-input__send-btn--active:hover:not(:disabled) {
+  background: var(--k-action);
 }
 
 .chat-input {
