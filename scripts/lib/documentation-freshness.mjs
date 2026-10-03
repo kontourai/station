@@ -315,9 +315,11 @@ export function resolveDocumentationFreshness({
               );
               if (changedLater) return false;
               if (!validRevision) {
-                if (!rewrittenNotes.has(note.file))
-                  rewrittenNotes.set(note.file, { note, inputs: new Set() });
-                rewrittenNotes.get(note.file).inputs.add(input);
+                if (!rangeCommits.has(note.revision)) {
+                  if (!rewrittenNotes.has(note.file))
+                    rewrittenNotes.set(note.file, { note, inputs: new Set() });
+                  rewrittenNotes.get(note.file).inputs.add(input);
+                }
                 return false;
               }
               return true;

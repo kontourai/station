@@ -1786,6 +1786,36 @@ describe('append-only review notes and Git history (#3101)', () => {
     expect(check(f.root, scoped).status).toBe(0);
   });
 
+  it('does not label an uncommitted in-range note as rewritten after an unrelated commit', () => {
+    const f = pathOnlyFixture();
+    git(f.root, ['update-ref', 'refs/remotes/origin/main', 'main']);
+    git(f.root, ['switch', '-qc', 'pr']);
+    f.write('src/c.ts', SHARED_C.replace('c1 = 1', 'c1 = 2'));
+    const revision = commit(f.root, 'source before recording');
+    reviewShared(f, 'Checked this source.');
+    f.write('unrelated.txt', 'unrelated work');
+    git(f.root, ['add', 'unrelated.txt']);
+    git(f.root, [...identity, 'commit', '-qm', 'unrelated commit']);
+    expect(git(f.root, ['rev-list', 'main..HEAD']).split('\n')).toContain(
+      revision,
+    );
+    const rejected = run(
+      f.root,
+      'check-documentation-freshness.mjs',
+      [],
+      scoped,
+    );
+    expect(rejected.status).toBe(1);
+    expect(rejected.stderr).not.toContain(
+      'history was rewritten after recording',
+    );
+    expect(rejected.stderr).not.toContain(
+      "note revision outside this change's range",
+    );
+    commit(f.root, 'commit valid in-range notes');
+    expect(check(f.root, scoped).status).toBe(0);
+  });
+
   it('does not accept a landed commit without a covering note, even if bytes are restored', () => {
     const f = pathOnlyFixture();
     f.write('src/c.ts', SHARED_C.replace('c1 = 1', 'c1 = 2'));
