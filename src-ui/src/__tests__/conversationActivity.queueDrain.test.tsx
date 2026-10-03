@@ -619,6 +619,29 @@ describe('#2309 the binding-routed drain acts only for an unrouted current child
     });
   });
 
+  // #3157: the successor-Session path (`drainUnroutedConversationTurnEnd`)
+  // holds the queue on a usage-limit stop exactly like the routed one.
+  test('a usage-limit runtime.error on the unrouted current child holds the queue', async () => {
+    chatWithQueue(['held behind the limit']);
+    resumeWithoutSnapshot(API, open(100));
+    deliverEvent(
+      API,
+      {
+        ...runtimeError('claude', false),
+        code: 'engine-turn-failed',
+        details: {
+          usageLimit: true,
+          scope: 'account',
+          resetAt: '2026-09-23T01:00:00.000Z',
+        },
+      } as OrchestrationEvent,
+      closed(101),
+    );
+    await vi.advanceTimersByTimeAsync(500);
+    expect(mocks.dispatchForeground).not.toHaveBeenCalled();
+    expect(chat().queuedMessages).toEqual(['held behind the limit']);
+  });
+
   test('a chat the terminal routes to is left to its own handler: the head is taken only after the answer is committed', async () => {
     chatWithQueue(['B1', 'B2'], CHILD);
     connect(API, open(110));

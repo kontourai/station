@@ -325,6 +325,71 @@ describe('#3157 usage-limit resume', () => {
     second.store.close();
   });
 
+  test('an unreadable setting counts as off', async () => {
+    vi.useFakeTimers({ now: STOPPED_AT });
+    const { store } = openStore();
+    const { coordinator, dispatch } = coordinatorFor(store, () => {
+      throw new Error('config unreadable');
+    });
+    stopOnUsageLimit(coordinator, store);
+    await vi.advanceTimersByTimeAsync(UNTIL_RESET_MS + 1_000);
+    expect(dispatch).not.toHaveBeenCalled();
+    expect(coordinator.latestProjection(THREAD)).toMatchObject({
+      outcome: 'manual',
+      outcomeReason: 'auto-resume-off',
+    });
+    await coordinator.dispose();
+    store.close();
+  });
+
+  test('the Session exiting cancels the waiting resume with session-ended', async () => {
+    vi.useFakeTimers({ now: STOPPED_AT });
+    const { store } = openStore();
+    const { coordinator, dispatch } = coordinatorFor(store, () => true);
+    stopOnUsageLimit(coordinator, store);
+    observe(coordinator, store, {
+      eventId: 'limited-exit',
+      provider: 'codex',
+      threadId: THREAD,
+      createdAt: STOPPED_AT.toISOString(),
+      method: 'session.exited',
+      sessionId: THREAD,
+      reason: 'stopped',
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(coordinator.latestProjection(THREAD)).toMatchObject({
+      outcome: 'canceled',
+      outcomeReason: 'session-ended',
+    });
+    await vi.advanceTimersByTimeAsync(UNTIL_RESET_MS + 1_000);
+    expect(dispatch).not.toHaveBeenCalled();
+    await coordinator.dispose();
+    store.close();
+  });
+
+  test('a stop left to the user keeps its reset and reason across a restart', async () => {
+    vi.useFakeTimers({ now: STOPPED_AT });
+    const first = openStore();
+    const before = coordinatorFor(first.store, () => false);
+    stopOnUsageLimit(before.coordinator, first.store);
+    await vi.advanceTimersByTimeAsync(UNTIL_RESET_MS + 1_000);
+    await before.coordinator.dispose();
+    first.store.close();
+    const second = openStore(first.path);
+    const after = coordinatorFor(second.store, () => true);
+    after.coordinator.reconcile();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(after.coordinator.latestProjection(THREAD)).toMatchObject({
+      outcome: 'manual',
+      outcomeReason: 'auto-resume-off',
+      dueAt: RESET_AT,
+    });
+    // Left to the user: a restart does not turn it into a dispatch.
+    expect(after.dispatch).not.toHaveBeenCalled();
+    await after.coordinator.dispose();
+    second.store.close();
+  });
+
   test('a newer user turn cancels the waiting resume at once, with a reason', async () => {
     vi.useFakeTimers({ now: STOPPED_AT });
     const { store } = openStore();

@@ -7002,10 +7002,7 @@ describe('OrchestrationService', () => {
       createdAt: '2026-09-24T21:00:00.000Z',
       updatedAt: '2026-09-24T21:00:00.000Z',
     });
-    const detail = await service.readSession(
-      threadId,
-      INTERNAL_SESSION_READ_SCOPE,
-    );
+    const detail = await service.readSession(threadId);
     expect(detail?.recovery).toMatchObject({
       outcome: 'armed',
       usageLimit: true,

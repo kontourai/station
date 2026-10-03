@@ -204,6 +204,19 @@ describe('#3157 Codex usage-limit stop', () => {
         resetAt: '2026-09-25T01:10:00.000Z',
       },
     });
+    // The `error` notification (willRetry: false) is the first terminal the
+    // coordinator sees; it carries the same facts.
+    const notified = events.find(
+      (event) => event.method === 'runtime.error' && event.code === undefined,
+    );
+    expect(notified).toMatchObject({
+      retriable: false,
+      details: {
+        usageLimit: true,
+        scope: 'account',
+        resetAt: '2026-09-25T01:10:00.000Z',
+      },
+    });
     const { projection, dispatch } = await armFrom('thread-limited', events);
     expect(projection).toMatchObject({
       failureKind: 'rate-limit',
