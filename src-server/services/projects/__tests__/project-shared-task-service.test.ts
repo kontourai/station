@@ -172,14 +172,27 @@ describe('ProjectSharedTaskService', () => {
     ]);
     h.db.close();
   });
-  test('an operator check that fails for another reason never downgrades to a member read', async () => {
-    const h = fixture();
-    h.authority.operator.mockRejectedValue(new Error('authority unavailable'));
-    await expect(
-      h.service.publication(scope, 'task-1', h.authority),
-    ).rejects.toThrow('authority unavailable');
-    h.db.close();
-  });
+  test.each([
+    new Error('authority unavailable'),
+    new ProjectMembershipRefusal('unavailable'),
+    new ProjectMembershipRefusal('conflict'),
+  ])(
+    'an operator check that fails with %s never downgrades to a member read',
+    async (error) => {
+      const h = fixture();
+      h.store.share({
+        scope,
+        taskId: 'task-1',
+        taskCreatedAt: task().createdAt,
+        sharedBy: 'human:owner',
+      });
+      h.authority.operator.mockRejectedValue(error);
+      await expect(
+        h.service.publication(scope, 'task-1', h.authority),
+      ).rejects.toBe(error);
+      h.db.close();
+    },
+  );
   test('unshare and reshare rotates share incarnation so an in-flight admission stays revoked', async () => {
     const h = fixture();
     const first = await h.service.share(scope, 'task-1', h.authority);

@@ -499,11 +499,13 @@ describe('member publication read over the real service', () => {
     } finally {
       vi.unstubAllGlobals();
     }
-    const raw = await (
+    const raw = (await (
       await h.memberApp.request(
         '/api/projects/example/shared-work/task-1/publication',
       )
-    ).json();
+    ).json()) as {
+      data: { publication: { task: Record<string, unknown> } };
+    };
     expect(Object.keys(raw.data.publication).sort()).toEqual([
       'project',
       'shareId',

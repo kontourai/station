@@ -272,7 +272,7 @@ export class ProjectSharedTaskService {
 }
 /**
  * Whether the caller currently holds Station operator authority. Only a
- * membership refusal means "not an operator"; any other failure propagates
+ * forbidden membership refusal means "not an operator"; any other failure propagates
  * so an unavailable authority never downgrades into a member read.
  */
 async function isOperator(authority: ProjectSharedTaskAuthority) {
@@ -280,7 +280,8 @@ async function isOperator(authority: ProjectSharedTaskAuthority) {
     await authority.operator();
     return true;
   } catch (error) {
-    if (error instanceof ProjectMembershipRefusal) return false;
+    if (error instanceof ProjectMembershipRefusal && error.code === 'forbidden')
+      return false;
     throw error;
   }
 }
