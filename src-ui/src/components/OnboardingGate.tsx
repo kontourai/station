@@ -651,27 +651,10 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
     pairingFailureSubjectName,
   ]);
 
-  // Same-user local self-authorization (archive#1715, revised archive#1818
-  //). The desktop shell's OWN local-service Station is the one case
-  // where "needs a credential" is never a user problem to solve — the
-  // native broker refuses every request until
-  // `station_profile_authorize_active` has run at least once (see
-  // `authorized_profile_for_origin` in `src-desktop/src/lib.rs`), and a
-  // freshly installed local Station has no credential to authorize yet.
-  // `pendingLocalSelfProvisionProfileName` answers `undefined` for every
-  // saved Station shape except the process-selected Station with `localService` set — it
-  // deliberately does NOT also check `credentialRef`/`configurationState`
-  // (archive#1818: a stranded profile after a bundle-swap keychain ACL
-  // mismatch has both set, exactly like a healthy one, and the webview
-  // cannot read the keychain to tell the difference). This effect therefore
-  // runs, and `station_local_self_provision` (the Rust command) decides
-  // eligibility fresh every boot: it refuses instantly and harmlessly for an
-  // already-working profile, and re-provisions for one whose credential
-  // cannot actually be read back. One attempt per app boot (the imported
-  // function's own module latch) either way; on success, re-read the shared
-  // saved Station store the native command just wrote and force a genuinely new
-  // status attempt so the app proceeds straight past the pairing screen it
-  // would otherwise have shown.
+  // Native code resolves local ownership and grant eligibility; the renderer
+  // cannot infer either from saved credential metadata (archive#1715/#1818).
+  // The module latch bounds boot attempts. After native success, refresh the
+  // saved profile and status so onboarding observes the new authorization.
   useEffect(() => {
     if (!profile.isDesktop) return;
     let cancelled = false;
@@ -691,17 +674,10 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
     };
   }, [profile.isDesktop, forceRefetch]);
 
-  // archive#1866: re-provisioning reachable from an authentication refusal.
-  // The boot-time effect above deliberately does NOT fire when the credential
-  // reads back as `Readable` — which proves only that the bytes are in the
-  // keychain, not that the server will honour them. A server restart
-  // invalidates the local grant while it stays perfectly readable, so the
-  // app would strand with no recovery. When the transport observes a coded
-  // auth rejection (`authentication-failed`) for the active local-service
-  // profile, the native side records the rejection (401/403) and this effect
-  // fires the one-shot rejection-retry — `retryLocalSelfProvisionAfterRejection`
-  // has its OWN per-boot guard (independent of `attemptedThisBoot`) so a
-  // genuinely-rejecting server cannot cause a mint loop.
+  // A readable credential may be rejected after a server restart. Auth
+  // failure gets one additional native check, independent of the boot latch
+  // (archive#1866). Native eligibility still decides whether to replace it;
+  // the transport failure alone is not mint authority.
   const observedAuthFailure =
     activeConnection?.lastError?.reason === 'authentication-failed';
   useEffect(() => {
