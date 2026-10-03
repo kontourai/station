@@ -157,7 +157,7 @@ describe('Marketplace source lifecycle through Registry routes', () => {
       expect((await lstat(file)).isSymbolicLink()).toBe(true);
       expect(await readFile(target, 'utf8')).toBe(bytes);
       await rm(file);
-      execFileSync('mkfifo', [file], { windowsHide: true });
+      execFileSync('mkfifo', [file], { windowsHide: true, timeout: 5000 });
       expect(() => new RegistrySourceManager(home)).toThrow(
         'bounded regular file',
       );
