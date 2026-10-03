@@ -652,7 +652,6 @@ test('while the dock’s project read is in flight the region waits and writes n
  * clears the binding.
  */
 test('a dock binding naming a project that no longer exists falls back to the route’s project', async () => {
-  deviceSettingsStore.set('chatDockProjectSlug', 'deleted-project');
   deviceSettingsStore.set('regionArrangement', {
     version: 1,
     regions: {
@@ -679,6 +678,9 @@ test('a dock binding naming a project that no longer exists falls back to the ro
     maximize: null,
     dockSlotPlacement: null,
   });
+  // Project entry chooses its chat default; restore the stale saved binding
+  // after that transition so this fixture reaches the read-only fallback.
+  deviceSettingsStore.set('chatDockProjectSlug', 'deleted-project');
   renderShells();
   await waitFor(() => expect(model).not.toBeNull());
   await waitFor(() =>

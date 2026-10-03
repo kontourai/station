@@ -12,14 +12,13 @@ test.each([false, true])(
         <section id="chat-dock">
           <h1>PONG</h1>
           <textarea placeholder="Type a message..."></textarea>
+          <button type="button">Send</button>
         </section>
       `);
       await page.evaluate((withReply) => {
         document
-          .querySelector('textarea')!
-          .addEventListener('keydown', (event) => {
-            if (event.key !== 'Enter') return;
-            event.preventDefault();
+          .querySelector('button')!
+          .addEventListener('click', () => {
             document.body.dataset.submitted = 'true';
             if (withReply) {
               const message = document.createElement('div');
