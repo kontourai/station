@@ -1618,9 +1618,7 @@ describe('CommandPalette plugin commands (#1418/#1419)', () => {
     const unregister = navigationStore.registerNavigationGuard(
       Symbol('region-surface-guard'),
       () => {
-        throw new Error(
-          'showSurfacePage must not enter navigate() guard flow',
-        );
+        throw new Error('showSurfacePage must not enter navigate() guard flow');
       },
     );
     try {
