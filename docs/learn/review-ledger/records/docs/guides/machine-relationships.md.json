@@ -9,7 +9,7 @@
 
   "limits": "Source review of this document's stated contracts and actual callers, not an exhaustive audit of unclaimed code. No new public deployment, TLS/TURN lab, SSH/cloud transfer, live provider, physical/native/keychain, Windows ACL/process, two-person, cryptographic penetration or release qualification. Prior executed checks and dated receipts are retained as prior evidence, not rerun or renewed here.",
 
-  "document": {"digest":"69873a4bf7c123c8bb46b4a0014745b8725334684e864ae804226275accf966d","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+  "document": {"digest":"606cd08ee2c9a0bed9d067140907c511418f8247c8f6f09481ecfa2b567feb26","revision":"018c39925af630ca8eeab05a917de01fc80bd89e"},
 
   "sources": [
     {"path":"packages/connect/src/core/applicationChannel.ts","digest":"572c3b2ab6630c448abff1c49f99a2371425b64c818e5cce2d132fe348afb0c1","revision":"7abc84fcb97288d80f1b25cfc99de23d93817d4c"},

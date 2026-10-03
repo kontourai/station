@@ -62,7 +62,7 @@
 
     {"path":"packages/connect/src/react/ConnectionStatusDot.tsx","digest":"de58cd56cdd4dbe4b2d25d0da31a793ccb1ed623a400c275ec882987a98eb5b5","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
-    {"path":"packages/connect/src/react/DevicePairingPanel.tsx","digest":"ec273d0275ca691780e9b5bbc9940bdfa56a462c68c1ed4c5ba2394bbfe05a31","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+    {"path":"packages/connect/src/react/DevicePairingPanel.tsx","digest":"a126ebd9cef9d98431c4c1cdcc24d0a760ebfba0416cd6bbcb7c0a003ab1e178","revision":"018c39925af630ca8eeab05a917de01fc80bd89e"},
 
     {"path":"packages/connect/src/react/pairingCompletion.ts","digest":"7c7f0fe0bd69f85de1e4328b2c97b6adcaae9f3ed89830ecf169e0269867f645","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
@@ -72,7 +72,7 @@
 
     {"path":"packages/connect/src/react/useHostUrl.ts","digest":"31bc1a68625bee0516607c476367aef5e1ca4f90db61849699a99613ae49d4f4","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
-    {"path":"packages/contracts/src/environment-security.ts","digest":"5e95b203695a37807a3b3c9464df4f0153ca32b408496dc12f59274f61fd2486","revision":"91d79c3f0ce9ca5ae304e4248b67b6189103016e"},
+    {"path":"packages/contracts/src/environment-security.ts","digest":"5abb4d84b9d7545c633f924c33fef319b3ca0db13a55779731327f29f072dd79","revision":"018c39925af630ca8eeab05a917de01fc80bd89e"},
 
     {"path":"packages/sdk/src/client/http.ts","digest":"9892699e68483e0df3dd67ce71956994e98a43755a0c931dd6c3c5660caee00e","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 

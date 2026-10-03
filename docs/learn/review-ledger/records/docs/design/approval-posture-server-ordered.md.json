@@ -9,14 +9,14 @@
 
   "limits": "Current posture resolution and orchestration callers were checked for routing only; no comprehensive authorization, recovery, cross-device, or engine-posture proof.",
 
-  "document": {"digest":"fe178e2a287aee8f785b5e839f67a71aea98ea80cfd27b832e2c4c36fc551e2a","revision":"de3ec944a2f6b587c5cc22e95f6847bd26d1cc8c"},
+  "document": {"digest":"63c70c95688ad54ecff83db595ab522562e7f741e13b04f63d4e56851a7b0661","revision":"018c39925af630ca8eeab05a917de01fc80bd89e"},
 
   "sources": [
     {"path":"src-server/security/coding-authority.ts","digest":"213af116a09a02c70ea15a8346b3d8fd2e25f279c975ef9b12d8ab21a519205d","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
 
-    {"path":"src-server/services/orchestration/approval-posture.ts","digest":"88bd82f2afb16d2a11f1edb9dcdf65f395bbfb2fd937f1df0bc70ebca5405a9d","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+    {"path":"src-server/services/orchestration/approval-posture.ts","digest":"dba15525ee3ca4381ae9c02efe7da0bd38c79212bcf8320ccbefb9536876d997","revision":"018c39925af630ca8eeab05a917de01fc80bd89e"},
 
-    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"14d4d68ff2f8715e1428ca985125a9eff9eb5a05ea52946dc16b4f5971405a34","revision":"bc671142a7ae70587daf5bb0d94732e8ca74600a"}
+    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"5d7c1db19ab103f9cd49f67368afd6146899463a439046c94b90889347a926a2","revision":"018c39925af630ca8eeab05a917de01fc80bd89e"}
   ],
 
   "checks": [
