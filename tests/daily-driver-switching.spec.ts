@@ -642,7 +642,9 @@ test.describe('daily-driver mid-conversation switching (station#3307)', () => {
     // while that Agent starts. Its stable host selector proves return focus.
     await expect(page.locator('.chat-input__agent-btn')).toBeFocused();
     await boundary.getByText('What carried and reset').click();
-    await expect(boundary).toContainText('Conversation transcript');
+    await expect(boundary).toContainText(
+      CONVERSATION_HANDOFF_DISCLOSURE_LABELS.authorizedTranscript,
+    );
     await expect(boundary).toContainText('Provider-native cursor');
     const disclosureLabels = [
       ...CONVERSATION_HANDOFF_CARRIED_FIELDS,

@@ -103,7 +103,7 @@ function repository() {
         },
         {
           path: '.kontourai/private-advisory.md',
-          digest: 'private',
+          digest: sha('PRIVATE MATERIAL'),
           revision: 'a'.repeat(40),
         },
       ],

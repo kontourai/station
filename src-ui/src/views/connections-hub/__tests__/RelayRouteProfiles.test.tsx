@@ -764,7 +764,7 @@ describe('RelayRouteProfiles', () => {
       expect(screen.getByText('Station needs confirmation')).toBeTruthy(),
     );
     expect(
-      screen.getByRole('button', { name: 'Share device details' }),
+      screen.getByRole('button', { name: 'Share setup info' }),
     ).toBeTruthy();
     expect(
       screen.queryByRole('dialog', { name: 'About Station confirmation' }),
@@ -2314,7 +2314,7 @@ describe('RelayRouteProfiles', () => {
       screen.getByRole('button', { name: 'Review new Station key' }),
     ).toBeTruthy();
     expect(
-      screen.queryByRole('button', { name: 'Share device details' }),
+      screen.queryByRole('button', { name: 'Share setup info' }),
     ).toBeNull();
     expect(screen.queryByLabelText('One-time Station invitation')).toBeNull();
 
@@ -2322,9 +2322,7 @@ describe('RelayRouteProfiles', () => {
     fireEvent.click(
       screen.getByRole('button', { name: 'Review new Station key' }),
     );
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Share device details' }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Share setup info' }));
     await screen.findByRole('region', {
       name: 'Public install proof metadata',
     });
@@ -2339,9 +2337,7 @@ describe('RelayRouteProfiles', () => {
     fireEvent.click(
       screen.getByRole('button', { name: 'Review new Station key' }),
     );
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Share device details' }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Share setup info' }));
     await screen.findByRole('region', {
       name: 'Public install proof metadata',
     });
@@ -2474,9 +2470,7 @@ describe('RelayRouteProfiles', () => {
 
     renderRoutes();
     await screen.findByText('Station needs confirmation');
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Share device details' }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Share setup info' }));
     await screen.findByText('sha256:install-proof');
     expect(screen.getByText('io.kontourai.station')).toBeTruthy();
     const stationInvitationField = screen.getByLabelText(
@@ -2555,7 +2549,7 @@ describe('RelayRouteProfiles', () => {
     await screen.findByText('Station confirmed');
     expect(screen.getByText('Station confirmed')).toBeTruthy();
     expect(
-      screen.queryByRole('button', { name: 'Share device details' }),
+      screen.queryByRole('button', { name: 'Share setup info' }),
     ).toBeNull();
     expect(
       screen.queryByRole('region', { name: 'Public install proof metadata' }),
@@ -2584,7 +2578,7 @@ describe('RelayRouteProfiles', () => {
     );
     await screen.findByText('Station confirmation removed');
     expect(
-      screen.getByRole('button', { name: 'Share device details' }),
+      screen.getByRole('button', { name: 'Share setup info' }),
     ).toBeTruthy();
   });
 
@@ -2602,9 +2596,7 @@ describe('RelayRouteProfiles', () => {
     });
     renderRoutes();
     await screen.findByText('Station needs confirmation');
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Share device details' }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Share setup info' }));
     await screen.findByText('sha256:install-proof');
     const input = screen.getByLabelText(
       'One-time Station invitation',

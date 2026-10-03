@@ -51,6 +51,10 @@ vi.mock('@kontourai/station-sdk', () => ({
   useEngineConnectionsQuery: () => ({ data: [] }),
   useModelConnectionsQuery: () => ({ data: [] }),
   useProjectsQuery: () => ({ data: [] }),
+  useReconnectIntegrationMutation: () => ({
+    mutate: vi.fn(),
+    isPending: false,
+  }),
   useCredentialRecoveryQuery: () => ({
     data: undefined,
     isLoading: false,

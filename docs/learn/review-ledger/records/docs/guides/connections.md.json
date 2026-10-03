@@ -76,7 +76,7 @@
 
     {"path":"src-desktop/src/native_relay_proof_key.rs","digest":"e33c7395002ae8d230afa984115212ac58b53725b51c54265ce7a3a0c9174608","revision":"d5e4502434838cc29b63091ae689474d6488cfe4"},
 
-    {"path":"src-desktop/src/native_relay_redemption.rs","digest":"dbf3c222dce269cb71deba9d86e1f9b51f58f8d1abc77f3f4583556f160ae115","revision":"70e9b50c5329411de0b7b432408f0722407a0208"},
+    {"path":"src-desktop/src/native_relay_redemption.rs","digest":"a56d97c24bdf73ff4e2328bd73c022a2c12815c0ca1420e49cc964f7cdf2d22c","revision":"11b4ccc5932fa6788af8276326296bd86f51542c"},
 
     {"path":"src-desktop/src/native_station_key_custody.rs","digest":"ede5f4ea69dcb8fc6ad5570d70fdc5cae848467335d6c393277c6dbc8fe2ccf5","revision":"a516c638f82e312fe84fe7f8dd8cd5094b2567a5"},
 
@@ -150,7 +150,7 @@
 
     {"path":"src-server/security/coding-authority.ts","digest":"213af116a09a02c70ea15a8346b3d8fd2e25f279c975ef9b12d8ab21a519205d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/security/pairing-route-scopes.ts","digest":"cd0d7cf06b6f68355d4e509648ac649c62bdf1cabd52b220e7578776b5e01873","revision":"d73d9f64333504f027a200482e978cc4445338da"},
+    {"path":"src-server/security/pairing-route-scopes.ts","digest":"cd0d7cf06b6f68355d4e509648ac649c62bdf1cabd52b220e7578776b5e01873","revision":"e4344fd10ef7a80a6a6f65d7e709fb1be56b64df"},
 
     {"path":"src-server/security/runtime-request-security.ts","digest":"c3219b8afbdd24e8969fb407d2a0a0aa77c08a7656a0e147f64f99f0ed9af3c4","revision":"904729ae7f4058a2cd7dbaf11a4daaa6b8837d08"},
 
@@ -162,7 +162,7 @@
 
     {"path":"src-server/security/websocket-auth.ts","digest":"e8d876654158a8403c26ae104eadc42b81558cd4a17e5b263f9e42b1ddf784d8","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/agents/skill-service.ts","digest":"9f92c44195a5c87a63c1a14a3079b3cc91e00149f2b2f4e400a72189bb64d7f6","revision":"adbeb32e99a86e9a8b6fca370b944f3b2147ca9f"},
+    {"path":"src-server/services/agents/skill-service.ts","digest":"9f92c44195a5c87a63c1a14a3079b3cc91e00149f2b2f4e400a72189bb64d7f6","revision":"569b7dcead02252ba2786c9f326bb54daebbbde2"},
 
     {"path":"src-server/services/connections/__tests__/credential-usage.test.ts","digest":"7aa83feee3854f793370294beb777070ee84635554ad5fef0b94306409e34b0a","revision":"9eec73db9183c76ac49c8584171ff3c45463f518"},
 
@@ -254,7 +254,7 @@
 
     {"path":"src-ui/src/platform/native/NativeRelayLinkReview.tsx","digest":"e25569817376f5d0dc1ea00e379042b7dba49049178662a7d45fdee23b8357c5","revision":"d606c17132af7b1d9ec0d576871937dc37f79864"},
 
-    {"path":"src-ui/src/platform/native/__tests__/NativeRelayLinkIntake.test.tsx","digest":"4a7272bf2aec7fd3af4e3098dfdef975d376f2924d794fa437d3547efbffadec","revision":"00e6787a016649c527aa862f9e15327b06e2d6e3"},
+    {"path":"src-ui/src/platform/native/__tests__/NativeRelayLinkIntake.test.tsx","digest":"e8c4774b0553d5325d7b3d9501a7d2f31c396f38be5665617ed1b7001302fc7a","revision":"6783c3816613cd15f9daaa85a1bfad0b77056d6c"},
 
     {"path":"src-ui/src/platform/native/__tests__/pairingTransport.test.ts","digest":"1a00cad5f91b23b0b4ff3dde132a63245d8f069fc229a32bcbf08b4ff4a9c29a","revision":"55dad29e8ed7e58c5ce19cf6a0fd935b5015882f"},
 
@@ -286,13 +286,13 @@
 
     {"path":"src-ui/src/views/connections-hub/BrowserRelayRoutes.tsx","digest":"73f608345988cfe00d297d4605da138d9772d326d90b267aa23e3e68c3f20b9e","revision":"3eb0ca8d962b21e22b041e6b0d92af2a0d178054"},
 
-    {"path":"src-ui/src/views/connections-hub/ComputersSection.css","digest":"018f21a78796561e07eb4380a39602a369f1b31a637f67cf2aecf629d6a89e5e","revision":"cc99afd2d896c9ccda904e6347f83a863e11160a"},
+    {"path":"src-ui/src/views/connections-hub/ComputersSection.css","digest":"8bca5225be0c5bdb6ddafd8d91cfb7257a368b5a1d67eba046b977bca6ac52bb","revision":"933430b75d35242601d9ac5adf9fb4c703c50c0a"},
 
     {"path":"src-ui/src/views/connections-hub/ComputersSection.tsx","digest":"f5df4b3706df44a90bf6babbb73952515bb1d84fb313aab97f13de7952b42b56","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"src-ui/src/views/connections-hub/NativeRelayEnrollmentWizard.tsx","digest":"79cb2659b18787521916dfabca3b3cd4bf26ed24bb81e7ec488a3823e3e872b2","revision":"fc7857beb8210ea8db44cf3ffe50ae30b3aca057"},
 
-    {"path":"src-ui/src/views/connections-hub/RelayRouteKeyApproval.tsx","digest":"e65a0ef672b346a9393431c255e3eb1b900b465b979b7c395b7c7b97da2e9ce3","revision":"00e6787a016649c527aa862f9e15327b06e2d6e3"},
+    {"path":"src-ui/src/views/connections-hub/RelayRouteKeyApproval.tsx","digest":"f0271c05b2a7be512d51b166b1f177af4501621122a8148d9e6e249e07da5dbe","revision":"6783c3816613cd15f9daaa85a1bfad0b77056d6c"},
 
     {"path":"src-ui/src/views/connections-hub/RelayRouteProfiles.tsx","digest":"5a2c5e83c1e520101960b2a3dc70736acaf621fda9ccfa95fddf9fc62e4b7007","revision":"8a10893609b9e3cd63909b6f9b5b889c4e82af15"},
 

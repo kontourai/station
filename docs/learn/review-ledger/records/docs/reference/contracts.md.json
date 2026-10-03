@@ -16,11 +16,11 @@
 
     {"path":"packages/connect/src/core/nativeRelayLink.ts","digest":"b2195a228a6091f73e96ee72a86eb44ca89d26e5123fd7d0d71f44a3a4195fe9","revision":"70e9b50c5329411de0b7b432408f0722407a0208"},
 
-    {"path":"packages/contracts/package.json","digest":"0d013c2d4ed1b569b51a2068a3b1084b1e687f2a3c4ea23f2236871752dd84d4","revision":"88a7f8ed59c055ea6ac713120ba6069d33fbb892"},
+    {"path":"packages/contracts/package.json","digest":"4207a40b79f1ca84ab14d89cbfa7dd56b3f1c95ff20d9b37abd90216969325ca","revision":"fdca33b1896b280299ba72fc70a3c9b9cda7f3af"},
 
     {"path":"packages/contracts/src/__tests__/learning-review.test.ts","digest":"d91c0dcd54fc02fd99e0c7959b63a7dc1216b0556cfb2f8d1ff0996df1651347","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/contracts/src/agent.ts","digest":"e325363bc2303d78102c7c4c45b118756d71d66cae3d801eee303761d0715b6c","revision":"c2c67c2f25d565ea97d757b370f2bbf942a9588b"},
+    {"path":"packages/contracts/src/agent.ts","digest":"e325363bc2303d78102c7c4c45b118756d71d66cae3d801eee303761d0715b6c","revision":"423cbe55b9e35e4cd8954fd441cb9f3c69740d66"},
 
     {"path":"packages/contracts/src/application-session.ts","digest":"fa87c0f95e32f12f075d9e29e0fefa88df70a366b9d1dec0c44499bca8a7d4a1","revision":"d4b8f59be510d5eb8220bc5a883dd1691cfa2679"},
 
@@ -50,7 +50,7 @@
 
     {"path":"packages/contracts/src/native-relay-link.ts","digest":"b96acfafc45696ee2bbce80993e874323b19eee9fae4741d5e5600ca3c57ecc7","revision":"e33331ee19520c8bd546c878fdd503063a682634"},
 
-    {"path":"packages/contracts/src/orchestration.ts","digest":"4187210b015a86129cd5f56c5c810983c66262cc717c849bf6460b05d696c4e0","revision":"b208a334880a96bb3f4267c2d2ffd6d03e118218"},
+    {"path":"packages/contracts/src/orchestration.ts","digest":"b85426d08406de6a1e6f42dd2b8e356ea3995df5be0929390fa7d17fa00bfd64","revision":"68231f2caead4680fb4dfa036d25b1a4a2a836bb"},
 
     {"path":"packages/contracts/src/plugin.ts","digest":"98607c85d86241ccf638de4d207ebb64285752092eb7a827e4304c75df409b95","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

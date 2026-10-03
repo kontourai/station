@@ -72,7 +72,7 @@
 
     {"path":"src-desktop/src/native_relay_proof_key.rs","digest":"e33c7395002ae8d230afa984115212ac58b53725b51c54265ce7a3a0c9174608","revision":"d5e4502434838cc29b63091ae689474d6488cfe4"},
 
-    {"path":"src-desktop/src/native_relay_redemption.rs","digest":"dbf3c222dce269cb71deba9d86e1f9b51f58f8d1abc77f3f4583556f160ae115","revision":"70e9b50c5329411de0b7b432408f0722407a0208"},
+    {"path":"src-desktop/src/native_relay_redemption.rs","digest":"a56d97c24bdf73ff4e2328bd73c022a2c12815c0ca1420e49cc964f7cdf2d22c","revision":"11b4ccc5932fa6788af8276326296bd86f51542c"},
 
     {"path":"src-desktop/src/native_station_key_custody.rs","digest":"ede5f4ea69dcb8fc6ad5570d70fdc5cae848467335d6c393277c6dbc8fe2ccf5","revision":"a516c638f82e312fe84fe7f8dd8cd5094b2567a5"},
 
@@ -142,7 +142,7 @@
 
     {"path":"src-ui/src/platform/native/__tests__/nativeDiagnosticEchoBridge.test.ts","digest":"b9221a5713062938261b59f2a01562faec920fc5c287d8abc5e3369ae89d20d0","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
-    {"path":"src-ui/src/platform/native/__tests__/NativeRelayLinkIntake.test.tsx","digest":"4a7272bf2aec7fd3af4e3098dfdef975d376f2924d794fa437d3547efbffadec","revision":"00e6787a016649c527aa862f9e15327b06e2d6e3"},
+    {"path":"src-ui/src/platform/native/__tests__/NativeRelayLinkIntake.test.tsx","digest":"e8c4774b0553d5325d7b3d9501a7d2f31c396f38be5665617ed1b7001302fc7a","revision":"6783c3816613cd15f9daaa85a1bfad0b77056d6c"},
 
     {"path":"src-ui/src/platform/native/nativeAccountSessionBridge.ts","digest":"8247d3d4dfe7d8bd2a5130de0b4d9d77554057662af85206426592b4ca051bd4","revision":"2e4f061f91ffb0338e45de62382cf6da59cd5c76"},
 
