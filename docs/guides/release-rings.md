@@ -127,7 +127,9 @@ anonymously, compares them with the payload, and plans the pointer again:
   minutes while the asset host still serves the older manifest, and fails at
   once on anything else. If the upload or the re-verification
   fails, it restores the saved manifest (or removes a bootstrap one) and
-  fails.
+  fails. The restore writes the bytes saved before the replace, so it would
+  overwrite a manifest someone edited onto the pointer release by hand while
+  the run was verifying.
 - **Same version, same bytes:** the pointer already moved (a rerun), so it
   only re-verifies.
 - **Older tag:** for example a desktop break-glass rollback, it leaves the
@@ -140,10 +142,11 @@ An owner cancel can land between the delete and the upload that
 `gh release upload --clobber` performs. That leaves the rolling host pointer
 with no manifest, because the restore trap does not run on cancel. The
 desktop pointer has the same exposure. A job timeout behaves like a cancel.
-Each manifest or archive GET is bounded to 30 seconds per attempt, so a
-hanging asset host fails the step (and runs the restore) rather than running
-into the 20-minute job timeout, but a timeout that still lands mid-clobber
-leaves the same empty pointer. This fails safe: the next publish
+Each manifest or archive GET is bounded to 30 seconds per attempt, and a
+read retries up to ten times, so one hanging read fails its step (and runs
+the restore) within about six minutes. An asset host that keeps hanging
+across several steps can still reach the 20-minute job timeout, and a timeout
+that lands mid-clobber leaves the same empty pointer. This fails safe: the next publish
 stops at the empty-pointer refusal. To recover, check the versioned release,
 then re-run `Publish Station release` for that tag with
 `allow_empty_host_manifest_bootstrap`.
