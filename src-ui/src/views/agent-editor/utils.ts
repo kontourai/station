@@ -1,3 +1,7 @@
+import {
+  mcpToolIdentities,
+  selectedMcpTools,
+} from '@kontourai/station-shared/mcp-tool-selection';
 import type { Tool } from '../../types';
 import type { AgentFormData } from './types';
 
@@ -28,13 +32,17 @@ export function removeIntegration(
   servers.delete(integrationId);
   return {
     ...form,
+    toolsAvailableEdited: true,
     tools: {
       ...form.tools,
       mcpServers: [...servers],
-      available: form.tools.available.filter(
+      available: effectiveAgentToolPatterns(form).filter(
         (entry) => !entry.startsWith(prefix),
       ),
       autoApprove: form.tools.autoApprove.filter(
+        (entry) => !entry.startsWith(prefix),
+      ),
+      unattendedAutoApprove: form.tools.unattendedAutoApprove.filter(
         (entry) => !entry.startsWith(prefix),
       ),
     },
@@ -65,52 +73,134 @@ export function toggleIntegrationAutoApprove(
   };
 }
 
+function effectiveAgentToolPatterns(form: AgentFormData): string[] {
+  if (form.tools.available.length > 0) return form.tools.available;
+  return form.toolsOriginal?.available === undefined &&
+    !form.toolsAvailableEdited
+    ? ['*']
+    : [];
+}
+
+export function addIntegration(
+  form: AgentFormData,
+  integrationId: string,
+): AgentFormData {
+  if (form.tools.mcpServers.includes(integrationId)) return form;
+  const patterns = effectiveAgentToolPatterns(form);
+  return {
+    ...form,
+    toolsAvailableEdited: true,
+    tools: {
+      ...form.tools,
+      mcpMode:
+        form.tools.mcpMode ??
+        (form.toolsOriginal?.mcpServers === undefined ? 'add' : undefined),
+      mcpServers: [...form.tools.mcpServers, integrationId],
+      available: patterns.includes('*')
+        ? [...form.tools.mcpServers, integrationId].map((id) => `${id}_*`)
+        : [...patterns, `${integrationId}_*`],
+    },
+  };
+}
+
+export function canonicalAgentToolPatterns(
+  form: AgentFormData,
+  catalogs: Record<string, Tool[]>,
+): string[] {
+  const patterns = effectiveAgentToolPatterns(form);
+  if (patterns.includes('*')) return patterns;
+  const canonical = new Set<string>();
+  for (const id of form.tools.mcpServers) {
+    const tools = catalogs[id];
+    if (!tools) continue;
+    const selected = selectedMcpTools(
+      id,
+      tools.map((tool) => tool.toolName || tool.name),
+      patterns,
+      form.tools.mcpServers,
+    );
+    for (const name of selected === undefined ? ['*'] : selected)
+      canonical.add(`${id}_${name}`);
+  }
+  for (const pattern of patterns) {
+    if (
+      !Object.entries(catalogs).some(
+        ([id, tools]) =>
+          pattern.startsWith(`${id}_`) ||
+          pattern.startsWith(`${id}/`) ||
+          tools.some((tool) =>
+            mcpToolIdentities(id, tool.toolName || tool.name).some(
+              (identity) =>
+                identity === pattern ||
+                (pattern.endsWith('*') &&
+                  identity.startsWith(pattern.slice(0, -1))),
+            ),
+          ),
+      )
+    )
+      canonical.add(pattern);
+  }
+  return [...canonical];
+}
+
+export function selectIntegrationTools(
+  form: AgentFormData,
+  integrationId: string,
+  names: string[] | 'all',
+  catalogs: Record<string, Tool[]> = {},
+): AgentFormData {
+  const canonical = canonicalAgentToolPatterns(form, catalogs);
+  const normalized = {
+    ...form,
+    tools: { ...form.tools, available: canonical },
+  };
+  const added = addIntegration(normalized, integrationId);
+  const prefix = `${integrationId}_`;
+  const patterns = effectiveAgentToolPatterns(added);
+  const existing = patterns.includes('*')
+    ? added.tools.mcpServers.map((id) => `${id}_*`)
+    : patterns;
+  const available = existing.filter((entry) => !entry.startsWith(prefix));
+  available.push(...(names === 'all' ? [`${prefix}*`] : names));
+  return {
+    ...added,
+    toolsAvailableEdited: true,
+    tools: {
+      ...added.tools,
+      available,
+      autoApprove: [
+        ...new Set(
+          added.tools.autoApprove.flatMap((entry) => {
+            if (names !== 'all' && entry === `${prefix}*`) return names;
+            return !entry.startsWith(prefix) ||
+              names === 'all' ||
+              names.includes(entry)
+              ? [entry]
+              : [];
+          }),
+        ),
+      ],
+    },
+  };
+}
+
 export function toggleIntegrationToolEnabled(
   form: AgentFormData,
   integrationId: string,
   toolKey: string,
   tools: Tool[],
+  catalogs: Record<string, Tool[]> = { [integrationId]: tools },
 ): AgentFormData {
-  const prefix = `${integrationId}_`;
-  const available = new Set(form.tools.available);
-  const hasExplicit = [...available].some((entry) => entry.startsWith(prefix));
-
-  if (!hasExplicit || available.has(`${prefix}*`)) {
-    available.delete(`${prefix}*`);
-    if (!hasExplicit) {
-      for (const tool of tools) {
-        const key = getIntegrationToolKey(integrationId, tool);
-        if (key !== toolKey) {
-          available.add(key);
-        }
-      }
-    } else {
-      for (const tool of tools) {
-        const key = getIntegrationToolKey(integrationId, tool);
-        if (key !== toolKey) {
-          available.add(key);
-        }
-      }
-    }
-  } else if (available.has(toolKey)) {
-    available.delete(toolKey);
-  } else {
-    available.add(toolKey);
-  }
-
-  const autoApprove = new Set(form.tools.autoApprove);
-  if (!available.has(toolKey)) {
-    autoApprove.delete(toolKey);
-  }
-
-  return {
-    ...form,
-    tools: {
-      ...form.tools,
-      available: [...available],
-      autoApprove: [...autoApprove],
-    },
-  };
+  const patterns = canonicalAgentToolPatterns(form, catalogs);
+  const all = patterns.includes('*') || patterns.includes(`${integrationId}_*`);
+  const enabled = new Set(
+    all
+      ? tools.map((tool) => getIntegrationToolKey(integrationId, tool))
+      : patterns.filter((entry) => entry.startsWith(`${integrationId}_`)),
+  );
+  if (enabled.has(toolKey)) enabled.delete(toolKey);
+  else enabled.add(toolKey);
+  return selectIntegrationTools(form, integrationId, [...enabled], catalogs);
 }
 
 export function toggleIntegrationToolAutoApprove(
