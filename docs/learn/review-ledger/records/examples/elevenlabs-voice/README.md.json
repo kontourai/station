@@ -24,7 +24,7 @@
 
     {"path":"scripts/voice-realtime-live-smoke.mjs","digest":"9b193b15fc0093c07d0f4702ffaa96adb656b4bfa6df0dfc91d933df5dce3262","revision":"d1519a65a54ea7738269a1f1c02c4985a45f074c"},
 
-    {"path":"src-ui/src/core/PluginRegistry.ts","digest":"4b87c6951d37298e6497639e1cc45294fd1239f06d4c6caf9f5ed540eef5ca2c","revision":"6676a48eefb1138e35b49af59b100d086c9fff01"}
+    {"path":"src-ui/src/core/PluginRegistry.ts","digest":"69836e5e1dd4762f58da6f2495e96f0cab41d586e65327fc4c1dc08d80acc8f9","revision":"1373230550904315438e5bd2869a3c41a9e419ca"}
   ],
 
   "checks": [

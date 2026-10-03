@@ -7,7 +7,7 @@
 
   "summary": "Completed all remaining documented claims through actual release/TestFlight and client callers: optional feed reads versus compile inclusion, pinned-origin fetch and HTTPS action validation, conditional writes/readback/compensation and ambiguous outcomes, container alias publication, three-profile/extension entitlement export checks, native credential persistence rejection and iOS accessibility, and pinned OIDC/Secret Manager action behavior. Corrected guarantees to the checks performed.",
 
-  "limits": "No native build, real device, Keychain/Keystore write, signed artifact, Linux/Windows launch, provider account mutation, publication, upgrade or rollback executed in this continuation. Fixture and source checks do not establish live outcomes. Parent owns combined CI and final ledger integration.",
+  "limits": "No native build, real device, Keychain/Keystore write, signed artifact, Linux/Windows launch, provider account mutation, publication, upgrade or rollback executed in this continuation. Fixture and source checks do not establish live outcomes. Parent owns combined CI and final ledger integration.\n\nStructural merge of 5fd2dd86ad0cd35018ce09537c1aa01ce58e0e55 and 8f9ea788561518398a488d35bb768b78a272e73b preserves both prior immutable document/source anchors and historical checks. Selecting an existing current-byte binding is structural reconciliation only, not semantic approval of merged inputs. No new digest/revision or coverage baseline was minted. Competing prior anchors remain pending semantic review and supported recording after the merge commit: [{\"path\":\".github/workflows/nightly.yml\",\"ours\":{\"path\":\".github/workflows/nightly.yml\",\"digest\":\"b7e07d02c9583bad18f20d2a362a6c70a7f1e4fb425d7c06d6d313d2be824dca\",\"revision\":\"401e7c7ca5cf5b194b76a21a317fd8ec34591301\"},\"main\":{\"path\":\".github/workflows/nightly.yml\",\"digest\":\"555ac154d3eb7983e8dd5c6f3ff5f73e4f48ac6aac1800747fbbbc5ce4d36801\",\"revision\":\"ec29a8774f2c138bfd9e9818c0f0cc36fc5ebefe\"},\"active\":{\"path\":\".github/workflows/nightly.yml\",\"digest\":\"b7e07d02c9583bad18f20d2a362a6c70a7f1e4fb425d7c06d6d313d2be824dca\",\"revision\":\"401e7c7ca5cf5b194b76a21a317fd8ec34591301\"},\"decision\":\"oursMatch\"},{\"path\":\"src-desktop/Cargo.lock\",\"ours\":{\"path\":\"src-desktop/Cargo.lock\",\"digest\":\"d07581565c34d28f701e69cc8234c8f9a7a5ddd88657ecfdafc08e246c128b40\",\"revision\":\"e33331ee19520c8bd546c878fdd503063a682634\"},\"main\":{\"path\":\"src-desktop/Cargo.lock\",\"digest\":\"38624df3105a4d464e085d4034e32a78e7fe867334cfac2006d6d8b73a31fc4b\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},\"active\":{\"path\":\"src-desktop/Cargo.lock\",\"digest\":\"d07581565c34d28f701e69cc8234c8f9a7a5ddd88657ecfdafc08e246c128b40\",\"revision\":\"e33331ee19520c8bd546c878fdd503063a682634\"},\"decision\":\"oursMatch\"},{\"path\":\"src-desktop/Cargo.toml\",\"ours\":{\"path\":\"src-desktop/Cargo.toml\",\"digest\":\"1bd5b1cfcc31ff425e990407c5b919b9688d5e1b264c0ca60fb969fadf3ce600\",\"revision\":\"b1b2d1fd15ddfd6dea0be7371a81d5008f6ffbf7\"},\"main\":{\"path\":\"src-desktop/Cargo.toml\",\"digest\":\"74e0f4e26dcd14a8d40422c9b7a8b0a1940728f04d3f6cfd1d5b020cb70f0b85\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},\"active\":{\"path\":\"src-desktop/Cargo.toml\",\"digest\":\"1bd5b1cfcc31ff425e990407c5b919b9688d5e1b264c0ca60fb969fadf3ce600\",\"revision\":\"b1b2d1fd15ddfd6dea0be7371a81d5008f6ffbf7\"},\"decision\":\"oursMatch\"},{\"path\":\"src-desktop/src/lib.rs\",\"ours\":{\"path\":\"src-desktop/src/lib.rs\",\"digest\":\"55b2e5849868789c486b8ee0c489080f50fe66d06f2d74b0ec1de6ded0d5411d\",\"revision\":\"b1b2d1fd15ddfd6dea0be7371a81d5008f6ffbf7\"},\"main\":{\"path\":\"src-desktop/src/lib.rs\",\"digest\":\"8c75f82874099575e30e4b757be90a2ba22bbd8d2623813566b5b3f139124833\",\"revision\":\"3517d8f66db867fd982a8f9883ed85052c4e1fc1\"},\"active\":{\"path\":\"src-desktop/src/lib.rs\",\"digest\":\"55b2e5849868789c486b8ee0c489080f50fe66d06f2d74b0ec1de6ded0d5411d\",\"revision\":\"b1b2d1fd15ddfd6dea0be7371a81d5008f6ffbf7\"},\"decision\":\"oursMatch\"}]\n\nNo native build, real device, Keychain/Keystore write, signed artifact, Linux/Windows launch, provider account mutation, publication, upgrade or rollback executed in this continuation. Fixture and source checks do not establish live outcomes. Parent owns combined CI and final ledger integration.\n\nMerge anchor history (structural reconciliation only; no semantic approval): source src-desktop/src/lib.rs ours={\"digest\":\"57a47dd3656d47a5c43eaf4001895942d350d61b6de896fa4d1d3da498bfd821\",\"revision\":\"d5e4502434838cc29b63091ae689474d6488cfe4\"}; origin/main={\"digest\":\"ad3b52011a9be6e6a18133b2367c04d0a6245907e5b7e13fa324bcd8b5255557\",\"revision\":\"464d602fb7fb5fa9bd0df9d241dc03495b398b96\"}. The merged source bytes require supported review after the merge commit.",
 
   "document": {"digest":"e023c537a26d21fc5670e6ff044521dec517957c3ed66e7d6838c1ae89011205","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
@@ -20,7 +20,7 @@
 
     {"path":".github/workflows/nightly-native-stage.yml","digest":"90a8d29da6c024c539a0abc1eb35ba490791780917e174eb7023d6fb45a90030","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
 
-    {"path":".github/workflows/nightly.yml","digest":"4b0cb6bcc5e169bcad830d8a56f7de030864ab0d23cfe64ce1b9880845f45592","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
+    {"path":".github/workflows/nightly.yml","digest":"0a1753a37519218e6a6afccc12785f34be4a376e3e82c303819e5c4da9614202","revision":"ea49cb8678208b9037f8e9ab3ceb2a95fe2647ff"},
 
     {"path":".github/workflows/publish-release.yml","digest":"8811d948692207aff9c3987ed9c5ecfd7778770dfbb76b4d80cb7773713f6fa1","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
 
@@ -37,6 +37,8 @@
     {"path":"install.sh","digest":"f2b2fbf2dba1198f08637b48ad3a1cd7ae684cee020621cd293668e6bbb8b4bc","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
     {"path":"ops/nightly/install-macos.zsh","digest":"70db095f76a9397adaccbab4a78374a2e562a76af2e0f595a30b5f09328776f3","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"package.json#/scripts/mobile:permissions:gate","digest":"388ab98f993e01ae62702b6901800b488c2ca0c767a5dbf851c481e37074aca9","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
 
     {"path":"patches/android-native-keyring-store/src/by_service/cred.rs","digest":"780472c84c59241c7bb0a54dc8d39032ae683cff9b4220f6b5a069243c9a1e14","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
@@ -100,21 +102,21 @@
 
     {"path":"scripts/release-platform-matrix.mjs","digest":"c7a97e393c6cb12edaee3f360ee922f6bd1fc2ab257c0c3f3872313b31bc5b35","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-desktop/Cargo.lock","digest":"38624df3105a4d464e085d4034e32a78e7fe867334cfac2006d6d8b73a31fc4b","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"src-desktop/Cargo.lock","digest":"6b27bee2d6f95c5f3039652d8f16d3f05575ec6c03512a3a223705050c854a63","revision":"6f7521ea2fc94d945814f683c64bdfccccb480bd"},
 
-    {"path":"src-desktop/Cargo.toml","digest":"74e0f4e26dcd14a8d40422c9b7a8b0a1940728f04d3f6cfd1d5b020cb70f0b85","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"src-desktop/Cargo.toml","digest":"0d9f144551f4b9e6e7d85976c7da5cc22aee133f708b48ee38087d9966264105","revision":"6f7521ea2fc94d945814f683c64bdfccccb480bd"},
 
     {"path":"src-desktop/ios/StationNotificationService/NotificationService.swift","digest":"5789171c146635064aecf59cc854e742a8726e8fbf9d158c8cf78a38d2ff468a","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-desktop/src/lib.rs","digest":"ad3b52011a9be6e6a18133b2367c04d0a6245907e5b7e13fa324bcd8b5255557","revision":"464d602fb7fb5fa9bd0df9d241dc03495b398b96"},
+    {"path":"src-desktop/src/lib.rs","digest":"87107637c2b0c4d1c470664c3ae3d5b4f1f377777f561ea2c25bd63df8cf2cd6","revision":"a516c638f82e312fe84fe7f8dd8cd5094b2567a5"},
+
+    {"path":"src-desktop/src/native_secure_entry.rs","digest":"d6ff8051df4be60ff738f524488fe877b0711b95aa606cb70b378e74962bd209","revision":"8d92d732808201554ba801334e2a19f7081fd09d"},
 
     {"path":"src-server/services/notifications/agent-activity-publisher.ts","digest":"3753a4c2bf54fbe7024f0cd658b5a69e9e2c8e0a03c00b9e8592ab6096ee0712","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
     {"path":"src-ui/src/__tests__/CoreUpdateLaunchCheck.test.tsx","digest":"d4b04ded0daf9782f355af8c27f7f2b07d4ed1a8263dad862a71f4b9708bea58","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-ui/src/components/CoreUpdateLaunchCheck.tsx","digest":"97dbb424d7dcdb9a111cd789df399ace5f50468ccc1015d0a9ec9594656e495e","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
-    {"path":"package.json#/scripts/mobile:permissions:gate","digest":"388ab98f993e01ae62702b6901800b488c2ca0c767a5dbf851c481e37074aca9","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"}
+    {"path":"src-ui/src/components/CoreUpdateLaunchCheck.tsx","digest":"97dbb424d7dcdb9a111cd789df399ace5f50468ccc1015d0a9ec9594656e495e","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"}
   ],
 
   "checks": [

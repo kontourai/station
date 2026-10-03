@@ -282,6 +282,8 @@ export interface DeviceSettings {
    * URL param and was never persisted.
    */
   chatFontSize: number | null;
+  /** Return behavior for every keyboard on this device; auto follows the pointer type. */
+  chatReturnBehavior: 'auto' | 'send' | 'newline';
   /**
    * Remembered dock-slot preference. Device placement derives whether this
    * preference is available; a narrow or coarse device never applies an
@@ -837,6 +839,16 @@ export const DEVICE_SETTINGS_REGISTRY = [
     defaultValue: true,
   }),
   defineDeviceSetting({
+    key: 'chatReturnBehavior',
+    scope: 'device',
+    descriptor: { kind: 'enum', values: ['auto', 'send', 'newline'] },
+    label: 'Return in chat',
+    help: 'Automatic uses a new line on touch devices and sends on desktop. Shift+Return always adds a line; Ctrl/Cmd+Return sends. Applies to attached keyboards too.',
+    description:
+      'Choose whether Return sends a message or inserts a new line on this device.',
+    defaultValue: 'auto',
+  }),
+  defineDeviceSetting({
     key: 'chatFontSize',
     scope: 'device',
     descriptor: { kind: 'number', integer: true, min: 10, max: 24 },
@@ -1035,6 +1047,7 @@ export const PREFERENCE_DEVICE_KEYS = [
   'chatShowReasoning',
   'chatShowToolDetails',
   'chatFontSize',
+  'chatReturnBehavior',
   'hapticsEnabled',
   'openLastStationOnLaunch',
   'developerToolsEnabled',

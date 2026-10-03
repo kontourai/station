@@ -4,6 +4,7 @@
  * by fetching a remote JSON manifest.
  */
 
+import { createHash } from 'node:crypto';
 import {
   cpSync,
   existsSync,
@@ -23,6 +24,7 @@ import {
   resolve,
   sep,
 } from 'node:path';
+import type { PluginRegistryCatalogSnapshot } from '@kontourai/station-contracts/catalog';
 import type { ToolDef } from '@kontourai/station-contracts/tool';
 import { createStationTempDirSync } from '@kontourai/station-shared/temp-dir';
 import { scanInstalledPluginInventory } from '../../services/plugins/installed-plugin-inventory.js';
@@ -30,7 +32,10 @@ import {
   copyPluginTree,
   PLUGIN_TREE_COPY,
 } from '../../services/plugins/plugin-content-integrity.js';
-import { readUntrustedPluginManifestSyncWithFormat } from '../../services/plugins/plugin-manifest-bounded-read.js';
+import {
+  readPluginManifestBytesBounded,
+  readUntrustedPluginManifestSyncWithFormat,
+} from '../../services/plugins/plugin-manifest-bounded-read.js';
 import { assertPluginIdentityAvailable } from '../../services/plugins/reserved-plugin-identities.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { execGitSync } from '../../utils/git-exec.js';
@@ -45,6 +50,7 @@ import type {
   IIntegrationRegistryProvider,
   IPluginRegistryProvider,
 } from '../provider-interfaces.js';
+import { readBoundedJson } from './catalog-http.js';
 import {
   type RegistryInstallAliases,
   readRegistryInstallAliases,
@@ -375,8 +381,12 @@ export class JsonManifestRegistryProvider
     let manifest: Manifest;
     // Support both URLs and local file paths
     if (this.isLocalManifest()) {
-      const raw = readFileSync(this.manifestUrl, 'utf-8');
-      manifest = JSON.parse(raw) as Manifest;
+      const bounded = readPluginManifestBytesBounded(this.manifestUrl);
+      if (!bounded.ok)
+        throw new Error(
+          'Registry manifest is not an available bounded regular file.',
+        );
+      manifest = JSON.parse(bounded.raw) as Manifest;
     } else {
       const response = await fetch(this.manifestUrl, {
         signal: AbortSignal.timeout(this.manifestFetchTimeoutMs),
@@ -387,12 +397,47 @@ export class JsonManifestRegistryProvider
           `Failed to fetch manifest: ${response.status} ${response.statusText}`,
         );
       }
-      manifest = (await response.json()) as Manifest;
+      manifest = (await readBoundedJson(response)) as Manifest;
     }
 
     this.manifestCache = manifest;
     this.cacheExpiry = now + this.cacheTimeout;
     return manifest;
+  }
+
+  async getCatalogSnapshot(): Promise<PluginRegistryCatalogSnapshot> {
+    const manifest = await this.fetchManifest(true);
+    const entries = this.manifestEntriesOfKind(manifest, 'plugin');
+    return {
+      revision: createHash('sha256')
+        .update(JSON.stringify(manifest))
+        .digest('hex'),
+      items: entries.map((plugin) => ({
+        id: plugin.id,
+        displayName: plugin.displayName,
+        description: plugin.description,
+        version: plugin.version,
+        source: this.listedSource(plugin.id, plugin.source),
+        installed: false,
+      })),
+      packages: entries.map((plugin) => ({
+        id: plugin.id,
+        source: this.resolveManifestSource(plugin.source).location,
+        ...(plugin.claim === undefined
+          ? {}
+          : { claim: structuredClone(plugin.claim) }),
+      })),
+    };
+  }
+
+  async refresh(): Promise<void> {
+    await this.fetchManifest(true);
+  }
+
+  async getCatalogRevision(): Promise<string> {
+    return createHash('sha256')
+      .update(JSON.stringify(await this.fetchManifest()))
+      .digest('hex');
   }
 
   async resolvePackage(

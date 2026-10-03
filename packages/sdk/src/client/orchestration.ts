@@ -36,9 +36,16 @@ import type { HarnessQuestionAnswers } from '@kontourai/station-contracts/harnes
  * non-2xx `{success:false,error}` body's `error` text is preserved instead
  * of being replaced with a generic status message.
  */
-import type { AdoptedSessionResult } from '@kontourai/station-contracts/orchestration';
+import type {
+  AdoptedSessionResult,
+  SteerInputInspectionResult,
+  SteerTurnResult,
+} from '@kontourai/station-contracts/orchestration';
+import type { SkillExperienceIdentityV1 } from '@kontourai/station-contracts/skill-experience';
 import { envelopeError } from './api-error-message';
+import { ChatHttpError, isStationEnvelope } from './chatHttpError';
 import {
+  authenticatedFetch,
   type ClientRequestOptions,
   getJson,
   mutateJson,
@@ -87,6 +94,10 @@ export type ApprovalDecision =
   | 'cancel';
 
 export interface RespondToRequestInput {
+  expectedSkillExperience?: {
+    identity: SkillExperienceIdentityV1;
+    eventId: string;
+  };
   threadId: string;
   requestId: string;
   expectedRequestEventId?: string;
@@ -414,4 +425,73 @@ export async function interruptTurn(
     },
   );
   return unwrapOrchestrationResponse<unknown>(response);
+}
+
+export interface SteerInput {
+  threadId: string;
+  text: string;
+  turnId?: string;
+  clientInputId?: string;
+}
+
+async function dispatchSteerCommand<T>(
+  apiBase: string,
+  command: {
+    type: 'steerTurn' | 'steerTurnOnce' | 'inspectSteerInput';
+    threadId: string;
+    input: string;
+    turnId?: string;
+    clientInputId?: string;
+  },
+): Promise<T> {
+  const response = await authenticatedFetch(
+    `${apiBase}/api/orchestration/commands`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(command),
+    },
+  );
+  const result = (await response.json()) as {
+    success: boolean;
+    data?: T;
+    error?: string;
+    code?: string;
+    details?: unknown;
+  };
+  if (!response.ok || !result.success) {
+    const failure = envelopeError(response, result, `HTTP ${response.status}`);
+    throw new ChatHttpError(failure, isStationEnvelope(result));
+  }
+  return result.data as T;
+}
+
+/** ID-bearing calls fail closed on servers without receipt-protected steering. */
+export function steerTurn(
+  apiBase: string,
+  input: SteerInput,
+): Promise<SteerTurnResult> {
+  return dispatchSteerCommand(apiBase, {
+    type: input.clientInputId !== undefined ? 'steerTurnOnce' : 'steerTurn',
+    threadId: input.threadId,
+    input: input.text,
+    ...(input.clientInputId !== undefined
+      ? { clientInputId: input.clientInputId }
+      : {}),
+    ...(input.turnId ? { turnId: input.turnId } : {}),
+  });
+}
+
+/** Looks up a receipt without claiming an input or invoking an engine. */
+export function inspectSteerInput(
+  apiBase: string,
+  input: SteerInput & { clientInputId: string },
+): Promise<SteerInputInspectionResult> {
+  return dispatchSteerCommand(apiBase, {
+    type: 'inspectSteerInput',
+    threadId: input.threadId,
+    input: input.text,
+    clientInputId: input.clientInputId,
+    ...(input.turnId ? { turnId: input.turnId } : {}),
+  });
 }

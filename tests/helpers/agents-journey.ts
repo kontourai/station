@@ -389,7 +389,6 @@ export async function openChatWithAgent(
   const picker = page.getByRole('dialog');
   await expect(picker).toBeVisible({ timeout: 15_000 });
   await picker.getByRole('button', { name: new RegExp(agentName) }).click();
-  await ensureChatDockOpen(page);
   await expect(page.getByPlaceholder(/^Type a message/)).toBeVisible({
     timeout: 20_000,
   });
@@ -404,7 +403,7 @@ export async function sendComposerTurn(
 ): Promise<void> {
   const composer = page.getByPlaceholder(/^Type a message/);
   await composer.fill(text);
-  await composer.press('Enter');
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
   await expect(
     page
       .locator(

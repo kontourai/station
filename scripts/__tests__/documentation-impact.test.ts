@@ -14,8 +14,11 @@ import {
 } from '../documentation-impact.mjs';
 import {
   listReviewLedgerFiles,
+  parseRecordFile,
   REVIEW_LEDGER_INDEX,
+  readReviewStateAt,
   recordFile,
+  serializeRecordFile,
 } from '../lib/review-ledger-store.mjs';
 import { forbidAmbientFreshnessMode } from './helpers/freshness-env.js';
 import { writeReviewLedger } from './helpers/review-ledger-fixture.js';
@@ -316,36 +319,132 @@ describe('documentation impact', () => {
       { path: 'guide.md', recordRemoved: false, sourcesRemoved: ['code.ts'] },
     ]);
   });
-  it('keeps a dependency added then removed in committed ledger history visible through the real CLI', () => {
-    const { root, records, base, write } = fixture();
-    write('code.ts', 'changed after review');
-    writeReviewLedger(
-      root,
-      [{ ...records[0], state: 'classified', sources: [] }],
-      { coverageBaseline: base },
-    );
-    git(root, ['add', '.']);
-    git(root, [
-      '-c',
-      'core.hooksPath=/dev/null',
-      'commit',
-      '-qm',
-      'drop recorded dependency',
-    ]);
-    const run = spawnSync(
-      process.execPath,
-      [resolve('scripts/documentation-impact.mjs'), '--catch-up', '--json'],
-      { cwd: root, env: cleanEnv, encoding: 'utf8', windowsHide: true },
-    );
-    expect(run.status).toBe(0);
-    const report: Awaited<ReturnType<typeof documentationCatchUp>> = JSON.parse(
-      run.stdout,
-    );
-    expect(report.catchUp.removedDependencies).toEqual([
-      { path: 'guide.md', recordRemoved: false, sourcesRemoved: ['code.ts'] },
-    ]);
-    expect(report.documents.map((doc) => doc.path)).toContain('guide.md');
-  });
+  it.each(['canonical', 'reformatted'] as const)(
+    'keeps removed %s historical dependencies through the real CLI without relaxing current records',
+    (layout) => {
+      const { root, records, base, write } = fixture();
+      if (layout === 'reformatted') {
+        const file = recordFile('guide.md');
+        write(
+          file,
+          `${JSON.stringify(
+            JSON.parse(readFileSync(join(root, file), 'utf8')),
+            null,
+            2,
+          )}\n`,
+        );
+        git(root, ['add', '.']);
+        git(root, [
+          '-c',
+          'core.hooksPath=/dev/null',
+          'commit',
+          '-qm',
+          'reformat historical record',
+        ]);
+        const revision = git(root, ['rev-parse', 'HEAD']).trim();
+        expect(() => readReviewStateAt(root, revision)).toThrow(
+          'canonical layout',
+        );
+      }
+      write('code.ts', 'changed after review');
+      writeReviewLedger(
+        root,
+        [{ ...records[0], state: 'classified', sources: [] }],
+        { coverageBaseline: base },
+      );
+      git(root, ['add', '.']);
+      git(root, [
+        '-c',
+        'core.hooksPath=/dev/null',
+        'commit',
+        '-qm',
+        'drop recorded dependency',
+      ]);
+      const run = spawnSync(
+        process.execPath,
+        [resolve('scripts/documentation-impact.mjs'), '--catch-up', '--json'],
+        { cwd: root, env: cleanEnv, encoding: 'utf8', windowsHide: true },
+      );
+      expect(run.status).toBe(0);
+      const report: Awaited<ReturnType<typeof documentationCatchUp>> =
+        JSON.parse(run.stdout);
+      expect(report.catchUp.removedDependencies).toEqual([
+        { path: 'guide.md', recordRemoved: false, sourcesRemoved: ['code.ts'] },
+      ]);
+      expect(report.documents.map((doc) => doc.path)).toContain('guide.md');
+      const before = ledgerFiles(root);
+      const file = recordFile('guide.md');
+      write(
+        file,
+        `${JSON.stringify(
+          JSON.parse(readFileSync(join(root, file), 'utf8')),
+          null,
+          2,
+        )}\n`,
+      );
+      const current = catchUpCli(root);
+      expect(current.status).toBe(2);
+      expect(current.stderr).toContain('canonical layout');
+      write(file, before[file]);
+      expect(ledgerFiles(root)).toEqual(before);
+    },
+  );
+  it.each([
+    'json',
+    'unknown-key',
+    'source-path',
+    'source-digest',
+    'source-revision',
+    'source-digest-array',
+    'source-revision-array',
+    'document-digest-array',
+    'document-revision-array',
+  ] as const)(
+    'refuses malformed %s historical records instead of losing dependency leads',
+    (corruption) => {
+      const f = fixture();
+      const file = recordFile('guide.md');
+      const value = JSON.parse(readFileSync(join(f.root, file), 'utf8'));
+      if (corruption === 'unknown-key') value.unrecognized = true;
+      if (corruption === 'source-path') value.sources[0].path = '../outside.ts';
+      if (corruption === 'source-digest') value.sources[0].digest = 'bad';
+      if (corruption === 'source-revision') value.sources[0].revision = 'bad';
+      if (corruption === 'source-digest-array')
+        value.sources[0].digest = [value.sources[0].digest];
+      if (corruption === 'source-revision-array')
+        value.sources[0].revision = [value.sources[0].revision];
+      if (corruption === 'document-digest-array')
+        value.document.digest = [value.document.digest];
+      if (corruption === 'document-revision-array')
+        value.document.revision = [value.document.revision];
+      if (corruption.endsWith('-array')) {
+        const canonical = serializeRecordFile(value);
+        expect(() => parseRecordFile(file, canonical)).toThrow('binding');
+        expect(() =>
+          parseRecordFile(file, canonical, 'advisory-dependency-history'),
+        ).toThrow('binding');
+      }
+      f.write(
+        file,
+        corruption === 'json'
+          ? '{broken'
+          : `${JSON.stringify(value, null, 2)}\n`,
+      );
+      git(f.root, ['add', '.']);
+      git(f.root, [
+        '-c',
+        'core.hooksPath=/dev/null',
+        'commit',
+        '-qm',
+        'malformed historical record',
+      ]);
+      writeReviewLedger(f.root, f.records, { coverageBaseline: f.base });
+      const run = catchUpCli(f.root);
+      expect(run.status).toBe(2);
+      expect(run.stdout).toBe('');
+      expect(run.stderr).toContain('documentation-impact:');
+    },
+  );
   it('uses the actual generator catalog and refuses a missing canonical input', () => {
     const { root } = fixture();
     const report = readDocumentationImpact({

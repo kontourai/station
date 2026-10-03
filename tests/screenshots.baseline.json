@@ -11,7 +11,7 @@
       "name": "agent-editor-not-runnable",
       "width": 1440,
       "height": 900,
-      "sha256": "b206312c7e821e69d30e2e86a639b4a83ed5ba2ca996fa97586122a43b040ec5"
+      "sha256": "b4ef0f4250a769a7f1ac2258ac9ff15222fdd36baacc3f825a2202469736c4e8"
     },
     {
       "name": "agents",
@@ -101,13 +101,13 @@
       "name": "mobile-agent-editor-project-control",
       "width": 390,
       "height": 844,
-      "sha256": "498bc238dfed44fc05af5ee24419867d925bd395cba55b2f2eb252e665f32dc7"
+      "sha256": "971de8b847a35cf088949ca80c1443b1db3ce79f083aacd574fa185e6d83c7ec"
     },
     {
       "name": "mobile-agent-editor-save-footer",
       "width": 390,
       "height": 844,
-      "sha256": "8b7bce26999ff4b3e9eaef45182b1795710f0e9405b0097726d461a3686d01df"
+      "sha256": "730743ecf48f527d14b282988009158a7823a3365503987442f98b8fb3f64cbb"
     },
     {
       "name": "mobile-agents",
@@ -197,7 +197,7 @@
       "name": "overlay-agent-actions-menu",
       "width": 1440,
       "height": 900,
-      "sha256": "67a50a8003d058a6d75532f1978e1041f1ae09eae3e3e041e9390e84d7606556"
+      "sha256": "616d6772e13e41f9443b08350c60035d13c5b5545ff0755178d18e56060cf327"
     },
     {
       "name": "overlay-command-palette-results",
@@ -227,7 +227,7 @@
       "name": "overlay-dock-project-mismatch",
       "width": 1440,
       "height": 900,
-      "sha256": "d61bd8fabf7bfcf20a3a22157146bf29ed89acaf1accb29085f4edb7f38cc295"
+      "sha256": "1ea5b2cf3f8f49932990eda6a7d39a442f7c5a0a1b994d02e307749071c870c4"
     },
     {
       "name": "overlay-mobile-sheet",
@@ -287,7 +287,7 @@
       "name": "registry",
       "width": 1440,
       "height": 900,
-      "sha256": "2b4433fb4438d4fc5eb5b3205c626a0faf6ffa2018b2d0ad589c0d84e224d6ed"
+      "sha256": "b9880dff9519f8333ebe0a4a98a23a49cc7c8b9e83edc2f2692591ca1fef90e8"
     },
     {
       "name": "schedule",
@@ -311,13 +311,13 @@
       "name": "settings",
       "width": 1440,
       "height": 900,
-      "sha256": "2ecaa4d9a4ebfcbc626ee822b2806b326a706ba0ec4c737ba53e530fd6e94278"
+      "sha256": "0ba40c1dfa8c7be5796affcaa3d7bd9b41d5ab4d12b5b7738f95e277384993e3"
     },
     {
       "name": "settings-info-tip",
       "width": 1440,
       "height": 900,
-      "sha256": "b4a54d38ad85d5cd4a6cd49dc7042e2e728a864e0fb5e82a570c9e110b1855b1"
+      "sha256": "4c9a8d4ba8ffd2e4a7a8822b970f3ba20293cd04cfaf2c88a3a668ccb22463ae"
     },
     {
       "name": "skills",
