@@ -396,6 +396,16 @@ export class RegistrySourceManager {
     }));
   }
 
+  private isCurrent(entry: Entry): boolean {
+    return this.entries().some(
+      (candidate) =>
+        candidate.source.id === entry.source.id &&
+        candidate.source.enabled &&
+        candidate.generation === entry.generation &&
+        candidate.provider === entry.provider,
+    );
+  }
+
   private async observe(entry: Entry, fresh = false): Promise<Snapshot> {
     const provider = entry.provider;
     if (
@@ -460,6 +470,11 @@ export class RegistrySourceManager {
       revision,
       checkedAt,
     };
+    if (!this.isCurrent(entry))
+      throw new RegistryCatalogRefusal(
+        'source-authority-changed',
+        'Selected marketplace authority changed. Inspect it again.',
+      );
     this.snapshots.set(entry.source.id, snapshot);
     this.persist({
       ...this.config,
@@ -497,6 +512,7 @@ export class RegistrySourceManager {
                 item,
               ]),
             );
+            if (!this.isCurrent(entry)) return [];
             return data.map((item) => {
               const alias = Object.entries(aliases).find(([id, alias]) => {
                 const selected = readRegistryCatalogSelection(id);
@@ -519,6 +535,7 @@ export class RegistrySourceManager {
               };
             });
           } catch {
+            if (!this.isCurrent(entry)) return [];
             const cached = this.snapshots.get(entry.source.id);
             this.statuses.set(entry.source.id, {
               ...this.statuses.get(entry.source.id),
@@ -550,7 +567,13 @@ export class RegistrySourceManager {
           'Marketplace refresh failed. Check its location and prerequisites.',
       });
     }
-    return this.list().find((source) => source.id === id)!;
+    const current = this.list().find((source) => source.id === id);
+    if (!current?.enabled)
+      throw new RegistryCatalogRefusal(
+        'source-unavailable',
+        'Selected marketplace is no longer available.',
+      );
+    return current;
   }
 
   async resolve(id: string): Promise<{

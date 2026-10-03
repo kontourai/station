@@ -316,6 +316,48 @@ describe('Marketplace source lifecycle through Registry routes', () => {
     );
   });
 
+  test('revocation during a catalog read withholds the result and its prior cached snapshot', async () => {
+    const { request } = setup();
+    let waiting = false;
+    let enter!: () => void;
+    let release!: () => void;
+    const entered = new Promise<void>((resolve) => {
+      enter = resolve;
+    });
+    const released = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const provider = {
+      registryKey: 'in-flight-publisher',
+      listAvailable: async () => {
+        if (waiting) {
+          enter();
+          await released;
+        }
+        return [{ id: 'pending-package', installed: false }];
+      },
+      listInstalled: async () => [],
+      resolvePackage: async () => ({ source: '/catalog/pending' }),
+      install: async () => ({ success: false, message: 'refused' }),
+      uninstall: async () => ({ success: false, message: 'refused' }),
+    };
+    await replacePluginProvidersForSource('in-flight-publisher', [
+      { type: 'pluginRegistry', source: 'in-flight-publisher', provider },
+    ]);
+    expect(
+      ((await (await request('/plugins')).json()) as { data: RegistryItem[] })
+        .data,
+    ).toHaveLength(1);
+    waiting = true;
+    const pending = request('/plugins');
+    await entered;
+    await replacePluginProvidersForSource('in-flight-publisher', []);
+    release();
+    expect(
+      ((await (await pending).json()) as { data: RegistryItem[] }).data,
+    ).toEqual([]);
+  });
+
   test('verifies the publisher signed item ID through the source-qualified selection and refuses changed signing metadata', async () => {
     const { home, config, request } = setup();
     await ensureStationHomeSchema(home);
