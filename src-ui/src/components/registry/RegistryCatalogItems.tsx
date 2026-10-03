@@ -1,4 +1,5 @@
 import type { RegistryCatalogTab } from '@kontourai/station-sdk';
+import { useRegistrySkillContentQuery } from '@kontourai/station-sdk';
 import { Button } from '../Button';
 import { IntegrationGlyph } from '../icons/IntegrationGlyph';
 import {
@@ -24,6 +25,7 @@ interface ItemActions {
   ) => void;
   onUseLayout: (id: string) => void;
   managePlugins?: () => void;
+  openSkill?: (name: string) => void;
   openProjects?: () => void;
 }
 
@@ -74,7 +76,21 @@ export function RegistryCatalogDetail({
           <span className="page__meta-pill">{source}</span>
         </div>
       )}
+      {item.source && item.catalog && (
+        <div className="page__subtitle">
+          Source location:{' '}
+          <code className="registry-catalog__source">{item.source}</code>
+        </div>
+      )}
       {item.version && <div className="page__subtitle">v{item.version}</div>}
+      {item.catalog && (
+        <div className="page__subtitle">
+          Catalog revision: <code>{item.catalog.revision.slice(0, 12)}</code>
+        </div>
+      )}
+      {tab === 'skills' && item.catalog && (
+        <RegistrySkillInstructions id={id} />
+      )}
       {skillHint && <div className="page__subtitle">{skillHint}</div>}
       {isInstalledPlugin && (
         <div className="page__subtitle">
@@ -91,6 +107,22 @@ export function RegistryCatalogDetail({
             onAction={(action) => actions.runLayoutAction(item, id, action)}
             onUse={() => actions.onUseLayout(id)}
           />
+        ) : tab === 'skills' && installed ? (
+          <>
+            <Button
+              variant="primary"
+              onClick={() => actions.openSkill?.(item.catalog?.itemId ?? id)}
+            >
+              Open skill
+            </Button>
+            <Button
+              variant="secondary"
+              disabled={pending || checkingInstalled}
+              onClick={() => actions.runAction(item, id, true)}
+            >
+              Remove from workspace
+            </Button>
+          </>
         ) : isInstalledPlugin ? (
           <>
             <Button variant="primary" size="sm" onClick={actions.openProjects}>
@@ -232,5 +264,21 @@ function RegistryItemHeading({
               : 'Available'}
       </span>
     </div>
+  );
+}
+
+function RegistrySkillInstructions({ id }: { id: string }) {
+  const content = useRegistrySkillContentQuery(id);
+  return (
+    <details>
+      <summary>Read skill instructions</summary>
+      {content.isLoading ? (
+        <p role="status">Loading instructions…</p>
+      ) : content.error ? (
+        <p role="alert">{content.error.message}</p>
+      ) : (
+        <pre className="marketplaces__instructions">{content.data}</pre>
+      )}
+    </details>
   );
 }

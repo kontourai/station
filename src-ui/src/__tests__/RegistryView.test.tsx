@@ -252,6 +252,23 @@ vi.mock('@kontourai/station-sdk', () => ({
     },
   }),
   useReloadPluginsMutation: () => ({ mutateAsync: reloadPlugins }),
+  useRegistrySourcesQuery: () => ({
+    data: [],
+    isLoading: false,
+    error: null,
+    refetch: vi.fn(),
+  }),
+  useRegistrySourceActionMutation: () => ({
+    mutate: vi.fn(),
+    reset: vi.fn(),
+    isPending: false,
+    error: null,
+  }),
+  useRegistrySkillContentQuery: () => ({
+    data: 'Instructions',
+    isLoading: false,
+    error: null,
+  }),
   useRegistryItemsQuery: (tab: string) => ({
     data: emptyTabs.has(tab)
       ? []
@@ -380,6 +397,33 @@ function expectInstalledToast(message: string, pluginName: string) {
   actions?.[0].onClick();
   expect(navigateMock).toHaveBeenCalledWith(`/plugins/${pluginName}`);
 }
+
+test('keeps an inspected catalog selection after a catalog refresh changes the available revision', async () => {
+  const { RegistryView } = await import('../views/RegistryView');
+  const view = render(<RegistryView initialTab="skills" />);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'View Skill One details' }),
+  );
+  const original = registryItems.skills[0]!.id;
+  registryItems.skills[0]!.id = 'skill-one-new-revision';
+  try {
+    view.rerender(<RegistryView initialTab="skills" />);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Install to workspace' }),
+    );
+    await waitFor(() =>
+      expect(mutationCalls).toContainEqual(
+        expect.objectContaining({
+          tab: 'skills',
+          id: original,
+          action: 'install',
+        }),
+      ),
+    );
+  } finally {
+    registryItems.skills[0]!.id = original;
+  }
+});
 
 describe('RegistryView', () => {
   test('keeps unsupported-format skill details available with an explanation and disabled installation', () => {

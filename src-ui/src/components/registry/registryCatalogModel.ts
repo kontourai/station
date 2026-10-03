@@ -2,6 +2,8 @@ import type { RegistryCatalogTab } from '@kontourai/station-sdk';
 
 export interface RegistryItem {
   id: string;
+  catalog?: import('@kontourai/station-contracts/catalog').RegistryCatalogSelection;
+  catalogSourceName?: string;
   displayName?: string;
   description?: string;
   installed?: boolean;
@@ -30,6 +32,7 @@ export function getRegistryItemId(item: RegistryItem) {
 }
 
 export function getRegistrySourceLabel(item: RegistryItem) {
+  if (item.catalogSourceName) return item.catalogSourceName;
   if (!item.source) return null;
   if (item.source === 'GitHub') return 'GitHub';
   if (
@@ -104,6 +107,8 @@ export function getRegistrySkillInstallRefusal(
   item: RegistryItem,
 ): string | null {
   if (tab !== 'skills') return null;
+  if (item.status === 'installed-name-conflict')
+    return 'A skill with this name is already in your Library from another source. Manage that copy before adding this one.';
   if (item.status === 'unsupported-skill-name')
     return 'This skill uses a name reserved by Station. Ask its publisher for a supported name before installing.';
   if (item.status === 'unsupported-skill-format')

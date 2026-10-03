@@ -27,9 +27,14 @@ import { UnsupportedRegistrySkillFormatError } from '../../providers/registries/
 import {
   getAgentRegistryProvider,
   getIntegrationRegistryProvider,
-  getSkillRegistryProviders,
 } from '../../providers/registries/registry.js';
+import {
+  RegistryCatalogRefusal,
+  readRegistryCatalogSelection,
+  registrySourceManager,
+} from '../../providers/registries/registry-source-manager.js';
 import type { AgentConfigurationMutationRunner } from '../../runtime/types.js';
+import { localSkillRevisionFromDirectory } from '../../services/agents/skill-revision.js';
 import type { SkillService } from '../../services/agents/skill-service.js';
 import {
   type StationKitMutationCandidate,
@@ -141,6 +146,92 @@ export function createRegistryRoutes(
 ) {
   const app = new Hono();
   const projectHomeDir = configLoader.getProjectHomeDir();
+  const sources = registrySourceManager(projectHomeDir);
+  const manageSources = operatorOnly(deps?.visibility, 'manage marketplaces');
+  app.get(
+    '/sources',
+    manageSources(async (c) => c.json({ success: true, data: sources.list() })),
+  );
+  app.post(
+    '/sources',
+    manageSources(async (c) => {
+      try {
+        return c.json(
+          { success: true, data: sources.add(await c.req.json()) },
+          201,
+        );
+      } catch {
+        return c.json(
+          {
+            success: false,
+            error:
+              'Could not add marketplace. Use a unique name and a supported public HTTPS repository/manifest or absolute local path.',
+          },
+          400,
+        );
+      }
+    }),
+  );
+  app.patch(
+    '/sources/:id',
+    manageSources(async (c) => {
+      const body = await c.req.json().catch(() => null);
+      if (!isRecord(body) || typeof body.enabled !== 'boolean')
+        return c.json(
+          { success: false, error: 'An enabled boolean is required.' },
+          400,
+        );
+      try {
+        return c.json({
+          success: true,
+          data: sources.setEnabled(param(c, 'id'), body.enabled),
+        });
+      } catch {
+        return c.json(
+          {
+            success: false,
+            error:
+              'Marketplace could not be changed. Manage plugin-owned sources through their plugin.',
+          },
+          409,
+        );
+      }
+    }),
+  );
+  app.post(
+    '/sources/:id/refresh',
+    manageSources(async (c) => {
+      try {
+        return c.json({
+          success: true,
+          data: await sources.refresh(param(c, 'id')),
+        });
+      } catch {
+        return c.json(
+          { success: false, error: 'Marketplace is unavailable or disabled.' },
+          409,
+        );
+      }
+    }),
+  );
+  app.delete(
+    '/sources/:id',
+    manageSources(async (c) => {
+      try {
+        sources.remove(param(c, 'id'));
+        return c.json({ success: true });
+      } catch {
+        return c.json(
+          {
+            success: false,
+            error:
+              'Only user-added marketplaces can be removed. Manage other sources through their configuration or plugin.',
+          },
+          409,
+        );
+      }
+    }),
+  );
   const layoutCatalog =
     deps?.layoutCatalog ?? new DistributionProfileService(projectHomeDir);
   const pluginInstallDeps = deps
@@ -636,25 +727,44 @@ export function createRegistryRoutes(
 
   app.get('/skills', async (c) => {
     registryOps.add(1, { operation: 'list-skills' });
-    const entries = getSkillRegistryProviders();
-    if (entries.length === 0) return c.json({ success: true, data: [] });
-    const results = await Promise.all(
-      entries.map(async (e) => e.provider.listAvailable()),
-    );
-    const seen = new Set<string>();
-    const data = results
-      .flat()
-      .filter((item) => {
-        if (seen.has(item.id)) return false;
-        seen.add(item.id);
-        return true;
-      })
-      .map((item) =>
-        PROTOTYPE_AFFECTING_KEYS.includes(item.id)
-          ? { ...item, status: 'unsupported-skill-name' }
-          : item,
+    const installed = skillService?.listSkills() ?? [];
+    const data = (await sources.catalog('skills')).map((item) => {
+      const sameName = installed.find(
+        (skill) => skill.name === item.catalog?.itemId,
       );
-    return c.json({ success: true, data });
+      const owns =
+        !!sameName &&
+        sameName.provenance?.catalog?.sourceId === item.catalog?.sourceId;
+      return {
+        ...item,
+        installed: owns,
+        ...(PROTOTYPE_AFFECTING_KEYS.includes(item.catalog?.itemId ?? item.id)
+          ? { status: 'unsupported-skill-name' }
+          : sameName && !owns
+            ? { status: 'installed-name-conflict' }
+            : {}),
+      };
+    });
+    const sourceStatus = sources.list();
+    const failed = sourceStatus.filter(
+      (source) => source.enabled && ['error', 'stale'].includes(source.status),
+    );
+    const unavailable = data.length === 0 && failed.length > 0;
+    return c.json(
+      {
+        success: !unavailable,
+        data,
+        sources: sourceStatus,
+        partial: failed.length > 0,
+        ...(unavailable
+          ? {
+              error:
+                'Connected skill marketplaces are unavailable. Refresh their sources.',
+            }
+          : {}),
+      },
+      unavailable ? 503 : 200,
+    );
   });
 
   app.get('/skills/installed', async (c) => {
@@ -666,7 +776,11 @@ export function createRegistryRoutes(
   app.post('/skills/install', validate(skillInstallSchema), async (c) => {
     const { id } = getBody(c);
     registryOps.add(1, { operation: 'install-skill', item: id });
-    if (PROTOTYPE_AFFECTING_KEYS.includes(id)) {
+    if (
+      PROTOTYPE_AFFECTING_KEYS.includes(
+        readRegistryCatalogSelection(id)?.itemId ?? id,
+      )
+    ) {
       return c.json(
         {
           success: false,
@@ -690,7 +804,21 @@ export function createRegistryRoutes(
       if (result.success && reloadSkills) await reloadSkills().catch(() => {});
       return c.json(result, result.success ? 200 : 500);
     } catch (error) {
-      if (!(error instanceof UnsupportedRegistrySkillFormatError)) throw error;
+      if (error instanceof RegistryCatalogRefusal)
+        return c.json(
+          { success: false, code: error.code, message: error.message },
+          409,
+        );
+      if (!(error instanceof UnsupportedRegistrySkillFormatError))
+        return c.json(
+          {
+            success: false,
+            code: 'marketplace-selection-refused',
+            message:
+              'The selected marketplace item could not be installed. Refresh its source and inspect it again.',
+          },
+          409,
+        );
       return c.json(
         {
           success: false,
@@ -704,7 +832,19 @@ export function createRegistryRoutes(
   });
 
   app.delete('/skills/:id', async (c) => {
-    const id = param(c, 'id');
+    const selection = readRegistryCatalogSelection(param(c, 'id'));
+    const id = selection?.itemId ?? param(c, 'id');
+    if (selection) {
+      const detail = await skillService?.getSkill(id);
+      if (detail?.provenance?.catalog?.sourceId !== selection.sourceId)
+        return c.json(
+          {
+            success: false,
+            message: 'Installed skill belongs to another source.',
+          },
+          409,
+        );
+    }
     registryOps.add(1, { operation: 'uninstall-skill', item: id });
     if (!skillService)
       return c.json(
@@ -727,27 +867,107 @@ export function createRegistryRoutes(
         { success: false, message: 'SkillService not available' },
         500,
       );
-    const unresult = await skillService.removeSkill(
-      id,
-      configLoader.getProjectHomeDir(),
-    );
-    if (!unresult.success) return c.json(unresult, 500);
-    const result = await skillService.installSkill(
-      id,
-      configLoader.getProjectHomeDir(),
-    );
+    let result: { success: boolean; message: string };
+    try {
+      const selection = readRegistryCatalogSelection(id);
+      const name = selection?.itemId ?? id;
+      const detail = await skillService.getSkill(name);
+      const provenance = detail.provenance?.catalog;
+      if (
+        !provenance ||
+        (selection && selection.sourceId !== provenance.sourceId)
+      )
+        return c.json(
+          {
+            success: false,
+            message: 'Installed skill has no matching marketplace provenance.',
+          },
+          409,
+        );
+      const available = await sources.catalog('skills');
+      const selected = available.find(
+        (item) =>
+          item.catalog?.sourceId === provenance.sourceId &&
+          item.catalog.itemId === provenance.itemId,
+      );
+      if (!selected)
+        return c.json(
+          {
+            success: false,
+            message:
+              'Installed skill source is unavailable. The existing package is preserved.',
+          },
+          409,
+        );
+      const revision = await localSkillRevisionFromDirectory(detail.path);
+      result = await skillService.installSkill(
+        selected.id,
+        projectHomeDir,
+        undefined,
+        revision,
+      );
+    } catch {
+      return c.json(
+        {
+          success: false,
+          message:
+            'Skill update refused. The existing package is preserved; refresh the marketplace and inspect it again.',
+        },
+        409,
+      );
+    }
     if (result.success && reloadSkills) await reloadSkills().catch(() => {});
     return c.json(result, result.success ? 200 : 500);
   });
 
   app.get('/skills/:id/content', async (c) => {
-    const id = param(c, 'id');
-    for (const { provider } of getSkillRegistryProviders()) {
-      if (!provider.getContent) continue;
-      const body = await provider.getContent(id);
-      if (body) return c.json({ success: true, data: body });
+    try {
+      const id = param(c, 'id');
+      const selection = readRegistryCatalogSelection(id);
+      const matches = selection
+        ? []
+        : (await sources.catalog('skills')).filter(
+            (item) => item.catalog?.itemId === id,
+          );
+      if (!selection && matches.length !== 1)
+        return c.json(
+          {
+            success: false,
+            error:
+              'Select the skill from its marketplace before inspecting it.',
+          },
+          409,
+        );
+      const selected = await sources.resolve(selection ? id : matches[0]!.id);
+      if (selected.selection.kind !== 'skills')
+        return c.json(
+          { success: false, error: 'Selected item is not a skill.' },
+          400,
+        );
+      const body = await (
+        selected.entry
+          .provider as import('../../providers/provider-interfaces.js').ISkillRegistryProvider
+      ).getContent?.(selected.selection.itemId);
+      if (body === null || body === undefined)
+        return c.json(
+          { success: false, error: 'Selected skill cannot be inspected.' },
+          404,
+        );
+      return c.json({
+        success: true,
+        data: body,
+        ...(selection ? { catalog: selected.selection } : {}),
+      });
+    } catch {
+      return c.json(
+        {
+          success: false,
+          error:
+            'Selected marketplace changed or is unavailable. Refresh and select the item again.',
+        },
+        409,
+      );
     }
-    return c.json({ success: false, error: 'Skill not found' }, 404);
   });
 
   // ── Plugin Registry ──────────────────────────────────────
@@ -765,10 +985,8 @@ export function createRegistryRoutes(
     '/plugins',
     asOperator(async (c) => {
       registryOps.add(1, { operation: 'list-plugins' });
-      const items = await readRegistryPluginAvailability(
-        configLoader.getProjectHomeDir(),
-      );
-      return c.json({ success: true, data: items });
+      const items = await sources.catalog('plugins');
+      return c.json({ success: true, data: items, sources: sources.list() });
     }),
   );
 

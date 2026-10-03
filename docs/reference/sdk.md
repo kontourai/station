@@ -1786,6 +1786,25 @@ unknown; it must not be replaced with an empty list or inferred from preview.
 Each present dependency row has an `id` and typed `pendingConsent` permission/tier
 entries. Trusted permissions still require separate host-owned approval.
 
+### Marketplace source hooks
+
+`useRegistrySourcesQuery()` reads `GET /api/registry/sources` through the current
+SDK request scope. `useRegistrySourceActionMutation()` accepts `{action, id?,
+source?}` with `add`, `enable`, `disable`, `remove` or `refresh`; `add` supplies
+`{displayName, adapter, location}`. Mutations invalidate Registry queries.
+`useRegistrySkillContentQuery(id)` inspects the unchanged opaque catalog
+selection ID and is disabled without an ID. These hooks use the existing
+React Query/request authority rather than a separate marketplace cache.
+
+Published `RegistrySource`, `RegistryCatalogSelection`, `SkillRegistryProvider`
+and `PluginRegistryProvider` types live in `@kontourai/station-contracts/catalog`.
+A provider's catalog metadata is untrusted publisher input. Source identity,
+selection/revision binding and current plugin visibility remain host-owned;
+registering a provider neither installs its content nor grants permission.
+Skill providers can expose `getPackageRevision` and enforce its value in
+`install`'s `expectedPackageRevision`. Plugin providers resolve fresh package
+source/claims through the existing installer and applied trust policy.
+
 ### `usePluginsQuery(config?)`
 
 Fetches all installed plugins. Cache key: `['plugins']`.

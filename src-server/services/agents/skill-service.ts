@@ -2326,22 +2326,60 @@ export class SkillService {
     name: string,
     projectHomeDir: string,
     projectSlug?: string,
+    expectedInstalledRevision?: string,
   ): Promise<{ success: boolean; message: string }> {
     skillOps.add(1, { operation: 'install' });
-    const { getSkillRegistryProviders } = await import(
-      '../../providers/registries/registry.js'
+    const { readRegistryCatalogSelection, registrySourceManager } =
+      await import('../../providers/registries/registry-source-manager.js');
+    const selection = readRegistryCatalogSelection(name);
+    if (selection) {
+      if (selection.kind !== 'skills')
+        throw new Error('Selected catalog item is not a skill.');
+      const manager = registrySourceManager(projectHomeDir);
+      const resolved = await manager.resolve(name);
+      return installSkillFromRegistry({
+        name: selection.itemId,
+        projectHomeDir,
+        projectSlug,
+        configLoader: this.configLoader,
+        providers: [
+          {
+            provider: resolved.entry
+              .provider as import('../../providers/provider-interfaces.js').ISkillRegistryProvider,
+          },
+        ],
+        selected: {
+          catalog: selection,
+          source:
+            resolved.entry.source.location ?? resolved.entry.source.displayName,
+          packageRevision: resolved.item.packageRevision,
+          assertCurrent: async () => {
+            await manager.resolve(name);
+          },
+        },
+        expectedInstalledRevision,
+        rediscover: async () =>
+          this.rediscoverAfterWrite(projectHomeDir, projectSlug),
+      });
+    }
+    const manager = registrySourceManager(projectHomeDir);
+    const matches = (await manager.catalog('skills')).filter(
+      (item) => item.catalog?.itemId === name,
     );
-    // `installSkillFromRegistry` owns the capability itself.  Do not add an
-    // outer lock here: file capabilities are non-reentrant by design.
-    return installSkillFromRegistry({
-      name,
+    if (matches.length !== 1)
+      return {
+        success: false,
+        message:
+          matches.length > 1
+            ? 'Skill name is present in multiple marketplaces. Select its source before installing.'
+            : 'No available marketplace contains this skill.',
+      };
+    return this.installSkill(
+      matches[0]!.id,
       projectHomeDir,
       projectSlug,
-      configLoader: this.configLoader,
-      providers: getSkillRegistryProviders(),
-      rediscover: async () =>
-        this.rediscoverAfterWrite(projectHomeDir, projectSlug),
-    });
+      expectedInstalledRevision,
+    );
   }
 
   async removeSkill(

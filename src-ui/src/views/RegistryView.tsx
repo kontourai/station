@@ -14,6 +14,7 @@ import {
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { ConfirmModal } from '../components/modals/ConfirmModal';
 import { KitCatalog } from '../components/registry/KitCatalog';
+import { MarketplaceSources } from '../components/registry/MarketplaceSources';
 import {
   getRegistryItemId,
   RegistryCatalog,
@@ -78,7 +79,12 @@ export function RegistryView({
   };
   const [message, setMessage] = useState<string | null>(null);
   const [search, setSearch] = useState('');
+  const [selectedSource, setSelectedSource] = useState('all');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [inspectedSelection, setInspectedSelection] = useState<{
+    tab: RegistryCatalogTab;
+    item: RegistryItem;
+  } | null>(null);
   const [remoteBundleModal, setRemoteBundleModal] = useState<
     'enable' | 'disable' | null
   >(null);
@@ -149,8 +155,12 @@ export function RegistryView({
   };
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
-    if (!query) return available;
-    return available.filter((item) =>
+    const items =
+      selectedSource === 'all'
+        ? available
+        : available.filter((item) => item.catalog?.sourceId === selectedSource);
+    if (!query) return items;
+    return items.filter((item) =>
       [
         getRegistryItemId(item),
         item.displayName,
@@ -159,14 +169,15 @@ export function RegistryView({
         item.version,
       ].some((value) => value?.toLowerCase().includes(query)),
     );
-  }, [available, search]);
+  }, [available, search, selectedSource]);
   const selectedItem = useMemo(() => {
+    if (inspectedSelection?.tab === activeTab) return inspectedSelection.item;
     if (filtered.length === 0) return null;
     return (
       filtered.find((item) => getRegistryItemId(item) === selectedId) ??
       filtered[0]
     );
-  }, [filtered, selectedId]);
+  }, [filtered, selectedId, inspectedSelection, activeTab]);
 
   useEffect(() => {
     if (filtered.length === 0) {
@@ -330,7 +341,13 @@ export function RegistryView({
     } else if (activeTab === 'integrations') {
       integrationMutation.mutate({ id: itemId, action }, callbacks);
     } else {
-      pluginMutation.mutate({ id: itemId, action }, callbacks);
+      pluginMutation.mutate(
+        {
+          id: isInstalled ? (item.installedPluginName ?? itemId) : itemId,
+          action,
+        },
+        callbacks,
+      );
     }
   };
 
@@ -516,6 +533,10 @@ export function RegistryView({
   return (
     <div className="registry-view">
       {remoteIsolationActive && remoteBundlesSection}
+      <MarketplaceSources
+        selected={selectedSource}
+        onSelect={setSelectedSource}
+      />
       <RegistryCatalog
         model={{
           activeTab,
@@ -545,7 +566,13 @@ export function RegistryView({
           setActiveTab: selectTab,
           setSearch,
           clearMessage: () => setMessage(null),
-          select: setSelectedId,
+          select: (id) => {
+            setSelectedId(id);
+            const item = available.find(
+              (item) => getRegistryItemId(item) === id,
+            );
+            if (item) setInspectedSelection({ tab: activeTab, item });
+          },
           runAction,
           runLayoutAction,
           onUseLayout: (id) => {
@@ -554,6 +581,10 @@ export function RegistryView({
               'Choose a project, then select Add Layout to apply this ready layout.',
             );
           },
+          openSkill: (name) =>
+            navigate(`/guidance/${encodeURIComponent(name)}`, {
+              tab: 'skills',
+            }),
           manageSkills: () => navigate('/guidance?tab=skills'),
           managePlugins: () => navigate('/plugins'),
           openProjects: () => showSurface('home'),

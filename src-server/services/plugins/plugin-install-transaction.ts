@@ -1,3 +1,4 @@
+import { readRegistryCatalogSelection } from '../../providers/registries/registry-source-manager.js';
 import { assertPluginNameSegment } from './plugin-name.js';
 
 export { assertPluginNameSegment } from './plugin-name.js';
@@ -236,6 +237,44 @@ async function resolveSinglePluginRegistryProvider(id: string): Promise<{
   claim?: unknown;
   fresh?: boolean;
 }> {
+  const { resolveSelectedPluginCatalog } = await import(
+    '../../providers/registries/registry-source-manager.js'
+  );
+  const selected = await resolveSelectedPluginCatalog(id);
+  if (selected) {
+    const { provider, itemId } = selected;
+    const resolved = provider.resolvePackage
+      ? await provider.resolvePackage(itemId)
+      : { source: await provider.resolveSource?.(itemId) };
+    if (!resolved?.source)
+      throw new Error('Selected marketplace refused package resolution.');
+    if (
+      selected.packageRevision &&
+      createHash('sha256').update(JSON.stringify(resolved)).digest('hex') !==
+        selected.packageRevision
+    )
+      throw new Error(
+        'Selected marketplace changed during resolution. Inspect it again.',
+      );
+    const bound: IPluginRegistryProvider = {
+      registryKey: provider.registryKey,
+      listAvailable: () => provider.listAvailable(),
+      listInstalled: () => provider.listInstalled(),
+      install: (requested, options) =>
+        provider.install(requested === id ? itemId : requested, options),
+      uninstall: (requested) =>
+        provider.uninstall(requested === id ? itemId : requested),
+      resolvePackage: async (requested) =>
+        provider.resolvePackage?.(requested === id ? itemId : requested) ??
+        null,
+    };
+    return {
+      provider: bound,
+      source: resolved.source,
+      claim: 'claim' in resolved ? resolved.claim : undefined,
+      fresh: true,
+    };
+  }
   const entries = getPluginRegistryProviders() as Array<{
     source?: string;
     provider: IPluginRegistryProvider;
@@ -2163,13 +2202,28 @@ export async function synchronizePluginAgentDefinitions(options: {
   }
 }
 
+function sameRegistryCatalogItem(left: string, right: string): boolean {
+  if (left === right) return true;
+  const a = readRegistryCatalogSelection(left);
+  const b = readRegistryCatalogSelection(right);
+  return (
+    !!a &&
+    !!b &&
+    a.sourceId === b.sourceId &&
+    a.itemId === b.itemId &&
+    a.kind === b.kind
+  );
+}
+
 function assertRegistryAliasAvailable(
   aliases: RegistryInstallAliases,
   registryId: string,
   registryKey: string,
   pluginName: string,
 ): void {
-  const existingAlias = aliases[registryId];
+  const existingAlias = Object.entries(aliases).find(([id]) =>
+    sameRegistryCatalogItem(id, registryId),
+  )?.[1];
   if (
     existingAlias &&
     (existingAlias.pluginName !== pluginName ||
@@ -2181,7 +2235,10 @@ function assertRegistryAliasAvailable(
   }
 
   for (const [existingRegistryId, alias] of Object.entries(aliases)) {
-    if (existingRegistryId !== registryId && alias.pluginName === pluginName) {
+    if (
+      !sameRegistryCatalogItem(existingRegistryId, registryId) &&
+      alias.pluginName === pluginName
+    ) {
       throw new Error(
         `Plugin '${pluginName}' is already linked to registry item '${existingRegistryId}'`,
       );
@@ -2207,7 +2264,9 @@ function assertRegistryInstallTargetAvailable(
   assertRegistryAliasAvailable(aliases, registryId, registryKey, pluginName);
 
   const pluginDir = join(pluginsDir, pluginName);
-  const existingAlias = aliases[registryId];
+  const existingAlias = Object.entries(aliases).find(([id]) =>
+    sameRegistryCatalogItem(id, registryId),
+  )?.[1];
   const ownsExistingTarget =
     existingAlias?.pluginName === pluginName &&
     existingAlias.registryKey === registryKey;
@@ -2237,6 +2296,8 @@ function rememberRegistryInstall(
 
   const aliases = readRegistryInstallAliases(projectHomeDir);
   assertRegistryAliasAvailable(aliases, registryId, registryKey, pluginName);
+  for (const id of Object.keys(aliases))
+    if (sameRegistryCatalogItem(id, registryId)) delete aliases[id];
   aliases[registryId] = { pluginName, registryKey };
   writeRegistryInstallAliases(projectHomeDir, aliases);
 }
@@ -4947,7 +5008,9 @@ export async function capturePluginRegistryAcquisition(
   const registryAcquisition = policyAdmission
     ? await verifyRegistryAcquisition({
         admission: policyAdmission,
-        registryId: registryId,
+        registryId: registryId
+          ? (readRegistryCatalogSelection(registryId)?.itemId ?? registryId)
+          : undefined,
         registryKey: registryKey,
         fresh: registryObservation?.fresh === true,
         claim: registryObservation?.claim,

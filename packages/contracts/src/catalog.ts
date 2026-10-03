@@ -24,7 +24,35 @@ export interface GuidanceAssetReference {
   connectionId?: string;
 }
 
+export interface RegistryCatalogSelection {
+  sourceId: string;
+  itemId: string;
+  revision: string;
+  kind: 'skills' | 'plugins';
+}
+
+export interface RegistrySource {
+  kind: RegistryCatalogSelection['kind'];
+  id: string;
+  displayName: string;
+  origin: 'station' | 'configured' | 'user' | 'plugin';
+  location?: string;
+  adapter: 'manifest' | 'directory' | 'github' | 'provider';
+  enabled: boolean;
+  owner?: string;
+  status: 'ready' | 'stale' | 'error' | 'disabled' | 'unknown';
+  checkedAt?: string;
+  lastSuccessfulAt?: string;
+  error?: string;
+  itemCount?: number;
+}
+
 export interface SkillProvenance {
+  catalog?: RegistryCatalogSelection & {
+    source: string;
+    contentDigest: string;
+    installedAt: string;
+  };
   createdFrom?: SkillSourceContext;
   updatedFrom?: SkillSourceContext;
 }
@@ -85,6 +113,9 @@ export interface GuidanceAsset {
 
 export interface RegistryItem {
   id: string;
+  catalog?: RegistryCatalogSelection;
+  catalogSourceName?: string;
+  packageRevision?: string;
   displayName?: string;
   description?: string;
   version?: string;
@@ -316,6 +347,41 @@ export interface Skill extends RegistryItem {
 export interface InstallResult {
   success: boolean;
   message: string;
+}
+
+export interface SkillRegistryProvider {
+  readonly registryKey?: string;
+  refresh?(): Promise<void>;
+  getPackageRevision?(id: string): Promise<string | null>;
+  listAvailable(): Promise<RegistryItem[]>;
+  listInstalled(): Promise<RegistryItem[]>;
+  install(
+    id: string,
+    targetDir: string,
+    options?: { expectedPackageRevision?: string },
+  ): Promise<InstallResult>;
+  uninstall(id: string, targetDir: string): Promise<InstallResult>;
+  update?(id: string): Promise<InstallResult>;
+  getContent?(id: string): Promise<string | null>;
+}
+
+export interface PluginRegistryProvider {
+  readonly registryKey?: string;
+  refresh?(): Promise<void>;
+  getCatalogRevision?(): Promise<string>;
+  resolvePackage?(
+    id: string,
+  ): Promise<{ source: string; claim?: unknown } | null>;
+  resolveSource?(id: string): Promise<string | null>;
+  listAvailable(): Promise<RegistryItem[]>;
+  listInstalled(): Promise<RegistryItem[]>;
+  install(
+    id: string,
+    options?: { expectedInstalledPluginName?: string },
+  ): Promise<InstallResult & { rollback?: () => Promise<void> }>;
+  uninstall(id: string): Promise<InstallResult>;
+  update?(id: string): Promise<InstallResult>;
+  preview?(id: string): Promise<import('./plugin.js').PluginPreview>;
 }
 
 export type ProviderCapabilityStatus =

@@ -1,6 +1,11 @@
 # Example Registry Manifest
 
-This directory holds the two registry manifests Station ships.
+This directory holds the two registry manifests Station ships. The Registry
+marketplace can also connect this manifest as an additional source through
+Add marketplace → Station JSON manifest, using its absolute path on the host.
+Its entries still use the existing plugin preview, consent and installation
+transaction. Source labels and author metadata do not establish verified
+publisher identity or execution qualification.
 
 - **`default.json` is the one that ships as a default.** When `registryUrl` is
   unset and the bundled file is present, Station uses this local catalog.

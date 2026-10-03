@@ -316,6 +316,17 @@ setting `registryUrl`:
 }
 ```
 
+The Registry's Add marketplace flow connects additional public GitHub Skill
+libraries, local Skill directories and local/HTTPS Station manifests without
+changing `registryUrl`. Sources persist separately, can be refreshed or disabled,
+and report offline/stale/error status independently. Removing one preserves
+installed content and provenance in the Library. Unsupported marketplace index
+formats and private credential-bearing URLs are refused rather than imported
+as an assumed compatible catalog. Plugin-contributed registry providers appear
+through their existing visibility/grant lifecycle; manage their availability
+through the owning plugin. See [marketplace APIs](../reference/api.md#manage-marketplaces)
+and the published provider types in `@kontourai/station-contracts/catalog`.
+
 A configured value always wins over the bundle. Relative paths resolve against
 the install root; absolute paths and `https://` URLs are used as given. An
 installation without an `examples/` directory simply registers no registry

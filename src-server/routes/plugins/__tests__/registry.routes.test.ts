@@ -5,6 +5,7 @@ import { KIT_OBSERVABILITY_CONFORMANCE_VECTORS } from '@kontourai/flow-agents/ki
 import { Hono } from 'hono';
 import { describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import {
   loadIntegrationConfig,
   saveIntegrationConfig,
@@ -32,7 +33,7 @@ vi.mock('../../../providers/registries/registry.js', () => {
     listAvailable: vi
       .fn()
       .mockResolvedValue([
-        { id: 's1', name: 'Skill 1', description: 'A skill' },
+        { id: 's1', displayName: 'Skill 1', description: 'A skill' },
       ]),
     getContent: vi.fn().mockResolvedValue('# Skill content'),
   };
@@ -43,6 +44,19 @@ vi.mock('../../../providers/registries/registry.js', () => {
     uninstall: vi.fn().mockResolvedValue({ success: true }),
   };
   return {
+    pluginProviderSourceGeneration: () => 0,
+    getPluginRegistryProviders: () => [
+      {
+        source: 'test',
+        provider: {
+          registryKey: 'test-registry',
+          listAvailable: async () => [
+            { id: 'p1', displayName: 'Plugin 1', installed: false },
+          ],
+          listInstalled: async () => [{ id: 'p1', installed: true }],
+        },
+      },
+    ],
     getSkillRegistryProviders: vi
       .fn()
       .mockReturnValue([{ provider: skillProvider, source: 'test' }]),
@@ -107,10 +121,12 @@ const { __integrationProvider, __agentProvider } = (await import(
 )) as any;
 const {
   installPluginFromSource,
-  readRegistryPluginAvailability,
   resolvePluginRegistryInstall,
   uninstallInstalledPlugin,
 } = await import('../../../services/plugins/plugin-install-transaction.js');
+
+const makeTempDir = trackTempDirs();
+let registryHome: string;
 
 function setup(
   layoutCatalog?: InstanceType<typeof DistributionProfileService>,
@@ -120,8 +136,9 @@ function setup(
   approveKitOperatorAction?: (candidate: any) => boolean | Promise<boolean>,
   applyConfigurationMutation?: (...args: any[]) => Promise<any>,
 ) {
+  registryHome = makeTempDir('registry-routes-');
   const configLoader = {
-    getProjectHomeDir: vi.fn().mockReturnValue('/tmp'),
+    getProjectHomeDir: vi.fn().mockReturnValue(registryHome),
     loadIntegration: vi.fn().mockRejectedValue(new Error('not found')),
     saveIntegration: vi.fn(),
     deleteIntegration: vi.fn().mockResolvedValue(undefined),
@@ -131,6 +148,8 @@ function setup(
   const skillService = {
     installSkill: vi.fn().mockResolvedValue({ success: true }),
     removeSkill: vi.fn().mockResolvedValue({ success: true }),
+    listSkills: vi.fn().mockReturnValue([]),
+    getSkill: vi.fn().mockResolvedValue({ name: 's1', path: '/tmp/skills/s1' }),
   };
   const app = createRegistryRoutes(
     configLoader as any,
@@ -310,11 +329,10 @@ describe('Registry Routes', () => {
     expect(body.success).toBe(true);
     expect(Array.isArray(body.data)).toBe(true);
     expect(body.data[0]).toMatchObject({
-      id: 'p1',
+      catalog: expect.objectContaining({ itemId: 'p1' }),
       installed: true,
-      source: 'test',
+      catalogSourceName: 'test',
     });
-    expect(readRegistryPluginAvailability).toHaveBeenCalledWith('/tmp');
   });
 
   test('GET /layouts returns an honest local built-in lifecycle catalog', async () => {
@@ -458,9 +476,9 @@ describe('Registry Routes', () => {
       '/tmp/registry/plugin-one',
       [],
       expect.objectContaining({
-        agentsDir: '/tmp/agents',
-        pluginsDir: '/tmp/plugins',
-        projectHomeDir: '/tmp',
+        agentsDir: join(registryHome, 'agents'),
+        pluginsDir: join(registryHome, 'plugins'),
+        projectHomeDir: registryHome,
       }),
       {
         activationSession: expect.any(Object),
@@ -636,9 +654,9 @@ describe('Registry Routes', () => {
     expect(uninstallInstalledPlugin).toHaveBeenCalledWith(
       'p1',
       expect.objectContaining({
-        agentsDir: '/tmp/agents',
-        pluginsDir: '/tmp/plugins',
-        projectHomeDir: '/tmp',
+        agentsDir: join(registryHome, 'agents'),
+        pluginsDir: join(registryHome, 'plugins'),
+        projectHomeDir: registryHome,
       }),
     );
   });
@@ -670,7 +688,7 @@ describe('Registry Routes', () => {
     expect(installPluginFromSource).toHaveBeenCalledWith(
       '/tmp/registry/plugin-one',
       [],
-      expect.objectContaining({ pluginsDir: '/tmp/plugins' }),
+      expect.objectContaining({ pluginsDir: join(registryHome, 'plugins') }),
       {
         activationSession: expect.any(Object),
         grantSnapshot: { revisionFor: expect.any(Function) },
@@ -802,7 +820,7 @@ describe('Registry Routes', () => {
     expect(__agentProvider.uninstall).not.toHaveBeenCalled();
     expect(uninstallInstalledPlugin).toHaveBeenCalledWith(
       'p1',
-      expect.objectContaining({ pluginsDir: '/tmp/plugins' }),
+      expect.objectContaining({ pluginsDir: join(registryHome, 'plugins') }),
     );
   });
 
@@ -824,9 +842,15 @@ describe('Registry Routes', () => {
   test("GET /skills returns the registry providers' available skills", async () => {
     const { app } = setup();
     const body = await json(await app.request('/skills'));
-    expect(body).toEqual({
+    expect(body).toMatchObject({
       success: true,
-      data: [{ id: 's1', name: 'Skill 1', description: 'A skill' }],
+      data: [
+        {
+          catalog: expect.objectContaining({ itemId: 's1' }),
+          displayName: 'Skill 1',
+          description: 'A skill',
+        },
+      ],
     });
   });
 
@@ -841,7 +865,7 @@ describe('Registry Routes', () => {
     expect(await json(response)).toEqual({ success: true });
     expect(skillService.installSkill).toHaveBeenCalledExactlyOnceWith(
       's1',
-      '/tmp',
+      registryHome,
     );
     expect(reloadSkills).toHaveBeenCalledOnce();
   });
@@ -853,49 +877,20 @@ describe('Registry Routes', () => {
     expect(await json(response)).toEqual({ success: true });
     expect(skillService.removeSkill).toHaveBeenCalledExactlyOnceWith(
       's1',
-      '/tmp',
+      registryHome,
     );
     expect(reloadSkills).toHaveBeenCalledOnce();
   });
 
-  test('POST /skills/:id/update removes, then reinstalls, then reloads', async () => {
+  test('POST /skills/:id/update refuses an unprovenanced package without deleting it', async () => {
     const { app, skillService, reloadSkills } = setup();
-    const order: string[] = [];
-    skillService.removeSkill.mockImplementation(async (id: string) => {
-      order.push(`remove ${id}`);
-      return { success: true };
-    });
-    skillService.installSkill.mockImplementation(async (id: string) => {
-      order.push(`install ${id}`);
-      return { success: true };
-    });
-    reloadSkills.mockImplementation(async () => {
-      order.push('reload');
-    });
-
     const response = await app.request('/skills/s1/update', { method: 'POST' });
-
-    expect(response.status).toBe(200);
-    expect(await json(response)).toEqual({ success: true });
-    expect(order).toEqual(['remove s1', 'install s1', 'reload']);
-    expect(skillService.removeSkill).toHaveBeenCalledWith('s1', '/tmp');
-    expect(skillService.installSkill).toHaveBeenCalledWith('s1', '/tmp');
-  });
-
-  test('POST /skills/:id/update stops when the remove fails', async () => {
-    const { app, skillService, reloadSkills } = setup();
-    skillService.removeSkill.mockResolvedValueOnce({
-      success: false,
-      message: 'not installed',
-    });
-
-    const response = await app.request('/skills/s1/update', { method: 'POST' });
-
-    expect(response.status).toBe(500);
+    expect(response.status).toBe(409);
     expect(await json(response)).toEqual({
       success: false,
-      message: 'not installed',
+      message: 'Installed skill has no matching marketplace provenance.',
     });
+    expect(skillService.removeSkill).not.toHaveBeenCalled();
     expect(skillService.installSkill).not.toHaveBeenCalled();
     expect(reloadSkills).not.toHaveBeenCalled();
   });
