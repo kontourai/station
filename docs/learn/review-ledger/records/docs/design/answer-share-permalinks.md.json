@@ -40,9 +40,9 @@
 
     {"path":"src-ui/src/views/settings/AnswerSharesSection.tsx","digest":"b8a33e1a1087df366781d6097897e62b4baf6afb6e445e0ef612454009c44cf5","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/views/share/share-token.ts","digest":"9c93a11f705be6716cbe97c78930b3e7dea44d4bcb46f5d17f93d91746a34d56","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"src-ui/src/views/share/SharedAnswerView.tsx","digest":"c05e76750bbbea1e98f9fee1d8cafd06f1c76f16b0233d20b96e5be51c8ca8e8","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/views/share/SharedAnswerView.tsx","digest":"c05e76750bbbea1e98f9fee1d8cafd06f1c76f16b0233d20b96e5be51c8ca8e8","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"}
+    {"path":"src-ui/src/views/share/share-token.ts","digest":"9c93a11f705be6716cbe97c78930b3e7dea44d4bcb46f5d17f93d91746a34d56","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"}
   ],
 
   "checks": [

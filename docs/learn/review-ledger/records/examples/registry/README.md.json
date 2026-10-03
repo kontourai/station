@@ -12,9 +12,9 @@
   "document": {"digest":"c2b2a3e581bf685a4ae436016d2dfb331502c5183ab966ee2516515f4d0f5d61","revision":"9284c690de029594417d7599810fbfbe9eca3d92"},
 
   "sources": [
-    {"path":"examples/registry/default.json","digest":"ef03a6a928d57756719fa0ef4086397b87042e6aa9d825ce7a9f0f9b003162d1","revision":"f249300b2162c4ef35f8978e4cf9ded407027304"},
+    {"path":"examples/registry/default.json","digest":"ef03a6a928d57756719fa0ef4086397b87042e6aa9d825ce7a9f0f9b003162d1","revision":"19aff2a08b9739ad9ffbda39ff8cb19b026fda82"},
 
-    {"path":"examples/registry/manifest.json","digest":"7abfc33a3f2e281d8a15c3a72c64bcfbec502cb0feab23c3990894026dfd7b13","revision":"f249300b2162c4ef35f8978e4cf9ded407027304"},
+    {"path":"examples/registry/manifest.json","digest":"7abfc33a3f2e281d8a15c3a72c64bcfbec502cb0feab23c3990894026dfd7b13","revision":"19aff2a08b9739ad9ffbda39ff8cb19b026fda82"},
 
     {"path":"packages/cli/src/commands/install-registry.ts","digest":"f718a3fb5c763792c60f9a488f2369a1806f281683e62f13525ed851bcf0ec74","revision":"ed05e6f6c98c5b2bb994a88ff8fa8e1421639269"},
 

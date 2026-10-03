@@ -29,7 +29,6 @@ const PUBLIC_QUERY_DOMAINS = [
   'agentAdmin',
   'answerShares',
   'analytics',
-  'answerShares',
   'attention',
   'board',
   'catalog',

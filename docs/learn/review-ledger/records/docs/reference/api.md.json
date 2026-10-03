@@ -22,6 +22,8 @@
 
     {"path":"packages/contracts/src/agent.ts","digest":"e325363bc2303d78102c7c4c45b118756d71d66cae3d801eee303761d0715b6c","revision":"423cbe55b9e35e4cd8954fd441cb9f3c69740d66"},
 
+    {"path":"packages/contracts/src/catalog.ts","digest":"7c18a88495a7f46c113fc67436a0ecf851bf006e599e42a608a2001f32c205de","revision":"93b4a941961ba7cef7c3faeee989dfaef6f80370"},
+
     {"path":"packages/contracts/src/config.ts","digest":"05591bdbec9d2e5ea98e24330e0020afb26e270e7c4808f7bd757c232f724d31","revision":"d6a3158c22a62d9530592c6366a1624790ee9401"},
 
     {"path":"packages/contracts/src/connection.ts","digest":"022f4a09e8e82df9cb1845564ba1cacd6488dd97b88ac0f6a0981c3c4f570d90","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
@@ -122,6 +124,18 @@
 
     {"path":"src-server/providers/llm/bedrock-region.ts","digest":"a60f287958c5db26c48d3e89d433c8e1586e8b52cd442027785708724bf65bdb","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
+    {"path":"src-server/providers/registries/filesystem-skill-registry.ts","digest":"04d981c6e1ed6f89c4149be49c8b3ca8711a4fae6c7e36d2d101c81ca81307d3","revision":"2867eea7c9a4838e2a59cdbf6ec7f940b7d4cf26"},
+
+    {"path":"src-server/providers/registries/github-skill-registry.ts","digest":"c2895537e76722b6064ce7e6704a7c9edaa08edc5ce431f02fb162278840c0df","revision":"0814cc6ddb168cff69e5572b185a853540a4f6e0"},
+
+    {"path":"src-server/providers/registries/json-manifest-registry.ts","digest":"278b9454c712425274a2566d9becbcfc0acb68d86216484f37ab472faad19eac","revision":"2867eea7c9a4838e2a59cdbf6ec7f940b7d4cf26"},
+
+    {"path":"src-server/providers/registries/registry-catalog-installed-state.ts","digest":"56210cc44ce38f67ad13ab2d27e0c340d7a2215a1c606b23c0d84ffc2e4294d6","revision":"2867eea7c9a4838e2a59cdbf6ec7f940b7d4cf26"},
+
+    {"path":"src-server/providers/registries/registry-source-configuration.ts","digest":"c18ab5a6d6f6163df087ab5d344544fa9c86d660b535a5bb9a9f8c0289172a93","revision":"27e102c04a86e76e1ab20cfcd7ee02d55eeff9df"},
+
+    {"path":"src-server/providers/registries/registry-source-manager.ts","digest":"6354f2b2a03af2f1be2a6acd87c647be6abbad09b8e342fe38ca6481f110fced","revision":"27e102c04a86e76e1ab20cfcd7ee02d55eeff9df"},
+
     {"path":"src-server/routes/agents/agent-tools.ts","digest":"ea178269f250820bee8d8d1c91198be22b47b5ce76b2ca579935468b77d84c71","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"src-server/routes/agents/agents.ts","digest":"06d20a294112b76993e9a1efd4ab9ce639242ab9116e04a7f1cbb7f68153ba23","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
@@ -173,6 +187,10 @@
     {"path":"src-server/routes/orchestration/orchestration.ts","digest":"c3febaa85af6fa1d6b6edce04539a96b88cb7cb0660b7d0ee0de8d4fb6595530","revision":"b208a334880a96bb3f4267c2d2ffd6d03e118218"},
 
     {"path":"src-server/routes/orchestration/runs.ts","digest":"f247aba8556b954a0fbbbb46b89870c75b736340cf9c0b4f1c617005bf31aebd","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/plugins/__tests__/registry-marketplaces.routes.test.ts","digest":"cfba0ef6fb4466b847f8678d9deee537c1dbe02ab27a6dfb87aa93b925da71aa","revision":"377307346728da5b8a08c939cabc759b7d606125"},
+
+    {"path":"src-server/routes/plugins/__tests__/registry-skill-acquisition.routes.test.ts","digest":"a4012a90f751727331c2f6ca68299471dd55b5009e5cca7ceae6a7c36ee97be9","revision":"cae2f34dee0e883caffbcbc0190db69470433c43"},
 
     {"path":"src-server/routes/plugins/plugin-bundles.ts","digest":"bf09f9bf663cfeb1394f99b4208339d442bec21644bee722357487051da159db","revision":"8540fafb86b969775254b898711ad3ae40ccc39d"},
 
@@ -266,6 +284,8 @@
 
     {"path":"src-server/services/agents/runtime-agent-identity.ts","digest":"6576c9781082f9b80e3ea7ba434411a2b6489835320e6e69a9895303b21586bd","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
+    {"path":"src-server/services/agents/skill-service.ts","digest":"9f92c44195a5c87a63c1a14a3079b3cc91e00149f2b2f4e400a72189bb64d7f6","revision":"adbeb32e99a86e9a8b6fca370b944f3b2147ca9f"},
+
     {"path":"src-server/services/connections/__tests__/engine-account-history.test.ts","digest":"678515d554351f419a3859463e05da0165a45bc68119df91221a603b7c36ad41","revision":"c2f51cf0697d7d6a64c75e6ebee23c25c8b437fa"},
 
     {"path":"src-server/services/connections/connection-service.ts","digest":"cf2120e16b0ee9f0e54df18a114b616ef896d84c648a20e4d9e0df5054715f44","revision":"4d32eb785473b3261621900889fb9fa3fbfd8a49"},
@@ -317,6 +337,10 @@
     {"path":"src-server/services/plugins/plugin-visibility-service.ts","digest":"3fbbb277c5cc0b0d9c4a7f1a5e8b79913a7bfa4bb93971374aebcb6aba7ae579","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"src-server/services/projects/layout-service.ts","digest":"8df842d974f7df9b5d9e8e96971d15c92ba0eb4ee90b26312abb620b3c0a99e5","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/projects/task-room-context.ts","digest":"c548f8653bfbeb87cef832000969e4cd8f92358883e96d637fe9251a614f9778","revision":"078747c0143ca02d52107439754ca3a51e5479d1"},
+
+    {"path":"src-server/services/projects/task-room-work-module.ts","digest":"acf9afa37babc44c9281e95040e057726a71b03c0ab49e98989e59069f450f9c","revision":"81ffd01123b6ad2a2591308e02a0c5f1cddc2feb"},
 
     {"path":"src-server/services/scheduling/builtin-scheduler.ts","digest":"23e3eb7ecc40c556f8dcd05c65998ab4fe029cf330373b0f72f268ecdce6a4d4","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
@@ -370,31 +394,7 @@
 
     {"path":"src-ui/src/views/agent-editor/useAgentsViewModel.ts","digest":"09128cce1a7fe91bcfbe64e378dce4d236938460d2d31ae3499cfa2234451505","revision":"61109781a84058b3a3895504ae2c1b29842e441e"},
 
-    {"path":"src-ui/src/views/layout-workspace-shape.ts","digest":"1ee63d8a83172c792bb13f00c2fedf804c005053fd8a32da3862b9c1205777b0","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
-
-    {"path":"src-server/providers/registries/github-skill-registry.ts","digest":"c2895537e76722b6064ce7e6704a7c9edaa08edc5ce431f02fb162278840c0df","revision":"0814cc6ddb168cff69e5572b185a853540a4f6e0"},
-
-    {"path":"src-server/routes/plugins/__tests__/registry-skill-acquisition.routes.test.ts","digest":"a4012a90f751727331c2f6ca68299471dd55b5009e5cca7ceae6a7c36ee97be9","revision":"cae2f34dee0e883caffbcbc0190db69470433c43"},
-
-    {"path":"src-server/services/projects/task-room-work-module.ts","digest":"acf9afa37babc44c9281e95040e057726a71b03c0ab49e98989e59069f450f9c","revision":"81ffd01123b6ad2a2591308e02a0c5f1cddc2feb"},
-
-    {"path":"src-server/services/projects/task-room-context.ts","digest":"c548f8653bfbeb87cef832000969e4cd8f92358883e96d637fe9251a614f9778","revision":"078747c0143ca02d52107439754ca3a51e5479d1"},
-
-    {"path":"packages/contracts/src/catalog.ts","digest":"7c18a88495a7f46c113fc67436a0ecf851bf006e599e42a608a2001f32c205de","revision":"93b4a941961ba7cef7c3faeee989dfaef6f80370"},
-
-    {"path":"src-server/providers/registries/registry-source-manager.ts","digest":"6354f2b2a03af2f1be2a6acd87c647be6abbad09b8e342fe38ca6481f110fced","revision":"27e102c04a86e76e1ab20cfcd7ee02d55eeff9df"},
-
-    {"path":"src-server/providers/registries/registry-source-configuration.ts","digest":"c18ab5a6d6f6163df087ab5d344544fa9c86d660b535a5bb9a9f8c0289172a93","revision":"27e102c04a86e76e1ab20cfcd7ee02d55eeff9df"},
-
-    {"path":"src-server/providers/registries/registry-catalog-installed-state.ts","digest":"56210cc44ce38f67ad13ab2d27e0c340d7a2215a1c606b23c0d84ffc2e4294d6","revision":"2867eea7c9a4838e2a59cdbf6ec7f940b7d4cf26"},
-
-    {"path":"src-server/providers/registries/filesystem-skill-registry.ts","digest":"04d981c6e1ed6f89c4149be49c8b3ca8711a4fae6c7e36d2d101c81ca81307d3","revision":"2867eea7c9a4838e2a59cdbf6ec7f940b7d4cf26"},
-
-    {"path":"src-server/providers/registries/json-manifest-registry.ts","digest":"278b9454c712425274a2566d9becbcfc0acb68d86216484f37ab472faad19eac","revision":"2867eea7c9a4838e2a59cdbf6ec7f940b7d4cf26"},
-
-    {"path":"src-server/services/agents/skill-service.ts","digest":"9f92c44195a5c87a63c1a14a3079b3cc91e00149f2b2f4e400a72189bb64d7f6","revision":"adbeb32e99a86e9a8b6fca370b944f3b2147ca9f"},
-
-    {"path":"src-server/routes/plugins/__tests__/registry-marketplaces.routes.test.ts","digest":"cfba0ef6fb4466b847f8678d9deee537c1dbe02ab27a6dfb87aa93b925da71aa","revision":"377307346728da5b8a08c939cabc759b7d606125"}
+    {"path":"src-ui/src/views/layout-workspace-shape.ts","digest":"1ee63d8a83172c792bb13f00c2fedf804c005053fd8a32da3862b9c1205777b0","revision":"0c1f436037261c43eeca3e079f5106948360c591"}
   ],
 
   "checks": [

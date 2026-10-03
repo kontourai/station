@@ -22,6 +22,8 @@
 
     {"path":"packages/sdk/src/api-agent-runtime.ts","digest":"4b5cff321da3b39dca67b50c39d64090b9f794f95d52b0e1d6504c18dfedfc14","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
+    {"path":"packages/sdk/src/client/skill-experiences.ts","digest":"96e9bbfa542662b64db6757e8bd2242253ad222dba6ea8576bcbd86b866db766","revision":"6a847d3c029f4f3e5c1dbe82f2459194573d43e9"},
+
     {"path":"packages/sdk/src/client/task-tool-results.ts","digest":"94e178a403f76b07711e040fe524f202e9646fd6386563e422f3b340d78ee7de","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
     {"path":"packages/sdk/src/components/Button.tsx","digest":"04dddb6942c46db2822d0fb7e2e42088190140fe33fe2c824fe441f51c8a9758","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
@@ -35,6 +37,8 @@
     {"path":"packages/sdk/src/index.ts","digest":"f73107a4c0e92647e409563d7ccf7472bea46c81cf67864d9c160c979f39ca75","revision":"34d62da501fa53187b7062288f6e1dbaec8c20ed"},
 
     {"path":"packages/sdk/src/providers.tsx","digest":"c2e1919b3feade010b3e393920ae4852b88d71921cddfb9716e164049b9acf3b","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/sdk/src/query-domains/skillExperiences.ts","digest":"b44961988edb64c85dca368703866aed9cd64602457556bdbb52bd5e660acf8b","revision":"21a3255e8f9899947d33bf16eb3eaaef961a5e70"},
 
     {"path":"packages/sdk/src/task-tool-results.ts","digest":"62bc778329183b7aa6cac3c74a55a75e126f96bfa9a5d879a8cebdbe294c310d","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -60,11 +64,7 @@
 
     {"path":"src-ui/src/hooks/useActiveChatSessionMessaging.ts","digest":"9318eb8735235a5cf39ece24756ba0a90405a79b9c24982199f65326b4c4c6b2","revision":"34d62da501fa53187b7062288f6e1dbaec8c20ed"},
 
-    {"path":"src-ui/src/workspace-panes/ConnectedStationBasisPane.tsx","digest":"f3b6189f6366ce62062c91c9fe5f5730b33ae21dde0386c036d4f6cb02739018","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
-    {"path":"packages/sdk/src/client/skill-experiences.ts","digest":"96e9bbfa542662b64db6757e8bd2242253ad222dba6ea8576bcbd86b866db766","revision":"6a847d3c029f4f3e5c1dbe82f2459194573d43e9"},
-
-    {"path":"packages/sdk/src/query-domains/skillExperiences.ts","digest":"b44961988edb64c85dca368703866aed9cd64602457556bdbb52bd5e660acf8b","revision":"21a3255e8f9899947d33bf16eb3eaaef961a5e70"}
+    {"path":"src-ui/src/workspace-panes/ConnectedStationBasisPane.tsx","digest":"f3b6189f6366ce62062c91c9fe5f5730b33ae21dde0386c036d4f6cb02739018","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"}
   ],
 
   "checks": [

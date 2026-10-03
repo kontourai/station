@@ -14,11 +14,15 @@
   "sources": [
     {"path":".githooks/pre-push","digest":"eb2d5cdd2c9f91b4e2dc96dd0d4ef36c55f313074f4f05aa30e0269cd5c0a6c9","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
+    {"path":"package.json#/scripts/agent-plugin:validators:gate","digest":"981a70b44b8755a2c69a3ded474dbe7b5f81f89eb73248e7ca90518e3280af77","revision":"444e3ec61e26b58fa5c2edd68abfca6d00a2cc98"},
+
     {"path":"packages/cli/src/commands/build.ts","digest":"fe59b0aec5413bc16de44073be4669a2345d1a2c3ab0519f50b4dea615ce5b55","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
     {"path":"packages/cli/src/commands/install.ts","digest":"ca98a0fa5d41930d6b3bb5d33000804411d82ec80650a7d97294cb7dcd020ac5","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
     {"path":"packages/contracts/src/agent-plugin.ts","digest":"2e3d120f5eae47814db06203169553f98b31a39263efae9d768762cf8452b1a9","revision":"1e6450e0caa47975d33f505a1348bdc01ae1382e"},
+
+    {"path":"packages/contracts/src/skill-experience.ts","digest":"1a26de992f677139d4e55580e45861b4b920b4f93e5d52efcd4f3ee990c9321d","revision":"8540fafb86b969775254b898711ad3ae40ccc39d"},
 
     {"path":"packages/shared/src/agent-plugin-manifest.ts","digest":"a1b0dab918c8787193cc23e0f5362fc3ea5be6885440b56522314329974d55ba","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
@@ -26,11 +30,15 @@
 
     {"path":"packages/shared/src/build.ts","digest":"20f919a4a98519ce20e8e2f0d5d498a4be8daeba1314a97ddae752fd36df4630","revision":"1e6450e0caa47975d33f505a1348bdc01ae1382e"},
 
+    {"path":"packages/shared/src/skill-experience-author.ts","digest":"78eff8e23674a648d904c12919b137ff62c04520fc3f164f66a482102047754b","revision":"f2bb7d8a1e4b56ac783fb9d0cfe167fe7a0fdde5"},
+
     {"path":"schemas/agent-plugins/1.0.0/mcp.schema.json","digest":"6539175bfcdf43085855183e86da40ea94b166547a72b47ae9a0a390516d3acb","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
     {"path":"schemas/agent-plugins/1.0.0/plugin.schema.json","digest":"0a4aad95ce337878ad38802ebf0daa3fde76abe3f65400c86bcbb1ec0b3ab883","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
     {"path":"schemas/agent-plugins/io.kontourai.station-1.0.schema.json","digest":"e3ddeacd09b521057a214a203eb486d277b5be0256bfe2c99bee9696aed26ed5","revision":"1e6450e0caa47975d33f505a1348bdc01ae1382e"},
+
+    {"path":"schemas/agent-plugins/skill-experience-1.0.schema.json","digest":"5e2d5929feb55233f7ad84af131eb5a833e51388fe7e51aed1393d8a4de95fcb","revision":"f2bb7d8a1e4b56ac783fb9d0cfe167fe7a0fdde5"},
 
     {"path":"scripts/agent-plugin-validators-gate.mjs","digest":"6734c92098d215775e126b8294516e5c0a206f28f0a3433cff6df17cf6a42001","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
@@ -66,15 +74,7 @@
 
     {"path":"src-server/services/plugins/reserved-plugin-identities.ts","digest":"d852c2c072b6d34d2d73572b011c06ebb9e5ea3626679eda66e9e59c0a431ad1","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
 
-    {"path":"src-ui/src/views/plugin-management/PluginSettingFieldRow.tsx","digest":"fcc06701bb9ca810d7f3021cb18d5eb184c1999b064c5827ad2fb212c4703e0d","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
-    {"path":"package.json#/scripts/agent-plugin:validators:gate","digest":"981a70b44b8755a2c69a3ded474dbe7b5f81f89eb73248e7ca90518e3280af77","revision":"444e3ec61e26b58fa5c2edd68abfca6d00a2cc98"},
-
-    {"path":"packages/contracts/src/skill-experience.ts","digest":"1a26de992f677139d4e55580e45861b4b920b4f93e5d52efcd4f3ee990c9321d","revision":"8540fafb86b969775254b898711ad3ae40ccc39d"},
-
-    {"path":"packages/shared/src/skill-experience-author.ts","digest":"78eff8e23674a648d904c12919b137ff62c04520fc3f164f66a482102047754b","revision":"f2bb7d8a1e4b56ac783fb9d0cfe167fe7a0fdde5"},
-
-    {"path":"schemas/agent-plugins/skill-experience-1.0.schema.json","digest":"5e2d5929feb55233f7ad84af131eb5a833e51388fe7e51aed1393d8a4de95fcb","revision":"f2bb7d8a1e4b56ac783fb9d0cfe167fe7a0fdde5"}
+    {"path":"src-ui/src/views/plugin-management/PluginSettingFieldRow.tsx","digest":"fcc06701bb9ca810d7f3021cb18d5eb184c1999b064c5827ad2fb212c4703e0d","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"}
   ],
 
   "checks": [

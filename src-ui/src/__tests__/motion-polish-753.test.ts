@@ -223,7 +223,7 @@ describe('station#753 item 2: list entrance stagger', () => {
 });
 
 describe('station#753 item 3: dialog open transition', () => {
-  test('.responsive-surface-panel opens without shrinking interactive hit boxes', () => {
+  test('.responsive-surface-panel declares an opacity and translation entrance without scale', () => {
     const bodies = rulesFor(indexCss, '.responsive-surface-panel');
     const animation = bodies
       .flatMap((body) => body.split(';'))
@@ -235,25 +235,19 @@ describe('station#753 item 3: dialog open transition', () => {
     const from = frames.match(/from\s*\{([^}]*)\}/)?.[1];
     const to = frames.match(/to\s*\{([^}]*)\}/)?.[1];
     expect(from).toMatch(/opacity:\s*0/);
-    expect(from).toMatch(/transform:\s*translateY\(4px\)/);
+    expect(from).toMatch(
+      /transform:\s*translateY\(var\(--surface-enter-distance,\s*4px\)\)/,
+    );
     expect(from).not.toMatch(/scale\(/);
     expect(to).toMatch(/opacity:\s*1/);
     expect(to).toMatch(/transform:\s*translateY\(0\)/);
     expect(to).not.toMatch(/scale\(/);
   });
 
-  test('collapses under reduced motion via the global tokens.css reset', () => {
-    // This animation carries no delay, so it needs no page-local
-    // reduced-motion block (mobile-css-ratchet counts those): the global
-    // reset in tokens.css collapses duration and iteration for it. Pin the
-    // preconditions of that derivation: no delay on the panel animation, and
-    // the global reset still covering both properties.
+  test('.responsive-surface-panel adds no delay or local reduced-motion override', () => {
+    // The universal reduced-motion contract lives in streaming-motion-reduced-motion.test.ts.
     const panel = rulesFor(indexCss, '.responsive-surface-panel').join('\n');
     expect(panel).not.toMatch(/animation-delay/);
-    const tokensCss = read('tokens.css');
-    const globalReset = reducedMotionBodies(tokensCss).join('\n');
-    expect(globalReset).toMatch(/animation-duration:\s*0\.01ms\s*!important/);
-    expect(globalReset).toMatch(/animation-iteration-count:\s*1\s*!important/);
     expect(reducedMotionBodies(indexCss).join('\n')).not.toContain(
       '.responsive-surface-panel',
     );
