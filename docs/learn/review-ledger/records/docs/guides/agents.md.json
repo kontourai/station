@@ -170,13 +170,13 @@
 
     {"path":"src-ui/src/components/chat/harnessQuestionDrafts.ts","digest":"341c5d3a3184a8249eb65e9808523812bec532b49cb89cde1dcdae2d9fa95176","revision":"754e48394b02f670894b419807274752fd9676d4"},
 
-    {"path":"src-ui/src/views/agent-editor/AgentEditorToolsTab.tsx","digest":"daa469691f0f7a35fd9f0418fb25301cc22db68c1189d4a652da902eccef07e7","revision":"6be3ff9a9122d55dfa315d5b18e866e477180c90"},
+    {"path":"src-ui/src/views/agent-editor/AgentEditorToolsTab.tsx","digest":"a0faf964b0859d6da7ef1a37db4ddc6d2d8beef8b8b4c54b68880f49b16fe97d","revision":"6f40875c3d743d055cd64581b1aa362bb6708d5c"},
 
     {"path":"src-ui/src/views/agent-editor/utils.ts","digest":"d2d578c2e8767d203be76c24797b8058f56e51b3b3e2f9ac0edef50526c7b7d2","revision":"6be3ff9a9122d55dfa315d5b18e866e477180c90"},
 
     {"path":"src-server/tools/station-control-mcp-server.ts","digest":"71093b289019109469dfc6fcb495e981c45f0ae17a4ccf8f639126c5bc437c39","revision":"8d715b7bee77e593e64a1e0b2af99956571c9795"},
 
-    {"path":"src-ui/src/__tests__/AgentEditorToolsTab.browser.test.tsx","digest":"b5b9b3c5fd4455af6d5bc2ee7cbcdf584f7886ab0475277decf8d24c406a81b0","revision":"318e1c7f8a01d1cd8a842edceacd6e35297516a7"}
+    {"path":"src-ui/src/__tests__/AgentEditorToolsTab.browser.test.tsx","digest":"02d5f60d6908e72b5b027645bf9d87d5938dc4e1b5f843cca8f50acebaff13f5","revision":"6f40875c3d743d055cd64581b1aa362bb6708d5c"}
   ],
 
   "checks": [
