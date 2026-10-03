@@ -362,7 +362,14 @@ describe('rich view bound to the canonical conversation', () => {
           requestId: 'secret-request',
           payload: {
             questionnaire: {
-              questions: [{ ...questionnaire.questions[0], secret: true }],
+              questions: [
+                {
+                  ...questionnaire.questions[0],
+                  secret: true,
+                  allowCustom: true,
+                  options: [],
+                },
+              ],
             },
           },
         },
@@ -382,7 +389,9 @@ describe('rich view bound to the canonical conversation', () => {
       host().answer({
         requestId: 'secret-request',
         requestEventId: 'secret-event',
-        answers: {},
+        answers: {
+          audience: { optionIds: [], custom: 'sensitive fixture input' },
+        },
       }),
     ).rejects.toThrow(/not a current question/);
     expect(transport.answer).not.toHaveBeenCalled();
