@@ -76,25 +76,28 @@ export function skillExperienceInputErrors(
   definition: SkillExperienceDefinitionV1,
   values: Record<string, string>,
   attachmentCount = 0,
+  assignedAttachments?: Record<string, number[]>,
 ): Record<string, string> {
   const errors = new Map<string, string>();
   const suppliedValues = new Map(Object.entries(values));
   const attachmentInputs = definition.inputs.filter(
     (input) => input.kind === 'attachments',
   );
-  if (attachmentInputs.length > 1)
-    errors.set(
-      'attachments',
-      'This workflow assigns files to separate roles. Choose a supported interface before starting.',
-    );
   for (const input of definition.inputs) {
     if (input.kind === 'attachments') {
-      if (input.required && attachmentCount === 0)
+      const assigned = assignedAttachments
+        ? (new Map(Object.entries(assignedAttachments)).get(input.id) ?? [])
+        : attachmentInputs.length === 1
+          ? Array.from({ length: attachmentCount }, (_, index) => index)
+          : [];
+      if (assigned.some((index) => index < 0 || index >= attachmentCount))
+        errors.set(input.id, 'Choose current composer files for this role.');
+      else if (input.required && assigned.length === 0)
         errors.set(
           input.id,
           `Attach ${input.label.toLowerCase()} in the composer before starting.`,
         );
-      if (attachmentCount > Math.min(input.maxCount, CHAT_ATTACHMENT_MAX_COUNT))
+      if (assigned.length > Math.min(input.maxCount, CHAT_ATTACHMENT_MAX_COUNT))
         errors.set(
           input.id,
           `Attach at most ${Math.min(input.maxCount, CHAT_ATTACHMENT_MAX_COUNT)} files.`,
@@ -121,6 +124,26 @@ export function skillExperienceInputErrors(
       errors.set(input.id, 'Choose an available option.');
   }
   return Object.fromEntries(errors);
+}
+
+/** Inert composer identifiers become positions only in the actual outgoing attachment order. */
+export function skillExperienceAttachmentInputs(
+  roles: readonly string[],
+  attachmentIds: readonly string[],
+  assignments?: Record<string, string[]>,
+): Record<string, number[]> {
+  const selected = new Map(Object.entries(assignments ?? {}));
+  return Object.fromEntries(
+    roles.map((role) => [
+      role,
+      (assignments
+        ? (selected.get(role) ?? [])
+        : roles.length === 1
+          ? attachmentIds
+          : []
+      ).map((id) => attachmentIds.indexOf(id)),
+    ]),
+  );
 }
 
 function inputs(value: unknown): value is Record<string, string> {

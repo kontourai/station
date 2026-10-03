@@ -20,7 +20,10 @@ import {
   useQueryClient,
 } from '@kontourai/station-sdk';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
-import { skillExperienceInputErrors } from '@kontourai/station-shared/skill-experience-values';
+import {
+  skillExperienceAttachmentInputs,
+  skillExperienceInputErrors,
+} from '@kontourai/station-shared/skill-experience-values';
 import { useCallback } from 'react';
 import { useActiveChatActions } from '../contexts/ActiveChatsContext';
 import { useAuthorityPersistence } from '../contexts/AuthorityPersistenceContext';
@@ -278,33 +281,48 @@ export function useSendMessage(
         : currentState?.skillExperienceDraft;
       if (
         !options?.dispatch &&
-        (experienceDraft || currentState?.skillExperienceDraftInvalid)
+        (experienceDraft ||
+          currentState?.skillExperienceDraftInvalid ||
+          options?.skillExperienceStart)
       ) {
         const refusal = currentState?.skillExperienceDraftInvalid
           ? 'The saved visual skill selection could not be read. Choose it again or explicitly remove it before sending.'
           : !options?.skillExperienceStart
             ? 'Review the visual skill and send it explicitly; your selection has not been sent.'
-            : experienceAuthorityStatus !== 'verified' ||
-                !experienceNamespace ||
-                experienceDraft?.namespace !== experienceNamespace ||
-                experienceDraft.apiBase !== apiBase ||
-                !options.experienceRequestScope?.isCurrent() ||
-                options.experienceRequestScope.apiBase !== apiBase
-              ? 'This visual skill draft belongs to an unverified or different Station. Return to its Station or choose it again.'
-              : navigator.onLine === false
-                ? 'Reconnect before starting this visual skill. It will not replay automatically.'
-                : isTurnInFlight(currentState)
-                  ? 'Wait for the current turn before starting another visual skill.'
-                  : Object.values(
-                      skillExperienceInputErrors(
-                        experienceDraft.definition,
-                        options.skillExperienceStart.inputs,
-                        Math.max(
-                          attachments?.length ?? 0,
-                          currentState.attachmentStages?.length ?? 0,
+            : !experienceDraft ||
+                options.skillExperienceStart !== experienceDraft.start
+              ? 'Visual skill inputs changed while preparing this message. Review them and send again; your current draft has not been sent.'
+              : experienceAuthorityStatus !== 'verified' ||
+                  !experienceNamespace ||
+                  experienceDraft?.namespace !== experienceNamespace ||
+                  experienceDraft.apiBase !== apiBase ||
+                  !options.experienceRequestScope?.isCurrent() ||
+                  options.experienceRequestScope.apiBase !== apiBase
+                ? 'This visual skill draft belongs to an unverified or different Station. Return to its Station or choose it again.'
+                : navigator.onLine === false
+                  ? 'Reconnect before starting this visual skill. It will not replay automatically.'
+                  : isTurnInFlight(currentState)
+                    ? 'Wait for the current turn before starting another visual skill.'
+                    : Object.values(
+                        skillExperienceInputErrors(
+                          experienceDraft.definition,
+                          options.skillExperienceStart.inputs,
+                          attachments?.length
+                            ? attachments.length
+                            : (currentState.attachmentStages?.length ?? 0),
+                          skillExperienceAttachmentInputs(
+                            experienceDraft.definition.inputs
+                              .filter((input) => input.kind === 'attachments')
+                              .map((input) => input.id),
+                            attachments?.length
+                              ? attachments.map((attachment) => attachment.id)
+                              : (currentState.attachmentStages?.map(
+                                  (stage) => stage.clientAttachmentId,
+                                ) ?? []),
+                            experienceDraft.attachmentAssignments,
+                          ),
                         ),
-                      ),
-                    )[0];
+                      )[0];
         if (refusal) {
           addEphemeralMessage(sessionId, { role: 'system', content: refusal });
           return false;
@@ -484,10 +502,11 @@ export function useSendMessage(
           automaticBackground: Boolean(options?.dispatch),
           signal: abortController.signal,
           skillExperience: sourceStart,
-          skillExperienceAttachmentRole:
-            experienceDraft?.definition.inputs.find(
-              (input) => input.kind === 'attachments',
-            )?.id,
+          skillExperienceAttachmentRoles: experienceDraft?.definition.inputs
+            .filter((input) => input.kind === 'attachments')
+            .map((input) => input.id),
+          skillExperienceAttachmentAssignments:
+            experienceDraft?.attachmentAssignments,
           requestScope: sourceStart
             ? options?.experienceRequestScope
             : undefined,

@@ -2185,7 +2185,9 @@ and an exact current source identity. `sendExecutionMessage` accepts the optiona
 `skillExperience: { identity, inputs, expectedPreviousInvocationEventId?, attachmentInputs? }`
 field and refetches the installed inventory before its foreground POST.
 `inputs` holds scalar text/choice values; attachment role arrays contain indices
-into the canonical chat attachments, after supervised staging. The server owns
+into the canonical chat attachments, after supervised staging. Native role choices use
+composer client IDs until the sender maps them against the actual outgoing
+staged references; role membership never supplies custody or a file path. The server owns
 source admission, input validation and immutable invocation snapshots. A missing
 execution contract, changed source or automatic background send fails without
 posting an ordinary-chat substitute.

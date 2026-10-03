@@ -683,7 +683,19 @@ describe('source-bound unsent visual skill persistence', () => {
         'utf8',
       ),
     );
+    definition.inputs.push({
+      id: 'notes',
+      kind: 'attachments',
+      label: 'Notes',
+      required: false,
+      maxCount: 2,
+      provenance: {
+        origin: 'station-added',
+        explanation: 'Explicit file role.',
+      },
+    });
     const draft = {
+      attachmentAssignments: { notes: ['composer-file-1'] },
       namespace: 'station-authority-1',
       apiBase: 'http://station.test',
       definition,

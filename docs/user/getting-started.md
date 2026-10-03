@@ -162,7 +162,7 @@ Ordinary New Chat also lists installed visual skills, including when only one
 Agent is ready. A card describes its purpose, example and owning plugin. Choose
 a card and fill its text or choice inputs, then choose an Agent, Model and
 workspace. This prepares an unsent chat. Attach any required files using the
-ordinary composer and send explicitly to start. Stations that expose inventory
+ordinary composer, assign files to the named roles when shown, and send explicitly to start. Stations that expose inventory
 without execution support show previews and refuse starts.
 
 Guided mode keeps the preparation or recorded stage above the conversation.
@@ -172,7 +172,7 @@ Questions, approvals, transcript, artifacts and Stop keep their ordinary
 conversation controls when switching modes. Declared outputs are expectations;
 actual results appear when the Agent produces them.
 
-The prepared selection and scalar inputs persist with the selected Station's
+The prepared selection, scalar inputs and inert composer file-role choices persist with the selected Station's
 scoped chat draft. A failed, busy or offline send retains that selection and
 never queues it for automatic replay. A changed source requires a new review.
 Use **Remove unsent visual skill** to deliberately return to ordinary chat.

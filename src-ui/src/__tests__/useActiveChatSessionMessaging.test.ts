@@ -3,8 +3,16 @@
 import { readFileSync } from 'node:fs';
 import { URL as NodeURL } from 'node:url';
 import type { SkillExperienceDefinitionV1 } from '@kontourai/station-contracts/skill-experience';
-import { act, renderHook } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  renderHook,
+  screen,
+} from '@testing-library/react';
+import { createElement, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { SkillExperienceForm } from '../components/skill-experiences/SkillExperienceForm';
 
 vi.mock('../contexts/AuthorityPersistenceContext', () => ({
   useAuthorityPersistence: () => ({
@@ -235,6 +243,225 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     outboundQueueMode.useActual = false;
     _resetOutboundQueueStorage();
     activeChatsStore.removeChat(sessionId);
+  });
+
+  it.each(['replaced', 'removed'] as const)(
+    'refuses a captured start after its unsent inputs were %s before dispatch',
+    async (change) => {
+      const definition: SkillExperienceDefinitionV1 = JSON.parse(
+        readFileSync(
+          new NodeURL(
+            '../../../examples/visual-skill-experience/io.kontourai.station/experiences/stress-test-idea.json',
+            import.meta.url,
+          ),
+          'utf8',
+        ),
+      );
+      const submitted = {
+        namespace: 'authority-1',
+        apiBase: 'http://api.test',
+        definition,
+        start: {
+          identity: {
+            pluginId: 'example',
+            pluginVersion: '1.0.0',
+            experienceId: definition.id,
+            incarnation: 'installed-1',
+            materialization: 'materialization-1',
+            contentDigest: 'digest-1',
+            definitionDigest: 'definition-1',
+          },
+          inputs: { idea: 'Submitted before expansion' },
+        },
+      };
+      activeChatsStore.updateChat(sessionId, {
+        skillExperienceDraft: submitted,
+      });
+      const { result } = renderHook(() => useSendMessage('http://api.test'));
+      const captured = {
+        skillExperienceStart: submitted.start,
+        experienceRequestScope: {
+          apiBase: 'http://api.test',
+          authorityKey: 'authority-1',
+          isCurrent: () => true,
+        },
+      };
+      const replacement = {
+        ...submitted,
+        start: { ...submitted.start, inputs: { idea: 'Newer unsent input' } },
+      };
+      activeChatsStore.updateChat(sessionId, {
+        skillExperienceDraft: change === 'removed' ? undefined : replacement,
+      });
+      await act(async () => {
+        expect(
+          await result.current(
+            sessionId,
+            'codex',
+            undefined,
+            'Start',
+            undefined,
+            undefined,
+            undefined,
+            captured,
+          ),
+        ).toBe(false);
+      });
+      expect(sendExecutionMessageMock).not.toHaveBeenCalled();
+      expect(
+        activeChatsStore.getSnapshot()[sessionId].skillExperienceDraft,
+      ).toEqual(change === 'removed' ? undefined : replacement);
+      expect(
+        activeChatsStore.getSnapshot()[sessionId].ephemeralMessages?.at(-1)
+          ?.content,
+      ).toMatch(/changed while preparing/);
+    },
+  );
+
+  it('dispatches actual form role choices in canonical staged-file order while preserving unassigned files', async () => {
+    const definition: SkillExperienceDefinitionV1 = JSON.parse(
+      readFileSync(
+        new NodeURL(
+          '../../../examples/visual-skill-experience/io.kontourai.station/experiences/stress-test-idea.json',
+          import.meta.url,
+        ),
+        'utf8',
+      ),
+    );
+    definition.inputs.push(
+      ...(['evidence', 'reference'] as const).map((id) => ({
+        id,
+        kind: 'attachments' as const,
+        label: id === 'evidence' ? 'Evidence' : 'Reference',
+        required: true,
+        maxCount: 1,
+        provenance: {
+          origin: 'station-added' as const,
+          explanation: 'Explicit role selection.',
+        },
+      })),
+    );
+    const stages = ['first', 'second', 'unassigned'].map((id) => ({
+      ...stagedSnapshot,
+      clientAttachmentId: id,
+      name: `${id}.txt`,
+      stageId: `stage-${id}`,
+      reference: {
+        ...stagedSnapshot.reference,
+        stageId: `stage-${id}`,
+        clientAttachmentId: id,
+        name: `${id}.txt`,
+      },
+    }));
+    const draft = {
+      namespace: 'authority-1',
+      apiBase: 'http://api.test',
+      definition,
+      start: {
+        identity: {
+          pluginId: 'example',
+          pluginVersion: '1.0.0',
+          experienceId: definition.id,
+          incarnation: 'installed-1',
+          materialization: 'materialization-1',
+          contentDigest: 'digest-1',
+          definitionDigest: 'definition-1',
+        },
+        inputs: { idea: 'My idea' },
+      },
+    };
+    activeChatsStore.updateChat(sessionId, {
+      skillExperienceDraft: draft,
+      attachmentStages: stages,
+    });
+    let caller: Promise<unknown> | undefined;
+    function ComposerRoleForm() {
+      const send = useSendMessage('http://api.test');
+      const [assignments, setAssignments] = useState<Record<string, string[]>>(
+        {},
+      );
+      return createElement(
+        'div',
+        {},
+        createElement(SkillExperienceForm, {
+          definition,
+          values: draft.start.inputs,
+          onChange: () => {},
+          attachmentChoices: stages.map((stage) => ({
+            id: stage.clientAttachmentId,
+            name: stage.name,
+          })),
+          attachmentAssignments: assignments,
+          onAttachmentsChange: (next) => {
+            setAssignments(next);
+            activeChatsStore.updateChat(sessionId, {
+              skillExperienceDraft: {
+                ...draft,
+                start: { ...draft.start },
+                attachmentAssignments: next,
+              },
+            });
+          },
+        }),
+        createElement(
+          'button',
+          {
+            type: 'button',
+            onClick: () => {
+              const current =
+                activeChatsStore.getSnapshot()[sessionId].skillExperienceDraft;
+              caller = send(
+                sessionId,
+                'codex',
+                undefined,
+                'Start',
+                undefined,
+                undefined,
+                undefined,
+                {
+                  skillExperienceStart: current?.start,
+                  experienceRequestScope: {
+                    apiBase: 'http://api.test',
+                    authorityKey: 'authority-1',
+                    isCurrent: () => true,
+                  },
+                },
+              );
+            },
+          },
+          'Send assigned skill',
+        ),
+      );
+    }
+    const mounted = render(createElement(ComposerRoleForm));
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Send assigned skill' }),
+      );
+      await caller;
+    });
+    expect(sendExecutionMessageMock).not.toHaveBeenCalled();
+    fireEvent.click(
+      screen.getByRole('checkbox', { name: 'Evidence: second.txt' }),
+    );
+    fireEvent.click(
+      screen.getByRole('checkbox', { name: 'Reference: first.txt' }),
+    );
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Send assigned skill' }),
+      );
+      await caller;
+    });
+    expect(sendExecutionMessageMock).toHaveBeenCalledTimes(1);
+    expect(sendExecutionMessageMock.mock.calls[0][1]).toMatchObject({
+      attachmentRefs: stages.map((stage) => stage.reference),
+      skillExperience: { attachmentInputs: { evidence: [1], reference: [0] } },
+    });
+    expect(
+      activeChatsStore.getSnapshot()[sessionId].skillExperienceDraft,
+    ).toBeUndefined();
+    mounted.unmount();
   });
 
   it('retains the source intent through refusal and clears it only after foreground acceptance', async () => {

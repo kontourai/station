@@ -23,6 +23,7 @@ import { pluginRegistry } from '../../core/PluginRegistry';
 import { unansweredApprovalRequests } from '../../hooks/orchestration/pendingRequestRows';
 import type { ChatSession } from '../../types';
 import { useResolvedWorkspacePaneCatalog } from '../../workspace-panes/resolvedWorkspacePaneCatalog';
+import { SkeletonList } from '../state';
 
 export function RichExperiencePane({
   session,
@@ -278,7 +279,7 @@ export function RichExperiencePane({
       </p>
     );
   if (catalog.isPending)
-    return <p role="status">Checking the declared rich view…</p>;
+    return <SkeletonList count={2} label="Checking the declared rich view" />;
   if (!Component)
     return (
       <p role="alert">

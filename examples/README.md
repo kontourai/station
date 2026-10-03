@@ -10,7 +10,8 @@ prove.
 | --- | --- |
 | [Headless Agent](headless-agent/README.md) | Agent execution and observation without a Pane or plug-in manifest |
 | [Portable Author Kit](portable-author-kit/README.md) | Agent Plugins Skill plus Station Agent; no package dependencies |
-| [Visual Skill Experience](visual-skill-experience/README.md) | Portable Skill with validated visual author definition; runtime rendering deferred |
+| [Visual Skill Experience](visual-skill-experience/README.md) | Portable Skill with validated visual definition and canonical Session integration |
+| [Rich Skill Experience](rich-skill-experience/README.md) | Isolated self-rendering pane with source-bound questions and stage preparation |
 | [Getting Started Starter](getting-started-starter/README.md) | Registry-installed first extension |
 | [Coding Starter](coding-starter/README.md) | Coding-oriented starter layout |
 | [Minimal Workspace](minimal-layout/README.md) | Small Workspace Pane and SDK basics |

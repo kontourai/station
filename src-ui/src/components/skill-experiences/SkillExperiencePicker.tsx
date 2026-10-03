@@ -7,6 +7,7 @@ import {
   skillExperiencesCanExecute,
 } from '@kontourai/station-shared/skill-experience-values';
 import { Button } from '../Button';
+import { Empty, SkeletonList } from '../state';
 import { SkillExperienceForm } from './SkillExperienceForm';
 
 export function SkillExperiencePicker({
@@ -37,14 +38,18 @@ export function SkillExperiencePicker({
     <section className="skill-experience-cards" aria-label="Visual skills">
       <h4>Visual skills</h4>
       {query.isPending ? (
-        <p role="status">Loading visual skills…</p>
+        <SkeletonList count={2} label="Loading visual skills" />
       ) : query.error ? (
         <p role="alert">
           Visual skills could not be loaded.{' '}
           <Button onClick={() => void query.refetch()}>Retry</Button>
         </p>
       ) : !query.data?.experiences.length ? (
-        <p>No visual skills installed.</p>
+        <Empty
+          variant="compact"
+          label="Nothing here yet"
+          description="Install a visual skill through Registry to prepare it here."
+        />
       ) : (
         query.data.experiences.map((entry) => (
           <button

@@ -14,12 +14,18 @@ export function SkillExperienceForm({
   onChange,
   errors = {},
   disabled = false,
+  attachmentChoices = [],
+  attachmentAssignments,
+  onAttachmentsChange,
 }: {
   definition: SkillExperienceDefinitionV1;
   values: Record<string, string>;
   onChange: (values: Record<string, string>) => void;
   errors?: Record<string, string>;
   disabled?: boolean;
+  attachmentChoices?: Array<{ id: string; name: string }>;
+  attachmentAssignments?: Record<string, string[]>;
+  onAttachmentsChange?: (assignments: Record<string, string[]>) => void;
 }) {
   const prefix = useId();
   return (
@@ -28,6 +34,12 @@ export function SkillExperienceForm({
         const id = `${prefix}-${input.id}`;
         const hint = `${id}-hint`;
         const errorId = `${id}-error`;
+        const selectedFiles =
+          new Map(Object.entries(attachmentAssignments ?? {})).get(input.id) ??
+          (definition.inputs.filter((field) => field.kind === 'attachments')
+            .length === 1
+            ? attachmentChoices.map((file) => file.id)
+            : []);
         const error = Object.hasOwn(errors, input.id)
           ? errors[input.id]
           : undefined;
@@ -87,11 +99,44 @@ export function SkillExperienceForm({
                 ))}
               </select>
             ) : (
-              <p>
-                Use the chat composer to attach up to{' '}
-                {Math.min(input.maxCount, CHAT_ATTACHMENT_MAX_COUNT)} files
-                before starting.
-              </p>
+              <div>
+                <p>
+                  Attach files in the chat composer, then choose up to{' '}
+                  {Math.min(input.maxCount, CHAT_ATTACHMENT_MAX_COUNT)} for{' '}
+                  {input.label.toLowerCase()}.
+                </p>
+                {onAttachmentsChange &&
+                  attachmentChoices.map((file) => (
+                    <label
+                      className="skill-experience-form__attachment"
+                      key={file.id}
+                    >
+                      <input
+                        type="checkbox"
+                        aria-label={`${input.label}: ${file.name}`}
+                        checked={selectedFiles.includes(file.id)}
+                        disabled={
+                          disabled ||
+                          (!selectedFiles.includes(file.id) &&
+                            selectedFiles.length >=
+                              Math.min(
+                                input.maxCount,
+                                CHAT_ATTACHMENT_MAX_COUNT,
+                              ))
+                        }
+                        onChange={(event) =>
+                          onAttachmentsChange({
+                            ...attachmentAssignments,
+                            [input.id]: event.target.checked
+                              ? [...selectedFiles, file.id]
+                              : selectedFiles.filter((id) => id !== file.id),
+                          })
+                        }
+                      />
+                      {file.name}
+                    </label>
+                  ))}
+              </div>
             )}
             <details>
               <summary>Why this input?</summary>

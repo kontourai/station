@@ -1,13 +1,15 @@
+import type { SkillExperienceDefinitionV1 } from '@kontourai/station-contracts/skill-experience';
 import {
   useSkillExperienceInventoryQuery,
   useSkillExperienceSessionQuery,
 } from '@kontourai/station-sdk';
 import {
+  skillExperienceAttachmentInputs,
   skillExperienceInputDefaults,
   skillExperienceInputErrors,
   skillExperiencesCanExecute,
 } from '@kontourai/station-shared/skill-experience-values';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import {
   useActiveChatActions,
   useActiveChatSelector,
@@ -17,6 +19,7 @@ import { useAuthorityPersistence } from '../../contexts/AuthorityPersistenceCont
 import type { ChatSession } from '../../types';
 import { Button } from '../Button';
 import { LazyBoundary } from '../LazyBoundary';
+import { SkeletonList } from '../state';
 import { SkillExperienceForm } from './SkillExperienceForm';
 import './skill-experiences.css';
 
@@ -25,9 +28,37 @@ const loadRichExperiencePane = () =>
     default: module.RichExperiencePane,
   }));
 
+function RecordedAttachmentRoles({
+  definition,
+  roles,
+}: {
+  definition: SkillExperienceDefinitionV1;
+  roles: Record<string, number[]> | undefined;
+}) {
+  if (!roles || !Object.keys(roles).length) return null;
+  return (
+    <dl className="skill-experience-panel__outputs">
+      {Object.entries(roles).map(([id, indices]) => (
+        <div key={id}>
+          <dt>
+            {definition.inputs.find((input) => input.id === id)?.label ?? id}
+          </dt>
+          <dd>
+            {indices.length
+              ? `Original-turn file positions: ${indices.map((index) => index + 1).join(', ')}`
+              : 'Unassigned'}{' '}
+            (content stays in the canonical conversation)
+          </dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
 export function SkillExperiencePanel({ session }: { session: ChatSession }) {
   const { updateChat } = useActiveChatActions();
   const [richOpened, setRichOpened] = useState(false);
+  const presentationId = useId();
   const authority = useHostRequestAuthorityScope();
   const { namespace, status } = useAuthorityPersistence();
   const threadId = session.currentSessionId ?? session.conversationId;
@@ -64,11 +95,24 @@ export function SkillExperiencePanel({ session }: { session: ChatSession }) {
     session.skillExperienceMode ??
     definition?.presentation.defaultMode ??
     'guided';
+  const attachmentChoices = session.attachments.length
+    ? session.attachments.map((file) => ({ id: file.id, name: file.name }))
+    : (attachmentStages?.map((file) => ({
+        id: file.clientAttachmentId,
+        name: file.name,
+      })) ?? []);
   const errors = draft
     ? skillExperienceInputErrors(
         draft.definition,
         draft.start.inputs,
-        Math.max(session.attachments.length, attachmentStages?.length ?? 0),
+        attachmentChoices.length,
+        skillExperienceAttachmentInputs(
+          draft.definition.inputs
+            .filter((input) => input.kind === 'attachments')
+            .map((input) => input.id),
+          attachmentChoices.map((file) => file.id),
+          draft.attachmentAssignments,
+        ),
       )
     : {};
   if (
@@ -85,25 +129,28 @@ export function SkillExperiencePanel({ session }: { session: ChatSession }) {
       data-presentation={mode}
     >
       <h2>{definition?.title ?? 'Visual skill'}</h2>
-      <fieldset className="skill-experience-panel__actions">
+      <fieldset className="skill-experience-panel__presentation">
         <legend>Presentation</legend>
         {[
           ...(definition?.presentation.modes ?? ['guided', 'alongside']),
           'chat' as const,
         ].map((presentation) => (
-          <Button
-            key={presentation}
-            aria-pressed={mode === presentation}
-            onClick={() =>
-              updateChat(session.id, { skillExperienceMode: presentation })
-            }
-          >
+          <label className="skill-experience-panel__mode" key={presentation}>
+            <input
+              type="radio"
+              name={presentationId}
+              value={presentation}
+              checked={mode === presentation}
+              onChange={() =>
+                updateChat(session.id, { skillExperienceMode: presentation })
+              }
+            />
             {presentation === 'guided'
               ? 'Guided'
               : presentation === 'alongside'
                 ? 'Alongside chat'
                 : 'Chat'}
-          </Button>
+          </label>
         ))}
       </fieldset>
       {session.skillExperienceDraftInvalid && (
@@ -135,6 +182,17 @@ export function SkillExperiencePanel({ session }: { session: ChatSession }) {
                 definition={definition}
                 values={draft.start.inputs}
                 errors={errors}
+                attachmentChoices={attachmentChoices}
+                attachmentAssignments={draft.attachmentAssignments}
+                onAttachmentsChange={(attachmentAssignments) =>
+                  updateChat(session.id, {
+                    skillExperienceDraft: {
+                      ...draft,
+                      start: { ...draft.start },
+                      attachmentAssignments,
+                    },
+                  })
+                }
                 onChange={(inputs) =>
                   updateChat(session.id, {
                     skillExperienceDraft: {
@@ -170,6 +228,12 @@ export function SkillExperiencePanel({ session }: { session: ChatSession }) {
                     ),
                   )}
                 </dl>
+                {snapshot && (
+                  <RecordedAttachmentRoles
+                    definition={snapshot.definition}
+                    roles={snapshot.attachmentInputs}
+                  />
+                )}
               </details>
               <p>
                 Declared outputs:{' '}
@@ -222,68 +286,78 @@ export function SkillExperiencePanel({ session }: { session: ChatSession }) {
                       </Button>
                     </p>
                   )}
-                  {snapshot.definition.transitions.map((stage) => {
-                    const selected = stages.data?.experiences.find(
-                      (entry) =>
-                        entry.definition.id === stage.experienceId &&
-                        entry.identity.pluginId ===
-                          snapshot.identity.pluginId &&
-                        entry.identity.pluginVersion ===
-                          snapshot.identity.pluginVersion &&
-                        entry.identity.incarnation ===
-                          snapshot.identity.incarnation &&
-                        entry.identity.materialization ===
-                          snapshot.identity.materialization &&
-                        entry.identity.contentDigest ===
-                          snapshot.identity.contentDigest,
-                    );
-                    return (
-                      <Button
-                        key={stage.experienceId}
-                        disabled={
+                  <label className="skill-experience-form__field">
+                    Prepare a declared next stage
+                    <select
+                      value=""
+                      disabled={
+                        stages.isFetching ||
+                        Boolean(stages.error) ||
+                        !skillExperiencesCanExecute(stages.data) ||
+                        invocation?.availability.status !== 'available' ||
+                        !authority?.isCurrent() ||
+                        status !== 'verified' ||
+                        !namespace
+                      }
+                      onChange={(event) => {
+                        const target = snapshot.definition.transitions?.find(
+                          (stage) => stage.experienceId === event.target.value,
+                        );
+                        const selected = stages.data?.experiences.find(
+                          (entry) =>
+                            target &&
+                            entry.definition.id === target.experienceId &&
+                            entry.identity.pluginId ===
+                              snapshot.identity.pluginId &&
+                            entry.identity.pluginVersion ===
+                              snapshot.identity.pluginVersion &&
+                            entry.identity.incarnation ===
+                              snapshot.identity.incarnation &&
+                            entry.identity.materialization ===
+                              snapshot.identity.materialization &&
+                            entry.identity.contentDigest ===
+                              snapshot.identity.contentDigest,
+                        );
+                        if (
                           !selected ||
-                          !skillExperiencesCanExecute(stages.data) ||
-                          stages.isFetching ||
-                          Boolean(stages.error) ||
-                          invocation?.availability.status !== 'available' ||
+                          !invocation ||
                           !authority?.isCurrent() ||
-                          status !== 'verified' ||
                           !namespace
-                        }
-                        onClick={() => {
-                          if (
-                            !selected ||
-                            !invocation ||
-                            !authority?.isCurrent() ||
-                            !namespace
-                          )
-                            return;
-                          updateChat(session.id, {
-                            input:
-                              session.input ||
-                              `Continue ${selected.definition.title}.`,
-                            skillExperienceMode:
-                              selected.definition.presentation.defaultMode,
-                            skillExperienceDraft: {
-                              namespace,
-                              apiBase: authority.apiBase,
-                              definition: selected.definition,
-                              start: {
-                                identity: selected.identity,
-                                inputs: skillExperienceInputDefaults(
-                                  selected.definition,
-                                ),
-                                expectedPreviousInvocationEventId:
-                                  invocation.eventId,
-                              },
+                        )
+                          return;
+                        updateChat(session.id, {
+                          input:
+                            session.input ||
+                            `Continue ${selected.definition.title}.`,
+                          skillExperienceMode:
+                            selected.definition.presentation.defaultMode,
+                          skillExperienceDraft: {
+                            namespace,
+                            apiBase: authority.apiBase,
+                            definition: selected.definition,
+                            start: {
+                              identity: selected.identity,
+                              inputs: skillExperienceInputDefaults(
+                                selected.definition,
+                              ),
+                              expectedPreviousInvocationEventId:
+                                invocation.eventId,
                             },
-                          });
-                        }}
-                      >
-                        Prepare {stage.label}
-                      </Button>
-                    );
-                  })}
+                          },
+                        });
+                      }}
+                    >
+                      <option value="">Choose a stage</option>
+                      {snapshot.definition.transitions.map((stage) => (
+                        <option
+                          key={stage.experienceId}
+                          value={stage.experienceId}
+                        >
+                          {stage.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
                 </div>
               )}
             </>
@@ -304,7 +378,9 @@ export function SkillExperiencePanel({ session }: { session: ChatSession }) {
                   invocation,
                   active: mode !== 'chat',
                 }}
-                pending={<p role="status">Loading declared rich view…</p>}
+                pending={
+                  <SkeletonList count={2} label="Loading declared rich view" />
+                }
               />
             </div>
           )}
@@ -323,7 +399,7 @@ export function SkillExperiencePanel({ session }: { session: ChatSession }) {
         </Button>
       )}
       {!draft && view.isPending && threadId && (
-        <p role="status">Loading recorded skill…</p>
+        <SkeletonList count={1} label="Loading recorded skill" />
       )}
       {view.error && (
         <Button onClick={() => void view.refetch()}>
@@ -333,7 +409,9 @@ export function SkillExperiencePanel({ session }: { session: ChatSession }) {
       {!!view.data?.history.length && (
         <details className="skill-experience-panel__history">
           <summary>Previous stages</summary>
-          {historyView.isFetching && <p role="status">Loading stages…</p>}
+          {historyView.isFetching && (
+            <SkeletonList count={2} label="Loading stages" />
+          )}
           {historyView.error && (
             <p role="alert">
               These stages could not be loaded.{' '}
@@ -360,6 +438,12 @@ export function SkillExperiencePanel({ session }: { session: ChatSession }) {
                     </div>
                   ))}
                 </dl>
+              )}
+              {row.snapshot && (
+                <RecordedAttachmentRoles
+                  definition={row.snapshot.definition}
+                  roles={row.snapshot.attachmentInputs}
+                />
               )}
             </details>
           ))}

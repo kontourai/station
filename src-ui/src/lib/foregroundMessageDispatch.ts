@@ -4,6 +4,7 @@ import {
   type ApprovalPickCarry,
   sendExecutionMessage,
 } from '@kontourai/station-sdk/client';
+import { skillExperienceAttachmentInputs } from '@kontourai/station-shared/skill-experience-values';
 import type { ComposerAttachmentStageSnapshot, FileAttachment } from '../types';
 import { resolveTurnModel } from './turnModel';
 
@@ -37,7 +38,8 @@ export async function dispatchForeground(input: {
   clientTurnId: string;
   automaticBackground?: boolean;
   skillExperience?: SkillExperienceStartInputV1;
-  skillExperienceAttachmentRole?: string;
+  skillExperienceAttachmentRoles?: string[];
+  skillExperienceAttachmentAssignments?: Record<string, string[]>;
   requestScope?: import('@kontourai/station-sdk/client').ClientRequestOptions['requestScope'];
   signal?: AbortSignal;
 }) {
@@ -125,6 +127,19 @@ export async function dispatchForeground(input: {
           setApprovalModeBasedOn: input.setApprovalModeBasedOn ?? null,
         }
       : {};
+  const outgoingAttachmentIds =
+    'attachmentRefs' in attachmentDispatch
+      ? attachmentDispatch.attachmentRefs.map(
+          (reference) => reference.clientAttachmentId,
+        )
+      : attachments.map((attachment) => attachment.id);
+  if (
+    input.skillExperience &&
+    new Set(outgoingAttachmentIds).size !== outgoingAttachmentIds.length
+  )
+    throw new Error(
+      'Composer files must have distinct identities before assigning visual skill roles.',
+    );
   return sendExecutionMessage(
     input.apiBase,
     {
@@ -160,19 +175,13 @@ export async function dispatchForeground(input: {
         ? {
             skillExperience: {
               ...input.skillExperience,
-              ...(input.skillExperienceAttachmentRole
+              ...(input.skillExperienceAttachmentRoles?.length
                 ? {
-                    attachmentInputs: {
-                      [input.skillExperienceAttachmentRole]: Array.from(
-                        {
-                          length:
-                            'attachmentRefs' in attachmentDispatch
-                              ? attachmentDispatch.attachmentRefs.length
-                              : attachmentDispatch.attachments.length,
-                        },
-                        (_, index) => index,
-                      ),
-                    },
+                    attachmentInputs: skillExperienceAttachmentInputs(
+                      input.skillExperienceAttachmentRoles,
+                      outgoingAttachmentIds,
+                      input.skillExperienceAttachmentAssignments,
+                    ),
                   }
                 : {}),
             },

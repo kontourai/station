@@ -1,3 +1,4 @@
+import { CHAT_ATTACHMENT_MAX_COUNT } from '@kontourai/station-contracts/chat-attachment';
 import type {
   SkillExperienceDefinitionV1,
   SkillExperienceStartInputV1,
@@ -13,6 +14,7 @@ export interface SkillExperienceDraft {
   apiBase: string;
   start: SkillExperienceStartInputV1;
   definition: SkillExperienceDefinitionV1;
+  attachmentAssignments?: Record<string, string[]>;
 }
 
 export function readSkillExperienceDraft(
@@ -41,10 +43,40 @@ export function readSkillExperienceDraft(
     new TextEncoder().encode(JSON.stringify(value)).length > 128 * 1024
   )
     return null;
+  const attachmentAssignments: Record<string, string[]> = {};
+  if (
+    'attachmentAssignments' in value &&
+    value.attachmentAssignments !== undefined
+  ) {
+    const candidate = value.attachmentAssignments;
+    if (
+      !candidate ||
+      typeof candidate !== 'object' ||
+      Array.isArray(candidate) ||
+      Object.keys(candidate).length > 32
+    )
+      return null;
+    for (const [role, ids] of Object.entries(candidate)) {
+      if (
+        !definition.inputs.some(
+          (input) => input.id === role && input.kind === 'attachments',
+        ) ||
+        !Array.isArray(ids) ||
+        ids.length > CHAT_ATTACHMENT_MAX_COUNT ||
+        ids.some((id) => typeof id !== 'string' || !id || id.length > 256) ||
+        new Set(ids).size !== ids.length
+      )
+        return null;
+      attachmentAssignments[role] = ids.map((id) => String(id));
+    }
+  }
   return {
     namespace: value.namespace,
     apiBase: value.apiBase,
     start,
     definition,
+    ...(Object.keys(attachmentAssignments).length
+      ? { attachmentAssignments }
+      : {}),
   };
 }
