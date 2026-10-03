@@ -14,7 +14,7 @@
   "sources": [
     {"path":"packages/contracts/src/answer-share-channel.ts","digest":"0313c8b8740e8b0215b7313796f01f9ac1231cd40e93bd800a4610b2bd67535c","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"packages/contracts/src/environment-security.ts","digest":"5abb4d84b9d7545c633f924c33fef319b3ca0db13a55779731327f29f072dd79","revision":"018c39925af630ca8eeab05a917de01fc80bd89e"},
+    {"path":"packages/contracts/src/environment-security.ts","digest":"3ce3cf0ed83e19fbf7984e109f1bc72caa552170a0ca3a7501332c1604408127","revision":"5d3299426e979c5b2b51c7c454f9b0bdae08d78a"},
 
     {"path":"packages/contracts/src/turn-provenance.ts","digest":"7580bf4f0199a83b65236ab55eade23391f940fa0c206a58545f0b86f3570193","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 

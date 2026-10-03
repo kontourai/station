@@ -12,7 +12,7 @@
   "document": {"digest":"ec8920fcb32e04182559991d3301afec584a03478e9772ee33ebc90af05281a8","revision":"4775195c62ee67b1c20882a1561a4578b8db017f"},
 
   "sources": [
-    {"path":"packages/contracts/src/environment-security.ts","digest":"5e95b203695a37807a3b3c9464df4f0153ca32b408496dc12f59274f61fd2486","revision":"91d79c3f0ce9ca5ae304e4248b67b6189103016e"},
+    {"path":"packages/contracts/src/environment-security.ts","digest":"3ce3cf0ed83e19fbf7984e109f1bc72caa552170a0ca3a7501332c1604408127","revision":"5d3299426e979c5b2b51c7c454f9b0bdae08d78a"},
 
     {"path":"src-server/routes/environments/home-authority-routes.ts","digest":"64c1875089078327e3e74481923ecdec9ed1e6751e6b795b54ada44c7fca7ef4","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
@@ -28,7 +28,7 @@
 
     {"path":"src-server/services/orchestration/home-transfer-room-probe.ts","digest":"452280720043dd06eabfa63058e4ae10bd65db403adf427ccc7b64061c102129","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
-    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"c5a85fefbe06e5a903444325293d46a80fefb7a0f938100fbceee8c60492d893","revision":"958350328eafd360124e1892c1945a2ae455e43c"},
+    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"95d1ca17ab4d226d85c018c7167b0a7156e1abb1721b754f5bc71412fc9c0785","revision":"dd7461ad92ce48802913373cc52bfa8b3083dc07"},
 
     {"path":"src-server/services/orchestration/paired-home-transfer-authority.ts","digest":"085a90751ac616c54bca77ce48112a951334d1d644fdb4fa3287e6aed72f503f","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 

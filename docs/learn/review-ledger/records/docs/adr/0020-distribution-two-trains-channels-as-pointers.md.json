@@ -18,7 +18,7 @@
 
     {"path":"src-server/routes/system/archive-update.ts","digest":"11cd46218325618ceefcd54079f5012b981eb6b1c2872d562434523de1ef63e9","revision":"ce2b6c35d2cb46e08b3b0f162df6e2c581dd03a9"},
 
-    {"path":"packages/contracts/src/environment-security.ts","digest":"5abb4d84b9d7545c633f924c33fef319b3ca0db13a55779731327f29f072dd79","revision":"018c39925af630ca8eeab05a917de01fc80bd89e"},
+    {"path":"packages/contracts/src/environment-security.ts","digest":"3ce3cf0ed83e19fbf7984e109f1bc72caa552170a0ca3a7501332c1604408127","revision":"5d3299426e979c5b2b51c7c454f9b0bdae08d78a"},
 
     {"path":"src-ui/src/lib/compatibility.ts","digest":"4c3ddfb66d0c660278dbb12f3dcc66fbb4a7c3c24a882c3d65afe3c89bd9dac3","revision":"54e0ffb5c1ae765b4127f031e525793087fb9669"},
 
