@@ -118,8 +118,12 @@ write. The pointer plan also refuses a signed manifest for any other
 version. It then re-downloads the versioned archives and manifest
 anonymously, compares them with the payload, and plans the pointer again:
 
-- **Newer version:** it saves the served manifest, replaces it, and
-  re-verifies it with the pinned key. The re-verification waits up to five
+- **Newer version:** it saves the manifest the pointer release holds and
+  plans again against those bytes, because the plan read a cacheable URL that
+  can serve an older copy. It replaces the manifest only if that second plan
+  still says the candidate is newer; an older candidate leaves the pointer
+  alone with the same warning, and the same version with other bytes fails.
+  It then re-verifies the replaced manifest with the pinned key. The re-verification waits up to five
   minutes while the asset host still serves the older manifest, and fails at
   once on anything else. If the upload or the re-verification
   fails, it restores the saved manifest (or removes a bootstrap one) and
@@ -135,7 +139,11 @@ anonymously, compares them with the payload, and plans the pointer again:
 An owner cancel can land between the delete and the upload that
 `gh release upload --clobber` performs. That leaves the rolling host pointer
 with no manifest, because the restore trap does not run on cancel. The
-desktop pointer has the same exposure. This fails safe: the next publish
+desktop pointer has the same exposure. A job timeout behaves like a cancel.
+Each manifest or archive GET is bounded to 30 seconds per attempt, so a
+hanging asset host fails the step (and runs the restore) rather than running
+into the 20-minute job timeout, but a timeout that still lands mid-clobber
+leaves the same empty pointer. This fails safe: the next publish
 stops at the empty-pointer refusal. To recover, check the versioned release,
 then re-run `Publish Station release` for that tag with
 `allow_empty_host_manifest_bootstrap`.

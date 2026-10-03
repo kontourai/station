@@ -8,6 +8,8 @@ import {
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
+import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { load } from 'js-yaml';
@@ -19,6 +21,8 @@ import {
   checkArchives,
   compareRingVersions,
   createDryRunKeys,
+  FETCH_TIMEOUT_MS,
+  fetchBytes,
   isStaleRollingManifest,
   ManifestMismatchError,
   PORTABLE_LAUNCHER_PROTOCOL,
@@ -634,6 +638,39 @@ describe('publication checks for stable and preview', () => {
     expect(sized.stderr).toContain(
       'station-server-darwin-arm64.tar.gz is not the archive the manifest signs',
     );
+  });
+
+  it('fails a GET to a host that never answers within the per-request bound', async () => {
+    expect(FETCH_TIMEOUT_MS).toBe(30_000);
+    // Accepts the connection and sends headers, then never sends the body.
+    const server = createServer((_request, response) => {
+      response.writeHead(200, { 'content-length': '10' });
+      response.flushHeaders();
+    });
+    await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
+    const { port } = server.address() as AddressInfo;
+    let guard: ReturnType<typeof setTimeout> | undefined;
+    try {
+      // Without the bound the GET would wait for undici's own ~300s timeout;
+      // the guard turns that into a readable failure instead of a test hang.
+      const hung = new Promise<string>((done) => {
+        guard = setTimeout(() => done('still waiting after 5s'), 5_000);
+      });
+      await expect(
+        Promise.race([
+          fetchBytes(`http://127.0.0.1:${port}/manifest.json`, {
+            attempts: 2,
+            delayMs: 10,
+            timeoutMs: 200,
+          }),
+          hung,
+        ]),
+      ).rejects.toThrow(/aborted|timeout/i);
+    } finally {
+      clearTimeout(guard);
+      server.closeAllConnections();
+      await new Promise((done) => server.close(done));
+    }
   });
 
   it('refuses a re-downloaded archive with the signed size but other bytes', async () => {

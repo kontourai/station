@@ -268,18 +268,33 @@ export function checkArchives(payload, archivesDir) {
 
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 
+/** Bounds one GET, body included; undici's own default is about 300s. */
+export const FETCH_TIMEOUT_MS = 30_000;
+
 /**
  * GETs `url`, retrying while a just-uploaded release asset is still
  * propagating. A 404 is returned as null only when `allowMissing` is set.
+ * Each attempt is aborted after `timeoutMs`, so a hanging host fails the
+ * step instead of running into the job timeout, which cancels it before any
+ * restore can run.
  */
 export async function fetchBytes(
   url,
-  { fetchImpl = fetch, attempts = 10, delayMs = 6000, allowMissing = false },
+  {
+    fetchImpl = fetch,
+    attempts = 10,
+    delayMs = 6000,
+    allowMissing = false,
+    timeoutMs = FETCH_TIMEOUT_MS,
+  },
 ) {
   let lastError;
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     try {
-      const response = await fetchImpl(url, { redirect: 'follow' });
+      const response = await fetchImpl(url, {
+        redirect: 'follow',
+        signal: AbortSignal.timeout(timeoutMs),
+      });
       if (response.status === 404 && allowMissing) return null;
       if (response.ok) return Buffer.from(await response.arrayBuffer());
       lastError = new Error(`GET ${url} returned HTTP ${response.status}`);
