@@ -163,6 +163,15 @@ export interface AppConfig {
    * boot wiring time — a flip applies on the next Station start.
    */
   workspaceCheckpoints?: boolean;
+  /**
+   * #3157: after Claude Code or Codex stops on a usage limit whose reset the
+   * provider reported, send the stopped turn again once the limit resets.
+   * **Default off** — absent/undefined/false all mean off: a resume spends
+   * quota while nobody is watching. Read at the moment a resume is due, so a
+   * change applies to stops already waiting. Off, the reset time is still
+   * shown and the resume waits for the user.
+   */
+  usageLimitAutoResume?: boolean;
   /** Distribution defaults for starter layouts and registry sources. */
   distributionProfile?: DistributionProfileSelection;
   /**

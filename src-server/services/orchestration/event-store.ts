@@ -28,6 +28,7 @@ import { isClientOrigin } from '@kontourai/station-contracts/client-origin';
 import type {
   ConnectionRecoveryIntent,
   ConnectionRecoveryOutcome,
+  ConnectionRecoveryOutcomeReason,
   ConnectionRecoveryProjection,
 } from '@kontourai/station-contracts/connection-recovery';
 import type {
@@ -10618,7 +10619,9 @@ export class EventStore {
         this.markRecoveryCompensation(fingerprint, now, expectedOutcome),
       resolveCompensation: (fingerprint, now) =>
         this.resolveRecoveryCompensationRecord(fingerprint, now),
-      cancel: (fingerprint, now) => this.cancelRecovery(fingerprint, now),
+      cancel: (fingerprint, now, reason) =>
+        this.cancelRecovery(fingerprint, now, reason),
+      retireWaiting: (input) => this.retireWaitingRecovery(input),
       cancelSourceTerminated: (now) =>
         this.cancelSourceTerminatedRecoveries(now),
       cancelShutdownRequested: (now) => this.cancelShutdownRecoveries(now),
@@ -11043,8 +11046,8 @@ export class EventStore {
           (fingerprint, thread_id, provider, source_event_id, source_turn_id,
            failure_kind, scope, decision, due_at, attempts, max_attempts,
            outcome, dispatch_attempt_id, recovery_correlation_id,
-           dispatch_settlement, dispatch_kind, resumed_turn_id, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, NULL, NULL, NULL, NULL, NULL, ?, ?)`,
+           dispatch_settlement, dispatch_kind, resumed_turn_id, outcome_reason, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, NULL, NULL, NULL, NULL, NULL, NULL, ?, ?)`,
       )
       .run(
         input.fingerprint,
@@ -11072,7 +11075,7 @@ export class EventStore {
         `SELECT fingerprint, thread_id, provider, source_event_id, source_turn_id,
                 failure_kind, scope, decision, due_at, attempts, max_attempts,
                 outcome, dispatch_attempt_id, recovery_correlation_id,
-                dispatch_settlement, dispatch_kind, resumed_turn_id, created_at, updated_at
+                dispatch_settlement, dispatch_kind, resumed_turn_id, outcome_reason, created_at, updated_at
          FROM orchestration_recovery_intents WHERE fingerprint = ?`,
       )
       .get(fingerprint) as RecoveryIntentRow | undefined;
@@ -11087,7 +11090,7 @@ export class EventStore {
         `SELECT fingerprint, thread_id, provider, source_event_id, source_turn_id,
                 failure_kind, scope, decision, due_at, attempts, max_attempts,
                 outcome, dispatch_attempt_id, recovery_correlation_id,
-                dispatch_settlement, dispatch_kind, resumed_turn_id, created_at, updated_at
+                dispatch_settlement, dispatch_kind, resumed_turn_id, outcome_reason, created_at, updated_at
          FROM orchestration_recovery_intents
          WHERE thread_id = ? ORDER BY updated_at DESC, rowid DESC LIMIT 1`,
       )
@@ -11102,6 +11105,7 @@ export class EventStore {
       ...(intent.dueAt ? { dueAt: intent.dueAt } : {}),
       attempts: intent.attempts,
       maxAttempts: intent.maxAttempts,
+      ...(intent.outcomeReason ? { outcomeReason: intent.outcomeReason } : {}),
       updatedAt: intent.updatedAt,
     };
   }
@@ -11112,7 +11116,7 @@ export class EventStore {
         `SELECT fingerprint, thread_id, provider, source_event_id, source_turn_id,
                 failure_kind, scope, decision, due_at, attempts, max_attempts,
                 outcome, dispatch_attempt_id, recovery_correlation_id,
-                dispatch_settlement, dispatch_kind, resumed_turn_id, created_at, updated_at
+                dispatch_settlement, dispatch_kind, resumed_turn_id, outcome_reason, created_at, updated_at
          FROM orchestration_recovery_intents
          WHERE outcome IN ('armed', 'resumed') ORDER BY due_at ASC, created_at ASC`,
       )
@@ -11126,7 +11130,7 @@ export class EventStore {
         `SELECT fingerprint, thread_id, provider, source_event_id, source_turn_id,
                 failure_kind, scope, decision, due_at, attempts, max_attempts,
                 outcome, dispatch_attempt_id, recovery_correlation_id,
-                dispatch_settlement, dispatch_kind, resumed_turn_id, created_at, updated_at
+                dispatch_settlement, dispatch_kind, resumed_turn_id, outcome_reason, created_at, updated_at
          FROM orchestration_recovery_intents
          WHERE outcome = 'compensation-required'
          ORDER BY updated_at ASC, created_at ASC`,
@@ -11150,7 +11154,7 @@ export class EventStore {
     const row = this.db
       .prepare(
         `UPDATE orchestration_recovery_intents
-         SET outcome = 'resumed', attempts = attempts + 1,
+         SET outcome = 'resumed', attempts = attempts + 1, outcome_reason = NULL,
              dispatch_attempt_id = ?, recovery_correlation_id = ?,
              dispatch_settlement = 'prepared', dispatch_kind = ?,
              dispatch_owner_id = ?, dispatch_owner_pid = ?,
@@ -11160,7 +11164,7 @@ export class EventStore {
          RETURNING fingerprint, thread_id, provider, source_event_id, source_turn_id,
                    failure_kind, scope, decision, due_at, attempts, max_attempts,
                    outcome, dispatch_attempt_id, recovery_correlation_id,
-                   dispatch_settlement, dispatch_kind, resumed_turn_id, created_at, updated_at`,
+                   dispatch_settlement, dispatch_kind, resumed_turn_id, outcome_reason, created_at, updated_at`,
       )
       .get(
         input.dispatchAttemptId,
@@ -11244,7 +11248,7 @@ export class EventStore {
          RETURNING fingerprint, thread_id, provider, source_event_id, source_turn_id,
                    failure_kind, scope, decision, due_at, attempts, max_attempts,
                    outcome, dispatch_attempt_id, recovery_correlation_id,
-                   dispatch_settlement, dispatch_kind, resumed_turn_id, created_at, updated_at`,
+                   dispatch_settlement, dispatch_kind, resumed_turn_id, outcome_reason, created_at, updated_at`,
       )
       .get(turnId, now, recoveryCorrelationId) as RecoveryIntentRow | undefined;
     return row ? mapRecoveryIntentRow(row) : null;
@@ -11307,7 +11311,7 @@ export class EventStore {
         `SELECT fingerprint, thread_id, provider, source_event_id, source_turn_id,
                 failure_kind, scope, decision, due_at, attempts, max_attempts,
                 outcome, dispatch_attempt_id, recovery_correlation_id,
-                dispatch_settlement, dispatch_kind, resumed_turn_id, created_at, updated_at,
+                dispatch_settlement, dispatch_kind, resumed_turn_id, outcome_reason, created_at, updated_at,
                 dispatch_owner_id, dispatch_owner_pid, dispatch_owner_birth,
                 dispatch_owner_identity_kind, credential_attempt_id
          FROM orchestration_recovery_intents
@@ -11374,7 +11378,7 @@ export class EventStore {
          RETURNING fingerprint, thread_id, provider, source_event_id, source_turn_id,
                    failure_kind, scope, decision, due_at, attempts, max_attempts,
                    outcome, dispatch_attempt_id, recovery_correlation_id,
-                   dispatch_settlement, dispatch_kind, resumed_turn_id, created_at, updated_at`,
+                   dispatch_settlement, dispatch_kind, resumed_turn_id, outcome_reason, created_at, updated_at`,
       )
       .get(
         input.now,
@@ -11449,13 +11453,42 @@ export class EventStore {
     return recoveryTransition(result);
   }
 
-  private cancelRecovery(fingerprint: string, now: string): RecoveryTransition {
+  private cancelRecovery(
+    fingerprint: string,
+    now: string,
+    reason?: ConnectionRecoveryOutcomeReason,
+  ): RecoveryTransition {
     const result = this.db
       .prepare(
-        `UPDATE orchestration_recovery_intents SET outcome = 'canceled', updated_at = ?
+        `UPDATE orchestration_recovery_intents
+         SET outcome = 'canceled', outcome_reason = COALESCE(?, outcome_reason), updated_at = ?
          WHERE fingerprint = ? AND outcome IN ('armed', 'resumed', 'manual')`,
       )
-      .run(now, fingerprint) as { changes: number | bigint };
+      .run(reason ?? null, now, fingerprint) as { changes: number | bigint };
+    return recoveryTransition(result);
+  }
+
+  /**
+   * #3157: settles an intent that is still only waiting — armed, never
+   * claimed — without a dispatch. Anything already claimed belongs to its
+   * claim and is left alone (`stale`).
+   */
+  private retireWaitingRecovery(input: {
+    fingerprint: string;
+    outcome: 'manual' | 'canceled';
+    reason: ConnectionRecoveryOutcomeReason;
+    now: string;
+  }): RecoveryTransition {
+    const result = this.db
+      .prepare(
+        `UPDATE orchestration_recovery_intents
+         SET outcome = ?, outcome_reason = ?, updated_at = ?
+         WHERE fingerprint = ? AND outcome = 'armed'
+           AND dispatch_attempt_id IS NULL AND recovery_correlation_id IS NULL`,
+      )
+      .run(input.outcome, input.reason, input.now, input.fingerprint) as {
+      changes: number | bigint;
+    };
     return recoveryTransition(result);
   }
 
@@ -11486,13 +11519,25 @@ export class EventStore {
   }
 
   /** A bounded shutdown may lose its per-intent CAS result. Persist the
-   * cancel request itself so startup fences it before any timer is rebuilt. */
+   * cancel request itself so startup fences it before any timer is rebuilt.
+   *
+   * #3157: an intent that is only waiting for a provider reset, or that the
+   * user was left to resume, holds no dispatch to stop. It is not fenced: a
+   * restart rebuilds its timer (`reconcile`), and the coordinator re-checks
+   * the Session before any dispatch. */
   private cancelShutdownRecoveries(now: string): RecoveryTransition {
     const result = this.db
       .prepare(
         `UPDATE orchestration_recovery_intents
          SET shutdown_cancel_requested_at = ?, updated_at = ?
-         WHERE outcome IN ('armed', 'resumed', 'manual')`,
+         WHERE outcome IN ('armed', 'resumed', 'manual')
+           AND NOT (
+             dispatch_attempt_id IS NULL AND recovery_correlation_id IS NULL
+             AND (
+               (outcome = 'armed' AND decision = 'wait-until-reset')
+               OR (outcome = 'manual' AND outcome_reason = 'auto-resume-off')
+             )
+           )`,
       )
       .run(now, now) as { changes: number | bigint };
     return recoveryTransition(result);
@@ -12737,6 +12782,8 @@ interface RecoveryIntentRow {
   dispatch_settlement: 'prepared' | 'accepted' | null;
   dispatch_kind: 'due' | 'profile' | null;
   resumed_turn_id: string | null;
+  /** Absent from rows selected before #3157's column existed. */
+  outcome_reason?: ConnectionRecoveryOutcomeReason | null;
   created_at: string;
   updated_at: string;
 }
@@ -12768,6 +12815,7 @@ function mapRecoveryIntentRow(
       : {}),
     ...(row.dispatch_kind ? { dispatchKind: row.dispatch_kind } : {}),
     ...(row.resumed_turn_id ? { resumedTurnId: row.resumed_turn_id } : {}),
+    ...(row.outcome_reason ? { outcomeReason: row.outcome_reason } : {}),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

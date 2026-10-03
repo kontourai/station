@@ -596,6 +596,74 @@ describe('SessionRecoveryCoordinator', () => {
     },
   );
 
+  test('#3157: credential failover still recovers a usage-limit stop while automatic resume is off', async () => {
+    vi.useFakeTimers();
+    const dir = mkdtempSync(join(tmpdir(), 'recovery-coordinator-'));
+    dirs.push(dir);
+    const store = new EventStore(join(dir, 'orchestration.sqlite'));
+    const now = new Date('2026-07-29T12:00:00.000Z');
+    const restartResume = vi.fn(async () => ({ turnId: 'profile-turn' }));
+    const sendTurn = vi.fn();
+    const autoResume = vi.fn(() => false);
+    const coordinator = new SessionRecoveryCoordinator({
+      eventStore: store,
+      adapterForProvider: () =>
+        ({
+          metadata: {
+            recovery: { sameSession: true, application: 'restart_resume' },
+          },
+        }) as any,
+      sendTurn,
+      restartResume,
+      credentialRecoveryAdapter: {
+        stage: async () => ({
+          candidateProfileRef: 'backup',
+          capability: 'restart_resume',
+        }),
+        commit: vi.fn(async () => ({ kind: 'adopted' as const })),
+        rollback: vi.fn(),
+      },
+      autoResume,
+      now: () => now,
+    });
+    store.appendEvent({
+      eventId: 'started-limit-profile',
+      provider: 'codex',
+      threadId: 'thread-limit-profile',
+      turnId: 'turn-limit-profile',
+      createdAt: now.toISOString(),
+      method: 'turn.started',
+      prompt: 'authoritative input',
+    });
+    coordinator.observe({
+      eventId: 'limit-profile',
+      provider: 'codex',
+      threadId: 'thread-limit-profile',
+      turnId: 'turn-limit-profile',
+      createdAt: now.toISOString(),
+      method: 'runtime.error',
+      severity: 'error',
+      code: 'usageLimitExceeded',
+      message: "You've hit your usage limit.",
+      details: {
+        usageLimit: true,
+        scope: 'account',
+        resetAt: '2026-07-29T14:00:00.000Z',
+      },
+    });
+
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(restartResume).toHaveBeenCalledOnce();
+    expect(sendTurn).not.toHaveBeenCalled();
+    expect(
+      coordinator.latestProjection('thread-limit-profile'),
+    ).toMatchObject({ outcome: 'resumed' });
+    await coordinator.dispose();
+    store.close();
+    vi.useRealTimers();
+  });
+
   test('commit rejection rolls back, restores the committed profile session, and records failure', async () => {
     vi.useFakeTimers();
     const dir = mkdtempSync(join(tmpdir(), 'recovery-coordinator-'));
@@ -2227,6 +2295,8 @@ describe('SessionRecoveryCoordinator', () => {
     });
     const now = new Date('2026-08-13T00:00:00.000Z');
     const fingerprint = 'shutdown:turn:rate-limit:server';
+    // `retry-now`: a `wait-until-reset` intent with nothing in flight
+    // deliberately outlives shutdown (#3157, tested on its own below).
     real.arm({
       fingerprint,
       threadId: 'shutdown',
@@ -2235,7 +2305,7 @@ describe('SessionRecoveryCoordinator', () => {
       sourceTurnId: 'turn',
       failureKind: 'rate-limit',
       scope: 'server',
-      decision: 'wait-until-reset',
+      decision: 'retry-now',
       dueAt: new Date(now.getTime() + 60_000).toISOString(),
       maxAttempts: 1,
       outcome: 'armed',
@@ -2893,22 +2963,25 @@ describe('SessionRecoveryCoordinator', () => {
       sendTurn,
       now: () => now,
     });
+    // #3157: two intents for ONE turn (two failure classifications). Two
+    // failed turns would not test exclusion: the later turn supersedes the
+    // earlier turn's resume before it is due.
+    store.appendEvent({
+      eventId: 'started-turn',
+      provider: 'claude',
+      threadId: 'thread',
+      turnId: 'turn',
+      createdAt: now.toISOString(),
+      method: 'turn.started',
+      prompt: 'input',
+    });
     for (const suffix of ['one', 'two']) {
-      store.appendEvent({
-        eventId: `started-${suffix}`,
-        provider: 'claude',
-        threadId: 'thread',
-        turnId: `turn-${suffix}`,
-        createdAt: now.toISOString(),
-        method: 'turn.started',
-        prompt: suffix,
-      });
       recoveryLedger(store).arm({
         fingerprint: `thread:turn-${suffix}:rate-limit:server`,
         threadId: 'thread',
         provider: 'claude',
-        sourceEventId: `started-${suffix}`,
-        sourceTurnId: `turn-${suffix}`,
+        sourceEventId: 'started-turn',
+        sourceTurnId: 'turn',
         failureKind: 'rate-limit',
         scope: 'server',
         decision: 'retry-now',

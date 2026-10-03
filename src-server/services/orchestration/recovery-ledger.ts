@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type {
   ConnectionRecoveryIntent,
   ConnectionRecoveryOutcome,
+  ConnectionRecoveryOutcomeReason,
   ConnectionRecoveryProjection,
 } from '@kontourai/station-contracts/connection-recovery';
 import {
@@ -83,7 +84,21 @@ export interface RecoveryLedger {
     expectedOutcome?: 'resumed' | 'canceled' | 'indeterminate',
   ): RecoveryTransition;
   resolveCompensation(fingerprint: string, now: string): RecoveryTransition;
-  cancel(fingerprint: string, now: string): RecoveryTransition;
+  cancel(
+    fingerprint: string,
+    now: string,
+    reason?: ConnectionRecoveryOutcomeReason,
+  ): RecoveryTransition;
+  /**
+   * #3157: settles a still-waiting (armed, never claimed) intent without a
+   * dispatch, recording why. A claimed intent is `stale` here.
+   */
+  retireWaiting(input: {
+    fingerprint: string;
+    outcome: 'manual' | 'canceled';
+    reason: ConnectionRecoveryOutcomeReason;
+    now: string;
+  }): RecoveryTransition;
   /** Startup repair: source-terminal events remain authoritative after a canceled write fault. */
   cancelSourceTerminated(now: string): RecoveryTransition;
   cancelShutdownRequested(now: string): RecoveryTransition;
@@ -227,7 +242,17 @@ interface RecoveryLedgerCoordinator {
     expectedOutcome: 'resumed' | 'canceled' | 'indeterminate',
   ): RecoveryTransition;
   resolveCompensation(fingerprint: string, now: string): RecoveryTransition;
-  cancel(fingerprint: string, now: string): RecoveryTransition;
+  cancel(
+    fingerprint: string,
+    now: string,
+    reason?: ConnectionRecoveryOutcomeReason,
+  ): RecoveryTransition;
+  retireWaiting(input: {
+    fingerprint: string;
+    outcome: 'manual' | 'canceled';
+    reason: ConnectionRecoveryOutcomeReason;
+    now: string;
+  }): RecoveryTransition;
   cancelSourceTerminated(now: string): RecoveryTransition;
   cancelShutdownRequested(now: string): RecoveryTransition;
 }
@@ -561,9 +586,16 @@ export function createRecoveryLedger(options: {
         return unavailable();
       }
     },
-    cancel: (fingerprint, now) => {
+    cancel: (fingerprint, now, reason) => {
       try {
-        return options.coordinator.cancel(fingerprint, now);
+        return options.coordinator.cancel(fingerprint, now, reason);
+      } catch {
+        return unavailable();
+      }
+    },
+    retireWaiting: (input) => {
+      try {
+        return options.coordinator.retireWaiting(input);
       } catch {
         return unavailable();
       }

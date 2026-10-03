@@ -170,6 +170,8 @@ export interface ConnectionRecoveryIntent {
   /** Whether the prepared dispatch had staged a credential profile. */
   dispatchKind?: 'due' | 'profile';
   resumedTurnId?: string;
+  /** Why Station left this intent to the user or retired it unsent. */
+  outcomeReason?: ConnectionRecoveryOutcomeReason;
   createdAt: string;
   updatedAt: string;
 }
@@ -183,5 +185,34 @@ export interface ConnectionRecoveryProjection {
   dueAt?: string;
   attempts: number;
   maxAttempts: number;
+  outcomeReason?: ConnectionRecoveryOutcomeReason;
   updatedAt: string;
+}
+
+/**
+ * #3157: why an intent that was waiting to resume did not. `manual` intents
+ * carry `auto-resume-off`; `canceled` intents carry the other three.
+ */
+export type ConnectionRecoveryOutcomeReason =
+  /** The user has not turned on automatic resume after usage limits. */
+  | 'auto-resume-off'
+  /** A newer turn started in the conversation before the resume ran. */
+  | 'superseded'
+  /** The Session was waiting on an open request when the resume was due. */
+  | 'request-pending'
+  /** The Session closed or no longer exists. */
+  | 'session-ended';
+
+/**
+ * #3157: `runtime.error` details an engine adapter attaches when the provider
+ * itself reported a usage limit. The classifier reads `usageLimit` as a
+ * `rate-limit` failure; `resetAt` is the provider's own reset time and is
+ * absent when the provider gave none, which keeps the stop manual. Adapters
+ * never derive it from message text (#2265).
+ */
+export interface UsageLimitFailureDetails {
+  usageLimit: true;
+  scope: 'account';
+  /** ISO 8601 instant the limited window resets, as the provider reported it. */
+  resetAt?: string;
 }
