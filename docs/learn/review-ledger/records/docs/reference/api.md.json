@@ -186,7 +186,7 @@
 
     {"path":"src-server/routes/plugins/plugin-install-routes.ts","digest":"b5696f343313b1a6ded1a1fd00d15be70ddb1bd7f35a63fc60eafb856ec90bf9","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/routes/plugins/plugin-lifecycle-routes.ts","digest":"cda448465036fd7091429d1bd46ae20b4527e9d8fa60c762c935a56aa5672677","revision":"0814cc6ddb168cff69e5572b185a853540a4f6e0"},
+    {"path":"src-server/routes/plugins/plugin-lifecycle-routes.ts","digest":"0a738ab40517d221dd45aa60284c46ca74b4281308dad13c8d6ad4a47e99b7dd","revision":"3e8559159112366b1dfa4e051dea7d4852c73c47"},
 
     {"path":"src-server/routes/plugins/plugin-person-approval.ts","digest":"b731874cf9dac20f44beabd2410d732f41e2e4ac207aa3c173162aa72f15327e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -196,7 +196,7 @@
 
     {"path":"src-server/routes/plugins/plugins.ts","digest":"fbaf259293b5a5f7ae43c76aae4d8676c35ab5e92157284cbd39d4f13622fb2f","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/routes/plugins/registry.ts","digest":"0e18a1298ce72d4cf3a405460a2acedff734c35f726b8bc361f7ad0e9e708f35","revision":"6497ed355774f69d9f1d0832f715ac536efb162e"},
+    {"path":"src-server/routes/plugins/registry.ts","digest":"108c233206c8523864c0f6ef7a9f5c10a5e71dd7ec30d260cd926ae2c2bf6f01","revision":"3e8559159112366b1dfa4e051dea7d4852c73c47"},
 
     {"path":"src-server/routes/projects/fs.ts","digest":"73b84dab3f633c021406ad629cee445610a2cf44f43b93dc8b81e3d70d8efac4","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -394,7 +394,7 @@
 
     {"path":"src-server/services/agents/skill-service.ts","digest":"036d075316efb30c94191ded896d3c69c9169f23e053f3fba34ef1b4283d161e","revision":"2867eea7c9a4838e2a59cdbf6ec7f940b7d4cf26"},
 
-    {"path":"src-server/routes/plugins/__tests__/registry-marketplaces.routes.test.ts","digest":"1bee62e2552db42e5e304557be3da54832c807509d25de7d18facd2cc2d2cabc","revision":"e3f67db22db60734c0c49df624c97e92a8fcddaa"}
+    {"path":"src-server/routes/plugins/__tests__/registry-marketplaces.routes.test.ts","digest":"7632b6b905e0983deca21c0fd615e304aee7d4a1fe5b8a2773a0e27400c9c435","revision":"5ec5c7ecd298e3e611e3a3df001d5aee954b389d"}
   ],
 
   "checks": [

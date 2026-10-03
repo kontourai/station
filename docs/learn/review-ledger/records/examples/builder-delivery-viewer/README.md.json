@@ -28,7 +28,7 @@
 
     {"path":"pnpm-lock.yaml","digest":"5c3c9968c59ac5b4e7e5ec861c2873bfce11b7c60e7b28e8706db6b29d028ddb","revision":"1e6450e0caa47975d33f505a1348bdc01ae1382e"},
 
-    {"path":"src-server/routes/plugins/plugin-lifecycle-routes.ts","digest":"cda448465036fd7091429d1bd46ae20b4527e9d8fa60c762c935a56aa5672677","revision":"0814cc6ddb168cff69e5572b185a853540a4f6e0"},
+    {"path":"src-server/routes/plugins/plugin-lifecycle-routes.ts","digest":"0a738ab40517d221dd45aa60284c46ca74b4281308dad13c8d6ad4a47e99b7dd","revision":"3e8559159112366b1dfa4e051dea7d4852c73c47"},
 
     {"path":"src-server/routes/plugins/plugin-public-routes.ts","digest":"5d088d683e1fc60155100743cf2fb67a6df25ded4914307ba54883d1097f157e","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 

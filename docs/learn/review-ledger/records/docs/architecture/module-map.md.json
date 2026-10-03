@@ -914,9 +914,9 @@
 
     {"path":"src-server/providers/registries/filesystem-skill-registry.ts","digest":"04d981c6e1ed6f89c4149be49c8b3ca8711a4fae6c7e36d2d101c81ca81307d3","revision":"2867eea7c9a4838e2a59cdbf6ec7f940b7d4cf26"},
 
-    {"path":"src-server/routes/plugins/registry.ts","digest":"0e18a1298ce72d4cf3a405460a2acedff734c35f726b8bc361f7ad0e9e708f35","revision":"6497ed355774f69d9f1d0832f715ac536efb162e"},
+    {"path":"src-server/routes/plugins/registry.ts","digest":"108c233206c8523864c0f6ef7a9f5c10a5e71dd7ec30d260cd926ae2c2bf6f01","revision":"3e8559159112366b1dfa4e051dea7d4852c73c47"},
 
-    {"path":"src-server/routes/plugins/__tests__/registry-marketplaces.routes.test.ts","digest":"1bee62e2552db42e5e304557be3da54832c807509d25de7d18facd2cc2d2cabc","revision":"e3f67db22db60734c0c49df624c97e92a8fcddaa"}
+    {"path":"src-server/routes/plugins/__tests__/registry-marketplaces.routes.test.ts","digest":"7632b6b905e0983deca21c0fd615e304aee7d4a1fe5b8a2773a0e27400c9c435","revision":"5ec5c7ecd298e3e611e3a3df001d5aee954b389d"}
   ],
 
   "checks": [
