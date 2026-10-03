@@ -18,7 +18,7 @@
 
     {"path":"examples/station-sessions-mcp/server.mjs","digest":"d4fb9811db1250a44018041f40fb80b8e07c809d41a16b6a5e14137be403e079","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"400dc75dd88a48bc411a4edb9c5f40f9d22ae0f1c5b68d8f748e7733efae5a0e","revision":"cb3ebc3797508b3f46d66b8bc5ece89b32cb79ae"}
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"90e94e3a617cb7c9642c029f8dd1c58fbebeca19e29dbd1b097af41952fe4b93","revision":"cf12c0d848d0dc068f3dcaa530e9a1f213618834"}
   ],
 
   "checks": [

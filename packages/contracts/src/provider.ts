@@ -851,6 +851,10 @@ export interface ResolvedAgentToolServer {
   command?: string;
   args?: string[];
   endpoint?: string;
+  /** Exact MCP names selected for this server; absent means all. */
+  allowedTools?: string[];
+  disabledTools?: string[];
+  toolNames?: string[];
 }
 
 export interface ResolvedAgentSkill {
@@ -871,6 +875,8 @@ export interface ResolvedAgentDefinition {
   /** Real on-disk agent slug — never a synthetic `__agent:`/`__acp:` id. */
   slug: string;
   toolServers?: ResolvedAgentToolServer[];
+  toolServerMode?: 'add' | 'replace';
+  toolServerLoading?: 'on-demand' | 'always';
   skills?: ResolvedAgentSkill[];
   /**
    * #895 wave B: the agent's authored prompt for delivery to an external

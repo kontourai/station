@@ -1,3 +1,4 @@
+import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import type { ConversationTurnActivity } from '@kontourai/station-contracts/orchestration';
 import { useEffect, useState } from 'react';
 import { formatToolName } from '../../utils/chat-progress';
@@ -94,7 +95,7 @@ function describeTurnActivity(
   }
   const silentSince = epochMs(activity.progressSilence?.silentSinceEventAt);
   if (silentSince !== undefined) {
-    parts.silence = `No output for ${formatActivityDuration(now - silentSince)}`;
+    parts.silence = `No response from ${engineDisplayLabel(activity.progressSilence?.provider ?? '') ?? 'the engine'} for ${formatActivityDuration(now - silentSince)}. Still waiting.`;
   }
   return parts;
 }

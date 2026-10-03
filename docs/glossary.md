@@ -459,7 +459,7 @@ and [reset command](reference/cli.md#home-reset) for the separate outcomes.
   the option selected within a connection. Station/external and model/agent
   distinctions remain execution properties.
 - **Guidance → Skills (#2144):** the page a reader reaches at `/guidance` is
-  labelled **Skills** — in the Settings navigation, in the command palette, and
+  labelled **Skills** — in Customize, in the command palette, and
   as its own `h1`. The rename is user-facing only: the `/guidance` route, the
   `guidance` navigation view, the `guidance` destination id and the tab memory
   key are unchanged, `/skills` still redirects to `/guidance?tab=skills`, and

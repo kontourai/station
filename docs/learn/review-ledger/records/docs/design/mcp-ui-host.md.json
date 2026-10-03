@@ -18,9 +18,9 @@
 
     {"path":"packages/shared/src/mcp-ui-csp.ts","digest":"811062edc652c17556380fb3ed3776bda4d3f568e004225405f22528ddb3fc23","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/routes/agents/__tests__/tools.routes.test.ts","digest":"0da5a8dcfb7f1b37cbbb67fa2474ea6f847015a1e7207965a4b4a2c12f22e994","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/routes/agents/__tests__/tools.routes.test.ts","digest":"bc87fa058c166419624baa11c6a42da315df02ba2579a017e10e5a826e1cc90e","revision":"8d715b7bee77e593e64a1e0b2af99956571c9795"},
 
-    {"path":"src-server/routes/agents/tools.ts","digest":"a80801f4a31e7761be350924011935a8b0a613847f5648de7308b828331d359e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/routes/agents/tools.ts","digest":"e816aa362002e9b79be62094d7e7837e81f85cbeb065a0c8386a1f21f1570c27","revision":"8d715b7bee77e593e64a1e0b2af99956571c9795"},
 
     {"path":"src-server/runtime/mcp/__tests__/mcp-ui-frame-server.test.ts","digest":"39ff600f9f63a20156f48681bbd83a26107b2c1dfad931f523ef97ff4a3950d2","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -32,7 +32,7 @@
 
     {"path":"src-server/runtime/mcp/mcp-ui-resolver.ts","digest":"b82399f787d6b71129684e5cb4fad8858846d5315d0c1077822ac1591199075e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/plugins/mcp-service.ts","digest":"ae0db4eaae63bb43fdacf188eb5aacccd7377e656809b0005623516e2f1249aa","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
+    {"path":"src-server/services/plugins/mcp-service.ts","digest":"297cdbe10e5c1efb7f611dd7f55ecca99047d05ba631f863b92c45c6a5e5df0e","revision":"aadb5aa183a58e97344d13b8c5f34f92a7d78a94"},
 
     {"path":"src-server/services/plugins/mcp-ui-permissions.ts","digest":"e6d70163c93fc6022e028276043c7f2a718b95265b80b1a21eab5b64c908acb6","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

@@ -9,7 +9,7 @@
 
   "limits": "Source-reviewed means current documented claims, not all exported commands or every implementation branch. Existing source/SDK/API reviews support referenced owner semantics without rerunning full SDK scope.257 executed fixture tests/16files and an independent real synthetic HTTP operate/SDK comparison do not establish real provider enforcement, hosted/network/account/device/Windows/PTY journeys, production service operations, or destructive user-home recovery. No real home backup/reset/restore, cloud provision, transfer to a remote target, live model/securityprobe, GitHub write or release was performed. Shell examples with placeholders require operator prerequisites;3 JSON/TS fences only have syntax validation. The raw operate stream lacks auth; home reset lacks the backup/restore maintenance lease/home-registry check; triage terminal streams differ from redacted disk artifacts. These are documented current limits, not repaired code.",
 
-  "document": {"digest":"b2cdeea42fb4b6baacc5aa6a74692e4d60975f7b30c2ad49e2c4d89990138297","revision":"24d0063f45516c1d6c7cddec670c60ef0185f1f2"},
+  "document": {"digest":"62c03f1a50009e0973510034c314c46df560dddf761547e6798d86808eb116fd","revision":"020eb6a14e05313bb66724ec3504e613717e6ed1"},
 
   "sources": [
     {"path":".github/workflows/publish-release.yml","digest":"df26cbe98771750de81e5a1c9b8d4efc8689bc853d31622523d9d7dc15e95420","revision":"94e8e5781a2c23d2bc828682a1157aef3934e897"},
@@ -40,7 +40,7 @@
 
     {"path":"packages/cli/src/__tests__/triage.test.ts","digest":"e0934da8f4630b295f64b6275c25a48a41819ee58305b7b774a426aa0652bcaa","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"packages/cli/src/cli.ts","digest":"ecf39393a34edc99d05222a41947a1ba086cf8fc60bac7fe3cdd4651e825881a","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"packages/cli/src/cli.ts","digest":"041c54fff5c3dc2848cf234cf13e4ea52e5069548c273755ee77b53955be1f27","revision":"036d5d3d2289fc22e325a9ded733e8de561e9b30"},
 
     {"path":"packages/cli/src/commands/checkpoints.ts","digest":"49a8d7d0a682a32133ccf024f47f4e4d1651036aa872b8f0b914032ddfdb19bd","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -158,7 +158,7 @@
 
     {"path":"scripts/station-dev.mjs","digest":"97c0d7c3aad1150ee3fda38e45e3af87938fd24d8a424c1290ca944da293574b","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"b67b8535152f5964f1491089851480aadca7d18ff7106a0300a526dbabe82f65","revision":"b2d3503cd33490cf074a99eae94562607360f72b"},
+    {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"061da89e00216d5c3250d7f13dc1dea5717765b50db7ebf8c49672208524a3d0","revision":"423cbe55b9e35e4cd8954fd441cb9f3c69740d66"},
 
     {"path":"src-server/routes/evidence/flow-runs.ts","digest":"2bf992db2df5a2b0b84c8964baf0784419c72ee9abe1ab0aadec55ce51985527","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
