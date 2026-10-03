@@ -7,6 +7,7 @@ import type {
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useStreamingContent } from '../../hooks/useStreamingContent';
 import { useStreamingHaptics } from '../../hooks/useStreamingHaptics';
+import { retryActivityLabel } from '../../utils/chat-activity';
 import { deriveToolProgressSummary } from '../../utils/chat-progress';
 import { openTurnStartedAtMs } from '../../utils/conversation-activity';
 import type { OwnerAttribution } from '../../utils/ownerAttribution';
@@ -85,6 +86,8 @@ export function deriveActivityLabel(
   activityHint: ChatActivityHint | undefined,
   hasReasoningPart: boolean,
 ): string {
+  if (activityHint?.kind === 'retrying')
+    return retryActivityLabel(activityHint);
   if (activityHint?.kind === 'thinking') {
     return activityHint.detail
       ? `Thinking… ${activityHint.detail}`
@@ -153,7 +156,11 @@ export function StreamingMessageView({
     );
   const activityLabel = deriveActivityLabel(activityHint, hasReasoningPart);
   const workingLabel =
-    progressSummary && !renderToolCall ? progressSummary.label : activityLabel;
+    activityHint?.kind === 'retrying'
+      ? activityLabel
+      : progressSummary && !renderToolCall
+        ? progressSummary.label
+        : activityLabel;
   // Consecutive tool-call parts collapse into one batch while the turn is
   // still streaming too — classification (inside the lazy ToolCallBatch
   // chunk) marks a batch in-progress (latest-call headline) whenever one
@@ -259,7 +266,8 @@ export function StreamingMessageView({
         )}
 
         {!suppressActivity &&
-          (statusLabel ||
+          (activityHint?.kind === 'retrying' ||
+            statusLabel ||
             workingStartedAt !== undefined ||
             elapsedMs !== undefined ||
             (!hasAnswerText && !(progressSummary && renderToolCall))) && (
@@ -269,9 +277,11 @@ export function StreamingMessageView({
               title={progressSummary?.toolName}
             >
               {!statusLabel && <LoadingDots />}
-              {statusLabel ||
-              elapsedMs !== undefined ||
-              workingStartedAt !== undefined ? (
+              {activityHint?.kind === 'retrying' ? (
+                <span className="elapsed-wait">{activityLabel}</span>
+              ) : statusLabel ||
+                elapsedMs !== undefined ||
+                workingStartedAt !== undefined ? (
                 <ElapsedWait
                   // The clock is the TURN's (server open-turn start), so the
                   // timed label names the turn, never the current phase:

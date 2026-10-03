@@ -24,6 +24,7 @@ export async function generateAgentPluginValidators({ check = false } = {}) {
     'schemas/agent-plugins/1.0.0/plugin.schema.json',
     'schemas/agent-plugins/io.kontourai.station-1.0.schema.json',
     'schemas/agent-plugins/skill-experience-1.0.schema.json',
+    'schemas/agent-plugins/skill-experience-review-1.0.schema.json',
   ];
   const ajv = new Ajv2020({
     allErrors: true,
@@ -39,6 +40,7 @@ export async function generateAgentPluginValidators({ check = false } = {}) {
     validateManifest: ids[0],
     validateStationExtension: ids[1],
     validateSkillExperience: ids[2],
+    validateSkillExperienceReview: ids[3],
   });
   const bundled = await build({
     stdin: {

@@ -44,6 +44,7 @@ import {
   ProjectsProvider,
   useScopedProjectsQuery,
 } from './contexts/ProjectsContext';
+import { PushNotificationsProvider } from './contexts/PushNotificationsContext';
 import { useRegionModelOptional } from './contexts/RegionModelContext';
 import { useToast } from './contexts/ToastContext';
 import { useShowSurface } from './contexts/useShowSurface';
@@ -112,6 +113,7 @@ import { useFocusReporter } from './hooks/useFocusReporter';
 import { useIsMobile } from './hooks/useIsMobile';
 import { useKeyboardShortcut } from './hooks/useKeyboardShortcut';
 import { useNotificationOsAlerts } from './hooks/useNotificationOsAlerts';
+import { usePushNotifications } from './hooks/usePushNotifications';
 import { useQueryCacheReconnectSync } from './hooks/useQueryCacheReconnectSync';
 import { useServerEvents } from './hooks/useServerEvents';
 import { checkServerHealth, probeServerConnection } from './lib/serverHealth';
@@ -219,6 +221,10 @@ function App() {
   } = useScopedProjectsQuery();
   const appConfig = useConfig();
   const { settings: featureSettings } = useFeatureSettings();
+  const pushNotifications = usePushNotifications({
+    enabled: featureSettings.pushNotificationsEnabled,
+    apiBase: API_BASE,
+  });
   const [showShortcutsCheatsheet, setShowShortcutsCheatsheet] = useState(false);
   const [currentView, setCurrentView] = useState<NavigationView>(() => {
     return resolveCurrentLocation({ lastProject, lastProjectLayout });
@@ -630,36 +636,37 @@ function App() {
     );
 
   return (
-    <ProjectsProvider>
-      {/* The route's Chat placement, for readers outside the layout: the
+    <PushNotificationsProvider value={pushNotifications}>
+      <ProjectsProvider>
+        {/* The route's Chat placement, for readers outside the layout: the
           region shells suspend the dock's Chat and the Chat chord goes to the
           Coding centre while it owns Chat (`resolveLayoutChatPlacement`). */}
-      <LayoutChatPlacementContext.Provider value={layoutChatPlacement}>
-        <ChatAuthRecoveryProvider onRequestAuth={handleAuthError}>
-          {/* Mobile store builds can wait days for review, so check their selected
+        <LayoutChatPlacementContext.Provider value={layoutChatPlacement}>
+          <ChatAuthRecoveryProvider onRequestAuth={handleAuthError}>
+            {/* Mobile store builds can wait days for review, so check their selected
           Station's release channel at launch. The Settings surface consumes
           this same React Query key and renders the cached result/action
           without a duplicate request. */}
-          {/* archive#2773: a rejected chunk is cached by React forever, and these mount
+            {/* archive#2773: a rejected chunk is cached by React forever, and these mount
           above the whole shell — an unguarded 404 after a deploy rebuilt
           dist-ui would blank the app rather than lose one piece of chrome. */}
-          <LazyBoundary
-            load={loadCoreUpdateLaunchCheck}
-            pending={null}
-            componentProps={{ apiBase: API_BASE }}
-          />
-          <LazyBoundary
-            load={loadDesktopUpdateLaunchCheck}
-            pending={null}
-            componentProps={{}}
-          />
-          <LazyBoundary
-            load={loadOutboundQueueFlushMount}
-            pending={null}
-            componentProps={{ apiBase: API_BASE }}
-          />
-          <div className="app app--with-sidebar">
-            {/* SHELL-14: the shell chrome is already first in DOM order
+            <LazyBoundary
+              load={loadCoreUpdateLaunchCheck}
+              pending={null}
+              componentProps={{ apiBase: API_BASE }}
+            />
+            <LazyBoundary
+              load={loadDesktopUpdateLaunchCheck}
+              pending={null}
+              componentProps={{}}
+            />
+            <LazyBoundary
+              load={loadOutboundQueueFlushMount}
+              pending={null}
+              componentProps={{ apiBase: API_BASE }}
+            />
+            <div className="app app--with-sidebar">
+              {/* SHELL-14: the shell chrome is already first in DOM order
               (measured: sidebar → toolbar → route → dock), so the keyboard
               defect was not the order — it was that there is no way PAST the
               chrome. This is the first focusable element in the document and
@@ -667,110 +674,111 @@ function App() {
               an `href="#…"` link, because `navigation-store` preserves
               `location.hash` across every navigation: a fragment link would
               stick `#station-main` onto every subsequent URL. */}
-            <button
-              type="button"
-              className="skip-to-content"
-              onClick={() => {
-                const main = document.getElementById('station-main');
-                main?.focus();
-                main?.scrollTo({ top: 0 });
-              }}
-            >
-              Skip to content
-            </button>
-            <ProjectSidebar />
-            <div
-              className={`app__main${
-                isMobileDockFullscreen
-                  ? ' app__main--mobile-dock-fullscreen'
-                  : ''
-              }`}
-            >
-              <Header
-                currentView={displayCurrentView}
-                onNavigate={navigateToView}
-                onToggleSettings={() => {
-                  if (displayCurrentView.type === 'settings') {
-                    // The gear is a toggle: back to the outlet's occupant.
-                    returnToOutlet();
-                  } else {
-                    navigateToView({ type: 'settings' });
-                  }
+              <button
+                type="button"
+                className="skip-to-content"
+                onClick={() => {
+                  const main = document.getElementById('station-main');
+                  main?.focus();
+                  main?.scrollTo({ top: 0 });
                 }}
-              />
-              <ConnectionBannerSource />
-              <BannerHost connectionSlot />
-
-              {showShortcutsCheatsheet && (
-                <LazyBoundary
-                  load={loadShortcutsCheatsheet}
-                  componentProps={{
-                    isOpen: true,
-                    onClose: () => setShowShortcutsCheatsheet(false),
+              >
+                Skip to content
+              </button>
+              <ProjectSidebar />
+              <div
+                className={`app__main${
+                  isMobileDockFullscreen
+                    ? ' app__main--mobile-dock-fullscreen'
+                    : ''
+                }`}
+              >
+                <Header
+                  currentView={displayCurrentView}
+                  onNavigate={navigateToView}
+                  onToggleSettings={() => {
+                    if (displayCurrentView.type === 'settings') {
+                      // The gear is a toggle: back to the outlet's occupant.
+                      returnToOutlet();
+                    } else {
+                      navigateToView({ type: 'settings' });
+                    }
                   }}
-                  pending={null}
                 />
-              )}
+                <ConnectionBannerSource />
+                <BannerHost connectionSlot />
 
-              {/* SHELL-14: the route outlet had no `main` landmark at all — a
+                {showShortcutsCheatsheet && (
+                  <LazyBoundary
+                    load={loadShortcutsCheatsheet}
+                    componentProps={{
+                      isOpen: true,
+                      onClose: () => setShowShortcutsCheatsheet(false),
+                    }}
+                    pending={null}
+                  />
+                )}
+
+                {/* SHELL-14: the route outlet had no `main` landmark at all — a
                 screen reader's landmark list held only the sidebar's `nav`
                 and the toolbar's `header`. `tabIndex={-1}` makes it a
                 programmatic focus target for the skip control without adding
                 a tab stop of its own. */}
-              <main
-                className="main-content"
-                style={
-                  isAmbientMobileDockFullscreen
-                    ? { visibility: 'hidden' }
-                    : undefined
-                }
-                id="station-main"
-                tabIndex={-1}
-                inert={isAmbientMobileDockFullscreen || undefined}
-                aria-hidden={isAmbientMobileDockFullscreen || undefined}
-              >
-                <div className="content-view" ref={contentViewRef}>
-                  {window.location.pathname === '/' ? (
-                    // #928 C2a: `/` renders the `main` region's occupant.
-                    // Home (the default, and what a null occupant means) is
-                    // `renderHomeRoute` above; any other surface renders its
-                    // own shell in `main`. Other routes ignore the occupant
-                    // and render the routed view; the occupant is kept.
-                    <MainRegionSurface
-                      occupant={regionModel?.regions.main.occupant ?? null}
-                      renderHome={renderHomeRoute}
-                    />
-                  ) : (
-                    routedView
-                  )}
-                </div>
-              </main>
+                <main
+                  className="main-content"
+                  style={
+                    isAmbientMobileDockFullscreen
+                      ? { visibility: 'hidden' }
+                      : undefined
+                  }
+                  id="station-main"
+                  tabIndex={-1}
+                  inert={isAmbientMobileDockFullscreen || undefined}
+                  aria-hidden={isAmbientMobileDockFullscreen || undefined}
+                >
+                  <div className="content-view" ref={contentViewRef}>
+                    {window.location.pathname === '/' ? (
+                      // #928 C2a: `/` renders the `main` region's occupant.
+                      // Home (the default, and what a null occupant means) is
+                      // `renderHomeRoute` above; any other surface renders its
+                      // own shell in `main`. Other routes ignore the occupant
+                      // and render the routed view; the occupant is kept.
+                      <MainRegionSurface
+                        occupant={regionModel?.regions.main.occupant ?? null}
+                        renderHome={renderHomeRoute}
+                      />
+                    ) : (
+                      routedView
+                    )}
+                  </div>
+                </main>
 
-              {showAmbientChatDock && <RegionShells />}
-              <LazyBoundary
-                load={loadDeferredAppOverlays}
-                componentProps={{}}
-                pending={null}
-              />
-              {/* Single floating voice affordance: the S2S pill. The separate STT
+                {showAmbientChatDock && <RegionShells />}
+                <LazyBoundary
+                  load={loadDeferredAppOverlays}
+                  componentProps={{}}
+                  pending={null}
+                />
+                {/* Single floating voice affordance: the S2S pill. The separate STT
               FAB was unmounted here first — having both rendered two floating
               mics (opposite corners) whenever voice was enabled — and its
               module (`components/voice/GlobalVoiceButton.tsx`) has since been
               deleted, so no caller can bring the second mic back. STT while
               typing remains available via the inline VoiceOrb in the chat
               input. */}
-              {featureSettings.voiceS2SEnabled && (
-                <LazyBoundary
-                  load={loadVoicePill}
-                  componentProps={{}}
-                  pending={null}
-                />
-              )}
+                {featureSettings.voiceS2SEnabled && (
+                  <LazyBoundary
+                    load={loadVoicePill}
+                    componentProps={{}}
+                    pending={null}
+                  />
+                )}
+              </div>
             </div>
-          </div>
-        </ChatAuthRecoveryProvider>
-      </LayoutChatPlacementContext.Provider>
-    </ProjectsProvider>
+          </ChatAuthRecoveryProvider>
+        </LayoutChatPlacementContext.Provider>
+      </ProjectsProvider>
+    </PushNotificationsProvider>
   );
 }
 

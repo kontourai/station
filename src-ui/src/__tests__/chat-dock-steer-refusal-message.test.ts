@@ -13,6 +13,17 @@ import { steerRefusalMessage } from '../utils/steerTurn';
  * `SteerTurnResult` outcome against its exact copy.
  */
 describe('steerRefusalMessage (station#4075 stage 2 review round 2)', () => {
+  it('indeterminate preserves uncertainty without inviting duplicate delivery', () => {
+    const message = steerRefusalMessage({
+      outcome: 'indeterminate',
+      threadId: 'thread-1',
+      clientInputId: 'input-1',
+    });
+    expect(message).toBe(
+      'Steering delivery is unconfirmed. Your message is retained for review and will not be sent again automatically.',
+    );
+  });
+
   it('unsupported-engine names the engine', () => {
     const result: Exclude<SteerTurnResult, { outcome: 'steered' }> = {
       outcome: 'unsupported-engine',

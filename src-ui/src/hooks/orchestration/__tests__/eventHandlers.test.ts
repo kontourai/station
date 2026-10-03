@@ -200,6 +200,73 @@ describe('handleOrchestrationEvent — station#3451 finding 7 (queue drain on ru
     vi.useRealTimers();
   });
 
+  test.each(['turn.completed', 'runtime.error', 'turn.aborted'])(
+    '%s remembers an exact Send now terminal while its stop receipt is pending',
+    (method) => {
+      activeChatsStore.updateChat(threadId, {
+        queuedMessages: ['first', 'selected'],
+        queuedMessageMetadata: [
+          { id: 'first-id', mode: 'queue' },
+          { id: 'selected-id', mode: 'queue' },
+        ],
+        orchestrationTurnOpen: true,
+        openTurnId: 'exact-stop-turn',
+        queueSendNowPending: true,
+        pendingSendNow: {
+          messageId: 'selected-id',
+          threadId,
+          turnId: 'exact-stop-turn',
+        },
+      });
+      handleOrchestrationEvent(
+        'http://api',
+        event(method, {
+          threadId,
+          turnId: 'exact-stop-turn',
+          message: 'terminal failure',
+          reason: 'interrupted',
+        }),
+      );
+      expect(
+        activeChatsStore.getSnapshot()[threadId].pendingSendNow,
+      ).toMatchObject({ terminalConfirmed: true });
+      expect(activeChatsStore.getSnapshot()[threadId].queuedMessages).toEqual([
+        'first',
+        'selected',
+      ]);
+    },
+  );
+
+  test('completion sends a deferred Send now selection before the ordinary queue head', () => {
+    activeChatsStore.updateChat(threadId, {
+      queuedMessages: ['first', 'selected'],
+      queuedMessageMetadata: [
+        { id: 'first-id', mode: 'queue' },
+        { id: 'selected-id', mode: 'queue' },
+      ],
+      orchestrationTurnOpen: true,
+      openTurnId: 'exact-stop-turn',
+      pendingSendNow: {
+        messageId: 'selected-id',
+        threadId,
+        turnId: 'exact-stop-turn',
+      },
+    });
+    handleOrchestrationEvent(
+      'http://api',
+      event('turn.completed', { threadId, turnId: 'exact-stop-turn' }),
+    );
+    expect(activeChatsStore.getSnapshot()[threadId].queuedMessages).toEqual([
+      'first',
+    ]);
+    expect(
+      activeChatsStore.getSnapshot()[threadId].pendingQueueDispatch?.content,
+    ).toBe('selected');
+    expect(
+      activeChatsStore.getSnapshot()[threadId].pendingSendNow,
+    ).toBeUndefined();
+  });
+
   test('a runtime.error drains a queued message (a message queued during the failed turn had no other trigger to ever send)', () => {
     activeChatsStore.updateChat(threadId, {
       queuedMessages: ['queued follow-up'],
