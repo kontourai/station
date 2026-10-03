@@ -16,7 +16,7 @@
 
     {"path":"packages/connect/src/core/nativeRelayLink.ts","digest":"b2195a228a6091f73e96ee72a86eb44ca89d26e5123fd7d0d71f44a3a4195fe9","revision":"70e9b50c5329411de0b7b432408f0722407a0208"},
 
-    {"path":"packages/contracts/package.json","digest":"0d013c2d4ed1b569b51a2068a3b1084b1e687f2a3c4ea23f2236871752dd84d4","revision":"88a7f8ed59c055ea6ac713120ba6069d33fbb892"},
+    {"path":"packages/contracts/package.json","digest":"4207a40b79f1ca84ab14d89cbfa7dd56b3f1c95ff20d9b37abd90216969325ca","revision":"fdca33b1896b280299ba72fc70a3c9b9cda7f3af"},
 
     {"path":"packages/contracts/src/__tests__/learning-review.test.ts","digest":"d91c0dcd54fc02fd99e0c7959b63a7dc1216b0556cfb2f8d1ff0996df1651347","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
