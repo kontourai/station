@@ -1,7 +1,7 @@
 import type { ProviderConnectionConfig } from '@kontourai/station-contracts/tool';
 import { connectionSpawnEnv } from './connection-env.js';
 
-export class EngineProxyConfigurationError extends Error {}
+class EngineProxyConfigurationError extends Error {}
 
 export interface EngineProxyRoute {
   connectionId: string;
