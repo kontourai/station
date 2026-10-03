@@ -1,9 +1,8 @@
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { EventStore } from '../../services/orchestration/event-store.js';
 import { SessionRecoveryCoordinator } from '../../services/orchestration/session-recovery-coordinator.js';
 import {
@@ -122,17 +121,11 @@ function runtimeError(events: CanonicalRuntimeEvent[]) {
 }
 
 describe('#3157 Claude usage-limit stop', () => {
-  const dirs: string[] = [];
-  afterEach(() =>
-    dirs
-      .splice(0)
-      .forEach((dir) => rmSync(dir, { recursive: true, force: true })),
-  );
+  const makeTempDir = trackTempDirs();
 
   /** The adapter's events, persisted and observed the way orchestration does. */
   async function armFrom(threadId: string, events: CanonicalRuntimeEvent[]) {
-    const dir = mkdtempSync(join(tmpdir(), 'claude-usage-limit-'));
-    dirs.push(dir);
+    const dir = makeTempDir('claude-usage-limit-');
     const store = new EventStore(join(dir, 'orchestration.sqlite'));
     const dispatch = vi.fn(async () => ({ kind: 'rejected' as const }));
     const coordinator = new SessionRecoveryCoordinator({

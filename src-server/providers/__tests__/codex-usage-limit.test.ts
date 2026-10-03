@@ -1,9 +1,8 @@
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough, Writable } from 'node:stream';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { EventStore } from '../../services/orchestration/event-store.js';
 import { SessionRecoveryCoordinator } from '../../services/orchestration/session-recovery-coordinator.js';
 import type { ProviderSession } from '../adapter-shape.js';
@@ -134,16 +133,10 @@ function failedTurn(events: CanonicalRuntimeEvent[]) {
 }
 
 describe('#3157 Codex usage-limit stop', () => {
-  const dirs: string[] = [];
-  afterEach(() =>
-    dirs
-      .splice(0)
-      .forEach((dir) => rmSync(dir, { recursive: true, force: true })),
-  );
+  const makeTempDir = trackTempDirs();
 
   async function armFrom(threadId: string, events: CanonicalRuntimeEvent[]) {
-    const dir = mkdtempSync(join(tmpdir(), 'codex-usage-limit-'));
-    dirs.push(dir);
+    const dir = makeTempDir('codex-usage-limit-');
     const store = new EventStore(join(dir, 'orchestration.sqlite'));
     const dispatch = vi.fn(async () => ({ kind: 'rejected' as const }));
     const coordinator = new SessionRecoveryCoordinator({

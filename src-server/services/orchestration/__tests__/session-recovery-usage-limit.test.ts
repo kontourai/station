@@ -1,8 +1,7 @@
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { EventStore } from '../event-store.js';
 import type { RecoveryDispatchAdapter } from '../recovery-dispatch-adapter.js';
 import { SessionRecoveryCoordinator } from '../session-recovery-coordinator.js';
@@ -27,22 +26,14 @@ const UNTIL_RESET_MS = Date.parse(RESET_AT) - STOPPED_AT.getTime();
 const THREAD = 'limited-thread';
 
 describe('#3157 usage-limit resume', () => {
-  const dirs: string[] = [];
+  const makeTempDir = trackTempDirs();
   afterEach(() => {
     vi.useRealTimers();
-    dirs
-      .splice(0)
-      .forEach((dir) => rmSync(dir, { recursive: true, force: true }));
   });
 
   function openStore(path?: string) {
     const dbPath =
-      path ??
-      (() => {
-        const dir = mkdtempSync(join(tmpdir(), 'usage-limit-resume-'));
-        dirs.push(dir);
-        return join(dir, 'orchestration.sqlite');
-      })();
+      path ?? join(makeTempDir('usage-limit-resume-'), 'orchestration.sqlite');
     return { store: new EventStore(dbPath), path: dbPath };
   }
 

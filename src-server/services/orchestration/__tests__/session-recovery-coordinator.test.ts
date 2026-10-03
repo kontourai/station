@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { TurnStartedEvent } from '@kontourai/station-contracts/runtime-events';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import {
   connectionRecoveryOutcomes,
   credentialProfileApplication,
@@ -175,6 +176,7 @@ class SessionRecoveryCoordinator extends RuntimeSessionRecoveryCoordinator {
 }
 
 describe('SessionRecoveryCoordinator', () => {
+  const makeTempDir = trackTempDirs();
   const dirs: string[] = [];
   afterEach(() =>
     dirs
@@ -598,8 +600,7 @@ describe('SessionRecoveryCoordinator', () => {
 
   test('#3157: credential failover still recovers a usage-limit stop while automatic resume is off', async () => {
     vi.useFakeTimers();
-    const dir = mkdtempSync(join(tmpdir(), 'recovery-coordinator-'));
-    dirs.push(dir);
+    const dir = makeTempDir('recovery-coordinator-');
     const store = new EventStore(join(dir, 'orchestration.sqlite'));
     const now = new Date('2026-07-29T12:00:00.000Z');
     const restartResume = vi.fn(async () => ({ turnId: 'profile-turn' }));
