@@ -42,7 +42,7 @@
 
     {"path":"packages/contracts/src/usage-rollup.ts","digest":"22d0231b9711bccb674bbc966991a33e41f622f3547e972e5517e04047beb6ad","revision":"0dd1181141ba6a645601e6798079a16189510438"},
 
-    {"path":"packages/sdk/package.json","digest":"14ca105046b127182cd13a45959cad3450f8ff4e49a4bfd467bef75ea2f65de8","revision":"efa773acac88792cda31595f9afca4a37d3efebc"},
+    {"path":"packages/sdk/package.json","digest":"473accfbc92fb87d86af0b017864a7738ddcf798d0b5a4e4aa986e9a403f891c","revision":"d9279aaf5f36478cbce5401e427eb674d114967f"},
 
     {"path":"packages/sdk/src/__tests__/application-session-native.test.ts","digest":"f1481ec160ed2520f8fe8d2688c7c96c3178fd840f8a037f263233a757e0be39","revision":"2e4f061f91ffb0338e45de62382cf6da59cd5c76"},
 
