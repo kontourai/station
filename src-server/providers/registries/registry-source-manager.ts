@@ -38,7 +38,6 @@ import {
 export {
   RegistryCatalogRefusal,
   readRegistryCatalogSelection,
-  registryCatalogId,
 } from './registry-source-configuration.js';
 
 type Provider = ISkillRegistryProvider | IPluginRegistryProvider;

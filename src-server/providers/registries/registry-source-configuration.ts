@@ -54,7 +54,7 @@ const configuration = z.object({
 });
 
 export type SourceConfig = z.infer<typeof configuration>;
-export type SourceInput = z.infer<typeof sourceInput>;
+type SourceInput = z.infer<typeof sourceInput>;
 export function digest(value: unknown): string {
   return createHash('sha256').update(JSON.stringify(value)).digest('hex');
 }
