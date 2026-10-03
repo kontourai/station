@@ -285,7 +285,10 @@ async function main() {
   if (mode === 'approve') {
     assert(argument && !extra, 'fixture_usage');
     const approval = z
-      .object({ enrollmentId: z.string().uuid(), candidate: z.unknown() })
+      .object({
+        enrollmentId: z.string().regex(/^[A-Za-z0-9_-]{43}$/u),
+        candidate: z.unknown(),
+      })
       .strict()
       .parse(readNativeFreshPrivateJson(argument));
     output(
