@@ -44,7 +44,7 @@
 
     {"path":"src-server/routes/knowledge/knowledge-index-routes.ts","digest":"ed5a403488328a12aa935b4b5e820bfa1d95639d29e4481295e38dd85bba8c6c","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
-    {"path":"src-server/routes/knowledge/knowledge-record-routes.ts","digest":"7b5fc0fb012792ac218e8166c49f70a8311a0ba3a52a69faadda011dbc19d629","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    {"path":"src-server/routes/knowledge/knowledge-record-routes.ts","digest":"de1c4c6536855fedfee82ea40732c8a9b2d52e9307ad96072369c2f39f1aa32b","revision":"e2637079bd55a47964f12faedfb5c43abc7f1e95"},
 
     {"path":"src-server/routes/knowledge/neo4j-graph-routes.ts","digest":"50f06b1cf7bea0e7d5b3345152294e796bf1a4a56fee10465a5473b5bd0daa15","revision":"c8bae67dac38dce6107177638464f9f9944fef92"}
   ],

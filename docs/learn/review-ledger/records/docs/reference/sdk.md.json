@@ -296,7 +296,7 @@
 
     {"path":"src-server/knowledge-store/knowledge-store-provider.ts","digest":"268f67326c695832ef2a1577353ee6ece0a41218e7711dda87cc62a0ee814e85","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/providers/adapters/station-agent-adapter.ts","digest":"b921a9b175d365cdecd1e0085aa1e9a6eabd01dc5f004f51d5eb6200fbdd5fab","revision":"56f4c4897a189eeb30430119a4f4895e95fbb541"},
+    {"path":"src-server/providers/adapters/station-agent-adapter.ts","digest":"9b5f17a8f10f4135326bac9ca7c74926cdb044e715ffdcd75d0ae702a864cef9","revision":"de8683f4e14dac4a3ebeeb959013aaa31906f8e8"},
 
     {"path":"src-server/providers/registries/filesystem-skill-registry.ts","digest":"04d981c6e1ed6f89c4149be49c8b3ca8711a4fae6c7e36d2d101c81ca81307d3","revision":"2867eea7c9a4838e2a59cdbf6ec7f940b7d4cf26"},
 
@@ -354,7 +354,7 @@
 
     {"path":"src-server/routes/system/system-status-routes.ts","digest":"0c52821e1938ae72876d26def0ee756db16f1cb2a33e9088bb4e1da8800e4f0b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/runtime/bootstrap/runtime-initialize.ts","digest":"bd381c9d60f70ac986c9eee0977752d883f52a018842fee300d3e352933aea6d","revision":"56f4c4897a189eeb30430119a4f4895e95fbb541"},
+    {"path":"src-server/runtime/bootstrap/runtime-initialize.ts","digest":"161cc817f43b36bdf37591937fae39e7d17d97cb06575863b1f3b81c33a4da31","revision":"de8683f4e14dac4a3ebeeb959013aaa31906f8e8"},
 
     {"path":"src-server/runtime/conversation/native-execution-workspace.ts","digest":"96f7a7abce65f311682b087af1904e9b9ce8fffe960fb93f3d60c1ecd6aaad19","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -370,7 +370,7 @@
 
     {"path":"src-server/runtime/routes/runtime-route-support.ts","digest":"6a4c97a6eb7f6bbce23da80e037ffb76ca1da14f53e54b2a934a4e64e60f2052","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"21831e2e97672cb946b2e23f9e183477773a632390b02daf66b3e6cf3fe20e71","revision":"595059eafa17ef6b7a39217a405619ecbfac2270"},
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"dc6ad50d816f3504956034d152e197ba0efd76acd69964f00581a51edb3809d9","revision":"de8683f4e14dac4a3ebeeb959013aaa31906f8e8"},
 
     {"path":"src-server/runtime/routes/workspace-pane-host-actions.ts","digest":"47243c2ce659cae374048d91ff97faa62921d3b1ce2475199a56cd776bd0ca10","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -378,7 +378,7 @@
 
     {"path":"src-server/runtime/tools/vended-tool-compat.ts","digest":"17d6d189ee131f47fe61d075dd703f1fabf0b2a9342bea3d0f9dfa6e0522c828","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/security/pairing-route-scopes.ts","digest":"cd0d7cf06b6f68355d4e509648ac649c62bdf1cabd52b220e7578776b5e01873","revision":"d73d9f64333504f027a200482e978cc4445338da"},
+    {"path":"src-server/security/pairing-route-scopes.ts","digest":"9fbb30f033dd9829017631c78a4584d637d8aac85dc00e43394ac374e6200901","revision":"de8683f4e14dac4a3ebeeb959013aaa31906f8e8"},
 
     {"path":"src-server/services/agents/skill-service.ts","digest":"9f92c44195a5c87a63c1a14a3079b3cc91e00149f2b2f4e400a72189bb64d7f6","revision":"adbeb32e99a86e9a8b6fca370b944f3b2147ca9f"},
 

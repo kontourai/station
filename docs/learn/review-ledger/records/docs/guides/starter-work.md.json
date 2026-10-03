@@ -34,9 +34,9 @@
 
     {"path":"packages/sdk/src/starter-work.ts","digest":"65bca96961b952f47978387676e0ec2d4b9131d38a4be72617b8d0f7983aafda","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
-    {"path":"src-server/providers/adapters/claude-adapter.ts","digest":"37e1c06d5a117c40258e38da79c424fce7720236c486fbceb9a1c29c1548a0f4","revision":"4f3acdc5478e27a733c06e91a202a325817c2f53"},
+    {"path":"src-server/providers/adapters/claude-adapter.ts","digest":"bcf16464bbac4cba260f60ea8c01d7148ba52d33b575c45d16a8a97cdd4ebc12","revision":"e2637079bd55a47964f12faedfb5c43abc7f1e95"},
 
-    {"path":"src-server/providers/adapters/codex-adapter.ts","digest":"3dcbbfc821c7d5a35287ba8e2eb9a13b24cc4e0b4a59841fbb6b16bed846aa20","revision":"423cbe55b9e35e4cd8954fd441cb9f3c69740d66"},
+    {"path":"src-server/providers/adapters/codex-adapter.ts","digest":"e8a373d9eb0ca3f6a12b9bf6e5f78d31b38b92147582abb81397b13d31c1cb82","revision":"e2637079bd55a47964f12faedfb5c43abc7f1e95"},
 
     {"path":"src-server/routes/__tests__/starter-work.routes.test.ts","digest":"059f5ea4cb14577a65bbf5ad439f90ceb510e63bdbb2423238ef1fdbb1018552","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
 
@@ -44,7 +44,7 @@
 
     {"path":"src-server/routes/starter-work.ts","digest":"8e05baa625f020f66702b7b8504b2484da1d1ae49bd267de73ff84c6cda93d7d","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"21831e2e97672cb946b2e23f9e183477773a632390b02daf66b3e6cf3fe20e71","revision":"595059eafa17ef6b7a39217a405619ecbfac2270"},
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"dc6ad50d816f3504956034d152e197ba0efd76acd69964f00581a51edb3809d9","revision":"de8683f4e14dac4a3ebeeb959013aaa31906f8e8"},
 
     {"path":"src-server/services/orchestration/attached-session-adoption.ts","digest":"ba6372d4e5bd961ae6c61d779eeb21dff966f1efc7c73fc2e69bb786fd535b50","revision":"2b22c2609a75d0f40b77472fe918de3c34094b69"},
 

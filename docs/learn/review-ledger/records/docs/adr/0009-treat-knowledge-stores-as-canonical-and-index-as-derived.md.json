@@ -12,13 +12,13 @@
   "document": {"digest":"88fd109b12ec637aae8b81fe9d7a11fac8a250f530b3a4a4804b9c805cc276c3","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
   "sources": [
-    {"path":"docs/guides/knowledge.md","digest":"c715da7ec799195fa1c36a4cbc12aeb87d68860f2f00258aa46f2920edb6095c","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+    {"path":"docs/guides/knowledge.md","digest":"c2ef6b5a59775bf903ef2bad11a5e4f3643476b231d65978ac8f4db703f6d761","revision":"e2637079bd55a47964f12faedfb5c43abc7f1e95"},
 
     {"path":"src-server/knowledge-index/sqlite-vec-index-provider.ts","digest":"96507a6178eaf742a3b48ad4b00706f74c824356b864158308612a19687af0a6","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
     {"path":"src-server/knowledge-store/knowledge-store-provider.ts","digest":"268f67326c695832ef2a1577353ee6ece0a41218e7711dda87cc62a0ee814e85","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"21831e2e97672cb946b2e23f9e183477773a632390b02daf66b3e6cf3fe20e71","revision":"595059eafa17ef6b7a39217a405619ecbfac2270"}
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"dc6ad50d816f3504956034d152e197ba0efd76acd69964f00581a51edb3809d9","revision":"de8683f4e14dac4a3ebeeb959013aaa31906f8e8"}
   ],
 
   "checks": [

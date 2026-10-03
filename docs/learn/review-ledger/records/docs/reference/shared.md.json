@@ -22,7 +22,7 @@
 
     {"path":"packages/contracts/src/agent-identity.ts","digest":"d352f22b4698f100c1cc2a7466fd62556a6a69c03bffaf66e54c1bbdfc1410b7","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/contracts/src/agent.ts","digest":"e325363bc2303d78102c7c4c45b118756d71d66cae3d801eee303761d0715b6c","revision":"423cbe55b9e35e4cd8954fd441cb9f3c69740d66"},
+    {"path":"packages/contracts/src/agent.ts","digest":"dd5ef7e0a65205266bb5ac648b0c6dd4aa66fcd9741fdea63267afe2e257e11c","revision":"e2637079bd55a47964f12faedfb5c43abc7f1e95"},
 
     {"path":"packages/contracts/src/auth.ts","digest":"999ef78ea6f5150965f80e9c8e8873a257e34bea9c563f533f7519693f52b92e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -94,7 +94,7 @@
 
     {"path":"src-server/runtime/mcp/mcp-apps-metadata.ts","digest":"67a048ee54d656d731f4cb3c3a4c3ac92e86472b453ebe5e04e782d0b48b2ae5","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/runtime/mcp/mcp-manager.ts","digest":"2b111148f423e896011695de09bca6f6f2990bc8285b4466a5fd70a3c93c65d1","revision":"aadb5aa183a58e97344d13b8c5f34f92a7d78a94"},
+    {"path":"src-server/runtime/mcp/mcp-manager.ts","digest":"ae47957678b93b3b6b1e930522ab619c8473dfc3fe90830251914a27ef2fa849","revision":"e2637079bd55a47964f12faedfb5c43abc7f1e95"},
 
     {"path":"src-server/runtime/mcp/mcp-ui-frame-server.ts","digest":"059956767914e6690d45440c93d3a7fd780cb1ab0261fab28a4f3e70e1610fe3","revision":"e3cabf68e687341298eefa0bf88ebfb2400549d3"},
 

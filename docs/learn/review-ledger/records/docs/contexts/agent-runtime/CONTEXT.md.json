@@ -16,7 +16,7 @@
 
     {"path":"src-server/runtime/agents/runtime-agent-registry.ts","digest":"7cb6673e6d45f3636e1b4964e7830ebfa281611a38e3c69b117f15c74777f69e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/runtime/bootstrap/runtime-initialize.ts","digest":"bd381c9d60f70ac986c9eee0977752d883f52a018842fee300d3e352933aea6d","revision":"56f4c4897a189eeb30430119a4f4895e95fbb541"},
+    {"path":"src-server/runtime/bootstrap/runtime-initialize.ts","digest":"161cc817f43b36bdf37591937fae39e7d17d97cb06575863b1f3b81c33a4da31","revision":"de8683f4e14dac4a3ebeeb959013aaa31906f8e8"},
 
     {"path":"src-server/services/orchestration/conversation-lineage.ts","digest":"530f61de27ec07453f2343ed61091ff9c23f2df8280b64759fa8c7869d5dc139","revision":"819bdc965ae4e055d43609f4680c1900293b8796"},
 
