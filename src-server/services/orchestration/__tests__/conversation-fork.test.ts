@@ -34,7 +34,7 @@ describe('renderForkTranscript', () => {
         { role: 'assistant', content: newest },
       ] as any,
     });
-    expect(rendered).toContain('The 1 earlier ones are omitted.');
+    expect(rendered).toContain('The 1 earlier one is omitted.');
     expect(rendered).not.toContain('old question');
     expect(rendered).toContain(`Assistant: ${newest}`);
   });

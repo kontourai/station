@@ -75,13 +75,17 @@ function expectSeedInvariants(
   const omitted = count - included;
   if (omitted > 0) {
     expect(seed).toContain(
-      `Only the ${included} most recent of ${count} user and assistant text messages`,
+      `Only the ${included} most recent of ${count} user and assistant text messages ${included === 1 ? 'fits' : 'fit'} the size limit`,
     );
-    expect(seed).toContain(`The ${omitted} earlier ones are omitted.`);
+    expect(seed).toContain(
+      `The ${omitted} earlier ${omitted === 1 ? 'one is' : 'ones are'} omitted.`,
+    );
     expect(seed).toContain(TRANSCRIPT_SEED_OMITTED_NOTICE);
   } else {
     expect(seed).toContain(
-      `All ${count} earlier user and assistant text messages are included`,
+      count === 1
+        ? 'The 1 earlier user or assistant text message is included'
+        : `All ${count} earlier user and assistant text messages are included`,
     );
     expect(seed).not.toContain('omitted');
   }
@@ -181,6 +185,9 @@ describe('buildTranscriptSeed', () => {
       'The most recent message was too long to include whole',
     );
     expect(result.text).toContain('The 2 earlier ones are omitted.');
+    expect(result.text).toContain(
+      'Only the 1 most recent of 3 user and assistant text messages fits the size limit and is included below',
+    );
     expect(result.text).not.toContain(start(1));
     expect(result.text).not.toContain(start(0));
     // The kept head and tail are the message's own text, split on code
@@ -347,7 +354,7 @@ describe('messages with no text to carry (#3164 review)', () => {
     expect(source.nonTextMessages).toBe(2);
     const seed = buildTranscriptSeed({ heading: 'Prior.', ...source }).text;
     expect(seed).toContain(
-      'All 1 earlier user and assistant text messages are included',
+      'The 1 earlier user or assistant text message is included below.',
     );
     expect(seed).toContain(
       '2 other user or assistant messages had no text to carry',
@@ -532,7 +539,7 @@ describe('handoff and continuation seeds (#3164)', () => {
       'All 2 earlier user and assistant text messages are included',
     );
     expect(resolved.transcriptSeed).toContain(
-      '1 other user or assistant messages had no text to carry',
+      '1 other user or assistant message had no text to carry',
     );
   });
 

@@ -132,20 +132,23 @@ function disclosure(input: {
   shortened: boolean;
 }): string {
   const lines: string[] = [];
+  const one = (count: number) => count === 1;
   if (input.total === 0) {
     lines.push('There are no earlier user or assistant text messages.');
   } else if (input.omitted === 0) {
     lines.push(
-      `All ${input.total} earlier user and assistant text messages are included below, oldest first.`,
+      one(input.total)
+        ? 'The 1 earlier user or assistant text message is included below.'
+        : `All ${input.total} earlier user and assistant text messages are included below, oldest first.`,
     );
   } else {
     lines.push(
-      `Only the ${input.included} most recent of ${input.total} user and assistant text messages fit the size limit and are included below, oldest first. The ${input.omitted} earlier ones are omitted. ${TRANSCRIPT_SEED_OMITTED_NOTICE}`,
+      `Only the ${input.included} most recent of ${input.total} user and assistant text messages ${one(input.included) ? 'fits' : 'fit'} the size limit and ${one(input.included) ? 'is' : 'are'} included below, oldest first. The ${input.omitted} earlier ${one(input.omitted) ? 'one is' : 'ones are'} omitted. ${TRANSCRIPT_SEED_OMITTED_NOTICE}`,
     );
   }
   if (input.nonText > 0) {
     lines.push(
-      `${input.nonText} other user or assistant messages had no text to carry (only tool activity, reasoning or errors) and are not included.`,
+      `${input.nonText} other user or assistant ${one(input.nonText) ? 'message' : 'messages'} had no text to carry (only tool activity, reasoning or errors) and ${one(input.nonText) ? 'is' : 'are'} not included.`,
     );
   }
   if (input.shortened) {
@@ -236,10 +239,11 @@ export function buildTranscriptSeed(input: {
   const entries = input.entries;
   const total = entries.length;
   const nonText = input.nonTextMessages ?? 0;
-  // Reserve the widest disclosure (every counter at its maximum, both
-  // notices) so the real one can never push the seed over the budget.
+  // Reserve the widest disclosure (every counter at its maximum, every
+  // notice, plus slack for singular/plural wording) so the real one can never
+  // push the seed over the budget.
   const reserve = approxInjectedTokens(
-    `${input.heading}\n${disclosure({ total, included: total, omitted: total, nonText, shortened: true })}\n\n`,
+    `${input.heading}\n${disclosure({ total, included: total, omitted: total, nonText, shortened: true })}${' '.repeat(16)}\n\n`,
   );
   if (reserve > budget) {
     throw new RangeError(
