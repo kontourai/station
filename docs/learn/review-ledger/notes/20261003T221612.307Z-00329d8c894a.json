@@ -1,0 +1,7 @@
+{
+  "revision": "934f3c023c92461fe9f3cd15e613f6a1e2cf8414",
+
+  "notes": [
+    {"path":"docs/design/native-capabilities.md","note":"Reviewed OnboardingGate comment-only delta against native ownership/eligibility code and current callers. Removed obsolete native auth-rejection-record claims: rejection requests an independently bounded check and cannot authorize replacement; native owner-secret eligibility and bearer custody remain authoritative. TypeScript runtime syntax is identical before/after except removal of the separate test-only core reset export; retained all 13 core/bootstrap assertions using fresh modules. Executed 123 focused tests; disabling both guards made five intended assertions fail, restored byte-for-byte and 13/13 rerun green. No native shell, IPC, device/keychain or packaged-release qualification. Documented behavior unchanged; no prose edits."}
+  ]
+}
