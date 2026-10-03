@@ -1191,7 +1191,7 @@ at most once a minute, sharing an in-flight rebuild with other readers.
 `snapshot.rescannedAt` identifies the completed source scan;
 `snapshot.engineUsage` distinguishes available, unavailable, and unconfigured
 engine sources, and `snapshot.skippedMessages` counts unreadable message rows; `snapshot.retainedUsage`
-flags message/cost totals larger than the currently rescanned corpus.
+flags retained message totals larger than the currently rescanned corpus.
 A completed scan does not prove historical totals or every provider's accounting
 are complete. The date map is `byDate`, not `byDay`.
 Optional `from`/`to` date strings filter `byDate` and add `rangeSummary`; other

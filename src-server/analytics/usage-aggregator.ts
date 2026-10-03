@@ -311,8 +311,7 @@ export class UsageAggregator {
           : 'not_configured',
       skippedMessages,
       retainedUsage:
-        stats.lifetime.totalMessages > currentStats.lifetime.totalMessages ||
-        stats.lifetime.totalCost > currentStats.lifetime.totalCost,
+        stats.lifetime.totalMessages > currentStats.lifetime.totalMessages,
     };
 
     await this.saveStats(stats);

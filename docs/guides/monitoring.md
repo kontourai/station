@@ -53,7 +53,7 @@ engine read, or retained totals that the latest scan could not remeasure. Its
 API result supplies `measurementUnavailableReason` and omits numeric progress;
 the UI shows that gap instead of a budget amount or progress bar. A reported
 zero cost remains a real measurement. `snapshot.retainedUsage` identifies the
-retained-count/cost comparison, not a claim of complete historical coverage.
+retained-message comparison, not a claim of complete historical coverage.
 
 | Ingress | Usage the current implementation can observe | Limits |
 | --- | --- | --- |
