@@ -7,7 +7,6 @@
   "runtimeSourceRevision": "1bd0513eb81f13b3e86d43c701ed378da60c8422",
   "reloadSourceRevision": "7462eca12e0fc5417920cb061894158ce6d4287e",
   "instance": "visual-skills-qual-20261003",
-  "sourceHome": "/private/tmp/station-visual-skills-qual-20261003",
   "environment": {
     "platform": "macOS browser",
     "engine": "Codex",
@@ -55,9 +54,9 @@
     "Ticket breakdown awaited review before local ticket publication",
     "Guided to alongside and chat preserved same composer node and transcript",
     "Three immutable invocation references retained in canonical Session history",
-    "Approved specification has127lines and the recorded SHA-256.",
+    "Approved specification has 127 lines and the recorded SHA-256.",
     "Six local ticket files exist in dependency order; acceptance criteria remain unchecked.",
-    "Reload at source746 retained the three immutable stage snapshots."
+    "Reload at source 746 retained the three immutable stage snapshots."
   ],
   "outputs": [
     {
@@ -99,6 +98,10 @@
     "Questions used ordinary conversation text; canonical questionnaire controls and rich answer RPC effects were not observed.",
     "Native Skill tooling was unavailable; the model received pinned inline Skill context.",
     "No application implementation, external issue publication, physical device, store or released SDK proof is claimed.",
-    "Screenshots and original runtime receipt are retained as local qualification artifacts, not bundled executable source."
-  ]
+    "Screenshots and original runtime receipt are retained as local qualification artifacts, not bundled executable source.",
+    "Ticket publication included one failed tool command before all six files, dependency edges and hashes were verified; this does not claim every command passed."
+  ],
+  "evidenceRoot": "/private/tmp/station-visual-skills-qual-20261003",
+  "stationHome": "/private/var/folders/zz/8n7yx67d751dfk33tz367rxm0000gn/T/station/dev-home-f5dist",
+  "projectRoot": "/private/tmp/station-visual-skills-qual-20261003/project"
 }
