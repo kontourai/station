@@ -152,7 +152,7 @@ export interface PaneHostFacts {
  */
 /** Optional occurrence-bound Skill interface. The host fixes Session and package identity. */
 export interface PaneSkillExperienceHost {
-  /** JSON encodes the public immutable SkillExperienceSessionViewV1 projection. */
+  /** JSON encodes the public Session view and optional bounded canonical pendingQuestions. */
   read(): Promise<{ viewJson: string }>;
   answer(input: {
     requestId: string;

@@ -5576,6 +5576,13 @@ export async function executeExecutionTargetMessage(
     orchestrationService,
   );
   if (
+    input.skillExperience &&
+    (selectedTarget.kind !== 'current' || selectedTarget.relayEnvironmentId)
+  )
+    throw new Error(
+      'Skill experiences require foreground execution on this Station.',
+    );
+  if (
     admission &&
     (selectedTarget.kind !== 'current' || selectedTarget.relayEnvironmentId)
   )

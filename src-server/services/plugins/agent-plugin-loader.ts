@@ -62,6 +62,7 @@ import {
   resolveInstalledPluginRoot,
   resolvePluginMaterialization,
 } from './plugin-incarnation.js';
+import { withPluginPermissionInvocation } from './plugin-permissions.js';
 
 const MAX_CONFIGURATION_BYTES = 2 * 1024 * 1024;
 const WINDOWS_RESERVED_ENV = new Set(['plugin_root', 'plugin_data']);
@@ -871,6 +872,7 @@ export class AgentPluginLoader {
       definition: SkillExperienceDefinitionV1,
       entryContent: string,
     ) => Promise<T>,
+    permission?: 'agents.invoke',
   ): Promise<T> {
     return withPluginContentLock(
       this.pluginsDir,
@@ -929,9 +931,34 @@ export class AgentPluginLoader {
           (definition.skills.length === 1 ? definition.skills[0] : undefined);
         if (!entry)
           throw new Error('This experience needs an explicit entry Skill.');
-        const content = readBoundedRegularFile(
-          resolveContainedPath(root, join(root, entry.path)),
-        );
+        const ordered: typeof definition.skills = [];
+        const visited = new Set<string>();
+        const collect = (skill: typeof entry) => {
+          if (visited.has(skill.id)) return;
+          visited.add(skill.id);
+          for (const dependency of skill.dependsOn ?? []) {
+            const source = definition.skills.find(
+              (value) => value.id === dependency,
+            );
+            if (!source)
+              throw new Error('A bundled dependency is unavailable.');
+            collect(source);
+          }
+          ordered.push(skill);
+        };
+        collect(entry);
+        const content =
+          `Selected entry Skill: ${entry.name}. Package resource root (normal Agent/tool permissions still apply): ${root}.\n\n` +
+          ordered
+            .map(
+              (skill) =>
+                `Bundled Skill ${skill.name}:\n${readBoundedRegularFile(resolveContainedPath(root, join(root, skill.path)))}`,
+            )
+            .join('\n\n');
+        if (Buffer.byteLength(content) > 128 * 1024)
+          throw new Error(
+            'The selected Skill and its bundled dependencies exceed the execution context bound.',
+          );
         const reserved = journal.reserve(current.installation, 'app');
         if (reserved.state !== 'reserved')
           throw new Error('The Skill experience source is retiring.');
@@ -950,7 +977,21 @@ export class AgentPluginLoader {
               'The Skill experience source changed before dispatch.',
             );
           entered = true;
-          return await effect(definition, content);
+          const invoke = () => effect(definition, content);
+          return await (permission
+            ? withPluginPermissionInvocation(
+                this.projectHomeDir,
+                identity.pluginId,
+                permission,
+                invoke,
+                {
+                  pluginId: identity.pluginId,
+                  generation: identity.incarnation,
+                  digest: identity.contentDigest,
+                  isCurrent: () => reserved.claim.isCurrent(),
+                },
+              )
+            : invoke());
         } finally {
           if (entered) reserved.claim.observeLocalSettlement();
           else reserved.claim.releaseNotStarted();

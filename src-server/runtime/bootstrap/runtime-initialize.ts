@@ -663,8 +663,8 @@ export async function initializeRuntime(
     deps.skillService.listSkillExperiences &&
     orchestrationService.registerSkillExperienceSource({
       listSkillExperiences: () => deps.skillService.listSkillExperiences!(),
-      withSkillExperience: (identity, effect) =>
-        deps.skillService.withSkillExperience!(identity, effect),
+      withSkillExperience: (identity, effect, permission) =>
+        deps.skillService.withSkillExperience!(identity, effect, permission),
     })
   )
     deps.skillService.enableExperienceExecution?.();

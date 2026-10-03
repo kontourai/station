@@ -380,3 +380,21 @@ describe('visual Skill author build contract', () => {
     expect(otherClient?.stationExtension).toBeUndefined();
   });
 });
+
+test('a separately authored rich pane package builds without a Station component allowlist and rejects cross-package pane linkage', async () => {
+  const root = makeTempDir('station-rich-experience-author-');
+  const plugin = join(root, 'plugin');
+  cpSync(resolve('examples/rich-skill-experience'), plugin, {
+    recursive: true,
+  });
+  await expect(buildPlugin(plugin)).resolves.toMatchObject({ built: true });
+  const definition: SkillExperienceDefinitionV1 = JSON.parse(
+    readFileSync(join(plugin, definitionPath), 'utf8'),
+  );
+  definition.presentation.richView!.descriptorId =
+    'pane:plugin%3Aanother-package:interview:review';
+  writeFileSync(join(plugin, definitionPath), JSON.stringify(definition));
+  await expect(buildPlugin(plugin)).rejects.toThrow(
+    /same-package plugin-component Workspace Pane/,
+  );
+});

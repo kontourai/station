@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import {
   cpSync,
   mkdirSync,
@@ -9,6 +10,14 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
+import {
+  agentId,
+  engineConnectionId,
+} from '@kontourai/station-contracts/agent-identity';
+import {
+  type EnvironmentRef,
+  environmentId,
+} from '@kontourai/station-contracts/execution-target';
 import type {
   ProviderSendTurnInput,
   ProviderSessionStartInput,
@@ -24,6 +33,10 @@ import {
 import { readJson } from '../../../__test-utils__/read-json.js';
 import { ConfigLoader } from '../../../domain/config-loader.js';
 import { SkillService } from '../../../services/agents/skill-service.js';
+import {
+  type ExecutionTargetExecutionDependencies,
+  executeForegroundMessage,
+} from '../../../services/execution-target/execution-target-execution.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
@@ -35,6 +48,10 @@ import {
 import { computePluginContentDigest } from '../../../services/plugins/plugin-content-integrity.js';
 import { createLocalPluginInstallationService } from '../../../services/plugins/plugin-installation-local.js';
 import { readPluginManifestFile } from '../../../services/plugins/plugin-manifest-loader.js';
+import {
+  grantPermissions,
+  revokeGrants,
+} from '../../../services/plugins/plugin-permissions.js';
 import { createOrchestrationRoutes } from '../../orchestration/orchestration.js';
 import { createSkillRoutes } from '../skills.js';
 
@@ -87,8 +104,8 @@ async function installedExperience(change?: (source: string) => void) {
   const skills = new SkillService(config, logger, {
     canonicalSources: () => loader.skillSources(),
     experienceInventory: () => loader.listSkillExperiences(),
-    experienceSource: (identity, effect) =>
-      loader.withSkillExperience(identity, effect),
+    experienceSource: (identity, effect, permission) =>
+      loader.withSkillExperience(identity, effect, permission),
   });
   const routes = createSkillRoutes(skills, () => home);
   const current = journal.currentInstallation(pluginId);
@@ -393,7 +410,7 @@ class ExperienceAdapter extends GateTestAdapter {
       method: 'turn.started',
       createdAt: new Date().toISOString(),
       metadata: input.metadata,
-      prompt: input.input,
+      prompt: input.displayInput ?? input.input,
     });
     return { threadId: input.threadId, turnId };
   }
@@ -406,8 +423,11 @@ class ExperienceAdapter extends GateTestAdapter {
   }
 }
 
-async function experienceRuntime() {
-  const fixture = await installedExperience();
+async function experienceRuntime(
+  projectEnvironment?: EnvironmentRef,
+  change?: (source: string) => void,
+) {
+  const fixture = await installedExperience(change);
   await fixture.activate();
   const inventory = await fixture.inventory();
   const adapter = new ExperienceAdapter();
@@ -416,56 +436,117 @@ async function experienceRuntime() {
     eventStore: fixture.store,
     eventBus,
     adapterRegistry: createGateTestRegistry(adapter),
+    resolveSessionAgent: async (input) => ({
+      ...input,
+      agent: { slug: 'claude' },
+    }),
+    listProjects: () => [
+      { slug: 'project-one', workingDirectory: fixture.home },
+    ],
     logger: { debug: vi.fn(), warn: vi.fn() },
   });
   expect(service.registerSkillExperienceSource(fixture.skills)).toBe(true);
   fixture.skills.enableExperienceExecution();
   service.initialize();
-  const started = await service.startSessionInternal(
-    {
-      type: 'start-session',
-      input: {
-        provider: 'claude',
-        threadId: 'experience-session',
-        metadata: { userId: 'experience-owner' },
-      },
+  let selection:
+    | import('@kontourai/station-contracts/skill-experience').SkillExperienceStartInputV1
+    | undefined;
+  const dependencies: ExecutionTargetExecutionDependencies = {
+    resolveEnvironmentAccess: async () => ({
+      apiBase: 'http://experience.test',
+      environmentId: 'experience-environment',
+      environmentName: 'Experience Station',
+      kind: 'current',
+    }),
+    getAgent: async () => ({
+      slug: 'claude',
+      available: true,
+      execution: { agentConnectionId: engineConnectionId('claude') },
+    }),
+    getConnection: async () => ({
+      id: engineConnectionId('claude'),
+      name: 'Claude',
+      type: 'claude',
+      kind: 'agent',
+      enabled: true,
+      status: 'ready',
+      capabilities: ['agent-runtime'],
+      prerequisites: [],
+      config: { provider: 'claude' },
+    }),
+    getProject: async (_access, slug) =>
+      slug === 'project-one' ? { workingDirectory: fixture.home } : undefined,
+    getProviderAdapter: (provider) => service.getProviderAdapter(provider),
+    readSessionBinding: async (_access, id) => {
+      const root = fixture.store.conversationSessions(id)[0]?.sessionId ?? id;
+      const event = [...fixture.store.listEvents(root)]
+        .reverse()
+        .find(
+          (value) => value.payload.method === 'session.configured',
+        )?.payload;
+      const metadata =
+        event?.method === 'session.configured' ? event.metadata : undefined;
+      return metadata && typeof metadata.environmentId === 'string'
+        ? {
+            environmentId: metadata.environmentId,
+            agentId: 'claude',
+            userId: 'experience-owner',
+            ...(typeof metadata.projectSlug === 'string'
+              ? { projectSlug: metadata.projectSlug }
+              : {}),
+          }
+        : null;
     },
-    { userId: 'experience-owner' },
-    {},
-  );
-  if (started.status !== 'accepted') throw new Error(started.message);
-  await vi.waitFor(() =>
-    expect(
-      fixture.store
-        .listEvents('experience-session')
-        .some((event) => event.method === 'session.configured'),
-    ).toBe(true),
-  );
+    resolveConversationSession: async (_access, id, requested) =>
+      service.resolveConversationContinuation(
+        id,
+        INTERNAL_SESSION_READ_SCOPE,
+        requested,
+      ),
+    startSession: async (_access, input) => {
+      const started = await service.startSessionInternal(
+        { type: 'start-session', input },
+        { userId: 'experience-owner' },
+        {
+          conversationIdentity: {
+            conversationId: String(input.metadata?.conversationId),
+            environmentId: String(input.metadata?.environmentId),
+          },
+        },
+      );
+      if (started.status !== 'accepted') throw new Error(started.message);
+      await vi.waitFor(() =>
+        expect(
+          fixture.store
+            .listEvents(input.threadId)
+            .some((event) => event.method === 'session.configured'),
+        ).toBe(true),
+      );
+      return {
+        commandId: started.receipt.commandId,
+        sessionId: input.threadId,
+      };
+    },
+    sendTurn: async (_access, input) => {
+      const result = await service.dispatchWithReceipt(
+        { type: 'sendTurn', input },
+        { userId: 'experience-owner' },
+        { skillExperience: selection },
+      );
+      if (!result.result || !('turnId' in result.result))
+        throw new Error('No accepted turn');
+      return { turnId: result.result.turnId };
+    },
+    createConversationId: () => 'experience-session',
+  };
   const routes = createOrchestrationRoutes(service, {
     eventBus,
     logger: { debug: vi.fn() },
     getUserId: () => 'experience-owner',
+    projectDefaultEnvironment: () => projectEnvironment ?? { kind: 'current' },
     executeForegroundMessage: async (input) => {
-      const result = await service.dispatchWithReceipt(
-        {
-          type: 'sendTurn',
-          input: {
-            threadId: 'experience-session',
-            input: input.message,
-            clientTurnId: input.clientTurnId,
-          },
-        },
-        { userId: input.userId, principal: input.principal },
-        { skillExperience: input.skillExperience },
-      );
-      if (!result.result || !('turnId' in result.result))
-        throw new Error('No accepted turn');
-      return {
-        conversationId: 'experience-session',
-        sessionId: 'experience-session',
-        providerTurnId: result.result.turnId,
-        target: { kind: 'agent', id: 'claude' },
-      };
+      selection = input.skillExperience;
+      return executeForegroundMessage(input, dependencies);
     },
   });
   return {
@@ -671,6 +752,230 @@ test('invalid declared inputs and unsupported dispatch leave no canonical experi
       ).status,
     ).toBe(400);
     expect(fixture.adapter.turns).toEqual([]);
+  } finally {
+    await fixture.service.shutdown();
+  }
+});
+
+test('canonical project chat shape resolves omitted Environment locally and refuses inherited remote execution before provider effects', async () => {
+  const local = await experienceRuntime();
+  const remote = await experienceRuntime({
+    kind: 'saved',
+    id: environmentId('remote-environment'),
+  });
+  try {
+    const request = (fixture: Awaited<ReturnType<typeof experienceRuntime>>) =>
+      fixture.routes.request('/chat', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          target: {
+            agent: agentId('claude'),
+            workspace: { kind: 'project', projectSlug: 'project-one' },
+          },
+          message: 'Start',
+          clientTurnId: 'project-turn',
+          skillExperience: {
+            identity: fixture.identity,
+            inputs: { idea: 'Local project review' },
+          },
+        }),
+      });
+    const accepted = await request(local);
+    expect(
+      accepted.status,
+      JSON.stringify(await readJson(accepted.clone())),
+    ).toBe(200);
+    expect(local.adapter.turns).toHaveLength(1);
+    const refused = await request(remote);
+    expect(
+      refused.status,
+      JSON.stringify(await readJson(refused.clone())),
+    ).toBe(400);
+    expect(remote.adapter.turns).toEqual([]);
+    expect(remote.store.readSessions()).toEqual([]);
+  } finally {
+    await local.service.shutdown();
+    await remote.service.shutdown();
+  }
+});
+
+test('a pinned dependency closure reaches the real foreground adapter and a same-name foreign Skill cannot substitute its instructions', async () => {
+  const fixture = await experienceRuntime(undefined, (source) => {
+    const file = join(
+      source,
+      'io.kontourai.station/experiences/stress-test-idea.json',
+    );
+    const definition: import('@kontourai/station-contracts/skill-experience').SkillExperienceDefinitionV1 =
+      JSON.parse(readFileSync(file, 'utf8'));
+    const original = readFileSync(
+      join(source, 'skills/stress-test-idea/SKILL.md'),
+      'utf8',
+    );
+    const dependent =
+      original.replace('name: stress-test-idea', 'name: support-review') +
+      '\nPINNED_DEPENDENCY_SENTINEL\n';
+    mkdirSync(join(source, 'skills/support-review'));
+    writeFileSync(join(source, 'skills/support-review/SKILL.md'), dependent);
+    definition.entrySkillId = 'interview';
+    definition.skills[0]!.dependsOn = ['support'];
+    definition.skills.push({
+      id: 'support',
+      name: 'support-review',
+      path: './skills/support-review/SKILL.md',
+      sha256: createHash('sha256').update(dependent).digest('hex'),
+      dependsOn: ['interview'],
+    });
+    writeFileSync(file, JSON.stringify(definition));
+  });
+  try {
+    const selected = await selectedTurn(fixture);
+    expect(
+      selected.status,
+      JSON.stringify(await readJson(selected.clone())),
+    ).toBe(200);
+    expect(fixture.adapter.turns[0]!.input).toContain(
+      'PINNED_DEPENDENCY_SENTINEL',
+    );
+    expect(
+      fixture.adapter.turns[0]!.input.match(/PINNED_DEPENDENCY_SENTINEL/g),
+    ).toHaveLength(1);
+    expect(fixture.adapter.turns[0]!.input).toContain(
+      'Selected entry Skill: stress-test-idea',
+    );
+    expect(fixture.adapter.turns[0]!.displayInput).toBe('Start this interview');
+    await vi.waitFor(() =>
+      expect(
+        fixture.store.listSkillExperienceEvents('experience-session'),
+      ).toHaveLength(1),
+    );
+    expect(
+      fixture.store.listSkillExperienceEvents('experience-session')[0]!.payload,
+    ).toMatchObject({ prompt: 'Start this interview' });
+    const local = join(fixture.home, 'skills/support-review');
+    mkdirSync(local, { recursive: true });
+    writeFileSync(
+      join(local, 'SKILL.md'),
+      '---\nname: support-review\ndescription: A foreign override\n---\nFOREIGN_SOURCE_SENTINEL\n',
+    );
+    await fixture.skills.discoverSkills(fixture.home);
+    await expect(
+      fixture.service.dispatchWithReceipt(
+        {
+          type: 'sendTurn',
+          input: {
+            threadId: 'experience-session',
+            input: 'continue',
+            clientTurnId: 'dependency-follow-up',
+          },
+        },
+        { userId: 'experience-owner' },
+      ),
+    ).rejects.toThrow(/source|scope|unavailable/i);
+    expect(fixture.adapter.turns).toHaveLength(1);
+    expect(fixture.adapter.turns[0]!.input).not.toContain(
+      'FOREIGN_SOURCE_SENTINEL',
+    );
+  } finally {
+    await fixture.service.shutdown();
+  }
+});
+
+test('rich actions bind the exact invocation and fresh plugin grant while ordinary user controls keep their authority', async () => {
+  const fixture = await experienceRuntime(undefined, (source) => {
+    const file = join(source, 'plugin.json');
+    const manifest = JSON.parse(readFileSync(file, 'utf8'));
+    manifest.extensions['io.kontourai.station'].permissions = ['agents.invoke'];
+    writeFileSync(file, JSON.stringify(manifest));
+  });
+  try {
+    const selected = await selectedTurn(fixture);
+    expect(
+      selected.status,
+      JSON.stringify(await readJson(selected.clone())),
+    ).toBe(200);
+    await vi.waitFor(() =>
+      expect(
+        fixture.store.listSkillExperienceEvents('experience-session'),
+      ).toHaveLength(1),
+    );
+    const expected = {
+      identity: fixture.identity,
+      eventId:
+        fixture.store.listSkillExperienceEvents('experience-session')[0]!.id,
+    };
+    await expect(
+      fixture.service.readSkillExperience(
+        'experience-session',
+        INTERNAL_SESSION_READ_SCOPE,
+        undefined,
+        undefined,
+        expected,
+      ),
+    ).rejects.toThrow(/permission/);
+    await grantPermissions(fixture.home, fixture.pluginId, ['agents.invoke']);
+    const view = await fixture.service.readSkillExperience(
+      'experience-session',
+      INTERNAL_SESSION_READ_SCOPE,
+      undefined,
+      undefined,
+      expected,
+    );
+    expect(view?.current?.eventId).toBe(expected.eventId);
+    await expect(
+      fixture.service.readSkillExperience(
+        'experience-session',
+        INTERNAL_SESSION_READ_SCOPE,
+        undefined,
+        undefined,
+        { ...expected, eventId: 'another-event' },
+      ),
+    ).rejects.toThrow(/changed/);
+    fixture.adapter.events.push({
+      eventId: 'rich-question-event',
+      provider: 'claude',
+      threadId: 'experience-session',
+      turnId: 'turn:1',
+      method: 'request.opened',
+      requestId: 'rich-question',
+      requestType: 'approval',
+      title: 'Approve',
+      createdAt: new Date().toISOString(),
+    });
+    await vi.waitFor(() =>
+      expect(
+        fixture.store.readCurrentRequestEvent(
+          'experience-session',
+          'rich-question',
+        ).state,
+      ).toBe('found'),
+    );
+    await revokeGrants(fixture.home, fixture.pluginId, ['agents.invoke']);
+    await expect(
+      fixture.service.dispatchWithReceipt(
+        {
+          type: 'respondToRequest',
+          threadId: 'experience-session',
+          requestId: 'rich-question',
+          expectedRequestEventId: 'rich-question-event',
+          expectedSkillExperience: expected,
+          decision: 'accept',
+        },
+        { userId: 'experience-owner', requestCurrent: () => true },
+      ),
+    ).rejects.toThrow(/permission/);
+    expect(fixture.adapter.decisions).toEqual([]);
+    await fixture.service.dispatchWithReceipt(
+      {
+        type: 'respondToRequest',
+        threadId: 'experience-session',
+        requestId: 'rich-question',
+        expectedRequestEventId: 'rich-question-event',
+        decision: 'accept',
+      },
+      { userId: 'experience-owner', requestCurrent: () => true },
+    );
+    expect(fixture.adapter.decisions).toEqual(['accept']);
   } finally {
     await fixture.service.shutdown();
   }
