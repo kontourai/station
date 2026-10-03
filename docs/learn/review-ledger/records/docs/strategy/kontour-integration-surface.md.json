@@ -9,7 +9,7 @@
 
   "limits": "Historical measurements and external incidents were not rerun; classification does not certify current behavior.",
 
-  "document": {"digest":"571987b194c5121dafd72b3657dc726b80c0d8d1cb036ccc766946505e5bcdde","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+  "document": {"digest":"3ffb23a19df2b3b986a5a3ec721d24c3e5957a935411f0eb2bf80b37efa0dc1f","revision":"33814c6acf112c3d4fa1260b27ac0820bd349005"},
 
   "sources": [
     {"path":"docs/contexts/evidence-governance/CONTEXT.md","digest":"976207569e04724170b807f2585f4b93359a37107399fd0f81072217384b153c","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
