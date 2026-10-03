@@ -9,7 +9,10 @@ import {
 } from '@kontourai/station-contracts/application-session';
 import { CLIENT_ORIGIN_HEADER } from '@kontourai/station-contracts/client-origin';
 import { DEPLOYMENT_AUTHENTICATION_BASE_PATH } from '@kontourai/station-contracts/deployment-authentication';
-import { pairingScopeIncludes } from '@kontourai/station-contracts/environment-security';
+import {
+  CLIENT_PROTOCOL_HEADER,
+  pairingScopeIncludes,
+} from '@kontourai/station-contracts/environment-security';
 import {
   AUTH_RATE_LIMITED_ERROR_CODE,
   STATION_PLUGIN_HEADER,
@@ -29,6 +32,10 @@ import {
   INTERACTIVE_WORKSPACE_TIMING_MODE,
   INTERACTIVE_WORKSPACE_TIMING_REQUEST_HEADER,
 } from '../../../src-shared/interactive-workspace-performance-timing.js';
+import {
+  clientProtocolApplies,
+  evaluateClientProtocol,
+} from '../../security/client-protocol-admission.js';
 import {
   NativeDeviceRequestRefusedError,
   nativeDeviceProofPilotRoute,
@@ -69,6 +76,7 @@ import {
 } from '../../services/connections/virtual-application.js';
 import { guardAccountResponse } from '../../services/identity/account-response-guard.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
+import { HOST_STATION_COMPATIBILITY } from '../../services/ssh/environment-security-service.js';
 import {
   deviceSessionAuthorizations,
   requestBudgetOutcomes,
@@ -680,6 +688,8 @@ function configureRuntimeSecurity(
   const allowedOrigins = new Set(security.allowedOrigins ?? []);
   const limiter = new RuntimeAuthFailureLimiter(security);
   const budget = new RuntimeMutationBudget(security);
+  const clientProtocolPolicy =
+    security.clientCompatibility ?? HOST_STATION_COMPATIBILITY;
 
   app.use('*', async (c, next) => {
     const origin = c.req.header('origin');
@@ -705,7 +715,7 @@ function configureRuntimeSecurity(
         // Last-Event-ID: set by the SDK's fetchSSE reconnect loop and consumed
         // by the orchestration resume cursor — omitting it preflight-blocks
         // every cross-origin SSE reconnect (#169).
-        `Authorization, Content-Type, Last-Event-ID, X-Station-Client-Session, ${CLIENT_ORIGIN_HEADER}, ${STATION_PLUGIN_HEADER}, ${KNOWLEDGE_ROOT_IDENTITY_HEADER}, ${APPLICATION_SESSION_HEADER}, ${APPLICATION_SESSION_PROOF_HEADER}${
+        `Authorization, Content-Type, Last-Event-ID, X-Station-Client-Session, ${CLIENT_ORIGIN_HEADER}, ${CLIENT_PROTOCOL_HEADER}, ${STATION_PLUGIN_HEADER}, ${KNOWLEDGE_ROOT_IDENTITY_HEADER}, ${APPLICATION_SESSION_HEADER}, ${APPLICATION_SESSION_PROOF_HEADER}${
           process.env.STATION_PERFORMANCE_REFERENCE === '1'
             ? `, ${INTERACTIVE_WORKSPACE_TIMING_REQUEST_HEADER}`
             : ''
@@ -745,6 +755,17 @@ function configureRuntimeSecurity(
         timestamp: security.now?.() ?? Date.now(),
       });
       return c.json({ error: { code: 'insufficient_scope' } }, 403);
+    }
+    // ── #2962 client API protocol admission ──
+    // Before any credential check, so an outdated client is told to update
+    // rather than handed an authentication failure it cannot fix. CORS
+    // headers are already set above, so a browser can read the refusal.
+    if (clientProtocolApplies(requiredCapability, proxyCaller === 'loopback')) {
+      const refusal = evaluateClientProtocol(
+        c.req.header(CLIENT_PROTOCOL_HEADER),
+        clientProtocolPolicy,
+      );
+      if (refusal) return c.json(refusal.body, refusal.status);
     }
     const accountOperation =
       c.req.path === DEPLOYMENT_AUTHENTICATION_BASE_PATH ||
