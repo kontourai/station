@@ -34,7 +34,7 @@
 
     {"path":"scripts/__tests__/codeql-sarif-policy.test.ts","digest":"a7e2db81ccf7daabe0d4e1b3d91cc46401d20f5aafa351c72ca56068bd4fd608","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"scripts/__tests__/dependency-advisory-policy.test.ts","digest":"fb296f089ecb96ccaf7d0d4afd5ce809ba7c825d3e5322eab7c7228d3133aae9","revision":"071c95a78bfa0ea21e77d0acc3b6554d403e0451"},
+    {"path":"scripts/__tests__/dependency-advisory-policy.test.ts","digest":"5eb5092f5b43684e2951604008ad397505611acc4a20ead74adcb4db18f8777a","revision":"02ea170a2bb483f3313a4019b1231313fb14aeed"},
 
     {"path":"scripts/__tests__/pnpm-advisory-command.test.ts","digest":"235c4174211032d0199025a05c3190e12e688d0d093c04491da603caf2654c0d","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
