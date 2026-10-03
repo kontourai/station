@@ -1,5 +1,6 @@
 import type { OrchestrationSessionSummary } from '@kontourai/station-sdk';
 import {
+  fetchOrchestrationSession,
   interruptOrchestrationTurn,
   useOrchestrationSessionsQuery,
 } from '@kontourai/station-sdk';
@@ -7,7 +8,7 @@ import {
   captureReturnFocus,
   restoreReturnFocus,
 } from '@kontourai/station-shared/return-focus';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import {
   Fragment,
   useCallback,
@@ -28,10 +29,12 @@ import { SplitPaneLayout } from '../components/SplitPaneLayout';
 import { SessionPullRequestConflictChip } from '../components/session/SessionPullRequestConflictChip';
 import type { SessionEvidenceReveal } from '../components/session-detail/MutableSessionDetail';
 import { SessionDetail } from '../components/session-detail/SessionDetail';
+import { ErrorState, SkeletonBlock } from '../components/state';
 import { StatusGlyph } from '../components/status/StatusGlyph';
 import { useAgents } from '../contexts/AgentsContext';
 import { openChatsStore, useOpenChats } from '../contexts/open-chats-store';
 import { toastStore } from '../contexts/ToastContext';
+import { useShowSurface } from '../contexts/useShowSurface';
 import { copyToClipboard } from '../lib/clipboard';
 import { relativeTime, relativeTimeAgo } from '../utils/relativeTime';
 import {
@@ -112,6 +115,12 @@ function isReadOnlyAttachedSession(
   session: OrchestrationSessionSummary,
 ): boolean {
   return session.controlMode === 'read-only-attached';
+}
+
+function activityRecency(session: OrchestrationSessionSummary): number {
+  return orchestrationLifecycleLabel(session) === 'Draft'
+    ? Date.parse(session.createdAt) || sessionRecency(session)
+    : sessionRecency(session);
 }
 
 /**
@@ -205,7 +214,7 @@ function ActivityRowMeta({
   const originText = session.turnOrigin?.hasOtherOrigins
     ? `${origin ?? 'Several origins'} (also another origin)`
     : origin;
-  const recency = sessionRecency(session);
+  const recency = activityRecency(session);
   const segments: Array<{ key: string; text: string }> = [];
   if (session.delegation)
     segments.push({ key: 'kind', text: sessionKindLabel(session) });
@@ -293,13 +302,38 @@ export function SessionsView({
   // second scheduler over the same cache entry, and it kept running through
   // every state React Query already pauses a `refetchInterval` for.
   const {
-    data: sessions = [],
+    data: inventory = [],
     isLoading,
     error: sessionsError,
     refetch,
   } = useOrchestrationSessionsQuery({
     refetchInterval: SESSION_LIST_REFRESH_MS,
   });
+  const showSurface = useShowSurface();
+  const routeKey = JSON.stringify([apiBase, sessionId, intentToken]);
+  const [dismissedRoute, setDismissedRoute] = useState<string | null>(null);
+  const lookupEnabled = Boolean(
+    sessionId &&
+      !isLoading &&
+      dismissedRoute !== routeKey &&
+      !inventory.some((session) => session.threadId === sessionId),
+  );
+  const routedSession = useQuery({
+    queryKey: ['activity', 'routed-session', apiBase, sessionId],
+    queryFn: () => fetchOrchestrationSession(sessionId!, apiBase),
+    enabled: lookupEnabled,
+    retry: false,
+    staleTime: 0,
+  });
+  const routedSummary = routedSession.data?.session;
+  const exactSession =
+    lookupEnabled && routedSummary?.threadId === sessionId
+      ? routedSummary
+      : undefined;
+  const sessions = useMemo(
+    () => (exactSession ? [...inventory, exactSession] : inventory),
+    [inventory, exactSession],
+  );
   const agents = useAgents();
   const framed = useIsPageFramed();
   const openChats = useOpenChats(agents, sessions);
@@ -371,6 +405,11 @@ export function SessionsView({
     },
     [setSelection],
   );
+  const returnToList = () => {
+    setDismissedRoute(routeKey);
+    selectWithIntent(null);
+    if (sessionId) showSurface('activity', {});
+  };
 
   /**
    * Mint a fresh one-shot reveal token for the detail, then report the routed
@@ -603,7 +642,7 @@ export function SessionsView({
     const order = Math.min(
       ...members.map((member) => orderByThreadId.get(member.threadId)!),
     );
-    const recency = Math.max(...members.map(sessionRecency));
+    const recency = Math.max(...members.map(activityRecency));
     return { presentation, members, laneId, order, recency };
   });
   // #2312: Drafts untouched for a day fold under "N older drafts", collapsed
@@ -862,7 +901,7 @@ export function SessionsView({
         // #2312: the server's Draft fold, read through the same label the
         // Drafts lane files by. Discarding is the server command, no confirm.
         const showDiscard = orchestrationLifecycleLabel(s) === 'Draft';
-        const recency = sessionRecency(s);
+        const recency = activityRecency(s);
         return {
           id: s.threadId,
           name: sessionTitle(s),
@@ -920,6 +959,17 @@ export function SessionsView({
   });
 
   const selected = sessions.find((s) => s.threadId === selectedId) ?? null;
+  const lookupFailed =
+    lookupEnabled &&
+    !selectedId &&
+    pendingRouteSelectionRef.current?.intent === selectionIntentRef.current &&
+    (routedSession.isError || (routedSession.isSuccess && !exactSession));
+  const lookupPending =
+    lookupEnabled &&
+    !selectedId &&
+    routedSession.isFetching &&
+    (routedSessionIdRef.current !== sessionId ||
+      pendingRouteSelectionRef.current?.intent === selectionIntentRef.current);
 
   const closeStopConfirm = () => {
     setStopTarget(null);
@@ -983,7 +1033,47 @@ export function SessionsView({
         items={items}
         selectedId={selectedId}
         onSelect={selectWithIntent}
-        onDeselect={() => selectWithIntent(null)}
+        onDeselect={
+          lookupFailed || lookupPending
+            ? returnToList
+            : () => selectWithIntent(null)
+        }
+        unselectedDetailOpen={lookupFailed || lookupPending}
+        emptyContent={
+          lookupFailed ? (
+            <ErrorState
+              title="This activity isn't in the current list"
+              description={
+                routedSession.error?.message ??
+                'Station did not return the requested activity item.'
+              }
+              action={
+                <div className="responsive-surface-actions">
+                  <Button
+                    variant="secondary"
+                    disabled={routedSession.isFetching}
+                    onClick={() => {
+                      void routedSession.refetch();
+                      void refetch();
+                    }}
+                  >
+                    Retry
+                  </Button>
+                  <Button variant="secondary" onClick={returnToList}>
+                    Back to activity list
+                  </Button>
+                </div>
+              }
+            />
+          ) : lookupPending ? (
+            <div>
+              <SkeletonBlock label="Checking requested activity" count={2} />
+              <Button variant="secondary" onClick={returnToList}>
+                Back to activity list
+              </Button>
+            </div>
+          ) : undefined
+        }
         onSearch={setSearch}
         searchValue={search}
         searchPlaceholder="Search activity…"
@@ -1052,6 +1142,7 @@ export function SessionsView({
       >
         {selected && (
           <SessionDetail
+            key={`${apiBase}\0${selected.threadId}`}
             apiBase={apiBase}
             session={selected}
             evidenceReveal={evidenceReveal}
