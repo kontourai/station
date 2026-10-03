@@ -11,7 +11,7 @@
  */
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { createRef } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ChatDockInboxPanel } from '../components/chat-dock/ChatDockInboxPanel';
@@ -208,6 +208,18 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
         name: 'Choose snooze duration for Shared row title',
       }),
     ).toBeNull();
+    // Pressing it opens the choice and snoozes nothing: a one-tap default
+    // would hide the row before the user said for how long.
+    fireEvent.click(snooze);
+    const menu = screen.getByRole('menu', { name: 'Snooze Shared row title' });
+    expect(
+      within(menu)
+        .getAllByRole('menuitem')
+        .map((option) => option.textContent?.trim()),
+    ).toEqual(['1 hour', '3 hours', 'Tomorrow 9am', 'Next Monday 9am']);
+    expect(screen.queryByRole('button', { name: 'Snoozed (1)' })).toBeNull();
+    fireEvent.click(within(menu).getByRole('menuitem', { name: '1 hour' }));
+    expect(screen.getByRole('button', { name: 'Snoozed (1)' })).not.toBeNull();
   });
 
   it('sheet host renders the answerability observation through the shared row', () => {
