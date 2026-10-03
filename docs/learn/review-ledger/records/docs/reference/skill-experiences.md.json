@@ -44,9 +44,9 @@
 
     {"path":"src-server/routes/agents/skills.ts","digest":"e39a612adc1d35767a9149cc5079d2c2732b4a2848171e2115ce3d4e4c25c62d","revision":"a366557a12a4f5e6a41d38ce92aacbd0ab32193b"},
 
-    {"path":"src-server/routes/agents/__tests__/skill-experiences.routes.test.ts","digest":"beb8fc82f360b8ce7ca2a2bb789dac384eff8ba6031707b798a06dcc43a94827","revision":"f2bb7d8a1e4b56ac783fb9d0cfe167fe7a0fdde5"},
+    {"path":"src-server/routes/agents/__tests__/skill-experiences.routes.test.ts","digest":"25f91dde6ecca6a5bf5839088c945d52454f313ea757d51d77b2410fc7abae9a","revision":"9f993f436f37659ce5b7c005e7b616d83474ac44"},
 
-    {"path":"src-server/services/orchestration/skill-experience-runtime.ts","digest":"e5ebf3cd2498f7bb06d751e584540630749c77c0008bb523829a32178dbefefb","revision":"f2bb7d8a1e4b56ac783fb9d0cfe167fe7a0fdde5"},
+    {"path":"src-server/services/orchestration/skill-experience-runtime.ts","digest":"b252ba13ed0ad0990e3b44b39f64d2186713dcc9c311c90967624fe5615d13a6","revision":"958350328eafd360124e1892c1945a2ae455e43c"},
 
     {"path":"src-server/services/orchestration/skill-experience-model.ts","digest":"5fe8bb3a77445038899fc5229a303f7ffe0baf4be98ed61ab29098e621ee73bf","revision":"8540fafb86b969775254b898711ad3ae40ccc39d"},
 
@@ -54,13 +54,13 @@
 
     {"path":"src-server/services/orchestration/client-origin-propagation.ts","digest":"347ca06b63592fd53a0f45c9d7b38cf1625c3f079e65f4deea998d7f9519e141","revision":"8540fafb86b969775254b898711ad3ae40ccc39d"},
 
-    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"c7da96ef1571ce8efeac5369709cb237f39414ee539a8599225bb4ee2fbd5f82","revision":"f2bb7d8a1e4b56ac783fb9d0cfe167fe7a0fdde5"},
+    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"c3febaa85af6fa1d6b6edce04539a96b88cb7cb0660b7d0ee0de8d4fb6595530","revision":"b208a334880a96bb3f4267c2d2ffd6d03e118218"},
 
     {"path":"src-server/runtime/conversation/authorized-turn-correlation.ts","digest":"1c837e169f84074062b8467fc8d6653ff8b8512b491baa86ca3b00b727a37d63","revision":"56f4c4897a189eeb30430119a4f4895e95fbb541"},
 
     {"path":"packages/contracts/src/workspace-pane-host-contract.ts","digest":"064ef9c3654c3296074caced9eab79ffd204c0d98fcebd9221b5a2b540cd6191","revision":"56f4c4897a189eeb30430119a4f4895e95fbb541"},
 
-    {"path":"packages/sdk/src/skill-experience-pane.ts","digest":"c3dcf5199d8a697fb8f3eabbe74ca1535cbbc139641323b4268ee7f65921ec35","revision":"8540fafb86b969775254b898711ad3ae40ccc39d"},
+    {"path":"packages/sdk/src/skill-experience-pane.ts","digest":"141aaf4eadd4a696ae54eaaf279f8398fdd443d0adeb798924ddd02994dddc97","revision":"1a91c5d3bffa9bff7857c4dde0a69b2dd6d88a02"},
 
     {"path":"examples/rich-skill-experience/README.md","digest":"425a86ce6411adab13391ab0453fcb924eebc7a496f034528cfef6f6174353b0","revision":"56f4c4897a189eeb30430119a4f4895e95fbb541"},
 

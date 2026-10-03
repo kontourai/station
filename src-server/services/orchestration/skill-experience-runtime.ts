@@ -102,7 +102,7 @@ export class SkillExperienceRuntime {
   current(threadId: string) {
     return this.store.listSkillExperienceEvents(threadId, undefined, 1)[0];
   }
-  async admitCurrent<T>(
+  admitCurrent<T>(
     threadId: string,
     effect: (context?: string) => Promise<T>,
   ): Promise<T> {

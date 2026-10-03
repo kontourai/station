@@ -42,7 +42,7 @@
 
     {"path":"packages/contracts/src/native-push.ts","digest":"029879b0db80dbacebc470f0ac42e8e61aaad8564685c4a7f52cd5c37e319525","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/contracts/src/orchestration.ts","digest":"8e2d57618e1203e1cb8b59ebe77aa54bea379f3a16742c616e7445f906ba5126","revision":"56f4c4897a189eeb30430119a4f4895e95fbb541"},
+    {"path":"packages/contracts/src/orchestration.ts","digest":"4187210b015a86129cd5f56c5c810983c66262cc717c849bf6460b05d696c4e0","revision":"b208a334880a96bb3f4267c2d2ffd6d03e118218"},
 
     {"path":"packages/contracts/src/plugin.ts","digest":"98607c85d86241ccf638de4d207ebb64285752092eb7a827e4304c75df409b95","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -82,7 +82,7 @@
 
     {"path":"src-server/routes/operations/native-push-routes.ts","digest":"1b07cce4f490719d705ce042ea58337c59464d07d499069ee7cc2a7ef2c61e8b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"c7da96ef1571ce8efeac5369709cb237f39414ee539a8599225bb4ee2fbd5f82","revision":"f2bb7d8a1e4b56ac783fb9d0cfe167fe7a0fdde5"},
+    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"c3febaa85af6fa1d6b6edce04539a96b88cb7cb0660b7d0ee0de8d4fb6595530","revision":"b208a334880a96bb3f4267c2d2ffd6d03e118218"},
 
     {"path":"src-server/routes/pull-requests/__tests__/conversation-pull-request-links.test.ts","digest":"066dbb143af1e66c125ca416437a17ec9a852c181ce6ef2f60f9e4dec1db7c45","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -102,15 +102,15 @@
 
     {"path":"src-server/services/identity/relay-enrollment-service.ts","digest":"f4abb50060321e593e55eac98c1adcfffa2440caecc90e4df26b7537d8d61fed","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"804ef4496d2f445f984f409b4002a535d1b67797f1a29f8aedc04531d3277314","revision":"f2bb7d8a1e4b56ac783fb9d0cfe167fe7a0fdde5"},
+    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"c5a85fefbe06e5a903444325293d46a80fefb7a0f938100fbceee8c60492d893","revision":"958350328eafd360124e1892c1945a2ae455e43c"},
 
     {"path":"src-server/services/orchestration/orchestration-session-state.ts","digest":"44a232d30c1d080f58b798e418a54d3adacb1086b3b6757a06f307370b703943","revision":"af3c8fbfee90c9179a0ac19659b76d24c707d574"},
 
     {"path":"src-server/services/orchestration/session-lifecycle-service.ts","digest":"bbfb45fc9d241f43c63c30fdf9a6b6696390b7ab44cbfc6c3b24966e7895b179","revision":"4e19fa6ac6b87dff5b671d3c90d3a5b48b5e6ec5"},
 
-    {"path":"src-server/services/orchestration/turn-progress-tracker.ts","digest":"d13289b347f86e451233a3ce22ee1a68b76c243f887fc2a689be650d423ed78b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/orchestration/turn-progress-tracker.ts","digest":"b58f46b940884562170520ea71e1df93aef09725de4fd6f1fcf234f9d1ad9faf","revision":"89765352964045a079d13a17bee54ab2de7b83e0"},
 
-    {"path":"src-server/services/orchestration/turn-stall-watchdog.ts","digest":"11df4b14703e5376a92a9f469ffec78fd88a218745725c509bcd90dfa4e9c655","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/orchestration/turn-stall-watchdog.ts","digest":"c8d4f1769c0edfa03e5695d67cade94600ee4cf67c3549d5bd00c8b080041cb7","revision":"89765352964045a079d13a17bee54ab2de7b83e0"},
 
     {"path":"src-server/services/pull-requests/__tests__/pull-request-review.test.ts","digest":"3468a46e4a56d93f46e2cb4973a2c265c818f244798b35dbfe832a700f507af9","revision":"04f7c604a7cb98c981198b77fb07f1c62d32fd2a"},
 

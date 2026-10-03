@@ -339,10 +339,17 @@ export function useSendMessage(
       // #2309: "is a turn busy" is the server's open turn (on any device, in
       // any lineage child) or this composer's own unacknowledged send. A
       // server that sends no activity record keeps the legacy local status.
-      const turnBusy =
-        serverTurnLive(currentState) ?? currentState?.status === 'sending';
+      const turnBusy = isTurnInFlight(currentState);
 
       if (turnBusy && currentState) {
+        if (attachments?.length) {
+          addEphemeralMessage(sessionId, {
+            role: 'system',
+            content:
+              'Messages with attachments cannot be queued during a turn yet. Your message is still in the composer; send it when the turn finishes.',
+          });
+          return false;
+        }
         if (options?.skipInMemoryQueueOnBusy) {
           return options?.dispatch
             ? ({
@@ -355,6 +362,8 @@ export function useSendMessage(
         // rather than being folded into a reply they did not ask for.
         const steeringCapable =
           !options?.queueOnBusy &&
+          !currentState.queueSendNowPending &&
+          !currentState.queueDrainSettling &&
           currentState.conversationActivity?.openTurn?.trigger !== 'provider' &&
           sessionAdapterSupportsSteering(
             currentState.agentConnectionId,
@@ -366,6 +375,17 @@ export function useSendMessage(
           clearInput(sessionId);
           updateChat(sessionId, {
             queuedMessages: [...(currentState.queuedMessages || []), content],
+            queuedMessageMetadata: [
+              ...(currentState.queuedMessageMetadata ??
+                currentState.queuedMessages.map(() => ({
+                  id: randomCorrelationId(),
+                  mode: 'queue' as const,
+                }))),
+              {
+                id: randomCorrelationId(),
+                mode: options?.queueOnBusy ? 'queue' : 'steer',
+              },
+            ],
           });
           return;
         }
@@ -391,47 +411,128 @@ export function useSendMessage(
       }
 
       if (steerOpenTurn && currentState) {
-        // Inject into the live turn. Do not fall through to sendTurn — that
-        // would start a second turn and wipe the in-flight stream.
+        const clientInputId = randomCorrelationId();
+        const openTurn = currentState.conversationActivity?.openTurn;
+        const target = {
+          threadId:
+            openTurn?.threadId ?? currentState.currentSessionId ?? sessionId,
+          turnId: openTurn?.turnId ?? currentState.openTurnId,
+        };
+        const claimState = activeChatsStore.getSnapshot()[sessionId];
+        if (!claimState) return false;
         clearInput(sessionId);
+        updateChat(sessionId, {
+          queuedMessages: [...claimState.queuedMessages, content],
+          queuedMessageMetadata: [
+            ...(claimState.queuedMessageMetadata ?? []),
+            {
+              id: clientInputId,
+              mode: 'steer',
+              delivery: 'steering',
+              steerThreadId: target.threadId,
+              steerTurnId: target.turnId,
+            },
+          ],
+          queueSendNowPending: true,
+        });
+        if (!activeChatsStore.flushPendingSave()) {
+          const held = activeChatsStore.getSnapshot()[sessionId];
+          updateChat(sessionId, {
+            queueSendNowPending: false,
+            queuedMessageMetadata: held?.queuedMessageMetadata?.map((entry) =>
+              entry.id === clientInputId
+                ? { ...entry, delivery: 'indeterminate' }
+                : entry,
+            ),
+            queuedMessageFailure: {
+              code: 'steering-save-failed',
+              message:
+                'Could not save pending steering. It was not sent; your message remains held.',
+              at: Date.now(),
+            },
+          });
+          return false;
+        }
+        const removeClaim = () => {
+          const latest = activeChatsStore.getSnapshot()[sessionId];
+          const index =
+            latest?.queuedMessageMetadata?.findIndex(
+              (entry) => entry.id === clientInputId,
+            ) ?? -1;
+          if (!latest || index < 0) return;
+          updateChat(sessionId, {
+            queuedMessages: latest.queuedMessages.filter(
+              (_, position) => position !== index,
+            ),
+            queuedMessageMetadata: latest.queuedMessageMetadata?.filter(
+              (_, position) => position !== index,
+            ),
+          });
+        };
+        const holdUnconfirmed = () => {
+          const latest = activeChatsStore.getSnapshot()[sessionId];
+          updateChat(sessionId, {
+            queuedMessageMetadata: latest?.queuedMessageMetadata?.map(
+              (entry) =>
+                entry.id === clientInputId
+                  ? { ...entry, delivery: 'indeterminate' }
+                  : entry,
+            ),
+          });
+          addEphemeralMessage(sessionId, {
+            role: 'system',
+            content:
+              'Steering delivery was not confirmed. Your message is held; retry steering to check the same delivery.',
+          });
+        };
         try {
-          // #2309: the server's open turn names the lineage child running
-          // it and the exact turn; the local stamp is the older-server path.
-          const openTurn = currentState.conversationActivity?.openTurn;
           const result = await steerOrchestrationTurn({
-            threadId:
-              openTurn?.threadId ?? currentState.currentSessionId ?? sessionId,
+            ...target,
             text: content,
-            turnId: openTurn?.turnId ?? currentState.openTurnId,
+            clientInputId,
             apiBase,
           });
           if (result.outcome === 'steered') {
-            return options?.dispatch
-              ? ({
-                  kind: 'accepted',
-                  providerTurnId: result.turnId,
-                } satisfies OutboundDispatchTransportResult)
-              : true;
+            removeClaim();
+            addEphemeralMessage(sessionId, {
+              role: 'system',
+              content: 'Steering sent.',
+            });
+            return true;
           }
+          if (result.outcome === 'indeterminate') {
+            holdUnconfirmed();
+            return true;
+          }
+          removeClaim();
           addEphemeralMessage(sessionId, {
             role: 'system',
             content: steerRefusalMessage(result),
           });
+          const latest = activeChatsStore.getSnapshot()[sessionId];
+          if ((latest?.input ?? '') === '')
+            updateChat(sessionId, { input: submittedDraft });
+          return false;
         } catch (error) {
-          addEphemeralMessage(sessionId, {
-            role: 'system',
-            content: `Could not send steer: ${error instanceof Error ? error.message : String(error)}`,
-          });
+          if (isProvablyNotSent(error)) {
+            removeClaim();
+            const latest = activeChatsStore.getSnapshot()[sessionId];
+            if ((latest?.input ?? '') === '')
+              updateChat(sessionId, { input: submittedDraft });
+            return false;
+          }
+          holdUnconfirmed();
+          return true;
+        } finally {
+          updateChat(sessionId, { queueSendNowPending: false });
+          const latest = activeChatsStore.getSnapshot()[sessionId];
+          if (
+            latest &&
+            !isTurnInFlight(latest) &&
+            latest.orchestrationStatus !== 'aborted'
+          )
+            drainQueuedMessageOnTurnCompleted(apiBase, sessionId);
         }
-        const latest = activeChatsStore.getSnapshot()[sessionId];
-        if ((latest?.input ?? '') === '') {
-          updateChat(sessionId, { input: submittedDraft });
-        }
-        return options?.dispatch
-          ? ({
-              kind: 'not-invoked',
-            } satisfies OutboundDispatchTransportResult)
-          : undefined;
       }
 
       const transaction = prepareSendTransaction({

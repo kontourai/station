@@ -2,13 +2,11 @@ import { createHash } from 'node:crypto';
 import {
   cpSync,
   mkdirSync,
-  mkdtempSync,
   readFileSync,
   rmSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import {
   agentId,
@@ -31,6 +29,7 @@ import {
   GateTestAdapter,
 } from '../../../__test-utils__/orchestration-gate-test-harness.js';
 import { readJson } from '../../../__test-utils__/read-json.js';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { ConfigLoader } from '../../../domain/config-loader.js';
 import type { ProviderAdapterMetadata } from '../../../providers/adapter-shape.js';
 import { SkillService } from '../../../services/agents/skill-service.js';
@@ -56,6 +55,7 @@ import {
 import { createOrchestrationRoutes } from '../../orchestration/orchestration.js';
 import { createSkillRoutes } from '../skills.js';
 
+const makeTempDir = trackTempDirs();
 const scratch: Array<{ home: string; store: EventStore }> = [];
 afterEach(() => {
   for (const { home, store } of scratch.splice(0)) {
@@ -68,7 +68,7 @@ async function installedExperience(
   change?: (source: string) => void,
   example = 'examples/visual-skill-experience',
 ) {
-  const home = mkdtempSync(join(tmpdir(), 'station-experience-route-'));
+  const home = makeTempDir('station-experience-route-');
   const source = join(home, 'source');
   cpSync(resolve(example), source, {
     recursive: true,
@@ -343,7 +343,7 @@ test.each(['syntax', 'schema'] as const)(
 );
 
 test('journal-observed legacy packages cannot invent managed materialization identity', async () => {
-  const home = mkdtempSync(join(tmpdir(), 'station-experience-legacy-'));
+  const home = makeTempDir('station-experience-legacy-');
   const root = join(home, 'plugins/visual-skill-experience');
   cpSync(resolve('examples/visual-skill-experience'), root, {
     recursive: true,

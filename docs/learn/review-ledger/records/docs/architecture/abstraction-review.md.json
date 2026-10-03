@@ -22,9 +22,9 @@
 
     {"path":"docs/guides/deployment.md","digest":"1edc373a6f45ca03a1f4e989e59cabe26d36afe4b5b06ccf9717f8b715bf99f2","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 
-    {"path":"docs/guides/documentation.md","digest":"9e299a73ec55cd8792f40d976dda64b1af1c8b206a24ebfd638ca0db3ab12633","revision":"cda5879b28558d002561d656b869c4f7b05bc4ca"},
+    {"path":"docs/guides/documentation.md","digest":"03c26a23b91b0e665d65bd89e7a8172d8131afa49624db9312c4602e272ba05f","revision":"68257f50971037b3fd9df5b134bbd599142cd6d8"},
 
-    {"path":"docs/guides/keyboard-shortcuts.md","digest":"f04dd32ce4cbd4ced6d725ffdf30c47d8895739c4c61b1ee7bfe34dc36a5aba4","revision":"2f3085a2920085f2283c41a1b0431a6ded12a480"},
+    {"path":"docs/guides/keyboard-shortcuts.md","digest":"f861855d04df4423c67c69331a5114f27346c0e72b1b040c9c670a36fe2ac540","revision":"89765352964045a079d13a17bee54ab2de7b83e0"},
 
     {"path":"docs/guides/monitoring.md","digest":"b015e5cd44b250ca16a49aaae95721d5529325200b70d1ff32056c515c0fd06c","revision":"a11755821186eaeb034b77e970dfa372c5c7f789"},
 
@@ -62,7 +62,7 @@
 
     {"path":"src-server/routes/knowledge/knowledge-index-routes.ts","digest":"ed5a403488328a12aa935b4b5e820bfa1d95639d29e4481295e38dd85bba8c6c","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 
-    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"c7da96ef1571ce8efeac5369709cb237f39414ee539a8599225bb4ee2fbd5f82","revision":"f2bb7d8a1e4b56ac783fb9d0cfe167fe7a0fdde5"},
+    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"c3febaa85af6fa1d6b6edce04539a96b88cb7cb0660b7d0ee0de8d4fb6595530","revision":"b208a334880a96bb3f4267c2d2ffd6d03e118218"},
 
     {"path":"src-server/runtime/bootstrap/runtime-service-bootstrap.ts","digest":"2cf5c807666f495b88ded90ba448c7e4e4e03733b2e2afed684409cd5ffc8356","revision":"56f4c4897a189eeb30430119a4f4895e95fbb541"},
 
@@ -74,7 +74,7 @@
 
     {"path":"src-server/services/orchestration/__tests__/session-lifecycle-module.test.ts","digest":"48925af379888c49356fd0902d0b42f0f23ccf785355ca45557feddbbe3f8f90","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 
-    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"804ef4496d2f445f984f409b4002a535d1b67797f1a29f8aedc04531d3277314","revision":"f2bb7d8a1e4b56ac783fb9d0cfe167fe7a0fdde5"},
+    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"c5a85fefbe06e5a903444325293d46a80fefb7a0f938100fbceee8c60492d893","revision":"958350328eafd360124e1892c1945a2ae455e43c"},
 
     {"path":"src-server/services/orchestration/session-command-module.ts","digest":"a187447cec48eca40e8933bce7600c5e00baebfae55c4ecf2ca4ef5d70626622","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 

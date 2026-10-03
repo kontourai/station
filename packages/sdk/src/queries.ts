@@ -205,6 +205,7 @@ export {
   fetchVoicePort,
   forkConversation,
   type InterruptOrchestrationDelegatedTaskInput,
+  inspectOrchestrationSteerInput,
   interruptOrchestrationDelegatedTask,
   interruptOrchestrationTurn,
   isProvablyNotSent,

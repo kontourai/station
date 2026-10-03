@@ -46,7 +46,7 @@
 
     {"path":"src-server/routes/orchestration/attention.ts","digest":"13aa257c345f3e3b4bd37e49e4399b83aac95315113c3386f64d1c17972b8c07","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"804ef4496d2f445f984f409b4002a535d1b67797f1a29f8aedc04531d3277314","revision":"f2bb7d8a1e4b56ac783fb9d0cfe167fe7a0fdde5"},
+    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"c5a85fefbe06e5a903444325293d46a80fefb7a0f938100fbceee8c60492d893","revision":"958350328eafd360124e1892c1945a2ae455e43c"},
 
     {"path":"src-ui/src/__tests__/SchedulerJobDialogHost.authority.test.tsx","digest":"0e98ba1584875cd32d90a6529417fd660b2ded2d01d22a603f0d1601c13da37f","revision":"911cbf3bf7911834075f21709acff87a9b3c27a8"},
 
@@ -60,7 +60,7 @@
 
     {"path":"src-ui/src/components/chat-dock/useChatDockOverlays.ts","digest":"ddc9e5110725ab4e806ae6abe91021397faf665cb4ba6703926d67170979b325","revision":"fdd1311dfc6f9bb5370219a598a46bf4359b248e"},
 
-    {"path":"src-ui/src/components/chat/ChatInputArea.tsx","digest":"25c3a5c11346ec3681e2198c80f4fa404f94aedd125ef4878ad4512c6dfdc36b","revision":"82fea394a09cdf62071b073d09aa6cb08ebbca48"},
+    {"path":"src-ui/src/components/chat/ChatInputArea.tsx","digest":"a964b5bbb027b57d2a2f7326bbdb8418a13f4ee93be663aacd9d40891b7bdc63","revision":"c6ebec77b17b679e630a3857b10a6f814d7fb436"},
 
     {"path":"src-ui/src/components/chat/composer-mention-wire.ts","digest":"76238cf68ced890c9aff0210ee1a486b02fe2cea942d3001c203d6cd5ac19c43","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -152,7 +152,7 @@
 
     {"path":"src-ui/src/components/chat-dock/ChatDockMobileOverflowSheet.tsx","digest":"a8bc823744ae5fbe11ca4d59391185963104e36549cf5fdc2b178afceb603650","revision":"af7dbb3005e9e1f29dd1450b0a06ec5703afb0d6"},
 
-    {"path":"src-ui/src/components/chat/chat.css","digest":"9ff5dc95b71dda67d80f7241591dab8294cb5252f6001b589dcc80cabbad14b7","revision":"f8dcd092359118c2f44bda770acccc1c45beb281"},
+    {"path":"src-ui/src/components/chat/chat.css","digest":"adb79623618600c59d7259aa50d59628aee20850643f00c97ef918a0c220b67c","revision":"c6ebec77b17b679e630a3857b10a6f814d7fb436"},
 
     {"path":"src-ui/src/views/home/work-status.ts","digest":"ff0100dddce220275b7d9f0183fb2c44bac835eb0fbb67e071be63f4c127b120","revision":"d1f68396648a4d450f1d743e436df703be0935be"},
 

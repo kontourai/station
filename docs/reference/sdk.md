@@ -1191,6 +1191,27 @@ Re-exported from `@tanstack/react-query` for direct cache access.
 
 Imperative API calls — use in event handlers, slash commands, or anywhere hooks aren't available.
 
+### Turn steering and acknowledgement retries
+
+`steerOrchestrationTurn({ threadId, text, turnId?, clientInputId?, apiBase? })`
+sends input to an open turn. With an ID it uses the protected `steerTurnOnce`
+wire command, which older servers reject before invocation. Without an ID it
+retains legacy behavior. Use one stable `clientInputId` per intent and retain
+its original Session, turn and text when retrying an acknowledgement. The server
+journals the adapter attempt before invocation and returns a confirmed same-ID
+result without sending it again. `outcome: 'indeterminate'` means delivery cannot
+be confirmed; retain the input for review and do not automatically send it as a
+new turn. Before retrying uncertain input, call
+`inspectOrchestrationSteerInput({ threadId, text, turnId?, clientInputId, apiBase? })`.
+A confirmed result retires the pending message; `indeterminate` or an unsupported
+lookup keeps it held. Only `not-received` permits a protected same-ID first
+attempt. A successful save of the pending identity precedes a composer mutation;
+a failed save prevents engine invocation. Unsupported, busy, and no-active-turn outcomes remain
+explicit. See [Session API steering](session-api.md#lifecycle-control-commands) for the public
+command and engine-specific interruptive fallback; Station's composer offers a
+conservative safe-waiting fallback separately from native steering.
+
+
 `sendMessage`, `streamMessage`, `invokeAgent`, `invoke`, `callTool` and
 `fetchConfig` are legacy ambient-base helpers using direct `fetch`. They do not
 automatically use the host's native or encrypted broker transport. For those

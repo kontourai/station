@@ -36,7 +36,7 @@
 
     {"path":"packages/sdk/src/hooks/operations.ts","digest":"02dbff5afebdbe657824c6718e11773b39a9f454062b43e6391c877fcf12d994","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/sdk/src/query-domains/chatRuntimeOrchestration.ts","digest":"d4341001f4cb290b64a3171e8b284e12410463726f6aa3b3590c4be2094d30f4","revision":"42019764437469e865189dfd8ad8b1762b77a97a"},
+    {"path":"packages/sdk/src/query-domains/chatRuntimeOrchestration.ts","digest":"c7d4a86b8d4473d417d3aa2c1cb2e13a5d0cf63e78fe075ad1f67c9aae60bde7","revision":"061ace7180fe67218f67d9a74230ce419b887c11"},
 
     {"path":"packages/shared/src/agent-plugin-manifest.ts","digest":"a1b0dab918c8787193cc23e0f5362fc3ea5be6885440b56522314329974d55ba","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -80,7 +80,7 @@
 
     {"path":"src-server/services/orchestration/flow-policy-sidecar.ts","digest":"437b48f82ba45cedac66ea4c8c933758226ad017ca957313fb9353b3a9abbe44","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"804ef4496d2f445f984f409b4002a535d1b67797f1a29f8aedc04531d3277314","revision":"f2bb7d8a1e4b56ac783fb9d0cfe167fe7a0fdde5"},
+    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"c5a85fefbe06e5a903444325293d46a80fefb7a0f938100fbceee8c60492d893","revision":"958350328eafd360124e1892c1945a2ae455e43c"},
 
     {"path":"src-server/services/orchestration/orchestration-session-state.ts","digest":"44a232d30c1d080f58b798e418a54d3adacb1086b3b6757a06f307370b703943","revision":"af3c8fbfee90c9179a0ac19659b76d24c707d574"},
 

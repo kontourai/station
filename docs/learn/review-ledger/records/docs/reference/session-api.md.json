@@ -9,7 +9,7 @@
 
   "limits": "Source and fixture evidence do not establish installed native CLI compatibility, a live engine turn, physical UI behavior, or hosted deployment. No version-specific native fork qualification is claimed.",
 
-  "document": {"digest":"95d24f6da21a81c4c2199300cf28bb66779818477aa83cf015f903a4602704e7","revision":"56f4c4897a189eeb30430119a4f4895e95fbb541"},
+  "document": {"digest":"28f86ebb849b6c93872c0282a9885745852b84582071d79c8883dbd2e2fb8865","revision":"b208a334880a96bb3f4267c2d2ffd6d03e118218"},
 
   "sources": [
     {"path":"scripts/session-api-roundtrip.mjs","digest":"6bd268998fc936dacbdd1359cab376b5b7309449d65eaa9a43f9263bbcf88e0c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
@@ -24,7 +24,7 @@
 
     {"path":"src-server/providers/sessions/codex-rollout-session-source.ts","digest":"35e09b5648c9969919fa37fed58ff37af1e3b7e802a3b42c5fd236fa5100fba9","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"c7da96ef1571ce8efeac5369709cb237f39414ee539a8599225bb4ee2fbd5f82","revision":"f2bb7d8a1e4b56ac783fb9d0cfe167fe7a0fdde5"},
+    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"c3febaa85af6fa1d6b6edce04539a96b88cb7cb0660b7d0ee0de8d4fb6595530","revision":"b208a334880a96bb3f4267c2d2ffd6d03e118218"},
 
     {"path":"src-server/services/flow/survey-flow-review-service.ts","digest":"7ccd40600cbf40abfb8c5bd187b1d87366ebef492ffb7edfc128193b482e398e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -60,7 +60,7 @@
 
     {"path":"src-server/providers/__tests__/codex-adapter-rpc-id.test.ts","digest":"b34f7500b2f83fccbe853cf600614dc88c93bdde1d6287d8e3ad5a444191bf4a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/hooks/orchestration/queueDrain.ts","digest":"428804b4d68474f9c5e86c702b2f00c4793e245145587a8813c42279580eafae","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-ui/src/hooks/orchestration/queueDrain.ts","digest":"5172f08676c5ae320d10b42f23f7b5158ab77172a54c537235de9156ea504eb8","revision":"89765352964045a079d13a17bee54ab2de7b83e0"},
 
     {"path":"src-ui/src/hooks/useActiveChatSessionMessaging.ts","digest":"76b50fa97162e0989a8c3adfa8f2bfba0086c3ba247a1e25455695ed910cf6ff","revision":"a54c2f48d0adf6af1f9818f6b33ab646238b533e"},
 
