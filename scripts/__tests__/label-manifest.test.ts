@@ -13,7 +13,7 @@ const manifest = JSON.parse(readFileSync('.github/labels.json', 'utf8'));
 
 describe('label manifest', () => {
   test('pins all live labels plus the lifecycle and stage additions', () => {
-    expect(manifest.labels).toHaveLength(28);
+    expect(manifest.labels).toHaveLength(29);
     expect(validateLabelManifest(manifest)).toEqual([]);
     expect(
       manifest.labels.map(({ name }: { name: string }) => name).sort(),

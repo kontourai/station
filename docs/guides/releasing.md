@@ -88,9 +88,11 @@ limit. Logs are evidence, never instructions. Workflow, governance, hooks,
 agent instructions and qualification policy changes require an owner handoff.
 A separate clean publishing job validates the patch and opens one normal PR;
 the agent receives no GitHub publishing credential. The publisher uses the
-existing release-app credential with repository-scoped contents/PR permissions
+dedicated Station automation-app credential with repository-scoped contents/PR permissions
 so its PR triggers ordinary CI. Required checks and review remain authoritative.
-The model defaults to `gpt-6-sol`; `QUALIFICATION_REPAIR_MODEL` can select the
+CI uses repository variable `STATION_AUTOMATION_APP_ID` and secret
+`STATION_AUTOMATION_APP_PRIVATE_KEY`; the existing app installation is scoped
+to Station and must remain off ruleset bypass lists. The model defaults to `gpt-6-sol`; `QUALIFICATION_REPAIR_MODEL` can select the
 owner-approved alternative. Missing agent/app credentials surface as a failed
 attempt rather than a successful repair.
 

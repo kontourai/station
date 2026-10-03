@@ -2623,7 +2623,7 @@ function primaryCiRouterFindings(file, document) {
 // This credentialed ingress executes only trusted base policy, never PR code.
 // Any topology/authority change requires review and a new policy digest.
 const LANDING_POLICY_SHA256 =
-  'd05e19dbf815735ee36b205ae07934277152f8d8c57543fb2ed08556f2316656';
+  '94dd1a86e579bd4d1ab948ce86064c841d83d9d43cbd018555cf344f1817f3f7';
 function orderedPolicy(value) {
   if (Array.isArray(value)) return value.map(orderedPolicy);
   if (value && typeof value === 'object')
