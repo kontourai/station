@@ -1,9 +1,11 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   APP_DESTINATION_REGISTRY,
   type DestinationDefinition,
 } from '../../app-shell/destination-registry';
 import { resolveViewFromPath } from '../../app-shell/routing';
+import { Button } from '../Button';
+import { Dialog } from '../Dialog';
 import { SettingsGlyph } from '../icons/Glyph';
 import { LazyBoundary } from '../LazyBoundary';
 import './ProjectSidebarFooter.css';
@@ -37,6 +39,7 @@ export function ProjectSidebarFooter({
   onAfterNavigate,
 }: ProjectSidebarFooterProps) {
   const [customizeOpen, setCustomizeOpen] = useState(false);
+  const customizeTriggerRef = useRef<HTMLButtonElement>(null);
   const activeDestination = APP_DESTINATION_REGISTRY.getDestinationForView(
     resolveViewFromPath(activePath),
   );
@@ -64,6 +67,7 @@ export function ProjectSidebarFooter({
             {destinationIcon('schedule')}
           </button>
           <button
+            ref={customizeTriggerRef}
             type="button"
             className="sidebar__footer-action"
             aria-label="Customize"
@@ -93,7 +97,31 @@ export function ProjectSidebarFooter({
           load={loadCustomizeDialog}
           pending={null}
           shareAcrossMounts
+          unavailable={(retry) => (
+            <Dialog
+              title="Customize"
+              closeLabel="Close Customize"
+              onClose={() => setCustomizeOpen(false)}
+              historyMode="none"
+              returnFocusTarget={customizeTriggerRef.current}
+              size="sm"
+              footer={
+                <>
+                  <Button onClick={retry}>Retry</Button>
+                  <Button
+                    variant="secondary"
+                    onClick={() => window.location.reload()}
+                  >
+                    Reload
+                  </Button>
+                </>
+              }
+            >
+              <p role="alert">Could not load Customize.</p>
+            </Dialog>
+          )}
           componentProps={{
+            returnFocusTarget: customizeTriggerRef.current,
             onClose: () => setCustomizeOpen(false),
             onNavigate: (path: string) => {
               setCustomizeOpen(false);

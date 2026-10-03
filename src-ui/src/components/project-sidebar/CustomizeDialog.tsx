@@ -7,9 +7,11 @@ import './CustomizeDialog.css';
 export function CustomizeDialog({
   onClose,
   onNavigate,
+  returnFocusTarget,
 }: {
   onClose: () => void;
   onNavigate: (path: string) => void;
+  returnFocusTarget?: HTMLElement | null;
 }) {
   const entries = APP_DESTINATION_REGISTRY.getCustomizeNav(
     useSurfaceVisibilityFlags(),
@@ -19,6 +21,7 @@ export function CustomizeDialog({
       title="Customize"
       closeLabel="Close Customize"
       onClose={onClose}
+      returnFocusTarget={returnFocusTarget}
       size="sm"
     >
       <nav aria-label="Customize Station" className="customize-dialog__links">
