@@ -202,10 +202,15 @@ original scope.
 Use the conversation-reference button beside the composer actions to choose an
 earlier conversation. The picker searches the 25 most recent conversations
 returned for your access and shows up to eight matches; it does not search
-older history. You can also drag a result into the composer. A message can
+older history. You can also drag a result into the composer, or drag a
+conversation's row from Activity or the inbox. A message can
 contain at most eight conversation references. Station
-sends a link to the selected conversation; it never copies that conversation's
-transcript into the prompt. Titles are displayed as plain text, and the link is
+sends a link to the selected conversation, plus one line naming its id and
+asking the receiving Agent to read it with the `read_conversation` tool; it
+never copies that conversation's transcript into the prompt. An Agent with
+Station Control can then page through that conversation because you
+referenced it; see
+[reading a referenced conversation](../guides/self-configuring-agent.md#reading-a-referenced-conversation). Titles are displayed as plain text, and the link is
 generated from Station's conversation identity. The picker only offers source
 metadata allowed by the current access. At send time, Station checks the
 reference's captured Station and access scope. If that scope
