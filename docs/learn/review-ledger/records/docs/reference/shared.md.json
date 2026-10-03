@@ -28,7 +28,7 @@
 
     {"path":"packages/contracts/src/catalog.ts","digest":"900d7d8a0807404f5e6ed1f17049edf1aedf4685906ec52f0bc5fb1a63f36264","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/contracts/src/config.ts","digest":"05591bdbec9d2e5ea98e24330e0020afb26e270e7c4808f7bd757c232f724d31","revision":"d6a3158c22a62d9530592c6366a1624790ee9401"},
+    {"path":"packages/contracts/src/config.ts","digest":"016d47884b0a2a4b982df7c9fad67e86b9c6aa858dbdae51441ed00d9919005b","revision":"faad29d67dec3873fdb6a4d5d0e18168caa1237e"},
 
     {"path":"packages/contracts/src/knowledge.ts","digest":"09cf6a59b1cc49d059c14ad9081849d035d2b7bdf8061778d9808f4126b29986","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

@@ -56,7 +56,7 @@
 
     {"path":"src-server/providers/adapters/codex-adapter-transport.ts","digest":"ddc57bdc7eead816bff59653f324a25f2349d9ff9478005264cac8e7a099b4fc","revision":"0bf65df71b04f48768c1f5bdb16db77e361a3177"},
 
-    {"path":"src-server/providers/adapters/codex-adapter-types.ts","digest":"f198dc43900198c9f803f64173dcf911d3a76c831a1ec659e28d63542279cddf","revision":"0bf65df71b04f48768c1f5bdb16db77e361a3177"},
+    {"path":"src-server/providers/adapters/codex-adapter-types.ts","digest":"e037a01f82b6a329bc624471a28ba46c9daf4e31e3072ec05cce2c708d4aefaf","revision":"faad29d67dec3873fdb6a4d5d0e18168caa1237e"},
 
     {"path":"src-server/providers/__tests__/codex-adapter-rpc-id.test.ts","digest":"b34f7500b2f83fccbe853cf600614dc88c93bdde1d6287d8e3ad5a444191bf4a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

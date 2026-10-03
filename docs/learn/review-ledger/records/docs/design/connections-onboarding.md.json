@@ -42,7 +42,7 @@
 
     {"path":"src-server/services/acp/acp-process.ts","digest":"07d4606232bc0f0024486ba05c03932c845f2d030656a9861236c1540d20cd46","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/connections/connection-recovery-policy.ts","digest":"a44fd5712188a1b3780c66a55ec214794c832d70b972e3f8348c07f755fb593e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/connections/connection-recovery-policy.ts","digest":"29cc9dbc7b37829c2611a5f30d7e0ed8698fd78056797c25e1451847a9734ddd","revision":"faad29d67dec3873fdb6a4d5d0e18168caa1237e"},
 
     {"path":"src-server/services/orchestration/credential-application-ledger.ts","digest":"8f71d87f612df13ba98caf8de0bf13857b8f06f0c71a30c07c5e2c5938fdb97a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -50,7 +50,7 @@
 
     {"path":"src-server/services/orchestration/credential-recovery-module.ts","digest":"a30d1344421536b0549657afa880c140faf54f3a5d7adac49e04afaf0617bdba","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"14d4d68ff2f8715e1428ca985125a9eff9eb5a05ea52946dc16b4f5971405a34","revision":"bc671142a7ae70587daf5bb0d94732e8ca74600a"},
+    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"afa41e7ea79b268835ff9d66947c9f28ad6e13c43c62f7df33e2f92a45ed3308","revision":"faad29d67dec3873fdb6a4d5d0e18168caa1237e"},
 
     {"path":"src-ui/src/components/first-run/FirstRunFlow.tsx","digest":"fb7aabf17dbdf378bd66b6393936c0ce86f380cc56e77e71ca36d7dbb9397cf3","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

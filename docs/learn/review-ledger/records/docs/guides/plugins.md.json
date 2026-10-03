@@ -36,7 +36,7 @@
 
     {"path":"packages/shared/src/plugin-scaffold.ts","digest":"47f077e8253eb468c8d28cc20f02a36dd78872e5670624b9e1580e01dba50b99","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"schemas/app.schema.json","digest":"1fee1b14ed4608b44c05fa59d422b8ecfdb04cbc7e540ea3c6d088479f627ecb","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"schemas/app.schema.json","digest":"9a3e1f3bbf3e91822ad3d04b5230fda05df804ba28b32636b0cbb256c76cab83","revision":"faad29d67dec3873fdb6a4d5d0e18168caa1237e"},
 
     {"path":"src-server/domain/config-loader-app.ts","digest":"6f40b234fa3c45e6357d3eb028c53c780eaa139aec28a58444a2ed467898746b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

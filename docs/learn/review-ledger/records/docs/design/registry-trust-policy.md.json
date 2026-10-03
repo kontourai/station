@@ -12,7 +12,7 @@
   "document": {"digest":"d1bc122bde13d3233aa0b193b7e3f2ee248e07c35b5a87ed2bcea54b9f2cfe11","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
   "sources": [
-    {"path":"schemas/app.schema.json","digest":"1fee1b14ed4608b44c05fa59d422b8ecfdb04cbc7e540ea3c6d088479f627ecb","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"schemas/app.schema.json","digest":"9a3e1f3bbf3e91822ad3d04b5230fda05df804ba28b32636b0cbb256c76cab83","revision":"faad29d67dec3873fdb6a4d5d0e18168caa1237e"},
 
     {"path":"src-server/domain/config-loader-app.ts","digest":"6f40b234fa3c45e6357d3eb028c53c780eaa139aec28a58444a2ed467898746b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
