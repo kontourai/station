@@ -207,8 +207,8 @@ Activity is engine-reported. Claude Code SDK API retries supply attempt and dela
 with a bounded reason category; Codex's `willRetry` reports retry intent without
 attempt or delay. OpenCode 1.18.28 has internal retry status, but its
 [ACP translator](https://github.com/anomalyco/opencode/blob/v1.18.28/packages/opencode/src/acp/event.ts#L93-L106)
-does not forward it. Station therefore reports **No response from OpenCode for …
-Still waiting** from its server silence observation. Elapsed silence never
+does not forward it. Station therefore reports **No progress from OpenCode for
+…** from its server silence observation, in the status ladder's word. Elapsed silence never
 establishes a retry. New text, reasoning, tool progress and terminal events clear
 transient waiting/retry status; raw logs and engine error payloads are not chat
 activity labels.

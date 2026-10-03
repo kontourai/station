@@ -1666,7 +1666,7 @@ export function ChatDockBody({
       {busyOpen && !isTurnInFlight(activeSession) ? (
         <div className="session-history-controls" role="status">
           <span>
-            Still waiting on the active turn. If it already finished, check
+            Waiting for the active turn to finish. If it already has, check
             again to send.
           </span>
           {onRetryConversationOpen ? (

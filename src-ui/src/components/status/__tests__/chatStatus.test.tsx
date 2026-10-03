@@ -72,9 +72,9 @@ describe('deriveChatStatus — one status, by priority', () => {
         },
       },
     });
-    expect(waiting?.label).toBe('Still waiting');
+    expect(waiting?.label).toBe('No progress');
     expect(waiting?.details).toContainEqual({
-      text: 'No response from the engine for',
+      text: 'No progress for',
       since: Date.parse('2026-09-29T00:00:00Z'),
     });
   });

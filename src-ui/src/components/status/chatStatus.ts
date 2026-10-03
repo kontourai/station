@@ -145,11 +145,10 @@ export function deriveChatStatus(
   }
   const silentSince = epochMs(activity?.progressSilence?.silentSinceEventAt);
   if (silentSince !== undefined && input.activityHint?.kind !== 'retrying') {
-    if (!running) label = 'Still waiting';
-    details.push({
-      text: 'No response from the engine for',
-      since: silentSince,
-    });
+    // The ladder's word for a quiet run, not a second one: a row says
+    // "No progress · 4m", the strip says "No progress" with the clock.
+    if (!running) label = 'No progress';
+    details.push({ text: 'No progress for', since: silentSince });
   }
   return {
     kind: 'working',
