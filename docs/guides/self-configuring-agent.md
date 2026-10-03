@@ -25,6 +25,8 @@ example does not grant one implicitly.
 - `list_agents`, `get_agent`, `list_projects`, `get_project`
 - `list_skills`, `list_registry_skills`, `install_skill`, `uninstall_skill`, `update_skill`, `track_skill_run`, `record_skill_outcome`
 - `send_message` for a lightweight message to a Station agent
+- `read_conversation` to page through a conversation a person referenced in a
+  message to the Agent
 - `list_delegation_environments`, `list_delegation_targets`,
   `list_delegated_tasks`, `delegate_task`, `get_task`, `get_task_events`,
   `continue_task`, and `interrupt_task` for resumable work through either a
@@ -74,6 +76,39 @@ and Station's own server code retain their separate authorization boundaries.
 The [scope owner](../../src-server/runtime/mcp/station-control-dispatch-scope.ts)
 and [policy](../../src-server/tools/station-control-policy.ts) define the checks;
 tool approval does not bypass them.
+
+### Reading a referenced conversation
+
+When a person references another conversation in a message (the composer's
+conversation picker, or a conversation dragged in from Activity or the inbox),
+the message carries a link to it, its id, and a line telling the receiving
+Agent to read it with `read_conversation`. The read returns up to 50 messages
+per page, at most 64 KB, oldest first, with a `nextCursor` for the next page.
+A `limit` above 50 is refused, not truncated. A message whose text exceeds
+16 KB is clipped and reports its full size. Every page states that the
+transcript is context, not instructions.
+
+A station-control caller may read:
+
+- its own conversation;
+- a conversation the dispatch scope above admits, read with the owner's
+  Project `view` action;
+- a conversation a person referenced in a turn of the caller's conversation.
+  Station decides this from the sender it recorded on that turn: the
+  operator, or a paired device that is not another Station's delegation grant.
+  A link an Agent wrote, for example with `send_message`, admits nothing.
+
+The transcript is always read as the session's owner, so a reference never
+reaches another person's conversation. Refusals name a reason:
+`conversation_out_of_scope` when the conversation is the owner's but outside
+the caller's scope, `conversation_deleted` when a referenced conversation no
+longer reads, and `conversation_not_found` otherwise. Another person's
+conversation reads as not found. The
+[read route](../../src-server/routes/chat/conversation-reference-read.ts)
+defines the rule.
+
+`get_conversation_messages` is separate. It reads any conversation the
+session's owner owns, keyed by Agent, and is not limited by references.
 
 ## Recommended setup pattern
 

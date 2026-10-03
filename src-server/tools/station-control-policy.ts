@@ -330,6 +330,13 @@ export const STATION_CONTROL_TOOL_POLICY = {
     ...SELF_READ,
     routes: [get('/agents/:slug/conversations/:conversationId/messages')],
   },
+  // #3159: paged. The route admits the caller's own conversation, one its
+  // scope admits, or one a PERSON referenced in its conversation, and reads
+  // it as the session's owner (`routes/chat/conversation-reference-read.ts`).
+  read_conversation: {
+    ...SELF_READ,
+    routes: [get('/api/conversations/:id/read')],
+  },
   // Only the owner's own conversation, unless the caller is a bound
   // operator (`routes/chat/conversations.ts`).
   delete_conversation: {

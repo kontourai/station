@@ -174,11 +174,11 @@
 
     {"path":"station","digest":"bb8adba630a450e835cfab89f27a3640bfd40664d3eb2223726b91c6e3786ebb","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-server/runtime/mcp/station-control-dispatch-scope.ts","digest":"cf22738353be6006483825dd4bfe99ae96d0f18c91b944402457a7bc9f25f8a8","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"src-server/runtime/mcp/station-control-dispatch-scope.ts","digest":"df7b0fd0a794e94f94e5d9053f5c9e016b9d5466fdec42f7791d45d3a6c4e87c","revision":"dafa5de583fb92bfda2d310421e540258382ef0d"},
 
     {"path":"src-server/routes/orchestration/dispatch-scope.ts","digest":"8e311c1696036d143a124c97da344056077ac6dfde1f1db0925c0efefd085aed","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-server/tools/station-control-policy.ts","digest":"7861e4666c9ab7bdfafb6d38b4b9a742f707ca64741f1351b042384f4a51dc94","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+    {"path":"src-server/tools/station-control-policy.ts","digest":"3b756120483174c7d41030f250672c22022d9b6eaf598766e746b5e65220364d","revision":"4fff18cc6ab31e26e5988125acda051c5821c301"},
 
     {"path":"src-server/runtime/mcp/__tests__/station-control-dispatch-scope.test.ts","digest":"5c90078ba35ab314048e6efa0533de427b92fdc22f26425174cdbcdb144db30e","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
