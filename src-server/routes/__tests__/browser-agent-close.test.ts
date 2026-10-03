@@ -63,10 +63,14 @@ const PROJECTS = [ALPHA, BETA];
 /** Stands in for Station's internal token (home possession). */
 const INTERNAL = 'x-test-station-internal';
 
-function fakeHost(): BrowserHost {
+/** A CDP answer the test controls; the default answers `{}` at once. */
+type CdpSend = (method: string) => Promise<unknown>;
+
+function fakeHost(cdpSend?: CdpSend): BrowserHost {
   let targets = 0;
   const cdp: CdpTransport = {
-    send: async <R>() => ({}) as R,
+    send: async <R>(method: string) =>
+      ((cdpSend ? await cdpSend(method) : undefined) ?? {}) as R,
     on: () => () => {},
     close: async () => {},
     closed: new Promise(() => {}),
@@ -108,13 +112,16 @@ afterEach(() => {
     rmSync(home, { recursive: true, force: true });
 });
 
-function harness() {
+function harness(options: { now?: () => Date; cdpSend?: CdpSend } = {}) {
   const stationHome = mkdtempSync(join(tmpdir(), 'station-agent-close-'));
   homes.push(stationHome);
   let ids = 0;
   const sessions = new BrowserSessionRegistry({
     stationHome,
-    hostResolver: createLocalBrowserHostResolver(() => fakeHost()),
+    hostResolver: createLocalBrowserHostResolver(() =>
+      fakeHost(options.cdpSend),
+    ),
+    ...(options.now ? { now: options.now } : {}),
     newId: () =>
       `bs_00000000-0000-4000-8000-${String(++ids).padStart(12, '0')}`,
   });
@@ -451,6 +458,82 @@ describe('browser_close: an agent closes only its own sessions (#90)', () => {
     expect(h.sessions.getSession(id)!.state).toBe('live');
   });
 
+  test('a caller with no usable conversation id is refused other-thread, even for a session another such caller opened', async () => {
+    const h = harness();
+    // Both conversation ids fail BROWSER_THREAD_ID_PATTERN, so neither caller
+    // has a thread, and neither session is bound to one.
+    const first = h.startAgent('exec 1!', {
+      principalId: OPERATOR_ID,
+      conversationId: 'bad conv!',
+    });
+    const id = await h.agentOpen(first, 'https://example.com/');
+    expect(h.sessions.getSession(id)!.threadId).toBeUndefined();
+    const second = h.startAgent('exec 2!', {
+      principalId: OPERATOR_ID,
+      conversationId: 'bad conv!',
+    });
+    for (const token of [second, first])
+      expect(
+        await h.tool(token, 'close', { browserSessionId: id }),
+      ).toMatchObject({ ok: false, code: 'other-thread' });
+    expect(h.sessions.getSession(id)!.state).toBe('live');
+  });
+
+  test('close waits for an action already running on the session, then closes', async () => {
+    let release: (() => void) | undefined;
+    let navigating: (() => void) | undefined;
+    const started = new Promise<void>((resolve) => {
+      navigating = resolve;
+    });
+    let gate = false;
+    const h = harness({
+      cdpSend: async (method) => {
+        if (gate && method === 'Page.navigate') {
+          navigating?.();
+          await new Promise<void>((resolve) => {
+            release = resolve;
+          });
+        }
+        return {};
+      },
+    });
+    const token = h.startAgent('exec-1', {
+      principalId: OPERATOR_ID,
+      conversationId: 'conv-X',
+    });
+    const id = await h.agentOpen(token, 'https://example.com/');
+    gate = true;
+    const order: string[] = [];
+    const navigate = h
+      .tool(token, 'navigate', {
+        browserSessionId: id,
+        url: 'https://example.com/next',
+      })
+      .then((answer) => {
+        order.push('navigate');
+        return answer;
+      });
+    await started;
+    const close = h
+      .tool(token, 'close', { browserSessionId: id })
+      .then((answer) => {
+        order.push('close');
+        return answer;
+      });
+    // The navigation is still in flight: close has not run.
+    for (let i = 0; i < 20; i += 1) await new Promise((r) => setImmediate(r));
+    expect(order).toEqual([]);
+    expect(h.sessions.getSession(id)!.state).toBe('live');
+
+    release!();
+    expect(await navigate).toMatchObject({ ok: true });
+    expect(await close).toMatchObject({
+      ok: true,
+      session: { state: 'closed' },
+    });
+    expect(order).toEqual(['navigate', 'close']);
+  });
+
   test("Station's internal token alone closes nothing: the agent route needs a caller, the pane route refuses it", async () => {
     const h = harness();
     const token = h.startAgent('exec-1', {
@@ -628,6 +711,36 @@ describe('browser_status paging (#90)', () => {
     const back = await pageOf(alpha, betaFirst.nextCursor as string);
     expect(back.length).toBeGreaterThan(0);
     expect(back.every((id) => alphaIds.includes(id))).toBe(true);
+  });
+
+  test('sessions created in the same millisecond page by id: each exactly once, in order', async () => {
+    const h = harness({ now: () => new Date('2026-10-03T12:00:00.000Z') });
+    const token = h.startAgent('exec-1', {
+      principalId: OPERATOR_ID,
+      conversationId: 'conv-X',
+    });
+    const opened: string[] = [];
+    for (let i = 0; i < 7; i += 1)
+      opened.push(await h.agentOpen(token, `https://example.com/${i}`));
+    expect(
+      new Set(opened.map((id) => h.sessions.getSession(id)!.createdAt)).size,
+    ).toBe(1);
+
+    const listed: string[] = [];
+    let cursor: unknown;
+    for (let pages = 0; pages === 0 || typeof cursor === 'string'; pages += 1) {
+      expect(pages).toBeLessThan(5);
+      const page = await h.tool(token, 'status', {
+        limit: 2,
+        ...(typeof cursor === 'string' ? { cursor } : {}),
+      });
+      listed.push(
+        ...(page.sessions as StatusEntry[]).map((s) => s.browserSessionId),
+      );
+      cursor = page.nextCursor;
+    }
+    // Ids are minted in increasing order, so newest-first is descending id.
+    expect(listed).toEqual([...opened].reverse());
   });
 
   test('limit 20 is the most one page lists', async () => {
