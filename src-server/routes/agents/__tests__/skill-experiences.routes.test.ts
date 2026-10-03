@@ -285,16 +285,25 @@ test('same-version replacement cannot publish against the previous discovered Sk
   expect(refreshed.identity.materialization).not.toBe(old.materialization);
 });
 
-test('corrupt selected package manifests remain a named refusal instead of disappearing from discovery', async () => {
-  const fixture = await installedExperience();
-  await fixture.activate();
-  const root = fixture.loader.listInstalled()[0]!.root;
-  writeFileSync(join(root, 'plugin.json'), '{');
-  expect(await fixture.inventory(false)).toMatchObject({
-    experiences: [],
-    diagnostics: [{ pluginId: fixture.pluginId, code: 'unavailable' }],
-  });
-});
+test.each(['syntax', 'schema'] as const)(
+  'selected manifest %s corruption remains a named refusal instead of disappearing from discovery',
+  async (failure) => {
+    const fixture = await installedExperience();
+    await fixture.activate();
+    const root = fixture.loader.listInstalled()[0]!.root;
+    const path = join(root, 'plugin.json');
+    if (failure === 'syntax') writeFileSync(path, '{');
+    else {
+      const manifest = JSON.parse(readFileSync(path, 'utf8'));
+      delete manifest.$schema;
+      writeFileSync(path, JSON.stringify(manifest));
+    }
+    expect(await fixture.inventory(false)).toMatchObject({
+      experiences: [],
+      diagnostics: [{ pluginId: fixture.pluginId, code: 'unavailable' }],
+    });
+  },
+);
 
 test('journal-observed legacy packages cannot invent managed materialization identity', async () => {
   const home = mkdtempSync(join(tmpdir(), 'station-experience-legacy-'));

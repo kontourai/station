@@ -733,7 +733,25 @@ export class AgentPluginLoader {
               resolveContainedPath(root, join(root, 'plugin.json')),
             ),
           );
-          if (isRecord(raw) && typeof raw.$schema !== 'string') return;
+          if (isRecord(raw) && typeof raw.$schema !== 'string') {
+            const selected = this.options
+              .journal?.()
+              .currentInstallation(directoryName);
+            if (
+              selected?.state === 'observed' &&
+              (await computePluginContentDigestAsync(
+                dirname(root),
+                basename(root),
+              )) !== selected.installation.contentDigest
+            )
+              inventory.diagnostics.push({
+                pluginId: directoryName,
+                code: 'unavailable',
+                message:
+                  'The selected installed package manifest changed from its admitted revision.',
+              });
+            return;
+          }
           const parsed = this.parseManifest(root, raw, reports);
           if (!parsed?.stationExtension) {
             for (const report of reports.filter(
