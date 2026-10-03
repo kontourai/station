@@ -25,6 +25,10 @@ import { navigationStore } from '../contexts/navigation-store';
 import type { ProjectMetadata } from '../contexts/ProjectsContext';
 
 vi.mock('@kontourai/station-sdk', () => ({
+  useSkillExperienceInventoryQuery: () => ({
+    data: { experiences: [], diagnostics: [] },
+    refetch: vi.fn(),
+  }),
   useMaterializeEngineAgentMutation: () => ({ mutateAsync: vi.fn() }),
 }));
 const screenSize = vi.hoisted(() => ({ mobile: false }));

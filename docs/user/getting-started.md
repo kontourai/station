@@ -147,6 +147,32 @@ connection errors, or setup actions when a choice is not ready. Opening it does
 not send a message. **Take the tour** and **Connect another device** are optional alternatives.
 Both save the same selected answers before opening their next step.
 
+### Prepare a visual skill
+
+Ordinary New Chat also lists installed visual skills, including when only one
+Agent is ready. A card describes its purpose, example and owning plugin. Choose
+a card and fill its text or choice inputs, then choose an Agent, Model and
+workspace. This prepares an unsent chat. Attach any required files using the
+ordinary composer and send explicitly to start. Stations that expose inventory
+without execution support show previews and refuse starts.
+
+Guided mode keeps the preparation or recorded stage above the conversation.
+Alongside chat places it beside the conversation on wide screens and above it
+on phones. Chat mode keeps the same conversation with a compact skill header.
+Questions, approvals, transcript, artifacts and Stop keep their ordinary
+conversation controls when switching modes. Declared outputs are expectations;
+actual results appear when the Agent produces them.
+
+The prepared selection and scalar inputs persist with the selected Station's
+scoped chat draft. A failed, busy or offline send retains that selection and
+never queues it for automatic replay. A changed source requires a new review.
+Use **Remove unsent visual skill** to deliberately return to ordinary chat.
+**Prepare another stage in this conversation** binds a new unsent preparation
+to the current recorded stage; sending still requires the same source to be
+available. **Browse marketplaces** opens Registry while retaining the picker
+inputs and choices. Return or browser Back refetches the inventory and setup;
+it never installs a plugin or starts the skill automatically.
+
 ### Finish setup and return
 
 If New Chat offers **Connect**, **Set up**, **Edit agent**, or **Set up

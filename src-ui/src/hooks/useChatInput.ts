@@ -77,6 +77,7 @@ type ComposerChatSlice = Pick<
   | 'conversationOpenPending'
   | 'conversationOpenFailed'
   | 'input'
+  | 'skillExperienceDraft'
   | 'attachments'
   | 'attachmentStages'
   | 'model'
@@ -103,6 +104,7 @@ function selectComposerSlice(
     conversationOpenPending: state.conversationOpenPending,
     conversationOpenFailed: state.conversationOpenFailed,
     input: state.input,
+    skillExperienceDraft: state.skillExperienceDraft,
     attachments: state.attachments,
     attachmentStages: state.attachmentStages,
     model: state.model,
@@ -566,7 +568,15 @@ export function useChatInput({
         selectedAttachments,
         options?.ambientContext,
         undefined,
-        options?.queueOnBusy ? { queueOnBusy: true } : undefined,
+        activeChatState?.skillExperienceDraft
+          ? {
+              skillExperienceStart: activeChatState.skillExperienceDraft.start,
+              experienceRequestScope: mentionRequestScope,
+              ...(options?.queueOnBusy ? { queueOnBusy: true } : {}),
+            }
+          : options?.queueOnBusy
+            ? { queueOnBusy: true }
+            : undefined,
       );
       // A durable offline row owns queued text. Clearing its draft prevents
       // the composer from rendering a second editable copy after a resume.
@@ -607,6 +617,7 @@ export function useChatInput({
       attachments,
       attachmentStages,
       sendMessageAction,
+      activeChatState?.skillExperienceDraft,
       addToInputHistory,
       clearDraft,
       showToast,

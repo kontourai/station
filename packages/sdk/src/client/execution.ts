@@ -17,6 +17,12 @@ import {
   FOREGROUND_MESSAGE_INDETERMINATE_CODE,
   type ForegroundMessageIndeterminate,
 } from '@kontourai/station-contracts/orchestration';
+import type { SkillExperienceStartInputV1 } from '@kontourai/station-contracts/skill-experience';
+import {
+  readSkillExperienceStartInput,
+  sameSkillExperienceIdentity,
+  skillExperiencesCanExecute,
+} from '@kontourai/station-shared/skill-experience-values';
 import {
   envelopeError,
   readEnvelopeFailure,
@@ -25,6 +31,7 @@ import {
 import { ChatHttpError, isStationEnvelope } from './chatHttpError';
 import { type ClientRequestOptions, getJson, mutateJson } from './http';
 import { rethrowDeadline } from './request-deadline';
+import { fetchSkillExperienceInventory } from './skill-experiences';
 /**
  * #2436: an approval-posture decision a send carries (a pick made before the
  * chat had a session, or while offline), and its compare-and-set basis: the
@@ -44,6 +51,7 @@ export type ForegroundMessageInput = ForegroundMessageFields &
   ApprovalPickCarry;
 
 interface ForegroundMessageFields {
+  skillExperience?: SkillExperienceStartInputV1;
   expectedInputRequest?: AttentionRequestReference;
   target: Omit<ExecutionTarget, 'environment'> & {
     environment?: EnvironmentRef;
@@ -258,6 +266,30 @@ export async function sendExecutionMessage(
   input: ForegroundMessageInput,
   opts?: ClientRequestOptions,
 ): Promise<ForegroundMessageReceipt> {
+  if (input.skillExperience) {
+    if (input.automaticBackground)
+      throw new Error(
+        'Visual skill starts require an explicit foreground send.',
+      );
+    if (!readSkillExperienceStartInput(input.skillExperience))
+      throw new Error('The selected visual skill input is unsupported.');
+    const inventory = await fetchSkillExperienceInventory(apiBase, opts);
+    if (!skillExperiencesCanExecute(inventory))
+      throw new Error(
+        'This Station cannot execute visual skill starts. Your selection has not been sent.',
+      );
+    if (
+      !inventory.experiences.some((entry) =>
+        sameSkillExperienceIdentity(
+          entry.identity,
+          input.skillExperience!.identity,
+        ),
+      )
+    )
+      throw new Error(
+        'The selected visual skill source changed or is unavailable. Review it before starting.',
+      );
+  }
   const { automaticBackground, ...body } = input;
   const response = await mutateJson(
     `${apiBase}/api/orchestration/chat${automaticBackground ? '/background' : ''}`,

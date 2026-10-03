@@ -1028,6 +1028,8 @@ export {
   useShowSessionSummaryMutation,
   useSkillContentQuery,
   useSkillDetailReader,
+  useSkillExperienceInventoryQuery,
+  useSkillExperienceSessionQuery,
   useSkillOutcome,
   useSkillQuery,
   useSkillsQuery,

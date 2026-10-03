@@ -1,4 +1,5 @@
 import { agentId } from '@kontourai/station-contracts/agent-identity';
+import type { SkillExperienceStartInputV1 } from '@kontourai/station-contracts/skill-experience';
 import {
   type ApprovalPickCarry,
   sendExecutionMessage,
@@ -35,6 +36,9 @@ export async function dispatchForeground(input: {
   ambientContext?: string;
   clientTurnId: string;
   automaticBackground?: boolean;
+  skillExperience?: SkillExperienceStartInputV1;
+  skillExperienceAttachmentRole?: string;
+  requestScope?: import('@kontourai/station-sdk/client').ClientRequestOptions['requestScope'];
   signal?: AbortSignal;
 }) {
   // #2436: the pick travels as the message's own `setApprovalMode` with its
@@ -152,8 +156,33 @@ export async function dispatchForeground(input: {
       ambientContext: input.ambientContext,
       clientTurnId: input.clientTurnId,
       automaticBackground: input.automaticBackground,
+      ...(input.skillExperience
+        ? {
+            skillExperience: {
+              ...input.skillExperience,
+              ...(input.skillExperienceAttachmentRole
+                ? {
+                    attachmentInputs: {
+                      [input.skillExperienceAttachmentRole]: Array.from(
+                        {
+                          length:
+                            'attachmentRefs' in attachmentDispatch
+                              ? attachmentDispatch.attachmentRefs.length
+                              : attachmentDispatch.attachments.length,
+                        },
+                        (_, index) => index,
+                      ),
+                    },
+                  }
+                : {}),
+            },
+          }
+        : {}),
       ...approvalPick,
     },
-    { signal: input.signal },
+    {
+      signal: input.signal,
+      ...(input.requestScope ? { requestScope: input.requestScope } : {}),
+    },
   );
 }

@@ -14,7 +14,14 @@
  * the parent's onSelect handler surfaces instead of vanishing — from the
  * user's seat that failure is identical to the silent fall-through.
  */
+import { readFileSync } from 'node:fs';
+import { URL as NodeURL } from 'node:url';
 import { agentId, engineId } from '@kontourai/station-contracts/agent-identity';
+import type {
+  InstalledSkillExperienceV1,
+  SkillExperienceDefinitionV1,
+  SkillExperienceInventoryV1,
+} from '@kontourai/station-contracts/skill-experience';
 import type { ExternalEngineReadinessProjection } from '@kontourai/station-contracts/system-status';
 import {
   act,
@@ -95,7 +102,20 @@ vi.mock('../hooks/useSystemStatus', () => ({
     isFetching: false,
   }),
 }));
+const experienceInventory = vi.hoisted(() => ({
+  current: { experiences: [], diagnostics: [] } as SkillExperienceInventoryV1,
+}));
+vi.mock('../contexts/AuthorityPersistenceContext', () => ({
+  useAuthorityPersistence: () => ({
+    namespace: 'authority-1',
+    status: 'verified',
+  }),
+}));
 vi.mock('@kontourai/station-sdk', () => ({
+  useSkillExperienceInventoryQuery: () => ({
+    data: experienceInventory.current,
+    refetch: vi.fn(),
+  }),
   useMaterializeEngineAgentMutation: () => ({ mutateAsync: materializeMock }),
   useConnectAndMaterializeEngineMutation: () => ({ mutateAsync: connectMock }),
 }));
@@ -155,6 +175,7 @@ const { pluginAuthoringComposerDraft } = await import(
 
 afterEach(() => {
   cleanup();
+  experienceInventory.current = { experiences: [], diagnostics: [] };
   selectionModelState.isGlobal = true;
   selectionModelState.selectedProject = undefined;
   selectionModelState.agents = [AGENT];
@@ -1020,5 +1041,106 @@ describe('intent-first preparation', () => {
       ).toBeTruthy(),
     );
     expect(onSelect).not.toHaveBeenCalled();
+  });
+});
+
+describe('visual skill selection through the New Chat picker', () => {
+  function installedExperience(): InstalledSkillExperienceV1 {
+    const definition: SkillExperienceDefinitionV1 = JSON.parse(
+      readFileSync(
+        new NodeURL(
+          '../../../examples/visual-skill-experience/io.kontourai.station/experiences/stress-test-idea.json',
+          import.meta.url,
+        ),
+        'utf8',
+      ),
+    );
+    return {
+      definition,
+      identity: {
+        pluginId: 'example',
+        pluginVersion: '1.0.0',
+        experienceId: definition.id,
+        incarnation: 'installation-1',
+        materialization: 'materialization-1',
+        contentDigest: 'digest-1',
+        definitionDigest: 'definition-1',
+      },
+    };
+  }
+  const authority = {
+    apiBase: 'http://station.test',
+    authorityKey: 'authority-1',
+    isCurrent: () => true,
+  };
+  test('prepares edited source-bound intent without dispatching until an Agent is chosen', () => {
+    const experience = installedExperience();
+    experienceInventory.current = {
+      executionContract: '1.0',
+      experiences: [experience],
+      diagnostics: [],
+    } as SkillExperienceInventoryV1;
+    const onSelect = vi.fn();
+    render(
+      <NewChatModal
+        agents={[AGENT]}
+        projects={[]}
+        onSelect={onSelect}
+        onClose={vi.fn()}
+        requestAuthority={authority}
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: new RegExp(experience.definition.title),
+      }),
+    );
+    fireEvent.change(
+      screen.getByRole('textbox', { name: /What would you like to build/ }),
+      { target: { value: 'My edited proposal' } },
+    );
+    expect(onSelect).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: /Assistant Ready/ }));
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(onSelect.mock.calls[0].at(-1)).toMatchObject({
+      namespace: 'authority-1',
+      apiBase: authority.apiBase,
+      start: {
+        identity: experience.identity,
+        inputs: { idea: 'My edited proposal' },
+      },
+    });
+  });
+  test('inventory-only hosts retain the inputs and visibly refuse preparing a start', () => {
+    const experience = installedExperience();
+    experienceInventory.current = {
+      experiences: [experience],
+      diagnostics: [],
+    };
+    const onSelect = vi.fn();
+    render(
+      <NewChatModal
+        agents={[AGENT]}
+        projects={[]}
+        onSelect={onSelect}
+        onClose={vi.fn()}
+        requestAuthority={authority}
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: new RegExp(experience.definition.title),
+      }),
+    );
+    fireEvent.change(
+      screen.getByRole('textbox', { name: /What would you like to build/ }),
+      { target: { value: 'Retain this' } },
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Assistant Ready/ }));
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(screen.getByText(/cannot start on this Station/)).toBeTruthy();
+    expect(
+      screen.getByRole('textbox', { name: /What would you like to build/ }),
+    ).toHaveProperty('value', 'Retain this');
   });
 });

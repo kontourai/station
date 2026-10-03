@@ -115,7 +115,12 @@ export class ActiveChatsStore {
         // whose "Not sent" rows are populated was the exact state a
         // permanent drop creates, and a refused write left those rows
         // LOOKING retained while reload would destroy them.
-        if (!chat.queuedMessages?.length && !chat.unsentMessages?.length)
+        if (
+          !chat.queuedMessages?.length &&
+          !chat.unsentMessages?.length &&
+          !chat.skillExperienceDraft &&
+          !chat.skillExperienceDraftInvalid
+        )
           continue;
         if (this.storageFailureReportedFor.has(sessionId)) continue;
         this.storageFailureReportedFor.add(sessionId);

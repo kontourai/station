@@ -1,7 +1,17 @@
 /** @vitest-environment jsdom */
 
+import { readFileSync } from 'node:fs';
+import { URL as NodeURL } from 'node:url';
+import type { SkillExperienceDefinitionV1 } from '@kontourai/station-contracts/skill-experience';
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock('../contexts/AuthorityPersistenceContext', () => ({
+  useAuthorityPersistence: () => ({
+    namespace: 'authority-1',
+    status: 'verified',
+  }),
+}));
 
 const outboundQueueMode = vi.hoisted(() => ({ useActual: false }));
 
@@ -225,6 +235,107 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     outboundQueueMode.useActual = false;
     _resetOutboundQueueStorage();
     activeChatsStore.removeChat(sessionId);
+  });
+
+  it('retains the source intent through refusal and clears it only after foreground acceptance', async () => {
+    const definition: SkillExperienceDefinitionV1 = JSON.parse(
+      readFileSync(
+        new NodeURL(
+          '../../../examples/visual-skill-experience/io.kontourai.station/experiences/stress-test-idea.json',
+          import.meta.url,
+        ),
+        'utf8',
+      ),
+    );
+    const draft = {
+      namespace: 'authority-1',
+      apiBase: 'http://api.test',
+      definition,
+      start: {
+        identity: {
+          pluginId: 'example',
+          pluginVersion: '1.0.0',
+          experienceId: definition.id,
+          incarnation: 'installed-1',
+          materialization: 'materialization-1',
+          contentDigest: 'digest-1',
+          definitionDigest: 'definition-1',
+        },
+        inputs: { idea: 'My edited idea' },
+      },
+    };
+    activeChatsStore.updateChat(sessionId, { skillExperienceDraft: draft });
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+    const scope = {
+      apiBase: 'http://api.test',
+      authorityKey: 'authority-1',
+      isCurrent: () => true,
+    };
+    await act(async () => {
+      expect(await result.current(sessionId, 'codex', undefined, 'Start')).toBe(
+        false,
+      );
+    });
+    expect(sendExecutionMessageMock).not.toHaveBeenCalled();
+    expect(
+      activeChatsStore.getSnapshot()[sessionId].skillExperienceDraft,
+    ).toEqual(draft);
+    activeChatsStore.updateChat(sessionId, { status: 'sending' });
+    await act(async () => {
+      expect(
+        await result.current(
+          sessionId,
+          'codex',
+          undefined,
+          'Start',
+          undefined,
+          undefined,
+          undefined,
+          { skillExperienceStart: draft.start, experienceRequestScope: scope },
+        ),
+      ).toBe(false);
+    });
+    expect(sendExecutionMessageMock).not.toHaveBeenCalled();
+    expect(steerOrchestrationTurnMock).not.toHaveBeenCalled();
+    activeChatsStore.updateChat(sessionId, { status: 'idle' });
+    sendExecutionMessageMock.mockRejectedValueOnce(new Error('Source changed'));
+    await act(async () => {
+      await result.current(
+        sessionId,
+        'codex',
+        undefined,
+        'Start',
+        undefined,
+        undefined,
+        undefined,
+        { skillExperienceStart: draft.start, experienceRequestScope: scope },
+      );
+    });
+    expect(
+      activeChatsStore.getSnapshot()[sessionId].skillExperienceDraft,
+    ).toEqual(draft);
+    activeChatsStore.updateChat(sessionId, { status: 'idle' });
+    await act(async () => {
+      await result.current(
+        sessionId,
+        'codex',
+        undefined,
+        'Start',
+        undefined,
+        undefined,
+        undefined,
+        { skillExperienceStart: draft.start, experienceRequestScope: scope },
+      );
+    });
+    expect(
+      sendExecutionMessageMock.mock.calls.at(-1)?.[1].skillExperience,
+    ).toEqual(draft.start);
+    expect(
+      activeChatsStore.getSnapshot()[sessionId].skillExperienceDraft,
+    ).toBeUndefined();
+    expect(
+      activeChatsStore.getSnapshot()[sessionId].skillExperienceActive,
+    ).toBe(true);
   });
 
   it('leaves a project environment unresolved while sending Agent + model/workspace', async () => {

@@ -5,6 +5,7 @@ import type { ChatSession, FileAttachment } from '../../types';
 import type { ForkTurnSource } from '../chat/fork-turn-source';
 import { LazyBoundary } from '../LazyBoundary';
 import { Empty, SkeletonList } from '../state';
+import '../skill-experiences/skill-experiences.css';
 import { ChatDockBody } from './ChatDockBody';
 import type { ComposerActionsMenuProps } from './ComposerActionsMenu';
 
@@ -14,6 +15,11 @@ import type { ComposerActionsMenuProps } from './ComposerActionsMenu';
 const loadConversationHistory = () =>
   import('../chat/ConversationHistory').then(({ ConversationHistory }) => ({
     default: ConversationHistory,
+  }));
+
+const loadSkillExperiencePanel = () =>
+  import('../skill-experiences/SkillExperiencePanel').then((module) => ({
+    default: module.SkillExperiencePanel,
   }));
 
 interface ChatDockContentAreaProps {
@@ -203,58 +209,75 @@ function ChatDockContentAreaImpl({
           />
         </>
       )}
-      <div className="chat-dock__body">
-        {activeSession ? (
-          <ChatDockBody
-            activeSession={activeSession}
-            workingDirectory={workingDirectory}
-            activeOrchestrationSession={activeOrchestrationSession}
-            activeOrchestrationSessionRead={activeOrchestrationSessionRead}
-            onRetryOrchestrationSessions={onRetryOrchestrationSessions}
-            chatFontSize={chatFontSize}
-            dockHeight={dockHeight}
-            showStatsPanel={showStatsPanel}
-            showReasoning={showReasoning}
-            showToolDetails={showToolDetails}
-            modelSupportsAttachments={modelSupportsAttachments}
-            fileAttachmentsSupported={fileAttachmentsSupported}
-            modelProviderLabel={modelProviderLabel}
-            modelProviders={modelProviders}
-            agentDefaultModelId={agentDefaultModelId ?? undefined}
-            agentApprovalModeDefault={agentApprovalModeDefault}
-            stationApprovalModeDefault={stationApprovalModeDefault}
-            toolPolicyDelivery={toolPolicyDelivery}
-            availableModels={availableModels}
-            modelsLoading={modelsLoading}
-            chatInput={chatInput}
-            secondaryActions={secondaryActions}
-            onOpenAgentHandoff={onOpenAgentHandoff}
-            agentHandoffTriggerRef={agentHandoffTriggerRef}
-            setShowStatsPanel={onToggleStatsPanel}
-            onOpenBackgroundTasks={onOpenBackgroundTasks}
-            onNewChat={onNewChat}
-            onRetryConversationOpen={onRetryConversationOpen}
-            onForkFromTurn={onForkFromTurn}
-          />
-        ) : (
-          // #800: this instructed the user to click "New", which renders as a
-          // bare + icon on phone — naming a control the eye cannot find. The
-          // empty state carries the action itself now.
-          <Empty
-            variant="prominent"
-            className="chat-dock__no-chat"
-            label="No chat open"
-            action={
-              <button
-                type="button"
-                className="button button--primary"
-                onClick={() => onNewChat()}
-              >
-                Start a chat
-              </button>
-            }
+      <div
+        className="skill-experience-workspace"
+        data-presentation={
+          activeSession?.skillExperienceMode ??
+          activeSession?.skillExperienceDraft?.definition.presentation
+            .defaultMode ??
+          'guided'
+        }
+      >
+        {activeSession && (
+          <LazyBoundary
+            load={loadSkillExperiencePanel}
+            componentProps={{ session: activeSession }}
+            pending={null}
           />
         )}
+        <div className="chat-dock__body">
+          {activeSession ? (
+            <ChatDockBody
+              activeSession={activeSession}
+              workingDirectory={workingDirectory}
+              activeOrchestrationSession={activeOrchestrationSession}
+              activeOrchestrationSessionRead={activeOrchestrationSessionRead}
+              onRetryOrchestrationSessions={onRetryOrchestrationSessions}
+              chatFontSize={chatFontSize}
+              dockHeight={dockHeight}
+              showStatsPanel={showStatsPanel}
+              showReasoning={showReasoning}
+              showToolDetails={showToolDetails}
+              modelSupportsAttachments={modelSupportsAttachments}
+              fileAttachmentsSupported={fileAttachmentsSupported}
+              modelProviderLabel={modelProviderLabel}
+              modelProviders={modelProviders}
+              agentDefaultModelId={agentDefaultModelId ?? undefined}
+              agentApprovalModeDefault={agentApprovalModeDefault}
+              stationApprovalModeDefault={stationApprovalModeDefault}
+              toolPolicyDelivery={toolPolicyDelivery}
+              availableModels={availableModels}
+              modelsLoading={modelsLoading}
+              chatInput={chatInput}
+              secondaryActions={secondaryActions}
+              onOpenAgentHandoff={onOpenAgentHandoff}
+              agentHandoffTriggerRef={agentHandoffTriggerRef}
+              setShowStatsPanel={onToggleStatsPanel}
+              onOpenBackgroundTasks={onOpenBackgroundTasks}
+              onNewChat={onNewChat}
+              onRetryConversationOpen={onRetryConversationOpen}
+              onForkFromTurn={onForkFromTurn}
+            />
+          ) : (
+            // #800: this instructed the user to click "New", which renders as a
+            // bare + icon on phone — naming a control the eye cannot find. The
+            // empty state carries the action itself now.
+            <Empty
+              variant="prominent"
+              className="chat-dock__no-chat"
+              label="No chat open"
+              action={
+                <button
+                  type="button"
+                  className="button button--primary"
+                  onClick={() => onNewChat()}
+                >
+                  Start a chat
+                </button>
+              }
+            />
+          )}
+        </div>
       </div>
     </div>
   );

@@ -2168,6 +2168,39 @@ manifest's field name (`skills`).
 
 ---
 
+## Visual skill experiences
+
+`fetchSkillExperienceInventory(apiBase, options?)` and
+`fetchSkillExperienceSession(apiBase, threadId, cursor?, options?)` are available
+from `@kontourai/station-sdk/client`. Both validate the returned inventory or
+session projection before exposing it and preserve HTTP failure details.
+`useSkillExperienceInventoryQuery(config?)` and
+`useSkillExperienceSessionQuery(threadId, config?)` are React Query hooks from
+the SDK root. The session hook remains disabled until a canonical thread exists.
+The optional cursor reads older invocation snapshots; those rows do not grant
+current execution authority.
+
+An inventory entry is a preview. Starting requires `executionContract: '1.0'`
+and an exact current source identity. `sendExecutionMessage` accepts the optional
+`skillExperience: { identity, inputs, expectedPreviousInvocationEventId?, attachmentInputs? }`
+field and refetches the installed inventory before its foreground POST.
+`inputs` holds scalar text/choice values; attachment role arrays contain indices
+into the canonical chat attachments, after supervised staging. The server owns
+source admission, input validation and immutable invocation snapshots. A missing
+execution contract, changed source or automatic background send fails without
+posting an ordinary-chat substitute.
+
+The response history contains an immutable definition/input snapshot and current
+source availability, or an explicit unavailable-snapshot row. A continuation
+uses the same conversation and the exact current invocation event as
+`expectedPreviousInvocationEventId`. Questions and approvals remain canonical
+session requests. Definitions describe intended outputs; they do not prove
+completion. See [Visual skill experiences](skill-experiences.md) for source and
+authoring boundaries. These source exports require a published SDK release
+before external consumers can import them.
+
+---
+
 ## Context Providers
 
 ### `SDKProvider`
