@@ -2351,8 +2351,11 @@ export class SkillService {
         selected: {
           catalog: selection,
           source:
-            resolved.entry.source.location ?? resolved.entry.source.displayName,
+            resolved.item.source ??
+            resolved.entry.source.location ??
+            resolved.entry.source.displayName,
           packageRevision: resolved.item.packageRevision,
+          item: resolved.item,
           assertCurrent: async () => {
             await manager.resolve(name);
           },

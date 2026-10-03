@@ -1,7 +1,10 @@
 import { existsSync } from 'node:fs';
 import { lstat, mkdir, mkdtemp, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
-import type { RegistryCatalogSelection } from '@kontourai/station-contracts/catalog';
+import type {
+  RegistryCatalogSelection,
+  RegistryItem,
+} from '@kontourai/station-contracts/catalog';
 import type { SkillConfig } from '../../domain/config-loader.js';
 import type { ISkillRegistryProvider } from '../../providers/provider-interfaces.js';
 import { withLocalSkillMutation } from './skill-local-mutation.js';
@@ -34,6 +37,7 @@ interface InstallSkillDeps {
     catalog: RegistryCatalogSelection;
     source: string;
     packageRevision?: string;
+    item: RegistryItem;
     assertCurrent: () => Promise<void>;
   };
   expectedInstalledRevision?: string;
@@ -190,10 +194,10 @@ async function installSkillFromRegistryOwned({
       // opposite of what the sentence above promises (delta review 4, M1).
       let items: Awaited<ReturnType<typeof provider.listAvailable>> = [];
       try {
-        const listed = await provider.listAvailable();
+        const listed = selected ? [] : await provider.listAvailable();
         if (Array.isArray(listed)) items = listed;
       } catch {}
-      const item = items.find((entry) => entry.id === name);
+      const item = selected?.item ?? items.find((entry) => entry.id === name);
       const version = item?.version ?? 'unknown';
       const installedAt = new Date().toISOString();
       const provenance = selected

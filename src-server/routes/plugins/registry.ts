@@ -969,6 +969,19 @@ export function createRegistryRoutes(
     try {
       const id = param(c, 'id');
       const selection = readRegistryCatalogSelection(id);
+      if (selection) {
+        const source = sources
+          .list()
+          .find((source) => source.id === selection.sourceId);
+        if (source && !sourceVisible(c)(source))
+          return c.json(
+            {
+              success: false,
+              error: 'Selected marketplace is not available to this caller.',
+            },
+            403,
+          );
+      }
       const matches = selection
         ? []
         : (await sources.catalog('skills', sourceVisible(c))).filter(
