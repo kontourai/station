@@ -30,7 +30,7 @@
 
     {"path":"src-server/routes/plugins/plugin-public-routes.ts","digest":"5d088d683e1fc60155100743cf2fb67a6df25ded4914307ba54883d1097f157e","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
-    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"7c26b7e6d8f099d1076579d5d219dbe2e73eb37a928316ee44da285bb5762544","revision":"cc4f7016217bc65a2cf928481052ffeb68d49cb2"},
+    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"526128683c1bb08bf9f5e1dc7f1ed50b4d7d6d1f96bcf54484c263a82d9217f0","revision":"88a7f8ed59c055ea6ac713120ba6069d33fbb892"},
 
     {"path":"src-server/services/plugins/__tests__/plugin-public-server.test.ts","digest":"1b68eb4818b17281b1436829a86b4f1e35e3671f2ddf7f771e0a1f6ec8cb546f","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
 

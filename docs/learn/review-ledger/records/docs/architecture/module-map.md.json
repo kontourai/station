@@ -344,7 +344,7 @@
 
     {"path":"src-server/runtime/bootstrap/runtime-service-bootstrap.ts","digest":"a78f60fbabf9c50eb01380d1aeee4d90583848b546547a23bcd70760ce026dbd","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"7c26b7e6d8f099d1076579d5d219dbe2e73eb37a928316ee44da285bb5762544","revision":"cc4f7016217bc65a2cf928481052ffeb68d49cb2"},
+    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"526128683c1bb08bf9f5e1dc7f1ed50b4d7d6d1f96bcf54484c263a82d9217f0","revision":"88a7f8ed59c055ea6ac713120ba6069d33fbb892"},
 
     {"path":"src-server/runtime/conversation/native-execution-workspace.ts","digest":"96f7a7abce65f311682b087af1904e9b9ce8fffe960fb93f3d60c1ecd6aaad19","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -852,7 +852,7 @@
 
     {"path":"src-ui/src/live-surface/useLiveSurface.ts","digest":"2f51778707bf5a9560caf660128c6a07807c33e1b6c7529e03c2049e0ba7e59f","revision":"e5d9b68a5a99edfb53c307ebc86f2890a3200d00"},
 
-    {"path":"src-ui/src/platform/native/NativeRelayLinkIntake.tsx","digest":"4d332dc6786d1c1d3fad5a27572e992ab9615b5ddcd3839a4ed539ddfb3626d6","revision":"e512a39196d7df557d7de9ec15474a93aba570c2"},
+    {"path":"src-ui/src/platform/native/NativeRelayLinkIntake.tsx","digest":"d3c041146c487d336cde57365f9a60ffac4fbd5bd830f1f565bf21d4c2c1e8ef","revision":"00e6787a016649c527aa862f9e15327b06e2d6e3"},
 
     {"path":"src-ui/src/platform/native/NativeRelayLinkReview.tsx","digest":"e25569817376f5d0dc1ea00e379042b7dba49049178662a7d45fdee23b8357c5","revision":"d606c17132af7b1d9ec0d576871937dc37f79864"},
 
@@ -876,7 +876,7 @@
 
     {"path":"src-ui/src/platform/native/nativeRelayGrantRenewalSupervisor.ts","digest":"a7a28335632f47d95b026e4f7edc9011bdabef0adafa8815339f436fd69aa2a3","revision":"63b38388826be9b989d3a94c88052e65c69b2d63"},
 
-    {"path":"src-ui/src/platform/native/nativeRelayLinkAdapter.ts","digest":"e995793c410131706f29493905dbae8cb47d44eef28c0b6cb7c104f60484e8f5","revision":"4cf503807d144ac197e10fcf4aee5e301b96e28d"},
+    {"path":"src-ui/src/platform/native/nativeRelayLinkAdapter.ts","digest":"7cc86f65b430a45644c9af1ba4ea2cd8023884ea572ac436f43ce66611bfe31f","revision":"00e6787a016649c527aa862f9e15327b06e2d6e3"},
 
     {"path":"src-ui/src/platform/native/rendererLiveness.tsx","digest":"8a47896392329e0bce4fc0ca3ce544171cff1e2df6bcb77097c97ff26ce78c63","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

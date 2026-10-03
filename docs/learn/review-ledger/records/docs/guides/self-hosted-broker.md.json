@@ -142,7 +142,7 @@
 
     {"path":"src-ui/src/platform/native/__tests__/nativeDiagnosticEchoBridge.test.ts","digest":"b9221a5713062938261b59f2a01562faec920fc5c287d8abc5e3369ae89d20d0","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
-    {"path":"src-ui/src/platform/native/__tests__/NativeRelayLinkIntake.test.tsx","digest":"e490cf33deb5ccd5b5267424ba1fa87308c056155876510885631a8a719a2b97","revision":"8a10893609b9e3cd63909b6f9b5b889c4e82af15"},
+    {"path":"src-ui/src/platform/native/__tests__/NativeRelayLinkIntake.test.tsx","digest":"4a7272bf2aec7fd3af4e3098dfdef975d376f2924d794fa437d3547efbffadec","revision":"00e6787a016649c527aa862f9e15327b06e2d6e3"},
 
     {"path":"src-ui/src/platform/native/nativeAccountSessionBridge.ts","digest":"8247d3d4dfe7d8bd2a5130de0b4d9d77554057662af85206426592b4ca051bd4","revision":"2e4f061f91ffb0338e45de62382cf6da59cd5c76"},
 
