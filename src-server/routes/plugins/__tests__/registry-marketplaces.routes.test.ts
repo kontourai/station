@@ -270,55 +270,71 @@ describe('Marketplace source lifecycle through Registry routes', () => {
     }
   });
 
-  test('plugin catalog failures refuse an empty-success response and retain healthy independent rows', async () => {
-    const { request, home } = setup();
-    const missing = join(home, 'missing-catalog.json');
-    await expect(access(missing)).rejects.toThrow();
-    expect(
-      (
-        await request('/sources', 'POST', {
-          displayName: 'Unavailable plugins',
-          adapter: 'manifest',
-          location: missing,
-        })
-      ).status,
-    ).toBe(201);
-    const failed = await request('/plugins');
-    expect(failed.status).toBe(503);
-    expect(await failed.json()).toMatchObject({
-      success: false,
-      data: [],
-      partial: true,
-      sources: [expect.objectContaining({ status: 'error', kind: 'plugins' })],
-    });
-    registerPluginRegistryProvider({
-      registryKey: 'healthy-independent-catalog',
-      listAvailable: async () => [{ id: 'available', installed: false }],
-      listInstalled: async () => [],
-      install: async () => ({
+  test.each(['skills', 'plugins'] as const)(
+    '%s catalog failures refuse an empty-success response and retain healthy independent observations',
+    async (kind) => {
+      const { request, home } = setup();
+      const missing = join(home, 'missing-source');
+      let rows: RegistryItem[] = [];
+      await expect(access(missing)).rejects.toThrow();
+      expect(
+        (
+          await request('/sources', 'POST', {
+            displayName: 'Unavailable plugins',
+            adapter: 'manifest',
+            location: missing,
+          })
+        ).status,
+      ).toBe(201);
+      const failed = await request(`/${kind}`);
+      expect(failed.status).toBe(503);
+      expect(await failed.json()).toMatchObject({
         success: false,
-        message: 'Not an install fixture',
-      }),
-      uninstall: async () => ({
-        success: false,
-        message: 'Not an install fixture',
-      }),
-    });
-    const partial = await request('/plugins');
-    expect(partial.status).toBe(200);
-    expect(await partial.json()).toMatchObject({
-      success: true,
-      partial: true,
-      data: [
-        expect.objectContaining({
-          catalog: expect.objectContaining({ itemId: 'available' }),
+        data: [],
+        partial: true,
+        sources: [expect.objectContaining({ status: 'error', kind })],
+      });
+      const register =
+        kind === 'plugins'
+          ? registerPluginRegistryProvider
+          : registerSkillRegistryProvider;
+      register({
+        registryKey: 'healthy-independent-catalog',
+        listAvailable: async () => rows,
+        listInstalled: async () => [],
+        install: async () => ({
+          success: false,
+          message: 'Not an install fixture',
         }),
-      ],
-      sources: expect.arrayContaining([
-        expect.objectContaining({ status: 'error' }),
-      ]),
-    });
-  });
+        uninstall: async () => ({
+          success: false,
+          message: 'Not an install fixture',
+        }),
+      });
+      const healthyEmpty = await request(`/${kind}`);
+      expect(healthyEmpty.status).toBe(200);
+      expect(await healthyEmpty.json()).toMatchObject({
+        success: true,
+        data: [],
+        partial: true,
+      });
+      rows = [{ id: 'available', installed: false }];
+      const partial = await request(`/${kind}`);
+      expect(partial.status).toBe(200);
+      expect(await partial.json()).toMatchObject({
+        success: true,
+        partial: true,
+        data: [
+          expect.objectContaining({
+            catalog: expect.objectContaining({ itemId: 'available' }),
+          }),
+        ],
+        sources: expect.arrayContaining([
+          expect.objectContaining({ status: 'error' }),
+        ]),
+      });
+    },
+  );
 
   test('configured multi-root filesystem libraries keep stable distinct source choices and install the exact same-name package', async () => {
     const { request, home } = setup();
