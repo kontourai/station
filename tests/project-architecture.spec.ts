@@ -272,27 +272,14 @@ function alphaProjectButton(page: Page) {
   return page.getByRole('button', { name: '🚀 Alpha', exact: true });
 }
 
-/**
- * #2059: configuration destinations left the panel, reached instead through
- * the footer's gear. #2144 slice 4 removed the Manage GRID this helper used to
- * open: those destinations are rows in Settings' own section navigation now,
- * beside the settings sections, so a reader finds Agents in the same list they
- * find Appearance in rather than in a separate grid below it. The helper keeps
- * its role — put the caller in front of the configuration destinations — and
- * changes only where that is. They are LINKS here, not buttons: a nav-only row
- * leaves /settings for the destination's own route.
- */
-async function openSettingsNavigation(page: Page) {
-  const navigation = page.getByRole('navigation', {
-    name: 'Primary navigation',
-  });
-  await navigation
-    .getByRole('button', { name: 'Settings', exact: true })
+async function openCustomize(page: Page) {
+  await page
+    .getByRole('navigation', { name: 'Primary navigation' })
+    .getByRole('button', { name: 'Customize', exact: true })
     .click();
-  await expect(page).toHaveURL(/\/settings/);
-  const sections = page.getByRole('navigation', { name: 'Settings sections' });
-  await expect(sections).toBeVisible({ timeout: 10_000 });
-  return sections;
+  const chooser = page.getByRole('dialog', { name: 'Customize' });
+  await expect(chooser).toBeVisible();
+  return chooser;
 }
 
 test.describe('Project Sidebar', () => {
@@ -319,7 +306,7 @@ test.describe('Project Sidebar', () => {
     await expect(
       navigation.getByRole('button', { name: 'Activity', exact: true }),
     ).toBeVisible();
-    for (const gone of ['Agents', 'Connections', 'Customize', 'System']) {
+    for (const gone of ['Agents', 'Connections', 'System']) {
       await expect(
         navigation.getByRole('button', { name: gone, exact: true }),
       ).toHaveCount(0);
@@ -327,7 +314,7 @@ test.describe('Project Sidebar', () => {
     // …and the configuration destinations are behind the gear. Connections is
     // listed as 'Engines & Models' (#2144 decision 7): the row names what a
     // reader is looking for and opens the hub at that tab.
-    const sections = await openSettingsNavigation(page);
+    const sections = await openCustomize(page);
     await expect(
       sections.getByRole('link', { name: 'Agents', exact: true }),
     ).toBeVisible();
@@ -874,7 +861,7 @@ test.describe('Provider Settings', () => {
   });
 
   test('connections view renders', async ({ page }) => {
-    const sections = await openSettingsNavigation(page);
+    const sections = await openCustomize(page);
     await sections
       .getByRole('link', { name: 'Engines & Models', exact: true })
       .click();

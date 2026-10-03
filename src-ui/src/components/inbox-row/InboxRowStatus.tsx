@@ -1,4 +1,5 @@
 import { useEffect, useReducer } from 'react';
+import { absoluteTime, relativeTime } from '../../utils/relativeTime';
 import {
   formatElapsed,
   type WorkStatus,
@@ -118,10 +119,18 @@ export function InboxRowStatusLine({
   status,
   now,
   id,
+  lastActivityAt,
 }: {
   status: WorkStatus;
   now: number;
   id: string;
+  /**
+   * A host that hides the row's time slot (the phone picker puts the status
+   * where the time was) hands the time here, and it trails the line in the
+   * same compact form the slot would show. Never while a turn is open: the
+   * ticking duration is that line's one number.
+   */
+  lastActivityAt?: number;
 }) {
   const wraps = REASON_RUNGS.has(status.rung) && Boolean(status.detail);
   return (
@@ -155,6 +164,17 @@ export function InboxRowStatusLine({
             title={status.detail}
           >
             {status.detail}
+          </span>
+        </>
+      )}
+      {status.since === undefined && lastActivityAt !== undefined && (
+        <>
+          <span className="inbox-row__sep">{' · '}</span>
+          <span
+            className="inbox-row__recency"
+            title={absoluteTime(lastActivityAt)}
+          >
+            {relativeTime(lastActivityAt, now)}
           </span>
         </>
       )}

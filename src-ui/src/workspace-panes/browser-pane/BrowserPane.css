@@ -203,9 +203,9 @@
 
 /* --- Toolbar (#90): quiet chrome, one row --------------------------------
    Omnibox, driver chip, Console, ⋯. Layout and sizing only: every button is
-   `BrowserIconButton` (the shared ghost Button, round, sized by
-   `--browser-pane-control` from its own sheet), every menu the shared menu
-   surface.
+   the shared `IconButton` (round, sized by `--icon-button-size` from its own
+   sheet, which follows `--browser-pane-control` here), every menu the shared
+   menu surface.
    On a coarse pointer or a phone-width window (`data-coarse` / `data-narrow`, set
    by the pane from the shared hooks: media queries are the primitives' business) every
    target is 44px and the row never wraps: the path gives way first, then the
@@ -213,6 +213,7 @@
 
 .browser-pane {
   --browser-pane-control: 30px;
+  --icon-button-size: var(--browser-pane-control);
 }
 
 .browser-pane:is([data-coarse], [data-narrow]) {

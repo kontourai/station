@@ -1621,6 +1621,94 @@ describe('useActiveChatTranscript', () => {
     }
   });
 
+  // The live OpenCode shape (cancel + re-prompt steer): the steer used to
+  // render ABOVE the whole turn's work — above the very command it stopped —
+  // so on a long turn it looked like it had never been sent.
+  test('an open turn renders a steer after the work it interrupted, and says it stopped it', async () => {
+    const id = 'thread-1';
+    activeChatsStore.initChat(id, {
+      agentSlug: 'opencode',
+      agentName: 'OpenCode',
+      title: 'Steer placement',
+      orchestrationSessionStarted: true,
+    });
+    try {
+      const acp = { provider: 'acp', turnId: 'turn-1' };
+      const started = event('e1', 'turn.started', {
+        ...acp,
+        prompt: 'run the gates',
+      });
+      handleTurnStartedEvent(
+        started.event as Parameters<typeof handleTurnStartedEvent>[0],
+      );
+      const steer = event('e3', 'turn.started', {
+        ...acp,
+        prompt: 'Still going?',
+        inputKind: 'steer',
+        steerInterruptedRun: true,
+      });
+      handleTurnStartedEvent(
+        steer.event as Parameters<typeof handleTurnStartedEvent>[0],
+      );
+      fetchWindow.mockResolvedValue({
+        protocolVersion: 1,
+        watermark: 5,
+        hasMore: false,
+        events: [
+          started,
+          event('e2', 'tool.started', {
+            ...acp,
+            toolCallId: 'call-1',
+            toolName: 'bash',
+          }),
+          steer,
+          event('e4', 'tool.completed', {
+            ...acp,
+            toolCallId: 'call-1',
+            toolName: 'bash',
+            status: 'cancelled',
+          }),
+          event('e5', 'content.text-delta', { ...acp, delta: 'Stopped it.' }),
+        ],
+      });
+      const session = {
+        ...baseSession,
+        ...activeChatsStore.getSnapshot()[id],
+        id,
+      } as unknown as ChatSession;
+      const { result } = renderHook(() =>
+        useActiveChatTranscript('http://station.test', session),
+      );
+      await waitFor(() =>
+        expect(
+          result.current.messages.some(
+            (message) => message.content === 'Stopped it.',
+          ),
+        ).toBe(true),
+      );
+      const rows = result.current.messages.map((message) => ({
+        role: message.role,
+        content: message.content,
+        tool: message.contentParts?.find(
+          (part) => part.type === 'tool-invocation',
+        )?.state,
+      }));
+      expect(rows).toEqual([
+        { role: 'user', content: 'run the gates', tool: undefined },
+        { role: 'assistant', content: '', tool: 'cancelled' },
+        { role: 'user', content: 'Still going?', tool: undefined },
+        { role: 'assistant', content: 'Stopped it.', tool: undefined },
+      ]);
+      expect(
+        result.current.messages.find(
+          (message) => message.content === 'Still going?',
+        )?.steerInterruptedRun,
+      ).toBe(true);
+    } finally {
+      activeChatsStore.removeChat(id);
+    }
+  });
+
   /**
    * #2304: a client that attached to a turn already running never saw its
    * `turn.started` live, so the bounded window is the only place the turn's
@@ -2746,5 +2834,168 @@ describe('useActiveChatTranscript live failure marker (UX audit V3)', () => {
         ),
       ),
     ).toBe(true);
+  });
+
+  // #2985: a cold open reads the failed turn twice — the `runtime.error`
+  // event, and the `[SYSTEM_EVENT] [CHAT_ERROR] …` user message the agent's
+  // conversation store kept. The stored copy arrives through
+  // `mapConversationMessages`, so it has no turn identity and holds its text
+  // in `content` AND in a text part: the exact shape below.
+  const storedMarker = (text: string, at: string) => ({
+    role: 'user' as const,
+    content: `[SYSTEM_EVENT] [CHAT_ERROR] ${text}`,
+    contentParts: [
+      { type: 'text' as const, content: `[SYSTEM_EVENT] [CHAT_ERROR] ${text}` },
+    ],
+    timestamp: Date.parse(at),
+  });
+  const failureCarriers = (messages: ChatSession['messages']) =>
+    messages.filter(
+      (message) =>
+        (message.content ?? '').startsWith('[SYSTEM_EVENT] [CHAT_ERROR') ||
+        (message.contentParts ?? []).some((part) => part.runtimeError === true),
+    );
+  const failedTurnWindow = (message: string) => ({
+    protocolVersion: 1,
+    watermark: 9,
+    hasMore: false,
+    events: [
+      event('e1', 'turn.started', { turnId: 'failed', prompt: 'FAIL please' }),
+      event('e2', 'runtime.error', {
+        turnId: 'failed',
+        severity: 'error',
+        code: 'station_agent_turn_failed',
+        message,
+      }),
+    ],
+  });
+
+  test.each([
+    [
+      'a failure with a status, where both copies say the same sentence',
+      'The model provider returned an error (HTTP 500).',
+      'The model provider returned an error (HTTP 500).',
+    ],
+    [
+      'a failure with no status, where the stored sentence is not the event’s',
+      'The response stream failed.',
+      'The Station agent could not finish this turn.',
+    ],
+  ])(
+    'a cold open shows one failure for %s',
+    async (_label, stored, emitted) => {
+      fetchWindow.mockResolvedValue(failedTurnWindow(emitted));
+      const session: ChatSession = {
+        ...baseSession,
+        messages: [
+          storedMarker(stored, '2026-08-09T00:00:02.400Z'),
+        ] as ChatSession['messages'],
+      };
+      const { result } = renderHook(() =>
+        useActiveChatTranscript('http://station.test', session),
+      );
+      // The window has arrived once the prompt it projects is on screen.
+      await waitFor(() =>
+        expect(
+          result.current.messages.some(
+            (message) => message.content === 'FAIL please',
+          ),
+        ).toBe(true),
+      );
+      // The one card is the marker — the element `ChatDockBody` renders with
+      // Send again — now reading exactly as the live path wrote it: the turn's
+      // identity, the event's code and the event's sentence.
+      const carriers = failureCarriers(result.current.messages);
+      expect(carriers).toHaveLength(1);
+      expect(carriers[0]).toMatchObject({
+        role: 'user',
+        turnId: 'failed',
+        content: `[SYSTEM_EVENT] [CHAT_ERROR:station_agent_turn_failed] ${emitted}`,
+      });
+      expect(carriers[0]?.contentParts).toBeUndefined();
+    },
+  );
+
+  test('a stored marker does not double a turn the live marker already owns', async () => {
+    const emitted = 'The Station agent could not finish this turn.';
+    fetchWindow.mockResolvedValue(failedTurnWindow(emitted));
+    const live = {
+      role: 'user' as const,
+      content: `[SYSTEM_EVENT] [CHAT_ERROR:station_agent_turn_failed] ${emitted}`,
+      timestamp: Date.parse('2026-08-09T00:00:02.100Z'),
+      turnId: 'failed',
+    };
+    const session: ChatSession = {
+      ...baseSession,
+      messages: [
+        live,
+        storedMarker('The response stream failed.', '2026-08-09T00:00:02.400Z'),
+      ] as ChatSession['messages'],
+    };
+    const { result } = renderHook(() =>
+      useActiveChatTranscript('http://station.test', session),
+    );
+    await waitFor(() =>
+      expect(
+        result.current.messages.some(
+          (message) => message.content === 'FAIL please',
+        ),
+      ).toBe(true),
+    );
+    const carriers = failureCarriers(result.current.messages);
+    expect(carriers).toHaveLength(1);
+    expect(carriers[0]?.timestamp).toBe(live.timestamp);
+  });
+
+  test('a stored marker is adopted only by the turn it falls in', async () => {
+    // Two turns. The first failed and only its stored marker says so (its
+    // `runtime.error` is not in this window); the second failed in the
+    // window. A failure elsewhere must not claim the first turn's marker.
+    fetchWindow.mockResolvedValue({
+      protocolVersion: 1,
+      watermark: 9,
+      hasMore: false,
+      events: [
+        event('e1', 'turn.started', { turnId: 'first', prompt: 'one' }),
+        event('e4', 'turn.started', { turnId: 'second', prompt: 'two' }),
+        event('e5', 'runtime.error', {
+          turnId: 'second',
+          severity: 'error',
+          code: 'station_agent_turn_failed',
+          message: 'The Station agent could not finish this turn.',
+        }),
+      ],
+    });
+    const session: ChatSession = {
+      ...baseSession,
+      messages: [
+        storedMarker('The response stream failed.', '2026-08-09T00:00:02.000Z'),
+        storedMarker('The response stream failed.', '2026-08-09T00:00:05.500Z'),
+      ] as ChatSession['messages'],
+    };
+    const { result } = renderHook(() =>
+      useActiveChatTranscript('http://station.test', session),
+    );
+    await waitFor(() =>
+      expect(
+        result.current.messages.some((message) => message.content === 'two'),
+      ).toBe(true),
+    );
+    // One card per failed turn, each the marker. The first keeps its stored
+    // words and no turn identity; only the second was adopted.
+    const carriers = failureCarriers(result.current.messages);
+    expect(
+      carriers.map((message) => [
+        message.role,
+        message.timestamp,
+        message.turnId,
+      ]),
+    ).toEqual([
+      ['user', Date.parse('2026-08-09T00:00:02.000Z'), undefined],
+      ['user', Date.parse('2026-08-09T00:00:05.500Z'), 'second'],
+    ]);
+    expect(carriers[0]?.content).toBe(
+      '[SYSTEM_EVENT] [CHAT_ERROR] The response stream failed.',
+    );
   });
 });

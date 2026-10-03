@@ -121,6 +121,9 @@ export const PROVIDER_USAGE_SCOPE: ReadonlyMap<string, ProviderUsageScope> =
     // is therefore the only honest session total.
     ['bedrock', 'per-turn'],
     ['ollama', 'per-turn'],
+    // Muse serve emits the usage of each model call, not its wire cumulative
+    // field (MuseServeSession.onTokenUsage; captured session/tokenUsage frames).
+    ['muse', 'per-turn'],
   ]);
 
 /** `undefined` means nobody has declared this provider's usage scope. */

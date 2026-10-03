@@ -65,6 +65,8 @@ interface ChatDockModalStackProps {
   sessions: ChatSession[];
   showNewChatModal: boolean;
   newChatRequestEpoch?: number;
+  newChatStartWithDefault?: boolean;
+  newChatInitialPrompt?: string;
   showChatSettings: boolean;
   showSessionPicker: boolean;
   chatFontSize: number;
@@ -117,6 +119,8 @@ export function ChatDockModalStack({
   sessions,
   showNewChatModal,
   newChatRequestEpoch,
+  newChatStartWithDefault,
+  newChatInitialPrompt,
   showChatSettings,
   showSessionPicker,
   chatFontSize,
@@ -160,6 +164,8 @@ export function ChatDockModalStack({
             agents,
             projects,
             requestAuthority,
+            startWithDefault: newChatStartWithDefault,
+            initialPrompt: newChatInitialPrompt,
             activeProjectSlug:
               newChatProjectOverride?.slug ?? activeProjectSlug,
             onSelect: handleNewChatSelect,

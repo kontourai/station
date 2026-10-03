@@ -24,6 +24,13 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   dispatchOrchestrationCommandWithReceipt: dispatch,
 }));
+// The picker row's ⋯ sheet (#3144) holds Discard and reads a connection
+// scope for its on-demand sections; with none they stay disabled, which is
+// all this test needs of them.
+vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../contexts/ApiBaseContext')>()),
+  useHostRequestAuthorityScope: () => null,
+}));
 
 import { ChatDockInboxPanel } from '../components/chat-dock/ChatDockInboxPanel';
 import { MobileTaskSwitcher } from '../components/chat-dock/MobileTaskSwitcher';
@@ -362,8 +369,16 @@ describe('#2312 discarding Drafts from the inbox', () => {
     expect(screen.queryByText(staleTitle)).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: /1 older draft$/ }));
+    // The picker keeps one ⋯ per row (#3144); Discard is in its sheet.
     fireEvent.click(
-      screen.getByRole('button', { name: `Discard draft ${staleTitle}` }),
+      screen.getByRole('button', { name: `Details for ${staleTitle}` }),
+    );
+    fireEvent.click(
+      await screen.findByRole(
+        'button',
+        { name: `Discard draft ${staleTitle}` },
+        { timeout: 8000 },
+      ),
     );
 
     await waitFor(() =>

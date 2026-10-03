@@ -5,6 +5,7 @@ import {
   type NavigationLocation,
   navigationStore,
 } from '../../contexts/navigation-store';
+import { useIsMobile } from '../../hooks/useIsMobile';
 
 export type NewChatSetupAuthority = ReturnType<
   typeof useHostRequestAuthorityScope
@@ -31,12 +32,19 @@ export function useNewChatSetupReturn({
   onCancel,
   onResume,
   revalidate,
+  workflowLabel = 'New Chat',
+  readyToResume = false,
+  allowedPaths,
 }: {
   authority: NewChatSetupAuthority;
   onCancel: () => void;
   onResume: (error?: unknown) => void;
   revalidate: () => Promise<unknown>;
+  workflowLabel?: string;
+  readyToResume?: boolean;
+  allowedPaths?: readonly string[];
 }) {
+  const isMobile = useIsMobile();
   const id = `chrome:new-chat:setup-return:${useId()}`;
   const [journey, setJourney] = useState<SetupJourney | null>(null);
   const current = useRef<SetupJourney | null>(null);
@@ -166,13 +174,13 @@ export function useNewChatSetupReturn({
       tone: 'info',
       userInitiated: true,
       message: journey.revalidating
-        ? 'Checking chat setup before returning.'
-        : 'Your New Chat choices are waiting while you finish setup.',
+        ? `Checking ${workflowLabel} setup before returning.`
+        : `Your ${workflowLabel} draft is waiting while you finish setup.`,
       actions: [
         ...(!journey.revalidating
           ? [
               {
-                label: 'Return to New Chat',
+                label: `Return to ${workflowLabel}`,
                 variant: 'primary' as const,
                 onClick: () => resume(true),
               },
@@ -186,22 +194,29 @@ export function useNewChatSetupReturn({
       // Ignore this initiating navigation, including setup opened from the
       // very same Connections page. Only a later Back can mean return.
       void navigationStore
-        .navigateWithPrecommit(journey.target, {
-          current: () =>
-            current.current === journey && journey.authority.isCurrent(),
-          prepare: async () => true,
-          signal: journey.controller.signal,
-        })
+        .navigateWithPrecommit(
+          journey.target,
+          {
+            current: () =>
+              current.current === journey && journey.authority.isCurrent(),
+            prepare: async () => true,
+            signal: journey.controller.signal,
+          },
+          { maximize: null, ...(isMobile ? { dock: null } : {}) },
+        )
         .then((committed) => {
           if (current.current !== journey) return;
           if (!journey.authority.isCurrent()) {
             cancel();
             return;
           }
-          if (committed) journey.entered = true;
+          if (committed) {
+            journey.entered = true;
+            setJourney({ ...journey });
+          }
         });
     }
-  }, [authority, cancel, id, journey, resume]);
+  }, [authority, cancel, id, journey, resume, workflowLabel, isMobile]);
 
   useEffect(() => {
     const unsubscribe = navigationStore.subscribe(() => {
@@ -216,13 +231,24 @@ export function useNewChatSetupReturn({
         return;
       }
       const path = navigationStore.getSnapshot().pathname;
-      if (isRepairRoute(path, pending.target)) return;
+      if (
+        isRepairRoute(path, pending.target) ||
+        allowedPaths?.some(
+          (prefix) => path === prefix || path.startsWith(`${prefix}/`),
+        )
+      )
+        return;
       cancel();
     });
     return () => {
       unsubscribe();
     };
-  }, [cancel, resume]);
+  }, [allowedPaths, cancel, resume]);
+
+  useEffect(() => {
+    if (journey?.entered && !journey.revalidating && readyToResume)
+      resume(true);
+  }, [journey, readyToResume, resume]);
 
   useEffect(
     () => () => {

@@ -1115,6 +1115,19 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
     reason: 'installer is run by its tests, not imported',
   },
   {
+    // install.ps1 embeds the installer core as a generated bundle and is run,
+    // or read through the generator's exported path, by these suites (#2675
+    // W1). None imports it, so the scanner cannot pin the dependency.
+    pattern: 'install.ps1',
+    supplemental: true,
+    tests: [
+      'scripts/__tests__/install-ps1.test.ts',
+      'scripts/__tests__/install-script-generated.test.ts',
+      'scripts/__tests__/release-manifest-vectors.test.ts',
+    ],
+    reason: 'Windows installer is run and read by its tests, not imported',
+  },
+  {
     pattern: 'config/channel-ports.json',
     supplemental: true,
     tests: ['scripts/__tests__/install-script-generated.test.ts'],

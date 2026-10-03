@@ -68,9 +68,9 @@ const [
   mod('packages/sdk/src/client/index.ts'),
 ]);
 const wait = async (predicate: () => boolean, name: string) => {
-  const deadline = Date.now() + 5000;
+  const deadline = performance.now() + 5000;
   while (!predicate()) {
-    if (Date.now() > deadline)
+    if (performance.now() > deadline)
       throw new Error(`capture barrier timed out: ${name}`);
     await new Promise((resolveWait) => setTimeout(resolveWait, 5));
   }
@@ -83,6 +83,9 @@ const logger = {
   trace() {},
   fatal() {},
 };
+// Byte comparisons measure the same burst, including clock-coalesced activity bindings.
+const realNow = Date.now;
+Date.now = () => Date.UTC(2026, 7, 25);
 const root = mkdtempSync(join(tmpdir(), 'station-transfer-capture-'));
 const store = new EventStore(join(root, 'events.sqlite'));
 const bus = new EventBus();
@@ -352,6 +355,7 @@ try {
   writeFileSync(outputPath, `${JSON.stringify(report)}\n`);
   console.log(JSON.stringify(report));
 } finally {
+  Date.now = realNow;
   sdk.setClientCredentialResolver();
   listener.closeAllConnections?.();
   await new Promise<void>((resolveClose) =>

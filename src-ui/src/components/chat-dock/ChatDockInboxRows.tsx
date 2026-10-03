@@ -24,7 +24,9 @@ import { AgentIcon } from '../icons/AgentIcon';
 import {
   ArrowDownGlyph,
   CloseGlyph,
+  FolderGlyph,
   InfoGlyph,
+  MoreGlyph,
   ReturnGlyph,
   TimeGlyph,
 } from '../icons/Glyph';
@@ -383,6 +385,8 @@ interface InboxRowProps {
    * focus. `touch` shows them always, as ≥44px targets beside the row.
    */
   chrome?: 'hover' | 'touch';
+  /** The picker keeps one overflow action; its sheet holds the other actions. */
+  actionsInDetails?: boolean;
   /** Home: opens the host's own snooze menu instead of the inbox presets. */
   onSnoozeMenu?: (item: HomeWorkItem, trigger: HTMLButtonElement) => void;
   /** Home: the row's snooze lapsed recently. */
@@ -448,6 +452,7 @@ export function InboxRow({
   snoozeMenuOnly = false,
   size = 'card',
   chrome = 'hover',
+  actionsInDetails = false,
   onSnoozeMenu,
   isWoken = false,
   hoverCard = true,
@@ -496,7 +501,7 @@ export function InboxRow({
   const snoozable = Boolean(onSnoozeWake || onSnoozeMenu);
   const direct: 'all' | 'snooze' | 'close' | 'discard' | 'none' = !details
     ? 'all'
-    : size === 'slim'
+    : actionsInDetails || size === 'slim'
       ? 'none'
       : discardThreadId
         ? 'discard'
@@ -735,16 +740,28 @@ export function InboxRow({
                   announcement or a tab stop. An unresolved agent renders no
                   icon at all, never a stand-in. */}
               {iconAgent && (
-                <AgentIcon
-                  agent={iconAgent}
-                  size={16}
-                  className="chat-dock-inbox__avatar"
-                />
+                <span title={agentText}>
+                  <AgentIcon
+                    agent={iconAgent}
+                    size={actionsInDetails ? 20 : 16}
+                    accessibleLabel={actionsInDetails ? agentText : undefined}
+                    className="chat-dock-inbox__avatar"
+                  />
+                </span>
               )}
-              <span className="inbox-row__meta-text">
+              <span
+                className={`inbox-row__meta-text${actionsInDetails && iconAgent ? ' sr-only' : ''}`}
+              >
                 <span className="inbox-row__agent">{agentText}</span>
-                {' · '}
-                <span className="inbox-row__project">{item.projectLabel}</span>
+                {!actionsInDetails && (
+                  <>
+                    {' '}
+                    ·{' '}
+                    <span className="inbox-row__project">
+                      {item.projectLabel}
+                    </span>
+                  </>
+                )}
               </span>
               {/* Never a fabricated duration: an item with no real
                   timestamp shows no time. */}
@@ -760,7 +777,22 @@ export function InboxRow({
             >
               {item.title}
             </strong>
-            <InboxRowStatusLine id={statusId} status={status} now={now} />
+            <InboxRowStatusLine
+              id={statusId}
+              status={status}
+              now={now}
+              // The picker hides the time slot (its status sits there), so
+              // the time trails the status line instead.
+              lastActivityAt={
+                actionsInDetails && hasTime ? item.updatedAt : undefined
+              }
+            />
+            {actionsInDetails && (
+              <span className="inbox-row__project-context">
+                <FolderGlyph />
+                <span className="inbox-row__project">{item.projectLabel}</span>
+              </span>
+            )}
             <InboxRowChips chips={chips} />
           </>
         )}
@@ -774,13 +806,13 @@ export function InboxRow({
               ref={detailsTriggerRef}
               type="button"
               className="chat-dock-inbox__row-action inbox-row__action"
-              title="Details"
+              title={actionsInDetails ? 'Chat actions and details' : 'Details'}
               aria-label={`Details for ${item.title}`}
               aria-haspopup="dialog"
               aria-expanded={detailsOpen}
               onClick={() => setDetailsOpen(!detailsOpen)}
             >
-              <InfoGlyph />
+              {actionsInDetails ? <MoreGlyph /> : <InfoGlyph />}
             </button>
           )}
           {beside('snooze') && onSnoozeWake && (
@@ -891,6 +923,7 @@ export interface InboxGroupListProps {
   snoozeMenuOnly?: boolean;
   /** See `InboxRowProps.chrome`. */
   chrome?: InboxRowProps['chrome'];
+  actionsInDetails?: InboxRowProps['actionsInDetails'];
   /**
    * Status facts by item id (`buildWorkFacts`), the host's session and chat
    * records read once. Referentially stable, like the other shared props.
@@ -920,6 +953,7 @@ export function InboxGroupList({
   gitLocationByThreadId,
   snoozeMenuOnly,
   chrome,
+  actionsInDetails,
   workFacts,
 }: InboxGroupListProps) {
   const [olderDraftsOpen, setOlderDraftsOpen] = useState(false);
@@ -969,10 +1003,11 @@ export function InboxGroupList({
       agents={agents}
       snoozeMenuOnly={snoozeMenuOnly}
       chrome={chrome}
+      actionsInDetails={actionsInDetails}
       facts={workFacts?.get(item.id)}
       detailsOpen={detailsFor === item.id}
       onDetailsOpenChange={(open) => setDetailsFor(open ? item.id : null)}
-      size={SLIM_GROUPS.has(group.id) ? 'slim' : 'card'}
+      size={!actionsInDetails && SLIM_GROUPS.has(group.id) ? 'slim' : 'card'}
       gitLocation={
         gitLocationByThreadId?.get(
           item.orchestrationThreadId ?? item.chatSessionId ?? '',

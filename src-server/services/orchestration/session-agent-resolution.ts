@@ -52,6 +52,7 @@ import {
   SYSTEM_PROMPT_CAPABILITY_ID,
 } from '@kontourai/station-contracts/provider';
 import type { ToolDef } from '@kontourai/station-contracts/tool';
+import { STATION_CAPABILITY_DISCOVERY_GUIDANCE } from '../../runtime/agents/station-capability-discovery.js';
 import { isBuiltinStationControl } from '../../runtime/bootstrap/station-control-runtime-env.js';
 import { SC_AUTO_APPROVED_TOOLS } from '../../runtime/tools/runtime-control-tools.js';
 import { agentCapabilityUndelivered } from '../../telemetry/metrics.js';
@@ -120,7 +121,7 @@ export function builtinStationAgentSpec(slug: string): AgentSpec | null {
   if (slug !== 'station') return null;
   return {
     name: 'Station',
-    prompt: '',
+    prompt: STATION_CAPABILITY_DISCOVERY_GUIDANCE,
     // archive#1547: `station-docs` sits beside `station-control` here, and the
     // pairing is deliberate rather than symmetrical. `station-control` is the
     // control-plane capability the comment above guards — it carries env
@@ -161,6 +162,9 @@ function withBuiltinStationAgentCapabilities(
   const builtins = new Set<string>(BUILTIN_STATION_AGENT_MCP_SERVER_IDS);
   return {
     ...authored,
+    prompt: [authored.prompt, STATION_CAPABILITY_DISCOVERY_GUIDANCE]
+      .filter(Boolean)
+      .join('\n\n'),
     tools: {
       ...builtin.tools,
       ...authored.tools,

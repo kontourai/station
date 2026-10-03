@@ -3,6 +3,7 @@ import { copyFile, mkdir } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
 import { expect, type Locator, type Page } from '@playwright/test';
+import { PNG } from 'pngjs';
 import { buildLongSessionTurns } from './fixtures/long-session';
 import { expectNoBlockingAccessibilityViolations } from './helpers/accessibility';
 import {
@@ -48,7 +49,10 @@ async function openComposer(
 ) {
   await page.goto('/');
   await dismissSetupLauncher(page);
-  await page.getByRole('button', { name: /^Start direct chat/ }).click();
+  await page
+    .locator('.home-view__actions')
+    .getByRole('button', { name: /Chat options/i })
+    .click();
   const modal = page.getByRole('dialog', { name: 'New Chat' });
   await expect(modal).toBeVisible({ timeout: 15_000 });
   const runtimeRow = modal.locator(`[data-agent-slug="${agentSlug}"]`).first();
@@ -285,8 +289,8 @@ test('ChatDock sends scoped file and conversation references while preserving th
   );
   await page.goto(`/?dock=open&maximize=true&chat=${threadId}`);
   await dismissSetupLauncher(page);
-  await page.getByRole('button', { name: /^Switch chat/ }).click();
-  const taskSwitcher = page.getByRole('dialog', { name: 'Chats' });
+  await page.getByRole('button', { name: /^Chats and tasks/ }).click();
+  const taskSwitcher = page.getByRole('dialog', { name: 'Chats and tasks' });
   await taskSwitcher
     .getByRole('button', { name: 'Reference dispatch, default' })
     .click();
@@ -964,7 +968,7 @@ async function expandMobileDock(page: Page) {
   await page.getByRole('button', { name: 'Chat actions' }).click();
   await page
     .getByRole('menu', { name: 'Chat actions' })
-    .getByRole('menuitem', { name: /^Expand chat/ })
+    .getByRole('menuitem', { name: /^Full screen/ })
     .click();
 }
 
@@ -1124,7 +1128,7 @@ test('stages a current-host attachment before dispatching only its opaque refere
   });
 
   const strip = page.getByRole('list', { name: 'Attached files' });
-  await expect(strip.getByText('Ready to send')).toBeVisible();
+  await expect(strip.getByText('Ready', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   await expect(() => expect(dispatched).toHaveLength(1)).toPass({
     timeout: 10_000,
@@ -1266,12 +1270,12 @@ test('switches between mobile tasks and restores the exact active chat context',
   await page.goto('/?dock=open&maximize=true&chat=conv-running');
   await dismissSetupLauncher(page);
 
-  const switcher = page.getByRole('button', { name: /^Switch chat/ });
+  const switcher = page.getByRole('button', { name: /^Chats and tasks/ });
   await expect(switcher).toBeVisible({ timeout: 15_000 });
   const triggerBox = await switcher.boundingBox();
 
   await switcher.click();
-  const menu = page.getByRole('dialog', { name: 'Chats' });
+  const menu = page.getByRole('dialog', { name: 'Chats and tasks' });
   await expect(menu).toBeVisible();
   await expect(page.getByText(/credential|connect an account/i)).toHaveCount(0);
   // Shared inbox rows (archive#3312): the row button's accessible name is
@@ -1384,7 +1388,7 @@ test('switches between mobile tasks and restores the exact active chat context',
   // viewport, not only the dialog geometry checks.
   await switcher.click();
   await page
-    .getByRole('dialog', { name: 'Chats' })
+    .getByRole('dialog', { name: 'Chats and tasks' })
     .getByRole('button', { name: 'Station Chat, Default' })
     .filter({ hasText: 'Running' })
     .click();
@@ -1392,7 +1396,7 @@ test('switches between mobile tasks and restores the exact active chat context',
   await switcher.click();
   // The task retains its canonical identity after opening.
   await page
-    .getByRole('dialog', { name: 'Chats' })
+    .getByRole('dialog', { name: 'Chats and tasks' })
     .getByRole('button', { name: /^Worker task · delegated review,/i })
     .click();
   await expect
@@ -1400,14 +1404,14 @@ test('switches between mobile tasks and restores the exact active chat context',
     .toBe('delegated-review');
   await switcher.click();
   await page
-    .getByRole('dialog', { name: 'Chats' })
+    .getByRole('dialog', { name: 'Chats and tasks' })
     .getByRole('button', { name: 'Station Chat, Default' })
     .filter({ hasText: 'Waiting on you' })
     .click();
   await expect(textarea).toHaveValue('return to this draft');
 
   await switcher.click();
-  const compactDialog = page.getByRole('dialog', { name: 'Chats' });
+  const compactDialog = page.getByRole('dialog', { name: 'Chats and tasks' });
   const compactBox = await compactDialog.boundingBox();
   expect(compactBox?.x ?? -1).toBeGreaterThanOrEqual(0);
   expect((compactBox?.x ?? 0) + (compactBox?.width ?? 0)).toBeLessThanOrEqual(
@@ -1597,9 +1601,9 @@ test('mobile messages prioritize text and reveal 44px actions on demand', async 
     header.getByRole('button', { name: /^Switch project/ }),
   ).toBeVisible();
   await expect(
-    header.getByRole('button', { name: /^Switch chat/ }),
+    header.getByRole('button', { name: /^Chats and tasks/ }),
   ).toBeVisible();
-  const title = header.getByRole('button', { name: /^Switch chat/ });
+  const title = header.getByRole('button', { name: /^Chats and tasks/ });
   expect((await title.boundingBox())!.width).toBeGreaterThanOrEqual(80);
   await expect(
     page.getByText(
@@ -1664,7 +1668,7 @@ test('mobile messages prioritize text and reveal 44px actions on demand', async 
   await header
     .getByRole('button', { name: 'Chat actions', exact: true })
     .click();
-  for (const name of ['New chat', 'Collapse chat']) {
+  for (const name of ['New chat', 'Full screen']) {
     await expect(
       page.getByRole('menuitem', { name, exact: true }),
     ).toBeVisible();
@@ -1710,9 +1714,9 @@ test('Escape dismisses the mobile task switcher without leaving the chat', async
   await page.goto('/?dock=open&maximize=true&chat=conv-running');
   await dismissSetupLauncher(page);
 
-  const switcher = page.getByRole('button', { name: /^Switch chat/ });
+  const switcher = page.getByRole('button', { name: /^Chats and tasks/ });
   await expect(switcher).toBeVisible({ timeout: 15_000 });
-  const menu = page.getByRole('dialog', { name: 'Chats' });
+  const menu = page.getByRole('dialog', { name: 'Chats and tasks' });
 
   // Escape straight away: the sheet closes and the route is untouched.
   await switcher.click();
@@ -1915,7 +1919,7 @@ test('the 320px header reserves title space and exposes secondary actions in its
   await openComposer(page, true);
   await page.getByRole('button', { name: 'Chat actions', exact: true }).click();
   await page
-    .getByRole('menuitem', { name: 'Expand chat', exact: true })
+    .getByRole('menuitem', { name: 'Full screen', exact: true })
     .click();
   await expect(page.locator('.chat-dock')).toHaveClass(/is-maximized/);
   const header = page.getByTestId('chat-dock-mobile-header');
@@ -1923,9 +1927,9 @@ test('the 320px header reserves title space and exposes secondary actions in its
     header.getByRole('button', { name: /^Switch project/ }),
   ).toBeVisible();
   await expect(
-    header.getByRole('button', { name: /^Switch chat/ }),
+    header.getByRole('button', { name: /^Chats and tasks/ }),
   ).toBeVisible();
-  const identity = header.getByRole('button', { name: /^Switch chat/ });
+  const identity = header.getByRole('button', { name: /^Chats and tasks/ });
   expect((await identity.boundingBox())!.width).toBeGreaterThanOrEqual(80);
   for (const button of await header.getByRole('button').all()) {
     const box = (await button.boundingBox())!;
@@ -1937,7 +1941,7 @@ test('the 320px header reserves title space and exposes secondary actions in its
   await header
     .getByRole('button', { name: 'Chat actions', exact: true })
     .click();
-  for (const name of ['New chat', 'Collapse chat']) {
+  for (const name of ['New chat', 'Full screen']) {
     await expect(
       page.getByRole('menuitem', { name, exact: true }),
     ).toBeVisible();
@@ -1958,7 +1962,7 @@ for (const width of [361, 375, 390, 431, 481]) {
     await page.getByRole('button', { name: 'Chat actions' }).click();
     await page
       .getByRole('menu', { name: 'Chat actions' })
-      .getByRole('menuitem', { name: /^Expand chat/ })
+      .getByRole('menuitem', { name: /^Full screen/ })
       .click();
     await expect(page.locator('.chat-dock')).toHaveClass(/is-maximized/);
     // This is the configuration under test: the app toolbar is gone and this
@@ -1983,7 +1987,7 @@ for (const width of [361, 375, 390, 431, 481]) {
       header.getByRole('button', { name: /^Switch project/ }),
     ).toBeVisible();
     await expect(
-      header.getByRole('button', { name: /^Switch chat/ }),
+      header.getByRole('button', { name: /^Chats and tasks/ }),
     ).toBeVisible();
 
     // Everything still inside the viewport, nothing overlapping — the squeeze
@@ -2010,7 +2014,7 @@ for (const width of [361, 375, 390, 431, 481]) {
     if (await avatar.isVisible().catch(() => false)) {
       const avatarBox = await avatar.boundingBox();
       const identityBox = await header
-        .getByRole('button', { name: /^Switch chat/ })
+        .getByRole('button', { name: /^Chats and tasks/ })
         .boundingBox();
       expect(
         (avatarBox?.x ?? 0) + (avatarBox?.width ?? 0),
@@ -2021,6 +2025,256 @@ for (const width of [361, 375, 390, 431, 481]) {
     }
   });
 }
+
+/**
+ * The full-screen dock counts the top safe-area inset once. The dock itself
+ * starts below the status bar (`--app-toolbar-total-height`, reduced to
+ * `--safe-top` in this mode); its header used to pad by the inset as well,
+ * which on an edge-to-edge phone left a status-bar-tall empty band between
+ * the sheet's grip and the project/chat title. `env(safe-area-inset-top)` is
+ * always 0 in headless Chromium, so the inset is written to the token whose
+ * only source is that env() — without it this test could not fail.
+ */
+test('the maximized phone dock header clears the status bar once, not twice', async ({
+  page,
+}) => {
+  const SAFE_TOP_PX = 48;
+  await page.addInitScript((inset) => {
+    const apply = () =>
+      document.documentElement.style.setProperty('--safe-top', `${inset}px`);
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', apply, { once: true });
+    } else {
+      apply();
+    }
+  }, SAFE_TOP_PX);
+  await page.setViewportSize({ width: 412, height: 915 });
+  await mockChatShell(page);
+  await openComposer(page, true);
+  const header = page.getByTestId('chat-dock-mobile-header');
+  const resting = (await header.boundingBox())!;
+  const dockBorderTop = () =>
+    page
+      .locator('.chat-dock')
+      .evaluate((element) => getComputedStyle(element).borderTopWidth);
+  // Premise: the resting sheet draws its accent top edge.
+  expect(await dockBorderTop()).not.toBe('0px');
+
+  await page.getByRole('button', { name: 'Chat actions', exact: true }).click();
+  await page.getByRole('menuitem', { name: /^Full screen/ }).click();
+  await expect(page.locator('.chat-dock')).toHaveClass(/is-maximized/);
+  await expect(page.getByRole('button', { name: 'Toggle menu' })).toBeVisible();
+  const geometry = await page.evaluate(() => {
+    const box = (selector: string) =>
+      document.querySelector(selector)!.getBoundingClientRect();
+    return {
+      dockTop: box('.chat-dock').top,
+      headerTop: box('.chat-dock__mobile-header').top,
+      headerHeight: box('.chat-dock__mobile-header').height,
+      leadingTop: box('.chat-dock__mobile-leading').top,
+    };
+  });
+  // The premise: the dock itself sits below the inset.
+  expect(geometry.dockTop).toBeGreaterThanOrEqual(SAFE_TOP_PX);
+  // Maximized, nothing is above the sheet for an edge to separate it from:
+  // no accent rule under the status bar or under the toolbar's hairline.
+  expect(await dockBorderTop()).toBe('0px');
+  // So the header is the same bar it is when not maximized — no second inset.
+  expect(
+    geometry.headerHeight,
+    JSON.stringify({ resting: resting.height, ...geometry }),
+  ).toBeLessThanOrEqual(resting.height + 1);
+  expect(geometry.leadingTop - geometry.dockTop).toBeLessThan(SAFE_TOP_PX / 2);
+
+  // The centred title takes the bar minus a fixed reserve for each edge
+  // (`fit-content`), and the project name is what truncates. At 28% of the
+  // bar a long title got ~107px here. The fixture's title is "New chat", so a
+  // long one is written into the title node: the track sizing under test is
+  // pure CSS, and re-measuring after the text changes exercises exactly it.
+  await header.locator('.chat-dock__mobile-title-text').evaluate((element) => {
+    element.textContent =
+      'Are you running the latest version of the tooling here';
+  });
+  const identity = (await header
+    .getByRole('button', { name: /^Chats and tasks/ })
+    .boundingBox())!;
+  const headerBox = (await header.boundingBox())!;
+  expect(identity.width).toBeGreaterThanOrEqual(180);
+  expect(
+    Math.abs(
+      identity.x + identity.width / 2 - (headerBox.x + headerBox.width / 2),
+    ),
+  ).toBeLessThanOrEqual(1);
+  const project = (await header
+    .getByRole('button', { name: /^Switch project/ })
+    .boundingBox())!;
+  expect(project.width).toBeGreaterThanOrEqual(44);
+  expect(project.x + project.width).toBeLessThanOrEqual(identity.x + 1);
+});
+
+/**
+ * iPhone inset contract. A WKWebView with `viewport-fit=cover` reports the
+ * Dynamic Island / home indicator / landscape notch through
+ * `env(safe-area-inset-*)`, which index.css reads into the `--safe-*` tokens
+ * (Android's bridge writes the same tokens). Headless Chromium reports 0 for
+ * env(), so the tokens are written directly: each inset must be honoured
+ * exactly once by the maximized chat — top by the dock's position, bottom by
+ * the composer's padding, and the landscape sides by the sheet's inline
+ * padding.
+ */
+async function writeSafeArea(
+  page: Page,
+  inset: { top: number; right: number; bottom: number; left: number },
+) {
+  await page.addInitScript((value) => {
+    const apply = () => {
+      const style = document.documentElement.style;
+      style.setProperty('--safe-top', `${value.top}px`);
+      style.setProperty('--safe-right', `${value.right}px`);
+      style.setProperty('--safe-bottom', `${value.bottom}px`);
+      style.setProperty('--safe-left', `${value.left}px`);
+    };
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', apply, { once: true });
+    } else {
+      apply();
+    }
+  }, inset);
+}
+
+async function maximizeChat(page: Page) {
+  await page.getByRole('button', { name: 'Chat actions', exact: true }).click();
+  await page.getByRole('menuitem', { name: /^Full screen/ }).click();
+  await expect(page.locator('.chat-dock')).toHaveClass(/is-maximized/);
+}
+
+const chatGeometry = (page: Page) =>
+  page.evaluate(() => {
+    const box = (selector: string) => {
+      const element = document.querySelector(selector);
+      if (!element) throw new Error(`missing ${selector}`);
+      return element.getBoundingClientRect();
+    };
+    const leading = box('.chat-dock__mobile-leading');
+    const overflow = box('.chat-dock__mobile-overflow-trigger');
+    const capsule = box('.chat-input__capsule');
+    return {
+      vw: innerWidth,
+      vh: innerHeight,
+      dockTop: box('.chat-dock').top,
+      headerTop: box('.chat-dock__mobile-header').top,
+      headerHeight: box('.chat-dock__mobile-header').height,
+      leadingLeft: leading.left,
+      overflowRight: overflow.right,
+      capsuleLeft: capsule.left,
+      capsuleRight: capsule.right,
+      capsuleBottom: capsule.bottom,
+    };
+  });
+
+test('an iPhone 15 portrait inset is honoured once by the maximized chat', async ({
+  page,
+}) => {
+  await writeSafeArea(page, { top: 59, right: 0, bottom: 34, left: 0 });
+  await page.setViewportSize({ width: 393, height: 852 });
+  await mockChatShell(page);
+  await openComposer(page, true);
+  await maximizeChat(page);
+  const g = await chatGeometry(page);
+  // Top: the sheet clears the Dynamic Island (plus its 4px toolbar
+  // clearance) and its header starts right there, not a second inset lower.
+  expect(g.dockTop).toBe(59 + 4);
+  expect(g.headerTop - g.dockTop, JSON.stringify(g)).toBeLessThanOrEqual(2);
+  expect(g.headerHeight).toBeLessThan(59);
+  // Bottom: the composer ends exactly one home-indicator inset above the edge.
+  expect(Math.round(g.vh - g.capsuleBottom), JSON.stringify(g)).toBe(34);
+});
+
+test.describe('landscape iPhone (touch, so the phone chrome applies)', () => {
+  test.use({ hasTouch: true, isMobile: true });
+  test('a landscape iPhone keeps the chat clear of its side insets', async ({
+    page,
+  }) => {
+    await writeSafeArea(page, { top: 0, right: 59, bottom: 21, left: 59 });
+    await page.setViewportSize({ width: 852, height: 393 });
+    await mockChatShell(page);
+    await openComposer(page, true);
+    // The app toolbar too: its phone rule once re-declared `padding` and
+    // dropped the side insets it had been given.
+    const toolbar = await page.locator('.app-toolbar').evaluate((element) => {
+      const style = getComputedStyle(element);
+      const controls = [...element.querySelectorAll('button')]
+        .map((button) => button.getBoundingClientRect())
+        .filter((rect) => rect.width > 0);
+      return {
+        paddingLeft: style.paddingLeft,
+        paddingRight: style.paddingRight,
+        firstLeft: Math.min(...controls.map((rect) => rect.left)),
+        lastRight: Math.max(...controls.map((rect) => rect.right)),
+      };
+    });
+    expect(toolbar.paddingLeft, JSON.stringify(toolbar)).toBe('59px');
+    expect(toolbar.paddingRight).toBe('59px');
+    expect(toolbar.firstLeft).toBeGreaterThanOrEqual(59);
+    expect(toolbar.lastRight).toBeLessThanOrEqual(852 - 59);
+    await maximizeChat(page);
+    const g = await chatGeometry(page);
+    expect(g.leadingLeft, JSON.stringify(g)).toBeGreaterThanOrEqual(59);
+    expect(g.overflowRight).toBeLessThanOrEqual(g.vw - 59);
+    expect(g.capsuleLeft).toBeGreaterThanOrEqual(59);
+    expect(g.capsuleRight).toBeLessThanOrEqual(g.vw - 59);
+    expect(Math.round(g.vh - g.capsuleBottom), JSON.stringify(g)).toBe(21);
+  });
+});
+
+/**
+ * The transcript fades out over its bottom gutter instead of being sliced
+ * against the transparent Agent/Model/Mode rail. A solid probe block fills the
+ * scroller past its bottom edge; the rendered pixels in the last rows of the
+ * scroller must fall back toward the dock background, while rows above the
+ * fade stay the probe colour.
+ */
+test('mobile transcript fades out above the composer rail instead of cutting under it', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 412, height: 915 });
+  await mockChatShell(page);
+  await openComposer(page, true);
+  const messages = page.locator('.chat-messages');
+  await expect(messages).toBeVisible();
+  await messages.evaluate((element) => {
+    const probe = document.createElement('div');
+    probe.setAttribute('data-testid', 'fade-probe');
+    probe.style.cssText =
+      'flex: 0 0 auto; align-self: stretch; height: 2000px; background: rgb(255, 255, 255);';
+    element.prepend(probe);
+    element.scrollTop = 200;
+  });
+  const box = (await messages.boundingBox())!;
+  // Whatever sits below the scroller (a stream-status line, the rail), the
+  // transcript's own bottom edge is where a scrolled line used to be cut.
+  const shot = PNG.sync.read(
+    await page.screenshot({
+      clip: {
+        x: box.x + box.width / 2 - 4,
+        y: box.y + box.height - 40,
+        width: 8,
+        height: 40,
+      },
+    }),
+  );
+  const brightness = (row: number) => {
+    const y = Math.min(shot.height - 1, Math.round((row / 40) * shot.height));
+    const offset = (shot.width * y + Math.floor(shot.width / 2)) << 2;
+    return (
+      (shot.data[offset] + shot.data[offset + 1] + shot.data[offset + 2]) / 3
+    );
+  };
+  // Above the fade the probe paints at full strength...
+  expect(brightness(4)).toBeGreaterThan(240);
+  // ...and at the rail it has faded to (nearly) nothing.
+  expect(brightness(39)).toBeLessThan(80);
+});
 
 for (const viewport of [
   { width: 320, height: 568 },
@@ -2044,7 +2298,7 @@ for (const viewport of [
     }, viewport.width === 390);
     const textarea = await openComposer(page);
     await expect(
-      page.getByRole('button', { name: /^Switch chat/ }),
+      page.getByRole('button', { name: /^Chats and tasks/ }),
     ).toContainText('New chat');
     await expect(page.locator('.chat-dock__counter')).toBeHidden();
     await expect(
@@ -2060,7 +2314,7 @@ for (const viewport of [
       mobileHeader.getByRole('button', { name: /^Switch project/ }),
     ).toBeVisible();
     await expect(
-      mobileHeader.getByRole('button', { name: /^Switch chat/ }),
+      mobileHeader.getByRole('button', { name: /^Chats and tasks/ }),
     ).toBeVisible();
     for (const control of await mobileHeader.getByRole('button').all()) {
       const box = await control.boundingBox();
@@ -2115,7 +2369,7 @@ for (const viewport of [
     );
     const selectedModelLabel = 'Selected Test Model';
     const activeChatParam = new URL(page.url()).searchParams.get('chat');
-    const switcher = page.getByRole('button', { name: /^Switch chat/ });
+    const switcher = page.getByRole('button', { name: /^Chats and tasks/ });
     await expect(switcher).toContainText('New chat');
     for (let cycle = 0; cycle < 3; cycle += 1) {
       const scroller = page.locator('.chat-messages');
@@ -2191,7 +2445,7 @@ for (const viewport of [
       );
       const restoreItem = page
         .getByRole('menu', { name: 'Chat actions' })
-        .getByRole('menuitem', { name: /^Restore chat/ });
+        .getByRole('menuitem', { name: /^Exit full screen/ });
       if (cycle === 0) {
         await moreActions.focus();
         await moreActions.press('Enter');
@@ -2208,12 +2462,17 @@ for (const viewport of [
       );
       await expect(switcher).toContainText('New chat');
       await expect(selectedModel).toHaveText(selectedModelLabel ?? '');
-      await expect(scroller).toBeVisible();
+      // With the keyboard still up the dock can be exactly as tall as the
+      // status line plus the composer (149px at 320x568): the transcript has
+      // no room and steps aside, so only its presence is asserted here. Its
+      // visibility is asserted once the keyboard is gone.
+      await expect(scroller).toBeAttached();
       await page.evaluate(
         (height) => (window as any).__setChatViewport(height, 0),
         viewport.height,
       );
       await expandMobileDock(page);
+      await expect(scroller).toBeVisible();
     }
 
     for (const button of await page
@@ -2314,7 +2573,11 @@ for (const viewport of [
         return hit === button || button.contains(hit);
       }),
     ).toBe(true);
-    const reconnectStatus = page.locator('.chat-stream-status');
+    // The outage is the pane's floating status pill: it floats over the
+    // transcript, clear of the composer, and moves nothing in the layout.
+    const reconnectStatus = page.locator(
+      '[data-chat-status-pill="reconnecting"]',
+    );
     await expect(reconnectStatus).toContainText('Reconnecting live updates');
     const reconnectBox = await reconnectStatus.boundingBox();
     const composerBox = await page.locator('.chat-input').boundingBox();
@@ -2322,6 +2585,9 @@ for (const viewport of [
     expect(composerBox).not.toBeNull();
     expect(reconnectBox!.y + reconnectBox!.height).toBeLessThanOrEqual(
       composerBox!.y,
+    );
+    expect(reconnectBox!.x + reconnectBox!.width).toBeLessThanOrEqual(
+      viewport.width,
     );
     if (viewport.width === 320) {
       const readyEmptyState = page.locator(
@@ -2504,7 +2770,7 @@ test('drags the mobile dock bar between half and full without stealing taps', as
   // Exercise a real touch sequence from the overflow control itself. Android
   // does not emit a compatibility click after a moved touch gesture, which is
   // the exact path that used to leave the next deliberate tap suppressed.
-  await touchDragControlTo(/^Switch task/, 120);
+  await touchDragControlTo(/^Chats and tasks/, 120);
   await expect(dock).toHaveClass(/is-maximized/);
   await expect
     .poll(async () => Math.round((await dock.boundingBox())?.height ?? 0))
@@ -2541,24 +2807,22 @@ test('drags the mobile dock bar between half and full without stealing taps', as
     Math.round(beforeTap?.height ?? 0),
   );
 
-  // The mobile header no longer spends two permanent 44px slots on
-  // Maximize/Restore and Collapse — dock height is the drag gesture exercised
-  // above. The keyboard/agent path is preserved as a named menu item, which is
-  // what actually has to stay reachable (docs/design/chat-composer.md §1).
-  await page.getByRole('button', { name: 'Chat actions' }).click();
-  const collapseItem = page
-    .getByRole('menu', { name: 'Chat actions' })
-    .getByRole('menuitem', { name: /^Collapse chat/ });
-  await expect(collapseItem).toBeVisible();
-  await expectSettledTouchTargetHeight(collapseItem);
-  await collapseItem.click();
+  const collapseControl = page.getByRole('button', {
+    name: 'Collapse chat',
+    exact: true,
+  });
+  await expect(collapseControl).toBeVisible();
+  await expectSettledTouchTargetHeight(collapseControl);
+  await collapseControl.click();
   await expect(dock).toHaveClass(/is-collapsed/);
   await expectVisibleGeometry(false);
 
   // Reopening from Collapsed is still a live resize gesture. Crossing the
   // tap threshold must reveal the dock at the pointer's actual height; it
   // must not commit Half (and run the snap transition) until release.
-  const collapsedActions = page.getByRole('button', { name: /^Switch chat/ });
+  const collapsedActions = page.getByRole('button', {
+    name: /^Chats and tasks/,
+  });
   const collapsedActionsBox = await collapsedActions.boundingBox();
   if (!collapsedActionsBox)
     throw new Error('Collapsed Chat actions control is not measurable');
@@ -3071,11 +3335,11 @@ test('a full-height task switcher keeps its dismiss header visible and tappable 
   await page.goto('/?dock=open&chat=conv-running');
   await dismissSetupLauncher(page);
 
-  const switcher = page.getByRole('button', { name: /^Switch chat/ });
+  const switcher = page.getByRole('button', { name: /^Chats and tasks/ });
   await expect(switcher).toBeVisible({ timeout: 15_000 });
   await switcher.click();
 
-  const menu = page.getByRole('dialog', { name: 'Chats' });
+  const menu = page.getByRole('dialog', { name: 'Chats and tasks' });
   await expect(menu).toBeVisible();
   // Restored bulk entries currently use the Station Chat display title.
   // Fullness is what matters: enough rows that the sheet hits max height.
@@ -3119,7 +3383,7 @@ test('dock drag-passthrough surfaces opt out of native touch panning (#1052)', a
   await page.goto('/?dock=open&chat=conv-running');
   await dismissSetupLauncher(page);
 
-  const identity = page.getByRole('button', { name: /^Switch chat/ });
+  const identity = page.getByRole('button', { name: /^Chats and tasks/ });
   await expect(identity).toBeVisible({ timeout: 15_000 });
   // touch-action does not inherit from the header bar; if a passthrough
   // control reverts to `auto`, real devices pointercancel the resize drag the
@@ -3174,7 +3438,7 @@ test('keeps primary context controls draggable and navigation actions tap-only (
     header.getByRole('button', { name: /^Switch project/ }),
   ).toBeVisible();
   await expect(
-    header.getByRole('button', { name: /^Switch chat/ }),
+    header.getByRole('button', { name: /^Chats and tasks/ }),
   ).toBeVisible();
   for (let i = 0; i < total; i++) {
     const control = controls.nth(i);
@@ -3236,8 +3500,8 @@ test('profiles switching between authoritative conversations', async ({
   await seedMobileTaskSwitcher(page);
   await page.goto('/?dock=open&chat=conv-running');
   await dismissSetupLauncher(page);
-  const switcher = page.getByRole('button', { name: 'Switch chat' });
-  const menu = page.getByRole('dialog', { name: 'Chats' });
+  const switcher = page.getByRole('button', { name: 'Chats and tasks' });
+  const menu = page.getByRole('dialog', { name: 'Chats and tasks' });
   const textarea = page.locator('textarea[placeholder*="Type a message"]');
   await expect(switcher).toBeVisible();
   await profileJourney(
@@ -3389,7 +3653,7 @@ test('sidebar overflow opens the real mobile chat collection', async ({
   });
   await expect(navigation).toBeVisible();
   await navigation.getByRole('button', { name: /^\d+ more$/ }).click();
-  const sheet = page.getByRole('dialog', { name: 'Chats' });
+  const sheet = page.getByRole('dialog', { name: 'Chats and tasks' });
   await expect(sheet).toBeVisible();
   await expect(navigation).not.toBeVisible();
   await expect(
@@ -3419,7 +3683,7 @@ for (const width of [320, 431]) {
     const header = page.getByTestId('chat-dock-mobile-header');
     const outer = (await header.boundingBox())!;
     const identity = (await header
-      .getByRole('button', { name: /^Switch chat/ })
+      .getByRole('button', { name: /^Chats and tasks/ })
       .boundingBox())!;
     expect(
       Math.abs(identity.x + identity.width / 2 - (outer.x + outer.width / 2)),
@@ -3461,3 +3725,303 @@ for (const width of [320, 431]) {
     );
   });
 }
+
+// After a refused send the half dock holds the attachment chips, the block
+// line and the draft. The controls row used to paint over the draft (0px
+// visible at 375x667). The draft keeps a two-line floor and nothing overlaps
+// it; the banner and the transcript give way instead.
+test('a refused send keeps a two-line draft clear of every row in a 375x667 half dock', async ({
+  page,
+}, testInfo) => {
+  test.setTimeout(45_000);
+  await page.setViewportSize({ width: 375, height: 667 });
+  await installMockOrchestrationSse(page);
+  await mockChatShell(page);
+  await page.route('**/api/orchestration/chat', (route) =>
+    route.fulfill({
+      status: 400,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        success: false,
+        error: 'This engine did not advertise image attachment support.',
+        code: 'attachment_input_unsupported',
+        retryable: false,
+      }),
+    }),
+  );
+
+  const textarea = await openComposer(page, false, 'station');
+  await textarea.fill(
+    'Terrible styling also after I accepted one the approval was still showing up.\nSecond line of the draft here.\nThird line should stay visible.',
+  );
+  const png = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADElEQVR42mNk+M/wHwAF/gL+Q5q9WQAAAABJRU5ErkJggg==',
+    'base64',
+  );
+  await page.locator('.attachment-input').setInputFiles([
+    { name: 'shot-one.png', mimeType: 'image/png', buffer: png },
+    { name: 'shot-two.png', mimeType: 'image/png', buffer: png },
+  ]);
+  await expect(page.locator('.composer-attachments__chip')).toHaveCount(2);
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  // The refusal is recorded (the send notice). In a half dock too short for
+  // transcript + composer, the transcript steps aside instead of the draft
+  // being squeezed under the controls.
+  // The transcript is stepped aside here, so the reason must be on screen in
+  // the composer itself: restored chips, a restored draft and an enabled Send
+  // with no visible reason would read as a dead button. (`getByText` also
+  // matches the hidden transcript copy, hence the visibility assertion.)
+  const failureLine = page.locator('.chat-input__send-failure');
+  await expect(failureLine).toBeVisible();
+  await expect(failureLine).toHaveText(
+    "This engine can't take these attachments",
+  );
+  await expect(page.locator('.chat-messages')).toBeHidden();
+  await expect(page.locator('.chat-input__attachment-error')).toHaveCount(0);
+  await expect(page.locator('.chat-input__attachment-notice')).toHaveCount(0);
+  await expect(page.locator('.composer-attachments__chip')).toHaveCount(2);
+  await expect(
+    page.locator('.composer-attachments__chip').first(),
+  ).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath('refused-half-dock.png') });
+
+  const geometry = await textarea.evaluate((element) => {
+    const box = element.getBoundingClientRect();
+    const style = getComputedStyle(element);
+    const line =
+      Number.parseFloat(style.lineHeight) ||
+      Number.parseFloat(style.fontSize) * 1.2;
+    const chrome =
+      Number.parseFloat(style.paddingTop) +
+      Number.parseFloat(style.paddingBottom);
+    const others = [
+      ...document.querySelectorAll(
+        '.composer-attachments__chip, .chat-input__attachment-error, .chat-input__attachment-notice, .chat-controls-row, [data-testid="chat-dock-session-failure"], .chat-input__meta',
+      ),
+    ].map((other) => {
+      const rect = other.getBoundingClientRect();
+      return {
+        name: other.className || other.getAttribute('data-testid'),
+        overlaps:
+          rect.height > 0 &&
+          rect.top < box.bottom - 0.5 &&
+          rect.bottom > box.top + 0.5 &&
+          rect.left < box.right &&
+          rect.right > box.left,
+      };
+    });
+    const root = element.closest('.chat-input') as HTMLElement;
+    const body = root?.parentElement as HTMLElement;
+    const debug = {
+      ta: [box.top, box.bottom, element.style.height, element.style.minHeight],
+      root: [
+        root.getBoundingClientRect().top,
+        root.getBoundingClientRect().bottom,
+        root.style.minHeight,
+        root.scrollHeight,
+        getComputedStyle(root).maxHeight,
+      ],
+      body: [
+        body.className,
+        body.getBoundingClientRect().top,
+        body.getBoundingClientRect().bottom,
+      ],
+      kids: [...body.children].map(
+        (k) => `${k.className}:${Math.round(k.getBoundingClientRect().height)}`,
+      ),
+    };
+    return {
+      debug,
+      visibleContent: box.height - chrome,
+      twoLines: 2 * line,
+      inViewport: box.top >= 0 && box.bottom <= innerHeight,
+      overlapping: others.filter((other) => other.overlaps).map((o) => o.name),
+    };
+  });
+  expect(geometry.overlapping, JSON.stringify(geometry.debug)).toEqual([]);
+  expect(geometry.inViewport, JSON.stringify(geometry.debug)).toBe(true);
+  expect(geometry.visibleContent).toBeGreaterThanOrEqual(geometry.twoLines - 1);
+});
+
+// The state the reviewer measured: a reload after a refused first send. The
+// failure banner, the restored attachment chips (they lost their bytes, so
+// they ask for the file again), their block line and a three-line draft all
+// compete for a 375x667 half dock. The controls row used to paint over the
+// draft (0px visible).
+test('after a reload with the failure banner, a 375x667 half dock keeps a two-line draft clear', async ({
+  page,
+}) => {
+  test.setTimeout(45_000);
+  await page.setViewportSize({ width: 375, height: 667 });
+  await installMockOrchestrationSse(page);
+  await mockChatShell(page);
+  const id = 'refused-first-send';
+  await mockRuntimeConversation(page, {
+    id,
+    agentSlug: 'station',
+    title: 'Refused send',
+    provider: 'station-agent',
+    model: 'model-selected',
+    projectSlug: 'default',
+    canContinue: true,
+    turns: () => [],
+  });
+  await page.route('**/api/orchestration/sessions/read-model', (route) =>
+    route.fulfill(
+      json({
+        success: true,
+        data: [
+          {
+            threadId: id,
+            provider: 'station-agent',
+            model: 'model-selected',
+            projectSlug: 'default',
+            assignedAgentSlug: 'station',
+            status: 'ready',
+            lifecycleState: 'idle',
+            blockedReason: 'Station refused the send before it started.',
+            terminalAttribution: {
+              kind: 'send_refused',
+              detail: 'Station refused the send before it started.',
+            },
+            createdAt: '2026-08-25T12:00:00.000Z',
+            updatedAt: '2026-08-25T12:00:01.000Z',
+            isLoaded: true,
+            isPersisted: true,
+            eventCount: 1,
+          },
+        ],
+      }),
+    ),
+  );
+  await page.route(
+    `**/api/orchestration/conversations/${id}/event-window**`,
+    (route) =>
+      route.fulfill(
+        json({
+          success: true,
+          data: {
+            protocolVersion: 1,
+            conversationId: id,
+            currentSessionId: id,
+            sessionLineage: [
+              {
+                sessionId: id,
+                agentSlug: 'station',
+                agentDisplayName: 'Station',
+              },
+            ],
+            handoffs: [],
+            contextBoundaries: [],
+            events: [],
+            hasMore: false,
+            watermark: 0,
+          },
+        }),
+      ),
+  );
+  await page.route(/\/agents\/station\/conversations(?:\?.*)?$/, (route) =>
+    route.fulfill(
+      json({
+        success: true,
+        data: [
+          {
+            id,
+            title: 'Refused send',
+            agentSlug: 'station',
+            updatedAt: '2026-08-25T12:00:01.000Z',
+          },
+        ],
+      }),
+    ),
+  );
+  const stage = (name: string) => ({
+    clientAttachmentId: name,
+    name,
+    mimeType: 'image/png',
+    size: 3,
+    state: 'complete',
+    progress: 1,
+    delivery: 'staged',
+  });
+  await seedActiveChats(page, [
+    {
+      sessionId: id,
+      conversationId: id,
+      agentSlug: 'station',
+      projectSlug: 'default',
+      projectName: 'Default',
+      model: 'model-selected',
+      title: 'Refused send',
+      provider: 'bedrock',
+      orchestrationSessionStarted: true,
+      ephemeralMessages: [],
+      attachmentStages: [stage('shot-one.png'), stage('shot-two.png')],
+    },
+  ]);
+  await page.addInitScript((sessionId) => {
+    localStorage.setItem(
+      'station:chat-drafts:v1',
+      JSON.stringify({
+        sessions: {
+          [sessionId]: {
+            text: 'Terrible styling also after I accepted one the approval was still showing up.\nSecond line of the draft here.\nThird line should stay visible.',
+            updatedAt: Date.now(),
+          },
+        },
+        portable: [],
+      }),
+    );
+  }, id);
+
+  await page.goto(`/?dock=open&chat=${id}`);
+  await dismissSetupLauncher(page);
+  const textarea = page.locator('.chat-input textarea').last();
+  await expect(textarea).toHaveValue(/Third line should stay visible/);
+  await expect(page.locator('.composer-attachments__chip')).toHaveCount(2);
+  // In a dock this short the failed-session banner steps aside for the
+  // composer (it is still mounted); the composer's own block line is what
+  // keeps the reason on screen.
+  await expect(page.getByTestId('chat-dock-session-failure')).toHaveCount(1);
+  await expect(page.locator('.chat-input__attachment-error')).toBeVisible();
+
+  const geometry = await textarea.evaluate((element) => {
+    const box = element.getBoundingClientRect();
+    const style = getComputedStyle(element);
+    const line =
+      Number.parseFloat(style.lineHeight) ||
+      Number.parseFloat(style.fontSize) * 1.2;
+    const chrome =
+      Number.parseFloat(style.paddingTop) +
+      Number.parseFloat(style.paddingBottom);
+    const overlapping = [
+      ...document.querySelectorAll(
+        '.composer-attachments__chip, .chat-input__attachment-error, .chat-controls-row, [data-testid="chat-dock-session-failure"], .chat-input__meta',
+      ),
+    ]
+      .filter((other) => {
+        const rect = other.getBoundingClientRect();
+        return (
+          rect.height > 0 &&
+          rect.top < box.bottom - 0.5 &&
+          rect.bottom > box.top + 0.5 &&
+          rect.left < box.right &&
+          rect.right > box.left
+        );
+      })
+      .map((other) => other.className);
+    return {
+      overlapping,
+      box: [box.top, box.bottom],
+      visibleContent: box.height - chrome,
+      twoLines: 2 * line,
+      inViewport: box.top >= 0 && box.bottom <= innerHeight,
+    };
+  });
+  expect(geometry.overlapping, JSON.stringify(geometry)).toEqual([]);
+  expect(geometry.inViewport, JSON.stringify(geometry)).toBe(true);
+  expect(
+    geometry.visibleContent,
+    JSON.stringify(geometry),
+  ).toBeGreaterThanOrEqual(geometry.twoLines - 1);
+});

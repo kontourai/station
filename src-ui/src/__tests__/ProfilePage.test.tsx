@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const buildPopulatedUsageStats = vi.hoisted(() => () => ({
@@ -15,9 +15,11 @@ const buildPopulatedUsageStats = vi.hoisted(() => () => ({
   byAgent: {},
   byDate: Object.fromEntries(
     Array.from({ length: 14 }, (_, index) => {
-      const day = String(index + 1).padStart(2, '0');
+      const day = new Date(Date.now() - (13 - index) * 86_400_000)
+        .toISOString()
+        .slice(0, 10);
       return [
-        `2026-04-${day}`,
+        day,
         { messages: index % 3 === 0 ? index + 1 : 0, cost: index * 0.05 },
       ];
     }),
@@ -25,11 +27,13 @@ const buildPopulatedUsageStats = vi.hoisted(() => () => ({
 }));
 
 const refreshAnalytics = vi.hoisted(() => vi.fn());
+const rescanAnalytics = vi.hoisted(() => vi.fn());
 const analyticsState = vi.hoisted(() => ({
   loading: false,
   error: null as unknown,
   usageStats: null as ReturnType<typeof buildPopulatedUsageStats> | null,
   refresh: refreshAnalytics,
+  rescan: rescanAnalytics,
 }));
 
 vi.mock('@kontourai/station-sdk', () => ({
@@ -39,6 +43,10 @@ vi.mock('@kontourai/station-sdk', () => ({
     isLoading: false,
     error: null,
   }),
+}));
+
+vi.mock('../components/profile/StationPeoplePanel', () => ({
+  StationPeoplePanel: () => <div>Paired profiles</div>,
 }));
 
 vi.mock('../components/badges/AchievementsBadge', () => ({
@@ -94,13 +102,14 @@ describe('ProfilePage', () => {
     analyticsState.error = null;
     analyticsState.usageStats = buildPopulatedUsageStats();
     refreshAnalytics.mockReset();
+    rescanAnalytics.mockReset().mockResolvedValue(undefined);
   });
 
   test('renders a compact populated usage graph inside the hero card', () => {
     const { container } = render(<ProfilePage />);
 
     expect(screen.getByLabelText('Usage activity overview')).toBeTruthy();
-    expect(screen.getByText(/Recent activity/)).toBeTruthy();
+    expect(screen.getByText(/Last 14 UTC days/)).toBeTruthy();
     expect(
       container.querySelectorAll('.profile-usage-graph__bar'),
     ).toHaveLength(14);
@@ -120,7 +129,42 @@ describe('ProfilePage', () => {
 
     render(<ProfilePage />);
 
-    expect(screen.getByText(/No usage data yet/i)).toBeTruthy();
+    expect(screen.getByText(/Daily activity not recorded/i)).toBeTruthy();
+  });
+
+  test('does not relabel old daily history or lifetime totals as recent activity', () => {
+    analyticsState.usageStats = buildPopulatedUsageStats();
+    analyticsState.usageStats.byDate = {
+      '2020-01-01': { messages: 18, cost: 2.75 },
+    };
+    const { container } = render(<ProfilePage />);
+    expect(screen.getByText(/Daily activity not recorded/)).toBeTruthy();
+    expect(container.querySelector('.profile-usage-graph__bar')).toBeNull();
+    expect(screen.queryByText(/spent/)).toBeNull();
+    expect(screen.queryByText(/Joined/)).toBeNull();
+  });
+
+  test('discloses failed background refreshes over a retained snapshot', () => {
+    analyticsState.error = new Error('Station offline');
+    render(<ProfilePage />);
+    expect(screen.getByText('Usage refresh failed')).toBeTruthy();
+    expect(
+      screen.getByText(/Showing the last available snapshot/),
+    ).toBeTruthy();
+  });
+
+  test('reports a failed rebuild instead of presenting it as refreshed usage', async () => {
+    rescanAnalytics.mockRejectedValueOnce(new Error('Rebuild unavailable'));
+    render(<ProfilePage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Rebuild usage' }));
+    await waitFor(() =>
+      expect(screen.getByText(/Rebuild unavailable/)).toBeTruthy(),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    await waitFor(() =>
+      expect(screen.queryByText('Usage refresh failed')).toBeNull(),
+    );
+    expect(rescanAnalytics).toHaveBeenCalledTimes(2);
   });
 
   // `useAnalytics` already derived the usage read's error and this
@@ -133,7 +177,7 @@ describe('ProfilePage', () => {
 
     render(<ProfilePage />);
 
-    expect(screen.queryByText(/No usage data yet/i)).toBeNull();
+    expect(screen.queryByText(/Daily activity not recorded/i)).toBeNull();
     expect(screen.getByText('Unable to load profile')).toBeTruthy();
     expect(screen.getByText('usage read failed')).toBeTruthy();
     // Header first, in a failure exactly as in a wait (6-OPS-23): the page

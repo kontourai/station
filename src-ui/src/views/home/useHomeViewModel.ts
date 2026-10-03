@@ -209,6 +209,17 @@ export function useHomeViewModel(onNavigate: (view: NavigationView) => void) {
   const data = useHomeWorkData();
   const acknowledge = useAcknowledgeConversationMutation();
   const showSurface = useShowSurface();
+  const { agent, effectiveModel } = data.defaultSelection;
+  const startIdentity = agent
+    ? [
+        agent.name,
+        effectiveModel.label === 'Model not reported'
+          ? undefined
+          : effectiveModel.label,
+      ]
+        .filter(Boolean)
+        .join(' · ')
+    : 'No agent is ready yet';
   return {
     ...data,
     /**
@@ -218,9 +229,7 @@ export function useHomeViewModel(onNavigate: (view: NavigationView) => void) {
      * Agent the New Chat picker would refuse one click later.
      */
     startReady: data.defaultSelection.agent !== undefined,
-    startIdentity: data.defaultSelection.agent
-      ? `${data.defaultSelection.agent.name} · ${data.defaultSelection.effectiveModel.label}`
-      : 'No agent is ready yet',
+    startIdentity,
     // #2310 review M3: "Continue most recent work" must name work. A Draft
     // has none — nothing was ever sent — and stays reachable in its lane.
     primaryWorkItem: data.workItems.find(

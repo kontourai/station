@@ -39,7 +39,7 @@
   justify-content: flex-end;
 }
 
-/* Open in pane: an icon-only control (`BrowserIconButton`) at the row's
+/* Open in pane: an icon-only control (the shared `IconButton`) at the row's
    start. On a coarse pointer it is a 44px target like the labelled OK and
    Cancel beside it; the icon sheet reads the variable. */
 .browser-pane__page-dialog-open {
@@ -48,6 +48,7 @@
 
 .browser-pane__page-dialog[data-pointer="coarse"] {
   --browser-pane-control: 44px;
+  --icon-button-size: 44px;
 }
 
 .browser-pane__page-dialog-input {

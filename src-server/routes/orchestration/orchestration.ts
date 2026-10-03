@@ -44,6 +44,7 @@ import {
 import {
   APPROVAL_MODES,
   type ApprovalMode,
+  ATTACHMENT_INPUT_UNSUPPORTED_CODE,
 } from '@kontourai/station-contracts/provider';
 import {
   ORCHESTRATION_STREAM_ACTIVITY_EVENT,
@@ -56,6 +57,10 @@ import {
   STATION_SESSION_INVENTORY_MCP_V2_VERSION,
 } from '@kontourai/station-contracts/session-inventory-mcp';
 import { SESSION_LIFECYCLE_STATES } from '@kontourai/station-contracts/session-lifecycle';
+import {
+  TASK_ROOM_CONTEXT_VERSION,
+  type TaskRoomContextSnapshot,
+} from '@kontourai/station-contracts/task-room-work';
 import {
   type HostedTenantRegistry,
   sessionReadAuthorityFromRequest,
@@ -532,6 +537,18 @@ export const delegateTaskSchema = z.object({
       taskId: z.string().min(1).max(160),
       taskCreatedAt: z.string().min(1).max(40),
       operationId: z.string().min(1).max(160),
+      context: z
+        .object({
+          version: z.literal(TASK_ROOM_CONTEXT_VERSION),
+          // 64 hex chars; the explicit .max() keeps the bound machine-visible
+          // to the seam walker (regex length is not).
+          digest: z
+            .string()
+            .max(64)
+            .regex(/^[0-9a-f]{64}$/),
+        })
+        .strict()
+        .optional(),
     })
     .strict()
     .optional(),
@@ -1328,6 +1345,11 @@ export function createOrchestrationRoutes(
     delegateTask?: (input: DelegateTaskRequest) => Promise<unknown>;
     taskRoomWork?: {
       module: TaskRoomWorkModule;
+      resolveContext?(
+        taskId: string,
+        request: Request,
+        principal: PrincipalRef,
+      ): Promise<TaskRoomContextSnapshot | undefined>;
       authorize(
         taskId: string,
         request: Request,
@@ -1395,6 +1417,12 @@ export function createOrchestrationRoutes(
       binding: { threadId: string; clientTurnId: string },
     ) => ChatAttachmentInput[];
     acceptStagedAttachments?: (
+      owner: PrincipalRef,
+      references: readonly StagedAttachmentReference[],
+      binding: { threadId: string; clientTurnId: string },
+    ) => void;
+    /** Undo the binding of a send refused before any engine effect. */
+    releaseStagedAttachments?: (
       owner: PrincipalRef,
       references: readonly StagedAttachmentReference[],
       binding: { threadId: string; clientTurnId: string },
@@ -1736,6 +1764,15 @@ export function createOrchestrationRoutes(
         503,
       );
     }
+    // Visible to the catch below: what this send bound, for a refusal that
+    // must release it.
+    let stagedAttachmentsForRelease:
+      | readonly StagedAttachmentReference[]
+      | undefined;
+    let stagedBindingForRelease:
+      | { threadId: string; clientTurnId: string }
+      | undefined;
+    let releasePrincipal: PrincipalRef | undefined;
     try {
       const {
         delegation: claimedDelegation,
@@ -1840,6 +1877,9 @@ export function createOrchestrationRoutes(
               resolveAttachments: (binding) =>
                 (() => {
                   stagedBinding = binding;
+                  stagedBindingForRelease = binding;
+                  stagedAttachmentsForRelease = stagedAttachments;
+                  releasePrincipal = principal;
                   return deps.hydrateStagedAttachments!(
                     principal!,
                     stagedAttachments,
@@ -1964,6 +2004,21 @@ export function createOrchestrationRoutes(
       const unreachableWorkspace =
         error instanceof ProjectWorktreeDirectoryError &&
         error.reason === 'unreachable';
+      // The engine refused these attachments before anything reached it, so
+      // their binding to this turn proves nothing: release it, or a resend
+      // of the same (restored) chips anywhere else is refused as bound.
+      if (
+        errorCode(error) === ATTACHMENT_INPUT_UNSUPPORTED_CODE &&
+        stagedAttachmentsForRelease?.length &&
+        stagedBindingForRelease &&
+        releasePrincipal
+      ) {
+        deps.releaseStagedAttachments?.(
+          releasePrincipal,
+          stagedAttachmentsForRelease,
+          stagedBindingForRelease,
+        );
+      }
       return c.json(
         {
           success: false,
@@ -2388,9 +2443,15 @@ export function createOrchestrationRoutes(
         sessionId?: string,
         recheck?: () => Promise<void>,
         roomBinding?: TaskRoomInvocationAdmission['roomBinding'],
+        contextSnapshot?: TaskRoomContextSnapshot,
       ) =>
         delegate({
           ...request,
+          ...(contextSnapshot
+            ? {
+                prompt: `${body.prompt}\n\nSelected Task brief snapshot:\n${JSON.stringify(contextSnapshot)}`,
+              }
+            : {}),
           ...(delegation ? { delegation } : {}),
           target: normalizeExecutionTarget(
             withCanonicalCwd(body.target, scoped.canonicalCwd),
@@ -2482,13 +2543,19 @@ export function createOrchestrationRoutes(
             operationId: roomRequest.operationId,
             agentId: body.target.agent,
             prompt: body.prompt,
+            ...(roomRequest.context ? { context: roomRequest.context } : {}),
           },
           authorize,
-          async (sessionId, scope, recheck) => {
-            const handle = await dispatch(sessionId, recheck, {
-              projectId: scope.roomProjectId,
-              taskId: roomRequest.taskId,
-            });
+          async (sessionId, scope, recheck, contextSnapshot) => {
+            const handle = await dispatch(
+              sessionId,
+              recheck,
+              {
+                projectId: scope.roomProjectId,
+                taskId: roomRequest.taskId,
+              },
+              contextSnapshot,
+            );
             if (
               !handle ||
               typeof handle !== 'object' ||
@@ -2498,6 +2565,9 @@ export function createOrchestrationRoutes(
               throw new Error('Agent execution identity was not returned.');
             return { sessionId: handle.sessionId };
           },
+          () =>
+            work.resolveContext?.(roomRequest.taskId, c.req.raw, principal) ??
+            Promise.resolve(undefined),
         );
         return c.json(
           { success: outcome.kind === 'recorded', data: outcome },

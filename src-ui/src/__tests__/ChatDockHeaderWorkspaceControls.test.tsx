@@ -80,13 +80,7 @@ beforeEach(() => {
   window.localStorage.clear();
 });
 
-/**
- * #1536 F: these two panel toggles were icon buttons in the header row, two of
- * the thirteen controls a 40px bar was carrying. They are rows of the More menu
- * now. Their CONTRACTS — the two-state name, the state an assistive technology
- * reads, the running-count variant, the right-mode gate — are unchanged, so
- * these carry forward against the new host.
- */
+/** The list toggle is direct; secondary panel actions stay in More. */
 function openMoreMenu() {
   // By prefix: the trigger's name carries a running-task count when there is
   // one (M2), so an exact match would silently stop finding it.
@@ -98,12 +92,10 @@ describe('header inbox toggle (from #1064 AC1/AC2)', () => {
   test('open state renders "Hide inbox" checked', async () => {
     const controls = workspaceControls();
     renderHeader({ workspaceControls: controls });
-    openMoreMenu();
-
-    const row = await screen.findByRole('menuitemcheckbox', {
+    const row = await screen.findByRole('button', {
       name: 'Hide inbox',
     });
-    expect(row.getAttribute('aria-checked')).toBe('true');
+    expect(row.getAttribute('aria-pressed')).toBe('true');
     fireEvent.click(row);
     expect(controls.onToggleInbox).toHaveBeenCalledTimes(1);
   });
@@ -112,12 +104,10 @@ describe('header inbox toggle (from #1064 AC1/AC2)', () => {
     renderHeader({
       workspaceControls: workspaceControls({ isInboxOpen: false }),
     });
-    openMoreMenu();
-
-    const row = await screen.findByRole('menuitemcheckbox', {
+    const row = await screen.findByRole('button', {
       name: 'Show inbox',
     });
-    expect(row.getAttribute('aria-checked')).toBe('false');
+    expect(row.getAttribute('aria-pressed')).toBe('false');
   });
 
   test('offers no chat-list row when showInboxToggle is false (right-mode gate)', () => {
@@ -127,10 +117,10 @@ describe('header inbox toggle (from #1064 AC1/AC2)', () => {
     openMoreMenu();
 
     expect(
-      screen.queryByRole('menuitemcheckbox', { name: 'Hide inbox' }),
+      screen.queryByRole('button', { name: 'Hide inbox' }),
     ).toBeNull();
     expect(
-      screen.queryByRole('menuitemcheckbox', { name: 'Show inbox' }),
+      screen.queryByRole('button', { name: 'Show inbox' }),
     ).toBeNull();
     // Its neighbours are still there, so an empty menu cannot pass this.
     expect(
@@ -437,6 +427,7 @@ describe('one-bar rule (#3309)', () => {
       // The placement grab, maximize and the visibility chevron that used to
       // bracket these are the REGION's since #2046 2b and render in the
       // region bar (`RegionChromeBar.test.tsx` pins them there).
+      'Hide inbox',
       'Open',
       'New',
       'More dock actions',

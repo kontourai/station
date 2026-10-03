@@ -9,9 +9,14 @@ import {
   useEffect,
   useRef,
   useState,
+  useSyncExternalStore,
 } from 'react';
 import { useAgents } from '../../contexts/AgentsContext';
 import { openChatsStore } from '../../contexts/open-chats-store';
+import {
+  getStreamConnectionState,
+  subscribeStreamConnectionState,
+} from '../../hooks/orchestration/streamConnectionState';
 import type { OrchestrationEvent } from '../../hooks/orchestration/types';
 import type { useMobileVisualViewport } from '../../hooks/useMobileVisualViewport';
 import { useMutableSessionDetailState } from '../../hooks/useMutableSessionDetailState';
@@ -87,7 +92,6 @@ export function MutableSessionDetail({
   session,
   onTaskChanged,
   events,
-  connected,
   visualViewport,
   evidenceReveal,
   historyNotices,
@@ -107,6 +111,8 @@ export function MutableSessionDetail({
     setInput,
     isDelegated,
     sendTurn,
+    sendTurnPending,
+    sendTurnError,
     respond,
     stopTask,
     pendingRequest,
@@ -144,6 +150,36 @@ export function MutableSessionDetail({
   });
 
   const threadId = session.threadId;
+  const sendError = sendTurnError ?? sendTurn.error;
+  const transcriptScrollRef = useRef<HTMLDivElement | null>(null);
+  const livePhase = useSyncExternalStore(
+    subscribeStreamConnectionState,
+    () => getStreamConnectionState(apiBase).phase,
+  );
+  const connectionLabel = {
+    unknown: 'Connecting…',
+    receiving: 'Catching up…',
+    'caught-up': 'Live',
+    interrupted: 'Reconnecting…',
+    closed: 'Connection needs attention',
+  }[livePhase];
+  const currentTool = session.hasActiveTurn
+    ? session.conversationActivity?.runningTools?.at(-1)?.name
+    : undefined;
+  const importantNotice = Boolean(
+    failureText ||
+      attentionCheckFailed ||
+      visibleAttentionItems.length ||
+      sendError ||
+      respond.error ||
+      stopTask.error,
+  );
+  // biome-ignore lint/correctness/useExhaustiveDependencies: A new request failure must reveal its notice even when an earlier notice keeps the boolean true.
+  useEffect(() => {
+    if (importantNotice && transcriptScrollRef.current) {
+      transcriptScrollRef.current.scrollTop = 0;
+    }
+  }, [importantNotice, sendError, respond.error]);
   const agentLabel = sessionAgentLabel(session, useAgents());
   // Open in chat goes through the shared open-chat focus (archive#1297), the
   // seam Home and the project page use: the chat dock rehydrates the real
@@ -320,19 +356,80 @@ export function MutableSessionDetail({
         meta={meta}
         isStopped={isStopped}
         isStreaming={canStop}
-        connected={connected}
+        connected={livePhase === 'caught-up'}
+        connectionLabel={connectionLabel}
+        currentActivity={currentTool ? `Using ${currentTool}` : undefined}
         stopTaskPending={stopTask.isPending}
         onRequestStop={() => setConfirmStop(true)}
         onOpenInChat={openInChat}
         menuActions={menuActions}
       />
 
+      {/* Open requests stay above the transcript; stopped-session and
+          answerability gates still belong to the canonical owner. */}
+      {!isPeerRecord &&
+        !isStopped &&
+        pendingRequest &&
+        pendingRequestPresentation && (
+          <div
+            className="sessions-detail__request"
+            data-testid="session-request"
+          >
+            <div className="sessions-detail__request-copy">
+              <span className="sessions-detail__request-label">
+                {pendingRequestPresentation.label}
+              </span>
+              <strong>{pendingRequest.title}</strong>
+            </div>
+            {/* archive#1781: the card RENDERS for an unanswerable session —
+              deleting it would be the silent filtering ADR 0012 forbids, and
+              the request really is still open. What it must not do is offer
+              Approve/Deny that dispatch into nothing, so the buttons are
+              disabled and the observation that disabled them is named. */}
+            {sessionUnanswerableNotice && (
+              <p
+                id="session-request-answerability-note"
+                className="sessions-detail__request-note"
+                data-testid="session-request-answerability"
+              >
+                {sessionUnanswerableNotice}
+              </p>
+            )}
+            <div className="sessions-detail__request-actions">
+              <Button
+                variant="primary"
+                disabled={respond.isPending || sessionUnanswerable}
+                aria-describedby={
+                  sessionUnanswerable
+                    ? 'session-request-answerability-note'
+                    : undefined
+                }
+                onClick={() => respond.mutate('accept')}
+              >
+                {pendingRequestPresentation.accept}
+              </Button>
+              <Button
+                variant="secondary"
+                disabled={respond.isPending || sessionUnanswerable}
+                aria-describedby={
+                  sessionUnanswerable
+                    ? 'session-request-answerability-note'
+                    : undefined
+                }
+                onClick={() => respond.mutate('decline')}
+              >
+                {pendingRequestPresentation.decline}
+              </Button>
+            </div>
+          </div>
+        )}
+
       {/* archive#3305: one scroll region for everything between the pinned
           header and the pinned request/compose controls. The previous fixed
           grid template assigned one flexible row by position, so any other
           section that grew (error stacks, multiple attention cards, the
           context grid) was clipped with no way to reach it. */}
-      <div className="sessions-detail__scroll">
+      <div className="sessions-detail__scroll" ref={transcriptScrollRef}>
         <SessionDetailErrors
           failureText={failureText}
           failureNote={failureNote}
@@ -340,14 +437,14 @@ export function MutableSessionDetail({
           dismissFailurePending={acknowledgeFailurePending}
           dismissFailureError={acknowledgeFailureError}
           stopTaskError={confirmStop ? null : stopTask.error}
-          sendTurnError={sendTurn.error}
+          sendTurnError={sendError}
           respondError={respond.error}
           onDraftSendError={
-            sendTurn.error && !hideGenericCompose && !isStreaming
+            sendError && !hideGenericCompose && !isStreaming
               ? () => {
                   const draft = errorAgentDraft({
                     attempted: 'Continue session',
-                    error: sendTurn.error,
+                    error: sendError,
                     context: {
                       threadId,
                       provider: session.provider,
@@ -386,6 +483,8 @@ export function MutableSessionDetail({
             failureShownAbove={Boolean(failureText)}
             notices={historyNotices}
             onSettledChange={onTranscriptSettledChange}
+            scrollContainerRef={transcriptScrollRef}
+            preserveReading={importantNotice || Boolean(evidenceReveal)}
           />
         )}
 
@@ -535,81 +634,6 @@ export function MutableSessionDetail({
         </details>
       </div>
 
-      {/* (archive#1170): guarded on !isStopped like Stop and the connection
-          note above — a session that crashes mid-request must not leave
-          Approve/Decline clickable against a dead session. Stopped
-          (`completed`/`failed`/`canceled`), not terminal (station#3244): the
-          composer below reappears on a retryable failed session, but this
-          card kept #1170's behavior. Disclosed tension, not resolved here:
-          the server's own answerability model (`open-requests.ts`,
-          `canSessionLifecycleStateResume`) holds that a request open when a
-          session FAILED is still pertinent — the retry re-enters `running`
-          directly — so hiding this card on `failed` can hide an answerable
-          request. A `pendingReview` approval survives as an attention item
-          (station#1548), but a bare in-turn request does not. Aligning this
-          gate with the resume predicate is a deliberate product call for its
-          own issue, exactly as #3213 treated #3244.
-
-          Pinned outside the scroll region rather than at the top of it: it is
-          the one decision the session is blocked on, and it must stay
-          reachable above an open keyboard without scrolling. */}
-      {!isPeerRecord &&
-        !isStopped &&
-        pendingRequest &&
-        pendingRequestPresentation && (
-          <div
-            className="sessions-detail__request"
-            data-testid="session-request"
-          >
-            <div className="sessions-detail__request-copy">
-              <span className="sessions-detail__request-label">
-                {pendingRequestPresentation.label}
-              </span>
-              <strong>{pendingRequest.title}</strong>
-            </div>
-            {/* archive#1781: the card RENDERS for an unanswerable session —
-              deleting it would be the silent filtering ADR 0012 forbids, and
-              the request really is still open. What it must not do is offer
-              Approve/Deny that dispatch into nothing, so the buttons are
-              disabled and the observation that disabled them is named. */}
-            {sessionUnanswerableNotice && (
-              <p
-                id="session-request-answerability-note"
-                className="sessions-detail__request-note"
-                data-testid="session-request-answerability"
-              >
-                {sessionUnanswerableNotice}
-              </p>
-            )}
-            <div className="sessions-detail__request-actions">
-              <Button
-                variant="primary"
-                disabled={respond.isPending || sessionUnanswerable}
-                aria-describedby={
-                  sessionUnanswerable
-                    ? 'session-request-answerability-note'
-                    : undefined
-                }
-                onClick={() => respond.mutate('accept')}
-              >
-                {pendingRequestPresentation.accept}
-              </Button>
-              <Button
-                variant="secondary"
-                disabled={respond.isPending || sessionUnanswerable}
-                aria-describedby={
-                  sessionUnanswerable
-                    ? 'session-request-answerability-note'
-                    : undefined
-                }
-                onClick={() => respond.mutate('decline')}
-              >
-                {pendingRequestPresentation.decline}
-              </Button>
-            </div>
-          </div>
-        )}
-
       {!hideGenericCompose && !isPeerRecord && (
         <>
           <div className="sessions-detail__compose">
@@ -635,9 +659,9 @@ export function MutableSessionDetail({
             <Button
               variant="primary"
               disabled={!canSend}
-              onClick={() => sendTurn.mutate()}
+              onClick={() => sendTurn.mutate({ text: input })}
             >
-              Send
+              {sendTurnPending ? 'Sending…' : 'Send'}
             </Button>
           </div>
           {/* Honest limit: there is no mid-turn steering here, and this

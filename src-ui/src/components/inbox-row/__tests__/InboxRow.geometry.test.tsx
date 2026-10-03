@@ -414,8 +414,9 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
     });
   });
 
-  /** Every touch-chrome action is 44x44, beside its row, never wrapped under
-   *  it, and the row's title keeps a readable width. */
+  /** Every touch-chrome action is 44x44, inside its row's box (the picker
+   *  pins its one ⋯ to the row's corner, #3144), never spilling below or
+   *  past it, and the row's title keeps a readable width. */
   async function auditTouchRows(
     pg: import('@playwright/test').Page,
     minimumTitleWidth: number,
@@ -436,9 +437,7 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
     }
     const rows = await pg.evaluate(() =>
       [...document.querySelectorAll('.inbox-row--touch')].map((row) => {
-        const open = row
-          .querySelector('.inbox-row__open')!
-          .getBoundingClientRect();
+        const rowBox = row.getBoundingClientRect();
         const actionsBox = row
           .querySelector('.inbox-row__actions')
           ?.getBoundingClientRect();
@@ -447,10 +446,11 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
           targets: row.querySelectorAll('.inbox-row__action').length,
           title: row.querySelector('.inbox-row__title')!.getBoundingClientRect()
             .width,
-          right: row.getBoundingClientRect().right,
+          right: rowBox.right,
           wrapped: actionsBox
-            ? actionsBox.left < open.right - 0.5 ||
-              actionsBox.top >= open.bottom
+            ? actionsBox.right > rowBox.right + 0.5 ||
+              actionsBox.bottom > rowBox.bottom + 0.5 ||
+              actionsBox.top < rowBox.top - 0.5
             : false,
         };
       }),

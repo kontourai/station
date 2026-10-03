@@ -10,6 +10,7 @@
  * trusting that two files that look alike stay alike.
  */
 
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { createRef } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -18,6 +19,7 @@ import { InboxRow } from '../components/chat-dock/ChatDockInboxRows';
 import { MobileTaskSwitcher } from '../components/chat-dock/MobileTaskSwitcher';
 import { deviceSettingsStore } from '../lib/device-settings-store';
 import type { HomeWorkItem } from '../views/home/home-view-model';
+import { renderWithIsolatedConnections } from './renderWithIsolatedConnections';
 
 const NOW = Date.parse('2026-08-18T12:00:00Z');
 
@@ -69,29 +71,38 @@ function renderSheetHost(
   onCloseChat = vi.fn(),
   agents?: typeof AGENTS,
 ) {
-  return render(
-    <MobileTaskSwitcher
-      open
-      tasks={[item]}
-      activeChatSessionId={null}
-      visualViewportStyle={{}}
-      triggerRef={createRef<HTMLButtonElement>()}
-      onClose={vi.fn()}
-      onFocusChat={vi.fn()}
-      onOpenConversation={vi.fn()}
-      onOpenSession={vi.fn()}
-      onCloseChat={onCloseChat}
-      now={NOW}
-      agents={agents}
-    />,
+  return renderWithIsolatedConnections(
+    <QueryClientProvider
+      client={
+        new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      }
+    >
+      <MobileTaskSwitcher
+        open
+        tasks={[item]}
+        activeChatSessionId={null}
+        visualViewportStyle={{}}
+        triggerRef={createRef<HTMLButtonElement>()}
+        onClose={vi.fn()}
+        onFocusChat={vi.fn()}
+        onOpenConversation={vi.fn()}
+        onOpenSession={vi.fn()}
+        onCloseChat={onCloseChat}
+        now={NOW}
+        agents={agents}
+      />
+    </QueryClientProvider>,
   );
 }
 
 function expectSharedRowAnatomy(root: ParentNode) {
   // One shared row implementation: the class family is the contract.
   expect(root.querySelector('.chat-dock-inbox__row')).not.toBeNull();
-  expect(root.querySelector('.inbox-row__meta-text')?.textContent).toBe(
-    'Claude Code · Shared project',
+  expect(root.querySelector('.inbox-row__agent')?.textContent).toBe(
+    'Claude Code',
+  );
+  expect(root.querySelector('.inbox-row__project')?.textContent).toBe(
+    'Shared project',
   );
   // The ladder's word, not the raw wire enum — AND the recency in the meta
   // line's slot: a status row used to drop its time entirely, leaving "how
@@ -118,7 +129,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
 
   it('sheet host renders the same shared anatomy with touch chrome', () => {
     renderSheetHost(workItem());
-    const dialog = screen.getByRole('dialog', { name: 'Chats' });
+    const dialog = screen.getByRole('dialog', { name: 'Chats and tasks' });
     expectSharedRowAnatomy(dialog);
     expect(
       screen.getByRole('button', {
@@ -174,29 +185,16 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
     expect(container.querySelector('.inbox-row__time')).toBeNull();
   });
 
-  it('sheet host rows show Details and snooze; the snooze control opens the duration menu', () => {
+  it('the sheet keeps one overflow control and snoozes from its actions sheet', async () => {
     renderSheetHost(workItem());
-
-    // A touch row shows Details and ONE direct action. Snooze is one 44px
-    // control that opens the menu, not a one-tap default beside a caret.
     expect(
+      screen.queryByRole('button', { name: 'Snooze Shared row title' }),
+    ).toBeNull();
+    fireEvent.click(
       screen.getByRole('button', { name: 'Details for Shared row title' }),
-    ).not.toBeNull();
-    expect(
-      screen.queryByRole('button', {
-        name: 'Choose snooze duration for Shared row title',
-      }),
-    ).toBeNull();
-    // Close is in the Details sheet, not a third column.
-    expect(
-      screen.queryByRole('button', { name: 'Close Shared row title' }),
-    ).toBeNull();
-    const snooze = screen.getByRole('button', {
-      name: 'Snooze Shared row title',
-    });
-    expect(snooze.getAttribute('aria-haspopup')).toBe('menu');
-    fireEvent.click(snooze);
-    expect(screen.getByRole('menuitem', { name: '3 hours' })).not.toBeNull();
+    );
+    expect(await screen.findByRole('button', { name: '3 hours' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Close chat' })).toBeTruthy();
   });
 
   it('the desktop panel keeps the one-tap snooze beside its duration caret', () => {
@@ -243,13 +241,13 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
     }
   });
 
-  it('a snooze written in one host is read by the other (same store, same key)', () => {
+  it('a snooze written in one host is read by the other (same store, same key)', async () => {
     const item = workItem();
     const sheet = renderSheetHost(item);
     fireEvent.click(
-      screen.getByRole('button', { name: 'Snooze Shared row title' }),
+      screen.getByRole('button', { name: 'Details for Shared row title' }),
     );
-    fireEvent.click(screen.getByRole('menuitem', { name: '30 min' }));
+    fireEvent.click(await screen.findByRole('button', { name: '30 min' }));
     sheet.unmount();
 
     renderPanelHost(item);
@@ -395,7 +393,7 @@ describe('inbox rows show the agent they belong to (station#2802)', () => {
 
   it('renders the same icon through the mobile sheet chrome', () => {
     renderSheetHost(sessionItem({ agentSlug: 'codex' }), vi.fn(), AGENTS);
-    const dialog = screen.getByRole('dialog', { name: 'Chats' });
+    const dialog = screen.getByRole('dialog', { name: 'Chats and tasks' });
     expect(avatarOf(dialog)?.getAttribute('data-brand-key')).toBe('codex');
   });
 });

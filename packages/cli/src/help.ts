@@ -478,6 +478,8 @@ const VERBS: Record<string, VerbSpec> = {
       'station plugin init [name]',
       'station plugin create [name] [--template=<pane|full|provider>]',
       'station plugin dev [--port=<n>] [flags]',
+      'station plugin experience inspect <library> --entries=<skill,...>',
+      'station plugin experience review <plugin> --library=<path> --entries=<skill,...> [--receipt=<json>]',
     ],
     actions: [
       'install',
@@ -491,6 +493,7 @@ const VERBS: Record<string, VerbSpec> = {
       'create',
       'build',
       'dev',
+      'experience',
     ],
     detail: [
       'Install, preview, list, update, and remove use the configured running',
@@ -516,6 +519,11 @@ const VERBS: Record<string, VerbSpec> = {
       '',
       'The dev server binds 127.0.0.1 only; use SSH local port forwarding for',
       'remote development.',
+      '',
+      'experience inspect emits bounded local sources, literal dependency edges,',
+      'gaps and an agent authoring prompt as JSON. review without --receipt emits',
+      'the current source/package digests; with a receipt it checks author approval,',
+      'source spans and evaluation transcript bytes. This grants no runtime authority.',
     ],
   },
   registry: {

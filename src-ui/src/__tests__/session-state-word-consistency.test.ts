@@ -426,8 +426,6 @@ const RETIRED: ReadonlyArray<[retired: string, use: string]> = [
   ['nothing sent yet', 'Draft'],
   ['just now', 'now'],
   ['Recently finished', 'Just finished'],
-  ['Chats and tasks', 'Chats'],
-  ['Switch task', 'Switch chat'],
   ['Conversation history', 'History'],
   ['Copy thread ID', 'Copy chat ID'],
   ['Expand chat list', 'Show inbox'],
@@ -445,6 +443,7 @@ const RETIRED_ALLOWED: ReadonlyArray<[file: string, retired: string]> = [
   ['components/home/HomeActionSection.tsx', 'Model not reported'],
   ['components/chat-dock/ChatInboxHoverCard.tsx', 'Model not reported'],
   ['components/chat-dock/command-launcher-model.ts', 'Model not reported'],
+  ['views/home/useHomeViewModel.ts', 'Model not reported'],
   ['views/home/home-view-model.ts', 'Model not reported'],
 ];
 
@@ -540,8 +539,10 @@ describe('one vocabulary on the work surfaces', () => {
       'views/home/home-lane-model.ts',
       // The glyph table's accessible names, keyed by the fold's label.
       'components/status/StatusGlyph.tsx',
-      // The Plan strip's documented longer forms ("Needs approval (2)").
+      // The Plan strip's and the chat status pill's documented longer forms
+      // ("Needs approval (2)").
       'components/flow/WorkflowPlanPanel.tsx',
+      'components/status/chatStatus.ts',
     ]);
     const offenders: string[] = [];
     for (const file of files) {

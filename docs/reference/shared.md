@@ -22,6 +22,17 @@ The [export map](../../packages/shared/package.json) selects source files, mostl
 requirements. The type excerpts below are not exhaustive replacements for their
 owning declarations; import the canonical type rather than copying an interface.
 
+## Skill experience authoring
+
+`@kontourai/station-shared/skill-experience-workflow` exports local
+`inspectSkillLibrary`, `skillExperiencePackageDigest` and
+`readSkillExperienceReview`, `reviewSkillExperiencePackage`, plus the inspection/review types. These Node
+filesystem helpers emit bounded source review leads and validate author
+assertions against actual package/source/transcript bytes. They do not run a
+model, grant tools, install a plugin or establish runtime/release qualification.
+Use the [author learning path](../guides/authoring-skill-experiences.md) for
+proposal, preview, evaluation and revision review.
+
 ## Harness question helpers
 
 `@kontourai/station-shared/harness-questions` owns the browser-safe
@@ -987,6 +998,12 @@ dependencies and outputs. Its exact external allowlist includes root SDK and
 the SDK agent/client/voice entries, not every SDK subpath. A build does not install,
 authorize or activate a plugin. `--dev` in the example build file selects one
 build; it is not a watcher.
+
+Portable Agent Plugins can also declare inert visual Skill definitions. The
+author builder validates their referenced files and exact bundled Skill identity
+before bundling or returning a no-bundle result. See the
+[authoring contract](skill-experiences.md) for bounds, refusal diagnostics, and
+the separate runtime activation work.
 
 ```ts
 interface BuildResult {
