@@ -18,7 +18,7 @@
 
     {"path":"examples/matt-pocock-engineering/SOURCE-TRACE.json","digest":"f3a19118238ea07b420e8b4a0c874857dd53eac21baf9032493f45b78351a678","revision":"036d5d3d2289fc22e325a9ded733e8de561e9b30"},
 
-    {"path":"packages/shared/src/skill-experience-author.ts","digest":"5227a059dbe7a2f557e0916ae58a796021b387ef0589c15d278b82a04852ed7b","revision":"6601a6595d1103210663e99bbc68ec889c296b1b"}
+    {"path":"packages/shared/src/skill-experience-author.ts","digest":"ad4c1718cd49718a71b341ade9babdbbdee11a8c3b5b4b36b578e1bc48ec69d6","revision":"cdbbf99cf334245282450ff5bfc51dcd4f42d660"}
   ],
 
   "checks": [
