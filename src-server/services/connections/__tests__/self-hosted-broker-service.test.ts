@@ -2012,10 +2012,11 @@ describe.runIf(process.platform !== 'win32')(
         rmSync(root, { recursive: true, force: true });
       }
     });
+    const makeLongInvitationTempDir = trackTempDirs();
     test.each([undefined, 60 * 60_000, null])(
       'native invitation expiry %s survives delayed setup but keeps grants short-lived',
       async (invitationTtlMs) => {
-        const root = mkdtempSync(join(tmpdir(), 'station-broker-long-invite-'));
+        const root = makeLongInvitationTempDir('station-broker-long-invite-');
         let now = 1_000;
         const service = new SelfHostedBrokerService(
           join(root, 'broker.sqlite'),
@@ -2055,7 +2056,6 @@ describe.runIf(process.platform !== 'win32')(
           ).rejects.toThrow('native_invitation_refused');
         } finally {
           service.close();
-          rmSync(root, { recursive: true, force: true });
         }
       },
     );
