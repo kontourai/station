@@ -56,6 +56,10 @@ import {
   upsertCredentialProfile,
 } from '../../providers/app-home/credential-profile-registry.js';
 import { errorMessage } from '../../utils/error-message.js';
+import {
+  type EngineProxyRoute,
+  resolveEngineProxy,
+} from './engine-proxy-routing.js';
 
 type CredentialProfileApplicationSettlement =
   | { kind: 'staged' }
@@ -1329,6 +1333,37 @@ export class ConnectionService {
         typeof provider === 'string'
           ? this.runtimeAuthHealth?.getFailure(provider)
           : null;
+      let proxyRoute: EngineProxyRoute | undefined;
+      try {
+        proxyRoute = resolveEngineProxy(
+          engineRuntime.config,
+          this.providerService.listProviderConnections(),
+        )?.route;
+      } catch {
+        /* Setup and launch report invalid proxy settings. */
+      }
+      if (proxyRoute) {
+        engineRuntime.config = {
+          ...engineRuntime.config,
+          modelRoute: proxyRoute,
+        };
+        engineRuntime.prerequisites = engineRuntime.prerequisites.map((item) =>
+          ['claude-auth', 'codex-auth'].includes(item.id)
+            ? {
+                ...item,
+                name: 'Proxy key',
+                status: 'installed' as const,
+                description: `A key is saved for ${proxyRoute.label}. Check the connection to verify an answer.`,
+              }
+            : item,
+        );
+        if (
+          engineRuntime.enabled &&
+          engineRuntime.status === 'missing_prerequisites' &&
+          !hasRequiredMissing(engineRuntime.prerequisites)
+        )
+          engineRuntime.status = 'ready';
+      }
       const projected = failure
         ? applyRuntimeAuthenticationFailure(engineRuntime, failure)
         : engineRuntime;
@@ -1709,6 +1744,11 @@ export class ConnectionService {
         this.getProviderAdapters(),
       );
       const settingsId = binding?.settingsId ?? current.id;
+      if (connection.config.proxyConnectionId)
+        resolveEngineProxy(
+          connection.config,
+          this.providerService.listProviderConnections(),
+        );
 
       await this.mutateRuntimeConnections((agentConnections) => ({
         ...agentConnections,
@@ -3129,7 +3169,18 @@ export class ConnectionService {
         'This connection is disabled.',
         'Enable it before running the smoke.',
       );
-    } else if (hasRequiredMissing(connection.prerequisites)) {
+    } else if (
+      hasRequiredMissing(
+        connection.prerequisites.filter(
+          (item) =>
+            ![
+              RUNTIME_AUTH_PREREQUISITE_ID,
+              'claude-auth',
+              'codex-auth',
+            ].includes(item.id),
+        ),
+      )
+    ) {
       result = this.localSmokeFailure(
         'missing-prerequisites',
         'Required connection prerequisites are missing.',
@@ -3169,6 +3220,7 @@ export class ConnectionService {
         } else if (
           configuredModel &&
           runtimeModels &&
+          runtimeModels.length > 0 &&
           !runtimeModels.some((model) => model.id === configuredModel)
         ) {
           result = this.localSmokeFailure(
@@ -3318,6 +3370,15 @@ export class ConnectionService {
       provider: adapter?.provider ?? connection.type,
       engineId: adapter ? engineIdForAdapter(adapter) : engineIdentity,
       settings: appConfig.agentConnections?.[engineIdentity] ?? null,
+      proxy:
+        this.providerService
+          .listProviderConnections()
+          .find(
+            (candidate) =>
+              candidate.id ===
+              appConfig.agentConnections?.[engineIdentity]?.config
+                ?.proxyConnectionId,
+          ) ?? null,
     });
   }
 

@@ -2157,6 +2157,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
               full-screen placement never had one. */}
           {isMobile ? (
             <ChatDockMobileHeader
+              routeLabel={activeOrchestrationSession?.modelRoute?.label}
               // Only when the app toolbar is hidden — otherwise its drawer
               // toggle and this one are two controls with one accessible name.
               showDrawerToggle={isMobileToolbarHidden}
@@ -2320,6 +2321,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                     session={activeSession}
                     agent={activeChatAgent}
                     modelLabel={activeChatModelLabel}
+                    routeLabel={activeOrchestrationSession?.modelRoute?.label}
                     inputOrigin={activeOrchestrationSession?.inputOrigin}
                     onClose={removeSession}
                   />

@@ -385,6 +385,7 @@ export function projectOrchestrationEventToReadModel(options: {
     case 'session.configured':
       nextSession = {
         ...baseSession,
+        modelRoute: readModelRoute(event.metadata?.modelRoute),
         // A session already marked terminal keeps that status: 'closed' is
         // preserved today, and a `dead` binding (archive#1827) must not be
         // resurrected to 'ready' by a stray/late configured event either —
@@ -2146,4 +2147,31 @@ function findTerminalFailureEvent(
     turnIdentityAnchor = nextTurnIdentityAnchor(turnIdentityAnchor, event);
   }
   return lastFailure;
+}
+
+function readModelRoute(value: unknown): ProviderSession['modelRoute'] {
+  if (!value || typeof value !== 'object') return undefined;
+  const route = value as Record<string, unknown>;
+  if (
+    typeof route.connectionId !== 'string' ||
+    typeof route.label !== 'string' ||
+    typeof route.endpoint !== 'string'
+  )
+    return undefined;
+  try {
+    const url = new URL(route.endpoint);
+    if (
+      !['http:', 'https:'].includes(url.protocol) ||
+      url.username ||
+      url.password
+    )
+      return undefined;
+    return {
+      connectionId: route.connectionId,
+      label: route.label.slice(0, 200),
+      endpoint: url.origin,
+    };
+  } catch {
+    return undefined;
+  }
 }

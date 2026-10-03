@@ -4335,3 +4335,44 @@ test('nonblocking questions retain running/settled status and snapshot blocking 
       ?.status,
   ).toBe(settled);
 });
+
+test('configured sessions retain their actual safe proxy route and a direct re-launch clears it', () => {
+  const sessions = new Map<string, ProviderSession>();
+  const providers = new Map();
+  const apply = (modelRoute?: unknown) =>
+    projectOrchestrationEventToReadModel({
+      event: {
+        provider: 'codex',
+        threadId: 'proxy-route',
+        method: 'session.configured',
+        sessionId: 'proxy-route',
+        createdAt: '2026-10-03T00:00:00Z',
+        metadata: { modelRoute },
+      } as any,
+      threadProviders: providers,
+      sessionReadModel: sessions,
+    });
+  apply({
+    connectionId: 'proxy-home',
+    label: 'brian-media',
+    endpoint: 'https://proxy.example:8317/v1',
+  });
+  expect(sessions.get('proxy-route')?.modelRoute).toEqual({
+    connectionId: 'proxy-home',
+    label: 'brian-media',
+    endpoint: 'https://proxy.example:8317',
+  });
+  apply({
+    connectionId: 'proxy-home',
+    label: 'bad',
+    endpoint: 'https://user:key@proxy.example',
+  });
+  expect(sessions.get('proxy-route')?.modelRoute).toBeUndefined();
+  apply({
+    connectionId: 'proxy-home',
+    label: 'brian-media',
+    endpoint: 'https://proxy.example',
+  });
+  apply();
+  expect(sessions.get('proxy-route')?.modelRoute).toBeUndefined();
+});

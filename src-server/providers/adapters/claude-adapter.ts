@@ -60,6 +60,7 @@ import {
 } from '../../runtime/agents/pre-tool-policy.js';
 import { isAutoApprovedExternalTool } from '../../runtime/tools/tool-executor.js';
 import type { InvocationContext } from '../../runtime/types.js';
+import type { engineProxyLaunch } from '../../services/connections/engine-proxy-routing.js';
 import { ensureEngineSpawnTmpDir } from '../../services/infra/engine-spawn-tmpdir.js';
 import {
   agentCapabilityUndelivered,
@@ -805,6 +806,7 @@ export interface ClaudeAdapterOptions {
    * credentials, so it never blocks a session start.
    */
   getConnectionEnv?: () => Promise<Record<string, string> | undefined>;
+  getConnectionLaunch?: () => Promise<ReturnType<typeof engineProxyLaunch>>;
   /**
    * Station#1157 review fix (MEDIUM): the running instance's own
    * station-control operational env (`stationControlSpawnEnv(port)`'s
@@ -1198,8 +1200,11 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     // is deliberately absent (adoption and source-affinity resume —
     // archive#896 decision 2's config-root orphaning concern: running the
     // child under a different config home would strand it there).
+    const connectionLaunch = await this.options.getConnectionLaunch?.();
     const connectionEnv = claudeConnectionEnvForSpawn(
-      await this.resolveConnectionEnv(),
+      connectionLaunch
+        ? connectionLaunch.env
+        : await this.resolveConnectionEnv(),
       !sourceCursor,
     );
     const augmentedEnv = await this.resolveAugmentedSpawnEnv();
@@ -1220,6 +1225,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       resolvedHome
         ? usageCredentialAccountKey(this.provider, resolvedHome.profileRef)
         : undefined,
+      connectionLaunch?.route,
     );
   }
 
@@ -1281,8 +1287,11 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       // the same line for the connection env: its routing keys apply, its
       // config-home key does not (same orphaning concern as the app-home
       // env above).
+      const connectionLaunch = await this.options.getConnectionLaunch?.();
       const connectionEnv = claudeConnectionEnvForSpawn(
-        await this.resolveConnectionEnv(),
+        connectionLaunch
+          ? connectionLaunch.env
+          : await this.resolveConnectionEnv(),
         false,
       );
       const augmentedEnv = await this.resolveAugmentedSpawnEnv();
@@ -1300,6 +1309,8 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         augmentedEnv,
         preToolPolicy,
         claudeExecutable,
+        undefined,
+        connectionLaunch?.route,
       );
     } catch (error) {
       // With lifecycle reporting, the durable owner has the child cursor (or
@@ -1410,6 +1421,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     preToolPolicy?: StagedPreToolPolicyEvaluator,
     claudeExecutable?: string | null,
     usageAccountKey?: string,
+    modelRoute?: ReturnType<typeof engineProxyLaunch>['route'],
   ): ProviderSession {
     const now = new Date().toISOString();
     const promptQueue = new AsyncUserMessageQueue();
@@ -1500,6 +1512,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     });
     const baseConfiguredMetadata: Record<string, unknown> = {
       ...input.metadata,
+      modelRoute,
       usageAccountKey,
       ...effectiveModelMetadata(input.modelId, record.currentModelOptions),
       // Explicit resolved values (not just the raw modelOptions spread
@@ -3561,6 +3574,8 @@ export class ClaudeAdapter implements ProviderAdapterShape {
   private async resolveConnectionEnv(): Promise<
     Record<string, string> | undefined
   > {
+    if (this.options.getConnectionLaunch)
+      return (await this.options.getConnectionLaunch()).env;
     try {
       return await this.options.getConnectionEnv?.();
     } catch (error) {
