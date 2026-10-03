@@ -184,7 +184,7 @@
 
     {"path":"src-ui/src/__tests__/InfoTip.test.tsx","digest":"dcbc3cf7639d37f4945d2bcea2742f3c03e705a99d40d24134bed540b6c7e73d","revision":"789bd4ef44798acfba34d5e09e8d9a032cc00dcb"},
 
-    {"path":"src-ui/src/views/agent-editor/AgentEditorEngineSelection.tsx","digest":"8c453652c6b119cf4c424aa9dcc3ad393193861c983b4bc48b00a3860df8d00c","revision":"54fc4a556486e17d1f4f0546c02be91fedf3b6b7"},
+    {"path":"src-ui/src/views/agent-editor/AgentEditorEngineSelection.tsx","digest":"00269657721bf8e57e3b4b9c0439eebf867a4ca82596e83cb31fab3f4bc05b4b","revision":"c27d8a6e486d3a0bb360a74d6cdd50d25ea9c0ef"},
 
     {"path":"src-ui/src/views/agent-editor/AgentEditorApprovalDefault.tsx","digest":"2532a64c422b42d086ae99c059ab1c5ade8721eb167daed45935ec7aae7988c0","revision":"54fc4a556486e17d1f4f0546c02be91fedf3b6b7"},
 
