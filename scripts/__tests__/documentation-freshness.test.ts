@@ -2217,4 +2217,17 @@ describe('append-only review notes and Git history (#3101)', () => {
     expect(check(f.root, scoped).status).toBe(1);
     expect(check(f.root, strict).status).toBe(1);
   });
+
+  it('does not let a note cover a source moved away after it', () => {
+    const f = pathOnlyFixture();
+    git(f.root, ['switch', '-qc', 'pr']);
+    f.write('src/c.ts', SHARED_C.replace('c1 = 1', 'c1 = 2'));
+    commit(f.root, 'first change');
+    reviewShared(f, 'Reviewed first change.');
+    commit(f.root, 'first notes');
+    // An unchanged move is a pure rename to Git's default log.
+    git(f.root, ['mv', 'src/c.ts', 'src/moved.ts']);
+    commit(f.root, 'later unreviewed move');
+    expect(check(f.root, scoped).status).toBe(1);
+  });
 });

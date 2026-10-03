@@ -228,21 +228,24 @@ export function resolveDocumentationFreshness({
   // One log of the range, not one per note and input: each spawn costs more
   // than the walk on a busy host. Unlike a path-limited log this keeps commits
   // on simplified-away side branches, which only adds candidates to recheck.
+  // --no-renames keeps a moved-away input's old path; -z keeps paths unquoted.
   let rangeTouches;
   const commitsTouching = (file) => {
     if (!rangeTouches) {
       rangeTouches = new Map();
       let commit;
-      for (const line of git(root, [
-        '-c',
-        'core.quotePath=false',
+      for (const token of git(root, [
         'log',
         '--no-merges',
+        '--no-renames',
+        '-z',
         '--format=\u0001%H',
         '--name-only',
         `${selection.mergeBase}..HEAD`,
         `^${base}`,
-      ]).split('\n')) {
+      ]).split('\0')) {
+        // -z ends the format with NUL and starts the file list with a newline.
+        const line = token.startsWith('\n') ? token.slice(1) : token;
         if (line.startsWith('\u0001')) commit = line.slice(1);
         else if (line && commit) {
           if (!rangeTouches.has(line)) rangeTouches.set(line, []);
