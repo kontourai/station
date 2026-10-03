@@ -78,7 +78,7 @@ function runBootstrap(origins: readonly string[] = [HOST_ORIGIN]): Harness {
   const dispatch = (event: Record<string, unknown>) => {
     (listener as (e: Record<string, unknown>) => void)({
       origin: HOST_ORIGIN,
-      source: null,
+      source: sandbox.parent,
       ...event,
     });
   };
@@ -172,7 +172,7 @@ describe('plugin-host frame downlink', () => {
 
     dispatch({
       origin: 'https://evil.example',
-      source: null,
+      source: sandbox.parent,
       data: {
         method: 'plugin-resource-ready',
         params: { runtimeJs: '/*rt*/', bundleJs: '/*b*/' },
@@ -180,9 +180,26 @@ describe('plugin-host frame downlink', () => {
     });
     dispatch({
       origin: 'https://evil.example',
-      source: null,
+      source: sandbox.parent,
       data: { method: 'pane-host/confirm-result', params: { id: 'x' } },
     });
     expect(relayed).toEqual([]);
   });
+});
+
+// Threat model: matching-origin messages from another Window cannot act as the containing host.
+test('a same-origin sibling Window cannot inject an experience result, while the actual parent still forwards it', () => {
+  const harness = runBootstrap();
+  const message = {
+    method: 'pane-host/experience-result',
+    params: { id: 'read-1', data: { viewJson: 'FORGED_SIBLING_CANARY' } },
+  };
+  harness.dispatch({ source: {}, data: message });
+  expect(harness.relayed).toEqual([]);
+  const legitimate = {
+    method: 'pane-host/experience-result',
+    params: { id: 'read-1', data: { viewJson: 'CANONICAL_PARENT_RESULT' } },
+  };
+  harness.dispatch({ data: legitimate });
+  expect(harness.relayed).toEqual([legitimate]);
 });
