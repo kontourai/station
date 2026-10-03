@@ -209,6 +209,23 @@
   min-width: 0;
 }
 
+.relay-route-key-approval__prepare {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.relay-route-key-approval__prepare > p {
+  flex: 1 1 12rem;
+}
+
+.native-relay-setup .button {
+  justify-self: start;
+  width: fit-content;
+  max-width: 100%;
+  min-height: 44px;
+}
+
 .relay-route-key-approval__durable {
   display: grid;
   gap: var(--k-space-2);
