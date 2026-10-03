@@ -4392,6 +4392,7 @@ test('session summaries expose the captured route when the loaded runtime has no
   };
   const events: CanonicalRuntimeEvent[] = [
     {
+      eventId: 'route-summary-configured',
       provider: 'codex',
       threadId: loaded.threadId,
       createdAt: loaded.createdAt,
