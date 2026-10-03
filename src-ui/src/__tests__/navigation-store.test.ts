@@ -29,6 +29,9 @@ describe('workspace project selection and new chats', () => {
     expect(navigationStore.getSnapshot().activeChat).toBe('chat-from-alpha');
     expect(deviceSettingsStore.get('chatDockProjectSlug')).toBe('beta');
     deviceSettingsStore.set('chatDockProjectSlug', 'alpha');
+    navigationStore.navigate('/projects/beta', { chat: 'new-alpha-chat' });
+    expect(deviceSettingsStore.get('chatDockProjectSlug')).toBe('alpha');
+    expect(navigationStore.getSnapshot().activeChat).toBe('new-alpha-chat');
     navigationStore.setProject('beta');
     expect(deviceSettingsStore.get('chatDockProjectSlug')).toBe('beta');
   });

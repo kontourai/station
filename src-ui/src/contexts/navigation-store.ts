@@ -911,7 +911,9 @@ class NavigationStore {
     if (
       next.selectedProject &&
       (next.selectedProject !== previousProject ||
-        target.pathname === `/projects/${next.selectedProject}`)
+        (target.pathname === `/projects/${next.selectedProject}` &&
+          !target.search &&
+          !params))
     ) {
       deviceSettingsStore.set('chatDockProjectSlug', next.selectedProject);
     }
