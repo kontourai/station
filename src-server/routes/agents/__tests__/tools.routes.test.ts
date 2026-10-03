@@ -182,6 +182,41 @@ describe('Tool Routes', () => {
     expect(result.data[0].disabledTools).toEqual(['weather_weatherRead']);
   });
 
+  test('projects built-in and supplied tool groups without changing tool identities', async () => {
+    const service = createMockMCPService();
+    service.listIntegrations.mockResolvedValue([
+      { id: 'station-control', name: 'Station' },
+      { id: 'mcp-1', name: 'Test MCP' },
+    ]);
+    service.getMCPToolCatalog.mockResolvedValue([
+      {
+        name: 'mcp-1_render',
+        originalName: 'render',
+        serverId: 'mcp-1',
+        _meta: { 'ai.kontour/tool-group': 'Reports' },
+      },
+    ]);
+    const app = createToolRoutes(service as any, vi.fn());
+    const result = await json(await app.request('/'));
+    expect(result.data[0].tools).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          toolName: 'search_knowledge',
+          group: 'Knowledge',
+          title: 'Search knowledge',
+          readOnly: true,
+        }),
+      ]),
+    );
+    expect(result.data[1].tools).toEqual([
+      expect.objectContaining({
+        name: 'mcp-1_render',
+        toolName: 'render',
+        group: 'Reports',
+      }),
+    ]);
+  });
+
   test('POST / saves integration', async () => {
     const svc = createMockMCPService();
     const app = createToolRoutes(svc as any, vi.fn());

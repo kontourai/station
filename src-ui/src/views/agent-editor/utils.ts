@@ -73,7 +73,7 @@ export function toggleIntegrationAutoApprove(
   };
 }
 
-export function effectiveAgentToolPatterns(form: AgentFormData): string[] {
+function effectiveAgentToolPatterns(form: AgentFormData): string[] {
   if (form.tools.available.length > 0) return form.tools.available;
   return form.toolsOriginal?.available === undefined &&
     !form.toolsAvailableEdited

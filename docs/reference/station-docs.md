@@ -222,7 +222,9 @@ Third-party MCP servers are configured as integrations and can be attached to an
 
 Open an Agent's Tools section and choose **Add Station tools** or **Add tools**.
 Expand an integration to search and choose Read only, All, None, or individual
-tools. Station additions start read-only where individual selection is supported.
+tools. Choose a tool group to narrow the checklist; Read only, All, and None
+apply to that group and preserve choices elsewhere. Station additions start
+read-only where individual selection is supported.
 Approvals are separate and collapsed until requested. Changes apply to new chats.
 Claude and Codex can keep their configured harness MCP integrations while adding
 Station's selections. Claude also offers native on-demand tool loading. Generic

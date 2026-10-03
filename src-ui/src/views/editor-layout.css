@@ -1898,3 +1898,7 @@
 .agent-tools__server-row .button {
   min-height: 44px;
 }
+
+.agent-tools__group {
+  min-height: var(--k-touch-target, 44px);
+}

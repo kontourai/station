@@ -105,9 +105,9 @@ const stationTools: Tool[] = [
     name: 'Station',
     displayName: 'Station tools',
     tools: [
-      { name: 'list_agents', readOnly: true },
-      { name: 'search_knowledge', readOnly: true },
-      { name: 'delete_agent', readOnly: false },
+      { name: 'list_agents', readOnly: true, group: 'Agents' },
+      { name: 'search_knowledge', readOnly: true, group: 'Knowledge' },
+      { name: 'delete_agent', readOnly: false, group: 'Agents' },
     ],
   },
 ];
@@ -159,7 +159,7 @@ test('adds Station tools to a Claude agent and saves read-only, empty and custom
   expect(
     screen.getByRole('checkbox', { name: 'Search knowledge' }),
   ).toBeTruthy();
-  fireEvent.change(screen.getByLabelText('Loading'), {
+  fireEvent.change(screen.getByLabelText('Discovery'), {
     target: { value: 'on-demand' },
   });
   expect(payload().tools?.mcpLoading).toBe('on-demand');
@@ -271,3 +271,70 @@ test.each(['stationControl_deleteAgent', 'stationControl_*'])(
     ]);
   },
 );
+
+test('group shortcuts preserve other groups and individual choices remain saveable', () => {
+  let latest = createEmptyAgentForm();
+  const tools: Tool[] = [
+    {
+      ...stationTools[0],
+      tools: [
+        ...stationTools[0].tools!,
+        {
+          name: 'migrate_knowledge',
+          readOnly: false,
+          group: 'Knowledge',
+          title: 'Move knowledge',
+        },
+      ],
+    },
+  ];
+  render(
+    <Harness
+      initial={latest}
+      onForm={(form) => {
+        latest = form;
+      }}
+      availableTools={tools}
+      engineId="codex"
+    />,
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Add Station tools' }));
+  fireEvent.change(screen.getByLabelText('Tool group for Station tools'), {
+    target: { value: 'Knowledge' },
+  });
+  expect(screen.queryByRole('checkbox', { name: 'List agents' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'All' }));
+  expect(
+    buildAgentPayload({ ...latest, slug: 'helper' }).tools?.available,
+  ).toEqual([
+    'station-control_list_agents',
+    'station-control_search_knowledge',
+    'station-control_migrate_knowledge',
+  ]);
+  fireEvent.click(screen.getByRole('button', { name: 'Read only' }));
+  expect(
+    (
+      screen.getByRole('checkbox', {
+        name: 'Move knowledge',
+      }) as HTMLInputElement
+    ).checked,
+  ).toBe(false);
+  fireEvent.click(screen.getByRole('button', { name: 'None' }));
+  expect(
+    buildAgentPayload({ ...latest, slug: 'helper' }).tools?.available,
+  ).toEqual(['station-control_list_agents']);
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Move knowledge' }));
+  expect(
+    buildAgentPayload({ ...latest, slug: 'helper' }).tools?.available,
+  ).toEqual([
+    'station-control_list_agents',
+    'station-control_migrate_knowledge',
+  ]);
+  fireEvent.change(screen.getByLabelText('Tool group for Station tools'), {
+    target: { value: '' },
+  });
+  expect(
+    (screen.getByRole('checkbox', { name: 'List agents' }) as HTMLInputElement)
+      .checked,
+  ).toBe(true);
+});

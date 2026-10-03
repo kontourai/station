@@ -79,6 +79,32 @@ function withToolSideRefusal<
   return guarded as Callback;
 }
 
+function stationControlToolMetadata(name: string) {
+  const groups: [string, RegExp][] = [
+    ['Knowledge', /knowledge/],
+    ['Evidence', /basis|review|receipt/],
+    ['Agents', /agent/],
+    ['Projects', /project|layout|^board_/],
+    ['Chats', /conversation|session|message/],
+    ['Tasks', /task|delegat|ssh_environment/],
+    ['Scheduling', /job|schedul/],
+    ['Skills', /skill/],
+    ['Integrations', /integration|provider|plugin/],
+  ];
+  const group =
+    groups.find(([, pattern]) => pattern.test(name))?.[0] ?? 'Station';
+  const policy = stationControlToolPolicy(name);
+  return {
+    title: name
+      .replaceAll('_', ' ')
+      .replace(/^./, (letter) => letter.toUpperCase()),
+    _meta: { 'ai.kontour/tool-group': group },
+    ...(policy
+      ? { annotations: { readOnlyHint: policy.toolClass === 'read-only' } }
+      : {}),
+  };
+}
+
 /**
  * The small registration surface shared by Station's built-in control tools.
  * It keeps the domain modules independent of transport while registering
@@ -102,6 +128,7 @@ export class StationControlToolRegistry {
     return this.server.registerTool(
       name,
       {
+        ...stationControlToolMetadata(name),
         description,
         inputSchema: z.object(shape),
       },
@@ -119,7 +146,7 @@ export class StationControlToolRegistry {
     this.catalog?.(name, description);
     return this.server.registerTool(
       name,
-      { description, inputSchema },
+      { ...stationControlToolMetadata(name), description, inputSchema },
       withToolSideRefusal(name, callback),
     );
   }
@@ -147,13 +174,20 @@ export class StationControlToolRegistry {
     if (this.allowedTools && !this.allowedTools.includes(name)) return;
     this.catalog?.(name, description);
     const callback = withToolSideRefusal(name, unguardedCallback);
+    const metadata = stationControlToolMetadata(name);
     return registerAppTool(
       this.server as unknown as Parameters<typeof registerAppTool>[0],
       name,
       {
         description,
         inputSchema,
+        ...metadata,
         ...config,
+        _meta: { ...metadata._meta, ...config._meta },
+        annotations: {
+          ...metadata.annotations,
+          ...config.annotations,
+        },
       } as unknown as Parameters<typeof registerAppTool>[2],
       callback as unknown as Parameters<typeof registerAppTool>[3],
     );
@@ -224,11 +258,19 @@ export function createSelectedStationControlMcpServer(
 }
 
 export function stationControlToolCatalog() {
-  const tools: { name: string; description: string; readOnly: boolean }[] = [];
+  const tools: {
+    name: string;
+    description: string;
+    readOnly: boolean;
+    group: string;
+    title: string;
+  }[] = [];
   createSelectedStationControlMcpServer(undefined, (name, description) => {
     tools.push({
       name,
       description,
+      group: stationControlToolMetadata(name)._meta['ai.kontour/tool-group'],
+      title: stationControlToolMetadata(name).title,
       readOnly: stationControlToolPolicy(name)?.toolClass === 'read-only',
     });
   });

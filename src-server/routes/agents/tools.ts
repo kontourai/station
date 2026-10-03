@@ -297,6 +297,10 @@ export function createToolRoutes(
                       tool.toolName ??
                       originalMcpToolName(t.id, tool.originalName),
                     description: tool.description,
+                    group:
+                      typeof tool._meta?.['ai.kontour/tool-group'] === 'string'
+                        ? tool._meta['ai.kontour/tool-group']
+                        : undefined,
                   })),
               ];
         const rows = [

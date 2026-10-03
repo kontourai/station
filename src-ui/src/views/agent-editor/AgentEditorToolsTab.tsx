@@ -51,6 +51,7 @@ export function AgentEditorToolsTab({
   engineId?: string;
 }) {
   const [search, setSearch] = useState('');
+  const [groups, setGroups] = useState<Record<string, string>>({});
   const [showApprovals, setShowApprovals] = useState(false);
   const checkTools = useReconnectIntegrationMutation();
   const disabled = locked || !!finding;
@@ -73,6 +74,8 @@ export function AgentEditorToolsTab({
           name: tool.toolName || tool.name,
           toolName: tool.toolName || tool.name,
           description: tool.description,
+          group: tool.group,
+          title: tool.title,
           enabled: !tool.disabled,
         }))
       : (integrationTools[integration.id] ?? []);
@@ -157,7 +160,7 @@ export function AgentEditorToolsTab({
               </div>
               {engineId === 'claude' && (
                 <label className="agent-tools__loading">
-                  Loading
+                  Discovery
                   <select
                     className="editor-select"
                     disabled={disabled}
@@ -199,7 +202,7 @@ export function AgentEditorToolsTab({
           </Button>
         </div>
         {selected.length === 0 ? (
-          <span className="editor-hint">No added tools.</span>
+          <span className="editor-hint">Choose tools.</span>
         ) : (
           <>
             <input
@@ -212,10 +215,50 @@ export function AgentEditorToolsTab({
             <div className="editor__tools-grouped">
               {selected.map((integration) => {
                 const tools = catalogFor(integration);
-                const visible = tools.filter(
+                const groupNames = tools.some((tool) => tool.group)
+                  ? [
+                      ...new Set(tools.map((tool) => tool.group || 'Other')),
+                    ].sort()
+                  : [];
+                const selectedGroup = groups[integration.id] || '';
+                const group = groupNames.includes(selectedGroup)
+                  ? selectedGroup
+                  : '';
+                const scoped = group
+                  ? tools.filter((tool) => (tool.group || 'Other') === group)
+                  : tools;
+                const choose = (current: typeof form, keys: string[]) => {
+                  const currentPatterns = canonicalAgentToolPatterns(
+                    current,
+                    catalogs,
+                  );
+                  const retained = group
+                    ? tools
+                        .filter(
+                          (tool) =>
+                            (tool.group || 'Other') !== group &&
+                            tool.enabled !== false &&
+                            (currentPatterns.includes('*') ||
+                              currentPatterns.includes(`${integration.id}_*`) ||
+                              currentPatterns.includes(
+                                getIntegrationToolKey(integration.id, tool),
+                              )),
+                        )
+                        .map((tool) =>
+                          getIntegrationToolKey(integration.id, tool),
+                        )
+                    : [];
+                  return selectIntegrationTools(
+                    current,
+                    integration.id,
+                    [...retained, ...keys],
+                    catalogs,
+                  );
+                };
+                const visible = scoped.filter(
                   (tool) =>
                     !query ||
-                    `${tool.toolName || tool.name} ${(tool.toolName || tool.name).replaceAll('_', ' ')} ${tool.description || ''}`
+                    `${tool.toolName || tool.name} ${(tool.toolName || tool.name).replaceAll('_', ' ')} ${tool.description || ''} ${tool.title || ''} ${tool.group || ''}`
                       .toLowerCase()
                       .includes(query),
                 );
@@ -238,7 +281,10 @@ export function AgentEditorToolsTab({
                     ),
                 ).length;
                 const readOnly = integration.tools?.filter(
-                  (tool) => tool.readOnly === true && !tool.disabled,
+                  (tool) =>
+                    tool.readOnly === true &&
+                    !tool.disabled &&
+                    (!group || (tool.group || 'Other') === group),
                 );
                 const prefix = `${integration.id}_`;
                 return (
@@ -290,6 +336,26 @@ export function AgentEditorToolsTab({
                     </div>
                     {expanded && (
                       <div className="agent-tools__detail">
+                        {groupNames.length > 0 && (
+                          <select
+                            className="editor-select agent-tools__group"
+                            aria-label={`Tool group for ${integration.displayName || integration.id}`}
+                            value={group}
+                            onChange={(event) =>
+                              setGroups((current) => ({
+                                ...current,
+                                [integration.id]: event.target.value,
+                              }))
+                            }
+                          >
+                            <option value="">All tools</option>
+                            {groupNames.map((name) => (
+                              <option key={name} value={name}>
+                                {name}
+                              </option>
+                            ))}
+                          </select>
+                        )}
                         {supportsSelection && tools.length > 0 && (
                           <div className="agent-tools__actions">
                             {readOnly?.length ? (
@@ -298,14 +364,12 @@ export function AgentEditorToolsTab({
                                 disabled={disabled}
                                 onClick={() =>
                                   setForm((current) =>
-                                    selectIntegrationTools(
+                                    choose(
                                       current,
-                                      integration.id,
                                       readOnly.map(
                                         (tool) =>
                                           `${prefix}${tool.toolName || tool.name}`,
                                       ),
-                                      catalogs,
                                     ),
                                   )
                                 }
@@ -318,10 +382,9 @@ export function AgentEditorToolsTab({
                               disabled={disabled}
                               onClick={() =>
                                 setForm((current) =>
-                                  selectIntegrationTools(
+                                  choose(
                                     current,
-                                    integration.id,
-                                    tools
+                                    scoped
                                       .filter((tool) => tool.enabled !== false)
                                       .map((tool) =>
                                         getIntegrationToolKey(
@@ -329,7 +392,6 @@ export function AgentEditorToolsTab({
                                           tool,
                                         ),
                                       ),
-                                    catalogs,
                                   ),
                                 )
                               }
@@ -340,14 +402,7 @@ export function AgentEditorToolsTab({
                               variant="ghost"
                               disabled={disabled}
                               onClick={() =>
-                                setForm((current) =>
-                                  selectIntegrationTools(
-                                    current,
-                                    integration.id,
-                                    [],
-                                    catalogs,
-                                  ),
-                                )
+                                setForm((current) => choose(current, []))
                               }
                             >
                               None
@@ -399,7 +454,7 @@ export function AgentEditorToolsTab({
                                 checkTools.isPending &&
                                 checkTools.variables === integration.id
                               }
-                              pendingLabel="Checking…"
+                              pendingLabel="Check tools"
                               onClick={() => checkTools.mutate(integration.id)}
                             >
                               Check tools
@@ -444,7 +499,7 @@ export function AgentEditorToolsTab({
                                   }
                                 >
                                   <span title={tool.description}>
-                                    {(tool.toolName || tool.name)
+                                    {(tool.title || tool.toolName || tool.name)
                                       .replaceAll('_', ' ')
                                       .replace(/^./, (letter) =>
                                         letter.toUpperCase(),

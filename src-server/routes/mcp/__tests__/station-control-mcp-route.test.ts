@@ -573,12 +573,14 @@ describe('station-control-mcp-route', () => {
       expect.arrayContaining([
         expect.objectContaining({
           name: 'get_basis',
+          title: 'Get basis',
           annotations: expect.objectContaining({ readOnlyHint: true }),
           _meta: expect.objectContaining({
             ui: expect.objectContaining({
               resourceUri: 'ui://station/basis/v1',
               visibility: ['model'],
             }),
+            'ai.kontour/tool-group': 'Evidence',
             'ui/resourceUri': 'ui://station/basis/v1',
           }),
         }),

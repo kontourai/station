@@ -47,8 +47,16 @@ For full field reference see [docs/reference/config.md](../reference/config.md).
 
 Open an Agent's **Tools** section to add integrations. **Add Station tools**
 adds read-only built-in controls; expand the row to choose **Read only**, **All**,
-**None**, or individual tools. Search narrows the checklist. **Approvals**
+**None**, or individual tools. Use the group picker to narrow Station controls to
+Knowledge, Projects, Tasks, Scheduling, and other areas. The three shortcuts apply
+to the chosen group and preserve choices elsewhere. Search narrows the checklist. **Approvals**
 reveals automatic-approval settings separately. Saved changes apply to new chats.
+
+Station Control publishes native MCP titles and behavioral annotations. The
+`ai.kontour/tool-group` vendor metadata organizes the picker; third-party
+integrations can supply the same display hint. It does not grant access or
+change approval rules. MCP has no standard category field; grouping does not
+require separate servers.
 
 Claude and Codex offer **Keep harness tools**. New Agents add integrations to
 the harness configuration; existing Agents keep their previous behavior until
