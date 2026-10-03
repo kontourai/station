@@ -79,8 +79,8 @@ async function installedExperience(change?: (source: string) => void) {
   const current = journal.currentInstallation(pluginId);
   if (current.state !== 'observed') throw new Error('Installation missing');
   const installation = current.installation;
-  async function inventory() {
-    await skills.discoverSkills(home);
+  async function inventory(rediscover = true) {
+    if (rediscover) await skills.discoverSkills(home);
     const response = await routes.request('/experiences');
     expect(response.status).toBe(200);
     const result: { success: boolean; data: SkillExperienceInventoryV1 } =
@@ -93,7 +93,18 @@ async function installedExperience(change?: (source: string) => void) {
     await verifyPluginActivation(permit, journal, async () => {});
     expect(journal.completeActivation(permit)).toEqual({ state: 'applied' });
   }
-  return { home, loader, skills, journal, installation, inventory, activate };
+  return {
+    home,
+    source,
+    plugins,
+    pluginId,
+    loader,
+    skills,
+    journal,
+    installation,
+    inventory,
+    activate,
+  };
 }
 
 test('the real skill route publishes installed definitions only after activation and withdraws them on retirement', async () => {
@@ -213,5 +224,115 @@ test('a local Skill override makes the pinned experience unavailable without reb
     diagnostics: [
       { code: 'unavailable', message: expect.stringContaining('overridden') },
     ],
+  });
+});
+
+test('same-version replacement cannot publish against the previous discovered Skill generation', async () => {
+  const fixture = await installedExperience();
+  await fixture.activate();
+  const old = (await fixture.inventory()).experiences[0]!.identity;
+  const definitionPath = join(
+    fixture.source,
+    'io.kontourai.station/experiences/stress-test-idea.json',
+  );
+  const definition = JSON.parse(readFileSync(definitionPath, 'utf8'));
+  definition.title = 'Updated interview';
+  writeFileSync(definitionPath, JSON.stringify(definition));
+  const service = createLocalPluginInstallationService(
+    fixture.plugins,
+    fixture.journal,
+    fixture.source,
+  );
+  const previous = await service.inspect(fixture.pluginId);
+  const manifest = await readPluginManifestFile(
+    join(fixture.source, 'plugin.json'),
+  );
+  const digest = computePluginContentDigest(
+    dirname(fixture.source),
+    basename(fixture.source),
+  )!;
+  await service.install({
+    installation: fixture.pluginId,
+    expected: previous,
+    artifact: { digest },
+    origin: 'b'.repeat(64),
+    activationPlan: {
+      version: 1,
+      artifactDigest: digest,
+      sourceDigest: digest,
+      descriptorDigest: pluginActivationDescriptorDigest(manifest),
+      origin: 'b'.repeat(64),
+      consent: { kind: 'no-operator-decision', caller: 'experience-fixture' },
+      previous,
+      agents: [],
+      ownedDependencies: [],
+    },
+  });
+  const current = fixture.journal.currentInstallation(fixture.pluginId);
+  if (current.state !== 'observed') throw new Error('Replacement missing');
+  const permit = fixture.journal.claimActivation(current.installation);
+  await verifyPluginActivation(permit, fixture.journal, async () => {});
+  expect(fixture.journal.completeActivation(permit)).toEqual({
+    state: 'applied',
+  });
+  expect(await fixture.inventory(false)).toMatchObject({
+    experiences: [],
+    diagnostics: [{ code: 'unavailable' }],
+  });
+  const refreshed = (await fixture.inventory()).experiences[0]!;
+  expect(refreshed.definition.title).toBe('Updated interview');
+  expect(refreshed.identity.incarnation).not.toBe(old.incarnation);
+  expect(refreshed.identity.materialization).not.toBe(old.materialization);
+});
+
+test('corrupt selected package manifests remain a named refusal instead of disappearing from discovery', async () => {
+  const fixture = await installedExperience();
+  await fixture.activate();
+  const root = fixture.loader.listInstalled()[0]!.root;
+  writeFileSync(join(root, 'plugin.json'), '{');
+  expect(await fixture.inventory(false)).toMatchObject({
+    experiences: [],
+    diagnostics: [{ pluginId: fixture.pluginId, code: 'unavailable' }],
+  });
+});
+
+test('journal-observed legacy packages cannot invent managed materialization identity', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'station-experience-legacy-'));
+  const root = join(home, 'plugins/visual-skill-experience');
+  cpSync(resolve('examples/visual-skill-experience'), root, {
+    recursive: true,
+  });
+  const store = new EventStore(join(home, 'events.sqlite'));
+  scratch.push({ home, store });
+  const journal = store.createPackageMcpAdmissionJournal();
+  const recorded = journal.recordInstallation({
+    pluginId: 'visual-skill-experience',
+    contentDigest: computePluginContentDigest(dirname(root), basename(root))!,
+    previous: null,
+  });
+  if (recorded.state !== 'recorded')
+    throw new Error('Legacy fixture not recorded');
+  expect(journal.admissionOpen(recorded.installation)).toBe(true);
+  const loader = new AgentPluginLoader({
+    projectHomeDir: home,
+    journal: () => journal,
+  });
+  const skills = new SkillService(
+    new ConfigLoader({ projectHomeDir: home }),
+    { info() {}, warn() {}, debug() {} },
+    {
+      canonicalSources: () => loader.skillSources(),
+      experienceInventory: () => loader.listSkillExperiences(),
+    },
+  );
+  await skills.discoverSkills(home);
+  const response = await createSkillRoutes(skills, () => home).request(
+    '/experiences',
+  );
+  expect(response.status).toBe(200);
+  const body = await readJson<{ data: SkillExperienceInventoryV1 }>(response);
+  expect(body.data).toMatchObject({
+    experiences: [],
+    diagnostics: [{ code: 'unavailable' }],
   });
 });

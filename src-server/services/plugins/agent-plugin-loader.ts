@@ -689,26 +689,57 @@ export class AgentPluginLoader {
       experiences: [],
       diagnostics: [],
     };
-    for (const {
-      directoryName,
-      root,
-    } of this.recognizedInstalledPackageRoots()) {
+    const candidates = new Map(
+      this.recognizedInstalledPackageRoots().map(({ directoryName, root }) => [
+        directoryName,
+        root,
+      ]),
+    );
+    const selectedInstallations = this.options
+      .journal?.()
+      .selectedInstallations();
+    if (selectedInstallations?.state === 'unavailable')
+      throw new Error('Installed package inventory is unavailable.');
+    if (selectedInstallations?.state === 'observed') {
+      for (const installation of selectedInstallations.installations) {
+        try {
+          const root = this.selectedRoot(
+            installation.pluginId,
+            'legacy-scan-exclusion',
+          );
+          if (root) candidates.set(installation.pluginId, root.packageRoot);
+          else
+            inventory.diagnostics.push({
+              pluginId: installation.pluginId,
+              code: 'unavailable',
+              message: 'The selected installed package source is unavailable.',
+            });
+        } catch (error) {
+          inventory.diagnostics.push({
+            pluginId: installation.pluginId,
+            code: 'unavailable',
+            message: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+    }
+    for (const [directoryName, root] of candidates) {
       await withPluginContentLock(this.pluginsDir, directoryName, async () => {
         const reports: AgentPluginLoadReport[] = [];
         let declared = false;
         try {
-          const parsed = this.parseManifest(
-            root,
-            JSON.parse(
-              readBoundedRegularFile(
-                resolveContainedPath(root, join(root, 'plugin.json')),
-              ),
+          const raw: unknown = JSON.parse(
+            readBoundedRegularFile(
+              resolveContainedPath(root, join(root, 'plugin.json')),
             ),
-            reports,
           );
+          if (isRecord(raw) && typeof raw.$schema !== 'string') return;
+          const parsed = this.parseManifest(root, raw, reports);
           if (!parsed?.stationExtension) {
             for (const report of reports.filter(
-              (entry) => entry.code === 'station-extension-invalid',
+              (entry) =>
+                entry.code === 'station-extension-invalid' ||
+                entry.code === 'manifest-invalid',
             ))
               inventory.diagnostics.push({
                 pluginId: directoryName,
@@ -722,10 +753,16 @@ export class AgentPluginLoader {
           declared = true;
           const journal = this.options.journal?.();
           const selected = journal?.currentInstallation(directoryName);
+          const materialization =
+            selected?.state === 'observed'
+              ? selected.installation.materialization
+              : undefined;
           if (
             parsed.manifest.name !== directoryName ||
             !parsed.manifest.version ||
             selected?.state !== 'observed' ||
+            !materialization ||
+            !selected.installation.dataScope ||
             !journal?.admissionOpen(selected.installation) ||
             this.selectedRoot(directoryName)?.packageRoot !== root
           ) {
@@ -787,7 +824,7 @@ export class AgentPluginLoader {
                 pluginVersion: parsed.manifest.version,
                 experienceId: definition.id,
                 incarnation: installation.incarnation,
-                materialization: installation.materialization!,
+                materialization,
                 contentDigest,
                 definitionDigest,
               },
@@ -795,12 +832,11 @@ export class AgentPluginLoader {
             });
           }
         } catch (error) {
-          if (declared)
-            inventory.diagnostics.push({
-              pluginId: directoryName,
-              code: 'definition-invalid',
-              message: error instanceof Error ? error.message : String(error),
-            });
+          inventory.diagnostics.push({
+            pluginId: directoryName,
+            code: declared ? 'definition-invalid' : 'unavailable',
+            message: error instanceof Error ? error.message : String(error),
+          });
         }
       });
     }
@@ -845,6 +881,17 @@ export class AgentPluginLoader {
               return false;
             }
           },
+          ...(selectedAtCapture?.state === 'observed' &&
+          selectedAtCapture.installation.materialization
+            ? {
+                packageRevision: {
+                  incarnation: selectedAtCapture.installation.incarnation,
+                  materialization:
+                    selectedAtCapture.installation.materialization,
+                  contentDigest: selectedAtCapture.installation.contentDigest,
+                },
+              }
+            : {}),
           label: `agent-plugin:${directoryName}` as const,
           ...(plugin?.manifest.version
             ? { version: plugin.manifest.version }

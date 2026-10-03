@@ -468,7 +468,11 @@ export class SkillService {
         const source = this.canonicalSourceFor(registered?.location);
         return (
           source?.label === `agent-plugin:${entry.identity.pluginId}` &&
-          source.version === entry.identity.pluginVersion
+          source.version === entry.identity.pluginVersion &&
+          source.packageRevision?.incarnation === entry.identity.incarnation &&
+          source.packageRevision.materialization ===
+            entry.identity.materialization &&
+          source.packageRevision.contentDigest === entry.identity.contentDigest
         );
       });
       if (!matches)
