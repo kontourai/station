@@ -24,7 +24,7 @@
 
     {"path":"src-desktop/src/native_relay_ios_launch.rs","digest":"135f11afc3cc411a915de32a9c399487a8ca3f4eb1bf0afc381abf30c3f4ab66","revision":"b1b2d1fd15ddfd6dea0be7371a81d5008f6ffbf7"},
 
-    {"path":"src-desktop/src/native_relay_link_intake.rs","digest":"4312358df5c8918b9a60bcacea47931a18981534cd428804b49dd6b37db0ee0c","revision":"70e9b50c5329411de0b7b432408f0722407a0208"},
+    {"path":"src-desktop/src/native_relay_link_intake.rs","digest":"f9006742ccebb94eeaa9b18936d480697bad199322ac1f5161cada86198b97c9","revision":"7ad03486b8521649247b6a728da71d08780069ac"},
 
     {"path":"src-desktop/src/native_relay_redemption.rs","digest":"dbf3c222dce269cb71deba9d86e1f9b51f58f8d1abc77f3f4583556f160ae115","revision":"70e9b50c5329411de0b7b432408f0722407a0208"},
 
@@ -46,7 +46,7 @@
 
     {"path":"src-ui/src/platform/native/NativeRelayLinkReview.tsx","digest":"e25569817376f5d0dc1ea00e379042b7dba49049178662a7d45fdee23b8357c5","revision":"d606c17132af7b1d9ec0d576871937dc37f79864"},
 
-    {"path":"src-ui/src/views/connections-hub/NativeRelayEnrollmentWizard.tsx","digest":"e730a7203abf866754ae170afb1b54150956d42122e01651c88810df0ae04435","revision":"13ab0b8cc55ca7db5568879e7dced0e5a2e0f3e4"},
+    {"path":"src-ui/src/views/connections-hub/NativeRelayEnrollmentWizard.tsx","digest":"79cb2659b18787521916dfabca3b3cd4bf26ed24bb81e7ec488a3823e3e872b2","revision":"fc7857beb8210ea8db44cf3ffe50ae30b3aca057"},
 
     {"path":"src-ui/src/views/native-relay/NativeRelayMemberShell.tsx","digest":"a0749e9f35dbf8eb7510c22a9d57184c64480e3c1e34b4ecec9dc689958bea69","revision":"d956082d3d2864711773914857b8098c60bdd972"}
   ],

@@ -180,7 +180,7 @@
 
     {"path":"src-desktop/src/native_relay_key_approval.rs","digest":"f0fdb455b1c3e476ddf9c7377a806c7fcb05d7e16b7430e00139fe2967b91a02","revision":"e33331ee19520c8bd546c878fdd503063a682634"},
 
-    {"path":"src-desktop/src/native_relay_link_intake.rs","digest":"4312358df5c8918b9a60bcacea47931a18981534cd428804b49dd6b37db0ee0c","revision":"70e9b50c5329411de0b7b432408f0722407a0208"},
+    {"path":"src-desktop/src/native_relay_link_intake.rs","digest":"f9006742ccebb94eeaa9b18936d480697bad199322ac1f5161cada86198b97c9","revision":"7ad03486b8521649247b6a728da71d08780069ac"},
 
     {"path":"src-desktop/src/native_relay_redemption.rs","digest":"dbf3c222dce269cb71deba9d86e1f9b51f58f8d1abc77f3f4583556f160ae115","revision":"70e9b50c5329411de0b7b432408f0722407a0208"},
 
@@ -890,7 +890,7 @@
 
     {"path":"src-ui/src/views/TaskWorkspaceView.tsx","digest":"2c6e6d9dec385870e2f639c42cfa86f5e1b553f17756fea1d78b4a4a1a9d73f0","revision":"79edb8d5dd98ef07de0722b0604b9ec606f2bdbf"},
 
-    {"path":"src-ui/src/views/connections-hub/NativeRelayEnrollmentWizard.tsx","digest":"e730a7203abf866754ae170afb1b54150956d42122e01651c88810df0ae04435","revision":"13ab0b8cc55ca7db5568879e7dced0e5a2e0f3e4"},
+    {"path":"src-ui/src/views/connections-hub/NativeRelayEnrollmentWizard.tsx","digest":"79cb2659b18787521916dfabca3b3cd4bf26ed24bb81e7ec488a3823e3e872b2","revision":"fc7857beb8210ea8db44cf3ffe50ae30b3aca057"},
 
     {"path":"src-ui/src/views/developer/MemoryTab.tsx","digest":"8f9509629781c1a0ca749686df755d9c42821df6cbf4f4fd131d2fdbab702cec","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
