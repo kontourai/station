@@ -38,7 +38,7 @@
 
     {"path":"scripts/__tests__/pnpm-advisory-command.test.ts","digest":"235c4174211032d0199025a05c3190e12e688d0d093c04491da603caf2654c0d","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"scripts/actionlint-gate.mjs","digest":"c7084456afb8abebd8c0d74d7941520de27eb8dceb6cdb15ffba51152f050774","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
+    {"path":"scripts/actionlint-gate.mjs","digest":"9b0c7c38f1f3b82c0b49acfb35b35870a72b85c1daa95c820ab23636bfed43c0","revision":"8de1b741d83aec880c76c3cece6bb3e9cdee740d"},
 
     {"path":"scripts/classify-ci-change.mjs","digest":"bfe2eb23055b9149b644b1c81d3db2cc09b35a9ecd56d702653b38e77c2910ba","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 

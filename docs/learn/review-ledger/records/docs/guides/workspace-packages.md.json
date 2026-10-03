@@ -46,7 +46,7 @@
 
     {"path":"pnpm-workspace.yaml","digest":"d8755daab4e9f4a491239888610ae28b412aa80de9b15625b785b26577131953","revision":"3ff5522abf460ad69d2e2ed4c53740d82e9ec289"},
 
-    {"path":"scripts/actionlint-gate.mjs","digest":"c7084456afb8abebd8c0d74d7941520de27eb8dceb6cdb15ffba51152f050774","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
+    {"path":"scripts/actionlint-gate.mjs","digest":"9b0c7c38f1f3b82c0b49acfb35b35870a72b85c1daa95c820ab23636bfed43c0","revision":"8de1b741d83aec880c76c3cece6bb3e9cdee740d"},
 
     {"path":"scripts/codeql-error-baseline.json","digest":"68f25eff8ac6a15bb324e169be219a0659eacc42a59c451699b171968bd62978","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 
