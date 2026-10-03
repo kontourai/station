@@ -32,7 +32,7 @@
 
     {"path":"src-server/routes/orchestration/__tests__/task-room-work.routes.test.ts","digest":"1b273db3ecf301804980105fabf37cdb3e8b5cce519499801e1e52948a883c97","revision":"078747c0143ca02d52107439754ca3a51e5479d1"},
 
-    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"c3febaa85af6fa1d6b6edce04539a96b88cb7cb0660b7d0ee0de8d4fb6595530","revision":"b208a334880a96bb3f4267c2d2ffd6d03e118218"},
+    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"08660e0ab9656d6ed9fa353e0858a726a638a7908fa3ca2d60d55dc09dd980f1","revision":"dad445bd2331afaf30f70ab9ae2df1410f8acb93"},
 
     {"path":"src-server/routes/orchestration/project-task-rooms.ts","digest":"a0be99c27d8f8795b5dfee2bac64b05ae9e957e7110db08414d76e1fdbd91cc8","revision":"a258f06c1515ccdde83e198862ae8efe43d71207"},
 
@@ -52,7 +52,7 @@
 
     {"path":"src-server/services/projects/task-room-work-module.ts","digest":"acf9afa37babc44c9281e95040e057726a71b03c0ab49e98989e59069f450f9c","revision":"81ffd01123b6ad2a2591308e02a0c5f1cddc2feb"},
 
-    {"path":"src-server/tools/station-control-delegation.ts","digest":"e5e4d1979cfa4997ce4b808f5268e69bbd0926f5c838ac1388bbdd5009389467","revision":"56f4c4897a189eeb30430119a4f4895e95fbb541"},
+    {"path":"src-server/tools/station-control-delegation.ts","digest":"a5f9d5654ad9a22048fe45db5f9b33e564f0d8ef54fb03de4bcebfbc7b5405fd","revision":"dad445bd2331afaf30f70ab9ae2df1410f8acb93"},
 
     {"path":"src-ui/src/__tests__/TaskRoomComposer.test.tsx","digest":"af8e3f33aa53115fd99b63149cca098158324409a4bdb00910c41f652b37c9fb","revision":"4bcb32e2752dbd10db63b5acd96b0280be033c9e"},
 
