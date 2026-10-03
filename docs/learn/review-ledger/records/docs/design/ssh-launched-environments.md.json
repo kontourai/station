@@ -18,7 +18,7 @@
 
     {"path":"src-desktop/src/ssh_launcher.rs","digest":"b687664310160032657179ad40dfff3ccac0cfa6d8735bcc9dc712d237f1457a","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
-    {"path":"src-ui/src/__tests__/AddMachineModal.test.tsx","digest":"ce72c9c626e7e1bc8508ed9dc5b35b14c5d912b3af687667d0ab09f699179a50","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    {"path":"src-ui/src/__tests__/AddMachineModal.test.tsx","digest":"3fce4ffec26e38c01b639b40b520cf63767637a655e4fa019a46f9cf58aba4b8","revision":"8edef4f56df4d3c42dbf9427d754cc569f3b87b0"},
 
     {"path":"src-ui/src/__tests__/SshComputerCreatorDialog.test.tsx","digest":"d4ad08541356768779013b50906117eaaab1936b54d12d5718fb8d87afc7bfcc","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
