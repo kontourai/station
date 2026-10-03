@@ -22,7 +22,7 @@
 
     {"path":"src-server/runtime/mcp/__tests__/mcp-ui-resolver.test.ts","digest":"4244fe6da0b1e7f0eeeb5a5fc928581453a83684ebd48afec9acec3d7e8df6db","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/runtime/mcp/mcp-ui-frame-server.ts","digest":"eaf7b70c1248c4020af4fafd05c5e38c6e8fd03fd2955991965d0e94dd3cc77c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/runtime/mcp/mcp-ui-frame-server.ts","digest":"059956767914e6690d45440c93d3a7fd780cb1ab0261fab28a4f3e70e1610fe3","revision":"e3cabf68e687341298eefa0bf88ebfb2400549d3"},
 
     {"path":"src-server/runtime/mcp/mcp-ui-resolver.ts","digest":"b82399f787d6b71129684e5cb4fad8858846d5315d0c1077822ac1591199075e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

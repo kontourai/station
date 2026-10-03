@@ -103,6 +103,7 @@ export {
   resolveWorkspacePaneAvailability,
   toWorkspacePaneAvailabilityTelemetry,
 } from '@kontourai/station-contracts/workspace-pane-availability';
+export type { PaneSkillExperienceHost } from '@kontourai/station-contracts/workspace-pane-host-contract';
 export type {
   WorkspacePaneHostActionCatalog,
   WorkspacePaneHostActionExecution,
@@ -119,3 +120,4 @@ export {
 // Catalog data is opt-in with the Pane contract so the root SDK namespace
 // bridge does not pull this query into every Station UI bundle.
 export { useProjectWorkspacePanesQuery } from './query-domains/workspaceProjects';
+export { createSkillExperiencePaneHost } from './skill-experience-pane';

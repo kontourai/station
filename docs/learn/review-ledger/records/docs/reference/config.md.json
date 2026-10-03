@@ -54,11 +54,11 @@
 
     {"path":"src-server/routes/agents/invoke-global.ts","digest":"798593a5e1cc7636321286b28214428cfe927eb467bd4744169a6f83ee9a044f","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/routes/chat/chat.ts","digest":"db3e22211d805bb024b75e48493ff474d48eeb6a424f3329d8a938959ae44841","revision":"68a5eae4cbf2421447443d47b902fd7758e319fc"},
+    {"path":"src-server/routes/chat/chat.ts","digest":"6a21c19b74d6dda3764d207c8768b588df7cb4e5e1f5529955e153cbde99f8cc","revision":"56f4c4897a189eeb30430119a4f4895e95fbb541"},
 
     {"path":"src-server/routes/orchestration/attachments.ts","digest":"628b930049e5ea6a021ba03e7bee9ec916a32656f6a5979d555864b86eee71f9","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"755ec9f2a3b4e0523ad5fd4126605f4433a4ac90b0075160d21acb280359c704","revision":"c6ebec77b17b679e630a3857b10a6f814d7fb436"},
+    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"c3febaa85af6fa1d6b6edce04539a96b88cb7cb0660b7d0ee0de8d4fb6595530","revision":"b208a334880a96bb3f4267c2d2ffd6d03e118218"},
 
     {"path":"src-server/routes/system/config.ts","digest":"45bb6618c88a4128d7932840acee69f83b0eff5fbdbc151012ae1e4361a6c610","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -74,7 +74,7 @@
 
     {"path":"src-server/runtime/bootstrap/runtime-http.ts","digest":"bf1b7671bc40fe53615a39f8e9f12b5ad27beace97a86fc50e2ebb4e9717d20e","revision":"54ca710a3594bf1f3b7ac3d4464a2db2edc6e6c0"},
 
-    {"path":"src-server/runtime/bootstrap/runtime-initialize.ts","digest":"93c4b8f2102f0b78a9ffe5e97bc8b96405a637b8e44d2f1808717a0411d0b903","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/runtime/bootstrap/runtime-initialize.ts","digest":"bd381c9d60f70ac986c9eee0977752d883f52a018842fee300d3e352933aea6d","revision":"56f4c4897a189eeb30430119a4f4895e95fbb541"},
 
     {"path":"src-server/runtime/bootstrap/runtime-startup.ts","digest":"80cf34735ed30ab3bf64a9be2f23b724189266d74e5eb5073c3ebf60af1a0a4a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -96,7 +96,7 @@
 
     {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"21831e2e97672cb946b2e23f9e183477773a632390b02daf66b3e6cf3fe20e71","revision":"595059eafa17ef6b7a39217a405619ecbfac2270"},
 
-    {"path":"src-server/security/pairing-route-scopes.ts","digest":"4c1527cee9416183e5830c057a26f4c2bad32ff38c9ccd50aa36643cd59745d9","revision":"94da87e3016992b8cdbdde3be15b978b489a1c63"},
+    {"path":"src-server/security/pairing-route-scopes.ts","digest":"cd0d7cf06b6f68355d4e509648ac649c62bdf1cabd52b220e7578776b5e01873","revision":"d73d9f64333504f027a200482e978cc4445338da"},
 
     {"path":"src-server/security/runtime-request-security.ts","digest":"c3219b8afbdd24e8969fb407d2a0a0aa77c08a7656a0e147f64f99f0ed9af3c4","revision":"904729ae7f4058a2cd7dbaf11a4daaa6b8837d08"},
 
@@ -110,9 +110,9 @@
 
     {"path":"src-server/services/orchestration/attachment-blob-store.ts","digest":"d059c34e6fb37d33e1d83f5d90530483db408d04a8b27fe54825c485dc5db6dd","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/orchestration/event-store.ts","digest":"1ea0958938d8834be0de3694e34491f63c2e3db7863bd44147ed8572257e7cd8","revision":"061ace7180fe67218f67d9a74230ce419b887c11"},
+    {"path":"src-server/services/orchestration/event-store.ts","digest":"93c3dbecfc298b2ae05f65a29fe897f34f13a69ba0cbd72b6fca8013a9a6361a","revision":"b208a334880a96bb3f4267c2d2ffd6d03e118218"},
 
-    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"4582d45b868ea008447f5405bcedb1adf987b1e3ad7701e39de19fc6a8d8994c","revision":"4711f21b516d04300b15ad4da473e24bf2e7adb2"},
+    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"c5a85fefbe06e5a903444325293d46a80fefb7a0f938100fbceee8c60492d893","revision":"958350328eafd360124e1892c1945a2ae455e43c"},
 
     {"path":"src-server/services/scheduling/builtin-scheduler-execution.ts","digest":"388c2403f460021860549a6e16a19f8fb710fa698692894d98a3255cc77a940a","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
@@ -130,9 +130,9 @@
 
     {"path":"src-shared/monitoring-keys.ts","digest":"1c2939ae04a2df7205ff75d2e16531e200199b7b785c672b1820a06a0a736f25","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/components/chat-dock/ChatDock.tsx","digest":"f92052af5abd7736675c6a27499a8a43ded8167dcecff4b0e4e775c2614562f3","revision":"4d59eb1868139f2faeaf1a1467811c22726f741c"},
+    {"path":"src-ui/src/components/chat-dock/ChatDock.tsx","digest":"ea96d9b1e01df4219ee45a05f4b894bf7db7dc7f55ade3d3fcd063c6ecfb88a5","revision":"bc542083c3919bc80d36e5e165dc6da009c6ac05"},
 
-    {"path":"src-ui/src/components/chat-dock/ChatDockBody.tsx","digest":"e9d72a345f839a5ef48fa695e88991c40051b0046002396c14d809a253d75d90","revision":"c6ebec77b17b679e630a3857b10a6f814d7fb436"},
+    {"path":"src-ui/src/components/chat-dock/ChatDockBody.tsx","digest":"8aff93c3bf3d4887bfa746859b475c2d0ae2b18ff3b8701b861ff6e835e98cdf","revision":"bcf92230693bda2172f72834280d9f1798371197"},
 
     {"path":"src-ui/src/components/chat-dock/retry-attachments.ts","digest":"e35fc0d7d193cd614829fddbf3f822b4118510a0776e5f8853fdcb8bf1ea3d93","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
