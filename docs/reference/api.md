@@ -2033,6 +2033,10 @@ error is currently caught, so success is not proof that local cleanup completed.
 ### Manage marketplaces
 
 `GET /api/registry/sources` lists connected sources for the Station operator.
+All source-management methods require `access:manage` credential scope as well
+as the operator principal check. Ordinary catalog browsing retains its read
+scope; a standard paired credential cannot enumerate host source configuration
+or trigger source refresh.
 `POST /api/registry/sources` accepts `{displayName, adapter, location}` where
 `adapter` is `directory`, `github` or `manifest`. Directory and local manifest
 locations are absolute paths on this Station. Public GitHub repository URLs use
