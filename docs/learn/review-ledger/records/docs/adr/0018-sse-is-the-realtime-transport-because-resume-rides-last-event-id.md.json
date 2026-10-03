@@ -22,7 +22,7 @@
 
     {"path":"packages/sdk/src/__tests__/fetch-sse.test.ts","digest":"e4cdf570064a3099a4e15e5103638c08e1e2bcd3df8b0b25837ff227fb8b9ee5","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/sdk/src/client/http.ts","digest":"9892699e68483e0df3dd67ce71956994e98a43755a0c931dd6c3c5660caee00e","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+    {"path":"packages/sdk/src/client/http.ts","digest":"68cf352bfc07dc47297ecaaccaa548adb394478ba8a7ff8baff6817a8beccd44","revision":"fadd647731c00e53b2aeb25a7873ee66c0aa7608"},
 
     {"path":"packages/sdk/src/mobile-device.ts","digest":"fd72000c45dad09b9d232f7343442f4a0abe873b14eaf9c7a5f1eb3ff1fc4efe","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 

@@ -9,7 +9,7 @@
 
   "limits": "Decision record only; no behavior ships with it. Context statements describe origin/main on 2026-09-29 and were checked against the listed sources; the decisions are implemented and proven by #2959-#2962, not by this record.",
 
-  "document": {"digest":"d5acbd007ab05fd13e9689943a2040edbc5a8980c4c04eb7a3f0aa6e2dc03372","revision":"54e0ffb5c1ae765b4127f031e525793087fb9669"},
+  "document": {"digest":"9ef4b5ec4ab7fb3603a25fdb6673f8f9b62753334370bd3d109a0d4dab349418","revision":"822faf4ece39a77cd8977830c4f3d96611946892"},
 
   "sources": [
     {"path":"install.sh","digest":"f2b2fbf2dba1198f08637b48ad3a1cd7ae684cee020621cd293668e6bbb8b4bc","revision":"54e0ffb5c1ae765b4127f031e525793087fb9669"},
@@ -18,7 +18,7 @@
 
     {"path":"src-server/routes/system/archive-update.ts","digest":"11cd46218325618ceefcd54079f5012b981eb6b1c2872d562434523de1ef63e9","revision":"ce2b6c35d2cb46e08b3b0f162df6e2c581dd03a9"},
 
-    {"path":"packages/contracts/src/environment-security.ts","digest":"5e95b203695a37807a3b3c9464df4f0153ca32b408496dc12f59274f61fd2486","revision":"91d79c3f0ce9ca5ae304e4248b67b6189103016e"},
+    {"path":"packages/contracts/src/environment-security.ts","digest":"2df95e81e22dc7f7f5e6956c749a19ed01bba6b62c931e672b5a89abd235c6df","revision":"054d4f861db7de6e1eb419593e7b21b34d3c08ce"},
 
     {"path":"src-ui/src/lib/compatibility.ts","digest":"4c3ddfb66d0c660278dbb12f3dcc66fbb4a7c3c24a882c3d65afe3c89bd9dac3","revision":"54e0ffb5c1ae765b4127f031e525793087fb9669"},
 

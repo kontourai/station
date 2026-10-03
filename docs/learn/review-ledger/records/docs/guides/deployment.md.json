@@ -90,7 +90,7 @@
 
     {"path":"src-server/services/ssh/device-pairing-service.ts","digest":"dcecd8108147d5e7f2b26d132545cf8901b05ce62d14523a2732a10005fb1753","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/ssh/environment-security-service.ts","digest":"3861107c8d4a4e1bc9a82e3f5f1c3f5d68be08e34e04d909635d7f70b1407a3d","revision":"5ecd682d3dda93a00a126e31328fb563f3b427b8"}
+    {"path":"src-server/services/ssh/environment-security-service.ts","digest":"79325347d7feda7800b17ad64be56d74f1b5fc7b13850c60b8266509aba136e8","revision":"054d4f861db7de6e1eb419593e7b21b34d3c08ce"}
   ],
 
   "checks": [
