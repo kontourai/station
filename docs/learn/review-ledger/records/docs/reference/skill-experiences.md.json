@@ -12,7 +12,7 @@
   "document": {"digest":"1c88d7156a8696a1f724a023ba76d81dced8229ca164ae59495d4c1c040dabac","revision":"68b8e4d5a9b11c85b8922c370acaf98e929d0275"},
 
   "sources": [
-    {"path":"examples/rich-skill-experience/README.md","digest":"425a86ce6411adab13391ab0453fcb924eebc7a496f034528cfef6f6174353b0","revision":"56f4c4897a189eeb30430119a4f4895e95fbb541"},
+    {"path":"examples/rich-skill-experience/README.md","digest":"411a9fccd1f52213f9ee7b37126ea4c0613e13cafcfe1d9a60453e8af1b51f9e","revision":"5bcabb2eb83bca084f6027b5c27db26b6654631a"},
 
     {"path":"examples/visual-skill-experience/io.kontourai.station/experiences/stress-test-idea.json","digest":"b09ffb2394b1f81a15df043bd9befbb19d0dbf30256781cb33da4cfe88c8e208","revision":"4846133db20d56a37c3941d83b0dca5444f21a52"},
 

@@ -14,7 +14,7 @@
   "sources": [
     {"path":"examples/portable-author-kit/plugin.json","digest":"332b41c7aff2bf308211fa388999aa5580185763512b10ade5336f221825d714","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"examples/rich-skill-experience/README.md","digest":"425a86ce6411adab13391ab0453fcb924eebc7a496f034528cfef6f6174353b0","revision":"56f4c4897a189eeb30430119a4f4895e95fbb541"},
+    {"path":"examples/rich-skill-experience/README.md","digest":"411a9fccd1f52213f9ee7b37126ea4c0613e13cafcfe1d9a60453e8af1b51f9e","revision":"5bcabb2eb83bca084f6027b5c27db26b6654631a"},
 
     {"path":"examples/rich-skill-experience/tsconfig.json","digest":"a9c5e803d4f89dce92aadda521244a8907b90d304959a2ad1b4e419926e953a0","revision":"56f4c4897a189eeb30430119a4f4895e95fbb541"},
 

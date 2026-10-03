@@ -9,12 +9,12 @@
 
   "limits": "Local author schema/source/transcript assertions only. Curated model evaluations, fresh published external consumer, installed browser/native/mobile, rich interface and release qualification remain NOT_VERIFIED.",
 
-  "document": {"digest":"0abf7f15713bfe40a704ed2afd10d09d94d4b436a7a71d0c7f858962c8f86e06","revision":"d4944ee82b611c537951425d63539e8d5e597a5d"},
+  "document": {"digest":"0bf546a7e3d8c357b5bd221646f65f4d71ecad64d1f970e3aa09aace263224a2","revision":"5bcabb2eb83bca084f6027b5c27db26b6654631a"},
 
   "sources": [
-    {"path":"packages/shared/src/skill-experience-workflow.ts","digest":"159ea0bea45a3af7093a4948071104fb422dd708c12e5f192dcc20207f8254c0","revision":"d4944ee82b611c537951425d63539e8d5e597a5d"},
+    {"path":"packages/shared/src/skill-experience-workflow.ts","digest":"8822c03c6cddc2bb8557fcdda9152d91350941005ab0398592f4129a7977ffd4","revision":"5bcabb2eb83bca084f6027b5c27db26b6654631a"},
 
-    {"path":"packages/shared/src/__tests__/skill-experience-workflow.test.ts","digest":"eff6fd27aae5352931550dbefc3365fe871f61113da74609a721d19fc73be1ec","revision":"d4944ee82b611c537951425d63539e8d5e597a5d"},
+    {"path":"packages/shared/src/__tests__/skill-experience-workflow.test.ts","digest":"dafc877ea99f32725f86059397274f65abc3d80159fc31ce540173c32ef2cb77","revision":"5bcabb2eb83bca084f6027b5c27db26b6654631a"},
 
     {"path":"packages/cli/src/commands/experience.ts","digest":"3e123ebf5382d862e14457170f62ee8cbea8d0a6c1bbd52f275491fe0a68cd86","revision":"d4944ee82b611c537951425d63539e8d5e597a5d"},
 
