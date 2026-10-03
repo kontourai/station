@@ -36,7 +36,7 @@
 
     {"path":"packages/contracts/src/principal.ts","digest":"00155a0d2f38356cfb51a720ff8195eb92ec4fd6d2b0e4dbcd97911f98eb3b73","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/contracts/src/provider.ts","digest":"5c4ed879a68b126ed05d68dac011590fc0bc8fde908d96f585774c32274d9eba","revision":"8540fafb86b969775254b898711ad3ae40ccc39d"},
+    {"path":"packages/contracts/src/provider.ts","digest":"25c46032a72149b0639d08a0bc84ed6553d44a2b83ec7215acb403d6bea220fb","revision":"0961c433764c39dd7998c9418b9c157b6547292b"},
 
     {"path":"packages/contracts/src/review-evidence.ts","digest":"647d4c37c0bf0cb74993e9b859c410a08f3a26c7b1f253651908689f9643d75a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
