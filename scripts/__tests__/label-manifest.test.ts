@@ -78,7 +78,7 @@ describe('label manifest', () => {
       { ...manifest.labels[0], color: 'ffffff' },
       { name: 'unexpected', color: '000000', description: 'keep me' },
     ]);
-    expect(plan.create).toHaveLength(27);
+    expect(plan.create).toHaveLength(28);
     expect(plan.update).toEqual([manifest.labels[0]]);
     expect(plan.unexpected).toEqual(['unexpected']);
   });
