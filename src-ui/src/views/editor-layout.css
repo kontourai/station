@@ -1839,6 +1839,13 @@
 }
 .agent-tools__heading {
   justify-content: space-between;
+  flex-wrap: wrap;
+}
+.agent-tools__actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  margin-left: auto;
+  max-width: 100%;
 }
 .agent-tools__heading .editor-label {
   display: flex;
@@ -1854,7 +1861,7 @@
   display: inline-flex;
   align-items: center;
   gap: var(--k-space-2);
-  padding: var(--k-space-2) var(--k-space-3);
+  padding: var(--k-space-2);
   font-size: var(--k-text-md);
   min-height: 44px;
 }
