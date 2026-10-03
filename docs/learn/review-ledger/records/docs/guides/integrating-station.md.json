@@ -30,9 +30,9 @@
 
     {"path":"docs/reference/cli.md","digest":"62c03f1a50009e0973510034c314c46df560dddf761547e6798d86808eb116fd","revision":"020eb6a14e05313bb66724ec3504e613717e6ed1"},
 
-    {"path":"docs/reference/contracts.md","digest":"70344cfb002eb7ffa3ca50cb2beb564f5f44dd15760eafcb06654b33194aa9e3","revision":"56f4c4897a189eeb30430119a4f4895e95fbb541"},
+    {"path":"docs/reference/contracts.md","digest":"39c8d0250cc817f1dd72bc89748315533aa78be23cb2483f5294f49c6b2f8339","revision":"8924149a7e6ef1356fc078c9a387c6a60ada429a"},
 
-    {"path":"docs/reference/sdk.md","digest":"888abe9c6eaf20a8447b0ed8d787d71ebf3219f5084e5ba23530dc1898804621","revision":"68b8e4d5a9b11c85b8922c370acaf98e929d0275"},
+    {"path":"docs/reference/sdk.md","digest":"249f48cf90022252777d16d4eb707c02f8af13c7e5ff988bb994129da1b02b64","revision":"34d62da501fa53187b7062288f6e1dbaec8c20ed"},
 
     {"path":"packages/contracts/src/deployment-authentication.ts","digest":"8855043167b011ccd430ec998ea644d1c9e16f86b98a9304162d2f86973a8a98","revision":"18002c0871ea8538605e922464aab5356c77593c"},
 
