@@ -60,6 +60,18 @@ local-account, delegated-Agent and operator callers must retain their different
 authorities. Follow the [deployment authentication guide](../guides/deployment-authentication.md)
 for those distinctions.
 
+Common HTTP admission also checks the client API protocol before credentials
+on paired-scope routes and the public pairing request/access-request/exchange.
+[`client-protocol-admission.ts`](../../src-server/security/client-protocol-admission.ts)
+reads an absent header as protocol 1, returns `400 client_protocol_invalid`
+for malformed declarations and `426 client_protocol_unsupported` below the
+handshake's minimum. Runtime composition sets CORS first and emits a denial
+audit containing the refusal reason and parsed protocol, never the raw header.
+The handshake and explicitly declared navigation routes remain exempt;
+passing protocol admission grants no scope or object authority. Follow the
+[threat model](../security/remote-access-threat-model.md#client-api-protocol-admission-2962)
+for the exact coverage and remaining caller gaps before raising the minimum.
+
 For configuration mutations, trace
 [configuration activation](../../src-server/routes/system/configuration-activation.ts)
 and the injected mutation runner. Do not save an Agent and then invoke a broad

@@ -115,7 +115,7 @@ commit or executable identity. Its schema is:
     "serverVersion": "<station package version>",
     "protocolVersion": 1,
     "minClientProtocol": 1,
-    "capabilities": { "remoteAuth": 1, "devicePairing": 1, "environmentProof": 1 }
+    "capabilities": { "remoteAuth": 1, "devicePairing": 1, "environmentProof": 1, "clientProtocolHeader": 1 }
   },
   "capabilities": { "sshEnvironments": true, "webPushNotifications": true }
 }
@@ -147,7 +147,16 @@ client must still reach to learn why; liveness and the direct-loopback
 owner-secret routes, whose callers are launchers governed by the launcher
 protocol; MCP-token, webhook, stage-grant, relay-enrollment, share-token, and
 account-authentication routes, which have their own callers; or Station's own
-attested loopback consumer.
+attested loopback consumer. The navigation-reached landing page, `/doc`, `/ui`,
+and integration icons are also exempt: browser navigation, iframe/link loads,
+and image elements cannot attach a custom request header. The exemption is
+these declared route IDs, not every route an element might load; attachment,
+MCP UI resource and preview reads through the SDK remain covered.
+
+Both protocol refusals emit `station.auth.failure`, with outcome `denied` and
+the refusal code as reason. An unsupported protocol records its parsed integer;
+a malformed value is never copied into the audit. The owner is
+[`runtime-http.ts`](../../src-server/runtime/bootstrap/runtime-http.ts).
 
 Terminal and voice WebSockets are not covered yet, deliberately. Their
 upgrades never pass the HTTP boundary that runs this check (each socket
@@ -159,19 +168,25 @@ host. A query parameter is harmless to older hosts and is the planned
 carriage, added together with the check on each socket's own upgrade path.
 
 Clients send the header from the SDK request seam (which the CLI uses), the
-pairing client, and the connection health probe. They send it only where no
-CORS preflight can refuse it: outside a browser, through the desktop native
-broker or an encrypted relay route, or to the page's own origin. Hosts
-released before this header do not allow it in a preflight, so a
-cross-origin browser request does not send it and reads as protocol 1, as
-does the desktop's native pairing exchange, which Rust builds itself. Before
-any host raises `minClientProtocol` above 1, every client path must declare
-its protocol, or that client will be refused as legacy.
+pairing client, and the connection health probe. The CORS preflight allow-list
+includes it. Same-origin browser requests, Node callers, and host-owned native
+or encrypted relay transports can send it without preflight negotiation.
+Cross-origin browser requests send it only after the host's public handshake
+advertises `compatibility.capabilities.clientProtocolHeader >= 1`. The
+[shared policy](../../packages/shared/src/client-protocol.ts) remembers this
+per origin in process memory and removes the observation when the capability
+is no longer advertised. Older or unobserved hosts receive no header and read
+the request as protocol 1.
 
-Known undeclared paths today, besides the two above: direct `fetch` calls
-that bypass the SDK seam (for example the notification action and local UI
-identity requests in `src-ui`, and the `station operate` event stream in the
-CLI).
+The native pairing exchange, which Rust builds itself, remains undeclared.
+Direct `fetch` callers that bypass the SDK seam also remain undeclared, including
+the notification action and local UI identity requests in `src-ui` and the
+`station operate` event stream in the CLI. The ratchet in
+[`client-protocol-admission.test.ts`](../../src-server/runtime/__tests__/client-protocol-admission.test.ts)
+blocks raising `minClientProtocol` above 1 while these four known callers remain
+on its list. Removing an entry requires carriage evidence; the test is not an
+automatic discovery of every caller. Terminal and voice admission needs its
+separate implementation before a raised minimum covers those listeners.
 
 ## Separate native relay pilot
 

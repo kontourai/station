@@ -81,7 +81,9 @@ Two compatibility contracts exist.
 - The web and desktop client refuses when the host's minimum is above its
   own protocol, or when the host's protocol is below the client's minimum
   ([`compatibility.ts`](../../src-ui/src/lib/compatibility.ts)).
-- Clients send no protocol version, so a host cannot refuse an old client.
+- At this decision's baseline, clients sent no protocol version, so a host
+  could not refuse an old client. The #2962 addendum below records the current
+  host rejection path.
 
 **Desktop sidecar trust.** The desktop trusts its sidecar through a startup
 ticket that binds generation, instance ID, boot ID, and API base. It proves
@@ -160,7 +162,7 @@ Every boundary refuses an out-of-range peer with readable remediation:
 | --- | --- | --- | --- |
 | Installer and archive update | launcher | Yes | `install.sh`, `archive-update.ts` |
 | Desktop spawn of a host | launcher | **No** | Shell, before spawn (#2961) |
-| Client meets host | API | Client side only | Also the host, at pairing and handshake, once clients send their protocol (#2962 adds that field) |
+| Client meets host | API | Client and host HTTP admission (#2962) | Host checks paired-scope HTTP and pairing request/access-request/exchange; the public handshake stays reachable (see addendum) |
 
 **Rollout window.** During a rollout, a host accepts clients from the
 previous client train across both contracts (owner decision). Engineering
@@ -353,14 +355,23 @@ exchange routes; the handshake stays open. An absent header reads as
 protocol 1. The contract and the
 exempt routes are specified in the
 [remote-access threat model](../security/remote-access-threat-model.md#client-api-protocol-admission-2962).
-These gaps must close before any host raises its minimum above 1:
+Cross-origin carriage is capability-gated; the remaining caller gaps must
+close before any host raises its minimum above 1:
 
-- cross-origin browser requests do not send the header;
+- cross-origin browser requests send the header only after the host advertises
+  `compatibility.capabilities.clientProtocolHeader >= 1`; older or unobserved
+  hosts receive an unlabelled request, interpreted as protocol 1;
 - the native pairing exchange request, built in Rust, does not send it;
 - terminal and voice WebSockets are not checked (separate listeners, and a
   browser socket cannot send a header; the threat model records the planned
   query-parameter carriage);
 - direct `fetch` calls that bypass the SDK seam do not send it.
+
+The minimum remains 1. The admission ratchet test names the native pairing
+exchange, notification action, local UI identity request and CLI operate event
+stream, and fails if the minimum rises while those callers remain listed.
+Malformed declarations return `400 client_protocol_invalid`; unsupported and
+malformed refusals emit denial audits without retaining raw header text.
 
 ## Consequences
 
