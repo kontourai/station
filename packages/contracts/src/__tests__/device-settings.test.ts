@@ -137,7 +137,7 @@ describe('DEVICE_SETTINGS_REGISTRY completeness', () => {
     expect(byKey.get('modelPickerPreferences')).toBe('station.device-settings');
   });
 
-  test('registers exactly the twenty-nine documented DeviceSettings fields', () => {
+  test('registers exactly the thirty documented DeviceSettings fields', () => {
     const keys = DEVICE_SETTINGS_REGISTRY.map(
       (definition) => definition.key as string,
     ).sort();
@@ -164,6 +164,7 @@ describe('DEVICE_SETTINGS_REGISTRY completeness', () => {
         'chatShowReasoning',
         'chatShowToolDetails',
         'chatFontSize',
+        'chatReturnBehavior',
         'dockSlotPlacement',
         // station#1954:
         'hapticsEnabled',
