@@ -512,37 +512,45 @@ describe('browser_status paging (#90)', () => {
     expect(ids).toEqual([...opened].reverse());
   });
 
-  test('a session closed or opened between pages neither repeats nor drops one that was already there', async () => {
-    const h = harness();
-    const token = h.startAgent('exec-1', {
-      principalId: OPERATOR_ID,
-      conversationId: 'conv-X',
-    });
-    const opened: string[] = [];
-    for (let i = 0; i < 9; i += 1)
-      opened.push(await h.agentOpen(token, `https://example.com/${i}`));
+  test.each([
+    // A listed session closing shifts an offset forward: one would be skipped.
+    ['a listed session closes', 'close'],
+    // A new session at the front shifts an offset back: one would repeat.
+    ['a new session opens', 'open'],
+  ] as const)(
+    'when %s between pages, every session already there is listed exactly once',
+    async (_label, change) => {
+      const h = harness();
+      const token = h.startAgent('exec-1', {
+        principalId: OPERATOR_ID,
+        conversationId: 'conv-X',
+      });
+      const opened: string[] = [];
+      for (let i = 0; i < 9; i += 1)
+        opened.push(await h.agentOpen(token, `https://example.com/${i}`));
 
-    const first = await h.tool(token, 'status', { limit: 3 });
-    const firstIds = (first.sessions as StatusEntry[]).map(
-      (s) => s.browserSessionId,
-    );
-    // Between pages: one already-listed session closes, and one is opened.
-    expect(
-      await h.tool(token, 'close', { browserSessionId: firstIds[0] }),
-    ).toMatchObject({ ok: true });
-    await h.agentOpen(token, 'https://example.com/late');
-
-    const rest: string[] = [];
-    let cursor = first.nextCursor;
-    while (typeof cursor === 'string') {
-      const page = await h.tool(token, 'status', { limit: 3, cursor });
-      rest.push(
-        ...(page.sessions as StatusEntry[]).map((s) => s.browserSessionId),
+      const first = await h.tool(token, 'status', { limit: 3 });
+      const listed = (first.sessions as StatusEntry[]).map(
+        (s) => s.browserSessionId,
       );
-      cursor = page.nextCursor;
-    }
-    expect([...firstIds, ...rest].sort()).toEqual([...opened].sort());
-  });
+      if (change === 'close')
+        expect(
+          await h.tool(token, 'close', { browserSessionId: listed[0] }),
+        ).toMatchObject({ ok: true });
+      else await h.agentOpen(token, 'https://example.com/late');
+
+      let cursor = first.nextCursor;
+      for (let pages = 0; typeof cursor === 'string'; pages += 1) {
+        expect(pages).toBeLessThan(5);
+        const page = await h.tool(token, 'status', { limit: 3, cursor });
+        listed.push(
+          ...(page.sessions as StatusEntry[]).map((s) => s.browserSessionId),
+        );
+        cursor = page.nextCursor;
+      }
+      expect(listed).toEqual([...opened].reverse());
+    },
+  );
 
   test.each([
     [{ limit: 21 }, /limit/],
