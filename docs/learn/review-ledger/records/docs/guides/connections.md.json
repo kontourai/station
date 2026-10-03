@@ -48,7 +48,7 @@
 
     {"path":"packages/connect/src/react/HttpConnectionConsent.tsx","digest":"2deb65b3f990eeb32d44a82de3b8895b44e9b34b9e823e3907d99b5a49748385","revision":"55dad29e8ed7e58c5ce19cf6a0fd935b5015882f"},
 
-    {"path":"packages/contracts/src/agent.ts","digest":"09ccd526184f256ab9833dd6e46f417f4da565a825f3fd870f5621e017922e22","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"packages/contracts/src/agent.ts","digest":"e325363bc2303d78102c7c4c45b118756d71d66cae3d801eee303761d0715b6c","revision":"423cbe55b9e35e4cd8954fd441cb9f3c69740d66"},
 
     {"path":"packages/contracts/src/engine-capability-matrix.ts","digest":"db82340760d09e965ac7ed17830f36060573fe48545995d4ad9149b755d36ea1","revision":"518fae654af981373e872c2ab85438bb1b1b0e67"},
 
@@ -64,7 +64,7 @@
 
     {"path":"packages/shared/src/connection-proof.ts","digest":"921ea3f05e5e87aa308552c46b7dc567a340ca6c02989b710306ecfc6dd3c6b4","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"schemas/agent.schema.json","digest":"d5f9d556348793b8a12764d68b005a9ab08c956da09304b61f2bf29620ba798d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"schemas/agent.schema.json","digest":"fe5a6c91fb32f7d027438d00fd28f071bdcced285bf7b3a60ed55f36c56beb88","revision":"423cbe55b9e35e4cd8954fd441cb9f3c69740d66"},
 
     {"path":"scripts/examples-conformance.mjs","digest":"2eac8e0f018acdf56bc2ead72e428a38cf7d40c3be2dde34b4945f969fa4d587","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -86,13 +86,13 @@
 
     {"path":"src-server/domain/validator.ts","digest":"3eb3a7b8ee4c11d88b25e26cb055a7909ce2017011fad50fbe5d39ab379a21e8","revision":"d6a3158c22a62d9530592c6366a1624790ee9401"},
 
-    {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"b67b8535152f5964f1491089851480aadca7d18ff7106a0300a526dbabe82f65","revision":"b2d3503cd33490cf074a99eae94562607360f72b"},
+    {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"061da89e00216d5c3250d7f13dc1dea5717765b50db7ebf8c49672208524a3d0","revision":"423cbe55b9e35e4cd8954fd441cb9f3c69740d66"},
 
-    {"path":"src-server/providers/adapters/claude-adapter.ts","digest":"1eb6048188a2a5d01b67738ab6b5d22f9fa85d93bd00b3e622423798b965e8fb","revision":"3d33d71792203d38262ac5fd80261d12bd31e1ed"},
+    {"path":"src-server/providers/adapters/claude-adapter.ts","digest":"3b2845b046cad6902a72d173810082511f848cb4819c02e0d42a18e28d3b7d80","revision":"423cbe55b9e35e4cd8954fd441cb9f3c69740d66"},
 
     {"path":"src-server/providers/adapters/codex-adapter-transport.ts","digest":"ddc57bdc7eead816bff59653f324a25f2349d9ff9478005264cac8e7a099b4fc","revision":"3f6a2ef106d0d4b08be749d1e9273d9c1a61bbd4"},
 
-    {"path":"src-server/providers/adapters/codex-adapter.ts","digest":"7ae5b28549fd32b81f911ec7016072e965183effd00e6b62fb5509c4fa25b57a","revision":"1a235cd9bc482738abe4c3f011f73be86074d667"},
+    {"path":"src-server/providers/adapters/codex-adapter.ts","digest":"3dcbbfc821c7d5a35287ba8e2eb9a13b24cc4e0b4a59841fbb6b16bed846aa20","revision":"423cbe55b9e35e4cd8954fd441cb9f3c69740d66"},
 
     {"path":"src-server/providers/adapters/codex-approval-mode.ts","digest":"72b03e79d4d54962b60769c3749da7f421a822e271edebb0c6a9adbc0deaa321","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -114,7 +114,7 @@
 
     {"path":"src-server/routes/operations/voice.ts","digest":"492cdfda970de501b2659522e76897f2e0c268e5018fcc47f43aaf9593538b48","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"3976ce75117d6cbfcb2d61733068a738c46de966a3106e5a76190d03b31e63e6","revision":"71c69cadad789baff389812ff52e9efae397c316"},
+    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"755ec9f2a3b4e0523ad5fd4126605f4433a4ac90b0075160d21acb280359c704","revision":"c6ebec77b17b679e630a3857b10a6f814d7fb436"},
 
     {"path":"src-server/routes/system/relay-enrollment-routes.ts","digest":"3844e28d46c1394058412e854d53c725d813651ebea53c7de22430bc409fc52f","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -142,9 +142,9 @@
 
     {"path":"src-server/runtime/bootstrap/self-hosted-connector-config.ts","digest":"b5d0cfdd54890ea9a0dc179a56a501bcb64f99350b5bd7111bccc40b5a16cf17","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
 
-    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"92d31dd655d7c0a62ce68dc6fd804268cda2f357bb775a512ee974d7c09564db","revision":"1a235cd9bc482738abe4c3f011f73be86074d667"},
+    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"b13d44008f39b08b3d32e459abc3081c8ac8936f53e5a7bdb93d4dcbdc2043f1","revision":"423cbe55b9e35e4cd8954fd441cb9f3c69740d66"},
 
-    {"path":"src-server/runtime/mcp/mcp-manager.ts","digest":"c6569ade67cb9b48930cac5ca09521ba0836161c462f7b5a7c684b6eb8db1d3c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/runtime/mcp/mcp-manager.ts","digest":"2b111148f423e896011695de09bca6f6f2990bc8285b4466a5fd70a3c93c65d1","revision":"aadb5aa183a58e97344d13b8c5f34f92a7d78a94"},
 
     {"path":"src-server/runtime/plugins/runtime-provider-resolution.ts","digest":"99c57df9288ec94d454dace087cb1bfc99867e41f6caa992d244bc053a2a0253","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -196,9 +196,9 @@
 
     {"path":"src-server/services/orchestration/__tests__/engine-account-usage-attribution.test.ts","digest":"d2b66dc45d766afb29dfcd5d0682c46a3c4e947103436bb7be17f36c37832521","revision":"c2f51cf0697d7d6a64c75e6ebee23c25c8b437fa"},
 
-    {"path":"src-server/services/orchestration/approval-posture.ts","digest":"dba15525ee3ca4381ae9c02efe7da0bd38c79212bcf8320ccbefb9536876d997","revision":"018c39925af630ca8eeab05a917de01fc80bd89e"},
+    {"path":"src-server/services/orchestration/approval-posture.ts","digest":"88bd82f2afb16d2a11f1edb9dcdf65f395bbfb2fd937f1df0bc70ebca5405a9d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"5d7c1db19ab103f9cd49f67368afd6146899463a439046c94b90889347a926a2","revision":"018c39925af630ca8eeab05a917de01fc80bd89e"},
+    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"4582d45b868ea008447f5405bcedb1adf987b1e3ad7701e39de19fc6a8d8994c","revision":"4711f21b516d04300b15ad4da473e24bf2e7adb2"},
 
     {"path":"src-server/services/orchestration/session-transcript-reads.ts","digest":"cde3fc9fb19a7b38b5d2d48dfb3cb16c97ab6e26ffa0990f0e7180e9e1edf6ad","revision":"0dd1181141ba6a645601e6798079a16189510438"},
 
@@ -286,7 +286,7 @@
 
     {"path":"src-ui/src/views/provider-settings/providerCatalog.tsx","digest":"a478a2c4eec9ffd77237e5895b315d625d8a260daf1c63b4785b1d6e25b17758","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/views/provider-settings/ProviderConnectionForm.tsx","digest":"103eb220b0d92bdb46e3a6c18c606af8ba916f310d993f40d9e9bd41c8eae066","revision":"84fce0d121e631ed7bfd42048d113d9e34692594"},
+    {"path":"src-ui/src/views/provider-settings/ProviderConnectionForm.tsx","digest":"0ad7474fb672c1eafa97d2a517089f499b7dadcb9b7ac3366b75976bbedd7d2a","revision":"54fc4a556486e17d1f4f0546c02be91fedf3b6b7"},
 
     {"path":"src-ui/src/views/provider-settings/ProviderStackOverview.tsx","digest":"5406c4305a3719253205722ab0b77c995556decab6ee6ba9ccee0c986f8a2208","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

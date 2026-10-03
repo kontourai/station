@@ -9,7 +9,7 @@
 
   "limits": "No real installer/release or first-run provider setup execution, live engine/chat billing, remote/mobile/native journey, real approval operation or personal-store observation. Unit fixtures and isolated UI captures are bounded evidence. Source startup completion status writes separately from selected-profile save. Current references are scoped tokens/metadata, not transcript insertion or exhaustive history search.",
 
-  "document": {"digest":"639481b7fae5c25dffade357fd9577b81773f3c9ff20ef7e36ccfc647eeef9a9","revision":"f11593d8b899747099472a8ed69f009c7eec9a6e"},
+  "document": {"digest":"45729ee1c95e833747a0028f0913c6c0ae3b34ab7304d2c1a33dec3cf7b1f36d","revision":"c6ebec77b17b679e630a3857b10a6f814d7fb436"},
 
   "sources": [
     {"path":".nvmrc","digest":"68ca3fba3b7e864770cb61aeb306d4bd4354b68ab4dd38450860c5d823e42a53","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
@@ -46,7 +46,7 @@
 
     {"path":"src-server/routes/orchestration/attention.ts","digest":"13aa257c345f3e3b4bd37e49e4399b83aac95315113c3386f64d1c17972b8c07","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"5d7c1db19ab103f9cd49f67368afd6146899463a439046c94b90889347a926a2","revision":"018c39925af630ca8eeab05a917de01fc80bd89e"},
+    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"4582d45b868ea008447f5405bcedb1adf987b1e3ad7701e39de19fc6a8d8994c","revision":"4711f21b516d04300b15ad4da473e24bf2e7adb2"},
 
     {"path":"src-ui/src/__tests__/SchedulerJobDialogHost.authority.test.tsx","digest":"0e98ba1584875cd32d90a6529417fd660b2ded2d01d22a603f0d1601c13da37f","revision":"911cbf3bf7911834075f21709acff87a9b3c27a8"},
 
@@ -60,7 +60,7 @@
 
     {"path":"src-ui/src/components/chat-dock/useChatDockOverlays.ts","digest":"ddc9e5110725ab4e806ae6abe91021397faf665cb4ba6703926d67170979b325","revision":"fdd1311dfc6f9bb5370219a598a46bf4359b248e"},
 
-    {"path":"src-ui/src/components/chat/ChatInputArea.tsx","digest":"25c3a5c11346ec3681e2198c80f4fa404f94aedd125ef4878ad4512c6dfdc36b","revision":"82fea394a09cdf62071b073d09aa6cb08ebbca48"},
+    {"path":"src-ui/src/components/chat/ChatInputArea.tsx","digest":"a964b5bbb027b57d2a2f7326bbdb8418a13f4ee93be663aacd9d40891b7bdc63","revision":"c6ebec77b17b679e630a3857b10a6f814d7fb436"},
 
     {"path":"src-ui/src/components/chat/composer-mention-wire.ts","digest":"76238cf68ced890c9aff0210ee1a486b02fe2cea942d3001c203d6cd5ac19c43","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -96,7 +96,7 @@
 
     {"path":"src-ui/src/contexts/scheduler-job-dialog-store.ts","digest":"5c3d2e50f1eac439eb4b5264550c6d37fbab65344ec37350ad36dd4a9e2b63fa","revision":"69eb5db90072c149c16115135f495ac538155e71"},
 
-    {"path":"src-ui/src/hooks/useChatInput.ts","digest":"31ed118293149ecc8a7aa42edbb1309eedd1b362370d170ddee1036d6ee98a6c","revision":"74db2e79bbb82782cffb1834eb904546edfb536a"},
+    {"path":"src-ui/src/hooks/useChatInput.ts","digest":"e01f3c1e39604e05bb18f81541c4b50e059afa4411dfa768b97dce6e8f47d36d","revision":"89765352964045a079d13a17bee54ab2de7b83e0"},
 
     {"path":"src-ui/src/hooks/useNewChatSelectionModel.ts","digest":"79d62da2bce71d836669cfc7836952c832e88aa7e23a95566712733b566a86a7","revision":"df34c2497051350c571a5b33d841277ff2fba301"},
 
@@ -152,7 +152,7 @@
 
     {"path":"src-ui/src/components/chat-dock/ChatDockMobileOverflowSheet.tsx","digest":"a8bc823744ae5fbe11ca4d59391185963104e36549cf5fdc2b178afceb603650","revision":"af7dbb3005e9e1f29dd1450b0a06ec5703afb0d6"},
 
-    {"path":"src-ui/src/components/chat/chat.css","digest":"9ff5dc95b71dda67d80f7241591dab8294cb5252f6001b589dcc80cabbad14b7","revision":"f8dcd092359118c2f44bda770acccc1c45beb281"},
+    {"path":"src-ui/src/components/chat/chat.css","digest":"adb79623618600c59d7259aa50d59628aee20850643f00c97ef918a0c220b67c","revision":"c6ebec77b17b679e630a3857b10a6f814d7fb436"},
 
     {"path":"src-ui/src/views/home/work-status.ts","digest":"ff0100dddce220275b7d9f0183fb2c44bac835eb0fbb67e071be63f4c127b120","revision":"d1f68396648a4d450f1d743e436df703be0935be"},
 
@@ -176,7 +176,7 @@
 
     {"path":"src-ui/src/hooks/useActiveChatSessionLifecycle.ts","digest":"2a90e4f43cde95121b12aec4ae642905f1329e9e23e95f797a41cd6746da9349","revision":"4c9ba2382e94915895b19b7fdd08979d83807864"},
 
-    {"path":"src-ui/src/hooks/useActiveChatSessionMessaging.ts","digest":"53af6df5a169a76a3eb936293dff7b0064b8596b6d5ddec1efa738ac6b0002e2","revision":"31cac46a69cdd1f5b1f6da671dc6d30cae2fdb95"},
+    {"path":"src-ui/src/hooks/useActiveChatSessionMessaging.ts","digest":"c0609512c0eff8faabaddd90b55198a6c2ddabb3fceeda419ed8b60b70340bc9","revision":"4711f21b516d04300b15ad4da473e24bf2e7adb2"},
 
     {"path":"src-ui/src/lib/foregroundMessageDispatch.ts","digest":"8dd461fc84dda8844b89d1cc72d2c2da72aab7d5f0b0a07803405627f6f2ab23","revision":"797b97599f89df6555282de2d42af11e4aee4f08"}
   ],

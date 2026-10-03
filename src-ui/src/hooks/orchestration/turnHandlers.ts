@@ -489,6 +489,23 @@ export function handleTurnAbortedEvent(
 export function handleRuntimeErrorEvent(
   event: Extract<OrchestrationEvent, { method: 'runtime.error' }>,
 ) {
+  if (isDeferredRetriableTurnError(event)) {
+    const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
+    if (
+      !chat?.orchestrationTurnOpen ||
+      (event.turnId && chat.openTurnId && event.turnId !== chat.openTurnId)
+    )
+      return;
+    const detail = /timeout|timed out/i.test(event.message)
+      ? 'Response timed out'
+      : /rate.limit|429/i.test(event.message)
+        ? 'Rate limited'
+        : undefined;
+    activeChatsStore.updateChat(event.threadId, {
+      activityHint: { kind: 'retrying', detail },
+    });
+    return;
+  }
   // archive#3451 (corrected wording, not code):
   // `RuntimeErrorEvent extends CanonicalRuntimeEventBase`, which carries an
   // optional TOP-LEVEL `turnId` — publishers set it there (muse-adapter.ts,
@@ -639,6 +656,7 @@ export function handleRuntimeErrorEvent(
     !chat.conversationOpenState.canContinue
       ? { conversationOpenPending: true, conversationOpenFailed: false }
       : {}),
+    activityHint: undefined,
     status: 'error',
     error: event.message,
     orchestrationStatus: 'errored',

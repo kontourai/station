@@ -581,7 +581,7 @@ export function useChatInput({
       if (
         sent === true ||
         postSendState?.status === 'queued' ||
-        postSendState?.queuedMessages?.includes(text.trim())
+        (sent !== false && postSendState?.queuedMessages?.includes(text.trim()))
       ) {
         if (
           (postSendState?.input && postSendState.input !== input) ||

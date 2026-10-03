@@ -7315,6 +7315,71 @@ describe('ClaudeAdapter', () => {
   });
 
   describe('#1157: agent-authored MCP tool servers (Claude Agent SDK mcpServers channel)', () => {
+    test('adds selected tools without suppressing harness discovery and denies an unselected or newly published MCP call', async () => {
+      mockQuery.mockReturnValue(createMockQuery([]));
+      const adapter = new ClaudeAdapter();
+      await adapter.startSession({
+        provider: 'claude',
+        threadId: 'tool-picker',
+        agent: {
+          slug: 'my-agent',
+          toolServerMode: 'add',
+          toolServerLoading: 'on-demand',
+          toolServers: [
+            {
+              id: 'weather',
+              transport: 'stdio',
+              command: process.execPath,
+              allowedTools: ['read'],
+              toolNames: ['read', 'write'],
+            },
+          ],
+        },
+      });
+      const { options } = mockQuery.mock.calls[0][0];
+      expect(options.strictMcpConfig).toBe(false);
+      expect(options.env.ENABLE_TOOL_SEARCH).toBe('true');
+      expect(options.disallowedTools).toEqual(['mcp__weather__write']);
+      const hook = options.hooks.PreToolUse[0].hooks[0];
+      for (const name of ['write', 'new_tool']) {
+        const refused = await hook(
+          {
+            hook_event_name: 'PreToolUse',
+            tool_name: `mcp__weather__${name}`,
+            tool_input: {},
+            tool_use_id: name,
+          },
+          '',
+          {},
+        );
+        expect(refused.hookSpecificOutput.permissionDecision).toBe('deny');
+      }
+      expect(
+        await hook(
+          {
+            hook_event_name: 'PreToolUse',
+            tool_name: 'mcp__weather__read',
+            tool_input: {},
+            tool_use_id: 'read',
+          },
+          '',
+          {},
+        ),
+      ).toEqual({});
+      expect(
+        await hook(
+          {
+            hook_event_name: 'PreToolUse',
+            tool_name: 'mcp__existing__read',
+            tool_input: {},
+            tool_use_id: 'existing',
+          },
+          '',
+          {},
+        ),
+      ).toEqual({});
+    });
+
     test('startSession maps input.agent.toolServers into Options.mcpServers/strictMcpConfig, with a matching capabilityDelivery.toolServers receipt', async () => {
       mockQuery.mockReturnValue(createMockQuery([]));
       const adapter = new ClaudeAdapter();
