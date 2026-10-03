@@ -19,13 +19,14 @@ import {
   selfAuthorizeLocalProfile,
 } from '../commands/local-self-auth.js';
 import {
+  getProfileCredentialStore,
   type ProfileCredentialStore,
-  resetProfileCredentialStoreForTests,
   setProfileCredentialStore,
 } from '../commands/profile-credentials.js';
 import { findProfile, upsertProfile } from '../commands/profile-store.js';
 
 let root: string;
+let previousCredentialStore: ProfileCredentialStore;
 let home: string;
 let serviceHome: string;
 let previousHome: string | undefined;
@@ -192,6 +193,7 @@ function localProfile(
 }
 
 beforeEach(() => {
+  previousCredentialStore = getProfileCredentialStore();
   root = mkdtempSync(join(tmpdir(), 'station-local-self-auth-'));
   home = join(root, 'instances', 'stable');
   // Outside the shared profile root: an arbitrary directory entry there
@@ -207,7 +209,7 @@ beforeEach(() => {
 
 afterEach(() => {
   setClientCredentialResolver(undefined);
-  resetProfileCredentialStoreForTests();
+  setProfileCredentialStore(previousCredentialStore);
   if (previousHome === undefined) delete process.env.STATION_HOME;
   else process.env.STATION_HOME = previousHome;
   if (previousRoot === undefined) delete process.env.STATION_ROOT;
