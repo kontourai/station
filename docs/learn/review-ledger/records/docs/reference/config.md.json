@@ -86,7 +86,7 @@
 
     {"path":"src-server/runtime/frameworks/strands-adapter.ts","digest":"ef04cefe6b81a84570095ae3639ed663e53222f345cbf343b54d2e642925148f","revision":"80dd5a1440a3e2855aac04c988481e258e0b04b4"},
 
-    {"path":"src-server/runtime/frameworks/strands-tool-loader.ts","digest":"5789ba4810986bf6c30dde7a4b4306ca89c01cef22f6197e24bc05256ec67873","revision":"03b34026f59e9d32091d481aef1cab1f3a4fa03d"},
+    {"path":"src-server/runtime/frameworks/strands-tool-loader.ts","digest":"51f486b0066686523c95f89ec54b2e87b3b13de850da00acf3a398c1476c9ee2","revision":"091f3e68a4456e9fba912d0c810e4e71dcbf9859"},
 
     {"path":"src-server/runtime/frameworks/voltagent-adapter.ts","digest":"a13e00963cfbedbd5324014fe6ff50b5aa598347732452aacda342bffa9f0ac4","revision":"5e564120522181c6fa726b474c138b229b00b95c"},
 
