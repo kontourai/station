@@ -183,7 +183,8 @@ successor preparation does not prove that a native grant was absent or retired.
    plan.json` displays actual pending enrollment candidates.
 4. Brian verifies Zach's exact candidate and actual account identity.
    `approve plan.json approval.json` sends the exact `{enrollmentId,candidate}`
-   through the operator endpoint. Synthetic automation may perform this same
+   through the operator endpoint. Use the pending item's opaque `enrollmentId`,
+   not its UUID `requestId`. Synthetic automation may perform this same
    genuine operator action only for its explicitly owned synthetic person.
 5. Finalize sealed delivery, activate with the host ACK, and verify the owned
    transition before publishing the configured profile. The native host keeps
