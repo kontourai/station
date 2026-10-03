@@ -82,7 +82,7 @@
 
     {"path":"src-ui/src/components/chat/ComposerStopButton.tsx","digest":"fab82bd2a398f7ceb90bf4cf857382c70b171e3c0215f64e76a33748ff7da5fe","revision":"bcf92230693bda2172f72834280d9f1798371197"},
 
-    {"path":"src-ui/src/components/chat-dock/ChatDockProjectContext.css","digest":"c0c51acd7222b66e7ba9f8553bb2cc3185864e62e49c9bcdb91626c46c1ad835","revision":"3d4674bf8f60442c202efe5872b616324a808484"}
+    {"path":"src-ui/src/components/chat-dock/ChatDockProjectContext.css","digest":"37eab56de03d6c984924ab80ed2ef84e6b17c70eab87ef9842ba8d95fc6ffc53","revision":"a7b42adc41e80e5fb4eb89d15a0126b42acfee4e"}
   ],
 
   "checks": [

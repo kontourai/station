@@ -184,7 +184,7 @@
 
     {"path":"src-ui/src/lib/skill-experience-preview.ts","digest":"006c259ab6bb4d126ad6bf5652a9acf6ee1d367b715f646f6828db7be762e7bd","revision":"6a847d3c029f4f3e5c1dbe82f2459194573d43e9"},
 
-    {"path":"src-ui/src/components/chat-dock/ChatDockProjectContext.css","digest":"c0c51acd7222b66e7ba9f8553bb2cc3185864e62e49c9bcdb91626c46c1ad835","revision":"3d4674bf8f60442c202efe5872b616324a808484"}
+    {"path":"src-ui/src/components/chat-dock/ChatDockProjectContext.css","digest":"37eab56de03d6c984924ab80ed2ef84e6b17c70eab87ef9842ba8d95fc6ffc53","revision":"a7b42adc41e80e5fb4eb89d15a0126b42acfee4e"}
   ],
 
   "checks": [
