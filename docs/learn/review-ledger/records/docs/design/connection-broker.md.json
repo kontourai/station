@@ -26,7 +26,7 @@
 
     {"path":"src-server/services/connections/native-v2-pion-application-adapter.ts","digest":"781f0ffca73205d3a35391ddb9f8a5dd8204eb710867c2f8c0030592fa1ddfc5","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
 
-    {"path":"src-server/runtime/bootstrap/self-hosted-broker-pion-runtime.ts","digest":"49951201fe9590b5fbf6b33873d2ae6c48a68dbef028f4ed57169d67f01cdf83","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"},
+    {"path":"src-server/runtime/bootstrap/self-hosted-broker-pion-runtime.ts","digest":"71ecc213782ca7fd5715812ec512d297540d451d0f10c4fcbb4c2e0a85a6191a","revision":"37d649f3d60b5673aea889d2465f301048145244"},
 
     {"path":"src-server/services/ssh/native-device-proof-binding-service.ts","digest":"8bd475aa212e8f983c08945cdabeef7c9db67032dbb7eb24e77e15d83c6fc659","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
 
