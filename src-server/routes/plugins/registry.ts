@@ -758,7 +758,12 @@ export function createRegistryRoutes(
     const failed = sourceStatus.filter(
       (source) => source.enabled && ['error', 'stale'].includes(source.status),
     );
-    const unavailable = data.length === 0 && failed.length > 0;
+    const unavailable =
+      data.length === 0 &&
+      failed.length > 0 &&
+      !sourceStatus.some(
+        (source) => source.enabled && source.status === 'ready',
+      );
     return c.json(
       {
         success: !unavailable,
@@ -1086,8 +1091,35 @@ export function createRegistryRoutes(
     '/plugins',
     asOperator(async (c) => {
       registryOps.add(1, { operation: 'list-plugins' });
-      const items = await sources.catalog('plugins');
-      return c.json({ success: true, data: items, sources: sources.list() });
+      const data = await sources.catalog('plugins');
+      const sourceStatus = sources
+        .list()
+        .filter((source) => source.kind === 'plugins');
+      const failed = sourceStatus.filter(
+        (source) =>
+          source.enabled && ['error', 'stale'].includes(source.status),
+      );
+      const unavailable =
+        data.length === 0 &&
+        failed.length > 0 &&
+        !sourceStatus.some(
+          (source) => source.enabled && source.status === 'ready',
+        );
+      return c.json(
+        {
+          success: !unavailable,
+          data,
+          sources: sourceStatus,
+          partial: failed.length > 0,
+          ...(unavailable
+            ? {
+                error:
+                  'Connected plugin marketplaces are unavailable. Refresh their sources.',
+              }
+            : {}),
+        },
+        unavailable ? 503 : 200,
+      );
     }),
   );
 

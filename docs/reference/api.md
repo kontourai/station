@@ -2055,6 +2055,9 @@ The response includes per-source status and `partial: true` when a source fails.
 Successful independent results remain visible. A cached snapshot is marked
 `stale`; when every available source has failed and there is no snapshot,
 the response is 503 with `success: false`, rather than an empty successful list.
+A successful empty catalog from an independent source remains a successful
+partial observation; source availability is determined from the read outcome,
+not its row count. Plugin catalogs use the same failure and partial-result rule.
 
 The built-in [GitHub Skill provider](../../src-server/providers/registries/github-skill-registry.ts)
 resolves a branch to one immutable commit/tree and verifies blob hashes.
