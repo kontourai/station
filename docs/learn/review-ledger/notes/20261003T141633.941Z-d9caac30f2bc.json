@@ -1,0 +1,17 @@
+{
+  "revision": "8140f4ec0627c22a4f5e72c4b253c1236580240c",
+
+  "notes": [
+    {"path":"docs/design/shell-skeletons.md","note":"#2799 round 2 changed only the Workspace identity-preview path line in ProjectSettingsView.tsx (parent and leaf now inline spans inside one ltr isolate, so the path copies as one string). Re-read the ProjectSettingsView claims: DetailHeader still renders the header and the root is still page page--full. No shell, root or header claim is affected; no prose change."},
+
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"#2799 round 2 added a second Chromium test to tests/project-forms.spec.ts (Project page header working-directory line: innerText and copied selection equal the path, leaf ends the line, short paths start at the left, at 360/768/1280px) and short-path checks to the Settings test. The Projects row (create/edit, phone-sized form containment) still describes project-forms; same bucket and manifest entry. No prose change."},
+
+    {"path":"docs/guides/starter-work.md","note":"#2799 round 2 changed only how ProjectPage.css draws the header's working-directory line (inline rtl line with a start ellipsis instead of flex parent/leaf; same font, colours and leaf accent). Searched the guide for Project page header and working-directory claims: none describe the path line's layout or copy behaviour. No prose change."},
+
+    {"path":"docs/learn/walkthroughs.md","note":"#2799 round 2 changed only the Project page header's working-directory line in ProjectPage.css (inline start-truncated line; a path that fits still starts at the left with the muted parent and accent leaf). The Project/Task scene text does not describe that line's layout; no prose change."},
+
+    {"path":"docs/user/getting-started.md","note":"#2799 round 2 changed only the Project page header's working-directory line styling in ProjectPage.css so a long path is cut at its start with an ellipsis and copies as one string. The guide's steps do not describe the header path's layout; the Copy button behaviour is unchanged. No prose change."},
+
+    {"path":"docs/learn/media/project-with-task.png","note":"#2799 round 2 changed ProjectPage.css's working-directory line from flex parent/leaf spans to one inline rtl line with text-align:left. The capture's path (/tmp/station-docs-sample-…) fits the line, and the new tests assert a fitting path starts at the left with the same font, muted parent and accent leaf, so the captured header still matches. Not re-captured; no pixel comparison made."}
+  ]
+}

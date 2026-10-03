@@ -112,7 +112,7 @@
 
     {"path":"src-ui/src/views/project-page/ProjectTasksSection.tsx","digest":"0523b601d4e3b3eb054b4d2778cc3487e0f65c975ad77419c5487c6858430ce5","revision":"404008de59f4664e8d5c4822bddfb0d3e39ef9a2"},
 
-    {"path":"src-ui/src/views/ProjectPage.css","digest":"804bf02dc7f00a0ac47bf5bf381d9f052a8e97a55083dfcd1649883d3f6154c3","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
+    {"path":"src-ui/src/views/ProjectPage.css","digest":"3b19a44ef92bd5634e6efb932527f8073f15e830fcf2134042c9977b3ca655fd","revision":"57a7bc0fa70093c92a7488316263a87ecc2c35da"},
 
     {"path":"src-ui/src/views/ProjectPage.tsx","digest":"a5446401470207b9ba884ae50bfe57739fd2f2d7ea372f19ae36280106986c49","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
 
