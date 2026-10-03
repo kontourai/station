@@ -16,13 +16,13 @@
 
     {"path":"src-server/providers/adapters/acp-mcp-passthrough.ts","digest":"bae3c16d36044bd319ec404432f98469e5140297f7875f2e139b95ea1b5e16b1","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/providers/adapters/claude-adapter.ts","digest":"1eb6048188a2a5d01b67738ab6b5d22f9fa85d93bd00b3e622423798b965e8fb","revision":"3d33d71792203d38262ac5fd80261d12bd31e1ed"},
+    {"path":"src-server/providers/adapters/claude-adapter.ts","digest":"3b2845b046cad6902a72d173810082511f848cb4819c02e0d42a18e28d3b7d80","revision":"423cbe55b9e35e4cd8954fd441cb9f3c69740d66"},
 
     {"path":"src-server/providers/adapters/claude-skills-materialization.ts","digest":"221b6098abf237f280d14480d9afc6913973b9a94b47593999ba70ff731f0280","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"src-server/providers/adapters/codex-adapter-transport.ts","digest":"ddc57bdc7eead816bff59653f324a25f2349d9ff9478005264cac8e7a099b4fc","revision":"0bf65df71b04f48768c1f5bdb16db77e361a3177"},
 
-    {"path":"src-server/providers/adapters/codex-adapter.ts","digest":"7ae5b28549fd32b81f911ec7016072e965183effd00e6b62fb5509c4fa25b57a","revision":"1a235cd9bc482738abe4c3f011f73be86074d667"},
+    {"path":"src-server/providers/adapters/codex-adapter.ts","digest":"3dcbbfc821c7d5a35287ba8e2eb9a13b24cc4e0b4a59841fbb6b16bed846aa20","revision":"423cbe55b9e35e4cd8954fd441cb9f3c69740d66"},
 
     {"path":"src-server/providers/app-home/app-home-profiles.ts","digest":"ec6964af951874bed74c286d74a508b587ceee01b84149b62f2e6b61074cae33","revision":"1a235cd9bc482738abe4c3f011f73be86074d667"},
 
@@ -38,7 +38,7 @@
 
     {"path":"src-server/routes/connections/app-home.ts","digest":"ed7412dd78667321bec46937a4bc7a1fa92f1e9a3b27c344fbeea55345a20b5a","revision":"1a235cd9bc482738abe4c3f011f73be86074d667"},
 
-    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"92d31dd655d7c0a62ce68dc6fd804268cda2f357bb775a512ee974d7c09564db","revision":"1a235cd9bc482738abe4c3f011f73be86074d667"},
+    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"b13d44008f39b08b3d32e459abc3081c8ac8936f53e5a7bdb93d4dcbdc2043f1","revision":"423cbe55b9e35e4cd8954fd441cb9f3c69740d66"},
 
     {"path":"src-server/services/acp/acp-process.ts","digest":"07d4606232bc0f0024486ba05c03932c845f2d030656a9861236c1540d20cd46","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -50,7 +50,7 @@
 
     {"path":"src-server/services/orchestration/credential-recovery-module.ts","digest":"a30d1344421536b0549657afa880c140faf54f3a5d7adac49e04afaf0617bdba","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"14d4d68ff2f8715e1428ca985125a9eff9eb5a05ea52946dc16b4f5971405a34","revision":"bc671142a7ae70587daf5bb0d94732e8ca74600a"},
+    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"4582d45b868ea008447f5405bcedb1adf987b1e3ad7701e39de19fc6a8d8994c","revision":"4711f21b516d04300b15ad4da473e24bf2e7adb2"},
 
     {"path":"src-ui/src/components/first-run/FirstRunFlow.tsx","digest":"fb7aabf17dbdf378bd66b6393936c0ce86f380cc56e77e71ca36d7dbb9397cf3","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
