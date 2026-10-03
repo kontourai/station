@@ -150,7 +150,7 @@
 
     {"path":"src-server/security/coding-authority.ts","digest":"213af116a09a02c70ea15a8346b3d8fd2e25f279c975ef9b12d8ab21a519205d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/security/pairing-route-scopes.ts","digest":"e36c4fe2983d7bca141f699538abc0afcf97632e3ca9848d49c22fc91075479e","revision":"569b7dcead02252ba2786c9f326bb54daebbbde2"},
+    {"path":"src-server/security/pairing-route-scopes.ts","digest":"cd0d7cf06b6f68355d4e509648ac649c62bdf1cabd52b220e7578776b5e01873","revision":"e4344fd10ef7a80a6a6f65d7e709fb1be56b64df"},
 
     {"path":"src-server/security/runtime-request-security.ts","digest":"c3219b8afbdd24e8969fb407d2a0a0aa77c08a7656a0e147f64f99f0ed9af3c4","revision":"904729ae7f4058a2cd7dbaf11a4daaa6b8837d08"},
 

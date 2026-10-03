@@ -12,7 +12,7 @@
   "document": {"digest":"e8c9cb6ea4e4e516529a411d1b03bffbf94dc7df2bfbe2a6a8d30af2813057fc","revision":"94da87e3016992b8cdbdde3be15b978b489a1c63"},
 
   "sources": [
-    {"path":"package.json","digest":"026882d870c907bfaacdc7377f913f11c477c8c6cdce54ddd82c0579a5397f06","revision":"cc20083220b0814410b14ced68431b9f0acef37d"},
+    {"path":"package.json","digest":"658ca698680a7d2ec3692bb2f47c282b1bb48056a1238ab4ac44f0aee5ed4388","revision":"e4344fd10ef7a80a6a6f65d7e709fb1be56b64df"},
 
     {"path":"packages/cli/src/commands/lifecycle.ts","digest":"ce8322baa64d2e25c711ec0816c6cb013c8742f651a265e1657239185dba9ecc","revision":"b49b1db1601f36c9457e0d9d7c766d15be6302f7"},
 
@@ -54,7 +54,7 @@
 
     {"path":"src-server/security/coding-authority.ts","digest":"213af116a09a02c70ea15a8346b3d8fd2e25f279c975ef9b12d8ab21a519205d","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-server/security/pairing-route-scopes.ts","digest":"e36c4fe2983d7bca141f699538abc0afcf97632e3ca9848d49c22fc91075479e","revision":"569b7dcead02252ba2786c9f326bb54daebbbde2"},
+    {"path":"src-server/security/pairing-route-scopes.ts","digest":"cd0d7cf06b6f68355d4e509648ac649c62bdf1cabd52b220e7578776b5e01873","revision":"e4344fd10ef7a80a6a6f65d7e709fb1be56b64df"},
 
     {"path":"src-server/security/runtime-request-security.ts","digest":"c3219b8afbdd24e8969fb407d2a0a0aa77c08a7656a0e147f64f99f0ed9af3c4","revision":"904729ae7f4058a2cd7dbaf11a4daaa6b8837d08"},
 

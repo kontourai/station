@@ -372,7 +372,7 @@
 
     {"path":"src-server/runtime/tools/vended-tool-compat.ts","digest":"17d6d189ee131f47fe61d075dd703f1fabf0b2a9342bea3d0f9dfa6e0522c828","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/security/pairing-route-scopes.ts","digest":"e36c4fe2983d7bca141f699538abc0afcf97632e3ca9848d49c22fc91075479e","revision":"569b7dcead02252ba2786c9f326bb54daebbbde2"},
+    {"path":"src-server/security/pairing-route-scopes.ts","digest":"cd0d7cf06b6f68355d4e509648ac649c62bdf1cabd52b220e7578776b5e01873","revision":"e4344fd10ef7a80a6a6f65d7e709fb1be56b64df"},
 
     {"path":"src-server/services/agents/skill-service.ts","digest":"9f92c44195a5c87a63c1a14a3079b3cc91e00149f2b2f4e400a72189bb64d7f6","revision":"569b7dcead02252ba2786c9f326bb54daebbbde2"},
 

@@ -24,7 +24,7 @@
 
     {"path":"config/product-laws.json","digest":"2a32cd190581bca72ed1076f901fd9a427022e2d381e964a777101c9c6de3114","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 
-    {"path":"package.json","digest":"026882d870c907bfaacdc7377f913f11c477c8c6cdce54ddd82c0579a5397f06","revision":"cc20083220b0814410b14ced68431b9f0acef37d"},
+    {"path":"package.json","digest":"658ca698680a7d2ec3692bb2f47c282b1bb48056a1238ab4ac44f0aee5ed4388","revision":"e4344fd10ef7a80a6a6f65d7e709fb1be56b64df"},
 
     {"path":"packages/cli/src/commands/cloud-project-import.ts","digest":"0831594f687da39abbf2bc7655663d459b97de900728d0d03e7fa2e28b2c5543","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 

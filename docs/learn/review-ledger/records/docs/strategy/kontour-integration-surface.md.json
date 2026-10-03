@@ -16,7 +16,7 @@
 
     {"path":"docs/guides/integrating-station.md","digest":"19141922ec87bc6d1b7858f51e8d73004a3f86a6f320ac61ff71226d66969b1e","revision":"d326e74f0f416a770b08cb1b66badf150618b3c0"},
 
-    {"path":"package.json","digest":"026882d870c907bfaacdc7377f913f11c477c8c6cdce54ddd82c0579a5397f06","revision":"cc20083220b0814410b14ced68431b9f0acef37d"}
+    {"path":"package.json","digest":"658ca698680a7d2ec3692bb2f47c282b1bb48056a1238ab4ac44f0aee5ed4388","revision":"e4344fd10ef7a80a6a6f65d7e709fb1be56b64df"}
   ],
 
   "checks": [
