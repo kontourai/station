@@ -111,6 +111,13 @@ const registryItems = {
       source: 'GitHub',
       status: 'unsupported-skill-name',
     },
+    {
+      id: 'pr',
+      displayName: 'Pull Request',
+      description: 'Review a pull request',
+      source: 'GitHub',
+      status: 'unsupported-skill-format',
+    },
   ],
   layouts: [
     {
@@ -375,6 +382,24 @@ function expectInstalledToast(message: string, pluginName: string) {
 }
 
 describe('RegistryView', () => {
+  test('keeps unsupported-format skill details available with an explanation and disabled installation', () => {
+    render(<RegistryView initialTab="skills" />);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'View Pull Request details' }),
+    );
+    const detail = screen.getByTestId('registry-detail');
+    expect(within(detail).queryByText('Available')).toBeNull();
+    expect(
+      within(detail).getByText(
+        'This skill uses metadata that Station cannot install. Its original Markdown is available for inspection; ask its publisher for a supported format.',
+      ),
+    ).toBeTruthy();
+    const action = within(detail).getByRole('button', { name: 'Unavailable' });
+    expect(action).toHaveProperty('disabled', true);
+    fireEvent.click(action);
+    expect(mutationCalls).toEqual([]);
+  });
+
   test('keeps unsupported skill details visible without offering installation or blocking a valid sibling', () => {
     render(<RegistryView initialTab="skills" />);
     fireEvent.click(

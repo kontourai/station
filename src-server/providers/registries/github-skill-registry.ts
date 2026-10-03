@@ -1,13 +1,18 @@
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
-import { basename, join } from 'node:path';
+import { join } from 'node:path';
 import type {
   InstallResult,
   RegistryItem,
 } from '@kontourai/station-contracts/catalog';
 import { validateWorkspacePackagePaths } from '@kontourai/station-shared/workspace-package';
-import { parseFrontmatter } from 'agent-skills-ts-sdk';
+import {
+  ParseError,
+  parseFrontmatter,
+  parseSkillDocument,
+  ValidationError,
+} from 'agent-skills-ts-sdk';
 import {
   assertSafeSkillName,
   PROTOTYPE_AFFECTING_KEYS,
@@ -25,6 +30,17 @@ interface SkillPackage {
   item: RegistryItem;
   directory: string;
   markdown: string;
+  body: string;
+  formatCompatible: boolean;
+}
+
+export class UnsupportedRegistrySkillFormatError extends Error {
+  constructor() {
+    super(
+      'This skill uses metadata that Station cannot install. Its original Markdown is available for inspection; ask its publisher for a supported format.',
+    );
+    this.name = 'UnsupportedRegistrySkillFormatError';
+  }
 }
 
 interface CatalogSnapshot {
@@ -108,6 +124,43 @@ export class GitHubSkillRegistryProvider implements ISkillRegistryProvider {
     return bytes;
   }
 
+  private readCatalogDocument(markdown: string): {
+    name: string;
+    description: string;
+    version?: string;
+    body: string;
+    formatCompatible: boolean;
+  } {
+    const raw = parseSkillDocument(markdown);
+    try {
+      const parsed = parseFrontmatter(markdown);
+      return {
+        name: parsed.metadata.name,
+        description: parsed.metadata.description,
+        version: parsed.metadata.metadata?.version,
+        body: parsed.body,
+        formatCompatible: true,
+      };
+    } catch (error) {
+      if (!(error instanceof ParseError || error instanceof ValidationError))
+        throw error;
+      const { name, description } = raw.metadata;
+      if (
+        typeof name !== 'string' ||
+        !name.trim() ||
+        typeof description !== 'string' ||
+        !description.trim()
+      )
+        throw error;
+      return {
+        name: name.trim(),
+        description: description.trim(),
+        body: raw.body,
+        formatCompatible: false,
+      };
+    }
+  }
+
   private async readSnapshot(): Promise<CatalogSnapshot> {
     const response = await this.request(
       `commits/${encodeURIComponent(this.branch)}`,
@@ -157,20 +210,26 @@ export class GitHubSkillRegistryProvider implements ISkillRegistryProvider {
           const markdown = (await this.fetchBlob(entry, commit.sha)).toString(
             'utf-8',
           );
-          const { metadata } = parseFrontmatter(markdown);
-          const id = metadata.name || basename(directory);
+          const document = this.readCatalogDocument(markdown);
+          const id = document.name;
           const unsupportedName = PROTOTYPE_AFFECTING_KEYS.includes(id);
           if (!unsupportedName) assertSafeSkillName(id);
           return {
             directory,
             markdown,
+            body: document.body,
+            formatCompatible: document.formatCompatible,
             item: {
               id,
               displayName: id,
-              description: metadata.description || '',
-              version: metadata.metadata?.version || undefined,
+              description: document.description,
+              version: document.version,
               installed: false,
-              ...(unsupportedName ? { status: 'unsupported-skill-name' } : {}),
+              ...(unsupportedName
+                ? { status: 'unsupported-skill-name' }
+                : !document.formatCompatible
+                  ? { status: 'unsupported-skill-format' }
+                  : {}),
               source: `https://github.com/${this.owner}/${this.repo}/tree/${commit.sha}/${directory}`,
             },
           };
@@ -242,6 +301,8 @@ export class GitHubSkillRegistryProvider implements ISkillRegistryProvider {
           success: false,
           message: `Skill '${id}' not found in registry`,
         };
+      if (!skill.formatCompatible)
+        throw new UnsupportedRegistrySkillFormatError();
       const prefix = `${skill.directory}/`;
       const files = snapshot.tree.filter(
         (entry) => entry.type === 'blob' && entry.path.startsWith(prefix),
@@ -276,6 +337,7 @@ export class GitHubSkillRegistryProvider implements ISkillRegistryProvider {
         message: `Installed ${id} (${files.length} files, commit ${snapshot.commit})`,
       };
     } catch (error) {
+      if (error instanceof UnsupportedRegistrySkillFormatError) throw error;
       return {
         success: false,
         message:
@@ -298,6 +360,8 @@ export class GitHubSkillRegistryProvider implements ISkillRegistryProvider {
   async getContent(id: string): Promise<string | null> {
     const skill = (await this.snapshot()).packages.get(id);
     if (!skill) return null;
-    return parseFrontmatter(skill.markdown).body || skill.markdown;
+    return skill.formatCompatible
+      ? skill.body || skill.markdown
+      : skill.markdown;
   }
 }

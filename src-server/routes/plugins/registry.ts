@@ -23,6 +23,7 @@ import { type Context, Hono } from 'hono';
 import { unregisterPluginEngineConnections } from '../../domain/agent-registry.js';
 import type { ConfigLoader } from '../../domain/config-loader.js';
 import { PROTOTYPE_AFFECTING_KEYS } from '../../domain/skill-paths.js';
+import { UnsupportedRegistrySkillFormatError } from '../../providers/registries/github-skill-registry.js';
 import {
   getAgentRegistryProvider,
   getIntegrationRegistryProvider,
@@ -681,12 +682,24 @@ export function createRegistryRoutes(
         { success: false, message: 'SkillService not available' },
         500,
       );
-    const result = await skillService.installSkill(
-      id,
-      configLoader.getProjectHomeDir(),
-    );
-    if (result.success && reloadSkills) await reloadSkills().catch(() => {});
-    return c.json(result, result.success ? 200 : 500);
+    try {
+      const result = await skillService.installSkill(
+        id,
+        configLoader.getProjectHomeDir(),
+      );
+      if (result.success && reloadSkills) await reloadSkills().catch(() => {});
+      return c.json(result, result.success ? 200 : 500);
+    } catch (error) {
+      if (!(error instanceof UnsupportedRegistrySkillFormatError)) throw error;
+      return c.json(
+        {
+          success: false,
+          code: 'unsupported-skill-format',
+          message: error.message,
+        },
+        400,
+      );
+    }
   });
 
   app.delete('/skills/:id', async (c) => {

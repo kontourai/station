@@ -14,6 +14,7 @@ import { ConfigLoader } from '../../../domain/config-loader.js';
 import type { ISkillRegistryProvider } from '../../../providers/provider-interfaces.js';
 import { FilesystemSkillRegistryProvider } from '../../../providers/registries/filesystem-skill-registry.js';
 import { GitHubSkillRegistryProvider } from '../../../providers/registries/github-skill-registry.js';
+import { MultiSourceSkillRegistryProvider } from '../../../providers/registries/multi-source-skill-registry.js';
 import {
   clearAll,
   registerSkillRegistryProvider,
@@ -34,6 +35,9 @@ const binary = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0, 0xff, 0x80, 0x0a]);
 const script = Buffer.from('#!/bin/sh\nprintf example\n');
 const prototypeMarkdown = Buffer.from(
   '---\nname: prototype\ndescription: Build a prototype\n---\n\nPlan a prototype.',
+);
+const formatMarkdown = Buffer.from(
+  '---\nname: pr\ndescription: Review a pull request\nmetadata:\n  credits:\n    author: Example Author\n---\n\nReview the change.',
 );
 
 function blobSha(bytes: Buffer): string {
@@ -208,6 +212,94 @@ afterEach(() => {
 });
 
 describe('Registry skill acquisition and host compatibility', () => {
+  test('keeps unsupported metadata inspectable and refuses its package without falling through or leaving a staged package', async () => {
+    networkFixture({
+      additionalSkills: [
+        { directory: 'engineering/pr', markdown: formatMarkdown },
+      ],
+    });
+    const fallback = makeTempDir('registry-format-fallback-');
+    await mkdir(join(fallback, 'pr'));
+    await writeFile(
+      join(fallback, 'pr/SKILL.md'),
+      '---\nname: pr\ndescription: Another source\n---\n\nOther instructions.',
+    );
+    const provider = new MultiSourceSkillRegistryProvider([
+      new GitHubSkillRegistryProvider({ owner: 'example', repo: 'skills' }),
+      new FilesystemSkillRegistryProvider([fallback]),
+    ]);
+    const { app, home, skillService } = setup(provider);
+    const listed = await app.request('/skills');
+    expect(listed.status).toBe(200);
+    expect(await listed.json()).toEqual({
+      success: true,
+      data: [
+        expect.objectContaining({ id: 'grill-me' }),
+        expect.objectContaining({
+          id: 'pr',
+          status: 'unsupported-skill-format',
+        }),
+      ],
+    });
+    const content = await app.request('/skills/pr/content');
+    expect(content.status).toBe(200);
+    expect(await content.json()).toEqual({
+      success: true,
+      data: formatMarkdown.toString('utf-8'),
+    });
+    const refused = await app.request('/skills/install', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: 'pr' }),
+    });
+    expect(refused.status).toBe(400);
+    expect(await refused.json()).toEqual({
+      success: false,
+      code: 'unsupported-skill-format',
+      message:
+        'This skill uses metadata that Station cannot install. Its original Markdown is available for inspection; ask its publisher for a supported format.',
+    });
+    expect(await readdir(join(home, 'skills'))).toEqual([]);
+    expect(skillService.listSkills()).toEqual([]);
+    expect((await install(app)).status).toBe(200);
+    expect(await readFile(join(home, 'skills/grill-me/SKILL.md'))).toEqual(
+      markdown,
+    );
+  });
+
+  test('preserves default-composition local installation while GitHub discovery is unavailable', async () => {
+    const network = networkFixture();
+    network.fail();
+    const source = makeTempDir('registry-local-offline-control-');
+    await mkdir(join(source, 'grill-me'));
+    await writeFile(join(source, 'grill-me/SKILL.md'), markdown);
+    const provider = new MultiSourceSkillRegistryProvider([
+      new FilesystemSkillRegistryProvider([source]),
+      new GitHubSkillRegistryProvider({ owner: 'example', repo: 'skills' }),
+    ]);
+    const { app, home } = setup(provider);
+    expect((await app.request('/skills')).status).toBe(500);
+    expect((await install(app)).status).toBe(200);
+    expect(await readFile(join(home, 'skills/grill-me/SKILL.md'))).toEqual(
+      markdown,
+    );
+  });
+
+  test('schema-refuses __proto__ before the reserved-name custom envelope without filesystem effects', async () => {
+    const { app, home } = setup();
+    const response = await app.request('/skills/install', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: '__proto__' }),
+    });
+    expect(response.status).toBe(400);
+    expect(await response.json()).not.toHaveProperty(
+      'code',
+      'unsupported-skill-name',
+    );
+    expect(await readdir(home)).toEqual([]);
+  });
+
   test('projects host name compatibility over a filesystem provider availability claim', async () => {
     const source = makeTempDir('registry-filesystem-compatibility-');
     for (const [name, bytes] of [
@@ -364,6 +456,28 @@ describe('Registry skill acquisition and host compatibility', () => {
     ['truncated tree', { truncated: true }],
     ['ambiguous name', { duplicate: true }],
     ['missing declared skill', { missingMarkdown: true }],
+    [
+      'ambiguous unsupported-format names',
+      {
+        additionalSkills: [
+          { directory: 'engineering/pr', markdown: formatMarkdown },
+          { directory: 'other/pr', markdown: formatMarkdown },
+        ],
+      },
+    ],
+    [
+      'missing description with unsupported metadata',
+      {
+        additionalSkills: [
+          {
+            directory: 'engineering/incomplete',
+            markdown: Buffer.from(
+              '---\nname: incomplete\nmetadata:\n  credits:\n    author: Example Author\n---\n\nIncomplete.',
+            ),
+          },
+        ],
+      },
+    ],
     [
       'ambiguous reserved name',
       {
