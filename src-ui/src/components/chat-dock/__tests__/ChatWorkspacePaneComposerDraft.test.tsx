@@ -459,15 +459,18 @@ test('the docked badge names the bound Project and reports a foreign chat’s ow
   await act(async () => {});
 
   const badge = screen.getByRole('button', { name: 'Pulse' });
-  // The directory is the chat's, not the bound Project's.
-  expect(badge.getAttribute('title')).toBe('Pulse — /work/other');
+  // The badge is the binding for NEW chats (#3144); when the chat on screen
+  // belongs to another Project, the badge says so — and the directory is the
+  // chat's, not the bound Project's.
+  expect(badge.getAttribute('title')).toBe('This chat (Other) — /work/other');
   expect(
     document.querySelector('.chat-dock__project-session-name')?.textContent,
-  ).toBe('Other ·');
+  ).toBe('This chat: Other');
 
   // The switcher marks the bound Project as current.
   fireEvent.click(badge);
-  await screen.findByRole('dialog', { name: 'Switch project' });
+  // The sheet is titled "Projects" since #3144's picker unification.
+  await screen.findByRole('dialog', { name: 'Projects' });
   expect(
     screen
       .getByRole('button', { name: 'Switch to Pulse' })

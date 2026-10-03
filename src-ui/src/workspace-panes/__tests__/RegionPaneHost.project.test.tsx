@@ -652,7 +652,6 @@ test('while the dock’s project read is in flight the region waits and writes n
  * clears the binding.
  */
 test('a dock binding naming a project that no longer exists falls back to the route’s project', async () => {
-  deviceSettingsStore.set('chatDockProjectSlug', 'deleted-project');
   deviceSettingsStore.set('regionArrangement', {
     version: 1,
     regions: {
@@ -679,6 +678,11 @@ test('a dock binding naming a project that no longer exists falls back to the ro
     maximize: null,
     dockSlotPlacement: null,
   });
+  // Set AFTER the navigation: opening a project's workspace now makes it the
+  // default for new chats (#3144), which would overwrite a binding set
+  // before. What this pins is a stale binding that is already there — e.g.
+  // the project was deleted elsewhere — and that the host reads around it.
+  deviceSettingsStore.set('chatDockProjectSlug', 'deleted-project');
   renderShells();
   await waitFor(() => expect(model).not.toBeNull());
   await waitFor(() =>
