@@ -20,9 +20,7 @@ const rootId = z.string().min(1).max(300);
 const recordId = z.string().min(1).max(200);
 const recordType = z.enum(['raw', 'compiled', 'concept', 'snapshot', 'person']);
 
-function registerKnowledgeSearchTool(
-  server: StationControlToolRegistry,
-) {
+function registerKnowledgeSearchTool(server: StationControlToolRegistry) {
   server.tool(
     'search_knowledge',
     'Search accessible Knowledge records. Requires a configured embedding connection.',
