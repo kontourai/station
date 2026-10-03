@@ -48,7 +48,7 @@
 
     {"path":"src-server/knowledge-store/knowledge-store-provider.ts","digest":"268f67326c695832ef2a1577353ee6ece0a41218e7711dda87cc62a0ee814e85","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
 
-    {"path":"src-server/routes/knowledge/knowledge-record-routes.ts","digest":"7b5fc0fb012792ac218e8166c49f70a8311a0ba3a52a69faadda011dbc19d629","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+    {"path":"src-server/routes/knowledge/knowledge-record-routes.ts","digest":"de1c4c6536855fedfee82ea40732c8a9b2d52e9307ad96072369c2f39f1aa32b","revision":"e2637079bd55a47964f12faedfb5c43abc7f1e95"},
 
     {"path":"src-ui/src/components/header/Header.tsx","digest":"ce3ac4d0fb13aeeb8fa40aaa1474a552b9b92213b80a96bccdf7fad34905c9f2","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
 

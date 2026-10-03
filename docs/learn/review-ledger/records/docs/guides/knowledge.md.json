@@ -9,7 +9,7 @@
 
   "limits": "Local source and fixture/SQLite evidence. No live embedding provider, Neo4j server, external Kit interoperability, physical-device capture, or historical dogfood revalidation. Known model/content identity and provenance gaps remain linked to GitHub.",
 
-  "document": {"digest":"c715da7ec799195fa1c36a4cbc12aeb87d68860f2f00258aa46f2920edb6095c","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+  "document": {"digest":"c2ef6b5a59775bf903ef2bad11a5e4f3643476b231d65978ac8f4db703f6d761","revision":"e2637079bd55a47964f12faedfb5c43abc7f1e95"},
 
   "sources": [
     {"path":"docs/learn/media.json#/captures/6","digest":"d439fffbb12f94d32532b32a4e15363981c8ed65c3c4e0bf31c10fb92db60616","revision":"4dbf9acbcab04c4695c8ca9799bc1422526cd382"},
@@ -60,7 +60,7 @@
 
     {"path":"src-server/routes/knowledge/knowledge-index-routes.ts","digest":"ed5a403488328a12aa935b4b5e820bfa1d95639d29e4481295e38dd85bba8c6c","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
 
-    {"path":"src-server/routes/knowledge/knowledge-store-routes.ts","digest":"e62792941e8de79239fa616cc6d265af4304e29b9978535533a26b9688b86265","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+    {"path":"src-server/routes/knowledge/knowledge-store-routes.ts","digest":"e11435458533907fba087e8b763dc4c7f789c05ae06a57b6c18236f9ed321dcb","revision":"e2637079bd55a47964f12faedfb5c43abc7f1e95"},
 
     {"path":"src-server/runtime/bootstrap/runtime-service-bootstrap.ts","digest":"2cf5c807666f495b88ded90ba448c7e4e4e03733b2e2afed684409cd5ffc8356","revision":"56f4c4897a189eeb30430119a4f4895e95fbb541"},
 
@@ -76,7 +76,25 @@
 
     {"path":"src-ui/src/views/project-settings/KnowledgeSection.tsx","digest":"456b7dbbaf3232c9127c547ad6e8087b2f5947d75143ba66bec4a18a72b52744","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
 
-    {"path":"src-ui/src/views/settings/KnowledgeStoreSection.tsx","digest":"56f97a6e2ea290893e0103cbeeadc63b5defa436c6df49e949d5082922881d4c","revision":"d6a3158c22a62d9530592c6366a1624790ee9401"}
+    {"path":"src-ui/src/views/settings/KnowledgeStoreSection.tsx","digest":"56f97a6e2ea290893e0103cbeeadc63b5defa436c6df49e949d5082922881d4c","revision":"d6a3158c22a62d9530592c6366a1624790ee9401"},
+
+    {"path":"src-server/tools/station-knowledge-tools.ts","digest":"edaa351ef9cef16ff5c39101b5753b0ce4756d5f63b3e37d9087f4dc4a265c85","revision":"41f711c8218fa9bfb2e117f7553c2f17e3e23f5d"},
+
+    {"path":"src-server/tools/station-knowledge-mcp-server.ts","digest":"0523644b6b81e0de1546bd84e04197f3a1af8c5307092e88467b52c8c0d874f1","revision":"e2637079bd55a47964f12faedfb5c43abc7f1e95"},
+
+    {"path":"src-server/runtime/mcp/station-knowledge-native-tools.ts","digest":"64959df13a9ae488d4df7d825c4642bf4bfe86dcc5e6ea25a1d8a7ce4c866d42","revision":"e2637079bd55a47964f12faedfb5c43abc7f1e95"},
+
+    {"path":"src-server/runtime/mcp/__tests__/station-knowledge-native-tools.test.ts","digest":"5ccda007112021d2eaeb19b5ab9c5de3314ad6b86a503663b62d9ab4106c5add","revision":"e2637079bd55a47964f12faedfb5c43abc7f1e95"},
+
+    {"path":"src-server/runtime/mcp/station-control-mcp-token.ts","digest":"c6661a659217a13bb668d4bb7665480d5e7dd0843f7b7fbe94c2a5e6b0be22c9","revision":"e2637079bd55a47964f12faedfb5c43abc7f1e95"},
+
+    {"path":"src-server/runtime/mcp/station-control-in-process.ts","digest":"d9eb72419bfa094d3d7cbc0a62703c2d6e31038159c5b18d09818d74f4172efb","revision":"e2637079bd55a47964f12faedfb5c43abc7f1e95"},
+
+    {"path":"src-server/providers/adapters/station-agent-adapter.ts","digest":"9b5f17a8f10f4135326bac9ca7c74926cdb044e715ffdcd75d0ae702a864cef9","revision":"de8683f4e14dac4a3ebeeb959013aaa31906f8e8"},
+
+    {"path":"src-server/runtime/agents/runtime-default-agent.ts","digest":"a5d49aa51d223b2a88e1d359b5c09f09911e4611b0259c579234067bd08c5928","revision":"c834403ed0024f506335ddc01af6d09e1a4d813a"},
+
+    {"path":"src-server/runtime/routes/__tests__/runtime-routes-station-control-read-scope.test.ts","digest":"6b8ced2d840f733b7a0ebc2d7a669d8f23af80fdb7d9a2c5031bc2daa44da54d","revision":"e2637079bd55a47964f12faedfb5c43abc7f1e95"}
   ],
 
   "checks": [

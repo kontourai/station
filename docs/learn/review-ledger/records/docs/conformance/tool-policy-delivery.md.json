@@ -32,11 +32,11 @@
 
     {"path":"src-server/providers/adapters/acp-adapter-events.ts","digest":"81dff671713d9bd8cee6f2c9da3ae512651c8983bca4576a3df06d8ece8bbdd8","revision":"8a04b6f3b5bd86d9a60dfe35044457ca096ae78d"},
 
-    {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"f44a4e94ca0f335cfc5ee2a803ed1659f140e149b0cd0e66e4c9b5bef9179718","revision":"4f3acdc5478e27a733c06e91a202a325817c2f53"},
+    {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"bcaf191b5d4124ca5de2c26654fa2a70c8897a729ba82cb24a347133a84eb155","revision":"e2637079bd55a47964f12faedfb5c43abc7f1e95"},
 
     {"path":"src-server/providers/adapters/claude-adapter-events.ts","digest":"74dcc48d1c1504d0e5e8d09896cdb5be1decfb962f87018c4272f1ff34d2a18e","revision":"89765352964045a079d13a17bee54ab2de7b83e0"},
 
-    {"path":"src-server/providers/adapters/claude-adapter.ts","digest":"37e1c06d5a117c40258e38da79c424fce7720236c486fbceb9a1c29c1548a0f4","revision":"4f3acdc5478e27a733c06e91a202a325817c2f53"},
+    {"path":"src-server/providers/adapters/claude-adapter.ts","digest":"bcf16464bbac4cba260f60ea8c01d7148ba52d33b575c45d16a8a97cdd4ebc12","revision":"e2637079bd55a47964f12faedfb5c43abc7f1e95"},
 
     {"path":"src-server/providers/adapters/claude-approval-mode.ts","digest":"79805e3f379ee92303e8966260523825ce2c4756affeefb956577189626d3385","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
@@ -46,7 +46,7 @@
 
     {"path":"src-server/runtime/agents/pre-tool-policy.ts","digest":"880debd075f915ac8e746d359528fc6b1f3da03873c657b168930c57884268e0","revision":"aba169ab98b0546fc88ea07509450efe838e90b6"},
 
-    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"526128683c1bb08bf9f5e1dc7f1ed50b4d7d6d1f96bcf54484c263a82d9217f0","revision":"88a7f8ed59c055ea6ac713120ba6069d33fbb892"},
+    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"5493fd2d98dcdb241636dd7f34ad6fe7acccd9ad5561cc58208d92d75b58a7f9","revision":"de8683f4e14dac4a3ebeeb959013aaa31906f8e8"},
 
     {"path":"src-server/services/approvals/approval-inbox.ts","digest":"eb684e2f8d926fc7b6e307a543e004a660ad1f4a09e78fce46e2d73116647d0c","revision":"ef15303ade3f3a2ac68967376f15be29273b58cd"},
 

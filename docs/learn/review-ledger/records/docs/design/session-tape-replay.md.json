@@ -16,7 +16,7 @@
 
     {"path":"src-server/providers/adapters/acp-steer.ts","digest":"df5aea2d6a0c2d6f8aace66a72bb8b748511b0221d8ee00cb6cc9a5ed98461dc","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-server/providers/adapters/codex-adapter.ts","digest":"3dcbbfc821c7d5a35287ba8e2eb9a13b24cc4e0b4a59841fbb6b16bed846aa20","revision":"423cbe55b9e35e4cd8954fd441cb9f3c69740d66"},
+    {"path":"src-server/providers/adapters/codex-adapter.ts","digest":"e8a373d9eb0ca3f6a12b9bf6e5f78d31b38b92147582abb81397b13d31c1cb82","revision":"e2637079bd55a47964f12faedfb5c43abc7f1e95"},
 
     {"path":"src-ui/src/__tests__/ChatMessageList.reasoning.test.tsx","digest":"fe78eb80ff222ddc8ee72bed4569cdbb531746c1b6feab859f8b4f1703634c52","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 

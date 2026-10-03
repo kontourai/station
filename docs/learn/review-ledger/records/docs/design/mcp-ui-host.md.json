@@ -20,7 +20,7 @@
 
     {"path":"src-server/routes/agents/__tests__/tools.routes.test.ts","digest":"bc87fa058c166419624baa11c6a42da315df02ba2579a017e10e5a826e1cc90e","revision":"8d715b7bee77e593e64a1e0b2af99956571c9795"},
 
-    {"path":"src-server/routes/agents/tools.ts","digest":"e816aa362002e9b79be62094d7e7837e81f85cbeb065a0c8386a1f21f1570c27","revision":"8d715b7bee77e593e64a1e0b2af99956571c9795"},
+    {"path":"src-server/routes/agents/tools.ts","digest":"ef02a09260c2b91f77b416528575d09c9af58ede133897fa2229aae2b66f44d7","revision":"e2637079bd55a47964f12faedfb5c43abc7f1e95"},
 
     {"path":"src-server/runtime/mcp/__tests__/mcp-ui-frame-server.test.ts","digest":"39ff600f9f63a20156f48681bbd83a26107b2c1dfad931f523ef97ff4a3950d2","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

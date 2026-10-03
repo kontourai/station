@@ -158,7 +158,7 @@
 
     {"path":"scripts/station-dev.mjs","digest":"97c0d7c3aad1150ee3fda38e45e3af87938fd24d8a424c1290ca944da293574b","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"f44a4e94ca0f335cfc5ee2a803ed1659f140e149b0cd0e66e4c9b5bef9179718","revision":"4f3acdc5478e27a733c06e91a202a325817c2f53"},
+    {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"bcaf191b5d4124ca5de2c26654fa2a70c8897a729ba82cb24a347133a84eb155","revision":"e2637079bd55a47964f12faedfb5c43abc7f1e95"},
 
     {"path":"src-server/routes/evidence/flow-runs.ts","digest":"2bf992db2df5a2b0b84c8964baf0784419c72ee9abe1ab0aadec55ce51985527","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -178,7 +178,7 @@
 
     {"path":"src-server/routes/orchestration/dispatch-scope.ts","digest":"8e311c1696036d143a124c97da344056077ac6dfde1f1db0925c0efefd085aed","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-server/tools/station-control-policy.ts","digest":"7861e4666c9ab7bdfafb6d38b4b9a742f707ca64741f1351b042384f4a51dc94","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+    {"path":"src-server/tools/station-control-policy.ts","digest":"de380bd9c2a1c9a2d9eab00c78cf00c3f0a852189b3dd5e3dc6c80da896cf44f","revision":"e2637079bd55a47964f12faedfb5c43abc7f1e95"},
 
     {"path":"src-server/runtime/mcp/__tests__/station-control-dispatch-scope.test.ts","digest":"5c90078ba35ab314048e6efa0533de427b92fdc22f26425174cdbcdb144db30e","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
