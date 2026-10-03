@@ -4,7 +4,7 @@
   overflow: hidden;
 }
 
-.chat-dock__project-badge-lines {
+.chat-dock__project-badge .chat-dock__project-badge-lines {
   align-items: stretch;
 }
 
