@@ -19,8 +19,13 @@ import {
   useQueryClient,
 } from '@kontourai/station-sdk';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
+import {
+  skillExperienceAttachmentInputs,
+  skillExperienceInputErrors,
+} from '@kontourai/station-shared/skill-experience-values';
 import { useCallback } from 'react';
 import { useActiveChatActions } from '../contexts/ActiveChatsContext';
+import { useAuthorityPersistence } from '../contexts/AuthorityPersistenceContext';
 import {
   type ChatMessage,
   isTurnInFlight,
@@ -33,6 +38,7 @@ import type {
   OutboundDispatchClaim,
   OutboundDispatchTransportResult,
 } from '../lib/outboundQueue';
+import type { SkillExperienceDraft } from '../lib/skill-experience-draft';
 import type { ComposerAttachmentStageSnapshot, FileAttachment } from '../types';
 import {
   approvalModeChipLabel,
@@ -220,6 +226,8 @@ export function useSendMessage(
   };
   const invalidate = useInvalidateQuery();
   const queryClient = useQueryClient();
+  const { namespace: experienceNamespace, status: experienceAuthorityStatus } =
+    useAuthorityPersistence();
   const sendMessage = useCallback(
     async (
       sessionId: string,
@@ -242,6 +250,10 @@ export function useSendMessage(
       // The durable outbound queue owns deferred replay. A busy replay must
       // stay durable, rather than also entering this legacy in-memory queue.
       options?: {
+        skillExperienceDraft?: SkillExperienceDraft;
+        experienceRequestScope?: import('@kontourai/station-sdk/client').ApiRequestScope & {
+          isCurrent: () => boolean;
+        };
         skipInMemoryQueueOnBusy?: boolean;
         /**
          * When a turn is already running on a steering engine, still hold
@@ -264,6 +276,61 @@ export function useSendMessage(
       const allChats = activeChatsStore.getSnapshot();
       const currentState = allChats[sessionId];
       const submittedDraft = content;
+      const experienceDraft = options?.dispatch
+        ? undefined
+        : currentState?.skillExperienceDraft;
+      if (
+        !options?.dispatch &&
+        (experienceDraft ||
+          currentState?.skillExperienceDraftInvalid ||
+          options?.skillExperienceDraft)
+      ) {
+        const refusal = currentState?.skillExperienceDraftInvalid
+          ? 'The saved visual skill selection could not be read. Choose it again or explicitly remove it before sending.'
+          : !options?.skillExperienceDraft
+            ? 'Review the visual skill and send it explicitly; your selection has not been sent.'
+            : !experienceDraft ||
+                options.skillExperienceDraft !== experienceDraft
+              ? 'Visual skill inputs changed while preparing this message. Review them and send again; your current draft has not been sent.'
+              : experienceAuthorityStatus !== 'verified' ||
+                  !experienceNamespace ||
+                  experienceDraft?.namespace !== experienceNamespace ||
+                  experienceDraft.apiBase !== apiBase ||
+                  !options.experienceRequestScope?.isCurrent() ||
+                  options.experienceRequestScope.apiBase !== apiBase
+                ? 'This visual skill draft belongs to an unverified or different Station. Return to its Station or choose it again.'
+                : navigator.onLine === false
+                  ? 'Reconnect before starting this visual skill. It will not replay automatically.'
+                  : isTurnInFlight(currentState)
+                    ? 'Wait for the current turn before starting another visual skill.'
+                    : Object.values(
+                        skillExperienceInputErrors(
+                          experienceDraft.definition,
+                          options.skillExperienceDraft.start.inputs,
+                          attachments?.length
+                            ? attachments.length
+                            : (currentState.attachmentStages?.length ?? 0),
+                          skillExperienceAttachmentInputs(
+                            experienceDraft.definition.inputs
+                              .filter((input) => input.kind === 'attachments')
+                              .map((input) => input.id),
+                            attachments?.length
+                              ? attachments.map((attachment) => attachment.id)
+                              : (currentState.attachmentStages?.map(
+                                  (stage) => stage.clientAttachmentId,
+                                ) ?? []),
+                            experienceDraft.attachmentAssignments,
+                          ),
+                        ),
+                      )[0];
+        if (refusal) {
+          addEphemeralMessage(sessionId, { role: 'system', content: refusal });
+          return false;
+        }
+      }
+      const sourceStart = experienceDraft
+        ? options?.skillExperienceDraft?.start
+        : undefined;
       // Steer is more input on the OPEN turn (`steerTurn`). Queue is a
       // follow-up that waits for `turn.completed` and starts a new turn.
       // Durable outbound replay stays durable either way — it must not
@@ -325,7 +392,7 @@ export function useSendMessage(
         steerOpenTurn = true;
       }
 
-      if (content.startsWith('/') && handleSlashCommand) {
+      if (!sourceStart && content.startsWith('/') && handleSlashCommand) {
         const result = await handleSlashCommand(sessionId, content);
         if (result === true || result === 'CLEAR') {
           return options?.dispatch
@@ -535,8 +602,18 @@ export function useSendMessage(
           clientTurnId: resolvedTurnId,
           automaticBackground: Boolean(options?.dispatch),
           signal: abortController.signal,
+          skillExperience: sourceStart,
+          skillExperienceAttachmentRoles: experienceDraft?.definition.inputs
+            .filter((input) => input.kind === 'attachments')
+            .map((input) => input.id),
+          skillExperienceAttachmentAssignments:
+            experienceDraft?.attachmentAssignments,
+          requestScope: sourceStart
+            ? options?.experienceRequestScope
+            : undefined,
         });
 
+        if (sourceStart) invalidate(['skills', 'experiences', 'session']);
         if (currentState?.conversationId !== receipt.conversationId) {
           assignConversationId(sessionId, receipt.conversationId);
         }
@@ -544,6 +621,15 @@ export function useSendMessage(
           status: 'sending',
           abortController: undefined,
           orchestrationSessionStarted: true,
+          ...(sourceStart &&
+          activeChatsStore.getSnapshot()[sessionId]?.skillExperienceDraft ===
+            experienceDraft
+            ? {
+                skillExperienceDraft: undefined,
+                skillExperienceDraftInvalid: undefined,
+                skillExperienceActive: true,
+              }
+            : {}),
           // A continuation can start a child execution session. Keep the
           // durable tab keyed by its conversation while routing subsequent
           // live controls/events to the server-receipted child identity.
@@ -603,6 +689,24 @@ export function useSendMessage(
             } satisfies OutboundDispatchTransportResult)
           : true;
       } catch (error) {
+        if (sourceStart) {
+          const latest = activeChatsStore.getSnapshot()[sessionId];
+          const rollback = rejectedSendRollback(transaction, latest);
+          updateChat(sessionId, {
+            ...rollback,
+            status: 'idle',
+            abortController: undefined,
+            pendingClientTurnId: undefined,
+            sendAwaitingTurnStart: undefined,
+          });
+          clearStreamingMessage(sessionId);
+          addEphemeralMessage(sessionId, {
+            role: 'system',
+            content: `Visual skill start was not confirmed. Your selection is retained; inspect the conversation before trying again. ${error instanceof Error ? error.message : String(error)}`,
+          });
+          invalidate(['orchestration-sessions']);
+          return false;
+        }
         // #2436: a carried full access this device may not grant refused the
         // whole send. The pick is dropped (resending it could only be
         // refused again).
@@ -991,6 +1095,8 @@ export function useSendMessage(
     },
     [
       addEphemeralMessage,
+      experienceNamespace,
+      experienceAuthorityStatus,
       agentConnections,
       apiBase,
       assignConversationId,

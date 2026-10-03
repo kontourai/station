@@ -15,7 +15,7 @@
 
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const agentsMock = vi.hoisted(() => ({ current: [] as any[] }));
@@ -33,6 +33,7 @@ const queuedMessagesPropsMock = vi.hoisted(() => ({
 }));
 const realControlsMock = vi.hoisted(() => ({ enabled: false }));
 const steerOrchestrationTurnMock = vi.hoisted(() => vi.fn());
+const cancelTurnMock = vi.hoisted(() => vi.fn());
 
 vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@kontourai/station-sdk')>()),
@@ -160,6 +161,7 @@ vi.mock('../components/chat/QueuedMessages', async (importOriginal) => {
 });
 
 import { ChatDockBody } from '../components/chat-dock/ChatDockBody';
+import { PreviewProvider } from '../contexts/PreviewContext';
 import type { ChatSession } from '../types';
 
 /** The stale wait: resolved, refused, still naming the finished turn. */
@@ -201,7 +203,7 @@ function buildChatInput() {
     slashCommands: [],
     handleInputChange: vi.fn(),
     handleSend: vi.fn(async () => {}),
-    handleCancel: vi.fn(),
+    handleCancel: cancelTurnMock,
     handleClearInput: vi.fn(),
     handleAddAttachments: vi.fn(),
     handleRemoveAttachment: vi.fn(),
@@ -262,23 +264,25 @@ function renderDock({
   });
   return render(
     <QueryClientProvider client={queryClient}>
-      <ChatDockBody
-        activeSession={session}
-        activeOrchestrationSession={null}
-        activeOrchestrationSessionRead="absent"
-        onRetryOrchestrationSessions={vi.fn()}
-        onRetryConversationOpen={retryHandler}
-        chatFontSize={14}
-        dockHeight={400}
-        showStatsPanel={false}
-        showReasoning={false}
-        showToolDetails={false}
-        modelSupportsAttachments={false}
-        fileAttachmentsSupported={false}
-        availableModels={[]}
-        chatInput={buildChatInput() as any}
-        setShowStatsPanel={vi.fn()}
-      />
+      <PreviewProvider>
+        <ChatDockBody
+          activeSession={session}
+          activeOrchestrationSession={null}
+          activeOrchestrationSessionRead="absent"
+          onRetryOrchestrationSessions={vi.fn()}
+          onRetryConversationOpen={retryHandler}
+          chatFontSize={14}
+          dockHeight={400}
+          showStatsPanel={false}
+          showReasoning={false}
+          showToolDetails={false}
+          modelSupportsAttachments={false}
+          fileAttachmentsSupported={false}
+          availableModels={[]}
+          chatInput={buildChatInput() as any}
+          setShowStatsPanel={vi.fn()}
+        />
+      </PreviewProvider>
     </QueryClientProvider>,
   );
 }
@@ -294,10 +298,33 @@ describe('ChatDockBody stale busy wait', () => {
     queuedMessagesPropsMock.current = null;
     realControlsMock.enabled = false;
     steerOrchestrationTurnMock.mockReset();
+    cancelTurnMock.mockReset();
   });
 
-  test('the reported shape stays draftable with Send dead', () => {
+  test.each([false, true])(
+    'keeps the canonical Stop action while the composer loads (pending=%s)',
+    async (stopPending) => {
+      realControlsMock.enabled = true;
+      renderDock({ session: buildSession({ status: 'sending', stopPending }) });
+      expect(
+        screen.getByRole('status', { name: 'Loading composer' }),
+      ).toBeTruthy();
+      const name = stopPending
+        ? 'Stop requested — waiting for the engine'
+        : 'Stop the current turn';
+      const stop = screen.getByRole('button', { name });
+      expect(stop.hasAttribute('disabled')).toBe(stopPending);
+      fireEvent.click(stop);
+      expect(cancelTurnMock).toHaveBeenCalledTimes(stopPending ? 0 : 1);
+      const composer = await screen.findByRole<HTMLTextAreaElement>('textbox');
+      expect(composer.value).toBe('a drafted follow-up');
+      expect(screen.getAllByRole('button', { name })).toHaveLength(1);
+    },
+  );
+
+  test('the reported shape stays draftable with Send dead', async () => {
     renderDock();
+    await waitFor(() => expect(chatInputPropsMock.current).not.toBeNull());
     expect(chatInputPropsMock.current?.disabled).toBe(true);
     expect(chatInputPropsMock.current?.allowDraftWhileDisabled).toBe(true);
     // No Stop/Queue takeover: nothing is in flight locally.
@@ -312,20 +339,22 @@ describe('ChatDockBody stale busy wait', () => {
     expect(onRetryConversationOpen).toHaveBeenCalledOnce();
   });
 
-  test('a live wait keeps draft-only with no Check again', () => {
+  test('a live wait keeps draft-only with no Check again', async () => {
     renderDock({
       session: buildSession({
         status: 'sending',
         conversationOpenState: busyResolution(),
       }),
     });
+    await waitFor(() => expect(chatInputPropsMock.current).not.toBeNull());
     expect(chatInputPropsMock.current?.turnInFlight).toBe(true);
     expect(screen.queryByRole('button', { name: 'Check again' })).toBeNull();
   });
 
-  test('no wait notice on a writable chat', () => {
+  test('no wait notice on a writable chat', async () => {
     renderDock({ session: buildSession() });
     expect(screen.queryByRole('button', { name: 'Check again' })).toBeNull();
+    await waitFor(() => expect(chatInputPropsMock.current).not.toBeNull());
     expect(chatInputPropsMock.current?.disabled).toBe(false);
   });
 
@@ -335,17 +364,17 @@ describe('ChatDockBody stale busy wait', () => {
     expect(screen.queryByRole('button', { name: 'Check again' })).toBeNull();
   });
 
-  test('the stale wait names the way out in the composer', () => {
+  test('the stale wait names the way out in the composer', async () => {
     realControlsMock.enabled = true;
     renderDock();
     expect(
-      screen.getByPlaceholderText(
+      await screen.findByPlaceholderText(
         'Waiting on this chat — check again above to send…',
       ),
     ).toBeTruthy();
   });
 
-  test('the live wait still promises drafting', () => {
+  test('the live wait still promises drafting', async () => {
     realControlsMock.enabled = true;
     renderDock({
       session: buildSession({
@@ -354,7 +383,7 @@ describe('ChatDockBody stale busy wait', () => {
       }),
     });
     expect(
-      screen.getByPlaceholderText(
+      await screen.findByPlaceholderText(
         'Draft a follow-up while this turn finishes…',
       ),
     ).toBeTruthy();

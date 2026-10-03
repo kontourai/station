@@ -1086,6 +1086,18 @@ normal request authentication runs first. See the
 
 ## Orchestration model launch behavior
 
+Installed [Skill experiences](skill-experiences.md) use this same foreground
+route when their inventory advertises `executionContract: "1.0"`. The optional
+`skillExperience` selection contains pinned identity, scalar inputs, canonical
+attachment-index assignments and an expected previous invocation event. Project
+Environment defaults resolve normally; this contract refuses remote forwarding.
+`GET /api/orchestration/sessions/:threadId/skill-experience` returns immutable
+current/history presentation tied to actual canonical turns. Rich reads and
+question answers bind `{identity, eventId}` in `expectedSkillExperience` and hold
+the current package grant; ordinary user controls omit that frame admission.
+See the [Session API](session-api.md#visual-skill-presentation) for ownership and
+unavailable-history behavior.
+
 `POST /api/orchestration/chat` carries model selection under
 `target.model: {override?, options?}`, alongside the Agent and Environment target.
 The [route schema](../../src-server/routes/orchestration/orchestration.ts),

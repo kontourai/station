@@ -32,6 +32,7 @@ const MAX_CORRELATION_ID_LENGTH = 512;
 const turnCorrelations = new AsyncLocalStorage<{
   correlation: AuthorizedTurnCorrelation;
   nativeMemory?: NativeMemoryHistoryCompanion;
+  skillExperienceContext?: string;
 }>();
 const relayHandoffs = new Map<
   string,
@@ -40,6 +41,7 @@ const relayHandoffs = new Map<
     nativeOutput?: NativeOutputRelayCompanion;
     nativeForeground?: NativeForegroundRelayCompanion;
     nativeMemory?: NativeMemoryHistoryCompanion;
+    skillExperienceContext?: string;
     expiresAt: number;
   }
 >();
@@ -152,7 +154,13 @@ export function issueAuthorizedTurnCorrelationHandoff(
   nativeOutput?: NativeOutputRelayCompanion,
   nativeMemory?: NativeMemoryHistoryCompanion,
   nativeForeground?: NativeForegroundRelayCompanion,
+  skillExperienceContext?: string,
 ): string {
+  if (
+    skillExperienceContext &&
+    Buffer.byteLength(skillExperienceContext) > 384 * 1024
+  )
+    throw new Error('Skill experience relay context exceeds its bound.');
   const exact = parseAuthorizedTurnCorrelation(correlation);
   if (!exact) {
     throw new TypeError('Invalid authorized turn correlation');
@@ -171,6 +179,7 @@ export function issueAuthorizedTurnCorrelationHandoff(
     ...(nativeOutput ? { nativeOutput } : {}),
     ...(nativeForeground ? { nativeForeground } : {}),
     ...(nativeMemory ? { nativeMemory } : {}),
+    ...(skillExperienceContext ? { skillExperienceContext } : {}),
     expiresAt: now + RELAY_HANDOFF_TTL_MS,
   });
   return handoffId;
@@ -230,9 +239,19 @@ export function runWithAuthorizedTurnCorrelation<T>(
   correlation: AuthorizedTurnCorrelation,
   work: () => T,
   nativeMemory?: NativeMemoryHistoryCompanion,
+  skillExperienceContext?: string,
 ): T {
+  if (
+    skillExperienceContext &&
+    Buffer.byteLength(skillExperienceContext) > 384 * 1024
+  )
+    throw new Error('Skill experience relay context exceeds its bound.');
   return turnCorrelations.run(
-    { correlation, ...(nativeMemory ? { nativeMemory } : {}) },
+    {
+      correlation,
+      ...(nativeMemory ? { nativeMemory } : {}),
+      ...(skillExperienceContext ? { skillExperienceContext } : {}),
+    },
     work,
   );
 }
@@ -242,6 +261,20 @@ export function currentAuthorizedTurnCorrelation():
   | AuthorizedTurnCorrelation
   | undefined {
   return turnCorrelations.getStore()?.correlation;
+}
+
+/** Private instructions travel beside the identity envelope, never in body options. */
+export function currentSkillExperienceContext(): string | undefined {
+  return turnCorrelations.getStore()?.skillExperienceContext;
+}
+export function readSkillExperienceRelayContext(
+  handoffId: string | undefined,
+): string | undefined {
+  if (!handoffId || handoffId.length > 128) return undefined;
+  const handoff = relayHandoffs.get(handoffId);
+  return handoff && handoff.expiresAt > Date.now()
+    ? handoff.skillExperienceContext
+    : undefined;
 }
 
 /** Not reconstructed from public options, cursor data, or a serialized identity. */

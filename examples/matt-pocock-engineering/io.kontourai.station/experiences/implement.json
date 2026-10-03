@@ -1,0 +1,297 @@
+{
+  "$schema": "https://kontour.ai/schemas/agent-plugins/skill-experience/1.0/schema.json",
+  "schemaVersion": "1.0",
+  "id": "implement",
+  "version": "1.0.0",
+  "title": "Implement reviewed tickets",
+  "purpose": "Implement user-selected reviewed work with pre-agreed testing seams, review the changes and commit on the current branch.",
+  "example": "Implement these two reviewed tickets in this Project, using the test seams we agreed.",
+  "authors": [
+    {
+      "name": "Station (visual curation)"
+    },
+    {
+      "name": "Matt Pocock (upstream Skills)",
+      "url": "https://github.com/mattpocock/skills"
+    }
+  ],
+  "skills": [
+    {
+      "id": "implement",
+      "name": "implement",
+      "path": "./skills/implement/SKILL.md",
+      "sha256": "dc27831f466b865bf9e95f28c9361e9e99d59bcfb72a9585aa49a6829b3de3f8",
+      "dependsOn": ["code-review", "tdd"],
+      "upstream": {
+        "repository": "https://github.com/mattpocock/skills",
+        "revision": "d81f3a183412e71a5b1e84ca21bc1a35eea03a60",
+        "path": "skills/engineering/implement/SKILL.md"
+      }
+    },
+    {
+      "id": "to-tickets",
+      "name": "to-tickets",
+      "path": "./skills/to-tickets/SKILL.md",
+      "sha256": "611ff3528bbf210d964c794f1994c0343b03e27be9bacc70794727d1104a7f06",
+      "dependsOn": ["setup-matt-pocock-skills"],
+      "upstream": {
+        "repository": "https://github.com/mattpocock/skills",
+        "revision": "d81f3a183412e71a5b1e84ca21bc1a35eea03a60",
+        "path": "skills/engineering/to-tickets/SKILL.md"
+      }
+    },
+    {
+      "id": "code-review",
+      "name": "code-review",
+      "path": "./skills/code-review/SKILL.md",
+      "sha256": "47f4e52c21694def9c7c11cbfbf891ca35eac7a93e395797515be3c8a409ae50",
+      "dependsOn": ["setup-matt-pocock-skills"],
+      "upstream": {
+        "repository": "https://github.com/mattpocock/skills",
+        "revision": "d81f3a183412e71a5b1e84ca21bc1a35eea03a60",
+        "path": "skills/engineering/code-review/SKILL.md"
+      }
+    },
+    {
+      "id": "codebase-design",
+      "name": "codebase-design",
+      "path": "./skills/codebase-design/SKILL.md",
+      "sha256": "2c20617f87ec8af6a434859f381b2f061a69b530444e74eb39e78bb016a6d1e2",
+      "dependsOn": [],
+      "upstream": {
+        "repository": "https://github.com/mattpocock/skills",
+        "revision": "d81f3a183412e71a5b1e84ca21bc1a35eea03a60",
+        "path": "skills/engineering/codebase-design/SKILL.md"
+      }
+    },
+    {
+      "id": "domain-modeling",
+      "name": "domain-modeling",
+      "path": "./skills/domain-modeling/SKILL.md",
+      "sha256": "7b925d7b1e341a2eeae33ad68a8a8c0ab889a38ddd22a7598e4c240e5a7556a3",
+      "dependsOn": [],
+      "upstream": {
+        "repository": "https://github.com/mattpocock/skills",
+        "revision": "d81f3a183412e71a5b1e84ca21bc1a35eea03a60",
+        "path": "skills/engineering/domain-modeling/SKILL.md"
+      }
+    },
+    {
+      "id": "grill-me",
+      "name": "grill-me",
+      "path": "./skills/grill-me/SKILL.md",
+      "sha256": "e0a2070992b1ed7f4d4d8504e0fae0cf9c96c8bab4dd50c37989b0f4c7ff1010",
+      "dependsOn": ["grilling"],
+      "upstream": {
+        "repository": "https://github.com/mattpocock/skills",
+        "revision": "d81f3a183412e71a5b1e84ca21bc1a35eea03a60",
+        "path": "skills/productivity/grill-me/SKILL.md"
+      }
+    },
+    {
+      "id": "grill-with-docs",
+      "name": "grill-with-docs",
+      "path": "./skills/grill-with-docs/SKILL.md",
+      "sha256": "fc6401cbf34f1f3b6cb5e97253e25671d822733fc3f985117fe0d162639abf61",
+      "dependsOn": ["domain-modeling", "grilling"],
+      "upstream": {
+        "repository": "https://github.com/mattpocock/skills",
+        "revision": "d81f3a183412e71a5b1e84ca21bc1a35eea03a60",
+        "path": "skills/engineering/grill-with-docs/SKILL.md"
+      }
+    },
+    {
+      "id": "grilling",
+      "name": "grilling",
+      "path": "./skills/grilling/SKILL.md",
+      "sha256": "10ff989e7498b23b5acb49d5048f11dcd906757d2f79c5cdf8a00001381296f2",
+      "dependsOn": [],
+      "upstream": {
+        "repository": "https://github.com/mattpocock/skills",
+        "revision": "d81f3a183412e71a5b1e84ca21bc1a35eea03a60",
+        "path": "skills/productivity/grilling/SKILL.md"
+      }
+    },
+    {
+      "id": "improve-codebase-architecture",
+      "name": "improve-codebase-architecture",
+      "path": "./skills/improve-codebase-architecture/SKILL.md",
+      "sha256": "1f6664846902422979074367d0dae86667d39bd17c9e5cbf32226377be9749f3",
+      "dependsOn": ["codebase-design", "domain-modeling", "grilling"],
+      "upstream": {
+        "repository": "https://github.com/mattpocock/skills",
+        "revision": "d81f3a183412e71a5b1e84ca21bc1a35eea03a60",
+        "path": "skills/engineering/improve-codebase-architecture/SKILL.md"
+      }
+    },
+    {
+      "id": "prototype",
+      "name": "prototype",
+      "path": "./skills/prototype/SKILL.md",
+      "sha256": "714de632d116bb73f65cdb5a882db15b9369a6713b9a47c0fad827848f0bfbe3",
+      "dependsOn": [],
+      "upstream": {
+        "repository": "https://github.com/mattpocock/skills",
+        "revision": "d81f3a183412e71a5b1e84ca21bc1a35eea03a60",
+        "path": "skills/engineering/prototype/SKILL.md"
+      }
+    },
+    {
+      "id": "research",
+      "name": "research",
+      "path": "./skills/research/SKILL.md",
+      "sha256": "985569f15739c713d6784887c3d186d4ef9ac85bec5ad9c068d25bf0739928e4",
+      "dependsOn": [],
+      "upstream": {
+        "repository": "https://github.com/mattpocock/skills",
+        "revision": "d81f3a183412e71a5b1e84ca21bc1a35eea03a60",
+        "path": "skills/engineering/research/SKILL.md"
+      }
+    },
+    {
+      "id": "setup-matt-pocock-skills",
+      "name": "setup-matt-pocock-skills",
+      "path": "./skills/setup-matt-pocock-skills/SKILL.md",
+      "sha256": "e6d85d57483f1dfde5bd3de27d8fa5d8d18b98c6473cfcde69dec146ac7d275e",
+      "dependsOn": [
+        "domain-modeling",
+        "grill-with-docs",
+        "improve-codebase-architecture",
+        "triage",
+        "wayfinder"
+      ],
+      "upstream": {
+        "repository": "https://github.com/mattpocock/skills",
+        "revision": "d81f3a183412e71a5b1e84ca21bc1a35eea03a60",
+        "path": "skills/engineering/setup-matt-pocock-skills/SKILL.md"
+      }
+    },
+    {
+      "id": "tdd",
+      "name": "tdd",
+      "path": "./skills/tdd/SKILL.md",
+      "sha256": "93ea419b76e9caaf26153b828e984f7c3fb136f4caa67b14af95f32ea965a1cc",
+      "dependsOn": ["codebase-design"],
+      "upstream": {
+        "repository": "https://github.com/mattpocock/skills",
+        "revision": "d81f3a183412e71a5b1e84ca21bc1a35eea03a60",
+        "path": "skills/engineering/tdd/SKILL.md"
+      }
+    },
+    {
+      "id": "to-spec",
+      "name": "to-spec",
+      "path": "./skills/to-spec/SKILL.md",
+      "sha256": "13c5b992d278aa49f366e6baa8acf76e99e130e7a80ca9b813ff20ff9528e617",
+      "dependsOn": ["setup-matt-pocock-skills"],
+      "upstream": {
+        "repository": "https://github.com/mattpocock/skills",
+        "revision": "d81f3a183412e71a5b1e84ca21bc1a35eea03a60",
+        "path": "skills/engineering/to-spec/SKILL.md"
+      }
+    },
+    {
+      "id": "triage",
+      "name": "triage",
+      "path": "./skills/triage/SKILL.md",
+      "sha256": "94383c7d99ec5718f96f1bb62be1f55043f4fc5281c2a2a1e988d3e58327f28d",
+      "dependsOn": ["domain-modeling", "grilling", "setup-matt-pocock-skills"],
+      "upstream": {
+        "repository": "https://github.com/mattpocock/skills",
+        "revision": "d81f3a183412e71a5b1e84ca21bc1a35eea03a60",
+        "path": "skills/engineering/triage/SKILL.md"
+      }
+    },
+    {
+      "id": "wayfinder",
+      "name": "wayfinder",
+      "path": "./skills/wayfinder/SKILL.md",
+      "sha256": "d6cebf5a9714865037dc3a379d687b19e5c6aeb09e34c708b58e78101e558d99",
+      "dependsOn": [
+        "domain-modeling",
+        "grilling",
+        "prototype",
+        "research",
+        "setup-matt-pocock-skills"
+      ],
+      "upstream": {
+        "repository": "https://github.com/mattpocock/skills",
+        "revision": "d81f3a183412e71a5b1e84ca21bc1a35eea03a60",
+        "path": "skills/engineering/wayfinder/SKILL.md"
+      }
+    }
+  ],
+  "requiredContext": [
+    {
+      "kind": "project",
+      "required": true,
+      "provenance": {
+        "origin": "station-added",
+        "explanation": "This visual implementation stage requires an explicitly selected Project. Agent tools and project write authority still apply."
+      }
+    },
+    {
+      "kind": "conversation",
+      "required": false,
+      "provenance": {
+        "origin": "station-added",
+        "explanation": "A reviewed ticket reference can be supplied in a new conversation; a stage continuation preserves current decisions."
+      }
+    }
+  ],
+  "capabilities": [
+    "conversation",
+    "artifact-output",
+    "project-read",
+    "file-read"
+  ],
+  "inputs": [
+    {
+      "id": "tickets",
+      "kind": "text",
+      "label": "Reviewed specification or tickets to implement",
+      "description": "Name the exact work and pre-agreed testing seams. Selecting this stage does not start implementation until you send.",
+      "required": true,
+      "minLength": 1,
+      "maxLength": 16000,
+      "provenance": {
+        "origin": "skill-declared",
+        "skillRef": "implement",
+        "explanation": "Upstream implements the specification or tickets described by the user, using pre-agreed testing seams."
+      }
+    }
+  ],
+  "interaction": {
+    "pattern": "transform",
+    "stopConditions": [
+      "Only implement the work the user explicitly selected.",
+      "Use TDD where possible at pre-agreed seams; run typechecks and focused tests, then the full suite at the end.",
+      "Review the work with the bundled code-review instructions before committing to the current branch.",
+      "If required tools, testing seams or branch/project authority are unavailable, report the missing prerequisite instead of claiming completion."
+    ],
+    "unsupportedBehavior": [
+      "Selecting a previous stage never authorizes implementation automatically.",
+      "Worktree, branch, file writes and commits follow the selected Agent\u2019s ordinary policy and repository instructions.",
+      "The interface does not infer successful tests, review or commits from model prose."
+    ]
+  },
+  "outputs": [
+    {
+      "id": "implementation",
+      "label": "Implementation, review and actual commit outcome",
+      "kind": "markdown",
+      "required": true,
+      "provenance": {
+        "origin": "skill-declared",
+        "skillRef": "implement",
+        "explanation": "The source requests implementation, checks, review and a current-branch commit. Only actual canonical tool outcomes establish those effects."
+      }
+    }
+  ],
+  "presentation": {
+    "modes": ["guided", "alongside"],
+    "defaultMode": "guided"
+  },
+  "entrySkillId": "implement",
+  "transitions": []
+}

@@ -54,6 +54,7 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 | [ExtensionNotificationBindings](#extensionnotificationbindings) | Bind exact observed extension tuples to functional consumers without promoting vendor semantics. | `src-shared/extension-notification-bindings.ts` |
 | [JsonFileMutationAuthority](#jsonfilemutationauthority) | Serialize bounded JSON read/derive/publish work without blocking the server event loop. | `src-server/domain/file-storage-helpers.ts` |
 | [LocalSkillMutationAuthority and SetupImportEffectJournal](#localskillmutationauthority-and-setupimporteffectjournal) | Serialize every local Skill mutation and retain each reviewed import effect through recovery. | `src-server/services/agents/skill-service.ts`, `src-server/services/setup/existing-agent-setup-import.ts` |
+| [SkillExperienceRuntime](#skillexperienceruntime) | Admit one pinned Skill selection at canonical turn boundaries and project immutable Session presentation history. | `src-server/services/orchestration/skill-experience-runtime.ts` |
 | [AgentPluginLoader](#agentpluginloader) | Consume one installed Agent Plugins package without copying portable components or widening failure boundaries. | `src-server/services/plugins/agent-plugin-loader.ts` |
 | [StationHomeArchive](#stationhomearchive) | Validate, back up, and atomically restore one inactive Station home. | `packages/shared/src/station-home-archive.ts` |
 | [StationHomeRecoveryPreflight](#stationhomerecoverypreflight) | Observe bounded recovery metadata without granting mutation or execution authority. | `packages/shared/src/station-home-recovery-preflight.ts` |
@@ -306,6 +307,31 @@ fingerprints, not PEM keys. The applied decision, acquisition receipt, and local
 admission fences are described in [Applied registry trust
 policy](../design/registry-trust-policy.md).
 
+## SkillExperienceRuntime
+
+[SkillExperienceRuntime](../../src-server/services/orchestration/skill-experience-runtime.ts)
+binds explicit foreground selections to the installed source owner and the
+canonical Session turn. The package-content lease/journal and Skill scope owner
+revalidate pinned source/dependencies; source admission wraps actual send, steer
+and accepting request effects. The existing exact turn attribution mechanism
+adds only the bounded retained-snapshot reference to an accepted `turn.started`.
+
+[Immutable snapshots](../../src-server/services/orchestration/skill-experience-snapshots.ts)
+live in the same EventStore. Bounded history follows the existing conversation
+lineage and Session read authorization. A snapshot without a canonical turn is
+not invocation truth; removed sources retain inert history and fail future
+admission. Rich pane actions additionally bind the exact current event and hold
+the current `agents.invoke` grant. Presentation controls and package-defined
+transitions create no second execution lifecycle.
+
+The [contract guide](../reference/skill-experiences.md) links author/schema,
+foreground routes, storage and the independent rich example. Controlled route,
+provider-bound and frame transport evidence lives in
+`src-server/routes/agents/__tests__/skill-experiences.routes.test.ts`,
+`src-ui/src/__tests__/framePaneHost.test.tsx` and
+`packages/sdk/src/__tests__/skill-experience-pane.test.ts`. Those tests do not
+establish a live model, native-device renderer or release receipt.
+
 ## AgentPluginLoader
 
 [AgentPluginLoader](../../src-server/services/plugins/agent-plugin-loader.ts) reads
@@ -343,7 +369,14 @@ copied into a Station integration or Skill directory.
 
 **Seam, Implementation, callers, and tests.** Runtime bootstrap composes the loader into
 `SkillService` and `ConfigLoader`; the shared MCP transport consumes the projected cwd
-and headers. Directory/git install validates recognized packages through the same loader
+and headers.
+The Skill routes also expose an inert installed experience inventory. The loader
+uses the existing content lease, yielding digest reads and admission journal to
+bind validated definitions to an exact package incarnation/materialization;
+SkillService applies the current discovered Skill precedence. Neither that
+snapshot nor author capability requirements authorize execution. The controlled
+route proof is `src-server/routes/agents/__tests__/skill-experiences.routes.test.ts`.
+Directory/git install validates recognized packages through the same loader
 while the legacy parser remains an explicit #346 fallback. Behavioral and
 real-child-process evidence lives in `agent-plugin-loader.test.ts`,
 `plugin-install-transaction.test.ts`, and `mcp-v2.test.ts`. **Do not reintroduce:**
