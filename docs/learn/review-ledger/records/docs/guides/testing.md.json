@@ -9,7 +9,7 @@
 
   "limits": "Full reading and bounded source review are not all-platform execution or universal semantic certification. No hosted CI, cloud, release or real provider/device proof. Protected policy activation is limited to the approved documentation additions in this branch.",
 
-  "document": {"digest":"f4ce0f21c08d460df52405d68cfa34a847dcbdaa0976cf218151226a37225925","revision":"1c13dd90939769cd3ca557a36649aa25823194db"},
+  "document": {"digest":"fcf772e655d97aab25b3d96d3990df29edfb5beda59ecb11d58197b6d093b069","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
 
   "sources": [
     {"path":".agents/skills/documentation-audit/SKILL.md","digest":"2f5e193ebfb24a08597fd9dc31663a7d293bceaf1847e2df508b093e898845a6","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
@@ -20,11 +20,11 @@
 
     {"path":".githooks/pre-push","digest":"eb2d5cdd2c9f91b4e2dc96dd0d4ef36c55f313074f4f05aa30e0269cd5c0a6c9","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
-    {"path":".github/workflows/ci.yml","digest":"aedbb116a4ce043ec251ec20c47368aa89f77ebc1b5b526fecb9580af280bb91","revision":"de240170769fcf739c188b104f801d4371f8086d"},
+    {"path":".github/workflows/ci.yml","digest":"9b586bd70bb7c94986ce19ee41151ff768bad2a308a196a15047375c92f9646a","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
 
-    {"path":".github/workflows/full-regression.yml","digest":"dd5b4a1b3f64b23f7a3a7e73733600a9246934bd0d6409f2028706cf83c663be","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    {"path":".github/workflows/full-regression.yml","digest":"064212250fcc5a2d13bed01a3de5a7a72620616b9847ded3cfcdb166b6f694f2","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
 
-    {"path":".github/workflows/merge-queue-regression.yml","digest":"f803f8df52480932b1b69b1e623f31ac0f1128596f034ab0b0babca1fd46bbb8","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    {"path":".github/workflows/merge-queue-regression.yml","digest":"ba13e009f55d64dc1059167c9f1ed009c1518605483c42f4e3a3509e579e9480","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
 
     {"path":".github/workflows/portable-server-archives.yml","digest":"c7c7ff935b2bd8df40440aa8a7b6fd4405304e99e87c4a892de073fe0ae72924","revision":"614c216de6de9d4c06ef56963853ccff52f2f685"},
 
@@ -50,7 +50,7 @@
 
     {"path":"scripts/__tests__/ci-fast-checks-job-graph.test.ts","digest":"6b102e92ea63fb9103d801ec2ad0da304204de5c39d5cdb6540f7e21070c21e5","revision":"de240170769fcf739c188b104f801d4371f8086d"},
 
-    {"path":"scripts/__tests__/ci-workflow-contract.test.ts","digest":"deaa1c8c3f09f99cfd21894ef8cf069a0648c1750711bc97ff4771395f85ae6d","revision":"de240170769fcf739c188b104f801d4371f8086d"},
+    {"path":"scripts/__tests__/ci-workflow-contract.test.ts","digest":"03b2cbdaacc45e0ac8a541c0dcbc7cba72bffa44e2f3935a5be170b856b12801","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
 
     {"path":"scripts/__tests__/docs-index-reachability.test.ts","digest":"f0376c008b04dedfd81e4e52b4198c463b57fe70d37de1cb6541fc1baad6ee9d","revision":"8199fd1541fc2af0053845c9253ed0962dd7fbb8"},
 
@@ -132,9 +132,9 @@
 
     {"path":"vitest.setup.ts","digest":"38b7e04f1819daa86f0ebf0f332e29ddc6d62a6576cad2b736870749b18b87e3","revision":"c322e3bff535a1d8d7a84d882dd84d75bddf041f"},
 
-    {"path":"scripts/ci-health.mjs","digest":"993d903e857a0b61646ce251b6308f6d69333b203738891cad05baf87eccabb8","revision":"7e8519008b556d901570139123f56890cf07a113"},
+    {"path":"scripts/ci-health.mjs","digest":"edac396d278bf3956ee1d16409cdd4856088b7d9862d1be22f875238cc801aaf","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
 
-    {"path":"scripts/__tests__/ci-health.test.ts","digest":"da42de553d1e10b9f552ac81ea6eaf29da7dc4122a7c11ca0a844e9a61db62c0","revision":"7e8519008b556d901570139123f56890cf07a113"}
+    {"path":"scripts/__tests__/ci-health.test.ts","digest":"8e35d3f672ee8526019af7b1464c875999f26147b4de037d818285f595c3c3de","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"}
   ],
 
   "checks": [

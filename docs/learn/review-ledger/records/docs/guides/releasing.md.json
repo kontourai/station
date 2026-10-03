@@ -1,0 +1,51 @@
+{
+  "path": "docs/guides/releasing.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Integration, scheduled full qualification, evidence reuse, bounded repair ownership, landing automation and Preview/Stable promotion. Reviewed workflow/CLI boundaries and focused executable failure controls.",
+
+  "limits": "Scoped source review and local executable tests; no hosted agent, publication, signing, physical-device or external Builder schema admission proof. Existing local receipt schema remains separate.",
+
+  "document": {"digest":"19c4ebecba66445639bae579ccaeb43272728b9edfe622ac224983a5bd7127ee","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
+
+  "sources": [
+    {"path":".github/workflows/ci.yml","digest":"9b586bd70bb7c94986ce19ee41151ff768bad2a308a196a15047375c92f9646a","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
+
+    {"path":".github/workflows/full-regression.yml","digest":"064212250fcc5a2d13bed01a3de5a7a72620616b9847ded3cfcdb166b6f694f2","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
+
+    {"path":".github/workflows/merge-queue-regression.yml","digest":"ba13e009f55d64dc1059167c9f1ed009c1518605483c42f4e3a3509e579e9480","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
+
+    {"path":".github/workflows/main-qualification.yml","digest":"a3db5a57739d28acc13bc3e2bb849773d3cc30ed1ad09b66644c08ca47db61fe","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
+
+    {"path":".github/workflows/qualification-repair.yml","digest":"b7732c654f2450c88c68ddd0ac654ad1b815d20e82f4a84398bb963bd5888151","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
+
+    {"path":".github/workflows/qualification-after-repair.yml","digest":"bbb9516a9823b8fead000808624b43e8c0a0b5ad96ca3c9aa7654b5e54148480","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
+
+    {"path":".github/workflows/landing-automation.yml","digest":"1aed3e39f508af1e3e8800b066abedaab79787a646ce551eccb3705170864e33","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
+
+    {"path":".github/workflows/nightly.yml","digest":"4b0cb6bcc5e169bcad830d8a56f7de030864ab0d23cfe64ce1b9880845f45592","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
+
+    {"path":".github/workflows/release.yml","digest":"e9322e982c85dfb6b26188a6f6d0bc596f1f384e949bc50a59fe07d552e3c8f2","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
+
+    {"path":".github/workflows/publish-release.yml","digest":"8811d948692207aff9c3987ed9c5ecfd7778770dfbb76b4d80cb7773713f6fa1","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
+
+    {"path":".github/workflows/publish-packages.yml","digest":"3954825136f2f10d77492b56b78e5bd918ec2ded7099adb162060be92e4e7e8f","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
+
+    {"path":"scripts/qualification-evidence.mjs","digest":"23d781b1425af3c0e5081c80b3c93cf4d6088a2090dddff557dd0f2aa2cade69","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
+
+    {"path":"scripts/qualification-repair.mjs","digest":"08a9b2eab286f2c9c7bf69bb000bb7a7d4b5b0a0cdcd72af1cb1128fc7de6890","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
+
+    {"path":"scripts/landing-automation.mjs","digest":"b071afc945ee7018ba06c4bca212601f0cfde91d44c8c5143f7ca393dd581ec8","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
+
+    {"path":"scripts/__tests__/qualification-evidence.test.ts","digest":"c44b1d63e6aff95d1d8296139f03b45ac0db9a6a75e6b0ead3878467f5f9e943","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
+
+    {"path":"scripts/__tests__/qualification-repair.test.ts","digest":"ec2c565db05fe51eaf5d5cc1f2a7f00f6dc399d46e0a700da0b678c542150f5d","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"}
+  ],
+
+  "checks": [
+    "Focused CI/workflow/release tests executed; receipt all-jobs-to-any mutation rejected and restored green; independent report-only review found no remaining P1/P2."
+  ]
+}
