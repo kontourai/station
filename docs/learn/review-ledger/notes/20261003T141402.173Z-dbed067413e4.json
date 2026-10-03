@@ -1,0 +1,7 @@
+{
+  "revision": "fddbe13fa0a0ea4ad7e3323d71c718212f540f93",
+
+  "notes": [
+    {"path":"docs/patterns/backend.md","note":"Design round 2: stale only through the shared inventory file; no server module changed. No prose change."}
+  ]
+}

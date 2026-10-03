@@ -303,9 +303,7 @@ test('review diff, comment, approve and merge the exact displayed head', async (
     page.getByRole('button', { name: 'Merge inspected head' }),
   ).toHaveCount(0);
   await page.getByRole('button', { name: 'Merge options' }).click();
-  await page
-    .getByRole('menuitemcheckbox', { name: 'Squash and merge' })
-    .click();
+  await page.getByRole('menuitemradio', { name: 'Squash and merge' }).click();
   await page.getByRole('button', { name: 'Merge options' }).click();
   await page.getByRole('menuitem', { name: 'Merge now' }).click();
   dialog = page.getByRole('dialog', { name: 'Merge pull request' });
