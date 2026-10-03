@@ -44,6 +44,7 @@ import type {
   OrchestrationSessionSummary,
   SessionBoardItem,
   SetApprovalModeResult,
+  SteerInputInspectionResult,
   SteerTurnResult,
 } from '@kontourai/station-contracts/orchestration';
 import {
@@ -5783,6 +5784,7 @@ export class OrchestrationService {
     | ProviderSession
     | ProviderTurnStartResult
     | SteerTurnResult
+    | SteerInputInspectionResult
     | InterruptTurnResult
     | SetApprovalModeResult
     | undefined
@@ -5792,6 +5794,7 @@ export class OrchestrationService {
       | ProviderSession
       | ProviderTurnStartResult
       | SteerTurnResult
+      | SteerInputInspectionResult
       | InterruptTurnResult
       | SetApprovalModeResult
       | undefined;
@@ -5858,6 +5861,7 @@ export class OrchestrationService {
       | ProviderSession
       | ProviderTurnStartResult
       | SteerTurnResult
+      | SteerInputInspectionResult
       | InterruptTurnResult
       | SetApprovalModeResult
       | undefined
@@ -7046,7 +7050,32 @@ export class OrchestrationService {
           this.persistReceipt(receipt);
           return { receipt, result: interrupted };
         }
+        case 'inspectSteerInput': {
+          const stored = this.options.eventStore?.readSteerInput(command);
+          const result: SteerInputInspectionResult = stored ?? {
+            outcome: this.options.eventStore ? 'not-received' : 'indeterminate',
+            threadId: command.threadId,
+            clientInputId: command.clientInputId,
+          };
+          this.persistReceipt(receipt);
+          return { receipt, result };
+        }
         case 'steerTurn': {
+          const steerInput = command.clientInputId
+            ? {
+                threadId: command.threadId,
+                clientInputId: command.clientInputId,
+                input: command.input,
+                turnId: command.turnId,
+              }
+            : undefined;
+          const storedSteer =
+            steerInput && this.options.eventStore?.readSteerInput(steerInput);
+          if (storedSteer) {
+            this.persistReceipt(receipt);
+            return { receipt, result: storedSteer };
+          }
+
           // archive#3476: same as interrupt — no engine, therefore no live
           // turn to steer. `no-active-turn` is the existing vocabulary for
           // exactly this and is what the caller would have received anyway
@@ -7162,6 +7191,19 @@ export class OrchestrationService {
             this.persistReceipt(receipt);
             return { receipt, result };
           }
+          if (
+            steerInput &&
+            !this.options.eventStore?.claimSteerInput(steerInput)
+          ) {
+            const result: SteerTurnResult =
+              this.options.eventStore?.readSteerInput(steerInput) ?? {
+                outcome: 'indeterminate',
+                threadId: command.threadId,
+                clientInputId: steerInput.clientInputId,
+              };
+            this.persistReceipt(receipt);
+            return { receipt, result };
+          }
           this.inFlightSteers.add(command.threadId);
           try {
             try {
@@ -7190,11 +7232,9 @@ export class OrchestrationService {
                   activeTurnId,
                 );
               } catch (steerError) {
-                // Mirrors sendTurn's own `!providerAccepted` branch above
-                // (:3780): the adapter never accepted this steer, so there
-                // is no eventual `turn.started` to attribute — discard the
-                // reservation rather than settling it into a permanently
-                // unmatched `#accepted` entry.
+                // Release transient attribution on a failed acknowledgement.
+                // The durable steer claim stays held because engine acceptance
+                // cannot be ruled out.
                 this.clientOriginTurns.cancel(command.threadId);
                 throw steerError;
               }
@@ -7209,6 +7249,16 @@ export class OrchestrationService {
               }
               this.assertAdapterCurrentAfterCommand(adapter);
             } catch (error) {
+              if (steerInput) {
+                const result: SteerTurnResult = {
+                  outcome: 'indeterminate',
+                  threadId: command.threadId,
+                  clientInputId: steerInput.clientInputId,
+                };
+                this.persistReceipt(receipt);
+                return { receipt, result };
+              }
+
               if (
                 error instanceof ProviderTurnEndedError ||
                 !this.isAdapterCurrent(adapter)
@@ -7229,6 +7279,22 @@ export class OrchestrationService {
             }
           } finally {
             this.inFlightSteers.delete(command.threadId);
+          }
+          if (steerInput) {
+            try {
+              this.options.eventStore!.confirmSteerInput(
+                steerInput,
+                activeTurnId,
+              );
+            } catch {
+              const result: SteerTurnResult = {
+                outcome: 'indeterminate',
+                threadId: command.threadId,
+                clientInputId: steerInput.clientInputId,
+              };
+              this.persistReceipt(receipt);
+              return { receipt, result };
+            }
           }
           const result: SteerTurnResult = {
             outcome: 'steered',
