@@ -150,11 +150,11 @@
   margin: var(--space-2) 0.75rem 0;
 }
 
+/* Inline, not inline-flex: an atomic inline box counts as one line to the
+   clamp above however many lines it wraps to, which let a long failure cause
+   push the row to three lines. */
 .activity-row-meta__state {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.28rem;
-  vertical-align: bottom;
+  display: inline;
 }
 
 /* The status ladder's glyph and line, in the row's four tones
@@ -162,7 +162,7 @@
 .activity-row-meta__state .inbox-row__status-glyph {
   width: 13px;
   height: 13px;
-  flex: 0 0 auto;
+  vertical-align: -2px;
 }
 .activity-row-meta__state[data-tone="attention"] {
   color: var(--accent-primary);

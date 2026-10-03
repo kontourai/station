@@ -724,7 +724,26 @@ describe('SessionsView', () => {
         detail: '<em>Stopped by request.</em>',
       },
     };
-    sessions = [parent, needsAttention, completed, noLifecycleState, stopped];
+    const failed = {
+      ...needsAttention,
+      threadId: 'failed',
+      displayTitle: 'Failed on the stream',
+      delegation: { ...needsAttention.delegation, taskId: 'task:failed' },
+      pendingReview: false,
+      lifecycleState: 'failed',
+      terminalAttribution: {
+        kind: 'engine_error',
+        detail: 'The response stream failed.',
+      },
+    };
+    sessions = [
+      parent,
+      needsAttention,
+      completed,
+      noLifecycleState,
+      stopped,
+      failed,
+    ];
 
     renderView();
 
@@ -749,6 +768,18 @@ describe('SessionsView', () => {
       ).textContent,
     ).toBe('<em>Stopped by request.</em>');
     expect(statusFor('stopped').querySelector('em')).toBeNull();
+    // A failure's cause is the line's detail, attributed in place: the row's
+    // text carries it once, not as a second sr-only copy.
+    expect(stateOf('failed')).toBe('Failed · The response stream failed.');
+    expect(
+      within(statusFor('failed')).getByTestId(
+        'session-member-terminal-attribution',
+      ).textContent,
+    ).toBe('The response stream failed.');
+    expect(
+      statusFor('failed').textContent?.split('The response stream failed.')
+        .length,
+    ).toBe(2);
   });
 
   test('puts a mixed-state run in Needs you, counts the rendered run, and keeps its summary when collapsed', async () => {

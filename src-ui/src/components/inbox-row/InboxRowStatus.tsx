@@ -168,7 +168,10 @@ export function InboxRowStatusLine({
         </>
       )}
       {status.since === undefined && lastActivityAt !== undefined && (
-        <>
+        // One element with its separator, like the elapsed time below: the
+        // phone picker hides the line's direct separators (it folds the
+        // detail away), and the time keeps its dot the way the duration does.
+        <span>
           <span className="inbox-row__sep">{' · '}</span>
           <span
             className="inbox-row__recency"
@@ -176,7 +179,7 @@ export function InboxRowStatusLine({
           >
             {relativeTime(lastActivityAt, now)}
           </span>
-        </>
+        </span>
       )}
       {status.since !== undefined && (
         <>

@@ -6,7 +6,10 @@
    narrow viewports are covered by construction. */
 .chat-dock-inbox-hover-card {
   position: fixed;
-  z-index: var(--layer-popover);
+  /* The surface-popover layer, not the page popover layer: a row on Home
+     beside a right-docked region opens its card over that region, and the
+     dock (--layer-dock) paints above --layer-popover. */
+  z-index: var(--layer-surface-popover);
   width: 340px;
   max-width: calc(100vw - 16px);
   max-height: min(70vh, 560px);

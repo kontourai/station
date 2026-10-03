@@ -22,6 +22,7 @@ import { Button } from '../components/Button';
 import { DelegationLauncher } from '../components/chat-dock/DelegationLauncher';
 import { DiscardDraftButton } from '../components/drafts/DiscardDraftButton';
 import { AgentIcon } from '../components/icons/AgentIcon';
+import { InboxRowStatusGlyph } from '../components/inbox-row/InboxRowStatus';
 import { ConfirmModal } from '../components/modals/ConfirmModal';
 import { useIsPageFramed } from '../components/page-frame';
 import { SplitPaneLayout } from '../components/SplitPaneLayout';
@@ -29,7 +30,6 @@ import { SessionPullRequestConflictChip } from '../components/session/SessionPul
 import type { SessionEvidenceReveal } from '../components/session-detail/MutableSessionDetail';
 import { SessionDetail } from '../components/session-detail/SessionDetail';
 import { ErrorState, SkeletonBlock } from '../components/state';
-import { InboxRowStatusGlyph } from '../components/inbox-row/InboxRowStatus';
 import { useAgents } from '../contexts/AgentsContext';
 import { openChatsStore, useOpenChats } from '../contexts/open-chats-store';
 import { toastStore } from '../contexts/ToastContext';
@@ -69,6 +69,7 @@ import {
   focusChatEventDetailForAction,
   resolveConversationOpenAction,
 } from './home/work-item-open-policy';
+import { formatElapsed } from './home/work-status';
 import { foldConversationTurns } from './sessions/conversation-groups';
 import { RunBoardSummary } from './sessions/RunBoardSummary';
 import { groupDelegatedSessionRuns } from './sessions/run-groups';
@@ -184,6 +185,10 @@ function ActivityRowMeta({
     status.detail ??
     freshFailure ??
     (status.rung === 'stopped' ? status.reason : undefined);
+  // When the cause IS the line's detail it is attributed in place: a second
+  // sr-only copy read the failure twice.
+  const attributedInLine =
+    terminalAttribution !== undefined && terminalAttribution === status.detail;
   const attached = isReadOnlyAttachedSession(session);
   const agentName = attached ? null : sessionIconAgent(session, agents).name;
   const project = sessionProjectLabel(session);
@@ -216,12 +221,27 @@ function ActivityRowMeta({
         title={status.reason}
       >
         <InboxRowStatusGlyph rung={status.rung} />{' '}
-        <span data-testid="activity-row-state">{status.line}</span>
+        <span data-testid="activity-row-state">
+          {attributedInLine ? (
+            <>
+              {status.word}
+              {' · '}
+              <span data-testid="session-member-terminal-attribution">
+                {status.detail}
+              </span>
+              {status.since !== undefined
+                ? ` · ${formatElapsed(now - status.since)}`
+                : null}
+            </>
+          ) : (
+            status.line
+          )}
+        </span>
         {status.reason && status.rung !== 'stopped' && (
           <span className="sr-only">{` · ${status.reason}`}</span>
         )}
       </span>
-      {terminalAttribution && (
+      {terminalAttribution && !attributedInLine && (
         <>
           <span className="sr-only">{' · '}</span>
           <span

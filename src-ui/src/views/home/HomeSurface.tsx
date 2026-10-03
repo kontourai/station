@@ -75,7 +75,12 @@ export function HomeSurface({
   const openProject = projectOpener(model, onNavigate);
   const hasWork = model.workItems.length > 0;
 
-  const actions = (
+  // The skeleton stands where the cards will stand. It used to sit under the
+  // start form, which put a 150px placeholder above the work it had nothing
+  // to do with (Q3).
+  const actions = model.actionsLoading ? (
+    <SkeletonBlock count={1} label="Finding available ways to help" />
+  ) : (
     <HomeActionSection
       continuation={continuation}
       model={model}
@@ -142,9 +147,6 @@ export function HomeSurface({
           identity={model.startReady ? model.startIdentity : undefined}
           compact={hasWork}
         />
-        {model.actionsLoading ? (
-          <SkeletonBlock count={1} label="Finding available ways to help" />
-        ) : null}
       </section>
       {hasWork ? (
         <>

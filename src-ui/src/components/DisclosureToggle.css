@@ -41,9 +41,3 @@
   outline-offset: 2px;
   border-radius: var(--radius-sm);
 }
-
-@media (prefers-reduced-motion: reduce) {
-  .disclosure-toggle__caret {
-    transition: none;
-  }
-}

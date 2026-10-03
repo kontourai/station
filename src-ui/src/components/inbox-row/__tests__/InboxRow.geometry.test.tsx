@@ -258,6 +258,43 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
     }
   });
 
+  test('the hover card paints above a docked region, not under it', async () => {
+    // A Home row beside a right-docked chat opens its card over that region;
+    // the dock sits at --layer-dock, so a card on the page popover layer is
+    // covered by it. Measured through the real cascade, against the tokens.
+    const pg = await browser.newPage({
+      viewport: { width: 1280, height: 900 },
+    });
+    try {
+      await pg.setContent(
+        page(
+          '<div class="chat-dock-inbox-hover-card" data-testid="card">card</div>',
+        ),
+      );
+      const layers = await pg.evaluate(() => {
+        const token = (name: string) =>
+          Number.parseInt(
+            getComputedStyle(document.documentElement).getPropertyValue(name),
+            10,
+          );
+        const card = document.querySelector('[data-testid="card"]');
+        if (!card) throw new Error('card not rendered');
+        return {
+          card: Number.parseInt(getComputedStyle(card).zIndex, 10),
+          dock: token('--layer-dock'),
+          navigation: token('--layer-navigation'),
+        };
+      });
+      expect(Number.isFinite(layers.dock)).toBe(true);
+      expect(layers.card).toBeGreaterThan(layers.dock);
+      // Below the navigation layer: the phone's sidebar drawer still covers
+      // a card left open behind it.
+      expect(layers.card).toBeLessThan(layers.navigation);
+    } finally {
+      await pg.close();
+    }
+  });
+
   test('a revealed action is a 44px-tall target that stays inside its own row', async () => {
     const pg = await browser.newPage({
       viewport: { width: 1280, height: 900 },
