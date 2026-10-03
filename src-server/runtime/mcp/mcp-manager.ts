@@ -20,6 +20,10 @@ import { wrapPlatformMutationGatedTools } from '../../services/evidence/platform
 import type { MCPToolProvenanceGeneration } from '../../services/orchestration/mcp-tool-provenance.js';
 import { toolServerOAuthRedirectUrl } from '../../services/plugins/mcp-service.js';
 import {
+  mcpToolDisabled,
+  originalMcpToolName,
+} from '../../services/plugins/mcp-tool-selection.js';
+import {
   type AttestedProposalSubject,
   attestProposalSourceContext,
 } from '../../services/plugins/plugin-proposal-provenance.js';
@@ -577,7 +581,15 @@ export async function loadAgentTools(
           },
         );
         const enabledTools = mcpTools.filter(
-          (tool) => !toolDef.disabledTools?.includes(tool.name),
+          (tool) =>
+            !mcpToolDisabled(
+              toolId,
+              originalMcpToolName(
+                toolId,
+                toolNameMapping.get(tool.name)?.original ?? tool.name,
+              ),
+              toolDef.disabledTools,
+            ),
         );
         tools.push(
           ...wrapPlatformMutationGatedTools(

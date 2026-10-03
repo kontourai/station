@@ -1,21 +1,25 @@
 import type { AgentEngineValidationFinding } from '@kontourai/station-contracts/agent-validation';
+import { useReconnectIntegrationMutation } from '@kontourai/station-sdk';
 import type { Dispatch, SetStateAction } from 'react';
+import { useState } from 'react';
+import { Button } from '../../components/Button';
 import { Checkbox } from '../../components/Checkbox';
-import { CheckGlyph } from '../../components/icons/Glyph';
+import { ArrowDownGlyph } from '../../components/icons/Glyph';
 import { IntegrationGlyph } from '../../components/icons/IntegrationGlyph';
 import { Toggle } from '../../components/Toggle';
+import type { Tool } from '../../types';
 import { AgentEditorWorkflows } from './AgentEditorWorkflows';
 import type { AgentEditorFormProps } from './types';
 import {
+  addIntegration,
+  effectiveAgentToolPatterns,
   getIntegrationToolKey,
   removeIntegration,
+  selectIntegrationTools,
   toggleIntegrationAutoApprove,
   toggleIntegrationToolAutoApprove,
   toggleIntegrationToolEnabled,
 } from './utils';
-
-const READONLY_TRAILER =
-  "This content is saved with the agent and stays portable, but this engine won't deliver it.";
 
 export function AgentEditorToolsTab({
   form,
@@ -29,6 +33,7 @@ export function AgentEditorToolsTab({
   onOpenAddModal,
   finding,
   engineDefaultToolsHint,
+  engineId = 'station',
 }: Pick<
   AgentEditorFormProps,
   | 'form'
@@ -42,262 +47,445 @@ export function AgentEditorToolsTab({
   expandedIntegrations: Record<string, boolean>;
   setExpandedIntegrations: Dispatch<SetStateAction<Record<string, boolean>>>;
   finding?: AgentEngineValidationFinding;
-  /**
-   * archive#975 D-1 §4.2 engine-default hint: the bound connection's own
-   * `config.provideToolServers` count, shown only when the surface is
-   * deliverable and the agent hasn't authored its own tool servers.
-   */
   engineDefaultToolsHint?: number;
+  engineId?: string;
 }) {
-  const readOnly = !!finding;
-  const effectiveLocked = locked || readOnly;
-  const enabledServers = new Set(form.tools.mcpServers);
-  const enabledIntegrations = availableTools.filter((tool) =>
-    enabledServers.has(tool.id),
+  const [search, setSearch] = useState('');
+  const [showApprovals, setShowApprovals] = useState(false);
+  const checkTools = useReconnectIntegrationMutation();
+  const disabled = locked || !!finding;
+  const patterns = effectiveAgentToolPatterns(form);
+  const selected: Tool[] = form.tools.mcpServers.map(
+    (id) =>
+      availableTools.find((tool) => tool.id === id) ?? {
+        id,
+        name: id,
+        displayName: id,
+      },
   );
+  const station = availableTools.find((tool) => tool.id === 'station-control');
+  const supportsSelection = ['station', 'claude', 'codex'].includes(engineId);
+  const query = search.trim().toLowerCase();
+
+  const catalogFor = (integration: Tool): Tool[] =>
+    integration.tools?.length
+      ? integration.tools.map((tool) => ({
+          id: `${integration.id}_${tool.toolName || tool.name}`,
+          name: tool.toolName || tool.name,
+          toolName: tool.toolName || tool.name,
+          description: tool.description,
+          enabled: !tool.disabled,
+        }))
+      : (integrationTools[integration.id] ?? []);
+  const toolEnabled = (id: string, key: string) =>
+    patterns.includes('*') ||
+    patterns.includes(`${id}_*`) ||
+    patterns.includes(key);
 
   return (
     <div className="agent-editor__section">
       {finding && (
         <div className="agent-editor__capability-banner" role="status">
-          {finding.message}. {READONLY_TRAILER}
+          {finding.message}
         </div>
       )}
       <div className="editor-field">
         <div className="editor-label-row">
-          <span className="editor-label">Integrations</span>
-          <span className="editor-label-row__actions">
-            <button
-              type="button"
-              className="editor-enrich-btn"
-              onClick={() => onNavigate({ type: 'connections-tools' })}
+          <span className="editor-label">Tools</span>
+          <div className="agent-tools__actions">
+            {station && !form.tools.mcpServers.includes(station.id) && (
+              <Button
+                variant="secondary"
+                disabled={disabled || station.enabled === false}
+                onClick={() => {
+                  const readOnly = station.tools
+                    ?.filter((tool) => tool.readOnly && !tool.disabled)
+                    .map(
+                      (tool) => `station-control_${tool.toolName || tool.name}`,
+                    );
+                  setForm((current) =>
+                    supportsSelection && readOnly?.length
+                      ? selectIntegrationTools(current, station.id, readOnly)
+                      : addIntegration(current, station.id),
+                  );
+                  setExpandedIntegrations((current) => ({
+                    ...current,
+                    [station.id]: true,
+                  }));
+                }}
+              >
+                Add Station tools
+              </Button>
+            )}
+            <Button
+              variant="secondary"
+              disabled={disabled}
+              onClick={() => onOpenAddModal('integrations')}
             >
-              Manage →
-            </button>
-            {!effectiveLocked && (
-              <button
-                type="button"
-                className="editor-enrich-btn"
-                onClick={() => onOpenAddModal('integrations')}
-              >
-                + Add
-              </button>
-            )}
-          </span>
-        </div>
-        {!readOnly &&
-          !!engineDefaultToolsHint &&
-          form.tools.mcpServers.length === 0 && (
-            <span className="editor-hint">
-              {`This engine connection's default provides ${engineDefaultToolsHint} tool server(s) when the agent doesn't set its own.`}
-            </span>
-          )}
-        {enabledIntegrations.length === 0 ? (
-          <div className="editor__tools-empty">
-            No integrations enabled.{' '}
-            {!effectiveLocked && (
-              <button
-                type="button"
-                className="editor__tools-link"
-                onClick={() => onOpenAddModal('integrations')}
-              >
-                Add integrations
-              </button>
-            )}
+              Add tools
+            </Button>
           </div>
-        ) : (
-          <div className="editor__tools-grouped">
-            {enabledIntegrations.map((integration) => {
-              const isExpanded = expandedIntegrations[integration.id] || false;
-              const tools = integrationTools[integration.id] || [];
-              const prefix = `${integration.id}_`;
-              const hasAutoApprove = form.tools.autoApprove.includes(
-                `${prefix}*`,
-              );
-              const hasExplicitAvailable = form.tools.available.some((entry) =>
-                entry.startsWith(prefix),
-              );
-              const allToolsActive =
-                !hasExplicitAvailable ||
-                form.tools.available.includes(`${prefix}*`);
-
-              return (
-                <div key={integration.id} className="editor__tools-server">
-                  {/* biome-ignore lint/a11y/useSemanticElements: composite header contains independent checkbox and auto-approve buttons, so it cannot itself be a native button. */}
-                  <div
-                    className={`editor__tools-server-header${tools.length > 0 ? ' editor__tools-server-header--clickable' : ''}`}
-                    onClick={() =>
-                      tools.length > 0 &&
-                      setExpandedIntegrations((current) => ({
+        </div>
+        <span className="editor-hint">Applies to new chats.</span>
+        <div className="agent-tools__settings">
+          {['claude', 'codex'].includes(engineId) && (
+            <>
+              <div className="agent-tools__setting">
+                <span>Keep harness tools</span>
+                <Toggle
+                  label="Keep harness tools"
+                  checked={
+                    form.tools.mcpMode === 'add' ||
+                    (form.tools.mcpMode === undefined &&
+                      (engineId === 'codex' ||
+                        form.toolsOriginal?.mcpServers === undefined))
+                  }
+                  disabled={disabled}
+                  onChange={(keep) =>
+                    setForm((current) => ({
+                      ...current,
+                      tools: {
+                        ...current.tools,
+                        mcpMode: keep ? 'add' : 'replace',
+                      },
+                    }))
+                  }
+                />
+              </div>
+              {engineId === 'claude' && (
+                <label className="agent-tools__loading">
+                  Loading
+                  <select
+                    className="editor-select"
+                    disabled={disabled}
+                    value={form.tools.mcpLoading ?? ''}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      setForm((current) => ({
                         ...current,
-                        [integration.id]: !current[integration.id],
-                      }))
-                    }
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(event) => {
-                      if (event.target !== event.currentTarget) return;
-                      if (event.key === 'Enter' || event.key === ' ') {
-                        event.preventDefault();
-                        event.currentTarget.click();
-                      }
+                        tools: {
+                          ...current.tools,
+                          mcpLoading:
+                            value === 'always' || value === 'on-demand'
+                              ? value
+                              : undefined,
+                        },
+                      }));
                     }}
                   >
-                    {/* biome-ignore lint/a11y/noStaticElementInteractions: event shield with no action of its own — it only keeps a checkbox click from toggling the header. */}
-                    {/* biome-ignore lint/a11y/useKeyWithClickEvents: nothing to activate; the checkbox inside carries the action. */}
-                    <span
-                      onClick={(event) => event.stopPropagation()}
-                      style={{ display: 'contents' }}
-                    >
-                      <Checkbox
-                        checked={true}
-                        onChange={() => {
-                          if (effectiveLocked) {
-                            return;
-                          }
+                    <option value="">Harness default</option>
+                    <option value="on-demand">On demand</option>
+                    <option value="always">Always available</option>
+                  </select>
+                </label>
+              )}
+            </>
+          )}
+          {!finding &&
+            !!engineDefaultToolsHint &&
+            form.tools.mcpServers.length === 0 && (
+              <span className="editor-hint">
+                {engineDefaultToolsHint} harness integration(s).
+              </span>
+            )}
+          <Button
+            variant="ghost"
+            onClick={() => onNavigate({ type: 'connections-tools' })}
+          >
+            Manage integrations
+          </Button>
+        </div>
+        {selected.length === 0 ? (
+          <span className="editor-hint">No added tools.</span>
+        ) : (
+          <>
+            <input
+              className="editor-input"
+              aria-label="Search added tools"
+              placeholder="Search tools…"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+            />
+            <div className="editor__tools-grouped">
+              {selected.map((integration) => {
+                const tools = catalogFor(integration);
+                const visible = tools.filter(
+                  (tool) =>
+                    !query ||
+                    `${tool.toolName || tool.name} ${(tool.toolName || tool.name).replaceAll('_', ' ')} ${tool.description || ''}`
+                      .toLowerCase()
+                      .includes(query),
+                );
+                if (
+                  query &&
+                  visible.length === 0 &&
+                  !(integration.displayName || integration.id)
+                    .toLowerCase()
+                    .includes(query)
+                )
+                  return null;
+                const expanded =
+                  !!query || expandedIntegrations[integration.id];
+                const enabledCount = tools.filter(
+                  (tool) =>
+                    tool.enabled !== false &&
+                    toolEnabled(
+                      integration.id,
+                      getIntegrationToolKey(integration.id, tool),
+                    ),
+                ).length;
+                const readOnly = integration.tools?.filter(
+                  (tool) => tool.readOnly === true && !tool.disabled,
+                );
+                const prefix = `${integration.id}_`;
+                return (
+                  <div className="editor__tools-server" key={integration.id}>
+                    <div className="agent-tools__server-row">
+                      <Button
+                        variant="ghost"
+                        className="agent-tools__server-toggle"
+                        aria-expanded={!!expanded}
+                        onClick={() =>
+                          setExpandedIntegrations((current) => ({
+                            ...current,
+                            [integration.id]: !expanded,
+                          }))
+                        }
+                      >
+                        <IntegrationGlyph
+                          id={integration.id}
+                          displayName={integration.displayName}
+                          icon={integration.icon}
+                          iconUrl={integration.iconUrl}
+                          size={20}
+                        />
+                        <span>{integration.displayName || integration.id}</span>
+                        <span className="editor-hint">
+                          {tools.length
+                            ? `${enabledCount}/${tools.length}`
+                            : 'All tools'}
+                        </span>
+                        <span
+                          aria-hidden="true"
+                          className={`agent-editor__chevron${expanded ? ' agent-editor__chevron--open' : ''}`}
+                        >
+                          <ArrowDownGlyph />
+                        </span>
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        disabled={disabled}
+                        aria-label={`Remove ${integration.displayName || integration.id}`}
+                        onClick={() =>
                           setForm((current) =>
                             removeIntegration(current, integration.id),
-                          );
-                        }}
-                        disabled={effectiveLocked}
-                      />
-                    </span>
-                    <span className="editor__tools-server-name">
-                      <IntegrationGlyph
-                        id={integration.id}
-                        displayName={integration.displayName}
-                        icon={integration.icon}
-                        iconUrl={integration.iconUrl}
-                        size={20}
-                      />
-                      {integration.displayName || integration.id}
-                    </span>
-                    <button
-                      type="button"
-                      className={`editor__tool-badge editor__tool-badge--btn${hasAutoApprove ? ' editor__tool-badge--auto' : ' editor__tool-badge--add'}`}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        if (effectiveLocked) {
-                          return;
+                          )
                         }
-                        setForm((current) =>
-                          toggleIntegrationAutoApprove(current, integration.id),
-                        );
-                      }}
-                    >
-                      {hasAutoApprove ? (
-                        <>
-                          <CheckGlyph /> auto-approve
-                        </>
-                      ) : (
-                        '+ auto-approve'
-                      )}
-                    </button>
-                    {tools.length > 0 && (
-                      <span
-                        className={`agent-editor__chevron${isExpanded ? ' agent-editor__chevron--open' : ''}`}
                       >
-                        ›
-                      </span>
-                    )}
-                  </div>
-                  {isExpanded && tools.length > 0 && (
-                    <div className="editor__tools-list">
-                      {tools.map((tool) => {
-                        const toolKey = getIntegrationToolKey(
-                          integration.id,
-                          tool,
-                        );
-                        const toolEnabled =
-                          allToolsActive ||
-                          form.tools.available.includes(toolKey);
-                        const toolAutoApprove =
-                          toolEnabled &&
-                          (form.tools.autoApprove.includes(`${prefix}*`) ||
-                            form.tools.autoApprove.includes(toolKey));
-
-                        return (
-                          <div
-                            key={tool.id}
-                            className={`editor__tool-item${toolEnabled ? ' editor__tool-item--active' : ''}`}
-                          >
-                            <Checkbox
-                              checked={toolEnabled}
-                              disabled={effectiveLocked}
-                              onChange={() => {
-                                if (effectiveLocked) {
-                                  return;
-                                }
-                                setForm((current) =>
-                                  toggleIntegrationToolEnabled(
-                                    current,
-                                    integration.id,
-                                    toolKey,
-                                    tools,
-                                  ),
-                                );
-                              }}
-                            />
-                            <div className="editor__tool-info">
-                              <div className="editor__tool-name">
-                                {tool.toolName || tool.name}
-                              </div>
-                              {tool.description && (
-                                <div className="editor__tool-desc">
-                                  {tool.description}
-                                </div>
-                              )}
-                            </div>
-                            {toolEnabled ? (
-                              <button
-                                type="button"
-                                className={`editor__tool-badge editor__tool-badge--btn${toolAutoApprove ? ' editor__tool-badge--auto' : ' editor__tool-badge--add'}`}
-                                onClick={() => {
-                                  if (effectiveLocked) {
-                                    return;
-                                  }
+                        Remove
+                      </Button>
+                    </div>
+                    {expanded && (
+                      <div className="agent-tools__detail">
+                        {supportsSelection && tools.length > 0 && (
+                          <div className="agent-tools__actions">
+                            {readOnly?.length ? (
+                              <Button
+                                variant="secondary"
+                                disabled={disabled}
+                                onClick={() =>
                                   setForm((current) =>
-                                    toggleIntegrationToolAutoApprove(
+                                    selectIntegrationTools(
                                       current,
                                       integration.id,
-                                      toolKey,
-                                      tools,
+                                      readOnly.map(
+                                        (tool) =>
+                                          `${prefix}${tool.toolName || tool.name}`,
+                                      ),
                                     ),
-                                  );
-                                }}
+                                  )
+                                }
                               >
-                                {toolAutoApprove ? (
-                                  <>
-                                    <CheckGlyph /> auto
-                                  </>
-                                ) : (
-                                  '+ auto'
-                                )}
-                              </button>
-                            ) : (
-                              <span className="editor__tool-badge editor__tool-badge--disabled">
-                                auto
-                              </span>
-                            )}
+                                Read only
+                              </Button>
+                            ) : null}
+                            <Button
+                              variant="secondary"
+                              disabled={disabled}
+                              onClick={() =>
+                                setForm((current) =>
+                                  selectIntegrationTools(
+                                    current,
+                                    integration.id,
+                                    tools
+                                      .filter((tool) => tool.enabled !== false)
+                                      .map((tool) =>
+                                        getIntegrationToolKey(
+                                          integration.id,
+                                          tool,
+                                        ),
+                                      ),
+                                  ),
+                                )
+                              }
+                            >
+                              All
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              disabled={disabled}
+                              onClick={() =>
+                                setForm((current) =>
+                                  selectIntegrationTools(
+                                    current,
+                                    integration.id,
+                                    [],
+                                  ),
+                                )
+                              }
+                            >
+                              None
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              aria-pressed={showApprovals}
+                              onClick={() =>
+                                setShowApprovals((current) => !current)
+                              }
+                            >
+                              Approvals
+                            </Button>
                           </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
+                        )}
+                        {!supportsSelection && (
+                          <span className="editor-hint">
+                            This harness selects its own tools.
+                          </span>
+                        )}
+                        {showApprovals && (
+                          <div className="agent-tools__setting">
+                            <span>Auto-approve all</span>
+                            <Toggle
+                              label={`Auto-approve ${integration.displayName || integration.id}`}
+                              checked={form.tools.autoApprove.includes(
+                                `${prefix}*`,
+                              )}
+                              disabled={disabled}
+                              onChange={() =>
+                                setForm((current) =>
+                                  toggleIntegrationAutoApprove(
+                                    current,
+                                    integration.id,
+                                  ),
+                                )
+                              }
+                            />
+                          </div>
+                        )}
+                        {tools.length === 0 && (
+                          <div className="agent-tools__actions">
+                            <Button
+                              variant="secondary"
+                              disabled={
+                                disabled || integration.enabled === false
+                              }
+                              pending={
+                                checkTools.isPending &&
+                                checkTools.variables === integration.id
+                              }
+                              pendingLabel="Checking…"
+                              onClick={() => checkTools.mutate(integration.id)}
+                            >
+                              Check tools
+                            </Button>
+                            {checkTools.isError &&
+                              checkTools.variables === integration.id && (
+                                <span className="editor-hint" role="status">
+                                  Could not check tools. Open Manage
+                                  integrations.
+                                </span>
+                              )}
+                          </div>
+                        )}
+                        <div className="agent-tools__checklist">
+                          {visible.map((tool) => {
+                            const key = getIntegrationToolKey(
+                              integration.id,
+                              tool,
+                            );
+                            const enabled =
+                              tool.enabled !== false &&
+                              toolEnabled(integration.id, key);
+                            return (
+                              <div className="agent-tools__tool-row" key={key}>
+                                <Checkbox
+                                  checked={enabled}
+                                  disabled={
+                                    disabled ||
+                                    !supportsSelection ||
+                                    tool.enabled === false
+                                  }
+                                  onChange={() =>
+                                    setForm((current) =>
+                                      toggleIntegrationToolEnabled(
+                                        current,
+                                        integration.id,
+                                        key,
+                                        tools,
+                                      ),
+                                    )
+                                  }
+                                >
+                                  <span title={tool.description}>
+                                    {(tool.toolName || tool.name)
+                                      .replaceAll('_', ' ')
+                                      .replace(/^./, (letter) =>
+                                        letter.toUpperCase(),
+                                      )}
+                                  </span>
+                                </Checkbox>
+                                {showApprovals && (
+                                  <Toggle
+                                    label={`Auto-approve ${tool.toolName || tool.name}`}
+                                    checked={
+                                      enabled &&
+                                      (form.tools.autoApprove.includes(
+                                        `${prefix}*`,
+                                      ) ||
+                                        form.tools.autoApprove.includes(key))
+                                    }
+                                    disabled={disabled || !enabled}
+                                    onChange={() =>
+                                      setForm((current) =>
+                                        toggleIntegrationToolAutoApprove(
+                                          current,
+                                          integration.id,
+                                          key,
+                                          tools,
+                                        ),
+                                      )
+                                    }
+                                  />
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </>
         )}
       </div>
       <div className="editor-field">
         <div className="editor-label-row">
-          <span className="editor-label" id="agent-browser-tools-label">
-            Browser tools
-          </span>
+          <span className="editor-label">Browser tools</span>
           <Toggle
             checked={form.tools.browser !== false}
-            disabled={effectiveLocked}
+            disabled={disabled}
             describedBy="agent-browser-tools-hint"
             label="Browser tools"
             onChange={(browser) =>
@@ -309,17 +497,9 @@ export function AgentEditorToolsTab({
           />
         </div>
         <span className="editor-hint" id="agent-browser-tools-hint">
-          Lets this agent open and drive its Project's Browser pane, the same
-          browser you can watch and take over. Delivered to Claude agents;
-          browser actions ask for approval like other sensitive tools.
+          Drive the Project browser. Available to Claude agents.
         </span>
       </div>
-      {/*
-        station#2693: workflow files were CLI-only between the #2677
-        dead-surface sweep (nothing navigated to the old view) and the #1563
-        editor redesign it waited for. The section below is the UI for the
-        live `/agents/:slug/workflows/*` routes; see AgentEditorWorkflows.
-      */}
       <AgentEditorWorkflows slug={form.slug} locked={locked} />
     </div>
   );

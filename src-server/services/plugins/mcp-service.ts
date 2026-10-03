@@ -37,6 +37,7 @@ import type {
   IntegrationSecretBindingGranter,
   IntegrationSecretResolver,
 } from '../secrets/secret-binding-administration.js';
+import { mcpToolDisabled } from './mcp-tool-selection.js';
 import { ToolServerCredentialStore } from './tool-server-credential-store.js';
 import {
   captureToolServerOperationFailure,
@@ -1022,10 +1023,9 @@ export class MCPService {
         'connect',
         async (conn) => {
           const def = await this.configLoader.loadIntegration(serverId);
-          const disabled = new Set(def.disabledTools ?? []);
           return conn.tools.filter(
             (tool) =>
-              !disabled.has(tool.originalName) && !disabled.has(tool.name),
+              !mcpToolDisabled(serverId, tool.originalName, def.disabledTools),
           );
         },
       );
@@ -1177,12 +1177,7 @@ export class MCPService {
     toolName: string,
   ): Promise<void> {
     const def = await this.configLoader.loadIntegration(serverId);
-    if (
-      (def.disabledTools ?? []).some(
-        (disabled) =>
-          disabled === toolName || disabled === `${serverId}_${toolName}`,
-      )
-    ) {
+    if (mcpToolDisabled(serverId, toolName, def.disabledTools)) {
       throw new MCPToolDisabledError(
         `MCP tool '${toolName}' is disabled for server '${serverId}'`,
       );

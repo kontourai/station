@@ -45,8 +45,26 @@ For full field reference see [docs/reference/config.md](../reference/config.md).
 
 ### MCP Tool Configuration
 
-For Station-engine Agents, `tools` selects MCP connections and exposed tools.
-External delivery follows the [engine policy contract](../conformance/tool-policy-delivery.md):
+Open an Agent's **Tools** section to add integrations. **Add Station tools**
+adds read-only built-in controls; expand the row to choose **Read only**, **All**,
+**None**, or individual tools. Search narrows the checklist. **Approvals**
+reveals automatic-approval settings separately. Saved changes apply to new chats.
+
+Claude and Codex offer **Keep harness tools**. New Agents add integrations to
+the harness configuration; existing Agents keep their previous behavior until
+you change this switch. Turning it off uses only the authored MCP list. Claude
+also offers **Harness default**, **On demand**, and **Always available** loading.
+On demand uses Claude's native tool search and requires a compatible model and
+endpoint; it is not a Station search proxy. Other engines keep their own loading
+behavior.
+
+`tools` selects MCP connections and exposed tools. Station applies its runtime
+filter; Claude applies SDK exclusions plus a pre-tool refusal, and Codex receives
+its native `enabled_tools` / `disabled_tools` configuration. Station Control also
+filters its served catalog and calls to the session's selection. Engines reached
+through the generic connected-engine protocol cannot deliver individual-tool
+selection: a restricted integration is reported undelivered rather than widened.
+External policy delivery follows the [engine policy contract](../conformance/tool-policy-delivery.md):
 
 ```json
 {
@@ -59,7 +77,9 @@ External delivery follows the [engine policy contract](../conformance/tool-polic
 ```
 
 - `mcpServers` — IDs of MCP servers to connect (each defined in `<STATION_HOME>/integrations/<id>/tool.json`)
-- `available` — allowlist of tool names exposed to the agent; omit or set `["*"]` to expose all tools from connected servers
+- `mcpMode` — `add` preserves harness integrations; `replace` supplies only the Agent's list. Omission retains legacy engine behavior
+- `mcpLoading` — `on-demand` or `always`, delivered through Claude's `ENABLE_TOOL_SEARCH`; omission preserves the harness setting
+- `available` — allowlist of tool names exposed to the agent; omit or set `["*"]` to expose all tools from connected servers; an empty list exposes none
 - `autoApprove` — patterns consulted for automatic approval; they do not override earlier runtime-generation, delegation or configuration-protection refusals. A pattern covers plain calls to a tool and never an escalation or a plan exit, even `*` (see [below](#what-autoapprove-never-covers))
 - `unattendedAutoApprove` — explicit opt-in for tools the agent may run when nobody is there to confirm (see [Unattended runs](#unattended-runs))
 

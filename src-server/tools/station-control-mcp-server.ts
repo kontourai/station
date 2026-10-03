@@ -85,7 +85,11 @@ function withToolSideRefusal<
  * native v2 tools with object schemas.
  */
 export class StationControlToolRegistry {
-  constructor(private readonly server: McpServer) {}
+  constructor(
+    private readonly server: McpServer,
+    private readonly catalog?: (name: string, description: string) => void,
+    private readonly allowedTools?: readonly string[],
+  ) {}
 
   tool<Shape extends z.ZodRawShape>(
     name: string,
@@ -93,6 +97,8 @@ export class StationControlToolRegistry {
     shape: Shape,
     callback: ToolCallback<z.ZodObject<Shape>>,
   ) {
+    if (this.allowedTools && !this.allowedTools.includes(name)) return;
+    this.catalog?.(name, description);
     return this.server.registerTool(
       name,
       {
@@ -109,6 +115,8 @@ export class StationControlToolRegistry {
     inputSchema: Schema,
     callback: ToolCallback<Schema>,
   ) {
+    if (this.allowedTools && !this.allowedTools.includes(name)) return;
+    this.catalog?.(name, description);
     return this.server.registerTool(
       name,
       { description, inputSchema },
@@ -136,6 +144,8 @@ export class StationControlToolRegistry {
     // structural ServerContext types. The helper only calls registerTool;
     // keep the compatibility cast at this one adapter while still using the
     // official metadata normalization rather than reimplementing it.
+    if (this.allowedTools && !this.allowedTools.includes(name)) return;
+    this.catalog?.(name, description);
     const callback = withToolSideRefusal(name, unguardedCallback);
     return registerAppTool(
       this.server as unknown as Parameters<typeof registerAppTool>[0],
@@ -177,19 +187,31 @@ export class StationControlToolRegistry {
  * adapters provide the explicit legacy compatibility boundary.
  */
 export function createStationControlMcpServer(): McpServer {
+  return createSelectedStationControlMcpServer();
+}
+
+export function createSelectedStationControlMcpServer(
+  allowedTools?: readonly string[],
+  catalog?: (name: string, description: string) => void,
+): McpServer {
   const server = new McpServer(
     {
       name: 'station-control',
       version: '2.0.0',
     },
     {
+      capabilities: { tools: {} },
       cacheHints: {
         'server/discover': { ttlMs: 300_000, cacheScope: 'private' },
         'tools/list': { ttlMs: 300_000, cacheScope: 'private' },
       },
     },
   );
-  const registry = new StationControlToolRegistry(server);
+  const registry = new StationControlToolRegistry(
+    server,
+    catalog,
+    allowedTools,
+  );
   registerAgentTools(registry);
   registerBoardTools(registry);
   registerCatalogTools(registry);
@@ -199,4 +221,16 @@ export function createStationControlMcpServer(): McpServer {
   registerSessionInventoryTools(registry);
   registerNotifyTools(registry);
   return server;
+}
+
+export function stationControlToolCatalog() {
+  const tools: { name: string; description: string; readOnly: boolean }[] = [];
+  createSelectedStationControlMcpServer(undefined, (name, description) => {
+    tools.push({
+      name,
+      description,
+      readOnly: stationControlToolPolicy(name)?.toolClass === 'read-only',
+    });
+  });
+  return tools;
 }

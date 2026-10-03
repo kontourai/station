@@ -157,6 +157,31 @@ describe('Tool Routes', () => {
     expect(body.data[0].usedBy).toEqual(['default']);
   });
 
+  test('cold probe inventory uses native tool identities and keeps disabled controls visible for re-enabling', async () => {
+    const service = createMockMCPService();
+    service.listIntegrations.mockResolvedValue([
+      {
+        id: 'weather',
+        kind: 'mcp',
+        disabledTools: ['weather_weatherRead'],
+        probe: {
+          ok: true,
+          checkedAt: '2026-10-02T00:00:00Z',
+          toolCount: 2,
+          toolNames: ['weather_read', 'weather_weather_read'],
+        },
+      },
+    ]);
+    service.getMCPToolCatalog.mockResolvedValue([]);
+    const app = createToolRoutes(service as any, vi.fn());
+    const result = await json(await app.request('/'));
+    expect(result.data[0].tools).toEqual([
+      { name: 'weather_read', toolName: 'read', disabled: false },
+      { name: 'weather_weatherRead', toolName: 'weather_read', disabled: true },
+    ]);
+    expect(result.data[0].disabledTools).toEqual(['weather_weatherRead']);
+  });
+
   test('POST / saves integration', async () => {
     const svc = createMockMCPService();
     const app = createToolRoutes(svc as any, vi.fn());

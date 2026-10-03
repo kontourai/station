@@ -429,6 +429,13 @@ export interface Tool {
   parameters?: any;
   server?: string;
   toolName?: string;
+  tools?: {
+    name: string;
+    toolName?: string;
+    description?: string;
+    readOnly?: boolean;
+    disabled?: boolean;
+  }[];
 }
 
 export type { TemplateVariable } from '@kontourai/station-contracts/config';

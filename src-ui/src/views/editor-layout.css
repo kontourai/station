@@ -1824,3 +1824,77 @@
 .credential-device-login .button {
   min-height: 44px;
 }
+
+.agent-tools__actions,
+.agent-tools__settings,
+.agent-tools__server-row {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-2);
+  flex-wrap: wrap;
+}
+
+.agent-tools__settings {
+  margin-block: var(--k-space-3);
+}
+
+.agent-tools__loading {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-2);
+  color: var(--k-text-muted);
+}
+
+.agent-tools__loading select {
+  width: auto;
+  min-height: var(--k-touch-target, 44px);
+}
+
+.agent-tools__server-toggle {
+  flex: 1;
+  min-width: 0;
+  justify-content: flex-start;
+  min-height: var(--k-touch-target, 44px);
+}
+
+.agent-tools__detail {
+  display: grid;
+  gap: var(--k-space-2);
+  padding: var(--k-space-3);
+}
+
+.agent-tools__tool-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--k-space-2);
+  min-height: var(--k-touch-target, 44px);
+}
+
+.agent-tools__tool-row > .cb {
+  flex: 1;
+  min-width: 0;
+  min-height: var(--k-touch-target, 44px);
+}
+
+.agent-tools__tool-row .cb__label {
+  overflow-wrap: anywhere;
+}
+
+.agent-tools__setting {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-2);
+  min-height: 44px;
+}
+
+.agent-tools__checklist {
+  max-block-size: min(24rem, 50vh);
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+
+.agent-tools__actions .button,
+.agent-tools__server-row .button {
+  min-height: 44px;
+}

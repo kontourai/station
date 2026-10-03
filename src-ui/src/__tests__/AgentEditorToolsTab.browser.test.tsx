@@ -10,18 +10,26 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { useState } from 'react';
 import { describe, expect, test } from 'vitest';
+import type { Tool } from '../types';
 import { AgentEditorToolsTab } from '../views/agent-editor/AgentEditorToolsTab';
-import { createEmptyAgentForm } from '../views/agent-editor/agentsViewUtils';
+import {
+  buildAgentPayload,
+  createEmptyAgentForm,
+} from '../views/agent-editor/agentsViewUtils';
 import type { AgentFormData } from '../views/agent-editor/types';
 
 function Harness({
   initial,
   onForm,
   locked = false,
+  availableTools = [],
+  engineId = 'station',
 }: {
   initial: AgentFormData;
   onForm: (form: AgentFormData) => void;
   locked?: boolean;
+  availableTools?: Tool[];
+  engineId?: string;
 }) {
   const [form, setForm] = useState(initial);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
@@ -41,7 +49,8 @@ function Harness({
         form={form}
         setForm={setForm}
         locked={locked}
-        availableTools={[]}
+        availableTools={availableTools}
+        engineId={engineId}
         integrationTools={{}}
         expandedIntegrations={expanded}
         setExpandedIntegrations={setExpanded}
@@ -88,4 +97,135 @@ describe('agent editor browser tools switch (D14)', () => {
       ).disabled,
     ).toBe(true);
   });
+});
+
+const stationTools: Tool[] = [
+  {
+    id: 'station-control',
+    name: 'Station',
+    displayName: 'Station tools',
+    tools: [
+      { name: 'list_agents', readOnly: true },
+      { name: 'search_knowledge', readOnly: true },
+      { name: 'delete_agent', readOnly: false },
+    ],
+  },
+];
+
+test('adds Station tools to a Claude agent and saves read-only, empty and custom choices', () => {
+  let latest = createEmptyAgentForm();
+  const payload = () => buildAgentPayload({ ...latest, slug: 'helper' });
+  render(
+    <Harness
+      initial={latest}
+      onForm={(form) => {
+        latest = form;
+      }}
+      availableTools={stationTools}
+      engineId="claude"
+    />,
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Add Station tools' }));
+  expect(payload().tools).toMatchObject({
+    mcpServers: ['station-control'],
+    mcpMode: 'add',
+    available: [
+      'station-control_list_agents',
+      'station-control_search_knowledge',
+    ],
+  });
+  expect(
+    screen.queryByRole('switch', { name: 'Auto-approve list_agents' }),
+  ).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Read only' }));
+  expect(payload().tools?.available).toEqual([
+    'station-control_list_agents',
+    'station-control_search_knowledge',
+  ]);
+  expect(
+    (screen.getByRole('checkbox', { name: 'Delete agent' }) as HTMLInputElement)
+      .checked,
+  ).toBe(false);
+  fireEvent.click(screen.getByRole('button', { name: 'None' }));
+  expect(payload().tools?.available).toEqual([]);
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Search knowledge' }));
+  expect(payload().tools?.available).toEqual([
+    'station-control_search_knowledge',
+  ]);
+  fireEvent.change(screen.getByLabelText('Search added tools'), {
+    target: { value: 'knowledge' },
+  });
+  expect(screen.queryByRole('checkbox', { name: 'List agents' })).toBeNull();
+  expect(
+    screen.getByRole('checkbox', { name: 'Search knowledge' }),
+  ).toBeTruthy();
+  fireEvent.change(screen.getByLabelText('Loading'), {
+    target: { value: 'on-demand' },
+  });
+  expect(payload().tools?.mcpLoading).toBe('on-demand');
+  fireEvent.click(screen.getByRole('switch', { name: 'Keep harness tools' }));
+  expect(payload().tools?.mcpMode).toBe('replace');
+});
+
+test('a locked agent cannot add Station tools', () => {
+  render(
+    <Harness
+      initial={createEmptyAgentForm()}
+      onForm={() => {}}
+      availableTools={stationTools}
+      locked
+    />,
+  );
+  expect(
+    (
+      screen.getByRole('button', {
+        name: 'Add Station tools',
+      }) as HTMLButtonElement
+    ).disabled,
+  ).toBe(true);
+});
+
+test('removing one integration preserves the implicit all-tools setting on the other', () => {
+  let latest = createEmptyAgentForm();
+  latest.tools.mcpServers = ['alpha', 'beta'];
+  latest.toolsOriginal = { mcpServers: ['alpha', 'beta'] };
+  render(
+    <Harness
+      initial={latest}
+      onForm={(form) => {
+        latest = form;
+      }}
+      availableTools={[
+        { id: 'alpha', name: 'Alpha', tools: [{ name: 'read' }] },
+        { id: 'beta', name: 'Beta', tools: [{ name: 'read' }] },
+      ]}
+    />,
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Remove alpha' }));
+  fireEvent.click(screen.getByRole('button', { name: /^beta/i }));
+  expect(
+    (screen.getByRole('checkbox', { name: 'Read' }) as HTMLInputElement)
+      .checked,
+  ).toBe(true);
+  expect(buildAgentPayload({ ...latest, slug: 'helper' }).tools).toMatchObject({
+    mcpServers: ['beta'],
+    available: ['*'],
+  });
+});
+
+test('adds the complete server for a connected harness that cannot select individual tools', () => {
+  let latest = createEmptyAgentForm();
+  render(
+    <Harness
+      initial={latest}
+      onForm={(form) => {
+        latest = form;
+      }}
+      availableTools={stationTools}
+      engineId="acp"
+    />,
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Add Station tools' }));
+  expect(latest.tools.available).toEqual(['station-control_*']);
+  expect(screen.queryByRole('button', { name: 'Read only' })).toBeNull();
 });

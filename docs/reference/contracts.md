@@ -66,6 +66,15 @@ Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shar
 | `@kontourai/station-contracts/unified-search` | Owner-qualified typed search results, provider pages, source states, open intents, and fresh owner-resolved open targets |
 | `@kontourai/station-contracts/workspace-pane-host-contribution` | Package-level Pane-host actions and explicit owner-relative/default Agent selection |
 
+`AgentTools.mcpMode` selects additive (`add`) or replacement (`replace`) MCP
+configuration; omission preserves the prior engine-specific behavior.
+`AgentTools.mcpLoading` optionally selects Claude's native on-demand or eager
+loading. The session resolver carries these as `toolServerMode` and
+`toolServerLoading`. A resolved server's `allowedTools` contains exact original
+MCP names (empty means none); `disabledTools` excludes names independently, and
+`toolNames` is catalog metadata for known-tool exclusions. See the
+[Agent Tools guide](../guides/agents.md#mcp-tool-configuration) for delivery limits.
+
 `OrchestrationSessionSummary.openRequestIds` is present when the server reads
 its durable request state. An empty array means no requests remain open;
 absence means that server did not report this projection. A request settled

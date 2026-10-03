@@ -316,6 +316,62 @@ describe('station-control-mcp-route', () => {
     expect(response.status).toBe(200);
   });
 
+  test.each([{ selection: ['list_agents'] }, { selection: [] }])(
+    'pins tool discovery and calls to the minted selection $selection',
+    async ({ selection }) => {
+      const downstream = vi.fn(
+        async () =>
+          new Response(JSON.stringify([{ slug: 'writer' }]), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          }),
+      );
+      vi.stubGlobal('fetch', downstream);
+      const { token } = mintStationControlMcpToken(
+        'selected-agent',
+        'url-token',
+        undefined,
+        undefined,
+        selection,
+      );
+      const app = createStationControlMcpRoutes({ port: TEST_PORT });
+      const url = `${STATION_CONTROL_MCP_PATH}?token=${token}`;
+      const catalog = await callMcp(
+        app,
+        url,
+        envFor(LOOPBACK),
+        1,
+        'tools/list',
+      );
+      expect(
+        catalog.result.tools.map((tool: { name: string }) => tool.name),
+      ).toEqual(selection);
+      const refused = await callMcp(
+        app,
+        url,
+        envFor(LOOPBACK),
+        2,
+        'tools/call',
+        { name: 'list_integrations', arguments: {} },
+      );
+      expect(refused.error).toBeDefined();
+      expect(downstream).not.toHaveBeenCalled();
+      if (selection.length) {
+        const allowed = await callMcp(
+          app,
+          url,
+          envFor(LOOPBACK),
+          3,
+          'tools/call',
+          { name: 'list_agents', arguments: {} },
+        );
+        expect(allowed.error).toBeUndefined();
+        expect(allowed.result.content[0].text).toContain('writer');
+        expect(downstream).toHaveBeenCalledOnce();
+      }
+    },
+  );
+
   test('a real station-control tool (list_agents) is reachable and reflects Station API data through the HTTP MCP endpoint', async () => {
     vi.stubGlobal(
       'fetch',

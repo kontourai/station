@@ -246,6 +246,7 @@ export function AgentEditorForm(props: AgentEditorFormProps) {
               onOpenAddModal={onOpenAddModal}
               finding={findingFor('tools')}
               engineDefaultToolsHint={engineDefaultToolsHint}
+              engineId={matrix.engineId}
             />
           )}
         </section>

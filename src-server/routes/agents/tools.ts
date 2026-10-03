@@ -23,6 +23,11 @@ import {
   MCPToolDisabledError,
 } from '../../services/plugins/mcp-service.js';
 import {
+  canonicalDisabledMcpTools,
+  mcpToolDisabled,
+  originalMcpToolName,
+} from '../../services/plugins/mcp-tool-selection.js';
+import {
   integrationIconAssetReads,
   mcpUiRenderPermissionAllows,
   mcpUiRenderPermissionRevokes,
@@ -33,7 +38,9 @@ import {
   toolDefinitionOps,
   toolServerCredentialWrites,
 } from '../../telemetry/metrics.js';
+import { stationControlToolCatalog } from '../../tools/station-control-mcp-server.js';
 import { resolveHomeDir } from '../../utils/paths.js';
+import { normalizeToolName } from '../../utils/tool-name-normalizer.js';
 import {
   errorMessage,
   getBody,
@@ -149,6 +156,19 @@ function integrationReadProjection(
     : undefined;
   return {
     ...safe,
+    ...(safe.disabledTools
+      ? {
+          disabledTools: canonicalDisabledMcpTools(
+            safe.id,
+            safe.id === 'station-control'
+              ? stationControlToolCatalog().map((tool) => tool.name)
+              : (probe?.toolNames ?? []).map((name) =>
+                  originalMcpToolName(safe.id, name),
+                ),
+            safe.disabledTools,
+          ),
+        }
+      : {}),
     ...(probe ? { probe } : {}),
     // CI-R7: derived from the registered-id gate, not from `kind` (which is
     // `'mcp'` for both built-ins). A client uses it to stop offering a delete
@@ -260,21 +280,54 @@ export function createToolRoutes(
         mcpService.getToolAgentMap(),
         Promise.resolve(mcpService.getMCPToolCatalog()),
       ]);
-      const data = tools.map((t) => ({
-        ...t,
-        builtin: isRuntimeManagedIntegrationId(t.id),
-        usedBy: agentMap[t.id] || [],
-        connected:
-          mcpService.getConnectionStatus('default', t.id)?.connected ?? false,
-        tools: catalog
-          .filter((tool) => tool.serverId === t.id)
-          .map((tool) => ({ name: tool.name, description: tool.description })),
-        // Per-server render permission (S2). Default allowed; only false when
-        // explicitly revoked. Drives the settings toggle's current state.
-        renderAllowed: mcpUiCallDeps.isRenderRevoked
-          ? !mcpUiCallDeps.isRenderRevoked(t.id)
-          : true,
-      }));
+      const stationTools = stationControlToolCatalog();
+      const data = tools.map((t) => {
+        const entries =
+          t.id === 'station-control'
+            ? stationTools
+            : [
+                ...(t.probe?.toolNames ?? []).map((name) => ({
+                  name: originalMcpToolName(t.id, name),
+                  description: undefined,
+                })),
+                ...catalog
+                  .filter((tool) => tool.serverId === t.id)
+                  .map((tool) => ({
+                    name:
+                      tool.toolName ??
+                      originalMcpToolName(t.id, tool.originalName),
+                    description: tool.description,
+                  })),
+              ];
+        const rows = [
+          ...new Map(entries.map((tool) => [tool.name, tool])).values(),
+        ];
+        return {
+          ...t,
+          ...(t.disabledTools
+            ? {
+                disabledTools: canonicalDisabledMcpTools(
+                  t.id,
+                  rows.map((tool) => tool.name),
+                  t.disabledTools,
+                ),
+              }
+            : {}),
+          builtin: isRuntimeManagedIntegrationId(t.id),
+          usedBy: agentMap[t.id] || [],
+          connected:
+            mcpService.getConnectionStatus('default', t.id)?.connected ?? false,
+          tools: rows.map((tool) => ({
+            ...tool,
+            name: normalizeToolName(`${t.id}_${tool.name}`),
+            toolName: tool.name,
+            disabled: mcpToolDisabled(t.id, tool.name, t.disabledTools),
+          })),
+          renderAllowed: mcpUiCallDeps.isRenderRevoked
+            ? !mcpUiCallDeps.isRenderRevoked(t.id)
+            : true,
+        };
+      });
       return c.json({ success: true, data });
     } catch (error: unknown) {
       return c.json({ success: false, error: errorMessage(error) }, 500);
