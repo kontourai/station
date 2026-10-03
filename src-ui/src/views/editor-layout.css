@@ -1825,80 +1825,249 @@
   min-height: 44px;
 }
 
+.agent-tools__shell {
+  display: grid;
+  gap: var(--k-space-3);
+}
+.agent-tools__heading,
 .agent-tools__actions,
-.agent-tools__settings,
+.agent-tools__toolbar,
 .agent-tools__server-row {
   display: flex;
   align-items: center;
   gap: var(--k-space-2);
-  flex-wrap: wrap;
 }
-
-.agent-tools__settings {
-  margin-block: var(--k-space-3);
+.agent-tools__heading {
+  justify-content: space-between;
 }
-
-.agent-tools__loading {
+.agent-tools__heading .editor-label {
   display: flex;
   align-items: center;
   gap: var(--k-space-2);
-  color: var(--k-text-muted);
 }
-
+.agent-tools__timing {
+  color: var(--k-text-faint);
+  font-size: var(--k-text-xs);
+  font-weight: normal;
+}
+.agent-tools__actions .button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--k-space-2);
+  padding: var(--k-space-2) var(--k-space-3);
+  font-size: var(--k-text-md);
+  min-height: 44px;
+}
+.agent-tools__preferences {
+  position: relative;
+}
+.agent-tools__preferences > summary {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  color: var(--k-text-muted);
+  border-radius: var(--k-radius-md);
+  cursor: pointer;
+  list-style: none;
+}
+.agent-tools__preferences > summary::-webkit-details-marker,
+.agent-tools__advanced > summary::-webkit-details-marker {
+  display: none;
+}
+.agent-tools__preferences > summary:hover,
+.agent-tools__preferences[open] > summary {
+  background: var(--k-panel-raised);
+  color: var(--k-text);
+}
+.agent-tools__settings {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  z-index: var(--k-z-popover);
+  display: grid;
+  gap: var(--k-space-3);
+  width: min(22rem, 80vw);
+  padding: var(--k-space-4);
+  background: var(--k-panel);
+  border: 1px solid var(--k-line-strong);
+  border-radius: var(--k-radius-md);
+  box-shadow: var(--k-shadow);
+}
+.agent-tools__setting,
+.agent-tools__loading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--k-space-3);
+  font-size: var(--k-text-md);
+  min-height: 44px;
+}
 .agent-tools__loading select {
   width: auto;
-  min-height: var(--k-touch-target, 44px);
+  min-height: 44px;
 }
-
-.agent-tools__server-toggle {
-  flex: 1;
-  min-width: 0;
-  justify-content: flex-start;
-  min-height: var(--k-touch-target, 44px);
+.agent-tools__search {
+  position: relative;
+  color: var(--k-text-faint);
 }
-
-.agent-tools__detail {
+.agent-tools__search > svg {
+  position: absolute;
+  left: var(--k-space-3);
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+.agent-tools__search .editor-input {
+  padding-left: calc(var(--k-space-3) * 3);
+  font-size: var(--k-text-md);
+  min-height: 44px;
+}
+.agent-tools__servers {
   display: grid;
   gap: var(--k-space-2);
+}
+.agent-tools__server {
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  overflow: hidden;
+  background: var(--k-panel);
+}
+.agent-tools__server-row {
+  padding: var(--k-space-1);
+  background: var(--k-panel-raised);
+}
+.agent-tools__server-toggle.button {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-2);
+  flex: 1;
+  min-width: 0;
+  padding: var(--k-space-2);
+  min-height: 44px;
+  font-size: var(--k-text-md);
+  text-align: left;
+}
+.agent-tools__server-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+.agent-tools__count {
+  color: var(--k-text-muted);
+  background: var(--k-panel);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  padding: var(--k-space-1) var(--k-space-2);
+  font-size: var(--k-text-xs);
+  font-variant-numeric: tabular-nums;
+}
+.agent-tools__remove.button,
+.agent-tools__approval-toggle.button {
+  display: grid;
+  place-items: center;
+  flex: 0 0 44px;
+  width: 44px;
+  min-height: 44px;
+  padding: 0;
+  color: var(--k-text-faint);
+}
+.agent-tools__detail {
+  display: grid;
+  gap: var(--k-space-3);
   padding: var(--k-space-3);
 }
-
+.agent-tools__toolbar {
+  flex-wrap: wrap;
+}
+.agent-tools__group {
+  flex: 1 1 140px;
+  width: auto;
+  min-width: 0;
+  min-height: 44px;
+  font-size: var(--k-text-md);
+}
+.agent-tools__presets {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-1);
+  padding: var(--k-space-1);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  background: var(--k-panel-raised);
+}
+.agent-tools__presets > .button {
+  min-height: 44px;
+  padding: var(--k-space-1) var(--k-space-2);
+  font-size: var(--k-text-sm);
+  background: transparent;
+  border-color: transparent;
+  border-radius: var(--k-radius-sm);
+  color: var(--k-text-muted);
+}
+.agent-tools__presets > .button[aria-pressed="true"] {
+  color: var(--k-action);
+  background: var(--k-panel);
+  border-color: var(--k-line-strong);
+}
+.agent-tools__presets > .agent-tools__approval-toggle {
+  border-left: 1px solid var(--k-line);
+}
+.agent-tools__checklist {
+  max-block-size: min(20rem, 40vh);
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
 .agent-tools__tool-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--k-space-2);
-  min-height: var(--k-touch-target, 44px);
+  min-height: 44px;
+  border-bottom: 1px solid var(--k-line);
 }
-
+.agent-tools__tool-row:last-child {
+  border-bottom: 0;
+}
 .agent-tools__tool-row > .cb {
   flex: 1;
   min-width: 0;
-  min-height: var(--k-touch-target, 44px);
+  min-height: 44px;
 }
-
 .agent-tools__tool-row .cb__label {
+  font-size: var(--k-text-md);
   overflow-wrap: anywhere;
 }
-
-.agent-tools__setting {
+.agent-tools__advanced {
+  border-top: 1px solid var(--k-line);
+  margin-top: var(--k-space-2);
+}
+.agent-tools__advanced > summary {
   display: flex;
   align-items: center;
-  gap: var(--k-space-2);
   min-height: 44px;
+  cursor: pointer;
+  color: var(--k-text-faint);
+  font-size: var(--k-text-sm);
+  list-style: none;
+}
+.agent-tools__advanced[open] > summary {
+  color: var(--k-text);
+}
+.agent-tools__preferences > summary:focus-visible,
+.agent-tools__advanced > summary:focus-visible {
+  outline: 2px solid var(--k-focus);
+  outline-offset: 2px;
 }
 
-.agent-tools__checklist {
-  max-block-size: min(24rem, 50vh);
-  overflow-y: auto;
-  scrollbar-gutter: stable;
+.agent-tools__chevron {
+  display: grid;
+  place-items: center;
+  color: var(--k-text-faint);
+  transform: rotate(-90deg);
 }
-
-.agent-tools__actions .button,
-.agent-tools__server-row .button {
-  min-height: 44px;
-}
-
-.agent-tools__group {
-  min-height: var(--k-touch-target, 44px);
+.agent-tools__chevron.is-open {
+  transform: none;
 }

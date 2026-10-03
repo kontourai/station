@@ -4,7 +4,14 @@ import type { Dispatch, SetStateAction } from 'react';
 import { useState } from 'react';
 import { Button } from '../../components/Button';
 import { Checkbox } from '../../components/Checkbox';
-import { ArrowDownGlyph } from '../../components/icons/Glyph';
+import {
+  ArrowDownGlyph,
+  CloseGlyph,
+  PlusGlyph,
+  SearchGlyph,
+  SettingsGlyph,
+  ShieldGlyph,
+} from '../../components/icons/Glyph';
 import { IntegrationGlyph } from '../../components/icons/IntegrationGlyph';
 import { Toggle } from '../../components/Toggle';
 import type { Tool } from '../../types';
@@ -95,13 +102,22 @@ export function AgentEditorToolsTab({
           {finding.message}
         </div>
       )}
-      <div className="editor-field">
-        <div className="editor-label-row">
-          <span className="editor-label">Tools</span>
+      <div className="editor-field agent-tools__shell">
+        <div className="agent-tools__heading">
+          <span className="editor-label">
+            Tools{' '}
+            <small
+              className="agent-tools__timing"
+              title="Changes apply to new chats"
+            >
+              New chats
+            </small>
+          </span>
           <div className="agent-tools__actions">
             {station && !form.tools.mcpServers.includes(station.id) && (
               <Button
                 variant="secondary"
+                aria-label="Add Station tools"
                 disabled={disabled || station.enabled === false}
                 onClick={() => {
                   const readOnly = station.tools
@@ -120,99 +136,106 @@ export function AgentEditorToolsTab({
                   }));
                 }}
               >
-                Add Station tools
+                <IntegrationGlyph id="station-control" size={18} />
+                Station
               </Button>
             )}
             <Button
               variant="secondary"
               disabled={disabled}
               onClick={() => onOpenAddModal('integrations')}
+              aria-label="Add tools"
             >
-              Add tools
+              <PlusGlyph /> Add
             </Button>
+            <details className="agent-tools__preferences">
+              <summary aria-label="Tool settings" title="Tool settings">
+                <SettingsGlyph />
+              </summary>
+              <div className="agent-tools__settings">
+                {['claude', 'codex'].includes(engineId) && (
+                  <>
+                    <div className="agent-tools__setting">
+                      <span>Keep harness tools</span>
+                      <Toggle
+                        label="Keep harness tools"
+                        checked={
+                          form.tools.mcpMode === 'add' ||
+                          (form.tools.mcpMode === undefined &&
+                            (engineId === 'codex' ||
+                              form.toolsOriginal?.mcpServers === undefined))
+                        }
+                        disabled={disabled}
+                        onChange={(keep) =>
+                          setForm((current) => ({
+                            ...current,
+                            tools: {
+                              ...current.tools,
+                              mcpMode: keep ? 'add' : 'replace',
+                            },
+                          }))
+                        }
+                      />
+                    </div>
+                    {engineId === 'claude' && (
+                      <label className="agent-tools__loading">
+                        Discovery
+                        <select
+                          className="editor-select"
+                          disabled={disabled}
+                          value={form.tools.mcpLoading ?? ''}
+                          onChange={(event) => {
+                            const value = event.target.value;
+                            setForm((current) => ({
+                              ...current,
+                              tools: {
+                                ...current.tools,
+                                mcpLoading:
+                                  value === 'always' || value === 'on-demand'
+                                    ? value
+                                    : undefined,
+                              },
+                            }));
+                          }}
+                        >
+                          <option value="">Harness default</option>
+                          <option value="on-demand">On demand</option>
+                          <option value="always">Always available</option>
+                        </select>
+                      </label>
+                    )}
+                  </>
+                )}
+                {!finding &&
+                  !!engineDefaultToolsHint &&
+                  form.tools.mcpServers.length === 0 && (
+                    <span className="editor-hint">
+                      {engineDefaultToolsHint} harness integration(s).
+                    </span>
+                  )}
+                <Button
+                  variant="ghost"
+                  onClick={() => onNavigate({ type: 'connections-tools' })}
+                >
+                  Manage integrations
+                </Button>
+              </div>
+            </details>
           </div>
         </div>
-        <span className="editor-hint">Applies to new chats.</span>
-        <div className="agent-tools__settings">
-          {['claude', 'codex'].includes(engineId) && (
-            <>
-              <div className="agent-tools__setting">
-                <span>Keep harness tools</span>
-                <Toggle
-                  label="Keep harness tools"
-                  checked={
-                    form.tools.mcpMode === 'add' ||
-                    (form.tools.mcpMode === undefined &&
-                      (engineId === 'codex' ||
-                        form.toolsOriginal?.mcpServers === undefined))
-                  }
-                  disabled={disabled}
-                  onChange={(keep) =>
-                    setForm((current) => ({
-                      ...current,
-                      tools: {
-                        ...current.tools,
-                        mcpMode: keep ? 'add' : 'replace',
-                      },
-                    }))
-                  }
-                />
-              </div>
-              {engineId === 'claude' && (
-                <label className="agent-tools__loading">
-                  Discovery
-                  <select
-                    className="editor-select"
-                    disabled={disabled}
-                    value={form.tools.mcpLoading ?? ''}
-                    onChange={(event) => {
-                      const value = event.target.value;
-                      setForm((current) => ({
-                        ...current,
-                        tools: {
-                          ...current.tools,
-                          mcpLoading:
-                            value === 'always' || value === 'on-demand'
-                              ? value
-                              : undefined,
-                        },
-                      }));
-                    }}
-                  >
-                    <option value="">Harness default</option>
-                    <option value="on-demand">On demand</option>
-                    <option value="always">Always available</option>
-                  </select>
-                </label>
-              )}
-            </>
-          )}
-          {!finding &&
-            !!engineDefaultToolsHint &&
-            form.tools.mcpServers.length === 0 && (
-              <span className="editor-hint">
-                {engineDefaultToolsHint} harness integration(s).
-              </span>
-            )}
-          <Button
-            variant="ghost"
-            onClick={() => onNavigate({ type: 'connections-tools' })}
-          >
-            Manage integrations
-          </Button>
-        </div>
-        {selected.length === 0 ? (
-          <span className="editor-hint">Choose tools.</span>
-        ) : (
+        {selected.length > 0 && (
           <>
-            <input
-              className="editor-input"
-              aria-label="Search added tools"
-              placeholder="Search tools…"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-            />
-            <div className="editor__tools-grouped">
+            <div className="agent-tools__search">
+              <SearchGlyph />
+              <input
+                className="editor-input"
+                aria-label="Search added tools"
+                placeholder="Find tools"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+              />
+            </div>
+            <div className="agent-tools__servers">
               {selected.map((integration) => {
                 const tools = catalogFor(integration);
                 const groupNames = tools.some((tool) => tool.group)
@@ -311,12 +334,13 @@ export function AgentEditorToolsTab({
                 );
 
                 return (
-                  <div className="editor__tools-server" key={integration.id}>
+                  <div className="agent-tools__server" key={integration.id}>
                     <div className="agent-tools__server-row">
                       <Button
                         variant="ghost"
                         className="agent-tools__server-toggle"
                         aria-expanded={!!expanded}
+                        aria-label={`${integration.displayName || integration.id} ${tools.length ? `${enabledCount}/${tools.length}` : 'All tools'}`}
                         onClick={() =>
                           setExpandedIntegrations((current) => ({
                             ...current,
@@ -331,21 +355,26 @@ export function AgentEditorToolsTab({
                           iconUrl={integration.iconUrl}
                           size={20}
                         />
-                        <span>{integration.displayName || integration.id}</span>
-                        <span className="editor-hint">
+                        <span className="agent-tools__server-name">
+                          {integration.id === 'station-control'
+                            ? 'Station'
+                            : integration.displayName || integration.id}
+                        </span>
+                        <span className="agent-tools__count">
                           {tools.length
                             ? `${enabledCount}/${tools.length}`
                             : 'All tools'}
                         </span>
                         <span
                           aria-hidden="true"
-                          className={`agent-editor__chevron${expanded ? ' agent-editor__chevron--open' : ''}`}
+                          className={`agent-tools__chevron${expanded ? ' is-open' : ''}`}
                         >
                           <ArrowDownGlyph />
                         </span>
                       </Button>
                       <Button
                         variant="ghost"
+                        className="agent-tools__remove"
                         disabled={disabled}
                         aria-label={`Remove ${integration.displayName || integration.id}`}
                         onClick={() =>
@@ -354,106 +383,114 @@ export function AgentEditorToolsTab({
                           )
                         }
                       >
-                        Remove
+                        <CloseGlyph />
                       </Button>
                     </div>
                     {expanded && (
                       <div className="agent-tools__detail">
-                        {groupNames.length > 0 && (
-                          <select
-                            className="editor-select agent-tools__group"
-                            aria-label={`Tool group for ${integration.displayName || integration.id}`}
-                            value={group}
-                            onChange={(event) =>
-                              setGroups((current) => ({
-                                ...current,
-                                [integration.id]: event.target.value,
-                              }))
-                            }
-                          >
-                            <option value="">All tools</option>
-                            {groupNames.map((name) => (
-                              <option key={name} value={name}>
-                                {name}
-                              </option>
-                            ))}
-                          </select>
-                        )}
-                        {supportsSelection && tools.length > 0 && (
-                          <div className="agent-tools__actions">
-                            {readOnly?.length ? (
+                        <div className="agent-tools__toolbar">
+                          {groupNames.length > 0 && (
+                            <select
+                              className="editor-select agent-tools__group"
+                              aria-label={`Tool group for ${integration.displayName || integration.id}`}
+                              value={group}
+                              onChange={(event) =>
+                                setGroups((current) => ({
+                                  ...current,
+                                  [integration.id]: event.target.value,
+                                }))
+                              }
+                            >
+                              <option value="">All tools</option>
+                              {groupNames.map((name) => (
+                                <option key={name} value={name}>
+                                  {name}
+                                </option>
+                              ))}
+                            </select>
+                          )}
+                          {supportsSelection && tools.length > 0 && (
+                            <div className="agent-tools__presets">
+                              {readOnly?.length ? (
+                                <Button
+                                  variant="secondary"
+                                  aria-pressed={
+                                    readOnlyKeys.length > 0 &&
+                                    allScopeKeys.every(
+                                      (key) =>
+                                        toolEnabled(integration.id, key) ===
+                                        readOnlyKeys.includes(key),
+                                    )
+                                  }
+                                  disabled={disabled}
+                                  onClick={() =>
+                                    setForm((current) =>
+                                      choose(
+                                        current,
+                                        readOnly.map(
+                                          (tool) =>
+                                            `${prefix}${tool.toolName || tool.name}`,
+                                        ),
+                                      ),
+                                    )
+                                  }
+                                >
+                                  Read only
+                                </Button>
+                              ) : null}
                               <Button
                                 variant="secondary"
                                 aria-pressed={
-                                  readOnlyKeys.length > 0 &&
-                                  allScopeKeys.every(
-                                    (key) =>
-                                      toolEnabled(integration.id, key) ===
-                                      readOnlyKeys.includes(key),
-                                  )
+                                  allScopeKeys.length > 0 &&
+                                  selectedScopeKeys.length ===
+                                    allScopeKeys.length
                                 }
                                 disabled={disabled}
                                 onClick={() =>
                                   setForm((current) =>
                                     choose(
                                       current,
-                                      readOnly.map(
-                                        (tool) =>
-                                          `${prefix}${tool.toolName || tool.name}`,
-                                      ),
+                                      scoped
+                                        .filter(
+                                          (tool) => tool.enabled !== false,
+                                        )
+                                        .map((tool) =>
+                                          getIntegrationToolKey(
+                                            integration.id,
+                                            tool,
+                                          ),
+                                        ),
                                     ),
                                   )
                                 }
                               >
-                                Read only
+                                All
                               </Button>
-                            ) : null}
-                            <Button
-                              variant="secondary"
-                              aria-pressed={
-                                allScopeKeys.length > 0 &&
-                                selectedScopeKeys.length === allScopeKeys.length
-                              }
-                              disabled={disabled}
-                              onClick={() =>
-                                setForm((current) =>
-                                  choose(
-                                    current,
-                                    scoped
-                                      .filter((tool) => tool.enabled !== false)
-                                      .map((tool) =>
-                                        getIntegrationToolKey(
-                                          integration.id,
-                                          tool,
-                                        ),
-                                      ),
-                                  ),
-                                )
-                              }
-                            >
-                              All
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              aria-pressed={selectedScopeKeys.length === 0}
-                              disabled={disabled}
-                              onClick={() =>
-                                setForm((current) => choose(current, []))
-                              }
-                            >
-                              None
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              aria-pressed={showApprovals}
-                              onClick={() =>
-                                setShowApprovals((current) => !current)
-                              }
-                            >
-                              Approvals
-                            </Button>
-                          </div>
-                        )}
+                              <Button
+                                variant="ghost"
+                                aria-pressed={selectedScopeKeys.length === 0}
+                                disabled={disabled}
+                                onClick={() =>
+                                  setForm((current) => choose(current, []))
+                                }
+                              >
+                                None
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                className="agent-tools__approval-toggle"
+                                aria-label="Approvals"
+                                title="Approvals"
+                                aria-pressed={showApprovals}
+                                onClick={() =>
+                                  setShowApprovals((current) => !current)
+                                }
+                              >
+                                <ShieldGlyph />
+                              </Button>
+                            </div>
+                          )}
+                        </div>
                         {!supportsSelection && (
                           <span className="editor-hint">
                             This harness selects its own tools.
@@ -578,27 +615,30 @@ export function AgentEditorToolsTab({
           </>
         )}
       </div>
-      <div className="editor-field">
-        <div className="editor-label-row">
-          <span className="editor-label">Browser tools</span>
-          <Toggle
-            checked={form.tools.browser !== false}
-            disabled={disabled}
-            describedBy="agent-browser-tools-hint"
-            label="Browser tools"
-            onChange={(browser) =>
-              setForm((current) => ({
-                ...current,
-                tools: { ...current.tools, browser },
-              }))
-            }
-          />
+      <details className="agent-tools__advanced">
+        <summary>Advanced</summary>
+        <div className="editor-field">
+          <div className="editor-label-row">
+            <span className="editor-label">Browser tools</span>
+            <Toggle
+              checked={form.tools.browser !== false}
+              disabled={disabled}
+              describedBy="agent-browser-tools-hint"
+              label="Browser tools"
+              onChange={(browser) =>
+                setForm((current) => ({
+                  ...current,
+                  tools: { ...current.tools, browser },
+                }))
+              }
+            />
+          </div>
+          <span className="editor-hint" id="agent-browser-tools-hint">
+            Drive the Project browser. Available to Claude agents.
+          </span>
         </div>
-        <span className="editor-hint" id="agent-browser-tools-hint">
-          Drive the Project browser. Available to Claude agents.
-        </span>
-      </div>
-      <AgentEditorWorkflows slug={form.slug} locked={locked} />
+        <AgentEditorWorkflows slug={form.slug} locked={locked} />
+      </details>
     </div>
   );
 }

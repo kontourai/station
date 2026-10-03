@@ -72,6 +72,7 @@ describe('agent editor browser tools switch (D14)', () => {
         }}
       />,
     );
+    fireEvent.click(screen.getByText('Advanced'));
     const toggle = screen.getByRole('switch', { name: 'Browser tools' });
     expect(toggle.getAttribute('aria-checked')).toBe('true');
     expect(
@@ -89,6 +90,7 @@ describe('agent editor browser tools switch (D14)', () => {
     render(
       <Harness initial={createEmptyAgentForm('')} onForm={() => {}} locked />,
     );
+    fireEvent.click(screen.getByText('Advanced'));
     expect(
       (
         screen.getByRole('switch', {
@@ -162,6 +164,7 @@ test('adds Station tools to a Claude agent and saves read-only, empty and custom
   expect(
     screen.getByRole('checkbox', { name: 'Search knowledge' }),
   ).toBeTruthy();
+  fireEvent.click(screen.getByLabelText('Tool settings'));
   fireEvent.change(screen.getByLabelText('Discovery'), {
     target: { value: 'on-demand' },
   });
