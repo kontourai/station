@@ -2868,6 +2868,12 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     },
     { method: 'GET', path: '/api/orchestration/sessions' },
     { method: 'GET', path: '/api/orchestration/sessions/:threadId' },
+    // Immutable experience history uses the same Session read authority;
+    // the reader also authorizes every historical thread before publication.
+    {
+      method: 'GET',
+      path: '/api/orchestration/sessions/:threadId/skill-experience',
+    },
     {
       method: 'GET',
       path: '/api/orchestration/sessions/:threadId/requests/:requestId',
@@ -3228,6 +3234,9 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // discloses no peer/environment data and cannot mutate evidence.
     { method: 'GET', path: '/api/review-evidence' },
     { method: 'GET', path: '/api/skills' },
+    // Installed definitions for this Station's existing Skill catalog. This
+    // read starts no execution and does not resolve another Station's data.
+    { method: 'GET', path: '/api/skills/experiences' },
     { method: 'POST', path: '/api/skills' },
     { method: 'DELETE', path: '/api/skills/:name' },
     { method: 'GET', path: '/api/skills/:name' },

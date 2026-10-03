@@ -26,7 +26,7 @@
 
     {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"21831e2e97672cb946b2e23f9e183477773a632390b02daf66b3e6cf3fe20e71","revision":"595059eafa17ef6b7a39217a405619ecbfac2270"},
 
-    {"path":"src-server/security/pairing-route-scopes.ts","digest":"4c1527cee9416183e5830c057a26f4c2bad32ff38c9ccd50aa36643cd59745d9","revision":"94da87e3016992b8cdbdde3be15b978b489a1c63"},
+    {"path":"src-server/security/pairing-route-scopes.ts","digest":"cd0d7cf06b6f68355d4e509648ac649c62bdf1cabd52b220e7578776b5e01873","revision":"d73d9f64333504f027a200482e978cc4445338da"},
 
     {"path":"src-server/services/share/answer-share-service.ts","digest":"d333e854f9cecb3a4dbbbf53793187a45848c8be7a30bf1369e4d75b32d1dc82","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -40,9 +40,9 @@
 
     {"path":"src-ui/src/views/settings/AnswerSharesSection.tsx","digest":"b8a33e1a1087df366781d6097897e62b4baf6afb6e445e0ef612454009c44cf5","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/views/share/share-token.ts","digest":"9c93a11f705be6716cbe97c78930b3e7dea44d4bcb46f5d17f93d91746a34d56","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"src-ui/src/views/share/SharedAnswerView.tsx","digest":"c05e76750bbbea1e98f9fee1d8cafd06f1c76f16b0233d20b96e5be51c8ca8e8","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/views/share/SharedAnswerView.tsx","digest":"c05e76750bbbea1e98f9fee1d8cafd06f1c76f16b0233d20b96e5be51c8ca8e8","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"}
+    {"path":"src-ui/src/views/share/share-token.ts","digest":"9c93a11f705be6716cbe97c78930b3e7dea44d4bcb46f5d17f93d91746a34d56","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"}
   ],
 
   "checks": [
