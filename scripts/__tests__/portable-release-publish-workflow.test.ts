@@ -25,6 +25,7 @@ import {
   parseRingVersion,
   publicationLocations,
   verifyManifestLocation,
+  verifyPublishedAssets,
 } from '../lib/portable-publication.mjs';
 import {
   PUBLIC_MANIFEST_POINTERS,
@@ -632,6 +633,35 @@ describe('publication checks for stable and preview', () => {
     expect(sized.status).toBe(1);
     expect(sized.stderr).toContain(
       'station-server-darwin-arm64.tar.gz is not the archive the manifest signs',
+    );
+  });
+
+  it('refuses a re-downloaded archive with the signed size but other bytes', async () => {
+    const signed = Buffer.from('station-server archive bytes');
+    const url = `${PUBLIC_RELEASE_BASE_URL}v1.2.3/station-server-linux-x64.tar.gz`;
+    const payload = {
+      artifacts: [
+        {
+          name: 'station-server-linux-x64.tar.gz',
+          url,
+          size: signed.length,
+          sha256: createHash('sha256').update(signed).digest('hex'),
+        },
+      ],
+    };
+    let served = signed;
+    const fetchImpl = async () => new Response(served);
+    await expect(
+      verifyPublishedAssets(payload, { fetchImpl, attempts: 1 }),
+    ).resolves.toBeUndefined();
+    // One flipped byte: same length, so only the digest can catch it.
+    served = Buffer.from(signed);
+    served[3] ^= 0x01;
+    expect(served.length).toBe(signed.length);
+    await expect(
+      verifyPublishedAssets(payload, { fetchImpl, attempts: 1 }),
+    ).rejects.toThrow(
+      `station-server-linux-x64.tar.gz at ${url} is not the archive the manifest signs`,
     );
   });
 
