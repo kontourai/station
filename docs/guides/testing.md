@@ -645,6 +645,10 @@ window — so that two captures of the identical build decode to identical
 pixels and exact comparison is strictly simpler, and strictly more
 trustworthy, than any threshold.
 
+Profile captures hide only the completed "Snapshot rebuilt ..." timestamp
+line. Missing-time fallbacks, usage scope, failure notices, and the rebuild
+control remain visible. These pixels do not establish accounting freshness.
+
 The screenshot bucket runs under its own `playwright.config.ts` project
 (`screenshot`, matched to `tests/screenshots.spec.ts` only — every other spec
 still runs under the plain `chromium` project) with deterministic-rendering
@@ -1068,6 +1072,13 @@ that the captured bytes are a partial transcript. The receipt summary names the
 step under `inFlightStep` instead of `failingStep`. If you see either, the
 answer is budget or sharding, not a hunt for a failing test: the suite did not
 finish, so no failing test name exists to find.
+
+`node scripts/run-verification.mjs explain full-regression` reports the current
+request identity and canonical receipt path without starting verification.
+Its bounded output keeps those fields ahead of unrelated coordinator jobs:
+the status summary reports omitted live jobs, while `status` provides their
+bounded details. An explanation identifies a request; only a validated
+completion receipt proves that its checks passed.
 
 <!-- station:verification-policy:start -->
 The "Invalidated by" column names only the lane-specific `manifestDigest`

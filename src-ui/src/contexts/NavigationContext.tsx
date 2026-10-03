@@ -31,7 +31,10 @@ export type NavigationActions = {
   setLayout: (
     projectSlug: string,
     layoutSlug: string,
-    options?: { openFilePreviewIntent?: OpenFilePreviewIntent },
+    options?: {
+      openFilePreviewIntent?: OpenFilePreviewIntent;
+      preserveChatProjectDefault?: boolean;
+    },
   ) => void;
   setConversation: (id: string | null) => void;
   setActiveChat: (id: string | null) => void;
@@ -89,7 +92,10 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     (
       projectSlug: string,
       layoutSlug: string,
-      options?: { openFilePreviewIntent?: OpenFilePreviewIntent },
+      options?: {
+        openFilePreviewIntent?: OpenFilePreviewIntent;
+        preserveChatProjectDefault?: boolean;
+      },
     ) => {
       navigationStore.setLayout(projectSlug, layoutSlug, options);
     },

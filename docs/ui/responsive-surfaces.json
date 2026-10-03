@@ -161,8 +161,8 @@
     {
       "path": "src-ui/src/components/modals/SkillRunModal.tsx",
       "strategy": "covered",
-      "contract": "ResponsiveDialogSurface",
-      "evidence": "src-ui/src/__tests__/responsive-dialog-contract.test.ts"
+      "contract": "Dialog",
+      "evidence": "src-ui/src/__tests__/SkillRunModal.test.tsx; shared Dialog chrome and footer actions are covered by src-ui/src/__tests__/Dialog.chrome.test.tsx"
     },
     {
       "path": "src-ui/src/components/modals/UserDetailModal.tsx",

@@ -147,6 +147,15 @@ connection errors, or setup actions when a choice is not ready. Opening it does
 not send a message. **Take the tour** and **Connect another device** are optional alternatives.
 Both save the same selected answers before opening their next step.
 
+On a phone, tap the current chat title to open **Chats and tasks**, then use
+**+** at the lower right to start a chat. **Projects** has the same add control
+for creating a project, including a short first-project prompt when empty.
+
+Selecting a project in the sidebar opens its workspace and makes it the default
+for new chats. An existing chat stays with its original project. The chat bar's
+**New chats** value lets you choose another default without leaving the workspace.
+The next sidebar project selection updates that default again.
+
 ### Finish setup and return
 
 If New Chat offers **Connect**, **Set up**, **Edit agent**, or **Set up
@@ -204,6 +213,30 @@ changes before send, Station refuses it instead of silently resolving it under
 the new account. Hosted/shared destinations do not offer conversation
 references until the server can prove that exposing the source title and link
 to that destination is permitted.
+
+## Use a skill
+
+Open **Skills** and search the loaded library by name or description. Select a
+skill to read what it does, where it came from, and which template inputs it
+needs. **View instructions** shows the original instructions. A source label
+identifies where Station loaded the skill; it does not establish publisher trust.
+
+Choose **Use in a new chat**, fill any required inputs, and select an Agent.
+Blank optional inputs use their declared defaults. **Preview instructions**
+shows the message with those values applied. **Start chat** opens a new chat
+and sends that message. This does not attach the skill to the Agent or install
+its dependencies; the Agent's configured tools and permissions still apply.
+
+To add skills, choose **Browse Registry Skills** and inspect the available
+catalog before installing. **Import .md** accepts standalone Markdown skill
+files and reports the outcome of each file. Open an imported skill from its
+result to review and use it. Import does not copy a repository's
+scripts or supporting files. Load plugin packages through Registry.
+
+For a writable skill, **Edit skill** opens its definition and command settings.
+**Back to overview** asks before discarding unsaved edits. Package-owned or
+plugin-served skills show the server's read-only reason and keep editing
+unavailable.
 
 ## Start Your First Task
 

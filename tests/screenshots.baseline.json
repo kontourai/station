@@ -77,13 +77,13 @@
       "name": "mobile-access-request-error-320",
       "width": 320,
       "height": 844,
-      "sha256": "39f144c5d2d50a3c2e806b9991816e84a91bee5e4e1abc51e08593fccdd57730"
+      "sha256": "859c172ea489d6df249bdd8533190044f64f1d9a023425a2df146d0da7f654b7"
     },
     {
       "name": "mobile-access-request-error-390",
       "width": 390,
       "height": 844,
-      "sha256": "d83b26a30401645d71115b98677b7013c6493dbe88e84ef4b25a650dce16f2c6"
+      "sha256": "f705a421f9b8438831b15220f0e697387263de9939483d32b20f06fb66a1b6e3"
     },
     {
       "name": "mobile-activity-compact",
@@ -95,73 +95,73 @@
       "name": "mobile-agent-editor",
       "width": 390,
       "height": 844,
-      "sha256": "284b74c2d6be1b9e284fa10f8768d816f96618f1f6c8a3ea63f32132db099b94"
+      "sha256": "49653129a29eec8e3f9d60ad3591d3f1f3f53ffe767d274d0c5527e639546eac"
     },
     {
       "name": "mobile-agent-editor-project-control",
       "width": 390,
       "height": 844,
-      "sha256": "54ebb04a7ada33bd72cd7fbeb11a107e8fef57a9058a7ba68b7356c999440658"
+      "sha256": "498bc238dfed44fc05af5ee24419867d925bd395cba55b2f2eb252e665f32dc7"
     },
     {
       "name": "mobile-agent-editor-save-footer",
       "width": 390,
       "height": 844,
-      "sha256": "ccbb5bf854aa175be905e8afb772002c4d36319a883093dbf552a378a31efa99"
+      "sha256": "8b7bce26999ff4b3e9eaef45182b1795710f0e9405b0097726d461a3686d01df"
     },
     {
       "name": "mobile-agents",
       "width": 390,
       "height": 844,
-      "sha256": "231ac92902fbe2ec14cfa8c5fdf3821877eed5f287776fcc459bb7386641cba3"
+      "sha256": "2ef2c1ee8ee365c56e317ec2b7253ba9efe772fe99bd1198e12a94ce2b5b9f8c"
     },
     {
       "name": "mobile-chat-dock-header-320",
       "width": 320,
       "height": 568,
-      "sha256": "566e6657a99ccba62ef483f625a3497380ba5262c7966de9f46a0c8174c5307c"
+      "sha256": "e1f5f161d13b6e552d0b6db7a11b8bd6b49618eadadd7671d05e347559f08cf3"
     },
     {
       "name": "mobile-connections",
       "width": 390,
       "height": 844,
-      "sha256": "07bc52485b9909e7c6a9cd6e5b4942e9814ac74f99dc08dc22e9f606d7d6b162"
+      "sha256": "0dc6edd11c02a4255779afa0c1b646ce611db4c5e468a1e278920c0986f69810"
     },
     {
       "name": "mobile-home",
       "width": 390,
       "height": 844,
-      "sha256": "0cf02b00d90d48e36604d223c67631d8cda2fb92c27a2c6ebc5ddfc670198252"
+      "sha256": "b7e89b2facf2a6d4f4829f65cb19d06433757d46dfe13f99c165fddab53b83e7"
     },
     {
       "name": "mobile-http-consent-320",
       "width": 320,
       "height": 844,
-      "sha256": "9212e35e7a431756584033ca59a67edeaa74da58fd8f9471cf484dadd6bc7bdf"
+      "sha256": "a557000979969ed6ccd57cdf430ecfdd5224421ec8e0f2cf4d5ab9669883f8b3"
     },
     {
       "name": "mobile-http-consent-390",
       "width": 390,
       "height": 844,
-      "sha256": "f88e04b94bc867011e3c3d56cb6cf079f34aecc643d72a7c6d6e68a11ab45c2d"
+      "sha256": "a40c989be3dcf0466dc0ac137bf35d26255c24ddd7b29fb0b64a2fd94e168552"
     },
     {
       "name": "mobile-onboarding-setup",
       "width": 390,
       "height": 844,
-      "sha256": "946df862cc7bcf4638fa279aa19f637110a47e25bc37e99b7d9250664b79b65a"
+      "sha256": "fc103bdf5cbd7b8a228c0cd20483f1720881524af36b755e099a345045de8cb8"
     },
     {
       "name": "mobile-settings-overview",
       "width": 390,
       "height": 844,
-      "sha256": "94bd1516c6417abe56f9491382a39e1c990036971eb0dd49c9114b9f499bd4df"
+      "sha256": "5571fd88f0ad870db247d24819ddbfc702dc17820551f3ec5a184a8ba13cdbb5"
     },
     {
       "name": "motion-reduced-mobile-chat",
       "width": 390,
       "height": 844,
-      "sha256": "81f445d55a643ed1afcd10d5c0996713d3ca524421edb42afd3a531dd39edae9"
+      "sha256": "9e73505f31e7c0bf1372f9963f8fa52d94243f8a3c6aa9df129ea5419ac8b4e3"
     },
     {
       "name": "motion-reduced-navigation",
@@ -215,25 +215,25 @@
       "name": "overlay-connection-banner",
       "width": 390,
       "height": 844,
-      "sha256": "9e419ee0c8678387c935dcf2aa7751cc09d05bb2a8d4a0aeac124b32d5b464a6"
+      "sha256": "a4c850888baeb7352c770f065dd2ae5abd668c2d07a8ff8816175082c7e6b65a"
     },
     {
       "name": "overlay-dock-project-bound",
       "width": 1440,
       "height": 900,
-      "sha256": "50d1c930ab02189d11fcf78c139a3c3176e22ce782d34b6f9d4bd17f39479f96"
+      "sha256": "42b6a7e101d3fac81e35b566b3b8c441655dd1430956f9f43d7e88ecf949aecd"
     },
     {
       "name": "overlay-dock-project-mismatch",
       "width": 1440,
       "height": 900,
-      "sha256": "f2179556eefd3f95b2d1db550787fdb2568058384dcbe05fdd1cfe224b30d85e"
+      "sha256": "108b7b0b063786019e1de692855cb3914f8065264589962e0ba1f85405959136"
     },
     {
       "name": "overlay-mobile-sheet",
       "width": 390,
       "height": 844,
-      "sha256": "e9774f5b1ef77f5175e007a8814c497ff8087146031fcefdb01fdbba5ae25882"
+      "sha256": "121897285ea4e023f1be55e7ebf7a0406f01ed86d1360a051518864cde8ae742"
     },
     {
       "name": "overlay-new-project-layout-control",
@@ -251,7 +251,7 @@
       "name": "overlay-project-switcher-populated",
       "width": 1440,
       "height": 900,
-      "sha256": "7b8d05ddddd35e39b639d3f1d1723862cdb9d6d00890b25cd54d26324dc7f1aa"
+      "sha256": "c604863fdd136155fe054b211951a967f3538993b5794a2a9e2003d3b164d774"
     },
     {
       "name": "overlay-region-chooser-from-toggle",
@@ -281,7 +281,7 @@
       "name": "profile",
       "width": 1440,
       "height": 900,
-      "sha256": "63c3c7521984ee1a725aaf17f41c258519360f9a21a8c0695aa8d4f99ada96ab"
+      "sha256": "e85936ce5036c24cd650b6dd59a3d9e1676ade60484d00eceaefc84d9185b0da"
     },
     {
       "name": "registry",
@@ -305,7 +305,7 @@
       "name": "sessions-filtered-empty",
       "width": 1440,
       "height": 900,
-      "sha256": "2c6b49206ac45a451c7a97317f9d94edf35e02023437cc9815187828fe7db18b"
+      "sha256": "a5b439a04b5dd2622c802c2723b97faa2126dfc93f907b1057d5640d53dbbcae"
     },
     {
       "name": "settings",
@@ -323,7 +323,7 @@
       "name": "skills",
       "width": 1440,
       "height": 900,
-      "sha256": "6752c1856c68438faf66f21bd427d241158d858ea048d0e579ec679f21ff9e7f"
+      "sha256": "d51d2cbb06877cb21043781f21b748e85afd4d79cd8f78783531cd91d3f3bfc6"
     }
   ]
 }
