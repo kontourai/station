@@ -1737,6 +1737,55 @@ describe('append-only review notes and Git history (#3101)', () => {
     expect(check(f.root, strict).status).toBe(0);
   });
 
+  it('names rewritten note revisions after amend and passes after re-recording', () => {
+    const f = pathOnlyFixture();
+    git(f.root, ['update-ref', 'refs/remotes/origin/main', 'main']);
+    git(f.root, ['switch', '-qc', 'pr']);
+    for (const source of ['a', 'b'])
+      f.write(`src/${source}.ts`, `export const ${source} = 2;\n`);
+    f.write('src/c.ts', SHARED_C.replace('c1 = 1', 'c1 = 2'));
+    const revision = commit(f.root, 'source before recording');
+    const paths = ['docs/a.md', 'docs/b.md', 'docs/c.md', 'docs/map.md'];
+    for (const path of paths)
+      expect(record_(f.root, [path, '--note', 'Checked source.']).status).toBe(
+        0,
+      );
+    expect(check(f.root, scoped).status).toBe(0);
+    const notes = notesFiles(f.root).map((file) => ({
+      file: `${REVIEW_LEDGER_DIR}/notes/${file}`,
+      data: JSON.parse(f.read(`${REVIEW_LEDGER_DIR}/notes/${file}`)),
+    }));
+    git(f.root, [...identity, 'commit', '--amend', '-qm', 'reword source']);
+    commit(f.root, 'commit notes after rewrite');
+    const rejected = run(
+      f.root,
+      'check-documentation-freshness.mjs',
+      [],
+      scoped,
+    );
+    expect(rejected.status).toBe(1);
+    for (const path of paths) {
+      const line = rejected.stderr
+        .split('\n')
+        .find((line) => line.includes(`review ${path};`));
+      const note = notes.find(({ data }) =>
+        data.notes.some((entry: { path: string }) => entry.path === path),
+      );
+      expect(line).toContain(note?.file);
+      expect(line).toContain(revision);
+      expect(line).toContain('history was rewritten after recording');
+      expect(line).toContain(
+        `npm run docs:review:record -- ${path} --note "<what you checked>"`,
+      );
+      expect(
+        record_(f.root, [path, '--note', 'Checked rewritten source.']).status,
+      ).toBe(0);
+    }
+    expect(check(f.root, scoped).status).toBe(0);
+    commit(f.root, 're-record after rewrite');
+    expect(check(f.root, scoped).status).toBe(0);
+  });
+
   it('does not accept a landed commit without a covering note, even if bytes are restored', () => {
     const f = pathOnlyFixture();
     f.write('src/c.ts', SHARED_C.replace('c1 = 1', 'c1 = 2'));
@@ -1985,16 +2034,43 @@ describe('append-only review notes and Git history (#3101)', () => {
     expect(check(f.root, scoped).status).toBe(0);
   });
 
+  it('refuses baseline advancement on a PR-only commit and names a missing remote main', () => {
+    const f = pathOnlyFixture();
+    const index = `${REVIEW_LEDGER_DIR}/ledger.json`;
+    const original = f.read(index);
+    git(f.root, ['update-ref', 'refs/remotes/origin/main', 'HEAD']);
+    git(f.root, ['switch', '-qc', 'pr']);
+    f.write('unrelated.txt', 'PR-only commit');
+    commit(f.root, 'PR-only work');
+    expect(check(f.root, strict).status).toBe(0);
+    const refused = run(f.root, 'record-documentation-review.mjs', [
+      '--advance-baseline',
+    ]);
+    expect(refused.status).toBe(1);
+    expect(refused.stderr).toContain('HEAD is not reachable from origin/main');
+    expect(f.read(index)).toBe(original);
+    git(f.root, ['update-ref', '-d', 'refs/remotes/origin/main']);
+    const missing = run(f.root, 'record-documentation-review.mjs', [
+      '--advance-baseline',
+    ]);
+    expect(missing.status).toBe(1);
+    expect(missing.stderr).toContain('origin/main is missing');
+    expect(missing.stderr).toContain('git fetch origin main');
+    expect(f.read(index)).toBe(original);
+  });
+
   it('advances the baseline only after every accumulated input is covered', () => {
     const f = pathOnlyFixture();
     f.write('src/c.ts', SHARED_C.replace('c1 = 1', 'c1 = 2'));
     commit(f.root, 'unreviewed landing');
+    git(f.root, ['update-ref', 'refs/remotes/origin/main', 'HEAD']);
     expect(
       run(f.root, 'record-documentation-review.mjs', ['--advance-baseline'])
         .status,
     ).toBe(1);
     reviewShared(f, 'Catch-up review.');
     commit(f.root, 'cover gaps');
+    git(f.root, ['update-ref', 'refs/remotes/origin/main', 'HEAD']);
     const head = git(f.root, ['rev-parse', 'HEAD']);
     expect(
       run(f.root, 'record-documentation-review.mjs', ['--advance-baseline'])

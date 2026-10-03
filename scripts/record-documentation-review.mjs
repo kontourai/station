@@ -938,6 +938,28 @@ export async function main(argv = process.argv.slice(2)) {
         'dirty-tree',
         'Commit all changes before advancing the coverage baseline.',
       );
+    const head = git(root, ['rev-parse', 'HEAD']).trim();
+    let remoteMain;
+    try {
+      remoteMain = git(root, [
+        'rev-parse',
+        '--verify',
+        'refs/remotes/origin/main^{commit}',
+      ]).trim();
+    } catch {
+      throw reviewError(
+        'missing-remote-main',
+        'Cannot advance the baseline: origin/main is missing. Run git fetch origin main, then retry on main.',
+      );
+    }
+    try {
+      git(root, ['merge-base', '--is-ancestor', head, remoteMain]);
+    } catch {
+      throw reviewError(
+        'head-not-on-main',
+        'Cannot advance the baseline: HEAD is not reachable from origin/main. Run git fetch origin main, then retry at a commit already on remote main; a PR commit cannot be the coverage baseline.',
+      );
+    }
     const result = await checkDocumentationFreshness({
       root,
       env: { STATION_DOCS_FRESHNESS: 'strict' },
@@ -948,7 +970,6 @@ export async function main(argv = process.argv.slice(2)) {
         'unsupported-version',
         'Advance the baseline only after path-only migration.',
       );
-    const head = git(root, ['rev-parse', 'HEAD']).trim();
     writeFileSync(
       path.join(root, REVIEW_LEDGER_INDEX),
       serializeLedgerIndex({ version: 3, coverageBaseline: head }),

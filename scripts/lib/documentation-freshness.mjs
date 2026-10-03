@@ -260,6 +260,7 @@ export function resolveDocumentationFreshness({
         const added = (entry.notes ?? []).filter(
           (note) => !earlier.has(note.file),
         );
+        const rewrittenNotes = new Map();
         const uncovered = touched.filter(
           (input) =>
             !added.some((note) => {
@@ -286,13 +287,15 @@ export function resolveDocumentationFreshness({
                   ]).trim(),
                 );
               const introduced = noteIntroductions.get(note.file);
-              if (!introduced) return note.revision === head;
-              if (!rangeCommits.has(note.revision)) return false;
+              const validRevision = introduced
+                ? rangeCommits.has(note.revision)
+                : note.revision === head;
+              if (!introduced && validRevision) return true;
               const later = git(root, [
                 'log',
                 '--no-merges',
                 '--format=%H',
-                `${introduced}..HEAD`,
+                `${introduced || head}..HEAD`,
                 `^${base}`,
                 '--',
                 bindingFile(input),
@@ -300,7 +303,7 @@ export function resolveDocumentationFreshness({
                 .trim()
                 .split('\n')
                 .filter(Boolean);
-              return !later.some(
+              const changedLater = later.some(
                 (commit) =>
                   touchedReviewInputs(
                     root,
@@ -310,8 +313,19 @@ export function resolveDocumentationFreshness({
                     commit,
                   ).length,
               );
+              if (changedLater) return false;
+              if (!validRevision) {
+                if (!rewrittenNotes.has(note.file))
+                  rewrittenNotes.set(note.file, { note, inputs: new Set() });
+                rewrittenNotes.get(note.file).inputs.add(input);
+                return false;
+              }
+              return true;
             }),
         );
+        const rejected = [...rewrittenNotes.values()]
+          .filter(({ inputs }) => uncovered.some((input) => inputs.has(input)))
+          .map(({ note }) => note);
         if (uncovered.length)
           noteCoverage.push({
             kind,
@@ -319,6 +333,11 @@ export function resolveDocumentationFreshness({
             inputs: dependencies,
             changed: uncovered,
             rule: 'stale',
+            ...(rejected.length
+              ? {
+                  problem: `note revision outside this change's range: ${rejected.map((note) => `${note.file} (revision ${note.revision})`).join(', ')}; history was rewritten after recording (or the note came from another history). Re-record with npm run docs:review:record -- ${path} --note "<what you checked>".`,
+                }
+              : {}),
           });
       }
     }

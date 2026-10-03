@@ -100,7 +100,9 @@ npm run docs:review:record -- --advance-baseline
 The command checks strict coverage before moving the baseline to HEAD. Run it
 after a catch-up audit, and periodically (for example weekly) when strict is
 green, to bound history cost. It refuses dirty trees and unavailable history;
-it cannot erase outstanding gaps.
+it cannot erase outstanding gaps. HEAD must be reachable from `origin/main`;
+fetch remote main before retrying if that ref is missing or stale. PR-only
+commits cannot become the baseline because a squash merge does not retain them.
 
 Both modes report files with no known documentation dependency. Trace those
 through actual callers, add missing source relationships, or give a concrete
@@ -167,7 +169,11 @@ npm run docs:freshness:check
 Batch input is `[{ "path", "note", "removedSources"?, "addedSources"? }]`.
 Commit the reviewed document and source changes first, then record and commit
 the note. The note records the context HEAD and the inputs inspected; the
-context revision does not have to survive a squash merge. Recording writes
+context revision does not have to survive a squash merge. While the PR is open,
+notes bind to the commits they were recorded on. Rebasing, amending or rewording
+those commits after recording requires a re-record against the rewritten HEAD.
+The root `AGENTS.md` rule to integrate upstream with merge, not rebase, keeps
+those note revisions valid. Recording writes
 only a new uniquely named notes file, plus a record edit if the dependency list
 really changes. It refuses empty notes, unknown paths, invalid or duplicate
 sources, uncommitted reviewed inputs, and captures whose image identity changed.
