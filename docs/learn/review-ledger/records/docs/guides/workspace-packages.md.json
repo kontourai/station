@@ -48,7 +48,7 @@
 
     {"path":"scripts/actionlint-gate.mjs","digest":"9b0c7c38f1f3b82c0b49acfb35b35870a72b85c1daa95c820ab23636bfed43c0","revision":"8de1b741d83aec880c76c3cece6bb3e9cdee740d"},
 
-    {"path":"scripts/codeql-error-baseline.json","digest":"68f25eff8ac6a15bb324e169be219a0659eacc42a59c451699b171968bd62978","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    {"path":"scripts/codeql-error-baseline.json","digest":"4ba71828ec6796808f7440edd8745d5ce9cb6d4f802f47eff4e869f1f1e648e3","revision":"1188208f32995f08e02bc87c2a0063184540fb6a"},
 
     {"path":"scripts/codeql-sarif-policy.mjs","digest":"19227477b52acfe22fe18feb777bf30c2163a40e51fda2ad0a834a1fdae86f32","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 
