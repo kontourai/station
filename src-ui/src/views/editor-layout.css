@@ -1842,6 +1842,7 @@
   flex-wrap: wrap;
 }
 .agent-tools__actions {
+  flex: 0 0 auto;
   flex-wrap: wrap;
   justify-content: flex-end;
   margin-left: auto;
@@ -1861,7 +1862,7 @@
   display: inline-flex;
   align-items: center;
   gap: var(--k-space-2);
-  padding: var(--k-space-2);
+  padding: var(--k-space-2) var(--k-space-1);
   font-size: var(--k-text-md);
   min-height: 44px;
 }

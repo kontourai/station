@@ -136,7 +136,11 @@ export function AgentEditorToolsTab({
                   }));
                 }}
               >
-                <IntegrationGlyph id="station-control" size={18} />
+                <IntegrationGlyph
+                  id="station-control"
+                  icon="brand:station"
+                  size={18}
+                />
                 Station
               </Button>
             )}
@@ -351,7 +355,11 @@ export function AgentEditorToolsTab({
                         <IntegrationGlyph
                           id={integration.id}
                           displayName={integration.displayName}
-                          icon={integration.icon}
+                          icon={
+                            integration.id === 'station-control'
+                              ? 'brand:station'
+                              : integration.icon
+                          }
                           iconUrl={integration.iconUrl}
                           size={20}
                         />
