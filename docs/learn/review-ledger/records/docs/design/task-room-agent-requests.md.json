@@ -60,9 +60,7 @@
 
     {"path":"src-server/services/projects/task-room-context.ts","digest":"c548f8653bfbeb87cef832000969e4cd8f92358883e96d637fe9251a614f9778","revision":"078747c0143ca02d52107439754ca3a51e5479d1"},
 
-    {"path":"packages/contracts/package.json#/exports/.~1task-room-work","digest":"581c042771ed026476503019c1528e261058e922122e701490659ab861bac4ba","revision":"cf099c6275ffb239f2825c0e53b75be6fa19c6a6"},
-
-    {"path":"packages/contracts/package.json","digest":"e68c62ed1e493e0b8834dc4586ccb37b750313b65a19a61ac00512e30564f684","revision":"b004ed8cb3e885da544adf960b2894780aaf2b51"}
+    {"path":"packages/contracts/package.json#/exports/.~1task-room-work","digest":"581c042771ed026476503019c1528e261058e922122e701490659ab861bac4ba","revision":"cf099c6275ffb239f2825c0e53b75be6fa19c6a6"}
   ],
 
   "checks": [

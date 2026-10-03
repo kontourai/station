@@ -24,7 +24,7 @@
 
     {"path":"packages/sdk/src/agent/index.ts","digest":"27b8861c43936cd4996215ce8ad0f3a2bbd7835adba4740e160e8b8efd02f54e","revision":"d326e74f0f416a770b08cb1b66badf150618b3c0"},
 
-    {"path":"packages/sdk/src/index.ts","digest":"c857e48c98e4eb793501c0544975eeb08287b55512885e14830ada1c6b23d625","revision":"7576509655a6bbef0ef61d5f4645722922b8ec43"},
+    {"path":"packages/sdk/src/index.ts","digest":"402d307a4252faa6d6f6c54698f6fc4f8746c49053bddaff7e2147187fd579c1","revision":"4711f21b516d04300b15ad4da473e24bf2e7adb2"},
 
     {"path":"packages/sdk/src/voice/registry.ts","digest":"62ce9013b0c9d5e935c88ae2912bf31768f58ef5f40409745df9676ebfb87408","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -74,7 +74,7 @@
 
     {"path":"src-server/services/flow/flow-run-service.ts","digest":"501881355a01c561de9ecdbe2cc99a9f83bb565873615997cba75965e6e29271","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"14d4d68ff2f8715e1428ca985125a9eff9eb5a05ea52946dc16b4f5971405a34","revision":"bc671142a7ae70587daf5bb0d94732e8ca74600a"},
+    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"4582d45b868ea008447f5405bcedb1adf987b1e3ad7701e39de19fc6a8d8994c","revision":"4711f21b516d04300b15ad4da473e24bf2e7adb2"},
 
     {"path":"src-server/services/plugins/plugin-install-transaction.ts","digest":"d86ca9367f039174cd2aaaba83b65dc1df376f6474bd4a4f29be54341fd2c0e7","revision":"b8b24c97d098d1569105a87991fedadee778d22a"},
 
@@ -96,11 +96,7 @@
 
     {"path":"packages/shared/package.json#/exports","digest":"043a18cf24771ad5cc0939669e4423eb2374d925ef84b25dfe7b5d626e1e45cd","revision":"c6c7d4dd40660b087eacdcda019f817a127405e8"},
 
-    {"path":"packages/shared/package.json#/engines","digest":"6c12acb1990a85e4fe6986ad29ad44b644eca474a81f946d053aabd14ba62059","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
-
-    {"path":"packages/contracts/package.json","digest":"e68c62ed1e493e0b8834dc4586ccb37b750313b65a19a61ac00512e30564f684","revision":"b004ed8cb3e885da544adf960b2894780aaf2b51"},
-
-    {"path":"packages/shared/package.json","digest":"3d498c9980c805fad291b809e3400392dd3c5c29515074c2438f785f4812e69c","revision":"4e19fa6ac6b87dff5b671d3c90d3a5b48b5e6ec5"}
+    {"path":"packages/shared/package.json#/engines","digest":"6c12acb1990a85e4fe6986ad29ad44b644eca474a81f946d053aabd14ba62059","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"}
   ],
 
   "checks": [
