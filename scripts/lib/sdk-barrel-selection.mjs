@@ -1714,35 +1714,46 @@ function runtimeImportKey(path, source) {
  *
  * A binding's ORIGINS are every module its value can come from: each
  * module on its re-export chain, plus, for a local export, the origins of
- * the imported bindings its declaration reads when it is used. How it is
- * used matters (#2766):
- * - READ (the value only): a `const`/`let`/`var` or `export default <expr>`
- *   contributes what its initializer reads at load time; a class, its
- *   decorators, heritage, computed keys and static members (they run when
- *   it is declared); a function, nothing.
- * - RUN (called, constructed, or handed to a call) or MEMBER (a property
- *   read, which can run a static getter or a method called next): a function
- *   or class contributes everything its code names, constructor, accessors
- *   and methods included; an object or array literal used as MEMBER, every
- *   member it holds.
- * "At load time" follows invocation: an IIFE body, a function passed as a
- * call argument, and a local helper called in the initializer are read; a
- * function in any other position (an object property value, an array
- * element, a class method) is not, since nothing calls it while the module
- * loads. Code that runs is read whole: every binding it names is taken as
- * RUN|MEMBER, so a value it returns or aliases is followed too. Each
- * imported binding is then resolved in the mode it is used, into its own
- * module, and so on.
+ * the imported bindings its declaration reads when it is used. How a value
+ * is used decides what that is (#2766):
+ * - READ (only the value): a `const`/`let`/`var` or `export default <expr>`
+ *   contributes what its initializer reads at load; a class, its decorators,
+ *   heritage, computed keys and static members; a function, nothing.
+ * - RUN (called or constructed) or MEMBER (a property read, which can run a
+ *   getter or a method called next): a function or class contributes
+ *   everything its code names; an object or array literal used as MEMBER,
+ *   every member it holds.
+ * - ALL (RUN and MEMBER): anything handed to a call, at any depth inside
+ *   array and object literals, and every operand used implicitly through
+ *   its members: destructured, iterated (for-of, for-in, spread), awaited,
+ *   coerced (template spans, operators other than `===`/`!==`/`&&`/`||`/
+ *   `??`/comma, including `in` and `instanceof`).
+ * Positions are read exactly only in code evaluated directly at load (an
+ * initializer, the use-site statement). Code that runs is read whole: every
+ * binding it names is ALL, so returned and aliased values are followed. A
+ * function in a non-invoked position of an initializer (an object property
+ * value, an array element, a class method) is not read until that value is
+ * itself used as RUN, MEMBER or ALL. Each imported binding is then resolved
+ * in the mode it is used, into its own module, and so on.
  *
- * At a USE site (the side-effect statement itself) everything the statement
- * reads is taken, including every local binding it names, whole; what it
- * calls, constructs or reads a member of is resolved as RUN or MEMBER.
+ * At a USE site (the side-effect statement itself) every binding the
+ * statement names, through local bindings too, is an origin; the modes above
+ * decide how far each is followed.
  *
  * Resolution fails CLOSED: a star it cannot enumerate, a module it cannot
- * read, an export whose declaration it cannot find, or a chain of more than
- * MAX_RUN_DEPTH modules each running the next, is ANY origin. An import
- * cycle is neither provided nor cached; the frame that first entered it
- * explores the sibling branches.
+ * read, or an export whose declaration it cannot find is ANY origin; a chain
+ * of more than MAX_RUN_DEPTH modules each running the next is cut and counts
+ * as a use of every module. An import cycle is neither provided nor cached;
+ * the frame that first entered it explores the sibling branches.
+ *
+ * Known gaps, not traced:
+ * - code a module runs at its own load through a LOCAL class or function
+ *   that `topLevelSideEffect` treats as pure (`export const v = L.x` with a
+ *   static getter on a local `L`) is a use only when some barrel-loaded
+ *   statement consumes the export; with no consumer it is missed, because
+ *   local declarations do not join the alias set `pureExpression` checks;
+ * - a top-level dynamic `import()`: the module it loads, and what the use
+ *   then calls on it, are not followed.
  *
  * The analysis does not depend on the changed module, so it runs once per
  * graph and is shared by every candidate.
@@ -1762,9 +1773,10 @@ function barrelReachable(graph) {
 }
 
 // How a load-time read uses a binding's value (#2766). Flags combine.
-// READ: the value is only read. RUN: it is called, constructed, or handed
-// to a call that may call it. MEMBER: a property of it is read, which can run
-// a getter, or a method that is then called.
+// READ: the value is only read. RUN: it is called or constructed. MEMBER: a
+// property of it is read, which can run a getter, or a method called next.
+// ALL: both; anything handed to a call, or used implicitly through its
+// members (iterated, destructured, awaited, coerced).
 const READ = 0;
 const RUN = 1;
 const MEMBER = 2;
@@ -1853,7 +1865,11 @@ function loadTimeIdentifiers(node, locals, mode = READ) {
       return;
     }
     if (ts.isVariableDeclaration(current)) {
-      if (current.initializer) visit(current.initializer, flags);
+      // Destructuring reads members of the value (getters, an iterator).
+      const pattern = !ts.isIdentifier(current.name);
+      if (pattern) visit(current.name, READ); // defaults evaluated
+      if (current.initializer)
+        visit(current.initializer, pattern ? ALL : flags);
       return;
     }
     if (ts.isExportAssignment(current)) {
@@ -1900,6 +1916,53 @@ function loadTimeIdentifiers(node, locals, mode = READ) {
         visit(current.right, flags);
         return;
       }
+      if (operator === ts.SyntaxKind.EqualsToken) {
+        // `({ a } = value)` destructures the value; `x = value` yields it.
+        const pattern =
+          ts.isObjectLiteralExpression(current.left) ||
+          ts.isArrayLiteralExpression(current.left);
+        visit(current.left, READ);
+        visit(current.right, pattern ? ALL : flags);
+        return;
+      }
+      if (
+        operator !== ts.SyntaxKind.EqualsEqualsEqualsToken &&
+        operator !== ts.SyntaxKind.ExclamationEqualsEqualsToken
+      ) {
+        // Every other operator can coerce an operand (valueOf, toString,
+        // Symbol.toPrimitive) or run its code (instanceof's
+        // Symbol.hasInstance, a proxy's `in` trap).
+        visit(current.left, ALL);
+        visit(current.right, ALL);
+        return;
+      }
+    }
+    if (
+      ts.isPrefixUnaryExpression(current) ||
+      ts.isPostfixUnaryExpression(current)
+    ) {
+      // `+x`, `-x`, `~x`, `++x` coerce; `!x` does not.
+      visit(
+        current.operand,
+        current.operator === ts.SyntaxKind.ExclamationToken ? READ : ALL,
+      );
+      return;
+    }
+    if (
+      // Implicit member use: iteration, a thenable, string coercion.
+      ts.isSpreadElement(current) ||
+      ts.isSpreadAssignment(current) ||
+      ts.isAwaitExpression(current) ||
+      ts.isTemplateSpan(current)
+    ) {
+      visit(current.expression, ALL);
+      return;
+    }
+    if (ts.isForOfStatement(current) || ts.isForInStatement(current)) {
+      visit(current.initializer, READ);
+      visit(current.expression, ALL);
+      visit(current.statement, READ);
+      return;
     }
     if (ts.isPropertyAccessExpression(current)) {
       // A member read can run a getter, or a method called next.
@@ -1920,17 +1983,13 @@ function loadTimeIdentifiers(node, locals, mode = READ) {
         else if (ts.isShorthandPropertyAssignment(property))
           visit(property.name, ALL);
         else if (ts.isSpreadAssignment(property))
-          visit(property.expression, MEMBER);
+          visit(property.expression, ALL);
         else run(property);
       }
       return;
     }
     if (ts.isArrayLiteralExpression(current) && flags & MEMBER) {
-      for (const element of current.elements)
-        visit(
-          ts.isSpreadElement(element) ? element.expression : element,
-          ts.isSpreadElement(element) ? MEMBER : ALL,
-        );
+      for (const element of current.elements) visit(element, ALL);
       return;
     }
     if (ts.isPropertyAssignment(current)) {
@@ -1940,14 +1999,15 @@ function loadTimeIdentifiers(node, locals, mode = READ) {
       return;
     }
     if (ts.isCallExpression(current) || ts.isNewExpression(current)) {
-      // The callee runs; a function handed to it may run too.
+      // The callee runs. It may call, construct, iterate or read members
+      // of anything handed to it, nested values included (#2766).
       visit(unwrap(current.expression), RUN);
-      for (const argument of current.arguments ?? []) visit(argument, RUN);
+      for (const argument of current.arguments ?? []) visit(argument, ALL);
       return;
     }
     if (ts.isTaggedTemplateExpression(current)) {
       visit(unwrap(current.tag), RUN);
-      visit(current.template, RUN);
+      visit(current.template, ALL);
       return;
     }
     if (ts.isPropertyDeclaration(current)) {
@@ -2105,7 +2165,8 @@ export function topLevelUseAnalysis(graph) {
   const bindingOrigins = (target, importedName, mode, depth) => {
     if (target === UNKNOWN) return { ...fresh(null), any: true, found: true };
     if (depth > MAX_RUN_DEPTH)
-      return { ...fresh(target), any: true, found: true, bounded: true };
+      // Not `any`: the bound is reported only when it alone decides.
+      return { ...fresh(target), found: true, bounded: true };
     return importedName === null
       ? namespaceOrigins(target, mode, depth)
       : origins(target, importedName, mode, depth);
@@ -2225,7 +2286,7 @@ export function topLevelUseAnalysis(graph) {
             bindingOrigins(source[0], source[1], mode, mode === READ ? 0 : 1),
           );
       }
-      if (use.any || use.mods.size)
+      if (use.any || use.bounded || use.mods.size)
         uses.push({
           importer,
           line:
@@ -2242,10 +2303,17 @@ export function topLevelUseAnalysis(graph) {
 }
 
 function topLevelUseOf(graph, changed) {
-  for (const use of topLevelUseAnalysis(graph))
-    if (use.importer !== changed && (use.any || use.mods.has(changed)))
-      return { importer: use.importer, line: use.line, bounded: use.bounded };
-  return null;
+  const uses = topLevelUseAnalysis(graph).filter(
+    (use) => use.importer !== changed,
+  );
+  // A traced origin or an unresolvable binding decides on its own; a chain
+  // cut at the bound decides only when no use does.
+  const direct = uses.find((use) => use.any || use.mods.has(changed));
+  if (direct) return { importer: direct.importer, line: direct.line };
+  const bounded = uses.find((use) => use.bounded);
+  return bounded
+    ? { importer: bounded.importer, line: bounded.line, bounded: true }
+    : null;
 }
 
 /** One changed module's disposition: refined with seeds, or whole-barrel. */

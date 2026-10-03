@@ -1085,12 +1085,14 @@ describe('refineSdkBarrelRelatedPaths decisions', () => {
     });
 
     test('a function in a non-invoked position of an initializer is not read at load', () => {
+      // The use only compares the value; handing it to a call would let the
+      // callee call its methods (#2766), which a two-hop test pins below.
       const result = decide(
         {
           'packages/sdk/src/mid.ts':
             "import { listJobs } from './client/scheduler';\nexport const queries = { list: () => listJobs(), all: [function () { return listJobs; }] };",
           [REGISTRATION]:
-            "import { queries } from './mid';\nregistry.push(queries);",
+            "import { queries } from './mid';\nregistry.ready = queries !== undefined;",
         },
         SDK_SOURCES[SCHEDULER],
       );
@@ -1198,12 +1200,12 @@ describe('refineSdkBarrelRelatedPaths decisions', () => {
         'whole-barrel',
       ],
       [
-        // An array element handed to a call is not invoked; handing the
-        // class itself to `registry.push` could construct it (#2766).
+        // Only compared: handing it to any call, even inside an array,
+        // could construct it (#2766).
         'never constructed: constructor and fields do not run',
         'class Registry { jobs = listJobs(); constructor() { listJobs(); } }\nexport const all = Registry;',
         'refined',
-        'registry.push([all]);',
+        'registry.ready = all !== undefined;',
       ],
       [
         'handed to an unknown call, which may construct it',
@@ -1214,7 +1216,7 @@ describe('refineSdkBarrelRelatedPaths decisions', () => {
         'never constructed, but its heritage reads it at declaration',
         'class Registry extends SchedulerResponseError {}\nexport const all = Registry;',
         'whole-barrel',
-        'registry.push([all]);',
+        'registry.ready = all !== undefined;',
       ],
     ])(
       'a local class read through a re-exporter, %s',
@@ -1239,9 +1241,17 @@ describe('refineSdkBarrelRelatedPaths decisions', () => {
     const twoHop = (mid: string, registration: string) => {
       const source = `import { listJobs, SchedulerResponseError } from './client/scheduler';\n${mid}`;
       expect(topLevelSideEffect('mid.ts', source)).toBeNull();
-      const names = ['L', 'h', 'v', 'queries'].filter((name) =>
-        new RegExp(`\\b${name}\\b`).test(registration),
-      );
+      const names = [
+        'L',
+        'C',
+        'h',
+        'v',
+        'o',
+        'm',
+        'it',
+        'queries',
+        'thenable',
+      ].filter((name) => new RegExp(`\\b${name}\\b`).test(registration));
       return decide(
         {
           'packages/sdk/src/mid.ts': source,
@@ -1276,7 +1286,7 @@ describe('refineSdkBarrelRelatedPaths decisions', () => {
       [
         'an exported subclass of its class, only read (its heritage)',
         'export class L extends SchedulerResponseError {}',
-        'registry.push([L]);',
+        'registry.ready = L !== undefined;',
       ],
       [
         'constructing an exported class whose constructor calls it',
@@ -1308,6 +1318,85 @@ describe('refineSdkBarrelRelatedPaths decisions', () => {
         'const inner = () => listJobs();\nexport { inner as h };',
         'registry.push(h());',
       ],
+      // Handed to a call, which may call, construct, iterate or read the
+      // members of anything it receives, nested values included.
+      [
+        'a function in an array handed to a call',
+        'export const h = () => listJobs();',
+        'registry.push([h]);',
+      ],
+      [
+        'a function in an object handed to a call',
+        'export const h = () => listJobs();',
+        'registry.register({ h });',
+      ],
+      [
+        'a class in an array handed to a call',
+        'export class L { constructor() { listJobs(); } }',
+        'registry.push([L]);',
+      ],
+      [
+        'an object handed to a call, which may call its methods',
+        'export const queries = { list: () => listJobs() };',
+        'registry.push(queries);',
+      ],
+      // A value wrapped by an allowlisted call, then used through members.
+      [
+        'a method of a frozen object',
+        'export const o = Object.freeze({ list: () => listJobs() });',
+        'registry.push(o.list());',
+      ],
+      [
+        'a function stored in a Map',
+        'export const m = new Map([[1, () => listJobs()]]);',
+        'registry.push(m.get(1)());',
+      ],
+      // Implicit member use at the use site.
+      [
+        'destructuring a getter',
+        'export const o = { get x() { return listJobs(); } };',
+        'const { x } = o;\nregistry.push(x);',
+      ],
+      [
+        'iterating with for-of',
+        'export const it = { *[Symbol.iterator]() { yield listJobs(); } };',
+        'for (const job of it) registry.push(job);',
+      ],
+      [
+        'spreading into call arguments',
+        'export const it = { *[Symbol.iterator]() { yield listJobs(); } };',
+        'registry.push(...it);',
+      ],
+      [
+        'spreading into an object',
+        'export const o = { get x() { return listJobs(); } };',
+        'registry.push({ ...o });',
+      ],
+      [
+        'coercing in a template span',
+        'export const o = { toString() { return String(listJobs()); } };',
+        `registry.push(\`$\{o}\`);`,
+      ],
+      [
+        'coercing with +',
+        'export const o = { valueOf() { listJobs(); return 1; } };',
+        'registry.push(o + 1);',
+      ],
+      [
+        'coercing with unary +',
+        'export const o = { valueOf() { listJobs(); return 1; } };',
+        'registry.push(+o);',
+      ],
+      [
+        'instanceof, through Symbol.hasInstance',
+        'export class C { static [Symbol.hasInstance]() { listJobs(); return false; } }',
+        'registry.push({} instanceof C);',
+      ],
+      [
+        'awaiting a thenable',
+        'export const thenable = { then(resolve) { listJobs(); resolve(1); } };',
+        'registry.push(await thenable);',
+      ],
     ])('a two-hop use keeps whole-barrel: %s', (_label, mid, registration) => {
       const result = twoHop(mid, registration);
       expect(result.decisions[0].disposition).toBe('whole-barrel');
@@ -1321,9 +1410,9 @@ describe('refineSdkBarrelRelatedPaths decisions', () => {
         'registry.push(h());',
       ],
       [
-        'an exported class read, never constructed, with no heritage',
+        'an exported class only compared, never constructed, with no heritage',
         'export class L { constructor() { listJobs(); } static get x() { return listJobs(); } }',
-        'registry.push([L]);',
+        'registry.ready = L !== undefined;',
       ],
       [
         // Resolved through the rename, not failed closed as unfindable.
@@ -1332,9 +1421,15 @@ describe('refineSdkBarrelRelatedPaths decisions', () => {
         'registry.push(h());',
       ],
       [
-        'an exported object handed over, its methods never called',
+        'an exported object only compared, its methods never called',
         'export const queries = { list: () => listJobs() };',
-        'registry.push(queries);',
+        'registry.ready = queries !== undefined;',
+      ],
+      [
+        // Coercion runs only what the coerced value names.
+        'a coerced object that names nothing from it',
+        'export const o = { a: 1 };\nexport const v = () => listJobs();',
+        "registry.push('a' in o);",
       ],
     ])('control: %s stays refined', (_label, mid, registration) => {
       expect(twoHop(mid, registration).decisions[0].disposition).toBe(
@@ -1358,9 +1453,9 @@ describe('refineSdkBarrelRelatedPaths decisions', () => {
 
     // A chain of `length` modules, each running the next; the last runs
     // nothing imported, so a traced chain does NOT reach scheduler.ts.
-    const chain = (length: number) => {
+    const chain = (length: number, use = 'registry.push(h1());') => {
       const modules: Record<string, string> = {
-        [REGISTRATION]: "import { h1 } from './c1';\nregistry.push(h1());",
+        [REGISTRATION]: `import { h1 } from './c1';\nimport { listJobs } from './client/scheduler';\n${use}`,
       };
       for (let index = 1; index <= length; index += 1)
         modules[`packages/sdk/src/c${index}.ts`] =
@@ -1380,6 +1475,14 @@ describe('refineSdkBarrelRelatedPaths decisions', () => {
       expect(decision.reason).toMatch(
         /registration\.ts line \d+ uses it in a top-level side effect \(a call chain deeper than 8 modules is not traced\)/,
       );
+    });
+
+    test('the bound is named only when it alone decides', () => {
+      // The same statement also calls scheduler.ts directly: that decides,
+      // so the reason must not blame the cut chain.
+      const [decision] = chain(9, 'registry.push(h1(), listJobs());').decisions;
+      expect(decision.disposition).toBe('whole-barrel');
+      expect(decision.reason).toMatch(USE);
     });
 
     test('an export whose declaration cannot be found fails closed', () => {
