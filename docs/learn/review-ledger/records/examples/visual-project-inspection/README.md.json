@@ -1,0 +1,27 @@
+{
+  "path": "examples/visual-project-inspection/README.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Reviewed public author inspection/review, portable materialization, definition source labels and explicit workflow stops against owning files. Read actual pinned source requirements for Grill Me, grilling, domain modelling, specification, tickets, setup and implementation dependencies.",
+
+  "limits": "Local author schema/source/transcript assertions only. Curated model evaluations, fresh published external consumer, installed browser/native/mobile, rich interface and release qualification remain NOT_VERIFIED.",
+
+  "document": {"digest":"7279b1e379189132d851b493d7d60e3908140e270af8b040d660a620e17c0cbe","revision":"036d5d3d2289fc22e325a9ded733e8de561e9b30"},
+
+  "sources": [
+    {"path":"examples/visual-project-inspection/plugin.json","digest":"1ec55fbb01212c78491b32a8e3972d1f16a6bc3e2816966e240c0c68d4d761c1","revision":"036d5d3d2289fc22e325a9ded733e8de561e9b30"},
+
+    {"path":"examples/visual-project-inspection/skills/inspect-onboarding/SKILL.md","digest":"f28c1804a6c64d083c7b4c3a34a2e36c62ad090b439c4b044cc3978c617ebefe","revision":"036d5d3d2289fc22e325a9ded733e8de561e9b30"},
+
+    {"path":"examples/visual-project-inspection/io.kontourai.station/experiences/inspect-onboarding.json","digest":"28694c46ce8f7f6036f5a587d21c6b7eb5d7b0ee2c1eae6d3fe24dd3f3d594a8","revision":"036d5d3d2289fc22e325a9ded733e8de561e9b30"},
+
+    {"path":"packages/shared/src/skill-experience-author.ts","digest":"5227a059dbe7a2f557e0916ae58a796021b387ef0589c15d278b82a04852ed7b","revision":"6601a6595d1103210663e99bbc68ec889c296b1b"}
+  ],
+
+  "checks": [
+    "Focused author/workflow tests 29 passed; CLI typecheck passed; direct supported CLI inspection succeeds and unknown entry refuses; gap-review mutation caught one intended failure and restored green."
+  ]
+}

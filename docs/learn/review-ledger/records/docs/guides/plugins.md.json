@@ -9,12 +9,12 @@
 
   "limits": "Local tests cover development boundary, registry/permission decisions, MCP, server modules and durable-event fixtures. No fresh full installed-provider/native journey, live enterprise integration, remote npm availability or performance benchmark. Build dependency preparation may fail or time out; an attempted dev install is not readiness. Source review is complete for published guide claims, not every private security path.",
 
-  "document": {"digest":"8db6998152ba6de1241cc9e55f46bd4643b39932ddd3a8287da8b0afacb181fa","revision":"12e161f7032b17c2f97702c0c41116b0c82bbb91"},
+  "document": {"digest":"33cd9172e66eba151d52bddfbdbc6ab68dc3535ffb403003dc1549972c7c0e71","revision":"020eb6a14e05313bb66724ec3504e613717e6ed1"},
 
   "sources": [
     {"path":"config/plugin-scaffold-dependencies.json","digest":"e74f1f4028077bdd56e52057f43561d4cc4e790c42d8f600e04d1a1115f6da74","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"examples/registry/default.json","digest":"cfad94ca0675644a0a8dd45ba204ea43c8813bb40c5ca3b4e4fa54956c2f4545","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"examples/registry/default.json","digest":"08e8245d20ebf0264c91959d6ba3d22ba186668951c5c403aef51de6c691afbe","revision":"036d5d3d2289fc22e325a9ded733e8de561e9b30"},
 
     {"path":"packages/cli/src/commands/build.ts","digest":"fe59b0aec5413bc16de44073be4669a2345d1a2c3ab0519f50b4dea615ce5b55","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

@@ -9,12 +9,12 @@
 
   "limits": "No actual plugin installation, native/device/audio journey, public package distribution, provider operation or cross-host qualification. Source/fixture checks do not establish those outcomes.",
 
-  "document": {"digest":"c4d9fea220b43d622b7ec2bfb106e5ba400095a00a97a6aba3e8ab583fea0e8a","revision":"ed05e6f6c98c5b2bb994a88ff8fa8e1421639269"},
+  "document": {"digest":"0ebd19384fff4d70d4669103918b4a401acd5a985a2b28b85caf8fce622400f8","revision":"020eb6a14e05313bb66724ec3504e613717e6ed1"},
 
   "sources": [
-    {"path":"examples/registry/default.json","digest":"cfad94ca0675644a0a8dd45ba204ea43c8813bb40c5ca3b4e4fa54956c2f4545","revision":"ed05e6f6c98c5b2bb994a88ff8fa8e1421639269"},
+    {"path":"examples/registry/default.json","digest":"08e8245d20ebf0264c91959d6ba3d22ba186668951c5c403aef51de6c691afbe","revision":"036d5d3d2289fc22e325a9ded733e8de561e9b30"},
 
-    {"path":"examples/registry/manifest.json","digest":"1a6cc7babffefe6a1d0dd44d71387dd6209857091bdf40cf556d29531ec8e32b","revision":"ed05e6f6c98c5b2bb994a88ff8fa8e1421639269"},
+    {"path":"examples/registry/manifest.json","digest":"f39d67f4671ae9beacb5bab75cc4b16a31df4a4a48c73c044188747c9dbb6f5b","revision":"020eb6a14e05313bb66724ec3504e613717e6ed1"},
 
     {"path":"packages/cli/src/commands/install-registry.ts","digest":"f718a3fb5c763792c60f9a488f2369a1806f281683e62f13525ed851bcf0ec74","revision":"ed05e6f6c98c5b2bb994a88ff8fa8e1421639269"},
 

@@ -94,7 +94,7 @@
 
     {"path":"packages/contracts/package.json#/files","digest":"43219f75df025fd68c4b3a47b045f822115a0cb02eb1a21f6f0003b466db6b24","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
 
-    {"path":"packages/shared/package.json#/exports","digest":"043a18cf24771ad5cc0939669e4423eb2374d925ef84b25dfe7b5d626e1e45cd","revision":"c6c7d4dd40660b087eacdcda019f817a127405e8"},
+    {"path":"packages/shared/package.json#/exports","digest":"5c63f1e0939f2ba5c839ba2b721cf762287a6c902b6efcee66f4b6b7848d32e5","revision":"036d5d3d2289fc22e325a9ded733e8de561e9b30"},
 
     {"path":"packages/shared/package.json#/engines","digest":"6c12acb1990a85e4fe6986ad29ad44b644eca474a81f946d053aabd14ba62059","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"}
   ],
