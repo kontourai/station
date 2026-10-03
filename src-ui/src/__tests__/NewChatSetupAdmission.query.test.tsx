@@ -124,7 +124,7 @@ test('real SDK observers cannot admit stale ready rows when notifications lag fa
             : input.url,
       ).pathname;
       const method =
-        input instanceof Request ? input.method : (init?.method ?? 'GET');
+        init?.method ?? (input instanceof Request ? input.method : 'GET');
       if (method.toUpperCase() !== 'GET') {
         unexpectedPaths.push(`${method} ${path}`);
         throw new Error(
