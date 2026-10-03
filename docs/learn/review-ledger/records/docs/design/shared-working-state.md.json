@@ -18,7 +18,7 @@
 
     {"path":"src-server/domain/shared-working-state.ts","digest":"d93d73bc2c9331933a64b5e2aa891cc87bbcbeb70f5578a4009331b2c89c36ad","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/orchestration/event-store.ts","digest":"ebb68fc488b3ae1de4ac27a8013de20367af4a9207fdb4b5153c9a71238e85fb","revision":"af3c8fbfee90c9179a0ac19659b76d24c707d574"},
+    {"path":"src-server/services/orchestration/event-store.ts","digest":"95305152b73953e172ef0a1a26211c040f3b58ec002a24cf0e8f0dcb1e236f97","revision":"3a12d2273b4b8b1e024523d6eb396d6ec3c703fb"},
 
     {"path":"src-server/services/orchestration/project-task-room-working-state.ts","digest":"08a0f3c3ce86080d5bffee5b50af42354c55d6fb3aa69e471793aba8b874c820","revision":"0c1f436037261c43eeca3e079f5106948360c591"}
   ],

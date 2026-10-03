@@ -435,24 +435,13 @@ describe('AttentionCard — device pairing kind (#765 D5)', () => {
         /needs a trusted Station session.*station environment access approve pair-req-1 --force/,
       ),
     ).toBeTruthy();
-    // The path that CAN act from here stays reachable.
-    expect(
-      screen
-        .getByRole('link', { name: 'Open connections' })
-        .getAttribute('href'),
-    ).toBe('/connections');
     expect(pairingMocks.confirmPairing).not.toHaveBeenCalled();
     expect(pairingMocks.denyPairing).not.toHaveBeenCalled();
   });
 
-  test('links to Connections and keeps the acknowledge-dismiss affordance', () => {
+  test('keeps the acknowledge-dismiss affordance', () => {
     renderCard(basePairing());
 
-    expect(
-      screen
-        .getByRole('link', { name: 'Open connections' })
-        .getAttribute('href'),
-    ).toBe('/connections');
     screen.getByRole('button', { name: 'Dismiss' }).click();
     expect(acknowledge).toHaveBeenCalledWith('device-pairing:pair-req-1');
     expect(acknowledgeApiBases).toContain('http://station.test');

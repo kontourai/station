@@ -1,0 +1,17 @@
+{
+  "revision": "1b73087d156d008468234fa83d218468d21add03",
+
+  "notes": [
+    {"path":"README.md","note":"Carried forward after merging origin/main into #3062, whose ledger conflicted: this page's review against the PR's delta was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Carried forward after merging origin/main into #3062, whose ledger conflicted: this page's review against the PR's delta was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."},
+
+    {"path":"docs/design/cli-triage.md","note":"Carried forward after merging origin/main into #3062, whose ledger conflicted: this page's review against the PR's delta was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."},
+
+    {"path":"docs/guides/integrating-station.md","note":"Carried forward after merging origin/main into #3062, whose ledger conflicted: this page's review against the PR's delta was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."},
+
+    {"path":"docs/reference/cli.md","note":"Carried forward after merging origin/main into #3062, whose ledger conflicted: this page's review against the PR's delta was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."},
+
+    {"path":"packages/cli/README.md","note":"Carried forward after merging origin/main into #3062, whose ledger conflicted: this page's review against the PR's delta was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself."}
+  ]
+}

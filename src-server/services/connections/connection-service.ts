@@ -169,6 +169,16 @@ export class ModelSelectionRequiredError extends Error {
   }
 }
 
+/** A create named a model connection id that is already configured. */
+export class ConnectionAlreadyExistsError extends Error {
+  constructor(id: string) {
+    super(
+      `Connection '${id}' already exists; update it instead of creating it again.`,
+    );
+    this.name = 'ConnectionAlreadyExistsError';
+  }
+}
+
 /** Opaque, in-memory handoff between selection/staging and provider adoption. */
 interface CredentialProfileApplicationAttempt {
   connectionId: string;
@@ -1639,10 +1649,25 @@ export class ConnectionService {
     return connections.find((connection) => connection.id === id) ?? null;
   }
 
+  /**
+   * `createOnly` refuses to replace an existing model connection: a create
+   * that reuses an id would otherwise overwrite that record wholesale,
+   * including its stored secrets. Agent connections are adapter-owned and can
+   * only be updated, so the flag does not apply to them.
+   */
   async saveConnection(
     connection: ConnectionConfig,
+    options: { createOnly?: boolean } = {},
   ): Promise<ConnectionConfig> {
     if (connection.kind === 'model') {
+      if (
+        options.createOnly &&
+        this.providerService
+          .listProviderConnections()
+          .some((candidate) => candidate.id === connection.id)
+      ) {
+        throw new ConnectionAlreadyExistsError(connection.id);
+      }
       const prepared = await this.prepareModelConnectionForSave({
         id: connection.id,
         type: connection.type,

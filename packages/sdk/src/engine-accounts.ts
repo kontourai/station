@@ -18,6 +18,164 @@ const engineAccountsSchema = z
     ),
   })
   .strict();
+const providerMoneySchema = z
+  .object({
+    amountMinor: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+    currency: z.string().regex(/^[A-Z]{3}$/),
+    exponent: z.number().int().min(0).max(6),
+  })
+  .strict();
+const usageMetadataSchema = z
+  .object({
+    identity: z
+      .object({
+        email: z.string().optional(),
+        accountId: z.string().optional(),
+        userId: z.string().optional(),
+      })
+      .strict()
+      .optional(),
+    credits: z
+      .object({
+        available: z.boolean().optional(),
+        unlimited: z.boolean().optional(),
+        balance: z.number().nonnegative().optional(),
+        overageLimitReached: z.boolean().optional(),
+        approximateLocalMessages: z
+          .array(z.number().nonnegative())
+          .length(2)
+          .optional(),
+        approximateCloudMessages: z
+          .array(z.number().nonnegative())
+          .length(2)
+          .optional(),
+      })
+      .strict()
+      .optional(),
+    extraUsage: z
+      .object({
+        enabled: z.boolean().optional(),
+        used: z.number().nonnegative().optional(),
+        monthlyLimit: z.number().nonnegative().optional(),
+        usedPercent: z.number().nonnegative().optional(),
+        limitReached: z.boolean().optional(),
+        userDisabled: z.boolean().optional(),
+        everEnabled: z.boolean().optional(),
+        currency: z.string().optional(),
+        decimalPlaces: z.number().int().min(0).max(6).optional(),
+        disabledReason: z.string().optional(),
+      })
+      .strict()
+      .optional(),
+    spending: z
+      .object({
+        used: providerMoneySchema.optional(),
+        limit: providerMoneySchema.optional(),
+        balance: providerMoneySchema.optional(),
+        cap: providerMoneySchema.optional(),
+        usedPercent: z.number().nonnegative().optional(),
+        severity: z.string().optional(),
+        enabled: z.boolean().optional(),
+        disabledReason: z.string().optional(),
+        disclaimer: z.string().optional(),
+        canPurchaseCredits: z.boolean().optional(),
+        canToggle: z.boolean().optional(),
+      })
+      .strict()
+      .optional(),
+    limitDetails: z
+      .array(
+        z
+          .object({
+            kind: z.string().optional(),
+            group: z.string().optional(),
+            usedPercent: z.number().nonnegative().optional(),
+            severity: z.string().optional(),
+            resetsAt: z.string().optional(),
+            active: z.boolean().optional(),
+            model: z.string().optional(),
+            modelId: z.string().optional(),
+            surface: z.string().optional(),
+          })
+          .strict(),
+      )
+      .optional(),
+    weeklyBreakdown: z
+      .object({
+        asOf: z.string().optional(),
+        windowStartedAt: z.string().optional(),
+        rows: z.array(
+          z
+            .object({
+              key: z.string(),
+              label: z.string(),
+              usedPercent: z.number().nonnegative().optional(),
+            })
+            .strict(),
+        ),
+      })
+      .strict()
+      .optional(),
+    memberDashboardAvailable: z.boolean().optional(),
+    resetCredits: z
+      .object({
+        available: z.number().nonnegative().optional(),
+        applicable: z.number().nonnegative().optional(),
+      })
+      .strict()
+      .optional(),
+    models: z
+      .array(
+        z
+          .object({
+            id: z.string(),
+            available: z.boolean().optional(),
+            availableAt: z.string().optional(),
+            creditsWouldEnable: z.boolean().optional(),
+          })
+          .strict(),
+      )
+      .optional(),
+    capture: z
+      .object({
+        source: z.enum(['claude-oauth-usage', 'codex-wham-usage']),
+        credentialStorage: z.enum(['secure-store', 'file']).optional(),
+        unhandledFields: z.array(z.string()),
+        excludedFields: z.array(z.string()),
+        truncated: z.boolean(),
+      })
+      .strict(),
+  })
+  .strict();
+const usageHistorySchema = z
+  .object({
+    status: z.enum(['ok', 'unavailable']),
+    retentionDays: z.number().int().positive(),
+    observations: z
+      .array(
+        z
+          .object({
+            fetchedAt: z.string().datetime({ offset: true }),
+            status: z.enum(['ok', 'unknown']),
+            windows: z
+              .array(
+                z
+                  .object({
+                    id: z.string(),
+                    label: z.string(),
+                    usedPercent: z.number().min(0).max(100),
+                    resetsAt: z.string().optional(),
+                    durationSeconds: z.number().positive().optional(),
+                  })
+                  .strict(),
+              )
+              .max(32),
+          })
+          .strict(),
+      )
+      .max(720),
+  })
+  .strict();
 const engineAccountUsageSchema = z.union([
   z
     .object({
@@ -31,17 +189,28 @@ const engineAccountUsageSchema = z.union([
             label: z.string(),
             usedPercent: z.number().min(0).max(100),
             resetsAt: z.string().optional(),
+            durationSeconds: z.number().positive().optional(),
+            resetAfterSeconds: z.number().nonnegative().optional(),
+            meteredFeature: z.string().optional(),
+            allowed: z.boolean().optional(),
+            limitReached: z.boolean().optional(),
+            model: z.string().optional(),
           })
           .strict(),
       ),
       exhausted: z.boolean(),
+      metadata: usageMetadataSchema.optional(),
+      history: usageHistorySchema.optional(),
     })
     .strict(),
   z
     .object({
       status: z.literal('unknown'),
       fetchedAt: z.string(),
+      planLabel: z.string().optional(),
       reason: z.string(),
+      metadata: usageMetadataSchema.optional(),
+      history: usageHistorySchema.optional(),
     })
     .strict(),
 ]);
@@ -143,6 +312,7 @@ export function useEngineAccountUsageQuery(
       ),
     enabled,
     ...queryPolicy,
+    refetchInterval: 60000,
   });
 }
 export function useEngineAccountLoginQuery(
@@ -241,6 +411,7 @@ export function useEngineActivityQuery(
   days: 7 | 30,
   scope: ApiRequestScope,
   enabled: boolean,
+  credentialProfileRef?: string | null,
 ) {
   return useQuery({
     queryKey: [
@@ -249,6 +420,7 @@ export function useEngineActivityQuery(
       scope.authorityKey,
       engine,
       days,
+      credentialProfileRef,
     ],
     queryFn: async ({ signal }) => {
       const response = await fetchUsageRollup(
@@ -256,6 +428,7 @@ export function useEngineActivityQuery(
         {
           days,
           provider: engine,
+          credentialProfileRef,
           localOnly: true,
           groupBy: 'day',
           pageSize: 100,

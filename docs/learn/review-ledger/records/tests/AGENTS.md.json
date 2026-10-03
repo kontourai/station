@@ -12,7 +12,7 @@
   "document": {"digest":"accdb8953eed58866c69d7476eacde02621d4933fae8c1e56116ca38c1e981d7","revision":"ae89c0396a4e0b05b0848dcbfeee9eed29d188c4"},
 
   "sources": [
-    {"path":"docs/guides/testing.md","digest":"e848363d4357e9a2f8de392a6024fd7525262b8b92e138da4a50a05057128916","revision":"0c26d863c1ac3b3e93ea79c2375ebde95e906e8f"},
+    {"path":"docs/guides/testing.md","digest":"53af26e5853101d07b3c331f1ce1bca2ca6e5c19555f7d0045cca9a9483b052b","revision":"26c576127006fc775278e3da2eea0ab23bc9e90c"},
 
     {"path":"scripts/station-cli.ts","digest":"f7c3079b713e6bda690bf4b73419ffad0ff3fd8856c9c9be1f85eeb1271b3b36","revision":"ae89c0396a4e0b05b0848dcbfeee9eed29d188c4"},
 

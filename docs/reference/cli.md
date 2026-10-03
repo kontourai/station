@@ -1539,6 +1539,11 @@ station connections delete <id> [--api-base=<url>]
 station connections test <id> [--api-base=<url>]
 ```
 
+`create`, `update` and `delete` print the resolved target to stderr
+(`Target: station=… endpoint=… source=…`) before the request, because the
+default target can be a saved remote Station. `create` refuses an `id` that
+already names a Model connection on that Station; use `update` instead.
+
 ### `flow`
 
 Drive project-scoped Flow gate-engine runs (`/api/projects/:slug/flow`).
@@ -1919,7 +1924,7 @@ origins on an `origins` line.
 | --- | --- | --- | --- |
 | macOS | LaunchAgent in `~/Library/LaunchAgents/` | after reboot and login | `<STATION_HOME>/logs/*-service.{out,err}.log` |
 | Linux | systemd user unit in `~/.config/systemd/user/` | user-manager startup, including reboot without login | `journalctl --user -u station-<instance>.service` |
-| Windows | Task Scheduler task, `ONLOGON`, `LIMITED` | installing user's logon | `<STATION_HOME>\logs\*-service.{out,err}.log` |
+| Windows | Task Scheduler task, `ONLOGON`, `LIMITED`, no time limit, no battery rules | installing user's logon | `<STATION_HOME>\logs\*-service.{out,err}.log` |
 | No service manager (container, or Linux without a systemd user session) | none — supervise `station service run` yourself | whenever its supervisor starts it | the supervisor's own stdout/stderr |
 
 `service status` reports the OS unit, lifecycle instance/processes, and both
@@ -1964,6 +1969,26 @@ disappear before bootstrap. On Linux they use `systemctl --user start|stop`.
 On Windows Station verifies the scheduled task owner, wrapper command, and
 limited run level before start, stop, replacement, or deletion; a conflicting
 task fails closed.
+
+`schtasks /Create` leaves a task with Task Scheduler's defaults: a 72-hour
+execution time limit, and battery rules that keep the task from starting on
+battery and stop it when a laptop unplugs. Install therefore sets, through
+`Set-ScheduledTask`, priority 5, no execution time limit (`PT0S`), both battery
+rules off, and the scheduler's restart settings (every minute, the shortest
+interval, up to 255 times). It reads all six back and refuses the install,
+restoring the previous registration or removing the new one, if any of them
+did not persist. Unlike the macOS (`KeepAlive`) and Linux (`Restart=always`)
+units, the Windows task does not relaunch a service that exits: Task
+Scheduler's restart settings apply to a task it could not start, and a wrapper
+that exits non-zero is left stopped until the next logon or `service start`.
+`service status` (and `station upgrade`) read the same six values on a
+`scheduling` line: a task registered by an earlier version reports `stale`
+with the reinstall command, and `healthy` is false until it is reinstalled.
+So on an existing Windows install `service status` exits 1 after this change
+until `station service install` is run again; the service itself keeps
+running, and `station upgrade` only prints the advisory. A task whose settings
+were changed by hand is reported `stale` the same way, and a reinstall
+overwrites them.
 
 On Linux, installation requires a working systemd user manager and verified
 linger. Station runs `loginctl enable-linger <uid>` when needed and fails the
@@ -3014,6 +3039,20 @@ station plugin create my-provider --template=provider
 
 `station plugin dev` previews legacy layout tabs only; it does not render
 `workspacePanes`. Install the scaffold to see its Pane.
+
+### `plugin experience inspect|review`
+
+Inspect a pinned local Skill library, then review an authored ordinary plugin
+against its source/package digests, source spans, gap dispositions and retained
+evaluation transcripts. These commands read local files and grant no execution
+or installation authority. See the [author learning path](../guides/authoring-skill-experiences.md)
+for the receipt contract and evidence limits.
+
+```bash
+station plugin experience inspect /path/to/library --entries=my-skill
+station plugin experience review /path/to/plugin --library=/path/to/library --entries=my-skill
+station plugin experience review /path/to/plugin --library=/path/to/library --entries=my-skill --receipt=/path/to/review.json
+```
 
 ### `plugin build`
 

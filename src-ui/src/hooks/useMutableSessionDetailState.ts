@@ -18,8 +18,14 @@ import {
   useSessionFlowRunQuery,
   useWorkflowTasksQuery,
 } from '@kontourai/station-sdk';
-import { useMutation } from '@tanstack/react-query';
-import { useMemo, useState } from 'react';
+import { useMutation, useMutationState } from '@tanstack/react-query';
+import {
+  type SetStateAction,
+  useCallback,
+  useMemo,
+  useSyncExternalStore,
+} from 'react';
+import { chatDraftsStore } from '../contexts/chat-drafts-store';
 import { useToast } from '../contexts/ToastContext';
 import { copyToClipboard } from '../lib/clipboard';
 import { sessionAnswerabilityView } from '../utils/answerability';
@@ -276,14 +282,45 @@ export function useMutableSessionDetailState({
   visualViewport: { height: number };
 }) {
   const threadId = session.threadId;
-  const [input, setInput] = useState('');
+  const input = useSyncExternalStore(chatDraftsStore.subscribe, () =>
+    chatDraftsStore.getActivityDraft(apiBase, threadId),
+  );
+  const setInput = useCallback(
+    (next: SetStateAction<string>) => {
+      chatDraftsStore.setActivityDraft(
+        apiBase,
+        threadId,
+        typeof next === 'function'
+          ? next(chatDraftsStore.getActivityDraft(apiBase, threadId))
+          : next,
+      );
+    },
+    [apiBase, threadId],
+  );
   const isDelegated = Boolean(session.delegation);
   const { showToast } = useToast();
 
+  const sendKey = ['activity-session-send', apiBase, threadId];
   const sendTurn = useMutation({
-    mutationFn: () => sendOrchestrationTurn({ threadId, text: input, apiBase }),
-    onSuccess: () => setInput(''),
+    mutationKey: sendKey,
+    mutationFn: ({ text }: { text: string }) =>
+      sendOrchestrationTurn({ threadId, text, apiBase }),
+    onSuccess: (_result, { text }) => {
+      if (chatDraftsStore.getActivityDraft(apiBase, threadId) === text)
+        chatDraftsStore.clearActivityDraft(apiBase, threadId);
+    },
   });
+  const sendAttempts = useMutationState({
+    filters: { mutationKey: sendKey, exact: true },
+    select: (mutation) => ({
+      status: mutation.state.status,
+      error: mutation.state.error,
+    }),
+  });
+  const sendTurnPending = sendAttempts.some(
+    (attempt) => attempt.status === 'pending',
+  );
+  const sendTurnError = sendAttempts.at(-1)?.error ?? null;
   const respond = useMutation({
     mutationFn: (decision: 'accept' | 'decline') => {
       const request = latestOpenRequest(events);
@@ -466,8 +503,7 @@ export function useMutableSessionDetailState({
     });
   };
 
-  const canSend =
-    input.trim().length > 0 && !isStreaming && !sendTurn.isPending;
+  const canSend = input.trim().length > 0 && !isStreaming && !sendTurnPending;
 
   // archive#189 supersedes the older "archive#582: sessions carry no join key"
   // note that stood here. Sessions CAN now be joined to a flow-agents task —
@@ -540,6 +576,8 @@ export function useMutableSessionDetailState({
     setInput,
     isDelegated,
     sendTurn,
+    sendTurnPending,
+    sendTurnError,
     respond,
     stopTask,
     pendingRequest,

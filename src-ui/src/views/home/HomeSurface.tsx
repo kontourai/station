@@ -7,7 +7,6 @@ import {
   buildHeatRows,
   type HeatRow,
 } from './blocks/activity-bars';
-import { revealHomeRegion } from './home-reveal';
 import type { HomeViewNavigation, useHomeViewModel } from './useHomeViewModel';
 import { useHomeWorkLanes } from './useHomeWorkLanes';
 
@@ -71,8 +70,8 @@ export function HomeSurface({
     <>
       <header className="home-view__intro">
         <p className="home-view__eyebrow">Your work</p>
-        <h1>What do you want to work on?</h1>
-        <p>Start something focused or continue exactly where you left off.</p>
+        <h1>What's next?</h1>
+        <p>Chat, explore agents, or open a project.</p>
       </header>
       <HomeActionSection
         continuation={continuation}
@@ -101,18 +100,13 @@ export function HomeSurface({
       <HomeRecentWorkSection
         lanes={lanes}
         workItems={model.workItems}
+        workFacts={model.workFacts}
         workLoading={model.workLoading}
         workDegraded={model.workDegraded}
         workError={model.workError}
         agents={model.agents}
         remoteUnavailable={model.remoteUnavailable}
         remoteAuthenticationRequired={model.remoteAuthenticationRequired}
-        projectRowCount={heatRows.length}
-        onShowProjects={
-          heatRows.length > 0
-            ? () => revealHomeRegion(ACTIVITY_HEADING_ID)
-            : null
-        }
         onOpen={model.continueWork}
         onViewActivity={() => showSurfacePage('activity')}
         onRetry={model.retryWork}

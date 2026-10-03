@@ -53,6 +53,61 @@ const INNOCENT_PASSING_PHASE_TEST_FILE =
 const PASSING_PHASE_ECHOED_FAIL_STDERR = `${ESC}[41m${ESC}[1m FAIL ${ESC}[22m${ESC}[49m ${INNOCENT_PASSING_PHASE_TEST_FILE}${ESC}[2m > ${ESC}[22mechoes a captured banner`;
 
 describe('verification status projection', () => {
+  test('preserves explain request identity when unrelated coordinator status exceeds the output cap', () => {
+    const request = {
+      key: 'a'.repeat(64),
+      laneId: 'full-regression',
+      command: 'npm run full:regression',
+      headSha: 'b'.repeat(40),
+      workspaceDigest: 'c'.repeat(64),
+      toolchainIdentity: 'd'.repeat(64),
+      worktree: '/fixture/worktree',
+    };
+    const canonicalReceipt = `/fixture/worktree/.kontourai/verification-receipts/${request.key}.canonical.json`;
+    const secret = `ghp_${'e'.repeat(40)}`;
+    const rendered = renderBounded({
+      request,
+      canonicalReceipt,
+      lane: { id: 'full-regression', command: request.command },
+      status: {
+        capacity: 100,
+        usedWeight: 80,
+        waiting: 2,
+        jobs: Array.from({ length: 200 }, (_, index) => ({
+          key: String(index),
+          live: true,
+          state: 'running',
+          diagnostics: `${secret}${'x'.repeat(1024)}`,
+        })),
+      },
+    });
+    const document = JSON.parse(rendered);
+    expect(document.request).toEqual(request);
+    expect(document.canonicalReceipt).toBe(canonicalReceipt);
+    expect(document.status).toMatchObject({
+      capacity: 100,
+      usedWeight: 80,
+      waiting: 2,
+      omittedLiveCount: 200,
+      truncated: true,
+    });
+    expect(document.status).not.toHaveProperty('jobs');
+    expect(document).not.toHaveProperty('receipt');
+    expect(document).not.toHaveProperty('summary');
+    expect(rendered).not.toContain(secret);
+    expect(Buffer.byteLength(rendered)).toBeLessThanOrEqual(8 * 1024);
+    expect(
+      JSON.parse(
+        renderBounded({
+          request: { ...request, worktree: 'x'.repeat(9 * 1024) },
+          canonicalReceipt,
+          lane: { id: 'full-regression', command: request.command },
+          status: { jobs: [] },
+        }),
+      ),
+    ).toEqual({ truncated: true });
+  });
+
   test('keeps owned Windows settlement evidence separate from captured streams', async () => {
     const stdout = new EventEmitter();
     const stderr = new EventEmitter();

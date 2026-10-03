@@ -1,7 +1,12 @@
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import type { ConversationOpenResolution } from '@kontourai/station-contracts/orchestration';
+import type {
+  BrowserPaneAccessView,
+  BrowserSessionView,
+} from '@kontourai/station-contracts/workspace-browser-pane';
 import type { WorkspacePaneHostActionCatalog } from '@kontourai/station-contracts/workspace-pane-host-contribution';
 import { devices, expect, type Page } from '@playwright/test';
+import type { PluginPublishInspection } from '../src-ui/src/views/project-page/pluginPublishClient';
 import { agentConnectionFixture } from './helpers/connection-fixtures';
 import {
   E2E_STATION_CAPABILITIES,
@@ -125,6 +130,30 @@ async function mockTaskFirstHome(
   await page.route('**/config/app', (route) => route.fulfill(json(APP_CONFIG)));
   await page.route('**/api/**', async (route) => {
     const path = new URL(route.request().url()).pathname;
+    if (
+      route.request().method() === 'GET' &&
+      path === '/api/browser/projects/station/access'
+    ) {
+      const access: BrowserPaneAccessView = {
+        projectId: project.id,
+        role: 'operator',
+        principalKey: 'operator',
+        operator: true,
+        browser: 'not-ready',
+      };
+      await route.fulfill(json(access));
+      return;
+    }
+    if (
+      route.request().method() === 'GET' &&
+      path === '/api/browser/sessions' &&
+      new URL(route.request().url()).searchParams.get('projectSlug') ===
+        project.slug
+    ) {
+      const sessions: BrowserSessionView[] = [];
+      await route.fulfill(json(sessions));
+      return;
+    }
     // `PluginRegistry.ts:207-212` destructures `{ plugins }` off the RAW body
     // and iterates it; the `{success,data}` envelope this handler falls back to
     // makes it throw, degrade, and present the non-dismissible "Extensions
@@ -171,6 +200,17 @@ async function mockTaskFirstHome(
     }
     if (path === '/api/projects') {
       await route.fulfill(json([project]));
+      return;
+    }
+    if (
+      path === '/api/projects/station/plugin-publish' &&
+      route.request().method() === 'GET'
+    ) {
+      const inspection: PluginPublishInspection = {
+        plugin: null,
+        reason: 'not-a-plugin',
+      };
+      await route.fulfill(json(inspection));
       return;
     }
     if (path === '/api/projects/station') {
@@ -549,7 +589,10 @@ async function mockTaskFirstHome(
 }
 
 async function startProjectTask(page: Page) {
-  await page.getByRole('button', { name: /Start direct chat/i }).click();
+  await page
+    .locator('.home-view__actions')
+    .getByRole('button', { name: /Chat options/i })
+    .click();
   const dialog = page.getByRole('dialog', { name: 'New Chat' });
   await dialog.getByRole('button', { name: 'Workspace: No workspace' }).click();
   await dialog.locator('[data-context-value="station"]').click();
@@ -669,6 +712,35 @@ async function mockStationModelProviders(page: Page) {
 }
 
 test.describe('Task-first Home (#332, mocked)', () => {
+  test('starts a written goal with working defaults and no configuration choices', async ({
+    page,
+  }) => {
+    const commands: Record<string, unknown>[] = [];
+    await mockTaskFirstHome(page, { commands });
+    await page.goto('/');
+    const prompt = 'Reply exactly GOAL READY. Use no tools.';
+    await page
+      .getByRole('textbox', { name: 'What would you like done?' })
+      .fill(prompt);
+    await page
+      .locator('.home-view__goal')
+      .getByRole('button', { name: 'Start a chat', exact: true })
+      .click();
+    await expect
+      .poll(() =>
+        commands.some((command) => command.type === 'sendExecutionMessage'),
+      )
+      .toBe(true);
+    const sent = commands.find(
+      (command) => command.type === 'sendExecutionMessage',
+    );
+    expect(sent?.input).toMatchObject({ message: prompt });
+    await expect(page.getByRole('dialog', { name: 'New Chat' })).toHaveCount(0);
+    await expect(
+      page.getByRole('button', { name: 'Workspace: No workspace' }),
+    ).toHaveCount(0);
+  });
+
   test('keeps sidebar, project-chat, help launch, and explicit maximize transitions connected', async ({
     page,
   }) => {
@@ -706,7 +778,10 @@ test.describe('Task-first Home (#332, mocked)', () => {
     // effect of the removed dispatch. Every downstream assertion below is
     // unchanged; only the entry step and the order of the first maximize
     // assertion (now after an explicit click, not implicit) moved.
-    await page.getByRole('button', { name: /Start direct chat/i }).click();
+    await page
+      .locator('.home-view__actions')
+      .getByRole('button', { name: /Chat options/i })
+      .click();
     const newChat = page.getByRole('dialog', { name: 'New Chat' });
     await expect(newChat).toBeVisible();
     await expect(
@@ -803,14 +878,16 @@ test.describe('Task-first Home (#332, mocked)', () => {
 
     await expect(page).toHaveURL(/\/$/);
     await expect(
-      page.getByRole('heading', { name: 'What do you want to work on?' }),
+      page.getByRole('heading', { name: "What's next?" }),
     ).toBeVisible();
     const continuation = page.getByRole('button', {
       name: /Continue most recent work/i,
     });
     await expect(continuation).toContainText('Codex · gpt-5.3-codex');
     await expect(
-      page.getByRole('button', { name: /Start direct chat/i }),
+      page
+        .locator('.home-view__actions')
+        .getByRole('button', { name: /Chat options/i }),
     ).toContainText('Codex · gpt-5.3-codex');
     await expect(
       page.getByRole('button', { name: /Open local project/i }),
@@ -843,10 +920,14 @@ test.describe('Task-first Home (#332, mocked)', () => {
     await expect(page.getByText('No chat open')).toBeVisible();
 
     const advertisedIdentity = await page
-      .getByRole('button', { name: /Start direct chat/i })
+      .locator('.home-view__actions')
+      .getByRole('button', { name: /Chat options/i })
       .locator('small')
       .textContent();
-    await page.getByRole('button', { name: /Start direct chat/i }).click();
+    await page
+      .locator('.home-view__actions')
+      .getByRole('button', { name: /Chat options/i })
+      .click();
     const selectedAgent = page.locator('.new-chat-modal__agent--selected');
     await expect(selectedAgent).toContainText('Codex');
     await expect(selectedAgent).not.toContainText('gpt-5.3-codex');
@@ -910,7 +991,10 @@ test.describe('Task-first Home (#332, mocked)', () => {
       page.getByRole('button', { name: 'Task context' }),
     ).toHaveCount(0);
 
-    await page.getByRole('button', { name: /Start direct chat/i }).click();
+    await page
+      .locator('.home-view__actions')
+      .getByRole('button', { name: /Chat options/i })
+      .click();
     await selectNoWorkspace(page);
     await page.locator('.new-chat-modal__agent--selected').click();
     await expect(page.locator('.chat-dock')).toBeVisible();
@@ -1331,7 +1415,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
       // The panel's rows: Home and Activity, both at the touch floor.
       // `exact` because the drawer header's own control is "Station home",
       // which a substring match also resolves.
-      for (const label of ['Home', 'Activity']) {
+      for (const label of ['Home', 'Activity', 'Schedule', 'Customize']) {
         const item = navigation.getByRole('button', {
           name: label,
           exact: true,
@@ -1344,14 +1428,12 @@ test.describe('Task-first Home (#332, mocked)', () => {
 
       // Neither group header survives, and neither do the rows they held.
       for (const gone of [
-        'Customize',
         'System',
         'Agents',
         'Connections',
         'Skills',
         'Registry',
         'Plugins',
-        'Schedule',
         'Developer',
       ]) {
         await expect(
@@ -1361,7 +1443,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
 
       // The footer's two navigation controls are the drawer's only remaining
       // destination affordances, so they carry the floor the rows used to.
-      for (const label of ['Notifications', 'Settings']) {
+      for (const label of ['Schedule', 'Customize', 'Settings']) {
         const control = navigation.getByRole('button', { name: label });
         await expect(control).toBeVisible();
         const box = (await control.boundingBox())!;
@@ -1403,7 +1485,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
       // by scanning one button fewer.
       await expect(page.getByTestId('first-run-home-card')).toBeVisible();
       await expect(
-        page.getByRole('button', { name: 'Set up Station' }),
+        page.getByRole('button', { name: 'Personalize Station' }),
       ).toBeVisible();
       await expect(page.locator('.sidebar')).not.toBeVisible();
       await page.getByRole('button', { name: 'Toggle menu' }).click();
@@ -1413,7 +1495,10 @@ test.describe('Task-first Home (#332, mocked)', () => {
       ).toBeVisible();
       await page.getByRole('button', { name: 'Home', exact: true }).click();
 
-      await page.getByRole('button', { name: /Start direct chat/i }).click();
+      await page
+        .locator('.home-view__actions')
+        .getByRole('button', { name: /Chat options/i })
+        .click();
       await page.locator('.new-chat-modal__agent--selected').click();
       await expect(page.locator('.chat-dock')).toBeVisible();
       await page.getByRole('button', { name: 'Chat actions' }).click();
@@ -1944,7 +2029,7 @@ test('profiles Home with substantial session history', async ({
       await page.goto('/');
       expect((await (await response).json()).data).toHaveLength(1000);
       await expect(
-        page.getByRole('heading', { name: 'What do you want to work on?' }),
+        page.getByRole('heading', { name: "What's next?" }),
       ).toBeVisible();
       await expect(
         page.getByText('History session 0', { exact: true }).first(),

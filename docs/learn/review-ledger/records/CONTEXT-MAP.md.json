@@ -12,7 +12,7 @@
   "document": {"digest":"9097c818f99e320f6a2e110c3f8d36d0cc3523ac5890fd61d951e893e0fc67c2","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
   "sources": [
-    {"path":"docs/architecture/module-map.md","digest":"fe2f22beb3ad5562546622b52f25b8729488cb3384657c03a6028c2b3363d282","revision":"f28ea67cceea02a6cb306952553587cbf6652bc2"},
+    {"path":"docs/architecture/module-map.md","digest":"eeecc582e329801268ffad402a368f61997afe00c1401a5e70129ddd92436689","revision":"d6a3158c22a62d9530592c6366a1624790ee9401"},
 
     {"path":"docs/contexts/agent-runtime/CONTEXT.md","digest":"65e814615ee79543753261e413d46c6eef26dd2ac6f8d664fc37daaa70908164","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -22,11 +22,11 @@
 
     {"path":"docs/contexts/operations/CONTEXT.md","digest":"ecec943113be3307ec644a418883c4ea8a172cd156a57ba0bb58c8b21f3cd73b","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"docs/contexts/workspace-surfaces/CONTEXT.md","digest":"4857d7c6b89854ba2a9f4d135bead55a3f5a9428b50d845f08bbb87ff7c13522","revision":"ec83b822f1a70d5c7e708a49d9c04aa88ea2c662"},
+    {"path":"docs/contexts/workspace-surfaces/CONTEXT.md","digest":"e8acb5b7d5884898fe497c865a7017f0ca392c10f1fa25807c28a91f159bfc6a","revision":"cff807c77b3676f414a57b880fabb5c70ca674ed"},
 
-    {"path":"docs/glossary.md","digest":"8253d91c550f19b800501ac200a66a2e3d55a4b4d71cf6febdd2b1b9f3c7e2bc","revision":"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac"},
+    {"path":"docs/glossary.md","digest":"329ca4c2a839ecbf37e8306421328d7b2ca93748420405867954ad000062ae19","revision":"a86f7c1d7acef9f4fb2472a3dffce232bc9950b0"},
 
-    {"path":"packages/contracts/src/engine-capability-matrix.ts","digest":"e6d2c0397a5894f2f2c8aa175e9a6cd240c8a4445269041c982019245c5cc102","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"packages/contracts/src/engine-capability-matrix.ts","digest":"db82340760d09e965ac7ed17830f36060573fe48545995d4ad9149b755d36ea1","revision":"518fae654af981373e872c2ab85438bb1b1b0e67"},
 
     {"path":"packages/contracts/src/session-lifecycle.ts","digest":"defd4c1f3fd84f5b94d47f5a13c88ce75b92e3f2f7dc9c7ff9358f300e1795cf","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 

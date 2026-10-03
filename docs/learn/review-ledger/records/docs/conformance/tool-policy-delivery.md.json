@@ -9,32 +9,32 @@
 
   "limits": "No live Claude/ACP/Codex/Muse or permission/security probe. Old2.1.224/0.3.224 observations were not reproduced against the current0.3.261 lockfile. Installed SDK declarations and bundled settings resolver establish option defaults, not actual trust/permission precedence or memory/MCP discovery on a deployment. Fixture callbacks and AST tripwire do not prove live enforcement.",
 
-  "document": {"digest":"eaf8811c2feade2dfa7377efde1e1395d6fde7361b8ed14c5e504cfc050b8957","revision":"0f9c1b3cdb7012c7dd9f96a08c67430a14ad3f86"},
+  "document": {"digest":"490d044f9376c5e9604c43516260d5508a44e4a7670ffe01b60492c916d1a9c4","revision":"1d49e432472043f4c3ab7d870104fb3baaf4ad05"},
 
   "sources": [
-    {"path":"package.json","digest":"7263c035fa5946e593a759d3a0b55d8f504e955eb14fab5a401b71c7d3b2ac50","revision":"df9188971e1a93d2c5525a7f5f38e3da93c9e4de"},
+    {"path":"package.json","digest":"8161e13f46212729130685df12cc34747e385002183410cd57e47d5cdd125306","revision":"2fc8f69d15e5c8fa3188bb2ee4731f1b63c66218"},
 
-    {"path":"packages/contracts/src/engine-capability-matrix.ts","digest":"e6d2c0397a5894f2f2c8aa175e9a6cd240c8a4445269041c982019245c5cc102","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"packages/contracts/src/engine-capability-matrix.ts","digest":"db82340760d09e965ac7ed17830f36060573fe48545995d4ad9149b755d36ea1","revision":"518fae654af981373e872c2ab85438bb1b1b0e67"},
 
-    {"path":"packages/shared/src/__tests__/tool-request-preview.test.ts","digest":"d118c809a928964381bd99c8fb18f9f0774497f59504b9639af3ae37874a34b2","revision":"8e353a6a1600fadd5df7f82941cfc289a66a686a"},
+    {"path":"packages/shared/src/__tests__/tool-request-preview.test.ts","digest":"b93bb0e09fc5af0c8aae5fe2a23d075030f9df264be30077f1150f0cfb54a213","revision":"7d1527f7d45762dfaefe64449512d102c71a6c2c"},
 
     {"path":"packages/shared/src/redaction.ts","digest":"ddce9bcf50fe2f19b9922149fefa5b34a490396d8b05ea6d2218786e972d9479","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"packages/shared/src/runtime-event-projection.ts","digest":"b6e58833d00c3823cf7cc0410b757ec27b4ec1a65ef2d26b2efa37a76bac8fc3","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
+    {"path":"packages/shared/src/runtime-event-projection.ts","digest":"30844f3ebb0ddd1b51089aa16c1edb39f2aa668d1088bf3e3e5a00e7cc6bd2e9","revision":"bc671142a7ae70587daf5bb0d94732e8ca74600a"},
 
-    {"path":"packages/shared/src/tool-request-preview.ts","digest":"eea1bd5a34c79fe429276d813748d1930fa66c2ee33f4c3d702fd64d6da4f731","revision":"05fe0e0a5acf5a0e05317894c9bc91e2b901c4c8"},
+    {"path":"packages/shared/src/tool-request-preview.ts","digest":"b97e5705a45c2299f4661cc70ea845473b37765cd5405d0028a4d9d29c25685f","revision":"d28597b948558f03decf72957db69fa4510b5d93"},
 
-    {"path":"pnpm-lock.yaml","digest":"29dbdce300fcd3d881ae511317af478da6e9c098a8e8cf51c6b2269a937525df","revision":"df9188971e1a93d2c5525a7f5f38e3da93c9e4de"},
+    {"path":"pnpm-lock.yaml","digest":"5c3c9968c59ac5b4e7e5ec861c2873bfce11b7c60e7b28e8706db6b29d028ddb","revision":"1e6450e0caa47975d33f505a1348bdc01ae1382e"},
 
-    {"path":"src-server/providers/__tests__/claude-adapter.test.ts","digest":"b4ae3455f66b64898993b9c732c130502c3e86554e07e3dac9c2abd00d1a9560","revision":"524b8e46e418a392ce2a5ca8c1398b427d4e67da"},
+    {"path":"src-server/providers/__tests__/claude-adapter.test.ts","digest":"f1ebbf1bbbbf8c5119ed7b54becb09a888825ea052551df72e75a55fde370c07","revision":"3d33d71792203d38262ac5fd80261d12bd31e1ed"},
 
     {"path":"src-server/providers/__tests__/tool-policy-delivery-tripwire.test.ts","digest":"3f35d0f1dd97e1fad8d28fcffafcaef9e001e2edc45f982e471dcf8e11c5f2df","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"3e4409413adf220cb89f31508a8e15676a9f2098a1360a4a28ec0d9f30efe1a8","revision":"f28ea67cceea02a6cb306952553587cbf6652bc2"},
+    {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"b67b8535152f5964f1491089851480aadca7d18ff7106a0300a526dbabe82f65","revision":"b2d3503cd33490cf074a99eae94562607360f72b"},
 
-    {"path":"src-server/providers/adapters/claude-adapter-events.ts","digest":"a194c76e9d176303a57fb46953fb0c32b874994a9073888eba4a585de57d6b25","revision":"593ba7779013fc65c6136152fcfb948e1ba91ce9"},
+    {"path":"src-server/providers/adapters/claude-adapter-events.ts","digest":"7f4d51f441897955e89406fa876e73af3b894bbe1c31c2699a16bac59890e963","revision":"835201d7c73568b7889f267cc5634fa16f73e575"},
 
-    {"path":"src-server/providers/adapters/claude-adapter.ts","digest":"d41be01dbad45c51d1acee14c2120e55ea7ef0a7101a9824590ff45a9bd76fc0","revision":"524b8e46e418a392ce2a5ca8c1398b427d4e67da"},
+    {"path":"src-server/providers/adapters/claude-adapter.ts","digest":"1eb6048188a2a5d01b67738ab6b5d22f9fa85d93bd00b3e622423798b965e8fb","revision":"3d33d71792203d38262ac5fd80261d12bd31e1ed"},
 
     {"path":"src-server/providers/adapters/claude-approval-mode.ts","digest":"79805e3f379ee92303e8966260523825ce2c4756affeefb956577189626d3385","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
@@ -44,23 +44,23 @@
 
     {"path":"src-server/runtime/agents/pre-tool-policy.ts","digest":"40afce59c98da72b4886d7b462c742d8a8d5fb53ae11604df83bd94fc48ca484","revision":"cf0e84f7536007ebe547d13ec6c4a68a44937f4b"},
 
-    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"4e02fdbdc3ab121af4b11113970aaca7f19ee98ad4e52bfdfc743ad74e6f9a90","revision":"9f8b407fac4a9e5536d72ca49be3a0b77715e1d8"},
+    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"92d31dd655d7c0a62ce68dc6fd804268cda2f357bb775a512ee974d7c09564db","revision":"1a235cd9bc482738abe4c3f011f73be86074d667"},
 
-    {"path":"src-server/services/approvals/approval-inbox.ts","digest":"86f6654861290a3c6a7cd303bfe9a339e2ee1275f1dc9fd67c23c0cab275bbba","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
+    {"path":"src-server/services/approvals/approval-inbox.ts","digest":"eb684e2f8d926fc7b6e307a543e004a660ad1f4a09e78fce46e2d73116647d0c","revision":"ef15303ade3f3a2ac68967376f15be29273b58cd"},
 
     {"path":"src-server/services/orchestration/request-presentation.ts","digest":"6bde57de6020c50c9784630c585e0744a249e197c6f035fdb8fc0a9ed768aa31","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
 
     {"path":"src-ui/src/components/badges/ApprovalModeChip.tsx","digest":"d74ef9adc51a198ae125997d3dea412a24af03f1e427e10c43c97d526c21cbab","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-ui/src/components/chat/ToolCallDisplay.tsx","digest":"230994803c6e56636bdf11aee4dc3417f9c7da83242c99a1c4a68b2fdd8184f7","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
+    {"path":"src-ui/src/components/chat/ToolCallDisplay.tsx","digest":"17852c7cbb75da30cbfa81f37c564dca85e07f8756d68767a50e9f0ca0fa8c06","revision":"ef15303ade3f3a2ac68967376f15be29273b58cd"},
 
-    {"path":"src-ui/src/hooks/orchestration/__tests__/approvalHandlers.test.ts","digest":"77417daeb5063994d160f5a7bc842e9bffe448258646e0a352c19875d03193bf","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
+    {"path":"src-ui/src/hooks/orchestration/__tests__/approvalHandlers.test.ts","digest":"c31e46d78467e83cb3c7d0047360b33a6eecd3d6ce133b3fdf9d0ecc7a2107c9","revision":"650eea473959bfef27bbb9a3418e035b3f5f3de1"},
 
-    {"path":"src-ui/src/hooks/orchestration/approvalHandlers.ts","digest":"c0ebc61da5d9ee5d5a7e491730562c4a37136fc15f3eed785741384a943be112","revision":"392b955a316234ea7972c96b5930b0b27db06ea6"},
+    {"path":"src-ui/src/hooks/orchestration/approvalHandlers.ts","digest":"159033aa6c7c243e78b249140f322db52a7bbe74de3648c48a00a625636535d7","revision":"b6e91add12d9c42b59c59f070ca541e9a9d63e62"},
 
-    {"path":"src-ui/src/hooks/orchestration/pendingRequestRows.ts","digest":"b2ad336b2a519684fb2c2e4759207610b250779c971ab2fc7330f7b03c11a611","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
+    {"path":"src-ui/src/hooks/orchestration/pendingRequestRows.ts","digest":"13ac147c892452af633509b7ead455d767dc65abf781edc3ae5413161a9a381e","revision":"f61e4efc7c4fd97531847cf798304c8760d3e624"},
 
-    {"path":"src-server/providers/adapters/acp-adapter-events.ts","digest":"f3e937e0fac5e359c1dddfc56891e09cf597cbe9e6e6b8132efee91b65481427","revision":"b7561d3b1d39b4cd9ae541ef6048f7e9648a86ad"}
+    {"path":"src-server/providers/adapters/acp-adapter-events.ts","digest":"81dff671713d9bd8cee6f2c9da3ae512651c8983bca4576a3df06d8ece8bbdd8","revision":"8a04b6f3b5bd86d9a60dfe35044457ca096ae78d"}
   ],
 
   "checks": [

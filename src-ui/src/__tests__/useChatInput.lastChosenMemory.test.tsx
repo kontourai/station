@@ -172,6 +172,10 @@ describe('useChatInput last-chosen model memory', () => {
     availableModels = [fastModel],
     catalogSource: RuntimeCatalogSource = provider === 'acp' ? 'live' : 'none',
     conversationId: string | undefined = undefined,
+    orchestrationSession: {
+      draft?: boolean;
+      terminalAttribution?: { kind: 'send_refused'; detail: string };
+    } | null = null,
   ) {
     activeChatsStore.updateChat(SESSION_ID, {
       provider,
@@ -190,6 +194,7 @@ describe('useChatInput last-chosen model memory', () => {
           sessionId: SESSION_ID,
           agentSlug: (mockAgent as AgentData | null)?.slug ?? null,
           conversationId,
+          orchestrationSession,
           availableModels,
           bindingStatus: {
             catalogSource,
@@ -243,6 +248,48 @@ describe('useChatInput last-chosen model memory', () => {
     expect(result.current.modelSelectionReason).toBe(
       'This engine can choose a model for a new chat, but cannot change it in an existing conversation.',
     );
+  });
+
+  const refusedFirstSend = {
+    terminalAttribution: {
+      kind: 'send_refused' as const,
+      detail: 'Station refused the send before it started.',
+    },
+  };
+
+  // A conversation whose only send was refused (or that never sent) has no
+  // engine history: the server starts the next send on a successor session
+  // with the chosen model (`conversation-lineage.ts` `needsModelRestart`),
+  // so refusing the picker there stranded a user whose first send failed
+  // because of the model/engine they now want to change.
+  test('ACP keeps model selection open on a conversation that never ran a turn', () => {
+    mockAgent = externalAgent;
+    const { result } = renderWithProvider(
+      'acp',
+      [fastModel],
+      'live',
+      'existing-conversation',
+      refusedFirstSend,
+    );
+
+    expect(result.current.canModelSelect).toBe(true);
+    expect(result.current.modelSelectionReason).toBeUndefined();
+  });
+
+  // The summary is a read that lags: a first turn now running must not read
+  // as a Draft and reopen a picker the engine cannot honour mid-conversation.
+  test('a turn in flight outranks a stale never-ran summary', () => {
+    mockAgent = externalAgent;
+    activeChatsStore.updateChat(SESSION_ID, { status: 'sending' });
+    const { result } = renderWithProvider(
+      'acp',
+      [fastModel],
+      'live',
+      'existing-conversation',
+      { draft: true },
+    );
+
+    expect(result.current.canModelSelect).toBe(false);
   });
 
   test('an ACP connection with no observed model catalog keeps the picker disabled (#2848)', () => {

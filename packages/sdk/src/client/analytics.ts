@@ -23,6 +23,7 @@ import { type ClientRequestOptions, getJson } from './http';
 
 export interface UsageRollupQuery {
   provider?: 'claude' | 'codex';
+  credentialProfileRef?: string | null;
   localOnly?: boolean;
   days: 7 | 14 | 30;
   groupBy?: 'provider' | 'model' | 'station' | 'conversation' | 'task' | 'day';
@@ -67,6 +68,8 @@ export async function fetchUsageRollup(
 ): Promise<UsageRollupResponse> {
   const params = new URLSearchParams({ days: String(query.days) });
   if (query.provider) params.set('provider', query.provider);
+  if (query.credentialProfileRef !== undefined)
+    params.set('credentialProfileRef', query.credentialProfileRef ?? '');
   if (query.localOnly) params.set('localOnly', '1');
   if (query.groupBy) params.set('groupBy', query.groupBy);
   if (query.cursor) params.set('cursor', query.cursor);

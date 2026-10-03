@@ -1,0 +1,307 @@
+{
+  "_comment": [
+    "can_use_tool request bodies captured from the Claude Code 2.1.278 CLI bundled with Agent SDK 0.3.278, each from a live turn in permissionMode default with the listed permissions.ask rules (#2932 review probe).",
+    "Scrubbed: the probe directories are rewritten to /probe/cwd and /probe/outside. The probe dropped tool_use_id and the input description. Where the probe printed the engine's description truncated mid-path, the description field is omitted here.",
+    "stationVerdictUnderBashGrant is what Station does with the ask under a Bash session grant: plain (the grant answers it) or prompts."
+  ],
+  "cases": [
+    {
+      "name": "nested-prefix-second",
+      "what": "GAP (i): a prefix ask rule Bash(git push:*) on one part, another part also needing approval",
+      "askRules": ["Bash(git push:*)"],
+      "stationVerdictUnderBashGrant": "plain",
+      "request": {
+        "tool_name": "Bash",
+        "display_name": "Bash",
+        "description": "Build the project and push to remote",
+        "decision_reason_type": "subcommandResults",
+        "input": {
+          "command": "make build && git push origin main"
+        },
+        "permission_suggestions": [
+          {
+            "type": "addRules",
+            "rules": [
+              {
+                "toolName": "Bash",
+                "ruleContent": "make build *"
+              }
+            ],
+            "behavior": "allow",
+            "destination": "localSettings"
+          }
+        ]
+      }
+    },
+    {
+      "name": "nested-exact-second",
+      "what": "GAP (i): an exact ask rule Bash(git push origin main) on one part",
+      "askRules": ["Bash(git push origin main)"],
+      "stationVerdictUnderBashGrant": "plain",
+      "request": {
+        "tool_name": "Bash",
+        "display_name": "Bash",
+        "description": "Build project and push to main branch",
+        "decision_reason_type": "subcommandResults",
+        "input": {
+          "command": "make build && git push origin main"
+        },
+        "permission_suggestions": [
+          {
+            "type": "addRules",
+            "rules": [
+              {
+                "toolName": "Bash",
+                "ruleContent": "make build *"
+              }
+            ],
+            "behavior": "allow",
+            "destination": "localSettings"
+          }
+        ]
+      }
+    },
+    {
+      "name": "whole-exact",
+      "what": "GAP (i): an ask rule written for the whole chain, Bash(make build && git push origin main)",
+      "askRules": ["Bash(make build && git push origin main)"],
+      "stationVerdictUnderBashGrant": "plain",
+      "request": {
+        "tool_name": "Bash",
+        "display_name": "Bash",
+        "description": "Build and push to main branch",
+        "decision_reason_type": "subcommandResults",
+        "input": {
+          "command": "make build && git push origin main"
+        },
+        "permission_suggestions": [
+          {
+            "type": "addRules",
+            "rules": [
+              {
+                "toolName": "Bash",
+                "ruleContent": "make build *"
+              },
+              {
+                "toolName": "Bash",
+                "ruleContent": "git push *"
+              }
+            ],
+            "behavior": "allow",
+            "destination": "localSettings"
+          }
+        ]
+      }
+    },
+    {
+      "name": "outside-write-and",
+      "what": "GAP (ii): a redirect write outside the working directories in an && chain",
+      "askRules": [],
+      "stationVerdictUnderBashGrant": "plain",
+      "request": {
+        "tool_name": "Bash",
+        "display_name": "Bash",
+        "decision_reason_type": "subcommandResults",
+        "input": {
+          "command": "echo hi > /probe/outside/f.txt && make build"
+        },
+        "permission_suggestions": [
+          {
+            "type": "addRules",
+            "rules": [
+              {
+                "toolName": "Bash",
+                "ruleContent": "echo hi *"
+              },
+              {
+                "toolName": "Bash",
+                "ruleContent": "make build *"
+              }
+            ],
+            "behavior": "allow",
+            "destination": "localSettings"
+          }
+        ]
+      }
+    },
+    {
+      "name": "outside-rm-and",
+      "what": "GAP (ii): a delete outside the working directories in an && chain",
+      "askRules": [],
+      "stationVerdictUnderBashGrant": "plain",
+      "request": {
+        "tool_name": "Bash",
+        "display_name": "Bash",
+        "description": "Run make build and remove file as requested",
+        "decision_reason_type": "subcommandResults",
+        "input": {
+          "command": "make build && rm /probe/outside/f.txt"
+        },
+        "permission_suggestions": [
+          {
+            "type": "addRules",
+            "rules": [
+              {
+                "toolName": "Bash",
+                "ruleContent": "make build *"
+              },
+              {
+                "toolName": "Bash",
+                "ruleContent": "rm /probe/outside/f.txt"
+              }
+            ],
+            "behavior": "allow",
+            "destination": "localSettings"
+          }
+        ]
+      }
+    },
+    {
+      "name": "outside-write-pipe-redirect",
+      "what": "GAP (ii): a pipeline with an output redirect outside the working directories",
+      "askRules": [],
+      "stationVerdictUnderBashGrant": "plain",
+      "request": {
+        "tool_name": "Bash",
+        "display_name": "Bash",
+        "decision_reason_type": "subcommandResults",
+        "input": {
+          "command": "make build | sort > /probe/outside/f.txt"
+        },
+        "permission_suggestions": [
+          {
+            "type": "addRules",
+            "rules": [
+              {
+                "toolName": "Bash",
+                "ruleContent": "make build *"
+              }
+            ],
+            "behavior": "allow",
+            "destination": "localSettings"
+          }
+        ]
+      }
+    },
+    {
+      "name": "safety-nested",
+      "what": "GUARANTEE: a safety check on one part of a chain",
+      "askRules": [],
+      "stationVerdictUnderBashGrant": "prompts",
+      "request": {
+        "tool_name": "Bash",
+        "display_name": "Bash",
+        "description": "make build && echo x > .claude/settings.json",
+        "decision_reason": "Claude requested permissions to write to /probe/cwd/.claude/settings.json, but you haven't granted it yet.",
+        "decision_reason_type": "subcommandResults",
+        "classifier_approvable": true,
+        "input": {
+          "command": "make build && echo x > .claude/settings.json"
+        },
+        "permission_suggestions": [
+          {
+            "type": "addRules",
+            "rules": [
+              {
+                "toolName": "Bash",
+                "ruleContent": "make build *"
+              },
+              {
+                "toolName": "Bash",
+                "ruleContent": "echo x *"
+              }
+            ],
+            "behavior": "allow",
+            "destination": "localSettings"
+          }
+        ]
+      }
+    },
+    {
+      "name": "prefix-with-allowed-other",
+      "what": "GUARANTEE: an ask rule on the only part needing approval arrives as type rule",
+      "askRules": ["Bash(git push:*)"],
+      "stationVerdictUnderBashGrant": "prompts",
+      "request": {
+        "tool_name": "Bash",
+        "display_name": "Bash",
+        "description": "Execute ls and git push origin main as requested",
+        "decision_reason_type": "rule",
+        "input": {
+          "command": "ls && git push origin main"
+        }
+      }
+    },
+    {
+      "name": "outside-write-pipe",
+      "what": "a pipeline whose tee part writes outside keeps its addDirectories suggestion",
+      "askRules": [],
+      "stationVerdictUnderBashGrant": "prompts",
+      "request": {
+        "tool_name": "Bash",
+        "display_name": "Bash",
+        "description": "Run make build and tee output to file",
+        "decision_reason_type": "subcommandResults",
+        "input": {
+          "command": "make build | tee /probe/outside/f.txt"
+        },
+        "permission_suggestions": [
+          {
+            "type": "addRules",
+            "rules": [
+              {
+                "toolName": "Bash",
+                "ruleContent": "make build *"
+              }
+            ],
+            "behavior": "allow",
+            "destination": "localSettings"
+          },
+          {
+            "type": "addDirectories",
+            "directories": ["/probe/outside"],
+            "destination": "session"
+          },
+          {
+            "type": "setMode",
+            "mode": "acceptEdits",
+            "destination": "session"
+          }
+        ]
+      }
+    },
+    {
+      "name": "outside-write-single",
+      "what": "a single command writing outside carries blocked_path and no reason type",
+      "askRules": [],
+      "stationVerdictUnderBashGrant": "prompts",
+      "request": {
+        "tool_name": "Bash",
+        "display_name": "Bash",
+        "description": "Execute the specified command",
+        "blocked_path": "/probe/outside/f.txt",
+        "input": {
+          "command": "echo hi > /probe/outside/f.txt"
+        },
+        "permission_suggestions": [
+          {
+            "type": "addRules",
+            "rules": [
+              {
+                "toolName": "Bash",
+                "ruleContent": "echo hi *"
+              }
+            ],
+            "behavior": "allow",
+            "destination": "localSettings"
+          },
+          {
+            "type": "addDirectories",
+            "directories": ["/probe/outside"],
+            "destination": "session"
+          }
+        ]
+      }
+    }
+  ]
+}

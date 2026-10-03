@@ -412,7 +412,6 @@ export function BrowserRelayRoutes({
         A broker can find a Station. The Station still checks your account,
         approved Device and Project access separately.
       </p>
-      <BrowserStationTrustApproval />
       {routes.map((connection) => (
         <PageRow
           key={connection.id}
@@ -461,82 +460,91 @@ export function BrowserRelayRoutes({
           </Button>
         </PageRow>
       ))}
-      <div className="relay-route-profiles__form">
-        <label>
-          Station name
-          <input
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-          />
-        </label>
-        <label>
-          Station application address
-          <input
-            value={applicationOrigin}
-            placeholder="https://station.example"
-            autoCapitalize="none"
-            spellCheck={false}
-            onChange={(event) => setApplicationOrigin(event.target.value)}
-          />
-        </label>
-        <label>
-          Broker invitation link or private JSON
-          <input
-            type="password"
-            value={invitationText}
-            autoComplete="off"
-            autoCapitalize="none"
-            spellCheck={false}
-            onChange={(event) => setInvitationText(event.target.value)}
-          />
-        </label>
-        <label>
-          TURN server URL
-          <input
-            value={turnUrl}
-            placeholder="turn:turn.example:3478?transport=udp"
-            maxLength={2048}
-            autoCapitalize="none"
-            spellCheck={false}
-            onChange={(event) => setTurnUrl(event.target.value)}
-          />
-        </label>
-        <label>
-          TURN username
-          <input
-            value={turnUsername}
-            maxLength={512}
-            autoComplete="off"
-            autoCapitalize="none"
-            spellCheck={false}
-            onChange={(event) => setTurnUsername(event.target.value)}
-          />
-        </label>
-        <label>
-          TURN credential
-          <input
-            type="password"
-            value={turnCredential}
-            maxLength={1024}
-            autoComplete="new-password"
-            autoCapitalize="none"
-            spellCheck={false}
-            onChange={(event) => setTurnCredential(event.target.value)}
-          />
-        </label>
+      <details className="relay-route-profiles__setup">
+        <summary>Advanced: broker setup</summary>
         <p className="connections-computers__note">
-          TURN is optional for same-network testing. The browser connects to
-          this operator-supplied service and sends encrypted WebRTC traffic;
-          Station and the broker do not receive its credentials.
+          Use this when a Station operator gives you a broker invitation and
+          signing-key report. Direct addresses and ordinary pairing do not need
+          this setup.
         </p>
-        <Button
-          size="sm"
-          disabled={busy || !applicationOrigin || !invitationText}
-          onClick={() => void acceptInvitation()}
-        >
-          Accept route
-        </Button>
-      </div>
+        <BrowserStationTrustApproval />
+        <div className="relay-route-profiles__form">
+          <label>
+            Station name
+            <input
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+            />
+          </label>
+          <label>
+            Station application address
+            <input
+              value={applicationOrigin}
+              placeholder="https://station.example"
+              autoCapitalize="none"
+              spellCheck={false}
+              onChange={(event) => setApplicationOrigin(event.target.value)}
+            />
+          </label>
+          <label>
+            Broker invitation link or private JSON
+            <input
+              type="password"
+              value={invitationText}
+              autoComplete="off"
+              autoCapitalize="none"
+              spellCheck={false}
+              onChange={(event) => setInvitationText(event.target.value)}
+            />
+          </label>
+          <label>
+            TURN server URL
+            <input
+              value={turnUrl}
+              placeholder="turn:turn.example:3478?transport=udp"
+              maxLength={2048}
+              autoCapitalize="none"
+              spellCheck={false}
+              onChange={(event) => setTurnUrl(event.target.value)}
+            />
+          </label>
+          <label>
+            TURN username
+            <input
+              value={turnUsername}
+              maxLength={512}
+              autoComplete="off"
+              autoCapitalize="none"
+              spellCheck={false}
+              onChange={(event) => setTurnUsername(event.target.value)}
+            />
+          </label>
+          <label>
+            TURN credential
+            <input
+              type="password"
+              value={turnCredential}
+              maxLength={1024}
+              autoComplete="new-password"
+              autoCapitalize="none"
+              spellCheck={false}
+              onChange={(event) => setTurnCredential(event.target.value)}
+            />
+          </label>
+          <p className="connections-computers__note">
+            TURN is optional for same-network testing. The browser connects to
+            this operator-supplied service and sends encrypted WebRTC traffic;
+            Station and the broker do not receive its credentials.
+          </p>
+          <Button
+            size="sm"
+            disabled={busy || !applicationOrigin || !invitationText}
+            onClick={() => void acceptInvitation()}
+          >
+            Accept route
+          </Button>
+        </div>
+      </details>
       {configuringTurn && (
         <Dialog
           eyebrow="Browser route"

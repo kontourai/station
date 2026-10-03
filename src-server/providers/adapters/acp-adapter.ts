@@ -76,6 +76,7 @@ import {
 import { errorMessage } from '../../utils/error-message.js';
 import { expandTilde } from '../../utils/paths.js';
 import {
+  AttachmentInputUnsupportedError,
   type CanonicalRuntimeEvent,
   type ProviderAdapterShape,
   type ProviderSendTurnInput,
@@ -134,6 +135,7 @@ import {
 import {
   AcpToolUpdateGlobalBudget,
   AcpToolUpdateSupervisor,
+  engineToolKind,
 } from './acp-tool-update-supervisor.js';
 import { toPassthroughToolDef } from './agent-tool-server-mapping.js';
 import { mergeCapabilityDeliveryMetadata } from './capability-delivery-metadata.js';
@@ -1485,17 +1487,20 @@ export class AcpAdapter implements ProviderAdapterShape {
     } catch (error) {
       throw new SendTurnRefusedError(errorMessage(error));
     }
+    // Both attachment refusals carry a structured code: the same send is
+    // refused again on retry, so the client must not present it as a
+    // transient failure.
     try {
       rejectFileAttachments('This engine', decodedAttachments);
     } catch (error) {
-      throw new SendTurnRefusedError(errorMessage(error));
+      throw new AttachmentInputUnsupportedError(errorMessage(error));
     }
     if (
       decodedAttachments.length > 0 &&
       record.process.initResult?.agentCapabilities?.promptCapabilities
         ?.image !== true
     ) {
-      throw new SendTurnRefusedError(
+      throw new AttachmentInputUnsupportedError(
         'This engine did not advertise image attachment support.',
       );
     }
@@ -1677,6 +1682,7 @@ export class AcpAdapter implements ProviderAdapterShape {
       method: 'turn.started',
       prompt: text,
       inputKind: 'steer',
+      ...(native ? {} : { steerInterruptedRun: true as const }),
     });
   }
 
@@ -1852,6 +1858,25 @@ export class AcpAdapter implements ProviderAdapterShape {
       });
     }
     record.pendingRequests.clear();
+  }
+
+  /**
+   * An ACP permission request belongs to the prompt that raised it: once
+   * `session/prompt` settles, the engine has stopped waiting and will never
+   * read the answer. Left open, it stayed open everywhere that folds
+   * `request.opened`/`request.resolved` — the approval inbox and its header
+   * count, the approval toast queue, the chat's pending-approval banner —
+   * while the transcript had already retired the card at `turn.completed`
+   * (`approvalRetiredBy`). Settling it here as `cancelled` is the same
+   * terminal the interrupt path publishes, and it is what every one of those
+   * consumers already clears on.
+   */
+  private settleRequestsAtPromptEnd(
+    record: AcpSessionRecord,
+    threadId: string,
+  ): void {
+    if (record.pendingRequests.size === 0) return;
+    this.cancelPendingRequests(record, threadId);
   }
 
   private prepareRecordForStop(record: AcpSessionRecord): void {
@@ -2094,11 +2119,20 @@ export class AcpAdapter implements ProviderAdapterShape {
         title: params.toolCall?.title ?? 'Allow tool call',
         payload: {
           toolCallId: params.toolCall?.toolCallId,
+          // The programmatic name, when the engine reports one: it is what
+          // `respondToRequest` records a session grant under, so the grant
+          // button must be able to name it.
+          ...(toolName ? { toolName } : {}),
           rawInput: params.toolCall?.rawInput,
+          // The engine's ACP kind, so a card with no bound transcript row
+          // still says whether it gates a command, an edit or a read.
+          // #2933: surfaces also compute the session grant they offer from
+          // it; a `switch_mode` kind offers none. Only a kind in the ACP
+          // vocabulary is published: an unknown one is dropped, not coerced.
+          ...(engineToolKind(params.toolCall?.kind)
+            ? { toolKind: engineToolKind(params.toolCall?.kind) }
+            : {}),
           options: params.options,
-          // #2933: surfaces compute the session grant they offer from the
-          // payload; a `switch_mode` kind offers none.
-          ...(params.toolCall?.kind ? { toolKind: params.toolCall.kind } : {}),
         },
       });
 
@@ -2499,6 +2533,7 @@ export class AcpAdapter implements ProviderAdapterShape {
         if (record.promptEpoch !== promptEpoch) return;
         if (!this.ownsActiveTurn(threadId, record, turnId)) return;
         record.turnErrorNotifications = undefined;
+        this.settleRequestsAtPromptEnd(record, threadId);
         this.publish({
           eventId: crypto.randomUUID(),
           provider: this.provider,
@@ -2523,6 +2558,7 @@ export class AcpAdapter implements ProviderAdapterShape {
         const quota = classifyProviderQuotaFailure(error);
         const coReportedCause = record.turnErrorNotifications?.at(-1)?.message;
         record.turnErrorNotifications = undefined;
+        this.settleRequestsAtPromptEnd(record, threadId);
         if (quota) {
           this.publish({
             eventId: crypto.randomUUID(),
