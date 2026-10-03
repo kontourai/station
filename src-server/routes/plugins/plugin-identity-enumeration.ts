@@ -119,6 +119,13 @@ export const PLUGIN_IDENTITY_ROUTES: readonly PluginIdentityRoute[] = [
   },
   {
     method: 'GET',
+    path: '/api/registry/skills',
+    disposition: 'projected',
+    rationale:
+      'Plugin-owned Skill sources and their metadata are projected through the caller visibility predicate before provider reads and result publication. The installed flag describes local Skill ownership; it does not grant plugin inventory access.',
+  },
+  {
+    method: 'GET',
     path: '/api/registry/plugins',
     disposition: 'operator-only',
     rationale:

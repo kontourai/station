@@ -9,7 +9,7 @@
 
   "limits": "Source review of this document's stated contracts and actual callers, not an exhaustive audit of unclaimed code. No new public deployment, TLS/TURN lab, SSH/cloud transfer, live provider, physical/native/keychain, Windows ACL/process, two-person, cryptographic penetration or release qualification. Prior executed checks and dated receipts are retained as prior evidence, not rerun or renewed here.",
 
-  "document": {"digest":"4abf5267ee1e9ad03a15029b8b8ba2296d00af31c0e11fdf226008160f1c08f1","revision":"1da4798fab6730e9c81fb91d9d3dbbebc952f976"},
+  "document": {"digest":"409272a4e094f0f2b1a9681e0b2e5f5bcb470496ce1e9c69e2e19c5996e19187","revision":"e3a2043551f15848c07d3e192ab0f57a7f1154a0"},
 
   "sources": [
     {"path":"package.json","digest":"8161e13f46212729130685df12cc34747e385002183410cd57e47d5cdd125306","revision":"2fc8f69d15e5c8fa3188bb2ee4731f1b63c66218"},
@@ -27,6 +27,8 @@
     {"path":"src-desktop/src/lib.rs","digest":"ad3b52011a9be6e6a18133b2367c04d0a6245907e5b7e13fa324bcd8b5255557","revision":"464d602fb7fb5fa9bd0df9d241dc03495b398b96"},
 
     {"path":"src-desktop/src/ssh_launcher.rs","digest":"b687664310160032657179ad40dfff3ccac0cfa6d8735bcc9dc712d237f1457a","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"src-server/providers/app-home/app-home-profiles.ts","digest":"ec6964af951874bed74c286d74a508b587ceee01b84149b62f2e6b61074cae33","revision":"1a235cd9bc482738abe4c3f011f73be86074d667"},
 
     {"path":"src-server/routes/inference/fleet-inference.ts","digest":"63d107b638a0aebc99f58a191b37a68e68aab12da0e655e09019b58d42c0966e","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
@@ -63,6 +65,8 @@
     {"path":"src-server/security/station-control-request-authority.ts","digest":"b522bde2d245f4d682cf1468329f5314fbfd5f5abb431cc916b88b56aa7c9ec6","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
     {"path":"src-server/security/websocket-auth.ts","digest":"e8d876654158a8403c26ae104eadc42b81558cd4a17e5b263f9e42b1ddf784d8","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"src-server/services/connections/browser-code-login.ts","digest":"ed975062b5c25d966b1da0cb9ab654b9c861b8d33b647075b3a7a8d2b5208a3a","revision":"4750f0dd4c17a766da91628dca97b2c7627ca0ed"},
 
     {"path":"src-server/services/identity/application-session-service.ts","digest":"53068c59c25a4e6c0a6741025d15b517b14df19309c35618ce709a7095101a62","revision":"3517d8f66db867fd982a8f9883ed85052c4e1fc1"},
 
@@ -102,19 +106,15 @@
 
     {"path":"src-server/utils/private-sqlite.ts","digest":"2db8ea78c58db8e55a7aff6bff8768d7f0364b9025dd52eaa98a98e7a6d6061f","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-ui/src/views/account/account-entry-continuation.ts","digest":"b8daef294a50dfeebda2682768d23165399a486785da42fc47f919b5e2fdaf92","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
     {"path":"src-ui/src/views/account/AccountEntryView.tsx","digest":"9531a840fb63ea89dc0333ec52949977a76ec04950a9dcf5541623ff68f7c5e4","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
-    {"path":"src-ui/src/views/account/guest-account-authority.ts","digest":"b4b584ad13cb971c1aaedc584afa7e5a5ce52834624f055e762aab8b703a4c47","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
     {"path":"src-ui/src/views/account/GuestDeviceOnboarding.tsx","digest":"7e6a036f893841dc121f95d9761e587fde027d8508142698b6ae6b1fedc6b6c8","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
     {"path":"src-ui/src/views/account/GuestProjectAccessView.tsx","digest":"e8bbd1c403d5076532f3948ddc500bcb5f720bea8d43aa6fa09d177dfb8f627c","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-server/services/connections/browser-code-login.ts","digest":"ed975062b5c25d966b1da0cb9ab654b9c861b8d33b647075b3a7a8d2b5208a3a","revision":"4750f0dd4c17a766da91628dca97b2c7627ca0ed"},
+    {"path":"src-ui/src/views/account/account-entry-continuation.ts","digest":"b8daef294a50dfeebda2682768d23165399a486785da42fc47f919b5e2fdaf92","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-server/providers/app-home/app-home-profiles.ts","digest":"ec6964af951874bed74c286d74a508b587ceee01b84149b62f2e6b61074cae33","revision":"1a235cd9bc482738abe4c3f011f73be86074d667"}
+    {"path":"src-ui/src/views/account/guest-account-authority.ts","digest":"b4b584ad13cb971c1aaedc584afa7e5a5ce52834624f055e762aab8b703a4c47","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"}
   ],
 
   "checks": [

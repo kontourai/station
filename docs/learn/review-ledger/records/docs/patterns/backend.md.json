@@ -12,15 +12,15 @@
   "document": {"digest":"2aa0727a578698a31862f4eeab50cea969a54f497cda1a520b8f00346b4d106e","revision":"2b22c2609a75d0f40b77472fe918de3c34094b69"},
 
   "sources": [
-    {"path":"docs/ui/responsive-action-surfaces.txt","digest":"e9c8a55403ed9087b0feef9e9e60b4ef45122d996fd3ac48cc38cadb15a1550e","revision":"1aecbf35557098c1502ee4575c7e332fb1e9d60c"},
+    {"path":"docs/ui/responsive-action-surfaces.txt","digest":"190bba9bf527833f3f0ef5e362a72b0a09d6553b634d86d3c2336553d2ac2c25","revision":"9284c690de029594417d7599810fbfbe9eca3d92"},
 
     {"path":"docs/ui/responsive-surfaces.json","digest":"ed85a588d1029bca3f050c4225772a2b58c42e944af63014960389794d0b24c5","revision":"d1708e0a66e7328c9c62a95865f1bb1dcfbeb8d1"},
 
     {"path":"packages/sdk/src/client/http.ts","digest":"9892699e68483e0df3dd67ce71956994e98a43755a0c931dd6c3c5660caee00e","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
-    {"path":"packages/sdk/src/index.ts","digest":"402d307a4252faa6d6f6c54698f6fc4f8746c49053bddaff7e2147187fd579c1","revision":"306ebf4317397e0b06c543c69b4f770184f50654"},
+    {"path":"packages/sdk/src/index.ts","digest":"b5cbdd321b37addcb83163bc91d58eb54e1bfacaac870b128112d0da28a60c2b","revision":"cda4f5e7438d4373842cd0ea297d4ca921950d27"},
 
-    {"path":"packages/sdk/src/queries.ts","digest":"5846ff5182a48c773a7576b9afd2852ceef5025c78657eea5e2df0efbb2eae73","revision":"306ebf4317397e0b06c543c69b4f770184f50654"},
+    {"path":"packages/sdk/src/queries.ts","digest":"fce38aa5a91b944a7bc5b99658f81c2a5b83dd8a56f941261acadf7a81e2cf67","revision":"cda4f5e7438d4373842cd0ea297d4ca921950d27"},
 
     {"path":"packages/sdk/src/query-core.ts","digest":"f61dfd3363e3afe8bcf0ca97330e4e799e44aeb0d1348a212a117d1f755873e9","revision":"9bb90045b7aeb926e7003b27fc4fd62252638524"},
 
@@ -54,9 +54,9 @@
 
     {"path":"src-ui/src/components/Dialog.tsx","digest":"0e52c3a21b2c7c989eb41ac5a2e2cb3897bddfa55f90cc0914aece0470242dd2","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/components/header/ThemeToggle.tsx","digest":"5cd7fb99ff38e6e9a6bf1f572c2ed488604b341e85569767a836a580fba63e9f","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
     {"path":"src-ui/src/components/ResponsiveDialogSurface.tsx","digest":"ff389dc7c2632309151df7065f56f8434712b5cba120324bbba48c7693a56612","revision":"f4eb9345e808edfbcadd25b1cf88a69db088f117"},
+
+    {"path":"src-ui/src/components/header/ThemeToggle.tsx","digest":"5cd7fb99ff38e6e9a6bf1f572c2ed488604b341e85569767a836a580fba63e9f","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
     {"path":"src-ui/src/hooks/useIsMobile.ts","digest":"6cedc0e8a70136acb36e40078106a880663ea10b9d5d7da97a503c9c39b20ddd","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 

@@ -28,7 +28,7 @@
 
     {"path":"packages/sdk/src/agent/index.ts","digest":"27b8861c43936cd4996215ce8ad0f3a2bbd7835adba4740e160e8b8efd02f54e","revision":"d326e74f0f416a770b08cb1b66badf150618b3c0"},
 
-    {"path":"packages/sdk/src/index.ts","digest":"402d307a4252faa6d6f6c54698f6fc4f8746c49053bddaff7e2147187fd579c1","revision":"306ebf4317397e0b06c543c69b4f770184f50654"},
+    {"path":"packages/sdk/src/index.ts","digest":"b5cbdd321b37addcb83163bc91d58eb54e1bfacaac870b128112d0da28a60c2b","revision":"cda4f5e7438d4373842cd0ea297d4ca921950d27"},
 
     {"path":"packages/sdk/src/voice/registry.ts","digest":"62ce9013b0c9d5e935c88ae2912bf31768f58ef5f40409745df9676ebfb87408","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -84,7 +84,7 @@
 
     {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"4582d45b868ea008447f5405bcedb1adf987b1e3ad7701e39de19fc6a8d8994c","revision":"306ebf4317397e0b06c543c69b4f770184f50654"},
 
-    {"path":"src-server/services/plugins/plugin-install-transaction.ts","digest":"d86ca9367f039174cd2aaaba83b65dc1df376f6474bd4a4f29be54341fd2c0e7","revision":"b8b24c97d098d1569105a87991fedadee778d22a"},
+    {"path":"src-server/services/plugins/plugin-install-transaction.ts","digest":"01ba3b7fe2249e6215c6fb62c6372e21324c863bee37bcac6e739a7b0170db61","revision":"63833ae5666cb06da0b5671dc0e3bf63bdc1d0fa"},
 
     {"path":"src-server/telemetry.ts","digest":"f682958dc24d74cfee413e2986b257df4177c5645386a0ec9ed5e3774bab090c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

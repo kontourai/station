@@ -22,6 +22,8 @@
 
     {"path":"docs/guides/nightly.md","digest":"90c3bf5659d765aa697f10cb23f31f820cc603d7dab885a5b5dc9b20606681be","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
 
+    {"path":"docs/guides/release-channel-ports.md","digest":"b90cd2926db148fda6e028bab7d9a1746956db1a90e6fedcb0c7b9920c46f156","revision":"332b227345684d098aaaf3191ac0e9d927ac9401"},
+
     {"path":"docs/privacy-policy.md","digest":"fb5be7ad7342be17509e79e40a6e2dbbe7046ea7dbbe8db4ba637fcdbb21d403","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
     {"path":"docs/reference/cli.md","digest":"62c03f1a50009e0973510034c314c46df560dddf761547e6798d86808eb116fd","revision":"19aff2a08b9739ad9ffbda39ff8cb19b026fda82"},
@@ -42,9 +44,7 @@
 
     {"path":"src-ui/src/hooks/voiceWsUrl.ts","digest":"4b609c4ad165efdf372f565aacdf1617ed9f0c793fbba7cca2005a0ab33f71b1","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/providers/voice/NovaVoiceSessionAdapter.ts","digest":"e0af5660bc581fae84121a3890cb5a180960213d761eef4a23319e5fa1bece2c","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
-    {"path":"docs/guides/release-channel-ports.md","digest":"b90cd2926db148fda6e028bab7d9a1746956db1a90e6fedcb0c7b9920c46f156","revision":"332b227345684d098aaaf3191ac0e9d927ac9401"}
+    {"path":"src-ui/src/providers/voice/NovaVoiceSessionAdapter.ts","digest":"e0af5660bc581fae84121a3890cb5a180960213d761eef4a23319e5fa1bece2c","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"}
   ],
 
   "checks": [

@@ -1427,6 +1427,18 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
       origin: 'explicit',
     }),
   ),
+  // Paired-client threat model: a standard orchestration credential must not
+  // enumerate or reconfigure this host's marketplace roots and endpoints.
+  // Refresh can perform host filesystem/network reads; add, enable and remove
+  // persist personal source configuration. The handlers retain operatorOnly
+  // as a separate principal check, including for credentials with this scope.
+  {
+    id: '/api/registry/sources:manage',
+    method: '*',
+    prefix: '/api/registry/sources',
+    scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit',
+  },
   // Portable Kit discovery exposes only Station's read-only projection, so
   // it deliberately takes the ordinary orchestration read tier. Lifecycle
   // transitions and declared operator actions change host-owned state and

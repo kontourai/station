@@ -18,9 +18,9 @@
 
     {"path":"src-server/domain/config-loader.ts","digest":"b70738e0cecbc0f060089377ed78ef9dfbaf13224739e910bcacad3a19307217","revision":"26b51492632d81e2d767e2f4729d214b514403ac"},
 
-    {"path":"src-server/providers/registries/json-manifest-registry.ts","digest":"74f114c17b97532029176c2c2d6cf9279f9620193297f2ba7a74dae62a262c80","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/providers/registries/json-manifest-registry.ts","digest":"278b9454c712425274a2566d9becbcfc0acb68d86216484f37ab472faad19eac","revision":"2867eea7c9a4838e2a59cdbf6ec7f940b7d4cf26"},
 
-    {"path":"src-server/routes/plugins/plugin-lifecycle-routes.ts","digest":"dceb171ba845c25ea19bb4bc1c032f62707efcf7a80c194c09e9908270db21bc","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/routes/plugins/plugin-lifecycle-routes.ts","digest":"0a738ab40517d221dd45aa60284c46ca74b4281308dad13c8d6ad4a47e99b7dd","revision":"3e8559159112366b1dfa4e051dea7d4852c73c47"},
 
     {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"b13d44008f39b08b3d32e459abc3081c8ac8936f53e5a7bdb93d4dcbdc2043f1","revision":"423cbe55b9e35e4cd8954fd441cb9f3c69740d66"},
 
@@ -30,7 +30,7 @@
 
     {"path":"src-server/services/plugins/package-mcp-admission.ts","digest":"992e39f0f0acc7e9d779fcb742308db8cb4e66b9c3559ceb51e91106c757a110","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/plugins/plugin-install-transaction.ts","digest":"d86ca9367f039174cd2aaaba83b65dc1df376f6474bd4a4f29be54341fd2c0e7","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
+    {"path":"src-server/services/plugins/plugin-install-transaction.ts","digest":"01ba3b7fe2249e6215c6fb62c6372e21324c863bee37bcac6e739a7b0170db61","revision":"63833ae5666cb06da0b5671dc0e3bf63bdc1d0fa"},
 
     {"path":"src-server/services/plugins/plugin-installation-generation-fence.ts","digest":"7a5b3eca67a7accb179a918ac78c3572e13d5df0644205f9ef589f4bc6bdd5ed","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
