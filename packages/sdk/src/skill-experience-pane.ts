@@ -5,8 +5,14 @@ interface PaneMessageTarget {
 }
 
 declare const window: {
-  addEventListener(type: 'message', listener: (event: MessageEvent) => void): void;
-  removeEventListener(type: 'message', listener: (event: MessageEvent) => void): void;
+  addEventListener(
+    type: 'message',
+    listener: (event: MessageEvent) => void,
+  ): void;
+  removeEventListener(
+    type: 'message',
+    listener: (event: MessageEvent) => void,
+  ): void;
 };
 
 /** Narrow frame transport. Session, event scope and source identity stay in the host. */
