@@ -9,16 +9,16 @@
 
   "limits": "Browser/source and focused test evidence; no physical native-device result.",
 
-  "document": {"digest":"9c41fe48ae34d551ffe7c2832f9b8a8af704887abb825db3415bad23d8dfdda2","revision":"e56b7b6bf847135adcce152d99112d104542d029"},
+  "document": {"digest":"504697512af473efd0be4ba655151406b11450e87e3bbe497a7ac3d03ec88434","revision":"d6a3158c22a62d9530592c6366a1624790ee9401"},
 
   "sources": [
     {"path":"docs/architecture/module-map.md","digest":"ec7d6e6a7b3b6ff73cd88962af8e56df95e52dc8c20a794383fd28c949655617","revision":"89765352964045a079d13a17bee54ab2de7b83e0"},
 
     {"path":"scripts/gen-settings-registry.ts","digest":"76c9ac779d576b4d32367a429c2667f4b17fe79660fb9adaa18ce6019683c16e","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-server/generated/settings-registry.json","digest":"49c10e15cc0774927a5191781af93e14231145efe08861f2b72281d7fcd6b191","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"src-server/generated/settings-registry.json","digest":"7b9514e37d3049f9d8acfeaecc66b3a0a84752667ed62749e43ad8ca1832c70e","revision":"d6a3158c22a62d9530592c6366a1624790ee9401"},
 
-    {"path":"src-ui/src/views/SettingsView.tsx","digest":"2f09efa4ae7974700bdbe901a4492a34329aafb2b1fa97a98f28edd3c8645167","revision":"f0f20e6125e5e41bbb691d806ea3cf866ac15769"},
+    {"path":"src-ui/src/views/SettingsView.tsx","digest":"1ede27735768ba3e57c06aabe2313abe5369045a9020512f32099e22980225ef","revision":"00bada2726c33a49f7edc8803d08831b46b6deb3"},
 
     {"path":"src-ui/src/views/settings/settings-deep-link.ts","digest":"48c9f6d2dfc21babff6ff3e8839b1cd3bf2781347f0aa622ae740613148c3990","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"}
   ],

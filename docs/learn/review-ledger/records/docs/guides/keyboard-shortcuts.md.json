@@ -26,7 +26,7 @@
 
     {"path":"src-ui/src/views/settings/KeyboardShortcutsSection.tsx","digest":"442e18ff1d6da5f12184ddb6adda4e4f890227e4138bb43bce924e79cb7f5a8b","revision":"5bc39d324d26c7d17fc8ee142408ff36d6f80f7b"},
 
-    {"path":"src-ui/src/views/settings/utils.ts","digest":"662d78e4e5400976b8e0cd6a7751fd17d1c2b418e6bee1c3539a66327c5017a1","revision":"5bc39d324d26c7d17fc8ee142408ff36d6f80f7b"}
+    {"path":"src-ui/src/views/settings/utils.ts","digest":"276a3b5ce442404273399f1dc1df620053da2049ad1278f2b75f89f6a398a742","revision":"d6a3158c22a62d9530592c6366a1624790ee9401"}
   ],
 
   "checks": [

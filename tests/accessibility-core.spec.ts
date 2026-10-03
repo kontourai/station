@@ -334,7 +334,7 @@ test.describe('core journey accessibility gate', () => {
     // transition, not this dialog-open animation.
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await mockCoreApp(page);
-    await page.goto('/settings');
+    await page.goto('/settings?view=system');
     await expect(page.locator('.app-toolbar')).toBeVisible();
 
     const trigger = page.getByRole('button', {

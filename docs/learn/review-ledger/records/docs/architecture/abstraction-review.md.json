@@ -28,15 +28,15 @@
 
     {"path":"docs/guides/monitoring.md","digest":"b015e5cd44b250ca16a49aaae95721d5529325200b70d1ff32056c515c0fd06c","revision":"a11755821186eaeb034b77e970dfa372c5c7f789"},
 
-    {"path":"docs/guides/web-push-notifications.md","digest":"1ad4a7e9ded295937ec60443cc7a3ced1414bd92fcb17aab3aa382fdfd53e5a0","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    {"path":"docs/guides/web-push-notifications.md","digest":"0cbcb969978124e0abd486c88b650cba7d5c7ee64c571f214c3bf2a21decfcd6","revision":"f0a0b5b5277589e998f5a7e08e7c7fc2229c6b5f"},
 
     {"path":"docs/learn/README.md","digest":"0ac8f8ac857022280619dd19947686c17b2bda0f1d6a954b1591b0c65fe81404","revision":"e6db304484770666a5dad430b4beae94cdefe69a"},
 
     {"path":"docs/learn/walkthroughs.md","digest":"5e9132c4454e34d336fbc044491ec7f279926e057fe261654eafaafe05ea3b16","revision":"48fd2c0212f17cc11ba07ed86b52f253c63e3f68"},
 
-    {"path":"docs/reference/cli.md","digest":"b2cdeea42fb4b6baacc5aa6a74692e4d60975f7b30c2ad49e2c4d89990138297","revision":"24d0063f45516c1d6c7cddec670c60ef0185f1f2"},
+    {"path":"docs/reference/cli.md","digest":"62c03f1a50009e0973510034c314c46df560dddf761547e6798d86808eb116fd","revision":"020eb6a14e05313bb66724ec3504e613717e6ed1"},
 
-    {"path":"docs/reference/config.md","digest":"f27eb8c8776abdf47715715a6f4681a1a8b988ea64dafc3bd2a928663371cad9","revision":"1eedcca663f35646df4414881a0a63ae9dfbeee1"},
+    {"path":"docs/reference/config.md","digest":"f059032ee97e76fbc37a69981de1c3664602dde9c79f2b706d33014b04388cfa","revision":"d6a3158c22a62d9530592c6366a1624790ee9401"},
 
     {"path":"docs/reference/metrics.md","digest":"52a966457313c28546da0ca12f53cfab6ec1b754c1eca415a26bfce55576db08","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 
@@ -84,7 +84,7 @@
 
     {"path":"src-server/services/plugins/plugin-installation-generation-fence.ts","digest":"7a5b3eca67a7accb179a918ac78c3572e13d5df0644205f9ef589f4bc6bdd5ed","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 
-    {"path":"src-ui/src/views/settings/KnowledgeStoreSection.tsx","digest":"86ed63496236d8e90a726c519057c5e1c8879fdbfb3c2787e398f6a00b89af71","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"}
+    {"path":"src-ui/src/views/settings/KnowledgeStoreSection.tsx","digest":"56f97a6e2ea290893e0103cbeeadc63b5defa436c6df49e949d5082922881d4c","revision":"d6a3158c22a62d9530592c6366a1624790ee9401"}
   ],
 
   "checks": [

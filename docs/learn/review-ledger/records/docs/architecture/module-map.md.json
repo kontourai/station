@@ -356,7 +356,7 @@
 
     {"path":"src-server/runtime/routes/runtime-route-support.ts","digest":"6a4c97a6eb7f6bbce23da80e037ffb76ca1da14f53e54b2a934a4e64e60f2052","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"400dc75dd88a48bc411a4edb9c5f40f9d22ae0f1c5b68d8f748e7733efae5a0e","revision":"cb3ebc3797508b3f46d66b8bc5ece89b32cb79ae"},
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"90e94e3a617cb7c9642c029f8dd1c58fbebeca19e29dbd1b097af41952fe4b93","revision":"cf12c0d848d0dc068f3dcaa530e9a1f213618834"},
 
     {"path":"src-server/runtime/routes/workspace-pane-host-actions.ts","digest":"47243c2ce659cae374048d91ff97faa62921d3b1ce2475199a56cd776bd0ca10","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -776,7 +776,7 @@
 
     {"path":"src-ui/src/app-shell/AppViewContent.tsx","digest":"36ca49c74ca989ccf2359f1f815bdc317a0bfc6506f7e2b3bac243ad3b79af4c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/app-shell/destination-registry.ts","digest":"e56ca3290fdcb7e23db9021ae7893eba0f9e78f9096dd9eda10536d67a79d7e6","revision":"99822caec8da2e28aadac4edeb384374ffb0543d"},
+    {"path":"src-ui/src/app-shell/destination-registry.ts","digest":"43648ebbbe654ea2da92f7f57fc3e2350e68253e12a8096bc6314eb6153f110b","revision":"d6a3158c22a62d9530592c6366a1624790ee9401"},
 
     {"path":"src-ui/src/app-shell/routing.ts","digest":"64eb187dd30dffe0d9317242bb454ab41ff0116af6ad02c7dc6ad805a8dd65f2","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -786,7 +786,7 @@
 
     {"path":"src-ui/src/components/mcp-ui/MCPToolUIFrame.tsx","digest":"732a76fa3772bbc163f0c9c5b8da98c530614a27acfaba1b93fbecb497f240b3","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/components/project-sidebar/ProjectSidebarNav.tsx","digest":"cb7ea49a5ac22cd6427fff76b105b4a5ff71cc6ff385abc84a65e82023fdef89","revision":"99822caec8da2e28aadac4edeb384374ffb0543d"},
+    {"path":"src-ui/src/components/project-sidebar/ProjectSidebarNav.tsx","digest":"df150c40788645fb9cfcbfce9882e6f7e2c943586ca8d3c8215b7141c2f2f791","revision":"d6a3158c22a62d9530592c6366a1624790ee9401"},
 
     {"path":"src-ui/src/components/review/ReviewLayout.tsx","digest":"7963493f35ba9c01b90b75afa5c70f53eeffea4e0b514b929abdac0ee6fe40de","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -856,11 +856,11 @@
 
     {"path":"src-ui/src/views/settings/KeyboardShortcutsSection.tsx","digest":"442e18ff1d6da5f12184ddb6adda4e4f890227e4138bb43bce924e79cb7f5a8b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/views/settings/KnowledgeStoreSection.tsx","digest":"86ed63496236d8e90a726c519057c5e1c8879fdbfb3c2787e398f6a00b89af71","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-ui/src/views/settings/KnowledgeStoreSection.tsx","digest":"56f97a6e2ea290893e0103cbeeadc63b5defa436c6df49e949d5082922881d4c","revision":"d6a3158c22a62d9530592c6366a1624790ee9401"},
 
-    {"path":"src-ui/src/views/settings/utils.ts","digest":"662d78e4e5400976b8e0cd6a7751fd17d1c2b418e6bee1c3539a66327c5017a1","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-ui/src/views/settings/utils.ts","digest":"276a3b5ce442404273399f1dc1df620053da2049ad1278f2b75f89f6a398a742","revision":"d6a3158c22a62d9530592c6366a1624790ee9401"},
 
-    {"path":"src-ui/src/views/SettingsView.tsx","digest":"2f09efa4ae7974700bdbe901a4492a34329aafb2b1fa97a98f28edd3c8645167","revision":"f0f20e6125e5e41bbb691d806ea3cf866ac15769"},
+    {"path":"src-ui/src/views/SettingsView.tsx","digest":"1ede27735768ba3e57c06aabe2313abe5369045a9020512f32099e22980225ef","revision":"00bada2726c33a49f7edc8803d08831b46b6deb3"},
 
     {"path":"src-ui/src/views/TaskWorkspaceView.tsx","digest":"2c6e6d9dec385870e2f639c42cfa86f5e1b553f17756fea1d78b4a4a1a9d73f0","revision":"79edb8d5dd98ef07de0722b0604b9ec606f2bdbf"},
 
