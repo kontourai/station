@@ -22,7 +22,7 @@
 
     {"path":"packages/contracts/src/agent.ts","digest":"e325363bc2303d78102c7c4c45b118756d71d66cae3d801eee303761d0715b6c","revision":"423cbe55b9e35e4cd8954fd441cb9f3c69740d66"},
 
-    {"path":"packages/contracts/src/config.ts","digest":"d7eb4b693fdae3966c9ec13321f50eb92c3da6c4bf6d62b9e7f9679b05f276f2","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"packages/contracts/src/config.ts","digest":"05591bdbec9d2e5ea98e24330e0020afb26e270e7c4808f7bd757c232f724d31","revision":"d6a3158c22a62d9530592c6366a1624790ee9401"},
 
     {"path":"packages/contracts/src/connection.ts","digest":"022f4a09e8e82df9cb1845564ba1cacd6488dd97b88ac0f6a0981c3c4f570d90","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -258,7 +258,7 @@
 
     {"path":"src-server/runtime/conversation/runtime-event-log.ts","digest":"c73565025ce6279646a17c4c6f2e3b339d8ff79a1c6d2ca444b98fc6232b1b26","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"400dc75dd88a48bc411a4edb9c5f40f9d22ae0f1c5b68d8f748e7733efae5a0e","revision":"cb3ebc3797508b3f46d66b8bc5ece89b32cb79ae"},
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"90e94e3a617cb7c9642c029f8dd1c58fbebeca19e29dbd1b097af41952fe4b93","revision":"cf12c0d848d0dc068f3dcaa530e9a1f213618834"},
 
     {"path":"src-server/security/pairing-route-scopes.ts","digest":"6135d879afff21c7d3c8f82d0fb701f04c7bc8de28724848ce0ffa39b0ded204","revision":"b004ed8cb3e885da544adf960b2894780aaf2b51"},
 

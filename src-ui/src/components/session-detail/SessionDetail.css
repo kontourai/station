@@ -50,6 +50,25 @@
   font-size: var(--text-base);
 }
 
+.sessions-detail__metadata {
+  color: var(--text-secondary);
+  font-size: var(--text-base);
+}
+
+.sessions-detail__metadata summary {
+  cursor: pointer;
+}
+
+.session-transcript__toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  justify-content: flex-end;
+  padding-block: var(--space-2);
+  background: var(--bg-primary);
+}
+
 .sessions-detail__meta-line {
   margin: 0;
   color: var(--text-secondary);

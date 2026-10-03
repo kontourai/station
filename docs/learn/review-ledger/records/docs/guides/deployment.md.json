@@ -84,7 +84,7 @@
 
     {"path":"src-server/runtime/mcp/mcp-manager.ts","digest":"2b111148f423e896011695de09bca6f6f2990bc8285b4466a5fd70a3c93c65d1","revision":"aadb5aa183a58e97344d13b8c5f34f92a7d78a94"},
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"400dc75dd88a48bc411a4edb9c5f40f9d22ae0f1c5b68d8f748e7733efae5a0e","revision":"cb3ebc3797508b3f46d66b8bc5ece89b32cb79ae"},
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"90e94e3a617cb7c9642c029f8dd1c58fbebeca19e29dbd1b097af41952fe4b93","revision":"cf12c0d848d0dc068f3dcaa530e9a1f213618834"},
 
     {"path":"src-server/services/orchestration/__tests__/home-reference-recovery.test.ts","digest":"fb52355a2508fffa30621e7fd7a131f809fb4c4eeebf9b59bc0fe8a95435dbaf","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

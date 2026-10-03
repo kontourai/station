@@ -32,7 +32,36 @@ export interface PortableDraft {
 
 interface StoredState {
   sessions: StoredDrafts;
+  activitySessions: StoredDrafts;
   portable: PortableDraft[];
+}
+
+function draftsWithText(
+  drafts: StoredDrafts,
+  key: string,
+  text: string,
+): StoredDrafts {
+  if (!text && !drafts[key]?.quotes?.length) {
+    if (!(key in drafts)) return drafts;
+    const { [key]: _removed, ...rest } = drafts;
+    return rest;
+  }
+  return Object.fromEntries(
+    Object.entries({
+      ...drafts,
+      [key]: {
+        quotes: drafts[key]?.quotes,
+        text: text.slice(0, MAX_DRAFT_LENGTH),
+        updatedAt: Date.now(),
+      },
+    })
+      .sort((a, b) => b[1].updatedAt - a[1].updatedAt)
+      .slice(0, MAX_DRAFTS),
+  );
+}
+
+function activityDraftKey(apiBase: string, threadId: string): string {
+  return JSON.stringify([apiBase, threadId]);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -87,7 +116,11 @@ function readState(): StoredState {
     ) as unknown;
     // The original v1 value was the session-id map itself. Keep reading it.
     if (!isRecord(parsed) || !('sessions' in parsed)) {
-      return { sessions: readSessionDrafts(parsed), portable: [] };
+      return {
+        sessions: readSessionDrafts(parsed),
+        activitySessions: {},
+        portable: [],
+      };
     }
     const portable = Array.isArray(parsed.portable)
       ? parsed.portable.filter((draft): draft is PortableDraft => {
@@ -105,6 +138,7 @@ function readState(): StoredState {
       : [];
     return {
       sessions: readSessionDrafts(parsed.sessions),
+      activitySessions: readSessionDrafts(parsed.activitySessions),
       portable: portable
         .map((draft) => ({
           ...draft,
@@ -131,7 +165,7 @@ function readState(): StoredState {
         .slice(0, MAX_DRAFTS),
     };
   } catch {
-    return { sessions: {}, portable: [] };
+    return { sessions: {}, activitySessions: {}, portable: [] };
   }
 }
 
@@ -240,31 +274,30 @@ export const chatDraftsStore = {
     );
   },
   set(sessionId: string, text: string): void {
-    if (!text && !state.sessions[sessionId]?.quotes?.length) {
-      if (!(sessionId in state.sessions)) return;
-      const { [sessionId]: _removed, ...sessions } = state.sessions;
-      state = { ...state, sessions };
-      writeState(state);
-      notify();
-      return;
-    }
-    state = {
-      ...state,
-      sessions: Object.fromEntries(
-        Object.entries({
-          ...state.sessions,
-          [sessionId]: {
-            quotes: state.sessions[sessionId]?.quotes,
-            text: text.slice(0, MAX_DRAFT_LENGTH),
-            updatedAt: Date.now(),
-          },
-        })
-          .sort((a, b) => b[1].updatedAt - a[1].updatedAt)
-          .slice(0, MAX_DRAFTS),
-      ),
-    };
+    const sessions = draftsWithText(state.sessions, sessionId, text);
+    if (sessions === state.sessions) return;
+    state = { ...state, sessions };
     writeState(state);
     notify();
+  },
+  getActivityDraft(apiBase: string, threadId: string): string {
+    return (
+      state.activitySessions[activityDraftKey(apiBase, threadId)]?.text ?? ''
+    );
+  },
+  setActivityDraft(apiBase: string, threadId: string, text: string): void {
+    const activitySessions = draftsWithText(
+      state.activitySessions,
+      activityDraftKey(apiBase, threadId),
+      text,
+    );
+    if (activitySessions === state.activitySessions) return;
+    state = { ...state, activitySessions };
+    writeState(state);
+    notify();
+  },
+  clearActivityDraft(apiBase: string, threadId: string): void {
+    this.setActivityDraft(apiBase, threadId, '');
   },
   clear(sessionId: string): void {
     if (!(sessionId in state.sessions)) return;

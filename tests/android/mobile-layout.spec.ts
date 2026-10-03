@@ -154,7 +154,7 @@ test.describe('Android — Mobile Layout', () => {
 
     await page
       .getByRole('combobox', { name: 'Settings section' })
-      .selectOption({ label: 'My knowledge store' });
+      .selectOption({ label: 'My knowledge' });
     await expect(page).toHaveURL(/[?&]view=knowledge/);
     const section = page.locator('#section-knowledge');
     await expect(section).toBeVisible();
@@ -236,7 +236,7 @@ test.describe('Android — Mobile Layout', () => {
 
     const sections = page.getByRole('combobox', { name: 'Settings section' });
     await expect(sections).toBeVisible();
-    await sections.selectOption({ label: 'System' });
+    await sections.selectOption({ label: 'Advanced' });
 
     // #1063 renamed the group and renders the timestamp as `date · age` with
     // a separate screen-reader description that repeats the age, so match the
