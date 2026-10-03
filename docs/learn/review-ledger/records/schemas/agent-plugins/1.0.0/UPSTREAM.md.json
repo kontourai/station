@@ -18,7 +18,7 @@
 
     {"path":"scripts/generate-agent-plugin-validators.mjs","digest":"2b21104af3b036b928fbe0f253f12142250c452ef23a909b484e44b4b2e60472","revision":"d4944ee82b611c537951425d63539e8d5e597a5d"},
 
-    {"path":"src-server/services/plugins/agent-plugin-loader.ts","digest":"b6434939c6229105e9771e53932416d1aa4244d01f24afa84b03f8108a03fcee","revision":"d222e0af2621a3b0cd4cc0dff0c5736f9a715329"}
+    {"path":"src-server/services/plugins/agent-plugin-loader.ts","digest":"5e2ebd404a26505676a99a207854fc10fe3692fa02628c891bed0156eb1b231c","revision":"56f4c4897a189eeb30430119a4f4895e95fbb541"}
   ],
 
   "checks": [

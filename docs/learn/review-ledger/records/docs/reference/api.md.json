@@ -9,7 +9,7 @@
 
   "limits": "Source review of every current documented claim is not exhaustive endpoint coverage or formal validation of every implementation branch. No live provider/model/MCP/registry/AWS pricing or IAM, git remote update/install/restart, native browser/Windows shell/device, Tailscale Serve, hosted or account enrollment outcome was exercised. Current limitations are stated, including placeholder measurements, hidden legacy failure-to-empty results, cooperative abort, pending activation/cleanup, raw pricing units, retained proxy/path gaps, and provider/executor boundaries.37 fences parse and12 exported request-schema examples pass; syntax/shape is not runtime authentication or execution proof. Exact hashes detect later drift and never substitute for semantic delta review.",
 
-  "document": {"digest":"b2ec0fde2325ba3d212a539496721e3cc87cb493bae04a18d753e38529e8f9fa","revision":"a89d77c455f60f24a368c649cfe34200a3ae3110"},
+  "document": {"digest":"d05776cb92e23b6811067894c01e1c40abcd2f7d2a2e042e869f90a98fff1c86","revision":"dae6cc432669dd3ced4da190a53362f9c6bb8ac5"},
 
   "sources": [
     {"path":"packages/cli/src/commands/environment.ts","digest":"e0f0a2b430058c5bbd399df755dbc098b5356474206f473fa24ffbb3d77c7331","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
@@ -36,7 +36,7 @@
 
     {"path":"packages/contracts/src/principal.ts","digest":"00155a0d2f38356cfb51a720ff8195eb92ec4fd6d2b0e4dbcd97911f98eb3b73","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/contracts/src/provider.ts","digest":"d84e1b935bae947ccddfbf011b2146275d323b053326f43c3cd54a5b692e47fd","revision":"3a12d2273b4b8b1e024523d6eb396d6ec3c703fb"},
+    {"path":"packages/contracts/src/provider.ts","digest":"5c4ed879a68b126ed05d68dac011590fc0bc8fde908d96f585774c32274d9eba","revision":"8540fafb86b969775254b898711ad3ae40ccc39d"},
 
     {"path":"packages/contracts/src/review-evidence.ts","digest":"647d4c37c0bf0cb74993e9b859c410a08f3a26c7b1f253651908689f9643d75a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -142,7 +142,7 @@
 
     {"path":"src-server/routes/chat/chat-request-preparation.ts","digest":"9f8034d6026a84924fd9df53ddda4ca3743fc36a58e284087dff0207680dcbe0","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/routes/chat/chat.ts","digest":"db3e22211d805bb024b75e48493ff474d48eeb6a424f3329d8a938959ae44841","revision":"68a5eae4cbf2421447443d47b902fd7758e319fc"},
+    {"path":"src-server/routes/chat/chat.ts","digest":"6a21c19b74d6dda3764d207c8768b588df7cb4e5e1f5529955e153cbde99f8cc","revision":"56f4c4897a189eeb30430119a4f4895e95fbb541"},
 
     {"path":"src-server/routes/chat/conversations.ts","digest":"d96099cd4787a5dc4f5707cc66b1dbe723dcedbd76991a4f81ec0cad64b333f4","revision":"d9f09f8fbc1dbf7c563debe7a7f40802897ce59e"},
 
@@ -170,11 +170,11 @@
 
     {"path":"src-server/routes/orchestration/events.ts","digest":"7663dcbc5398d0b859457d25026d30bc7c32ba0e79eb0dd5a253161fc0698e2e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"3976ce75117d6cbfcb2d61733068a738c46de966a3106e5a76190d03b31e63e6","revision":"71c69cadad789baff389812ff52e9efae397c316"},
+    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"c7da96ef1571ce8efeac5369709cb237f39414ee539a8599225bb4ee2fbd5f82","revision":"f2bb7d8a1e4b56ac783fb9d0cfe167fe7a0fdde5"},
 
     {"path":"src-server/routes/orchestration/runs.ts","digest":"f247aba8556b954a0fbbbb46b89870c75b736340cf9c0b4f1c617005bf31aebd","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/routes/plugins/plugin-bundles.ts","digest":"1f1d61bad07cbd02ef056fd97e055ba034ca65d05dd39b32d8285ecad2df9afb","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/routes/plugins/plugin-bundles.ts","digest":"bf09f9bf663cfeb1394f99b4208339d442bec21644bee722357487051da159db","revision":"8540fafb86b969775254b898711ad3ae40ccc39d"},
 
     {"path":"src-server/routes/plugins/plugin-config-routes.ts","digest":"42dda4eeb196c8b63c081f059822f9f56187b1da9d8f84ec4c09cacc3d95f5a4","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -190,7 +190,7 @@
 
     {"path":"src-server/routes/plugins/plugin-person-approval.ts","digest":"b731874cf9dac20f44beabd2410d732f41e2e4ac207aa3c173162aa72f15327e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/routes/plugins/plugin-public-routes.ts","digest":"5d088d683e1fc60155100743cf2fb67a6df25ded4914307ba54883d1097f157e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/routes/plugins/plugin-public-routes.ts","digest":"a93e9484a3c0d16b9f5a08b1aad59b4eee4ff89afc725a4b24e5281d308d7564","revision":"8540fafb86b969775254b898711ad3ae40ccc39d"},
 
     {"path":"src-server/routes/plugins/plugin-visibility-routes.ts","digest":"e92542c76c90aa5047015dcc2967846bd2e15cc472cca5fee54342042e51165e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -294,7 +294,7 @@
 
     {"path":"src-server/services/orchestration/model-launch-planning.ts","digest":"597ddcbc218834b005f24a64634a54c805f3563333a9d4d965a36028556bce48","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"14d4d68ff2f8715e1428ca985125a9eff9eb5a05ea52946dc16b4f5971405a34","revision":"bc671142a7ae70587daf5bb0d94732e8ca74600a"},
+    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"804ef4496d2f445f984f409b4002a535d1b67797f1a29f8aedc04531d3277314","revision":"f2bb7d8a1e4b56ac783fb9d0cfe167fe7a0fdde5"},
 
     {"path":"src-server/services/orchestration/orchestration-session-state.ts","digest":"44a232d30c1d080f58b798e418a54d3adacb1086b3b6757a06f307370b703943","revision":"af3c8fbfee90c9179a0ac19659b76d24c707d574"},
 
@@ -338,7 +338,7 @@
 
     {"path":"src-server/services/starter-work/starter-work-module.ts","digest":"c522e7213724f7c058c6b22ddf4fd206533a34997afad3de6be1b4edc96932d6","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/tools/station-control-delegation.ts","digest":"b924e289e8e485cf249ec99ebd3097b014f001f58942aa29f91e0196bbc5af70","revision":"ee7cb7c444fb45f465be3f4ea5c938e5a130145e"},
+    {"path":"src-server/tools/station-control-delegation.ts","digest":"e5e4d1979cfa4997ce4b808f5268e69bbd0926f5c838ac1388bbdd5009389467","revision":"56f4c4897a189eeb30430119a4f4895e95fbb541"},
 
     {"path":"src-server/utils/path-access-failure.ts","digest":"6c1ea7d51fa72a42eea5915cb26fe5a63181371644f6d1c4fbbf5a7f715b10c4","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

@@ -48,7 +48,7 @@
 
     {"path":"src-server/routes/knowledge/knowledge-store-routes.ts","digest":"e62792941e8de79239fa616cc6d265af4304e29b9978535533a26b9688b86265","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
-    {"path":"src-server/runtime/bootstrap/runtime-service-bootstrap.ts","digest":"a9213f4540d66926d9f58391f7daf3f8ef18734a1803df3e3c24ea0c31437a19","revision":"a366557a12a4f5e6a41d38ce92aacbd0ab32193b"},
+    {"path":"src-server/runtime/bootstrap/runtime-service-bootstrap.ts","digest":"2cf5c807666f495b88ded90ba448c7e4e4e03733b2e2afed684409cd5ffc8356","revision":"56f4c4897a189eeb30430119a4f4895e95fbb541"},
 
     {"path":"src-ui/src/views/project-settings/KnowledgeSection.tsx","digest":"456b7dbbaf3232c9127c547ad6e8087b2f5947d75143ba66bec4a18a72b52744","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 

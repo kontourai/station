@@ -9,7 +9,7 @@
 
   "limits": "Selected documented contracts only, not every helper export or implementation branch. Syntax-only snippets are excerpts, not complete standalone programs. Existing parser/build tests use disposable fixtures and controlled dependency preparation. No real plugin install, registry or live MCP/provider/device outcome exercised. Earlier MCP and notification checks remain separately recorded; hashes are freshness checks, not semantic proof.",
 
-  "document": {"digest":"89adf5889eabac778f3dd70300faa06565fe38201e1ff8be3bd335bc25186492","revision":"2b8d3ba6c9825fba821fe157f32956f4e051be0a"},
+  "document": {"digest":"2f5dec68bf5fc28724e0e24f2e5628708ef3bacbdb82a70f009a8f5f497145ac","revision":"1f079c2ca461452073e8de44303b6cb493a30e67"},
 
   "sources": [
     {"path":"docs/design/mcp-ui-host.md","digest":"060ae4fc6877a186e8ea6d5073729e03f161dbe270b700f62741095560000195","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
@@ -40,7 +40,7 @@
 
     {"path":"packages/contracts/src/project.ts","digest":"81c1da22c4d64208ecd8d5dad2259958b296272dfb2537ec6b514c271a55fb11","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/contracts/src/provider.ts","digest":"d84e1b935bae947ccddfbf011b2146275d323b053326f43c3cd54a5b692e47fd","revision":"3a12d2273b4b8b1e024523d6eb396d6ec3c703fb"},
+    {"path":"packages/contracts/src/provider.ts","digest":"5c4ed879a68b126ed05d68dac011590fc0bc8fde908d96f585774c32274d9eba","revision":"8540fafb86b969775254b898711ad3ae40ccc39d"},
 
     {"path":"packages/contracts/src/runtime.ts","digest":"7934961080fb33ddda1d4989b9a98d24cff3fcfc4ed9fd6debfffa986650ab22","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -50,7 +50,7 @@
 
     {"path":"packages/sdk/src/api-agent-runtime.ts","digest":"4b5cff321da3b39dca67b50c39d64090b9f794f95d52b0e1d6504c18dfedfc14","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
-    {"path":"packages/shared/package.json","digest":"349b7e4be40349c4bde9e88ce927720a4b91e3d1af35d23c2281324e8579cfc0","revision":"a366557a12a4f5e6a41d38ce92aacbd0ab32193b"},
+    {"path":"packages/shared/package.json","digest":"5b481eaf2d75507da7f8bc50092809ac247aed187377908080a4078f99ce7427","revision":"1f079c2ca461452073e8de44303b6cb493a30e67"},
 
     {"path":"packages/shared/src/__tests__/build.test.ts","digest":"e7c2da46760a947ef17e70c50e4c244376e4b60f98802a4fd2f620764f08d4bf","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -86,7 +86,7 @@
 
     {"path":"src-server/routes/agents/invoke-agent.ts","digest":"158a95a8af0b8a1f4480ad8ebaee68d569048c611f469ab78734c0d52cdd7cca","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/routes/plugins/plugin-bundles.ts","digest":"1f1d61bad07cbd02ef056fd97e055ba034ca65d05dd39b32d8285ecad2df9afb","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/routes/plugins/plugin-bundles.ts","digest":"bf09f9bf663cfeb1394f99b4208339d442bec21644bee722357487051da159db","revision":"8540fafb86b969775254b898711ad3ae40ccc39d"},
 
     {"path":"src-server/routes/system/auth.ts","digest":"f7edff4d6a502fdfa711486b7aab876db220f1410c85d75daa7a8f5c63f1bc71","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -96,7 +96,7 @@
 
     {"path":"src-server/runtime/mcp/mcp-manager.ts","digest":"c6569ade67cb9b48930cac5ca09521ba0836161c462f7b5a7c684b6eb8db1d3c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/runtime/mcp/mcp-ui-frame-server.ts","digest":"eaf7b70c1248c4020af4fafd05c5e38c6e8fd03fd2955991965d0e94dd3cc77c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/runtime/mcp/mcp-ui-frame-server.ts","digest":"059956767914e6690d45440c93d3a7fd780cb1ab0261fab28a4f3e70e1610fe3","revision":"e3cabf68e687341298eefa0bf88ebfb2400549d3"},
 
     {"path":"src-server/runtime/mcp/mcp-ui-resolver.ts","digest":"b82399f787d6b71129684e5cb4fad8858846d5315d0c1077822ac1591199075e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -112,7 +112,7 @@
 
     {"path":"src-ui/src/core/pluginSharedRuntime.ts","digest":"b9b3865a69ebf0b8246ac7b6b7b294b24f7a05f51004dd8a8b5ea273fc2fae49","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
 
-    {"path":"packages/shared/src/skill-experience-author.ts","digest":"ad4c1718cd49718a71b341ade9babdbbdee11a8c3b5b4b36b578e1bc48ec69d6","revision":"cdbbf99cf334245282450ff5bfc51dcd4f42d660"}
+    {"path":"packages/shared/src/skill-experience-author.ts","digest":"78eff8e23674a648d904c12919b137ff62c04520fc3f164f66a482102047754b","revision":"f2bb7d8a1e4b56ac783fb9d0cfe167fe7a0fdde5"}
   ],
 
   "checks": [
