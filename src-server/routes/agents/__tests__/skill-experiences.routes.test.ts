@@ -1,17 +1,16 @@
 import {
   cpSync,
   mkdirSync,
-  mkdtempSync,
   readFileSync,
   rmSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import type { SkillExperienceInventoryV1 } from '@kontourai/station-contracts/skill-experience';
 import { afterEach, expect, test } from 'vitest';
 import { readJson } from '../../../__test-utils__/read-json.js';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { ConfigLoader } from '../../../domain/config-loader.js';
 import { SkillService } from '../../../services/agents/skill-service.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
@@ -25,16 +24,14 @@ import { createLocalPluginInstallationService } from '../../../services/plugins/
 import { readPluginManifestFile } from '../../../services/plugins/plugin-manifest-loader.js';
 import { createSkillRoutes } from '../skills.js';
 
-const scratch: Array<{ home: string; store: EventStore }> = [];
+const makeTempDir = trackTempDirs();
+const scratch: EventStore[] = [];
 afterEach(() => {
-  for (const { home, store } of scratch.splice(0)) {
-    store.close();
-    rmSync(home, { recursive: true, force: true });
-  }
+  for (const store of scratch.splice(0)) store.close();
 });
 
 async function installedExperience(change?: (source: string) => void) {
-  const home = mkdtempSync(join(tmpdir(), 'station-experience-route-'));
+  const home = makeTempDir('station-experience-route-');
   const source = join(home, 'source');
   cpSync(resolve('examples/visual-skill-experience'), source, {
     recursive: true,
@@ -43,7 +40,7 @@ async function installedExperience(change?: (source: string) => void) {
   const plugins = join(home, 'plugins');
   mkdirSync(plugins);
   const store = new EventStore(join(home, 'events.sqlite'));
-  scratch.push({ home, store });
+  scratch.push(store);
   const journal = store.createPackageMcpAdmissionJournal();
   const manifest = await readPluginManifestFile(join(source, 'plugin.json'));
   const pluginId = manifest.name;
@@ -306,13 +303,13 @@ test.each(['syntax', 'schema'] as const)(
 );
 
 test('journal-observed legacy packages cannot invent managed materialization identity', async () => {
-  const home = mkdtempSync(join(tmpdir(), 'station-experience-legacy-'));
+  const home = makeTempDir('station-experience-legacy-');
   const root = join(home, 'plugins/visual-skill-experience');
   cpSync(resolve('examples/visual-skill-experience'), root, {
     recursive: true,
   });
   const store = new EventStore(join(home, 'events.sqlite'));
-  scratch.push({ home, store });
+  scratch.push(store);
   const journal = store.createPackageMcpAdmissionJournal();
   const recorded = journal.recordInstallation({
     pluginId: 'visual-skill-experience',
