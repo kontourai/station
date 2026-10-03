@@ -9,7 +9,7 @@
 
   "limits": "Full reading and bounded source review are not all-platform execution or universal semantic certification. No hosted CI, cloud, release or real provider/device proof. Protected policy activation is limited to the approved documentation additions in this branch.",
 
-  "document": {"digest":"9d4e05743a212a295ecdefbeb1cafdddbe7d4cedf923295d07dd36736cc4c373","revision":"f55627e0627f6746899c13f9befb0b338c5a6f91"},
+  "document": {"digest":"53af26e5853101d07b3c331f1ce1bca2ca6e5c19555f7d0045cca9a9483b052b","revision":"26c576127006fc775278e3da2eea0ab23bc9e90c"},
 
   "sources": [
     {"path":".agents/skills/documentation-audit/SKILL.md","digest":"2f5e193ebfb24a08597fd9dc31663a7d293bceaf1847e2df508b093e898845a6","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
@@ -134,7 +134,9 @@
 
     {"path":"scripts/ci-health.mjs","digest":"edac396d278bf3956ee1d16409cdd4856088b7d9862d1be22f875238cc801aaf","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
 
-    {"path":"scripts/__tests__/ci-health.test.ts","digest":"8e35d3f672ee8526019af7b1464c875999f26147b4de037d818285f595c3c3de","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"}
+    {"path":"scripts/__tests__/ci-health.test.ts","digest":"8e35d3f672ee8526019af7b1464c875999f26147b4de037d818285f595c3c3de","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
+
+    {"path":"tests/screenshots.spec.ts","digest":"621c70bf469a7b48111152204ea1f3654bdb9d4090e8d4f7f25634d9b38c40f6","revision":"d2b65cb482b664c258ccc809fabd92bc279354dc"}
   ],
 
   "checks": [
