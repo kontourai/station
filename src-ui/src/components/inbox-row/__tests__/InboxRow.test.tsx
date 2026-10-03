@@ -646,6 +646,60 @@ describe('the Details sheet belongs to the item, not to the row instance', () =>
   });
 });
 
+describe('an unsent composer draft on touch chrome (U11)', () => {
+  it('its Details sheet offers Discard unsent draft, which clears the composer and the store', async () => {
+    const base = rowFor({
+      hasActiveTurn: false,
+      conversationActivity: undefined,
+    });
+    const row: Row = {
+      facts: undefined,
+      item: { ...base.item, chatSessionId: 'tab-draft' },
+    };
+    chatDraftsStore.set('tab-draft', 'Draft on the phone: check the README');
+    try {
+      renderRow(row, { chrome: 'touch', hoverCard: true, isOpenChat: true });
+      expect(screen.getByText('Unsent draft')).toBeTruthy();
+      fireEvent.click(screen.getByRole('button', { name: /^Details for/ }));
+      await screen.findByTestId('inbox-row-details', {}, { timeout: 8000 });
+      const discard = screen.getByRole('button', {
+        name: 'Discard unsent draft for Migrate sessions table',
+      });
+      expect(discard.classList.contains('action-overflow__row--danger')).toBe(
+        true,
+      );
+      fireEvent.click(discard);
+      expect(chatDraftsStore.hasDraft('tab-draft')).toBe(false);
+      // The chip reads the same store, so it goes with the text.
+      expect(screen.queryByText('Unsent draft')).toBeNull();
+      expect(screen.queryByTestId('inbox-row-details')).toBeNull();
+    } finally {
+      chatDraftsStore.clear('tab-draft');
+    }
+  });
+
+  it('a row with no unsent draft offers no such row', async () => {
+    const base = rowFor({
+      hasActiveTurn: false,
+      conversationActivity: undefined,
+    });
+    renderRow(
+      { facts: undefined, item: { ...base.item, chatSessionId: 'tab-clean' } },
+      {
+        chrome: 'touch',
+        hoverCard: true,
+        isOpenChat: true,
+        onCloseChat: vi.fn(),
+      },
+    );
+    fireEvent.click(screen.getByRole('button', { name: /^Details for/ }));
+    await screen.findByTestId('inbox-row-details', {}, { timeout: 8000 });
+    expect(
+      screen.queryByRole('button', { name: /^Discard unsent draft/ }),
+    ).toBeNull();
+  });
+});
+
 describe('a Draft row on touch chrome', () => {
   const draftRow = (): Row => {
     const base = rowFor({

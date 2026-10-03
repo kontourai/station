@@ -7,6 +7,7 @@ import {
   useState,
   useSyncExternalStore,
 } from 'react';
+import { activeChatsStore } from '../../contexts/active-chats-store';
 import { chatDraftsStore } from '../../contexts/chat-drafts-store';
 import { relativeTime } from '../../utils/relativeTime';
 import type { SessionIconAgent } from '../../utils/sessionDisplay';
@@ -24,6 +25,7 @@ import { DiscardDraftButton } from '../drafts/DiscardDraftButton';
 import { AgentIcon } from '../icons/AgentIcon';
 import {
   CloseGlyph,
+  DiscardGlyph,
   FolderGlyph,
   InfoGlyph,
   MoreGlyph,
@@ -505,8 +507,18 @@ export function InboxRow({
     !beside('discard') && discardThreadId && onDraftDiscarded
       ? { threadId: discardThreadId, onDraftDiscarded }
       : undefined;
+  // U11 (design round 2026-10): an UNSENT composer draft — text typed into
+  // an open chat on this device, the row's "Unsent draft" chip — had no way
+  // off a phone. It is this device's text, not a server Draft, so discarding
+  // it clears the composer and the store the chip reads, nothing else.
+  const composerDraftSessionId =
+    hasUnsentDraft && item.chatSessionId ? item.chatSessionId : undefined;
   const sheetMenu =
-    sheetSnoozePresets || sheetUnsnooze || sheetClose || sheetDiscard ? (
+    sheetSnoozePresets ||
+    sheetUnsnooze ||
+    sheetClose ||
+    sheetDiscard ||
+    composerDraftSessionId ? (
       <div
         className="menu-surface chat-dock-inbox-details__menu"
         data-testid="inbox-row-details-actions"
@@ -569,6 +581,25 @@ export function InboxRow({
                 Close chat
               </button>
             )}
+          </div>
+        )}
+        {composerDraftSessionId && (
+          <div className="menu-group">
+            <button
+              type="button"
+              className="menu-row action-overflow__row--danger"
+              aria-label={`Discard unsent draft for ${item.title}`}
+              onClick={() => {
+                activeChatsStore.clearInput(composerDraftSessionId);
+                chatDraftsStore.clear(composerDraftSessionId);
+                setDetailsOpen(false);
+              }}
+            >
+              <span className="menu-row__glyph" aria-hidden="true">
+                <DiscardGlyph />
+              </span>
+              Discard unsent draft
+            </button>
           </div>
         )}
         {/* Destructive, so last and marked. It is the shared discard

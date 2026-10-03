@@ -92,6 +92,9 @@ const fixtures = vi.hoisted(() => ({
   defaultAgent: { slug: 'codex-agent', name: 'Codex' } as any,
   defaultModelLabel: 'gpt-5.3-codex',
   sessionsRefetch: vi.fn(),
+  /** U1: a project's layouts, by slug; absent means none. */
+  layoutsBySlug: {} as Record<string, Array<{ slug: string; type: string }>>,
+  listProjectLayouts: vi.fn(),
   // #2312: the server command a Draft row's discard dispatches.
   discardDraft: vi.fn(async (command: { threadId: string }) => ({
     receipt: {
@@ -248,6 +251,13 @@ vi.mock('@kontourai/station-sdk', () => ({
     isError: false,
     refetch: vi.fn(),
   }),
+}));
+vi.mock('@kontourai/station-sdk/client', () => ({
+  // U1: the layouts read Home makes before routing a row to its Coding layout.
+  listProjectLayouts: (_apiBase: string, slug: string) => {
+    fixtures.listProjectLayouts(slug);
+    return Promise.resolve(fixtures.layoutsBySlug[slug] ?? []);
+  },
 }));
 vi.mock('../contexts/ActiveChatsContext', () => ({
   useAllActiveChats: () => fixtures.chats,
@@ -484,6 +494,109 @@ describe('HomeView', () => {
     expect(
       screen.getByRole('button', { name: /^Continue/ }).textContent,
     ).toContain('New chat');
+  });
+
+  /**
+   * U1 (design round 2026-10): a chat opened from Home lands where it
+   * lives. A project with a Coding layout centres the chat there; the chat
+   * is still focused first (the same shared action as every other row), and
+   * a project with no Coding layout, or no project, stays in the dock.
+   */
+  test('opening a row whose project has a Coding layout routes to that layout after focusing the chat', async () => {
+    fixtures.layoutsBySlug = {
+      station: [
+        { slug: 'tasks', type: 'tasks' },
+        { slug: 'coding', type: 'coding' },
+      ],
+    };
+    fixtures.listProjectLayouts.mockClear();
+    fixtures.sessions = [
+      {
+        threadId: 'coding-thread',
+        provider: 'claude',
+        model: 'claude-sonnet-4',
+        status: 'ready',
+        assignedAgentSlug: 'codex-agent',
+        projectSlug: 'station',
+        displayTitle: 'Lives in Coding',
+        createdAt: '2026-07-14T00:00:00Z',
+        updatedAt: '2026-07-14T01:00:00Z',
+        isLoaded: true,
+        isPersisted: true,
+        answerability: { answerable: true },
+        eventCount: 2,
+        lifecycleState: 'idle',
+        hasActiveTurn: false,
+      },
+    ];
+    const focus = vi.fn();
+    const unregister = openChatsStore.registerNavigation({
+      focus,
+      openCollection: vi.fn(),
+    });
+    const onNavigate = vi.fn();
+    renderHomeView({ continuation: null, onNavigate });
+    // The row itself, by keyboard: Enter on the focused row is a click.
+    const row = screen.getByRole('button', {
+      name: 'Lives in Coding, station',
+    });
+    row.focus();
+    fireEvent.click(row);
+    expect(focus).toHaveBeenCalledTimes(1);
+    expect(focus.mock.calls[0]?.[0]).toMatchObject({
+      conversationId: 'coding-thread',
+      agentSlug: 'codex-agent',
+    });
+    await waitFor(() =>
+      expect(onNavigate).toHaveBeenCalledWith({
+        type: 'layout',
+        projectSlug: 'station',
+        layoutSlug: 'coding',
+      }),
+    );
+    expect(fixtures.listProjectLayouts).toHaveBeenCalledWith('station');
+    unregister();
+  });
+
+  test('a row whose project has no Coding layout stays in the dock', async () => {
+    fixtures.layoutsBySlug = { station: [{ slug: 'tasks', type: 'tasks' }] };
+    fixtures.sessions = [
+      {
+        threadId: 'dock-thread',
+        provider: 'claude',
+        model: 'claude-sonnet-4',
+        status: 'ready',
+        assignedAgentSlug: 'codex-agent',
+        projectSlug: 'station',
+        displayTitle: 'Stays in the dock',
+        createdAt: '2026-07-14T00:00:00Z',
+        updatedAt: '2026-07-14T01:00:00Z',
+        isLoaded: true,
+        isPersisted: true,
+        answerability: { answerable: true },
+        eventCount: 2,
+        lifecycleState: 'idle',
+        hasActiveTurn: false,
+      },
+    ];
+    const focus = vi.fn();
+    const unregister = openChatsStore.registerNavigation({
+      focus,
+      openCollection: vi.fn(),
+    });
+    const onNavigate = vi.fn();
+    renderHomeView({ continuation: null, onNavigate });
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Stays in the dock, station' }),
+    );
+    expect(focus).toHaveBeenCalledTimes(1);
+    // The lookup settles with no layout: nothing routes.
+    await waitFor(() =>
+      expect(fixtures.listProjectLayouts).toHaveBeenCalledWith('station'),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(onNavigate).not.toHaveBeenCalled();
+    unregister();
   });
 
   test('orders real timestamps and focuses an active chat continuation', () => {
@@ -1563,7 +1676,15 @@ describe('Home project data follows the host authority (#481 slice A)', () => {
       authorityKey: 'authority-a',
       isCurrent: () => true,
     };
-    const { result, rerender } = renderHook(() => useHomeViewModel(vi.fn()));
+    // The model reads the query cache for a row's project layouts (U1).
+    const queryClient = new QueryClient();
+    const { result, rerender } = renderHook(() => useHomeViewModel(vi.fn()), {
+      wrapper: ({ children }) => (
+        <QueryClientProvider client={queryClient}>
+          {children}
+        </QueryClientProvider>
+      ),
+    });
     expect(result.current.projects).toEqual([
       { id: 'home-a-id', slug: 'station', name: 'Home A' },
     ]);

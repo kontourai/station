@@ -263,6 +263,7 @@ function renderDock({
   onRetryOrchestrationSessions = vi.fn(),
   onNewChat,
   onRetryConversationOpen,
+  loadingEscapeDelayMs = 0,
 }: {
   orchestrationSession?: any;
   session?: ChatSession;
@@ -271,6 +272,7 @@ function renderDock({
   onRetryOrchestrationSessions?: () => void;
   onNewChat?: (input?: string) => void;
   onRetryConversationOpen?: () => void;
+  loadingEscapeDelayMs?: number;
 } = {}) {
   const resolvedRead = read ?? (orchestrationSession ? 'present' : 'absent');
   transcriptMock.events = events;
@@ -287,6 +289,7 @@ function renderDock({
         onRetryOrchestrationSessions={onRetryOrchestrationSessions}
         onNewChat={onNewChat}
         onRetryConversationOpen={onRetryConversationOpen}
+        loadingEscapeDelayMs={loadingEscapeDelayMs}
         chatFontSize={14}
         dockHeight={400}
         showStatsPanel={false}
@@ -650,6 +653,44 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
   // offered "Start new chat" — so removing the banner removed the only way out
   // of the wait. Retry is deliberately absent: it would re-ask a question the
   // resolver is already asking.
+  /**
+   * D3 (design round 2026-10): a reopened chat showed a "Loading
+   * conversation" skeleton, a "Start new chat" button and a live composer
+   * at once. One state at a time: the escape joins the skeleton only once a
+   * load has run past `loadingEscapeDelayMs`.
+   */
+  test('D3 while a conversation loads, the skeleton stands alone until the escape delay passes', () => {
+    vi.useFakeTimers();
+    try {
+      renderDock({
+        orchestrationSession: buildOrchestrationSession({
+          status: 'idle',
+          lifecycleState: 'idle',
+        }),
+        session: buildSession({
+          conversationId: 'cool',
+          conversationOpenPending: true,
+          messages: [],
+        }),
+        onNewChat: vi.fn(),
+        onRetryConversationOpen: vi.fn(),
+        loadingEscapeDelayMs: 1_500,
+      });
+      expect(screen.getByLabelText('Loading conversation')).toBeTruthy();
+      expect(
+        screen.queryByRole('button', { name: 'Start new chat' }),
+      ).toBeNull();
+      act(() => {
+        vi.advanceTimersByTime(1_500);
+      });
+      expect(
+        screen.getByRole('button', { name: 'Start new chat' }),
+      ).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   test('#1582 E3 a resolving conversation still offers a way out', async () => {
     const onNewChat = vi.fn();
     renderDock({

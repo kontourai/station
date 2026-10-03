@@ -155,6 +155,9 @@ const BANNER_LINK_BUTTON_STYLE: React.CSSProperties = {
   padding: 0,
 };
 
+/** D3: see `ChatDockBodyProps.loadingEscapeDelayMs`. */
+const LOADING_ESCAPE_DELAY_MS = 6_000;
+
 interface ChatDockBodyProps {
   activeSession: ChatSession;
   workingDirectory?: string | null;
@@ -202,6 +205,13 @@ interface ChatDockBodyProps {
   ) => void | Promise<void>;
   /** Re-resolves the exact durable conversation identity, never an Agent guess. */
   onRetryConversationOpen?: () => void | Promise<void>;
+  /**
+   * D3 (design round 2026-10): how long a load runs before the "Start new
+   * chat" escape joins the skeleton. One state at a time: a load that is
+   * going to land shows a skeleton and nothing else; the escape is for a
+   * load that has stopped looking like one. Tests set it to 0.
+   */
+  loadingEscapeDelayMs?: number;
   onForkFromTurn?: (source: ForkTurnSource) => void;
   chatInput: ReturnType<typeof useChatInput>;
   setShowStatsPanel: (show: boolean) => void;
@@ -290,6 +300,7 @@ export function ChatDockBody({
   onOpenBackgroundTasks,
   onNewChat,
   onRetryConversationOpen,
+  loadingEscapeDelayMs = LOADING_ESCAPE_DELAY_MS,
   onForkFromTurn,
   setShowStatsPanel,
 }: ChatDockBodyProps) {
@@ -419,6 +430,21 @@ export function ChatDockBody({
   const transcriptLoaded = stickyTranscriptRef.current.messages.length > 0;
   const conversationLoading =
     resolvingOpen || (transcriptPending && !transcriptLoaded);
+  // D3: the escape joins the skeleton only once a load has run long; a load
+  // that lands in the ordinary second or two shows one state, the skeleton.
+  const [loadingLong, setLoadingLong] = useState(false);
+  useEffect(() => {
+    if (!conversationLoading) {
+      setLoadingLong(false);
+      return;
+    }
+    if (loadingEscapeDelayMs <= 0) {
+      setLoadingLong(true);
+      return;
+    }
+    const timer = setTimeout(() => setLoadingLong(true), loadingEscapeDelayMs);
+    return () => clearTimeout(timer);
+  }, [conversationLoading, loadingEscapeDelayMs]);
   /*
    * The wait is BOUNDED but not short: both reads go through the SDK client,
    * whose `DEFAULT_CLIENT_REQUEST_TIMEOUT_MS` is 30_000, so a resolution that
@@ -1379,7 +1405,7 @@ export function ChatDockBody({
         BEFORE the transcript's first read satisfies both conditions at once,
         and rendered the control twice (delta-review L1).
       */}
-      {conversationLoading && !recoveryOpen ? (
+      {conversationLoading && loadingLong && !recoveryOpen ? (
         <div className="session-history-controls">
           {onNewChat ? (
             <button

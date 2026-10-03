@@ -2362,7 +2362,19 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                   />
                 ) : activeSession ? (
                   <ChatDockActiveIdentity
-                    session={activeSession}
+                    // D3: a reopened chat's tab is titled "New chat" until its
+                    // transcript lands; the server's own title for the
+                    // conversation is already in the inventory read, so the
+                    // bar names the chat from the first frame.
+                    session={
+                      activeSession.title === 'New chat' &&
+                      activeOrchestrationSession?.displayTitle
+                        ? {
+                            ...activeSession,
+                            title: activeOrchestrationSession.displayTitle,
+                          }
+                        : activeSession
+                    }
                     agent={activeChatAgent}
                     modelLabel={activeChatModelLabel}
                     inputOrigin={activeOrchestrationSession?.inputOrigin}
