@@ -20,7 +20,7 @@
 
     {"path":"packages/contracts/src/__tests__/learning-review.test.ts","digest":"d91c0dcd54fc02fd99e0c7959b63a7dc1216b0556cfb2f8d1ff0996df1651347","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/contracts/src/agent.ts","digest":"e325363bc2303d78102c7c4c45b118756d71d66cae3d801eee303761d0715b6c","revision":"c2c67c2f25d565ea97d757b370f2bbf942a9588b"},
+    {"path":"packages/contracts/src/agent.ts","digest":"e325363bc2303d78102c7c4c45b118756d71d66cae3d801eee303761d0715b6c","revision":"423cbe55b9e35e4cd8954fd441cb9f3c69740d66"},
 
     {"path":"packages/contracts/src/application-session.ts","digest":"fa87c0f95e32f12f075d9e29e0fefa88df70a366b9d1dec0c44499bca8a7d4a1","revision":"d4b8f59be510d5eb8220bc5a883dd1691cfa2679"},
 
