@@ -162,7 +162,6 @@ function ChatDockInboxPanelImpl({
             gitLocationByThreadId={gitLocationByThreadId}
             workFacts={workFacts}
             chrome={coarsePointer ? 'touch' : 'hover'}
-            snoozeMenuOnly={coarsePointer}
             collapsible={{ sections, onToggle: toggleSection }}
             onActivate={(item) => {
               // station#3687 seam 4: acknowledge only after the click did

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useCoarsePointer } from '../../hooks/useCoarsePointer';
 import { useRowFocusPreservation } from '../../hooks/useRowFocusPreservation';
 import type { SessionIconAgent } from '../../utils/sessionDisplay';
 import {
@@ -21,13 +22,12 @@ import { revealHomeRegion } from '../../views/home/home-reveal';
 import type { HomeWorkItem } from '../../views/home/home-view-model';
 import type { HomeWorkLanes } from '../../views/home/useHomeWorkLanes';
 import type { WorkFactsById } from '../../views/home/work-facts';
+import { DisclosureToggle } from '../DisclosureToggle';
 import { ReturnGlyph } from '../icons/Glyph';
-import { LazyBoundary } from '../LazyBoundary';
 import { Empty, ErrorState, SkeletonList } from '../state';
 import { type HomeRowContext, renderHomeWorkRow } from './HomeWorkRow';
 
 const SETTLED_PAGE_SIZE = 5;
-const loadSnoozeMenu = () => import('./SnoozeMenu');
 
 /** One heading per live lane (`workStatus`) — the pulse counts reveal them. */
 const LIVE_LANES: readonly {
@@ -75,12 +75,8 @@ interface HomeRecentWorkSectionProps {
 
 interface HomeWorkController {
   lanes: HomeWorkLanes;
-  snoozeMenuFor: HomeLaneItem | null;
-  snoozeTriggerRef: React.RefObject<HTMLButtonElement | null>;
   shelfExpanded: boolean;
   settledVisibleCount: number;
-  openSnoozeMenu: (task: HomeLaneItem, trigger: HTMLButtonElement) => void;
-  closeSnoozeMenu: () => void;
   toggleShelf: () => void;
   expandShelf: () => void;
   showMoreSettled: () => void;
@@ -89,8 +85,6 @@ interface HomeWorkController {
 }
 
 function useHomeWorkController(lanes: HomeWorkLanes): HomeWorkController {
-  const [snoozeMenuFor, setSnoozeMenuFor] = useState<HomeLaneItem | null>(null);
-  const snoozeTriggerRef = useRef<HTMLButtonElement | null>(null);
   const [shelfExpanded, setShelfExpanded] = useState(false);
   const [settledVisibleCount, setSettledVisibleCount] =
     useState(SETTLED_PAGE_SIZE);
@@ -116,15 +110,8 @@ function useHomeWorkController(lanes: HomeWorkLanes): HomeWorkController {
     detailsFor,
     setDetailsFor,
     lanes,
-    snoozeMenuFor,
-    snoozeTriggerRef,
     shelfExpanded,
     settledVisibleCount,
-    openSnoozeMenu: (task, trigger) => {
-      snoozeTriggerRef.current = trigger;
-      setSnoozeMenuFor(task);
-    },
-    closeSnoozeMenu: () => setSnoozeMenuFor(null),
     toggleShelf: () => setShelfExpanded((value) => !value),
     expandShelf: () => setShelfExpanded(true),
     showMoreSettled: () =>
@@ -208,6 +195,9 @@ function HomeWorkContent({
   onRetry,
   controller,
 }: HomeRecentWorkSectionProps & { controller: HomeWorkController }) {
+  // Decided once for every row: hover chrome on a fine pointer, the 44px
+  // touch chrome on a coarse one (B5).
+  const coarsePointer = useCoarsePointer();
   if (workLoading && !workDegraded) {
     return (
       <SkeletonList count={3} withIcon={false} label="Loading recent work" />
@@ -240,6 +230,7 @@ function HomeWorkContent({
           workFacts,
           detailsFor: controller.detailsFor,
           setDetailsFor: controller.setDetailsFor,
+          chrome: coarsePointer ? 'touch' : 'hover',
         }}
         onOpen={onOpen}
       />
@@ -364,11 +355,10 @@ function HomeWorkLanesContent({
         onOpen={onOpen}
       />
       {controller.lanes.external?.length ? (
-        <details className="home-view__settled-tail">
-          <summary>
-            From other apps ({controller.lanes.external.length})
-          </summary>
-          <p>Conversations started in your coding apps.</p>
+        <HomeFoldedLane
+          label={`From other apps (${controller.lanes.external.length})`}
+          headingId="home-external-heading"
+        >
           <ul className="home-view__task-list">
             {controller.lanes.external.map((task) =>
               renderHomeWorkRow({
@@ -380,7 +370,7 @@ function HomeWorkLanesContent({
               }),
             )}
           </ul>
-        </details>
+        </HomeFoldedLane>
       ) : null}
       {controller.lanes.drafts?.length ? (
         <HomeDraftsSection
@@ -390,7 +380,6 @@ function HomeWorkLanesContent({
           onOpen={onOpen}
         />
       ) : null}
-      <HomeSnoozeMenu controller={controller} />
       <HomeSnoozedShelf controller={controller} />
       <HomeSettledTail
         controller={controller}
@@ -399,6 +388,36 @@ function HomeWorkLanesContent({
         onOpen={onOpen}
       />
     </>
+  );
+}
+
+/**
+ * A lane folded by default (Drafts, From other apps), behind the shared
+ * disclosure toggle; the Snoozed shelf and the dock's folded sections use
+ * the same one (C13).
+ */
+function HomeFoldedLane({
+  label,
+  headingId,
+  children,
+}: {
+  label: string;
+  headingId: string;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <section className="home-view__settled-tail" aria-labelledby={headingId}>
+      <DisclosureToggle
+        id={headingId}
+        className="home-view__section-toggle"
+        expanded={open}
+        onToggle={() => setOpen((value) => !value)}
+      >
+        {label}
+      </DisclosureToggle>
+      {open && children}
+    </section>
   );
 }
 
@@ -419,6 +438,7 @@ function HomeDraftsSection({
   onOpen: (task: HomeWorkItem) => void;
 }) {
   const { recent, older } = splitDraftsByAge(drafts, Date.now());
+  const [olderOpen, setOlderOpen] = useState(false);
   const row = (task: HomeLaneItem) =>
     renderHomeWorkRow({
       task,
@@ -429,17 +449,26 @@ function HomeDraftsSection({
       context,
     });
   return (
-    <details className="home-view__settled-tail">
-      <summary>Drafts ({drafts.length})</summary>
-      <p>Sessions nothing has been sent to yet.</p>
+    <HomeFoldedLane
+      label={`Drafts (${drafts.length})`}
+      headingId="home-drafts-heading"
+    >
       <ul className="home-view__task-list">{recent.map(row)}</ul>
       {older.length > 0 && (
-        <details className="home-view__older-drafts">
-          <summary>{olderDraftsLabel(older.length)}</summary>
-          <ul className="home-view__task-list">{older.map(row)}</ul>
-        </details>
+        <div className="home-view__older-drafts">
+          <DisclosureToggle
+            className="home-view__section-toggle"
+            expanded={olderOpen}
+            onToggle={() => setOlderOpen((value) => !value)}
+          >
+            {olderDraftsLabel(older.length)}
+          </DisclosureToggle>
+          {olderOpen && (
+            <ul className="home-view__task-list">{older.map(row)}</ul>
+          )}
+        </div>
       )}
-    </details>
+    </HomeFoldedLane>
   );
 }
 
@@ -475,7 +504,8 @@ function HomeLiveLane({
             isWoken: controller.lanes.isWoken(task.id),
             agents,
             onOpen,
-            onSnooze: controller.openSnoozeMenu,
+            onSnooze: (task, wakeAt) =>
+              controller.lanes.snooze(task.id, wakeAt),
             context,
           }),
         )}
@@ -523,24 +553,6 @@ function HomeRecentlyFinishedLane({
   );
 }
 
-function HomeSnoozeMenu({ controller }: { controller: HomeWorkController }) {
-  const { lanes, snoozeMenuFor, snoozeTriggerRef } = controller;
-  if (!snoozeMenuFor) return null;
-  return (
-    <LazyBoundary
-      load={loadSnoozeMenu}
-      componentProps={{
-        itemTitle: snoozeMenuFor.title,
-        now: lanes.now,
-        triggerRef: snoozeTriggerRef,
-        onSnooze: (wakeAt) => lanes.snooze(snoozeMenuFor.id, wakeAt),
-        onClose: controller.closeSnoozeMenu,
-      }}
-      pending={null}
-    />
-  );
-}
-
 function HomeSnoozedShelf({ controller }: { controller: HomeWorkController }) {
   const { lanes } = controller;
   if (lanes.snoozed.length === 0) return null;
@@ -549,16 +561,14 @@ function HomeSnoozedShelf({ controller }: { controller: HomeWorkController }) {
       className="home-view__snoozed-shelf"
       aria-labelledby={SNOOZED_HEADING_ID}
     >
-      <button
-        type="button"
+      <DisclosureToggle
         id={SNOOZED_HEADING_ID}
         className="home-view__section-toggle"
-        aria-expanded={controller.shelfExpanded}
-        onClick={controller.toggleShelf}
+        expanded={controller.shelfExpanded}
+        onToggle={controller.toggleShelf}
       >
-        <span aria-hidden="true">{controller.shelfExpanded ? '−' : '+'}</span>
         Snoozed ({lanes.snoozed.length})
-      </button>
+      </DisclosureToggle>
       {controller.shelfExpanded && <HomeSnoozedRows controller={controller} />}
     </section>
   );

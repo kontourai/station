@@ -505,7 +505,9 @@ describe('two sizes and two chromes', () => {
     const snooze = screen.getByRole('button', {
       name: 'Snooze Migrate sessions table',
     });
-    expect(snooze.getAttribute('title')).toBe('Snooze for 30 minutes');
+    expect(snooze.getAttribute('title')).toBe('Snooze');
+    // One control that opens the duration choice; never a one-tap default.
+    expect(snooze.getAttribute('aria-haspopup')).toBe('menu');
     // The row itself opens; a second control would be a redundant tab stop.
     expect(screen.queryByRole('button', { name: /^Open / })).toBeNull();
   });
@@ -525,7 +527,6 @@ describe('two sizes and two chromes', () => {
         chrome: 'touch',
         hoverCard: true,
         isOpenChat: true,
-        snoozeMenuOnly: true,
         onSnoozeWake,
         onCloseChat,
       },
@@ -621,7 +622,6 @@ describe('the Details sheet belongs to the item, not to the row instance', () =>
           openChatIds={new Set()}
           now={NOW}
           chrome="touch"
-          snoozeMenuOnly
           onActivate={vi.fn()}
           onSnoozeWake={vi.fn()}
         />
@@ -666,7 +666,6 @@ describe('a Draft row on touch chrome', () => {
     renderRow(row, {
       chrome: 'touch',
       hoverCard: true,
-      snoozeMenuOnly: true,
       onSnoozeWake: vi.fn(),
       onDraftDiscarded,
     });
@@ -820,7 +819,7 @@ describe('the Details sheet’s actions are a menu list, never a row of buttons'
         ),
       ),
     ).toEqual([
-      ['30 min', '3 hours', 'Until 9 AM'],
+      ['1 hour', '3 hours', 'Tomorrow 9am', 'Next Monday 9am'],
       ['Close chat'],
       ['Discard draft'],
     ]);

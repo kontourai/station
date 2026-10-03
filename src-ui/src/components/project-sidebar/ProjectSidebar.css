@@ -753,8 +753,13 @@
   white-space: nowrap;
 }
 
+/* The section toggles' caret is the shared disclosure caret
+   (DisclosureToggle.css): rotated closed, upright open. */
 .sidebar__nav-chevron {
   margin-left: auto;
+}
+.sidebar__nav-chevron.disclosure-toggle__caret.is-open {
+  transform: rotate(0deg);
 }
 .sidebar--collapsed .sidebar__nav-chevron {
   display: none;

@@ -482,6 +482,7 @@ describe('ChatDockInboxPanel', () => {
     fireEvent.click(
       screen.getByRole('button', { name: 'Snooze active title' }),
     );
+    fireEvent.click(screen.getByRole('menuitem', { name: '1 hour' }));
 
     const snoozedToggle = screen.getByRole('button', {
       name: 'Snoozed (1)',
@@ -498,22 +499,28 @@ describe('ChatDockInboxPanel', () => {
     ).not.toBeNull();
   });
 
-  it('plain snooze remains a one-tap 30 minute action', () => {
+  it('snooze opens the duration choice; nothing is snoozed until one is chosen (D7)', () => {
+    renderPanel({ items: [items[0]] });
+    const snooze = screen.getByRole('button', { name: 'Snooze active title' });
+    expect(snooze.getAttribute('aria-haspopup')).toBe('menu');
+    fireEvent.click(snooze);
+    // The click alone snoozed nothing: the row is still here, the store empty.
+    expect(
+      JSON.parse(localStorage.getItem('station.activity.snoozed') ?? '{}'),
+    ).toEqual({});
+    expect(
+      screen.getByRole('menu', { name: 'Snooze active title' }),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole('menuitem', { name: '1 hour' }));
+    expect(
+      JSON.parse(localStorage.getItem('station.activity.snoozed') ?? '{}'),
+    ).toEqual({ active: NOW + 3_600_000 });
+  });
+
+  it('chooses a longer duration from the same choice', () => {
     renderPanel({ items: [items[0]] });
     fireEvent.click(
       screen.getByRole('button', { name: 'Snooze active title' }),
-    );
-    expect(
-      JSON.parse(localStorage.getItem('station.activity.snoozed') ?? '{}'),
-    ).toEqual({ active: NOW + 30 * 60_000 });
-  });
-
-  it('chooses a longer duration from the adjacent snooze menu', () => {
-    renderPanel({ items: [items[0]] });
-    fireEvent.click(
-      screen.getByRole('button', {
-        name: 'Choose snooze duration for active title',
-      }),
     );
     fireEvent.click(screen.getByRole('menuitem', { name: '3 hours' }));
     expect(
@@ -530,6 +537,7 @@ describe('ChatDockInboxPanel', () => {
     snooze.focus();
 
     fireEvent.click(snooze);
+    fireEvent.click(screen.getByRole('menuitem', { name: '1 hour' }));
 
     expect(document.activeElement).toBe(
       screen.getByRole('button', {
@@ -593,6 +601,7 @@ describe('ChatDockInboxPanel', () => {
     fireEvent.click(
       screen.getByRole('button', { name: 'Snooze store-x title' }),
     );
+    fireEvent.click(screen.getByRole('menuitem', { name: '1 hour' }));
     first.unmount();
 
     // The real promotion moment: `ActiveChatsStore.assignConversationId`
@@ -638,6 +647,7 @@ describe('ChatDockInboxPanel', () => {
     fireEvent.click(
       screen.getByRole('button', { name: 'Snooze conv-stable title' }),
     );
+    fireEvent.click(screen.getByRole('menuitem', { name: '1 hour' }));
     first.unmount();
 
     // Reopened: same `id` (conversationId), brand-new `chatSessionId`.

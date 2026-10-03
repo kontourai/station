@@ -14,6 +14,8 @@ import { useAgents } from '../../contexts/AgentsContext';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useAuthorityPersistence } from '../../contexts/AuthorityPersistenceContext';
 import { chatDraftsStore } from '../../contexts/chat-drafts-store';
+import { ArrowDownGlyph } from '../icons/Glyph';
+import '../DisclosureToggle.css';
 import {
   useDeviceSettings,
   useDeviceSettingsActions,
@@ -435,9 +437,9 @@ function ProjectSidebarImpl() {
                   <span className="sidebar__section-label-text">
                     Open chats
                   </span>
-                  <span className="sidebar__nav-chevron" aria-hidden="true">
-                    {sidebarSections.openChatsCollapsed ? '+' : '−'}
-                  </span>
+                  <ArrowDownGlyph
+                    className={`sidebar__nav-chevron disclosure-toggle__caret${sidebarSections.openChatsCollapsed ? '' : ' is-open'}`}
+                  />
                 </button>
                 <button
                   type="button"
@@ -503,9 +505,9 @@ function ProjectSidebarImpl() {
                   }
                 >
                   <span className="sidebar__section-label-text">Drafts</span>
-                  <span className="sidebar__nav-chevron" aria-hidden="true">
-                    {sidebarSections.draftsCollapsed ? '+' : '−'}
-                  </span>
+                  <ArrowDownGlyph
+                    className={`sidebar__nav-chevron disclosure-toggle__caret${sidebarSections.draftsCollapsed ? '' : ' is-open'}`}
+                  />
                 </button>
                 <button
                   type="button"

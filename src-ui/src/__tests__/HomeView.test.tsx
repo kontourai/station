@@ -644,9 +644,18 @@ describe('HomeView', () => {
     ];
     renderHomeView({ continuation: null, onNavigate: vi.fn() });
 
-    const summary = screen.getByText('Drafts (1)');
-    const drafts = summary.closest('details');
+    // Folded by default behind the shared disclosure toggle (C13).
+    const toggle = screen.getByRole('button', { name: 'Drafts (1)' });
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(toggle);
+    const drafts = toggle.closest('section');
     expect(drafts).not.toBeNull();
+    // A Draft untouched for a day sits behind the inner fold (#2312).
+    fireEvent.click(
+      within(drafts as HTMLElement).getByRole('button', {
+        name: '1 older draft',
+      }),
+    );
     expect(
       within(drafts as HTMLElement).getByText('Never prompted title'),
     ).toBeTruthy();
@@ -709,17 +718,18 @@ describe('HomeView', () => {
     activeChatsStore.initChat('fresh-draft');
     renderHomeView({ continuation: null, onNavigate: vi.fn() }, queryClient);
 
-    const drafts = screen
-      .getByText('Drafts (2)')
-      .closest('details') as HTMLElement;
-    const older = within(drafts)
-      .getByText('1 older draft')
-      .closest('details') as HTMLDetailsElement;
+    const draftsToggle = screen.getByRole('button', { name: 'Drafts (2)' });
+    fireEvent.click(draftsToggle);
+    const drafts = draftsToggle.closest('section') as HTMLElement;
+    const olderToggle = within(drafts).getByRole('button', {
+      name: '1 older draft',
+    });
     // The 25h Draft is folded, the 23h one is not.
-    expect(older.open).toBe(false);
-    expect(within(older).getByText('Stale draft title')).toBeTruthy();
-    expect(within(older).queryByText('Fresh draft title')).toBeNull();
+    expect(olderToggle.getAttribute('aria-expanded')).toBe('false');
+    expect(within(drafts).queryByText('Stale draft title')).toBeNull();
     expect(within(drafts).getByText('Fresh draft title')).toBeTruthy();
+    fireEvent.click(olderToggle);
+    expect(within(drafts).getByText('Stale draft title')).toBeTruthy();
     // Only Drafts are discardable.
     expect(
       screen.queryByRole('button', {
@@ -1081,6 +1091,76 @@ describe('HomeView lane wiring (review finding: snooze/shelf/settled-tail intera
     fixtures.sessions = [RUNNING_SESSION];
   });
 
+  /**
+   * B5/C8 (design round 2026-10): a Home row shows no always-visible icon
+   * buttons on a fine pointer. It takes the dock's hover chrome — the snooze
+   * control over the time slot, revealed on hover/focus, and the hover card
+   * for details — and keeps the 44px Details + one action only where there
+   * is no hover to reveal them with.
+   */
+  test('a fine pointer gets the hover chrome: no Details button, snooze behind hover', () => {
+    renderHomeView({ continuation: null, onNavigate: vi.fn() });
+    const recent = screen.getByRole('region', { name: 'Recent work' });
+    const [row] = within(recent).getAllByTestId('inbox-row');
+    expect(row.className).toContain('inbox-row--hover');
+    expect(row.className).not.toContain('inbox-row--touch');
+    expect(
+      within(recent).queryByRole('button', {
+        name: `Details for ${ITEM_TITLE}`,
+      }),
+    ).toBeNull();
+    // The one row action is the snooze choice, in the hover slot.
+    const snooze = within(recent).getByRole('button', {
+      name: `Snooze ${ITEM_TITLE}`,
+    });
+    expect(snooze.getAttribute('aria-haspopup')).toBe('menu');
+    expect(snooze.closest('.inbox-row__actions')).not.toBeNull();
+  });
+
+  test('a coarse pointer keeps the 44px touch chrome with Details and one action', () => {
+    const media = window.matchMedia as unknown as ReturnType<typeof vi.fn>;
+    media.mockImplementation((query: string) => ({
+      matches: query === '(pointer: coarse)',
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+      media: query,
+      onchange: null,
+    }));
+    try {
+      renderHomeView({ continuation: null, onNavigate: vi.fn() });
+      const recent = screen.getByRole('region', { name: 'Recent work' });
+      const [row] = within(recent).getAllByTestId('inbox-row');
+      expect(row.className).toContain('inbox-row--touch');
+      expect(
+        within(recent).getByRole('button', {
+          name: `Details for ${ITEM_TITLE}`,
+        }),
+      ).toBeTruthy();
+      expect(
+        within(recent).getByRole('button', { name: `Snooze ${ITEM_TITLE}` }),
+      ).toBeTruthy();
+      expect(
+        within(row)
+          .queryAllByRole('button')
+          .filter((button) => button.closest('.inbox-row__actions')),
+      ).toHaveLength(2);
+    } finally {
+      media.mockImplementation(() => ({
+        matches: false,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+        media: '',
+        onchange: null,
+      }));
+    }
+  });
+
   test('snooze button opens the preset menu; selecting a preset moves the row to the snoozed shelf and persists the wake time', async () => {
     renderHomeView({ continuation: null, onNavigate: vi.fn() });
     const recent = screen.getByRole('region', { name: 'Recent work' });
@@ -1093,7 +1173,7 @@ describe('HomeView lane wiring (review finding: snooze/shelf/settled-tail intera
       name: `Snooze ${ITEM_TITLE}`,
     });
     const clickedAt = Date.now();
-    fireEvent.click(within(menu).getByRole('menuitem', { name: 'In 1 hour' }));
+    fireEvent.click(within(menu).getByRole('menuitem', { name: '1 hour' }));
 
     // The row left the active lane for the snoozed shelf.
     expect(

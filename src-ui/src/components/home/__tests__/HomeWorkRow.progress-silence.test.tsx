@@ -53,6 +53,7 @@ function renderSession(
           workFacts: buildWorkFacts({ items, sessions }),
           detailsFor: null,
           setDetailsFor: () => {},
+          chrome: 'touch',
         },
       })}
     </ul>,

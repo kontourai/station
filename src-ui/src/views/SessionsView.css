@@ -157,6 +157,26 @@
   vertical-align: bottom;
 }
 
+/* The status ladder's glyph and line, in the row's four tones
+   (InboxRow.css, C6). The glyph is drawn at the row's text size. */
+.activity-row-meta__state .inbox-row__status-glyph {
+  width: 13px;
+  height: 13px;
+  flex: 0 0 auto;
+}
+.activity-row-meta__state[data-tone="attention"] {
+  color: var(--accent-primary);
+}
+.activity-row-meta__state[data-tone="caution"] {
+  color: var(--warning-text);
+}
+.activity-row-meta__state[data-tone="active"] {
+  color: var(--success-text);
+}
+.activity-row-meta__state[data-tone="broken"] {
+  color: var(--status-error);
+}
+
 /* The row's time, on its first line and outside the row button. Tabular so
    a column of times aligns, and never shrunk: the title yields first. */
 .activity-row__time {

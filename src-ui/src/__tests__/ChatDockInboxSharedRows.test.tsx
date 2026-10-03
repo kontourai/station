@@ -197,16 +197,17 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
     expect(screen.getByRole('button', { name: 'Close chat' })).toBeTruthy();
   });
 
-  it('the desktop panel keeps the one-tap snooze beside its duration caret', () => {
+  it('the desktop panel’s snooze is one control that opens the duration choice (D7)', () => {
     renderPanelHost(workItem());
     const snooze = screen.getByRole('button', {
       name: 'Snooze Shared row title',
     });
-    expect(snooze.getAttribute('aria-haspopup')).toBeNull();
-    const caret = screen.getByRole('button', {
-      name: 'Choose snooze duration for Shared row title',
-    });
-    expect(caret.querySelector('svg.choice-caret')).not.toBeNull();
+    expect(snooze.getAttribute('aria-haspopup')).toBe('menu');
+    expect(
+      screen.queryByRole('button', {
+        name: 'Choose snooze duration for Shared row title',
+      }),
+    ).toBeNull();
   });
 
   it('sheet host renders the answerability observation through the shared row', () => {
@@ -247,7 +248,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
     fireEvent.click(
       screen.getByRole('button', { name: 'Details for Shared row title' }),
     );
-    fireEvent.click(await screen.findByRole('button', { name: '30 min' }));
+    fireEvent.click(await screen.findByRole('button', { name: '1 hour' }));
     sheet.unmount();
 
     renderPanelHost(item);

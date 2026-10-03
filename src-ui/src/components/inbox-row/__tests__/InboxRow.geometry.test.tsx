@@ -505,7 +505,6 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
           isOpenChat
           now={NOW}
           chrome="touch"
-          snoozeMenuOnly
           onActivate={vi.fn()}
           onSnoozeWake={vi.fn()}
           onCloseChat={vi.fn()}

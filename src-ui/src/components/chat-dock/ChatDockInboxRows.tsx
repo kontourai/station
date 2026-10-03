@@ -19,10 +19,10 @@ import {
 import type { HomeWorkItem } from '../../views/home/home-view-model';
 import type { WorkFacts, WorkFactsById } from '../../views/home/work-facts';
 import { workStatus } from '../../views/home/work-status';
+import { DisclosureToggle } from '../DisclosureToggle';
 import { DiscardDraftButton } from '../drafts/DiscardDraftButton';
 import { AgentIcon } from '../icons/AgentIcon';
 import {
-  ArrowDownGlyph,
   CloseGlyph,
   FolderGlyph,
   InfoGlyph,
@@ -219,19 +219,20 @@ const loadChatInboxDetailsSheet = () =>
     default: module.ChatInboxDetailsSheet,
   }));
 
+/**
+ * The row's snooze control (D7): ONE button that opens the duration choice,
+ * never a one-tap default. A snoozed row shows Unsnooze instead.
+ */
 function SnoozeActions({
   item,
   isSnoozed,
   now,
   onWake,
-  menuOnly = false,
 }: {
   item: HomeWorkItem;
   isSnoozed: boolean;
   now: number;
   onWake: (wakeAt: number | null, action: HTMLButtonElement) => void;
-  /** One control that opens the duration menu — see `InboxRowProps`. */
-  menuOnly?: boolean;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -240,54 +241,33 @@ function SnoozeActions({
       onWake(snoozeWakeAt(option, now), triggerRef.current);
     setMenuOpen(false);
   };
-  const opensMenu = menuOnly && !isSnoozed;
+  if (isSnoozed) {
+    return (
+      <button
+        type="button"
+        className="chat-dock-inbox__row-action inbox-row__action"
+        title="Unsnooze"
+        aria-label={`Unsnooze ${item.title}`}
+        onClick={(event) => onWake(null, event.currentTarget)}
+      >
+        <ReturnGlyph />
+      </button>
+    );
+  }
   return (
     <>
-      {opensMenu ? (
-        <button
-          ref={triggerRef}
-          type="button"
-          className="chat-dock-inbox__row-action inbox-row__action"
-          title="Snooze"
-          aria-label={`Snooze ${item.title}`}
-          aria-haspopup="menu"
-          aria-expanded={menuOpen}
-          onClick={() => setMenuOpen((open) => !open)}
-        >
-          <TimeGlyph />
-        </button>
-      ) : (
-        <button
-          type="button"
-          className="chat-dock-inbox__row-action inbox-row__action"
-          title={isSnoozed ? 'Unsnooze' : 'Snooze for 30 minutes'}
-          aria-label={
-            isSnoozed ? `Unsnooze ${item.title}` : `Snooze ${item.title}`
-          }
-          onClick={(event) =>
-            onWake(
-              isSnoozed ? null : snoozeWakeAt(SNOOZE_OPTIONS[0], now),
-              event.currentTarget,
-            )
-          }
-        >
-          {isSnoozed ? <ReturnGlyph /> : <TimeGlyph />}
-        </button>
-      )}
-      {!isSnoozed && !opensMenu && (
-        <button
-          ref={triggerRef}
-          type="button"
-          className="chat-dock-inbox__row-action inbox-row__action chat-dock-inbox__snooze-menu-trigger"
-          title="Choose snooze duration"
-          aria-label={`Choose snooze duration for ${item.title}`}
-          aria-haspopup="menu"
-          aria-expanded={menuOpen}
-          onClick={() => setMenuOpen((open) => !open)}
-        >
-          <ArrowDownGlyph className="choice-caret" />
-        </button>
-      )}
+      <button
+        ref={triggerRef}
+        type="button"
+        className="chat-dock-inbox__row-action inbox-row__action"
+        title="Snooze"
+        aria-label={`Snooze ${item.title}`}
+        aria-haspopup="menu"
+        aria-expanded={menuOpen}
+        onClick={() => setMenuOpen((open) => !open)}
+      >
+        <TimeGlyph />
+      </button>
       {menuOpen && (
         <ResponsiveDialogSurface
           layer="popover"
@@ -369,12 +349,6 @@ interface InboxRowProps {
    */
   gitLocation?: GitReadLocation;
   /**
-   * Touch hosts: snooze is ONE control that opens the duration menu, rather
-   * than a one-tap default beside a separate caret. Two 44px targets for one
-   * action cost the title a third of a phone's row width.
-   */
-  snoozeMenuOnly?: boolean;
-  /**
    * `card` (the default) is the full row for work that needs you, is
    * running or is idle. `slim` is the one-line row for snoozed and settled
    * work: status icon, title, status word, time.
@@ -387,8 +361,6 @@ interface InboxRowProps {
   chrome?: 'hover' | 'touch';
   /** The picker keeps one overflow action; its sheet holds the other actions. */
   actionsInDetails?: boolean;
-  /** Home: opens the host's own snooze menu instead of the inbox presets. */
-  onSnoozeMenu?: (item: HomeWorkItem, trigger: HTMLButtonElement) => void;
   /** Home: the row's snooze lapsed recently. */
   isWoken?: boolean;
   /**
@@ -449,11 +421,9 @@ export function InboxRow({
   onDraftDiscarded,
   agents,
   gitLocation,
-  snoozeMenuOnly = false,
   size = 'card',
   chrome = 'hover',
   actionsInDetails = false,
-  onSnoozeMenu,
   isWoken = false,
   hoverCard = true,
   facts,
@@ -490,7 +460,7 @@ export function InboxRow({
   // A host that offers nothing (the sidebar's open chats) gets no slot and
   // no extra tab stop: the row is already its own open control.
   const hasActions = Boolean(
-    details || onSnoozeWake || onSnoozeMenu || discardThreadId || closable,
+    details || onSnoozeWake || discardThreadId || closable,
   );
   // TOUCH CHROME shows Details and at most ONE direct action, so a phone
   // row keeps its title: Discard on a Draft (it is what a Draft row is for),
@@ -498,7 +468,7 @@ export function InboxRow({
   // row is one line and shows Details alone.
   // Whatever is not beside the row is an ordinary button inside the Details
   // sheet. Hover chrome reveals every action over the time slot as before.
-  const snoozable = Boolean(onSnoozeWake || onSnoozeMenu);
+  const snoozable = Boolean(onSnoozeWake);
   const direct: 'all' | 'snooze' | 'close' | 'discard' | 'none' = !details
     ? 'all'
     : actionsInDetails || size === 'slim'
@@ -530,19 +500,13 @@ export function InboxRow({
     !beside('snooze') && onSnoozeWake && !isSnoozed ? onSnoozeWake : undefined;
   const sheetUnsnooze =
     !beside('snooze') && onSnoozeWake && isSnoozed ? onSnoozeWake : undefined;
-  const sheetSnoozeMenu =
-    !beside('snooze') && onSnoozeMenu ? onSnoozeMenu : undefined;
   const sheetClose = !beside('close') && closable;
   const sheetDiscard =
     !beside('discard') && discardThreadId && onDraftDiscarded
       ? { threadId: discardThreadId, onDraftDiscarded }
       : undefined;
   const sheetMenu =
-    sheetSnoozePresets ||
-    sheetUnsnooze ||
-    sheetSnoozeMenu ||
-    sheetClose ||
-    sheetDiscard ? (
+    sheetSnoozePresets || sheetUnsnooze || sheetClose || sheetDiscard ? (
       <div
         className="menu-surface chat-dock-inbox-details__menu"
         data-testid="inbox-row-details-actions"
@@ -573,7 +537,7 @@ export function InboxRow({
             ))}
           </fieldset>
         )}
-        {(sheetUnsnooze || sheetSnoozeMenu || sheetClose) && (
+        {(sheetUnsnooze || sheetClose) && (
           <div className="menu-group">
             {sheetUnsnooze && (
               <button
@@ -587,20 +551,6 @@ export function InboxRow({
                   <ReturnGlyph />
                 </span>
                 Unsnooze
-              </button>
-            )}
-            {sheetSnoozeMenu && (
-              <button
-                type="button"
-                className="menu-row"
-                onClick={() =>
-                  fromSheet((trigger) => sheetSnoozeMenu(item, trigger))
-                }
-              >
-                <span className="menu-row__glyph" aria-hidden="true">
-                  <TimeGlyph />
-                </span>
-                Snooze…
               </button>
             )}
             {sheetClose && (
@@ -821,20 +771,7 @@ export function InboxRow({
               isSnoozed={isSnoozed}
               now={now}
               onWake={(wakeAt, action) => onSnoozeWake(item, wakeAt, action)}
-              menuOnly={snoozeMenuOnly}
             />
-          )}
-          {beside('snooze') && onSnoozeMenu && (
-            <button
-              type="button"
-              className="chat-dock-inbox__row-action inbox-row__action"
-              title="Snooze"
-              aria-label={`Snooze ${item.title}`}
-              aria-haspopup="menu"
-              onClick={(event) => onSnoozeMenu(item, event.currentTarget)}
-            >
-              <TimeGlyph />
-            </button>
           )}
           {beside('close') && closable && (
             <button
@@ -919,8 +856,6 @@ export interface InboxGroupListProps {
    * across renders for the same reason `agents` is.
    */
   gitLocationByThreadId?: ReadonlyMap<string, GitReadLocation>;
-  /** Touch chrome: see `InboxRowProps.snoozeMenuOnly`. */
-  snoozeMenuOnly?: boolean;
   /** See `InboxRowProps.chrome`. */
   chrome?: InboxRowProps['chrome'];
   actionsInDetails?: InboxRowProps['actionsInDetails'];
@@ -951,7 +886,6 @@ export function InboxGroupList({
   onDraftDiscarded,
   agents,
   gitLocationByThreadId,
-  snoozeMenuOnly,
   chrome,
   actionsInDetails,
   workFacts,
@@ -1001,7 +935,6 @@ export function InboxGroupList({
       onCloseChat={onCloseChat}
       onDraftDiscarded={onDraftDiscarded}
       agents={agents}
-      snoozeMenuOnly={snoozeMenuOnly}
       chrome={chrome}
       actionsInDetails={actionsInDetails}
       facts={workFacts?.get(item.id)}
@@ -1023,15 +956,13 @@ export function InboxGroupList({
       <>
         {recent.map((item) => renderRow(group, item))}
         {older.length > 0 && (
-          <button
-            type="button"
+          <DisclosureToggle
             className="chat-dock-inbox__section-toggle chat-dock-inbox__older-drafts"
-            aria-expanded={olderDraftsOpen}
-            onClick={() => setOlderDraftsOpen((open) => !open)}
+            expanded={olderDraftsOpen}
+            onToggle={() => setOlderDraftsOpen((open) => !open)}
           >
-            <span aria-hidden="true">{olderDraftsOpen ? '−' : '+'}</span>
             {olderDraftsLabel(older.length)}
-          </button>
+          </DisclosureToggle>
         )}
         {olderDraftsOpen && older.map((item) => renderRow(group, item))}
       </>
@@ -1060,16 +991,14 @@ export function InboxGroupList({
             aria-labelledby={labelId}
           >
             {collapsibleId ? (
-              <button
-                type="button"
+              <DisclosureToggle
                 id={labelId}
                 className="chat-dock-inbox__section-toggle"
-                aria-expanded={isExpanded}
-                onClick={() => collapsible!.onToggle(collapsibleId)}
+                expanded={isExpanded}
+                onToggle={() => collapsible!.onToggle(collapsibleId)}
               >
-                <span aria-hidden="true">{isExpanded ? '−' : '+'}</span>
                 {label}
-              </button>
+              </DisclosureToggle>
             ) : (
               <h3 id={labelId} className="chat-dock-inbox__group-label">
                 {label}

@@ -301,7 +301,6 @@ export function MobileTaskSwitcher({
             workFacts={workFacts}
             gitLocationByThreadId={gitLocationByThreadId}
             showGroupCounts
-            snoozeMenuOnly
             chrome="touch"
             actionsInDetails
             onActivate={(task) => {
