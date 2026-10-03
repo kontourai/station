@@ -6,6 +6,7 @@
  */
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import {
   installClaudeSubagentTranscript,
   TRANSCRIPT_AGENT_ID,
@@ -78,9 +79,10 @@ async function unavailable(response: Response, status = 404) {
   });
 }
 
+const makeTempDir = trackTempDirs();
 let restore: (() => void) | undefined;
 beforeEach(() => {
-  ({ restore } = installClaudeSubagentTranscript());
+  ({ restore } = installClaudeSubagentTranscript(makeTempDir));
 });
 afterEach(() => {
   restore?.();
@@ -156,7 +158,9 @@ describe('#3163 GET /sessions/:threadId/child-work/:childId/transcript', () => {
 
   test('a transcript the engine no longer has is unavailable (503)', async () => {
     restore?.();
-    ({ restore } = installClaudeSubagentTranscript({ withAgent: false }));
+    ({ restore } = installClaudeSubagentTranscript(makeTempDir, {
+      withAgent: false,
+    }));
     await unavailable(await fixture().request(), 503);
   });
 });

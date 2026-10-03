@@ -1,5 +1,4 @@
-import { copyFileSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { copyFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -21,12 +20,14 @@ const FIXTURE_DIR = fileURLToPath(
 
 /**
  * Installs the transcript under a fresh `CLAUDE_CONFIG_DIR` (the SDK reads
- * it per call) and returns a restore function.
+ * it per call) and returns a function restoring the variable. The directory
+ * comes from the caller's `trackTempDirs()` tracker, which removes it.
  */
 export function installClaudeSubagentTranscript(
+  makeTempDir: (prefix: string) => string,
   options: { withAgent?: boolean } = {},
 ): { configDir: string; restore: () => void } {
-  const configDir = mkdtempSync(join(tmpdir(), 'station-claude-config-'));
+  const configDir = makeTempDir('station-claude-config-');
   const project = join(configDir, 'projects', '-workspace-example');
   const subagents = join(project, TRANSCRIPT_SESSION_ID, 'subagents');
   mkdirSync(subagents, { recursive: true });
@@ -49,7 +50,6 @@ export function installClaudeSubagentTranscript(
     restore: () => {
       if (previous === undefined) delete process.env.CLAUDE_CONFIG_DIR;
       else process.env.CLAUDE_CONFIG_DIR = previous;
-      rmSync(configDir, { recursive: true, force: true });
     },
   };
 }

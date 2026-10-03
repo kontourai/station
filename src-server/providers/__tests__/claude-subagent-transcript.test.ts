@@ -4,6 +4,7 @@
  */
 import { CHILD_WORK_TRANSCRIPT_TEXT_MAX_CHARS } from '@kontourai/station-contracts/child-work';
 import { afterEach, describe, expect, test } from 'vitest';
+import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import {
   claudeTranscriptEntries,
   readClaudeSubagentTranscriptPage,
@@ -21,6 +22,7 @@ const ref = {
   agentId: TRANSCRIPT_AGENT_ID,
 };
 
+const makeTempDir = trackTempDirs();
 let restore: (() => void) | undefined;
 afterEach(() => {
   restore?.();
@@ -29,7 +31,7 @@ afterEach(() => {
 
 describe('#3163 Claude subagent transcript', () => {
   test('reads the agent conversation in order: prompt, tool call, tool result, answer; thinking and attachments left out', async () => {
-    ({ restore } = installClaudeSubagentTranscript());
+    ({ restore } = installClaudeSubagentTranscript(makeTempDir));
     const outcome = await readClaudeSubagentTranscriptPage(ref, {
       offset: 0,
       limit: 30,
@@ -65,7 +67,7 @@ describe('#3163 Claude subagent transcript', () => {
   });
 
   test('pages by message: a bounded page names the next offset, and the next page continues it', async () => {
-    ({ restore } = installClaudeSubagentTranscript());
+    ({ restore } = installClaudeSubagentTranscript(makeTempDir));
     const first = await readClaudeSubagentTranscriptPage(ref, {
       offset: 0,
       limit: 2,
@@ -87,7 +89,7 @@ describe('#3163 Claude subagent transcript', () => {
   });
 
   test('a project hint that misses still finds the session', async () => {
-    ({ restore } = installClaudeSubagentTranscript());
+    ({ restore } = installClaudeSubagentTranscript(makeTempDir));
     const outcome = await readClaudeSubagentTranscriptPage(ref, {
       offset: 0,
       limit: 30,
@@ -97,7 +99,9 @@ describe('#3163 Claude subagent transcript', () => {
   });
 
   test('an agent with no transcript on disk is unavailable, not an empty transcript', async () => {
-    ({ restore } = installClaudeSubagentTranscript({ withAgent: false }));
+    ({ restore } = installClaudeSubagentTranscript(makeTempDir, {
+      withAgent: false,
+    }));
     expect(
       await readClaudeSubagentTranscriptPage(ref, {
         offset: 0,
