@@ -1,4 +1,7 @@
-import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import {
+  type CanonicalRuntimeEvent,
+  isDeferredRetriableTurnError,
+} from '@kontourai/station-contracts/runtime-events';
 import { getJson, readEnvelopeOrThrow } from '@kontourai/station-sdk';
 import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
 import {
@@ -192,6 +195,7 @@ function openTurnInWindow(
       open = { turnId: event.turnId, createdAt: event.createdAt };
     } else if (
       (TURN_TERMINAL_METHODS.includes(event.method) &&
+        !isDeferredRetriableTurnError(event) &&
         event.turnId === open?.turnId) ||
       (event.method === 'session.state-changed' &&
         event.interruptedTurnBoundary?.boundaryId)

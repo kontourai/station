@@ -30,7 +30,10 @@ import {
   tenantExecutionContextFromSession,
 } from '@kontourai/station-contracts/tenancy';
 import { createStationBrowserMcpServer } from '../../tools/station-browser-mcp-server.js';
-import { createStationControlMcpServer } from '../../tools/station-control-mcp-server.js';
+import {
+  createSelectedStationControlMcpServer,
+  createStationControlMcpServer,
+} from '../../tools/station-control-mcp-server.js';
 import {
   withStationControlCallerBinding,
   withStationControlCallerContext,
@@ -187,6 +190,7 @@ export function claudeInProcessStationControlOptions(
   createInProcessStationControl: (
     threadId: string,
     tenantExecutionContext?: TenantExecutionContext,
+    allowedTools?: readonly string[],
   ) => InProcessStationControlServer;
   createInProcessStationBrowser: (
     threadId: string,
@@ -195,12 +199,19 @@ export function claudeInProcessStationControlOptions(
   revokeStationControlCallerToken: (threadId: string) => void;
 } {
   return {
-    createInProcessStationControl: (threadId, tenantExecutionContext) =>
+    createInProcessStationControl: (
+      threadId,
+      tenantExecutionContext,
+      allowedTools,
+    ) =>
       createInProcessServer({
         sessionId: threadId,
         ...(tenantExecutionContext ? { tenantExecutionContext } : {}),
         resolveRecord: (sessionId) => resolveRecord()?.(sessionId),
-        createServer: (createServer ?? createStationControlMcpServer) as never,
+        createServer: () =>
+          createServer
+            ? createServer()
+            : createSelectedStationControlMcpServer(allowedTools),
         token: 'fresh',
       }),
     // #90 D14: the browser tools as their own narrow server, bound like
