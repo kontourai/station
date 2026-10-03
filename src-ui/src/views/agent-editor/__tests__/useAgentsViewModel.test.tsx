@@ -15,13 +15,7 @@
  * is why no skill could be attached to anything on a fresh home.
  */
 
-import {
-  act,
-  renderHook,
-  render as renderUi,
-  screen,
-  waitFor,
-} from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { AgentData } from '../../../contexts/AgentsContext';
