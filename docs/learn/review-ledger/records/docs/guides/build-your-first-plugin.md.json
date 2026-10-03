@@ -14,7 +14,7 @@
   "sources": [
     {"path":"config/plugin-scaffold-dependencies.json","digest":"e74f1f4028077bdd56e52057f43561d4cc4e790c42d8f600e04d1a1115f6da74","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"packages/cli/src/cli.ts","digest":"ecf39393a34edc99d05222a41947a1ba086cf8fc60bac7fe3cdd4651e825881a","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"packages/cli/src/cli.ts","digest":"041c54fff5c3dc2848cf234cf13e4ea52e5069548c273755ee77b53955be1f27","revision":"036d5d3d2289fc22e325a9ded733e8de561e9b30"},
 
     {"path":"packages/cli/src/commands/init.ts","digest":"fcb691b8cdbf28db96da3330c656f221d076ae85ddcafbb9948b7048190e4e53","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -30,7 +30,7 @@
 
     {"path":"packages/sdk/package.json","digest":"31286b6e99fa502f8eb1bf6c744a4a34041d21bf6e0e0e5d22f27f2771dc5c06","revision":"18ae5d5640f6a47eb953b72f1d0a55b06a137677"},
 
-    {"path":"packages/shared/package.json","digest":"45a3e54c719ca24083dcd1deb3c547f06effb31cba0ba723662006d82c3be741","revision":"1e6450e0caa47975d33f505a1348bdc01ae1382e"},
+    {"path":"packages/shared/package.json","digest":"2b5baa810e13794d2b50232ad620ba68e89ca9fae0e8321bb31749f560d28c63","revision":"8924149a7e6ef1356fc078c9a387c6a60ada429a"},
 
     {"path":"packages/shared/src/agent-plugin-manifest.ts","digest":"a1b0dab918c8787193cc23e0f5362fc3ea5be6885440b56522314329974d55ba","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -38,11 +38,11 @@
 
     {"path":"packages/shared/src/plugin-scaffold.ts","digest":"47f077e8253eb468c8d28cc20f02a36dd78872e5670624b9e1580e01dba50b99","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-server/routes/plugins/plugin-public-routes.ts","digest":"5d088d683e1fc60155100743cf2fb67a6df25ded4914307ba54883d1097f157e","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"src-server/routes/plugins/plugin-public-routes.ts","digest":"a93e9484a3c0d16b9f5a08b1aad59b4eee4ff89afc725a4b24e5281d308d7564","revision":"8540fafb86b969775254b898711ad3ae40ccc39d"},
 
     {"path":"src-server/services/plugins/plugin-grant-reconciliation.ts","digest":"287d0f3a1185664279eba08e403d06e17dc5512dd6f974b3fc8de76022a31cb9","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-server/services/plugins/plugin-install-transaction.ts","digest":"d86ca9367f039174cd2aaaba83b65dc1df376f6474bd4a4f29be54341fd2c0e7","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
+    {"path":"src-server/services/plugins/plugin-install-transaction.ts","digest":"01ba3b7fe2249e6215c6fb62c6372e21324c863bee37bcac6e739a7b0170db61","revision":"63833ae5666cb06da0b5671dc0e3bf63bdc1d0fa"},
 
     {"path":"src-server/services/plugins/plugin-manifest-loader.ts","digest":"ad125ed75cbb1bed948db758bded2ab2407b02f4f8b56bfbb6a03a0e80dad0df","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 

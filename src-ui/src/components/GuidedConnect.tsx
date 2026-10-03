@@ -15,6 +15,7 @@ import { checkHostCompatibility } from '../lib/compatibilityLoader';
 import { checkServerHealthDetailed } from '../lib/serverHealth';
 import { hasLocalStationForProfile } from '../platform/client-origin-surface';
 import { usePlatformProfile } from '../platform/PlatformProfileContext';
+import { Button } from './Button';
 import { SkeletonBlock } from './state';
 import './GuidedConnect.css';
 import { triggerHaptic } from '../platform/native/haptics';
@@ -25,6 +26,10 @@ type GuidedConnectPanel = 'pair-device' | 'request-access' | 'add';
 const BrowserRelayRoutes = lazy(async () => {
   const module = await import('../views/connections-hub/BrowserRelayRoutes');
   return { default: module.BrowserRelayRoutes };
+});
+const RelayRouteProfiles = lazy(async () => {
+  const module = await import('../views/connections-hub/RelayRouteProfiles');
+  return { default: module.RelayRouteProfiles };
 });
 
 interface GuidedConnectProps {
@@ -149,7 +154,15 @@ export function GuidedConnect({
             >
               Enter a host address
             </button>
-            {!profile.isTauri && (
+            {profile.isTauri ? (
+              <Button
+                className="guided-connect__action"
+                aria-expanded={brokerOpen}
+                onClick={() => setBrokerOpen((current) => !current)}
+              >
+                Set up a broker route
+              </Button>
+            ) : (
               <button
                 type="button"
                 className="guided-connect__action"
@@ -170,7 +183,7 @@ export function GuidedConnect({
             </button>
           )}
         </section>
-        {brokerOpen && !profile.isTauri && (
+        {brokerOpen && (
           <section
             className="guided-connect__broker"
             aria-label="Broker route setup"
@@ -180,9 +193,13 @@ export function GuidedConnect({
                 <SkeletonBlock count={1} label="Opening broker route setup" />
               }
             >
-              <BrowserRelayRoutes
-                onEnrollmentOpenChange={onRelayOnboardingChange}
-              />
+              {profile.isTauri ? (
+                <RelayRouteProfiles />
+              ) : (
+                <BrowserRelayRoutes
+                  onEnrollmentOpenChange={onRelayOnboardingChange}
+                />
+              )}
             </Suspense>
           </section>
         )}

@@ -30,7 +30,10 @@ import {
   handleWorkflowStateChangedEvent,
 } from './governanceHandlers';
 import { handlePlanUpdatedEvent } from './planHandlers';
-import { drainQueuedMessageOnTurnCompleted } from './queueDrain';
+import {
+  drainQueuedMessageOnTurnCompleted,
+  resumePendingSendNowOnTurnTerminal,
+} from './queueDrain';
 import { recordReplayRuntime } from './replay/capture-tap';
 import { isReplayThread } from './replay/replay-registry';
 import { recordSequencedLiveEvent } from './sequencedLiveEvents';
@@ -258,9 +261,11 @@ function dispatchProjectedOrchestrationEvent(
       return;
     case 'turn.completed':
       handleTurnCompletedEvent(apiBase, event, provenance);
+      resumePendingSendNowOnTurnTerminal(apiBase, event.threadId, event.turnId);
       return;
     case 'turn.aborted':
       handleTurnAbortedEvent(event);
+      resumePendingSendNowOnTurnTerminal(apiBase, event.threadId, event.turnId);
       return;
     case 'runtime.error':
       handleRuntimeErrorEvent(event);
@@ -283,6 +288,13 @@ function dispatchProjectedOrchestrationEvent(
         !isDeferredRetriableTurnError(event) &&
         !isReplayThread(event.threadId)
       ) {
+        const terminalTurnId = event.details?.turnId ?? event.turnId;
+        if (typeof terminalTurnId === 'string')
+          resumePendingSendNowOnTurnTerminal(
+            apiBase,
+            event.threadId,
+            terminalTurnId,
+          );
         drainQueuedMessageOnTurnCompleted(
           apiBase,
           activeChatsStore.getChatKeyForExecutionSession(event.threadId) ??

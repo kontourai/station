@@ -23,6 +23,15 @@ shortcuts are included in Settings export/import; they do not automatically
 synchronize across Devices. The editor is read-only in the mobile layout,
 including narrow desktop windows.
 
+## Return in chat
+
+Choose **Chat settings → Return in chat** on each device. Automatic uses Return
+to send on desktop and to insert a new line on touch devices. You can explicitly
+choose either behavior, including for an attached tablet keyboard. Shift+Return
+always inserts a line; Ctrl/Cmd+Return sends. Return never submits during IME
+composition. During a turn, the shortcut uses the composer's selected Queue or
+Steer mode. This preference is included in device-settings export/import.
+
 ## Dispatch and limits
 
 The registry orders matching shortcuts by priority, then registry order.
