@@ -1,6 +1,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { setTimeout as setNodeTimeout } from 'node:timers';
+import type { ClaimHostOwnerResult } from '@kontourai/station-shared/instance-registry';
 import { createDesktopCompanion } from './desktop-companion.js';
 import {
   type CollectedChildStatus,
@@ -22,6 +23,8 @@ import {
   type ServiceLauncherLink,
 } from './service-launcher-link.js';
 import {
+  claimServiceHost,
+  describeServiceHostRefusal,
   handOffServiceLivenessToLauncher,
   publishServiceLivenessRecord,
 } from './service-liveness.js';
@@ -45,6 +48,11 @@ export interface SupervisorDependencies {
    * ownership-checked updater.
    */
   publishServiceLiveness?: (live: boolean) => void;
+  /**
+   * Claims this home's single host before Station starts (#2961). Test seam;
+   * defaults to the real host-owner claim on this service's registry entry.
+   */
+  claimServiceHost?: () => ClaimHostOwnerResult;
   /**
    * Re-points this supervisor's liveness entry at the fixed launcher when an
    * update takes over the service (#2675 D, correction 8). Test seam.
@@ -201,6 +209,9 @@ export async function superviseService(
   const publishServiceLiveness =
     dependencies.publishServiceLiveness ??
     ((live: boolean) => publishServiceLivenessRecord(livenessTarget, live));
+  const claimHost =
+    dependencies.claimServiceHost ??
+    (() => claimServiceHost(livenessTarget, 'starting'));
   const handOffServiceLiveness =
     dependencies.handOffServiceLiveness ??
     ((launcherPid: number) =>
@@ -300,6 +311,39 @@ export async function superviseService(
           void shutdown(0);
         });
 
+  // ONE HOST OWNER (#2961, ADR 0020 D4): claim the home before starting
+  // Station on it. A live Desktop sidecar (or another live service) owns the
+  // home, so wait in-process for it to exit rather than exit into a
+  // launchd/systemd restart loop. The claim is best-effort only against a
+  // registry that cannot be read: Desktop fails closed on that same registry
+  // and spawns nothing, so this service stays the home's only writer.
+  let reportedHostRefusal = false;
+  for (;;) {
+    if (shuttingDown) {
+      await shutdownPromise;
+      return;
+    }
+    let claim: ClaimHostOwnerResult;
+    try {
+      claim = claimHost();
+    } catch (error) {
+      console.error(
+        `Station service could not claim its home in the registry: ${(error as Error).message}`,
+      );
+      break;
+    }
+    // `id-held`: a live CLI process holds this service's id, the case
+    // `station start --force` below already resolves. Not a host owner.
+    if (claim.won || claim.reason === 'id-held') break;
+    if (!reportedHostRefusal) {
+      console.error(
+        `${describeServiceHostRefusal(livenessTarget, claim.owners)} Waiting for it to exit.`,
+      );
+      reportedHostRefusal = true;
+    }
+    await new Promise<void>((resolve) => setTimer(resolve, CHECK_INTERVAL_MS));
+  }
+
   try {
     // station#1869: a supervised service (launchd/systemd KeepAlive) cannot
     // "warn and reuse a stale build" the way an interactive `start` does — a
@@ -367,8 +411,10 @@ export async function superviseService(
     return;
   }
   console.log(`Supervising Station ${expected.sha} (boot ${expected.bootId})`);
-  // Only now: readiness is proven, mirroring #1983's rule that durable
-  // records follow the fallible operation rather than precede it.
+  // Readiness is proven: mark the record running (#3064). The host claim
+  // above already fenced the home with this supervisor's pid as `starting`
+  // unless another live process of this unit (an update's launcher, a
+  // replaced generation) still held it; this write takes it over.
   publishServiceLiveness(true);
   // A trial reports prepared only now, with its identity proven.
   launcherLink?.onReady();

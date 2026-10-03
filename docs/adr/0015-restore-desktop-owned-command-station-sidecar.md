@@ -91,6 +91,17 @@ both `WindowEvent::Destroyed` and `RunEvent::Exit`. The reachable half is
 covered by a test that spawns two real children and proves the owned sidecar is
 reaped while an attached service is not signalled.
 
+## Implementation note (#2961)
+
+[ADR 0020](0020-distribution-two-trains-channels-as-pointers.md) D4 replaced
+the read-then-claim sequence in the Decision above with one atomic host-owner
+claim. Desktop no longer reads service candidates before claiming: the shared
+module refuses the sidecar claim while any live service or other sidecar holds
+the home and returns that owner, and `service install` and the service
+supervisor claim through the same primitive, so a live sidecar also blocks
+them. The service-owner report, no automatic attachment, and the lifetime
+split are unchanged.
+
 ## Evidence addendum (2026-09-29, #2957)
 
 This addendum records packaged-build runs against the NOT_VERIFIED list above.

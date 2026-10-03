@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   readInstanceRegistry,
+  removeInstance,
   upsertInstance,
 } from '@kontourai/station-shared/instance-registry';
 import { lookupProcessBirthFingerprint } from '@kontourai/station-shared/process-identity';
@@ -124,6 +125,7 @@ function makeSupervisor(options: {
     // Hermetic: the real publisher writes to `lifecycle.baseDir`, a shared
     // /tmp path here. Liveness publication has its own temp-home tests.
     publishServiceLiveness,
+    claimServiceHost: () => ({ won: true, published: false }),
     // Hermetic by default: without this stub the production fallback runs
     // REAL lsof against the harness's fabricated ports, so whatever happens
     // to be listening on the host leaks into these tests (caught by the
@@ -1137,6 +1139,69 @@ describe('supervised service liveness (station#3064)', () => {
     expect(entry.pid).toBe(newerPid);
     expect(entry.birth).toBe('generation-b');
     expect(entry.status).not.toBe('stopped');
+  });
+
+  test('waits for a live Desktop sidecar to leave the home before starting (#2961)', async () => {
+    // One host per home (ADR 0020 D4): the supervisor claims BEFORE it starts
+    // Station, so a live sidecar keeps it waiting in-process rather than
+    // serving the same home or exiting into a KeepAlive restart loop.
+    const home = mkdtempSync(join(tmpdir(), 'station-svc-live-'));
+    upsertInstance(
+      'service-test',
+      { port: 3242, type: 'service', env: { ALLOWED_ORIGINS: 'x' } },
+      home,
+    );
+    // A live desktop: this test runner's parent outlives the test, with its
+    // real birth fingerprint.
+    const desktopPid = process.ppid;
+    upsertInstance(
+      'desktop-sidecar-7',
+      {
+        port: 38141,
+        type: 'sidecar',
+        status: 'starting',
+        pid: desktopPid,
+        birth: lookupProcessBirthFingerprint(desktopPid)!,
+      },
+      home,
+    );
+    const ticks: Array<() => void> = [];
+    const start = vi.fn().mockResolvedValue(undefined);
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const supervision = superviseService(serviceLifecycle(home), {
+        collect: readyCollect() as never,
+        exit: vi.fn(),
+        onSignal: vi.fn(),
+        processIsAlive: () => true,
+        setTimer: vi.fn((callback: () => void) => {
+          ticks.push(callback);
+          return 1 as never;
+        }),
+        start,
+        stop: vi.fn(),
+      });
+      await vi.waitFor(() => expect(ticks).toHaveLength(1));
+      expect(start).not.toHaveBeenCalled();
+      expect(errors).toHaveBeenCalledWith(
+        `Station service 'service-test' cannot own Station home ${home}: it is in use by Station Desktop's built-in server (registry id 'desktop-sidecar-7', pid ${desktopPid}). Quit Station Desktop so the background service can own this home, or install the service for a different home. Waiting for it to exit.`,
+      );
+      expect(
+        readInstanceRegistry(home).instances['service-test'].pid,
+      ).toBeUndefined();
+
+      // The desktop quits: its supervisor releases the sidecar record.
+      removeInstance('desktop-sidecar-7', home);
+      ticks.shift()!();
+      await supervision;
+
+      expect(start).toHaveBeenCalledTimes(1);
+      const entry = readInstanceRegistry(home).instances['service-test'];
+      expect(entry.pid).toBe(process.pid);
+      expect(entry.env).toEqual({ ALLOWED_ORIGINS: 'x' });
+    } finally {
+      errors.mockRestore();
+    }
   });
 
   test('a run with no installed service entry mints nothing', async () => {

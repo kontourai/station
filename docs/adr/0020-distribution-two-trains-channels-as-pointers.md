@@ -212,7 +212,10 @@ system Node.
   stays removed for ADR 0015's reasons.
 - The ownership logic collapses to one atomic claim path. `sidecar` and
   `service` differ only in supervisor (the app, or launchd, systemd, or Task
-  Scheduler) and lifetime policy.
+  Scheduler) and lifetime policy. #2961 implements this as `claimHostOwner`
+  ([Instance Registry](../design/instance-registry.md)): the desktop launch,
+  `station service install`, and the service supervisor all claim through it,
+  and the desktop maps its result to an owner without a separate read.
 
 Mobile apps keep their bundled web UI and store-gated builds. Store rules
 forbid downloading executable code, so the download model applies only to
@@ -340,7 +343,9 @@ bear on D4's claim path and startup, and the implementing phases carry them:
 
 - the Windows first launch exceeded the 30 s readiness budget;
 - a Windows sidecar outlived its dead desktop by about 100 s;
-- stale `type: sidecar` entries remain after an abrupt death;
+- stale `type: sidecar` entries remain after an abrupt death (since #2961
+  the next host claim reaps an entry whose pid and birth prove it gone; a
+  test covers this with a real `SIGKILL`, a packaged run does not);
 - shared roots without saved metadata refuse the first launch.
 
 ## Consequences

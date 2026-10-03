@@ -8938,69 +8938,86 @@ fn profile_lock_birth_bridge(
         .ok_or(RegistryBridgeFailure::Protocol)
 }
 
+/// A live host owner that refused this desktop's claim, as the bridge reports
+/// it: registry id, host type, and registered port. Path-free by design.
+#[cfg(not(mobile))]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+struct HostClaimOwner {
+    id: String,
+    #[serde(rename = "type")]
+    owner_type: String,
+    port: u16,
+}
+
+/// The outcome of the one atomic host-owner claim (ADR 0020 D4). The shared
+/// module decides it under the registry lock, so `owners` is the same
+/// observation that refused the claim — there is no separate ownership read.
+#[cfg(not(mobile))]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+struct HostClaim {
+    ok: bool,
+    claimed: bool,
+    owners: Vec<HostClaimOwner>,
+}
+
+#[cfg(not(mobile))]
+fn parse_host_claim_output(output: &[u8]) -> Result<HostClaim, RegistryBridgeFailure> {
+    let claim: HostClaim =
+        serde_json::from_slice(output).map_err(|_| RegistryBridgeFailure::Protocol)?;
+    if claim.ok && (claim.owners.is_empty() || !claim.claimed) {
+        Ok(claim)
+    } else {
+        Err(RegistryBridgeFailure::Protocol)
+    }
+}
+
+/// Reserves this desktop's sidecar slot through the shared host-owner claim.
+/// The bridge records this desktop (its parent) as the claimant.
 #[cfg(not(mobile))]
 fn claim_sidecar_registry_bridge(
     resource_dir: &Path,
     home: &Path,
     id: &str,
     instance: serde_json::Value,
-) -> Result<bool, RegistryBridgeFailure> {
+) -> Result<HostClaim, RegistryBridgeFailure> {
     let output = invoke_registry_bridge(
         resource_dir,
         "claimSidecar",
         serde_json::json!({"home":home,"id":id,"instance":instance}),
     )?;
-    let value: serde_json::Value =
-        serde_json::from_slice(&output).map_err(|_| RegistryBridgeFailure::Protocol)?;
-    value
-        .get("claimed")
-        .and_then(serde_json::Value::as_bool)
-        .ok_or(RegistryBridgeFailure::Protocol)
+    parse_host_claim_output(&output)
 }
 
-// Write counterparts are kept at the same narrow bridge seam for Phase 3's
-// handshake/restart/teardown lifecycle wiring. They intentionally have no
-// startup caller in Phase 2.
+/// Publishes the listening child through the same claim. It refuses, rather
+/// than re-creating the record, while another live host owns the home.
 #[cfg(not(mobile))]
-fn upsert_registry_bridge(
+fn publish_sidecar_registry_bridge(
     resource_dir: &Path,
     home: &Path,
     id: &str,
     instance: serde_json::Value,
-) -> Result<(), RegistryBridgeFailure> {
-    invoke_registry_bridge(
+) -> Result<HostClaim, RegistryBridgeFailure> {
+    let output = invoke_registry_bridge(
         resource_dir,
-        "upsert",
+        "publishSidecar",
         serde_json::json!({ "home": home, "id": id, "instance": instance }),
-    )
-    .map(|_| ())
+    )?;
+    parse_host_claim_output(&output)
 }
 
+/// Releases this desktop's sidecar record. The bridge removes it only when
+/// this desktop recorded it or its recorded child is provably gone.
 #[cfg(not(mobile))]
-fn update_registry_status_bridge(
-    resource_dir: &Path,
-    home: &Path,
-    id: &str,
-    status: &str,
-    pid: Option<u32>,
-) -> Result<(), RegistryBridgeFailure> {
-    invoke_registry_bridge(
-        resource_dir,
-        "updateStatus",
-        serde_json::json!({ "home": home, "id": id, "status": status, "pid": pid }),
-    )
-    .map(|_| ())
-}
-
-#[cfg(not(mobile))]
-fn remove_registry_bridge(
+fn release_sidecar_registry_bridge(
     resource_dir: &Path,
     home: &Path,
     id: &str,
 ) -> Result<(), RegistryBridgeFailure> {
     invoke_registry_bridge(
         resource_dir,
-        "remove",
+        "releaseSidecar",
         serde_json::json!({ "home": home, "id": id }),
     )
     .map(|_| ())
@@ -9285,32 +9302,58 @@ fn owner_owns_reapable_child(owner: DesktopOwner) -> bool {
     owner == DesktopOwner::Sidecar
 }
 
-/// Window destruction is not application exit: preview and workspace pop-out
-/// windows are ordinary Station windows. Sidecar teardown is intentionally
-/// wired only from `RunEvent::Exit` below.
+/// Maps the atomic host claim straight to this desktop's owner. A won claim
+/// is the only way to `Sidecar`. A claim refused by exactly one live service
+/// reports that service (never attaching to it); any other refusal — another
+/// desktop's sidecar, several owners, an id held by a foreign process — or a
+/// bridge failure selects no owner and spawns nothing.
 #[cfg(not(mobile))]
-fn owner_after_preparation(
-    preparation: PrepareRuntimeKind,
-    decision: HomeOwnershipDecision,
-) -> DesktopOwner {
-    let owner = owner_for_decision(decision);
-    if preparation == PrepareRuntimeKind::ServiceOwned {
-        // A service observed before preparation may exit before this second
-        // ownership read. Never turn that race into an unprepared sidecar.
-        adoptable_refreshed_owner(owner)
-    } else {
-        owner
+fn owner_for_host_claim(claim: Result<HostClaim, RegistryBridgeFailure>) -> DesktopOwner {
+    let Ok(claim) = claim else {
+        return DesktopOwner::None;
+    };
+    if claim.claimed {
+        return DesktopOwner::Sidecar;
+    }
+    match claim.owners.as_slice() {
+        [owner] if owner.owner_type == "service" => DesktopOwner::Service {
+            id: owner.id.clone(),
+            port: owner.port,
+        },
+        _ => DesktopOwner::None,
     }
 }
 
+/// Launch-time owner selection. After runtime preparation, the atomic host
+/// claim is the only ownership decision. A home preparation reported as
+/// service-owned was deliberately left unprepared, so it is never claimed:
+/// its owner comes from a display-only observation that cannot select
+/// `Sidecar` (a service that exited meanwhile reads as `Unowned`).
+#[cfg(not(mobile))]
+fn launch_owner(
+    preparation: PrepareRuntimeKind,
+    claim: impl FnOnce() -> Result<HostClaim, RegistryBridgeFailure>,
+    observe: impl FnOnce() -> HomeOwnershipDecision,
+) -> DesktopOwner {
+    if preparation == PrepareRuntimeKind::ServiceOwned {
+        adoptable_refreshed_owner(owner_for_decision(observe()))
+    } else {
+        owner_for_host_claim(claim())
+    }
+}
+
+/// Window destruction is not application exit: preview and workspace pop-out
+/// windows are ordinary Station windows. Sidecar teardown is intentionally
+/// wired only from `RunEvent::Exit` below.
 #[cfg(not(mobile))]
 fn window_destruction_requests_sidecar_teardown() -> bool {
     false
 }
 
+/// A sidecar becomes Running only when its publish won the host claim.
 #[cfg(not(mobile))]
-fn registry_claim_allows_running(result: Result<(), RegistryBridgeFailure>) -> bool {
-    result.is_ok()
+fn registry_claim_allows_running(result: Result<HostClaim, RegistryBridgeFailure>) -> bool {
+    matches!(result, Ok(HostClaim { claimed: true, .. }))
 }
 
 #[cfg(not(mobile))]
@@ -11346,6 +11389,26 @@ fn run_sidecar_supervisor(
             return;
         }
         generation += 1;
+        // Setup claimed the home for the first generation. Every later one
+        // re-claims before it spawns: an exited child released the record,
+        // and a manual restart's record names a reaped child, so another
+        // desktop or a service may own the home now. A lost claim never
+        // spawns.
+        if generation > 1 && !reclaim_sidecar_host(&supervisor) {
+            let mut status = supervisor
+                .status
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            status.phase = bundled_server_state::ServerPhase::Failed;
+            status.fail_closed = true;
+            status.api_base = None;
+            status.port = None;
+            status.message = "Another Station server now owns this home.".into();
+            status.detail = Some("The home-scoped registry refused this desktop's restart claim; Station did not start a second server.".into());
+            drop(status);
+            crate::tray::kick(&app);
+            return;
+        }
         let child = match spawn_sidecar_child(&supervisor.context) {
             Ok((mut child, boot_id)) => {
                 if let Some(stdout) = child.stdout.take() {
@@ -11386,7 +11449,7 @@ fn run_sidecar_supervisor(
             }
         };
         if !child {
-            let _ = remove_registry_bridge(
+            let _ = release_sidecar_registry_bridge(
                 &supervisor.context.launch.resource_dir,
                 &supervisor.context.launch.station_home,
                 &supervisor.context.registry_id,
@@ -11413,7 +11476,7 @@ fn run_sidecar_supervisor(
             match rx.recv_timeout(Duration::from_millis(150)) {
                 Ok(SupervisorMessage::Shutdown) => {
                     reap_sidecar(&supervisor);
-                    let _ = remove_registry_bridge(
+                    let _ = release_sidecar_registry_bridge(
                         &supervisor.context.launch.resource_dir,
                         &supervisor.context.launch.station_home,
                         &supervisor.context.registry_id,
@@ -11443,14 +11506,14 @@ fn run_sidecar_supervisor(
                         .unwrap_or_else(|poisoned| poisoned.into_inner())
                         .as_ref()
                         .map(Child::id);
-                    if !registry_claim_allows_running(upsert_registry_bridge(
+                    if !registry_claim_allows_running(publish_sidecar_registry_bridge(
                         &supervisor.context.launch.resource_dir,
                         &supervisor.context.launch.station_home,
                         &supervisor.context.registry_id,
                         serde_json::json!({"type":"sidecar","status":"running","port":port,"pid":pid,"startedAt":format!("{}", SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs())}),
                     )) {
                         reap_sidecar(&supervisor);
-                        let _ = remove_registry_bridge(
+                        let _ = release_sidecar_registry_bridge(
                             &supervisor.context.launch.resource_dir,
                             &supervisor.context.launch.station_home,
                             &supervisor.context.registry_id,
@@ -11514,7 +11577,7 @@ fn run_sidecar_supervisor(
                         // fail-closed marker written immediately before exit
                         // must win over retry classification.
                         drain_sidecar_stderr(&supervisor);
-                        let _ = remove_registry_bridge(
+                        let _ = release_sidecar_registry_bridge(
                             &supervisor.context.launch.resource_dir,
                             &supervisor.context.launch.station_home,
                             &supervisor.context.registry_id,
@@ -11539,7 +11602,7 @@ fn run_sidecar_supervisor(
                 }
                 Err(RecvTimeoutError::Disconnected) => {
                     reap_sidecar(&supervisor);
-                    let _ = remove_registry_bridge(
+                    let _ = release_sidecar_registry_bridge(
                         &supervisor.context.launch.resource_dir,
                         &supervisor.context.launch.station_home,
                         &supervisor.context.registry_id,
@@ -11549,6 +11612,19 @@ fn run_sidecar_supervisor(
             }
         }
     }
+}
+
+/// Re-claims this desktop's sidecar slot before a respawn, through the same
+/// atomic host claim setup used.
+#[cfg(not(mobile))]
+fn reclaim_sidecar_host(supervisor: &Arc<ServerSupervisor>) -> bool {
+    let claim = claim_sidecar_registry_bridge(
+        &supervisor.context.launch.resource_dir,
+        &supervisor.context.launch.station_home,
+        &supervisor.context.registry_id,
+        serde_json::json!({"type":"sidecar","status":"starting","port":0}),
+    );
+    owner_owns_reapable_child(owner_for_host_claim(claim))
 }
 
 #[cfg(not(mobile))]
@@ -11607,6 +11683,17 @@ pub(crate) fn teardown_sidecar(app: &AppHandle) {
     let Some(state) = app.try_state::<DesktopServerState>() else {
         return;
     };
+    if shut_down_owned_sidecar(&state) {
+        crate::tray::kick(app);
+    }
+}
+
+/// The ownership-gated half of teardown, separated from the `AppHandle` so it
+/// is directly testable. Only a desktop that won the sidecar claim asks its
+/// supervisor to reap a child; a service-owned (or unowned) desktop signals
+/// nothing. Returns whether a shutdown was requested.
+#[cfg(not(mobile))]
+fn shut_down_owned_sidecar(state: &DesktopServerState) -> bool {
     if !owner_owns_reapable_child(
         state
             .owner
@@ -11614,10 +11701,10 @@ pub(crate) fn teardown_sidecar(app: &AppHandle) {
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .clone(),
     ) {
-        return;
+        return false;
     }
     if state.supervisor.shutting_down.swap(true, Ordering::SeqCst) {
-        return;
+        return false;
     }
     apply_supervisor_input(&state.supervisor, SupervisorInput::ShutdownRequested);
     let _ = state.supervisor.tx.send(SupervisorMessage::Shutdown);
@@ -11633,7 +11720,7 @@ pub(crate) fn teardown_sidecar(app: &AppHandle) {
     {
         let _ = handle.join();
     }
-    crate::tray::kick(app);
+    true
 }
 
 /// `STATION_DESKTOP_LOG_LEVEL` selects the desktop shell's log verbosity
@@ -12189,27 +12276,34 @@ If a stable instance is running, this launch will focus its window and exit.",
                         registry_id: format!("desktop-sidecar-{}", std::process::id()),
                     },
                 });
-                let ownership = decide_home_ownership_from_runtime(&resource_dir, &station_home);
-                let mut owner = owner_after_preparation(preparation_kind, ownership);
-                // Reserve before the child is launched.  The shared module
-                // performs this compare-and-set under its mutation lock, so
-                // two desktops cannot both win a home-scoped sidecar slot.
-                if owner == DesktopOwner::Sidecar {
-                    let context = &supervisor.context;
-                    let claimed = claim_sidecar_registry_bridge(
-                        &resource_dir,
-                        &station_home,
-                        &context.registry_id,
-                        serde_json::json!({"type":"sidecar","status":"starting","port":0}),
-                    )
-                    .map_err(|error| {
-                        log::error!("desktop registry bridge could not claim the sidecar slot: {error:?}");
-                        error
-                    })
-                    .unwrap_or(false);
-                    log::info!("desktop sidecar registry claim: claimed={claimed}");
-                    if !claimed { owner = DesktopOwner::None; }
-                }
+                // Reserve before the child is launched. The shared module
+                // decides the home's single host owner under its mutation
+                // lock — refusing any other live sidecar or service — and
+                // returns the winner, so there is no separate ownership read
+                // for a service to slip past (#2961).
+                let owner = launch_owner(
+                    preparation_kind,
+                    || {
+                        let claim = claim_sidecar_registry_bridge(
+                            &resource_dir,
+                            &station_home,
+                            &supervisor.context.registry_id,
+                            serde_json::json!({"type":"sidecar","status":"starting","port":0}),
+                        );
+                        match &claim {
+                            Ok(claim) => log::info!(
+                                "desktop host claim: claimed={} owners={}",
+                                claim.claimed,
+                                claim.owners.len()
+                            ),
+                            Err(error) => log::error!(
+                                "desktop registry bridge could not claim the host: {error:?}"
+                            ),
+                        }
+                        claim
+                    },
+                    || decide_home_ownership_from_runtime(&resource_dir, &station_home),
+                );
                 let (readiness, effects) = startup_readiness::transition(
                     &startup_readiness::StartupReadiness::default(),
                     startup_readiness::ReadinessInput::Begin {
@@ -12236,7 +12330,7 @@ If a stable instance is running, this launch will focus its window and exit.",
                 notification_feed::start(app.handle())?;
                 if effects.contains(&startup_readiness::ReadinessEffect::RevealMainWindow) { reveal_main_window(app.handle()); }
                 if !cfg!(debug_assertions) { arm_startup_deadline(app.handle().clone(), 1); }
-                if owner == DesktopOwner::Sidecar {
+                if owner_owns_reapable_child(owner.clone()) {
                     let app_handle = app.handle().clone();
                     let handle = thread::Builder::new().name("station-sidecar-supervisor".into()).spawn(move || run_sidecar_supervisor(supervisor, app_handle, rx))
                         .expect("failed to start Station sidecar supervisor thread");
@@ -13523,30 +13617,32 @@ mod tests {
     #[test]
     #[cfg(not(mobile))]
     fn service_attachment_never_claims_an_unprepared_home_after_service_exit() {
+        let never_claim = || -> Result<HostClaim, RegistryBridgeFailure> {
+            panic!("a service-owned preparation must never claim the unprepared home")
+        };
         assert_eq!(
-            owner_after_preparation(
-                PrepareRuntimeKind::ServiceOwned,
+            launch_owner(PrepareRuntimeKind::ServiceOwned, never_claim, || {
                 HomeOwnershipDecision::SpawnSidecar
-            ),
+            }),
             DesktopOwner::Unowned
         );
         assert_eq!(
-            owner_after_preparation(
-                PrepareRuntimeKind::ServiceOwned,
+            launch_owner(PrepareRuntimeKind::ServiceOwned, never_claim, || {
                 HomeOwnershipDecision::ServiceOwnsHome {
                     id: "owned-service".into(),
-                    port: 4123
+                    port: 4123,
                 }
-            ),
+            }),
             DesktopOwner::Service {
                 id: "owned-service".into(),
                 port: 4123
             }
         );
         assert_eq!(
-            owner_after_preparation(
+            launch_owner(
                 PrepareRuntimeKind::Absent,
-                HomeOwnershipDecision::SpawnSidecar
+                || parse_host_claim_output(br#"{"ok":true,"claimed":true,"owners":[]}"#),
+                || panic!("a prepared launch decides ownership from the claim alone"),
             ),
             DesktopOwner::Sidecar
         );
@@ -13900,13 +13996,13 @@ mod tests {
             .map(|offset| recovery + offset)
             .expect("recovery exits setup successfully instead of returning a Tauri setup error");
         let ownership = source[preparation..]
-            .find("let ownership = decide_home_ownership_from_runtime")
+            .find("let owner = launch_owner(")
             .map(|offset| preparation + offset)
             .expect("setup selects ownership only on the prepared path");
-        let claim = source[preparation..]
-            .find("let claimed = claim_sidecar_registry_bridge")
-            .map(|offset| preparation + offset)
-            .expect("setup claims a sidecar only after ownership selection");
+        let claim = source[ownership..]
+            .find("claim_sidecar_registry_bridge(")
+            .map(|offset| ownership + offset)
+            .expect("setup's ownership selection is the atomic sidecar claim");
         let supervisor = source[preparation..]
             .find("let supervisor = Arc::new(ServerSupervisor")
             .map(|offset| preparation + offset)
@@ -14807,13 +14903,47 @@ mod tests {
     #[cfg(not(mobile))]
     #[test]
     fn sidecar_claim_admits_only_one_launcher() {
-        assert!(
-            registry_claim_allows_running(Ok(())),
-            "first launcher owns the sidecar slot"
+        // Exact bridge outputs (`sidecarClaimOutput` in
+        // instance-registry-bridge.ts) for the winner and the two kinds of
+        // loser. Only the winner may start a supervisor or reap a child.
+        let won = parse_host_claim_output(br#"{"ok":true,"claimed":true,"owners":[]}"#);
+        let lost_to_desktop = parse_host_claim_output(
+            br#"{"ok":true,"claimed":false,"owners":[{"id":"desktop-sidecar-41","type":"sidecar","port":38141}]}"#,
         );
-        assert!(
-            !registry_claim_allows_running(Err(RegistryBridgeFailure::Invocation)),
-            "second launcher must not launch after a rejected atomic claim"
+        let lost_to_service = parse_host_claim_output(
+            br#"{"ok":true,"claimed":false,"owners":[{"id":"default","type":"service","port":3141}]}"#,
+        );
+        let lost_to_two = parse_host_claim_output(
+            br#"{"ok":true,"claimed":false,"owners":[{"id":"a","type":"service","port":1},{"id":"b","type":"service","port":2}]}"#,
+        );
+        assert!(registry_claim_allows_running(won.clone()));
+        assert_eq!(owner_for_host_claim(won), DesktopOwner::Sidecar);
+        for (loser, expected) in [
+            (lost_to_desktop, DesktopOwner::None),
+            (
+                lost_to_service,
+                DesktopOwner::Service {
+                    id: "default".into(),
+                    port: 3141,
+                },
+            ),
+            (lost_to_two, DesktopOwner::None),
+            (Err(RegistryBridgeFailure::Invocation), DesktopOwner::None),
+        ] {
+            assert!(!registry_claim_allows_running(loser.clone()));
+            let owner = owner_for_host_claim(loser);
+            assert_eq!(owner, expected);
+            assert!(
+                !owner_owns_reapable_child(owner),
+                "a losing desktop must start no supervisor and spawn no child"
+            );
+        }
+        assert_eq!(
+            parse_host_claim_output(
+                br#"{"ok":true,"claimed":true,"owners":[{"id":"x","type":"service","port":1}]}"#
+            ),
+            Err(RegistryBridgeFailure::Protocol),
+            "a won claim that also names an owner is contradictory"
         );
     }
 
@@ -14850,7 +14980,12 @@ mod tests {
     #[cfg(not(mobile))]
     #[test]
     fn registry_publication_failure_prevents_running_sidecar_status() {
-        assert!(registry_claim_allows_running(Ok(())));
+        assert!(registry_claim_allows_running(parse_host_claim_output(
+            br#"{"ok":true,"claimed":true,"owners":[]}"#
+        )));
+        assert!(!registry_claim_allows_running(parse_host_claim_output(
+            br#"{"ok":true,"claimed":false,"owners":[]}"#
+        )));
         assert!(
             !registry_claim_allows_running(Err(RegistryBridgeFailure::Invocation)),
             "a rejected registry claim must prevent the sidecar from becoming Running"
@@ -14943,33 +15078,120 @@ mod tests {
         );
     }
 
+    /// A managed desktop state whose supervisor tracks a REAL child process,
+    /// with a stand-in supervisor thread that answers `Shutdown` exactly as
+    /// `run_sidecar_supervisor` does: by reaping through `reap_sidecar`.
+    #[cfg(all(not(mobile), unix))]
+    fn teardown_fixture(owner: DesktopOwner) -> (DesktopServerState, u32, tempfile::TempDir) {
+        let temp = tempfile::tempdir().expect("test home");
+        let (tx, rx) = channel();
+        let child = Command::new("/bin/sh")
+            .args(["-c", "sleep 30"])
+            .spawn()
+            .unwrap();
+        let pid = child.id();
+        let supervisor = Arc::new(ServerSupervisor {
+            child: Mutex::new(Some(child)),
+            status: Arc::new(Mutex::new(BundledServerStatus::initial(
+                "out".into(),
+                "err".into(),
+            ))),
+            stderr_reader: Mutex::new(None),
+            shutting_down: AtomicBool::new(false),
+            tx,
+            thread: Mutex::new(None),
+            context: SidecarRuntimeContext {
+                launch: SidecarLaunchContext {
+                    resource_dir: temp.path().into(),
+                    station_root: temp.path().into(),
+                    station_home: temp.path().into(),
+                    home: temp.path().display().to_string(),
+                    shell_path: String::new(),
+                    channel: None,
+                    pinned_port: None,
+                    supervisor_birth: "test-birth".into(),
+                    instance_id: "desktop-sidecar-test".into(),
+                },
+                registry_id: "desktop-sidecar-test".into(),
+            },
+        });
+        let worker = supervisor.clone();
+        let handle = thread::spawn(move || {
+            if let Ok(SupervisorMessage::Shutdown) = rx.recv() {
+                reap_sidecar(&worker);
+            }
+        });
+        *supervisor.thread.lock().unwrap() = Some(handle);
+        let state = DesktopServerState {
+            owner: Mutex::new(owner),
+            supervisor,
+            readiness: Mutex::new(startup_readiness::StartupReadiness::default()),
+            startup_commit_claim: Mutex::new(StartupCommitClaim::default()),
+            ownership_checked_at: Mutex::new(Some(Instant::now())),
+        };
+        (state, pid, temp)
+    }
+
+    #[cfg(all(not(mobile), unix))]
+    fn process_exists(pid: u32) -> bool {
+        Command::new("/bin/kill")
+            .args(["-0", &pid.to_string()])
+            .stderr(Stdio::null())
+            .status()
+            .map(|status| status.success())
+            .unwrap_or(false)
+    }
+
     #[cfg(all(not(mobile), unix))]
     #[test]
     fn teardown_reaps_the_owned_sidecar_without_signalling_an_attached_service() {
-        let mut sidecar = Command::new("/bin/sh")
-            .args(["-c", "sleep 30"])
-            .spawn()
-            .unwrap();
-        let mut attached_service = Command::new("/bin/sh")
-            .args(["-c", "sleep 30"])
-            .spawn()
-            .unwrap();
-        assert!(owner_owns_reapable_child(DesktopOwner::Sidecar));
-        terminate_desktop_child(&mut sidecar);
+        let (sidecar, sidecar_pid, _sidecar_home) = teardown_fixture(DesktopOwner::Sidecar);
+        assert!(shut_down_owned_sidecar(&sidecar));
         assert!(
-            sidecar.try_wait().unwrap().is_some(),
-            "desktop-owned sidecar must be reaped"
+            sidecar.supervisor.child.lock().unwrap().is_none() && !process_exists(sidecar_pid),
+            "desktop-owned sidecar must be reaped on quit"
         );
-        assert!(!owner_owns_reapable_child(DesktopOwner::Service {
-            id: "service-a".into(),
-            port: 38141
-        }));
-        assert!(
-            attached_service.try_wait().unwrap().is_none(),
-            "attached service must not be signalled"
-        );
-        let _ = attached_service.kill();
-        let _ = attached_service.wait();
+
+        for owner in [
+            DesktopOwner::Service {
+                id: "service-a".into(),
+                port: 38141,
+            },
+            DesktopOwner::Unowned,
+            DesktopOwner::None,
+        ] {
+            let (state, pid, _home) = teardown_fixture(owner.clone());
+            assert!(
+                !shut_down_owned_sidecar(&state),
+                "{owner:?} must not request a shutdown"
+            );
+            assert!(
+                !state.supervisor.shutting_down.load(Ordering::SeqCst),
+                "{owner:?} must not start supervisor shutdown"
+            );
+            let alive = state
+                .supervisor
+                .child
+                .lock()
+                .unwrap()
+                .as_mut()
+                .map(|child| child.try_wait().unwrap().is_none())
+                .unwrap_or(false);
+            assert!(
+                alive && process_exists(pid),
+                "quitting a desktop whose owner is {owner:?} must not signal the host process"
+            );
+            // Release the stand-in supervisor and the fixture process.
+            let _ = state.supervisor.tx.send(SupervisorMessage::Restart);
+            if let Some(handle) = state.supervisor.thread.lock().unwrap().take() {
+                let _ = handle.join();
+            }
+            let leftover = state.supervisor.child.lock().unwrap().take();
+            if let Some(mut child) = leftover {
+                let _ = child.kill();
+                let _ = child.wait();
+            }
+        }
     }
 
     #[cfg(not(mobile))]

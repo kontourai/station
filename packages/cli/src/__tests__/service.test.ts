@@ -1042,6 +1042,68 @@ describe('station service dispatch', () => {
     });
   });
 
+  // #2961 (ADR 0020 D4): a home has one live host. A live Desktop sidecar
+  // holds it under a DIFFERENT id, which the per-id #3047 guard never saw.
+  const liveDesktopSidecar = (baseDir: string) =>
+    upsertInstance(
+      'desktop-sidecar-4242',
+      {
+        port: 38141,
+        type: 'sidecar',
+        status: 'running',
+        pid: process.pid,
+        birth: lookupProcessBirthFingerprint(process.pid)!,
+      },
+      baseDir,
+    );
+
+  test('refuses install while a live Desktop sidecar owns the home (#2961)', async () => {
+    const { runServiceCommand } = await import('../commands/service.js');
+    const baseDir = makeTempDir('station-service-test-');
+    ensureStationHomeSchemaSync(baseDir);
+    liveDesktopSidecar(baseDir);
+    const before = readInstanceRegistry(baseDir);
+
+    await expect(
+      runServiceCommand(['install'], lifecycle(baseDir), {
+        fs: serviceFs,
+        platform: 'darwin',
+        run: vi.fn(() => ({ status: 0, stdout: '/usr/bin:/bin\n' })),
+      }),
+    ).rejects.toThrow(
+      `Station service 'service-test' cannot own Station home ${baseDir}: it is in use by Station Desktop's built-in server (registry id 'desktop-sidecar-4242', pid ${process.pid}). Quit Station Desktop so the background service can own this home, or install the service for a different home.`,
+    );
+    expect(installLaunchd).not.toHaveBeenCalled();
+    expect(readInstanceRegistry(baseDir)).toEqual(before);
+  });
+
+  test('rolls the backend back when a Desktop sidecar claims the home mid-install (#2961)', async () => {
+    const { runServiceCommand } = await import('../commands/service.js');
+    const baseDir = makeTempDir('station-service-test-');
+    ensureStationHomeSchemaSync(baseDir);
+    const installBackend = installLaunchd.getMockImplementation()!;
+    // The sidecar wins the home after the pre-check, while the backend is
+    // being installed; only the locked claim can see it.
+    installLaunchd.mockImplementationOnce((instanceId, input) => {
+      liveDesktopSidecar(baseDir);
+      return installBackend(instanceId, input);
+    });
+
+    await expect(
+      runServiceCommand(['install'], lifecycle(baseDir), {
+        fs: serviceFs,
+        platform: 'darwin',
+        run: vi.fn(() => ({ status: 0, stdout: '/usr/bin:/bin\n' })),
+      }),
+    ).rejects.toThrow(
+      /Quit Station Desktop .* The backend install was rolled back\.$/,
+    );
+    expect(uninstallLaunchd).toHaveBeenCalled();
+    expect(Object.keys(readInstanceRegistry(baseDir).instances)).toEqual([
+      'desktop-sidecar-4242',
+    ]);
+  });
+
   // station#2689: from a source checkout the launcher selects the development
   // channel and exports the checkout's derived dev identity, so a home left to
   // its default is that dev instance's home. The entry-point suite

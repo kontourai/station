@@ -4,8 +4,9 @@ import * as nodeFs from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import type { ServiceUpdateProgress } from '@kontourai/station-contracts/system-status';
 import {
-  claimInstanceEntry,
+  claimHostOwner,
   entryOwnedByLiveProcess,
+  liveHostOwners,
   readInstanceRegistry,
   removeInstance,
   replaceInstance,
@@ -51,6 +52,7 @@ import {
   uninstallLaunchd,
 } from './service-launchd.js';
 import { installServiceLauncher } from './service-launcher-link.js';
+import { describeServiceHostRefusal } from './service-liveness.js';
 import {
   collectServicePathCandidates,
   inspectServicePathDrift,
@@ -1318,6 +1320,23 @@ export async function runServiceCommand(
         `Station home ${lifecycle.baseDir} is in use by instance '${lifecycleInstanceId}' (pid ${lifecycleEntry.pid}, type '${lifecycleEntry.type}'${lifecycleEntry.checkout ? `, from ${lifecycleEntry.checkout}` : ''}), which service '${instanceId}' would share. Stop it first (\`station stop --instance=${lifecycleInstanceId}\` from its checkout).`,
       );
     }
+    // ONE HOST OWNER (#2961, ADR 0020 D4): a home has at most one live host
+    // — this service or a Station Desktop sidecar. Refuse while another
+    // live one holds it, before any backend mutation. The claim below
+    // re-checks under the registry lock; this early copy only spares the
+    // common case a backend install and rollback.
+    const hostOwners = liveHostOwners(
+      readInstanceRegistry(lifecycle.baseDir),
+      instanceId,
+    );
+    if (hostOwners.length > 0) {
+      throw new Error(
+        describeServiceHostRefusal(
+          { instanceName: instanceId, home: lifecycle.baseDir },
+          hostOwners,
+        ),
+      );
+    }
     // service run builds stale artifacts before it can publish an identity.
     // Do that before replacing the old supervisor so the bounded readiness
     // poll observes only the new generation's boot, not its cold UI build.
@@ -1463,30 +1482,33 @@ export async function runServiceCommand(
     // restores the prior entry if manifest publication or readiness fails
     // after this point.
     //
-    // claimInstanceEntry REPLACES rather than merges (station#3047): the old
-    // upsert kept every field its partial omitted, so installing over a CLI
-    // entry produced a `type: 'service'` record still carrying the CLI
+    // The host-owner claim REPLACES rather than merges (station#3047): the
+    // old upsert kept every field its partial omitted, so installing over a
+    // CLI entry produced a `type: 'service'` record still carrying the CLI
     // process's pid/birth — which Desktop's home-ownership decision then
     // read as a live service. The claim also refuses (under the mutation
-    // lock) if a live foreign owner appeared since the pre-check above; in
-    // that race the registry was NOT written, so roll back the backend but
-    // leave the registry alone — restoring `priorRegistryEntry` would
-    // clobber the entry the live owner just wrote.
-    let claim: ReturnType<typeof claimInstanceEntry>;
+    // lock) if a live foreign owner of this id, or a live Desktop sidecar or
+    // other service on this home (#2961), appeared since the pre-checks
+    // above; in that race the registry was NOT written, so roll back the
+    // backend but leave the registry alone — restoring `priorRegistryEntry`
+    // would clobber the entry the live owner just wrote. A live service
+    // entry at this id is this unit's own generation and is adopted (#3064).
+    const serviceEntry = {
+      port: lifecycle.serverPort,
+      uiPort: lifecycle.uiPort,
+      type: 'service' as const,
+      env: {
+        ...priorServiceEntry?.env,
+        ALLOWED_ORIGINS: effectiveAllowedOrigins.join(','),
+      },
+    };
+    let claim: ReturnType<typeof claimHostOwner>;
     try {
-      claim = claimInstanceEntry(
-        instanceId,
-        {
-          port: lifecycle.serverPort,
-          uiPort: lifecycle.uiPort,
-          type: 'service',
-          env: {
-            ...priorServiceEntry?.env,
-            ALLOWED_ORIGINS: effectiveAllowedOrigins.join(','),
-          },
-        },
-        { home: lifecycle.baseDir, adoptTypes: ['service'] },
-      );
+      claim = claimHostOwner(instanceId, {
+        home: lifecycle.baseDir,
+        type: 'service',
+        publish: () => serviceEntry,
+      });
     } catch (error) {
       // A registry read/publish I/O failure here would otherwise strand a
       // fully installed backend with no manifest and no compensation
@@ -1504,8 +1526,14 @@ export async function runServiceCommand(
       }
       throw error;
     }
-    if (!claim.written) {
-      const refusal = `Instance id '${instanceId}' was claimed by a live process (pid ${claim.existing.pid}, type '${claim.existing.type}') during installation. Stop that process or install under a distinct --instance name.`;
+    if (!claim.won) {
+      const refusal =
+        claim.reason === 'host-owned'
+          ? describeServiceHostRefusal(
+              { instanceName: instanceId, home: lifecycle.baseDir },
+              claim.owners,
+            )
+          : `Instance id '${instanceId}' was claimed by a live process (pid ${claim.existing.pid}, type '${claim.existing.type}') during installation. Stop that process or install under a distinct --instance name.`;
       try {
         await compensate({ restoreRegistry: false });
       } catch (rollbackError) {
@@ -1584,22 +1612,16 @@ export async function runServiceCommand(
           // Emergency recovery is best-effort: a live-owner refusal here is
           // recorded in the recovery detail rather than unwinding the one
           // startable generation this path exists to leave behind.
-          const recoveryClaim = claimInstanceEntry(
-            instanceId,
-            {
-              port: lifecycle.serverPort,
-              uiPort: lifecycle.uiPort,
-              type: 'service',
-              env: {
-                ...priorServiceEntry?.env,
-                ALLOWED_ORIGINS: effectiveAllowedOrigins.join(','),
-              },
-            },
-            { home: lifecycle.baseDir, adoptTypes: ['service'] },
-          );
-          const recoveryRegistryNote = recoveryClaim.written
+          const recoveryClaim = claimHostOwner(instanceId, {
+            home: lifecycle.baseDir,
+            type: 'service',
+            publish: () => serviceEntry,
+          });
+          const recoveryRegistryNote = recoveryClaim.won
             ? ''
-            : ` Its registry entry could not be recorded: instance id '${instanceId}' is held by a live process (pid ${recoveryClaim.existing.pid}).`;
+            : recoveryClaim.reason === 'host-owned'
+              ? ` Its registry entry could not be recorded: ${describeServiceHostRefusal({ instanceName: instanceId, home: lifecycle.baseDir }, recoveryClaim.owners)}`
+              : ` Its registry entry could not be recorded: instance id '${instanceId}' is held by a live process (pid ${recoveryClaim.existing.pid}).`;
           await waitForInstalledServiceIdentity(
             instanceId,
             lifecycle.baseDir,

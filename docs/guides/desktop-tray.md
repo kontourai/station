@@ -8,7 +8,10 @@ then validates that runtime's exact `service/<instance-id>.json` manifest. It
 never guesses from `service/default.json`, filename order, or the shared global
 default, so selecting another channel or a remote Station cannot retarget tray
 service actions. For a Desktop-owned sidecar, it reports the built-in backend
-but does not offer service controls. Startup
+but does not offer service controls. A home has one live host: the sidecar and
+an installed service claim it through the same registry claim, so a service
+that starts while this app's sidecar holds the home waits until the app quits,
+and quitting never signals a service-owned backend. Startup
 recovery and its evidence boundary live in [Recover a desktop
 start](../user/native-recovery.md) and [Native shell
 verification](native-shell-verification.md).
