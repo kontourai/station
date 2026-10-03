@@ -14,7 +14,7 @@
   "sources": [
     {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","digest":"0663ec8460f3271254bdeeba20df7518812da5b49781c0eb07c12a8f4a9d9bd8","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 
-    {"path":"docs/architecture/module-map.md","digest":"eeecc582e329801268ffad402a368f61997afe00c1401a5e70129ddd92436689","revision":"d6a3158c22a62d9530592c6366a1624790ee9401"},
+    {"path":"docs/architecture/module-map.md","digest":"19cd1dda1107382cf0548867f8343cd0933337d64b1f8a6efe2cc273f1af4069","revision":"4fe1570f32d9f2b90ddded8258c0793bbe3c2830"},
 
     {"path":"docs/design/orchestration-decomposition-map.md","digest":"862b155a3e78daace7b97c0fd5d1005d47c892b99328349d6a8b583378f857d6","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
 
@@ -22,9 +22,9 @@
 
     {"path":"docs/guides/deployment.md","digest":"f82f910619b0a538045ae2f363cb87f29380318d2776cc11ba7e416f4acc20c6","revision":"4adb936cab554fead3f5a45d1ff4d00670d59219"},
 
-    {"path":"docs/guides/documentation.md","digest":"9e299a73ec55cd8792f40d976dda64b1af1c8b206a24ebfd638ca0db3ab12633","revision":"cda5879b28558d002561d656b869c4f7b05bc4ca"},
+    {"path":"docs/guides/documentation.md","digest":"03c26a23b91b0e665d65bd89e7a8172d8131afa49624db9312c4602e272ba05f","revision":"68257f50971037b3fd9df5b134bbd599142cd6d8"},
 
-    {"path":"docs/guides/keyboard-shortcuts.md","digest":"f04dd32ce4cbd4ced6d725ffdf30c47d8895739c4c61b1ee7bfe34dc36a5aba4","revision":"2f3085a2920085f2283c41a1b0431a6ded12a480"},
+    {"path":"docs/guides/keyboard-shortcuts.md","digest":"f861855d04df4423c67c69331a5114f27346c0e72b1b040c9c670a36fe2ac540","revision":"89765352964045a079d13a17bee54ab2de7b83e0"},
 
     {"path":"docs/guides/monitoring.md","digest":"b015e5cd44b250ca16a49aaae95721d5529325200b70d1ff32056c515c0fd06c","revision":"a11755821186eaeb034b77e970dfa372c5c7f789"},
 
@@ -34,9 +34,9 @@
 
     {"path":"docs/learn/walkthroughs.md","digest":"5e9132c4454e34d336fbc044491ec7f279926e057fe261654eafaafe05ea3b16","revision":"48fd2c0212f17cc11ba07ed86b52f253c63e3f68"},
 
-    {"path":"docs/reference/cli.md","digest":"b2cdeea42fb4b6baacc5aa6a74692e4d60975f7b30c2ad49e2c4d89990138297","revision":"24d0063f45516c1d6c7cddec670c60ef0185f1f2"},
+    {"path":"docs/reference/cli.md","digest":"62c03f1a50009e0973510034c314c46df560dddf761547e6798d86808eb116fd","revision":"020eb6a14e05313bb66724ec3504e613717e6ed1"},
 
-    {"path":"docs/reference/config.md","digest":"f059032ee97e76fbc37a69981de1c3664602dde9c79f2b706d33014b04388cfa","revision":"d6a3158c22a62d9530592c6366a1624790ee9401"},
+    {"path":"docs/reference/config.md","digest":"75eb18568340e206957366d15dafef202282bcb2d86d1b96c01a2922ffb1ddc6","revision":"45c71d38091f91e917006dacdc7e2a0bb3cd58a4"},
 
     {"path":"docs/reference/metrics.md","digest":"52a966457313c28546da0ca12f53cfab6ec1b754c1eca415a26bfce55576db08","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 
@@ -62,7 +62,7 @@
 
     {"path":"src-server/routes/knowledge/knowledge-index-routes.ts","digest":"ed5a403488328a12aa935b4b5e820bfa1d95639d29e4481295e38dd85bba8c6c","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 
-    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"3976ce75117d6cbfcb2d61733068a738c46de966a3106e5a76190d03b31e63e6","revision":"71c69cadad789baff389812ff52e9efae397c316"},
+    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"755ec9f2a3b4e0523ad5fd4126605f4433a4ac90b0075160d21acb280359c704","revision":"c6ebec77b17b679e630a3857b10a6f814d7fb436"},
 
     {"path":"src-server/runtime/bootstrap/runtime-service-bootstrap.ts","digest":"a78f60fbabf9c50eb01380d1aeee4d90583848b546547a23bcd70760ce026dbd","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 
@@ -74,7 +74,7 @@
 
     {"path":"src-server/services/orchestration/__tests__/session-lifecycle-module.test.ts","digest":"48925af379888c49356fd0902d0b42f0f23ccf785355ca45557feddbbe3f8f90","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 
-    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"14d4d68ff2f8715e1428ca985125a9eff9eb5a05ea52946dc16b4f5971405a34","revision":"bc671142a7ae70587daf5bb0d94732e8ca74600a"},
+    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"4582d45b868ea008447f5405bcedb1adf987b1e3ad7701e39de19fc6a8d8994c","revision":"4711f21b516d04300b15ad4da473e24bf2e7adb2"},
 
     {"path":"src-server/services/orchestration/session-command-module.ts","digest":"a187447cec48eca40e8933bce7600c5e00baebfae55c4ecf2ca4ef5d70626622","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 

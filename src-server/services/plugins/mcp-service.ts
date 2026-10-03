@@ -13,6 +13,7 @@ import {
   MCPLocalConnectionCustody,
   MCPLocalCustodyError,
 } from '@kontourai/station-shared/mcp';
+import { mcpToolDisabled } from '@kontourai/station-shared/mcp-tool-selection';
 import { DEFAULT_SERVER_PORT } from '@kontourai/station-shared/ports';
 import type { Transport } from '@modelcontextprotocol/client';
 import { zodToJsonSchema } from 'zod-to-json-schema';
@@ -1022,10 +1023,9 @@ export class MCPService {
         'connect',
         async (conn) => {
           const def = await this.configLoader.loadIntegration(serverId);
-          const disabled = new Set(def.disabledTools ?? []);
           return conn.tools.filter(
             (tool) =>
-              !disabled.has(tool.originalName) && !disabled.has(tool.name),
+              !mcpToolDisabled(serverId, tool.originalName, def.disabledTools),
           );
         },
       );
@@ -1177,12 +1177,7 @@ export class MCPService {
     toolName: string,
   ): Promise<void> {
     const def = await this.configLoader.loadIntegration(serverId);
-    if (
-      (def.disabledTools ?? []).some(
-        (disabled) =>
-          disabled === toolName || disabled === `${serverId}_${toolName}`,
-      )
-    ) {
+    if (mcpToolDisabled(serverId, toolName, def.disabledTools)) {
       throw new MCPToolDisabledError(
         `MCP tool '${toolName}' is disabled for server '${serverId}'`,
       );

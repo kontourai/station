@@ -30,13 +30,13 @@
 
     {"path":"docs/learn/media/shared-task-document.png","digest":"8b69b76c448a670304f1be06e452e3ef23b4a88f096924f060dde11fbb4ac393","revision":"3059a6573285c28a92a51e39842ccb7ff8474651"},
 
-    {"path":"packages/contracts/src/device-settings.ts","digest":"5f6cf575d9474dd624f3b77272538d70cceb43ee355109dc655851ac0a195bcb","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
+    {"path":"packages/contracts/src/device-settings.ts","digest":"2b9e93111cf57f06a8846948e75767b36325bdf35cb59324b4be3f5dbd4627e4","revision":"89765352964045a079d13a17bee54ab2de7b83e0"},
 
     {"path":"packages/sdk/src/starter-work.ts","digest":"65bca96961b952f47978387676e0ec2d4b9131d38a4be72617b8d0f7983aafda","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
-    {"path":"src-server/providers/adapters/claude-adapter.ts","digest":"1eb6048188a2a5d01b67738ab6b5d22f9fa85d93bd00b3e622423798b965e8fb","revision":"3d33d71792203d38262ac5fd80261d12bd31e1ed"},
+    {"path":"src-server/providers/adapters/claude-adapter.ts","digest":"3b2845b046cad6902a72d173810082511f848cb4819c02e0d42a18e28d3b7d80","revision":"423cbe55b9e35e4cd8954fd441cb9f3c69740d66"},
 
-    {"path":"src-server/providers/adapters/codex-adapter.ts","digest":"7ae5b28549fd32b81f911ec7016072e965183effd00e6b62fb5509c4fa25b57a","revision":"1a235cd9bc482738abe4c3f011f73be86074d667"},
+    {"path":"src-server/providers/adapters/codex-adapter.ts","digest":"3dcbbfc821c7d5a35287ba8e2eb9a13b24cc4e0b4a59841fbb6b16bed846aa20","revision":"423cbe55b9e35e4cd8954fd441cb9f3c69740d66"},
 
     {"path":"src-server/routes/__tests__/starter-work.routes.test.ts","digest":"059f5ea4cb14577a65bbf5ad439f90ceb510e63bdbb2423238ef1fdbb1018552","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
 
@@ -50,7 +50,7 @@
 
     {"path":"src-server/services/orchestration/external-session-continuation-context.ts","digest":"47e2d4410f67d284b580de70aedb5cc6cb631fda2fd879efbcc73246e697c87f","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
 
-    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"14d4d68ff2f8715e1428ca985125a9eff9eb5a05ea52946dc16b4f5971405a34","revision":"bc671142a7ae70587daf5bb0d94732e8ca74600a"},
+    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"4582d45b868ea008447f5405bcedb1adf987b1e3ad7701e39de19fc6a8d8994c","revision":"4711f21b516d04300b15ad4da473e24bf2e7adb2"},
 
     {"path":"src-server/services/orchestration/project-task-room-runtime.ts","digest":"feb48a41131f04260c92e3a7757eda5aa61799a7015b3386a931d950250e3d58","revision":"9f8b407fac4a9e5536d72ca49be3a0b77715e1d8"},
 

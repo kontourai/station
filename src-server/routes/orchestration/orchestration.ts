@@ -361,6 +361,14 @@ const interruptTurnCommandSchema = z.object({
   clientTurnId: z.string().min(1).max(128).optional(),
 });
 
+const inspectSteerInputCommandSchema = z.object({
+  type: z.literal('inspectSteerInput'),
+  threadId: z.string().min(1).max(512),
+  input: z.string().trim().min(1).max(CHAT_INPUT_MAX_CHARS),
+  turnId: z.string().min(1).max(512).optional(),
+  clientInputId: z.string().min(1).max(128),
+});
+
 const steerTurnCommandSchema = z.object({
   type: z.literal('steerTurn'),
   threadId: z.string().min(1),
@@ -371,6 +379,14 @@ const steerTurnCommandSchema = z.object({
   // generic zod message, exactly the divergence archive#2807 unified away.
   input: z.string().trim().min(1).max(CHAT_INPUT_MAX_CHARS),
   turnId: z.string().optional(),
+  clientInputId: z.string().min(1).max(128).optional(),
+});
+
+const steerTurnOnceCommandSchema = steerTurnCommandSchema.extend({
+  type: z.literal('steerTurnOnce'),
+  threadId: z.string().min(1).max(512),
+  turnId: z.string().min(1).max(512).optional(),
+  clientInputId: z.string().min(1).max(128),
 });
 
 const respondToRequestCommandSchema = z.object({
@@ -445,6 +461,8 @@ export const orchestrationCommandSchema = z.discriminatedUnion('type', [
   adoptSessionCommandSchema,
   interruptTurnCommandSchema,
   steerTurnCommandSchema,
+  steerTurnOnceCommandSchema,
+  inspectSteerInputCommandSchema,
   respondToRequestCommandSchema,
   stopSessionCommandSchema,
   setApprovalModeCommandSchema,
@@ -4244,7 +4262,13 @@ export function createOrchestrationRoutes(
       maxBodyBytes: CHAT_ATTACHMENT_MAX_COMMAND_JSON_BYTES,
     }),
     async (c) => {
-      const command = getBody(c);
+      const wireCommand = getBody(c);
+      // New clients require receipt semantics through a distinct wire type;
+      // older servers reject it instead of silently dropping clientInputId.
+      const command =
+        wireCommand.type === 'steerTurnOnce'
+          ? { ...wireCommand, type: 'steerTurn' as const }
+          : wireCommand;
       // #2436: full access needs the operator in person or a granted device.
       // #2377 slice C1: a Default that would run the engine at `never`
       // unconfined needs the grant too.

@@ -9,12 +9,12 @@
 
   "limits": "Local tests cover development boundary, registry/permission decisions, MCP, server modules and durable-event fixtures. No fresh full installed-provider/native journey, live enterprise integration, remote npm availability or performance benchmark. Build dependency preparation may fail or time out; an attempted dev install is not readiness. Source review is complete for published guide claims, not every private security path.",
 
-  "document": {"digest":"8db6998152ba6de1241cc9e55f46bd4643b39932ddd3a8287da8b0afacb181fa","revision":"12e161f7032b17c2f97702c0c41116b0c82bbb91"},
+  "document": {"digest":"96f3de592ce3acd5b8b6c9dba1c8a971dda9da61425349ca8e8733824327755e","revision":"f249300b2162c4ef35f8978e4cf9ded407027304"},
 
   "sources": [
     {"path":"config/plugin-scaffold-dependencies.json","digest":"e74f1f4028077bdd56e52057f43561d4cc4e790c42d8f600e04d1a1115f6da74","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"examples/registry/default.json","digest":"cfad94ca0675644a0a8dd45ba204ea43c8813bb40c5ca3b4e4fa54956c2f4545","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"examples/registry/default.json","digest":"ef03a6a928d57756719fa0ef4086397b87042e6aa9d825ce7a9f0f9b003162d1","revision":"f249300b2162c4ef35f8978e4cf9ded407027304"},
 
     {"path":"packages/cli/src/commands/build.ts","digest":"fe59b0aec5413bc16de44073be4669a2345d1a2c3ab0519f50b4dea615ce5b55","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -48,11 +48,11 @@
 
     {"path":"src-server/providers/registries/json-manifest-registry.ts","digest":"74f114c17b97532029176c2c2d6cf9279f9620193297f2ba7a74dae62a262c80","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/routes/agents/tools.ts","digest":"a80801f4a31e7761be350924011935a8b0a613847f5648de7308b828331d359e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/routes/agents/tools.ts","digest":"e816aa362002e9b79be62094d7e7837e81f85cbeb065a0c8386a1f21f1570c27","revision":"8d715b7bee77e593e64a1e0b2af99956571c9795"},
 
     {"path":"src-server/routes/plugins/plugin-public-routes.ts","digest":"5d088d683e1fc60155100743cf2fb67a6df25ded4914307ba54883d1097f157e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"92d31dd655d7c0a62ce68dc6fd804268cda2f357bb775a512ee974d7c09564db","revision":"1a235cd9bc482738abe4c3f011f73be86074d667"},
+    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"b13d44008f39b08b3d32e459abc3081c8ac8936f53e5a7bdb93d4dcbdc2043f1","revision":"423cbe55b9e35e4cd8954fd441cb9f3c69740d66"},
 
     {"path":"src-server/runtime/mcp/mcp-apps-metadata.ts","digest":"67a048ee54d656d731f4cb3c3a4c3ac92e86472b453ebe5e04e782d0b48b2ae5","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -64,7 +64,7 @@
 
     {"path":"src-server/services/operational-events/operational-event-subscriptions.ts","digest":"e535fc6100ad5d56430e59e2a13598f96edc6329bf8adbddf63d34f36d4e21a5","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/plugins/mcp-service.ts","digest":"ae0db4eaae63bb43fdacf188eb5aacccd7377e656809b0005623516e2f1249aa","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
+    {"path":"src-server/services/plugins/mcp-service.ts","digest":"297cdbe10e5c1efb7f611dd7f55ecca99047d05ba631f863b92c45c6a5e5df0e","revision":"aadb5aa183a58e97344d13b8c5f34f92a7d78a94"},
 
     {"path":"src-server/services/plugins/mcp-ui-permissions.ts","digest":"e6d70163c93fc6022e028276043c7f2a718b95265b80b1a21eab5b64c908acb6","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
