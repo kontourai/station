@@ -23,6 +23,7 @@ import { load } from 'js-yaml';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import { EventStore } from '../../src-server/services/orchestration/event-store.js';
+import { stageBundledRegistry } from '../lib/bundled-registry.mjs';
 import { withDesktopRuntimeListenerLease } from '../lib/desktop-runtime-port-lease.mjs';
 import {
   DESKTOP_SERVER_RUNTIME_BUDGET,
@@ -1434,4 +1435,111 @@ describe('server build package portability', () => {
       ]);
     }
   }, 210_000);
+});
+
+describe('bundled registry distribution', () => {
+  function sourceFixture() {
+    const root = makeTempDir('station-bundled-registry-');
+    mkdirSync(join(root, 'examples/registry/integrations/tool'), {
+      recursive: true,
+    });
+    mkdirSync(join(root, 'examples/rounds/skills/rounds'), { recursive: true });
+    writeFileSync(
+      join(root, 'examples/registry/default.json'),
+      JSON.stringify({
+        version: 1,
+        plugins: [{ id: 'rounds', source: '../rounds' }],
+        tools: [{ id: 'tool', source: './integrations/tool' }],
+      }),
+    );
+    writeFileSync(
+      join(root, 'examples/rounds/plugin.json'),
+      '{"name":"rounds","version":"1.0.0"}',
+    );
+    writeFileSync(
+      join(root, 'examples/rounds/skills/rounds/SKILL.md'),
+      'Review the plan.',
+    );
+    writeFileSync(
+      join(root, 'examples/registry/integrations/tool/mcp.json'),
+      '{"command":"review"}',
+    );
+    for (const args of [
+      ['init', '-q'],
+      ['add', 'examples'],
+    ])
+      execFileSync('git', args, {
+        cwd: root,
+        windowsHide: true,
+        stdio: 'ignore',
+      });
+    return root;
+  }
+
+  it('stages the tracked default catalog, plugins and integration bytes without build-host extras', () => {
+    const root = sourceFixture();
+    writeFileSync(
+      join(root, 'examples/rounds/private-untracked.txt'),
+      'must not ship',
+    );
+    const outputRoot = join(root, 'staged');
+    stageBundledRegistry({ projectRoot: root, outputRoot });
+    expect(
+      readFileSync(
+        join(outputRoot, 'examples/rounds/skills/rounds/SKILL.md'),
+        'utf8',
+      ),
+    ).toBe('Review the plan.');
+    expect(
+      readFileSync(
+        join(outputRoot, 'examples/registry/integrations/tool/mcp.json'),
+        'utf8',
+      ),
+    ).toBe('{"command":"review"}');
+    expect(
+      JSON.parse(
+        readFileSync(
+          join(outputRoot, 'examples/registry/default.json'),
+          'utf8',
+        ),
+      ).plugins[0].source,
+    ).toBe('../rounds');
+    expect(
+      existsSync(join(outputRoot, 'examples/rounds/private-untracked.txt')),
+    ).toBe(false);
+  });
+
+  it('refuses a declared local package with no tracked bytes', () => {
+    const root = sourceFixture();
+    writeFileSync(
+      join(root, 'examples/registry/default.json'),
+      JSON.stringify({
+        version: 1,
+        plugins: [{ id: 'missing', source: '../missing' }],
+      }),
+    );
+    expect(() =>
+      stageBundledRegistry({
+        projectRoot: root,
+        outputRoot: join(root, 'staged'),
+      }),
+    ).toThrow('no tracked files: examples/missing');
+  });
+
+  it('refuses a catalog target outside the distributable examples tree', () => {
+    const root = sourceFixture();
+    writeFileSync(
+      join(root, 'examples/registry/default.json'),
+      JSON.stringify({
+        version: 1,
+        plugins: [{ id: 'escape', source: '../../private' }],
+      }),
+    );
+    expect(() =>
+      stageBundledRegistry({
+        projectRoot: root,
+        outputRoot: join(root, 'staged'),
+      }),
+    ).toThrow('source escapes examples');
+  });
 });

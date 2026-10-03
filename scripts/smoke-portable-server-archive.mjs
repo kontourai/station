@@ -487,6 +487,25 @@ async function bootAndProbe({ launcher, nextLauncher, env, home, release }) {
       authorization,
     );
     log(`/api/system/status 200 (${Object.keys(status).length} fields)`);
+    const catalog = await getJson(
+      `http://127.0.0.1:${serverPort}/api/registry/plugins`,
+      authorization,
+    );
+    const curated = catalog.data?.find(
+      (entry) => entry.catalog?.itemId === 'matt-pocock-engineering',
+    );
+    if (curated?.catalogSourceName !== 'Station')
+      fail(
+        'Fresh archive did not expose its bundled Station engineering collection',
+      );
+    const source = realpathSync(curated.source);
+    if (!source.startsWith(`${realpathSync(root)}${sep}`))
+      fail('Bundled catalog resolved a build-host path outside this archive');
+    if (!existsSync(join(source, 'plugin.json')))
+      fail('Bundled engineering collection has no portable plugin manifest');
+    log(
+      'Fresh archive exposes its source-bound Station engineering collection',
+    );
     const identity = await getJson(
       `http://127.0.0.1:${serverPort}/api/system/instance`,
       authorization,
