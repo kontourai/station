@@ -1,4 +1,7 @@
-import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import {
+  type CanonicalRuntimeEvent,
+  isDeferredRetriableTurnError,
+} from '@kontourai/station-contracts/runtime-events';
 import type { TurnProvenanceEnvelope } from '@kontourai/station-contracts/turn-provenance';
 import type {
   ConversationMessage,
@@ -973,6 +976,7 @@ export function projectRuntimeEventsToMessages(
         break;
       }
       case 'runtime.error': {
+        if (isDeferredRetriableTurnError(ev)) break;
         turnSessionId ??= ev.threadId;
         // Surface errors inline rather than letting a failed turn render blank.
         turnOpen = true;

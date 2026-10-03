@@ -4523,6 +4523,61 @@ describe('CodexAdapter', () => {
     ).rejects.toThrow('This Codex approval request is not open.');
   });
 
+  test('replacement MCP selection disables inherited servers on the thread without writing harness configuration', async () => {
+    processHandle = new FakeCodexProcess();
+    const adapter = new CodexAdapter({ processFactory: () => processHandle! });
+    const started = adapter.startSession({
+      provider: 'codex',
+      threadId: 'replace-tools',
+      cwd: '/tmp/project',
+      agent: {
+        slug: 'helper',
+        toolServerMode: 'replace',
+        toolServers: [
+          {
+            id: 'chosen',
+            transport: 'stdio',
+            command: process.execPath,
+          },
+        ],
+      },
+    });
+    await flushIo();
+    writeServerMessage(adapter, 'replace-tools', {
+      id: '1',
+      result: { userAgent: 'test' },
+    });
+    await flushIo();
+    expect(
+      processHandle.stdin.lines
+        .map(parseLine)
+        .find((line) => line.method === 'config/read')?.params,
+    ).toEqual({ cwd: '/tmp/project', includeLayers: false });
+    writeServerMessage(adapter, 'replace-tools', {
+      id: '2',
+      result: { config: { mcp_servers: { inherited: {}, chosen: {} } } },
+    });
+    await flushIo();
+    const request = processHandle.stdin.lines
+      .map(parseLine)
+      .find((line) => line.method === 'thread/start');
+    expect(request.params.config).toEqual({
+      'mcp_servers.inherited.enabled': false,
+      'mcp_servers.chosen.enabled': true,
+      'mcp_servers.chosen.disabled_tools': [],
+    });
+    writeServerMessage(adapter, 'replace-tools', {
+      id: '3',
+      result: { thread: { id: 'native-replace-tools' } },
+    });
+    await withTimeout(started, 'replace-tools');
+    expect(
+      processHandle.stdin.lines
+        .map(parseLine)
+        .some((line) => /write/i.test(line.method)),
+    ).toBe(false);
+  });
+
   test('maps a session-level approvalMode to Codex approvalPolicy/sandbox on thread/start, and re-resolves it fresh on each turn/start (#727)', async () => {
     processHandle = new FakeCodexProcess();
     const adapter = new CodexAdapter({

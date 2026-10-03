@@ -36,6 +36,49 @@ const openTurn = {
 };
 
 describe('deriveChatStatus — one status, by priority', () => {
+  test('the live pill names a reported retry and includes only reported counters', () => {
+    const reported = deriveChatStatus({
+      ...base,
+      turnLive: true,
+      activity: openTurn,
+      activityHint: {
+        kind: 'retrying',
+        attempt: 2,
+        delayMs: 1500,
+        detail: 'Rate limited',
+      },
+    });
+    expect(reported?.label).toBe('Retrying');
+    expect(reported?.details).toContainEqual({
+      text: 'Retrying · attempt 2 · delay 1.5s · Rate limited',
+    });
+    const noCounters = deriveChatStatus({
+      ...base,
+      turnLive: true,
+      activity: openTurn,
+      activityHint: { kind: 'retrying' },
+    });
+    expect(noCounters?.details).toContainEqual({ text: 'Retrying' });
+    const waiting = deriveChatStatus({
+      ...base,
+      turnLive: true,
+      activity: {
+        ...openTurn,
+        progressSilence: {
+          detectedAt: '2026-09-29T00:03:00Z',
+          silentSinceEventAt: '2026-09-29T00:00:00Z',
+          windowMs: 180000,
+          provider: 'acp',
+        },
+      },
+    });
+    expect(waiting?.label).toBe('Still waiting');
+    expect(waiting?.details).toContainEqual({
+      text: 'No response from the engine for',
+      since: Date.parse('2026-09-29T00:00:00Z'),
+    });
+  });
+
   test('approval outranks the connection, which outranks the turn', () => {
     const reconnecting = {
       label: 'Reconnecting live updates…',

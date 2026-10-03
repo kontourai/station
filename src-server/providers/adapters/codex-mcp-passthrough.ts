@@ -119,6 +119,18 @@ export function resolveCodexMcpServers(
 
     const toolDef = toPassthroughToolDef(server);
     const keyPrefix = `mcp_servers.${server.id}`;
+    const selectionArgs =
+      server.allowedTools === undefined
+        ? []
+        : [
+            '-c',
+            `${keyPrefix}.enabled_tools=${tomlStringArray(server.allowedTools)}`,
+          ];
+    if (server.disabledTools?.length)
+      selectionArgs.push(
+        '-c',
+        `${keyPrefix}.disabled_tools=${tomlStringArray(server.disabledTools)}`,
+      );
 
     if (isBuiltinStationControl(server.id, toolDef)) {
       if (!stationControlMcpUrl) {
@@ -133,6 +145,7 @@ export function resolveCodexMcpServers(
         '-c',
         `${keyPrefix}.url=${tomlString(stationControlMcpUrl)}`,
       );
+      configArgs.push(...selectionArgs);
       deliveredIds.push(server.id);
       continue;
     }
@@ -152,6 +165,7 @@ export function resolveCodexMcpServers(
           `${keyPrefix}.args=${tomlStringArray(toolDef.args)}`,
         );
       }
+      configArgs.push(...selectionArgs);
       deliveredIds.push(server.id);
       continue;
     }
@@ -169,6 +183,7 @@ export function resolveCodexMcpServers(
         continue;
       }
       configArgs.push('-c', `${keyPrefix}.url=${tomlString(toolDef.endpoint)}`);
+      configArgs.push(...selectionArgs);
       deliveredIds.push(server.id);
       continue;
     }
