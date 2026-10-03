@@ -161,7 +161,7 @@ export function ChatDockProjectSwitcherSheet({
       {projects.length === 0 ? (
         <Empty
           variant="compact"
-          label="No projects yet"
+          label="Nothing here yet"
           description="Use + to create your first project."
         />
       ) : (

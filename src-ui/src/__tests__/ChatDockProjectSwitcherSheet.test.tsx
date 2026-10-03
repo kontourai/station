@@ -173,7 +173,7 @@ describe('ChatDockProjectSwitcherSheet', () => {
         }),
       });
       if (projects.length === 0) {
-        expect(screen.getByText('No projects yet')).toBeTruthy();
+        expect(screen.getByText('Nothing here yet')).toBeTruthy();
         expect(
           screen.getByText('Use + to create your first project.'),
         ).toBeTruthy();
