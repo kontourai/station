@@ -320,6 +320,10 @@ setting `registryUrl`:
 }
 ```
 
+Managing connected sources requires the Station operator and an
+`access:manage` credential. Standard paired clients can browse ordinary
+catalog items without gaining host source-management authority.
+
 The Registry's Add marketplace flow connects additional public GitHub Skill
 libraries, local Skill directories and local/HTTPS Station manifests without
 changing `registryUrl`. Sources persist separately, can be refreshed or disabled,
