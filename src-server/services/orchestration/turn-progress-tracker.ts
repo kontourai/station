@@ -2,6 +2,7 @@ import type { AgentExecutionConfig } from '@kontourai/station-contracts/agent';
 import type { TurnProgressObservation } from '@kontourai/station-contracts/orchestration';
 import type { EngineId } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import { isDeferredRetriableTurnError } from '@kontourai/station-contracts/runtime-events';
 import { resolveTurnStallWindowMs } from '@kontourai/station-contracts/turn-stall-window';
 import { orchestrationTurnStallDetections } from '../../telemetry/metrics.js';
 import { TurnStallWatchdog } from './turn-stall-watchdog.js';
@@ -80,6 +81,11 @@ export class TurnProgressTracker {
         // may still be silently stuck).
         retriable:
           event.method === 'runtime.error' ? event.retriable : undefined,
+        reportedActivity:
+          isDeferredRetriableTurnError(event) ||
+          (event.method === 'extension.notification' &&
+            event.namespace === 'claude-code' &&
+            event.type === 'api/retry'),
         isStateTransition: Boolean(
           event.previousState &&
             event.sessionState &&

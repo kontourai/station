@@ -20,6 +20,11 @@ vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
 }));
 
 vi.mock('@kontourai/station-sdk', () => ({
+  useReconnectIntegrationMutation: () => ({
+    mutate: vi.fn(),
+    isPending: false,
+    isError: false,
+  }),
   useEngineConnectionsQuery: () => ({ data: agentConnections }),
   useModelConnectionsQuery: () => ({ data: modelConnections }),
   useProjectsQuery: () => ({ data: [] }),
