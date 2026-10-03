@@ -82,6 +82,9 @@ export function RegistryCatalogDetail({
           <code className="registry-catalog__source">{item.source}</code>
         </div>
       )}
+      {item.catalogFreshness === 'stale' && (
+        <p role="status">Offline marketplace · last successful catalog</p>
+      )}
       {item.version && <div className="page__subtitle">v{item.version}</div>}
       {item.catalog && (
         <div className="page__subtitle">

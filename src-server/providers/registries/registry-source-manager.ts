@@ -53,6 +53,7 @@ const registryItemSchema = z.object({
   tags: z.array(z.string().max(100)).max(32).optional(),
   catalog: selectionSchema.optional(),
   catalogSourceName: z.string().max(100).optional(),
+  catalogFreshness: z.enum(['live', 'stale']).optional(),
   packageRevision: z.string().max(200).optional(),
 });
 const snapshotSchema = z.object({
@@ -465,6 +466,7 @@ export class RegistrySourceManager {
           id: registryCatalogId(catalog),
           catalog,
           catalogSourceName: entry.source.displayName,
+          catalogFreshness: 'live' as const,
         };
       }),
       revision,
@@ -544,7 +546,12 @@ export class RegistrySourceManager {
               error:
                 'Marketplace unavailable. Refresh the source or check its location and prerequisites.',
             });
-            return cached?.data ?? [];
+            return (
+              cached?.data.map((item) => ({
+                ...item,
+                catalogFreshness: 'stale' as const,
+              })) ?? []
+            );
           }
         }),
     );

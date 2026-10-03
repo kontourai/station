@@ -2,6 +2,7 @@ import { useConnections } from '@kontourai/station-connect';
 import {
   type RegistryCatalogTab,
   useInstalledRegistryItemsQuery,
+  useInvalidateQuery,
   usePluginRegistryInstallMutation,
   usePluginRegistryPreviewMutation,
   useRegistryAgentActionMutation,
@@ -62,6 +63,7 @@ export function RegistryView({
   const showSurface = useShowSurface();
   const { isTauri } = usePlatformProfile();
   const { apiBase } = useApiBase();
+  const invalidateQuery = useInvalidateQuery();
   const { activeConnection } = useConnections();
   const activeConnectionId = activeConnection?.id ?? 'default';
   const [activeTab, setActiveTab] = useState<RegistryCatalogTab>(
@@ -122,6 +124,7 @@ export function RegistryView({
     data: availableData,
     error: availableError,
     isLoading: loadingAvailable,
+    dataUpdatedAt: availableUpdatedAt,
   } = useRegistryItemsQuery<RegistryItem>(
     activeTab === 'kits' ? 'agents' : activeTab,
     { enabled: activeTab !== 'kits' },
@@ -135,6 +138,10 @@ export function RegistryView({
     activeTab === 'kits' ? 'agents' : activeTab,
     { enabled: activeTab !== 'kits' },
   );
+  useEffect(() => {
+    if (availableData || availableError)
+      void invalidateQuery(['registry', 'sources']);
+  }, [availableData, availableError, availableUpdatedAt, invalidateQuery]);
   const available = availableData ?? [];
   const installed = installedData ?? [];
   const agentMutation = useRegistryAgentActionMutation();

@@ -4,6 +4,7 @@ export interface RegistryItem {
   id: string;
   catalog?: import('@kontourai/station-contracts/catalog').RegistryCatalogSelection;
   catalogSourceName?: string;
+  catalogFreshness?: 'live' | 'stale';
   displayName?: string;
   description?: string;
   installed?: boolean;
@@ -106,6 +107,8 @@ export function getRegistrySkillInstallRefusal(
   tab: RegistryCatalogTab,
   item: RegistryItem,
 ): string | null {
+  if (item.catalogFreshness === 'stale')
+    return 'This marketplace is offline. Refresh its source and inspect the item again before installing.';
   if (tab !== 'skills') return null;
   if (item.status === 'installed-name-conflict')
     return 'A skill with this name is already in your Library from another source. Manage that copy before adding this one.';

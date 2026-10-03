@@ -252,6 +252,7 @@ vi.mock('@kontourai/station-sdk', () => ({
     },
   }),
   useReloadPluginsMutation: () => ({ mutateAsync: reloadPlugins }),
+  useInvalidateQuery: () => vi.fn(),
   useRegistrySourcesQuery: () => ({
     data: [],
     isLoading: false,

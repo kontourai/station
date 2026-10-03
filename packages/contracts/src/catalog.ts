@@ -115,6 +115,7 @@ export interface RegistryItem {
   id: string;
   catalog?: RegistryCatalogSelection;
   catalogSourceName?: string;
+  catalogFreshness?: 'live' | 'stale';
   packageRevision?: string;
   displayName?: string;
   description?: string;
