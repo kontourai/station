@@ -12,6 +12,14 @@
   "document": {"digest":"b9e00aaca6fcf32699879221c708492f8bc18660c9741fba51ebe9ff03be18b2","revision":"6a847d3c029f4f3e5c1dbe82f2459194573d43e9"},
 
   "sources": [
+    {"path":"packages/shared/package.json#/engines","digest":"6c12acb1990a85e4fe6986ad29ad44b644eca474a81f946d053aabd14ba62059","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
+
+    {"path":"packages/shared/package.json#/exports","digest":"6161c789a56e833fd356eb62224bc93cfa55546faade3eed921efcc152d6e79c","revision":"8924149a7e6ef1356fc078c9a387c6a60ada429a"},
+
+    {"path":"packages/shared/package.json#/files","digest":"43219f75df025fd68c4b3a47b045f822115a0cb02eb1a21f6f0003b466db6b24","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
+
+    {"path":"packages/shared/package.json#/name","digest":"eb6db31391235bff717fc0a3d661bc46ba6062af9105e84d03a53af12010b98b","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
+
     {"path":"packages/shared/src/build.ts","digest":"20f919a4a98519ce20e8e2f0d5d498a4be8daeba1314a97ddae752fd36df4630","revision":"1e6450e0caa47975d33f505a1348bdc01ae1382e"},
 
     {"path":"packages/shared/src/index.ts","digest":"61ae87e4180d5ee0fd0176ef8cf4b2279efcb998e9b1c4f241cf1e70681daca8","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
@@ -22,17 +30,9 @@
 
     {"path":"packages/shared/src/plugin-tree-digest.ts","digest":"04812da769074e8021b798e569e1f474b5ab86f26ab7556548426e1f6de91f7d","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"packages/shared/package.json#/name","digest":"eb6db31391235bff717fc0a3d661bc46ba6062af9105e84d03a53af12010b98b","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
+    {"path":"packages/shared/src/skill-experience-reader.ts","digest":"94bf4043af0cbb2bbf589b4e13b334fb0066bbb32536bc8eed48d2e0504c66bb","revision":"6a847d3c029f4f3e5c1dbe82f2459194573d43e9"},
 
-    {"path":"packages/shared/package.json#/exports","digest":"6161c789a56e833fd356eb62224bc93cfa55546faade3eed921efcc152d6e79c","revision":"8924149a7e6ef1356fc078c9a387c6a60ada429a"},
-
-    {"path":"packages/shared/package.json#/files","digest":"43219f75df025fd68c4b3a47b045f822115a0cb02eb1a21f6f0003b466db6b24","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
-
-    {"path":"packages/shared/package.json#/engines","digest":"6c12acb1990a85e4fe6986ad29ad44b644eca474a81f946d053aabd14ba62059","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
-
-    {"path":"packages/shared/src/skill-experience-values.ts","digest":"275b6320c8c8108a303ab7bbfbc5f9555ee5069d3197d89e7aa15eb173ed66c9","revision":"6a847d3c029f4f3e5c1dbe82f2459194573d43e9"},
-
-    {"path":"packages/shared/src/skill-experience-reader.ts","digest":"94bf4043af0cbb2bbf589b4e13b334fb0066bbb32536bc8eed48d2e0504c66bb","revision":"6a847d3c029f4f3e5c1dbe82f2459194573d43e9"}
+    {"path":"packages/shared/src/skill-experience-values.ts","digest":"275b6320c8c8108a303ab7bbfbc5f9555ee5069d3197d89e7aa15eb173ed66c9","revision":"6a847d3c029f4f3e5c1dbe82f2459194573d43e9"}
   ],
 
   "checks": [
