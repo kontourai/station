@@ -112,6 +112,16 @@ export function SkillExperiencePanel({ session }: { session: ChatSession }) {
           explicitly before sending an ordinary chat.
         </p>
       )}
+      {!draft &&
+        invocation &&
+        invocation.availability.status !== 'available' && (
+          <p role="alert">
+            {invocation.availability.message ??
+              (invocation.snapshot === null
+                ? 'The recorded stage snapshot is unavailable. Its canonical conversation remains below.'
+                : 'This source is unavailable. The recorded snapshot is retained.')}
+          </p>
+        )}
       {definition && mode !== 'chat' && (
         <>
           <p>{definition.purpose}</p>
@@ -142,15 +152,8 @@ export function SkillExperiencePanel({ session }: { session: ChatSession }) {
             </>
           ) : (
             <>
-              {view.error ? (
+              {view.error && (
                 <p role="alert">The recorded skill could not be loaded.</p>
-              ) : (
-                invocation?.availability.status !== 'available' && (
-                  <p role="alert">
-                    {invocation?.availability.message ??
-                      'This source is unavailable. The recorded snapshot is retained.'}
-                  </p>
-                )
               )}
               <details>
                 <summary>Inputs used for this stage</summary>

@@ -96,7 +96,8 @@ export function SkillExperienceForm({
             <details>
               <summary>Why this input?</summary>
               <p>
-                {input.provenance.origin}: {input.provenance.explanation}
+                Author attribution: {input.provenance.origin}.{' '}
+                {input.provenance.explanation}
               </p>
             </details>
             {error && (

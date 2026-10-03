@@ -19,6 +19,7 @@ import {
 import type { PaneSkillExperienceHost } from '@kontourai/station-contracts/workspace-pane-host-contract';
 import { act, cleanup, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import type { ChatUIState } from '../contexts/active-chats-state';
 import { activeChatsStore } from '../contexts/active-chats-store';
 import type { ChatSession } from '../types';
 import type { ResolvedWorkspacePaneCatalogEntry } from '../workspace-panes/resolvedWorkspacePaneCatalog';
@@ -27,6 +28,7 @@ const probe = vi.hoisted(() => ({
   host: undefined as PaneSkillExperienceHost | undefined,
   entries: [] as ResolvedWorkspacePaneCatalogEntry[],
   current: true,
+  sessionView: undefined as SkillExperienceSessionViewV1 | undefined,
 }));
 const transport = vi.hoisted(() => ({
   read: vi.fn(),
@@ -53,9 +55,26 @@ vi.mock('../contexts/ActiveChatsContext', () => ({
   useActiveChatActions: () => ({
     updateChat: activeChatsStore.updateChat.bind(activeChatsStore),
   }),
+  useActiveChatSelector: <T,>(
+    id: string,
+    selector: (state: ChatUIState | undefined) => T,
+  ) => selector(activeChatsStore.getSnapshot()[id]),
 }));
 vi.mock('@kontourai/station-sdk', () => ({
   useInvalidateQuery: () => transport.invalidate,
+  useSkillExperienceSessionQuery: () => ({
+    data: probe.sessionView,
+    isPending: false,
+    isFetching: false,
+    error: null,
+    refetch: vi.fn(),
+  }),
+  useSkillExperienceInventoryQuery: () => ({
+    data: { executionContract: '1.0', experiences: [], diagnostics: [] },
+    isFetching: false,
+    error: null,
+    refetch: vi.fn(),
+  }),
 }));
 vi.mock('@kontourai/station-sdk/client', () => ({
   fetchSkillExperienceSession: transport.read,
@@ -86,6 +105,7 @@ vi.mock('../core/PluginRegistry', () => ({
 }));
 
 import { RichExperiencePane } from '../components/skill-experiences/RichExperiencePane';
+import { SkillExperiencePanel } from '../components/skill-experiences/SkillExperiencePanel';
 
 const definition: SkillExperienceDefinitionV1 = JSON.parse(
   readFileSync(
@@ -230,6 +250,13 @@ function catalogEntry(): ResolvedWorkspacePaneCatalogEntry {
       state: 'available',
       reason: { code: 'ready', source: 'renderer' },
     },
+    selectedRenderer: {
+      source: 'primary',
+      rendererId: toWorkspacePaneRendererId('example:panel'),
+      renderer: { kind: 'plugin-component', name: 'example-panel' },
+      contributorProvenance: { origin: 'plugin', pluginId: 'example' },
+      requiredCapabilities: ['sandboxed-plugin-frame'],
+    },
     clientRendererPresence: 'present',
   };
 }
@@ -244,6 +271,7 @@ beforeEach(() => {
   probe.current = true;
   probe.host = undefined;
   probe.entries = [catalogEntry()];
+  probe.sessionView = view;
   transport.read.mockResolvedValue(view);
   transport.inventory.mockResolvedValue({
     executionContract: '1.0',
@@ -462,5 +490,58 @@ describe('rich view bound to the canonical conversation', () => {
     );
     expect(screen.getByRole('alert').textContent).toMatch(/unavailable/);
     expect(probe.host).toBeUndefined();
+  });
+});
+
+describe('recorded visual skill availability', () => {
+  test('makes an unavailable historical snapshot explicit', () => {
+    probe.sessionView = {
+      ...view,
+      current: {
+        ...invocation,
+        snapshot: null,
+        availability: {
+          status: 'snapshot-unavailable',
+          message: 'The immutable snapshot cannot be read.',
+        },
+      },
+    };
+    render(
+      <SkillExperiencePanel
+        session={{ ...session, skillExperienceActive: true }}
+      />,
+    );
+    expect(screen.getByRole('alert').textContent).toBe(
+      'The immutable snapshot cannot be read.',
+    );
+    expect(
+      screen.queryByRole('button', {
+        name: 'Prepare another stage in this conversation',
+      }),
+    ).toBeNull();
+  });
+  test('keeps source-withdrawal visible in compact chat presentation', () => {
+    probe.sessionView = {
+      ...view,
+      current: {
+        ...invocation,
+        availability: {
+          status: 'source-unavailable',
+          message: 'The installed source was withdrawn.',
+        },
+      },
+    };
+    render(
+      <SkillExperiencePanel
+        session={{
+          ...session,
+          skillExperienceActive: true,
+          skillExperienceMode: 'chat',
+        }}
+      />,
+    );
+    expect(screen.getByRole('alert').textContent).toBe(
+      'The installed source was withdrawn.',
+    );
   });
 });

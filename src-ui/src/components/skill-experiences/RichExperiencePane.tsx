@@ -60,6 +60,11 @@ export function RichExperiencePane({
   const sameOwner = Boolean(
     snapshot &&
       entry?.availability.state === 'available' &&
+      entry.selectedRenderer?.source === 'primary' &&
+      entry.selectedRenderer.renderer.kind === 'plugin-component' &&
+      entry.selectedRenderer.rendererId === entry.descriptor.rendererId &&
+      renderer?.kind === 'plugin-component' &&
+      entry.selectedRenderer.renderer.name === renderer.name &&
       contribution &&
       contribution.version === snapshot.identity.pluginVersion &&
       contribution.sourceIdentity.id === snapshot.identity.pluginId &&

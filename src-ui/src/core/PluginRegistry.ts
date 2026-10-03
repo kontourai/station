@@ -886,7 +886,7 @@ export class PluginRegistry {
 
   /**
    * Returns a React component only when its active registry record is owned by
-   * the exact local contribution bound to the pane occurrence. Component names
+   * the exact contribution bound to the pane occurrence. Component names
    * are intentionally insufficient authority: another contribution may use
    * the same name, or a newer registry generation may have replaced it.
    */
