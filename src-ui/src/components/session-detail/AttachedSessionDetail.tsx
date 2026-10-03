@@ -423,7 +423,7 @@ export function AttachedSessionDetail({
         }}
       >
         {!atLatest && (
-          <div className="session-transcript__toolbar">
+          <div className="session-transcript__toolbar responsive-surface-actions">
             <Button variant="secondary" onClick={jumpToLatest}>
               Jump to latest
             </Button>
@@ -494,17 +494,19 @@ export function AttachedSessionDetail({
         )}
 
         {presentation === 'chat' && onLoadOlder && (
-          <Button
-            onClick={() => {
-              pauseFollowing();
-              void onLoadOlder().then(() => {
-                if (transcriptScrollRef.current)
-                  transcriptScrollRef.current.scrollTop = 0;
-              });
-            }}
-          >
-            Show older messages
-          </Button>
+          <div className="session-history-controls responsive-surface-actions">
+            <Button
+              onClick={() => {
+                pauseFollowing();
+                void onLoadOlder().then(() => {
+                  if (transcriptScrollRef.current)
+                    transcriptScrollRef.current.scrollTop = 0;
+                });
+              }}
+            >
+              Show older messages
+            </Button>
+          </div>
         )}
         <div
           className="sessions-detail__transcript"

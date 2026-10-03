@@ -1,19 +1,19 @@
-import { lazy, Suspense, useState } from 'react';
+import { useState } from 'react';
 import {
   APP_DESTINATION_REGISTRY,
   type DestinationDefinition,
 } from '../../app-shell/destination-registry';
 import { resolveViewFromPath } from '../../app-shell/routing';
 import { SettingsGlyph } from '../icons/Glyph';
+import { LazyBoundary } from '../LazyBoundary';
 import './ProjectSidebarFooter.css';
 import { destinationIcon } from './nav-items';
 import { ProjectSidebarPresenceTray } from './ProjectSidebarPresenceTray';
 
-const CustomizeDialog = lazy(() =>
+const loadCustomizeDialog = () =>
   import('./CustomizeDialog').then((module) => ({
     default: module.CustomizeDialog,
-  })),
-);
+  }));
 
 function destination(id: string): DestinationDefinition {
   const entry = APP_DESTINATION_REGISTRY.get(id);
@@ -89,15 +89,18 @@ export function ProjectSidebarFooter({
         </div>
       </div>
       {customizeOpen && (
-        <Suspense fallback={null}>
-          <CustomizeDialog
-            onClose={() => setCustomizeOpen(false)}
-            onNavigate={(path) => {
+        <LazyBoundary
+          load={loadCustomizeDialog}
+          pending={null}
+          shareAcrossMounts
+          componentProps={{
+            onClose: () => setCustomizeOpen(false),
+            onNavigate: (path: string) => {
               setCustomizeOpen(false);
               go(path);
-            }}
-          />
-        </Suspense>
+            },
+          }}
+        />
       )}
     </div>
   );

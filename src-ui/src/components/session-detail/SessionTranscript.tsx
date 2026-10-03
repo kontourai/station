@@ -120,7 +120,7 @@ export const SessionTranscript = memo(function SessionTranscript({
       ref={contentRef}
     >
       {!atLatest && (
-        <div className="session-transcript__toolbar">
+        <div className="session-transcript__toolbar responsive-surface-actions">
           <Button variant="secondary" onClick={jumpToLatest}>
             Jump to latest
           </Button>
@@ -147,7 +147,7 @@ export const SessionTranscript = memo(function SessionTranscript({
         />
       )}
       {(hasMore || notices) && (
-        <div className="session-history-controls">
+        <div className="session-history-controls responsive-surface-actions">
           {hasMore && (
             <Button
               variant="secondary"

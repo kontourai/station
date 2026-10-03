@@ -24,6 +24,7 @@ import { SectionNav, type SectionNavItem } from '../components/SectionNav';
 import { ExistingSetupImportStepper } from '../components/setup/ExistingSetupImportStepper';
 import {
   describeReadFailure,
+  Empty,
   ErrorState,
   Skeleton,
   SkeletonBlock,
@@ -954,9 +955,9 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
             tabIndex={-1}
           >
             {searchQuery.trim() && visibleSections.size === 0 && (
-              <p className="settings__empty-search" role="status">
-                No settings match “{searchQuery}”.
-              </p>
+              <div role="status">
+                <Empty label={`No settings match “${searchQuery}”.`} />
+              </div>
             )}
             {/* #2144 slice 3: which document the page is showing values for.
             Outside every scope group because it re-attributes rows in more
@@ -1694,7 +1695,7 @@ function SettingsSectionNav({
     navigateToSection(key);
   };
   return (
-    <div className="settings__navigation">
+    <div className="settings__navigation section-nav--rail">
       <input
         type="search"
         className="settings__search"
