@@ -3,7 +3,6 @@ import { createPortal } from 'react-dom';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { withShortcutHint } from '../../contexts/KeyboardShortcutsContext';
 import { useShortcutDisplay } from '../../hooks/useKeyboardShortcut';
-import { MessageGlyph } from '../icons/Glyph';
 import { LazyBoundary } from '../LazyBoundary';
 import type { ChatDockWorkspaceControls as Controls } from './ChatDockHeader';
 import {
@@ -82,32 +81,23 @@ export function ChatDockSessionInventoryHost({
   );
 }
 
+/**
+ * The bar's ONE labelled action (design round 2026-10, B1/B2): New. "Open"
+ * sat beside it as a second labelled button for the same noun; it is a row
+ * of the ⋯ menu now ("Open chat…", with its chord), where the rest of the
+ * dock's commands already live.
+ */
 export function ChatDockWorkspaceActions({
-  onOpenConversation,
   onNewChat,
-}: Pick<Controls, 'onOpenConversation' | 'onNewChat'>) {
-  const openShortcut = useShortcutDisplay('dock.openConversation');
+}: Pick<Controls, 'onNewChat'>) {
   const newShortcut = useShortcutDisplay('dock.newChat');
   return (
     <div className="chat-dock__tab-actions">
       <button
         type="button"
-        className="chat-dock__new chat-dock__open"
-        onClick={onOpenConversation}
-        title={withShortcutHint(
-          'Open Conversation',
-          'dock.openConversation',
-          () => openShortcut,
-        )}
-      >
-        <MessageGlyph />
-        <span className="chat-dock__new-label">Open</span>
-      </button>
-      <button
-        type="button"
         className="chat-dock__new"
         onClick={onNewChat}
-        title={withShortcutHint('New Chat', 'dock.newChat', () => newShortcut)}
+        title={withShortcutHint('New chat', 'dock.newChat', () => newShortcut)}
       >
         <NewChatGlyph />
         <span className="chat-dock__new-label">New</span>

@@ -1,7 +1,11 @@
 import type React from 'react';
 import { createPortal } from 'react-dom';
+import { withShortcutHint } from '../../contexts/KeyboardShortcutsContext';
 import { toastStore } from '../../contexts/ToastContext';
-import { useShortcutDisplayLookup } from '../../hooks/useKeyboardShortcut';
+import {
+  useShortcutDisplay,
+  useShortcutDisplayLookup,
+} from '../../hooks/useKeyboardShortcut';
 import type { DockMode } from '../../types';
 import { isSessionWorkActive } from '../../utils/execution';
 import { useRegionChromeSlots } from '../../workspace-panes/RegionChromeSlots';
@@ -152,6 +156,7 @@ export function ChatDockHeader({
   // One hook for a variable number of per-session rows: `useShortcutDisplay`
   // is a hook and cannot be called inside the activity map.
   const shortcutDisplay = useShortcutDisplayLookup();
+  const openShortcut = useShortcutDisplay('dock.openConversation');
   const activeSessions = (chatControls?.sessions ?? []).filter((s) =>
     isSessionWorkActive(s),
   );
@@ -172,6 +177,22 @@ export function ChatDockHeader({
    * them holding width the title needs.
    */
   const dockMoreActions: DockMoreAction[] = [
+    // B1: "Open" was the bar's second labelled button for the same noun as
+    // "New". It is the menu's first row, with its chord where the tooltip
+    // used to carry it.
+    ...(workspaceControls
+      ? [
+          {
+            key: 'open-chat',
+            label: withShortcutHint(
+              'Open chat…',
+              'dock.openConversation',
+              () => openShortcut,
+            ),
+            onSelect: () => workspaceControls.onOpenConversation(),
+          },
+        ]
+      : []),
     ...(chatControls
       ? [
           {
@@ -361,37 +382,25 @@ export function ChatDockHeader({
           </div>
         </div>
       )}
+      {/* #800: the COLLAPSED bar's one affordance, a real action. An open
+          pane has "New" in this bar and the inbox enumerating its chats, so
+          it carries neither an inert "Start a chat" nor a session count
+          (design round 2026-10, B1/V13). */}
       {chatControls &&
-        (!chatIdentity || chatControls.sessions.length > 0) &&
-        (chatControls.sessions.length === 0 ? (
-          !isDockOpen ? (
-            // #800: this read "Start a chat" and carried a pointer cursor,
-            // but was inert text — clicking it only toggled the dock open
-            // (the header's own handler) and left the user hunting for
-            // "New". It does what it says now.
-            <button
-              type="button"
-              className="chat-dock__counter chat-dock__counter-action"
-              onClick={(event) => {
-                event.stopPropagation();
-                chatControls.onNewChat();
-              }}
-            >
-              Start a chat
-            </button>
-          ) : (
-            <span className="chat-dock__counter">Start a chat</span>
-          )
-        ) : chatControls.sessions.length > 1 ? (
-          // #1536 F: "1 session" is not a count anyone reads — it is the
-          // state you are always in with one chat open, priced in a bar that
-          // could not fit the conversation's own title. A real count (more
-          // than one) still earns its words; the chat list rail is what
-          // enumerates them either way.
-          <span className="chat-dock__counter">
-            {`${chatControls.sessions.length} sessions`}
-          </span>
-        ) : null)}
+        !isDockOpen &&
+        !chatIdentity &&
+        chatControls.sessions.length === 0 && (
+          <button
+            type="button"
+            className="chat-dock__counter chat-dock__counter-action"
+            onClick={(event) => {
+              event.stopPropagation();
+              chatControls.onNewChat();
+            }}
+          >
+            Start a chat
+          </button>
+        )}
       {chatControls && chatControls.unreadCount > 0 && (
         <span className="chat-dock__badge">{chatControls.unreadCount}</span>
       )}

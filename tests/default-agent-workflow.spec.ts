@@ -731,8 +731,10 @@ test.describe('Default agent workflow', () => {
     );
 
     await openDefaultAgentSession(page);
-    await page.locator('.chat-dock__tab-actions .chat-dock__open').click();
-    const picker = page.getByRole('dialog', { name: 'Open Conversation' });
+    // "Open chat…" is a row of the dock's ⋯ menu (design round 2026-10, B1).
+    await page.getByRole('button', { name: /^More dock actions/ }).click();
+    await page.getByRole('menuitem', { name: /^Open chat…/ }).click();
+    const picker = page.getByRole('dialog', { name: 'Open chat' });
     await expect(picker).toBeVisible();
     await picker
       .getByRole('button', { name: /Authoritative conversation/ })

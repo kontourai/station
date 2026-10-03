@@ -9,7 +9,7 @@
  * one-bar rule: no controls while the pane is collapsed.
  */
 
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { createRef } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
@@ -116,12 +116,8 @@ describe('header inbox toggle (from #1064 AC1/AC2)', () => {
     });
     openMoreMenu();
 
-    expect(
-      screen.queryByRole('button', { name: 'Hide inbox' }),
-    ).toBeNull();
-    expect(
-      screen.queryByRole('button', { name: 'Show inbox' }),
-    ).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Hide inbox' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Show inbox' })).toBeNull();
     // Its neighbours are still there, so an empty menu cannot pass this.
     expect(
       screen.getByRole('menuitem', { name: 'Background tasks' }),
@@ -276,18 +272,22 @@ describe('header background tasks button (from #1064 AC3)', () => {
 });
 
 describe('one-bar rule (#3309)', () => {
-  test('Open/New live in the header while the pane is open', async () => {
+  test('New is the bar’s one labelled action; Open is the ⋯ menu’s first row (B1)', async () => {
     const controls = workspaceControls();
     renderHeader({ workspaceControls: controls });
 
-    fireEvent.click(await screen.findByTitle('Open Conversation'));
-    expect(controls.onOpenConversation).toHaveBeenCalledTimes(1);
-
-    fireEvent.click(await screen.findByTitle('New Chat'));
+    fireEvent.click(await screen.findByTitle('New chat'));
     expect(controls.onNewChat).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTitle('Open Conversation')).toBeNull();
+
+    const menu = openMoreMenu();
+    fireEvent.click(
+      within(menu).getByRole('menuitem', { name: /^Open chat…/ }),
+    );
+    expect(controls.onOpenConversation).toHaveBeenCalledTimes(1);
   });
 
-  test('keeps left workspace controls before identity and Open/New in right actions', async () => {
+  test('keeps left workspace controls before identity and New in right actions', async () => {
     renderHeader({
       chatIdentity: <span data-testid="chat-identity">Identity</span>,
       workspaceControls: workspaceControls(),
@@ -295,14 +295,9 @@ describe('one-bar rule (#3309)', () => {
     const header = document.querySelector('.chat-dock__header')!;
     const left = header.querySelector('.chat-dock__title')!;
     const right = header.querySelector('.chat-dock__header-actions')!;
-    expect(left.contains(await screen.findByTitle('Open Conversation'))).toBe(
-      false,
-    );
+    expect(left.contains(await screen.findByTitle('New chat'))).toBe(false);
     expect(left.contains(screen.getByTestId('chat-identity'))).toBe(true);
-    expect(right.contains(await screen.findByTitle('Open Conversation'))).toBe(
-      true,
-    );
-    expect(right.contains(screen.getByTitle('New Chat'))).toBe(true);
+    expect(right.contains(screen.getByTitle('New chat'))).toBe(true);
     // #1536 F: the folded commands' one control belongs to the actions cluster
     // too, not to the identity's side of the bar.
     expect(right.contains(screen.getByLabelText('More dock actions'))).toBe(
@@ -313,8 +308,7 @@ describe('one-bar rule (#3309)', () => {
   test('a collapsed pane offers none of the workspace controls', () => {
     renderHeader();
 
-    expect(screen.queryByTitle('Open Conversation')).toBeNull();
-    expect(screen.queryByTitle('New Chat')).toBeNull();
+    expect(screen.queryByTitle('New chat')).toBeNull();
     // With every pane command gone, Chat settings — the dock's own command, not
     // the pane's — is the only one left to fold, so there is no ⋯ at all and it
     // renders inline (D2). That is also why the two rows below are absent from
@@ -336,7 +330,7 @@ describe('one-bar rule (#3309)', () => {
    * count that never counts anything, in a bar that could not fit the
    * conversation's own title. The rail enumerates sessions either way.
    */
-  test('shows no session count for a single session, and a real one above that', () => {
+  test('shows no session count at all: the inbox enumerates chats (V13)', () => {
     const session = (id: string) => ({ id, title: id, status: 'idle' });
 
     const { unmount } = renderHeader({
@@ -360,9 +354,7 @@ describe('one-bar rule (#3309)', () => {
         setShowChatSettings: vi.fn(),
       },
     });
-    expect(document.querySelector('.chat-dock__counter')?.textContent).toBe(
-      '2 sessions',
-    );
+    expect(document.querySelector('.chat-dock__counter')).toBeNull();
   });
 
   /**
@@ -411,7 +403,7 @@ describe('one-bar rule (#3309)', () => {
    */
   test('an open pane offers exactly these controls, by accessible name', async () => {
     renderHeader({ workspaceControls: workspaceControls() });
-    await screen.findByTitle('Open Conversation');
+    await screen.findByTitle('New chat');
 
     expect(
       screen
@@ -428,7 +420,6 @@ describe('one-bar rule (#3309)', () => {
       // bracket these are the REGION's since #2046 2b and render in the
       // region bar (`RegionChromeBar.test.tsx` pins them there).
       'Hide inbox',
-      'Open',
       'New',
       'More dock actions',
     ]);
