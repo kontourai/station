@@ -261,6 +261,7 @@ export function RichExperiencePane({
       !sameOwner ||
       !host ||
       !snapshot ||
+      registryStatus.failedPluginNames.includes(snapshot.identity.pluginId) ||
       renderer?.kind !== 'plugin-component'
     )
       return null;

@@ -75,6 +75,23 @@ contract. The [Workspace Pane authoring guide](../../docs/guides/workspace-pane-
 covers descriptor identity, capabilities, placement, actions, alternatives,
 provenance/version/lifecycle, and `npm run workspace-pane:conformance`.
 
+## Visual skill experiences
+
+The React-free `/client` entry reads installed experience inventory and immutable
+Session history, and carries an explicit source-bound start through canonical
+foreground chat. The SDK root supplies the corresponding React Query hooks.
+Inventory without `executionContract: '1.0'` remains a preview; source identity
+and invocation preconditions are revalidated before execution.
+
+The opt-in `/workspace-pane` helper `createSkillExperiencePaneHost` connects an
+isolated, self-rendering declared pane to its host-bound read, question answer
+and stage preparation methods. It receives no credential or arbitrary HTTP
+bridge. See the [public contract](../../docs/reference/skill-experiences.md),
+[SDK reference](../../docs/reference/sdk.md#visual-skill-experiences) and
+[independent rich example](../../examples/rich-skill-experience/README.md).
+Use a published release containing these exports; local source and controlled
+tests do not establish registry publication or native rendering.
+
 ## Source distribution and host requirements
 
 The package manifest exports **TypeScript source** under `src/`, including a

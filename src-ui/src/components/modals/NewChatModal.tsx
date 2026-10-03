@@ -572,7 +572,9 @@ export function NewChatModal({
     const dispatch = (projectSlug?: string, projectName?: string) => {
       if (
         experience &&
-        (!currentExperience ||
+        (experienceInventory.error ||
+          experienceInventory.isFetching ||
+          !currentExperience ||
           !skillExperiencesCanExecute(experienceInventory.data) ||
           authorityStatus !== 'verified' ||
           !namespace ||

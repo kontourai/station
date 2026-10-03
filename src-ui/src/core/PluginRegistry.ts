@@ -6,6 +6,7 @@
  */
 
 import type { LayoutCatalogContribution } from '@kontourai/station-contracts/layout';
+import { parseWorkspacePaneDescriptor } from '@kontourai/station-contracts/workspace-pane';
 import {
   authenticatedFetch,
   type LayoutComponent,
@@ -350,26 +351,41 @@ export class PluginRegistry {
   }
 
   private registerIsolatedPlugin(pluginMeta: any, generation: number): boolean {
-    const declaredSlug = pluginMeta?.layout?.slug;
-    if (typeof declaredSlug !== 'string' || !declaredSlug) return false;
+    const names = new Set<string>();
+    const legacySlug = pluginMeta?.layout?.slug;
+    if (typeof legacySlug === 'string' && legacySlug) names.add(legacySlug);
     const name = pluginMeta.name;
+    if (Array.isArray(pluginMeta.workspacePanes)) {
+      for (const input of pluginMeta.workspacePanes) {
+        const descriptor = parseWorkspacePaneDescriptor(input);
+        if (
+          descriptor?.renderer.kind === 'plugin-component' &&
+          descriptor.provenance.origin === 'plugin' &&
+          descriptor.provenance.pluginId === name
+        )
+          names.add(descriptor.renderer.name);
+      }
+    }
+    if (!names.size) return false;
     const component: LayoutComponent = () =>
       createElement('div', { hidden: true });
-    this.layouts.set(declaredSlug, {
-      component,
-      isolated: true,
-      plugin: {
-        name,
-        declaredSlug,
-        granted: pluginMeta.permissions?.granted,
-      },
-      owner: {
-        pluginId: name,
-        source: `plugins/${name}`,
-        version: pluginMeta.version,
-        generation,
-      },
-    });
+    for (const declaredSlug of names) {
+      this.layouts.set(declaredSlug, {
+        component,
+        isolated: true,
+        plugin: {
+          name,
+          declaredSlug,
+          granted: pluginMeta.permissions?.granted,
+        },
+        owner: {
+          pluginId: name,
+          source: `plugins/${name}`,
+          version: pluginMeta.version,
+          generation,
+        },
+      });
+    }
     this.pluginMeta.set(name, pluginMeta);
     return true;
   }
