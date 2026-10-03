@@ -295,7 +295,14 @@ copied into a Station integration or Skill directory.
 
 **Seam, Implementation, callers, and tests.** Runtime bootstrap composes the loader into
 `SkillService` and `ConfigLoader`; the shared MCP transport consumes the projected cwd
-and headers. Directory/git install validates recognized packages through the same loader
+and headers.
+The Skill routes also expose an inert installed experience inventory. The loader
+uses the existing content lease, yielding digest reads and admission journal to
+bind validated definitions to an exact package incarnation/materialization;
+SkillService applies the current discovered Skill precedence. Neither that
+snapshot nor author capability requirements authorize execution. The controlled
+route proof is `src-server/routes/agents/__tests__/skill-experiences.routes.test.ts`.
+ Directory/git install validates recognized packages through the same loader
 while the legacy parser remains an explicit #346 fallback. Behavioral and
 real-child-process evidence lives in `agent-plugin-loader.test.ts`,
 `plugin-install-transaction.test.ts`, and `mcp-v2.test.ts`. **Do not reintroduce:**

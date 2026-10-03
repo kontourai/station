@@ -29,12 +29,14 @@ import {
   type StationAgentPluginExtensionV1,
 } from '@kontourai/station-contracts/agent-plugin';
 import { isCanonicalPluginId } from '@kontourai/station-contracts/plugin';
+import type { SkillExperienceInventoryV1 } from '@kontourai/station-contracts/skill-experience';
 import type { ToolDef, ToolMetadata } from '@kontourai/station-contracts/tool';
 import { parseAgentPluginManifest } from '@kontourai/station-shared/agent-plugin-manifest';
 import {
   bindMCPDefinitionAdmission,
   MCPLocalCustodyError,
 } from '@kontourai/station-shared/mcp';
+import { readValidatedSkillExperiences } from '@kontourai/station-shared/skill-experience-author';
 import {
   frontmatterToProperties,
   parseFrontmatter,
@@ -45,7 +47,11 @@ import { isRecord } from '../../utils/is-record.js';
 import type { CanonicalSkillSource } from '../flow/flow-agents-skills-source.js';
 import { assertSafeContextText } from '../orchestration/context-safety.js';
 import type { PackageMcpAdmissionJournal } from './package-mcp-admission.js';
-import { computePluginContentDigest } from './plugin-content-integrity.js';
+import {
+  computePluginContentDigest,
+  computePluginContentDigestAsync,
+  withPluginContentLock,
+} from './plugin-content-integrity.js';
 import {
   localManagedPluginAliases,
   PluginIncarnationError,
@@ -676,6 +682,129 @@ export class AgentPluginLoader {
       loaded.push(plugin);
     }
     return loaded;
+  }
+
+  async listSkillExperiences(): Promise<SkillExperienceInventoryV1> {
+    const inventory: SkillExperienceInventoryV1 = {
+      experiences: [],
+      diagnostics: [],
+    };
+    for (const {
+      directoryName,
+      root,
+    } of this.recognizedInstalledPackageRoots()) {
+      await withPluginContentLock(this.pluginsDir, directoryName, async () => {
+        const reports: AgentPluginLoadReport[] = [];
+        let declared = false;
+        try {
+          const parsed = this.parseManifest(
+            root,
+            JSON.parse(
+              readBoundedRegularFile(
+                resolveContainedPath(root, join(root, 'plugin.json')),
+              ),
+            ),
+            reports,
+          );
+          if (!parsed?.stationExtension) {
+            for (const report of reports.filter(
+              (entry) => entry.code === 'station-extension-invalid',
+            ))
+              inventory.diagnostics.push({
+                pluginId: directoryName,
+                code: 'definition-invalid',
+                message: report.message,
+              });
+            return;
+          }
+          const contributions = parsed.stationExtension.experiences ?? [];
+          if (contributions.length === 0) return;
+          declared = true;
+          const journal = this.options.journal?.();
+          const selected = journal?.currentInstallation(directoryName);
+          if (
+            parsed.manifest.name !== directoryName ||
+            !parsed.manifest.version ||
+            selected?.state !== 'observed' ||
+            !journal?.admissionOpen(selected.installation) ||
+            this.selectedRoot(directoryName)?.packageRoot !== root
+          ) {
+            inventory.diagnostics.push({
+              pluginId: directoryName,
+              code: 'unavailable',
+              message:
+                'The installed package needs current activation before its experiences are available.',
+            });
+            return;
+          }
+          const installation = selected.installation;
+          const contentDigest = await computePluginContentDigestAsync(
+            dirname(root),
+            basename(root),
+          );
+          if (!contentDigest || contentDigest !== installation.contentDigest) {
+            inventory.diagnostics.push({
+              pluginId: directoryName,
+              code: 'unavailable',
+              message:
+                'Installed package bytes differ from the admitted revision; inspect and activate the package again.',
+            });
+            return;
+          }
+          const definitions = readValidatedSkillExperiences(
+            root,
+            parsed.manifest,
+            parsed.stationExtension,
+          );
+          const current = journal.currentInstallation(directoryName);
+          if (
+            current.state !== 'observed' ||
+            current.installation.incarnation !== installation.incarnation ||
+            current.installation.materialization !==
+              installation.materialization ||
+            !journal.admissionOpen(current.installation) ||
+            this.selectedRoot(directoryName)?.packageRoot !== root ||
+            (await computePluginContentDigestAsync(
+              dirname(root),
+              basename(root),
+            )) !== contentDigest
+          ) {
+            inventory.diagnostics.push({
+              pluginId: directoryName,
+              code: 'unavailable',
+              message:
+                'The installed package changed while its experiences were being read.',
+            });
+            return;
+          }
+          for (const definition of definitions) {
+            const definitionDigest = createHash('sha256')
+              .update(JSON.stringify(definition))
+              .digest('hex');
+            inventory.experiences.push({
+              identity: {
+                pluginId: directoryName,
+                pluginVersion: parsed.manifest.version,
+                experienceId: definition.id,
+                incarnation: installation.incarnation,
+                materialization: installation.materialization!,
+                contentDigest,
+                definitionDigest,
+              },
+              definition,
+            });
+          }
+        } catch (error) {
+          if (declared)
+            inventory.diagnostics.push({
+              pluginId: directoryName,
+              code: 'definition-invalid',
+              message: error instanceof Error ? error.message : String(error),
+            });
+        }
+      });
+    }
+    return inventory;
   }
 
   skillSources(

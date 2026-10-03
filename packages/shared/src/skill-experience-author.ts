@@ -52,13 +52,14 @@ function assertUnique(values: string[], location: string): void {
 }
 
 /** Author build validation only; no imports, fetching, activation or permission grants. */
-export function validateAuthoredSkillExperiences(
+export function readValidatedSkillExperiences(
   pluginDir: string,
   manifest: AgentPluginManifestV1,
   extension: StationAgentPluginExtensionV1 | undefined,
-): void {
+): SkillExperienceDefinitionV1[] {
+  const definitions: SkillExperienceDefinitionV1[] = [];
   const contributions = extension?.experiences ?? [];
-  if (contributions.length === 0) return;
+  if (contributions.length === 0) return definitions;
   if (!manifest.version)
     throw new Error('Skill experiences require an owning plugin.json version');
   assertUnique(
@@ -201,5 +202,15 @@ export function validateAuthoredSkillExperiences(
         'interaction/questionRounds',
         'is supported only for the interview pattern',
       );
+    definitions.push(definition);
   }
+  return definitions;
+}
+
+export function validateAuthoredSkillExperiences(
+  pluginDir: string,
+  manifest: AgentPluginManifestV1,
+  extension: StationAgentPluginExtensionV1 | undefined,
+): void {
+  readValidatedSkillExperiences(pluginDir, manifest, extension);
 }
