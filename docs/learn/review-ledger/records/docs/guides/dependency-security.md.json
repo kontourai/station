@@ -34,7 +34,7 @@
 
     {"path":"scripts/__tests__/codeql-sarif-policy.test.ts","digest":"a7e2db81ccf7daabe0d4e1b3d91cc46401d20f5aafa351c72ca56068bd4fd608","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"scripts/__tests__/dependency-advisory-policy.test.ts","digest":"31779347634626ddbd22bf88ab67bb029416544eb47362ecf922b644cf800528","revision":"a33fbfe917004ff85a30e503fd141a47233b74e7"},
+    {"path":"scripts/__tests__/dependency-advisory-policy.test.ts","digest":"fb296f089ecb96ccaf7d0d4afd5ce809ba7c825d3e5322eab7c7228d3133aae9","revision":"071c95a78bfa0ea21e77d0acc3b6554d403e0451"},
 
     {"path":"scripts/__tests__/pnpm-advisory-command.test.ts","digest":"235c4174211032d0199025a05c3190e12e688d0d093c04491da603caf2654c0d","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
@@ -48,7 +48,7 @@
 
     {"path":"scripts/codeql-sarif-policy.mjs","digest":"19227477b52acfe22fe18feb777bf30c2163a40e51fda2ad0a834a1fdae86f32","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"scripts/dependency-advisory-exceptions.json","digest":"0fb4da6e30f5363ff33bbe1634a8267383766e88651fc878ad958d10d4730ab0","revision":"a43b54f6cfe9479ea77cd6e783aa5e1419bc5168"},
+    {"path":"scripts/dependency-advisory-exceptions.json","digest":"4c39cc18a3522309053ca4cd5dd5791d2bd678e8cc4e7ed1a8947165751d5cc6","revision":"071c95a78bfa0ea21e77d0acc3b6554d403e0451"},
 
     {"path":"scripts/dependency-advisory-policy.mjs","digest":"9dfdd2899708f23256aa01e6ac899438c80b0fecba5497c8fc25270d6a8f6ae8","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
