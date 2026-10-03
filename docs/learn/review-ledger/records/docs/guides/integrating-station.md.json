@@ -26,11 +26,11 @@
 
     {"path":"docs/guides/workspace-packages.md","digest":"4590c3915425e58b96a0ae8c36d825bf0409e7ddff1b7023f367f14a4aede9d1","revision":"5c18724d4ba50fd9b5f6c4043e7a00ebc893c70d"},
 
-    {"path":"docs/reference/api.md","digest":"b2ec0fde2325ba3d212a539496721e3cc87cb493bae04a18d753e38529e8f9fa","revision":"a89d77c455f60f24a368c649cfe34200a3ae3110"},
+    {"path":"docs/reference/api.md","digest":"d05776cb92e23b6811067894c01e1c40abcd2f7d2a2e042e869f90a98fff1c86","revision":"dae6cc432669dd3ced4da190a53362f9c6bb8ac5"},
 
     {"path":"docs/reference/cli.md","digest":"62c03f1a50009e0973510034c314c46df560dddf761547e6798d86808eb116fd","revision":"020eb6a14e05313bb66724ec3504e613717e6ed1"},
 
-    {"path":"docs/reference/contracts.md","digest":"a0f436bdd8446df8c638882b82a6a3585b697630623965b1ba4f7859b2d70c45","revision":"2b8d3ba6c9825fba821fe157f32956f4e051be0a"},
+    {"path":"docs/reference/contracts.md","digest":"70344cfb002eb7ffa3ca50cb2beb564f5f44dd15760eafcb06654b33194aa9e3","revision":"56f4c4897a189eeb30430119a4f4895e95fbb541"},
 
     {"path":"docs/reference/sdk.md","digest":"c9f5ce66e2db6b8a170166ea4d5bf74a901aebe507a5d559c429ffb0a0d39148","revision":"9bb90045b7aeb926e7003b27fc4fd62252638524"},
 

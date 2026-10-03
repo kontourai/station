@@ -42,7 +42,7 @@
 
     {"path":"packages/sdk/src/voice/session-registry.ts","digest":"c98c5a59aa639bd2043f21bbedbe727892ce37231ad9682c14553bd21e9f247c","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"packages/sdk/src/workspace-pane.ts","digest":"1706dcbb2ed329bd68039900289a4fe33308add126c86b140639a27842037013","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"packages/sdk/src/workspace-pane.ts","digest":"26e5a4b5b4425654e1b884ca3fbf3c56cecd95640ad7916f852779312400e5f3","revision":"8540fafb86b969775254b898711ad3ae40ccc39d"},
 
     {"path":"packages/sdk/tsconfig.json","digest":"6178c809c220a4aeb4c07c45fa2c988172c8de8f308383719214db1baf741467","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 

@@ -9,7 +9,7 @@
 
   "limits": "Review covers every current documented claim, not all possible behaviors of every exported module. Detailed historical Muse/Claude captures remain historical; no live provider, native push gateway, physical device, deployed account or relay journey was run. Contract declarations and valid parsers never prove authorization, delivery or owner completion. No new security probe.",
 
-  "document": {"digest":"a0f436bdd8446df8c638882b82a6a3585b697630623965b1ba4f7859b2d70c45","revision":"2b8d3ba6c9825fba821fe157f32956f4e051be0a"},
+  "document": {"digest":"70344cfb002eb7ffa3ca50cb2beb564f5f44dd15760eafcb06654b33194aa9e3","revision":"56f4c4897a189eeb30430119a4f4895e95fbb541"},
 
   "sources": [
     {"path":"packages/cli/src/commands/delegate.ts","digest":"9e1e324cb71d85c563afd74dbd8da063fe8a13a3faaa174690eaebea7ca8518d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
@@ -42,7 +42,7 @@
 
     {"path":"packages/contracts/src/native-push.ts","digest":"029879b0db80dbacebc470f0ac42e8e61aaad8564685c4a7f52cd5c37e319525","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/contracts/src/orchestration.ts","digest":"f79a810c3e7b70428d68b26557d3eb3cc7f6d60d8c58773350ed967965390068","revision":"42019764437469e865189dfd8ad8b1762b77a97a"},
+    {"path":"packages/contracts/src/orchestration.ts","digest":"8e2d57618e1203e1cb8b59ebe77aa54bea379f3a16742c616e7445f906ba5126","revision":"56f4c4897a189eeb30430119a4f4895e95fbb541"},
 
     {"path":"packages/contracts/src/plugin.ts","digest":"98607c85d86241ccf638de4d207ebb64285752092eb7a827e4304c75df409b95","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -82,7 +82,7 @@
 
     {"path":"src-server/routes/operations/native-push-routes.ts","digest":"1b07cce4f490719d705ce042ea58337c59464d07d499069ee7cc2a7ef2c61e8b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"3976ce75117d6cbfcb2d61733068a738c46de966a3106e5a76190d03b31e63e6","revision":"71c69cadad789baff389812ff52e9efae397c316"},
+    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"c7da96ef1571ce8efeac5369709cb237f39414ee539a8599225bb4ee2fbd5f82","revision":"f2bb7d8a1e4b56ac783fb9d0cfe167fe7a0fdde5"},
 
     {"path":"src-server/routes/pull-requests/__tests__/conversation-pull-request-links.test.ts","digest":"066dbb143af1e66c125ca416437a17ec9a852c181ce6ef2f60f9e4dec1db7c45","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -102,7 +102,7 @@
 
     {"path":"src-server/services/identity/relay-enrollment-service.ts","digest":"f4abb50060321e593e55eac98c1adcfffa2440caecc90e4df26b7537d8d61fed","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"14d4d68ff2f8715e1428ca985125a9eff9eb5a05ea52946dc16b4f5971405a34","revision":"bc671142a7ae70587daf5bb0d94732e8ca74600a"},
+    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"804ef4496d2f445f984f409b4002a535d1b67797f1a29f8aedc04531d3277314","revision":"f2bb7d8a1e4b56ac783fb9d0cfe167fe7a0fdde5"},
 
     {"path":"src-server/services/orchestration/orchestration-session-state.ts","digest":"44a232d30c1d080f58b798e418a54d3adacb1086b3b6757a06f307370b703943","revision":"af3c8fbfee90c9179a0ac19659b76d24c707d574"},
 
@@ -116,7 +116,7 @@
 
     {"path":"src-server/services/pull-requests/pull-request-review.ts","digest":"ac2b9f7a46736ecc544a8ff555b75773917cbcd67b842acd60474b8fea9933f6","revision":"04f7c604a7cb98c981198b77fb07f1c62d32fd2a"},
 
-    {"path":"src-server/tools/station-control-delegation.ts","digest":"b924e289e8e485cf249ec99ebd3097b014f001f58942aa29f91e0196bbc5af70","revision":"ee7cb7c444fb45f465be3f4ea5c938e5a130145e"},
+    {"path":"src-server/tools/station-control-delegation.ts","digest":"e5e4d1979cfa4997ce4b808f5268e69bbd0926f5c838ac1388bbdd5009389467","revision":"56f4c4897a189eeb30430119a4f4895e95fbb541"},
 
     {"path":"src-ui/src/hooks/orchestration/ensureOrchestrationEventStream.ts","digest":"08e8b202ab12395f8eed5cb5859919470cd0723eb6bbafa7befcd0af6df33f45","revision":"92636a1751411426e2972236b7416e50b18daf32"},
 
@@ -134,7 +134,7 @@
 
     {"path":"packages/contracts/src/usage-rollup.ts","digest":"22d0231b9711bccb674bbc966991a33e41f622f3547e972e5517e04047beb6ad","revision":"0dd1181141ba6a645601e6798079a16189510438"},
 
-    {"path":"packages/contracts/src/skill-experience.ts","digest":"87d65f668205bed4648b8c265c74f6115e1f89944a613ee1f36e9124d5db1004","revision":"a366557a12a4f5e6a41d38ce92aacbd0ab32193b"}
+    {"path":"packages/contracts/src/skill-experience.ts","digest":"1a26de992f677139d4e55580e45861b4b920b4f93e5d52efcd4f3ee990c9321d","revision":"8540fafb86b969775254b898711ad3ae40ccc39d"}
   ],
 
   "checks": [

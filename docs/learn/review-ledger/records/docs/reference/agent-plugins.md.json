@@ -22,7 +22,7 @@
 
     {"path":"packages/shared/src/agent-plugin-manifest.ts","digest":"a1b0dab918c8787193cc23e0f5362fc3ea5be6885440b56522314329974d55ba","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"packages/shared/src/agent-plugin-validators.generated.mjs","digest":"0a7921f9836edf3b21cd9f456e3c15adbbcd41ef239a2a2bfbef4dc9bd79e3d0","revision":"6e3408d08ee4a1f3fe901fda08fd13d5f7ba6fd6"},
+    {"path":"packages/shared/src/agent-plugin-validators.generated.mjs","digest":"344d01f927c8bb3b0c9268c84308e15598078d6bf9a80f31d6c5685003b65112","revision":"f2bb7d8a1e4b56ac783fb9d0cfe167fe7a0fdde5"},
 
     {"path":"packages/shared/src/build.ts","digest":"20f919a4a98519ce20e8e2f0d5d498a4be8daeba1314a97ddae752fd36df4630","revision":"1e6450e0caa47975d33f505a1348bdc01ae1382e"},
 
@@ -46,9 +46,9 @@
 
     {"path":"src-server/routes/plugins/plugin-config-routes.ts","digest":"42dda4eeb196c8b63c081f059822f9f56187b1da9d8f84ec4c09cacc3d95f5a4","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-server/services/agents/skill-service.ts","digest":"f2502c86772405101c46632bce3512c1b2e0d9db9e83a1027f1b0a311c2957af","revision":"578cffa3a692d7e7b66cf6002b4c625c72cec618"},
+    {"path":"src-server/services/agents/skill-service.ts","digest":"da429fbc637564b3e3fe0e8e796569b3aa4f8514bb5e8cd3c3fd86cfe9175a6a","revision":"56f4c4897a189eeb30430119a4f4895e95fbb541"},
 
-    {"path":"src-server/services/plugins/agent-plugin-loader.ts","digest":"b6434939c6229105e9771e53932416d1aa4244d01f24afa84b03f8108a03fcee","revision":"d222e0af2621a3b0cd4cc0dff0c5736f9a715329"},
+    {"path":"src-server/services/plugins/agent-plugin-loader.ts","digest":"5e2ebd404a26505676a99a207854fc10fe3692fa02628c891bed0156eb1b231c","revision":"56f4c4897a189eeb30430119a4f4895e95fbb541"},
 
     {"path":"src-server/services/plugins/mcp-service.ts","digest":"ae0db4eaae63bb43fdacf188eb5aacccd7377e656809b0005623516e2f1249aa","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
 
@@ -70,11 +70,11 @@
 
     {"path":"package.json#/scripts/agent-plugin:validators:gate","digest":"981a70b44b8755a2c69a3ded474dbe7b5f81f89eb73248e7ca90518e3280af77","revision":"444e3ec61e26b58fa5c2edd68abfca6d00a2cc98"},
 
-    {"path":"packages/contracts/src/skill-experience.ts","digest":"87d65f668205bed4648b8c265c74f6115e1f89944a613ee1f36e9124d5db1004","revision":"a366557a12a4f5e6a41d38ce92aacbd0ab32193b"},
+    {"path":"packages/contracts/src/skill-experience.ts","digest":"1a26de992f677139d4e55580e45861b4b920b4f93e5d52efcd4f3ee990c9321d","revision":"8540fafb86b969775254b898711ad3ae40ccc39d"},
 
-    {"path":"packages/shared/src/skill-experience-author.ts","digest":"ad4c1718cd49718a71b341ade9babdbbdee11a8c3b5b4b36b578e1bc48ec69d6","revision":"cdbbf99cf334245282450ff5bfc51dcd4f42d660"},
+    {"path":"packages/shared/src/skill-experience-author.ts","digest":"78eff8e23674a648d904c12919b137ff62c04520fc3f164f66a482102047754b","revision":"f2bb7d8a1e4b56ac783fb9d0cfe167fe7a0fdde5"},
 
-    {"path":"schemas/agent-plugins/skill-experience-1.0.schema.json","digest":"7805eb30fd8e9757aa52e9974674355dfd02b518cd92362bc5c200c9b546a811","revision":"1e6450e0caa47975d33f505a1348bdc01ae1382e"}
+    {"path":"schemas/agent-plugins/skill-experience-1.0.schema.json","digest":"5e2d5929feb55233f7ad84af131eb5a833e51388fe7e51aed1393d8a4de95fcb","revision":"f2bb7d8a1e4b56ac783fb9d0cfe167fe7a0fdde5"}
   ],
 
   "checks": [
