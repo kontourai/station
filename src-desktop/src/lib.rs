@@ -6207,6 +6207,25 @@ mod native_trust_profile_snapshot_tests {
         .unwrap();
         assert_eq!(snapshot.binding, expected);
         assert_eq!(snapshot.revision, 7);
+        let mut configured = store.clone();
+        configured.profiles[0].configuration_state = "configured".into();
+        configured.profiles[0].credential_ref = Some(NativeCredentialReference {
+            kind: "station-bearer".into(),
+            id: "owned-enrollment-credential".into(),
+        });
+        configured.profiles[0]._environment_id = Some(expected.station_id.clone());
+        assert_eq!(
+            native_trust_profile_snapshot_in_store(
+                &configured,
+                &expected,
+                7,
+                "io.kontourai.station",
+                "stable",
+            )
+            .expect("existing Station trust remains readable after Device activation")
+            .binding,
+            expected
+        );
         assert_eq!(
             native_trust_profile_snapshot_in_store(
                 &store,
