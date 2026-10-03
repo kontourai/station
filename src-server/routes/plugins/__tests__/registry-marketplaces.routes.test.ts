@@ -1110,7 +1110,7 @@ describe('Marketplace source lifecycle through Registry routes', () => {
   test('uses the published provider contribution lifecycle and refuses its prior generation after replacement or revoke', async () => {
     const { request } = setup();
     const provider = {
-      registryKey: 'publisher/catalog',
+      registryKey: 'fixture',
       listAvailable: async () => [
         { id: 'shared', source: '/catalog/a', installed: false },
       ],
