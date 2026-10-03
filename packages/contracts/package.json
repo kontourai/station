@@ -63,6 +63,7 @@
     "./client-origin": "./src/client-origin.ts",
     "./chat-attachment": "./src/chat-attachment.ts",
     "./connection-recovery": "./src/connection-recovery.ts",
+    "./connection-quota": "./src/connection-quota.ts",
     "./engine-accounts": "./src/engine-accounts.ts",
     "./conversation-context-boundary": "./src/conversation-context-boundary.ts",
     "./conversation-intent-summary": "./src/conversation-intent-summary.ts",

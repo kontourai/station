@@ -946,12 +946,17 @@ export class StationRuntime {
     // constructor body (same lazy-capture posture as
     // `getStationControlEnv` above), but this closure is only invoked at
     // `startSession` time, well after construction completes.
-    mintStationControlMcpAuth: (threadId: string, tenantExecutionContext) => {
+    mintStationControlMcpAuth: (
+      threadId: string,
+      tenantExecutionContext,
+      allowedTools,
+    ) => {
       const { token } = mintStationControlMcpToken(
         threadId,
         'url-token',
         undefined,
         tenantExecutionContext,
+        allowedTools,
       );
       return buildStationControlMcpUrl(this.port, token);
     },

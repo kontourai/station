@@ -9,7 +9,7 @@
 
   "limits": "Selected documented contracts only, not every helper export or implementation branch. Syntax-only snippets are excerpts, not complete standalone programs. Existing parser/build tests use disposable fixtures and controlled dependency preparation. No real plugin install, registry or live MCP/provider/device outcome exercised. Earlier MCP and notification checks remain separately recorded; hashes are freshness checks, not semantic proof. Additional main merge b269a6cf9: structural reconciliation only; prior distinct anchors below are historical reviews, not approval of combined bytes. Active bindings retain existing anchors; combined dependency bytes remain stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"pnpm-lock.yaml\",\"ours\":{\"digest\":\"2907b97d6a2e98b4211695a78cf83b03419218f1dd95ce090ca753d9bdbad14a\",\"revision\":\"b50eeb9584c1808e429e59dcb3c3c2253307bbbe\"},\"main\":{\"digest\":\"29dbdce300fcd3d881ae511317af478da6e9c098a8e8cf51c6b2269a937525df\",\"revision\":\"df9188971e1a93d2c5525a7f5f38e3da93c9e4de\"}}].",
 
-  "document": {"digest":"2aa69365c1680e2a88a3df2825ee272fa75e9bd239f83a90707490e4e93d7329","revision":"d4944ee82b611c537951425d63539e8d5e597a5d"},
+  "document": {"digest":"47a6855c5adea5789cb58f3079f14c0c0a0ff5f6dadbb66622607d281bac0e3c","revision":"8f5d75dd531657b81af48cd5c9f24f65908003b7"},
 
   "sources": [
     {"path":"docs/design/mcp-ui-host.md","digest":"060ae4fc6877a186e8ea6d5073729e03f161dbe270b700f62741095560000195","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
@@ -22,7 +22,7 @@
 
     {"path":"packages/contracts/src/agent-identity.ts","digest":"d352f22b4698f100c1cc2a7466fd62556a6a69c03bffaf66e54c1bbdfc1410b7","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/contracts/src/agent.ts","digest":"09ccd526184f256ab9833dd6e46f417f4da565a825f3fd870f5621e017922e22","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"packages/contracts/src/agent.ts","digest":"e325363bc2303d78102c7c4c45b118756d71d66cae3d801eee303761d0715b6c","revision":"423cbe55b9e35e4cd8954fd441cb9f3c69740d66"},
 
     {"path":"packages/contracts/src/auth.ts","digest":"999ef78ea6f5150965f80e9c8e8873a257e34bea9c563f533f7519693f52b92e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -40,7 +40,7 @@
 
     {"path":"packages/contracts/src/project.ts","digest":"81c1da22c4d64208ecd8d5dad2259958b296272dfb2537ec6b514c271a55fb11","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/contracts/src/provider.ts","digest":"d84e1b935bae947ccddfbf011b2146275d323b053326f43c3cd54a5b692e47fd","revision":"3a12d2273b4b8b1e024523d6eb396d6ec3c703fb"},
+    {"path":"packages/contracts/src/provider.ts","digest":"9d5e2cfb09262bcf3e6873b07d441404fff6e4d784ffcf678db463c94fb88059","revision":"423cbe55b9e35e4cd8954fd441cb9f3c69740d66"},
 
     {"path":"packages/contracts/src/runtime.ts","digest":"7934961080fb33ddda1d4989b9a98d24cff3fcfc4ed9fd6debfffa986650ab22","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -50,7 +50,7 @@
 
     {"path":"packages/sdk/src/api-agent-runtime.ts","digest":"4b5cff321da3b39dca67b50c39d64090b9f794f95d52b0e1d6504c18dfedfc14","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
-    {"path":"packages/shared/package.json","digest":"5c970a933f53f35ceb5b344fe399e1339ececc9fae1a5eb3b7c592fb1beeccbf","revision":"036d5d3d2289fc22e325a9ded733e8de561e9b30"},
+    {"path":"packages/shared/package.json","digest":"a82c0ce2b631a776e6a5dc913089a3c07934eea2bfe6cc1f0f259babe57b1939","revision":"8f5d75dd531657b81af48cd5c9f24f65908003b7"},
 
     {"path":"packages/shared/src/__tests__/build.test.ts","digest":"e7c2da46760a947ef17e70c50e4c244376e4b60f98802a4fd2f620764f08d4bf","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -94,7 +94,7 @@
 
     {"path":"src-server/runtime/mcp/mcp-apps-metadata.ts","digest":"67a048ee54d656d731f4cb3c3a4c3ac92e86472b453ebe5e04e782d0b48b2ae5","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/runtime/mcp/mcp-manager.ts","digest":"c6569ade67cb9b48930cac5ca09521ba0836161c462f7b5a7c684b6eb8db1d3c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/runtime/mcp/mcp-manager.ts","digest":"2b111148f423e896011695de09bca6f6f2990bc8285b4466a5fd70a3c93c65d1","revision":"aadb5aa183a58e97344d13b8c5f34f92a7d78a94"},
 
     {"path":"src-server/runtime/mcp/mcp-ui-frame-server.ts","digest":"eaf7b70c1248c4020af4fafd05c5e38c6e8fd03fd2955991965d0e94dd3cc77c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

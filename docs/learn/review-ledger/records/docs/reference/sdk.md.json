@@ -32,7 +32,7 @@
 
     {"path":"packages/contracts/src/notification.ts","digest":"8ab242f152839490894494f48fd701c6dfd2b5d13fcad3d439eeb83c17463156","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/contracts/src/provider.ts","digest":"d84e1b935bae947ccddfbf011b2146275d323b053326f43c3cd54a5b692e47fd","revision":"3a12d2273b4b8b1e024523d6eb396d6ec3c703fb"},
+    {"path":"packages/contracts/src/provider.ts","digest":"9d5e2cfb09262bcf3e6873b07d441404fff6e4d784ffcf678db463c94fb88059","revision":"423cbe55b9e35e4cd8954fd441cb9f3c69740d66"},
 
     {"path":"packages/contracts/src/task-basis-mcp.ts","digest":"e441fa4b24dc096a453b6641b061477a87c0ec9750478f5edecc1b77245c63e9","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

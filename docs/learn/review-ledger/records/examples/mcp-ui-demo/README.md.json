@@ -18,7 +18,7 @@
 
     {"path":"pnpm-lock.yaml","digest":"4f9a974bd49f637fd690699b3bcd9b6ce915114eb4f52e2e6bdd5b0f3b699f2a","revision":"ea49cb8678208b9037f8e9ab3ceb2a95fe2647ff"},
 
-    {"path":"src-server/routes/agents/tools.ts","digest":"a80801f4a31e7761be350924011935a8b0a613847f5648de7308b828331d359e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/routes/agents/tools.ts","digest":"e816aa362002e9b79be62094d7e7837e81f85cbeb065a0c8386a1f21f1570c27","revision":"8d715b7bee77e593e64a1e0b2af99956571c9795"},
 
     {"path":"src-server/runtime/mcp/__tests__/mcp-ui-resolver.test.ts","digest":"4244fe6da0b1e7f0eeeb5a5fc928581453a83684ebd48afec9acec3d7e8df6db","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

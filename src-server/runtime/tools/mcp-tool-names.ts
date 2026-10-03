@@ -1,4 +1,3 @@
-import type { Tool } from '@voltagent/core';
 import type {
   MCPToolLoaderProvenance,
   MCPToolProvenanceGeneration,
@@ -23,14 +22,14 @@ export interface MCPToolNameMappingEntry {
   builtinStationControl?: boolean;
 }
 
-export function normalizeLoadedMCPTools(
+export function normalizeLoadedMCPTools<LoadedTool extends { name: string }>(
   agentSlug: string,
-  tools: Tool<any>[],
+  tools: LoadedTool[],
   toolNameMapping: Map<string, MCPToolNameMappingEntry>,
   toolNameReverseMapping: Map<string, string>,
   provenanceGeneration: MCPToolProvenanceGeneration,
   integrationId: string,
-  loaderIdentity: (tool: Tool<any>) => {
+  loaderIdentity: (tool: LoadedTool) => {
     serverId: string;
     originalToolName: string;
   },
@@ -38,7 +37,7 @@ export function normalizeLoadedMCPTools(
     debug: (message: string, payload?: Record<string, unknown>) => void;
   },
   builtinStationControl = false,
-): Tool<any>[] {
+): (Omit<LoadedTool, 'name'> & { name: string })[] {
   return tools.map((tool) => {
     const normalized = normalizeToolName(tool.name);
     const parsed = parseToolName(tool.name);

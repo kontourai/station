@@ -42,6 +42,7 @@ Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shar
 | `@kontourai/station-contracts/registry-trust` | Candidate registry policies, bounded applied identity/epoch shapes, and untrusted signed-package claim shapes |
 | `@kontourai/station-contracts/config` | App config and template variables |
 | `@kontourai/station-contracts/connection-proof` | Transport-only Station/enrollment/client/SDP bindings and independently approved signing-key trust; never account or Project grants |
+| `@kontourai/station-contracts/connection-quota` | Provider-reported quota snapshots, explicit unavailable outcomes, and pure rolling-observation merging; absent provider data stays absent |
 | `@kontourai/station-contracts/self-hosted-broker` | Versioned browser Origin scope, native proof-key surface and distinct v2 native offer metadata and closed invitation-authenticated older-scope observations; routing authority is separate from signing trust, account identity and Project permission |
 | `@kontourai/station-contracts/relay-ice` | Closed relay-only short-lived end-user ICE receipt, exact native scope/optional surface, issue/expiry times and a 600-second ceiling; no issuer secret or application/Device/account grant |
 | `@kontourai/station-contracts/execution-target` | Environment, Agent and workspace intent, including exact portable Project/resource execution; see [receiver execution offers](../design/portable-project-identity.md#receiver-execution-offers) |
@@ -69,6 +70,15 @@ Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shar
 | `@kontourai/station-contracts/tool` | Tool definitions, permissions, connection configs |
 | `@kontourai/station-contracts/unified-search` | Owner-qualified typed search results, provider pages, source states, open intents, and fresh owner-resolved open targets |
 | `@kontourai/station-contracts/workspace-pane-host-contribution` | Package-level Pane-host actions and explicit owner-relative/default Agent selection |
+
+`AgentTools.mcpMode` selects additive (`add`) or replacement (`replace`) MCP
+configuration; omission preserves the prior engine-specific behavior.
+`AgentTools.mcpLoading` optionally selects Claude's native on-demand or eager
+loading. The session resolver carries these as `toolServerMode` and
+`toolServerLoading`. A resolved server's `allowedTools` contains exact original
+MCP names (empty means none); `disabledTools` excludes names independently, and
+`toolNames` is catalog metadata for known-tool exclusions. See the
+[Agent Tools guide](../guides/agents.md#mcp-tool-configuration) for delivery limits.
 
 `OrchestrationSessionSummary.openRequestIds` is present when the server reads
 its durable request state. An empty array means no requests remain open;
