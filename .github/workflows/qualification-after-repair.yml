@@ -1,8 +1,8 @@
-name: Qualify landed repair
+name: "Main: Qualify landed repair"
 
 on:
   workflow_run:
-    workflows: [CI]
+    workflows: ["PR: CI"]
     types: [completed]
 
 permissions:

@@ -1,4 +1,4 @@
-name: Interactive Workspace Performance
+name: "Tool: Interactive workspace performance"
 
 on:
   # Dispatch only. The weekly schedule never produced a green run (0 of 12

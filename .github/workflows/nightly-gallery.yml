@@ -1,4 +1,4 @@
-name: Nightly gallery
+name: "Nightly: Gallery"
 
 on:
   schedule:

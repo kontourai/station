@@ -1,14 +1,14 @@
-name: Android Tests
+name: "Main: Android tests"
 
 on:
   workflow_run:
-    workflows: [Build Android verification artifact]
+    workflows: ["Main: Android build"]
     types: [completed]
   # checkov:skip=CKV_GHA_7:Manual test runs require an exact prior Android build run ID
   workflow_dispatch:
     inputs:
       run_id:
-        description: 'Successful Build Android verification artifact run ID'
+        description: 'Successful Main: Android build run ID'
         required: true
 
 permissions:

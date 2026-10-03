@@ -1,5 +1,5 @@
 /**
- * Fail-closed npmrc credential preflight for Publish Packages.
+ * Fail-closed npmrc credential preflight for Main: Publish packages.
  *
  * This intentionally handles only four fixed sources: NPM_CONFIG_USERCONFIG,
  * HOME/.npmrc, RUNNER_TEMP/.npmrc, and GITHUB_WORKSPACE/.npmrc. It never

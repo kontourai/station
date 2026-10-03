@@ -1,4 +1,4 @@
-name: node-pty Linux prebuilds
+name: "Tool: node-pty prebuilds"
 
 # Builds attested linux-x64 and linux-arm64 (glibc) prebuilds of the EXACT
 # node-pty version pinned in pnpm-lock.yaml (#1245), so Linux stops being

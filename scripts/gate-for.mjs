@@ -87,7 +87,7 @@ export const LANE_LADDER = Object.freeze([
   Object.freeze({
     stage: 'Explicit diagnostic escape hatch',
     command: null,
-    detail: 'manual CI workflow_dispatch',
+    detail: 'manual PR: CI workflow_dispatch',
   }),
 ]);
 

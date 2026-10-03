@@ -1,4 +1,4 @@
-name: Fresh-home walkthrough
+name: "Nightly: Fresh-home walkthrough"
 
 # kontourai/station#766 item 1: the automated fresh-home release walkthrough.
 # Boots the BUILT app against a throwaway home (`./station start --temp-home`),

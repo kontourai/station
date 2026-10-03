@@ -1,4 +1,4 @@
-name: Hosted full regression
+name: "Main: Full qualification"
 
 # Qualification runs independently of integration. Every canonical phase and
 # the Android viewport suite must pass; matrix failures never cancel siblings.

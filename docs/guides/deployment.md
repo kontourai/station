@@ -597,7 +597,7 @@ curl --silent --show-error https://<device-fqdn>:<public-port>/api/system/status
 
 
 The repository-owned dogfood supervisor keeps one named Station instance on
-the exact `origin/main` commit whose GitHub Actions `CI` **push** run completed
+the exact `origin/main` commit whose GitHub Actions `PR: CI` **push** run completed
 successfully. Its staging code creates a detached release and currently calls
 legacy `npm ci` plus `./station build` before stopping the active release.
 That dependency command is not the repository's managed pinned-pnpm setup path;
@@ -834,7 +834,7 @@ tailscale serve status --json | jq .
 ```
 
 The `active.sha` must equal the provenance SHA returned by both identity
-endpoints. `active.ci.url` is the accepted exact-SHA `CI` push-run receipt. A
+endpoints. `active.ci.url` is the accepted exact-SHA `PR: CI` push-run receipt. A
 pending, failed, absent, PR-only, different-workflow, or wrong-SHA run blocks
 promotion.
 

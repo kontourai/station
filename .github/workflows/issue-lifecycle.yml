@@ -1,4 +1,4 @@
-name: Issue lifecycle
+name: "Repo: Issue lifecycle"
 
 on:
   issues:

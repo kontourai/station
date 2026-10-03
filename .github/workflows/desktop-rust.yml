@@ -1,4 +1,4 @@
-name: Desktop Rust tests
+name: "PR: Desktop Rust"
 
 # The bundled-server supervisor state machine (src-desktop) is a pure,
 # exhaustively unit-tested Rust module. It runs on its own paths-filtered lane

@@ -1,4 +1,4 @@
-name: Nightly native cohort
+name: "Nightly: Native cohort"
 
 # Phase two of the native cohort. The caller supplies the already source-gated
 # revision, the exact-SHA full-regression result, and the identity that

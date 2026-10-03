@@ -28,7 +28,7 @@ and [mobile-release.md](./mobile-release.md). Listing copy lives in
   but every channel preflights its own App Store Connect app and group before
   signing. Query their current protection configuration; this guide does not
   claim live environment state.
-- The dispatch-only **Internal iOS TestFlight cohort** runs only from current
+- The dispatch-only **Release: Internal TestFlight cohort** runs only from current
   `main`, first proving no-effect admission to all three environments. It then
   creates signed, immutable `ios-testflight/<channel>/v<version>/<build>`
   authority tags and calls only the reusable TestFlight delivery workflow in

@@ -1,4 +1,4 @@
-name: Ecosystem packaging dry-run
+name: "PR: Ecosystem packaging"
 
 on:
   pull_request_target:

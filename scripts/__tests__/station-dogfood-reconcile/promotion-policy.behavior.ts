@@ -194,7 +194,7 @@ export function registerPromotionPolicy() {
       expect(gh?.args).toEqual(
         expect.arrayContaining([
           '--workflow',
-          'CI',
+          'PR: CI',
           '--event',
           'push',
           '--branch',

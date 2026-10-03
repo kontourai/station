@@ -1,4 +1,4 @@
-name: Gallery PR check
+name: "PR: Gallery"
 
 # The exact-pixel gallery gate, run on the pull request that moves a screen
 # rather than on the next nightly (#2428). Until this existed the gate ran only

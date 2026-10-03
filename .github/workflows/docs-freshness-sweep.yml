@@ -1,4 +1,4 @@
-name: Documentation freshness sweep
+name: "Repo: Docs freshness sweep"
 
 # #2923: pull requests re-review the documentation records their own diff
 # makes stale (scoped freshness), and the merge queue only reports staleness,
