@@ -317,6 +317,15 @@ export function PlatformBootstrap({ children }: { children: ReactNode }) {
     };
   }, [profile, profileBootstrapError]);
 
+  // Repository refresh also publishes host-enrolled metadata on mobile;
+  // reload the actual ConnectionStore without remounting the sign-in flow.
+  useEffect(() => {
+    if (!profile?.isTauri) return;
+    return nativeProfileRepository().subscribeRelayRouteProfiles(() => {
+      setProfileStoreEpoch((epoch) => epoch + 1);
+    });
+  }, [profile?.isTauri]);
+
   // `profiles.json` is shared with the CLI, so native Desktop cannot assume
   // its bootstrap snapshot remains current. Poll the secret-free metadata at a
   // deliberately modest cadence; a changed document remounts the connection

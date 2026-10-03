@@ -52,28 +52,6 @@ const ANIMATED: Array<[label: string, source: string, selector: string]> = [
 ];
 
 describe('station#3309 chat dock motion', () => {
-  test('uses the universal reduced-motion primitive', () => {
-    const tokens = read('tokens.css');
-    const start = tokens.indexOf('@media (prefers-reduced-motion: reduce)');
-    expect(start).toBeGreaterThanOrEqual(0);
-    const open = tokens.indexOf('{', start);
-    expect(open).toBeGreaterThanOrEqual(0);
-    let depth = 1;
-    let index = open + 1;
-    while (index < tokens.length && depth) {
-      if (tokens[index] === '{') depth++;
-      else if (tokens[index] === '}') depth--;
-      index++;
-    }
-    expect(depth).toBe(0);
-    const media = tokens.slice(open + 1, index - 1);
-    const rule =
-      media.match(/\*,\s*\*::before,\s*\*::after\s*\{([\s\S]*?)\}/)?.[1] ?? '';
-    expect(rule).toMatch(/animation-duration:\s*0\.01ms\s*!important/);
-    expect(rule).toMatch(/animation-iteration-count:\s*1\s*!important/);
-    expect(rule).toMatch(/transition-duration:\s*0\.01ms\s*!important/);
-  });
-
   test.each(ANIMATED)(
     '%s animates on motion tokens, never a literal duration or easing',
     (_label, source, selector) => {

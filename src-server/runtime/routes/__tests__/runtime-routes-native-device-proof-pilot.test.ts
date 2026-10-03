@@ -28,6 +28,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve, sep } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import {
   createApplicationChannelFetch,
   serveApplicationChannel,
@@ -63,6 +64,7 @@ import {
 import { Hono } from 'hono';
 import { exportJWK as exportJwkJose, generateKeyPair } from 'jose';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { z } from 'zod/v3';
 import { readJson } from '../../../__test-utils__/read-json.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
@@ -245,6 +247,7 @@ describe('native Device request-proof pilot over the production composition', ()
     else process.env.STATION_ROOT = ambientRoot;
     if (ambientOrigins === undefined) delete process.env.ALLOWED_ORIGINS;
     else process.env.ALLOWED_ORIGINS = ambientOrigins;
+    vi.unstubAllEnvs();
     vi.restoreAllMocks();
     directories.splice(0);
   });
@@ -909,7 +912,11 @@ describe('native Device request-proof pilot over the production composition', ()
           return data.data;
         },
         /** Headers for a bearer-free protected request on the continuation. */
-        headers: async (method: string, path: string) => {
+        headers: async (
+          method: string,
+          path: string,
+          body: Uint8Array = new Uint8Array(0),
+        ) => {
           if (!continuation) throw new Error('continuation not established');
           const continuationProof = await createNativeApplicationSessionProof(
             { publicKey: sessionKey.publicJwk, sign: sessionKey.sign },
@@ -933,7 +940,7 @@ describe('native Device request-proof pilot over the production composition', ()
           return {
             // A fresh one-use Device request proof travels with every
             // request, alongside the continuation and its own proof.
-            [NATIVE_DEVICE_PROOF_HEADER]: await deviceProof(method, path),
+            [NATIVE_DEVICE_PROOF_HEADER]: await deviceProof(method, path, body),
             [APPLICATION_SESSION_NATIVE_HEADER]: continuation.credential,
             [APPLICATION_SESSION_NATIVE_PROOF_HEADER]: continuationProof,
           };
@@ -1379,6 +1386,491 @@ describe('native Device request-proof pilot over the production composition', ()
         code: 'unavailable',
       },
     });
+  });
+
+  test('current native Device may observe neutral Station identity before account login but cannot read Projects', async () => {
+    vi.stubEnv('STATION_BUILD_SHA', '081bfd979d9f3e180586bafb6b46130556ce5d60');
+    vi.stubEnv('STATION_INSTANCE_ID', 'native-pilot-fixture');
+    vi.stubEnv('STATION_BOOT_ID', 'native-pilot-fixture-boot');
+    const h = await setup();
+    const guest = await h.shareAndCreateGuest(
+      'neutral-native',
+      'Neutral native',
+      'viewer',
+    );
+    const paired = await h.pairNativeDevice(
+      'neutral-device',
+      guest.login,
+      'orchestration:read',
+    );
+    const peer = await h.startNativePeer(paired);
+    try {
+      const path = '/api/system/identity';
+      const identity = await peer.nativeFetch(
+        new Request(`${ORIGIN}${path}`, {
+          headers: {
+            [NATIVE_DEVICE_PROOF_HEADER]: await peer.deviceProof('GET', path),
+          },
+        }),
+      );
+      expect(identity.status).toBe(200);
+      expect(await identity.json()).toMatchObject({
+        instanceId: 'native-pilot-fixture',
+        bootId: 'native-pilot-fixture-boot',
+        sha: '081bfd979d9f3e180586bafb6b46130556ce5d60',
+      });
+      const project = await peer.nativeFetch(
+        new Request(`${ORIGIN}/api/projects`, {
+          headers: {
+            [NATIVE_DEVICE_PROOF_HEADER]: await peer.deviceProof(
+              'GET',
+              '/api/projects',
+            ),
+          },
+        }),
+      );
+      expect(project.status).toBe(401);
+      await project.text();
+      expect(
+        h.security.devicePairing.identifyDevice(paired.credential)?.id,
+      ).toBe(paired.device.id);
+    } finally {
+      peer.dispose();
+    }
+  });
+
+  test('mounted native HTTP invitation acceptance composes actual account and Device proof, then preserves Device across account401 and same-person reauthentication', async () => {
+    const h = await setup();
+    const guest = await h.shareAndCreateGuest(
+      'native-http-invite',
+      'Native HTTP invite',
+      'viewer',
+    );
+    const paired = await h.pairNativeDevice(
+      'native-http-device',
+      guest.login,
+      'orchestration:read',
+    );
+    const peer = await h.startNativePeer(paired);
+    const path = '/api/account-auth/accept-invitation';
+    const body = new TextEncoder().encode(
+      JSON.stringify({ token: guest.invitationToken }),
+    );
+    try {
+      const established = await peer.session.establish({
+        username: guest.username,
+        password: GUEST_PASSWORD,
+      });
+      const before = await peer.nativeFetch(
+        new Request(`${ORIGIN}/api/projects`, {
+          headers: await peer.session.headers('GET', '/api/projects'),
+        }),
+      );
+      expect(before.status).toBe(200);
+      expect(
+        z
+          .object({ data: z.array(z.unknown()) })
+          .passthrough()
+          .parse(await before.json()).data,
+      ).toEqual([]);
+      const direct = await h.request(path, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(await peer.session.headers('POST', path, body)),
+        },
+        body,
+      });
+      expect(direct.status).toBe(403);
+      for (const conflict of [
+        { Origin: ORIGIN },
+        { Cookie: 'untrusted=value' },
+      ]) {
+        const response = await peer.nativeFetch(
+          new Request(`${ORIGIN}${path}`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(await peer.session.headers('POST', path, body)),
+              ...conflict,
+            },
+            body,
+          }),
+        );
+        const errorText = await response.text();
+        if ('Cookie' in conflict) {
+          expect(response.status).toBe(400);
+          expect(JSON.parse(errorText)).toEqual({
+            error: { code: 'virtual_header_forbidden' },
+          });
+        } else expect(response.status, errorText).toBe(403);
+      }
+      const changed = new TextEncoder().encode(
+        JSON.stringify({ token: 'X'.repeat(43) }),
+      );
+      const tampered = await peer.nativeFetch(
+        new Request(`${ORIGIN}${path}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(await peer.session.headers('POST', path, body)),
+          },
+          body: changed,
+        }),
+      );
+      expect(tampered.status).toBe(403);
+      await tampered.text();
+      const beforeOversize = h.lastNativeRequest();
+      await expect(
+        peer.nativeFetch(
+          new Request(`${ORIGIN}${path}`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(await peer.session.headers('POST', path, body)),
+            },
+            body: 'x'.repeat(16 * 1024 + 1),
+          }),
+        ),
+      ).rejects.toThrow('Application request body exceeds 16 KiB pilot limit');
+      expect(h.lastNativeRequest()).toBe(beforeOversize);
+      const headers = {
+        'Content-Type': 'application/json',
+        ...(await peer.session.headers('POST', path, body)),
+      };
+      const accepted = await peer.nativeFetch(
+        new Request(`${ORIGIN}${path}`, { method: 'POST', headers, body }),
+      );
+      expect(accepted.status).toBe(200);
+      expect(await accepted.json()).toMatchObject({
+        data: {
+          scope: { localProjectSlug: guest.project.slug },
+          grantsDeviceAccess: false,
+        },
+      });
+      const replay = await peer.nativeFetch(
+        new Request(`${ORIGIN}${path}`, { method: 'POST', headers, body }),
+      );
+      expect(replay.status).toBe(403);
+      await replay.text();
+      const read = await peer.nativeFetch(
+        new Request(`${ORIGIN}/api/projects/${guest.project.slug}`, {
+          headers: await peer.session.headers(
+            'GET',
+            `/api/projects/${guest.project.slug}`,
+          ),
+        }),
+      );
+      expect(read.status).toBe(200);
+      await read.text();
+      const sessionStore = new DatabaseSync(
+        join(h.homeDir, 'authentication', 'application-sessions.sqlite'),
+        { readOnly: true },
+      );
+      let sessionId: string;
+      try {
+        const record = sessionStore
+          .prepare(
+            'SELECT record FROM application_session_native_sessions WHERE token_hash=?',
+          )
+          .get(await sha256Base64url(established.credential));
+        if (typeof record?.record !== 'string')
+          throw new Error('No actual native continuation record');
+        const parsed = JSON.parse(record.record);
+        if (typeof parsed.providerSessionId !== 'string')
+          throw new Error('No actual provider session reference');
+        sessionId = parsed.providerSessionId;
+      } finally {
+        sessionStore.close();
+      }
+      const account = await h.localAccounts.service.verifySessionReference(
+        sessionId,
+        new AbortController().signal,
+      );
+      if (account.kind !== 'authenticated')
+        throw new Error('No real current account');
+      await h.localAccounts.service.revokeSessionReference(
+        sessionId,
+        new AbortController().signal,
+      );
+      const revoked = await peer.nativeFetch(
+        new Request(`${ORIGIN}/api/projects`, {
+          headers: await peer.session.headers('GET', '/api/projects'),
+        }),
+      );
+      expect(revoked.status).toBe(401);
+      expect(revoked.headers.get('X-Station-Authentication-Failure')).toBe(
+        'account',
+      );
+      await revoked.text();
+      expect(
+        h.security.devicePairing.identifyDevice(paired.credential)?.id,
+      ).toBe(paired.device.id);
+      await peer.session.establish({
+        username: guest.username,
+        password: GUEST_PASSWORD,
+      });
+      const reauthenticated = await peer.nativeFetch(
+        new Request(`${ORIGIN}/api/projects`, {
+          headers: await peer.session.headers('GET', '/api/projects'),
+        }),
+      );
+      expect(reauthenticated.status).toBe(200);
+      expect(
+        z
+          .object({ data: z.array(z.unknown()) })
+          .passthrough()
+          .parse(await reauthenticated.json()).data,
+      ).toHaveLength(1);
+      const revokePath = '/api/account-auth/continuations/native/revoke';
+      const revokeBody = new TextEncoder().encode('{}');
+      const revokeHeaders = {
+        'Content-Type': 'application/json',
+        ...(await peer.session.headers('POST', revokePath, revokeBody)),
+      };
+      const directRevoke = await h.request(revokePath, {
+        method: 'POST',
+        headers: revokeHeaders,
+        body: revokeBody,
+      });
+      expect(directRevoke.status).toBe(403);
+      await directRevoke.text();
+      const logout = await peer.nativeFetch(
+        new Request(`${ORIGIN}${revokePath}`, {
+          method: 'POST',
+          headers: revokeHeaders,
+          body: revokeBody,
+        }),
+      );
+      expect(logout.status).toBe(200);
+      expect(await logout.json()).toEqual({ data: { revoked: true } });
+      const replayLogout = await peer.nativeFetch(
+        new Request(`${ORIGIN}${revokePath}`, {
+          method: 'POST',
+          headers: revokeHeaders,
+          body: revokeBody,
+        }),
+      );
+      expect(replayLogout.status).toBe(403);
+      await replayLogout.text();
+      const afterLogout = await peer.nativeFetch(
+        new Request(`${ORIGIN}/api/projects`, {
+          headers: await peer.session.headers('GET', '/api/projects'),
+        }),
+      );
+      expect(afterLogout.status).toBe(401);
+      expect(afterLogout.headers.get('X-Station-Authentication-Failure')).toBe(
+        'account',
+      );
+      await afterLogout.text();
+      expect(
+        h.security.devicePairing.identifyDevice(paired.credential)?.id,
+      ).toBe(paired.device.id);
+      await peer.session.establish({
+        username: guest.username,
+        password: GUEST_PASSWORD,
+      });
+      const afterReauth = await peer.nativeFetch(
+        new Request(`${ORIGIN}/api/projects`, {
+          headers: await peer.session.headers('GET', '/api/projects'),
+        }),
+      );
+      expect(afterReauth.status).toBe(200);
+      await afterReauth.text();
+      const providerFailure = vi
+        .spyOn(h.localAccounts.service, 'revokeSessionReference')
+        .mockRejectedValueOnce(new Error('unconfirmed provider outcome'));
+      const uncertain = await peer.nativeFetch(
+        new Request(`${ORIGIN}${revokePath}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(await peer.session.headers('POST', revokePath, revokeBody)),
+          },
+          body: revokeBody,
+        }),
+      );
+      expect(uncertain.status).toBe(503);
+      expect(await uncertain.json()).toEqual({
+        error: { code: 'application_session_unavailable' },
+      });
+      providerFailure.mockRestore();
+      const afterUncertain = await peer.nativeFetch(
+        new Request(`${ORIGIN}/api/projects`, {
+          headers: await peer.session.headers('GET', '/api/projects'),
+        }),
+      );
+      expect(afterUncertain.status).toBe(401);
+      await afterUncertain.text();
+      expect(
+        h.security.devicePairing.identifyDevice(paired.credential)?.id,
+      ).toBe(paired.device.id);
+    } finally {
+      peer.dispose();
+    }
+  });
+
+  test('native remote logout withholds acknowledgment when the real Device binding retires during actual provider revocation', async () => {
+    const h = await setup();
+    const guest = await h.shareAndCreateGuest(
+      'logout-retirement',
+      'Logout retirement',
+      'viewer',
+    );
+    const paired = await h.pairNativeDevice(
+      'logout-device',
+      guest.login,
+      'orchestration:read',
+    );
+    const peer = await h.startNativePeer(paired);
+    let resolveReached!: () => void;
+    let resolveRelease!: () => void;
+    const reached = new Promise<void>((resolve) => {
+      resolveReached = resolve;
+    });
+    const release = new Promise<void>((resolve) => {
+      resolveRelease = resolve;
+    });
+    const original = h.localAccounts.service.revokeSessionReference.bind(
+      h.localAccounts.service,
+    );
+    const barrier = vi
+      .spyOn(h.localAccounts.service, 'revokeSessionReference')
+      .mockImplementationOnce(async (id, signal) => {
+        await original(id, signal);
+        resolveReached();
+        await release;
+      });
+    try {
+      await peer.session.establish({
+        username: guest.username,
+        password: GUEST_PASSWORD,
+      });
+      const path = '/api/account-auth/continuations/native/revoke';
+      const body = new TextEncoder().encode('{}');
+      const pending = peer.nativeFetch(
+        new Request(`${ORIGIN}${path}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(await peer.session.headers('POST', path, body)),
+          },
+          body,
+        }),
+      );
+      await Promise.race([
+        reached,
+        pending.then(() => {
+          throw new Error('provider barrier not reached');
+        }),
+      ]);
+      h.bindingService.revokeBinding({
+        bindingId: paired.binding.bindingId,
+        deviceId: paired.device.id,
+        surface: paired.surface,
+        jwk: paired.deviceKey.publicJwk,
+        approval: h.operatorAuthority.approve({
+          operatorPrincipalId: LOCAL_OPERATOR_PRINCIPAL_ID,
+          tuple: {
+            operation: 'revoke',
+            stationId: paired.binding.stationId,
+            deviceId: paired.device.id,
+            bindingId: paired.binding.bindingId,
+            surface: paired.surface,
+            jwk: paired.deviceKey.publicJwk,
+          },
+        }),
+      });
+      resolveRelease();
+      const response = await pending;
+      expect(response.status).toBe(401);
+      expect(await response.json()).toEqual({
+        error: { code: 'application_session_invalid' },
+      });
+      expect(
+        h.security.devicePairing.identifyDevice(paired.credential)?.id,
+      ).toBe(paired.device.id);
+    } finally {
+      resolveRelease();
+      barrier.mockRestore();
+      peer.dispose();
+    }
+  });
+
+  test('mounted native invitation cannot combine one real person continuation with another account-bound Device', async () => {
+    const h = await setup();
+    const alice = await h.shareAndCreateGuest(
+      'native-alice',
+      'Alice Project',
+      'viewer',
+    );
+    const bob = await h.shareAndCreateGuest(
+      'native-bob',
+      'Bob Project',
+      'viewer',
+    );
+    const aliceDevice = await h.pairNativeDevice(
+      'alice-device',
+      alice.login,
+      'orchestration:read',
+    );
+    const bobDevice = await h.pairNativeDevice(
+      'bob-device',
+      bob.login,
+      'orchestration:read',
+    );
+    const a = await h.startNativePeer(aliceDevice),
+      b = await h.startNativePeer(bobDevice);
+    const path = '/api/account-auth/accept-invitation';
+    const body = new TextEncoder().encode(
+      JSON.stringify({ token: alice.invitationToken }),
+    );
+    try {
+      await a.session.establish({
+        username: alice.username,
+        password: GUEST_PASSWORD,
+      });
+      await b.session.establish({
+        username: bob.username,
+        password: GUEST_PASSWORD,
+      });
+      const foreign = await b.session.headers('POST', path, body);
+      const own = await a.session.headers('POST', path, body);
+      const response = await a.nativeFetch(
+        new Request(`${ORIGIN}${path}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...foreign,
+            [NATIVE_DEVICE_PROOF_HEADER]: own[NATIVE_DEVICE_PROOF_HEADER],
+          },
+          body,
+        }),
+      );
+      expect(response.status).toBe(401);
+      await response.text();
+      const unread = await a.nativeFetch(
+        new Request(`${ORIGIN}/api/projects`, {
+          headers: await a.session.headers('GET', '/api/projects'),
+        }),
+      );
+      expect(unread.status).toBe(200);
+      expect(
+        z
+          .object({ data: z.array(z.unknown()) })
+          .passthrough()
+          .parse(await unread.json()).data,
+      ).toEqual([]);
+      expect(
+        h.security.devicePairing.identifyDevice(aliceDevice.credential)?.id,
+      ).toBe(aliceDevice.device.id);
+      expect(
+        h.security.devicePairing.identifyDevice(bobDevice.credential)?.id,
+      ).toBe(bobDevice.device.id);
+    } finally {
+      a.dispose();
+      b.dispose();
+    }
   });
 
   test('bearer-free native challenge, exchange and permitted Project read over one admitted peer', async () => {

@@ -16,6 +16,20 @@ function toolServer(
 }
 
 describe('resolveCodexMcpServers', () => {
+  test('delivers exact and empty tool selections to Codex', () => {
+    for (const allowedTools of [['read'], []]) {
+      const result = resolveCodexMcpServers([
+        toolServer({ allowedTools, disabledTools: ['write'] }),
+      ]);
+      expect(result.configArgs).toContain(
+        `mcp_servers.weather.enabled_tools=[${allowedTools.map((name) => `"${name}"`).join(', ')}]`,
+      );
+      expect(result.configArgs).toContain(
+        'mcp_servers.weather.disabled_tools=["write"]',
+      );
+    }
+  });
+
   test('maps a stdio tool server to -c mcp_servers.<id>.command/.args config args', () => {
     const result = resolveCodexMcpServers([toolServer()]);
     expect(result.skipped).toEqual([]);

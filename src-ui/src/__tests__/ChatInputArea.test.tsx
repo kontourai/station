@@ -22,6 +22,7 @@ import {
   endConversationReferenceDrag,
   startConversationReferenceDrag,
 } from '../components/chat/conversationReferenceDrag';
+import { deviceSettingsStore } from '../lib/device-settings-store';
 
 const fetchConversationInventory = vi.hoisted(() => vi.fn());
 vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
@@ -130,6 +131,48 @@ function renderChatInputArea(overrides: Record<string, unknown> = {}) {
 }
 
 describe('ChatInputArea', () => {
+  test('keeps Send and Stop available during a turn, with Queue as the default', () => {
+    const onQueueFollowUp = vi.fn(async () => {});
+    const onSend = vi.fn(async () => {});
+    renderChatInputArea({
+      turnInFlight: true,
+      busyFollowUp: 'steer',
+      onQueueFollowUp,
+      onSend,
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    expect(onQueueFollowUp).toHaveBeenCalledOnce();
+    expect(onSend).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole('button', { name: 'Stop the current turn' }),
+    ).toBeTruthy();
+  });
+
+  test('newline preference preserves Return and Shift+Return; Ctrl/Cmd+Return sends outside IME', async () => {
+    deviceSettingsStore.set('chatReturnBehavior', 'newline');
+    try {
+      const props = renderChatInputArea();
+      const input = screen.getByRole('textbox');
+      fireEvent.keyDown(input, { key: 'Enter' });
+      fireEvent.keyDown(input, { key: 'Enter', shiftKey: true });
+      expect(props.onSend).not.toHaveBeenCalled();
+      fireEvent.compositionStart(input);
+      fireEvent.keyDown(input, { key: 'Enter', ctrlKey: true });
+      expect(props.onSend).not.toHaveBeenCalled();
+      fireEvent.compositionEnd(input);
+      fireEvent.keyDown(input, { key: 'Enter', ctrlKey: true });
+      await waitFor(() =>
+        expect(
+          screen.getByRole('button', { name: 'Send' }).hasAttribute('disabled'),
+        ).toBe(false),
+      );
+      fireEvent.keyDown(input, { key: 'Enter', metaKey: true });
+      expect(props.onSend).toHaveBeenCalledTimes(2);
+    } finally {
+      deviceSettingsStore.reset('chatReturnBehavior');
+    }
+  });
+
   // A short dock can scroll the transcript's error card out of view; the fix
   // for an attachment-only block must be on the line that states it.
   test('a send blocked only by its attachments offers their removal on the validation line', () => {
@@ -200,7 +243,7 @@ describe('ChatInputArea', () => {
     expect(
       (
         screen.getByRole('button', {
-          name: 'Queue this follow-up until the turn finishes',
+          name: 'Send',
         }) as HTMLButtonElement
       ).disabled,
     ).toBe(true);
@@ -818,7 +861,7 @@ describe('ChatInputArea', () => {
     expect(props.onCancel).toHaveBeenCalled();
   });
 
-  test('steer-default busy composer offers Queue and Enter still sends', () => {
+  test('the Send dropdown selects native steer and keyboard submission follows that choice', () => {
     const onQueueFollowUp = vi.fn(async () => {});
     const onSend = vi.fn(async () => {});
     renderChatInputArea({
@@ -826,75 +869,120 @@ describe('ChatInputArea', () => {
       busyFollowUp: 'steer',
       onQueueFollowUp,
       onSend,
-      input: 'course correct',
     });
-
-    expect(
-      screen.getByPlaceholderText(
-        'Steer this turn… (Enter steers; Queue waits)',
-      ),
-    ).toBeTruthy();
-    const queue = screen.getByRole('button', {
-      name: 'Queue this follow-up until the turn finishes',
-    });
-    fireEvent.click(queue);
-    expect(onQueueFollowUp).toHaveBeenCalledTimes(1);
-    expect(onSend).not.toHaveBeenCalled();
-
-    fireEvent.keyDown(screen.getByPlaceholderText(/Steer this turn/), {
-      key: 'Enter',
-    });
-    expect(onSend).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole('button', { name: /^Send mode:/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Steer this turn' }));
+    fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Enter' });
+    expect(onSend).toHaveBeenCalledOnce();
+    expect(onQueueFollowUp).not.toHaveBeenCalled();
   });
 
-  test('keeps the mobile steering placeholder free of desktop keyboard instructions', () => {
-    vi.mocked(window.matchMedia).mockImplementation(
-      () =>
-        ({
-          matches: true,
-          addEventListener: vi.fn(),
-          removeEventListener: vi.fn(),
-          addListener: vi.fn(),
-          removeListener: vi.fn(),
-          dispatchEvent: vi.fn(),
-          media: '',
-          onchange: null,
-        }) as unknown as MediaQueryList,
-    );
+  test('safe stop-and-send is named distinctly from native steering', () => {
     renderChatInputArea({
       turnInFlight: true,
       busyFollowUp: 'steer',
-      input: 'course correct',
+      busySteeringKind: 'safe-stop',
+      onQueueFollowUp: vi.fn(),
     });
-    expect(screen.getByPlaceholderText('Steer this turn…')).toBeTruthy();
-    vi.mocked(window.matchMedia).mockImplementation(
-      () =>
-        ({
+    fireEvent.click(screen.getByRole('button', { name: /^Send mode:/ }));
+    expect(
+      screen.getByRole('button', {
+        name: 'Steer when safe',
+      }),
+    ).toBeTruthy();
+  });
+
+  test.each([
+    { input: '', hasQuotedContext: false, visible: false },
+    { input: 'A follow-up', hasQuotedContext: false, visible: true },
+    { input: '', hasQuotedContext: true, visible: true },
+  ])(
+    'mobile submit controls follow draft readiness while Stop stays available ($visible)',
+    ({ input, hasQuotedContext, visible }) => {
+      vi.mocked(window.matchMedia).mockImplementation((query: string) => ({
+        matches: true,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+        media: query,
+        onchange: null,
+      }));
+      try {
+        renderChatInputArea({
+          input,
+          hasQuotedContext,
+          turnInFlight: true,
+          onQueueFollowUp: vi.fn(),
+        });
+        expect(Boolean(screen.queryByRole('button', { name: 'Send' }))).toBe(
+          visible,
+        );
+        expect(
+          Boolean(screen.queryByRole('button', { name: /^Send mode:/ })),
+        ).toBe(visible);
+        expect(
+          screen.getByRole('button', { name: 'Stop the current turn' }),
+        ).toBeTruthy();
+      } finally {
+        vi.mocked(window.matchMedia).mockImplementation((query: string) => ({
           matches: false,
           addEventListener: vi.fn(),
           removeEventListener: vi.fn(),
           addListener: vi.fn(),
           removeListener: vi.fn(),
           dispatchEvent: vi.fn(),
-          media: '',
+          media: query,
           onchange: null,
-        }) as unknown as MediaQueryList,
-    );
+        }));
+      }
+    },
+  );
+
+  test('vertical arrows retain multiline draft editing instead of recalling message history', () => {
+    const props = renderChatInputArea({ input: 'first line\nsecond line' });
+    fireEvent.keyDown(screen.getByRole('textbox'), { key: 'ArrowUp' });
+    fireEvent.keyDown(screen.getByRole('textbox'), { key: 'ArrowDown' });
+    expect(props.onHistoryUp).not.toHaveBeenCalled();
+    expect(props.onHistoryDown).not.toHaveBeenCalled();
   });
 
-  test('queue-only busy composer has no Queue control', () => {
-    renderChatInputArea({
-      turnInFlight: true,
-      busyFollowUp: 'queue',
-      input: 'later',
-    });
-
-    expect(screen.getByPlaceholderText('Queue a follow-up…')).toBeTruthy();
-    expect(
-      screen.queryByRole('button', {
-        name: 'Queue this follow-up until the turn finishes',
-      }),
-    ).toBeNull();
+  test('automatic Return behavior uses touch input policy rather than narrow desktop width', () => {
+    vi.mocked(window.matchMedia).mockImplementation((query: string) => ({
+      matches: query === '(pointer: coarse)',
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+      media: query,
+      onchange: null,
+    }));
+    try {
+      const props = renderChatInputArea();
+      fireEvent.keyDown(screen.getByRole('textbox'), {
+        key: 'Enter',
+        code: 'Enter',
+      });
+      expect(props.onSend).not.toHaveBeenCalled();
+      fireEvent.keyDown(screen.getByRole('textbox'), {
+        key: 'Enter',
+        ctrlKey: true,
+      });
+      expect(props.onSend).toHaveBeenCalledOnce();
+    } finally {
+      vi.mocked(window.matchMedia).mockImplementation((query: string) => ({
+        matches: false,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+        media: query,
+        onchange: null,
+      }));
+    }
   });
 
   test('opens the model picker when model selection is available', () => {
@@ -1216,7 +1304,7 @@ describe('ChatInputArea', () => {
   test('clear input is an explicit non-submit button and preserves its action', () => {
     const onClearInput = vi.fn();
     renderChatInputArea({ onClearInput });
-    const clear = screen.getByRole('button', { name: 'Clear input' });
+    const clear = screen.getByRole('button', { name: 'Clear message' });
 
     expect(clear.getAttribute('type')).toBe('button');
     fireEvent.click(clear);
@@ -1514,7 +1602,7 @@ describe('ChatInputArea', () => {
 
       // The one path that can clear the draft stays the user's explicit ×
       // click — available while over-limit, and not hijacked by the guard.
-      fireEvent.click(screen.getByRole('button', { name: 'Clear input' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Clear message' }));
       expect(onClearInput).toHaveBeenCalledOnce();
       expect(onInputChange).not.toHaveBeenCalled();
     });

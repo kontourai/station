@@ -189,6 +189,22 @@ can use the screen. Explicit maximized conversation links still
 open chat at their requested size, and the prior chat size remains available
 when you return to the conversation.
 
+### Send a follow-up while an engine works
+
+Keep typing during a turn. **Send** defaults to **Queue**, which delivers after
+the turn finishes; its dropdown offers **Steer**. Claude Code and Codex can take
+native steering. Other engines hold steering until a safe boundary can be proven;
+currently they wait until the turn finishes. Each pending row shows its mode.
+**Send now** deliberately stops the active turn immediately and sends the
+selected message after Station confirms the stop. **Stop** remains separate.
+
+Quiet turns show elapsed silence without guessing that an engine retried. Retry
+status appears only when the engine reports it. The Drafts icon saves and restores
+unsent composer content; the trash icon clears the current message. Hold or focus
+either icon to read its label. Choose **Chat settings → Return in chat** to change
+Return behavior on this device. Touch devices default to a new line; desktop
+Return sends. Shift+Return adds a line and Ctrl/Cmd+Return sends.
+
 ### Reference project files and earlier conversations
 
 In a project chat, type `@` followed by part of a file or folder path, then

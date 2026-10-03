@@ -210,56 +210,212 @@ read-only; they can still display and copy the complete address. Ordinary
 browser-local saved Stations retain their existing edit and endpoint-verification
 flow.
 
-On native Desktop, **Add computer → Save an encrypted broker route** records
-the Station address, broker address and exact Station enrollment. **Saved broker
-routes** lists, edits and removes those records and reports whether this device
-has a separately approved Station signing key. Saving a route does not connect,
-sign in, pair a Device or grant Project access. Until the broker transport is
-wired into the ordinary client, these records remain unconnected and cannot be
-selected as direct Station connections or CLI defaults. The CLI also refuses
-`--station` and `STATION_TARGET` when they name one of these inert routes.
+On native clients, **Add computer → Save an encrypted broker route** records
+public Station and broker addresses and the exact Station enrollment. Saving
+this record does not connect, sign in, pair a Device or grant Project access.
+**Your Stations** exposes separate Station signing-key approval, routing
+grant redemption and Device setup. The host keeps routing and Device
+credentials in OS custody, outside the saved public record.
 
-Desktop now registers [host signaling commands](../design/native-capabilities.md#desktop-application-signaling-commands)
-for an existing routing grant, but the ordinary native client does not call
-them yet. They add no Connect or account-sign-in action to these saved routes.
+On a native client with no saved Station, open the Station manager from Home
+and choose **Set up a broker route** in the list footer. This opens the same
+saved-route setup used by **Add computer**; the address, QR and pairing-code
+actions remain available in the manager.
 
-Already redeemed native routing grants have a separate Desktop maintenance
-path. While the Desktop renderer is visible, it observes every saved broker
+On iOS, a public setup link opens **Connect to a Station**. Give the Station a
+name with **Save this Station → Save Station**. The address comes from the link
+and is not yet verified; inspect it under **Connection details**. Saving does
+not connect, sign in, approve a Device, or grant Project access.
+
+Choose **Share device details**, then **Copy device details**, and send them to
+the Station owner for approval. These are public installation details, not a
+password or private key. This action is available even when the Station is
+already confirmed. It does not rotate trust or issue an invitation.
+
+The owner’s later bound invitation requires that exact saved Station and its
+matching device details. The host retains the secret; the UI receives public
+metadata and an opaque handle. Choose **Check this Station**. Compare the code
+and full key ID with the owner through a separate trusted channel, enter both,
+and explicitly **Confirm Station**. Both values and the separate-channel check
+remain required. Setup shows the current step first; connection controls appear
+after confirmation. The form asks for **Owner’s code** and **Owner’s key ID**.
+The received values, route identifiers and deadline are collapsed under
+**Station identity details**. An expired check asks for a new invitation.
+After confirmation, inspection and removal are under **Confirmation details**.
+Info icons explain Station confirmation and device approval on demand. Hover
+or focus gives the icon’s label; tap or click opens the explanation. Escape
+closes help before the surrounding setup dialog. Setup uses the shared theme
+for controls and statuses; the setup-link expiry remains visible.
+
+
+**Continue to device approval** is a separate action. A confirmed routing grant
+opens Device setup. The consumed invitation’s expiry no longer closes that
+setup; grant and Device deadlines remain unchanged. Account sign-in and
+Project membership are still separate. Opening or cancelling a link does not
+select a Station or retire an existing account session. Cold intake precedes
+the operator and member roots; warm intake covers their mounted owners.
+If a connection is already saved, the next invitation stops before redemption
+and offers a review of those saved connections. Removing them requires an
+explicit confirmation; the new invitation is not consumed during review.
+
+Station confirmation and connection changes made in the invitation dialog
+refresh **Your Stations** automatically. The card rechecks native host state
+after setup operations settle, including an uncertain or late reply. Closing
+the dialog preserves the mounted application and its selected Station and
+account session. A refreshed card does not select a Station, approve a Device
+or grant account or Project access.
+
+The saved Station card shows that the connection invitation is stored on this
+device. Its collapsed expiry details describe the local credential; they do not
+show whether the Station is online or the connection will work.
+
+These links use separate iOS schemes for each installed channel. Android
+secret-link intake is unsupported. The d956 development simulator observed
+nonsecret public cold and warm intake, cancellation, unchanged saved profiles
+and confirmation, and error-free empty grant status. Bound secret delivery,
+actual grant storage writes/deletes, account/application traffic, store
+releases and physical acceptance remain unverified. The UI owners are the
+[root intake](../../src-ui/src/platform/native/NativeRelayLinkIntake.tsx) (with its iOS-only [controller](../../src-ui/src/platform/native/NativeRelayLinkIntakeController.tsx)) and
+[opaque native adapter](../../src-ui/src/platform/native/nativeRelayLinkAdapter.ts).
+
+**Approve this device** verifies a supported account, presents the exact Device
+candidate for operator approval, then requires explicit activation. Reopening
+setup recovers an existing attempt from the host journal; an uncertain
+activation is checked before the UI reports **Device configured**. That label
+establishes Device configuration only, not an account session or membership.
+See [native enrollment](../design/native-relay-enrollment.md) for the separate
+Station, routing, Device and account owners and current qualification limits.
+
+If a Device request expires, close the expired request before starting another.
+A newer connection can close an old expired candidate when it still points to
+the same Station and installation with unchanged trust. It does not restart
+account submission or renew the old Device request. Staged delivery or an
+uncertain activation needs its own status recovery; keep that setup open.
+
+
+Configured routes are not selected automatically. A configured row says
+**Device configured · not selected** until you choose **Use this Station**. A
+selected configured row distinguishes **account sign-in required** from
+**account session active** using the current native account scope; neither
+status says the workspace is connected. Sign in with the Station account only
+after selecting its route. Account sign-in does not approve a Device or create
+Project membership.
+
+The selected route's **Accept account invitation** action requires that account
+session. Station returns a typed Project membership receipt with the exact
+Project scope and `grantsDeviceAccess: false`; the UI invalidates the Station
+Project-list cache. Device approval remains separate. **Sign out of this
+Station account** asks Station to revoke the account session and reports
+revocation only after the host validates Station's typed confirmation. If the
+response is lost or invalid, the UI reports the remote outcome as unconfirmed.
+**Forget account session on this device** only clears the host-held local
+continuation; it does not revoke the remote Station session.
+
+The ordinary native transport obtains fresh ICE and verifies Station proof for
+each encrypted application peer. Its current resource surface is health,
+authority and member Project reads; operator Workspace features and writes
+remain unsupported. The member Project view is available only when Station
+returns its member-safe Project shape. It lists published shared work; opening
+an item reads its current publication, bounded human-message history and
+published document through the member-read SDK. History and document content
+stay hidden while publication is being rechecked, after it is unshared, or when
+the current request scope is unavailable. The member detail view does not load
+operator layouts, Git status, knowledge, or workspace panes; an operator
+Project response does not mount those Project detail panels. Member Project
+icons that point to URLs are omitted so the native relay view does not issue
+raw image requests outside the broker.
+
+The UI owners are [saved relay routes](../../src-ui/src/views/connections-hub/RelayRouteProfiles.tsx),
+[Project detail](../../src-ui/src/views/ProjectPage.tsx), and the
+[member Project view](../../src-ui/src/views/project-page/MemberProjectPage.tsx).
+Its captured-scope list and detail reads live in
+[ProjectsContext](../../src-ui/src/contexts/ProjectsContext.tsx) and use the
+[shared-task SDK readers](../../packages/sdk/src/client/project-shared-tasks.ts).
+
+No direct HTTP fallback is used. The CLI continues to refuse these routes as
+defaults or explicit `--station`/`STATION_TARGET` targets. Focused source and
+mounted UI checks do not establish installed Nightly or physical iOS
+acceptance. The mounted journey checks live in the
+[relay-route tests](../../src-ui/src/views/connections-hub/__tests__/RelayRouteProfiles.test.tsx)
+and [Project/member view tests](../../src-ui/src/__tests__/ProjectPage.test.tsx)
+and [member reader tests](../../src-ui/src/views/project-page/__tests__/MemberProjectPage.test.tsx).
+
+Already redeemed native routing grants have a separate foreground maintenance
+path. While the native renderer is visible, it observes every saved broker
 route and renews an existing unambiguous grant when at most 12 hours remain.
 It rechecks host status before renewal and after wake/online events, with
 bounded retries. More than 64 saved routes pauses maintenance for all routes
 and displays a limit notice. Saving a route or approving a Station key does
 not redeem a grant. This maintenance does not select an application route,
-sign in, pair a Device, or grant Project access; mobile shells do not run it.
+sign in, pair a Device, or grant Project access. Mobile shells now mount this
+same supervisor; actual iOS background/foreground qualification remains
+separate from the mounted frontend checks.
 The [host renewal and supervisor](self-hosted-broker.md#native-routing-grant-foundation-v2)
 keep credentials and durable retry identity out of the renderer.
 
+Before redeeming a linked invitation, Station checks saved grants for the same
+route and installation. If even one belongs to an earlier routing generation,
+it keeps the invitation unconsumed and asks you to review the old connection.
+The same review is available for multiple saved grants or pending cleanup.
+**Review saved connections** opens a preview. **Remove saved connections**
+confirms the cleanup. Technical routing details appear only when expanded. The host first
+tries to retire each broker grant and clears eligible local records only after
+cleanup is established. This does not change Station
+trust, Device approval, account sign-in or shared Project access. For an older
+routing generation only, the host can use the still-unconsumed invitation to
+establish that the old scope is no longer admitted. If observation or local
+storage fails, cleanup remains pending and the invitation stays available.
+After cleanup, continue to device approval; account sign-in and shared Projects
+are separate steps. If device setup still finds multiple connections, it asks
+for a new owner-issued setup invitation; use that invitation’s review and
+confirmation before retrying the saved setup check. Diagnostic details report
+`native_enrollment_saved_connections_ambiguous` without raw host errors. A
+same-generation saved connection does not trigger older-generation cleanup.
+Operational status continues to refuse multiple grants until cleanup resolves;
+it never chooses one silently. This native journey still needs installed-shell
+qualification, as described in
+[native shell verification](native-shell-verification.md#qualify-native-relay-link-intake).
+
+Once **Request device access** opens the account form, submit it within the
+five-minute Device request. If the request expires, choose **Close expired
+request**. Station verifies and closes the saved attempt before offering a new
+**Request device access** action. Closing the dialog alone does not remove a
+saved Device setup.
+
 For a native signing-key approval, select the saved broker route and choose
-**Prepare native Station identity**. Station creates or reopens this install's
+**Share device details**. Station creates or reopens this install's
 proof key in the OS keyring and shows only its public key, thumbprint, client
-instance, app/channel, and selected route. Copy this **public install proof** to
-the Station operator. On the operator's machine, with the self-hosted connector
+instance, app/channel, and selected route. Choose **Copy device details** and
+send this public installation proof to the Station owner. On the owner's machine, with the self-hosted connector
 configured and online, save that JSON to a private file and run:
 
 ```sh
 npm run connector:invite -- /absolute/station-home /absolute/private-connector-config.json /absolute/prepare.json /absolute/private-directory/new-invitation.json
 ```
 
+Invitations default to 24 hours. Add `--expires-in 5m`, `15m`, `1h`,
+`24h`, or `never` to choose another expiry. Each invitation remains single-use
+and bound to the receiving installation. Routing withdrawal or rotation
+invalidates an invitation even when it has no time expiry.
+
+
 The command uses the Station-owned broker credential internally and writes one
 surface-bound native invitation to a new 0600 file in a private directory. It
 does not print the invitation secret. Send the file's contents to the intended
 client through a private channel; the invitation alone grants no Station,
-account, Device, or Project authority. The client pastes it into the saved
-route's **One-time Station invitation** field, then independently compares the
+account, Device, or Project authority. The client expands
+**Advanced: paste a setup invitation** and pastes it into the saved
+route's **One-time Station invitation** field, then chooses **Check this Station** and independently compares the
 candidate's 16-character code and full key ID with the operator using a
 separate channel. The operator can read those values with
 `npm run --silent connection:key -- fingerprint --home=<absolute-home-path>`.
 Only after entering both independently obtained values and confirming that
-separate comparison does **Approve Station key** store public trust on the
-client. **Revoke Station key trust** requires the current full key ID and a
+separate comparison does **Confirm Station** store public trust on the
+client. Under **Confirmation details**, **Revoke Station key trust** requires the current full key ID and a
 successful keyring write; an error leaves revocation unresolved. Approval and
 revocation do not start a native broker route or sign the client in.
-When a Station rotates its signing key, **Review new Station key** opens a new
+When a Station rotates its signing key, expand **Confirmation details** and
+choose **Review new Station key** to open a new
 invitation and comparison without discarding the currently approved key. The
 replacement must advance the generation and use a different key; cancelling
 the review keeps the existing approval. A revoked key likewise needs a newer
@@ -290,8 +446,8 @@ for a Station-signed, short-lived candidate bound to the selected broker and
 one client challenge. The signature proves possession of the included key;
 it does not approve the Station. The native verifier checks the signature,
 challenge, route, client key, key ID, and confirmation code; the explicit
-Desktop approval ceremony stores public trust in the OS keyring but does not
-yet select or connect a native relay route. The recipient must compare the code and full key ID through a
+native approval ceremony stores public trust in the OS keyring but does not
+itself select or connect a native relay route. The recipient must compare the code and full key ID through a
 separate channel and explicitly record trust in its own trust owner. Courier
 delivery does not consume the invitation, enroll a Device, or grant account,
 Project, or compute permissions.
@@ -334,8 +490,8 @@ Device approval, Project access, and a published Task through the Station UI;
 the unpublished Task remains hidden, and the browser sends no direct Station
 `/api` requests after accepting the route. This fixture does not prove Internet
 NAT traversal, a second physical machine, or the real two-person journey.
-Cookie-session adoption, native route selection, and the full account,
-cookie-adoption, and revocation matrix remain separate checks. Browser broker
+Cookie-session adoption, installed native route selection, and the full account
+and revocation matrix remain separate acceptance checks. Browser broker
 routes also disable attachment staging uploads, interactive terminal WebSockets
 and Nova voice sockets for now: those features still require direct browser
 XHR, fetch or WebSocket access, so Station reports them unavailable before
@@ -648,3 +804,8 @@ The connection section registry and `getPathForView` emit canonical routes.
 Navigation ingestion also normalizes the listed aliases, including old deep
 links. See the [section registry](../../src-ui/src/views/connections-hub/connection-sections.ts)
 and [routing owner](../../src-ui/src/app-shell/routing.ts).
+
+The invitation intake controller loads only on iOS and still waits for launch
+delivery handling before starting protected roots. No-expiry links have no local
+expiry timer. Longer finite deadlines are checked in bounded timer intervals,
+so browser timer overflow cannot close a valid link early.

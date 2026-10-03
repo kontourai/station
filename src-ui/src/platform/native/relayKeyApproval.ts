@@ -44,6 +44,11 @@ export interface RelayKeyApprovalAdapter {
     profileName: string,
     invitationJson: string,
   ): Promise<RelayKeyCandidate>;
+  beginLinked(input: {
+    pendingId: string;
+    profileName: string;
+    expectedUpdatedAt: number;
+  }): Promise<RelayKeyCandidate>;
   cancel(profileName: string): Promise<void>;
   pending(profileName: string): Promise<RelayKeyCandidate | null>;
   approve(input: {
@@ -252,6 +257,10 @@ export const nativeRelayKeyApproval: RelayKeyApprovalAdapter = {
       throw new Error('Invalid native Station key cancellation response.');
     }
   },
+  beginLinked: async (input) =>
+    parseCandidate(
+      await invokeTauri<unknown>('station_native_relay_link_begin', input),
+    ),
   pending: async (profileName) => {
     const reply = await invokeTauri<unknown>(
       'station_native_relay_key_approval_pending',

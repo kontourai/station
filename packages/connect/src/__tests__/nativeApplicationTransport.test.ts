@@ -1,6 +1,7 @@
 import {
   APPLICATION_TRANSPORT_CHANNEL,
   createNativeApplicationTransport,
+  createNativeVerifiedPeerTransport,
 } from '@kontourai/station-connect/native-application';
 import type {
   ApprovedStationConnectionTrust,
@@ -14,7 +15,10 @@ import {
 import { exportJWK, generateKeyPair } from 'jose';
 import { describe, expect, test, vi } from 'vitest';
 import { writeApplicationFrame } from '../core/applicationChannelFrames.js';
-import type { NativeApplicationPeerAnswer } from '../core/nativeApplicationTransport.js';
+import type {
+  NativeApplicationPeerAnswer,
+  NativeApplicationTransportInput,
+} from '../core/nativeApplicationTransport.js';
 
 const CLIENT_FP = Array(32).fill('AA').join(':');
 const STATION_FP = Array(32).fill('BB').join(':');
@@ -71,6 +75,7 @@ class FakeChannel extends EventTarget {
 
 class FakePeer extends EventTarget {
   iceGatheringState = 'complete';
+  iceConnectionState = 'new';
   connectionState = 'connected';
   localDescription: RTCSessionDescriptionInit | null = null;
   remoteCalls = 0;
@@ -103,7 +108,7 @@ class FakePeer extends EventTarget {
   }
 }
 
-async function fixture() {
+async function fixture(configuration: RTCConfiguration = {}) {
   const pair = await generateKeyPair('ES256', { extractable: true });
   const publicJwk = await exportJWK(pair.publicKey);
   const trust: ApprovedStationConnectionTrust = {
@@ -255,7 +260,8 @@ async function fixture() {
     return createOffer();
   });
   const controller = new AbortController();
-  const transport = createNativeApplicationTransport({
+  const input: NativeApplicationTransportInput = {
+    configuration,
     signaling,
     origin: ORIGIN,
     signal: controller.signal,
@@ -271,8 +277,10 @@ async function fixture() {
       },
     },
     createPeer: () => peer as unknown as RTCPeerConnection,
-  });
+  };
+  const transport = createNativeApplicationTransport(input);
   return {
+    input,
     transport,
     controller,
     peer,
@@ -346,6 +354,169 @@ async function fixture() {
 }
 
 describe('native application transport client', () => {
+  test('uses one exact relay offer snapshot when gathering stalls, including lost-open read recovery', async () => {
+    const f = await fixture({ iceTransportPolicy: 'relay' });
+    f.peer.iceGatheringState = 'gathering';
+    const relayOffer = `${OFFER_SDP}a=candidate:3131234567 1 udp 16777215 192.0.2.10 49152 typ relay raddr 0.0.0.0 rport 0 generation 0 ufrag testOnly network-cost 999\r\n`;
+    f.peer.setLocalDescription = async () => {
+      f.peer.localDescription = { type: 'offer', sdp: relayOffer };
+    };
+    f.makeOpenUnknown();
+    const baseOpen = f.signaling.open;
+    f.signaling.open = vi.fn(async (...args: Parameters<typeof baseOpen>) => {
+      // More local candidates arrive after submission. Proof verification must
+      // remain bound to the submitted SDP rather than reread localDescription.
+      f.peer.localDescription = {
+        type: 'offer',
+        sdp: `${relayOffer}a=candidate:2 1 udp 16777214 192.0.2.11 49153 typ relay\r\n`,
+      };
+      return baseOpen(...args);
+    });
+    vi.useFakeTimers();
+    try {
+      const transport = createNativeVerifiedPeerTransport({
+        ...f.input,
+        peerVersion: 'station-native-application-peer/v1',
+      });
+      const running = transport.openVerifiedPeer(f.controller.signal);
+      // Attach rejection observation before advancing the owned timeout.
+      const result = running.then(
+        (opened) => ({ opened }),
+        (error: unknown) => ({ error }),
+      );
+      await vi.waitFor(() => expect(f.peer.localDescription).not.toBeNull());
+      expect(f.signaling.open).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(10_000);
+      const completed = await result;
+      if ('error' in completed) throw completed.error;
+      expect(completed).toHaveProperty('opened');
+      expect(f.signaling.open).toHaveBeenCalledExactlyOnceWith(
+        PEER_HANDLE,
+        relayOffer,
+        expect.any(AbortSignal),
+      );
+      expect(f.signaling.read).toHaveBeenCalledOnce();
+      expect(f.peer.setRemoteDescription).toHaveBeenCalledOnce();
+      if ('opened' in completed) await completed.opened.close();
+      expect(f.peer.closed).toBe(true);
+      expect(f.signaling.close).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test.each([
+    { name: 'no candidates', candidate: '' },
+    {
+      name: 'host candidate',
+      candidate: 'a=candidate:1 1 udp 16777215 192.0.2.10 49152 typ host\r\n',
+    },
+    {
+      name: 'mixed relay and host candidates under relay-only policy',
+      candidate:
+        'a=candidate:1 1 udp 16777215 192.0.2.10 49152 typ relay\r\na=candidate:2 1 udp 16777214 192.0.2.11 49153 typ host\r\n',
+    },
+    {
+      name: 'malformed relay address',
+      candidate: 'a=candidate:1 1 udp 16777215 999.0.2.10 49152 typ relay\r\n',
+    },
+    {
+      name: 'malformed relay port',
+      candidate: 'a=candidate:1 1 udp 16777215 192.0.2.10 0 typ relay\r\n',
+    },
+    {
+      name: 'candidate outside application media',
+      candidate:
+        'm=audio 9 UDP/TLS/RTP/SAVPF 0\r\na=candidate:1 1 udp 16777215 192.0.2.10 49152 typ relay\r\n',
+    },
+    {
+      name: 'unrestricted ICE policy',
+      candidate: 'a=candidate:1 1 udp 16777215 192.0.2.10 49152 typ relay\r\n',
+      policy: 'all' as const,
+    },
+    {
+      name: 'aborted attempt',
+      candidate: 'a=candidate:1 1 udp 16777215 192.0.2.10 49152 typ relay\r\n',
+      retire: 'abort',
+    },
+    {
+      name: 'failed ICE transport',
+      candidate: 'a=candidate:1 1 udp 16777215 192.0.2.10 49152 typ relay\r\n',
+      retire: 'failed',
+    },
+    {
+      name: 'closed transport',
+      candidate: 'a=candidate:1 1 udp 16777215 192.0.2.10 49152 typ relay\r\n',
+      retire: 'closed',
+    },
+    {
+      name: 'retired Station trust',
+      candidate: 'a=candidate:1 1 udp 16777215 192.0.2.10 49152 typ relay\r\n',
+      retire: 'trust',
+    },
+    {
+      name: 'abort during authoritative recheck',
+      candidate: 'a=candidate:1 1 udp 16777215 192.0.2.10 49152 typ relay\r\n',
+      retire: 'late-abort',
+    },
+    {
+      name: 'failure during authoritative recheck',
+      candidate: 'a=candidate:1 1 udp 16777215 192.0.2.10 49152 typ relay\r\n',
+      retire: 'late-failed',
+    },
+    {
+      name: 'trust retirement during authoritative recheck',
+      candidate: 'a=candidate:1 1 udp 16777215 192.0.2.10 49152 typ relay\r\n',
+      retire: 'late-trust',
+    },
+  ])(
+    'does not submit a stalled offer with $name',
+    async ({ candidate, policy, retire }) => {
+      const f = await fixture({ iceTransportPolicy: policy ?? 'relay' });
+      f.peer.iceGatheringState = 'gathering';
+      f.peer.setLocalDescription = async () => {
+        f.peer.localDescription = { type: 'offer', sdp: OFFER_SDP + candidate };
+      };
+      let retireAtRecheck = false;
+      const recheck = f.input.trust.recheck;
+      f.input.trust.recheck = async (...args: Parameters<typeof recheck>) => {
+        const current = await recheck(...args);
+        if (retireAtRecheck) {
+          if (retire === 'late-abort') f.controller.abort();
+          if (retire === 'late-failed') f.peer.connectionState = 'failed';
+          if (retire === 'late-trust') f.revokeTrust();
+        }
+        return current;
+      };
+      vi.useFakeTimers();
+      try {
+        const transport = createNativeVerifiedPeerTransport({
+          ...f.input,
+          peerVersion: 'station-native-application-peer/v1',
+        });
+        const result = transport.openVerifiedPeer(f.controller.signal).then(
+          (opened) => ({ opened }),
+          (error: unknown) => ({ error }),
+        );
+        await vi.waitFor(() => expect(f.peer.localDescription).not.toBeNull());
+        if (retire === 'abort') f.controller.abort();
+        if (retire === 'failed') f.peer.iceConnectionState = 'failed';
+        if (retire === 'closed') f.peer.connectionState = 'closed';
+        if (retire === 'trust') f.revokeTrust();
+        retireAtRecheck = true;
+        await vi.advanceTimersByTimeAsync(10_000);
+        expect(await result).toHaveProperty('error');
+        expect(f.signaling.open).not.toHaveBeenCalled();
+        expect(f.peer.setRemoteDescription).not.toHaveBeenCalled();
+        expect(f.peer.closed).toBe(true);
+        expect(f.peer.createdChannels[0]?.closed).toBe(true);
+        expect(f.signaling.close).toHaveBeenCalledOnce();
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
+
   test('accepts a valid signed answer with an earlier host read expiry', async () => {
     const f = await fixture();
     f.setReadExpiresAt(EXPIRES_AT - 500);
@@ -561,6 +732,33 @@ describe('native application transport client', () => {
     expect(f.signaling.close).toHaveBeenCalledWith(PEER_HANDLE);
   });
 
+  test('closing an adopted peer during signing refuses proof with a still-live request signal', async () => {
+    const f = await fixture();
+    const channel = await f.transport.openChannel(new AbortController().signal);
+    const signing = f.deferSign();
+    const request = {
+      method: 'GET',
+      path: '/api/projects',
+      body: new Uint8Array(0),
+      headers: new Headers(),
+      signal: new AbortController().signal,
+    };
+    const preparing = channel.prepareRequest!(request);
+    const rejected = expect(preparing).rejects.toThrow(
+      'native_application_trust_retired',
+    );
+    await signing.started;
+    channel.close();
+    signing.resolve();
+    await rejected;
+    expect(request.signal.aborted).toBe(false);
+    expect(f.requests).toHaveLength(0);
+    await expect(channel.prepareRequest!(request)).rejects.toThrow(
+      'native_application_trust_retired',
+    );
+    expect(f.signaling.sign).toHaveBeenCalledOnce();
+  });
+
   test('a wrong Station proof never reaches setRemoteDescription or dispatch', async () => {
     const f = await fixture();
     f.overrideBinding({ stationFingerprint: CLIENT_FP });
@@ -682,5 +880,28 @@ describe('native application transport client', () => {
     expect(received).toHaveLength(0);
     expect(closed).toBe(1);
     expect(f.peer.closed).toBe(true);
+  });
+  test('enrollment verifies its own peer transcript without Device signing and rechecks trust after EOF', async () => {
+    const f = await fixture();
+    f.substitutePeer({
+      ...peerDescriptor(),
+      version: 'station-native-enrollment-peer/v1',
+    });
+    const transport = createNativeVerifiedPeerTransport({
+      ...f.input,
+      peerVersion: 'station-native-enrollment-peer/v1',
+    });
+    const opened = await transport.openVerifiedPeer(f.controller.signal);
+    expect(f.peer.remoteCalls).toBe(1);
+    expect(opened.peer.version).toBe('station-native-enrollment-peer/v1');
+    expect(f.signaling.sign).not.toHaveBeenCalled();
+    opened.channel.close();
+    await opened.close();
+    expect(f.peer.closed).toBe(true);
+    await expect(opened.assertCurrent()).resolves.toBeUndefined();
+    f.revokeTrust();
+    await expect(opened.assertCurrent()).rejects.toThrow(
+      'native_application_trust_retired',
+    );
   });
 });
