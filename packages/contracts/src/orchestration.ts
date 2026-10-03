@@ -1241,7 +1241,9 @@ export const CONVERSATION_HANDOFF_DISCLOSURE_LABELS: Readonly<
     string
   >
 > = Object.freeze({
-  authorizedTranscript: 'Conversation transcript',
+  // #3164: the seed carries recent whole messages under a size budget and
+  // tells the new engine how many earlier ones it left out.
+  authorizedTranscript: 'Recent conversation messages, up to a size limit',
   ownerTenantWorkspace: 'Workspace and identity',
   targetAgentModel: 'Selected Agent and model',
   providerNativeCursor: 'Provider-native cursor',

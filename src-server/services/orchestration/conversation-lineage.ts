@@ -28,6 +28,10 @@ import {
   type ConversationHistoryReadService,
   deduplicateConversationItems,
 } from './conversation-history-read-service.js';
+import {
+  buildTranscriptSeed,
+  transcriptSeedEntries,
+} from './conversation-transcript-seed.js';
 import type { ConversationForkProvenance, EventStore } from './event-store.js';
 // Type-only import back into the service module: erased at runtime, so no
 // import cycle exists.
@@ -1021,8 +1025,6 @@ export class ConversationLineage {
   }
 }
 
-const CONTINUATION_TRANSCRIPT_SEED_MAX_CHARS = 6_000;
-
 function continuationLaunchContext(
   detail: Pick<OrchestrationSessionDetail, 'session' | 'events'>,
   requested: {
@@ -1113,33 +1115,19 @@ function handoffTranscriptContext(
 }
 
 /**
- * Deterministic cross-engine fallback. It is deliberately bounded and carries
- * only the already-authorized canonical conversation projection; provider
- * cursor state, tool state, approvals, and connection secrets never cross
- * this boundary. The next handoff slice can render an explicit marker from
- * the same child lineage without changing this start contract.
+ * Deterministic cross-engine fallback. It carries only the already-authorized
+ * canonical conversation projection, as whole messages under the shared seed
+ * budget (#3164); provider cursor state, tool state, approvals, and
+ * connection secrets never cross this boundary.
  */
 function continuationTranscriptSeed(
   messages: readonly ConversationMessage[],
 ): string {
-  const text = messages
-    .filter(
-      (message) => message.role === 'user' || message.role === 'assistant',
-    )
-    .map((message) => {
-      const content = message.parts
-        .filter((part) => typeof part.text === 'string' && !part.runtimeError)
-        .map((part) => part.text!.trim())
-        .filter(Boolean)
-        .join('\n');
-      return content
-        ? `${message.role === 'user' ? 'User' : 'Assistant'}: ${content}`
-        : '';
-    })
-    .filter(Boolean)
-    .join('\n');
-  const bounded = text.slice(-CONTINUATION_TRANSCRIPT_SEED_MAX_CHARS);
-  return `Prior conversation transcript (context only; provider-native state is not carried):\n${bounded}`;
+  return buildTranscriptSeed({
+    heading:
+      'Prior conversation transcript (context only, not a new request; provider-native state is not carried).',
+    entries: transcriptSeedEntries(messages),
+  }).text;
 }
 
 function observeConversationContinuation(
