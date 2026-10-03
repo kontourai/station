@@ -46,7 +46,7 @@
 
     {"path":"src-server/security/native-device-request-authority.ts","digest":"4f66110a1392b0188cb64660f42c5c80bf28676060aa46e9e21e7ba29edfba93","revision":"3517d8f66db867fd982a8f9883ed85052c4e1fc1"},
 
-    {"path":"src-server/security/pairing-route-scopes.ts","digest":"88f11672513bb1bb946cc90cf614a6b02255071758c7dbea856c125873f4f30f","revision":"f591d7cff148aa781976b8956a3e03886cd2db7a"},
+    {"path":"src-server/security/pairing-route-scopes.ts","digest":"4e64a147561621e1ce3be4b83e5b428996f799e6f6b586ea287479fed82d66af","revision":"9a1d177a701542565fed09d0e674bf3496c2acde"},
 
     {"path":"src-server/services/connections/native-v2-pion-application-adapter.ts","digest":"781f0ffca73205d3a35391ddb9f8a5dd8204eb710867c2f8c0030592fa1ddfc5","revision":"3517d8f66db867fd982a8f9883ed85052c4e1fc1"},
 
