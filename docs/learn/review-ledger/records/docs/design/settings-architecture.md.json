@@ -34,7 +34,7 @@
 
     {"path":"src-ui/src/lib/device-settings-store.ts","digest":"2c9c1dfb7259dbe56a3c101aba0c370c481516a6e0b67a666655a518d2a90fd7","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
 
-    {"path":"src-ui/src/views/SettingsView.tsx","digest":"c75cb67f2a1db92f3409a98a520fb84223586ba4cf9306137e452368c4191fe0","revision":"d6a3158c22a62d9530592c6366a1624790ee9401"},
+    {"path":"src-ui/src/views/SettingsView.tsx","digest":"1ede27735768ba3e57c06aabe2313abe5369045a9020512f32099e22980225ef","revision":"00bada2726c33a49f7edc8803d08831b46b6deb3"},
 
     {"path":"src-ui/src/views/settings/settings-catalog.ts","digest":"3237f2153b03149c49e99e749340177fb8b6f627e1a223bed5894665c681d259","revision":"d6a3158c22a62d9530592c6366a1624790ee9401"},
 
