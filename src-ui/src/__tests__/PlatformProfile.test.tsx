@@ -61,6 +61,7 @@ vi.mock('../platform/native/stationProfileStorage', () => ({
       authorizeActiveConnection: (connectionId: string, explicit?: boolean) =>
         state.authorizeActiveConnection(connectionId, explicit),
       credentialEntries: () => [],
+      subscribeRelayRouteProfiles: (_listener: () => void) => () => {},
     };
   },
 }));

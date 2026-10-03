@@ -60,7 +60,7 @@
 
     {"path":"src-desktop/src/tray.rs","digest":"d8bd74ad3b9a20197b0ca221d33fa8558d9ce36b05167a5eb156796cfa2fa3c9","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
-    {"path":"src-ui/src/components/OnboardingGate.tsx","digest":"a162e42d41ed579ec24bfa787aaefb332c1dd3671250191619d976513520fbd5","revision":"e58fcedea713f7fc640bf51abe384f17503f72e4"},
+    {"path":"src-ui/src/components/OnboardingGate.tsx","digest":"5f602a49425ddf169beb7fc211ad26b53299714b8c280efc8507edbc4a8d713e","revision":"934f3c023c92461fe9f3cd15e613f6a1e2cf8414"},
 
     {"path":"src-ui/src/contexts/ApiBaseContext.tsx","digest":"8069807d592f2aeb22ec5fdd999dcb4574f134c7bfcb7fdfea1e02c51a410ef3","revision":"2835c77d95f1902ec333eee0c5f57d19fd9f5077"},
 
