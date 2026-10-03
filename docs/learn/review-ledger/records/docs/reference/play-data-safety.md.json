@@ -28,7 +28,7 @@
 
     {"path":"src-server/telemetry.ts","digest":"f682958dc24d74cfee413e2986b257df4177c5645386a0ec9ed5e3774bab090c","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
-    {"path":"src-ui/src/hooks/usePushNotifications.ts","digest":"17b4b9a8e103f019b4ce0d4f4f2a425a8cb201981dbfb76ed0c3e9863d58e2cb","revision":"d6a3158c22a62d9530592c6366a1624790ee9401"}
+    {"path":"src-ui/src/hooks/usePushNotifications.ts","digest":"e24fae797ee62ddf6b723c57d47f5c86bd7ae218e17a5175126a90156680a61b","revision":"f0a0b5b5277589e998f5a7e08e7c7fc2229c6b5f"}
   ],
 
   "checks": [
