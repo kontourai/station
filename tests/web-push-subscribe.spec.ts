@@ -79,6 +79,10 @@ test.describe('Web Push subscribe/unsubscribe', () => {
           getSubscription: async () => currentSubscription,
           subscribe: async (options: PushSubscriptionOptionsInit) => {
             const key = options.applicationServerKey;
+            if (typeof key === 'string')
+              throw new Error(
+                'Push fixture requires the decoded applicationServerKey',
+              );
             fakeSubscription.options.applicationServerKey = ArrayBuffer.isView(
               key,
             )
