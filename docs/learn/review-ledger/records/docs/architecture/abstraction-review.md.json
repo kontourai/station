@@ -38,7 +38,7 @@
 
     {"path":"docs/reference/config.md","digest":"75eb18568340e206957366d15dafef202282bcb2d86d1b96c01a2922ffb1ddc6","revision":"45c71d38091f91e917006dacdc7e2a0bb3cd58a4"},
 
-    {"path":"docs/reference/metrics.md","digest":"52a966457313c28546da0ca12f53cfab6ec1b754c1eca415a26bfce55576db08","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    {"path":"docs/reference/metrics.md","digest":"bee01d187a257fec19f29f7d6f6105b640aa7b8576adfd324d554c9a1ba72372","revision":"2f1c4a004590c12a9a9599c9cdcc76edeb3984b9"},
 
     {"path":"examples/enterprise-layout/src/data/notes-hooks.ts","digest":"f123828808e5dd7fe5e2cf3c1d240b75f85000e0008f71923f05f192ed188105","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 

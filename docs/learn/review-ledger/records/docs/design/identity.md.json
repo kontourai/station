@@ -9,7 +9,7 @@
 
   "limits": "Provider roadmap, passkey discussion, historical issue status and complete offline/device/provider behavior were not semantically re-audited. The standing offline journey is a requirement, not executed evidence.",
 
-  "document": {"digest":"74371a604d83779db65b078d199b976b8ec79c5c302c9289468fbd032b5537a6","revision":"98b8c1c0b12851cd2c8c0c6b8ace3130b59e7c80"},
+  "document": {"digest":"a49991b88c7d7086e59b1d754168f55dfb8a05f1c4d46fea13565489df15b77e","revision":"8ee35786ca8a3845981aa9e8c29097bff1629121"},
 
   "sources": [
     {"path":"src-server/runtime/bootstrap/orchestration-request-principal.ts","digest":"dfe48ecb89d7a32d75c39adaaa16402ce623b4187ef0bed13853aa13d8e42f0d","revision":"86066aa189c175a17a821f695fccbf26bec3f119"},

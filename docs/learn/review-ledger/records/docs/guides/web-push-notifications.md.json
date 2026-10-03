@@ -36,7 +36,7 @@
 
     {"path":"src-server/runtime/routes/runtime-route-support.ts","digest":"6a4c97a6eb7f6bbce23da80e037ffb76ca1da14f53e54b2a934a4e64e60f2052","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"90e94e3a617cb7c9642c029f8dd1c58fbebeca19e29dbd1b097af41952fe4b93","revision":"cf12c0d848d0dc068f3dcaa530e9a1f213618834"},
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"0e5889d8c54a4ef45f93b343c2f2a82d19178e2f828af3a4640e9147c2d66ee8","revision":"782a93682304a7de7a3bc5980a9ad85053967502"},
 
     {"path":"src-server/services/notifications/agent-activity-eligibility.ts","digest":"a5685997c8eabaf0530be90935a564235cef1abf2c18c5ef5abb5fe264863727","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
@@ -66,7 +66,7 @@
 
     {"path":"src-server/services/ssh/device-pairing-service.ts","digest":"dcecd8108147d5e7f2b26d132545cf8901b05ce62d14523a2732a10005fb1753","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
-    {"path":"src-server/telemetry/metrics.ts","digest":"d5cafe742934bc8b575d2374e3e83767b3026af1ff78ee10b62bbaaa0c166d9c","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+    {"path":"src-server/telemetry/metrics.ts","digest":"311d5115030901edf6315a6cf9bbd6bc9910a34988035db79d863223506bd457","revision":"782a93682304a7de7a3bc5980a9ad85053967502"},
 
     {"path":"src-ui/public/sw.js","digest":"411d96698a8c13cd73c04887dfbcababc5de8b82a3ed0909ab3d3cdcae0cc263","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 

@@ -40,7 +40,7 @@
 
     {"path":"src-server/telemetry.ts","digest":"f682958dc24d74cfee413e2986b257df4177c5645386a0ec9ed5e3774bab090c","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
-    {"path":"src-server/telemetry/metrics.ts","digest":"d5cafe742934bc8b575d2374e3e83767b3026af1ff78ee10b62bbaaa0c166d9c","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    {"path":"src-server/telemetry/metrics.ts","digest":"311d5115030901edf6315a6cf9bbd6bc9910a34988035db79d863223506bd457","revision":"782a93682304a7de7a3bc5980a9ad85053967502"},
 
     {"path":"src-server/utils/pricing.ts","digest":"436b28f35539587ffb1f7a798ad1da092ef145e7fe457d9d9488d9d4eb738406","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 

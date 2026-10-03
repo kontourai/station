@@ -9,7 +9,7 @@
 
   "limits": "Historical epics, every principal/authorization edge, all shared-resource admission and actual shared-access enablement remain unverified. No blanket approval of the retained policy or present-tense body.",
 
-  "document": {"digest":"6885d4b09222c1da93e888d9773372768e7f0e8a8687a44077fee496fd859a5a","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"},
+  "document": {"digest":"f00f92b4fff9275227ab4da8398610c535552e56e825a7d0c35aa99c67911043","revision":"8ee35786ca8a3845981aa9e8c29097bff1629121"},
 
   "sources": [
     {"path":"src-server/runtime/bootstrap/orchestration-request-principal.ts","digest":"dfe48ecb89d7a32d75c39adaaa16402ce623b4187ef0bed13853aa13d8e42f0d","revision":"86066aa189c175a17a821f695fccbf26bec3f119"},

@@ -9,7 +9,7 @@
 
   "limits": "Declarations do not prove caller recording, SDK binding or collector receipt. Unsupported owner syntax refuses generation.",
 
-  "document": {"digest":"52a966457313c28546da0ca12f53cfab6ec1b754c1eca415a26bfce55576db08","revision":"db0aba406478897be8b61fe938275dc2bbeaf12a"},
+  "document": {"digest":"bee01d187a257fec19f29f7d6f6105b640aa7b8576adfd324d554c9a1ba72372","revision":"2f1c4a004590c12a9a9599c9cdcc76edeb3984b9"},
 
   "sources": [
     {"path":"scripts/__tests__/metric-reference.test.ts","digest":"9c432501ef9d37322a972c2f54b52fd38552731b9b3bc59a5894a70bc557fb81","revision":"db0aba406478897be8b61fe938275dc2bbeaf12a"},
@@ -22,7 +22,7 @@
 
     {"path":"scripts/lib/metric-reference-output.mjs","digest":"1ab2f8c050105b4ddc265f4d16b5c4c5fad6bfe268f198884dfc6e1690259804","revision":"db0aba406478897be8b61fe938275dc2bbeaf12a"},
 
-    {"path":"src-server/telemetry/metrics.ts","digest":"d5cafe742934bc8b575d2374e3e83767b3026af1ff78ee10b62bbaaa0c166d9c","revision":"db0aba406478897be8b61fe938275dc2bbeaf12a"}
+    {"path":"src-server/telemetry/metrics.ts","digest":"311d5115030901edf6315a6cf9bbd6bc9910a34988035db79d863223506bd457","revision":"782a93682304a7de7a3bc5980a9ad85053967502"}
   ],
 
   "checks": [

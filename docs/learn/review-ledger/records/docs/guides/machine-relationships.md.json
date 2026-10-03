@@ -9,7 +9,7 @@
 
   "limits": "Source review of this document's stated contracts and actual callers, not an exhaustive audit of unclaimed code. No new public deployment, TLS/TURN lab, SSH/cloud transfer, live provider, physical/native/keychain, Windows ACL/process, two-person, cryptographic penetration or release qualification. Prior executed checks and dated receipts are retained as prior evidence, not rerun or renewed here.",
 
-  "document": {"digest":"69873a4bf7c123c8bb46b4a0014745b8725334684e864ae804226275accf966d","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+  "document": {"digest":"0759314c2469e0b6eda00415fd9839819ea534ab76b3173344a46709932bee52","revision":"2f1c4a004590c12a9a9599c9cdcc76edeb3984b9"},
 
   "sources": [
     {"path":"packages/connect/src/core/applicationChannel.ts","digest":"572c3b2ab6630c448abff1c49f99a2371425b64c818e5cce2d132fe348afb0c1","revision":"7abc84fcb97288d80f1b25cfc99de23d93817d4c"},
@@ -46,7 +46,7 @@
 
     {"path":"src-server/runtime/bootstrap/runtime-http.ts","digest":"400f3e49be7138980b286334db40de4fa4a6fbaa1ea37c285ae9774ddc5fbbb7","revision":"2c5134e4bfc4db4d19877df92119078a80bf27e7"},
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"90e94e3a617cb7c9642c029f8dd1c58fbebeca19e29dbd1b097af41952fe4b93","revision":"cf12c0d848d0dc068f3dcaa530e9a1f213618834"},
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"0e5889d8c54a4ef45f93b343c2f2a82d19178e2f828af3a4640e9147c2d66ee8","revision":"782a93682304a7de7a3bc5980a9ad85053967502"},
 
     {"path":"src-server/services/connections/fleet-contribution-manifest.ts","digest":"b652110a8ae06e2a05b9274128160b5c698a51a0cfa0a68a66664d71e1de72a5","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
 

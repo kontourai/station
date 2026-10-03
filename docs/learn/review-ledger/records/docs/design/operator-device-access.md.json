@@ -1,0 +1,43 @@
+{
+  "path": "docs/design/operator-device-access.md",
+
+  "kind": "design",
+
+  "state": "source-reviewed",
+
+  "summary": "Proposal for operator passkey sign-in and per-action step-up on the device-admin routes (#2894), with owner decisions D1, D2 and D6 recorded and D3-D5, D7-D11 open. Only slice S1 is implemented: off-host raw operator-credential use is observed and still allowed, and the host desktop app's local-grant credential is pinned as list-only.",
+
+  "limits": "Sections 2-7 describe unbuilt mechanisms (passkeys, sessions, step-up, consent-origin ceremony) and are design claims, not implementation evidence. WebAuthn RP ID statements are reasoned from the specification. No live desktop, paired-browser or tailnet run; the device-session cookie's refusal status is not verified. Line citations drift with later edits.",
+
+  "document": {"digest":"bbca0304e50dea8c2a6add2eb8239167bb239bf332704a344774c4ddf36074cc","revision":"8ee35786ca8a3845981aa9e8c29097bff1629121"},
+
+  "sources": [
+    {"path":"packages/connect/src/react/connection-manager-modal/PairedDevicesPanel.tsx","digest":"b8ccfa4cb9a801363e1e61457e01cd8f8c97c6c70ad8679863d6c22f3da1a5ff","revision":"a30f084b3b93f254337127cb18907d041570f9fc"},
+
+    {"path":"src-desktop/src/lib.rs","digest":"ad3b52011a9be6e6a18133b2367c04d0a6245907e5b7e13fa324bcd8b5255557","revision":"8e740267c11c028d89251df46af1068f851ca70d"},
+
+    {"path":"src-server/runtime/__tests__/operator-credential-host-locality.test.ts","digest":"115a3c9f5c6c30c396ab30f90541e14fe0fe8856dbca28993dd9b824d7b4b41d","revision":"782a93682304a7de7a3bc5980a9ad85053967502"},
+
+    {"path":"src-server/runtime/consent/consent-listener.ts","digest":"277b028e8716aa85aefe159da4b336052b0c5a4e4433785e44e504753ab4e2e2","revision":"dac129f874d7edf85a1834f2295412bc8f9603e1"},
+
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"0e5889d8c54a4ef45f93b343c2f2a82d19178e2f828af3a4640e9147c2d66ee8","revision":"782a93682304a7de7a3bc5980a9ad85053967502"},
+
+    {"path":"src-server/security/host-operator-credential.ts","digest":"c7b490514c56b0beff110da362640803f48b4079edcc60a76b4f4654722ff819","revision":"782a93682304a7de7a3bc5980a9ad85053967502"},
+
+    {"path":"src-server/security/runtime-request-security.ts","digest":"f3f261d490a5fc6a78e9b4bb649d8d4ac6419fc92b9597935475a037890f4fa5","revision":"3b001e5e54358931bb4c090eec900d4ecb488620"},
+
+    {"path":"src-server/services/consent/consent-transactions.ts","digest":"e33143fb0b0bbd862036f0c5aca2b29b9457d74d8766dd32ec5659be0a12c600","revision":"4feaf4bb77e8bd569dbde16d4ec02424fece3839"},
+
+    {"path":"src-server/services/ssh/environment-security-service.ts","digest":"3861107c8d4a4e1bc9a82e3f5f1c3f5d68be08e34e04d909635d7f70b1407a3d","revision":"5ecd682d3dda93a00a126e31328fb563f3b427b8"}
+  ],
+
+  "checks": [
+    "Full document read against the reviewed draft; S1 sections re-read at c2c67c2f25 against the predicate, the four device-admin routes and the production wiring.",
+
+    "operator-credential-host-locality.test.ts executed through the real runtime-http boundary and a real EnvironmentSecurityService: 10/10 pass; device-pairing-routes and pairing-approval-auth-tier 118/118 pass.",
+
+    "Five fault injections on the predicate and route observation (Host check, position clause, untrusted-attestation fail-closed, operator-authority check, scope-route call) each failed the named row and were restored to green.",
+
+    "Desktop credential: server half EXECUTED with the exact local-grant exchange; the native broker attaching the self-provisioned credential is source inspection of src-desktop/src/lib.rs only."
+  ]
+}
