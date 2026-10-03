@@ -2030,33 +2030,69 @@ error is currently caught, so success is not proof that local cleanup completed.
 `POST /api/registry/integrations/sync` awaits provider sync and returns
 `{success: true}`.
 
+### Manage marketplaces
+
+`GET /api/registry/sources` lists connected sources for the Station operator.
+All source-management methods require `access:manage` credential scope as well
+as the operator principal check. Ordinary catalog browsing retains its read
+scope; a standard paired credential cannot enumerate host source configuration
+or trigger source refresh.
+`POST /api/registry/sources` accepts `{displayName, adapter, location}` where
+`adapter` is `directory`, `github` or `manifest`. Directory and local manifest
+locations are absolute paths on this Station. Public GitHub repository URLs use
+its default branch and discover nested directories containing `SKILL.md`.
+Manifest URLs require HTTPS. Credentials in URLs are refused; private sources
+and other index formats need a future credential-aware adapter.
+
+`PATCH /api/registry/sources/:id` accepts `{enabled}`;
+`POST /api/registry/sources/:id/refresh` returns current status;
+`DELETE /api/registry/sources/:id` removes a user-added source. Installed
+packages and their historical attribution remain. Plugin-owned sources are
+managed through the plugin's existing enable/disable/revoke lifecycle.
+
+[The source manager](../../src-server/providers/registries/registry-source-manager.ts)
+keeps versioned configuration and last successful catalog snapshots in
+`config/registry-sources.json`: a regular file bounded to 8 MiB, 32 user-added
+sources and 32 retained snapshots, each with at most 512 rows. Corrupt,
+unsupported, oversized and nonregular configuration is refused without
+replacing the existing bytes. Offline plugin rows use current local installed
+inventory and source ownership aliases. Provider visibility and generation fences remain
+owned by the existing provider registry. Source status is `ready`, `stale`,
+`error`, `disabled` or `unknown`; it includes checked/last successful times and
+an explicit error when refresh fails. Cached data is discovery evidence;
+installation always revalidates the selected source.
+
 ### List Available Skills (Registry)
 
-`GET /api/registry/skills` merges registered Skill catalogs and deduplicates IDs,
-keeping the first occurrence. No registered providers gives an empty list.
+`GET /api/registry/skills` preserves same-name entries from independent sources.
+Each item has `catalog: {sourceId, itemId, revision, kind}` and an opaque `id`
+that clients pass unchanged to inspect/install. `catalogSourceName` is the
+host's source label; `source` retains the provider's original attribution.
+The response includes per-source status and `partial: true` when a source fails.
+Successful independent results remain visible. A cached snapshot is marked
+`stale`; when every available source has failed and there is no snapshot,
+the response is 503 with `success: false`, rather than an empty successful list.
+A successful empty catalog from an independent source remains a successful
+partial observation; source availability is determined from the read outcome,
+not its row count. Plugin catalogs use the same failure and partial-result rule.
 
 The built-in [GitHub Skill provider](../../src-server/providers/registries/github-skill-registry.ts)
-resolves its configured branch to a commit and reads that commit's tree and immutable
-blobs. It discovers complete nested Skill directories by their declared names and
-refuses duplicate names, truncated trees, unreadable Skill files, and refresh failures.
-A successful catalog snapshot is cached for five minutes; an expired snapshot is not
-returned as successful when refresh fails. Such failures currently fail the catalog
-request; independent source status and partial results are not exposed yet.
+resolves a branch to one immutable commit/tree and verifies blob hashes.
+Discovery supports nested Skill directories and refuses ambiguous names,
+truncated trees and unreadable required files. Its budgets are 512 Skills,
+8192 tree entries, four concurrent Markdown reads, 1 MiB per blob and an
+8 MiB blob budget per discovery/acquisition. Each commit/tree JSON response
+has a separate 2 MiB bound. Operations have a 60-second ceiling and requests
+have a 15-second ceiling. An installed package has at most 256 files. Portable path checks and
+exclusive staging-directory/file creation still refuse filesystem aliases.
+These checks do not qualify Windows/native execution.
 
-A readable Skill whose declared name is reserved by Station remains in the catalog
-with `status: "unsupported-skill-name"`. The returned catalog derives this host
-compatibility status independently of provider availability claims. Its instructions
-remain readable through
-`GET /api/registry/skills/:id/content`; the Registry shows it as unavailable for
-installation with an explanation. This is host compatibility, not a failed source
-read. A document the SDK can read safely, with an unambiguous declared name and
-nonempty description, can also remain visible as `unsupported-skill-format` when
-Station's strict Skill parser rejects its metadata format. Inspection returns the
-original pinned Markdown, including unsupported metadata such as nested credits; it
-does not remove or rewrite those fields. The raw document parser still rejects
-malformed/ambiguous YAML and unsupported anchors, aliases, or tags. Bad required
-fields, duplicate names, unsafe non-reserved names, unreadable files, and incomplete
-discovery fail the source rather than hiding entries.
+Readable reserved-name and unsupported-format documents remain inspectable with
+`unsupported-skill-name` or `unsupported-skill-format`; installation is refused.
+Inspection uses `GET /api/registry/skills/:id/content` with the opaque selection
+ID and returns the original instructions. Bad required metadata, duplicate
+names, unsafe names and incomplete discovery fail the source rather than
+silently hiding entries. A bare name is supported only when one source matches.
 
 ### Install Skill from Registry
 
@@ -2071,29 +2107,25 @@ provider and SkillService retain their independent storage-name guards.
 An unsupported-format package raises a typed refusal at the GitHub acquisition
 owner before package bytes are written. Existing SkillService cleanup removes its
 transient stage; the API returns 400 with `code: "unsupported-skill-format"`, without
-a published or leftover package. An empty parent directory can remain. No aggregate
-catalog preflight is required: a default filesystem-first local install can succeed
-while GitHub discovery fails, and that discovery request still reports failure.
+a published or leftover package. An empty parent directory can remain. A local source can still install while an
+independent GitHub source is offline. Refusing the selected source never tries
+an alternative with the same name.
 
-For a GitHub Skill, the provider copies the selected directory's files from one
-catalog snapshot, including binary assets and executable files, through SkillService's
-validated staging/publication path. Portable path preflight checks NFC-normalized,
-lowercased names and file/directory collisions. The provider then creates each planned
-parent directory exclusively, reusing only exact spellings created by that acquisition;
-this refuses additional aliases detected by the destination filesystem. Files are also
-created exclusively, so acquisition cannot overwrite a staged path. Blob integrity,
-path validation, or acquisition failure prevents publication. Mac route tests execute
-Greek sigma, sharp-s, and ligature directory alias refusals; Windows filesystem behavior
-has not been executed. Only files inside that directory are acquired; references to other Skills
-do not install those Skills automatically. This does not bind an old UI selection to a
-revision after a catalog refresh, and the route's bare ID does not distinguish
-equal-name entries across providers. The default runtime composes filesystem and
-GitHub providers through `MultiSourceSkillRegistryProvider`; source-qualified
-selection, per-source failures, and aggregate fallback behavior remain pending. The
-acquisition tests exercise real routes and SkillService, including the default
-filesystem-first composition's local install during a GitHub outage. They do not
-qualify source-qualified selection or independent per-source browsing/status.
-Network deadlines and download budgets remain separate qualification work.
+SkillService copies the selected complete directory, including binary assets and
+executable files, through its existing validated staging/publication path. It
+revalidates the selected catalog/package revision before publication. Changed
+sources return 409 and require fresh inspection; blob/path/acquisition failure
+prevents publication. The install record retains source ID, item ID, catalog
+revision, source location, installed tree digest and installation time under
+`provenance.catalog`. Ordinary same-name installation remains a conflict.
+Only files inside the selected directory are copied; sibling references do not
+automatically install another Skill. Packages with multiple Skills/dependencies
+use ordinary Agent Plugin packaging and its existing dependency lifecycle.
+
+`POST /api/registry/skills/:id/update` resolves the installed provenance to the
+same current source, stages/validates the replacement, and retains the existing
+package on refusal. A missing source or provenance cannot choose another source.
+The marketplace's Open skill action returns to the existing installed Library.
 
 ### Uninstall Skill from Registry
 
@@ -2108,12 +2140,16 @@ mutation rules.
 
 ### List Installed Plugins (Registry)
 
-`GET /api/registry/plugins/installed` filters the same availability projection to
-installed entries; it is also operator-only.
+`GET /api/registry/plugins/installed` retains the existing registered-provider
+availability projection. Managed marketplace installation is reflected on
+`GET /api/registry/plugins`; the canonical installed inventory remains
+`GET /api/plugins`. These plugin reads are operator-only where specified by
+the existing visibility owner.
 
 ### Install Plugin from Registry
 
-`POST /api/registry/plugins/install` resolves the registry ID to a unique source
+`POST /api/registry/plugins/install` resolves a source-qualified selection to its
+exact current provider/catalog revision (legacy IDs still require a unique match)
 and uses the full plugin transaction. Its body can carry the same preview
 consent, skip list, data policy, and expected installation as source installation.
 Ambiguous registry ownership is refused rather than resolved by choosing the

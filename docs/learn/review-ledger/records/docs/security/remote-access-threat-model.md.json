@@ -9,7 +9,7 @@
 
   "limits": "Source review of this document's stated contracts and actual callers, not an exhaustive audit of unclaimed code. No new public deployment, TLS/TURN lab, SSH/cloud transfer, live provider, physical/native/keychain, Windows ACL/process, two-person, cryptographic penetration or release qualification. Prior executed checks and dated receipts are retained as prior evidence, not rerun or renewed here.",
 
-  "document": {"digest":"4abf5267ee1e9ad03a15029b8b8ba2296d00af31c0e11fdf226008160f1c08f1","revision":"1da4798fab6730e9c81fb91d9d3dbbebc952f976"},
+  "document": {"digest":"409272a4e094f0f2b1a9681e0b2e5f5bcb470496ce1e9c69e2e19c5996e19187","revision":"e3a2043551f15848c07d3e192ab0f57a7f1154a0"},
 
   "sources": [
     {"path":"package.json","digest":"8161e13f46212729130685df12cc34747e385002183410cd57e47d5cdd125306","revision":"2fc8f69d15e5c8fa3188bb2ee4731f1b63c66218"},
@@ -52,7 +52,7 @@
 
     {"path":"src-server/security/coding-authority.ts","digest":"213af116a09a02c70ea15a8346b3d8fd2e25f279c975ef9b12d8ab21a519205d","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-server/security/pairing-route-scopes.ts","digest":"6135d879afff21c7d3c8f82d0fb701f04c7bc8de28724848ce0ffa39b0ded204","revision":"b004ed8cb3e885da544adf960b2894780aaf2b51"},
+    {"path":"src-server/security/pairing-route-scopes.ts","digest":"447d805567a4ef71c13ed4721675aebbdcfb25e1e85f088b73662050f62db1db","revision":"33d1cee0cbe6efacfa0e07f9157bae8734c0473a"},
 
     {"path":"src-server/security/runtime-request-security.ts","digest":"f3f261d490a5fc6a78e9b4bb649d8d4ac6419fc92b9597935475a037890f4fa5","revision":"2c5134e4bfc4db4d19877df92119078a80bf27e7"},
 
