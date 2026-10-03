@@ -2012,6 +2012,53 @@ describe.runIf(process.platform !== 'win32')(
         rmSync(root, { recursive: true, force: true });
       }
     });
+    test.each([undefined, 60 * 60_000, null])(
+      'native invitation expiry %s survives delayed setup but keeps grants short-lived',
+      async (invitationTtlMs) => {
+        const root = mkdtempSync(join(tmpdir(), 'station-broker-long-invite-'));
+        let now = 1_000;
+        const service = new SelfHostedBrokerService(
+          join(root, 'broker.sqlite'),
+          () => now,
+        );
+        try {
+          const issued = service.provision(scope, 366 * 24 * 60 * 60_000);
+          const client = await createNativeClient();
+          const invitation = service.issueNativeInvitation({
+            scope,
+            routingCredential: issued.routing,
+            brokerOrigin: 'https://broker.example',
+            surface: client.surface,
+            stationSigningKeyId: 'K'.repeat(43),
+            stationSigningGeneration: 1,
+            invitationTtlMs,
+            grantTtlMs: 10_000,
+          });
+          expect(invitation.expiresAt).toBe(
+            invitationTtlMs === null
+              ? Number.MAX_SAFE_INTEGER
+              : now + (invitationTtlMs ?? 24 * 60 * 60_000),
+          );
+          now +=
+            invitationTtlMs === null ? 365 * 24 * 60 * 60_000 : 30 * 60_000;
+          service.register(scope, issued.connector);
+          const grant = await service.redeemNativeInvitation(
+            invitation,
+            await createNativeProof(invitation, client),
+          );
+          expect(grant.expiresAt).toBe(now + 10_000);
+          await expect(
+            service.redeemNativeInvitation(
+              invitation,
+              await createNativeProof(invitation, client),
+            ),
+          ).rejects.toThrow('native_invitation_refused');
+        } finally {
+          service.close();
+          rmSync(root, { recursive: true, force: true });
+        }
+      },
+    );
     test('native v2 binds a one-use install proof and remains outside v1 signaling', async () => {
       const root = mkdtempSync(join(tmpdir(), 'station-broker-native-v2-'));
       const path = join(root, 'broker.sqlite');

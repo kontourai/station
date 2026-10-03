@@ -90,6 +90,22 @@ function publishApprovedInvitationLink(
 export async function writeNativeRelayInvitation(
   args: string[],
 ): Promise<void> {
+  let invitationTtlMs: number | null | undefined;
+  const expiryIndex = args.indexOf('--expires-in');
+  if (expiryIndex !== -1) {
+    const durations: Record<string, number | null> = {
+      '5m': 5 * 60_000,
+      '15m': 15 * 60_000,
+      '1h': 60 * 60_000,
+      '24h': 24 * 60 * 60_000,
+      never: null,
+    };
+    const choice = args[expiryIndex + 1];
+    if (!choice || !Object.hasOwn(durations, choice))
+      throw new Error('native_invitation_usage');
+    invitationTtlMs = durations[choice];
+    args = [...args.slice(0, expiryIndex), ...args.slice(expiryIndex + 2)];
+  }
   if (
     ![4, 6, 8].includes(args.length) ||
     args.slice(0, 4).some((path) => !isAbsolute(path)) ||
@@ -136,6 +152,7 @@ export async function writeNativeRelayInvitation(
   const invitation = await factory.issueNativeInvitation(
     prepare,
     AbortSignal.timeout(30_000),
+    invitationTtlMs,
   );
   writeFileSync(outputPath!, `${JSON.stringify(invitation)}\n`, {
     flag: 'wx',
@@ -162,7 +179,7 @@ if (invokedDirectly(import.meta.url)) {
         error instanceof Error &&
           error.message === 'native_invitation_link_refused_after_json_written'
           ? 'Invitation JSON was written privately; the requested link was refused. Verify the current approved surface and receiver scheme before using new output paths.\n'
-          : 'Native invitation refused. Expected absolute home, connector config, prepare JSON, and new private output paths; optional --link-output and explicit dev --dev-scheme.\n',
+          : 'Native invitation refused. Expected absolute home, connector config, prepare JSON, and new private output paths; optional --expires-in 5m|15m|1h|24h|never, --link-output and explicit dev --dev-scheme.\n',
       );
       process.exitCode = 1;
     },

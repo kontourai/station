@@ -6,7 +6,6 @@ import type { SelfHostedBrokerNativeRouteInvitationV2 } from '@kontourai/station
 
 const VERSION = 'station-native-relay-link/v1';
 const MAX_BYTES = 16 * 1024;
-const MAX_AGE_MS = 5 * 60 * 1000;
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const OPAQUE = /^[A-Za-z0-9_-]{43}$/;
@@ -116,7 +115,7 @@ function invitation(
     'keyThumbprint',
   ]);
   const expiresAt = positive(dto.expiresAt);
-  if (expiresAt <= now || expiresAt > now + MAX_AGE_MS) invalid();
+  if (expiresAt <= now) invalid();
   const identifier = text(surface.appIdentifier);
   if (
     surface.kind !== 'station-native' ||

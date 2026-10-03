@@ -877,3 +877,18 @@ entrypoint evidence must name the configuration and revision actually tested.
   [redemption/request helpers](../../src-desktop/src/native_relay_redemption.rs),
   and the [registered native commands](../../src-desktop/src/lib.rs) distinguish
   implemented Rust foundations from the commands available to the application.
+
+### Invitation expiry
+
+Native setup invitations default to 24 hours. The operator terminal accepts
+`--expires-in 5m`, `15m`, `1h`, `24h`, or `never` with
+`npm run connector:invite -- <home> <config> <prepare> <output>`.
+The issuer API accepts `invitationTtlMs`; omit it for 24 hours or use `null`
+for no time expiry. The numeric wire expiry uses `Number.MAX_SAFE_INTEGER`
+for that option, preserving the existing invitation contract.
+
+Invitations remain single-use and bound to the receiving installation.
+Withdrawal or rotation of the Station routing generation invalidates them,
+including invitations without time expiry. Device approval and Station key
+confirmation still apply. Connection grants remain short-lived; their lifetime
+starts at redemption. Existing persisted invitations retain their old deadlines.

@@ -66,6 +66,19 @@ describe('native relay link publication contract', () => {
     ).toEqual(bound);
   });
 
+  test.each([now + 24 * 60 * 60_000, Number.MAX_SAFE_INTEGER])(
+    'publishes and accepts invitation expiry %s',
+    (expiresAt) => {
+      const value = {
+        ...bound,
+        invitation: { ...bound.invitation, expiresAt },
+      };
+      expect(
+        parseNativeRelayLink(encodeNativeRelayLink(value, options), options),
+      ).toEqual(value);
+    },
+  );
+
   test('reads public first-contact metadata without adding an invitation or trust', () => {
     expect(parseNativeRelayLink(inputLink(intent), options)).toEqual(intent);
   });

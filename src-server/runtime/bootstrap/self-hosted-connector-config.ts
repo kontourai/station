@@ -60,6 +60,7 @@ interface SelfHostedConnectorFactory {
   issueNativeInvitation(
     prepare: unknown,
     signal: AbortSignal,
+    invitationTtlMs?: number | null,
   ): Promise<SelfHostedBrokerNativeRouteInvitationV2>;
   /** Typed StationRuntimeOptions entries: spread both into normal
    * StationRuntime construction. The runtime owns the broker lifecycle
@@ -687,7 +688,7 @@ export function loadSelfHostedBrokerConnectorConfig(options?: {
   const trustOwner = createConnectorTrustOwner(homeDir);
   return {
     applicationOrigin: snapshot.applicationOrigin,
-    async issueNativeInvitation(prepare, signal) {
+    async issueNativeInvitation(prepare, signal, invitationTtlMs) {
       signal.throwIfAborted();
       const trust = trustOwner.current();
       if (
@@ -711,6 +712,7 @@ export function loadSelfHostedBrokerConnectorConfig(options?: {
         signingKeyId,
         trust.generation,
         signal,
+        invitationTtlMs,
       );
       await routingClient.requireOnline(signal);
       if (!trustOwner.isCurrent(trust))

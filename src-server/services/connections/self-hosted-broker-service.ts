@@ -48,7 +48,8 @@ import type { BrokerIceAuthority } from './broker-ice-service.js';
 const ID = /^[A-Za-z0-9_-]{8,128}$/;
 const SECRET = /^[A-Za-z0-9_-]{43}$/;
 const SDP_LIMIT = 128 * 1024;
-const INVITATION_MAX_AGE_MS = 5 * 60_000;
+const INVITATION_DEFAULT_AGE_MS = 24 * 60 * 60_000;
+const INVITATION_MAX_AGE_MS = Number.MAX_SAFE_INTEGER;
 const GRANT_MAX_AGE_MS = 30 * 24 * 60 * 60_000;
 const NATIVE_GRANT_MAX_AGE_MS = 24 * 60 * 60_000;
 const NATIVE_GRANT_RENEWAL_GRACE_MS = 7 * 24 * 60 * 60_000;
@@ -1067,7 +1068,7 @@ export class SelfHostedBrokerService {
         row.key_thumbprint !== surface.keyThumbprint ||
         row.consumed_at !== null ||
         row.expires_at <= this.now() ||
-        row.grant_expires_at <= this.now() ||
+        (row.grant_expires_at >= 0 && row.grant_expires_at <= this.now()) ||
         !timingSafeEqual(
           Buffer.from(row.secret_hash),
           nativeInvitationDigest(input.credential.secret),
@@ -1388,7 +1389,7 @@ export class SelfHostedBrokerService {
     clientOrigin: string;
     stationSigningKeyId: string;
     stationSigningGeneration: number;
-    invitationTtlMs?: number;
+    invitationTtlMs?: number | null;
     grantTtlMs?: number;
   }): SelfHostedBrokerRouteInvitationV1 {
     const scope = validateBrokerScope(input.scope);
@@ -1404,12 +1405,16 @@ export class SelfHostedBrokerService {
       input.stationSigningGeneration < 1
     )
       throw new Error('invalid_signing_generation');
-    const invitationTtlMs = input.invitationTtlMs ?? INVITATION_MAX_AGE_MS;
+    const invitationTtlMs =
+      input.invitationTtlMs === null
+        ? null
+        : (input.invitationTtlMs ?? INVITATION_DEFAULT_AGE_MS);
     const grantTtlMs = input.grantTtlMs ?? GRANT_MAX_AGE_MS;
     if (
-      !Number.isSafeInteger(invitationTtlMs) ||
-      invitationTtlMs < 1 ||
-      invitationTtlMs > INVITATION_MAX_AGE_MS ||
+      (invitationTtlMs !== null &&
+        (!Number.isSafeInteger(invitationTtlMs) ||
+          invitationTtlMs < 1 ||
+          invitationTtlMs > INVITATION_MAX_AGE_MS - this.now())) ||
       !Number.isSafeInteger(grantTtlMs) ||
       grantTtlMs < 1 ||
       grantTtlMs > GRANT_MAX_AGE_MS
@@ -1439,7 +1444,11 @@ export class SelfHostedBrokerService {
       ).n;
       if (stationCount >= 64 || totalCount >= 1024)
         throw new Error('invitation_limit');
-      const expiresAt = now + invitationTtlMs;
+      // The wire contract uses a safe-integer sentinel for no time expiry.
+      const expiresAt =
+        invitationTtlMs === null
+          ? Number.MAX_SAFE_INTEGER
+          : now + invitationTtlMs;
       this.db
         .prepare(
           'INSERT INTO broker_route_invitations VALUES(?,?,?,?,?,?,?,?,?,?,?,NULL)',
@@ -1455,7 +1464,7 @@ export class SelfHostedBrokerService {
           input.stationSigningGeneration,
           invitationDigest(invitationSecret),
           expiresAt,
-          now + grantTtlMs,
+          -grantTtlMs,
         );
       return {
         version: SELF_HOSTED_BROKER_INVITATION_VERSION,
@@ -1477,7 +1486,7 @@ export class SelfHostedBrokerService {
     surface: SelfHostedBrokerNativeClientSurfaceV2;
     stationSigningKeyId: string;
     stationSigningGeneration: number;
-    invitationTtlMs?: number;
+    invitationTtlMs?: number | null;
     grantTtlMs?: number;
   }): SelfHostedBrokerNativeRouteInvitationV2 {
     const scope = validateBrokerScope(input.scope);
@@ -1495,12 +1504,16 @@ export class SelfHostedBrokerService {
       input.stationSigningGeneration < 1
     )
       throw new Error('invalid_signing_generation');
-    const invitationTtlMs = input.invitationTtlMs ?? INVITATION_MAX_AGE_MS;
+    const invitationTtlMs =
+      input.invitationTtlMs === null
+        ? null
+        : (input.invitationTtlMs ?? INVITATION_DEFAULT_AGE_MS);
     const grantTtlMs = input.grantTtlMs ?? NATIVE_GRANT_MAX_AGE_MS;
     if (
-      !Number.isSafeInteger(invitationTtlMs) ||
-      invitationTtlMs < 1 ||
-      invitationTtlMs > INVITATION_MAX_AGE_MS ||
+      (invitationTtlMs !== null &&
+        (!Number.isSafeInteger(invitationTtlMs) ||
+          invitationTtlMs < 1 ||
+          invitationTtlMs > INVITATION_MAX_AGE_MS - this.now())) ||
       !Number.isSafeInteger(grantTtlMs) ||
       grantTtlMs < 1 ||
       grantTtlMs > NATIVE_GRANT_MAX_AGE_MS
@@ -1530,7 +1543,11 @@ export class SelfHostedBrokerService {
       ).n;
       if (stationCount >= 64 || totalCount >= 1024)
         throw new Error('invitation_limit');
-      const expiresAt = now + invitationTtlMs;
+      // The wire contract uses a safe-integer sentinel for no time expiry.
+      const expiresAt =
+        invitationTtlMs === null
+          ? Number.MAX_SAFE_INTEGER
+          : now + invitationTtlMs;
       this.db
         .prepare(
           'INSERT INTO broker_native_route_invitations VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL)',
@@ -1549,7 +1566,7 @@ export class SelfHostedBrokerService {
           surface.keyThumbprint,
           nativeInvitationDigest(invitationSecret),
           expiresAt,
-          now + grantTtlMs,
+          -grantTtlMs,
         );
       return {
         version: SELF_HOSTED_BROKER_NATIVE_INVITATION_VERSION,
@@ -1619,7 +1636,7 @@ export class SelfHostedBrokerService {
       row.expires_at !== invitation.expiresAt ||
       row.consumed_at !== null ||
       row.expires_at <= this.now() ||
-      row.grant_expires_at <= this.now() ||
+      (row.grant_expires_at >= 0 && row.grant_expires_at <= this.now()) ||
       !timingSafeEqual(
         Buffer.from(row.secret_hash),
         nativeInvitationDigest(invitation.invitationSecret),
@@ -1868,7 +1885,7 @@ export class SelfHostedBrokerService {
         row.expires_at !== invitation.expiresAt ||
         row.consumed_at !== null ||
         row.expires_at <= this.now() ||
-        row.grant_expires_at <= this.now() ||
+        (row.grant_expires_at >= 0 && row.grant_expires_at <= this.now()) ||
         !timingSafeEqual(
           Buffer.from(row.secret_hash),
           nativeInvitationDigest(invitation.invitationSecret),
@@ -1923,6 +1940,12 @@ export class SelfHostedBrokerService {
         retainedTotalCount >= NATIVE_GRANTS_TOTAL_RETAINED
       )
         throw new Error('grant_limit');
+      // Negative stored values are redemption-relative durations; positive values
+      // retain the deadlines of invitations issued by earlier broker versions.
+      const grantExpiresAt =
+        row.grant_expires_at < 0
+          ? this.now() - row.grant_expires_at
+          : row.grant_expires_at;
       const credential = {
         id: randomBytes(16).toString('base64url'),
         secret: randomBytes(32).toString('base64url'),
@@ -1953,7 +1976,7 @@ export class SelfHostedBrokerService {
           publicKeyJson,
           nativeGrantDigest(credential.secret),
           this.now(),
-          row.grant_expires_at,
+          grantExpiresAt,
         );
       return {
         version: SELF_HOSTED_BROKER_NATIVE_CLIENT_GRANT_VERSION,
@@ -1964,7 +1987,7 @@ export class SelfHostedBrokerService {
         surface,
         proofPublicKey,
         credential,
-        expiresAt: row.grant_expires_at,
+        expiresAt: grantExpiresAt,
       };
     });
   }
@@ -2006,7 +2029,7 @@ export class SelfHostedBrokerService {
         row.expires_at !== invitation.expiresAt ||
         row.consumed_at !== null ||
         row.expires_at <= this.now() ||
-        row.grant_expires_at <= this.now() ||
+        (row.grant_expires_at >= 0 && row.grant_expires_at <= this.now()) ||
         !timingSafeEqual(
           Buffer.from(row.secret_hash),
           invitationDigest(invitation.invitationSecret),
@@ -2045,6 +2068,12 @@ export class SelfHostedBrokerService {
       ).n;
       if (stationCount >= 256 || totalCount >= 4096)
         throw new Error('grant_limit');
+      // Negative stored values are redemption-relative durations; positive values
+      // retain the deadlines of invitations issued by earlier broker versions.
+      const grantExpiresAt =
+        row.grant_expires_at < 0
+          ? this.now() - row.grant_expires_at
+          : row.grant_expires_at;
       const credential = {
         id: randomBytes(16).toString('base64url'),
         secret: randomBytes(32).toString('base64url'),
@@ -2070,7 +2099,7 @@ export class SelfHostedBrokerService {
           invitation.stationSigningGeneration,
           grantDigest(credential.secret),
           this.now(),
-          row.grant_expires_at,
+          grantExpiresAt,
         );
       return {
         version: SELF_HOSTED_BROKER_CLIENT_GRANT_VERSION,
@@ -2079,7 +2108,7 @@ export class SelfHostedBrokerService {
         stationSigningKeyId: invitation.stationSigningKeyId,
         stationSigningGeneration: invitation.stationSigningGeneration,
         credential,
-        expiresAt: row.grant_expires_at,
+        expiresAt: grantExpiresAt,
       };
     });
   }

@@ -70,7 +70,6 @@ fn try_native_device_receipt_operation() -> Result<MutexGuard<'static, ()>, Stri
             }
         })
 }
-const MAX_INVITATION_AGE_MS: u64 = 5 * 60 * 1000;
 const MAX_GRANT_AGE_MS: u64 = 24 * 60 * 60 * 1000;
 const NATIVE_GRANT_RENEWAL_GRACE_MS: u64 = 7 * 24 * 60 * 60 * 1000;
 const NATIVE_GRANT_RENEWAL_EARLY_WINDOW_MS: u64 = 12 * 60 * 60 * 1000;
@@ -2936,7 +2935,7 @@ pub(crate) fn validate_invitation_and_trust(
         || !valid_safe_id(&invitation.invitation_id)
         || !valid_opaque(invitation.invitation_secret.expose())
         || invitation.expires_at <= now
-        || invitation.expires_at > now.saturating_add(MAX_INVITATION_AGE_MS)
+        || invitation.expires_at > JS_SAFE_INTEGER_MAX
         || invitation.surface.kind != "station-native"
         || invitation.surface.app_identifier != profile.app_identifier
         || invitation.surface.channel != profile.channel.keyring_label()

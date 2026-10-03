@@ -608,6 +608,7 @@ export function createSelfHostedBrokerRoutes(
         'surface',
         'stationSigningKeyId',
         'stationSigningGeneration',
+        ...('invitationTtlMs' in body ? ['invitationTtlMs'] : []),
       ]);
       if (configuredOrigin && body.brokerOrigin !== brokerOrigin(c))
         throw new Error('native_invitation_refused');
@@ -619,6 +620,7 @@ export function createSelfHostedBrokerRoutes(
           body.surface as SelfHostedBrokerNativeRouteInvitationV2['surface'],
         stationSigningKeyId: body.stationSigningKeyId as string,
         stationSigningGeneration: body.stationSigningGeneration as number,
+        invitationTtlMs: body.invitationTtlMs as number | null | undefined,
       });
     }),
   );

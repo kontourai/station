@@ -268,7 +268,7 @@ fn decode_link(
             if invitation.expires_at <= now {
                 return Err("expired");
             }
-            if invitation.expires_at > now.saturating_add(MAX_AGE_MS)
+            if invitation.expires_at > SAFE_INTEGER_MAX
                 || invitation.surface.kind != "station-native"
                 || invitation.surface.app_identifier != app_identifier
                 || invitation.surface.channel != channel

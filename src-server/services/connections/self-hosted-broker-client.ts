@@ -229,6 +229,7 @@ export class SelfHostedBrokerClient {
     stationSigningKeyId: string,
     stationSigningGeneration: number,
     signal: AbortSignal,
+    invitationTtlMs?: number | null,
   ): Promise<SelfHostedBrokerNativeRouteInvitationV2> {
     const value = exact(
       await this.#post(
@@ -238,6 +239,7 @@ export class SelfHostedBrokerClient {
           surface,
           stationSigningKeyId,
           stationSigningGeneration,
+          ...(invitationTtlMs !== undefined ? { invitationTtlMs } : {}),
         },
         signal,
       ),
@@ -299,7 +301,7 @@ export class SelfHostedBrokerClient {
       typeof value.expiresAt !== 'number' ||
       !Number.isSafeInteger(value.expiresAt) ||
       (value.expiresAt as number) <= now ||
-      (value.expiresAt as number) > now + 300_000
+      (value.expiresAt as number) > Number.MAX_SAFE_INTEGER
     )
       throw new Error('broker_response_invalid');
     return {
