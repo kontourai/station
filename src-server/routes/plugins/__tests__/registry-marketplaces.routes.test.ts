@@ -270,6 +270,56 @@ describe('Marketplace source lifecycle through Registry routes', () => {
     }
   });
 
+  test('plugin catalog failures refuse an empty-success response and retain healthy independent rows', async () => {
+    const { request, home } = setup();
+    const missing = join(home, 'missing-catalog.json');
+    await expect(access(missing)).rejects.toThrow();
+    expect(
+      (
+        await request('/sources', 'POST', {
+          displayName: 'Unavailable plugins',
+          adapter: 'manifest',
+          location: missing,
+        })
+      ).status,
+    ).toBe(201);
+    const failed = await request('/plugins');
+    expect(failed.status).toBe(503);
+    expect(await failed.json()).toMatchObject({
+      success: false,
+      data: [],
+      partial: true,
+      sources: [expect.objectContaining({ status: 'error', kind: 'plugins' })],
+    });
+    registerPluginRegistryProvider({
+      registryKey: 'healthy-independent-catalog',
+      listAvailable: async () => [{ id: 'available', installed: false }],
+      listInstalled: async () => [],
+      install: async () => ({
+        success: false,
+        message: 'Not an install fixture',
+      }),
+      uninstall: async () => ({
+        success: false,
+        message: 'Not an install fixture',
+      }),
+    });
+    const partial = await request('/plugins');
+    expect(partial.status).toBe(200);
+    expect(await partial.json()).toMatchObject({
+      success: true,
+      partial: true,
+      data: [
+        expect.objectContaining({
+          catalog: expect.objectContaining({ itemId: 'available' }),
+        }),
+      ],
+      sources: expect.arrayContaining([
+        expect.objectContaining({ status: 'error' }),
+      ]),
+    });
+  });
+
   test('configured multi-root filesystem libraries keep stable distinct source choices and install the exact same-name package', async () => {
     const { request, home } = setup();
     const first = await library('Configured first instructions');
