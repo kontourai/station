@@ -9,7 +9,7 @@
 
   "limits": "No live external-engine MCP delivery, plugin installation, provider execution, Fleet/device journey or repository-wide certification. Architecture topics have their own separate review scope.",
 
-  "document": {"digest":"150b784d01559582c4645565474214cd834f604d1b1f113e6c6f4d7af770df3b","revision":"31f4009ab463545288900a3ca2a9dfac04fd1791"},
+  "document": {"digest":"44bf3f1892e1703af48e379ed96dab09184d53e2974409c71fcbefd70f19468e","revision":"8d715b7bee77e593e64a1e0b2af99956571c9795"},
 
   "sources": [
     {"path":"docs/design/mcp-ui-host.md","digest":"060ae4fc6877a186e8ea6d5073729e03f161dbe270b700f62741095560000195","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
@@ -104,7 +104,7 @@
 
     {"path":"src-server/tools/station-control-platform-tools.ts","digest":"a209f508dffc890f68c90ef5393125ff4a4d68f020c66b55c4abb84812727f5d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/tools/station-docs-content.ts","digest":"49b43f26d64d7df0491758305d639037b008170df414dc9c162b7b9ba5e8e046","revision":"cb17fb7a3cfd0c7f0df5c1837870b0662ef0cd3d"},
+    {"path":"src-server/tools/station-docs-content.ts","digest":"ed7260f6eb1c84dc76ea6be19e49f52b2b56ed2011d0c9fcbd073e4abcf42350","revision":"8d715b7bee77e593e64a1e0b2af99956571c9795"},
 
     {"path":"src-server/tools/station-docs-mcp-server.ts","digest":"6c3b7b2586bed5225ba1b32ddae94e61d5cc087083157d0f6e62d6ddf1490872","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

@@ -9,7 +9,7 @@
 
   "limits": "Local source/fixture review. Native provider compatibility, physical UI, real approvals, and platform/runtime setup are not established by this record.",
 
-  "document": {"digest":"d836a25e913def53e0b79cea39b981bf5c80c3e45d4a43acdc544c4138456b3f","revision":"03b34026f59e9d32091d481aef1cab1f3a4fa03d"},
+  "document": {"digest":"2675a6f0cbe438f1ccd19b0a1ba9240b59114cefde8c3517e07543ffbfaa5b98","revision":"8d715b7bee77e593e64a1e0b2af99956571c9795"},
 
   "sources": [
     {"path":"packages/cli/src/commands/profile-store.ts","digest":"e169198969311f9d708a955f0137ebeba4a1fd69d9a9f89f0b914df961ee6109","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
@@ -168,7 +168,15 @@
 
     {"path":"src-ui/src/components/chat/HarnessQuestionRequest.tsx","digest":"c2606df4a82aa2ff62095b8c78664657122e9140cff8798f73066f1c456204cb","revision":"754e48394b02f670894b419807274752fd9676d4"},
 
-    {"path":"src-ui/src/components/chat/harnessQuestionDrafts.ts","digest":"341c5d3a3184a8249eb65e9808523812bec532b49cb89cde1dcdae2d9fa95176","revision":"754e48394b02f670894b419807274752fd9676d4"}
+    {"path":"src-ui/src/components/chat/harnessQuestionDrafts.ts","digest":"341c5d3a3184a8249eb65e9808523812bec532b49cb89cde1dcdae2d9fa95176","revision":"754e48394b02f670894b419807274752fd9676d4"},
+
+    {"path":"src-ui/src/views/agent-editor/AgentEditorToolsTab.tsx","digest":"daa469691f0f7a35fd9f0418fb25301cc22db68c1189d4a652da902eccef07e7","revision":"6be3ff9a9122d55dfa315d5b18e866e477180c90"},
+
+    {"path":"src-ui/src/views/agent-editor/utils.ts","digest":"d2d578c2e8767d203be76c24797b8058f56e51b3b3e2f9ac0edef50526c7b7d2","revision":"6be3ff9a9122d55dfa315d5b18e866e477180c90"},
+
+    {"path":"src-server/tools/station-control-mcp-server.ts","digest":"71093b289019109469dfc6fcb495e981c45f0ae17a4ccf8f639126c5bc437c39","revision":"8d715b7bee77e593e64a1e0b2af99956571c9795"},
+
+    {"path":"src-ui/src/__tests__/AgentEditorToolsTab.browser.test.tsx","digest":"b5b9b3c5fd4455af6d5bc2ee7cbcdf584f7886ab0475277decf8d24c406a81b0","revision":"318e1c7f8a01d1cd8a842edceacd6e35297516a7"}
   ],
 
   "checks": [

@@ -136,7 +136,7 @@
 
     {"path":"src-server/routes/agents/native-invocation.ts","digest":"54c8dfedfb000cadb9ff15d56d283271d86c87150d6e6854d01c90aaf9b03332","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/routes/agents/tools.ts","digest":"9f179ec687614c574c33acfcb7899c45264fde1c7b6c74e8e3c94eda97644348","revision":"aadb5aa183a58e97344d13b8c5f34f92a7d78a94"},
+    {"path":"src-server/routes/agents/tools.ts","digest":"e816aa362002e9b79be62094d7e7837e81f85cbeb065a0c8386a1f21f1570c27","revision":"8d715b7bee77e593e64a1e0b2af99956571c9795"},
 
     {"path":"src-server/routes/chat/bounded-response.ts","digest":"10b7e8b121ea3be2da778bd3d570bc2ff672d985f8f3b4399c8fff9e7f0f74dc","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
