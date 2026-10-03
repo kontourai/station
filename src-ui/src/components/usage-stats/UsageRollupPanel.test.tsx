@@ -122,9 +122,7 @@ describe('UsageRollupPanel (station#4135)', () => {
         screen.getByRole('button', { name: 'Usage never reported' }),
       );
       expect(
-        screen.getByText(
-          'No Station or provider reported usage for this window.',
-        ),
+        screen.getByText('Usage not reported for this window'),
       ).toBeTruthy();
     } finally {
       result.data.coverage = savedCoverage;

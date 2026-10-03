@@ -153,6 +153,7 @@ export class UsageAggregator {
         '',
         previousModelId,
       );
+      if (stats.snapshot) stats.snapshot.costCoverageChecked = false;
       await this.saveStats(stats);
       await this.updateAchievements(stats);
     });
@@ -174,6 +175,7 @@ export class UsageAggregator {
   ): Promise<void> {
     const stats = await this.loadStats();
     applyMessageToUsageStats(stats, message, agentSlug);
+    if (stats.snapshot) stats.snapshot.costCoverageChecked = false;
     await this.saveStats(stats);
     await this.updateAchievements(stats);
   }
@@ -186,6 +188,7 @@ export class UsageAggregator {
     // Track what we've seen in current files
     const currentStats = createEmptyUsageStats();
     let skippedMessages = 0;
+    let missingMessageCosts = 0;
 
     const agents = existsSync(agentsDir)
       ? await readdir(agentsDir, { withFileTypes: true })
@@ -260,6 +263,13 @@ export class UsageAggregator {
               agentSlug,
               agentModel,
             );
+            const cost = message.metadata?.usage?.estimatedCost;
+            if (
+              (message.role === 'assistant' || message.metadata?.usage) &&
+              !(typeof cost === 'number' && Number.isFinite(cost) && cost >= 0)
+            ) {
+              missingMessageCosts += 1;
+            }
           } catch (error) {
             skippedMessages += 1;
             logger.error('Failed to parse message', { file, error });
@@ -310,8 +320,20 @@ export class UsageAggregator {
           ? 'unavailable'
           : 'not_configured',
       skippedMessages,
+      missingMessageCosts,
+      costCoverageChecked: true,
       retainedUsage:
-        stats.lifetime.totalMessages > currentStats.lifetime.totalMessages,
+        stats.lifetime.totalMessages > currentStats.lifetime.totalMessages ||
+        stats.lifetime.totalInputTokens >
+          currentStats.lifetime.totalInputTokens ||
+        stats.lifetime.totalOutputTokens >
+          currentStats.lifetime.totalOutputTokens ||
+        stats.lifetime.totalCost - currentStats.lifetime.totalCost >
+          Number.EPSILON * Math.max(1, stats.lifetime.totalCost) * 8 ||
+        (stats.lifetime.totalCacheReadTokens ?? 0) >
+          (currentStats.lifetime.totalCacheReadTokens ?? 0) ||
+        (stats.lifetime.totalCacheWriteTokens ?? 0) >
+          (currentStats.lifetime.totalCacheWriteTokens ?? 0),
     };
 
     await this.saveStats(stats);

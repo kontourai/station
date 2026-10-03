@@ -1190,8 +1190,12 @@ Agent, model, and date aggregates. Active reads rebuild the retained snapshot
 at most once a minute, sharing an in-flight rebuild with other readers.
 `snapshot.rescannedAt` identifies the completed source scan;
 `snapshot.engineUsage` distinguishes available, unavailable, and unconfigured
-engine sources, and `snapshot.skippedMessages` counts unreadable message rows; `snapshot.retainedUsage`
-flags retained message totals larger than the currently rescanned corpus.
+engine sources, and `snapshot.skippedMessages` counts unreadable message rows.
+`snapshot.missingMessageCosts` counts saved assistant/usage rows without a valid
+cost, while `snapshot.costCoverageChecked` becomes false after incremental
+writes or enrichment until a rebuild. `snapshot.retainedUsage` flags retained
+message, token or cost totals larger than the currently rescanned corpus
+(ignoring cost rounding differences).
 A completed scan does not prove historical totals or every provider's accounting
 are complete. The date map is `byDate`, not `byDay`.
 Optional `from`/`to` date strings filter `byDate` and add `rangeSummary`; other

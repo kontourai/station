@@ -78,7 +78,7 @@ function ProfileUsageGraph({
               <span />
             </div>
           }
-          label="No daily activity recorded in the last 14 days"
+          label="Daily activity not recorded in the last 14 days"
         />
       ) : (
         <div className="profile-usage-graph__bars">
@@ -205,7 +205,10 @@ export function ProfilePage() {
             title="Usage refresh failed"
             description={`Showing the last available snapshot. ${describeReadFailure(rebuildError || error)}`}
             action={
-              <Button size="sm" onClick={refresh}>
+              <Button
+                size="sm"
+                onClick={rebuildError ? () => void rebuild() : refresh}
+              >
                 Retry
               </Button>
             }

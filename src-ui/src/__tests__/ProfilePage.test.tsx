@@ -129,7 +129,7 @@ describe('ProfilePage', () => {
 
     render(<ProfilePage />);
 
-    expect(screen.getByText(/No daily activity recorded/i)).toBeTruthy();
+    expect(screen.getByText(/Daily activity not recorded/i)).toBeTruthy();
   });
 
   test('does not relabel old daily history or lifetime totals as recent activity', () => {
@@ -138,7 +138,7 @@ describe('ProfilePage', () => {
       '2020-01-01': { messages: 18, cost: 2.75 },
     };
     const { container } = render(<ProfilePage />);
-    expect(screen.getByText(/No daily activity recorded/)).toBeTruthy();
+    expect(screen.getByText(/Daily activity not recorded/)).toBeTruthy();
     expect(container.querySelector('.profile-usage-graph__bar')).toBeNull();
     expect(screen.queryByText(/spent/)).toBeNull();
     expect(screen.queryByText(/Joined/)).toBeNull();
@@ -154,12 +154,17 @@ describe('ProfilePage', () => {
   });
 
   test('reports a failed rebuild instead of presenting it as refreshed usage', async () => {
-    rescanAnalytics.mockRejectedValue(new Error('Rebuild unavailable'));
+    rescanAnalytics.mockRejectedValueOnce(new Error('Rebuild unavailable'));
     render(<ProfilePage />);
     fireEvent.click(screen.getByRole('button', { name: 'Rebuild usage' }));
     await waitFor(() =>
       expect(screen.getByText(/Rebuild unavailable/)).toBeTruthy(),
     );
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    await waitFor(() =>
+      expect(screen.queryByText('Usage refresh failed')).toBeNull(),
+    );
+    expect(rescanAnalytics).toHaveBeenCalledTimes(2);
   });
 
   // `useAnalytics` already derived the usage read's error and this
@@ -172,7 +177,7 @@ describe('ProfilePage', () => {
 
     render(<ProfilePage />);
 
-    expect(screen.queryByText(/No daily activity recorded/i)).toBeNull();
+    expect(screen.queryByText(/Daily activity not recorded/i)).toBeNull();
     expect(screen.getByText('Unable to load profile')).toBeTruthy();
     expect(screen.getByText('usage read failed')).toBeTruthy();
     // Header first, in a failure exactly as in a wait (6-OPS-23): the page

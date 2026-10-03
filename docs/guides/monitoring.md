@@ -48,12 +48,16 @@ missing-source coverage separate. Use those receipts for bounded provider/model
 comparisons. Unsupported or unreported figures remain unknown.
 
 Station milestones use this retained summary, not a person's sent-message
-count. A cost milestone does not unlock from unreported engine cost, a failed
-engine read, or retained totals that the latest scan could not remeasure. Its
+count. A cost milestone does not unlock from unreported engine or saved-assistant
+cost, skipped message records, a failed engine read, or retained measurements
+that the latest scan could not remeasure. Incremental message writes and usage
+enrichment invalidate cost coverage until the next rebuild. Its
 API result supplies `measurementUnavailableReason` and omits numeric progress;
 the UI shows that gap instead of a budget amount or progress bar. A reported
-zero cost remains a real measurement. `snapshot.retainedUsage` identifies the
-retained-message comparison, not a claim of complete historical coverage.
+zero cost remains a real measurement. `snapshot.retainedUsage` compares retained
+message, token and cost totals with the current scan; it is not a claim of
+complete historical coverage. The cost comparison tolerates floating-point
+rounding differences.
 
 | Ingress | Usage the current implementation can observe | Limits |
 | --- | --- | --- |

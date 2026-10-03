@@ -74,6 +74,8 @@ export interface UsageStats {
     rescannedAt: string;
     engineUsage: 'available' | 'unavailable' | 'not_configured';
     skippedMessages: number;
+    missingMessageCosts?: number;
+    costCoverageChecked?: boolean;
     retainedUsage?: boolean;
   };
   lifetime: {
@@ -763,6 +765,15 @@ export function mergeRescannedUsageStats(
 }
 
 export function getCostMeasurementGap(stats: UsageStats): string | null {
+  if (!stats.snapshot?.costCoverageChecked) {
+    return 'Cost coverage has not been checked for the current saved messages.';
+  }
+  if (stats.snapshot.skippedMessages > 0) {
+    return 'Some saved messages could not be read, so their cost is unknown.';
+  }
+  if (stats.snapshot.missingMessageCosts) {
+    return 'Some saved assistant messages did not report cost. Missing cost is not zero.';
+  }
   if (stats.snapshot?.engineUsage === 'unavailable') {
     return 'Engine cost could not be checked during the last rebuild.';
   }

@@ -1,3 +1,5 @@
+import { mkdir, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import {
   parseHostedTenantRegistry,
   sessionReadAuthorityFromRequest,
@@ -13,6 +15,119 @@ vi.mock('../../../telemetry/metrics.js', () => ({
 
 const { createAnalyticsRoutes } = await import('../analytics.js');
 const makeHome = trackTempDirs();
+
+test.each([
+  {
+    name: 'missing',
+    estimatedCost: undefined,
+    skipped: false,
+    eligible: false,
+  },
+  { name: 'reported zero', estimatedCost: 0, skipped: false, eligible: true },
+  {
+    name: 'unreadable record',
+    estimatedCost: 0,
+    skipped: true,
+    eligible: false,
+  },
+])(
+  'cost milestones handle saved-message costs: $name',
+  async ({ estimatedCost, skipped, eligible }) => {
+    const home = makeHome('station-profile-message-cost-');
+    const dir = join(home, 'agents', 'sample', 'memory', 'sessions');
+    await mkdir(dir, { recursive: true });
+    const message = {
+      role: 'assistant',
+      metadata: {
+        usage: {
+          inputTokens: 10,
+          outputTokens: 20,
+          ...(estimatedCost === undefined ? {} : { estimatedCost }),
+        },
+      },
+    };
+    await writeFile(
+      join(dir, 'one.ndjson'),
+      Array.from({ length: 60 }, () => JSON.stringify(message)).join('\n') +
+        (skipped ? '\n{invalid' : ''),
+    );
+    const aggregator = new UsageAggregator(home);
+    const body = await json(
+      await createAnalyticsRoutes(aggregator).request('/achievements'),
+    );
+    const milestone = body.data.find(
+      (item: { id: string }) => item.id === 'cost-conscious',
+    );
+    expect(milestone.unlocked).toBe(eligible);
+    if (!eligible) {
+      expect(milestone.measurementUnavailableReason).toBeTruthy();
+      expect(milestone.progress).toBeUndefined();
+    }
+  },
+);
+
+test.each(['incrementalUpdate', 'applyEnrichmentUsage'] as const)(
+  '%s cannot certify cost coverage before the changed message is rescanned',
+  async (method) => {
+    const aggregator = new UsageAggregator(
+      makeHome('station-profile-cost-update-'),
+      {
+        get: () => ({
+          listSessionUsage: () => [
+            {
+              threadId: 'engine',
+              conversationId: 'engine',
+              usage: { turns: 60, toolCalls: 0, reportedCostUsd: 0 },
+            },
+          ],
+        }),
+      },
+    );
+    const app = createAnalyticsRoutes(aggregator);
+    await app.request('/achievements');
+    await aggregator[method](
+      { role: 'assistant', metadata: { usage: { inputTokens: 10 } } },
+      'sample',
+      'one',
+    );
+    const body = await json(await app.request('/achievements'));
+    const milestone = body.data.find(
+      (item: { id: string }) => item.id === 'cost-conscious',
+    );
+    expect(milestone.unlocked).toBe(false);
+    expect(milestone.measurementUnavailableReason).toBeTruthy();
+  },
+);
+
+test('retained token measurements block a cost milestone even when message counts match', async () => {
+  const usage = {
+    turns: 60,
+    toolCalls: 0,
+    inputTokens: 100,
+    reportedCostUsd: 0,
+  };
+  const aggregator = new UsageAggregator(
+    makeHome('station-profile-retained-cost-'),
+    {
+      get: () => ({
+        listSessionUsage: () => [
+          { threadId: 'engine', conversationId: 'engine', usage },
+        ],
+      }),
+    },
+  );
+  await aggregator.fullRescan();
+  usage.inputTokens = 10;
+  await aggregator.fullRescan();
+  const body = await json(
+    await createAnalyticsRoutes(aggregator).request('/achievements'),
+  );
+  const milestone = body.data.find(
+    (item: { id: string }) => item.id === 'cost-conscious',
+  );
+  expect(milestone.unlocked).toBe(false);
+  expect(milestone.measurementUnavailableReason).toBeTruthy();
+});
 
 test.each([undefined, 0])(
   'cost milestones distinguish missing engine cost from a reported %s',

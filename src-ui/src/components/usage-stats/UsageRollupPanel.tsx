@@ -8,7 +8,7 @@ import {
   useUsageRollupQuery,
 } from '@kontourai/station-sdk';
 import { useState } from 'react';
-import { SkeletonBlock } from '../state';
+import { Empty, SkeletonBlock } from '../state';
 import './UsageRollupPanel.css';
 
 type Days = 7 | 14 | 30;
@@ -210,10 +210,10 @@ export function UsageRollupPanel() {
               Station observed in each provider window.
             </p>
             {!isLoading && !error && coverage.length === 0 && (
-              <p>No Station or provider reported usage for this window.</p>
+              <Empty label="Usage not reported for this window" />
             )}
             {error && <p>Coverage could not be refreshed.</p>}
-            {isLoading && <p>Loading coverage…</p>}
+            {isLoading && <SkeletonBlock count={1} label="Loading coverage" />}
             {coverage.map((item: UsageCoverage) => (
               <div key={item.stationId}>
                 <p>
