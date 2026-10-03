@@ -4,11 +4,11 @@ import type {
 } from '@kontourai/station-sdk';
 import type { ChatUIState } from '../../contexts/active-chats-state';
 import { serverWorkLive } from '../../utils/conversation-activity';
-import { requestsWaitingOnUser } from '../../utils/waiting-approvals';
 import {
   orchestrationLifecycleLabel,
   sessionAttentionKind,
 } from '../../utils/session-state';
+import { requestsWaitingOnUser } from '../../utils/waiting-approvals';
 import type { HomeWorkItem } from './home-view-model';
 
 /**
