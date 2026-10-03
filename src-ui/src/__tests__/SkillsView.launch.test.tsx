@@ -183,6 +183,8 @@ test('Start selects the created chat and dispatches substituted content through 
   expect(chat.title).toBe('release-check');
   expect(chat.agentSlug).toBe('codex');
   expect(chat.currentSessionId).toBe('execution-session');
+  if (!chat.messages)
+    throw new Error('The selected chat has no transcript messages');
   expect(
     chat.messages.find((message) => message.role === 'user')?.content,
   ).toBe('Review garden in staging');
