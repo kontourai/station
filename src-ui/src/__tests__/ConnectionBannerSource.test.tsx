@@ -584,6 +584,31 @@ describe('ConnectionBannerSource → BannerHost — version drift', () => {
     ).toBeNull();
   });
 
+  it('tells the reader to update this app when the host refused its protocol (#2962)', async () => {
+    activeConnection = {
+      id: 'connection-1',
+      name: 'Studio',
+      url: 'https://station.example.test',
+    };
+    connectionStatus.reason = 'client-protocol-unsupported';
+    connectionStatus.failureStreak = 1;
+
+    renderChrome();
+
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toContain(
+      'Studio no longer supports this version of the app.',
+    );
+    // Not the host-side copy the handshake mismatch strip renders.
+    expect(
+      document.querySelector(`[data-banner-id="${BANNER_IDS.compat}"]`),
+    ).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Details' }));
+    expect((await screen.findByRole('alert')).textContent).toContain(
+      'Install the latest Station app or CLI on this device',
+    );
+  });
+
   it('keeps a decision banner dismissible, retryable and swipeable', async () => {
     connectionStatus.reason = 'unexpected-response';
     connectionStatus.failureStreak = 1;

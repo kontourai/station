@@ -52,13 +52,17 @@ describe('client request deadlines', () => {
     expect(initOf(fetchMock).signal).toBeUndefined();
   });
 
-  it('preserves the single-argument fetch shape for a bare authenticatedFetch', async () => {
+  it('adds no deadline to a bare authenticatedFetch, only the client protocol', async () => {
     const fetchMock = vi.fn(async () => new Response('{}'));
     vi.stubGlobal('fetch', fetchMock);
 
     await authenticatedFetch(URL_UNDER_TEST);
 
-    expect(fetchMock).toHaveBeenCalledWith(URL_UNDER_TEST);
+    // Outside a browser page the client protocol header is the only init a
+    // bare call gains (#2962); it is never a deadline signal.
+    expect(fetchMock).toHaveBeenCalledWith(URL_UNDER_TEST, {
+      headers: { 'X-Station-Client-Protocol': '1' },
+    });
   });
 
   it('attaches a deadline signal to reads and writes once configured', async () => {

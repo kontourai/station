@@ -475,6 +475,44 @@ describe('probeServerConnection', () => {
       ).resolves.toEqual({ ok: false, reason: 'authentication-failed' });
     });
 
+    it('reads a client-protocol refusal on the protected request as this app being too old (#2962)', async () => {
+      vi.spyOn(globalThis, 'fetch')
+        .mockResolvedValueOnce(Response.json(handshake))
+        .mockResolvedValueOnce(
+          Response.json(
+            {
+              error: {
+                code: 'client_protocol_unsupported',
+                minClientProtocol: 2,
+              },
+            },
+            { status: 426 },
+          ),
+        );
+      await expect(
+        probeServerConnection(
+          'https://station.example.test',
+          'fixture-credential',
+          'environment-1',
+          new AbortController().signal,
+        ),
+      ).resolves.toEqual({ ok: false, reason: 'client-protocol-unsupported' });
+    });
+
+    it('does not read an uncoded 426 as a client-protocol refusal', async () => {
+      vi.spyOn(globalThis, 'fetch')
+        .mockResolvedValueOnce(Response.json(handshake))
+        .mockResolvedValueOnce(new Response('upgrade', { status: 426 }));
+      await expect(
+        probeServerConnection(
+          'https://station.example.test',
+          'fixture-credential',
+          'environment-1',
+          new AbortController().signal,
+        ),
+      ).resolves.toEqual({ ok: false, reason: 'unexpected-response' });
+    });
+
     it('reads a 500 on the protected request as an unusable answer', async () => {
       vi.spyOn(globalThis, 'fetch')
         .mockResolvedValueOnce(Response.json(handshake))

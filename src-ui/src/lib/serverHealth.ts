@@ -9,6 +9,7 @@ import {
 } from '@kontourai/station-connect';
 import { PUBLIC_STATION_HANDSHAKE_PATH } from '@kontourai/station-contracts/environment-security';
 import { authenticatedFetch } from '@kontourai/station-sdk';
+import { clientProtocolHeaders } from '@kontourai/station-shared/client-protocol';
 import { isBlockingCompatibility } from './compatibilityLoader';
 import { isStationUiProxyUnavailableResponse } from './station-ui-proxy';
 
@@ -119,6 +120,8 @@ async function stationAuthenticatedFetch(
       headers: {
         ...Object.fromEntries(new Headers(init?.headers)),
         Origin: route.clientOrigin,
+        // A relay route is not a browser fetch, so no preflight governs it.
+        ...clientProtocolHeaders(url, true),
         ...(credential && !new Headers(init?.headers).has('Authorization')
           ? { Authorization: `Bearer ${credential}` }
           : {}),
@@ -130,6 +133,7 @@ async function stationAuthenticatedFetch(
     ...init,
     headers: {
       ...(init?.headers ?? {}),
+      ...clientProtocolHeaders(url),
       Authorization: `Bearer ${credential}`,
     },
   });

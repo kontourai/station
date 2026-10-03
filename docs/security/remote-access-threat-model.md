@@ -123,6 +123,41 @@ commit or executable identity. Its schema is:
 The environment ID is stable across restarts and endpoint changes. It is an
 identifier, not a secret or authorization token.
 
+### Client API protocol admission (#2962)
+
+A client states the client API protocol it was built against in
+`X-Station-Client-Protocol: <integer>` (`CLIENT_PROTOCOL_HEADER` in
+`packages/contracts/src/environment-security.ts`). Like the client-origin
+header, it is a compatibility signal and never authority. The host enforces
+the same `compatibility` block the handshake advertises, before any
+credential check:
+
+| Request | Answer |
+| --- | --- |
+| Header at or above `minClientProtocol`, including a protocol newer than the host's | Admitted; whether a newer client can use this host is the client's own check |
+| Header absent | Read as protocol 1, so admitted while `minClientProtocol` is 1 and refused once it rises |
+| Header below `minClientProtocol` | `426` with `error.code` `client_protocol_unsupported`, `minClientProtocol`, `serverVersion`, and a sentence telling the reader to update the app |
+| Header present but not one integer from 1 to 9999 (empty, signed, zero-padded, repeated, or larger) | `400` with `error.code` `client_protocol_invalid` |
+
+The check covers every paired-scope route and the public pairing request,
+access-request, and exchange routes, so an outdated client is refused before
+it pairs. It does not cover the public handshake and proof, which an outdated
+client must still reach to learn why; liveness and the direct-loopback
+owner-secret routes, whose callers are launchers governed by the launcher
+protocol; MCP-token, webhook, stage-grant, relay-enrollment, share-token, and
+account-authentication routes, which have their own callers; or Station's own
+attested loopback consumer. Terminal and voice WebSockets are not covered yet.
+
+Clients send the header from the SDK request seam (which the CLI uses), the
+pairing client, and the connection health probe. They send it only where no
+CORS preflight can refuse it: outside a browser, through the desktop native
+broker or an encrypted relay route, or to the page's own origin. Hosts
+released before this header do not allow it in a preflight, so a
+cross-origin browser request does not send it and reads as protocol 1, as
+does the desktop's native pairing exchange, which Rust builds itself. Before
+any host raises `minClientProtocol` above 1, every client path must declare
+its protocol, or that client will be refused as legacy.
+
 ## Credentialed consumers (station#2051)
 
 The removed loopback/SSH compatibility floor has no silent replacement. These

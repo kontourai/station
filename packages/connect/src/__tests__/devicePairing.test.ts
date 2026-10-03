@@ -395,6 +395,46 @@ describe('describePairingRequestFailure (station#3158)', () => {
     expect(unreachable).not.toMatch(/expired|already been claimed|invalid/);
   });
 
+  test('tells an outdated app to update when the runtime refuses its protocol (#2962)', async () => {
+    // The runtime boundary in front of the pairing handlers answers with an
+    // object `error`, not the handlers' string.
+    const outdated = await refusal(
+      async () =>
+        new Response(
+          JSON.stringify({
+            error: {
+              code: 'client_protocol_unsupported',
+              message: 'Update this app.',
+              minClientProtocol: 2,
+            },
+          }),
+          { status: 426 },
+        ),
+    );
+    expect(outdated).toBe(
+      'This Station no longer supports this version of the app. Install the latest Station app on this device, then pair again.',
+    );
+  });
+
+  test('declares the client protocol on a pairing request', async () => {
+    const fetchSpy = vi.fn(async () => Response.json({}));
+    vi.stubGlobal('fetch', fetchSpy);
+    try {
+      await requestDevicePairing({
+        endpoint: 'https://station.example.test',
+        offerId: 'offer-id',
+        proof: 'proof',
+        deviceName: 'This device',
+      });
+      const init = (fetchSpy.mock.calls[0] as unknown[])[1] as RequestInit;
+      expect(new Headers(init.headers).get('X-Station-Client-Protocol')).toBe(
+        '1',
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   test('carries an unrecognized code through instead of guessing a cause', async () => {
     const unknown = await refusedWith(400, 'some_future_code');
 

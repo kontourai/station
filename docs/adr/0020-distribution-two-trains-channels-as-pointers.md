@@ -343,6 +343,22 @@ bear on D4's claim path and startup, and the implementing phases carry them:
 - stale `type: sidecar` entries remain after an abrupt death;
 - shared roots without saved metadata refuse the first launch.
 
+## Addendum, 2026-10-03: host-side client API rejection (#2962)
+
+The "Client meets host" row now has a host rejection path. Clients declare
+`X-Station-Client-Protocol`, and the host refuses a protocol below
+`minClientProtocol` with `426 client_protocol_unsupported`. It applies this
+on paired-scope routes and at the pairing request, access-request, and
+exchange routes; the handshake stays open. An absent header reads as
+protocol 1. The contract and the
+exempt routes are specified in the
+[remote-access threat model](../security/remote-access-threat-model.md#client-api-protocol-admission-2962).
+These gaps must close before any host raises its minimum above 1:
+
+- cross-origin browser requests do not send the header;
+- the native pairing exchange request, built in Rust, does not send it;
+- terminal and voice WebSockets are not checked.
+
 ## Consequences
 
 - Host fixes stop requiring desktop releases, and desktop updates shrink to
