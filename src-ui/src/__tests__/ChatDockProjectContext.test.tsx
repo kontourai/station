@@ -2,9 +2,19 @@
  * @vitest-environment jsdom
  */
 
-import { fireEvent, render, screen } from '@testing-library/react';
+import {
+  fireEvent,
+  render as renderWithoutNavigation,
+  screen,
+} from '@testing-library/react';
+import type { ReactNode } from 'react';
 import { describe, expect, test, vi } from 'vitest';
 import { ChatDockProjectContext } from '../components/chat-dock/ChatDockProjectContext';
+import { NavigationProvider } from '../contexts/NavigationContext';
+
+function render(ui: ReactNode) {
+  return renderWithoutNavigation(<NavigationProvider>{ui}</NavigationProvider>);
+}
 
 const PROJECTS = [
   {
@@ -93,7 +103,7 @@ describe('ChatDockProjectContext', () => {
         .getByRole('button', { name: 'Alpha' })
         .getAttribute('aria-expanded'),
     ).toBe('true');
-    await screen.findByRole('dialog', { name: 'Switch project' });
+    await screen.findByRole('dialog', { name: 'Projects' });
     // The dock header's toggle surface must NOT see the activation.
     expect(onHeaderToggle).not.toHaveBeenCalled();
   });
@@ -102,7 +112,7 @@ describe('ChatDockProjectContext', () => {
     const { onSelectProject } = renderRow({});
 
     fireEvent.click(screen.getByRole('button', { name: 'Alpha' }));
-    await screen.findByRole('dialog', { name: 'Switch project' });
+    await screen.findByRole('dialog', { name: 'Projects' });
 
     fireEvent.click(screen.getByRole('button', { name: 'Open Alpha' }));
     expect(onSelectProject).toHaveBeenCalledWith('alpha');
@@ -112,7 +122,7 @@ describe('ChatDockProjectContext', () => {
     const { onSwitchProject } = renderRow({});
 
     fireEvent.click(screen.getByRole('button', { name: 'Alpha' }));
-    await screen.findByRole('dialog', { name: 'Switch project' });
+    await screen.findByRole('dialog', { name: 'Projects' });
 
     fireEvent.click(screen.getByRole('button', { name: 'Switch to Beta' }));
     expect(onSwitchProject).toHaveBeenCalledWith('beta', 'Beta');
@@ -133,7 +143,7 @@ describe('ChatDockProjectContext', () => {
     const row = document.querySelector(
       '.chat-dock__project-context',
     ) as HTMLElement;
-    expect(row.textContent).toBe('Alpha');
+    expect(row.textContent).toBe('New chatsAlpha');
   });
 
   /**
@@ -219,7 +229,7 @@ describe('ChatDockProjectContext — no bound project (station#1803 part 3)', ()
     expect(badge.textContent).toBe('');
 
     fireEvent.click(badge);
-    await screen.findByRole('dialog', { name: 'Switch project' });
+    await screen.findByRole('dialog', { name: 'Projects' });
     fireEvent.click(screen.getByRole('button', { name: 'Open Alpha' }));
     expect(onSelectProject).toHaveBeenCalledWith('alpha');
   });
@@ -237,7 +247,7 @@ describe('ChatDockProjectContext — no bound project (station#1803 part 3)', ()
     );
 
     fireEvent.click(screen.getByRole('button', { name: 'Choose a project' }));
-    await screen.findByRole('dialog', { name: 'Switch project' });
+    await screen.findByRole('dialog', { name: 'Projects' });
     expect(screen.queryByText('Current')).toBeNull();
   });
 });
@@ -304,7 +314,7 @@ describe('ChatDockProjectContext — session/badge mismatch label (station#4525 
 
     // The badge still names the BOUND project ("Alpha"), not the session's.
     expect(screen.getByRole('button', { name: 'Alpha' })).toBeTruthy();
-    const label = screen.getByText('Beta ·');
+    const label = screen.getByText('This chat: Beta');
     expect(label.className).toContain('chat-dock__project-session-name');
     // the session's own facts still reach the row — the directory is the
     // badge's tooltip since #1536 F, and it is the SESSION's, not the badge

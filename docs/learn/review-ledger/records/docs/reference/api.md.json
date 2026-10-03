@@ -70,7 +70,7 @@
 
     {"path":"packages/sdk/src/query-domains/agentAdmin.ts","digest":"d17ef2aeb91c21d5cf1e207289bd2936b2896752d5254cea6b94a9c82aaf62fb","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/sdk/src/query-domains/analytics.ts","digest":"161c2036c67cee1ad73353aec04ca5dd82e2d38dca8d080352b9283e1f1a7fe8","revision":"91d79c3f0ce9ca5ae304e4248b67b6189103016e"},
+    {"path":"packages/sdk/src/query-domains/analytics.ts","digest":"315c15570c1246b28ca9bd46646da489c667981dbedaa2018f8811fa9b61a895","revision":"5e6fbfedca2315119d1d20a7829252899c52c15a"},
 
     {"path":"packages/sdk/src/query-domains/scheduler.ts","digest":"f445a7029df59cfa13a867233059e779eb48b95b07e6f7a2528d36c88fce6f66","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -90,9 +90,9 @@
 
     {"path":"src-desktop/src/native_relay_redemption.rs","digest":"87ad20dc50fab39c24c7afe527c8be853b5e464f01fca6739d119cb73dbc45e4","revision":"7fcc0a65c4067afc51dfc094037b4275177177d8"},
 
-    {"path":"src-server/analytics/usage-aggregator-state.ts","digest":"12b5d86068c4ddaa5738cde5337f33c36ae5871a49db3d097264aaf7e3f6b522","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/analytics/usage-aggregator-state.ts","digest":"eafbfa911453fec372d124ae9072826f16a57864055e2a262f45ec3312b0e659","revision":"a11755821186eaeb034b77e970dfa372c5c7f789"},
 
-    {"path":"src-server/analytics/usage-aggregator.ts","digest":"f4cc98d78e4a995bfeed8b66e84e6efc3a7a4ff91dbf81c4ebbd524190ed3950","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/analytics/usage-aggregator.ts","digest":"a8088a0a903e7d1996a569f147c5f468c197458886e2799f0a145775007556ff","revision":"231bd56ebc8379877a169db1822e3fbff10c9787"},
 
     {"path":"src-server/analytics/usage-rollup-service.ts","digest":"72854055e8cc4f894e5bcc1c89287eb7a6eae4e3a43ca92df0a16f29a4aae4bc","revision":"16115fc6e0cb1bd66d4053aad666c77f26349d4f"},
 
@@ -158,7 +158,7 @@
 
     {"path":"src-server/routes/me/personal-layouts.ts","digest":"c159dedd5f61ca0b9b5f56e84f11b381dab907b8ab3368c08867dec079bb0867","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/routes/operations/analytics.ts","digest":"667f6b895281d35672e9676d953cbc029c4a5485752937cbe02320aab87f7283","revision":"0dd1181141ba6a645601e6798079a16189510438"},
+    {"path":"src-server/routes/operations/analytics.ts","digest":"d46f5524728ceff767cef6bc18ab7f0b7447b0373f1ed76a054b9e99ccd237f6","revision":"5e6fbfedca2315119d1d20a7829252899c52c15a"},
 
     {"path":"src-server/routes/operations/insights.ts","digest":"7f93f03f6b4ddc2e0d334d1ebfaca07fd7a9b28de8a86ac521d1ad4087b518d2","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -344,7 +344,7 @@
 
     {"path":"src-shared/monitoring-keys.ts","digest":"1c2939ae04a2df7205ff75d2e16531e200199b7b785c672b1820a06a0a736f25","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/components/chat-dock/ChatDock.tsx","digest":"8b2afcd595e892421e4f0dc767d1b776074be7b78127b2d6607954bf454a5056","revision":"f06acf6b9cd2f940c1a5a9dcf283ad42bceb06f3"},
+    {"path":"src-ui/src/components/chat-dock/ChatDock.tsx","digest":"f92052af5abd7736675c6a27499a8a43ded8167dcecff4b0e4e775c2614562f3","revision":"4d59eb1868139f2faeaf1a1467811c22726f741c"},
 
     {"path":"src-ui/src/components/chat-dock/retry-attachments.ts","digest":"e35fc0d7d193cd614829fddbf3f822b4118510a0776e5f8853fdcb8bf1ea3d93","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -352,7 +352,7 @@
 
     {"path":"src-ui/src/components/home/StarterScheduledCheckCard.tsx","digest":"88a0a019a6ac99a457a6390a82f509863089a100688d44d7c4bf34c2b6927325","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/components/monitoring/InsightsDashboard.tsx","digest":"4c23187c38bf3279b8126838f33f29510ca327706e99db5e4fa5dba495dc7743","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-ui/src/components/monitoring/InsightsDashboard.tsx","digest":"5805fbdd9ccb9aa9f533f293e59ff1180f38c584599a319390eccecef158cd44","revision":"5e6fbfedca2315119d1d20a7829252899c52c15a"},
 
     {"path":"src-ui/src/components/monitoring/insightsDashboardUtils.ts","digest":"e105872a228c0122615f7e20c1c908a3d9901f3a0b32488703c5b37d88ebc1a5","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

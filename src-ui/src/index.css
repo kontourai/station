@@ -864,10 +864,11 @@ button:hover {
    row at narrow widths. */
 .responsive-dialog-header {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
-  padding: var(--space-3);
+  padding: var(--responsive-header-padding, var(--space-3));
   border-bottom: 1px solid var(--border-primary);
 }
 
@@ -1160,7 +1161,7 @@ button:hover {
 @keyframes responsive-surface-panel-enter {
   from {
     opacity: 0;
-    transform: translateY(4px);
+    transform: translateY(var(--surface-enter-distance, 4px));
   }
   to {
     opacity: 1;
@@ -2289,6 +2290,17 @@ button:hover {
    second line inside a bar whose height is a shared geometry token, and the
    token then lied about it. It truncates instead; the full path (and the name
    with it) is the button's `title`. */
+.chat-dock__project-badge-lines {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-start;
+}
+.chat-dock__project-badge-caption {
+  color: var(--text-secondary);
+  font-size: var(--k-text-sm);
+  line-height: var(--k-leading-tight);
+}
 .chat-dock__project-badge-name {
   min-width: 0;
   overflow: hidden;
@@ -2382,10 +2394,10 @@ button:hover {
   background: var(--bg-selected);
 }
 .chat-dock__project-switcher-switch {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--k-space-3);
   min-width: 0;
   min-height: 44px;
   justify-content: center;
@@ -2397,19 +2409,17 @@ button:hover {
   text-align: left;
   cursor: pointer;
 }
-.chat-dock__project-switcher-hint {
-  color: var(--text-muted);
-  font-size: var(--text-xs);
+.chat-dock__project-switcher-icon {
+  display: flex;
+  width: 28px;
+  align-items: center;
+  justify-content: center;
 }
-.chat-dock__project-switcher-switch:hover .chat-dock__project-switcher-hint,
-.chat-dock__project-switcher-switch:focus-visible
-  .chat-dock__project-switcher-hint {
-  color: var(--text-secondary);
+.chat-dock__project-switcher-accent {
+  width: 3px;
+  height: 22px;
+  border-radius: var(--radius-pill);
 }
-/* The Switch button aligns its lines to the start, so without a max-width the
-   name sizes to its text and a long one runs out of the column, under the
-   Open icon. The ellipsis sits on the label: a flex container's own
-   text-overflow never applies to its text. */
 .chat-dock__project-switcher-name {
   display: flex;
   align-items: center;
@@ -2427,16 +2437,40 @@ button:hover {
 }
 /* Decorative only (aria-hidden in the component) — the row it flags never
    disables either action; see D5 in the kontourai-station-793 plan. */
+.chat-dock__project-switcher-cue {
+  display: flex;
+  width: 20px;
+  height: 20px;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+}
+.chat-dock__project-switcher-panel {
+  position: relative;
+}
+.chat-dock__project-switcher-help {
+  position: absolute;
+  right: var(--k-space-4);
+  bottom: calc(52px + var(--k-space-3) * 2 + var(--k-space-2));
+  left: var(--k-space-4);
+  margin: 0;
+  padding: var(--k-space-3);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-overlay);
+  background: var(--bg-secondary);
+  box-shadow: var(--k-elevation-overlay);
+  color: var(--text-primary);
+  font-size: var(--k-text-md);
+  line-height: var(--k-leading-normal);
+  pointer-events: none;
+}
 .chat-dock__project-switcher-current {
-  flex-shrink: 0;
-  padding: 0 6px;
-  border-radius: var(--radius-pill);
-  background: var(--accent-primary);
-  color: var(--text-on-accent);
-  font-size: var(--text-2xs);
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
+  display: flex;
+  width: 20px;
+  height: 20px;
+  align-items: center;
+  justify-content: center;
+  color: var(--k-action);
 }
 /* Row action wrapper — its `-actions` suffix is also what
    scripts/responsive-surface-ratchet.mjs discovers for the action-surface
@@ -6450,6 +6484,13 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   }
 
   .responsive-surface-panel {
+    --text-2xs: var(--k-text-sm);
+    --text-xs: var(--k-text-md);
+    --text-sm: var(--k-text-md);
+    --text-base: var(--k-text-md);
+    --surface-enter-distance: var(--k-space-4);
+    font-size: var(--k-text-md);
+    --responsive-header-padding: var(--k-space-4);
     min-width: 0 !important;
     width: min(100%, 720px) !important;
     max-height: 100% !important;
@@ -6457,6 +6498,42 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     overflow-y: auto;
     overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
+  }
+
+  .responsive-dialog-header strong,
+  .background-tasks-sheet__header h2,
+  .tool-call-batch-sheet__title {
+    font-size: var(--k-text-lg);
+    line-height: var(--k-leading-normal);
+  }
+
+  .responsive-dialog-header span {
+    font-size: var(--k-text-md);
+    line-height: var(--k-leading-normal);
+  }
+
+  .composer-popover-panel .composer-actions-menu__item {
+    min-height: 52px;
+    padding: var(--k-space-3) var(--k-space-4);
+    font-size: var(--k-text-lg);
+    line-height: var(--k-leading-normal);
+    overflow-wrap: anywhere;
+  }
+
+  .chat-dock__project-switcher-switch {
+    min-height: 64px;
+    padding: var(--k-space-3);
+    font-size: var(--k-text-lg);
+  }
+
+  .chat-dock__project-switcher-label {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .chat-dock__project-switcher-current {
+    text-transform: none;
+    letter-spacing: normal;
   }
 
   .responsive-surface-actions {
