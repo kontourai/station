@@ -9,7 +9,7 @@
 
   "limits": "Original platform observations and NOT_VERIFIED findings retain their original date. They do not establish current behavior or close the current browser audit.",
 
-  "document": {"digest":"3a45b8bcbd8896078989b913a152b13e14e7bdb14023faa3072208c2bc83f474","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+  "document": {"digest":"af281dc2448a21f94cdfd87818e7a00248615b0af1b06d2c55ab6c7ae51bec4e","revision":"6b192b274917a32f36ef47a142936a368e44247e"},
 
   "sources": [
     {"path":"packages/contracts/src/live-surface.ts","digest":"249e322f147816c782477257489efbd2069d5222d188a081f11ed7d3e4238546","revision":"e5d9b68a5a99edfb53c307ebc86f2890a3200d00"},
