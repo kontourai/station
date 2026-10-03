@@ -525,22 +525,17 @@ test('switching Project rebinds the dock and opens no New Chat picker (archive#4
   expect(createChatSession).not.toHaveBeenCalled();
 });
 
-test('the docked New button starts a lone ready Agent’s chat in the dock’s bound Project', async () => {
+test('the docked New chat button opens a draft in the bound Project with one ready Agent', async () => {
   deviceSettingsStore.set('chatDockProjectSlug', 'pulse');
   navigationStore.navigate('/', { dock: 'open' });
   renderDockedPane();
   await act(async () => {});
 
-  fireEvent.click(screen.getByRole('button', { name: 'New' }));
-  expect(createChatSession).toHaveBeenCalledWith(
-    'assistant',
-    'Assistant',
-    undefined,
-    'pulse',
-    'Pulse',
-    expect.anything(),
-  );
-  expect(screen.queryByRole('dialog', { name: 'New chat picker' })).toBeNull();
+  fireEvent.click(screen.getByTitle('New chat (Ctrl+T)'));
+  await screen.findByRole('dialog', { name: 'New chat picker' });
+  expect(pickerProps.at(-1)!.activeProjectSlug).toBe('pulse');
+  expect(pickerProps.at(-1)!.startSurface).toBe(true);
+  expect(createChatSession).not.toHaveBeenCalled();
 });
 
 test('the docked New Chat picker defaults to the dock’s bound Project', async () => {
@@ -553,8 +548,8 @@ test('the docked New Chat picker defaults to the dock’s bound Project', async 
   renderDockedPane();
   await act(async () => {});
 
-  // Two ready Agents, so New opens the picker instead of choosing one.
-  fireEvent.click(screen.getByRole('button', { name: 'New' }));
+  // New chat retains the bound Project with multiple Agents too.
+  fireEvent.click(screen.getByTitle('New chat (Ctrl+T)'));
   await screen.findByRole('dialog', { name: 'New chat picker' });
   expect(pickerProps.at(-1)!.activeProjectSlug).toBe('pulse');
   expect(createChatSession).not.toHaveBeenCalled();
