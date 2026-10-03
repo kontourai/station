@@ -16,7 +16,7 @@
 
     {"path":"docker-compose.yml","digest":"d8ae74f82e6fba7768be16dd601d1f98d0462b22576cb125023e0d868a99bfc8","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"docs/architecture/module-map.md","digest":"ad64be68b644bb1af7780f561388cfd2b9634d4842b0fcbd363fcf83a65ded36","revision":"d27879790bd20161d531bde3fc7655a746500b08"},
+    {"path":"docs/architecture/module-map.md","digest":"6f11cb0a97df105bdbd07283d1c4ad57be6f7af0328c7f0b430a54573caf3fa6","revision":"b208a334880a96bb3f4267c2d2ffd6d03e118218"},
 
     {"path":"docs/guides/deployment.md","digest":"1edc373a6f45ca03a1f4e989e59cabe26d36afe4b5b06ccf9717f8b715bf99f2","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 

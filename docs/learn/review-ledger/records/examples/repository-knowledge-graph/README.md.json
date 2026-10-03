@@ -12,7 +12,7 @@
   "document": {"digest":"803feff52df735990c76c1c4904bd37da46d379f7e8083e6e361220fb957ecec","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
   "sources": [
-    {"path":"docs/architecture/module-map.md","digest":"ad64be68b644bb1af7780f561388cfd2b9634d4842b0fcbd363fcf83a65ded36","revision":"d27879790bd20161d531bde3fc7655a746500b08"},
+    {"path":"docs/architecture/module-map.md","digest":"6f11cb0a97df105bdbd07283d1c4ad57be6f7af0328c7f0b430a54573caf3fa6","revision":"b208a334880a96bb3f4267c2d2ffd6d03e118218"},
 
     {"path":"docs/learn/atlas.json","digest":"a893ba4d93c89a901b265ec4df211198b7977489573e4b9f633324db6d52a5d1","revision":"0cf3d43858c985d4833c3b9e71faf3dcf8625f41"},
 
