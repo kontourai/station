@@ -346,7 +346,11 @@ fn main_app_origin_admitted(
 }
 
 fn prepare(app: &AppHandle, requested_name: &str) -> Result<PreparedMetadata, String> {
-    let (binding, revision) = current_profile_binding(app, requested_name)?;
+    let (binding, revision) = current_profile_binding(
+        app,
+        requested_name,
+        crate::NativeTrustProfilePurpose::Enrollment,
+    )?;
     let owner = owner_for_binding(&binding)?;
     let vault = NativeRelayProofKeyVault::new();
     let public = match vault.restore(&owner) {
@@ -420,7 +424,11 @@ fn begin_network(
     cancelled: &Arc<AtomicBool>,
 ) -> Result<PendingCandidateDto, String> {
     let commit_gate = request.commit_gate.clone();
-    let (binding, profile_revision) = current_profile_binding(app, &request.profile_name)?;
+    let (binding, profile_revision) = current_profile_binding(
+        app,
+        &request.profile_name,
+        crate::NativeTrustProfilePurpose::Enrollment,
+    )?;
     let owner = owner_for_binding(&binding)?;
     let vault = NativeRelayProofKeyVault::new();
     let public = vault
@@ -672,7 +680,11 @@ fn revoke(app: &AppHandle, request: RevokeRequest) -> Result<TrustStatusDto, Str
     if request.full_key_id.len() != 43 {
         return Err("Enter the full 43-character Station-key ID to revoke trust.".into());
     }
-    let (binding, revision) = current_profile_binding(app, &request.profile_name)?;
+    let (binding, revision) = current_profile_binding(
+        app,
+        &request.profile_name,
+        crate::NativeTrustProfilePurpose::ExistingTrust,
+    )?;
     let provider = AppNativeTrustProfileProvider::existing_trust(app);
     let mut trust = NativeStationTrustStore::system();
     let mut staged_cleanup = None;
@@ -705,7 +717,11 @@ fn revoke(app: &AppHandle, request: RevokeRequest) -> Result<TrustStatusDto, Str
 }
 
 fn status(app: &AppHandle, requested_name: &str) -> Result<TrustStatusDto, String> {
-    let (binding, revision) = current_profile_binding(app, requested_name)?;
+    let (binding, revision) = current_profile_binding(
+        app,
+        requested_name,
+        crate::NativeTrustProfilePurpose::ExistingTrust,
+    )?;
     let provider = AppNativeTrustProfileProvider::existing_trust(app);
     let mut trust = NativeStationTrustStore::system();
     let state = trust
@@ -897,6 +913,7 @@ fn stage_pending(
 fn current_profile_binding(
     app: &AppHandle,
     requested_name: &str,
+    purpose: crate::NativeTrustProfilePurpose,
 ) -> Result<(TrustProfileBinding, u64), String> {
     if requested_name.is_empty() || requested_name.len() > 256 {
         return Err("The selected saved Station name is invalid.".into());
@@ -906,13 +923,14 @@ fn current_profile_binding(
     let contents = read_station_profile_store(&path)
         .map_err(|_| "Station could not read its saved profile metadata.".to_owned())?;
     let store = parse_station_profile_store(&contents)?;
-    binding_from_store(&store, requested_name, app)
+    binding_from_store(&store, requested_name, app, purpose)
 }
 
 fn binding_from_store(
     store: &CredentialProfileStore,
     requested_name: &str,
     app: &AppHandle,
+    purpose: crate::NativeTrustProfilePurpose,
 ) -> Result<(TrustProfileBinding, u64), String> {
     use crate::native_station_key_custody::CandidateError as TrustError;
     let profile = selected_profile_from_store(store, requested_name)?;
@@ -937,6 +955,7 @@ fn binding_from_store(
         store.revision,
         &app.config().identifier,
         native_app_channel(&app.config().identifier, cfg!(debug_assertions)),
+        purpose,
     )
     .map_err(|error| match error {
         TrustError::ProfileStale => {
