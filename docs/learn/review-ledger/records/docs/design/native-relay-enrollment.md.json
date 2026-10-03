@@ -1,0 +1,59 @@
+{
+  "path": "docs/design/native-relay-enrollment.md",
+
+  "kind": "design",
+
+  "state": "classified",
+
+  "summary": "Current native enrollment ceremony and evidence boundaries. Reviewed the document, host/server handoff and actual frontend controller/transport contracts; distinguishes account verification, exact operator Device approval, encrypted custody, explicit activation and host-owned recovery.",
+
+  "limits": "Bounded integration review with executed frontend/server composition and combined Rust library tests. No fresh installed Tauri IPC, actual OS-process recovery, physical iOS Nightly or Zach acceptance; in-memory peer/native IPC fixtures do not qualify those seams. Cryptographic interoperability is not a formal audit.",
+
+  "document": {"digest":"9b79bf1af28c560f9eb9e13b38b654ab21a05cd509ed37a80e069200145a7652","revision":"e7349c44cade1f9e025a1468ef3a7ef45965bd84"},
+
+  "sources": [
+    {"path":"packages/connect/src/core/nativeApplicationTransport.ts","digest":"1232c1c8b293b9c4fc29dc9b0dff4aeff4f9d7ec17b8da82f7b1e84bf6603cd0","revision":"214bbb63ddf239ab441c890f2fc3d40d83e27284"},
+
+    {"path":"packages/connect/src/core/nativeEnrollmentExchange.ts","digest":"b8aaafada3519b01f33cf5ccbe8826d92d86f34dc5f856b5749cd2ba72023a63","revision":"13ab0b8cc55ca7db5568879e7dced0e5a2e0f3e4"},
+
+    {"path":"packages/connect/src/core/nativeRelayLink.ts","digest":"b2195a228a6091f73e96ee72a86eb44ca89d26e5123fd7d0d71f44a3a4195fe9","revision":"70e9b50c5329411de0b7b432408f0722407a0208"},
+
+    {"path":"packages/contracts/src/native-relay-enrollment.ts","digest":"39289764a99e5fd01e6a2ddc474b5dc1977a4b134ca217492357cf2ff1c6dfdd","revision":"d1641ccc68fe995c21d633ac2352d4123f40a273"},
+
+    {"path":"packages/contracts/src/native-relay-link.ts","digest":"b96acfafc45696ee2bbce80993e874323b19eee9fae4741d5e5600ca3c57ecc7","revision":"e33331ee19520c8bd546c878fdd503063a682634"},
+
+    {"path":"src-desktop/src/native_relay_ios_launch.rs","digest":"135f11afc3cc411a915de32a9c399487a8ca3f4eb1bf0afc381abf30c3f4ab66","revision":"b1b2d1fd15ddfd6dea0be7371a81d5008f6ffbf7"},
+
+    {"path":"src-desktop/src/native_relay_link_intake.rs","digest":"f9006742ccebb94eeaa9b18936d480697bad199322ac1f5161cada86198b97c9","revision":"7ad03486b8521649247b6a728da71d08780069ac"},
+
+    {"path":"src-desktop/src/native_relay_redemption.rs","digest":"dbf3c222dce269cb71deba9d86e1f9b51f58f8d1abc77f3f4583556f160ae115","revision":"70e9b50c5329411de0b7b432408f0722407a0208"},
+
+    {"path":"src-desktop/src/native_secure_entry.rs","digest":"d6ff8051df4be60ff738f524488fe877b0711b95aa606cb70b378e74962bd209","revision":"8d92d732808201554ba801334e2a19f7081fd09d"},
+
+    {"path":"src-ui/src/platform/native/nativeAccountSessionBridge.ts","digest":"8247d3d4dfe7d8bd2a5130de0b4d9d77554057662af85206426592b4ca051bd4","revision":"2e4f061f91ffb0338e45de62382cf6da59cd5c76"},
+
+    {"path":"src-ui/src/platform/native/nativeEnrollmentSignalingBridge.ts","digest":"004ac97ee6bbcf8e00a6e827391d91d4da7a844b2dcb84d1f3391d452048546c","revision":"18b0eac38c920d228ac7a58a2735ccb24906cc61"},
+
+    {"path":"src-ui/src/platform/native/nativeRelayConnectionOwner.ts","digest":"5d903aece1a1a64aa5eb0eb470a3479b6ca8552df53cf9bc47235e4cda2d726d","revision":"2835c77d95f1902ec333eee0c5f57d19fd9f5077"},
+
+    {"path":"src-ui/src/platform/native/nativeRelayEnrollmentClient.ts","digest":"ffcc0fbce76c3e85838e294e5ed86f7404a09fadbbda735f66884fdb15557b09","revision":"e7e89f1b1b77e4f4b556e94952d4633ff028a7fd"},
+
+    {"path":"src-ui/src/platform/native/NativeRelayEntryBoundary.tsx","digest":"881077a6e1702484e1dc19315757d53146c77447f280f7eac2dd913045ed3014","revision":"967e08d408de5a4ae0a4106c4b082688f816d2f1"},
+
+    {"path":"src-ui/src/platform/native/nativeRelayLinkAdapter.ts","digest":"7cc86f65b430a45644c9af1ba4ea2cd8023884ea572ac436f43ce66611bfe31f","revision":"00e6787a016649c527aa862f9e15327b06e2d6e3"},
+
+    {"path":"src-ui/src/platform/native/NativeRelayLinkIntake.tsx","digest":"d3c041146c487d336cde57365f9a60ffac4fbd5bd830f1f565bf21d4c2c1e8ef","revision":"00e6787a016649c527aa862f9e15327b06e2d6e3"},
+
+    {"path":"src-ui/src/platform/native/NativeRelayLinkReview.tsx","digest":"e25569817376f5d0dc1ea00e379042b7dba49049178662a7d45fdee23b8357c5","revision":"d606c17132af7b1d9ec0d576871937dc37f79864"},
+
+    {"path":"src-ui/src/views/connections-hub/NativeRelayEnrollmentWizard.tsx","digest":"79cb2659b18787521916dfabca3b3cd4bf26ed24bb81e7ec488a3823e3e872b2","revision":"fc7857beb8210ea8db44cf3ffe50ae30b3aca057"},
+
+    {"path":"src-ui/src/views/native-relay/NativeRelayMemberShell.tsx","digest":"5c1f22454fb7ad912a7f8ec6abc43023b8780782496345fb89088271ea443947","revision":"f5c6562112f72b72d04ccdcb9d8dc5d865e5f57d"}
+  ],
+
+  "checks": [
+    "npm run test:focused -- src-ui/src/views/connections-hub/__tests__/RelayRouteProfiles.test.tsx src-ui/src/platform/native/__tests__/nativeRelayEnrollmentClient.test.ts",
+
+    "cargo test --manifest-path src-desktop/Cargo.toml --locked --lib"
+  ]
+}

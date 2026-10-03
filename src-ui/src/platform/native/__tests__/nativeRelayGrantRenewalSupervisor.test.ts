@@ -271,6 +271,43 @@ describe('native relay grant renewal supervisor', () => {
     });
   });
 
+  test('does not begin renewal or another route status after hiding during a fresh status read', async () => {
+    storage.publish([profile('Alpha'), profile('Beta')]);
+    const fresh = deferred<NativeRelayGrantRenewalStatus>();
+    status
+      .mockResolvedValueOnce(
+        statusFor({ profileName: 'Alpha', ...routeIds.Alpha }, 7, {
+          expiresAt: Date.now() + 40_000,
+          lifetimeMs: 100_000,
+        }),
+      )
+      .mockReturnValueOnce(fresh.promise);
+    supervisor.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(status).toHaveBeenCalledTimes(2);
+    visible = false;
+    events.dispatchEvent(new Event('visibilitychange'));
+    fresh.resolve(
+      statusFor({ profileName: 'Alpha', ...routeIds.Alpha }, 7, {
+        expiresAt: Date.now() + 40_000,
+        lifetimeMs: 100_000,
+      }),
+    );
+    await vi.advanceTimersByTimeAsync(0);
+    expect(renew).not.toHaveBeenCalled();
+    expect(status).toHaveBeenCalledTimes(2);
+    status.mockImplementation(async (selection) =>
+      statusFor(selection, 8, null),
+    );
+    visible = true;
+    events.dispatchEvent(new Event('visibilitychange'));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(
+      status.mock.calls.slice(2).map(([selection]) => selection.profileName),
+    ).toEqual(expect.arrayContaining(['Alpha', 'Beta']));
+    expect(renew).not.toHaveBeenCalled();
+  });
+
   test('refuses a status with an invalid host revision', async () => {
     status.mockImplementation(async (selection) =>
       statusFor(selection, 0, {

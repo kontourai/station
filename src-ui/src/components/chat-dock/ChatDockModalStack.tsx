@@ -4,6 +4,7 @@ import type { AgentData } from '../../contexts/AgentsContext';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import type { ProjectMetadata } from '../../contexts/ProjectsContext';
 import type { ProjectChatComposerDraft } from '../../lib/projectChatEvents';
+import type { SkillExperienceDraft } from '../../lib/skill-experience-draft';
 import type { ChatSession } from '../../types';
 import type { EffectiveModelSource } from '../../utils/execution';
 import type { ReplayCaptureSource } from '../chat/ReplayCaptureControls';
@@ -86,6 +87,7 @@ interface ChatDockModalStackProps {
     providerOptions?: Record<string, unknown>,
     providerId?: string,
     providerType?: string,
+    experienceDraft?: SkillExperienceDraft,
   ) => void;
   onCloseNewChat: () => void;
   onCloseSettings: () => void;

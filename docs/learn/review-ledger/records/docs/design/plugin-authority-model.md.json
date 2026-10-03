@@ -9,10 +9,10 @@
 
   "limits": "Not a fresh exploit report, comparison of external products, every contribution authority, or live native/browser/provider isolation audit. Entire original body preserved.",
 
-  "document": {"digest":"c93950f30b3f48e8bb9030debab5ccc9838ab3d2ba3edb5257f58db6690543ac","revision":"5aa5a00ce0147c5344f5da916b2441329b3fae89"},
+  "document": {"digest":"c93950f30b3f48e8bb9030debab5ccc9838ab3d2ba3edb5257f58db6690543ac","revision":"cf85b5e3b16b0ca2bfbed4c4fd16822026aff744"},
 
   "sources": [
-    {"path":"src-server/routes/plugins/plugin-lifecycle-routes.ts","digest":"dceb171ba845c25ea19bb4bc1c032f62707efcf7a80c194c09e9908270db21bc","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},
+    {"path":"src-server/routes/plugins/plugin-lifecycle-routes.ts","digest":"0a738ab40517d221dd45aa60284c46ca74b4281308dad13c8d6ad4a47e99b7dd","revision":"3e8559159112366b1dfa4e051dea7d4852c73c47"},
 
     {"path":"src-server/services/plugins/__tests__/plugin-install-consent.test.ts","digest":"3264a198b19d8e61986e10466443046846262569ea64384719a5186f13990282","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},
 
@@ -24,7 +24,7 @@
 
     {"path":"src-ui/src/__tests__/PluginRegistry.csp.test.ts","digest":"f635d4e2688ecf45b48d23d272c27642e95a60db9fc7713b9c541f66c37c655b","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},
 
-    {"path":"src-ui/src/core/PluginRegistry.ts","digest":"4b87c6951d37298e6497639e1cc45294fd1239f06d4c6caf9f5ed540eef5ca2c","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"}
+    {"path":"src-ui/src/core/PluginRegistry.ts","digest":"69836e5e1dd4762f58da6f2495e96f0cab41d586e65327fc4c1dc08d80acc8f9","revision":"1373230550904315438e5bd2869a3c41a9e419ca"}
   ],
 
   "checks": [
