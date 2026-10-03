@@ -5588,6 +5588,13 @@ export async function executeExecutionTargetMessage(
     orchestrationService,
   );
   if (
+    input.skillExperience &&
+    (selectedTarget.kind !== 'current' || selectedTarget.relayEnvironmentId)
+  )
+    throw new Error(
+      'Skill experiences require foreground execution on this Station.',
+    );
+  if (
     admission &&
     (selectedTarget.kind !== 'current' || selectedTarget.relayEnvironmentId)
   )
@@ -6082,6 +6089,9 @@ export async function executeExecutionTargetMessage(
             {
               foregroundInvocationAdmission: admission,
               nativeMemoryReadAuthority: readAuthority,
+              ...(input.skillExperience
+                ? { skillExperience: input.skillExperience }
+                : {}),
               ...(input.receiverAdmission
                 ? {
                     receiverExecutionAdmission: receiverEffectAdmissionFor(
@@ -6097,6 +6107,9 @@ export async function executeExecutionTargetMessage(
             dispatchContext,
             {
               nativeMemoryReadAuthority: readAuthority,
+              ...(input.skillExperience
+                ? { skillExperience: input.skillExperience }
+                : {}),
               ...(input.receiverAdmission
                 ? {
                     receiverExecutionAdmission: receiverEffectAdmissionFor(

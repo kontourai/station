@@ -132,36 +132,19 @@ describe('engine capability matrix', () => {
     });
   });
 
-  test('resolveEngineCapabilityMatrix branch order (engineId, acp, unknown-external)', () => {
+  test('resolves default, unknown, and ACP connections', () => {
     expect(resolveEngineCapabilityMatrix()).toBe(
       ENGINE_CAPABILITY_MATRICES.station,
     );
     expect(resolveEngineCapabilityMatrix('bedrock-runtime')).toBe(
       UNKNOWN_EXTERNAL_ENGINE_MATRIX,
     );
-    expect(
-      resolveEngineCapabilityMatrix('strands-runtime', {
-        config: { engineId: 'station' },
-      }),
-    ).toBe(ENGINE_CAPABILITY_MATRICES.station);
     expect(resolveEngineCapabilityMatrix('acp')).toBe(
       ENGINE_CAPABILITY_MATRICES.acp,
     );
     expect(
       resolveEngineCapabilityMatrix('kiro-connection', { type: 'acp' }),
     ).toBe(ENGINE_CAPABILITY_MATRICES.acp);
-    expect(
-      resolveEngineCapabilityMatrix('codex', {
-        type: 'codex',
-        config: { engineId: 'codex' },
-      }),
-    ).toBe(ENGINE_CAPABILITY_MATRICES.codex);
-    expect(
-      resolveEngineCapabilityMatrix('claude', {
-        type: 'claude',
-        config: { engineId: 'claude' },
-      }),
-    ).toBe(ENGINE_CAPABILITY_MATRICES.claude);
   });
 
   test('resolveEngineCapabilityMatrix accepts an engineId-carrying connection (top-level and config-nested), station#1003 Phase B', () => {
@@ -175,13 +158,6 @@ describe('engine capability matrix', () => {
       resolveEngineCapabilityMatrix('codex', {
         type: 'codex',
         engineId: 'codex',
-      }),
-    ).toBe(ENGINE_CAPABILITY_MATRICES.codex);
-    // Native adapter projections use the same canonical EngineId throughout.
-    expect(
-      resolveEngineCapabilityMatrix('codex', {
-        type: 'codex',
-        config: { engineId: 'codex' },
       }),
     ).toBe(ENGINE_CAPABILITY_MATRICES.codex);
     // A known canonical EngineId is authoritative; connection type is not a
@@ -204,7 +180,6 @@ describe('engine capability matrix', () => {
         config: { engineId: 'codex' },
       }),
     ).toBe(ENGINE_CAPABILITY_MATRICES.codex);
-    // config-nested engineId (AgentConnectionView/ConnectionConfig shape).
     expect(
       resolveEngineCapabilityMatrix('claude', {
         type: 'claude',

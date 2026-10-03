@@ -70,7 +70,7 @@
 
     {"path":"src-server/routes/orchestration/attention.ts","digest":"13aa257c345f3e3b4bd37e49e4399b83aac95315113c3386f64d1c17972b8c07","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
 
-    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"edc4f10d90c74cbcf3eab1457c3d07ddee9f33ac5ec9c620f33381a99a2e671c","revision":"441560f766fdcc4c341d1ec467af4c47f7c73677"},
+    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"c5a85fefbe06e5a903444325293d46a80fefb7a0f938100fbceee8c60492d893","revision":"958350328eafd360124e1892c1945a2ae455e43c"},
 
     {"path":"src-server/services/orchestration/project-task-room-runtime.ts","digest":"feb48a41131f04260c92e3a7757eda5aa61799a7015b3386a931d950250e3d58","revision":"9f8b407fac4a9e5536d72ca49be3a0b77715e1d8"},
 
@@ -100,7 +100,7 @@
 
     {"path":"src-ui/src/views/ProjectPage.css","digest":"804bf02dc7f00a0ac47bf5bf381d9f052a8e97a55083dfcd1649883d3f6154c3","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
 
-    {"path":"src-ui/src/views/ProjectPage.tsx","digest":"a5446401470207b9ba884ae50bfe57739fd2f2d7ea372f19ae36280106986c49","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+    {"path":"src-ui/src/views/ProjectPage.tsx","digest":"1beca4918231aa34f3a65329243fc4024b2ecd94fe078d1c7da80366460f2fb0","revision":"3a63c64679a92f30544c2b84905fdb2874ebfebb"},
 
     {"path":"src-ui/src/views/provider-settings/ProviderConnectionForm.tsx","digest":"0ad7474fb672c1eafa97d2a517089f499b7dadcb9b7ac3366b75976bbedd7d2a","revision":"54fc4a556486e17d1f4f0546c02be91fedf3b6b7"},
 

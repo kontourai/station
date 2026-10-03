@@ -36,9 +36,9 @@
 
     {"path":"packages/cli/src/__tests__/project-identity.test.ts","digest":"bd7f12d6cd4bc5bc6b667e6f218589eb2096b68f7b8f42247209aea5bf7836d8","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"packages/cli/src/__tests__/surface-http.test.ts","digest":"25c5cba9118508f5de5c3e124094381579219914c8f966410c91442f9951b5f7","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"packages/cli/src/__tests__/surface-http.test.ts","digest":"2e781829aa3a0bd3cfe81ae4bfd6ff1a89f80aa8fcfafe943f225935e607f253","revision":"49163293f64dc49fe19e33a4e776542aee913c92"},
 
-    {"path":"packages/cli/src/__tests__/triage.test.ts","digest":"e0934da8f4630b295f64b6275c25a48a41819ee58305b7b774a426aa0652bcaa","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"packages/cli/src/__tests__/triage.test.ts","digest":"8fa1ad8fa4b6d232b5178c51a1bc876d7bf415646b86ba6431b5d3a3b6030561","revision":"49163293f64dc49fe19e33a4e776542aee913c92"},
 
     {"path":"packages/cli/src/cli.ts","digest":"041c54fff5c3dc2848cf234cf13e4ea52e5069548c273755ee77b53955be1f27","revision":"036d5d3d2289fc22e325a9ded733e8de561e9b30"},
 
@@ -158,7 +158,7 @@
 
     {"path":"scripts/station-dev.mjs","digest":"97c0d7c3aad1150ee3fda38e45e3af87938fd24d8a424c1290ca944da293574b","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"fe880ea995eb5f60ce41efe553707a1f88f5f2edcf5b120ce23d03224cd3a15b","revision":"441560f766fdcc4c341d1ec467af4c47f7c73677"},
+    {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"f44a4e94ca0f335cfc5ee2a803ed1659f140e149b0cd0e66e4c9b5bef9179718","revision":"4f3acdc5478e27a733c06e91a202a325817c2f53"},
 
     {"path":"src-server/routes/evidence/flow-runs.ts","digest":"2bf992db2df5a2b0b84c8964baf0784419c72ee9abe1ab0aadec55ce51985527","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -176,7 +176,7 @@
 
     {"path":"src-server/runtime/mcp/station-control-dispatch-scope.ts","digest":"cf22738353be6006483825dd4bfe99ae96d0f18c91b944402457a7bc9f25f8a8","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-server/routes/orchestration/dispatch-scope.ts","digest":"ccf46916a39046ba41494462beb24eeccd271fe21c4040185624cc0eb97ea50f","revision":"53b365227698c10c236474bad60e245ffa34e2f4"},
+    {"path":"src-server/routes/orchestration/dispatch-scope.ts","digest":"8e311c1696036d143a124c97da344056077ac6dfde1f1db0925c0efefd085aed","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
     {"path":"src-server/tools/station-control-policy.ts","digest":"7861e4666c9ab7bdfafb6d38b4b9a742f707ca64741f1351b042384f4a51dc94","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
@@ -192,7 +192,7 @@
 
     {"path":"scripts/lib/portable-server-archive.mjs","digest":"5f03affc9ae69b585e7b6395f7ae42f73b678ed9571737d7e18dbd6904da154d","revision":"614c216de6de9d4c06ef56963853ccff52f2f685"},
 
-    {"path":"packages/shared/src/station-home-store-registry.ts","digest":"f985b4362195469503556100853e8ed5a3766de1b725ce5c75a8e4b439200038","revision":"7abc84fcb97288d80f1b25cfc99de23d93817d4c"},
+    {"path":"packages/shared/src/station-home-store-registry.ts","digest":"bf725d365318f670cdc54f2f4354bec8d1041f3c9866ac72439f3e0d11ff5e1f","revision":"4a67fd3e4060f01379184350cdfd49637bba8d0e"},
 
     {"path":"packages/shared/src/sqlite-store-integrity.ts","digest":"eed69a82721f6f84ff9d703b4bcdaee9ff8bd9fba045a4d874be8f402276aaa4","revision":"7abc84fcb97288d80f1b25cfc99de23d93817d4c"}
   ],
