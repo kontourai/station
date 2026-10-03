@@ -168,10 +168,18 @@ export function selectIntegrationTools(
     tools: {
       ...added.tools,
       available,
-      autoApprove: added.tools.autoApprove.filter(
-        (entry) =>
-          !entry.startsWith(prefix) || names === 'all' || names.includes(entry),
-      ),
+      autoApprove: [
+        ...new Set(
+          added.tools.autoApprove.flatMap((entry) => {
+            if (names !== 'all' && entry === `${prefix}*`) return names;
+            return !entry.startsWith(prefix) ||
+              names === 'all' ||
+              names.includes(entry)
+              ? [entry]
+              : [];
+          }),
+        ),
+      ],
     },
   };
 }

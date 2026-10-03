@@ -338,3 +338,53 @@ test('group shortcuts preserve other groups and individual choices remain saveab
       .checked,
   ).toBe(true);
 });
+
+test('group changes preserve disabled choices and existing wildcard approvals outside the group', () => {
+  let latest = createEmptyAgentForm();
+  latest.tools.mcpServers = ['station-control'];
+  latest.tools.available = [
+    'station-control_list_agents',
+    'station-control_search_knowledge',
+  ];
+  latest.tools.autoApprove = ['station-control_*'];
+  latest.toolsAvailableEdited = true;
+  const tools: Tool[] = [
+    {
+      ...stationTools[0],
+      tools: [
+        {
+          name: 'list_agents',
+          readOnly: true,
+          group: 'Agents',
+          disabled: true,
+        },
+        { name: 'search_knowledge', readOnly: true, group: 'Knowledge' },
+        { name: 'migrate_knowledge', readOnly: false, group: 'Knowledge' },
+      ],
+    },
+  ];
+  render(
+    <Harness
+      initial={latest}
+      onForm={(form) => {
+        latest = form;
+      }}
+      availableTools={tools}
+      engineId="codex"
+    />,
+  );
+  fireEvent.click(screen.getByRole('button', { name: /Station tools/ }));
+  fireEvent.change(screen.getByLabelText('Tool group for Station tools'), {
+    target: { value: 'Knowledge' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Read only' }));
+  expect(latest.tools.autoApprove).toEqual([
+    'station-control_list_agents',
+    'station-control_search_knowledge',
+  ]);
+  fireEvent.click(screen.getByRole('button', { name: 'None' }));
+  expect(buildAgentPayload({ ...latest, slug: 'helper' }).tools).toMatchObject({
+    available: ['station-control_list_agents'],
+    autoApprove: ['station-control_list_agents'],
+  });
+});

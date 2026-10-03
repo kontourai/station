@@ -237,7 +237,6 @@ export function AgentEditorToolsTab({
                         .filter(
                           (tool) =>
                             (tool.group || 'Other') !== group &&
-                            tool.enabled !== false &&
                             (currentPatterns.includes('*') ||
                               currentPatterns.includes(`${integration.id}_*`) ||
                               currentPatterns.includes(
