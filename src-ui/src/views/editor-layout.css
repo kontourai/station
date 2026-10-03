@@ -1472,6 +1472,21 @@
 
 /* Mobile touch targets — 44px minimum */
 @media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
+  .agent-inline-editor .info-tip__trigger {
+    position: relative;
+    width: 44px;
+    height: 44px;
+    border: none;
+  }
+
+  .agent-inline-editor .info-tip__trigger::before {
+    position: absolute;
+    inset: 13px;
+    border: 1px solid var(--k-line);
+    border-radius: 50%;
+    content: "";
+  }
+
   .editor__guardrails-grid {
     grid-template-columns: 1fr;
   }
@@ -2091,23 +2106,4 @@
 
 .agent-inline-editor .info-tip {
   margin-left: var(--k-space-1);
-}
-
-@media (max-width: 768px) {
-  .agent-inline-editor .info-tip__trigger {
-    position: relative;
-    width: 44px;
-    height: 44px;
-    border: none;
-  }
-}
-
-@media (max-width: 768px) {
-  .agent-inline-editor .info-tip__trigger::before {
-    position: absolute;
-    inset: 13px;
-    border: 1px solid var(--k-line);
-    border-radius: 50%;
-    content: "";
-  }
 }
