@@ -114,7 +114,7 @@
 
     {"path":"src-server/routes/operations/voice.ts","digest":"492cdfda970de501b2659522e76897f2e0c268e5018fcc47f43aaf9593538b48","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"755ec9f2a3b4e0523ad5fd4126605f4433a4ac90b0075160d21acb280359c704","revision":"c6ebec77b17b679e630a3857b10a6f814d7fb436"},
+    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"25d5567f609e84815cbf51d3d7670733f6dea7abc2b3ad7027a6aa731822bebe","revision":"cb38616d44325b145965c8c03c6d5aacad470660"},
 
     {"path":"src-server/routes/system/relay-enrollment-routes.ts","digest":"3844e28d46c1394058412e854d53c725d813651ebea53c7de22430bc409fc52f","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -156,7 +156,7 @@
 
     {"path":"src-server/security/station-browser-origins.ts","digest":"2044349f4351a616298922879bccfde0ff147a165bdadc6683e0a1c1f6a7b8b2","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/security/station-control-authority-guard.ts","digest":"0e3d20ae5bb4f5815cc8030595663768964ac5a7222004176edb35cb7697d6de","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/security/station-control-authority-guard.ts","digest":"b3d45b09a4e044096553ee40dee0747487d4ccf4ea89caf0ce147dc18733e4d4","revision":"2ade65e7ee4872d2d3ac4dbedc45eef6aa18b9e6"},
 
     {"path":"src-server/security/station-control-request-authority.ts","digest":"b522bde2d245f4d682cf1468329f5314fbfd5f5abb431cc916b88b56aa7c9ec6","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -210,7 +210,7 @@
 
     {"path":"src-server/tools/station-control-operations-tools.ts","digest":"9174a9e845abca770133b6300050562fbfb220cac01bd611698d56a949f0eb3a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/tools/station-control-policy.ts","digest":"7861e4666c9ab7bdfafb6d38b4b9a742f707ca64741f1351b042384f4a51dc94","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+    {"path":"src-server/tools/station-control-policy.ts","digest":"18eddfcee98c87696d2e844bf239986a599e744a87b20ab851b7027487270dde","revision":"79c4a010c54f63c58ea68df6ba058cf4a3e1c039"},
 
     {"path":"src-ui/src/__tests__/EngineAccountOverview.test.tsx","digest":"3fd114869a4de8dc4a8444d53f4e16202ed78cfa713218553c3762a0460dc3be","revision":"3ea07647f240025bd44ab538e073f7617b32fbbf"},
 
