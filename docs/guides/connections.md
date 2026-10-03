@@ -242,6 +242,11 @@ after confirmation. The form asks for **Owner’s code** and **Owner’s key ID*
 The received values, route identifiers and deadline are collapsed under
 **Station identity details**. An expired check asks for a new invitation.
 After confirmation, inspection and removal are under **Confirmation details**.
+Info icons explain Station confirmation and device approval on demand. Hover
+or focus gives the icon’s label; tap or click opens the explanation. Escape
+closes help before the surrounding setup dialog. Setup uses the shared theme
+for controls and statuses; the setup-link expiry remains visible.
+
 
 **Continue to device approval** is a separate action. A confirmed routing grant
 opens Device setup. The consumed invitation’s expiry no longer closes that

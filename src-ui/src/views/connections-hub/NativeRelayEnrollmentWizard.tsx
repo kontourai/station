@@ -17,6 +17,7 @@ import {
   nativeRelayGrantAdapter,
 } from '../../platform/native/nativeRelayGrantAdapter';
 import { nativeRelayKeyApproval } from '../../platform/native/relayKeyApproval';
+import { RelaySetupHelp } from './RelaySetupHelp';
 
 type EnrollmentClient = ReturnType<typeof createNativeRelayEnrollmentClient>;
 type EnrollmentAttempt = NativeRelayEnrollmentHostResumeAttempt;
@@ -583,11 +584,17 @@ export function NativeRelayEnrollmentWizard({
       className="relay-route-enrollment native-relay-setup connections-computers__note"
       aria-label={`Device setup for ${profile.name}`}
     >
-      <h3>Approve this device</h3>
-      <p>
-        Sign in to request approval from the Station owner. After approval, sign
-        in again to open your shared projects.
-      </p>
+      <div className="native-relay-setup__heading">
+        <h3>Approve this device</h3>
+        <RelaySetupHelp label="About device approval">
+          <p>
+            Sign in to request approval from the Station owner. After approval,
+            sign in again to open your shared projects. Device approval and
+            Project membership are separate permissions.
+          </p>
+        </RelaySetupHelp>
+      </div>
+      <p>Sign in to request device approval.</p>
       {phase === 'idle' ? (
         <>
           {recovery.isPending ? (
@@ -612,10 +619,7 @@ export function NativeRelayEnrollmentWizard({
           recovery.data.attempts.length > 0 ? (
             <section aria-label="Saved Device setups">
               <h4>Saved Device setup</h4>
-              <p>
-                Resume an existing setup before starting another. Station
-                verifies its current state when you select it.
-              </p>
+              <p>Resume a saved setup to continue.</p>
               {recovery.data.attempts.map((attempt, index) => (
                 <Button
                   key={attempt.enrollmentHandle}
@@ -689,10 +693,7 @@ export function NativeRelayEnrollmentWizard({
 
       {phase === 'challenge' ? (
         <section aria-label="Station account enrollment">
-          <p>
-            This request lasts up to five minutes. Submit your account details
-            before it expires.
-          </p>
+          <p>Submit your account details within five minutes.</p>
           <label className="editor-field">
             <span className="editor-label">Station account username</span>
             <input

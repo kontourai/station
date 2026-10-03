@@ -766,6 +766,21 @@ describe('RelayRouteProfiles', () => {
     expect(
       screen.getByRole('button', { name: 'Share device details' }),
     ).toBeTruthy();
+    expect(
+      screen.queryByRole('dialog', { name: 'About Station confirmation' }),
+    ).toBeNull();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'About Station confirmation' }),
+    );
+    expect(
+      within(
+        screen.getByRole('dialog', { name: 'About Station confirmation' }),
+      ).getByText(/Compare the code and full key ID/),
+    ).toBeTruthy();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(
+      screen.queryByRole('dialog', { name: 'About Station confirmation' }),
+    ).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
     expect(
       screen.getByRole('heading', { name: 'Edit broker route' }),
@@ -1343,10 +1358,19 @@ describe('RelayRouteProfiles', () => {
       expect.objectContaining({ enrollmentHandle }),
     );
     expect(
-      screen.getByText(
+      screen.queryByText(
         /After approval, sign in again to open your shared projects/,
       ),
+    ).toBeNull();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'About device approval' }),
+    );
+    expect(
+      within(
+        screen.getByRole('dialog', { name: 'About device approval' }),
+      ).getByText(/After approval, sign in again to open your shared projects/),
     ).toBeTruthy();
+    fireEvent.keyDown(document, { key: 'Escape' });
   });
 
   test('rechecks recovery before begin and blocks a setup that appeared meanwhile', async () => {

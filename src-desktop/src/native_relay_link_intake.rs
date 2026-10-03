@@ -503,8 +503,11 @@ mod tests {
     #[test]
     fn native_delivery_exposes_only_metadata_and_cancellation_fences_the_opaque_handle() {
         let now = now_ms();
+        for expires_at in [now + 60_000, now + 24 * 60 * 60 * 1000, SAFE_INTEGER_MAX] {
         let state = NativeRelayLinkState::default();
-        let url = link(&invitation(now));
+        let mut envelope = invitation(now);
+        envelope["invitation"]["expiresAt"] = json!(expires_at);
+        let url = link(&envelope);
         let delivery = state.receive(&url, "io.kontourai.station.nightly", "nightly", false, now);
         let encoded = serde_json::to_string(&delivery).unwrap();
         assert!(!encoded.contains(&"S".repeat(43)));
@@ -532,6 +535,7 @@ mod tests {
         assert!(reserve_attempt(&state, id, "Home", "main", true).is_err());
         let reopened = state.receive(&url, "io.kontourai.station.nightly", "nightly", false, now);
         assert_ne!(pending_id(&reopened), Some(id));
+        }
     }
 
     #[test]

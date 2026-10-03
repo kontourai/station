@@ -8,6 +8,7 @@ import {
   type RelayKeyApprovalSurface,
   type RelayKeyCandidate,
 } from '../../platform/native/relayKeyApproval';
+import { RelaySetupHelp } from './RelaySetupHelp';
 
 function normalizeConfirmationCode(value: string): string | null {
   const normalized = value.replace(/[ -]/gu, '').toUpperCase();
@@ -342,9 +343,23 @@ export function RelayRouteKeyApproval({
       aria-label="Station signing-key trust"
     >
       {!compactConfirmed && (
-        <>
+        <div className="native-relay-setup__heading">
           <h3>Confirm this Station</h3>
-        </>
+          <RelaySetupHelp label="About Station confirmation">
+            <p>
+              Compare the code and full key ID with the owner using a separate
+              call or message. This confirms the Station’s identity. Device and
+              account access are approved separately.
+            </p>
+          </RelaySetupHelp>
+        </div>
+      )}
+      {linkedInvitation && !compactConfirmed && (
+        <p className="connections-computers__note">
+          {linkedInvitation.expiresAt === Number.MAX_SAFE_INTEGER
+            ? 'Setup link: no expiry.'
+            : `Setup link expires ${new Date(linkedInvitation.expiresAt).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })}.`}
+        </p>
       )}
       <div
         className={`relay-route-trust relay-route-trust--${status}`}

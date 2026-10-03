@@ -11,6 +11,7 @@ import { Button } from '../../components/Button';
 import { Dialog } from '../../components/Dialog';
 import { SkeletonBlock } from '../../components/state';
 import { nativeProfileRepository } from '../../platform/PlatformProfileContext';
+import { RelaySetupHelp } from './RelaySetupHelp';
 
 const RELAY_ID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
@@ -288,13 +289,13 @@ export function RelayRouteProfileDialog({
           stationId={stationId}
           enrollmentId={enrollmentId}
         />
-        <p className="connections-computers__note">
-          The profile stores no broker credential or Station signing key. The
-          key is read only from this device’s separate trust record. This trust
-          display is advisory; a connection attempt must check the current
-          record again. Saving this route does not connect or sign in; broker
-          transport and account setup are not enabled here.
-        </p>
+        <RelaySetupHelp label="About saved connections" placement="top-end">
+          <p>
+            Saving keeps this Station’s connection details on your device.
+            You’ll confirm its identity, request device access, and sign in
+            separately. Saving alone doesn’t grant access.
+          </p>
+        </RelaySetupHelp>
       </details>
       {error && (
         <p className="connections-computers__alert" role="alert">
