@@ -1127,7 +1127,10 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   // collapse a maximized dock first so the destination project/layout is
   // actually visible.
   const routeToScopedChatProject = useCallback(
-    (targetProjectSlug: string | undefined) => {
+    (
+      targetProjectSlug: string | undefined,
+      preserveChatProjectDefault = false,
+    ) => {
       if (
         !shouldRouteScopedChatProject({
           hasImmutableProjectScope,
@@ -1139,7 +1142,9 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
         return false;
       // The predicate guarantees layoutSlug here; the assertion keeps the
       // claim-equals-act contract visible at the only mutation site.
-      setLayout(targetProjectSlug as string, layoutSlug as string);
+      setLayout(targetProjectSlug as string, layoutSlug as string, {
+        preserveChatProjectDefault,
+      });
       return true;
     },
     [hasImmutableProjectScope, layoutSlug, projectSlug, setLayout],
@@ -1560,7 +1565,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       // deleted-agent fallback in the open policy. Teleporting is the
       // intended half (the destination project is where the conversation
       // lives); the click's promise is the conversation, so open it there.
-      routeToScopedChatProject(targetProjectSlug);
+      routeToScopedChatProject(targetProjectSlug, true);
       return openConversation(conversationId, agentSlug, {
         projectSlug: targetProjectSlug,
         projectName,
@@ -1728,7 +1733,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       // fall through to the open below (focusRoutableChatSession focuses by
       // id and only clears a stale filter, so it is safe after setLayout).
       if (focusedSession) {
-        routeToScopedChatProject(focusedSession.projectSlug);
+        routeToScopedChatProject(focusedSession.projectSlug, true);
       }
       // A bare project route (no session, no conversation) is a pure
       // navigation event and may still return; when a conversation is named,

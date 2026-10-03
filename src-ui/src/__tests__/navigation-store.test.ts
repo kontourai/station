@@ -50,6 +50,32 @@ describe('workspace project selection and new chats', () => {
       unregister();
     }
   });
+
+  test('conversation layout navigation preserves the chat default after guard admission', () => {
+    navigationStore.setProject('alpha');
+    deviceSettingsStore.set('chatDockProjectSlug', 'gamma');
+    let proceed!: () => void;
+    const unregister = navigationStore.registerNavigationGuard(
+      Symbol('dirty-conversation-layout'),
+      (next) => {
+        proceed = next;
+      },
+    );
+    try {
+      navigationStore.setLayout('beta', 'chat', {
+        preserveChatProjectDefault: true,
+      });
+      expect(window.location.pathname).toBe('/projects/alpha');
+      expect(deviceSettingsStore.get('chatDockProjectSlug')).toBe('gamma');
+      proceed();
+      expect(window.location.pathname).toBe('/projects/beta/layouts/chat');
+      expect(deviceSettingsStore.get('chatDockProjectSlug')).toBe('gamma');
+    } finally {
+      unregister();
+    }
+    navigationStore.setProject('beta');
+    expect(deviceSettingsStore.get('chatDockProjectSlug')).toBe('beta');
+  });
 });
 
 describe('parseProjectSelectionFromPath', () => {

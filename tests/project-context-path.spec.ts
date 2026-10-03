@@ -233,11 +233,11 @@ for (const scenario of [
 
     const badge = page.locator('.chat-dock__project-badge');
     await expect(badge).toBeVisible({ timeout: 15_000 });
-    // The row names the project, and only the project.
     await expect(badge).toHaveAccessibleName(scenario.name);
-    await expect(page.locator('.chat-dock__project-context')).toHaveText(
+    await expect(badge.locator('.chat-dock__project-badge-name')).toHaveText(
       scenario.name,
     );
+    await expect(badge).toContainText('New chats');
     // The path arrives whole in the channel that carries it now — same string,
     // same `~` or absolute form, no truncation and no reordering possible.
     await expect(badge).toHaveAttribute(
