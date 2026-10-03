@@ -15,8 +15,8 @@ import { recordClaudeTurnDispatched } from '../adapters/claude-sdk-turns.js';
 /**
  * #3157: a Claude Code subscription usage-limit stop, as the SDK delivers it.
  * Shapes follow `@anthropic-ai/claude-agent-sdk` 0.3.278's `SDKRateLimitEvent`
- * / `SDKAssistantMessage` / `SDKResultSuccess` and the stop captured in
- * pingdotgg/t3code's Claude adapter tests: a `rejected` window (no overage),
+ * / `SDKAssistantMessage` / `SDKResultSuccess` and the reported shape of a
+ * subscription limit stop: a `rejected` window (no overage),
  * the synthetic `rate_limit` reply, then an `is_error` result with
  * `api_error_status: 429` and `terminal_reason: 'api_error'`. `resetsAt` is
  * epoch SECONDS.
