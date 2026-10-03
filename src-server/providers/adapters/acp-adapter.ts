@@ -335,10 +335,17 @@ export interface AcpAdapterOptions {
     threadId: string,
     tenantExecutionContext?: TenantExecutionContext,
   ) => { url: string; token: string } | undefined;
+  mintStationKnowledgeMcpAuth?: (
+    threadId: string,
+    tenantExecutionContext?: TenantExecutionContext,
+  ) => { url: string; token: string } | undefined;
   /** Best-effort cleanup counterpart to `mintStationControlMcpAuth` — called
    * on ordinary session stop and on a failed start. Never required; a
    * missing closure just means the token lives out its bounded TTL. */
-  revokeStationControlMcpAuth?: (threadId: string) => void;
+  revokeStationControlMcpAuth?: (
+    threadId: string,
+    serverId?: 'station-control' | 'station-knowledge',
+  ) => void;
 }
 
 /** Last-known slash command surfaced by a live ACP session (aggregated across sessions in `getCommands()` — see Risks: no per-connection threadId param on the shared shape). */
@@ -999,11 +1006,33 @@ export class AcpAdapter implements ProviderAdapterShape {
       let passthroughMcpServers: Awaited<
         ReturnType<typeof resolveAcpPassthroughMcpServers>
       >['servers'] = [];
+      let stationKnowledgeAuth =
+        requestedToolServerIds?.includes('station-knowledge') &&
+        mcpHttp === true
+          ? this.options.mintStationKnowledgeMcpAuth?.(
+              input.threadId,
+              input.tenantExecutionContext,
+            )
+          : undefined;
+      const stationKnowledgeUnavailable = {
+        reason:
+          acpProcess.initResult == null || mcpHttp !== true
+            ? ('engine-capability-absent' as const)
+            : ('delivery-failed' as const),
+        detail:
+          acpProcess.initResult == null
+            ? 'no runtime MCP capability observation is available'
+            : mcpHttp !== true
+              ? 'the engine did not advertise HTTP MCP support'
+              : 'Knowledge session auth could not be minted',
+      };
       const capabilityUndelivered: CapabilityUndelivered[] = [];
       try {
         const resolved = await resolveAcpPassthroughMcpServers({
           toolServerIds: requestedToolServerIds,
           ...(stationControlAuth ? { stationControlAuth } : {}),
+          ...(stationKnowledgeAuth ? { stationKnowledgeAuth } : {}),
+          stationKnowledgeUnavailable,
           ...(stationControlUnavailable ? { stationControlUnavailable } : {}),
           resolveToolServer:
             agentToolServers !== undefined
@@ -1041,7 +1070,10 @@ export class AcpAdapter implements ProviderAdapterShape {
         // live until `stopSession` or the 12-hour TTL, and record WHY in
         // wording that cannot be mistaken for the secret-boundary refusal.
         if (stationControlAuth && !resolved.stationControlDelivered) {
-          this.options.revokeStationControlMcpAuth?.(input.threadId);
+          this.options.revokeStationControlMcpAuth?.(
+            input.threadId,
+            'station-control',
+          );
           stationControlAuth = undefined;
           // Delta-review finding (LOW-1): `not-found` short-circuits BEFORE
           // the identity branch, so "did not match the built-in identity"
@@ -1065,6 +1097,13 @@ export class AcpAdapter implements ProviderAdapterShape {
             `ACP connection '${config.id}': a station-control MCP credential was minted but not delivered (identity check failed); it has been revoked.`,
           );
         }
+        if (stationKnowledgeAuth && !resolved.stationKnowledgeDelivered) {
+          this.options.revokeStationControlMcpAuth?.(
+            input.threadId,
+            'station-knowledge',
+          );
+          stationKnowledgeAuth = undefined;
+        }
       } catch (error) {
         // A throw here means nothing was delivered, so a credential minted
         // above is now unpresentable exactly as in the reconciliation branch —
@@ -1076,6 +1115,11 @@ export class AcpAdapter implements ProviderAdapterShape {
           this.options.revokeStationControlMcpAuth?.(input.threadId);
           stationControlAuth = undefined;
         }
+        if (stationKnowledgeAuth)
+          this.options.revokeStationControlMcpAuth?.(
+            input.threadId,
+            'station-knowledge',
+          );
         logger.warn?.(
           `ACP connection '${config.id}': MCP passthrough resolution failed unexpectedly; continuing without passthrough tool servers.`,
           error,

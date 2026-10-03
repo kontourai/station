@@ -1882,6 +1882,16 @@ export const EXTERNAL_SURFACE_CAPABILITY_TABLE: readonly ExternalSurfaceCapabili
       reason: 'explicit HEAD semantics for public liveness probe',
     },
     {
+      id: 'mcp-token:station-knowledge',
+      transport: 'http',
+      method: '*',
+      prefix: '/mcp/station-knowledge',
+      match: 'exact',
+      capability: 'mcp-token',
+      reason:
+        'per-session Knowledge MCP token; loopback and server purpose verified by the MCP router',
+    },
+    {
       id: 'mcp-token:station-control',
       transport: 'http',
       method: '*',

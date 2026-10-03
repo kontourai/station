@@ -445,8 +445,15 @@ export async function initializeRuntime(
     // and no test could reach it.
     mintStationControlMcpAuth: (threadId, tenantExecutionContext) =>
       mintStationControlMcpHeaderAuth(port, threadId, tenantExecutionContext),
-    revokeStationControlMcpAuth: (threadId: string) =>
-      revokeStationControlMcpToken(threadId),
+    mintStationKnowledgeMcpAuth: (threadId, tenantExecutionContext) =>
+      mintStationControlMcpHeaderAuth(
+        port,
+        threadId,
+        tenantExecutionContext,
+        'station-knowledge',
+      ),
+    revokeStationControlMcpAuth: (threadId: string, serverId) =>
+      revokeStationControlMcpToken(threadId, serverId),
   });
   let stationAgentsReady = false;
   const stationAgentAdapter = new StationAgentAdapter({

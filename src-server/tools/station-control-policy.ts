@@ -150,6 +150,7 @@ export interface StationControlRoute {
 }
 
 export interface StationControlToolPolicy {
+  readonly serverIds?: readonly ('station-control' | 'station-knowledge')[];
   readonly routes: readonly StationControlRoute[];
   readonly assurance: StationControlAssuranceRequirement;
   readonly role: StationControlRoleRequirement;
@@ -636,8 +637,32 @@ export const STATION_CONTROL_TOOL_POLICY = {
   // Project `view` (the same rule as the Project routes); the personal store
   // is the operator's, so only an operator-owned session reads it.
   search_knowledge: {
+    serverIds: ['station-control', 'station-knowledge'],
     ...SELF_READ,
     routes: [post('/api/knowledge/index/search')],
+  },
+  list_knowledge_roots: {
+    ...SELF_READ,
+    serverIds: ['station-knowledge'],
+    routes: [get('/api/knowledge/roots')],
+  },
+  list_knowledge_records: {
+    serverIds: ['station-knowledge'],
+    ...SELF_READ,
+    routes: [get('/api/knowledge/roots/:rootId/records')],
+  },
+  get_knowledge_record: {
+    serverIds: ['station-knowledge'],
+    ...SELF_READ,
+    routes: [get('/api/knowledge/roots/:rootId/records/:id')],
+  },
+  add_knowledge_record: {
+    serverIds: ['station-knowledge'],
+    assurance: 'any',
+    role: 'self',
+    toolClass: 'mutating',
+    personOnly: 'never',
+    routes: [post('/api/knowledge/roots/:rootId/records')],
   },
   migrate_knowledge: {
     ...OPERATOR_MUTATION,
