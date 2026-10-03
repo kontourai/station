@@ -214,6 +214,30 @@ the new account. Hosted/shared destinations do not offer conversation
 references until the server can prove that exposing the source title and link
 to that destination is permitted.
 
+## Use a skill
+
+Open **Skills** and search the loaded library by name or description. Select a
+skill to read what it does, where it came from, and which template inputs it
+needs. **View instructions** shows the original instructions. A source label
+identifies where Station loaded the skill; it does not establish publisher trust.
+
+Choose **Use in a new chat**, fill any required inputs, and select an Agent.
+Blank optional inputs use their declared defaults. **Preview instructions**
+shows the message with those values applied. **Start chat** opens a new chat
+and sends that message. This does not attach the skill to the Agent or install
+its dependencies; the Agent's configured tools and permissions still apply.
+
+To add skills, choose **Browse Registry Skills** and inspect the available
+catalog before installing. **Import .md** accepts standalone Markdown skill
+files and reports the outcome of each file. Open an imported skill from its
+result to review and use it. Import does not copy a repository's
+scripts or supporting files. Load plugin packages through Registry.
+
+For a writable skill, **Edit skill** opens its definition and command settings.
+**Back to overview** asks before discarding unsaved edits. Package-owned or
+plugin-served skills show the server's read-only reason and keep editing
+unavailable.
+
 ## Start Your First Task
 
 1. Open a Project and create a Task for work you want to keep.

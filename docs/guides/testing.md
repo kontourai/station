@@ -1069,6 +1069,13 @@ step under `inFlightStep` instead of `failingStep`. If you see either, the
 answer is budget or sharding, not a hunt for a failing test: the suite did not
 finish, so no failing test name exists to find.
 
+`node scripts/run-verification.mjs explain full-regression` reports the current
+request identity and canonical receipt path without starting verification.
+Its bounded output keeps those fields ahead of unrelated coordinator jobs:
+the status summary reports omitted live jobs, while `status` provides their
+bounded details. An explanation identifies a request; only a validated
+completion receipt proves that its checks passed.
+
 <!-- station:verification-policy:start -->
 The "Invalidated by" column names only the lane-specific `manifestDigest`
 content; every other field participates in reuse identity for every lane and

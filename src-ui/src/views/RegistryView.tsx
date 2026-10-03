@@ -23,6 +23,7 @@ import {
   layoutActionSuccessVerb,
   type RegistryLayoutAction,
 } from '../components/registry/RegistryLayoutActions';
+import { getRegistrySkillInstallRefusal } from '../components/registry/registryCatalogModel';
 import { useApiBase } from '../contexts/ApiBaseContext';
 import { useNavigation } from '../contexts/NavigationContext';
 import { useToast } from '../contexts/ToastContext';
@@ -263,6 +264,13 @@ export function RegistryView({
     isInstalled: boolean,
   ) => {
     const action = isInstalled ? 'uninstall' : 'install';
+    const refusal = isInstalled
+      ? null
+      : getRegistrySkillInstallRefusal(activeTab, item);
+    if (refusal) {
+      setMessage(refusal);
+      return;
+    }
     // Installing a registry entry the plugin registry resolves starts at the
     // preview, exactly like the Plugins view: the decision the server needs
     // is about the previewed bytes, so there is nothing honest to send until
