@@ -14,7 +14,7 @@
   "sources": [
     {"path":"docs/reference/sdk.md","digest":"66bc739e882ffe6ce188d5d1d7e773cc6c36b26266520c9bac4d6185af4e8029","revision":"534e4a52bc7cea488e6b98cffaf40ccff8c486b8"},
 
-    {"path":"packages/sdk/package.json","digest":"31286b6e99fa502f8eb1bf6c744a4a34041d21bf6e0e0e5d22f27f2771dc5c06","revision":"18ae5d5640f6a47eb953b72f1d0a55b06a137677"},
+    {"path":"packages/sdk/package.json","digest":"42fe4326a8a49db222c65e5536cbdf7a2bd1885671e292fcb7fd454dc79249db","revision":"fdca33b1896b280299ba72fc70a3c9b9cda7f3af"},
 
     {"path":"packages/sdk/src/query-core.ts","digest":"f61dfd3363e3afe8bcf0ca97330e4e799e44aeb0d1348a212a117d1f755873e9","revision":"9bb90045b7aeb926e7003b27fc4fd62252638524"}
   ],
