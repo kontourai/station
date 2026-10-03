@@ -102,7 +102,7 @@ async function composedOptions(configLoader: ConfigLoader) {
       orchestrationEventStore: new Proxy({}, { get: () => vi.fn(() => ({})) }),
     } as never),
   ).rejects.toBeInstanceOf(StopAfterConstruction);
-  return captured.options as {
+  return captured.options as unknown as {
     resolveUsageLimitAutoResume?: () => Promise<boolean | undefined>;
   };
 }
