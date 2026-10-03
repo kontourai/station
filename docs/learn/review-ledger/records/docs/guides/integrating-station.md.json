@@ -30,7 +30,7 @@
 
     {"path":"docs/reference/cli.md","digest":"62c03f1a50009e0973510034c314c46df560dddf761547e6798d86808eb116fd","revision":"020eb6a14e05313bb66724ec3504e613717e6ed1"},
 
-    {"path":"docs/reference/contracts.md","digest":"a0f436bdd8446df8c638882b82a6a3585b697630623965b1ba4f7859b2d70c45","revision":"2b8d3ba6c9825fba821fe157f32956f4e051be0a"},
+    {"path":"docs/reference/contracts.md","digest":"c61bed666099a9a76fb73a7f1f53607db57479ce0050ce09b7f32db7a406927e","revision":"0a88fa4ab8652b115efd550e116d183aaa3fff8e"},
 
     {"path":"docs/reference/sdk.md","digest":"f807f1c0fe8800211529b18058d8812dc59c4d0d338fb784135ac59edf8e39ea","revision":"4fe1570f32d9f2b90ddded8258c0793bbe3c2830"},
 
@@ -42,7 +42,7 @@
 
     {"path":"src-server/runtime/bootstrap/runtime-tenant-context.ts","digest":"d762d331146dbe6aad7ef1f5301eff52136abcdb94e60e5bf518d74b783d892b","revision":"18002c0871ea8538605e922464aab5356c77593c"},
 
-    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"92d31dd655d7c0a62ce68dc6fd804268cda2f357bb775a512ee974d7c09564db","revision":"1a235cd9bc482738abe4c3f011f73be86074d667"}
+    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"b13d44008f39b08b3d32e459abc3081c8ac8936f53e5a7bdb93d4dcbdc2043f1","revision":"c2c67c2f25d565ea97d757b370f2bbf942a9588b"}
   ],
 
   "checks": [

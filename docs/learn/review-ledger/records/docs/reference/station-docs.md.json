@@ -9,7 +9,7 @@
 
   "limits": "No live external-engine MCP delivery, plugin installation, provider execution, Fleet/device journey or repository-wide certification. Architecture topics have their own separate review scope.",
 
-  "document": {"digest":"20355d38c989b077e221d2811b14cd933fb656df7e4e864a90140ffd16520a1b","revision":"69eb5db90072c149c16115135f495ac538155e71"},
+  "document": {"digest":"c285f94ae042c902a6eeefc49821e4a3b4200d11716df22fbe9f89ba76c8a40a","revision":"c2c67c2f25d565ea97d757b370f2bbf942a9588b"},
 
   "sources": [
     {"path":"docs/design/mcp-ui-host.md","digest":"060ae4fc6877a186e8ea6d5073729e03f161dbe270b700f62741095560000195","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
@@ -50,7 +50,7 @@
 
     {"path":"src-server/domain/agent-registry.ts","digest":"b25558e066b73e96a09310d9d8a4bc8a0db41f893047a6f86035411ee0df3f50","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"b67b8535152f5964f1491089851480aadca7d18ff7106a0300a526dbabe82f65","revision":"b2d3503cd33490cf074a99eae94562607360f72b"},
+    {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"061da89e00216d5c3250d7f13dc1dea5717765b50db7ebf8c49672208524a3d0","revision":"c2c67c2f25d565ea97d757b370f2bbf942a9588b"},
 
     {"path":"src-server/routes/agents/enriched-agents.ts","digest":"6baed1928fa80cd18e59ea9d531b656099f6389b5457b2cbe39420ea0e5de20c","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
@@ -86,7 +86,7 @@
 
     {"path":"src-server/services/orchestration/orchestration-session-state.ts","digest":"44a232d30c1d080f58b798e418a54d3adacb1086b3b6757a06f307370b703943","revision":"af3c8fbfee90c9179a0ac19659b76d24c707d574"},
 
-    {"path":"src-server/services/orchestration/session-agent-resolution.ts","digest":"9782644b16fc2b7480f868339465b2acae5b7d59d880c718a2d5453213171009","revision":"69eb5db90072c149c16115135f495ac538155e71"},
+    {"path":"src-server/services/orchestration/session-agent-resolution.ts","digest":"eea912e5afec264ab495d93b40eaa2eee6d478f5bab262aa84b56068210991b2","revision":"c2c67c2f25d565ea97d757b370f2bbf942a9588b"},
 
     {"path":"src-server/services/plugins/plugin-install-transaction.ts","digest":"d86ca9367f039174cd2aaaba83b65dc1df376f6474bd4a4f29be54341fd2c0e7","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
@@ -106,7 +106,7 @@
 
     {"path":"src-server/tools/station-control-platform-tools.ts","digest":"a209f508dffc890f68c90ef5393125ff4a4d68f020c66b55c4abb84812727f5d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/tools/station-docs-content.ts","digest":"490f324619e0f52c699bc5c27b08af9ed72709d6e267ce07c1abb9f0c31b30db","revision":"258ad90c0384b5823419676825ee548f7de16c33"},
+    {"path":"src-server/tools/station-docs-content.ts","digest":"aaa5be79f9d3a1c620d4c7f41c74a23834dbd6758dee3e151cc740143bdd371c","revision":"0a88fa4ab8652b115efd550e116d183aaa3fff8e"},
 
     {"path":"src-server/tools/station-docs-mcp-server.ts","digest":"6c3b7b2586bed5225ba1b32ddae94e61d5cc087083157d0f6e62d6ddf1490872","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

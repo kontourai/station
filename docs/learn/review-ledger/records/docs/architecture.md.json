@@ -18,7 +18,7 @@
 
     {"path":"packages/connect/package.json","digest":"880e5cac1c66ca9387136b8fff36a4f6aa8c0514d45780dcb8a8a38ff7c616ca","revision":"22ffd796d86ec7f841cb3c75764ed2a3fb7783b0"},
 
-    {"path":"packages/contracts/package.json#/exports","digest":"ee81c48b5d1385a876060069c972466a69148bb52f2a98881595b72342665e91","revision":"1e6450e0caa47975d33f505a1348bdc01ae1382e"},
+    {"path":"packages/contracts/package.json#/exports","digest":"124ee828b4c5ddc86e6bfbf6f7f0b812acd4016effdb644d177d45bd79a183f6","revision":"c2c67c2f25d565ea97d757b370f2bbf942a9588b"},
 
     {"path":"packages/contracts/package.json#/files","digest":"43219f75df025fd68c4b3a47b045f822115a0cb02eb1a21f6f0003b466db6b24","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
 
@@ -34,7 +34,7 @@
 
     {"path":"packages/shared/package.json#/engines","digest":"6c12acb1990a85e4fe6986ad29ad44b644eca474a81f946d053aabd14ba62059","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
 
-    {"path":"packages/shared/package.json#/exports","digest":"120ef783cbe6cb28189e310cb1e53c7b7b4b44c0a908b24bd60eb6ee7483bb00","revision":"258ad90c0384b5823419676825ee548f7de16c33"},
+    {"path":"packages/shared/package.json#/exports","digest":"598fee74343f8bc945a1282ffafeb22445eb0766205ddc830b125fbde52ac350","revision":"0a88fa4ab8652b115efd550e116d183aaa3fff8e"},
 
     {"path":"packages/shared/src/mcp-connection.ts","digest":"7820dc126d63a74fbb6b81f8c8ce080ac9d52af0fe3d80f55e882baf772d3a76","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -62,13 +62,13 @@
 
     {"path":"src-server/runtime/bootstrap/runtime-service-bootstrap.ts","digest":"a9213f4540d66926d9f58391f7daf3f8ef18734a1803df3e3c24ea0c31437a19","revision":"a366557a12a4f5e6a41d38ce92aacbd0ab32193b"},
 
-    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"92d31dd655d7c0a62ce68dc6fd804268cda2f357bb775a512ee974d7c09564db","revision":"1a235cd9bc482738abe4c3f011f73be86074d667"},
+    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"b13d44008f39b08b3d32e459abc3081c8ac8936f53e5a7bdb93d4dcbdc2043f1","revision":"c2c67c2f25d565ea97d757b370f2bbf942a9588b"},
 
     {"path":"src-server/runtime/conversation/runtime-event-log.ts","digest":"c73565025ce6279646a17c4c6f2e3b339d8ff79a1c6d2ca444b98fc6232b1b26","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"src-server/runtime/conversation/stream-orchestrator.ts","digest":"7fc42bc4728646375044efd3b85bc5341f828dbbca0bbed63cdb3cef997451f3","revision":"b3e03916cee441245a015ac51c5b06bf44165fc9"},
 
-    {"path":"src-server/runtime/mcp/mcp-manager.ts","digest":"c6569ade67cb9b48930cac5ca09521ba0836161c462f7b5a7c684b6eb8db1d3c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/runtime/mcp/mcp-manager.ts","digest":"2b111148f423e896011695de09bca6f6f2990bc8285b4466a5fd70a3c93c65d1","revision":"c2c67c2f25d565ea97d757b370f2bbf942a9588b"},
 
     {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"90e94e3a617cb7c9642c029f8dd1c58fbebeca19e29dbd1b097af41952fe4b93","revision":"1aecbf35557098c1502ee4575c7e332fb1e9d60c"},
 
