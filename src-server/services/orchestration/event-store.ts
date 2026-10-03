@@ -5013,6 +5013,51 @@ export class EventStore {
   }
 
   /**
+   * #3159: the typed prompts of `threadIds`' turns that contain `needle`,
+   * with who sent each (`clientOrigin.actor`, which Station resolved from the
+   * request's credential; absent on turns recorded without one). `needle` is
+   * only a narrowing prefilter: the caller parses each prompt for the exact
+   * reference it is looking for. One indexed lookup per thread
+   * (`thread_id, method, sequence`), at most `limitPerThread` rows each.
+   */
+  turnPromptsContaining(
+    threadIds: readonly string[],
+    needle: string,
+    limitPerThread = 256,
+  ): Array<{ prompt: string; actor?: unknown }> {
+    const statement = this.db.prepare(
+      `SELECT json_extract(payload, '$.prompt') AS prompt,
+              json_extract(payload, '$.clientOrigin.actor') AS actor
+       FROM orchestration_events
+       WHERE thread_id = ? AND method = 'turn.started'
+         AND typeof(json_extract(payload, '$.prompt')) = 'text'
+         AND instr(json_extract(payload, '$.prompt'), ?) > 0
+       ORDER BY sequence ASC
+       LIMIT ?`,
+    );
+    const prompts: Array<{ prompt: string; actor?: unknown }> = [];
+    for (const threadId of new Set(threadIds)) {
+      const rows = statement.all(threadId, needle, limitPerThread) as Array<{
+        prompt: string;
+        actor: string | null;
+      }>;
+      for (const row of rows) {
+        let actor: unknown;
+        try {
+          actor = row.actor === null ? undefined : JSON.parse(row.actor);
+        } catch {
+          actor = undefined;
+        }
+        prompts.push({
+          prompt: row.prompt,
+          ...(actor === undefined ? {} : { actor }),
+        });
+      }
+    }
+    return prompts;
+  }
+
+  /**
    * #2436: the latest recorded approval-posture decision across `threadIds`
    * (a conversation's sessions), ordered by the server's global sequence —
    * the one order every client and the turn-start resolution agree on. One
