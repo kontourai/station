@@ -6038,7 +6038,6 @@ export function configureRuntimeRoutes(
     createConversationReferenceReadRoutes(
       conversationReferenceReadDeps({
         memoryAdapters: context.memoryAdapters,
-        createMemoryAdapter: context.createMemoryAdapter,
         sessions: context.orchestrationService,
         eventStore: context.orchestrationEventStore,
         deviceKind: (deviceId) =>

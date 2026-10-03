@@ -265,9 +265,9 @@ export interface ConversationReferenceReadDeps {
   ): Promise<ConversationMessageRead>;
   authorityFor(request: Request): SessionReadAuthority;
   /**
-   * The public Agent id a conversation's transcript is stored under, or
-   * `undefined` when no store holds a conversation by this id that the
-   * authority may read.
+   * The public Agent id whose memory store holds this conversation, or
+   * `undefined` when none does (a runtime conversation: its transcript is
+   * the event projection, which needs no Agent).
    */
   conversationAgent(
     conversationId: string,
@@ -295,16 +295,11 @@ export interface ConversationReferenceReadDeps {
 /** What the production composition reads the route's facts from. */
 export interface ConversationReferenceReadSources {
   memoryAdapters: Map<string, FileMemoryAdapter>;
-  createMemoryAdapter?: (slug: string) => FileMemoryAdapter;
   sessions: {
     readSessionMessages(
       threadId: string,
       authority: SessionReadAuthority,
     ): ConversationMessage[];
-    readSessionConversation(
-      threadId: string,
-      authority: SessionReadAuthority,
-    ): Promise<{ agentSlug: string } | null>;
   };
   eventStore?: {
     conversationForSession(
@@ -329,14 +324,9 @@ export interface ConversationReferenceReadSources {
 export function conversationReferenceReadDeps(
   sources: ConversationReferenceReadSources,
 ): ConversationReferenceReadDeps {
-  const getAdapter = (slug: string): FileMemoryAdapter | null => {
-    let adapter = sources.memoryAdapters.get(slug);
-    if (!adapter && sources.createMemoryAdapter) {
-      adapter = sources.createMemoryAdapter(slug);
-      sources.memoryAdapters.set(slug, adapter);
-    }
-    return adapter ?? null;
-  };
+  // Reads only: never create a store for an Agent that has none.
+  const getAdapter = (slug: string): FileMemoryAdapter | null =>
+    sources.memoryAdapters.get(slug) ?? null;
   const { readConversationMessages } = createConversationMessageReader({
     getAdapter,
     authorityFor: sources.authorityFor,
@@ -349,23 +339,16 @@ export function conversationReferenceReadDeps(
     readConversationMessages,
     authorityFor: sources.authorityFor,
     // The store record names the Agent it was written under (as
-    // `GET /api/conversations/:id` reads it); a runtime conversation names
-    // its own. Hosted file conversations have no tenant binding: not read.
+    // `GET /api/conversations/:id` reads it). Hosted file conversations
+    // have no tenant binding: not read.
     async conversationAgent(conversationId, authority) {
-      if (!isHostedSessionReadAuthority(authority)) {
-        for (const [slug, adapter] of sources.memoryAdapters) {
-          const stored = await adapter.getConversation(conversationId);
-          if (stored)
-            return publicAgentIdFromRuntimeKey(stored.resourceId || slug);
-        }
+      if (isHostedSessionReadAuthority(authority)) return undefined;
+      for (const [slug, adapter] of sources.memoryAdapters) {
+        const stored = await adapter.getConversation(conversationId);
+        if (stored)
+          return publicAgentIdFromRuntimeKey(stored.resourceId || slug);
       }
-      const session = await sources.sessions.readSessionConversation(
-        conversationId,
-        authority,
-      );
-      return session
-        ? publicAgentIdFromRuntimeKey(session.agentSlug)
-        : undefined;
+      return undefined;
     },
     conversationIdOf,
     conversationThreadsOf(sessionId) {
@@ -444,8 +427,8 @@ export function createConversationReferenceReadRoutes(
     return false;
   };
 
-  app.get('/:conversationId/read', async (c) => {
-    const requestedId = c.req.param('conversationId');
+  app.get('/:id/read', async (c) => {
+    const requestedId = c.req.param('id');
     if (!requestedId || requestedId.length > 512)
       return refuse(c, 'conversation_not_found');
     const limit = parseLimit(c.req.query('limit'));
@@ -500,21 +483,24 @@ export function createConversationReferenceReadRoutes(
 
     try {
       const readAuthority = deps.authorityFor(c.req.raw);
-      const slug = await deps.conversationAgent(conversationId, readAuthority);
-      const read = slug
-        ? await deps.readConversationMessages(c.req.raw, slug, conversationId)
-        : undefined;
-      if (
-        !read ||
-        (read.source === 'empty' && read.absence !== 'no-messages')
-      ) {
+      // No store holds it: the built-in Agent's store has no record of it
+      // either, so the read falls through to the runtime projection.
+      const slug =
+        (await deps.conversationAgent(conversationId, readAuthority)) ??
+        'station';
+      const read = await deps.readConversationMessages(
+        c.req.raw,
+        slug,
+        conversationId,
+      );
+      if (read.source === 'empty' && read.absence !== 'no-messages') {
         // A referenced conversation that no longer reads was deleted (or is
         // not this person's); anything else simply is not readable here.
         if (access === 'reference') return refuse(c, 'conversation_deleted');
         if (access !== 'scope' && access !== 'own')
           return refuse(c, 'conversation_not_found');
       }
-      const messages = read?.messages ?? [];
+      const messages = read.messages;
       const page = readConversationPage(messages, offset, limit);
       return c.json({
         success: true,

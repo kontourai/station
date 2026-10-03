@@ -335,7 +335,7 @@ export const STATION_CONTROL_TOOL_POLICY = {
   // it as the session's owner (`routes/chat/conversation-reference-read.ts`).
   read_conversation: {
     ...SELF_READ,
-    routes: [get('/api/conversations/:conversationId/read')],
+    routes: [get('/api/conversations/:id/read')],
   },
   // Only the owner's own conversation, unless the caller is a bound
   // operator (`routes/chat/conversations.ts`).
