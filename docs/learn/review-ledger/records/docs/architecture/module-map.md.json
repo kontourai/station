@@ -110,7 +110,7 @@
 
     {"path":"packages/shared/src/workspace-package.ts","digest":"34c9a91798a6b8259dc7106387c94ffafe970aa43707887923c651d4313b4a40","revision":"5c18724d4ba50fd9b5f6c4043e7a00ebc893c70d"},
 
-    {"path":"pnpm-lock.yaml","digest":"29dbdce300fcd3d881ae511317af478da6e9c098a8e8cf51c6b2269a937525df","revision":"df9188971e1a93d2c5525a7f5f38e3da93c9e4de"},
+    {"path":"pnpm-lock.yaml","digest":"5c3c9968c59ac5b4e7e5ec861c2873bfce11b7c60e7b28e8706db6b29d028ddb","revision":"1e6450e0caa47975d33f505a1348bdc01ae1382e"},
 
     {"path":"scripts/__tests__/startup-readiness-static.test.ts","digest":"04a33c59977c6a5b079cbd452bece433bab6dd0296980330b06393737410d2df","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -288,7 +288,7 @@
 
     {"path":"src-server/routes/orchestration/events.ts","digest":"7663dcbc5398d0b859457d25026d30bc7c32ba0e79eb0dd5a253161fc0698e2e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"ed64b770e478fc8bed2649efcedd5fe86b6ccd43fe1447bf926fae1db5f93717","revision":"7d294a14e8b7644fc42492389b8ba81651d0cced"},
+    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"3976ce75117d6cbfcb2d61733068a738c46de966a3106e5a76190d03b31e63e6","revision":"71c69cadad789baff389812ff52e9efae397c316"},
 
     {"path":"src-server/routes/orchestration/project-task-rooms.ts","digest":"a0be99c27d8f8795b5dfee2bac64b05ae9e957e7110db08414d76e1fdbd91cc8","revision":"ee7cb7c444fb45f465be3f4ea5c938e5a130145e"},
 
@@ -356,7 +356,7 @@
 
     {"path":"src-server/runtime/routes/runtime-route-support.ts","digest":"6a4c97a6eb7f6bbce23da80e037ffb76ca1da14f53e54b2a934a4e64e60f2052","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"ed83b5af4f41e38ea85de7ba4d975066b1c15f136b215926bd5cd31a45183a21","revision":"068722323b07f15f14280d43b1c05dbc2ca212eb"},
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"400dc75dd88a48bc411a4edb9c5f40f9d22ae0f1c5b68d8f748e7733efae5a0e","revision":"cb3ebc3797508b3f46d66b8bc5ece89b32cb79ae"},
 
     {"path":"src-server/runtime/routes/workspace-pane-host-actions.ts","digest":"47243c2ce659cae374048d91ff97faa62921d3b1ce2475199a56cd776bd0ca10","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -696,7 +696,7 @@
 
     {"path":"src-server/services/projects/task-graph-service.ts","digest":"c895f75faffb94ab2cbe311400d0b5811bb00148ef83d72de18638635d5a8d68","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/projects/task-room-work-module.ts","digest":"e6ba059f3718c70376beeaf3167dcfe481327192131875c2049338039cad5a42","revision":"9f8b407fac4a9e5536d72ca49be3a0b77715e1d8"},
+    {"path":"src-server/services/projects/task-room-work-module.ts","digest":"acf9afa37babc44c9281e95040e057726a71b03c0ab49e98989e59069f450f9c","revision":"81ffd01123b6ad2a2591308e02a0c5f1cddc2feb"},
 
     {"path":"src-server/services/scheduling/__tests__/builtin-scheduler-execution.test.ts","digest":"ae5ef724741ab5d319f3a2c0065060294f16da12a4cf1da0228c0f9a95a97c3e","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
@@ -890,7 +890,7 @@
 
     {"path":"src-ui/src/workspace-panes/SpatialBoardWorkspacePane.tsx","digest":"7865c6849c64ca4882b6ccea899b225c3751f8a233400d4ab0f2035a072627eb","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/workspace-panes/TaskRoomComposer.tsx","digest":"37f1a1129a250d2f19779c75d07d7a4beeeb0e22fbe17a53c890156c8e4f4d7f","revision":"e949589811d0f726ec20b26d6549e4e0dcdb86ce"},
+    {"path":"src-ui/src/workspace-panes/TaskRoomComposer.tsx","digest":"e6cbddf730eb7268d662e1346264fa4e8002892647ef2423203efa4f7ed3d5c1","revision":"4bcb32e2752dbd10db63b5acd96b0280be033c9e"},
 
     {"path":"src-ui/src/workspace-panes/TaskRoomEditorPane.tsx","digest":"aa5a44f48f228e5de3b446ba60f9c5261587718c9d0863179aacb5e4c2ce5e0a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -900,7 +900,9 @@
 
     {"path":"tests/helpers/journey-profile.ts","digest":"659825a2894fb609e6513cdcb814ac89a1da953b45f04415b2ae580b523b5d58","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/orchestration/__tests__/project-task-room-runtime.test.ts","digest":"db188f8f473b5b5b112b3dcce279e70136e2d1261b4ef823aac1f846daa2f32d","revision":"9f8b407fac4a9e5536d72ca49be3a0b77715e1d8"}
+    {"path":"src-server/services/orchestration/__tests__/project-task-room-runtime.test.ts","digest":"db188f8f473b5b5b112b3dcce279e70136e2d1261b4ef823aac1f846daa2f32d","revision":"9f8b407fac4a9e5536d72ca49be3a0b77715e1d8"},
+
+    {"path":"src-server/services/projects/task-room-context.ts","digest":"c548f8653bfbeb87cef832000969e4cd8f92358883e96d637fe9251a614f9778","revision":"078747c0143ca02d52107439754ca3a51e5479d1"}
   ],
 
   "checks": [

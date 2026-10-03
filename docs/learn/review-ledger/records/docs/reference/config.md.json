@@ -20,7 +20,7 @@
 
     {"path":"packages/contracts/src/settings-registry.ts","digest":"95bcee81c363ab5ab39dff227f2aaec271f7baecd7bf1c9ae33b85ac7928de5d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"pnpm-lock.yaml","digest":"29dbdce300fcd3d881ae511317af478da6e9c098a8e8cf51c6b2269a937525df","revision":"df9188971e1a93d2c5525a7f5f38e3da93c9e4de"},
+    {"path":"pnpm-lock.yaml","digest":"5c3c9968c59ac5b4e7e5ec861c2873bfce11b7c60e7b28e8706db6b29d028ddb","revision":"1e6450e0caa47975d33f505a1348bdc01ae1382e"},
 
     {"path":"schemas/agent.schema.json","digest":"d5f9d556348793b8a12764d68b005a9ab08c956da09304b61f2bf29620ba798d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -58,7 +58,7 @@
 
     {"path":"src-server/routes/orchestration/attachments.ts","digest":"628b930049e5ea6a021ba03e7bee9ec916a32656f6a5979d555864b86eee71f9","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"ed64b770e478fc8bed2649efcedd5fe86b6ccd43fe1447bf926fae1db5f93717","revision":"7d294a14e8b7644fc42492389b8ba81651d0cced"},
+    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"3976ce75117d6cbfcb2d61733068a738c46de966a3106e5a76190d03b31e63e6","revision":"71c69cadad789baff389812ff52e9efae397c316"},
 
     {"path":"src-server/routes/system/config.ts","digest":"45bb6618c88a4128d7932840acee69f83b0eff5fbdbc151012ae1e4361a6c610","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -94,7 +94,7 @@
 
     {"path":"src-server/runtime/plugins/runtime-provider-resolution.ts","digest":"99c57df9288ec94d454dace087cb1bfc99867e41f6caa992d244bc053a2a0253","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"ed83b5af4f41e38ea85de7ba4d975066b1c15f136b215926bd5cd31a45183a21","revision":"068722323b07f15f14280d43b1c05dbc2ca212eb"},
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"400dc75dd88a48bc411a4edb9c5f40f9d22ae0f1c5b68d8f748e7733efae5a0e","revision":"cb3ebc3797508b3f46d66b8bc5ece89b32cb79ae"},
 
     {"path":"src-server/security/pairing-route-scopes.ts","digest":"6135d879afff21c7d3c8f82d0fb701f04c7bc8de28724848ce0ffa39b0ded204","revision":"b004ed8cb3e885da544adf960b2894780aaf2b51"},
 
@@ -132,7 +132,7 @@
 
     {"path":"src-ui/src/components/chat-dock/ChatDock.tsx","digest":"8b2afcd595e892421e4f0dc767d1b776074be7b78127b2d6607954bf454a5056","revision":"f06acf6b9cd2f940c1a5a9dcf283ad42bceb06f3"},
 
-    {"path":"src-ui/src/components/chat-dock/ChatDockBody.tsx","digest":"ccd6c8518e706dcccf29a4753b73375861411b4995f49643c017ef1da0d24ce8","revision":"bc671142a7ae70587daf5bb0d94732e8ca74600a"},
+    {"path":"src-ui/src/components/chat-dock/ChatDockBody.tsx","digest":"a1f59f67b4cf904739aeed69ae0d37914149f2777639dbd1c5520ea9b26f23f5","revision":"82fea394a09cdf62071b073d09aa6cb08ebbca48"},
 
     {"path":"src-ui/src/components/chat-dock/retry-attachments.ts","digest":"e35fc0d7d193cd614829fddbf3f822b4118510a0776e5f8853fdcb8bf1ea3d93","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

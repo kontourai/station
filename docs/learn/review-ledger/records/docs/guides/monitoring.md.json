@@ -12,7 +12,7 @@
   "document": {"digest":"5b225dd4842009417c702a0552af67974e38eaa1b9e8d726a3a7a3389e1c1595","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
   "sources": [
-    {"path":"pnpm-lock.yaml","digest":"29dbdce300fcd3d881ae511317af478da6e9c098a8e8cf51c6b2269a937525df","revision":"df9188971e1a93d2c5525a7f5f38e3da93c9e4de"},
+    {"path":"pnpm-lock.yaml","digest":"5c3c9968c59ac5b4e7e5ec861c2873bfce11b7c60e7b28e8706db6b29d028ddb","revision":"1e6450e0caa47975d33f505a1348bdc01ae1382e"},
 
     {"path":"scripts/generate-metric-reference.mjs","digest":"75fb40e614bee3d8f64de9bcdb1ee3dee333f2aca482cfcdd243c657bdb0aff4","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 

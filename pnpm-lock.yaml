@@ -765,6 +765,9 @@ importers:
       '@modelcontextprotocol/client':
         specifier: ^2.0.0
         version: 2.0.0
+      agent-skills-ts-sdk:
+        specifier: ^2.5.0
+        version: 2.5.0
       esbuild:
         specifier: ^0.28.2
         version: 0.28.2
