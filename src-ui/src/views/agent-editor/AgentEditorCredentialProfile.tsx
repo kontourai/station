@@ -1,4 +1,5 @@
 import { useCredentialRecoveryQuery } from '@kontourai/station-sdk';
+import { InfoTip } from '../../components/InfoTip';
 import type { AgentEditorFormProps } from './types';
 
 /**
@@ -94,21 +95,30 @@ export function AgentEditorCredentialProfile({
   const pinnedIsKnown =
     !pinned || profiles.some((profile) => profile.ref === pinned);
 
+  const accountHelp =
+    profiles.length === 0
+      ? "No separate accounts are enrolled yet. Enrol them on the engine's Connections page."
+      : "Choose which account this agent runs on. Leave unset to follow the connection's account.";
   const describeFallback = connectionActiveRef
     ? `Uses the connection's account (${connectionActiveRef}).`
     : "Uses the connection's account.";
 
   return (
     <div className="editor-field">
-      <label className="editor-label" htmlFor="ae-credential-profile">
-        Account
-      </label>
+      <div className="editor-label-row">
+        <label className="editor-label" htmlFor="ae-credential-profile">
+          Account
+        </label>
+        <InfoTip label="Account">{accountHelp}</InfoTip>
+      </div>
       <select
         id="ae-credential-profile"
         className="editor-input"
         value={pinned}
         disabled={locked}
-        aria-describedby="ae-credential-profile-hint"
+        aria-describedby={
+          !pinnedIsKnown ? 'ae-credential-profile-hint' : undefined
+        }
         onChange={(event) =>
           setForm((current) => ({
             ...current,
@@ -131,27 +141,13 @@ export function AgentEditorCredentialProfile({
           <option value={pinned}>{pinned} — not enrolled</option>
         )}
       </select>
-      <span className="editor-hint" id="ae-credential-profile-hint">
-        {!pinnedIsKnown ? (
-          <>
-            This agent pins <strong>{pinned}</strong>, which is not an enrolled
-            account on this engine, so the session will fail rather than run on
-            a different account. Pick an enrolled account or clear the pin.
-          </>
-        ) : profiles.length === 0 ? (
-          <>
-            No separate accounts are enrolled on this engine yet, so every agent
-            on it uses the same one. Enrol accounts on the engine&apos;s
-            Connections page.
-          </>
-        ) : (
-          <>
-            Which account this agent runs on. Leave unset to follow the
-            connection, so changing the connection&apos;s account moves this
-            agent with it.
-          </>
-        )}
-      </span>
+      {!pinnedIsKnown && (
+        <span className="editor-hint" id="ae-credential-profile-hint">
+          This agent pins <strong>{pinned}</strong>, which is not an enrolled
+          account on this engine, so the session will fail rather than run on a
+          different account. Pick an enrolled account or clear the pin.
+        </span>
+      )}
     </div>
   );
 }
