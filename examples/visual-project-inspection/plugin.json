@@ -1,6 +1,6 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
-  "name": "independent-onboarding-review",
+  "name": "visual-project-inspection",
   "version": "1.0.0",
   "description": "Original independent author example using only the public declarative contract.",
   "author": {

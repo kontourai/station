@@ -1,6 +1,6 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
-  "name": "station-curated-matt-pocock-engineering",
+  "name": "matt-pocock-engineering",
   "version": "1.0.0",
   "description": "Station-curated visual introductions to Matt Pocock engineering Skills, pinned to an attributed MIT source revision.",
   "author": {
