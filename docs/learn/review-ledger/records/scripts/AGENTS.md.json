@@ -14,7 +14,7 @@
   "sources": [
     {"path":"docs/guides/code-quality.md","digest":"e55382f741c8ed1783b7aa5848beb764fe08cf95326319aa21e9de4d0ed6427f","revision":"de240170769fcf739c188b104f801d4371f8086d"},
 
-    {"path":"docs/guides/testing.md","digest":"f4ce0f21c08d460df52405d68cfa34a847dcbdaa0976cf218151226a37225925","revision":"1c13dd90939769cd3ca557a36649aa25823194db"},
+    {"path":"docs/guides/testing.md","digest":"4d2e4b3af713981a18ff24040c386d5c547540e5dd33d18bfd175fab84d3d593","revision":"87d45fd9b238d6b9891d7d6167c72a035cf8363c"},
 
     {"path":"scripts/code-health-gate.mjs","digest":"601c9b86a673c782230fad9f1caaec8791a1fdd15f64b7124ef8bdf6151b9927","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
