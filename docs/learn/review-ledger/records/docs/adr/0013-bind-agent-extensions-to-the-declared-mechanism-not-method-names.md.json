@@ -14,13 +14,13 @@
   "sources": [
     {"path":"src-server/providers/__tests__/acp-adapter-inbound-extension.test.ts","digest":"94a5f5c8bc9164484c4bc27d4273b2fc25cd7e58a8ce582190f8ac2a38860902","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
 
-    {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"2157d8e777b1a6a4b26ff43fde6a1a85a17f8cc0148edb27444a17ccc208e9e4","revision":"a3ed86fb0bbb73327f3bafb5fd60780746cea6af"},
+    {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"061da89e00216d5c3250d7f13dc1dea5717765b50db7ebf8c49672208524a3d0","revision":"423cbe55b9e35e4cd8954fd441cb9f3c69740d66"},
 
     {"path":"src-server/services/acp/__tests__/acp-inbound-extension-policy.test.ts","digest":"75d9e788dd399671e3b40fb6bf4d5e0396d38caa48db2abf636644af8c417be5","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
 
     {"path":"src-server/services/acp/acp-inbound-extension-policy.ts","digest":"6c413ed244ebe55e4a3ede4b091f40278038d4173593e5de44a9d9cd488974c3","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
 
-    {"path":"src-shared/extension-notification-bindings.ts","digest":"d48bdb7c6e8937947f41376747c45b9ba33fb89fba9f4c11720e3338fe6bb33a","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"}
+    {"path":"src-shared/extension-notification-bindings.ts","digest":"23059844999bc5d7f2e7f8f4137b965e6f98129207fd765eb871d46ce976c11b","revision":"89765352964045a079d13a17bee54ab2de7b83e0"}
   ],
 
   "checks": [

@@ -291,38 +291,69 @@ const reviewOf = (capture) =>
 
 /**
  * During the merge, media.json conflicts where one side removed the capture
- * review fields and the other edited them. Merge it structurally (see
- * mergeManifests) and write the result, review fields included; they move
- * out below. Returns whether it resolved a conflict.
+ * review fields and the other edited them. Git can also auto-merge away
+ * those fields. Merge the parent manifests structurally in either case;
+ * review fields move out below. Returns whether it folded a layout merge.
  */
 function resolveConflictedManifest(root, mergeBase) {
   const stages = unmergedStages(root, LEARNING_MEDIA_MANIFEST);
-  if (stages.size === 0) return false;
-  if (mergeBase === undefined)
-    throw new Error(
-      `${LEARNING_MEDIA_MANIFEST} is conflicted; pass --base <merge base> to fold it`,
+  let refs;
+  if (stages.size === 0) {
+    if (mergeBase === undefined) return false;
+    refs = [mergeBase, 'HEAD', 'MERGE_HEAD'].map(
+      (ref) => `${ref}:${LEARNING_MEDIA_MANIFEST}`,
     );
-  if (!['1', '2', '3'].every((stage) => stages.has(stage)))
-    throw new Error(
-      `${LEARNING_MEDIA_MANIFEST} was added or deleted on one side; resolve it and rerun`,
+  } else {
+    if (mergeBase === undefined)
+      throw new Error(
+        `${LEARNING_MEDIA_MANIFEST} is conflicted; pass --base <merge base> to fold it`,
+      );
+    if (!['1', '2', '3'].every((stage) => stages.has(stage)))
+      throw new Error(
+        `${LEARNING_MEDIA_MANIFEST} was added or deleted on one side; resolve it and rerun`,
+      );
+    refs = ['1', '2', '3'].map(
+      (stage) => `:${stage}:${LEARNING_MEDIA_MANIFEST}`,
     );
-  const [base, ours, theirs] = readGitObjects(
-    root,
-    ['1', '2', '3'].map((stage) => `:${stage}:${LEARNING_MEDIA_MANIFEST}`),
-  ).map((bytes) => JSON.parse(bytes.toString('utf8')));
+  }
+  const blobs = readGitObjects(root, refs);
+  if (stages.size === 0 && blobs.some((bytes) => bytes === undefined))
+    return false;
+  const [base, ours, theirs] = blobs.map((bytes) =>
+    JSON.parse(bytes.toString('utf8')),
+  );
   const [branch, migrated] =
     hasReviewFields(ours) && !hasReviewFields(theirs)
       ? [ours, theirs]
       : hasReviewFields(theirs) && !hasReviewFields(ours)
         ? [theirs, ours]
         : [];
-  if (!branch)
+  if (!branch) {
+    if (stages.size === 0) return false;
     throw new Error(
       `${LEARNING_MEDIA_MANIFEST} conflicts, but not between the old and new layouts; resolve it and rerun`,
     );
+  }
+  const working =
+    stages.size === 0
+      ? JSON.parse(
+          createLearningSourceReader(root)
+            .read(LEARNING_MEDIA_MANIFEST)
+            .toString('utf8'),
+        )
+      : migrated;
+  const merged = mergeManifests(base, branch, working);
+  if (stages.size === 0) {
+    // Preserve review edits made after Git's automatic merge.
+    const captures = new Map(
+      working.captures.map((capture) => [capture.path, capture]),
+    );
+    for (const capture of merged.captures)
+      Object.assign(capture, reviewOf(captures.get(capture.path)));
+  }
   writeFileSync(
     path.join(root, LEARNING_MEDIA_MANIFEST),
-    serializeLearningMedia(mergeManifests(base, branch, migrated)),
+    serializeLearningMedia(merged),
   );
   return true;
 }
@@ -534,7 +565,7 @@ export function main(argv = process.argv.slice(2)) {
   );
   if (result.resolvedManifest)
     console.log(
-      `Resolved the ${LEARNING_MEDIA_MANIFEST} conflict: kept the old-layout side's review fields, moved them into the ledger, and kept the other side's remaining edits.`,
+      `Resolved the ${LEARNING_MEDIA_MANIFEST} layout merge: kept the old-layout side's review fields, moved them into the ledger, and kept the other side's remaining edits.`,
     );
   if (result.edited.length)
     console.log(

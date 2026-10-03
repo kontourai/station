@@ -9,18 +9,18 @@
 
   "limits": "Dated Kiro observations remain historical. This record does not rerun a live ACP engine or establish vendor compatibility for every advertised extension.",
 
-  "document": {"digest":"3f926e01921186e046a2a4b144addaa2b03004ed2397eb7f9c64cd8cd1e0bdd3","revision":"a3ed86fb0bbb73327f3bafb5fd60780746cea6af"},
+  "document": {"digest":"a36df486697444605029540536cda0506142a801fa4be469031ac4be09a80954","revision":"e15fe01696dceae30228b1a82f7df16592bace49"},
 
   "sources": [
     {"path":"src-server/providers/adapters/acp-adapter-events.ts","digest":"81dff671713d9bd8cee6f2c9da3ae512651c8983bca4576a3df06d8ece8bbdd8","revision":"8a04b6f3b5bd86d9a60dfe35044457ca096ae78d"},
 
-    {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"2157d8e777b1a6a4b26ff43fde6a1a85a17f8cc0148edb27444a17ccc208e9e4","revision":"a3ed86fb0bbb73327f3bafb5fd60780746cea6af"},
+    {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"061da89e00216d5c3250d7f13dc1dea5717765b50db7ebf8c49672208524a3d0","revision":"423cbe55b9e35e4cd8954fd441cb9f3c69740d66"},
 
-    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"b56411f3788b1451ada570dfb34501530fbb430295a793ff46dc8599ab567956","revision":"a3ed86fb0bbb73327f3bafb5fd60780746cea6af"},
+    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"755ec9f2a3b4e0523ad5fd4126605f4433a4ac90b0075160d21acb280359c704","revision":"c6ebec77b17b679e630a3857b10a6f814d7fb436"},
 
     {"path":"src-server/services/acp/acp-probe.ts","digest":"7a91bac3e7d7fd693285d50c20990448323f1db7e3c0ba97edde486b0d8de86c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-shared/extension-notification-bindings.ts","digest":"d48bdb7c6e8937947f41376747c45b9ba33fb89fba9f4c11720e3338fe6bb33a","revision":"0c1f436037261c43eeca3e079f5106948360c591"}
+    {"path":"src-shared/extension-notification-bindings.ts","digest":"23059844999bc5d7f2e7f8f4137b965e6f98129207fd765eb871d46ce976c11b","revision":"89765352964045a079d13a17bee54ab2de7b83e0"}
   ],
 
   "checks": [

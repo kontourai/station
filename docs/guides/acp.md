@@ -137,7 +137,13 @@ Sending a message to an ACP-connected agent is identical, from the UI's perspect
 3. A later turn uses the bound continuation endpoint. The `acp` adapter forwards it to the runtime via `connection.prompt()`.
 4. The runtime's ACP session-update and extension notifications are translated by the adapter into [Canonical runtime events](../glossary.md) and streamed back over `GET /api/orchestration/events` (SSE), exactly like any other provider.
 
-A message sent while a turn is running steers that turn. Kiro and Grok receive it through their own extension methods. Every other ACP engine, and a native method that returns JSON-RPC -32601, is steered by cancelling the in-flight prompt, including any tool call it was running, and re-prompting on the same turn. That fallback's steer `turn.started` carries `steerInterruptedRun: true`, and the transcript notes under the steer that it was sent by stopping the step that was running. See [queue vs steer](../design/session-tape-replay.md#queue-vs-steer) for every engine's mechanism.
+The chat composer defaults to Queue while a turn runs. Its Steer mode uses a
+conservative safe-waiting fallback for ACP connections: the current adapters
+provide no confirmed safe execution boundary, so the composer waits for the turn
+to finish. Attachments remain in the draft until then. See the
+[composer contract](../design/chat-composer.md#turn-activity-and-follow-up-delivery).
+
+An explicit adapter `steerTurn` command can still steer the open turn. Kiro and Grok receive it through their own extension methods. Every other ACP engine, and a native method that returns JSON-RPC -32601, is steered by cancelling the in-flight prompt, including any tool call it was running, and re-prompting on the same turn. That fallback's steer `turn.started` carries `steerInterruptedRun: true`, and the transcript notes under the steer that it was sent by stopping the step that was running. See [queue vs steer](../design/session-tape-replay.md#queue-vs-steer) for every engine's mechanism.
 
 ### Canonical Event Vocabulary
 
@@ -163,12 +169,12 @@ Do not re-document per-field shapes here — read them from the contract file di
 
 ### Extension Rendering
 
-`extension.notification` events carry a namespaced, app-specific payload the canonical contract does not interpret (`namespace`, `type`, `payload: unknown` — ADR-0008: the canonical contract carries no app-specific semantics). Station renders two functional cases from Kiro's `_kiro.dev` namespace as ephemeral system messages in the transcript:
+`extension.notification` events carry a namespaced, app-specific payload the canonical contract does not interpret (`namespace`, `type`, `payload: unknown` — ADR-0008: the canonical contract carries no app-specific semantics). For ACP/Kiro, Station renders two functional cases from Kiro's `_kiro.dev` namespace as ephemeral system messages in the transcript:
 
 - `_kiro.dev/mcp/oauth_request` → a clickable **Open authentication page** link to the supplied URL when an MCP server the engine depends on needs the user to sign in.
 - `_kiro.dev/compaction/status` / `_kiro.dev/clear/status` → a plain status line (`"Context compacted."` / `"History cleared."`).
 
-Any other namespace or type is a no-op as an `extension.notification` transcript render — the canonical event surface intentionally does not grow app-specific rendering beyond these two evidenced, functional cases. A separate, narrower mechanism (below) does read one more shape of extension notification, but not to render it — only to enrich a later, otherwise-generic turn failure.
+Within this ACP/Kiro transcript branch, other notifications are transcript no-ops unless the exact shared binding table assigns a handler. Other engines have separate evidenced bindings, including Claude Code API retry activity; namespace similarity never grants those semantics. A separate, narrower mechanism (below) does read one more shape of extension notification, but not to render it — only to enrich a later, otherwise-generic turn failure.
 
 ### Turn-failure enrichment from a co-reported notification
 
@@ -315,6 +321,11 @@ confined to a Station-spawned child.
 
 Since station#1684 Station can deliver it to an ACP-connected external engine instead, over
 HTTP. The rules, in full:
+
+- **Whole integrations only.** Authored individual-tool selection or integration
+  disablement cannot be enforced through this protocol. Station reports the
+  restricted integration as undelivered (`engine-unsupported`) instead of
+  widening its selection.
 
 - **Gated on the live handshake.** Station delivers it only when *this*
   connection's `initialize` result advertises

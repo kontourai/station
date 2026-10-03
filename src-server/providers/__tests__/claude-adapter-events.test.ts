@@ -1196,6 +1196,38 @@ describe('claude-adapter-events — subagent/background task lifecycle', () => {
 });
 
 describe('claude-adapter-events — thinking/status notifications', () => {
+  test('API retry forwards reported counters and a safe reason without provider payloads', () => {
+    const publish = vi.fn();
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record: makeRecord(),
+      publish,
+      message: {
+        type: 'system',
+        subtype: 'api_retry',
+        attempt: 2,
+        max_retries: 5,
+        retry_delay_ms: 1500,
+        error_status: 429,
+        error: 'rate_limit',
+        uuid: '00000000-0000-4000-8000-000000000001',
+        session_id: 's-1',
+      },
+    });
+    expect(publish).toHaveBeenCalledTimes(1);
+    expect(publish.mock.calls[0][0]).toMatchObject({
+      method: 'extension.notification',
+      namespace: CLAUDE_EXTENSION_NAMESPACE,
+      type: 'api/retry',
+      payload: { attempt: 2, delayMs: 1500, reason: 'Rate limited' },
+    });
+    expect(Object.keys(publish.mock.calls[0][0].payload).sort()).toEqual([
+      'attempt',
+      'delayMs',
+      'reason',
+    ]);
+  });
+
   test('thinking_tokens maps to a claude-code extension.notification', () => {
     const publish = vi.fn();
     const record = makeRecord();

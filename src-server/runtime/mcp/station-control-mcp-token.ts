@@ -135,6 +135,7 @@ interface StationControlMcpTokenEntry {
   expiresAt: number;
   channel: StationControlMcpTokenChannel;
   tenantExecutionContext?: TenantExecutionContext;
+  allowedTools?: readonly string[];
 }
 
 const tokensByDigest = new Map<string, StationControlMcpTokenEntry>();
@@ -163,6 +164,7 @@ export function mintStationControlMcpToken(
   channel: StationControlMcpTokenChannel,
   ttlMs: number = DEFAULT_TTL_MS,
   tenantExecutionContext?: TenantExecutionContext,
+  allowedTools?: readonly string[],
 ): MintedStationControlMcpToken {
   const replacedLiveToken = digestBySession.has(sessionId);
   revokeStationControlMcpToken(sessionId);
@@ -173,6 +175,7 @@ export function mintStationControlMcpToken(
     sessionId,
     expiresAt,
     channel,
+    ...(allowedTools !== undefined ? { allowedTools: [...allowedTools] } : {}),
     ...(tenantExecutionContext ? { tenantExecutionContext } : {}),
   });
   digestBySession.set(sessionId, tokenDigest);
@@ -201,7 +204,11 @@ export function verifyStationControlMcpToken(
   candidate: string | undefined | null,
   options: { channels?: readonly StationControlMcpTokenChannel[] } = {},
 ):
-  | { sessionId: string; tenantExecutionContext?: TenantExecutionContext }
+  | {
+      sessionId: string;
+      tenantExecutionContext?: TenantExecutionContext;
+      allowedTools?: readonly string[];
+    }
   | undefined {
   const verified = verifyStationControlMcpTokenEntry(candidate);
   if (!verified) return undefined;
@@ -209,6 +216,9 @@ export function verifyStationControlMcpToken(
     return undefined;
   return {
     sessionId: verified.sessionId,
+    ...(verified.allowedTools !== undefined
+      ? { allowedTools: [...verified.allowedTools] }
+      : {}),
     ...(verified.tenantExecutionContext
       ? { tenantExecutionContext: verified.tenantExecutionContext }
       : {}),
@@ -226,6 +236,7 @@ export function verifyStationControlMcpTokenEntry(
   | {
       sessionId: string;
       channel: StationControlMcpTokenChannel;
+      allowedTools?: readonly string[];
       tenantExecutionContext?: TenantExecutionContext;
     }
   | undefined {
@@ -251,6 +262,9 @@ export function verifyStationControlMcpTokenEntry(
       return {
         sessionId: entry.sessionId,
         channel: entry.channel,
+        ...(entry.allowedTools !== undefined
+          ? { allowedTools: [...entry.allowedTools] }
+          : {}),
         ...(entry.tenantExecutionContext
           ? { tenantExecutionContext: entry.tenantExecutionContext }
           : {}),

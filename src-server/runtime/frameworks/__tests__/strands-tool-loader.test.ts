@@ -69,7 +69,7 @@ vi.mock('@strands-agents/sdk', () => ({
       return [
         {
           toolSpec: {
-            name: 'demoServer_render',
+            name: 'render',
             description: 'Render UI',
             inputSchema: { type: 'object' },
             _meta: { ui: { resourceUri: 'ui://demoServer/render.html' } },
@@ -112,7 +112,7 @@ async function loadBuiltinStationControlTools(
       integrationMetadata: new Map(),
       toolNameMapping: new Map(),
       toolNameReverseMapping: new Map(),
-      logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+      logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
     },
     state: { mcpClients: new Map(), agentMcpClients: new Map() },
   });
@@ -365,7 +365,12 @@ describe('loadStrandsTools', () => {
           integrationMetadata: new Map(),
           toolNameMapping: new Map(),
           toolNameReverseMapping: new Map(),
-          logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+          logger: {
+            debug: vi.fn(),
+            info: vi.fn(),
+            warn: vi.fn(),
+            error: vi.fn(),
+          },
         },
         state,
       }),
@@ -557,7 +562,12 @@ describe('loadStrandsTools', () => {
         integrationMetadata,
         toolNameMapping,
         toolNameReverseMapping: new Map(),
-        logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+        logger: {
+          debug: vi.fn(),
+          info: vi.fn(),
+          warn: vi.fn(),
+          error: vi.fn(),
+        },
       },
       state: { mcpClients: new Map(), agentMcpClients: new Map() },
     });
