@@ -9,7 +9,7 @@
 
   "limits": "Normative contributor guidance; this classification does not establish that every document or future feature has followed it.",
 
-  "document": {"digest":"4bb625cdd2f031a95e4bac93c14bb36eb419008be56ebb18d47f548a6dff6fc0","revision":"fbf6a786c7c77831e16ee1ee3f239b295da5e907"},
+  "document": {"digest":"35dd6dd9ae31089fcab2adaf2d58595f809a9e93cf85025c430b71350c576c15","revision":"595059eafa17ef6b7a39217a405619ecbfac2270"},
 
   "sources": [
     {"path":".veritas/repo-map.json","digest":"fcabfcd9d0ad7a59d2ef216c943591575656f039e1d9df2d05565b96347ebca4","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},

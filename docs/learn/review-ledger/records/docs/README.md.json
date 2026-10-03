@@ -12,9 +12,9 @@
   "document": {"digest":"78a9d4be24cfd3184349e887388ebbcd02ef6d3faec6c43feeff0fa7f6daaa03","revision":"c39aff0b1a3c953b56d510989d1810e235961029"},
 
   "sources": [
-    {"path":"docs/architecture/module-map.md","digest":"97117e396a45c630fb43365b05aab213bf909c11ca2ff80cd4bfffc14e56423b","revision":"e7e89f1b1b77e4f4b556e94952d4633ff028a7fd"},
+    {"path":"docs/architecture/module-map.md","digest":"421d410e5165c3d5bf92a2db104e63844682e9b7f3075b161d4cb87d89ff9630","revision":"595059eafa17ef6b7a39217a405619ecbfac2270"},
 
-    {"path":"docs/guides/documentation.md","digest":"4bb625cdd2f031a95e4bac93c14bb36eb419008be56ebb18d47f548a6dff6fc0","revision":"fbf6a786c7c77831e16ee1ee3f239b295da5e907"},
+    {"path":"docs/guides/documentation.md","digest":"35dd6dd9ae31089fcab2adaf2d58595f809a9e93cf85025c430b71350c576c15","revision":"595059eafa17ef6b7a39217a405619ecbfac2270"},
 
     {"path":"docs/learn/README.md","digest":"0ac8f8ac857022280619dd19947686c17b2bda0f1d6a954b1591b0c65fe81404","revision":"e6db304484770666a5dad430b4beae94cdefe69a"},
 
@@ -44,7 +44,7 @@
 
     {"path":"src-server/routes/mobile-device.ts","digest":"0a46281dcaaac36ce6d49fd9415619c58e663f874d4d8bb032822e3ae68fbe46","revision":"18002c0871ea8538605e922464aab5356c77593c"},
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"9df5003fe71f07872ebf3ee800499419f189a003719bc7642bb6676b392b01c1","revision":"a058838c32094ebc98fa31929b76b7855bb7dd85"},
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"21831e2e97672cb946b2e23f9e183477773a632390b02daf66b3e6cf3fe20e71","revision":"595059eafa17ef6b7a39217a405619ecbfac2270"},
 
     {"path":"src-server/services/browser/browser-access.ts","digest":"c435162b9cf5941edce107cfdccb5a4e6a4a5293fd105a745112c48ce9ae7870","revision":"18002c0871ea8538605e922464aab5356c77593c"},
 
