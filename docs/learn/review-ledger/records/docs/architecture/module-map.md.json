@@ -376,7 +376,7 @@
 
     {"path":"src-server/services/agents/skill-revision.ts","digest":"699c12904cbbbdf5218f9b7c2371c9bf41346107855eff8f7681ba60936f9910","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/agents/skill-service.ts","digest":"58ca3170a224fac56099e956a1ed5c88ec9441c09c4ba3a71cf4759329a11952","revision":"a366557a12a4f5e6a41d38ce92aacbd0ab32193b"},
+    {"path":"src-server/services/agents/skill-service.ts","digest":"f2502c86772405101c46632bce3512c1b2e0d9db9e83a1027f1b0a311c2957af","revision":"578cffa3a692d7e7b66cf6002b4c625c72cec618"},
 
     {"path":"src-server/services/browser/browser-access.ts","digest":"c435162b9cf5941edce107cfdccb5a4e6a4a5293fd105a745112c48ce9ae7870","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -632,7 +632,7 @@
 
     {"path":"src-server/services/plugins/__tests__/plugin-composition.test.ts","digest":"905609fb8cf5bb4451665fc43dc0653e73e9f76ea9199d00c89b3a1eed08821f","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/plugins/agent-plugin-loader.ts","digest":"9a971529cbeb13fed95b4bb0b6aae0988f683f36c29f195f85ef49ae8a84386a","revision":"a366557a12a4f5e6a41d38ce92aacbd0ab32193b"},
+    {"path":"src-server/services/plugins/agent-plugin-loader.ts","digest":"b6434939c6229105e9771e53932416d1aa4244d01f24afa84b03f8108a03fcee","revision":"d222e0af2621a3b0cd4cc0dff0c5736f9a715329"},
 
     {"path":"src-server/services/plugins/installed-plugin-inventory.ts","digest":"8d4c4718c0946f2c6c0cf8f0b85118d4cc8bf2cf4cb6a3a4838c5ce28b16028e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

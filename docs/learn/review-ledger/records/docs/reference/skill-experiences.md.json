@@ -38,13 +38,13 @@
 
     {"path":"src-server/__test-utils__/temp-dirs.ts","digest":"20c81129e9cd3db2df51d96b788515b8afde2a2740112ca25e101a6880f72cb1","revision":"cd4139fe26bdaac578c408aaa75784fff0391a5a"},
 
-    {"path":"src-server/services/plugins/agent-plugin-loader.ts","digest":"9a971529cbeb13fed95b4bb0b6aae0988f683f36c29f195f85ef49ae8a84386a","revision":"a366557a12a4f5e6a41d38ce92aacbd0ab32193b"},
+    {"path":"src-server/services/plugins/agent-plugin-loader.ts","digest":"b6434939c6229105e9771e53932416d1aa4244d01f24afa84b03f8108a03fcee","revision":"d222e0af2621a3b0cd4cc0dff0c5736f9a715329"},
 
-    {"path":"src-server/services/agents/skill-service.ts","digest":"58ca3170a224fac56099e956a1ed5c88ec9441c09c4ba3a71cf4759329a11952","revision":"a366557a12a4f5e6a41d38ce92aacbd0ab32193b"},
+    {"path":"src-server/services/agents/skill-service.ts","digest":"f2502c86772405101c46632bce3512c1b2e0d9db9e83a1027f1b0a311c2957af","revision":"578cffa3a692d7e7b66cf6002b4c625c72cec618"},
 
     {"path":"src-server/routes/agents/skills.ts","digest":"e39a612adc1d35767a9149cc5079d2c2732b4a2848171e2115ce3d4e4c25c62d","revision":"a366557a12a4f5e6a41d38ce92aacbd0ab32193b"},
 
-    {"path":"src-server/routes/agents/__tests__/skill-experiences.routes.test.ts","digest":"2f0a2424ecb0567ed1941226f9f6ed6f30e70292adcc5c21ba8bfbf11bbedd4b","revision":"a366557a12a4f5e6a41d38ce92aacbd0ab32193b"}
+    {"path":"src-server/routes/agents/__tests__/skill-experiences.routes.test.ts","digest":"30fdcb4941445814987513af9c3dee55d0e5508243111461a6c30fe57e6d47c7","revision":"d222e0af2621a3b0cd4cc0dff0c5736f9a715329"}
   ],
 
   "checks": [
