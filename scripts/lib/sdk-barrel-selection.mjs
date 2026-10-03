@@ -1753,7 +1753,10 @@ function runtimeImportKey(path, source) {
  *   statement consumes the export; with no consumer it is missed, because
  *   local declarations do not join the alias set `pureExpression` checks;
  * - a top-level dynamic `import()`: the module it loads, and what the use
- *   then calls on it, are not followed.
+ *   then calls on it, are not followed;
+ * - a value assigned into a property, element or mutable binding and later
+ *   called or hitting a setter (`reg.x = h`, `let x; x = h; x()`), property-
+ *   key coercion (`registry[k]`, computed names), and `using`'s dispose.
  *
  * The analysis does not depend on the changed module, so it runs once per
  * graph and is shared by every candidate.
@@ -1782,8 +1785,8 @@ const RUN = 1;
 const MEMBER = 2;
 const ALL = RUN | MEMBER;
 // Cross-module hops a traced invocation may take (a binding run from a use
-// site whose own code runs another module's binding, and so on). Deeper
-// chains stop being traced and count as ANY origin: whole-barrel.
+// site whose own code runs another module's binding, and so on). A deeper
+// chain is cut and marked `bounded`: a use of every changed module.
 const MAX_RUN_DEPTH = 8;
 
 /**
@@ -2160,8 +2163,8 @@ export function topLevelUseAnalysis(graph) {
     return result;
   };
   // `depth` counts the cross-module hops of running code that led here.
-  // Results are memoized without it: a result that hit the bound is ANY,
-  // which is only more conservative wherever it is reused.
+  // Results are memoized without it: a result cut at the bound is marked
+  // `bounded`, which is only more conservative wherever it is reused.
   const bindingOrigins = (target, importedName, mode, depth) => {
     if (target === UNKNOWN) return { ...fresh(null), any: true, found: true };
     if (depth > MAX_RUN_DEPTH)
