@@ -126,7 +126,7 @@
 
     {"path":"src-ui/src/workspace-panes/__tests__/RegionPaneHost.tabs.test.tsx","digest":"466d25073741824d65a8de1be3b0d6ec94bd32c2716731ca2b170c99834dd27f","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/workspace-panes/agents/ChildWorkRow.tsx","digest":"4b26a8c895916e9311e02a6776036d0d878a5d841d3e0ef25da838f6b582b0da","revision":"bdad5fec6fe6fa7f1c13645e485340d1e9b952ac"},
+    {"path":"src-ui/src/workspace-panes/agents/ChildWorkRow.tsx","digest":"e65bd3f9b8dae224b961fa1964f0803a22314b1b21a32a6c042256c37578f27e","revision":"199c417252052306f2716252eef95287df19bfc1"},
 
     {"path":"src-ui/src/workspace-panes/AgentsWorkspacePane.tsx","digest":"b25d6b5a453cac24f77ec5495a7fc515ead1ebe098b9ab6d55279a0dd7b7d807","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 

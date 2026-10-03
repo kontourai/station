@@ -26,7 +26,7 @@
 
     {"path":"packages/contracts/src/attention.ts","digest":"f24a25ff663776f1cbaf5b59d305a2074328b37e024a57786ad15cd33e9430ca","revision":"92636a1751411426e2972236b7416e50b18daf32"},
 
-    {"path":"packages/contracts/src/child-work.ts","digest":"b3cf9342c87121db85b31129d6027fc24bd41a5fe93567ed000acb0327b7a9d8","revision":"5ad69de6a4fdad97536eb3fdca961279ad7d1339"},
+    {"path":"packages/contracts/src/child-work.ts","digest":"cac9b4ae9ef076b692aedd4c596dd948e4d2418b0023d0fdb05869f581ee4ca9","revision":"199c417252052306f2716252eef95287df19bfc1"},
 
     {"path":"packages/contracts/src/conversation-pull-request-links.ts","digest":"f49fc639b21741343e1a4fce0ea30314cec0e8b36c1ac34a8dd69fff4ab0777c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -128,7 +128,7 @@
 
     {"path":"src-server/services/orchestration/__tests__/engine-account-usage-attribution.test.ts","digest":"d2b66dc45d766afb29dfcd5d0682c46a3c4e947103436bb7be17f36c37832521","revision":"c2f51cf0697d7d6a64c75e6ebee23c25c8b437fa"},
 
-    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"8b19d5e913e0ba5019d2db0cd9349d1d39180eede8c98b786bda4d13de208d0e","revision":"813e59fd6645e9ca31bf19ea9a1ad2d7d950cc10"},
+    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"7a3a748feb85bb36d2aef4b1cd99cbead59217435aee691cc15b4d7782c8dc28","revision":"199c417252052306f2716252eef95287df19bfc1"},
 
     {"path":"src-server/services/orchestration/orchestration-session-state.ts","digest":"44a232d30c1d080f58b798e418a54d3adacb1086b3b6757a06f307370b703943","revision":"af3c8fbfee90c9179a0ac19659b76d24c707d574"},
 

@@ -88,7 +88,7 @@
 
     {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"f44a4e94ca0f335cfc5ee2a803ed1659f140e149b0cd0e66e4c9b5bef9179718","revision":"4f3acdc5478e27a733c06e91a202a325817c2f53"},
 
-    {"path":"src-server/providers/adapters/claude-adapter.ts","digest":"37e1c06d5a117c40258e38da79c424fce7720236c486fbceb9a1c29c1548a0f4","revision":"4f3acdc5478e27a733c06e91a202a325817c2f53"},
+    {"path":"src-server/providers/adapters/claude-adapter.ts","digest":"eb22032f3f7c7e3c8ca7456720e42187ed4a5e30cb0e0627c71a77574d316360","revision":"199c417252052306f2716252eef95287df19bfc1"},
 
     {"path":"src-server/providers/adapters/codex-adapter-transport.ts","digest":"ddc57bdc7eead816bff59653f324a25f2349d9ff9478005264cac8e7a099b4fc","revision":"3f6a2ef106d0d4b08be749d1e9273d9c1a61bbd4"},
 
@@ -198,7 +198,7 @@
 
     {"path":"src-server/services/orchestration/approval-posture.ts","digest":"88bd82f2afb16d2a11f1edb9dcdf65f395bbfb2fd937f1df0bc70ebca5405a9d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"8b19d5e913e0ba5019d2db0cd9349d1d39180eede8c98b786bda4d13de208d0e","revision":"813e59fd6645e9ca31bf19ea9a1ad2d7d950cc10"},
+    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"7a3a748feb85bb36d2aef4b1cd99cbead59217435aee691cc15b4d7782c8dc28","revision":"199c417252052306f2716252eef95287df19bfc1"},
 
     {"path":"src-server/services/orchestration/session-transcript-reads.ts","digest":"cde3fc9fb19a7b38b5d2d48dfb3cb16c97ab6e26ffa0990f0e7180e9e1edf6ad","revision":"0dd1181141ba6a645601e6798079a16189510438"},
 

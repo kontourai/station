@@ -34,9 +34,9 @@
 
     {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"f44a4e94ca0f335cfc5ee2a803ed1659f140e149b0cd0e66e4c9b5bef9179718","revision":"4f3acdc5478e27a733c06e91a202a325817c2f53"},
 
-    {"path":"src-server/providers/adapters/claude-adapter-events.ts","digest":"392c45a6a66ce25d569f37d237eecee2cc21f79c780bcb85e39d1471b79e47b1","revision":"813e59fd6645e9ca31bf19ea9a1ad2d7d950cc10"},
+    {"path":"src-server/providers/adapters/claude-adapter-events.ts","digest":"eb11b1d36afe3f0c3a6e01901d15024351992bc2377fecabe815480f180294ae","revision":"199c417252052306f2716252eef95287df19bfc1"},
 
-    {"path":"src-server/providers/adapters/claude-adapter.ts","digest":"37e1c06d5a117c40258e38da79c424fce7720236c486fbceb9a1c29c1548a0f4","revision":"4f3acdc5478e27a733c06e91a202a325817c2f53"},
+    {"path":"src-server/providers/adapters/claude-adapter.ts","digest":"eb22032f3f7c7e3c8ca7456720e42187ed4a5e30cb0e0627c71a77574d316360","revision":"199c417252052306f2716252eef95287df19bfc1"},
 
     {"path":"src-server/providers/adapters/claude-approval-mode.ts","digest":"79805e3f379ee92303e8966260523825ce2c4756affeefb956577189626d3385","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
