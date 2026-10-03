@@ -14,7 +14,7 @@
   "sources": [
     {"path":"docs/learn/atlas.js","digest":"5736779c6e338b74ab1415003b56e14654e05208887a69b6b2a9d92e8b534483","revision":"8199fd1541fc2af0053845c9253ed0962dd7fbb8"},
 
-    {"path":"docs/learn/atlas.json","digest":"55c3e604bb2ab183d706be7863daee4ad5eb85bf23d223f23c518a67e510d761","revision":"a3ac8721653c1c4dc646f54a5401f03f02ba795f"},
+    {"path":"docs/learn/atlas.json","digest":"221290fe20023e249789c9f9e3478f1fcaa1834471eebbe17490b0d2b474680c","revision":"94da87e3016992b8cdbdde3be15b978b489a1c63"},
 
     {"path":"scripts/__tests__/learning-atlas.browser.test.ts","digest":"586cfb7b9101207ebc20d8987e4cf37326011b4314cbf7a91351d9d8d064c057","revision":"bbd3c6c0797cce19e15b36627f182f79baa7e025"},
 
