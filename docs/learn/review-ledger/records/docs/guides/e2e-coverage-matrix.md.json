@@ -52,7 +52,7 @@
 
     {"path":"tests/agents-readiness-board.spec.ts","digest":"3b2f83838f7efc9d8b7de06de6ba69e4869faefabdfc52329086e49e195a97b7","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"tests/android/mobile-layout.spec.ts","digest":"08b69603dd31a6b2b79a5e906a545b23ecb910c7072d427fdb9b225b4b28794d","revision":"a69ac3067ea76a45568bb88fdf6b11e23a5c0bd7"},
+    {"path":"tests/android/mobile-layout.spec.ts","digest":"397b6aed1feb90de3c5c98c9a82944589859919822e4f5803e5e6bd9c6c4462f","revision":"0c7e662906e06fd356753bcc2c0e64d84c7f7541"},
 
     {"path":"tests/coding-layout-plan-panel.spec.ts","digest":"3eb6fdaefd45a205b80b988270e401978996b71e779b743dccb33cfa463f3eab","revision":"955afd3f496da8d9536e133d2cdeea83bb967c34"},
 
