@@ -180,6 +180,7 @@
         "docs/guides/distribution-profiles.md"
       ],
       "modules": [
+        "RegistrySourceManager",
         "Registry trust policy decisions",
         "AgentPluginLoader",
         "PackageMcpAdmissionJournal",

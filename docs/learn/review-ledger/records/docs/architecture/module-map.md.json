@@ -256,7 +256,7 @@
 
     {"path":"src-server/providers/plugin-provider-loader.ts","digest":"7b780f31c1d234d708632b146294f59530984baec971edabdb8e0265f55ceb94","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/providers/registries/json-manifest-registry.ts","digest":"74f114c17b97532029176c2c2d6cf9279f9620193297f2ba7a74dae62a262c80","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/providers/registries/json-manifest-registry.ts","digest":"278b9454c712425274a2566d9becbcfc0acb68d86216484f37ab472faad19eac","revision":"2867eea7c9a4838e2a59cdbf6ec7f940b7d4cf26"},
 
     {"path":"src-server/providers/registries/registry.ts","digest":"039ffa95b635e8f6202d7789bbc2437560094680b0fca15b4273abaf297b3f4a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -392,7 +392,7 @@
 
     {"path":"src-server/services/agents/skill-revision.ts","digest":"699c12904cbbbdf5218f9b7c2371c9bf41346107855eff8f7681ba60936f9910","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/agents/skill-service.ts","digest":"b422d6e8444abe623ad16f39e37a535e9d6b6b3bdb8f009d621b493c2b22c369","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/agents/skill-service.ts","digest":"036d075316efb30c94191ded896d3c69c9169f23e053f3fba34ef1b4283d161e","revision":"2867eea7c9a4838e2a59cdbf6ec7f940b7d4cf26"},
 
     {"path":"src-server/services/browser/browser-access.ts","digest":"c435162b9cf5941edce107cfdccb5a4e6a4a5293fd105a745112c48ce9ae7870","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -668,7 +668,7 @@
 
     {"path":"src-server/services/plugins/plugin-grant-reconciliation.ts","digest":"287d0f3a1185664279eba08e403d06e17dc5512dd6f974b3fc8de76022a31cb9","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/plugins/plugin-install-transaction.ts","digest":"d86ca9367f039174cd2aaaba83b65dc1df376f6474bd4a4f29be54341fd2c0e7","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
+    {"path":"src-server/services/plugins/plugin-install-transaction.ts","digest":"01ba3b7fe2249e6215c6fb62c6372e21324c863bee37bcac6e739a7b0170db61","revision":"63833ae5666cb06da0b5671dc0e3bf63bdc1d0fa"},
 
     {"path":"src-server/services/plugins/plugin-installation-generation-fence.ts","digest":"7a5b3eca67a7accb179a918ac78c3572e13d5df0644205f9ef589f4bc6bdd5ed","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -798,7 +798,7 @@
 
     {"path":"src-ui/src/app-shell/AppViewContent.tsx","digest":"36ca49c74ca989ccf2359f1f815bdc317a0bfc6506f7e2b3bac243ad3b79af4c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/app-shell/destination-registry.ts","digest":"43648ebbbe654ea2da92f7f57fc3e2350e68253e12a8096bc6314eb6153f110b","revision":"d6a3158c22a62d9530592c6366a1624790ee9401"},
+    {"path":"src-ui/src/app-shell/destination-registry.ts","digest":"43648ebbbe654ea2da92f7f57fc3e2350e68253e12a8096bc6314eb6153f110b","revision":"1aecbf35557098c1502ee4575c7e332fb1e9d60c"},
 
     {"path":"src-ui/src/app-shell/routing.ts","digest":"64eb187dd30dffe0d9317242bb454ab41ff0116af6ad02c7dc6ad805a8dd65f2","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -808,7 +808,7 @@
 
     {"path":"src-ui/src/components/mcp-ui/MCPToolUIFrame.tsx","digest":"732a76fa3772bbc163f0c9c5b8da98c530614a27acfaba1b93fbecb497f240b3","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/components/project-sidebar/ProjectSidebarNav.tsx","digest":"df150c40788645fb9cfcbfce9882e6f7e2c943586ca8d3c8215b7141c2f2f791","revision":"d6a3158c22a62d9530592c6366a1624790ee9401"},
+    {"path":"src-ui/src/components/project-sidebar/ProjectSidebarNav.tsx","digest":"df150c40788645fb9cfcbfce9882e6f7e2c943586ca8d3c8215b7141c2f2f791","revision":"1aecbf35557098c1502ee4575c7e332fb1e9d60c"},
 
     {"path":"src-ui/src/components/review/ReviewLayout.tsx","digest":"7963493f35ba9c01b90b75afa5c70f53eeffea4e0b514b929abdac0ee6fe40de","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -886,7 +886,7 @@
 
     {"path":"src-ui/src/views/LayoutView.tsx","digest":"751fb02ed2ff7a16a06234d39ca40299525d5a4b7e7511eb6d3b937fc92eedfc","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/views/SettingsView.tsx","digest":"1ede27735768ba3e57c06aabe2313abe5369045a9020512f32099e22980225ef","revision":"00bada2726c33a49f7edc8803d08831b46b6deb3"},
+    {"path":"src-ui/src/views/SettingsView.tsx","digest":"1ede27735768ba3e57c06aabe2313abe5369045a9020512f32099e22980225ef","revision":"1aecbf35557098c1502ee4575c7e332fb1e9d60c"},
 
     {"path":"src-ui/src/views/TaskWorkspaceView.tsx","digest":"2c6e6d9dec385870e2f639c42cfa86f5e1b553f17756fea1d78b4a4a1a9d73f0","revision":"79edb8d5dd98ef07de0722b0604b9ec606f2bdbf"},
 
@@ -898,9 +898,9 @@
 
     {"path":"src-ui/src/views/settings/KeyboardShortcutsSection.tsx","digest":"442e18ff1d6da5f12184ddb6adda4e4f890227e4138bb43bce924e79cb7f5a8b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/views/settings/KnowledgeStoreSection.tsx","digest":"56f97a6e2ea290893e0103cbeeadc63b5defa436c6df49e949d5082922881d4c","revision":"d6a3158c22a62d9530592c6366a1624790ee9401"},
+    {"path":"src-ui/src/views/settings/KnowledgeStoreSection.tsx","digest":"56f97a6e2ea290893e0103cbeeadc63b5defa436c6df49e949d5082922881d4c","revision":"1aecbf35557098c1502ee4575c7e332fb1e9d60c"},
 
-    {"path":"src-ui/src/views/settings/utils.ts","digest":"276a3b5ce442404273399f1dc1df620053da2049ad1278f2b75f89f6a398a742","revision":"d6a3158c22a62d9530592c6366a1624790ee9401"},
+    {"path":"src-ui/src/views/settings/utils.ts","digest":"276a3b5ce442404273399f1dc1df620053da2049ad1278f2b75f89f6a398a742","revision":"1aecbf35557098c1502ee4575c7e332fb1e9d60c"},
 
     {"path":"src-ui/src/workspace-panes/BasisMcpWorkspacePane.tsx","digest":"0e615373917ac6bcb0fd1c1038ab43e7e72e1bd12bea2890fcb4586008b1a80b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -936,7 +936,21 @@
 
     {"path":"tests/helpers/fixture-audit.ts","digest":"ef308de2593937ae6aadbb3aecd875fb5d9313c3b691cc6e61646eb9fe6ed98d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"tests/helpers/journey-profile.ts","digest":"659825a2894fb609e6513cdcb814ac89a1da953b45f04415b2ae580b523b5d58","revision":"0c1f436037261c43eeca3e079f5106948360c591"}
+    {"path":"tests/helpers/journey-profile.ts","digest":"659825a2894fb609e6513cdcb814ac89a1da953b45f04415b2ae580b523b5d58","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/contracts/src/catalog.ts","digest":"7c18a88495a7f46c113fc67436a0ecf851bf006e599e42a608a2001f32c205de","revision":"93b4a941961ba7cef7c3faeee989dfaef6f80370"},
+
+    {"path":"src-server/providers/registries/filesystem-skill-registry.ts","digest":"04d981c6e1ed6f89c4149be49c8b3ca8711a4fae6c7e36d2d101c81ca81307d3","revision":"2867eea7c9a4838e2a59cdbf6ec7f940b7d4cf26"},
+
+    {"path":"src-server/providers/registries/registry-catalog-installed-state.ts","digest":"56210cc44ce38f67ad13ab2d27e0c340d7a2215a1c606b23c0d84ffc2e4294d6","revision":"2867eea7c9a4838e2a59cdbf6ec7f940b7d4cf26"},
+
+    {"path":"src-server/providers/registries/registry-source-configuration.ts","digest":"c18ab5a6d6f6163df087ab5d344544fa9c86d660b535a5bb9a9f8c0289172a93","revision":"27e102c04a86e76e1ab20cfcd7ee02d55eeff9df"},
+
+    {"path":"src-server/providers/registries/registry-source-manager.ts","digest":"6354f2b2a03af2f1be2a6acd87c647be6abbad09b8e342fe38ca6481f110fced","revision":"27e102c04a86e76e1ab20cfcd7ee02d55eeff9df"},
+
+    {"path":"src-server/routes/plugins/__tests__/registry-marketplaces.routes.test.ts","digest":"cfba0ef6fb4466b847f8678d9deee537c1dbe02ab27a6dfb87aa93b925da71aa","revision":"c05206228b5fd24509ee5a2e53e51d6b12afb3d8"},
+
+    {"path":"src-server/routes/plugins/registry.ts","digest":"f3f5be48240bb62b1bd0e1a5a0349d5205a99891cf15c4e3930cb1250fd900a6","revision":"47fbbbd8f767858f60a0a323b74e26cb60abce62"}
   ],
 
   "checks": [

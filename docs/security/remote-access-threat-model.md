@@ -370,9 +370,12 @@ Enforcement is a single route -> required-scope table
 (`src-server/security/pairing-route-scopes.ts`) consulted by one piece of
 middleware, never scattered per-handler checks. Every authenticated HTTP route
 family and both the terminal and voice WebSocket upgrade paths are listed;
-GET/HEAD routes require `orchestration:read`, mutating methods require
-`orchestration:operate`, the terminal WebSocket requires `terminal:operate`,
-and the voice WebSocket requires `orchestration:operate`. Pairing-family routes
+Ordinary GET/HEAD routes require `orchestration:read` and ordinary mutating
+methods require `orchestration:operate`; explicit family and leaf rules can
+require a different tier. All `/api/registry/sources` methods require
+`access:manage` plus a separate Station operator principal check in the handlers.
+The terminal WebSocket requires `terminal:operate`, and the voice WebSocket
+requires `orchestration:operate`. Pairing-family routes
 have additional credential-kind and explicit approval-leaf rules described
 above; a generic operate grant cannot reach them. A
 route the table does not recognize fails closed — denied, with a loud server

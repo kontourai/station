@@ -147,6 +147,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/proof-family-route-error-egress.test.ts',
   // Real CLI prerequisite probes, a loopback listener, and the SQLite runtime owner.
   'src-server/tools/__tests__/station-control-delegation.provider-quota-connected.test.ts',
+  // One bounded mkfifo child checks source-file refusal in independent temporary Station homes.
+  'src-server/routes/plugins/__tests__/registry-marketplaces.routes.test.ts',
   // Creates FIFOs with mkfifo to prove plugin validation refuses them without blocking.
   'src-server/routes/plugins/__tests__/plugin-validate-routes.test.ts',
   // Creates FIFOs and a git repo to prove plugin preview refuses untrusted manifests (#2342).
