@@ -224,9 +224,10 @@ async function mockShell(page: Page) {
 }
 
 async function bindChatToProject(page: Page, project: string): Promise<void> {
-  await page.evaluate(() =>
-    window.dispatchEvent(new Event('station:open-new-chat')),
-  );
+  await page
+    .getByRole('region', { name: 'Dock', exact: true })
+    .getByRole('button', { name: 'New', exact: true })
+    .click();
   const modal = page.getByRole('dialog', { name: 'New Chat' });
   await expect(modal).toBeVisible({ timeout: 15_000 });
   await page.locator('.new-chat-modal__context-button').click();
