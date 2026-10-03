@@ -76,6 +76,7 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 | [KnowledgeSourceObservation](#knowledgesourceobservation) | Observe one registered canonical record without bootstrap, repair, or learning authority. | `src-server/knowledge-store/knowledge-store-provider.ts` |
 | [PluginCompositionModule](#plugincompositionmodule) | Stage and atomically activate scoped, reversible plugin capability graphs. | `src-server/services/plugins/plugin-composition.ts` |
 | [PluginGrantReconciliation](#plugingrantreconciliation) | Converge runtime capability generations after a durable plugin grant change. | `src-server/services/plugins/plugin-grant-reconciliation.ts` |
+| [RegistrySourceManager](#registrysourcemanager) | Persist connected catalogs and bind discovery, inspection and acquisition to the exact current source. | `src-server/providers/registries/registry-source-manager.ts` |
 | [RegistrySupplyChainPolicy](#registrysupplychainpolicy) | Verify registry package signatures and prepare exact pins and rollback sources. | `src-server/services/plugins/registry-supply-chain.ts` |
 | [ReviewEvidenceModule](#reviewevidencemodule) | Run independent read-only reviewers over one exact revision range and retain attributable findings without minting a verdict. | `src-server/services/evidence/review-evidence-module.ts` |
 | [VerificationCoordinator](#verificationcoordinator) | Coordinate one provenance-bound verification request through admission, execution, and receipt publication. | `scripts/lib/verification-coordinator.mjs` |
@@ -245,6 +246,38 @@ initialization, and retires it at replacement or shutdown. No Node socket metada
 synthesized. See [protected application
 dispatch](../design/connection-broker.md#protected-application-dispatch) for lifecycle,
 limits and the remaining encrypted-path acceptance.
+
+## RegistrySourceManager
+
+[The source manager](../../src-server/providers/registries/registry-source-manager.ts)
+composes the existing visible Skill/plugin providers with user-added local
+Skill directories, public GitHub libraries and local/HTTPS Station manifests.
+It persists source configuration and last successful bounded snapshots under
+the Station home. A snapshot is discovery evidence; source removal/disable and
+plugin generation replacement/revocation are checked again before publication
+and use. A revoked provider cannot publish its in-flight result or fall back to
+its previously cached rows. Plugin-owned Skill catalogs also use the route's
+existing caller visibility projection, before inspection/acquisition reads.
+
+[Registry routes](../../src-server/routes/plugins/registry.ts) expose source
+management and source-qualified catalog tuples. The marketplace retains an
+inspected selection through filtering/refresh, preserves equal names, names
+partial/stale sources and returns installed content to the existing Library.
+[SkillService](../../src-server/services/agents/skill-service.ts) sends exactly
+one selected provider through the existing staging/publication owner, records
+its reviewed source/catalog revision and observed package digest, and stages
+updates before replacing the installed tree. Plugin acquisition retains the
+ordinary preview/consent/installer, raw publisher-signed item ID, source key and
+applied trust policy; host source IDs cannot authenticate a publisher.
+
+The public shapes and provider interfaces are in
+[`catalog`](../../packages/contracts/src/catalog.ts). SDK source actions
+invalidate the existing Registry query family. Route tests exercise source
+collision, unavailable sources, revision changes, retained installed packages,
+signed acquisition, caller projection and provider revocation; UI tests cover
+source actions and retained selection. These are local behavioral evidence,
+not hosted marketplace, native device, release or arbitrary private-source
+qualification. Other index formats and credential-bearing URLs are refused.
 
 ## Registry trust policy decisions
 
