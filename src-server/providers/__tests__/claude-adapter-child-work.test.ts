@@ -546,6 +546,41 @@ describe('#3163 Claude subagent model and transcript identity', () => {
     }
   });
 
+  test('the session replying while a background child runs gives that child no model', () => {
+    // Captured order: the agent starts in the background, the SESSION then
+    // replies (on its own model), and only later does the agent reply.
+    const lines = loadClaudeTaskCapture('background-agent');
+    const startedAt = lines.findIndex(
+      (line) =>
+        view(line).subtype === 'task_started' &&
+        (line.message as { task_type?: string }).task_type === 'local_agent',
+    );
+    const ownReplyAt = lines.findIndex(
+      (line, index) =>
+        index > startedAt &&
+        view(line).type === 'assistant' &&
+        Boolean(view(line).parent_tool_use_id),
+    );
+    const sessionReplies = lines
+      .slice(startedAt + 1, ownReplyAt)
+      .filter(
+        (line) =>
+          view(line).type === 'assistant' &&
+          view(line).parent_tool_use_id === null &&
+          view(line).message?.model === SESSION_MODEL,
+      );
+    expect(sessionReplies.length).toBeGreaterThan(0);
+    const { events } = replayClaudeTaskCapture('background-agent', {
+      stopAfterLine: ownReplyAt - 1,
+    });
+    const [childId] = expectedChildIds('background-agent');
+    const item = itemsOf(events).find(
+      (candidate) => candidate.childId === childId,
+    );
+    expect(item?.status).toBe('running');
+    expect(item?.model).toBeUndefined();
+  });
+
   test('a reply that beats its task_started is held and applied when the task registers', () => {
     const [outerCall] = spawnCalls();
     const reorder = (lines: ReturnType<typeof loadClaudeTaskCapture>) => {
