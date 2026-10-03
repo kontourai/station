@@ -517,6 +517,20 @@ export function resolveProviderPresentation(
     };
   }
 
+  if (
+    input.kind === 'agent' &&
+    input.readinessEvidence?.smoke.status === 'failed' &&
+    input.readinessEvidence.smoke.freshness === 'fresh'
+  ) {
+    return {
+      brand,
+      readiness: 'Check failed',
+      tone: 'error',
+      detail:
+        'The last connection check did not complete. Check your connection settings and try again.',
+      actionLabel: 'Check connection',
+    };
+  }
   if (input.setup?.state === 'ready') {
     return {
       brand,
@@ -567,20 +581,6 @@ export function resolveProviderPresentation(
    * has asked yet says so rather than claiming Ready.
    */
   const evidence = input.readinessEvidence;
-  if (
-    input.kind === 'agent' &&
-    evidence?.smoke.status === 'failed' &&
-    evidence.smoke.freshness === 'fresh'
-  ) {
-    return {
-      brand,
-      readiness: 'Check failed',
-      tone: 'error',
-      detail:
-        'The last connection check did not complete. Check your connection settings and try again.',
-      actionLabel: 'Check connection',
-    };
-  }
   if (input.kind === 'model' && evidence) {
     // a passed smoke is a complete chat turn against this
     // connection — strictly stronger evidence than any catalogue answer — so

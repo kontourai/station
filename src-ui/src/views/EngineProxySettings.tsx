@@ -56,7 +56,7 @@ export function EngineProxySettings({
       </select>
       <p className="editor-help">
         {proxy
-          ? `Uses the address and key saved for ${proxy.name}. Save, then check the connection and choose a model.`
+          ? `Uses the address and key saved for ${proxy.name}. Save, then check the connection and choose a model. Tools still run on this Station.`
           : custom
             ? 'Custom CLI settings are active. Choosing your account or a saved proxy replaces those connection settings.'
             : 'Use your existing CLI account, or choose a proxy saved under Models.'}

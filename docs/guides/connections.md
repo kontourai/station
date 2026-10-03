@@ -608,6 +608,8 @@ list and save it. **Check connection** sends one short message and reports wheth
 the engine answered. A failed check is shown as **Check failed**; a model catalog
 alone does not override that result. **Refresh models** refreshes the catalog.
 
+Model requests use the proxy; the engine and its tools still run on this Station.
+
 The engine stores `config.proxyConnectionId`, referring to the saved Model
 connection. Its current key is resolved on each launch and never copied into
 engine settings. Codex uses provider arguments while keeping its config home.

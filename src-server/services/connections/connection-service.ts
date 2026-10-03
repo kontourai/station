@@ -409,7 +409,10 @@ function applyRuntimeAuthenticationFailure<
     typeof runtime.config.providerLabel === 'string'
       ? runtime.config.providerLabel
       : runtime.name;
-  const readinessReason = `${providerLabel} rejected a real runtime request. Sign in again; Station will automatically recheck this client shortly.`;
+  const readinessReason =
+    typeof runtime.config.proxyConnectionId === 'string'
+      ? 'The last request could not sign in through this proxy. Check the address and key in Models, then choose Check connection.'
+      : `${providerLabel} rejected a real runtime request. Sign in again; Station will automatically recheck this client shortly.`;
   return {
     ...runtime,
     status: 'missing_prerequisites',
