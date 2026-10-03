@@ -79,6 +79,18 @@ function ToastCard({
   const isTurn = notification.type === 'turn-activity';
   const isPairing = notification.type === 'pairing-request';
   const shortcut = getSessionShortcut(notification.sessionId);
+  const message = notification.message.trim();
+  const firstLine = message.split(/\r?\n/, 1)[0] ?? message;
+  const headline =
+    firstLine.length > 160 ? `${firstLine.slice(0, 157)}…` : firstLine;
+  const details = [
+    headline !== message ? message : undefined,
+    notification.metadata?.detail
+      ? String(notification.metadata.detail)
+      : undefined,
+  ]
+    .filter(Boolean)
+    .join('\n\n');
 
   const activate = (event?: ReactMouseEvent | ReactKeyboardEvent) => {
     if (!clickable || !onActivate) return;
@@ -139,7 +151,7 @@ function ToastCard({
               {formatTimestamp(notification.timestamp)}
             </time>
           </div>
-          <div className="toast-card__message">{notification.message}</div>
+          <div className="toast-card__message">{headline}</div>
           {/*
             #1545: which command, or which file, the call will touch — so the
             operator is deciding about that rather than about the word "Bash".
@@ -152,25 +164,19 @@ function ToastCard({
               {notification.toolPreview}
             </div>
           ) : null}
-          {notification.metadata?.detail ? (
-            <div className="toast-card__detail">
-              {String(notification.metadata.detail)}
-            </div>
+          {details ? (
+            <details
+              className="toast-card__diagnostics"
+              onClick={(event) => event.stopPropagation()}
+              onKeyDown={(event) => event.stopPropagation()}
+            >
+              <summary>Details</summary>
+              <div className="toast-card__detail">{details}</div>
+            </details>
           ) : null}
           {notification.conversationTitle && notification.onNavigate && (
             <div className="toast-card__conversation">
-              <span>in</span>
-              <button
-                type="button"
-                className="toast-card__link"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  notification.onNavigate?.();
-                  dismissToast(notification.id);
-                }}
-              >
-                “{notification.conversationTitle}”
-              </button>
+              <span>{notification.conversationTitle}</span>
               {shortcut && (
                 <kbd className="toast-card__shortcut">{shortcut}</kbd>
               )}
@@ -214,6 +220,24 @@ function ToastCard({
           ))}
         </div>
       )}
+
+      {notification.onNavigate &&
+        !notification.actions?.length &&
+        !isPairing && (
+          <div className="toast-card__actions">
+            <button
+              type="button"
+              className="toast-card__action toast-card__action--primary"
+              onClick={(event) => {
+                event.stopPropagation();
+                notification.onNavigate?.();
+                dismissToast(notification.id);
+              }}
+            >
+              Open chat
+            </button>
+          </div>
+        )}
 
       {isPairing && !notification.actions && (
         <div className="toast-card__actions">

@@ -221,13 +221,13 @@
       "name": "overlay-dock-project-bound",
       "width": 1440,
       "height": 900,
-      "sha256": "b149c9bc2c9e90d25c5f39febe16088a325fb0442f17cbf756564fa2859bec38"
+      "sha256": "50d1c930ab02189d11fcf78c139a3c3176e22ce782d34b6f9d4bd17f39479f96"
     },
     {
       "name": "overlay-dock-project-mismatch",
       "width": 1440,
       "height": 900,
-      "sha256": "88cc96f8398dcfcf809059bbe18a0ee3ad369db9df85d30017486a6c533c941c"
+      "sha256": "f2179556eefd3f95b2d1db550787fdb2568058384dcbe05fdd1cfe224b30d85e"
     },
     {
       "name": "overlay-mobile-sheet",
@@ -251,13 +251,13 @@
       "name": "overlay-project-switcher-populated",
       "width": 1440,
       "height": 900,
-      "sha256": "c1c1dbb3dcc7e93a0b579106974acb9f4e99beaa13887c946d87beed65a231e4"
+      "sha256": "7b8d05ddddd35e39b639d3f1d1723862cdb9d6d00890b25cd54d26324dc7f1aa"
     },
     {
       "name": "overlay-region-chooser-from-toggle",
       "width": 1440,
       "height": 900,
-      "sha256": "4d2d2daec9632fe9b79fb30a0c18e42ebb924de7e8fc8dcd8caaf17d7e6b4517"
+      "sha256": "576e568584b8b81c5a1df2f237a056d1f7e8b55c819c0e492b89499746d8b21d"
     },
     {
       "name": "overlay-toast",
