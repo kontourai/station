@@ -197,7 +197,8 @@ export function NewChatModal({
     !mode &&
     !draftContext &&
     !initialPrompt &&
-    !startWithDefault;
+    !startWithDefault &&
+    !experience;
   const showStart = composerFirst && !showChatOptions;
 
   const automaticMode = startWithDefault && !mode && !showChatOptions;
@@ -349,6 +350,10 @@ export function NewChatModal({
         ]);
     },
     onResume: (error) => {
+      if (composerFirst) {
+        setShowChatOptions(false);
+        setAgentSearch('');
+      }
       setAdmissionError(error);
       setReturnedFromSetup(true);
       const slug = preservedAgentSlug.current;
@@ -371,6 +376,7 @@ export function NewChatModal({
     },
   });
   const beginSetup = (path: string, agentSlug?: string) => {
+    if (composerFirst && agentSlug) setDraftAgentSlug(agentSlug);
     if (!setupReturn.begin(path)) {
       setSelectFeedback('Reconnect to this Station before opening setup.');
       return;
@@ -534,7 +540,7 @@ export function NewChatModal({
       (initialAuthority.current && !initialAuthority.current.isCurrent())
     )
       return;
-    if (mode?.pending) return;
+    if (mode?.pending || setupReturn.pending) return;
     if (
       sendInitialMessage &&
       (runtimeError ||
@@ -958,7 +964,7 @@ export function NewChatModal({
       discoveryInProgress ||
       selectFeedback ||
       automaticStartAttempted.current ||
-      setupReturn.suspended ||
+      setupReturn.pending ||
       runtimeLoading ||
       modelsLoading ||
       runtimeFetching ||
@@ -987,7 +993,7 @@ export function NewChatModal({
     automaticMode,
     discoveryInProgress,
     selectFeedback,
-    setupReturn.suspended,
+    setupReturn.pending,
     runtimeLoading,
     modelsLoading,
     runtimeFetching,
@@ -1005,8 +1011,7 @@ export function NewChatModal({
   ]);
 
   const closeChatRequest = () => {
-    requestActive.current = false;
-    setupReturn.close();
+    if (setupReturn.close()) requestActive.current = false;
   };
 
   if (setupReturn.suspended) return null;
@@ -1464,6 +1469,7 @@ export function NewChatModal({
                   runtimeLoading ||
                   modelsLoading ||
                   checkingSetup ||
+                  setupReturn.pending ||
                   Boolean(
                     returnError || runtimeError || modelsError || setupError,
                   ) ||
@@ -1697,7 +1703,9 @@ export function NewChatModal({
                         modelsForAgent(agent).length === 0 && !modelsLoading
                       }
                       onOpenModel={() => setModelPickerAgent(agent)}
-                      interactionDisabled={mode?.pending || checkingSetup}
+                      interactionDisabled={
+                        mode?.pending || checkingSetup || setupReturn.pending
+                      }
                       fixDisabled={
                         fixRoute === 'enable' && enable
                           ? enableInFlight

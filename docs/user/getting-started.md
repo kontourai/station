@@ -122,8 +122,8 @@ path; installed, unconnected apps can be connected when needed. Explicitly
 disabled apps remain disabled. A missing account, permission, or working target
 is shown at the point where it is needed, without claiming preparation succeeded.
 
-**Chat options** opens the full picker when you want a different app, Model,
-or workspace. **Explore agents** remains available for deliberate customization.
+**New chat** opens a separate message draft with Agent, Model and Workspace
+controls when you want a different choice. **Explore agents** remains available for deliberate customization.
 The usage disclosure ends after your usage decision. **Personalize Station**
 opens optional preferences after the work entry; it is not a prerequisite for a
 chat.
