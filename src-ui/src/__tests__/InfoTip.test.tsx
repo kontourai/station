@@ -33,7 +33,7 @@ describe('InfoTip', () => {
     }
   });
 
-  test('opens through an accessible button and renders the explanation in a portal', () => {
+  test('opens accessible help in a portal and keeps it inside the viewport', () => {
     render(
       <InfoTip label="Approval guardian">Extra screening details</InfoTip>,
     );
@@ -42,6 +42,14 @@ describe('InfoTip', () => {
       name: 'More about Approval guardian',
     });
     expect(trigger.getAttribute('aria-expanded')).toBe('false');
+    const bounds = vi
+      .spyOn(trigger, 'getBoundingClientRect')
+      .mockReturnValue(new DOMRect(100, 500, 18, 18));
+    const height = vi
+      .spyOn(HTMLElement.prototype, 'offsetHeight', 'get')
+      .mockImplementation(function (this: HTMLElement) {
+        return this.getAttribute('role') === 'tooltip' ? 305 : 18;
+      });
     fireEvent.click(trigger);
 
     const tooltip = screen.getByRole('tooltip');
@@ -49,6 +57,14 @@ describe('InfoTip', () => {
     expect(tooltip.parentElement).toBe(document.body);
     expect(trigger.getAttribute('aria-expanded')).toBe('true');
     expect(trigger.getAttribute('aria-describedby')).toBe(tooltip.id);
+    const top = Number.parseFloat(tooltip.style.top);
+    const below = tooltip.classList.contains('info-tip__content--below');
+    expect(below ? top + 305 : top).toBeLessThanOrEqual(
+      window.innerHeight - 12,
+    );
+    expect(below ? top : top - 305).toBeGreaterThanOrEqual(12);
+    height.mockRestore();
+    bounds.mockRestore();
   });
 
   test('dismisses with Escape and restores trigger focus', () => {
@@ -59,7 +75,11 @@ describe('InfoTip', () => {
       name: 'More about Approval guardian',
     });
     fireEvent.click(trigger);
-    fireEvent.keyDown(document, { key: 'Escape' });
+    const outerDismiss = vi.fn();
+    document.addEventListener('keydown', outerDismiss);
+    fireEvent.keyDown(trigger, { key: 'Escape' });
+    document.removeEventListener('keydown', outerDismiss);
+    expect(outerDismiss).not.toHaveBeenCalled();
 
     expect(screen.queryByRole('tooltip')).toBeNull();
     expect(document.activeElement).toBe(trigger);

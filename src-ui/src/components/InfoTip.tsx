@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react';
 import { createPortal } from 'react-dom';
 import './InfoTip.css';
 
@@ -42,36 +49,44 @@ export function InfoTip({
   };
   useEffect(() => () => clearTimeout(dismissTimer.current), []);
 
+  const place = useCallback(() => {
+    const rect = triggerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const left = Math.min(
+      Math.max(VIEWPORT_GUTTER, rect.left + rect.width / 2 - TOOLTIP_WIDTH / 2),
+      Math.max(
+        VIEWPORT_GUTTER,
+        window.innerWidth - TOOLTIP_WIDTH - VIEWPORT_GUTTER,
+      ),
+    );
+    const height = tooltipRef.current?.offsetHeight ?? 160;
+    const placeAbove =
+      window.innerHeight - rect.bottom < height + 8 && rect.top > height + 8;
+    const next = {
+      left,
+      top: placeAbove
+        ? Math.max(height + VIEWPORT_GUTTER, rect.top - 8)
+        : Math.min(
+            rect.bottom + 8,
+            window.innerHeight - height - VIEWPORT_GUTTER,
+          ),
+      placement: placeAbove ? ('above' as const) : ('below' as const),
+    };
+    setPosition((current) =>
+      current?.left === next.left &&
+      current.top === next.top &&
+      current.placement === next.placement
+        ? current
+        : next,
+    );
+  }, []);
+
+  useLayoutEffect(() => {
+    if (open && position?.placement) place();
+  });
+
   useEffect(() => {
     if (!open) return;
-
-    const place = () => {
-      const rect = triggerRef.current?.getBoundingClientRect();
-      if (!rect) return;
-      const left = Math.min(
-        Math.max(
-          VIEWPORT_GUTTER,
-          rect.left + rect.width / 2 - TOOLTIP_WIDTH / 2,
-        ),
-        Math.max(
-          VIEWPORT_GUTTER,
-          window.innerWidth - TOOLTIP_WIDTH - VIEWPORT_GUTTER,
-        ),
-      );
-      const placeAbove =
-        window.innerHeight - rect.bottom < 160 && rect.top > 160;
-      const height = tooltipRef.current?.offsetHeight ?? 160;
-      setPosition({
-        left,
-        top: placeAbove
-          ? Math.max(height + VIEWPORT_GUTTER, rect.top - 8)
-          : Math.min(
-              rect.bottom + 8,
-              window.innerHeight - height - VIEWPORT_GUTTER,
-            ),
-        placement: placeAbove ? 'above' : 'below',
-      });
-    };
     const dismissOnPointerDown = (event: PointerEvent) => {
       const target = event.target as Node;
       if (
@@ -84,24 +99,24 @@ export function InfoTip({
     };
     const dismissOnEscape = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
       dismiss();
       triggerRef.current?.focus();
     };
 
     place();
-    const frame = requestAnimationFrame(place);
     document.addEventListener('pointerdown', dismissOnPointerDown);
-    document.addEventListener('keydown', dismissOnEscape);
+    document.addEventListener('keydown', dismissOnEscape, true);
     window.addEventListener('resize', place);
     window.addEventListener('scroll', place, true);
     return () => {
-      cancelAnimationFrame(frame);
       document.removeEventListener('pointerdown', dismissOnPointerDown);
-      document.removeEventListener('keydown', dismissOnEscape);
+      document.removeEventListener('keydown', dismissOnEscape, true);
       window.removeEventListener('resize', place);
       window.removeEventListener('scroll', place, true);
     };
-  }, [open, dismiss]);
+  }, [open, dismiss, place]);
 
   return (
     <span className="info-tip">
