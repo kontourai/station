@@ -187,8 +187,13 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
   of view. The composer reserves room for a two-line draft; in a short dock
   the failure banner and the transcript yield first (down to zero; in a dock
   too short even for their padding the banner steps aside, the transcript
-  gives up its padding and the composer repeats the latest send failure as
-  one line), the chip strip drops to one scrolling row, and only then does
+  gives up its padding and the composer repeats the latest send-failure notice
+  as one line: a refused or failed send or steer, a dropped queued message or a
+  blocked send; slash-command output and status notices are not repeated, and
+  a later accepted send clears it. A message queued to retry automatically is
+  not a failure and is not repeated; its notice and Discard stay in the
+  transcript, which a short dock hides, while the queued turn and its Retry
+  stay in the dock body), the chip strip drops to one scrolling row, and only then does
   the draft shrink below two lines — scrolling, never overlapped, with Send
   always on screen. The transcript is never taken out of the layout, and the
   composer re-measures whenever a sibling in the dock appears, leaves or
