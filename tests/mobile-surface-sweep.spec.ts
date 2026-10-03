@@ -221,8 +221,13 @@ test.describe('Mobile surface sweep at 390x844', () => {
     expect(rowBox).not.toBeNull();
     expect(rowBox!.x + rowBox!.width).toBeLessThanOrEqual(drawerRight + 0.5);
 
-    // The chips past the drawer's edge are reachable: the row scrolls them
-    // into its own box.
+    // The seeded layouts overflow the drawer, so the row really scrolls, and
+    // the chips past its edge are reachable: scrolling brings the last one
+    // inside the row's own box.
+    const overflows = await row.evaluate(
+      (element) => element.scrollWidth > element.clientWidth,
+    );
+    expect(overflows, 'the seeded chips no longer overflow the row').toBe(true);
     const last = chips.last();
     await last.scrollIntoViewIfNeeded();
     const lastBox = await last.boundingBox();
