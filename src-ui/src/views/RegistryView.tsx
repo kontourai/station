@@ -139,9 +139,9 @@ export function RegistryView({
     { enabled: activeTab !== 'kits' },
   );
   useEffect(() => {
-    if (availableData || availableError)
+    if (availableUpdatedAt || availableError)
       void invalidateQuery(['registry', 'sources']);
-  }, [availableData, availableError, availableUpdatedAt, invalidateQuery]);
+  }, [availableError, availableUpdatedAt, invalidateQuery]);
   const available = availableData ?? [];
   const installed = installedData ?? [];
   const agentMutation = useRegistryAgentActionMutation();
