@@ -12,7 +12,7 @@
   "document": {"digest":"5a000d8e67ec71098b35638d33013a75090a8bfee6375efc56102481be10fd9d","revision":"f8dcd092359118c2f44bda770acccc1c45beb281"},
 
   "sources": [
-    {"path":"packages/contracts/src/orchestration.ts","digest":"f79a810c3e7b70428d68b26557d3eb3cc7f6d60d8c58773350ed967965390068","revision":"42019764437469e865189dfd8ad8b1762b77a97a"},
+    {"path":"packages/contracts/src/orchestration.ts","digest":"12689420545354a0002abce9c3d7946c6caad48dd71afb9dd0b9289b527d1ea3","revision":"540e333a79fee816719cfb110466541ce12cf90e"},
 
     {"path":"src-server/routes/chat/chat.ts","digest":"db3e22211d805bb024b75e48493ff474d48eeb6a424f3329d8a938959ae44841","revision":"68a5eae4cbf2421447443d47b902fd7758e319fc"},
 
