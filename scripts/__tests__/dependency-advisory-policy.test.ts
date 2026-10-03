@@ -1098,7 +1098,6 @@ describe('scoped audit policy composition', () => {
     'validates unscanned global %s rules: %j',
     async (kind, override, message) => {
       const config = compositionConfig();
-      config.exceptions.push(validException());
       if (kind === 'exceptions') Object.assign(config.exceptions[0], override);
       else Object.assign(config.residuals[0], override);
       const result = evaluateAuditPolicy(
