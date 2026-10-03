@@ -14,7 +14,7 @@
   "sources": [
     {"path":"docs/architecture/module-map.md","digest":"f5011df51733a328bc7a6602b2a0c8988b397880b3eeb028f24897b97948da06","revision":"cdbbf99cf334245282450ff5bfc51dcd4f42d660"},
 
-    {"path":"docs/guides/testing.md","digest":"0cb4253b939858eac42d6d28b75eb82fd8556ed133277f566bc2f196f4b6d749","revision":"01c8161b147ae157927f5d9f60ec07ea9d2c6065"},
+    {"path":"docs/guides/testing.md","digest":"9d4e05743a212a295ecdefbeb1cafdddbe7d4cedf923295d07dd36736cc4c373","revision":"f55627e0627f6746899c13f9befb0b338c5a6f91"},
 
     {"path":"src-ui/src/components/Button.tsx","digest":"b5ec131e05175b7bed06b33e6ae9446cf1a7297ede17f2576dbef404fcf8ae7b","revision":"5d69f8f0eac14651004831e85e8053a989e2dd65"},
 
@@ -22,7 +22,7 @@
 
     {"path":"src-ui/src/components/ResponsiveDialogSurface.tsx","digest":"ff389dc7c2632309151df7065f56f8434712b5cba120324bbba48c7693a56612","revision":"f4eb9345e808edfbcadd25b1cf88a69db088f117"},
 
-    {"path":"src-ui/src/contexts/navigation-store.ts","digest":"d0cc105841ca2405afd67e7724376d98be9246bb0d62a663bfd2684218402a33","revision":"0ab9b2a8123e608900bae2492b40c0b35483ac2d"},
+    {"path":"src-ui/src/contexts/navigation-store.ts","digest":"2486db91eb4f818fec69048dcd202c7a7ffc5a9517c2cb11fa7728197f919607","revision":"4d59eb1868139f2faeaf1a1467811c22726f741c"},
 
     {"path":"src-ui/src/hooks/useUnsavedGuard.tsx","digest":"12fd9923bc5c1b7920be4ad426c00a55437be38fe1943ad42e27589072a7ec62","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"}
   ],

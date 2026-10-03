@@ -790,7 +790,11 @@ class NavigationStore {
       .catch(() => false);
   }
 
-  navigate(pathname: string, params?: Record<string, string | null>) {
+  navigate(
+    pathname: string,
+    params?: Record<string, string | null>,
+    options?: { preserveChatProjectDefault?: boolean },
+  ) {
     const target = parseNavigationTarget(pathname, window.location.href);
     if (
       !this.navigationGuardBypass &&
@@ -800,7 +804,7 @@ class NavigationStore {
       this.runNavigationGuards(() => {
         this.navigationGuardBypass = true;
         try {
-          this.navigate(pathname, params);
+          this.navigate(pathname, params, options);
         } finally {
           this.navigationGuardBypass = false;
         }
@@ -905,7 +909,19 @@ class NavigationStore {
     // A push discards every forward entry the browser held.
     for (const index of [...this.entryLocations.keys()])
       if (index > nextIndex) this.entryLocations.delete(index);
-    this.commitState(this.parseUrl(), true);
+    const next = this.parseUrl();
+    const previousProject = this.state.selectedProject;
+    this.commitState(next, true);
+    if (
+      !options?.preserveChatProjectDefault &&
+      next.selectedProject &&
+      (next.selectedProject !== previousProject ||
+        (target.pathname === `/projects/${next.selectedProject}` &&
+          !target.search &&
+          !params))
+    ) {
+      deviceSettingsStore.set('chatDockProjectSlug', next.selectedProject);
+    }
     this.notify();
     window.dispatchEvent(new PopStateEvent('popstate'));
     this.isNavigating = false;
@@ -1000,7 +1016,10 @@ class NavigationStore {
   setLayout(
     projectSlug: string,
     layoutSlug: string,
-    options?: { openFilePreviewIntent?: OpenFilePreviewIntent },
+    options?: {
+      openFilePreviewIntent?: OpenFilePreviewIntent;
+      preserveChatProjectDefault?: boolean;
+    },
   ) {
     this.lastProject = projectSlug;
     this.lastProjectLayout = layoutSlug;
@@ -1015,20 +1034,24 @@ class NavigationStore {
       : null;
     // A plain layout switch clears every File Preview query field. The routed
     // Project identity is authoritative, so a mismatched intent is not emitted.
-    this.navigate(rememberedTab ? `${base}/${rememberedTab}` : base, {
-      previewPath:
-        options?.openFilePreviewIntent?.projectSlug === projectSlug
-          ? (previewParams?.previewPath ?? null)
-          : null,
-      previewLineStart:
-        options?.openFilePreviewIntent?.projectSlug === projectSlug
-          ? (previewParams?.previewLineStart ?? null)
-          : null,
-      previewLineEnd:
-        options?.openFilePreviewIntent?.projectSlug === projectSlug
-          ? (previewParams?.previewLineEnd ?? null)
-          : null,
-    });
+    this.navigate(
+      rememberedTab ? `${base}/${rememberedTab}` : base,
+      {
+        previewPath:
+          options?.openFilePreviewIntent?.projectSlug === projectSlug
+            ? (previewParams?.previewPath ?? null)
+            : null,
+        previewLineStart:
+          options?.openFilePreviewIntent?.projectSlug === projectSlug
+            ? (previewParams?.previewLineStart ?? null)
+            : null,
+        previewLineEnd:
+          options?.openFilePreviewIntent?.projectSlug === projectSlug
+            ? (previewParams?.previewLineEnd ?? null)
+            : null,
+      },
+      options,
+    );
   }
 
   setConversation(id: string | null) {
