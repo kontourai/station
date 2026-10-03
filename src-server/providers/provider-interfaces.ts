@@ -7,11 +7,12 @@ import type {
 } from '@kontourai/station-contracts/auth';
 import type {
   InstallResult,
+  PluginRegistryProvider,
   RegistryItem,
+  SkillRegistryProvider,
 } from '@kontourai/station-contracts/catalog';
 import type { AppConfig } from '@kontourai/station-contracts/config';
 import type { ScheduleNotificationOpts } from '@kontourai/station-contracts/notification';
-import type { PluginPreview } from '@kontourai/station-contracts/plugin';
 import type { EngineId } from '@kontourai/station-contracts/provider';
 import type { IPullRequestProvider } from '@kontourai/station-contracts/pull-request-provider';
 import type {
@@ -51,54 +52,8 @@ export interface IIntegrationRegistryProvider {
   update?(id: string): Promise<InstallResult>;
 }
 
-export interface ISkillRegistryProvider {
-  listAvailable(): Promise<RegistryItem[]>;
-  listInstalled(): Promise<RegistryItem[]>;
-  install(id: string, targetDir: string): Promise<InstallResult>;
-  uninstall(id: string, targetDir: string): Promise<InstallResult>;
-  update?(id: string): Promise<InstallResult>;
-  getContent?(id: string): Promise<string | null>;
-}
-
-export interface IPluginRegistryProvider {
-  readonly registryKey?: string;
-  /** One fresh catalog observation. Claims remain untrusted until the installer verifies them. */
-  resolvePackage?(id: string): Promise<{
-    source: string;
-    claim?: unknown;
-  } | null>;
-  listAvailable(): Promise<RegistryItem[]>;
-  listInstalled(): Promise<RegistryItem[]>;
-  resolveSource?(id: string): Promise<string | null>;
-  /**
-   * `expectedInstalledPluginName` is an identity assertion a caller supplies
-   * when it has already committed to a specific `<plugins>/<name>` — an
-   * update bound to a registry alias, or a dependency install that took that
-   * path's content lock and will validate and possibly roll back that tree. A
-   * provider derives its own write target from the manifest it fetched; when
-   * the two disagree it must refuse BEFORE writing rather than rewrite a
-   * different plugin's tree. Optional so a provider that cannot resolve a
-   * name ahead of its write is still assignable; callers therefore treat it
-   * as defence in depth, not as proof (archive#4309 follow-up review,
-   * MEDIUM 3).
-   */
-  install(
-    id: string,
-    options?: { expectedInstalledPluginName?: string },
-  ): Promise<
-    InstallResult & {
-      /**
-       * Compensates only the durable registry ownership written by this
-       * successful install. The dependency installer invokes it when a later
-       * validation or activation step refuses the installed tree.
-       */
-      rollback?: () => Promise<void>;
-    }
-  >;
-  uninstall(id: string): Promise<InstallResult>;
-  preview?(id: string): Promise<PluginPreview>;
-  update?(id: string): Promise<InstallResult>;
-}
+export type ISkillRegistryProvider = SkillRegistryProvider;
+export type IPluginRegistryProvider = PluginRegistryProvider;
 
 export interface IAuthProvider {
   getStatus(): Promise<AuthStatus>;
