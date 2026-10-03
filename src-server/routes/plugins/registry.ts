@@ -724,28 +724,37 @@ export function createRegistryRoutes(
   });
 
   // ── Skill Registry ──────────────────────────────────────
+  const sourceVisible =
+    (c: Context) =>
+    (source: import('@kontourai/station-contracts/catalog').RegistrySource) =>
+      source.origin !== 'plugin' ||
+      deps?.canSeePlugin?.(c, source.owner!) === true;
 
   app.get('/skills', async (c) => {
     registryOps.add(1, { operation: 'list-skills' });
     const installed = skillService?.listSkills() ?? [];
-    const data = (await sources.catalog('skills')).map((item) => {
-      const sameName = installed.find(
-        (skill) => skill.name === item.catalog?.itemId,
-      );
-      const owns =
-        !!sameName &&
-        sameName.provenance?.catalog?.sourceId === item.catalog?.sourceId;
-      return {
-        ...item,
-        installed: owns,
-        ...(PROTOTYPE_AFFECTING_KEYS.includes(item.catalog?.itemId ?? item.id)
-          ? { status: 'unsupported-skill-name' }
-          : sameName && !owns
-            ? { status: 'installed-name-conflict' }
-            : {}),
-      };
-    });
-    const sourceStatus = sources.list();
+    const data = (await sources.catalog('skills', sourceVisible(c))).map(
+      (item) => {
+        const sameName = installed.find(
+          (skill) => skill.name === item.catalog?.itemId,
+        );
+        const owns =
+          !!sameName &&
+          sameName.provenance?.catalog?.sourceId === item.catalog?.sourceId;
+        return {
+          ...item,
+          installed: owns,
+          ...(PROTOTYPE_AFFECTING_KEYS.includes(item.catalog?.itemId ?? item.id)
+            ? { status: 'unsupported-skill-name' }
+            : sameName && !owns
+              ? { status: 'installed-name-conflict' }
+              : {}),
+        };
+      },
+    );
+    const sourceStatus = sources
+      .list()
+      .filter((source) => source.kind === 'skills' && sourceVisible(c)(source));
     const failed = sourceStatus.filter(
       (source) => source.enabled && ['error', 'stale'].includes(source.status),
     );
@@ -797,6 +806,42 @@ export function createRegistryRoutes(
         500,
       );
     try {
+      const selection = readRegistryCatalogSelection(id);
+      if (selection) {
+        const source = sources
+          .list()
+          .find((source) => source.id === selection.sourceId);
+        if (source && !sourceVisible(c)(source))
+          return c.json(
+            {
+              success: false,
+              message: 'Selected marketplace is not available to this caller.',
+            },
+            403,
+          );
+      } else {
+        const items = (
+          await sources.catalog('skills', sourceVisible(c))
+        ).filter((item) => item.catalog?.itemId === id);
+        if (items.length !== 1)
+          return c.json(
+            {
+              success: false,
+              message:
+                items.length > 1
+                  ? 'Skill name is present in multiple marketplaces. Select its source before installing.'
+                  : 'No available marketplace contains this skill.',
+            },
+            500,
+          );
+        const result = await skillService.installSkill(
+          items[0]!.id,
+          projectHomeDir,
+        );
+        if (result.success && reloadSkills)
+          await reloadSkills().catch(() => {});
+        return c.json(result, result.success ? 200 : 500);
+      }
       const result = await skillService.installSkill(
         id,
         configLoader.getProjectHomeDir(),
@@ -926,7 +971,7 @@ export function createRegistryRoutes(
       const selection = readRegistryCatalogSelection(id);
       const matches = selection
         ? []
-        : (await sources.catalog('skills')).filter(
+        : (await sources.catalog('skills', sourceVisible(c))).filter(
             (item) => item.catalog?.itemId === id,
           );
       if (!selection && matches.length !== 1)
@@ -939,6 +984,14 @@ export function createRegistryRoutes(
           409,
         );
       const selected = await sources.resolve(selection ? id : matches[0]!.id);
+      if (!sourceVisible(c)(selected.entry.source))
+        return c.json(
+          {
+            success: false,
+            error: 'Selected marketplace is not available to this caller.',
+          },
+          403,
+        );
       if (selected.selection.kind !== 'skills')
         return c.json(
           { success: false, error: 'Selected item is not a skill.' },
@@ -952,6 +1005,14 @@ export function createRegistryRoutes(
         return c.json(
           { success: false, error: 'Selected skill cannot be inspected.' },
           404,
+        );
+      if (!sourceVisible(c)(selected.entry.source))
+        return c.json(
+          {
+            success: false,
+            error: 'Selected marketplace is not available to this caller.',
+          },
+          403,
         );
       return c.json({
         success: true,

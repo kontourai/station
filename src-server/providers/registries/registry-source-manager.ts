@@ -494,10 +494,16 @@ export class RegistrySourceManager {
 
   async catalog(
     kind: RegistryCatalogSelection['kind'],
+    visible: (source: RegistrySource) => boolean = () => true,
   ): Promise<RegistryItem[]> {
     const results = await Promise.all(
       this.entries()
-        .filter((entry) => entry.kind === kind && entry.source.enabled)
+        .filter(
+          (entry) =>
+            entry.kind === kind &&
+            entry.source.enabled &&
+            visible(entry.source),
+        )
         .map(async (entry) => {
           try {
             const data = (await this.observe(entry)).data;

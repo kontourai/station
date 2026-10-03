@@ -168,6 +168,7 @@ function setup(
           display: 'Operator',
         }),
       },
+      canSeePlugin: () => true,
       kitObservabilityRegistry,
       approveKitOperatorAction,
       applyConfigurationMutation,
@@ -864,7 +865,7 @@ describe('Registry Routes', () => {
     expect(response.status).toBe(200);
     expect(await json(response)).toEqual({ success: true });
     expect(skillService.installSkill).toHaveBeenCalledExactlyOnceWith(
-      's1',
+      expect.stringMatching(/^catalog\./),
       registryHome,
     );
     expect(reloadSkills).toHaveBeenCalledOnce();

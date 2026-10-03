@@ -42,6 +42,7 @@ function setup() {
   const service = new SkillService(config, logger);
   const app = createRegistryRoutes(config, async () => {}, undefined, service, {
     logger,
+    canSeePlugin: () => true,
     visibility: {
       resolvePrincipal: () => ({
         id: LOCAL_OPERATOR_PRINCIPAL_ID,
@@ -136,6 +137,52 @@ describe('Marketplace source lifecycle through Registry routes', () => {
         )
       ).status,
     ).toBe(409);
+  });
+
+  test('caller projection withholds ungranted plugin-owned skill sources and refuses a copied selection before effects', async () => {
+    const { config, service, request, home } = setup();
+    await replacePluginProvidersForSource('private-skill-plugin', [
+      {
+        type: 'skillRegistry',
+        source: 'private-skill-plugin',
+        provider: {
+          registryKey: 'private-skills',
+          listAvailable: async () => [
+            { id: 'private-skill', installed: false },
+          ],
+          listInstalled: async () => [],
+          getPackageRevision: async () => 'private-revision',
+          getContent: async () => 'Private instructions',
+          install: async () => ({ success: false, message: 'not expected' }),
+          uninstall: async () => ({ success: false, message: 'not expected' }),
+        },
+      },
+    ]);
+    const selected = (await catalog(request))[0]!;
+    const denied = createRegistryRoutes(
+      config,
+      async () => {},
+      undefined,
+      service,
+      { logger, canSeePlugin: () => false },
+    );
+    expect(await (await denied.request('/skills')).json()).toMatchObject({
+      data: [],
+      sources: [],
+    });
+    expect(
+      (await denied.request(`/skills/${selected.id}/content`)).status,
+    ).toBe(403);
+    expect(
+      (
+        await denied.request('/skills/install', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: selected.id }),
+        })
+      ).status,
+    ).toBe(403);
+    await expect(access(join(home, 'skills/private-skill'))).rejects.toThrow();
   });
 
   test('a selected provider refusal never installs or inspects a same-name alternative', async () => {
