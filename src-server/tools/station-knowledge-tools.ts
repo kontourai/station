@@ -20,7 +20,7 @@ const rootId = z.string().min(1).max(300);
 const recordId = z.string().min(1).max(200);
 const recordType = z.enum(['raw', 'compiled', 'concept', 'snapshot', 'person']);
 
-export function registerKnowledgeSearchTool(
+function registerKnowledgeSearchTool(
   server: StationControlToolRegistry,
 ) {
   server.tool(

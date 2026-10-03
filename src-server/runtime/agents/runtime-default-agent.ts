@@ -115,7 +115,7 @@ export function createRuntimeSelfIntegration() {
   };
 }
 
-export function createRuntimeKnowledgeIntegration() {
+function createRuntimeKnowledgeIntegration() {
   return {
     knowledgeIntegrationId: BUILTIN_STATION_KNOWLEDGE_TOOL_SERVER_ID,
     knowledgeIntegration: {
