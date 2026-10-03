@@ -78,7 +78,7 @@
 
     {"path":"src-desktop/src/native_relay_link_intake.rs","digest":"f9006742ccebb94eeaa9b18936d480697bad199322ac1f5161cada86198b97c9","revision":"7ad03486b8521649247b6a728da71d08780069ac"},
 
-    {"path":"src-desktop/src/native_relay_redemption.rs","digest":"dbf3c222dce269cb71deba9d86e1f9b51f58f8d1abc77f3f4583556f160ae115","revision":"70e9b50c5329411de0b7b432408f0722407a0208"},
+    {"path":"src-desktop/src/native_relay_redemption.rs","digest":"a56d97c24bdf73ff4e2328bd73c022a2c12815c0ca1420e49cc964f7cdf2d22c","revision":"11b4ccc5932fa6788af8276326296bd86f51542c"},
 
     {"path":"src-desktop/src/native_secure_entry.rs","digest":"d6ff8051df4be60ff738f524488fe877b0711b95aa606cb70b378e74962bd209","revision":"8d92d732808201554ba801334e2a19f7081fd09d"},
 
@@ -106,7 +106,7 @@
 
     {"path":"src-ui/src/platform/native/__tests__/nativeRelayGrantRenewalSupervisor.test.ts","digest":"cfaf202f379a51d5bbe0b5752a43f8eedb794b27273d18cb5034fccfd7c60807","revision":"63b38388826be9b989d3a94c88052e65c69b2d63"},
 
-    {"path":"src-ui/src/platform/native/__tests__/NativeRelayLinkIntake.test.tsx","digest":"4a7272bf2aec7fd3af4e3098dfdef975d376f2924d794fa437d3547efbffadec","revision":"00e6787a016649c527aa862f9e15327b06e2d6e3"},
+    {"path":"src-ui/src/platform/native/__tests__/NativeRelayLinkIntake.test.tsx","digest":"e8c4774b0553d5325d7b3d9501a7d2f31c396f38be5665617ed1b7001302fc7a","revision":"6783c3816613cd15f9daaa85a1bfad0b77056d6c"},
 
     {"path":"src-ui/src/platform/native/__tests__/rendererLiveness.test.tsx","digest":"ccc6ecb72b88623cffc931a3b44f59a1d9367f15e283aea5286d339c44a0c2d3","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -124,7 +124,7 @@
 
     {"path":"src-ui/src/platform/native/rendererLiveness.tsx","digest":"8a47896392329e0bce4fc0ca3ce544171cff1e2df6bcb77097c97ff26ce78c63","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/views/connections-hub/__tests__/RelayRouteProfiles.test.tsx","digest":"350b990b0790316bf3a703f35ae3a4e2c6aa388c8580b80d7c696f2c81e16d59","revision":"fc7857beb8210ea8db44cf3ffe50ae30b3aca057"},
+    {"path":"src-ui/src/views/connections-hub/__tests__/RelayRouteProfiles.test.tsx","digest":"0daf870839a1a2f932dd84c38cf9d27e86dbd21f5c61f139eb51898d9c99ea7c","revision":"6783c3816613cd15f9daaa85a1bfad0b77056d6c"},
 
     {"path":"src-ui/src/views/connections-hub/NativeRelayEnrollmentWizard.tsx","digest":"79cb2659b18787521916dfabca3b3cd4bf26ed24bb81e7ec488a3823e3e872b2","revision":"fc7857beb8210ea8db44cf3ffe50ae30b3aca057"},
 
