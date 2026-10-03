@@ -60,7 +60,7 @@
 
     {"path":"packages/shared/src/station-home-schema.ts","digest":"db4b3e2883079cf1f4aa55f10b955f42b767e580bbf5a51350c75f3c56d4e1db","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"pnpm-lock.yaml","digest":"29dbdce300fcd3d881ae511317af478da6e9c098a8e8cf51c6b2269a937525df","revision":"df9188971e1a93d2c5525a7f5f38e3da93c9e4de"},
+    {"path":"pnpm-lock.yaml","digest":"5c3c9968c59ac5b4e7e5ec861c2873bfce11b7c60e7b28e8706db6b29d028ddb","revision":"1e6450e0caa47975d33f505a1348bdc01ae1382e"},
 
     {"path":"scripts/__tests__/browser-preview-packaged-fixture.test.ts","digest":"9b4629b23e89e0896de6a639f02e9282e1fb9a856bc80e9445ec193eb0aa20a5","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
