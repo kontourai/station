@@ -300,13 +300,7 @@ function resolveConflictedManifest(root, mergeBase) {
   let refs;
   if (stages.size === 0) {
     if (mergeBase === undefined) return false;
-    let mergeHead;
-    try {
-      mergeHead = git(root, ['rev-parse', '--verify', 'MERGE_HEAD']).trim();
-    } catch {
-      return false;
-    }
-    refs = [mergeBase, 'HEAD', mergeHead].map(
+    refs = [mergeBase, 'HEAD', 'MERGE_HEAD'].map(
       (ref) => `${ref}:${LEARNING_MEDIA_MANIFEST}`,
     );
   } else {
@@ -340,9 +334,26 @@ function resolveConflictedManifest(root, mergeBase) {
       `${LEARNING_MEDIA_MANIFEST} conflicts, but not between the old and new layouts; resolve it and rerun`,
     );
   }
+  const working =
+    stages.size === 0
+      ? JSON.parse(
+          createLearningSourceReader(root)
+            .read(LEARNING_MEDIA_MANIFEST)
+            .toString('utf8'),
+        )
+      : migrated;
+  const merged = mergeManifests(base, branch, working);
+  if (stages.size === 0) {
+    // Preserve review edits made after Git's automatic merge.
+    const captures = new Map(
+      working.captures.map((capture) => [capture.path, capture]),
+    );
+    for (const capture of merged.captures)
+      Object.assign(capture, reviewOf(captures.get(capture.path)));
+  }
   writeFileSync(
     path.join(root, LEARNING_MEDIA_MANIFEST),
-    serializeLearningMedia(mergeManifests(base, branch, migrated)),
+    serializeLearningMedia(merged),
   );
   return true;
 }
