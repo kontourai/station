@@ -174,6 +174,7 @@ vi.mock('../platform/useBundledServerStatus', () => ({
 vi.mock('../lib/serverHealth', () => ({
   checkServerHealth: vi.fn(),
   checkServerHealthDetailed: vi.fn(),
+  probeServerConnection: vi.fn(),
 }));
 
 // archive#1776 — this used to mock `connectionFailureCopy`
@@ -191,6 +192,7 @@ vi.mock('@kontourai/station-connect', async (importOriginal) => {
     await importOriginal<typeof import('@kontourai/station-connect')>();
   return {
     ...actual,
+    useConnectionStatus: () => ({ status: 'connected', reason: null }),
     useConnections: () => ({
       apiBase: 'http://localhost:3242',
       activeConnection: {

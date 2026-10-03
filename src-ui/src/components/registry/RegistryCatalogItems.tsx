@@ -8,6 +8,7 @@ import {
 import {
   getRegistryActionLabel,
   getRegistryItemId,
+  getRegistrySkillInstallRefusal,
   getRegistrySourceLabel,
   type RegistryItem,
 } from './registryCatalogModel';
@@ -43,12 +44,16 @@ export function RegistryCatalogDetail({
   checkingInstalled: boolean;
   actions: ItemActions;
 }) {
+  const installRefusal = installed
+    ? null
+    : getRegistrySkillInstallRefusal(tab, item);
   const skillHint =
-    tab === 'skills'
+    installRefusal ??
+    (tab === 'skills'
       ? installed
         ? 'Removing deletes the workspace copy so the skill is no longer selectable in agent definitions.'
         : 'Installing copies this skill into the workspace so it becomes selectable in agent definitions.'
-      : null;
+      : null);
   const source = getRegistrySourceLabel(item);
   const isInstalledPlugin = tab === 'plugins' && installed;
   return (
@@ -118,17 +123,19 @@ export function RegistryCatalogDetail({
           <Button
             variant="primary"
             size="sm"
-            disabled={pending || checkingInstalled}
+            disabled={pending || checkingInstalled || !!installRefusal}
             onClick={() => {
               actions.clearMessage();
               actions.runAction(item, id, installed);
             }}
           >
-            {checkingInstalled
-              ? 'Checking installed status...'
-              : pending
-                ? 'Working...'
-                : getRegistryActionLabel(tab, installed)}
+            {installRefusal
+              ? 'Unavailable'
+              : checkingInstalled
+                ? 'Checking installed status...'
+                : pending
+                  ? 'Working...'
+                  : getRegistryActionLabel(tab, installed)}
           </Button>
         )}
       </div>
@@ -220,7 +227,9 @@ function RegistryItemHeading({
           ? (item.lifecycle?.state ?? 'Available')
           : installed
             ? 'Installed'
-            : 'Available'}
+            : getRegistrySkillInstallRefusal(tab, item)
+              ? 'Unavailable'
+              : 'Available'}
       </span>
     </div>
   );

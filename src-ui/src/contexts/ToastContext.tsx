@@ -60,6 +60,15 @@ type Toast = {
    * the file and never the content (see that module's docblock).
    */
   toolPreview?: string;
+  /**
+   * A 'tool-approval' toast's own request: `sessionId` is the request's
+   * thread, this is its `requestId`. The toast is dismissed by this identity
+   * (`dismissApprovalRequest`), never only through a chat's side map — a map
+   * that a conversation switch, a handoff or a closed tab resets or removes
+   * left the toast, and the header "Approval needed" count, outliving its
+   * request.
+   */
+  approvalRequestId?: string;
   agentName?: string;
   conversationTitle?: string;
   actions?: ToastAction[];
@@ -183,6 +192,8 @@ class ToastStore {
 
   showToolApproval(options: {
     sessionId: string;
+    /** See `Toast.approvalRequestId`. */
+    requestId?: string;
     toolName: string;
     /** See `Toast.toolPreview`. */
     toolPreview?: string;
@@ -208,6 +219,7 @@ class ToastStore {
       message: `${options.agentName} wants to use ${toolDisplay}`,
       sessionId: options.sessionId,
       type: 'tool-approval',
+      ...(options.requestId ? { approvalRequestId: options.requestId } : {}),
       toolName: toolDisplay,
       ...(options.toolPreview ? { toolPreview: options.toolPreview } : {}),
       agentName: options.agentName,
@@ -355,6 +367,24 @@ class ToastStore {
 
     this.toasts = this.toasts.filter((t) => t.id !== id);
     this.notify();
+  }
+
+  /**
+   * Dismiss every approval toast for one request, by the request's identity.
+   * Idempotent, and independent of any chat's state: a request settles
+   * whether or not the chat that first showed it is still open or still
+   * bound to that thread.
+   */
+  dismissApprovalRequest(threadId: string, requestId: string) {
+    for (const item of this.history) {
+      if (
+        item.type === 'tool-approval' &&
+        !item.dismissed &&
+        item.sessionId === threadId &&
+        item.approvalRequestId === requestId
+      )
+        this.dismiss(item.id);
+    }
   }
 
   clear() {

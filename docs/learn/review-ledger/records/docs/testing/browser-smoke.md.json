@@ -12,9 +12,9 @@
   "document": {"digest":"2bc25a448c6189b75253f9b26a10665f40107d168858254c46752f8a2f559412","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
   "sources": [
-    {"path":".github/workflows/ci.yml","digest":"092798d877aa8138f197a0edbd7547e876dc2e310b54b4e00598f8f48b3535b8","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":".github/workflows/ci.yml","digest":"9b586bd70bb7c94986ce19ee41151ff768bad2a308a196a15047375c92f9646a","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
 
-    {"path":"scripts/__tests__/ci-fast-checks-job-graph.test.ts","digest":"6dd1caae1b87f19ed95a7275cd4b175c1f717e8c12e366c491dceeefea078750","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"scripts/__tests__/ci-fast-checks-job-graph.test.ts","digest":"6b102e92ea63fb9103d801ec2ad0da304204de5c39d5cdb6540f7e21070c21e5","revision":"de240170769fcf739c188b104f801d4371f8086d"},
 
     {"path":"scripts/__tests__/e2e-coverage.test.ts","digest":"f62d79ceaa3fd83f136477158e595af8a6aa44f5125a314f1a69a2d7fee385dc","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
@@ -24,31 +24,31 @@
 
     {"path":"scripts/critical-browser-reporter.mjs","digest":"fa41f65ec79861edeb1cec7d9b9874f561af1912d4b2ef5bbde3841843baf2b6","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"scripts/fast-checks-shard.mjs","digest":"51f793094813cf4b6d7307f03ae1519fea2ecd4c253427c58a1eb86241e311e1","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"scripts/fast-checks-shard.mjs","digest":"175bfe5bbb4e6c3a3a334dbcbf1b28f6b7579068bbd41095613b458cae438ef6","revision":"de240170769fcf739c188b104f801d4371f8086d"},
 
-    {"path":"scripts/lib/fast-checks-shards.mjs","digest":"bf2ae7c3888d17e789aeb7a5f3acda22b53540fa85ce98b5fe517ea5ede6c590","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"scripts/lib/fast-checks-shards.mjs","digest":"6c0ded4c94e1316dcb83406c37c762398b15da198498a1037d62f21625d661fc","revision":"555c5aa3646e08ef44d26002f81508daf7a32305"},
 
     {"path":"scripts/run-e2e-suite.mjs","digest":"6a11a2a611efee2a6ea5aee135d7ea1a8fffcf9bc9c73f0936508ba1e4bde4dc","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"tests/connect-modal.spec.ts","digest":"6d63119b07073540c9dd1326af41d26d59e12da070bb0c3a2386ecd435db45b6","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"tests/connect-modal.spec.ts","digest":"e9dc0d34c938e4e853b9526575bfb31bdfbff80e9526b1a09cc0c9e61ea5a5e4","revision":"c10772e15ed1dbd83968746a45a20d6c26bbd4f2"},
 
     {"path":"tests/connect-remote-auth-recovery.spec.ts","digest":"cad2b1bd2981df02fffb35b094cd8853c60c987fa786f229f7695a5cc3fccc81","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"tests/cross-runtime-chat-switching.spec.ts","digest":"90e9da8c2b40784d4082a076f6c3e926800ccecb79e1a1f28249675379424507","revision":"03240cbbac3f4c9d20200582858c5b516be93912"},
+    {"path":"tests/cross-runtime-chat-switching.spec.ts","digest":"0aeb646fe962c41108316c65360c405268ea7061ea2504e7441b51a0a9bd2878","revision":"8fd71c3714eceeb651bd8e52f200aa1532fa33c6"},
 
-    {"path":"tests/csp-shell.spec.ts","digest":"d970b0c1d9081b74d24dccd4faa3a8a4d87f97b38c6c05074ed0824ba1b287b7","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"tests/csp-shell.spec.ts","digest":"2d4188a6409f2de786843b35a2fa405f5257af78467ad9fce030d73a6f69511e","revision":"c10772e15ed1dbd83968746a45a20d6c26bbd4f2"},
 
-    {"path":"tests/e2e-manifest.mjs","digest":"f892fafd89cc9e3374f8b5b063b83339daa37292def7eb8f331689d7b67fcc1f","revision":"426153191586e330abfdfca99debbeab43855d09"},
+    {"path":"tests/e2e-manifest.mjs","digest":"2fbba39624069865e8b0ab8e45746f104001e3be4e591e098e916e9a405ae873","revision":"5c4d665e0ceed44dc820abfe3ec98bd919a84570"},
 
     {"path":"tests/helpers/browser-health.ts","digest":"67b5cf9fe4f17a137bea6daeffc4a3cd81433f2058938f9d0bcf90a91efc3921","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
     {"path":"tests/helpers/ollama-fixture.ts","digest":"1f9e2f666db8c43303edfd0b8fbf3d263dc39e8395c43028aa74128a51a8b8ae","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"tests/orchestration-chat-flow.spec.ts","digest":"a15f142cc2cb2eff65419fb97a1adae668a2f6afecbc6466d576bad1d4beca2f","revision":"2b22c2609a75d0f40b77472fe918de3c34094b69"},
+    {"path":"tests/orchestration-chat-flow.spec.ts","digest":"24c14104688ee219d5d5e78e0099e740d6132e03f5a2a218ae64b6fd5b231716","revision":"b6e91add12d9c42b59c59f070ca541e9a9d63e62"},
 
     {"path":"tests/pr-smoke-live-chat-send.spec.ts","digest":"34e256af4b0ff8c90928093987dcc152ee370f4719677716c2082d639833db45","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"tests/ui-crud-smoke.spec.ts","digest":"233184627b80a8c4ecd3e6ab23ae71c16d9cd485129f1d597074844d7ce49592","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"}
+    {"path":"tests/ui-crud-smoke.spec.ts","digest":"7d7ff82fd5933733973d5fec0cf27e833842307ebdbe96a73be0e76aee7eddaa","revision":"42811285ef04d069daf576d46253ac833573f848"}
   ],
 
   "checks": [

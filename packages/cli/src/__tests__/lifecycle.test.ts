@@ -3883,6 +3883,23 @@ describe('collectDoctorReport', () => {
       effective: 'ollama (detected)',
     });
     expect(report.runtimeState.effective).toBeNull();
+    // The suggested payload must satisfy the server's connection write
+    // schema, which requires these fields (connectionSchema in
+    // src-server/routes/schemas/schema-definitions/runtime.ts).
+    const saveOllama = report.fixCommands.find(
+      (fix) => fix.label === 'Save detected Ollama as a model connection',
+    );
+    const payload = JSON.parse(
+      /--data '(.*)'$/.exec(saveOllama?.command ?? '')?.[1] ?? 'null',
+    );
+    expect(payload).toMatchObject({
+      kind: 'model',
+      type: 'ollama',
+      name: expect.any(String),
+      enabled: true,
+      capabilities: ['llm'],
+      config: expect.any(Object),
+    });
     expect(report.fixCommands).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -7796,7 +7813,9 @@ describe('lifecycle build + restart ergonomics', () => {
       socket.destroy = vi.fn();
       socket.setTimeout = vi.fn();
       queueMicrotask(() => {
-        now = 90_000;
+        // Each refused probe spends a whole base budget, so the wait walks
+        // through its bounded slow-boot extensions (#2964) and still gives up.
+        now += 90_000;
         socket.emit('error', new Error('seeded terminal refusal'));
       });
       return socket;
@@ -7831,6 +7850,14 @@ describe('lifecycle build + restart ergonomics', () => {
           uiPort: 5274,
         }),
       ).rejects.toThrow('Timed out waiting for TCP listener 127.0.0.1:3243');
+      // start() hands the server child's liveness to the TCP waits (#2964):
+      // with it, the terminal port is probed again after the base deadline;
+      // without it, the first refused probe would be the only one.
+      // The mock declares no parameters, so its calls are read as unknowns.
+      const terminalProbes = (tcpConnect.mock.calls as unknown[][]).filter(
+        ([target]) => (target as { port?: number } | undefined)?.port === 3243,
+      );
+      expect(terminalProbes.length).toBeGreaterThan(1);
       expect(killProcessTree).toHaveBeenCalledWith(44001);
       expect(killProcessTree).toHaveBeenCalledWith(44002);
       expect(existsSync(getInstanceStatePath('terminal-not-ready'))).toBe(

@@ -182,18 +182,6 @@ export function ChatDockHeader({
           },
         ]
       : []),
-    ...(workspaceControls?.showInboxToggle
-      ? [
-          {
-            key: 'chat-list',
-            label: workspaceControls.isInboxOpen
-              ? 'Collapse chat list'
-              : 'Expand chat list',
-            checked: workspaceControls.isInboxOpen,
-            onSelect: () => workspaceControls.onToggleInbox(),
-          },
-        ]
-      : []),
     ...(workspaceControls
       ? [
           {
@@ -255,7 +243,7 @@ export function ChatDockHeader({
   // ChatDockMobileHeader instead of this component, so mobile-only branches
   // here are unreachable (#1066).
   //
-  // #1536 F: the chat-settings gear, the chat-list toggle, Background tasks,
+  // #1536 F: the chat-settings gear, Background tasks,
   // Session inventory and the bare ⌘D keycap that sat here are rows of the
   // More menu in the actions cluster now. #1529 (#928 C2b) took the occupant
   // picker with the legacy docked-Home path. #2046 2b took the placement grab
@@ -285,6 +273,48 @@ export function ChatDockHeader({
 
   const trailing = (
     <>
+      {workspaceControls?.showInboxToggle && (
+        <button
+          type="button"
+          className="chat-dock__icon-btn"
+          aria-label={
+            workspaceControls.isInboxOpen
+              ? 'Collapse chat list'
+              : 'Expand chat list'
+          }
+          title={
+            workspaceControls.isInboxOpen
+              ? 'Collapse chat list'
+              : 'Expand chat list'
+          }
+          aria-pressed={workspaceControls.isInboxOpen}
+          onClick={workspaceControls.onToggleInbox}
+        >
+          <svg
+            aria-hidden="true"
+            width="16"
+            height="16"
+            viewBox="0 0 16 16"
+            fill="none"
+          >
+            <rect
+              x="2"
+              y="2"
+              width="12"
+              height="12"
+              rx="2"
+              stroke="currentColor"
+            />
+            <path d="M6 2v12" stroke="currentColor" />
+            <path
+              d={
+                workspaceControls.isInboxOpen ? 'm10 6-2 2 2 2' : 'm9 6 2 2-2 2'
+              }
+              stroke="currentColor"
+            />
+          </svg>
+        </button>
+      )}
       {workspaceControls ? (
         <LazyBoundary
           load={loadChatDockWorkspaceActions}

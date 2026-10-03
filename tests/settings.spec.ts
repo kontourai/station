@@ -175,9 +175,8 @@ test.describe('Settings', () => {
   // a vertical rail, and every group heading is on screen without scrolling.
   // Before this, the strip scrolled sideways at every width and at 1440x900
   // cut off after the second group heading — three of five groups sat
-  // behind a horizontal scroll nothing announced. The mobile test above
-  // keeps the strip; this pins the other half of the modifier, and both
-  // would go red together if the breakpoint stopped being a complement.
+  // behind a horizontal scroll nothing announced. Phones use the section
+  // picker; this verifies the desktop rail independently.
   test('at desktop width the section navigation is a rail that shows every group', async ({
     page,
   }) => {
@@ -559,7 +558,7 @@ test.describe('Settings', () => {
     await row.getByRole('button', { name: 'Restore default' }).click();
   });
 
-  test('mobile layout has horizontal scroll nav and read-only shortcuts', async ({
+  test('mobile section picker reaches settings and setup destinations', async ({
     page,
   }) => {
     await page.setViewportSize({ width: 390, height: 844 });
@@ -570,20 +569,28 @@ test.describe('Settings', () => {
     await filter.blur();
     await expect(filter).toHaveCSS('font-size', '16px');
     await filter.fill('');
-    const nav = page.locator('.settings__section-nav');
-    const overflowX = await nav.evaluate(
-      (el) => getComputedStyle(el).overflowX,
-    );
-    expect(overflowX).toBe('auto');
-    await page
-      .getByRole('link', { name: 'Keyboard shortcuts', exact: true })
-      .click();
+    await expect(page.locator('.settings__section-nav')).toBeHidden();
+    const picker = page.getByRole('combobox', { name: 'Settings section' });
+    await expect(picker).toBeVisible();
+    expect((await picker.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    await picker.selectOption({ label: 'Notifications' });
+    await expect(page).toHaveURL(/view=notifications/);
+    for (const name of ['Agent notifications', 'Approval requests sound']) {
+      expect(
+        (await page.getByRole('combobox', { name }).boundingBox())!.height,
+      ).toBeGreaterThanOrEqual(44);
+    }
+    await picker.selectOption({ label: 'Keyboard shortcuts' });
+    await expect(page).toHaveURL(/view=keyboard-shortcuts/);
     await expect(
       page.getByText(/Edit them from Station on a computer/i),
     ).toBeVisible();
     await expect(
       page.getByRole('button', { name: 'Shortcut for Toggle settings' }),
     ).toBeDisabled();
+    await picker.selectOption({ label: 'Agents' });
+    await expect(page).toHaveURL(/\/agents$/);
+    await expect(page.getByRole('button', { name: 'New agent' })).toBeVisible();
   });
 
   test('search filters sections', async ({ page }) => {

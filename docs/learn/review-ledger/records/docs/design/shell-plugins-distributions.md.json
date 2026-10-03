@@ -20,7 +20,7 @@
 
     {"path":"packages/contracts/src/workspace-home-role.ts","digest":"afdd6ec33526422a7a455cfc575cdd5d662277a8a5c356db6f5b2b564de038f4","revision":"25e49629d9894a7e601ae2923a53cfe932560dd8"},
 
-    {"path":"packages/shared/src/build.ts","digest":"a985e6f1e039bf69fdcb6990255d899d45900aa145b539a6e0249a6e5843af21","revision":"d326e74f0f416a770b08cb1b66badf150618b3c0"},
+    {"path":"packages/shared/src/build.ts","digest":"20f919a4a98519ce20e8e2f0d5d498a4be8daeba1314a97ddae752fd36df4630","revision":"1e6450e0caa47975d33f505a1348bdc01ae1382e"},
 
     {"path":"src-server/routes/plugins/plugin-home-role-routes.ts","digest":"ad2b553accde4e731ec6db42c7d4c69092ccda2a50ed8cfefc6cc6f4d1dcba00","revision":"25e49629d9894a7e601ae2923a53cfe932560dd8"},
 
@@ -28,7 +28,7 @@
 
     {"path":"src-server/services/plugins/plugin-visibility-service.ts","digest":"3fbbb277c5cc0b0d9c4a7f1a5e8b79913a7bfa4bb93971374aebcb6aba7ae579","revision":"25e49629d9894a7e601ae2923a53cfe932560dd8"},
 
-    {"path":"src-ui/src/app-shell/project-layout-kind.ts","digest":"52a2ac480f4f0dcb908f39c3829e22636bda1bde4d254908235b2fcbf1ca54ce","revision":"25e49629d9894a7e601ae2923a53cfe932560dd8"},
+    {"path":"src-ui/src/app-shell/project-layout-kind.ts","digest":"7bcad7adebc9f9b0c3270523bfb6b5976b2fc85177d36237afe00631fb826305","revision":"2694ff185bfb985714d2c76bac302fb2db3959dd"},
 
     {"path":"src-ui/src/components/project-sidebar/ProjectSidebarBoards.tsx","digest":"df8a426d1bc0629c595ea02efc46fc39f5eb2933cb715ef1f4a7b50acd1e9302","revision":"25e49629d9894a7e601ae2923a53cfe932560dd8"},
 

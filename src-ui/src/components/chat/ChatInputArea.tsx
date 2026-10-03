@@ -122,6 +122,8 @@ function isPortableDraftShortcut(event: {
 }
 
 interface ChatInputAreaProps {
+  activity?: React.ReactNode;
+  activityRef?: React.Ref<HTMLDivElement>;
   // Session info
   /**
    * The active chat session's stable identity (thread id) — used only to
@@ -228,8 +230,24 @@ interface ChatInputAreaProps {
   onClearInput: () => void;
   selectAttachmentFiles?: (files: File[]) => Promise<void>;
   attachmentError?: string | null;
+  /** Non-blocking attach-time note (e.g. image support not yet confirmed). */
+  attachmentNotice?: string;
+  /**
+   * The send is blocked only by its attachments: the validation line offers to
+   * remove them, so the fix is reachable where the reason is shown (the
+   * transcript's error card can be out of view in a short dock).
+   */
+  removalUnblocksSend?: boolean;
+  /** Why nothing can be attached; tapping the paperclip reports it. */
+  attachUnavailableReason?: string;
+  onAttachUnavailable?: (reason: string) => void;
   attachmentStages?: ComposerAttachmentStageSnapshot[];
   sendBlockedReason?: string;
+  /**
+   * The latest send-failure notice, one line. Shown in the composer only when
+   * a dock too short for the transcript steps it aside (the notice lives there).
+   */
+  sendFailureNotice?: string;
   onRetryAttachmentStage?: (id: string) => void | Promise<void>;
   onCancelAttachmentStage?: (id: string) => void | Promise<void>;
   onReplaceAttachmentFile?: (id: string, files: File[]) => void | Promise<void>;
@@ -283,7 +301,42 @@ interface ChatInputAreaProps {
   ) => void | Promise<void>;
 }
 
+/**
+ * The textarea's auto-height, clamped to the viewport, and the draft's floor:
+ * two lines (or its whole content, when shorter). In a short dock the draft
+ * may shrink to the floor and scroll, never below it.
+ *
+ * "Its whole content" is measured at one row: an empty textarea is two rows
+ * tall by default, and a floor taken from that would reserve two lines for a
+ * draft nobody has typed, at the transcript's expense.
+ */
+function sizeDraft(textarea: HTMLTextAreaElement, availableHeight: number) {
+  textarea.style.height = 'auto';
+  const rows = textarea.rows;
+  textarea.rows = 1;
+  const contentHeight = textarea.scrollHeight;
+  textarea.rows = rows;
+  const maxHeight = Math.min(160, Math.max(88, availableHeight * 0.3));
+  const height = Math.min(textarea.scrollHeight, maxHeight);
+  textarea.style.height = `${height}px`;
+  textarea.style.overflowY =
+    textarea.scrollHeight > maxHeight ? 'auto' : 'hidden';
+  const style = getComputedStyle(textarea);
+  const fontSize = Number.parseFloat(style.fontSize) || 16;
+  const line = Number.parseFloat(style.lineHeight) || fontSize * 1.2;
+  const chrome =
+    (Number.parseFloat(style.paddingTop) || 0) +
+    (Number.parseFloat(style.paddingBottom) || 0) +
+    (Number.parseFloat(style.borderTopWidth) || 0) +
+    (Number.parseFloat(style.borderBottomWidth) || 0);
+  const floor = Math.min(height, contentHeight, Math.ceil(2 * line + chrome));
+  textarea.style.minHeight = `${floor}px`;
+  return floor;
+}
+
 export function ChatInputArea({
+  activity,
+  activityRef,
   sessionId,
   activeConversationId,
   input,
@@ -338,6 +391,11 @@ export function ChatInputArea({
   onClearInput,
   selectAttachmentFiles = async () => {},
   attachmentError = null,
+  attachmentNotice,
+  sendFailureNotice,
+  attachUnavailableReason,
+  onAttachUnavailable,
+  removalUnblocksSend = false,
   attachmentStages = [],
   sendBlockedReason,
   onRetryAttachmentStage,
@@ -514,22 +572,197 @@ export function ChatInputArea({
     mentionQuery && mentionAutocompleteAvailable,
   );
 
+  const composerRootRef = useRef<HTMLDivElement | null>(null);
+  // The draft's two-line floor, written by the per-keystroke sizing below and
+  // read by the reservation.
+  const draftFloorRef = useRef(0);
+  const scheduleReserveRef = useRef<(() => void) | null>(null);
+
+  // Owns the observers and the dock-level reservation. It must not depend on
+  // `input`: a keystroke would otherwise rebuild both observers and re-run
+  // the forced-reflow measurement for every character.
+  useLayoutEffect(() => {
+    const textarea = textareaRef.current;
+    const root = composerRootRef.current;
+    if (!textarea || !root) return;
+    draftFloorRef.current = sizeDraft(
+      textarea,
+      visualViewport.height || dockHeight,
+    );
+    const body = root.parentElement;
+    // The composer reserves room for that floor plus every row that does not
+    // shrink (chips, messages, controls). Without this the dock squeezed the
+    // composer itself and the controls row painted over the draft; with it,
+    // the banner and the transcript give way instead.
+    const reserve = () => {
+      const floor = draftFloorRef.current;
+      // The composer's natural height with the draft at its floor: unsqueezed
+      // (no shrink, no cap) so overlapping rows cannot hide height.
+      const saved = [
+        root.style.minHeight,
+        root.style.flexShrink,
+        root.style.maxHeight,
+        textarea.style.height,
+      ] as const;
+      const measure = () => {
+        root.style.minHeight = '';
+        root.style.flexShrink = '0';
+        root.style.maxHeight = 'none';
+        textarea.style.height = `${floor}px`;
+        const height = Math.ceil(root.getBoundingClientRect().height);
+        root.style.flexShrink = saved[1];
+        root.style.maxHeight = saved[2];
+        textarea.style.height = saved[3];
+        return height;
+      };
+      if (!body?.classList.contains('chat-dock__body')) {
+        const next = `${measure()}px`;
+        root.style.minHeight = saved[0] === next ? saved[0] : next;
+        return;
+      }
+      // In a dock too short for the transcript's and the banner's own frame
+      // (padding and border) on top of the composer and its fixed siblings,
+      // the banner steps aside and the transcript gives up its padding
+      // (data-composer-priority) rather than the composer overflowing its
+      // dock. The transcript is never taken out of the layout: this is a
+      // measurement, and a reading that went stale must not be able to remove
+      // the conversation.
+      //
+      // Always decided in the plain layout, with the attribute off: what the
+      // attribute changes (the banner, the transcript's padding, the
+      // send-failure line) then cannot feed back into the decision.
+      body.removeAttribute('data-composer-priority');
+      let needed = measure();
+      // `others`: siblings that keep their size. `yielding`: what the
+      // transcript and the banner still occupy once shrunk to their frame.
+      let others = 0;
+      let yielding = 0;
+      for (const child of body.children) {
+        if (child === root || !(child instanceof HTMLElement)) continue;
+        const style = getComputedStyle(child);
+        if (style.display === 'none') continue;
+        const edge = (name: string) =>
+          Number.parseFloat(style.getPropertyValue(name)) || 0;
+        const margins = edge('margin-top') + edge('margin-bottom');
+        if (
+          child.classList.contains('chat-messages') ||
+          child.classList.contains('chat-dock__session-failure')
+        ) {
+          yielding +=
+            margins +
+            edge('padding-top') +
+            edge('padding-bottom') +
+            edge('border-top-width') +
+            edge('border-bottom-width');
+        } else {
+          others += child.getBoundingClientRect().height + margins;
+        }
+      }
+      const priority = needed + others + yielding > body.clientHeight + 0.5;
+      if (priority) {
+        body.setAttribute('data-composer-priority', '');
+        // The send-failure line shows only now, and it is part of what the
+        // composer needs.
+        needed = measure();
+      }
+      // The reservation never exceeds what the dock can give: past that point
+      // Send staying on screen outranks the draft's two-line floor.
+      const granted = Math.max(0, Math.min(needed, body.clientHeight - others));
+      // A shortfall comes out of the draft's floor, so it scrolls rather than
+      // overflowing onto the controls row.
+      textarea.style.minHeight = `${Math.max(0, floor - (needed - granted))}px`;
+      const next = `${granted}px`;
+      root.style.minHeight = saved[0] === next ? saved[0] : next;
+    };
+    reserve();
+
+    // A burst of observer callbacks (and the keystroke) measures once a frame.
+    let frame = 0;
+    let disposed = false;
+    const scheduleReserve = () => {
+      if (frame || disposed) return;
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        if (!disposed) reserve();
+      });
+    };
+    scheduleReserveRef.current = scheduleReserve;
+    const cleanup = () => {
+      disposed = true;
+      if (frame) cancelAnimationFrame(frame);
+      if (scheduleReserveRef.current === scheduleReserve)
+        scheduleReserveRef.current = null;
+      // The attribute restyles the transcript and banner through
+      // `.chat-dock__body`, which outlives this composer (replay mounts
+      // none): do not leave it behind.
+      body?.removeAttribute('data-composer-priority');
+      root.style.minHeight = '';
+      textarea.style.minHeight = '';
+    };
+    // Rows around the draft mount late (the lazy chip strip) or change size
+    // on their own (wrapping chips); re-reserve whenever any of them does.
+    if (typeof ResizeObserver === 'undefined') return cleanup;
+    const observed =
+      '.chat-input__meta, .chat-controls-row, .chat-input__textarea-wrapper > :not(textarea)';
+    const observer = new ResizeObserver(scheduleReserve);
+    const observeRows = () => {
+      observer.disconnect();
+      if (body) {
+        observer.observe(body);
+        // The reservation depends on every sibling's size (a loading
+        // skeleton, the status line, the banner), not only on the dock's:
+        // one that appears, leaves or resizes without changing the dock's own
+        // height must still be re-measured.
+        for (const sibling of body.children)
+          if (sibling !== root) observer.observe(sibling);
+      }
+      for (const row of root.querySelectorAll(observed)) observer.observe(row);
+    };
+    observeRows();
+    const mutations = new MutationObserver(() => {
+      observeRows();
+      scheduleReserve();
+    });
+    mutations.observe(root, { childList: true, subtree: true });
+    if (body) mutations.observe(body, { childList: true });
+    return () => {
+      observer.disconnect();
+      mutations.disconnect();
+      cleanup();
+    };
+  }, [dockHeight, textareaRef, visualViewport.height]);
+
+  // Per keystroke (and per row that changes what the composer needs): the
+  // textarea's own auto-height, then one coalesced reservation.
   useLayoutEffect(() => {
     // Value changes are a resize trigger even though the measurement reads DOM.
     void input;
+    // So are the rows around the draft: they change what the composer needs.
+    void attachments.length;
+    void attachmentStages.length;
+    void sendBlockedReason;
+    void attachmentError;
+    void attachmentNotice;
+    void sendFailureNotice;
     const textarea = textareaRef.current;
     if (!textarea) return;
-    const resize = () => {
-      textarea.style.height = 'auto';
-      const availableHeight = visualViewport.height || dockHeight;
-      const maxHeight = Math.min(160, Math.max(88, availableHeight * 0.3));
-      const height = Math.min(textarea.scrollHeight, maxHeight);
-      textarea.style.height = `${height}px`;
-      textarea.style.overflowY =
-        textarea.scrollHeight > maxHeight ? 'auto' : 'hidden';
-    };
-    resize();
-  }, [dockHeight, input, textareaRef, visualViewport.height]);
+    draftFloorRef.current = sizeDraft(
+      textarea,
+      visualViewport.height || dockHeight,
+    );
+    scheduleReserveRef.current?.();
+  }, [
+    attachmentError,
+    attachmentNotice,
+    attachmentStages.length,
+    attachments.length,
+    dockHeight,
+    input,
+    sendBlockedReason,
+    sendFailureNotice,
+    textareaRef,
+    visualViewport.height,
+  ]);
 
   // A producer that unmounts while focused never fires blur; without this
   // the context stays true globally and every {not:'composerFocused'}
@@ -537,7 +770,7 @@ export function ChatInputArea({
   useEffect(() => () => setShortcutContext('composerFocused', false), []);
 
   return (
-    <div className="chat-input">
+    <div className="chat-input" ref={composerRootRef}>
       {modelQuery !== null && !input.startsWith('/model ') && (
         <ResponsiveDialogSurface
           layer="popover"
@@ -602,99 +835,102 @@ export function ChatInputArea({
         </ResponsiveDialogSurface>
       )}
 
-      {/* Session state, as pills above the input rather than peers of Send.
-          The rail scrolls instead of wrapping — wrapping is what used to push
-          Send onto a fourth row and off the bottom of a phone screen. */}
+      {/* Settings stay in a scrollable rail; activity and reader controls move together. */}
       <div className="chat-input__meta">
-        {onOpenAgentHandoff && (
+        <div className="chat-input__settings">
+          {onOpenAgentHandoff && (
+            <button
+              ref={agentHandoffTriggerRef}
+              type="button"
+              className="choice-trigger chat-input__agent-btn"
+              onClick={agentHandoffDisabled ? undefined : onOpenAgentHandoff}
+              aria-disabled={agentHandoffDisabled}
+              aria-haspopup="dialog"
+              aria-label={agentAccessibleLabel}
+              title={agentAccessibleLabel}
+            >
+              <span className="chat-input__chip-stack">
+                <span className="chat-input__chip-caption" aria-hidden="true">
+                  Agent
+                </span>
+                <span className="chat-input__agent-name">
+                  {agentLabel ?? 'Current Agent'}
+                </span>
+              </span>
+              <ArrowDownGlyph className="choice-caret" />
+            </button>
+          )}
           <button
-            ref={agentHandoffTriggerRef}
+            ref={modelButtonRef}
             type="button"
-            className="choice-trigger chat-input__agent-btn"
-            onClick={agentHandoffDisabled ? undefined : onOpenAgentHandoff}
-            aria-disabled={agentHandoffDisabled}
+            onClick={canModelSelect ? onModelOpen : undefined}
+            aria-disabled={!canModelSelect}
+            className={`choice-trigger chat-input__model-btn ${isOverride ? 'chat-input__model-btn--override' : 'chat-input__model-btn--default'}`}
             aria-haspopup="dialog"
-            aria-label={agentAccessibleLabel}
-            title={agentAccessibleLabel}
+            aria-expanded={modelQuery !== null && !input.startsWith('/model ')}
+            aria-label={modelAccessibleLabel}
+            title={modelAccessibleLabel}
           >
             <span className="chat-input__chip-stack">
               <span className="chat-input__chip-caption" aria-hidden="true">
-                Agent
+                Model
               </span>
-              <span className="chat-input__agent-name">
-                {agentLabel ?? 'Current Agent'}
+              <span className="chat-input__model-name" aria-hidden="true">
+                {modelLabel}
               </span>
             </span>
             <ArrowDownGlyph className="choice-caret" />
           </button>
-        )}
-        <button
-          ref={modelButtonRef}
-          type="button"
-          onClick={canModelSelect ? onModelOpen : undefined}
-          aria-disabled={!canModelSelect}
-          className={`choice-trigger chat-input__model-btn ${isOverride ? 'chat-input__model-btn--override' : 'chat-input__model-btn--default'}`}
-          aria-haspopup="dialog"
-          aria-expanded={modelQuery !== null && !input.startsWith('/model ')}
-          aria-label={modelAccessibleLabel}
-          title={modelAccessibleLabel}
-        >
-          <span className="chat-input__chip-stack">
-            <span className="chat-input__chip-caption" aria-hidden="true">
-              Model
-            </span>
-            <span className="chat-input__model-name" aria-hidden="true">
-              {modelLabel}
-            </span>
-          </span>
-          <ArrowDownGlyph className="choice-caret" />
-        </button>
-        {isOverride && (
-          <button
-            type="button"
-            className="chat-input__model-reset"
-            onClick={onModelReset}
-            title="Reset this session to its default model"
-          >
-            Use{' '}
-            {defaultModelSource
-              ? modelSourceLabel(defaultModelSource).toLowerCase()
-              : 'default'}
-          </button>
-        )}
-        {acpSessionModes.length > 0 && onAcpSessionModeChange ? (
-          <React.Suspense fallback={null}>
-            <AcpSessionModeChip
-              key={sessionId}
-              modes={acpSessionModes}
-              currentModeId={
-                typeof modelRuntimeOptions?.mode === 'string'
-                  ? modelRuntimeOptions.mode
-                  : acpCurrentModeId
-              }
-              onChange={onAcpSessionModeChange}
-            />
-          </React.Suspense>
-        ) : (
-          executionMode === EXECUTION_MODE.EXTERNAL &&
-          approvalModeKnobSupported(agentConnectionId) && (
-            <ApprovalModeChip
-              // Structural reset (not blur-dependent) for the chip's local
-              // confirm state when the active session changes — this
-              // subtree persists across session switches with no natural
-              // remount otherwise (archive#727 3).
-              key={sessionId}
-              engineConnectionId={agentConnectionId}
-              toolPolicyDelivery={toolPolicyDelivery}
-              sessionOverride={approvalModeOverride?.mode}
-              sessionOverrideState={approvalModeOverride?.state}
-              agentDefault={approvalModeAgentDefault}
-              stationDefault={approvalModeStationDefault}
-              lastAppliedApprovalMode={lastAppliedApprovalMode}
-              onChange={onApprovalModeChange}
-            />
-          )
-        )}
+          {isOverride && (
+            <button
+              type="button"
+              className="chat-input__model-reset"
+              onClick={onModelReset}
+              title="Reset this session to its default model"
+            >
+              Use{' '}
+              {defaultModelSource
+                ? modelSourceLabel(defaultModelSource).toLowerCase()
+                : 'default'}
+            </button>
+          )}
+          {acpSessionModes.length > 0 && onAcpSessionModeChange ? (
+            <React.Suspense fallback={null}>
+              <AcpSessionModeChip
+                key={sessionId}
+                modes={acpSessionModes}
+                currentModeId={
+                  typeof modelRuntimeOptions?.mode === 'string'
+                    ? modelRuntimeOptions.mode
+                    : acpCurrentModeId
+                }
+                onChange={onAcpSessionModeChange}
+              />
+            </React.Suspense>
+          ) : (
+            executionMode === EXECUTION_MODE.EXTERNAL &&
+            approvalModeKnobSupported(agentConnectionId) && (
+              <ApprovalModeChip
+                // Structural reset (not blur-dependent) for the chip's local
+                // confirm state when the active session changes — this
+                // subtree persists across session switches with no natural
+                // remount otherwise (archive#727 3).
+                key={sessionId}
+                engineConnectionId={agentConnectionId}
+                toolPolicyDelivery={toolPolicyDelivery}
+                sessionOverride={approvalModeOverride?.mode}
+                sessionOverrideState={approvalModeOverride?.state}
+                agentDefault={approvalModeAgentDefault}
+                stationDefault={approvalModeStationDefault}
+                lastAppliedApprovalMode={lastAppliedApprovalMode}
+                onChange={onApprovalModeChange}
+              />
+            )
+          )}
+        </div>
+        <div className="chat-input__activity" ref={activityRef}>
+          {activity}
+        </div>
       </div>
 
       <div className="chat-input__capsule">
@@ -713,8 +949,47 @@ export function ChatInputArea({
                 onRetry={onRetryAttachmentStage}
                 onCancel={onCancelAttachmentStage}
                 onReplaceFile={onReplaceAttachmentFile}
+                imagesRefused={!modelSupportsAttachments}
               />
             </React.Suspense>
+          )}
+          {/* Attachment state sits right under the chips it is about, above
+              the draft: in a short dock the draft is what shrinks, so the
+              reason Send is blocked (and its fix) stays visible. */}
+          {attachmentError && (
+            <div className="chat-input__attachment-error" role="alert">
+              {attachmentError}
+            </div>
+          )}
+          {sendBlockedReason && !attachmentError && (
+            <div
+              id={`composer-attachment-send-gate-${sessionId}`}
+              className="chat-input__attachment-error"
+              role="status"
+            >
+              {sendBlockedReason}
+              {removalUnblocksSend && (
+                <span className="chat-input__blocked-actions">
+                  <button
+                    type="button"
+                    className="chat-input__blocked-action"
+                    onClick={onClearAttachments}
+                  >
+                    Remove attachments
+                  </button>
+                </span>
+              )}
+            </div>
+          )}
+          {attachmentNotice && !sendBlockedReason && !attachmentError && (
+            <div className="chat-input__attachment-notice" role="status">
+              {attachmentNotice}
+            </div>
+          )}
+          {sendFailureNotice && (
+            <div className="chat-input__send-failure" role="status">
+              {sendFailureNotice}
+            </div>
           )}
           {composerTokens.length > 0 && (
             <React.Suspense
@@ -1038,20 +1313,6 @@ export function ChatInputArea({
               &mdash; remove that many to send
             </div>
           )}
-          {attachmentError && (
-            <div className="chat-input__attachment-error" role="alert">
-              {attachmentError}
-            </div>
-          )}
-          {sendBlockedReason && !attachmentError && (
-            <div
-              id={`composer-attachment-send-gate-${sessionId}`}
-              className="chat-input__attachment-error"
-              role="status"
-            >
-              {sendBlockedReason}
-            </div>
-          )}
           {voiceState === 'error' && voiceError && (
             <div className="chat-input__attachment-error" role="alert">
               {voiceError}
@@ -1082,6 +1343,10 @@ export function ChatInputArea({
               }
               supportsImages={modelSupportsAttachments}
               supportsFiles={fileAttachmentsSupported}
+              unavailableReason={
+                disabled || isSending ? undefined : attachUnavailableReason
+              }
+              onUnavailable={onAttachUnavailable}
             />
           </React.Suspense>
           {voiceState !== undefined && onVoiceStart && onVoiceStop && (
@@ -1223,6 +1488,9 @@ export function ChatInputArea({
               }
               className={`send-button chat-input__send-btn ${
                 !isOverLimit &&
+                // A blocked Send is disabled; it must not keep the active
+                // accent that reads as "ready".
+                !sendBlockedReason &&
                 (
                   workspaceRefused ||
                     input.trim() ||

@@ -278,6 +278,34 @@ export class AttachmentStagingService {
     }
   }
 
+  /**
+   * Undo a binding for a send the engine provably never received (a
+   * pre-effect refusal of its attachments). The stages stay complete and
+   * owned by the caller, so a later send — to another engine or session —
+   * can use them instead of being refused as "bound to another turn"; the
+   * owner still frees capacity by removing them.
+   */
+  releaseBinding(
+    owner: AttachmentStageOwner,
+    references: readonly StagedAttachmentReference[],
+    binding: { threadId: string; clientTurnId: string },
+  ): void {
+    for (const reference of references) {
+      const record = this.#stages.get(reference.stageId);
+      if (
+        !record ||
+        !sameOwner(record.owner, owner) ||
+        record.state !== 'complete' ||
+        record.binding?.threadId !== binding.threadId ||
+        record.binding?.clientTurnId !== binding.clientTurnId
+      ) {
+        continue;
+      }
+      record.binding = undefined;
+      record.bindingExpiresAt = undefined;
+    }
+  }
+
   cancel(owner: AttachmentStageOwner, stageId: string): void {
     const record = this.require(owner, stageId);
     record.state = 'cancelled';

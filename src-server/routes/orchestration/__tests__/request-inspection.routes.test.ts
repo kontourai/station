@@ -630,6 +630,18 @@ test('the command route retains structured question answers and refuses a bare a
     });
   expect((await post(command)).status).toBeGreaterThanOrEqual(400);
   expect(f.respond).not.toHaveBeenCalled();
+  // #3071: what the CLI sends for a question. It binds a decision to the
+  // listed event only for a plain approval, so a question still arrives
+  // unbound and this guard still refuses to close it unseen.
+  for (const decision of ['decline', 'cancel']) {
+    const { expectedRequestEventId: _unbound, ...unbound } = command;
+    const refused = await post({ ...unbound, decision });
+    expect(refused.status).toBeGreaterThanOrEqual(400);
+    expect(JSON.stringify(await refused.json())).toContain(
+      'Inspect the current question before answering it.',
+    );
+  }
+  expect(f.respond).not.toHaveBeenCalled();
   const answers = { choice: { optionIds: ['a'] } };
   expect((await post({ ...command, answers })).status).toBe(200);
   expect(f.respond).toHaveBeenCalledWith(

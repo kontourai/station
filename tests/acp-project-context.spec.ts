@@ -226,7 +226,10 @@ test.describe('ACP + Project Context', () => {
   }) => {
     await seedRoutes(page);
     await page.goto('/');
-    await page.getByRole('button', { name: /^Start direct chat/ }).click();
+    await page
+      .locator('.home-view__actions')
+      .getByRole('button', { name: /Chat options/i })
+      .click();
     await expect(page.getByRole('dialog', { name: 'New Chat' })).toBeVisible();
     await page.locator('.new-chat-modal__context-button').click();
     await page

@@ -1,5 +1,10 @@
 import type { PairedDevice } from '@kontourai/station-contracts/environment-security';
-import { authenticatedFetch } from '../client/http';
+import {
+  authenticatedFetch,
+  type ClientRequestOptions,
+  getJson,
+  StationHttpError,
+} from '../client/http';
 import { rethrowDeadline } from '../client/request-deadline';
 import {
   type QueryConfig,
@@ -15,13 +20,18 @@ interface PairedDevicesResponse {
 /** Read the current inbound paired-device registry from its canonical route. */
 export async function fetchPairedDevices(
   apiBase?: string,
+  options?: ClientRequestOptions,
 ): Promise<PairedDevice[]> {
   const resolvedApiBase = await resolveApiBase(apiBase);
-  const response = await authenticatedFetch(
+  const response = await getJson(
     `${resolvedApiBase}/api/pairing/devices`,
+    options,
   );
   if (!response.ok) {
-    throw new Error(`Paired devices request failed (HTTP ${response.status})`);
+    throw new StationHttpError(
+      response.status,
+      `Paired devices request failed (HTTP ${response.status})`,
+    );
   }
   const body = (await response.json()) as PairedDevicesResponse;
   if (!Array.isArray(body.devices)) {
@@ -44,15 +54,38 @@ export const pairedDeviceQueries = {
  */
 export function usePairedDevicesQuery(
   apiBase?: string,
-  config?: QueryConfig<PairedDevice[]>,
+  config?: QueryConfig<PairedDevice[]> & {
+    requestScope?: ClientRequestOptions['requestScope'];
+    requireRequestScope?: boolean;
+  },
 ) {
   const query = pairedDeviceQueries.list(apiBase);
-  return useApiQuery(query.queryKey, query.queryFn, {
-    staleTime: 15_000,
-    refetchInterval: 15_000,
-    retry: false,
-    ...config,
-  });
+  const scope = config?.requestScope;
+  const key = scope
+    ? ['paired-devices', scope.apiBase, scope.authorityKey]
+    : config?.requireRequestScope
+      ? ['paired-devices', 'scope-unavailable']
+      : query.queryKey;
+  return useApiQuery(
+    key,
+    (signal) =>
+      fetchPairedDevices(scope?.apiBase ?? apiBase, {
+        requestScope: scope,
+        signal,
+      }),
+    {
+      staleTime: 15_000,
+      refetchInterval: 15_000,
+      refetchIntervalForError: (error) =>
+        error instanceof StationHttpError && [401, 403].includes(error.status)
+          ? false
+          : undefined,
+      retry: false,
+      ...config,
+      enabled:
+        (config?.enabled ?? true) && (!config?.requireRequestScope || !!scope),
+    },
+  );
 }
 
 /**

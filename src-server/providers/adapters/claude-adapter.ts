@@ -92,6 +92,11 @@ import {
   ProviderTurnInProgressError,
   SendTurnRefusedError,
 } from '../adapter-shape.js';
+import {
+  CredentialProfileEnvironmentError,
+  type ResolvedAppHome,
+  usageCredentialAccountKey,
+} from '../app-home/app-home-profiles.js';
 import { detectClaudeAuthState } from '../auth/claude-auth.js';
 import type { CliCommandResult } from '../auth/cli-auth.js';
 import {
@@ -784,7 +789,7 @@ export interface ClaudeAdapterOptions {
    */
   getAppHomeEnv?: (
     credentialProfileRef?: string,
-  ) => Promise<Record<string, string> | undefined>;
+  ) => Promise<ResolvedAppHome | undefined>;
   /**
    * station#2072: per-connection env overrides + explicit config home,
    * resolved from `AgentConnectionSettings.config` (`env` map and
@@ -1183,9 +1188,10 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         input.threadId,
         input.agent,
       );
-    const appHomeEnv = sourceCursor
+    const resolvedHome = sourceCursor
       ? undefined
       : await this.resolveAppHomeEnv(input.credentialProfileRef);
+    const appHomeEnv = resolvedHome?.env;
     // station#2072: the connection env's routing keys apply to every SDK
     // spawn, but its config-home key must NOT apply where the app-home env
     // is deliberately absent (adoption and source-affinity resume —
@@ -1210,6 +1216,9 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       augmentedEnv,
       preToolPolicy,
       claudeExecutable,
+      resolvedHome
+        ? usageCredentialAccountKey(this.provider, resolvedHome.profileRef)
+        : undefined,
     );
   }
 
@@ -1399,6 +1408,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     augmentedEnv?: Record<string, string | undefined>,
     preToolPolicy?: StagedPreToolPolicyEvaluator,
     claudeExecutable?: string | null,
+    usageAccountKey?: string,
   ): ProviderSession {
     const now = new Date().toISOString();
     const promptQueue = new AsyncUserMessageQueue();
@@ -1481,10 +1491,15 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       method: 'session.started',
       sessionId: input.threadId,
       initialState: 'created',
-      metadata: { ...input.metadata, cwd: input.cwd },
+      metadata: {
+        ...input.metadata,
+        cwd: input.cwd,
+        usageAccountKey,
+      },
     });
     const baseConfiguredMetadata: Record<string, unknown> = {
       ...input.metadata,
+      usageAccountKey,
       ...effectiveModelMetadata(input.modelId, record.currentModelOptions),
       // Explicit resolved values (not just the raw modelOptions spread
       // above) so the durable record reflects what the adapter actually
@@ -2002,6 +2017,14 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     // confirms what happened; a second Stop must not clear the first one's
     // still-pending receipt either.
     await record.query.interrupt();
+    // #3071: the SDK can ask for one more permission while that interrupt is
+    // in flight. Whatever was raised in the gap is settled before the abort
+    // by the same rule as above, a subagent's included: every reader of the
+    // transcript retires every approval on `turn.aborted`
+    // (`approvalRetiredBy`), so a request left pending here would be live
+    // with no surface showing it. A background subagent that survives the
+    // stop loses that one call and asks again.
+    this.cancelPendingRequests(record, threadId);
     this.publish({
       eventId: crypto.randomUUID(),
       provider: this.provider,
@@ -3031,6 +3054,14 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           provider: this.provider,
           threadId: input.threadId,
           createdAt: new Date().toISOString(),
+          // #3071: names the turn only for a request the turn ITSELF is
+          // waiting on (the main thread's). A turn's abort settles the
+          // requests that name it, for every reader of the log. A subagent's
+          // request names no turn: a background subagent can outlive the
+          // turn, a stop included, so the turn's abort must not close it.
+          ...(!options.agentID && record.activeTurnId
+            ? { turnId: record.activeTurnId }
+            : {}),
           requestId,
           method: 'request.opened',
           requestType: 'approval',
@@ -3431,14 +3462,15 @@ export class ClaudeAdapter implements ProviderAdapterShape {
    */
   private async resolveAppHomeEnv(
     credentialProfileRef?: string,
-  ): Promise<Record<string, string> | undefined> {
+  ): Promise<ResolvedAppHome | undefined> {
     try {
       return await this.options.getAppHomeEnv?.(credentialProfileRef);
     } catch (error) {
-      if (credentialProfileRef) {
-        throw new Error(
-          'Credential profile environment could not be prepared.',
-        );
+      if (
+        credentialProfileRef ||
+        error instanceof CredentialProfileEnvironmentError
+      ) {
+        throw new CredentialProfileEnvironmentError();
       }
       (this.options.logger ?? console).warn?.(
         `Claude app-home profile lookup failed; continuing with the global Claude Code config: ${errorMessage(error)}`,

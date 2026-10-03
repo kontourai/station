@@ -22,6 +22,21 @@
 > engine setup has its own Add engine flow. Legacy URLs redirect to the corresponding
 > section. Provider presets and explicit configuration remain shared design rules.
 
+## Intent-first work entry
+
+Home accepts the task before configuration choices. A submitted request uses the
+canonical ready default, can materialize an already-ready engine, and can connect
+an installed, unconnected app through the existing owning APIs. Detection alone
+is not success: warned preparation does not launch the request, explicitly
+disabled apps are excluded, and the catalog is refreshed before dispatch.
+Credentials, account permissions, and a necessary target remain real user
+decisions. The full picker and configuration editors are optional customization.
+
+The usage disclosure is a separate decision. The automatic Home path returns to
+work after that choice; it does not proceed into engine or personalization
+questions or mark the optional setup run complete. **Personalize Station** opens
+that run explicitly after the work entry.
+
 ## 1. The detection principle: observe infrastructure, never read secrets
 
 Detection exists to shorten onboarding, not to configure on the user's behalf. The line:

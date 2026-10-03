@@ -704,3 +704,28 @@ Builder gate verdict. Consumers must validate the evidence and apply their
 own gate contract; Station does not own those external decisions. See the
 [integration guide](../guides/integrating-station.md) and the installed
 consumer's public contract for its current evidence requirements.
+
+## Hosted source qualification
+
+The hosted [full-regression workflow](../../.github/workflows/full-regression.yml)
+executes all canonical phase commands across hosted jobs and additionally runs
+the Android viewport suite. Its aggregate emits a version-1
+`station.source-qualification` JSON artifact only when every planned job passes
+or when an admitted exact-source producer is reused. The
+[evidence resolver](../../scripts/qualification-evidence.mjs) validates the
+producer run, source, successful gate and ordinary shards, artifact presence
+and original 24-hour evidence lifetime. Reused runs cannot extend that age.
+
+This artifact is a different schema from the local version-3 receipt described
+above. It does not contain the local coordinator's workspace request key,
+phase records or digest-addressed local captures. It must not be passed to
+`assertReceiptSemantics` or renamed to look like a local receipt. Individual
+phase-driver calls still emit diagnostic outcomes, not independently reusable
+completion receipts; only the hosted aggregate establishes hosted completion.
+
+Attach the exact hosted artifact and original producer run when reporting
+source qualification. Builder or another external consumer needs an explicit
+supported admission contract before treating this schema as its required
+`tests-evidence`; that compatibility is not established by local tests here.
+Source qualification also does not establish native signing, installation,
+provider publication or rollback. See [the release process](../guides/releasing.md).

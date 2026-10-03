@@ -31,6 +31,22 @@ complete answer batch and translate selected IDs to display labels/custom
 text. They do not authorize a reply or prove engine delivery. Stable types
 come from `@kontourai/station-contracts/harness-questions`.
 
+## Request settlement
+
+`@kontourai/station-shared/request-settlement` owns
+[`requestIdsSettledByTurnAbort`](../../packages/shared/src/request-settlement.ts):
+given one session's events in order, the ids of the requests their turn's
+abort settled without a `request.resolved`. A recovery abort
+(`turn.aborted` with `recoveryTerminal`) settles every unresolved request
+opened since that turn started and before a different turn started; any
+abort, or a
+`turn.completed` with `finishReason: 'cancelled'`, settles only the requests
+whose `request.opened` names that turn. It reads five fields and accepts
+untyped event records. The server's session summary, attention feed and
+request inspection apply it, as do the CLI's `approvals` and `operate`; a
+client that folds `request.opened` / `request.resolved` itself should too.
+The [Session API](session-api.md#respondtorequest) states the behavior.
+
 ---
 
 ## plugin types
@@ -971,6 +987,12 @@ dependencies and outputs. Its exact external allowlist includes root SDK and
 the SDK agent/client/voice entries, not every SDK subpath. A build does not install,
 authorize or activate a plugin. `--dev` in the example build file selects one
 build; it is not a watcher.
+
+Portable Agent Plugins can also declare inert visual Skill definitions. The
+author builder validates their referenced files and exact bundled Skill identity
+before bundling or returning a no-bundle result. See the
+[authoring contract](skill-experiences.md) for bounds, refusal diagnostics, and
+the separate runtime activation work.
 
 ```ts
 interface BuildResult {

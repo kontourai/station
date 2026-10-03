@@ -185,7 +185,7 @@ type ClaudeQueryOptions = {
   canUseTool?: (...args: any[]) => any;
 };
 
-export type FakeClaudeEngine = {
+type FakeClaudeEngine = {
   child: FakeClaudeChild;
   /** What the adapter's spawner handed the SDK. */
   process: SdkSpawnedProcess;

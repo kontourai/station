@@ -706,9 +706,17 @@ export function toolRequestSessionGrantFromPayload(
  * The label of the session-grant decision (`acceptForSession`), shared by the
  * approval toast, the inline card (#2316) and the inbox card. It names both
  * what is granted and the session scope: "Always Allow" overstated its
- * duration and hid its breadth. Name the tool only when the request reported
- * one — adapter display text (Codex's is a whole command line) would mislead
- * about the grant's scope. Undefined when no session grant is offered.
+ * duration and hid its breadth. Undefined when no session grant is offered.
+ *
+ * A `tool` grant names the tool only when the request reported one: then the
+ * adapter records a standing grant for every later call to it (#2299). With
+ * NO reported name the grant's breadth is not one thing the label could name
+ * — Codex's adapter derives its own key (every later command, or file
+ * change), an ACP engine with no name gets only its own `allow_always` rule
+ * (OpenCode's is pattern-scoped) — so the label claims only the session
+ * scope. It never names adapter display text: a title (Codex's and
+ * OpenCode's are the whole command line) would misstate the grant as
+ * covering exactly that string.
  */
 export function toolRequestGrantLabel(
   toolName: string | undefined,
@@ -727,7 +735,7 @@ export function toolRequestGrantLabel(
       const displayName = toolRequestDisplayName(toolName);
       return displayName
         ? `Allow ${displayName} for this session`
-        : 'Allow this tool for this session';
+        : 'Allow for this session';
     }
   }
 }

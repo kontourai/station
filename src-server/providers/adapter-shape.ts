@@ -19,7 +19,10 @@ import type {
   ProviderSessionStartInput,
   ProviderTurnStartResult,
 } from '@kontourai/station-contracts/provider';
-import { PROVIDER_TURN_IN_PROGRESS_CODE } from '@kontourai/station-contracts/provider';
+import {
+  ATTACHMENT_INPUT_UNSUPPORTED_CODE,
+  PROVIDER_TURN_IN_PROGRESS_CODE,
+} from '@kontourai/station-contracts/provider';
 
 /** The provider's live turn ended before mid-turn input could be enqueued. */
 export class ProviderTurnEndedError extends Error {
@@ -59,6 +62,21 @@ export class SendTurnRefusedError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'SendTurnRefusedError';
+  }
+}
+
+/**
+ * A pre-effect refusal of the send's ATTACHMENTS, carrying a structured code
+ * so orchestration can forward it and clients can translate it without
+ * matching prose. Deterministic: a retry with the same attachments is refused
+ * again, which is exactly what a generic "retrying may help" hint got wrong.
+ */
+export class AttachmentInputUnsupportedError extends SendTurnRefusedError {
+  readonly code = ATTACHMENT_INPUT_UNSUPPORTED_CODE;
+
+  constructor(message: string) {
+    super(message);
+    this.name = 'AttachmentInputUnsupportedError';
   }
 }
 

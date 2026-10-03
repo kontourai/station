@@ -17,6 +17,7 @@ import {
   projectRuntimeEventsToMessages,
 } from '@kontourai/station-shared/runtime-event-projection';
 import type { SafeToolResultProjection } from '@kontourai/thread';
+import { derivedConversationTitle } from './conversation-title.js';
 import {
   projectToolCompletedDescriptor,
   type ToolCompletedEventDescriptor,
@@ -300,14 +301,30 @@ export interface SessionQueryModule {
   ): Promise<SessionAnswerBasisQueryOutcome>;
 }
 
-function conversationTitle(
+/** The title a conversation shows before anything renames it. */
+const UNTITLED_CONVERSATION_TITLE = 'New chat';
+
+/**
+ * A conversation's derived title: the first thing its user wrote, from
+ * whichever user message first carries text — a conversation that opened
+ * with an attachment alone is still titled by what came next. Without any
+ * user text it is untitled, spelled the way the UI names a chat it has not
+ * titled yet. It used to fall back to `${agentSlug} chat`, which put a
+ * lowercase engine id ("opencode chat", "grok-build chat") in the chat
+ * header directly above the agent's real name.
+ */
+export function conversationTitle(
   messages: readonly ConversationMessage[],
-  agentSlug: string,
 ): string {
-  const firstUserText = messages
-    .find((message) => message.role === 'user')
-    ?.parts.find((part) => part.type === 'text')?.text;
-  return firstUserText?.trim().slice(0, 80) || `${agentSlug} chat`;
+  for (const message of messages) {
+    if (message.role !== 'user') continue;
+    for (const part of message.parts) {
+      if (part.type !== 'text') continue;
+      const title = derivedConversationTitle(part.text);
+      if (title) return title;
+    }
+  }
+  return UNTITLED_CONVERSATION_TITLE;
 }
 
 function isCompletedAssistantAnswer(
@@ -496,10 +513,7 @@ export function createSessionQueryModule<Session>(
             ...(conversationSession.projectSlug
               ? { projectSlug: conversationSession.projectSlug }
               : {}),
-            title: conversationTitle(
-              messages,
-              conversationSession.assignedAgentSlug,
-            ),
+            title: conversationTitle(messages),
             ...(model ? { model } : {}),
             ...(conversationSession.acceptedModel
               ? { acceptedModel: conversationSession.acceptedModel }

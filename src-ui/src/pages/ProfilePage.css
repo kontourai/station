@@ -250,7 +250,7 @@
 
 .profile-usage-graph__bar {
   width: 100%;
-  min-height: 12px;
+  min-height: 2px;
   border-radius: 999px;
   background: linear-gradient(
     180deg,
@@ -378,6 +378,41 @@
 
 /* ── Responsive ── */
 
+.profile-usage-status {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: var(--k-space-4);
+  flex-wrap: wrap;
+  color: var(--k-text-muted);
+}
+
+.profile-people-list {
+  display: grid;
+  gap: var(--k-space-3);
+  padding: 0;
+  list-style: none;
+}
+
+.profile-people-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--k-space-3);
+}
+
+.profile-person-overlay {
+  background: color-mix(in srgb, var(--k-bg) 80%, transparent);
+}
+
+.profile-person-dialog {
+  background: var(--k-panel);
+  color: var(--k-text);
+  padding: var(--k-space-6);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-overlay);
+}
+
 @media (max-width: 700px) {
   .profile-hero-content {
     flex-direction: column;
@@ -387,6 +422,12 @@
 
   .profile-card__name-row {
     justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  .profile-hero-info {
+    width: 100%;
+    min-width: 0;
   }
 
   .profile-hero-badges {
@@ -400,6 +441,19 @@
 
   .profile-usage-graph__bars {
     gap: 0.45rem;
+  }
+
+  .profile-usage-graph__label {
+    visibility: hidden;
+  }
+
+  .profile-usage-graph__column:nth-child(4n + 1) .profile-usage-graph__label,
+  .profile-usage-graph__column:last-child .profile-usage-graph__label {
+    visibility: visible;
+  }
+
+  .profile-usage-graph__column:nth-last-child(2) .profile-usage-graph__label {
+    visibility: hidden;
   }
 
   .profile-stats-grid {

@@ -40,7 +40,6 @@ import {
   CI_FAST_TIMEOUT_MS,
   FULL_REGRESSION_PHASES,
 } from '../verification-lanes.mjs';
-import { QUARANTINED_VITEST_FILES } from '../vitest-resource-manifest.mjs';
 
 const root = resolve(import.meta.dirname, '../..');
 
@@ -1729,6 +1728,10 @@ describe('CI verification workflow contracts', () => {
     expect(plan.outputs).toEqual({
       // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
       legacy: '${{ steps.mode.outputs.legacy }}',
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+      shards: '${{ steps.plan.outputs.shards }}',
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+      'shard-count': '${{ steps.plan.outputs.shard-count }}',
     });
     // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
     const legacyIf = "${{ steps.mode.outputs.legacy == 'true' }}";
@@ -1760,11 +1763,20 @@ describe('CI verification workflow contracts', () => {
     const shard = jobs['fast-checks-shard'];
     expect(shard.strategy?.['fail-fast']).toBe(false);
     expect(shard.strategy?.matrix?.shard).toEqual(
-      Array.from({ length: FAST_CHECKS_SHARD_COUNT }, (_, index) => index + 1),
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+      "${{ fromJSON(needs.fast-checks-plan.outputs.shards || '[1,2,3,4]') }}",
     );
     // Literal beside the derived value: a change to the constant must be a
     // deliberate edit here too.
     expect(FAST_CHECKS_SHARD_COUNT).toBe(4);
+    expect(
+      planSteps.find((step) => step.name === 'Plan the affected-test selection')
+        ?.id,
+    ).toBe('plan');
+    expect(
+      planSteps.find((step) => step.name === 'Plan the affected-test selection')
+        ?.env?.STATION_FAST_CHECKS_ADAPTIVE_SHARDS,
+    ).toBe('true');
     const shardSteps = shard.steps ?? [];
     const shardRuns = shardSteps.flatMap((step) =>
       typeof step.run === 'string' &&
@@ -1774,7 +1786,18 @@ describe('CI verification workflow contracts', () => {
     );
     expect(shardRuns).toHaveLength(2);
     for (const run of shardRuns)
-      expect(run).toContain(`--shard="$SHARD/${FAST_CHECKS_SHARD_COUNT}"`);
+      expect(run).toContain('--shard="$SHARD/$SHARD_COUNT"');
+    for (const name of [
+      'Resolve fast-checks shard slice',
+      'Run fast-checks shard',
+    ]) {
+      expect(
+        shardSteps.find((step) => step.name === name)?.env?.SHARD_COUNT,
+      ).toBe(
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+        "${{ needs.fast-checks-plan.outputs.shard-count || '4' }}",
+      );
+    }
 
     // Every shard stays inside the lane budget: the shard runner enforces
     // CI_FAST_TIMEOUT_MS itself, so its step has no step timeout below it,
@@ -1802,7 +1825,7 @@ describe('CI verification workflow contracts', () => {
       load(workflow('full-regression.yml')) as {
         jobs: Record<string, Job>;
       }
-    ).jobs['full-regression'].steps?.find((step) => step.name === zshName);
+    ).jobs.ordinary.steps?.find((step) => step.name === zshName);
     expect(fullRegressionZsh?.run).toContain('apt-get install --yes zsh');
     const shardZshIndex = shardSteps.findIndex((step) => step.name === zshName);
     expect(shardZshIndex).toBeGreaterThan(-1);
@@ -3263,7 +3286,7 @@ describe('the root tauri script roots itself at the app directory', () => {
   });
 });
 
-describe('merge-queue regression workflow covers the full regression', () => {
+describe('hosted qualification workflow covers the full regression', () => {
   type Step = {
     name?: string;
     run?: string;
@@ -3286,10 +3309,9 @@ describe('merge-queue regression workflow covers the full regression', () => {
   type Workflow = { defaults?: Defaults; jobs: Record<string, Job> };
   function document() {
     const entry = readWorkflowDocuments().find(
-      (candidate) =>
-        candidate.file === '.github/workflows/merge-queue-regression.yml',
+      (candidate) => candidate.file === '.github/workflows/full-regression.yml',
     );
-    expect(entry, 'merge-queue-regression.yml must exist').toBeDefined();
+    expect(entry, 'full-regression.yml must exist').toBeDefined();
     return entry?.document as Workflow;
   }
 
@@ -3401,21 +3423,19 @@ describe('merge-queue regression workflow covers the full regression', () => {
 
   it('runs phases only through the driver and gates on one aggregate check', () => {
     const { jobs } = document();
-    const text = workflow('merge-queue-regression.yml');
+    const text = workflow('full-regression.yml');
     expect(text).not.toMatch(/:raw\b/);
-    const aggregate = jobs['merge-queue-regression'];
-    expect(aggregate.name).toBe('Merge-queue regression');
-    expect(aggregate.if).toBe(
-      "always() && github.event_name != 'pull_request_target'",
-    );
+    const aggregate = jobs.qualification;
+    expect(aggregate.name).toBe('Full source qualification');
+    expect(aggregate.if).toBe('always() && !cancelled()');
     const testJobs = Object.keys(jobs).filter(
-      (job) => job !== 'merge-queue-regression',
+      (job) => job !== 'qualification' && job !== 'resolve',
     );
-    expect([...(aggregate.needs ?? [])].sort()).toEqual([...testJobs].sort());
+    expect([...(aggregate.needs ?? [])].sort()).toEqual(
+      ['resolve', ...testJobs].sort(),
+    );
     for (const job of testJobs)
-      expect(jobs[job].if, job).toBe(
-        "github.event_name != 'pull_request_target'",
-      );
+      expect(jobs[job].if, job).toBe("needs.resolve.outputs.reuse_run == ''");
     expect(jobs['android-viewport'].steps?.map(({ run }) => run)).toContain(
       'npm run test:android',
     );
@@ -3590,9 +3610,12 @@ describe('merge-queue regression workflow covers the full regression', () => {
   function swallowedFailures(workflowDocument: Workflow) {
     const { jobs } = workflowDocument;
     const violations: string[] = [];
-    const aggregateName = 'merge-queue-regression';
+    const aggregateName = 'qualification';
     const aggregate = jobs[aggregateName];
-    for (const name of [...(aggregate?.needs ?? []), aggregateName]) {
+    for (const name of [
+      ...(aggregate?.needs ?? []).filter((id) => id !== 'resolve'),
+      aggregateName,
+    ]) {
       const job = jobs[name];
       if (!job) continue;
       if (job['continue-on-error'] !== undefined)
@@ -3609,11 +3632,15 @@ describe('merge-queue regression workflow covers the full regression', () => {
       if (name !== aggregateName && gatedTestCommands === 0)
         violations.push(`${name}: no gated step runs a test command`);
     }
-    // The aggregate's verdict is jq's exit status; without `-e` jq exits 0
-    // for a `false` result.
+    // The CLI's exit status decides the aggregate; runtime failure controls
+    // live in qualification-evidence.test.ts.
     const verdict = (aggregate?.steps ?? []).map(({ run }) => run ?? '');
-    if (!verdict.some((run) => /\bjq -e\b/.test(run)))
-      violations.push('merge-queue-regression: no jq -e verdict');
+    if (
+      !verdict.some((run) =>
+        run.includes('node scripts/qualification-evidence.mjs attest'),
+      )
+    )
+      violations.push('qualification: no attestation verdict');
     return violations;
   }
 
@@ -3665,8 +3692,8 @@ describe('merge-queue regression workflow covers the full regression', () => {
     const onTee = (suffix: string) => (workflowDocument: Workflow) => {
       const step = runStep(workflowDocument, 'ordinary');
       step.run = step.run?.replace(
-        '| tee "$RUNNER_TEMP/merge-queue-regression.log"',
-        `| tee "$RUNNER_TEMP/merge-queue-regression.log"${suffix}`,
+        '| tee "$RUNNER_TEMP/full-regression.log"',
+        `| tee "$RUNNER_TEMP/full-regression.log"${suffix}`,
       );
     };
     const cases: Array<[string, (workflowDocument: Workflow) => void, RegExp]> =
@@ -3734,7 +3761,7 @@ describe('merge-queue regression workflow covers the full regression', () => {
           (workflowDocument) => {
             workflowDocument.defaults = { run: { shell: 'sh {0}' } };
           },
-          /merge-queue-regression: .*shell 'sh \{0\}'/,
+          /qualification: .*shell 'sh \{0\}'/,
         ],
         [
           'job-level continue-on-error on a gate job',
@@ -3747,29 +3774,31 @@ describe('merge-queue regression workflow covers the full regression', () => {
         [
           'continue-on-error on the aggregate job',
           (workflowDocument) => {
-            workflowDocument.jobs['merge-queue-regression'][
-              'continue-on-error'
-            ] = true;
+            workflowDocument.jobs.qualification['continue-on-error'] = true;
           },
-          /^merge-queue-regression: job-level continue-on-error$/,
+          /^qualification: job-level continue-on-error$/,
         ],
         [
           'a swallowed aggregate verdict',
           (workflowDocument) => {
-            const [step] =
-              workflowDocument.jobs['merge-queue-regression'].steps ?? [];
-            step.run = step.run?.replace('> /dev/null', '> /dev/null || true');
+            const step = workflowDocument.jobs.qualification.steps?.find(
+              (item) => item.run?.includes('qualification-evidence.mjs attest'),
+            );
+            if (!step) throw new Error('Attestation step missing');
+            step.run = `${step.run} || true`;
           },
-          /merge-queue-regression: .*'\|\|' swallows/,
+          /qualification: .*'\|\|' swallows/,
         ],
         [
-          'an aggregate verdict without jq -e',
+          'an aggregate without the attestation verdict',
           (workflowDocument) => {
-            const [step] =
-              workflowDocument.jobs['merge-queue-regression'].steps ?? [];
-            step.run = step.run?.replace('jq -e', 'jq');
+            const step = workflowDocument.jobs.qualification.steps?.find(
+              (item) => item.run?.includes('qualification-evidence.mjs attest'),
+            );
+            if (!step) throw new Error('Attestation step missing');
+            step.run = 'echo skipped';
           },
-          /^merge-queue-regression: no jq -e verdict$/,
+          /^qualification: no attestation verdict$/,
         ],
         [
           'continue-on-error on the android viewport step',
@@ -3833,8 +3862,8 @@ describe('merge-queue regression workflow covers the full regression', () => {
           (workflowDocument) => {
             const step = runStep(workflowDocument, 'process-heavy');
             step.run = step.run?.replace(
-              '| tee "$RUNNER_TEMP/merge-queue-regression.log"',
-              '| tee "$RUNNER_TEMP/merge-queue-regression.log" &',
+              '| tee "$RUNNER_TEMP/full-regression.log"',
+              '| tee "$RUNNER_TEMP/full-regression.log" &',
             );
           },
           /^process-heavy: Run full-regression phases: backgrounded command/,
@@ -3869,11 +3898,13 @@ describe('merge-queue regression workflow covers the full regression', () => {
         [
           'continue-on-error on the aggregate step',
           (workflowDocument) => {
-            const [step] =
-              workflowDocument.jobs['merge-queue-regression'].steps ?? [];
+            const step = workflowDocument.jobs.qualification.steps?.find(
+              (item) => item.run?.includes('qualification-evidence.mjs attest'),
+            );
+            if (!step) throw new Error('Attestation step missing');
             step['continue-on-error'] = true;
           },
-          /merge-queue-regression: .*: continue-on-error$/,
+          /qualification: .*: continue-on-error$/,
         ],
       ];
     for (const [label, mutate, expected] of cases) {
@@ -3885,22 +3916,9 @@ describe('merge-queue regression workflow covers the full regression', () => {
     }
   });
 
-  it('excludes quarantined files from every queue corpus selection, and nowhere else', () => {
-    const corpus = (text: string) =>
-      phaseIds(text).some((id) => id.startsWith('test-full-'));
-    const all = selections(document().jobs);
-    const corpusSelections = all.filter(({ text }) => corpus(text));
-    // Four ordinary slices, two process-heavy slices, the exclusive groups.
-    expect(corpusSelections).toHaveLength(7);
-    for (const { job, text } of corpusSelections)
-      expect(text, `${job}: ${text}`).toMatch(
-        /(^|\s)--exclude-quarantined(\s|$)/,
-      );
-    for (const { job, text } of all.filter(({ text }) => !corpus(text)))
-      expect(text, `${job}: ${text}`).not.toContain('--exclude-quarantined');
-    // So a quarantined file is never counted as covered by the queue: every
-    // group the queue reaches (asserted above) reaches it minus the list.
-    expect(Array.isArray(QUARANTINED_VITEST_FILES)).toBe(true);
+  it('includes quarantined files in every qualification corpus', () => {
+    for (const { text } of selections(document().jobs))
+      expect(text).not.toContain('--exclude-quarantined');
   });
 
   it('leaves Nightly canonical: full:regression never excludes quarantined files', () => {
@@ -3912,8 +3930,10 @@ describe('merge-queue regression workflow covers the full regression', () => {
       'uses: ./.github/workflows/full-regression.yml',
     );
     const hosted = workflow('full-regression.yml');
-    expect(extractRunBodies(hosted)).toContain('npm run full:regression');
-    expect(hosted).not.toContain('quarantine');
+    expect(extractRunBodies(hosted)).toContain(
+      'node scripts/run-full-regression-phases.mjs',
+    );
+    expect(extractRunBodies(hosted)).not.toContain('--exclude-quarantined');
     const scripts = JSON.parse(
       readFileSync(resolve(root, 'package.json'), 'utf8'),
     ).scripts as Record<string, string>;

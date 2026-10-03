@@ -92,6 +92,14 @@ binding, verifies the caller and current Environment, resolves the current Agent
 and only then sends the turn. Optional `model.override` and `model.options` apply
 only when that engine supports them; omission retains the current model choice.
 
+On either route, when the bound engine is an ACP engine, a send whose
+attachments it cannot take (its handshake did not advertise image input, or a
+non-image file) is refused before any engine effect with
+`code: "attachment_input_unsupported"`. The same request is refused again, so it
+is not a retry candidate. Staged uploads the refused send had bound are released
+from that turn, so the same references can be sent on another turn. Codex and Muse refuse a non-image file with a plain
+error that carries no code.
+
 A completed turn does not discard the conversation. If the next turn needs a new
 execution Session, it remains linked beneath the same Conversation. Station-native
 prompt history reads existing authorized native memory segments across that
@@ -292,13 +300,52 @@ answered request leaves the inbox when the decision is recorded; an
 unacknowledged decision surfaces as a `runtime.warning` on its session, not
 as a reopened request.
 
+A request also closes, with no decision, when the turn it belonged to is
+aborted. Two aborts count, and they settle different sets
+([`requestIdsSettledByTurnAbort`](../../packages/shared/src/request-settlement.ts)):
+
+- **Station restarted mid-turn.**
+  [Interrupted-turn recovery](../../src-server/services/orchestration/interrupted-turn-recovery.ts)
+  records `request.resolved` with status `expired` and `response.reason:
+  'turn-interrupted'` for every request still open that was opened since the
+  dead turn started and before any other turn started, then aborts the turn
+  (`turn.aborted` with `recoveryTerminal`). The session reads `needs_input` with transition reason
+  `runtime_exit`, not `review_pending`. A log written before recovery recorded
+  those resolutions holds the abort with the request still open; every server
+  read treats that request as settled all the same.
+- **A live turn was stopped**: `turn.aborted`, or the
+  `turn.completed` with `finishReason: 'cancelled'` an engine publishes to
+  confirm a stop. This settles only a request whose `request.opened` names
+  that turn in `turnId`. Claude Code stamps it on the main thread's requests,
+  and Muse and Station's own engine on their turn's; a request with no
+  `turnId` (Codex and ACP today, and a subagent's on Claude Code or Muse) is
+  left open by this rule, because work that outlives the turn may still be
+  waiting on it. Separately, the adapters read for this change (Claude Code,
+  Codex, ACP) resolve the requests they hold `cancelled` when they stop a
+  turn or session, a subagent's included on Claude Code; that publication,
+  not this rule, is what normally closes them.
+
+A turn that fails without being aborted (`runtime.error` or `session.exited`
+alone) settles nothing, and neither does an ordinary `turn.completed` or a
+request opened before the turn started.
+
+A settled request is refused by Station itself: `respondToRequest` returns
+`409` with code `request_event_changed`, with or without
+`expectedRequestEventId`, and no adapter is called.
+[Request inspection](#inspect-an-exact-attention-request) reports it `resolved`. The session summary
+(`pendingReview`, `openRequestIds`), the attention inbox, the request's
+replayed outcome, and the CLI's `approvals list` and `operate` leave it out.
+A client that folds raw events without the shared rule still sees it open.
+
 ### Other command types
 
 The remaining controls are defined by
 `src-server/routes/orchestration/orchestration.ts`:
 
 - `steerTurn`: `{ type: 'steerTurn', threadId, input, turnId? }` sends steering
-  input where the engine supports it.
+  input where the engine supports it. An ACP engine without a native steer
+  method is steered by cancelling and re-prompting the running turn; that
+  steer's `turn.started` carries `steerInterruptedRun: true`.
 - `setApprovalMode`: `{ type: 'setApprovalMode', threadId, approvalMode,
   basedOnSequence }` records an ordered posture decision. `basedOnSequence` is
   required: use the latest observed decision sequence, or `null` when none was

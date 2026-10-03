@@ -122,6 +122,14 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  // Real author-build children refuse FIFO definitions/Skills; timeout follows observed startup.
+  'packages/shared/src/__tests__/skill-experience-author.test.ts',
+  // Exercises the health CLI refusal before any GitHub request.
+  'scripts/__tests__/ci-health.test.ts',
+  // Runs the evidence CLI against temporary Git roots and a loopback Actions API.
+  'scripts/__tests__/qualification-evidence.test.ts',
+  // Executes repair publication against real temporary checkouts and a loopback API.
+  'scripts/__tests__/qualification-repair.test.ts',
   'src-server/services/connections/__tests__/browser-code-login.test.ts',
   'scripts/__tests__/learning-atlas.browser.test.ts',
   // Starts a nested Vitest run of its probe under a simulated merge-queue env.
@@ -327,6 +335,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // discovery, which is itself a Vitest child. Single-shot spawns, no
   // wall-clock assertion.
   'scripts/__tests__/fast-checks-shard-cli.test.ts',
+  // #3101: dependency-free planner CLI output and exit status in child processes.
+  'scripts/__tests__/fast-checks-plan.test.ts',
   // #2709 re-land: runs the aggregator's real base-controlled bash/jq step
   // from ci.yml against simulated job results. Single-shot spawns, no
   // wall-clock assertion.
@@ -594,6 +604,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #2675 D: installs two fixture archives with the real install.sh and runs
   // the real launcher, whose child stages with install.sh again.
   'scripts/__tests__/service-launcher-e2e.test.ts',
+  // #2675 W1: runs install.ps1's embedded installer core as a bounded
+  // single-shot node child per case, whose own `--version` self-check spawns
+  // the fixture archive's runtime once.
+  'scripts/__tests__/install-ps1.test.ts',
   'scripts/__tests__/installer-tool-output-parsing.test.ts',
   'scripts/__tests__/local-verification.test.ts',
   'scripts/__tests__/native-release-config.test.ts',
@@ -896,6 +910,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #2363: the coding git routes over real repositories, a real bare remote
   // and plain git as the control for every planted config.
   'src-server/routes/projects/__tests__/coding-git-security.routes.test.ts',
+  // The File Preview's per-file Changes read over real repositories, with
+  // plain git as the control for every planted `.git` and config it refuses.
+  'src-server/routes/projects/__tests__/workspace-file-changes.routes.test.ts',
   // The coding git read routes over real repositories, with plain git as the
   // control for every planted `.git`.
   'src-server/routes/projects/__tests__/coding-git-read-confinement.routes.test.ts',
@@ -1015,6 +1032,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Owns Chromium to measure the legacy action-row wrap and touch-target
   // floor against the real index.css cascade at a phone viewport.
   'src-ui/src/__tests__/legacy-action-row.touch-target.test.ts',
+  // #3043: owns Chromium to measure the shared inbox row's height before
+  // and during hover, and its action targets at desktop and phone viewports.
+  'src-ui/src/components/inbox-row/__tests__/InboxRow.geometry.test.tsx',
   // #90 D9: owns Chromium to measure the float pill's cascade-resolved
   // control sizes at rest, hovered, focused and pressed.
   'src-ui/src/float-over-chat/__tests__/FloatOverChat.touch-target.test.tsx',
@@ -1538,15 +1558,9 @@ export function discoverVitestResourceGroups(options = {}) {
 }
 
 /**
- * Test quarantine (the merge-queue regression gate's escape valve).
- *
- * A quarantine entry names a test file that is flaky, not broken: the same
- * commit both passed and failed it. Quarantined files are EXCLUDED from the
- * merge-queue regression shards only (`run-vitest-corpus.mjs
- * --exclude-quarantined`, passed by `run-full-regression-phases.mjs`). They
- * STILL run in Nightly's canonical `full:regression`, which never reads this
- * list — so Nightly stays exposed to the flake while the queue stops holding
- * unrelated PRs hostage to it.
+ * Historical quarantine list for explicit diagnostic corpus exclusions.
+ * Hosted source qualification always includes these files. The merge queue
+ * now runs affected integration checks, not the full corpus.
  *
  * This is an overlay, not a partition member: a quarantined file keeps its
  * resource group above (`partitionVitestResourceSubset` and

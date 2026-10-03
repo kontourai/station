@@ -21,9 +21,14 @@ const queryState = vi.hoisted(() => ({
 }));
 
 vi.mock('@kontourai/station-sdk', () => ({
+  // The real picker projection is credential-free and drops
+  // `capabilityInventory` (workspaceConnections.ts `useModelPickerCatalogQuery`);
+  // modelled faithfully so a consumer cannot read the live handshake off it.
   useModelPickerCatalogQuery: () => ({
     data: {
-      agentConnections: queryState.agentConnections,
+      agentConnections: queryState.agentConnections.map(
+        ({ capabilityInventory: _inventory, ...connection }) => connection,
+      ),
       modelConnections: queryState.modelConnections,
     },
     isFetchedAfterMount: queryState.modelCatalogFetchedAfterMount,
@@ -31,6 +36,7 @@ vi.mock('@kontourai/station-sdk', () => ({
     isLoading: queryState.modelCatalogLoading,
   }),
   useProjectLayoutsQuery: () => ({ data: [] }),
+  useEngineConnectionsQuery: () => ({ data: queryState.agentConnections }),
 }));
 vi.mock('../contexts/ModelCapabilitiesContext', () => ({
   useModelImageSupport: () => queryState.modelImageSupport,
@@ -318,6 +324,98 @@ describe('useChatDockViewModel (memoized bindingStatus/effectiveModels)', () => 
 
     expect(result.current.modelSupportsAttachments).toBe(true);
     expect(result.current.imageAttachmentRefusal).toBeUndefined();
+  });
+
+  describe('an ACP engine reads its live handshake from the engine inventory', () => {
+    const grokBuild = (promptImage: boolean | undefined) => ({
+      id: 'grok-build',
+      name: 'Grok Build',
+      type: 'acp',
+      capabilities: [
+        'agent-runtime',
+        'session-lifecycle',
+        'tool-calls',
+        'interrupt',
+        'approvals',
+        'acp',
+        'image-input',
+      ],
+      config: { engineId: 'acp' },
+      capabilityInventory: {
+        providerId: 'acp',
+        connectionId: 'grok-build',
+        displayName: 'Grok Build',
+        status: 'ready',
+        authStatus: 'unknown',
+        freshness: 'live',
+        source: 'provider',
+        models: [],
+        skills: [],
+        slashCommands: [],
+        ...(promptImage === undefined
+          ? {}
+          : {
+              sessionSurfaces: {
+                loadSession: true,
+                mcpTransports: ['stdio'],
+                promptImage,
+              },
+            }),
+      },
+    });
+    const render = () =>
+      renderHook((props: Props) => useChatDockViewModel(props), {
+        initialProps: {
+          activeSessionId: 's1',
+          availableModels,
+          agents,
+          sessions: [
+            { ...sessions[0], agentConnectionId: 'grok-build' },
+          ] as typeof sessions,
+        },
+      });
+
+    test('a handshake that advertised image: false refuses at attach time', () => {
+      queryState.agentConnections = [grokBuild(false)];
+      const { result } = render();
+      expect(result.current.modelSupportsAttachments).toBe(false);
+      expect(result.current.imageAttachmentRefusal).toBe(
+        'Grok Build reported that it cannot accept images.',
+      );
+    });
+
+    test('an engine-wide yes is quiet, except for an engine whose model decides (OpenCode)', () => {
+      queryState.agentConnections = [grokBuild(true)];
+      expect(render().result.current.imageAttachmentCaveat).toBeUndefined();
+      queryState.agentConnections = [
+        { ...grokBuild(true), id: 'opencode', name: 'OpenCode' },
+      ];
+      const { result } = renderHook(
+        (props: Props) => useChatDockViewModel(props),
+        {
+          initialProps: {
+            activeSessionId: 's1',
+            availableModels,
+            agents,
+            sessions: [
+              { ...sessions[0], agentConnectionId: 'opencode' },
+            ] as typeof sessions,
+          },
+        },
+      );
+      expect(result.current.imageAttachmentCaveat).toMatch(
+        /OpenCode accepts images, but Station can't confirm/,
+      );
+    });
+
+    test('no handshake yet attaches, and says the answer is unknown', () => {
+      queryState.agentConnections = [grokBuild(undefined)];
+      const { result } = render();
+      expect(result.current.modelSupportsAttachments).toBe(true);
+      expect(result.current.imageAttachmentCaveat).toBe(
+        'Grok Build has not reported whether it accepts images yet. Station checks when you send.',
+      );
+    });
   });
 
   test('Muse permits images when its live adapter advertises delivery', () => {

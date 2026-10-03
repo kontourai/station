@@ -472,6 +472,9 @@ describe('TaskWorkspaceView', () => {
     fireEvent.click(
       screen.getByRole('option', { name: 'Researcher @researcher' }),
     );
+    fireEvent.click(
+      screen.getByRole('checkbox', { name: 'Include Task brief' }),
+    );
     fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), {
       target: { value: 'Probe this idea' },
     });

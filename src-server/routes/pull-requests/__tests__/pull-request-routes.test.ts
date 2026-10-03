@@ -296,7 +296,7 @@ describe('pull request operator gate', () => {
     });
     expect(getPullRequest).not.toHaveBeenCalled();
     expect(transport.mock.calls.at(-1)?.[0]).toContain(
-      'number,headRefName,mergeable',
+      'number,headRefName,mergeable,headRepositoryOwner',
     );
   });
 

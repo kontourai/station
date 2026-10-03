@@ -22,7 +22,7 @@
 
     {"path":"src-server/routes/agents/enriched-agents.ts","digest":"6baed1928fa80cd18e59ea9d531b656099f6389b5457b2cbe39420ea0e5de20c","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
 
-    {"path":"src-ui/src/hooks/useActiveChatSessionMessaging.ts","digest":"6df9e0ec2c8f5e5a20309e67cf81f035a76e1a8ec98ac72fe3a03f5edca37253","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+    {"path":"src-ui/src/hooks/useActiveChatSessionMessaging.ts","digest":"53af6df5a169a76a3eb936293dff7b0064b8596b6d5ddec1efa738ac6b0002e2","revision":"4e4453cb3140e7f075e2a53468d475f950837221"},
 
     {"path":"src-ui/src/hooks/useSlashCommandHandler.ts","digest":"59f95032d3560a23ec9e3ef76ebd4bf3cbb7efc4b7a325368912802636d8ce5e","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
 
