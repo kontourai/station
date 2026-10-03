@@ -10,7 +10,7 @@ row that matches the job you are doing.
 | Operators | [guides/deployment.md](guides/deployment.md), [guides/machine-relationships.md](guides/machine-relationships.md), [reference/config.md](reference/config.md) | Repository only unless explicitly listed in the public manifest |
 | Release operators | [guides/releasing.md](guides/releasing.md), [guides/ecosystem-packaging.md](guides/ecosystem-packaging.md), [guides/store-entry.md](guides/store-entry.md), [guides/store-listing.md](guides/store-listing.md) | Owner-gated Homebrew, public installer plumbing, and store consoles |
 | Agent application authors | [guides/agent-development.md](guides/agent-development.md), [reference/sdk.md](reference/sdk.md#agent-development-entry) | Repository only |
-| Plugin authors | [guides/plugins.md](guides/plugins.md), [guides/build-your-first-plugin.md](guides/build-your-first-plugin.md), [reference/sdk.md](reference/sdk.md) | Repository only |
+| Plugin authors | [guides/plugins.md](guides/plugins.md), [guides/build-your-first-plugin.md](guides/build-your-first-plugin.md), [reference/sdk.md](reference/sdk.md), [guides/authoring-skill-experiences.md](guides/authoring-skill-experiences.md) | Repository only |
 | Contributors | [../CONTRIBUTING.md](../CONTRIBUTING.md), [architecture/module-map.md](architecture/module-map.md), [guides/development.md](guides/development.md), [guides/testing.md](guides/testing.md) | Repository only |
 | Maintainers and agents | [../AGENTS.md](../AGENTS.md), [strategy/README.md](strategy/README.md), [glossary.md](glossary.md) | Repository only |
 | API and CLI consumers | [reference/api.md](reference/api.md), [reference/cli.md](reference/cli.md), [reference/contracts.md](reference/contracts.md) | Repository only |

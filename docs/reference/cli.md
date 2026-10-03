@@ -3040,6 +3040,20 @@ station plugin create my-provider --template=provider
 `station plugin dev` previews legacy layout tabs only; it does not render
 `workspacePanes`. Install the scaffold to see its Pane.
 
+### `plugin experience inspect|review`
+
+Inspect a pinned local Skill library, then review an authored ordinary plugin
+against its source/package digests, source spans, gap dispositions and retained
+evaluation transcripts. These commands read local files and grant no execution
+or installation authority. See the [author learning path](../guides/authoring-skill-experiences.md)
+for the receipt contract and evidence limits.
+
+```bash
+station plugin experience inspect /path/to/library --entries=my-skill
+station plugin experience review /path/to/plugin --library=/path/to/library --entries=my-skill
+station plugin experience review /path/to/plugin --library=/path/to/library --entries=my-skill --receipt=/path/to/review.json
+```
+
 ### `plugin build`
 
 Build the plugin bundle in the current directory. Outputs to `dist/`.

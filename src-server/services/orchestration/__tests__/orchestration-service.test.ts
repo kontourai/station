@@ -22482,6 +22482,109 @@ describe('OrchestrationService', () => {
     expect(codex.interruptTurn).not.toHaveBeenCalled();
   });
 
+  test('stable steer input is delivered once across repeated commands and a reopened store', async () => {
+    claude.sessions.set('steer-once', {
+      provider: 'claude',
+      threadId: 'steer-once',
+      status: 'running',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+    eventStore.appendEvent({
+      eventId: 'steer-once-start',
+      provider: 'claude',
+      threadId: 'steer-once',
+      turnId: 'live',
+      createdAt: new Date().toISOString(),
+      method: 'turn.started',
+      prompt: 'initial',
+    });
+    const options = {
+      adapterRegistry: createRegistry([claude]),
+      eventBus,
+      eventStore,
+      logger: { debug: vi.fn(), warn: vi.fn() },
+    };
+    const routing = new OrchestrationService(options);
+    const command = {
+      type: 'steerTurn' as const,
+      threadId: 'steer-once',
+      turnId: 'live',
+      input: 'redirect',
+      clientInputId: 'input-1',
+    };
+    const first = await routing.dispatch(command);
+    const reopened = new EventStore(join(tmp, 'orchestration.sqlite'));
+    try {
+      const restarted = new OrchestrationService({
+        ...options,
+        eventStore: reopened,
+      });
+      expect(await restarted.dispatch(command)).toEqual(first);
+      expect(claude.steerTurn).toHaveBeenCalledTimes(1);
+      expect(
+        await restarted.dispatch({ ...command, input: 'different input' }),
+      ).toMatchObject({ outcome: 'indeterminate' });
+      expect(claude.steerTurn).toHaveBeenCalledTimes(1);
+    } finally {
+      reopened.close();
+    }
+  });
+
+  test('a steer with unknown adapter acknowledgement remains durably held and is never replayed', async () => {
+    claude.sessions.set('steer-uncertain', {
+      provider: 'claude',
+      threadId: 'steer-uncertain',
+      status: 'running',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+    eventStore.appendEvent({
+      eventId: 'steer-uncertain-start',
+      provider: 'claude',
+      threadId: 'steer-uncertain',
+      turnId: 'live',
+      createdAt: new Date().toISOString(),
+      method: 'turn.started',
+      prompt: 'initial',
+    });
+    claude.steerTurn.mockRejectedValueOnce(
+      new Error('transport acknowledgement lost'),
+    );
+    const options = {
+      adapterRegistry: createRegistry([claude]),
+      eventBus,
+      eventStore,
+      logger: { debug: vi.fn(), warn: vi.fn() },
+    };
+    const routing = new OrchestrationService(options);
+    const command = {
+      type: 'steerTurn' as const,
+      threadId: 'steer-uncertain',
+      turnId: 'live',
+      input: 'redirect',
+      clientInputId: 'input-2',
+    };
+    expect(await routing.dispatch(command)).toEqual({
+      outcome: 'indeterminate',
+      threadId: command.threadId,
+      clientInputId: command.clientInputId,
+    });
+    const reopened = new EventStore(join(tmp, 'orchestration.sqlite'));
+    try {
+      const restarted = new OrchestrationService({
+        ...options,
+        eventStore: reopened,
+      });
+      expect(await restarted.dispatch(command)).toMatchObject({
+        outcome: 'indeterminate',
+      });
+      expect(claude.steerTurn).toHaveBeenCalledTimes(1);
+    } finally {
+      reopened.close();
+    }
+  });
+
   test('enforces mid-turn steer capability and active-turn state before adapter dispatch', async () => {
     const codex = new FakeAdapter('codex');
     const muse = new FakeAdapter('muse');

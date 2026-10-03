@@ -31,8 +31,8 @@ const detailState = {
   input: '',
   setInput: vi.fn(),
   isDelegated: false,
-  sendTurn: { isPending: false, error: null, mutate: vi.fn() },
-  respond: { isPending: false, error: null, mutate: vi.fn() },
+  sendTurn: { isPending: false, error: null as Error | null, mutate: vi.fn() },
+  respond: { isPending: false, error: null as Error | null, mutate: vi.fn() },
   stopTask: { isPending: false, error: null, mutate: vi.fn() },
   pendingRequest: null,
   pendingRequestPresentation: null,
@@ -127,6 +127,8 @@ describe('MutableSessionDetail evidence reveal (station#4052 slice 3)', () => {
   const scrollIntoView = vi.fn();
 
   beforeEach(() => {
+    detailState.sendTurn.error = null;
+    detailState.respond.error = null;
     transcript.settled = true;
     scrollIntoView.mockClear();
     Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
@@ -134,6 +136,24 @@ describe('MutableSessionDetail evidence reveal (station#4052 slice 3)', () => {
       writable: true,
       value: scrollIntoView,
     });
+  });
+
+  test('new send and response failures reveal their notice when another notice is already present', () => {
+    detailState.sendTurn.error = new Error('Earlier send failure');
+    const view = renderDetail();
+    const scroll = screen
+      .getByTestId('session-detail')
+      .querySelector('.sessions-detail__scroll') as HTMLDivElement;
+    scroll.scrollTop = 150;
+    detailState.respond.error = new Error('New response failure');
+    view.rerenderReveal(undefined);
+    expect(scroll.scrollTop).toBe(0);
+    expect(screen.getByText('New response failure')).toBeTruthy();
+    scroll.scrollTop = 150;
+    detailState.sendTurn.error = new Error('New send failure');
+    view.rerenderReveal(undefined);
+    expect(scroll.scrollTop).toBe(0);
+    expect(screen.getByText('New send failure')).toBeTruthy();
   });
 
   afterEach(() => {

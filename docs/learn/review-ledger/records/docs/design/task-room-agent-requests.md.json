@@ -24,11 +24,11 @@
 
     {"path":"src-server/services/projects/task-room-work-module.ts","digest":"acf9afa37babc44c9281e95040e057726a71b03c0ab49e98989e59069f450f9c","revision":"81ffd01123b6ad2a2591308e02a0c5f1cddc2feb"},
 
-    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"3976ce75117d6cbfcb2d61733068a738c46de966a3106e5a76190d03b31e63e6","revision":"71c69cadad789baff389812ff52e9efae397c316"},
+    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"755ec9f2a3b4e0523ad5fd4126605f4433a4ac90b0075160d21acb280359c704","revision":"c6ebec77b17b679e630a3857b10a6f814d7fb436"},
 
     {"path":"src-server/routes/orchestration/project-task-rooms.ts","digest":"a0be99c27d8f8795b5dfee2bac64b05ae9e957e7110db08414d76e1fdbd91cc8","revision":"a258f06c1515ccdde83e198862ae8efe43d71207"},
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"400dc75dd88a48bc411a4edb9c5f40f9d22ae0f1c5b68d8f748e7733efae5a0e","revision":"cb3ebc3797508b3f46d66b8bc5ece89b32cb79ae"},
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"90e94e3a617cb7c9642c029f8dd1c58fbebeca19e29dbd1b097af41952fe4b93","revision":"cf12c0d848d0dc068f3dcaa530e9a1f213618834"},
 
     {"path":"src-server/tools/station-control-delegation.ts","digest":"8968805e6becbf85cb1316d6c9a3838e5d0d02203b27b7e69d95e2b080f1fec4","revision":"92d0ab926f74d804cb314dfadbbda9db73499015"},
 
@@ -54,7 +54,7 @@
 
     {"path":"src-ui/src/workspace-panes/TaskRoomComposer.css","digest":"b6ab400718d1a406b143dbf1bbb002fc0ac06387971a6cf352cfebe9d0633317","revision":"a663d5f2984cec5dc40bf0bdedff2f7d32088b25"},
 
-    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"92d31dd655d7c0a62ce68dc6fd804268cda2f357bb775a512ee974d7c09564db","revision":"1a235cd9bc482738abe4c3f011f73be86074d667"},
+    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"b13d44008f39b08b3d32e459abc3081c8ac8936f53e5a7bdb93d4dcbdc2043f1","revision":"423cbe55b9e35e4cd8954fd441cb9f3c69740d66"},
 
     {"path":"src-server/runtime/routes/__tests__/runtime-routes-project-task-room-principal.test.ts","digest":"3434108e346c495750d1aa394514be5a8a7b6c1395f1b7792598f120be253683","revision":"81ffd01123b6ad2a2591308e02a0c5f1cddc2feb"},
 

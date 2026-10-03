@@ -138,6 +138,7 @@ export function handleReasoningDeltaEvent(
   };
 
   activeChatsStore.updateChat(event.threadId, {
+    activityHint: undefined,
     streamingMessage: nextStreamingMessage,
     planArtifact: derivePlanArtifactFromStreamingState(
       {
@@ -241,6 +242,7 @@ function upsertToolPartOnEventTurn(
   }
   const streamingMessage = getStreamingMessage(chat);
   activeChatsStore.updateChat(event.threadId, {
+    activityHint: undefined,
     isProcessingStep: true,
     streamingMessage: {
       ...streamingMessage,
@@ -306,6 +308,12 @@ export function handleToolCompletedEvent(
 ) {
   const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
   if (!chat) return;
+  if (
+    chat.activityHint?.kind === 'retrying' &&
+    !turnContradicts(chat.openTurnId, event.turnId)
+  ) {
+    activeChatsStore.updateChat(event.threadId, { activityHint: undefined });
+  }
   const streamingMessage = getStreamingMessage(chat);
 
   // archive#3117: `policyDenied` is derived server-side from the real
@@ -455,6 +463,7 @@ export function handleToolCompletedEvent(
   // here. There is nowhere else to put the row, and dropping a terminal
   // outright would leave its call running forever.
   activeChatsStore.updateChat(event.threadId, {
+    activityHint: undefined,
     isProcessingStep: false,
     streamingMessage: {
       ...streamingMessage,
