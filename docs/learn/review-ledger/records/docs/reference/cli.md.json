@@ -12,9 +12,9 @@
   "document": {"digest":"62c03f1a50009e0973510034c314c46df560dddf761547e6798d86808eb116fd","revision":"020eb6a14e05313bb66724ec3504e613717e6ed1"},
 
   "sources": [
-    {"path":".github/workflows/publish-release.yml","digest":"8811d948692207aff9c3987ed9c5ecfd7778770dfbb76b4d80cb7773713f6fa1","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
+    {"path":".github/workflows/publish-release.yml","digest":"177c206b2b12a2421bd83d3b803b7e7a4555a982725d2b2b775837fc6aa87db6","revision":"0fef6012b6853144e65d4ba2eb0db5fb6c2d1a05"},
 
-    {"path":".github/workflows/release.yml","digest":"e9322e982c85dfb6b26188a6f6d0bc596f1f384e949bc50a59fe07d552e3c8f2","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
+    {"path":".github/workflows/release.yml","digest":"178d355f1c2141a4587db894e9f015983340a0c09a4f1c4f633c61503d58b577","revision":"94e8e5781a2c23d2bc828682a1157aef3934e897"},
 
     {"path":"install.sh","digest":"f2b2fbf2dba1198f08637b48ad3a1cd7ae684cee020621cd293668e6bbb8b4bc","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -138,7 +138,7 @@
 
     {"path":"packages/shared/src/workspace-package.ts","digest":"34c9a91798a6b8259dc7106387c94ffafe970aa43707887923c651d4313b4a40","revision":"5c18724d4ba50fd9b5f6c4043e7a00ebc893c70d"},
 
-    {"path":"scripts/__tests__/release-artifacts.test.ts","digest":"cbc2d4fb766186bbf2a95f343bf6f6c07c38afec8731bf649e5d211ca4ce7e64","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"scripts/__tests__/release-artifacts.test.ts","digest":"be144f4783d2914d90e54413c38ae2c0b3f2b9a1b22e00076813f2226e99874f","revision":"780dbbe2bb02372ad22a92e269e2fc3fa62bcd22"},
 
     {"path":"scripts/__tests__/release-sbom-generation.test.ts","digest":"32ec8766c0ab9e4238e56a71f99a29a59a9485da7c80d7eff005a6dcaafaa4c1","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -146,7 +146,7 @@
 
     {"path":"scripts/generate-release-sboms.mjs","digest":"e451ccfafb6f723e58c225a0654c1da0ba4ed22fbf86d88023e65cfa541ab546","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"scripts/lib/release-artifacts.mjs","digest":"ed7ccc65b9de85f59a0af871e3e2405d18df4df63d544bd8479c9eb3b394995d","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"scripts/lib/release-artifacts.mjs","digest":"671bce22d83208bd0f1ae93519bf1ecabcc0e61602dec2ef32294bc141563c42","revision":"780dbbe2bb02372ad22a92e269e2fc3fa62bcd22"},
 
     {"path":"scripts/lib/release-sbom-generation.mjs","digest":"7c994c5cbc4832402ab7479b4c005395ba63fc7953231370e57db3ccf9c59f3e","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 

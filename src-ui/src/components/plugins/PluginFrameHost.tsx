@@ -1,3 +1,5 @@
+import type { SkillExperienceIdentityV1 } from '@kontourai/station-contracts/skill-experience';
+import type { PaneSkillExperienceHost } from '@kontourai/station-contracts/workspace-pane-host-contract';
 import { authenticatedFetch } from '@kontourai/station-sdk';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useApiBase } from '../../contexts/ApiBaseContext';
@@ -8,11 +10,16 @@ import {
   type FramePaneHostOutboundMessage,
   useFramePaneHost,
 } from './framePaneHost';
+import { buildPluginFrameRuntime } from './plugin-frame-runtime';
+import '../mcp-ui/MCPToolUIFrame.css';
 
 const READY = 'plugin-host-ready';
 const RESOURCE = 'plugin-resource-ready';
+const DEFAULT_AUTHORIZE = () => true;
 
 export interface PluginFrameHostProps {
+  skillExperience?: PaneSkillExperienceHost;
+  skillExperienceIdentity?: SkillExperienceIdentityV1;
   plugin: { name: string; declaredSlug: string; granted?: readonly string[] };
   /** Re-runs the registry's exact provenance check before byte transfer. */
   authorize?: () => boolean;
@@ -27,9 +34,11 @@ export interface PluginFrameHostProps {
  */
 export function PluginFrameHost({
   plugin,
-  authorize = () => true,
+  authorize = DEFAULT_AUTHORIZE,
   onObservation,
   onFailure,
+  skillExperience,
+  skillExperienceIdentity,
 }: PluginFrameHostProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const { apiBase } = useApiBase();
@@ -101,6 +110,8 @@ export function PluginFrameHost({
   const [frameGeneration, setFrameGeneration] = useState(0);
   const { confirmChrome, receive: receivePaneHostMessage } = useFramePaneHost({
     pluginName: plugin.name,
+    skillExperience,
+    authorizeExperience: authorize,
     granted: plugin.granted,
     generation: frameGeneration,
     // The same expression the render's early return branches on, so the
@@ -187,11 +198,14 @@ export function PluginFrameHost({
         if (!authorize())
           throw new Error('plugin layout is no longer authorized');
         const base = `${apiBase}/api/plugins/${encodeURIComponent(plugin.name)}`;
+        const query = skillExperienceIdentity
+          ? `?experienceIdentity=${encodeURIComponent(JSON.stringify(skillExperienceIdentity))}`
+          : '';
         const [js, css] = await Promise.all([
-          authenticatedFetch(`${base}/bundle.js`, {
+          authenticatedFetch(`${base}/bundle.js${query}`, {
             signal: controller.signal,
           }),
-          authenticatedFetch(`${base}/bundle.css`, {
+          authenticatedFetch(`${base}/bundle.css${query}`, {
             signal: controller.signal,
           }),
         ]);
@@ -206,7 +220,10 @@ export function PluginFrameHost({
               bundleCss: await css.text(),
               // This tiny runtime observes registration; it does not expose
               // host objects, credentials, or a CSP nonce to plugin code.
-              runtimeJs: `addEventListener('load',()=>queueMicrotask(()=>parent.postMessage({method:'initialize',params:{exports:Object.keys(window.__station_ai_plugins?.[${JSON.stringify(plugin.name)}]?.components||{})}},'*')));`,
+              runtimeJs: buildPluginFrameRuntime(
+                new URL(origin).origin,
+                plugin.name,
+              ),
             },
           },
           origin,
@@ -217,7 +234,16 @@ export function PluginFrameHost({
     };
     void load();
     return () => controller.abort();
-  }, [apiBase, authorize, enabled, onFailure, origin, plugin.name, ready]);
+  }, [
+    apiBase,
+    authorize,
+    enabled,
+    onFailure,
+    origin,
+    plugin.name,
+    ready,
+    skillExperienceIdentity,
+  ]);
 
   if (!enabled || !origin)
     return <div role="status">Plugin frame unavailable.</div>;

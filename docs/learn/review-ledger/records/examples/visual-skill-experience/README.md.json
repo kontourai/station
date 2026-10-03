@@ -12,19 +12,19 @@
   "document": {"digest":"83ee67767aa8bb2c1391696a2fceade6d3bff519fab17951453c8dfc946aa53c","revision":"4846133db20d56a37c3941d83b0dca5444f21a52"},
 
   "sources": [
-    {"path":"examples/visual-skill-experience/plugin.json","digest":"0ff451e1841bd1be69321dd1fcebe88a472dcc4b6b19f14ec83061212171c128","revision":"4846133db20d56a37c3941d83b0dca5444f21a52"},
+    {"path":"docs/reference/skill-experiences.md","digest":"1c88d7156a8696a1f724a023ba76d81dced8229ca164ae59495d4c1c040dabac","revision":"68b8e4d5a9b11c85b8922c370acaf98e929d0275"},
 
     {"path":"examples/visual-skill-experience/io.kontourai.station/experiences/stress-test-idea.json","digest":"b09ffb2394b1f81a15df043bd9befbb19d0dbf30256781cb33da4cfe88c8e208","revision":"4846133db20d56a37c3941d83b0dca5444f21a52"},
 
+    {"path":"examples/visual-skill-experience/plugin.json","digest":"0ff451e1841bd1be69321dd1fcebe88a472dcc4b6b19f14ec83061212171c128","revision":"4846133db20d56a37c3941d83b0dca5444f21a52"},
+
     {"path":"examples/visual-skill-experience/skills/stress-test-idea/SKILL.md","digest":"d5e7270b300e941d361be53562712fa04274a3076ba0201803d422832966e35d","revision":"4846133db20d56a37c3941d83b0dca5444f21a52"},
+
+    {"path":"packages/shared/src/__tests__/skill-experience-author.test.ts","digest":"019fbaff285008de176690a8d64ff9e44e9da462495c64483105c5798bf9d9cf","revision":"f2bb7d8a1e4b56ac783fb9d0cfe167fe7a0fdde5"},
 
     {"path":"packages/shared/src/build.ts","digest":"20f919a4a98519ce20e8e2f0d5d498a4be8daeba1314a97ddae752fd36df4630","revision":"4846133db20d56a37c3941d83b0dca5444f21a52"},
 
-    {"path":"packages/shared/src/skill-experience-author.ts","digest":"5227a059dbe7a2f557e0916ae58a796021b387ef0589c15d278b82a04852ed7b","revision":"4846133db20d56a37c3941d83b0dca5444f21a52"},
-
-    {"path":"packages/shared/src/__tests__/skill-experience-author.test.ts","digest":"6cde4e5b29f27b5dd8eecea1e44153fa6462b627c367b4e8ac79102726650a5f","revision":"72ad2fb97f80c4b5bdccf534460a3aecf81e4d02"},
-
-    {"path":"docs/reference/skill-experiences.md","digest":"0b604c7b0c6cb225edba01a6dcd7652a378cf4d20d44a6b11da6530a19ed8d18","revision":"4846133db20d56a37c3941d83b0dca5444f21a52"},
+    {"path":"packages/shared/src/skill-experience-author.ts","digest":"78eff8e23674a648d904c12919b137ff62c04520fc3f164f66a482102047754b","revision":"f2bb7d8a1e4b56ac783fb9d0cfe167fe7a0fdde5"},
 
     {"path":"src-server/__test-utils__/temp-dirs.ts","digest":"20c81129e9cd3db2df51d96b788515b8afde2a2740112ca25e101a6880f72cb1","revision":"cd4139fe26bdaac578c408aaa75784fff0391a5a"}
   ],

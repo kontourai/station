@@ -12,7 +12,7 @@
   "document": {"digest":"b015e5cd44b250ca16a49aaae95721d5529325200b70d1ff32056c515c0fd06c","revision":"a11755821186eaeb034b77e970dfa372c5c7f789"},
 
   "sources": [
-    {"path":"pnpm-lock.yaml","digest":"4f9a974bd49f637fd690699b3bcd9b6ce915114eb4f52e2e6bdd5b0f3b699f2a","revision":"ea49cb8678208b9037f8e9ab3ceb2a95fe2647ff"},
+    {"path":"pnpm-lock.yaml","digest":"e5666b03a0bedc8656564f5371ea01b19879ac4a8ed732280e1d0903025de0c5","revision":"fdca33b1896b280299ba72fc70a3c9b9cda7f3af"},
 
     {"path":"scripts/generate-metric-reference.mjs","digest":"75fb40e614bee3d8f64de9bcdb1ee3dee333f2aca482cfcdd243c657bdb0aff4","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
@@ -74,7 +74,7 @@
 
     {"path":"src-server/providers/sessions/claude-transcript-session-source.ts","digest":"d1dc78e049ebbd92c6dabf54436f3b82779bbe0c801d6e31514351f1c58c560d","revision":"ed7aacb2c9d560efe6c8af7c9bed5a4e711f5053"},
 
-    {"path":"src-server/services/orchestration/event-store.ts","digest":"f298ac4ba1d53fbf19839864b6996874711540ef8f56b207431b6586bf292e80","revision":"6fd2134bfad3cb98e82b631bfd090a4760afa5c9"},
+    {"path":"src-server/services/orchestration/event-store.ts","digest":"93c3dbecfc298b2ae05f65a29fe897f34f13a69ba0cbd72b6fca8013a9a6361a","revision":"b208a334880a96bb3f4267c2d2ffd6d03e118218"},
 
     {"path":"src-ui/src/pages/ProfilePage.css","digest":"9a36e5f00b440a12ae1c2cd2222a59e52c7f030d2a8c23119c600527714cd1e8","revision":"b0568b6eb4305aa50f762e2715f69661608c94e3"},
 

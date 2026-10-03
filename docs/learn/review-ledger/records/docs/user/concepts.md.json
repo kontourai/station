@@ -12,7 +12,7 @@
   "document": {"digest":"9d922716b0ad931258a83c905179d2626aa673eb45a03f875558a2faeb9cb23c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
   "sources": [
-    {"path":"docs/architecture/module-map.md","digest":"56841d9b88e49589dc5fa00f24aaf40cc2d981a5af512e68a27b0ae6eb3f7bbd","revision":"94da87e3016992b8cdbdde3be15b978b489a1c63"},
+    {"path":"docs/architecture/module-map.md","digest":"bc19269b0710219c166e937aa7f637e5e069ebfeee86518e1f10384f0ff5b8a0","revision":"e4344fd10ef7a80a6a6f65d7e709fb1be56b64df"},
 
     {"path":"docs/privacy-policy.md","digest":"fb5be7ad7342be17509e79e40a6e2dbbe7046ea7dbbe8db4ba637fcdbb21d403","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -22,13 +22,13 @@
 
     {"path":"packages/contracts/src/session-lifecycle.ts","digest":"defd4c1f3fd84f5b94d47f5a13c88ce75b92e3f2f7dc9c7ff9358f300e1795cf","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/sdk/src/client/execution.ts","digest":"e70868b9e5f5495e542a872093749d25042588af482cec1d50c70c2df00004a9","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+    {"path":"packages/sdk/src/client/execution.ts","digest":"a72a224bd2f86732da2bcbfbe2614c0e2454a6ce25f4b857b4d9383e98a052a0","revision":"f2a6ca3693f2f676d33ec8e09151c0563aa66b10"},
 
     {"path":"src-server/adapters/node-pty-adapter.ts","digest":"ba0efef51274d7f08e4ca45a1903ad536664adbb2ec542631b765a5093f1f758","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"src-server/domain/agent-registry.ts","digest":"b25558e066b73e96a09310d9d8a4bc8a0db41f893047a6f86035411ee0df3f50","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"755ec9f2a3b4e0523ad5fd4126605f4433a4ac90b0075160d21acb280359c704","revision":"c6ebec77b17b679e630a3857b10a6f814d7fb436"},
+    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"c3febaa85af6fa1d6b6edce04539a96b88cb7cb0660b7d0ee0de8d4fb6595530","revision":"b208a334880a96bb3f4267c2d2ffd6d03e118218"},
 
     {"path":"src-server/services/orchestration/session-command-module.ts","digest":"a187447cec48eca40e8933bce7600c5e00baebfae55c4ecf2ca4ef5d70626622","revision":"0c1f436037261c43eeca3e079f5106948360c591"}
   ],

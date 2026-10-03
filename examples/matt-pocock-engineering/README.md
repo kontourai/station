@@ -1,8 +1,10 @@
 # Station-curated Matt Pocock engineering collection
 
-This ordinary Agent Plugin supplies four visual entry points: **Clarify an
-idea**, **Clarify project decisions**, **Write a specification**, and **Break a
-specification into tickets**. Each can be selected independently. The package
+This ordinary Agent Plugin supplies five visual entry points: **Clarify an
+idea**, **Clarify project decisions**, **Write a specification**, **Break a
+specification into tickets**, and **Implement reviewed tickets**. Each can be
+selected independently. Authored optional stage choices prepare the next draft
+in the same conversation; they never send or implement automatically. The package
 is Station-curated; Matt Pocock authored the upstream Skills, not these visual
 interfaces, and no endorsement is implied.
 
@@ -26,9 +28,15 @@ station plugin install /absolute/path/to/matt-pocock-engineering
 ```
 
 Author validation has been executed. It establishes schema, portable Skill
-parsing and pinned bundled bytes. This README does not claim a published
-collection, installed model journey, browser/native qualification or a registry
-release. Those need their own receipts as explained in the
+parsing and pinned bundled bytes. One [recorded browser/model journey](qualification/browser-focus-board-20261003.json)
+at source1bd clarified a local Focus Board idea with Codex, produced a reviewed
+specification and published six local tickets after approval. Reload at source746
+retained its three immutable stage snapshots. Questions used ordinary chat text;
+this receipt does not qualify canonical questionnaire answers, later composer
+changes, application implementation, physical devices or a released collection.
+Only that observed [evaluation case](EVALUATION-CASES.json) passed; other planned
+cases remain not-run. Native, rich-pane, registry and release evidence retain
+their own scopes as explained in the
 [author learning path](../../docs/guides/authoring-skill-experiences.md).
 
 ## Move an idea into engineering work
@@ -64,8 +72,10 @@ or modify a parent issue. The configured tracker, local files and actual
 publication actions retain the agent's normal authority boundary.
 
 Implementation is a separate user decision. After reviewing the work
-breakdown, explicitly invoke the bundled `implement` Skill with selected ticket
-references and confirm project, branch, tools and pre-agreed testing seams.
+breakdown, explicitly choose **Implement reviewed tickets**, supply the selected
+ticket references and confirm Project, branch, tools and pre-agreed testing seams
+before sending. This authored stage calls the bundled `implement` entry; it is
+never an automatic transition from tickets.
 It uses `tdd` where possible, checks the work, invokes `code-review` and commits
 to the current branch. Installing or finishing a visual experience grants none
 of these actions. Starting implementation does not reset reviewed decisions.

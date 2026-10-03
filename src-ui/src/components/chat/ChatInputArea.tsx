@@ -44,6 +44,7 @@ import { ArrowDownGlyph } from '../icons/Glyph';
 import { ResponsiveDialogSurface } from '../ResponsiveDialogSurface';
 import { VoiceOrb } from '../voice/VoiceOrb';
 import { ComposerIconAction } from './ComposerIconAction';
+import { ComposerStopButton } from './ComposerStopButton';
 import {
   appendComposerSessionReference,
   composerDisplayValue,
@@ -1458,34 +1459,10 @@ export function ChatInputArea({
           <span className="chat-controls-row__spacer" />
           <div className="chat-input__send-group">
             {turnInFlight && (
-              <button
-                type="button"
-                onClick={onCancel}
-                tabIndex={0}
-                disabled={stopPending}
-                aria-busy={stopPending || undefined}
-                className="send-button chat-input__stop-btn"
-                aria-label={
-                  stopPending
-                    ? 'Stop requested — waiting for the engine'
-                    : 'Stop the current turn'
-                }
-                title={
-                  stopPending
-                    ? 'Stop requested — waiting for the engine'
-                    : 'Stop the current turn'
-                }
-              >
-                <svg
-                  viewBox="0 0 24 24"
-                  width="16"
-                  height="16"
-                  aria-hidden="true"
-                  focusable="false"
-                >
-                  <rect x="7" y="7" width="10" height="10" rx="2" />
-                </svg>
-              </button>
+              <ComposerStopButton
+                onCancel={onCancel}
+                stopPending={stopPending}
+              />
             )}
             <div
               className="chat-input__submit-controls"

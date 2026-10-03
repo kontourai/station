@@ -12,11 +12,11 @@
   "document": {"digest":"803feff52df735990c76c1c4904bd37da46d379f7e8083e6e361220fb957ecec","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
   "sources": [
-    {"path":"docs/architecture/module-map.md","digest":"56841d9b88e49589dc5fa00f24aaf40cc2d981a5af512e68a27b0ae6eb3f7bbd","revision":"94da87e3016992b8cdbdde3be15b978b489a1c63"},
+    {"path":"docs/architecture/module-map.md","digest":"bc19269b0710219c166e937aa7f637e5e069ebfeee86518e1f10384f0ff5b8a0","revision":"e4344fd10ef7a80a6a6f65d7e709fb1be56b64df"},
 
-    {"path":"docs/learn/atlas.json","digest":"221290fe20023e249789c9f9e3478f1fcaa1834471eebbe17490b0d2b474680c","revision":"94da87e3016992b8cdbdde3be15b978b489a1c63"},
+    {"path":"docs/learn/atlas.json","digest":"c69356a2f739a0d5c322029134336356a917bc186641bf872a65b3cb3a7fae0a","revision":"e4344fd10ef7a80a6a6f65d7e709fb1be56b64df"},
 
-    {"path":"examples/repository-knowledge-graph/__tests__/repository-knowledge-graph.test.mjs","digest":"f88bfb8efa7de7ae220048c77313c64d5fcece1ea5c344cee0b2178d511db323","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
+    {"path":"examples/repository-knowledge-graph/__tests__/repository-knowledge-graph.test.mjs","digest":"b518e97133720b6aa0b2349b04bfeb9fe236e1ecf51d64025dc25dc279988bf8","revision":"87180ea445a46d047d16b89b35ff1f3b92778f4f"},
 
     {"path":"examples/repository-knowledge-graph/export.mjs","digest":"673352f56722a0dc417e435230e2ca0d23ee1a5e0437a5b1ca94d6538445c1da","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 

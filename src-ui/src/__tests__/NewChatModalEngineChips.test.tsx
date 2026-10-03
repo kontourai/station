@@ -23,6 +23,10 @@ import { navigationStore } from '../contexts/navigation-store';
 // SDK mutation; a minimal mock keeps react-query's provider requirement out
 // of this render tree.
 vi.mock('@kontourai/station-sdk', () => ({
+  useSkillExperienceInventoryQuery: () => ({
+    data: { experiences: [], diagnostics: [] },
+    refetch: vi.fn(),
+  }),
   useMaterializeEngineAgentMutation: () => ({ mutateAsync: vi.fn() }),
   authenticatedFetch: vi.fn(async () => ({ ok: false })),
 }));

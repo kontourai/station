@@ -30,9 +30,9 @@
 
     {"path":".github/workflows/windows-pr-verification.yml","digest":"608bbdfac16fd9d0379b4fcffbb79d8a1a94ab014736442765087fe3f17a21ae","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
-    {"path":".veritas/authority/default.authority-settings.json","digest":"b47233d5d20d847ee85c5b77ccbd991ff13159270690a6adb957134b72cf57ac","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
-
     {"path":".veritas/GOVERNANCE.md","digest":"896ca1d26e71e4e8d691fb2539888282903f15024cd1dc2585299d682b9d269c","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+
+    {"path":".veritas/authority/default.authority-settings.json","digest":"b47233d5d20d847ee85c5b77ccbd991ff13159270690a6adb957134b72cf57ac","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
     {"path":".veritas/repo-map.json","digest":"fcabfcd9d0ad7a59d2ef216c943591575656f039e1d9df2d05565b96347ebca4","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
@@ -44,7 +44,7 @@
 
     {"path":"docs/plans/documentation-code-audit.md","digest":"6fa130fb00cc3544f3d80499c120ebf50b3700beb3186e71f9da2b470653a6b8","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
 
-    {"path":"package.json","digest":"4b367a2c40a0613ebe8d9c35e26ff7c2a454ca84abd543856d84b88bd3201019","revision":"e58fcedea713f7fc640bf51abe384f17503f72e4"},
+    {"path":"package.json","digest":"ee32f6a73f2428a8734396a7667e8ec009485b1c5a87f779652801ed4c51af1f","revision":"fdca33b1896b280299ba72fc70a3c9b9cda7f3af"},
 
     {"path":"scripts/__tests__/changed-verification.test.ts","digest":"9f3cb341f88aec79a92c18573d2c0f770ab8b01fac0a58f61250d8439f50adb1","revision":"394d2592f7f015a3191a96dfecc4b639fdce29d3"},
 
@@ -64,7 +64,7 @@
 
     {"path":"scripts/__tests__/metric-reference.test.ts","digest":"9c432501ef9d37322a972c2f54b52fd38552731b9b3bc59a5894a70bc557fb81","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
-    {"path":"scripts/__tests__/path-read-pin-boundary.test.ts","digest":"680c21e7cc4a454ceaa1a2c549055b475e13c3ba894164a0b227306569da312f","revision":"8c0170f5d9fb2a224c36326efbebb56b609f323a"},
+    {"path":"scripts/__tests__/path-read-pin-boundary.test.ts","digest":"40d7c1708ac66781ec300065398daf3e5274dedcac39e25b7520b952b7de8a10","revision":"64f79d4cfc8d468b475bf7c1ba871fb17534dcc2"},
 
     {"path":"scripts/__tests__/portable-server-archive.test.ts","digest":"f35ee8e8fcf9966fbcbdfa872a3e3b6ac8bd7be0c2f99086fa290b99b239b181","revision":"614c216de6de9d4c06ef56963853ccff52f2f685"},
 

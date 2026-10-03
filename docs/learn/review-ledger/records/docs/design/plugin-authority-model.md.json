@@ -24,7 +24,7 @@
 
     {"path":"src-ui/src/__tests__/PluginRegistry.csp.test.ts","digest":"f635d4e2688ecf45b48d23d272c27642e95a60db9fc7713b9c541f66c37c655b","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},
 
-    {"path":"src-ui/src/core/PluginRegistry.ts","digest":"4b87c6951d37298e6497639e1cc45294fd1239f06d4c6caf9f5ed540eef5ca2c","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"}
+    {"path":"src-ui/src/core/PluginRegistry.ts","digest":"69836e5e1dd4762f58da6f2495e96f0cab41d586e65327fc4c1dc08d80acc8f9","revision":"1373230550904315438e5bd2869a3c41a9e419ca"}
   ],
 
   "checks": [

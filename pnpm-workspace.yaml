@@ -28,6 +28,8 @@ minimumReleaseAge: 1440
 minimumReleaseAgeExclude:
   - '@kontourai/conduit'
   - '@kontourai/flow-agents'
+  # Exact signed release required by Flow Agents 6.5.1; future Flow releases age normally.
+  - '@kontourai/flow@5.1.3'
   - '@kontourai/veritas'
 pmOnFail: ignore
 # pdfjs-dist renders in the browser; its optional @napi-rs/canvas binding is
@@ -71,10 +73,10 @@ patchedDependencies:
   "@voltagent/server-hono@2.0.14": patches/voltagent-server-hono-2.0.14.patch
 strictPeerDependencies: true
 enableGlobalVirtualStore: false
-# flow-agents 6.4 hosts dispatch 0.3, whose optional datum peer requires 0.7.
+# flow-agents 6.5.1 hosts dispatch 0.3, whose optional datum peer requires 0.7.
 # Give that parent its own datum instead of inheriting contracts' 0.8.
 packageExtensions:
-  "@kontourai/flow-agents@6.4.0":
+  "@kontourai/flow-agents@6.5.1":
     dependencies:
       "@kontourai/datum": 0.7.0
 
