@@ -16,10 +16,13 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import Ajv2020 from 'ajv/dist/2020.js';
 import { afterEach, describe, expect, it } from 'vitest';
+import { PORTABLE_SERVER_TARGETS } from '../../packages/shared/src/portable-server-targets.mjs';
 import {
   assertOnlyExpectedAssets,
   createReleaseInventory,
+  HOST_MANIFEST_PAYLOAD_ASSET,
   releaseVariants,
+  signedHostManifestAsset,
   validateReleaseInventory,
   verifyTauriUpdaterSignature,
 } from '../lib/release-artifacts.mjs';
@@ -94,6 +97,49 @@ function tamperGlobalSignature(encodedSignature: string) {
   return Buffer.from(`${lines.join('\n')}\n`).toString('base64');
 }
 
+/**
+ * The host stream exactly as release.yml's host-manifest job stages it: the
+ * five station-server archives and the schema v2 payload
+ * `ecosystem-manifest.mjs assemble` wrote from their descriptors.
+ */
+function hostPayload(assetsDir: string) {
+  return {
+    schemaVersion: 2,
+    channel: 'stable',
+    version: '1.2.3',
+    releaseTag: TAG,
+    sourceSha: SHA,
+    publishedAt: GENERATED_AT,
+    nodeVersion: '24.21.0',
+    launcherProtocol: { min: 1, max: 1 },
+    artifacts: PORTABLE_SERVER_TARGETS.map(({ os, arch, format }) => {
+      const name = `station-server-${os}-${arch}.${format}`;
+      const bytes = readFileSync(join(assetsDir, name));
+      return {
+        os,
+        arch,
+        name,
+        url: `https://github.com/kontourai/station/releases/download/${TAG}/${name}`,
+        sha256: createHash('sha256').update(bytes).digest('hex'),
+        size: bytes.length,
+        format,
+      };
+    }),
+  };
+}
+
+function writeHostStream(assetsDir: string) {
+  for (const { os, arch, format } of PORTABLE_SERVER_TARGETS)
+    writeFileSync(
+      join(assetsDir, `station-server-${os}-${arch}.${format}`),
+      `host archive ${os}-${arch}\n`,
+    );
+  writeFileSync(
+    join(assetsDir, HOST_MANIFEST_PAYLOAD_ASSET),
+    `${JSON.stringify(hostPayload(assetsDir), null, 2)}\n`,
+  );
+}
+
 function fixture() {
   const root = mkdtempSync(join(tmpdir(), 'station-release-artifacts-'));
   roots.push(root);
@@ -126,6 +172,7 @@ function fixture() {
       }
     }
   }
+  writeHostStream(assetsDir);
   const portableSha = createHash('sha256')
     .update(readFileSync(join(assetsDir, 'station-portable.tar.gz')))
     .digest('hex');
@@ -259,7 +306,7 @@ describe('release artifact inventory', () => {
     expect(inventory.variants.map((variant) => variant.id)).toEqual(
       releaseVariants(TAG).map((variant) => variant.id),
     );
-    expect(inventory.assets).toHaveLength(25);
+    expect(inventory.assets).toHaveLength(31);
     expect(inventory.assets).toContainEqual(
       expect.objectContaining({
         name: 'station-updater-public-key.txt',
@@ -392,6 +439,201 @@ describe('release artifact inventory', () => {
     expect(() =>
       validateReleaseInventory(inventory, { assetsDir, updaterPublicKey }),
     ).toThrow('SBOM artifact subjects do not match the release inventory');
+  });
+});
+
+describe('release artifact inventory: the host stream (#2959)', () => {
+  const RELEASE_KEY_ID = 'station-portable-release-2026-09';
+
+  /** A key table pinning a test key under the release key id, and its signer. */
+  function testKeys(root: string) {
+    const { privateKey, publicKey } = generateKeyPairSync('ed25519');
+    const table = join(root, 'keys.json');
+    writeFileSync(
+      table,
+      JSON.stringify({
+        keys: [
+          {
+            keyId: RELEASE_KEY_ID,
+            algorithm: 'ed25519',
+            publicKeySpkiPem: publicKey.export({ type: 'spki', format: 'pem' }),
+            channels: ['stable', 'preview'],
+          },
+        ],
+      }),
+    );
+    return { table, privateKey };
+  }
+
+  function canonical(value: unknown): string {
+    if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
+    if (value && typeof value === 'object')
+      return `{${Object.keys(value)
+        .sort()
+        .map(
+          (key) =>
+            `${JSON.stringify(key)}:${canonical((value as Record<string, unknown>)[key])}`,
+        )
+        .join(',')}}`;
+    return JSON.stringify(value);
+  }
+
+  function attachSignedManifest(
+    assetsDir: string,
+    privateKey: KeyObject,
+    payload: unknown,
+  ) {
+    const name = signedHostManifestAsset(TAG);
+    writeFileSync(
+      join(assetsDir, name),
+      JSON.stringify({
+        schemaVersion: 1,
+        algorithm: 'ed25519',
+        keyId: RELEASE_KEY_ID,
+        payload,
+        signature: sign(
+          null,
+          Buffer.from(canonical(payload)),
+          privateKey,
+        ).toString('base64'),
+      }),
+    );
+    return name;
+  }
+
+  it('inventories every host archive and the payload that signs their bytes', () => {
+    const { inventory } = createFixtureInventory();
+    const roles = inventory.assets
+      .filter((asset) => asset.role.startsWith('host-'))
+      .map(({ name, role }) => `${role}:${name}`);
+    expect(roles.sort()).toEqual([
+      'host-archive:station-server-darwin-arm64.tar.gz',
+      'host-archive:station-server-darwin-x64.tar.gz',
+      'host-archive:station-server-linux-arm64.tar.gz',
+      'host-archive:station-server-linux-x64.tar.gz',
+      'host-archive:station-server-win32-x64.zip',
+      'host-manifest-payload:station-server-manifest-payload.json',
+    ]);
+  });
+
+  it.each([
+    [
+      'names another release',
+      (payload: any) => {
+        payload.version = '1.2.4';
+        payload.releaseTag = 'v1.2.4';
+      },
+      'host manifest payload does not name this release',
+    ],
+    [
+      'signs other bytes for an archive',
+      (payload: any) => (payload.artifacts[0].sha256 = 'e'.repeat(64)),
+      'host manifest payload does not sign station-server-darwin-arm64.tar.gz',
+    ],
+    [
+      'has the wrong size for an archive',
+      (payload: any) => (payload.artifacts[4].size += 1),
+      'host manifest payload has the wrong size for station-server-win32-x64.zip',
+    ],
+    [
+      'points an archive outside this release',
+      (payload: any) =>
+        (payload.artifacts[1].url = payload.artifacts[1].url.replace(
+          `/${TAG}/`,
+          '/portable-stable/',
+        )),
+      'host manifest payload names station-server-darwin-x64.tar.gz outside v1.2.3',
+    ],
+    [
+      'drops a target',
+      (payload: any) => payload.artifacts.pop(),
+      'host manifest payload does not cover every host archive',
+    ],
+  ])('refuses a payload that %s', (_label, mutate, message) => {
+    const files = fixture();
+    const path = join(files.assetsDir, HOST_MANIFEST_PAYLOAD_ASSET);
+    const payload = JSON.parse(readFileSync(path, 'utf8'));
+    mutate(payload);
+    writeFileSync(path, JSON.stringify(payload));
+    expect(() =>
+      createReleaseInventory({
+        tag: TAG,
+        sourceSha: SHA,
+        generatedAt: GENERATED_AT,
+        dependencyLifecycle: DEPENDENCY_LIFECYCLE,
+        ...files,
+      }),
+    ).toThrow(message);
+  });
+
+  it('refuses a corrupted host archive by its inventoried checksum', () => {
+    const { assetsDir, inventory, updaterPublicKey } = createFixtureInventory();
+    const archive = join(assetsDir, 'station-server-linux-x64.tar.gz');
+    const bytes = readFileSync(archive);
+    bytes[0] ^= 1;
+    writeFileSync(archive, bytes);
+    expect(() =>
+      validateReleaseInventory(inventory, { assetsDir, updaterPublicKey }),
+    ).toThrow('checksum mismatch: station-server-linux-x64.tar.gz');
+  });
+
+  it('admits the signed manifest only when it verifies and signs the staged payload', () => {
+    const { assetsDir, inventory, updaterPublicKey } = createFixtureInventory();
+    const { table, privateKey } = testKeys(join(assetsDir, '..'));
+    const payload = JSON.parse(
+      readFileSync(join(assetsDir, HOST_MANIFEST_PAYLOAD_ASSET), 'utf8'),
+    );
+    const name = attachSignedManifest(assetsDir, privateKey, payload);
+    expect(name).toBe('station-portable-stable-manifest.json');
+    expect(() =>
+      validateReleaseInventory(inventory, {
+        assetsDir,
+        updaterPublicKey,
+        manifestKeys: table,
+      }),
+    ).not.toThrow();
+    expect(() =>
+      assertOnlyExpectedAssets(assetsDir, TAG, {
+        allowSignedHostManifest: true,
+      }),
+    ).not.toThrow();
+    // release.yml's own assembly never admits it: it must not exist yet.
+    expect(() => assertOnlyExpectedAssets(assetsDir, TAG)).toThrow(
+      `unexpected asset ${name}`,
+    );
+    // The same envelope against the real pinned table: the test key is not
+    // the release key, so it does not verify.
+    expect(() =>
+      validateReleaseInventory(inventory, { assetsDir, updaterPublicKey }),
+    ).toThrow(`${name} does not verify: manifest signature did not verify`);
+    // A validly signed manifest for another payload is refused.
+    attachSignedManifest(assetsDir, privateKey, {
+      ...payload,
+      publishedAt: '2026-07-26T12:00:00.000Z',
+    });
+    expect(() =>
+      validateReleaseInventory(inventory, {
+        assetsDir,
+        updaterPublicKey,
+        manifestKeys: table,
+      }),
+    ).toThrow(`${name} does not sign the staged host manifest payload`);
+  });
+
+  it("admits only this ring's signed manifest name", () => {
+    const { assetsDir } = createFixtureInventory();
+    writeFileSync(
+      join(assetsDir, 'station-portable-preview-manifest.json'),
+      '{}\n',
+    );
+    expect(() =>
+      assertOnlyExpectedAssets(assetsDir, TAG, {
+        allowSignedHostManifest: true,
+      }),
+    ).toThrow('unexpected asset station-portable-preview-manifest.json');
+    expect(signedHostManifestAsset('v1.2.3-preview.4')).toBe(
+      'station-portable-preview-manifest.json',
+    );
   });
 });
 

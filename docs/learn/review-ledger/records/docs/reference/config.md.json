@@ -20,7 +20,7 @@
 
     {"path":"packages/contracts/src/settings-registry.ts","digest":"1b22ce258daf0a7e941b8aa8d738b701595ba0d1a162547c4c1f560a69dad582","revision":"d6a3158c22a62d9530592c6366a1624790ee9401"},
 
-    {"path":"pnpm-lock.yaml","digest":"4f9a974bd49f637fd690699b3bcd9b6ce915114eb4f52e2e6bdd5b0f3b699f2a","revision":"ea49cb8678208b9037f8e9ab3ceb2a95fe2647ff"},
+    {"path":"pnpm-lock.yaml","digest":"e5666b03a0bedc8656564f5371ea01b19879ac4a8ed732280e1d0903025de0c5","revision":"fdca33b1896b280299ba72fc70a3c9b9cda7f3af"},
 
     {"path":"schemas/agent.schema.json","digest":"fe5a6c91fb32f7d027438d00fd28f071bdcced285bf7b3a60ed55f36c56beb88","revision":"423cbe55b9e35e4cd8954fd441cb9f3c69740d66"},
 
@@ -96,7 +96,7 @@
 
     {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"21831e2e97672cb946b2e23f9e183477773a632390b02daf66b3e6cf3fe20e71","revision":"595059eafa17ef6b7a39217a405619ecbfac2270"},
 
-    {"path":"src-server/security/pairing-route-scopes.ts","digest":"cd0d7cf06b6f68355d4e509648ac649c62bdf1cabd52b220e7578776b5e01873","revision":"d73d9f64333504f027a200482e978cc4445338da"},
+    {"path":"src-server/security/pairing-route-scopes.ts","digest":"cd0d7cf06b6f68355d4e509648ac649c62bdf1cabd52b220e7578776b5e01873","revision":"e4344fd10ef7a80a6a6f65d7e709fb1be56b64df"},
 
     {"path":"src-server/security/runtime-request-security.ts","digest":"9346e3e435a8af419b2fd2834f90a0c2962919a90ce879f6146372fd6b0f5290","revision":"9623ad155b409f289f9fd6083db80372819c2a26"},
 

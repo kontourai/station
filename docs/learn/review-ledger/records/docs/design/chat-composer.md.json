@@ -68,7 +68,7 @@
 
     {"path":"src-ui/src/components/chat/ChatSettingsPanel.tsx","digest":"49032d0e229840abde143440d3c444f5164b241243cd081c53b5ab1f93538d3a","revision":"89765352964045a079d13a17bee54ab2de7b83e0"},
 
-    {"path":"packages/contracts/src/device-settings.ts","digest":"2b9e93111cf57f06a8846948e75767b36325bdf35cb59324b4be3f5dbd4627e4","revision":"89765352964045a079d13a17bee54ab2de7b83e0"},
+    {"path":"packages/contracts/src/device-settings.ts","digest":"d289d1c6c2f89a5825880333cc1c1995a404e24e4890bdb4a5fc7fac5424a082","revision":"11b4ccc5932fa6788af8276326296bd86f51542c"},
 
     {"path":"src-ui/src/components/status/chatStatus.ts","digest":"61867106c8e2218abab46c172f70c6359aeb515c443e259a38cbc3ebe125d988","revision":"c6ebec77b17b679e630a3857b10a6f814d7fb436"},
 
@@ -76,7 +76,7 @@
 
     {"path":"src-ui/src/__tests__/ChatInputArea.test.tsx","digest":"2375598b03e2b9fe8003ff24a7ef15712d471c5024a7befd4ab22ab6879b98d5","revision":"4711f21b516d04300b15ad4da473e24bf2e7adb2"},
 
-    {"path":"src-ui/src/__tests__/ChatDockBody.sessionFailureBanner.test.tsx","digest":"0b328f9cf537be6395c1f5eec936924ec806194c673e71c15fcbcfa5b4b87973","revision":"8f54568ace0014007eee673a58f3d26d3588e282"},
+    {"path":"src-ui/src/__tests__/ChatDockBody.sessionFailureBanner.test.tsx","digest":"32ff25bba570c4a207cc7e4f329ef880fc1feea7ab210531e2df3133eee6a7d6","revision":"01aafdec40053c4c52244823d395f6924e8212ef"},
 
     {"path":"src-ui/src/components/chat/QueuedMessages.css","digest":"a24d97fa21ac0aaba1eab7d2d273ed54d34e5cad41f9a94cafeebc429ef25ebe","revision":"57e1daf6e0d4fe2c366e51d67e20c1a70587966f"},
 

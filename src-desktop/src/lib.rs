@@ -6069,20 +6069,32 @@ fn lock_station_profiles_for_app(
     lock_station_profiles_legacy(path)
 }
 
-/// Reconstructs Station-key approval authority from the current native profile
-/// while holding the same interprocess lock used by profile writers. A broker
-/// offer or renderer-supplied route cannot supply this snapshot.
+#[derive(Clone, Copy, PartialEq)]
+enum NativeTrustProfilePurpose {
+    Enrollment,
+    ExistingTrust,
+}
+
+/// Reconstructs Station-key authority under the profile writer's interprocess lock.
+/// A broker offer or renderer-supplied route cannot supply this snapshot.
 struct AppNativeTrustProfileProvider<'a> {
     app: &'a AppHandle,
+    purpose: NativeTrustProfilePurpose,
 }
 
 impl<'a> AppNativeTrustProfileProvider<'a> {
     pub(crate) fn enrollment(app: &'a AppHandle) -> Self {
-        Self { app }
+        Self {
+            app,
+            purpose: NativeTrustProfilePurpose::Enrollment,
+        }
     }
 
     pub(crate) fn existing_trust(app: &'a AppHandle) -> Self {
-        Self { app }
+        Self {
+            app,
+            purpose: NativeTrustProfilePurpose::ExistingTrust,
+        }
     }
 }
 
@@ -6113,6 +6125,7 @@ impl native_station_key_custody::LockedTrustProfileProvider for AppNativeTrustPr
             expected_profile_revision,
             &self.app.config().identifier,
             native_app_channel(&self.app.config().identifier, cfg!(debug_assertions)),
+            self.purpose,
         )?;
         operation(snapshot)
     }
@@ -6124,6 +6137,7 @@ fn native_trust_profile_snapshot_in_store(
     expected_profile_revision: u64,
     app_identifier: &str,
     channel: &str,
+    purpose: NativeTrustProfilePurpose,
 ) -> native_station_key_custody::CandidateResult<
     native_station_key_custody::LockedTrustProfileSnapshot,
 > {
@@ -6150,11 +6164,26 @@ fn native_trust_profile_snapshot_in_store(
         station_id: route.station_id.clone(),
         enrollment_id: route.enrollment_id.clone(),
     };
+    let fresh = profile.configuration_state == "unconfigured"
+        && profile.setup_source == "manual"
+        && profile.credential_ref.is_none();
+    // Device activation publishes its credential without replacing Station-key trust.
+    // Reading or revoking that trust must retain the exact saved Station binding.
+    let enrolled = purpose == NativeTrustProfilePurpose::ExistingTrust
+        && profile.setup_source == "manual"
+        && matches!(
+            profile.configuration_state.as_str(),
+            "requires-auth" | "configured"
+        )
+        && profile
+            .credential_ref
+            .as_ref()
+            .is_some_and(|reference| credential_reference_key(reference).is_ok())
+        && profile._environment_id.as_deref() == Some(expected_binding.station_id.as_str())
+        && profile_credential_binding(profile).is_ok();
     if store.revision != expected_profile_revision
         || actual != *expected_binding
-        || profile.configuration_state != "unconfigured"
-        || profile.setup_source != "manual"
-        || profile.credential_ref.is_some()
+        || !(fresh || enrolled)
     {
         return Err(CandidateError::ProfileStale);
     }
@@ -6208,17 +6237,88 @@ mod native_trust_profile_snapshot_tests {
             7,
             "io.kontourai.station",
             "stable",
+            NativeTrustProfilePurpose::ExistingTrust,
         )
         .unwrap();
         assert_eq!(snapshot.binding, expected);
         assert_eq!(snapshot.revision, 7);
+        let mut configured = store.clone();
+        configured.profiles[0].configuration_state = "configured".into();
+        configured.profiles[0].credential_ref = Some(NativeCredentialReference {
+            kind: "station-bearer".into(),
+            id: "owned-enrollment-credential".into(),
+        });
+        configured.profiles[0]._environment_id = Some(expected.station_id.clone());
+        assert_eq!(
+            native_trust_profile_snapshot_in_store(
+                &configured,
+                &expected,
+                7,
+                "io.kontourai.station",
+                "stable",
+                NativeTrustProfilePurpose::ExistingTrust,
+            )
+            .expect("existing Station trust remains readable after Device activation")
+            .binding,
+            expected
+        );
+        assert_eq!(
+            native_trust_profile_snapshot_in_store(
+                &configured,
+                &expected,
+                7,
+                "io.kontourai.station",
+                "stable",
+                NativeTrustProfilePurpose::Enrollment,
+            ),
+            Err(CandidateError::ProfileStale)
+        );
+        for state in ["requires-auth", "configured"] {
+            configured.profiles[0].configuration_state = state.into();
+            assert!(native_trust_profile_snapshot_in_store(
+                &configured,
+                &expected,
+                7,
+                "io.kontourai.station",
+                "stable",
+                NativeTrustProfilePurpose::ExistingTrust,
+            )
+            .is_ok());
+        }
+        for invalid in [
+            "missing-reference",
+            "foreign-environment",
+            "unsupported-reference",
+        ] {
+            let mut changed = configured.clone();
+            match invalid {
+                "missing-reference" => changed.profiles[0].credential_ref = None,
+                "foreign-environment" => {
+                    changed.profiles[0]._environment_id = Some("foreign-station".into())
+                }
+                _ => changed.profiles[0].credential_ref.as_mut().unwrap().kind = "foreign".into(),
+            }
+            assert_eq!(
+                native_trust_profile_snapshot_in_store(
+                    &changed,
+                    &expected,
+                    7,
+                    "io.kontourai.station",
+                    "stable",
+                    NativeTrustProfilePurpose::ExistingTrust,
+                ),
+                Err(CandidateError::ProfileStale),
+                "{invalid}"
+            );
+        }
         assert_eq!(
             native_trust_profile_snapshot_in_store(
                 &store,
                 &expected,
                 6,
                 "io.kontourai.station",
-                "stable"
+                "stable",
+                NativeTrustProfilePurpose::ExistingTrust
             ),
             Err(CandidateError::ProfileStale)
         );
@@ -6230,7 +6330,8 @@ mod native_trust_profile_snapshot_tests {
                 &wrong_route,
                 7,
                 "io.kontourai.station",
-                "stable"
+                "stable",
+                NativeTrustProfilePurpose::ExistingTrust
             ),
             Err(CandidateError::ProfileStale)
         );
@@ -6242,7 +6343,8 @@ mod native_trust_profile_snapshot_tests {
                 &renamed,
                 7,
                 "io.kontourai.station",
-                "stable"
+                "stable",
+                NativeTrustProfilePurpose::ExistingTrust
             ),
             Err(CandidateError::ProfileStale)
         );

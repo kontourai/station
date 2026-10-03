@@ -34,7 +34,7 @@
 
     {"path":"packaging/portable-server/bin/station-launcher.mjs","digest":"bb4b5acbe1ca4528b66c51821919b0c048d51102ae47eda12ada64bc236f14a2","revision":"54e0ffb5c1ae765b4127f031e525793087fb9669"},
 
-    {"path":"scripts/portable-nightly-publication.mjs","digest":"f4c49094d99c29712fd552079888be228c174a0f1a64d26a76363c518dc9c584","revision":"ce2b6c35d2cb46e08b3b0f162df6e2c581dd03a9"},
+    {"path":"scripts/portable-nightly-publication.mjs","digest":"1255aa0d27678ed50716dde09f566464e385256a31889a1240d58b6516cbba9c","revision":"51684c027d476a8ed882b73f3a608dfadfb91b04"},
 
     {"path":"src-desktop/tauri.conf.json","digest":"24ce785160cae3c41db78a82861ee7e4934490bb6a7ed986b30a278cc19c8ab1","revision":"54e0ffb5c1ae765b4127f031e525793087fb9669"},
 
@@ -50,7 +50,9 @@
 
     {"path":"packages/shared/src/release-manifest.mjs","digest":"9dbda2644188254731d9806fc22278870a713b6dcddf7a7c1467fee1170fbf83","revision":"54e0ffb5c1ae765b4127f031e525793087fb9669"},
 
-    {"path":"packages/shared/src/prebuilt-archive.ts","digest":"73f956c32b937353113b247025a4c7e7feba6e4f305703d4366593b9e5ba78d8","revision":"54e0ffb5c1ae765b4127f031e525793087fb9669"}
+    {"path":"packages/shared/src/prebuilt-archive.ts","digest":"73f956c32b937353113b247025a4c7e7feba6e4f305703d4366593b9e5ba78d8","revision":"54e0ffb5c1ae765b4127f031e525793087fb9669"},
+
+    {"path":"scripts/lib/portable-publication.mjs","digest":"bd3921ac4a297658473ee51e4af9256844c4c668bba1533ac39bc77fc62ad510","revision":"e3fa2cf8c4bdcb7d8438495ff3122028719b5bca"}
   ],
 
   "checks": [

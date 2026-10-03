@@ -77,13 +77,16 @@ alias or release-visibility effect.
 Draft assembly copies producer files into `release-assets` only from the
 explicit artifact allowlist in
 [`release-admit-producer-assets.mjs`](../../scripts/release-admit-producer-assets.mjs):
-both macOS desktop artifacts, Windows, Linux, portable, Android, and the
-container descriptor, plus, for Stable only, the iOS simulator archive and the
+both macOS desktop artifacts, Windows, Linux, portable, the host stream
+(`station-host-stream`: the five server archives and the manifest payload),
+Android, and the container descriptor, plus, for Stable only, the iOS simulator archive and the
 `release-assets/` directory of the staged TestFlight artifact. It refuses a
 missing or empty allowlisted artifact, a nested entry, a symlink, and two
 producers that emit one file name. Build-provenance descriptors, scanner
-scratch, TestFlight receipts, and test artifacts in the same download root are
-never copied. A new producer artifact needs one allowlist entry there.
+scratch, TestFlight receipts, the per-target `station-server-<target>` build
+artifacts, and test artifacts in the same download root are never copied. An
+unexpected flat file inside an allowlisted artifact is copied here and then
+refused by the inventory that runs next. A new producer artifact needs one allowlist entry there.
 
 The simulator archive is deliberately `verification-only` and unsigned. It is
 not an installable distribution or a readiness claim. The earlier recorded local probe
@@ -467,7 +470,11 @@ The workflow declarations require these GitHub Environments. Their current
 reviewers and branch/tag policies must be inspected separately:
 
 - `native-release`: signing, native-cohort and Stable iOS jobs.
-- `native-release-publish`: manual publication.
+- `native-release-publish`: manual publication. It also holds the
+  `STATION_PORTABLE_RELEASE_MANIFEST_SIGNING_KEY` secret that signs the
+  host-stream manifest, read only when the repository variable
+  `STATION_PORTABLE_RELEASE_PUBLISH` is `enabled` (see
+  [signed host-stream manifests](release-rings.md#signed-host-stream-manifests)).
 - `ios-beta` and `ios-nightly`: the corresponding reusable TestFlight channels;
   Stable iOS uses `native-release`.
 
@@ -555,7 +562,8 @@ protocol roots because they cannot hash each other; the inventory covers every
 other uploaded sidecar and payload.
 
 Publish resolves the tag again and normally requires the release to still be a draft,
-downloads every `station-*` asset, verifies every asset's GitHub provenance and
+downloads every `station-*` asset, verifies every asset's GitHub provenance
+(except the signed host-stream manifest, described below) and
 the inventory/checksums, and compares the live `sha-<source-sha>` image to the
 digest recorded in `station-container-release.json`. It promotes only
 `image@recorded-digest` to the recorded version/channel aliases, then changes
@@ -576,6 +584,28 @@ workflow-crossing ref. Leave the new release public and empty, then explicitly e
 `latest.json` on a non-empty rolling release is treated as damage and fails
 closed. A failed draft is fixed with a new tag; never replace an immutable tag
 release asset under the same tag.
+
+The draft also carries the host stream: the five `station-server-*` archives
+and `station-server-manifest-payload.json`, attested by release.yml. Publish
+checks the payload against the tag and the archive bytes and dry-run signs it
+on every run. The attestation loop skips one asset,
+`station-portable-<ring>-manifest.json`. Publish attaches that signed
+manifest itself, so it carries no release.yml attestation; the inventory
+revalidation verifies it against the pinned release key and the attested
+payload instead. Behind `STATION_PORTABLE_RELEASE_PUBLISH`, publish signs
+the manifest and attaches it before publication. The separate `host-pointer`
+job then moves the `portable-<ring>` pointer. It runs once publish reports
+the release public, even if the deploy ledger later fails, and its own
+failure never skips the ledger or release availability. It takes the signed
+manifest from the public versioned release and verifies it with the pinned
+key before any pointer write. It re-verifies the public
+versioned assets and replaces only a strictly older pointer, restoring it if
+the re-verification fails. It only re-verifies when the pointer already
+serves this run's bytes, and it leaves the pointer alone for an older tag,
+such as a desktop rollback. A rerun that finds the manifest already attached
+to the release compares its bytes and never replaces it. Details and the
+owner actions are in
+[signed host-stream manifests](release-rings.md#signed-host-stream-manifests).
 
 Stable and Preview desktop builds embed the endpoint for their rolling release.
 The default branch's policy checkout runs the updater manifest assembly and
