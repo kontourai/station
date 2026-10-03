@@ -33,7 +33,9 @@ import {
  * floors, so this file no longer re-measures them. What it owns is the
  * PROJECT-CONTEXT half: the project badge and the git badge, which #1536 F left
  * in place when it deleted the visible path segment beside them, plus the
- * clip-or-fit rule across the shared row.
+ * clip-or-fit rule across the shared row. #3144 deliberately stacked a
+ * "New chats" caption above the project name: each label must stay on one
+ * line, rather than requiring the whole badge to be one line tall.
  *
  * DRIVEN: three widths, each chosen because it makes a different part of the
  * row the binding constraint — 320px (the identity row's own contents no
@@ -50,6 +52,10 @@ import {
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, '../../../');
 const INDEX_CSS_PATH = resolve(HERE, '../index.css');
+const PROJECT_CONTEXT_CSS_PATH = resolve(
+  HERE,
+  '../components/chat-dock/ChatDockProjectContext.css',
+);
 
 vi.mock('../hooks/useKeyboardShortcut', () => ({
   useShortcutDisplay: () => '⌘W',
@@ -133,11 +139,13 @@ function renderHeaderMarkup(): string {
   return markup;
 }
 
-function buildFixtureHtml(markup: string): string {
-  const css = resolveCssImports(INDEX_CSS_PATH);
+function buildFixtureHtml(markup: string, theme: string): string {
+  const css = [INDEX_CSS_PATH, PROJECT_CONTEXT_CSS_PATH]
+    .map((path) => resolveCssImports(path))
+    .join('\n');
   assertNoImportsSurvive(css);
   return `<!doctype html>
-<html>
+<html data-theme="${theme}">
   <head>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <style>${css}</style>
@@ -160,9 +168,9 @@ const WIDTHS = [320, 800, 1200] as const;
 
 const chromiumAvailable = chromiumIsInstalled(REPO_ROOT);
 
-describe.skipIf(!chromiumAvailable)(
-  'dock header identity and project context stay on one line without overprinting',
-  () => {
+describe.skipIf(!chromiumAvailable).each(['dark', 'light'])(
+  'dock header labels stay on one line without overprinting (%s)',
+  (theme) => {
     let browser: Awaited<ReturnType<typeof chromium.launch>>;
 
     beforeAll(async () => {
@@ -176,7 +184,7 @@ describe.skipIf(!chromiumAvailable)(
     async function measure(width: number): Promise<Measurement[]> {
       const page = await browser.newPage({ viewport: { width, height: 700 } });
       try {
-        await page.setContent(buildFixtureHtml(renderHeaderMarkup()));
+        await page.setContent(buildFixtureHtml(renderHeaderMarkup(), theme));
         return await page.evaluate(() =>
           [
             '.chat-dock__active-identity-text',
@@ -185,6 +193,8 @@ describe.skipIf(!chromiumAvailable)(
             '.chat-dock__active-identity-title',
             '.chat-dock__project-context',
             '.chat-dock__project-badge',
+            '.chat-dock__project-badge-caption',
+            '.chat-dock__project-badge-name',
             '.git-badge',
             '.git-badge__branch',
           ].map((selector) => {
@@ -239,7 +249,8 @@ describe.skipIf(!chromiumAvailable)(
       async (width) => {
         const measurements = await measure(width);
         for (const selector of [
-          '.chat-dock__project-badge',
+          '.chat-dock__project-badge-caption',
+          '.chat-dock__project-badge-name',
           '.git-badge__branch',
         ]) {
           const entry = measurements.find((m) => m.selector === selector);

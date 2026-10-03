@@ -1,0 +1,15 @@
+/* The stacked caption/name each keep one line when the header is squeezed.
+   The button's title retains the full project name and path. */
+.chat-dock__project-badge {
+  overflow: hidden;
+}
+
+.chat-dock__project-badge-lines {
+  align-items: stretch;
+}
+
+.chat-dock__project-badge-caption {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
