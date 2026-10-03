@@ -14,13 +14,13 @@
   "sources": [
     {"path":"docs/learn/atlas.js","digest":"5736779c6e338b74ab1415003b56e14654e05208887a69b6b2a9d92e8b534483","revision":"8199fd1541fc2af0053845c9253ed0962dd7fbb8"},
 
-    {"path":"docs/learn/atlas.json","digest":"ed4395353d103a11f3de0d430e28fb4ab8c1447626284d3fb1633023ea86b966","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    {"path":"docs/learn/atlas.json","digest":"221290fe20023e249789c9f9e3478f1fcaa1834471eebbe17490b0d2b474680c","revision":"94da87e3016992b8cdbdde3be15b978b489a1c63"},
 
     {"path":"scripts/__tests__/learning-atlas.browser.test.ts","digest":"586cfb7b9101207ebc20d8987e4cf37326011b4314cbf7a91351d9d8d064c057","revision":"bbd3c6c0797cce19e15b36627f182f79baa7e025"},
 
     {"path":"scripts/build-learning-guide.mjs","digest":"3a3462887203d43998cd6817e300a59c9856c2710d697274a597d4076ce969dd","revision":"8199fd1541fc2af0053845c9253ed0962dd7fbb8"},
 
-    {"path":"scripts/documentation-impact.mjs","digest":"4d9cc897cbbf6046574acd80239d54cc53c7f01632dc6d71ddaf24d0fb6316ab","revision":"8199fd1541fc2af0053845c9253ed0962dd7fbb8"},
+    {"path":"scripts/documentation-impact.mjs","digest":"a60bf5659ff78f92a2b598211ff3144f5cda714e602e99c14cb4686ebfaf6bde","revision":"e8b72ea25ff33bef8d17412bac9548787e2d200d"},
 
     {"path":"scripts/lib/documentation-model.mjs","digest":"cbfd7235be50696a0289524232c6d2b1de5de03bff71f8e6edef38f6adcaf6b4","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
@@ -40,7 +40,7 @@
 
     {"path":"scripts/record-documentation-review.mjs","digest":"2541d1547706a30bf5cd19927d4b0567b00ae379e4f61ddcd7d36da382f6f54f","revision":"8199fd1541fc2af0053845c9253ed0962dd7fbb8"},
 
-    {"path":"scripts/lib/review-ledger-store.mjs","digest":"0ae9f94081af3b929fb17cc93bc222e9ce84227fe3832aa1beb1fbbc8dd3884a","revision":"8199fd1541fc2af0053845c9253ed0962dd7fbb8"}
+    {"path":"scripts/lib/review-ledger-store.mjs","digest":"444d83be0ef4e28ed9acc3db60a705ab01e8e094d6da7cbe23f34b6d60990d8a","revision":"870f87665091ffd778281fd578835377526b7bb1"}
   ],
 
   "checks": [

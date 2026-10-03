@@ -37,6 +37,26 @@ describe('ChatSettingsPanel accessibility', () => {
    * #585 / #2144 slice 6 item B: the "Smooth answer reveal" toggle became a
    * "Answer delivery" control over the two device-local delivery booleans.
    */
+  test('saves Return behavior on this device and restores it when the panel reopens', () => {
+    deviceSettingsStore.reset('chatReturnBehavior');
+    const panel = render(<ChatSettingsPanel {...props()} />);
+    fireEvent.change(screen.getByRole('combobox', { name: 'Return in chat' }), {
+      target: { value: 'newline' },
+    });
+    expect(deviceSettingsStore.get('chatReturnBehavior')).toBe('newline');
+    panel.unmount();
+    const reopened = render(<ChatSettingsPanel {...props()} />);
+    expect(
+      (
+        screen.getByRole('combobox', {
+          name: 'Return in chat',
+        }) as HTMLSelectElement
+      ).value,
+    ).toBe('newline');
+    reopened.unmount();
+    deviceSettingsStore.reset('chatReturnBehavior');
+  });
+
   test('persists answer delivery to this device, both ways, and defaults to token', () => {
     deviceSettingsStore.reset('featureSettings');
     const rendered = render(<ChatSettingsPanel {...props()} />);
@@ -108,7 +128,7 @@ describe('ChatSettingsPanel accessibility', () => {
     const dialog = screen.getByRole('dialog', { name: 'Chat Settings' });
     expect(document.activeElement).toBe(dialog);
 
-    const first = screen.getByRole('button', { name: 'Decrease font size' });
+    const first = screen.getByRole('combobox', { name: 'Return in chat' });
     const last = screen.getByRole('button', { name: 'Done' });
     first.focus();
     fireEvent.keyDown(dialog, { key: 'Tab', shiftKey: true });

@@ -20,6 +20,39 @@ const command =
   'npm run gate:for -- Dockerfile .dockerignore docs/user/getting-started.md 2>&1 | tail -40';
 
 describe('TurnActivityProgress', () => {
+  test('silence reports waiting without inventing a retry and disappears on progress or completion', () => {
+    const now = Date.now();
+    const activity = {
+      conversationId: 'c1',
+      asOfSequence: 3,
+      openTurn: {
+        threadId: 'c1',
+        turnId: 't1',
+        startedAt: new Date(now - 180000).toISOString(),
+      },
+      progressSilence: {
+        detectedAt: new Date(now).toISOString(),
+        silentSinceEventAt: new Date(now - 180000).toISOString(),
+        provider: 'codex',
+        windowMs: 180000,
+      },
+    };
+    const { rerender } = render(<TurnActivityProgress activity={activity} />);
+    expect(screen.getByTestId('turn-activity-progress').textContent).toBe(
+      'No response from Codex for 3m 0s. Still waiting.',
+    );
+    rerender(
+      <TurnActivityProgress
+        activity={{ ...activity, progressSilence: undefined }}
+      />,
+    );
+    expect(screen.queryByTestId('turn-activity-progress')).toBeNull();
+    rerender(
+      <TurnActivityProgress activity={{ ...activity, openTurn: undefined }} />,
+    );
+    expect(screen.queryByTestId('turn-activity-progress')).toBeNull();
+  });
+
   test('the last tool is its command as written, with the outcome outside the shrinking name', () => {
     const now = Date.now();
     render(

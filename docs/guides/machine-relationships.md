@@ -45,14 +45,16 @@ OpenSSH configuration. This works through the server; it is not the retained
 native SSH-launcher API. An ordinary saved Station address is a connection
 profile, not an SSH execution environment or a new grant.
 
-**Save an encrypted broker route** — on native Desktop, **Add computer** can
+**Save an encrypted broker route** — in a native shell, **Add computer** can
 save a Station address, broker address, and exact Station enrollment. A separate
 invitation and out-of-band comparison can approve the Station signing key.
 Neither action connects the route, signs in, pairs a Device, or grants Project
-or compute access. Native application-route selection remains unavailable;
-the saved route cannot serve as an ordinary connection or CLI default yet.
-See [Connections](connections.md) for route storage, key approval, and the
-remaining native transport boundary.
+or compute access. After the separate Device setup, **Use this Station** selects
+a configured route for account sign-in and bounded health and member Project
+reads. Operator Workspace resources and contribution writes remain unsupported;
+the CLI still excludes native broker routes from defaults and explicit targets.
+See [Connections](connections.md) for the setup steps and the separate fresh,
+public application, physical-device and release qualification limits.
 
 ### What a paired device may do, and full access
 

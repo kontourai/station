@@ -7,60 +7,62 @@
 
   "summary": "Developer implementation contract for personal Task agent requests: persistence, explicit selection, scoped transport, provider/room admission and uncertainty. Implementation is distinct from programme acceptance.",
 
-  "limits": "Review is limited to the described request and message delta. Controlled fixtures exercise real file/HTTP/SQLite/provider boundaries. NOT_VERIFIED: production runtime composition, browser/geometry, actual model, hosted/invited/public/remote/native/device journeys, publication, durable draft reload recovery, multi-recipient assignment, context/brief and curated result delivery. Full programme remains unfinished.",
+  "limits": "Review is limited to the described request and message delta. Controlled fixtures exercise real file/HTTP/SQLite/provider boundaries. NOT_VERIFIED: production runtime composition, browser/geometry, actual model, hosted/invited/public/remote/native/device journeys, publication, durable draft reload recovery, multi-recipient assignment, context/brief and curated result delivery. Full programme remains unfinished.\n\nStructural merge of 5dff1dc5d6661c9ced8a5ff40994b96f3e258e2e and d1f68396648a4d450f1d743e436df703be0935be preserves both prior immutable document/source anchors and historical checks. Selecting an existing current-byte binding is structural reconciliation only, not semantic approval of merged inputs. No new digest/revision or coverage baseline was minted. Competing prior anchors remain pending semantic review and supported recording after the merge commit: [{\"path\":\"packages/contracts/package.json\",\"ours\":{\"path\":\"packages/contracts/package.json\",\"digest\":\"99b398c3d5908625e6b0fc3b8b451dbdb3b499ba10ed2c67590a45a1275f2b6d\",\"revision\":\"e33331ee19520c8bd546c878fdd503063a682634\"},\"main\":{\"path\":\"packages/contracts/package.json\",\"digest\":\"e68c62ed1e493e0b8834dc4586ccb37b750313b65a19a61ac00512e30564f684\",\"revision\":\"b004ed8cb3e885da544adf960b2894780aaf2b51\"},\"active\":{\"path\":\"packages/contracts/package.json\",\"digest\":\"99b398c3d5908625e6b0fc3b8b451dbdb3b499ba10ed2c67590a45a1275f2b6d\",\"revision\":\"e33331ee19520c8bd546c878fdd503063a682634\"},\"decision\":\"oursMatch\"},{\"path\":\"src-server/runtime/bootstrap/station-runtime.ts\",\"ours\":{\"path\":\"src-server/runtime/bootstrap/station-runtime.ts\",\"digest\":\"9ff2f86499e6ed1a0d562c3a470536c57f97f9dc2bc66829c22d96fbb0ce29bc\",\"revision\":\"83c4111b8c4dcda1e978d78bb191c974888c9ca4\"},\"main\":{\"path\":\"src-server/runtime/bootstrap/station-runtime.ts\",\"digest\":\"92d31dd655d7c0a62ce68dc6fd804268cda2f357bb775a512ee974d7c09564db\",\"revision\":\"1a235cd9bc482738abe4c3f011f73be86074d667\"},\"active\":{\"path\":\"src-server/runtime/bootstrap/station-runtime.ts\",\"digest\":\"9ff2f86499e6ed1a0d562c3a470536c57f97f9dc2bc66829c22d96fbb0ce29bc\",\"revision\":\"83c4111b8c4dcda1e978d78bb191c974888c9ca4\"},\"decision\":\"neitherMatch\"},{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"ours\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"33e19d52230c0339923db1768b0cae89a71077634c4632f9a10c11f6a3e05f78\",\"revision\":\"83c4111b8c4dcda1e978d78bb191c974888c9ca4\"},\"main\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"e54cf49af965f2acabb5a7a97caead30fc8e4e3b619f5dea1cb7f6a464b2d901\",\"revision\":\"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac\"},\"active\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"33e19d52230c0339923db1768b0cae89a71077634c4632f9a10c11f6a3e05f78\",\"revision\":\"83c4111b8c4dcda1e978d78bb191c974888c9ca4\"},\"decision\":\"oursMatch\"}]\n\nAdditional existing main limits (preserved verbatim): Review is limited to the described request and message delta. Controlled fixtures exercise real file/HTTP/SQLite/provider boundaries. NOT_VERIFIED: production runtime composition, browser/geometry, actual model, hosted/invited/public/remote/native/device journeys, publication, durable draft reload recovery, multi-recipient assignment, context/brief and curated result delivery. Full programme remains unfinished.\n\nStructural merge of 5fd2dd86ad0cd35018ce09537c1aa01ce58e0e55 and 8f9ea788561518398a488d35bb768b78a272e73b preserves both prior immutable document/source anchors and historical checks. Selecting an existing current-byte binding is structural reconciliation only, not semantic approval of merged inputs. No new digest/revision or coverage baseline was minted. Competing prior anchors remain pending semantic review and supported recording after the merge commit: [{\"path\":\"packages/contracts/package.json\",\"ours\":{\"path\":\"packages/contracts/package.json\",\"digest\":\"99b398c3d5908625e6b0fc3b8b451dbdb3b499ba10ed2c67590a45a1275f2b6d\",\"revision\":\"e33331ee19520c8bd546c878fdd503063a682634\"},\"main\":{\"path\":\"packages/contracts/package.json\",\"digest\":\"e68c62ed1e493e0b8834dc4586ccb37b750313b65a19a61ac00512e30564f684\",\"revision\":\"b004ed8cb3e885da544adf960b2894780aaf2b51\"},\"active\":{\"path\":\"packages/contracts/package.json\",\"digest\":\"99b398c3d5908625e6b0fc3b8b451dbdb3b499ba10ed2c67590a45a1275f2b6d\",\"revision\":\"e33331ee19520c8bd546c878fdd503063a682634\"},\"decision\":\"oursMatch\"},{\"path\":\"src-server/routes/orchestration/orchestration.ts\",\"ours\":{\"path\":\"src-server/routes/orchestration/orchestration.ts\",\"digest\":\"9d81b62b47bea3aee158c535ce04742eb5b33a0855ffd4b8a39b7d0f897ee838\",\"revision\":\"a258f06c1515ccdde83e198862ae8efe43d71207\"},\"main\":{\"path\":\"src-server/routes/orchestration/orchestration.ts\",\"digest\":\"ed64b770e478fc8bed2649efcedd5fe86b6ccd43fe1447bf926fae1db5f93717\",\"revision\":\"7d294a14e8b7644fc42492389b8ba81651d0cced\"},\"active\":{\"path\":\"src-server/routes/orchestration/orchestration.ts\",\"digest\":\"ed64b770e478fc8bed2649efcedd5fe86b6ccd43fe1447bf926fae1db5f93717\",\"revision\":\"7d294a14e8b7644fc42492389b8ba81651d0cced\"},\"decision\":\"mainMatch\"},{\"path\":\"src-server/runtime/bootstrap/station-runtime.ts\",\"ours\":{\"path\":\"src-server/runtime/bootstrap/station-runtime.ts\",\"digest\":\"7c26b7e6d8f099d1076579d5d219dbe2e73eb37a928316ee44da285bb5762544\",\"revision\":\"cc4f7016217bc65a2cf928481052ffeb68d49cb2\"},\"main\":{\"path\":\"src-server/runtime/bootstrap/station-runtime.ts\",\"digest\":\"92d31dd655d7c0a62ce68dc6fd804268cda2f357bb775a512ee974d7c09564db\",\"revision\":\"1a235cd9bc482738abe4c3f011f73be86074d667\"},\"active\":{\"path\":\"src-server/runtime/bootstrap/station-runtime.ts\",\"digest\":\"7c26b7e6d8f099d1076579d5d219dbe2e73eb37a928316ee44da285bb5762544\",\"revision\":\"cc4f7016217bc65a2cf928481052ffeb68d49cb2\"},\"decision\":\"oursMatch\"},{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"ours\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"33e19d52230c0339923db1768b0cae89a71077634c4632f9a10c11f6a3e05f78\",\"revision\":\"83c4111b8c4dcda1e978d78bb191c974888c9ca4\"},\"main\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"ed83b5af4f41e38ea85de7ba4d975066b1c15f136b215926bd5cd31a45183a21\",\"revision\":\"068722323b07f15f14280d43b1c05dbc2ca212eb\"},\"active\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"33e19d52230c0339923db1768b0cae89a71077634c4632f9a10c11f6a3e05f78\",\"revision\":\"83c4111b8c4dcda1e978d78bb191c974888c9ca4\"},\"decision\":\"neitherMatch\"}]",
 
   "document": {"digest":"052186ada638d173143ffc2ca94f14ca4bba5b88aed09a6bdcc37c979f218571","revision":"66913813f737980beb0e845d0e84e2d8d8674098"},
 
   "sources": [
+    {"path":"packages/contracts/package.json","digest":"0d013c2d4ed1b569b51a2068a3b1084b1e687f2a3c4ea23f2236871752dd84d4","revision":"88a7f8ed59c055ea6ac713120ba6069d33fbb892"},
+
+    {"path":"packages/contracts/package.json#/exports/.~1task-room-work","digest":"581c042771ed026476503019c1528e261058e922122e701490659ab861bac4ba","revision":"cf099c6275ffb239f2825c0e53b75be6fa19c6a6"},
+
     {"path":"packages/contracts/src/task-room-work.ts","digest":"02c044c3f8b04a116c48a14ad0273baba2d44afb4540fbd720732e7c08f2968f","revision":"078747c0143ca02d52107439754ca3a51e5479d1"},
-
-    {"path":"packages/sdk/src/client/task-room-work.ts","digest":"b1ac914584adc89df0329ea881462366ece5e424157c1732be1a6e23f64eba2d","revision":"a663d5f2984cec5dc40bf0bdedff2f7d32088b25"},
-
-    {"path":"packages/sdk/src/client/project-task-rooms.ts","digest":"a3a9664a9235b566536f167ff888a73d918f160bc7a70ca0eb3d0f6a2872d11f","revision":"a258f06c1515ccdde83e198862ae8efe43d71207"},
-
-    {"path":"packages/sdk/src/query-domains/taskRoomWork.ts","digest":"67243c35109914d90a54d82fc3da4593dfbc4bffac6a34d0c3da55176daf17bb","revision":"a258f06c1515ccdde83e198862ae8efe43d71207"},
-
-    {"path":"packages/sdk/src/query-domains/projectTaskRooms.ts","digest":"a9d57bd7d3ecf9652ddcd3e9754c30561b83917e0660e45a90c83a3b14cecc1b","revision":"a258f06c1515ccdde83e198862ae8efe43d71207"},
-
-    {"path":"src-server/services/projects/task-room-work-module.ts","digest":"acf9afa37babc44c9281e95040e057726a71b03c0ab49e98989e59069f450f9c","revision":"81ffd01123b6ad2a2591308e02a0c5f1cddc2feb"},
-
-    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"3976ce75117d6cbfcb2d61733068a738c46de966a3106e5a76190d03b31e63e6","revision":"71c69cadad789baff389812ff52e9efae397c316"},
-
-    {"path":"src-server/routes/orchestration/project-task-rooms.ts","digest":"a0be99c27d8f8795b5dfee2bac64b05ae9e957e7110db08414d76e1fdbd91cc8","revision":"a258f06c1515ccdde83e198862ae8efe43d71207"},
-
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"90e94e3a617cb7c9642c029f8dd1c58fbebeca19e29dbd1b097af41952fe4b93","revision":"cf12c0d848d0dc068f3dcaa530e9a1f213618834"},
-
-    {"path":"src-server/tools/station-control-delegation.ts","digest":"b924e289e8e485cf249ec99ebd3097b014f001f58942aa29f91e0196bbc5af70","revision":"a258f06c1515ccdde83e198862ae8efe43d71207"},
-
-    {"path":"src-server/services/orchestration/project-task-room-runtime.ts","digest":"feb48a41131f04260c92e3a7757eda5aa61799a7015b3386a931d950250e3d58","revision":"9f8b407fac4a9e5536d72ca49be3a0b77715e1d8"},
-
-    {"path":"src-ui/src/workspace-panes/TaskRoomComposer.tsx","digest":"e6cbddf730eb7268d662e1346264fa4e8002892647ef2423203efa4f7ed3d5c1","revision":"4bcb32e2752dbd10db63b5acd96b0280be033c9e"},
-
-    {"path":"src-ui/src/workspace-panes/ProjectTaskRoomConversation.tsx","digest":"b2342efc85c9cae8d42bd588669176b09e589b34fdeaf28bcfe04a6f2bbdf67a","revision":"a258f06c1515ccdde83e198862ae8efe43d71207"},
-
-    {"path":"src-server/routes/orchestration/__tests__/task-room-work.routes.test.ts","digest":"1b273db3ecf301804980105fabf37cdb3e8b5cce519499801e1e52948a883c97","revision":"078747c0143ca02d52107439754ca3a51e5479d1"},
-
-    {"path":"src-server/services/orchestration/__tests__/project-task-room-runtime.test.ts","digest":"db188f8f473b5b5b112b3dcce279e70136e2d1261b4ef823aac1f846daa2f32d","revision":"9f8b407fac4a9e5536d72ca49be3a0b77715e1d8"},
 
     {"path":"packages/sdk/src/__tests__/task-room-work-hooks.test.tsx","digest":"61262d2078428f6e2da4deeb8018e814a0f23b1c0d9b4b1c72f3422fc8ba8a59","revision":"a258f06c1515ccdde83e198862ae8efe43d71207"},
 
-    {"path":"src-ui/src/__tests__/TaskRoomComposer.test.tsx","digest":"af8e3f33aa53115fd99b63149cca098158324409a4bdb00910c41f652b37c9fb","revision":"4bcb32e2752dbd10db63b5acd96b0280be033c9e"},
-
-    {"path":"src-server/services/projects/__tests__/task-room-work-module.test.ts","digest":"75e4c4221bf81aa72df851cc9a349d37c28b5fab8aa2262c003f8c13387781dc","revision":"81ffd01123b6ad2a2591308e02a0c5f1cddc2feb"},
-
     {"path":"packages/sdk/src/__tests__/task-room-work.test.ts","digest":"e40b08114eae18b600fb9978744d7389a63223627f617b92f2cfe0b9574204cd","revision":"0f2037dcc2b0a3a4d9f0e086c61c3dccaf8141de"},
 
-    {"path":"src-ui/src/__tests__/TaskWorkspaceView.test.tsx","digest":"311c0e0296833c711544da39f815b17c105ff57c146a9a7b195c6d5025936efe","revision":"0f2037dcc2b0a3a4d9f0e086c61c3dccaf8141de"},
+    {"path":"packages/sdk/src/client/project-task-rooms.ts","digest":"a3a9664a9235b566536f167ff888a73d918f160bc7a70ca0eb3d0f6a2872d11f","revision":"a258f06c1515ccdde83e198862ae8efe43d71207"},
 
-    {"path":"src-ui/src/workspace-panes/TaskRoomComposer.css","digest":"b6ab400718d1a406b143dbf1bbb002fc0ac06387971a6cf352cfebe9d0633317","revision":"a663d5f2984cec5dc40bf0bdedff2f7d32088b25"},
+    {"path":"packages/sdk/src/client/task-room-work.ts","digest":"b1ac914584adc89df0329ea881462366ece5e424157c1732be1a6e23f64eba2d","revision":"a663d5f2984cec5dc40bf0bdedff2f7d32088b25"},
 
-    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"92d31dd655d7c0a62ce68dc6fd804268cda2f357bb775a512ee974d7c09564db","revision":"1a235cd9bc482738abe4c3f011f73be86074d667"},
+    {"path":"packages/sdk/src/query-domains/projectTaskRooms.ts","digest":"a9d57bd7d3ecf9652ddcd3e9754c30561b83917e0660e45a90c83a3b14cecc1b","revision":"a258f06c1515ccdde83e198862ae8efe43d71207"},
+
+    {"path":"packages/sdk/src/query-domains/taskRoomWork.ts","digest":"67243c35109914d90a54d82fc3da4593dfbc4bffac6a34d0c3da55176daf17bb","revision":"a258f06c1515ccdde83e198862ae8efe43d71207"},
+
+    {"path":"src-server/routes/orchestration/__tests__/task-room-work.routes.test.ts","digest":"1b273db3ecf301804980105fabf37cdb3e8b5cce519499801e1e52948a883c97","revision":"078747c0143ca02d52107439754ca3a51e5479d1"},
+
+    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"755ec9f2a3b4e0523ad5fd4126605f4433a4ac90b0075160d21acb280359c704","revision":"c6ebec77b17b679e630a3857b10a6f814d7fb436"},
+
+    {"path":"src-server/routes/orchestration/project-task-rooms.ts","digest":"a0be99c27d8f8795b5dfee2bac64b05ae9e957e7110db08414d76e1fdbd91cc8","revision":"a258f06c1515ccdde83e198862ae8efe43d71207"},
+
+    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"526128683c1bb08bf9f5e1dc7f1ed50b4d7d6d1f96bcf54484c263a82d9217f0","revision":"88a7f8ed59c055ea6ac713120ba6069d33fbb892"},
 
     {"path":"src-server/runtime/routes/__tests__/runtime-routes-project-task-room-principal.test.ts","digest":"3434108e346c495750d1aa394514be5a8a7b6c1395f1b7792598f120be253683","revision":"81ffd01123b6ad2a2591308e02a0c5f1cddc2feb"},
 
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"21831e2e97672cb946b2e23f9e183477773a632390b02daf66b3e6cf3fe20e71","revision":"595059eafa17ef6b7a39217a405619ecbfac2270"},
+
+    {"path":"src-server/services/orchestration/__tests__/project-task-room-runtime.test.ts","digest":"db188f8f473b5b5b112b3dcce279e70136e2d1261b4ef823aac1f846daa2f32d","revision":"9f8b407fac4a9e5536d72ca49be3a0b77715e1d8"},
+
+    {"path":"src-server/services/orchestration/project-task-room-runtime.ts","digest":"feb48a41131f04260c92e3a7757eda5aa61799a7015b3386a931d950250e3d58","revision":"9f8b407fac4a9e5536d72ca49be3a0b77715e1d8"},
+
+    {"path":"src-server/services/projects/__tests__/task-room-work-module.test.ts","digest":"75e4c4221bf81aa72df851cc9a349d37c28b5fab8aa2262c003f8c13387781dc","revision":"81ffd01123b6ad2a2591308e02a0c5f1cddc2feb"},
+
     {"path":"src-server/services/projects/task-room-context.ts","digest":"c548f8653bfbeb87cef832000969e4cd8f92358883e96d637fe9251a614f9778","revision":"078747c0143ca02d52107439754ca3a51e5479d1"},
 
-    {"path":"packages/contracts/package.json#/exports/.~1task-room-work","digest":"581c042771ed026476503019c1528e261058e922122e701490659ab861bac4ba","revision":"cf099c6275ffb239f2825c0e53b75be6fa19c6a6"}
+    {"path":"src-server/services/projects/task-room-work-module.ts","digest":"acf9afa37babc44c9281e95040e057726a71b03c0ab49e98989e59069f450f9c","revision":"81ffd01123b6ad2a2591308e02a0c5f1cddc2feb"},
+
+    {"path":"src-server/tools/station-control-delegation.ts","digest":"b924e289e8e485cf249ec99ebd3097b014f001f58942aa29f91e0196bbc5af70","revision":"a258f06c1515ccdde83e198862ae8efe43d71207"},
+
+    {"path":"src-ui/src/__tests__/TaskRoomComposer.test.tsx","digest":"af8e3f33aa53115fd99b63149cca098158324409a4bdb00910c41f652b37c9fb","revision":"4bcb32e2752dbd10db63b5acd96b0280be033c9e"},
+
+    {"path":"src-ui/src/__tests__/TaskWorkspaceView.test.tsx","digest":"311c0e0296833c711544da39f815b17c105ff57c146a9a7b195c6d5025936efe","revision":"0f2037dcc2b0a3a4d9f0e086c61c3dccaf8141de"},
+
+    {"path":"src-ui/src/workspace-panes/ProjectTaskRoomConversation.tsx","digest":"b2342efc85c9cae8d42bd588669176b09e589b34fdeaf28bcfe04a6f2bbdf67a","revision":"a258f06c1515ccdde83e198862ae8efe43d71207"},
+
+    {"path":"src-ui/src/workspace-panes/TaskRoomComposer.css","digest":"b6ab400718d1a406b143dbf1bbb002fc0ac06387971a6cf352cfebe9d0633317","revision":"a663d5f2984cec5dc40bf0bdedff2f7d32088b25"},
+
+    {"path":"src-ui/src/workspace-panes/TaskRoomComposer.tsx","digest":"e6cbddf730eb7268d662e1346264fa4e8002892647ef2423203efa4f7ed3d5c1","revision":"4bcb32e2752dbd10db63b5acd96b0280be033c9e"}
   ],
 
   "checks": [
