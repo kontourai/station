@@ -261,8 +261,11 @@ limits is not a deployment tuning interface.
 The public Node API is
 `@kontourai/station-shared/workspace-package`: `createWorkspacePackageKey`,
 `packWorkspace`, `inspectWorkspacePackage`, `unpackWorkspace`, and
-`verifyWorkspacePackage`. Receipt types
-live in `@kontourai/station-contracts/cloud-move`. The CLI delegates to this
+`verifyWorkspacePackage`. `validateWorkspacePackagePaths` exposes the codec's
+portable filename policy for other package acquisition callers: file-relative paths
+must not collide by case or Unicode normalization, alias a directory, or use reserved
+platform filenames. It checks paths rather than file content or installation authority.
+Receipt types live in `@kontourai/station-contracts/cloud-move`. The CLI delegates to this
 implementation so provider integrations can reuse the same semantics. A hosted
 service must add tenant authorization, source/destination ownership, isolated
 resource budgets, key handling, and authenticated transport before exposing
