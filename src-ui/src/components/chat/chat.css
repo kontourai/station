@@ -1146,6 +1146,14 @@
     min-height: 44px;
   }
 
+  /* Every "type to narrow this list" field (index.css's
+     `.list-filter-input`): the split-pane list header and the provider
+     picker's modal, which borrows the class outside a split pane (#3061,
+     #3102). The base rule and the phone rule (40px) are single-class too. */
+  .list-filter-input.list-filter-input {
+    min-height: 44px;
+  }
+
   /* Moved here from index.css, unchanged. It was added to the entry sheet on
      this lane's base branch, where `useIsMobile.test.tsx` forbids any `@media`
      condition that is not `MOBILE_MEDIA_QUERY` byte-for-byte — so the base
