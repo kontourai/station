@@ -549,7 +549,7 @@ export function SkillsView({
         emptyContent={
           <div className="skill-library__welcome">
             <EngineGlyph />
-            <h2>Good instructions, ready to reuse</h2>
+            <h3>Good instructions, ready to reuse</h3>
             <p>
               Skills give an agent a repeatable way to approach a task. Choose
               one from your library, review its instructions, and start a chat.
