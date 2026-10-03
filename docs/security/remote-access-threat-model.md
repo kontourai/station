@@ -146,7 +146,16 @@ client must still reach to learn why; liveness and the direct-loopback
 owner-secret routes, whose callers are launchers governed by the launcher
 protocol; MCP-token, webhook, stage-grant, relay-enrollment, share-token, and
 account-authentication routes, which have their own callers; or Station's own
-attested loopback consumer. Terminal and voice WebSockets are not covered yet.
+attested loopback consumer.
+
+Terminal and voice WebSockets are not covered yet, deliberately. Their
+upgrades never pass the HTTP boundary that runs this check (each socket
+server listens on its own port with its own `verifyClient`), and a browser
+`WebSocket` cannot set a request header, so carriage would need a query
+parameter or subprotocol on both ends. A subprotocol is the wrong vehicle: a host that does not echo an offered subprotocol makes
+the browser fail the connection, so a newer client would lose every older
+host. A query parameter is harmless to older hosts and is the planned
+carriage, added together with the check on each socket's own upgrade path.
 
 Clients send the header from the SDK request seam (which the CLI uses), the
 pairing client, and the connection health probe. They send it only where no
@@ -157,6 +166,11 @@ cross-origin browser request does not send it and reads as protocol 1, as
 does the desktop's native pairing exchange, which Rust builds itself. Before
 any host raises `minClientProtocol` above 1, every client path must declare
 its protocol, or that client will be refused as legacy.
+
+Known undeclared paths today, besides the two above: direct `fetch` calls
+that bypass the SDK seam (for example the notification action and local UI
+identity requests in `src-ui`, and the `station operate` event stream in the
+CLI).
 
 ## Credentialed consumers (station#2051)
 

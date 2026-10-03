@@ -357,7 +357,10 @@ These gaps must close before any host raises its minimum above 1:
 
 - cross-origin browser requests do not send the header;
 - the native pairing exchange request, built in Rust, does not send it;
-- terminal and voice WebSockets are not checked.
+- terminal and voice WebSockets are not checked (separate listeners, and a
+  browser socket cannot send a header; the threat model records the planned
+  query-parameter carriage);
+- direct `fetch` calls that bypass the SDK seam do not send it.
 
 ## Consequences
 
