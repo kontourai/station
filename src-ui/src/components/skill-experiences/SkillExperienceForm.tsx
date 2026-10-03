@@ -3,11 +3,6 @@ import type { SkillExperienceDefinitionV1 } from '@kontourai/station-contracts/s
 import { useId } from 'react';
 import './skill-experiences.css';
 
-export {
-  skillExperienceInputDefaults,
-  skillExperienceInputErrors,
-} from '@kontourai/station-shared/skill-experience-values';
-
 export function SkillExperienceForm({
   definition,
   values,
