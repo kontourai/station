@@ -12,7 +12,7 @@
   "document": {"digest":"9d922716b0ad931258a83c905179d2626aa673eb45a03f875558a2faeb9cb23c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
   "sources": [
-    {"path":"docs/architecture/module-map.md","digest":"8672fe5fd47d9b1e38bd147e13f267335ec9e0141dfcbcf080327ceabbc0f99b","revision":"56f4c4897a189eeb30430119a4f4895e95fbb541"},
+    {"path":"docs/architecture/module-map.md","digest":"11848e72396bd952c9e22910f43da86a93b3b4acab803dfa1b205eb154b4b5a6","revision":"adbeb32e99a86e9a8b6fca370b944f3b2147ca9f"},
 
     {"path":"docs/privacy-policy.md","digest":"fb5be7ad7342be17509e79e40a6e2dbbe7046ea7dbbe8db4ba637fcdbb21d403","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -22,7 +22,7 @@
 
     {"path":"packages/contracts/src/session-lifecycle.ts","digest":"defd4c1f3fd84f5b94d47f5a13c88ce75b92e3f2f7dc9c7ff9358f300e1795cf","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/sdk/src/client/execution.ts","digest":"e70868b9e5f5495e542a872093749d25042588af482cec1d50c70c2df00004a9","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+    {"path":"packages/sdk/src/client/execution.ts","digest":"a72a224bd2f86732da2bcbfbe2614c0e2454a6ce25f4b857b4d9383e98a052a0","revision":"f2a6ca3693f2f676d33ec8e09151c0563aa66b10"},
 
     {"path":"src-server/adapters/node-pty-adapter.ts","digest":"ba0efef51274d7f08e4ca45a1903ad536664adbb2ec542631b765a5093f1f758","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

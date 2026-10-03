@@ -12,15 +12,15 @@
   "document": {"digest":"42c6c7765de30e437f348e2e027d1cdddf6b5ab456da49fcfa6e762f530666c3","revision":"2b22c2609a75d0f40b77472fe918de3c34094b69"},
 
   "sources": [
-    {"path":"docs/ui/responsive-action-surfaces.txt","digest":"190bba9bf527833f3f0ef5e362a72b0a09d6553b634d86d3c2336553d2ac2c25","revision":"9284c690de029594417d7599810fbfbe9eca3d92"},
+    {"path":"docs/ui/responsive-action-surfaces.txt","digest":"b43b53ce0b4fe11a0541f1aa583171d68218473e1b50b22b1ef79ddc4b1c41b5","revision":"adbeb32e99a86e9a8b6fca370b944f3b2147ca9f"},
 
     {"path":"docs/ui/responsive-surfaces.json","digest":"ed85a588d1029bca3f050c4225772a2b58c42e944af63014960389794d0b24c5","revision":"d1708e0a66e7328c9c62a95865f1bb1dcfbeb8d1"},
 
     {"path":"packages/sdk/src/client/http.ts","digest":"9892699e68483e0df3dd67ce71956994e98a43755a0c931dd6c3c5660caee00e","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
-    {"path":"packages/sdk/src/index.ts","digest":"7a0645f44c08a15d2e4ff972cfb31c25a7e361b8534886ee9de826ac61a72a49","revision":"0814cc6ddb168cff69e5572b185a853540a4f6e0"},
+    {"path":"packages/sdk/src/index.ts","digest":"b996456a608d8fa3d37df98020c28cfa215035ac3cc185a4b6754f305f0f725c","revision":"adbeb32e99a86e9a8b6fca370b944f3b2147ca9f"},
 
-    {"path":"packages/sdk/src/queries.ts","digest":"6604989192ed7bbea006f7dd70e0ed2726c4d1f4f0095c0c0d430fe3cf61cc87","revision":"0814cc6ddb168cff69e5572b185a853540a4f6e0"},
+    {"path":"packages/sdk/src/queries.ts","digest":"dc22bc4de8a065867d2ddc3e77b1b8ffd0b9712e8dff6a393e4e7a3e5587c570","revision":"adbeb32e99a86e9a8b6fca370b944f3b2147ca9f"},
 
     {"path":"packages/sdk/src/query-core.ts","digest":"f61dfd3363e3afe8bcf0ca97330e4e799e44aeb0d1348a212a117d1f755873e9","revision":"9bb90045b7aeb926e7003b27fc4fd62252638524"},
 

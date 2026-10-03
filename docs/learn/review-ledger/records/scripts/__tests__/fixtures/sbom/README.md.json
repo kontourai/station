@@ -12,7 +12,7 @@
   "document": {"digest":"663c1854f89d925a27f9340924c3c0cc76b266acaf79ba0db6ba87b8fa7b3f55","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
   "sources": [
-    {"path":"package.json","digest":"8161e13f46212729130685df12cc34747e385002183410cd57e47d5cdd125306","revision":"2fc8f69d15e5c8fa3188bb2ee4731f1b63c66218"},
+    {"path":"package.json","digest":"026882d870c907bfaacdc7377f913f11c477c8c6cdce54ddd82c0579a5397f06","revision":"1f43155ddcfe86c48422d3f4b0041ddbdad16c3d"},
 
     {"path":"scripts/__tests__/fixtures/sbom/SPDX-LICENSE","digest":"017e38491cccbd2bdb6da0a32a33db9ec245b5dab30fdcd09f2c742c975e5b35","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 

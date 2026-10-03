@@ -9,7 +9,7 @@
 
   "limits": "No claim of live provider/audio/physical device/native shell, external forge acceptance, registry publication/install, production account/relay enrollment, cloud deployment or visual accessibility verification.154 code fences parse syntactically; fragment syntax/export presence is not general assignability or end-to-end execution proof. Default SDK host gaps (#2780), active-tab/voice lifecycle (#2806/#2807), notification long-delay wakeup (#2810), optional stale-mutation policy (#2815), disabled production fetch proxy and documented legacy error/guard limits remain current behavior or tracked recommendations. Exact statement/source hashes only establish future drift detection; they do not make later changes semantically correct automatically.",
 
-  "document": {"digest":"26cc46c4b133aa836a81a6a112bd6bc2d03c47867732d47786748274817cf397","revision":"9284c690de029594417d7599810fbfbe9eca3d92"},
+  "document": {"digest":"888abe9c6eaf20a8447b0ed8d787d71ebf3219f5084e5ba23530dc1898804621","revision":"68b8e4d5a9b11c85b8922c370acaf98e929d0275"},
 
   "sources": [
     {"path":"docs/design/mcp-ui-host.md","digest":"060ae4fc6877a186e8ea6d5073729e03f161dbe270b700f62741095560000195","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
@@ -86,7 +86,7 @@
 
     {"path":"packages/sdk/src/client/conversations.ts","digest":"9a7ae77eaeaebc56e33e05339fdb90bc4d8d04f3ba8c360fc8487ba3f8c4cfa5","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
-    {"path":"packages/sdk/src/client/execution.ts","digest":"e70868b9e5f5495e542a872093749d25042588af482cec1d50c70c2df00004a9","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+    {"path":"packages/sdk/src/client/execution.ts","digest":"a72a224bd2f86732da2bcbfbe2614c0e2454a6ce25f4b857b4d9383e98a052a0","revision":"f2a6ca3693f2f676d33ec8e09151c0563aa66b10"},
 
     {"path":"packages/sdk/src/client/flow-gate-evaluations.ts","digest":"5790b6a82e9e2dd574e34922666ffc3bf577b8dc895dab3dfb8fc580c95d5d57","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -98,7 +98,7 @@
 
     {"path":"packages/sdk/src/client/local-accounts.ts","digest":"d5c3462a067e9a89b86d27ec791badd4e37f3fd27c08c58ed0957ee1d71f2d65","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/sdk/src/client/orchestration.ts","digest":"7cede28541860714941e250eef7b326495fb6d15b85bf4cdddde9ef9de6efc0c","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
+    {"path":"packages/sdk/src/client/orchestration.ts","digest":"8abc9760aad02f447947dad82c93e3e7487f8633696797e9bf504d9194ee1227","revision":"e9cb2d80cbc9a0b55c2e6fcb7501d5bfe50d9fed"},
 
     {"path":"packages/sdk/src/client/plugins.ts","digest":"02d4b43402fbb920707aa8222c525ef27e0c4d86479ecad270164ff8f0759ee7","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
@@ -176,7 +176,7 @@
 
     {"path":"packages/sdk/src/host-contexts.ts","digest":"a72220a429a289ab65568feda763883b22536558ac4e073120d26b06399783fd","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/sdk/src/index.ts","digest":"7a0645f44c08a15d2e4ff972cfb31c25a7e361b8534886ee9de826ac61a72a49","revision":"0814cc6ddb168cff69e5572b185a853540a4f6e0"},
+    {"path":"packages/sdk/src/index.ts","digest":"b996456a608d8fa3d37df98020c28cfa215035ac3cc185a4b6754f305f0f725c","revision":"adbeb32e99a86e9a8b6fca370b944f3b2147ca9f"},
 
     {"path":"packages/sdk/src/layout/context.tsx","digest":"0a3e962f8bc141d067f387441e93d8f36c442bde102ea1e63eeccafbfd996f27","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -452,7 +452,7 @@
 
     {"path":"src-ui/src/core/layoutProviders.ts","digest":"208b58e6d5ffb1f5e57112ae67f00b0d25a0e08010f6ca3724f4335a322fcb74","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/core/PluginRegistry.ts","digest":"4b87c6951d37298e6497639e1cc45294fd1239f06d4c6caf9f5ed540eef5ca2c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-ui/src/core/PluginRegistry.ts","digest":"69836e5e1dd4762f58da6f2495e96f0cab41d586e65327fc4c1dc08d80acc8f9","revision":"1373230550904315438e5bd2869a3c41a9e419ca"},
 
     {"path":"src-ui/src/core/pluginSharedRuntime.ts","digest":"b9b3865a69ebf0b8246ac7b6b7b294b24f7a05f51004dd8a8b5ea273fc2fae49","revision":"390a624e73d6d9726117e9928e79e7c149607e7b"},
 
@@ -464,9 +464,9 @@
 
     {"path":"src-ui/src/hooks/useActiveChatSessionLifecycle.ts","digest":"2a90e4f43cde95121b12aec4ae642905f1329e9e23e95f797a41cd6746da9349","revision":"389d349629e5834edf691e2e986675ec566ceadc"},
 
-    {"path":"src-ui/src/hooks/useActiveChatSessionMessaging.ts","digest":"53af6df5a169a76a3eb936293dff7b0064b8596b6d5ddec1efa738ac6b0002e2","revision":"4e4453cb3140e7f075e2a53468d475f950837221"},
+    {"path":"src-ui/src/hooks/useActiveChatSessionMessaging.ts","digest":"76b50fa97162e0989a8c3adfa8f2bfba0086c3ba247a1e25455695ed910cf6ff","revision":"a54c2f48d0adf6af1f9818f6b33ab646238b533e"},
 
-    {"path":"src-ui/src/hooks/useChatInput.ts","digest":"31ed118293149ecc8a7aa42edbb1309eedd1b362370d170ddee1036d6ee98a6c","revision":"74db2e79bbb82782cffb1834eb904546edfb536a"},
+    {"path":"src-ui/src/hooks/useChatInput.ts","digest":"5a69e302eaf6703e37dba037be20e21ff992b594adac3a44a5d045e2e7944397","revision":"a54c2f48d0adf6af1f9818f6b33ab646238b533e"},
 
     {"path":"src-ui/src/hooks/useConnectedServerUpdateContext.ts","digest":"e6a192da8badae2e46073b05e957c2b8e896f4131e66cc101006b1f0597f60c7","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -534,9 +534,17 @@
 
     {"path":"src-server/routes/plugins/registry.ts","digest":"f3f5be48240bb62b1bd0e1a5a0349d5205a99891cf15c4e3930cb1250fd900a6","revision":"47fbbbd8f767858f60a0a323b74e26cb60abce62"},
 
-    {"path":"src-server/services/agents/skill-service.ts","digest":"036d075316efb30c94191ded896d3c69c9169f23e053f3fba34ef1b4283d161e","revision":"2867eea7c9a4838e2a59cdbf6ec7f940b7d4cf26"},
+    {"path":"src-server/services/agents/skill-service.ts","digest":"9f92c44195a5c87a63c1a14a3079b3cc91e00149f2b2f4e400a72189bb64d7f6","revision":"adbeb32e99a86e9a8b6fca370b944f3b2147ca9f"},
 
-    {"path":"src-server/routes/plugins/__tests__/registry-marketplaces.routes.test.ts","digest":"34259ae52213d3ac1532f51aab7e8772181749d49e9d9c3f40c29ac58da4182e","revision":"925b1fbe35ddb7a6c387a87a06c8b367128f9ef0"}
+    {"path":"src-server/routes/plugins/__tests__/registry-marketplaces.routes.test.ts","digest":"34259ae52213d3ac1532f51aab7e8772181749d49e9d9c3f40c29ac58da4182e","revision":"925b1fbe35ddb7a6c387a87a06c8b367128f9ef0"},
+
+    {"path":"packages/sdk/src/client/skill-experiences.ts","digest":"96e9bbfa542662b64db6757e8bd2242253ad222dba6ea8576bcbd86b866db766","revision":"6a847d3c029f4f3e5c1dbe82f2459194573d43e9"},
+
+    {"path":"packages/sdk/src/query-domains/skillExperiences.ts","digest":"b44961988edb64c85dca368703866aed9cd64602457556bdbb52bd5e660acf8b","revision":"21a3255e8f9899947d33bf16eb3eaaef961a5e70"},
+
+    {"path":"packages/shared/src/skill-experience-reader.ts","digest":"94bf4043af0cbb2bbf589b4e13b334fb0066bbb32536bc8eed48d2e0504c66bb","revision":"6a847d3c029f4f3e5c1dbe82f2459194573d43e9"},
+
+    {"path":"src-ui/src/lib/skill-experience-preview.ts","digest":"006c259ab6bb4d126ad6bf5652a9acf6ee1d367b715f646f6828db7be762e7bd","revision":"6a847d3c029f4f3e5c1dbe82f2459194573d43e9"}
   ],
 
   "checks": [

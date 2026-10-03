@@ -24,7 +24,7 @@
 
     {"path":"src-ui/src/components/chat/ReasoningSection.tsx","digest":"01a6a616e89aea27b77f751c2326cb2b6d2ce9e7280f1c6c6334107d782e4d49","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/contexts/active-chats-state.ts","digest":"885839611cb542e2c92b70669966faa7c20be3d8c25e046f58b0dcde15b26fbc","revision":"bc671142a7ae70587daf5bb0d94732e8ca74600a"},
+    {"path":"src-ui/src/contexts/active-chats-state.ts","digest":"f9495cd47358098381d3616e3f24b314bb43395a65eefae2770b59dd3b7b0b24","revision":"21a3255e8f9899947d33bf16eb3eaaef961a5e70"},
 
     {"path":"src-ui/src/hooks/orchestration/eventHandlers.ts","digest":"eca9a7366659e1c3d1ef6322bd63ea602a1508cfa01cfa896cde33cc45422d03","revision":"8a04b6f3b5bd86d9a60dfe35044457ca096ae78d"},
 

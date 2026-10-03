@@ -20,11 +20,11 @@
 
     {"path":"src-ui/src/components/chat/UIBlockRenderer.tsx","digest":"e5f4a78399502b4e89cfa1f4c80105e7318a00668b5807bf120b936d2362cdd3","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
 
-    {"path":"src-ui/src/hooks/useActiveChatSessionMessaging.ts","digest":"53af6df5a169a76a3eb936293dff7b0064b8596b6d5ddec1efa738ac6b0002e2","revision":"4e4453cb3140e7f075e2a53468d475f950837221"},
+    {"path":"src-ui/src/hooks/useActiveChatSessionMessaging.ts","digest":"76b50fa97162e0989a8c3adfa8f2bfba0086c3ba247a1e25455695ed910cf6ff","revision":"a54c2f48d0adf6af1f9818f6b33ab646238b533e"},
 
     {"path":"src-ui/src/hooks/useActiveChatSessions.ts","digest":"16ea2d7d3f011a253b70b90e9a24b087e87a06c442090dec428c6b0ffb62330b","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
 
-    {"path":"src-ui/src/lib/foregroundMessageDispatch.ts","digest":"8dd461fc84dda8844b89d1cc72d2c2da72aab7d5f0b0a07803405627f6f2ab23","revision":"fcd4407178cb5509ea47a958714603034fe20004"}
+    {"path":"src-ui/src/lib/foregroundMessageDispatch.ts","digest":"e2eb4d3d4647f06dcd2275f7d95ea43cfa4abd66beaf1b6d96a656aaa71019bb","revision":"1f43155ddcfe86c48422d3f4b0041ddbdad16c3d"}
   ],
 
   "checks": [

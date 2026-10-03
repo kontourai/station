@@ -9,7 +9,7 @@
 
   "limits": "Controlled local Node/macOS author-file tests and CLI build only. No installed runtime, model/provider, native/device, hosted schema URI or released-package proof. FIFO controls are POSIX-only and skip Windows; this is not hostile concurrent filesystem isolation or complete transitive Skill dependency discovery.",
 
-  "document": {"digest":"373d7ffe2b490c550d5e928c169205afa2cda2821c3e910ccd3f38a4a2130bda","revision":"f2bb7d8a1e4b56ac783fb9d0cfe167fe7a0fdde5"},
+  "document": {"digest":"1c88d7156a8696a1f724a023ba76d81dced8229ca164ae59495d4c1c040dabac","revision":"68b8e4d5a9b11c85b8922c370acaf98e929d0275"},
 
   "sources": [
     {"path":"packages/contracts/src/skill-experience.ts","digest":"1a26de992f677139d4e55580e45861b4b920b4f93e5d52efcd4f3ee990c9321d","revision":"8540fafb86b969775254b898711ad3ae40ccc39d"},
@@ -40,7 +40,7 @@
 
     {"path":"src-server/services/plugins/agent-plugin-loader.ts","digest":"5e2ebd404a26505676a99a207854fc10fe3692fa02628c891bed0156eb1b231c","revision":"56f4c4897a189eeb30430119a4f4895e95fbb541"},
 
-    {"path":"src-server/services/agents/skill-service.ts","digest":"da429fbc637564b3e3fe0e8e796569b3aa4f8514bb5e8cd3c3fd86cfe9175a6a","revision":"56f4c4897a189eeb30430119a4f4895e95fbb541"},
+    {"path":"src-server/services/agents/skill-service.ts","digest":"9f92c44195a5c87a63c1a14a3079b3cc91e00149f2b2f4e400a72189bb64d7f6","revision":"adbeb32e99a86e9a8b6fca370b944f3b2147ca9f"},
 
     {"path":"src-server/routes/agents/skills.ts","digest":"e39a612adc1d35767a9149cc5079d2c2732b4a2848171e2115ce3d4e4c25c62d","revision":"a366557a12a4f5e6a41d38ce92aacbd0ab32193b"},
 
@@ -62,7 +62,21 @@
 
     {"path":"packages/sdk/src/skill-experience-pane.ts","digest":"c3dcf5199d8a697fb8f3eabbe74ca1535cbbc139641323b4268ee7f65921ec35","revision":"8540fafb86b969775254b898711ad3ae40ccc39d"},
 
-    {"path":"examples/rich-skill-experience/README.md","digest":"425a86ce6411adab13391ab0453fcb924eebc7a496f034528cfef6f6174353b0","revision":"56f4c4897a189eeb30430119a4f4895e95fbb541"}
+    {"path":"examples/rich-skill-experience/README.md","digest":"425a86ce6411adab13391ab0453fcb924eebc7a496f034528cfef6f6174353b0","revision":"56f4c4897a189eeb30430119a4f4895e95fbb541"},
+
+    {"path":"src-ui/src/lib/skill-experience-preview.ts","digest":"006c259ab6bb4d126ad6bf5652a9acf6ee1d367b715f646f6828db7be762e7bd","revision":"6a847d3c029f4f3e5c1dbe82f2459194573d43e9"},
+
+    {"path":"src-ui/src/lib/skill-experience-draft.ts","digest":"11764534d93e66db650772673b7e2c702bf7820d2a5036f4666ebccc51a6284a","revision":"6a847d3c029f4f3e5c1dbe82f2459194573d43e9"},
+
+    {"path":"src-ui/src/hooks/useChatInput.ts","digest":"5a69e302eaf6703e37dba037be20e21ff992b594adac3a44a5d045e2e7944397","revision":"a54c2f48d0adf6af1f9818f6b33ab646238b533e"},
+
+    {"path":"src-ui/src/hooks/useActiveChatSessionMessaging.ts","digest":"76b50fa97162e0989a8c3adfa8f2bfba0086c3ba247a1e25455695ed910cf6ff","revision":"a54c2f48d0adf6af1f9818f6b33ab646238b533e"},
+
+    {"path":"src-ui/src/components/skill-experiences/SkillExperiencePanel.tsx","digest":"e9f7f5467f02d8c4d5a229cda219109cd5585772ba0b1d65668ea9530fd37069","revision":"a54c2f48d0adf6af1f9818f6b33ab646238b533e"},
+
+    {"path":"src-ui/src/lib/foregroundMessageDispatch.ts","digest":"e2eb4d3d4647f06dcd2275f7d95ea43cfa4abd66beaf1b6d96a656aaa71019bb","revision":"1f43155ddcfe86c48422d3f4b0041ddbdad16c3d"},
+
+    {"path":"packages/sdk/src/client/skill-experiences.ts","digest":"96e9bbfa542662b64db6757e8bd2242253ad222dba6ea8576bcbd86b866db766","revision":"6a847d3c029f4f3e5c1dbe82f2459194573d43e9"}
   ],
 
   "checks": [
