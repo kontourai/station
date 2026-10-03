@@ -1446,10 +1446,19 @@ export function FilePreviewPane({
             disabled: !gotoAvailable || view !== 'file',
             onSelect: () => setGotoOpen(true),
           },
+          // The host's own rows for this pane (pop out, remove), merged so
+          // the head has one ⋯; `takeHostActions` below tells it so.
+          ...(headSlots?.hostActions ?? []),
         ]}
       />
     </>
   );
+  const takeHostActions = headSlots?.takeHostActions;
+  useEffect(() => {
+    if (!takeHostActions) return;
+    takeHostActions(true);
+    return () => takeHostActions(false);
+  }, [takeHostActions]);
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: a scoped keyboard shortcut (⌘G / Ctrl+G) for the pane's focused content, not a control.
     <div

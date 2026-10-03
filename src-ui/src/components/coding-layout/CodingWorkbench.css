@@ -194,11 +194,33 @@
   width: 44px;
   padding: var(--space-2) 0;
   border-left: 1px solid var(--border-primary);
-  /* Visible, not scrolling: the items' tooltips sit to the left of the
-     rail, and a scrolling rail clipped them to its own 44px (design audit
-     U12). The rail holds a handful of 44px items; it does not need to
-     scroll. */
-  overflow: visible;
+  /* Scrolls: a workspace can hold more panes than a short window shows,
+     and the launcher and "+" at the end must stay reachable. The flyout
+     and the tooltips are drawn on the body (fixed, placed from the item's
+     box), so the scrolling rail clips neither (design audit D1/U12). */
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;
+}
+
+.coding-workbench__rail::-webkit-scrollbar {
+  display: none;
+}
+
+.coding-workbench__rail-tip-anchor {
+  display: inline-flex;
+  flex: none;
+}
+
+/* The portalled rail tip: the kit's look, but placed by its own style and
+   shown while it exists (the kit shows its sibling tip on hover by CSS). */
+.tooltip.coding-workbench__rail-tip {
+  position: fixed;
+  z-index: var(--layer-popover);
+  margin: 0;
+  opacity: 1;
+  visibility: visible;
+  pointer-events: none;
 }
 
 .coding-workbench__rail-slot {
@@ -397,7 +419,10 @@
 }
 
 .coding-workbench__panel-title {
-  flex: 1 1 auto;
+  /* The title keeps its own width (ellipsised when the room is short); the
+     leading slot after it takes the free space, so a strip there starts
+     right after the name rather than centred in the row. */
+  flex: 0 1 auto;
   min-width: 0;
   margin: 0;
   overflow: hidden;
@@ -579,6 +604,7 @@
 
 .coding-workbench__head-slot--leading {
   flex: 1 1 auto;
+  justify-content: flex-start;
 }
 
 /* The slots inherit the bar's quiet: the dock header's own bar chrome does
@@ -773,17 +799,22 @@
   border-top: 0;
 }
 
-/* At rest the edge reads as a control: a 3px accent bar with a small
-   low-emphasis chevron on it, and the Needs-you count above (design audit
-   U4); hover or focus brings the bar and the chevron up. */
+/* At rest the edge reads as a control: a 3px bar with a small low-emphasis
+   chevron on it (design audit U4). The bar is neutral until something asks
+   for the reader — the Needs-you count, hover or focus — so it is not a
+   fourth accent on a light screen; the count badge above is always accent. */
 .coding-workbench__inbox-edge {
   border-right-width: 3px;
+  border-right-color: var(--border-primary);
+  overflow: visible;
+}
+
+.coding-workbench__inbox-edge--needs-you {
   border-right-color: color-mix(
     in srgb,
     var(--accent-primary) 60%,
     transparent
   );
-  overflow: visible;
 }
 
 .coding-workbench__inbox-edge-glyph {

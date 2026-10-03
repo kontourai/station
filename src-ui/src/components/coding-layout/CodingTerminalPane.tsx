@@ -27,6 +27,23 @@ export interface CodingTerminalPaneProps {
   workingDir: string;
 }
 
+const CLOSED_LAST_TERMINAL_KEY = 'coding-terminal-closed-last';
+function readClosedLastTerminal(): boolean {
+  try {
+    return sessionStorage.getItem(CLOSED_LAST_TERMINAL_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+function writeClosedLastTerminal(closed: boolean) {
+  try {
+    if (closed) sessionStorage.setItem(CLOSED_LAST_TERMINAL_KEY, '1');
+    else sessionStorage.removeItem(CLOSED_LAST_TERMINAL_KEY);
+  } catch {
+    /* Storage is optional presentation state. */
+  }
+}
+
 /**
  * The terminal's tab/session actions remain domain-owned while
  * WorkspacePaneHost controls placement. Neither owns PTY identity.
@@ -117,6 +134,7 @@ export function CodingTerminalPane({
       }
       setTabs((current) => [...current, tab]);
       setActiveTabId(id);
+      writeClosedLastTerminal(false);
     },
     [],
   );
@@ -137,6 +155,11 @@ export function CodingTerminalPane({
       return;
     }
     shellOpened.current = true;
+    // "The reader closed the last terminal" is remembered beside the tab
+    // list itself (the pane's own session storage, per project), so a
+    // remount — a reload, a crossing of the layout's fold — does not open a
+    // shell they just closed. Opening one again forgets it.
+    if (readClosedLastTerminal()) return;
     addTab('shell');
   }, [addTab, open, shellIsTheOnlyKind, tabs.length]);
 
@@ -147,7 +170,10 @@ export function CodingTerminalPane({
         const index = current.findIndex((tab) => tab.id === id);
         setActiveTabId(next[Math.max(0, index - 1)]?.id || next[0]!.id);
       }
-      if (next.length === 0) setActiveTabId('');
+      if (next.length === 0) {
+        setActiveTabId('');
+        writeClosedLastTerminal(true);
+      }
       return next;
     });
   };

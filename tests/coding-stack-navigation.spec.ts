@@ -550,6 +550,16 @@ test.describe('Coding stack — wide (1440px): tools beside Chat', () => {
     await expect(
       lowerPanel(page).getByRole('dialog', { name: 'New terminal' }),
     ).toHaveCount(0);
+    // The strip follows the title, not the row's centre: the first tab
+    // starts within a few px of the title's end.
+    const title = (await lowerPanel(page)
+      .getByRole('heading', { name: 'Terminal' })
+      .boundingBox())!;
+    const tab = (await lowerPanel(page)
+      .getByRole('tab', { name: 'Shell 1' })
+      .boundingBox())!;
+    expect(tab.x - (title.x + title.width)).toBeGreaterThanOrEqual(0);
+    expect(tab.x - (title.x + title.width)).toBeLessThanOrEqual(16);
     await expect(sidePanel(page)).toBeVisible();
     await expect(page).toHaveURL(/[?&]pane=/);
     const chat = (await chatPage(page).boundingBox())!;
@@ -786,12 +796,10 @@ test.describe('Coding stack — wide (1440px): one bar, the inbox, a file from F
     await expect(page).toHaveURL(/[?&]pane=/);
     const item = codingViewItem(page, 'app.ts');
     await expect(item).toHaveAttribute('aria-pressed', 'true');
-    // The tooltip shows on hover (CSS), and says the whole path.
+    // The tooltip shows on hover (drawn on the body), and says the whole path.
     await item.hover();
-    await expect(item.locator('xpath=..').getByRole('tooltip')).toBeVisible();
-    await expect(item.locator('xpath=..').getByRole('tooltip')).toHaveText(
-      'src/app.ts',
-    );
+    await expect(page.getByRole('tooltip')).toBeVisible();
+    await expect(page.getByRole('tooltip')).toHaveText('src/app.ts');
     // The preview's head offers the way back to Files (design audit U5).
     await sidePanel(page)
       .getByRole('button', { name: 'Back to Files' })
@@ -844,7 +852,7 @@ test.describe('Coding stack — wide (1440px): one bar, the inbox, a file from F
     await page.mouse.move(10, 10);
     const item = codingViewItem(page, 'Files');
     await item.hover();
-    const tip = item.locator('xpath=..').getByRole('tooltip');
+    const tip = page.getByRole('tooltip');
     await expect(tip).toBeVisible();
     await expect(tip).toHaveText('Files');
     const tipBox = (await tip.boundingBox())!;

@@ -14,12 +14,15 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { requestCenterChatPage } from '../../../app-shell/chat-placement';
 import { NavigationProvider } from '../../../contexts/NavigationContext';
 import { navigationStore } from '../../../contexts/navigation-store';
+import { writeCodingSessionPanels } from '../../../lib/coding-panels-record';
 import { deviceSettingsStore } from '../../../lib/device-settings-store';
 import { createFilePreviewPaneInstance } from '../../../workspace-panes/filePreviewPaneInstance';
+import { usePaneHeadSlots } from '../../../workspace-panes/PaneHeadSlots';
 import { useRegionChromeSlots } from '../../../workspace-panes/RegionChromeSlots';
 import type { WorkspacePaneHostOpenAction } from '../../../workspace-panes/WorkspacePaneHostOpenContext';
 import { workspacePaneHostScopeKey } from '../../../workspace-panes/workspacePaneHostNavigation';
 import { WORKSPACE_PANE_OPENED } from '../../../workspace-panes/workspacePaneHostOpenOutcome';
+import { ActionOverflowMenu } from '../../ActionOverflowMenu';
 import { CodingWorkbench } from '../CodingWorkbench';
 import {
   resolveCodingStackLocation,
@@ -152,6 +155,10 @@ interface StackProps {
   /** The Terminal pane for the lower panel, drawn by `renderTerminal`. */
   terminal?: WorkspacePaneInstance;
   renderTerminal?: () => ReactNode;
+  /** Which panes the reader may remove (the host's close). */
+  closable?: (instance: WorkspacePaneInstance) => boolean;
+  /** The pane host's content; a stub when the test does not care. */
+  children?: ReactNode;
 }
 
 function Stack({
@@ -160,6 +167,8 @@ function Stack({
   wide = false,
   terminal,
   renderTerminal,
+  closable,
+  children,
 }: StackProps) {
   const selection = useCodingStackSelection();
   const held = terminal ? [...instances, terminal] : instances;
@@ -187,8 +196,9 @@ function Stack({
       paneLabel={label}
       hostOpen={hostOpen}
       onOpenCatalog={vi.fn()}
+      closable={closable}
     >
-      <div data-testid="pane-host">pane host</div>
+      {children ?? <div data-testid="pane-host">pane host</div>}
     </CodingWorkbench>
   );
 }
@@ -553,10 +563,9 @@ describe('CodingWorkbench — the Coding layout as a navigation stack', () => {
       screen.getByRole('button', { name: 'More actions for Files' }),
     );
     fireEvent.click(
-      within(screen.getByRole('menu', { name: 'Actions for Files' })).getByRole(
-        'menuitem',
-        { name: 'Close Files' },
-      ),
+      within(
+        screen.getByRole('menu', { name: 'More actions for Files' }),
+      ).getByRole('menuitem', { name: 'Remove pane' }),
     );
     expect(close).toHaveBeenCalledWith(files.instanceId);
   });
@@ -1154,9 +1163,17 @@ describe('CodingWorkbench — one quiet bar, the inbox beside a tool, and names 
         </CodingWorkbench>
       </NavigationProvider>,
     );
-    const tip = (name: string) =>
-      railItem(name).parentElement?.querySelector('[role="tooltip"]')
-        ?.textContent;
+    // The tip is drawn on the body while the item is hovered or focused
+    // (the rail scrolls, and would clip a tip of its own).
+    const tip = (name: string) => {
+      fireEvent.focusIn(railItem(name));
+      const shown = screen.getByRole('tooltip');
+      expect(shown.parentElement).toBe(window.document.body);
+      const text = shown.textContent;
+      fireEvent.focusOut(railItem(name));
+      expect(screen.queryByRole('tooltip')).toBeNull();
+      return text;
+    };
     expect(tip('Files')).toBe('src/app/files.ts');
     expect(railItem('Files').getAttribute('aria-label')).toBe('Files');
     expect(tip('Diff, 2 changed files')).toBe('Diff, 2 changed files');
@@ -1704,5 +1721,167 @@ describe('CodingWorkbench — design audit round: the flyout, Escape, the way ba
       within(sidePanel()).queryByRole('button', { name: /^Back to/ }),
     ).toBeNull();
     expect(railItem('Files').getAttribute('aria-pressed')).toBe('true');
+  });
+});
+
+describe('CodingWorkbench — delta review: one ⋯ per head, Escape’s reach, the fold through an arrival', () => {
+  const pressEscape = () =>
+    harness.shortcuts.get('codingStack.escape')!.handler();
+
+  /** A pane with an overflow of its own, as File Preview and Diff have. */
+  function PaneWithOverflow() {
+    const slots = usePaneHeadSlots();
+    const take = slots?.takeHostActions;
+    useEffect(() => {
+      if (!take) return;
+      take(true);
+      return () => take(false);
+    }, [take]);
+    if (!slots?.trailing) return null;
+    return createPortal(
+      <ActionOverflowMenu
+        label="More file actions"
+        actions={[
+          { key: 'own', label: 'Copy path', onSelect: () => undefined },
+          ...(slots.hostActions ?? []),
+        ]}
+      />,
+      slots.trailing,
+    );
+  }
+
+  test('a closable pane with its own overflow beside Chat has one ⋯ in the head, carrying the host’s Remove pane; a pane without one gets the host’s ⋯', async () => {
+    const close = vi.fn(async () => undefined);
+    const view = renderStack({
+      wide: true,
+      hostOpen: { open: vi.fn(() => WORKSPACE_PANE_OPENED), close },
+      closable: (instance) => instance.instanceId === files.instanceId,
+      children: <PaneWithOverflow />,
+    });
+    await drillInto('Files');
+    const head = sidePanel().querySelector('.coding-workbench__panel-head')!;
+    const triggers = within(head as HTMLElement).getAllByRole('button', {
+      name: /More/,
+    });
+    expect(triggers.map((button) => button.getAttribute('aria-label'))).toEqual(
+      ['More file actions'],
+    );
+    expect(
+      head.querySelectorAll('[aria-haspopup="menu"], .action-overflow__trigger')
+        .length,
+    ).toBe(1);
+    fireEvent.click(triggers[0]!);
+    const menu = screen.getByRole('menu', { name: 'More file actions' });
+    expect(
+      within(menu)
+        .getAllByRole('menuitem')
+        .map((item) => item.textContent?.trim()),
+    ).toEqual(['Copy path', 'Remove pane']);
+    fireEvent.click(
+      within(menu).getByRole('menuitem', { name: 'Remove pane' }),
+    );
+    expect(close).toHaveBeenCalledWith(files.instanceId);
+    // The × is still the panel's own: it hides, it does not remove.
+    expect(
+      within(sidePanel()).getByRole('button', { name: 'Close Files' }),
+    ).toBeTruthy();
+
+    // A pane that draws no overflow: the head offers the host's rows itself.
+    view.rerender(
+      <NavigationProvider>
+        <Stack
+          wide
+          hostOpen={{ open: vi.fn(() => WORKSPACE_PANE_OPENED), close }}
+          closable={(instance) => instance.instanceId === files.instanceId}
+        >
+          <div data-testid="pane-host">pane host</div>
+        </Stack>
+      </NavigationProvider>,
+    );
+    await act(async () => undefined);
+    expect(
+      within(sidePanel()).getByRole('button', {
+        name: 'More actions for Files',
+      }),
+    ).toBeTruthy();
+  });
+
+  test('Escape acts only from inside the open panel or on its rail item: from the composer, the bar or another rail item it is consumed and nothing closes', async () => {
+    renderStack({ wide: true, terminal });
+    fireEvent.click(railItem('Diff'), { detail: 1 });
+    await act(async () => undefined);
+    expect(sidePanel().getAttribute('data-active')).toBe('true');
+
+    screen.getByRole('textbox', { name: 'Message' }).focus();
+    expect(pressEscape()).not.toBe(false);
+    await act(async () => undefined);
+    expect(sidePanel().getAttribute('data-active')).toBe('true');
+
+    screen.getByRole('button', { name: 'Skip to views' }).focus();
+    expect(pressEscape()).not.toBe(false);
+    await act(async () => undefined);
+    expect(sidePanel().getAttribute('data-active')).toBe('true');
+
+    railItem('Files').focus();
+    expect(pressEscape()).not.toBe(false);
+    await act(async () => undefined);
+    expect(sidePanel().getAttribute('data-active')).toBe('true');
+
+    railItem('Diff').focus();
+    expect(pressEscape()).not.toBe(false);
+    await act(async () => undefined);
+    expect(sidePanel().getAttribute('data-active')).toBe('false');
+
+    // The lower panel likewise: its own rail item closes it, the side's
+    // does not touch it.
+    fireEvent.click(railItem('Terminal'), { detail: 1 });
+    await act(async () => undefined);
+    railItem('Files').focus();
+    pressEscape();
+    await act(async () => undefined);
+    expect(lowerPanel()?.getAttribute('data-active')).toBe('true');
+    railItem('Terminal').focus();
+    pressEscape();
+    await act(async () => undefined);
+    expect(lowerPanel()?.getAttribute('data-active')).toBe('false');
+  });
+
+  test('a session arriving with a remembered tool and the layout’s fold keeps the fold: no unfold-and-refold, no inbox write', async () => {
+    deviceSettingsStore.set('inboxOpen', false);
+    deviceSettingsStore.set(
+      'codingPanels',
+      writeCodingSessionPanels(
+        deviceSettingsStore.get('codingPanels'),
+        '~',
+        { side: diff.instanceId, inbox: 'layout' },
+        Date.now(),
+      ),
+    );
+    const writes: unknown[] = [];
+    const set = deviceSettingsStore.set.bind(deviceSettingsStore);
+    const spy = vi
+      .spyOn(deviceSettingsStore, 'set')
+      .mockImplementation((key, value) => {
+        if (key === 'inboxOpen') writes.push(value);
+        return set(key, value);
+      });
+    try {
+      renderStack({ wide: true });
+      await act(async () => undefined);
+      await act(async () => {
+        await vi.waitFor(() =>
+          expect(sidePanel().getAttribute('data-active')).toBe('true'),
+        );
+      });
+      expect(writes).toEqual([]);
+      expect(deviceSettingsStore.get('inboxOpen')).toBe(false);
+      expect(remembered('~')?.inbox).toBe('layout');
+      // Closing the tool is still the unfold.
+      await drillInto('Diff');
+      expect(deviceSettingsStore.get('inboxOpen')).toBe(true);
+      expect(writes).toEqual([true]);
+    } finally {
+      spy.mockRestore();
+    }
   });
 });

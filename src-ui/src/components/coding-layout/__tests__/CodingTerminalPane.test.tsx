@@ -199,3 +199,43 @@ test('a terminal closed in the Coding layout stays closed: the shell opens only 
   );
   expect(await screen.findByRole('tab', { name: 'Shell 1' })).toBeTruthy();
 });
+
+test('closing the last terminal is remembered: a remount opens no shell, and opening one again forgets it', async () => {
+  closeProjectTerminal.mockResolvedValue({
+    sessionId: 'project-a:terminal-one',
+    projectSlug: 'project-a',
+    terminalId: 'terminal-one',
+  });
+  const first = renderPane([
+    { id: 'terminal-one', type: 'shell', label: 'Shell 1' },
+  ]);
+  fireEvent.click(screen.getByRole('button', { name: 'Close Shell 1' }));
+  await waitFor(() => expect(screen.queryByRole('tab')).toBeNull());
+  // No shell opens in the empty panel the reader just emptied.
+  await act(async () => undefined);
+  expect(screen.queryByRole('tab')).toBeNull();
+  first.unmount();
+  // A remount (a reload, a fold crossing): still none.
+  const second = render(
+    <CodingTerminalPane
+      presentation="pane"
+      projectSlug="project-a"
+      workingDir="/workspace"
+    />,
+  );
+  await act(async () => undefined);
+  expect(screen.queryByRole('tab')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: '+ New Terminal' }));
+  expect(screen.getByRole('tab', { name: 'Shell 1' })).toBeTruthy();
+  second.unmount();
+  // Opened again by hand: a later empty remount opens one as before.
+  sessionStorage.setItem('coding-terminal-tabs', '[]');
+  render(
+    <CodingTerminalPane
+      presentation="pane"
+      projectSlug="project-a"
+      workingDir="/workspace"
+    />,
+  );
+  expect(await screen.findByRole('tab', { name: 'Shell 1' })).toBeTruthy();
+});

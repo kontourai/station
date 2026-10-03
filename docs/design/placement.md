@@ -1790,12 +1790,27 @@ per conversation.** Below the fold nothing above changes.
   chat is a compose mark, not a "+", beside the rail's "Add pane" "+". A
   second Browser on the rail is "Browser 2" (`browserPreviewPaneOrdinal`);
   the stored Browser state holds a session id, not a URL, so a URL tooltip
-  was not built.
+  was not built. One ⋯ per head: the host's own rows for the pane beside
+  Chat (Pop out, Remove pane) go to the pane through `PaneHeadSlots`
+  (`hostActions`); a pane with an overflow of its own merges them and says
+  so (`takeHostActions`), and the head draws its own ⋯ only for a pane that
+  has none; the head's × hides the panel, "Remove pane" takes the pane out of
+  the workspace. Escape acts only from inside the side or lower panel (or on
+  its rail item); elsewhere it is consumed and nothing moves. A session
+  arriving with a remembered tool keeps its fold through the arrival rather
+  than unfolding and folding again. The rail scrolls when a workspace holds
+  more panes than the window shows; its tooltips are drawn on the body like
+  the flyout. The Terminal remembers that the reader closed the last
+  terminal (beside its tab list) so a remount does not open another. The
+  folded edge's bar is neutral at rest and accent on hover, focus or a
+  Needs-you count.
 
 Limits: the lower panel is the Terminal's alone (no other pane docks below);
 the fold ignores whether the Project sidebar is collapsed; a shared link that
-names both a pane and a preview intent opens the pane and leaves the intent
-to the Files pane's row; the inbox fold is judged when a tool opens, is
+names both a pane and a preview intent opens the pane, and the Chat position
+opens the preview beside it (the review round's M1: a link's intent is the
+Chat position's; only the Files pane's own row write is left to it); the
+inbox fold is judged when a tool opens, is
 resized or restored and when the room rests after a resize, with the inbox's
 measured width at fold time deciding the unfold.
 

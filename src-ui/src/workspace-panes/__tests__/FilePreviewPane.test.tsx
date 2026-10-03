@@ -1713,9 +1713,24 @@ describe('FilePreviewPane inside a host that draws the head (design audit C4)', 
     const leading = document.createElement('div');
     const trailing = document.createElement('div');
     document.body.append(leading, trailing);
+    const removePane = vi.fn();
+    const takeHostActions = vi.fn();
     try {
-      render(
-        <PaneHeadSlotsContext.Provider value={{ leading, trailing }}>
+      const view = render(
+        <PaneHeadSlotsContext.Provider
+          value={{
+            leading,
+            trailing,
+            hostActions: [
+              {
+                key: 'remove-pane',
+                label: 'Remove pane',
+                onSelect: removePane,
+              },
+            ],
+            takeHostActions,
+          }}
+        >
           {pane({
             projectSlug: 'demo',
             stateKey: 'file-preview:test',
@@ -1746,6 +1761,16 @@ describe('FilePreviewPane inside a host that draws the head (design audit C4)', 
       ).toBeTruthy();
       // The file itself still renders below.
       expect(screen.getByText('export const example = 1;')).toBeTruthy();
+      // The host's rows ride in the pane's own overflow, so the head keeps
+      // one ⋯; the pane says it took them, and gives them back on unmount.
+      expect(takeHostActions).toHaveBeenLastCalledWith(true);
+      fireEvent.click(
+        within(trailing).getByRole('button', { name: 'More file actions' }),
+      );
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Remove pane' }));
+      expect(removePane).toHaveBeenCalledTimes(1);
+      view.unmount();
+      expect(takeHostActions).toHaveBeenLastCalledWith(false);
     } finally {
       leading.remove();
       trailing.remove();

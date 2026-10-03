@@ -61,6 +61,7 @@ import type {
 import type { WorkspacePaneHostOpenAction } from '../../workspace-panes/WorkspacePaneHostOpenContext';
 import { workspacePaneHostScopeKey } from '../../workspace-panes/workspacePaneHostNavigation';
 import { workspacePaneHostGroupContaining } from '../../workspace-panes/workspacePaneHostReducerTree';
+import { ActionOverflowMenu, type OverflowAction } from '../ActionOverflowMenu';
 import { Button } from '../Button';
 import { ChatWorkspacePane } from '../chat-dock/ChatDock';
 import {
@@ -73,7 +74,6 @@ import {
   DocumentGlyph,
   FolderGlyph,
   GlobeGlyph,
-  MoreGlyph,
   PlusGlyph,
   ShieldGlyph,
   TargetGlyph,
@@ -772,16 +772,28 @@ export function CodingWorkbench({
   };
   escapeRef.current = () => {
     if (wide) {
+      const focused = document.activeElement;
       const within = (element: HTMLElement | null) =>
+        Boolean(element && focused && element.contains(focused));
+      const onRailItemOf = (instanceId: string | null) =>
         Boolean(
-          element &&
-            document.activeElement &&
-            element.contains(document.activeElement),
+          instanceId &&
+            focused instanceof HTMLElement &&
+            focused.dataset.railItem === instanceId,
         );
-      // The panel the reader is in first; then whichever is open.
-      if (lowerOpen && within(lowerPanelRef.current)) toggleLower(true);
-      else if (sideOpen) closeSide(true);
-      else if (lowerOpen) toggleLower(true);
+      // Only the panel the reader is in (or whose rail item they are on)
+      // closes; from the transcript, the bar or elsewhere Escape is
+      // consumed and nothing moves.
+      if (
+        lowerOpen &&
+        (within(lowerPanelRef.current) || onRailItemOf(terminalId))
+      )
+        toggleLower(true);
+      else if (
+        sideOpen &&
+        (within(drillInPageRef.current) || onRailItemOf(sidePaneId))
+      )
+        closeSide(true);
       return true;
     }
     if (pageRef.current === 'drill-in') returnToChatPage();
@@ -900,7 +912,11 @@ export function CodingWorkbench({
   useEffect(() => {
     if (!wide) return;
     if (!sideOpen) {
-      if (layoutFolded) {
+      // A tool the session remembers is about to be restored (the arrival
+      // effect writes the URL a commit later): its fold stands, rather
+      // than an unfold now and a fold again — two writes and an inbox
+      // mounted for one frame on every reload.
+      if (layoutFolded && !holds(panels.side)) {
         updatePanels({ inbox: null });
         if (!inboxOpen) writeInbox(true);
       }
@@ -945,8 +961,10 @@ export function CodingWorkbench({
   }, [
     committedSideWidth,
     foldRoomWidth,
+    holds,
     inboxOpen,
     layoutFolded,
+    panels.side,
     readerChoice,
     sideOpen,
     updatePanels,
@@ -1007,9 +1025,30 @@ export function CodingWorkbench({
   const [sideHeadTrailing, setSideHeadTrailing] = useState<HTMLElement | null>(
     null,
   );
+  // Beside Chat the same rows go to the pane through the head's slots: a pane
+  // with an overflow of its own merges them and the head keeps one ⋯.
+  const [sideActionsTaken, setSideActionsTaken] = useState(false);
+  const removeDrilledIn = useMemo(
+    () =>
+      drilledIn && hostOpen?.close && closable?.(drilledIn)
+        ? () => void hostOpen.close?.(drilledIn.instanceId)
+        : undefined,
+    [closable, drilledIn, hostOpen],
+  );
+  const sideHost = useHostPaneActions({
+    instance: drilledIn ?? null,
+    label: drillInLabel,
+    popOut,
+    onClose: removeDrilledIn,
+  });
   const sideHeadSlots = useMemo(
-    () => ({ leading: sideHeadLeading, trailing: sideHeadTrailing }),
-    [sideHeadLeading, sideHeadTrailing],
+    () => ({
+      leading: sideHeadLeading,
+      trailing: sideHeadTrailing,
+      hostActions: sideHost.actions,
+      takeHostActions: setSideActionsTaken,
+    }),
+    [sideHeadLeading, sideHeadTrailing, sideHost.actions],
   );
   const [lowerHeadLeading, setLowerHeadLeading] = useState<HTMLElement | null>(
     null,
@@ -1232,7 +1271,7 @@ export function CodingWorkbench({
                 >
                   <button
                     type="button"
-                    className="coding-workbench__inbox-edge"
+                    className={`coding-workbench__inbox-edge${inboxNeedsYou > 0 ? ' coding-workbench__inbox-edge--needs-you' : ''}`}
                     aria-label={inboxEdgeName}
                     // Not `writeInbox`: this is the reader's own move, and
                     // the session remembers it as such.
@@ -1320,7 +1359,18 @@ export function CodingWorkbench({
                     className="coding-workbench__head-slot"
                     ref={setSideHeadTrailing}
                   />
-                  {paneMenu}
+                  {sideActionsTaken ? (
+                    sideHost.notice ? (
+                      <span
+                        className="coding-workbench__more-notice"
+                        role="status"
+                      >
+                        {sideHost.notice}
+                      </span>
+                    ) : null
+                  ) : (
+                    paneMenu
+                  )}
                   <Tooltip label={`Close ${drillInLabel}`} placement="bottom">
                     <button
                       type="button"
@@ -1695,7 +1745,7 @@ function CodingViewRail({
               ? detail
               : `${detail} — ${name.slice(label.length + 2)}`;
         return (
-          <Tooltip key={instance.instanceId} label={tip} placement="left">
+          <RailTip key={instance.instanceId} label={tip}>
             <button
               type="button"
               className="coding-workbench__rail-item"
@@ -1722,12 +1772,12 @@ function CodingViewRail({
                 </span>
               )}
             </button>
-          </Tooltip>
+          </RailTip>
         );
       })}
       {browserLauncher ? <BrowserRailItem launcher={browserLauncher} /> : null}
       {onAddPane ? (
-        <Tooltip label="Add pane" placement="left">
+        <RailTip label="Add pane">
           <button
             type="button"
             className="coding-workbench__rail-item coding-workbench__rail-item--add"
@@ -1736,7 +1786,7 @@ function CodingViewRail({
           >
             <PlusGlyph />
           </button>
-        </Tooltip>
+        </RailTip>
       ) : null}
     </nav>
   );
@@ -1746,6 +1796,51 @@ function CodingViewRail({
  * The Browser launcher behind a rail icon: its address field is a form, so
  * it opens as a small labelled panel beside the rail.
  */
+/**
+ * A rail item's tooltip, drawn on the body to the item's left. The rail
+ * scrolls (it must: a workspace can hold more panes than a short window
+ * shows), and a tooltip inside a scrolling rail is clipped to it, so the tip
+ * is placed from the item's measured box instead, as the Browser flyout is.
+ * Shown on hover and keyboard focus, as the kit's tooltip is.
+ */
+function RailTip({ label, children }: { label: string; children: ReactNode }) {
+  const [place, setPlace] = useState<CSSProperties | null>(null);
+  const show = (event: { currentTarget: HTMLElement }) => {
+    const anchor = event.currentTarget.getBoundingClientRect();
+    setPlace({
+      position: 'fixed',
+      top: `${anchor.top + anchor.height / 2}px`,
+      right: `${window.innerWidth - anchor.left + RAIL_FLYOUT_GAP_PX}px`,
+      transform: 'translateY(-50%)',
+    });
+  };
+  const hide = () => setPlace(null);
+  return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: hover and focus listeners for the tooltip of the button inside; the span itself is not a control.
+    <span
+      className="coding-workbench__rail-tip-anchor"
+      onPointerEnter={show}
+      onPointerLeave={hide}
+      onFocus={show}
+      onBlur={hide}
+    >
+      {children}
+      {place
+        ? createPortal(
+            <span
+              role="tooltip"
+              className="tooltip tooltip--left coding-workbench__rail-tip"
+              style={place}
+            >
+              {label}
+            </span>,
+            document.body,
+          )
+        : null}
+    </span>
+  );
+}
+
 function BrowserRailItem({ launcher }: { launcher: ReactNode }) {
   const [open, setOpen] = useState(false);
   const panelId = useId();
@@ -1787,7 +1882,7 @@ function BrowserRailItem({ launcher }: { launcher: ReactNode }) {
   }, [open, panelRef]);
   return (
     <div className="coding-workbench__rail-slot">
-      <Tooltip label="Open Browser" placement="left">
+      <RailTip label="Open Browser">
         <button
           ref={triggerRef}
           type="button"
@@ -1799,7 +1894,7 @@ function BrowserRailItem({ launcher }: { launcher: ReactNode }) {
         >
           <GlobeGlyph />
         </button>
-      </Tooltip>
+      </RailTip>
       {open
         ? createPortal(
             <section
@@ -1827,11 +1922,70 @@ const RAIL_FLYOUT_GAP_PX = 8;
 const RAIL_FLYOUT_GUTTER_PX = 8;
 
 /**
- * The drill-in's own actions, behind one ⋯ on the breadcrumb row (or the
- * side panel's head): what the pane host's command menu offered that still
- * matters on a page that is just the pane — pop it out (the desktop app)
- * and close one the reader opened. Absent when there is nothing to offer.
+ * The host's own actions for a drill-in — pop it out (the desktop app) and
+ * remove one the reader opened — as overflow rows, with the notice a failed
+ * pop-out leaves. No rows when there is nothing to offer. The stack's bar
+ * draws them behind one ⋯ (`PaneMoreMenu`); beside Chat the panel head hands
+ * them to the pane through `PaneHeadSlots`, so a pane with an overflow of
+ * its own merges them and the head has one ⋯, not two.
  */
+function useHostPaneActions({
+  instance,
+  label,
+  popOut,
+  onClose,
+}: {
+  instance: WorkspacePaneInstance | null;
+  label: string;
+  popOut?: WorkspacePaneHostPopOut;
+  onClose?: () => void;
+}): { actions: readonly OverflowAction[]; notice: string | null } {
+  const [notice, setNotice] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
+  const availability =
+    popOut && instance
+      ? 'availability' in popOut
+        ? popOut.availability(instance)
+        : popOut
+      : null;
+  const canPopOut = availability?.state === 'supported';
+  const requestPopOut = useCallback(async () => {
+    if (availability?.state !== 'supported' || pending || !instance) return;
+    setPending(true);
+    try {
+      const result = await availability.request(instance);
+      setNotice(
+        result.status === 'opened' ? null : `${label} could not be popped out.`,
+      );
+    } catch {
+      setNotice(`${label} could not be popped out.`);
+    } finally {
+      setPending(false);
+    }
+  }, [availability, instance, label, pending]);
+  const actions = useMemo<readonly OverflowAction[]>(
+    () => [
+      ...(canPopOut
+        ? [
+            {
+              key: 'pop-out',
+              label: 'Pop out',
+              disabled: pending,
+              onSelect: () => void requestPopOut(),
+            },
+          ]
+        : []),
+      // "Remove", not "close": the head's × hides the panel and keeps the
+      // pane; this takes the pane out of the workspace.
+      ...(onClose
+        ? [{ key: 'remove-pane', label: 'Remove pane', onSelect: onClose }]
+        : []),
+    ],
+    [canPopOut, onClose, pending, requestPopOut],
+  );
+  return { actions, notice };
+}
+
 function PaneMoreMenu({
   instance,
   label,
@@ -1843,33 +1997,13 @@ function PaneMoreMenu({
   popOut?: WorkspacePaneHostPopOut;
   onClose?: () => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const [notice, setNotice] = useState<string | null>(null);
-  const [pending, setPending] = useState(false);
-  const close = useCallback(() => setOpen(false), []);
-  const menuRef = useMenuFocus<HTMLDivElement>(open, close);
-  const availability = popOut
-    ? 'availability' in popOut
-      ? popOut.availability(instance)
-      : popOut
-    : null;
-  const canPopOut = availability?.state === 'supported';
-  if (!canPopOut && !onClose) return null;
-  const requestPopOut = async () => {
-    if (availability?.state !== 'supported' || pending) return;
-    setPending(true);
-    close();
-    try {
-      const result = await availability.request(instance);
-      setNotice(
-        result.status === 'opened' ? null : `${label} could not be popped out.`,
-      );
-    } catch {
-      setNotice(`${label} could not be popped out.`);
-    } finally {
-      setPending(false);
-    }
-  };
+  const { actions, notice } = useHostPaneActions({
+    instance,
+    label,
+    popOut,
+    onClose,
+  });
+  if (actions.length === 0) return null;
   return (
     <div className="coding-workbench__more">
       {notice ? (
@@ -1877,55 +2011,11 @@ function PaneMoreMenu({
           {notice}
         </span>
       ) : null}
-      <button
-        type="button"
-        className="coding-workbench__rail-item"
-        aria-label={`More actions for ${label}`}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        onClick={() => setOpen((value) => !value)}
-      >
-        <MoreGlyph />
-      </button>
-      {open ? (
-        <div
-          ref={menuRef}
-          className="coding-workbench__more-menu"
-          role="menu"
-          aria-label={`Actions for ${label}`}
-          tabIndex={-1}
-          onKeyDown={(event) => {
-            if (event.key !== 'Escape') return;
-            event.stopPropagation();
-            close();
-          }}
-        >
-          {canPopOut ? (
-            <button
-              type="button"
-              role="menuitem"
-              className="coding-workbench__more-item"
-              disabled={pending}
-              onClick={() => void requestPopOut()}
-            >
-              Pop out
-            </button>
-          ) : null}
-          {onClose ? (
-            <button
-              type="button"
-              role="menuitem"
-              className="coding-workbench__more-item"
-              onClick={() => {
-                close();
-                onClose();
-              }}
-            >
-              Close {label}
-            </button>
-          ) : null}
-        </div>
-      ) : null}
+      <ActionOverflowMenu
+        label={`More actions for ${label}`}
+        triggerClassName="coding-workbench__rail-item coding-workbench__more-trigger"
+        actions={actions}
+      />
     </div>
   );
 }
