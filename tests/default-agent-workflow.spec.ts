@@ -769,12 +769,16 @@ test.describe('Default agent workflow', () => {
     await textarea.fill('trigger failure');
     await page.getByRole('button', { name: 'Send', exact: true }).click();
 
-    // archive#191 R1: the SDK client now parses the server's JSON error body
+    // archive#191 R1: the SDK client parses the server's JSON error body
     // instead of discarding it behind a bare 'HTTP ${status}' string, so the
-    // ephemeral bubble shows the real failure reason.
-    await expect(page.locator('body')).toContainText(
-      'Error: Synthetic provider failure',
-    );
+    // ephemeral notice shows the real failure reason. The notice renders the
+    // translated title on its own line above the body (#2527), so the title
+    // and the server's message are separate visible blocks.
+    const notice = page.locator('.ephemeral-message');
+    await expect(notice.getByText('Error', { exact: true })).toBeVisible();
+    await expect(
+      notice.getByText('Synthetic provider failure', { exact: true }),
+    ).toBeVisible();
   });
 
   test('renders a persisted [SYSTEM_EVENT][CHAT_ERROR] marker with the same translated copy shown live (#191 R2 persistence-gap fix)', async ({

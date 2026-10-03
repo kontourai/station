@@ -255,19 +255,31 @@ test.describe('Structured UI blocks', () => {
     await expect(
       page.getByRole('heading', { name: 'Approve gate' }),
     ).toBeVisible();
+    // Scope controls to the rendered form block: the composer's approval-mode
+    // chip also has an accessible name starting "Approv…", so a page-wide
+    // button lookup is ambiguous and breaks whenever composer labels move.
+    const gateForm = page
+      .locator('form')
+      .filter({ has: page.getByRole('heading', { name: 'Approve gate' }) });
+    const approveButton = gateForm.getByRole('button', {
+      name: 'Approve',
+      exact: true,
+    });
 
     // Required-field guard fires before any send.
-    await page.getByRole('button', { name: 'Approve', exact: true }).click();
+    await approveButton.click();
     await expect(page.getByText('"Reviewer" is required.')).toBeVisible();
     expect(sentBody).toBeNull();
 
     // Fill and submit.
     await page.getByLabel('Reviewer').fill('casey');
     await page.getByText('Sign off').click();
-    await page.getByRole('button', { name: 'Approve', exact: true }).click();
+    await approveButton.click();
 
     // Form locks after submit, and the tagged structured turn was sent.
-    await expect(page.getByRole('button', { name: 'Submitted' })).toBeVisible();
+    await expect(
+      gateForm.getByRole('button', { name: 'Submitted' }),
+    ).toBeVisible();
     await expect.poll(() => sentBody).not.toBeNull();
     const turn = JSON.parse(sentBody as unknown as string).message as string;
     expect(turn).toContain('Submitted form "Approve gate":');
