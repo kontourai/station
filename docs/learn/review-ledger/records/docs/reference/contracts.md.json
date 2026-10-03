@@ -9,12 +9,12 @@
 
   "limits": "Review covers every current documented claim, not all possible behaviors of every exported module. Detailed historical Muse/Claude captures remain historical; no live provider, native push gateway, physical device, deployed account or relay journey was run. Contract declarations and valid parsers never prove authorization, delivery or owner completion. No new security probe.",
 
-  "document": {"digest":"c3fe09a8f4e29b2629039b6a76716d1caeac996e5b6f95bfd5a7f236e69baa4a","revision":"c60379bda4b5cb78a25647c443fc795f3b28224d"},
+  "document": {"digest":"ca2a0e06b0feda8d4ae82b8acd8810a8261c834b0c5850c008fc478f1e087f67","revision":"487bd978d1599eaf52ad405d36bbe20d5bd638a7"},
 
   "sources": [
     {"path":"packages/cli/src/commands/delegate.ts","digest":"9e1e324cb71d85c563afd74dbd8da063fe8a13a3faaa174690eaebea7ca8518d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/contracts/package.json","digest":"ac7f0242d693504423a432a2a764c7df53888ca61c27199bcc206b601a4ab0bb","revision":"1e6450e0caa47975d33f505a1348bdc01ae1382e"},
+    {"path":"packages/contracts/package.json","digest":"c61c582837114518152e9f403f25738e93121d527cea4ac73070bcef85949c07","revision":"487bd978d1599eaf52ad405d36bbe20d5bd638a7"},
 
     {"path":"packages/contracts/src/__tests__/learning-review.test.ts","digest":"d91c0dcd54fc02fd99e0c7959b63a7dc1216b0556cfb2f8d1ff0996df1651347","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
