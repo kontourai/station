@@ -18,7 +18,7 @@ export function SkillExperienceForm({
   attachmentAssignments,
   onAttachmentsChange,
 }: {
-  definition: SkillExperienceDefinitionV1;
+  definition: Pick<SkillExperienceDefinitionV1, 'inputs'>;
   values: Record<string, string>;
   onChange: (values: Record<string, string>) => void;
   errors?: Record<string, string>;

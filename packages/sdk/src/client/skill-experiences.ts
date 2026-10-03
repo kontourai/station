@@ -3,17 +3,13 @@ import type {
   SkillExperienceInventoryV1,
   SkillExperienceSessionViewV1,
 } from '@kontourai/station-contracts/skill-experience';
-import {
-  readSkillExperienceInventory,
-  readSkillExperienceSession,
-} from '@kontourai/station-shared/skill-experience-values';
 import { envelopeError } from './api-error-message';
 import { type ClientRequestOptions, getJson } from './http';
 import { rethrowDeadline } from './request-deadline';
 
 async function read<T>(
   response: Response,
-  parse: (value: unknown) => T | null,
+  parse: (value: unknown) => Promise<T | null>,
 ): Promise<T> {
   let body: unknown;
   try {
@@ -40,7 +36,7 @@ async function read<T>(
       body,
       `Experience request failed with HTTP ${response.status}`,
     );
-  const parsed = parse('data' in body ? body.data : undefined);
+  const parsed = await parse('data' in body ? body.data : undefined);
   if (!parsed)
     throw new Error(
       'Station returned an unsupported skill experience response.',
@@ -54,7 +50,10 @@ export async function fetchSkillExperienceInventory(
 ): Promise<SkillExperienceInventoryV1> {
   return read(
     await getJson(`${apiBase}/api/skills/experiences`, opts),
-    readSkillExperienceInventory,
+    async (value) =>
+      (
+        await import('@kontourai/station-shared/skill-experience-reader')
+      ).readSkillExperienceInventory(value),
   );
 }
 
@@ -82,6 +81,9 @@ export async function fetchSkillExperienceSession(
       `${apiBase}/api/orchestration/sessions/${encodeURIComponent(threadId)}/skill-experience${query.size ? `?${query}` : ''}`,
       requestOptions,
     ),
-    readSkillExperienceSession,
+    async (value) =>
+      (
+        await import('@kontourai/station-shared/skill-experience-reader')
+      ).readSkillExperienceSession(value),
   );
 }

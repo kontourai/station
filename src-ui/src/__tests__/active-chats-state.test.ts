@@ -727,12 +727,31 @@ describe('source-bound unsent visual skill persistence', () => {
     });
     expect(saved).toHaveLength(1);
     expect(hydrateActiveChats(saved)['prepared-1']).toMatchObject({
-      skillExperienceDraft: draft,
+      skillExperienceDraft: {
+        namespace: draft.namespace,
+        apiBase: draft.apiBase,
+        start: draft.start,
+        attachmentAssignments: draft.attachmentAssignments,
+        definition: {
+          id: definition.id,
+          title: definition.title,
+          purpose: definition.purpose,
+          example: definition.example,
+          inputs: definition.inputs,
+          presentation: {
+            modes: definition.presentation.modes,
+            defaultMode: definition.presentation.defaultMode,
+          },
+        },
+      },
       projectSlug: 'project-1',
       requestedModel: 'model-1',
       skillExperienceMode: 'alongside',
     });
     expect(saved[0]).not.toHaveProperty('grant');
+    expect(
+      hydrateActiveChats(saved)['prepared-1'].skillExperienceDraft,
+    ).not.toHaveProperty('definition.skills');
     const malformed = {
       ...saved[0],
       skillExperienceDraft: {

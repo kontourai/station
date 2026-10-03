@@ -237,8 +237,10 @@ export function SkillExperiencePanel({ session }: { session: ChatSession }) {
               </details>
               <p>
                 Declared outputs:{' '}
-                {definition.outputs.map((output) => output.label).join(', ')}.
-                Results appear in the conversation and its artifact controls
+                {snapshot?.definition.outputs
+                  .map((output) => output.label)
+                  .join(', ')}
+                . Results appear in the conversation and its artifact controls
                 when the Agent produces them.
               </p>
               <Button

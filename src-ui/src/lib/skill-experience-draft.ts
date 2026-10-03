@@ -1,19 +1,17 @@
 import { CHAT_ATTACHMENT_MAX_COUNT } from '@kontourai/station-contracts/chat-attachment';
-import type {
-  SkillExperienceDefinitionV1,
-  SkillExperienceStartInputV1,
-} from '@kontourai/station-contracts/skill-experience';
+import type { SkillExperienceStartInputV1 } from '@kontourai/station-contracts/skill-experience';
+import { readSkillExperienceStartInput } from '@kontourai/station-shared/skill-experience-values';
 import {
-  readSkillExperienceDefinition,
-  readSkillExperienceStartInput,
-} from '@kontourai/station-shared/skill-experience-values';
+  readSkillExperiencePreview,
+  type SkillExperiencePreview,
+} from './skill-experience-preview';
 
 /** User intent retained under the verified authority namespace, never admission. */
 export interface SkillExperienceDraft {
   namespace: string;
   apiBase: string;
   start: SkillExperienceStartInputV1;
-  definition: SkillExperienceDefinitionV1;
+  definition: SkillExperiencePreview;
   attachmentAssignments?: Record<string, string[]>;
 }
 
@@ -35,7 +33,7 @@ export function readSkillExperienceDraft(
   )
     return null;
   const start = readSkillExperienceStartInput(value.start);
-  const definition = readSkillExperienceDefinition(value.definition);
+  const definition = readSkillExperiencePreview(value.definition);
   if (
     !start ||
     !definition ||

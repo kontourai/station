@@ -71,11 +71,13 @@ local author validation of referenced definitions and bundled Skill bytes.
 See the [authoring contract](../../docs/reference/skill-experiences.md);
 successful validation does not activate or render an experience.
 
-The browser-safe `/skill-experience-values` leaf validates inventory/session
-wire projections and inert persisted start inputs, compares complete installed
-identities, and derives scalar defaults and input errors. It does not discover
-files, execute Skills, acquire grants or make cached inventory authoritative.
-The SDK and Station UI use it at their respective transport and draft boundaries.
+The browser-safe `/skill-experience-values` leaf validates inert start inputs,
+compares complete installed identities, and derives defaults, role positions and
+input errors. `/skill-experience-reader` adds canonical definition validation for
+inventory/session wire projections. The SDK loads that reader after a successful
+feature response; synchronous UI hydration retains only bounded display previews.
+Neither helper discovers files, executes Skills, acquires grants or makes cached
+inventory authoritative.
 
 ## Registry authoring Node leaves
 
