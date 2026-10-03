@@ -12,7 +12,7 @@
   "document": {"digest":"10b9cf8be6ec35f93ddf769f4271e97e4fa31ba77a592da8348f6ff90d41724e","revision":"4f3acdc5478e27a733c06e91a202a325817c2f53"},
 
   "sources": [
-    {"path":"package.json","digest":"658ca698680a7d2ec3692bb2f47c282b1bb48056a1238ab4ac44f0aee5ed4388","revision":"d73d9f64333504f027a200482e978cc4445338da"},
+    {"path":"package.json","digest":"658ca698680a7d2ec3692bb2f47c282b1bb48056a1238ab4ac44f0aee5ed4388","revision":"e4344fd10ef7a80a6a6f65d7e709fb1be56b64df"},
 
     {"path":"packages/contracts/src/engine-capability-matrix.ts","digest":"db82340760d09e965ac7ed17830f36060573fe48545995d4ad9149b755d36ea1","revision":"518fae654af981373e872c2ab85438bb1b1b0e67"},
 
