@@ -86,7 +86,7 @@
 
     {"path":"src-ui/src/components/chat-start/RecentChatList.tsx","digest":"76f01d5c06c8ae571d5bda360fdc31bf04d1c240e8444eab01bca23ee0a65e8f","revision":"ed4b7b2c4440e328d5367f3d8f4a319a81dfba7e"},
 
-    {"path":"src-ui/src/components/modals/NewChatModal.tsx","digest":"5b7389bc6907063d57610071e46f0cffad444479d838a81c45fb598ae653dda5","revision":"ed4b7b2c4440e328d5367f3d8f4a319a81dfba7e"}
+    {"path":"src-ui/src/components/modals/NewChatModal.tsx","digest":"431adb60a6b87a60fd2879e522032386fb398ffddecaeceb159fe39a95000685","revision":"73739630fb28cabc4f1e6581097f02a6859a5b91"}
   ],
 
   "checks": [
