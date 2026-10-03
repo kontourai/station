@@ -177,6 +177,13 @@ test.describe('Web Push subscribe/unsubscribe', () => {
     // Install the simulated credential only for the operation under test.
     // Sending an intentionally fake credential during app bootstrap correctly
     // trips server auth rate limiting and obscures the push-client contract.
+    const bootstrapCredential = (await context.cookies(origin)).find(
+      (cookie) => cookie.name === 'station-device',
+    );
+    if (!bootstrapCredential)
+      throw new Error(
+        'Authenticated browser fixture is required before credential isolation',
+      );
     await context.addCookies([
       {
         name: 'station-device',
@@ -212,6 +219,7 @@ test.describe('Web Push subscribe/unsubscribe', () => {
     await expect.poll(() => unsubscribeCalls).toBe(1);
     await expect(enableButton).toHaveCount(0);
 
+    await context.addCookies([bootstrapCredential]);
     await page.reload();
     await expect(pushSwitch).toHaveAttribute('aria-checked', 'false');
     await pushSwitch.click();
