@@ -34,7 +34,7 @@
 
     {"path":"src-ui/src/components/SplitPaneLayout.tsx","digest":"afa5bac34d039da9bdb075158d39ca552af35b773c2ca0b7a5c79b5fd85681ff","revision":"cd7dabcd93bf05a27d66f74e667667dcf771d615"},
 
-    {"path":"src-ui/src/index.css","digest":"a442aa2f0db5cd73024a292166ed219ddd187accdba2575a56bc278f12d2cb37","revision":"b14f1b80ec27c38844b3d16e8a4bdfe624a778c9"},
+    {"path":"src-ui/src/index.css","digest":"e3bf9bb5c0dbeea17eb06bf2536ebcd445ce60875becb64ca97da08118422dcd","revision":"8fd71c3714eceeb651bd8e52f200aa1532fa33c6"},
 
     {"path":"src-ui/src/views/AgentConnectionView.tsx","digest":"8ec56bd2a4de7fc240781373aafdec325c2d3fc75ea3945c51258f90cf204d77","revision":"91d79c3f0ce9ca5ae304e4248b67b6189103016e"},
 

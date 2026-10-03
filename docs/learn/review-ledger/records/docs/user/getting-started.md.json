@@ -100,7 +100,7 @@
 
     {"path":"src-ui/src/hooks/useNewChatSelectionModel.ts","digest":"79d62da2bce71d836669cfc7836952c832e88aa7e23a95566712733b566a86a7","revision":"df34c2497051350c571a5b33d841277ff2fba301"},
 
-    {"path":"src-ui/src/index.css","digest":"a442aa2f0db5cd73024a292166ed219ddd187accdba2575a56bc278f12d2cb37","revision":"b14f1b80ec27c38844b3d16e8a4bdfe624a778c9"},
+    {"path":"src-ui/src/index.css","digest":"e3bf9bb5c0dbeea17eb06bf2536ebcd445ce60875becb64ca97da08118422dcd","revision":"8fd71c3714eceeb651bd8e52f200aa1532fa33c6"},
 
     {"path":"src-ui/src/lib/newChatIntent.ts","digest":"a759731abdda8846bbfa382a714b397cfaeb913b7e407f46ebc92b956c304c5e","revision":"fdd1311dfc6f9bb5370219a598a46bf4359b248e"},
 
@@ -130,7 +130,7 @@
 
     {"path":"src-ui/src/components/chat-dock/MobileTaskSwitcher.tsx","digest":"f6bfc2c8317353e7daf9ccae233d947cf0260159c57134b3045d7dd25c26f84f","revision":"b14f1b80ec27c38844b3d16e8a4bdfe624a778c9"},
 
-    {"path":"src-ui/src/components/chat-dock/ChatDockProjectSwitcherSheet.tsx","digest":"55eac1113c7e271ef16e99d6df940906468c8ad9501bddd55b84e6b808ecd062","revision":"b14f1b80ec27c38844b3d16e8a4bdfe624a778c9"},
+    {"path":"src-ui/src/components/chat-dock/ChatDockProjectSwitcherSheet.tsx","digest":"3fd95b1bad506d1d6bafdfc65e81f18508398bdaec6e11d40b546a8259d49a9c","revision":"8fd71c3714eceeb651bd8e52f200aa1532fa33c6"},
 
     {"path":"src-ui/src/components/chat-dock/ChatDockProjectContext.tsx","digest":"4014822b2ec774379491ce299aff2736b8fadcf1e6fb7b0adb69b6b268ee85af","revision":"b14f1b80ec27c38844b3d16e8a4bdfe624a778c9"},
 
@@ -142,7 +142,7 @@
 
     {"path":"src-ui/src/contexts/navigation-store.ts","digest":"cb5cf525e16bca7880f258c31ec4d83716419d8e6af9675a4cffb0030d560cca","revision":"b14f1b80ec27c38844b3d16e8a4bdfe624a778c9"},
 
-    {"path":"tests/cross-runtime-chat-switching.spec.ts","digest":"8ee861ce182aa21eb5b3025c4490152c70aee5f6ec5eea287e7e005c47cbd1e2","revision":"b14f1b80ec27c38844b3d16e8a4bdfe624a778c9"},
+    {"path":"tests/cross-runtime-chat-switching.spec.ts","digest":"0aeb646fe962c41108316c65360c405268ea7061ea2504e7441b51a0a9bd2878","revision":"8fd71c3714eceeb651bd8e52f200aa1532fa33c6"},
 
     {"path":"src-ui/src/components/chat-dock/ChatDock.tsx","digest":"e53b8be83f24f901faa7616592029340e55de433922523f5bc6ef06d926ef963","revision":"b14f1b80ec27c38844b3d16e8a4bdfe624a778c9"},
 
@@ -156,7 +156,11 @@
 
     {"path":"src-ui/src/views/home/work-status.ts","digest":"ff0100dddce220275b7d9f0183fb2c44bac835eb0fbb67e071be63f4c127b120","revision":"d1f68396648a4d450f1d743e436df703be0935be"},
 
-    {"path":"src-ui/src/views/home/work-facts.ts","digest":"db1a8431cf1408a6c707ba4782bb52a6b803c3779ea08492545afe831ed8bb3b","revision":"d1f68396648a4d450f1d743e436df703be0935be"}
+    {"path":"src-ui/src/views/home/work-facts.ts","digest":"db1a8431cf1408a6c707ba4782bb52a6b803c3779ea08492545afe831ed8bb3b","revision":"d1f68396648a4d450f1d743e436df703be0935be"},
+
+    {"path":"src-ui/src/hooks/useLongPress.ts","digest":"f559399edd7656e922502582eaba09ab20d9c25ea91c142c9b0d65b1b9f3d3df","revision":"8f9ea788561518398a488d35bb768b78a272e73b"},
+
+    {"path":"tests/helpers/long-press.ts","digest":"91f28d2d0c63b1a289aaeca79fd35d3be972b0d9012ff9247a6dd93cdac41d3b","revision":"8fd71c3714eceeb651bd8e52f200aa1532fa33c6"}
   ],
 
   "checks": [
