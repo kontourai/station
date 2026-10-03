@@ -50,7 +50,7 @@
 
     {"path":"src-server/domain/agent-registry.ts","digest":"b25558e066b73e96a09310d9d8a4bc8a0db41f893047a6f86035411ee0df3f50","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"061da89e00216d5c3250d7f13dc1dea5717765b50db7ebf8c49672208524a3d0","revision":"c2c67c2f25d565ea97d757b370f2bbf942a9588b"},
+    {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"f44a4e94ca0f335cfc5ee2a803ed1659f140e149b0cd0e66e4c9b5bef9179718","revision":"4f3acdc5478e27a733c06e91a202a325817c2f53"},
 
     {"path":"src-server/routes/agents/enriched-agents.ts","digest":"6baed1928fa80cd18e59ea9d531b656099f6389b5457b2cbe39420ea0e5de20c","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
