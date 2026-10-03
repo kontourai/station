@@ -13,6 +13,7 @@
 import {
   APPLICATION_SESSION_NATIVE_CHALLENGE_PATH,
   APPLICATION_SESSION_NATIVE_EXCHANGE_PATH,
+  APPLICATION_SESSION_NATIVE_REVOKE_PATH,
 } from '@kontourai/station-contracts/application-session';
 import type {
   DevicePrincipalBinding,
@@ -133,11 +134,39 @@ export function nativeDeviceProofPilotRoute(
   if (method === 'POST')
     return (
       path === APPLICATION_SESSION_NATIVE_CHALLENGE_PATH ||
-      path === APPLICATION_SESSION_NATIVE_EXCHANGE_PATH
+      path === APPLICATION_SESSION_NATIVE_EXCHANGE_PATH ||
+      path === APPLICATION_SESSION_NATIVE_REVOKE_PATH ||
+      path === '/api/account-auth/accept-invitation'
     );
   if (method === 'GET' || method === 'HEAD')
-    return path === '/api/projects' || /^\/api\/projects\/[^/]+$/.test(path);
+    return (
+      [
+        '/.well-known/station/v1',
+        '/api/system/status',
+        '/api/system/identity',
+        '/api/auth/authority',
+        '/api/projects',
+      ].includes(path) ||
+      /^\/api\/projects\/[A-Za-z0-9_-]{1,128}(?:\/shared-work(?:\/[A-Za-z0-9_-]{1,128}\/(?:document|history|publication))?)?$/.test(
+        path,
+      )
+    );
   return false;
+}
+
+/** Neutral Station observations; presenting account material still requires account verification. */
+export function nativeDeviceOnlyObservationRoute(
+  method: string,
+  path: string,
+): boolean {
+  return (
+    (method === 'GET' || method === 'HEAD') &&
+    [
+      '/.well-known/station/v1',
+      '/api/system/status',
+      '/api/system/identity',
+    ].includes(path)
+  );
 }
 
 export class NativeDeviceRequestAuthority {

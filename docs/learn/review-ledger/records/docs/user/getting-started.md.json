@@ -7,9 +7,9 @@
 
   "summary": "Full guide read. Traced first-run selected-answer save/generation cancellation and three destinations, preserved New Chat setup return and authority revalidation, file/conversation token-to-send callers, personal local source observation, and exact approval request controls. Clarified Ready vs actual chat smoke, save cancellation, 64 file mentions, 25-conversation picker window/eight matches, and send-time captured scope. Reused prior source-backed Starter Task/scheduler/continuation and install/recovery owner review without upgrading live evidence.",
 
-  "limits": "No real installer/release or first-run provider setup execution, live engine/chat billing, remote/mobile/native journey, real approval operation or personal-store observation. Unit fixtures and isolated UI captures are bounded evidence. Source startup completion status writes separately from selected-profile save. Current references are scoped tokens/metadata, not transcript insertion or exhaustive history search.",
+  "limits": "No real installer/release or first-run provider setup execution, live engine/chat billing, remote/mobile/native journey, real approval operation or personal-store observation. Unit fixtures and isolated UI captures are bounded evidence. Source startup completion status writes separately from selected-profile save. Current references are scoped tokens/metadata, not transcript insertion or exhaustive history search.\n\nStructural merge of 5fd2dd86ad0cd35018ce09537c1aa01ce58e0e55 and 8f9ea788561518398a488d35bb768b78a272e73b preserves both prior immutable document/source anchors and historical checks. Selecting an existing current-byte binding is structural reconciliation only, not semantic approval of merged inputs. No new digest/revision or coverage baseline was minted. Competing prior anchors remain pending semantic review and supported recording after the merge commit: [{\"path\":\"docs/user/getting-started.md\",\"ours\":{\"digest\":\"267eb15eb3c8a487f4fa8f4eb2f3f38e04337b08821be5ea1a4d34ea9541cfc1\",\"revision\":\"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8\"},\"main\":{\"digest\":\"53a097e483b1f02b6541a49f02a08bf09432d1f84e5533507e011b02b8a1d974\",\"revision\":\"5c4715178ae1172f03cd2d819c40985302e56ee7\"},\"active\":{\"digest\":\"53a097e483b1f02b6541a49f02a08bf09432d1f84e5533507e011b02b8a1d974\",\"revision\":\"5c4715178ae1172f03cd2d819c40985302e56ee7\"},\"decision\":\"mainMatch\"},{\"path\":\"docs/guides/release-channel-ports.md\",\"ours\":{\"path\":\"docs/guides/release-channel-ports.md\",\"digest\":\"3483f6ad81e2f9c47e478a4c3156ac39656cc0371fd19902d05c43c2cf76c00d\",\"revision\":\"6b720068a6a3d8ccf6aa3260e8da6ee4cf99ea80\"},\"main\":{\"path\":\"docs/guides/release-channel-ports.md\",\"digest\":\"b90cd2926db148fda6e028bab7d9a1746956db1a90e6fedcb0c7b9920c46f156\",\"revision\":\"332b227345684d098aaaf3191ac0e9d927ac9401\"},\"active\":{\"path\":\"docs/guides/release-channel-ports.md\",\"digest\":\"b90cd2926db148fda6e028bab7d9a1746956db1a90e6fedcb0c7b9920c46f156\",\"revision\":\"332b227345684d098aaaf3191ac0e9d927ac9401\"},\"decision\":\"mainMatch\"},{\"path\":\"docs/guides/starter-work.md\",\"ours\":{\"path\":\"docs/guides/starter-work.md\",\"digest\":\"677c00d993f3fa61dcaa3c0bb6e506da73eddc0c2ba88b74238c0472a0863a20\",\"revision\":\"2ff9f47beb496145a4ac4752a1f1fe5f4c9dd694\"},\"main\":{\"path\":\"docs/guides/starter-work.md\",\"digest\":\"1300918a521f942a809ce0c08355c3e3a8940928d792d41c2b817ea44d4e0839\",\"revision\":\"a15d7b09e3b1a1434ac3d51a25d52773d30746a7\"},\"active\":{\"path\":\"docs/guides/starter-work.md\",\"digest\":\"1300918a521f942a809ce0c08355c3e3a8940928d792d41c2b817ea44d4e0839\",\"revision\":\"a15d7b09e3b1a1434ac3d51a25d52773d30746a7\"},\"decision\":\"mainMatch\"},{\"path\":\"src-server/services/orchestration/orchestration-service.ts\",\"ours\":{\"path\":\"src-server/services/orchestration/orchestration-service.ts\",\"digest\":\"d22d84695d84c9341467067e356483457115768ac3b5f34e2c8cd5c27144fbab\",\"revision\":\"4e19fa6ac6b87dff5b671d3c90d3a5b48b5e6ec5\"},\"main\":{\"path\":\"src-server/services/orchestration/orchestration-service.ts\",\"digest\":\"14d4d68ff2f8715e1428ca985125a9eff9eb5a05ea52946dc16b4f5971405a34\",\"revision\":\"bc671142a7ae70587daf5bb0d94732e8ca74600a\"},\"active\":{\"path\":\"src-server/services/orchestration/orchestration-service.ts\",\"digest\":\"14d4d68ff2f8715e1428ca985125a9eff9eb5a05ea52946dc16b4f5971405a34\",\"revision\":\"bc671142a7ae70587daf5bb0d94732e8ca74600a\"},\"decision\":\"mainMatch\"},{\"path\":\"src-ui/src/components/chat/ChatInputArea.tsx\",\"ours\":{\"path\":\"src-ui/src/components/chat/ChatInputArea.tsx\",\"digest\":\"585db4db640e419062c8f94aae75c677dd26574b5168f560d22e4ec3a2885253\",\"revision\":\"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74\"},\"main\":{\"path\":\"src-ui/src/components/chat/ChatInputArea.tsx\",\"digest\":\"3d88560ac4a659c6b5feaff9d1fa7e80f0a99c48eb6c8f942210596915afa791\",\"revision\":\"a8b3f341a58336f2cf1812088968d13a0b10c056\"},\"active\":{\"path\":\"src-ui/src/components/chat/ChatInputArea.tsx\",\"digest\":\"3d88560ac4a659c6b5feaff9d1fa7e80f0a99c48eb6c8f942210596915afa791\",\"revision\":\"a8b3f341a58336f2cf1812088968d13a0b10c056\"},\"decision\":\"mainMatch\"},{\"path\":\"src-ui/src/components/first-run/FirstRunHomeChapter.tsx\",\"ours\":{\"path\":\"src-ui/src/components/first-run/FirstRunHomeChapter.tsx\",\"digest\":\"a2872082206b0e7bc6ffa67f9a5936bf55b7f16df9764b226c22db6764693734\",\"revision\":\"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74\"},\"main\":{\"path\":\"src-ui/src/components/first-run/FirstRunHomeChapter.tsx\",\"digest\":\"3e923e245de1c7b55d2f1e9a56c595aa0999167c441584aeea52b35357af4172\",\"revision\":\"7d1b3d94166917be8991f72c799f4dc8d87dc45d\"},\"active\":{\"path\":\"src-ui/src/components/first-run/FirstRunHomeChapter.tsx\",\"digest\":\"3e923e245de1c7b55d2f1e9a56c595aa0999167c441584aeea52b35357af4172\",\"revision\":\"7d1b3d94166917be8991f72c799f4dc8d87dc45d\"},\"decision\":\"mainMatch\"},{\"path\":\"src-ui/src/components/modals/NewChatModal.tsx\",\"ours\":{\"path\":\"src-ui/src/components/modals/NewChatModal.tsx\",\"digest\":\"cc0fe918eafae5643d0a191a130fe17a222a8d6303fd26d977bed447196cd141\",\"revision\":\"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74\"},\"main\":{\"path\":\"src-ui/src/components/modals/NewChatModal.tsx\",\"digest\":\"5e4b1e564e12483bce2b34698e431b9d69e4b9123dac8130ff61be6fbd8c11d0\",\"revision\":\"69eb5db90072c149c16115135f495ac538155e71\"},\"active\":{\"path\":\"src-ui/src/components/modals/NewChatModal.tsx\",\"digest\":\"5e4b1e564e12483bce2b34698e431b9d69e4b9123dac8130ff61be6fbd8c11d0\",\"revision\":\"69eb5db90072c149c16115135f495ac538155e71\"},\"decision\":\"mainMatch\"},{\"path\":\"src-ui/src/components/modals/useNewChatSetupReturn.ts\",\"ours\":{\"path\":\"src-ui/src/components/modals/useNewChatSetupReturn.ts\",\"digest\":\"cc2d69428c1b40135252806c9ac78f35ef536536f4f666cff63efbde60adbadc\",\"revision\":\"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74\"},\"main\":{\"path\":\"src-ui/src/components/modals/useNewChatSetupReturn.ts\",\"digest\":\"4b5c978700d19e3d99a85002f83eb502582380d9b1e31fcfc696c5a7e35b74ed\",\"revision\":\"d85d50244f03fafcd0453f70c29878b39049e1dd\"},\"active\":{\"path\":\"src-ui/src/components/modals/useNewChatSetupReturn.ts\",\"digest\":\"4b5c978700d19e3d99a85002f83eb502582380d9b1e31fcfc696c5a7e35b74ed\",\"revision\":\"d85d50244f03fafcd0453f70c29878b39049e1dd\"},\"decision\":\"mainMatch\"},{\"path\":\"src-ui/src/hooks/useChatInput.ts\",\"ours\":{\"path\":\"src-ui/src/hooks/useChatInput.ts\",\"digest\":\"a8abfaf6c39c8117c988337e852e526dbf53b543f0c504db81da4c6c6fbfa2ac\",\"revision\":\"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74\"},\"main\":{\"path\":\"src-ui/src/hooks/useChatInput.ts\",\"digest\":\"31ed118293149ecc8a7aa42edbb1309eedd1b362370d170ddee1036d6ee98a6c\",\"revision\":\"74db2e79bbb82782cffb1834eb904546edfb536a\"},\"active\":{\"path\":\"src-ui/src/hooks/useChatInput.ts\",\"digest\":\"31ed118293149ecc8a7aa42edbb1309eedd1b362370d170ddee1036d6ee98a6c\",\"revision\":\"74db2e79bbb82782cffb1834eb904546edfb536a\"},\"decision\":\"mainMatch\"},{\"path\":\"src-ui/src/index.css\",\"ours\":{\"path\":\"src-ui/src/index.css\",\"digest\":\"709e6eb845dd8e93cc89e2818f0f1f80bd7aa03d370b86bd2460df314baeb889\",\"revision\":\"28ee475ceed3623c147d918bcd6c30d99a49bc00\"},\"main\":{\"path\":\"src-ui/src/index.css\",\"digest\":\"7de4367779c65cb68a15dc4cda1f5da779b195897cdc42ad17a312c834ce89cd\",\"revision\":\"b0231bc1e00fb9e7db24a527aea16f59b7db2c21\"},\"active\":{\"path\":\"src-ui/src/index.css\",\"digest\":\"7de4367779c65cb68a15dc4cda1f5da779b195897cdc42ad17a312c834ce89cd\",\"revision\":\"b0231bc1e00fb9e7db24a527aea16f59b7db2c21\"},\"decision\":\"mainMatch\"},{\"path\":\"src-ui/src/views/ProjectPage.tsx\",\"ours\":{\"path\":\"src-ui/src/views/ProjectPage.tsx\",\"digest\":\"1beca4918231aa34f3a65329243fc4024b2ecd94fe078d1c7da80366460f2fb0\",\"revision\":\"3a63c64679a92f30544c2b84905fdb2874ebfebb\"},\"main\":{\"path\":\"src-ui/src/views/ProjectPage.tsx\",\"digest\":\"a5446401470207b9ba884ae50bfe57739fd2f2d7ea372f19ae36280106986c49\",\"revision\":\"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74\"},\"active\":{\"path\":\"src-ui/src/views/ProjectPage.tsx\",\"digest\":\"1beca4918231aa34f3a65329243fc4024b2ecd94fe078d1c7da80366460f2fb0\",\"revision\":\"3a63c64679a92f30544c2b84905fdb2874ebfebb\"},\"decision\":\"oursMatch\"}]",
 
-  "document": {"digest":"639481b7fae5c25dffade357fd9577b81773f3c9ff20ef7e36ccfc647eeef9a9","revision":"f11593d8b899747099472a8ed69f009c7eec9a6e"},
+  "document": {"digest":"45729ee1c95e833747a0028f0913c6c0ae3b34ab7304d2c1a33dec3cf7b1f36d","revision":"c6ebec77b17b679e630a3857b10a6f814d7fb436"},
 
   "sources": [
     {"path":".nvmrc","digest":"68ca3fba3b7e864770cb61aeb306d4bd4354b68ab4dd38450860c5d823e42a53","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
@@ -46,7 +46,7 @@
 
     {"path":"src-server/routes/orchestration/attention.ts","digest":"13aa257c345f3e3b4bd37e49e4399b83aac95315113c3386f64d1c17972b8c07","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"14d4d68ff2f8715e1428ca985125a9eff9eb5a05ea52946dc16b4f5971405a34","revision":"bc671142a7ae70587daf5bb0d94732e8ca74600a"},
+    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"4582d45b868ea008447f5405bcedb1adf987b1e3ad7701e39de19fc6a8d8994c","revision":"4711f21b516d04300b15ad4da473e24bf2e7adb2"},
 
     {"path":"src-ui/src/__tests__/SchedulerJobDialogHost.authority.test.tsx","digest":"0e98ba1584875cd32d90a6529417fd660b2ded2d01d22a603f0d1601c13da37f","revision":"911cbf3bf7911834075f21709acff87a9b3c27a8"},
 
@@ -60,15 +60,15 @@
 
     {"path":"src-ui/src/components/chat-dock/useChatDockOverlays.ts","digest":"ddc9e5110725ab4e806ae6abe91021397faf665cb4ba6703926d67170979b325","revision":"fdd1311dfc6f9bb5370219a598a46bf4359b248e"},
 
-    {"path":"src-ui/src/components/chat/ChatInputArea.tsx","digest":"25c3a5c11346ec3681e2198c80f4fa404f94aedd125ef4878ad4512c6dfdc36b","revision":"82fea394a09cdf62071b073d09aa6cb08ebbca48"},
-
-    {"path":"src-ui/src/components/chat/composer-mention-wire.ts","digest":"76238cf68ced890c9aff0210ee1a486b02fe2cea942d3001c203d6cd5ac19c43","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
-    {"path":"src-ui/src/components/chat/composer-mentions.ts","digest":"41ceba331199d126dd9a301f4c8095c52223c1c1265e607f673eeb1660514b07","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"src-ui/src/components/chat/ChatInputArea.tsx","digest":"a964b5bbb027b57d2a2f7326bbdb8418a13f4ee93be663aacd9d40891b7bdc63","revision":"c6ebec77b17b679e630a3857b10a6f814d7fb436"},
 
     {"path":"src-ui/src/components/chat/FileMentionAutocomplete.tsx","digest":"3f210b8a3c44c3e73efdba233f0763cebf8bfc1256bf97d0b76ac98a2e49be1d","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
     {"path":"src-ui/src/components/chat/SessionReferencePicker.tsx","digest":"376872725aa638429c5e29af0fcc610b38f4504b06cf51406ecf6eaf8556f7f1","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/components/chat/composer-mention-wire.ts","digest":"76238cf68ced890c9aff0210ee1a486b02fe2cea942d3001c203d6cd5ac19c43","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/components/chat/composer-mentions.ts","digest":"41ceba331199d126dd9a301f4c8095c52223c1c1265e607f673eeb1660514b07","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
     {"path":"src-ui/src/components/first-run/AboutYouStep.tsx","digest":"bb0e7ae255064a8a5b666558c2521ec3247dd3c2c22ec8633c529fabdcaa867d","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -96,7 +96,7 @@
 
     {"path":"src-ui/src/contexts/scheduler-job-dialog-store.ts","digest":"5c3d2e50f1eac439eb4b5264550c6d37fbab65344ec37350ad36dd4a9e2b63fa","revision":"69eb5db90072c149c16115135f495ac538155e71"},
 
-    {"path":"src-ui/src/hooks/useChatInput.ts","digest":"31ed118293149ecc8a7aa42edbb1309eedd1b362370d170ddee1036d6ee98a6c","revision":"74db2e79bbb82782cffb1834eb904546edfb536a"},
+    {"path":"src-ui/src/hooks/useChatInput.ts","digest":"e01f3c1e39604e05bb18f81541c4b50e059afa4411dfa768b97dce6e8f47d36d","revision":"89765352964045a079d13a17bee54ab2de7b83e0"},
 
     {"path":"src-ui/src/hooks/useNewChatSelectionModel.ts","digest":"79d62da2bce71d836669cfc7836952c832e88aa7e23a95566712733b566a86a7","revision":"df34c2497051350c571a5b33d841277ff2fba301"},
 
@@ -112,17 +112,17 @@
 
     {"path":"src-ui/src/platform/native/authenticatedTransport.ts","digest":"9012676f5874a8bd8c33a140764d6c83abeac50fdbdb667468fb5800a6216602","revision":"4bb060037a5ec0146e4cab01d5992402ba41869f"},
 
+    {"path":"src-ui/src/views/ProjectPage.css","digest":"804bf02dc7f00a0ac47bf5bf381d9f052a8e97a55083dfcd1649883d3f6154c3","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/views/ProjectPage.tsx","digest":"1beca4918231aa34f3a65329243fc4024b2ecd94fe078d1c7da80366460f2fb0","revision":"3a63c64679a92f30544c2b84905fdb2874ebfebb"},
+
+    {"path":"src-ui/src/views/ScheduleView.css","digest":"48632c62f243163ee177a8a2a531a85c6645785b501355a9b276ab59eaf72702","revision":"42c6acac29ae1ed79bb95eefbcd2de84f8b6f456"},
+
     {"path":"src-ui/src/views/learning-review/LearningSourceAction.tsx","digest":"1edf298cb5a986218a8dbd8b14bcfaf1627fb15d5e811b457bf3c7ed28009f99","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
     {"path":"src-ui/src/views/learning-review/LearningSourceDialog.tsx","digest":"77759902c0d35d498b1f9476c74f5b7829f1c45daf3aca9f87a3add53764447d","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
     {"path":"src-ui/src/views/page-layout.css","digest":"c36c04594f1f156ce8320772503607bcecfe8a1dcb11bbe589d004e4385ceef4","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
-    {"path":"src-ui/src/views/ProjectPage.css","digest":"804bf02dc7f00a0ac47bf5bf381d9f052a8e97a55083dfcd1649883d3f6154c3","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
-    {"path":"src-ui/src/views/ProjectPage.tsx","digest":"a5446401470207b9ba884ae50bfe57739fd2f2d7ea372f19ae36280106986c49","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
-    {"path":"src-ui/src/views/ScheduleView.css","digest":"48632c62f243163ee177a8a2a531a85c6645785b501355a9b276ab59eaf72702","revision":"42c6acac29ae1ed79bb95eefbcd2de84f8b6f456"},
 
     {"path":"tests/helpers/exact-request-backend.ts","digest":"ddfd358fd04c7274ce9e2522af61fc153e5b051fa4826b72792f3b8a05537fff","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -152,7 +152,7 @@
 
     {"path":"src-ui/src/components/chat-dock/ChatDockMobileOverflowSheet.tsx","digest":"a8bc823744ae5fbe11ca4d59391185963104e36549cf5fdc2b178afceb603650","revision":"af7dbb3005e9e1f29dd1450b0a06ec5703afb0d6"},
 
-    {"path":"src-ui/src/components/chat/chat.css","digest":"9ff5dc95b71dda67d80f7241591dab8294cb5252f6001b589dcc80cabbad14b7","revision":"f8dcd092359118c2f44bda770acccc1c45beb281"},
+    {"path":"src-ui/src/components/chat/chat.css","digest":"adb79623618600c59d7259aa50d59628aee20850643f00c97ef918a0c220b67c","revision":"c6ebec77b17b679e630a3857b10a6f814d7fb436"},
 
     {"path":"src-ui/src/views/home/work-status.ts","digest":"ff0100dddce220275b7d9f0183fb2c44bac835eb0fbb67e071be63f4c127b120","revision":"d1f68396648a4d450f1d743e436df703be0935be"},
 
@@ -176,7 +176,7 @@
 
     {"path":"src-ui/src/hooks/useActiveChatSessionLifecycle.ts","digest":"2a90e4f43cde95121b12aec4ae642905f1329e9e23e95f797a41cd6746da9349","revision":"4c9ba2382e94915895b19b7fdd08979d83807864"},
 
-    {"path":"src-ui/src/hooks/useActiveChatSessionMessaging.ts","digest":"53af6df5a169a76a3eb936293dff7b0064b8596b6d5ddec1efa738ac6b0002e2","revision":"31cac46a69cdd1f5b1f6da671dc6d30cae2fdb95"},
+    {"path":"src-ui/src/hooks/useActiveChatSessionMessaging.ts","digest":"c0609512c0eff8faabaddd90b55198a6c2ddabb3fceeda419ed8b60b70340bc9","revision":"4711f21b516d04300b15ad4da473e24bf2e7adb2"},
 
     {"path":"src-ui/src/lib/foregroundMessageDispatch.ts","digest":"8dd461fc84dda8844b89d1cc72d2c2da72aab7d5f0b0a07803405627f6f2ab23","revision":"797b97599f89df6555282de2d42af11e4aee4f08"}
   ],

@@ -26,7 +26,7 @@
 
     {"path":".github/workflows/landing-automation.yml","digest":"ac4c92f9a4912cc9074da7b7e12f8191abb5003b0394098c7290670c92d40203","revision":"8de1b741d83aec880c76c3cece6bb3e9cdee740d"},
 
-    {"path":".github/workflows/nightly.yml","digest":"4b0cb6bcc5e169bcad830d8a56f7de030864ab0d23cfe64ce1b9880845f45592","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
+    {"path":".github/workflows/nightly.yml","digest":"0a1753a37519218e6a6afccc12785f34be4a376e3e82c303819e5c4da9614202","revision":"ea49cb8678208b9037f8e9ab3ceb2a95fe2647ff"},
 
     {"path":".github/workflows/release.yml","digest":"e9322e982c85dfb6b26188a6f6d0bc596f1f384e949bc50a59fe07d552e3c8f2","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
 
