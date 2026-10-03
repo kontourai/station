@@ -1077,6 +1077,16 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const importedSession = orchestrationSessions.find(
     (session) => session.threadId === importedSessionId,
   );
+  const visibleSessionProjectMismatchLabel = importedSessionId
+    ? resolveSessionProjectMismatchLabel({
+        scopedProjectSlug,
+        dockProjectSlug,
+        sessionProjectSlug: importedSession?.projectSlug,
+        sessionProjectName: projects.find(
+          (project) => project.slug === importedSession?.projectSlug,
+        )?.name,
+      })
+    : sessionProjectMismatchLabel;
   const importedTitle = importedSession
     ? sessionTitle(importedSession)
     : 'Conversation';
@@ -1117,7 +1127,10 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   // collapse a maximized dock first so the destination project/layout is
   // actually visible.
   const routeToScopedChatProject = useCallback(
-    (targetProjectSlug: string | undefined) => {
+    (
+      targetProjectSlug: string | undefined,
+      preserveChatProjectDefault = false,
+    ) => {
       if (
         !shouldRouteScopedChatProject({
           hasImmutableProjectScope,
@@ -1129,7 +1142,9 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
         return false;
       // The predicate guarantees layoutSlug here; the assertion keeps the
       // claim-equals-act contract visible at the only mutation site.
-      setLayout(targetProjectSlug as string, layoutSlug as string);
+      setLayout(targetProjectSlug as string, layoutSlug as string, {
+        preserveChatProjectDefault,
+      });
       return true;
     },
     [hasImmutableProjectScope, layoutSlug, projectSlug, setLayout],
@@ -1387,22 +1402,6 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       isDockMaximized,
     ],
   );
-  // A conversation-row click is an explicit choice of the project context in
-  // which the person wants to continue.  Keep that intent at this UI seam:
-  // URL hydration, external focus requests, handoff refocus, and other
-  // programmatic session selection must not silently rewrite the DockShell's
-  // ambient binding.  A projectless conversation likewise has no project
-  // choice to make, so it preserves the current binding.
-  const focusUserSelectedSessionInPane = useCallback(
-    (sessionId: string) => {
-      const selectedProjectSlug = allSessions.find(
-        (session) => session.id === sessionId,
-      )?.projectSlug;
-      if (selectedProjectSlug) setActiveProjectSlug(selectedProjectSlug);
-      focusSessionInPane(sessionId);
-    },
-    [allSessions, focusSessionInPane, setActiveProjectSlug],
-  );
   const openChatForAgentInScopedPane = useCallback(
     (
       agent: AgentData,
@@ -1566,7 +1565,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       // deleted-agent fallback in the open policy. Teleporting is the
       // intended half (the destination project is where the conversation
       // lives); the click's promise is the conversation, so open it there.
-      routeToScopedChatProject(targetProjectSlug);
+      routeToScopedChatProject(targetProjectSlug, true);
       return openConversation(conversationId, agentSlug, {
         projectSlug: targetProjectSlug,
         projectName,
@@ -1584,18 +1583,13 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       routeToScopedChatProject,
     ],
   );
-  // The cold-row half of `focusUserSelectedSessionInPane`: a History, Inbox,
-  // or mobile task-switcher item may not be an in-memory tab yet.  Bind only
-  // after its open succeeds, and only when that row names a project.
   const openUserSelectedConversationInScopedPane = useCallback(
     async (...args: Parameters<typeof openConversationInScopedPane>) => {
       const opened = await openConversationInScopedPane(...args);
-      const targetProjectSlug = args[2];
       if (opened) setImportedSessionId(null);
-      if (opened && targetProjectSlug) setActiveProjectSlug(targetProjectSlug);
       return opened;
     },
-    [openConversationInScopedPane, setActiveProjectSlug, setImportedSessionId],
+    [openConversationInScopedPane, setImportedSessionId],
   );
   const openConversationForDock = useCallback(
     async (
@@ -1739,7 +1733,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       // fall through to the open below (focusRoutableChatSession focuses by
       // id and only clears a stale filter, so it is safe after setLayout).
       if (focusedSession) {
-        routeToScopedChatProject(focusedSession.projectSlug);
+        routeToScopedChatProject(focusedSession.projectSlug, true);
       }
       // A bare project route (no session, no conversation) is a pure
       // navigation event and may still return; when a conversation is named,
@@ -2238,18 +2232,10 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
               // no-project chat gets "No project" as the switcher's current
               // value and stays reachable via the same trigger, rather than
               // losing the affordance entirely.
+              sessionProjectMismatchLabel={visibleSessionProjectMismatchLabel}
               projectSwitcher={{
-                projectSlug: importedSessionId
-                  ? (importedSession?.projectSlug ?? '')
-                  : (dockProjectSlug ?? ''),
-                projectName: importedSessionId
-                  ? (projects.find(
-                      (project) =>
-                        project.slug === importedSession?.projectSlug,
-                    )?.name ??
-                    importedSession?.projectSlug ??
-                    'No project')
-                  : (dockBadgeProjectName ?? 'No project'),
+                projectSlug: dockProjectSlug ?? '',
+                projectName: dockBadgeProjectName ?? 'No project',
                 projects,
                 onOpenProject: handleSelectProject,
                 onSwitchProject: handleSwitchProject,
@@ -2394,21 +2380,8 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                 // `dockProjectSlug` is null.
                 !isMobile ? (
                   <ChatDockProjectContext
-                    projectSlug={
-                      importedSessionId
-                        ? (importedSession?.projectSlug ?? null)
-                        : dockProjectSlug
-                    }
-                    projectName={
-                      importedSessionId
-                        ? (projects.find(
-                            (project) =>
-                              project.slug === importedSession?.projectSlug,
-                          )?.name ??
-                          importedSession?.projectSlug ??
-                          null)
-                        : dockBadgeProjectName
-                    }
+                    projectSlug={dockProjectSlug}
+                    projectName={dockBadgeProjectName}
                     // station#4525 review HIGH-2 (blocking): these three
                     // facts are truth about the SESSION actually on screen
                     // and never gate on the badge — station#1146 fixed this
@@ -2438,9 +2411,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                         : gitStatus
                     }
                     sessionProjectMismatchLabel={
-                      importedSessionId
-                        ? undefined
-                        : sessionProjectMismatchLabel
+                      visibleSessionProjectMismatchLabel
                     }
                     projects={projects}
                     onSelectProject={handleSelectProject}
@@ -2564,7 +2535,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                         activeChatSessionId:
                           importedSessionId ?? activeSessionId,
                         openChatSessionIds: openInboxChatSessionIds,
-                        onFocusChat: focusUserSelectedSessionInPane,
+                        onFocusChat: focusSessionInPane,
                         onOpenConversation:
                           openUserSelectedConversationInScopedPane,
                         onOpenSession: openImportedSessionInPane,
@@ -2710,7 +2681,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                       onToggleStatsPanel={setShowStatsPanel}
                       onTitleUpdate={handleTitleUpdate}
                       onDeleteSession={removeSession}
-                      onFocusSession={focusUserSelectedSessionInPane}
+                      onFocusSession={focusSessionInPane}
                       onOpenConversation={
                         openUserSelectedConversationInScopedPane
                       }
@@ -2826,12 +2797,14 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
               },
               agents,
               workFacts,
+              gitLocationByThreadId,
               openChatSessionIds: openInboxChatSessionIds,
               activeChatSessionId: importedSessionId ?? activeSessionId,
               visualViewportStyle: visualViewport.style,
               triggerRef: taskSwitcherTriggerRef,
               onClose: () => setIsTaskSwitcherOpen(false),
-              onFocusChat: focusUserSelectedSessionInPane,
+              onNewChat: openNewChatDirect,
+              onFocusChat: focusSessionInPane,
               onOpenConversation: openUserSelectedConversationInScopedPane,
               onCloseChat: removeSession,
               onAcknowledgeConversation: acknowledgeTaskConversation,
@@ -2844,7 +2817,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
             }}
             pending={
               <MobileSheetPending
-                label="Switch task"
+                label="Chats and tasks"
                 style={visualViewport.style}
                 onClose={() => setIsTaskSwitcherOpen(false)}
                 returnFocusTarget={taskSwitcherTriggerRef.current}

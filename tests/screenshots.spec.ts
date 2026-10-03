@@ -1184,12 +1184,12 @@ function overlayDockProjectMismatchHooks(): Pick<
         await expect(badge).toHaveText('');
         await badge.click();
         await expect(
-          page.getByRole('dialog', { name: 'Switch project' }),
+          page.getByRole('dialog', { name: 'Projects' }),
         ).toBeVisible({ timeout: 10_000 });
         await page.getByRole('button', { name: 'Switch to Project A' }).click();
-        await expect(
-          page.getByRole('dialog', { name: 'Switch project' }),
-        ).toBeHidden({ timeout: 10_000 });
+        await expect(page.getByRole('dialog', { name: 'Projects' })).toBeHidden(
+          { timeout: 10_000 },
+        );
         // The badge now names the BOUND project (by design it never
         // follows the active session) — while the facts
         // row leads with the session's own, muted, differing project name.
@@ -2269,14 +2269,14 @@ const SCREENS: Screen[] = [
         await expect(badge).toHaveText('');
         await badge.click();
         await expect(
-          page.getByRole('dialog', { name: 'Switch project' }),
+          page.getByRole('dialog', { name: 'Projects' }),
         ).toBeVisible({ timeout: 10_000 });
         await page
           .getByRole('button', { name: 'Switch to Demo Project' })
           .click();
-        await expect(
-          page.getByRole('dialog', { name: 'Switch project' }),
-        ).toBeHidden({ timeout: 10_000 });
+        await expect(page.getByRole('dialog', { name: 'Projects' })).toBeHidden(
+          { timeout: 10_000 },
+        );
         // Scoped to the badge's own class: the project sidebar (seeded
         // from the same `/api/projects` mock) also renders a same-named
         // button.
@@ -2313,7 +2313,7 @@ const SCREENS: Screen[] = [
         await trigger.waitFor({ timeout: 10_000 });
         await trigger.click();
         await expect(
-          page.getByRole('dialog', { name: 'Switch project' }),
+          page.getByRole('dialog', { name: 'Projects' }),
         ).toBeVisible({ timeout: 10_000 });
         await expect(
           page.getByRole('button', { name: 'Switch to Demo Project' }),

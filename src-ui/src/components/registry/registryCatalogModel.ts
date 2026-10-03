@@ -5,6 +5,7 @@ export interface RegistryItem {
   displayName?: string;
   description?: string;
   installed?: boolean;
+  status?: string;
   source?: string;
   version?: string;
   name?: string;
@@ -96,6 +97,18 @@ export function getRegistryTabCopy(tab: RegistryCatalogTab) {
         empty: 'No portable Kits are installed for this workspace yet.',
       };
   }
+}
+
+export function getRegistrySkillInstallRefusal(
+  tab: RegistryCatalogTab,
+  item: RegistryItem,
+): string | null {
+  if (tab !== 'skills') return null;
+  if (item.status === 'unsupported-skill-name')
+    return 'This skill uses a name reserved by Station. Ask its publisher for a supported name before installing.';
+  if (item.status === 'unsupported-skill-format')
+    return 'This skill uses metadata that Station cannot install. Its original Markdown is available for inspection; ask its publisher for a supported format.';
+  return null;
 }
 
 export function getRegistryActionLabel(
