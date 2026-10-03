@@ -2035,11 +2035,65 @@ error is currently caught, so success is not proof that local cleanup completed.
 `GET /api/registry/skills` merges registered Skill catalogs and deduplicates IDs,
 keeping the first occurrence. No registered providers gives an empty list.
 
+The built-in [GitHub Skill provider](../../src-server/providers/registries/github-skill-registry.ts)
+resolves its configured branch to a commit and reads that commit's tree and immutable
+blobs. It discovers complete nested Skill directories by their declared names and
+refuses duplicate names, truncated trees, unreadable Skill files, and refresh failures.
+A successful catalog snapshot is cached for five minutes; an expired snapshot is not
+returned as successful when refresh fails. Such failures currently fail the catalog
+request; independent source status and partial results are not exposed yet.
+
+A readable Skill whose declared name is reserved by Station remains in the catalog
+with `status: "unsupported-skill-name"`. The returned catalog derives this host
+compatibility status independently of provider availability claims. Its instructions
+remain readable through
+`GET /api/registry/skills/:id/content`; the Registry shows it as unavailable for
+installation with an explanation. This is host compatibility, not a failed source
+read. A document the SDK can read safely, with an unambiguous declared name and
+nonempty description, can also remain visible as `unsupported-skill-format` when
+Station's strict Skill parser rejects its metadata format. Inspection returns the
+original pinned Markdown, including unsupported metadata such as nested credits; it
+does not remove or rewrite those fields. The raw document parser still rejects
+malformed/ambiguous YAML and unsupported anchors, aliases, or tags. Bad required
+fields, duplicate names, unsafe non-reserved names, unreadable files, and incomplete
+discovery fail the source rather than hiding entries.
+
 ### Install Skill from Registry
 
 `POST /api/registry/skills/install` accepts `{id}` and returns SkillService's
 result. It attempts a Skill reload after success; a caught reload failure does
-not change the install result.
+not change the install result. `prototype` and `constructor` return a 400 envelope
+with `code: "unsupported-skill-name"` before SkillService or staged filesystem
+effects. `__proto__` is rejected by the route's directory-name schema with its
+ordinary validation 400 envelope before the custom reserved-name code runs. The
+provider and SkillService retain their independent storage-name guards.
+
+An unsupported-format package raises a typed refusal at the GitHub acquisition
+owner before package bytes are written. Existing SkillService cleanup removes its
+transient stage; the API returns 400 with `code: "unsupported-skill-format"`, without
+a published or leftover package. An empty parent directory can remain. No aggregate
+catalog preflight is required: a default filesystem-first local install can succeed
+while GitHub discovery fails, and that discovery request still reports failure.
+
+For a GitHub Skill, the provider copies the selected directory's files from one
+catalog snapshot, including binary assets and executable files, through SkillService's
+validated staging/publication path. Portable path preflight checks NFC-normalized,
+lowercased names and file/directory collisions. The provider then creates each planned
+parent directory exclusively, reusing only exact spellings created by that acquisition;
+this refuses additional aliases detected by the destination filesystem. Files are also
+created exclusively, so acquisition cannot overwrite a staged path. Blob integrity,
+path validation, or acquisition failure prevents publication. Mac route tests execute
+Greek sigma, sharp-s, and ligature directory alias refusals; Windows filesystem behavior
+has not been executed. Only files inside that directory are acquired; references to other Skills
+do not install those Skills automatically. This does not bind an old UI selection to a
+revision after a catalog refresh, and the route's bare ID does not distinguish
+equal-name entries across providers. The default runtime composes filesystem and
+GitHub providers through `MultiSourceSkillRegistryProvider`; source-qualified
+selection, per-source failures, and aggregate fallback behavior remain pending. The
+acquisition tests exercise real routes and SkillService, including the default
+filesystem-first composition's local install during a GitHub outage. They do not
+qualify source-qualified selection or independent per-source browsing/status.
+Network deadlines and download budgets remain separate qualification work.
 
 ### Uninstall Skill from Registry
 
