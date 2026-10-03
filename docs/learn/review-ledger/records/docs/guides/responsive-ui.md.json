@@ -12,7 +12,7 @@
   "document": {"digest":"f22a765808cc9067032740b95e53c631476bb217ecdfa02e2ffd921fd6ef36ad","revision":"b14f1b80ec27c38844b3d16e8a4bdfe624a778c9"},
 
   "sources": [
-    {"path":"docs/ui/responsive-action-surfaces.txt","digest":"e9c8a55403ed9087b0feef9e9e60b4ef45122d996fd3ac48cc38cadb15a1550e","revision":"366e4276ac9b2eaa68623a3f90ef31201d716048"},
+    {"path":"docs/ui/responsive-action-surfaces.txt","digest":"b403c6201d17e45d5a45539136ebd668391bdd8c4eae56d4f2c94c4776b141cc","revision":"737aa52ae1e34d5b82a6555966414f815f85557a"},
 
     {"path":"docs/ui/responsive-surfaces.json","digest":"ed85a588d1029bca3f050c4225772a2b58c42e944af63014960389794d0b24c5","revision":"d1708e0a66e7328c9c62a95865f1bb1dcfbeb8d1"},
 
@@ -66,7 +66,7 @@
 
     {"path":"src-ui/src/hooks/useMobileVisualViewport.ts","digest":"5bb1bd2e86eee7e46b6a4e2cc87a858c51884acde125aad363771df20783aa5e","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/index.css","digest":"e3bf9bb5c0dbeea17eb06bf2536ebcd445ce60875becb64ca97da08118422dcd","revision":"8fd71c3714eceeb651bd8e52f200aa1532fa33c6"},
+    {"path":"src-ui/src/index.css","digest":"14743b88cf143302ae15e47858e0aec8c377e0ed6bb4b94ff4abfd765e9e8793","revision":"fbc4620cff6efdc6eb7c53be661ff2c9bea8dd27"},
 
     {"path":"src-ui/src/lib/accent-contrast.ts","digest":"54291f7600d527c9ea3f9a4af8eca21f0c56a046cf0776292766c4d2b0ac768b","revision":"2b22c2609a75d0f40b77472fe918de3c34094b69"},
 
@@ -84,7 +84,7 @@
 
     {"path":"tests/helpers/visible-action-count.ts","digest":"b598b668d2fad8e2b6076100868eb5f9bc446b01487f1a761415b5fcc25ed412","revision":"df740ad0d1e328b2e6216b1d20845ff3bf04bf31"},
 
-    {"path":"src-ui/src/components/chat-dock/MobileTaskSwitcher.tsx","digest":"f6bfc2c8317353e7daf9ccae233d947cf0260159c57134b3045d7dd25c26f84f","revision":"b14f1b80ec27c38844b3d16e8a4bdfe624a778c9"},
+    {"path":"src-ui/src/components/chat-dock/MobileTaskSwitcher.tsx","digest":"eaccab88355986bd543bbdb9481e8456bcf53dafaa984cbd65c2de08628224f5","revision":"f72d10a25d52edf088e612237943fdd0dcaa007e"},
 
     {"path":"src-ui/src/components/chat-dock/ChatDockProjectSwitcherSheet.tsx","digest":"8e443583cd1836a979e782680e6587a697264c496a06ffe732bce13a06a88e75","revision":"381388a5c221a50c4e5b8c775538218bc02ce431"},
 
@@ -94,23 +94,23 @@
 
     {"path":"src-ui/src/components/PickerCreateAction.css","digest":"70e7d44e6b6194462ad2b63eaf0ae6043dbfac1b08c7996eeef691ee2da809bc","revision":"b14f1b80ec27c38844b3d16e8a4bdfe624a778c9"},
 
-    {"path":"src-ui/src/components/inbox-row/InboxRowStatus.tsx","digest":"d7cc9d13090f4c7d529e76bcd4828113375a1c52711ba6009d6e0cb8cad85418","revision":"b14f1b80ec27c38844b3d16e8a4bdfe624a778c9"},
+    {"path":"src-ui/src/components/inbox-row/InboxRowStatus.tsx","digest":"58b4f6382f349a42f1ab632bddf4bd5ad663f1a77a1ccff99fa08d1d262a643b","revision":"737aa52ae1e34d5b82a6555966414f815f85557a"},
 
     {"path":"src-ui/src/contexts/navigation-store.ts","digest":"2486db91eb4f818fec69048dcd202c7a7ffc5a9517c2cb11fa7728197f919607","revision":"4d59eb1868139f2faeaf1a1467811c22726f741c"},
 
     {"path":"tests/cross-runtime-chat-switching.spec.ts","digest":"0aeb646fe962c41108316c65360c405268ea7061ea2504e7441b51a0a9bd2878","revision":"8fd71c3714eceeb651bd8e52f200aa1532fa33c6"},
 
-    {"path":"src-ui/src/components/chat-dock/ChatDock.tsx","digest":"f92052af5abd7736675c6a27499a8a43ded8167dcecff4b0e4e775c2614562f3","revision":"4d59eb1868139f2faeaf1a1467811c22726f741c"},
+    {"path":"src-ui/src/components/chat-dock/ChatDock.tsx","digest":"590c6f4151e008e4db7d081cc3a9ce3cc26d3357cf0c8c16653bb3e218737de3","revision":"f839dde2f787fe0fd94842c715748a3885dec59e"},
 
     {"path":"src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx","digest":"66f0394440649ebf2fd68d1292cd7e009ca0a449d85681a2ee1d36a0d192e107","revision":"b14f1b80ec27c38844b3d16e8a4bdfe624a778c9"},
 
-    {"path":"src-ui/src/components/chat-dock/ChatDockInboxRows.tsx","digest":"0850b9f30797c40cbc19c8817bf574d046065a600163d1925d50fbcc4d4c0c2c","revision":"b14f1b80ec27c38844b3d16e8a4bdfe624a778c9"},
+    {"path":"src-ui/src/components/chat-dock/ChatDockInboxRows.tsx","digest":"1f1521dd54b22054545dfe7d1d3c20289b87c77905e02154205c764ccb406354","revision":"f839dde2f787fe0fd94842c715748a3885dec59e"},
 
-    {"path":"src-ui/src/components/chat-dock/ChatDockMobileOverflowSheet.tsx","digest":"a8bc823744ae5fbe11ca4d59391185963104e36549cf5fdc2b178afceb603650","revision":"af7dbb3005e9e1f29dd1450b0a06ec5703afb0d6"},
+    {"path":"src-ui/src/components/chat-dock/ChatDockMobileOverflowSheet.tsx","digest":"42ef59576278b4e4070cb59a03b15536ec2adff0e75329feca13a5f2487d8142","revision":"e754feb2928d66ce46b873832ca2424a6d66c4a0"},
 
     {"path":"src-ui/src/components/chat/chat.css","digest":"adb79623618600c59d7259aa50d59628aee20850643f00c97ef918a0c220b67c","revision":"c6ebec77b17b679e630a3857b10a6f814d7fb436"},
 
-    {"path":"src-ui/src/views/home/work-status.ts","digest":"ff0100dddce220275b7d9f0183fb2c44bac835eb0fbb67e071be63f4c127b120","revision":"d1f68396648a4d450f1d743e436df703be0935be"},
+    {"path":"src-ui/src/views/home/work-status.ts","digest":"3037ea5b79c0519937d4b129a962d23799da32ded2c20acf4674877ab9af8349","revision":"c76e971796179bb5f81bff51c7a01a8e4d186262"},
 
     {"path":"src-ui/src/views/home/work-facts.ts","digest":"db1a8431cf1408a6c707ba4782bb52a6b803c3779ea08492545afe831ed8bb3b","revision":"d1f68396648a4d450f1d743e436df703be0935be"},
 

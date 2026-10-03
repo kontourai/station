@@ -9,7 +9,7 @@
 
   "limits": "Current HTTP schemas and send/per-Agent caller boundaries were checked. Dated UI observations and mobile policy are preserved; no exhaustive composer, approval, accessibility, or physical-device certification.",
 
-  "document": {"digest":"01b5e0f57a74ae8f20ed5c9bde68a9851bbe6cf16ae44fab42ba6597fc9e63b5","revision":"c6ebec77b17b679e630a3857b10a6f814d7fb436"},
+  "document": {"digest":"7aacb3468d8bd9446aae555a91d1174f9dcd9f2c4abfeeac3eab72196a522722","revision":"3df1f91eeb2b49a94c385b470caf583d9d1b165e"},
 
   "sources": [
     {"path":"packages/contracts/src/orchestration.ts","digest":"bcdbd46c9f1a19e50df85776c2298276809136ece2e074d47f1b4a3e72166c14","revision":"4711f21b516d04300b15ad4da473e24bf2e7adb2"},
@@ -22,7 +22,7 @@
 
     {"path":"src-ui/src/lib/foregroundMessageDispatch.ts","digest":"8dd461fc84dda8844b89d1cc72d2c2da72aab7d5f0b0a07803405627f6f2ab23","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/components/chat-dock/MobileTaskSwitcher.tsx","digest":"f6bfc2c8317353e7daf9ccae233d947cf0260159c57134b3045d7dd25c26f84f","revision":"b14f1b80ec27c38844b3d16e8a4bdfe624a778c9"},
+    {"path":"src-ui/src/components/chat-dock/MobileTaskSwitcher.tsx","digest":"eaccab88355986bd543bbdb9481e8456bcf53dafaa984cbd65c2de08628224f5","revision":"f72d10a25d52edf088e612237943fdd0dcaa007e"},
 
     {"path":"src-ui/src/components/chat-dock/ChatDockProjectSwitcherSheet.tsx","digest":"8e443583cd1836a979e782680e6587a697264c496a06ffe732bce13a06a88e75","revision":"381388a5c221a50c4e5b8c775538218bc02ce431"},
 
@@ -32,25 +32,25 @@
 
     {"path":"src-ui/src/components/PickerCreateAction.css","digest":"70e7d44e6b6194462ad2b63eaf0ae6043dbfac1b08c7996eeef691ee2da809bc","revision":"b14f1b80ec27c38844b3d16e8a4bdfe624a778c9"},
 
-    {"path":"src-ui/src/components/inbox-row/InboxRowStatus.tsx","digest":"d7cc9d13090f4c7d529e76bcd4828113375a1c52711ba6009d6e0cb8cad85418","revision":"b14f1b80ec27c38844b3d16e8a4bdfe624a778c9"},
+    {"path":"src-ui/src/components/inbox-row/InboxRowStatus.tsx","digest":"58b4f6382f349a42f1ab632bddf4bd5ad663f1a77a1ccff99fa08d1d262a643b","revision":"737aa52ae1e34d5b82a6555966414f815f85557a"},
 
     {"path":"src-ui/src/contexts/navigation-store.ts","digest":"2486db91eb4f818fec69048dcd202c7a7ffc5a9517c2cb11fa7728197f919607","revision":"4d59eb1868139f2faeaf1a1467811c22726f741c"},
 
     {"path":"tests/cross-runtime-chat-switching.spec.ts","digest":"0aeb646fe962c41108316c65360c405268ea7061ea2504e7441b51a0a9bd2878","revision":"8fd71c3714eceeb651bd8e52f200aa1532fa33c6"},
 
-    {"path":"src-ui/src/components/chat-dock/ChatDock.tsx","digest":"f92052af5abd7736675c6a27499a8a43ded8167dcecff4b0e4e775c2614562f3","revision":"4d59eb1868139f2faeaf1a1467811c22726f741c"},
+    {"path":"src-ui/src/components/chat-dock/ChatDock.tsx","digest":"590c6f4151e008e4db7d081cc3a9ce3cc26d3357cf0c8c16653bb3e218737de3","revision":"f839dde2f787fe0fd94842c715748a3885dec59e"},
 
     {"path":"src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx","digest":"66f0394440649ebf2fd68d1292cd7e009ca0a449d85681a2ee1d36a0d192e107","revision":"b14f1b80ec27c38844b3d16e8a4bdfe624a778c9"},
 
-    {"path":"src-ui/src/components/chat-dock/ChatDockInboxRows.tsx","digest":"0850b9f30797c40cbc19c8817bf574d046065a600163d1925d50fbcc4d4c0c2c","revision":"b14f1b80ec27c38844b3d16e8a4bdfe624a778c9"},
+    {"path":"src-ui/src/components/chat-dock/ChatDockInboxRows.tsx","digest":"1f1521dd54b22054545dfe7d1d3c20289b87c77905e02154205c764ccb406354","revision":"f839dde2f787fe0fd94842c715748a3885dec59e"},
 
-    {"path":"src-ui/src/components/chat-dock/ChatDockMobileOverflowSheet.tsx","digest":"a8bc823744ae5fbe11ca4d59391185963104e36549cf5fdc2b178afceb603650","revision":"af7dbb3005e9e1f29dd1450b0a06ec5703afb0d6"},
+    {"path":"src-ui/src/components/chat-dock/ChatDockMobileOverflowSheet.tsx","digest":"42ef59576278b4e4070cb59a03b15536ec2adff0e75329feca13a5f2487d8142","revision":"e754feb2928d66ce46b873832ca2424a6d66c4a0"},
 
     {"path":"src-ui/src/components/chat/chat.css","digest":"adb79623618600c59d7259aa50d59628aee20850643f00c97ef918a0c220b67c","revision":"c6ebec77b17b679e630a3857b10a6f814d7fb436"},
 
-    {"path":"src-ui/src/index.css","digest":"e3bf9bb5c0dbeea17eb06bf2536ebcd445ce60875becb64ca97da08118422dcd","revision":"8fd71c3714eceeb651bd8e52f200aa1532fa33c6"},
+    {"path":"src-ui/src/index.css","digest":"14743b88cf143302ae15e47858e0aec8c377e0ed6bb4b94ff4abfd765e9e8793","revision":"fbc4620cff6efdc6eb7c53be661ff2c9bea8dd27"},
 
-    {"path":"src-ui/src/views/home/work-status.ts","digest":"ff0100dddce220275b7d9f0183fb2c44bac835eb0fbb67e071be63f4c127b120","revision":"d1f68396648a4d450f1d743e436df703be0935be"},
+    {"path":"src-ui/src/views/home/work-status.ts","digest":"3037ea5b79c0519937d4b129a962d23799da32ded2c20acf4674877ab9af8349","revision":"c76e971796179bb5f81bff51c7a01a8e4d186262"},
 
     {"path":"src-ui/src/views/home/work-facts.ts","digest":"db1a8431cf1408a6c707ba4782bb52a6b803c3779ea08492545afe831ed8bb3b","revision":"d1f68396648a4d450f1d743e436df703be0935be"},
 
@@ -70,13 +70,13 @@
 
     {"path":"packages/contracts/src/device-settings.ts","digest":"2b9e93111cf57f06a8846948e75767b36325bdf35cb59324b4be3f5dbd4627e4","revision":"89765352964045a079d13a17bee54ab2de7b83e0"},
 
-    {"path":"src-ui/src/components/status/chatStatus.ts","digest":"61867106c8e2218abab46c172f70c6359aeb515c443e259a38cbc3ebe125d988","revision":"c6ebec77b17b679e630a3857b10a6f814d7fb436"},
+    {"path":"src-ui/src/components/status/chatStatus.ts","digest":"2c3391764d533fbd148c160d5a07ea07b8497543f1848771485f6e7c9bd298a5","revision":"3df1f91eeb2b49a94c385b470caf583d9d1b165e"},
 
     {"path":"src-server/services/orchestration/event-store.ts","digest":"1ea0958938d8834be0de3694e34491f63c2e3db7863bd44147ed8572257e7cd8","revision":"061ace7180fe67218f67d9a74230ce419b887c11"},
 
     {"path":"src-ui/src/__tests__/ChatInputArea.test.tsx","digest":"2375598b03e2b9fe8003ff24a7ef15712d471c5024a7befd4ab22ab6879b98d5","revision":"4711f21b516d04300b15ad4da473e24bf2e7adb2"},
 
-    {"path":"src-ui/src/__tests__/ChatDockBody.sessionFailureBanner.test.tsx","digest":"0b328f9cf537be6395c1f5eec936924ec806194c673e71c15fcbcfa5b4b87973","revision":"8f54568ace0014007eee673a58f3d26d3588e282"},
+    {"path":"src-ui/src/__tests__/ChatDockBody.sessionFailureBanner.test.tsx","digest":"0bb0c18091845d36a3df63c966e2dac5cad310938a6c12dac89ecef271af3633","revision":"7415afd23b74cdddfd218a534ae5161ac4b34c8e"},
 
     {"path":"src-ui/src/components/chat/QueuedMessages.css","digest":"a24d97fa21ac0aaba1eab7d2d273ed54d34e5cad41f9a94cafeebc429ef25ebe","revision":"57e1daf6e0d4fe2c366e51d67e20c1a70587966f"}
   ],

@@ -90,7 +90,7 @@
 
     {"path":"src-ui/src/components/home/StarterScheduledCheckCard.tsx","digest":"88a0a019a6ac99a457a6390a82f509863089a100688d44d7c4bf34c2b6927325","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
 
-    {"path":"src-ui/src/components/home/StarterWorkCard.tsx","digest":"e111892b72c350c7a95919ded04a229d5512a586259d6ff5d04d620b3b78b9a1","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
+    {"path":"src-ui/src/components/home/StarterWorkCard.tsx","digest":"57074eaab2c523929c28ed1005d67e57c4bab4e4b7acde253e124c681c37ea47","revision":"8ab2b68c3d48594b10eb6d4a6e652dd362203cd2"},
 
     {"path":"src-ui/src/components/ProjectTaskBoard.tsx","digest":"f44e595e00051a0b9a39bb0ea86c0024182e9d4502c5716df78797a4c1c79fa4","revision":"62306ed51dd5dafdf744d3b779a251030f0e8bcb"},
 
@@ -98,7 +98,7 @@
 
     {"path":"src-ui/src/components/TasksLayout.tsx","digest":"a4adf70ce83c23e2fb4819aeae36bca2958f2c43941276bb0199b8a630ee76ec","revision":"2ff9f47beb496145a4ac4752a1f1fe5f4c9dd694"},
 
-    {"path":"src-ui/src/index.css","digest":"e3bf9bb5c0dbeea17eb06bf2536ebcd445ce60875becb64ca97da08118422dcd","revision":"8fd71c3714eceeb651bd8e52f200aa1532fa33c6"},
+    {"path":"src-ui/src/index.css","digest":"14743b88cf143302ae15e47858e0aec8c377e0ed6bb4b94ff4abfd765e9e8793","revision":"fbc4620cff6efdc6eb7c53be661ff2c9bea8dd27"},
 
     {"path":"src-ui/src/lib/starter-work-operation-store.ts","digest":"d3c5ace0dae590debb023c5954ae91564e94d343fc08a19da311522f340daf68","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
 
