@@ -48,7 +48,7 @@
 
     {"path":"scripts/codeql-sarif-policy.mjs","digest":"19227477b52acfe22fe18feb777bf30c2163a40e51fda2ad0a834a1fdae86f32","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"scripts/dependency-advisory-exceptions.json","digest":"0fb4da6e30f5363ff33bbe1634a8267383766e88651fc878ad958d10d4730ab0","revision":"a43b54f6cfe9479ea77cd6e783aa5e1419bc5168"},
+    {"path":"scripts/dependency-advisory-exceptions.json","digest":"357e9ea44293bf32a115f4df945802d10e1ef3c016c5491a46f8f7b120aca5ae","revision":"65b3516d12cdf594553a2dc8f0e6883b8b0db89d"},
 
     {"path":"scripts/dependency-advisory-policy.mjs","digest":"9dfdd2899708f23256aa01e6ac899438c80b0fecba5497c8fc25270d6a8f6ae8","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 

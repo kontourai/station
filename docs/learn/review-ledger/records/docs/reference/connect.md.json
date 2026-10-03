@@ -126,7 +126,7 @@
 
     {"path":"src-ui/src/platform/native/stationProfileStorage.ts","digest":"4d79449c3b14bbdf26ee3c455b6981358d9fb1ba23b0a421c0d4054fcd9d0225","revision":"2fd15755236ce5a8c62318e4047d67fdcc200463"},
 
-    {"path":"src-ui/src/views/connections-hub/__tests__/RelayRouteProfiles.test.tsx","digest":"6cfa78b560cf4b54813bc661cde6ef772b98439e0911b3072d794a5baaccda75","revision":"e7e89f1b1b77e4f4b556e94952d4633ff028a7fd"},
+    {"path":"src-ui/src/views/connections-hub/__tests__/RelayRouteProfiles.test.tsx","digest":"1a812c27eedb8bc322f508f62da84d744e965c970b3403ea311c3f08eeddf0dc","revision":"8a10893609b9e3cd63909b6f9b5b889c4e82af15"},
 
     {"path":"src-ui/src/views/connections-hub/NativeRelayEnrollmentWizard.tsx","digest":"e730a7203abf866754ae170afb1b54150956d42122e01651c88810df0ae04435","revision":"13ab0b8cc55ca7db5568879e7dced0e5a2e0f3e4"}
   ],

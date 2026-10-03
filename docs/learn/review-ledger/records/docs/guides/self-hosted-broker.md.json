@@ -142,7 +142,7 @@
 
     {"path":"src-ui/src/platform/native/__tests__/nativeDiagnosticEchoBridge.test.ts","digest":"b9221a5713062938261b59f2a01562faec920fc5c287d8abc5e3369ae89d20d0","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
-    {"path":"src-ui/src/platform/native/__tests__/NativeRelayLinkIntake.test.tsx","digest":"5c67adabd9dd068f0f1044207294fc4b5da4c221bf6c296a0ba746e5179ecb5c","revision":"d606c17132af7b1d9ec0d576871937dc37f79864"},
+    {"path":"src-ui/src/platform/native/__tests__/NativeRelayLinkIntake.test.tsx","digest":"e490cf33deb5ccd5b5267424ba1fa87308c056155876510885631a8a719a2b97","revision":"8a10893609b9e3cd63909b6f9b5b889c4e82af15"},
 
     {"path":"src-ui/src/platform/native/nativeAccountSessionBridge.ts","digest":"8247d3d4dfe7d8bd2a5130de0b4d9d77554057662af85206426592b4ca051bd4","revision":"2e4f061f91ffb0338e45de62382cf6da59cd5c76"},
 
@@ -168,7 +168,7 @@
 
     {"path":"src-ui/src/views/connections-hub/NativeRelayEnrollmentWizard.tsx","digest":"e730a7203abf866754ae170afb1b54150956d42122e01651c88810df0ae04435","revision":"13ab0b8cc55ca7db5568879e7dced0e5a2e0f3e4"},
 
-    {"path":"src-ui/src/views/connections-hub/RelayRouteProfiles.tsx","digest":"58ca7622298046bdb33b51300c16a078e7d6d585506f73a392d87569c2b0305f","revision":"e7e89f1b1b77e4f4b556e94952d4633ff028a7fd"},
+    {"path":"src-ui/src/views/connections-hub/RelayRouteProfiles.tsx","digest":"5a2c5e83c1e520101960b2a3dc70736acaf621fda9ccfa95fddf9fc62e4b7007","revision":"8a10893609b9e3cd63909b6f9b5b889c4e82af15"},
 
     {"path":"tests/tauri-shell/native-fresh-relay-fixture.md","digest":"a94e1fe6d17e507eb7c476063331a309bc40e570236723915d45eec61288b32d","revision":"7698b96f8c3b5d9c4ffe81030a3db5d9bad686ce"},
 
