@@ -107,8 +107,7 @@ vi.mock('../contexts/ToastContext', () => ({
   useToast: () => ({ showToast: showToastMock }),
 }));
 vi.mock('../hooks/useActiveChatSessions', () => ({
-  useCreateChatSession: () => vi.fn(),
-  useSendMessage: () => vi.fn(),
+  useLaunchChat: () => vi.fn().mockResolvedValue('session-1'),
 }));
 
 beforeEach(() => {

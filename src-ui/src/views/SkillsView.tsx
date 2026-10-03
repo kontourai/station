@@ -30,12 +30,10 @@ import { SplitPaneLayout } from '../components/SplitPaneLayout';
 import { ErrorState, SkeletonBlock } from '../components/state';
 import { useAgents } from '../contexts/AgentsContext';
 import { useApiBase } from '../contexts/ApiBaseContext';
+import { activeChatsStore } from '../contexts/active-chats-store';
 import { useNavigation } from '../contexts/NavigationContext';
 import { useToast } from '../contexts/ToastContext';
-import {
-  useCreateChatSession,
-  useSendMessage,
-} from '../hooks/useActiveChatSessions';
+import { useLaunchChat } from '../hooks/useActiveChatSessions';
 import { useCloseShortcut } from '../hooks/useCloseShortcut';
 import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
 import { useUrlSelection } from '../hooks/useUrlSelection';
@@ -142,12 +140,11 @@ export function SkillsView({
   formRef.current = form;
   const selectionRef = useRef(rawSelectedId);
   selectionRef.current = rawSelectedId;
-  const { navigate, setDockState, setActiveChat } = useNavigation();
+  const { navigate } = useNavigation();
   const { showToast } = useToast();
   const { apiBase } = useApiBase();
   const agents = useAgents();
-  const createChatSession = useCreateChatSession();
-  const sendMessage = useSendMessage(apiBase);
+  const launchChat = useLaunchChat(apiBase);
 
   // SHELL-09: this read `const isLoading = false`, so for the ~2.2s the skills
   // query was in flight the list panel rendered its DEFINITIVE empty state —
@@ -399,15 +396,9 @@ export function SkillsView({
   async function handleRun(resolvedContent: string, agentSlug: string) {
     const agent = agents.find((entry) => entry.slug === agentSlug);
     if (!agent) return;
-    const sessionId = createChatSession(
-      agent.slug,
-      agent.name,
-      form.name || 'Skill test',
-    );
-    setDockState(true);
-    setActiveChat(null);
     setShowRunModal(false);
-    await sendMessage(sessionId, agent.slug, undefined, resolvedContent);
+    const sessionId = await launchChat(agent.slug, agent.name, resolvedContent);
+    activeChatsStore.updateChat(sessionId, { title: form.name || 'Skill' });
     if (selected) {
       await runSkillMutation.mutateAsync(selected.name).catch(() => undefined);
     }

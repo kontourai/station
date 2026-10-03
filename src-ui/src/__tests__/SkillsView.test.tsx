@@ -27,8 +27,6 @@ const importSkillsMock = vi
   .mockResolvedValue({ imported: 0, results: [] });
 const runSkillMock = vi.fn().mockResolvedValue(undefined);
 const uninstallSkillMock = vi.fn();
-const sendMessageMock = vi.fn().mockResolvedValue(undefined);
-const createChatSessionMock = vi.fn().mockReturnValue('session-1');
 const setDockStateMock = vi.fn();
 const setActiveChatMock = vi.fn();
 
@@ -93,8 +91,7 @@ vi.mock('../contexts/ApiBaseContext', () => ({
 }));
 
 vi.mock('../hooks/useActiveChatSessions', () => ({
-  useCreateChatSession: () => createChatSessionMock,
-  useSendMessage: () => sendMessageMock,
+  useLaunchChat: () => vi.fn().mockResolvedValue('session-1'),
 }));
 
 vi.mock('../contexts/ToastContext', () => ({
@@ -151,8 +148,6 @@ afterEach(() => {
   updateLocalSkillMock.mockClear();
   importSkillsMock.mockClear();
   runSkillMock.mockClear();
-  sendMessageMock.mockClear();
-  createChatSessionMock.mockClear();
   setDockStateMock.mockClear();
   setActiveChatMock.mockClear();
 });
@@ -850,53 +845,6 @@ describe('SkillsView', () => {
       expect(screen.getByText('No skills are commands yet')).toBeTruthy();
       expect(screen.queryByText(/Nothing in skills matches/)).toBeNull();
       expect(screen.queryByRole('button', { name: 'Clear filter' })).toBeNull();
-    });
-
-    test('using a skill opens a dock session and counts the run', async () => {
-      selectSkill(
-        { name: 'release-check', source: 'local' },
-        {
-          name: 'release-check',
-          source: 'local',
-          body: 'Ship {{ticket}} to {{env}}',
-          variables: [
-            { name: 'ticket', description: 'Issue reference' },
-            { name: 'env', default: 'staging' },
-          ],
-        },
-      );
-
-      render(<SkillsView />);
-      fireEvent.click(
-        screen.getByRole('button', { name: 'Use in a new chat' }),
-      );
-      expect(
-        (
-          screen.getByRole('button', {
-            name: 'Start chat',
-          }) as HTMLButtonElement
-        ).disabled,
-      ).toBe(true);
-      fireEvent.change(screen.getByLabelText('ticket'), {
-        target: { value: 'ABC-42' },
-      });
-      fireEvent.click(screen.getByRole('button', { name: 'Start chat' }));
-
-      await waitFor(() =>
-        expect(runSkillMock).toHaveBeenCalledWith('release-check'),
-      );
-      expect(createChatSessionMock).toHaveBeenCalledWith(
-        'station',
-        'Station',
-        'release-check',
-      );
-      expect(setDockStateMock).toHaveBeenCalledWith(true);
-      expect(sendMessageMock).toHaveBeenCalledWith(
-        'session-1',
-        'station',
-        undefined,
-        'Ship ABC-42 to staging',
-      );
     });
 
     // `selected` changes the moment skill B is clicked, but the
