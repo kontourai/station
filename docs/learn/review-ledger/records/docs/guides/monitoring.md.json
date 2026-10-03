@@ -9,7 +9,7 @@
 
   "limits": "Source and bounded fixtures/in-memory exporter probes do not establish real collector export, historical timing reproduction, complete billing or production reliability. Named recording families are reviewed; the generated catalog lists declarations only.",
 
-  "document": {"digest":"f17836cbaecce56ea411447ec0c1bf6bd4ee11451b1040ef0b94912f0084f333","revision":"5e6fbfedca2315119d1d20a7829252899c52c15a"},
+  "document": {"digest":"22db759c80006d288eb2957995e09fb58d40fe92e09e2a1f937211ff34d43d4b","revision":"9bb90045b7aeb926e7003b27fc4fd62252638524"},
 
   "sources": [
     {"path":"pnpm-lock.yaml","digest":"29dbdce300fcd3d881ae511317af478da6e9c098a8e8cf51c6b2269a937525df","revision":"df9188971e1a93d2c5525a7f5f38e3da93c9e4de"},
@@ -48,7 +48,7 @@
 
     {"path":"src-ui/src/pages/ProfilePage.tsx","digest":"7cd82789c471a04dcd08d3ab5200f580e4f2845b122c8b9f3cb1a5f7432ecb0e","revision":"588eae2a9ce0653a1ea92b44de34c56bce5a5c78"},
 
-    {"path":"src-ui/src/components/profile/StationPeoplePanel.tsx","digest":"0995105c2fa9a13672d69eb64f4d37247cfd6375512b9e15c6a9d193ee87404a","revision":"588eae2a9ce0653a1ea92b44de34c56bce5a5c78"},
+    {"path":"src-ui/src/components/profile/StationPeoplePanel.tsx","digest":"fabd9d689d4c0ac5ceea07eb3af030081345948281c3d22ae4213aba0f1f7035","revision":"9bb90045b7aeb926e7003b27fc4fd62252638524"},
 
     {"path":"src-ui/src/components/usage-stats/UsageRollupPanel.tsx","digest":"1fbeee4b6256d3ebff73fc15a9ab0cd3c2f0d4768571b82e1050bf09111c9704","revision":"5e6fbfedca2315119d1d20a7829252899c52c15a"},
 
@@ -58,7 +58,7 @@
 
     {"path":"packages/sdk/src/query-domains/analytics.ts","digest":"315c15570c1246b28ca9bd46646da489c667981dbedaa2018f8811fa9b61a895","revision":"5e6fbfedca2315119d1d20a7829252899c52c15a"},
 
-    {"path":"packages/sdk/src/query-domains/devicePairingRequests.ts","digest":"3f2a89e623aaaba903980c19cea3cfa8fb82a55cd7f74a20b311f15cfa877086","revision":"5e6fbfedca2315119d1d20a7829252899c52c15a"},
+    {"path":"packages/sdk/src/query-domains/devicePairingRequests.ts","digest":"be679fb0964921f7a7e7ec77433cd198f89772b8c1e13450e4fc39204dbdd4a3","revision":"9bb90045b7aeb926e7003b27fc4fd62252638524"},
 
     {"path":"src-server/analytics/usage-aggregator.ts","digest":"1f2fb75995a05a5ed0b3fcd207abff32bace60c33b495bc9d93e0006cd393a66","revision":"5e6fbfedca2315119d1d20a7829252899c52c15a"},
 
