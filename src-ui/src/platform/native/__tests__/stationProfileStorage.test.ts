@@ -1,3 +1,4 @@
+import type { SavedConnection } from '@kontourai/station-connect';
 import {
   ConnectionStore,
   type StorageAdapter,
@@ -2416,7 +2417,7 @@ describe('NativeStationProfileStorage', () => {
       },
     };
 
-    it('persists and lists routing intent without projecting or selecting direct HTTP', async () => {
+    it('projects a selectable native broker reference without browser Origin, secrets or direct HTTP', async () => {
       const { storage } = storageWithKeyring();
       await storage.hydrate();
       const changed = vi.fn();
@@ -2440,14 +2441,26 @@ describe('NativeStationProfileStorage', () => {
         JSON.parse(storage.get('station-connect-connections') ?? '[]').map(
           (connection: { id: string }) => connection.id,
         ),
-      ).not.toContain(connectionId);
+      ).toContain(connectionId);
       expect(() => savedConnectionFromStationProfile(profile)).toThrow(
-        'cannot use direct HTTP',
+        'host store revision',
       );
+      const projected = JSON.parse(
+        storage.get('station-connect-connections') ?? '[]',
+      ).find((connection: SavedConnection) => connection.id === connectionId);
+      expect(projected.nativeBrokerRoute).toMatchObject({
+        routeVersion: 1,
+        profileName: profile.name,
+        brokerOrigin: relayInput.relayRoute.brokerOrigin,
+      });
+      expect(projected.nativeBrokerRoute.profileRevision).toBeGreaterThan(0);
+      expect(projected.accessMethods[0].kind).toBe('native-broker');
+      expect(projected.brokerRoute).toBeUndefined();
+      expect(JSON.stringify(projected)).not.toContain('browserOrigin');
       expect(storage.get('station-connect-connections-active')).toBe(
         'station-profile:kontour',
       );
-      expect(storage.selectProfileForProcess('home relay')).toBeUndefined();
+      expect(storage.selectProfileForProcess('home relay')).toBe(connectionId);
       expect(await storage.authorizeActiveConnection(connectionId, true)).toBe(
         false,
       );

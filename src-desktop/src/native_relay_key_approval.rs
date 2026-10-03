@@ -48,13 +48,15 @@ struct PendingApproval {
     profile_name: String,
     expires_at: u64,
     candidate: VerifiedStationKeyCandidate,
+    cancelled: Arc<AtomicBool>,
+    commit_gate: Option<Arc<Mutex<()>>>,
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields, rename_all = "camelCase")]
+#[derive(Debug)]
 struct BeginRequest {
     profile_name: String,
     invitation: InvitationInput,
+    commit_gate: Option<Arc<Mutex<()>>>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -206,6 +208,7 @@ pub(crate) async fn station_native_relay_key_approval_begin(
             BeginRequest {
                 profile_name,
                 invitation,
+                commit_gate: None,
             },
             &cancelled,
         )
@@ -343,7 +346,11 @@ fn main_app_origin_admitted(
 }
 
 fn prepare(app: &AppHandle, requested_name: &str) -> Result<PreparedMetadata, String> {
-    let (binding, revision) = current_profile_binding(app, requested_name)?;
+    let (binding, revision) = current_profile_binding(
+        app,
+        requested_name,
+        crate::NativeTrustProfilePurpose::Enrollment,
+    )?;
     let owner = owner_for_binding(&binding)?;
     let vault = NativeRelayProofKeyVault::new();
     let public = match vault.restore(&owner) {
@@ -416,7 +423,12 @@ fn begin_network(
     request: BeginRequest,
     cancelled: &Arc<AtomicBool>,
 ) -> Result<PendingCandidateDto, String> {
-    let (binding, profile_revision) = current_profile_binding(app, &request.profile_name)?;
+    let commit_gate = request.commit_gate.clone();
+    let (binding, profile_revision) = current_profile_binding(
+        app,
+        &request.profile_name,
+        crate::NativeTrustProfilePurpose::Enrollment,
+    )?;
     let owner = owner_for_binding(&binding)?;
     let vault = NativeRelayProofKeyVault::new();
     let public = vault
@@ -536,6 +548,7 @@ fn begin_network(
                 expiry_ms,
                 verified,
                 cancelled,
+                commit_gate,
             )?;
             return Ok(dto);
         }
@@ -558,7 +571,9 @@ fn pending(
         .0
         .lock()
         .map_err(|_| "Native relay-key state is unavailable.".to_owned())?;
-    state.pending.retain(|_, entry| entry.expires_at > now);
+    state
+        .pending
+        .retain(|_, entry| entry.expires_at > now && !entry.cancelled.load(Ordering::Acquire));
     Ok(state
         .pending
         .iter()
@@ -576,7 +591,7 @@ fn pending(
         }))
 }
 
-fn cancel(
+pub(crate) fn cancel(
     state: &NativeRelayKeyApprovalState,
     caller_label: &str,
     profile_name: &str,
@@ -617,7 +632,10 @@ fn approve(
         let entry = state.pending.get(&request.pending_id).ok_or_else(|| {
             "The native relay-key candidate is missing, expired, or already used.".to_owned()
         })?;
-        if entry.caller_label != caller_label || entry.expires_at <= now_ms()? {
+        if entry.caller_label != caller_label
+            || entry.expires_at <= now_ms()?
+            || entry.cancelled.load(Ordering::Acquire)
+        {
             return Err(
                 "The native relay-key candidate is missing, expired, or already used.".into(),
             );
@@ -627,15 +645,32 @@ fn approve(
         })?
     };
     let binding = trust_binding_from_candidate(&pending.candidate);
+    let _commit_guard = match pending.commit_gate.as_ref() {
+        Some(gate) => Some(
+            gate.lock()
+                .map_err(|_| "Native relay-key state is unavailable.".to_owned())?,
+        ),
+        None => None,
+    };
+    if pending.cancelled.load(Ordering::Acquire) {
+        return Err("Native relay-key enrollment was cancelled.".into());
+    }
     let provider = AppNativeTrustProfileProvider::enrollment(app);
     let mut trust = NativeStationTrustStore::system();
     let receipt = trust
-        .approve_until(
+        .approve_until_with_precommit(
             &provider,
             pending.candidate,
             &request.confirmation_code,
             &request.full_key_id,
             pending.expires_at,
+            || {
+                if pending.cancelled.load(Ordering::Acquire) {
+                    Err(crate::native_station_key_custody::CandidateError::ProfileStale)
+                } else {
+                    Ok(())
+                }
+            },
         )
         .map_err(map_candidate_error)?;
     Ok(status_from_receipt(&pending.profile_name, binding, receipt))
@@ -645,7 +680,11 @@ fn revoke(app: &AppHandle, request: RevokeRequest) -> Result<TrustStatusDto, Str
     if request.full_key_id.len() != 43 {
         return Err("Enter the full 43-character Station-key ID to revoke trust.".into());
     }
-    let (binding, revision) = current_profile_binding(app, &request.profile_name)?;
+    let (binding, revision) = current_profile_binding(
+        app,
+        &request.profile_name,
+        crate::NativeTrustProfilePurpose::ExistingTrust,
+    )?;
     let provider = AppNativeTrustProfileProvider::existing_trust(app);
     let mut trust = NativeStationTrustStore::system();
     let mut staged_cleanup = None;
@@ -678,7 +717,11 @@ fn revoke(app: &AppHandle, request: RevokeRequest) -> Result<TrustStatusDto, Str
 }
 
 fn status(app: &AppHandle, requested_name: &str) -> Result<TrustStatusDto, String> {
-    let (binding, revision) = current_profile_binding(app, requested_name)?;
+    let (binding, revision) = current_profile_binding(
+        app,
+        requested_name,
+        crate::NativeTrustProfilePurpose::ExistingTrust,
+    )?;
     let provider = AppNativeTrustProfileProvider::existing_trust(app);
     let mut trust = NativeStationTrustStore::system();
     let state = trust
@@ -761,6 +804,16 @@ fn reserve_begin(
     state: &NativeRelayKeyApprovalState,
     profile_name: &str,
 ) -> Result<Arc<AtomicBool>, String> {
+    let token = Arc::new(AtomicBool::new(false));
+    reserve_begin_with_token(state, profile_name, token.clone())?;
+    Ok(token)
+}
+
+fn reserve_begin_with_token(
+    state: &NativeRelayKeyApprovalState,
+    profile_name: &str,
+    token: Arc<AtomicBool>,
+) -> Result<(), String> {
     let mut state = state
         .0
         .lock()
@@ -769,12 +822,34 @@ fn reserve_begin(
     if let Some(old) = state.inflight.remove(&key) {
         old.store(true, Ordering::Release);
     }
-    let token = Arc::new(AtomicBool::new(false));
     state.inflight.insert(key, token.clone());
     state
         .pending
         .retain(|_, entry| !entry.profile_name.eq_ignore_ascii_case(profile_name));
-    Ok(token)
+    Ok(())
+}
+
+pub(crate) fn begin_link(
+    app: &AppHandle,
+    state: &NativeRelayKeyApprovalState,
+    caller_label: &str,
+    profile_name: String,
+    invitation: InvitationInput,
+    cancelled: &Arc<AtomicBool>,
+    commit_gate: Arc<Mutex<()>>,
+) -> Result<PendingCandidateDto, String> {
+    reserve_begin_with_token(state, &profile_name, cancelled.clone())?;
+    begin_reserved(
+        app,
+        state,
+        caller_label,
+        BeginRequest {
+            profile_name,
+            invitation,
+            commit_gate: Some(commit_gate),
+        },
+        cancelled,
+    )
 }
 
 fn clear_inflight(
@@ -802,6 +877,7 @@ fn stage_pending(
     expires_at: u64,
     candidate: VerifiedStationKeyCandidate,
     cancelled: &Arc<AtomicBool>,
+    commit_gate: Option<Arc<Mutex<()>>>,
 ) -> Result<(), String> {
     let now = now_ms()?;
     let mut state = state
@@ -827,6 +903,8 @@ fn stage_pending(
             profile_name,
             expires_at,
             candidate,
+            cancelled: cancelled.clone(),
+            commit_gate,
         },
     );
     Ok(())
@@ -835,6 +913,7 @@ fn stage_pending(
 fn current_profile_binding(
     app: &AppHandle,
     requested_name: &str,
+    purpose: crate::NativeTrustProfilePurpose,
 ) -> Result<(TrustProfileBinding, u64), String> {
     if requested_name.is_empty() || requested_name.len() > 256 {
         return Err("The selected saved Station name is invalid.".into());
@@ -844,13 +923,14 @@ fn current_profile_binding(
     let contents = read_station_profile_store(&path)
         .map_err(|_| "Station could not read its saved profile metadata.".to_owned())?;
     let store = parse_station_profile_store(&contents)?;
-    binding_from_store(&store, requested_name, app)
+    binding_from_store(&store, requested_name, app, purpose)
 }
 
 fn binding_from_store(
     store: &CredentialProfileStore,
     requested_name: &str,
     app: &AppHandle,
+    purpose: crate::NativeTrustProfilePurpose,
 ) -> Result<(TrustProfileBinding, u64), String> {
     use crate::native_station_key_custody::CandidateError as TrustError;
     let profile = selected_profile_from_store(store, requested_name)?;
@@ -875,6 +955,7 @@ fn binding_from_store(
         store.revision,
         &app.config().identifier,
         native_app_channel(&app.config().identifier, cfg!(debug_assertions)),
+        purpose,
     )
     .map_err(|error| match error {
         TrustError::ProfileStale => {
