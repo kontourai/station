@@ -34,9 +34,30 @@ describe('renderForkTranscript', () => {
         { role: 'assistant', content: newest },
       ] as any,
     });
-    expect(rendered).toContain('The 1 earlier one is omitted.');
+    expect(rendered).toContain('The 1 earlier one is omitted;');
     expect(rendered).not.toContain('old question');
     expect(rendered).toContain(`Assistant: ${newest}`);
+  });
+
+  test('counts a message with no text parts instead of claiming everything is included', () => {
+    const rendered = renderForkTranscript({
+      sourceTitle: 'Planning',
+      sourceAgent: 'Claude',
+      messages: [
+        { id: 'u', role: 'user', parts: [{ type: 'text', text: 'first' }] },
+        {
+          id: 'a',
+          role: 'assistant',
+          parts: [{ type: 'tool', toolCallId: 'call-1', toolName: 'read' }],
+        },
+      ],
+    });
+    expect(rendered).toContain(
+      'The 1 earlier user or assistant text message is included below.',
+    );
+    expect(rendered).toContain(
+      '1 other user or assistant message had no text parts to carry',
+    );
   });
 
   test('branches only through the selected completed assistant turn', () => {

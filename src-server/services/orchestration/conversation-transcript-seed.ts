@@ -35,10 +35,10 @@ export const TRANSCRIPT_SEED_MIN_TOKEN_BUDGET = 1_000;
  * for every target.
  */
 export const TRANSCRIPT_SEED_OMITTED_NOTICE =
-  'They are not included here; the full conversation remains stored in Station.';
+  'the full conversation remains stored in Station.';
 
 /** Upper bound for a caller-supplied label (a title, an Agent) in a heading. */
-export const TRANSCRIPT_SEED_LABEL_MAX_BYTES = 200;
+const TRANSCRIPT_SEED_LABEL_MAX_BYTES = 200;
 
 export interface TranscriptSeedEntry {
   role: 'user' | 'assistant';
@@ -116,12 +116,20 @@ export function boundTranscriptSeedLabel(
   return `${kept}${ellipsis}`;
 }
 
-function label(entry: TranscriptSeedEntry): string {
-  return entry.role === 'user' ? 'User' : 'Assistant';
+const FENCE_LINE = /^ {0,3}(`{3,}|~{3,})/;
+
+/**
+ * The role label. A message whose first line is a code fence starts on its
+ * own line, so the label cannot hide the fence from a Markdown reader or from
+ * the fence tracking below.
+ */
+function prefix(entry: TranscriptSeedEntry): string {
+  const label = entry.role === 'user' ? 'User' : 'Assistant';
+  return FENCE_LINE.test(entry.text) ? `${label}:\n` : `${label}: `;
 }
 
 function renderEntry(entry: TranscriptSeedEntry): string {
-  return `${label(entry)}: ${entry.text}`;
+  return `${prefix(entry)}${entry.text}`;
 }
 
 function disclosure(input: {
@@ -143,12 +151,12 @@ function disclosure(input: {
     );
   } else {
     lines.push(
-      `Only the ${input.included} most recent of ${input.total} user and assistant text messages ${one(input.included) ? 'fits' : 'fit'} the size limit and ${one(input.included) ? 'is' : 'are'} included below, oldest first. The ${input.omitted} earlier ${one(input.omitted) ? 'one is' : 'ones are'} omitted. ${TRANSCRIPT_SEED_OMITTED_NOTICE}`,
+      `Only the ${input.included} most recent of ${input.total} user and assistant text messages ${one(input.included) ? 'fits' : 'fit'} the size limit and ${one(input.included) ? 'is' : 'are'} included below, oldest first. The ${input.omitted} earlier ${one(input.omitted) ? 'one is' : 'ones are'} omitted; ${TRANSCRIPT_SEED_OMITTED_NOTICE}`,
     );
   }
   if (input.nonText > 0) {
     lines.push(
-      `${input.nonText} other user or assistant ${one(input.nonText) ? 'message' : 'messages'} had no text to carry (only tool activity, reasoning or errors) and ${one(input.nonText) ? 'is' : 'are'} not included.`,
+      `${input.nonText} other user or assistant ${one(input.nonText) ? 'message' : 'messages'} had no text parts to carry and ${one(input.nonText) ? 'is' : 'are'} not included.`,
     );
   }
   if (input.shortened) {
@@ -164,17 +172,21 @@ function render(heading: string, head: string, body: string[]): string {
 }
 
 /**
- * The backtick fence still open at the end of `text`, if any: CommonMark's
- * rule that a fence closes on a line of at least as many backticks and
- * nothing else.
+ * The code fence (backtick or tilde) still open at the end of `text`, if any:
+ * CommonMark's rule that a fence closes on a line of at least as many of the
+ * same character and nothing else.
  */
 function openFence(text: string): string | null {
   let open: string | null = null;
   for (const line of text.split('\n')) {
-    const fence = /^ {0,3}(`{3,})/.exec(line)?.[1];
+    const fence = FENCE_LINE.exec(line)?.[1];
     if (!fence) continue;
     if (open === null) open = fence;
-    else if (fence.length >= open.length && /^ {0,3}`+\s*$/.test(line))
+    else if (
+      fence[0] === open[0] &&
+      fence.length >= open.length &&
+      line.trim() === fence
+    )
       open = null;
   }
   return open;
@@ -202,7 +214,7 @@ function shortenNewest(
     const tailFence = tailLength
       ? openFence(chars.slice(0, chars.length - tailLength).join(''))
       : null;
-    return `${label(entry)}: ${head}${headFence ? `\n${headFence}` : ''}\n[… ${chars.length - keep} characters omitted from the middle of this message …]\n${tailFence ? `${tailFence}\n` : ''}${tail}`;
+    return `${prefix(entry)}${head}${headFence ? `\n${headFence}` : ''}\n[… ${chars.length - keep} characters omitted from the middle of this message …]\n${tailFence ? `${tailFence}\n` : ''}${tail}`;
   };
   let low = 0;
   let high = chars.length - 1;

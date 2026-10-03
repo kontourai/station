@@ -1,11 +1,10 @@
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { OrchestrationSessionDetail } from '@kontourai/station-contracts/orchestration';
 import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
 import type { ConversationMessage } from '@kontourai/station-shared/conversation-message';
 import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { approxInjectedTokens } from '../../../routes/chat/chat-context-injection.js';
 import {
   renderForkTranscript,
@@ -78,7 +77,7 @@ function expectSeedInvariants(
       `Only the ${included} most recent of ${count} user and assistant text messages ${included === 1 ? 'fits' : 'fit'} the size limit`,
     );
     expect(seed).toContain(
-      `The ${omitted} earlier ${omitted === 1 ? 'one is' : 'ones are'} omitted.`,
+      `The ${omitted} earlier ${omitted === 1 ? 'one is' : 'ones are'} omitted; ${TRANSCRIPT_SEED_OMITTED_NOTICE}`,
     );
     expect(seed).toContain(TRANSCRIPT_SEED_OMITTED_NOTICE);
     // Whether the receiving engine can read further is unknown when the seed
@@ -188,7 +187,7 @@ describe('buildTranscriptSeed', () => {
     expect(result.text).toContain(
       'The most recent message was too long to include whole',
     );
-    expect(result.text).toContain('The 2 earlier ones are omitted.');
+    expect(result.text).toContain('The 2 earlier ones are omitted;');
     expect(result.text).toContain(
       'Only the 1 most recent of 3 user and assistant text messages fits the size limit and is included below',
     );
@@ -284,34 +283,52 @@ describe('buildTranscriptSeed', () => {
     });
   });
 
-  test('a shortened message never leaves a code fence open across the marker', () => {
-    const code = Array.from(
-      { length: 4_000 },
-      (_, line) => `const value${line} = ${line};`,
-    ).join('\n');
-    const fence = '`'.repeat(3);
-    const result = buildTranscriptSeed({
-      heading: 'Prior conversation transcript.',
-      entries: [
-        {
-          role: 'assistant',
-          text: `Here is the file:\n\n${fence}ts\n${code}\n${fence}\n\nThat is all.`,
-        },
-      ],
-      budgetTokens: TRANSCRIPT_SEED_MIN_TOKEN_BUDGET,
-    });
-    expect(result.newestShortened).toBe(true);
-    const fenceLines = (text: string) =>
-      text.split('\n').filter((line) => /^ {0,3}```/.test(line)).length;
-    const [beforeMarker, afterMarker] = result.text.split(
-      /\[… \d+ characters omitted from the middle of this message …\]/,
-    );
-    // The fence the head opened is closed before the marker, and the tail,
-    // which starts inside the same block, reopens it.
-    expect(fenceLines(beforeMarker!) % 2).toBe(0);
-    expect(fenceLines(afterMarker!) % 2).toBe(0);
-    expect(afterMarker).toMatch(/^\n```\n/);
-  });
+  test.each([
+    [
+      'a backtick fence after an introduction',
+      '`'.repeat(3),
+      'Here is the file:\n\n',
+    ],
+    [
+      'a tilde fence after an introduction',
+      '~'.repeat(3),
+      'Here is the file:\n\n',
+    ],
+    ['a fence that opens the message', '`'.repeat(3), ''],
+  ])(
+    'a shortened message never leaves %s open across the marker',
+    (_, fence, intro) => {
+      const code = Array.from(
+        { length: 4_000 },
+        (_, line) => `const value${line} = ${line};`,
+      ).join('\n');
+      const result = buildTranscriptSeed({
+        heading: 'Prior conversation transcript.',
+        entries: [
+          {
+            role: 'assistant',
+            text: `${intro}${fence}ts\n${code}\n${fence}\n\nThat is all.`,
+          },
+        ],
+        budgetTokens: TRANSCRIPT_SEED_MIN_TOKEN_BUDGET,
+      });
+      expect(result.newestShortened).toBe(true);
+      // Lines a Markdown reader treats as fences: at most three spaces, then
+      // a run of three or more backticks or tildes.
+      const fenceLines = (text: string) =>
+        text.split('\n').filter((line) => /^ {0,3}(`{3,}|~{3,})/.test(line))
+          .length;
+      const [beforeMarker, afterMarker] = result.text.split(
+        /\[… \d+ characters omitted from the middle of this message …\]/,
+      );
+      // The fence the head opened is closed before the marker with the same
+      // character, and the tail, which starts inside the same block, reopens it.
+      expect(fenceLines(beforeMarker!) % 2).toBe(0);
+      expect(fenceLines(afterMarker!) % 2).toBe(0);
+      expect(afterMarker!.startsWith(`\n${fence}\n`)).toBe(true);
+      expect(beforeMarker!.trimEnd().endsWith(`\n${fence}`)).toBe(true);
+    },
+  );
 });
 
 describe('messages with no text to carry (#3164 review)', () => {
@@ -361,7 +378,7 @@ describe('messages with no text to carry (#3164 review)', () => {
       'The 1 earlier user or assistant text message is included below.',
     );
     expect(seed).toContain(
-      '2 other user or assistant messages had no text to carry',
+      '2 other user or assistant messages had no text parts to carry',
     );
   });
 
@@ -374,7 +391,7 @@ describe('messages with no text to carry (#3164 review)', () => {
       'There are no earlier user or assistant text messages.',
     );
     expect(seed).toContain(
-      '2 other user or assistant messages had no text to carry',
+      '2 other user or assistant messages had no text parts to carry',
     );
   });
 });
@@ -448,11 +465,11 @@ function stoppedDetail(threadId: string): OrchestrationSessionDetail {
 
 describe('handoff and continuation seeds (#3164)', () => {
   const ROOT = 'conversation-seed';
-  let dir: string;
+  const makeTempDir = trackTempDirs();
   let store: EventStore;
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), 'transcript-seed-'));
+    const dir = makeTempDir('transcript-seed-');
     store = new EventStore(join(dir, 'orchestration.sqlite'));
     store.upsertSession({
       provider: 'claude',
@@ -465,7 +482,6 @@ describe('handoff and continuation seeds (#3164)', () => {
 
   afterEach(() => {
     store.close();
-    rmSync(dir, { recursive: true, force: true });
   });
 
   function lineage() {
@@ -503,7 +519,7 @@ describe('handoff and continuation seeds (#3164)', () => {
     expect(observed.included).toBeGreaterThan(0);
   });
 
-  test('a continuation seed counts messages that had no text to carry', async () => {
+  test('a continuation seed counts messages that had no text parts to carry', async () => {
     appendTurns(store, ROOT, [40, 40]);
     store.appendEvent({
       eventId: 'reasoning-only-started',
@@ -543,7 +559,7 @@ describe('handoff and continuation seeds (#3164)', () => {
       'All 2 earlier user and assistant text messages are included',
     );
     expect(resolved.transcriptSeed).toContain(
-      '1 other user or assistant message had no text to carry',
+      '1 other user or assistant message had no text parts to carry',
     );
   });
 
