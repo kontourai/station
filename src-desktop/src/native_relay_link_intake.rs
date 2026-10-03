@@ -504,37 +504,40 @@ mod tests {
     fn native_delivery_exposes_only_metadata_and_cancellation_fences_the_opaque_handle() {
         let now = now_ms();
         for expires_at in [now + 60_000, now + 24 * 60 * 60 * 1000, SAFE_INTEGER_MAX] {
-        let state = NativeRelayLinkState::default();
-        let mut envelope = invitation(now);
-        envelope["invitation"]["expiresAt"] = json!(expires_at);
-        let url = link(&envelope);
-        let delivery = state.receive(&url, "io.kontourai.station.nightly", "nightly", false, now);
-        let encoded = serde_json::to_string(&delivery).unwrap();
-        assert!(!encoded.contains(&"S".repeat(43)));
-        assert!(!encoded.contains("invitationSecret"));
-        let id = pending_id(&delivery).unwrap();
-        assert_eq!(
-            pending_id(&state.take_delivery().unwrap().unwrap()),
-            Some(id)
-        );
-        assert_eq!(
-            pending_id(&state.take_delivery().unwrap().unwrap()),
-            Some(id)
-        );
-        let repeated = state.receive(&url, "io.kontourai.station.nightly", "nightly", false, now);
-        assert_eq!(pending_id(&repeated), Some(id));
-        let attempt = reserve_attempt(&state, id, "Home", "main", false).unwrap();
-        assert!(reserve_attempt(&state, id, "Home", "main", false).is_err());
-        let mut inner = state.0.state.lock().unwrap();
-        NativeRelayLinkState::cancel_pending(&mut inner);
-        inner.notification = None;
-        assert!(inner.pending.is_none());
-        assert!(attempt.cancelled.load(Ordering::Acquire));
-        drop(inner);
-        assert!(state.take_delivery().unwrap().is_none());
-        assert!(reserve_attempt(&state, id, "Home", "main", true).is_err());
-        let reopened = state.receive(&url, "io.kontourai.station.nightly", "nightly", false, now);
-        assert_ne!(pending_id(&reopened), Some(id));
+            let state = NativeRelayLinkState::default();
+            let mut envelope = invitation(now);
+            envelope["invitation"]["expiresAt"] = json!(expires_at);
+            let url = link(&envelope);
+            let delivery =
+                state.receive(&url, "io.kontourai.station.nightly", "nightly", false, now);
+            let encoded = serde_json::to_string(&delivery).unwrap();
+            assert!(!encoded.contains(&"S".repeat(43)));
+            assert!(!encoded.contains("invitationSecret"));
+            let id = pending_id(&delivery).unwrap();
+            assert_eq!(
+                pending_id(&state.take_delivery().unwrap().unwrap()),
+                Some(id)
+            );
+            assert_eq!(
+                pending_id(&state.take_delivery().unwrap().unwrap()),
+                Some(id)
+            );
+            let repeated =
+                state.receive(&url, "io.kontourai.station.nightly", "nightly", false, now);
+            assert_eq!(pending_id(&repeated), Some(id));
+            let attempt = reserve_attempt(&state, id, "Home", "main", false).unwrap();
+            assert!(reserve_attempt(&state, id, "Home", "main", false).is_err());
+            let mut inner = state.0.state.lock().unwrap();
+            NativeRelayLinkState::cancel_pending(&mut inner);
+            inner.notification = None;
+            assert!(inner.pending.is_none());
+            assert!(attempt.cancelled.load(Ordering::Acquire));
+            drop(inner);
+            assert!(state.take_delivery().unwrap().is_none());
+            assert!(reserve_attempt(&state, id, "Home", "main", true).is_err());
+            let reopened =
+                state.receive(&url, "io.kontourai.station.nightly", "nightly", false, now);
+            assert_ne!(pending_id(&reopened), Some(id));
         }
     }
 
