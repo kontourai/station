@@ -210,8 +210,12 @@ export function createRuntimeServiceBundle(
       // skills — a read-only source adapter, no copied content (S3 item 3).
       ...(agentPluginLoader
         ? {
-            experienceSource: (identity, effect) =>
-              agentPluginLoader.withSkillExperience(identity, effect),
+            experienceSource: (identity, effect, permission) =>
+              agentPluginLoader.withSkillExperience(
+                identity,
+                effect,
+                permission,
+              ),
           }
         : {}),
       experienceInventory: () =>

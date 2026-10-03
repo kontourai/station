@@ -13,6 +13,7 @@ import {
 const MAX_SNAPSHOT_BYTES = 256 * 1024;
 
 export interface SkillExperienceSnapshots {
+  deleteThread(threadId: string): void;
   record(
     threadId: string,
     snapshot: SkillExperienceInvocationV1,
@@ -41,7 +42,13 @@ export function createSkillExperienceSnapshots(db: {
   const insert = db.prepare(
     'INSERT OR IGNORE INTO skill_experience_snapshots (thread_id, invocation_id, snapshot_digest, snapshot_json) VALUES (?, ?, ?, ?)',
   );
+  const remove = db.prepare(
+    'DELETE FROM skill_experience_snapshots WHERE thread_id = ?',
+  );
   return {
+    deleteThread(threadId) {
+      remove.run(threadId);
+    },
     record(threadId, snapshot) {
       const text = JSON.stringify(snapshot);
       if (

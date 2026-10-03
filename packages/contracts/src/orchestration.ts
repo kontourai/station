@@ -20,6 +20,7 @@ import type {
   SessionTransitionReason,
   SessionTransitionSource,
 } from './session-lifecycle.js';
+import type { SkillExperienceIdentityV1 } from './skill-experience.js';
 
 export type {
   AttachedSessionSourceMetadata,
@@ -78,6 +79,11 @@ export type OrchestrationCommand =
   | { type: 'steerTurn'; threadId: string; input: string; turnId?: string }
   | {
       type: 'respondToRequest';
+      /** Frame-origin action: admit this exact current package and its agents.invoke grant. */
+      expectedSkillExperience?: {
+        identity: SkillExperienceIdentityV1;
+        eventId: string;
+      };
       threadId: string;
       requestId: string;
       /** Compare this exact opened event immediately before responding. */

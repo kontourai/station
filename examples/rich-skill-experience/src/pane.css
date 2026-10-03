@@ -1,0 +1,62 @@
+:root {
+  font-family: system-ui, sans-serif;
+  color-scheme: light dark;
+}
+body {
+  margin: 0;
+  padding: 1rem;
+}
+#app {
+  max-width: 45rem;
+  margin: auto;
+}
+h1 {
+  font-size: 1.35rem;
+}
+section {
+  display: grid;
+  gap: 1rem;
+}
+button {
+  min-height: 44px;
+  padding: 0.5rem 1rem;
+  border: 1px solid currentColor;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  background: transparent;
+  color: inherit;
+}
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible {
+  outline: 3px solid Highlight;
+  outline-offset: 3px;
+}
+fieldset {
+  display: grid;
+  gap: 0.75rem;
+  border: 1px solid currentColor;
+  border-radius: 0.5rem;
+  padding: 1rem;
+}
+label {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  min-height: 44px;
+}
+label:has(textarea) {
+  display: grid;
+}
+textarea {
+  min-height: 6rem;
+  width: 100%;
+  box-sizing: border-box;
+}
+dt {
+  font-weight: 600;
+}
+dd {
+  margin: 0.25rem 0 1rem;
+  white-space: pre-wrap;
+}

@@ -97,6 +97,7 @@ import {
 } from '@kontourai/station-contracts/session-lifecycle';
 import type { DeclaredOutputDescriptor } from '@kontourai/station-contracts/session-output-declaration';
 import type {
+  SkillExperienceIdentityV1,
   SkillExperienceInvocationReferenceV1,
   SkillExperienceStartInputV1,
 } from '@kontourai/station-contracts/skill-experience';
@@ -5821,15 +5822,16 @@ export class OrchestrationService {
     authority: SessionReadScope,
     cursor?: string,
     limit?: number,
+    expected?: { identity: SkillExperienceIdentityV1; eventId: string },
   ) {
     if (!this.sessionAuthz.canReadSession(threadId, authority)) return null;
     if (!this.skillExperienceRuntime)
       throw new Error('Skill experience execution is unavailable.');
-    const view = await this.skillExperienceRuntime.read(
-      threadId,
-      cursor,
-      limit,
-    );
+    const read = () =>
+      this.skillExperienceRuntime!.read(threadId, cursor, limit);
+    const view = expected
+      ? await this.skillExperienceRuntime.admitFrame(threadId, expected, read)
+      : await read();
     if (
       !this.sessionAuthz.canReadSession(threadId, authority) ||
       [...view.history, ...(view.current ? [view.current] : [])].some(
@@ -5841,7 +5843,7 @@ export class OrchestrationService {
   }
   private withCurrentSkillExperience<T>(
     threadId: string,
-    effect: () => Promise<T>,
+    effect: (context?: string) => Promise<T>,
   ): Promise<T> {
     if (this.skillExperienceRuntime)
       return this.skillExperienceRuntime.admitCurrent(threadId, effect);
@@ -6396,6 +6398,7 @@ export class OrchestrationService {
                       let experienceReference:
                         | SkillExperienceInvocationReferenceV1
                         | undefined;
+                      let experienceContext: string | undefined;
                       if (internal?.skillExperience) {
                         if (
                           !this.skillExperienceRuntime ||
@@ -6432,8 +6435,11 @@ export class OrchestrationService {
                           },
                           async (reference, prompt) => {
                             experienceReference = reference;
+                            experienceContext = prompt;
                             turnInput = {
                               ...turnInput,
+                              displayInput:
+                                turnInput.displayInput ?? command.input.input,
                               input: `${prompt}\n\n${turnInput.input}`,
                             };
                           },
@@ -6605,14 +6611,36 @@ export class OrchestrationService {
                           throw new ForegroundInvocationUnavailableError();
                         const sendAdapter = async () => {
                           assertInputRequestCurrent();
-                          const effect = () => {
+                          const effect = (prompt?: string) => {
+                            if (prompt) {
+                              experienceContext = prompt;
+                              turnInput = {
+                                ...turnInput,
+                                displayInput:
+                                  turnInput.displayInput ?? command.input.input,
+                                input: `${prompt}\n\n${turnInput.input}`,
+                              };
+                            }
+                            assertInputRequestCurrent();
+                            this.assertAdapterCurrent(adapter);
                             providerInvoked = true;
-                            return nativeForeground
-                              ? runWithNativeForegroundRelay(
-                                  nativeForeground,
-                                  () => adapter.sendTurn(turnInput),
+                            const send = () =>
+                              nativeForeground
+                                ? runWithNativeForegroundRelay(
+                                    nativeForeground,
+                                    () => adapter.sendTurn(turnInput),
+                                  )
+                                : adapter.sendTurn(turnInput);
+                            return adapter.provider === 'station-agent' &&
+                              turnCorrelation &&
+                              experienceContext
+                              ? runWithAuthorizedTurnCorrelation(
+                                  turnCorrelation,
+                                  send,
+                                  nativeMemory,
+                                  experienceContext,
                                 )
-                              : adapter.sendTurn(turnInput);
+                              : send();
                           };
                           return internal?.skillExperience &&
                             this.skillExperienceRuntime
@@ -7301,13 +7329,14 @@ export class OrchestrationService {
                 context?.principal,
               );
               try {
-                await this.withCurrentSkillExperience(command.threadId, () =>
-                  adapter.steerTurn!(
+                await this.withCurrentSkillExperience(command.threadId, () => {
+                  this.assertAdapterCurrent(adapter);
+                  return adapter.steerTurn!(
                     command.threadId,
                     command.input,
                     activeTurnId,
-                  ),
-                );
+                  );
+                });
               } catch (steerError) {
                 // Mirrors sendTurn's own `!providerAccepted` branch above
                 // (:3780): the adapter never accepted this steer, so there
@@ -7408,56 +7437,59 @@ export class OrchestrationService {
               throw new Error('A cancelled question cannot carry answers.');
           }
 
-          if (command.expectedRequestEventId !== undefined) {
-            if (context?.requestCurrent && !context.requestCurrent())
-              throw new RequestEventGuardError(
-                'request_verification_unavailable',
-                'Request authority changed before the decision.',
-              );
-            // Adapter resolution can await. Recheck authorization and the exact
-            // current request immediately before its synchronous adapter handoff.
-            if (
-              context?.userId !== undefined &&
-              !this.sessionAuthz.canReadSessionForCommand(
-                command.threadId,
-                context.userId,
-                context.tenantExecutionContext,
+          const assertAnswerCurrent = () => {
+            if (command.expectedRequestEventId !== undefined) {
+              if (context?.requestCurrent && !context.requestCurrent())
+                throw new RequestEventGuardError(
+                  'request_verification_unavailable',
+                  'Request authority changed before the decision.',
+                );
+              // Adapter resolution can await. Recheck authorization and the exact
+              // current request immediately before its synchronous adapter handoff.
+              if (
+                context?.userId !== undefined &&
+                !this.sessionAuthz.canReadSessionForCommand(
+                  command.threadId,
+                  context.userId,
+                  context.tenantExecutionContext,
+                )
               )
-            )
-              throw new RequestEventGuardError(
-                'request_verification_unavailable',
-                'This request is no longer available to you.',
+                throw new RequestEventGuardError(
+                  'request_verification_unavailable',
+                  'This request is no longer available to you.',
+                );
+              const inspected = this.inspectAttentionRequest(
+                {
+                  threadId: command.threadId,
+                  requestId: command.requestId,
+                  requestEventId: command.expectedRequestEventId,
+                },
+                INTERNAL_SESSION_READ_SCOPE,
               );
-            const inspected = this.inspectAttentionRequest(
-              {
-                threadId: command.threadId,
-                requestId: command.requestId,
-                requestEventId: command.expectedRequestEventId,
-              },
-              INTERNAL_SESSION_READ_SCOPE,
-            );
-            if (!inspected || inspected.state === 'unavailable') {
-              throw new RequestEventGuardError(
-                'request_verification_unavailable',
-                'This request could not be verified. Inspect it again before responding.',
-              );
+              if (!inspected || inspected.state === 'unavailable') {
+                throw new RequestEventGuardError(
+                  'request_verification_unavailable',
+                  'This request could not be verified. Inspect it again before responding.',
+                );
+              }
+              if (inspected.state !== 'open')
+                throw new RequestEventGuardError(
+                  'request_event_changed',
+                  inspected.message,
+                );
+              if (inspected.provider !== adapter.provider)
+                throw new RequestEventGuardError(
+                  'request_event_changed',
+                  'The request engine changed. Inspect the current request before responding.',
+                );
+              if (!inspected.canRespond)
+                throw new RequestEventGuardError(
+                  'request_verification_unavailable',
+                  'This session cannot currently answer the request.',
+                );
             }
-            if (inspected.state !== 'open')
-              throw new RequestEventGuardError(
-                'request_event_changed',
-                inspected.message,
-              );
-            if (inspected.provider !== adapter.provider)
-              throw new RequestEventGuardError(
-                'request_event_changed',
-                'The request engine changed. Inspect the current request before responding.',
-              );
-            if (!inspected.canRespond)
-              throw new RequestEventGuardError(
-                'request_verification_unavailable',
-                'This session cannot currently answer the request.',
-              );
-          }
+          };
+          assertAnswerCurrent();
           // #484 continuation: a portable thread answers a provider request
           // ONLY under a fresh admission naming its exact association —
           // rechecked here, after the request-verification awaits above and
@@ -7539,8 +7571,9 @@ export class OrchestrationService {
                     : {}),
                 }
               : undefined;
-          const answer = () =>
-            requestContext
+          const answer = () => {
+            assertAnswerCurrent();
+            return requestContext
               ? adapter.respondToRequest(
                   command.threadId,
                   command.requestId,
@@ -7552,9 +7585,25 @@ export class OrchestrationService {
                   command.requestId,
                   decision,
                 );
-          await (decision === 'accept' || decision === 'acceptForSession'
-            ? this.withCurrentSkillExperience(command.threadId, answer)
-            : answer());
+          };
+          if (
+            command.expectedSkillExperience &&
+            (decision === 'accept' || decision === 'acceptForSession')
+          ) {
+            if (!this.skillExperienceRuntime)
+              throw new SkillExperienceUnavailableError(
+                'Skill experience execution is unavailable.',
+              );
+            await this.skillExperienceRuntime.admitFrame(
+              command.threadId,
+              command.expectedSkillExperience,
+              answer,
+            );
+          } else {
+            await (decision === 'accept' || decision === 'acceptForSession'
+              ? this.withCurrentSkillExperience(command.threadId, answer)
+              : answer());
+          }
           this.assertAdapterCurrentAfterCommand(adapter);
           if (editModeAnswer && editModeAnswer !== 'downgrade')
             this.recordEditModeAutoPosture(

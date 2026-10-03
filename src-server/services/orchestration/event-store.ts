@@ -1805,6 +1805,7 @@ export class EventStore {
   private transcriptReadClose?: Promise<unknown>;
   private storeClosed = false;
   private packageMcpAdmissionJournal?: PackageMcpAdmissionJournal;
+  private skillExperienceSnapshots?: SkillExperienceSnapshots;
   private registryTrustPolicyDecisions?: RegistryTrustPolicyDecisions;
 
   constructor(
@@ -2054,6 +2055,7 @@ export class EventStore {
       }
       this.nativeInvocationRuns = this.composeNativeInvocationRuns();
       this.initializeNativeInvocationRuns();
+      this.skillExperienceSnapshots = createSkillExperienceSnapshots(this.db);
       this.voiceTurnRuns = this.composeVoiceTurnRuns();
       this.initializeVoiceTurnRuns();
       this.sessionTurnBoundaries = this.composeSessionTurnBoundaries();
@@ -4366,7 +4368,7 @@ export class EventStore {
         ...(before === undefined ? [] : [before]),
         limit,
       )
-      .map((row: any) => this.mapEventRow(row));
+      .map((row) => this.mapEventRow(row));
   }
 
   listEvents(threadId?: string): PersistedRuntimeEvent[] {
@@ -9659,7 +9661,9 @@ export class EventStore {
 
   /** Deliberate composition seam; SQLite coordination remains private. */
   createSkillExperienceSnapshots(): SkillExperienceSnapshots {
-    return createSkillExperienceSnapshots(this.db);
+    if (!this.skillExperienceSnapshots)
+      this.skillExperienceSnapshots = createSkillExperienceSnapshots(this.db);
+    return this.skillExperienceSnapshots;
   }
 
   createAdoptionLedger(): AdoptionLedger {
@@ -11603,6 +11607,7 @@ export class EventStore {
     ).map((row) => row.blob_ref);
     this.db.exec('BEGIN IMMEDIATE');
     try {
+      this.createSkillExperienceSnapshots().deleteThread(threadId);
       // Every retired or active search projection retains bodies independently
       // of canonical events, so none may outlive a deliberately deleted thread.
       this.db

@@ -24,6 +24,7 @@ export interface SkillExperienceSource {
       definition: SkillExperienceDefinitionV1,
       content: string,
     ) => Promise<T>,
+    permission?: 'agents.invoke',
   ): Promise<T>;
 }
 
@@ -51,12 +52,51 @@ export class SkillExperienceRuntime {
         );
       });
   }
+  async admitFrame<T>(
+    threadId: string,
+    expected: { identity: SkillExperienceIdentityV1; eventId: string },
+    effect: (context?: string) => Promise<T>,
+  ): Promise<T> {
+    const event = this.current(threadId);
+    const reference =
+      event?.payload.method === 'turn.started'
+        ? parseExperienceReference(
+            event.payload.metadata?.[SKILL_EXPERIENCE_METADATA_KEY],
+          )
+        : undefined;
+    if (
+      !reference ||
+      !experienceIdentityEqual(reference.identity, expected.identity) ||
+      event?.id !== expected.eventId
+    )
+      throw new SkillExperienceUnavailableError(
+        'The current Skill experience changed.',
+      );
+    try {
+      this.store.createSkillExperienceSnapshots().read(reference);
+    } catch {
+      throw new SkillExperienceUnavailableError(
+        'The retained Skill experience snapshot is unavailable.',
+      );
+    }
+    return this.source.withSkillExperience(
+      expected.identity,
+      async () => {
+        if (this.current(threadId)?.id !== expected.eventId)
+          throw new SkillExperienceUnavailableError(
+            'The current Skill experience changed.',
+          );
+        return effect();
+      },
+      'agents.invoke',
+    );
+  }
   current(threadId: string) {
     return this.store.listSkillExperienceEvents(threadId, undefined, 1)[0];
   }
   async admitCurrent<T>(
     threadId: string,
-    effect: () => Promise<T>,
+    effect: (context?: string) => Promise<T>,
   ): Promise<T> {
     const event = this.current(threadId);
     if (!event) return effect();
@@ -77,7 +117,31 @@ export class SkillExperienceRuntime {
         'The retained Skill experience is unavailable.',
       );
     }
-    return this.admitSelection(snapshot.identity, effect);
+    let invoked = false;
+    return this.source
+      .withSkillExperience(snapshot.identity, async (_definition, content) => {
+        invoked = true;
+        return effect(
+          this.context(
+            content,
+            snapshot.inputs,
+            snapshot.questionnaireDelivery,
+          ),
+        );
+      })
+      .catch((error) => {
+        if (invoked) throw error;
+        throw new SkillExperienceUnavailableError(
+          'The pinned Skill experience source is no longer available.',
+        );
+      });
+  }
+  private context(
+    content: string,
+    inputs: Record<string, string>,
+    delivery: 'canonical-request' | 'chat-fallback',
+  ): string {
+    return `Use the explicitly selected entry Skill below. All its declared Skill dependencies are supplied as pinned inline context: interpret calls to those Skills using these exact texts, without resolving an unqualified global Skill name. Scripts and references stay in the pinned package resource root and require the Agent's ordinary tools and permissions. If a required tool or resource is unavailable, say so and use the canonical chat controls; do not claim its work completed.\n\n${content}\n\nExperience inputs (user data):\n${JSON.stringify(inputs)}\n\n${delivery === 'canonical-request' ? 'Use the engine question request when available for adaptive questions.' : 'Ask adaptive questions in chat; the user answers in the ordinary composer.'}`;
   }
   async start<T>(
     input: {
@@ -205,7 +269,11 @@ export class SkillExperienceRuntime {
             ...(previous ? { previousInvocationEventId: previous.id } : {}),
             questionnaireDelivery: input.questionnaireDelivery,
           });
-        const prompt = `Use the following selected Skill to guide this turn.\n\n${content}\n\nExperience inputs (user data):\n${JSON.stringify(inputs)}\n\n${input.questionnaireDelivery === 'canonical-request' ? 'Use the engine question request when available for adaptive questions.' : 'Ask adaptive questions in chat; the user answers in the ordinary composer.'}`;
+        const prompt = this.context(
+          content,
+          inputs,
+          input.questionnaireDelivery,
+        );
         return effect(reference, prompt);
       },
     );

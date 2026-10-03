@@ -469,6 +469,7 @@ export class SkillService {
       definition: SkillExperienceDefinitionV1,
       content: string,
     ) => Promise<T>,
+    permission?: 'agents.invoke',
   ) => Promise<T>;
   async withSkillExperience<T>(
     identity: SkillExperienceIdentityV1,
@@ -476,6 +477,7 @@ export class SkillService {
       definition: SkillExperienceDefinitionV1,
       content: string,
     ) => Promise<T>,
+    permission?: 'agents.invoke',
   ): Promise<T> {
     if (
       !this.experienceSource ||
@@ -490,7 +492,7 @@ export class SkillService {
       throw new Error(
         'The selected Skill experience is unavailable in the current scope.',
       );
-    return this.experienceSource(identity, effect);
+    return this.experienceSource(identity, effect, permission);
   }
   private readonly experienceInventory?: () => Promise<SkillExperienceInventoryV1>;
 
