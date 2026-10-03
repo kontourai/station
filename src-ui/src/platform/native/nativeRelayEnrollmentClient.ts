@@ -192,7 +192,11 @@ export function createNativeRelayEnrollmentClient(
     let publication: NativeRelayEnrollmentHostActivationAccepted | undefined;
     try {
       if (pendingPublication) {
-        await assertTransition(pendingPublication);
+        try {
+          await assertTransition(pendingPublication);
+        } catch (cause) {
+          throw captureNativeEnrollmentFailure(cause, 'currentness');
+        }
         completed = true;
         profileRevision = pendingPublication.profileRevision;
         pendingPublication = undefined;
@@ -260,8 +264,6 @@ export function createNativeRelayEnrollmentClient(
       );
       if (publication) completed = true;
       return outcome;
-    } catch (cause) {
-      throw captureNativeEnrollmentFailure(cause, 'currentness');
     } finally {
       busy = false;
     }
