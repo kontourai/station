@@ -60,7 +60,7 @@
 
     {"path":"packages/contracts/src/workspace-pane-host-contract.ts","digest":"064ef9c3654c3296074caced9eab79ffd204c0d98fcebd9221b5a2b540cd6191","revision":"56f4c4897a189eeb30430119a4f4895e95fbb541"},
 
-    {"path":"packages/sdk/src/skill-experience-pane.ts","digest":"c3dcf5199d8a697fb8f3eabbe74ca1535cbbc139641323b4268ee7f65921ec35","revision":"8540fafb86b969775254b898711ad3ae40ccc39d"},
+    {"path":"packages/sdk/src/skill-experience-pane.ts","digest":"e6b64d79113e2e5ed3866a53ff037cf44a235c35b74a2a4e7f7b450dbbe14a29","revision":"82eb547907cc8bc7bd0c32b48834d8bf1b7b8ec4"},
 
     {"path":"examples/rich-skill-experience/README.md","digest":"425a86ce6411adab13391ab0453fcb924eebc7a496f034528cfef6f6174353b0","revision":"56f4c4897a189eeb30430119a4f4895e95fbb541"}
   ],
