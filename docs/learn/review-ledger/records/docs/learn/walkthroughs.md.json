@@ -70,7 +70,7 @@
 
     {"path":"src-server/routes/orchestration/attention.ts","digest":"13aa257c345f3e3b4bd37e49e4399b83aac95315113c3386f64d1c17972b8c07","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
 
-    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"4582d45b868ea008447f5405bcedb1adf987b1e3ad7701e39de19fc6a8d8994c","revision":"4711f21b516d04300b15ad4da473e24bf2e7adb2"},
+    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"a7f8e9039cace02d4b4550f7a8934de38f9c3b6901024b2a6bb2d76db6ebbb59","revision":"8be618f80d01ccda4fff540b5ffa41d5d34e822d"},
 
     {"path":"src-server/services/orchestration/project-task-room-runtime.ts","digest":"feb48a41131f04260c92e3a7757eda5aa61799a7015b3386a931d950250e3d58","revision":"9f8b407fac4a9e5536d72ca49be3a0b77715e1d8"},
 

@@ -18,7 +18,7 @@
 
     {"path":"packages/cli/src/commands/surfaces.ts","digest":"000cb910665422c91d26694ca96491e78d704b0b77405c7903b4048c479ff004","revision":"4d32eb785473b3261621900889fb9fa3fbfd8a49"},
 
-    {"path":"packages/connect/src/react/DevicePairingPanel.tsx","digest":"ec273d0275ca691780e9b5bbc9940bdfa56a462c68c1ed4c5ba2394bbfe05a31","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"packages/connect/src/react/DevicePairingPanel.tsx","digest":"a126ebd9cef9d98431c4c1cdcc24d0a760ebfba0416cd6bbcb7c0a003ab1e178","revision":"018c39925af630ca8eeab05a917de01fc80bd89e"},
 
     {"path":"packages/contracts/src/agent.ts","digest":"e325363bc2303d78102c7c4c45b118756d71d66cae3d801eee303761d0715b6c","revision":"423cbe55b9e35e4cd8954fd441cb9f3c69740d66"},
 
@@ -28,7 +28,7 @@
 
     {"path":"packages/contracts/src/engine-capability-matrix.ts","digest":"db82340760d09e965ac7ed17830f36060573fe48545995d4ad9149b755d36ea1","revision":"518fae654af981373e872c2ab85438bb1b1b0e67"},
 
-    {"path":"packages/contracts/src/environment-security.ts","digest":"5e95b203695a37807a3b3c9464df4f0153ca32b408496dc12f59274f61fd2486","revision":"91d79c3f0ce9ca5ae304e4248b67b6189103016e"},
+    {"path":"packages/contracts/src/environment-security.ts","digest":"5abb4d84b9d7545c633f924c33fef319b3ca0db13a55779731327f29f072dd79","revision":"018c39925af630ca8eeab05a917de01fc80bd89e"},
 
     {"path":"packages/contracts/src/fleet-contribution.ts","digest":"6a898f68b1e2c9796bcc0c62ee3688a9880b8e5634c001185c0bbcbc4aa24445","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -294,7 +294,7 @@
 
     {"path":"src-server/services/orchestration/model-launch-planning.ts","digest":"597ddcbc218834b005f24a64634a54c805f3563333a9d4d965a36028556bce48","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"4582d45b868ea008447f5405bcedb1adf987b1e3ad7701e39de19fc6a8d8994c","revision":"4711f21b516d04300b15ad4da473e24bf2e7adb2"},
+    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"a7f8e9039cace02d4b4550f7a8934de38f9c3b6901024b2a6bb2d76db6ebbb59","revision":"8be618f80d01ccda4fff540b5ffa41d5d34e822d"},
 
     {"path":"src-server/services/orchestration/orchestration-session-state.ts","digest":"44a232d30c1d080f58b798e418a54d3adacb1086b3b6757a06f307370b703943","revision":"af3c8fbfee90c9179a0ac19659b76d24c707d574"},
 

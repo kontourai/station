@@ -106,9 +106,9 @@
 
     {"path":"src-server/services/execution-target/execution-target-resolver.ts","digest":"bd0c0c061874d5900ccbcf8332f4a4efa94299c82631873ebd7a5a66187382f8","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
-    {"path":"src-server/services/orchestration/approval-posture.ts","digest":"88bd82f2afb16d2a11f1edb9dcdf65f395bbfb2fd937f1df0bc70ebca5405a9d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/services/orchestration/approval-posture.ts","digest":"dba15525ee3ca4381ae9c02efe7da0bd38c79212bcf8320ccbefb9536876d997","revision":"018c39925af630ca8eeab05a917de01fc80bd89e"},
 
-    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"4582d45b868ea008447f5405bcedb1adf987b1e3ad7701e39de19fc6a8d8994c","revision":"4711f21b516d04300b15ad4da473e24bf2e7adb2"},
+    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"a7f8e9039cace02d4b4550f7a8934de38f9c3b6901024b2a6bb2d76db6ebbb59","revision":"8be618f80d01ccda4fff540b5ffa41d5d34e822d"},
 
     {"path":"src-server/tools/station-control-catalog-tools.ts","digest":"bdbc3859eb839956ce824fea173bb4d1d366bb9adf068d294327a67c7a7a55a2","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

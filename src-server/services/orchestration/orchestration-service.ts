@@ -8886,8 +8886,9 @@ export class OrchestrationService {
    * written. One this device granted applies as `workspace` from then on
    * (`readStartConfinementStamp`), so that session's next turn runs
    * confined; one someone else granted still runs unconfined, at Ask where
-   * an Ask was recorded: the engine asks before acting. `never` decisions from before decisions carried an actor are
-   * listed as unattributed, never reset.
+   * an Ask was recorded: the engine asks before acting. `never` decisions
+   * from before decisions carried an actor are listed as unattributed, never
+   * reset.
    */
   async resetFullAccessGrantedBy(input: {
     deviceId: string;
