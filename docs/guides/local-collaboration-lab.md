@@ -633,7 +633,9 @@ private JSON invitation after that browser already has independently approved
 Station-key trust; it does not
 auto-consume an incoming fragment or establish that trust. Keep the CLI's JSON
 file private and deliver it through an operator-approved channel. Invitations
-expire within five minutes. A redeemed grant lasts at most 30 days and permits
+default to a 24-hour expiry. Issuer API callers can select a shorter duration
+or no time expiry; see [invitation expiry](self-hosted-broker.md#invitation-expiry).
+A redeemed grant lasts at most 30 days and permits
 broker signaling only; expiry, a lost successful redemption response, or lost
 local custody requires a newly issued invitation. `grants` lists secret-free
 grant IDs and state; `revoke` retires one grant and its pending signaling while

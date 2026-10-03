@@ -388,6 +388,12 @@ configured and online, save that JSON to a private file and run:
 npm run connector:invite -- /absolute/station-home /absolute/private-connector-config.json /absolute/prepare.json /absolute/private-directory/new-invitation.json
 ```
 
+Invitations default to 24 hours. Add `--expires-in 5m`, `15m`, `1h`,
+`24h`, or `never` to choose another expiry. Each invitation remains single-use
+and bound to the receiving installation. Routing withdrawal or rotation
+invalidates an invitation even when it has no time expiry.
+
+
 The command uses the Station-owned broker credential internally and writes one
 surface-bound native invitation to a new 0600 file in a private directory. It
 does not print the invitation secret. Send the file's contents to the intended
