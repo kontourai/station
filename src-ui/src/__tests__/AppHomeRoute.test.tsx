@@ -147,7 +147,7 @@ vi.mock('@kontourai/station-sdk', () => ({
   useQueryClient: () => ({ invalidateQueries }),
   DevicePairingRequiredError: class DevicePairingRequiredError extends Error {},
   unsubscribePushNotifications,
-  fetchVapidPublicKey: vi.fn(),
+  fetchVapidPublicKey: vi.fn().mockResolvedValue('AQAB'),
   subscribePushNotifications: vi.fn(),
   // App raises OS alerts for blocking requests (#1912); this route's subject
   // is navigation, so an empty notification list keeps it silent.
@@ -541,6 +541,10 @@ describe('App home route resolution', () => {
     );
     const subscription = {
       endpoint: 'https://push.test/home-subscription',
+      options: {
+        userVisibleOnly: true,
+        applicationServerKey: new Uint8Array([1, 0, 1]).buffer,
+      },
       unsubscribe: vi.fn(async () => {
         current = null;
         return true;

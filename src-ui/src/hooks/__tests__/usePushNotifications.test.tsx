@@ -27,6 +27,22 @@ describe('usePushNotifications', () => {
   const register = vi.fn();
   const getRegistration = vi.fn();
 
+  function makeSubscription(endpoint: string, secondKey = false) {
+    return {
+      endpoint,
+      options: {
+        userVisibleOnly: true,
+        applicationServerKey: new Uint8Array(secondKey ? [2, 0, 1] : [1, 0, 1])
+          .buffer,
+      },
+      toJSON: () => ({ endpoint }),
+      unsubscribe: vi.fn(async () => {
+        getSubscription.mockResolvedValue(null);
+        return true;
+      }),
+    };
+  }
+
   beforeEach(() => {
     getSubscription.mockReset().mockResolvedValue(null);
     pushManagerSubscribe.mockReset();
@@ -61,9 +77,9 @@ describe('usePushNotifications', () => {
   });
 
   test('reports support and discovers an existing subscription on mount', async () => {
-    getSubscription.mockResolvedValue({
-      endpoint: 'https://push.test/current',
-    });
+    getSubscription.mockResolvedValue(
+      makeSubscription('https://push.test/current'),
+    );
 
     const { result } = renderHook(() =>
       usePushNotifications({ enabled: true, apiBase: 'http://station.test' }),
@@ -72,6 +88,123 @@ describe('usePushNotifications', () => {
     expect(result.current.supported).toBe(true);
     await waitFor(() => expect(result.current.subscribed).toBe(true));
     expect(register).toHaveBeenCalledWith('/sw.js');
+  });
+
+  test.each([false, true])(
+    'switching Stations requires its registration receipt and matching VAPID key (different key: %s)',
+    async (differentKey) => {
+      const existing = makeSubscription('https://push.test/station-a');
+      getSubscription.mockResolvedValue(existing);
+      mocks.fetchVapidPublicKey.mockImplementation(async (base: string) =>
+        base === 'https://station-b.test' && differentKey ? 'AgAB' : 'AQAB',
+      );
+      let acknowledgeB = () => {};
+      mocks.subscribePushNotifications.mockImplementation(
+        (_sub, base: string) =>
+          base === 'https://station-b.test'
+            ? new Promise<void>((resolve) => {
+                acknowledgeB = resolve;
+              })
+            : Promise.resolve(),
+      );
+      const { result, rerender } = renderHook(
+        ({ apiBase }) => usePushNotifications({ enabled: true, apiBase }),
+        {
+          initialProps: { apiBase: 'https://station-a.test' },
+        },
+      );
+      await waitFor(() => expect(result.current.subscribed).toBe(true));
+      rerender({ apiBase: 'https://station-b.test' });
+      expect(result.current.subscribed).toBe(false);
+      await waitFor(() =>
+        expect(mocks.fetchVapidPublicKey).toHaveBeenCalledWith(
+          'https://station-b.test',
+        ),
+      );
+      if (differentKey) {
+        await waitFor(() =>
+          expect(result.current.error).toContain('another Station'),
+        );
+        expect(mocks.subscribePushNotifications).not.toHaveBeenCalledWith(
+          existing.toJSON(),
+          'https://station-b.test',
+        );
+        expect(existing.unsubscribe).not.toHaveBeenCalled();
+        const next = makeSubscription('https://push.test/station-b', true);
+        pushManagerSubscribe.mockImplementation(async () => {
+          getSubscription.mockResolvedValue(next);
+          return next;
+        });
+        let enabling!: Promise<void>;
+        act(() => {
+          enabling = result.current.subscribe();
+        });
+        await waitFor(() =>
+          expect(mocks.subscribePushNotifications).toHaveBeenCalledWith(
+            next.toJSON(),
+            'https://station-b.test',
+          ),
+        );
+        await act(async () => {
+          acknowledgeB();
+          await enabling;
+        });
+        expect(existing.unsubscribe).toHaveBeenCalledOnce();
+        expect(mocks.unsubscribePushNotifications).toHaveBeenCalledWith(
+          existing.endpoint,
+          'https://station-a.test',
+        );
+      } else {
+        await waitFor(() =>
+          expect(mocks.subscribePushNotifications).toHaveBeenCalledWith(
+            existing.toJSON(),
+            'https://station-b.test',
+          ),
+        );
+        expect(result.current.subscribed).toBe(false);
+        await act(async () => {
+          acknowledgeB();
+        });
+        expect(existing.unsubscribe).not.toHaveBeenCalled();
+      }
+      await waitFor(() => expect(result.current.subscribed).toBe(true));
+    },
+  );
+
+  test('repeated Enable calls cannot recreate a subscription after explicit Unsubscribe', async () => {
+    const current = makeSubscription('https://push.test/coalesced');
+    pushManagerSubscribe.mockImplementation(async () => {
+      getSubscription.mockResolvedValue(current);
+      return current;
+    });
+    let acknowledge = () => {};
+    mocks.subscribePushNotifications.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          acknowledge = resolve;
+        }),
+    );
+    const { result } = renderHook(() =>
+      usePushNotifications({ enabled: true, apiBase: 'http://station.test' }),
+    );
+    await waitFor(() => expect(register).toHaveBeenCalled());
+    let first!: Promise<void>;
+    let second!: Promise<void>;
+    act(() => {
+      first = result.current.subscribe();
+      second = result.current.subscribe();
+    });
+    await waitFor(() =>
+      expect(mocks.subscribePushNotifications).toHaveBeenCalledOnce(),
+    );
+    await act(async () => result.current.unsubscribe());
+    await act(async () => {
+      acknowledge();
+      await Promise.all([first, second]);
+    });
+    expect(mocks.subscribePushNotifications).toHaveBeenCalledOnce();
+    expect(await getSubscription()).toBeNull();
+    expect(result.current.subscribed).toBe(false);
   });
 
   test('does not create a service worker or subscription when disabled', async () => {
@@ -121,6 +254,10 @@ describe('usePushNotifications', () => {
   test('subscribes locally and persists the subscription on the active server', async () => {
     const subscription = {
       endpoint: 'https://push.test/subscription',
+      options: {
+        userVisibleOnly: true,
+        applicationServerKey: new Uint8Array([1, 0, 1]).buffer,
+      },
       toJSON: vi.fn(() => ({ endpoint: 'https://push.test/subscription' })),
       unsubscribe: vi.fn(),
     };
@@ -150,6 +287,10 @@ describe('usePushNotifications', () => {
   test('presents a pairing rejection as an actionable state', async () => {
     pushManagerSubscribe.mockResolvedValue({
       endpoint: 'https://push.test/subscription',
+      options: {
+        userVisibleOnly: true,
+        applicationServerKey: new Uint8Array([1, 0, 1]).buffer,
+      },
       toJSON: () => ({ endpoint: 'https://push.test/subscription' }),
     });
     mocks.subscribePushNotifications.mockRejectedValue(
@@ -184,6 +325,11 @@ describe('usePushNotifications', () => {
   test('unsubscribes locally and removes the endpoint from the active server', async () => {
     const subscription = {
       endpoint: 'https://push.test/subscription',
+      options: {
+        userVisibleOnly: true,
+        applicationServerKey: new Uint8Array([1, 0, 1]).buffer,
+      },
+      toJSON: () => ({ endpoint: 'https://push.test/subscription' }),
       unsubscribe: vi.fn().mockResolvedValue(true),
     };
     getSubscription.mockResolvedValue(subscription);
@@ -207,6 +353,10 @@ describe('usePushNotifications', () => {
     async (enableAgain) => {
       const subscription = {
         endpoint: 'https://push.test/subscription',
+        options: {
+          userVisibleOnly: true,
+          applicationServerKey: new Uint8Array([1, 0, 1]).buffer,
+        },
         toJSON: () => ({ endpoint: 'https://push.test/subscription' }),
         unsubscribe: vi.fn(async () => {
           getSubscription.mockResolvedValue(null);
@@ -260,6 +410,11 @@ describe('usePushNotifications', () => {
   test('treats server cleanup as best-effort after local unsubscribe', async () => {
     const subscription = {
       endpoint: 'https://push.test/subscription',
+      options: {
+        userVisibleOnly: true,
+        applicationServerKey: new Uint8Array([1, 0, 1]).buffer,
+      },
+      toJSON: () => ({ endpoint: 'https://push.test/subscription' }),
       unsubscribe: vi.fn().mockResolvedValue(true),
     };
     getSubscription.mockResolvedValue(subscription);

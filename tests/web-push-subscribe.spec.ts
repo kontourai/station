@@ -58,6 +58,10 @@ test.describe('Web Push subscribe/unsubscribe', () => {
       let currentSubscription: unknown = null;
       const fakeSubscription = {
         endpoint: 'https://push.example.test/fake-subscription-endpoint',
+        options: {
+          userVisibleOnly: true,
+          applicationServerKey: null as ArrayBuffer | null,
+        },
         toJSON: () => ({
           endpoint: 'https://push.example.test/fake-subscription-endpoint',
           keys: {
@@ -73,7 +77,17 @@ test.describe('Web Push subscribe/unsubscribe', () => {
       const fakeRegistration = {
         pushManager: {
           getSubscription: async () => currentSubscription,
-          subscribe: async () => {
+          subscribe: async (options: PushSubscriptionOptionsInit) => {
+            const key = options.applicationServerKey;
+            fakeSubscription.options.applicationServerKey = ArrayBuffer.isView(
+              key,
+            )
+              ? new Uint8Array(
+                  key.buffer,
+                  key.byteOffset,
+                  key.byteLength,
+                ).slice().buffer
+              : (key ?? null);
             currentSubscription = fakeSubscription;
             return fakeSubscription;
           },

@@ -75,11 +75,12 @@ also need their own diagnosis.
 [usePushNotifications](../../src-ui/src/hooks/usePushNotifications.ts), mounted
 once by the app shell, registers
 `/sw.js`, requests permission on subscription, creates a PushManager subscription,
-and posts it to the selected Station. A fresh successful operation waits for
-that POST before showing **Subscribed**. On mount, however, the hook checks only
-local PushManager state. It does not confirm the host's registration or clean up
-a local subscription after a rejected POST. A remount can therefore show **Subscribed** for local state
-whose server registration is absent or no longer valid.
+and posts it to the selected Station. **Subscribed** requires that Station's
+successful registration response and a browser subscription whose application
+server key matches the Station's VAPID key. An existing local subscription is
+checked and re-registered on mount without requesting permission. Switching to
+a Station with a different key leaves the previous subscription intact; the
+explicit **Enable push notifications** action can replace it for the new Station.
 
 The Settings → Notifications & voice **Push notifications** switch removes the
 browser's existing subscription when turned off, then attempts server cleanup.
@@ -92,6 +93,8 @@ again before that attempt finishes.
 Turning it back on shows the subscription controls; subscribing still requires
 the **Enable push notifications** action. The separate **Unsubscribe** action
 also removes the local subscription and attempts server cleanup as best effort.
+Repeated Enable calls share one pending attempt. Unsubscribe invalidates pending
+attempts and cleans up any registration response that arrives afterward.
 If server cleanup fails, a stored registration can remain
 until later cleanup. Browser state, server registration and actual delivery are
 three different observations; the label alone does not establish all three.
