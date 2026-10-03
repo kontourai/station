@@ -350,6 +350,9 @@ classifier is missing, fails, or returns anything other than one exact
 Do not run `npm run full:regression`
 locally merely because `main` moved.
 
+Nightly and tagged preview and stable promotions pass one exact source SHA
+to the hosted qualification authority.
+
 The reusable hosted workflow `.github/workflows/full-regression.yml` owns the
 exact-source qualification receipt. It runs every canonical phase in hosted
 shards and additionally runs Android viewport tests. Scheduled main qualification,

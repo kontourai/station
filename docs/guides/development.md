@@ -438,6 +438,9 @@ GitHub's merge queue verifies the synthesized latest-main candidate.
 Do not run `npm run full:regression`
 locally merely because `main` moved.
 
+Nightly and tagged preview and stable promotions pass one exact source SHA
+to the hosted qualification authority.
+
 The reusable hosted workflow `.github/workflows/full-regression.yml` qualifies
 one exact source through every canonical phase and the Android viewport suite.
 Main qualification runs every six hours; Nightly delivery runs daily. Nightly
