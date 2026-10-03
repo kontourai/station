@@ -250,7 +250,7 @@
 
 .profile-usage-graph__bar {
   width: 100%;
-  min-height: 12px;
+  min-height: 2px;
   border-radius: 999px;
   background: linear-gradient(
     180deg,

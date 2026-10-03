@@ -89,7 +89,7 @@ function ProfileUsageGraph({
                 style={{
                   height:
                     point.value > 0
-                      ? `${(point.value / maxValue) * 100}%`
+                      ? `${(point.value / maxValue) * 6}rem`
                       : '2px',
                 }}
                 title={
@@ -266,10 +266,10 @@ export function ProfilePage() {
                     </h2>
                     {usageStats?.lifetime.firstMessageDate && (
                       <span className="profile-card__title">
-                        First recorded activity{' '}
+                        First recorded activity (UTC){' '}
                         {new Date(
                           usageStats.lifetime.firstMessageDate,
-                        ).toLocaleDateString()}
+                        ).toLocaleDateString(undefined, { timeZone: 'UTC' })}
                       </span>
                     )}
                   </div>

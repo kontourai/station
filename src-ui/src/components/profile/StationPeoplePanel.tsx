@@ -45,7 +45,11 @@ export function StationPeoplePanel() {
   });
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const people = query.error ? [] : peopleFromDevices(query.data ?? []);
-  const selected = people.find((person) => person.key === selectedKey);
+  const profileKey = (personKey: string) =>
+    JSON.stringify([scope?.apiBase, scope?.authorityKey, personKey]);
+  const selected = people.find(
+    (person) => profileKey(person.key) === selectedKey,
+  );
   return (
     <section aria-labelledby="station-people-title">
       <h3 id="station-people-title">People paired with this Station</h3>
@@ -78,7 +82,7 @@ export function StationPeoplePanel() {
         <ul className="profile-people-list">
           {people.map((person) => (
             <li key={person.key}>
-              <Button onClick={() => setSelectedKey(person.key)}>
+              <Button onClick={() => setSelectedKey(profileKey(person.key))}>
                 {person.name}
               </Button>
               <span>
