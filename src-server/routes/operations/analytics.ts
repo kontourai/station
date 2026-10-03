@@ -37,7 +37,7 @@ export function createAnalyticsRoutes(
         );
       }
       analyticsOps.add(1, { op: 'get_usage' });
-      const stats = await usageAggregator.loadStats();
+      const stats = await usageAggregator.readStats();
       const from = c.req.query('from');
       const to = c.req.query('to');
       if (from || to) {

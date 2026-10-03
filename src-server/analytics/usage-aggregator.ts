@@ -66,6 +66,8 @@ export class UsageAggregator {
   private statsPath: string;
   private achievementsPath: string;
   private writeQueue: Promise<void> = Promise.resolve();
+  private rescanInFlight?: Promise<UsageStats>;
+  private lastRescanAt?: number;
   private orchestrationUsage?: OrchestrationUsageRef;
 
   constructor(
@@ -90,11 +92,25 @@ export class UsageAggregator {
     if (existsSync(this.statsPath)) {
       const content = await readFile(this.statsPath, 'utf-8');
       const stats = JSON.parse(content);
+      // Older resets wrote an empty object instead of a usable accumulator.
+      if (Object.keys(stats).length === 0) return createEmptyUsageStats();
       // Clean up legacy "unknown" model bucket
       delete stats.byModel?.unknown;
       return stats;
     }
     return createEmptyUsageStats();
+  }
+
+  /** Active readers refresh at most once a minute; idle Stations keep the startup timer. */
+  async readStats(): Promise<UsageStats> {
+    if (this.rescanInFlight) return this.rescanInFlight;
+    if (
+      this.lastRescanAt === undefined ||
+      Date.now() - this.lastRescanAt >= 60_000
+    ) {
+      return this.fullRescan();
+    }
+    return this.serialize(() => this.loadStats());
   }
 
   async saveStats(stats: UsageStats): Promise<void> {
@@ -106,8 +122,8 @@ export class UsageAggregator {
 
   async reset(): Promise<void> {
     return this.serialize(async () => {
-      if (existsSync(this.statsPath))
-        await writeFile(this.statsPath, '{}', 'utf-8');
+      await this.saveStats(createEmptyUsageStats());
+      this.lastRescanAt = undefined;
     });
   }
 
@@ -142,7 +158,13 @@ export class UsageAggregator {
   }
 
   async fullRescan(): Promise<UsageStats> {
-    return this.serialize(() => this.fullRescanInner());
+    if (this.rescanInFlight) return this.rescanInFlight;
+    this.rescanInFlight = this.serialize(() => this.fullRescanInner());
+    try {
+      return await this.rescanInFlight;
+    } finally {
+      this.rescanInFlight = undefined;
+    }
   }
 
   private async incrementalUpdateInner(
@@ -162,6 +184,7 @@ export class UsageAggregator {
 
     // Track what we've seen in current files
     const currentStats = createEmptyUsageStats();
+    let skippedMessages = 0;
 
     const agents = existsSync(agentsDir)
       ? await readdir(agentsDir, { withFileTypes: true })
@@ -237,6 +260,7 @@ export class UsageAggregator {
               agentModel,
             );
           } catch (error) {
+            skippedMessages += 1;
             logger.error('Failed to parse message', { file, error });
           }
         }
@@ -276,8 +300,20 @@ export class UsageAggregator {
 
     mergeRescannedUsageStats(stats, currentStats);
 
+    const rescannedAt = Date.now();
+    stats.snapshot = {
+      rescannedAt: new Date(rescannedAt).toISOString(),
+      engineUsage: orchestrationSessions
+        ? 'available'
+        : this.orchestrationUsage
+          ? 'unavailable'
+          : 'not_configured',
+      skippedMessages,
+    };
+
     await this.saveStats(stats);
     await this.updateAchievements(stats);
+    this.lastRescanAt = rescannedAt;
     return stats;
   }
 
@@ -334,8 +370,8 @@ export class UsageAggregator {
     }
   }
 
-  async getAchievements(): Promise<Achievement[]> {
-    const stats = await this.loadStats();
+  async getAchievements(currentStats?: UsageStats): Promise<Achievement[]> {
+    const stats = currentStats ?? (await this.readStats());
     const saved = existsSync(this.achievementsPath)
       ? JSON.parse(await readFile(this.achievementsPath, 'utf-8'))
       : {};
@@ -382,8 +418,8 @@ export class UsageAggregator {
     return getAchievementProgress(def, stats);
   }
 
-  private async updateAchievements(_stats: UsageStats): Promise<void> {
-    const achievements = await this.getAchievements();
+  private async updateAchievements(stats: UsageStats): Promise<void> {
+    const achievements = await this.getAchievements(stats);
     const saved: Record<string, any> = {};
 
     for (const achievement of achievements) {

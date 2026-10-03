@@ -4,18 +4,69 @@ import {
 } from '@kontourai/station-contracts/tenancy';
 import { describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { UsageAggregator } from '../../../analytics/usage-aggregator.js';
 
 vi.mock('../../../telemetry/metrics.js', () => ({
   analyticsOps: { add: vi.fn() },
 }));
 
 const { createAnalyticsRoutes } = await import('../analytics.js');
+const makeHome = trackTempDirs();
+
+test('usage reads refresh engine totals and achievements after the snapshot expires', async () => {
+  const home = makeHome('station-profile-freshness-');
+  const usage = { turns: 1, toolCalls: 0, inputTokens: 50 };
+  const aggregator = new UsageAggregator(home, {
+    get: () => ({
+      listSessionUsage: () => [
+        {
+          threadId: 'thread-1',
+          conversationId: 'conversation-1',
+          agentSlug: 'codex',
+          usage,
+        },
+      ],
+    }),
+  });
+  const app = createAnalyticsRoutes(aggregator);
+  const clock = vi.spyOn(Date, 'now').mockReturnValue(Date.now());
+  try {
+    const first = await json(await app.request('/usage'));
+    expect(first.data.lifetime.totalMessages).toBe(1);
+    expect(first.data.snapshot.rescannedAt).toBeTruthy();
+    usage.turns = 100;
+    usage.inputTokens = 5000;
+    clock.mockReturnValue(clock() + 60_001);
+    const achievements = await json(await app.request('/achievements'));
+    expect(
+      achievements.data.find(
+        (item: { id: string }) => item.id === 'conversationalist',
+      ).unlocked,
+    ).toBe(true);
+    const next = await json(await app.request('/usage'));
+    expect(next.data.lifetime.totalMessages).toBe(100);
+    expect(next.data.lifetime.totalInputTokens).toBe(5000);
+  } finally {
+    clock.mockRestore();
+  }
+});
+
+test('reset leaves a valid aggregate that can accept the next message', async () => {
+  const aggregator = new UsageAggregator(makeHome('station-profile-reset-'));
+  await aggregator.incrementalUpdate({ role: 'assistant' }, 'sample', 'one');
+  await aggregator.reset();
+  await aggregator.incrementalUpdate({ role: 'assistant' }, 'sample', 'two');
+  expect((await aggregator.loadStats()).lifetime.totalMessages).toBe(1);
+});
 
 function createMockAggregator() {
+  const loadStats = vi
+    .fn()
+    .mockResolvedValue({ byDate: {}, totalMessages: 0, totalCost: 0 });
   return {
-    loadStats: vi
-      .fn()
-      .mockResolvedValue({ byDate: {}, totalMessages: 0, totalCost: 0 }),
+    loadStats,
+    readStats: () => loadStats(),
     getAchievements: vi.fn().mockResolvedValue([]),
     fullRescan: vi.fn().mockResolvedValue({ byDate: {} }),
     reset: vi.fn().mockResolvedValue(undefined),

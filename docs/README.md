@@ -75,7 +75,7 @@ clearly mark the stale document.
 - **[Browser workspace](guides/browser-workspace.md)** — server-owned browser sessions, profile and target boundaries, Agent permissions and live viewing.
 - **[Mobile device workspace](guides/mobile-device-workspace.md)** — managed or SSH device hosts, shared live viewing/control, and the separate single-frame API.
 - **[Reference](reference/)** — API, CLI, config, SDK, and contract details.
-- **[Monitoring](guides/monitoring.md)** — recording paths, retention, dashboard limits, and the generated [metric declarations](reference/metrics.md).
+- **[Monitoring](guides/monitoring.md)** — recording paths, Profile usage and paired people, retention, dashboard limits, and the generated [metric declarations](reference/metrics.md).
 - **[Settings deep links](reference/settings-deep-links.md)** — the `?view=&highlight=` URL shape, the registry endpoint that enumerates every control, and the rule for answering with one.
 - **[Architecture](architecture/)** — current module boundaries and ownership.
 - **[Cloud move](design/cloud-move.md)** — setup preview, AWS preparation, and

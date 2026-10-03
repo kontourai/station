@@ -1186,7 +1186,13 @@ per-invocation receipts. An unavailable aggregator returns a 500 error.
 ### Get Usage Statistics
 
 `GET /api/analytics/usage` returns `{success: true, data: stats}` with lifetime,
-Agent, model, and date aggregates. The date map is `byDate`, not `byDay`.
+Agent, model, and date aggregates. Active reads rebuild the retained snapshot
+at most once a minute, sharing an in-flight rebuild with other readers.
+`snapshot.rescannedAt` identifies the completed source scan;
+`snapshot.engineUsage` distinguishes available, unavailable, and unconfigured
+engine sources, and `snapshot.skippedMessages` counts unreadable message rows.
+A completed scan does not prove historical totals or every provider's accounting
+are complete. The date map is `byDate`, not `byDay`.
 Optional `from`/`to` date strings filter `byDate` and add `rangeSummary`; other
 fields retain their existing aggregate scope. Do not relabel those other fields
 as totals for the selected window.
@@ -1194,7 +1200,7 @@ as totals for the selected window.
 ### Get Achievements
 
 `GET /api/analytics/achievements` returns
-`{success: true, data: achievements}` from the aggregator. The achievement
+`{success: true, data: achievements}` from the same refreshed aggregate snapshot. The achievement
 schema and unlock rules belong to that owner, not a fixed list in this page.
 
 ### Rescan Analytics
@@ -2452,9 +2458,9 @@ DELETE /api/analytics/usage
 ```
 
 Returns `{success: true, message: "Usage stats reset"}` after resetting the
-existing aggregate stats file to `{}`. It does not delete conversations,
+aggregate stats file to a valid empty accumulator. It does not delete conversations,
 monitoring logs, or invocation receipts; later updates/rescans can rebuild
-statistics from retained sources. See the
+statistics from retained sources; the next active usage read also rebuilds it. See the
 [aggregator reset](../../src-server/analytics/usage-aggregator.ts).
 
 ---

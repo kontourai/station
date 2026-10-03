@@ -70,6 +70,11 @@ export interface OrchestrationSessionUsage {
 }
 
 export interface UsageStats {
+  snapshot?: {
+    rescannedAt: string;
+    engineUsage: 'available' | 'unavailable' | 'not_configured';
+    skippedMessages: number;
+  };
   lifetime: {
     totalMessages: number;
     totalConversations: number;

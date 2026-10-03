@@ -65,7 +65,8 @@ const result = vi.hoisted(() => ({
     ],
   },
   isLoading: false,
-  error: null,
+  error: null as Error | null,
+  refetch: vi.fn(),
 }));
 
 vi.mock('@kontourai/station-sdk', () => ({
@@ -123,5 +124,36 @@ describe('UsageRollupPanel (station#4135)', () => {
         'No Station or provider reported usage for this window.',
       ),
     ).toBeTruthy();
+  });
+
+  test('labels each grouping by its group identity rather than a receipt provider', () => {
+    const originalRows = result.data.rows;
+    result.data.rows = [{ ...originalRows[0], key: 'day:2026-08-25' }];
+    try {
+      render(<UsageRollupPanel />);
+      fireEvent.change(screen.getByRole('combobox'), {
+        target: { value: 'day' },
+      });
+      expect(
+        screen.getByRole('rowheader', { name: '2026-08-25' }),
+      ).toBeTruthy();
+      expect(screen.queryByRole('rowheader', { name: 'codex' })).toBeNull();
+    } finally {
+      result.data.rows = originalRows;
+    }
+  });
+
+  test('does not claim cached complete coverage after a failed refetch', () => {
+    result.error = new Error('offline');
+    try {
+      render(<UsageRollupPanel />);
+      expect(
+        screen.getByRole('button', { name: 'Coverage unavailable' }),
+      ).toBeTruthy();
+      fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+      expect(result.refetch).toHaveBeenCalledOnce();
+    } finally {
+      result.error = null;
+    }
   });
 });

@@ -21,6 +21,58 @@ call sites, not proof of a populated collector. The startup owner needs to fix
 this binding before an enabled endpoint alone can establish metric collection:
 [#2755](https://github.com/kontourai/station/issues/2755).
 
+## Profile usage and paired people
+
+The [Profile page](../../src-ui/src/pages/ProfilePage.tsx) puts the current
+identity next to usage on the connected Station. These are different scopes:
+the identity does not make the retained lifetime summary a personal total.
+Lifetime counts combine saved messages with completed external-engine turns.
+Daily graphs and period statistics cover file-memory messages on UTC dates;
+external-engine sessions contribute lifetime totals but no daily distribution.
+The hero graph shows the last 14 UTC days rather than the last 14 populated rows.
+
+[UsageAggregator](../../src-server/analytics/usage-aggregator.ts) rebuilds the
+snapshot on an active read when the previous scan is at least a minute old.
+Concurrent readers join that rebuild. Idle Stations retain the existing
+30-minute startup timer. The Profile page displays the scan timestamp, failed
+refreshes, unavailable engine reads, and skipped message rows. **Rebuild usage**
+forces the existing rescan. Clearing the aggregate is not a history deletion;
+retained transcripts and receipts rebuild it, so the profile does not offer a
+permanent-reset action.
+
+Lifetime summaries preserve historical high-water counters and attribute an
+engine session's model totals to its latest model. They are not a billing
+statement or an exact split of mixed-model sessions. The receipt rollup below
+keeps provider-reported cost, estimates, currencies, pricing snapshots, and
+missing-source coverage separate. Use those receipts for bounded provider/model
+comparisons. Unsupported or unreported figures remain unknown.
+
+| Ingress | Usage the current implementation can observe | Limits |
+| --- | --- | --- |
+| Claude engine and imported transcripts | Input/output/cache tokens and provider-reported USD cost | Token events are per turn; reported cost is session cumulative |
+| Codex engine and imported rollouts | Session-cumulative input/output and cache-read tokens | No provider-reported cost; cumulative totals are not per-answer deltas |
+| Bedrock and Ollama adapters | Tokens reported for each model call | Absent usage stays absent; cost estimates need an eligible pricing snapshot |
+| Muse serve | Model-call input/output/cache figures, emitted as per-turn usage | Uses the wire `usage` object rather than `cumulative`; child-work usage stays a separate projection |
+| Muse stdio | Completed work and other reported lifecycle facts | Its envelope supplies no token-usage event |
+| ACP, including ACP-backed engines | Reported context occupancy/window | Occupancy is not consumed tokens; arbitrary-currency ACP costs are not projected |
+| Station agent / direct model-provider chat | Saved messages and their recorded usage/estimates | The orchestration scan excludes conversations already counted in file memory |
+
+These are implementation and captured-wire/fixture boundaries, not a new live
+billing reconciliation across every account and model. The scope declarations
+live in [the shared usage fold](../../packages/shared/src/usage-fold.ts); the
+[receipt fold](../../packages/shared/src/usage-rollup.ts) owns rollup grouping.
+The Muse serve fixture replay also exercises per-answer usage visibility.
+
+**People paired with this Station** reads the existing paired-device registry
+through a captured API/authority scope. Only active interactive devices with an
+approved person binding contribute. Account issuer plus subject (or approved
+tailnet subject) separates people; devices for the same person are grouped.
+Names come from those bindings, not a guessed user-directory alias. The detail
+shows their approved devices and last authenticated request, when recorded.
+An open primary event stream is shown as connected; absence of a reported stream
+is not a claim that every client is offline. A failed registry read hides cached
+profiles. This surface grants no access and shares no personal usage statistics.
+
 ## Quick Start
 
 ```bash

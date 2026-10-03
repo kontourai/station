@@ -20,7 +20,7 @@ import {
   ThumbUpGlyph,
   TimeGlyph,
 } from '../icons/Glyph';
-import { Empty, SkeletonBlock } from '../state';
+import { Empty, ErrorState, SkeletonBlock } from '../state';
 import './InsightsDashboard.css';
 import {
   formatRelativeFuture,
@@ -173,10 +173,21 @@ function UsageTab() {
   // whose setter was only ever called with undefined: an inert control, and
   // a PR description claiming a filter that could not be set (archive#3075
   // review). Wire it when the events carry the field (archive#3130).
-  const { data } = useInsightsQuery(days, { agent }) as {
-    data: Insights | undefined;
-  };
+  const query = useInsightsQuery(days, { agent });
+  const data: Insights | undefined = query.data;
+  const { error, refetch } = query;
 
+  if (error)
+    return (
+      <ErrorState
+        title="Could not refresh insights"
+        action={
+          <button type="button" onClick={() => void refetch()}>
+            Retry
+          </button>
+        }
+      />
+    );
   if (!data) return <SkeletonBlock count={3} label="Loading insights" />;
 
   const { agents, maxHourly, maxToolCalls, topTools } =
