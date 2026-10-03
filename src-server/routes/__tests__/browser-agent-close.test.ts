@@ -10,12 +10,10 @@
  * the caller's own conversation, and no person (or other agent session) is
  * controlling it. Each refusal below isolates exactly one of those checks.
  */
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import type { BrowserSessionView } from '@kontourai/station-contracts/workspace-browser-pane';
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import {
   createStationControlCallerRecordResolver,
   resolveStationControlCallerFromToken,
@@ -104,17 +102,12 @@ interface StatusEntry {
   createdAt: string;
 }
 
-const homes: string[] = [];
+const makeTempDir = trackTempDirs();
 beforeEach(() => __resetStationControlMcpTokensForTests());
-afterEach(() => {
-  __resetStationControlMcpTokensForTests();
-  for (const home of homes.splice(0))
-    rmSync(home, { recursive: true, force: true });
-});
+afterEach(() => __resetStationControlMcpTokensForTests());
 
 function harness(options: { now?: () => Date; cdpSend?: CdpSend } = {}) {
-  const stationHome = mkdtempSync(join(tmpdir(), 'station-agent-close-'));
-  homes.push(stationHome);
+  const stationHome = makeTempDir('station-agent-close-');
   let ids = 0;
   const sessions = new BrowserSessionRegistry({
     stationHome,
