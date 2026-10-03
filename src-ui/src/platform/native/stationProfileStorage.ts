@@ -342,13 +342,25 @@ function profileConnectionId(profile: StationProfile): string {
  */
 export function savedConnectionFromStationProfile(
   profile: StationProfile,
+  profileRevision?: number,
 ): SavedConnection {
-  if (profile.relayRoute)
-    throw new Error(
-      'Relay route profiles require the broker transport and cannot use direct HTTP.',
-    );
-  const endpoint = createAccessEndpoint(profile.endpoint);
-  const accessMethod = createDirectHttpAccessMethod(endpoint);
+  if (
+    profile.relayRoute &&
+    (!Number.isSafeInteger(profileRevision) || (profileRevision ?? 0) < 1)
+  )
+    throw new Error('A native relay profile requires its host store revision.');
+  const endpoint = {
+    ...createAccessEndpoint(profile.endpoint),
+    ...(profile.relayRoute ? { kind: 'broker-route' as const } : {}),
+  };
+  const accessMethod = profile.relayRoute
+    ? {
+        accessVersion: 1 as const,
+        id: `access:native-broker:${endpoint.id}`,
+        kind: 'native-broker' as const,
+        endpointId: endpoint.id,
+      }
+    : createDirectHttpAccessMethod(endpoint);
   const credentialRefId =
     profile.credentialRef?.id ?? profileConnectionId(profile);
   return {
@@ -367,12 +379,24 @@ export function savedConnectionFromStationProfile(
       kind: profile.environmentId ? 'environment' : 'connection',
       id: credentialRefId,
     },
+    ...(profile.relayRoute
+      ? {
+          nativeBrokerRoute: {
+            routeVersion: 1 as const,
+            profileName: profile.name,
+            profileRevision: profileRevision!,
+            ...profile.relayRoute,
+          },
+        }
+      : {}),
     capabilities: null,
     credentialState: profile.credentialRef
       ? profile.configurationState === 'requires-auth'
         ? 'required'
         : 'saved'
-      : 'not-required',
+      : profile.relayRoute
+        ? 'required'
+        : 'not-required',
     ...(profile.credentialRef ? { hostOwnedCredential: true as const } : {}),
     ...(profile.setupSource === 'local' && profile.localService?.instanceId
       ? { ownerId: profile.localService.instanceId }
@@ -465,10 +489,10 @@ export class NativeStationProfileStorage
     if (!preservesBinding) this.activeRequestBinding = undefined;
     this.profileStore = store;
     this.hydrateClientSelectionProvenance();
-    const directProfiles = store.profiles.filter(
-      (profile) => profile.relayRoute === undefined,
+    const selectableProfiles = store.profiles;
+    const connections = selectableProfiles.map((profile) =>
+      savedConnectionFromStationProfile(profile, store.revision),
     );
-    const connections = directProfiles.map(savedConnectionFromStationProfile);
     this.values.set(CONNECTIONS_KEY, JSON.stringify(connections));
     this.relayRouteProfileSnapshot = Object.freeze(
       store.profiles
@@ -482,12 +506,12 @@ export class NativeStationProfileStorage
     );
     const selectedConnectionId = this.values.get(ACTIVE_KEY);
     const selectedStillExists = selectedConnectionId
-      ? directProfiles.some(
+      ? selectableProfiles.some(
           (profile) => profileConnectionId(profile) === selectedConnectionId,
         )
       : false;
     const explicitStillExists = this.explicitProcessSelection
-      ? directProfiles.some(
+      ? selectableProfiles.some(
           (profile) =>
             profileConnectionId(profile) === this.explicitProcessSelection,
         )
@@ -499,7 +523,6 @@ export class NativeStationProfileStorage
     const defaultProfile = store.defaultProfile
       ? store.profiles.find(
           (profile) =>
-            profile.relayRoute === undefined &&
             profile.name.toLowerCase() === store.defaultProfile!.toLowerCase(),
         )
       : undefined;
@@ -543,7 +566,6 @@ export class NativeStationProfileStorage
       const profile = persisted
         ? this.profileStore.profiles.find(
             (candidate) =>
-              candidate.relayRoute === undefined &&
               profileConnectionId(candidate) === persisted.connectionId,
           )
         : undefined;
@@ -715,7 +737,7 @@ export class NativeStationProfileStorage
     const profile = this.profileStore.profiles.find(
       (candidate) => candidate.name.toLowerCase() === profileName.toLowerCase(),
     );
-    if (!profile || profile.relayRoute) return undefined;
+    if (!profile) return undefined;
     if (this.explicitProcessSelection) {
       const explicit = this.profileStore.profiles.find(
         (candidate) =>
@@ -1093,7 +1115,7 @@ export class NativeStationProfileStorage
     const profile = this.profileStore.profiles.find(
       (candidate) => profileConnectionId(candidate) === connectionId,
     );
-    if (!profile || profile.relayRoute) return false;
+    if (!profile) return false;
 
     const previousActive = this.values.get(ACTIVE_KEY);
     // ConnectionStore republishes ACTIVE_KEY during ordinary metadata writes,
@@ -1148,7 +1170,6 @@ export class NativeStationProfileStorage
     if (!defaultProfile) return false;
     const profile = this.profileStore.profiles.find(
       (candidate) =>
-        candidate.relayRoute === undefined &&
         candidate.name.toLowerCase() === defaultProfile.toLowerCase(),
     );
     return profile

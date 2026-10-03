@@ -7,6 +7,7 @@ import {
   APPLICATION_SESSION_NATIVE_HEADER,
   APPLICATION_SESSION_NATIVE_PROOF_HEADER,
   APPLICATION_SESSION_NATIVE_PROOF_TYPE,
+  APPLICATION_SESSION_NATIVE_REVOKE_PATH,
   APPLICATION_SESSION_NATIVE_VERSION,
   APPLICATION_SESSION_PROOF_HEADER,
   APPLICATION_SESSION_PROOF_TYPE,
@@ -1252,6 +1253,72 @@ export class ApplicationSessionService {
       live.authorityKey,
       live.relayEnrollmentId ? hash : undefined,
     );
+  }
+  /** Retires only this native continuation and its actual provider session; Device custody is independent. */
+  async revokeNative(request: Request): Promise<{ revoked: true }> {
+    this.requireNativeControlPath(
+      request,
+      APPLICATION_SESSION_NATIVE_REVOKE_PATH,
+    );
+    const account = this.account(await this.authenticateNative(request));
+    const hash = digest(
+      opaque.parse(request.headers.get(APPLICATION_SESSION_NATIVE_HEADER)),
+    );
+    const row = this.db
+      .prepare(
+        'SELECT record FROM application_session_native_sessions WHERE token_hash=? AND expires_at>?',
+      )
+      .get(hash, this.now());
+    const persistedRecord = row?.record;
+    if (typeof persistedRecord !== 'string')
+      throw new ApplicationSessionRefusal('invalid');
+    const record = this.parse(persistedRecord, nativeContinuationRecord);
+    if (
+      record.providerSessionId !== account.session.sessionId ||
+      record.principalId !== account.principal.id ||
+      record.issuer !== account.issuer ||
+      record.subject !== account.session.subject
+    )
+      throw new ApplicationSessionRefusal('invalid');
+    const binding = {
+      issuer: record.issuer,
+      subject: record.subject,
+      principalId: record.principalId,
+    };
+    this.nativeDevice(request, record.target, record.deviceId, binding);
+    this.transaction(() => {
+      this.nativeDevice(request, record.target, record.deviceId, binding);
+      if (
+        this.db
+          .prepare(
+            'DELETE FROM application_session_native_sessions WHERE token_hash=? AND record=?',
+          )
+          .run(hash, persistedRecord).changes !== 1
+      )
+        throw new ApplicationSessionRefusal('invalid');
+    });
+    // Local continuation removal precedes the provider await. An uncertain
+    // provider outcome never restores a potentially revoked continuation.
+    await this.authentication.revokeSessionReference(
+      record.providerSessionId,
+      request.signal,
+    );
+    const provider = await this.authentication.verifySessionReference(
+      record.providerSessionId,
+      request.signal,
+    );
+    this.nativeDevice(request, record.target, record.deviceId, binding);
+    if (provider.kind !== 'invalid' && provider.kind !== 'absent')
+      throw new ApplicationSessionRefusal('unavailable');
+    if (
+      this.db
+        .prepare(
+          'SELECT 1 FROM application_session_native_sessions WHERE token_hash=?',
+        )
+        .get(hash)
+    )
+      throw new ApplicationSessionRefusal('unavailable');
+    return { revoked: true };
   }
   async revoke(request: Request): Promise<void> {
     const account = this.account(await this.authenticate(request));

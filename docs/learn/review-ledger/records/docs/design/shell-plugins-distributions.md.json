@@ -16,7 +16,7 @@
 
     {"path":"packages/contracts/src/layout.ts","digest":"d239a39ed06c9dcb103e89da3a86f4d358aa3261a7623b1c5a86eff69e897a43","revision":"25e49629d9894a7e601ae2923a53cfe932560dd8"},
 
-    {"path":"packages/contracts/src/project-membership.ts","digest":"835dd45f7c8adb2ebe74849f39013c13a552a10065156c15bf2c2baf5fb96d00","revision":"25e49629d9894a7e601ae2923a53cfe932560dd8"},
+    {"path":"packages/contracts/src/project-membership.ts","digest":"8b3317731a3d6766b08756ae78895e214e2c34ee48c2256da4961a8f2aa0d332","revision":"623ff3525e54ab5b505d1c4f4790da5a0b3aec24"},
 
     {"path":"packages/contracts/src/workspace-home-role.ts","digest":"afdd6ec33526422a7a455cfc575cdd5d662277a8a5c356db6f5b2b564de038f4","revision":"25e49629d9894a7e601ae2923a53cfe932560dd8"},
 

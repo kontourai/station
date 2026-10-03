@@ -7,14 +7,14 @@
 
   "summary": "Reviewed clean Agent identity, persisted defaults, schema refusal, internal adapter selector and explicit removal inventory. Corrected the original issue to archive#1417.",
 
-  "limits": "The scanner proves its named symbol inventory; it is not a standalone end-to-end identity proof.",
+  "limits": "The scanner proves its named symbol inventory; it is not a standalone end-to-end identity proof. Merge reconciliation preserves both prior review anchors below as historical evidence, not a new review of combined source bytes. Active bindings retain existing reviewed anchors; any mismatch with merged bytes remains stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"docs/architecture/module-map.md\",\"ours\":{\"digest\":\"52cd3cfb4c4e811e087ee89b0d844695e85a21a0e085409850936bd613653957\",\"revision\":\"801b6662aff67a25eff4927c1c50e92f4c9b4e53\"},\"main\":{\"digest\":\"8f082631ce14f9b1114110e69a7f336404340c0c8f58a02ebf2646973277a22b\",\"revision\":\"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac\"}},{\"path\":\"docs/guides/agents.md\",\"ours\":{\"digest\":\"b28d533268d33758318539723a00a9259b904c777690a4c947c71e3be7a7f8c7\",\"revision\":\"5148a05e2089e41546cfed52b0046ed64f938af5\"},\"main\":{\"digest\":\"1ebaf5821d7fe94bf50fae7d2ddbd516ff3993eee61939d2a959f91b65b82fef\",\"revision\":\"0f9c1b3cdb7012c7dd9f96a08c67430a14ad3f86\"}}].",
 
   "document": {"digest":"ba112d8c8c0c4747ab25296c4482cdaa407f5ac7973e3f00a373af8ca072577c","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
   "sources": [
-    {"path":"docs/architecture/module-map.md","digest":"19cd1dda1107382cf0548867f8343cd0933337d64b1f8a6efe2cc273f1af4069","revision":"4fe1570f32d9f2b90ddded8258c0793bbe3c2830"},
+    {"path":"docs/architecture/module-map.md","digest":"56841d9b88e49589dc5fa00f24aaf40cc2d981a5af512e68a27b0ae6eb3f7bbd","revision":"94da87e3016992b8cdbdde3be15b978b489a1c63"},
 
-    {"path":"docs/guides/agents.md","digest":"7241f5dde54374e78e063b8b7db9957199f328235e02c511e1cbbc724ca0cea9","revision":"54fc4a556486e17d1f4f0546c02be91fedf3b6b7"},
+    {"path":"docs/guides/agents.md","digest":"a8255ef04da3fb6747f93d7fb3cce6447582fb6bb001b693f30c63f84f57d1ac","revision":"4f3acdc5478e27a733c06e91a202a325817c2f53"},
 
     {"path":"packages/contracts/src/agent-identity.ts","digest":"d352f22b4698f100c1cc2a7466fd62556a6a69c03bffaf66e54c1bbdfc1410b7","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
