@@ -458,14 +458,14 @@ it('a bound delivery keeps invitation secret in host custody and requires indepe
     </NativeRelayLinkIntake>,
   );
   await screen.findByRole('button', {
-    name: 'Share device details',
+    name: 'Share setup info',
   });
   expect(
     host.invoke.mock.calls.some(
       ([command]) => command === 'station_native_relay_link_begin',
     ),
   ).toBe(false);
-  fireEvent.click(screen.getByRole('button', { name: 'Share device details' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Share setup info' }));
   const discover = await screen.findByRole('button', {
     name: 'Check this Station',
   });
@@ -681,7 +681,7 @@ it.each(['confirmed', 'lost-reply', 'late-reply'] as const)(
     await emit(bound);
     const modal = within(await screen.findByRole('dialog'));
     fireEvent.click(
-      await modal.findByRole('button', { name: 'Share device details' }),
+      await modal.findByRole('button', { name: 'Share setup info' }),
     );
     fireEvent.click(
       await modal.findByRole('button', { name: 'Check this Station' }),
@@ -1218,7 +1218,7 @@ it('keeps resumed Device setup alive after the already-redeemed invitation deadl
     </NativeRelayLinkIntake>,
   );
   fireEvent.click(
-    await screen.findByRole('button', { name: 'Share device details' }),
+    await screen.findByRole('button', { name: 'Share setup info' }),
   );
   fireEvent.click(
     await screen.findByRole('button', { name: 'Check this Station' }),
@@ -1277,7 +1277,7 @@ it('public setup for a confirmed Station only prepares and copies public device 
     </NativeRelayLinkIntake>,
   );
   const prepare = await screen.findByRole('button', {
-    name: 'Share device details',
+    name: 'Share setup info',
   });
   expect(
     screen.queryByRole('heading', { name: 'Confirm this Station' }),
@@ -1297,7 +1297,7 @@ it('public setup for a confirmed Station only prepares and copies public device 
   ).toBe(false);
   fireEvent.click(prepare);
   fireEvent.click(
-    await screen.findByRole('button', { name: 'Copy device details' }),
+    await screen.findByRole('button', { name: 'Copy setup info' }),
   );
   await waitFor(() => expect(writeText).toHaveBeenCalledOnce());
   const copied = JSON.parse(String(writeText.mock.calls[0]?.[0]));
@@ -1320,9 +1320,7 @@ it('public setup for a confirmed Station only prepares and copies public device 
   ).toBe(false);
   expect(host.store?.profiles[0].configurationState).toBe('unconfigured');
   expect(host.active).toBe('station-profile:existing');
-  expect(
-    screen.getByText('Device details (public)').closest('details')?.open,
-  ).toBe(false);
+  expect(screen.getByText('Setup info').closest('details')?.open).toBe(false);
 });
 
 it('a late redemption for the replaced handle cannot stop the newer invitation timer', async () => {

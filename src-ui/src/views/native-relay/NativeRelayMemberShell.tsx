@@ -27,6 +27,7 @@ import { ToastProvider } from '../../contexts/ToastContext';
 import { LocaleProvider } from '../../i18n/LocaleContext';
 import { RelayRouteProfiles } from '../connections-hub/RelayRouteProfiles';
 import { MemberProjectPage } from '../project-page/MemberProjectPage';
+import '../project-page-frame.css';
 
 type Scope = NonNullable<ReturnType<typeof useHostRequestAuthorityScope>>;
 const options = {
