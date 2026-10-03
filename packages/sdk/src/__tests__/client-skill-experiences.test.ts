@@ -116,7 +116,14 @@ describe('visual skill HTTP boundary', () => {
   ])('refuses %s before a POST', async (_name, inventory, expected) => {
     const fetchMock = vi
       .fn<typeof fetch>()
-      .mockResolvedValue(response(inventory));
+      .mockResolvedValueOnce(response(inventory))
+      .mockResolvedValue(
+        response({
+          conversationId: 'unexpected-conversation',
+          sessionId: 'unexpected-session',
+          providerTurnId: 'unexpected-turn',
+        }),
+      );
     vi.stubGlobal('fetch', fetchMock);
     await expect(
       sendExecutionMessage('http://station.test', input),
