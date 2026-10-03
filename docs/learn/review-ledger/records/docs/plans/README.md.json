@@ -9,7 +9,7 @@
 
   "limits": "Index coverage is navigation evidence, not semantic review of linked documents.",
 
-  "document": {"digest":"fc5856145a53f333c4f9cf9f6c41f95692e07f2f74288311a1436b1eb814b519","revision":"3059a6573285c28a92a51e39842ccb7ff8474651"},
+  "document": {"digest":"359f6bfb0cf05877220a2ab53b697a9fbb25fe17ae0e6b9c074215d32b24cc54","revision":"ce0dfef8e53a7004193551ccdaf964cf2762bafa"},
 
   "sources": [
     {"path":"scripts/docs-index.mjs","digest":"ee02cea03e4fddb96a3dd837b7f1362995cecc85a73ab7b920900a5ee4c4332a","revision":"d1519a65a54ea7738269a1f1c02c4985a45f074c"}

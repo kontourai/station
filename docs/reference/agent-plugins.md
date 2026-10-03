@@ -64,6 +64,12 @@ absent from the extension manifest schema.
 
 ## Namespace schema
 
+The optional `experiences` contribution references bounded JSON author
+definitions in `io.kontourai.station/experiences/`. See the
+[visual skill experience contract](skill-experiences.md) for source binding,
+author validation, and compatibility limits. This authoring foundation does
+not activate or render visual workflows in the installed runtime.
+
 The versioned schema for the Station value is
 `schemas/agent-plugins/io.kontourai.station-1.0.schema.json`. Its closed root
 rejects `layout` and `layouts`; provider entries explicitly reject `layout`.

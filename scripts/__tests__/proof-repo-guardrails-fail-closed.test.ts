@@ -43,6 +43,7 @@ function runProofCopy(
   mutateChatRequestPreparation?: (source: string) => string,
   mutateConfigContext?: (source: string) => string,
   mutateAgentConnectionView?: (source: string) => string,
+  mutateSchedulerJobDialogStore?: (source: string) => string,
 ) {
   const root = join(repoRoot, `.proof-guardrails-negative-${process.pid}`);
   rmSync(root, { force: true, recursive: true });
@@ -144,6 +145,28 @@ function runProofCopy(
     source = sourcePathRewrite;
   }
 
+  if (mutateSchedulerJobDialogStore) {
+    writeFileSync(
+      join(root, 'scheduler-job-dialog-store.ts'),
+      mutateSchedulerJobDialogStore(
+        readFileSync(
+          join(repoRoot, 'src-ui/src/contexts/scheduler-job-dialog-store.ts'),
+          'utf8',
+        ),
+      ),
+    );
+    const sourcePathRewrite = source.replace(
+      "'../src-ui/src/contexts/scheduler-job-dialog-store.ts'",
+      "'./scheduler-job-dialog-store.ts'",
+    );
+    if (sourcePathRewrite === source) {
+      throw new Error(
+        'scheduler job dialog store path rewrite did not match; update the anchor in this test',
+      );
+    }
+    source = sourcePathRewrite;
+  }
+
   const copy = join(root, 'proof-repo-guardrails.mjs');
   // The copy is ESM resolved from inside the repo, so node_modules is found by
   // the usual upward lookup; nothing else needs to be staged.
@@ -196,6 +219,28 @@ describe('proof:repo-guardrails fails closed on a missing source', () => {
     expect(output).toContain('Repo guardrail proof passed');
     expect(status).toBe(0);
     expect(output).not.toMatch(/(?:node:fs|at readFileSync|uncaught)/i);
+  });
+
+  test('the scheduler dialog DTO owner must retain its contract import', () => {
+    const { status, output } = runProofCopy(
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      (source) => {
+        const requiredImport =
+          "import type { SchedulerJob } from '@kontourai/station-contracts/scheduler';";
+        expect(source.split(requiredImport)).toHaveLength(2);
+        return source.replace(requiredImport, '');
+      },
+    );
+
+    expect(output).toContain(
+      './scheduler-job-dialog-store.ts must import contract types from @kontourai/station-contracts/scheduler.',
+    );
+    expect(output).toContain('Repo guardrail proof failed');
+    expect(output).not.toContain('Missing required guardrail source');
+    expect(status).toBe(1);
   });
 
   test('distinguishes a raw fetch call from the SDK query refetch callback', () => {

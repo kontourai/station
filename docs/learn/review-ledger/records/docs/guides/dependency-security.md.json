@@ -12,33 +12,33 @@
   "document": {"digest":"a20eaba5f0f2d0701e85a50da690ff0f39167db2a9df95181b6c9c3e2eec77c7","revision":"22ffd796d86ec7f841cb3c75764ed2a3fb7783b0"},
 
   "sources": [
-    {"path":".github/workflows/ci.yml","digest":"092798d877aa8138f197a0edbd7547e876dc2e310b54b4e00598f8f48b3535b8","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":".github/workflows/ci.yml","digest":"9b586bd70bb7c94986ce19ee41151ff768bad2a308a196a15047375c92f9646a","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
 
     {"path":".github/workflows/dependency-advisory.yml","digest":"e24f516a6b3344160eccacbe494bb0f975a31f225c63301924de5fa91440b851","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
     {"path":".github/workflows/main-health.yml","digest":"397e6b49220a66359241c76a4412c1d98de25f5087b0177673f26a7ae146679d","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":".github/workflows/security-analysis.yml","digest":"14107fac7f9b0cef3631098200985ab9f73e0780ad8b95d74a6e01356c25deaa","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
+    {"path":".github/workflows/security-analysis.yml","digest":"9c846e48c9b46b176db769350facf7d698d9012311e5706637648a3a33782422","revision":"983f3de3740aa9ee6878a0d4feec0b650aa67f3c"},
 
     {"path":".npmrc","digest":"494a0451b5f0162e3935bd1c352fdafc8454ee42485693d23e9890ff24528403","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
     {"path":"config/dependency-lifecycle-allowlist.json","digest":"4b8f259cd745009531fe4740668a878289b06285414efa2e5a5319c5faf54f4a","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
 
-    {"path":"package.json","digest":"7263c035fa5946e593a759d3a0b55d8f504e955eb14fab5a401b71c7d3b2ac50","revision":"df9188971e1a93d2c5525a7f5f38e3da93c9e4de"},
+    {"path":"package.json","digest":"8161e13f46212729130685df12cc34747e385002183410cd57e47d5cdd125306","revision":"2fc8f69d15e5c8fa3188bb2ee4731f1b63c66218"},
 
     {"path":"patches/voltagent-core-2.10.0.patch","digest":"8eda67a9681b85cf7adbeb5669184db3412ccc9f1954e068ac32ee5dd409170a","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"pnpm-lock.yaml","digest":"29dbdce300fcd3d881ae511317af478da6e9c098a8e8cf51c6b2269a937525df","revision":"df9188971e1a93d2c5525a7f5f38e3da93c9e4de"},
+    {"path":"pnpm-lock.yaml","digest":"5c3c9968c59ac5b4e7e5ec861c2873bfce11b7c60e7b28e8706db6b29d028ddb","revision":"1e6450e0caa47975d33f505a1348bdc01ae1382e"},
 
     {"path":"pnpm-workspace.yaml","digest":"d8755daab4e9f4a491239888610ae28b412aa80de9b15625b785b26577131953","revision":"3ff5522abf460ad69d2e2ed4c53740d82e9ec289"},
 
     {"path":"scripts/__tests__/codeql-sarif-policy.test.ts","digest":"a7e2db81ccf7daabe0d4e1b3d91cc46401d20f5aafa351c72ca56068bd4fd608","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"scripts/__tests__/dependency-advisory-policy.test.ts","digest":"c1addc6e597e61d26ea55291e670d7dd0f2c27ef04d635250fb74fc5529d8229","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"scripts/__tests__/dependency-advisory-policy.test.ts","digest":"5eb5092f5b43684e2951604008ad397505611acc4a20ead74adcb4db18f8777a","revision":"02ea170a2bb483f3313a4019b1231313fb14aeed"},
 
     {"path":"scripts/__tests__/pnpm-advisory-command.test.ts","digest":"235c4174211032d0199025a05c3190e12e688d0d093c04491da603caf2654c0d","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"scripts/actionlint-gate.mjs","digest":"393a2b91e26d31d94ffb2d28e96bc0c287915458bcd543607f0c75a0cc5fba20","revision":"d1519a65a54ea7738269a1f1c02c4985a45f074c"},
+    {"path":"scripts/actionlint-gate.mjs","digest":"9b0c7c38f1f3b82c0b49acfb35b35870a72b85c1daa95c820ab23636bfed43c0","revision":"8de1b741d83aec880c76c3cece6bb3e9cdee740d"},
 
     {"path":"scripts/classify-ci-change.mjs","digest":"bfe2eb23055b9149b644b1c81d3db2cc09b35a9ecd56d702653b38e77c2910ba","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
@@ -48,7 +48,7 @@
 
     {"path":"scripts/codeql-sarif-policy.mjs","digest":"19227477b52acfe22fe18feb777bf30c2163a40e51fda2ad0a834a1fdae86f32","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"scripts/dependency-advisory-exceptions.json","digest":"493e0b7dad9b3a6c9820e288aea2829d4289ad8be113ced5e7133d00796c88db","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"scripts/dependency-advisory-exceptions.json","digest":"4c39cc18a3522309053ca4cd5dd5791d2bd678e8cc4e7ed1a8947165751d5cc6","revision":"071c95a78bfa0ea21e77d0acc3b6554d403e0451"},
 
     {"path":"scripts/dependency-advisory-policy.mjs","digest":"9dfdd2899708f23256aa01e6ac899438c80b0fecba5497c8fc25270d6a8f6ae8","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 

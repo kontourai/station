@@ -4,10 +4,13 @@
   position: relative;
   display: inline-flex;
   align-items: center;
-  flex-shrink: 0;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .sidebar__presence-trigger {
+  min-width: 0;
+  max-width: 100%;
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -28,6 +31,9 @@
 }
 
 .sidebar__presence-stack {
+  flex-shrink: 1;
+  min-width: 0;
+  overflow: hidden;
   display: inline-flex;
   align-items: center;
 }
@@ -90,6 +96,17 @@
 
 .sidebar__presence-count {
   font-variant-numeric: tabular-nums;
+}
+
+.sidebar__presence-work-count {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--k-action);
+}
+
+.sidebar__presence-trigger[data-active] .sidebar__presence-glyph {
+  color: var(--k-action);
+  opacity: 1;
 }
 
 .sidebar__presence-tray {
@@ -188,7 +205,11 @@
    which a reviewer defeated in one line by routing the same `display: none`
    through `.sidebar__footer-presence` instead. */
 .sidebar--collapsed .sidebar__presence-count,
+.sidebar--collapsed .sidebar__presence-work-count,
 .sidebar--collapsed .sidebar__presence-stack {
+  flex-shrink: 1;
+  min-width: 0;
+  overflow: hidden;
   display: none;
 }
 
@@ -202,3 +223,13 @@
    at-rule for one surface: a second copy here would be a second page-local
    responsive rule for the same footer, which is what the mobile-CSS ratchet
    exists to stop. */
+
+.sidebar__presence-glyph,
+.sidebar__presence-count,
+.sidebar__presence-work-count {
+  flex-shrink: 0;
+}
+.sidebar--collapsed .sidebar__footer-presence {
+  flex: 0 0 auto;
+  max-width: 100%;
+}

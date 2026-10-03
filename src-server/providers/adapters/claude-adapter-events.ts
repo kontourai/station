@@ -1506,9 +1506,10 @@ export function withdrawnSubagentPermissionResult(): PermissionResult {
  * (`suppress_always_allow_rule`, `default_to_no`,
  * `requires_user_interaction`). Agent SDK 0.3.278, the one the lockfile
  * resolves, forwards and types `suppressAlwaysAllowRule` and `defaultToNo`
- * but still drops `requires_user_interaction`; it is read here under the
- * name the other two follow, so an SDK that forwards it needs no change.
- * Each is copied only when it is `true`.
+ * but still drops `requires_user_interaction`. The adapter reads that one
+ * from the engine's frame and passes it in under the name the other two
+ * follow, so an SDK that forwards it needs no change. Each is copied only
+ * when it is `true`.
  */
 export function claudeAskFlags(options: object): {
   suppressAlwaysAllowRule?: true;

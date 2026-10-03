@@ -11,6 +11,7 @@ import {
   ChatDockMobileHeader,
   type ChatDockMobileProjectSwitcher,
 } from '../components/chat-dock/ChatDockMobileHeader';
+import { NavigationProvider } from '../contexts/NavigationContext';
 import { renderWithIsolatedConnections } from './renderWithIsolatedConnections';
 
 // The sheet's project picker and connection control mount inside this bar's
@@ -22,7 +23,8 @@ vi.mock('../hooks/useIsMobile', async (importOriginal) => {
   return { ...actual, useIsMobile: () => mobileFlag.isMobile };
 });
 const pathnameFlag = vi.hoisted(() => ({ pathname: '/' }));
-vi.mock('../contexts/NavigationContext', () => ({
+vi.mock('../contexts/NavigationContext', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../contexts/NavigationContext')>()),
   useNavigation: () => ({
     get pathname() {
       return pathnameFlag.pathname;
@@ -85,6 +87,8 @@ function renderHeader(
     onOpenBackgroundTasks?: ReturnType<typeof vi.fn<() => void>>;
     backgroundTasksRunningCount?: number;
     copyActions?: DockMoreAction[];
+    activeCount?: number;
+    unreadCount?: number;
   } = {},
 ) {
   const onClear = overrides.onClear ?? vi.fn<() => void>();
@@ -124,8 +128,8 @@ function renderHeader(
           : { name: 'Codex', slug: 'codex' }
       }
       branchLabel={overrides.branchLabel ?? null}
-      activeCount={0}
-      unreadCount={0}
+      activeCount={overrides.activeCount ?? 0}
+      unreadCount={overrides.unreadCount ?? 0}
       taskSwitcherTriggerRef={createRef<HTMLButtonElement>()}
       onOpenTaskSwitcher={overrides.onOpenTaskSwitcher ?? vi.fn()}
       onToggleSidebar={vi.fn()}
@@ -151,6 +155,7 @@ function renderHeader(
         copyActions: overrides.copyActions,
       }}
     />,
+    { wrapper: NavigationProvider },
   );
   return onClear;
 }
@@ -176,7 +181,7 @@ describe('mobile conversation focus', () => {
     renderHeader({
       onOpenTaskSwitcher,
     });
-    const identity = screen.getByRole('button', { name: /^Switch task/ });
+    const identity = screen.getByRole('button', { name: /^Chats and tasks/ });
     expect(identity.textContent).toContain('New chat');
     expect(identity.textContent).toContain('Codex');
     // The visible title ellipsizes on narrow widths; the full text rides
@@ -196,8 +201,62 @@ describe('mobile conversation focus', () => {
     expect(
       screen.getByRole('button', { name: /^Switch project/ }),
     ).toBeTruthy();
-    expect(screen.getByRole('button', { name: /^Switch task/ })).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: /^Chats and tasks/ }),
+    ).toBeTruthy();
   });
+  test('the activity dot on chat actions says what it means', () => {
+    renderHeader({ activeCount: 2, unreadCount: 1 });
+    const trigger = screen.getByRole('button', { name: 'Chat actions' });
+    // Name unchanged; the dot's meaning is the description, for a screen
+    // reader, and the tooltip, for a pointer.
+    const describedBy = trigger.getAttribute('aria-describedby');
+    expect(describedBy).toBeTruthy();
+    expect(document.getElementById(describedBy ?? '')?.textContent).toBe(
+      '2 chats working, 1 unread',
+    );
+    expect(trigger.getAttribute('title')).toBe(
+      'Chat actions — 2 chats working, 1 unread',
+    );
+    expect(
+      trigger.querySelector('.chat-dock__mobile-activity-dot'),
+    ).not.toBeNull();
+  });
+
+  test('no activity means no dot and no description', () => {
+    renderHeader();
+    const trigger = screen.getByRole('button', { name: 'Chat actions' });
+    expect(trigger.getAttribute('aria-describedby')).toBeNull();
+    expect(trigger.querySelector('.chat-dock__mobile-activity-dot')).toBeNull();
+  });
+
+  test.each([{ projects: PROJECTS }, { projects: [] }])(
+    'opens the canonical project creation route from the picker',
+    async ({ projects }) => {
+      renderHeader({
+        projectSwitcher: {
+          projectSlug: '',
+          projectName: 'Choose a project',
+          projects,
+          onOpenProject: vi.fn(),
+          onSwitchProject: vi.fn(),
+        },
+      });
+      fireEvent.click(
+        screen.getByRole('button', {
+          name: 'Switch project — Choose a project',
+        }),
+      );
+      fireEvent.click(
+        await screen.findByRole('button', {
+          name: 'New project',
+        }),
+      );
+      expect(window.location.pathname).toBe('/projects/new');
+      expect(screen.queryByRole('dialog', { name: 'Projects' })).toBeNull();
+    },
+  );
+
   test('keeps New chat callable from the actions sheet', async () => {
     const onNewChat = vi.fn();
     renderHeader({ onNewChat });
@@ -242,7 +301,7 @@ describe('mobile conversation focus', () => {
       },
     });
     fireEvent.click(screen.getByRole('button', { name: /^Switch project/ }));
-    await screen.findByRole('dialog', { name: 'Switch project' });
+    await screen.findByRole('dialog', { name: 'Projects' });
     fireEvent.click(screen.getByRole('button', { name: 'Open Kontour AI' }));
     expect(onOpenProject).toHaveBeenCalledWith('kontour-ai');
     expect(onSwitchProject).not.toHaveBeenCalled();
@@ -279,7 +338,7 @@ describe('mobile conversation focus', () => {
       projectSwitcher: null,
     });
     expect(
-      screen.getByRole('button', { name: 'Switch task' }).textContent,
+      screen.getByRole('button', { name: 'Chats and tasks' }).textContent,
     ).toBe('New chat');
     expect(screen.queryByRole('button', { name: 'Collapse chat' })).toBeNull();
   });
@@ -292,7 +351,7 @@ describe('the mobile dock bar control set (#928 C2b)', () => {
     for (const name of [
       'Collapse chat',
       'Switch project — Kontour AI',
-      'Switch task — Codex',
+      'Chats and tasks — Codex',
       'Chat actions',
     ]) {
       expect(screen.getByRole('button', { name })).toBeTruthy();

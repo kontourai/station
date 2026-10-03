@@ -41,3 +41,16 @@
   outline: 2px solid var(--k-focus);
   outline-offset: -2px;
 }
+
+.task-room-brief-choice {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-2);
+  min-height: calc(var(--k-space-6) + var(--k-space-3));
+}
+.task-room-brief-preview pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: calc(var(--k-space-6) * 8);
+  overflow: auto;
+}

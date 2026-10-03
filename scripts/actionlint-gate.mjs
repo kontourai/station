@@ -33,6 +33,7 @@
  */
 
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -398,9 +399,9 @@ export const CHECKOUT_ACTION =
 export const SETUP_NODE_ACTION =
   'actions/setup-node@820762786026740c76f36085b0efc47a31fe5020';
 export const CODEQL_INIT_ACTION =
-  'github/codeql-action/init@1c5b675653bb5c22dbe9b12b556ec555138e09fd';
+  'github/codeql-action/init@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2';
 export const CODEQL_ANALYZE_ACTION =
-  'github/codeql-action/analyze@1c5b675653bb5c22dbe9b12b556ec555138e09fd';
+  'github/codeql-action/analyze@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2';
 export const DEPENDENCY_REVIEW_ACTION =
   'actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294';
 export const WINDOWS_PR_EVIDENCE_UPLOAD_ACTION =
@@ -530,8 +531,8 @@ node "$BASE_POLICY_DIRECTORY/scripts/codeql-sarif-policy.mjs" --input="$CODEQL_N
 const FORK_CHECKOUT_REPOSITORY = `\${{ github.event.pull_request.head.repo.full_name }}`;
 const FORK_CHECKOUT_REF = `\${{ github.event.pull_request.head.sha }}`;
 const FULL_REGRESSION_WORKFLOW = '.github/workflows/full-regression.yml';
-const FULL_REGRESSION_JOB_ID = 'full-regression';
-const FULL_REGRESSION_COMPLETION_STEP = 'Run canonical completion gate';
+const FULL_REGRESSION_JOB_ID = 'static';
+const FULL_REGRESSION_COMPLETION_STEP = 'Run full-regression phases';
 const ACTIONLINT_ARCHIVE = 'actionlint_1.7.12_linux_amd64.tar.gz';
 const ACTIONLINT_SHA256 =
   '8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8';
@@ -655,6 +656,13 @@ const MISSING_CALLEE_MESSAGE =
  */
 const UNTRUSTED_ACTION_CACHE_POLICY = Object.freeze({
   'actions/checkout': noCacheFindings,
+  // Reviewed pinned token action has no cache operations; landing's exact
+  // trusted-base topology separately owns its credential admission.
+  'actions/create-github-app-token': (step) =>
+    step.uses ===
+    'actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1'
+      ? []
+      : [UNREVIEWED_CACHE_ACTION_MESSAGE],
   'actions/upload-artifact': noCacheFindings,
   // Reads this run's own artifacts (#2709: the fast-checks plan and shard
   // receipts); it has no cache input or cache side effect.
@@ -2391,7 +2399,15 @@ function primaryCiRouterFindings(file, document) {
   for (const [jobId, job] of Object.entries(jobs)) {
     if (
       job?.permissions !== undefined &&
-      !hasOnlyReadContentsPermission(job.permissions)
+      !hasOnlyReadContentsPermission(job.permissions) &&
+      !(
+        jobId === 'full-regression' &&
+        job.if === EXACT_TARGET_SKIP_GUARDS['full-regression'] &&
+        job.uses === './.github/workflows/full-regression.yml' &&
+        hasExactKeys(job.permissions, ['contents', 'actions']) &&
+        job.permissions.contents === 'read' &&
+        job.permissions.actions === 'read'
+      )
     )
       findings.push({
         file,
@@ -2605,7 +2621,36 @@ function primaryCiRouterFindings(file, document) {
   return findings;
 }
 
+// This credentialed ingress executes only trusted base policy, never PR code.
+// Any topology/authority change requires review and a new policy digest.
+const LANDING_POLICY_SHA256 =
+  '94dd1a86e579bd4d1ab948ce86064c841d83d9d43cbd018555cf344f1817f3f7';
+function orderedPolicy(value) {
+  if (Array.isArray(value)) return value.map(orderedPolicy);
+  if (value && typeof value === 'object')
+    return Object.fromEntries(
+      Object.keys(value)
+        .sort()
+        .map((key) => [key, orderedPolicy(value[key])]),
+    );
+  return value;
+}
 function baseControlledPrWorkflowFindings(file, document) {
+  if (file === '.github/workflows/landing-automation.yml') {
+    const digest = createHash('sha256')
+      .update(JSON.stringify(orderedPolicy(document)))
+      .digest('hex');
+    return digest === LANDING_POLICY_SHA256
+      ? []
+      : [
+          {
+            file,
+            jobId: 'arm',
+            message:
+              'landing automation must retain its exact reviewed trusted-base credential topology',
+          },
+        ];
+  }
   if (file === '.github/workflows/ci.yml') return [];
   if (
     !workflowHasTrigger(document, PULL_REQUEST_TARGET) &&

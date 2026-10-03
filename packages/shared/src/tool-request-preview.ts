@@ -261,10 +261,10 @@ const MCP_TOOL_NAME = /^mcp__(.+?)__(.+)$/;
  * - `none`: the session answer is a one-call accept, so none is offered. A
  *   plan exit (#2916); a sandbox network-host ask or an ask flagged
  *   `suppressAlwaysAllowRule` (#2932); an escalation or read with no directory to forward
- *   (an ask rule, a read safety check, a read of `/`); or a file edit with
- *   no mode change to forward (a sensitive-file safety check once the
- *   session is already in `acceptEdits`, an ask rule) or asked in plan mode
- *   or under full access (`bypassPermissions`).
+ *   (an ask rule, a safety check, a read of `/`, a Claude ask whose
+ *   structured reason was not read); or a file edit with
+ *   no mode change to forward or asked in plan mode or under full access
+ *   (`bypassPermissions`).
  */
 export type ToolRequestSessionGrant =
   | 'tool'
@@ -294,11 +294,35 @@ export type ToolRequestGrantInput = {
   /**
    * Ask flags the Claude CLI sends on `can_use_tool`. Agent SDK 0.3.278
    * forwards `suppressAlwaysAllowRule` and `defaultToNo` to `canUseTool`
-   * and still drops `requiresUserInteraction`. Read when present.
+   * and still drops `requiresUserInteraction`, which the Claude adapter
+   * reads from the engine's frame. Read when present.
    */
   suppressAlwaysAllowRule?: unknown;
   defaultToNo?: unknown;
   requiresUserInteraction?: unknown;
+  /**
+   * #2932: the structured reason the Claude adapter read from the engine's
+   * `can_use_tool` frame (a `ClaudeAskReason`). Left undefined by an engine
+   * that reports none, which says nothing. Anything else that is not an
+   * object, `null` included, is a Claude ask whose frame was not read: it
+   * escalates (see `claudeAskEscalates`).
+   */
+  claudeAsk?: unknown;
+};
+
+/**
+ * #2932: the reason fields of a Claude Code `can_use_tool` frame that Agent
+ * SDK 0.3.278 does not hand to `canUseTool`. `decisionReasonType` is the
+ * engine's `decision_reason_type` (`rule`, `mode`, `subcommandResults`,
+ * `permissionPromptTool`, `hook`, `asyncAgent`, `sandboxOverride`,
+ * `workingDir`, `safetyCheck`, `classifier`, `other`), absent when the
+ * engine attached no reason. `classifierApprovable` is set when a safety
+ * check is involved, nested ones included.
+ */
+export type ClaudeAskReason = {
+  decisionReasonType?: string;
+  classifierApprovable?: boolean;
+  decisionReasonCode?: string;
 };
 
 /** Tools that leave plan mode (see `toolRequestIsPlanExit`). */
@@ -329,6 +353,24 @@ const ESCALATION_DECISION_REASONS: ReadonlySet<string> = new Set([
   'requiresUserInteraction',
   'Your organization requires approval for this tool',
 ]);
+/**
+ * #2932: the `decisionReason` texts Claude Code 2.1.278 sends with reason
+ * type `other` for an ordinary ask: a single Bash command that no rule
+ * matched. Every other `other` reason is a check of some kind (shell
+ * operators, an unparseable command, a `cd` before a write, a sed write),
+ * so it escalates. If a later CLI rewords this text, the ordinary ask
+ * escalates too and prompts; it never widens.
+ */
+const ORDINARY_OTHER_DECISION_REASONS: ReadonlySet<string> = new Set([
+  'This command requires approval',
+]);
+/**
+ * #2932: Claude Code's shell tools. Their ordinary ask carries a reason
+ * type in 2.1.278 (`other` for Bash, `subcommandResults` for PowerShell),
+ * unlike an MCP tool, WebFetch or a file edit, whose ordinary ask carries
+ * none. Matched exactly, as the engine names them.
+ */
+const CLAUDE_SHELL_TOOLS: ReadonlySet<string> = new Set(['Bash', 'PowerShell']);
 /**
  * Claude Code's read-only tools. The engine allows reads inside the session's
  * working directories itself, so a prompt for one is always an escalation,
@@ -445,6 +487,10 @@ export function sessionGrantPermissionUpdates<T>(
  *   (`dangerouslyDisableSandbox: true` in its input), a `decisionReason` in
  *   `ESCALATION_DECISION_REASONS`, or any of the ask flags
  *   `suppressAlwaysAllowRule`, `defaultToNo` or `requiresUserInteraction`.
+ * - #2932: the engine's structured reason (`claudeAskEscalates`): an ask
+ *   rule on a single command, a safety check (in any part of a chained
+ *   command too), every PowerShell ask, or a Claude ask whose frame was
+ *   not read. The literal rules above stay as a second layer.
  */
 export function toolRequestEscalates(request: ToolRequestGrantInput): boolean {
   return (
@@ -457,9 +503,91 @@ export function toolRequestEscalates(request: ToolRequestGrantInput): boolean {
     request.suppressAlwaysAllowRule === true ||
     request.defaultToNo === true ||
     request.requiresUserInteraction === true ||
+    claudeAskEscalates(request) ||
     suggestionList(request.suggestions).some(
       (update) => directoryPermissionUpdateKind(update) !== undefined,
     )
+  );
+}
+
+/**
+ * #2932: whether the structured reason of a Claude ask marks it as more
+ * than a plain call. Read against Claude Code 2.1.278:
+ *
+ * - no `claudeAsk` at all (`undefined`): another engine; no opinion.
+ * - a `claudeAsk` that is not an object: the frame was not read. It
+ *   escalates, so a changed or dropped frame costs a prompt, never a grant.
+ * - `classifierApprovable` set, either way: a safety check is involved,
+ *   in the ask itself or in any part of a chained command. The engine
+ *   sets it exactly then, and sends `decisionReason` text with a chained
+ *   command only then (captured from 2.1.278).
+ * - a `decisionReasonCode`: the engine sets one only for a block a host
+ *   may act on (`outside_reads_blocked`, `memory_paused`,
+ *   `classifier_transcript_too_long`), never for an ordinary ask.
+ * - a reason type other than `other` and `subcommandResults`: an ask rule
+ *   (`rule`), a safety check, a sandbox override, a path outside the
+ *   working directories, a mode, hook, classifier or headless-agent ask,
+ *   and any type added later.
+ * - type `subcommandResults` on any tool but Bash. PowerShell wraps every
+ *   ask in it, a single command's security warning (Invoke-Expression,
+ *   download-and-execute, elevation) included, and sends nothing that
+ *   tells that from an ordinary command, so every PowerShell ask
+ *   escalates.
+ * - type `subcommandResults` on Bash (a chained command: `a && b`, `a; b`,
+ *   a pipeline) with any `decisionReason` text or a `matchedAskRule`.
+ *   Otherwise it is a PLAIN call (owner decision, #2932): a Bash grant
+ *   answers chained commands. The engine does not send the reasons of a
+ *   chain's parts, so three things a part raised are NOT visible here and
+ *   a grant can answer them, as it could before this reader existed:
+ *   (i) any `permissions.ask` rule that applies to the chain or to one of
+ *   its parts, exact or prefix, whenever the chain arrives as
+ *   `subcommandResults`, which is when more than one part needs approval
+ *   (the engine sets no `matched_ask_rule` for it; that clause is only a
+ *   second layer for a rule the engine does report); (ii) a write or delete outside the
+ *   working directories in an `&&` or `;` chain, or in a pipeline with an
+ *   output redirect, which arrives with no blocked path and no directory
+ *   suggestion; (iii) a part's warning that is not a safety check.
+ *   Closing these needs the engine to send the nested reasons.
+ * - type `other` with any reason text but the ordinary one.
+ * - no reason type on a shell tool (Bash, PowerShell). An ordinary Bash
+ *   ask carries `other`, so an ask without a type is never the ordinary
+ *   one. The engine does send such asks (a Bash path check, which also
+ *   carries a blocked path), and an engine that dropped the field must not
+ *   turn every shell ask into a plain call.
+ *
+ * A plain call is therefore an ask with no reason type on any other tool
+ * (an MCP tool, WebFetch, a file edit inside the working directories),
+ * `other` with the ordinary Bash text, or a chained Bash command with no
+ * safety check. The signals `toolRequestEscalates` reads beside this one
+ * (a blocked path, a directory suggestion, a sandbox override, the ask
+ * flags) apply to a chained command when the engine sends them.
+ */
+export function claudeAskEscalates(
+  request: Pick<
+    ToolRequestGrantInput,
+    'toolName' | 'claudeAsk' | 'decisionReason' | 'matchedAskRule'
+  >,
+): boolean {
+  const { claudeAsk, decisionReason } = request;
+  if (claudeAsk === undefined) return false;
+  if (!isRecord(claudeAsk) || Array.isArray(claudeAsk)) return true;
+  if (claudeAsk.classifierApprovable !== undefined) return true;
+  if (claudeAsk.decisionReasonCode !== undefined) return true;
+  const type = claudeAsk.decisionReasonType;
+  const toolName = request.toolName?.trim() ?? '';
+  if (type === undefined) return CLAUDE_SHELL_TOOLS.has(toolName);
+  if (type === 'subcommandResults')
+    return (
+      toolName !== 'Bash' ||
+      request.matchedAskRule != null ||
+      (typeof decisionReason === 'string'
+        ? decisionReason.trim() !== ''
+        : decisionReason != null)
+    );
+  if (type !== 'other') return true;
+  return !(
+    typeof decisionReason === 'string' &&
+    ORDINARY_OTHER_DECISION_REASONS.has(decisionReason)
   );
 }
 
@@ -539,10 +667,12 @@ export function toolRequestSessionGrant(
  * working directories itself), `ExitPlanMode`, and a file edit asked in plan
  * mode, under full access or with no `acceptEdits` suggestion (a safety
  * check once the session is in `acceptEdits`) all reach a person, as do a
- * sandbox network-host ask and the #2932 escalation signals. A
- * sensitive-file safety check asked in default mode carries the same
- * suggestion as a plain edit, and a Bash safety check or a plain ask rule
- * carries no signal the SDK forwards, so neither can be told apart (#2932).
+ * sandbox network-host ask and the #2932 escalation signals. For a Claude
+ * ask those include the engine's structured reason, so a safety check and
+ * an ask rule on a single command reach a person, as does an ask whose
+ * frame was not read. A chained Bash command hides an ask rule on one of
+ * its parts and some writes outside the working directories; see
+ * `claudeAskEscalates`.
  */
 export function toolRequestIsPlainCall(
   request: ToolRequestGrantInput,
@@ -563,6 +693,7 @@ export function toolRequestSessionGrantFromPayload(
     suppressAlwaysAllowRule: payload?.suppressAlwaysAllowRule,
     defaultToNo: payload?.defaultToNo,
     requiresUserInteraction: payload?.requiresUserInteraction,
+    claudeAsk: payload?.claudeAsk,
     suggestions: payload?.suggestions,
     blockedPath: payload?.blockedPath,
     matchedAskRule: payload?.matchedAskRule,
@@ -575,9 +706,17 @@ export function toolRequestSessionGrantFromPayload(
  * The label of the session-grant decision (`acceptForSession`), shared by the
  * approval toast, the inline card (#2316) and the inbox card. It names both
  * what is granted and the session scope: "Always Allow" overstated its
- * duration and hid its breadth. Name the tool only when the request reported
- * one — adapter display text (Codex's is a whole command line) would mislead
- * about the grant's scope. Undefined when no session grant is offered.
+ * duration and hid its breadth. Undefined when no session grant is offered.
+ *
+ * A `tool` grant names the tool only when the request reported one: then the
+ * adapter records a standing grant for every later call to it (#2299). With
+ * NO reported name the grant's breadth is not one thing the label could name
+ * — Codex's adapter derives its own key (every later command, or file
+ * change), an ACP engine with no name gets only its own `allow_always` rule
+ * (OpenCode's is pattern-scoped) — so the label claims only the session
+ * scope. It never names adapter display text: a title (Codex's and
+ * OpenCode's are the whole command line) would misstate the grant as
+ * covering exactly that string.
  */
 export function toolRequestGrantLabel(
   toolName: string | undefined,
@@ -596,7 +735,7 @@ export function toolRequestGrantLabel(
       const displayName = toolRequestDisplayName(toolName);
       return displayName
         ? `Allow ${displayName} for this session`
-        : 'Allow this tool for this session';
+        : 'Allow for this session';
     }
   }
 }

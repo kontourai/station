@@ -33,6 +33,7 @@ import {
 import { readPluginManifest } from './parsers.js';
 import { pluginTsconfig } from './plugin-tsconfig.js';
 import { isRegularFileSync } from './regular-file.js';
+import { validateAuthoredSkillExperiences } from './skill-experience-author.js';
 
 const sharedDirectory = dirname(fileURLToPath(import.meta.url));
 
@@ -184,6 +185,11 @@ export function readPluginBuildManifest(pluginDir: string): PluginManifest {
     throw new Error(
       `Agent Plugin build manifest is invalid: ${reports.find((report) => report.code !== 'unknown-manifest-field')?.message ?? 'unknown validation failure'}`,
     );
+  validateAuthoredSkillExperiences(
+    pluginDir,
+    parsed.manifest,
+    parsed.stationExtension,
+  );
   return {
     name: parsed.manifest.name,
     version: parsed.manifest.version ?? '0.0.0-agent-plugin-unversioned',

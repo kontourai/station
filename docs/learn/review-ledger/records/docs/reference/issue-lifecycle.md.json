@@ -12,7 +12,7 @@
   "document": {"digest":"62c34faf69830d671988f14ee01ab2bdfb53e966f29afd7c6275a0d6cd0cf4c4","revision":"2dd99129dc84d2589b416ca56f5e0060fc30c1ab"},
 
   "sources": [
-    {"path":".github/labels.json","digest":"f2320d6fb9f6b0967645b5ca6fef3244c451d388f2d9d6f13a5843ef19e11716","revision":"2dd99129dc84d2589b416ca56f5e0060fc30c1ab"},
+    {"path":".github/labels.json","digest":"f9a492139c9d9511725226664a146802ed069303dbd9913fee25905e429fb276","revision":"8de1b741d83aec880c76c3cece6bb3e9cdee740d"},
 
     {"path":"scripts/generate-issue-lifecycle-reference.mjs","digest":"31f5fd9b8685cc1610b7e3e5a37a1c13bc22496de0207c5ec5494692d0c6778e","revision":"2dd99129dc84d2589b416ca56f5e0060fc30c1ab"},
 

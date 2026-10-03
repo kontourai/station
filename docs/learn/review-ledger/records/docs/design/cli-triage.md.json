@@ -12,11 +12,11 @@
   "document": {"digest":"b064c8f2e26b8250bf675fac1277b9674b87ce0483d62bed32072950b536887d","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
   "sources": [
-    {"path":"docs/reference/cli.md","digest":"98f975022501b6d33e43422fc2652317fb84f72eab24522a582238bf244252ee","revision":"4a1fc2197028ded07d0e389e98a30042ab7cadb5"},
+    {"path":"docs/reference/cli.md","digest":"62c03f1a50009e0973510034c314c46df560dddf761547e6798d86808eb116fd","revision":"020eb6a14e05313bb66724ec3504e613717e6ed1"},
 
     {"path":"packages/cli/src/__tests__/triage.test.ts","digest":"e0934da8f4630b295f64b6275c25a48a41819ee58305b7b774a426aa0652bcaa","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"packages/cli/src/cli.ts","digest":"ecf39393a34edc99d05222a41947a1ba086cf8fc60bac7fe3cdd4651e825881a","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"packages/cli/src/cli.ts","digest":"041c54fff5c3dc2848cf234cf13e4ea52e5069548c273755ee77b53955be1f27","revision":"036d5d3d2289fc22e325a9ded733e8de561e9b30"},
 
     {"path":"packages/cli/src/commands/triage.ts","digest":"1a22f280a072e252978b006e6510300150d453b90ddd98f5caa655aa99ed9275","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 

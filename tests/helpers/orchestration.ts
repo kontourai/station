@@ -477,6 +477,8 @@ type StoredChat = {
   ephemeralMessages?: unknown[];
   inputHistory?: string[];
   planArtifact?: unknown;
+  /** Persisted composer stage descriptors (never File bytes). */
+  attachmentStages?: unknown[];
 };
 
 export async function seedActiveChats(

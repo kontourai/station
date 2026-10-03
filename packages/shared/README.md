@@ -66,6 +66,11 @@ bundle, not a watcher. Use that guide for manifest, entrypoint and installation
 steps. Package availability on npm and live plugin activation are separate from
 source/build verification.
 
+Portable packages with visual Skill declarations also use this build path for
+local author validation of referenced definitions and bundled Skill bytes.
+See the [authoring contract](../../docs/reference/skill-experiences.md);
+successful validation does not activate or render an experience.
+
 ## Registry authoring Node leaves
 
 Candidate releases containing these exports provide `computePluginTreeDigest(root)`
@@ -86,3 +91,10 @@ trust configuration to the host operator.
 ## License
 
 Apache-2.0 — see [LICENSE](./LICENSE).
+
+The Node-only `/skill-experience-workflow` subpath supplies bounded local Skill
+library inspection and revision-bound author review. Use the
+[author learning path](../../docs/guides/authoring-skill-experiences.md) for its
+agent proposal and evaluation process. It checks source/package/transcript bytes
+and reviewer assertions; it grants no runtime authority or model/device/release
+qualification.

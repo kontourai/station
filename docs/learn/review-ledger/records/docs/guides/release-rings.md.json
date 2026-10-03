@@ -9,7 +9,7 @@
 
   "limits": "No actual signed Git tag, install, rollback, GitHub OIDC attestation or publication. Independent current source review covers described branches, not OS isolation or provider uptime.",
 
-  "document": {"digest":"75d72fe29216dca1d8443e8c502cda5d7fc03aa2d88d74fee939a688c9ee62eb","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+  "document": {"digest":"4e947b5fdb5551a20617d3aa4d8ab9023ce9ad15fdb2d54e0d42fb48f6c38504","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
 
   "sources": [
     {"path":".github/workflows/build-ios.yml","digest":"b4afee0a3cf62cd46226b9b68b648d15d00524a9d7bc27449e640fac6e3f9b73","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
@@ -20,13 +20,13 @@
 
     {"path":".github/workflows/nightly-native-stage.yml","digest":"90a8d29da6c024c539a0abc1eb35ba490791780917e174eb7023d6fb45a90030","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
 
-    {"path":".github/workflows/nightly.yml","digest":"555ac154d3eb7983e8dd5c6f3ff5f73e4f48ac6aac1800747fbbbc5ce4d36801","revision":"ec29a8774f2c138bfd9e9818c0f0cc36fc5ebefe"},
+    {"path":".github/workflows/nightly.yml","digest":"4b0cb6bcc5e169bcad830d8a56f7de030864ab0d23cfe64ce1b9880845f45592","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
 
-    {"path":".github/workflows/portable-server-archives.yml","digest":"bdad9b494f9c66c4d350ec8c766be5defc47983305e2b178b21ad5542e4616c3","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":".github/workflows/portable-server-archives.yml","digest":"c7c7ff935b2bd8df40440aa8a7b6fd4405304e99e87c4a892de073fe0ae72924","revision":"614c216de6de9d4c06ef56963853ccff52f2f685"},
 
-    {"path":".github/workflows/publish-release.yml","digest":"b1f8a7f84db1576cd6e3f7ddd499f435d66e2ea5974a68e20a4508759ac695a6","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
+    {"path":".github/workflows/publish-release.yml","digest":"8811d948692207aff9c3987ed9c5ecfd7778770dfbb76b4d80cb7773713f6fa1","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
 
-    {"path":".github/workflows/release.yml","digest":"6ceff4507c2d55bb384c36cb7fba8be4b6eaaf0f0d408ecb990398fc00996c88","revision":"12e161f7032b17c2f97702c0c41116b0c82bbb91"},
+    {"path":".github/workflows/release.yml","digest":"e9322e982c85dfb6b26188a6f6d0bc596f1f384e949bc50a59fe07d552e3c8f2","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
 
     {"path":".github/workflows/testflight-delivery.yml","digest":"b65be60d29e76e922b07ed19bd89576ef1cac76e20712dd28d140c72d36012bb","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
 
@@ -44,15 +44,15 @@
 
     {"path":"scripts/__tests__/release-artifacts.test.ts","digest":"cbc2d4fb766186bbf2a95f343bf6f6c07c38afec8731bf649e5d211ca4ce7e64","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"scripts/__tests__/release-manifest-vectors.test.ts","digest":"1057b479610d959beba501c66768cc6d0ad3dc38ea77158602a819f1f236b830","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"scripts/__tests__/release-manifest-vectors.test.ts","digest":"2d2416f7ea846fd8ba91d4ddacec28219107af7d4269d597d3f3424758babfd6","revision":"614c216de6de9d4c06ef56963853ccff52f2f685"},
 
-    {"path":"scripts/__tests__/release-workflow.test.ts","digest":"bae8939a7bc0134f682c457adfc56796419b6fbc8537e1b083be357af19b8fce","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"scripts/__tests__/release-workflow.test.ts","digest":"2b899fdd5b06966e07e391e65cec71bb78696228febfea25e9c41f3d5c455b02","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
 
     {"path":"scripts/app-store-connect-receipt.mjs","digest":"c70c7c9b86be2658f294f930a37f70c28d41671a041f7f87185c4c1e7df98812","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
     {"path":"scripts/apply-android-release-signing.mjs","digest":"84b9052389391a98cd8e157bb371979d40269f642ccb7e078a4179b7f284d64c","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"scripts/build-portable-server-archive.mjs","digest":"3660d877f9a4698c2a107fd3b3539c6c2efea1f4626068b3ed68e9822fafbaa6","revision":"d1519a65a54ea7738269a1f1c02c4985a45f074c"},
+    {"path":"scripts/build-portable-server-archive.mjs","digest":"b468ede952e040177e219a1170290de250231958ac32f8b596f45e716712039e","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
     {"path":"scripts/check-ios-store-profile.mjs","digest":"7467a49dc8616e9472ab7b37fad9648b96e58fe7a0268e7261094dcb0eae7e5d","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
@@ -60,7 +60,7 @@
 
     {"path":"scripts/ios-channel-icons.mjs","digest":"f7e3a770d2476b55ff5ed555a55c8c6251bef0f50e65b5083d604d70c3e32537","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"scripts/ios-local-release-preflight.mjs","digest":"d475395b8e5e5892aa5eca5d2b597a3983923eeb9c6b074778e111509061727d","revision":"d1519a65a54ea7738269a1f1c02c4985a45f074c"},
+    {"path":"scripts/ios-local-release-preflight.mjs","digest":"4d0ab7330ebef6799f54c2bae28cd0b76f575d1cc3d096c3ba91e9ae3557755f","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
     {"path":"scripts/ios-testflight-channel.mjs","digest":"302570f2b8fbc0fd49994c158753bc1ac41e27e6145864360a48f816c3e1e304","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
@@ -70,7 +70,7 @@
 
     {"path":"scripts/lib/native-release-config.mjs","digest":"e26ea6f37e258847dbd060dc54f881a70b62bd054d36f613c93147b16a135d67","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"scripts/lib/portable-server-archive.mjs","digest":"1961344a0a37b270a1bf8a97d3793fc8e5d6aba7d55614c09c55cf3208688f21","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"scripts/lib/portable-server-archive.mjs","digest":"5f03affc9ae69b585e7b6395f7ae42f73b678ed9571737d7e18dbd6904da154d","revision":"614c216de6de9d4c06ef56963853ccff52f2f685"},
 
     {"path":"scripts/lib/release-artifacts.mjs","digest":"ed7ccc65b9de85f59a0af871e3e2405d18df4df63d544bd8479c9eb3b394995d","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
@@ -80,7 +80,7 @@
 
     {"path":"scripts/release-platform-matrix.mjs","digest":"c7a97e393c6cb12edaee3f360ee922f6bd1fc2ab257c0c3f3872313b31bc5b35","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-desktop/src/lib.rs","digest":"8c75f82874099575e30e4b757be90a2ba22bbd8d2623813566b5b3f139124833","revision":"3517d8f66db867fd982a8f9883ed85052c4e1fc1"},
+    {"path":"src-desktop/src/lib.rs","digest":"ad3b52011a9be6e6a18133b2367c04d0a6245907e5b7e13fa324bcd8b5255557","revision":"464d602fb7fb5fa9bd0df9d241dc03495b398b96"},
 
     {"path":"src-server/services/notifications/agent-activity-publisher.ts","digest":"3753a4c2bf54fbe7024f0cd658b5a69e9e2c8e0a03c00b9e8592ab6096ee0712","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 

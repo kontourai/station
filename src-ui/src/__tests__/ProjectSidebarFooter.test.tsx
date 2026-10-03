@@ -2,28 +2,24 @@
  * @vitest-environment jsdom
  */
 
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
 
-// The attention projection has its own tests; here it is a controllable value
-// so these pin what the footer DOES with the count it is given. Same field
-// and same registry badge the header bell reads.
-const attentionState = vi.hoisted(() => ({ pendingCount: 0 }));
 vi.mock('@kontourai/station-sdk', () => ({
-  useAttentionQuery: () => ({
-    data: { pendingCount: attentionState.pendingCount },
+  useOrchestrationSessionsQuery: () => ({
+    data: [],
+    isLoading: false,
+    isError: false,
   }),
 }));
-vi.mock('../contexts/ApiBaseContext', () => ({
-  useApiBase: () => ({ apiBase: 'http://station.test' }),
-}));
-
-// Mutable so one test can put the registry in the state it is in for the
-// first tick after boot: `CommandPalette` registers `command-palette` from a
-// lazily-loaded chunk, and `getDisplay` answers '' until it lands.
-let paletteChord = 'Ctrl+K';
-vi.mock('../hooks/useKeyboardShortcut', () => ({
-  useShortcutDisplay: () => paletteChord,
+vi.mock('../hooks/useSurfaceVisibilityFlags', () => ({
+  useSurfaceVisibilityFlags: () => new Set(),
 }));
 
 // The presence tray reads the SAME cache entry the Activity surface reads, so
@@ -45,8 +41,8 @@ vi.mock('@kontourai/station-sdk/live-activity', () => ({
 }));
 // `RegionModelProvider` wraps the whole application, so `useShowSurface`
 // requires it; this harness mounts a fragment of that tree. The stub is the
-// assertion seam for the follow action, which must command the SAME surface
-// `LiveCollaboratorsSection`'s "View session" commands.
+// assertion seam for the follow action, which must command the Activity
+// surface the way every other session link does.
 const showSurfaceStub = vi.hoisted(() => vi.fn());
 vi.mock('../contexts/useShowSurface', () => ({
   useShowSurface: () => showSurfaceStub,
@@ -164,34 +160,26 @@ function renderFooter(
 
 describe('ProjectSidebarFooter', () => {
   beforeEach(() => {
-    paletteChord = 'Ctrl+K';
-    attentionState.pendingCount = 0;
     liveActivity.data = projection([]);
     liveActivity.isPending = false;
     liveActivity.isError = false;
     showSurfaceStub.mockReset();
   });
 
-  // #2059 (design record D3): "Footer: presence, the attention bell, and the
-  // gear." The bell and the gear are the panel's only entry points to
-  // Notifications and Settings now that neither has a row; presence is the
-  // tray #2066 landed in the slot #2059 held open for it.
-  test('carries the presence tray, the palette chord, the bell and the gear', () => {
-    const { container } = renderFooter();
-    expect(container.querySelector('.sidebar__footer-presence')).toBeTruthy();
-    expect(screen.getByRole('button', { name: /^Who is here:/ })).toBeTruthy();
+  test('groups live activity, Schedule, Customize, and Settings in the footer', () => {
+    renderFooter();
     expect(
-      screen.getByRole('button', { name: 'Command palette' }),
-    ).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Notifications' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Settings' })).toBeTruthy();
+      screen
+        .getAllByRole('button')
+        .map((button) => button.getAttribute('aria-label')),
+    ).toEqual([
+      'Who is here: nobody is publishing live work',
+      'Schedule',
+      'Customize',
+      'Settings',
+    ]);
   });
 
-  // The count and the stack are a read of the projection this render was
-  // handed, not of anything stored. Four distinct participants and one agent:
-  // three
-  // faces plus a "+1", and the accessible name carries the true count the
-  // stack cannot show.
   test('the count and the avatar stack derive from the live projection', () => {
     liveActivity.data = projection([
       human(1, 'Ada Lovelace'),
@@ -288,25 +276,10 @@ describe('ProjectSidebarFooter', () => {
     ).toBeTruthy();
   });
 
-  // Read-only first (docs/design/project-membership.md): shared-resource
-  // admission is incomplete, so Station cannot address another member. The
-  // reason is on screen and bound to the control, not in a `title` a keyboard
-  // user never reaches.
-  test('the message action is disabled and says why', () => {
-    liveActivity.data = projection([human(1, 'Ada Lovelace')]);
-    renderFooter();
-    openTray();
-    const message = screen.getByRole('button', { name: 'Message' });
-    expect(message.hasAttribute('disabled')).toBe(true);
-    const describedBy = message.getAttribute('aria-describedby');
-    expect(describedBy).toBeTruthy();
-    const reason = document.getElementById(describedBy!);
-    expect(reason?.textContent).toMatch(/membership admission/i);
-  });
-
-  // Follow opens the worker's live session the same way Activity does:
-  // `LiveCollaboratorsSection`'s "View session" commands `useShowSurface` with
-  // the Activity surface id and a session intent. The assertion is on that
+  // Follow opens the worker's live session the way a session link does:
+  // `useShowSurface` with the Activity surface id and a session intent. (The
+  // Live collaborators section this once mirrored is gone, #2982; the test
+  // name keeps the phrase.) The assertion is on that
   // shared seam and the shared contract constant — not on a route string this
   // file could spell the same way while the product spelled it differently —
   // and the footer's own navigation must stay out of it.
@@ -595,11 +568,30 @@ describe('ProjectSidebarFooter', () => {
     }
   });
 
-  test('the bell navigates to the notifications route', () => {
+  test.each([false, true])(
+    'Activity reveal closes the drawer only on mobile (%s)',
+    (isMobile) => {
+      liveActivity.data = projection([
+        agent(8, 'Worker', 'Checking build', 'worker-session'),
+      ]);
+      const onAfterNavigate = vi.fn();
+      renderFooter({ isMobile, onAfterNavigate });
+      openTray();
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Follow Worker on Checking build' }),
+      );
+      expect(onAfterNavigate).toHaveBeenCalledTimes(isMobile ? 1 : 0);
+      expect(showSurfaceStub).toHaveBeenCalledWith(ACTIVITY_SURFACE_ID, {
+        session: 'worker-session',
+      });
+    },
+  );
+
+  test('Schedule opens its existing route', () => {
     const navigate = vi.fn();
     renderFooter({ navigate });
-    fireEvent.click(screen.getByRole('button', { name: 'Notifications' }));
-    expect(navigate).toHaveBeenCalledWith('/notifications');
+    fireEvent.click(screen.getByRole('button', { name: 'Schedule' }));
+    expect(navigate).toHaveBeenCalledWith('/schedule');
   });
 
   test('the gear navigates to the settings route', () => {
@@ -621,42 +613,13 @@ describe('ProjectSidebarFooter', () => {
     expect(onAfterNavigate).toHaveBeenCalledTimes(1);
   });
 
-  // The badge is the registry's projection of the attention count, not a
-  // second derivation: the number and the phrase both come from
-  // `destination-registry.ts`'s `badge`, which is what the header bell reads
-  // from the same `['attention', apiBase]` cache entry.
-  test('the bell carries the attention count in its accessible name and its badge', () => {
-    attentionState.pendingCount = 3;
-    renderFooter();
-    const bell = screen.getByRole('button', {
-      name: 'Notifications (3 need attention)',
-    });
-    expect(bell.textContent).toBe('3');
-  });
-
-  test('caps the visible badge at 9+ while the accessible name keeps the true count', () => {
-    attentionState.pendingCount = 42;
-    renderFooter();
-    const bell = screen.getByRole('button', {
-      name: 'Notifications (42 need attention)',
-    });
-    expect(bell.textContent).toBe('9+');
-  });
-
-  test('shows no badge at all when nothing needs attention', () => {
-    attentionState.pendingCount = 0;
-    renderFooter();
-    const bell = screen.getByRole('button', { name: 'Notifications' });
-    expect(bell.textContent).toBe('');
-  });
-
   // Exactly one control may claim to be the current location, and it is
   // derived through the registry's view ownership rather than a path-prefix
   // comparison here (#1582 D4's rule, applied to the footer's two routed
   // controls).
   test.each([
-    ['/notifications', 'Notifications', 'Settings'],
-    ['/settings', 'Settings', 'Notifications'],
+    ['/schedule', 'Schedule', 'Settings'],
+    ['/settings', 'Settings', 'Schedule'],
   ])('marks the %s control as the current page', (path, current, other) => {
     renderFooter({ activePath: path });
     expect(
@@ -690,47 +653,28 @@ describe('ProjectSidebarFooter', () => {
     expect(container.textContent).not.toMatch(/v\d+\.\d+\.\d+/);
   });
 
-  test('the palette chip shows the chord the registry reports (#1649)', () => {
-    // It used to render a literal `⌘K`, which named a chord Windows and Linux
-    // users cannot press and which would not have followed a rebinding from
-    // Settings either. The stub is deliberately NOT the default chord: an
-    // assertion of `Ctrl+K` here would pass on the static fallback too, and
-    // prove nothing about which of the two the chip is reading.
-    paletteChord = 'Ctrl+Shift+P';
-    renderFooter();
-    const chip = screen.getByRole('button', { name: 'Command palette' });
-    expect(chip.textContent).toBe('Ctrl+Shift+P');
-    expect(chip.textContent).not.toContain('⌘');
-  });
-
-  test('the palette chip still names a chord before the registry has one', () => {
-    // The lazy-chunk window: `CommandPalette` registers `command-palette` from
-    // a deferred chunk, so `getDisplay` answers '' for the first tick. An
-    // empty chip would collapse the button to its padding. The fallback is
-    // platform-derived, so it is never the Mac keycap on a non-Mac platform —
-    // jsdom reports no Mac here, which is exactly the platform the bug was on.
-    paletteChord = '';
-    renderFooter();
-    const chip = screen.getByRole('button', { name: 'Command palette' });
-    expect(chip.textContent).toBe('Ctrl+K');
-    expect(chip.textContent).not.toContain('⌘');
-  });
-
-  test('an unbound shortcut falls back rather than reading "Not set"', () => {
-    paletteChord = 'Not set';
-    renderFooter();
-    expect(
-      screen.getByRole('button', { name: 'Command palette' }).textContent,
-    ).toBe('Ctrl+K');
-  });
-
-  test('the palette chip dispatches open-command-palette', () => {
-    renderFooter();
-    const listener = vi.fn();
-    window.addEventListener('open-command-palette', listener);
-    fireEvent.click(screen.getByRole('button', { name: 'Command palette' }));
-    window.removeEventListener('open-command-palette', listener);
-    expect(listener).toHaveBeenCalledTimes(1);
+  test('opens Customize, restores its trigger on close, and navigates through a choice', async () => {
+    const navigate = vi.fn();
+    const onAfterNavigate = vi.fn();
+    render(
+      <ProjectSidebarFooter
+        isMobile={true}
+        navigate={navigate}
+        onAfterNavigate={onAfterNavigate}
+        activePath="/settings"
+      />,
+    );
+    const trigger = screen.getByRole('button', { name: 'Customize' });
+    trigger.focus();
+    fireEvent.click(trigger);
+    await screen.findByRole('dialog', { name: 'Customize' });
+    fireEvent.click(screen.getByRole('button', { name: 'Close Customize' }));
+    await waitFor(() => expect(document.activeElement).toBe(trigger));
+    fireEvent.click(trigger);
+    fireEvent.click(await screen.findByRole('link', { name: 'Agents' }));
+    expect(navigate).toHaveBeenCalledWith('/agents');
+    expect(onAfterNavigate).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('dialog', { name: 'Customize' })).toBeNull();
   });
 
   // Keyboard operability of the panel's bottom controls, which the retired

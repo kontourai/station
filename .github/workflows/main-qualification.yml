@@ -1,0 +1,27 @@
+name: Main qualification
+
+on:
+  schedule:
+    - cron: '17 */6 * * *'
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Run fresh qualification even when this exact SHA already passed
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: main-qualification
+  cancel-in-progress: false
+
+jobs:
+  qualification:
+    if: github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/full-regression.yml
+    with:
+      source_sha: ${{ github.sha }}
+      allow_reuse: ${{ !inputs.force }}

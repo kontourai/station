@@ -1,36 +1,11 @@
 #!/usr/bin/env node
 /**
- * Runs a named subset of the canonical full-regression phases.
- *
- * The merge-queue regression workflow splits `full:regression` across several
- * hosted runners. Each runner calls this driver with the phase ids it owns;
- * the command for every phase is read from FULL_REGRESSION_PHASES, so the
- * workflow never spells a private `:raw` script and cannot drift from the
- * canonical phase list.
- *
- * This is diagnostic, not completion evidence: it writes no receipt, and the
- * canonical `npm run full:regression` lane is unchanged. Unlike that lane it
- * continues past a failed phase so one run names every red phase it owns,
- * then exits non-zero if any phase failed.
- *
- * `--exclude-quarantined` forwards the corpus runner's flag of the same name
- * to every `test-full-*` phase, dropping the files listed in
- * QUARANTINED_VITEST_FILES (scripts/vitest-resource-manifest.mjs). That is the
- * one deliberate difference from the canonical lane, which never passes it:
- * Nightly still runs quarantined files.
- *
- * Apart from quarantined files, a phase passes here only when the canonical lane would also pass it:
- * - exit status 0, no runner error, no surviving owned process tree;
- * - output that is valid UTF-8 and within the canonical per-stream capture
- *   cap (the canonical runner captures through the same
- *   `captureOwnedProcessOutput` and fails either condition);
- * - an unchanged workspace. The canonical lane fails a phase whose before and
- *   after request keys differ, so this driver compares HEAD, the workspace
- *   digest (`git diff --binary HEAD` plus untracked non-ignored file content),
- *   the dependency digest, and the porcelain status before and after each
- *   phase, and names what changed.
- * Not mirrored: the environment/toolchain parts of the request key, which a
- * phase cannot change from inside its own process tree.
+ * Runs canonical phase commands with their deadlines and workspace/process
+ * integrity checks. Continues after failure so one qualification reports all
+ * available failures. The hosted workflow, not an individual driver call,
+ * owns the completion receipt after every required shard succeeds.
+ * Explicit diagnostic callers may exclude quarantined files; hosted source
+ * qualification never does. The local full:regression coordinator is unchanged.
  */
 import { execFileSync, spawn } from 'node:child_process';
 import { readFileSync } from 'node:fs';

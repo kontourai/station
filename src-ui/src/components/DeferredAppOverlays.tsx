@@ -38,6 +38,7 @@ import { CommandPalette } from './CommandPalette';
 import { FirstRunFlow } from './first-run/FirstRunFlow';
 import { HomeRecoveryBannerSource } from './notifications/HomeRecoveryBannerSource';
 import { ReportProblemHost } from './report-problem/ReportProblemHost';
+import { SchedulerJobDialogHost } from './scheduler/SchedulerJobDialogHost';
 
 function TrayNavigationListener() {
   const { navigate } = useNavigationActions();
@@ -77,6 +78,7 @@ export default function DeferredAppOverlays() {
       <CommandPalette />
       <FirstRunFlow />
       <ReportProblemHost />
+      <SchedulerJobDialogHost />
       <HomeRecoveryBannerSource />
       <TrayNavigationListener />
       <NotificationOpenListener />
