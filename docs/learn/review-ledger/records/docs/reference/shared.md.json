@@ -7,7 +7,7 @@
 
   "summary": "Completed current documented-claim review, including compatibility declarations, legacy JSON readers, integration copier admission/rollback, build externals/containment/preparation, host lazy namespace publication and actual CLI/install callers. Reused earlier MCP/notification review after inspecting the only source delta (two package export additions). Clarified unchecked JSON/path inputs, Agent parse failures, specific credential-key rejection, skipped nondirectories, and page-level shared-runtime readiness. API/config review supplies adjacent provider/status/Project producer boundaries. Bounded MCP policy delta: reviewed secure-scheme filtering versus complete CSP source-expression validation and effective browser containment; routes to the current host design without upgrading ordinary tool availability to rendering qualification.",
 
-  "limits": "Selected documented contracts only, not every helper export or implementation branch. Syntax-only snippets are excerpts, not complete standalone programs. Existing parser/build tests use disposable fixtures and controlled dependency preparation. No real plugin install, registry or live MCP/provider/device outcome exercised. Earlier MCP and notification checks remain separately recorded; hashes are freshness checks, not semantic proof.",
+  "limits": "Selected documented contracts only, not every helper export or implementation branch. Syntax-only snippets are excerpts, not complete standalone programs. Existing parser/build tests use disposable fixtures and controlled dependency preparation. No real plugin install, registry or live MCP/provider/device outcome exercised. Earlier MCP and notification checks remain separately recorded; hashes are freshness checks, not semantic proof. Additional main merge b269a6cf9: structural reconciliation only; prior distinct anchors below are historical reviews, not approval of combined bytes. Active bindings retain existing anchors; combined dependency bytes remain stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"pnpm-lock.yaml\",\"ours\":{\"digest\":\"2907b97d6a2e98b4211695a78cf83b03419218f1dd95ce090ca753d9bdbad14a\",\"revision\":\"b50eeb9584c1808e429e59dcb3c3c2253307bbbe\"},\"main\":{\"digest\":\"29dbdce300fcd3d881ae511317af478da6e9c098a8e8cf51c6b2269a937525df\",\"revision\":\"df9188971e1a93d2c5525a7f5f38e3da93c9e4de\"}}].",
 
   "sources": [
     "docs/design/mcp-ui-host.md",
@@ -108,7 +108,9 @@
 
     "src-ui/src/core/PluginRegistry.ts",
 
-    "src-ui/src/core/pluginSharedRuntime.ts"
+    "src-ui/src/core/pluginSharedRuntime.ts",
+
+    "packages/shared/src/skill-experience-author.ts"
   ],
 
   "checks": [

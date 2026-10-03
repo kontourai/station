@@ -7,7 +7,7 @@
 
   "summary": "Routes to module-map/development/testing owners. Preserves route/domain boundaries, logger and Windows launch requirements, request-local batching, and yielding installed-package integrity observations. The current integrity owner serializes scans and joins only a queued observation starting after arrival.",
 
-  "limits": "Normative contributor policy. Routing and named owners were checked; this is not proof that every implementation or contributor complies, nor completion evidence for CI, performance, native devices, or hosted delivery. Flow artifact-root and batch advice is a routing/invariant classification, not a fresh whole-request performance measurement.",
+  "limits": "Normative contributor policy. Routing and named owners were checked; this is not proof that every implementation or contributor complies, nor completion evidence for CI, performance, native devices, or hosted delivery. Flow artifact-root and batch advice is a routing/invariant classification, not a fresh whole-request performance measurement. Merge reconciliation preserves both prior review anchors below as historical evidence, not a new review of combined source bytes. Active bindings retain existing reviewed anchors; any mismatch with merged bytes remains stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"docs/architecture/module-map.md\",\"ours\":{\"digest\":\"52cd3cfb4c4e811e087ee89b0d844695e85a21a0e085409850936bd613653957\",\"revision\":\"801b6662aff67a25eff4927c1c50e92f4c9b4e53\"},\"main\":{\"digest\":\"8f082631ce14f9b1114110e69a7f336404340c0c8f58a02ebf2646973277a22b\",\"revision\":\"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac\"}}].",
 
   "sources": [
     "docs/architecture/module-map.md",

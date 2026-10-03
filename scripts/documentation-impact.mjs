@@ -181,7 +181,12 @@ function ledgerRevisionsSince(root, base) {
 /** Compiled ledgers at each ref, in either storage layout. */
 function historicalLedgers(root, refs) {
   return [...new Set(refs)].flatMap((ref) => {
-    const { ledger } = readReviewStateAt(root, ref);
+    // Historical records supply dependency leads, not current review approval.
+    // Their semantic bindings remain strict even if an intermediate commit was
+    // reformatted; working-tree records and append-only notes retain byte checks.
+    const { ledger } = readReviewStateAt(root, ref, {
+      purpose: 'advisory-dependency-history',
+    });
     if (!ledger) return [];
     validateLedger(ledger);
     return [ledger];

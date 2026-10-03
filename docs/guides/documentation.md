@@ -109,6 +109,15 @@ through actual callers, add missing source relationships, or give a concrete
 no-documentation-impact reason in the PR. Shallow or unavailable history is
 reported explicitly; fetch full history before judging accumulated freshness.
 
+Historical dependency collection accepts a semantically valid record whose
+JSON layout was reformatted in an intermediate commit. It retains that record's
+source links rather than dropping them. This tolerance belongs only to the
+advisory impact report: current records, default historical reads, capture
+reviews and append-only note hashes still require their canonical bytes.
+Malformed JSON, unknown fields, misplaced records and invalid source bindings
+remain errors. Collecting an old dependency never approves a current claim or
+refreshes a review hash.
+
 The map records reviewed relationships. It does not discover every code import,
 runtime call, dependency default or business requirement. Broad owners such as
 the module map can select many topics. Periodic audits still need to look for

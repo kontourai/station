@@ -7,7 +7,7 @@
 
   "summary": "Completed documented broker schema/grant/proof/offer/renewal, connector lifecycle and private configuration claims through routes, service transactions, native signer/host command table and browser consumer. Corrected distinct browser/native header contracts and redemption exceptions, renewal window and conflict receipt wording. Reviewed frozen-main native grant renewal and Desktop all-saved-route maintenance, including durable replay, fresh status, generation fences, visibility and 64-route refusal; ordinary Desktop route activation remains unwired; the explicit native library/server application lane is now documented.",
 
-  "limits": "Source review of the stated broker/native pilot contracts and inspected debug macOS frozen-harness receipt, not an exhaustive audit or release/mobile/Windows/Linux, remote/public deployment, production TURN/TLS, external identity-provider, two-person, default UI or fresh relay-only enrollment qualification. Prior dated receipts remain historical.",
+  "limits": "Source review of the stated broker/native pilot contracts and inspected debug macOS frozen-harness receipt, not an exhaustive audit or release/mobile/Windows/Linux, remote/public deployment, production TURN/TLS, external identity-provider, two-person, default UI or fresh relay-only enrollment qualification. Prior dated receipts remain historical.\n\nMerge anchor history (structural reconciliation only; no semantic approval): source src-desktop/src/lib.rs ours={\"digest\":\"57a47dd3656d47a5c43eaf4001895942d350d61b6de896fa4d1d3da498bfd821\",\"revision\":\"d5e4502434838cc29b63091ae689474d6488cfe4\"}; origin/main={\"digest\":\"ad3b52011a9be6e6a18133b2367c04d0a6245907e5b7e13fa324bcd8b5255557\",\"revision\":\"464d602fb7fb5fa9bd0df9d241dc03495b398b96\"}. The merged source bytes require supported review after the merge commit.\n\nMerge anchor history (structural reconciliation only; no semantic approval): source docs/guides/native-shell-verification.md ours={\"digest\":\"02022b49c8533609bcf561776a2dd5c1b20cdfb3b8ae4cf5f5b5ae141e28e86e\",\"revision\":\"d5e4502434838cc29b63091ae689474d6488cfe4\"}; origin/main={\"digest\":\"db5ef187c02545195074cac011b8bd21fab7ff9eb23d28bf884dd36922b14c29\",\"revision\":\"464d602fb7fb5fa9bd0df9d241dc03495b398b96\"}. The merged source bytes require supported review after the merge commit.",
 
   "sources": [
     "packages/connect/src/core/applicationChannel.ts",
@@ -126,7 +126,57 @@
 
     "src-desktop/src/native_application_peer.rs",
 
-    "src-desktop/src/native_account_operations.rs"
+    "src-desktop/src/native_account_operations.rs",
+
+    "deployment/self-hosted-broker/.env.example",
+
+    "deployment/self-hosted-broker/Caddyfile",
+
+    "deployment/self-hosted-broker/compose.yaml",
+
+    "Dockerfile",
+
+    "packages/connect/src/__tests__/relayIceConfiguration.test.ts",
+
+    "packages/connect/src/core/relayIceConfiguration.ts",
+
+    "packages/contracts/src/relay-ice.ts",
+
+    "scripts/lib/turn-fixture.ts",
+
+    "scripts/native-fresh-relay-fixture.ts",
+
+    "src-desktop/src/native_relay_ice.rs",
+
+    "src-server/runtime/bootstrap/__tests__/self-hosted-broker-pion-runtime.test.ts",
+
+    "src-server/runtime/bootstrap/__tests__/self-hosted-connector-config.test.ts",
+
+    "src-server/services/connections/__tests__/broker-ice-service.test.ts",
+
+    "src-server/services/connections/__tests__/native-v2-pion-application-adapter.test.ts",
+
+    "src-server/services/connections/broker-ice-service.ts",
+
+    "src-server/services/connections/cloudflare-turn-provider.ts",
+
+    "src-server/services/connections/relay-ice-consumer.ts",
+
+    "src-ui/src/platform/native/__tests__/NativeRelayLinkIntake.test.tsx",
+
+    "src-ui/src/platform/native/nativeAccountSessionBridge.ts",
+
+    "src-ui/src/platform/native/nativeRelayConnectionOwner.ts",
+
+    "src-ui/src/platform/native/NativeRelayConnectionRecovery.tsx",
+
+    "src-ui/src/platform/native/nativeRelayIceConfigurationBridge.ts",
+
+    "src-ui/src/platform/native/NativeRelayLinkReview.tsx",
+
+    "src-ui/src/views/connections-hub/NativeRelayEnrollmentWizard.tsx",
+
+    "tests/tauri-shell/native-fresh-relay-fixture.md"
   ],
 
   "checks": [

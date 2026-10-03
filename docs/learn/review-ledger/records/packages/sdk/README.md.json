@@ -58,7 +58,11 @@
 
     "src-ui/src/hooks/useActiveChatSessionMessaging.ts",
 
-    "src-ui/src/workspace-panes/ConnectedStationBasisPane.tsx"
+    "src-ui/src/workspace-panes/ConnectedStationBasisPane.tsx",
+
+    "packages/sdk/src/client/skill-experiences.ts",
+
+    "packages/sdk/src/query-domains/skillExperiences.ts"
   ],
 
   "checks": [

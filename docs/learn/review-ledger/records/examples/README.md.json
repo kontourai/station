@@ -16,7 +16,11 @@
 
     "package.json#/scripts/examples:conformance",
 
-    "package.json#/scripts/typecheck:examples"
+    "package.json#/scripts/typecheck:examples",
+
+    "examples/rich-skill-experience/tsconfig.json",
+
+    "examples/rich-skill-experience/README.md"
   ],
 
   "checks": [

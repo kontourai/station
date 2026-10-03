@@ -7,7 +7,7 @@
 
   "summary": "Completed current capability, permission, platform-adapter and host-caller claims. Corrected extra typed host subscriptions, dev pairing schemes, distinct closed open-browser route, second-launch background exception and updater ownership. Added Desktop native-grant maintenance boundary while preserving disabled native application transport and dated external platform survey.",
 
-  "limits": "Source review of this document’s stated contracts and actual callers, not an exhaustive audit of unclaimed implementation branches. No new external SDK/CLI compatibility, provider billing/sign-in, gateway/deployment, network-partition, independent-host, OS keyring/ACL, native/device, release, power-loss or cryptographic penetration qualification. Dated probes and prior test receipts remain historical evidence.",
+  "limits": "Source review of this document’s stated contracts and actual callers, not an exhaustive audit of unclaimed implementation branches. No new external SDK/CLI compatibility, provider billing/sign-in, gateway/deployment, network-partition, independent-host, OS keyring/ACL, native/device, release, power-loss or cryptographic penetration qualification. Dated probes and prior test receipts remain historical evidence.\n\nMerge anchor history (structural reconciliation only; no semantic approval): source src-desktop/src/lib.rs ours={\"digest\":\"57a47dd3656d47a5c43eaf4001895942d350d61b6de896fa4d1d3da498bfd821\",\"revision\":\"d5e4502434838cc29b63091ae689474d6488cfe4\"}; origin/main={\"digest\":\"ad3b52011a9be6e6a18133b2367c04d0a6245907e5b7e13fa324bcd8b5255557\",\"revision\":\"464d602fb7fb5fa9bd0df9d241dc03495b398b96\"}. The merged source bytes require supported review after the merge commit.",
 
   "sources": [
     "scripts/native-platform-boundary.mjs",
@@ -68,7 +68,31 @@
 
     "src-desktop/src/native_account_operations.rs",
 
-    "packages/connect/src/core/nativeApplicationTransport.ts"
+    "packages/connect/src/core/nativeApplicationTransport.ts",
+
+    "packages/connect/src/core/nativeRelayLink.ts",
+
+    "packages/contracts/src/native-relay-link.ts",
+
+    "packages/sdk/src/client/application-session-native.ts",
+
+    "src-desktop/build.rs",
+
+    "src-desktop/src/native_relay_ios_launch.rs",
+
+    "src-desktop/src/native_relay_link_intake.rs",
+
+    "src-desktop/src/native_secure_entry.rs",
+
+    "src-ui/src/components/OnboardingGate.tsx",
+
+    "src-ui/src/platform/native/nativeAccountSessionBridge.ts",
+
+    "src-ui/src/platform/native/nativeRelayApplicationRuntime.ts",
+
+    "src-ui/src/platform/native/nativeRelayConnectionOwner.ts",
+
+    "src-ui/src/views/connections-hub/RelayRouteProfiles.tsx"
   ],
 
   "checks": [

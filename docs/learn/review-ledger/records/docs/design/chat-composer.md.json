@@ -76,7 +76,9 @@
 
     "src-ui/src/__tests__/ChatDockBody.sessionFailureBanner.test.tsx",
 
-    "src-ui/src/components/chat/QueuedMessages.css"
+    "src-ui/src/components/chat/QueuedMessages.css",
+
+    "src-ui/src/components/chat/ComposerStopButton.tsx"
   ],
 
   "checks": [

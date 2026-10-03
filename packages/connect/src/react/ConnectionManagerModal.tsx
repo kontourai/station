@@ -1,5 +1,5 @@
 import type { StationCompatibilityResult } from '@kontourai/station-contracts';
-import { lazy, Suspense } from 'react';
+import { lazy, type ReactNode, Suspense } from 'react';
 import type { ConnectionHealthCheckResult } from '../core/ConnectionHealthCoordinator';
 import type { PendingPairingExchange } from '../core/devicePairing';
 import type { SavedConnection } from '../core/types';
@@ -49,6 +49,8 @@ export interface ConnectionManagerModalProps {
     signal?: AbortSignal,
   ) => Promise<StationCompatibilityResult>;
   initialPanel?: ConnectionManagerPanel;
+  /** Optional host-owned connection route content in the Stations list footer. */
+  listFooterContent?: ReactNode;
   /** A decoded, one-time pairing payload awaiting the user's confirmation. */
   initialPairingPayload?: string;
   /** A rejected native link's safe, parser-authored remedy for the active review. */
@@ -110,6 +112,7 @@ export function ConnectionManagerModal({
   guardConnectionChange,
   checkCompatibility,
   initialPanel,
+  listFooterContent,
   initialPairingPayload,
   pairingLinkError,
   onPairingReviewDismissed,
@@ -136,6 +139,7 @@ export function ConnectionManagerModal({
         guardConnectionChange={guardConnectionChange}
         checkCompatibility={checkCompatibility}
         initialPanel={initialPanel}
+        listFooterContent={listFooterContent}
         initialPairingPayload={initialPairingPayload}
         pairingLinkError={pairingLinkError}
         onPairingReviewDismissed={onPairingReviewDismissed}

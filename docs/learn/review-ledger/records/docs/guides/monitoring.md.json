@@ -7,7 +7,7 @@
 
   "summary": "Full guide reviewed: local versus OTLP/usage paths, pinned resource defaults, async startup, retention, historical shadow evidence, recording populations/attributes, tokens/costs, dashboard queries, spans, schema/history and Insights. All 28 prior rendered anchors preserved.",
 
-  "limits": "Source and bounded fixtures/in-memory exporter probes do not establish real collector export, historical timing reproduction, complete billing or production reliability. Named recording families are reviewed; the generated catalog lists declarations only.",
+  "limits": "Source and bounded fixtures/in-memory exporter probes do not establish real collector export, historical timing reproduction, complete billing or production reliability. Named recording families are reviewed; the generated catalog lists declarations only. Additional main merge b269a6cf9: structural reconciliation only; prior distinct anchors below are historical reviews, not approval of combined bytes. Active bindings retain existing anchors; combined dependency bytes remain stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"pnpm-lock.yaml\",\"ours\":{\"digest\":\"2907b97d6a2e98b4211695a78cf83b03419218f1dd95ce090ca753d9bdbad14a\",\"revision\":\"b50eeb9584c1808e429e59dcb3c3c2253307bbbe\"},\"main\":{\"digest\":\"29dbdce300fcd3d881ae511317af478da6e9c098a8e8cf51c6b2269a937525df\",\"revision\":\"df9188971e1a93d2c5525a7f5f38e3da93c9e4de\"}}].",
 
   "sources": [
     "pnpm-lock.yaml",

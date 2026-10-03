@@ -18,7 +18,9 @@
 
     "src-ui/src/components/plugins/framePaneHost.tsx",
 
-    "src-ui/src/workspace-panes/inProcessPaneHost.tsx"
+    "src-ui/src/workspace-panes/inProcessPaneHost.tsx",
+
+    "src-ui/src/components/plugins/plugin-frame-runtime.ts"
   ],
 
   "checks": [

@@ -1,5 +1,5 @@
 {
-  "status": "not-run",
+  "status": "partially-run",
   "cases": [
     {
       "experienceId": "grill-me",
@@ -56,6 +56,31 @@
       "scenario": "Missing required context/tool or denial at a source confirmation stop.",
       "expected": "Surface missing prerequisites/denial, retain canonical state and no fabricated completed action.",
       "status": "not-run"
+    },
+    {
+      "experienceId": "implement",
+      "kind": "representative",
+      "scenario": "User explicitly selects reviewed tickets in a Project with pre-agreed testing seams and permitted branch/file tools.",
+      "expected": "Implement only selected work, use bundled TDD where appropriate, run checks and code review, and retain actual current-branch commit identity. Choosing tickets or a prior stage does not start implementation.",
+      "status": "not-run"
+    },
+    {
+      "experienceId": "implement",
+      "kind": "refusal-stop",
+      "scenario": "Implementation is selected without required Project, agreed seams, permitted tools/branch authority, or an explicit send.",
+      "expected": "No automatic implementation or fabricated check/commit; surface missing prerequisite or denial and retain canonical user controls.",
+      "status": "not-run"
+    },
+    {
+      "caseId": "browser-focus-board-20261003",
+      "experienceId": "grill-me",
+      "stages": ["grill-me", "to-spec", "to-tickets"],
+      "kind": "browser-model-journey",
+      "scenario": "One local Focus Board idea proceeds through real Codex clarification, reviewed specification and six approved local ticket files.",
+      "expected": "Retain answers and immutable stage history, wait for review before local file publication, and do not implement the app.",
+      "status": "pass",
+      "evidence": "qualification/browser-focus-board-20261003.json",
+      "limits": "Source1bd browser/model run plus source746 reload only; ordinary text questions, no canonical questionnaire-answer/native/store/release proof."
     }
   ]
 }

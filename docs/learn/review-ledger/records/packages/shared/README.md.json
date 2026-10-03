@@ -26,7 +26,11 @@
 
     "packages/shared/package.json#/files",
 
-    "packages/shared/package.json#/name"
+    "packages/shared/package.json#/name",
+
+    "packages/shared/src/skill-experience-values.ts",
+
+    "packages/shared/src/skill-experience-reader.ts"
   ],
 
   "checks": [

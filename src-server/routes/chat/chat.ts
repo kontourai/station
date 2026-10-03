@@ -26,6 +26,7 @@ import {
   readNativeForegroundRelayCompanion,
   readNativeMemoryRelayCompanion,
   readNativeOutputRelayCompanion,
+  readSkillExperienceRelayContext,
 } from '../../runtime/conversation/authorized-turn-correlation.js';
 import {
   INTERNAL_NATIVE_WORKSPACE_HEADER,
@@ -158,6 +159,9 @@ export function createChatRoutes(ctx: ChatRuntimeContext) {
         : undefined;
     const turnCorrelation = trustedRelay
       ? readAuthorizedTurnCorrelationHandoff(relayHandoff)
+      : undefined;
+    const skillExperienceContext = trustedRelay
+      ? readSkillExperienceRelayContext(relayHandoff)
       : undefined;
     const nativeMemory = trustedRelay
       ? readNativeMemoryRelayCompanion(relayHandoff)
@@ -341,6 +345,7 @@ export function createChatRoutes(ctx: ChatRuntimeContext) {
         plugin,
         input: input as string | ChatMessage[],
         ambientContext,
+        skillExperienceContext,
         restOptions,
         injectContext,
         ragContext,

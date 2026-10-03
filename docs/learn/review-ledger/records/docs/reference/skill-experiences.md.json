@@ -34,7 +34,49 @@
 
     "examples/visual-skill-experience/skills/stress-test-idea/SKILL.md",
 
-    "src-server/__test-utils__/temp-dirs.ts"
+    "src-server/__test-utils__/temp-dirs.ts",
+
+    "src-server/services/plugins/agent-plugin-loader.ts",
+
+    "src-server/services/agents/skill-service.ts",
+
+    "src-server/routes/agents/skills.ts",
+
+    "src-server/routes/agents/__tests__/skill-experiences.routes.test.ts",
+
+    "src-server/services/orchestration/skill-experience-runtime.ts",
+
+    "src-server/services/orchestration/skill-experience-model.ts",
+
+    "src-server/services/orchestration/skill-experience-snapshots.ts",
+
+    "src-server/services/orchestration/client-origin-propagation.ts",
+
+    "src-server/routes/orchestration/orchestration.ts",
+
+    "src-server/runtime/conversation/authorized-turn-correlation.ts",
+
+    "packages/contracts/src/workspace-pane-host-contract.ts",
+
+    "packages/sdk/src/skill-experience-pane.ts",
+
+    "examples/rich-skill-experience/README.md",
+
+    "src-ui/src/lib/skill-experience-preview.ts",
+
+    "src-ui/src/lib/skill-experience-draft.ts",
+
+    "src-ui/src/hooks/useChatInput.ts",
+
+    "src-ui/src/hooks/useActiveChatSessionMessaging.ts",
+
+    "src-ui/src/components/skill-experiences/SkillExperiencePanel.tsx",
+
+    "src-ui/src/lib/foregroundMessageDispatch.ts",
+
+    "packages/sdk/src/client/skill-experiences.ts",
+
+    "src-ui/src/components/skill-experiences/SkillExperienceForm.tsx"
   ],
 
   "checks": [
