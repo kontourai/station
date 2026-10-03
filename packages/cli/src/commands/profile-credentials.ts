@@ -40,11 +40,6 @@ export function setProfileCredentialStore(store: ProfileCredentialStore): void {
   credentialStore = store;
 }
 
-/** Explicit test-only reset; production code must not use an in-memory fallback. */
-export function resetProfileCredentialStoreForTests(): void {
-  credentialStore = unavailableStore;
-}
-
 export function profileCredentialRef(id: string): StationProfileCredentialRef {
   if (!id || id.trim().length === 0)
     throw new Error('A credential reference id cannot be empty.');

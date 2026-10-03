@@ -46,11 +46,11 @@
 
     {"path":"src-server/routes/plugins/plugin-config-routes.ts","digest":"42dda4eeb196c8b63c081f059822f9f56187b1da9d8f84ec4c09cacc3d95f5a4","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-server/services/agents/skill-service.ts","digest":"b422d6e8444abe623ad16f39e37a535e9d6b6b3bdb8f009d621b493c2b22c369","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"src-server/services/agents/skill-service.ts","digest":"036d075316efb30c94191ded896d3c69c9169f23e053f3fba34ef1b4283d161e","revision":"2867eea7c9a4838e2a59cdbf6ec7f940b7d4cf26"},
 
     {"path":"src-server/services/plugins/agent-plugin-loader.ts","digest":"91dd9928c383d1db4197a5c2e4cf7f80bcbcfb15a6ffad5ffeb1d27362d9c5b6","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-server/services/plugins/mcp-service.ts","digest":"ae0db4eaae63bb43fdacf188eb5aacccd7377e656809b0005623516e2f1249aa","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
+    {"path":"src-server/services/plugins/mcp-service.ts","digest":"297cdbe10e5c1efb7f611dd7f55ecca99047d05ba631f863b92c45c6a5e5df0e","revision":"aadb5aa183a58e97344d13b8c5f34f92a7d78a94"},
 
     {"path":"src-server/services/plugins/plugin-activation-composition.ts","digest":"273fb2e4a6343624321647ef4e9e10962e57ba6c6776bf0aacc87e3ecc277770","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
@@ -58,7 +58,7 @@
 
     {"path":"src-server/services/plugins/plugin-incarnation.ts","digest":"01f16d8ae5b0bba70ed14fa906f312ec5281a4ae6f8b4380f929493ad414b626","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-server/services/plugins/plugin-install-transaction.ts","digest":"d86ca9367f039174cd2aaaba83b65dc1df376f6474bd4a4f29be54341fd2c0e7","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
+    {"path":"src-server/services/plugins/plugin-install-transaction.ts","digest":"01ba3b7fe2249e6215c6fb62c6372e21324c863bee37bcac6e739a7b0170db61","revision":"63833ae5666cb06da0b5671dc0e3bf63bdc1d0fa"},
 
     {"path":"src-server/services/plugins/plugin-installation-local.ts","digest":"5becd37c9b513ca607765046ee7314e7adbeddd4c1955905c85e8254963455d6","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 

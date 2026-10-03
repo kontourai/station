@@ -79,7 +79,10 @@ import {
   tenantExecutionContextAttributes,
   tenantExecutionContextOutcomes,
 } from '../../telemetry/metrics.js';
-import { createStationControlMcpServer } from '../../tools/station-control-mcp-server.js';
+import {
+  createSelectedStationControlMcpServer,
+  createStationControlMcpServer,
+} from '../../tools/station-control-mcp-server.js';
 import {
   withStationControlCallerBinding,
   withStationControlCallerContext,
@@ -141,13 +144,6 @@ export function createStationControlMcpRoutes(
   options: StationControlMcpRouteOptions,
 ): Hono {
   const app = new Hono();
-  const handler = createMcpHandler(
-    options.createServer ?? createStationControlMcpServer,
-    {
-      legacy: 'stateless',
-      responseMode: 'auto',
-    },
-  );
 
   app.all(STATION_CONTROL_MCP_PATH, async (c) => {
     if (!isLoopbackRemoteAddress(extractRemoteAddress(c.env))) {
@@ -223,6 +219,13 @@ export function createStationControlMcpRoutes(
     const callerBinding = createHash('sha256')
       .update(candidate!)
       .digest('base64url');
+    const handler = createMcpHandler(
+      () =>
+        options.createServer
+          ? options.createServer()
+          : createSelectedStationControlMcpServer(verified.allowedTools),
+      { legacy: 'stateless', responseMode: 'auto' },
+    );
     const response = await withStationControlExecutionContext(
       tenantExecutionContext
         ? tenantExecutionContextFromSession(tenantExecutionContext)
