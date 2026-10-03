@@ -337,6 +337,11 @@ export interface RuntimeSecurityAuditRecord {
 }
 
 export interface RuntimeHttpSecurityOptions {
+  nativeEnrollment?: {
+    capability(
+      request: Request,
+    ): import('../services/identity/native-enrollment-capability.js').NativeEnrollmentCapability;
+  };
   deploymentAuthentication?: DeploymentAuthenticationService;
   verifyCredential: (
     credential: string,

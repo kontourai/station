@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, test } from 'vitest';
 
@@ -42,7 +42,7 @@ function runProofCopy(
   mutate: (source: string) => string = (source) => source,
   mutateChatRequestPreparation?: (source: string) => string,
   mutateConfigContext?: (source: string) => string,
-  mutateAgentConnectionView?: (source: string) => string,
+  queryRetryMutation?: { path: string; mutate: (source: string) => string },
   mutateSchedulerJobDialogStore?: (source: string) => string,
 ) {
   const root = join(repoRoot, `.proof-guardrails-negative-${process.pid}`);
@@ -123,23 +123,21 @@ function runProofCopy(
     source = sourcePathRewrite;
   }
 
-  if (mutateAgentConnectionView) {
+  if (queryRetryMutation) {
+    const filename = basename(queryRetryMutation.path);
     writeFileSync(
-      join(root, 'AgentConnectionView.tsx'),
-      mutateAgentConnectionView(
-        readFileSync(
-          join(repoRoot, 'src-ui/src/views/AgentConnectionView.tsx'),
-          'utf8',
-        ),
+      join(root, filename),
+      queryRetryMutation.mutate(
+        readFileSync(join(repoRoot, queryRetryMutation.path), 'utf8'),
       ),
     );
     const sourcePathRewrite = source.replace(
-      "'../src-ui/src/views/AgentConnectionView.tsx'",
-      "'./AgentConnectionView.tsx'",
+      `'../${queryRetryMutation.path}'`,
+      `'./${filename}'`,
     );
     if (sourcePathRewrite === source) {
       throw new Error(
-        'AgentConnectionView path rewrite did not match; update the anchor in this test',
+        `${filename} path rewrite did not match; update the anchor in this test`,
       );
     }
     source = sourcePathRewrite;
@@ -175,6 +173,7 @@ function runProofCopy(
   const result = spawnSync(process.execPath, [copy], {
     cwd: repoRoot,
     encoding: 'utf8',
+    windowsHide: true,
   });
   return {
     status: result.status,
@@ -243,31 +242,40 @@ describe('proof:repo-guardrails fails closed on a missing source', () => {
     expect(status).toBe(1);
   });
 
-  test('distinguishes a raw fetch call from the SDK query refetch callback', () => {
-    const { status, output } = runProofCopy(
-      undefined,
-      undefined,
-      undefined,
-      (source) => {
-        const mutated = source.replace(
-          'onRetry={() => void refetchRuntimes()}',
-          "onRetry={() => void fetch('/api/connections')}",
-        );
-        if (mutated === source) {
-          throw new Error(
-            'negative mutation did not find the refetch callback',
-          );
-        }
-        return mutated;
-      },
-    );
+  test.each([
+    [
+      'AgentConnectionView',
+      'src-ui/src/views/AgentConnectionView.tsx',
+      'onRetry={() => void refetchRuntimes()}',
+      "onRetry={() => void fetch('/api/connections')}",
+    ],
+    [
+      'InsightsDashboard',
+      'src-ui/src/components/monitoring/InsightsDashboard.tsx',
+      'onClick={() => void refetch()}',
+      "onClick={() => void fetch('/api/monitoring/events')}",
+    ],
+  ])(
+    '%s distinguishes raw fetch from SDK query refetch',
+    (name, path, retry, rawFetch) => {
+      const { status, output } = runProofCopy(undefined, undefined, undefined, {
+        path,
+        mutate: (source) => {
+          const mutated = source.replace(retry, rawFetch);
+          if (mutated === source) {
+            throw new Error(
+              'negative mutation did not find the refetch callback',
+            );
+          }
+          return mutated;
+        },
+      });
 
-    expect(output).toContain(
-      'AgentConnectionView must not issue raw fetch() calls.',
-    );
-    expect(output).toContain('Repo guardrail proof failed');
-    expect(status).toBe(1);
-  });
+      expect(output).toContain(`${name} must not issue raw fetch() calls.`);
+      expect(output).toContain('Repo guardrail proof failed');
+      expect(status).toBe(1);
+    },
+  );
 
   test('a retired required source is a named finding, not an uncaught ENOENT', () => {
     const { status, output } = runProofCopy((source) =>

@@ -173,6 +173,31 @@ that bypass the SDK seam (for example the notification action and local UI
 identity requests in `src-ui`, and the `station operate` event stream in the
 CLI).
 
+## Separate native relay pilot
+
+The opt-in [native enrollment ceremony](../design/native-relay-enrollment.md)
+and [Device-proof pilot](../guides/deployment-authentication.md) have separate
+source-composed boundaries. They do not extend this document's direct-LAN and
+private-tailnet qualification to an Internet relay or a shipped native journey.
+
+The runtime admits the exact native bootstrap POST leaves only through private,
+current Pion provenance and an approved native installation surface. After
+`begin`, candidate proof fences each ceremony operation. Operator surface approval and pending Device enrollment approval require
+a current real operator credential; a routing grant is transport authority only.
+The server completes enrollment recovery before admission. Credential delivery
+is sealed to the host's enrollment key, with Device binding and activation kept
+separate from account verification.
+
+For the selected native member route, neutral Station observations can use
+current Device proof alone when no account material is supplied. Project and
+shared-work reads still require current account and Project authority. The
+native invitation-acceptance operation verifies both Device and account
+provenance, without a browser cookie or Origin. The fixed native logout retires
+its account continuation and actual provider session; it leaves Device custody
+independent. Ordinary resource writes, operator work and compute are unsupported.
+Desktop and mobile host command registration is source evidence; fresh native
+application enrollment and physical-device acceptance remain separate evidence.
+
 ## Credentialed consumers (station#2051)
 
 The removed loopback/SSH compatibility floor has no silent replacement. These
@@ -395,9 +420,12 @@ Enforcement is a single route -> required-scope table
 (`src-server/security/pairing-route-scopes.ts`) consulted by one piece of
 middleware, never scattered per-handler checks. Every authenticated HTTP route
 family and both the terminal and voice WebSocket upgrade paths are listed;
-GET/HEAD routes require `orchestration:read`, mutating methods require
-`orchestration:operate`, the terminal WebSocket requires `terminal:operate`,
-and the voice WebSocket requires `orchestration:operate`. Pairing-family routes
+Ordinary GET/HEAD routes require `orchestration:read` and ordinary mutating
+methods require `orchestration:operate`; explicit family and leaf rules can
+require a different tier. All `/api/registry/sources` methods require
+`access:manage` plus a separate Station operator principal check in the handlers.
+The terminal WebSocket requires `terminal:operate`, and the voice WebSocket
+requires `orchestration:operate`. Pairing-family routes
 have additional credential-kind and explicit approval-leaf rules described
 above; a generic operate grant cannot reach them. A
 route the table does not recognize fails closed — denied, with a loud server

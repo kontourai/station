@@ -6,6 +6,7 @@ import type {
   StationAgentPluginExtensionV1,
 } from '@kontourai/station-contracts/agent-plugin';
 import type { SkillExperienceDefinitionV1 } from '@kontourai/station-contracts/skill-experience';
+import { parseWorkspacePaneDescriptor } from '@kontourai/station-contracts/workspace-pane';
 import {
   frontmatterToProperties,
   parseFrontmatter,
@@ -46,19 +47,26 @@ function readAuthorFile(root: string, path: string, maxBytes: number): Buffer {
   }
 }
 
+export function isSkillExperienceDefinition(
+  value: unknown,
+): value is SkillExperienceDefinitionV1 {
+  return validateSkillExperience(value);
+}
+
 function assertUnique(values: string[], location: string): void {
   if (new Set(values).size !== values.length)
     throw new Error(`Skill experience ${location}: duplicate identity`);
 }
 
-/** Author build validation only; no imports, fetching, activation or permission grants. */
-export function validateAuthoredSkillExperiences(
+/** Read inert definitions and their bundled Skills; no activation or permission grants. */
+export function readValidatedSkillExperiences(
   pluginDir: string,
   manifest: AgentPluginManifestV1,
   extension: StationAgentPluginExtensionV1 | undefined,
-): void {
+): SkillExperienceDefinitionV1[] {
+  const definitions: SkillExperienceDefinitionV1[] = [];
   const contributions = extension?.experiences ?? [];
-  if (contributions.length === 0) return;
+  if (contributions.length === 0) return definitions;
   if (!manifest.version)
     throw new Error('Skill experiences require an owning plugin.json version');
   assertUnique(
@@ -79,6 +87,24 @@ export function validateAuthoredSkillExperiences(
       throw new Error(`Skill experience ${contribution.source}: invalid JSON`, {
         cause,
       });
+    }
+    if (
+      candidate &&
+      typeof candidate === 'object' &&
+      'inputs' in candidate &&
+      Array.isArray(candidate.inputs)
+    ) {
+      for (const input of candidate.inputs) {
+        if (
+          input &&
+          typeof input === 'object' &&
+          typeof input.id === 'string' &&
+          ['constructor', 'prototype', '__proto__'].includes(input.id)
+        )
+          throw new Error(
+            `Skill experience ${contribution.source}/inputs/${input.id}: reserved input identity is unsupported`,
+          );
+      }
     }
     if (!validateSkillExperience(candidate)) {
       const first = validateSkillExperience.errors?.[0];
@@ -115,6 +141,12 @@ export function validateAuthoredSkillExperiences(
       `${contribution.source}/requiredContext.kind`,
     );
     const skillIds = new Set(definition.skills.map((skill) => skill.id));
+    if (definition.entrySkillId && !skillIds.has(definition.entrySkillId))
+      fail('entrySkillId', 'must name a bundled Skill');
+    assertUnique(
+      (definition.transitions ?? []).map((entry) => entry.experienceId),
+      `${contribution.source}/transitions.experienceId`,
+    );
     for (const skill of definition.skills) {
       if (skill.path !== `./skills/${skill.name}/SKILL.md`)
         fail(
@@ -151,6 +183,7 @@ export function validateAuthoredSkillExperiences(
       ...definition.inputs,
       ...definition.outputs,
       ...definition.requiredContext,
+      ...(definition.transitions ?? []),
     ]) {
       if (
         item.provenance.origin === 'skill-declared' &&
@@ -201,5 +234,40 @@ export function validateAuthoredSkillExperiences(
         'interaction/questionRounds',
         'is supported only for the interview pattern',
       );
+    if (definition.presentation.richView) {
+      const descriptor = (extension?.workspacePanes ?? [])
+        .map(parseWorkspacePaneDescriptor)
+        .find(
+          (pane) => pane?.id === definition.presentation.richView?.descriptorId,
+        );
+      if (
+        descriptor?.provenance.origin !== 'plugin' ||
+        descriptor.provenance.pluginId !== manifest.name ||
+        descriptor.renderer.kind !== 'plugin-component'
+      )
+        fail(
+          'presentation/richView',
+          'must name a same-package plugin-component Workspace Pane',
+        );
+    }
+    definitions.push(definition);
   }
+  const experienceIds = new Set(definitions.map((definition) => definition.id));
+  for (const definition of definitions) {
+    for (const transition of definition.transitions ?? []) {
+      if (!experienceIds.has(transition.experienceId))
+        throw new Error(
+          `Skill experience ${definition.id}/transitions: unknown local experience '${transition.experienceId}'`,
+        );
+    }
+  }
+  return definitions;
+}
+
+export function validateAuthoredSkillExperiences(
+  pluginDir: string,
+  manifest: AgentPluginManifestV1,
+  extension: StationAgentPluginExtensionV1 | undefined,
+): void {
+  readValidatedSkillExperiences(pluginDir, manifest, extension);
 }

@@ -15,37 +15,31 @@ mod desktop_installation;
 mod local_access_watch;
 #[cfg(all(not(mobile), unix))]
 mod login_shell;
+mod native_enrollment;
+mod native_enrollment_host;
+mod native_enrollment_peer;
+mod native_relay_ice;
 #[cfg(not(mobile))]
 mod notification_feed;
-// Foundation only: this module owns native proof-key custody and signing but
-// is intentionally not registered as renderer IPC or wired to app traffic.
-// Host account proof-key custody, distinct from routing and Device keys.
-#[cfg(not(mobile))]
+// Proof keys remain host-only; bounded account and Device operations are IPC.
 mod native_account_operations;
-#[cfg(not(mobile))]
 pub(crate) mod native_account_proof_key;
-#[cfg(not(mobile))]
 mod native_application_peer;
-// Desktop-only Device identity custody metadata (station#2893): the versioned
+// Device identity custody metadata (station#2893): the versioned
 // keyring companion for paired credentials and the current-identity resolver.
-#[cfg(not(mobile))]
 pub(crate) mod native_device_binding_candidate;
-#[cfg(not(mobile))]
 pub(crate) mod native_device_custody;
-#[cfg(not(mobile))]
 pub(crate) mod native_device_proof_key;
-#[cfg(not(mobile))]
 pub(crate) mod native_proof_key_core;
-#[cfg(not(mobile))]
+#[cfg(target_os = "ios")]
+mod native_relay_ios_launch;
 mod native_relay_key_approval;
-#[cfg(not(mobile))]
+mod native_relay_link_intake;
 pub(crate) mod native_relay_proof_key;
-#[cfg(not(mobile))]
 mod native_relay_redemption;
-#[cfg(not(mobile))]
+mod native_secure_entry;
 mod native_station_key_custody;
 mod pairing_deep_link_channels_generated;
-#[cfg(not(mobile))]
 mod relay_grant_vault;
 mod service_state;
 #[cfg(not(mobile))]
@@ -602,6 +596,7 @@ struct NativeProfileAuthorizationReceipt {
 struct NativeCredentialBinding {
     exact_origin: String,
     environment_id: String,
+    relay_route: Option<NativeStationRelayRoute>,
 }
 
 #[derive(Clone, Default)]
@@ -1173,15 +1168,27 @@ fn parse_station_profile_store(contents: &str) -> Result<CredentialProfileStore,
                     && matches!(bytes[14].to_ascii_lowercase(), b'1'..=b'8')
                     && matches!(bytes[19].to_ascii_lowercase(), b'8' | b'9' | b'a' | b'b')
             };
-            if profile.credential_ref.is_some()
-                || profile.configuration_state != "unconfigured"
+            let custody_valid = match profile.configuration_state.as_str() {
+                "unconfigured" => profile.credential_ref.is_none(),
+                "requires-auth" | "configured" => {
+                    profile.credential_ref.is_some()
+                        && profile.local_service.is_none()
+                        && profile._environment_id.as_deref() == Some(route.station_id.as_str())
+                        && profile
+                            .client_instance_id
+                            .as_deref()
+                            .is_some_and(safe_identifier)
+                }
+                _ => false,
+            };
+            if !custody_valid
                 || profile.setup_source != "manual"
                 || !safe_origin(&profile.endpoint)
                 || !safe_origin(&route.broker_origin)
                 || !safe_identifier(&route.station_id)
                 || !safe_identifier(&route.enrollment_id)
             {
-                return Err("invalid or configured Station relay profile".to_string());
+                return Err("invalid Station relay profile".to_string());
             }
         } else {
             selectable_names.insert(profile.name.to_lowercase());
@@ -1258,6 +1265,7 @@ fn profile_credential_binding(
     profile: &CredentialProfile,
 ) -> Result<NativeCredentialBinding, String> {
     Ok(NativeCredentialBinding {
+        relay_route: profile.relay_route.clone(),
         exact_origin: exact_origin(&profile.endpoint)?,
         environment_id: profile
             ._environment_id
@@ -1392,7 +1400,7 @@ fn invalidate_active_profile_receipt_after_store_write(
     }
 }
 
-#[cfg(any(mobile, test))]
+#[cfg(test)]
 fn invalidate_active_profile_receipt_after_credential_delete(
     authority: &mut NativeProfileAuthorityState,
     reference: &NativeCredentialReference,
@@ -1520,10 +1528,12 @@ fn initialize_credential_store() -> Result<(), String> {
     Err("This desktop platform has no supported OS credential store; Station will not fall back to plaintext storage.".to_string())
 }
 
-fn credential_entry(reference: &NativeCredentialReference) -> Result<keyring_core::Entry, String> {
+fn credential_entry(
+    reference: &NativeCredentialReference,
+) -> Result<native_secure_entry::NativeSecureEntry, String> {
     initialize_credential_store()?;
     let account = credential_account(reference)?;
-    keyring_core::Entry::new(STATION_CREDENTIAL_SERVICE, &account)
+    native_secure_entry::NativeSecureEntry::new(STATION_CREDENTIAL_SERVICE, &account)
         .map_err(|error| format!("create OS credential entry: {error}"))
 }
 
@@ -1584,33 +1594,7 @@ fn credential_vault_delete_blocking(
     app: &AppHandle,
     authority: &NativeProfileAuthority,
 ) -> Result<(), String> {
-    #[cfg(not(mobile))]
-    {
-        credential_vault_delete_with_host(&AppProfileWriteHost::new(app)?, authority, None)
-    }
-    #[cfg(mobile)]
-    {
-        let reference = authorized_credential_reference(app, authority)?;
-        match credential_entry(&reference)?.delete_credential() {
-            Ok(()) => {
-                let mut state = authority
-                    .0
-                    .lock()
-                    .map_err(|_| "Station native authority is unavailable".to_string())?;
-                invalidate_active_profile_receipt_after_credential_delete(&mut state, &reference);
-                Ok(())
-            }
-            Err(error) if is_missing_credential(&error) => {
-                let mut state = authority
-                    .0
-                    .lock()
-                    .map_err(|_| "Station native authority is unavailable".to_string())?;
-                invalidate_active_profile_receipt_after_credential_delete(&mut state, &reference);
-                Ok(())
-            }
-            Err(error) => Err(format!("delete OS credential: {error}")),
-        }
-    }
+    credential_vault_delete_with_host(&AppProfileWriteHost::new(app)?, authority, None)
 }
 
 #[tauri::command]
@@ -1628,34 +1612,13 @@ fn credential_vault_delete_unreferenced_blocking(
     app: &AppHandle,
     reference: NativeCredentialReference,
 ) -> Result<(), String> {
-    #[cfg(not(mobile))]
-    {
-        credential_vault_delete_with_host(
-            &AppProfileWriteHost::new(app)?,
-            &NativeProfileAuthority::default(),
-            Some(&reference),
-        )
-    }
-    #[cfg(mobile)]
-    {
-        credential_reference_key(&reference)?;
-        let store = parse_station_profile_store(&read_station_profile_contents(app)?)?;
-        if store
-            .profiles
-            .iter()
-            .any(|profile| profile.credential_ref.as_ref() == Some(&reference))
-        {
-            return Err("refusing to delete a credential still owned by a saved Station".into());
-        }
-        match credential_entry(&reference)?.delete_credential() {
-            Ok(()) => Ok(()),
-            Err(error) if is_missing_credential(&error) => Ok(()),
-            Err(error) => Err(format!("delete OS credential: {error}")),
-        }
-    }
+    credential_vault_delete_with_host(
+        &AppProfileWriteHost::new(app)?,
+        &NativeProfileAuthority::default(),
+        Some(&reference),
+    )
 }
 
-#[cfg(not(mobile))]
 fn credential_vault_delete_with_host(
     host: &impl ProfileWriteHost,
     authority: &NativeProfileAuthority,
@@ -1691,7 +1654,6 @@ fn credential_vault_delete_with_host(
     native_device_custody::retry_retirements(host.custody(), &path, &store, &state, unreferenced)
 }
 
-#[cfg(not(mobile))]
 fn retry_device_custody_retirements_for_app(app: &AppHandle) -> Result<(), String> {
     let host = AppProfileWriteHost::new(app)?;
     let authority = app
@@ -1722,21 +1684,11 @@ fn station_profile_authorize_active_internal(
     authority: &NativeProfileAuthority,
     profile_name: &str,
 ) -> Result<NativeProfileAuthorizationReceipt, String> {
-    #[cfg(not(mobile))]
     let receipt = station_profile_authorize_with_host(
         &AppProfileWriteHost::new(app)?,
         authority,
         profile_name,
     )?;
-    #[cfg(mobile)]
-    let receipt = {
-        let store = parse_station_profile_store(&read_station_profile_contents(app)?)?;
-        let mut state = authority
-            .0
-            .lock()
-            .map_err(|_| "Station native authority is unavailable".to_string())?;
-        authorize_active_profile_in_state(&mut state, &store, profile_name)?
-    };
     // The renderer may have attempted its bounded readiness proof before the
     // active credential was available. Reuse its mounted retry subscription
     // once the host has committed the selected profile.
@@ -1747,7 +1699,6 @@ fn station_profile_authorize_active_internal(
     Ok(receipt)
 }
 
-#[cfg(not(mobile))]
 fn station_profile_authorize_with_host(
     host: &impl ProfileWriteHost,
     authority: &NativeProfileAuthority,
@@ -2615,28 +2566,9 @@ fn authorized_profile_context_in_store(
     })
 }
 
-#[cfg(mobile)]
-fn authorized_credential_reference(
-    app: &AppHandle,
-    authority: &NativeProfileAuthority,
-) -> Result<NativeCredentialReference, NativeCommandError> {
-    // Read the saved Stations BEFORE taking the authority mutex. On mobile the
-    // read takes `profiles.json.lock`, and the writer holds that lock while it
-    // takes this mutex; taking them in the other order here would let a
-    // concurrent write and this read stall each other until the lock wait
-    // expires (the commands run off the main thread since #2469).
-    let store = parse_station_profile_store(&read_station_profile_contents(app)?)?;
-    let state = authority
-        .0
-        .lock()
-        .map_err(|_| "Station native authority is unavailable".to_string())?;
-    Ok(authorized_profile_context_in_store(&state, &store)?.reference)
-}
-
 /// The host-authorized active Station's exact origin, when there is one.
 /// Native consumers pair it with `native_credential_for_origin`, which
 /// re-validates the whole binding before any bearer is read.
-#[cfg(not(mobile))]
 pub(crate) fn native_active_station_origin(app: &AppHandle) -> Option<String> {
     let authority = app.try_state::<NativeProfileAuthority>()?;
     let state = authority.0.lock().ok()?;
@@ -2672,7 +2604,6 @@ pub(crate) fn native_credential_for_origin(
 /// HTTP credential use above keeps reading the bare bearer. The standalone
 /// resolver uses the same store-read-before-mutex order as bearer reads;
 /// candidate creation uses the already-locked variant below.
-#[cfg(not(mobile))]
 #[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn resolve_current_device_identity_for_active_station(
     app: &AppHandle,
@@ -2694,11 +2625,12 @@ pub(crate) fn resolve_current_device_identity_for_active_station(
 /// saved-profile file lock. The callback runs with the authority mutex held;
 /// callers must preserve the profile-file -> authority lock order. This lets
 /// a compound native operation reuse one parsed profile snapshot instead of
-/// recursively taking `profiles.json`'s lock.
-#[cfg(not(mobile))]
+/// recursively taking `profiles.json`'s lock. Its path comes from that same
+/// locked snapshot: resolving the mobile path again would retake its genesis lock.
 pub(crate) fn with_active_device_identity_in_locked_profile<T>(
     app: &AppHandle,
     store: &CredentialProfileStore,
+    profile_path: &std::path::Path,
     operation: impl FnOnce(
         &native_device_custody::CurrentDeviceIdentity,
         &str,
@@ -2721,7 +2653,7 @@ pub(crate) fn with_active_device_identity_in_locked_profile<T>(
         .map_err(|error| DeviceCustodyError::NotAuthorized(error.code.to_owned()).to_string())?;
     if native_device_custody::has_active_retirement(
         host.custody(),
-        &host.path().map_err(|error| error.to_string())?,
+        profile_path,
         &context.reference,
     )
     .map_err(|_| DeviceCustodyError::MetadataStore.to_string())?
@@ -2780,7 +2712,6 @@ pub(crate) fn with_active_device_identity_in_locked_profile<T>(
     Ok(result)
 }
 
-#[cfg(not(mobile))]
 fn resolve_current_device_identity_with_host(
     host: &impl ProfileWriteHost,
     authority: &NativeProfileAuthority,
@@ -2924,6 +2855,14 @@ fn authorized_profile_for_origin(
         .0
         .lock()
         .map_err(|_| "Station native authority is unavailable".to_string())?;
+    authorized_direct_profile_for_origin_in_store(&state, &store, origin)
+}
+
+fn authorized_direct_profile_for_origin_in_store(
+    state: &NativeProfileAuthorityState,
+    store: &CredentialProfileStore,
+    origin: &str,
+) -> Result<NativeCredentialReference, NativeCommandError> {
     let selected = state.active.clone().ok_or_else(|| {
         NativeCommandError::new(
             "no_active_profile",
@@ -2932,6 +2871,12 @@ fn authorized_profile_for_origin(
     })?;
     profile_bindings_are_authorized(&state, &store)?;
     let profile = selected_profile_from_store(&store, &selected.name)?;
+    if profile.relay_route.is_some() {
+        return Err(NativeCommandError::new(
+            "native_relay_direct_http_refused",
+            "Station native relay profiles cannot use direct bearer HTTP",
+        ));
+    }
     if profile.credential_ref.as_ref() != Some(&selected.reference) {
         return Err(NativeCommandError::new(
             "credential_binding_changed",
@@ -3026,6 +2971,9 @@ fn scoped_profile_for_origin_in_store(
     profile_bindings_are_authorized(state, store).map_err(|_| native_request_binding_stale())?;
     let profile = selected_profile_from_store(store, &selected.name)
         .map_err(|_| native_request_binding_stale())?;
+    if profile.relay_route.is_some() {
+        return Err(native_request_binding_stale());
+    }
     if profile.credential_ref.as_ref() != Some(&selected.reference) {
         return Err(native_request_binding_stale());
     }
@@ -5133,62 +5081,310 @@ fn credential_vault_commit_pairing_internal(
     pending: &NativePendingPairingCredentials,
     handle: &str,
 ) -> Result<(), String> {
-    // The saved-Station read comes before the pending mutex for the same
-    // lock-order reason as `authorized_credential_reference`: the writer holds
-    // `profiles.json.lock` (mobile) while it takes this mutex.
-    #[cfg(not(mobile))]
+    credential_vault_commit_pairing_with_host(
+        &AppProfileWriteHost::new(app)?,
+        authority,
+        pending,
+        handle,
+    )
+}
+
+fn publish_authenticated_native_enrollment(
+    app: &AppHandle,
+    authenticated: &native_enrollment_host::AuthenticatedEnrollmentActivation,
+    cancelled: impl Fn() -> Result<bool, String>,
+) -> Result<u64, String> {
+    let route = authenticated.route();
+    let name = &route.context.profile.profile_name;
+    let authority = app
+        .try_state::<NativeProfileAuthority>()
+        .ok_or("Station native authority is unavailable")?;
+    let pending = app
+        .try_state::<NativePendingPairingCredentials>()
+        .ok_or("Station pairing state is unavailable")?;
+    let reference = authenticated.reference();
+    let mut store = parse_station_profile_store(&station_profile_store_read_with_host(
+        &AppProfileWriteHost::new(app)?,
+        &authority,
+    )?)?;
+    let profile = selected_profile_from_store(&store, name)?;
+    if store.revision != route.context.profile.revision
+        || exact_origin(&profile.endpoint)? != route.context.profile.station_endpoint
+        || profile.client_instance_id.as_deref() != Some(&route.surface.client_instance_id)
     {
-        credential_vault_commit_pairing_with_host(
-            &AppProfileWriteHost::new(app)?,
-            authority,
-            pending,
-            handle,
-        )
+        return Err("The enrollment profile changed before publication".into());
     }
-    #[cfg(mobile)]
+    authenticated.assert_current(app, store.revision)?;
+    if profile
+        .credential_ref
+        .as_ref()
+        .is_some_and(|value| value != reference)
     {
-        let store = parse_station_profile_store(&read_station_profile_contents(app)?)?;
-        let mut pending = pending
+        return Err("The enrollment cannot replace another credential".into());
+    }
+    if profile.credential_ref.as_ref() == Some(reference)
+        && profile.configuration_state == "configured"
+    {
+        if cancelled()? {
+            return Err("The enrollment was cancelled".into());
+        }
+        station_profile_authorize_active_internal(app, &authority, name)?;
+        return Ok(store.revision);
+    }
+    let handle = reference.id.clone();
+    let resumed = profile.credential_ref.as_ref() == Some(reference)
+        && profile.configuration_state == "requires-auth";
+    if !resumed && profile.credential_ref.is_some() {
+        return Err("The enrollment profile is not fresh".into());
+    }
+    let entry = PendingPairingCredential {
+        credential: authenticated.credential().into(),
+        reference: reference.clone(),
+        exact_origin: route.context.profile.station_endpoint.clone(),
+        environment_id: route.scope.station_id.clone(),
+        client_instance_id: route.surface.client_instance_id.clone(),
+        device_id: authenticated.device_id().into(),
+        device_kind: "device".into(),
+        expires_at: SystemTime::now() + Duration::from_secs(120),
+        phase: if resumed {
+            NativePairingPhase::RequiresAuthPersisted {
+                profile_name: name.clone(),
+            }
+        } else {
+            NativePairingPhase::AwaitingRequiresAuth
+        },
+    };
+    {
+        let mut entries = pending
             .0
             .lock()
-            .map_err(|_| "native pairing credential state unavailable".to_string())?;
-        let entry = pending
-            .get_mut(handle)
-            .filter(|entry| entry.expires_at > SystemTime::now())
-            .ok_or_else(|| "native pairing credential handle is missing or expired".to_string())?;
-        let profile_name = match &entry.phase {
-            NativePairingPhase::RequiresAuthPersisted { profile_name } => profile_name.clone(),
-            _ => {
-                return Err("Station pairing handle is not awaiting keyring commitment".to_string())
-            }
-        };
-        pairing_profile_matches(&store, &profile_name, entry, "requires-auth")?;
-        let reference_key = credential_reference_key(&entry.reference)?;
-        let state = authority
+            .map_err(|_| "Station pairing state is unavailable")?;
+        if entries.len() >= 128 && !entries.contains_key(&handle) {
+            return Err("Station pairing capacity reached".into());
+        }
+        entries.insert(handle.clone(), entry);
+    }
+    if resumed {
+        let mut state = authority
             .0
             .lock()
-            .map_err(|_| "Station native authority is unavailable".to_string())?;
-        if !state.transitioning.contains(&reference_key)
-            || state.bindings.contains_key(&reference_key)
-        {
-            return Err("Station pairing authority is not transitioning".to_string());
+            .map_err(|_| "Station native authority is unavailable")?;
+        state.bindings.remove(&credential_reference_key(reference)?);
+        state
+            .transitioning
+            .insert(credential_reference_key(reference)?);
+    } else {
+        if cancelled()? {
+            return Err("The enrollment was cancelled".into());
         }
-        drop(state);
-        entry.phase = NativePairingPhase::CredentialRemoved {
-            profile_name: profile_name.clone(),
-        };
-        if let Err(error) = write_credential_password(&entry.reference, &entry.credential) {
-            if entry.expires_at > SystemTime::now() {
-                entry.phase = NativePairingPhase::RequiresAuthPersisted { profile_name };
-            }
-            return Err(error);
+        let next = native_enrollment_next_store(
+            &store,
+            name,
+            reference,
+            &route.scope.station_id,
+            &route.surface.client_instance_id,
+            "requires-auth",
+        )?;
+        station_profile_store_write_internal(
+            app,
+            &authority,
+            &pending,
+            next,
+            store.revision,
+            Some(handle.clone()),
+        )?;
+        store = parse_station_profile_store(&read_station_profile_contents(app)?)?;
+    }
+    if cancelled()? {
+        retire_owned_native_enrollment(app, name, reference)?;
+        return Err("The enrollment was cancelled".into());
+    }
+    authenticated.assert_current(app, store.revision)?;
+    credential_vault_commit_pairing_internal(app, &authority, &pending, &handle)?;
+    if cancelled()? {
+        retire_owned_native_enrollment(app, name, reference)?;
+        return Err("The enrollment was cancelled".into());
+    }
+    authenticated.assert_current(app, store.revision)?;
+    let next = native_enrollment_next_store(
+        &store,
+        name,
+        reference,
+        &route.scope.station_id,
+        &route.surface.client_instance_id,
+        "configured",
+    )?;
+    station_profile_store_write_internal(
+        app,
+        &authority,
+        &pending,
+        next,
+        store.revision,
+        Some(handle),
+    )?;
+    station_profile_authorize_active_internal(app, &authority, name)?;
+    let published = parse_station_profile_store(&read_station_profile_contents(app)?)?;
+    if cancelled()? {
+        retire_owned_native_enrollment(app, name, reference)?;
+        return Err("The enrollment was cancelled".into());
+    }
+    if authenticated
+        .assert_current(app, published.revision)
+        .is_err()
+    {
+        retire_owned_native_enrollment(app, name, reference)?;
+        return Err("The enrollment owner changed during publication".into());
+    }
+    Ok(published.revision)
+}
+
+fn native_enrollment_next_store(
+    current: &CredentialProfileStore,
+    name: &str,
+    reference: &NativeCredentialReference,
+    station_id: &str,
+    client_instance_id: &str,
+    state: &str,
+) -> Result<String, String> {
+    let mut next = current.clone();
+    next.revision = next
+        .revision
+        .checked_add(1)
+        .ok_or("Station revision overflow")?;
+    let profile = next
+        .profiles
+        .iter_mut()
+        .find(|p| p.name.eq_ignore_ascii_case(name))
+        .ok_or("The enrollment profile is missing")?;
+    profile.credential_ref = Some(reference.clone());
+    profile._environment_id = Some(station_id.into());
+    profile.client_instance_id = Some(client_instance_id.into());
+    profile.configuration_state = state.into();
+    profile.updated_at = now_millis_f64()?;
+    serde_json::to_string(&next).map_err(|_| "The enrollment profile update is invalid".into())
+}
+
+fn native_enrollment_terminal_profile_current(
+    app: &AppHandle,
+    name: &str,
+    expected_revision: u64,
+) -> Result<(), String> {
+    let path = station_profiles_path(app)?;
+    let _lock = lock_station_profiles_for_app(app, &path)?;
+    let store = parse_station_profile_store(
+        &read_station_profile_store(&path).map_err(|_| "The enrollment profile is unavailable")?,
+    )?;
+    native_enrollment_terminal_profile_check(&store, name, expected_revision)
+}
+
+fn native_enrollment_terminal_profile_check(
+    store: &CredentialProfileStore,
+    name: &str,
+    expected_revision: u64,
+) -> Result<(), String> {
+    let profile = selected_profile_from_store(store, name)?;
+    if store.revision != expected_revision
+        || profile.credential_ref.is_some()
+        || profile.configuration_state != "unconfigured"
+    {
+        return Err("native_enrollment_operation_refused".into());
+    }
+    Ok(())
+}
+
+fn native_enrollment_owned_revision(
+    app: &AppHandle,
+    name: &str,
+    original_revision: u64,
+    reference: Option<&NativeCredentialReference>,
+    origin: &str,
+    station_id: &str,
+    client_instance_id: &str,
+    cancel_requested: bool,
+) -> Result<u64, String> {
+    let path = station_profiles_path(app)?;
+    let _lock = lock_station_profiles_for_app(app, &path)?;
+    let store = parse_station_profile_store(
+        &read_station_profile_store(&path).map_err(|_| "The enrollment profile is unavailable")?,
+    )?;
+    let profile = selected_profile_from_store(&store, name)?;
+    if exact_origin(&profile.endpoint)? != origin
+        || profile.client_instance_id.as_deref() != Some(client_instance_id)
+    {
+        return Err("The enrollment profile owner changed".into());
+    }
+    if store.revision == original_revision {
+        if profile.credential_ref.is_some() && profile.credential_ref.as_ref() != reference {
+            return Err("The enrollment cannot replace another credential".into());
         }
-        entry.phase = NativePairingPhase::KeyringWritten { profile_name };
-        Ok(())
+        return Ok(store.revision);
+    }
+    let owned = reference.is_some()
+        && profile.credential_ref.as_ref() == reference
+        && profile._environment_id.as_deref() == Some(station_id)
+        && ["requires-auth", "configured"].contains(&profile.configuration_state.as_str());
+    let retired = cancel_requested
+        && reference.is_some()
+        && profile.credential_ref.is_none()
+        && profile._environment_id.is_none()
+        && profile.configuration_state == "unconfigured";
+    if store.revision > original_revision
+        && ((owned && store.revision <= original_revision.saturating_add(2))
+            || (retired && store.revision <= original_revision.saturating_add(3)))
+    {
+        Ok(store.revision)
+    } else {
+        Err("The enrollment profile revision changed outside its owned transaction".into())
     }
 }
 
-#[cfg(not(mobile))]
+fn retire_owned_native_enrollment(
+    app: &AppHandle,
+    name: &str,
+    reference: &NativeCredentialReference,
+) -> Result<(), String> {
+    let authority = app
+        .try_state::<NativeProfileAuthority>()
+        .ok_or("Station native authority is unavailable")?;
+    let pending = app
+        .try_state::<NativePendingPairingCredentials>()
+        .ok_or("Station pairing state is unavailable")?;
+    let current = parse_station_profile_store(&read_station_profile_contents(app)?)?;
+    let Some(profile) = current
+        .profiles
+        .iter()
+        .find(|p| p.name.eq_ignore_ascii_case(name))
+    else {
+        return Ok(());
+    };
+    if profile.credential_ref.as_ref() != Some(reference) {
+        return Ok(());
+    }
+    let mut next = current.clone();
+    next.revision = next
+        .revision
+        .checked_add(1)
+        .ok_or("Station revision overflow")?;
+    let profile = next
+        .profiles
+        .iter_mut()
+        .find(|p| p.name.eq_ignore_ascii_case(name))
+        .ok_or("The enrollment profile is missing")?;
+    profile.credential_ref = None;
+    profile._environment_id = None;
+    profile.configuration_state = "unconfigured".into();
+    profile.updated_at = now_millis_f64()?;
+    station_profile_store_write_internal(
+        app,
+        &authority,
+        &pending,
+        serde_json::to_string(&next).map_err(|_| "The enrollment retirement is invalid")?,
+        current.revision,
+        None,
+    )?;
+    Ok(())
+}
+
 fn credential_vault_commit_pairing_with_host(
     host: &impl ProfileWriteHost,
     authority: &NativeProfileAuthority,
@@ -5212,7 +5408,6 @@ fn credential_vault_commit_pairing_with_host(
 /// SAME pending handle revalidates the same host-held tuple and rewrites both
 /// records, repairing any partial state. A successfully committed credential
 /// is never cleaned up merely because its pending handle later expires.
-#[cfg(not(mobile))]
 fn credential_vault_commit_pairing_with_custody(
     authority: &NativeProfileAuthority,
     pending: &NativePendingPairingCredentials,
@@ -5877,12 +6072,10 @@ fn lock_station_profiles_for_app(
 /// Reconstructs Station-key approval authority from the current native profile
 /// while holding the same interprocess lock used by profile writers. A broker
 /// offer or renderer-supplied route cannot supply this snapshot.
-#[cfg(not(mobile))]
 struct AppNativeTrustProfileProvider<'a> {
     app: &'a AppHandle,
 }
 
-#[cfg(not(mobile))]
 impl<'a> AppNativeTrustProfileProvider<'a> {
     pub(crate) fn enrollment(app: &'a AppHandle) -> Self {
         Self { app }
@@ -5893,7 +6086,6 @@ impl<'a> AppNativeTrustProfileProvider<'a> {
     }
 }
 
-#[cfg(not(mobile))]
 impl native_station_key_custody::LockedTrustProfileProvider for AppNativeTrustProfileProvider<'_> {
     fn with_current_profile<T, F>(
         &self,
@@ -5926,7 +6118,6 @@ impl native_station_key_custody::LockedTrustProfileProvider for AppNativeTrustPr
     }
 }
 
-#[cfg(not(mobile))]
 fn native_trust_profile_snapshot_in_store(
     store: &CredentialProfileStore,
     expected_binding: &native_station_key_custody::TrustProfileBinding,
@@ -6194,37 +6385,9 @@ fn station_profile_store_read_blocking(
     app: &AppHandle,
     authority: &NativeProfileAuthority,
 ) -> Result<String, String> {
-    #[cfg(not(mobile))]
-    {
-        station_profile_store_read_with_host(&AppProfileWriteHost::new(app)?, authority)
-    }
-    #[cfg(mobile)]
-    {
-        let path = station_profiles_path(app)?;
-        validate_station_profile_store(&path)?;
-        match read_station_profile_store(&path) {
-            Ok(contents) => {
-                let store = parse_station_profile_store(&contents)?;
-                let mut state = authority
-                    .0
-                    .lock()
-                    .map_err(|_| "Station native authority is unavailable".to_string())?;
-                profile_bindings_are_authorized(&state, &store)?;
-                // A read is the only trust-on-first-observation path. It accepts
-                // externally configured CLI profiles, but never promotes a
-                // crash-left `requires-auth` record into native authority.
-                observe_configured_profile_bindings(&mut state, &store)?;
-                Ok(contents)
-            }
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                Ok(EMPTY_STATION_PROFILE_STORE.to_string())
-            }
-            Err(error) => Err(format!("read saved Station metadata: {error}")),
-        }
-    }
+    station_profile_store_read_with_host(&AppProfileWriteHost::new(app)?, authority)
 }
 
-#[cfg(not(mobile))]
 fn station_profile_store_read_with_host(
     host: &impl ProfileWriteHost,
     authority: &NativeProfileAuthority,
@@ -6273,7 +6436,6 @@ fn station_profile_store_write_internal(
         expected_revision,
         pairing_handle,
     );
-    #[cfg(not(mobile))]
     {
         let app = app.clone();
         let _ = tauri::async_runtime::spawn_blocking(move || {
@@ -6301,7 +6463,6 @@ trait ProfileWriteHost {
         current: &CredentialProfileStore,
         next: &CredentialProfileStore,
     ) -> Result<(), String>;
-    #[cfg(not(mobile))]
     fn custody(&self) -> &dyn native_device_custody::PairingCustodyWriter;
     fn postpublication_trust(&self, path: &std::path::Path) -> Result<(), String>;
     fn staged_path(&self, generated: std::path::PathBuf) -> std::path::PathBuf {
@@ -6312,7 +6473,6 @@ trait ProfileWriteHost {
 
 struct AppProfileWriteHost<'a> {
     app: &'a AppHandle,
-    #[cfg(not(mobile))]
     custody: native_device_custody::DesktopPairingCustody,
 }
 
@@ -6320,7 +6480,6 @@ impl<'a> AppProfileWriteHost<'a> {
     fn new(app: &'a AppHandle) -> Result<Self, String> {
         Ok(Self {
             app,
-            #[cfg(not(mobile))]
             custody: native_device_custody::DesktopPairingCustody::for_app(app)?,
         })
     }
@@ -6349,18 +6508,9 @@ impl ProfileWriteHost for AppProfileWriteHost<'_> {
         current: &CredentialProfileStore,
         next: &CredentialProfileStore,
     ) -> Result<(), String> {
-        #[cfg(not(mobile))]
-        {
-            relay_grant_vault::invalidate_removed_routes(self.app, current, next)?;
-            native_relay_redemption::stage_removed_profile_routes(self.app, current, next)
-        }
-        #[cfg(mobile)]
-        {
-            let _ = (current, next);
-            Ok(())
-        }
+        relay_grant_vault::invalidate_removed_routes(self.app, current, next)?;
+        native_relay_redemption::stage_removed_profile_routes(self.app, current, next)
     }
-    #[cfg(not(mobile))]
     fn custody(&self) -> &dyn native_device_custody::PairingCustodyWriter {
         &self.custody
     }
@@ -6520,7 +6670,6 @@ fn station_profile_store_write_with_host(
         // Post-transition prepublication errors must reach the rollback below.
         // Grant invalidation still precedes profile publication: a failed
         // later write must never revive a revoked grant.
-        #[cfg(not(mobile))]
         native_device_custody::stage_removed_credentials(
             host.custody(),
             &path,
@@ -6581,14 +6730,14 @@ fn station_profile_store_write_with_host(
             let entry = entries
                 .get(handle)
                 .ok_or_else(|| "native pairing credential handle is missing".to_string())?;
-            if let NativePairingPhase::KeyringWritten { .. } = entry.phase {
+            if let NativePairingPhase::KeyringWritten { ref profile_name } = entry.phase {
                 let key = credential_reference_key(&entry.reference)?;
                 state.bindings.insert(
                     key.clone(),
-                    NativeCredentialBinding {
-                        exact_origin: entry.exact_origin.clone(),
-                        environment_id: entry.environment_id.clone(),
-                    },
+                    profile_credential_binding(selected_profile_from_store(
+                        &next_store,
+                        profile_name,
+                    )?)?,
                 );
                 state.transitioning.remove(&key);
                 entries.remove(handle);
@@ -6640,7 +6789,6 @@ async fn station_profile_store_write(
     .await
 }
 
-#[cfg(not(mobile))]
 fn now_millis_f64() -> Result<f64, String> {
     Ok(SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -10620,7 +10768,6 @@ async fn commit_startup_readiness(
     result
 }
 
-#[cfg(not(mobile))]
 fn renderer_mount_label_admitted(label: &str) -> bool {
     label == "main"
 }
@@ -11915,8 +12062,9 @@ If a stable instance is running, this launch will focus its window and exit.",
         .plugin(tauri_plugin_notification::init())
         // Native OS dialogs for the consent broker (station#3677 PR 3): the
         // approval surface must be chrome webview JS cannot script.
-        .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_deep_link::init());
+        .plugin(tauri_plugin_dialog::init());
+    #[cfg(not(target_os = "ios"))]
+    let builder = builder.plugin(tauri_plugin_deep_link::init());
     // Mobile-only haptic feedback (station#1954). Capability report marks
     // haptics unsupported off-mobile so the webview never calls it there.
     #[cfg(mobile)]
@@ -11930,13 +12078,16 @@ If a stable instance is running, this launch will focus its window and exit.",
         .manage(NativeProfileAuthority::default())
         .manage(NativePendingPairingCredentials::default())
         .manage(NativeHttpCancellation::default())
-        .manage(NativePairingExchangeCancellation::default());
+        .manage(NativePairingExchangeCancellation::default())
+        .manage(native_relay_key_approval::NativeRelayKeyApprovalState::default())
+        .manage(native_relay_link_intake::NativeRelayLinkState::default())
+        .manage(native_application_peer::NativeApplicationPeers::default())
+        .manage(native_enrollment_peer::NativeEnrollmentPeers::default())
+        .manage(native_enrollment_host::NativeEnrollmentHost::default())
+        .manage(native_account_operations::NativeAccountOperations::default());
     #[cfg(not(mobile))]
     let builder = builder
         .manage(NativeStartupBootstrap::default())
-        .manage(native_relay_key_approval::NativeRelayKeyApprovalState::default())
-        .manage(native_application_peer::NativeApplicationPeers::default())
-        .manage(native_account_operations::NativeAccountOperations::default())
         .manage(desktop_companion::DesktopCompanion::default())
         .menu(desktop_companion::desktop_menu)
         .on_menu_event(|app, event| {
@@ -11967,6 +12118,16 @@ If a stable instance is running, this launch will focus its window and exit.",
         native_account_operations::station_native_account_challenge_prepare,
         native_account_operations::station_native_account_exchange_prepare,
         native_account_operations::station_native_account_request_headers,
+        native_account_operations::station_native_account_accept_invitation_prepare,
+        native_account_operations::station_native_account_revoke_prepare,
+        native_relay_link_intake::station_native_link_delivery_mode,
+        native_relay_link_intake::station_native_pairing_link_take,
+        native_relay_link_intake::station_native_relay_link_take,
+        native_relay_link_intake::station_native_relay_link_cancel,
+        native_relay_link_intake::station_native_relay_link_begin,
+        native_relay_link_intake::station_native_relay_link_redeem,
+        native_relay_link_intake::station_native_relay_link_recovery_preview,
+        native_relay_link_intake::station_native_relay_link_recovery_reset,
         native_relay_key_approval::station_native_relay_key_approval_prepare,
         native_relay_key_approval::station_native_relay_key_approval_begin,
         native_relay_key_approval::station_native_relay_key_approval_pending,
@@ -11984,6 +12145,26 @@ If a stable instance is running, this launch will focus its window and exit.",
         native_relay_redemption::station_native_relay_signal_diagnostic_open,
         native_relay_redemption::station_native_relay_signal_diagnostic_read,
         native_relay_redemption::station_native_relay_application_binding,
+        native_relay_redemption::station_native_relay_enrollment_binding,
+        native_enrollment_peer::station_native_enrollment_peer_prepare,
+        native_enrollment_peer::station_native_enrollment_peer_open,
+        native_enrollment_peer::station_native_enrollment_peer_read,
+        native_enrollment_peer::station_native_enrollment_peer_close,
+        native_relay_ice::station_native_relay_ice_configuration,
+        native_enrollment_host::station_native_enrollment_begin_prepare,
+        native_enrollment_host::station_native_enrollment_challenge_accept,
+        native_enrollment_host::station_native_enrollment_login_prepare,
+        native_enrollment_host::station_native_enrollment_finalize_prepare,
+        native_enrollment_host::station_native_enrollment_delivery_accept,
+        native_enrollment_host::station_native_enrollment_activate_prepare,
+        native_enrollment_host::station_native_enrollment_activation_accept,
+        native_enrollment_host::station_native_enrollment_transition_current,
+        native_enrollment_host::station_native_enrollment_status_prepare,
+        native_enrollment_host::station_native_enrollment_status_accept,
+        native_enrollment_host::station_native_enrollment_cancel_prepare,
+        native_enrollment_host::station_native_enrollment_abort,
+        native_enrollment_host::station_native_enrollment_pending_accept,
+        native_enrollment_host::station_native_enrollment_resume,
         native_relay_redemption::station_native_relay_application_open,
         native_relay_redemption::station_native_relay_application_read,
         relay_grant_vault::relay_client_grant_store,
@@ -12029,6 +12210,65 @@ If a stable instance is running, this launch will focus its window and exit.",
     #[cfg(mobile)]
     let builder = builder.invoke_handler(tauri::generate_handler![
         native_capability_report,
+        native_relay_redemption::station_native_device_binding_candidate,
+        native_relay_redemption::station_native_device_binding_self_receipt,
+        native_application_peer::station_native_application_peer_prepare,
+        native_application_peer::station_native_application_peer_open,
+        native_application_peer::station_native_application_peer_read,
+        native_application_peer::station_native_application_peer_sign,
+        native_application_peer::station_native_application_peer_close,
+        native_account_operations::station_native_account_challenge_prepare,
+        native_account_operations::station_native_account_exchange_prepare,
+        native_account_operations::station_native_account_request_headers,
+        native_account_operations::station_native_account_accept_invitation_prepare,
+        native_account_operations::station_native_account_revoke_prepare,
+        native_relay_link_intake::station_native_link_delivery_mode,
+        native_relay_link_intake::station_native_pairing_link_take,
+        native_relay_link_intake::station_native_relay_link_take,
+        native_relay_link_intake::station_native_relay_link_cancel,
+        native_relay_link_intake::station_native_relay_link_begin,
+        native_relay_link_intake::station_native_relay_link_redeem,
+        native_relay_link_intake::station_native_relay_link_recovery_preview,
+        native_relay_link_intake::station_native_relay_link_recovery_reset,
+        native_relay_key_approval::station_native_relay_key_approval_prepare,
+        native_relay_key_approval::station_native_relay_key_approval_begin,
+        native_relay_key_approval::station_native_relay_key_approval_pending,
+        native_relay_key_approval::station_native_relay_key_approval_cancel,
+        native_relay_key_approval::station_native_relay_key_approval_approve,
+        native_relay_key_approval::station_native_relay_key_approval_revoke,
+        native_relay_key_approval::station_native_relay_key_approval_status,
+        native_relay_redemption::station_native_relay_grant_redeem,
+        native_relay_redemption::station_native_relay_grant_status,
+        native_relay_redemption::station_native_relay_grant_renew,
+        native_relay_redemption::station_native_relay_grant_revoke,
+        native_relay_redemption::station_native_relay_grant_cleanup_pending,
+        native_relay_redemption::station_native_relay_grant_cleanup_retry,
+        native_relay_redemption::station_native_relay_application_binding,
+        native_relay_redemption::station_native_relay_enrollment_binding,
+        native_enrollment_peer::station_native_enrollment_peer_prepare,
+        native_enrollment_peer::station_native_enrollment_peer_open,
+        native_enrollment_peer::station_native_enrollment_peer_read,
+        native_enrollment_peer::station_native_enrollment_peer_close,
+        native_relay_ice::station_native_relay_ice_configuration,
+        native_enrollment_host::station_native_enrollment_begin_prepare,
+        native_enrollment_host::station_native_enrollment_challenge_accept,
+        native_enrollment_host::station_native_enrollment_login_prepare,
+        native_enrollment_host::station_native_enrollment_finalize_prepare,
+        native_enrollment_host::station_native_enrollment_delivery_accept,
+        native_enrollment_host::station_native_enrollment_activate_prepare,
+        native_enrollment_host::station_native_enrollment_activation_accept,
+        native_enrollment_host::station_native_enrollment_transition_current,
+        native_enrollment_host::station_native_enrollment_status_prepare,
+        native_enrollment_host::station_native_enrollment_status_accept,
+        native_enrollment_host::station_native_enrollment_cancel_prepare,
+        native_enrollment_host::station_native_enrollment_abort,
+        native_enrollment_host::station_native_enrollment_pending_accept,
+        native_enrollment_host::station_native_enrollment_resume,
+        native_relay_redemption::station_native_relay_application_open,
+        native_relay_redemption::station_native_relay_application_read,
+        relay_grant_vault::relay_client_grant_store,
+        relay_grant_vault::relay_client_grant_revoke,
+        relay_grant_vault::relay_client_grant_metadata,
         open_external_link,
         credential_vault_delete,
         credential_vault_delete_unreferenced,
@@ -12044,9 +12284,8 @@ If a stable instance is running, this launch will focus its window and exit.",
         station_profile_store_write
     ]);
 
-    builder
+    let app = builder
         .setup(move |app| {
-            #[cfg(not(mobile))]
             {
                 let app = app.handle().clone();
                 let _ = tauri::async_runtime::spawn_blocking(move || {
@@ -12253,8 +12492,24 @@ If a stable instance is running, this launch will focus its window and exit.",
             Ok(())
         })
         .build(context)
-        .expect("error while building tauri application")
-        .run(|app, event| {
+        .expect("error while building tauri application");
+    #[cfg(target_os = "ios")]
+    {
+        let state = app.state::<native_relay_link_intake::NativeRelayLinkState>();
+        state.start_expiry_worker();
+        if let Err(stage) = native_relay_ios_launch::install(app.handle().clone()) {
+            state.unavailable();
+            log::error!("Station native relay URL launch delivery is unavailable ({stage}).");
+        }
+    }
+    app.run(|app, event| {
+            #[cfg(target_os = "ios")]
+            if let tauri::RunEvent::Opened { urls } = &event {
+                native_relay_link_intake::receive_opened(app, urls);
+            }
+            if let tauri::RunEvent::Exit = &event {
+                app.state::<native_relay_link_intake::NativeRelayLinkState>().stop();
+            }
             #[cfg(not(mobile))]
             if let tauri::RunEvent::ExitRequested { code, api, .. } = &event {
                 if code.is_none() || *code == Some(0) {
@@ -17709,6 +17964,255 @@ mod tests {
           "schemaVersion":1,"revision":9007199254740992,"defaultProfile":null,"projectProfiles":{},"profiles":[]
         }"#;
         assert!(parse_station_profile_store(unsafe_revision).is_err());
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn native_enrollment_profile_publication_preserves_custody_and_denies_direct_http() {
+        let (_directory, path, authority, pending, handle, _, host) = writer_pairing_fixture();
+        let station = "22222222-2222-4222-8222-222222222222";
+        let client = "11111111-1111-4111-8111-111111111111";
+        let reference = {
+            let mut entries = pending.0.lock().unwrap();
+            let entry = entries.get_mut(&handle).unwrap();
+            entry.environment_id = station.into();
+            entry.reference.id = format!("native-enrollment:{}", uuid::Uuid::new_v4());
+            entry.reference.clone()
+        };
+        let fresh = serde_json::json!({
+            "schemaVersion":1,"revision":1,"defaultProfile":null,"projectProfiles":{},
+            "profiles":[{"schemaVersion":1,"name":"relay","endpoint":"https://one.example",
+                "relayRoute":{"brokerOrigin":"https://broker.example","stationId":station,
+                    "enrollmentId":"33333333-3333-4333-8333-333333333333"},
+                "clientInstanceId":client,"setupSource":"manual","configurationState":"unconfigured",
+                "createdAt":1,"updatedAt":1}]
+        }).to_string();
+        station_profile_store_write_with_host(&host, &authority, &pending, fresh, 0, None).unwrap();
+        let current =
+            parse_station_profile_store(&read_station_profile_store(&path).unwrap()).unwrap();
+        assert!(
+            native_enrollment_terminal_profile_check(&current, "relay", current.revision).is_ok()
+        );
+        assert!(
+            native_enrollment_terminal_profile_check(&current, "relay", current.revision + 1)
+                .is_err()
+        );
+        let staged = native_enrollment_next_store(
+            &current,
+            "relay",
+            &reference,
+            station,
+            client,
+            "requires-auth",
+        )
+        .unwrap();
+        let delivered_profile = parse_station_profile_store(&staged).unwrap();
+        assert!(native_enrollment_terminal_profile_check(
+            &delivered_profile,
+            "relay",
+            delivered_profile.revision
+        )
+        .is_err());
+        station_profile_store_write_with_host(
+            &host,
+            &authority,
+            &pending,
+            staged,
+            1,
+            Some(handle.clone()),
+        )
+        .unwrap();
+        let staged =
+            parse_station_profile_store(&read_station_profile_store(&path).unwrap()).unwrap();
+        assert_eq!(staged.profiles[0].configuration_state, "requires-auth");
+        assert!(station_profile_authorize_with_host(&host, &authority, "relay").is_err());
+        let configured = native_enrollment_next_store(
+            &staged,
+            "relay",
+            &reference,
+            station,
+            client,
+            "configured",
+        )
+        .unwrap();
+        assert!(station_profile_store_write_with_host(
+            &host,
+            &authority,
+            &pending,
+            configured.clone(),
+            2,
+            None
+        )
+        .is_err());
+        credential_vault_commit_pairing_with_host(&host, &authority, &pending, &handle).unwrap();
+        station_profile_store_write_with_host(
+            &host,
+            &authority,
+            &pending,
+            configured,
+            2,
+            Some(handle),
+        )
+        .unwrap();
+        let cold = NativeProfileAuthority::default();
+        let configured = parse_station_profile_store(
+            &station_profile_store_read_with_host(&host, &cold).unwrap(),
+        )
+        .unwrap();
+        let receipt = station_profile_authorize_with_host(&host, &cold, "relay").unwrap();
+        let identity =
+            resolve_current_device_identity_with_host(&host, &cold, 3, &receipt.binding_id)
+                .unwrap();
+        assert_eq!(identity.device_id, "55555555-5555-4555-8555-555555555555");
+        assert_eq!(
+            configured.profiles[0]._environment_id.as_deref(),
+            Some(station)
+        );
+        assert!(!serde_json::to_string(&configured)
+            .unwrap()
+            .contains("secret-never-leaves-native-state"));
+        let state = cold.0.lock().unwrap();
+        assert!(authorized_profile_context_in_store(&state, &configured).is_ok());
+        assert!(authorized_direct_profile_for_origin_in_store(
+            &state,
+            &configured,
+            "https://one.example"
+        )
+        .is_err());
+        assert!(scoped_profile_for_origin_in_store(
+            &state,
+            &configured,
+            &receipt.binding_id,
+            "https://one.example"
+        )
+        .is_err());
+        let mut selected = configured.clone();
+        selected.default_profile = Some("relay".into());
+        selected
+            .project_profiles
+            .insert("project".into(), "relay".into());
+        assert!(parse_station_profile_store(&serde_json::to_string(&selected).unwrap()).is_err());
+        drop(state);
+        let original = read_station_profile_store(&path).unwrap();
+        for remove in [true, false] {
+            let mut changed = configured.clone();
+            changed.revision += 1;
+            if remove {
+                changed.profiles[0].relay_route = None;
+            } else {
+                changed.profiles[0]
+                    .relay_route
+                    .as_mut()
+                    .unwrap()
+                    .broker_origin = "https://substitute.example".into();
+            }
+            assert!(station_profile_store_write_with_host(
+                &host,
+                &cold,
+                &pending,
+                serde_json::to_string(&changed).unwrap(),
+                3,
+                None,
+            )
+            .is_err());
+            assert_eq!(read_station_profile_store(&path).unwrap(), original);
+        }
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn native_enrollment_profile_fix_preserves_direct_pairing_http_authority() {
+        let (_directory, path, authority, pending, handle, contents, host) =
+            writer_pairing_fixture();
+        let station = "22222222-2222-4222-8222-222222222222";
+        pending
+            .0
+            .lock()
+            .unwrap()
+            .get_mut(&handle)
+            .unwrap()
+            .environment_id = station.into();
+        let mut contents: serde_json::Value = serde_json::from_str(&contents).unwrap();
+        contents["profiles"][0]["environmentId"] = serde_json::json!(station);
+        let contents = contents.to_string();
+        station_profile_store_write_with_host(
+            &host,
+            &authority,
+            &pending,
+            contents,
+            0,
+            Some(handle.clone()),
+        )
+        .unwrap();
+        credential_vault_commit_pairing_with_host(&host, &authority, &pending, &handle).unwrap();
+        let mut store =
+            parse_station_profile_store(&read_station_profile_store(&path).unwrap()).unwrap();
+        store.revision += 1;
+        store.profiles[0].configuration_state = "configured".into();
+        station_profile_store_write_with_host(
+            &host,
+            &authority,
+            &pending,
+            serde_json::to_string(&store).unwrap(),
+            1,
+            Some(handle),
+        )
+        .unwrap();
+        let receipt = station_profile_authorize_with_host(&host, &authority, "pending").unwrap();
+        let state = authority.0.lock().unwrap();
+        assert!(authorized_direct_profile_for_origin_in_store(
+            &state,
+            &store,
+            "https://one.example"
+        )
+        .is_ok());
+        assert!(scoped_profile_for_origin_in_store(
+            &state,
+            &store,
+            &receipt.binding_id,
+            "https://one.example"
+        )
+        .is_ok());
+    }
+
+    #[test]
+    fn native_enrollment_profile_parser_rejects_incomplete_or_foreign_custody() {
+        let valid = serde_json::json!({
+            "schemaVersion":1,"revision":3,"defaultProfile":null,"projectProfiles":{},
+            "profiles":[{"schemaVersion":1,"name":"relay","endpoint":"https://one.example",
+                "relayRoute":{"brokerOrigin":"https://broker.example",
+                    "stationId":"22222222-2222-4222-8222-222222222222",
+                    "enrollmentId":"33333333-3333-4333-8333-333333333333"},
+                "credentialRef":{"kind":"station-bearer","id":"native-enrollment:opaque"},
+                "environmentId":"22222222-2222-4222-8222-222222222222",
+                "clientInstanceId":"11111111-1111-4111-8111-111111111111",
+                "setupSource":"manual","configurationState":"configured","createdAt":1,"updatedAt":1}]
+        });
+        assert!(parse_station_profile_store(&valid.to_string()).is_ok());
+        for (field, value) in [
+            ("configurationState", serde_json::json!("unconfigured")),
+            ("credentialRef", serde_json::Value::Null),
+            (
+                "environmentId",
+                serde_json::json!("44444444-4444-4444-8444-444444444444"),
+            ),
+            ("clientInstanceId", serde_json::json!("malformed")),
+            (
+                "localService",
+                serde_json::json!({"instanceId":"other","baseDir":"/private/other","serverPort":3210,"uiPort":5210}),
+            ),
+        ] {
+            let mut invalid = valid.clone();
+            invalid["profiles"][0][field] = value;
+            assert!(
+                parse_station_profile_store(&invalid.to_string()).is_err(),
+                "{field}"
+            );
+        }
+        let mut invalid = valid;
+        invalid["profiles"][0]["relayRoute"]["brokerOrigin"] =
+            serde_json::json!("http://broker.example");
+        assert!(parse_station_profile_store(&invalid.to_string()).is_err());
     }
 
     #[test]

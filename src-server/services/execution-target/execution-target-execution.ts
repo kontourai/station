@@ -26,6 +26,7 @@ import type {
   ProviderSessionStartInput,
 } from '@kontourai/station-contracts/provider';
 import { SESSION_VISIBILITY_METADATA_KEY } from '@kontourai/station-contracts/provider';
+import type { SkillExperienceStartInputV1 } from '@kontourai/station-contracts/skill-experience';
 import type {
   WorkspaceIsolationConfig,
   WorktreeSessionMetadata,
@@ -71,6 +72,7 @@ async function provisionProjectWorktree(
 }
 
 export interface ForegroundMessageInput {
+  skillExperience?: SkillExperienceStartInputV1;
   expectedInputRequest?: AttentionRequestReference;
   target: ExecutionTarget;
   message: string;

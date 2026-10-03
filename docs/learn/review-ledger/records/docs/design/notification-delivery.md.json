@@ -7,9 +7,9 @@
 
   "summary": "Completed full documented protocol/caller review of registration, per-principal projection, sealed payloads and phone pinning, FCM/APNs lifecycle, bounded retry/queue/replay behavior, native tap routes and desktop feed ownership. Corrected gateway state/kinds, iOS18 implementation floor, soft queue cap, scoped sweep recovery, historical Rust/watch conclusions and implemented Kotlin CI. All provisioning and physical delivery receipts remain historical.",
 
-  "limits": "Source review of this document’s stated contracts and actual callers, not an exhaustive audit of unclaimed implementation branches. No new external SDK/CLI compatibility, provider billing/sign-in, gateway/deployment, network-partition, independent-host, OS keyring/ACL, native/device, release, power-loss or cryptographic penetration qualification. Dated probes and prior test receipts remain historical evidence.",
+  "limits": "Source review of this document’s stated contracts and actual callers, not an exhaustive audit of unclaimed implementation branches. No new external SDK/CLI compatibility, provider billing/sign-in, gateway/deployment, network-partition, independent-host, OS keyring/ACL, native/device, release, power-loss or cryptographic penetration qualification. Dated probes and prior test receipts remain historical evidence.\n\nMerge anchor history (structural reconciliation only; no semantic approval): source src-desktop/src/lib.rs ours={\"digest\":\"57a47dd3656d47a5c43eaf4001895942d350d61b6de896fa4d1d3da498bfd821\",\"revision\":\"d5e4502434838cc29b63091ae689474d6488cfe4\"}; origin/main={\"digest\":\"ad3b52011a9be6e6a18133b2367c04d0a6245907e5b7e13fa324bcd8b5255557\",\"revision\":\"464d602fb7fb5fa9bd0df9d241dc03495b398b96\"}. The merged source bytes require supported review after the merge commit.",
 
-  "document": {"digest":"f798be5ec16f66d9383acb89d695b1a61561bbb19b94bbb7009b6d2933e0827a","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+  "document": {"digest":"f075e8050d581118188f140b1b1a9957d0dfc9af85aff8a108f4c826ebbf4f07","revision":"4886808d5062b11c01e74608baf687a2b1b07c32"},
 
   "sources": [
     {"path":".github/workflows/desktop-rust.yml","digest":"9b2aa3552d0ef5b237104f9e6e888b9de05e60b08bef763c448520bd77a24f81","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
@@ -44,7 +44,7 @@
 
     {"path":"src-desktop/plugins/agent-activity/ios/Sources/StationNotificationServiceCore/SealedAlertDelivery.swift","digest":"fac89631a85638abd83cf3f9a19ae2b9e1e4475b31f0d010e70d7102ceb17896","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
 
-    {"path":"src-desktop/src/lib.rs","digest":"1105722df217971c69dafdc4cf21a498921c7703db4bf635be48fa92da46cf7c","revision":"fadd647731c00e53b2aeb25a7873ee66c0aa7608"},
+    {"path":"src-desktop/src/lib.rs","digest":"87107637c2b0c4d1c470664c3ae3d5b4f1f377777f561ea2c25bd63df8cf2cd6","revision":"a516c638f82e312fe84fe7f8dd8cd5094b2567a5"},
 
     {"path":"src-desktop/src/local_access_watch.rs","digest":"4499c78676d1f7dd5a3b580ba2bf82dedd3ef14fb8cd8273fcd1b24fc23429be","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
 
