@@ -34,7 +34,7 @@
 
     {"path":"packages/sdk/src/voice/registry.ts","digest":"62ce9013b0c9d5e935c88ae2912bf31768f58ef5f40409745df9676ebfb87408","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/shared/package.json","digest":"a82c0ce2b631a776e6a5dc913089a3c07934eea2bfe6cc1f0f259babe57b1939","revision":"c2c67c2f25d565ea97d757b370f2bbf942a9588b"},
+    {"path":"packages/shared/package.json","digest":"2b5baa810e13794d2b50232ad620ba68e89ca9fae0e8321bb31749f560d28c63","revision":"8924149a7e6ef1356fc078c9a387c6a60ada429a"},
 
     {"path":"packages/shared/package.json#/engines","digest":"6c12acb1990a85e4fe6986ad29ad44b644eca474a81f946d053aabd14ba62059","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
 
