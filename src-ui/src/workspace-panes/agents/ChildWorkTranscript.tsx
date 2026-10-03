@@ -4,6 +4,7 @@ import {
   useChildWorkTranscriptQuery,
 } from '@kontourai/station-sdk';
 import { Button } from '../../components/Button';
+import { SkeletonBlock } from '../../components/state';
 
 /**
  * #3163: an engine subagent's own transcript, read-only. The server resolves
@@ -90,9 +91,7 @@ export function ChildWorkTranscript({
   return (
     <section className="child-work-transcript" aria-label="Subagent transcript">
       {transcript.isPending && (
-        <p className="child-work-transcript__note" role="status">
-          Loading transcript…
-        </p>
+        <SkeletonBlock count={3} label="Loading transcript" />
       )}
       {transcript.isError && entries.length === 0 && (
         <p className="child-work-transcript__note" role="alert">
@@ -117,7 +116,6 @@ export function ChildWorkTranscript({
         <Button
           size="sm"
           pending={transcript.isFetchingNextPage}
-          pendingLabel="Loading…"
           onClick={() => void transcript.fetchNextPage()}
         >
           Load more

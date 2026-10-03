@@ -266,21 +266,24 @@ export function ChildWorkRow({
       )}
       {(sessionHandle || transcript || row.stop) && (
         <div className="child-work-row__actions">
-          {transcript && (
+          {/* One "open" action: a delegate opens its own session, an engine
+              subagent its read-only transcript (#3163). A child has at most
+              one of the two. */}
+          {(sessionHandle || transcript) && (
             <Button
               size="sm"
-              aria-expanded={transcriptOpen}
-              onClick={() => setTranscriptOpen((current) => !current)}
+              {...(sessionHandle ? {} : { 'aria-expanded': transcriptOpen })}
+              onClick={() =>
+                sessionHandle
+                  ? onOpenSession(sessionHandle.threadId)
+                  : setTranscriptOpen((current) => !current)
+              }
             >
-              {transcriptOpen ? 'Hide transcript' : 'View transcript'}
-            </Button>
-          )}
-          {sessionHandle && (
-            <Button
-              size="sm"
-              onClick={() => onOpenSession(sessionHandle.threadId)}
-            >
-              Open session
+              {sessionHandle
+                ? 'Open session'
+                : transcriptOpen
+                  ? 'Hide transcript'
+                  : 'View transcript'}
             </Button>
           )}
           {row.stop && (
