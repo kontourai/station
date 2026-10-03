@@ -120,7 +120,7 @@
 
     {"path":"tests/helpers/visible-action-count.ts","digest":"b598b668d2fad8e2b6076100868eb5f9bc446b01487f1a761415b5fcc25ed412","revision":"df740ad0d1e328b2e6216b1d20845ff3bf04bf31"},
 
-    {"path":"src-ui/src/components/chat-dock/ChatDockProjectContext.css","digest":"37eab56de03d6c984924ab80ed2ef84e6b17c70eab87ef9842ba8d95fc6ffc53","revision":"a7b42adc41e80e5fb4eb89d15a0126b42acfee4e"}
+    {"path":"src-ui/src/components/chat-dock/ChatDockProjectContext.css","digest":"821e1a1fa48d43e3caa203d54c6b26854830841aeb2c3e2eaa6bd496db52f0cc","revision":"6af8b6156629786bb230e8fccc0335ed45f483d8"}
   ],
 
   "checks": [
