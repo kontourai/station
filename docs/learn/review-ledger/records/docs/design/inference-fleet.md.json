@@ -24,7 +24,7 @@
 
     {"path":"src-server/runtime/conversation/fleet-routing-receipt-log.ts","digest":"313487ae1ef4e85874d83368c317c21fbc32266ebd9c7751d02023cf4102bfb9","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-server/security/pairing-route-scopes.ts","digest":"6135d879afff21c7d3c8f82d0fb701f04c7bc8de28724848ce0ffa39b0ded204","revision":"b004ed8cb3e885da544adf960b2894780aaf2b51"},
+    {"path":"src-server/security/pairing-route-scopes.ts","digest":"447d805567a4ef71c13ed4721675aebbdcfb25e1e85f088b73662050f62db1db","revision":"33d1cee0cbe6efacfa0e07f9157bae8734c0473a"},
 
     {"path":"src-server/services/inference/fleet-candidate-service.ts","digest":"90411e0c309d2c2e171d6fbb5c329f81b9cd81b8b8af949e5608d61922d88313","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
