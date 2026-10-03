@@ -150,7 +150,7 @@
 
     {"path":"src-server/security/coding-authority.ts","digest":"213af116a09a02c70ea15a8346b3d8fd2e25f279c975ef9b12d8ab21a519205d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/security/pairing-route-scopes.ts","digest":"cd0d7cf06b6f68355d4e509648ac649c62bdf1cabd52b220e7578776b5e01873","revision":"d73d9f64333504f027a200482e978cc4445338da"},
+    {"path":"src-server/security/pairing-route-scopes.ts","digest":"cd0d7cf06b6f68355d4e509648ac649c62bdf1cabd52b220e7578776b5e01873","revision":"e4344fd10ef7a80a6a6f65d7e709fb1be56b64df"},
 
     {"path":"src-server/security/runtime-request-security.ts","digest":"c3219b8afbdd24e8969fb407d2a0a0aa77c08a7656a0e147f64f99f0ed9af3c4","revision":"904729ae7f4058a2cd7dbaf11a4daaa6b8837d08"},
 
@@ -162,7 +162,7 @@
 
     {"path":"src-server/security/websocket-auth.ts","digest":"e8d876654158a8403c26ae104eadc42b81558cd4a17e5b263f9e42b1ddf784d8","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/agents/skill-service.ts","digest":"9f92c44195a5c87a63c1a14a3079b3cc91e00149f2b2f4e400a72189bb64d7f6","revision":"adbeb32e99a86e9a8b6fca370b944f3b2147ca9f"},
+    {"path":"src-server/services/agents/skill-service.ts","digest":"9f92c44195a5c87a63c1a14a3079b3cc91e00149f2b2f4e400a72189bb64d7f6","revision":"569b7dcead02252ba2786c9f326bb54daebbbde2"},
 
     {"path":"src-server/services/connections/__tests__/credential-usage.test.ts","digest":"7aa83feee3854f793370294beb777070ee84635554ad5fef0b94306409e34b0a","revision":"9eec73db9183c76ac49c8584171ff3c45463f518"},
 
