@@ -82,7 +82,7 @@ launch and invalidates the prior connection-check receipt.
 
 New execution sessions capture a safe route label and endpoint. Chat headers, engine
 choices and work lists show **via <proxy name>**; later configuration changes do not rename
-an old session's route. Older sessions without a captured route keep their existing labels.
+an idle session's recorded route. A relaunched execution records the route it actually uses. Older sessions without a captured route keep their existing labels.
 
 ## 1.1 Engine config ownership: the overlay model
 
