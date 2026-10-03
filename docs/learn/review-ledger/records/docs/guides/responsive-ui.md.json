@@ -12,7 +12,7 @@
   "document": {"digest":"f22a765808cc9067032740b95e53c631476bb217ecdfa02e2ffd921fd6ef36ad","revision":"b14f1b80ec27c38844b3d16e8a4bdfe624a778c9"},
 
   "sources": [
-    {"path":"docs/ui/responsive-action-surfaces.txt","digest":"0a2334d227e3e6d4a081f4d8e36de7411a3ca5980617385b96058a135f0d243f","revision":"2cfd81134aaf08ba8ff04f9a246f28581c03cbef"},
+    {"path":"docs/ui/responsive-action-surfaces.txt","digest":"538da3d8ec57dff2e62b3a2d8d7a490ab0e4c1cb815dbe4dc2b2886ec3bf04d8","revision":"af2c5a1b24139844384671833445ff2a17c4d9aa"},
 
     {"path":"docs/ui/responsive-surfaces.json","digest":"ed85a588d1029bca3f050c4225772a2b58c42e944af63014960389794d0b24c5","revision":"d1708e0a66e7328c9c62a95865f1bb1dcfbeb8d1"},
 
@@ -52,7 +52,7 @@
 
     {"path":"src-server/utils/logger.ts","digest":"d74d211202a1a38bd4caaa9814b6de202ac0c9420c521baecc8fdaff243197b1","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/components/ActionOverflowMenu.tsx","digest":"a189bfd435f1a6eee850fbbf779c6ee32fc6771d134154d90c4a7ce75d8eb681","revision":"5d69f8f0eac14651004831e85e8053a989e2dd65"},
+    {"path":"src-ui/src/components/ActionOverflowMenu.tsx","digest":"cbc05276f8cdbbed58b945e938cdf259661b2785cde4a22bb7e925448b80e87a","revision":"af2c5a1b24139844384671833445ff2a17c4d9aa"},
 
     {"path":"src-ui/src/components/ActionRow.tsx","digest":"ef0435148ae876bb76c336e0140d9b64cebbd4a6003a658bd40a6dad6afbb8a5","revision":"f4eb9345e808edfbcadd25b1cf88a69db088f117"},
 
