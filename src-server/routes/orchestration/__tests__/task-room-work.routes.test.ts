@@ -20,6 +20,7 @@ import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
 import { hasPendingProjectTaskRoomExecution } from '../../../services/orchestration/project-task-room-source-seal.js';
+import { createTaskRoomContext } from '../../../services/projects/task-room-context.js';
 import { TaskRoomWorkModule } from '../../../services/projects/task-room-work-module.js';
 import { delegateTask } from '../../../tools/station-control-delegation.js';
 import { createOrchestrationRoutes } from '../orchestration.js';
@@ -58,9 +59,30 @@ test('the delegation route records one channel request and refuses a target outs
     logger: { debug: vi.fn() },
     resolvePrincipal: () => principal,
     delegateTask: start,
-    taskRoomWork: { module, authorize: async () => scope },
+    taskRoomWork: {
+      module,
+      authorize: async () => scope,
+      resolveContext: async () =>
+        createTaskRoomContext(
+          {
+            taskId: 'durable-task',
+            projectId: scope.projectId,
+            taskCreatedAt: scope.taskCreatedAt,
+          },
+          {
+            title: 'Objective',
+            description: 'Investigate',
+            documentRevision: 'revision-1',
+            text: 'Selected shared brief.',
+          },
+        ),
+    },
   });
-  const send = (projectSlug: string, taskCreatedAt = scope.taskCreatedAt) =>
+  const send = (
+    projectSlug: string,
+    taskCreatedAt = scope.taskCreatedAt,
+    context?: { version: 'station.task-room-context/v1'; digest: string },
+  ) =>
     app.request('/delegations', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -74,7 +96,8 @@ test('the delegation route records one channel request and refuses a target outs
         taskRoomRequest: {
           taskId: 'durable-task',
           taskCreatedAt,
-          operationId: 'request-1',
+          operationId: context ? 'request-context' : 'request-1',
+          ...(context ? { context } : {}),
         },
       }),
     });
@@ -116,6 +139,29 @@ test('the delegation route records one channel request and refuses a target outs
       parentTaskId: 'durable-task',
       userId: principal.id,
     });
+    const snapshot = createTaskRoomContext(
+      {
+        taskId: 'durable-task',
+        projectId: scope.projectId,
+        taskCreatedAt: scope.taskCreatedAt,
+      },
+      {
+        title: 'Objective',
+        description: 'Investigate',
+        documentRevision: 'revision-1',
+        text: 'Selected shared brief.',
+      },
+    );
+    if (!snapshot) throw new Error('Missing snapshot');
+    const withContext = await send('demo', scope.taskCreatedAt, {
+      version: snapshot.version,
+      digest: snapshot.digest,
+    });
+    expect(withContext.status).toBe(200);
+    expect(start.mock.calls[1][0].prompt).toContain('Selected shared brief.');
+    expect(
+      (await readJson<{ data: TaskRoomWorkOutcome }>(withContext)).data,
+    ).toMatchObject({ kind: 'recorded', record: { context: snapshot } });
   } finally {
     await service.shutdown();
     eventStore.close();

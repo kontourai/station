@@ -2,6 +2,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { createTaskRoomContext } from '../task-room-context.js';
 import {
   TaskRoomWorkModule,
   type TaskRoomWorkScope,
@@ -140,4 +141,125 @@ test('revocation during execution hides the reply while retaining the execution 
     'dispatched',
   );
   expect(await module.list('task', authorize)).toEqual({ kind: 'refused' });
+});
+
+test('a lost acknowledgement preserves the selected brief across edits and stale new references never invoke', async () => {
+  const path = await file();
+  const bound = {
+    taskId: 'task',
+    projectId: scope.projectId,
+    taskCreatedAt: scope.taskCreatedAt,
+  };
+  const original = createTaskRoomContext(bound, {
+    title: 'Shared objective',
+    description: 'Investigate onboarding',
+    documentRevision: 'revision-1',
+    text: 'Original agreed brief.',
+  });
+  if (!original) throw new Error('Missing context fixture');
+  let current = original;
+  const resolve = vi.fn(async () => current);
+  const consumed: string[] = [];
+  const start = vi.fn<Parameters<TaskRoomWorkModule['submit']>[4]>(
+    async (_sessionId, _scope, _recheck, context) => {
+      consumed.push(context?.text ?? '');
+      throw new Error('lost acknowledgement after invocation');
+    },
+  );
+  const intent = {
+    ...input,
+    context: { version: original.version, digest: original.digest },
+  };
+  const module = new TaskRoomWorkModule(path);
+  const first = await module.submit(
+    'task',
+    'alice',
+    intent,
+    async () => scope,
+    start,
+    resolve,
+  );
+  expect(first).toMatchObject({
+    kind: 'recorded',
+    record: { state: 'indeterminate', context: original },
+  });
+  const edited = createTaskRoomContext(bound, {
+    title: 'Shared objective',
+    description: 'Investigate onboarding',
+    documentRevision: 'revision-2',
+    text: 'Changed brief after invocation.',
+  });
+  if (!edited) throw new Error('Missing edited context');
+  current = edited;
+  const replay = await new TaskRoomWorkModule(path).submit(
+    'task',
+    'alice',
+    intent,
+    async () => scope,
+    start,
+    resolve,
+  );
+  expect(replay).toMatchObject({
+    kind: 'recorded',
+    replayed: true,
+    record: { context: original },
+  });
+  expect(resolve).toHaveBeenCalledOnce();
+  expect(consumed).toEqual(['Original agreed brief.']);
+  expect(
+    await module.submit(
+      'task',
+      'alice',
+      { ...intent, operationId: 'stale-new-request' },
+      async () => scope,
+      start,
+      resolve,
+    ),
+  ).toEqual({ kind: 'refused', reason: 'context' });
+  expect(start).toHaveBeenCalledOnce();
+  expect(JSON.parse(await readFile(path, 'utf8')).records).toHaveLength(1);
+});
+
+test('settlement refuses a valid but substituted brief after invocation', async () => {
+  const path = await file();
+  const bound = {
+    taskId: 'task',
+    projectId: scope.projectId,
+    taskCreatedAt: scope.taskCreatedAt,
+  };
+  const original = createTaskRoomContext(bound, {
+    title: 'Objective',
+    description: '',
+    documentRevision: 'revision-1',
+    text: 'Original brief.',
+  });
+  const replacement = createTaskRoomContext(bound, {
+    title: 'Objective',
+    description: '',
+    documentRevision: 'revision-2',
+    text: 'Substituted brief.',
+  });
+  if (!original || !replacement) throw new Error('Missing context fixture');
+  const start = vi.fn<Parameters<TaskRoomWorkModule['submit']>[4]>(
+    async (sessionId) => {
+      const stored = JSON.parse(await readFile(path, 'utf8'));
+      stored.records[0].context = replacement;
+      await writeFile(path, JSON.stringify(stored));
+      return { sessionId };
+    },
+  );
+  await expect(
+    new TaskRoomWorkModule(path).submit(
+      'task',
+      'alice',
+      {
+        ...input,
+        context: { version: original.version, digest: original.digest },
+      },
+      async () => scope,
+      start,
+      async () => original,
+    ),
+  ).rejects.toThrow('identity changed before settlement');
+  expect(start).toHaveBeenCalledOnce();
 });
