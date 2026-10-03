@@ -210,7 +210,11 @@ describe('runtime routes: the device helper address resolves through the setting
         { incoming: { socket: { remoteAddress: '127.0.0.1' } } } as never,
       );
       expect(response.status).toBe(200);
-      return (await response.json()).data;
+      const body = await response.json();
+      if (!body || typeof body !== 'object' || !('data' in body)) {
+        throw new Error('Trust route did not return its response envelope');
+      }
+      return body.data;
     };
     try {
       expect(await readBundles()).toEqual([
