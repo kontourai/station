@@ -326,6 +326,7 @@ vi.mock('../hooks/orchestration/useSessionEventStream', () => ({
 import {
   CONVERSATION_REFERENCE_DRAG_TYPE,
   draggedConversationReference,
+  publishReferenceableConversations,
 } from '../components/chat/conversationReferenceDrag';
 import { SessionsView } from '../views/SessionsView';
 
@@ -569,23 +570,29 @@ describe('SessionsView', () => {
   });
 
   test('#3159: an Activity row whose conversation may be referenced drags it onto a composer', () => {
-    const scope = { apiBase: 'http://test.local', authorityKey: 'owner-a' };
-    const renderWith = (isReferenceable: (id: string) => boolean) =>
-      render(
-        <QueryClientProvider client={new QueryClient()}>
-          <NavigationProvider>
-            <SessionsView
-              apiBase="http://test.local"
-              referenceDrag={{ scope, isReferenceable }}
-            />
-          </NavigationProvider>
-        </QueryClientProvider>,
-      );
-    const first = renderWith(() => false);
+    const scope = { apiBase: 'http://test.local' };
+    publishReferenceableConversations({
+      apiBase: scope.apiBase,
+      ids: new Set(['another-conversation']),
+    });
+    const first = renderView();
     expect(rowButton('Worker task').hasAttribute('draggable')).toBe(false);
     first.unmount();
 
-    renderWith((id) => id === 'thread-alpha');
+    // Another Station's inventory makes nothing here draggable.
+    publishReferenceableConversations({
+      apiBase: 'http://other.test',
+      ids: new Set(['thread-alpha']),
+    });
+    const second = renderView();
+    expect(rowButton('Worker task').hasAttribute('draggable')).toBe(false);
+    second.unmount();
+
+    publishReferenceableConversations({
+      apiBase: scope.apiBase,
+      ids: new Set(['thread-alpha']),
+    });
+    renderView();
     const row = rowButton('Worker task');
     expect(row.getAttribute('draggable')).toBe('true');
     const values = new Map<string, string>();
@@ -602,6 +609,7 @@ describe('SessionsView', () => {
     });
     fireEvent.dragEnd(row);
     expect(draggedConversationReference('thread-alpha', scope)).toBeNull();
+    publishReferenceableConversations(null);
   });
 
   test('lists sessions and opens a live feed on select', () => {

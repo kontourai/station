@@ -334,7 +334,7 @@ describe('ChatInputArea', () => {
         effectAllowed: 'all',
       };
     };
-    const rowDrag = (reference: { apiBase: string; authorityKey: string }) => {
+    const rowDrag = (reference: { apiBase: string }) => {
       const dataTransfer = transfer();
       startConversationReferenceDrag(
         { dataTransfer } as unknown as React.DragEvent<HTMLElement>,
@@ -345,10 +345,7 @@ describe('ChatInputArea', () => {
 
     // Another Station's row (same id) is not this composer's to accept.
     fireEvent.drop(textbox, {
-      dataTransfer: rowDrag({
-        apiBase: 'http://other.test',
-        authorityKey: 'owner-a',
-      }),
+      dataTransfer: rowDrag({ apiBase: 'http://other.test' }),
     });
     endConversationReferenceDrag();
     // A payload no row of this window started (another app, another tab).
@@ -358,10 +355,7 @@ describe('ChatInputArea', () => {
     expect(onInputChange).not.toHaveBeenCalled();
 
     fireEvent.drop(textbox, {
-      dataTransfer: rowDrag({
-        apiBase: scope.apiBase,
-        authorityKey: scope.authorityKey,
-      }),
+      dataTransfer: rowDrag({ apiBase: scope.apiBase }),
     });
     expect(onInputChange).toHaveBeenCalledTimes(1);
     const [next] = onInputChange.mock.calls[0]!;

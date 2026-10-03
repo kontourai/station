@@ -35,6 +35,7 @@ import { workStatus } from '../../../views/home/work-status';
 import {
   CONVERSATION_REFERENCE_DRAG_TYPE,
   draggedConversationReference,
+  publishReferenceableConversations,
 } from '../../chat/conversationReferenceDrag';
 import { InboxGroupList, InboxRow } from '../../chat-dock/ChatDockInboxRows';
 import { inboxRowChips } from '../inbox-row-chips';
@@ -917,16 +918,16 @@ describe('the Details sheet’s actions are a menu list, never a row of buttons'
 });
 
 describe('#3159: a row whose conversation may be referenced is a drag source', () => {
-  const scope = { apiBase: 'http://station.test', authorityKey: 'owner-a' };
+  const scope = { apiBase: 'http://station.test' };
+  afterEach(() => publishReferenceableConversations(null));
 
-  it('drags its conversation, under its Station scope, onto a composer', () => {
+  it('drags its conversation, from its Station, onto a composer', () => {
     const row = rowFor();
-    renderRow(row, {
-      referenceDrag: {
-        scope,
-        isReferenceable: (id) => id === row.item.id,
-      },
+    publishReferenceableConversations({
+      apiBase: scope.apiBase,
+      ids: new Set([row.item.id]),
     });
+    renderRow(row);
     const button = screen.getByRole('button', {
       name: new RegExp(row.item.title),
     });
@@ -949,7 +950,11 @@ describe('#3159: a row whose conversation may be referenced is a drag source', (
 
   it('is not draggable when the inventory does not mark it referenceable', () => {
     const row = rowFor();
-    renderRow(row, { referenceDrag: { scope, isReferenceable: () => false } });
+    publishReferenceableConversations({
+      apiBase: scope.apiBase,
+      ids: new Set(['another-conversation']),
+    });
+    renderRow(row);
     expect(
       screen
         .getByRole('button', { name: new RegExp(row.item.title) })

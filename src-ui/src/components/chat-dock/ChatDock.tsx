@@ -95,6 +95,7 @@ import {
   selectDirectNewChatAgent,
 } from '../agent-selection-policy';
 import { durableMentionAuthority } from '../chat/composer-mentions';
+import { publishReferenceableConversations } from '../chat/conversationReferenceDrag';
 import { MarkdownLinkContext } from '../chat/MarkdownLinkContext';
 import { ShareIntakeController } from '../chat/ShareIntakeController';
 import { ContextPercentage } from '../conversation-stats/ConversationStats';
@@ -637,25 +638,22 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       ),
     [inventory.data],
   );
-  // #3159: an inbox row whose conversation the inventory marks referenceable
-  // can be dragged onto a composer of this Station access scope. Stable
-  // across renders for the inbox panel's `memo()`.
+  // #3159: publish which conversations a message may reference (the
+  // inventory's `referenceEligibility`) for this Station, so Activity and
+  // inbox rows can offer themselves as drag sources onto a composer.
   const referenceApiBase = requestAuthority?.apiBase;
-  const referenceAuthorityKey = requestAuthority?.authorityKey;
-  const inboxReferenceDrag = useMemo(
-    () =>
-      referenceApiBase !== undefined && referenceAuthorityKey !== undefined
-        ? {
-            scope: {
-              apiBase: referenceApiBase,
-              authorityKey: referenceAuthorityKey,
-            },
-            isReferenceable: (id: string) =>
-              inventoryById.get(id)?.referenceEligibility?.eligible === true,
-          }
-        : undefined,
-    [referenceApiBase, referenceAuthorityKey, inventoryById],
-  );
+  useEffect(() => {
+    if (referenceApiBase === undefined) return;
+    publishReferenceableConversations({
+      apiBase: referenceApiBase,
+      ids: new Set(
+        [...inventoryById.values()]
+          .filter((conversation) => conversation.referenceEligibility?.eligible)
+          .map((conversation) => conversation.id),
+      ),
+    });
+    return () => publishReferenceableConversations(null);
+  }, [referenceApiBase, inventoryById]);
   // The chats open in this tab as the inbox lists them, for the context
   // meter's membership check.
   const openChatRows = useMemo(
@@ -2553,7 +2551,6 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                         agents,
                         gitLocationByThreadId,
                         workFacts,
-                        referenceDrag: inboxReferenceDrag,
                         activeChatSessionId:
                           importedSessionId ?? activeSessionId,
                         openChatSessionIds: openInboxChatSessionIds,

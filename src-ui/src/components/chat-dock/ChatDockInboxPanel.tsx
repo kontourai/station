@@ -80,8 +80,6 @@ export interface ChatDockInboxPanelProps {
   gitLocationByThreadId?: InboxGroupListProps['gitLocationByThreadId'];
   /** Status facts by item id; see `InboxGroupListProps.workFacts`. */
   workFacts?: InboxGroupListProps['workFacts'];
-  /** See `InboxGroupListProps.referenceDrag`; referentially stable. */
-  referenceDrag?: InboxGroupListProps['referenceDrag'];
 }
 
 /**
@@ -107,7 +105,6 @@ function ChatDockInboxPanelImpl({
   agents,
   gitLocationByThreadId,
   workFacts,
-  referenceDrag,
 }: ChatDockInboxPanelProps) {
   // One coarse tick for the whole list's relative times, rather than a new
   // `now` on every render of the dock around it.
@@ -164,7 +161,6 @@ function ChatDockInboxPanelImpl({
             agents={agents}
             gitLocationByThreadId={gitLocationByThreadId}
             workFacts={workFacts}
-            referenceDrag={referenceDrag}
             chrome={coarsePointer ? 'touch' : 'hover'}
             snoozeMenuOnly={coarsePointer}
             collapsible={{ sections, onToggle: toggleSection }}
