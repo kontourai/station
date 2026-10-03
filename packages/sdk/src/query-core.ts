@@ -51,6 +51,8 @@ export interface QueryConfig<_T> {
    * refetch-on-mount, so for data that can change outside this client's own
    * mutations, polling is the only refresh path — pass this explicitly. */
   refetchInterval?: number;
+  /** Error-specific polling policy; undefined keeps the numeric interval, false pauses it. */
+  refetchIntervalForError?: (error: Error | null) => number | false | undefined;
   /** Opt back into refetch-on-focus for a stale answer; see `refetchInterval`. */
   refetchOnWindowFocus?: boolean;
   retry?: boolean | number | ((failureCount: number, error: Error) => boolean);
@@ -191,6 +193,7 @@ function useApiQueryWithMountPolicy<T>(
 ) {
   const queryClient = useQueryClient();
   const enabled = config?.enabled ?? true;
+  const intervalForError = config?.refetchIntervalForError;
   const query = useQuery({
     queryKey,
     queryFn: ({ signal }) => queryFn(signal),
@@ -205,7 +208,10 @@ function useApiQueryWithMountPolicy<T>(
       : defaultRefetchOnMount
         ? { refetchOnMount: defaultRefetchOnMount }
         : {}),
-    refetchInterval: config?.refetchInterval,
+    refetchInterval: intervalForError
+      ? (query) =>
+          intervalForError(query.state.error) ?? config?.refetchInterval
+      : config?.refetchInterval,
     ...(config?.refetchOnWindowFocus === undefined
       ? {}
       : { refetchOnWindowFocus: config.refetchOnWindowFocus }),

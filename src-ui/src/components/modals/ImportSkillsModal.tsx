@@ -22,6 +22,7 @@ interface ImportSkillsModalProps {
   error: string | null;
   onImport: (files: SkillImportFile[]) => void;
   onCancel: () => void;
+  onOpenSkill?: (name: string) => void;
 }
 
 /**
@@ -39,6 +40,7 @@ export function ImportSkillsModal({
   error,
   onImport,
   onCancel,
+  onOpenSkill,
 }: ImportSkillsModalProps) {
   const [files, setFiles] = useState<SkillImportFile[]>([]);
   const [isReading, setIsReading] = useState(false);
@@ -80,6 +82,7 @@ export function ImportSkillsModal({
   return createPortal(
     <Dialog
       title="Import Skills"
+      subtitle="Add standalone Markdown instructions. Supporting scripts and files need a plugin package."
       closeLabel="Close import skills"
       onClose={handleCancel}
       size="lg"
@@ -94,7 +97,7 @@ export function ImportSkillsModal({
             onClick={() => onImport(files)}
             pending={pending}
             pendingLabel="Importing…"
-            disabled={files.length === 0}
+            disabled={isReading || files.length === 0}
           >
             Import {files.length > 0 ? files.length : ''}
           </Button>
@@ -131,8 +134,9 @@ export function ImportSkillsModal({
               variant="secondary"
               size="sm"
               onClick={() => fileInputRef.current?.click()}
+              disabled={pending}
             >
-              Add more
+              Choose different files
             </Button>
           </div>
         )}
@@ -159,6 +163,18 @@ export function ImportSkillsModal({
                     ? `imported as ${row.name}`
                     : (row.error ?? 'failed')}
                 </span>
+                {row.success && row.name && onOpenSkill && (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => {
+                      handleCancel();
+                      if (row.name) onOpenSkill(row.name);
+                    }}
+                  >
+                    Open {row.name}
+                  </Button>
+                )}
               </div>
             ))}
           </div>
