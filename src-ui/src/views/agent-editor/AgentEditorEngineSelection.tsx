@@ -191,22 +191,24 @@ export function AgentEditorEngineSelection({
         <h3 id="agent-engine" className="agent-editor__section-title">
           Engine
         </h3>
-        <InfoTip label="Engine capabilities">
-          {engineKind === 'model' ? (
-            <EngineCapabilitySummary
-              matrix={ENGINE_CAPABILITY_MATRICES.station}
-              connectionName="Station"
-            />
-          ) : boundConnectionId ? (
-            <EngineCapabilitySummary
-              matrix={resolveEngineCapabilityMatrix(
-                boundConnectionId,
-                boundConnection,
-              )}
-              connectionName={boundConnection?.name ?? 'this engine'}
-            />
-          ) : null}
-        </InfoTip>
+        {(engineKind === 'model' || boundConnectionId) && (
+          <InfoTip label="Engine capabilities">
+            {engineKind === 'model' ? (
+              <EngineCapabilitySummary
+                matrix={ENGINE_CAPABILITY_MATRICES.station}
+                connectionName="Station"
+              />
+            ) : boundConnectionId ? (
+              <EngineCapabilitySummary
+                matrix={resolveEngineCapabilityMatrix(
+                  boundConnectionId,
+                  boundConnection,
+                )}
+                connectionName={boundConnection?.name ?? 'this engine'}
+              />
+            ) : null}
+          </InfoTip>
+        )}
       </div>
       <div
         className="agent-engine-choices"
