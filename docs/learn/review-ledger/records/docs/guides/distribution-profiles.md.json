@@ -9,7 +9,7 @@
 
   "limits": "Source-only explanation review; no live registry, plugin installation, layout application, or full authority/security audit. Remote adapters not inferred from source declarations.",
 
-  "document": {"digest":"7d043ac2d227ba0b400e0f1b19274aab83aeb558507395d01fa8e1d7fa33854d","revision":"e5efef30008198db7198fe9dac38f3ad632c6621"},
+  "document": {"digest":"605f3a4ef5ae882009998bc2c233dfa68b4bf9081c2d483789f0acde8a8b06fd","revision":"0814cc6ddb168cff69e5572b185a853540a4f6e0"},
 
   "sources": [
     {"path":"packages/contracts/src/distribution.ts","digest":"0e46476abfa24b54bd36bc84ec2faec647d9ea8d6bd5767576af4f0a79c77ee4","revision":"e5efef30008198db7198fe9dac38f3ad632c6621"},
@@ -18,7 +18,7 @@
 
     {"path":"packages/sdk/src/query-domains/workspaceProjects.ts","digest":"5ad96ef66bdcd70027e22da621b69446dac81dc0820527e43314e0370f2d7b81","revision":"1da4798fab6730e9c81fb91d9d3dbbebc952f976"},
 
-    {"path":"src-server/routes/plugins/registry.ts","digest":"182f1ca8372a27bd8f40e5b9ca8faec49b24cd1e4959b4a8aa1250def71e91dc","revision":"c191c6d08ae926b8d038cf5e2a4b494beee19243"},
+    {"path":"src-server/routes/plugins/registry.ts","digest":"f3f5be48240bb62b1bd0e1a5a0349d5205a99891cf15c4e3930cb1250fd900a6","revision":"47fbbbd8f767858f60a0a323b74e26cb60abce62"},
 
     {"path":"src-server/routes/projects/projects.ts","digest":"d87cdfa66a657cd27955762d9142eb32d477ce37d30e64e2b592a65a2f083847","revision":"e5efef30008198db7198fe9dac38f3ad632c6621"},
 
@@ -26,7 +26,7 @@
 
     {"path":"src-ui/src/components/registry/ProjectLayoutCatalog.tsx","digest":"f09391bac33fefcd71d892159bdb1474cd969879d953c0da2600faf313bc76a4","revision":"e5efef30008198db7198fe9dac38f3ad632c6621"},
 
-    {"path":"src-ui/src/views/RegistryView.tsx","digest":"955d4710c3aae69829967950187d59a26c0ff7da55ff4590fe5f003f0ffbfe30","revision":"a102a2fe3d467b7052c8217801efa5c9e6679aa0"},
+    {"path":"src-ui/src/views/RegistryView.tsx","digest":"4e38b039e33035ab5fe9232013b7a8c1d3ea75777f6a7a57b1f6738c04d8446e","revision":"360a9f6eea4fb95e898e66b64b9d8d3b00a73aff"},
 
     {"path":"src-ui/src/views/project-settings/LayoutsSection.tsx","digest":"0ac6db4dbba5e289010048f0d599ec1d43362ef7feb16a9a9ed0231eb65b8667","revision":"e5efef30008198db7198fe9dac38f3ad632c6621"}
   ],

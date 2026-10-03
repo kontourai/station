@@ -44,6 +44,11 @@ export type PreToolPolicyDecision =
        * has said whether this call escalates. An external adapter must
        * therefore not let it answer a request the engine marks as one; see
        * the Claude and ACP adapters.
+       *
+       * #2947: the same limit holds for an allow without this marker, which
+       * on the external path is the approval guardian's. The marker only
+       * tells the Claude adapter which allow it re-derives from the agent's
+       * patterns in `canUseTool` and which it must carry there itself.
        */
       toolGrant?: true;
     }
@@ -277,7 +282,13 @@ type GuardianOutcome =
 
 /**
  * The approval guardian's verdict. An enforce-mode deny blocks; an allow
- * allows. Anything else leaves the call undecided — and in enforce mode that
+ * allows, in either mode. The guardian is shown the agent, the tool's name,
+ * the call's arguments and a description where the adapter passes one (ACP
+ * passes the call's title; Claude passes none), and nothing of the session: not
+ * its working directories, its permission mode, or why an engine would ask.
+ * Its allow therefore speaks for the call as written. On an external engine
+ * it answers plain calls only and never an escalation or a plan exit
+ * (#2947; see the Claude and ACP adapters). Anything else leaves the call undecided — and in enforce mode that
  * undecided verdict (a `defer`, including the guardian's own error and
  * parse-failure fallbacks) is carried forward so an unattended call can treat
  * it as a refusal (#2613).

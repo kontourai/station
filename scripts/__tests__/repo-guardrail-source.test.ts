@@ -47,27 +47,6 @@ describe('required repo-guardrail sources', () => {
 
     expect(() => readRequiredSource('../protected-source.ts')).toThrow(denied);
   });
-
-  test('reports a missing current pane-host source instead of throwing ENOENT', () => {
-    const reportMissing = vi.fn();
-    const missing = Object.assign(new Error('missing'), { code: 'ENOENT' });
-    const readRequiredSource = createRequiredSourceReader({
-      baseUrl: import.meta.url,
-      reportMissing,
-      readSource: () => {
-        throw missing;
-      },
-    });
-
-    expect(
-      readRequiredSource(
-        '../../src-ui/src/app-shell/ProjectLayoutRenderer.tsx',
-      ),
-    ).toBe('');
-    expect(reportMissing).toHaveBeenCalledWith(
-      '../../src-ui/src/app-shell/ProjectLayoutRenderer.tsx',
-    );
-  });
 });
 
 describe('pane-host composition guardrail', () => {

@@ -233,11 +233,21 @@ function isValidRelayRoute(value: unknown): boolean {
 
 function isValidRelayProfileState(value: Record<string, unknown>): boolean {
   if (value.relayRoute === undefined) return true;
+  if (value.setupSource !== 'manual' || !isSafeStationOrigin(value.endpoint))
+    return false;
+  if (value.configurationState === 'unconfigured')
+    return value.credentialRef === undefined;
+  // A host-published reference is public metadata, not Device or account authority.
   return (
-    value.credentialRef === undefined &&
-    value.setupSource === 'manual' &&
-    value.configurationState === 'unconfigured' &&
-    isSafeStationOrigin(value.endpoint)
+    (value.configurationState === 'requires-auth' ||
+      value.configurationState === 'configured') &&
+    value.credentialRef !== undefined &&
+    isValidCredentialRef(value.credentialRef) &&
+    typeof value.clientInstanceId === 'string' &&
+    CLIENT_INSTANCE_ID_PATTERN.test(value.clientInstanceId) &&
+    isRecord(value.relayRoute) &&
+    value.environmentId === value.relayRoute.stationId &&
+    value.localService === undefined
   );
 }
 

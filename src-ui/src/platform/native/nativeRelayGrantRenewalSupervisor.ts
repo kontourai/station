@@ -294,6 +294,7 @@ export class NativeRelayGrantRenewalSupervisor {
       if (this.refreshRequested) {
         this.refreshRequested = false;
         for (const entry of this.sortedRoutes()) {
+          if (!this.started || !this.isVisible()) break;
           if (!this.isCurrent(entry)) continue;
           await this.observeStatus(entry);
           // Wake events may arrive throughout a long inventory scan. Give a
@@ -352,7 +353,7 @@ export class NativeRelayGrantRenewalSupervisor {
   }
 
   private async processDueWork(entry: RouteEntry): Promise<void> {
-    if (!this.isCurrent(entry) || !entry.nextKind) return;
+    if (!this.isVisible() || !this.isCurrent(entry) || !entry.nextKind) return;
     if (entry.nextKind === 'status') {
       await this.observeStatus(entry);
       return;
@@ -361,6 +362,7 @@ export class NativeRelayGrantRenewalSupervisor {
     // observed from host custody immediately before asking it to renew.
     await this.observeStatus(entry);
     if (
+      !this.isVisible() ||
       !this.isCurrent(entry) ||
       entry.nextKind !== 'renew' ||
       entry.nextAt === undefined ||

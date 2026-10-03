@@ -831,6 +831,7 @@ export interface ClaudeAdapterOptions {
   createInProcessStationControl?: (
     threadId: string,
     tenantExecutionContext?: TenantExecutionContext,
+    allowedTools?: readonly string[],
   ) => unknown;
   /**
    * #90 D14: serves the built-in browser tools (`station-browser`) IN-PROCESS
@@ -938,27 +939,58 @@ function serverDelegation(
     : undefined;
 }
 
-function preToolPolicyHookOutput(decision: PreToolPolicyDecision) {
-  // #2933: a tool-level grant (the agent's `tools.autoApprove`) is decided
-  // from the tool name alone, before the engine has checked the call. A hook
-  // `allow` would skip the engine's working-directory check outright, so an
-  // autoApproved Read outside the session's directories would run unasked
-  // (Claude Code 2.1.278, as 2.1.261 before it, re-checks only deny rules,
-  // ask rules, safety checks and user-interaction tools after a hook allow). Express no opinion
-  // instead: the engine allows what it allows itself and asks `canUseTool`
-  // for the rest, where the same patterns answer plain calls and every
-  // escalation or plan exit reaches a person.
-  if (decision.behavior === 'allow' && decision.toolGrant) {
-    return { continue: true };
+/**
+ * How many Station policy allows are held for `canUseTool` at once. An entry
+ * the engine never asks about (it allowed the call itself) stays until it is
+ * the oldest; one dropped early costs a prompt, never a grant.
+ */
+const MAX_PENDING_POLICY_ALLOWS = 256;
+
+/** JSON with object keys sorted at every depth, so key order is no difference. */
+function stableJson(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(stableJson);
+  if (value && typeof value === 'object') {
+    const source = value as Record<string, unknown>;
+    return Object.fromEntries(
+      Object.keys(source)
+        .sort()
+        .map((key) => [key, stableJson(source[key])]),
+    );
   }
+  return value;
+}
+
+/**
+ * #2947: a digest of a tool call's input, binding a guardian allow to the
+ * input the guardian reviewed. Undefined for an input that cannot be
+ * serialised, which then matches nothing.
+ */
+function toolInputDigest(toolInput: unknown): string | undefined {
+  try {
+    const json = JSON.stringify(stableJson(toolInput));
+    if (json === undefined) return undefined;
+    return crypto.createHash('sha256').update(json).digest('hex');
+  } catch {
+    return undefined;
+  }
+}
+
+function preToolPolicyHookOutput(decision: PreToolPolicyDecision) {
+  // #2933, #2947: Station's allow is never a hook `allow`. After one, Claude
+  // Code 2.1.278 (as 2.1.261 before it) re-checks only deny rules, ask
+  // rules, safety checks, user-interaction tools, the MCP ceiling and a
+  // sandbox override, so the allow would skip its working-directory check
+  // and its plan-mode refusal: a Read outside the session's directories
+  // would run unasked. That holds for a tool-level grant (the agent's
+  // `tools.autoApprove`, decided from the tool name alone) and for the
+  // approval guardian's allow alike: the guardian reads the call's
+  // arguments, but not the session's directories or what the engine makes
+  // of the call. Express no opinion instead. The engine allows what it
+  // allows itself and asks `canUseTool` for the rest, where the patterns
+  // and the guardian's allow (kept by `evaluateClaudePreToolPolicy`) answer
+  // plain calls and every escalation or plan exit reaches a person.
   if (decision.behavior === 'allow') {
-    return {
-      continue: true,
-      hookSpecificOutput: {
-        hookEventName: 'PreToolUse' as const,
-        permissionDecision: 'allow' as const,
-      },
-    };
+    return { continue: true };
   }
   if (decision.behavior === 'deny') {
     return {
@@ -1010,6 +1042,16 @@ async function evaluateClaudePreToolPolicy(
   input: { tool_name: string; tool_input: unknown; tool_use_id: string },
   invocation: InvocationContext,
   timeoutMs: number,
+  /**
+   * #2947: called for an allow that is not a tool-level grant. On this
+   * external path that is the approval guardian's allow, the only other
+   * allow the staged evaluator reaches before it hands interaction back.
+   */
+  onPolicyAllow: (
+    toolUseId: string,
+    toolName: string,
+    toolInput: unknown,
+  ) => void,
 ) {
   let timeout: ReturnType<typeof setTimeout> | undefined;
   try {
@@ -1041,6 +1083,9 @@ async function evaluateClaudePreToolPolicy(
         );
       }),
     ]);
+    if (decision.behavior === 'allow' && !decision.toolGrant) {
+      onPolicyAllow(input.tool_use_id, input.tool_name, input.tool_input);
+    }
     return preToolPolicyHookOutput(decision);
   } catch (error) {
     const reason = `Station pre-tool policy failed; tool execution was denied: ${errorMessage(error)}`;
@@ -2613,6 +2658,14 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     if (toolServers === undefined) return {};
 
     const tenantExecutionContext = input.tenantExecutionContext;
+    const control = toolServers.find(
+      (server) => server.id === 'station-control',
+    );
+    const selectedControlTools = control?.disabledTools?.length
+      ? (control.allowedTools ?? control.toolNames ?? []).filter(
+          (name) => !control.disabledTools!.includes(name),
+        )
+      : control?.allowedTools;
     const { servers, skipped } = resolveClaudeMcpServers(
       toolServers,
       {
@@ -2625,10 +2678,16 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         ...(this.options.createInProcessStationControl
           ? {
               inProcess: () =>
-                this.options.createInProcessStationControl!(
-                  input.threadId,
-                  tenantExecutionContext,
-                ),
+                selectedControlTools !== undefined
+                  ? this.options.createInProcessStationControl!(
+                      input.threadId,
+                      tenantExecutionContext,
+                      selectedControlTools,
+                    )
+                  : this.options.createInProcessStationControl!(
+                      input.threadId,
+                      tenantExecutionContext,
+                    ),
             }
           : {}),
         ...(tenantExecutionContext ? { tenantExecutionContext } : {}),
@@ -2696,8 +2755,72 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     builtinServers?: Record<string, McpServerConfig>,
   ): Options {
     const modelOptions = claudeAppliedModelOptions(input.modelOptions);
+    // #2947: the approval guardian's allows, by the engine's tool-use id,
+    // from the PreToolUse hook to `canUseTool`. The hook states no opinion,
+    // so the guardian's verdict is carried here and answers the engine's
+    // ask only when that ask is a plain call. The guardian is not asked
+    // twice, and an entry is used once. Each allow is bound to the tool and
+    // to a digest of the input the guardian reviewed: another hook (a
+    // user-settings PreToolUse hook returning `updatedInput`) can change
+    // the input after the guardian saw it, and the engine then asks about
+    // an input nobody reviewed.
+    const policyAllows = new Map<
+      string,
+      { toolName: string; inputDigest: string }
+    >();
+    const rememberPolicyAllow = (
+      toolUseId: string,
+      toolName: string,
+      toolInput: unknown,
+    ) => {
+      policyAllows.delete(toolUseId);
+      const inputDigest = toolInputDigest(toolInput);
+      if (!toolUseId || inputDigest === undefined) return;
+      policyAllows.set(toolUseId, { toolName, inputDigest });
+      if (policyAllows.size > MAX_PENDING_POLICY_ALLOWS) {
+        const oldest = policyAllows.keys().next();
+        if (!oldest.done) policyAllows.delete(oldest.value);
+      }
+    };
+    /**
+     * Consumes the allow recorded for this call of this tool. `changed`
+     * means the guardian allowed the call with a different input: the entry
+     * is consumed and the allow is not used.
+     */
+    const takePolicyAllow = (
+      toolUseId: unknown,
+      toolName: string,
+      toolInput: unknown,
+    ): 'allowed' | 'changed' | 'none' => {
+      if (typeof toolUseId !== 'string' || toolUseId === '') return 'none';
+      const allow = policyAllows.get(toolUseId);
+      if (allow?.toolName !== toolName) return 'none';
+      policyAllows.delete(toolUseId);
+      return allow.inputDigest === toolInputDigest(toolInput)
+        ? 'allowed'
+        : 'changed';
+    };
     return {
       cwd: input.cwd,
+      ...(input.agent?.toolServers?.some(
+        (server) =>
+          server.allowedTools !== undefined || server.disabledTools?.length,
+      )
+        ? {
+            disallowedTools: input.agent.toolServers.flatMap((server) =>
+              [
+                ...new Set([
+                  ...(server.disabledTools ?? []),
+                  ...(server.allowedTools !== undefined
+                    ? (server.toolNames ?? []).filter(
+                        (name) => !server.allowedTools!.includes(name),
+                      )
+                    : []),
+                ]),
+              ].map((name) => `mcp__${server.id}__${name}`),
+            ),
+          }
+        : {}),
       model: input.modelId,
       // #1551: run the Claude Code the user installed. Omitted when none
       // resolved, which is the SDK's documented "use the built-in executable"
@@ -2737,19 +2860,12 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       ...(skillsOverlayDir
         ? { additionalDirectories: [skillsOverlayDir] }
         : {}),
-      // Station#1157: only set when the agent authored toolServers (see
-      // resolveAgentToolServers) — an unauthored session leaves both
-      // options unset, matching Claude's own default MCP discovery
-      // (project/user .mcp.json, settings) exactly as before this
-      // feature. `strictMcpConfig: true` is required alongside an
-      // authored (even empty) `mcpServers`: an authored empty array is the
-      // agent explicitly disabling every tool server, and without
-      // strictMcpConfig the SDK would still auto-discover the connection's
-      // own local MCP config underneath it.
+      // Additive selection keeps the harness's discovery; legacy and explicit
+      // replacement keep an authored-empty list authoritative.
       ...(mcpServers !== undefined
         ? {
             mcpServers: { ...mcpServers, ...builtinServers },
-            strictMcpConfig: true,
+            strictMcpConfig: input.agent?.toolServerMode !== 'add',
           }
         : builtinServers !== undefined
           ? // #90 D14: Station's own built-ins alone never switch the SDK
@@ -2813,6 +2929,12 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         ...(augmentedEnv ?? process.env),
         ...connectionEnv,
         ...appHomeEnv,
+        ...(input.agent?.toolServerLoading
+          ? {
+              ENABLE_TOOL_SEARCH:
+                input.agent.toolServerLoading === 'always' ? 'false' : 'true',
+            }
+          : {}),
         TMPDIR: ensureEngineSpawnTmpDir(),
       }),
       // #2932: the SDK reads stdout from the process this returns, after
@@ -2896,6 +3018,38 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         ) {
           return { behavior: 'allow', updatedInput: toolInput };
         }
+        // #2947: the approval guardian allowed this call at the hook, which
+        // stated no opinion to the engine. Its allow answers a plain call
+        // only: an escalation (a path outside the session's directories, a
+        // safety check, an ask rule), a plan exit and a question reach a
+        // person, as they do for a pattern above.
+        // The allow is bound to the input the guardian reviewed.
+        const policyAllow = takePolicyAllow(
+          options.toolUseID,
+          toolName,
+          toolInput,
+        );
+        if (policyAllow !== 'none') {
+          // The question guard is defence in depth: a question is never a
+          // plain call (`toolRequestNeedsPerson`).
+          const notApplied =
+            policyAllow === 'changed'
+              ? 'the input changed after the guardian reviewed it'
+              : questionnaire
+                ? 'the request is a question for a person'
+                : toolRequestIsPlainCall(request)
+                  ? undefined
+                  : 'the request is an escalation or a plan exit';
+          if (notApplied === undefined) {
+            return { behavior: 'allow', updatedInput: toolInput };
+          }
+          // The evaluator has already logged the guardian's allow; say here
+          // that it did not decide the request.
+          (this.options.logger ?? console).info?.(
+            'Approval guardian allow not applied; the request goes to a person',
+            { toolName, threadId: input.threadId, reason: notApplied },
+          );
+        }
         // Tool-level session grant: "Allow Bash for this session" must cover
         // every later Bash call, not just the SDK-suggested command pattern.
         // Checked after agent autoApprove (authored policy stays first) and
@@ -2916,10 +3070,9 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         }
         // #2933: a delegated child that may not grant approvals reaches here
         // when the engine asks after the staged evaluator did not deny the
-        // call: a tool-level grant let it past (an autoApprove match is no
-        // hook allow) and it escalates or exits plan mode; a real hook allow
-        // (for example the approval guardian's) was followed by an engine
-        // safety check or a user-interaction tool's ask; or no hook ran at
+        // call: a tool-level grant or the approval guardian's allow let it
+        // past (neither is a hook allow, #2947) and it escalates or exits
+        // plan mode; or no hook ran at
         // all (no resolved agent, or no `resolvePreToolPolicy`). Nobody can
         // answer the child's request, so deny it fail-fast with the
         // evaluator's own denial rather than wait on a prompt.
@@ -3007,7 +3160,12 @@ export class ClaudeAdapter implements ProviderAdapterShape {
             this.cancelPendingRequest(record, input.threadId, requestId);
         });
       },
-      ...(preToolPolicy && input.agent
+      ...(input.agent &&
+      (preToolPolicy ||
+        input.agent.toolServers?.some(
+          (server) =>
+            server.allowedTools !== undefined || server.disabledTools?.length,
+        ))
         ? {
             hooks: {
               PreToolUse: [
@@ -3017,8 +3175,41 @@ export class ClaudeAdapter implements ProviderAdapterShape {
                       DEFAULT_PRE_TOOL_POLICY_TIMEOUT_MS,
                   ),
                   hooks: [
-                    async (hookInput) =>
-                      evaluateClaudePreToolPolicy(
+                    async (hookInput) => {
+                      if (
+                        'tool_name' in hookInput &&
+                        typeof hookInput.tool_name === 'string'
+                      ) {
+                        const rawToolName = hookInput.tool_name;
+                        const server = input.agent?.toolServers?.find((entry) =>
+                          rawToolName.startsWith(`mcp__${entry.id}__`),
+                        );
+                        const name = server
+                          ? hookInput.tool_name.slice(
+                              `mcp__${server.id}__`.length,
+                            )
+                          : undefined;
+                        if (
+                          server &&
+                          name !== undefined &&
+                          (server.disabledTools?.includes(name) ||
+                            (server.allowedTools !== undefined &&
+                              !server.allowedTools.includes(name)))
+                        )
+                          return {
+                            hookSpecificOutput: {
+                              hookEventName: 'PreToolUse' as const,
+                              permissionDecision: 'deny' as const,
+                              permissionDecisionReason:
+                                'Tool not selected for this agent.',
+                            },
+                          };
+                      }
+                      // #2947: an unselected MCP tool is denied above,
+                      // before the staged evaluator runs, so the guardian
+                      // is never asked and no allow is kept for it.
+                      if (!preToolPolicy) return {};
+                      return evaluateClaudePreToolPolicy(
                         preToolPolicy,
                         hookInput as {
                           tool_name: string;
@@ -3032,7 +3223,9 @@ export class ClaudeAdapter implements ProviderAdapterShape {
                         },
                         this.options.preToolPolicyTimeoutMs ??
                           DEFAULT_PRE_TOOL_POLICY_TIMEOUT_MS,
-                      ),
+                        rememberPolicyAllow,
+                      );
+                    },
                   ],
                 },
               ],
@@ -3077,7 +3270,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       //
       // Nothing Station wires itself depends on the cascade either way:
       // `resolveAgentToolServers` builds `mcpServers` explicitly (station-control
-      // included) and passes `strictMcpConfig`, and Station's `PreToolUse` hook is
+      // included) and makes replacement selections strict; Station's `PreToolUse` hook is
       // the SDK `hooks` OPTION, not a settings file. The model-catalog probe in
       // `listModelCatalog` does pin `settingSources: []` — it runs no tools and
       // wants no ambient configuration at all.
