@@ -4,6 +4,7 @@ import {
   APPLICATION_SESSION_NATIVE_HEADER,
   APPLICATION_SESSION_NATIVE_PROOF_HEADER,
   APPLICATION_SESSION_NATIVE_PROOF_TYPE,
+  APPLICATION_SESSION_NATIVE_REVOKE_PATH,
   APPLICATION_SESSION_NATIVE_VERSION,
   type ApplicationSessionPublicKey,
   type NativeApplicationSessionChallengeV1,
@@ -43,6 +44,8 @@ export interface NativeAccountExchangePreparation {
 /** Structured native operations; no JWS input or authority claims cross this seam. */
 export interface NativeApplicationSessionProofProvider {
   readonly kind: 'station-native-host-proof-provider/v1';
+  /** Actual native preparation deadline; never extended by a later account exchange. */
+  readonly contextExpiresAtMs?: number;
   readonly publicKey: ApplicationSessionPublicKey;
   prepareExchange(input: {
     readonly challenge: NativeAccountOpaqueChallenge;
@@ -55,7 +58,25 @@ export interface NativeApplicationSessionProofProvider {
       readonly path: string;
     };
   }): Promise<Readonly<Record<string, string>>>;
+  prepareRevocation?(input: {
+    readonly continuation: NativeAccountOpaqueContinuation;
+  }): Promise<NativeAccountRevocationPreparation>;
+  prepareInvitationAcceptance?(input: {
+    readonly continuation: NativeAccountOpaqueContinuation;
+    readonly token: string;
+  }): Promise<NativeProjectInvitationAcceptancePreparation>;
 }
+
+export interface NativeAccountRevocationPreparation {
+  readonly body: Readonly<Record<string, never>>;
+  readonly headers: Readonly<Record<string, string>>;
+}
+
+export interface NativeProjectInvitationAcceptancePreparation {
+  readonly body: { readonly token: string };
+  readonly headers: Readonly<Record<string, string>>;
+}
+const INVITATION_ACCEPT_PATH = '/api/account-auth/accept-invitation';
 
 const localCredentials = z
   .object({
@@ -287,8 +308,16 @@ function localReadRequest(request: {
   const path = requestPath(request.path);
   const pathname = new URL(path, 'https://station.invalid').pathname;
   if (
-    pathname !== '/api/projects' &&
-    !/^\/api\/projects\/[A-Za-z0-9_-]{1,128}$/.test(pathname)
+    ![
+      '/.well-known/station/v1',
+      '/api/system/status',
+      '/api/system/identity',
+      '/api/auth/authority',
+      '/api/projects',
+    ].includes(pathname) &&
+    !/^\/api\/projects\/[A-Za-z0-9_-]{1,128}(?:\/shared-work(?:\/[A-Za-z0-9_-]{1,128}\/(?:document|history|publication))?)?$/.test(
+      pathname,
+    )
   )
     throw new Error('Native host account proof supports only Project reads.');
   return Object.freeze({ method: request.method, path });
@@ -606,6 +635,7 @@ function asCredentials(value: Readonly<Record<string, unknown>>) {
  * provider/Device/Project authority is implemented here.
  */
 export class NativeApplicationSessionClient {
+  private readonly contextExpiresAtMs: number | undefined;
   private readonly consumedChallenges = new Set<string>();
   private readonly issuedJti = new Set<string>();
   constructor(
@@ -616,9 +646,25 @@ export class NativeApplicationSessionClient {
       | NativeApplicationSessionProofProvider,
   ) {
     parsePublicKey(key.publicKey);
+    this.contextExpiresAtMs = isHostProofProvider(key)
+      ? key.contextExpiresAtMs
+      : undefined;
+    this.assertContextDeadline();
+  }
+
+  private assertContextDeadline() {
+    const deadline = this.contextExpiresAtMs;
+    if (
+      deadline !== undefined &&
+      (!Number.isSafeInteger(deadline) ||
+        deadline <= Date.now() ||
+        !Number.isFinite(new Date(deadline).getTime()))
+    )
+      throw new Error('Native host account context expired.');
   }
 
   private current() {
+    this.assertContextDeadline();
     const snapshot = this.trust();
     if (snapshot?.kind !== 'station-native')
       throw new Error('Native application session trust is unavailable.');
@@ -780,11 +826,26 @@ export class NativeApplicationSessionClient {
       body,
     });
     this.assertSameTrust(trust);
-    return parseContinuation(
+    const accepted = parseContinuation(
       response,
       trust,
       await applicationSessionKeyThumbprint(this.key.publicKey),
     );
+    const deadline = this.contextExpiresAtMs;
+    if (deadline === undefined) return accepted;
+    if (
+      !Number.isSafeInteger(deadline) ||
+      deadline <= Date.now() ||
+      !Number.isFinite(new Date(deadline).getTime())
+    )
+      throw new Error('Native host account context expired.');
+    this.assertSameTrust(trust);
+    return Object.freeze({
+      ...accepted,
+      expiresAt: new Date(
+        Math.min(Date.parse(accepted.expiresAt), deadline),
+      ).toISOString(),
+    });
   }
 
   /**
@@ -792,6 +853,99 @@ export class NativeApplicationSessionClient {
    * transport. Each call mints a fresh one-use JTI and rechecks the trust
    * snapshot and continuation before signing.
    */
+  async prepareInvitationAcceptance(
+    continuation: NativeApplicationSessionContinuationV1,
+    token: string,
+  ): Promise<NativeProjectInvitationAcceptancePreparation> {
+    const trust = this.current();
+    const thumbprint = await applicationSessionKeyThumbprint(
+      this.key.publicKey,
+    );
+    const current = parseContinuation(continuation, trust, thumbprint);
+    if (
+      !OPAQUE.test(token) ||
+      !isHostProofProvider(this.key) ||
+      !this.key.prepareInvitationAcceptance
+    )
+      throw new Error('Native host invitation acceptance is unavailable.');
+    const prepared = await this.key.prepareInvitationAcceptance({
+      continuation: Object.freeze({
+        credential: current.credential,
+        nonce: current.nonce,
+        expiresAtMs: Date.parse(current.expiresAt),
+      }),
+      token,
+    });
+    const body = z
+      .object({ token: z.literal(token) })
+      .strict()
+      .parse(prepared.body);
+    const headers = hostRequestHeaders.parse(prepared.headers);
+    if (headers[APPLICATION_SESSION_NATIVE_HEADER] !== current.credential)
+      throw new Error('Native host account continuation changed.');
+    const claims = await verifyHostProof(
+      headers[APPLICATION_SESSION_NATIVE_PROOF_HEADER],
+      this.key.publicKey,
+      trust,
+      {
+        purpose: 'request',
+        nonce: current.nonce,
+        method: 'POST',
+        path: INVITATION_ACCEPT_PATH,
+        keyThumbprint: current.keyThumbprint,
+        credentialHash: await hashText(current.credential),
+      },
+    );
+    this.rememberOnce(this.issuedJti, claims.jti, 'proof JTI');
+    this.assertSameTrust(trust);
+    return Object.freeze({
+      body: Object.freeze({ ...body }),
+      headers: Object.freeze({ ...headers }),
+    });
+  }
+
+  async prepareRevocation(
+    continuation: NativeApplicationSessionContinuationV1,
+  ): Promise<NativeAccountRevocationPreparation> {
+    const trust = this.current();
+    const thumbprint = await applicationSessionKeyThumbprint(
+      this.key.publicKey,
+    );
+    const current = parseContinuation(continuation, trust, thumbprint);
+    if (!isHostProofProvider(this.key) || !this.key.prepareRevocation)
+      throw new Error('Native host account revocation is unavailable.');
+    const prepared = await this.key.prepareRevocation({
+      continuation: Object.freeze({
+        credential: current.credential,
+        nonce: current.nonce,
+        expiresAtMs: Date.parse(current.expiresAt),
+      }),
+    });
+    const body = z.object({}).strict().parse(prepared.body);
+    const headers = hostRequestHeaders.parse(prepared.headers);
+    if (headers[APPLICATION_SESSION_NATIVE_HEADER] !== current.credential)
+      throw new Error('Native host account continuation changed.');
+    const claims = await verifyHostProof(
+      headers[APPLICATION_SESSION_NATIVE_PROOF_HEADER],
+      this.key.publicKey,
+      trust,
+      {
+        purpose: 'request',
+        nonce: current.nonce,
+        method: 'POST',
+        path: APPLICATION_SESSION_NATIVE_REVOKE_PATH,
+        keyThumbprint: current.keyThumbprint,
+        credentialHash: await hashText(current.credential),
+      },
+    );
+    this.rememberOnce(this.issuedJti, claims.jti, 'proof JTI');
+    this.assertSameTrust(trust);
+    return Object.freeze({
+      body: Object.freeze({ ...body }),
+      headers: Object.freeze({ ...headers }),
+    });
+  }
+
   async headers(
     continuation: NativeApplicationSessionContinuationV1,
     request: { readonly method: string; readonly path: string },

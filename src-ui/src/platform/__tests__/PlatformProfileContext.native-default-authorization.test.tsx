@@ -1,9 +1,12 @@
 // @vitest-environment jsdom
 
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const lifecycle = vi.hoisted(() => [] as string[]);
+const metadata = vi.hoisted(() => ({
+  listener: undefined as (() => void) | undefined,
+}));
 const profileStorage = vi.hoisted(() => ({
   hydrate: vi.fn(async () => {
     lifecycle.push('hydrate');
@@ -22,6 +25,12 @@ const profileStorage = vi.hoisted(() => ({
     return true;
   }),
   hasSavedProfiles: vi.fn(() => true),
+  subscribeRelayRouteProfiles: vi.fn((listener: () => void) => {
+    metadata.listener = listener;
+    return () => {
+      metadata.listener = undefined;
+    };
+  }),
 }));
 
 vi.mock('../native', () => ({
@@ -46,7 +55,10 @@ vi.mock('../native/stationProfileStorage', () => ({
   nativeStationProfileStorage: () => profileStorage,
 }));
 
-import { PlatformBootstrap } from '../PlatformProfileContext';
+import {
+  PlatformBootstrap,
+  useNativeProfileStoreEpoch,
+} from '../PlatformProfileContext';
 
 function NativeChild() {
   lifecycle.push('child');
@@ -86,4 +98,20 @@ describe('PlatformBootstrap native default authorization', () => {
     expect(profileStorage.authorizeRememberedProfile).toHaveBeenCalledOnce();
     expect(profileStorage.authorizeDefaultProfile).not.toHaveBeenCalled();
   });
+});
+
+it('publishes refreshed mobile host metadata to the actual ConnectionStore revision context', async () => {
+  function Revision() {
+    return <div>revision:{useNativeProfileStoreEpoch()}</div>;
+  }
+  const mounted = render(
+    <PlatformBootstrap>
+      <Revision />
+    </PlatformBootstrap>,
+  );
+  await screen.findByText('revision:0');
+  act(() => metadata.listener?.());
+  expect(screen.getByText('revision:1')).toBeDefined();
+  mounted.unmount();
+  expect(metadata.listener).toBeUndefined();
 });

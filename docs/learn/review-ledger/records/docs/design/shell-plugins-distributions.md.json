@@ -16,7 +16,7 @@
 
     {"path":"packages/contracts/src/layout.ts","digest":"d239a39ed06c9dcb103e89da3a86f4d358aa3261a7623b1c5a86eff69e897a43","revision":"25e49629d9894a7e601ae2923a53cfe932560dd8"},
 
-    {"path":"packages/contracts/src/project-membership.ts","digest":"835dd45f7c8adb2ebe74849f39013c13a552a10065156c15bf2c2baf5fb96d00","revision":"25e49629d9894a7e601ae2923a53cfe932560dd8"},
+    {"path":"packages/contracts/src/project-membership.ts","digest":"8b3317731a3d6766b08756ae78895e214e2c34ee48c2256da4961a8f2aa0d332","revision":"623ff3525e54ab5b505d1c4f4790da5a0b3aec24"},
 
     {"path":"packages/contracts/src/workspace-home-role.ts","digest":"afdd6ec33526422a7a455cfc575cdd5d662277a8a5c356db6f5b2b564de038f4","revision":"25e49629d9894a7e601ae2923a53cfe932560dd8"},
 
@@ -32,7 +32,7 @@
 
     {"path":"src-ui/src/components/project-sidebar/ProjectSidebarBoards.tsx","digest":"df8a426d1bc0629c595ea02efc46fc39f5eb2933cb715ef1f4a7b50acd1e9302","revision":"25e49629d9894a7e601ae2923a53cfe932560dd8"},
 
-    {"path":"src-ui/src/core/PluginRegistry.ts","digest":"4b87c6951d37298e6497639e1cc45294fd1239f06d4c6caf9f5ed540eef5ca2c","revision":"25e49629d9894a7e601ae2923a53cfe932560dd8"},
+    {"path":"src-ui/src/core/PluginRegistry.ts","digest":"69836e5e1dd4762f58da6f2495e96f0cab41d586e65327fc4c1dc08d80acc8f9","revision":"1373230550904315438e5bd2869a3c41a9e419ca"},
 
     {"path":"src-ui/src/lib/branding-theme.ts","digest":"6b0a440ba723e5af74ff8230c50b2f268a87a85aa3dadce7f12a1de13257cd9d","revision":"1e5f63186142dd36fcb720deb7660808dbf2f56b"},
 

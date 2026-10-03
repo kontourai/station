@@ -8,6 +8,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 const native = vi.hoisted(() => ({
   isTauri: false,
   isMobile: false,
+  isDesktop: false,
   productName: 'Station',
 }));
 
@@ -19,7 +20,7 @@ vi.mock('../lib/serverHealth', () => ({
 vi.mock('../platform/PlatformProfileContext', () => ({
   usePlatformProfile: () => ({
     isTauri: native.isTauri,
-    isDesktop: false,
+    isDesktop: native.isDesktop,
     isMobile: native.isMobile,
     productName: native.productName,
   }),
@@ -59,6 +60,13 @@ vi.mock('../views/connections-hub/BrowserRelayRoutes', () => ({
     </section>
   ),
 }));
+vi.mock('../views/connections-hub/RelayRouteProfiles', () => ({
+  RelayRouteProfiles: () => (
+    <section aria-label="Saved native broker routes">
+      Native broker route setup ready
+    </section>
+  ),
+}));
 
 import { GuidedConnect } from '../components/GuidedConnect';
 
@@ -67,6 +75,7 @@ describe('GuidedConnect', () => {
     vi.unstubAllEnvs();
     native.isTauri = false;
     native.isMobile = false;
+    native.isDesktop = false;
     native.productName = 'Station';
   });
 
@@ -86,17 +95,34 @@ describe('GuidedConnect', () => {
     ).toBe('https://station.kontourai.io/#start');
   });
 
-  test('does not offer desktop app installation inside the native app', () => {
-    native.isTauri = true;
-    render(<GuidedConnect />);
-    expect(
-      screen.queryByRole('link', { name: 'Open in the Station app' }),
-    ).toBeNull();
-    expect(screen.queryByRole('link', { name: 'Get Station' })).toBeNull();
-    expect(
-      screen.queryByRole('button', { name: 'Use a broker invitation' }),
-    ).toBeNull();
-  });
+  test.each([
+    ['iOS', true, false],
+    ['Android', true, false],
+    ['desktop', false, true],
+  ] as const)(
+    'opens native broker route setup on a %s client without a browser route panel',
+    async (_target, isMobile, isDesktop) => {
+      native.isTauri = true;
+      native.isMobile = isMobile;
+      native.isDesktop = isDesktop;
+      render(<GuidedConnect />);
+      expect(
+        screen.queryByRole('link', { name: 'Open in the Station app' }),
+      ).toBeNull();
+      expect(screen.queryByRole('link', { name: 'Get Station' })).toBeNull();
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Set up a broker route' }),
+      );
+      expect(
+        await screen.findByRole('region', {
+          name: 'Saved native broker routes',
+        }),
+      ).toBeTruthy();
+      expect(
+        screen.queryByRole('region', { name: 'Browser broker routes' }),
+      ).toBeNull();
+    },
+  );
 
   test('says why this browser landed here inside the full-screen layer (#2612)', () => {
     const { container } = render(

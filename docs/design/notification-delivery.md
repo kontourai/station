@@ -840,6 +840,15 @@ a desktop app paired to a remote Station reads `device:<id>`, both from
 presence, quiet hours, mutes and minimum urgency, and is redacted per the
 surface's `hideContent`. A reader shows what it reads and filters nothing.
 
+This feed is the direct HTTP/bearer path. The selected native relay member route
+has a separate read-only application allowlist that excludes notification
+feeds and registration; host command registration does not add those resources.
+Its account-bound Device also cannot register for agent activity, whose
+registration owner requires an eligible personal Device. Native relay enrollment
+and account sign-in therefore do not establish desktop feed delivery, background
+push or card continuity. The retained push and direct-feed receipts below do
+not qualify that member route.
+
 **The desktop host is the only reader (#2608).** The webview used to read the
 feed, and a window hidden in the tray suspends its page, so nothing alerted
 while hidden. `src-desktop/src/notification_feed.rs` now reads it on a host
@@ -852,9 +861,9 @@ The answer is fixed for the process, so the role never changes hands at
 runtime and the two can never both alert. A shell without the command answers
 `false` and the webview stays the reader, as before.
 
-- **Same surface, same credential.** The host reads the host-authorized active
-  Station with that profile's bearer — the authority the webview's own
-  requests use through `station_native_http_request` — so the server derives
+- **Same surface, same credential for direct profiles.** The host reads the host-authorized active
+  Station through direct HTTP with that profile's bearer, matching the direct
+  webview broker's `station_native_http_request` authority, so the server derives
   the same surface. No new credential exists; with no authorized Station the
   host reads nothing.
 - **Cursor and epoch** persist per Station origin in the app config directory

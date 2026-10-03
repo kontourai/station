@@ -268,15 +268,6 @@
 }
 
 /* ── Core Update Status ── */
-.settings__update-text--success {
-  color: var(--success-text);
-}
-.settings__update-text--warning {
-  color: var(--warning-text);
-}
-.settings__update-text--muted {
-  color: var(--text-muted);
-}
 .settings__update-msg--warning {
   color: var(--warning-text);
 }
@@ -285,11 +276,6 @@
 }
 .settings__update-msg--error {
   color: var(--error-text);
-}
-
-/* ── Connection ── */
-.settings__conn-custom-warning {
-  color: var(--warning-text);
 }
 
 /* ── Character Counter ── */
@@ -307,13 +293,6 @@
   margin-top: 0.25rem;
   font-size: 0.7rem;
   color: var(--warning-text);
-}
-
-/* ── Theme Row ── */
-.settings__theme-row {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
 }
 
 /* ── Export/Import ── */
@@ -636,38 +615,6 @@
   margin-bottom: 0.5rem;
   color: var(--text-secondary);
 }
-/* ── Notification Thresholds ── */
-.settings__thresholds {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  margin-top: 0.75rem;
-}
-.settings__threshold {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.4rem 0.75rem;
-  background: var(--bg-primary);
-  border: 1px solid var(--border-primary);
-  border-radius: 0.375rem;
-  cursor: pointer;
-  font-size: 0.8rem;
-  transition:
-    border-color var(--motion-fast),
-    background var(--motion-fast);
-}
-.settings__threshold--active {
-  border-color: var(--accent-primary);
-  background: color-mix(in srgb, var(--accent-primary) 8%, transparent);
-}
-.settings__threshold input {
-  width: 0.85rem;
-  height: 0.85rem;
-  cursor: pointer;
-  accent-color: var(--accent-primary);
-}
-
 /* ── Template Variables ── */
 .settings__vars {
   display: flex;
@@ -761,61 +708,6 @@
   background: var(--bg-secondary);
   border-radius: 0.2rem;
   color: var(--accent-primary);
-}
-
-/* ── Connection Test ── */
-.settings__conn-row {
-  display: flex;
-  gap: 0.4rem;
-  align-items: flex-start;
-}
-.settings__conn-row input {
-  flex: 1;
-}
-.settings__conn-reset {
-  padding: 0.5rem 0.65rem;
-  font-size: 0.75rem;
-  font-weight: 500;
-  background: transparent;
-  color: var(--text-secondary);
-  border: 1px solid var(--border-primary);
-  border-radius: 0.375rem;
-  cursor: pointer;
-  white-space: nowrap;
-}
-.settings__conn-reset:hover {
-  border-color: var(--accent-primary);
-  color: var(--text-primary);
-}
-.settings__conn-test {
-  margin-top: 0.4rem;
-  padding: 0.3rem 0.65rem;
-  font-size: 0.7rem;
-  font-weight: 500;
-  background: transparent;
-  color: var(--text-secondary);
-  border: 1px solid var(--border-primary);
-  border-radius: 0.25rem;
-  cursor: pointer;
-  transition:
-    border-color var(--motion-fast) var(--ease-standard),
-    color var(--motion-fast) var(--ease-standard);
-}
-.settings__conn-test:hover {
-  border-color: var(--accent-primary);
-  color: var(--accent-primary);
-}
-.settings__conn-test:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-.settings__conn-test--ok {
-  color: var(--success-text);
-  border-color: var(--success-text);
-}
-.settings__conn-test--fail {
-  color: var(--error-text);
-  border-color: var(--error-text);
 }
 
 /* ── Core Update ── */
@@ -1051,23 +943,6 @@
   margin-top: 0.1875rem;
 }
 
-/* ── Mobile Pairing ── */
-.settings__pairing-content {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0.75rem;
-}
-.settings__pairing-detecting {
-  font-size: 0.8125rem;
-  color: var(--text-secondary);
-}
-.settings__pairing-warning {
-  font-size: 0.75rem;
-  color: var(--warning-text);
-  max-width: 20rem;
-}
-
 /* ── Notification Subscribe ── */
 .settings__notif-subscribe {
   margin-top: 0.5rem;
@@ -1171,36 +1046,6 @@
   border-color: var(--error-text);
 }
 
-.settings__connections-link {
-  padding: 12px;
-  /* --border-subtle until archive#1254 (re-seeded here by archive#1359) — a
-     token that does not exist, so these cards had no outline.
-     --border-primary is the subtle line. */
-  border: 1px solid var(--border-primary);
-  border-radius: 9px;
-  background: var(--bg-secondary);
-}
-
-.settings__connections-link strong,
-.settings__connections-link span {
-  display: block;
-}
-
-.settings__connections-link span {
-  margin-top: 4px;
-  color: var(--text-muted);
-  font-size: var(--text-xs);
-  line-height: 1.4;
-}
-
-.settings__connections-link {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 18px;
-}
-
 /* ── Mobile touch targets ── */
 @media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
   .settings .settings__section-nav {
@@ -1243,17 +1088,11 @@
     width: 100%;
   }
 
-  .settings__connections-link {
-    align-items: stretch;
-    flex-direction: column;
-  }
   .settings__provenance-list {
     grid-template-columns: minmax(0, 1fr);
   }
   .settings__save-pill-discard,
   .settings__save-pill-btn,
-  .settings__conn-test,
-  .settings__conn-reset,
   .settings__secondary-btn,
   .settings__import-label,
   .settings__update-btn,
