@@ -122,3 +122,49 @@ export interface SkillExperienceInventoryV1 {
     message: string;
   }>;
 }
+
+/** An explicit user selection; the host revalidates every identity and input. */
+export interface SkillExperienceStartInputV1 {
+  identity: SkillExperienceIdentityV1;
+  inputs: Record<string, string>;
+  expectedPreviousInvocationEventId?: string;
+}
+
+/** Immutable presentation snapshot for one canonical foreground dispatch. */
+export interface SkillExperienceInvocationV1 {
+  version: '1.0';
+  identity: SkillExperienceIdentityV1;
+  definition: SkillExperienceDefinitionV1;
+  inputs: Record<string, string>;
+  clientTurnId: string;
+  previousInvocationEventId?: string;
+  /** Describes the host's question bridge; actual questions require request.opened. */
+  questionnaireDelivery: 'canonical-request' | 'chat-fallback';
+}
+
+/** Bounded server-owned event metadata; its snapshot remains with the Session store. */
+export interface SkillExperienceInvocationReferenceV1 {
+  version: '1.0';
+  invocationId: string;
+  snapshotDigest: string;
+  identity: SkillExperienceIdentityV1;
+}
+
+export interface SkillExperienceSessionInvocationV1 {
+  eventId: string;
+  threadId: string;
+  turnId?: string;
+  reference?: SkillExperienceInvocationReferenceV1;
+  snapshot: SkillExperienceInvocationV1 | null;
+  availability: {
+    status: 'available' | 'source-unavailable' | 'snapshot-unavailable';
+    message?: string;
+  };
+}
+
+export interface SkillExperienceSessionViewV1 {
+  current: SkillExperienceSessionInvocationV1 | null;
+  history: SkillExperienceSessionInvocationV1[];
+  hasMore: boolean;
+  nextCursor?: string;
+}
