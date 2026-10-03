@@ -11,7 +11,8 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--space-4);
-  min-height: 36px;
+  /* 44px: the tools' hit areas fit inside the bar. */
+  min-height: 44px;
   padding: 0 12px;
   flex-shrink: 0;
 }
@@ -19,7 +20,8 @@
 .diff-panel__tools {
   display: flex;
   align-items: center;
-  gap: 2px;
+  /* 28px tools with 44px hit areas: 16px keeps the areas apart. */
+  gap: 16px;
   flex: none;
 }
 

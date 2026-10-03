@@ -273,7 +273,9 @@ test('review diff, comment, approve and merge the exact displayed head', async (
     page.getByText('const answer = 2;', { exact: false }).first(),
   ).toBeVisible();
   await page.getByRole('button', { name: 'Add to chat', exact: true }).click();
-  await expect(page.getByRole('status')).toHaveText('Added to draft');
+  await expect(page.locator('.pull-request-review__status--live')).toHaveText(
+    'Added to draft',
+  );
   // One line, under the chat's store key (not the navigation's id).
   expect(await page.evaluate(() => Reflect.get(window, 'drafts'))).toEqual({
     'agent:1': `Existing chat draft\n\nReview team/repo #17 at ${HEAD}: https://forge.test/team/repo/pull/17`,
@@ -373,8 +375,49 @@ test('a lost comment acknowledgement retains the draft and a changed head is ref
  * chat on its own. The 440px case mounts the pane inside a container of that
  * width, as the Coding layout's side panel does.
  */
+/**
+ * Every control's hit target, from its box and the 44px pseudo-element the
+ * pane's sheets give a small control (centred on it): each must be at least
+ * 44px both ways, and no two may overlap, or a finger aiming at one presses
+ * another. Reads the light DOM only (the diff's own shadow tree is
+ * @pierre/diffs' business).
+ */
+const HIT_TARGET_AUDIT = `(() => {
+  const root = document.getElementById('root');
+  const interactive = Array.from(root.querySelectorAll(
+    'button, input, textarea, summary, a[href], [role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"]',
+  )).filter((el) => {
+    const r = el.getBoundingClientRect();
+    return r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== 'hidden';
+  });
+  const zones = interactive.map((el) => {
+    const r = el.getBoundingClientRect();
+    let w = r.width, h = r.height;
+    for (const pseudo of ['::before', '::after']) {
+      const cs = getComputedStyle(el, pseudo);
+      if (cs.content !== 'none' && cs.position === 'absolute') {
+        const pw = parseFloat(cs.width), ph = parseFloat(cs.height);
+        if (pw > w) w = pw;
+        if (ph > h) h = ph;
+      }
+    }
+    const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+    const name = el.getAttribute('aria-label') || (el.textContent || '').trim().slice(0, 30) || el.tagName;
+    return { name, w, h, l: cx - w / 2, r: cx + w / 2, t: cy - h / 2, b: cy + h / 2 };
+  });
+  const small = zones.filter((z) => z.w < 43.5 || z.h < 43.5).map((z) => z.name + ' ' + Math.round(z.w) + 'x' + Math.round(z.h));
+  const overlaps = [];
+  for (let i = 0; i < zones.length; i += 1) for (let j = i + 1; j < zones.length; j += 1) {
+    const a = zones[i], b = zones[j];
+    const ox = Math.min(a.r, b.r) - Math.max(a.l, b.l), oy = Math.min(a.b, b.b) - Math.max(a.t, b.t);
+    if (ox > 1 && oy > 1) overlaps.push(a.name + ' / ' + b.name + ' ' + Math.round(ox) + 'x' + Math.round(oy));
+  }
+  return { count: zones.length, small, overlaps };
+})()`;
+
 for (const [label, width, panel] of [
   ['a 440px side panel', 1440, 440],
+  ['a 320px side panel', 1440, 320],
   ['a 390px phone', 390, null],
 ] as const) {
   test(`fits ${label}: bar, head and checks inside the width; one check goes to the chat`, async ({
@@ -406,16 +449,51 @@ for (const [label, width, panel] of [
     for (const name of ['Add to chat', 'Refresh', 'Open in browser']) {
       expect(await right(name)).toBeLessThanOrEqual(limit + 0.5);
     }
+    // The bar is ONE row: Back, the title (its words wrapping) and the icons
+    // share it; nothing wraps under the title.
+    const bar = page.locator('.pull-request-review__bar');
+    const barBox = (await bar.boundingBox())!;
+    const titleBox = (await bar
+      .locator('.pull-request-review__title')
+      .boundingBox())!;
+    expect(barBox.height).toBeLessThanOrEqual(
+      Math.max(titleBox.height, 44) + 1,
+    );
+    for (const name of [
+      'Back to pull requests',
+      'Add to chat',
+      'Refresh',
+      'Open in browser',
+    ]) {
+      const box = (await page.getByRole('button', { name }).boundingBox())!;
+      const centre = box.y + box.height / 2;
+      expect(centre).toBeGreaterThanOrEqual(barBox.y);
+      expect(centre).toBeLessThanOrEqual(barBox.y + barBox.height);
+    }
     // The head's chips wrap rather than overflow.
     const meta = page.locator('.pull-request-review__meta').first();
     expect((await meta.boundingBox())!.width).toBeLessThanOrEqual(limit);
+    if (!panel) {
+      // A phone: every control a finger can reach is at least 44px both
+      // ways and shares no pixel with a neighbour's target.
+      const audit = (await page.evaluate(HIT_TARGET_AUDIT)) as {
+        count: number;
+        small: string[];
+        overlaps: string[];
+      };
+      expect(audit.count).toBeGreaterThan(8);
+      expect(audit.small).toEqual([]);
+      expect(audit.overlaps).toEqual([]);
+    }
     // Failures first and open; each row's add-to-chat is reachable.
     const failing = page.locator('[data-check-state="failure"]').first();
     await failing.hover();
     await failing
       .getByRole('button', { name: 'Add Windows PR portable floor to chat' })
       .click();
-    await expect(page.getByRole('status')).toHaveText('Added to draft');
+    await expect(page.locator('.pull-request-review__status--live')).toHaveText(
+      'Added to draft',
+    );
     expect(await page.evaluate(() => Reflect.get(window, 'drafts'))).toEqual({
       'agent:1':
         'Existing chat draft\n\nCheck "Windows PR portable floor" failed on team/repo #17: https://forge.test/team/repo/actions/runs/3/job/4',

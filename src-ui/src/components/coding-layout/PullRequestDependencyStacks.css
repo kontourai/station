@@ -21,7 +21,7 @@
 .pull-request-stacks li {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
-  align-items: center;
+  align-items: baseline;
   column-gap: var(--space-3);
   min-width: 0;
 }
@@ -36,15 +36,24 @@
   font-variant-numeric: tabular-nums;
   color: var(--text-tertiary);
 }
-.pull-request-stacks button {
+.pull-request-stacks__open {
   min-height: 44px;
   padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--text-md);
   text-align: left;
   overflow-wrap: anywhere;
+  cursor: pointer;
+}
+.pull-request-stacks__open:hover {
+  background: transparent;
+  text-decoration: underline;
 }
 .pull-request-stacks__branches {
   grid-column: 2;
-  margin-top: calc(-1 * var(--space-3));
   padding-bottom: var(--space-2);
   font-size: var(--text-sm);
   color: var(--text-secondary);

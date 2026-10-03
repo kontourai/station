@@ -27,12 +27,13 @@ import { useNavigation } from '../../contexts/NavigationContext';
 import { useTickingNow } from '../../hooks/useTickingNow';
 import { useUnsavedGuard } from '../../hooks/useUnsavedGuard';
 import { openExternalLink } from '../../platform/openExternalLink';
-import { ActionRow, type OverflowAction } from '../ActionRow';
+import { ActionOverflowMenu, type OverflowAction } from '../ActionOverflowMenu';
 import { Button } from '../Button';
 import { IconButton } from '../IconButton';
 import {
   ArrowLeftGlyph,
   ArrowRightGlyph,
+  CheckGlyph,
   ExternalLinkGlyph,
   MessageGlyph,
   RefreshGlyph,
@@ -144,12 +145,19 @@ function DisclosureSummary({ children }: { children: React.ReactNode }) {
  * thing to ask about), and open its details. Shown on hover and focus on a
  * fine pointer, always on a coarse one (CSS).
  */
+/** One check's identity for "which one was just added". */
+const checkKey = (check: PullRequestCheck) =>
+  `${check.group ?? ''}:${check.name}:${check.url ?? ''}`;
+
 function CheckList({
   checks,
   onAddToChat,
+  justAdded,
 }: {
   checks: readonly PullRequestCheck[];
   onAddToChat?: (check: PullRequestCheck) => void;
+  /** The check whose add was just pressed: its icon shows a check mark. */
+  justAdded?: string | null;
 }) {
   if (checks.length === 0) return null;
   return (
@@ -183,10 +191,15 @@ function CheckList({
               <IconButton
                 className="pull-request-review__icon pull-request-review__check-tool"
                 aria-label={`Add ${check.name} to chat`}
-                title="Add to chat"
+                title={justAdded === checkKey(check) ? 'Added' : 'Add to chat'}
+                data-added={justAdded === checkKey(check) ? 'true' : undefined}
                 onClick={() => onAddToChat(check)}
               >
-                <MessageGlyph />
+                {justAdded === checkKey(check) ? (
+                  <CheckGlyph />
+                ) : (
+                  <MessageGlyph />
+                )}
               </IconButton>
             ) : null}
             {check.url ? (
@@ -215,10 +228,12 @@ function PullRequestChecks({
   checks,
   siteName,
   onAddToChat,
+  justAdded,
 }: {
   checks: PullRequestChecksObservation | undefined;
   siteName: string;
   onAddToChat?: (check: PullRequestCheck) => void;
+  justAdded?: string | null;
 }) {
   if (!checks)
     return <p className="pull-request-review__muted">Checks not reported</p>;
@@ -271,7 +286,11 @@ function PullRequestChecks({
           </span>
         )}
       </p>
-      <CheckList checks={needsAttention} onAddToChat={onAddToChat} />
+      <CheckList
+        checks={needsAttention}
+        onAddToChat={onAddToChat}
+        justAdded={justAdded}
+      />
       {settled.length > 0 && (
         <details className="pull-request-review__settled">
           <DisclosureSummary>
@@ -279,7 +298,11 @@ function PullRequestChecks({
             {settled.length} {listWords(settledStates)}{' '}
             {plural(settled.length, 'check').replace(/^\d+ /, '')}
           </DisclosureSummary>
-          <CheckList checks={settled} onAddToChat={onAddToChat} />
+          <CheckList
+            checks={settled}
+            onAddToChat={onAddToChat}
+            justAdded={justAdded}
+          />
         </details>
       )}
     </>
@@ -546,9 +569,16 @@ const loadDiff = () =>
 export function PullRequestReviewPanel({
   target,
   onBack,
+  focusTitleOnOpen = false,
 }: {
   target: PullRequestReviewTarget;
   onBack?: () => void;
+  /**
+   * Move focus to the title once the review has loaded: for a review that
+   * replaced what the reader was on (the Diff view's branch line), so focus
+   * does not fall to <body> when that line unmounts.
+   */
+  focusTitleOnOpen?: boolean;
 }) {
   const scope = useHostRequestAuthorityScope();
   const identity = JSON.stringify([
@@ -563,6 +593,7 @@ export function PullRequestReviewPanel({
       key={identity}
       target={target}
       onBack={onBack}
+      focusTitleOnOpen={focusTitleOnOpen}
       scope={scope}
       identity={identity}
     />
@@ -571,11 +602,13 @@ export function PullRequestReviewPanel({
 function ReviewOwner({
   target,
   onBack,
+  focusTitleOnOpen,
   scope,
   identity,
 }: {
   target: PullRequestReviewTarget;
   onBack?: () => void;
+  focusTitleOnOpen: boolean;
   scope: ReturnType<typeof useHostRequestAuthorityScope>;
   identity: string;
 }) {
@@ -594,7 +627,28 @@ function ReviewOwner({
   }, [outcome]);
   const [uncertain, setUncertain] = useState(false);
   const [uncertainReadAt, setUncertainReadAt] = useState(0);
-  const [handoffStatus, setHandoffStatus] = useState<string | null>(null);
+  // The handoff's live region is always mounted and usually empty; a message
+  // stays ~4s, and the icon that was pressed shows a check for ~2s so the
+  // feedback sits next to the press.
+  const [handoffStatus, setHandoffStatus] = useState('');
+  const [justAdded, setJustAdded] = useState<string | null>(null);
+  const handoffTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  useEffect(
+    () => () => {
+      for (const timer of handoffTimers.current) clearTimeout(timer);
+    },
+    [],
+  );
+  const announce = (message: string, added: string | null) => {
+    for (const timer of handoffTimers.current) clearTimeout(timer);
+    setHandoffStatus(message);
+    setJustAdded(added);
+    handoffTimers.current = [
+      setTimeout(() => setJustAdded(null), 2_000),
+      setTimeout(() => setHandoffStatus(''), 4_000),
+    ];
+  };
+  const titleRef = useRef<HTMLHeadingElement>(null);
   const [method, setMethod] = useState<PullRequestMergeMethod>('merge');
   const { guard, DiscardModal } = useUnsavedGuard(Boolean(body) || pending);
   const review = useQuery({
@@ -696,32 +750,41 @@ function ReviewOwner({
    * resolver maps any of a chat's ids to its key — the same seam
    * `updateChat` uses — so the draft lands where the composer reads it.
    */
-  const addToChat = (text: string) => {
+  const addToChat = (text: string, added: string) => {
     if (!activeChat || !data) {
-      setHandoffStatus('Open a chat first');
+      announce('Open a chat first', null);
       return;
     }
     const key = activeChatsStore.getChatKeyForExecutionSession(activeChat);
     const exact = key ? activeChatsStore.getSnapshot()[key] : undefined;
     if (!key || !exact) {
-      setHandoffStatus('That chat is gone');
+      announce('That chat is gone', null);
       return;
     }
     const existing = exact.input ?? getDraft(key);
     const next = existing ? `${existing}\n\n${text}` : text;
     setDraft(key, next);
     updateChat(key, { input: getDraft(key) });
-    setHandoffStatus('Added to draft');
+    announce('Added to draft', added);
   };
   const addReviewContextToChat = () =>
     data &&
     addToChat(
       `Review ${target.owner}/${target.repository} #${target.ref} at ${data.headSha}: ${data.pullRequest.url}`,
+      'review',
     );
   const addCheckToChat = (check: PullRequestCheck) =>
     addToChat(
       `Check "${check.name}" ${CHECK_STATE_LABEL[check.state].toLowerCase()} on ${target.owner}/${target.repository} #${target.ref}${check.url ? `: ${check.url}` : ''}`,
+      checkKey(check),
     );
+  // Focus the title once the review is on screen, when asked (see the prop).
+  const titleFocused = useRef(false);
+  useEffect(() => {
+    if (!focusTitleOnOpen || !data || titleFocused.current) return;
+    titleFocused.current = true;
+    titleRef.current?.focus();
+  }, [focusTitleOnOpen, data]);
   // The merge menu: the method as a choice, then the two ways to merge. Each
   // command that cannot run yet says why in its row rather than vanishing.
   const mergeBlocked = !writable
@@ -744,12 +807,26 @@ function ReviewOwner({
             key: `method:${value}`,
             label: MERGE_METHOD_LABEL[value] ?? humanise(value),
             checked: value === selectedMethod,
+            exclusive: true,
+            glyph: value === selectedMethod ? <CheckGlyph /> : undefined,
             onSelect: () => setMethod(value),
           }),
         ),
+        ...(review.data?.mergeMethodsSource === 'provider-default'
+          ? [
+              {
+                key: 'defaults',
+                label: 'Default methods',
+                disabled: true,
+                disabledReason: 'Repository settings could not be read',
+                onSelect: () => {},
+              } satisfies OverflowAction,
+            ]
+          : []),
         {
           key: 'merge',
           label: 'Merge now',
+          separatorBefore: true,
           disabled: !!mergeBlocked || !caps?.merge,
           disabledReason: !caps?.merge
             ? 'Merging is not permitted here'
@@ -792,24 +869,28 @@ function ReviewOwner({
             <ArrowLeftGlyph />
           </IconButton>
         )}
-        <h2 className="pull-request-review__title">
+        <h2 ref={titleRef} tabIndex={-1} className="pull-request-review__title">
           {data?.pullRequest.title ?? `#${target.ref}`}
         </h2>
-        {/* The actions wrap under the title as one unit when the bar is
-            narrow, so the title keeps its width. */}
+        {/* One row at every width: the title wraps its words; the icons
+            keep their place. */}
         <div className="pull-request-review__bar-actions">
           {data && (
-            // The pane's one labelled action: it acts on the whole review.
-            <Button
-              size="sm"
-              variant="ghost"
-              className="pull-request-review__handoff"
-              title="Add this review to the open chat's draft"
+            // Acts on the whole review; each check row has its own.
+            <IconButton
+              className="pull-request-review__icon"
+              aria-label="Add to chat"
+              title={
+                justAdded === 'review'
+                  ? 'Added'
+                  : 'Add this review to the open chat'
+              }
+              data-added={justAdded === 'review' ? 'true' : undefined}
               onClick={addReviewContextToChat}
               disabled={!activeChat}
             >
-              Add to chat
-            </Button>
+              {justAdded === 'review' ? <CheckGlyph /> : <MessageGlyph />}
+            </IconButton>
           )}
           <IconButton
             className="pull-request-review__icon"
@@ -862,11 +943,13 @@ function ReviewOwner({
             headSha={data.headSha}
             observedAt={data.observedAt}
           />
-          {handoffStatus && (
-            <p className="pull-request-review__status" role="status">
-              {handoffStatus}
-            </p>
-          )}
+          <p
+            className="pull-request-review__status pull-request-review__status--live"
+            role="status"
+            aria-live="polite"
+          >
+            {handoffStatus}
+          </p>
           <h3>Status</h3>
           <p
             className="pull-request-review__mergeability"
@@ -879,6 +962,7 @@ function ReviewOwner({
             checks={data.checks}
             siteName={siteName}
             onAddToChat={activeChat ? addCheckToChat : undefined}
+            justAdded={justAdded}
           />
           {data.pullRequest.body?.trim() ? (
             <>
@@ -963,8 +1047,7 @@ function ReviewOwner({
               Approvals are not permitted here.
             </p>
           )}
-          {/* Two labelled actions, then Merge as one menu: the method is a
-              choice inside it and the two merge commands follow. */}
+          {/* Post comment is the comment field's own submit. */}
           <ResponsiveSurfaceActions className="pull-request-review__actions">
             <Button
               disabled={!writable || !caps?.comment || !body.trim()}
@@ -978,7 +1061,12 @@ function ReviewOwner({
             >
               Post comment
             </Button>
+          </ResponsiveSurfaceActions>
+          {/* The decision row: Approve, and Merge as one menu (the method as
+              a choice inside it, then the two merge commands). */}
+          <ResponsiveSurfaceActions className="pull-request-review__actions pull-request-review__decision">
             <Button
+              variant="primary"
               disabled={
                 !writable ||
                 !open ||
@@ -991,13 +1079,19 @@ function ReviewOwner({
             >
               Approve
             </Button>
+            {open && (caps?.merge || caps?.autoMerge) && (
+              <ActionOverflowMenu
+                actions={mergeActions}
+                label="Merge options"
+                triggerText="Merge"
+                reserveGlyphColumn
+              />
+            )}
           </ResponsiveSurfaceActions>
-          {open && (caps?.merge || caps?.autoMerge) && (
-            <ActionRow
-              className="pull-request-review__merge"
-              overflow={mergeActions}
-              overflowLabel="Merge options"
-            />
+          {open && !caps?.merge && !caps?.autoMerge && (
+            <p className="pull-request-review__muted">
+              Merging is not permitted here.
+            </p>
           )}
           {outcome && (
             <p

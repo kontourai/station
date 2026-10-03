@@ -10,7 +10,7 @@ import {
   usePullRequestContextQuery,
   usePullRequestsQuery,
 } from '@kontourai/station-sdk';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigation } from '../../contexts/NavigationContext';
 import { openExternalLink } from '../../platform/openExternalLink';
 import type { OverflowAction } from '../ActionOverflowMenu';
@@ -112,6 +112,21 @@ export function PullRequestsPanel({
   const [selected, setSelected] = useState<PullRequestLinkIdentity | null>(
     initialSelected,
   );
+  // Focus bookkeeping: the row a review was opened from gets focus back on
+  // Back (else the first row), rather than focus falling to <body> when the
+  // review unmounts. A review this panel mounted on (the Changes view's
+  // branch line) puts focus on its own heading instead.
+  const rowButtons = useRef(new Map<string, HTMLButtonElement>());
+  const [returnFocusTo, setReturnFocusTo] = useState<string | null>(null);
+  const [focusReviewTitle, setFocusReviewTitle] = useState(!!initialSelected);
+  useEffect(() => {
+    if (selected !== null || returnFocusTo === null) return;
+    const target =
+      rowButtons.current.get(returnFocusTo) ??
+      rowButtons.current.values().next().value;
+    target?.focus();
+    setReturnFocusTo(null);
+  }, [selected, returnFocusTo]);
   const [filter, setFilter] = useState<StateFilter>('OPEN');
   const [linking, setLinking] = useState(false);
   const resolvingContext = {
@@ -175,7 +190,11 @@ export function PullRequestsPanel({
               ? { repositoryRootHint: activeRepoRoot ?? undefined }
               : {}),
           },
-          onBack: () => setSelected(null),
+          onBack: () => {
+            setReturnFocusTo(linkKey(selected));
+            setSelected(null);
+          },
+          focusTitleOnOpen: focusReviewTitle,
         }}
         pending={<SkeletonBlock label="Opening pull request review" />}
       />
@@ -232,10 +251,17 @@ export function PullRequestsPanel({
       .filter((link) => link.source === 'explicit')
       .map((link) => [linkKey(link), link] as const),
   );
-  const open = (link: PullRequestLinkIdentity) => setSelected(link);
+  const open = (link: PullRequestLinkIdentity) => {
+    setFocusReviewTitle(false);
+    setSelected(link);
+  };
   const openLinked = (link: ConversationPullRequestLinkObservation) => {
     if (onOpenLinkedAsPane?.(link) === true) return;
-    setSelected(link);
+    open(link);
+  };
+  const rowRef = (key: string) => (element: HTMLButtonElement | null) => {
+    if (element) rowButtons.current.set(key, element);
+    else rowButtons.current.delete(key);
   };
   const unlinkAction = (
     link: ConversationPullRequestLinkObservation | undefined,
@@ -339,6 +365,7 @@ export function PullRequestsPanel({
                         : 'linked',
                   ]}
                   note={status.state === 'current' ? undefined : status.reason}
+                  openRef={rowRef(linkKey(link))}
                   onOpen={
                     status.state === 'current'
                       ? () => openLinked(link)
@@ -354,9 +381,6 @@ export function PullRequestsPanel({
           </ul>
         </>
       )}
-      <h3 className="pull-requests-panel__label">
-        {context.data.repository.owner}/{context.data.repository.name}
-      </h3>
       {visible.length === 0 ? (
         <Note
           text={
@@ -382,6 +406,7 @@ export function PullRequestsPanel({
                 chips={rowChips(pullRequest)}
                 meta={[pullRequest.author.login]}
                 current={pullRequest.sourceBranch === identity?.branch}
+                openRef={rowRef(key)}
                 onOpen={() => open(pullRequest)}
                 overflow={[
                   {

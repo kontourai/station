@@ -42,6 +42,29 @@ describe('parsePullRequestReference', () => {
     });
   });
 
+  test('the provider comes from the URL’s shape, so a self-managed GitLab is GitLab and GitHub Enterprise is GitHub', () => {
+    // The pane-id host rule names gitlab.com alone; linking by that rule
+    // would send a self-managed merge request to the GitHub reader.
+    expect(
+      parsePullRequestReference(
+        'https://git.corp.example/platform/web/app/-/merge_requests/12',
+      ),
+    ).toEqual({
+      provider: 'gitlab',
+      host: 'git.corp.example',
+      repository: { owner: 'platform/web', name: 'app' },
+      ref: '12',
+    });
+    expect(
+      parsePullRequestReference('https://github.example.com/o/r/pull/7'),
+    ).toEqual({
+      provider: 'github',
+      host: 'github.example.com',
+      repository: { owner: 'o', name: 'r' },
+      ref: '7',
+    });
+  });
+
   test('a number, with or without #, reads against the scope', () => {
     expect(parsePullRequestReference('#42', scope)).toEqual({
       ...scope,

@@ -224,6 +224,45 @@ describe('BranchToolbar', () => {
     ).toBeTruthy();
   });
 
+  test('showCommit={false} keeps the first row and drops the commit row even on a dirty tree', () => {
+    render(
+      <BranchToolbar
+        projectSlug="acme"
+        workingDir="/repo"
+        showCommit={false}
+      />,
+    );
+    expect(screen.queryByLabelText('Commit message')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Commit changes' })).toBeNull();
+    expect(
+      screen.getByRole('button', { name: /Current branch: main/ }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: 'Push 2 commit(s)' }),
+    ).toBeTruthy();
+  });
+
+  test('a commit that empties the tree hands focus to the branch chip, not <body>', () => {
+    commitMutate.mockImplementation(
+      (_input: unknown, opts?: { onSuccess?: () => void }) =>
+        opts?.onSuccess?.(),
+    );
+    const view = render(
+      <BranchToolbar projectSlug="acme" workingDir="/repo" />,
+    );
+    const input = screen.getByLabelText('Commit message') as HTMLInputElement;
+    input.focus();
+    fireEvent.change(input, { target: { value: 'Ship it' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Commit changes' }));
+    // The status read comes back clean: the row leaves, focus moves on.
+    state.statusByRoot = { '/repo': makeStatus('main', false) };
+    view.rerender(<BranchToolbar projectSlug="acme" workingDir="/repo" />);
+    expect(screen.queryByLabelText('Commit message')).toBeNull();
+    expect(document.activeElement).toBe(
+      screen.getByRole('button', { name: /Current branch: main/ }),
+    );
+  });
+
   test('Push is an icon that counts the commits ahead, and bare when none', () => {
     render(<BranchToolbar projectSlug="acme" workingDir="/repo" />);
     const push = screen.getByRole('button', { name: 'Push 2 commit(s)' });

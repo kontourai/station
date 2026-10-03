@@ -1,5 +1,4 @@
 import type { PullRequest } from '@kontourai/station-contracts/pull-request-provider';
-import { Button } from '../Button';
 import { derivePullRequestDependencyStacks } from './pull-request-dependency-stacks';
 import './PullRequestDependencyStacks.css';
 
@@ -35,9 +34,13 @@ export function PullRequestDependencyStacks({
               <span className="pull-request-stacks__position">
                 {position + 1}
               </span>
-              <Button variant="link" onClick={() => onOpen(pullRequest)}>
+              <button
+                type="button"
+                className="pull-request-stacks__open"
+                onClick={() => onOpen(pullRequest)}
+              >
                 #{pullRequest.ref} {pullRequest.title}
-              </Button>
+              </button>
               <span className="pull-request-stacks__branches">
                 <code>{pullRequest.sourceBranch}</code> →{' '}
                 <code>{pullRequest.targetBranch}</code>

@@ -14,11 +14,13 @@ vi.mock('../BranchToolbar', () => ({
   BranchToolbar: ({
     leading,
     onActiveRepoChange,
+    showCommit,
   }: {
     leading: React.ReactNode;
     onActiveRepoChange?: (root: string) => void;
+    showCommit?: boolean;
   }) => (
-    <div data-testid="git-rows">
+    <div data-testid="git-rows" data-show-commit={String(showCommit)}>
       {leading}
       <button type="button" onClick={() => onActiveRepoChange?.('/nested')}>
         pin nested
@@ -93,19 +95,28 @@ describe('CodingDiffPaneBody', () => {
     ).toBeNull();
   });
 
-  test('Pull requests replaces the diff; the view follows the active repository', () => {
+  test('Pull requests replaces the diff and the commit row; the view follows the active repository', () => {
     mount();
+    // The commit row belongs to the Changes view alone; the first git row
+    // (switch, branch chip, push) stays at pane scope.
+    expect(screen.getByTestId('git-rows').dataset.showCommit).toBe('true');
     fireEvent.click(screen.getByRole('button', { name: 'pin nested' }));
     fireEvent.click(screen.getByRole('button', { name: 'Pull requests' }));
     expect(screen.queryByTestId('diff')).toBeNull();
     const prs = screen.getByTestId('prs');
     expect(prs.textContent).toBe('list');
     expect(prs.dataset.repoRoot).toBe('/nested');
+    expect(screen.getByTestId('git-rows').dataset.showCommit).toBe('false');
     expect(
       screen
         .getByRole('button', { name: 'Pull requests' })
         .getAttribute('aria-pressed'),
     ).toBe('true');
+    expect(
+      screen
+        .getByRole('button', { name: 'Changes' })
+        .getAttribute('aria-pressed'),
+    ).toBe('false');
     fireEvent.click(screen.getByRole('button', { name: 'Changes' }));
     expect(screen.getByTestId('diff').dataset.workingDir).toBe('/nested');
   });

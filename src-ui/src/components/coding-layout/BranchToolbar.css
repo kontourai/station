@@ -5,8 +5,10 @@
 .branch-toolbar {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
-  padding: var(--space-3) 12px;
+  /* 8px: the first row's 44px hit areas reach 6px past its 32px, and must
+     not reach the commit row's. */
+  gap: var(--space-4);
+  padding: var(--space-4) 12px;
   border-bottom: 1px solid var(--border-primary);
 }
 
@@ -41,7 +43,8 @@
 .branch-toolbar__scope {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  /* Push's 44px hit area reaches 8px past its 28px box. */
+  gap: var(--space-4);
   margin-left: auto;
   min-width: 0;
 }

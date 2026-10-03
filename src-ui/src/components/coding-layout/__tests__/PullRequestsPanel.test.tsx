@@ -73,11 +73,16 @@ vi.mock('../PullRequestReviewPanel', () => ({
   PullRequestReviewPanel: ({
     target,
     onBack,
+    focusTitleOnOpen,
   }: {
     target: { host: string; ref: string; repositoryRootHint?: string };
     onBack?: () => void;
+    focusTitleOnOpen?: boolean;
   }) => (
-    <section aria-label="Pull request review">
+    <section
+      aria-label="Pull request review"
+      data-focus-title={String(focusTitleOnOpen)}
+    >
       Reviewing {target.host} #{target.ref}
       {target.repositoryRootHint ? ` in ${target.repositoryRootHint}` : ''}
       {onBack && (
@@ -230,7 +235,11 @@ describe('PullRequestsPanel', () => {
     );
   });
 
-  test('opening a row shows the review in the whole pane, and Back returns to the list', async () => {
+  test('opening a row shows the review in the whole pane, and Back returns to the list with focus on that row', async () => {
+    listQuery.data = result([
+      pullRequest({ ref: '16', title: 'Other one', sourceBranch: 'other' }),
+      pullRequest(),
+    ]);
     mount();
     fireEvent.click(
       screen.getByRole('button', { name: 'Ship repository PR actions' }),
@@ -241,17 +250,21 @@ describe('PullRequestsPanel', () => {
     expect(review.textContent).toContain(
       'Reviewing github.com #17 in /repos/station',
     );
+    // Opened from a row: the review keeps focus where the click left it.
+    expect(review.dataset.focusTitle).toBe('false');
     // The list is gone: nothing shares the pane with the review.
     expect(screen.queryByRole('region', { name: 'Pull requests' })).toBeNull();
     fireEvent.click(
       screen.getByRole('button', { name: 'Back to pull requests' }),
     );
-    expect(
-      await screen.findByRole('button', { name: 'Ship repository PR actions' }),
-    ).toBeTruthy();
+    const row = await screen.findByRole('button', {
+      name: 'Ship repository PR actions',
+    });
     expect(
       screen.queryByRole('region', { name: 'Pull request review' }),
     ).toBeNull();
+    // Focus returns to the row the review was opened from, not <body>.
+    expect(document.activeElement).toBe(row);
   });
 
   test('mounts on a review when asked, and Back still returns to the list', async () => {
@@ -263,16 +276,19 @@ describe('PullRequestsPanel', () => {
         ref: '17',
       },
     });
-    expect(
-      (await screen.findByRole('region', { name: 'Pull request review' }))
-        .textContent,
-    ).toContain('Reviewing github.com #17');
+    const review = await screen.findByRole('region', {
+      name: 'Pull request review',
+    });
+    expect(review.textContent).toContain('Reviewing github.com #17');
+    // Nothing on this pane had focus to keep: the review takes it.
+    expect(review.dataset.focusTitle).toBe('true');
     fireEvent.click(
       screen.getByRole('button', { name: 'Back to pull requests' }),
     );
-    expect(
-      await screen.findByRole('button', { name: 'Ship repository PR actions' }),
-    ).toBeTruthy();
+    const row = await screen.findByRole('button', {
+      name: 'Ship repository PR actions',
+    });
+    expect(document.activeElement).toBe(row);
   });
 
   test('the state filter is a choice, pressed and sent to the list read; a word, not a select', () => {

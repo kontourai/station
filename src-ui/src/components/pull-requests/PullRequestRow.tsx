@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { ReactNode, Ref } from 'react';
 import { ActionOverflowMenu, type OverflowAction } from '../ActionOverflowMenu';
 import {
   PullRequestChip,
@@ -19,6 +19,7 @@ export function PullRequestRow({
   meta = [],
   trailing,
   onOpen,
+  openRef,
   openLabel,
   overflow = [],
   overflowLabel,
@@ -35,6 +36,8 @@ export function PullRequestRow({
   trailing?: ReactNode;
   /** Opens the review. Without it the title is text, not a button. */
   onOpen?: () => void;
+  /** The open button, for a list that returns focus to it. */
+  openRef?: Ref<HTMLButtonElement>;
   /** The open action's accessible name; defaults to the title. */
   openLabel?: string;
   overflow?: readonly OverflowAction[];
@@ -72,6 +75,7 @@ export function PullRequestRow({
     >
       {onOpen ? (
         <button
+          ref={openRef}
           type="button"
           className="pull-request-row__open"
           aria-label={openLabel ?? title}

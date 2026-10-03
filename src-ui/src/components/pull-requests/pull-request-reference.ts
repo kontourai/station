@@ -1,5 +1,4 @@
 import type { PullRequestLinkIdentity } from '@kontourai/station-contracts/conversation-pull-request-links';
-import { pullRequestProviderForHost } from '@kontourai/station-contracts/workspace-pull-request-pane';
 
 /** Where a bare number or `owner/repo#n` is read against. */
 export interface PullRequestReferenceScope {
@@ -18,9 +17,12 @@ export interface PullRequestReferenceScope {
  * - `owner/repo#42` against the scope's provider and host
  * - `#42` or `42` against the whole scope
  *
- * The provider of a URL comes from its host by Station's own rule
- * (`pullRequestProviderForHost`). Returns null for anything else; the caller
- * says what it accepts, and never guesses a repository that was not named.
+ * The provider of a URL comes from its SHAPE, not its host: `/-/merge_requests/`
+ * is GitLab's path on every GitLab, self-managed included, and `/pull/` is
+ * GitHub's on GitHub Enterprise too. (The host rule the pull-request pane id
+ * uses names gitlab.com alone, which would link a self-managed GitLab as
+ * GitHub.) Returns null for anything else; the caller says what it accepts,
+ * and never guesses a repository that was not named.
  */
 export function parsePullRequestReference(
   input: string,
@@ -35,11 +37,13 @@ export function parsePullRequestReference(
     let owner: string[] = [];
     let name = '';
     let ref = '';
+    let provider: 'github' | 'gitlab' = 'github';
     if (
       merge > 0 &&
       segments[merge + 1] === 'merge_requests' &&
       isNumber(segments[merge + 2])
     ) {
+      provider = 'gitlab';
       owner = segments.slice(0, merge - 1);
       name = segments[merge - 1] ?? '';
       ref = segments[merge + 2] ?? '';
@@ -56,7 +60,7 @@ export function parsePullRequestReference(
     if (owner.length === 0 || !name || !ref) return null;
     const host = url.host.toLowerCase();
     return {
-      provider: pullRequestProviderForHost(host),
+      provider,
       host,
       repository: { owner: owner.join('/'), name },
       ref,

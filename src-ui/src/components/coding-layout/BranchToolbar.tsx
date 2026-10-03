@@ -53,6 +53,7 @@ export function BranchToolbar({
   activeFile,
   onActiveRepoChange,
   leading,
+  showCommit = true,
 }: {
   /** The Project whose folder commit and push act on (#2363). */
   projectSlug: string;
@@ -63,6 +64,12 @@ export function BranchToolbar({
   onActiveRepoChange?: (root: string | null) => void;
   /** The pane's own control at the start of the first row. */
   leading?: ReactNode;
+  /**
+   * Render the commit row. The Diff pane shows it with the working tree's
+   * changes and not above the pull requests view, where a commit field has
+   * nothing to do with what is on screen.
+   */
+  showCommit?: boolean;
 }) {
   const reposQuery = useReposQuery(workingDir || null, { projectSlug });
   const reposResult = reposQuery.data;
@@ -280,16 +287,34 @@ export function BranchToolbar({
     }
   };
 
+  // A commit that empties the tree takes the commit row with it; focus goes
+  // to the branch chip rather than falling to <body>.
+  const focusChipWhenRowLeaves = useRef(false);
   const onCommit = () => {
     if (isClean || !message.trim()) return;
     commit.mutate(
       { message: message.trim() },
-      { onSuccess: () => setMessage('') },
+      {
+        onSuccess: () => {
+          setMessage('');
+          focusChipWhenRowLeaves.current = true;
+        },
+      },
     );
   };
 
   const error =
     checkout.error || commit.error || push.error || branchesQuery.error;
+
+  // The commit row exists while there may be something to commit. Only a
+  // resolved, clean read takes it away; a loading or errored read keeps it,
+  // because neither has earned the claim that there is nothing to do.
+  const showCommitRow = showCommit && !isClean;
+  useEffect(() => {
+    if (showCommitRow || !focusChipWhenRowLeaves.current) return;
+    focusChipWhenRowLeaves.current = false;
+    triggerRef.current?.focus();
+  }, [showCommitRow]);
 
   // No repos discovered. Subtle, non-error inline toolbar note — a short
   // status phrase inside a horizontal toolbar row, not a list/card placeholder,
@@ -331,10 +356,6 @@ export function BranchToolbar({
   }
 
   const hasActions = !!repoRoot;
-  // The commit row exists while there may be something to commit. Only a
-  // resolved, clean read takes it away; a loading or errored read keeps it,
-  // because neither has earned the claim that there is nothing to do.
-  const showCommitRow = !isClean;
   const pushName = noRemote
     ? 'Push unavailable — no remote configured'
     : ahead > 0

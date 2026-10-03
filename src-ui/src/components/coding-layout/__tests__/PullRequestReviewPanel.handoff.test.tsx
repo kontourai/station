@@ -14,6 +14,7 @@
 import type { PullRequestReviewSnapshot } from '@kontourai/station-contracts/pull-request-provider';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -45,6 +46,9 @@ beforeAll(() => {
 });
 
 const drafts = new Map<string, string>();
+const sdkState = vi.hoisted(() => ({
+  mergeMethodsSource: 'repository' as 'repository' | 'provider-default',
+}));
 const mergeReviewedPullRequest = vi.fn(async () => ({
   available: true,
   data: { status: 'merged' as const },
@@ -69,7 +73,7 @@ vi.mock('@kontourai/station-sdk/pull-request-review', () => ({
       autoMerge: true,
     },
     effectiveMergeMethods: ['squash', 'merge'],
-    mergeMethodsSource: 'repository',
+    mergeMethodsSource: sdkState.mergeMethodsSource,
     data: snapshot.current,
   }),
   mergeReviewedPullRequest: (...args: unknown[]) =>
@@ -166,7 +170,7 @@ function base(): PullRequestReviewSnapshot {
   };
 }
 
-function mount() {
+function mount(focusTitleOnOpen = false) {
   render(
     <QueryClientProvider client={new QueryClient()}>
       <PullRequestReviewPanel
@@ -179,6 +183,7 @@ function mount() {
           project: 'station',
         }}
         onBack={() => {}}
+        focusTitleOnOpen={focusTitleOnOpen}
       />
     </QueryClientProvider>,
   );
@@ -186,6 +191,7 @@ function mount() {
 
 beforeEach(() => {
   drafts.clear();
+  sdkState.mergeMethodsSource = 'repository';
   snapshot.current = base();
   // The chat open beside the pane: keyed by session id, named by the
   // navigation through its conversation id.
@@ -206,10 +212,20 @@ afterEach(() => {
 describe('review handoffs to the open chat', () => {
   test('Add to chat reaches the chat the navigation names by conversation id (D2)', async () => {
     mount();
-    fireEvent.click(await screen.findByRole('button', { name: 'Add to chat' }));
-    expect(screen.getByText('Added to draft').getAttribute('role')).toBe(
-      'status',
-    );
+    const add = await screen.findByRole('button', { name: 'Add to chat' });
+    // The live region is there before anything is said, and says nothing.
+    // (By class: the lazily loaded diff's skeleton is a status too, briefly.)
+    const live = document.querySelector(
+      '.pull-request-review__status--live',
+    ) as HTMLElement;
+    expect(live.getAttribute('role')).toBe('status');
+    expect(live.textContent).toBe('');
+    expect(live.getAttribute('aria-live')).toBe('polite');
+    fireEvent.click(add);
+    expect(live.textContent).toBe('Added to draft');
+    // The pressed icon answers next to the press: a check, for a moment.
+    expect(add.getAttribute('title')).toBe('Added');
+    expect(add.dataset.added).toBe('true');
     expect(screen.queryByText(/no longer available/)).toBeNull();
     // One line, under the chat's STORE key, where the composer reads it.
     expect(drafts.get('agent:123')).toBe(
@@ -243,18 +259,60 @@ describe('review handoffs to the open chat', () => {
   test('says "That chat is gone" when the named chat is in no store entry', async () => {
     activeChatsStore.removeChat('agent:123');
     mount();
-    fireEvent.click(await screen.findByRole('button', { name: 'Add to chat' }));
+    const add = await screen.findByRole('button', { name: 'Add to chat' });
+    fireEvent.click(add);
     expect(screen.getByText('That chat is gone').getAttribute('role')).toBe(
       'status',
     );
+    expect(add.dataset.added).toBeUndefined();
     expect(drafts.size).toBe(0);
+  });
+
+  test('the message clears after a few seconds and the check icon sooner', async () => {
+    mount();
+    const add = await screen.findByRole('button', { name: 'Add to chat' });
+    const live = () =>
+      document.querySelector('.pull-request-review__status--live')?.textContent;
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      fireEvent.click(add);
+      expect(live()).toBe('Added to draft');
+      act(() => {
+        vi.advanceTimersByTime(2_100);
+      });
+      expect(add.dataset.added).toBeUndefined();
+      expect(live()).toBe('Added to draft');
+      act(() => {
+        vi.advanceTimersByTime(2_000);
+      });
+      expect(live()).toBe('');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('when asked, the review takes focus on its title once loaded', async () => {
+    mount(true);
+    const title = await screen.findByRole('heading', {
+      level: 2,
+      name: 'Open panes over Chat',
+    });
+    await waitFor(() => expect(document.activeElement).toBe(title));
   });
 });
 
 describe('merge is one menu', () => {
-  test('the row holds Post comment and Approve; Merge is a menu with the method as a choice', async () => {
+  test('Approve is the primary beside one Merge menu; Post comment is the comment field’s own; the method is a radio choice', async () => {
     mount();
-    await screen.findByRole('button', { name: 'Approve' });
+    const approve = await screen.findByRole('button', { name: 'Approve' });
+    expect(approve.className).toContain('button--primary');
+    const mergeTrigger = screen.getByRole('button', { name: 'Merge options' });
+    // One row: Approve and the Merge trigger share a parent; Post comment
+    // does not.
+    expect(approve.parentElement).toBe(mergeTrigger.parentElement);
+    expect(
+      screen.getByRole('button', { name: 'Post comment' }).parentElement,
+    ).not.toBe(approve.parentElement);
     // The old labelled trio and the select are gone.
     for (const name of [
       'Approve this head',
@@ -269,13 +327,23 @@ describe('merge is one menu', () => {
     expect(trigger.textContent).toContain('Merge');
     fireEvent.click(trigger);
     const menu = await screen.findByRole('menu', { name: 'Merge options' });
-    const choices = within(menu).getAllByRole('menuitemcheckbox');
+    // One of N: radio rows, the chosen one drawn with a check.
+    const choices = within(menu).getAllByRole('menuitemradio');
     expect(
       choices.map((c) => [c.textContent, c.getAttribute('aria-checked')]),
     ).toEqual([
       ['Squash and merge', 'false'],
       ['Merge commit', 'true'],
     ]);
+    expect(choices[1].querySelector('.menu-row__glyph svg')).toBeTruthy();
+    expect(choices[0].querySelector('.menu-row__glyph svg')).toBeNull();
+    // A separator stands between the choices and the commands.
+    const mergeNow = within(menu).getByRole('menuitem', { name: 'Merge now' });
+    expect(
+      mergeNow.previousElementSibling?.classList.contains(
+        'action-overflow__separator',
+      ),
+    ).toBe(true);
     fireEvent.click(choices[0]);
     // The choice closes the menu; the command then uses it.
     fireEvent.click(trigger);
@@ -300,6 +368,19 @@ describe('merge is one menu', () => {
       ),
     );
     expect(await screen.findByText('Merged.')).toBeTruthy();
+  });
+
+  test('default merge methods are said so inside the menu', async () => {
+    sdkState.mergeMethodsSource = 'provider-default';
+    mount();
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Merge options' }),
+    );
+    const note = within(await screen.findByRole('menu')).getByRole('menuitem', {
+      name: 'Default methods',
+    });
+    expect(note.getAttribute('aria-disabled')).toBe('true');
+    expect(note.textContent).toContain('Repository settings could not be read');
   });
 
   test('auto-merge is the menu’s other command and confirms as such', async () => {

@@ -698,6 +698,16 @@ diff --git a/src/inc.ts b/src/inc.ts
     expect(list?.textContent).not.toContain('outdated');
   });
 
+  test('says when merging is not permitted instead of hiding the control', async () => {
+    snapshot.current = base({
+      pullRequest: { ...base().pullRequest, mergeability: 'mergeable' },
+    });
+    mount();
+    await screen.findByRole('button', { name: 'Approve' });
+    expect(screen.queryByRole('button', { name: 'Merge options' })).toBeNull();
+    expect(screen.getByText('Merging is not permitted here.')).toBeTruthy();
+  });
+
   test('one quiet row: icon back, the title, icon refresh and forge link', async () => {
     snapshot.current = base();
     const onBack = vi.fn();
@@ -716,15 +726,12 @@ diff --git a/src/inc.ts b/src/inc.ts
       'Refresh',
       'Open on GitHub',
     ]);
-    // The pane's one labelled action sits on the bar, acting on the whole
-    // review; it is disabled without an open chat to add to.
+    // Add to chat acts on the whole review and is disabled without an open
+    // chat to add to; each check row carries its own, so the bar's is an
+    // icon like its neighbours and the bar stays one row at any width.
     const handoff = controls[1];
-    expect(handoff.textContent).toBe('Add to chat');
-    expect(handoff.getAttribute('title')).toBeTruthy();
     expect((handoff as HTMLButtonElement).disabled).toBe(true);
-    // Ghost, so it sits with the icon controls rather than shouting over them.
-    expect(handoff.className).toContain('button--ghost');
-    for (const control of [controls[0], controls[2], controls[3]]) {
+    for (const control of controls) {
       // Icon-only, named and tooltipped: no visible words on the bar.
       expect(control.textContent).toBe('');
       expect(control.getAttribute('title')).toBeTruthy();

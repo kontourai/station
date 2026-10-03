@@ -3,7 +3,8 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: start;
-  gap: 0 var(--space-3);
+  /* The `⋯`'s 44px hit area reaches 8px past its 28px box. */
+  gap: 0 var(--space-4);
   padding: var(--space-3) 0;
   border-bottom: 1px solid var(--border-primary);
 }

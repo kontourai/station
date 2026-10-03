@@ -53,6 +53,7 @@ export function CodingDiffPaneBody({
         projectSlug={projectSlug}
         workingDir={workingDir}
         onActiveRepoChange={setActiveRepoRoot}
+        showCommit={view === 'changes'}
         leading={
           <fieldset className="coding-diff-pane__switch">
             <legend className="sr-only">Diff view</legend>

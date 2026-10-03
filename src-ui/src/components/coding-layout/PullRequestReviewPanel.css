@@ -46,14 +46,14 @@
   width: 100%;
 }
 
-/* The merge row: one labelled menu trigger ("Merge ⋯"), nothing beside it. */
-.pull-request-review__merge {
-  align-self: flex-start;
-}
+/* The live region is always in the flow; empty, it takes no height. */
 .pull-request-review__status {
   margin: 0;
   font-size: var(--text-md);
   color: var(--text-secondary);
+}
+.pull-request-review__status--live:empty {
+  display: none;
 }
 .pull-request-review__discussion {
   padding-left: 20px;
@@ -96,7 +96,8 @@
 .pull-request-review__check-tools {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
+  /* 30px icons with 44px hit areas: 14px keeps the areas apart. */
+  gap: 14px;
   flex: none;
   margin-left: auto;
 }
@@ -215,21 +216,9 @@ details[open] > .pull-request-review__summary .pull-request-review__caret {
 .pull-request-review__count[data-tone="success"] {
   color: var(--success-text);
 }
-/* The one labelled action on the bar: drawn at the icons' 30px, pressed at
-   44px through the same pseudo-element the icons use. */
-.pull-request-review__handoff {
-  position: relative;
-  flex-shrink: 0;
-  min-height: 30px;
-}
-.pull-request-review__handoff::before {
-  content: "";
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: max(100%, 44px);
-  height: 44px;
-  transform: translate(-50%, -50%);
+/* The icon that was just pressed shows a check in the accent for a moment. */
+.pull-request-review__icon[data-added="true"] {
+  color: var(--accent-primary);
 }
 /* Forge comments the diff could not place: each a named group. */
 .pull-request-review__forge-comments {
@@ -260,28 +249,32 @@ details[open] > .pull-request-review__summary .pull-request-review__caret {
   margin-top: 4px;
   font-size: var(--text-sm);
 }
-/* One row: back, title, refresh, open on the site. */
+/* One row at every width: back, the title (wrapping its words), and the
+   icons — nothing wraps under anything. */
 .pull-request-review__bar {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
-  /* 14px keeps neighbouring 44px hit areas apart: 30px icon + 14px = 44;
-     the row gap stays small so a wrapped action group sits under the
-     title, not a bar's height below it. */
-  gap: 4px 14px;
+  /* 14px keeps neighbouring 44px hit areas apart: 30px icon + 14px = 44. */
+  gap: 14px;
   min-width: 0;
 }
 /* The title keeps at least this much line before the actions wrap under
    it as one unit (right-aligned), so a phone-width bar is not a one-word
    column beside a button. */
 .pull-request-review__title {
-  flex: 1 1 auto;
-  min-width: min(16ch, 100%);
+  flex: 1 1 0;
+  min-width: 0;
   margin: 0;
   font-size: var(--text-lg);
   font-weight: 600;
   line-height: 1.3;
   overflow-wrap: anywhere;
+}
+.pull-request-review__title:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
 }
 .pull-request-review__bar-actions {
   display: flex;
