@@ -7,6 +7,7 @@ import {
 } from '@kontourai/station-shared/json-file-storage';
 import { Hono } from 'hono';
 import { createSelfHostedBrokerRoutes } from '../src-server/routes/connections/self-hosted-broker.js';
+import { loadCloudflareBrokerIce } from '../src-server/services/connections/cloudflare-turn-provider.js';
 import {
   assertSelfHostedBrokerPlatform,
   createBrokerCredentialBundle,
@@ -301,7 +302,18 @@ if (config.provision.length !== 0)
   throw new Error('Broker serve does not provision credentials');
 const app = new Hono();
 const service = new SelfHostedBrokerService(databasePath);
-app.route('/broker/v1', createSelfHostedBrokerRoutes(service));
+const iceConfigPath = process.env.STATION_BROKER_ICE_CONFIG_FILE;
+const ice =
+  iceConfigPath === undefined
+    ? undefined
+    : loadCloudflareBrokerIce(iceConfigPath);
+app.route(
+  '/broker/v1',
+  createSelfHostedBrokerRoutes(service, {
+    ice,
+    brokerOrigin: process.env.STATION_BROKER_PUBLIC_ORIGIN,
+  }),
+);
 const server = serve({
   fetch: app.fetch,
   hostname: '127.0.0.1',
@@ -316,6 +328,7 @@ server.once('listening', () => {
 });
 const stop = () =>
   server.close(() => {
+    ice?.close();
     service.close();
     process.exitCode = 0;
   });

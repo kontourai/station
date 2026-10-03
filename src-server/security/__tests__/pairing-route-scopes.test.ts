@@ -837,6 +837,8 @@ describe('pairing-route-scopes: table-driven lookups', () => {
     ['GET', '/api/environments/ssh/sessions', 'orchestration:operate'],
     ['HEAD', '/api/environments/ssh/sessions', 'orchestration:operate'],
     ['GET', '/api/pairing/devices', 'access:manage'],
+    ['GET', '/api/pairing/native-relay-surfaces', 'access:manage'],
+    ['POST', '/api/pairing/native-relay-surfaces', 'access:manage'],
     [
       'GET',
       '/api/pairing/native-device-bindings/11111111-1111-4111-8111-111111111111',

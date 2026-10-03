@@ -410,6 +410,54 @@ impl<B: ProofKeySecretBackend> NativeDeviceBindingCandidateManager<B> {
         Self { backend }
     }
 
+    pub(crate) fn adopt_authenticated_enrollment<K: DeviceCandidateKeyVault>(
+        &self,
+        authority: &NativeDeviceBindingCandidateAuthority,
+        authenticated: &crate::native_enrollment_host::AuthenticatedEnrollmentActivation,
+        keys: &K,
+    ) -> Result<NativeDeviceBindingCandidateV1, String> {
+        let _guard = CANDIDATE_OPERATION
+            .lock()
+            .map_err(|_| "Device candidate custody is unavailable".to_owned())?;
+        validate_authority(authority)?;
+        let candidate = authenticated.candidate()?;
+        validate_candidate_for_authority(authority, &candidate)?;
+        let receipt = authenticated.device_receipt();
+        if candidate.validate_self_receipt(receipt)? != NativeDeviceReceiptObservation::Current {
+            return Err("The enrollment receipt is not current".into());
+        }
+        let metadata = keys
+            .restore(&authority.proof_key_owner(&candidate)?)
+            .map_err(|_| "The approved enrollment Device key is unavailable".to_owned())?;
+        if metadata.jwk() != &candidate.device_proof_jwk
+            || metadata.thumbprint() != candidate.device_proof_key_thumbprint
+        {
+            return Err("The approved enrollment Device key changed".into());
+        }
+        let owner = StoredCandidateOwnerV1::from_authority(authority)?;
+        let account = candidate_account(authority);
+        if let Some(old) = self.read_record(&account)? {
+            if old.owner != owner || old.binding_id != candidate.binding_id {
+                return Err("Another Device candidate already owns this profile".into());
+            }
+        }
+        let stored = StoredCandidateV1 {
+            schema_version: 1,
+            owner,
+            binding_id: candidate.binding_id.clone(),
+            initial_device_authorization_epoch: authority.device_authorization_epoch.clone(),
+            state: CandidateState::Provisional,
+            receipt_observation: Some(StoredReceiptObservationV1 {
+                candidate_tuple_sha256: candidate_tuple_sha256(&candidate)?,
+                host_authorization_epoch: authority.device_authorization_epoch.clone(),
+                status: NativeDeviceReceiptObservation::Current,
+                observed_at_ms: authenticated.observed_at(),
+            }),
+        };
+        self.write_confirmed(&account, &stored)?;
+        Ok(candidate)
+    }
+
     pub(crate) fn candidate<K: DeviceCandidateKeyVault>(
         &self,
         authority: &NativeDeviceBindingCandidateAuthority,

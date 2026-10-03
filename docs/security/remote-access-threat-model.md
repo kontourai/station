@@ -123,6 +123,31 @@ commit or executable identity. Its schema is:
 The environment ID is stable across restarts and endpoint changes. It is an
 identifier, not a secret or authorization token.
 
+## Separate native relay pilot
+
+The opt-in [native enrollment ceremony](../design/native-relay-enrollment.md)
+and [Device-proof pilot](../guides/deployment-authentication.md) have separate
+source-composed boundaries. They do not extend this document's direct-LAN and
+private-tailnet qualification to an Internet relay or a shipped native journey.
+
+The runtime admits the exact native bootstrap POST leaves only through private,
+current Pion provenance and an approved native installation surface. After
+`begin`, candidate proof fences each ceremony operation. Operator surface approval and pending Device enrollment approval require
+a current real operator credential; a routing grant is transport authority only.
+The server completes enrollment recovery before admission. Credential delivery
+is sealed to the host's enrollment key, with Device binding and activation kept
+separate from account verification.
+
+For the selected native member route, neutral Station observations can use
+current Device proof alone when no account material is supplied. Project and
+shared-work reads still require current account and Project authority. The
+native invitation-acceptance operation verifies both Device and account
+provenance, without a browser cookie or Origin. The fixed native logout retires
+its account continuation and actual provider session; it leaves Device custody
+independent. Ordinary resource writes, operator work and compute are unsupported.
+Desktop and mobile host command registration is source evidence; fresh native
+application enrollment and physical-device acceptance remain separate evidence.
+
 ## Credentialed consumers (station#2051)
 
 The removed loopback/SSH compatibility floor has no silent replacement. These
