@@ -14,7 +14,7 @@
   "sources": [
     {"path":"examples/docs-snippets/src/plugins-agents-and-chat.tsx","digest":"3f6f7737842458a41242bc8e0c162fbec66e9b74439fdc9cd672e823c087dad5","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"scripts/__tests__/docs-snippets.test.ts","digest":"c6f31e3851bdba669d93680c01abe4ba95e8b1cab0e336f4ddcd4cd99b91f195","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"scripts/__tests__/docs-snippets.test.ts","digest":"c3e81ade91da8fb50abcab804586cc3ed313c56ace7133eb434845f3dbddffcd","revision":"90e5e9d8fc3f4d80e1e9b1de1b91bcd3ec03e2c3"},
 
     {"path":"scripts/examples-conformance.mjs","digest":"2eac8e0f018acdf56bc2ead72e428a38cf7d40c3be2dde34b4945f969fa4d587","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
