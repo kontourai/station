@@ -495,6 +495,24 @@ const workspaceTargetSchema = z.discriminatedUnion('kind', [
     portableProjectId: z.string().min(1).max(512),
     resourceId: z.string().min(1).max(512),
   }),
+  // #2875 slice 1: the portable intent plus a version requirement. Mode,
+  // scheme and guarantees are bounded open strings HERE on purpose: the
+  // receiver refuses an unsupported value with a typed code naming the
+  // dimension (execution-preparation.ts), never a generic 400.
+  z.object({
+    kind: z.literal('project-portable-prepared'),
+    portableProjectId: z.string().min(1).max(512),
+    resourceId: z.string().min(1).max(512),
+    preparation: z.object({
+      protocol: z.string().min(1).max(128),
+      mode: z.string().min(1).max(64),
+      version: z.object({
+        scheme: z.string().min(1).max(64),
+        value: z.string().min(1).max(256),
+      }),
+      guarantees: z.array(z.string().min(1).max(64)).min(1).max(8),
+    }),
+  }),
 ]);
 
 const executionTargetSchema = z.object({
@@ -2419,7 +2437,26 @@ export function createOrchestrationRoutes(
               () => deps.isRequestPrincipalCurrent?.(c.req.raw) ?? false,
             )
         : undefined;
-      const portableIntent = body.target.workspace?.kind === 'project-portable';
+      const portableIntent =
+        body.target.workspace?.kind === 'project-portable' ||
+        body.target.workspace?.kind === 'project-portable-prepared';
+      // #2875: preparation is a phase of one #485 attempt — the claim is
+      // where its outcome is recorded — so a prepared intent without an
+      // attempt id refuses here, before anything is forwarded or claimed.
+      if (
+        body.target.workspace?.kind === 'project-portable-prepared' &&
+        body.attemptId === undefined
+      ) {
+        return c.json(
+          {
+            success: false,
+            error:
+              RECEIVER_EXECUTION_REFUSAL_COPY.execution_preparation_attempt_required,
+            code: 'execution_preparation_attempt_required',
+          },
+          403,
+        );
+      }
       // #485 receiver request-claim slice: validate the opt-in correlation
       // at the route seam. The attempt id is admitted ONLY on a portable
       // intent (any other topology is an explicit refusal, never a silent

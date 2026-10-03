@@ -43,6 +43,14 @@ prompt, path, digest, transcript, or provider output. SDK:
   Never a resend authorization. Reconcile via the reserved task reference
   against session/turn evidence.
 - `refused` — clean pre-effect refusal, terminal; the key never executes.
+  When the refusal had a closed code, the projection carries it as
+  `refusalCode` (for example `execution_preparation_version_mismatch`).
+
+A `project-portable-prepared` create (version-matched execution, see
+[remote execution preparation](../design/remote-execution-preparation.md))
+must carry an `attemptId`: its version check is a phase of the attempt, the
+matched facts are bound with the admitted facts, and every preparation
+refusal is recorded as the tombstone's `refusalCode`.
 
 Duplicates: same attempt + same validated intent joins (`pending` /
 `exists` 409, never a second effect); changed intent under the same key

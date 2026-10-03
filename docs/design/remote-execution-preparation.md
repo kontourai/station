@@ -94,8 +94,11 @@ shown; each stays open.
 
 ## Contract
 
-The public types live in `@kontourai/station-contracts/execution-preparation`
-(`packages/contracts/src/execution-preparation.ts`).
+The public types live in
+[`@kontourai/station-contracts/execution-preparation`](../../packages/contracts/src/execution-preparation.ts).
+The receiver check and the closed adapter registry **exist** in
+[`execution-preparation.ts`](../../src-server/services/execution-target/execution-preparation.ts),
+called from `delegateTask` in the delegation owner.
 
 ```ts
 // Workspace target variant (execution-target.ts)
@@ -205,8 +208,7 @@ detached checkout at the exact commit that no other session shares.
 
 ## Slice plan
 
-1. **Slice 1, version-matched execution on an existing checkout (this
-   change).** Contract types, the adapter registry with the Git
+1. **Slice 1, version-matched execution on an existing checkout (built).** Contract types, the adapter registry with the Git
    `git-commit` adapter, the typed refusals above, refusal codes on the
    claim, and the optional preparation receipt. Evidence: unit tests for each
    refusal and the claim record, plus a two-Station live journey with one
@@ -238,6 +240,12 @@ detached checkout at the exact commit that no other session shares.
 ## Evidence limits
 
 Current-state claims in this record were checked by source inspection.
-Slice 1 behavior is established by the tests named in the implementing pull
-request, which also record what was not verified, including a genuinely
-older receiver build.
+Slice 1 behavior is established by
+[the adapter tests](../../src-server/services/execution-target/__tests__/execution-preparation.test.ts),
+[the receiver-local delegation tests](../../src-server/tools/__tests__/station-control-delegation-preparation.test.ts)
+and the `#2875` cases in the
+[two-Station live proof](../../tests/portable-receiver-live-proof.spec.ts).
+Not verified: a genuinely older receiver build (only the sender gate and the
+schema reasoning cover it), SSH-forwarded prepared dispatch (refused by the
+portable SSH rule), and writer races beyond the one injected in the unit
+suite.

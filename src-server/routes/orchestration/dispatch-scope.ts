@@ -201,6 +201,7 @@ export function newSessionFacts(
     remote:
       namesAnotherStation(target.environment) ||
       namesAnotherStation(defaultEnvironment) ||
-      workspace?.kind === 'project-portable',
+      workspace?.kind === 'project-portable' ||
+      workspace?.kind === 'project-portable-prepared',
   };
 }
