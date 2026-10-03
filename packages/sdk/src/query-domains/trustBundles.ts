@@ -1,5 +1,8 @@
 import { _getApiBase } from '../api';
-import { type QueryConfig, useApiQuery } from '../query-core';
+import {
+  type QueryConfig,
+  useApiQueryRefetchingInvalidatedOnMount,
+} from '../query-core';
 
 // ── Surface trust bundles (project-scoped) ────────────────────────────────
 
@@ -73,9 +76,13 @@ export interface TrustReportResultVM {
   report: TrustReportVM | null;
 }
 
-async function fetchTrustJson<T>(path: string, label: string): Promise<T> {
+async function fetchTrustJson<T>(
+  path: string,
+  label: string,
+  signal?: AbortSignal,
+): Promise<T> {
   const apiBase = await _getApiBase();
-  const response = await authenticatedFetch(`${apiBase}${path}`);
+  const response = await authenticatedFetch(`${apiBase}${path}`, { signal });
   const result = await response.json();
   if (!result.success) {
     throw new Error(apiErrorMessage(result, `Failed to load ${label}`));
@@ -87,12 +94,13 @@ export function useTrustBundlesQuery(
   projectSlug: string | null | undefined,
   config?: QueryConfig<TrustBundleSummaryVM[]>,
 ) {
-  return useApiQuery<TrustBundleSummaryVM[]>(
+  return useApiQueryRefetchingInvalidatedOnMount<TrustBundleSummaryVM[]>(
     ['trust-bundles', projectSlug ?? ''],
-    async () =>
+    async (signal) =>
       fetchTrustJson(
         `/api/projects/${encodeURIComponent(projectSlug!)}/trust-bundles`,
         'trust bundles',
+        signal,
       ),
     {
       ...config,
@@ -112,12 +120,13 @@ export function useTrustReportQuery(
   bundleId: string | null | undefined,
   config?: QueryConfig<TrustReportResultVM>,
 ) {
-  return useApiQuery<TrustReportResultVM>(
+  return useApiQueryRefetchingInvalidatedOnMount<TrustReportResultVM>(
     ['trust-report', projectSlug ?? '', bundleId ?? ''],
-    async () =>
+    async (signal) =>
       fetchTrustJson(
         `/api/projects/${encodeURIComponent(projectSlug!)}/trust-bundles/${encodeURIComponent(bundleId!)}`,
         'trust report',
+        signal,
       ),
     {
       ...config,

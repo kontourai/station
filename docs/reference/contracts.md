@@ -22,10 +22,11 @@ Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shar
 
 | Module | Owns |
 |---|---|
-| `@kontourai/station-contracts/engine-accounts` | Secret-free engine account, quota and provider-owned login projections; runtime validation stays in SDK consumers |
+| `@kontourai/station-contracts/engine-accounts` | Secret-free engine account, quota, optional identity/credit/model/spending/breakdown metadata and bounded capture-audit projections, plus provider-owned login; runtime validation stays in SDK consumers |
 | `@kontourai/station-contracts/acp` | ACP connection config and ACP connection status values |
 | `@kontourai/station-contracts/agent` | Agent specs, metadata, tools, slash commands |
 | `@kontourai/station-contracts/agent-plugin` | Agent Plugins 1.0 schema identities, name grammar, and Station extension declarations |
+| `@kontourai/station-contracts/skill-experience` | Inert v1 visual Skill author definitions and namespace references; see [authoring contract](skill-experiences.md); activation and session state remain deferred |
 | `@kontourai/station-contracts/attention` | Attention projections and exact approval/permission request references and inspection states |
 | `@kontourai/station-contracts/auth` | Auth status, renew results, user identity/detail models |
 | `@kontourai/station-contracts/authority-observation` | Closed credential-bound authority observation: current home identity, resolved principal echo (kind+id only), and verified grant tier; authorization-neutral, grants nothing |
@@ -247,6 +248,17 @@ names its own id, which happens when Station cleans up a send whose caller
 aborted after it was accepted, or interrupts a recovered turn. A queued send
 still waiting when the engine ends is recorded with its message and then
 aborted (`engine-ended-before-start`).
+
+An ACP send whose attachments the engine cannot take (images when its
+`initialize` handshake did not advertise `promptCapabilities.image`, or any
+non-image file) is refused before any engine effect with
+`ATTACHMENT_INPUT_UNSUPPORTED_CODE` (`attachment_input_unsupported`, from
+`provider`). Unlike the two codes above it is not retryable: the same send is
+refused again. An ACP steer delivered by the cancel + re-prompt fallback, for
+an engine without a native steer method, cancels the running prompt and any
+tool it was running. Its steer `turn.started` carries
+`steerInterruptedRun: true` so a client can say why that step shows as
+cancelled.
 
 Muse through `muse serve` (#2452). The Station runtime drives each Muse
 session through one `muse serve` (MSP) host, and everything above about
@@ -475,12 +487,28 @@ outdated. Either field absent means the server did not observe it, and
 "none".
 
 `PullRequestBranchMergeability` on `pull-request-provider` is a conflict
-indicator's read: one open pull request's ref, source branch and mergeability,
+indicator's read: one open pull request's ref, source branch, optional
+`sourceOwner` (GitHub's head repository owner), and mergeability,
 and nothing a review needs. The GitHub adapter serves at most 100 and refuses
 a longer list as unavailable rather than serving part of it. The optional
 `IPullRequestProvider.listOpenPullRequestMergeability` answers it for a
 repository; the route refuses a provider without it rather than falling back
 to the full list. See the [GitHub adapter](../../src-server/services/pull-requests/github-pull-request-provider.ts).
+
+`PullRequestClientContext.pushTargetOwner` optionally reports the local branch's
+configured push repository owner. The resolver chooses `branch.<b>.pushRemote`,
+then `remote.pushDefault`, then the branch's upstream remote, then `origin`,
+and reads `git remote get-url --push` so a `pushurl` is honored. This does not
+change the repository resolved for PR reads. Unrecognized push URLs, detached
+checkouts, or failed push-target reads omit the owner. `/context` projects only
+declared client fields; checkout paths and PR-opening head/base facts stay private.
+
+The session conflict chip matches the local `branch`, never the upstream branch
+name. When both owners are known it also requires `pushTargetOwner` and
+`sourceOwner` to match case-insensitively. Missing either owner retains branch-only
+matching. GitLab does not report `sourceOwner`, so its behavior is unchanged.
+See the [resolver](../../src-server/services/pull-requests/pull-request-repository-context-resolver.ts)
+and [chip integration tests](../../src-ui/src/__tests__/SessionPullRequestConflictChip.pushurl.test.tsx).
 
 `AttentionInputReplyContext` on the attention subpath projects one exact open
 input request's reply binding and declared file/image transport. `needs_input`
@@ -552,3 +580,12 @@ operator-configured browser identity choices, their declared POST begin-login
 paths and availability. These are presentation/capability facts, not identity
 claims, Device grants or Project membership. Secret references and provider
 configuration remain private to Station's operator composition.
+
+### Engine account observation history
+
+`EngineAccountUsage.history` optionally exposes 30 days of hourly allowance
+observations, including unknown readings as gaps. It stores no raw responses,
+identity values or credentials. `UsageReceipt.accountKey` is an optional opaque
+engine/profile observation from the applied process environment. Its absence
+means account attribution is unknown; consumers must not infer the current
+active account. These fields are observations, never billing or routing authority.

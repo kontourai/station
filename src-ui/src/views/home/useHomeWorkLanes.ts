@@ -27,7 +27,7 @@ import { readTerminalSince, writeTerminalSince } from './terminal-since-store';
 const LANE_TICK_MS = 30_000;
 
 export interface HomeWorkLanes {
-  /** Live lanes (`liveLaneFor`), each in position-stable order. */
+  /** Live lanes (`workStatus`), each in position-stable order. */
   needsYou: HomeLaneItem[];
   running: HomeLaneItem[];
   idle: HomeLaneItem[];

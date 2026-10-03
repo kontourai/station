@@ -145,3 +145,11 @@ condition = "AND"
 regexTarget = "secret"
 regexes = ['''^sk-live-SECRET-[0-9a-f]{6}$''']
 paths = ['''(^|/)src-server/.+/__tests__/[^/]+\.test\.ts$''']
+
+[[allowlists]]
+description = "Verified typography-review prose; no credential"
+targetRules = ["generic-api-key"]
+condition = "AND"
+regexTarget = "secret"
+regexes = ['''^labels/captions$''']
+paths = ['''(^|/)docs/learn/review-ledger/notes/20261001T130629\.148Z-f9e91a5db6fe\.json$''']

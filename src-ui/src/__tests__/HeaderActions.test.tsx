@@ -2,7 +2,13 @@
  * @vitest-environment jsdom
  */
 
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 let pendingCount = 0;
@@ -79,7 +85,10 @@ vi.mock('../components/header/OverflowMenu', () => ({
 
 import { HeaderActions } from '../components/header/HeaderActions';
 
-function renderHeader(onOpenNotifications = vi.fn()) {
+function renderHeader(
+  onOpenNotifications = vi.fn(),
+  onOpenConnections = vi.fn(),
+) {
   render(
     <HeaderActions
       helpPrompts={[]}
@@ -95,7 +104,7 @@ function renderHeader(onOpenNotifications = vi.fn()) {
       onCloseNotifications={vi.fn()}
       onCloseOverflow={vi.fn()}
       onHelpPrompt={vi.fn()}
-      onOpenConnections={vi.fn()}
+      onOpenConnections={onOpenConnections}
       onOpenProfile={vi.fn()}
       onOpenHelp={vi.fn()}
       onOpenNotifications={onOpenNotifications}
@@ -109,7 +118,9 @@ function renderHeader(onOpenNotifications = vi.fn()) {
 
 function renderConnButton() {
   renderHeader();
-  return screen.getByRole('button', { name: /^Manage Stations/ });
+  return screen.getByRole('button', {
+    name: /^(Manage Stations|Choose Station)/,
+  });
 }
 
 describe('HeaderActions attention badge', () => {
@@ -188,22 +199,67 @@ describe('HeaderActions — self-describing connection surface', () => {
     pendingApprovalRecord = null;
   });
 
+  test('holding shows the name; tapping opens the chooser before managing', async () => {
+    vi.useFakeTimers();
+    try {
+      const openConnections = vi.fn();
+      renderHeader(vi.fn(), openConnections);
+      const button = screen.getByRole('button', {
+        name: /^(Manage Stations|Choose Station)/,
+      });
+      const startPress = () =>
+        fireEvent(
+          button,
+          new MouseEvent('pointerdown', {
+            bubbles: true,
+            button: 0,
+            clientX: 12,
+            clientY: 12,
+          }),
+        );
+
+      startPress();
+      fireEvent.pointerCancel(button);
+      act(() => vi.advanceTimersByTime(600));
+      expect(screen.queryByRole('tooltip')).toBeNull();
+
+      startPress();
+      act(() => vi.advanceTimersByTime(600));
+      expect(screen.getByRole('tooltip').textContent).toBe('Default');
+      fireEvent.pointerUp(button);
+      fireEvent.click(button);
+      expect(openConnections).not.toHaveBeenCalled();
+
+      fireEvent.keyDown(document, { key: 'Escape' });
+      expect(screen.queryByRole('tooltip')).toBeNull();
+      vi.useRealTimers();
+      fireEvent.click(button);
+      await screen.findByRole('menu', { name: 'Choose Station' });
+      expect(openConnections).not.toHaveBeenCalled();
+      fireEvent.click(
+        screen.getByRole('menuitem', { name: 'Manage Stations' }),
+      );
+      expect(openConnections).toHaveBeenCalledTimes(1);
+    } finally {
+      cleanup();
+      vi.useRealTimers();
+    }
+  });
+
   test('keeps the healthy Station chip compact and visibly names its saved profile', () => {
     const button = renderConnButton();
 
     expect(button.querySelector('.app-toolbar__conn-state')).toBeNull();
     expect(button.querySelector('.app-toolbar__conn-name')).toBeNull();
     expect(button.querySelector('.app-toolbar__conn-label')?.textContent).toBe(
-      'Station · Default',
+      'Default',
     );
     expect(button.classList).toContain('app-toolbar__conn--compact');
     // No 'Default'-name special-casing: identity is always named.
     expect(button.getAttribute('aria-label')).toBe(
-      'Manage Stations — Connected · Station · Default',
+      'Choose Station — Connected · Default',
     );
-    expect(button.title).toBe(
-      'Manage Stations — Connected · Station · Default',
-    );
+    expect(button.title).toBe('Choose Station — Connected · Default');
     // The dot is still the state channel that survives a device with no hover.
     expect(screen.getByTestId('connection-status').dataset.state).toBe(
       'connected',
@@ -218,7 +274,7 @@ describe('HeaderActions — self-describing connection surface', () => {
     const button = renderConnButton();
 
     expect(button.classList).toContain('app-toolbar__conn--compact');
-    expect(button.textContent).toContain('Station · Default');
+    expect(button.textContent).toContain('Default');
     expect(button.getAttribute('aria-label')).toContain('Connected');
   });
 
@@ -226,7 +282,7 @@ describe('HeaderActions — self-describing connection surface', () => {
     bundledStatus = { ownership: 'sidecar' };
     const button = renderConnButton();
     expect(button.classList).toContain('app-toolbar__conn--compact');
-    expect(button.textContent).toBe('Station · Default');
+    expect(button.textContent).toBe('Default');
     expect(button.getAttribute('aria-label')).not.toContain('App only');
     expect(screen.queryByTestId('desktop-sidecar-indicator')).toBeNull();
   });
@@ -308,10 +364,10 @@ describe('HeaderActions — a rejected credential is distinguishable without hov
     // on (`/^Manage Stations/`, tests/connect-modal.spec.ts), not the title —
     // and the healthy compact chip now keeps its saved label in visible text
     // and the name for assistive technology.
-    const button = screen.getByRole('button', { name: /^Manage Stations/ });
-    expect(button.title).toBe(
-      'Manage Stations — Connected · Station · Default',
-    );
+    const button = screen.getByRole('button', {
+      name: /^(Manage Stations|Choose Station)/,
+    });
+    expect(button.title).toBe('Choose Station — Connected · Default');
     expect(screen.getByTestId('connection-status').dataset.state).toBe(
       'connected',
     );
@@ -357,7 +413,9 @@ describe('HeaderActions — a rejected credential is distinguishable without hov
     connectionStatus = 'error';
     connectionReason = 'unreachable';
     renderHeader();
-    fireEvent.click(screen.getByRole('button', { name: /^Manage Stations/ }));
+    fireEvent.click(
+      screen.getByRole('button', { name: /^(Manage Stations|Choose Station)/ }),
+    );
     expect(recheck).toHaveBeenCalledTimes(1);
 
     recheck.mockClear();
@@ -498,7 +556,7 @@ describe('HeaderActions — desktop sidecar state', () => {
     const button = renderConnButton();
     expect(screen.queryByTestId('desktop-sidecar-indicator')).toBeNull();
     expect(button.getAttribute('aria-label')).toBe(
-      'Manage Stations — Connected · Station · Kontour',
+      'Choose Station — Connected · Kontour',
     );
     expect(button.title).toBe(button.getAttribute('aria-label'));
   });

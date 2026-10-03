@@ -1,21 +1,251 @@
+import { mkdir, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import {
   parseHostedTenantRegistry,
   sessionReadAuthorityFromRequest,
 } from '@kontourai/station-contracts/tenancy';
 import { describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { UsageAggregator } from '../../../analytics/usage-aggregator.js';
 
 vi.mock('../../../telemetry/metrics.js', () => ({
   analyticsOps: { add: vi.fn() },
 }));
 
 const { createAnalyticsRoutes } = await import('../analytics.js');
+const makeHome = trackTempDirs();
+
+test('rescanning the same measured messages in a different order preserves cost eligibility', async () => {
+  const home = makeHome('station-profile-cost-rounding-');
+  const dir = join(home, 'agents', 'sample', 'memory', 'sessions');
+  await mkdir(dir, { recursive: true });
+  const rows = Array.from({ length: 3000 }, (_, index) =>
+    JSON.stringify({
+      role: 'assistant',
+      metadata: {
+        usage: {
+          inputTokens: 10,
+          outputTokens: 20,
+          estimatedCost: index < 1500 ? 0.001 : 0.008,
+        },
+      },
+    }),
+  );
+  const file = join(dir, 'one.ndjson');
+  const app = createAnalyticsRoutes(new UsageAggregator(home));
+  for (const ordered of [rows, [...rows].reverse()]) {
+    await writeFile(file, ordered.join('\n'));
+    expect((await app.request('/rescan', { method: 'POST' })).status).toBe(200);
+    const body = await json(await app.request('/achievements'));
+    const milestone = body.data.find(
+      (item: { id: string }) => item.id === 'cost-conscious',
+    );
+    expect(milestone.unlocked).toBe(true);
+    expect(milestone.measurementUnavailableReason).toBeUndefined();
+  }
+});
+
+test.each([
+  {
+    name: 'missing',
+    estimatedCost: undefined,
+    skipped: false,
+    eligible: false,
+  },
+  { name: 'reported zero', estimatedCost: 0, skipped: false, eligible: true },
+  {
+    name: 'unreadable record',
+    estimatedCost: 0,
+    skipped: true,
+    eligible: false,
+  },
+])(
+  'cost milestones handle saved-message costs: $name',
+  async ({ estimatedCost, skipped, eligible }) => {
+    const home = makeHome('station-profile-message-cost-');
+    const dir = join(home, 'agents', 'sample', 'memory', 'sessions');
+    await mkdir(dir, { recursive: true });
+    const message = {
+      role: 'assistant',
+      metadata: {
+        usage: {
+          inputTokens: 10,
+          outputTokens: 20,
+          ...(estimatedCost === undefined ? {} : { estimatedCost }),
+        },
+      },
+    };
+    await writeFile(
+      join(dir, 'one.ndjson'),
+      Array.from({ length: 60 }, () => JSON.stringify(message)).join('\n') +
+        (skipped ? '\n{invalid' : ''),
+    );
+    const aggregator = new UsageAggregator(home);
+    const body = await json(
+      await createAnalyticsRoutes(aggregator).request('/achievements'),
+    );
+    const milestone = body.data.find(
+      (item: { id: string }) => item.id === 'cost-conscious',
+    );
+    expect(milestone.unlocked).toBe(eligible);
+    if (!eligible) {
+      expect(milestone.measurementUnavailableReason).toBeTruthy();
+      expect(milestone.progress).toBeUndefined();
+    }
+  },
+);
+
+test.each(['incrementalUpdate', 'applyEnrichmentUsage'] as const)(
+  '%s cannot certify cost coverage before the changed message is rescanned',
+  async (method) => {
+    const aggregator = new UsageAggregator(
+      makeHome('station-profile-cost-update-'),
+      {
+        get: () => ({
+          listSessionUsage: () => [
+            {
+              threadId: 'engine',
+              conversationId: 'engine',
+              usage: { turns: 60, toolCalls: 0, reportedCostUsd: 0 },
+            },
+          ],
+        }),
+      },
+    );
+    const app = createAnalyticsRoutes(aggregator);
+    await app.request('/achievements');
+    await aggregator[method](
+      { role: 'assistant', metadata: { usage: { inputTokens: 10 } } },
+      'sample',
+      'one',
+    );
+    const body = await json(await app.request('/achievements'));
+    const milestone = body.data.find(
+      (item: { id: string }) => item.id === 'cost-conscious',
+    );
+    expect(milestone.unlocked).toBe(false);
+    expect(milestone.measurementUnavailableReason).toBeTruthy();
+  },
+);
+
+test('retained token measurements block a cost milestone even when message counts match', async () => {
+  const usage = {
+    turns: 60,
+    toolCalls: 0,
+    inputTokens: 100,
+    reportedCostUsd: 0,
+  };
+  const aggregator = new UsageAggregator(
+    makeHome('station-profile-retained-cost-'),
+    {
+      get: () => ({
+        listSessionUsage: () => [
+          { threadId: 'engine', conversationId: 'engine', usage },
+        ],
+      }),
+    },
+  );
+  await aggregator.fullRescan();
+  usage.inputTokens = 10;
+  await aggregator.fullRescan();
+  const body = await json(
+    await createAnalyticsRoutes(aggregator).request('/achievements'),
+  );
+  const milestone = body.data.find(
+    (item: { id: string }) => item.id === 'cost-conscious',
+  );
+  expect(milestone.unlocked).toBe(false);
+  expect(milestone.measurementUnavailableReason).toBeTruthy();
+});
+
+test.each([undefined, 0])(
+  'cost milestones distinguish missing engine cost from a reported %s',
+  async (reportedCostUsd) => {
+    const aggregator = new UsageAggregator(makeHome('station-profile-cost-'), {
+      get: () => ({
+        listSessionUsage: () => [
+          {
+            threadId: 'thread-cost',
+            conversationId: 'cost',
+            usage: {
+              provider: 'codex',
+              turns: 60,
+              toolCalls: 0,
+              ...(reportedCostUsd === undefined ? {} : { reportedCostUsd }),
+            },
+          },
+        ],
+      }),
+    });
+    const body = await json(
+      await createAnalyticsRoutes(aggregator).request('/achievements'),
+    );
+    const milestone = body.data.find(
+      (item: { id: string }) => item.id === 'cost-conscious',
+    );
+    expect(milestone.unlocked).toBe(reportedCostUsd !== undefined);
+    if (reportedCostUsd === undefined) {
+      expect(milestone.measurementUnavailableReason).toBeTruthy();
+      expect(milestone.progress).toBeUndefined();
+      expect(milestone.progressPercent).toBeUndefined();
+    }
+  },
+);
+
+test('usage reads refresh engine totals and achievements after the snapshot expires', async () => {
+  const home = makeHome('station-profile-freshness-');
+  const usage = { turns: 1, toolCalls: 0, inputTokens: 50 };
+  const aggregator = new UsageAggregator(home, {
+    get: () => ({
+      listSessionUsage: () => [
+        {
+          threadId: 'thread-1',
+          conversationId: 'conversation-1',
+          agentSlug: 'codex',
+          usage,
+        },
+      ],
+    }),
+  });
+  const app = createAnalyticsRoutes(aggregator);
+  const clock = vi.spyOn(Date, 'now').mockReturnValue(Date.now());
+  try {
+    const first = await json(await app.request('/usage'));
+    expect(first.data.lifetime.totalMessages).toBe(1);
+    expect(first.data.snapshot.rescannedAt).toBeTruthy();
+    usage.turns = 100;
+    usage.inputTokens = 5000;
+    clock.mockReturnValue(clock() + 60_001);
+    const achievements = await json(await app.request('/achievements'));
+    expect(
+      achievements.data.find(
+        (item: { id: string }) => item.id === 'conversationalist',
+      ).unlocked,
+    ).toBe(true);
+    const next = await json(await app.request('/usage'));
+    expect(next.data.lifetime.totalMessages).toBe(100);
+    expect(next.data.lifetime.totalInputTokens).toBe(5000);
+  } finally {
+    clock.mockRestore();
+  }
+});
+
+test('reset leaves a valid aggregate that can accept the next message', async () => {
+  const aggregator = new UsageAggregator(makeHome('station-profile-reset-'));
+  await aggregator.incrementalUpdate({ role: 'assistant' }, 'sample', 'one');
+  await aggregator.reset();
+  await aggregator.incrementalUpdate({ role: 'assistant' }, 'sample', 'two');
+  expect((await aggregator.loadStats()).lifetime.totalMessages).toBe(1);
+});
 
 function createMockAggregator() {
+  const loadStats = vi
+    .fn()
+    .mockResolvedValue({ byDate: {}, totalMessages: 0, totalCost: 0 });
   return {
-    loadStats: vi
-      .fn()
-      .mockResolvedValue({ byDate: {}, totalMessages: 0, totalCost: 0 }),
+    loadStats,
+    readStats: () => loadStats(),
     getAchievements: vi.fn().mockResolvedValue([]),
     fullRescan: vi.fn().mockResolvedValue({ byDate: {} }),
     reset: vi.fn().mockResolvedValue(undefined),

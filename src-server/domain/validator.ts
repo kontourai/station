@@ -10,7 +10,10 @@ import {
   requiresAgentPrompt,
   requiresAuthoredAgentPrompt,
 } from '@kontourai/station-contracts/agent-validation';
-import type { AppConfig } from '@kontourai/station-contracts/config';
+import {
+  type AppConfig,
+  templateVariableFormatError,
+} from '@kontourai/station-contracts/config';
 import type { ToolDef } from '@kontourai/station-contracts/tool';
 import Ajv, { type ErrorObject, type ValidateFunction } from 'ajv';
 
@@ -59,6 +62,10 @@ class SchemaValidator {
    */
   validateAppConfig(data: unknown): asserts data is AppConfig {
     this.validate('app', data);
+    const formatError = templateVariableFormatError(
+      (data as AppConfig).templateVariables,
+    );
+    if (formatError) throw new Error(`templateVariables: ${formatError}`);
     const selection = (data as AppConfig).builtinAgentEngineConnectionId;
     if (
       selection !== undefined &&

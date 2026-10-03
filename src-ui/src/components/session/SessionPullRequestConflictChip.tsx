@@ -58,6 +58,10 @@ export function SessionPullRequestConflictChip({
     result.data?.some(
       (pullRequest) =>
         pullRequest.sourceBranch === identity?.branch &&
+        (!identity?.pushTargetOwner ||
+          !pullRequest.sourceOwner ||
+          identity.pushTargetOwner.toLowerCase() ===
+            pullRequest.sourceOwner.toLowerCase()) &&
         pullRequest.mergeability === 'conflicting',
     );
 

@@ -36,7 +36,7 @@
 
     {"path":"scripts/self-hosted-connector-identity.ts","digest":"ee28b6effe541e06b4cce903e44fcbd2c3452649b0620e0a23391eb22cda977d","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
-    {"path":"src-desktop/src/lib.rs","digest":"8c75f82874099575e30e4b757be90a2ba22bbd8d2623813566b5b3f139124833","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
+    {"path":"src-desktop/src/lib.rs","digest":"ad3b52011a9be6e6a18133b2367c04d0a6245907e5b7e13fa324bcd8b5255557","revision":"464d602fb7fb5fa9bd0df9d241dc03495b398b96"},
 
     {"path":"src-desktop/src/native_relay_key_approval.rs","digest":"7d4ca6093164627811393110d4dc09aa30db8fdc47e28517af42e6cb66666f16","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
@@ -98,7 +98,7 @@
 
     {"path":"src-ui/src/platform/native/nativeRelayGrantRenewalSupervisor.ts","digest":"173870d9be71cb18fec95ffde4b9963edeedf8e911c3ee3453133dffadb08fce","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
-    {"path":"src-ui/src/views/connections-hub/BrowserRelayRoutes.tsx","digest":"531ad6208755dc723e632d2405099689ff32b94fc99beb2e5fcd918957d8f7ef","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    {"path":"src-ui/src/views/connections-hub/BrowserRelayRoutes.tsx","digest":"73f608345988cfe00d297d4605da138d9772d326d90b267aa23e3e68c3f20b9e","revision":"3eb0ca8d962b21e22b041e6b0d92af2a0d178054"},
 
     {"path":"src-ui/src/views/connections-hub/RelayRouteProfiles.tsx","digest":"30081203cfc874044d63728638eac74f7c8dd15a62f4d5a51e20320fd64d1c7a","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
@@ -124,7 +124,7 @@
 
     {"path":"tests/tauri-shell/native-project-acceptance-webview.ts","digest":"fc99c2b19334dce34f5fe44d0f19db0a9c1bdfef8429272e43231c6c61b70619","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
 
-    {"path":"docs/guides/native-shell-verification.md","digest":"9813ab25fff5c75ee94223bf9384765d09adf0f0acf176f093dd27af1bf3b7e3","revision":"c75bec0547019930c54180d793516d033641ff0a"},
+    {"path":"docs/guides/native-shell-verification.md","digest":"db5ef187c02545195074cac011b8bd21fab7ff9eb23d28bf884dd36922b14c29","revision":"464d602fb7fb5fa9bd0df9d241dc03495b398b96"},
 
     {"path":"src-desktop/src/native_application_peer.rs","digest":"c0f98feb2a760e041cad809551611526f6acdb324ec679702993bb06d7453991","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
 

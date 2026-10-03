@@ -21,6 +21,7 @@ export interface ToolCallLike {
   toolCallId?: string;
   name?: string;
   toolName?: string;
+  toolKind?: string;
   args?: any;
   input?: any;
   result?: any;

@@ -12,15 +12,17 @@
   "document": {"digest":"4480def2cafbc901b67500e70198b8a8e5897784f0f33dc17fbdda12e3f5174e","revision":"57980be1afd64ff365472c005a13fce3d5c76ced"},
 
   "sources": [
-    {"path":"packages/contracts/package.json","digest":"e68c62ed1e493e0b8834dc4586ccb37b750313b65a19a61ac00512e30564f684","revision":"b004ed8cb3e885da544adf960b2894780aaf2b51"},
-
     {"path":"packages/contracts/src/child-work.ts","digest":"329d495e2344cd739eb4f47ec8329e424e2e1d37320acf5970d963d51b73dd35","revision":"9ed8cdffa9ba991c5bcd085b9a53c4368798fac2"},
 
-    {"path":"packages/contracts/src/index.ts","digest":"ec58f0f49b82828345bfda96f2183a8bf6ca7cdada9f109ca24edef5bf21ea9a","revision":"57980be1afd64ff365472c005a13fce3d5c76ced"},
+    {"path":"packages/contracts/src/index.ts","digest":"8622b3bbcdb622dbc385cf285e83654139eaea3d9338464125c1d103bd99f29c","revision":"1e6450e0caa47975d33f505a1348bdc01ae1382e"},
 
     {"path":"packages/contracts/src/live-surface.ts","digest":"249e322f147816c782477257489efbd2069d5222d188a081f11ed7d3e4238546","revision":"b2a69152a03d8221d5a04283d645f9e36bd0fdef"},
 
-    {"path":"packages/contracts/src/task-basis-mcp.ts","digest":"e441fa4b24dc096a453b6641b061477a87c0ec9750478f5edecc1b77245c63e9","revision":"57980be1afd64ff365472c005a13fce3d5c76ced"}
+    {"path":"packages/contracts/src/task-basis-mcp.ts","digest":"e441fa4b24dc096a453b6641b061477a87c0ec9750478f5edecc1b77245c63e9","revision":"57980be1afd64ff365472c005a13fce3d5c76ced"},
+
+    {"path":"packages/contracts/package.json#/exports","digest":"ee81c48b5d1385a876060069c972466a69148bb52f2a98881595b72342665e91","revision":"1e6450e0caa47975d33f505a1348bdc01ae1382e"},
+
+    {"path":"packages/contracts/package.json#/files","digest":"43219f75df025fd68c4b3a47b045f822115a0cb02eb1a21f6f0003b466db6b24","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"}
   ],
 
   "checks": [

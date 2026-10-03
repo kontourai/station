@@ -19,6 +19,8 @@ import { useDegradedQueryState } from '../../hooks/useDegradedQueryState';
 import { useNewChatSelectionModel } from '../../hooks/useNewChatSelectionModel';
 import type { NavigationView } from '../../types';
 import { buildHomeWorkItems, type HomeWorkItem } from './home-view-model';
+import { useWorkFacts } from './useWorkFacts';
+import type { WorkFactsById } from './work-facts';
 import {
   focusChatEventDetailForAction,
   resolveWorkItemOpenAction,
@@ -43,6 +45,12 @@ interface HomeWorkData {
   >['defaultSelection'];
   actionsLoading: boolean;
   workItems: HomeWorkItem[];
+  /**
+   * Status facts by item id (`buildWorkFacts`), derived beside `workItems`
+   * from the same session, chat and Task records rather than carried on the
+   * items: `HomeWorkItem` is the Home role's projection surface.
+   */
+  workFacts?: WorkFactsById;
   workLoading: boolean;
   workDegraded: boolean;
   workError: boolean;
@@ -69,7 +77,8 @@ function useHomeWorkData(): HomeWorkData {
   const { resolveModelLabel, isLoading: pickerCatalogLoading } =
     useCatalogModelLabel();
   // #1582 B9: Home names WORK, so a chat nothing has been put into is not one
-  // of its items. The inboxes keep `useOpenChats` — see `useOpenWorkChats`.
+  // of its items. The inboxes list every open chat — see `useInboxWorkItems`
+  // and `useOpenWorkChats`.
   const openChatItems = useOpenWorkChats(
     agents,
     sessions.data ?? [],
@@ -123,6 +132,11 @@ function useHomeWorkData(): HomeWorkData {
     sessions.data,
     tasks.data,
   ]);
+  const factSources = useMemo(
+    () => ({ tasks: tasks.data ?? [], remoteEnvironments }),
+    [remoteEnvironments, tasks.data],
+  );
+  const workFacts = useWorkFacts(workItems, sessions.data ?? [], factSources);
   const workLoading =
     workItems.length === 0 &&
     (sessions.isLoading || tasks.isLoading || inventory.isLoading);
@@ -142,6 +156,7 @@ function useHomeWorkData(): HomeWorkData {
     actionsLoading:
       !agentsLoaded || projectsQuery.isLoading || pickerCatalogLoading,
     workItems,
+    workFacts,
     workLoading,
     workDegraded: workQueryState === 'degraded',
     workError,
@@ -194,6 +209,17 @@ export function useHomeViewModel(onNavigate: (view: NavigationView) => void) {
   const data = useHomeWorkData();
   const acknowledge = useAcknowledgeConversationMutation();
   const showSurface = useShowSurface();
+  const { agent, effectiveModel } = data.defaultSelection;
+  const startIdentity = agent
+    ? [
+        agent.name,
+        effectiveModel.label === 'Model not reported'
+          ? undefined
+          : effectiveModel.label,
+      ]
+        .filter(Boolean)
+        .join(' · ')
+    : 'No agent is ready yet';
   return {
     ...data,
     /**
@@ -203,9 +229,7 @@ export function useHomeViewModel(onNavigate: (view: NavigationView) => void) {
      * Agent the New Chat picker would refuse one click later.
      */
     startReady: data.defaultSelection.agent !== undefined,
-    startIdentity: data.defaultSelection.agent
-      ? `${data.defaultSelection.agent.name} · ${data.defaultSelection.effectiveModel.label}`
-      : 'No agent is ready yet',
+    startIdentity,
     // #2310 review M3: "Continue most recent work" must name work. A Draft
     // has none — nothing was ever sent — and stays reachable in its lane.
     primaryWorkItem: data.workItems.find(

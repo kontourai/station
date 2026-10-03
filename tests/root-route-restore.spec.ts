@@ -290,7 +290,7 @@ test.describe('Root route restore (#223, product, mocked)', () => {
     await expect(newProjectModalOverlay(page)).toHaveCount(0);
 
     await expect(
-      page.getByRole('heading', { name: 'What do you want to work on?' }),
+      page.getByRole('heading', { name: "What's next?" }),
     ).toBeVisible({ timeout: 5000 });
     await expect(page).toHaveURL(/\/$/);
     await expect(
@@ -326,7 +326,7 @@ test.describe('Root route restore (#223, product, mocked)', () => {
     await expect(newProjectModalOverlay(page)).toHaveCount(0);
 
     await expect(
-      page.getByRole('heading', { name: 'What do you want to work on?' }),
+      page.getByRole('heading', { name: "What's next?" }),
     ).toBeVisible({ timeout: 5000 });
     await expect(page).toHaveURL(/\/$/);
     // Priority 2: with nothing persisted, the continuation is the first
@@ -370,7 +370,7 @@ test.describe('Root route restore (#223, product, mocked)', () => {
     // layout) rather than resolving to project-new — the stale slug is
     // never a match in the loaded `projects` list.
     await expect(
-      page.getByRole('heading', { name: 'What do you want to work on?' }),
+      page.getByRole('heading', { name: "What's next?" }),
     ).toBeVisible({ timeout: 5000 });
     await expect(page).toHaveURL(/\/$/);
 

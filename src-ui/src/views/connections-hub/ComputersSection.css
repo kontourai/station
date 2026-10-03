@@ -10,6 +10,13 @@
   flex-direction: column;
 }
 
+.relay-route-profiles__setup > summary {
+  min-height: 44px;
+  padding: var(--k-space-3) 0;
+  color: var(--k-text);
+  cursor: pointer;
+}
+
 /* Mirrors the engine chip's token pair (see EngineChip.css for the contrast
    measurement that chose them) rather than inventing a second pill scale. */
 .connections-computers__chip {

@@ -6,6 +6,8 @@ import type {
   ProjectResourceBindOutcome,
 } from '@kontourai/station-contracts/project-identity';
 import type {
+  WorkspaceFileChanges,
+  WorkspaceFileChangesRequest,
   WorkspaceFilePreview,
   WorkspaceFilePreviewRequest,
 } from '@kontourai/station-contracts/workspace-file-preview';
@@ -42,12 +44,14 @@ import {
   getProject,
   getProjectLayout,
   getProjectResolution,
+  isRepositoryBusyError,
   listProjectIconCandidates,
   listProjectLayouts,
   listProjectViews,
   listProjectWorkspacePanes,
   type ProjectWorkspacePaneCatalog,
   previewProjectWorkspaceFile,
+  readProjectWorkspaceFileChanges,
   reorderProjects as reorderProjectsRaw,
   updateProject as updateProjectRaw,
 } from '../client/projects';
@@ -458,6 +462,50 @@ export function useProjectWorkspaceFilePreviewQuery(
     },
   );
 }
+
+/**
+ * One previewed file's changes against HEAD. The read runs `git diff` on
+ * the host, so a caller enables it only for a text preview it shows (the
+ * File Preview reads it as the file opens, for its Changes count) and
+ * should give it a staleTime; the server shares identical in-flight reads
+ * and caps how many run at once per workspace.
+ *
+ * A `repository-busy` answer (the repository was being written while
+ * Station read it; `isRepositoryBusyError`) is asked again when the server
+ * suggests, a bounded number of times, before it is an error; nothing else
+ * is retried unless the caller says so.
+ */
+export function useProjectWorkspaceFileChangesQuery(
+  projectSlug: string,
+  request: WorkspaceFileChangesRequest | undefined,
+  config?: QueryConfig<WorkspaceFileChanges>,
+) {
+  return useApiQuery(
+    ['projects', projectSlug, 'file-changes', request ?? {}],
+    async (signal) => {
+      const apiBase = await _getApiBase();
+      return readProjectWorkspaceFileChanges(apiBase, projectSlug, request!, {
+        signal,
+      });
+    },
+    {
+      retry: (failureCount, error) =>
+        failureCount < REPOSITORY_BUSY_RETRIES && isRepositoryBusyError(error),
+      retryDelay: (_attempt, error) =>
+        isRepositoryBusyError(error) && error.retryAfterMs !== undefined
+          ? error.retryAfterMs
+          : REPOSITORY_BUSY_RETRY_DELAY_MS,
+      ...config,
+      enabled: !!projectSlug && !!request?.path && (config?.enabled ?? true),
+      cancelWhenInactive: config?.cancelWhenInactive ?? true,
+    },
+  );
+}
+
+/** Further reads of a repository that was being written, before giving up. */
+const REPOSITORY_BUSY_RETRIES = 2;
+/** When the server sent no `Retry-After`. */
+const REPOSITORY_BUSY_RETRY_DELAY_MS = 1000;
 
 /**
  * station#1502 slice 4 — §3.6's repair action.

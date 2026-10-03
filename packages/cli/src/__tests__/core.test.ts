@@ -165,6 +165,30 @@ describe('runCoreCommand', () => {
     );
   });
 
+  test('names the resolved Station on every connection write, and only there', async () => {
+    fetchMock.mockImplementation(async () =>
+      jsonResponse({ success: true, data: { id: 'proxy' } }),
+    );
+    const { runSurfaceCommand } = await import('../commands/surfaces.js');
+    const target = `Target: station=direct endpoint=${LOOPBACK_API_BASE} source=loopback`;
+    const writes = [
+      ['create', '--data={"id":"proxy"}'],
+      ['update', 'proxy', '--data={"id":"proxy"}'],
+      ['delete', 'proxy'],
+    ];
+    for (const args of writes) {
+      consoleError.mockClear();
+      await runSurfaceCommand('connections', args);
+      expect(consoleError.mock.calls).toEqual([[target]]);
+    }
+    consoleError.mockClear();
+    await runSurfaceCommand('connections', ['list']);
+    expect(consoleError).not.toHaveBeenCalled();
+    // --verbose already discloses the target; the write must not repeat it.
+    await runSurfaceCommand('connections', ['delete', 'proxy', '--verbose']);
+    expect(consoleError.mock.calls).toEqual([[target]]);
+  });
+
   test('lists, reads, and creates tasks through the generic task resource', async () => {
     fetchMock
       .mockResolvedValueOnce(

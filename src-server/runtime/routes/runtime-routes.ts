@@ -1,5 +1,6 @@
 import { humanPrincipal as deploymentHumanPrincipal } from '@kontourai/station-contracts/principal';
 import { sessionLifecycleOutcome } from '@kontourai/station-contracts/session-lifecycle';
+import { TASK_ROOM_CONTEXT_VERSION } from '@kontourai/station-contracts/task-room-work';
 import { createBrowserRoutes } from '../../routes/browser.js';
 import { createBrowserAgentRoutes } from '../../routes/browser-agent.js';
 import { createDeviceHostRoutes } from '../../routes/device-hosts.js';
@@ -93,6 +94,7 @@ import { ProjectMembershipRefusal } from '../../services/projects/project-member
 import { guardProjectResponse } from '../../services/projects/project-response-guard.js';
 import { ProjectSharedTaskService } from '../../services/projects/project-shared-task-service.js';
 import type { ProjectSharedTaskStore } from '../../services/projects/project-shared-task-store.js';
+import { createTaskRoomContext } from '../../services/projects/task-room-context.js';
 import {
   currentRequestReadAuthority,
   runAsStationKnowledgeIndexer,
@@ -991,7 +993,7 @@ export function createPersonalTaskAnswerSupportModule(
     | 'projectService'
     | 'orchestrationService'
     | 'configLoader'
-    | 'appConfig'
+    | 'getLiveAppConfig'
   >,
 ): TaskAnswerSupportModule {
   return new TaskAnswerSupportModule({
@@ -1049,7 +1051,7 @@ export function createPersonalTaskAnswerSupportModule(
         ),
         veritasEvidenceDir:
           workspacePath &&
-          context.appConfig.surfaceTrustFromVeritasEvidence !== false
+          context.getLiveAppConfig().surfaceTrustFromVeritasEvidence !== false
             ? [
                 join(workspacePath, STATION_ARTIFACT_ROOTS.veritas, 'evidence'),
                 join(workspacePath, STATION_LEGACY_ROOTS.veritas, 'evidence'),
@@ -1219,6 +1221,54 @@ export function configureRuntimeRoutes(
           requesterId: principal.id,
         }
       : undefined;
+  };
+  const resolveTaskRoomContext = async (
+    taskId: string,
+    request: Request,
+    principal: PrincipalRef,
+  ) => {
+    const scope = await authorizeTaskRoomWork(taskId, request, principal);
+    const task = context.taskGraphService.readTaskView(taskId);
+    if (
+      !scope ||
+      !task ||
+      task.createdAt !== scope.taskCreatedAt ||
+      !projectTaskRoomRuntime
+    )
+      return undefined;
+    const title = task.title,
+      description = task.description;
+    const document = await projectTaskRoomRuntime.document({ taskId, request });
+    const current = await authorizeTaskRoomWork(taskId, request, principal);
+    const currentTask = context.taskGraphService.readTaskView(taskId);
+    if (
+      !currentTask ||
+      currentTask.title !== title ||
+      currentTask.description !== description ||
+      !current ||
+      current.projectId !== scope.projectId ||
+      current.projectSlug !== scope.projectSlug ||
+      current.roomProjectId !== scope.roomProjectId ||
+      current.taskCreatedAt !== scope.taskCreatedAt ||
+      current.requesterId !== scope.requesterId ||
+      (document.kind !== 'snapshot' && document.kind !== 'delta') ||
+      typeof document.revision !== 'string' ||
+      typeof document.text !== 'string'
+    )
+      return undefined;
+    return createTaskRoomContext(
+      {
+        taskId,
+        projectId: scope.projectId,
+        taskCreatedAt: scope.taskCreatedAt,
+      },
+      {
+        title,
+        description,
+        documentRevision: document.revision,
+        text: document.text,
+      },
+    );
   };
   let pluginDraftService: PluginDraftService | undefined;
   let projectTaskRoomLifecycleReady: Promise<void> = Promise.resolve();
@@ -2969,8 +3019,8 @@ export function configureRuntimeRoutes(
     // environment variable — instead of a direct env read, so the Settings
     // row ("Device helper URL", with its provenance badge) and the Device
     // pane's setup copy name the same source the runtime actually consults.
-    // Live config first (a user can change the setting between boots); the
-    // boot snapshot is the fallback when no live reader answers.
+    // The helper service binds this address at construction. A saved change
+    // applies after a Station restart, as the Settings row states.
     const configuredDeviceHub = resolveEffectiveAppSetting(
       'mobileDeviceHubUrl',
       { config: context.getLiveAppConfig?.() ?? context.appConfig },
@@ -3750,7 +3800,16 @@ export function configureRuntimeRoutes(
           const result = await taskRoomWork.list(taskId, authorize);
           if (result.kind !== 'available') return result;
           await roomRuntime.reconcileAgentLifecycles([taskId]);
-          return (await authorize()) ? result : { kind: 'refused' as const };
+          const contextSnapshot = principal
+            ? await resolveTaskRoomContext(taskId, request, principal)
+            : undefined;
+          return (await authorize())
+            ? {
+                ...result,
+                contextVersion: TASK_ROOM_CONTEXT_VERSION,
+                context: contextSnapshot ?? null,
+              }
+            : { kind: 'refused' as const };
         },
       }),
     );
@@ -3961,7 +4020,11 @@ export function configureRuntimeRoutes(
           remoteStations,
         ),
       ),
-      taskRoomWork: { module: taskRoomWork, authorize: authorizeTaskRoomWork },
+      taskRoomWork: {
+        module: taskRoomWork,
+        authorize: authorizeTaskRoomWork,
+        resolveContext: resolveTaskRoomContext,
+      },
       // #485: the receiver's durable attempt-claim owner, threaded through
       // the route seam into the tool's receiver-local path.
       delegationAttemptClaimStore: context.delegationAttemptClaims,
@@ -4029,6 +4092,17 @@ export function configureRuntimeRoutes(
       ),
       hydrateStagedAttachments: (principal, references, binding) =>
         attachmentStaging.bindAndHydrate(
+          {
+            principalId: principal.id,
+            ...(currentTenantExecutionContext()
+              ? { tenantId: currentTenantExecutionContext()!.tenantId }
+              : {}),
+          },
+          references,
+          binding,
+        ),
+      releaseStagedAttachments: (principal, references, binding) =>
+        attachmentStaging.releaseBinding(
           {
             principalId: principal.id,
             ...(currentTenantExecutionContext()
@@ -5527,7 +5601,7 @@ export function configureRuntimeRoutes(
           // so Trust lights up wherever Veritas has run.
           const veritasEvidenceDir =
             workspacePath &&
-            context.appConfig.surfaceTrustFromVeritasEvidence !== false
+            context.getLiveAppConfig().surfaceTrustFromVeritasEvidence !== false
               ? [
                   join(
                     workspacePath,

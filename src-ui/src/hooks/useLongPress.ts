@@ -75,7 +75,7 @@ export function useLongPress({
   /** The completed hold, given the element it was held on (for anchoring). */
   onLongPress: (trigger: HTMLElement) => void;
   /** The ordinary press — not called for the click that ends a hold. */
-  onClick: () => void;
+  onClick: (event: React.MouseEvent<HTMLElement>) => void;
 }): LongPressHandlers {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const origin = useRef<{ x: number; y: number } | null>(null);
@@ -201,7 +201,7 @@ export function useLongPress({
         event.preventDefault();
         return;
       }
-      onClick();
+      onClick(event);
     },
     onContextMenu: (event) => {
       event.preventDefault();

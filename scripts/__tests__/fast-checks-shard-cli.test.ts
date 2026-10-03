@@ -124,17 +124,18 @@ function aggregateFixture({
   ],
   receipt = (_index: number, value: Record<string, unknown>) => value,
   omit = [] as number[],
+  shardCount = 4,
 } = {}) {
   const { directory, head } = repository();
-  const plan = planFor(head, files);
+  const plan = { ...planFor(head, files), shardCount };
   const planText = `${JSON.stringify(plan, null, 2)}\n`;
   mkdirSync(join(directory, 'plan'));
   writeFileSync(join(directory, 'plan/fast-checks-plan.json'), planText);
-  for (let index = 1; index <= FAST_CHECKS_SHARD_COUNT; index += 1) {
+  for (let index = 1; index <= shardCount; index += 1) {
     if (omit.includes(index)) continue;
     const slice = sliceFastChecksPlan(plan, {
       index,
-      count: FAST_CHECKS_SHARD_COUNT,
+      count: shardCount,
     });
     const artifact = join(
       directory,
@@ -147,7 +148,7 @@ function aggregateFixture({
         receipt(index, {
           schemaVersion: 1,
           kind: FAST_CHECKS_RECEIPT_KIND,
-          shard: `${index}/${FAST_CHECKS_SHARD_COUNT}`,
+          shard: `${index}/${shardCount}`,
           runId: '4242',
           runAttempt: 1,
           headSha: head,
@@ -176,10 +177,19 @@ function aggregate(directory: string, needs: unknown = successNeeds) {
 }
 
 describe('fast-checks aggregator exit status (child process)', () => {
-  test('passes when every part succeeded and every shard receipt verifies', () => {
-    const result = aggregate(aggregateFixture());
-    expect(result.status, result.stderr).toBe(0);
-    expect(result.stdout).toContain('[fast-checks] PASS');
+  test.each([1, 2, 4])(
+    'passes with %i planned shards and no artifacts for omitted legs',
+    (shardCount) => {
+      const result = aggregate(aggregateFixture({ shardCount }));
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.stdout).toContain('[fast-checks] PASS');
+    },
+  );
+
+  test('rejects a plan exceeding the four-runner cap', () => {
+    const result = aggregate(aggregateFixture({ shardCount: 5 }));
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('plan exceeds the maximum 4 shards');
   });
 
   test('fails when a shard failed', () => {
@@ -218,7 +228,6 @@ describe('fast-checks aggregator exit status (child process)', () => {
         'user.name=fast-checks',
         'commit',
         '--allow-empty',
-        '--no-verify',
         '-q',
         '-m',
         'moved on',
@@ -809,12 +818,9 @@ describe('plan-level empty-discovery escalation (#2709 review F2)', () => {
         '-c',
         'user.name=fast-checks',
         'commit',
-        // A disposable fixture commit: the repository's own hooks are for
-        // authored changes, not this throwaway worktree.
-        '--no-verify',
         '-q',
         '-m',
-        'orphan fixture',
+        'test: orphan fixture',
       );
       const headSha = git(worktree, 'rev-parse', 'HEAD');
       // Workspace packages link to the primary checkout on purpose; the

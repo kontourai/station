@@ -9,14 +9,14 @@
 
   "limits": "Source and mocked fixtures; no real browser push service, phone display, Windows key-file ACL, native push or hosted enablement qualification.",
 
-  "document": {"digest":"1ad4a7e9ded295937ec60443cc7a3ced1414bd92fcb17aab3aa382fdfd53e5a0","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+  "document": {"digest":"0cbcb969978124e0abd486c88b650cba7d5c7ee64c571f214c3bf2a21decfcd6","revision":"f0a0b5b5277589e998f5a7e08e7c7fc2229c6b5f"},
 
   "sources": [
-    {"path":"packages/connect/src/react/connection-manager-modal/ConnectionListPanel.tsx","digest":"5c113e440ff60d70cf1904f8e53c681d465c39211de98f948c3d9996c42a2a61","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+    {"path":"packages/connect/src/react/connection-manager-modal/ConnectionListPanel.tsx","digest":"bcae3e6dcbe2ebff7d674500a8a19d96e9bf73fff23b6fac3fa537959458aa15","revision":"ae4a861e2c29da739f863b17078c7b5a0a7ca326"},
 
     {"path":"packages/connect/src/react/connection-manager-modal/PairedDevicesPanel.tsx","digest":"b8ccfa4cb9a801363e1e61457e01cd8f8c97c6c70ad8679863d6c22f3da1a5ff","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
-    {"path":"packages/connect/src/react/ConnectionManagerModalContent.tsx","digest":"7630d2fb80f1b276380fe77d10fde800259aad3a67c0412293dc50547dd2a43c","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+    {"path":"packages/connect/src/react/ConnectionManagerModalContent.tsx","digest":"f6c7ef50e01865453b0bad6b05abb11b715c84bf05e789273b92b920e93b4058","revision":"9dbe4f65b46fcab127f36e9d878a2c535f381fec"},
 
     {"path":"packages/contracts/src/notification-preferences.ts","digest":"913dd3f26b26c67550aaae1914c4c8cbe850b2866d70ae40c322b62523bb9be1","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
@@ -36,7 +36,7 @@
 
     {"path":"src-server/runtime/routes/runtime-route-support.ts","digest":"6a4c97a6eb7f6bbce23da80e037ffb76ca1da14f53e54b2a934a4e64e60f2052","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"e54cf49af965f2acabb5a7a97caead30fc8e4e3b619f5dea1cb7f6a464b2d901","revision":"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac"},
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"90e94e3a617cb7c9642c029f8dd1c58fbebeca19e29dbd1b097af41952fe4b93","revision":"cf12c0d848d0dc068f3dcaa530e9a1f213618834"},
 
     {"path":"src-server/services/notifications/agent-activity-eligibility.ts","digest":"a5685997c8eabaf0530be90935a564235cef1abf2c18c5ef5abb5fe264863727","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
@@ -60,7 +60,7 @@
 
     {"path":"src-server/services/notifications/web-push-service.ts","digest":"8029e96b806624cdbbb2a3d12bcbd285dee94b8e4cfbdd9ecc06a77138c10e05","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
-    {"path":"src-server/services/projects/attention-projection.ts","digest":"42a730f47a8961bf89593e2c8e0f5b0347823a9ae5fc54c6e2267398399502ec","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
+    {"path":"src-server/services/projects/attention-projection.ts","digest":"b7c9e2ff4537606981e0415023039ed89cb9033175e3140cb7eef50df4fb6763","revision":"42811285ef04d069daf576d46253ac833573f848"},
 
     {"path":"src-server/services/ssh/client-connection-presence.ts","digest":"b325fd2ef3e349d46d9dadec9631eef93cb6d895bd3a483cd823ca588b1d793d","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
 
@@ -70,17 +70,21 @@
 
     {"path":"src-ui/public/sw.js","digest":"411d96698a8c13cd73c04887dfbcababc5de8b82a3ed0909ab3d3cdcae0cc263","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
-    {"path":"src-ui/src/hooks/__tests__/usePushNotifications.test.tsx","digest":"f02dc51bf465c713e76ca921057246f923f8c20798e78079a44d286d322d41fc","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+    {"path":"src-ui/src/hooks/__tests__/usePushNotifications.test.tsx","digest":"0c92ab2579aec6c35b649b023d1ce743f467946e14656a042df36868f68f4c14","revision":"f0a0b5b5277589e998f5a7e08e7c7fc2229c6b5f"},
 
     {"path":"src-ui/src/hooks/useFeatureSettings.ts","digest":"97b65c542aadec23d2ec6dc926e4912adfc96852fed1694a0dd5f59134d7b56d","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
-    {"path":"src-ui/src/hooks/usePushNotifications.ts","digest":"836ba76645a4c7f6637c76596993409d01b8ed1342d8783956de5418e4ea2be0","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+    {"path":"src-ui/src/hooks/usePushNotifications.ts","digest":"e24fae797ee62ddf6b723c57d47f5c86bd7ae218e17a5175126a90156680a61b","revision":"f0a0b5b5277589e998f5a7e08e7c7fc2229c6b5f"},
 
-    {"path":"src-ui/src/hooks/useServerEvents.ts","digest":"6288bb72ce5a3f87626a5966cf6917dbe9ae46ac5c504a9bdd2cc14054dbcb07","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+    {"path":"src-ui/src/hooks/useServerEvents.ts","digest":"6da13cb17193d6d92d86652165fed3dd3c5f7925cea54124a7a242be930d340a","revision":"c0f323ddab456dba701685b71752a7312ebcb856"},
 
-    {"path":"src-ui/src/views/settings/PairingSection.tsx","digest":"e1a62de74a2dfc8b032b358b1ca6b7f29322c182b8619507bf3a5e0882d7324c","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+    {"path":"src-ui/src/views/settings/PairingSection.tsx","digest":"8e1e2856247d3dd539e45e28a108941c2e504d3dcb13b5c774b1c251079d2a63","revision":"d6a3158c22a62d9530592c6366a1624790ee9401"},
 
-    {"path":"src-ui/src/views/settings/VoiceFeaturesSection.tsx","digest":"a1f688fa7b6256ecdeb6b28c9f0d25324ce815fdbcd0697ac60925a16b2e48cf","revision":"42491ca6bab31b1365b33e3190c171819881eb72"}
+    {"path":"src-ui/src/views/settings/VoiceFeaturesSection.tsx","digest":"0f372be366bf8beddcfb361e71bd3298faa08a8981aad76127906ad65a9d9f09","revision":"d6a3158c22a62d9530592c6366a1624790ee9401"},
+
+    {"path":"src-ui/src/contexts/PushNotificationsContext.tsx","digest":"433c21d236368caa253a3d560400b3d930eaba9203ad76c8e3bbaa9d93c2c2d1","revision":"d6a3158c22a62d9530592c6366a1624790ee9401"},
+
+    {"path":"src-ui/src/App.tsx","digest":"8adeb594b372c2fb6dfa134c8f7ed472e56afae50f78a3becf59e4c3d272edf5","revision":"d6a3158c22a62d9530592c6366a1624790ee9401"}
   ],
 
   "checks": [
