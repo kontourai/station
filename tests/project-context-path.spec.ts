@@ -1,3 +1,8 @@
+import {
+  agentId,
+  engineConnectionId,
+} from '@kontourai/station-contracts/agent-identity';
+import type { EnrichedAgentProjection } from '@kontourai/station-contracts/enriched-agent';
 import type {
   BrowserPaneAccessView,
   BrowserSessionView,
@@ -56,6 +61,21 @@ const PROJECTS = [
   },
 ];
 
+// Two ready definitions keep New on the chooser path.
+const AGENTS: EnrichedAgentProjection[] = ['claude', 'claude-alternate'].map(
+  (slug) => ({
+    slug: agentId(slug),
+    name: slug === 'claude' ? 'Claude Runtime' : 'Alternate Claude Runtime',
+    description: 'Connected Claude test runtime',
+    source: 'local',
+    model: 'model-selected',
+    execution: {
+      agentConnectionId: engineConnectionId('claude'),
+      modelId: 'model-selected',
+    },
+  }),
+);
+
 async function mockShell(page: Page) {
   await page.addInitScript(() => {
     localStorage.setItem('station-connect-connections-active', 'ctx');
@@ -82,19 +102,7 @@ async function mockShell(page: Page) {
       return route.fulfill(
         json({
           success: true,
-          data: [
-            {
-              slug: 'claude',
-              name: 'Claude Runtime',
-              description: 'Connected Claude test runtime',
-              source: 'local',
-              model: 'model-selected',
-              execution: {
-                agentConnectionId: 'claude',
-                modelId: 'model-selected',
-              },
-            },
-          ],
+          data: AGENTS,
         }),
       );
     if (path === '/api/connections/agents')
