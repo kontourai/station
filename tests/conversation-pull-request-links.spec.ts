@@ -57,7 +57,7 @@ createRoot(document.getElementById('root')).render(<QueryClientProvider client={
   const styles = await build({
     stdin: {
       contents:
-        '@import "./src-ui/src/index.css";@import "./src-ui/src/components/pull-requests/ConversationPullRequestLinks.css";@import "./src-ui/src/components/coding-layout/PullRequestDependencyStacks.css";',
+        '@import "./src-ui/src/index.css";@import "./src-ui/src/components/IconButton.css";@import "./src-ui/src/components/ActionOverflowMenu.css";@import "./src-ui/src/components/header/HeaderMenu.css";@import "./src-ui/src/components/pull-requests/pull-request-chips.css";@import "./src-ui/src/components/pull-requests/PullRequestRow.css";@import "./src-ui/src/components/pull-requests/LinkPullRequestField.css";@import "./src-ui/src/components/pull-requests/ConversationPullRequestLinks.css";@import "./src-ui/src/components/coding-layout/PullRequestDependencyStacks.css";',
       resolveDir: ROOT,
       loader: 'css',
     },

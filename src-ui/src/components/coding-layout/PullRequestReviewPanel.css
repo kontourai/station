@@ -89,9 +89,10 @@
   min-width: 0;
   overflow-wrap: anywhere;
 }
-/* A row's two icons (add to chat, open details) show on hover and on focus
-   within the row on a fine pointer; a coarse pointer has no hover, so there
-   they are always drawn. */
+/* A row's two icons (add to chat, open details): dim at rest, full on the
+   row's hover or focus. Dim rather than hidden, so a finger — which has no
+   hover — still sees them, without a pointer media query of this sheet's
+   own. */
 .pull-request-review__check-tools {
   display: inline-flex;
   align-items: center;
@@ -99,16 +100,14 @@
   flex: none;
   margin-left: auto;
 }
-@media (hover: hover) and (pointer: fine) {
-  .pull-request-review__checks li .pull-request-review__check-tool {
-    opacity: 0;
-  }
-  .pull-request-review__checks li:hover .pull-request-review__check-tool,
-  .pull-request-review__checks
-    li:focus-within
-    .pull-request-review__check-tool {
-    opacity: 1;
-  }
+.pull-request-review__checks li .pull-request-review__check-tool {
+  opacity: 0.45;
+}
+.pull-request-review__checks li:hover .pull-request-review__check-tool,
+.pull-request-review__checks li:focus-within .pull-request-review__check-tool,
+.pull-request-review__checks li .pull-request-review__check-tool:hover,
+.pull-request-review__checks li .pull-request-review__check-tool:focus-visible {
+  opacity: 1;
 }
 /* The state word carries the meaning; the tone only reinforces it. */
 .pull-request-review__check-state {

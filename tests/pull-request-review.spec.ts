@@ -76,7 +76,7 @@ test.beforeAll(async () => {
   const styles = await build({
     stdin: {
       contents:
-        '@import "./src-ui/src/index.css";@import "./src-ui/src/components/coding-layout/PullRequestReviewPanel.css";@import "./src-ui/src/components/coding-layout/DiffPanel.css";@import "./src-ui/src/components/chat/chat.css";',
+        '@import "./src-ui/src/index.css";@import "./src-ui/src/components/IconButton.css";@import "./src-ui/src/components/ActionRow.css";@import "./src-ui/src/components/ActionOverflowMenu.css";@import "./src-ui/src/components/header/HeaderMenu.css";@import "./src-ui/src/components/pull-requests/pull-request-chips.css";@import "./src-ui/src/components/coding-layout/PullRequestReviewPanel.css";@import "./src-ui/src/components/coding-layout/DiffPanel.css";@import "./src-ui/src/components/chat/chat.css";',
       resolveDir: ROOT,
       loader: 'css',
     },
