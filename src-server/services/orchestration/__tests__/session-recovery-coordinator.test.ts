@@ -656,9 +656,9 @@ describe('SessionRecoveryCoordinator', () => {
 
     expect(restartResume).toHaveBeenCalledOnce();
     expect(sendTurn).not.toHaveBeenCalled();
-    expect(
-      coordinator.latestProjection('thread-limit-profile'),
-    ).toMatchObject({ outcome: 'resumed' });
+    expect(coordinator.latestProjection('thread-limit-profile')).toMatchObject({
+      outcome: 'resumed',
+    });
     await coordinator.dispose();
     store.close();
     vi.useRealTimers();

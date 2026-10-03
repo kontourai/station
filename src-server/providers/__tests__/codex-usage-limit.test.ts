@@ -83,7 +83,11 @@ function usageLimitStop(
   threadId: string,
   codexErrorInfo: unknown = 'usageLimitExceeded',
 ) {
-  const error = { message: LIMIT_MESSAGE, codexErrorInfo, additionalDetails: null };
+  const error = {
+    message: LIMIT_MESSAGE,
+    codexErrorInfo,
+    additionalDetails: null,
+  };
   return [
     {
       method: 'error',

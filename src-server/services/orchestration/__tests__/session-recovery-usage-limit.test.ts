@@ -50,10 +50,12 @@ describe('#3157 usage-limit resume', () => {
     store: EventStore,
     autoResume: () => boolean | Promise<boolean>,
   ) {
+    let sent = 0;
     const dispatch = vi.fn<RecoveryDispatchAdapter['dispatch']>(
       async ({ replay }) => {
         replay.signal.throwIfAborted();
-        return { kind: 'accepted', turnId: `resumed-${dispatch.mock.calls.length}` };
+        sent += 1;
+        return { kind: 'accepted', turnId: `resumed-${sent}` };
       },
     );
     const coordinator = new SessionRecoveryCoordinator({
@@ -343,7 +345,10 @@ describe('#3157 usage-limit resume', () => {
     vi.useFakeTimers({ now: STOPPED_AT });
     const { store } = openStore();
     const { coordinator, dispatch } = coordinatorFor(store, () => true);
-    stopOnUsageLimit(coordinator, store, { usageLimit: true, scope: 'account' });
+    stopOnUsageLimit(coordinator, store, {
+      usageLimit: true,
+      scope: 'account',
+    });
     await vi.advanceTimersByTimeAsync(48 * 60 * 60 * 1_000);
     expect(dispatch).not.toHaveBeenCalled();
     expect(coordinator.latestProjection(THREAD)).toMatchObject({

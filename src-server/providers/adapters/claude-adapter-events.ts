@@ -38,11 +38,6 @@ import {
 } from './claude-result-outcome.js';
 import { claudeSourceResumeCursor } from './claude-resume-cursor.js';
 import {
-  type ClaudeUsageLimitState,
-  observeClaudeRateLimit,
-  takeClaudeUsageLimitDetails,
-} from './claude-usage-limit.js';
-import {
   type ClaudeSdkTurnContext,
   type ClaudeSdkTurnLedger,
   claudeTurnTerminalMetadata,
@@ -57,6 +52,11 @@ import {
   resolveClaudeResultTarget,
   settleClaudeResultTarget,
 } from './claude-sdk-turns.js';
+import {
+  type ClaudeUsageLimitState,
+  observeClaudeRateLimit,
+  takeClaudeUsageLimitDetails,
+} from './claude-usage-limit.js';
 import {
   type ParagraphBoundaryState,
   withParagraphBreak,

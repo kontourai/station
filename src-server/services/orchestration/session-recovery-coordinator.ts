@@ -665,7 +665,9 @@ export class SessionRecoveryCoordinator {
 
   private trackClaimAndResume(fingerprint: string): void {
     if (!this.options.autoResume) {
-      this.enqueueLifecycle(fingerprint, () => this.claimAndResume(fingerprint));
+      this.enqueueLifecycle(fingerprint, () =>
+        this.claimAndResume(fingerprint),
+      );
       return;
     }
     // #3157: the setting is read before the claim's serialized turn, so the
@@ -1098,7 +1100,9 @@ export class SessionRecoveryCoordinator {
       source &&
       store
         .conversationSessionIds(intent.threadId)
-        .map((sessionId) => store.latestEventByMethod(sessionId, 'turn.started'))
+        .map((sessionId) =>
+          store.latestEventByMethod(sessionId, 'turn.started'),
+        )
         .some(
           (latest) =>
             latest !== undefined &&

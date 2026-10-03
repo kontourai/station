@@ -24,9 +24,7 @@ import { recordClaudeTurnDispatched } from '../adapters/claude-sdk-turns.js';
 const SESSION = '11111111-1111-4111-8111-111111111111';
 const RESETS_AT_SECONDS = Date.parse('2026-09-25T01:10:00.000Z') / 1_000;
 
-function rejectedWindow(
-  overrides: Record<string, unknown> = {},
-): SDKMessage {
+function rejectedWindow(overrides: Record<string, unknown> = {}): SDKMessage {
   return {
     type: 'rate_limit_event',
     rate_limit_info: {
@@ -141,7 +139,9 @@ describe('#3157 Claude usage-limit stop', () => {
       eventStore: store,
       // The Claude adapter's own declaration (claude-adapter.ts metadata).
       adapterForProvider: () =>
-        ({ metadata: { recovery: { sameSession: true, maxAttempts: 1 } } }) as any,
+        ({
+          metadata: { recovery: { sameSession: true, maxAttempts: 1 } },
+        }) as any,
       recoveryDispatchAdapter: { dispatch },
       now: () => new Date('2026-09-24T21:00:00.000Z'),
     });
@@ -211,7 +211,7 @@ describe('#3157 Claude usage-limit stop', () => {
     expect(projection).not.toHaveProperty('dueAt');
   });
 
-  test("a blocking_limit result is a usage limit even without a window report", () => {
+  test('a blocking_limit result is a usage limit even without a window report', () => {
     const record = claudeRecord('thread-blocking');
     const events = drive(record, [
       limitedResult({ terminal_reason: 'blocking_limit' }),

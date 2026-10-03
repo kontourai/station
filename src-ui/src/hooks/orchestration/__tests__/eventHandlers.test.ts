@@ -253,6 +253,35 @@ describe('handleOrchestrationEvent — station#3451 finding 7 (queue drain on ru
     ]);
   });
 
+  // #3157: the failed turn stopped on a usage limit. Draining would send the
+  // follow-up into the same limit and retire the resume waiting for the reset.
+  test('a usage-limit runtime.error holds the queued message', () => {
+    activeChatsStore.updateChat(threadId, {
+      queuedMessages: ['queued follow-up'],
+    });
+
+    handleOrchestrationEvent(
+      'http://api',
+      event('runtime.error', {
+        threadId,
+        message: "You've hit your usage limit.",
+        provider: 'codex',
+        code: 'usageLimitExceeded',
+        retriable: false,
+        details: {
+          codexErrorInfo: 'usageLimitExceeded',
+          usageLimit: true,
+          scope: 'account',
+          resetAt: '2026-07-29T05:00:00.000Z',
+        },
+      }),
+    );
+
+    expect(activeChatsStore.getSnapshot()[threadId].queuedMessages).toEqual([
+      'queued follow-up',
+    ]);
+  });
+
   // Negative control: a DEFINITIVE (non-retriable) codex runtime.error is
   // NOT deferred and must still drain.
   test('a definitive (non-retriable) codex runtime.error still drains', () => {

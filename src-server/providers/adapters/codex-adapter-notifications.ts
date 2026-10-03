@@ -430,6 +430,14 @@ export function handleCodexNotification(
       if (errorTurnId && !willRetry) {
         markCodexTurnTerminal(record, errorTurnId);
       }
+      // #3157: the same usage-limit facts the turn's failed `turn/completed`
+      // carries, so both terminals arm one recovery and hold the queue.
+      const usageLimit = willRetry
+        ? undefined
+        : codexUsageLimitDetails(
+            record,
+            extractString(notification.params.error.codexErrorInfo),
+          );
       publish({
         eventId: crypto.randomUUID(),
         provider: 'codex',
@@ -446,6 +454,7 @@ export function handleCodexNotification(
           additionalDetails: extractString(
             notification.params.error.additionalDetails,
           ),
+          ...usageLimit,
         },
       });
       return;

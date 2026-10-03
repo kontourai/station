@@ -192,6 +192,19 @@ export function handleOrchestrationEvent(
  * through the Station this frame came from. A chat the event already routes
  * to is drained by its own handler, exactly as before.
  */
+/**
+ * #3157: a usage-limit stop ends its turn but is no cue for the queue. The
+ * provider would refuse the follow-up, and a newer turn retires the resume
+ * Station holds for the reset. The queue waits for the resumed turn's end, or
+ * for the user (Send now).
+ */
+function heldByUsageLimit(event: OrchestrationEvent): boolean {
+  return (
+    event.method === 'runtime.error' &&
+    (event.details as { usageLimit?: unknown } | undefined)?.usageLimit === true
+  );
+}
+
 function drainUnroutedConversationTurnEnd(
   apiBase: string,
   event: OrchestrationEvent,
@@ -200,7 +213,9 @@ function drainUnroutedConversationTurnEnd(
   if (!conversation || conversation.currentSessionId !== event.threadId) return;
   const endsTurn =
     event.method === 'turn.completed' ||
-    (event.method === 'runtime.error' && !isDeferredRetriableTurnError(event));
+    (event.method === 'runtime.error' &&
+      !isDeferredRetriableTurnError(event) &&
+      !heldByUsageLimit(event));
   if (!endsTurn) return;
   if (activeChatsStore.getChatKeyForExecutionSession(event.threadId)) return;
   const chatKey = activeChatsStore.getChatKeyForExecutionSession(
@@ -281,6 +296,7 @@ function dispatchProjectedOrchestrationEvent(
       // still silently retrying.
       if (
         !isDeferredRetriableTurnError(event) &&
+        !heldByUsageLimit(event) &&
         !isReplayThread(event.threadId)
       ) {
         drainQueuedMessageOnTurnCompleted(
