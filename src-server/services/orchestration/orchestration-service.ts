@@ -6614,7 +6614,7 @@ export class OrchestrationService {
                             : undefined;
                         if (nativeForeground && !turnCorrelation)
                           throw new ForegroundInvocationUnavailableError();
-                        const sendAdapter = async () => {
+                        const sendAdapter = () => {
                           assertInputRequestCurrent();
                           const effect = (prompt?: string) => {
                             if (prompt) {
