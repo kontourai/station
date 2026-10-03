@@ -84,7 +84,7 @@
 
     {"path":"packages/shared/src/types.ts","digest":"fab18c926454048b1723c4e4575be8a5fba438473de42b420def9154a91d63a7","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"pnpm-lock.yaml","digest":"4f9a974bd49f637fd690699b3bcd9b6ce915114eb4f52e2e6bdd5b0f3b699f2a","revision":"ea49cb8678208b9037f8e9ab3ceb2a95fe2647ff"},
+    {"path":"pnpm-lock.yaml","digest":"e5666b03a0bedc8656564f5371ea01b19879ac4a8ed732280e1d0903025de0c5","revision":"fdca33b1896b280299ba72fc70a3c9b9cda7f3af"},
 
     {"path":"src-server/routes/agents/invoke-agent.ts","digest":"158a95a8af0b8a1f4480ad8ebaee68d569048c611f469ab78734c0d52cdd7cca","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

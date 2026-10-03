@@ -7,7 +7,7 @@
 
   "summary": "Reviewed Agent definition, package composition, explicit target/authority, canonical operation/error exports and headless authoring journey.",
 
-  "limits": "Source, bundle and fixture evidence; no live authenticated Station/provider execution or package release.",
+  "limits": "Source, bundle and fixture evidence; no live authenticated Station/provider execution or package release.\n\nMerge anchor history (structural reconciliation only; no semantic approval): source packages/sdk/package.json ours={\"digest\":\"14ca105046b127182cd13a45959cad3450f8ff4e49a4bfd467bef75ea2f65de8\",\"revision\":\"efa773acac88792cda31595f9afca4a37d3efebc\"}; origin/main={\"digest\":\"42fe4326a8a49db222c65e5536cbdf7a2bd1885671e292fcb7fd454dc79249db\",\"revision\":\"fdca33b1896b280299ba72fc70a3c9b9cda7f3af\"}. The merged source bytes require supported review after the merge commit.",
 
   "document": {"digest":"e83934b1f14c3a3a2fe217f419ef7e3a12167c2c73ba1bfaadf59562ccc47cd3","revision":"f72daba9492778d9418abbf9730b6482b73a300c"},
 

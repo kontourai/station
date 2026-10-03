@@ -30,7 +30,7 @@
 
     {"path":"examples/fieldwork-review/src/index.tsx","digest":"7abbde486126b089a3110f2babb5136034b30777ea054b208dfa6db701e2c3a7","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
-    {"path":"pnpm-lock.yaml","digest":"4f9a974bd49f637fd690699b3bcd9b6ce915114eb4f52e2e6bdd5b0f3b699f2a","revision":"ea49cb8678208b9037f8e9ab3ceb2a95fe2647ff"},
+    {"path":"pnpm-lock.yaml","digest":"e5666b03a0bedc8656564f5371ea01b19879ac4a8ed732280e1d0903025de0c5","revision":"fdca33b1896b280299ba72fc70a3c9b9cda7f3af"},
 
     {"path":"src-server/routes/plugins/plugin-lifecycle-routes.ts","digest":"525a68ea56ce10d8f66c64e398f16efd90d63b4b5f70208d52d708fd73239b44","revision":"efa773acac88792cda31595f9afca4a37d3efebc"},
 
