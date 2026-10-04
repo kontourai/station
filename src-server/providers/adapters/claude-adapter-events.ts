@@ -26,6 +26,7 @@ import {
 import {
   type ClaudeChildWorkContext,
   type ClaudeChildWorkState,
+  observeClaudeSubagentReply,
   observeClaudeTaskNotification,
   observeClaudeTaskProgress,
   observeClaudeTaskStarted,
@@ -259,6 +260,8 @@ export interface ClaudeMessageState extends ClaudeUsageLimitState {
    * sibling subagent's request stays answerable.
    */
   onTaskSettled?: (taskId: string) => void;
+  /** #3163: the CLAUDE_CONFIG_DIR the engine was spawned with, when set. */
+  claudeConfigHome?: string;
   /**
    * #2457: the session's child work (its subagents) as the contract's
    * registry. Owned by `claude-adapter-child-work.ts`.
@@ -1076,8 +1079,12 @@ export function mapClaudeSdkMessage({
     // Surface top-level tool calls as canonical tool.started events so the
     // UI shows "Running Bash…"-style activity immediately, even for fast
     // tools that never emit SDK `tool_progress`. Subagent-internal calls
-    // (`parent_tool_use_id != null`) stay out of the main transcript.
-    if (message.parent_tool_use_id !== null) return;
+    // (`parent_tool_use_id != null`) stay out of the main transcript; their
+    // model is that subagent's own (#3163).
+    if (message.parent_tool_use_id !== null) {
+      observeClaudeSubagentReply(childWorkContext, message);
+      return;
+    }
     const content = message.message?.content;
     if (!Array.isArray(content)) return;
     for (const block of content) {

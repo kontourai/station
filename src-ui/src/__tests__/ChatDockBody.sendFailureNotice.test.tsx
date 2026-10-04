@@ -9,10 +9,11 @@
 
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 
 const agentsMock = vi.hoisted(() => ({ current: [] as any[] }));
+const clearEphemeralMessagesSpy = vi.hoisted(() => vi.fn());
 
 vi.mock('@kontourai/station-connect', () => ({
   useConnections: () => ({
@@ -73,7 +74,7 @@ vi.mock('../components/icons/UserIcon', () => ({
 vi.mock('../contexts/ActiveChatsContext', () => ({
   useActiveChatActions: () => ({
     updateChat: vi.fn(),
-    clearEphemeralMessages: vi.fn(),
+    clearEphemeralMessages: clearEphemeralMessagesSpy,
     addEphemeralMessage: vi.fn(),
   }),
 }));
@@ -111,8 +112,24 @@ vi.mock('../hooks/useTTS', () => ({
 // The composer's own prop is the seam under test here: which notice ChatDockBody
 // hands it. ChatInputArea's rendering of that prop has its own test.
 vi.mock('../components/chat/ChatInputArea', () => ({
-  ChatInputArea: ({ sendFailureNotice }: { sendFailureNotice?: string }) => (
-    <div data-testid="chat-input-area" data-send-failure={sendFailureNotice} />
+  ChatInputArea: ({
+    sendFailureNotice,
+    queuedRetryNotice,
+  }: {
+    sendFailureNotice?: string;
+    queuedRetryNotice?: { text: string; onDiscard: () => void };
+  }) => (
+    <div
+      data-testid="chat-input-area"
+      data-send-failure={sendFailureNotice}
+      data-queued-retry={queuedRetryNotice?.text}
+    >
+      {queuedRetryNotice && (
+        <button type="button" onClick={queuedRetryNotice.onDiscard}>
+          Discard
+        </button>
+      )}
+    </div>
   ),
 }));
 
@@ -122,6 +139,8 @@ vi.mock('../components/chat/QueuedMessages', () => ({
 
 import {
   ChatDockBody,
+  ephemeralAfterQueueDiscard,
+  latestQueuedRetryNotice,
   latestSendFailureLine,
 } from '../components/chat-dock/ChatDockBody';
 import type { ChatSession } from '../types';
@@ -309,5 +328,101 @@ describe('ChatDockBody send-failure notice', () => {
     );
     await screen.findByTestId('chat-input-area');
     expect(notice()).toBeNull();
+  });
+});
+
+const QUEUED_TEXT = "Send wasn't confirmed — queued to retry automatically";
+const queuedRetry = (action = { label: 'Discard', handler: vi.fn() }) => ({
+  role: 'system',
+  content: QUEUED_TEXT,
+  timestamp: 2,
+  ephemeral: true,
+  queuedRetry: true,
+  action,
+});
+
+describe('latestQueuedRetryNotice', () => {
+  test('is the queued notice and its action, only while the chat is queued', () => {
+    const notice = queuedRetry();
+    expect(latestQueuedRetryNotice([notice], true)).toEqual({
+      line: QUEUED_TEXT,
+      action: notice.action,
+    });
+    expect(latestQueuedRetryNotice([notice], false)).toBeUndefined();
+  });
+
+  test('a send failure is not a queued notice, and a queued notice is not a send failure', () => {
+    expect(
+      latestQueuedRetryNotice([failure('**Could not send**', 1)], true),
+    ).toBeUndefined();
+    expect(latestSendFailureLine([queuedRetry()])).toBeUndefined();
+  });
+
+  test('a later accepted send clears it', () => {
+    expect(
+      latestQueuedRetryNotice(
+        [queuedRetry(), { role: 'user', content: 'again', timestamp: 3 }],
+        true,
+      ),
+    ).toBeUndefined();
+  });
+});
+
+describe('ChatDockBody queued-retry notice', () => {
+  test('hands the composer the notice, and Discard runs the transcript action then drops the notice', async () => {
+    const handler = vi.fn();
+    clearEphemeralMessagesSpy.mockClear();
+    renderDock(
+      buildSession({
+        status: 'queued',
+        messages: [
+          { role: 'user', content: 'hello', timestamp: 1 },
+          queuedRetry({ label: 'Discard', handler }),
+        ],
+      } as Partial<ChatSession>),
+    );
+    const area = await screen.findByTestId('chat-input-area');
+    expect(area.getAttribute('data-queued-retry')).toBe(QUEUED_TEXT);
+    // The transcript renders its own Discard; this is the composer's.
+    fireEvent.click(within(area).getByRole('button', { name: 'Discard' }));
+    expect(handler).toHaveBeenCalledOnce();
+    expect(clearEphemeralMessagesSpy).toHaveBeenCalledWith('pill-session');
+  });
+
+  test('hands the composer nothing once the chat is no longer queued', async () => {
+    renderDock(
+      buildSession({
+        status: 'idle',
+        messages: [queuedRetry()],
+      } as Partial<ChatSession>),
+    );
+    const area = await screen.findByTestId('chat-input-area');
+    expect(area.getAttribute('data-queued-retry')).toBeNull();
+  });
+});
+
+describe('ephemeralAfterQueueDiscard', () => {
+  type Notice = { content: string; queuedRetry?: boolean };
+  const retry: Notice = { queuedRetry: true, content: 'Queued to retry' };
+  const failure: Notice = { content: 'Could not send' };
+  const command: Notice = { content: 'Conversation Statistics' };
+
+  test('keeps everything while a queued turn remains', () => {
+    expect(ephemeralAfterQueueDiscard([retry, failure], 1)).toBeUndefined();
+  });
+
+  test('drops only the queued-retry notice once none remains', () => {
+    expect(ephemeralAfterQueueDiscard([failure, retry, command], 0)).toEqual([
+      failure,
+      command,
+    ]);
+  });
+
+  test('changes nothing when there is no queued-retry notice', () => {
+    expect(ephemeralAfterQueueDiscard([failure, command], 0)).toBeUndefined();
+  });
+
+  test('leaves an empty list when the notice was the only message', () => {
+    expect(ephemeralAfterQueueDiscard([retry], 0)).toEqual([]);
   });
 });

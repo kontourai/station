@@ -258,6 +258,15 @@ interface ChatInputAreaProps {
    * a dock too short for the transcript steps it aside (the notice lives there).
    */
   sendFailureNotice?: string;
+  /**
+   * A send queued to retry by itself, with its Discard. The controls row shows
+   * the button only when the dock is too short to show the transcript that
+   * holds the same notice (`data-composer-priority`). It takes no height of its
+   * own there (the row is already a touch row), so the draft keeps its floor;
+   * the notice's words are its description. A queued send is not a failure, so
+   * this is not the send-failure line.
+   */
+  queuedRetryNotice?: { text: string; onDiscard: () => void };
   onRetryAttachmentStage?: (id: string) => void | Promise<void>;
   onCancelAttachmentStage?: (id: string) => void | Promise<void>;
   onReplaceAttachmentFile?: (id: string, files: File[]) => void | Promise<void>;
@@ -404,6 +413,7 @@ export function ChatInputArea({
   attachmentError = null,
   attachmentNotice,
   sendFailureNotice,
+  queuedRetryNotice,
   attachUnavailableReason,
   onAttachUnavailable,
   removalUnblocksSend = false,
@@ -620,6 +630,8 @@ export function ChatInputArea({
     mentionQuery && mentionAutocompleteAvailable,
   );
 
+  const queuedRetryText = queuedRetryNotice?.text;
+  const queuedRetryDescriptionId = React.useId();
   const composerRootRef = useRef<HTMLDivElement | null>(null);
   // The draft's two-line floor, written by the per-keystroke sizing below and
   // read by the reservation.
@@ -792,6 +804,7 @@ export function ChatInputArea({
     void attachmentError;
     void attachmentNotice;
     void sendFailureNotice;
+    void queuedRetryText;
     const textarea = textareaRef.current;
     if (!textarea) return;
     draftFloorRef.current = sizeDraft(
@@ -808,6 +821,7 @@ export function ChatInputArea({
     input,
     sendBlockedReason,
     sendFailureNotice,
+    queuedRetryText,
     textareaRef,
     visualViewport.height,
   ]);
@@ -1455,6 +1469,20 @@ export function ChatInputArea({
                 <path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7" />
               </svg>
             </ComposerIconAction>
+          )}
+          {queuedRetryNotice && (
+            <span className="chat-input__queued-retry-actions">
+              <button
+                type="button"
+                aria-describedby={queuedRetryDescriptionId}
+                onClick={queuedRetryNotice.onDiscard}
+              >
+                Discard
+              </button>
+              <span id={queuedRetryDescriptionId} className="sr-only">
+                {queuedRetryNotice.text}
+              </span>
+            </span>
           )}
           <span className="chat-controls-row__spacer" />
           <div className="chat-input__send-group">
