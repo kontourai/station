@@ -104,7 +104,10 @@ import {
   type ForegroundInvocationAdmission,
   ForegroundInvocationUnavailableError,
 } from '../services/orchestration/foreground-invocation-admission.js';
-import type { OrchestrationService } from '../services/orchestration/orchestration-service.js';
+import type {
+  OrchestrationService,
+  PeerReportedPendingRequest,
+} from '../services/orchestration/orchestration-service.js';
 import { presentOpenRequest } from '../services/orchestration/request-presentation.js';
 import type { StartOwnerAttribution } from '../services/orchestration/session-owner-attribution.js';
 import { SessionStartIndeterminateError } from '../services/orchestration/session-turn-boundary.js';

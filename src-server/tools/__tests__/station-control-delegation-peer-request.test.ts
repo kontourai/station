@@ -192,7 +192,8 @@ function fixture() {
         candidate.kind === 'review_pending' &&
         candidate.source.threadId === threadId,
     );
-  return { service, threadId, observe, item };
+  const items = async () => (await projection.list()).items;
+  return { service, threadId, observe, item, items };
 }
 
 describe("a paired Station's open request reaches this Station's inbox", () => {
@@ -403,5 +404,64 @@ describe('a decision goes only to the recorded hosting Station', () => {
         .slice(before)
         .some(([url]) => String(url).startsWith(OTHER_PEER_API)),
     ).toBe(false);
+  });
+});
+
+describe("a paired Station's input question with a binding (delegatedInputAnswers)", () => {
+  test('the status read carries the binding, question and caller check to the item', async () => {
+    const { observe, items } = fixture();
+    peerResponse = () =>
+      json({
+        success: true,
+        data: {
+          ...peerSnapshot({
+            id: 'req-question',
+            type: 'input',
+            title: 'Which bucket?',
+            eventId: 'evt-question',
+            body: 'The release needs a destination bucket.',
+            callerCanRespond: true,
+          }),
+          status: 'needs_input',
+        },
+      });
+    await observe();
+    const projected = (await items()).find(
+      (candidate) => candidate.kind === 'needs_input',
+    );
+    expect(projected).toMatchObject({
+      body: 'The release needs a destination bucket.',
+      peerRequestReference: {
+        environmentId: ENVIRONMENT_ID,
+        taskId: TASK_ID,
+        requestId: 'req-question',
+        requestType: 'input',
+        threadId: 'peer-session-1',
+        requestEventId: 'evt-question',
+        callerCanRespond: true,
+      },
+    });
+    expect(projected).not.toHaveProperty('inputReference');
+  });
+
+  test('without an event id (an older paired Station) no binding is exposed', async () => {
+    const { observe, items } = fixture();
+    peerResponse = () =>
+      json({
+        success: true,
+        data: {
+          ...peerSnapshot({ id: 'req-question', type: 'input' }),
+          status: 'needs_input',
+        },
+      });
+    await observe();
+    const projected = (await items()).find(
+      (candidate) => candidate.kind === 'needs_input',
+    );
+    expect(projected?.peerRequestReference).toBeDefined();
+    expect(projected?.peerRequestReference).not.toHaveProperty(
+      'requestEventId',
+    );
+    expect(projected?.peerRequestReference).not.toHaveProperty('threadId');
   });
 });

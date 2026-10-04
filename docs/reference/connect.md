@@ -194,7 +194,10 @@ client-local summary derived from the handshake's `transports` block — not
 the same thing as the raw handshake document's own optional `capabilities`
 field (station#1095), which is a server-advertised map of named boolean
 feature flags (e.g. `sshEnvironments`, `webPushNotifications`) used for
-feature detection across a rolling client/server upgrade. See
+feature detection across a rolling client/server upgrade. Station-to-Station
+senders read it too: `delegatedInputAnswers` gates sending a bound answer
+(`expectedInputRequest`) to another Station's delegated task, as described in
+the [session API](session-api.md#bound-answers-to-a-paired-stations-question). See
 [docs/security/remote-access-threat-model.md](../security/remote-access-threat-model.md#surface-matrix)
 for that field's schema and absence-means-unsupported semantics, and
 `hasCapability()` from `@kontourai/station-sdk` for reading it.

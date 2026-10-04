@@ -680,7 +680,10 @@ import {
 } from './api-docs-launch.js';
 import { createOrchestrationBoardAuthorization } from './board-route-authorization.js';
 import { createClientStreamPresence } from './client-stream-presence.js';
-import { runtimeAttentionRouteOptions } from './runtime-attention-route-options.js';
+import {
+  mayAnswerDelegatedRequest,
+  runtimeAttentionRouteOptions,
+} from './runtime-attention-route-options.js';
 import {
   configureRuntimeSupportServices,
   createRuntimeSystemRouteDeps,
@@ -4313,6 +4316,19 @@ export function configureRuntimeRoutes(
           remoteStations,
         ),
       ),
+      // `delegatedInputAnswers`: `pendingRequest.callerCanRespond` on a task
+      // this Station serves, from the answering route's own two gates.
+      callerMayAnswerDelegatedRequest: (c, taskId, requestType) =>
+        mayAnswerDelegatedRequest(
+          {
+            security: context.environmentSecurityService,
+            stationControlDispatchScope,
+          },
+          c,
+          taskId,
+          requestType,
+          false,
+        ),
       observeDelegatedTask: stationServerEntry((input) =>
         observeDelegatedTask(
           { ...input, readAuthority: readAuthorityForExecution(input.userId) },
