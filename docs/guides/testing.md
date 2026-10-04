@@ -1197,7 +1197,8 @@ critical browser smoke; security and relevant platform checks remain required.
 The merge path does not run the full corpus.
 
 [Main qualification](../../.github/workflows/main-qualification.yml) runs every
-six hours outside the queue. A failure collects the available independent
+six hours outside the queue. A pass may start a Nightly for that commit
+([release procedure](releasing.md#release-procedure)). A failure collects the available independent
 failures and starts one bounded repair episode instead of repeatedly dequeuing
 unrelated PRs. See [qualification and repair](releasing.md#one-repair-sweep-per-failure-episode).
 

@@ -17,7 +17,10 @@ import {
   FOREGROUND_MESSAGE_INDETERMINATE_CODE,
   type ForegroundMessageIndeterminate,
 } from '@kontourai/station-contracts/orchestration';
-import type { SkillExperienceStartInputV1 } from '@kontourai/station-contracts/skill-experience';
+import type {
+  SkillExperienceInventoryV1,
+  SkillExperienceStartInputV1,
+} from '@kontourai/station-contracts/skill-experience';
 import {
   readSkillExperienceStartInput,
   sameSkillExperienceIdentity,
@@ -31,7 +34,6 @@ import {
 import { ChatHttpError } from './chatHttpError';
 import { type ClientRequestOptions, getJson, mutateJson } from './http';
 import { rethrowDeadline } from './request-deadline';
-import { fetchSkillExperienceInventory } from './skill-experiences';
 import { isStationAnswer } from './station-envelope';
 /**
  * #2436: an approval-posture decision a send carries (a pick made before the
@@ -261,9 +263,22 @@ function readExecutionReceipt(
   return result.data;
 }
 
-export async function sendExecutionMessage(
+/** Reads installed visual skill inventory for a source-bound start. */
+export type SkillExperienceInventoryReader = (
+  apiBase: string,
+  opts?: ClientRequestOptions,
+) => Promise<SkillExperienceInventoryV1>;
+
+/**
+ * `sendExecutionMessage` with the inventory reader supplied by the caller.
+ * This module does not import the static reader (#3209): first-paint code
+ * imports it for the other execution calls, and an import here would carry
+ * the canonical validator into that chunk.
+ */
+export async function sendExecutionMessageWithInventory(
   apiBase: string,
   input: ForegroundMessageInput,
+  readInventory: SkillExperienceInventoryReader,
   opts?: ClientRequestOptions,
 ): Promise<ForegroundMessageReceipt> {
   if (input.skillExperience) {
@@ -273,7 +288,7 @@ export async function sendExecutionMessage(
       );
     if (!readSkillExperienceStartInput(input.skillExperience))
       throw new Error('The selected visual skill input is unsupported.');
-    const inventory = await fetchSkillExperienceInventory(apiBase, opts);
+    const inventory = await readInventory(apiBase, opts);
     if (!skillExperiencesCanExecute(inventory))
       throw new Error(
         'This Station cannot execute visual skill starts. Your selection has not been sent.',
