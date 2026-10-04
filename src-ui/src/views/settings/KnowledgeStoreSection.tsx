@@ -60,6 +60,7 @@ function ConnectObsidianVault() {
         onChange={(value) => {
           setVaultPath(value);
           setValidated(null);
+          validateRoot.reset();
         }}
         placeholder="/path/to/vault"
         className="editor-input knowledge-store-section__obsidian-input"
@@ -73,13 +74,13 @@ function ConnectObsidianVault() {
           type="button"
           className="button button--secondary button--small"
           disabled={!vaultPath.trim() || validateRoot.isPending}
-          onClick={async () => {
+          onClick={() => {
             const forPath = vaultPath;
-            const result = await validateRoot.mutateAsync({
-              adapterId: OBSIDIAN_ADAPTER_ID,
-              storeRoot: forPath,
-            });
-            setValidated({ forPath, ...result });
+            setValidated(null);
+            validateRoot.mutate(
+              { adapterId: OBSIDIAN_ADAPTER_ID, storeRoot: forPath },
+              { onSuccess: (result) => setValidated({ forPath, ...result }) },
+            );
           }}
         >
           {validateRoot.isPending ? 'Validating…' : 'Validate'}
@@ -116,6 +117,13 @@ function ConnectObsidianVault() {
           variant="default"
           title="Vault validation failed"
           description={validated.reason}
+        />
+      )}
+      {validateRoot.isError && (
+        <ErrorState
+          className="knowledge-store-section__obsidian-error"
+          title="Vault validation could not be completed"
+          description={userFacingErrorMessage(validateRoot.error)}
         />
       )}
       {createRoot.isError && (

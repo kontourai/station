@@ -1,5 +1,6 @@
 /** @vitest-environment jsdom */
-import { fireEvent, render, screen } from '@testing-library/react';
+import type { ActionOperation } from '@kontourai/station-sdk/action-operations';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const navigate = vi.fn();
@@ -23,10 +24,7 @@ vi.mock('../../../contexts/NavigationContext', () => ({
   useNavigation: () => ({ navigate }),
 }));
 
-import {
-  ActionOperationsSection,
-  groupActionOperations,
-} from '../ActionOperationsSection';
+import { ActionOperationsSection } from '../ActionOperationsSection';
 
 const base = {
   schemaVersion: 'station.action-operation/v1' as const,
@@ -49,7 +47,12 @@ const base = {
   },
   acceptedAt: '2026-08-23T00:00:00.000Z',
   updatedAt: '2026-08-23T00:00:01.000Z',
-};
+} satisfies Omit<ActionOperation, 'id' | 'status'>;
+
+function openOperations() {
+  const summary = screen.getByText(/^Platform actions/);
+  if (!summary.closest('details')?.open) fireEvent.click(summary);
+}
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -57,15 +60,21 @@ beforeEach(() => {
     configurable: true,
     value: true,
   });
+  useCancelActionOperationMutation.mockReturnValue({
+    mutate,
+    isPending: false,
+    error: null,
+  });
 });
 
 describe('ActionOperationsSection', () => {
-  test('derives Activity groups from canonical lifecycle rather than separate labels', () => {
-    const groups = groupActionOperations([
-      { ...base, id: 'a', status: 'running' },
+  test('terminal status owns the row copy and placement even when progress was retained', () => {
+    const items: ActionOperation[] = [
+      { ...base, id: 'a', title: 'Running action', status: 'running' },
       {
         ...base,
         id: 'stale',
+        title: 'Unresolved action',
         status: 'running',
         progress: {
           kind: 'phase',
@@ -75,18 +84,96 @@ describe('ActionOperationsSection', () => {
       {
         ...base,
         id: 'b',
+        title: 'Failed action',
         status: 'failed',
+        progress: {
+          kind: 'determinate',
+          completed: 1,
+          total: 2,
+          unit: 'steps',
+        },
         errorSummary: 'Could not continue.',
         completedAt: base.updatedAt,
       },
-      { ...base, id: 'c', status: 'succeeded', completedAt: base.updatedAt },
-    ]);
-    expect(groups.inProgress.map((item) => item.id)).toEqual(['a']);
-    expect(groups.needsAttention.map((item) => item.id)).toEqual([
-      'stale',
-      'b',
-    ]);
-    expect(groups.recent.map((item) => item.id)).toEqual(['c']);
+      {
+        ...base,
+        id: 'c',
+        title: 'Succeeded action',
+        status: 'succeeded',
+        completedAt: base.updatedAt,
+      },
+      {
+        ...base,
+        id: 'd',
+        title: 'Cancelled action',
+        status: 'cancelled',
+        completedAt: base.updatedAt,
+      },
+      {
+        ...base,
+        id: 'e',
+        title: 'Settled action',
+        status: 'succeeded',
+        progress: { kind: 'phase', code: 'reconciliation-required' },
+        completedAt: base.updatedAt,
+      },
+    ];
+    useActionOperationsQuery.mockReturnValue({
+      data: { schemaVersion: base.schemaVersion, items },
+      isLoading: false,
+      isFetching: false,
+      error: null,
+    });
+    render(<ActionOperationsSection />);
+    expect(
+      screen.getByText('2 need attention · 1 in progress · 3 recent'),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole('region', { name: 'Needs attention' }),
+    ).toBeTruthy();
+    expect(
+      screen.getByText('Recent history (3)').closest('details')?.open,
+    ).toBe(false);
+    fireEvent.click(screen.getByText('Recent history (3)'));
+    openOperations();
+    const inProgress = screen.getByRole('region', { name: 'In progress' });
+    expect(within(inProgress).getAllByRole('listitem')).toHaveLength(1);
+    expect(inProgress.textContent).toContain('Running · Working');
+    const attention = screen.getByRole('region', { name: 'Needs attention' });
+    expect(within(attention).getAllByRole('listitem')).toHaveLength(2);
+    const recent = screen.getByRole('region', { name: 'Recent' });
+    expect(within(recent).getAllByRole('listitem')).toHaveLength(3);
+    expect(recent.textContent).not.toMatch(/Working|reconciliation/);
+    expect(
+      within(attention).getByText('Failed action').closest('li')?.textContent,
+    ).not.toContain('1/2 steps');
+    expect(
+      within(recent).getByText('Cancelled action').closest('li')?.textContent,
+    ).toContain('Cancelled ·');
+    expect(screen.getAllByText('Settled action')).toHaveLength(1);
+  });
+
+  test('keeps unfiltered platform actions in a separate collapsed disclosure', () => {
+    useActionOperationsQuery.mockReturnValue({
+      data: {
+        schemaVersion: base.schemaVersion,
+        items: [{ ...base, id: 'action', status: 'running' }],
+      },
+      isLoading: false,
+      isFetching: false,
+      error: null,
+    });
+    render(<ActionOperationsSection />);
+    expect(screen.getByText('1 in progress')).toBeTruthy();
+    expect(screen.getByText('Platform actions').closest('details')?.open).toBe(
+      false,
+    );
+    openOperations();
+    expect(
+      screen.getByText('All platform actions. Session filters do not apply.'),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Open conversation' }));
+    expect(navigate).toHaveBeenCalledWith('/agents/codex/conversations/target');
   });
 
   test('renders re-entry once, cancellation only when supported, and reconnect truthfully', () => {
@@ -114,6 +201,8 @@ describe('ActionOperationsSection', () => {
       error: null,
     });
     render(<ActionOperationsSection />);
+    openOperations();
+    fireEvent.click(screen.getByText('Recent history (1)'));
     expect(screen.getByText('In progress')).toBeTruthy();
     expect(screen.getByText('Recent')).toBeTruthy();
     expect(screen.getByRole('status').textContent).toContain('Refreshing');
@@ -261,6 +350,7 @@ describe('ActionOperationsSection', () => {
       error: new Error('Cancellation was refused by the operation owner'),
     });
     render(<ActionOperationsSection />);
+    openOperations();
     expect(screen.getByRole('status').textContent).toContain('Reconnecting');
     expect(screen.getByRole('alert').textContent).toContain(
       'Cancellation was refused',

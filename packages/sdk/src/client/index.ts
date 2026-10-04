@@ -89,6 +89,7 @@ export * from './reviews';
 export * from './runs';
 export * from './scheduler';
 export * from './session-outputs';
+export * from './skill-experiences';
 export * from './skills';
 export * from './task-basis';
 export * from './task-outputs';

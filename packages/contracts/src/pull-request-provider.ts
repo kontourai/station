@@ -197,7 +197,60 @@ export interface PullRequestReviewSnapshot {
     headSha?: string;
   }>;
   discussionPartial: boolean;
+  /**
+   * The provider's CI checks for the observed head. Absent: this server did
+   * not observe checks (an older server), which is not "no checks".
+   */
+  checks?: PullRequestChecksObservation;
+  /**
+   * Inline review comments anchored to lines of the provider diff. Absent:
+   * not observed, which is not "no comments".
+   */
+  reviewComments?: PullRequestReviewCommentsObservation;
 }
+export type PullRequestCheckState =
+  | 'success'
+  | 'failure'
+  | 'pending'
+  | 'neutral'
+  | 'skipped'
+  | 'cancelled';
+export interface PullRequestCheck {
+  name: string;
+  state: PullRequestCheckState;
+  /** The provider's own label for the run (workflow, pipeline). */
+  group?: string;
+  url?: string;
+}
+export type PullRequestChecksObservation =
+  | { state: 'available'; checks: PullRequestCheck[]; partial: boolean }
+  | { state: 'unavailable'; reason: string };
+/** One inline comment; `line` is null when it no longer maps onto the diff. */
+export interface PullRequestReviewComment {
+  id: string;
+  author: string;
+  body: string;
+  createdAt: string;
+  path: string;
+  /** `additions`: a line of the new file; `deletions`: of the old file. */
+  side: 'additions' | 'deletions';
+  /**
+   * `line`: made on a line, `line` null once the forge no longer maps it
+   * onto the diff. `file`: made on the file as a whole; `line` is null and
+   * that is not "outdated".
+   */
+  subject: 'line' | 'file';
+  line: number | null;
+  inReplyTo?: string;
+  url?: string;
+}
+export type PullRequestReviewCommentsObservation =
+  | {
+      state: 'available';
+      comments: PullRequestReviewComment[];
+      partial: boolean;
+    }
+  | { state: 'unavailable'; reason: string };
 export interface PullRequestReviewInput {
   action: 'comment' | 'approve';
   expectedHeadSha: string;

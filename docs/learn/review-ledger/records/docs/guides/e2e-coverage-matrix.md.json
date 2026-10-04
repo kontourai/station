@@ -9,7 +9,7 @@
 
   "limits": "No new Playwright run, browser/native/physical Android receipt, live account or provider journey, current coverage percentage or complete surface tier qualification. Spec assertions include fixtures and intercepted requests. Manifest membership and runnable ownership do not establish a passed execution or exhaustive behavioral coverage.",
 
-  "document": {"digest":"2f4089d72858c659210572db4b796e4c4102af8fb05a6671c93a7711f8ff78f0","revision":"61f31f5bade67ee3c6eb6f8d6ed20bbaf0e8c015"},
+  "document": {"digest":"0a67c15e1ab58bbc6955bffa4b049a305da6cba208478e7ed8e59e2adabe244d","revision":"04123ca275d85ac19e95a3f0fd87ae68b138324f"},
 
   "sources": [
     {"path":".github/workflows/ci-extended.yml","digest":"6cd65c4dae77a42df037641d1175f753185ad04e23e031f0dd5e26b9aefa3fd2","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
@@ -32,7 +32,7 @@
 
     {"path":"src-server/providers/llm/defaults.ts","digest":"5a7c47c56107d89a2d450d11a6931155332c7990e7f1de79d807f9c5c9f038f7","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-server/runtime/bootstrap/runtime-initialize.ts","digest":"93c4b8f2102f0b78a9ffe5e97bc8b96405a637b8e44d2f1808717a0411d0b903","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"src-server/runtime/bootstrap/runtime-initialize.ts","digest":"bd381c9d60f70ac986c9eee0977752d883f52a018842fee300d3e352933aea6d","revision":"56f4c4897a189eeb30430119a4f4895e95fbb541"},
 
     {"path":"src-server/services/connections/connection-service.ts","digest":"cf2120e16b0ee9f0e54df18a114b616ef896d84c648a20e4d9e0df5054715f44","revision":"4d32eb785473b3261621900889fb9fa3fbfd8a49"},
 
@@ -52,7 +52,7 @@
 
     {"path":"tests/agents-readiness-board.spec.ts","digest":"3b2f83838f7efc9d8b7de06de6ba69e4869faefabdfc52329086e49e195a97b7","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"tests/android/mobile-layout.spec.ts","digest":"08b69603dd31a6b2b79a5e906a545b23ecb910c7072d427fdb9b225b4b28794d","revision":"a69ac3067ea76a45568bb88fdf6b11e23a5c0bd7"},
+    {"path":"tests/android/mobile-layout.spec.ts","digest":"397b6aed1feb90de3c5c98c9a82944589859919822e4f5803e5e6bd9c6c4462f","revision":"0c7e662906e06fd356753bcc2c0e64d84c7f7541"},
 
     {"path":"tests/coding-layout-plan-panel.spec.ts","digest":"3eb6fdaefd45a205b80b988270e401978996b71e779b743dccb33cfa463f3eab","revision":"955afd3f496da8d9536e133d2cdeea83bb967c34"},
 
@@ -76,13 +76,13 @@
 
     {"path":"tests/plugin-update.spec.ts","digest":"763fcd2f7eb0895885768c211dfd34ec0f4eb548f3073f715267d6d91f88aa29","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"tests/project-architecture.spec.ts","digest":"891bb2fb8ae92c7dd4e27760b00a991ff2eef818400f74a62274e08aaf06e3a5","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"tests/project-architecture.spec.ts","digest":"a02aded42efd999f49a482e0b3be6984e418ccfada537726484f203cb9505f7c","revision":"9af1b6418f1fcdcd4124339b93f8484296cc4b5a"},
 
     {"path":"tests/project-forms.spec.ts","digest":"e0552e47070e8c34c69077c8061cbf9fbe00f50911d9baf20f14f5b9eb4b6635","revision":"8140f4ec0627c22a4f5e72c4b253c1236580240c"},
 
     {"path":"tests/project-lifecycle.spec.ts","digest":"ee20ad928e01c437068d3ea0cec848bf5b57191e23857230fdf9b73399582b16","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"tests/registry.spec.ts","digest":"15c543422b443be1ab3481be24952ac3c830dfac8e9060ecf017af5ea0176928","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"tests/registry.spec.ts","digest":"7161a9fabd41940c69d064540dca0db2cfac5b1b40145899f8a75d109937f715","revision":"9af1b6418f1fcdcd4124339b93f8484296cc4b5a"},
 
     {"path":"tests/root-route-restore.spec.ts","digest":"f91cf5602f3cde40d21ecda73db252c51d96b9028b512307fdf00e7d1951ede6","revision":"ce3f4c795551e3838afb14389cd5a0fd7f260649"},
 
@@ -92,7 +92,7 @@
 
     {"path":"tests/skills.spec.ts","digest":"a8279deb8e8e0c76cd68310c47c5f3581a218502169785ba7da91d0ebb261ec0","revision":"df740ad0d1e328b2e6216b1d20845ff3bf04bf31"},
 
-    {"path":"tests/task-first-home.spec.ts","digest":"8609fe0f38ce85a6f6f721e049a8db3882860547be1fd400001bdb2f1fc95562","revision":"c75f24edf36e9dc018be74053f55ebcaeb5309c5"}
+    {"path":"tests/task-first-home.spec.ts","digest":"abc64b21fabda29a7db0d7d34cf65bb480e1f2b90266605932227625ce588cf8","revision":"d6a3158c22a62d9530592c6366a1624790ee9401"}
   ],
 
   "checks": [

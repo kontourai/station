@@ -1134,6 +1134,14 @@ Shared query-factory entry for agent conversation lists. Use this when a feature
 
 ### `useApiQuery<T>(queryKey, queryFn, config?)`
 
+Station's config-change event invalidates Trust bundle/report and Task answer
+support queries within the current authority's query client. Trust readers
+refetch invalidated data when remounted; Task answer support retains its
+existing fresh-authorization mount policy. Disabled observers remain disabled.
+Trust requests carry cancellation through API-base resolution and transport.
+See [Trust query owners](../../packages/sdk/src/query-domains/trustBundles.ts)
+and [the config-change consumer](../../src-ui/src/hooks/useServerEvents.ts).
+
 Generic query hook for a caller-owned async function. It passes an AbortSignal;
 the function must use it and handle HTTP status, response validation and
 authority. The following host-supplied reader must already implement those
@@ -1182,6 +1190,27 @@ Re-exported from `@tanstack/react-query` for direct cache access.
 ## API Functions
 
 Imperative API calls — use in event handlers, slash commands, or anywhere hooks aren't available.
+
+### Turn steering and acknowledgement retries
+
+`steerOrchestrationTurn({ threadId, text, turnId?, clientInputId?, apiBase? })`
+sends input to an open turn. With an ID it uses the protected `steerTurnOnce`
+wire command, which older servers reject before invocation. Without an ID it
+retains legacy behavior. Use one stable `clientInputId` per intent and retain
+its original Session, turn and text when retrying an acknowledgement. The server
+journals the adapter attempt before invocation and returns a confirmed same-ID
+result without sending it again. `outcome: 'indeterminate'` means delivery cannot
+be confirmed; retain the input for review and do not automatically send it as a
+new turn. Before retrying uncertain input, call
+`inspectOrchestrationSteerInput({ threadId, text, turnId?, clientInputId, apiBase? })`.
+A confirmed result retires the pending message; `indeterminate` or an unsupported
+lookup keeps it held. Only `not-received` permits a protected same-ID first
+attempt. A successful save of the pending identity precedes a composer mutation;
+a failed save prevents engine invocation. Unsupported, busy, and no-active-turn outcomes remain
+explicit. See [Session API steering](session-api.md#lifecycle-control-commands) for the public
+command and engine-specific interruptive fallback; Station's composer offers a
+conservative safe-waiting fallback separately from native steering.
+
 
 `sendMessage`, `streamMessage`, `invokeAgent`, `invoke`, `callTool` and
 `fetchConfig` are legacy ambient-base helpers using direct `fetch`. They do not
@@ -1552,8 +1581,8 @@ The constructor also accepts `NativeApplicationSessionProofProvider`, identified
 by `kind: station-native-host-proof-provider/v1`. Its `prepareExchange` operation
 takes only opaque challenge data and local username/password credentials and
 returns the complete host-prepared exchange body plus matching proof header.
-`requestHeaders` takes opaque continuation data and a canonical GET/HEAD Project
-target. The client checks the returned signature, public key, target, nonce,
+`requestHeaders` takes opaque continuation data and a canonical GET/HEAD
+target from the fixed Station health and member Project read inventory. The client checks the returned signature, public key, target, nonce,
 hashes, body order and headers before dispatch. The ordered host credentials
 body is retained: its hash must match Node's `JSON.stringify` of the credentials
 the server parses, including Unicode. Other provider credential shapes are
@@ -1562,20 +1591,72 @@ unsupported by this native provider path.
 Prepare the account exchange body before application-channel body freezing;
 the later Device proof binds that complete body, including the account proof.
 Native IPC uses these structured operations, never an adapter for `sign(bytes)`.
-The Desktop account operation handle is bounded, owner/epoch-fenced and allows
+The native account operation handle is bounded, owner/epoch-fenced and allows
 one exchange. An unknown exchange outcome requires an explicit new context and
 challenge; it is not retried automatically. Expiry hints cannot extend host
 lifetimes. Provider sessions, replay, Device binding and Project membership are
-still verified by the server. This source interface does not enable ordinary
-native sign-in or qualify a packaged/native IPC journey.
+still verified by the server. This interface alone does not enable sign-in or
+qualify a packaged/native IPC journey. Station now composes it through the
+[production account bridge](../../src-ui/src/platform/native/nativeAccountSessionBridge.ts),
+[selected connection owner](../../src-ui/src/platform/native/nativeRelayConnectionOwner.ts),
+and [ApiBaseContext](../../src-ui/src/contexts/ApiBaseContext.tsx). The ordinary
+[account panel](../../src-ui/src/views/connections-hub/RelayRouteProfiles.tsx)
+uses that owner for sign-in, typed invitation acceptance and remote logout.
+Public scope lives only in the process and partitions the
+[ephemeral member shell](../../src-ui/src/views/native-relay/NativeRelayMemberShell.tsx);
+authority loss clears its cache. Those source consumers and a reachable
+simulator UI entry do not establish a fresh or physical native journey.
 
 ```ts
 import { NativeApplicationSessionClient } from '@kontourai/station-sdk/application-session-native';
 
 const accounts = new NativeApplicationSessionClient(encryptedTransport, () => trustedSnapshot, key);
 const continuation = await accounts.exchange({ username, password });
-const headers = await accounts.headers(continuation, { method: 'GET', path: '/api/example' });
+const headers = await accounts.headers(continuation, { method: 'GET', path: '/api/projects' });
 ```
+
+The native preparation RPC returns `contextExpiresAtMs`, the host's actual
+preparation deadline clipped to its captured routing grant. The production
+bridge requires this closed DTO field and passes it to the proof provider.
+The SDK captures that optional provider deadline once, clamps the continuation
+and public account expiry to the earlier host/server deadline, and refuses
+later read, invitation-acceptance or revoke preparation at that deadline. A
+delayed sign-in never extends the host context. Compatibility SDK signers
+without a native context deadline retain their existing behavior; production
+native RPCs always supply it. Removing local account scope does not remove
+Device custody.
+
+The host proof provider may implement `prepareInvitationAcceptance({continuation, token})`.
+`NativeApplicationSessionClient.prepareInvitationAcceptance(continuation, token)`
+validates the exact token-only body and host account signature, rejects reused
+JTIs or changed targets, and returns frozen body/headers for **only**
+`POST /api/account-auth/accept-invitation`. It does not broaden the existing
+GET/HEAD `requestHeaders` operation or accept generic signing bytes.
+`requestHeaders` remains limited to Station health/authority, Project list/detail and
+Project-scoped shared-work document/history/publication. Only well-known/status/
+identity observations may omit account material; authority and member reads
+require the current separate account, and invalid supplied account material
+never falls back to Device-only access. Send the prepared invitation
+body through the current native application transport: the separate Device
+proof authenticates its exact bytes, and the server independently rechecks the
+real account, Device binding and invitation/membership owner. No browser Origin
+or cookie conversion is part of this request.
+
+The optional host operation `prepareRevocation({continuation})` and client
+`prepareRevocation(continuation)` return a frozen empty body and validated proof
+headers for only `POST /api/account-auth/continuations/native/revoke`. The server
+requires the current native Device and separate account continuation, removes
+that exact continuation before awaiting actual provider revocation, and confirms
+that provider session is no longer valid before returning `{revoked: true}`.
+Device custody and grants remain intact. The native bridge's `logout()` clears
+local account scope even when the remote outcome is uncertain; a rejected or
+lost acknowledgment never means remote logout completed. Its `retire()` remains
+local removal only. A new account context is required for reauthentication.
+
+The native bridge parses invitation acceptance into
+`ProjectInvitationAcceptance` from the shared `project-membership` contract:
+exact Station/local/portable Project scope and `grantsDeviceAccess: false`.
+An arbitrary HTTP 200 or a foreign Station response does not confirm membership.
 
 ### Fresh relay enrollment proof helpers
 
@@ -1634,9 +1715,13 @@ can exceed that aggregate bound; the helper refuses it before invoking the signe
 The source-opt-in server pilot under #2893 stores operator-approved bindings,
 verifies the JWS and exact body against private native peer provenance, consumes
 replay state before dispatch, and applies independent current Device, account
-and Project authorization. Its protected surface is limited to native account
-challenge/exchange and Project reads. No product UI or Tauri signing command
-consumes this helper yet; it does not establish a packaged native journey.
+and Project authorization. The source-opt-in native producer permits only
+fixed account challenge/exchange/revoke, invitation acceptance, neutral Station
+health observations, and member Project/shared-work document/history/publication
+reads. Each write control has a separate fixed host preparation operation; the
+read signer remains GET/HEAD only. Operator configuration, terminal, catalog,
+and contribution writes are excluded. Source and focused runtime checks do not
+establish a packaged or physical-device native journey.
 
 `listProjectViews(apiBase, options)` and `getProjectView(apiBase, slug, options)`
 from `@kontourai/station-sdk/client` return either the personal/operator Project
@@ -1790,6 +1875,31 @@ status, not the preview requirement list. An absent status on an older server is
 unknown; it must not be replaced with an empty list or inferred from preview.
 Each present dependency row has an `id` and typed `pendingConsent` permission/tier
 entries. Trusted permissions still require separate host-owned approval.
+
+### Marketplace source hooks
+
+`useRegistrySourcesQuery()` reads `GET /api/registry/sources` through the current
+SDK request scope. Source reads and actions require `access:manage` plus the
+Station operator principal; the hooks do not grant that authority.
+`useRegistrySourceActionMutation()` accepts `{action, id?,
+source?}` with `add`, `enable`, `disable`, `remove` or `refresh`; `add` supplies
+`{displayName, adapter, location}`. Mutations invalidate Registry queries.
+`useRegistrySkillContentQuery(id)` inspects the unchanged opaque catalog
+selection ID and is disabled without an ID. These hooks use the existing
+React Query/request authority rather than a separate marketplace cache.
+
+Published `RegistrySource`, `RegistryCatalogSelection`, `SkillRegistryProvider`
+and `PluginRegistryProvider` types live in `@kontourai/station-contracts/catalog`.
+A provider's catalog metadata is untrusted publisher input. Source identity,
+selection/revision binding and current plugin visibility remain host-owned;
+registering a provider neither installs its content nor grants permission.
+Skill providers can expose `getPackageRevision` and enforce its value in
+`install`'s `expectedPackageRevision`. Plugin providers resolve fresh package
+source/claims through the existing installer and applied trust policy.
+`getCatalogSnapshot()` can return `PluginRegistryCatalogSnapshot`: the item
+rows, package source/claim pairs and revision from one fresh observation.
+Station manifest providers use that observation together; metadata and claims
+remain untrusted until the existing acquisition authority verifies them.
 
 ### `usePluginsQuery(config?)`
 
@@ -2170,6 +2280,66 @@ actions while retaining internal/external links. Omitting that flag preserves
 the older behavior and can leave prompt controls without a useful callback.
 The retained `layoutPrompts` prop is a header input, not the current layout
 manifest's field name (`skills`).
+
+---
+
+## Visual skill experiences
+
+`fetchSkillExperienceInventory(apiBase, options?)` and
+`fetchSkillExperienceSession(apiBase, threadId, cursor?, options?)` are available
+from `@kontourai/station-sdk/client`. Both validate the returned inventory or
+session projection before exposing it and preserve HTTP failure details. The
+canonical reader loads after a successful feature response; a reader failure
+remains an error.
+`useSkillExperienceInventoryQuery(config?)` and
+`useSkillExperienceSessionQuery(threadId, config?, cursor?)` are React Query hooks from
+the SDK root. The session hook remains disabled until a canonical thread exists.
+The optional cursor reads older invocation snapshots; those rows do not grant
+current execution authority.
+
+An inventory entry is a preview. Starting requires `executionContract: '1.0'`
+and an exact current source identity. `sendExecutionMessage` accepts the optional
+`skillExperience: { identity, inputs, expectedPreviousInvocationEventId?, attachmentInputs? }`
+field and refetches the installed inventory before its foreground POST.
+`inputs` holds scalar text/choice values; attachment role arrays contain indices
+into the canonical chat attachments, after supervised staging. Native role choices use
+composer client IDs until the sender maps them against the actual outgoing
+staged references; role membership never supplies custody or a file path. The server owns
+source admission, input validation and immutable invocation snapshots. A missing
+execution contract, changed source or automatic background send fails without
+posting an ordinary-chat substitute.
+
+The response history contains an immutable definition/input snapshot and current
+source availability, or an explicit unavailable-snapshot row. A continuation
+uses the same conversation and the exact current invocation event as
+`expectedPreviousInvocationEventId`. Questions and approvals remain canonical
+session requests. Definitions describe intended outputs; they do not prove
+completion. See [Visual skill experiences](skill-experiences.md) for source and
+authoring boundaries. These source exports require a published SDK release
+before external consumers can import them.
+
+
+An explicitly declared `presentation.richView` can opt into the existing
+isolated plugin pane host. `createSkillExperiencePaneHost` from
+`@kontourai/station-sdk/workspace-pane` supplies occurrence-bound `read`,
+`answer` and `continue` methods. The shell fixes the conversation and source;
+plugin code cannot choose another thread. The read's `viewJson` preserves the
+public session projection and adds bounded nonsecret pending questionnaires
+with their exact request/event identities. It includes neither transcript
+contents, answers nor tool grants. Secret questions and tool approvals stay
+with canonical conversation controls.
+
+Rich session reads use the optional `expectedSkillExperience: { identity,
+eventId }` request option; rich answers carry that same precondition through
+`respondToRequest`. The server checks the current invocation and holds the
+fresh `agents.invoke` grant through the operation. Ordinary user controls omit
+that option. Rich continuation only prepares a declared stage and its inputs
+in the existing unsent chat draft; explicit composer Send remains the execution
+owner. The source-bound bundle request and current pane contribution must also
+qualify before the host transfers code. The frame supplies the nonsecret
+`window.__stationPaneHostOrigin` origin bootstrap; self-rendering pane code
+uses it with the SDK helper. This does not establish that arbitrary React
+component bundles can render in the isolated frame.
 
 ---
 
@@ -3376,6 +3546,18 @@ but do not load their bundles or enable their actions. The server sets
 uses `installation-pending` or `installation-unavailable` diagnostics, separate
 from distribution-policy disablement. Readiness notifications refresh the
 Project Pane and host-action catalogs as well as the installed-plugin list.
+
+For a `ready` row, `listPlugins` also reports the plugin's validated palette
+`commands` (an empty array when it declares none), an opaque
+`installationGeneration` that a command request echoes back, and
+`commandsRejected: { reason }` when Station dropped invalid declarations.
+Pending and unavailable rows omit all three. The generation is not authority:
+Station admits each command effect against the installed declaration (see
+[Plugin Command Effects](api.md#plugin-command-effects)). `listPlugins` rejects
+a response whose `installationGeneration` is not bounded text or whose
+`commands` is not an array. Station's palette admits and settles effects
+through `@kontourai/station-sdk/client/plugin-command-effects`
+(`admitPluginCommandEffect`, `settlePluginCommandEffects`).
 
 `listPlugins` includes optional `retainedOnRemoval` metadata for packages using
 retained code generations. Normal package updates keep their stable data

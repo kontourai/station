@@ -1359,6 +1359,165 @@ describe('AcpAdapter', () => {
       },
     );
 
+    describe('#2947: an approval-guardian allow never answers a plan exit', () => {
+      /**
+       * The shared staged evaluator with no autoApprove pattern and a
+       * guardian whose verdict the test sets. Only the guardian's model call
+       * is replaced.
+       */
+      function guardianPolicy(decision: 'allow' | 'deny') {
+        const reviewToolCall = vi.fn(async () => ({
+          decision,
+          reason: `guardian says ${decision}`,
+        }));
+        const evaluator = createStagedPreToolPolicyEvaluator({
+          spec: { name: 'Engine lab', prompt: '' },
+          toolNameMapping: new Map(),
+          isGranted: () => false,
+          approvalGuardian: {
+            isEnabled: () => true,
+            getMode: () => 'enforce',
+            reviewToolCall,
+          } as never,
+          logger: { warn: vi.fn(), info: vi.fn() },
+        });
+        return { evaluator, reviewToolCall };
+      }
+      async function start(
+        threadId: string,
+        decision: 'allow' | 'deny',
+        metadata: Record<string, unknown> = {},
+      ) {
+        const { evaluator, reviewToolCall } = guardianPolicy(decision);
+        const logger = { info: vi.fn(), warn: vi.fn(), debug: vi.fn() };
+        const { adapter, processes } = createAdapter({
+          resolvePreToolPolicy: async () => evaluator,
+          logger,
+        });
+        const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+        await adapter.startSession({
+          provider: 'acp',
+          threadId,
+          cwd: '/tmp/project',
+          metadata: { connectionId: 'kiro', ...metadata },
+          agent: { slug: 'engine-lab' },
+        });
+        await nextEvent(iterator, 'session.started');
+        await nextEvent(iterator, 'session.configured');
+        return {
+          adapter,
+          client: processes[0].client,
+          iterator,
+          logger,
+          reviewToolCall,
+        };
+      }
+      const planExits = [
+        ['switch', { name: 'mcp__tools__exit', kind: 'switch_mode' }],
+        ['exit-plan', { name: 'ExitPlanMode' }],
+        // A tool named as a harness question is a person's to answer too.
+        ['question', { name: 'AskUserQuestion' }],
+      ] as const;
+
+      test('a plain call is accepted without a request; a plan exit prompts', async () => {
+        const threadId = 'thread-guardian-plan-exit';
+        const { adapter, client, iterator, logger, reviewToolCall } =
+          await start(threadId, 'allow');
+
+        // Positive control: the guardian's allow answers a plain call.
+        await expect(
+          requestPermission(client, 'plain', 'mcp__tools__write'),
+        ).resolves.toEqual({
+          outcome: { outcome: 'selected', optionId: 'allow-once' },
+        });
+        expect(reviewToolCall).toHaveBeenCalledTimes(1);
+
+        for (const [toolCallId, toolCall] of planExits) {
+          const pending = client.requestPermission({
+            sessionId: 'ignored-by-adapter',
+            toolCall: {
+              toolCallId,
+              title: 'Ready to code?',
+              rawInput: { plan: 'Step 1' },
+              ...toolCall,
+            },
+            options: PERMISSION_OPTIONS,
+          } as RequestPermissionRequest);
+          const opened = await nextEvent(iterator, 'request.opened');
+          await adapter.respondToRequest(
+            threadId,
+            String(opened.requestId),
+            'decline',
+          );
+          await expect(pending).resolves.toEqual({
+            outcome: { outcome: 'selected', optionId: 'reject-once' },
+          });
+          await nextEvent(iterator, 'request.resolved');
+        }
+        // The guardian did allow each plan exit; the adapter did not take it,
+        // and says so once per request.
+        expect(reviewToolCall).toHaveBeenCalledTimes(1 + planExits.length);
+        expect(
+          logger.info.mock.calls.filter(
+            ([message]) =>
+              message ===
+              'Approval guardian allow not applied; the request goes to a person',
+          ),
+        ).toHaveLength(planExits.length);
+      });
+
+      test('a guardian deny still declines, with no request', async () => {
+        const { client, iterator } = await start(
+          'thread-guardian-acp-deny',
+          'deny',
+        );
+        await expect(
+          requestPermission(client, 'plain', 'mcp__tools__write'),
+        ).resolves.toEqual({
+          outcome: { outcome: 'selected', optionId: 'reject-once' },
+        });
+        expect(await nextEventOrTimeout(iterator, 100)).toBe('TIMED_OUT');
+      });
+
+      test('a denyApprovals child is declined a guardian-allowed plan exit fail-fast, with no request', async () => {
+        const { client, iterator } = await start(
+          'thread-guardian-child-plan-exit',
+          'allow',
+          {
+            delegation: {
+              mode: 'isolated-child',
+              depth: 1,
+              maxDepth: 2,
+              parentAgentSlug: 'parent',
+              rootAgentSlug: 'parent',
+              denyApprovals: true,
+            },
+          },
+        );
+        await expect(
+          requestPermission(client, 'plain', 'mcp__tools__write'),
+        ).resolves.toEqual({
+          outcome: { outcome: 'selected', optionId: 'allow-once' },
+        });
+        await expect(
+          client.requestPermission({
+            sessionId: 'ignored-by-adapter',
+            toolCall: {
+              toolCallId: 'switch',
+              title: 'Ready to code?',
+              rawInput: { plan: 'Step 1' },
+              name: 'mcp__tools__exit',
+              kind: 'switch_mode',
+            },
+            options: PERMISSION_OPTIONS,
+          } as RequestPermissionRequest),
+        ).resolves.toEqual({
+          outcome: { outcome: 'selected', optionId: 'reject-once' },
+        });
+        expect(await nextEventOrTimeout(iterator, 100)).toBe('TIMED_OUT');
+      });
+    });
+
     test('#2933: a session answer on a plan exit is a one-call accept and grants nothing', async () => {
       const { adapter, processes } = createAdapter();
       const threadId = 'thread-plan-exit-session';

@@ -7,7 +7,7 @@
 
   "summary": "Completed full documented-claim review, building on the nine-guide controller review: paired identity/preparation/advance and private control authority, guarded durable SQLite, room source seals, snapshot digests, session-start/task-dispatch barriers and completed-dispatch recovery. Current narrower operations remain distinct from required distributed leases, target activation, cross-host writer fencing and provider continuation. No prose correction required.",
 
-  "limits": "Source review of this document’s stated contracts and actual callers, not an exhaustive audit of unclaimed implementation branches. No new external SDK/CLI compatibility, provider billing/sign-in, gateway/deployment, network-partition, independent-host, OS keyring/ACL, native/device, release, power-loss or cryptographic penetration qualification. Dated probes and prior test receipts remain historical evidence.",
+  "limits": "Source review of this document’s stated contracts and actual callers, not an exhaustive audit of unclaimed implementation branches. No new external SDK/CLI compatibility, provider billing/sign-in, gateway/deployment, network-partition, independent-host, OS keyring/ACL, native/device, release, power-loss or cryptographic penetration qualification. Dated probes and prior test receipts remain historical evidence. Merge reconciliation preserves both prior review anchors below as historical evidence, not a new review of combined source bytes. Active bindings retain existing reviewed anchors; any mismatch with merged bytes remains stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"docs/design/channel-home-authority.md\",\"ours\":{\"digest\":\"aa39bc064688fccf3f629a6e580045609975fd690762a8fae41393f8eb0ffeed\",\"revision\":\"495d7cda0df2abf2d64ed377d3dcbf1ebc238169\"},\"main\":{\"digest\":\"ec8920fcb32e04182559991d3301afec584a03478e9772ee33ebc90af05281a8\",\"revision\":\"4775195c62ee67b1c20882a1561a4578b8db017f\"}},{\"path\":\"src-server/services/orchestration/orchestration-service.ts\",\"ours\":{\"digest\":\"7d2f48c82a5a3d9421ac2bbb67ecf249e892c4f9024fd65f0edfa7eb2e4f459a\",\"revision\":\"0bf65df71b04f48768c1f5bdb16db77e361a3177\"},\"main\":{\"digest\":\"d22d84695d84c9341467067e356483457115768ac3b5f34e2c8cd5c27144fbab\",\"revision\":\"4e19fa6ac6b87dff5b671d3c90d3a5b48b5e6ec5\"}},{\"path\":\"packages/contracts/src/environment-security.ts\",\"ours\":{\"digest\":\"2af32eed92258686d0d4b68d8a042093ccf5833fbf2cb91835abdba0e7481b65\",\"revision\":\"42491ca6bab31b1365b33e3190c171819881eb72\"},\"main\":{\"digest\":\"5e95b203695a37807a3b3c9464df4f0153ca32b408496dc12f59274f61fd2486\",\"revision\":\"91d79c3f0ce9ca5ae304e4248b67b6189103016e\"}},{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"ours\":{\"digest\":\"8da16e71c4909bef8f7cf21eb6cde9fbebc2b72997baeebbff7445db19fb237a\",\"revision\":\"904729ae7f4058a2cd7dbaf11a4daaa6b8837d08\"},\"main\":{\"digest\":\"e54cf49af965f2acabb5a7a97caead30fc8e4e3b619f5dea1cb7f6a464b2d901\",\"revision\":\"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac\"}}].\n\nAdditional existing main limits (preserved verbatim): Source review of this document’s stated contracts and actual callers, not an exhaustive audit of unclaimed implementation branches. No new external SDK/CLI compatibility, provider billing/sign-in, gateway/deployment, network-partition, independent-host, OS keyring/ACL, native/device, release, power-loss or cryptographic penetration qualification. Dated probes and prior test receipts remain historical evidence.\n\nStructural merge of 5fd2dd86ad0cd35018ce09537c1aa01ce58e0e55 and 8f9ea788561518398a488d35bb768b78a272e73b preserves both prior immutable document/source anchors and historical checks. Selecting an existing current-byte binding is structural reconciliation only, not semantic approval of merged inputs. No new digest/revision or coverage baseline was minted. Competing prior anchors remain pending semantic review and supported recording after the merge commit: [{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"ours\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"33e19d52230c0339923db1768b0cae89a71077634c4632f9a10c11f6a3e05f78\",\"revision\":\"83c4111b8c4dcda1e978d78bb191c974888c9ca4\"},\"main\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"ed83b5af4f41e38ea85de7ba4d975066b1c15f136b215926bd5cd31a45183a21\",\"revision\":\"068722323b07f15f14280d43b1c05dbc2ca212eb\"},\"active\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"33e19d52230c0339923db1768b0cae89a71077634c4632f9a10c11f6a3e05f78\",\"revision\":\"83c4111b8c4dcda1e978d78bb191c974888c9ca4\"},\"decision\":\"neitherMatch\"},{\"path\":\"src-server/services/orchestration/orchestration-service.ts\",\"ours\":{\"path\":\"src-server/services/orchestration/orchestration-service.ts\",\"digest\":\"d22d84695d84c9341467067e356483457115768ac3b5f34e2c8cd5c27144fbab\",\"revision\":\"4e19fa6ac6b87dff5b671d3c90d3a5b48b5e6ec5\"},\"main\":{\"path\":\"src-server/services/orchestration/orchestration-service.ts\",\"digest\":\"14d4d68ff2f8715e1428ca985125a9eff9eb5a05ea52946dc16b4f5971405a34\",\"revision\":\"bc671142a7ae70587daf5bb0d94732e8ca74600a\"},\"active\":{\"path\":\"src-server/services/orchestration/orchestration-service.ts\",\"digest\":\"14d4d68ff2f8715e1428ca985125a9eff9eb5a05ea52946dc16b4f5971405a34\",\"revision\":\"bc671142a7ae70587daf5bb0d94732e8ca74600a\"},\"decision\":\"mainMatch\"}]",
 
   "document": {"digest":"ec8920fcb32e04182559991d3301afec584a03478e9772ee33ebc90af05281a8","revision":"4775195c62ee67b1c20882a1561a4578b8db017f"},
 
@@ -18,9 +18,9 @@
 
     {"path":"src-server/runtime/bootstrap/personal-home-authority-database.ts","digest":"8d7f81a7cef515dfff921152c74d03028409708395de6c280f2e013c70e84f7f","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"400dc75dd88a48bc411a4edb9c5f40f9d22ae0f1c5b68d8f748e7733efae5a0e","revision":"cb3ebc3797508b3f46d66b8bc5ece89b32cb79ae"},
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"88a3a2161a61eaee174d5404833230e31768afb8ea60fae898cfda39bb49ae09","revision":"efa773acac88792cda31595f9afca4a37d3efebc"},
 
-    {"path":"src-server/services/execution-target/execution-target-execution.ts","digest":"c94ea32c0e391978d340cbfab4e5d9ee37fea207aac329580b68f2125a640c90","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
+    {"path":"src-server/services/execution-target/execution-target-execution.ts","digest":"376fcedbde14978515ed735d00423cc6b89b613788149e634174b39bf165c317","revision":"8540fafb86b969775254b898711ad3ae40ccc39d"},
 
     {"path":"src-server/services/orchestration/completed-task-dispatch-recovery.ts","digest":"d546e29721fb4338c50d2d661d9e09da9cdc2562022c32cbed2b1bbdc0a158b2","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
@@ -28,7 +28,7 @@
 
     {"path":"src-server/services/orchestration/home-transfer-room-probe.ts","digest":"452280720043dd06eabfa63058e4ae10bd65db403adf427ccc7b64061c102129","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
-    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"14d4d68ff2f8715e1428ca985125a9eff9eb5a05ea52946dc16b4f5971405a34","revision":"bc671142a7ae70587daf5bb0d94732e8ca74600a"},
+    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"c5a85fefbe06e5a903444325293d46a80fefb7a0f938100fbceee8c60492d893","revision":"958350328eafd360124e1892c1945a2ae455e43c"},
 
     {"path":"src-server/services/orchestration/paired-home-transfer-authority.ts","digest":"085a90751ac616c54bca77ce48112a951334d1d644fdb4fa3287e6aed72f503f","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
@@ -56,15 +56,15 @@
 
     {"path":"src-server/services/orchestration/project-task-room-history.ts","digest":"67647ae8dadce1e7d9af02128ec52782aa10d87cea0bc211144f1a3b7628f340","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
+    {"path":"src-server/services/orchestration/project-task-room-runtime.ts","digest":"feb48a41131f04260c92e3a7757eda5aa61799a7015b3386a931d950250e3d58","revision":"9f8b407fac4a9e5536d72ca49be3a0b77715e1d8"},
+
     {"path":"src-server/services/orchestration/remote-home-transfer-coordinator.ts","digest":"ff03f9ae3fa558b2a29de1fbe22538d4da7f29fe09dfcdb263c1280c9f313eb0","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
     {"path":"src-server/services/orchestration/session-turn-boundary.ts","digest":"85b15fdd313d9e690718992ea6cbb70e4fd101988a2f261ae7896501462c1199","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
     {"path":"src-server/services/projects/task-dispatcher.ts","digest":"ae50a30b27da6b16cc22a0910af821e0f5d08c80b45b7c336c2935fb87ea0ce1","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
-    {"path":"src-server/services/ssh/device-pairing-service.ts","digest":"dcecd8108147d5e7f2b26d132545cf8901b05ce62d14523a2732a10005fb1753","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
-
-    {"path":"src-server/services/orchestration/project-task-room-runtime.ts","digest":"feb48a41131f04260c92e3a7757eda5aa61799a7015b3386a931d950250e3d58","revision":"9f8b407fac4a9e5536d72ca49be3a0b77715e1d8"}
+    {"path":"src-server/services/ssh/device-pairing-service.ts","digest":"dcecd8108147d5e7f2b26d132545cf8901b05ce62d14523a2732a10005fb1753","revision":"42491ca6bab31b1365b33e3190c171819881eb72"}
   ],
 
   "checks": [
