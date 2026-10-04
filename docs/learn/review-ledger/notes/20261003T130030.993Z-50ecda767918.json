@@ -1,0 +1,7 @@
+{
+  "revision": "64a43f8a2ca8c7ce7f9867407283e59d4d66843e",
+
+  "notes": [
+    {"path":"docs/contexts/workspace-surfaces/CONTEXT.md","note":"Re-recorded after the File Preview head-slot portals lost their wrapper fragments; the context's File Preview and host-selection claims are unchanged by that.","inputs":["docs/contexts/workspace-surfaces/CONTEXT.md","src-ui/src/contexts/navigation-store.ts","src-ui/src/workspace-panes/CodingChatPane.tsx","src-ui/src/workspace-panes/FilePreviewPane.tsx","src-ui/src/workspace-panes/builtinWorkspacePaneRegistry.tsx"]}
+  ]
+}
