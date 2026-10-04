@@ -597,8 +597,12 @@ GET/HEAD Station health/authority, Project list/detail, shared-work list, and
 scoped document/history/publication reads. Neutral Device-only observations are
 `/.well-known/station/v1`, `/api/system/status` and `/api/system/identity`.
 Authority and member reads still require the separate account. Privileged,
-terminal, plugin, pairing, consent and operator routes refuse proof authority
-even when the proven Device holds broad scopes. The one [native Device request
+terminal, plugin, pairing, consent and generic operator routes refuse proof
+authority even when the proven Device holds broad scopes. A separate closed
+relay-management and Project access management inventory now has native
+transport and fixed account-proof preparation; it requires explicit management
+scope and independent Project IAM. The account-bound Device gate integration
+remains pending #3210. The one [native Device request
 authority](../../src-server/security/native-device-request-authority.ts) mints
 the credential-free principal on the final Request, and every later seam
 (account-bound gate, orchestration principal, Project membership authority,

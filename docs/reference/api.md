@@ -2975,7 +2975,8 @@ or connected assertion. Browser RTC remains renderer-owned.
 
 The separate [account owner](../../src-desktop/src/native_account_operations.rs)
 registers challenge/key preparation, complete local username/password exchange
-body preparation, canonical GET/HEAD member-read account headers, and fixed
+body preparation, canonical GET/HEAD member-read account headers, dedicated
+closed relay/Project access management headers, and fixed
 invitation-acceptance and native-continuation revocation requests. It constructs
 account claims using independent key custody and current host owners, with
 bounded one-exchange handles, replay/expiry and post-sign key fencing. These
@@ -2983,9 +2984,13 @@ structured commands do not mint a principal or replace the server's current
 provider/Device/Project checks. See [native account continuation](sdk.md#native-station-account-continuation-opt-in)
 for the typed provider and account-body-before-Device-signing ordering.
 
-The selected native relay member route permits only bounded Station observations
-and Project/shared-work reads, plus its fixed account operations. Ordinary SDK
-mutations are refused; operator and compute surfaces are unsupported. Native
+The selected native relay member route permits bounded Station observations
+and Project/shared-work reads, its fixed account operations, and the closed
+relay-management/Project access management inventory. The latter uses dedicated
+native account proof preparation and requires management scope plus independent
+Project IAM. The account-bound Device gate integration remains pending #3210.
+Other SDK mutations, terminal, Agent and Task publication writes are refused;
+generic operator and compute surfaces remain unsupported. Native
 continuation revocation retires that continuation and its provider session,
 without retiring Device custody. These are source-composed contracts, not a
 fresh native enrollment, physical-device, or published application receipt.

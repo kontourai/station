@@ -145,8 +145,12 @@ The library does not enroll or activate a Device, authenticate an account or
 grant Project access. Station's native saved-route owner now composes this
 transport for a configured host-owned Device binding, obtaining fresh ICE for
 each peer. Its separate account bridge supplies continuation proof for bounded
-Project and authority reads. Unsupported resources and writes fail before
-peer creation; this is not a general operator Workspace transport. The CLI
+Project and authority reads, plus a dedicated fixed native account operation
+for the closed relay-management and Project access administration leaves.
+Unsupported resources and writes fail before peer creation; this is not a
+general operator Workspace transport. Management does not replace Project IAM
+or grant terminal, Agent or Task publication authority. The account-bound
+Device gate integration remains pending #3210. The CLI
 continues to exclude these routes from default selection. Focused source tests do not establish executed
 Tauri IPC, packaged-client, physical-device or complete authenticated
 Project-journey evidence.

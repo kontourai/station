@@ -260,10 +260,14 @@ account contract.
 An accepted Project administrator can read `GET /api/projects/:slug/access`
 with an approved account-bound Device carrying `orchestration:read`. To manage
 members or invitation links, the operator must independently approve
-`orchestration:operate` on that Device through the existing
-`POST /api/pairing/devices/:deviceId/scope` endpoint. Grant exactly
-`["orchestration:read", "orchestration:operate"]`; the standard personal-device
-preset includes terminal access and is not the collaborator-management grant.
+`orchestration:operate` or the narrower `relay:manage` on that Device through
+the existing `POST /api/pairing/devices/:deviceId/scope` endpoint. For the closed
+access-management leaves, grant `orchestration:read` plus `relay:manage`
+(**Manage remote access**); presets/defaults exclude it. The standard
+personal-device preset includes terminal access and is not the
+collaborator-management grant. Native management account proofs use a separate
+fixed host operation; the account-bound Device gate integration remains pending
+#3210. Neither scope replaces the person's Project role.
 The person remains signed in as their own account throughout this workflow.
 
 The audited POST leaves beneath `/api/projects/:slug/access` are

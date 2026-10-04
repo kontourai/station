@@ -24,6 +24,17 @@ transport admission, never Device, account or Project access. The registry
 retains revoked tuples and limits its complete history to 16 records; capacity
 exhaustion fails closed rather than evicting revocation evidence.
 
+The separate [relay-management routes](../../src-server/routes/system/relay-management-routes.ts)
+serve the desktop/native invitation panel through the runtime-owned connector
+issuer. A current operator or explicitly promoted `relay:manage` Device can
+approve/revoke an exact surface, issue one-use invitations and approve/deny a
+pending Device. The captured decision retains the actual human actor and
+rechecks Device/account/provider currentness and the target after awaits.
+This does not change the original operator-only pairing routes, enroll an
+account, or grant Project membership. Native Project administration additionally
+requires Project IAM. The account-bound gate integration remains pending #3210;
+this source addition is not released Nightly, physical-device or two-human proof.
+
 The [connector](../../src-server/services/connections/self-hosted-broker-connector.ts)
 can resolve approved surfaces while preserving its existing fixed-surface
 adapter. It polls the broker for each exact approved surface in the current
