@@ -22,8 +22,12 @@ a direct IPv4, IPv6, or IPv4-mapped loopback peer. A public tailnet Host is
 remote even when a Station-owned proxy's next hop is loopback. Every
 non-loopback peer is remote, and missing peer metadata fails closed.
 
-`Forwarded`, `X-Forwarded-For`, and `X-Real-IP` are ignored. Station has no
-generic trusted-proxy mode. Raw Tailscale identity headers are also stripped.
+`Forwarded`, `X-Forwarded-For`, and `X-Real-IP` are ignored as authority:
+they never make a request more local or more trusted. Their presence only
+marks a raw operator-credential use as off-host in the #2894 telemetry below,
+and Station's UI proxy reports when its own client sent one
+(`x-station-proxy-client-forwarded`). Station has no generic trusted-proxy
+mode. Raw Tailscale identity headers are also stripped.
 If `STATION_TRUSTED_TAILSCALE_SERVE_ORIGIN` names the exact HTTPS origin, the
 loopback-only UI proxy accepts Tailscale Serve's sanitized, WhoIs-backed user
 headers for that authority when Funnel is absent, converts them into a bounded
