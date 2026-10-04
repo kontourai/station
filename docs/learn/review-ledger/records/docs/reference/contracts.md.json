@@ -16,7 +16,7 @@
 
     {"path":"packages/connect/src/core/nativeRelayLink.ts","digest":"b2195a228a6091f73e96ee72a86eb44ca89d26e5123fd7d0d71f44a3a4195fe9","revision":"70e9b50c5329411de0b7b432408f0722407a0208"},
 
-    {"path":"packages/contracts/package.json","digest":"38aa91f81a98e8b5400f96842d0f1926f33e3da96085e2f14a9ccb9122ec7056","revision":"0ccabd1ab89272334dbe2515a89907f21fb3b7fe"},
+    {"path":"packages/contracts/package.json","digest":"612f3e57184cb49ef117d8256894c3d6aba2e3ecbeadf367f1f9f9b48ef8d6ac","revision":"f2ce6315249e276d6a84c953d91cfc2646159fb4"},
 
     {"path":"packages/contracts/src/__tests__/learning-review.test.ts","digest":"d91c0dcd54fc02fd99e0c7959b63a7dc1216b0556cfb2f8d1ff0996df1651347","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -52,7 +52,7 @@
 
     {"path":"packages/contracts/src/orchestration.ts","digest":"b85426d08406de6a1e6f42dd2b8e356ea3995df5be0929390fa7d17fa00bfd64","revision":"68231f2caead4680fb4dfa036d25b1a4a2a836bb"},
 
-    {"path":"packages/contracts/src/plugin.ts","digest":"98607c85d86241ccf638de4d207ebb64285752092eb7a827e4304c75df409b95","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"packages/contracts/src/plugin.ts","digest":"792d8276a237a79dbace80dc8171a578448b45bb720df125d674b1030207da30","revision":"91ec8af5d451ec5be73d2cfe18dcc7afa2170909"},
 
     {"path":"packages/contracts/src/project-membership.ts","digest":"8b3317731a3d6766b08756ae78895e214e2c34ee48c2256da4961a8f2aa0d332","revision":"623ff3525e54ab5b505d1c4f4790da5a0b3aec24"},
 
@@ -112,7 +112,7 @@
 
     {"path":"src-server/routes/system/system-status-routes.ts","digest":"0c52821e1938ae72876d26def0ee756db16f1cb2a33e9088bb4e1da8800e4f0b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"328bb7b01b3415e258ce9594666cf911f7bf49fc51ec0fedf809997a86cba84f","revision":"0ccabd1ab89272334dbe2515a89907f21fb3b7fe"},
+    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"ec5027141f09ec0945d83e3c704b9f11ea190aa32bf7daecb865521f31371413","revision":"f2ce6315249e276d6a84c953d91cfc2646159fb4"},
 
     {"path":"src-server/runtime/conversation/conversation-stats-view.ts","digest":"60cde631c8481e21f8abf3223648d922604e2c31376e805fc3a80caef81a6a23","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

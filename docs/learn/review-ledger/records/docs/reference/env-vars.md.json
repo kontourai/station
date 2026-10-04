@@ -22,7 +22,7 @@
 
     {"path":"packages/shared/src/runtime-path-resolver.ts","digest":"a03da100225a7908b1566d1ea0c43d3e99e424c879b9ab6bd997a75409ad156b","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-server/index.ts","digest":"53c36afff3a1c5a96e7c2054c7c0f2ce97c2d5b373e876e41d7c505163f30c27","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"src-server/index.ts","digest":"afff725135d2bdc11aa1c0815b5fbd0a297c52e544e54dae1e069200bf0091b2","revision":"0ccabd1ab89272334dbe2515a89907f21fb3b7fe"},
 
     {"path":"src-server/providers/llm/bedrock-embedding-provider.ts","digest":"4ac1190c4d1f8f3b479f52336ad8120ea1474ee0540833b73c4b2421c099d6af","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -40,7 +40,7 @@
 
     {"path":"src-server/runtime/bootstrap/personal-home-authority-database.ts","digest":"8d7f81a7cef515dfff921152c74d03028409708395de6c280f2e013c70e84f7f","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-server/runtime/bootstrap/runtime-http.ts","digest":"bf1b7671bc40fe53615a39f8e9f12b5ad27beace97a86fc50e2ebb4e9717d20e","revision":"54ca710a3594bf1f3b7ac3d4464a2db2edc6e6c0"},
+    {"path":"src-server/runtime/bootstrap/runtime-http.ts","digest":"e437ea44b623804eaeeceefb079a0b30dee19ba7f6bb129da01620298a875c6a","revision":"0ccabd1ab89272334dbe2515a89907f21fb3b7fe"},
 
     {"path":"src-server/runtime/bootstrap/runtime-initialize.ts","digest":"bd381c9d60f70ac986c9eee0977752d883f52a018842fee300d3e352933aea6d","revision":"56f4c4897a189eeb30430119a4f4895e95fbb541"},
 
@@ -50,9 +50,9 @@
 
     {"path":"src-server/runtime/bootstrap/station-control-runtime-env.ts","digest":"c4695660c3c92b217c4d57bced3e019b1764520ea669f5ed469d25f052997601","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
-    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"7d26818fb47194e3a8bfbe9303f48be26207889b7bb84806af0ff1efaacfc34f","revision":"efa773acac88792cda31595f9afca4a37d3efebc"},
+    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"ec5027141f09ec0945d83e3c704b9f11ea190aa32bf7daecb865521f31371413","revision":"f2ce6315249e276d6a84c953d91cfc2646159fb4"},
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"88a3a2161a61eaee174d5404833230e31768afb8ea60fae898cfda39bb49ae09","revision":"efa773acac88792cda31595f9afca4a37d3efebc"},
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"e0a80b940394488c400e8df3bc931ec0be271dfbe7b1231d95835cfc73cd09a8","revision":"f2ce6315249e276d6a84c953d91cfc2646159fb4"},
 
     {"path":"src-server/security/station-browser-origins.ts","digest":"2044349f4351a616298922879bccfde0ff147a165bdadc6683e0a1c1f6a7b8b2","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 

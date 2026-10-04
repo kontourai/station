@@ -134,7 +134,7 @@
 
     {"path":"tests/tauri-shell/native-fresh-relay-acceptance-webview.ts","digest":"3618b4a5b6517ced5f38e274952dac2cbfd7a276bba743581dbc30c1a305080e","revision":"058b19b63d88ffc68b5af83c3dda88ac9add9c63"},
 
-    {"path":"tests/tauri-shell/native-fresh-relay-fixture.md","digest":"a94e1fe6d17e507eb7c476063331a309bc40e570236723915d45eec61288b32d","revision":"7698b96f8c3b5d9c4ffe81030a3db5d9bad686ce"},
+    {"path":"tests/tauri-shell/native-fresh-relay-fixture.md","digest":"7617eadd09f0235a5330b87f138d08c4778bf178bdd901ac34593f9463821edc","revision":"e8e783c8e3eef665c4836c20b8555d9a90b68d94"},
 
     {"path":"tests/tauri-shell/native-project-acceptance-webview.ts","digest":"4ab4a1f98e3d2e677da5bda05f7bb9d6e8186f684f88f63faa23841b179911a8","revision":"2e4f061f91ffb0338e45de62382cf6da59cd5c76"},
 

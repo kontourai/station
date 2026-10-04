@@ -12,7 +12,7 @@
   "document": {"digest":"78a9d4be24cfd3184349e887388ebbcd02ef6d3faec6c43feeff0fa7f6daaa03","revision":"19aff2a08b9739ad9ffbda39ff8cb19b026fda82"},
 
   "sources": [
-    {"path":"docs/architecture/module-map.md","digest":"741aadfe3b7a144a1092720ced0c4227ef3d0cb443431ab409ec609007bc83f8","revision":"933a4db2063d3ee5d86bd54f8bbcc3d1b85332ca"},
+    {"path":"docs/architecture/module-map.md","digest":"8d185609a6c438c1c8ba756da09ba2c91e61d8613737b3a68f98fb770da0ae13","revision":"f2ce6315249e276d6a84c953d91cfc2646159fb4"},
 
     {"path":"docs/guides/documentation.md","digest":"35dd6dd9ae31089fcab2adaf2d58595f809a9e93cf85025c430b71350c576c15","revision":"595059eafa17ef6b7a39217a405619ecbfac2270"},
 
@@ -44,7 +44,7 @@
 
     {"path":"src-server/routes/mobile-device.ts","digest":"0a46281dcaaac36ce6d49fd9415619c58e663f874d4d8bb032822e3ae68fbe46","revision":"18002c0871ea8538605e922464aab5356c77593c"},
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"88a3a2161a61eaee174d5404833230e31768afb8ea60fae898cfda39bb49ae09","revision":"efa773acac88792cda31595f9afca4a37d3efebc"},
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"e0a80b940394488c400e8df3bc931ec0be271dfbe7b1231d95835cfc73cd09a8","revision":"f2ce6315249e276d6a84c953d91cfc2646159fb4"},
 
     {"path":"src-server/services/browser/browser-access.ts","digest":"c435162b9cf5941edce107cfdccb5a4e6a4a5293fd105a745112c48ce9ae7870","revision":"18002c0871ea8538605e922464aab5356c77593c"},
 

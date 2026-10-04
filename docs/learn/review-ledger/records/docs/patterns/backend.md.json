@@ -38,13 +38,13 @@
 
     {"path":"src-server/routes/agents/agents.ts","digest":"06d20a294112b76993e9a1efd4ab9ce639242ab9116e04a7f1cbb7f68153ba23","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-server/runtime/bootstrap/runtime-http.ts","digest":"bf1b7671bc40fe53615a39f8e9f12b5ad27beace97a86fc50e2ebb4e9717d20e","revision":"54ca710a3594bf1f3b7ac3d4464a2db2edc6e6c0"},
+    {"path":"src-server/runtime/bootstrap/runtime-http.ts","digest":"e437ea44b623804eaeeceefb079a0b30dee19ba7f6bb129da01620298a875c6a","revision":"0ccabd1ab89272334dbe2515a89907f21fb3b7fe"},
 
     {"path":"src-server/runtime/streaming/StreamPipeline.ts","digest":"cdf3e6786b92a321ffa13c413f25b8b7bf367436b389f7212492cb2eccf1c6f2","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
     {"path":"src-server/runtime/streaming/types.ts","digest":"31789bc824034a421a368940714ba41424538e715801c7770d5794ffccb3143f","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-server/security/pairing-route-scopes.ts","digest":"5188e91b51f45578c8d64d05d71ec69114158ec73af91a69b3de5d316f46e6c8","revision":"efa773acac88792cda31595f9afca4a37d3efebc"},
+    {"path":"src-server/security/pairing-route-scopes.ts","digest":"e3f907cfec7b31cf9995495011e25216d1e26f16c593a691896c9c5d7d3f03f5","revision":"f2ce6315249e276d6a84c953d91cfc2646159fb4"},
 
     {"path":"src-server/services/approvals/approval-registry.ts","digest":"3b23285f102a3fa0d14e98f210bbba6ec2a98d8dbfa57421988a810d302d00ff","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 

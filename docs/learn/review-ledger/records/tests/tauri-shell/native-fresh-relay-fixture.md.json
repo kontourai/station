@@ -9,7 +9,7 @@
 
   "limits": "The isolated normal Linux Node runtime and real loopback Project/shared-work publisher executed in the preserved failed fresh-d8dd-20261001 run. Public connector registration never occurred: its initial lease expired before process spawn, exact credentials/scope matched, actual register/withdraw and cleanup returned 401. Actual fresh native host ceremony, main WebView, ordinary UI driver, physical iOS Nightly and Zach acceptance remain NOT_VERIFIED. Pion staging/build and a matching artifact digest do not establish an application peer. Node guard is not an OS sandbox; routing revocation is not instantaneous TURN credential revocation or a financial spend cap.",
 
-  "document": {"digest":"a94e1fe6d17e507eb7c476063331a309bc40e570236723915d45eec61288b32d","revision":"7698b96f8c3b5d9c4ffe81030a3db5d9bad686ce"},
+  "document": {"digest":"7617eadd09f0235a5330b87f138d08c4778bf178bdd901ac34593f9463821edc","revision":"e8e783c8e3eef665c4836c20b8555d9a90b68d94"},
 
   "sources": [
     {"path":"scripts/lib/native-fresh-relay-fixture.ts","digest":"4673c2cc2af412718ed9aeebcd64afd8a248e38c1646b7d8131b66175dcb390f","revision":"e0ed479b4a907eb23a4aa1a788a4921e14f5f3bb"},
@@ -22,7 +22,7 @@
 
     {"path":"scripts/native-relay-invite.ts","digest":"3118db6d9a737c421ca9de6ce5da585e5f96d77079328005fcb8bc7e076dfd1f","revision":"70e9b50c5329411de0b7b432408f0722407a0208"},
 
-    {"path":"src-server/runtime/bootstrap/__tests__/self-hosted-connector-config.test.ts","digest":"e6ec2fe6f254369e7b0da6563ff205d63ab714186bbb24e1527919b7e191957d","revision":"8aacc3bd625dd38c7b10bd7c88b7db4f03792a73"},
+    {"path":"src-server/runtime/bootstrap/__tests__/self-hosted-connector-config.test.ts","digest":"d90fc87546b6da331094a9b2ac21c44e5a99df6567460dcab4dfb50949223a4f","revision":"0ccabd1ab89272334dbe2515a89907f21fb3b7fe"},
 
     {"path":"packages/connect/src/core/nativeRelayLink.ts","digest":"b2195a228a6091f73e96ee72a86eb44ca89d26e5123fd7d0d71f44a3a4195fe9","revision":"70e9b50c5329411de0b7b432408f0722407a0208"},
 

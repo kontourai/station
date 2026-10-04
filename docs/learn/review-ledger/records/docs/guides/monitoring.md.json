@@ -16,7 +16,7 @@
 
     {"path":"scripts/generate-metric-reference.mjs","digest":"75fb40e614bee3d8f64de9bcdb1ee3dee333f2aca482cfcdd243c657bdb0aff4","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
-    {"path":"src-server/index.ts","digest":"53c36afff3a1c5a96e7c2054c7c0f2ce97c2d5b373e876e41d7c505163f30c27","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    {"path":"src-server/index.ts","digest":"afff725135d2bdc11aa1c0815b5fbd0a297c52e544e54dae1e069200bf0091b2","revision":"0ccabd1ab89272334dbe2515a89907f21fb3b7fe"},
 
     {"path":"src-server/monitoring/emitter.ts","digest":"18a46c3c352fa9f5305e5bf2b03c20eb39cb2fe934d53e51900d908cd15fecf4","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 

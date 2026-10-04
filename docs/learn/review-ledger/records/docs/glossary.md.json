@@ -12,11 +12,11 @@
   "document": {"digest":"329ca4c2a839ecbf37e8306421328d7b2ca93748420405867954ad000062ae19","revision":"a86f7c1d7acef9f4fb2472a3dffce232bc9950b0"},
 
   "sources": [
-    {"path":"docs/architecture/module-map.md","digest":"741aadfe3b7a144a1092720ced0c4227ef3d0cb443431ab409ec609007bc83f8","revision":"933a4db2063d3ee5d86bd54f8bbcc3d1b85332ca"},
+    {"path":"docs/architecture/module-map.md","digest":"8d185609a6c438c1c8ba756da09ba2c91e61d8613737b3a68f98fb770da0ae13","revision":"f2ce6315249e276d6a84c953d91cfc2646159fb4"},
 
-    {"path":"docs/reference/connect.md","digest":"6b670c264e00a41205673ec664d241a3a1054a06006932f6e1d0b17dd086d5db","revision":"13ab0b8cc55ca7db5568879e7dced0e5a2e0f3e4"},
+    {"path":"docs/reference/connect.md","digest":"3b377096c58c78aa22cfcaf9745ae9eb4c9927ef177109bf8960119885db730e","revision":"e8e783c8e3eef665c4836c20b8555d9a90b68d94"},
 
-    {"path":"docs/reference/contracts.md","digest":"a8ab14487297ba73e4c8313ccfb7f7750f2c07daaae893e5d0444349bbdcaf33","revision":"793ad2bb50d50f43d7601fb75d3736fc86550cd6"},
+    {"path":"docs/reference/contracts.md","digest":"d77861b89b3a5376fcb60cbdb1a5bd9bd2b2307e1e4a138278b657226f6bf1d3","revision":"cd948fbcd88d50f27ad0033c61804578dfb28f84"},
 
     {"path":"packages/contracts/src/agent-identity.ts","digest":"d352f22b4698f100c1cc2a7466fd62556a6a69c03bffaf66e54c1bbdfc1410b7","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -52,7 +52,7 @@
 
     {"path":"src-server/routes/mobile-device.ts","digest":"0a46281dcaaac36ce6d49fd9415619c58e663f874d4d8bb032822e3ae68fbe46","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"88a3a2161a61eaee174d5404833230e31768afb8ea60fae898cfda39bb49ae09","revision":"efa773acac88792cda31595f9afca4a37d3efebc"},
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"e0a80b940394488c400e8df3bc931ec0be271dfbe7b1231d95835cfc73cd09a8","revision":"f2ce6315249e276d6a84c953d91cfc2646159fb4"},
 
     {"path":"src-server/services/browser/browser-access.ts","digest":"c435162b9cf5941edce107cfdccb5a4e6a4a5293fd105a745112c48ce9ae7870","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

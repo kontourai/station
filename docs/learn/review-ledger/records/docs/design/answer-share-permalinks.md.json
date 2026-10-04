@@ -14,7 +14,7 @@
   "sources": [
     {"path":"packages/contracts/src/answer-share-channel.ts","digest":"0313c8b8740e8b0215b7313796f01f9ac1231cd40e93bd800a4610b2bd67535c","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"packages/contracts/src/environment-security.ts","digest":"5e95b203695a37807a3b3c9464df4f0153ca32b408496dc12f59274f61fd2486","revision":"91d79c3f0ce9ca5ae304e4248b67b6189103016e"},
+    {"path":"packages/contracts/src/environment-security.ts","digest":"320c0225d7f51e39d15a07f8a6906490865e192e7b859aeef18b398155145465","revision":"0ccabd1ab89272334dbe2515a89907f21fb3b7fe"},
 
     {"path":"packages/contracts/src/turn-provenance.ts","digest":"7580bf4f0199a83b65236ab55eade23391f940fa0c206a58545f0b86f3570193","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -24,9 +24,9 @@
 
     {"path":"src-server/routes/share/answer-share-routes.ts","digest":"de74fa89e8f9aa5d0770dc33fd1c0d9e95185c61c8a4bd23e94ab6070824a216","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"88a3a2161a61eaee174d5404833230e31768afb8ea60fae898cfda39bb49ae09","revision":"efa773acac88792cda31595f9afca4a37d3efebc"},
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"e0a80b940394488c400e8df3bc931ec0be271dfbe7b1231d95835cfc73cd09a8","revision":"f2ce6315249e276d6a84c953d91cfc2646159fb4"},
 
-    {"path":"src-server/security/pairing-route-scopes.ts","digest":"5188e91b51f45578c8d64d05d71ec69114158ec73af91a69b3de5d316f46e6c8","revision":"efa773acac88792cda31595f9afca4a37d3efebc"},
+    {"path":"src-server/security/pairing-route-scopes.ts","digest":"e3f907cfec7b31cf9995495011e25216d1e26f16c593a691896c9c5d7d3f03f5","revision":"f2ce6315249e276d6a84c953d91cfc2646159fb4"},
 
     {"path":"src-server/services/share/answer-share-service.ts","digest":"d333e854f9cecb3a4dbbbf53793187a45848c8be7a30bf1369e4d75b32d1dc82","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 

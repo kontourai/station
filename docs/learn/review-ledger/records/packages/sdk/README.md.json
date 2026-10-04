@@ -16,7 +16,7 @@
 
     {"path":"packages/cli/src/commands/install.ts","digest":"5c476173280f26004cb081d43a6e276530a09d048a19680d56c0acfd3bc7c188","revision":"c2b1caf535d375c5195cc8b8a66c9dc6ce83205d"},
 
-    {"path":"packages/sdk/package.json","digest":"473accfbc92fb87d86af0b017864a7738ddcf798d0b5a4e4aa986e9a403f891c","revision":"d9279aaf5f36478cbce5401e427eb674d114967f"},
+    {"path":"packages/sdk/package.json","digest":"339be83ceb40072b3215ee1542d504181235c60a14723970c527190407d3e393","revision":"f2ce6315249e276d6a84c953d91cfc2646159fb4"},
 
     {"path":"packages/sdk/src/agent/index.ts","digest":"27b8861c43936cd4996215ce8ad0f3a2bbd7835adba4740e160e8b8efd02f54e","revision":"f72daba9492778d9418abbf9730b6482b73a300c"},
 

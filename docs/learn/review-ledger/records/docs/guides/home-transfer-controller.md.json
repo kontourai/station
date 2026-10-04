@@ -32,7 +32,7 @@
 
     {"path":"packages/cli/src/commands/cloud.ts","digest":"7c50391b36b9c61736cc806b55296bed80d4c376921295ff406bdea000e9cd51","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 
-    {"path":"packages/contracts/src/environment-security.ts","digest":"5e95b203695a37807a3b3c9464df4f0153ca32b408496dc12f59274f61fd2486","revision":"91d79c3f0ce9ca5ae304e4248b67b6189103016e"},
+    {"path":"packages/contracts/src/environment-security.ts","digest":"320c0225d7f51e39d15a07f8a6906490865e192e7b859aeef18b398155145465","revision":"0ccabd1ab89272334dbe2515a89907f21fb3b7fe"},
 
     {"path":"packages/contracts/src/workspace-home-role.ts","digest":"afdd6ec33526422a7a455cfc575cdd5d662277a8a5c356db6f5b2b564de038f4","revision":"6bda463a0c9cb44b7f2686c6d47b4552f79220f2"},
 
@@ -70,7 +70,7 @@
 
     {"path":"src-server/runtime/bootstrap/personal-home-authority-database.ts","digest":"8d7f81a7cef515dfff921152c74d03028409708395de6c280f2e013c70e84f7f","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"88a3a2161a61eaee174d5404833230e31768afb8ea60fae898cfda39bb49ae09","revision":"efa773acac88792cda31595f9afca4a37d3efebc"},
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"e0a80b940394488c400e8df3bc931ec0be271dfbe7b1231d95835cfc73cd09a8","revision":"f2ce6315249e276d6a84c953d91cfc2646159fb4"},
 
     {"path":"src-server/services/orchestration/delegation-attempt-claim-store.ts","digest":"50dcada7bbbd9f55739a41f024393046c3845e1979aae4113ca9e4eb57f94171","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 
@@ -112,7 +112,7 @@
 
     {"path":"src-server/services/spatial-board/spatial-board-store.ts","digest":"d5e9c1bf6380b16a83af74b7bcfb7fdf5c45a9f04068b78c394c7edf04394f4c","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 
-    {"path":"src-server/services/ssh/device-pairing-service.ts","digest":"dcecd8108147d5e7f2b26d132545cf8901b05ce62d14523a2732a10005fb1753","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    {"path":"src-server/services/ssh/device-pairing-service.ts","digest":"c1681de45e866b687e5c27ce7a276ad36869784b2a3ac6c0050715487762c72b","revision":"9551da1bbc1f9d6d3e7c3f74729b9a968dab9b4f"},
 
     {"path":"src-server/tools/station-control-delegation.ts","digest":"e5e4d1979cfa4997ce4b808f5268e69bbd0926f5c838ac1388bbdd5009389467","revision":"56f4c4897a189eeb30430119a4f4895e95fbb541"},
 

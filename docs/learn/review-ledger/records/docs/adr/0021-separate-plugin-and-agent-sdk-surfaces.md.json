@@ -12,7 +12,7 @@
   "document": {"digest":"7a9c8a674d49f4340c2f9ed54d1865a1bc4ebc6add85268bd551d33b4c85e979","revision":"fcd2bd1f47550cf27ca9592bfc1c1ffb40744900"},
 
   "sources": [
-    {"path":"packages/sdk/package.json","digest":"473accfbc92fb87d86af0b017864a7738ddcf798d0b5a4e4aa986e9a403f891c","revision":"d9279aaf5f36478cbce5401e427eb674d114967f"},
+    {"path":"packages/sdk/package.json","digest":"339be83ceb40072b3215ee1542d504181235c60a14723970c527190407d3e393","revision":"f2ce6315249e276d6a84c953d91cfc2646159fb4"},
 
     {"path":"packages/sdk/src/__tests__/browser-entry-bundles.test.ts","digest":"cbd20ee2ae028c4276a9412ddc5335b10957251f5d37597e53369968264d37f5","revision":"f72daba9492778d9418abbf9730b6482b73a300c"},
 

@@ -142,7 +142,7 @@
 
     {"path":"src-server/runtime/bootstrap/self-hosted-connector-config.ts","digest":"6771821a1a88ebf1556cfb6b61e49540ffa872ec63d43ae71a6b6778fc5eed24","revision":"0ccabd1ab89272334dbe2515a89907f21fb3b7fe"},
 
-    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"328bb7b01b3415e258ce9594666cf911f7bf49fc51ec0fedf809997a86cba84f","revision":"0ccabd1ab89272334dbe2515a89907f21fb3b7fe"},
+    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"ec5027141f09ec0945d83e3c704b9f11ea190aa32bf7daecb865521f31371413","revision":"f2ce6315249e276d6a84c953d91cfc2646159fb4"},
 
     {"path":"src-server/runtime/mcp/mcp-manager.ts","digest":"2b111148f423e896011695de09bca6f6f2990bc8285b4466a5fd70a3c93c65d1","revision":"aadb5aa183a58e97344d13b8c5f34f92a7d78a94"},
 
@@ -150,7 +150,7 @@
 
     {"path":"src-server/security/coding-authority.ts","digest":"213af116a09a02c70ea15a8346b3d8fd2e25f279c975ef9b12d8ab21a519205d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/security/pairing-route-scopes.ts","digest":"7012724880166760e968bbdee984998f4dc95fec3b1c9af2f8d64599bce5679f","revision":"0ccabd1ab89272334dbe2515a89907f21fb3b7fe"},
+    {"path":"src-server/security/pairing-route-scopes.ts","digest":"e3f907cfec7b31cf9995495011e25216d1e26f16c593a691896c9c5d7d3f03f5","revision":"f2ce6315249e276d6a84c953d91cfc2646159fb4"},
 
     {"path":"src-server/security/runtime-request-security.ts","digest":"474c537f338c8d10dec5c2264897375ce1e19c4a2669d8fc38854f7e4abf6d74","revision":"0ccabd1ab89272334dbe2515a89907f21fb3b7fe"},
 
