@@ -9,7 +9,7 @@
 
   "limits": "No full delegation/read-scope/security audit, real mutual pairing ceremony, SSH remote or target-execution proof.",
 
-  "document": {"digest":"77fade06b007c99c629fdebeac9bfdb22f82484a25bb1f6a7d43982fed777848","revision":"f951ee234175769e0b4e725eb3f18726a40831c2"},
+  "document": {"digest":"008aa141af3bce11a17d0d0ab5f6eeade02e86da815714df2ef12de6ac4d1db5","revision":"c811d0db64895a1619f25b7914e7b798f7130523"},
 
   "sources": [
     {"path":"packages/contracts/src/environment-security.ts","digest":"5321281ba84da29a4ba2681d344a91f08590c75d6386412a7e8d3dfba827a41a","revision":"965dfe953d3566dba61149eeaf956aed07a65bcf"},
@@ -24,7 +24,7 @@
 
     {"path":"src-server/security/client-protocol-admission.ts","digest":"30fe8b4eb670e5f73cf43c736fe1d2c86ea3cf91f98a843edb20f7885d8b828a","revision":"18ca128e2591c8773fd4a109991661d576c29b4a"},
 
-    {"path":"src-server/runtime/__tests__/client-protocol-admission.test.ts","digest":"1b0a8e5331791cddd41ce37aa72d3da09cc7ee4be0ff226a1201e811836d9223","revision":"f064416973767bd2e7ff5c9168659decc1df12a6"}
+    {"path":"src-server/runtime/__tests__/client-protocol-admission.test.ts","digest":"b526236256344c1267779a907f0efd9a330e99ce1a65aa4efbcdb4095f38ff83","revision":"0371f7dc7c6adc213a577809267f86740b64a676"}
   ],
 
   "checks": [

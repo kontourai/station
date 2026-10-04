@@ -9,7 +9,7 @@
 
   "limits": "Decision record only; no behavior ships with it. Context statements describe origin/main on 2026-09-29 and were checked against the listed sources; the decisions are implemented and proven by #2959-#2962, not by this record.",
 
-  "document": {"digest":"47d990a51c06294c336eb433746f16f7a9dabb40df56de4f51c6197aec3fbf1e","revision":"f951ee234175769e0b4e725eb3f18726a40831c2"},
+  "document": {"digest":"1b41b473f1a16cbfa298fb2738f412233f194e6b0e00ffb33fce004ad43a10b9","revision":"c811d0db64895a1619f25b7914e7b798f7130523"},
 
   "sources": [
     {"path":"install.sh","digest":"f2b2fbf2dba1198f08637b48ad3a1cd7ae684cee020621cd293668e6bbb8b4bc","revision":"54e0ffb5c1ae765b4127f031e525793087fb9669"},
@@ -20,7 +20,7 @@
 
     {"path":"packages/contracts/src/environment-security.ts","digest":"5321281ba84da29a4ba2681d344a91f08590c75d6386412a7e8d3dfba827a41a","revision":"965dfe953d3566dba61149eeaf956aed07a65bcf"},
 
-    {"path":"src-ui/src/lib/compatibility.ts","digest":"87b32674564a146887a4eb127962dce0d96480ab6b92a43a4f15762067cc0d42","revision":"965dfe953d3566dba61149eeaf956aed07a65bcf"},
+    {"path":"src-ui/src/lib/compatibility.ts","digest":"32b350314518b5d3b507333847a779d1910570a6137d53a8b5dcb0717eb4cf3a","revision":"0371f7dc7c6adc213a577809267f86740b64a676"},
 
     {"path":"packages/shared/src/station-home-schema.ts","digest":"db4b3e2883079cf1f4aa55f10b955f42b767e580bbf5a51350c75f3c56d4e1db","revision":"54e0ffb5c1ae765b4127f031e525793087fb9669"},
 
@@ -58,7 +58,7 @@
 
     {"path":"src-server/security/client-protocol-admission.ts","digest":"30fe8b4eb670e5f73cf43c736fe1d2c86ea3cf91f98a843edb20f7885d8b828a","revision":"18ca128e2591c8773fd4a109991661d576c29b4a"},
 
-    {"path":"src-server/runtime/__tests__/client-protocol-admission.test.ts","digest":"1b0a8e5331791cddd41ce37aa72d3da09cc7ee4be0ff226a1201e811836d9223","revision":"f064416973767bd2e7ff5c9168659decc1df12a6"}
+    {"path":"src-server/runtime/__tests__/client-protocol-admission.test.ts","digest":"b526236256344c1267779a907f0efd9a330e99ce1a65aa4efbcdb4095f38ff83","revision":"0371f7dc7c6adc213a577809267f86740b64a676"}
   ],
 
   "checks": [

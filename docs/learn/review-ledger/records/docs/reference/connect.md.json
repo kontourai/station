@@ -136,7 +136,11 @@
 
     {"path":"src-server/runtime/__tests__/client-protocol-admission.test.ts","digest":"b526236256344c1267779a907f0efd9a330e99ce1a65aa4efbcdb4095f38ff83","revision":"0371f7dc7c6adc213a577809267f86740b64a676"},
 
-    {"path":"packages/sdk/src/client/client-protocol.ts","digest":"ec1b8b8fc11c38fcf5f3e3e7bdae3255682b89162084b861732f78e37bab9ca3","revision":"fadd647731c00e53b2aeb25a7873ee66c0aa7608"}
+    {"path":"packages/sdk/src/client/client-protocol.ts","digest":"ec1b8b8fc11c38fcf5f3e3e7bdae3255682b89162084b861732f78e37bab9ca3","revision":"fadd647731c00e53b2aeb25a7873ee66c0aa7608"},
+
+    {"path":"src-ui/src/__tests__/serverHealth.test.ts","digest":"859724740aa76b8517ae77c9429cf82980f6600c283c95fd995ef79d991781e0","revision":"c811d0db64895a1619f25b7914e7b798f7130523"},
+
+    {"path":"src-ui/src/__tests__/compatibility.test.ts","digest":"f8a60a80579bd0af7c400784a9ee64371bbba9beb78329a5474663affd073f42","revision":"0371f7dc7c6adc213a577809267f86740b64a676"}
   ],
 
   "checks": [

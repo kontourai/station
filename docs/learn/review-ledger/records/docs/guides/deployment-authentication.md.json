@@ -40,7 +40,7 @@
 
     {"path":"src-server/runtime/bootstrap/native-device-proof-runtime.ts","digest":"54bb568bc83d313232b95afaff825e92965fb0d6cb92b5bad3fae295aed7c8f8","revision":"a72f474ba3d42a59409d95d36eb9e0264b599e33"},
 
-    {"path":"src-server/runtime/bootstrap/runtime-http.ts","digest":"5f198f2fd096d05a0103b7fb8eb15265c3e939af21cba938792d01f3e656b3d1","revision":"a22fe5d30cc285e8b717a19e4e282d46108a2909"},
+    {"path":"src-server/runtime/bootstrap/runtime-http.ts","digest":"b769b523e74c89d511cf1b826eca27595038187b42ed987e3332ea40a0c6cdd0","revision":"0371f7dc7c6adc213a577809267f86740b64a676"},
 
     {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"21831e2e97672cb946b2e23f9e183477773a632390b02daf66b3e6cf3fe20e71","revision":"595059eafa17ef6b7a39217a405619ecbfac2270"},
 
