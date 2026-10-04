@@ -234,6 +234,67 @@ pub(crate) fn verify_native_route_transcript(
     Ok((claims.nbf, claims.exp))
 }
 
+pub(crate) fn native_relay_management_path(method: &str, path: &str) -> bool {
+    match method {
+        "GET" | "HEAD" => matches!(
+            path,
+            "/api/relay-management" | "/api/relay-management/capabilities"
+        ),
+        "POST" => {
+            matches!(
+                path,
+                "/api/relay-management/approvals"
+                    | "/api/relay-management/approvals/revoke"
+                    | "/api/relay-management/invitations"
+            ) || path
+                .strip_prefix("/api/relay-management/devices/")
+                .and_then(|rest| {
+                    rest.strip_suffix("/approve")
+                        .or_else(|| rest.strip_suffix("/deny"))
+                })
+                .is_some_and(|id| {
+                    id.len() == 43
+                        && id
+                            .bytes()
+                            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-'))
+                })
+        }
+        _ => false,
+    }
+}
+
+pub(crate) fn native_project_access_management_path(method: &str, path: &str) -> bool {
+    let Some(rest) = path.strip_prefix("/api/projects/") else {
+        return false;
+    };
+    let pieces: Vec<_> = rest.split('/').collect();
+    let id = |value: &str| {
+        !value.is_empty()
+            && value.len() <= 128
+            && value
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-'))
+    };
+    if pieces.len() < 2 || !id(pieces[0]) || pieces[1] != "access" {
+        return false;
+    }
+    match method {
+        "GET" | "HEAD" => pieces.len() == 2,
+        "POST" => {
+            (pieces.len() == 3 && matches!(pieces[2], "invitations" | "members" | "transfer"))
+                || (pieces.len() == 5
+                    && pieces[2] == "invitations"
+                    && id(pieces[3])
+                    && pieces[4] == "revoke")
+        }
+        _ => false,
+    }
+}
+pub(crate) fn native_management_path(method: &str, path: &str) -> bool {
+    native_relay_management_path(method, path)
+        || native_project_access_management_path(method, path)
+}
+
 pub(crate) fn native_member_read_path(path: &str) -> bool {
     if matches!(
         path,
@@ -290,6 +351,12 @@ fn validate_request(method: &str, path: &str, body: &[u8]) -> Result<()> {
     );
     if canonical != path || url.origin().ascii_serialization() != "https://request.invalid" {
         return refused();
+    }
+    if native_management_path(method, path) {
+        if (matches!(method, "GET" | "HEAD") && !body.is_empty()) || body.len() > 16384 {
+            return refused();
+        }
+        return Ok(());
     }
     match method {
         "GET" | "HEAD" => {

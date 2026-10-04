@@ -9,6 +9,7 @@
     "*.css"
   ],
   "exports": {
+    "./relay-management": "./src/relay-management.ts",
     "./agent": "./src/agent/index.ts",
     "./mobile-device": "./src/mobile-device.ts",
     "./mobile-devices-query": "./src/query-domains/mobileDevices.ts",

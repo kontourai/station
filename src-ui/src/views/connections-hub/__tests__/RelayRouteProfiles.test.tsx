@@ -1089,16 +1089,15 @@ describe('RelayRouteProfiles', () => {
       target: { value: 'test-password-only' },
     });
     fireEvent.click(
-      screen.getByLabelText(
-        'I have an operator invitation to register a new Station account',
-      ),
+      screen.getByLabelText('Create an account with a Project invitation'),
     );
-    fireEvent.change(
-      screen.getByLabelText('Operator registration invitation'),
-      { target: { value: 'test-operator-invitation' } },
-    );
+    fireEvent.change(screen.getByLabelText('Project invitation link or code'), {
+      target: {
+        value: `https://station.test/account/join#invitation=${'I'.repeat(43)}`,
+      },
+    });
     const operatorInvitationField = screen.getByLabelText(
-      'Operator registration invitation',
+      'Project invitation link or code',
     ) as HTMLInputElement;
     expect(operatorInvitationField.type).toBe('password');
     expect(operatorInvitationField.getAttribute('autocomplete')).toBe('off');
@@ -1124,7 +1123,7 @@ describe('RelayRouteProfiles', () => {
         username: 'operator-account@example.test',
         password: 'test-password-only',
       },
-      invitation: 'test-operator-invitation',
+      invitation: 'I'.repeat(43),
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'Check approval' }));
@@ -1787,7 +1786,7 @@ describe('RelayRouteProfiles', () => {
       screen.getByRole('button', { name: 'Sign in to this Station account' }),
     );
 
-    await screen.findByLabelText('Account invitation token');
+    await screen.findByLabelText('Project invitation link or code');
     expect(mocks.accountLogin).toHaveBeenCalledWith({
       username: 'member@example.test',
       password: 'transient-password',
@@ -1805,7 +1804,7 @@ describe('RelayRouteProfiles', () => {
     ).toBe(true);
 
     const accountInvitationField = screen.getByLabelText(
-      'Account invitation token',
+      'Project invitation link or code',
     ) as HTMLInputElement;
     expect(accountInvitationField.type).toBe('password');
     expect(accountInvitationField.getAttribute('autocomplete')).toBe('off');
@@ -1813,15 +1812,13 @@ describe('RelayRouteProfiles', () => {
     expect(accountInvitationField.getAttribute('autocorrect')).toBe('off');
     expect(accountInvitationField.getAttribute('spellcheck')).toBe('false');
     fireEvent.change(accountInvitationField, {
-      target: { value: 'one-time-account-invitation' },
+      target: {
+        value: `https://station.test/account/join#invitation=${'J'.repeat(43)}`,
+      },
     });
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Accept account invitation' }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Join Project' }));
     await screen.findByText(/Access was added for Project shared-project/);
-    expect(mocks.accountAcceptInvitation).toHaveBeenCalledWith(
-      'one-time-account-invitation',
-    );
+    expect(mocks.accountAcceptInvitation).toHaveBeenCalledWith('J'.repeat(43));
     expect(onInvitationAccepted).toHaveBeenCalledTimes(1);
     expect(onInvitationAccepted).toHaveBeenCalledWith(
       {
@@ -1839,8 +1836,11 @@ describe('RelayRouteProfiles', () => {
       }),
     );
     expect(
-      (screen.getByLabelText('Account invitation token') as HTMLInputElement)
-        .value,
+      (
+        screen.getByLabelText(
+          'Project invitation link or code',
+        ) as HTMLInputElement
+      ).value,
     ).toBe('');
 
     fireEvent.click(
@@ -1946,7 +1946,9 @@ describe('RelayRouteProfiles', () => {
     );
     expect(mocks.accountLogout).toHaveBeenCalledTimes(1);
     expect(mocks.accountRetire).not.toHaveBeenCalled();
-    expect(screen.queryByLabelText('Account invitation token')).toBeNull();
+    expect(
+      screen.queryByLabelText('Project invitation link or code'),
+    ).toBeNull();
     expect(
       await screen.findByLabelText('Station account username'),
     ).toBeTruthy();
@@ -2003,12 +2005,13 @@ describe('RelayRouteProfiles', () => {
     const onInvitationAccepted = vi.fn();
     const rendered = renderRoutes(onInvitationAccepted);
 
-    fireEvent.change(await screen.findByLabelText('Account invitation token'), {
-      target: { value: 'pending-account-invitation' },
-    });
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Accept account invitation' }),
+    fireEvent.change(
+      await screen.findByLabelText('Project invitation link or code'),
+      {
+        target: { value: 'P'.repeat(43) },
+      },
     );
+    fireEvent.click(screen.getByRole('button', { name: 'Join Project' }));
     await waitFor(() =>
       expect(mocks.accountAcceptInvitation).toHaveBeenCalled(),
     );

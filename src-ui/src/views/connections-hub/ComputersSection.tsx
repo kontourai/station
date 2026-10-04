@@ -1,3 +1,4 @@
+import { RelayOperatorPanel } from './RelayOperatorPanel';
 /**
  * Computers — one list, one row shape, for every computer this Station knows
  * (lane design §4; audit CI-R9, CI-R13, CI-R14, CI-R21).
@@ -418,6 +419,7 @@ export function ComputersSection() {
         onCancel={() => setRemoveTarget(null)}
         variant="danger"
       />
+      <RelayOperatorPanel />
       <RelayRouteProfiles />
       <BrowserRelayRoutes />
     </>

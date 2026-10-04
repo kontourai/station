@@ -479,3 +479,19 @@
 .native-relay-setup [role="alert"] {
   color: var(--k-negative);
 }
+
+.relay-operator {
+  display: grid;
+  gap: var(--k-space-3);
+  padding-block: var(--k-space-3);
+}
+.relay-operator__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--k-space-2);
+}
+.relay-operator__actions .editor-input {
+  width: auto;
+  min-height: 44px;
+}

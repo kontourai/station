@@ -1348,6 +1348,7 @@ export function isRuntimeRequestPrincipalCurrent(
         path,
       },
       security.verifyOperatorCredential?.(principal.credential) === true,
+      principal.locality === 'home-possession',
     )
   );
 }

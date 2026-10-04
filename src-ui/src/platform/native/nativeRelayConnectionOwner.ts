@@ -1,5 +1,6 @@
 import type { SavedConnection } from '@kontourai/station-connect';
 import { notifyCredentialChanged } from '@kontourai/station-sdk';
+import { isNativeManagementRequest } from '@kontourai/station-sdk/application-session-native';
 import type { ClientCredential } from '@kontourai/station-sdk/client';
 import { createNativeAccountSessionBridge } from './nativeAccountSessionBridge';
 import {
@@ -183,7 +184,11 @@ export async function prepareNativeRelayConnectionOwner(
               init?.method ??
               (request instanceof Request ? request.method : 'GET')
             ).toUpperCase();
-            if (method !== 'GET' && method !== 'HEAD')
+            const management = isNativeManagementRequest(
+              method,
+              `${url.pathname}${url.search}`,
+            );
+            if (method !== 'GET' && method !== 'HEAD' && !management)
               throw new Error('native_relay_resource_not_supported');
             const headers = new Headers(
               init?.headers ??
@@ -200,17 +205,29 @@ export async function prepareNativeRelayConnectionOwner(
               throw new Error('native_relay_supplied_authority_refused');
             if (
               url.pathname.startsWith('/api/projects') ||
-              url.pathname === '/api/auth/authority'
+              url.pathname === '/api/auth/authority' ||
+              management
             ) {
               if (!accountCurrent() || !bridge)
                 throw Object.assign(
                   new Error('Native account sign-in is required'),
                   { code: 'station_application_authority_required' },
                 );
-              const proof = await bridge.requestHeaders({
-                method,
+              const target = {
+                method:
+                  method === 'POST'
+                    ? ('POST' as const)
+                    : method === 'HEAD'
+                      ? ('HEAD' as const)
+                      : ('GET' as const),
                 path: `${url.pathname}${url.search}`,
-              });
+              };
+              const proof = management
+                ? await bridge.managementHeaders(target)
+                : await bridge.requestHeaders({
+                    method: method === 'HEAD' ? 'HEAD' : 'GET',
+                    path: target.path,
+                  });
               if (!accountCurrent())
                 throw new Error('native_account_scope_retired');
               for (const [name, value] of Object.entries(proof))

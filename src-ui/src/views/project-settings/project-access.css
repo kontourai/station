@@ -1,0 +1,61 @@
+.project-access__members,
+.project-access__invite {
+  display: grid;
+  gap: var(--k-space-3);
+}
+.project-access__member {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--k-space-3);
+  padding-block: var(--k-space-3);
+  border-bottom: var(--k-border-thin) solid var(--k-line);
+}
+.project-access__member p {
+  margin-block: var(--k-space-1);
+}
+.project-access__actions {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: var(--k-space-2);
+}
+.project-access__invite label:not(.cb),
+.project-access__actions label:not(.cb) {
+  display: grid;
+  gap: var(--k-space-1);
+}
+.project-access__invite input:not([type="checkbox"]),
+.project-access__invite select,
+.project-access__actions select {
+  min-height: 44px;
+  max-width: 100%;
+}
+
+.project-access__heading {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-2);
+}
+.project-access__help {
+  min-width: 44px;
+  min-height: 44px;
+  color: var(--k-text-muted);
+}
+.project-access__invite > .button {
+  justify-self: start;
+  width: fit-content;
+  min-height: 44px;
+}
+
+.project-access__invite input:not([type="checkbox"]),
+.project-access__invite select,
+.project-access__actions select {
+  border: var(--k-border-thin) solid var(--k-line);
+  border-radius: var(--k-radius-control);
+  background: var(--k-panel);
+  color: var(--k-text);
+  padding: var(--k-space-2);
+  font: inherit;
+}

@@ -12,9 +12,9 @@ import { compactVerify, importJWK } from 'jose';
 import { z } from 'zod';
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
 import {
-  getRuntimeAuthenticatedRequestPrincipal,
-  isRuntimeRequestPrincipalCurrent,
-} from '../../security/runtime-request-security.js';
+  captureRelayManagementApproval,
+  hasRelayManagementAuthority,
+} from '../../security/relay-management-authority.js';
 import type { NativeSurfaceRegistry } from '../connections/native-surface-registry.js';
 import {
   type NativeEnrollmentRecord,
@@ -545,15 +545,13 @@ export class NativeRelayEnrollmentService {
     }
   }
   #operator(request: Request): boolean {
-    const principal = getRuntimeAuthenticatedRequestPrincipal(request);
-    return (
-      principal?.authority === 'operator-credential' &&
-      this.options.operatorSecurity.verifyOperatorCredential(
-        principal.credential,
-      ) &&
-      isRuntimeRequestPrincipalCurrent(request, this.options.operatorSecurity)
+    return hasRelayManagementAuthority(
+      request,
+      this.options.operatorSecurity,
+      this.options.pairing,
     );
   }
+
   pendingApprovals(request: Request) {
     this.assertOperator(request);
     return this.options.journal
@@ -562,22 +560,49 @@ export class NativeRelayEnrollmentService {
         (record) =>
           record.state === 'requested' && record.expiresAt > this.#now(),
       )
-      .map((record) => ({
-        enrollmentId: record.binding.enrollmentId,
-        requestId: record.requestId,
-        candidate: record.candidate,
-        account: {
-          issuer: record.issuer,
-          subject: record.subject,
-          displayName: record.displayName,
-        },
-        requestedScope: 'orchestration:read' as const,
-        expiresAt: record.expiresAt,
-      }));
+      .map((record) => {
+        if (
+          !record.requestId ||
+          !record.candidate ||
+          !record.issuer ||
+          !record.subject ||
+          !record.displayName
+        )
+          throw new NativeRelayEnrollmentRefusal('unavailable');
+        return {
+          enrollmentId: record.binding.enrollmentId,
+          requestId: record.requestId,
+          candidate: record.candidate,
+          account: {
+            issuer: record.issuer,
+            subject: record.subject,
+            displayName: record.displayName,
+          },
+          requestedScope: 'orchestration:read' as const,
+          expiresAt: record.expiresAt,
+        };
+      });
   }
   assertOperator(request: Request): void {
     if (!this.#operator(request))
       throw new NativeRelayEnrollmentRefusal('operator_required');
+  }
+  async deny(
+    request: Request,
+    enrollmentId: string,
+    candidate: unknown,
+  ): Promise<void> {
+    this.assertOperator(request);
+    const record = this.options.journal.get(enrollmentId);
+    if (
+      !record ||
+      record.state !== 'requested' ||
+      !record.candidate ||
+      nativeEnrollmentCanonical(candidate) !==
+        nativeEnrollmentCanonical(record.candidate)
+    )
+      throw new NativeRelayEnrollmentRefusal('invalid');
+    await this.#cleanup(record, 'cancelled');
   }
   async approve(
     request: Request,
@@ -628,7 +653,12 @@ export class NativeRelayEnrollmentService {
       throw new NativeRelayEnrollmentRefusal('invalid');
     const confirmation = this.options.pairing.confirmRelayEnrollmentRequest(
       record.requestId,
-      { kind: 'presented-credential' },
+      captureRelayManagementApproval(
+        request,
+        enrollmentId,
+        this.options.operatorSecurity,
+        this.options.pairing,
+      ),
       LOCAL_OPERATOR_PRINCIPAL_ID,
       {
         enrollmentId,

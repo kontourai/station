@@ -25,6 +25,7 @@ import {
 } from '../../contexts/NavigationContext';
 import { ToastProvider } from '../../contexts/ToastContext';
 import { LocaleProvider } from '../../i18n/LocaleContext';
+import { RelayOperatorPanel } from '../connections-hub/RelayOperatorPanel';
 import { RelayRouteProfiles } from '../connections-hub/RelayRouteProfiles';
 import { MemberProjectPage } from '../project-page/MemberProjectPage';
 import '../project-page-frame.css';
@@ -83,6 +84,7 @@ function NativeSavedStations({
         </select>
       </label>
       {selectionError && <p role="alert">{selectionError}</p>}
+      <RelayOperatorPanel />
       <RelayRouteProfiles onInvitationAccepted={onInvitationAccepted} />
     </section>
   );
@@ -245,6 +247,15 @@ function NativeMemberProjects({
               key={project.data.id}
               project={project.data}
               requestScope={scope}
+              accessWriteDisabledReason={
+                observation.data?.grant.kind === 'device' &&
+                !observation.data.grant.grantedScopes.includes(
+                  'orchestration:operate',
+                ) &&
+                !observation.data.grant.grantedScopes.includes('relay:manage')
+                  ? 'This device has read-only access. An operator can change its permissions.'
+                  : undefined
+              }
             />
           )}
         </>

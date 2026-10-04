@@ -8,6 +8,7 @@ import {
   useScopedMemberProjectSharedTaskDetails,
   useScopedMemberProjectSharedTasksQuery,
 } from '../../contexts/ProjectsContext';
+import { AccessSection } from '../project-settings/AccessSection';
 import { MemberProjectHeader } from './ProjectPageHeader';
 import '../project-page-frame.css';
 
@@ -27,9 +28,11 @@ function memberSafeProjectIcon(icon: string | undefined): string | undefined {
 export function MemberProjectPage({
   project,
   requestScope,
+  accessWriteDisabledReason,
 }: {
   project: MemberProjectView;
   requestScope: NonNullable<RequestScope>;
+  accessWriteDisabledReason?: string;
 }) {
   const [selectedShareId, setSelectedShareId] = useState<string | null>(null);
   const sharedWork = useScopedMemberProjectSharedTasksQuery(
@@ -48,6 +51,17 @@ export function MemberProjectPage({
           onRefresh={() => void sharedWork.refetch()}
           refreshDisabled={!requestScope.isCurrent() || sharedWork.isFetching}
         />
+        {project.actions.includes('manage-members') && (
+          <details>
+            <summary>Project access</summary>
+            <AccessSection
+              slug={project.slug}
+              projectId={project.id}
+              allowEnableSharing={false}
+              writeDisabledReason={accessWriteDisabledReason}
+            />
+          </details>
+        )}
         <section aria-labelledby="member-project-shared-work-title">
           <h2 id="member-project-shared-work-title">Shared work</h2>
           {sharedWork.isPending ? (

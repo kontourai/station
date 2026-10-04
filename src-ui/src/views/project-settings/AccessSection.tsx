@@ -16,9 +16,13 @@ import { AccessPanelView } from './AccessPanelView';
 export function AccessSection({
   slug,
   projectId,
+  allowEnableSharing = true,
+  writeDisabledReason,
 }: {
   slug: string;
   projectId: string;
+  allowEnableSharing?: boolean;
+  writeDisabledReason?: string;
 }) {
   const authority = useHostRequestAuthorityScope();
   return (
@@ -27,6 +31,8 @@ export function AccessSection({
       slug={slug}
       projectId={projectId}
       authority={authority}
+      allowEnableSharing={allowEnableSharing}
+      writeDisabledReason={writeDisabledReason}
     />
   );
 }
@@ -35,10 +41,14 @@ function AccessPanel({
   slug,
   projectId,
   authority,
+  allowEnableSharing,
+  writeDisabledReason,
 }: {
   slug: string;
   projectId: string;
   authority?: ApiRequestScope;
+  allowEnableSharing: boolean;
+  writeDisabledReason?: string;
 }) {
   const { query, mutation, change } = useProjectAccess(slug, authority);
   const busy = mutation.isPending || query.isFetching;
@@ -75,7 +85,8 @@ function AccessPanel({
             description={userFacingErrorMessage(query.error)}
           />
         )}
-        {query.error instanceof StationHttpError &&
+        {allowEnableSharing &&
+          query.error instanceof StationHttpError &&
           query.error.status === 403 && (
             <Button pending={mutation.isPending} onClick={() => void enable()}>
               Enable Project sharing
@@ -89,5 +100,12 @@ function AccessPanel({
     );
   }
   if (!query.data) return null;
-  return <AccessPanelView view={query.data} busy={busy} apply={apply} />;
+  return (
+    <AccessPanelView
+      view={query.data}
+      busy={busy}
+      apply={apply}
+      writeDisabledReason={writeDisabledReason}
+    />
+  );
 }

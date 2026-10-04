@@ -5,6 +5,7 @@ import {
 import { encodeNativeRelayLink } from '@kontourai/station-connect/native-relay-link';
 import type { StationProfile } from '@kontourai/station-contracts';
 import type { ProjectInvitationAcceptance } from '@kontourai/station-contracts/project-membership';
+import { readProjectInvitationToken } from '@kontourai/station-sdk/project-access-client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   useCallback,
@@ -532,7 +533,9 @@ function NativeRelayAccountSessionPanel({
         throw new Error('native_relay_selection_changed');
       if (operation.kind !== 'invitation' || !operation.invitation)
         throw new Error('native_account_invitation_missing');
-      return account.acceptInvitation(operation.invitation);
+      const token = readProjectInvitationToken(operation.invitation);
+      if (!token) throw new Error('native_account_invitation_invalid');
+      return account.acceptInvitation(token);
     },
     onSuccess: (accepted, id) => {
       const operation = operationsRef.current.get(id);
@@ -616,7 +619,9 @@ function NativeRelayAccountSessionPanel({
       {hasAccountSession ? (
         <>
           <label className="editor-field">
-            <span className="editor-label">Account invitation token</span>
+            <span className="editor-label">
+              Project invitation link or code
+            </span>
             <input
               className="editor-input"
               type="password"
@@ -645,7 +650,7 @@ function NativeRelayAccountSessionPanel({
                   acceptInvitation.mutate(id);
                 }}
               >
-                Accept account invitation
+                Join Project
               </Button>
             }
             secondary={

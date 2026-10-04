@@ -241,6 +241,34 @@ describe.skipIf(skipOnWindows)('self-hosted connector config', () => {
       };
       const preparePath = join(setup.dir, 'prepare.json');
       const outputPath = join(setup.dir, 'invitation.json');
+      const invitationOwner = loadSelfHostedBrokerConnectorConfig({
+        homeDir: setup.home,
+        env: { STATION_BROKER_CONFIG_FILE: setup.configPath },
+      })!.invitationOwner;
+      const preparedTuple = await invitationOwner.prepare(prepare);
+      const preparedRegistry = new NativeSurfaceRegistry(
+        privateDir('native-operator-prepared-tuple-'),
+        setup.scope.stationId,
+      );
+      try {
+        const preparedApproval = preparedRegistry.approve(
+          new NativeSurfaceOperatorAuthority().approve(
+            LOCAL_OPERATOR_PRINCIPAL_ID,
+            'approve',
+            preparedTuple,
+          ),
+        );
+        expect(preparedApproval.surface.keyThumbprint).toBe(
+          prepare.keyThumbprint,
+        );
+        expect(preparedApproval.scope).toEqual({
+          stationId: setup.scope.stationId,
+          enrollmentId: setup.scope.enrollmentId,
+          routingGeneration: setup.scope.routingGeneration,
+        });
+      } finally {
+        preparedRegistry.close();
+      }
       writePrivate(preparePath, JSON.stringify(prepare));
       const run = () =>
         writeNativeRelayInvitation([

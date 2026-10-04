@@ -35,7 +35,9 @@ import {
   createNativeRelayEnrollmentRoutes,
 } from '../../../routes/system/native-relay-enrollment-routes.js';
 import { createNativeRelaySurfaceRoutes } from '../../../routes/system/native-relay-surface-routes.js';
+import { createRelayManagementRoutes } from '../../../routes/system/relay-management-routes.js';
 import { configureRuntimeHttp } from '../../../runtime/bootstrap/runtime-http.js';
+import { hasRelayManagementAuthority } from '../../../security/relay-management-authority.js';
 import { NativeSurfaceRegistry } from '../../connections/native-surface-registry.js';
 import {
   createResolvedNativeV2PionApplicationAdapter,
@@ -202,6 +204,26 @@ async function fixture(initialGeneration = 1) {
   const routes = createNativeRelayEnrollmentRoutes(service);
   for (const path of NATIVE_RELAY_ENROLLMENT_PATHS)
     app.post(path, (c) => routes.fetch(c.req.raw));
+  app.route(
+    '/api/relay-management',
+    createRelayManagementRoutes({
+      registry,
+      enrollment: service,
+      owner: {
+        describe: async () => {
+          throw new Error('Unused broker boundary');
+        },
+        prepare: async () => {
+          throw new Error('Unused broker boundary');
+        },
+        issueNativeInvitation: async () => {
+          throw new Error('Unused broker boundary');
+        },
+      },
+      isManager: (request) =>
+        hasRelayManagementAuthority(request, security, pairing),
+    }),
+  );
   app.route(
     '/api/pairing/native-relay-surfaces',
     createNativeRelaySurfaceRoutes({ registry, security }),
@@ -531,6 +553,7 @@ async function fixture(initialGeneration = 1) {
     );
   return {
     app,
+    operatorPost,
     service,
     security,
     signing,
@@ -867,3 +890,39 @@ test.each(['backward', 'different-installation'] as const)(
     expect(h.journal.get(h.challenge.enrollmentId)?.state).toBe('challenge');
   },
 );
+
+test('an operator declines an actual pending native registration through the management route and clears provider and Device authority', async () => {
+  const h = await fixture();
+  const registration = await h.proved('register', {
+    enrollmentId: h.challenge.enrollmentId,
+    candidate: h.candidate,
+    credentials: {
+      username: 'declined-user',
+      password: 'Native invitation fixture password',
+    },
+    invitation: h.invite.token,
+  });
+  expect(registration.response.status, registration.raw).toBe(200);
+  const pending = h.journal.get(h.challenge.enrollmentId);
+  expect(pending?.state).toBe('requested');
+  const denied = await h.operatorPost(
+    `/api/relay-management/devices/${h.challenge.enrollmentId}/deny`,
+    { candidate: h.candidate },
+  );
+  expect(denied.status).toBe(200);
+  expect(h.journal.get(h.challenge.enrollmentId)?.state).toBe('cancelled');
+  expect(
+    h.pairing.resolveActiveRelayEnrollmentDevice(
+      h.candidate.deviceId,
+      h.challenge.enrollmentId,
+    ),
+  ).toBeNull();
+  expect(
+    (
+      await h.accounts.service.verifySessionReference(
+        pending!.providerSessionId!,
+        new AbortController().signal,
+      )
+    ).kind,
+  ).toBe('invalid');
+});

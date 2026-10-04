@@ -204,6 +204,8 @@ beforeEach(() => {
     const path = new URL(
       input instanceof Request ? input.url : input.toString(),
     ).pathname;
+    if (path === '/api/relay-management/capabilities')
+      return Response.json({ data: { canManage: false, configured: true } });
     if (path === '/api/auth/authority') return Response.json(observation);
     if (path === '/api/projects')
       return Response.json({ success: true, data: [member] });
@@ -236,6 +238,8 @@ it('reads published task content through the real member SDK without starting op
     const path = new URL(
       input instanceof Request ? input.url : input.toString(),
     ).pathname;
+    if (path === '/api/relay-management/capabilities')
+      return Response.json({ data: { canManage: false, configured: true } });
     if (path === '/api/auth/authority') return Response.json(observation);
     let data: unknown;
     if (path === '/api/projects') data = [member];
@@ -288,6 +292,7 @@ it('reads published task content through the real member SDK without starting op
   expect(paths().sort()).toEqual(
     [
       '/api/auth/authority',
+      '/api/relay-management/capabilities',
       '/api/projects',
       '/api/projects/shared',
       '/api/projects/shared/shared-work',
@@ -325,6 +330,8 @@ it('rejects operator detail DTOs and never synthesizes a member view', async () 
     const path = new URL(
       input instanceof Request ? input.url : input.toString(),
     ).pathname;
+    if (path === '/api/relay-management/capabilities')
+      return Response.json({ data: { canManage: false, configured: true } });
     if (path === '/api/auth/authority') return Response.json(observation);
     if (path === '/api/projects')
       return Response.json({ success: true, data: [member] });
@@ -344,6 +351,7 @@ it('rejects operator detail DTOs and never synthesizes a member view', async () 
   await screen.findByText('This Project is unavailable');
   expect(screen.queryByText('Private workspace')).toBeNull();
   expect(paths()).toEqual([
+    '/api/relay-management/capabilities',
     '/api/auth/authority',
     '/api/projects',
     '/api/projects/shared',
@@ -359,6 +367,8 @@ it('drops a late Project body after account loss and performs a fresh read for t
     const path = new URL(
       input instanceof Request ? input.url : input.toString(),
     ).pathname;
+    if (path === '/api/relay-management/capabilities')
+      return Response.json({ data: { canManage: false, configured: true } });
     if (path === '/api/auth/authority') return Response.json(observation);
     if (path === '/api/projects') {
       await held;
@@ -391,6 +401,8 @@ it('drops a late Project body after account loss and performs a fresh read for t
     const path = new URL(
       input instanceof Request ? input.url : input.toString(),
     ).pathname;
+    if (path === '/api/relay-management/capabilities')
+      return Response.json({ data: { canManage: false, configured: true } });
     if (path === '/api/auth/authority') return Response.json(observation);
     if (path === '/api/projects')
       return Response.json({ success: true, data: [member] });
@@ -425,6 +437,8 @@ it('the real invitation panel refreshes an already-empty member catalog in its s
     const path = new URL(
       input instanceof Request ? input.url : input.toString(),
     ).pathname;
+    if (path === '/api/relay-management/capabilities')
+      return Response.json({ data: { canManage: false, configured: true } });
     if (path === '/api/auth/authority') return Response.json(observation);
     if (path === '/api/projects')
       return Response.json({ success: true, data: accepted ? [member] : [] });

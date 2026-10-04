@@ -20,8 +20,10 @@ import {
 } from '../../routes/system/native-relay-enrollment-routes.js';
 import { createNativeRelaySurfaceRoutes } from '../../routes/system/native-relay-surface-routes.js';
 import { createRelayEnrollmentRoutes } from '../../routes/system/relay-enrollment-routes.js';
+import { createRelayManagementRoutes } from '../../routes/system/relay-management-routes.js';
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
 import { writeLocalGrantSecretFile } from '../../security/local-grant-file.js';
+import { hasRelayManagementAuthority } from '../../security/relay-management-authority.js';
 import { createStationControlAuthorityGuard } from '../../security/station-control-authority-guard.js';
 import {
   isPrincipalScopedAgentRequest,
@@ -46,6 +48,7 @@ import {
 } from '../../services/browser/browser-service.js';
 import { suggestLocalTargets } from '../../services/browser/local-port-scanner.js';
 import type { NativeSurfaceRegistry } from '../../services/connections/native-surface-registry.js';
+import type { RelayInvitationOwner } from '../../services/connections/relay-invitation-owner.js';
 import { createAndroidAvdResolver } from '../../services/devices/android-avd.js';
 import {
   type DeviceAccess,
@@ -729,6 +732,7 @@ export async function pullRequestSessionForReader<
 }
 
 export interface ConfigureRuntimeRoutesContext {
+  relayInvitationOwner?: RelayInvitationOwner;
   projectMembership?: ProjectMembershipService;
   nativeDeviceProofBindings?: NativeDeviceProofBindingService;
   /**
@@ -1996,6 +2000,43 @@ export function configureRuntimeRoutes(
       createNativeRelayEnrollmentOperatorRoutes(context.nativeRelayEnrollment),
     );
   }
+  if (context.relayInvitationOwner && context.nativeSurfaceRegistry)
+    context.app.route(
+      '/api/relay-management',
+      createRelayManagementRoutes({
+        owner: context.relayInvitationOwner,
+        registry: context.nativeSurfaceRegistry,
+        enrollment: context.nativeRelayEnrollment,
+        recordDecision: (request, operation, subject) => {
+          const native = getRuntimeNativeDeviceProofPrincipal(request);
+          const principal = getRuntimeAuthenticatedRequestPrincipal(request);
+          const account =
+            context.deploymentAuthentication?.service.current(request);
+          context.logger.info('Remote access management decision', {
+            operation,
+            subject,
+            actorPrincipalId:
+              account?.kind === 'authenticated'
+                ? account.principal.id
+                : roomRequestPrincipals.get(request)?.id,
+            actorDeviceId:
+              native?.deviceId ??
+              (principal?.authority === 'device-credential'
+                ? context.environmentSecurityService.identifyDevice(
+                    principal.credential,
+                  )?.id
+                : undefined),
+            authority: native ? 'native-device-proof' : principal?.authority,
+          });
+        },
+        isManager: (request) =>
+          hasRelayManagementAuthority(
+            request,
+            context.environmentSecurityService,
+            context.environmentSecurityService.devicePairing,
+          ),
+      }),
+    );
   if (context.nativeSurfaceRegistry)
     context.app.route(
       '/api/pairing/native-relay-surfaces',
