@@ -66,7 +66,7 @@
 
     {"path":"src-server/routes/connections/app-home.ts","digest":"ed7412dd78667321bec46937a4bc7a1fa92f1e9a3b27c344fbeea55345a20b5a","revision":"1a235cd9bc482738abe4c3f011f73be86074d667"},
 
-    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"9a73d9f1f70650234c0dd256b3fecbef1ce243705efa70925cc89272e8d7014f","revision":"c289deb1c412bf3ff3e27ae3888fdf7973d2c48a"},
+    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"4cc7b1bd67a9a9cf35a904dfa0806bfcc811ffc63de3a5c9af26c92a754f9687","revision":"52982b10d017a24966d01167cd33e7c042ecb69b"},
 
     {"path":"src-server/routes/system/system-status-routes.ts","digest":"0c52821e1938ae72876d26def0ee756db16f1cb2a33e9088bb4e1da8800e4f0b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -130,7 +130,7 @@
 
     {"path":"src-server/tools/station-control-operations-tools.ts","digest":"9174a9e845abca770133b6300050562fbfb220cac01bd611698d56a949f0eb3a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/tools/station-control-policy.ts","digest":"02516a5493722d31ba7265384fcd53e581fa9b6283af6611169d69c477eb4924","revision":"c289deb1c412bf3ff3e27ae3888fdf7973d2c48a"},
+    {"path":"src-server/tools/station-control-policy.ts","digest":"2f661940d3e0aacc7733081792989ea24016a8a826e14ae21d6e9e4470a635a5","revision":"52982b10d017a24966d01167cd33e7c042ecb69b"},
 
     {"path":"src-ui/src/app-shell/routing.ts","digest":"64eb187dd30dffe0d9317242bb454ab41ff0116af6ad02c7dc6ad805a8dd65f2","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
