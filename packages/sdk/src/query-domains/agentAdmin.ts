@@ -344,8 +344,10 @@ export function useAgentMcpPromptsQuery(
   );
 }
 
-export const agentMcpPromptsQueryKey = (agentSlug: string) =>
-  ['agent-mcp-prompts', agentSlug] as const;
+export const agentMcpPromptsQueryKey = (agentSlug: string): string[] => [
+  'agent-mcp-prompts',
+  agentSlug,
+];
 
 /**
  * #3284: `POST /agents/:slug/mcp-prompts/run` — read one prompt with its

@@ -38,7 +38,7 @@ describe('InjectableStream', () => {
     }
     const seen: unknown[] = [];
     for await (const item of stream.wrap(source())) {
-      seen.push((item as { text: string }).text);
+      seen.push((item as unknown as { text: string }).text);
       if (seen.length === 1) stream.inject(chunk('x'));
     }
     expect(seen).toEqual(['a', 'x', 'b', 'c']);

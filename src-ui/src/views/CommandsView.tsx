@@ -22,6 +22,7 @@ const SOURCE_LABEL = {
   skill: 'Skill',
   custom: 'Authored',
   acp: 'Engine',
+  'mcp-prompt': 'MCP prompt',
 } as const;
 
 export function CommandsView() {

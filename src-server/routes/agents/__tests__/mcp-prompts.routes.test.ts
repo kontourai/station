@@ -82,14 +82,14 @@ async function run(body: unknown, available?: string[]) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
-  return { status: response.status, body: await response.json() };
+  return { status: response.status, body: (await response.json()) as any };
 }
 
 describe('GET /agents/:slug/mcp-prompts', () => {
   test('lists the server prompt as a typed slash command', async () => {
     const response = await app().request('/writer/mcp-prompts');
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({
+    expect((await response.json()) as any).toEqual({
       success: true,
       data: {
         prompts: [
@@ -122,9 +122,9 @@ describe('GET /agents/:slug/mcp-prompts', () => {
     const narrowed = await app(['fixture_ask_details']).request(
       '/writer/mcp-prompts',
     );
-    expect((await narrowed.json()).data.prompts).toEqual([]);
+    expect(((await narrowed.json()) as any).data.prompts).toEqual([]);
     const admitted = await app(['fixture_*']).request('/writer/mcp-prompts');
-    expect((await admitted.json()).data.prompts).toHaveLength(1);
+    expect(((await admitted.json()) as any).data.prompts).toHaveLength(1);
   });
 
   test('an inactive agent is refused', async () => {
