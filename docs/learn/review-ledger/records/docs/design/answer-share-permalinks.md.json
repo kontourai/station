@@ -38,9 +38,9 @@
 
     "src-ui/src/views/settings/AnswerSharesSection.tsx",
 
-    "src-ui/src/views/share/share-token.ts",
+    "src-ui/src/views/share/SharedAnswerView.tsx",
 
-    "src-ui/src/views/share/SharedAnswerView.tsx"
+    "src-ui/src/views/share/share-token.ts"
   ],
 
   "checks": [

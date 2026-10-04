@@ -38,6 +38,7 @@ import {
 } from '../../security/coding-authority.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { createLogger } from '../../utils/logger.js';
+import type { DispatchCwdAdmission } from '../orchestration/dispatch-cwd-admission.js';
 import type { StartOwnerAttribution } from '../orchestration/session-owner-attribution.js';
 import { assertProjectWorktreeDirectory } from '../projects/project-service.js';
 import {
@@ -122,6 +123,13 @@ export interface ForegroundMessageInput {
    * `OrchestrationService` lets the session run `host` only with it.
    */
   fullAccessGrant?: FullAccessGrant | null;
+  /**
+   * #2873: set only by the dispatch route that starts a new session for a
+   * scoped station-control caller. It rides the start's dispatch context,
+   * where `OrchestrationService` runs the scope decision again beside the
+   * engine spawn.
+   */
+  dispatchCwdAdmission?: DispatchCwdAdmission;
   /** Resolved at the HTTP/auth seam; not accepted by public JSON schemas. */
   clientOrigin?: ClientOrigin;
   /**

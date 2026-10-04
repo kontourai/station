@@ -12,6 +12,12 @@
   "sources": [
     ".github/workflows/ci-extended.yml",
 
+    "package.json#/scripts/test:e2e:product",
+
+    "package.json#/scripts/verify",
+
+    "package.json#/scripts/verify:e2e:full",
+
     "scripts/__tests__/e2e-coverage.test.ts",
 
     "scripts/__tests__/e2e-manifest.test.ts",
@@ -84,13 +90,7 @@
 
     "tests/skills.spec.ts",
 
-    "tests/task-first-home.spec.ts",
-
-    "package.json#/scripts/test:e2e:product",
-
-    "package.json#/scripts/verify",
-
-    "package.json#/scripts/verify:e2e:full"
+    "tests/task-first-home.spec.ts"
   ],
 
   "checks": [

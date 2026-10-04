@@ -239,6 +239,19 @@ engine with an approval knob, and it resolves in this order:
    - A turn on a live session carries no default. A default is the posture a
      session starts in, and re-requesting it would let an edit of the setting
      reconfigure a running chat (#2144 slice 6).
+   - **Exception: a confinement change (#2898, owner decision 2026-09-27).**
+     While a session's confinement is not the one its engine was started
+     under (§4.8: its device grantor lost `approval:full-access`, so its
+     `host` stamp applies as `workspace`), a turn with nothing recorded or
+     carried re-sends the mode Station last passed that engine, applied under
+     the confinement that holds now. Claude takes it as a permission mode
+     (`never` becomes `auto`); Codex keeps `never` inside its
+     `workspace-write` sandbox. It is the mode the engine already runs, never
+     a re-read default, so an edited default still reconfigures nothing, and
+     an ordinary turn still sends nothing. It is sent on every such turn
+     until the engine restarts, so a turn that fails before reaching the
+     engine cannot leave it at its start posture; both adapters treat a
+     repeated mode as no change. `ApprovalPosture.reconfinedMode` decides it.
 
 It is applied at:
 
@@ -509,16 +522,52 @@ A session spawned before this change has nothing recorded.
     stamp whose device grantor no longer holds `approval:full-access` applies
     as `workspace` at every turn start and respawn. The respawn then
     re-stamps it `workspace`. Both adapters take confinement per turn, but
-    Claude only changes its permission mode when a mode is sent. So a session
-    is re-confined from its next turn while a decision stands, and from its
-    next start otherwise. A running engine with no decision standing keeps
-    its start posture until it restarts. It is listed as `stillUnconfined`
-    (`engine-restart`). Re-granting the scope lets the stamp apply again, but
-    the recorded Ask still stands.
+    Claude only changes its permission mode when a mode is sent. A standing
+    decision sends one on every turn; with none standing, the confinement
+    change itself does (§4.2, #2898). So every session is re-confined from
+    its next turn, without restarting its engine, and from its next start
+    when its engine is not running. Codex already moved its sandbox per turn
+    (`planCodexTurnSandbox`), so it needs no respawn either.
+  - Until that next turn a running engine keeps its posture, and a turn
+    already running finishes in it. That turn cannot be extended: a
+    `steerTurn` into a turn accepted under a confinement that no longer
+    holds is refused with `confinement-changed`, and the clients keep the
+    message for the next turn (`steerRefusalMessage`). Station records the
+    confinement of each engine's last accepted turn
+    (`acceptedTurnConfinement`); an engine whose last turn ran under a
+    confinement that no longer holds is listed as `stillUnconfined`
+    (`next-turn`), one entry per such session, named by that session. A
+    conversation with no such engine (none running, or each already
+    re-confined by a turn) is listed as `reconfined`. Stations from before
+    #2898 answered `engine-restart` for a running engine with no decision
+    standing; clients still read it.
+  - Version skew (accepted): a connect build from before #2898 drops
+    `next-turn` entries, and running sessions with a decision standing are
+    no longer in `reconfined`, so such a client under-lists them. A UI from
+    before #2898 does not know the `confinement-changed` steer outcome: its
+    `steerRefusalMessage` default returns the result object, which may be
+    rendered as the message content. From #2898 on, that default returns a
+    plain sentence for any unknown outcome.
+  - Only a narrowing refuses a steer: a turn accepted under `host` while
+    `workspace` applies now. A widening (a recorded `never`, a grant given
+    back) leaves the turn steerable.
+  - Known residual (accepted): answers to the engine's own questions and
+    approval requests still reach the running unconfined turn. They are not
+    a steer and are out of scope; Stop now ends the turn when that matters.
+  - **Stop now.** The revocation notice in the paired-devices panels offers
+    "Stop now" on each `next-turn` entry. It sends the ordinary
+    `stopSession` command for that session, with the credential the
+    revocation used. The engine stops at once, and the session's next start
+    is confined. The CLI prints the entries without a stop action.
+  - Re-granting the scope lets the stamp apply again, but the recorded Ask
+    still stands. A session re-confined with no decision standing stays at
+    its confined mode until its engine restarts; nothing loosens it
+    mid-run.
   - The Ask carries `revocation: { reason, deviceId, cause }` and the
     operator's `clientOrigin`. History is kept.
-  - A running turn is not touched. The next turn start or respawn applies the
-    decision, which wins over a start's carried mode.
+  - A running turn is not touched unless the operator stops it. The next
+    turn start or respawn applies the decision, which wins over a start's
+    carried mode.
   - Left alone and listed: a standing decision by the operator or another
     device; a default-only `never`; a `never` decision with no recorded
     actor; and live `host` sessions with no recorded grantor (at most 50,

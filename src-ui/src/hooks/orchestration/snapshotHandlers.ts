@@ -31,6 +31,7 @@ type SnapshotChatState = Pick<
   | 'currentSessionId'
   | 'conversationId'
   | 'pendingApprovals'
+  | 'answeredApprovals'
   | 'pendingApprovalTurnIds'
   | 'approvalToasts'
 >;
@@ -465,7 +466,19 @@ function planSnapshot(
                   ? 'idle'
                   : session.status,
           ...(blockingOpenRequestIds
-            ? { pendingApprovals: blockingOpenRequestIds }
+            ? {
+                pendingApprovals: blockingOpenRequestIds,
+                // An answer is only meaningful while its request is still
+                // open: one the server no longer lists was resolved, and its
+                // mark would otherwise outlive it.
+                ...(chat?.answeredApprovals
+                  ? {
+                      answeredApprovals: chat.answeredApprovals.filter((id) =>
+                        blockingOpenRequestIds.includes(id),
+                      ),
+                    }
+                  : {}),
+              }
             : {}),
           // Reseed the client turn fold only from an EXPLICIT server
           // verdict (archive#1076) — a reconnect during an in-turn approval must

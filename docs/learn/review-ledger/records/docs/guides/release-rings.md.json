@@ -38,6 +38,8 @@
 
     "ops/nightly/install-macos.zsh",
 
+    "package.json#/version",
+
     "schemas/release-artifact-manifest.schema.json",
 
     "scripts/__tests__/release-artifacts.test.ts",
@@ -81,8 +83,6 @@
     "src-desktop/src/lib.rs",
 
     "src-server/services/notifications/agent-activity-publisher.ts",
-
-    "package.json#/version",
 
     "scripts/lib/public-release-locations.mjs",
 

@@ -299,7 +299,10 @@ export function handleRequestResolvedEvent(
 
 type PendingApprovalState = Pick<
   ChatUIState,
-  'pendingApprovals' | 'pendingApprovalTurnIds' | 'approvalToasts'
+  | 'pendingApprovals'
+  | 'answeredApprovals'
+  | 'pendingApprovalTurnIds'
+  | 'approvalToasts'
 >;
 
 /**
@@ -349,6 +352,10 @@ export function settlePendingApprovalsOnTurnEnd(
   }
   return {
     pendingApprovals: pending.filter((requestId) => !settled.has(requestId)),
+    // A settled request is gone; its "answered here" mark goes with it.
+    answeredApprovals: (chat?.answeredApprovals ?? []).filter(
+      (requestId) => !settled.has(requestId),
+    ),
     pendingApprovalTurnIds: Object.fromEntries(
       Object.entries(turnIds).filter(([requestId]) => !settled.has(requestId)),
     ),
