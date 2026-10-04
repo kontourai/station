@@ -171,9 +171,24 @@ function ProjectSidebarImpl() {
   // Drafts are composed from the same store the composer writes and the same
   // active-chat identity that the dock can focus. Do not synthesize a sidebar
   // copy: opening one must restore the exact persisted composer value.
+  //
+  // D6: one row per chat. A chat already listed under Open chats carries its
+  // draft on that row (the "Unsent draft" chip, or the Draft status of a chat
+  // that never sent), so it is not listed a second time here; Drafts holds
+  // the drafts of chats that section does not show.
+  const openChatSessionIds = useMemo(
+    () =>
+      new Set(
+        sidebarSections.openChatsHidden
+          ? []
+          : recentTasks.map((task) => chatTaskSessionId(task)),
+      ),
+    [recentTasks, sidebarSections.openChatsHidden],
+  );
   const unsentDrafts = useMemo(
     () =>
       Object.entries(drafts)
+        .filter(([sessionId]) => !openChatSessionIds.has(sessionId))
         .filter(([, draft]) => draft.text.trim())
         .sort(([, left], [, right]) => right.updatedAt - left.updatedAt)
         .map(([sessionId, draft]) => {
@@ -184,7 +199,7 @@ function ProjectSidebarImpl() {
             preview: draft.text.trim(),
           };
         }),
-    [activeChats, drafts],
+    [activeChats, drafts, openChatSessionIds],
   );
   // Allocate the accent palette across the whole sorted project set so every
   // color is used before any repeats, stable regardless of API order.
@@ -531,7 +546,7 @@ function ProjectSidebarImpl() {
                     }}
                   >
                     <span>{draft.title}</span>
-                    <small>Draft · {draft.preview}</small>
+                    <small>{draft.preview}</small>
                   </button>
                 ))}
               </div>
