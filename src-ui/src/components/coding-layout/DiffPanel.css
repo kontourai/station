@@ -209,3 +209,30 @@
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+/* The pane's controls in a host's head row: two named icons and the view
+   overflow, as 32px ghost targets. */
+.diff-head-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.diff-head-control {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--text-md);
+  cursor: pointer;
+}
+
+.diff-head-control:hover {
+  background: color-mix(in srgb, var(--accent-primary) 13%, transparent);
+  color: var(--accent-primary);
+}

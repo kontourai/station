@@ -1,0 +1,15 @@
+{
+  "revision": "5bcabb2eb83bca084f6027b5c27db26b6654631a",
+
+  "notes": [
+    {"path":"docs/guides/authoring-skill-experiences.md","note":"Reviewed the public CLI inspection caller and bounded per-entry collector: shared referenced files and reference cycles contribute literal Skill edges, missing calls remain gaps, and newly selected dependency bytes invalidate source digest. Original owner injection made the existing keeper fail for the intended omitted dependency; restored all13 cases passed. Dynamic/prose discovery, scripts, author assertions and live evaluation remain explicitly limited.","inputs":["docs/guides/authoring-skill-experiences.md"]},
+
+    {"path":"docs/guides/plugins.md","note":"Checked the example catalog against the installed Matt collection manifest and five declared experience definitions including Implement. Only the inaccurate count changed; admission, dependency, lifecycle, native and grants explanations remain unchanged.","inputs":["docs/guides/plugins.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed the changed linked plugin guide catalog entry. Five Matt entry definitions match the package; integration routing, published contracts, setup and hosted/cloud limits remain accurate. This count correction introduces no new public-consumer or runtime claim.","inputs":["docs/guides/integrating-station.md"]},
+
+    {"path":"docs/reference/skill-experiences.md","note":"Reviewed the changed independent rich README and actual1.1.0 example: Prepare another round uses the current definition and original inputs through the existing same-stage continue control. RichExperiencePane checks identity/current source/agents.invoke and stages the canonical unsent composer; ordinary Send remains required. Contract and native/release evidence distinctions remain unchanged.","inputs":["docs/reference/skill-experiences.md"]},
+
+    {"path":"examples/README.md","note":"Reviewed the linked rich example update and ordinary manifest/build path. Same-round preparation is labelled example-added, reuses existing public pane transport and requires explicit Send; catalog role and build qualification limits remain accurate.","inputs":["examples/README.md"]}
+  ]
+}

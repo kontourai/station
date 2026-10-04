@@ -2658,6 +2658,29 @@ test("'explicit' selection still makes a user's tab choice a history entry", asy
   );
 });
 
+test("'replace' selection: a user's tab choice corrects the entry in place rather than pushing one (#3040)", async () => {
+  navigationStore.navigate('/projects/project/layouts/layout', {
+    pane: null,
+    paneScope: null,
+  });
+  render(
+    <WorkspacePaneHost
+      document={flatHostDocument(one.instanceId)}
+      navigationSelection="replace"
+      renderPane={(pane) => <div>{pane.descriptorId} content</div>}
+    />,
+  );
+  await act(async () => {
+    await Promise.resolve();
+  });
+  const index = navigationStore.getHistoryIndex();
+  fireEvent.click(screen.getByRole('tab', { name: 'Two' }));
+  expect(navigationStore.getHistoryIndex()).toBe(index);
+  expect(new URL(window.location.href).searchParams.get('pane')).toBe(
+    two.instanceId,
+  );
+});
+
 test("'explicit' selection: closing the named pane corrects the entry in place, so Back never lands on the closed pane", async () => {
   const initial = flatHostDocument(one.instanceId);
   navigationStore.navigate('/projects/project/layouts/layout', {
