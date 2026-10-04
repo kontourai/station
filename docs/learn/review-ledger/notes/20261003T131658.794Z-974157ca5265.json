@@ -1,0 +1,25 @@
+{
+  "revision": "cccc3b5a7758957a9f94283d940453ca086a8258",
+
+  "notes": [
+    {"path":"docs/guides/browser-workspace.md","note":"Added browser_close and browser_status paging to Agent authority: newest-created keyset pages, limit 1-20 refused outside range, cursor refusal, close reuses registry closeSession with agent actor, refusal codes opened-by-person/other-thread/human-controlling/held-by-other and session-not-found outside the profile, created-entry eviction fails closed. Qualified the dialog-open line: close is refused human-controlling while a held dialog exists. Checked against browser-automation.ts close/status, browser-agent.ts and browser-agent-close.test.ts.","inputs":["docs/guides/browser-workspace.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"BrowserSessionService: added BrowserAutomation.close ownership rules and its reuse of the registry closeSession. Rest of the section (composition, grants, fences, dialogs, console) unchanged by this branch and still matches browser-agent.ts and browser-automation.ts.","inputs":["docs/architecture/module-map.md"]},
+
+    {"path":"docs/README.md","note":"Only the Browser workspace index line touches this change; it names Agent permissions generally and stays accurate with browser_close and status paging. No prose change.","inputs":["docs/README.md"]},
+
+    {"path":"docs/adr/0017-browser-preview-host.md","note":"Dated ADR; makes no claim about the browser tool list, status size or agent close. browser_close/paging change nothing it states. No prose change.","inputs":["docs/adr/0017-browser-preview-host.md"]},
+
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"Transport ADR; no claim about browser tools, status paging or agent close. No prose change.","inputs":["docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md"]},
+
+    {"path":"docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md","note":"D2 (tools report unavailable off personal hosts) and D5 (operator/admins use the browser tools through their agents) still hold for browser_close and paged browser_status: same route, same authority chain. No tool list to update. No prose change.","inputs":["docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md"]},
+
+    {"path":"docs/design/browser-preview-host-spike.md","note":"Dated spike; its agent-tool mentions are the v1 preview grant tools, untouched here. No prose change.","inputs":["docs/design/browser-preview-host-spike.md"]},
+
+    {"path":"docs/design/browser-preview-pane-mvp.md","note":"Dated MVP design; no claim about station-browser tools, status size or agent close. No prose change.","inputs":["docs/design/browser-preview-pane-mvp.md"]},
+
+    {"path":"docs/glossary.md","note":"Browser pane / live surface / control lease entries: browser_close reads the lease holder and does not change lease semantics; no tool list. No prose change.","inputs":["docs/glossary.md"]},
+
+    {"path":"docs/guides/mobile-device-workspace.md","note":"Device guide references the Browser pane only for shared live-surface and lifetime contrasts; browser_close and paging do not touch them. No prose change.","inputs":["docs/guides/mobile-device-workspace.md"]}
+  ]
+}
