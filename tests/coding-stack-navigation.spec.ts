@@ -80,13 +80,18 @@ async function seed(page: Page) {
       },
     },
   });
-  await page.route('**/api/coding/diff**', (route) =>
+  // The Diff pane reads `/api/coding/git/diff` (`fetchCodingDiff`); the
+  // shared seed answers it with an empty patch, so this one change is
+  // registered after it and wins.
+  await page.route('**/api/coding/git/diff?**', (route) =>
     route.fulfill({
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify({
         success: true,
-        data: '@@ -1 +1 @@\n-console.log("old")\n+console.log("new")\n',
+        data: {
+          diff: 'diff --git a/app.ts b/app.ts\n--- a/app.ts\n+++ b/app.ts\n@@ -1 +1 @@\n-console.log("old")\n+console.log("new")\n',
+        },
       }),
     }),
   );
@@ -110,6 +115,12 @@ async function landOnChat(page: Page) {
 async function drillIntoDiff(page: Page) {
   await openCodingView(page, 'Diff');
   await expect(drillInPage(page)).toHaveAttribute('data-active', 'true');
+  // On its own (no panel head) the Diff draws its own quiet row.
+  await expect(
+    drillInPage(page).locator('.diff-panel__bar').getByRole('button', {
+      name: 'Wrap lines',
+    }),
+  ).toBeVisible();
   await expect(crumbs(page).getByRole('listitem')).toHaveText([
     'Inbox',
     'Dev Agent Chat',
@@ -142,7 +153,7 @@ test.describe('Coding stack — desktop below the wide fold (1180px)', () => {
   }) => {
     const diffReads: string[] = [];
     page.on('request', (request) => {
-      if (/\/api\/coding\/diff/.test(request.url()))
+      if (/\/api\/coding\/git\/diff/.test(request.url()))
         diffReads.push(request.url());
     });
     await landOnChat(page);
@@ -496,6 +507,44 @@ test.describe('Coding stack — wide (1440px): tools beside Chat', () => {
       sidePanel(page).getByRole('heading', { name: 'Diff' }),
     ).toBeVisible();
     await expect(centreChat(page)).toBeVisible();
+    // One head: the Diff's counts and its four icon tools sit in the
+    // panel's head row, and the pane draws no bar of its own beneath it.
+    const head = sidePanel(page).locator('.coding-workbench__panel-head');
+    await expect(head.locator('.diff-stat')).toHaveText(/^1 file\+1−1$/);
+    for (const name of [
+      'Collapse all files',
+      'Expand all files',
+      'Split view',
+      'Wrap lines',
+    ])
+      await expect(head.getByRole('button', { name })).toBeVisible();
+    await expect(
+      head.getByRole('button', { name: 'Split view' }),
+    ).toHaveAttribute('aria-pressed', 'false');
+    await expect(sidePanel(page).locator('.diff-panel__bar')).toHaveCount(0);
+    // A file row says its counts once: Station's `+N −N` in the header's
+    // metadata slot, not also the library's own `-N +N` beside it.
+    const fileHeader = sidePanel(page).locator('[data-diffs-header]').first();
+    await expect(fileHeader).toBeVisible();
+    const shownCounts = await fileHeader.evaluate((header) => {
+      const shown: string[] = [];
+      const visit = (el: Element) => {
+        if (el instanceof HTMLSlotElement) {
+          for (const node of el.assignedElements({ flatten: true }))
+            visit(node);
+          return;
+        }
+        if (el.getClientRects().length === 0) return;
+        if (el.children.length === 0 || el.shadowRoot) {
+          const text = (el.textContent ?? '').trim();
+          if (/^[+−-]\d+$/.test(text)) shown.push(text);
+        }
+        for (const child of Array.from(el.children)) visit(child);
+      };
+      visit(header);
+      return shown;
+    });
+    expect(shownCounts).toEqual(['+1', '−1']);
     await expect(chatPage(page)).toHaveAttribute('data-active', 'true');
     await expect(page).toHaveURL(/[?&]pane=/);
     expect(await historyLength(page)).toBe(length);

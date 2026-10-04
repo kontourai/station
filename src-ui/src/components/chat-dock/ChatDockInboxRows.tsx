@@ -51,6 +51,11 @@ import {
   snoozeWakeAt,
 } from './mobile-activity-groups';
 import './ChatDockInboxPanel.css';
+import {
+  endConversationReferenceDrag,
+  startConversationReferenceDrag,
+  useReferenceableConversations,
+} from '../chat/conversationReferenceDrag';
 import '../inbox-row/InboxRow.css';
 // The danger row treatment the sheet's Discard shares with every overflow.
 import '../ActionOverflowMenu.css';
@@ -435,6 +440,8 @@ export function InboxRow({
   onDetailsOpenChange,
 }: InboxRowProps) {
   const iconAgent = inboxRowIconAgent(item, agents);
+  // #3159: a row whose conversation a message may reference is a drag source.
+  const referenceable = useReferenceableConversations();
   const discardThreadId = onDraftDiscarded ? draftDiscardThreadId(item) : null;
   const hover = useInboxRowHoverCard();
   const hoverCardId = useId();
@@ -670,6 +677,18 @@ export function InboxRow({
         aria-describedby={describedBy}
         aria-current={isCurrent ? 'true' : undefined}
         onClick={() => onActivate(item)}
+        {...(referenceable?.ids.has(item.id)
+          ? {
+              draggable: true,
+              onDragStart: (event: React.DragEvent<HTMLElement>) =>
+                startConversationReferenceDrag(event, {
+                  id: item.id,
+                  title: item.title,
+                  apiBase: referenceable.apiBase,
+                }),
+              onDragEnd: endConversationReferenceDrag,
+            }
+          : {})}
       >
         {size === 'slim' ? (
           <>

@@ -261,6 +261,7 @@ function deriveSession(
     attachments: chatState.attachments || [],
     queuedMessages: chatState.queuedMessages || [],
     queuedMessageFailure: chatState.queuedMessageFailure,
+    usageLimitStopped: chatState.usageLimitStopped,
     unsentMessages: chatState.unsentMessages,
     outboundQueuedTurns: chatState.outboundQueuedTurns || [],
     inputHistory: chatState.inputHistory || [],

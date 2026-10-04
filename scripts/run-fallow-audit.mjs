@@ -11,6 +11,7 @@ import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { inventoryCodeHealthFiles } from './code-health-inventory.mjs';
 import { createFallowReview } from './fallow-review-status.mjs';
+import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import {
   fallowChildEnvironment,
   prepareFallowRun,
@@ -215,7 +216,7 @@ export async function runFallowAudit(root, scope = 'changed') {
       windowsHide: true,
     }).trim(),
     working_tree_clean:
-      execFileSync('git', ['status', '--porcelain'], {
+      execFileSyncBounded('git', ['status', '--porcelain'], {
         cwd: root,
         encoding: 'utf8',
         windowsHide: true,

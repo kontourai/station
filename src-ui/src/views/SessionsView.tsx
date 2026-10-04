@@ -19,6 +19,11 @@ import {
 } from 'react';
 import { ActionOperationsSection } from '../components/action-operations/ActionOperationsSection';
 import { Button } from '../components/Button';
+import {
+  endConversationReferenceDrag,
+  startConversationReferenceDrag,
+  useReferenceableConversations,
+} from '../components/chat/conversationReferenceDrag';
 import { DelegationLauncher } from '../components/chat-dock/DelegationLauncher';
 import { DiscardDraftButton } from '../components/drafts/DiscardDraftButton';
 import { ElapsedDuration } from '../components/ElapsedDuration';
@@ -336,6 +341,8 @@ export function SessionsView({
     [inventory, exactSession],
   );
   const agents = useAgents();
+  // #3159: rows a message may reference are drag sources onto a composer.
+  const referenceable = useReferenceableConversations();
   const framed = useIsPageFramed();
   const openChats = useOpenChats(agents, sessions);
   const openConversationIds = useMemo(
@@ -902,6 +909,19 @@ export function SessionsView({
           icon: <AgentIcon agent={sessionIconAgent(s, agents)} size="small" />,
           openChat: openConversationIds.has(s.threadId),
           badge: <SessionPullRequestConflictChip session={s} />,
+          ...(referenceable?.apiBase === apiBase &&
+          referenceable.ids.has(s.conversationId ?? s.threadId)
+            ? {
+                onDragStart: (event: React.DragEvent<HTMLElement>) =>
+                  startConversationReferenceDrag(event, {
+                    id: s.conversationId ?? s.threadId,
+                    title: sessionTitle(s),
+                    ...(s.projectSlug ? { projectSlug: s.projectSlug } : {}),
+                    apiBase,
+                  }),
+                onDragEnd: endConversationReferenceDrag,
+              }
+            : {}),
           ...(group ? { group } : {}),
           // Interactive controls live in `trailing`, a sibling of the row
           // button, because a button may not contain interactive content.

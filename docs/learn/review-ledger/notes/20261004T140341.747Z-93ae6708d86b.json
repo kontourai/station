@@ -1,0 +1,19 @@
+{
+  "revision": "878f476507132857c2063b1c447410dd6604a386",
+
+  "notes": [
+    {"path":"docs/learn/media/repository-knowledge.png","note":"Viewed the new 1440x1000 PNG: Station toolbar, 1656 records/3278 links, selected KnowledgeStoreProvider canonical record with the snapshot at 171fcbe0c, no horizontal overflow, user shown as SU from the rewritten user.name only. Captured from the installed Knowledge Library example on an isolated Station built at 171fcbe0c; digest, revision and evidence in media.json updated to match.","inputs":["docs/learn/media/repository-knowledge.png"]},
+
+    {"path":"docs/learn/media/repository-knowledge-narrow.png","note":"Viewed the new 390x844 PNG: the phone toolbar shows the whole Station name with the green status dot, 1656 records/3278 links, selected KnowledgeStoreProvider canonical record, document width equals viewport width. Captured from the installed Knowledge Library example on an isolated Station built at 171fcbe0c after the phone toolbar fix; digest, revision and evidence in media.json updated to match.","inputs":["docs/learn/media/repository-knowledge-narrow.png"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Only the sentence giving the capture's record and link counts changed, from 1,149/2,089 to 1,656/3,278, matching the new captures' media.json alt and evidence and the verified import readback. The surrounding prose still describes both new images.","inputs":["docs/learn/walkthroughs.md","docs/learn/media.json#/captures/6","docs/learn/media.json#/captures/7","docs/learn/media/repository-knowledge-narrow.png","docs/learn/media/repository-knowledge.png"]},
+
+    {"path":"docs/guides/knowledge.md","note":"Checked that the guide only links to the walkthrough's Knowledge Library capture and states no counts, toolbar or revision of its own; the re-captured images do not change any claim here.","inputs":["docs/guides/knowledge.md","docs/learn/media.json#/captures/6","docs/learn/media.json#/captures/7","docs/learn/media/repository-knowledge-narrow.png","docs/learn/media/repository-knowledge.png"]},
+
+    {"path":"examples/knowledge-library/README.md","note":"Checked that the README describes the plugin's behavior and boundaries and states no capture counts or toolbar details; the re-capture ran the unmodified example and confirms its root, graph and canonical-detail journey, so no claim changes.","inputs":["examples/knowledge-library/README.md","docs/learn/media.json#/captures/6","docs/learn/media.json#/captures/7","docs/learn/media/repository-knowledge-narrow.png","docs/learn/media/repository-knowledge.png"]},
+
+    {"path":"docs/guides/starter-work.md","note":"The manifest edit only touched the two Knowledge Library entries; this guide's captured Project, Task and connection entries and their digests are unchanged, so its claims are unaffected.","inputs":["docs/guides/starter-work.md","docs/learn/media.json"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"The walkthrough change is one sentence of capture counts for the Knowledge Library screenshots; the review's findings about capture provenance and Task editors do not depend on those counts.","inputs":["docs/architecture/abstraction-review.md","docs/learn/walkthroughs.md"]}
+  ]
+}

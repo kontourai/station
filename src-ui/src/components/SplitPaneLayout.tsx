@@ -84,6 +84,12 @@ interface SplitPaneItem {
    * in it.
    */
   trailing?: React.ReactNode;
+  /**
+   * Makes the row button a drag source (#3159: a conversation reference).
+   * Absent renders the row exactly as before.
+   */
+  onDragStart?: (event: React.DragEvent<HTMLElement>) => void;
+  onDragEnd?: () => void;
   /** The section this row sits in; a heading is emitted where it changes. */
   section?: string;
   /**
@@ -1406,6 +1412,13 @@ export function SplitPaneLayout({
                     aria-describedby={describedBy}
                     data-split-pane-nav={itemKey}
                     data-split-pane-line={item.trailing ? undefined : itemKey}
+                    {...(item.onDragStart
+                      ? {
+                          draggable: true,
+                          onDragStart: item.onDragStart,
+                          onDragEnd: item.onDragEnd,
+                        }
+                      : {})}
                   >
                     {item.icon && (
                       <div className="split-pane__item-icon">{item.icon}</div>
