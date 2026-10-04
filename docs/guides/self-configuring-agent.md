@@ -56,17 +56,19 @@ owner's own transcripts, each with the `sessionId`, a snippet and the ids that
 open it, through the same search service as the workspace search. It never
 returns another person's transcript, a Task or a file. Hits are mostly from
 native Claude and Codex Session transcripts, whose titles `rename_session`
-cannot change, so a search result is not a conversation to rename. A result with
+cannot change, so a search result is not a conversation to rename. A bound
+operator caller's search sees only the operator's own transcripts, like any
+other caller's. A result with
 `incompleteSources` is partial rather than empty; `continuation`, when a result
 carries one, is passed back to read more.
 
 `rename_session` renames a Station-stored conversation; it takes a
 `conversationId` and a one-line `title` of at most 80 characters. A title is
-refused, never truncated or trimmed into shape, when it is longer, empty, or
+refused rather than truncated when it is longer, empty, or
 contains a control character, a line or paragraph separator, a bidirectional
 embedding, override or isolate control, a zero-width space or a byte-order
 mark; the zero-width joiner and non-joiner are allowed because emoji sequences
-and some scripts need them. The tool stamps the title `titleSource: 'agent'`,
+and some scripts need them. Leading and trailing spaces are trimmed. The tool stamps the title `titleSource: 'agent'`,
 which a later agent rename or any person's rename replaces. A title a person set
 (`titleSource: 'user'`) is never replaced: the tool answers `person_title`, and
 the check is made in the same step as the write, so a person's rename racing

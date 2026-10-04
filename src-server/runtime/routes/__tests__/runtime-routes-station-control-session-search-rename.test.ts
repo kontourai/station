@@ -223,8 +223,7 @@ describe('station-control session search and rename (#176)', () => {
         // that window and the check reports the retirement as still pending
         // while the termination carries on. Only that exact report, with no
         // other cleanup failure alongside it, is tolerated; anything else
-        // still fails the test. Tracked in the follow-up issue linked from
-        // PR #3263.
+        // still fails the test. Tracked in #3266.
         const causes =
           error instanceof AggregateError ? (error.errors as unknown[]) : [];
         if (
@@ -812,6 +811,41 @@ describe('station-control session search and rename (#176)', () => {
       expect((await stored('carol-global-conv')).title).toBe(
         'carol-global-conv original',
       );
+    });
+
+    test('a bound operator caller is not limited to one owner’s conversations, but still never replaces a person’s title', async () => {
+      const { tool, stored } = await setup();
+      // The operator's bound agent renames Dave's conversation (the
+      // `delete_conversation` precedent); a delegated-custody operator is not
+      // bound, so it is held to the owner check like everyone else.
+      const renamed = await tool(bound('a-agent'), 'rename_session', {
+        conversationId: 'dave-conv',
+        title: 'Operator title',
+      });
+      expect(renamed).toMatchObject({
+        isError: false,
+        body: { success: true, data: { titleSource: 'agent' } },
+      });
+      expect(await stored('dave-conv')).toEqual({
+        title: 'Operator title',
+        titleSource: 'agent',
+      });
+      const notBound = await tool(delegated('a-agent'), 'rename_session', {
+        conversationId: 'carol-global-conv',
+        title: 'Delegated operator',
+      });
+      expect(notBound.isError).toBe(true);
+      expect((await stored('carol-global-conv')).title).toBe(
+        'carol-global-conv original',
+      );
+      const person = await tool(bound('a-agent'), 'rename_session', {
+        conversationId: 'carol-person-conv',
+        title: 'Operator wants this',
+      });
+      expect(person).toMatchObject({
+        isError: true,
+        body: { code: 'person_title' },
+      });
     });
 
     test('a caller that is not bound stays in its own session’s Project scope; a bound caller keeps its owner’s reach', async () => {

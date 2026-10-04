@@ -2759,7 +2759,7 @@ conversations, as with `DELETE /agents/:slug/conversations/:id`. A title is one
 line of 1 to 80 characters with no control, line or paragraph separator, bidi
 embedding, override or isolate, zero-width space or byte-order-mark character
 (the zero-width joiner and non-joiner are allowed); anything else is a `400`,
-never truncated or trimmed into shape. It stamps
+refused rather than truncated (leading and trailing spaces are trimmed). It stamps
 `titleSource: 'agent'` in the same serialized step that checks the stored title:
 a title with `titleSource: 'user'` answers `409` `person_title` and is left as
 it was, and a native Claude or Codex conversation answers `409`
