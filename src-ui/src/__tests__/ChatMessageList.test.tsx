@@ -182,7 +182,7 @@ describe('ChatMessageList', () => {
     expect(loadOlder).toHaveBeenCalledTimes(1);
   });
 
-  test('one press loads one page: the gap between the request settling and its page committing is still in flight', async () => {
+  test('one press loads one page: the stretch from the request settling to the reader\'s row coming back is still in flight', async () => {
     const releaseLoads: Array<() => void> = [];
     const loadOlder = vi.fn(
       () =>
@@ -201,27 +201,38 @@ describe('ChatMessageList', () => {
       />,
     );
     const log = screen.getByRole('log');
-    installScrollGeometry(log);
+    const geometry = installScrollGeometry(log);
     const press = screen.getByRole('button', { name: 'Earlier messages' });
+    log.scrollTop = 300;
     fireEvent.click(press);
     expect(loadOlder).toHaveBeenCalledTimes(1);
     // The request settles, but React has not committed the page it carries
-    // (nothing here flushes it): the DOM still shows the old top, the button
-    // enabled and the reader in the auto-load band. This is the window a
-    // browser press, or the scroll that brought the reader to the top, lands
-    // in under a slow render. Neither is a second request.
+    // (nothing here flushes it): the DOM still shows the old top and the
+    // button enabled. A press landing here is not a second request.
     releaseLoads[0]();
     for (let tick = 0; tick < 5; tick++) await Promise.resolve();
     fireEvent.click(press);
+    expect(loadOlder).toHaveBeenCalledTimes(1);
+    // The page commits and the virtualizer walks the reader's row back over
+    // several frames, through the auto-load band (the browser reports
+    // scrollTop 0 after a prepend before the row settles; the unmarked scroll
+    // event that dispatches there is the press's own restoration, not the
+    // reader). The row is displaced here, so the restoration is unfinished.
+    geometry.resize(400, 5_000);
+    await act(async () => {});
+    log.scrollTop = 0;
+    fireEvent.scroll(log);
     log.scrollTop = 50;
     fireEvent.scroll(log);
     expect(loadOlder).toHaveBeenCalledTimes(1);
-    // Once the commit has landed the in-flight request is over: the reader
-    // reaching the top again loads the next page, by design (#2706).
-    await act(async () => {});
-    log.scrollTop = 20;
-    fireEvent.scroll(log);
-    expect(loadOlder).toHaveBeenCalledTimes(2);
+    // Restored: the reader reaching the top again loads the next page, by
+    // design (#2706).
+    geometry.resize(400, 0);
+    await waitFor(() => {
+      log.scrollTop = log.scrollTop === 20 ? 21 : 20;
+      fireEvent.scroll(log);
+      expect(loadOlder).toHaveBeenCalledTimes(2);
+    });
   });
 
   test('a load that settles with nothing to commit still releases the in-flight request', async () => {
@@ -236,12 +247,13 @@ describe('ChatMessageList', () => {
         onLoadOlder={loadOlder}
       />,
     );
+    installScrollGeometry(screen.getByRole('log'));
     const press = screen.getByRole('button', { name: 'Earlier messages' });
     fireEvent.click(press);
-    await act(async () => {});
-    fireEvent.click(press);
-    await act(async () => {});
-    expect(loadOlder).toHaveBeenCalledTimes(2);
+    await waitFor(() => {
+      fireEvent.click(press);
+      expect(loadOlder).toHaveBeenCalledTimes(2);
+    });
   });
 
   test('layoutHeight preserves pinned-bottom and scrolled-up reader intent before ResizeObserver delivery', () => {
