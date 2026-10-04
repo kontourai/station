@@ -2,7 +2,7 @@ import { fetchOrchestrationConversationEventWindow } from '@kontourai/station-sd
 import { readHarnessQuestionnaire } from '@kontourai/station-shared/harness-questions';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { toastStore } from '../../contexts/ToastContext';
-import { handleRequestOpenedEvent } from './approvalHandlers';
+import { raiseRequestOpenedToast } from './approvalHandlers';
 import type { OrchestrationEvent } from './types';
 
 /**
@@ -10,7 +10,8 @@ import type { OrchestrationEvent } from './types';
  * they ask, so a reload can only raise a generic placeholder for each. This
  * reads the chat's newest turn, where a blocking request waits, and replaces
  * each placeholder with the toast a live `request.opened` raises: same tool
- * name, preview, grant label and answer path.
+ * name, preview, grant label and answer path. Only the toast: the snapshot
+ * already holds the chat's state.
  *
  * Best effort by construction: an older server without the window route, a
  * failed read, or a request the window does not carry leaves the placeholder
@@ -47,7 +48,7 @@ export async function hydrateOpenApprovalToasts(
     const approvalToasts = new Map(chat.approvalToasts);
     approvalToasts.delete(event.requestId);
     activeChatsStore.updateChat(event.threadId, { approvalToasts });
-    handleRequestOpenedEvent(
+    raiseRequestOpenedToast(
       apiBase,
       event as Extract<OrchestrationEvent, { method: 'request.opened' }>,
     );
