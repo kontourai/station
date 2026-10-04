@@ -10,7 +10,12 @@ import {
 import { dirname, join, resolve } from 'node:path';
 import { load } from 'js-yaml';
 import { describe, expect, it } from 'vitest';
+import { PORTABLE_SERVER_TARGETS } from '../../packages/shared/src/portable-server-targets.mjs';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
+import {
+  assertOnlyExpectedAssets,
+  HOST_MANIFEST_PAYLOAD_ASSET,
+} from '../lib/release-artifacts.mjs';
 import { releaseVariants } from '../lib/release-variants.mjs';
 import { producerArtifactSources } from '../release-admit-producer-assets.mjs';
 import {
@@ -56,6 +61,11 @@ const PREVIEW_TAG = 'v1.2.3-preview.1';
 const IOS_BUNDLE_VERSION = '10203';
 
 type Layout = Record<string, string[]>;
+
+/** The five station-server archives, as portable-server-archives.yml names them. */
+const HOST_ARCHIVES = PORTABLE_SERVER_TARGETS.map(
+  ({ os, arch, format }) => `station-server-${os}-${arch}.${format}`,
+);
 
 /**
  * Producer artifacts exactly as `download-artifact` (no merge-multiple) lays
@@ -111,7 +121,18 @@ function producerLayout(tag: string, channel: 'preview' | 'stable'): Layout {
       `station-${tag}-android-universal.aab`,
     ],
     'station-container-release': ['station-container-release.json'],
+    // release.yml host-manifest: `path: release-assets`, so the archives and
+    // the payload sit at the artifact root.
+    'station-host-stream': [...HOST_ARCHIVES, HOST_MANIFEST_PAYLOAD_ASSET],
     // Non-producer artifacts that share the download root.
+    // portable-server-archives.yml: one build artifact per target, holding
+    // the archive and the descriptor the builder writes beside it.
+    ...Object.fromEntries(
+      HOST_ARCHIVES.map((archive) => [
+        archive.replace(/\.(tar\.gz|zip)$/, ''),
+        [archive, `${archive}.json`],
+      ]),
+    ),
     'station-release-client-build-provenance-4242': [
       'station-client-build.json',
     ],
@@ -143,6 +164,8 @@ function requiredProducerAssets(tag: string, channel: 'preview' | 'stable') {
     'station-portable.tar.gz.sha256',
     `station-release-ring-${channel}.json`,
     'station-container-release.json',
+    ...HOST_ARCHIVES,
+    HOST_MANIFEST_PAYLOAD_ASSET,
   ].sort();
 }
 
@@ -344,6 +367,97 @@ describe('assemble-draft producer asset admission (#2977)', () => {
       expect(result.admitted?.some((name) => name.includes('-ios-'))).toBe(
         false,
       );
+    },
+    FIXTURE_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    'admits the host-stream archives and payload for both rings, never the per-target build artifacts',
+    async () => {
+      for (const [tag, channel] of [
+        [STABLE_TAG, 'stable'],
+        [PREVIEW_TAG, 'preview'],
+      ] as const) {
+        const result = await runAdmitStep(
+          producerLayout(tag, channel),
+          channel,
+        );
+        expect(result.status, result.stderr).toBe(0);
+        expect(result.admitted).toEqual(
+          expect.arrayContaining([
+            ...HOST_ARCHIVES,
+            HOST_MANIFEST_PAYLOAD_ASSET,
+          ]),
+        );
+        // The bytes are host-stream's, not a station-server-<target> copy.
+        for (const archive of HOST_ARCHIVES)
+          expect(
+            readFileSync(
+              join(result.ws.work, 'release-assets', archive),
+              'utf8',
+            ),
+          ).toBe(`station-host-stream/${archive}\n`);
+        // Descriptors live only in the build artifacts and are not admitted.
+        expect(
+          result.admitted?.some((name) => name.endsWith('.json.json')),
+        ).toBe(false);
+        expect(
+          result.admitted?.filter((name) =>
+            /^station-server-.*\.(tar\.gz|zip)\.json$/.test(name),
+          ),
+        ).toEqual([]);
+      }
+    },
+    FIXTURE_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    'refuses a missing host-stream artifact and a nested directory inside it',
+    async () => {
+      const missing = producerLayout(STABLE_TAG, 'stable');
+      delete missing['station-host-stream'];
+      const missingResult = await runAdmitStep(missing, 'stable');
+      expectRefusal(
+        missingResult,
+        'producer artifact station-host-stream is missing',
+      );
+      expect(missingResult.admitted).toEqual([]);
+
+      const nested = producerLayout(STABLE_TAG, 'stable');
+      nested['station-host-stream'] = [
+        ...(nested['station-host-stream'] ?? []),
+        'descriptors/station-server-linux-x64.tar.gz.json',
+      ];
+      const nestedResult = await runAdmitStep(nested, 'stable');
+      expectRefusal(
+        nestedResult,
+        'station-host-stream/descriptors is not a regular file',
+      );
+      expect(nestedResult.admitted).toEqual([]);
+    },
+    FIXTURE_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    'leaves an unexpected flat file in host-stream to the inventory, which refuses it',
+    async () => {
+      // Admission is an artifact allowlist: it copies every regular file of
+      // an allowlisted artifact. The file-name authority is the inventory,
+      // which release.yml runs next over the admitted directory.
+      const layout = producerLayout(STABLE_TAG, 'stable');
+      layout['station-host-stream'] = [
+        ...(layout['station-host-stream'] ?? []),
+        'station-server-linux-x64.tar.gz.json',
+      ];
+      const result = await runAdmitStep(layout, 'stable');
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.admitted).toContain('station-server-linux-x64.tar.gz.json');
+      expect(() =>
+        assertOnlyExpectedAssets(
+          join(result.ws.work, 'release-assets'),
+          STABLE_TAG,
+        ),
+      ).toThrow('unexpected asset station-server-linux-x64.tar.gz.json');
     },
     FIXTURE_TEST_TIMEOUT_MS,
   );
