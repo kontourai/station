@@ -320,22 +320,20 @@ describe('Station-agent conversation storage (#3112)', () => {
     await send(continuation.sessionId, 'Second try', 1);
 
     const messages = await readMessages('conv-failed');
-    const texts = messages.map(textOf);
-    // Each failed turn reads as its prompt followed by its failure marker,
-    // the successor's after the root's.
-    const isMarker = (text: string) =>
-      text.startsWith('[SYSTEM_EVENT] [CHAT_ERROR] ');
-    const markers = texts.flatMap((text, index) =>
-      isMarker(text) ? [index] : [],
-    );
-    expect(markers).toHaveLength(2);
-    const firstPrompt = texts.indexOf('First try');
-    const secondPrompt = texts.indexOf('Second try');
-    expect(firstPrompt).toBeGreaterThanOrEqual(0);
-    expect(firstPrompt).toBeLessThan(markers[0]!);
-    expect(markers[0]!).toBeLessThan(secondPrompt);
-    expect(secondPrompt).toBeLessThan(markers[1]!);
-    expect(texts.lastIndexOf('First try')).toBeLessThan(markers[0]!);
-    for (const text of texts) expect(text).not.toContain('[Timezone:');
+    // Each failed turn reads as exactly its prompt and its failure marker,
+    // the successor's after the root's: no second copy of the prompt, no
+    // empty assistant reply, no context.
+    const marker = expect.stringMatching(/^\[SYSTEM_EVENT\] \[CHAT_ERROR\] /);
+    expect(
+      messages.map((message) => ({
+        role: message.role,
+        text: textOf(message),
+      })),
+    ).toEqual([
+      { role: 'user', text: 'First try' },
+      { role: 'user', text: marker },
+      { role: 'user', text: 'Second try' },
+      { role: 'user', text: marker },
+    ]);
   });
 });
