@@ -2912,6 +2912,24 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       method: 'POST',
       path: '/api/orchestration/sessions/:threadId/provider-tasks/:taskId/stop',
     },
+    // #3157: the usage-limit banner's recovery read and its two person-owned
+    // actions (Resume now, Cancel auto-resume). Deliberate family inheritance:
+    // the GET returns only the Session's recovery projection under the same
+    // session-read gate as its siblings; the POSTs resume or retire a stop on a
+    // Session the caller already owns (`canUserMutateSession`), the same
+    // authority as sending the next turn, so they take the operate tier.
+    {
+      method: 'GET',
+      path: '/api/orchestration/sessions/:threadId/usage-limit',
+    },
+    {
+      method: 'POST',
+      path: '/api/orchestration/sessions/:threadId/usage-limit/resume',
+    },
+    {
+      method: 'POST',
+      path: '/api/orchestration/sessions/:threadId/usage-limit/cancel',
+    },
     { method: 'GET', path: '/api/orchestration/sessions/:threadId/flow-run' },
     // archive#2802: a thread's recorded turn-checkpoint outcomes. Deliberate
     // family inheritance, considered: the records do carry the bound

@@ -396,7 +396,10 @@ import {
   MAX_ASSISTANT_TURN_EVENTS,
   type SessionQueryModule,
 } from './session-query-module.js';
-import { SessionRecoveryCoordinator } from './session-recovery-coordinator.js';
+import {
+  SessionRecoveryCoordinator,
+  type UsageLimitRecoveryActionResult,
+} from './session-recovery-coordinator.js';
 import { SessionTranscriptReads } from './session-transcript-reads.js';
 import {
   createInMemorySessionTurnBoundaryAuthority,
@@ -4180,10 +4183,9 @@ export class OrchestrationService {
     const latestRecovery = this.recoveryCoordinator?.latestProjection(threadId);
     // #3157: a waiting usage-limit resume says whether the setting would let
     // it run unattended now; the coordinator applies it only at the reset.
-    const recovery =
-      latestRecovery?.usageLimit && latestRecovery.outcome === 'armed'
-        ? await this.withUsageLimitAutoResume(latestRecovery)
-        : latestRecovery;
+    const recovery = latestRecovery
+      ? await this.projectRecovery(latestRecovery)
+      : undefined;
     // See `listSessionReadModel`: a continuation child folds only its own
     // events, which start at the second prompt.
     const conversationFirstPromptedTurn =
@@ -4215,6 +4217,50 @@ export class OrchestrationService {
       events,
       ...(recovery ? { recovery } : {}),
     };
+  }
+
+  private async projectRecovery(
+    latest: ConnectionRecoveryProjection,
+  ): Promise<ConnectionRecoveryProjection> {
+    return latest.usageLimit && latest.outcome === 'armed'
+      ? await this.withUsageLimitAutoResume(latest)
+      : latest;
+  }
+
+  /**
+   * #3157: the chat banner's own read of a Session's usage-limit recovery,
+   * without the Session's whole event list. `null` when the latest recovery
+   * for the Session is not a usage-limit stop. The caller authorizes the read.
+   */
+  async readUsageLimitRecovery(
+    threadId: string,
+  ): Promise<ConnectionRecoveryProjection | null> {
+    this.initialize();
+    const latest = this.recoveryCoordinator?.latestProjection(threadId);
+    return latest?.usageLimit ? await this.projectRecovery(latest) : null;
+  }
+
+  /**
+   * #3157: the banner's "Resume now" and "Cancel auto-resume". The caller
+   * authorizes the mutation. Each answers with what it did and the projection
+   * as it stands afterward, so a click on a banner that has since settled
+   * reads back the real state instead of acting.
+   */
+  async actOnUsageLimitRecovery(
+    threadId: string,
+    action: 'resume' | 'cancel',
+  ): Promise<{
+    result: UsageLimitRecoveryActionResult;
+    recovery: ConnectionRecoveryProjection | null;
+  }> {
+    this.initialize();
+    const coordinator = this.recoveryCoordinator;
+    const result: UsageLimitRecoveryActionResult = coordinator
+      ? action === 'resume'
+        ? await coordinator.resumeUsageLimitNow(threadId)
+        : await coordinator.cancelUsageLimitWaiting(threadId)
+      : { kind: 'not-waiting' };
+    return { result, recovery: await this.readUsageLimitRecovery(threadId) };
   }
 
   /**

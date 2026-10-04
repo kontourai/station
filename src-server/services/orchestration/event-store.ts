@@ -11303,13 +11303,21 @@ export class EventStore {
   private claimRecoveryDispatch(input: {
     fingerprint: string;
     kind: 'due' | 'profile';
+    /**
+     * #3157: the user's own "Resume now" on a usage-limit stop. It claims a
+     * waiting (`armed`) or left-to-the-user (`manual`) usage-limit intent
+     * before its due time, and is still an ordinary `due` dispatch.
+     */
+    immediate?: boolean;
     dispatchAttemptId: string;
     recoveryCorrelationId: string;
     owner: RecoveryOwner;
     now: string;
   }): ConnectionRecoveryIntent | null {
-    const eligibility =
-      input.kind === 'due'
+    const immediate = input.kind === 'due' && input.immediate === true;
+    const eligibility = immediate
+      ? "outcome IN ('armed', 'manual') AND usage_limit = 1"
+      : input.kind === 'due'
         ? "outcome = 'armed' AND due_at IS NOT NULL AND due_at <= ?"
         : "outcome IN ('armed', 'manual')";
     const row = this.db
@@ -11337,7 +11345,7 @@ export class EventStore {
         input.owner.identityKind,
         input.now,
         input.fingerprint,
-        ...(input.kind === 'due' ? [input.now] : []),
+        ...(input.kind === 'due' && !immediate ? [input.now] : []),
       ) as RecoveryIntentRow | undefined;
     return row ? mapRecoveryIntentRow(row) : null;
   }

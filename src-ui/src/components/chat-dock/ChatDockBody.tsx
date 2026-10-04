@@ -96,6 +96,7 @@ import {
   resolveRetryAttachments,
   retryAttachmentsFromParts,
 } from './retry-attachments';
+import { UsageLimitBanner } from './UsageLimitBanner';
 import { useChatStatusPill } from './useChatStatusPill';
 
 const loadChatInputArea = () =>
@@ -377,6 +378,13 @@ export function ChatDockBody({
   const agents = useAgents();
   const { apiBase } = useApiBase();
   const mentionRequestScope = useHostRequestAuthorityScope();
+  // The Session the limit stopped: the dock's own correlation (see
+  // `useChatDockViewModel`), so the banner reads the intent the server armed.
+  const usageLimitThreadId =
+    activeOrchestrationSession?.threadId ??
+    (activeSession.currentSessionId ||
+      activeSession.conversationId ||
+      activeSession.id);
   const { updateChat, clearEphemeralMessages, addEphemeralMessage } =
     useActiveChatActions();
   const { navigate } = useNavigationActions();
@@ -1559,6 +1567,16 @@ export function ChatDockBody({
         className="chat-dock__session-failure"
         testId="chat-dock-session-failure"
         note={sessionFailureNote(activeOrchestrationSession)}
+      />
+      {/* #3157: the limited conversation's own banner, from the server's
+          recovery projection; it re-reads with each snapshot update. */}
+      <UsageLimitBanner
+        key={usageLimitThreadId}
+        apiBase={apiBase}
+        scope={mentionRequestScope}
+        threadId={usageLimitThreadId}
+        active={activeSession.usageLimitStopped === true}
+        refreshKey={`${activeOrchestrationSession?.eventCount ?? ''}:${activeOrchestrationSession?.updatedAt ?? ''}`}
       />
       {agent?.available === false &&
         activeSession.modelSource !== 'session override' && (
