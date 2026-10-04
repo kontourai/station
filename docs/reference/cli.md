@@ -2957,6 +2957,12 @@ station plugin list
 Request removal by manifest name through the server's lifecycle owner. Managed
 contributions are retired there; retained data and pending cleanup are separate
 dispositions. The CLI prints completion only after an accepted success response.
+When that response carries the plugin's own `commandEffects` withdrawal with a
+status other than `completed` (Station answers 202 until captured palette
+command effects settle), the CLI appends the outstanding count, status and
+withdrawal id; with `commandEffectsUnavailable` it says completion cannot be
+confirmed. The removal has already committed in both cases. A dependency's
+`dependencyCommandEffects` are not summarized.
 
 ```
 station plugin remove <name>
@@ -2980,7 +2986,7 @@ station plugin info my-plugin
 
 ### `plugin update <name>`
 
-Update an installed plugin through the running Station server. The server resolves its source, rebuilds it, and applies registry and runtime changes as one lifecycle operation.
+Update an installed plugin through the running Station server. The server resolves its source, rebuilds it, and applies registry and runtime changes as one lifecycle operation. Its success message carries the same command-effect note as `plugin remove`.
 
 ```
 station plugin update <name>
