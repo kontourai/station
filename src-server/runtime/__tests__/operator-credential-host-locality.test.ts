@@ -1,6 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { type HttpBindings } from '@hono/node-server';
 import {
@@ -10,7 +9,8 @@ import {
   PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_PATH,
 } from '@kontourai/station-contracts';
 import { Hono } from 'hono';
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { isRuntimeRequestPrincipalCurrent } from '../../security/runtime-request-security.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
 import { EnvironmentSecurityService } from '../../services/ssh/environment-security-service.js';
@@ -44,7 +44,7 @@ const ORIGIN = 'https://station.example.test';
 const LOOPBACK = '127.0.0.1';
 const REMOTE_PEER = '100.96.12.7';
 const LOOPBACK_HOST = '127.0.0.1:3241';
-const homes: string[] = [];
+const makeTempDir = trackTempDirs();
 
 type TestBindings = HttpBindings & {
   incoming: HttpBindings['incoming'] & {
@@ -65,8 +65,7 @@ const logger: Logger = {
 };
 
 async function createHarness() {
-  const homeDir = mkdtempSync(join(tmpdir(), 'station-operator-host-'));
-  homes.push(homeDir);
+  const homeDir = makeTempDir('station-operator-host-');
   const security = new EnvironmentSecurityService({ homeDir });
   const { credential: operatorCredential } = await security.initialize();
   const secretPath = join(homeDir, 'runtime', 'local-grant.secret');
@@ -246,12 +245,6 @@ async function createHarness() {
     desktopLocalGrant,
   };
 }
-
-afterEach(() => {
-  for (const home of homes.splice(0)) {
-    rmSync(home, { recursive: true, force: true });
-  }
-});
 
 /** Caller positions, each the exact header set its real hop produces. */
 const positions = {
