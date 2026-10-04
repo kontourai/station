@@ -73,6 +73,11 @@ const request = vi.fn(
           .digest('base64url'),
       };
     }
+    if (forcedCode && path.startsWith('/api/pairing')) {
+      throw Object.assign(new Error('raw upstream text must not show'), {
+        code: forcedCode,
+      });
+    }
     const response = await app.request(path, init);
     const body = (await response.json()) as { error?: string };
     if (!response.ok) {
@@ -85,6 +90,7 @@ const request = vi.fn(
   },
 );
 
+let forcedCode: string | undefined;
 const stdout = vi.fn();
 const printed = () => stdout.mock.calls.map((call) => call[0]).join('\n');
 const confirmPrompt = vi.fn<(question: string) => Promise<boolean>>();
@@ -127,6 +133,7 @@ beforeEach(() => {
   request.mockClear();
   confirmPrompt.mockReset();
   interactive = false;
+  forcedCode = undefined;
 });
 
 function enroll(label: string) {
@@ -283,5 +290,28 @@ describe('station environment operator passkeys', () => {
         },
       ),
     ).rejects.toThrow(/Usage/);
+  });
+
+  test('every code the host routes can answer has readable CLI text, not the raw error', async () => {
+    const hostCodes = [
+      'invalid_code',
+      'rate_limited',
+      'enrollment_unavailable',
+      'store_unavailable',
+      'passkey_not_found',
+      'device_mismatch',
+      'device_gone',
+      'authentication_required',
+    ];
+    for (const code of hostCodes) {
+      forcedCode = code;
+      const failure = await run('revoke', 'someid').then(
+        () => null,
+        (error: Error) => error,
+      );
+      expect(failure, code).not.toBeNull();
+      expect(failure?.message, code).not.toContain('raw upstream');
+      expect(failure?.message.length, code).toBeGreaterThan(20);
+    }
   });
 });

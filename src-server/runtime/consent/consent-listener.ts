@@ -537,6 +537,7 @@ export function createConsentApp(deps: ConsentListenerDeps): Hono {
       service: deps.passkeys,
       channel: deps.channel,
       credentials: deps.credentials,
+      logger: deps.logger,
     });
   }
 

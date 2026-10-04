@@ -21,6 +21,9 @@
  * The page's script is served from this same origin (`script-src 'self'`);
  * there is no inline script and no third-party code.
  */
+
+import { randomUUID } from 'node:crypto';
+import { sanitizeError } from '@kontourai/station-shared/redaction';
 import type { Context, Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import type { ConsentDecisionCredentialResolver } from '../../security/pairing-route-scopes.js';
@@ -32,6 +35,7 @@ import {
   type OperatorPasskeyEnrollmentService,
   publicEnrollmentMessage,
 } from '../../services/identity/operator-passkey-enrollment.js';
+import type { Logger } from '../../utils/logger.js';
 import { parseDeviceSessionCookie } from '../bootstrap/runtime-http.js';
 import { ENROLLMENT_PAGE_SCRIPT } from './operator-passkey-enrollment-script.js';
 
@@ -41,6 +45,7 @@ export interface OperatorPasskeyConsentDeps {
   readonly service: OperatorPasskeyEnrollmentService;
   readonly channel: ConsentChannelService;
   readonly credentials: ConsentDecisionCredentialResolver;
+  readonly logger?: Logger;
 }
 
 const JSON_BODY_LIMIT = 32 * 1024;
@@ -251,11 +256,18 @@ export function registerOperatorPasskeyEnrollmentRoutes(
                   : 400;
         return fail(c, status, error.code, publicEnrollmentMessage(error));
       }
-      // Unexpected: never echo its text to the browser.
+      // Unexpected: keep the cause in the operator's log, give the browser a
+      // fixed sentence and a correlation id to quote.
+      const correlationId = randomUUID();
+      deps.logger?.error('Operator passkey enrollment request failed', {
+        correlationId,
+        error: sanitizeError(error),
+      });
       return c.json(
         {
           error: 'internal_error',
           message: 'The request could not be completed.',
+          correlationId,
         },
         500,
       );

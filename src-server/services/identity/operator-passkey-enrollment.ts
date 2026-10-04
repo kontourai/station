@@ -116,6 +116,11 @@ const PUBLIC_MESSAGES: Record<EnrollmentErrorCode, string> = {
     'The device that opened this request is no longer paired. Nothing was confirmed.',
 };
 
+/** Every code a typed enrollment error can carry. */
+export const ENROLLMENT_ERROR_CODES = Object.keys(
+  PUBLIC_MESSAGES,
+) as EnrollmentErrorCode[];
+
 /** The fixed public sentence for a typed enrollment error. */
 export function publicEnrollmentMessage(
   error: OperatorPasskeyEnrollmentError,

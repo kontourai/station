@@ -19,9 +19,13 @@ import {
   ENROLLMENT_CHALLENGE_TTL_MS,
   ENROLLMENT_CODE_FAILURE_LIMIT,
   ENROLLMENT_CODE_FAILURE_WINDOW_MS,
+  ENROLLMENT_ERROR_CODES,
   ENROLLMENT_MAX_LIVE_REQUESTS,
   ENROLLMENT_REQUEST_TTL_MS,
+  type EnrollmentErrorCode,
+  OperatorPasskeyEnrollmentError,
   OperatorPasskeyEnrollmentService,
+  publicEnrollmentMessage,
 } from '../../../services/identity/operator-passkey-enrollment.js';
 import {
   LazyOperatorPasskeyRegistry,
@@ -1175,7 +1179,7 @@ describe('review round: races and live device state', () => {
     lazy.close();
   });
 
-  test('an unexpected error never reaches the client as text, on either side', async () => {
+  test('an unexpected error is logged with its cause and never reaches the client as text', async () => {
     const SECRET = 'ENOENT /Users/operator/.station/secret-path';
     class Exploding extends OperatorPasskeyEnrollmentService {
       override listPasskeys(): never {
@@ -1186,11 +1190,80 @@ describe('review round: races and live device state', () => {
       }
     }
     const exploding = new Exploding({ registry: h.registry, origin: ORIGIN });
+    // Host side: the route rethrows, so the runtime's onError owns the log and
+    // the standard sanitized 500 (asserted against the real runtime in
+    // device-pairing-routes.test.ts).
     const host = new Hono();
+    const seen: unknown[] = [];
+    host.onError((error, c) => {
+      seen.push(error);
+      return c.text('handled by onError', 500);
+    });
     host.route(
       '/api/pairing/operator-passkeys',
       createOperatorPasskeyHostRoutes({
         service: exploding,
+        isOperator: () => true,
+      }),
+    );
+    const hostRes = await host.request('/api/pairing/operator-passkeys');
+    expect(await hostRes.text()).toBe('handled by onError');
+    expect(seen).toHaveLength(1);
+    expect((seen[0] as Error).message).toBe(SECRET);
+
+    // Consent side: no onError here, so the route logs and answers itself.
+    const { logger, calls } = makeLogger();
+    const channel = new ConsentChannelService({ trustedOrigin: ORIGIN });
+    channel.markListening(4321);
+    const consent = createConsentApp({
+      channel,
+      logger,
+      credentials: {
+        verifyOperatorCredential: () => false,
+        identifyDevice: (c) => DEVICES[c] ?? null,
+      },
+      passkeys: exploding,
+    });
+    const res = await consent.request(`${PATH}/requests`, {
+      method: 'POST',
+      headers: browserHeaders(),
+      body: '{}',
+    });
+    expect(res.status).toBe(500);
+    const text = await res.text();
+    expect(text).not.toContain('ENOENT');
+    expect(text).not.toContain('/Users/operator');
+    const body = JSON.parse(text) as Record<string, string>;
+    expect(body).toMatchObject({
+      error: 'internal_error',
+      message: 'The request could not be completed.',
+    });
+    // The operator's log carries the cause and the same correlation id.
+    const logged = JSON.stringify(calls);
+    expect(logged).toContain('Operator passkey enrollment request failed');
+    expect(logged).toContain(body.correlationId as string);
+    // The cause is kept (paths are redacted by the shared sanitizer).
+    expect(logged).toContain('ENOENT');
+  });
+
+  test('every typed error code answers its fixed public sentence, never the error message', async () => {
+    const SENTINEL = 'SENTINEL-leak-/etc/passwd';
+    let raised: EnrollmentErrorCode =
+      ENROLLMENT_ERROR_CODES[0] as EnrollmentErrorCode;
+    class Raising extends OperatorPasskeyEnrollmentService {
+      override listPasskeys(): never {
+        throw new OperatorPasskeyEnrollmentError(raised, SENTINEL);
+      }
+      override createRequest(): never {
+        throw new OperatorPasskeyEnrollmentError(raised, SENTINEL);
+      }
+    }
+    const raising = new Raising({ registry: h.registry, origin: ORIGIN });
+    const host = new Hono();
+    host.route(
+      '/api/pairing/operator-passkeys',
+      createOperatorPasskeyHostRoutes({
+        service: raising,
         isOperator: () => true,
       }),
     );
@@ -1202,23 +1275,31 @@ describe('review round: races and live device state', () => {
         verifyOperatorCredential: () => false,
         identifyDevice: (c) => DEVICES[c] ?? null,
       },
-      passkeys: exploding,
+      passkeys: raising,
     });
-    const hostRes = await host.request('/api/pairing/operator-passkeys');
-    const consentRes = await consent.request(`${PATH}/requests`, {
-      method: 'POST',
-      headers: browserHeaders(),
-      body: '{}',
-    });
-    for (const res of [hostRes, consentRes]) {
-      expect(res.status).toBe(500);
-      const text = await res.text();
-      expect(text).not.toContain('ENOENT');
-      expect(text).not.toContain('/Users/operator');
-      expect(JSON.parse(text)).toEqual({
-        error: 'internal_error',
-        message: 'The request could not be completed.',
-      });
+    expect(ENROLLMENT_ERROR_CODES.length).toBeGreaterThan(10);
+    for (const code of ENROLLMENT_ERROR_CODES) {
+      raised = code;
+      const expected = publicEnrollmentMessage(
+        new OperatorPasskeyEnrollmentError(code, 'internal'),
+      );
+      expect(expected.length, code).toBeGreaterThan(10);
+      expect(expected, code).not.toContain('SENTINEL');
+      const responses = [
+        await host.request('/api/pairing/operator-passkeys'),
+        await consent.request(`${PATH}/requests`, {
+          method: 'POST',
+          headers: browserHeaders(),
+          body: '{}',
+        }),
+      ];
+      for (const res of responses) {
+        const text = await res.text();
+        expect(text, code).not.toContain('SENTINEL');
+        const body = JSON.parse(text) as { error: string; message: string };
+        expect(body.error, code).toBe(code);
+        expect(body.message, code).toBe(expected);
+      }
     }
   });
 });

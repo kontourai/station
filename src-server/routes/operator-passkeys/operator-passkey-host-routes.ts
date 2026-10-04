@@ -77,15 +77,10 @@ export function createOperatorPasskeyHostRoutes(
             statusFor(error),
           );
         }
-        // Anything else is unexpected: its text may carry paths or internals,
-        // so the client gets a fixed sentence and never the message.
-        return c.json(
-          {
-            error: 'internal_error',
-            message: 'The request could not be completed.',
-          },
-          500,
-        );
+        // Anything else is unexpected. Rethrow so the runtime `onError` logs
+        // it with its cause and answers the standard sanitized 500; this
+        // route never decides what text an unexpected failure shows.
+        throw error;
       }
     };
 

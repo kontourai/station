@@ -4788,4 +4788,39 @@ describe('operator passkey host routes in the runtime auth boundary (#3257)', ()
       registry.close();
     }
   });
+
+  test('an unexpected failure in a passkey route is logged by the runtime and answered with the standard sanitized 500', async () => {
+    const registry = new OperatorPasskeyRegistry(new DatabaseSync(':memory:'));
+    class Exploding extends OperatorPasskeyEnrollmentService {
+      override listPasskeys(): never {
+        throw new Error('ENOENT /Users/operator/.station/secret-path');
+      }
+    }
+    const harness = createHarness({
+      operatorPasskeys: new Exploding({
+        registry,
+        origin: 'https://station.example.ts.net',
+      }),
+    });
+    try {
+      const response = await harness.request('/api/pairing/operator-passkeys', {
+        headers: { Authorization: `Bearer ${MASTER_CREDENTIAL}` },
+      });
+      expect(response.status).toBe(500);
+      const text = await response.text();
+      expect(text).not.toContain('ENOENT');
+      expect(text).not.toContain('secret-path');
+      expect(JSON.parse(text)).toMatchObject({
+        success: false,
+        error: { code: 'internal_error' },
+      });
+      // The runtime logged it, cause included in the sanitized error.
+      expect(harness.logger.error).toHaveBeenCalledWith(
+        'Unhandled runtime HTTP error',
+        expect.objectContaining({ correlationId: expect.any(String) }),
+      );
+    } finally {
+      registry.close();
+    }
+  });
 });
