@@ -373,11 +373,11 @@ function addCostToTotal(total: ThreadUsageTotal, own: ThreadUsageFigures) {
  * that measurement are themselves in the total. `included-in-parent` is shown
  * and skipped; `not-reported` makes the total partial and says why.
  */
-function rollUp(
+export function rollUpThreadUsage(
   root: ThreadUsageNode,
-  hiddenDelegates: number,
-  omittedSubagents: number,
-) {
+  hiddenDelegates = 0,
+  omittedSubagents = 0,
+): ThreadUsageTotal {
   const total: ThreadUsageTotal = {
     tokens: { complete: true },
     cost: { complete: true },
@@ -459,7 +459,7 @@ export function buildThreadUsageTree(
   return {
     conversationId: source.conversationId,
     root,
-    total: rollUp(
+    total: rollUpThreadUsage(
       root,
       sumOverTree(source, (item) => item.hiddenDelegateCount),
       sumOverTree(source, (item) => item.omittedSubagentCount),

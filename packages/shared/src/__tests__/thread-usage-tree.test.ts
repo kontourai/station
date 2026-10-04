@@ -5,6 +5,7 @@ import {
   buildThreadUsageTree,
   ENGINE_SUBAGENT_USAGE_RELATION,
   engineSubagentUsageRelation,
+  rollUpThreadUsage,
   type ThreadUsageConversationSource,
   threadUsageFiguresFromReceipts,
 } from '../thread-usage-tree.js';
@@ -225,5 +226,51 @@ describe('roll-up', () => {
       expect.stringMatching(/^Usage not counted: .*\(2 children\)$/),
     ]);
     expect(tree.root.children.map((child) => child.depth)).toEqual([1, 2]);
+  });
+
+  test('a child whose figure is included in its parent is never added, while its own added children are', () => {
+    // No engine reports a figure under an included measurement today (Claude
+    // subagents carry no cost of their own), so the rule is pinned on the
+    // node tree directly.
+    const total = rollUpThreadUsage({
+      kind: 'conversation',
+      id: 'root',
+      depth: 0,
+      own: {
+        totalTokens: 100,
+        reportedCost: [{ amount: 1, currency: 'USD' }],
+      },
+      children: [
+        {
+          kind: 'engine-subagent',
+          id: 'included',
+          depth: 1,
+          own: {
+            totalTokens: 40,
+            reportedCost: [{ amount: 0.5, currency: 'USD' }],
+          },
+          relation: {
+            tokens: 'included-in-parent',
+            cost: 'included-in-parent',
+            reason: 'in the parent',
+          },
+          children: [
+            {
+              kind: 'station-delegate',
+              id: 'below',
+              depth: 2,
+              own: { totalTokens: 7 },
+              relation: { tokens: 'added', cost: 'added', reason: 'own' },
+              children: [],
+            },
+          ],
+        },
+      ],
+    });
+    expect(total).toEqual({
+      tokens: { totalTokens: 107, complete: true },
+      cost: { reportedCost: [{ amount: 1, currency: 'USD' }], complete: true },
+      partialReasons: [],
+    });
   });
 });
