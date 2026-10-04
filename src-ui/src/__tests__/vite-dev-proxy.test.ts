@@ -2,7 +2,12 @@
  * @vitest-environment node
  */
 
-import { describe, expect, test } from 'vitest';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { createServer, type ViteDevServer } from 'vite';
+import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import {
   INTERNAL_API_TOKEN_HEADER,
   INTERNAL_INGRESS_IDENTITY_HEADER,
@@ -17,6 +22,7 @@ import {
   DEV_PROXY_ATTESTATION_HEADERS,
   stationDevIdentity,
   stationDevProxy,
+  stationDevServerAccess,
   stationDevWatchOptions,
 } from '../../../vite.config';
 
@@ -153,5 +159,67 @@ describe('station dev-mode Vite proxy (#3254)', () => {
         STATION_BOOT_ID: 'b',
       }),
     ).toEqual({ instanceId: 'a', sha: 's', bootId: 'b' });
+  });
+});
+
+describe('station dev server file access (#3254 review)', () => {
+  const repo = resolve(fileURLToPath(new URL('../../../', import.meta.url)));
+  const configFile = join(repo, 'vite.config.ts');
+  let server: ViteDevServer | undefined;
+  let cacheDir: string | undefined;
+  let origin = '';
+
+  beforeAll(async () => {
+    cacheDir = mkdtempSync(join(tmpdir(), 'station-vite-access-'));
+    server = await createServer({
+      configFile,
+      logLevel: 'error',
+      cacheDir,
+      server: { port: 0, strictPort: false },
+    });
+    await server.listen();
+    const address = server.httpServer?.address();
+    if (!address || typeof address === 'string') throw new Error('no address');
+    origin = `http://127.0.0.1:${address.port}`;
+  });
+
+  afterAll(async () => {
+    await server?.close();
+    if (cacheDir) rmSync(cacheDir, { recursive: true, force: true });
+  });
+
+  test('turns CORS off and allows only the UI import roots', () => {
+    const access = stationDevServerAccess(repo);
+    expect(access.cors).toBe(false);
+    expect(access.fs.strict).toBe(true);
+    expect(access.fs.allow).toEqual(
+      expect.arrayContaining([
+        join(repo, 'src-ui'),
+        join(repo, 'src-shared'),
+        join(repo, 'packages', 'sdk', 'src'),
+        join(repo, 'node_modules'),
+      ]),
+    );
+    expect(access.fs.allow).not.toContain(repo);
+    expect(access.fs.allow).not.toContain(join(repo, 'packages'));
+    expect(server?.config.server.cors).toBe(false);
+  });
+
+  test('a page on another localhost port cannot read repo files', async () => {
+    const response = await fetch(`${origin}/@fs${repo}CLAUDE.md`, {
+      headers: { Origin: 'http://localhost:9999' },
+    });
+    const body = await response.text();
+    expect(response.headers.get('access-control-allow-origin')).toBeNull();
+    // Denied paths fall through to the SPA shell; the file's bytes must not appear.
+    expect(body).not.toContain(readFileSync(join(repo, 'CLAUDE.md'), 'utf8'));
+  });
+
+  test('a UI source module is still served, without CORS headers', async () => {
+    const response = await fetch(`${origin}/src/main.tsx`, {
+      headers: { Origin: 'http://localhost:9999' },
+    });
+    expect(response.status).toBe(200);
+    expect(response.headers.get('access-control-allow-origin')).toBeNull();
   });
 });

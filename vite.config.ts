@@ -1,6 +1,6 @@
 import { execSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
@@ -171,6 +171,37 @@ export function stationDevWatchOptions(
   return env[DEV_POLL_ENV] === '1'
     ? { usePolling: true, interval: 300 }
     : undefined;
+}
+
+/**
+ * What the dev server may serve to a browser. Vite's defaults answer
+ * `/@fs/<path>` for any file under the workspace root, to any localhost
+ * origin (its CORS default), so a page on another localhost port could read
+ * repo files such as CLAUDE.md. CORS is off (the UI is same-origin with this
+ * server, including in the Tauri shell), and the filesystem is narrowed to
+ * what the UI imports: its own tree, shared sources, the workspace packages'
+ * sources the aliases point at, and installed dependencies.
+ */
+export function stationDevServerAccess(root: string = __dirname): {
+  cors: false;
+  fs: { strict: true; allow: string[] };
+} {
+  const packagesDir = path.resolve(root, 'packages');
+  const packageSources = readdirSync(packagesDir, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => path.join(packagesDir, entry.name, 'src'));
+  return {
+    cors: false,
+    fs: {
+      strict: true,
+      allow: [
+        path.resolve(root, 'src-ui'),
+        path.resolve(root, 'src-shared'),
+        ...packageSources,
+        path.resolve(root, 'node_modules'),
+      ],
+    },
+  };
 }
 
 /**
@@ -395,6 +426,7 @@ export default defineConfig(({ command }) => {
       port: 5173,
       strictPort: true,
       host: '127.0.0.1',
+      ...stationDevServerAccess(),
       proxy: stationDevProxy(),
       // Native file watching does not fire on every host (some bind mounts,
       // network and virtualized filesystems); polling is the opt-in fallback.

@@ -2279,6 +2279,52 @@ describe('lifecycle instance state', () => {
     process.kill(siblingPid, 'SIGKILL');
   }, 15_000);
 
+  it('refuses start --watch --build before anything is spawned (#3254)', async () => {
+    ensureDir(TEST_CWD);
+    ensureDir(TEST_ALT_HOME);
+    const spawn = vi.fn();
+    const { lifecycle } = await loadLifecycleModule({
+      childProcessMock: { execSync: vi.fn(), spawn },
+    });
+
+    await expect(
+      lifecycle.start({
+        baseDir: TEST_ALT_HOME,
+        homeSource: '--base',
+        instanceName: 'watch-build',
+        serverPort: 3343,
+        uiPort: 5375,
+        watch: true,
+        build: true,
+      }),
+    ).rejects.toThrow('--watch runs from source and builds nothing');
+    expect(spawn).not.toHaveBeenCalled();
+  });
+
+  it('refuses start --watch on a non-loopback host before anything is spawned (#3254)', async () => {
+    ensureDir(TEST_CWD);
+    ensureDir(TEST_ALT_HOME);
+    const spawn = vi.fn();
+    const { lifecycle } = await loadLifecycleModule({
+      childProcessMock: { execSync: vi.fn(), spawn },
+    });
+
+    for (const host of ['0.0.0.0', '192.168.1.20']) {
+      await expect(
+        lifecycle.start({
+          baseDir: TEST_ALT_HOME,
+          homeSource: '--base',
+          instanceName: 'watch-host',
+          serverPort: 3343,
+          uiPort: 5375,
+          watch: true,
+          host,
+        }),
+      ).rejects.toThrow('loopback-only');
+    }
+    expect(spawn).not.toHaveBeenCalled();
+  });
+
   it(
     'stop after a start that lost a colliding port leaves the sibling Station running (#3253)',
     async () => {
