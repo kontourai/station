@@ -18,6 +18,13 @@ import { createContext, useContext } from 'react';
 export interface RegionChromeSlots {
   leading: HTMLElement | null;
   trailing: HTMLElement | null;
+  /**
+   * The bar already names the pane (the Coding layout's breadcrumb carries
+   * the conversation's title, #3046): the pane omits its own identity from
+   * `leading` and keeps its labelled actions icon-only, named and tipped,
+   * so the title appears once and the bar stays within the button cap.
+   */
+  namesPane?: boolean;
 }
 
 export const RegionChromeSlotsContext = createContext<RegionChromeSlots | null>(
