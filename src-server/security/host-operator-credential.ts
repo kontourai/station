@@ -149,7 +149,7 @@ export interface OperatorCredentialUseRecord {
   readonly timestamp: number;
 }
 
-export const OPERATOR_CREDENTIAL_OFF_HOST_LOG_MESSAGE =
+const OPERATOR_CREDENTIAL_OFF_HOST_LOG_MESSAGE =
   'Operator credential used off-host for device administration';
 
 /**

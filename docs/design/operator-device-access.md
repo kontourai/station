@@ -60,7 +60,8 @@ direction did not state, and they change the shape of the design:
 
 Why the issue's symptom happens: the Paired devices panel reads the inventory
 with the device's own credential (`authenticatedFetch`,
-`packages/connect/src/react/connection-manager-modal/PairedDevicesPanel.tsx:60-72, 99-110`).
+`packages/connect/src/react/connection-manager-modal/PairedDevicesPanel.tsx:60-72`
+and `PairedDevicesPanel.tsx:99-110`).
 It uses a pasted operator credential only for writes (`deviceAdminFetch`,
 `PairedDevicesPanel.tsx:77-97`). An ordinary device credential is refused for
 the whole `/api/pairing` family
