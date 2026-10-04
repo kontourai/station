@@ -595,9 +595,11 @@ before protected requests. The shared
 `X-Station-Client-Protocol` cross-origin in a browser only after that host
 advertises a numeric capability of at least 1. An absent capability removes
 the process-local observation; it is not persisted across page loads. The UI
-also clears the previous observation before re-handshaking. A non-OK response,
-invalid JSON or transport error leaves it cleared, so the next cross-origin
-request carries no protocol header.
+also clears the previous observation when a handshake starts. Only the
+latest-started handshake per origin may restore acceptance. Its non-OK
+response, invalid JSON or transport error leaves acceptance cleared, even if
+an older overlapping handshake succeeds. The next cross-origin request then
+carries no protocol header.
 Same-origin, Node and host-owned transport requests can carry the header
 without CORS negotiation. The SDK replaces any caller-supplied copy with its
 build's protocol. These declarations grant no credential or scope.
