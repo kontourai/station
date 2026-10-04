@@ -218,8 +218,7 @@ export class TaskOutputModule {
       }
       if (
         store.outputs.filter((output) => belongsToTask(output, identity))
-          .length >=
-        this.limits.maxPerTask
+          .length >= this.limits.maxPerTask
       ) {
         throw new TaskOutputUnavailableError('Task output limit reached');
       }
@@ -391,8 +390,7 @@ export class TaskOutputModule {
         };
       if (
         store.outputs.filter((output) => belongsToTask(output, identity))
-          .length >=
-        this.limits.maxPerTask
+          .length >= this.limits.maxPerTask
       )
         throw new TaskOutputUnavailableError('Task output limit reached');
       this.assertReservedDeletionIdentityCapacity(store, 1);

@@ -179,9 +179,9 @@ describe('TaskOutputModule', () => {
       await expect(create('replacement-overflow')).rejects.toBeInstanceOf(
         TaskOutputUnavailableError,
       );
-      await expect(
-        module().read('task-a', original.id),
-      ).rejects.toBeInstanceOf(TaskOutputNotFoundError);
+      await expect(module().read('task-a', original.id)).rejects.toBeInstanceOf(
+        TaskOutputNotFoundError,
+      );
     },
   );
 
