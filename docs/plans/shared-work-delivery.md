@@ -69,13 +69,27 @@ Five focused output route/store/SQLite suites passed 265 tests on that combined
 revision. Independent source review found a replacement-Task quota defect:
 old incarnation outputs were hidden but still consumed the per-Task quota.
 Two owner-boundary cases, ordinary and declared creation, failed with the
-expected limit error before repair. Landing remains pending until the fix,
-delta review, CI and required pre-push gates complete. Hosted queue and release
-proof remain separate.
+expected limit error before repair; the repaired output-store suite passed 28.
+Independent delta review found no remaining issue. At `63ef1abfc4`, an independent
+route mutation removed only the Task creation witness: baseline 12 passed,
+injected 1 failed / 11 passed (201 instead of 404), restored 12 passed with
+byte-identical source. Landing remains pending on CI and required pre-push
+gates. Hosted queue and release proof remain separate.
+
+The frozen CI run was infrastructure-canceled during host ENOSPC. Its retained
+receipt `692005dbcde212ca8278ed3a35db1d376920bbb8a7512cfbf5e365681fdf9bbe`
+recorded no completed Vitest counts. Captured runtime errors are not an identified
+failing assertion. A subsequent retry was stopped pending coordinated capacity
+recovery; neither run is passing CI evidence. Only generated dependencies in
+this thread's inactive verifier were reclaimed; source, commits and receipts
+remain preserved. Heavy validation is held until stable host capacity is
+established.
 
 This thread owns the remaining sixteen-track ledger. Next active slice is
 exact-output-version feedback and review through immutable Task outputs and
-attributed room history. Current blockers are delivery work and unexecuted
+attributed room history in its isolated sibling lane. Its incomplete source
+is under review; route, SDK, UI, migration and browser acceptance are still
+required before publication. Current blockers are delivery work and unexecuted
 acceptance journeys, not a claim that available foundations complete them:
 
 - Results: private provenance landing, version-bound feedback, disagreement and
