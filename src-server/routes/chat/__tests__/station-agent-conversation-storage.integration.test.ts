@@ -12,7 +12,10 @@
  * Only the language model is a fixture.
  */
 import { join } from 'node:path';
-import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
+import {
+  INTERNAL_SESSION_READ_SCOPE,
+  sessionReadAuthorityFromRequest,
+} from '@kontourai/station-contracts/tenancy';
 import { simulateReadableStream } from 'ai';
 import { MockLanguageModelV3 } from 'ai/test';
 import { Hono } from 'hono';
@@ -30,6 +33,10 @@ import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
 import { streamPrimaryAgentChat } from '../chat-primary-stream.js';
 import { prepareChatRequest } from '../chat-request-preparation.js';
+import {
+  conversationReferenceReadDeps,
+  createConversationReferenceReadRoutes,
+} from '../conversation-reference-read.js';
 import {
   CONVERSATION_READ_MAX_SESSIONS,
   createConversationRoutes,
@@ -249,6 +256,21 @@ describe('Station-agent conversation storage (#3112)', () => {
     );
   }
 
+  /** The production composition of the referenced-conversation read. */
+  function referenceReadRoutes() {
+    return createConversationReferenceReadRoutes(
+      conversationReferenceReadDeps({
+        memoryAdapters: new Map([[SLUG, memoryAdapter]]) as any,
+        sessions: service,
+        eventStore,
+        deviceKind: () => undefined,
+        authorityFor: () =>
+          sessionReadAuthorityFromRequest(OWNER, undefined, undefined),
+        logger: quietLogger(),
+      }),
+    );
+  }
+
   async function readJson<T>(app: Hono, path: string): Promise<T> {
     const response = await app.request(path);
     expect(response.status, path).toBe(200);
@@ -399,6 +421,26 @@ describe('Station-agent conversation storage (#3112)', () => {
     ]);
   });
 
+  test('the referenced-conversation read covers the lineage, addressed by either Session', async () => {
+    const successor = await failTwice('conv-referenced');
+    for (const id of ['conv-referenced', successor]) {
+      const read = await readJson<{
+        conversationId: string;
+        messages: Array<{ text: string }>;
+      }>(referenceReadRoutes(), `/${encodeURIComponent(id)}/read`);
+      expect(read.conversationId, id).toBe('conv-referenced');
+      expect(
+        read.messages.map((message) => message.text),
+        id,
+      ).toEqual([
+        'First try',
+        expect.stringMatching(/^\[SYSTEM_EVENT\] \[CHAT_ERROR\] /),
+        'Second try',
+        expect.stringMatching(/^\[SYSTEM_EVENT\] \[CHAT_ERROR\] /),
+      ]);
+    }
+  });
+
   test('a successor Session is not listed or found as a conversation of its own', async () => {
     const successor = await failTwice('conv-listed');
     // The successor's turn really is stored under its own id.
@@ -510,9 +552,19 @@ describe('Station-agent conversation storage (#3112)', () => {
 
     reserveTo(CONVERSATION_READ_MAX_SESSIONS);
     expect((await get('messages')).status).toBe(200);
+    // Within the bound the read proceeds; an empty conversation then reads
+    // as not found to a person's request.
+    expect(
+      (await referenceReadRoutes().request('/conv-long/read')).status,
+    ).toBe(404);
     expect((await get('stats')).status).toBe(200);
 
     reserveTo(CONVERSATION_READ_MAX_SESSIONS + 1);
+    const referenced = await referenceReadRoutes().request('/conv-long/read');
+    expect(referenced.status).toBe(422);
+    expect(await referenced.json()).toMatchObject({
+      code: 'conversation_lineage_too_long',
+    });
     for (const path of ['messages', 'stats', 'export']) {
       const response = await get(path);
       expect(response.status, path).toBe(422);

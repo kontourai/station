@@ -12,15 +12,15 @@
   "sources": [
     "examples/portable-author-kit/plugin.json",
 
-    "scripts/examples-conformance.mjs",
+    "examples/rich-skill-experience/README.md",
+
+    "examples/rich-skill-experience/tsconfig.json",
 
     "package.json#/scripts/examples:conformance",
 
     "package.json#/scripts/typecheck:examples",
 
-    "examples/rich-skill-experience/tsconfig.json",
-
-    "examples/rich-skill-experience/README.md"
+    "scripts/examples-conformance.mjs"
   ],
 
   "checks": [

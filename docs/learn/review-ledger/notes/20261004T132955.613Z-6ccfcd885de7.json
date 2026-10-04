@@ -1,0 +1,15 @@
+{
+  "revision": "79ede794453adf704043662349dd229f0b9b9309",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Re-reviewed after dispatch-scope.ts dropped the export on carriedPostureFields and had its signature reformatted. The helper was only ever called inside the module, so no importer, route, request shape, refusal, or posture behavior changed; this document's existing claims about the C3b carried-posture refusal are unchanged.","inputs":["docs/architecture/module-map.md","src-server/routes/orchestration/dispatch-scope.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Re-reviewed after dispatch-scope.ts dropped the export on carriedPostureFields and had its signature reformatted. The helper was only ever called inside the module, so no importer, route, request shape, refusal, or posture behavior changed; this document's existing claims about the C3b carried-posture refusal are unchanged.","inputs":["docs/guides/self-configuring-agent.md","src-server/routes/orchestration/dispatch-scope.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Re-reviewed after dispatch-scope.ts dropped the export on carriedPostureFields and had its signature reformatted. The helper was only ever called inside the module, so no importer, route, request shape, refusal, or posture behavior changed; this document's existing claims about the C3b carried-posture refusal are unchanged.","inputs":["docs/reference/cli.md","src-server/routes/orchestration/dispatch-scope.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Re-reviewed after dispatch-scope.ts dropped the export on carriedPostureFields and had its signature reformatted. The helper was only ever called inside the module, so no importer, route, request shape, refusal, or posture behavior changed; this document's existing claims about the C3b carried-posture refusal are unchanged.","inputs":["docs/reference/session-api.md","src-server/routes/orchestration/dispatch-scope.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Re-reviewed after dispatch-scope.ts dropped the export on carriedPostureFields and had its signature reformatted. The helper was only ever called inside the module, so no importer, route, request shape, refusal, or posture behavior changed; this document's existing claims about the C3b carried-posture refusal are unchanged.","inputs":["examples/self-configuring-agent/README.md","src-server/routes/orchestration/dispatch-scope.ts"]}
+  ]
+}

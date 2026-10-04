@@ -103,10 +103,11 @@ export function isConversationContinuationPending(
 
 /**
  * Whether the session ever started a turn (any `turn.*` event on record).
- * Known gap: a second send that resolves in the instant between a first turn's
- * dispatch and its `turn.started` write sees no turn and may stop the
- * predecessor mid-start; the window is a single event write and the stop is
- * best effort, so it is accepted rather than guarded.
+ * This is only the eligibility hint for naming a predecessor to retire. A send
+ * that resolves between a first turn's dispatch and its `turn.started` write
+ * sees no turn here, so the stop is re-decided when it runs:
+ * `OrchestrationService.retireNeverRanSession` re-checks turn facts, in-flight
+ * turns and "no longer current" under the Session's lifecycle lock.
  */
 function hasTurnFacts(detail: OrchestrationSessionDetail): boolean {
   return detail.events.some((event) => event.method.startsWith('turn.'));

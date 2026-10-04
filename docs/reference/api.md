@@ -2767,6 +2767,18 @@ reader. Hosted mode skips the two personal storage branches. File-memory Agent
 attribution comes from the stored resource ID, with the adapter key as fallback;
 response shape can also include Project and fork-provenance fields.
 
+`GET /api/conversations/:id/read?limit=&cursor=` returns one page of a
+conversation's transcript: `{conversationId, access, notice, messageCount,
+messages, nextCursor}`. `limit` is 1 to 50 (default 20); anything else is
+refused with `conversation_read_limit_out_of_range`, and a page's serialized
+messages never exceed 64 KB. Pass `nextCursor` back as `cursor`; it is checked
+only after the read is admitted. A station-control caller that is not a bound
+operator is further limited to its own conversation, its scope, or a
+conversation a person referenced in its conversation, and reads as the
+session's owner; a bound operator keeps the operator's reach. An id Station
+has no record of answers `conversation_not_found`; see the
+[read route](../../src-server/routes/chat/conversation-reference-read.ts).
+
 ## Additional System Routes
 
 ### Get Runtime Info
