@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+
 /**
  * CLI for the native Nightly cohort decision (#1780).
  *
@@ -18,9 +19,9 @@
  * missing ref or unreadable ledger is an error, never "no rows".
  */
 
-import { spawnSync } from 'node:child_process';
 import { appendFileSync } from 'node:fs';
 import { DEPLOY_LEDGER_JSON_PATH } from './deploy-ledger.mjs';
+import { spawnSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import {
   decideNativeCohort,
@@ -87,7 +88,7 @@ export function parseArgs(argv) {
  * does not parse throws — the decision must not run on a guess.
  */
 export function readLedgerFromGit(repoRoot, ref) {
-  const result = spawnSync(
+  const result = spawnSyncBounded(
     'git',
     ['show', `${ref}:${DEPLOY_LEDGER_JSON_PATH}`],
     { cwd: repoRoot, encoding: 'utf8', windowsHide: true },

@@ -1,0 +1,7 @@
+{
+  "revision": "fddbe13fa0a0ea4ad7e3323d71c718212f540f93",
+
+  "notes": [
+    {"path":"docs/patterns/frontend.md","note":"Design round 2: re-read against the inventory line change (PullRequestReviewPanel re-described: one-row icon bar, Approve + Merge menu, 390px hit-target audit). The pattern's inventory guidance still describes the gate as run. No prose change.","inputs":["docs/ui/responsive-action-surfaces.txt","packages/sdk/src/index.ts","packages/sdk/src/queries.ts","pnpm-lock.yaml","src-server/runtime/bootstrap/runtime-http.ts","src-server/security/pairing-route-scopes.ts","src-ui/AGENTS.md","src-ui/src/main.tsx","src-ui/src/platform/PlatformProfileContext.tsx"]}
+  ]
+}

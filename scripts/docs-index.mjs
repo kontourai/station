@@ -5,10 +5,10 @@
 // diffs instead of writing (the docs:issue-lifecycle:check pattern), so the
 // indexes cannot silently omit a record again — docs/design/README.md linked
 // 2 of 44 files when this was introduced, and docs/plans/README.md 5 of 8.
-import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { basename, dirname, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -20,7 +20,7 @@ const START =
 const END = '<!-- docs-index:end -->';
 
 function trackedMarkdown(directory) {
-  return execFileSync('git', ['ls-files', '--', `${directory}/*.md`], {
+  return execFileSyncBounded('git', ['ls-files', '--', `${directory}/*.md`], {
     cwd: repoRoot,
     encoding: 'utf8',
     windowsHide: true,
