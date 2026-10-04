@@ -184,8 +184,6 @@ describe('station dev server file access (#3254 review)', () => {
   }, 120_000);
 
   afterAll(async () => {
-    // fetch keeps connections alive; close() would otherwise wait on them.
-    server?.httpServer?.closeAllConnections();
     await server?.close();
   }, 120_000);
 
