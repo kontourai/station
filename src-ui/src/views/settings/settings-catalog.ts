@@ -381,6 +381,12 @@ const SETTINGS_CATALOG_SOURCE = [
     section: 'agent-runs',
     configKeys: ['workspaceCheckpoints'],
   },
+  {
+    id: 'usage-limit-auto-resume',
+    title: 'Resume after usage limits',
+    section: 'agent-runs',
+    configKeys: ['usageLimitAutoResume'],
+  },
   // ── Chat (#2144 decision 2) ──────────────────────────────────────────────
   // These two MOVED here from 'appearance'. Their ids are unchanged, so every
   // `highlight=` deep link and every recorded highlight still resolves; what
