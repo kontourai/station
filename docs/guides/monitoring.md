@@ -70,7 +70,9 @@ rounding differences.
 | Station agent / direct model-provider chat | Saved messages and their recorded usage/estimates | The orchestration scan excludes conversations already counted in file memory |
 
 Attached Claude transcripts retain a bounded record-to-turn ancestry map in the
-persisted cursor. A late turn-duration record closes its known parent turn
+persisted cursor. Older aggregation cursors recover identities from a bounded
+look-behind when their active user boundary is still available. A late
+turn-duration record closes its known parent turn
 without clearing a newer turn's usage. Unknown or evicted ancestry does not
 close the current turn; the next user boundary can still flush its usage.
 The bounded per-turn conversation window retains all Claude and Muse usage

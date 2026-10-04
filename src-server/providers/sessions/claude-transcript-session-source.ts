@@ -287,6 +287,22 @@ export class ClaudeTranscriptSessionSource implements AttachedSessionSource {
         cursorOffset > 0 && cursorOffset <= stat.size
           ? cursorOffset
           : Math.max(0, stat.size - this.maxBytes);
+      if (
+        typeof previousCursor !== 'number' &&
+        previousCursor.sourceState === undefined &&
+        previousCursor.usageAggregationVersion === 1 &&
+        usage &&
+        activeTurnId &&
+        cursorOffset > 0 &&
+        cursorOffset <= stat.size
+      ) {
+        await this.bootstrapRecordTurns(
+          canonical,
+          cursorOffset,
+          activeTurnId,
+          recordTurns,
+        );
+      }
       const bytesToRead = Math.min(this.maxBytes, stat.size - windowStart);
       byteLimited = windowStart > 0 || windowStart + bytesToRead < stat.size;
       content = readWindow(canonical, windowStart, bytesToRead);
@@ -444,6 +460,48 @@ export class ClaudeTranscriptSessionSource implements AttachedSessionSource {
         sourceState: encodeRecordTurns(recordTurns),
       },
     };
+  }
+
+  private async bootstrapRecordTurns(
+    file: string,
+    cursorOffset: number,
+    activeTurnId: string,
+    recordTurns: Map<string, string>,
+  ): Promise<void> {
+    // Older aggregation cursors have counters but no ancestry. Recover only
+    // identities after their exact user boundary, never counters or events.
+    const start = Math.max(0, cursorOffset - this.maxBytes);
+    const content = readWindow(file, start, cursorOffset - start);
+    let offset = start > 0 ? content.indexOf(0x0a) + 1 : 0;
+    let inActiveTurn = false;
+    let lines = 0;
+    while (offset < content.length) {
+      const end = content.indexOf(0x0a, offset);
+      if (end < 0) break;
+      const lineStart = offset;
+      offset = end + 1;
+      if (++lines % this.readYieldEveryLines === 0) await this.yieldFn();
+      if (end - lineStart > this.maxLineBytes) continue;
+      let raw: unknown;
+      try {
+        raw = JSON.parse(content.subarray(lineStart, end).toString('utf8'));
+      } catch {
+        continue;
+      }
+      if (!isRecord(raw)) continue;
+      const message = isRecord(raw.message) ? raw.message : undefined;
+      const recordId = text(raw.uuid) ?? `offset-${start + lineStart}`;
+      if (raw.type === 'user' && typeof message?.content === 'string') {
+        inActiveTurn = recordId === activeTurnId;
+      }
+      if (
+        inActiveTurn &&
+        (raw.type === 'user' || raw.type === 'assistant') &&
+        message
+      ) {
+        retainRecordTurn(recordTurns, recordId, activeTurnId);
+      }
+    }
   }
 
   resolveSourceHome(

@@ -426,6 +426,9 @@ deduplication.
 Claude transcript observation persists a bounded, source-owned ancestry map
 with its cursor. Late turn-duration records close their known parent turn;
 unknown or evicted parents leave the current turn's usage accumulator intact.
+An older aggregation cursor without ancestry uses one bounded look-behind to
+recover identities after its exact active user boundary. It replays no counters
+or events; a boundary outside that window remains unknown.
 An event-limited page that stops within a record retains that record's incoming
 turn and usage state so replay resumes coherently. The per-turn conversation
 window retains all per-turn Claude and Muse usage observations within its
