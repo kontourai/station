@@ -440,6 +440,7 @@ for (const [label, width, panel] of [
       // ways and shares no pixel with a neighbour's target.
       const audit = (await page.evaluate(HIT_TARGET_AUDIT)) as HitTargetAudit;
       expect(audit.count).toBeGreaterThan(8);
+      expect(audit.unreachable).toEqual([]);
       expect(audit.small).toEqual([]);
       expect(audit.overlaps).toEqual([]);
     }

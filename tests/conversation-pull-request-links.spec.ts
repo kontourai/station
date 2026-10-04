@@ -542,6 +542,7 @@ test('at phone width every Diff pane control has a 44px target of its own, in bo
   ).toBeVisible();
   const changes = (await page.evaluate(HIT_TARGET_AUDIT)) as HitTargetAudit;
   expect(changes.count).toBeGreaterThan(8);
+  expect(changes.unreachable).toEqual([]);
   expect(changes.small).toEqual([]);
   expect(changes.overlaps).toEqual([]);
   expect(
@@ -561,6 +562,7 @@ test('at phone width every Diff pane control has a 44px target of its own, in bo
   ).toBeVisible();
   const pulls = (await page.evaluate(HIT_TARGET_AUDIT)) as HitTargetAudit;
   expect(pulls.count).toBeGreaterThan(8);
+  expect(pulls.unreachable).toEqual([]);
   expect(pulls.small).toEqual([]);
   expect(pulls.overlaps).toEqual([]);
   expect(
