@@ -395,12 +395,13 @@ async function* bindVoltAgentToolPurposes(
 /**
  * #3112: VoltAgent's model-only seam for one turn's context. `prepareMessages`
  * appends the authored input after memory history as the newest message(s)
- * — a string as one user text message, an array as its own messages — and
- * passes the result here before the model call. Only that tail is composed;
- * the copy VoltAgent saved to memory stays the authored turn.
+ * — a string as one user text message, an array as its own messages, ids
+ * kept — and passes the result here before the model call. Only that tail
+ * is composed; the copy VoltAgent saved to memory stays the authored turn.
  *
- * A tail that is not the authored input fails the turn rather than sending
- * it without its context.
+ * The tail is matched exactly: the string's one user text part, or every
+ * input message by its (required) id and role. Anything else fails the turn
+ * rather than sending it to the model without its context.
  */
 export function composeInputAtModelSeam(
   input: string | ModelInputMessage[],
@@ -428,11 +429,20 @@ export function composeInputAtModelSeam(
         ],
       };
     }
-    const tail = messages.slice(-input.length);
+    const ids = input.map((message) => message.id);
     if (
       input.length === 0 ||
+      ids.some((id) => typeof id !== 'string' || id === '') ||
+      new Set(ids).size !== ids.length
+    )
+      throw unexpected();
+    const tail = messages.slice(-input.length);
+    if (
       tail.length !== input.length ||
-      tail.some((message, index) => message.id !== input[index]!.id)
+      tail.some(
+        (message, index) =>
+          message.id !== ids[index] || message.role !== input[index]!.role,
+      )
     )
       throw unexpected();
     const composed = compose(tail as ModelInputMessage[]);
@@ -447,6 +457,30 @@ export function composeInputAtModelSeam(
         ),
       ],
     };
+  };
+}
+
+type PrepareMessagesHook = NonNullable<AgentHooks['onPrepareMessages']>;
+
+/**
+ * #3112: VoltAgent runs one `onPrepareMessages` per call — a per-call hook
+ * replaces the caller's and the agent's own. The composition runs first, on
+ * the tail VoltAgent itself appended (the only place it can be matched
+ * exactly); the hook it would otherwise have replaced then runs on the
+ * composed messages, which is what that hook saw before #3112, when the
+ * composed input was the input.
+ */
+function chainAfterComposition(
+  composition: (args: { messages: UIMessage[] }) => Promise<{
+    messages: UIMessage[];
+  }>,
+  replaced: PrepareMessagesHook | undefined,
+): PrepareMessagesHook {
+  return async (args) => {
+    const composed = await composition(args);
+    if (!replaced) return composed;
+    const result = await replaced({ ...args, messages: composed.messages });
+    return { messages: result?.messages ?? composed.messages };
   };
 }
 
@@ -495,7 +529,15 @@ class VoltAgentWrapper implements IAgent {
     // this call's own operation context.
     const observedDenials: ObservedToolDenial[] = [];
     const { composeModelInput, ...invokeOptions } = options ?? {};
-    const result = await this.inner.streamText(input, {
+    // #3112: the tail is matched by id, so an authored message gets one
+    // before VoltAgent sees (and stores) it.
+    const authored: string | ModelInputMessage[] =
+      composeModelInput && Array.isArray(input)
+        ? (input as ModelInputMessage[]).map((message) =>
+            message.id ? message : { ...message, id: randomUUID() },
+          )
+        : input;
+    const result = await this.inner.streamText(authored as string, {
       ...invokeOptions,
       // #3112: VoltAgent persists (and titles from) the input it is handed,
       // so it is handed the authored turn and the context joins only the
@@ -504,9 +546,15 @@ class VoltAgentWrapper implements IAgent {
         ? {
             hooks: {
               ...invokeOptions.hooks,
-              onPrepareMessages: composeInputAtModelSeam(
-                input as string | ModelInputMessage[],
-                composeModelInput as ModelInputComposer,
+              onPrepareMessages: chainAfterComposition(
+                composeInputAtModelSeam(
+                  authored,
+                  composeModelInput as ModelInputComposer,
+                ),
+                // VoltAgent's own precedence: the caller's hook, else the
+                // agent's.
+                invokeOptions.hooks?.onPrepareMessages ??
+                  this.inner.hooks?.onPrepareMessages,
               ),
             },
           }

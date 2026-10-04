@@ -55,6 +55,10 @@ async function run(
     input: string | ModelInputMessage[],
   ) => string | ModelInputMessage[],
   conversationId: string,
+  options: {
+    hooks?: Record<string, unknown>;
+    agentPrepareMessages?: (args: { messages: unknown[] }) => unknown;
+  } = {},
 ) {
   const model = answeringModel();
   const agent = await new VoltAgentFramework().createTempAgent({
@@ -64,20 +68,38 @@ async function run(
     model,
     memoryAdapter: storage as any,
   });
-  const result = await agent.streamText(input as string, {
-    userId: 'owner',
-    conversationId,
-    composeModelInput,
-  });
-  for await (const _chunk of result.fullStream) {
-    // drain: VoltAgent persists the turn as the stream is consumed
+  if (options.agentPrepareMessages) {
+    // Stands in for an agent-level hook such as VoltAgent's workspace skills
+    // prompt, which the per-call composition must not replace.
+    const inner = (agent as unknown as { inner: { hooks: any } }).inner;
+    inner.hooks = {
+      ...inner.hooks,
+      onPrepareMessages: options.agentPrepareMessages,
+    };
   }
-  await result.text;
+  let error: unknown;
+  try {
+    const result = await agent.streamText(input as string, {
+      userId: 'owner',
+      conversationId,
+      composeModelInput,
+      ...(options.hooks ? { hooks: options.hooks } : {}),
+    });
+    for await (const chunk of result.fullStream) {
+      // drain: VoltAgent persists the turn as the stream is consumed
+      if ((chunk as { type?: string }).type === 'error')
+        error ??= (chunk as { error?: unknown }).error ?? chunk;
+    }
+    await result.text;
+  } catch (caught) {
+    error = caught;
+  }
   const stored = (await storage.getMessages('owner', conversationId)) as Array<{
+    id: string;
     role: string;
     parts: Array<{ type: string; text?: string }>;
   }>;
-  return { model, stored };
+  return { model, stored, error };
 }
 
 test('a text turn is stored as typed while the model reads the composed text', async () => {
@@ -128,4 +150,95 @@ test('a multipart turn is stored as authored while a composed context message re
   expect(prompt.indexOf(CONTEXT)).toBeLessThan(
     prompt.indexOf('Describe this.'),
   );
+});
+
+test('an id-less multipart turn still reaches the model with its context', async () => {
+  const { model, stored, error } = await run(
+    [{ role: 'user', parts: [{ type: 'text', text: 'No id here.' }] }],
+    (input) => [
+      { role: 'user', parts: [{ type: 'text', text: CONTEXT }] },
+      ...(input as ModelInputMessage[]),
+    ],
+    'idless-turn',
+  );
+  expect(error).toBeUndefined();
+  expect(JSON.stringify(model.doStreamCalls[0]!.prompt)).toContain(CONTEXT);
+  expect(stored[0]).toMatchObject({
+    role: 'user',
+    id: expect.any(String),
+    parts: [{ type: 'text', text: 'No id here.' }],
+  });
+});
+
+test.each([
+  [
+    'a string turn VoltAgent did not append as typed',
+    // Whitespace-only text is dropped from the prepared messages, so the
+    // tail is no longer the authored turn.
+    '   ',
+  ],
+  [
+    'a model-message array VoltAgent re-identifies',
+    // Converted to UI messages under fresh ids, so no tail id matches.
+    [
+      { role: 'user', content: 'Re-identified.' },
+    ] as unknown as ModelInputMessage[],
+  ],
+])(
+  '%s fails the turn instead of reaching the model without its context',
+  async (_label, input) => {
+    const { model, error } = await run(
+      input,
+      (authored) =>
+        typeof authored === 'string'
+          ? `${CONTEXT}\n${authored}`
+          : [
+              { role: 'user', parts: [{ type: 'text', text: CONTEXT }] },
+              ...authored,
+            ],
+      `mismatch-${typeof input}`,
+    );
+    expect(String((error as Error)?.message ?? error)).toContain(
+      'does not end with the authored turn',
+    );
+    expect(model.doStreamCalls).toHaveLength(0);
+  },
+);
+
+test("the caller's and the agent's own prepare hooks still run, after the composition", async () => {
+  const seen: string[] = [];
+  const marker =
+    (label: string) =>
+    async ({ messages }: { messages: any[] }) => {
+      seen.push(`${label}:${JSON.stringify(messages.at(-1))}`);
+      return {
+        messages: [
+          ...messages,
+          { id: label, role: 'user', parts: [{ type: 'text', text: label }] },
+        ],
+      };
+    };
+  const callerRun = await run(
+    'Hello caller.',
+    (input) => `${CONTEXT}\n${input as string}`,
+    'caller-hook',
+    { hooks: { onPrepareMessages: marker('caller-hook') } },
+  );
+  const agentRun = await run(
+    'Hello agent.',
+    (input) => `${CONTEXT}\n${input as string}`,
+    'agent-hook',
+    { agentPrepareMessages: marker('agent-hook') },
+  );
+  for (const [label, outcome] of [
+    ['caller-hook', callerRun],
+    ['agent-hook', agentRun],
+  ] as const) {
+    expect(outcome.error).toBeUndefined();
+    // The hook saw the composed turn, and its own change reached the model.
+    expect(seen.find((entry) => entry.startsWith(label))).toContain(CONTEXT);
+    const prompt = JSON.stringify(outcome.model.doStreamCalls[0]!.prompt);
+    expect(prompt).toContain(CONTEXT);
+    expect(prompt).toContain(label);
+  }
 });
