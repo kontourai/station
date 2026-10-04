@@ -1172,8 +1172,13 @@ test.describe('Task-first Home (#332, mocked)', () => {
     await expect(
       page.getByRole('heading', { name: "What's next?" }),
     ).toHaveCount(0);
-    const continuation = page.getByRole('button', { name: /^Continue/ });
-    await expect(continuation).toContainText('Codex · gpt-5.3-codex');
+    // The card's label is exactly "Continue", then the work it continues and
+    // that work's own Agent and Model (not "Continue most recent work").
+    const continuation = page.getByRole('button', {
+      name: /^Continue Worker task · task first home Codex · gpt-5\.3-codex · /,
+    });
+    await expect(continuation).toBeVisible();
+    await expect(continuation.locator(':scope > span')).toHaveText('Continue');
     // Home's New chat button carries no identity line anymore (#3201). With
     // work on the page the goal field is the compact one-line form: no
     // "Using …" caption (design round 2026-10, V1), but the identity Start
@@ -1205,6 +1210,15 @@ test.describe('Task-first Home (#332, mocked)', () => {
     await expect
       .poll(() => new URL(page.url()).searchParams.get('chat'))
       .toBe('task-first-home');
+    // And the Coding layout's Chat shows that chat: its inbox row is the
+    // current one, not merely named in the URL.
+    const codingChat = page.getByRole('region', { name: 'Chat', exact: true });
+    await expect(
+      codingChat.getByRole('button', {
+        name: 'Worker task · task first home, station',
+        exact: true,
+      }),
+    ).toHaveAttribute('aria-current', 'true');
 
     // Back on Home with the dock open and no chat in it.
     await page.goto('/?dock=open');

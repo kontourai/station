@@ -285,7 +285,7 @@ export function useHomeViewModel(onNavigate: (view: NavigationView) => void) {
      */
     startReady: data.defaultSelection.agent !== undefined,
     startIdentity,
-    // #2310 review M3: "Continue most recent work" must name work. A Draft
+    // #2310 review M3: the "Continue" card must name work. A Draft
     // has none — nothing was ever sent — and stays reachable in its lane.
     primaryWorkItem: data.workItems.find(
       (task) =>

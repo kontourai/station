@@ -929,7 +929,7 @@ export function buildActiveChatTaskItems({
    * made a just-created chat vanish from the dock's own list — caught by
    * `tests/cross-runtime-chat-switching.spec.ts`, not by any unit test.
    *
-   * Home's "Continue most recent work" card is the surface that means WORK, so
+   * Home's "Continue" card is the surface that means WORK, so
    * it is the one that opts in (`useOpenWorkChats`).
    */
   onlyWork?: boolean;
