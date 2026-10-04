@@ -4235,6 +4235,11 @@ export class OrchestrationService {
     );
   }
 
+  /** Every execution Session of a durable conversation, in lineage order. */
+  conversationSessionIds(conversationId: string): string[] {
+    return this.conversationLineage.conversationSessionIds(conversationId);
+  }
+
   /**
    * The conversation routing sibling of one SSE frame. A `session.started`/
    * `session.configured` frame from the conversation's CURRENT child carries

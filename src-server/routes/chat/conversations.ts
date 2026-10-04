@@ -230,6 +230,12 @@ interface SessionMessageReader {
     authority: SessionReadAuthority,
   ): ConversationMessage[];
   /**
+   * #3112: the conversation's execution Sessions in lineage order (the id
+   * itself when it has none). A follow-up the root Session could not take
+   * runs in a successor, and its turns are stored under that Session's id.
+   */
+  conversationSessionIds?(conversationId: string): readonly string[];
+  /**
    * Fold a native-SDK session's persisted events into engine-agnostic usage
    * totals (archive#1299) — the stats-route counterpart to
    * `readSessionMessages`'s messages-route compatibility path. Optional so a reader
@@ -1552,32 +1558,22 @@ export function createConversationRoutes(
     );
 
   /**
-   * The one unified conversation read every engine family flows through:
-   * memory store first (standard userId, then location scan), then the
-   * runtime-event projection for native-SDK sessions. Shared by the
-   * /messages and /export routes so an export always sees exactly what the
-   * chat UI sees. `source` lets each caller record its own metrics.
+   * One execution Session's share of a conversation read: memory store first
+   * (standard userId, then location scan), then the runtime-event projection
+   * for native-SDK sessions. Unsanitized; the conversation read sanitizes
+   * what it serves.
    */
-  const readConversationMessages = async (
+  const readSessionSegment = async (
     request: Request,
-    slug: string,
-    conversationId: string,
-    resolvedAuthority?: SessionReadAuthority,
+    runtimeSlug: string,
+    authority: SessionReadAuthority,
+    sessionId: string,
   ): Promise<{
     messages: ConversationMessage[];
     source: 'store' | 'orchestration' | 'empty';
-    /**
-     * Why an empty read was empty, for callers that answer the user with it.
-     * Left unset when we did not determine it — either because the read
-     * succeeded, or because nothing here looked (see the hosted branch
-     * below). A caller must not read absent as "we asked and it does not
-     * exist" (archive#3158).
-     */
     absence?: 'not-found' | 'no-messages';
   }> => {
-    const runtimeSlug = runtimeAgentKey(slug);
     const adapter = getAdapter(runtimeSlug);
-    const authority = resolvedAuthority ?? authorityFor(request);
     const hosted = isHostedSessionReadAuthority(authority);
 
     // Hosted file conversations have no persisted tenant binding. Do not
@@ -1594,8 +1590,7 @@ export function createConversationRoutes(
     const storeReadable =
       !adapter ||
       !isPrincipalScopedAgentRequest(request) ||
-      (await adapter.getConversation(conversationId))?.userId ===
-        authority.userId;
+      (await adapter.getConversation(sessionId))?.userId === authority.userId;
     if (adapter && !hosted && storeReadable) {
       // archive#4080 follow-up: the conventional-userId-then-
       // conversation-lookup fallback is the ONE shared definition of "which
@@ -1605,7 +1600,7 @@ export function createConversationRoutes(
         await resolveConversationTranscriptSource<ConversationMessage>(
           adapter,
           `agent:${runtimeSlug}`,
-          conversationId,
+          sessionId,
         );
       messages = source.messages;
       if (!source.occupied) {
@@ -1615,29 +1610,20 @@ export function createConversationRoutes(
         absence = source.conversationRecordFound ? 'no-messages' : 'not-found';
       }
     }
-    if (messages.length > 0) {
-      return { messages: sanitizeServedMessages(messages), source: 'store' };
-    }
+    if (messages.length > 0) return { messages, source: 'store' };
 
     // Native-SDK (Claude/Codex) turns persist as runtime events, not in the
     // memory store. When the store has nothing, project the session's events
-    // (threadId === conversationId) into the same message shape so these chats
+    // (threadId === sessionId) into the same message shape so these chats
     // refresh through this one unified read path. Additive: only fires on an
     // empty store, so ACP/internal conversations are unaffected.
     if (sessionMessageReader) {
       const projected = sessionMessageReader.readSessionMessages(
-        conversationId,
+        sessionId,
         authority,
       );
       if (projected.length > 0) {
-        // Already write-sanitized by `publishCanonicalEvent`'s safe wrapper
-        // — this is a deliberate, cheap, idempotent belt (B2's ruling),
-        // not a second source of truth, and it is what protects a message
-        // projected from an event persisted before this fix round shipped.
-        return {
-          messages: sanitizeServedMessages(projected),
-          source: 'orchestration',
-        };
+        return { messages: projected, source: 'orchestration' };
       }
       // The memory store is NOT the store of record for native-SDK
       // conversations — their turns persist as runtime events. So a null
@@ -1653,6 +1639,66 @@ export function createConversationRoutes(
       if (absence === 'not-found') absence = undefined;
     }
     return { messages: [], source: 'empty', absence };
+  };
+
+  /**
+   * The one unified conversation read every engine family flows through.
+   * Shared by the /messages and /export routes, fork and summary, so an
+   * export always sees exactly what the chat UI sees. `source` lets each
+   * caller record its own metrics.
+   *
+   * #3112: a conversation is every execution Session in its lineage. A
+   * follow-up its current Session could not take (a failed Station-agent
+   * turn ends that binding) runs in a successor Session, and that turn is
+   * stored under the successor's id — so each Session is read in lineage
+   * order and the reads are concatenated. A successor stores only its own
+   * turns: prior history reaches its model through the read-only lineage
+   * memory view or the model-only transcript seed, never as stored messages.
+   */
+  const readConversationMessages = async (
+    request: Request,
+    slug: string,
+    conversationId: string,
+    resolvedAuthority?: SessionReadAuthority,
+  ): Promise<{
+    messages: ConversationMessage[];
+    source: 'store' | 'orchestration' | 'empty';
+    /**
+     * Why an empty read was empty, for callers that answer the user with it.
+     * Left unset when we did not determine it — either because the read
+     * succeeded, or because nothing here looked (see the hosted branch
+     * of `readSessionSegment`). A caller must not read absent as "we asked
+     * and it does not exist" (archive#3158).
+     */
+    absence?: 'not-found' | 'no-messages';
+  }> => {
+    const runtimeSlug = runtimeAgentKey(slug);
+    const authority = resolvedAuthority ?? authorityFor(request);
+    const sessionIds = sessionMessageReader?.conversationSessionIds?.(
+      conversationId,
+    ) ?? [conversationId];
+    const messages: ConversationMessage[] = [];
+    const sources = new Set<'store' | 'orchestration' | 'empty'>();
+    let absence: 'not-found' | 'no-messages' | undefined;
+    for (const sessionId of sessionIds) {
+      const segment = await readSessionSegment(
+        request,
+        runtimeSlug,
+        authority,
+        sessionId,
+      );
+      messages.push(...segment.messages);
+      sources.add(segment.source);
+      // The conversation's own record answers why an empty read was empty.
+      if (sessionId === conversationId) absence = segment.absence;
+    }
+    if (messages.length === 0) return { messages, source: 'empty', absence };
+    // The serve-boundary sanitizer (see `sanitizeServedMessages`): required
+    // for stored messages, an idempotent belt for projected ones.
+    return {
+      messages: sanitizeServedMessages(messages),
+      source: sources.has('store') ? 'store' : 'orchestration',
+    };
   };
 
   const summaryCoordinateFor = (
