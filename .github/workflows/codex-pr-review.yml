@@ -57,7 +57,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           EVENT_NAME: ${{ github.event_name }}
           PULL_REQUEST: ${{ github.event.workflow_run.pull_requests[0].number || inputs.pr_number }}
-          EVENT_HEAD_SHA: ${{ needs.gate.outputs.head_sha }}
+          EVENT_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
         run: node scripts/advisory-review-gate.mjs
 
   review:

@@ -162,6 +162,16 @@ describe('standalone Codex PR review workflow', () => {
     });
     const run = gate.steps.find((step: Record<string, any>) => step.run);
     expect(run.run).toBe('node scripts/advisory-review-gate.mjs');
+    expect(
+      gate.steps.find((step: Record<string, any>) => step.run).env,
+    ).toEqual({
+      GH_TOKEN: expression('github.token'),
+      EVENT_NAME: expression('github.event_name'),
+      PULL_REQUEST: expression(
+        'github.event.workflow_run.pull_requests[0].number || inputs.pr_number',
+      ),
+      EVENT_HEAD_SHA: expression('github.event.workflow_run.head_sha'),
+    });
     // No credential beyond the workflow token reaches the gate.
     expect(JSON.stringify(gate)).not.toMatch(/secrets\./);
     // The review jobs must wait for the gate rather than run on every event.
