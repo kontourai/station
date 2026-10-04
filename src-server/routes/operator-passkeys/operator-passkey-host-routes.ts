@@ -19,6 +19,7 @@ import { bodyLimit } from 'hono/body-limit';
 import {
   OperatorPasskeyEnrollmentError,
   type OperatorPasskeyEnrollmentService,
+  publicEnrollmentMessage,
 } from '../../services/identity/operator-passkey-enrollment.js';
 
 export interface OperatorPasskeyHostRouteDeps {
@@ -43,6 +44,7 @@ function statusFor(
     case 'rate_limited':
       return 429;
     case 'enrollment_unavailable':
+    case 'store_unavailable':
       return 503;
     default:
       return 400;
@@ -67,7 +69,7 @@ export function createOperatorPasskeyHostRoutes(
           return c.json(
             {
               error: error.code,
-              message: error.message,
+              message: publicEnrollmentMessage(error),
               ...(error.retryAfterMs !== undefined
                 ? { retryAfterMs: error.retryAfterMs }
                 : {}),
@@ -75,7 +77,15 @@ export function createOperatorPasskeyHostRoutes(
             statusFor(error),
           );
         }
-        throw error;
+        // Anything else is unexpected: its text may carry paths or internals,
+        // so the client gets a fixed sentence and never the message.
+        return c.json(
+          {
+            error: 'internal_error',
+            message: 'The request could not be completed.',
+          },
+          500,
+        );
       }
     };
 

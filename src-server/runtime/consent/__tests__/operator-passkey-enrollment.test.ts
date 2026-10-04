@@ -1166,12 +1166,59 @@ describe('review round: races and live device state', () => {
     );
     const list = await host.request('/api/pairing/operator-passkeys');
     expect(list.status).toBe(503);
-    expect((await json(list)).error).toBe('enrollment_unavailable');
+    expect((await json(list)).error).toBe('store_unavailable');
     const revoke = await host.request('/api/pairing/operator-passkeys/x', {
       method: 'DELETE',
     });
     expect(revoke.status).toBe(503);
-    expect((await json(revoke)).error).toBe('enrollment_unavailable');
+    expect((await json(revoke)).error).toBe('store_unavailable');
     lazy.close();
+  });
+
+  test('an unexpected error never reaches the client as text, on either side', async () => {
+    const SECRET = 'ENOENT /Users/operator/.station/secret-path';
+    class Exploding extends OperatorPasskeyEnrollmentService {
+      override listPasskeys(): never {
+        throw new Error(SECRET);
+      }
+      override createRequest(): never {
+        throw new Error(SECRET);
+      }
+    }
+    const exploding = new Exploding({ registry: h.registry, origin: ORIGIN });
+    const host = new Hono();
+    host.route(
+      '/api/pairing/operator-passkeys',
+      createOperatorPasskeyHostRoutes({
+        service: exploding,
+        isOperator: () => true,
+      }),
+    );
+    const channel = new ConsentChannelService({ trustedOrigin: ORIGIN });
+    channel.markListening(4321);
+    const consent = createConsentApp({
+      channel,
+      credentials: {
+        verifyOperatorCredential: () => false,
+        identifyDevice: (c) => DEVICES[c] ?? null,
+      },
+      passkeys: exploding,
+    });
+    const hostRes = await host.request('/api/pairing/operator-passkeys');
+    const consentRes = await consent.request(`${PATH}/requests`, {
+      method: 'POST',
+      headers: browserHeaders(),
+      body: '{}',
+    });
+    for (const res of [hostRes, consentRes]) {
+      expect(res.status).toBe(500);
+      const text = await res.text();
+      expect(text).not.toContain('ENOENT');
+      expect(text).not.toContain('/Users/operator');
+      expect(JSON.parse(text)).toEqual({
+        error: 'internal_error',
+        message: 'The request could not be completed.',
+      });
+    }
   });
 });

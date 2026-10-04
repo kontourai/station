@@ -71,6 +71,7 @@ const KNOWN_TRANSPORTS = new Set([
 
 export type EnrollmentErrorCode =
   | 'enrollment_unavailable'
+  | 'store_unavailable'
   | 'too_many_requests'
   | 'request_not_found'
   | 'request_not_confirmed'
@@ -83,6 +84,44 @@ export type EnrollmentErrorCode =
   | 'passkey_not_found'
   | 'device_mismatch'
   | 'device_gone';
+
+/**
+ * The ONLY text a route may send for a typed enrollment error: one fixed
+ * sentence per code. `error.message` is for logs and tests; routes never echo
+ * it, so a future change to how a message is built cannot leak through a
+ * response.
+ */
+const PUBLIC_MESSAGES: Record<EnrollmentErrorCode, string> = {
+  enrollment_unavailable:
+    'Operator passkey enrollment needs STATION_TRUSTED_CONSENT_ORIGIN, an HTTPS origin on a DNS name. A Station reachable only by IP address has no remote operator sign-in.',
+  store_unavailable:
+    'The operator passkey store could not be opened privately, so passkeys are unavailable.',
+  too_many_requests:
+    'Too many enrollment requests are waiting. Deny or let them expire, then try again.',
+  request_not_found: 'No such enrollment request.',
+  request_not_confirmed: 'The host has not confirmed this request yet.',
+  request_closed: 'This enrollment request is closed. Start again.',
+  invalid_code:
+    'No pending enrollment request has that code. Check the code shown in the browser; it expires after 5 minutes and works once.',
+  rate_limited: 'Too many wrong codes. Wait before trying again.',
+  challenge_invalid:
+    'The registration challenge is missing, used, expired or replaced. Start again.',
+  verification_failed:
+    'The passkey could not be verified for this Station. Nothing was saved.',
+  invalid_label: 'The label must be 1 to 64 printable characters.',
+  passkey_not_found: 'No active operator passkey has that id.',
+  device_mismatch:
+    'The request with that code was not opened by the device you named. Nothing was confirmed; run `station environment operator passkeys` to see who asked.',
+  device_gone:
+    'The device that opened this request is no longer paired. Nothing was confirmed.',
+};
+
+/** The fixed public sentence for a typed enrollment error. */
+export function publicEnrollmentMessage(
+  error: OperatorPasskeyEnrollmentError,
+): string {
+  return PUBLIC_MESSAGES[error.code];
+}
 
 export class OperatorPasskeyEnrollmentError extends Error {
   constructor(
@@ -592,7 +631,7 @@ export class OperatorPasskeyEnrollmentService {
       return this.#registry.existing();
     } catch {
       throw new OperatorPasskeyEnrollmentError(
-        'enrollment_unavailable',
+        'store_unavailable',
         'The operator passkey store could not be opened privately, so passkeys cannot be read or changed.',
       );
     }
@@ -604,7 +643,7 @@ export class OperatorPasskeyEnrollmentService {
       return this.#registry.ensure();
     } catch {
       throw new OperatorPasskeyEnrollmentError(
-        'enrollment_unavailable',
+        'store_unavailable',
         'The operator passkey store could not be opened privately, so enrollment is unavailable.',
       );
     }

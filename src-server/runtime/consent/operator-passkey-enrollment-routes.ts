@@ -30,6 +30,7 @@ import {
   OPERATOR_BROWSER_LABEL,
   OperatorPasskeyEnrollmentError,
   type OperatorPasskeyEnrollmentService,
+  publicEnrollmentMessage,
 } from '../../services/identity/operator-passkey-enrollment.js';
 import { parseDeviceSessionCookie } from '../bootstrap/runtime-http.js';
 import { ENROLLMENT_PAGE_SCRIPT } from './operator-passkey-enrollment-script.js';
@@ -241,15 +242,23 @@ export function registerOperatorPasskeyEnrollmentRoutes(
             ? 404
             : error.code === 'too_many_requests'
               ? 429
-              : error.code === 'enrollment_unavailable'
+              : error.code === 'enrollment_unavailable' ||
+                  error.code === 'store_unavailable'
                 ? 503
                 : error.code === 'request_not_confirmed' ||
                     error.code === 'request_closed'
                   ? 409
                   : 400;
-        return fail(c, status, error.code, error.message);
+        return fail(c, status, error.code, publicEnrollmentMessage(error));
       }
-      throw error;
+      // Unexpected: never echo its text to the browser.
+      return c.json(
+        {
+          error: 'internal_error',
+          message: 'The request could not be completed.',
+        },
+        500,
+      );
     }
   };
 

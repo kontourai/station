@@ -1629,6 +1629,8 @@ const PASSKEY_ERROR_TEXT: Record<string, string> = {
   enrollment_unavailable:
     'Operator passkey enrollment needs STATION_TRUSTED_CONSENT_ORIGIN (an HTTPS origin on a DNS name) on the Station. A Station reachable only by IP has no remote operator sign-in.',
   passkey_not_found: 'No active operator passkey has that id.',
+  store_unavailable:
+    'The operator passkey store could not be opened privately, so passkeys are unavailable.',
   device_gone:
     'The device that opened this request is no longer paired. Nothing was confirmed.',
   device_mismatch:
