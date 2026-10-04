@@ -319,6 +319,8 @@ function createManagedSessionClient(
       // Station has one page of at most 100 and no cursor, so a truncated
       // listing is said so on stderr rather than passed off as complete.
       const conversations: Array<Record<string, unknown>> = [];
+      const seenIds = new Set<string>();
+      const seenCursors = new Set<string>();
       let cursor: string | undefined;
       for (let page = 0; page < MAX_CONVERSATION_PAGES; page += 1) {
         const query = cursor ? `?cursor=${encodeURIComponent(cursor)}` : '';
@@ -327,15 +329,24 @@ function createManagedSessionClient(
           `/agents/${encodeURIComponent(agentSlug)}/conversations${query}`,
         );
         const parsed = parseConversationPage(listed);
-        conversations.push(...parsed.items);
+        for (const item of parsed.items) {
+          const id = String(item.id);
+          if (seenIds.has(id)) continue;
+          seenIds.add(id);
+          conversations.push(item);
+        }
         cursor = parsed.nextCursor;
         if (!parsed.hasMore) break;
-        if (!cursor || page === MAX_CONVERSATION_PAGES - 1) {
+        const repeated = cursor !== undefined && seenCursors.has(cursor);
+        if (cursor) seenCursors.add(cursor);
+        if (!cursor || repeated || page === MAX_CONVERSATION_PAGES - 1) {
           process.stderr.write(
             `Warning: more conversations exist than this listing shows (${conversations.length} listed); ${
-              cursor
-                ? `stopped after ${MAX_CONVERSATION_PAGES} pages`
-                : 'this Station returns one page and no cursor'
+              !cursor
+                ? 'this Station returns one page and no cursor'
+                : repeated
+                  ? 'Station repeated a page cursor'
+                  : `stopped after ${MAX_CONVERSATION_PAGES} pages`
             }.\n`,
           );
           break;

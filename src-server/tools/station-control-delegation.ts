@@ -2637,7 +2637,11 @@ async function readConnection(
     const blockers = describeConnectionBlockers(connection);
     throw new Error(
       `Engine connection '${id}' is not ready for delegated work (${connection.status})${
-        blockers ? `: ${blockers}` : ''
+        blockers
+          ? `: ${blockers}`
+          : // No prerequisite is recorded (a failed smoke, say): a fixed next
+            // step, never the connection's own free text.
+            `. Check this connection in Connections or run \`station connections test ${id}\``
       }`,
     );
   }

@@ -73,13 +73,33 @@ describe('managed sessions list pagination', () => {
     pages = new Proxy(
       {},
       {
-        get: () => ({ items: [item('x')], hasMore: true, nextCursor: 'again' }),
+        get: (_t, key) => {
+          const n = key === '' ? 0 : Number(key) + 1;
+          return { items: [item(`x${n}`)], hasMore: true, nextCursor: `${n}` };
+        },
       },
     );
     const sessions = await list();
     expect(sessions).toHaveLength(20);
     expect(String(stderr.mock.calls[0]?.[0])).toContain(
       'stopped after 20 pages',
+    );
+  });
+
+  test('a repeated cursor stops with a warning and de-dupes items by id', async () => {
+    pages = {
+      '': { items: [item('a')], hasMore: true, nextCursor: 'loop' },
+      loop: {
+        items: [item('a'), item('b')],
+        hasMore: true,
+        nextCursor: 'loop',
+      },
+    };
+    const sessions = await list();
+    expect(sessions.map((s) => s.id)).toEqual(['a', 'b']);
+    expect(requested).toEqual(['', '?cursor=loop']);
+    expect(String(stderr.mock.calls[0]?.[0])).toContain(
+      'repeated a page cursor',
     );
   });
 

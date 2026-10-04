@@ -46,14 +46,6 @@ export async function mintLocalBrowserToken(
   }
 }
 
-/**
- * The host the printed link uses. An instance bound to one address (Watch mode
- * is loopback-only, `--host=127.0.0.1`) is reached at THAT address: `localhost`
- * can resolve to a different loopback family than the listener, and it is a
- * different origin, so the sign-in it completes would not cover the address the
- * person is using. A wildcard bind, or an entry with no recorded host (older
- * entries, the Desktop sidecar), keeps `localhost`.
- */
 /** 0.0.0.0 and every spelling of :: (`::0`, `0:0:0:0:0:0:0:0`, ...). */
 function isUnspecifiedAddress(host: string): boolean {
   const family = isIP(host);
@@ -66,6 +58,14 @@ function isUnspecifiedAddress(host: string): boolean {
   }
 }
 
+/**
+ * The host the printed link uses. An instance bound to one address (Watch mode
+ * is loopback-only, `--host=127.0.0.1`) is reached at THAT address: `localhost`
+ * can resolve to a different loopback family than the listener, and it is a
+ * different origin, so the sign-in it completes would not cover the address the
+ * person is using. A wildcard bind, or an entry with no recorded host (older
+ * entries, the Desktop sidecar), keeps `localhost`.
+ */
 export function browserHostFor(host: string | undefined): string {
   if (!host || isUnspecifiedAddress(host)) return 'localhost';
   return isIP(host) === 6 ? `[${host}]` : host;
