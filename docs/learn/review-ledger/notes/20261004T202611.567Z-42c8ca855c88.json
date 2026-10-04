@@ -1,0 +1,7 @@
+{
+  "revision": "e4e9354c4cbb9ad742c0cb2c7990bb51350c012c",
+
+  "notes": [
+    {"path":"scripts/fixtures/orchestration-transfer/README.md","note":"Flagged by capture/gate edits. Retained traffic measurements and the 64000-byte window/snapshot ceilings are untouched; only the 5 s in-process barrier and 60 s child bound (both liveness guards, not budgets) are multiplied by the host-pressure factor.","inputs":["scripts/fixtures/orchestration-transfer/README.md","scripts/orchestration-transfer-capture.ts","scripts/orchestration-transfer-gate.mjs"]}
+  ]
+}

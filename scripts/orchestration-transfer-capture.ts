@@ -43,6 +43,7 @@ const toolDigest = createHash('sha256')
       'scripts/orchestration-transfer-capture.ts',
       'scripts/lib/transfer-capture-barrier.ts',
       'scripts/lib/transfer-capture-progress.ts',
+      'scripts/lib/liveness-scale.mjs',
       'src-server/__test-utils__/orchestration-transfer-scenario.ts',
       'src-server/__test-utils__/http-transfer-recorder.ts',
       'src-server/__test-utils__/orchestration-transfer-fixture.ts',

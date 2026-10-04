@@ -261,6 +261,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Runs the real capture barrier and the real capture entrypoint as child
   // processes to prove the configured bound reaches them.
   'scripts/__tests__/transfer-capture-barrier.test.ts',
+  // #3302: runs scripts/liveness-scale.mjs as a child to prove the exit status
+  // and stdout contract the pre-push hook consumes, and a real fallow spawn.
+  'scripts/__tests__/liveness-scale.test.ts',
   // #2355: creates real linked worktrees, removes them with `git worktree
   // remove`, and holds one open with a live child process whose cwd is inside
   // it, because the in-use probe (lsof/proc/ps) is the behavior under test.

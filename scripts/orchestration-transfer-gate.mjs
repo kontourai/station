@@ -16,6 +16,8 @@ import {
   gitLocationKeys,
   sanitizedGitEnvironment,
 } from './lib/git-environment.mjs';
+import { scaleLivenessMs } from './lib/liveness-scale.mjs';
+import { ensureLivenessScale } from './lib/liveness-scale-resolve.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import { collectVerificationProvenance } from './lib/test-reliability.mjs';
 import {
@@ -276,8 +278,10 @@ export const TRANSFER_BASELINE_ROOT_ENV = 'STATION_TRANSFER_BASELINE_ROOT';
  */
 export function transferCaptureLivenessTimeoutMs(env = process.env) {
   const raw = env[TRANSFER_CAPTURE_TIMEOUT_ENV];
+  // Only the default scales with host pressure (#3302); an explicit value is
+  // the operator's chosen bound and is used as given.
   if (raw === undefined || raw.trim() === '')
-    return TRANSFER_CAPTURE_LIVENESS_TIMEOUT_MS;
+    return scaleLivenessMs(TRANSFER_CAPTURE_LIVENESS_TIMEOUT_MS, env);
   const value = Number(raw.trim());
   if (!Number.isSafeInteger(value) || value <= 0)
     fail(
@@ -723,7 +727,7 @@ function runTransferGateInner(options) {
   const timeout = transferCaptureLivenessTimeoutMs();
   if (timeout !== TRANSFER_CAPTURE_LIVENESS_TIMEOUT_MS)
     console.log(
-      `capture liveness bound raised to ${timeout}ms by ${TRANSFER_CAPTURE_TIMEOUT_ENV} (liveness guard only; not a measured budget)`,
+      `capture liveness bound raised to ${timeout}ms by ${TRANSFER_CAPTURE_TIMEOUT_ENV} or the host-pressure liveness scale (liveness guard only; not a measured budget)`,
     );
   // Mark first so a sibling session's prune sees this gate even while it
   // runs checks that never name the baseline in argv or cwd.
@@ -763,6 +767,7 @@ export function runTransferGate(options = parseArgs(process.argv.slice(2))) {
 
 if (invokedDirectly(import.meta.url)) {
   try {
+    await ensureLivenessScale();
     runTransferGate();
   } catch (error) {
     console.error(`FAIL: ${error instanceof Error ? error.message : error}`);
