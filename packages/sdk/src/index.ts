@@ -1192,6 +1192,7 @@ export type {
 export {
   adoptCommittedProjectTaskRoomDocument,
   appendProjectTaskRoomHumanMessage,
+  appendProjectTaskRoomOutputFeedback,
   commandProjectTaskRoomLive,
   discoverProjectTaskRoom,
   fetchProjectTaskRoomDocument,
@@ -1216,6 +1217,7 @@ export {
   TaskRoomWorkNotSentError,
   type TaskRoomWorkRequestScope,
   useAppendProjectTaskRoomHumanMessageMutation,
+  useAppendProjectTaskRoomOutputFeedbackMutation,
   useCommandProjectTaskRoomLiveMutation,
   usePlanProjectTaskRoomEditMutation,
   useProjectTaskRoomDiscoveryQuery,

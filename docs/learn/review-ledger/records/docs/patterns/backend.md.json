@@ -52,9 +52,9 @@
 
     "src-ui/src/components/Dialog.tsx",
 
-    "src-ui/src/components/header/ThemeToggle.tsx",
-
     "src-ui/src/components/ResponsiveDialogSurface.tsx",
+
+    "src-ui/src/components/header/ThemeToggle.tsx",
 
     "src-ui/src/hooks/useIsMobile.ts",
 

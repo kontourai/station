@@ -195,6 +195,9 @@ turn finishes. **Steer** uses native mid-turn input only where the selected
 engine can prove that capability. Claude Code and Codex have additive steering.
 ACP's capability matrix also includes cancel-and-reprompt, which is not proof
 of native steering for the current session.
+After a device's full access is revoked, a turn that started unconfined is not
+steerable: the server refuses with `confinement-changed` before claiming the
+input, and the message stays for the next turn, which runs confined (#2898).
 
 For other engines, Steer holds the message for a supported safe boundary before
 stopping and sending. Current adapters expose no such safe-boundary receipt, so
@@ -277,8 +280,13 @@ simple per-device preference rather than claiming to detect an attached keyboard
   of view. The composer reserves room for a two-line draft; in a short dock
   the failure banner and the transcript yield first (down to zero; in a dock
   too short even for their padding the banner steps aside, the transcript
-  gives up its padding and the composer repeats the latest send failure as
-  one line), the chip strip drops to one scrolling row, and only then does
+  gives up its padding and the composer repeats the latest send-failure notice
+  as one line: a refused or failed send or steer, a dropped queued message or a
+  blocked send; slash-command output and status notices are not repeated, and
+  a later accepted send clears it. A message queued to retry automatically is
+  not a failure and is not repeated; its notice and Discard stay in the
+  transcript, which a short dock hides, while the queued turn and its Retry
+  stay in the dock body), the chip strip drops to one scrolling row, and only then does
   the draft shrink below two lines — scrolling, never overlapped, with Send
   always on screen. The transcript is never taken out of the layout, and the
   composer re-measures whenever a sibling in the dock appears, leaves or
