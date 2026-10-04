@@ -1,0 +1,7 @@
+{
+  "revision": "f7157a46f27d18a9ce19bc7def38aee15270f3af",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Re-checked the coding-stack sections after merging origin/main and this round's fixes: the rail is size-contained so it scrolls inside the window (live probe at 800px with 23 items), and the panel splitters drop the base button chrome (the band beside Chat and the notch over the Terminal). The doc's claims (rail scrolls, one overflow per head, Escape reach, fold through an arrival) still hold; no text change needed.","inputs":["docs/design/placement.md","packages/contracts/src/device-settings.ts","src-ui/src/app-shell/ProjectLayoutRenderer.tsx","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/contexts/navigation-store.ts","src-ui/src/lib/device-settings-store.ts","src-ui/src/workspace-panes/__tests__/RegionPaneHost.project.test.tsx","src-ui/src/workspace-panes/workspacePaneHostController.ts"]}
+  ]
+}

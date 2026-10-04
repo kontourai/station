@@ -854,6 +854,11 @@ export interface ClaudeAdapterOptions {
     tenantExecutionContext?: TenantExecutionContext,
     allowedTools?: readonly string[],
   ) => unknown;
+  createInProcessStationKnowledge?: (
+    threadId: string,
+    tenantExecutionContext?: TenantExecutionContext,
+    allowedTools?: readonly string[],
+  ) => unknown;
   /**
    * #90 D14: serves the built-in browser tools (`station-browser`) IN-PROCESS
    * for this session, bound like station-control. Delivered by default to a
@@ -2703,6 +2708,16 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           : {}),
       },
       {
+        ...(this.options.createInProcessStationKnowledge
+          ? {
+              knowledgeInProcess: (allowedTools?: readonly string[]) =>
+                this.options.createInProcessStationKnowledge!(
+                  input.threadId,
+                  tenantExecutionContext,
+                  allowedTools,
+                ),
+            }
+          : {}),
         ...(this.options.createInProcessStationControl
           ? {
               inProcess: () =>

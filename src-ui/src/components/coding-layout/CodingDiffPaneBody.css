@@ -1,0 +1,72 @@
+/* The Diff pane: git rows, then one view at full width. */
+.workspace-coding-diff-pane {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  min-width: 0;
+}
+
+.coding-diff-pane__view {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow: auto;
+}
+
+.coding-diff-pane__view > :last-child {
+  flex: 1;
+  min-height: 0;
+}
+
+/* Changes | Pull requests: a two-way choice, drawn as one pill with the
+   pressed half filled. A choice, not two actions. */
+.coding-diff-pane__switch {
+  display: inline-flex;
+  flex: none;
+  margin: 0;
+  border: 0;
+  padding: 2px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-tertiary);
+}
+
+.coding-diff-pane__segment {
+  position: relative;
+  min-height: 24px;
+  padding: 0 var(--space-5);
+  border: none;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--text-base);
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.coding-diff-pane__segment::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 100%;
+  height: 44px;
+  transform: translate(-50%, -50%);
+}
+
+.coding-diff-pane__segment:hover {
+  color: var(--text-primary);
+}
+
+.coding-diff-pane__segment[aria-pressed="true"] {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+}
+
+/* The global `button:hover` fill must not paint an unpressed segment. */
+.coding-diff-pane__segment:hover:not([aria-pressed="true"]) {
+  background: transparent;
+}

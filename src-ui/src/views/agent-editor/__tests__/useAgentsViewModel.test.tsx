@@ -34,6 +34,8 @@ const state = {
   toolsError: undefined as unknown,
   toolsFailureReason: undefined as unknown,
   catalogReconciling: false,
+  /** The `dirty` the unsaved guard was last rendered with. */
+  guardDirty: false,
 };
 
 const createAgent = vi.fn();
@@ -141,10 +143,13 @@ vi.mock('../../../hooks/useDevicePresentation', () => ({
   useDevicePresentation: () => undefined,
 }));
 vi.mock('../../../hooks/useUnsavedGuard', () => ({
-  useUnsavedGuard: () => ({
-    guard: (cb: () => void) => cb(),
-    DiscardModal: () => null,
-  }),
+  useUnsavedGuard: (dirty: boolean) => {
+    state.guardDirty = dirty;
+    return {
+      guard: (cb: () => void) => cb(),
+      DiscardModal: () => null,
+    };
+  },
 }));
 vi.mock('../../../hooks/useUrlSelection', () => ({
   useUrlSelection: () => ({
@@ -974,6 +979,43 @@ describe('persisted detail remains authoritative while the collection reconciles
     expect(result.current.form.name).toBe('Agent B');
     expect(result.current.dirty).toBe(false);
     expect(result.current.isSaving).toBe(false);
+  });
+
+  test('Duplicate from an unsaved edit navigates only once the copy reads clean', () => {
+    // The real guard registers with the route store while the form is dirty,
+    // so a navigation made in that state is intercepted and asks "Discard?"
+    // again — after the reader had already answered the hook's own prompt
+    // (the guard here stands in for an answered one). The seam is the state
+    // the guard was rendered with when the navigation happened.
+    state.selectedId = 'agent-a';
+    state.detail = agent({
+      slug: 'agent-a',
+      name: 'Agent A',
+      prompt: 'Answer.',
+    });
+    const { result } = render();
+    act(() => {
+      result.current.setForm((current) => ({ ...current, name: 'Edited' }));
+    });
+    expect(result.current.dirty).toBe(true);
+    const guardDirtyAtNavigation: boolean[] = [];
+    select.mockImplementation((slug: string) => {
+      guardDirtyAtNavigation.push(state.guardDirty);
+      state.selectedId = slug;
+    });
+
+    act(() =>
+      result.current.handleDuplicate(
+        agent({ slug: 'agent-a', name: 'Agent A', prompt: 'Answer.' }),
+      ),
+    );
+    expect(select).toHaveBeenCalledExactlyOnceWith('new');
+    expect(guardDirtyAtNavigation).toEqual([false]);
+    expect(result.current.form.name).toBe('Agent A copy');
+    expect(result.current.isCreating).toBe(true);
+    select.mockImplementation((slug: string) => {
+      state.selectedId = slug;
+    });
   });
 
   test('a successful mismatched detail revokes established authority', () => {
