@@ -294,6 +294,22 @@ describe('install.ps1 installer core: full install (#2675 W2)', () => {
     expect(versionDirs(f)).toEqual(['0.7.0-nightly.12', '0.7.0-nightly.13']);
   });
 
+  it('returns once Station starts, though the started Station keeps running with output open', async () => {
+    const f = fixture();
+    const [server, ui] = await freePorts();
+    const began = Date.now();
+    const result = install(f, buildWindowsArchive(f.dir, '0.7.0-nightly.12'), {
+      STATION_INSTALL_SERVER_PORT: String(server),
+      STATION_INSTALL_UI_PORT: String(ui),
+      STATION_TEST_CLI_LINGER_MS: '30000',
+    });
+    expect(result.status, result.stderr).toBe(0);
+    // Had the started process inherited the installer's own output, reading
+    // that output to its end would have waited the full 30 s.
+    expect(Date.now() - began).toBeLessThan(20_000);
+    expect(verbs(takeCliRuns(f))).toEqual(['start@0.7.0-nightly.12']);
+  });
+
   it('uses the channel default ports when nothing is recorded or named', () => {
     const f = fixture();
     const result = install(f, buildWindowsArchive(f.dir, '0.7.0-nightly.12'), {

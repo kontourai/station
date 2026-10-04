@@ -108,7 +108,9 @@ export type WindowsArchive = {
  * It records each run (its arguments, working directory and the install
  * identity it was given) in STATION_TEST_CLI_LOG, and exits 1 for the verb
  * STATION_TEST_CLI_FAIL names as `<verb>@<version>` for its own version, so
- * a test can make one release's `start` fail. Otherwise it exits 0.
+ * a test can make one release's `start` fail. Otherwise it exits 0. With
+ * STATION_TEST_CLI_LINGER_MS, `start` leaves a detached process holding its
+ * output open, as a started Station does.
  */
 const FIXTURE_STATION_CLI = `import { appendFileSync, readFileSync } from 'node:fs';
 const args = process.argv.slice(2);
@@ -128,6 +130,16 @@ if (process.env.STATION_TEST_CLI_LOG)
       installRoot: process.env.STATION_INSTALL_ROOT,
     }) + '\\n',
   );
+// As a real \`start\` does, leave a detached process behind; this one keeps
+// the CLI's stdout and stderr open for STATION_TEST_CLI_LINGER_MS.
+if (args[0] === 'start' && process.env.STATION_TEST_CLI_LINGER_MS) {
+  const { spawn } = await import('node:child_process');
+  spawn(
+    process.execPath,
+    ['-e', \`setTimeout(() => {}, \${Number(process.env.STATION_TEST_CLI_LINGER_MS)})\`],
+    { detached: true, stdio: 'inherit', windowsHide: true },
+  ).unref();
+}
 process.exit(process.env.STATION_TEST_CLI_FAIL === \`\${args[0]}@\${version}\` ? 1 : 0);
 `;
 

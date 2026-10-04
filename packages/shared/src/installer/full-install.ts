@@ -362,48 +362,74 @@ async function assertNightlyCoexistence(
   }
 }
 
+let cliRuns = 0;
+
 /**
  * Runs a version's own CLI the way its bin\station.cmd says a supervisor
  * must: its runtime\node.exe with bin\station.mjs, from the version
  * directory itself (not through `current`), with the install's identity.
+ *
+ * Its output goes to a file in the private temporary directory, relayed
+ * afterwards, never to this process's own stdout: `start` leaves Station
+ * running detached, and on Windows a detached Station that held install.ps1's
+ * output pipe kept PowerShell's `| Out-Host` (and any caller reading the
+ * installer's output) waiting until Station stopped (seen on the Windows
+ * smoke).
  */
 function runInstalledCli(
+  context: Context,
   dir: string,
   args: string[],
   paths: Paths,
-  env: InstallerEnv,
 ): boolean {
   const { node, entry } = versionPaths(dir);
-  const result = spawnSync(node, [entry, ...args], {
-    cwd: dir,
-    stdio: 'inherit',
-    windowsHide: true,
-    env: {
-      ...env,
-      STATION_CHANNEL: paths.channel,
-      STATION_ROOT: paths.stationRoot,
-      STATION_HOME: paths.stationHome,
-      STATION_INSTALL_ROOT: paths.installRoot,
-      STATION_INVOKED_CWD: process.cwd(),
-    },
-  });
-  return result.status === 0;
+  cliRuns += 1;
+  const log = join(context.tmp, `station-cli-${process.pid}-${cliRuns}.log`);
+  const fd = openSync(log, 'wx', 0o600);
+  let status: number | null;
+  try {
+    status = spawnSync(node, [entry, ...args], {
+      cwd: dir,
+      stdio: ['ignore', fd, fd],
+      windowsHide: true,
+      env: {
+        ...context.env,
+        STATION_CHANNEL: paths.channel,
+        STATION_ROOT: paths.stationRoot,
+        STATION_HOME: paths.stationHome,
+        STATION_INSTALL_ROOT: paths.installRoot,
+        STATION_INVOKED_CWD: process.cwd(),
+      },
+    }).status;
+  } finally {
+    closeSync(fd);
+  }
+  const output = readFileSync(log, 'utf8').trimEnd();
+  if (output !== '')
+    for (const line of output.split(/\r?\n/)) context.io.out(line);
+  return status === 0;
 }
 
-function stopStation(dir: string | null, paths: Paths, env: InstallerEnv) {
+function stopStation(context: Context, dir: string | null, paths: Paths) {
   return (
     dir === null ||
-    runInstalledCli(dir, ['stop', `--base=${paths.stationHome}`], paths, env)
+    runInstalledCli(
+      context,
+      dir,
+      ['stop', `--base=${paths.stationHome}`],
+      paths,
+    )
   );
 }
 
 function startStation(
+  context: Context,
   dir: string,
   paths: Paths,
-  env: InstallerEnv,
   ports: Ports,
 ): boolean {
   return runInstalledCli(
+    context,
     dir,
     [
       'start',
@@ -412,7 +438,6 @@ function startStation(
       `--ui-port=${ports.ui}`,
     ],
     paths,
-    env,
   );
 }
 
@@ -554,7 +579,7 @@ function switchToRelease(
 
   let previous = release.previous;
   let displaced: string | null = null;
-  if (!stopStation(previous, paths, env)) {
+  if (!stopStation(context, previous, paths)) {
     discardStaged();
     fail(
       'could not stop the installed Station; the running release was not changed',
@@ -565,7 +590,7 @@ function switchToRelease(
     try {
       // Best effort: a new release that half started must not hold the
       // ports or files the restored one needs.
-      if (existsSync(releaseDir)) stopStation(releaseDir, paths, env);
+      if (existsSync(releaseDir)) stopStation(context, releaseDir, paths);
       if (displaced !== null) {
         if (existsSync(releaseDir) || isLink(releaseDir))
           removeTree(releaseDir);
@@ -576,7 +601,7 @@ function switchToRelease(
         pointCurrentAt(paths.installRoot, previous);
         restoreFile(paths.launcher, previousLauncher, 0o755);
         restoreFile(paths.stateFile, previousState, 0o600);
-        if (!noStart && !startStation(previous, paths, env, ports))
+        if (!noStart && !startStation(context, previous, paths, ports))
           throw new Error('the previous release did not start');
       } else {
         removeCurrent(paths.installRoot);
@@ -618,7 +643,7 @@ function switchToRelease(
   }
 
   if (!noStart) {
-    if (!startStation(releaseDir, paths, env, ports))
+    if (!startStation(context, releaseDir, paths, ports))
       rollback('the new release did not start');
     // Keep the active release and the one it replaced (the rollback
     // target); remove every other one, including stages a crashed install
@@ -703,7 +728,7 @@ export function uninstallArchive(context: Context, args: string[]): number {
     assertOwnedRoot(paths.stationHome, DATA_ROOT_MARKER, DATA_ROOT_SIGNATURE);
   }
   refuseArchiveServices(paths, 'uninstall');
-  if (!stopStation(activeVersionDir(paths.current), paths, env))
+  if (!stopStation(context, activeVersionDir(paths.current), paths))
     fail('could not stop the installed Station; no files were removed');
   if (present(paths.launcher)) {
     if (!launcherIsOwned(paths))
