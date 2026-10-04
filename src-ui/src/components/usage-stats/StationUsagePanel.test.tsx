@@ -52,8 +52,9 @@ test('operator breakdown preserves measured zero, unknown attribution, and hides
           messages: 1,
           inputTokens: 10,
           outputTokens: 0,
+          cacheReadTokens: 25,
           cost: 0,
-          tokenReports: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0 },
+          tokenReports: { input: 1, output: 1, cacheRead: 1, cacheWrite: 0 },
         },
       },
       byPrincipal: {},
@@ -72,7 +73,7 @@ test('operator breakdown preserves measured zero, unknown attribution, and hides
     within(provider)
       .getAllByRole('cell')
       .map((cell) => cell.textContent),
-  ).toEqual(['1', '10', '0', '—', '—']);
+  ).toEqual(['1', '10', '0', '25', '—', '—', '—']);
   expect(
     screen.getByRole('row', { name: /^Unknown \/ unallocated/ }).textContent,
   ).toContain('——');

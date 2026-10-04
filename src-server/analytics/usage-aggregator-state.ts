@@ -400,7 +400,13 @@ export function applyOrchestrationUsageToUsageStats(
     agent.conversations += 1;
     agent.messages += usage.turns;
     agent.cost += usage.reportedCostUsd ?? 0;
-    if (usage.inputTokens !== undefined || usage.outputTokens !== undefined)
+    if (
+      usage.inputTokens !== undefined ||
+      usage.outputTokens !== undefined ||
+      usage.totalTokens !== undefined ||
+      usage.cacheReadTokens !== undefined ||
+      usage.cacheWriteTokens !== undefined
+    )
       coverage.sessionsReportingTokens += 1;
     if (usage.reportedCostUsd !== undefined)
       coverage.sessionsReportingCost += 1;
@@ -463,6 +469,9 @@ export function mergeRescannedUsageStats(
 }
 
 export function getCostMeasurementGap(stats: UsageStats): string | null {
+  if (stats.lifetime.totalMessages === 0) {
+    return 'No recorded messages are available to calculate an average cost.';
+  }
   if (!stats.snapshot?.costCoverageChecked) {
     return 'Cost coverage has not been checked for the current saved messages.';
   }

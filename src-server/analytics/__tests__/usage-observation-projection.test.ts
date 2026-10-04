@@ -19,6 +19,41 @@ const day1 = '2026-08-01T12:00:00.000Z';
 const day2 = '2026-08-02T12:00:00.000Z';
 const principal = humanPrincipal('fixture', 'reader', 'Fixture reader');
 
+test('an empty real source cannot claim a zero cost-per-message milestone', async () => {
+  const f = fixture();
+  try {
+    const body = await readJson<{
+      data: Array<{
+        id: string;
+        progress?: number;
+        progressPercent?: number;
+        measurementUnavailableReason?: string;
+      }>;
+    }>(await f.app.request('/achievements'));
+    const cost = body.data.find((item) => item.id === 'cost-conscious');
+    expect(cost?.measurementUnavailableReason).toContain(
+      'No recorded messages',
+    );
+    expect(cost?.progress).toBeUndefined();
+    expect(cost?.progressPercent).toBeUndefined();
+  } finally {
+    f.store.close();
+  }
+});
+
+test('cache-only engine observations count as reported token measurements', async () => {
+  const f = fixture();
+  try {
+    f.start('cache-only', 'claude');
+    f.turn('cache-only', 'claude', 'cache-turn', day1, { cacheReadTokens: 25 });
+    const stats = await f.current();
+    expect(stats.lifetime.engineUsageCoverage?.sessionsReportingTokens).toBe(1);
+    expect(stats.byModel['model-a'].cacheReadTokens).toBe(25);
+  } finally {
+    f.store.close();
+  }
+});
+
 function fixture() {
   const home = makeHome('usage-source-projection-');
   const store = new EventStore(join(home, 'events.sqlite'));

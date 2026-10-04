@@ -16,6 +16,8 @@ interface Row {
   messages: number;
   inputTokens: number;
   outputTokens: number;
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
   tokenReports?: TokenReports;
   reportedCostUsd?: number;
   estimatedCostUsd?: number;
@@ -158,6 +160,8 @@ export function StationUsagePanel() {
                     <th>Messages / turns</th>
                     <th>Input</th>
                     <th>Output</th>
+                    <th>Cache read</th>
+                    <th>Cache write</th>
                     <th>Reported cost</th>
                     <th>Estimate</th>
                   </tr>
@@ -175,6 +179,16 @@ export function StationUsagePanel() {
                       <td>
                         {row.tokenReports?.output
                           ? row.outputTokens.toLocaleString()
+                          : '—'}
+                      </td>
+                      <td>
+                        {row.tokenReports?.cacheRead
+                          ? (row.cacheReadTokens?.toLocaleString() ?? '—')
+                          : '—'}
+                      </td>
+                      <td>
+                        {row.tokenReports?.cacheWrite
+                          ? (row.cacheWriteTokens?.toLocaleString() ?? '—')
                           : '—'}
                       </td>
                       <td>{amount(row.reportedCostUsd)}</td>
