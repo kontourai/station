@@ -1,0 +1,7 @@
+{
+  "revision": "865c770ae44d40281e0c22917daec43b27816392",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"Re-recorded after a main merge reset the record. This lane changes no public contract, route or SDK surface; the base branch's review observations remain additive optional fields on an existing read. No prose change.","inputs":["docs/guides/deployment-authentication.md","docs/guides/plugins.md","docs/reference/api.md","docs/reference/cli.md","docs/reference/contracts.md","docs/reference/sdk.md","src-server/runtime/bootstrap/station-runtime.ts"]}
+  ]
+}
