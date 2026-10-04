@@ -1,3 +1,5 @@
+import type { EngineId } from '@kontourai/station-contracts/agent-identity';
+import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import type {
   ChildUsageRelation,
   ThreadUsageEstimatedCost,
@@ -28,8 +30,33 @@ const RELATION_TEXT: Record<ChildUsageRelation, string> = {
   'not-reported': 'not in total',
 };
 
+/**
+ * `totalTokens` is input + output only. The dialog's own "Total" above adds
+ * cache for engines where that is backed, so this figure says what it is.
+ */
 function formatTokens(value: number | undefined): string | undefined {
-  return value === undefined ? undefined : `${value.toLocaleString()} tokens`;
+  return value === undefined
+    ? undefined
+    : `${value.toLocaleString()} input + output tokens`;
+}
+
+/** What the summed input figures mean, in words; absent with no total. */
+export function describeCacheInclusion(
+  tokens: ThreadUsageTree['total']['tokens'],
+): string | undefined {
+  const engines = (tokens.providers ?? [])
+    .map((provider) => engineDisplayLabel(provider as EngineId) ?? provider)
+    .join(', ');
+  switch (tokens.cacheInclusion) {
+    case 'excluded':
+      return 'Cache reads and writes are not included.';
+    case 'not-established':
+      return `Cache reads and writes are not added; whether ${engines} counts cached input inside its input figure isn't established.`;
+    case 'mixed':
+      return `Adds engines that count cached input differently (${engines}), so this sum mixes two measures.`;
+    default:
+      return undefined;
+  }
 }
 
 function formatMoney(amount: number, currency: string): string {
@@ -74,6 +101,12 @@ function figureParts(own: ThreadUsageFigures | undefined): string[] {
   if (!own) return ['nothing reported'];
   return [
     formatTokens(own.totalTokens),
+    own.lastRequestTokens !== undefined
+      ? `last request ${own.lastRequestTokens.toLocaleString()} tokens (not its usage)`
+      : undefined,
+    own.unverifiedTokens !== undefined
+      ? `${own.unverifiedTokens.toLocaleString()} tokens reported (meaning not established)`
+      : undefined,
     formatCostBuckets(own.reportedCost, own.estimatedCost),
     own.toolUses !== undefined
       ? `${own.toolUses} tool ${own.toolUses === 1 ? 'use' : 'uses'}`
@@ -172,6 +205,7 @@ export function ThreadUsageBreakdown({
   if (!tree) return null;
   const { total } = tree;
   const tokens = formatTokens(total.tokens.totalTokens);
+  const cacheNote = describeCacheInclusion(total.tokens);
   const cost = formatCostBuckets(
     total.cost.reportedCost,
     total.cost.estimatedCost,
@@ -196,6 +230,9 @@ export function ThreadUsageBreakdown({
           <span className="thread-usage-breakdown__partial">Partial</span>
         )}
       </div>
+      {cacheNote && (
+        <div className="thread-usage-breakdown__note">{cacheNote}</div>
+      )}
       {total.partialReasons.length > 0 && (
         <ul className="thread-usage-breakdown__reasons">
           {total.partialReasons.map((reason) => (

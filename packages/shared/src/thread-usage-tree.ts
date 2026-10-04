@@ -12,6 +12,7 @@ import type {
   ThreadUsageTree,
 } from '@kontourai/station-contracts/thread-usage-tree';
 import type { UsageReceipt } from '@kontourai/station-contracts/usage-rollup';
+import { providerPromptCacheInclusivity } from './usage-fold.js';
 
 /**
  * How an engine's subagents relate to the usage its parent session reports,
@@ -81,6 +82,22 @@ export const ENGINE_SUBAGENT_USAGE_RELATION: ReadonlyMap<
   ],
 ]);
 
+/**
+ * What a subagent's own reported token figure measures, per engine, from the
+ * same evidence as {@link ENGINE_SUBAGENT_USAGE_RELATION}: `consumption` is
+ * the tokens it used (input + output, the engine's own convention); Claude
+ * Code's `total_tokens` is its last request's size. An undeclared engine's
+ * figure is `unverified`. Only `consumption` may become `totalTokens`.
+ */
+export const ENGINE_SUBAGENT_TOKEN_MEANING: ReadonlyMap<
+  string,
+  'consumption' | 'last-request'
+> = new Map([
+  ['claude', 'last-request'],
+  ['codex', 'consumption'],
+  ['muse', 'consumption'],
+]);
+
 export function engineSubagentUsageRelation(
   provider: string | undefined,
 ): ThreadUsageRelation {
@@ -125,8 +142,6 @@ export interface ThreadUsageConversationSource {
   subagents: readonly ThreadUsageSubagentSource[];
   subagentObservability?: ThreadUsageNode['subagents'];
   delegates: readonly ThreadUsageDelegateSource[];
-  /** Delegates the reader may not see: counted as missing, never described. */
-  hiddenDelegateCount?: number;
   /**
    * Subagents the engine reported that the bounded child-work history no
    * longer holds (the fold keeps the newest settled ones per session).
@@ -193,11 +208,14 @@ function compactFigures(
     'cacheReadTokens',
     'cacheWriteTokens',
     'totalTokens',
+    'lastRequestTokens',
+    'unverifiedTokens',
     'toolUses',
     'durationMs',
   ] as const) {
     if (figures[key] !== undefined) next[key] = figures[key];
   }
+  if (figures.providers?.length) next.providers = figures.providers;
   if (figures.reportedCost?.length) next.reportedCost = figures.reportedCost;
   if (figures.estimatedCost?.length) next.estimatedCost = figures.estimatedCost;
   return Object.keys(next).length > 0 ? next : undefined;
@@ -221,7 +239,10 @@ export function threadUsageFiguresFromReceipts(
   const figures: ThreadUsageFigures = {};
   const reportedCost: ThreadUsageReportedCost[] = [];
   const estimatedCost: ThreadUsageEstimatedCost[] = [];
+  const providers = new Set<string>();
   for (const receipt of latest.values()) {
+    if (validAmount(receipt.inputTokens) || validAmount(receipt.outputTokens))
+      providers.add(receipt.provider);
     figures.inputTokens = addMeasured(figures.inputTokens, receipt.inputTokens);
     figures.outputTokens = addMeasured(
       figures.outputTokens,
@@ -258,17 +279,31 @@ export function threadUsageFiguresFromReceipts(
   }
   figures.reportedCost = reportedCost;
   figures.estimatedCost = estimatedCost;
+  figures.providers = [...providers].sort();
   return compactFigures(figures);
 }
 
-/** A subagent's own figures, as its engine reported them on child work. */
+/**
+ * A subagent's own figures, as its engine reported them on child work. Its
+ * token figure lands where its declared meaning says: only consumption is a
+ * `totalTokens`.
+ */
 export function threadUsageFiguresFromChildWork(
   usage: ChildWorkUsage | undefined,
+  provider: string | undefined,
 ): ThreadUsageFigures | undefined {
   if (!usage) return undefined;
+  const meaning = provider
+    ? ENGINE_SUBAGENT_TOKEN_MEANING.get(provider)
+    : undefined;
+  const tokens = validAmount(usage.totalTokens) ? usage.totalTokens : undefined;
   return compactFigures({
-    ...(validAmount(usage.totalTokens)
-      ? { totalTokens: usage.totalTokens }
+    ...(tokens !== undefined
+      ? meaning === 'consumption'
+        ? { totalTokens: tokens, providers: [provider!] }
+        : meaning === 'last-request'
+          ? { lastRequestTokens: tokens }
+          : { unverifiedTokens: tokens }
       : {}),
     ...(validAmount(usage.toolUses) ? { toolUses: usage.toolUses } : {}),
     ...(validAmount(usage.durationMs) ? { durationMs: usage.durationMs } : {}),
@@ -290,7 +325,7 @@ function conversationNode(
   const subagentNodes: ThreadUsageNode[] = source.subagents
     .filter(({ item }) => item.producer === 'engine-subagent')
     .map(({ item, provider }) => {
-      const own = threadUsageFiguresFromChildWork(item.usage);
+      const own = threadUsageFiguresFromChildWork(item.usage, provider);
       return {
         kind: 'engine-subagent' as const,
         id: item.childId,
@@ -341,7 +376,11 @@ function conversationNode(
   };
 }
 
-function addFiguresToTotal(total: ThreadUsageTotal, own: ThreadUsageFigures) {
+function addFiguresToTotal(
+  total: ThreadUsageTotal,
+  own: ThreadUsageFigures,
+  tokenProviders: Set<string>,
+) {
   const tokens = total.tokens;
   tokens.inputTokens = addMeasured(tokens.inputTokens, own.inputTokens);
   tokens.outputTokens = addMeasured(tokens.outputTokens, own.outputTokens);
@@ -354,6 +393,24 @@ function addFiguresToTotal(total: ThreadUsageTotal, own: ThreadUsageFigures) {
     own.cacheWriteTokens,
   );
   tokens.totalTokens = addMeasured(tokens.totalTokens, own.totalTokens);
+  if (own.totalTokens !== undefined)
+    for (const provider of own.providers ?? []) tokenProviders.add(provider);
+}
+
+/**
+ * Sums of input figures mean one thing only when every summed engine counts
+ * cached input the same way; say which case the total is.
+ */
+function cacheInclusion(
+  providers: ReadonlySet<string>,
+): NonNullable<ThreadUsageTotal['tokens']['cacheInclusion']> {
+  const conventions = new Set(
+    [...providers].map(
+      (provider) => providerPromptCacheInclusivity(provider) ?? 'undeclared',
+    ),
+  );
+  if (conventions.size > 1) return 'mixed';
+  return conventions.has('disjoint') ? 'excluded' : 'not-established';
 }
 
 function addCostToTotal(total: ThreadUsageTotal, own: ThreadUsageFigures) {
@@ -375,9 +432,9 @@ function addCostToTotal(total: ThreadUsageTotal, own: ThreadUsageFigures) {
  */
 export function rollUpThreadUsage(
   root: ThreadUsageNode,
-  hiddenDelegates = 0,
   omittedSubagents = 0,
 ): ThreadUsageTotal {
+  const tokenProviders = new Set<string>();
   const total: ThreadUsageTotal = {
     tokens: { complete: true },
     cost: { complete: true },
@@ -404,7 +461,7 @@ export function rollUpThreadUsage(
       note(
         `${tokensMissing && costMissing ? 'Usage' : tokensMissing ? 'Tokens' : 'Cost'} not counted: ${relation.reason}`,
       );
-    if (node.own && tokens) addFiguresToTotal(total, node.own);
+    if (node.own && tokens) addFiguresToTotal(total, node.own, tokenProviders);
     if (node.own && cost) addCostToTotal(total, node.own);
     // A child included in its parent is in the total exactly when its
     // parent is, so its own children inherit that, not a fresh "counted".
@@ -418,12 +475,9 @@ export function rollUpThreadUsage(
   visit(root, true, true);
   for (const [line, count] of missing)
     total.partialReasons.push(count > 1 ? `${line} (${count} children)` : line);
-  if (hiddenDelegates > 0) {
-    total.tokens.complete = false;
-    total.cost.complete = false;
-    total.partialReasons.push(
-      `${hiddenDelegates} delegated ${hiddenDelegates === 1 ? 'task is' : 'tasks are'} not visible to you and not counted.`,
-    );
+  if (total.tokens.totalTokens !== undefined && tokenProviders.size > 0) {
+    total.tokens.providers = [...tokenProviders].sort();
+    total.tokens.cacheInclusion = cacheInclusion(tokenProviders);
   }
   if (omittedSubagents > 0) {
     total.tokens.complete = false;
@@ -461,7 +515,6 @@ export function buildThreadUsageTree(
     root,
     total: rollUpThreadUsage(
       root,
-      sumOverTree(source, (item) => item.hiddenDelegateCount),
       sumOverTree(source, (item) => item.omittedSubagentCount),
     ),
     nodeCount: countNodes(root),

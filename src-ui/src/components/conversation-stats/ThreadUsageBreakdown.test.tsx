@@ -94,7 +94,14 @@ describe('conversation usage breakdown in the stats dialog', () => {
     renderModal();
     const section = screen.getByRole('region', { name: 'Usage with children' });
     // 1,200 own + 350 delegate; the Claude subagent's figure is not added.
-    expect(within(section).getByText('Total: 1,550 tokens')).toBeTruthy();
+    expect(
+      within(section).getByText('Total: 1,550 input + output tokens'),
+    ).toBeTruthy();
+    // Claude counts uncached input, Codex's convention isn't established, so
+    // the dialog says the sum mixes measures.
+    expect(section.textContent).toContain(
+      'Adds engines that count cached input differently (Claude Code, Codex), so this sum mixes two measures.',
+    );
     expect(section.textContent).toContain('$0.25 reported');
     expect(section.textContent).toContain('€2.00 estimated');
     expect(within(section).getByText('Partial')).toBeTruthy();
@@ -124,10 +131,12 @@ describe('conversation usage breakdown in the stats dialog', () => {
       'station-delegate',
     ]);
     expect(rows[0].textContent).toContain('This conversation (own turns)');
-    expect(rows[0].textContent).toContain('1,200 tokens · $0.25 reported');
+    expect(rows[0].textContent).toContain(
+      '1,200 input + output tokens · $0.25 reported',
+    );
     expect(rows[1].textContent).toContain('Subagent: Search the repo');
     expect(rows[1].textContent).toContain(
-      '41,108 tokens · 3 tool uses · 1 min 5 s',
+      'last request 41,108 tokens (not its usage) · 3 tool uses · 1 min 5 s',
     );
     expect(rows[1].textContent).toContain(
       'Tokens not in total, cost already in parent.',

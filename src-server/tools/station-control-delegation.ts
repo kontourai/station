@@ -4825,6 +4825,13 @@ export async function delegateTask(
         target: handle.target,
         ...(handle.project?.slug ? { projectSlug: handle.project.slug } : {}),
         ...(input.parentTaskId ? { parentTaskId: input.parentTaskId } : {}),
+        // The context the route resolved for this request (derived from the
+        // calling session for an agent's call); a tool-side call carries
+        // only an unresolved claim, so it names no parent here.
+        ...(!input.stationControlToolCall &&
+        input.delegation?.parentConversationId
+          ? { parentConversationId: input.delegation.parentConversationId }
+          : {}),
       });
     }
     return handle;

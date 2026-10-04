@@ -168,10 +168,11 @@ export async function fetchOrchestrationConversationEventWindow(
 }
 
 /**
- * A conversation's usage tree (`getConversationUsageTree`). Off until
- * `enabled`, so a closed stats dialog reads nothing. A 404 (no orchestration
- * record for this conversation) and a 422 (tree past its bound) are not
- * retried.
+ * A conversation's usage tree (`getConversationUsageTree`). Enabled by
+ * default, and off for an empty id or `config.enabled: false`. It polls only
+ * when `config.refetchInterval` is set, and stops polling after a 404 (no
+ * orchestration record for this conversation) or a 422 (tree past its
+ * bound): neither changes by asking again. Neither is retried.
  */
 export function useConversationUsageTreeQuery(
   conversationId: string,
@@ -191,8 +192,19 @@ export function useConversationUsageTreeQuery(
       }),
     retry: false,
     staleTime: 2_000,
-    refetchInterval: config?.refetchInterval ?? false,
+    refetchInterval: (query) =>
+      isSettledUsageTreeRefusal(query.state.error)
+        ? false
+        : (config?.refetchInterval ?? false),
   });
+}
+
+/** A usage-tree answer that asking again cannot change. */
+function isSettledUsageTreeRefusal(error: unknown): boolean {
+  return (
+    error instanceof StationHttpError &&
+    (error.status === 404 || error.status === 422)
+  );
 }
 
 /** Reconciles one persisted context-boundary intent after reload or reconnect. */

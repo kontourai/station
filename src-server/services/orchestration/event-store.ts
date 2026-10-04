@@ -4690,59 +4690,112 @@ export class EventStore {
   }
 
   /**
-   * Sessions Station launched as delegated tasks of the given parents: a
-   * session whose own launch metadata names itself as the task
-   * (`metadata.taskId` is its thread) and one of `parentTaskIds` as its
-   * `metadata.parentTaskId`. The parent id is the calling conversation, as
-   * the delegation tool stamps it. Reads at most `limit` threads; the caller
-   * passes its bound plus one so an over-bound tree is refused.
+   * Sessions that name one of `parentIds` as the conversation that launched
+   * them, and how:
+   *
+   * - `delegation-context`: the delegation context Station stamped at launch
+   *   (`metadata.delegation.parentConversationId`), or the copy a
+   *   paired-Station dispatch record keeps (`metadata.parentConversationId`).
+   *   For an agent's station-control call Station derives it from the calling
+   *   session's own record; for a direct request it is the requester's claim.
+   * - `parent-task-id`: only `metadata.parentTaskId`, which a delegation
+   *   request may set itself. Used only when there is no delegation context.
+   *
+   * Every session.started/session.configured row is examined once for the
+   * whole batch of parents (one level of a tree read), through the method
+   * index; there is no index on the JSON fields. Examines at most `limit`
+   * candidate sessions per chunk of parents and reports `truncated` when a
+   * chunk reached it, so the caller can refuse rather than read a cut list.
    */
-  listDelegatedSessionThreads(
-    parentTaskIds: readonly string[],
+  listSessionsNamingParents(
+    parentIds: readonly string[],
     limit: number,
-  ): Array<{ threadId: string; parentTaskId: string }> {
-    const unique = [...new Set(parentTaskIds)];
-    if (unique.length === 0 || limit < 1) return [];
-    const result: Array<{ threadId: string; parentTaskId: string }> = [];
+  ): {
+    sessions: Array<{
+      threadId: string;
+      parentId: string;
+      binding: 'delegation-context' | 'parent-task-id';
+    }>;
+    truncated: boolean;
+  } {
+    const unique = [...new Set(parentIds)];
+    const result: Array<{
+      threadId: string;
+      parentId: string;
+      binding: 'delegation-context' | 'parent-task-id';
+    }> = [];
+    let truncated = false;
+    if (unique.length === 0 || limit < 1)
+      return { sessions: result, truncated };
     const seen = new Set<string>();
     for (
       let offset = 0;
-      offset < unique.length && result.length < limit;
+      offset < unique.length;
       offset += EVENT_STORE_BATCH_CHUNK_SIZE
     ) {
       const chunk = unique.slice(offset, offset + EVENT_STORE_BATCH_CHUNK_SIZE);
+      const list = chunk.map(() => '?').join(', ');
       const rows = this.db
         .prepare(
-          `SELECT thread_id, parent_task_id FROM (
-             SELECT e.thread_id AS thread_id,
-                    json_extract(e.payload, '$.metadata.parentTaskId') AS parent_task_id,
-                    MIN(e.global_sequence) AS first_sequence
-               FROM orchestration_events e
-              WHERE e.method IN ('session.started', 'session.configured')
-                AND json_valid(e.payload)
-                AND json_type(e.payload, '$.metadata.parentTaskId') = 'text'
-                AND json_extract(e.payload, '$.metadata.taskId') = e.thread_id
-                AND json_extract(e.payload, '$.metadata.parentTaskId') IN (${chunk.map(() => '?').join(', ')})
-              GROUP BY e.thread_id, parent_task_id)
-           ORDER BY first_sequence ASC
-           LIMIT ?`,
+          `SELECT e.thread_id AS thread_id,
+                  MAX(COALESCE(
+                    json_extract(e.payload, '$.metadata.delegation.parentConversationId'),
+                    json_extract(e.payload, '$.metadata.parentConversationId'))) AS verified_parent,
+                  MAX(json_extract(e.payload, '$.metadata.parentTaskId')) AS claimed_parent,
+                  MIN(e.global_sequence) AS first_sequence
+             FROM orchestration_events e
+            WHERE e.method IN ('session.started', 'session.configured')
+              AND json_valid(e.payload)
+              AND (json_extract(e.payload, '$.metadata.delegation.parentConversationId') IN (${list})
+                OR json_extract(e.payload, '$.metadata.parentConversationId') IN (${list})
+                OR json_extract(e.payload, '$.metadata.parentTaskId') IN (${list}))
+            GROUP BY e.thread_id
+            ORDER BY first_sequence ASC
+            LIMIT ?`,
         )
-        .all(...chunk, limit - result.length) as Array<{
+        .all(...chunk, ...chunk, ...chunk, limit) as Array<{
         thread_id: string;
-        parent_task_id: string;
+        verified_parent: unknown;
+        claimed_parent: unknown;
       }>;
+      if (rows.length >= limit) truncated = true;
+      const named = new Set(chunk);
       for (const row of rows) {
-        // A session names one parent; a later relaunch naming another is not
-        // a second child of a second parent.
+        // Matched by another chunk's parents already.
         if (seen.has(row.thread_id)) continue;
-        seen.add(row.thread_id);
-        result.push({
-          threadId: row.thread_id,
-          parentTaskId: row.parent_task_id,
-        });
+        // A delegation context decides; a parent task id counts only when
+        // there is none.
+        const verified =
+          typeof row.verified_parent === 'string'
+            ? row.verified_parent
+            : undefined;
+        const claimed =
+          typeof row.claimed_parent === 'string'
+            ? row.claimed_parent
+            : undefined;
+        if (verified !== undefined) {
+          // Pushed by the chunk that names the verified parent, if any.
+          if (named.has(verified)) {
+            seen.add(row.thread_id);
+            result.push({
+              threadId: row.thread_id,
+              parentId: verified,
+              binding: 'delegation-context',
+            });
+          }
+          continue;
+        }
+        if (claimed !== undefined && named.has(claimed)) {
+          seen.add(row.thread_id);
+          result.push({
+            threadId: row.thread_id,
+            parentId: claimed,
+            binding: 'parent-task-id',
+          });
+        }
       }
     }
-    return result;
+    return { sessions: result, truncated };
   }
 
   /**

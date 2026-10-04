@@ -28,6 +28,7 @@ import {
   CODEX_COLLAB_V1_SPAWN_WAIT_COMPLETED,
   replayCodexCapture,
 } from '../../../providers/__tests__/codex-collab-fixtures.js';
+import { createChildDelegationContext } from '../../../runtime/agents/delegation.js';
 import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
 import { OrchestrationService } from '../orchestration-service.js';
@@ -139,6 +140,25 @@ function foldedSubagentTokens(threadId: string) {
   );
 }
 
+/**
+ * Per-call usage events as the Muse serve adapter writes them (a per-turn
+ * reporter, so each event is its own receipt; Codex restates a cumulative
+ * total that one receipt per engine process replaces).
+ */
+function usage(store: EventStore, threadId: string, count: number, from = 0) {
+  for (let index = from; index < from + count; index += 1)
+    store.appendEvent({
+      eventId: `${threadId}:usage:${index}`,
+      threadId,
+      turnId: `${threadId}:turn:${index}`,
+      provider: 'muse',
+      method: 'token-usage.updated',
+      createdAt: '2026-09-23T00:00:03.000Z',
+      promptTokens: 10,
+      completionTokens: 1,
+    } as CanonicalRuntimeEvent);
+}
+
 function walk(node: ThreadUsageNode): ThreadUsageNode[] {
   return [node, ...node.children.flatMap(walk)];
 }
@@ -184,10 +204,12 @@ describe('conversation usage tree', () => {
       (child) => child.kind === 'engine-subagent',
     );
     // Each subagent keeps the figure the child-work contract's own fold keeps
-    // for it (the read must not re-derive child usage another way).
-    expect(claudeSubagents.map((child) => child.own?.totalTokens)).toEqual(
-      foldedSubagentTokens(ROOT),
-    );
+    // for it, as what it is: a last-request size, never tokens used.
+    expect(
+      claudeSubagents.map((child) => child.own?.lastRequestTokens),
+    ).toEqual(foldedSubagentTokens(ROOT));
+    for (const child of claudeSubagents)
+      expect(child.own?.totalTokens).toBeUndefined();
     for (const child of claudeSubagents)
       expect(child.relation).toMatchObject({
         tokens: 'not-reported',
@@ -251,21 +273,29 @@ describe('conversation usage tree', () => {
     store.close();
   });
 
-  test('a delegate on a paired Station is shown and makes the total partial', () => {
+  test('a delegate on a paired Station, recorded by the real dispatch writer, is shown and makes the total partial', () => {
     const store = fixtureStore();
     start(store, 'conv-codex', 'codex');
-    start(
-      store,
-      'peer-task',
-      'codex',
-      delegateMetadata('peer-task', 'conv-codex', { environmentKind: 'peer' }),
-    );
-    const outcome = service(store).readThreadUsageTree('conv-codex', as(OWNER));
+    const svc = service(store);
+    // What delegateTask records after forwarding to a peer: its own thread id,
+    // the REMOTE task id, and the parent conversation the route resolved.
+    const peerThread = svc.recordPeerDelegationActivityDispatch({
+      taskId: 'remote-task-1',
+      conversationId: 'remote-task-1',
+      prompt: 'Build it on the lab Station',
+      userId: OWNER,
+      environment: { id: 'env-peer', name: 'Lab', kind: 'peer' },
+      target: { kind: 'agent', id: 'agent-x' },
+      parentConversationId: 'conv-codex',
+    });
+    expect(peerThread).not.toBe('remote-task-1');
+    const outcome = svc.readThreadUsageTree('conv-codex', as(OWNER));
     if (outcome.status !== 'found') throw new Error(outcome.status);
+    expect(outcome.tree.root.children).toHaveLength(1);
     const [peer] = outcome.tree.root.children;
     expect(peer).toMatchObject({
       kind: 'station-delegate',
-      id: 'peer-task',
+      id: peerThread,
       location: 'paired-station',
       relation: { tokens: 'not-reported', cost: 'not-reported' },
     });
@@ -275,6 +305,27 @@ describe('conversation usage tree', () => {
     expect(outcome.tree.total.partialReasons.join(' ')).toMatch(
       /paired Station/,
     );
+    store.close();
+  });
+
+  test('a peer dispatch naming the conversation only by parentTaskId is found too', () => {
+    const store = fixtureStore();
+    start(store, 'conv-codex', 'codex');
+    const svc = service(store);
+    svc.recordPeerDelegationActivityDispatch({
+      taskId: 'remote-task-2',
+      conversationId: 'remote-task-2',
+      prompt: 'p',
+      userId: OWNER,
+      environment: { id: 'env-peer', name: 'Lab', kind: 'peer' },
+      target: { kind: 'agent', id: 'agent-x' },
+      parentTaskId: 'conv-codex',
+    });
+    const outcome = svc.readThreadUsageTree('conv-codex', as(OWNER));
+    if (outcome.status !== 'found') throw new Error(outcome.status);
+    expect(outcome.tree.root.children.map((child) => child.location)).toEqual([
+      'paired-station',
+    ]);
     store.close();
   });
 
@@ -342,9 +393,10 @@ describe('conversation usage tree', () => {
     store.close();
   });
 
-  test('a delegate the reader cannot read is counted as missing and never described', () => {
+  test('a session the reader cannot read that names the conversation is ignored, not counted as missing', () => {
     const store = fixtureStore();
     start(store, 'conv-codex', 'codex');
+    usage(store, 'conv-codex', 1);
     start(
       store,
       'private-task',
@@ -352,13 +404,186 @@ describe('conversation usage tree', () => {
       delegateMetadata('private-task', 'conv-codex'),
       'someone-else',
     );
+    usage(store, 'private-task', 5);
     const outcome = service(store).readThreadUsageTree('conv-codex', as(OWNER));
     if (outcome.status !== 'found') throw new Error(outcome.status);
     expect(outcome.tree.root.children).toEqual([]);
-    expect(outcome.tree.total.tokens.complete).toBe(false);
-    expect(outcome.tree.total.partialReasons).toEqual([
-      '1 delegated task is not visible to you and not counted.',
+    expect(outcome.tree.total.tokens).toMatchObject({
+      totalTokens: 11,
+      complete: true,
+    });
+    expect(outcome.tree.total.partialReasons).toEqual([]);
+    store.close();
+  });
+
+  test('unreadable sessions naming the conversation never crowd out a readable delegate', () => {
+    const store = fixtureStore();
+    start(store, 'conv-h', 'codex');
+    for (let index = 0; index < 250; index += 1)
+      start(
+        store,
+        `hid-${index}`,
+        'codex',
+        delegateMetadata(`hid-${index}`, 'conv-h'),
+        'someone-else',
+      );
+    start(store, 'vis', 'codex', delegateMetadata('vis', 'conv-h'));
+    usage(store, 'vis', 1);
+    const outcome = service(store).readThreadUsageTree('conv-h', as(OWNER));
+    if (outcome.status !== 'found') throw new Error(outcome.status);
+    expect(outcome.tree.root.children.map((child) => child.id)).toEqual([
+      'vis',
     ]);
+    expect(outcome.tree.total.tokens.totalTokens).toBe(11);
+    store.close();
+  });
+
+  test('a level with more delegate records than its bound is refused, readable or not', () => {
+    const store = fixtureStore();
+    start(store, 'conv-many', 'codex');
+    for (let index = 0; index < 1_000; index += 1)
+      start(
+        store,
+        `many-${index}`,
+        'codex',
+        delegateMetadata(`many-${index}`, 'conv-many'),
+        'someone-else',
+      );
+    expect(service(store).readThreadUsageTree('conv-many', as(OWNER))).toEqual({
+      status: 'too-large',
+      limit: 'delegate-records',
+      max: 1_000,
+    });
+    store.close();
+  });
+
+  test('a delegate launched by an agent of the conversation is found by its delegation context, with no parentTaskId', () => {
+    const store = fixtureStore();
+    start(store, 'conv-agent', 'claude');
+    // What the route stamps for an engine session's delegate_task call: the
+    // context derived from the calling session's own conversation.
+    start(store, 'task-ctx', 'codex', {
+      taskId: 'task-ctx',
+      delegation: createChildDelegationContext({
+        agentSlug: 'coder',
+        conversationId: 'conv-agent',
+      }),
+    });
+    usage(store, 'task-ctx', 2);
+    // A parentTaskId claim never overrides a delegation context naming
+    // another conversation.
+    start(store, 'task-elsewhere', 'codex', {
+      taskId: 'task-elsewhere',
+      parentTaskId: 'conv-agent',
+      delegation: createChildDelegationContext({
+        agentSlug: 'coder',
+        conversationId: 'conv-other',
+      }),
+    });
+    usage(store, 'task-elsewhere', 3);
+    const outcome = service(store).readThreadUsageTree('conv-agent', as(OWNER));
+    if (outcome.status !== 'found') throw new Error(outcome.status);
+    expect(outcome.tree.root.children.map((child) => child.id)).toEqual([
+      'task-ctx',
+    ]);
+    expect(outcome.tree.total.tokens.totalTokens).toBe(22);
+    store.close();
+  });
+
+  test('a delegate naming a later session of the conversation is found, and the lineage itself is not a child', () => {
+    const store = fixtureStore();
+    start(store, 'root-l', 'codex');
+    store.reserveNextConversationSession({
+      conversationId: 'root-l',
+      predecessorSessionId: 'root-l',
+      proposedSessionId: 'root-l:session:2',
+      createdAt: '2026-09-23T00:00:05.000Z',
+    });
+    // The successor session carries launch metadata naming its own
+    // conversation; it is the conversation's own usage, counted once.
+    start(store, 'root-l:session:2', 'codex', {
+      taskId: 'root-l:session:2',
+      parentTaskId: 'root-l',
+    });
+    usage(store, 'root-l:session:2', 1);
+    start(
+      store,
+      'task-l',
+      'codex',
+      delegateMetadata('task-l', 'root-l:session:2'),
+    );
+    usage(store, 'task-l', 1);
+    const outcome = service(store).readThreadUsageTree('root-l', as(OWNER));
+    if (outcome.status !== 'found') throw new Error(outcome.status);
+    expect(outcome.tree.root.children.map((child) => child.id)).toEqual([
+      'task-l',
+    ]);
+    expect(outcome.tree.total.tokens.totalTokens).toBe(22);
+    store.close();
+  });
+
+  test("a child-work delta naming another session as its reporter is not this conversation's subagent", () => {
+    const store = fixtureStore();
+    seedClaudeRoot(store);
+    // The same real frames, reported by another session but written on this
+    // conversation's thread.
+    append(
+      store,
+      replayClaudeTaskCapture('task-subagents', { threadId: 'elsewhere' })
+        .events.filter((event) => event.method === 'child-work.updated')
+        .map((event) => ({
+          ...event,
+          eventId: `misfiled:${event.eventId}`,
+          threadId: ROOT,
+        })),
+    );
+    const outcome = service(store).readThreadUsageTree(ROOT, as(OWNER));
+    if (outcome.status !== 'found') throw new Error(outcome.status);
+    expect(
+      outcome.tree.root.children.filter(
+        (child) => child.kind === 'engine-subagent',
+      ),
+    ).toHaveLength(foldedSubagentTokens(ROOT).length);
+    store.close();
+  });
+
+  test('delegates nest to the depth bound; one level deeper is refused', () => {
+    const store = fixtureStore();
+    start(store, 'd0', 'codex');
+    for (let level = 1; level <= 8; level += 1)
+      start(
+        store,
+        `d${level}`,
+        'codex',
+        delegateMetadata(`d${level}`, `d${level - 1}`),
+      );
+    const atBound = service(store).readThreadUsageTree('d0', as(OWNER));
+    expect(atBound.status === 'found' && atBound.tree.nodeCount).toBe(9);
+    start(store, 'd9', 'codex', delegateMetadata('d9', 'd8'));
+    expect(service(store).readThreadUsageTree('d0', as(OWNER))).toEqual({
+      status: 'too-large',
+      limit: 'depth',
+      max: 8,
+    });
+    store.close();
+  });
+
+  test('5,000 usage observations across the tree are read; one more is refused', () => {
+    const store = fixtureStore();
+    start(store, 'e0', 'codex');
+    start(store, 'e1', 'codex', delegateMetadata('e1', 'e0'));
+    usage(store, 'e0', 3_000);
+    usage(store, 'e1', 2_000);
+    const atBound = service(store).readThreadUsageTree('e0', as(OWNER));
+    expect(
+      atBound.status === 'found' && atBound.tree.total.tokens.totalTokens,
+    ).toBe(55_000);
+    usage(store, 'e1', 1, 9_000);
+    expect(service(store).readThreadUsageTree('e0', as(OWNER))).toEqual({
+      status: 'too-large',
+      limit: 'usage-events',
+      max: 5_000,
+    });
     store.close();
   });
 

@@ -101,15 +101,25 @@ and the per-engine rules live in
 | --- | --- | --- | --- |
 | Station-delegated task (this Station) | Added | Added | A delegate is its own session with its own receipts |
 | Station-delegated task (paired Station) | Not counted | Not counted | Its usage is recorded on the other Station |
-| Claude Code subagent | Not counted | Already in the parent's | The SDK documents `result.usage` as main-loop only and `total_cost_usd` as covering Task subagents. A measured run matched both. A subagent's own `total_tokens` equals its last request's size, not its consumption, in recorded transcripts |
+| Claude Code subagent | Not counted | Already in the parent's | The SDK documents `result.usage` as main-loop only and `total_cost_usd` as covering Task subagents. A measured run matched both. A subagent's own `total_tokens` equals its last request's size, not its consumption, in recorded transcripts, so it is shown as "last request", never as tokens used |
 | Codex subagent | Added | Not counted | Each child is its own thread; in the recorded collab captures the parent's cumulative total is the sum of its own calls only |
 | Muse workflow subagent | Added | Not counted | In the recorded `muse serve` captures the session's cumulative figures exclude the child's usage |
 | Any other engine | Not counted | Not counted | Undeclared; never guessed |
 
 "Not counted" makes the total partial, and the dialog lists why. A subagent's
-own figure is still shown in the breakdown. Costs in different currencies, and
-estimates under different price snapshots, are listed side by side and not
-added together. The tree covers sessions on this Station only.
+own figure is still shown in the breakdown. The token total is input + output
+only, unlike the dialog's own "Total", which adds cache where that is backed;
+the breakdown says whether its input figures exclude cached input, and says so
+when it adds engines that count cached input differently. Costs in different
+currencies, and estimates under different price snapshots, are listed side by
+side and not added together. The tree covers sessions on this Station only.
+
+Delegated tasks are found from the delegation context Station stamps when a
+conversation's agent calls `delegate_task` through session-bound
+station-control, or from a `parentTaskId` the request names. A task launched
+through a caller-less station-control process names neither, so it is not
+found and not shown as missing. The tree refreshes every 15 seconds while the
+dialog is open, and stops after a 404 or 422.
 
 **People paired with this Station** reads the existing paired-device registry
 through a captured API/authority scope. Only active interactive devices with an

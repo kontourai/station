@@ -18,6 +18,12 @@ import { LazyBoundary } from '../LazyBoundary';
  * tab is hidden (React Query's `refetchIntervalInBackground` default).
  */
 const STATS_REFRESH_MS = 2_000;
+/**
+ * The usage tree walks every session the conversation launched (a scan of
+ * session-start records per depth level), so it is refreshed far less often
+ * than the stats read, and not at all after a 404 or 422.
+ */
+const USAGE_TREE_REFRESH_MS = 15_000;
 
 const loadConversationStatsModal = () =>
   import('./ConversationStatsModal').then((m) => ({
@@ -56,7 +62,7 @@ export function ConversationStats({
   // record (404) simply has no breakdown, which is not a stats failure.
   const usageTree = useConversationUsageTreeQuery(conversationId, apiBase, {
     enabled: isVisible,
-    refetchInterval: isVisible ? STATS_REFRESH_MS : false,
+    refetchInterval: isVisible ? USAGE_TREE_REFRESH_MS : false,
   });
   const usageTreeMissing =
     usageTree.error instanceof StationHttpError &&

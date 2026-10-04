@@ -17,6 +17,12 @@ import type { ChildWorkStatus } from './child-work.js';
 export const THREAD_USAGE_TREE_MAX_NODES = 200;
 /** Bound on how deep Station delegates may nest below the root. */
 export const THREAD_USAGE_TREE_MAX_DEPTH = 8;
+/**
+ * Bound on the delegate records one level of a tree read may examine,
+ * readable or not. Reaching it refuses the read: the records past it were
+ * never seen, so a total built without them could not say what it misses.
+ */
+export const THREAD_USAGE_TREE_MAX_DELEGATE_RECORDS = 1_000;
 
 /**
  * How a child's usage relates to its parent's figures, for one measurement:
@@ -63,11 +69,23 @@ export interface ThreadUsageFigures {
   cacheReadTokens?: number;
   cacheWriteTokens?: number;
   /**
-   * `inputTokens + outputTokens` as the engine reported them, or the child's
-   * own total when that is all its engine reports. Cache reads and writes
-   * are listed separately and are not part of it.
+   * Tokens used: `inputTokens + outputTokens` as the engine reported them,
+   * or a subagent's own consumption total when that is all its engine
+   * reports. Cache reads and writes are listed separately and are not added
+   * to it; whether an engine's input figure already contains cached input is
+   * the engine's own convention (see `ThreadUsageTotal.tokens.cacheInclusion`).
    */
   totalTokens?: number;
+  /**
+   * A subagent's token figure that is the size of its LAST request (input +
+   * output + cache), not what it used. Shown, never added, never a
+   * `totalTokens`.
+   */
+  lastRequestTokens?: number;
+  /** A subagent's token figure whose meaning Station hasn't established. */
+  unverifiedTokens?: number;
+  /** The engines whose usage receipts these figures come from. */
+  providers?: string[];
   reportedCost?: ThreadUsageReportedCost[];
   estimatedCost?: ThreadUsageEstimatedCost[];
   toolUses?: number;
@@ -126,7 +144,18 @@ export interface ThreadUsageTotal {
     outputTokens?: number;
     cacheReadTokens?: number;
     cacheWriteTokens?: number;
+    /** Input + output tokens; cache reads and writes are not added. */
     totalTokens?: number;
+    /**
+     * Whether the summed input figures contain cached input, from each
+     * contributing engine's declared convention: `excluded` (every engine
+     * reports uncached input), `not-established` (one convention, not
+     * established as cache-free) or `mixed` (engines that count cached input
+     * differently are summed, so the total mixes measures).
+     */
+    cacheInclusion?: 'excluded' | 'not-established' | 'mixed';
+    /** The engines whose tokens are in the total. */
+    providers?: string[];
     /** False when any child's tokens are `not-reported`. */
     complete: boolean;
   };

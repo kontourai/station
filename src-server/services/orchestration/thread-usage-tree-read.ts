@@ -9,6 +9,7 @@ import {
 import { ENGINE_CAPABILITY_MATRICES } from '@kontourai/station-contracts/engine-capability-matrix';
 import type { SessionReadAuthority } from '@kontourai/station-contracts/tenancy';
 import {
+  THREAD_USAGE_TREE_MAX_DELEGATE_RECORDS,
   THREAD_USAGE_TREE_MAX_DEPTH,
   THREAD_USAGE_TREE_MAX_NODES,
   type ThreadUsageNode,
@@ -53,13 +54,18 @@ export interface ThreadUsageTreeReadDeps {
   listChildWorkHistoryForThreads: (
     threadIds: readonly string[],
   ) => Map<string, PersistedRuntimeEvent[]>;
-  listDelegatedSessionThreads: (
-    parentTaskIds: readonly string[],
+  listSessionsNamingParents: (
+    parentIds: readonly string[],
     limit: number,
-  ) => Array<{ threadId: string; parentTaskId: string }>;
+  ) => {
+    sessions: Array<{ threadId: string; parentId: string }>;
+    truncated: boolean;
+  };
+  /** The conversation a session belongs to; its own id when it has none. */
+  conversationForThread: (threadId: string) => string;
   /**
-   * A delegated session as its parent's child work, from its own session
-   * summary: undefined when the thread is not a delegate.
+   * A launched session as its parent's child work, from its own session
+   * summary. Undefined only when Station has no record of the session.
    */
   describeDelegate: (threadId: string) =>
     | {
@@ -80,13 +86,15 @@ export type ThreadUsageTreeReadOutcome =
   | { status: 'not-found' }
   | {
       status: 'too-large';
-      limit: 'nodes' | 'depth' | 'usage-events';
+      limit: TreeLimit;
       max: number;
     };
 
+type TreeLimit = 'nodes' | 'depth' | 'usage-events' | 'delegate-records';
+
 class TreeTooLarge extends Error {
   constructor(
-    readonly limit: 'nodes' | 'depth' | 'usage-events',
+    readonly limit: TreeLimit,
     readonly max: number,
   ) {
     super(`usage tree exceeds its ${limit} bound (${max})`);
@@ -165,9 +173,12 @@ function subagentObservability(
 
 /**
  * One conversation's usage tree: its own sessions' receipts, the subagents
- * those sessions reported, and the delegated tasks Station launched from it,
- * recursively. Each conversation is authorized whole; a delegate the reader
- * may not read is counted as missing and never described.
+ * those sessions reported, and the sessions launched from it, read one level
+ * at a time (one delegate lookup per level). Each conversation is authorized
+ * whole. A session naming a conversation the reader may not read is ignored:
+ * a real delegate of the reader's conversation is the reader's own work, so
+ * an unreadable one is not evidence of missing usage, and counting it would
+ * let anyone mark someone else's total partial.
  */
 export function readThreadUsageTree(
   deps: ThreadUsageTreeReadDeps,
@@ -185,15 +196,20 @@ export function readThreadUsageTree(
       throw new TreeTooLarge('nodes', THREAD_USAGE_TREE_MAX_NODES);
   };
 
-  const readConversation = (
-    id: string,
-    depth: number,
-  ): ThreadUsageConversationSource => {
+  interface Pending {
+    depth: number;
+    threadIds: string[];
+    source: ThreadUsageConversationSource & {
+      delegates: ThreadUsageDelegateSource[];
+    };
+  }
+
+  const readConversation = (id: string, depth: number): Pending => {
     if (depth > THREAD_USAGE_TREE_MAX_DEPTH)
       throw new TreeTooLarge('depth', THREAD_USAGE_TREE_MAX_DEPTH);
-    visited.add(id);
     countNodes(1);
     const threadIds = [...new Set([id, ...deps.conversationThreadIds(id)])];
+    for (const threadId of threadIds) visited.add(threadId);
     const remaining = THREAD_USAGE_TREE_MAX_USAGE_EVENTS - usageEvents;
     const rows = deps.listUsageReceiptEventsForThreads(
       threadIds,
@@ -213,60 +229,77 @@ export function readThreadUsageTree(
     );
     countNodes(folded.subagents.length);
     const described = deps.describeConversation(threadIds);
-    const delegates: ThreadUsageDelegateSource[] = [];
-    let hiddenDelegateCount = 0;
-    const found = deps.listDelegatedSessionThreads(
-      [id],
-      THREAD_USAGE_TREE_MAX_NODES - nodes + 1,
-    );
-    for (const { threadId } of found) {
-      if (visited.has(threadId)) continue;
-      if (!deps.canReadConversation(threadId, authority)) {
-        hiddenDelegateCount += 1;
-        continue;
-      }
-      const delegate = deps.describeDelegate(threadId);
-      if (!delegate) continue;
-      if (delegate.pairedStation) {
-        countNodes(1);
-        visited.add(threadId);
-        delegates.push({
-          location: 'paired-station',
-          item: delegate.item,
-          ...(delegate.provider ? { provider: delegate.provider } : {}),
-        });
-        continue;
-      }
-      delegates.push({
-        location: 'local',
-        item: delegate.item,
-        ...(delegate.provider ? { provider: delegate.provider } : {}),
-        source: readConversation(threadId, depth + 1),
-      });
-    }
     const observability = subagentObservability(
       described.provider,
       folded.notReported,
     );
     return {
-      conversationId: id,
-      threadId: threadIds.at(-1) ?? id,
-      ...(described.title ? { title: described.title } : {}),
-      ...(described.provider ? { provider: described.provider } : {}),
-      receipts,
-      subagents: folded.subagents,
-      ...(observability ? { subagentObservability: observability } : {}),
-      delegates,
-      ...(hiddenDelegateCount > 0 ? { hiddenDelegateCount } : {}),
-      ...(folded.omitted > 0 ? { omittedSubagentCount: folded.omitted } : {}),
+      depth,
+      threadIds,
+      source: {
+        conversationId: id,
+        threadId: threadIds.at(-1) ?? id,
+        ...(described.title ? { title: described.title } : {}),
+        ...(described.provider ? { provider: described.provider } : {}),
+        receipts,
+        subagents: folded.subagents,
+        ...(observability ? { subagentObservability: observability } : {}),
+        delegates: [],
+        ...(folded.omitted > 0 ? { omittedSubagentCount: folded.omitted } : {}),
+      },
     };
   };
 
   try {
-    return {
-      status: 'found',
-      tree: buildThreadUsageTree(readConversation(conversationId, 0)),
-    };
+    const root = readConversation(conversationId, 0);
+    let level: Pending[] = [root];
+    while (level.length > 0) {
+      // A delegate may name any session of its parent's lineage.
+      const ownerOf = new Map<string, Pending>();
+      for (const pending of level)
+        for (const threadId of pending.threadIds)
+          ownerOf.set(threadId, pending);
+      const found = deps.listSessionsNamingParents(
+        [...ownerOf.keys()],
+        THREAD_USAGE_TREE_MAX_DELEGATE_RECORDS,
+      );
+      if (found.truncated)
+        throw new TreeTooLarge(
+          'delegate-records',
+          THREAD_USAGE_TREE_MAX_DELEGATE_RECORDS,
+        );
+      const next: Pending[] = [];
+      for (const session of found.sessions) {
+        const owner = ownerOf.get(session.parentId);
+        if (!owner) continue;
+        // A continued delegate is one child, named by its conversation.
+        const childId = deps.conversationForThread(session.threadId);
+        if (visited.has(childId) || visited.has(session.threadId)) continue;
+        if (!deps.canReadConversation(childId, authority)) continue;
+        visited.add(childId);
+        const delegate = deps.describeDelegate(childId);
+        if (!delegate) continue;
+        if (delegate.pairedStation) {
+          countNodes(1);
+          owner.source.delegates.push({
+            location: 'paired-station',
+            item: delegate.item,
+            ...(delegate.provider ? { provider: delegate.provider } : {}),
+          });
+          continue;
+        }
+        const child = readConversation(childId, owner.depth + 1);
+        owner.source.delegates.push({
+          location: 'local',
+          item: delegate.item,
+          ...(delegate.provider ? { provider: delegate.provider } : {}),
+          source: child.source,
+        });
+        next.push(child);
+      }
+      level = next;
+    }
+    return { status: 'found', tree: buildThreadUsageTree(root.source) };
   } catch (error) {
     if (error instanceof TreeTooLarge)
       return { status: 'too-large', limit: error.limit, max: error.max };

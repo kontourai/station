@@ -14,6 +14,7 @@ import type {
   AttentionRequestReference,
 } from '@kontourai/station-contracts/attention';
 import { validateChatAttachments } from '@kontourai/station-contracts/chat-attachment';
+import { projectDelegateChildWork } from '@kontourai/station-contracts/child-work';
 import type {
   ClientOrigin,
   ClientOriginActor,
@@ -1003,6 +1004,12 @@ interface PeerDelegationActivityDispatch {
   target: { kind: 'agent'; id: string };
   projectSlug?: string;
   parentTaskId?: string;
+  /**
+   * The calling conversation from the delegation context the route resolved
+   * for the request, so this Station can attribute the record to the
+   * conversation that launched it.
+   */
+  parentConversationId?: string;
 }
 
 function peerDelegationActivityThreadId(
@@ -3658,6 +3665,9 @@ export class OrchestrationService {
         userId: input.userId,
         ...(input.projectSlug ? { projectSlug: input.projectSlug } : {}),
         ...(input.parentTaskId ? { parentTaskId: input.parentTaskId } : {}),
+        ...(input.parentConversationId
+          ? { parentConversationId: input.parentConversationId }
+          : {}),
       },
     });
     return threadId;
@@ -4983,8 +4993,11 @@ export class OrchestrationService {
           eventStore.listUsageReceiptEventsForThreads(threadIds, limit),
         listChildWorkHistoryForThreads: (threadIds) =>
           eventStore.listChildWorkHistoryForThreads(threadIds),
-        listDelegatedSessionThreads: (parentTaskIds, limit) =>
-          eventStore.listDelegatedSessionThreads(parentTaskIds, limit),
+        listSessionsNamingParents: (parentIds, limit) =>
+          eventStore.listSessionsNamingParents(parentIds, limit),
+        conversationForThread: (threadId) =>
+          eventStore.conversationForSession(threadId)?.conversationId ??
+          threadId,
         describeDelegate: (threadId) => {
           const persisted = eventStore.readSessionByThread(threadId);
           const loaded = this.sessionReadModel.get(threadId);
@@ -5004,7 +5017,15 @@ export class OrchestrationService {
               new Date().toISOString(),
             ),
           });
-          const item = summary.childWork?.asChild;
+          // A session launched with a delegation context but no task record
+          // (an agent messaging another agent) is still a child: project it
+          // through the same one mapping, under its own thread as the task.
+          const item =
+            summary.childWork?.asChild ??
+            projectDelegateChildWork({
+              ...summary,
+              delegation: { taskId: threadId },
+            });
           if (!item) return undefined;
           return {
             item,

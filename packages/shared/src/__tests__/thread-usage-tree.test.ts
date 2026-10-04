@@ -94,6 +94,7 @@ describe('receipt figures', () => {
       inputTokens: 10,
       outputTokens: 5,
       totalTokens: 15,
+      providers: ['codex'],
       reportedCost: [
         { amount: 2, currency: 'USD' },
         { amount: 4, currency: 'EUR' },
@@ -149,7 +150,12 @@ describe('roll-up', () => {
       reportedCost: [{ amount: 0.25, currency: 'USD' }],
       complete: true,
     });
-    expect(tree.root.children[0].own?.totalTokens).toBe(41_000);
+    // A Claude subagent's figure is its last request's size: shown as that,
+    // never as tokens used.
+    expect(tree.root.children[0].own).toMatchObject({
+      lastRequestTokens: 41_000,
+    });
+    expect(tree.root.children[0].own?.totalTokens).toBeUndefined();
     expect(tree.total.tokens.totalTokens).toBeUndefined();
   });
 
@@ -271,6 +277,60 @@ describe('roll-up', () => {
       tokens: { totalTokens: 107, complete: true },
       cost: { reportedCost: [{ amount: 1, currency: 'USD' }], complete: true },
       partialReasons: [],
+    });
+  });
+
+  test('says whether the summed input contains cached input, and when engines disagree', () => {
+    const own = (provider: string) =>
+      receipt(`${provider}-t`, {
+        provider,
+        inputTokens: 10,
+        outputTokens: 1,
+      });
+    const delegate = (id: string, provider: string) => ({
+      location: 'local' as const,
+      item: {
+        producer: 'station-delegate' as const,
+        reporterThreadId: id,
+        childId: id,
+        status: 'completed' as const,
+      },
+      source: conversation({ conversationId: id, receipts: [own(provider)] }),
+    });
+    const claudeOnly = buildThreadUsageTree(
+      conversation({ receipts: [own('claude')] }),
+    );
+    expect(claudeOnly.total.tokens).toMatchObject({
+      providers: ['claude'],
+      cacheInclusion: 'excluded',
+    });
+    const codexOnly = buildThreadUsageTree(
+      conversation({ receipts: [own('codex')] }),
+    );
+    expect(codexOnly.total.tokens.cacheInclusion).toBe('not-established');
+    const mixed = buildThreadUsageTree(
+      conversation({
+        receipts: [own('claude')],
+        delegates: [delegate('d', 'codex')],
+      }),
+    );
+    expect(mixed.total.tokens).toMatchObject({
+      totalTokens: 22,
+      providers: ['claude', 'codex'],
+      cacheInclusion: 'mixed',
+    });
+  });
+
+  test("an undeclared engine's subagent figure is kept as unverified, never as tokens used", () => {
+    const tree = buildThreadUsageTree(
+      conversation({
+        subagents: [{ item: subagent('x', 99), provider: 'some-new-engine' }],
+      }),
+    );
+    expect(tree.root.children[0].own).toEqual({
+      unverifiedTokens: 99,
+      toolUses: 2,
+      durationMs: 900,
     });
   });
 });

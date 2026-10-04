@@ -896,9 +896,10 @@ Fetches conversation stats. Disabled when either param is undefined.
 
 Fetches the conversation's usage with its children (`getConversationUsageTree`,
 [`GET /api/orchestration/conversations/:conversationId/usage-tree`](session-api.md#conversation-usage-tree-get-conversationsconversationidusage-tree)).
-Disabled until `config.enabled` and for an empty id; it polls only when
-`config.refetchInterval` is set. A 404 (no conversation you can read) and a 422
-(a tree past its bound) reject with `StationHttpError` and are not retried.
+Enabled by default; disabled for an empty id or `config.enabled: false`. It
+polls only when `config.refetchInterval` is set. A 404 (no conversation you
+can read) and a 422 (a tree past its bound) reject with `StationHttpError`,
+are not retried, and stop the poll.
 
 ### `useUsageQuery(config?)`
 
