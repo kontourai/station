@@ -12,6 +12,8 @@
   "sources": [
     "packages/cli/src/commands/delegate.ts",
 
+    "packages/connect/src/core/nativeRelayLink.ts",
+
     "packages/contracts/package.json",
 
     "packages/contracts/src/__tests__/learning-review.test.ts",
@@ -25,6 +27,8 @@
     "packages/contracts/src/child-work.ts",
 
     "packages/contracts/src/conversation-pull-request-links.ts",
+
+    "packages/contracts/src/deployment-authentication.ts",
 
     "packages/contracts/src/harness-questions.ts",
 
@@ -40,9 +44,15 @@
 
     "packages/contracts/src/native-push.ts",
 
+    "packages/contracts/src/native-relay-enrollment.ts",
+
+    "packages/contracts/src/native-relay-link.ts",
+
     "packages/contracts/src/orchestration.ts",
 
     "packages/contracts/src/plugin.ts",
+
+    "packages/contracts/src/project-membership.ts",
 
     "packages/contracts/src/pull-request-provider.ts",
 
@@ -54,13 +64,23 @@
 
     "packages/contracts/src/scheduler.ts",
 
+    "packages/contracts/src/skill-experience.ts",
+
     "packages/contracts/src/system-status.ts",
 
+    "packages/contracts/src/task-room-work.ts",
+
     "packages/contracts/src/turn-stall-window.ts",
+
+    "packages/contracts/src/usage-rollup.ts",
 
     "packages/sdk/src/mobile-device.ts",
 
     "packages/shared/src/index.ts",
+
+    "src-desktop/src/native_relay_link_intake.rs",
+
+    "src-server/analytics/usage-rollup-service.ts",
 
     "src-server/knowledge-store/knowledge-record-observation.ts",
 
@@ -94,17 +114,25 @@
 
     "src-server/runtime/conversation/conversation-stats-view.ts",
 
+    "src-server/services/connections/__tests__/engine-account-history.test.ts",
+
+    "src-server/services/connections/engine-account-history.ts",
+
     "src-server/services/identity/application-session-service.ts",
 
     "src-server/services/identity/authority-observation.ts",
 
     "src-server/services/identity/relay-enrollment-service.ts",
 
+    "src-server/services/orchestration/__tests__/engine-account-usage-attribution.test.ts",
+
     "src-server/services/orchestration/orchestration-service.ts",
 
     "src-server/services/orchestration/orchestration-session-state.ts",
 
     "src-server/services/orchestration/session-lifecycle-service.ts",
+
+    "src-server/services/orchestration/session-transcript-reads.ts",
 
     "src-server/services/orchestration/turn-progress-tracker.ts",
 
@@ -116,35 +144,7 @@
 
     "src-server/tools/station-control-delegation.ts",
 
-    "src-ui/src/hooks/orchestration/ensureOrchestrationEventStream.ts",
-
-    "packages/contracts/src/task-room-work.ts",
-
-    "src-server/services/connections/engine-account-history.ts",
-
-    "src-server/services/connections/__tests__/engine-account-history.test.ts",
-
-    "src-server/services/orchestration/__tests__/engine-account-usage-attribution.test.ts",
-
-    "src-server/analytics/usage-rollup-service.ts",
-
-    "src-server/services/orchestration/session-transcript-reads.ts",
-
-    "packages/contracts/src/usage-rollup.ts",
-
-    "packages/contracts/src/skill-experience.ts",
-
-    "packages/connect/src/core/nativeRelayLink.ts",
-
-    "packages/contracts/src/deployment-authentication.ts",
-
-    "packages/contracts/src/native-relay-enrollment.ts",
-
-    "packages/contracts/src/native-relay-link.ts",
-
-    "packages/contracts/src/project-membership.ts",
-
-    "src-desktop/src/native_relay_link_intake.rs"
+    "src-ui/src/hooks/orchestration/ensureOrchestrationEventStream.ts"
   ],
 
   "checks": [
