@@ -84,12 +84,43 @@ records which of these items were later executed on packaged builds.
 
 ### Known test gap
 
-The teardown idempotency guard (an `AtomicBool` swap) and its service-mode
-early return are correct by construction but have no direct test: driving them
-requires a Tauri `AppHandle`. The guard matters because a normal quit fires
-both `WindowEvent::Destroyed` and `RunEvent::Exit`. The reachable half is
-covered by a test that spawns two real children and proves the owned sidecar is
-reaped while an attached service is not signalled.
+The teardown idempotency guard (an `AtomicBool` swap) matters because a normal
+quit fires both `WindowEvent::Destroyed` and `RunEvent::Exit`. Since #2961 the
+ownership-gated half of teardown (`shut_down_owned_sidecar`) is separated from
+the Tauri `AppHandle` and covered by a test that drives it against real child
+processes: the owned sidecar is reaped, while a Service, Unowned, or None owner
+signals nothing. The `AppHandle` wrapper (`teardown_sidecar`) and the tray kick
+remain untested.
+
+## Implementation note (#2961)
+
+[ADR 0020](0020-distribution-two-trains-channels-as-pointers.md) D4 replaced
+the read-then-claim sequence in the Decision above with one atomic host-owner
+claim. The launch no longer decides ownership from a read: the shared module
+refuses the sidecar claim while any live service or other sidecar holds the
+home and returns that owner. A preparation safety read remains to leave a
+serving home unprepared; it does not decide launch ownership. Even that path
+claims atomically, releasing a won reservation without spawning if the service
+exited meanwhile. The status refresh retains a display-only read that
+re-derives a non-sidecar owner. Also, `service install` and the service
+supervisor claim through the same primitive, so a live sidecar also blocks
+them. Installation reserves the home and writes policy before backend startup;
+backend failure restores the prior entry. Without installed policy, the
+supervisor creates its own service owner record with PID/birth before start.
+A conflicting live owner keeps it alive without running Station, polling with
+backoff capped at 30 seconds and logging reason changes. Lost ownership at
+readiness or on an existing five-second health tick stops and reaps Station
+before the same wait. Recovery waits for a live replacement even at the same
+service id, and retraction checks both PID and birth. A tick read that is
+unreadable keeps Station running and retries next tick; only a successful
+read proving a missing or different owner triggers recovery. An unreadable
+startup claim still fails closed.
+Desktop records the child's PID/birth immediately after spawn, before Listening,
+so stale recovery retains a live orphan. Spawn and publication are still
+separate operations. Bare container `service run` self-claims a fresh home;
+direct `command-station.js` remains unfenced, including a container invoking
+it directly and exposing a `0.0.0.0` listener through published ports. The service-owner report, no automatic attachment, and the lifetime
+split are unchanged.
 
 ## Evidence addendum (2026-09-29, #2957)
 

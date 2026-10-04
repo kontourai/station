@@ -36,6 +36,8 @@
 
     "ops/nightly/install-macos.zsh",
 
+    "package.json#/scripts/mobile:permissions:gate",
+
     "patches/android-native-keyring-store/src/by_service/cred.rs",
 
     "patches/android-native-keyring-store/src/by_store/cred.rs",
@@ -106,15 +108,13 @@
 
     "src-desktop/src/lib.rs",
 
+    "src-desktop/src/native_secure_entry.rs",
+
     "src-server/services/notifications/agent-activity-publisher.ts",
 
     "src-ui/src/__tests__/CoreUpdateLaunchCheck.test.tsx",
 
-    "src-ui/src/components/CoreUpdateLaunchCheck.tsx",
-
-    "package.json#/scripts/mobile:permissions:gate",
-
-    "src-desktop/src/native_secure_entry.rs"
+    "src-ui/src/components/CoreUpdateLaunchCheck.tsx"
   ],
 
   "checks": [
