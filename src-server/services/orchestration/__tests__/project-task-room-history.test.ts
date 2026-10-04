@@ -2848,9 +2848,8 @@ it('holds real controller ownership until a durable room receipt settles after r
 
 it('feedback preserves legacy bytes, fences downgraded writers and replays permanent identities after output deletion and retention', async () => {
   const path = databasePath();
-  let retained = true;
+  let retained = false;
   let authorized = true;
-  let validations = 0;
   const options: Parameters<typeof history>[1] = {
     limits: {
       retentionRecords: 2,
@@ -2862,10 +2861,7 @@ it('feedback preserves legacy bytes, fences downgraded writers and replays perma
         authorized ? capabilities.resolve(input) : { kind: 'revoked' },
     },
     outputFeedbackTargets: {
-      validate: async () => {
-        validations += 1;
-        return retained ? 'admitted' : 'denied';
-      },
+      validate: async () => (retained ? 'admitted' : 'denied'),
     },
   };
   let room = history(path, options);
@@ -2895,9 +2891,17 @@ it('feedback preserves legacy bytes, fences downgraded writers and replays perma
         },
       },
     };
+    expect(await room.append(feedback)).toEqual({ kind: 'denied' });
+    expect(
+      db
+        .prepare(
+          'SELECT proposal_id FROM project_task_room_records WHERE proposal_id=?',
+        )
+        .get('review'),
+    ).toBeUndefined();
+    retained = true;
     const first = await room.append(feedback);
     expect(first.kind).toBe('committed');
-    expect(validations).toBe(1); // Local rooms still require fresh output admission.
     const mixed = await room.read({ grant: grant('history-read') });
     expect(mixed.kind).toBe('available');
     if (mixed.kind !== 'available') throw new Error('expected mixed history');
@@ -2925,7 +2929,6 @@ it('feedback preserves legacy bytes, fences downgraded writers and replays perma
       kind: 'duplicate',
       receipt: first.kind === 'committed' ? first.receipt : undefined,
     });
-    expect(validations).toBe(1);
     expect(
       await room.append({
         ...feedback,

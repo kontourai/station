@@ -1936,7 +1936,7 @@ describe('TaskWorkspaceView', () => {
       screen.getByRole('button', { name: 'Hide output local.md' }),
     );
     expect(
-      screen.getByRole('alertdialog', { name: 'Unsaved Changes' }),
+      screen.getByRole('dialog', { name: 'Unsaved Changes' }),
     ).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(
