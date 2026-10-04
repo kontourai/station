@@ -1,5 +1,5 @@
 export const TRANSFER_CAPTURE_TIMEOUT_ENV =
-  "STATION_TRANSFER_CAPTURE_TIMEOUT_MS";
+  'STATION_TRANSFER_CAPTURE_TIMEOUT_MS';
 
 /**
  * Parses the capture bound the gate passes to the capture child. It is

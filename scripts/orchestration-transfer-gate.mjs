@@ -1,19 +1,19 @@
-import { execFileSync, spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
+import { execFileSync, spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import {
   existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
   writeFileSync,
-} from "node:fs";
-import { basename, dirname, resolve, sep } from "node:path";
+} from 'node:fs';
+import { basename, dirname, resolve, sep } from 'node:path';
 import {
   gitLocationKeys,
   sanitizedGitEnvironment,
-} from "./lib/git-environment.mjs";
-import { invokedDirectly } from "./lib/module-entry.mjs";
-import { collectVerificationProvenance } from "./lib/test-reliability.mjs";
+} from './lib/git-environment.mjs';
+import { invokedDirectly } from './lib/module-entry.mjs';
+import { collectVerificationProvenance } from './lib/test-reliability.mjs';
 import {
   findReusableBaseline,
   laneMergeBases,
@@ -22,23 +22,23 @@ import {
   TRANSFER_BASELINE_PREFIX,
   touchTransferBaselineMarker,
   transferBaselineShaFromPath,
-} from "./lib/transfer-baselines.mjs";
-import { assertInstalledDependenciesMatchLockfile } from "./lib/verification-environment-preflight.mjs";
+} from './lib/transfer-baselines.mjs';
+import { assertInstalledDependenciesMatchLockfile } from './lib/verification-environment-preflight.mjs';
 import {
   assertDeterministicBaseline,
   compareTransferEvidence,
   validateTransferEvidence,
-} from "./orchestration-transfer-budget.mjs";
-import { assertWorkspacePackageProvenance } from "./workspace-dependency-provenance.mjs";
+} from './orchestration-transfer-budget.mjs';
+import { assertWorkspacePackageProvenance } from './workspace-dependency-provenance.mjs';
 
 function fail(message) {
   throw new Error(`orchestration transfer gate: ${message}`);
 }
 
 function git(root, args) {
-  return execFileSync("git", ["-C", root, ...args], {
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"],
+  return execFileSync('git', ['-C', root, ...args], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
     env: transferGitEnvironment(),
     windowsHide: true,
   }).trim();
@@ -61,39 +61,39 @@ export function withTransferGitEnvironment(run) {
 }
 
 function sha(value) {
-  return createHash("sha256").update(value).digest("hex");
+  return createHash('sha256').update(value).digest('hex');
 }
 
 function parseArgs(argv) {
   const parsed = {
     candidateRoot: process.cwd(),
-    baselineRoot: process.env.STATION_TRANSFER_BASELINE_ROOT ?? "",
-    base: process.env.STATION_BASE_REF ?? "origin/main",
-    outputDir: ".kontourai/orchestration-transfer-gate",
+    baselineRoot: process.env.STATION_TRANSFER_BASELINE_ROOT ?? '',
+    base: process.env.STATION_BASE_REF ?? 'origin/main',
+    outputDir: '.kontourai/orchestration-transfer-gate',
     prepareBaseline: false,
   };
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
-    if (argument === "--prepare-baseline") parsed.prepareBaseline = true;
-    else if (argument.startsWith("--candidate-root="))
+    if (argument === '--prepare-baseline') parsed.prepareBaseline = true;
+    else if (argument.startsWith('--candidate-root='))
       parsed.candidateRoot = argument.slice(17);
-    else if (argument.startsWith("--baseline-root="))
+    else if (argument.startsWith('--baseline-root='))
       parsed.baselineRoot = argument.slice(16);
-    else if (argument.startsWith("--base=")) parsed.base = argument.slice(7);
-    else if (argument.startsWith("--output-dir="))
+    else if (argument.startsWith('--base=')) parsed.base = argument.slice(7);
+    else if (argument.startsWith('--output-dir='))
       parsed.outputDir = argument.slice(13);
     else if (
       [
-        "--candidate-root",
-        "--baseline-root",
-        "--base",
-        "--output-dir",
+        '--candidate-root',
+        '--baseline-root',
+        '--base',
+        '--output-dir',
       ].includes(argument)
     ) {
       const key = argument
         .slice(2)
         .replace(/-([a-z])/g, (_, c) => c.toUpperCase());
-      parsed[key] = argv[++index] ?? "";
+      parsed[key] = argv[++index] ?? '';
     } else fail(`unrecognized argument: ${argument}`);
   }
   return parsed;
@@ -102,16 +102,16 @@ function parseArgs(argv) {
 function exactRoot(root, label, shaExpected) {
   const actual = resolve(root);
   if (!existsSync(actual)) fail(`${label} root does not exist: ${actual}`);
-  const subject = git(actual, ["rev-parse", "HEAD"]);
+  const subject = git(actual, ['rev-parse', 'HEAD']);
   if (subject !== shaExpected)
     fail(`${label} root is ${subject}, expected exact ${shaExpected}`);
-  const dirty = git(actual, ["status", "--porcelain"]);
-  if (dirty !== "") {
-    const entries = dirty.split("\n");
+  const dirty = git(actual, ['status', '--porcelain']);
+  if (dirty !== '') {
+    const entries = dirty.split('\n');
     const details = entries.slice(0, 10).map((entry) => entry.slice(0, 240));
     if (entries.length > 10) details.push(`and ${entries.length - 10} more`);
     fail(
-      `${label} root is dirty; capture requires a clean full tree. Observed changes: ${details.join("; ")}`,
+      `${label} root is dirty; capture requires a clean full tree. Observed changes: ${details.join('; ')}`,
     );
   }
   assertInstalledDependenciesMatchLockfile({ repositoryRoot: actual });
@@ -125,13 +125,13 @@ function provenance(root) {
 
 function sameProvenance(left, right, label) {
   for (const key of [
-    "headSha",
-    "dirty",
-    "workspaceDigest",
-    "dependencyDigest",
-    "toolchain",
-    "toolchainIdentity",
-    "environmentDigest",
+    'headSha',
+    'dirty',
+    'workspaceDigest',
+    'dependencyDigest',
+    'toolchain',
+    'toolchainIdentity',
+    'environmentDigest',
   ]) {
     if (sha(JSON.stringify(left[key])) !== sha(JSON.stringify(right[key])))
       fail(`${label} drifted during capture: ${key}`);
@@ -144,29 +144,29 @@ function sameProvenance(left, right, label) {
  * a tree the next gate run would refuse.
  */
 function verifyReusableBaseline(root, baseSha) {
-  exactRoot(root, "reusable baseline", baseSha);
+  exactRoot(root, 'reusable baseline', baseSha);
   const result = spawnSync(
     process.execPath,
-    ["scripts/dependency-lifecycle.mjs", "verify"],
+    ['scripts/dependency-lifecycle.mjs', 'verify'],
     {
       cwd: root,
-      encoding: "utf8",
+      encoding: 'utf8',
       env: transferGitEnvironment(),
       windowsHide: true,
     },
   );
   if (result.status !== 0)
     fail(
-      `dependencies:verify failed in ${root}: ${(result.stderr || result.stdout || "").trim().slice(-400)}`,
+      `dependencies:verify failed in ${root}: ${(result.stderr || result.stdout || '').trim().slice(-400)}`,
     );
 }
 
 function originMainSha(candidateRoot) {
   try {
     return git(candidateRoot, [
-      "rev-parse",
-      "--verify",
-      "origin/main^{commit}",
+      'rev-parse',
+      '--verify',
+      'origin/main^{commit}',
     ]);
   } catch {
     return null;
@@ -182,7 +182,7 @@ function prepareBaseline(
     prune = pruneStaleTransferBaselines,
   } = {},
 ) {
-  if (!baselineRoot) fail("--prepare-baseline requires --baseline-root");
+  if (!baselineRoot) fail('--prepare-baseline requires --baseline-root');
   const target = resolve(baselineRoot);
   // Keep the base being prepared, the current origin/main tip (an explicit
   // older --base must not delete the baseline every other session needs), and
@@ -204,7 +204,7 @@ function prepareBaseline(
     });
   };
   if (existsSync(target)) {
-    exactRoot(target, "prepared baseline", baseSha);
+    exactRoot(target, 'prepared baseline', baseSha);
     console.log(`Prepared baseline already valid: ${target}`);
     reclaim(target);
     return { baselineRoot: target, reused: true };
@@ -227,9 +227,9 @@ function prepareBaseline(
   }
   mkdirSync(dirname(target), { recursive: true });
   const result = spawnSync(
-    "git",
-    ["-C", candidateRoot, "worktree", "add", "--detach", target, baseSha],
-    { stdio: "inherit", env: transferGitEnvironment(), windowsHide: true },
+    'git',
+    ['-C', candidateRoot, 'worktree', 'add', '--detach', target, baseSha],
+    { stdio: 'inherit', env: transferGitEnvironment(), windowsHide: true },
   );
   if (result.status !== 0)
     fail(`could not create detached baseline worktree: ${target}`);
@@ -239,7 +239,7 @@ function prepareBaseline(
   console.log(`  cd ${target} && npm run dependencies:ci`);
   console.log(`  cd ${target} && npm run dependencies:verify`);
   console.log(
-    "The gate never installs dependencies; rerun after that command succeeds.",
+    'The gate never installs dependencies; rerun after that command succeeds.',
   );
   reclaim(target);
   return { baselineRoot: target, reused: false };
@@ -252,8 +252,8 @@ function prepareBaseline(
 // leaves scheduler/contention margin without allowing an unbounded push hook.
 export const TRANSFER_CAPTURE_LIVENESS_TIMEOUT_MS = 60_000;
 export const TRANSFER_CAPTURE_TIMEOUT_ENV =
-  "STATION_TRANSFER_CAPTURE_TIMEOUT_MS";
-export const TRANSFER_BASELINE_ROOT_ENV = "STATION_TRANSFER_BASELINE_ROOT";
+  'STATION_TRANSFER_CAPTURE_TIMEOUT_MS';
+export const TRANSFER_BASELINE_ROOT_ENV = 'STATION_TRANSFER_BASELINE_ROOT';
 
 /**
  * The liveness bound, with a per-machine override (#1279). Slower hardware
@@ -270,7 +270,7 @@ export const TRANSFER_BASELINE_ROOT_ENV = "STATION_TRANSFER_BASELINE_ROOT";
  */
 export function transferCaptureLivenessTimeoutMs(env = process.env) {
   const raw = env[TRANSFER_CAPTURE_TIMEOUT_ENV];
-  if (raw === undefined || raw.trim() === "")
+  if (raw === undefined || raw.trim() === '')
     return TRANSFER_CAPTURE_LIVENESS_TIMEOUT_MS;
   const value = Number(raw.trim());
   if (!Number.isSafeInteger(value) || value <= 0)
@@ -294,9 +294,9 @@ export function primaryCheckoutRoot(candidateRoot) {
   try {
     return dirname(
       git(candidateRoot, [
-        "rev-parse",
-        "--path-format=absolute",
-        "--git-common-dir",
+        'rev-parse',
+        '--path-format=absolute',
+        '--git-common-dir',
       ]),
     );
   } catch {
@@ -317,9 +317,9 @@ export { TRANSFER_BASELINE_PREFIX, transferBaselineShaFromPath };
 export function baselineRootFor(checkoutRoot, baseSha) {
   const name = `${TRANSFER_BASELINE_PREFIX}${baseSha.slice(0, 12)}`;
   const parent = dirname(resolve(checkoutRoot));
-  return basename(parent) === "station-worktrees"
+  return basename(parent) === 'station-worktrees'
     ? resolve(parent, name)
-    : resolve(parent, "station-worktrees", name);
+    : resolve(parent, 'station-worktrees', name);
 }
 
 /**
@@ -354,7 +354,7 @@ export function missingBaseline(baseSha, candidateRoot) {
   let existingHead = null;
   try {
     if (existsSync(baselineRoot))
-      existingHead = git(baselineRoot, ["rev-parse", "HEAD"]);
+      existingHead = git(baselineRoot, ['rev-parse', 'HEAD']);
   } catch {
     existingHead = null;
   }
@@ -371,7 +371,7 @@ export function missingBaselineRootMessage(baseSha, candidateRoot) {
     `no verified baseline worktree exists for merge base ${baseSha}. Prepare it with:`,
     prepareCommand,
     `then push again: the gate finds a verified baseline for this exact SHA by itself. ${TRANSFER_BASELINE_ROOT_ENV}=<path> selects one explicitly.`,
-  ].join("\n  ");
+  ].join('\n  ');
 }
 
 /**
@@ -408,7 +408,7 @@ export function discoverTransferBaseline({
  */
 export function transferBaseSha(candidateRoot, base) {
   try {
-    return git(candidateRoot, ["merge-base", base, "HEAD"]);
+    return git(candidateRoot, ['merge-base', base, 'HEAD']);
   } catch (error) {
     fail(
       `cannot resolve the merge base of ${base} and HEAD: ${String(error?.stderr || error?.message || error).trim()}`,
@@ -425,14 +425,14 @@ export function runTransferCapture({
   spawn = spawnSync,
   timeout = transferCaptureLivenessTimeoutMs(),
 }) {
-  const tsx = resolve(candidateRoot, "node_modules/tsx/dist/cli.mjs");
+  const tsx = resolve(candidateRoot, 'node_modules/tsx/dist/cli.mjs');
   if (!existsSync(tsx)) fail(`candidate capture tool unavailable: ${tsx}`);
   const capture =
     captureOverride ??
-    resolve(candidateRoot, "scripts/orchestration-transfer-capture.ts");
+    resolve(candidateRoot, 'scripts/orchestration-transfer-capture.ts');
   const captureTsconfig = resolve(
     candidateRoot,
-    "scripts/orchestration-transfer-capture.tsconfig.json",
+    'scripts/orchestration-transfer-capture.tsconfig.json',
   );
   if (resolve(targetRoot) !== resolve(candidateRoot))
     touchTransferBaselineMarker(resolve(targetRoot));
@@ -441,7 +441,7 @@ export function runTransferCapture({
     [tsx, capture, targetRoot, output, baseSha, candidateRoot, String(timeout)],
     {
       cwd: candidateRoot,
-      encoding: "utf8",
+      encoding: 'utf8',
       env: transferGitEnvironment({ TSX_TSCONFIG_PATH: captureTsconfig }),
       timeout,
       windowsHide: true,
@@ -449,21 +449,21 @@ export function runTransferCapture({
   );
   if (result.stdout) process.stdout.write(result.stdout);
   if (result.stderr) process.stderr.write(result.stderr);
-  if (result.error?.code === "ETIMEDOUT")
+  if (result.error?.code === 'ETIMEDOUT')
     fail(
       `capture liveness timeout after ${timeout}ms for ${targetRoot}. This is a dead-child liveness bound, not a performance budget: on hardware slower than the reference machine, raise it for this run with ${TRANSFER_CAPTURE_TIMEOUT_ENV}=<milliseconds> (default ${TRANSFER_CAPTURE_LIVENESS_TIMEOUT_MS}); a hung capture still fails at the raised bound`,
     );
   if (result.status !== 0) {
     const resolutionFailure =
       /does not provide an export named|ERR_MODULE_NOT_FOUND|Cannot find (?:module|package)/.test(
-        result.stderr ?? "",
+        result.stderr ?? '',
       );
     // A barrier timing out is host load, not a regression, and the child's own
     // message already names the setting; repeat it on the FAIL line, which is
     // what a push refusal shows.
     const barrierTimeout =
       /capture barrier timed out after \d+ms: [^\n.]+/.exec(
-        result.stderr ?? "",
+        result.stderr ?? '',
       );
     if (barrierTimeout)
       fail(
@@ -477,7 +477,7 @@ export function runTransferCapture({
   }
   if (!existsSync(output)) fail(`capture produced no report: ${output}`);
   try {
-    return JSON.parse(readFileSync(output, "utf8"));
+    return JSON.parse(readFileSync(output, 'utf8'));
   } catch {
     fail(`capture produced invalid JSON: ${output}`);
   }
@@ -486,11 +486,11 @@ export function runTransferCapture({
 function recordedPolicyMetrics(prior, envelope, baseline, candidate) {
   const rows = [];
   for (const [name, limits] of Object.entries(envelope.policy ?? {})) {
-    for (const metric of ["wireBytes", "decodedBytes", "frames"]) {
+    for (const metric of ['wireBytes', 'decodedBytes', 'frames']) {
       const before = prior.policy?.[name]?.[metric];
       const after = limits?.[metric];
       if (before === after) continue;
-      for (const scenario of ["external-engine", "station-native"]) {
+      for (const scenario of ['external-engine', 'station-native']) {
         const key = (report) =>
           report.phases.find(
             (phase) => phase.scenario === scenario && phase.name === name,
@@ -536,7 +536,7 @@ export function policyAttribution({
   candidate,
   readBase = () =>
     git(candidateRoot, [
-      "show",
+      'show',
       `${baseSha}:scripts/fixtures/orchestration-transfer/budget.json`,
     ]),
   exists = existsSync,
@@ -548,7 +548,7 @@ export function policyAttribution({
   } catch (error) {
     if (!isMissingBasePolicy(error)) throw error;
     return {
-      kind: "INTRODUCTION",
+      kind: 'INTRODUCTION',
       priorPolicyDigest: null,
       policyDigest: sha(JSON.stringify(envelope)),
     };
@@ -556,17 +556,17 @@ export function policyAttribution({
   const prior = JSON.parse(priorRaw);
   if (JSON.stringify(prior) === JSON.stringify(envelope))
     return {
-      kind: "UNCHANGED",
+      kind: 'UNCHANGED',
       priorPolicyDigest: sha(priorRaw),
       policyDigest: sha(JSON.stringify(envelope)),
     };
   const recordPath = resolve(
     candidateRoot,
-    "scripts/fixtures/orchestration-transfer/policy-attribution.json",
+    'scripts/fixtures/orchestration-transfer/policy-attribution.json',
   );
   if (!exists(recordPath))
-    fail("policy changed without checked-in attribution record");
-  const record = JSON.parse(read(recordPath, "utf8"));
+    fail('policy changed without checked-in attribution record');
+  const record = JSON.parse(read(recordPath, 'utf8'));
   const digest = sha(JSON.stringify(envelope));
   const actualMetrics = recordedPolicyMetrics(
     prior,
@@ -575,21 +575,21 @@ export function policyAttribution({
     candidate,
   );
   if (
-    record.issue !== "station#4294" ||
-    typeof record.author !== "string" ||
-    record.author.trim() === "" ||
-    typeof record.reason !== "string" ||
-    record.reason.trim() === "" ||
+    record.issue !== 'station#4294' ||
+    typeof record.author !== 'string' ||
+    record.author.trim() === '' ||
+    typeof record.reason !== 'string' ||
+    record.reason.trim() === '' ||
     record.priorPolicyDigest !== sha(priorRaw) ||
     record.newPolicyDigest !== digest ||
     !Array.isArray(record.actualMetrics) ||
     JSON.stringify(record.actualMetrics) !== JSON.stringify(actualMetrics)
   )
     fail(
-      "policy attribution does not match exact base/candidate policy evidence",
+      'policy attribution does not match exact base/candidate policy evidence',
     );
   return {
-    kind: "ATTRIBUTED",
+    kind: 'ATTRIBUTED',
     priorPolicyDigest: sha(priorRaw),
     policyDigest: digest,
     record,
@@ -607,8 +607,8 @@ export function executeTransferComparison({
   readPolicy = (root) =>
     JSON.parse(
       readFileSync(
-        resolve(root, "scripts/fixtures/orchestration-transfer/budget.json"),
-        "utf8",
+        resolve(root, 'scripts/fixtures/orchestration-transfer/budget.json'),
+        'utf8',
       ),
     ),
   beforeCandidate = provenance(candidateRoot),
@@ -617,25 +617,25 @@ export function executeTransferComparison({
   assertRoot = exactRoot,
   attribute = policyAttribution,
   write = writeFileSync,
-  makeRunDirectory = (directory) => mkdtempSync(resolve(directory, "run-")),
+  makeRunDirectory = (directory) => mkdtempSync(resolve(directory, 'run-')),
 }) {
   const runDir = makeRunDirectory(outputDir);
   const baselineA = capture({
     candidateRoot,
     targetRoot: baselineRoot,
-    output: resolve(runDir, "baseline-a.json"),
+    output: resolve(runDir, 'baseline-a.json'),
     baseSha,
   });
   const baselineB = capture({
     candidateRoot,
     targetRoot: baselineRoot,
-    output: resolve(runDir, "baseline-b.json"),
+    output: resolve(runDir, 'baseline-b.json'),
     baseSha,
   });
   const candidate = capture({
     candidateRoot,
     targetRoot: candidateRoot,
-    output: resolve(runDir, "candidate.json"),
+    output: resolve(runDir, 'candidate.json'),
     baseSha,
   });
   const envelope = readPolicy(candidateRoot);
@@ -649,7 +649,7 @@ export function executeTransferComparison({
       baseSha,
     },
   );
-  validateTransferEvidence(candidate, "candidate");
+  validateTransferEvidence(candidate, 'candidate');
   const attribution = attribute({
     candidateRoot,
     baseSha,
@@ -660,11 +660,11 @@ export function executeTransferComparison({
   sameProvenance(
     beforeCandidate,
     readProvenance(candidateRoot),
-    "candidate root",
+    'candidate root',
   );
-  sameProvenance(beforeBaseline, readProvenance(baselineRoot), "baseline root");
-  assertRoot(candidateRoot, "candidate after capture", candidateSha);
-  assertRoot(baselineRoot, "baseline after capture", baseSha);
+  sameProvenance(beforeBaseline, readProvenance(baselineRoot), 'baseline root');
+  assertRoot(candidateRoot, 'candidate after capture', candidateSha);
+  assertRoot(baselineRoot, 'baseline after capture', baseSha);
   const report = {
     schemaVersion: 1,
     candidateSha,
@@ -672,16 +672,16 @@ export function executeTransferComparison({
     baselineSha: baselineA.subjectSha,
     comparison,
     attribution,
-    reports: ["baseline-a.json", "baseline-b.json", "candidate.json"],
+    reports: ['baseline-a.json', 'baseline-b.json', 'candidate.json'],
   };
-  write(resolve(runDir, "comparison.json"), `${JSON.stringify(report)}\n`);
+  write(resolve(runDir, 'comparison.json'), `${JSON.stringify(report)}\n`);
   return { report, runDir };
 }
 
 function runTransferGateInner(options) {
   const candidateRoot = resolve(options.candidateRoot);
   const baseSha = transferBaseSha(candidateRoot, options.base);
-  const candidateSha = git(candidateRoot, ["rev-parse", "HEAD"]);
+  const candidateSha = git(candidateRoot, ['rev-parse', 'HEAD']);
   if (options.prepareBaseline) {
     const prepared = prepareBaseline(
       candidateRoot,
@@ -712,16 +712,16 @@ function runTransferGateInner(options) {
   // Mark first so a sibling session's prune sees this gate even while it
   // runs checks that never name the baseline in argv or cwd.
   touchTransferBaselineMarker(resolve(options.baselineRoot));
-  const baselineRoot = exactRoot(options.baselineRoot, "baseline", baseSha);
-  exactRoot(candidateRoot, "candidate", candidateSha);
+  const baselineRoot = exactRoot(options.baselineRoot, 'baseline', baseSha);
+  exactRoot(candidateRoot, 'candidate', candidateSha);
   const outputDir = resolve(candidateRoot, options.outputDir);
-  const ignoredRoot = `${resolve(candidateRoot, ".kontourai")}${sep}`;
+  const ignoredRoot = `${resolve(candidateRoot, '.kontourai')}${sep}`;
   if (!outputDir.startsWith(ignoredRoot))
-    fail("--output-dir must be an ignored directory inside .kontourai/");
+    fail('--output-dir must be an ignored directory inside .kontourai/');
   mkdirSync(outputDir, { recursive: true });
   // A capture only counts if THIS invocation created every artifact. Never
   // reuse a previous green JSON after a child failed before writing anything.
-  const runDir = mkdtempSync(resolve(outputDir, "run-"));
+  const runDir = mkdtempSync(resolve(outputDir, 'run-'));
   const { report, runDir: ownedRunDir } = executeTransferComparison({
     candidateRoot,
     baselineRoot,
