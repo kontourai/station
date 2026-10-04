@@ -288,3 +288,17 @@
 .diff-panel__tools--head .diff-tool::after {
   content: none;
 }
+
+/* The side panel opens by width alone, so a wide touch tablet gets the head
+   too. On a pointer that cannot hover each tool is a 44px box of its own and
+   the head row grows to hold them. Boxes rather than the bar's 44px
+   pseudo-element: in a 40px row with 4px gaps those areas would overlap
+   each other and reach the close. This lives here, not in index.css's
+   shared `(hover: none)` block, because this sheet is a lazy chunk that
+   lands after the entry sheet and would win the tie. */
+@media (hover: none) {
+  .diff-panel__tools--head .diff-tool {
+    width: 44px;
+    height: 44px;
+  }
+}

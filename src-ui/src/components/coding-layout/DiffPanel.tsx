@@ -51,6 +51,17 @@ import {
 
 type DiffCommentSide = DiffComment['side'];
 
+/**
+ * @pierre/diffs draws its own `-N +N` before the header's metadata slot, and
+ * has no option to leave it out short of replacing the whole header. Station
+ * draws the file's counts in that slot itself (`renderHeaderMetadata`,
+ * additions first like the pane's total, and a kind for a hunkless file), so
+ * the library's pair is hidden through its own stylesheet hook, which reaches
+ * into the diff's shadow root where a page rule cannot.
+ */
+const LIBRARY_FILE_COUNTS_HIDDEN =
+  '[data-metadata] > [data-additions-count], [data-metadata] > [data-deletions-count] { display: none; }';
+
 /** Metadata carried on each annotated diff line: its comments + composer flag. */
 interface DiffCommentAnnotation {
   comments: DiffComment[];
@@ -719,6 +730,7 @@ export function ObservedDiffPanel({
         diffStyle,
         lineDiffType: 'none',
         overflow: wrap ? 'wrap' : 'scroll',
+        unsafeCSS: LIBRARY_FILE_COUNTS_HIDDEN,
       }}
     />
   );

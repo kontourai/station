@@ -60,9 +60,12 @@ does this for its footer. Feature classes own desktop layout and colors. The
 shared mobile rules permit wrapping, add bottom safe-area padding, and give
 matching direct-child controls a 44px minimum, under the phone-width query
 only. A wide touch tablet does not match that query; a control that needs the
-floor there declares it itself, inside the existing `(hover: none)` block in
-`index.css` (today the send-blocked line's Remove attachments). Nested
-controls and overflowing content still need their own caller test.
+floor there declares it itself under `(hover: none)`. Use the existing block in
+`index.css` for a control styled by the entry sheet (today the send-blocked
+line's Remove attachments). Use the feature's own sheet for a control styled by
+a lazily loaded chunk, which lands later in the cascade (today the Diff tools
+in the Coding side panel's head). Nested controls and overflowing content still
+need their own caller test.
 
 Every `ResponsiveDialogSurface` declares `layer="dialog"`, `"popover"` or
 `"system"`. [The token scale](../../src-ui/src/tokens.css) includes dock,

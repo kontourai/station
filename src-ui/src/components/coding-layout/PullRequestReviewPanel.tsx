@@ -27,6 +27,7 @@ import { useNavigation } from '../../contexts/NavigationContext';
 import { useTickingNow } from '../../hooks/useTickingNow';
 import { useUnsavedGuard } from '../../hooks/useUnsavedGuard';
 import { openExternalLink } from '../../platform/openExternalLink';
+import { PaneHeadSlotsContext } from '../../workspace-panes/PaneHeadSlots';
 import { ActionOverflowMenu, type OverflowAction } from '../ActionOverflowMenu';
 import { Button } from '../Button';
 import { IconButton } from '../IconButton';
@@ -983,17 +984,23 @@ function ReviewOwner({
                 ),
               }}
             >
-              <LazyBoundary
-                load={loadDiff}
-                componentProps={{
-                  diff: data.diff.patch,
-                  observationKey: identity,
-                  ...(data.reviewComments?.state === 'available'
-                    ? { providerComments: data.reviewComments.comments }
-                    : {}),
-                }}
-                pending={<SkeletonBlock label="Preparing changed files" />}
-              />
+              {/* The review's changed files are a diff inside the pane, not
+                  the pane: fenced from a host's head slots so the side
+                  panel's head keeps the Diff pane's own counts and tools, and
+                  this diff draws its own row. */}
+              <PaneHeadSlotsContext.Provider value={null}>
+                <LazyBoundary
+                  load={loadDiff}
+                  componentProps={{
+                    diff: data.diff.patch,
+                    observationKey: identity,
+                    ...(data.reviewComments?.state === 'available'
+                      ? { providerComments: data.reviewComments.comments }
+                      : {}),
+                  }}
+                  pending={<SkeletonBlock label="Preparing changed files" />}
+                />
+              </PaneHeadSlotsContext.Provider>
             </div>
           ) : (
             <ErrorState

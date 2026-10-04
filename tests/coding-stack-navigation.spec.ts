@@ -522,6 +522,29 @@ test.describe('Coding stack — wide (1440px): tools beside Chat', () => {
       head.getByRole('button', { name: 'Split view' }),
     ).toHaveAttribute('aria-pressed', 'false');
     await expect(sidePanel(page).locator('.diff-panel__bar')).toHaveCount(0);
+    // A file row says its counts once: Station's `+N −N` in the header's
+    // metadata slot, not also the library's own `-N +N` beside it.
+    const fileHeader = sidePanel(page).locator('[data-diffs-header]').first();
+    await expect(fileHeader).toBeVisible();
+    const shownCounts = await fileHeader.evaluate((header) => {
+      const shown: string[] = [];
+      const visit = (el: Element) => {
+        if (el instanceof HTMLSlotElement) {
+          for (const node of el.assignedElements({ flatten: true }))
+            visit(node);
+          return;
+        }
+        if (el.getClientRects().length === 0) return;
+        if (el.children.length === 0 || el.shadowRoot) {
+          const text = (el.textContent ?? '').trim();
+          if (/^[+−-]\d+$/.test(text)) shown.push(text);
+        }
+        for (const child of Array.from(el.children)) visit(child);
+      };
+      visit(header);
+      return shown;
+    });
+    expect(shownCounts).toEqual(['+1', '−1']);
     await expect(chatPage(page)).toHaveAttribute('data-active', 'true');
     await expect(page).toHaveURL(/[?&]pane=/);
     expect(await historyLength(page)).toBe(length);

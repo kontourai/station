@@ -92,6 +92,7 @@ vi.mock('../../../hooks/useUnsavedGuard', () => ({
   }),
 }));
 
+import { PaneHeadSlotsContext } from '../../../workspace-panes/PaneHeadSlots';
 import { PullRequestReviewPanel } from '../PullRequestReviewPanel';
 
 const PATCH = `diff --git a/src/app.ts b/src/app.ts
@@ -407,6 +408,45 @@ describe('pull request status', () => {
       ).toBeTruthy();
     },
   );
+
+  test('inside a host head the changed-files diff keeps its own row: the head is left to the Diff pane', async () => {
+    snapshot.current = base();
+    const leading = document.createElement('div');
+    const trailing = document.createElement('div');
+    document.body.append(leading, trailing);
+    try {
+      const view = render(
+        <QueryClientProvider client={new QueryClient()}>
+          <PaneHeadSlotsContext.Provider value={{ leading, trailing }}>
+            <PullRequestReviewPanel
+              target={{
+                provider: 'github',
+                host: 'github.com',
+                owner: 'kontourai',
+                repository: 'station',
+                ref: '2049',
+                project: 'station',
+              }}
+            />
+          </PaneHeadSlotsContext.Provider>
+        </QueryClientProvider>,
+      );
+      const wrap = await screen.findByRole('button', { name: 'Wrap lines' });
+      const bar = view.container.querySelector(
+        '.pull-request-review__diff .diff-panel__bar',
+      );
+      expect(bar?.contains(wrap)).toBe(true);
+      expect(bar?.querySelector('.diff-stat')?.textContent).toMatch(
+        /^1 file\+1−1$/,
+      );
+      expect(leading.childNodes.length).toBe(0);
+      expect(trailing.childNodes.length).toBe(0);
+    } finally {
+      cleanup();
+      leading.remove();
+      trailing.remove();
+    }
+  });
 
   test('places an inline comment on its diff line and lists the outdated one', async () => {
     snapshot.current = base({
