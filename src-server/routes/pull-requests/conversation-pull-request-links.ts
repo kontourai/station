@@ -10,12 +10,7 @@ import type { ConversationPullRequestLinkStore } from '../../services/pull-reque
 import { readPullRequestByIdentity } from '../../services/pull-requests/pull-request-identity-read.js';
 import { getBody, param, validate } from '../schemas/schemas.js';
 
-/**
- * The one parse of a pull request identity a caller names: the link routes
- * below and the `declare_pull_request` tool (#3161) both read it, so a
- * declared pull request is exactly one the link store would accept.
- */
-export const pullRequestLinkIdentitySchema = z
+const identitySchema = z
   .object({
     provider: z.string().min(1).max(255),
     host: z.string().min(1).max(255),
@@ -29,6 +24,13 @@ export const pullRequestLinkIdentitySchema = z
       .max(32),
   })
   .strict();
+
+/**
+ * The one parse of a pull request identity a caller names: the link routes
+ * below and the `declare_pull_request` tool (#3161) both read it, so a
+ * declared pull request is exactly one the link store would accept.
+ */
+export const pullRequestLinkIdentitySchema = identitySchema;
 
 type Access = {
   canRead: (request: Request, conversationId: string) => boolean;
@@ -160,81 +162,67 @@ export function createConversationPullRequestLinkRoutes(
     });
   });
 
-  app.post(
-    '/:conversationId',
-    validate(pullRequestLinkIdentitySchema),
-    async (c) => {
-      const conversationId = param(c, 'conversationId');
-      const actor = access.operator(c.req.raw);
-      if (!actor || !allowed(c, conversationId))
-        return c.json(
-          { success: false, error: 'Conversation unavailable' },
-          404,
-        );
-      const submitted = getBody(c) as PullRequestLinkIdentity;
-      const identity: PullRequestLinkIdentity = {
-        ...submitted,
-        host: submitted.host.toLowerCase(),
-      };
-      const provider = providers().find(
-        (candidate) =>
-          candidate.id === identity.provider &&
-          candidate.canServeHost(identity.host) &&
-          candidate.getPullRequestByIdentity,
+  app.post('/:conversationId', validate(identitySchema), async (c) => {
+    const conversationId = param(c, 'conversationId');
+    const actor = access.operator(c.req.raw);
+    if (!actor || !allowed(c, conversationId))
+      return c.json({ success: false, error: 'Conversation unavailable' }, 404);
+    const submitted = getBody(c) as PullRequestLinkIdentity;
+    const identity: PullRequestLinkIdentity = {
+      ...submitted,
+      host: submitted.host.toLowerCase(),
+    };
+    const provider = providers().find(
+      (candidate) =>
+        candidate.id === identity.provider &&
+        candidate.canServeHost(identity.host) &&
+        candidate.getPullRequestByIdentity,
+    );
+    if (!provider?.getPullRequestByIdentity)
+      return c.json(
+        { success: false, error: 'Pull request provider unsupported' },
+        409,
       );
-      if (!provider?.getPullRequestByIdentity)
-        return c.json(
-          { success: false, error: 'Pull request provider unsupported' },
-          409,
-        );
-      const resolved = await provider.getPullRequestByIdentity(
-        { host: identity.host, repository: identity.repository },
-        identity.ref,
+    const resolved = await provider.getPullRequestByIdentity(
+      { host: identity.host, repository: identity.repository },
+      identity.ref,
+    );
+    if (!resolved.available || !resolved.data)
+      return c.json(
+        {
+          success: false,
+          error: resolved.reason ?? 'Pull request unavailable',
+        },
+        409,
       );
-      if (!resolved.available || !resolved.data)
-        return c.json(
-          {
-            success: false,
-            error: resolved.reason ?? 'Pull request unavailable',
-          },
-          409,
-        );
-      const exact = resolved.data;
-      if (
-        exact.provider !== identity.provider ||
-        exact.host !== identity.host ||
-        exact.repository.owner !== identity.repository.owner ||
-        exact.repository.name !== identity.repository.name ||
-        exact.ref !== identity.ref
-      )
-        return c.json(
-          { success: false, error: 'Provider identity mismatch' },
-          409,
-        );
-      const links = await store.link(conversationId, identity, actor, () =>
-        allowed(c, conversationId),
+    const exact = resolved.data;
+    if (
+      exact.provider !== identity.provider ||
+      exact.host !== identity.host ||
+      exact.repository.owner !== identity.repository.owner ||
+      exact.repository.name !== identity.repository.name ||
+      exact.ref !== identity.ref
+    )
+      return c.json(
+        { success: false, error: 'Provider identity mismatch' },
+        409,
       );
-      return c.json({ success: true, data: { conversationId, links } }, 201);
-    },
-  );
+    const links = await store.link(conversationId, identity, actor, () =>
+      allowed(c, conversationId),
+    );
+    return c.json({ success: true, data: { conversationId, links } }, 201);
+  });
 
-  app.delete(
-    '/:conversationId',
-    validate(pullRequestLinkIdentitySchema),
-    async (c) => {
-      const conversationId = param(c, 'conversationId');
-      if (!access.operator(c.req.raw) || !allowed(c, conversationId))
-        return c.json(
-          { success: false, error: 'Conversation unavailable' },
-          404,
-        );
-      const links = await store.unlink(
-        conversationId,
-        getBody(c) as PullRequestLinkIdentity,
-        () => allowed(c, conversationId),
-      );
-      return c.json({ success: true, data: { conversationId, links } });
-    },
-  );
+  app.delete('/:conversationId', validate(identitySchema), async (c) => {
+    const conversationId = param(c, 'conversationId');
+    if (!access.operator(c.req.raw) || !allowed(c, conversationId))
+      return c.json({ success: false, error: 'Conversation unavailable' }, 404);
+    const links = await store.unlink(
+      conversationId,
+      getBody(c) as PullRequestLinkIdentity,
+      () => allowed(c, conversationId),
+    );
+    return c.json({ success: true, data: { conversationId, links } });
+  });
   return app;
 }
