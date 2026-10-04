@@ -839,7 +839,7 @@ describe('ClaudeTranscriptSessionSource', () => {
         message: { role: 'user', content: 'question' },
       }),
     ];
-    for (let index = 0; index < 400; index += 1) {
+    for (let index = 0; index < 2000; index += 1) {
       rows.push(
         record({
           type: 'assistant',
@@ -858,12 +858,12 @@ describe('ClaudeTranscriptSessionSource', () => {
     const result = await source.read(session);
     if (typeof result.cursor === 'number')
       throw new Error('missing source cursor state');
-    expect(result.cursor.usage?.promptTokens).toBe(400);
+    expect(result.cursor.usage?.promptTokens).toBe(2000);
     expect(
       Buffer.byteLength(JSON.stringify(result.cursor.sourceState), 'utf8'),
     ).toBeLessThan(128 * 1024);
     expect(Array.isArray(result.cursor.sourceState?.recordTurns)).toBe(true);
-    expect(JSON.stringify(result.cursor.sourceState)).not.toContain('call-399');
+    expect(JSON.stringify(result.cursor.sourceState)).not.toContain('call-1999');
   });
 
   test('discovers only regular JSONL transcripts below the canonical projects root', async () => {
