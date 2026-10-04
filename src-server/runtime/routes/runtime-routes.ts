@@ -1889,7 +1889,7 @@ export function configureRuntimeRoutes(
           () => schedulerService.listJobs(),
           unattendedGrantStore,
         ),
-      // Slices C1 and C2a: the thread a `steerTurn` or `adoptSession` names.
+      // Slices C1, C2a and C3: the thread a scoped `/commands` command names.
       commandThread: (threadId) =>
         stationControlDispatchScope.target({
           kind: 'thread',
