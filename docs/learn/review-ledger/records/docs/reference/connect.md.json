@@ -24,6 +24,8 @@
 
     "packages/connect/src/__tests__/nativeApplicationTransport.test.ts",
 
+    "packages/connect/src/__tests__/nativeEnrollmentExchange.test.ts",
+
     "packages/connect/src/core/connectionCandidates.ts",
 
     "packages/connect/src/core/connectionFailureClassification.ts",
@@ -46,11 +48,21 @@
 
     "packages/connect/src/core/nativeConnectionShared.ts",
 
+    "packages/connect/src/core/nativeEnrollmentExchange.ts",
+
+    "packages/connect/src/core/nativeEnrollmentFailure.ts",
+
+    "packages/connect/src/core/nativeRelayLink.ts",
+
     "packages/connect/src/core/storage.ts",
 
     "packages/connect/src/core/types.ts",
 
     "packages/connect/src/index.ts",
+
+    "packages/connect/src/react/connection-manager-modal-utils.ts",
+
+    "packages/connect/src/react/connection-manager-modal/ConnectionListPanel.tsx",
 
     "packages/connect/src/react/ConnectionManagerModal.tsx",
 
@@ -72,7 +84,11 @@
 
     "packages/contracts/src/environment-security.ts",
 
+    "packages/contracts/src/native-relay-link.ts",
+
     "packages/sdk/src/client/http.ts",
+
+    "src-desktop/src/native_relay_link_intake.rs",
 
     "src-server/routes/operations/voice.ts",
 
@@ -98,31 +114,15 @@
 
     "src-ui/src/lib/serverHealth.ts",
 
+    "src-ui/src/platform/native/__tests__/nativeRelayEnrollmentClient.test.ts",
+
     "src-ui/src/platform/native/nativeApplicationSignalingBridge.ts",
+
+    "src-ui/src/platform/native/nativeRelayEnrollmentClient.ts",
 
     "src-ui/src/platform/native/pairingTransport.ts",
 
     "src-ui/src/platform/native/stationProfileStorage.ts",
-
-    "packages/connect/src/react/connection-manager-modal/ConnectionListPanel.tsx",
-
-    "packages/connect/src/react/connection-manager-modal-utils.ts",
-
-    "packages/connect/src/__tests__/nativeEnrollmentExchange.test.ts",
-
-    "packages/connect/src/core/nativeEnrollmentExchange.ts",
-
-    "packages/connect/src/core/nativeEnrollmentFailure.ts",
-
-    "packages/connect/src/core/nativeRelayLink.ts",
-
-    "packages/contracts/src/native-relay-link.ts",
-
-    "src-desktop/src/native_relay_link_intake.rs",
-
-    "src-ui/src/platform/native/__tests__/nativeRelayEnrollmentClient.test.ts",
-
-    "src-ui/src/platform/native/nativeRelayEnrollmentClient.ts",
 
     "src-ui/src/views/connections-hub/__tests__/RelayRouteProfiles.test.tsx",
 

@@ -300,11 +300,38 @@ export function findPrecedingUserTurn(
 }
 
 /**
- * The newest transcript notice as one plain line (its bold title row), for the
+ * The newest SEND-FAILURE notice as one plain line (its bold title row), for the
  * composer to repeat while a short dock hides the transcript.
+ *
+ * Only a notice that says why a send did not go counts (`sendFailure`): the
+ * transcript's other ephemeral lines — slash-command output, model or mode
+ * changes, stop and status notes — are not what the composer is asking about,
+ * and showing one there reads as a failure that did not happen. A failure is
+ * also stale once a LATER message was accepted: the newest non-ephemeral user
+ * message after it (the transcript is timestamp-ordered, and a refused send's
+ * optimistic bubble is rolled back, so one that follows is a send that took)
+ * clears it.
  */
-function latestNoticeLine(notices: readonly { content: string }[]) {
-  const content = notices[notices.length - 1]?.content;
+export function latestSendFailureLine(
+  messages: readonly {
+    role: string;
+    content: string;
+    ephemeral?: boolean;
+    sendFailure?: boolean;
+  }[],
+) {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message.ephemeral) {
+      if (!message.sendFailure) continue;
+      return noticeLine(message.content);
+    }
+    if (message.role === 'user') return undefined;
+  }
+  return undefined;
+}
+
+function noticeLine(content: string) {
   if (!content) return undefined;
   const line = content
     .replace(/^\[SYSTEM_EVENT\]\s*/, '')
@@ -737,7 +764,7 @@ export function ChatDockBody({
     new Set(),
   );
   const ephemeralMessages = activeSession.messages.filter((m) => m.ephemeral);
-  const sendFailureNotice = latestNoticeLine(ephemeralMessages);
+  const sendFailureNotice = latestSendFailureLine(activeSession.messages);
 
   // Every "New chat" affordance funnels rejections here: a typed
   // NewChatUnavailableError (the chat never started) surfaces bare, anything
@@ -1443,6 +1470,7 @@ export function ChatDockBody({
                 });
                 addEphemeralMessage(activeSession.id, {
                   role: 'system',
+                  sendFailure: true,
                   content: steerRefusalMessage(result),
                 });
               } catch {

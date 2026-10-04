@@ -1,0 +1,7 @@
+{
+  "revision": "86a52d61b5f908ceae9edb7dcc0bd71acc2f0ee7",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"approvalHandlers.ts changed only by splitting the toast half of handleRequestOpenedEvent into raiseRequestOpenedToast, which the reload hydration now calls instead of the whole handler. I read the document: it names the live approval handler as a preview-behaviour source owner; the preview, grant label and toast construction are unchanged, only moved, so no claim changes.","inputs":["docs/conformance/tool-policy-delivery.md","src-ui/src/hooks/orchestration/approvalHandlers.ts"]}
+  ]
+}

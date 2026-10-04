@@ -36,6 +36,8 @@
 
     "ops/nightly/install-macos.zsh",
 
+    "package.json#/version",
+
     "schemas/release-artifact-manifest.schema.json",
 
     "scripts/__tests__/ensure-ios-agent-activity-extension.test.ts",
@@ -98,9 +100,7 @@
 
     "src-ui/src/__tests__/CoreUpdateLaunchCheck.test.tsx",
 
-    "src-ui/src/components/CoreUpdateLaunchCheck.tsx",
-
-    "package.json#/version"
+    "src-ui/src/components/CoreUpdateLaunchCheck.tsx"
   ],
 
   "checks": [

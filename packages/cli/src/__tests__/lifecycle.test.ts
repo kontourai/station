@@ -7789,19 +7789,19 @@ describe('lifecycle build + restart ergonomics', () => {
       .fn()
       .mockReturnValueOnce({ pid: 44001, unref: vi.fn() })
       .mockReturnValueOnce({ pid: 44002, unref: vi.fn() });
-    let processesAlive = true;
+    const alivePids = new Set([44001, 44002]);
     const killSpy = vi.spyOn(process, 'kill').mockImplementation(((
       pid: number,
       signal?: NodeJS.Signals | number,
     ) => {
       if (signal === 0 && (pid === 44001 || pid === 44002)) {
-        if (processesAlive) return true;
+        if (alivePids.has(pid)) return true;
         throw new Error('gone');
       }
       return true;
     }) as typeof process.kill);
-    const killProcessTree = vi.fn(() => {
-      processesAlive = false;
+    const killProcessTree = vi.fn((pid: number) => {
+      alivePids.delete(pid);
     });
     let now = 0;
     const dateSpy = vi.spyOn(Date, 'now').mockImplementation(() => now);
