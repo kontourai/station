@@ -3,6 +3,7 @@
 import { spawnSync } from 'node:child_process';
 import { ciFastStepMarker } from './lib/ci-fast-step-marker.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
+import { npmInvocation } from './lib/npm-cli.mjs';
 import { PRODUCT_LAW_TIMEOUT_EXIT_CODE } from './lib/product-laws.mjs';
 import { CI_FAST_TIMEOUT_MS } from './verification-lanes.mjs';
 
@@ -332,7 +333,9 @@ export function classifyCiFastCommandResult(result) {
 }
 
 function run(command, args, { cwd, timeout, env }) {
-  const result = spawnSync(command, args, {
+  const invocation =
+    command === 'npm' ? npmInvocation(args, { env }) : { command, args };
+  const result = spawnSync(invocation.command, invocation.args, {
     cwd,
     ...(env ? { env } : {}),
     stdio: 'inherit',
