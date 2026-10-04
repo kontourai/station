@@ -121,7 +121,10 @@ session's `delegate_task` call Station derives the context from the calling
 session's own record; for Station's own agent the runtime attests it from the
 conversation the tool call ran in. A task launched through a caller-less
 station-control process (as a Strands-runtime agent uses) names neither, so it
-is not found and not shown as missing. The tree refreshes every 15 seconds while the
+is not found and not shown as missing. Sessions you can't read are ignored,
+so in hosted mode a delegate launched by a caller-less internal request
+(Station's own agent or a Strands-runtime agent), which the Station operator
+owns, isn't counted and doesn't make the total partial. The tree refreshes every 15 seconds while the
 dialog is open, and stops after a 404 or 422.
 
 **People paired with this Station** reads the existing paired-device registry

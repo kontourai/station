@@ -642,7 +642,11 @@ cost is never mixed with estimates.
 The read is authorized like the conversation transcript: every session in a
 conversation's lineage must be readable. A session you can't read that names
 your conversation is ignored, neither shown nor counted as missing: a real
-delegate of your conversation is your own work. A delegate that ran on a
+delegate of your conversation is your own work. One exception follows from
+that rule: in hosted mode, a delegate launched by a caller-less internal
+request (Station's own agent or a Strands-runtime agent) is owned by the
+Station operator, so another reader's tree doesn't count it and its total
+isn't marked partial for it. A delegate that ran on a
 paired Station is shown from this Station's own record, with `not-reported`
 usage, and no peer is contacted. Responses are `Cache-Control: private,
 no-store`. `404` means no conversation you can read. `422` means the tree is
