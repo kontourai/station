@@ -23,6 +23,7 @@ import { createRelayEnrollmentRoutes } from '../../routes/system/relay-enrollmen
 import { createRelayManagementRoutes } from '../../routes/system/relay-management-routes.js';
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
 import { writeLocalGrantSecretFile } from '../../security/local-grant-file.js';
+import { captureRelayManagementActor } from '../../security/relay-management-actor.js';
 import {
   captureRelayManagementApproval,
   hasRelayManagementAuthority,
@@ -2012,6 +2013,13 @@ export function configureRuntimeRoutes(
         registry: context.nativeSurfaceRegistry,
         enrollment: context.nativeRelayEnrollment,
         resolveActor: (c) => resolveOrchestrationRequestPrincipal(c),
+        actorCurrency: (request, actor) =>
+          captureRelayManagementActor(
+            request,
+            actor,
+            context.environmentSecurityService.devicePairing,
+            context.deploymentAuthentication?.service,
+          ),
         captureDecision: (request, subjectId, actor) =>
           captureRelayManagementApproval(
             request,
@@ -2019,6 +2027,12 @@ export function configureRuntimeRoutes(
             context.environmentSecurityService,
             context.environmentSecurityService.devicePairing,
             actor,
+            captureRelayManagementActor(
+              request,
+              actor,
+              context.environmentSecurityService.devicePairing,
+              context.deploymentAuthentication?.service,
+            ),
           ),
         recordDecision: (request, operation, subject) => {
           const native = getRuntimeNativeDeviceProofPrincipal(request);

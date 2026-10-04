@@ -9,6 +9,7 @@ import {
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../services/identity/principal-resolver.js';
 import type { DevicePairingService } from '../services/ssh/device-pairing-service.js';
 import type { EnvironmentSecurityService } from '../services/ssh/environment-security-service.js';
+import type { RelayManagementActorCurrency } from './relay-management-actor.js';
 import {
   getRuntimeAuthenticatedRequestPrincipal,
   getRuntimeNativeDeviceProofPrincipal,
@@ -62,6 +63,7 @@ export class RelayManagementApproval {
     readonly subjectId: string,
     readonly actorPrincipalId: string,
     private readonly current: () => boolean,
+    private readonly refreshActor: () => Promise<boolean>,
   ) {
     if (
       token !== APPROVAL_ORIGIN ||
@@ -76,6 +78,9 @@ export class RelayManagementApproval {
   isCurrent(): boolean {
     return this.current();
   }
+  async refresh(): Promise<boolean> {
+    return (await this.refreshActor()) && this.current();
+  }
 }
 export function captureRelayManagementApproval(
   request: Request,
@@ -83,8 +88,11 @@ export function captureRelayManagementApproval(
   security: Security,
   pairing: Pick<DevicePairingService, 'deviceHoldsScope'>,
   actor: PrincipalRef,
+  currency?: RelayManagementActorCurrency,
 ): RelayManagementApproval {
-  const current = () => hasRelayManagementAuthority(request, security, pairing);
+  const current = () =>
+    hasRelayManagementAuthority(request, security, pairing) &&
+    (currency?.current() ?? true);
   if (!current()) throw new Error('relay_management_required');
   if (actor.kind !== 'human' || !isPrincipalRef(actor))
     throw new Error('relay_management_actor_required');
@@ -92,6 +100,7 @@ export function captureRelayManagementApproval(
   const owner =
     principal?.authority === 'operator-credential' ||
     isBoundRuntimeLocalOperator(request);
+  if (!currency && !owner) throw new Error('relay_management_actor_required');
   if (!owner && actor.id === LOCAL_OPERATOR_PRINCIPAL_ID)
     throw new Error('relay_management_actor_required');
   return new RelayManagementApproval(
@@ -99,5 +108,6 @@ export function captureRelayManagementApproval(
     subjectId,
     actor.id,
     current,
+    () => currency?.refresh() ?? Promise.resolve(current()),
   );
 }

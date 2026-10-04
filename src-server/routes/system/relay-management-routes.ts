@@ -9,6 +9,7 @@ import {
 import { type Context, Hono } from 'hono';
 import { z } from 'zod';
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
+import type { RelayManagementActorCurrency } from '../../security/relay-management-actor.js';
 import type { RelayManagementApproval } from '../../security/relay-management-authority.js';
 import {
   approveNativeSurfaceAsManager,
@@ -40,6 +41,10 @@ export function createRelayManagementRoutes(deps: {
   enrollment?: NativeRelayEnrollmentService;
   isManager(request: Request): boolean;
   resolveActor(context: Context): PrincipalRef;
+  actorCurrency(
+    request: Request,
+    actor: PrincipalRef,
+  ): RelayManagementActorCurrency;
   captureDecision(
     request: Request,
     subjectId: string,
@@ -66,9 +71,13 @@ export function createRelayManagementRoutes(deps: {
     c.header('Cache-Control', 'no-store');
     if (!deps.isManager(c.req.raw))
       return c.json({ error: { code: 'relay_management_required' } }, 403);
+    const actor = deps.resolveActor(c);
+    const actorCurrency = deps.actorCurrency(c.req.raw, actor);
     await next();
     c.res = await guardAccountResponse(c.res, async () =>
-      deps.isManager(c.req.raw) ? 'current' : 'invalid',
+      deps.isManager(c.req.raw) && (await actorCurrency.refresh())
+        ? 'current'
+        : 'invalid',
     );
   });
   app.get('/', async (c) => {
@@ -124,21 +133,20 @@ export function createRelayManagementRoutes(deps: {
       );
       if (!deps.isManager(c.req.raw))
         return c.json({ error: { code: 'relay_management_required' } }, 403);
+      const decision = deps.captureDecision(
+        c.req.raw,
+        tuple.surface.clientInstanceId,
+        deps.resolveActor(c),
+      );
+      if (!(await decision.refresh()))
+        return c.json({ error: { code: 'relay_management_required' } }, 403);
       deps.recordDecision?.(
         c.req.raw,
         'approve-setup',
         tuple.surface.clientInstanceId,
       );
       const result = deps.registry.approve(
-        approveNativeSurfaceAsManager(
-          deps.captureDecision(
-            c.req.raw,
-            tuple.surface.clientInstanceId,
-            deps.resolveActor(c),
-          ),
-          'approve',
-          tuple,
-        ),
+        approveNativeSurfaceAsManager(decision, 'approve', tuple),
       );
       return c.json({
         data: {
@@ -186,20 +194,19 @@ export function createRelayManagementRoutes(deps: {
         return c.json({ error: { code: 'approval_changed' } }, 409);
       if (!deps.isManager(c.req.raw))
         return c.json({ error: { code: 'relay_management_required' } }, 403);
+      const decision = deps.captureDecision(
+        c.req.raw,
+        approved.surface.clientInstanceId,
+        deps.resolveActor(c),
+      );
+      if (!(await decision.refresh()))
+        return c.json({ error: { code: 'relay_management_required' } }, 403);
       deps.recordDecision?.(c.req.raw, 'revoke-setup', approved.approvalId);
       deps.registry.revoke(
-        approveNativeSurfaceAsManager(
-          deps.captureDecision(
-            c.req.raw,
-            approved.surface.clientInstanceId,
-            deps.resolveActor(c),
-          ),
-          'revoke',
-          {
-            scope: approved.scope,
-            surface: approved.surface,
-          },
-        ),
+        approveNativeSurfaceAsManager(decision, 'revoke', {
+          scope: approved.scope,
+          surface: approved.surface,
+        }),
       );
       return c.json({ data: { state: 'revoked' } });
     } catch {
@@ -245,6 +252,13 @@ export function createRelayManagementRoutes(deps: {
         options,
       );
       if (!approved.isCurrent() || !deps.isManager(c.req.raw))
+        return c.json({ error: { code: 'relay_management_required' } }, 403);
+      const decision = deps.captureDecision(
+        c.req.raw,
+        tuple.surface.clientInstanceId,
+        deps.resolveActor(c),
+      );
+      if (!(await decision.refresh()))
         return c.json({ error: { code: 'relay_management_required' } }, 403);
       deps.recordDecision?.(
         c.req.raw,
@@ -334,6 +348,13 @@ export function createRelayManagementRoutes(deps: {
         'deny-device',
         c.req.param('enrollmentId'),
       );
+      const decision = deps.captureDecision(
+        c.req.raw,
+        c.req.param('enrollmentId'),
+        deps.resolveActor(c),
+      );
+      if (!(await decision.refresh()))
+        return c.json({ error: { code: 'relay_management_required' } }, 403);
       await deps.enrollment.deny(
         c.req.raw,
         c.req.param('enrollmentId'),

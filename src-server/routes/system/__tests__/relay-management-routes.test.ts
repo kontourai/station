@@ -11,6 +11,7 @@ import {
   pairingScopeSatisfiesHttpRoute,
   requiredPairingScope,
 } from '../../../security/pairing-route-scopes.js';
+import { captureRelayManagementActor } from '../../../security/relay-management-actor.js';
 import {
   captureRelayManagementApproval,
   hasRelayManagementAuthority,
@@ -107,6 +108,8 @@ async function fixture() {
       resolveActor: createOrchestrationRequestPrincipalResolver({
         environmentSecurityService: security,
       }),
+      actorCurrency: (request, actor) =>
+        captureRelayManagementActor(request, actor, security.devicePairing),
       captureDecision: (request, subjectId, actor) =>
         captureRelayManagementApproval(
           request,
@@ -114,6 +117,7 @@ async function fixture() {
           security,
           security.devicePairing,
           actor,
+          captureRelayManagementActor(request, actor, security.devicePairing),
         ),
       isManager: (request) =>
         hasRelayManagementAuthority(request, security, security.devicePairing),

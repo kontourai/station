@@ -25,7 +25,6 @@ import {
 import { isPrincipalRef } from '@kontourai/station-contracts/principal';
 import type { SelfHostedBrokerNativeClientSurfaceV2 } from '@kontourai/station-contracts/self-hosted-broker';
 import { renameFileSyncRetrying } from '@kontourai/station-shared/fs-windows-compat';
-import { RelayManagementApproval } from '../../security/relay-management-authority.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../identity/principal-resolver.js';
 
 const BINDINGS_SCHEMA_VERSION = 1 as const;
@@ -208,20 +207,22 @@ export interface NativeDeviceProofApprovalTuple {
 export class NativeDeviceProofOperatorAuthority {
   approve(input: {
     operatorPrincipalId: string;
-    managementApproval?: RelayManagementApproval;
+    approverPrincipalId?: string;
     tuple: NativeDeviceProofApprovalTuple;
   }): NativeDeviceProofOperatorApprovalContext {
     if (input.operatorPrincipalId !== LOCAL_OPERATOR_PRINCIPAL_ID) {
       throw new NativeDeviceProofBindingError('operator_unauthorized');
     }
     const actorPrincipalId =
-      input.managementApproval?.actorPrincipalId ?? input.operatorPrincipalId;
+      input.approverPrincipalId ?? input.operatorPrincipalId;
     if (
-      input.managementApproval &&
-      (!(input.managementApproval instanceof RelayManagementApproval) ||
-        !input.managementApproval.isCurrent())
+      !isPrincipalRef({
+        kind: 'human',
+        id: actorPrincipalId,
+        display: 'approver',
+      })
     )
-      throw new NativeDeviceProofBindingError('operator_unauthorized');
+      throw new NativeDeviceProofBindingError('invalid_operator_approval');
     const tuple = input.tuple;
     if (
       !tuple ||

@@ -661,6 +661,8 @@ export class NativeRelayEnrollmentService {
       record.providerSessionId,
       request.signal,
     );
+    if (!(await decision.refresh()))
+      throw new NativeRelayEnrollmentRefusal('operator_required');
     const current = this.options.journal.get(enrollmentId);
     const transport = this.options.registry
       .approvedSurfaces()
@@ -685,7 +687,7 @@ export class NativeRelayEnrollmentService {
       throw new NativeRelayEnrollmentRefusal('invalid');
     const approval = new NativeDeviceProofOperatorAuthority().approve({
       operatorPrincipalId: LOCAL_OPERATOR_PRINCIPAL_ID,
-      managementApproval: decision,
+      approverPrincipalId: decision.actorPrincipalId,
       tuple: {
         operation: 'create',
         stationId: record.binding.stationId,
