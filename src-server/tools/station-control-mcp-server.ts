@@ -25,6 +25,7 @@ import {
   stationControlToolPolicy,
 } from './station-control-policy.js';
 import { registerSessionInventoryTools } from './station-control-session-inventory-tools.js';
+import { registerSessionSearchTools } from './station-control-session-search-tools.js';
 import {
   getStationControlCaller,
   jsonToolResult,
@@ -263,6 +264,7 @@ export function createSelectedStationControlMcpServer(
   registerPlatformTools(registry);
   registerBasisTools(registry);
   registerSessionInventoryTools(registry);
+  registerSessionSearchTools(registry);
   registerNotifyTools(registry);
   return server;
 }
