@@ -256,7 +256,7 @@ export class SessionTranscriptReads {
     });
     const page = rows.slice(0, pageSize);
     const receipts = page.flatMap(
-      ({ event, conversationId, taskId, model, processEpoch, accountKey }) => {
+      ({ event, conversationId, taskId, model, costSegment, accountKey }) => {
         if (event.payload.method !== 'token-usage.updated' || !event.observedAt)
           return [];
         const usage = event.payload;
@@ -307,9 +307,13 @@ export class SessionTranscriptReads {
             : unpricedTokenReceipt;
         const tokenReceipts = hasTokenMeasurements(usage) ? [tokenReceipt] : [];
         if (!isReportedAmount(usage.reportedCostUsd)) return tokenReceipts;
+        // Figures in one cumulative cost segment restate one running total,
+        // so they share an identity and the rollup keeps the latest; a
+        // resumed process continues its predecessor's segment (station#3320).
         const costId =
-          providerCostScope(event.provider) === 'engine-process-cumulative'
-            ? `usage:${event.threadId}:${event.provider}:cost:${processEpoch}`
+          providerCostScope(event.provider) === 'engine-process-cumulative' &&
+          costSegment !== undefined
+            ? `usage:${event.threadId}:${event.provider}:cost:${costSegment}`
             : `usage:${event.id}:cost`;
         return [
           ...tokenReceipts,

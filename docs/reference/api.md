@@ -1277,8 +1277,10 @@ adds bounded `aggregateReceipts` for leaf Station transfer, after logical
 replacement/deduplication. Context occupancy alone does not produce a token
 receipt or consumed-usage coverage.
 
-Cumulative token identities survive engine-process restarts; cumulative cost
-identities follow the declared cost-process epochs. `sourceSequence` orders
+Cumulative token identities survive engine-process restarts. A cumulative cost
+identity spans one running total: a resumed Claude process continues its
+predecessor's total, while a restart without resume or a lower figure starts
+another. `sourceSequence` orders
 same-Station/thread observations when ingestion timestamps tie. Sparse
 cumulative updates retain earlier measured dimensions; unsupported combined
 model/pricing attribution stays unknown or unpriced. The window records
