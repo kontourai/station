@@ -22,6 +22,7 @@ import {
   type TaskOutputCreateInput,
   type TaskOutputRecord,
 } from '@kontourai/station-contracts';
+import type { ProjectTaskRoomOutputFeedback } from '@kontourai/station-contracts/project-task-room';
 import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
 import { fsyncDirectorySync } from '@kontourai/station-shared/fs-windows-compat';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
@@ -166,6 +167,31 @@ export class TaskOutputModule {
     return stripStoredOutput(this.findInStore(store, task, outputId));
   }
 
+  /** Identity admission only; the output lock is released before the room commits. */
+  async validateFeedbackTarget(
+    scope: { projectId: string; taskId: string },
+    target: ProjectTaskRoomOutputFeedback['target'],
+  ): Promise<'admitted' | 'denied' | 'unavailable'> {
+    try {
+      this.assertPersonal();
+      const task = this.captureTask(scope.taskId);
+      if (
+        task.projectId !== scope.projectId ||
+        task.createdAt !== target.taskCreatedAt
+      )
+        return 'denied';
+      const output = await this.read(scope.taskId, target.outputId);
+      this.assertTaskIdentity(task);
+      return output.materialization.digest === target.digest
+        ? 'admitted'
+        : 'denied';
+    } catch (error) {
+      return error instanceof TaskOutputNotFoundError
+        ? 'denied'
+        : 'unavailable';
+    }
+  }
+
   /** Startup callers may reconcile the bounded snapshot/index authority. */
   async reconcile(): Promise<void> {
     this.assertPersonal();
@@ -218,8 +244,7 @@ export class TaskOutputModule {
       }
       if (
         store.outputs.filter((output) => belongsToTask(output, identity))
-          .length >=
-        this.limits.maxPerTask
+          .length >= this.limits.maxPerTask
       ) {
         throw new TaskOutputUnavailableError('Task output limit reached');
       }
@@ -391,8 +416,7 @@ export class TaskOutputModule {
         };
       if (
         store.outputs.filter((output) => belongsToTask(output, identity))
-          .length >=
-        this.limits.maxPerTask
+          .length >= this.limits.maxPerTask
       )
         throw new TaskOutputUnavailableError('Task output limit reached');
       this.assertReservedDeletionIdentityCapacity(store, 1);

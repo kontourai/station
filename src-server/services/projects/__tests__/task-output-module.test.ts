@@ -179,9 +179,9 @@ describe('TaskOutputModule', () => {
       await expect(create('replacement-overflow')).rejects.toBeInstanceOf(
         TaskOutputUnavailableError,
       );
-      await expect(
-        module().read('task-a', original.id),
-      ).rejects.toBeInstanceOf(TaskOutputNotFoundError);
+      await expect(module().read('task-a', original.id)).rejects.toBeInstanceOf(
+        TaskOutputNotFoundError,
+      );
     },
   );
 
@@ -958,4 +958,44 @@ describe('TaskOutputModule', () => {
     }).reconcile();
     expect(() => readFileSync(blob)).toThrow();
   });
+});
+
+test('feedback target admission binds immutable digest, Project and Task incarnation and refuses deletion', async () => {
+  const f = fixture();
+  const outputs = f.module();
+  writeFileSync(join(f.workspace, 'review.txt'), 'exact version');
+  const output = await outputs.create('task-a', {
+    operationId: 'review-output',
+    relativePath: 'review.txt',
+    title: 'Review',
+  });
+  const scope = { projectId: 'project-a', taskId: 'task-a' };
+  const target = {
+    outputId: output.id,
+    digest: output.materialization.digest,
+    taskCreatedAt: '2026-10-01T00:00:00.000Z',
+  };
+  expect(await outputs.validateFeedbackTarget(scope, target)).toBe('admitted');
+  expect(
+    await outputs.validateFeedbackTarget(scope, {
+      ...target,
+      digest: `sha256:${'b'.repeat(64)}`,
+    }),
+  ).toBe('denied');
+  expect(
+    await outputs.validateFeedbackTarget(
+      { ...scope, projectId: 'other' },
+      target,
+    ),
+  ).toBe('denied');
+  expect(
+    await outputs.validateFeedbackTarget(scope, {
+      ...target,
+      taskCreatedAt: '2026-10-02T00:00:00.000Z',
+    }),
+  ).toBe('denied');
+  await outputs.delete('task-a', output.id);
+  expect(await outputs.validateFeedbackTarget(scope, target)).toBe('denied');
+  f.setTaskCreatedAt('2026-10-03T00:00:00.000Z');
+  expect(await outputs.validateFeedbackTarget(scope, target)).toBe('denied');
 });

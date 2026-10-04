@@ -116,6 +116,25 @@ Query result, with values in `data` and separate loading/error state; they do
 not return the data array itself. A hook being exported also does not prove
 that the default Station host supplies its optional context.
 
+### Immutable output review
+
+`@kontourai/station-sdk/project-task-rooms` exports
+`appendProjectTaskRoomOutputFeedback(apiBase, input, options?)` and
+`useAppendProjectTaskRoomOutputFeedbackMutation(taskId, taskCreatedAt, scope)`.
+The client input contains `taskId`, `proposalId`, `occurredAt` and a
+`ProjectTaskRoomOutputFeedback` body. Preserve all fields for an uncertain
+retry; mutation retries are disabled. The hook requires captured connection
+authority and matching Task incarnation before sending, refuses stale late
+settlement, and invalidates room history only under current authority.
+
+`useProjectTaskRoomDiscoveryQuery(taskId, {requestScope, taskCreatedAt})` and
+`useTaskOutputsQuery(taskId, {requestScope, taskCreatedAt})` partition reads by
+connection authority and Task incarnation and refuse stale settlement.
+The optional scoped configuration is used by Station's output review surface;
+legacy unscoped callers keep their existing behavior. See the
+[review HTTP contract](api.md#review-an-immutable-task-output) for authority,
+idempotency, compatibility and the meaning of reviewer acceptance.
+
 ### Task room agent requests
 
 `@kontourai/station-sdk/client` exports `fetchTaskRoomAgentRequests`,

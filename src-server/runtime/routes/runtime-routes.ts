@@ -3654,6 +3654,10 @@ export function configureRuntimeRoutes(
       // Room editing remains available; discovery names revision-link absence.
     }
     const roomRuntime = new ProjectTaskRoomRuntime({
+      outputFeedbackTargets: {
+        validate: (scope, target) =>
+          taskOutputs.validateFeedbackTarget(scope, target),
+      },
       taskGraph: context.taskGraphService,
       projectForId: (id) => {
         const project = context.projectService
@@ -3669,6 +3673,9 @@ export function configureRuntimeRoutes(
         context.orchestrationEventStore!.createProjectTaskRoomHistory({
           capabilities: authority.capabilities,
           agents: authority.agents,
+          ...(authority.outputFeedbackTargets
+            ? { outputFeedbackTargets: authority.outputFeedbackTargets }
+            : {}),
           ...(authority.links ? { links: authority.links } : {}),
         }),
       working:
