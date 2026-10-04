@@ -91,10 +91,6 @@ vi.mock('../../bootstrap/runtime-http.js', async (importOriginal) => ({
 
 const registryFileEnv = 'STATION_HOSTED_TENANT_REGISTRY_FILE';
 
-// New temp directories go through the tracker, which removes them in an
-// after-hook whether or not the test passed (#2421).
-const makeTempDir = trackTempDirs();
-
 /**
  * A stand-in for an unstubbed member that is callable at EVERY depth.
  * A one-level proxy answers `deps.a.b()` but throws on `deps.a.b.c()`, so
