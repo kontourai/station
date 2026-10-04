@@ -420,7 +420,9 @@ describe('one-bar rule (#3309)', () => {
       // bracket these are the REGION's since #2046 2b and render in the
       // region bar (`RegionChromeBar.test.tsx` pins them there).
       'Hide inbox',
-      'New',
+      // The shared NewChatAction names itself "New chat"; its visible text
+      // in this bar is the short "New".
+      'New chat',
       'More dock actions',
     ]);
     expect(screen.queryByLabelText('Hide Chat')).toBeNull();
