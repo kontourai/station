@@ -16,6 +16,7 @@ import {
   notifyCredentialChanged,
   setClientCredentialResolver,
 } from '../client/http';
+import { steerTurn } from '../client/orchestration';
 import {
   isStationAnswer,
   observeStationResponse,
@@ -83,6 +84,10 @@ const producers: ReadonlyArray<
         { type: 'session.interrupt', sessionId: 's1' } as never,
         apiBase,
       ),
+  ],
+  [
+    'steer command (authenticatedFetch)',
+    (apiBase) => steerTurn(apiBase, { threadId: 't1', input: 'go' } as never),
   ],
   [
     'chat stream (authenticatedFetch)',
