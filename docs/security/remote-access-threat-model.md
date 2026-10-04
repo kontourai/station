@@ -364,7 +364,9 @@ asks. With no decision standing, the confinement change itself makes the next
 turn re-apply the engine's mode confined (#2898), so no engine keeps its start
 posture past its next turn. A turn that started unconfined cannot be extended
 by steering: Station refuses a steer into it (`confinement-changed`), so new
-instructions wait for the confined next turn. Each session still running
+instructions wait for the confined next turn. Answers to that turn's own
+questions and approval requests still reach it (an accepted residual; Stop
+now ends it). Each session still running
 unconfined is listed until then, and the operator can stop it at once from the
 revocation notice. Full access from the
 operator, another device, or an Agent or Station default on someone else's

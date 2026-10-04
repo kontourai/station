@@ -543,7 +543,17 @@ A session spawned before this change has nothing recorded.
     standing; clients still read it.
   - Version skew (accepted): a connect build from before #2898 drops
     `next-turn` entries, and running sessions with a decision standing are
-    no longer in `reconfined`, so such a client under-lists them.
+    no longer in `reconfined`, so such a client under-lists them. A UI from
+    before #2898 does not know the `confinement-changed` steer outcome: its
+    `steerRefusalMessage` default returns the result object, which may be
+    rendered as the message content. From #2898 on, that default returns a
+    plain sentence for any unknown outcome.
+  - Only a narrowing refuses a steer: a turn accepted under `host` while
+    `workspace` applies now. A widening (a recorded `never`, a grant given
+    back) leaves the turn steerable.
+  - Known residual (accepted): answers to the engine's own questions and
+    approval requests still reach the running unconfined turn. They are not
+    a steer and are out of scope; Stop now ends the turn when that matters.
   - **Stop now.** The revocation notice in the paired-devices panels offers
     "Stop now" on each `next-turn` entry. It sends the ordinary
     `stopSession` command for that session, with the credential the
