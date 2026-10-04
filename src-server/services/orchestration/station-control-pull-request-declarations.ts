@@ -190,18 +190,18 @@ export function createStationControlPullRequestDeclarations(
     return grant;
   };
 
-  const run = async (
-    input: Parameters<StationControlPullRequestDeclarations['declare']>[0],
-  ): Promise<StationControlPullRequestDeclarationOutcome> => {
-    const { sessionId, pullRequest } = input;
-    const turn = deps.activeTurn(sessionId);
-    if (!turn) return 'no-active-turn';
+  /** Whether the session already declared this pull request, durably or in this turn. */
+  const repeatCheck = (
+    sessionId: string,
+    turn: StationControlActiveTurn,
+    pullRequest: StationControlPullRequestIdentity,
+  ) => {
     const durable = deps.declaredPullRequests(sessionId);
     if (!durable)
       throw new StationControlPullRequestUnavailableError(
         'This session has too many declared outputs to compare against.',
       );
-    const alreadyDeclared = () =>
+    return () =>
       [
         ...durable,
         ...operation
@@ -213,15 +213,21 @@ export function createStationControlPullRequestDeclarations(
       ].some((descriptor) =>
         samePullRequest(identityOf(descriptor), pullRequest),
       );
-    if (alreadyDeclared()) return 'already-declared';
+  };
 
+  /**
+   * The exact read: the provider answers for this identity in THIS session's
+   * own repository, or the declaration is refused.
+   */
+  const readExact = async (
+    sessionId: string,
+    pullRequest: StationControlPullRequestIdentity,
+  ) => {
     const workspaceRoot = deps.workspaceRoot(sessionId);
     if (!workspaceRoot)
       throw new StationControlPullRequestUnavailableError(
         'This session has no workspace to read the pull request from.',
       );
-    // The exact read: the provider answers for this identity in THIS
-    // workspace's own repository, or the declaration is refused.
     const exact = await deps.resolver.readIdentity({
       ...pullRequest,
       workingDirectory: workspaceRoot,
@@ -230,12 +236,16 @@ export function createStationControlPullRequestDeclarations(
       throw new StationControlPullRequestUnavailableError(
         'The pull request could not be read at that exact identity in this session workspace.',
       );
-    // The read took time: the turn may have ended, and a repeat may have
-    // landed through the pending set.
-    const still = deps.activeTurn(sessionId);
-    if (!still || still.turnId !== turn.turnId) return 'no-active-turn';
-    if (alreadyDeclared()) return 'already-declared';
+    return exact;
+  };
 
+  /** Bind a server-minted call to the turn's grant and declare through the operation. */
+  const admit = async (
+    sessionId: string,
+    turn: StationControlActiveTurn,
+    exact: PullRequestDescriptor,
+    label: string | undefined,
+  ): Promise<'declared' | 'no-active-turn'> => {
     const grant = grantFor(sessionId, turn);
     // A server-minted call id: the model names no call, session or turn.
     const scope = grant ? authority.bindNativeCall(grant, randomUUID()) : null;
@@ -245,7 +255,7 @@ export function createStationControlPullRequestDeclarations(
       );
     try {
       await operation.declare(scope, {
-        ...(input.label === undefined ? {} : { label: input.label }),
+        ...(label === undefined ? {} : { label }),
         pullRequest: {
           provider: exact.provider,
           host: exact.host,
@@ -265,6 +275,23 @@ export function createStationControlPullRequestDeclarations(
       );
     }
     return 'declared';
+  };
+
+  const run = async (
+    input: Parameters<StationControlPullRequestDeclarations['declare']>[0],
+  ): Promise<StationControlPullRequestDeclarationOutcome> => {
+    const { sessionId, pullRequest } = input;
+    const turn = deps.activeTurn(sessionId);
+    if (!turn) return 'no-active-turn';
+    const alreadyDeclared = repeatCheck(sessionId, turn, pullRequest);
+    if (alreadyDeclared()) return 'already-declared';
+    const exact = await readExact(sessionId, pullRequest);
+    // The read took time: the turn may have ended, and a repeat may have
+    // landed through the pending set.
+    const still = deps.activeTurn(sessionId);
+    if (!still || still.turnId !== turn.turnId) return 'no-active-turn';
+    if (alreadyDeclared()) return 'already-declared';
+    return admit(sessionId, turn, exact, input.label);
   };
 
   return {

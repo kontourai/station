@@ -54,6 +54,42 @@ interface DeclarePullRequestRoutesDeps {
   }): Promise<StationControlPullRequestDeclarationOutcome>;
 }
 
+type ParsedDeclaration =
+  | { identity: PullRequestLinkIdentity; label?: string }
+  | { error: string };
+
+/**
+ * The body, as the link routes would read it: the link identity schema, the
+ * host lowercased, then the link store's own identity rule.
+ */
+async function readDeclaration(request: Request): Promise<ParsedDeclaration> {
+  const read = await readBoundedRequestBody(request, MAX_BODY_BYTES);
+  let body: unknown;
+  try {
+    body = read.status === 'ok' ? JSON.parse(read.body) : undefined;
+  } catch {
+    body = undefined;
+  }
+  const parsed = declarePullRequestSchema.safeParse(body);
+  if (!parsed.success)
+    return {
+      error:
+        'declare_pull_request needs provider, host, repository {owner, name} and ref (a positive integer string), and optionally a label.',
+    };
+  const { label, ...named } = parsed.data;
+  // The link route lowercases the host before it compares or stores it.
+  const identity: PullRequestLinkIdentity = {
+    ...named,
+    host: named.host.toLowerCase(),
+  };
+  try {
+    assertPullRequestLinkIdentity(identity);
+  } catch {
+    return { error: 'The pull request identity is invalid.' };
+  }
+  return { identity, ...(label === undefined ? {} : { label }) };
+}
+
 export function createDeclarePullRequestRoutes(
   deps: DeclarePullRequestRoutesDeps,
 ) {
@@ -83,39 +119,14 @@ export function createDeclarePullRequestRoutes(
     }));
     if (refused) return refused;
 
-    const read = await readBoundedRequestBody(c.req.raw, MAX_BODY_BYTES);
-    let body: unknown;
-    try {
-      body = read.status === 'ok' ? JSON.parse(read.body) : undefined;
-    } catch {
-      body = undefined;
-    }
-    const parsed = declarePullRequestSchema.safeParse(body);
-    if (!parsed.success)
+    const declaration = await readDeclaration(c.req.raw);
+    if ('error' in declaration)
       return c.json(
-        {
-          success: false,
-          error:
-            'declare_pull_request needs provider, host, repository {owner, name} and ref (a positive integer string), and optionally a label.',
-        },
+        { success: false, error: declaration.error },
         400,
         NO_STORE,
       );
-    const { label, ...named } = parsed.data;
-    // The link route lowercases the host before it compares or stores it.
-    const identity: PullRequestLinkIdentity = {
-      ...named,
-      host: named.host.toLowerCase(),
-    };
-    try {
-      assertPullRequestLinkIdentity(identity);
-    } catch {
-      return c.json(
-        { success: false, error: 'The pull request identity is invalid.' },
-        400,
-        NO_STORE,
-      );
-    }
+    const { identity, label } = declaration;
     try {
       const status = await deps.declare({
         sessionId,
