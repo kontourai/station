@@ -1,0 +1,39 @@
+{
+  "revision": "020eb6a14e05313bb66724ec3504e613717e6ed1",
+
+  "notes": [
+    {"path":"README.md","note":"Reviewed this branch delta: local experience CLI dispatch/help and public shared subpath are additive; existing documented lifecycle, native, triage, checkpoint and packaging behavior is unchanged. No new runtime or release proof inferred.","inputs":["README.md"]},
+
+    {"path":"docs/README.md","note":"Reviewed new author-learning-path navigation against the actual guide and repository-only audience route; does not imply public Pages or installed runtime qualification.","inputs":["docs/README.md"]},
+
+    {"path":"docs/adr/0016-merge-playbooks-into-skills-behind-a-boot-flag.md","note":"Reviewed this branch delta: local experience CLI dispatch/help and public shared subpath are additive; existing documented lifecycle, native, triage, checkpoint and packaging behavior is unchanged. No new runtime or release proof inferred.","inputs":["docs/adr/0016-merge-playbooks-into-skills-behind-a-boot-flag.md"]},
+
+    {"path":"docs/architecture.md","note":"Reviewed this branch delta: local experience CLI dispatch/help and public shared subpath are additive; existing documented lifecycle, native, triage, checkpoint and packaging behavior is unchanged. No new runtime or release proof inferred.","inputs":["docs/architecture.md"]},
+
+    {"path":"docs/design/cli-triage.md","note":"Reviewed this branch delta: local experience CLI dispatch/help and public shared subpath are additive; existing documented lifecycle, native, triage, checkpoint and packaging behavior is unchanged. No new runtime or release proof inferred.","inputs":["docs/design/cli-triage.md"]},
+
+    {"path":"docs/guides/build-your-first-plugin.md","note":"Reviewed this branch delta: local experience CLI dispatch/help and public shared subpath are additive; existing documented lifecycle, native, triage, checkpoint and packaging behavior is unchanged. No new runtime or release proof inferred.","inputs":["docs/guides/build-your-first-plugin.md"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"Reviewed this branch delta: local experience CLI dispatch/help and public shared subpath are additive; existing documented lifecycle, native, triage, checkpoint and packaging behavior is unchanged. No new runtime or release proof inferred.","inputs":["docs/guides/native-shell-verification.md"]},
+
+    {"path":"docs/guides/plugins.md","note":"Reviewed the added ordinary curated Agent Plugin item against both default/full catalogs, real portable manifest and source package. Default registry focused tests 14 passed; discovery listing is not model/release qualification.","inputs":["docs/guides/plugins.md"]},
+
+    {"path":"docs/patterns/backend.md","note":"Reviewed this branch delta: local experience CLI dispatch/help and public shared subpath are additive; existing documented lifecycle, native, triage, checkpoint and packaging behavior is unchanged. No new runtime or release proof inferred.","inputs":["docs/patterns/backend.md"]},
+
+    {"path":"docs/reference/cli.md","note":"Reviewed new plugin experience inspect/review command caller, local source/package digests, error exits, source spans/gaps/evaluation transcript assertions and non-activation boundary; supported CLI executed, unknown Skill exit1. Existing commands unchanged.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/reference/shared.md","note":"Reviewed new public Node-only skill-experience-workflow export against implementation and public CLI caller. Bounded local inspection and author assertions are distinguished from runtime/release authority.","inputs":["docs/reference/shared.md"]},
+
+    {"path":"docs/user/native-recovery.md","note":"Reviewed this branch delta: local experience CLI dispatch/help and public shared subpath are additive; existing documented lifecycle, native, triage, checkpoint and packaging behavior is unchanged. No new runtime or release proof inferred.","inputs":["docs/user/native-recovery.md"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"Reviewed this branch delta: local experience CLI dispatch/help and public shared subpath are additive; existing documented lifecycle, native, triage, checkpoint and packaging behavior is unchanged. No new runtime or release proof inferred.","inputs":["docs/user/workspace-checkpoints.md"]},
+
+    {"path":"examples/getting-started-starter/README.md","note":"Reviewed this branch delta: local experience CLI dispatch/help and public shared subpath are additive; existing documented lifecycle, native, triage, checkpoint and packaging behavior is unchanged. No new runtime or release proof inferred.","inputs":["examples/getting-started-starter/README.md"]},
+
+    {"path":"examples/registry/README.md","note":"Reviewed the added ordinary curated Agent Plugin item against both default/full catalogs, real portable manifest and source package. Default registry focused tests 14 passed; discovery listing is not model/release qualification.","inputs":["examples/registry/README.md"]},
+
+    {"path":"packages/cli/README.md","note":"Reviewed this branch delta: local experience CLI dispatch/help and public shared subpath are additive; existing documented lifecycle, native, triage, checkpoint and packaging behavior is unchanged. No new runtime or release proof inferred.","inputs":["packages/cli/README.md"]},
+
+    {"path":"packages/shared/README.md","note":"Reviewed new public Node-only skill-experience-workflow export against implementation and public CLI caller. Bounded local inspection and author assertions are distinguished from runtime/release authority.","inputs":["packages/shared/README.md"]}
+  ]
+}

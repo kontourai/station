@@ -1,0 +1,7 @@
+{
+  "revision": "079d8d8e053b60924e56433c99780cb23e212270",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Reviewed retained Home and agent-starting-point journeys with renamed controls and precise Work actions scope. The shared Start a chat name must not confuse Home readiness with the dock entry. Assertions, prerequisites, authority and coverage remain intact; no tests removed. Phone first-run pipeline passed; desktop selector correction is now committed for rerun.","inputs":["docs/guides/e2e-coverage-matrix.md"]}
+  ]
+}

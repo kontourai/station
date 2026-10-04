@@ -1,0 +1,7 @@
+{
+  "revision": "d93991f52363d8d7d2a1fa12938ba5783158b27c",
+
+  "notes": [
+    {"path":"docs/design/connections-onboarding.md","note":"Reviewed automatic installed-app preparation and goal dispatch lifetime. The preparation component remains mounted during catalog fetching, warnings are returned as explicit failure feedback, and default selection waits until preparation completes without feedback. Two mounted caller regressions failed on prior code and now pass. Existing warning/cancellation/disabled-app claims remain; bind their production owners explicitly.","inputs":["docs/design/connections-onboarding.md"]}
+  ]
+}

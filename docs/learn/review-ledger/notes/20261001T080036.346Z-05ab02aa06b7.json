@@ -1,0 +1,7 @@
+{
+  "revision": "c5364f269c1fa068755974e957adba21c461a6fa",
+
+  "notes": [
+    {"path":"docs/reference/shared.md","note":"#3071 final round, after merging origin/main. Updated the Request settlement section for the window's upper bound and settle-by-name on any abort; checked against request-settlement.ts and its tests. Rest of the page not re-reviewed.","inputs":["docs/reference/shared.md"]}
+  ]
+}

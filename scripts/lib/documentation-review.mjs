@@ -46,8 +46,9 @@ function validateRecord(record, tracked, reportMissing) {
   if (!kinds.has(record.kind) || !states.has(record.state))
     throw new Error(`Invalid review classification: ${record.path}`);
   if (
-    !digestPattern.test(record.documentDigest) ||
-    !revisionPattern.test(record.documentRevision)
+    record.historyChanges === undefined &&
+    (!digestPattern.test(record.documentDigest) ||
+      !revisionPattern.test(record.documentRevision))
   )
     throw new Error(`Invalid review identity: ${record.path}`);
   for (const field of ['summary', 'limits']) requireText(record[field], field);
@@ -62,8 +63,9 @@ function validateRecord(record, tracked, reportMissing) {
       !isBindingPath(source?.path) ||
       (!reportMissing && !tracked.has(bindingFile(source.path))) ||
       sources.has(source.path) ||
-      !digestPattern.test(source.digest) ||
-      !revisionPattern.test(source.revision)
+      (record.historyChanges === undefined &&
+        (!digestPattern.test(source.digest) ||
+          !revisionPattern.test(source.revision)))
     )
       throw new Error(
         `Invalid review source: ${record.path} -> ${source.path}`,
@@ -132,7 +134,10 @@ export async function evaluateDocumentationReview(
   const observedChanges = [];
   const missing = new Set();
   if (!documents.has(record.path)) missing.add(record.path);
-  if (documents.get(record.path) !== record.documentDigest)
+  if (
+    record.historyChanges === undefined &&
+    documents.get(record.path) !== record.documentDigest
+  )
     observedChanges.push(record.path);
   for (const source of record.sources) {
     const file = bindingFile(source.path);
@@ -146,10 +151,19 @@ export async function evaluateDocumentationReview(
         missing.add(source.path);
       }
     }
-    if (missing.has(source.path) || sourceDigest !== source.digest)
+    if (
+      missing.has(source.path) ||
+      (record.historyChanges === undefined && sourceDigest !== source.digest)
+    )
       observedChanges.push(source.path);
   }
 
+  if (record.historyChanges !== undefined)
+    observedChanges.splice(
+      0,
+      observedChanges.length,
+      ...new Set([...record.historyChanges, ...missing]),
+    );
   let changed = observedChanges;
   let validation;
   const generated =

@@ -1,0 +1,7 @@
+{
+  "revision": "e9cc8e94d481421ac57abcf777fb40e699c3eca7",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Reviewed regenerated station-docs-content.ts against its generator and source topics: 101 static topics include the updated composer, Return and protected steering guidance. The manual remains bundled-only, with no live filesystem, network, credential or execution authority. docs:mcp:check passed; this is content/source evidence, not a fresh provider or deployed Docs journey.","inputs":["docs/reference/station-docs.md"]}
+  ]
+}

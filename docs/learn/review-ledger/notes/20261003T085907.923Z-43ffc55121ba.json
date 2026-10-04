@@ -1,0 +1,7 @@
+{
+  "revision": "82eb547907cc8bc7bd0c32b48834d8bf1b7b8ec4",
+
+  "notes": [
+    {"path":"docs/reference/skill-experiences.md","note":"Reviewed producer typing against actual Window.postMessage/listener boundary: structural target and module-scoped browser listener declarations compile under Node owner tests without a DOM-wide compiler change; declarations erase and emitted request/correlation/source/origin/lifetime behavior is unchanged.16 serialized SDK/outer relay owner tests and scripts typecheck passed; earlier runtime/native/model evidence and limits retained.","inputs":["docs/reference/skill-experiences.md"]}
+  ]
+}

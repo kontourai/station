@@ -1,0 +1,11 @@
+{
+  "revision": "7be721b29fb6742b6e66cf8f952782481b3f0fe0",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Reviewed official SDK raw-document parsing versus strict format compatibility, pinned original Markdown inspection including nested credits, safe required identity fields, fatal malformed/ambiguous/unreadable discovery, and typed acquisition refusal. Real routes prove unsupported format does not fall through or leave a package/stage; default filesystem-first installation succeeds while GitHub discovery reports500. Mounted Registry shows format unavailability. Clean-commit mutations catch source outage/false availability and lost typed refusal allowing alternate-source publication. __proto__ schema400 is distinguished from prototype/constructor custom400; full live collection and final CI remain independent qualification.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed the changed API compatibility/refusal explanation and __proto__ schema distinction. Existing client/version, authenticated caller, actual outcome and Project registration requirements remain accurate. Original source metadata is not normalized into installation authority.","inputs":["docs/guides/integrating-station.md"]},
+
+    {"path":"examples/registry/README.md","note":"Reviewed the route delta: only Skill unsupported-format refusal mapping changes. The example plugin catalogs, default manifest resolution, preview consent, plugin acquisition and CLI/server scope remain unchanged; ordinary Registry route cases pass.","inputs":["examples/registry/README.md"]}
+  ]
+}
