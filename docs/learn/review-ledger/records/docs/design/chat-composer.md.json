@@ -26,7 +26,7 @@
 
     {"path":"src-ui/src/components/chat-dock/ChatDockProjectSwitcherSheet.tsx","digest":"8e443583cd1836a979e782680e6587a697264c496a06ffe732bce13a06a88e75","revision":"381388a5c221a50c4e5b8c775538218bc02ce431"},
 
-    {"path":"src-ui/src/components/chat-dock/ChatDockProjectContext.tsx","digest":"4014822b2ec774379491ce299aff2736b8fadcf1e6fb7b0adb69b6b268ee85af","revision":"b14f1b80ec27c38844b3d16e8a4bdfe624a778c9"},
+    {"path":"src-ui/src/components/chat-dock/ChatDockProjectContext.tsx","digest":"97ce9065099378da4f7f2f0c275d9ecfc44c284dc5310a64205ccda3f628b5d0","revision":"3d4674bf8f60442c202efe5872b616324a808484"},
 
     {"path":"src-ui/src/components/PickerCreateAction.tsx","digest":"67574a1cbc47f3e18ac4ca12733e34670d058b3cc2dfd0ebac30b2d7321b06d4","revision":"b14f1b80ec27c38844b3d16e8a4bdfe624a778c9"},
 
@@ -80,7 +80,9 @@
 
     {"path":"src-ui/src/components/chat/QueuedMessages.css","digest":"a24d97fa21ac0aaba1eab7d2d273ed54d34e5cad41f9a94cafeebc429ef25ebe","revision":"57e1daf6e0d4fe2c366e51d67e20c1a70587966f"},
 
-    {"path":"src-ui/src/components/chat/ComposerStopButton.tsx","digest":"fab82bd2a398f7ceb90bf4cf857382c70b171e3c0215f64e76a33748ff7da5fe","revision":"bcf92230693bda2172f72834280d9f1798371197"}
+    {"path":"src-ui/src/components/chat/ComposerStopButton.tsx","digest":"fab82bd2a398f7ceb90bf4cf857382c70b171e3c0215f64e76a33748ff7da5fe","revision":"bcf92230693bda2172f72834280d9f1798371197"},
+
+    {"path":"src-ui/src/components/chat-dock/ChatDockProjectContext.css","digest":"821e1a1fa48d43e3caa203d54c6b26854830841aeb2c3e2eaa6bd496db52f0cc","revision":"6af8b6156629786bb230e8fccc0335ed45f483d8"}
   ],
 
   "checks": [
