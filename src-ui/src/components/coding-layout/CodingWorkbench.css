@@ -467,8 +467,22 @@
   position: relative;
   z-index: 1;
   flex: none;
+  /* The splitter is a <button>, and the app's base button rule gives every
+     button padding, a border and a hover fill: on an 8px strip that made a
+     26px outlined box — an 18px band between Chat and the side panel, and
+     a small outlined notch at Chat's bottom-left over the Terminal. None of
+     it belongs to a splitter, whose line is its ::before. */
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
   background: transparent;
   touch-action: none;
+}
+
+.coding-workbench__separator:hover {
+  background: transparent;
 }
 
 .coding-workbench__separator::before {
@@ -491,6 +505,8 @@
 }
 
 .coding-workbench__separator--horizontal {
+  /* Across the whole edge it moves, not a stub at its start. */
+  flex: 1 1 auto;
   height: 8px;
   margin: -4px 0;
   cursor: row-resize;
