@@ -97,7 +97,11 @@ import {
   type ResolvedAppHome,
   usageCredentialAccountKey,
 } from '../app-home/app-home-profiles.js';
-import { detectClaudeAuthState } from '../auth/claude-auth.js';
+import {
+  type ClaudeAuthStatusProbe,
+  detectClaudeAuthState,
+  parseClaudeAuthStatus,
+} from '../auth/claude-auth.js';
 import type { CliCommandResult } from '../auth/cli-auth.js';
 import {
   augmentedSpawnEnv,
@@ -209,6 +213,18 @@ const CLAUDE_CLI_COMMAND = 'claude';
 const CLAUDE_CLI_PREREQUISITE_ID = `${CLAUDE_CLI_COMMAND}-cli`;
 /** The one probe both readiness and the launch decision share (#1551). */
 const CLAUDE_VERSION_ARGS = ['--version'];
+/**
+ * #3303: the CLI's own login answer, for hosts where the credentials live in
+ * the macOS Keychain and no `.credentials.json` exists. Older CLIs parse
+ * `auth status` as a chat prompt, so it runs only once the version probe has
+ * shown a CLI new enough to have the `auth` command.
+ */
+const CLAUDE_AUTH_STATUS_ARGS = ['auth', 'status', '--json'];
+const CLAUDE_AUTH_STATUS_MIN_VERSION = '2.0.0';
+const CLAUDE_AUTH_STATUS_TIMEOUT_MS = 8_000;
+const CLAUDE_AUTH_STATUS_MAX_BUFFER = 64 * 1024;
+/** Readiness is polled; a definitive answer is reused this long. */
+const CLAUDE_AUTH_STATUS_TTL_MS = 15_000;
 /**
  * A version at the START of a line — never mid-sentence, so prose such as
  * "a newer version 2.1.300 is available" cannot be mistaken for the version
@@ -760,6 +776,18 @@ export interface ClaudeAdapterOptions {
     signal?: AbortSignal,
   ) => Promise<CliCommandResult | null>;
   /**
+   * #3303: runs the `claude auth status` login probe. Defaults to the shared
+   * `runCliCommand`, with a tighter deadline and output bound. Separate from
+   * `runCommand` because that one is the memoized `--version` probe.
+   */
+  runAuthStatusCommand?: (
+    command: string,
+    args: string[],
+    signal?: AbortSignal,
+    envOverlay?: Record<string, string>,
+    bounds?: { timeoutMs?: number; maxBuffer?: number },
+  ) => Promise<CliCommandResult | null>;
+  /**
    * #1551: the Claude Code version bundled inside the Agent SDK. Defaults to
    * reading the SDK package's own `manifest.json`. Injected so the
    * older/newer/equal and "manifest unreadable" branches are all executed by
@@ -1166,6 +1194,11 @@ export class ClaudeAdapter implements ProviderAdapterShape {
   private readonly versionProbes = new Map<
     string,
     Promise<CliCommandResult | null>
+  >();
+  /** #3303: recent definitive `claude auth status` answers, keyed by executable + env. */
+  private readonly authStatusProbes = new Map<
+    string,
+    { at: number; result: Promise<CliCommandResult | null> }
   >();
   /** #2482: the shared, TTL-bounded model catalog probe (see `listModelCatalog`). */
   private readonly modelCatalog = new KeyedCatalogSingleFlight<{
@@ -2421,14 +2454,21 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       // inherited key here just as it does in the spawn. The app-home /
       // credential-profile layer is not modelled: resolving it can create
       // profile directories, which a readiness read must not do.
-      detectAuthState: async () =>
-        detectClaudeAuthState({
-          ...process.env,
-          ...claudeConnectionEnvForSpawn(
-            await this.resolveConnectionEnv(),
-            true,
-          ),
-        }),
+      //
+      // Where neither the env nor a credentials file answers (macOS keeps
+      // the login in the Keychain), the launchable CLI is asked itself,
+      // under the same connection env (#3303).
+      detectAuthState: async () => {
+        const connectionEnv = claudeConnectionEnvForSpawn(
+          await this.resolveConnectionEnv(),
+          true,
+        );
+        return detectClaudeAuthState(
+          { ...process.env, ...connectionEnv },
+          undefined,
+          this.claudeAuthStatusProbe(executable, connectionEnv),
+        );
+      },
       installStep: 'Install the Claude CLI and ensure `claude` is on PATH.',
       authStep: 'Run `claude auth login` before starting Station.',
       signal: options?.signal,
@@ -3758,6 +3798,68 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     return version
       ? { kind: 'version', version }
       : { kind: 'ran-without-version' };
+  }
+
+  /**
+   * The login probe for `detectClaudeAuthState`, or `undefined` when there is
+   * nothing safe to ask: no spawnable installed CLI, or one not shown to be
+   * new enough to have `auth status`. Station then keeps the file-only answer.
+   * Asks the CLI under the connection env, so a `CLAUDE_CONFIG_DIR` there is
+   * the dir it reports on. Only definitive answers are reused (single-flight
+   * for a few seconds); a failure re-probes next time.
+   */
+  private claudeAuthStatusProbe(
+    executable: ClaudeExecutableResolution,
+    connectionEnv: Record<string, string> | undefined,
+  ): ClaudeAuthStatusProbe | undefined {
+    const { spawnable, installedVersion } = executable;
+    if (
+      !spawnable ||
+      !installedVersion ||
+      compareClaudeCodeVersions(
+        installedVersion,
+        CLAUDE_AUTH_STATUS_MIN_VERSION,
+      ) < 0
+    ) {
+      return undefined;
+    }
+    const [command, args] = spawnable.toLowerCase().endsWith('.js')
+      ? [process.execPath, [spawnable, ...CLAUDE_AUTH_STATUS_ARGS]]
+      : [spawnable, CLAUDE_AUTH_STATUS_ARGS];
+    const key = JSON.stringify([
+      spawnable,
+      process.env[CLAUDE_CONFIG_DIR_ENV_KEY] ?? null,
+      Object.entries(connectionEnv ?? {}).sort(([a], [b]) =>
+        a < b ? -1 : a > b ? 1 : 0,
+      ),
+    ]);
+    return () => {
+      const cached = this.authStatusProbes.get(key);
+      if (cached && Date.now() - cached.at < CLAUDE_AUTH_STATUS_TTL_MS) {
+        return cached.result;
+      }
+      const result = (this.options.runAuthStatusCommand ?? runCliCommand)(
+        command,
+        args,
+        undefined,
+        connectionEnv,
+        {
+          timeoutMs: CLAUDE_AUTH_STATUS_TIMEOUT_MS,
+          maxBuffer: CLAUDE_AUTH_STATUS_MAX_BUFFER,
+        },
+      );
+      const entry = { at: Date.now(), result };
+      this.authStatusProbes.set(key, entry);
+      const forget = () => {
+        if (this.authStatusProbes.get(key) === entry) {
+          this.authStatusProbes.delete(key);
+        }
+      };
+      result.then((resolved) => {
+        if (parseClaudeAuthStatus(resolved) === 'unknown') forget();
+      }, forget);
+      return result;
+    };
   }
 
   /**

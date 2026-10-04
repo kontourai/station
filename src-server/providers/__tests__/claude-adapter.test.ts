@@ -8570,6 +8570,150 @@ describe('ClaudeAdapter', () => {
     });
   });
 
+  // #3303: on macOS the login lives in the Keychain and no credentials file
+  // exists, so readiness asks the installed CLI (`claude auth status`).
+  describe('#3303 Keychain login via `claude auth status`', () => {
+    const makeTempDir = trackTempDirs();
+    const INSTALLED = '/Users/example/.local/bin/claude';
+    let configHome: string;
+
+    beforeEach(() => {
+      vi.stubEnv('HOME', makeTempDir('station-claude-keychain-home-'));
+      vi.stubEnv('ANTHROPIC_API_KEY', undefined);
+      vi.stubEnv('ANTHROPIC_AUTH_TOKEN', undefined);
+      vi.stubEnv('CLAUDE_CONFIG_DIR', undefined);
+      // An existing config dir with no credentials file: the Keychain case.
+      configHome = makeTempDir('station-claude-keychain-config-');
+    });
+
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    async function authStateWith(options: {
+      authStatus: ReturnType<typeof vi.fn>;
+      version?: string;
+      connectionEnv?: Record<string, string>;
+      adapter?: ClaudeAdapter;
+    }) {
+      mockBuildCliRuntimePrerequisites.mockResolvedValue([]);
+      const adapter =
+        options.adapter ??
+        new ClaudeAdapter({
+          findBinary: async () => INSTALLED,
+          runCommand: vi.fn().mockResolvedValue({
+            stdout: `${options.version ?? '2.1.224'} (Claude Code)\n`,
+            stderr: '',
+            code: 0,
+          }),
+          runAuthStatusCommand: options.authStatus as never,
+          readBundledVersion: () => '2.1.224',
+          getConnectionEnv: async () =>
+            options.connectionEnv ?? { CLAUDE_CONFIG_DIR: configHome },
+        });
+      await adapter.getPrerequisites?.();
+      const detectAuthState =
+        mockBuildCliRuntimePrerequisites.mock.calls.at(-1)?.[0].detectAuthState;
+      return { adapter, state: await detectAuthState() };
+    }
+
+    const status = (body: unknown, code = 0) =>
+      vi.fn().mockResolvedValue({
+        stdout: typeof body === 'string' ? body : JSON.stringify(body),
+        stderr: '',
+        code,
+      });
+
+    test('logged in per the CLI is authenticated, asked of the installed CLI under the connection env', async () => {
+      const authStatus = status({ loggedIn: true });
+      const { state } = await authStateWith({ authStatus });
+      expect(state).toBe('authenticated');
+      expect(authStatus).toHaveBeenCalledTimes(1);
+      const [command, args, , overlay] = authStatus.mock.calls[0];
+      expect(command).toBe(INSTALLED);
+      expect(args).toEqual(['auth', 'status', '--json']);
+      expect(overlay).toEqual({ CLAUDE_CONFIG_DIR: configHome });
+    });
+
+    test('logged out per the CLI is unauthenticated', async () => {
+      const { state } = await authStateWith({
+        authStatus: status({ loggedIn: false }, 1),
+      });
+      expect(state).toBe('unauthenticated');
+    });
+
+    test.each([
+      ['a non-zero exit with no JSON', status('boom', 2)],
+      ['garbage output', status('not json at all')],
+      ['a spawn failure', vi.fn().mockResolvedValue(null)],
+      ['a rejection', vi.fn().mockRejectedValue(new Error('spawn'))],
+      [
+        'a timeout that had printed logged-in JSON',
+        vi.fn().mockResolvedValue({
+          stdout: '{"loggedIn":true}',
+          stderr: '',
+          code: 1,
+          timedOut: true,
+        }),
+      ],
+    ])('%s is unknown, never authenticated', async (_name, authStatus) => {
+      const { state } = await authStateWith({ authStatus });
+      expect(state).toBe('unknown');
+    });
+
+    test('a CLI too old to have `auth status` is never asked', async () => {
+      const authStatus = status({ loggedIn: true });
+      const { state } = await authStateWith({ authStatus, version: '1.0.128' });
+      expect(state).toBe('unauthenticated');
+      expect(authStatus).not.toHaveBeenCalled();
+    });
+
+    test('a config home that does not exist is not probed, so nothing is created', async () => {
+      const missing = join(configHome, 'not-yet');
+      const authStatus = status({ loggedIn: true });
+      const { state } = await authStateWith({
+        authStatus,
+        connectionEnv: { CLAUDE_CONFIG_DIR: missing },
+      });
+      expect(state).toBe('unauthenticated');
+      expect(authStatus).not.toHaveBeenCalled();
+      expect(existsSync(missing)).toBe(false);
+    });
+
+    test('the env fast path wins without asking the CLI', async () => {
+      const authStatus = status({ loggedIn: false });
+      const { state } = await authStateWith({
+        authStatus,
+        connectionEnv: {
+          CLAUDE_CONFIG_DIR: configHome,
+          ANTHROPIC_AUTH_TOKEN: 'cliproxy-local',
+        },
+      });
+      expect(state).toBe('authenticated');
+      expect(authStatus).not.toHaveBeenCalled();
+    });
+
+    test('a definitive answer is reused across polls; a failure is re-probed', async () => {
+      const authStatus = status({ loggedIn: true });
+      const first = await authStateWith({ authStatus });
+      await first.adapter.getPrerequisites?.();
+      const again = await authStateWith({ authStatus, adapter: first.adapter });
+      expect(again.state).toBe('authenticated');
+      expect(authStatus).toHaveBeenCalledTimes(1);
+
+      const flaky = vi.fn().mockResolvedValueOnce(null).mockResolvedValueOnce({
+        stdout: '{"loggedIn":true}',
+        stderr: '',
+        code: 0,
+      });
+      const a = await authStateWith({ authStatus: flaky });
+      expect(a.state).toBe('unknown');
+      const b = await authStateWith({ authStatus: flaky, adapter: a.adapter });
+      expect(b.state).toBe('authenticated');
+      expect(flaky).toHaveBeenCalledTimes(2);
+    });
+  });
+
   describe('station#2072: per-connection env layering', () => {
     test('startSession carries the connection routing keys into the SDK env, over the ambient layer', async () => {
       mockAugmentedSpawnEnv.mockResolvedValue({

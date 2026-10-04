@@ -19,6 +19,8 @@ export interface CliCommandResult {
   stdout: string;
   stderr: string;
   code: number | null;
+  /** Set only when the probe was killed at its deadline; `stdout` is then partial. */
+  timedOut?: true;
 }
 
 // archive#977: Station may run as a launchd/systemd service, which starts
@@ -342,6 +344,8 @@ export async function runCliCommand(
    * empty-string value masks the inherited one; TMPDIR stays Station's.
    */
   envOverlay?: Record<string, string>,
+  /** A tighter deadline or capture bound than the shared defaults (#3303). */
+  bounds?: { timeoutMs?: number; maxBuffer?: number },
 ): Promise<CliCommandResult | null> {
   try {
     const augmented = await augmentedSpawnEnv();
@@ -357,7 +361,8 @@ export async function runCliCommand(
       // User-managed launchers may resolve the real CLI through mise/npx.
       // Keep the probe bounded, but allow that indirection to finish on a
       // cold cache (observed at ~6s on the brian-media dogfood host).
-      timeout: CLI_PROBE_TIMEOUT_MS,
+      timeout: bounds?.timeoutMs ?? CLI_PROBE_TIMEOUT_MS,
+      ...(bounds?.maxBuffer ? { maxBuffer: bounds.maxBuffer } : {}),
       windowsHide: true,
       signal,
       env,
@@ -374,11 +379,13 @@ export async function runCliCommand(
         stdout?: string;
         stderr?: string;
         code?: number | null;
+        killed?: boolean;
       };
       return {
         stdout: result.stdout ?? '',
         stderr: result.stderr ?? '',
         code: result.code ?? 1,
+        ...(result.killed === true ? { timedOut: true as const } : {}),
       };
     }
     return null;
