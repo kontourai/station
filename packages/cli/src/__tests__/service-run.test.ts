@@ -4,6 +4,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
+  claimHostOwner,
   readInstanceRegistry,
   upsertInstance,
 } from '@kontourai/station-shared/instance-registry';
@@ -201,6 +202,7 @@ describe('service supervisor', () => {
       start,
       stop,
     });
+    await vi.waitFor(() => expect(start).toHaveBeenCalledOnce());
     signals.get('SIGTERM')?.();
     await Promise.resolve();
     expect(stop).not.toHaveBeenCalled();
@@ -235,6 +237,7 @@ describe('service supervisor', () => {
       start,
       stop,
     });
+    await vi.waitFor(() => expect(start).toHaveBeenCalledOnce());
     signals.get('SIGTERM')?.();
     signals.get('SIGTERM')?.();
     await Promise.resolve();
@@ -1164,9 +1167,8 @@ describe('supervised service liveness (station#3064)', () => {
     expect(entry.status).not.toBe('stopped');
   });
 
-  test('refuses a live Desktop owner before starting Station (#2961)', async () => {
+  test('waits with capped polling and logs only ownership state changes (#2961)', async () => {
     const home = makeTempDir('station-svc-live-');
-    upsertInstance('service-test', { port: 3242, type: 'service' }, home);
     upsertInstance(
       'desktop-sidecar-7',
       {
@@ -1178,42 +1180,84 @@ describe('supervised service liveness (station#3064)', () => {
       },
       home,
     );
-    const start = vi.fn();
+    const start = vi.fn().mockResolvedValue(undefined);
+    const stop = vi.fn();
+    const exit = vi.fn();
+    const signals = new Map<string, () => void>();
+    const ticks: Array<() => void> = [];
+    const delays: number[] = [];
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const supervision = superviseService(serviceLifecycle(home), {
+      exit,
+      start,
+      stop,
+      onSignal: (signal, listener) => signals.set(signal, listener),
+      setTimer: (callback, delay) => {
+        ticks.push(callback);
+        delays.push(delay);
+        return 1 as never;
+      },
+    });
+    for (let i = 0; i < 6; i++) {
+      await vi.waitFor(() => expect(ticks.length).toBe(1));
+      ticks.shift()!();
+    }
+    await vi.waitFor(() => expect(delays).toHaveLength(7));
+    expect(delays).toEqual([5000, 10000, 20000, 30000, 30000, 30000, 30000]);
+    expect(errors).toHaveBeenCalledTimes(1);
+    expect(start).not.toHaveBeenCalled();
+    expect(exit).not.toHaveBeenCalled();
+    signals.get('SIGTERM')!();
+    await supervision;
+    await vi.waitFor(() => expect(exit).toHaveBeenCalledWith(0));
+    expect(
+      stop,
+      'waiting must never stop the foreign owner',
+    ).not.toHaveBeenCalled();
+    errors.mockRestore();
+  });
+
+  test('fresh-home supervisor fences a concurrent sidecar before Station starts (#2961)', async () => {
+    const home = makeTempDir('station-svc-live-');
+    let contender: ReturnType<typeof claimHostOwner> | undefined;
+    const start = vi.fn(async () => {
+      contender = claimHostOwner('concurrent-desktop', {
+        home,
+        type: 'sidecar',
+        ownerPids: [process.ppid],
+        publish: () => null,
+      });
+    });
     const exit = vi.fn();
     await superviseService(serviceLifecycle(home), {
+      collect: readyCollect(),
       exit,
       onSignal: vi.fn(),
       start,
       stop: vi.fn(),
+      needsBuildForInstance: () => false,
+      processIsAlive: () => true,
+      setTimer: vi.fn(() => 1 as never),
     });
-    expect(start).not.toHaveBeenCalled();
-    expect(exit).toHaveBeenCalledWith(1);
+    expect(
+      contender,
+      'a concurrent sidecar must be refused before Station starts',
+    ).toMatchObject({
+      won: false,
+      reason: 'host-owned',
+      owners: [{ id: 'service-test', type: 'service', pid: process.pid }],
+    });
+    expect(start).toHaveBeenCalledOnce();
+    expect(exit).not.toHaveBeenCalled();
+    expect(readInstanceRegistry(home).instances['service-test']).toMatchObject({
+      type: 'service',
+      pid: process.pid,
+      birth: lookupProcessBirthFingerprint(process.pid),
+      status: 'running',
+    });
   });
 
-  test('refuses to start Station without installed policy (#2961)', async () => {
-    const home = makeTempDir('station-svc-live-');
-    const start = vi.fn();
-    const exit = vi.fn();
-    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
-    try {
-      await superviseService(serviceLifecycle(home), {
-        exit,
-        onSignal: vi.fn(),
-        start,
-        stop: vi.fn(),
-      });
-      expect(start).not.toHaveBeenCalled();
-      expect(exit).toHaveBeenCalledWith(1);
-      expect(errors).toHaveBeenCalledWith(
-        expect.stringContaining('no installed policy entry'),
-      );
-      expect(readInstanceRegistry(home).instances).toEqual({});
-    } finally {
-      errors.mockRestore();
-    }
-  });
-
-  test('readiness publication refusal stops Station and exits nonzero (#2961)', async () => {
+  test('readiness publication refusal stops Station then waits and reclaims (#2961)', async () => {
     const home = makeTempDir('station-svc-live-');
     upsertInstance('service-test', { port: 3242, type: 'service' }, home);
     let host: ChildProcess | undefined;
@@ -1237,27 +1281,36 @@ describe('supervised service liveness (station#3064)', () => {
     const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
     const collect = readyCollect().mockImplementation(async () => {
       // A conflicting owner appears after startup but before readiness publication.
-      upsertInstance(
-        'other-desktop',
-        { port: 38141, type: 'sidecar', pid: process.ppid },
-        home,
-      );
+      if (start.mock.calls.length === 1) {
+        upsertInstance(
+          'other-desktop',
+          { port: 38141, type: 'sidecar', pid: process.ppid },
+          home,
+        );
+      }
       return instanceStatus(okChild(host!.pid!), okChild(host!.pid!));
     });
+    const ticks: Array<() => void> = [];
     try {
-      await superviseService(serviceLifecycle(home), {
+      const supervision = superviseService(serviceLifecycle(home), {
         collect,
         exit,
         onSignal: vi.fn(),
         start,
         stop,
-        setTimer: vi.fn(() => 1 as never),
+        needsBuildForInstance: () => false,
+        processIsAlive: () => true,
+        setTimer: (callback) => {
+          ticks.push(callback);
+          return 1 as never;
+        },
       });
+      await vi.waitFor(() => expect(ticks).toHaveLength(1));
       expect(stop).toHaveBeenCalledWith({
         instanceName: 'service-test',
         stateHome: home,
       });
-      expect(exit).toHaveBeenCalledWith(1);
+      expect(exit).not.toHaveBeenCalled();
       expect(errors).toHaveBeenCalledWith(
         expect.stringContaining('lost its home ownership fence'),
       );
@@ -1268,6 +1321,21 @@ describe('supervised service liveness (station#3064)', () => {
         host?.exitCode !== null || host?.signalCode !== null,
         'refused publication must reap the running host',
       ).toBe(true);
+      ticks.shift()!();
+      await vi.waitFor(() => expect(ticks).toHaveLength(1));
+      expect(start).toHaveBeenCalledTimes(1);
+      upsertInstance(
+        'other-desktop',
+        { port: 38141, type: 'sidecar', status: 'stopped' },
+        home,
+      );
+      ticks.shift()!();
+      await supervision;
+      expect(start).toHaveBeenCalledTimes(2);
+      expect(exit).not.toHaveBeenCalled();
+      expect(readInstanceRegistry(home).instances['service-test'].status).toBe(
+        'running',
+      );
     } finally {
       errors.mockRestore();
       if (host && host.exitCode === null && host.signalCode === null) {
@@ -1312,16 +1380,19 @@ describe('supervised service liveness (station#3064)', () => {
       home,
     );
 
-    await superviseService(serviceLifecycle(home), {
+    const signals = new Map<string, () => void>();
+    const supervision = superviseService(serviceLifecycle(home), {
       collect: readyCollect() as never,
       exit: vi.fn(),
-      onSignal: vi.fn(),
+      onSignal: (signal, listener) => signals.set(signal, listener),
       processIsAlive: () => true,
       setTimer: vi.fn(() => 1 as never),
       start: vi.fn().mockResolvedValue(undefined),
       stop: vi.fn(),
     });
 
+    signals.get('SIGTERM')!();
+    await supervision;
     const entry = readInstanceRegistry(home).instances['service-test'];
     expect(entry.type).toBe('worktree');
     expect(entry.port).toBe(4000);

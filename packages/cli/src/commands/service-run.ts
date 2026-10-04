@@ -236,6 +236,7 @@ export async function superviseService(
   let consecutiveSupervisorFailures = 0;
   let startPromise: Promise<void> | undefined;
   let shutdownPromise: Promise<void> | undefined;
+  let wakeOwnershipWait: (() => void) | undefined;
   const childState: Record<'server' | 'ui', ChildProbeState> = {
     server: {
       authRefusalStrikes: 0,
@@ -263,6 +264,7 @@ export async function superviseService(
     if (shutdownPromise) return shutdownPromise;
     shuttingDown = true;
     if (timer) clearTimeout(timer);
+    wakeOwnershipWait?.();
     const forceExitTimer = setTimer(() => {
       console.error(
         `Station service shutdown exceeded ${SERVICE_SHUTDOWN_DEADLINE_MS / 1000}s; forcing exit`,
@@ -284,7 +286,9 @@ export async function superviseService(
       // signal cannot strand children in the publication window.
       await startPromise?.catch(() => undefined);
       try {
-        await stopInstance({ instanceName, stateHome: lifecycle.baseDir });
+        if (startPromise) {
+          await stopInstance({ instanceName, stateHome: lifecycle.baseDir });
+        }
       } catch (error) {
         console.error('Station service cleanup failed:', error);
       }
@@ -311,108 +315,153 @@ export async function superviseService(
           void shutdown(0);
         });
 
-  // ONE HOST OWNER (#2961, ADR 0020 D4): claim the home before starting
-  // Station on it. A live Desktop sidecar (or another live service) owns the
-  // home, so refuse startup with a readable remedy. A registry failure cannot
-  // license a host:
-  // another owner may already be running even if its record is unreadable.
-  try {
-    const claim = claimHost();
-    if (!claim.won) {
-      throw new Error(
+  const waitForOwnershipPoll = (delayMs: number): Promise<void> =>
+    new Promise((resolve) => {
+      wakeOwnershipWait = () => {
+        wakeOwnershipWait = undefined;
+        resolve();
+      };
+      timer = setTimer(wakeOwnershipWait, delayMs);
+    });
+
+  // KeepAlive/Restart=always must not turn contention into an exit loop.
+  // Only a won atomic claim licenses startup; an unreadable registry still
+  // fails closed. Waiting does not stop or probe another owner's Station.
+  const awaitHostClaim = async (): Promise<boolean> => {
+    let lastRefusal: string | undefined;
+    let delayMs = CHECK_INTERVAL_MS;
+    while (!shuttingDown) {
+      const claim = claimHost();
+      if (claim.won) {
+        if (lastRefusal) {
+          console.log(
+            `Station service '${instanceName}' acquired its home; starting Station.`,
+          );
+        }
+        return true;
+      }
+      const reason =
         claim.reason === 'host-owned'
           ? describeServiceHostRefusal(livenessTarget, claim.owners)
-          : `Station service '${instanceName}' cannot claim its registry id: it is held by a live '${claim.existing.type}' process. Stop that process or install under a different instance name.`,
-      );
+          : `Station service '${instanceName}' cannot claim its registry id: it is held by a live '${claim.existing.type}' process. Stop that process or use a different instance name.`;
+      if (reason !== lastRefusal) {
+        console.error(`${reason} Waiting for ownership.`);
+        lastRefusal = reason;
+      }
+      launcherLink?.tick();
+      if (shuttingDown) break;
+      await waitForOwnershipPoll(delayMs);
+      delayMs = Math.min(30_000, delayMs * 2);
     }
-  } catch (error) {
-    console.error(
-      `Station service could not claim its home in the registry: ${(error as Error).message}`,
-    );
-    exit(1);
-    return;
-  }
+    return false;
+  };
 
-  try {
-    // station#1869: a supervised service (launchd/systemd KeepAlive) cannot
-    // "warn and reuse a stale build" the way an interactive `start` does — a
-    // stale build that crashes on boot sends the supervisor into a restart
-    // loop because KeepAlive respawns it. When the build is stale, BUILD
-    // instead. This mirrors what a developer running `./station start --build`
-    // gets, and the prune in `buildApplication` clears any orphan candidate
-    // dirs a previous killed-mid-build supervisor left behind.
-    const buildIfStale = needsBuildForInstance(instanceName);
-    startPromise = startInstance({
-      allowedOrigins: lifecycle.allowedOrigins,
-      // PRODUCT DECISION (station#2904 2b, recorded per review): a supervised
-      // unit does not refuse on a shared home. Its home was chosen at install
-      // time; a run-time refusal here throws into superviseService's failure
-      // counter and becomes a launchd/systemd restart-backoff LOOP — strictly
-      // worse than the coexistence it would be objecting to, and this path
-      // has no operator at a terminal to pass an override. The shared-home
-      // warning still prints at the exits, so the condition stays audible.
-      allowSharedHome: true,
-      baseDir: lifecycle.baseDir,
-      build: buildIfStale,
-      features: lifecycle.features,
-      force: true,
-      homeSource: lifecycle.homeSource,
-      host: lifecycle.host ?? '127.0.0.1',
-      instanceName,
-      logFile: join(lifecycle.baseDir, 'logs', `${instanceName}.log`),
-      serverPort: lifecycle.serverPort,
-      supervisorPid: process.pid,
-      uiPort: lifecycle.uiPort,
-    });
-    await startPromise;
-  } catch (error) {
+  let expected: CollectedInstanceStatus;
+  while (!shuttingDown) {
+    try {
+      if (!(await awaitHostClaim()) || shuttingDown) return;
+    } catch (error) {
+      console.error(
+        `Station service could not claim its home in the registry: ${(error as Error).message}`,
+      );
+      exit(1);
+      return;
+    }
+
+    try {
+      // station#1869: a supervised service (launchd/systemd KeepAlive) cannot
+      // "warn and reuse a stale build" the way an interactive `start` does — a
+      // stale build that crashes on boot sends the supervisor into a restart
+      // loop because KeepAlive respawns it. When the build is stale, BUILD
+      // instead. This mirrors what a developer running `./station start --build`
+      // gets, and the prune in `buildApplication` clears any orphan candidate
+      // dirs a previous killed-mid-build supervisor left behind.
+      const buildIfStale = needsBuildForInstance(instanceName);
+      startPromise = startInstance({
+        allowedOrigins: lifecycle.allowedOrigins,
+        // The host-owner claim above already fences this home. The CLI's
+        // advisory shared-home warning is separate from that atomic decision.
+        allowSharedHome: true,
+        baseDir: lifecycle.baseDir,
+        build: buildIfStale,
+        features: lifecycle.features,
+        force: true,
+        homeSource: lifecycle.homeSource,
+        host: lifecycle.host ?? '127.0.0.1',
+        instanceName,
+        logFile: join(lifecycle.baseDir, 'logs', `${instanceName}.log`),
+        serverPort: lifecycle.serverPort,
+        supervisorPid: process.pid,
+        uiPort: lifecycle.uiPort,
+      });
+      await startPromise;
+    } catch (error) {
+      if (shuttingDown) {
+        await shutdownPromise;
+        return;
+      }
+      consecutiveSupervisorFailures += 1;
+      const delay = Math.min(
+        30_000,
+        5_000 * 2 ** (consecutiveSupervisorFailures - 1),
+      );
+      console.error(
+        `Station service start failed; exiting after ${delay}ms:`,
+        error,
+      );
+      await new Promise<void>((resolve) => setTimer(resolve, delay));
+      await shutdown(1);
+      return;
+    }
+
     if (shuttingDown) {
       await shutdownPromise;
       return;
     }
-    consecutiveSupervisorFailures += 1;
-    const delay = Math.min(
-      30_000,
-      5_000 * 2 ** (consecutiveSupervisorFailures - 1),
-    );
-    console.error(
-      `Station service start failed; exiting after ${delay}ms:`,
-      error,
-    );
-    await new Promise<void>((resolve) => setTimer(resolve, delay));
-    await shutdown(1);
-    return;
-  }
 
-  if (shuttingDown) {
-    await shutdownPromise;
-    return;
-  }
-
-  const expected = await collect(instanceName, {
-    probeTimeoutMs: STEADY_PROBE_TIMEOUT_MS,
-    // A prebuilt archive keeps the record in this home's root (#2675).
-    projectHome: lifecycle.baseDir,
-  });
-  if (!expected.found || !expected.bootId || !expected.sha) {
-    console.error('Station service did not publish a managed instance record');
-    await shutdown(1);
-    return;
-  }
-  console.log(`Supervising Station ${expected.sha} (boot ${expected.bootId})`);
-  // Readiness is proven: mark the record running (#3064). The host claim
-  // above already fenced the home with this supervisor's pid as `starting`
-  // unless another live process of this unit (an update's launcher, a
-  // replaced generation) still held it; this write takes it over.
-  try {
-    publishServiceLiveness(true);
-  } catch (error) {
-    console.error(
-      `Station service lost its home ownership fence: ${(error as Error).message}`,
+    expected = await collect(instanceName, {
+      probeTimeoutMs: STEADY_PROBE_TIMEOUT_MS,
+      // A prebuilt archive keeps the record in this home's root (#2675).
+      projectHome: lifecycle.baseDir,
+    });
+    if (!expected.found || !expected.bootId || !expected.sha) {
+      console.error(
+        'Station service did not publish a managed instance record',
+      );
+      await shutdown(1);
+      return;
+    }
+    console.log(
+      `Supervising Station ${expected.sha} (boot ${expected.bootId})`,
     );
-    await shutdown(1);
-    return;
+    // Readiness is proven: mark the record running (#3064). The host claim
+    // above already fenced the home with this supervisor's pid as `starting`
+    // unless another live process of this unit (an update's launcher, a
+    // replaced generation) still held it; this write takes it over.
+    try {
+      publishServiceLiveness(true);
+    } catch (error) {
+      console.error(
+        `Station service lost its home ownership fence: ${(error as Error).message}`,
+      );
+      try {
+        await stopInstance({ instanceName, stateHome: lifecycle.baseDir });
+      } catch (stopError) {
+        console.error('Station service cleanup failed:', stopError);
+        await shutdown(1);
+        return;
+      }
+      startPromise = undefined;
+      publishServiceLiveness(false);
+      if (shuttingDown) return;
+      // Also bound retries if publication failed because the registry is
+      // temporarily unwritable rather than because a live owner appeared.
+      await waitForOwnershipPoll(CHECK_INTERVAL_MS);
+      continue;
+    }
+    break;
   }
+  if (shuttingDown) return;
   // A trial reports prepared only now, with its identity proven.
   launcherLink?.onReady();
 

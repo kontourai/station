@@ -218,18 +218,21 @@ system Node.
   and the desktop maps its result to an owner without a separate launch read.
   Installation reserves the home with the installer's live PID and writes
   policy before starting the OS backend; backend failure restores the prior
-  registry entry. The supervisor refuses startup without installed policy or
-  on claim failure, and stops Station if readiness publication fails. Desktop
-  records the spawned child's PID and birth before waiting for Listening, so
+  registry entry. A supervisor without installed policy takes the same atomic
+  claim itself, publishing a service owner with its PID and birth before start.
+  A conflicting live owner keeps it alive and waiting, without running Station;
+  polling backs off to at most 30 seconds and logs only reason changes. Lost
+  ownership at readiness stops Station before the same wait. An unreadable
+  registry still fails closed. Desktop records the spawned child's PID and birth before waiting for Listening, so
   an orphan still shutting down holds the reservation after desktop death.
   Runtime preparation's safety read does not choose the launch owner.
-  This is cooperative fencing for installed services and Desktop sidecars,
+  This is cooperative fencing for service supervisors and Desktop sidecars,
   not an OS lock around every server. Direct `command-station.js` launches
   do not claim the registry, including a container that invokes that entry
   point directly; when bound to `0.0.0.0`, they are reachable through the
-  container's exposed/published ports. The current Dockerfile's bare
-  `service run --instance=container` now refuses without installed policy:
-  a container policy-registration boundary remains required.
+  container's exposed/published ports. The Dockerfile's existing
+  `service run --instance=container` command self-claims a fresh home without
+  requiring `service install` or a separate policy-registration lifecycle.
 
 Mobile apps keep their bundled web UI and store-gated builds. Store rules
 forbid downloading executable code, so the download model applies only to

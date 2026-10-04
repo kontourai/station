@@ -238,20 +238,25 @@ Two disclosed limits of the discipline (verified by probe, not assumed):
   running, so an installer exit cannot expose an unfenced startup window.
   Backend failure restores the captured prior registry entry and policy.
 - **Service supervisor.** Before it starts Station, the supervisor claims the
-  home through `claimHostOwner`. A conflicting live owner, missing installed
-  policy, or unreadable registry refuses startup with a readable reason and
-  nonzero exit. A won claim publishes its PID (`starting`) unless a live
-  update launcher or replaced generation of this unit already fences it.
-  An `installing` reservation always transfers to the supervisor before start.
-  Readiness publishes `running`; refusal or publication I/O failure stops
-  Station and exits nonzero. Retraction during shutdown remains best effort.
-  Bare `service run` no longer starts an unfenced container supervisor. The
-  current Dockerfile invokes that command without policy registration and
-  therefore refuses a fresh home. Direct `command-station.js` remains
+  home through `claimHostOwner`. With no installed policy it creates a service
+  owner record with its PID and birth; existing service policy is preserved.
+  When the registry is absent, it initializes the fresh-home schema before
+  publishing bootstrap metadata; unknown markerless data still refuses.
+  A conflicting live owner keeps the supervisor alive without running Station.
+  It polls at 5, 10, 20, then at most 30-second intervals and logs only when the
+  refusal reason changes, claiming and starting when that owner is gone.
+  An unreadable registry still refuses startup with a nonzero exit. A won claim
+  publishes `starting` unless a live update launcher or replaced generation of
+  this unit already fences it. An `installing` reservation always transfers to
+  the supervisor before start. Readiness publishes `running`; lost ownership
+  stops Station, retracts only this supervisor's own PID, and returns to the
+  same wait. Publication I/O failure stops Station before a bounded retry;
+  subsequent claim I/O failure exits nonzero. Retraction remains best effort.
+  The Dockerfile's existing bare `service run` command self-claims a fresh home
+  without a policy-registration step. Direct `command-station.js` remains
   unfenced: a container invoking it can serve a shared home alongside a
   registry claimant, and a `0.0.0.0` bind is reachable through exposed/published
-  container ports. Container policy registration needs its own explicit
-  lifecycle boundary; no implicit supervisor exception provides exclusivity.
+  container ports. The fence is cooperative, not a global OS server lock.
 - **Desktop sidecar producer and consumer.** Desktop resolves one absolute
   `STATION_HOME` and, after runtime preparation, claims the home through the
   packaged Node bridge's `claimSidecar`, which runs `claimHostOwner`. The

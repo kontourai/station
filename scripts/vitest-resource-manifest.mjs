@@ -309,6 +309,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'packages/cli/src/__tests__/service.test.ts',
   // Real listener children prove service startup fencing and refusal cleanup.
   'packages/cli/src/__tests__/service-run.test.ts',
+  // Opt-in Dockerfile command qualification owns real supervisor/server/UI children.
+  'scripts/__tests__/service-container-command.test.ts',
   // station#2689: builds a real git checkout fixture (git init/commit/rev-parse)
   // and drives the real lifecycle stamp check, which runs `git rev-parse HEAD`.
   'packages/cli/src/__tests__/service-build-stamp.test.ts',

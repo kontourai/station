@@ -30,13 +30,18 @@ Do not apply that override to make a disposable recipe work on a real home.
 
 ## Docker Production
 
-> **Current startup limitation (#2961):** the Dockerfile invokes bare
-> `service run` without fresh-home policy registration. The supervisor now
-> refuses that startup rather than serving an unfenced home. A container
-> policy-registration lifecycle is still required. Direct `command-station.js`
-> remains unfenced and can coexist with another host on a shared writable home;
-> a `0.0.0.0` listener is reachable through container networking and any
-> published/proxied ports. These recipes are not current startup evidence.
+`station service run` claims the home atomically before starting Station, even
+on a fresh home without `service install`. It records the supervisor's PID and
+birth fingerprint as a service owner. If Desktop or another live service holds
+the home, the supervisor stays alive without starting Station and polls with
+backoff capped at 30 seconds; it starts after the owner is gone. Lost ownership
+at readiness stops Station before returning to that wait. Existing Dockerfile
+and Compose commands need no policy-registration step.
+
+Direct `command-station.js` launches remain unfenced and can serve the same
+writable home as a registry claimant. When bound to `0.0.0.0`, they are reachable
+through container networking and any published or proxied ports. The recipes
+and historical qualifications below are not current image or cloud proof.
 
 
 The default Compose mapping exposes port 3000. The lifecycle UI proxy serves

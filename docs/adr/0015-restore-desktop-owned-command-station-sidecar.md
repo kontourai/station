@@ -105,11 +105,15 @@ exited meanwhile. The status refresh retains a display-only read that
 re-derives a non-sidecar owner. Also, `service install` and the service
 supervisor claim through the same primitive, so a live sidecar also blocks
 them. Installation reserves the home and writes policy before backend startup;
-backend failure restores the prior entry. Missing policy or a refused claim
-prevents supervisor startup, and readiness-publication failure stops Station.
+backend failure restores the prior entry. Without installed policy, the
+supervisor creates its own service owner record with PID/birth before start.
+A conflicting live owner keeps it alive without running Station, polling with
+backoff capped at 30 seconds and logging reason changes. Lost ownership at
+readiness stops Station before the same wait; unreadable registry state still
+fails closed.
 Desktop records the child's PID/birth immediately after spawn, before Listening,
 so stale recovery retains a live orphan. Spawn and publication are still
-separate operations. Bare container `service run` now refuses missing policy;
+separate operations. Bare container `service run` self-claims a fresh home;
 direct `command-station.js` remains unfenced, including a container invoking
 it directly and exposing a `0.0.0.0` listener through published ports. The service-owner report, no automatic attachment, and the lifetime
 split are unchanged.

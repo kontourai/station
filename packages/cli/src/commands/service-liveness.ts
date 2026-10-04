@@ -1,11 +1,14 @@
+import { existsSync } from 'node:fs';
 import {
   type ClaimHostOwnerResult,
   claimHostOwner,
   entryOwnedByLiveProcess,
   type HostOwnerSummary,
+  resolveInstanceRegistryPath,
   updateOwnedInstance,
 } from '@kontourai/station-shared/instance-registry';
 import { lookupProcessBirthFingerprint } from '@kontourai/station-shared/process-identity';
+import { ensureStationHomeSchemaSync } from '@kontourai/station-shared/station-home-schema';
 
 /** The service registry entry a supervisor publishes its liveness on. */
 export interface ServiceLivenessTarget {
@@ -28,8 +31,8 @@ export interface ServiceLivenessTarget {
  * the record does not flap. Publishing goes through the host-owner claim
  * (#2961) and builds from the existing record: the entry's
  * `env.ALLOWED_ORIGINS` is durable origin-policy authority (#1983) and must
- * survive every liveness write. A bare `service run` refuses without installed
- * policy. The retract stays an identity-guarded update.
+ * survive every liveness write. A bare `service run` creates its own service
+ * owner record without requiring installation. The retract stays identity-guarded.
  */
 export function publishServiceLivenessRecord(
   target: ServiceLivenessTarget,
@@ -81,9 +84,9 @@ export function publishServiceLivenessRecord(
  * The service's half of the one host-owner claim (#2961, ADR 0020 D4). The
  * supervisor claims before it starts Station, so a live Desktop sidecar on
  * this home blocks the service instead of the two serving one home. A won
- * claim publishes this supervisor's pid on its own installed service record,
- * preserving every field `service install` owns; with no installed record it
- * refuses startup rather than minting the installer's policy.
+ * claim publishes this supervisor's pid, preserving installed service policy
+ * when present. Without installation it creates only a service owner record,
+ * so containers and foreground supervisors fence the home the same way.
  *
  * `starting` leaves a record another live process of this unit already holds
  * untouched: during an update (#2675 D) that is the fixed launcher, and a
@@ -97,25 +100,29 @@ export function claimServiceHost(
   // Probe OUTSIDE the mutation lock: the lookup spawns `ps` (or PowerShell
   // on Windows) with a 1.5s timeout, and holding the home-wide lock across
   // that stalls every other writer, including the Desktop sidecar claim.
+  // A claim is bootstrap metadata, but the schema gate treats any markerless
+  // registry as existing data. Initialize an absent registry's fresh home
+  // before adding that metadata. The schema gate serializes initialization
+  // and still refuses unknown data; only the atomic claim licenses startup.
+  if (!existsSync(resolveInstanceRegistryPath(target.home))) {
+    ensureStationHomeSchemaSync(target.home);
+  }
   const birth = lookupProcessBirthFingerprint(process.pid) ?? undefined;
   return claimHostOwner(target.instanceName, {
     home: target.home,
     type: 'service',
-    ownerPids: [process.pid],
     publish: (existing) => {
-      if (existing?.type !== 'service') {
-        throw new Error(
-          `Station service '${target.instanceName}' has no installed policy entry. Run station service install for this home before starting the supervisor.`,
-        );
-      }
+      const service = existing?.type === 'service' ? existing : undefined;
       if (
         status === 'starting' &&
-        existing.status !== 'installing' &&
-        entryOwnedByLiveProcess(existing, process.pid)
+        service &&
+        service.status !== 'installing' &&
+        entryOwnedByLiveProcess(service, process.pid)
       )
         return null;
       return {
-        ...existing,
+        ...service,
+        type: 'service',
         port: target.serverPort,
         uiPort: target.uiPort,
         status,
