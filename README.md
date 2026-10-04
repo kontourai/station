@@ -113,11 +113,11 @@ installer support does not establish availability of a published manifest.
 
 ### Self-host with Docker
 
-The current Dockerfile's foreground supervisor refuses a fresh home without
-installed policy. A container policy-registration lifecycle is still required;
-see the [current startup limitation](docs/guides/deployment.md). Direct server
-entrypoints do not provide the home-wide registry fence.
-
+The Dockerfile's foreground `service run` supervisor atomically claims a fresh
+home without requiring `service install`. While another live owner holds the
+home, it waits without running Station and starts after that owner is gone.
+See the [deployment guide](docs/guides/deployment.md) for this cooperative fence;
+direct server entrypoints do not claim it.
 
 The repository ships a `Dockerfile` and `docker-compose.yml`. The UI, HTTP API,
 and event streams share the exposed origin on port 3000; the home persists in a
