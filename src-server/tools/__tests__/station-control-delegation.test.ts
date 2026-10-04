@@ -4968,6 +4968,29 @@ describe('bound answers to a delegated input request (delegatedInputAnswers)', (
     expect(service.dispatchWithReceipt).not.toHaveBeenCalled();
   });
 
+  test('a bound answer with a model change is refused before any Session starts', async () => {
+    installCurrentStationFetch();
+    const { service, inspected } = receiverService(true);
+    const { continueDelegatedTask } = await import(
+      '../station-control-delegation.js'
+    );
+    await expect(
+      continueDelegatedTask(
+        {
+          taskId: 'task-alpha',
+          message: 'Use staging',
+          model: 'another-model',
+          expectedInputRequest: BINDING,
+          readAuthority: hostedAuthority('alpha'),
+        },
+        service as never,
+      ),
+    ).rejects.toMatchObject({ code: 'input_binding_model_change' });
+    expect(inspected).toEqual([]);
+    expect(service.startSessionInternal).not.toHaveBeenCalled();
+    expect(service.dispatchWithReceipt).not.toHaveBeenCalled();
+  });
+
   test('a binding naming another Session than the task’s current one is refused', async () => {
     installCurrentStationFetch();
     const { service, inspected } = receiverService(true);
@@ -5073,6 +5096,34 @@ describe('bound answers to a delegated input request (delegatedInputAnswers)', (
 
   test('a Station without the capability never receives the answer', async () => {
     const posted = peerFetch({ delegationAttemptClaims: true });
+    const { continueDelegatedTask } = await import(
+      '../station-control-delegation.js'
+    );
+    await expect(
+      continueDelegatedTask({
+        taskId: 'task-peer',
+        environmentId: 'environment-remote',
+        message: 'Use staging',
+        expectedInputRequest: PEER_BINDING,
+      }),
+    ).rejects.toMatchObject({ code: 'input_binding_unsupported' });
+    expect(posted).toEqual([]);
+  });
+
+  test('a handshake advertising the flag for another environment is refused', async () => {
+    const posted: unknown[] = [];
+    fetchMock.mockImplementation(async (input) => {
+      const url = String(input);
+      if (url === `${CURRENT_API}/.well-known/station/v1`)
+        return json({ environmentId: 'environment-current' });
+      if (url === `${REMOTE_API}/.well-known/station/v1`)
+        return json({
+          environmentId: 'environment-somewhere-else',
+          capabilities: { delegatedInputAnswers: true },
+        });
+      if (url.endsWith('/continue')) posted.push(url);
+      throw new Error(`Unexpected request: ${url}`);
+    });
     const { continueDelegatedTask } = await import(
       '../station-control-delegation.js'
     );

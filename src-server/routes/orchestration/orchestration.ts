@@ -3182,6 +3182,11 @@ export function createOrchestrationRoutes(
         // `delegatedInputAnswers`: a bound answer whose request is gone or
         // replaced, or a Station that cannot bind one. Closed codes only.
         const bindingCode = errorCode(error);
+        if (bindingCode === 'input_binding_model_change')
+          return c.json(
+            { success: false, error: errorMessage(error), code: bindingCode },
+            400,
+          );
         if (
           bindingCode === 'input_request_changed' ||
           bindingCode === 'request_event_changed' ||

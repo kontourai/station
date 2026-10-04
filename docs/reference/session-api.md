@@ -852,7 +852,10 @@ The executing Station delivers the message only as the answer to that
 request: the binding must name the task's current Session and an input request
 that is still open there, and the orchestration service checks it again right
 before invoking the engine. Otherwise the route answers HTTP 409 with
-`code: "input_request_changed"` and nothing is sent. A Station forwarding the
+`code: "input_request_changed"` and nothing is sent. A bound answer cannot
+also carry `model` or `modelOptions`, because a model change can start a
+successor Session before the binding is checked. That combination answers
+HTTP 400 with `code: "input_binding_model_change"`. A Station forwarding the
 answer first reads the selected Station's handshake. It sends the binding only
 when the handshake names that environment and advertises the capability,
 refusing with HTTP 409 and `code: "input_binding_unsupported"` otherwise. An

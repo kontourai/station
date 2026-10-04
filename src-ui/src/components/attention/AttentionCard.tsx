@@ -663,7 +663,12 @@ function PeerInputAnswer({
           if (answer.trim()) mutation.mutate(answer);
         }}
       >
-        <label htmlFor={`attention-peer-answer-${itemId}`}>
+        {/* Same scale as the item's own detail line, and the same compact
+            action row as Allow/Deny. */}
+        <label
+          className="attention-item__detail"
+          htmlFor={`attention-peer-answer-${itemId}`}
+        >
           Answer on the paired Station
         </label>
         <textarea
@@ -671,13 +676,17 @@ function PeerInputAnswer({
           value={answer}
           onChange={(event) => setAnswer(event.target.value)}
         />
-        <button
-          type="submit"
-          className="attention-item__action attention-item__action--primary"
-          disabled={!answer.trim() || mutation.isPending || mutation.isSuccess}
-        >
-          Send answer
-        </button>
+        <div className="attention-item__actions">
+          <button
+            type="submit"
+            className="attention-item__action attention-item__action--primary"
+            disabled={
+              !answer.trim() || mutation.isPending || mutation.isSuccess
+            }
+          >
+            Send answer
+          </button>
+        </div>
       </form>
       <MutationError error={mutation.error} />
     </>

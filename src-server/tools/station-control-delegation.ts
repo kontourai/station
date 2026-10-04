@@ -4402,6 +4402,17 @@ export class DelegatedInputRequestChangedError extends Error {
   }
 }
 
+/** Refusal for a bound answer that also asks for a model change. */
+export class DelegatedInputBindingModelChangeError extends Error {
+  readonly code = 'input_binding_model_change';
+  constructor() {
+    super(
+      'An answer to an open request cannot change the model; send the answer without a model change.',
+    );
+    this.name = 'DelegatedInputBindingModelChangeError';
+  }
+}
+
 /** Refusal for a bound answer to a Station that does not enforce bindings. */
 export class DelegatedInputBindingUnsupportedError extends Error {
   readonly code = 'input_binding_unsupported';
@@ -4470,6 +4481,11 @@ export async function continueDelegatedTask(
   if (!input.message.trim()) {
     throw new Error('Task follow-up message is required');
   }
+  // A bound answer goes to the request's own Session. A model change can
+  // start a successor Session before the turn's binding check runs, moving
+  // the task off the question it answers, so the two are never combined.
+  if (input.expectedInputRequest && (input.model || input.modelOptions))
+    throw new DelegatedInputBindingModelChangeError();
   const readAuthority = readAuthorityForInput(input);
   const selectedTarget = await resolveTarget(
     { environmentId: input.environmentId },
