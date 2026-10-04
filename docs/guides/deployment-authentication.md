@@ -239,7 +239,12 @@ the shared-work list, history, document and publication receipt. Shared work is 
 entry. The [account-bound Device gate](../../src-server/runtime/bootstrap/account-bound-device-gate.ts)
 admits those specific paths; the
 [shared Task routes](../../src-server/routes/projects/project-shared-tasks.ts)
-independently require current membership and publication. Protected reads set
+independently require current membership and publication. A member's
+publication read returns the same summary the shared-work list gives for a Task
+currently shared into that Project incarnation. An unshared, stale, unknown or
+other-scope Task gets the routes' uniform not-found response, so a member cannot
+tell them apart. Only the operator sees the `unshared` review state, and sharing
+and unsharing stay operator-only. Protected reads set
 `Cache-Control: no-store` and bind response delivery to the exact local and
 portable Project incarnation. Membership is rechecked before delivery and each
 streamed chunk. The audited administration endpoints below are the only
