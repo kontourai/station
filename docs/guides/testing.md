@@ -440,7 +440,14 @@ frames apart (`activityFrames`; their bytes still count toward the wire and
 decoded ceilings), and the scenario requires exactly
 `ORCHESTRATION_TRANSFER_LIVE_ACTIVITY_FRAMES` per source (0 for the external
 engine, 1 for station-native) and none in any other phase. The scenario's own
-barriers use the same bound as the capture's (half of the configured timeout).
+barriers use the same bound as the capture's (half of the configured timeout),
+and the gate's `FAIL:` line names `STATION_TRANSFER_CAPTURE_TIMEOUT_MS` for any
+`barrier timed out` message. A trailing activity frame that never arrives is
+reported with the number of activity frames seen and as a possible regression in
+the route's flush, not as load, and a live phase whose frame count is not one
+heavy turn fails with the frame count, `activityFrames` and the frame
+identities in the retained `.failure.json`. The gate repeats any scenario
+refusal text on its `FAIL:` line.
 
 After resolving the target revision and tool digest, capture also maintains
 `<capture-path>.progress.json`. This bounded snapshot contains only those
