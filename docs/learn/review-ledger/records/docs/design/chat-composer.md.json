@@ -34,7 +34,7 @@
 
     {"path":"src-ui/src/components/inbox-row/InboxRowStatus.tsx","digest":"d7cc9d13090f4c7d529e76bcd4828113375a1c52711ba6009d6e0cb8cad85418","revision":"b14f1b80ec27c38844b3d16e8a4bdfe624a778c9"},
 
-    {"path":"src-ui/src/contexts/navigation-store.ts","digest":"2486db91eb4f818fec69048dcd202c7a7ffc5a9517c2cb11fa7728197f919607","revision":"4d59eb1868139f2faeaf1a1467811c22726f741c"},
+    {"path":"src-ui/src/contexts/navigation-store.ts","digest":"7c56b3435db459e9467c2adc3120feeef84c91f1dc4cf0eb96429e68429a036b","revision":"efa773acac88792cda31595f9afca4a37d3efebc"},
 
     {"path":"tests/cross-runtime-chat-switching.spec.ts","digest":"5426df79b21ad75b2f2ef15da154371b231f89c57bd97f01a8461de216cc0c44","revision":"390777781dc66faa6f34003ed872e2a5fcadc7e6"},
 

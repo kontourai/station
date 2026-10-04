@@ -22,17 +22,17 @@
 
     {"path":"docs/guides/documentation.md","digest":"35dd6dd9ae31089fcab2adaf2d58595f809a9e93cf85025c430b71350c576c15","revision":"595059eafa17ef6b7a39217a405619ecbfac2270"},
 
-    {"path":"docs/guides/plugins.md","digest":"5ff1ca32c4a8610a038c7011a8c026fc7d78d722c154e2150421ba36168a3080","revision":"e6eb64ae0f00f85467f76030389782093ac47a0d"},
+    {"path":"docs/guides/plugins.md","digest":"210ccfdc9f5a6eb1eb14bcf5726de104aa5ad6c407032e7febfc67b3fb3089e8","revision":"933a4db2063d3ee5d86bd54f8bbcc3d1b85332ca"},
 
     {"path":"docs/guides/workspace-packages.md","digest":"4590c3915425e58b96a0ae8c36d825bf0409e7ddff1b7023f367f14a4aede9d1","revision":"5c18724d4ba50fd9b5f6c4043e7a00ebc893c70d"},
 
-    {"path":"docs/reference/api.md","digest":"d088bee4fb1dedbe062078e87b682ac544b75ccfcf7c9a82248ffb4672e2a78c","revision":"e4344fd10ef7a80a6a6f65d7e709fb1be56b64df"},
+    {"path":"docs/reference/api.md","digest":"a7efad734748e76a9d79e4e301c5b6dc8435d6c194934615ded191266b2151d2","revision":"933a4db2063d3ee5d86bd54f8bbcc3d1b85332ca"},
 
-    {"path":"docs/reference/cli.md","digest":"62c03f1a50009e0973510034c314c46df560dddf761547e6798d86808eb116fd","revision":"020eb6a14e05313bb66724ec3504e613717e6ed1"},
+    {"path":"docs/reference/cli.md","digest":"76106a61e5e2d8924c8857876b8f38011be5f9af421bf6697cbe71a5e795971a","revision":"efa773acac88792cda31595f9afca4a37d3efebc"},
 
     {"path":"docs/reference/contracts.md","digest":"a8ab14487297ba73e4c8313ccfb7f7750f2c07daaae893e5d0444349bbdcaf33","revision":"793ad2bb50d50f43d7601fb75d3736fc86550cd6"},
 
-    {"path":"docs/reference/sdk.md","digest":"537a6fff7f1674da4c2a79fc01f158cdba06e3031deb893fc62be3d9c2f333bb","revision":"d73d9f64333504f027a200482e978cc4445338da"},
+    {"path":"docs/reference/sdk.md","digest":"e28a5f514242be041deccd3202a680d6cab1d0c00031b9de0661f9a9fbbf0039","revision":"efa773acac88792cda31595f9afca4a37d3efebc"},
 
     {"path":"packages/contracts/src/deployment-authentication.ts","digest":"e4665bfa103bf73250bf5d06776ed48fde193b57adfdfec91634568024745050","revision":"6c81ee1abdc1d8bbb91eb0c1565fa280d232c65e"},
 
@@ -42,7 +42,7 @@
 
     {"path":"src-server/runtime/bootstrap/runtime-tenant-context.ts","digest":"d762d331146dbe6aad7ef1f5301eff52136abcdb94e60e5bf518d74b783d892b","revision":"18002c0871ea8538605e922464aab5356c77593c"},
 
-    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"526128683c1bb08bf9f5e1dc7f1ed50b4d7d6d1f96bcf54484c263a82d9217f0","revision":"88a7f8ed59c055ea6ac713120ba6069d33fbb892"}
+    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"7d26818fb47194e3a8bfbe9303f48be26207889b7bb84806af0ff1efaacfc34f","revision":"efa773acac88792cda31595f9afca4a37d3efebc"}
   ],
 
   "checks": [
@@ -80,6 +80,8 @@
 
     "The documentation maintenance link remains valid; the added freshness section does not change the integration delivery expectations.",
 
-    "The documentation maintenance link remains valid after the mode wording change."
+    "The documentation maintenance link remains valid after the mode wording change.",
+
+    "Structural reconciliation of plugin-command branch and origin/main 84fb656cf0. Both prior bindings preserved here; this is not semantic approval of merged bytes. Conflicting historical anchors: [{\"field\":\"source\",\"path\":\"docs/guides/plugins.md\",\"branch\":{\"path\":\"docs/guides/plugins.md\",\"digest\":\"3c6cd34042f745e8b187f5df5c75ad567a6851432e5e1a9e9ba07369a0067edb\",\"revision\":\"efa773acac88792cda31595f9afca4a37d3efebc\"},\"main\":{\"path\":\"docs/guides/plugins.md\",\"digest\":\"5ff1ca32c4a8610a038c7011a8c026fc7d78d722c154e2150421ba36168a3080\",\"revision\":\"e6eb64ae0f00f85467f76030389782093ac47a0d\"}},{\"field\":\"source\",\"path\":\"docs/reference/api.md\",\"branch\":{\"path\":\"docs/reference/api.md\",\"digest\":\"ea8b5c74ed1cedd40cd93c10b7a59aed2f6f1d6f119529368f049b2544a63200\",\"revision\":\"efa773acac88792cda31595f9afca4a37d3efebc\"},\"main\":{\"path\":\"docs/reference/api.md\",\"digest\":\"d088bee4fb1dedbe062078e87b682ac544b75ccfcf7c9a82248ffb4672e2a78c\",\"revision\":\"d73d9f64333504f027a200482e978cc4445338da\"}},{\"field\":\"source\",\"path\":\"docs/reference/cli.md\",\"branch\":{\"path\":\"docs/reference/cli.md\",\"digest\":\"76106a61e5e2d8924c8857876b8f38011be5f9af421bf6697cbe71a5e795971a\",\"revision\":\"efa773acac88792cda31595f9afca4a37d3efebc\"},\"main\":{\"path\":\"docs/reference/cli.md\",\"digest\":\"62c03f1a50009e0973510034c314c46df560dddf761547e6798d86808eb116fd\",\"revision\":\"19aff2a08b9739ad9ffbda39ff8cb19b026fda82\"}},{\"field\":\"source\",\"path\":\"docs/reference/contracts.md\",\"branch\":{\"path\":\"docs/reference/contracts.md\",\"digest\":\"4866ba9ff58f7e07de00bd825943908f2d695568d183a88d3296e45403349e2e\",\"revision\":\"d73d9f64333504f027a200482e978cc4445338da\"},\"main\":{\"path\":\"docs/reference/contracts.md\",\"digest\":\"a8ab14487297ba73e4c8313ccfb7f7750f2c07daaae893e5d0444349bbdcaf33\",\"revision\":\"793ad2bb50d50f43d7601fb75d3736fc86550cd6\"}},{\"field\":\"source\",\"path\":\"docs/reference/sdk.md\",\"branch\":{\"path\":\"docs/reference/sdk.md\",\"digest\":\"e28a5f514242be041deccd3202a680d6cab1d0c00031b9de0661f9a9fbbf0039\",\"revision\":\"efa773acac88792cda31595f9afca4a37d3efebc\"},\"main\":{\"path\":\"docs/reference/sdk.md\",\"digest\":\"537a6fff7f1674da4c2a79fc01f158cdba06e3031deb893fc62be3d9c2f333bb\",\"revision\":\"d73d9f64333504f027a200482e978cc4445338da\"}},{\"field\":\"source\",\"path\":\"src-server/runtime/bootstrap/station-runtime.ts\",\"branch\":{\"path\":\"src-server/runtime/bootstrap/station-runtime.ts\",\"digest\":\"7d26818fb47194e3a8bfbe9303f48be26207889b7bb84806af0ff1efaacfc34f\",\"revision\":\"efa773acac88792cda31595f9afca4a37d3efebc\"},\"main\":{\"path\":\"src-server/runtime/bootstrap/station-runtime.ts\",\"digest\":\"526128683c1bb08bf9f5e1dc7f1ed50b4d7d6d1f96bcf54484c263a82d9217f0\",\"revision\":\"88a7f8ed59c055ea6ac713120ba6069d33fbb892\"}}]"
   ]
 }
