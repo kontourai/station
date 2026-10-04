@@ -1,0 +1,7 @@
+{
+  "revision": "a43b54f6cfe9479ea77cd6e783aa5e1419bc5168",
+
+  "notes": [
+    {"path":"docs/guides/dependency-security.md","note":"Re-record after accepting node-forge GHSA-86w9-cpqp-85rv: the new exception entry follows the guide's documented contract — high severity, owner, reason, exact tracking issue (#3122), and a 14-day expiry renewed only with fresh evidence; the guide's mechanism claims still describe the file as it now stands.","inputs":["docs/guides/dependency-security.md"]}
+  ]
+}

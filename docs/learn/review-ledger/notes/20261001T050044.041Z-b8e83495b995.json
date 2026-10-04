@@ -1,0 +1,7 @@
+{
+  "revision": "8b1638b2ce144daf52e2bc74a2e37c5c156da332",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Reviewed the scheduled-agent setup journey with the repository audited test wrapper; exact browser navigation passed, fixture policy and E2E typecheck passed, existing CRUD assertions preserved.","inputs":["docs/guides/e2e-coverage-matrix.md"]}
+  ]
+}

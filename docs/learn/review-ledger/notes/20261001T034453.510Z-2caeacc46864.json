@@ -1,0 +1,7 @@
+{
+  "revision": "dd0b58c8b698d6af2b789e37b427d18e842acab4",
+
+  "notes": [
+    {"path":"docs/design/native-capabilities.md","note":"Recorded separately executed full iOS simulator e74a/c8f4 native Project proof against clean f5eda Linux runtime through owned SSH TCP loopback forwards: 200 read, 200 fresh-peer reconnect, 401 account revoke, 200 reauthentication, 403 Device revoke. Each read had fresh host handle and observed relay pair/candidate, zero direct Project HTTP, and expected payload presence/absence. Both account challenge/exchange schemas/targets/Device/surfaces passed actual channel checks. Profile/grant cleanup observed empty store, controller stopped, exact TURN owner disappeared and owned forwards closed. Earlier expiry/resource prerequisite failures retained separately; ordinary UI/fresh enrollment, physical signed Nightly, public TLS/TURN/NAT and two-human use remain unqualified.","inputs":["docs/design/native-capabilities.md"]}
+  ]
+}

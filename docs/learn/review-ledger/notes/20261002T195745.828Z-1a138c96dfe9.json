@@ -1,0 +1,7 @@
+{
+  "revision": "14ed8256e37a8984bedd979efc30e58fe6a04a18",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed the changed native-shell verification paragraph against this document’s recorded scope. It only updates visible recovery labels and notes that technical details start collapsed; this document does not make a conflicting claim about that UI. Existing conclusions remain accurate, and the copy-only change adds no installed-shell evidence.","inputs":["docs/guides/testing.md"]}
+  ]
+}

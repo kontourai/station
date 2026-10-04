@@ -9,40 +9,38 @@
 
   "limits": "Scoped source review and local executable tests; no hosted agent, publication, signing, physical-device or external Builder schema admission proof. Existing local receipt schema remains separate.",
 
-  "document": {"digest":"6e6c0a7ad4b9eb9aa180aaef6d9832d03fbbd65d236f4a538e148b8fbc4c8a39","revision":"8de1b741d83aec880c76c3cece6bb3e9cdee740d"},
-
   "sources": [
-    {"path":".github/workflows/ci.yml","digest":"9b586bd70bb7c94986ce19ee41151ff768bad2a308a196a15047375c92f9646a","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
+    ".github/workflows/ci.yml",
 
-    {"path":".github/workflows/full-regression.yml","digest":"064212250fcc5a2d13bed01a3de5a7a72620616b9847ded3cfcdb166b6f694f2","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
+    ".github/workflows/full-regression.yml",
 
-    {"path":".github/workflows/merge-queue-regression.yml","digest":"ba13e009f55d64dc1059167c9f1ed009c1518605483c42f4e3a3509e579e9480","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
+    ".github/workflows/merge-queue-regression.yml",
 
-    {"path":".github/workflows/main-qualification.yml","digest":"a3db5a57739d28acc13bc3e2bb849773d3cc30ed1ad09b66644c08ca47db61fe","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
+    ".github/workflows/main-qualification.yml",
 
-    {"path":".github/workflows/qualification-repair.yml","digest":"6f3889eb085c36fd2d7ee89713d9b68b9a6616ed11d89612c511af21030fa207","revision":"8de1b741d83aec880c76c3cece6bb3e9cdee740d"},
+    ".github/workflows/qualification-repair.yml",
 
-    {"path":".github/workflows/qualification-after-repair.yml","digest":"bbb9516a9823b8fead000808624b43e8c0a0b5ad96ca3c9aa7654b5e54148480","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
+    ".github/workflows/qualification-after-repair.yml",
 
-    {"path":".github/workflows/landing-automation.yml","digest":"ac4c92f9a4912cc9074da7b7e12f8191abb5003b0394098c7290670c92d40203","revision":"8de1b741d83aec880c76c3cece6bb3e9cdee740d"},
+    ".github/workflows/landing-automation.yml",
 
-    {"path":".github/workflows/nightly.yml","digest":"0a1753a37519218e6a6afccc12785f34be4a376e3e82c303819e5c4da9614202","revision":"ea49cb8678208b9037f8e9ab3ceb2a95fe2647ff"},
+    ".github/workflows/nightly.yml",
 
-    {"path":".github/workflows/release.yml","digest":"178d355f1c2141a4587db894e9f015983340a0c09a4f1c4f633c61503d58b577","revision":"94e8e5781a2c23d2bc828682a1157aef3934e897"},
+    ".github/workflows/release.yml",
 
-    {"path":".github/workflows/publish-release.yml","digest":"177c206b2b12a2421bd83d3b803b7e7a4555a982725d2b2b775837fc6aa87db6","revision":"0fef6012b6853144e65d4ba2eb0db5fb6c2d1a05"},
+    ".github/workflows/publish-release.yml",
 
-    {"path":".github/workflows/publish-packages.yml","digest":"3954825136f2f10d77492b56b78e5bd918ec2ded7099adb162060be92e4e7e8f","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
+    ".github/workflows/publish-packages.yml",
 
-    {"path":"scripts/qualification-evidence.mjs","digest":"23d781b1425af3c0e5081c80b3c93cf4d6088a2090dddff557dd0f2aa2cade69","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
+    "scripts/qualification-evidence.mjs",
 
-    {"path":"scripts/qualification-repair.mjs","digest":"08a9b2eab286f2c9c7bf69bb000bb7a7d4b5b0a0cdcd72af1cb1128fc7de6890","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
+    "scripts/qualification-repair.mjs",
 
-    {"path":"scripts/landing-automation.mjs","digest":"b071afc945ee7018ba06c4bca212601f0cfde91d44c8c5143f7ca393dd581ec8","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
+    "scripts/landing-automation.mjs",
 
-    {"path":"scripts/__tests__/qualification-evidence.test.ts","digest":"c44b1d63e6aff95d1d8296139f03b45ac0db9a6a75e6b0ead3878467f5f9e943","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
+    "scripts/__tests__/qualification-evidence.test.ts",
 
-    {"path":"scripts/__tests__/qualification-repair.test.ts","digest":"ec2c565db05fe51eaf5d5cc1f2a7f00f6dc399d46e0a700da0b678c542150f5d","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"}
+    "scripts/__tests__/qualification-repair.test.ts"
   ],
 
   "checks": [

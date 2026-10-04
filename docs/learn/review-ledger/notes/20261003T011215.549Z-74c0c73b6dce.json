@@ -1,0 +1,11 @@
+{
+  "revision": "381388a5c221a50c4e5b8c775538218bc02ce431",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the final empty-state correction against the shared Empty primitive and state-primitives ratchet: Projects uses the canonical Nothing here yet label, while the short plus-action description supplies onboarding. Existing creation route, source glyphs, held descriptions and project/default behavior remain unchanged. The focused ProjectSwitcher owner and shared state ratchet execute; no ceiling or policy is widened.","inputs":["docs/design/chat-composer.md"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed the final empty-state correction against the shared Empty primitive and state-primitives ratchet: Projects uses the canonical Nothing here yet label, while the short plus-action description supplies onboarding. Existing creation route, source glyphs, held descriptions and project/default behavior remain unchanged. The focused ProjectSwitcher owner and shared state ratchet execute; no ceiling or policy is widened.","inputs":["docs/guides/responsive-ui.md"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed the final empty-state correction against the shared Empty primitive and state-primitives ratchet: Projects uses the canonical Nothing here yet label, while the short plus-action description supplies onboarding. Existing creation route, source glyphs, held descriptions and project/default behavior remain unchanged. The focused ProjectSwitcher owner and shared state ratchet execute; no ceiling or policy is widened.","inputs":["docs/user/getting-started.md"]}
+  ]
+}

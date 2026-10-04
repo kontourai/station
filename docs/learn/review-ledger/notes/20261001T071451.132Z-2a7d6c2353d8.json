@@ -1,0 +1,7 @@
+{
+  "revision": "b03622e2007e22ff75c7280a41396526c75a7b6e",
+
+  "notes": [
+    {"path":"docs/guides/agents.md","note":"#3071 review-fix round. Changed inputs: claude-adapter.ts (a main-thread request.opened carries its turnId, a subagent's none; interruptTurn cancels the turn's own requests raised during the SDK interrupt before turn.aborted); orchestration-service.ts (request inspection reports a request settled by its turn's abort as resolved; respondToRequest refuses a resolved or settled request with request_event_changed before adapter resolution). The page says canonical clients read request.opened and send respondToRequest via the Session API; still true, and the refusal of a settled request is stated there. No prose change.","inputs":["docs/guides/agents.md"]}
+  ]
+}

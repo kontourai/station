@@ -1,0 +1,7 @@
+{
+  "revision": "9330f3941806d4e9c52fa4774d66c91079bd7431",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Follow the PluginFrameHost producer extraction through its actual SDK import and string encoding; private UI adapter belongs to existing Plugins boundary. No public SDK or release claim added.","inputs":["docs/architecture/module-map.md"]}
+  ]
+}
