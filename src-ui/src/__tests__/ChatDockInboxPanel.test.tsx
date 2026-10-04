@@ -96,7 +96,7 @@ describe('ChatDockInboxPanel', () => {
       'Needs you',
       'Running',
       'Just finished',
-      'Snoozed (0)',
+      'Snoozed · 0',
       'Earlier',
     ]);
     // The Running row's chip says the lane's word, never "Active".
@@ -149,7 +149,7 @@ describe('ChatDockInboxPanel', () => {
       'Running',
       'Idle',
       'Just finished',
-      'Snoozed (0)',
+      'Snoozed · 0',
       'Earlier',
     ]);
   });
@@ -353,7 +353,7 @@ describe('ChatDockInboxPanel', () => {
       'Running',
       'Drafts',
       'Just finished',
-      'Snoozed (0)',
+      'Snoozed · 0',
       'Earlier',
     ]);
 
@@ -485,7 +485,7 @@ describe('ChatDockInboxPanel', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: '1 hour' }));
 
     const snoozedToggle = screen.getByRole('button', {
-      name: 'Snoozed (1)',
+      name: 'Snoozed · 1',
     });
     fireEvent.click(snoozedToggle);
 
@@ -619,7 +619,7 @@ describe('ChatDockInboxPanel', () => {
       activeChatSessionId: null,
     });
 
-    const snoozedToggle = screen.getByRole('button', { name: 'Snoozed (1)' });
+    const snoozedToggle = screen.getByRole('button', { name: 'Snoozed · 1' });
     fireEvent.click(snoozedToggle);
     expect(
       screen.getByRole('button', {
@@ -661,7 +661,7 @@ describe('ChatDockInboxPanel', () => {
       activeChatSessionId: null,
     });
 
-    const snoozedToggle = screen.getByRole('button', { name: 'Snoozed (1)' });
+    const snoozedToggle = screen.getByRole('button', { name: 'Snoozed · 1' });
     fireEvent.click(snoozedToggle);
     expect(
       screen.getByRole('button', {

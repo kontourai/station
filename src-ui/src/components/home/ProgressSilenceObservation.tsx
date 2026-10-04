@@ -1,7 +1,6 @@
 import type { TurnProgressSilence } from '@kontourai/station-sdk';
-import { useEffect, useState } from 'react';
-import { absoluteTime, relativeTime } from '../../utils/relativeTime';
-import { formatElapsed } from '../../views/home/work-status';
+import { absoluteTime } from '../../utils/relativeTime';
+import { ElapsedDuration } from '../ElapsedDuration';
 
 /**
  * archive#4054: display-only rendering of the watchdog's server projection,
@@ -9,9 +8,8 @@ import { formatElapsed } from '../../views/home/work-status';
  * for 4m" in a sentence). The window the watchdog used is a tuning constant
  * and is not shown; the instant it has been silent since is the tooltip.
  *
- * With an `engineName` the sentence names who has gone quiet and the
- * duration ticks once a second in the row's own elapsed format, so the
- * banner and the row never disagree about how long.
+ * The duration is the shared one (`ElapsedDuration`: one format, one clock),
+ * so this sentence and the row beside it never disagree about how long.
  */
 export default function ProgressSilenceObservation({
   observation,
@@ -20,26 +18,12 @@ export default function ProgressSilenceObservation({
   observation: TurnProgressSilence;
   engineName?: string;
 }) {
-  const [now, setNow] = useState(Date.now);
-  useEffect(() => {
-    if (!engineName) return;
-    setNow(Date.now());
-    const timer = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(timer);
-  }, [engineName]);
   const silentSince = Date.parse(observation.silentSinceEventAt);
   const title = absoluteTime(silentSince) || observation.silentSinceEventAt;
-  if (engineName) {
-    return (
-      <strong title={title}>
-        No progress from {engineName} for{' '}
-        {formatElapsed(Math.max(0, now - silentSince))}
-      </strong>
-    );
-  }
   return (
     <strong title={title}>
-      No progress for {relativeTime(silentSince, Date.now())}
+      {engineName ? `No progress from ${engineName} for ` : 'No progress for '}
+      <ElapsedDuration since={silentSince} />
     </strong>
   );
 }

@@ -2580,9 +2580,7 @@
   }
   .mobile-task-switcher__list .chat-dock-inbox__group-label,
   .mobile-task-switcher__list .chat-dock-inbox__section-toggle {
-    font-size: var(--k-text-md);
-    text-transform: none;
-    letter-spacing: normal;
+    --work-group-label-size: var(--k-text-md);
   }
   /* Composer two-row stack: at phone width the desktop layout (textarea +
      a right-hand controls column) squeezes the textarea and pushes the

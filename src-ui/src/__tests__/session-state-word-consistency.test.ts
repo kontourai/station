@@ -44,7 +44,7 @@ const LANE_VOCABULARY: Record<SessionLaneId, ReadonlySet<string>> = {
     'Waiting on you',
   ]),
   // In flight. The only words that may claim work is happening.
-  running: new Set(['Running', 'No progress · 1m', '1 sub-agent']),
+  running: new Set(['Running', 'No progress', '1 sub-agent']),
   // Idle or stranded — not finished, not in flight, not yours to discharge.
   // "Elsewhere" belongs to this lane by design (archive#1783: an
   // unanswerable session did not FINISH, it stopped being reachable, so it
@@ -443,7 +443,11 @@ const RETIRED: ReadonlyArray<[retired: string, use: string]> = [
   ['Start a conversation', 'Start a chat'],
   ['Conversation details', 'Chat details'],
   ['Close conversation history', 'Close history'],
+  // The history lane is one flat list on every surface; the row's own time
+  // says when. Dated sub-headings were a second set of names for one lane.
   ['Earlier today', 'Earlier (the lane; the row time says when)'],
+  ['Yesterday', 'Earlier (the lane; the row time says when)'],
+  ['This week', 'Earlier (the lane; the row time says when)'],
 ];
 
 /** Where a retired string may still legitimately appear, and why. */

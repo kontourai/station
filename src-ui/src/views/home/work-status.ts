@@ -1,4 +1,4 @@
-import { relativeTime } from '../../utils/relativeTime';
+import { formatDuration } from '../../utils/relativeTime';
 import type { HomeWorkItem } from './home-view-model';
 import type { WorkAttentionKind, WorkFacts } from './work-facts';
 
@@ -96,7 +96,10 @@ export interface WorkStatus {
    * attached transcript was started. Never on the row itself.
    */
   reason?: string;
-  /** Epoch ms a ticking duration counts from; only while a turn is open. */
+  /**
+   * Epoch ms the line's ticking duration counts from, only while a turn is
+   * open: the turn's start, or for a quiet run the instant it went quiet.
+   */
   since?: number;
   /** The whole line as text at `now`. */
   line: string;
@@ -106,17 +109,6 @@ function epochMs(value: string | undefined): number | undefined {
   if (!value) return undefined;
   const ms = Date.parse(value);
   return Number.isFinite(ms) ? ms : undefined;
-}
-
-/** "42s", "1m 12s", "1h 04m": a duration that reads the same while ticking. */
-export function formatElapsed(elapsedMs: number): string {
-  const total = Math.max(0, Math.floor(elapsedMs / 1000));
-  const seconds = total % 60;
-  const minutes = Math.floor(total / 60) % 60;
-  const hours = Math.floor(total / 3600);
-  if (hours > 0) return `${hours}h ${String(minutes).padStart(2, '0')}m`;
-  if (minutes > 0) return `${minutes}m ${String(seconds).padStart(2, '0')}s`;
-  return `${seconds}s`;
 }
 
 type Rung = Omit<WorkStatus, 'line'>;
@@ -131,11 +123,7 @@ const ATTENTION_WORDS: Record<WorkAttentionKind, string> = {
   interrupted: 'Interrupted',
 };
 
-function rungFor(
-  item: HomeWorkItem,
-  facts: WorkFacts | undefined,
-  now: number,
-): Rung {
+function rungFor(item: HomeWorkItem, facts: WorkFacts | undefined): Rung {
   if (item.controlMode === 'read-only-attached') {
     // The row's meta line already names the app; the word says only that
     // this Station cannot answer in it.
@@ -211,14 +199,20 @@ function rungFor(
       const silentSince = epochMs(
         item.turnProgress?.progressSilence?.silentSinceEventAt,
       );
+      //
+      // The duration is how long it has been quiet, not how long the turn
+      // has run: it is the line's one ticking number ("No progress · 4m",
+      // "No progress · Bash · 4m"), the same `since` slot a running row
+      // ticks in, so every surface counts it off the one shared clock
+      // instead of baking a minute count into the word at its own `now`.
       if (silentSince !== undefined) {
         return {
           rung: 'quiet',
           lane: 'running',
           tone: 'caution',
-          word: `No progress · ${relativeTime(silentSince, now)}`,
+          word: 'No progress',
           detail: activity?.toolName,
-          since,
+          since: silentSince,
         };
       }
       return {
@@ -253,11 +247,11 @@ export function workStatus(
   now: number,
   facts?: WorkFacts,
 ): WorkStatus {
-  const rung = rungFor(item, facts, now);
+  const rung = rungFor(item, facts);
   const line = [
     rung.word,
     rung.detail,
-    rung.since !== undefined ? formatElapsed(now - rung.since) : undefined,
+    rung.since !== undefined ? formatDuration(now - rung.since) : undefined,
   ]
     .filter(Boolean)
     .join(' · ');

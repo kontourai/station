@@ -69,3 +69,25 @@ export function relativeTimeAgo(updatedAt: number, now: number): string {
   if (compact === 'now') return 'just now';
   return /^\d+[mhd]$/.test(compact) ? `${compact} ago` : `on ${compact}`;
 }
+
+/**
+ * THE one elapsed-duration format, the coarse sibling of `relativeTime`:
+ * `12s` under a minute, then `4m`, then `1h 4m` (`2h` on the hour). How long
+ * a turn has run, how long a run has been quiet — every row, card, strip and
+ * sentence that says how long something has lasted reads it here, so the
+ * same item never reads "4m 10s" on one surface and "4m" on another.
+ * Seconds stop at the first minute: past it, a number that changes every
+ * second is noise, not news. A stopwatch (`m:ss`, a clock face) is a
+ * different thing and keeps its own format.
+ */
+export function formatDuration(elapsedMs: number): string {
+  const seconds = Number.isFinite(elapsedMs)
+    ? Math.max(0, Math.floor(elapsedMs / 1000))
+    : 0;
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return rest === 0 ? `${hours}h` : `${hours}h ${rest}m`;
+}

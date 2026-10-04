@@ -21,8 +21,14 @@ import { ActionOperationsSection } from '../components/action-operations/ActionO
 import { Button } from '../components/Button';
 import { DelegationLauncher } from '../components/chat-dock/DelegationLauncher';
 import { DiscardDraftButton } from '../components/drafts/DiscardDraftButton';
+import { ElapsedDuration } from '../components/ElapsedDuration';
 import { AgentIcon } from '../components/icons/AgentIcon';
-import { InboxRowStatusGlyph } from '../components/inbox-row/InboxRowStatus';
+import {
+  InboxRowStatusGlyph,
+  WorkStatusLineText,
+} from '../components/inbox-row/InboxRowStatus';
+import { WorkGroupLabel } from '../components/inbox-row/WorkGroupLabel';
+import { workGroupLabelText } from '../components/inbox-row/work-group-label';
 import { ConfirmModal } from '../components/modals/ConfirmModal';
 import { useIsPageFramed } from '../components/page-frame';
 import { SplitPaneLayout } from '../components/SplitPaneLayout';
@@ -67,7 +73,6 @@ import {
   focusChatEventDetailForAction,
   resolveConversationOpenAction,
 } from './home/work-item-open-policy';
-import { formatElapsed } from './home/work-status';
 import { foldConversationTurns } from './sessions/conversation-groups';
 import { RunBoardSummary } from './sessions/RunBoardSummary';
 import { groupDelegatedSessionRuns } from './sessions/run-groups';
@@ -217,12 +222,15 @@ function ActivityRowMeta({
               <span data-testid="session-member-terminal-attribution">
                 {status.detail}
               </span>
-              {status.since !== undefined
-                ? ` · ${formatElapsed(now - status.since)}`
-                : null}
+              {status.since !== undefined && (
+                <>
+                  {' · '}
+                  <ElapsedDuration since={status.since} />
+                </>
+              )}
             </>
           ) : (
-            status.line
+            <WorkStatusLineText status={status} />
           )}
         </span>
         {status.reason && status.rung !== 'stopped' && (
@@ -811,7 +819,10 @@ export function SessionsView({
       (total, row) => total + classifiedIn(row),
       0,
     );
-    const section = `${SESSION_LANE_LABELS[laneId]} · ${laneCount}`;
+    const section = workGroupLabelText(SESSION_LANE_LABELS[laneId], laneCount);
+    const sectionLabel = (
+      <WorkGroupLabel label={SESSION_LANE_LABELS[laneId]} count={laneCount} />
+    );
     return lanePresentations.flatMap((row) => {
       const { presentation, members } = row;
       const subtaskCount = members.length - 1;
@@ -883,6 +894,7 @@ export function SessionsView({
           // EVERY row carries its section — the layout emits a heading only
           // when section CHANGES between neighbours.
           section,
+          sectionLabel,
           icon: <AgentIcon agent={sessionIconAgent(s, agents)} size="small" />,
           openChat: openConversationIds.has(s.threadId),
           badge: <SessionPullRequestConflictChip session={s} />,

@@ -246,7 +246,7 @@ describe('HomeSurface composition', () => {
     ).toBeTruthy();
     const recent = screen.getByRole('region', { name: 'Recent work' });
     expect(
-      within(recent).getByRole('heading', { name: 'Running (1)' }),
+      within(recent).getByRole('heading', { name: 'Running · 1' }),
     ).toBeTruthy();
     // The one-list constraint, pinned: an item appears exactly once in the
     // list. Two recent-work lists is the failure this composition exists to
@@ -302,7 +302,7 @@ describe('HomeSurface composition', () => {
     });
     expect(screen.queryByText('Snoozed work')).toBeNull();
     // The shelf's own heading carries the count: no second strip of numbers.
-    expect(screen.getByRole('button', { name: 'Snoozed (1)' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Snoozed · 1' })).toBeTruthy();
     expect(document.querySelector('.home-pulse__stats')).toBeNull();
     // …and it is absent from the chart too, which reads the same lanes.
     expect(
@@ -336,7 +336,7 @@ describe('HomeSurface composition', () => {
       screen.queryByRole('button', { name: /open Snoozed work/ }),
     ).toBeNull();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Snoozed (1)' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Snoozed · 1' }));
     fireEvent.click(screen.getByRole('button', { name: 'Wake Snoozed work' }));
 
     expect(

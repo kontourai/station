@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react';
 import { useCoarsePointer } from '../../hooks/useCoarsePointer';
 import { useRowFocusPreservation } from '../../hooks/useRowFocusPreservation';
 import type { SessionIconAgent } from '../../utils/sessionDisplay';
-import { bucketByRecency } from '../../views/home/blocks/recency-buckets';
 import {
   olderDraftsLabel,
   splitDraftsByAge,
@@ -18,6 +17,7 @@ import type { HomeWorkLanes } from '../../views/home/useHomeWorkLanes';
 import type { WorkFactsById } from '../../views/home/work-facts';
 import { DisclosureToggle } from '../DisclosureToggle';
 import { ReturnGlyph } from '../icons/Glyph';
+import { WorkGroupLabel } from '../inbox-row/WorkGroupLabel';
 import { Empty, ErrorState, SkeletonList } from '../state';
 import { type HomeRowContext, renderHomeWorkRow } from './HomeWorkRow';
 
@@ -299,7 +299,8 @@ function HomeWorkLanesContent({
       />
       {controller.lanes.external?.length ? (
         <HomeFoldedLane
-          label={`From other apps (${controller.lanes.external.length})`}
+          label="From other apps"
+          count={controller.lanes.external.length}
           headingId="home-external-heading"
         >
           <ul className="home-view__task-list">
@@ -341,10 +342,12 @@ function HomeWorkLanesContent({
  */
 function HomeFoldedLane({
   label,
+  count,
   headingId,
   children,
 }: {
   label: string;
+  count: number;
   headingId: string;
   children: React.ReactNode;
 }) {
@@ -357,7 +360,7 @@ function HomeFoldedLane({
         expanded={open}
         onToggle={() => setOpen((value) => !value)}
       >
-        {label}
+        <WorkGroupLabel label={label} count={count} />
       </DisclosureToggle>
       {open && children}
     </section>
@@ -393,7 +396,8 @@ function HomeDraftsSection({
     });
   return (
     <HomeFoldedLane
-      label={`Drafts (${drafts.length})`}
+      label="Drafts"
+      count={drafts.length}
       headingId="home-drafts-heading"
     >
       <ul className="home-view__task-list">{recent.map(row)}</ul>
@@ -438,7 +442,7 @@ function HomeLiveLane({
           that only scrolls leaves a keyboard reader's focus parked where it
           was. */}
       <h3 id={lane.headingId} className="home-view__group-label" tabIndex={-1}>
-        {lane.label} ({items.length})
+        <WorkGroupLabel label={lane.label} count={items.length} />
       </h3>
       <ul className="home-view__task-list">
         {items.map((task) =>
@@ -479,7 +483,10 @@ function HomeRecentlyFinishedLane({
         className="home-view__group-label"
         tabIndex={-1}
       >
-        Just finished ({lanes.recentlyFinished.length})
+        <WorkGroupLabel
+          label="Just finished"
+          count={lanes.recentlyFinished.length}
+        />
       </h3>
       <ul className="home-view__task-list">
         {lanes.recentlyFinished.map((task) =>
@@ -510,7 +517,7 @@ function HomeSnoozedShelf({ controller }: { controller: HomeWorkController }) {
         expanded={controller.shelfExpanded}
         onToggle={controller.toggleShelf}
       >
-        Snoozed ({lanes.snoozed.length})
+        <WorkGroupLabel label="Snoozed" count={lanes.snoozed.length} />
       </DisclosureToggle>
       {controller.shelfExpanded && <HomeSnoozedRows controller={controller} />}
     </section>
@@ -561,37 +568,30 @@ function HomeSettledTail({
   const { settled } = controller.lanes;
   if (settled.length === 0) return null;
   const visible = settled.slice(0, controller.settledVisibleCount);
-  // "Earlier" used to be one flat run of rows. Bucketing the visible page by
-  // recency is what the composed variant's "Recently" feed did, absorbed into
-  // the list that already exists rather than added beside it as a second one.
-  // Buckets are derived from the VISIBLE page, so "Show more" still governs
-  // how much of the tail is on screen.
-  const buckets = bucketByRecency(visible, controller.lanes.now);
+  // One flat list, newest first (the lane's own order), as on Activity and
+  // in the dock: each row's time ("3h", "2d", "Sep 12") already says when, so
+  // dated sub-headings ("Today", "Yesterday", ...) would be a second set of
+  // names for one lane (design round 2026-10, C2).
   return (
     <section
       className="home-view__settled-tail"
       aria-labelledby="home-settled-tail-heading"
     >
       <h3 id="home-settled-tail-heading" className="home-view__group-label">
-        Earlier
+        <WorkGroupLabel label="Earlier" />
       </h3>
-      {buckets.map((bucket) => (
-        <div key={bucket.label}>
-          <h4 className="home-view__bucket-label">{bucket.label}</h4>
-          <ul className="home-view__task-list">
-            {bucket.items.map((task) =>
-              renderHomeWorkRow({
-                task,
-                isWoken: false,
-                agents,
-                onOpen,
-                size: 'slim',
-                context,
-              }),
-            )}
-          </ul>
-        </div>
-      ))}
+      <ul className="home-view__task-list">
+        {visible.map((task) =>
+          renderHomeWorkRow({
+            task,
+            isWoken: false,
+            agents,
+            onOpen,
+            size: 'slim',
+            context,
+          }),
+        )}
+      </ul>
       {controller.settledVisibleCount < settled.length && (
         <button
           type="button"

@@ -12,6 +12,7 @@ import {
   type ChatUIState,
   createDefaultChatState,
 } from '../contexts/active-chats-state';
+import { formatDuration } from '../utils/relativeTime';
 import { partitionHomeWorkItems } from '../views/home/home-lane-model';
 import {
   buildHomeWorkItems,
@@ -19,11 +20,7 @@ import {
   type HomeWorkItem,
 } from '../views/home/home-view-model';
 import { buildWorkFacts, type WorkFacts } from '../views/home/work-facts';
-import {
-  formatElapsed,
-  type WorkLane,
-  workStatus,
-} from '../views/home/work-status';
+import { type WorkLane, workStatus } from '../views/home/work-status';
 import { sessionWorkStatus } from '../views/sessions/sessions-lane-model';
 
 /**
@@ -143,7 +140,7 @@ describe('the status ladder, from real server summaries', () => {
     expect(statusOf(RUNNING_TOOL)).toEqual({
       rung: 'running',
       lane: 'running',
-      line: 'Running · Bash · 1m 12s',
+      line: 'Running · Bash · 1m',
     });
   });
 
@@ -156,7 +153,7 @@ describe('the status ladder, from real server summaries', () => {
     expect(statusOf(summary)).toEqual({
       rung: 'childWork',
       lane: 'running',
-      line: '3 sub-agents · 1m 12s',
+      line: '3 sub-agents · 1m',
     });
   });
 
@@ -179,7 +176,9 @@ describe('the status ladder, from real server summaries', () => {
       rung: 'quiet',
       lane: 'running',
       tone: 'caution',
-      line: 'No progress · 6m · Bash · 6m 01s',
+      // One number: how long it has been quiet (6m), not the turn's age
+      // beside a second count baked into the word.
+      line: 'No progress · Bash · 6m',
     });
     // Never drawn as the healthy run it sits beside.
     const healthy = rowFor(RUNNING_TOOL);
@@ -295,7 +294,7 @@ describe('the status ladder, from real server summaries', () => {
       currentThreadId: 'T',
       runningChildWork: { count: 3 },
     });
-    expect(statusOf(current).line).toBe('3 sub-agents · 1m 12s');
+    expect(statusOf(current).line).toBe('3 sub-agents · 1m');
     expect(statusOf({ ...current, threadId: 'earlier-child' })).toEqual({
       rung: 'running',
       lane: 'running',
@@ -460,7 +459,7 @@ const TABLE: ReadonlyArray<
     'sub-agents running',
     { lifecycleLabel: 'Running' },
     { activity: { ...ACTIVITY, childWorkCount: 2 } },
-    '2 sub-agents · 1m 12s',
+    '2 sub-agents · 1m',
     'running',
     'running',
   ],
@@ -476,7 +475,7 @@ const TABLE: ReadonlyArray<
     'running a tool',
     { lifecycleLabel: 'Running', activeReason: 'turn' },
     { activity: ACTIVITY },
-    'Running · Bash · 1m 12s',
+    'Running · Bash · 1m',
     'running',
     'running',
   ],
@@ -484,7 +483,7 @@ const TABLE: ReadonlyArray<
     'running, but the watchdog reports no progress',
     { lifecycleLabel: 'Running', activeReason: 'turn', turnProgress: SILENCE },
     { activity: ACTIVITY },
-    'No progress · 6m · Bash · 1m 12s',
+    'No progress · Bash · 6m',
     'running',
     'running',
   ],
@@ -634,12 +633,18 @@ describe('the status ladder, state by state', () => {
     ).toMatchObject({ line: 'Elsewhere', reason: 'Started in Claude Code' });
   });
 
-  it('formats a duration so it reads the same while it ticks', () => {
-    expect(formatElapsed(0)).toBe('0s');
-    expect(formatElapsed(42_900)).toBe('42s');
-    expect(formatElapsed(72_000)).toBe('1m 12s');
-    expect(formatElapsed(3_840_000)).toBe('1h 04m');
-    expect(formatElapsed(-5)).toBe('0s');
+  it('formats a duration in the coarse vocabulary: 12s, then 4m, then 1h 4m', () => {
+    expect(formatDuration(0)).toBe('0s');
+    expect(formatDuration(42_900)).toBe('42s');
+    expect(formatDuration(59_999)).toBe('59s');
+    expect(formatDuration(60_000)).toBe('1m');
+    expect(formatDuration(72_000)).toBe('1m');
+    expect(formatDuration(250_000)).toBe('4m');
+    expect(formatDuration(3_599_999)).toBe('59m');
+    expect(formatDuration(3_600_000)).toBe('1h');
+    expect(formatDuration(3_840_000)).toBe('1h 4m');
+    expect(formatDuration(-5)).toBe('0s');
+    expect(formatDuration(Number.NaN)).toBe('0s');
   });
 });
 

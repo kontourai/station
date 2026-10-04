@@ -1,4 +1,5 @@
 import type { OrchestrationSessionSummary } from '@kontourai/station-sdk';
+import { workGroupLabelText } from '../../components/inbox-row/work-group-label';
 import type { AgentSummary } from '../../types';
 import { splitDraftsByAge } from '../home/draft-lane';
 import {
@@ -190,7 +191,10 @@ export function partitionSessionLanes({
   ).map<SessionLane>((lane) => ({
     id: lane,
     label: SESSION_LANE_LABELS[lane],
-    heading: `${SESSION_LANE_LABELS[lane]} · ${membership[lane].length}`,
+    heading: workGroupLabelText(
+      SESSION_LANE_LABELS[lane],
+      membership[lane].length,
+    ),
     sessions: membership[lane],
     ...(lane === 'drafts' && olderDraftThreadIds.size > 0
       ? { olderDraftThreadIds }

@@ -18,7 +18,10 @@ import { absoluteTime, relativeTime } from '../../utils/relativeTime';
 import type { HomeWorkItem } from '../../views/home/home-view-model';
 import type { WorkFacts } from '../../views/home/work-facts';
 import { workStatus } from '../../views/home/work-status';
-import { InboxRowStatusGlyph } from '../inbox-row/InboxRowStatus';
+import {
+  InboxRowStatusGlyph,
+  WorkStatusLineText,
+} from '../inbox-row/InboxRowStatus';
 import { hostLayerOf, OverlayLayerContext } from '../overlay-layer';
 import {
   ResponsiveDialogHeader,
@@ -526,7 +529,11 @@ function ChatInboxCardBody({
               <InboxRowStatusGlyph rung={status.rung} />
               {/* A failure's cause is the notice below, in full, not a
                   second copy on this line. */}
-              {status.rung === 'failed' ? status.word : status.line}
+              {status.rung === 'failed' ? (
+                status.word
+              ) : (
+                <WorkStatusLineText status={status} />
+              )}
             </span>
           </dd>
         </div>

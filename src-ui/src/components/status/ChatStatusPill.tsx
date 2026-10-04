@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { formatDuration } from '../../utils/relativeTime';
 import type { ChatStatus } from './chatStatus';
 import {
   LiveStatusGlyph,
@@ -23,15 +24,6 @@ function reducedMotion(): boolean {
     typeof window.matchMedia === 'function' &&
     window.matchMedia('(prefers-reduced-motion: reduce)').matches
   );
-}
-
-/** "42s", "4m 10s", "1h 5m". */
-function duration(ms: number): string {
-  const seconds = Math.max(0, Math.floor(ms / 1000));
-  if (seconds < 60) return `${seconds}s`;
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ${seconds % 60}s`;
-  return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
 }
 
 function clockText(ms: number): string {
@@ -92,7 +84,7 @@ function PillDetails({
         <p key={line.text}>
           {line.since === undefined
             ? line.text
-            : `${line.text} · ${duration(now - line.since)}`}
+            : `${line.text} · ${formatDuration(now - line.since)}`}
         </p>
       ))}
     </div>

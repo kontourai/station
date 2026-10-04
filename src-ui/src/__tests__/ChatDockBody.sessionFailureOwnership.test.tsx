@@ -535,11 +535,11 @@ describe('ChatDockBody turn-stall notice (#765)', () => {
     renderDock(session, stalledOrchestrationSession(), chatInput);
 
     expect(screen.getByTestId('chat-dock-turn-stall-notice')).toBeTruthy();
-    // The ladder's word, naming who went quiet, in the row's elapsed format;
+    // The ladder's word, naming who went quiet, in the one duration format;
     // main's "No response from X … Still waiting." was a second way of
     // saying it.
     expect(
-      screen.getByText('No progress from Claude Code for 4m 00s'),
+      screen.getByText('No progress from Claude Code for 4m'),
     ).toBeTruthy();
     now.mockRestore();
     expect(screen.queryByText(/retrying/i)).toBeNull();

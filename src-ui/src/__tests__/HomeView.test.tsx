@@ -759,7 +759,7 @@ describe('HomeView', () => {
     renderHomeView({ continuation: null, onNavigate: vi.fn() });
 
     // Folded by default behind the shared disclosure toggle (C13).
-    const toggle = screen.getByRole('button', { name: 'Drafts (1)' });
+    const toggle = screen.getByRole('button', { name: 'Drafts · 1' });
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
     fireEvent.click(toggle);
     const drafts = toggle.closest('section');
@@ -832,7 +832,7 @@ describe('HomeView', () => {
     activeChatsStore.initChat('fresh-draft');
     renderHomeView({ continuation: null, onNavigate: vi.fn() }, queryClient);
 
-    const draftsToggle = screen.getByRole('button', { name: 'Drafts (2)' });
+    const draftsToggle = screen.getByRole('button', { name: 'Drafts · 2' });
     fireEvent.click(draftsToggle);
     const drafts = draftsToggle.closest('section') as HTMLElement;
     const olderToggle = within(drafts).getByRole('button', {
@@ -1047,9 +1047,9 @@ describe('HomeView', () => {
 
     renderHomeView({ continuation: null, onNavigate: vi.fn() });
 
-    const active = screen.getByRole('region', { name: 'Running (1)' });
+    const active = screen.getByRole('region', { name: 'Running · 1' });
     const recentlyFinished = screen.getByRole('region', {
-      name: 'Just finished (1)',
+      name: 'Just finished · 1',
     });
     expect(within(active).getByText('Keep working')).toBeTruthy();
     expect(
@@ -1283,7 +1283,7 @@ describe('HomeView lane wiring (review finding: snooze/shelf/settled-tail intera
       within(recent).queryByRole('button', { name: `Snooze ${ITEM_TITLE}` }),
     ).toBeNull();
     expect(
-      within(recent).getByRole('button', { name: 'Snoozed (1)' }),
+      within(recent).getByRole('button', { name: 'Snoozed · 1' }),
     ).toBeTruthy();
 
     // `lanes.snooze` really was called with this item's id and the "In 1
@@ -1318,7 +1318,7 @@ describe('HomeView lane wiring (review finding: snooze/shelf/settled-tail intera
 
       expect(within(recent).queryByText(ITEM_TITLE)).toBeNull();
       fireEvent.click(
-        within(recent).getByRole('button', { name: 'Snoozed (1)' }),
+        within(recent).getByRole('button', { name: 'Snoozed · 1' }),
       );
       expect(within(recent).getByText(ITEM_TITLE)).toBeTruthy();
       expect(within(recent).getByText(/Wakes in 1h/)).toBeTruthy();
@@ -1327,7 +1327,7 @@ describe('HomeView lane wiring (review finding: snooze/shelf/settled-tail intera
         within(recent).getByRole('button', { name: `Wake ${ITEM_TITLE}` }),
       );
       expect(
-        within(recent).queryByRole('button', { name: 'Snoozed (1)' }),
+        within(recent).queryByRole('button', { name: 'Snoozed · 1' }),
       ).toBeNull();
       expect(within(recent).getByText(ITEM_TITLE)).toBeTruthy();
     });
@@ -1367,6 +1367,21 @@ describe('HomeView lane wiring (review finding: snooze/shelf/settled-tail intera
       for (let index = 1; index <= 7; index += 1) {
         expect(within(earlier).getByText(`Completed ${index}`)).toBeTruthy();
       }
+      // One flat list, as on Activity (design round 2026-10, C2): the rows
+      // span a week, and still the lane's only heading is "Earlier" — no
+      // dated sub-headings — with the rows newest first.
+      expect(
+        within(earlier)
+          .getAllByRole('heading')
+          .map((heading) => heading.textContent),
+      ).toEqual(['Earlier']);
+      expect(
+        within(earlier)
+          .getAllByText(/^Completed \d$/)
+          .map((title) => title.textContent),
+      ).toEqual(
+        Array.from({ length: 7 }, (_, index) => `Completed ${index + 1}`),
+      );
     });
 
     test('a settled failed row still says Failed', () => {

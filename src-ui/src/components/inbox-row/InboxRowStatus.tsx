@@ -1,10 +1,6 @@
-import { useEffect, useReducer } from 'react';
 import { absoluteTime, relativeTime } from '../../utils/relativeTime';
-import {
-  formatElapsed,
-  type WorkStatus,
-  type WorkStatusRung,
-} from '../../views/home/work-status';
+import type { WorkStatus, WorkStatusRung } from '../../views/home/work-status';
+import { ElapsedDuration } from '../ElapsedDuration';
 import {
   CheckGlyph,
   CloseGlyph,
@@ -58,21 +54,21 @@ export function InboxRowStatusGlyph({ rung }: { rung: WorkStatusRung }) {
 }
 
 /**
- * A duration that ticks once a second, read straight off the wall clock:
- * `Date.now() - since`, on its own interval, depending on `since` alone.
- *
- * It deliberately does NOT use the list's `now`. That clock is coarse (it
- * advances every 30 seconds, for minute-granularity words), so anchoring to
- * it showed "0s" for a turn already 20-30 seconds old and stayed behind for
- * the turn's whole life. Text only: nothing here animates.
+ * The ladder's `line` as rendered text, with its duration counted off the
+ * shared clock instead of frozen at the caller's `now`. Surfaces that print
+ * the whole line in one run of text (the Activity row, the hover card) use
+ * this, so they show the same number as the inbox row beside them.
  */
-function TickingElapsed({ since }: { since: number }) {
-  const [, tick] = useReducer((count: number) => count + 1, 0);
-  useEffect(() => {
-    const timer = setInterval(tick, 1000);
-    return () => clearInterval(timer);
-  }, []);
-  return <>{formatElapsed(Date.now() - since)}</>;
+export function WorkStatusLineText({ status }: { status: WorkStatus }) {
+  const text = [status.word, status.detail].filter(Boolean).join(' · ');
+  if (status.since === undefined) return <>{text}</>;
+  return (
+    <>
+      {text}
+      {' · '}
+      <ElapsedDuration since={status.since} />
+    </>
+  );
 }
 
 /** What a screen reader hears instead of a number that changes every
@@ -189,7 +185,12 @@ export function InboxRowStatusLine({
           <span aria-hidden="true">
             <span className="inbox-row__sep">{' · '}</span>
             <span className="inbox-row__elapsed">
-              <TickingElapsed since={status.since} />
+              {/* The shared clock, never the list's coarse `now`: that
+                  advances every 30 seconds, so anchoring to it showed "0s"
+                  for a turn already 20-30 seconds old, and a second surface
+                  on its own clock read a different number for the same
+                  turn. */}
+              <ElapsedDuration since={status.since} />
             </span>
           </span>
           <span className="sr-only">

@@ -217,9 +217,9 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
         .getAllByRole('menuitem')
         .map((option) => option.textContent?.trim()),
     ).toEqual(['1 hour', '3 hours', 'Tomorrow 9am', 'Next Monday 9am']);
-    expect(screen.queryByRole('button', { name: 'Snoozed (1)' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Snoozed · 1' })).toBeNull();
     fireEvent.click(within(menu).getByRole('menuitem', { name: '1 hour' }));
-    expect(screen.getByRole('button', { name: 'Snoozed (1)' })).not.toBeNull();
+    expect(screen.getByRole('button', { name: 'Snoozed · 1' })).not.toBeNull();
   });
 
   it('sheet host renders the answerability observation through the shared row', () => {
@@ -264,7 +264,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
     sheet.unmount();
 
     renderPanelHost(item);
-    const snoozedToggle = screen.getByRole('button', { name: 'Snoozed (1)' });
+    const snoozedToggle = screen.getByRole('button', { name: 'Snoozed · 1' });
     fireEvent.click(snoozedToggle);
     expect(
       screen.getByRole('button', { name: 'Unsnooze Shared row title' }),

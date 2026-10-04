@@ -13,6 +13,7 @@
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -38,6 +39,7 @@ let sessions: Array<Record<string, unknown>> = [];
 
 vi.mock('../../../contexts/useShowSurface', () => ({
   useShowSurface: () => vi.fn(),
+  useShowSurfacePage: () => vi.fn(),
 }));
 // Activity no longer mounts the host-wide collaborator roster (the sidebar
 // footer's presence tray shows it). Any live-activity read from this surface
@@ -134,6 +136,14 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => {
   };
 });
 
+import type { OrchestrationSessionSummary } from '@kontourai/station-sdk';
+import { createRef } from 'react';
+import { renderWithIsolatedConnections } from '../../../__tests__/renderWithIsolatedConnections';
+import { ChatDockInboxPanel } from '../../../components/chat-dock/ChatDockInboxPanel';
+import { MobileTaskSwitcher } from '../../../components/chat-dock/MobileTaskSwitcher';
+import { HomeSurface } from '../../home/HomeSurface';
+import { buildOrchestrationItems } from '../../home/home-view-model';
+import { buildWorkFacts } from '../../home/work-facts';
 import { SessionsView } from '../../SessionsView';
 
 // A fixed local "now" so row times do not depend on the hour the suite
@@ -348,7 +358,7 @@ describe('Activity list', () => {
     // The status ladder's line — the same words the dock row prints for
     // this session: the word, the tool, the turn's elapsed time.
     expect(within(meta).getByTestId('activity-row-state').textContent).toBe(
-      'Running · Bash · 3m 00s',
+      'Running · Bash · 3m',
     );
     expect(meta.querySelector('[data-segment="project"]')?.textContent).toBe(
       'station',
@@ -823,5 +833,182 @@ describe('Activity list', () => {
       button.compareDocumentPosition(firstHeading as Node) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
+  });
+});
+
+/**
+ * The same item, rendered by the real Home surface, the real dock hosts and
+ * the real Activity list side by side, read at one instant. These are the
+ * cross-surface claims: one duration (one format, one ticking clock) and one
+ * group-heading format. Each surface is fed the same session the way its
+ * host feeds it (Home and the dock from the shared item + facts derivation,
+ * Activity from the session list).
+ */
+describe('Home, the dock and Activity agree on one item', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    window.history.replaceState(null, '', '/');
+    vi.stubGlobal('matchMedia', () => ({
+      addEventListener: vi.fn(),
+      matches: false,
+      removeEventListener: vi.fn(),
+    }));
+    sessions = [];
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  function homeModel(items: ReturnType<typeof buildOrchestrationItems>) {
+    return {
+      projects: [],
+      agents: [],
+      defaultSelection: undefined,
+      workItems: items,
+      workFacts: buildWorkFacts({
+        items,
+        sessions: sessions as unknown as OrchestrationSessionSummary[],
+      }),
+      workLoading: false,
+      workDegraded: false,
+      workError: false,
+      retryWork: vi.fn(),
+      remoteUnavailable: [],
+      remoteAuthenticationRequired: [],
+      startReady: true,
+      startIdentity: '',
+      primaryWorkItem: undefined,
+      continueWork: vi.fn(),
+    } as unknown as Parameters<typeof HomeSurface>[0]['model'];
+  }
+
+  function surfaces() {
+    const items = buildOrchestrationItems(
+      sessions as unknown as OrchestrationSessionSummary[],
+      [],
+    );
+    const workFacts = buildWorkFacts({
+      items,
+      sessions: sessions as unknown as OrchestrationSessionSummary[],
+    });
+    const activity = renderView().container;
+    const home = render(
+      <HomeSurface
+        model={homeModel(items)}
+        continuation={null}
+        onNavigate={vi.fn()}
+      />,
+    ).container;
+    const dock = render(
+      <ChatDockInboxPanel
+        items={items}
+        activeChatSessionId={null}
+        openChatSessionIds={[]}
+        onFocusChat={vi.fn()}
+        onOpenConversation={vi.fn()}
+        onOpenSession={vi.fn()}
+        onCloseChat={vi.fn()}
+        onOpenHistory={vi.fn()}
+        workFacts={workFacts}
+      />,
+    ).container;
+    const sheet = renderWithIsolatedConnections(
+      <QueryClientProvider
+        client={
+          new QueryClient({ defaultOptions: { queries: { retry: false } } })
+        }
+      >
+        <MobileTaskSwitcher
+          open
+          tasks={items}
+          activeChatSessionId={null}
+          visualViewportStyle={{}}
+          triggerRef={createRef<HTMLButtonElement>()}
+          onClose={vi.fn()}
+          onFocusChat={vi.fn()}
+          onOpenConversation={vi.fn()}
+          onOpenSession={vi.fn()}
+          onCloseChat={vi.fn()}
+          workFacts={workFacts}
+        />
+      </QueryClientProvider>,
+    ).baseElement.querySelector('.mobile-task-switcher__panel') as HTMLElement;
+    return { activity, home, dock, sheet };
+  }
+
+  test('one running turn reads the same elapsed time on Home, in the dock and in Activity', () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] });
+    vi.setSystemTime(NOW);
+    const startedAt = new Date(NOW - 5_000).toISOString();
+    const chat = runningChat();
+    sessions = [
+      {
+        ...chat,
+        conversationActivity: {
+          ...(chat.conversationActivity as Record<string, unknown>),
+          openTurn: {
+            turnId: 'turn-1',
+            threadId: 'Refactor the parser',
+            startedAt,
+          },
+        },
+      },
+    ];
+    const { activity, home, dock } = surfaces();
+    const read = () => ({
+      home: home.querySelector('.inbox-row__elapsed')?.textContent,
+      dock: dock.querySelector('.inbox-row__elapsed')?.textContent,
+      activity: activity
+        .querySelector('[data-testid="activity-row-state"]')
+        ?.textContent?.split(' · ')
+        .at(-1),
+    });
+    expect(read()).toEqual({ home: '5s', dock: '5s', activity: '5s' });
+
+    // 20 seconds on, inside Activity's 30-second list clock: a surface on a
+    // clock of its own still says 5s here while the others say 25s.
+    act(() => {
+      vi.advanceTimersByTime(20_000);
+    });
+    expect(read()).toEqual({ home: '25s', dock: '25s', activity: '25s' });
+
+    // Past the minute, the coarse vocabulary: minutes, no seconds.
+    act(() => {
+      vi.advanceTimersByTime(4 * 60_000);
+    });
+    expect(read()).toEqual({ home: '4m', dock: '4m', activity: '4m' });
+  });
+
+  test('a group heading reads "Needs you · 1" wherever a count shows, as visible text in the UI face', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(NOW);
+    sessions = [
+      session('Answer my question', { lifecycleState: 'needs_input' }),
+    ];
+    const { activity, home, dock, sheet } = surfaces();
+    const needsYouLabel = (root: HTMLElement) => {
+      const labels = Array.from(
+        root.querySelectorAll<HTMLElement>('.work-group-label'),
+      ).filter((label) => label.textContent?.startsWith('Needs you'));
+      expect(labels).toHaveLength(1);
+      const [label] = labels;
+      // A count is read with its label: nothing between it and the root
+      // hides it from assistive technology.
+      expect(label.closest('[aria-hidden="true"]')).toBeNull();
+      return label.textContent;
+    };
+    expect(needsYouLabel(home)).toBe('Needs you · 1');
+    expect(needsYouLabel(activity)).toBe('Needs you · 1');
+    expect(needsYouLabel(sheet)).toBe('Needs you · 1');
+    // The desktop dock shows no counts (its host's choice); the words are
+    // still the shared label's.
+    expect(needsYouLabel(dock)).toBe('Needs you');
+    // No surface keeps a format of its own beside the shared one.
+    for (const root of [home, activity, dock, sheet]) {
+      expect(root.textContent).not.toMatch(/Needs you \(\d+\)/);
+      expect(root.querySelector('.chat-dock-inbox__group-count')).toBeNull();
+    }
   });
 });

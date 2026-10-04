@@ -38,6 +38,7 @@ import {
   InboxRowStatusLine,
 } from '../inbox-row/InboxRowStatus';
 import { inboxRowChips } from '../inbox-row/inbox-row-chips';
+import { WorkGroupLabel } from '../inbox-row/WorkGroupLabel';
 import { LazyBoundary } from '../LazyBoundary';
 import {
   ResponsiveDialogHeader,
@@ -871,7 +872,7 @@ export interface InboxGroupListProps {
     sections: Record<CollapsibleInboxSectionId, boolean>;
     onToggle: (id: CollapsibleInboxSectionId) => void;
   };
-  /** Sheet chrome: a count badge beside each group label. */
+  /** Sheet chrome: each group label says how many ("Needs you · 2"). */
   showGroupCounts?: boolean;
   onActivate: (item: HomeWorkItem) => void;
   onSnoozeWake: InboxRowProps['onSnoozeWake'];
@@ -1009,10 +1010,15 @@ export function InboxGroupList({
         const isExpanded = collapsibleId
           ? collapsible!.sections[collapsibleId]
           : true;
-        const label =
-          collapsible && group.id === 'snoozed'
-            ? `${group.label} (${group.items.length})`
-            : group.label;
+        // Whether a count shows is this host's choice (`showGroupCounts`, and
+        // a collapsed Snoozed always says how many it hides); how it reads is
+        // the shared label's: "Snoozed · 2", visible text, never a badge.
+        const count =
+          (collapsible && group.id === 'snoozed') ||
+          (!collapsibleId && showGroupCounts)
+            ? group.items.length
+            : undefined;
+        const label = <WorkGroupLabel label={group.label} count={count} />;
         const labelId = `${idPrefix}-${group.id}`;
 
         return (
@@ -1033,14 +1039,6 @@ export function InboxGroupList({
             ) : (
               <h3 id={labelId} className="chat-dock-inbox__group-label">
                 {label}
-                {showGroupCounts && (
-                  <span
-                    className="chat-dock-inbox__group-count"
-                    aria-hidden="true"
-                  >
-                    {group.items.length}
-                  </span>
-                )}
               </h3>
             )}
 

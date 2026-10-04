@@ -84,7 +84,14 @@ interface SplitPaneItem {
    * in it.
    */
   trailing?: React.ReactNode;
+  /** The section this row sits in; a heading is emitted where it changes. */
   section?: string;
+  /**
+   * How that heading renders, when the host owns its words and face (the
+   * Activity lanes render the shared work-group label). Defaults to the
+   * `section` text in this layout's own section-header style.
+   */
+  sectionLabel?: React.ReactNode;
   /**
    * Optional presentation-only collapsible group. A group is emitted by a
    * caller as contiguous items; rows outside a group retain the original
@@ -1456,7 +1463,7 @@ export function SplitPaneLayout({
                     {item.section !== undefined &&
                       item.section !== items[i - 1]?.section && (
                         <div className="split-pane__section-header">
-                          {item.section}
+                          {item.sectionLabel ?? item.section}
                         </div>
                       )}
                     {groupStarts && group && (

@@ -249,17 +249,10 @@
 }
 /* A recency bucket inside the Earlier tail — one level quieter than the
    lane label above it. */
-.home-view__bucket-label {
-  margin: 12px 0 0;
-  font-size: var(--text-xs);
-  color: var(--text-muted);
-}
 .home-view__group-label {
+  /* The words and their face are WorkGroupLabel's; this is placement. */
   margin: 0 0 4px;
-  font-size: var(--text-xs);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-muted);
+  font-size: inherit;
 }
 
 @media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
