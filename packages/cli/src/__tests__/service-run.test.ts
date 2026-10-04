@@ -1364,7 +1364,14 @@ describe('supervised service liveness (station#3064)', () => {
     }
   });
 
-  test.each(['replacement', 'missing', 'birth', 'id', 'type'] as const)(
+  test.each([
+    'replacement',
+    'installing',
+    'missing',
+    'birth',
+    'id',
+    'type',
+  ] as const)(
     'after readiness, %s ownership loss reaps Station, waits, and reclaims (#2961)',
     async (loss) => {
       const home = makeTempDir('station-svc-loss-');
@@ -1430,11 +1437,14 @@ describe('supervised service liveness (station#3064)', () => {
         const registry = readInstanceRegistry(home);
         const ownEntry = registry.instances['service-test'];
         delete registry.instances['service-test'];
-        if (loss === 'replacement')
+        const sameIdReplacement =
+          loss === 'replacement' || loss === 'installing';
+        if (sameIdReplacement)
           registry.instances['service-test'] = {
             ...ownEntry,
             pid: replacement.pid!,
             birth: lookupProcessBirthFingerprint(replacement.pid!)!,
+            status: loss === 'installing' ? 'installing' : 'running',
           };
         if (loss === 'birth')
           registry.instances['service-test'] = {
@@ -1449,7 +1459,7 @@ describe('supervised service liveness (station#3064)', () => {
           };
         // All non-replacement cases retain a different live home owner so the
         // assertions distinguish waiting from an immediate successful restart.
-        if (loss !== 'replacement')
+        if (!sameIdReplacement)
           registry.instances.replacement = {
             port: 38141,
             type: 'sidecar',
@@ -1460,7 +1470,7 @@ describe('supervised service liveness (station#3064)', () => {
         writeInstanceRegistry(registry, home);
         const replacementEntry =
           readInstanceRegistry(home).instances[
-            loss === 'replacement' ? 'service-test' : 'replacement'
+            sameIdReplacement ? 'service-test' : 'replacement'
           ];
         ticks.shift()!();
         await vi.waitFor(() => expect(stop).toHaveBeenCalledOnce());
@@ -1482,7 +1492,7 @@ describe('supervised service liveness (station#3064)', () => {
         }
         expect(
           readInstanceRegistry(home).instances[
-            loss === 'replacement' ? 'service-test' : 'replacement'
+            sameIdReplacement ? 'service-test' : 'replacement'
           ],
         ).toEqual(replacementEntry);
         for (let tick = 0; tick < 3; tick++) {
@@ -1499,7 +1509,7 @@ describe('supervised service liveness (station#3064)', () => {
           ),
         ).toHaveLength(1);
         await reap(replacement);
-        if (loss !== 'replacement') removeInstance('service-test', home);
+        if (!sameIdReplacement) removeInstance('service-test', home);
         if (loss === 'id') removeInstance('renamed-owner', home);
         ticks.shift()!();
         await vi.waitFor(() => expect(start).toHaveBeenCalledTimes(2));

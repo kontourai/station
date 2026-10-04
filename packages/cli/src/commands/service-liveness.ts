@@ -138,7 +138,7 @@ export function claimServiceHost(
       if (
         status === 'starting' &&
         service &&
-        service.status !== 'installing' &&
+        (waitForLiveOwner || service.status !== 'installing') &&
         entryOwnedByLiveProcess(service, process.pid)
       ) {
         // Recovery may not adopt a live replacement generation of this unit.
