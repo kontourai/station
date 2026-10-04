@@ -245,7 +245,7 @@ Stations (refused in v1, D11), and confirming pairing requests remotely (D9).
 
 ### 3.1 Components
 
-1. **Operator passkey registry.** New `src-server/services/identity/operator-passkey-service.ts`,
+1. **Operator passkey registry.** A new operator-passkey service,
    backed by a private SQLite store under the Station home's security
    directory, opened with `openPrivateSqlite` (`src-server/utils/private-sqlite.ts`;
    the same posture as `native-device-replay-store.ts:15-50`).
@@ -490,7 +490,7 @@ All new paths are proposals. Existing paths are cited.
        `POST /operator/enroll/:requestId/complete`.
 
      Update `assertConsentListenerRouteCoverage` for them.
-8. New `src-server/routes/system/operator-auth-routes.ts` on the main API:
+8. New operator auth routes on the main API:
    - `POST /api/operator/passkey-enrollments`: device cookie required.
      Creates a pending request, rate-limited like access requests
      (`remote-access-threat-model.md:1153-1158`), and returns
@@ -731,7 +731,7 @@ before.
 
 ### 7.7 Rendered paired-browser verification (e2e)
 
-New `tests/operator-passkey-device-access.spec.ts`.
+A new browser spec covers passkey device access.
 
 Important: the suite's default "paired" context presents the **operator
 credential** as a bearer (`tests/helpers/device-class-context.ts:14-22`), so it
