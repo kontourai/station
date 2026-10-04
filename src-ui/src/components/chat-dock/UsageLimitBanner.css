@@ -40,7 +40,7 @@
 
 .usage-limit-banner__body {
   flex: 1 1 14rem;
-  color: var(--text-muted);
+  color: var(--text-secondary);
 }
 
 .usage-limit-banner__error {
