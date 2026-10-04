@@ -283,7 +283,7 @@ describe('one-bar rule (#3309)', () => {
     fireEvent.click(await screen.findByTitle('Open Conversation'));
     expect(controls.onOpenConversation).toHaveBeenCalledTimes(1);
 
-    fireEvent.click(await screen.findByTitle('New Chat'));
+    fireEvent.click(await screen.findByTitle('New chat'));
     expect(controls.onNewChat).toHaveBeenCalledTimes(1);
   });
 
@@ -302,7 +302,7 @@ describe('one-bar rule (#3309)', () => {
     expect(right.contains(await screen.findByTitle('Open Conversation'))).toBe(
       true,
     );
-    expect(right.contains(screen.getByTitle('New Chat'))).toBe(true);
+    expect(right.contains(screen.getByTitle('New chat'))).toBe(true);
     // #1536 F: the folded commands' one control belongs to the actions cluster
     // too, not to the identity's side of the bar.
     expect(right.contains(screen.getByLabelText('More dock actions'))).toBe(
@@ -314,7 +314,7 @@ describe('one-bar rule (#3309)', () => {
     renderHeader();
 
     expect(screen.queryByTitle('Open Conversation')).toBeNull();
-    expect(screen.queryByTitle('New Chat')).toBeNull();
+    expect(screen.queryByTitle('New chat')).toBeNull();
     // With every pane command gone, Chat settings — the dock's own command, not
     // the pane's — is the only one left to fold, so there is no ⋯ at all and it
     // renders inline (D2). That is also why the two rows below are absent from
@@ -421,15 +421,15 @@ describe('one-bar rule (#3309)', () => {
             button.getAttribute('aria-label') ?? button.textContent ?? '',
         ),
     ).toEqual([
-      // Open/New are labelled by their visible text; their chords are in the
-      // tooltips ("Open Conversation", "New Chat"), which is where every
+      // Open/New are named by NewChatAction's aria-label (#3201), Open by its text; their chords are in the
+      // tooltips ("Open Conversation", "New chat"), which is where every
       // shortcut in this bar lives since #1536 F retired the keycap spans.
       // The placement grab, maximize and the visibility chevron that used to
       // bracket these are the REGION's since #2046 2b and render in the
       // region bar (`RegionChromeBar.test.tsx` pins them there).
       'Collapse chat list',
       'Open',
-      'New',
+      'New chat',
       'More dock actions',
     ]);
     expect(screen.queryByLabelText('Hide Chat')).toBeNull();
