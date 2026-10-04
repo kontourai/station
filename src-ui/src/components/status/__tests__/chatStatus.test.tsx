@@ -74,9 +74,36 @@ describe('deriveChatStatus — one status, by priority', () => {
     });
     expect(waiting?.label).toBe('No progress');
     expect(waiting?.details).toContainEqual({
-      text: 'No progress for',
+      text: 'No progress',
       since: Date.parse('2026-09-29T00:00:00Z'),
     });
+  });
+
+  test('the expanded silence detail reads like the row: "No progress · 4m"', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.parse('2026-09-29T00:04:10Z'));
+    const waiting = deriveChatStatus({
+      ...base,
+      turnLive: true,
+      activity: {
+        ...openTurn,
+        progressSilence: {
+          detectedAt: '2026-09-29T00:03:00Z',
+          silentSinceEventAt: '2026-09-29T00:00:00Z',
+          windowMs: 180000,
+          provider: 'acp',
+        },
+      },
+    });
+    render(<ChatStatusPill status={waiting} />);
+    act(() => {
+      screen.getAllByRole('button')[0].click();
+    });
+    const lines = Array.from(
+      document.querySelectorAll('.chat-status-pill__details p'),
+    ).map((line) => line.textContent);
+    expect(lines).toContain('No progress · 4m');
+    expect(lines.join('|')).not.toMatch(/No progress for/);
   });
 
   test('approval outranks the connection, which outranks the turn', () => {
