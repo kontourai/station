@@ -293,6 +293,14 @@ export interface ChildWorkItem extends ChildWorkKey {
   /** Latest one-line status while running. */
   progress?: string;
   usage?: ChildWorkUsage;
+  /**
+   * #3308: present only on a terminal child whose `usage` is still the last
+   * figure reported while it ran, because no settle has reported usage yet
+   * (Claude's `task_updated` terminal carries none; its `task_notification`
+   * follows with the final figure). A later settle's usage replaces it, where
+   * usage a settle reported stays sticky. Set by the reducer, never a producer.
+   */
+  usageProvisional?: true;
   result?: ChildWorkResult;
   startedAt?: string;
   endedAt?: string;
@@ -319,7 +327,14 @@ export type ChildWorkDelta =
       usage?: ChildWorkUsage;
       /** Identity a settle can supply when no earlier delta did. */
       identity?: Partial<
-        Omit<ChildWorkItem, keyof ChildWorkKey | 'status' | 'result' | 'usage'>
+        Omit<
+          ChildWorkItem,
+          | keyof ChildWorkKey
+          | 'status'
+          | 'result'
+          | 'usage'
+          | 'usageProvisional'
+        >
       >;
     } & ChildWorkKey)
   | {
@@ -466,6 +481,15 @@ function normalizeItem(item: ChildWorkItem): ChildWorkItem {
   if (item.backgrounded !== undefined) next.backgrounded = item.backgrounded;
   if (item.progress !== undefined) next.progress = item.progress;
   if (usage) next.usage = usage;
+  // Only the reducer's settle and snapshot paths derive this, and only a
+  // terminal child's usage can be provisional.
+  if (
+    usage &&
+    item.usageProvisional === true &&
+    isChildWorkTerminalStatus(item.status)
+  ) {
+    next.usageProvisional = true;
+  }
   if (result) next.result = result;
   if (item.startedAt !== undefined) next.startedAt = item.startedAt;
   if (item.endedAt !== undefined) next.endedAt = item.endedAt;
@@ -577,7 +601,12 @@ function applySnapshot(
   )) {
     if (listed.has(key)) continue;
     if (!changed) items = { ...items };
-    items[key] = { ...items[key], status: 'unresolved' };
+    // No settle reported this child's usage: what it has is a running figure.
+    items[key] = {
+      ...items[key],
+      status: 'unresolved',
+      ...(items[key].usage ? { usageProvisional: true as const } : {}),
+    };
     changed = true;
   }
   if (!changed) return state;
@@ -607,6 +636,36 @@ function applyUpsert(
   return { ...state, items: { ...state.items, [key]: next } };
 }
 
+/**
+ * #3308: a settled child's usage. A settle that reports usage merges it over
+ * a running figure: on a child it settles (`open`), or on one whose usage is
+ * still provisional. An open settle without usage leaves the running figure,
+ * marked provisional. Otherwise usage a settle reported is sticky and a
+ * duplicate may only fill what is absent.
+ */
+function settledUsage(
+  existing: ChildWorkItem,
+  usage: ChildWorkUsage | undefined,
+  open: boolean,
+): Pick<ChildWorkItem, 'usage' | 'usageProvisional'> {
+  if (usage && (open || existing.usageProvisional)) {
+    return {
+      usage: { ...existing.usage, ...usage },
+      usageProvisional: undefined,
+    };
+  }
+  if (open) {
+    return {
+      usage: existing.usage,
+      usageProvisional: existing.usage ? true : undefined,
+    };
+  }
+  return {
+    usage: fillAbsent(existing.usage, usage),
+    usageProvisional: existing.usageProvisional,
+  };
+}
+
 function applySettle(
   state: ChildWorkRegistryState,
   delta: Extract<ChildWorkDelta, { kind: 'settle' }>,
@@ -628,6 +687,7 @@ function applySettle(
       status: delta.status,
       ...(result ? { result } : {}),
       ...(usage ? { usage } : {}),
+      usageProvisional: undefined,
     });
   } else if (
     existing.status === 'running' ||
@@ -644,15 +704,17 @@ function applySettle(
       childId: delta.childId,
       status: delta.status,
       result: result ?? existing.result,
-      usage: usage ? { ...existing.usage, ...usage } : existing.usage,
+      ...settledUsage(existing, usage, true),
     });
   } else {
-    // Sticky terminal: a duplicate settle may only fill what is absent.
+    // Sticky terminal: a duplicate settle may only fill what is absent —
+    // except usage that is still a running figure (#3308), which the first
+    // settle to report usage replaces, as it would have on a running child.
     next = normalizeItem({
       ...(fillAbsent(existing, identity as ChildWorkItem) ?? existing),
       status: existing.status,
       result: fillAbsent(existing.result, result),
-      usage: fillAbsent(existing.usage, usage),
+      ...settledUsage(existing, usage, false),
     });
   }
   if (sameItem(existing, next)) return state;
