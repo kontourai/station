@@ -6,6 +6,11 @@ on:
       - 'install.sh'
       - 'install.ps1'
       - 'packages/shared/src/installer/**'
+      # Bundled into install.ps1's installer core (#2675 W2).
+      - 'packages/shared/src/windows-path-trust.ts'
+      - 'packages/shared/src/windows-system-utility.mjs'
+      # Which installer packaged `station upgrade` runs.
+      - 'packages/shared/src/prebuilt-archive.ts'
       - 'scripts/smoke-install-ps1.mjs'
       - 'scripts/install-script-generated.mjs'
       - '.gitattributes'

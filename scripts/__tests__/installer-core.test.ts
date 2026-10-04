@@ -354,7 +354,7 @@ describe('installer Windows install-root rule (#2675 W1)', () => {
     expect(
       windowsInstallRootRefusal('/srv/station/installs/nightly', '/home/u'),
     ).toBe(
-      'on Windows, install.ps1 installs only beneath your user profile (/home/u) until it checks install-root permissions (#2675 slice W2); /srv/station/installs/nightly is outside it',
+      'on Windows, install.ps1 installs only beneath your user profile (/home/u); /srv/station/installs/nightly is outside it',
     );
     expect(windowsInstallRootRefusal('/home/u', '/home/u')).not.toBeNull();
     // A sibling that shares the profile's prefix is not inside it.

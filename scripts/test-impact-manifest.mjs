@@ -1136,6 +1136,7 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
     supplemental: true,
     tests: [
       'scripts/__tests__/install-ps1.test.ts',
+      'scripts/__tests__/install-ps1-full.test.ts',
       'scripts/__tests__/install-script-generated.test.ts',
       'scripts/__tests__/release-manifest-vectors.test.ts',
     ],

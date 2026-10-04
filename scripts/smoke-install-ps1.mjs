@@ -29,23 +29,40 @@
 //      pinned Node.js digest is wrong; and a Station root outside the user
 //      profile, whose planted `current\runtime\node.exe` must not run before
 //      verification. None stages anything.
+//   6. the full install (#2675 slice W2), in a Station root of its own:
+//      Windows PowerShell 5.1 installs archive 1 (no Node.js anywhere) on
+//      chosen ports, with `current` a junction, the owned station-beta.cmd
+//      launcher, schema 4 state and an install root restricted to the user,
+//      and Station answers as archive 1; `station-beta.cmd upgrade`, with no
+//      manifest URL in its environment, runs the version's install.ps1 with
+//      the installed Node.js and Station answers as archive 2 on the same
+//      ports; archive 1 again is refused as a downgrade; the installed
+//      install.ps1 uninstalls, keeping the data; and an install root another
+//      account can write is refused, its Node.js never run.
 // Windows only: it drives powershell.exe, pwsh.exe and NTFS junctions.
 import { spawn, spawnSync } from 'node:child_process';
 import { generateKeyPairSync, sign } from 'node:crypto';
 import {
   existsSync,
+  lstatSync,
   mkdirSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   rmSync,
   statSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { createServer } from 'node:http';
+import { createServer as createNetServer } from 'node:net';
 import { join, resolve, win32 } from 'node:path';
 import { parseArgs } from 'node:util';
 import { canonicalManifestJson } from '../packages/shared/src/release-manifest.mjs';
+import {
+  assertWindowsPathsTrusted,
+  runWindowsTrustCommand,
+} from '../packages/shared/src/windows-path-trust.ts';
 
 const repoRoot = resolve(import.meta.dirname, '..');
 const installScript = join(repoRoot, 'install.ps1');
@@ -194,7 +211,7 @@ for (const dir of PATH.split(';'))
 const profile = join(work, 'profile');
 mkdirSync(profile, { recursive: true });
 
-function environment(stationRoot, manifestUrl) {
+function environment(stationRoot, manifestUrl, overrides = {}) {
   return {
     SystemRoot: systemRoot,
     windir: systemRoot,
@@ -214,6 +231,7 @@ function environment(stationRoot, manifestUrl) {
     STATION_INSTALL_PUBLIC_MANIFEST_URL: manifestUrl,
     STATION_INSTALL_MANIFEST_PUBLIC_KEY_URL: `${origin}/test-key.pem`,
     STATION_INSTALL_ALLOW_INSECURE_TEST_URLS: '1',
+    ...overrides,
   };
 }
 
@@ -291,7 +309,239 @@ function assertStagedVersion(installRoot, archive) {
   );
 }
 
+async function freePort() {
+  const probe = createNetServer();
+  await new Promise((ready) => probe.listen(0, '127.0.0.1', ready));
+  const { port } = probe.address();
+  await new Promise((done) => probe.close(done));
+  return port;
+}
+
+async function identityOf(uiPort) {
+  const deadline = Date.now() + 5 * 60_000;
+  let last = 'no answer';
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetch(
+        `http://127.0.0.1:${uiPort}/__station/identity`,
+      );
+      if (response.ok) return await response.json();
+      last = `HTTP ${response.status}`;
+    } catch (error) {
+      last = error.message;
+    }
+    await new Promise((wait) => setTimeout(wait, 2000));
+  }
+  throw new Error(`smoke failed: Station never answered on ${uiPort}: ${last}`);
+}
+
+async function portClosed(port) {
+  try {
+    await fetch(`http://127.0.0.1:${port}/__station/identity`);
+    return false;
+  } catch {
+    return true;
+  }
+}
+
+/** The install root's DACL is the installer core's: this user alone. */
+function assertRestrictedToUser(path) {
+  assertWindowsPathsTrusted(runWindowsTrustCommand, [
+    { kind: 'directory', path },
+  ]);
+}
+
+// 6. The full install (#2675 W2): install, upgrade through the launcher,
+// downgrade refusal, uninstall, and an install root another account can
+// write.
+async function fullInstall() {
+  const stationRoot = join(profile, 'w2');
+  const installRoot = join(stationRoot, 'installs', first.runtime);
+  const home = join(stationRoot, 'instances', first.runtime);
+  const launcher = join(
+    profile,
+    '.local',
+    'bin',
+    `station-${first.runtime}.cmd`,
+  );
+  const serverPort = await freePort();
+  const uiPort = await freePort();
+  const full = (manifestUrl, overrides = {}) =>
+    environment(stationRoot, manifestUrl, {
+      STATION_INSTALL_STAGE_ONLY: '',
+      ...overrides,
+    });
+  const manifestUrl = publish('w2', first);
+
+  const install = await runFile(
+    windowsPowerShell,
+    full(manifestUrl, {
+      STATION_INSTALL_SERVER_PORT: String(serverPort),
+      STATION_INSTALL_UI_PORT: String(uiPort),
+    }),
+  );
+  check(install.status === 0, 'full install (Windows PowerShell 5.1) failed');
+  check(
+    install.stdout.includes('Downloading Node.js'),
+    'the full install did not verify with the pinned Node.js',
+  );
+  const current = join(installRoot, 'current');
+  check(
+    lstatSync(current).isSymbolicLink(),
+    'current is not a junction after the install',
+  );
+  check(
+    realpathSync(current) ===
+      realpathSync(join(installRoot, 'versions', first.version)),
+    `current names ${realpathSync(current)}`,
+  );
+  const launcherText = readFileSync(launcher, 'utf8');
+  check(
+    launcherText.includes('rem station-owned-launcher-v2\r\n') &&
+      launcherText.includes(
+        `call "${join(installRoot, 'current', 'bin', 'station.cmd')}" %*`,
+      ),
+    `the launcher is not the owned one:\n${launcherText}`,
+  );
+  const state = JSON.parse(
+    readFileSync(join(installRoot, '.station-release-state.json'), 'utf8'),
+  );
+  check(
+    state.schemaVersion === 4 &&
+      state.manifestUrl === manifestUrl &&
+      state.serverPort === serverPort &&
+      state.uiPort === uiPort,
+    `unexpected install state ${JSON.stringify(state)}`,
+  );
+  assertRestrictedToUser(installRoot);
+  const one = await identityOf(uiPort);
+  check(one?.sha === first.sha, `Station answers as ${JSON.stringify(one)}`);
+
+  // The same URL now publishes archive 2; the upgrade finds it through the
+  // recorded state, not the environment, and keeps the recorded ports.
+  publish('w2', second);
+  const upgrade = await runAsync(
+    win32.join(systemRoot, 'System32', 'cmd.exe'),
+    ['/d', '/c', launcher, 'upgrade'],
+    full(''),
+  );
+  check(upgrade.status === 0, '`station upgrade` through the launcher failed');
+  check(
+    upgrade.stdout.includes('Using the Node.js of the installed Station'),
+    'the upgrade did not verify with the installed Node.js',
+  );
+  check(
+    realpathSync(current) ===
+      realpathSync(join(installRoot, 'versions', second.version)),
+    `after the upgrade current names ${realpathSync(current)}`,
+  );
+  check(
+    existsSync(join(installRoot, 'versions', first.version)),
+    'the upgrade removed the previous version (the rollback target)',
+  );
+  const two = await identityOf(uiPort);
+  check(
+    two?.sha === second.sha,
+    `after the upgrade Station answers as ${JSON.stringify(two)}`,
+  );
+
+  const downgrade = await runFile(
+    windowsPowerShell,
+    full(publish('w2-old', first)),
+  );
+  check(
+    downgrade.status === 1,
+    `a downgrade: expected exit 1, got ${downgrade.status}`,
+  );
+  check(
+    downgrade.stderr.includes(
+      `Station install failed: refusing to downgrade Station from ${second.tag} to ${first.tag}`,
+    ),
+    'a downgrade: expected the downgrade refusal',
+  );
+  check(
+    realpathSync(current) ===
+      realpathSync(join(installRoot, 'versions', second.version)),
+    'the refused downgrade moved current',
+  );
+
+  const uninstall = await runFile(
+    windowsPowerShell,
+    full(''),
+    join(installRoot, 'current', 'install.ps1'),
+    ['uninstall'],
+  );
+  check(
+    uninstall.status === 0,
+    'uninstall with the installed install.ps1 failed',
+  );
+  check(!existsSync(installRoot), 'uninstall left the install root');
+  check(!existsSync(launcher), 'uninstall left the launcher');
+  check(existsSync(home), 'uninstall removed the data');
+  check(await portClosed(uiPort), 'Station still answers after uninstall');
+
+  // An install root another account can write: its Node.js must not run,
+  // and the core refuses the root.
+  const loose = join(profile, 'w2-loose');
+  const looseRoot = join(loose, 'installs', first.runtime);
+  const seeded = await runFile(
+    windowsPowerShell,
+    environment(loose, publish('w2-loose', first), {
+      STATION_INSTALL_STAGE_ONLY: '',
+      STATION_INSTALL_NO_START: '1',
+      STATION_BIN_DIR: join(loose, 'bin'),
+    }),
+  );
+  check(seeded.status === 0, 'installing the root to loosen failed');
+  const grant = spawnSync(
+    win32.join(systemRoot, 'System32', 'icacls.exe'),
+    [looseRoot, '/grant', '*S-1-5-32-545:(OI)(CI)M'],
+    { encoding: 'utf8', windowsHide: true },
+  );
+  check(grant.status === 0, `icacls failed: ${grant.stdout}${grant.stderr}`);
+  const refused = await runFile(
+    windowsPowerShell,
+    environment(loose, publish('w2-loose-2', second), {
+      STATION_INSTALL_STAGE_ONLY: '',
+      STATION_INSTALL_NO_START: '1',
+      STATION_BIN_DIR: join(loose, 'bin'),
+    }),
+  );
+  check(
+    refused.status === 1,
+    `a loosened root: expected exit 1, got ${refused.status}`,
+  );
+  check(
+    !refused.stdout.includes('Using the Node.js of the installed Station'),
+    'a loosened root: its Node.js ran before verification',
+  );
+  check(
+    refused.stderr.includes('is not restricted to your account'),
+    'a loosened root: expected the permission refusal',
+  );
+  check(
+    !existsSync(join(looseRoot, 'versions', second.version)),
+    'a loosened root: a version was staged in it',
+  );
+}
+
 try {
+  // A user profile grants only the user, SYSTEM and Administrators (the
+  // runner's temporary directory may grant more); the launcher directory
+  // beneath it must not be writable by anyone else.
+  const harden = spawnSync(
+    win32.join(systemRoot, 'System32', 'icacls.exe'),
+    [
+      profile,
+      '/inheritance:r',
+      '/grant:r',
+      `${process.env.USERNAME}:(OI)(CI)F`,
+      '*S-1-5-18:(OI)(CI)F',
+      '*S-1-5-32-544:(OI)(CI)F',
+    ],
+    { encoding: 'utf8', windowsHide: true },
+  );
+  check(harden.status === 0, `icacls failed: ${harden.stdout}${harden.stderr}`);
   // Long enough that versions\<v>\<deepest path> crosses MAX_PATH.
   const suffix = `\\installs\\${first.runtime}\\versions\\${first.version}\\`;
   // Beneath the (smoke's) user profile: install.ps1 refuses any other root
@@ -547,6 +797,7 @@ try {
       `${refusal.name}: something was staged`,
     );
   }
+  await fullInstall();
   console.log('install.ps1 smoke passed.');
 } finally {
   server.close();

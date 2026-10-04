@@ -57,7 +57,10 @@ import {
   ownedDependencyInstallerUnavailable,
 } from '@kontourai/station-shared/owned-dependency-installer';
 import { STATION_RELEASE_RINGS } from '@kontourai/station-shared/ports';
-import { installerInheritedEnv } from '@kontourai/station-shared/prebuilt-archive';
+import {
+  installerInheritedEnv,
+  packagedInstallerCommand,
+} from '@kontourai/station-shared/prebuilt-archive';
 import {
   birthProvesReuse,
   lookupProcessBirthFingerprint,
@@ -133,6 +136,10 @@ import {
   IGNORE_SERVICE_STATE_FLAG,
   renderSupervisingServiceRefusal,
 } from './service-upgrade-guard.js';
+import {
+  assertWindowsPathsTrusted,
+  runWindowsTrustCommand,
+} from './windows-path-trust.js';
 
 // Moved to lifecycle-code-root.ts (#2675 B1); re-exported for existing importers.
 export {
@@ -5052,6 +5059,13 @@ interface PackagedInstallState {
   manifestUrl?: string | null;
 }
 
+/**
+ * Permission bits mean nothing on Windows (Node.js reports every writable
+ * file as 0o666): there an install root's protection is its DACL, which
+ * delegatePackagedUpgradeIfPresent verifies once for the whole root.
+ */
+const POSIX_PACKAGED_MODES = process.platform !== 'win32';
+
 function readSafePackagedFile(
   path: string,
   description: string,
@@ -5062,7 +5076,8 @@ function readSafePackagedFile(
     !info.isFile() ||
     info.isSymbolicLink() ||
     (typeof process.getuid === 'function' && info.uid !== process.getuid()) ||
-    (info.mode & (requirePrivate ? 0o077 : 0o022)) !== 0
+    (POSIX_PACKAGED_MODES &&
+      (info.mode & (requirePrivate ? 0o077 : 0o022)) !== 0)
   ) {
     throw new Error(
       `${description} must be a same-user regular file with safe permissions`,
@@ -5101,7 +5116,7 @@ function assertSafePackagedDirectory(path: string, description: string): void {
     !info.isDirectory() ||
     info.isSymbolicLink() ||
     (typeof process.getuid === 'function' && info.uid !== process.getuid()) ||
-    (info.mode & 0o022) !== 0
+    (POSIX_PACKAGED_MODES && (info.mode & 0o022) !== 0)
   ) {
     throw new Error(
       `${description} must be a same-user directory that is not group/world writable`,
@@ -5126,6 +5141,11 @@ function delegatePackagedUpgradeIfPresent(
   const releasesRoot = resolve(CWD, '..');
   const installRoot = resolve(releasesRoot, '..');
   assertSafePackagedDirectory(installRoot, 'packaged install root');
+  // install.ps1 restricts the install root to the current user (#2675 W2);
+  // a no-op off Windows.
+  assertWindowsPathsTrusted(runWindowsTrustCommand, [
+    { kind: 'directory', path: installRoot },
+  ]);
   assertSafePackagedDirectory(releasesRoot, 'packaged releases root');
   assertSafePackagedDirectory(CWD, 'packaged active release');
   const manifestPath = join(CWD, PACKAGED_RELEASE_MANIFEST_FILENAME);
@@ -5169,8 +5189,9 @@ function delegatePackagedUpgradeIfPresent(
   ) {
     throw new Error('packaged current link does not resolve to this release');
   }
-  const installer = join(CWD, 'install.sh');
-  readSafePackagedFile(installer, 'packaged release installer');
+  // install.sh on Linux and macOS, install.ps1 on Windows (#2675 W2).
+  const installer = packagedInstallerCommand(CWD);
+  readSafePackagedFile(installer.file, 'packaged release installer');
   beforeInstall(state.stationHome, installRoot);
 
   // The recorded manifest makes the upgrade follow the same signed path the
@@ -5179,7 +5200,7 @@ function delegatePackagedUpgradeIfPresent(
   const manifestUrl =
     process.env.STATION_INSTALL_PUBLIC_MANIFEST_URL ||
     (typeof state.manifestUrl === 'string' ? state.manifestUrl : undefined);
-  execFileSync('sh', ['./install.sh', 'install'], {
+  execFileSync(installer.command, installer.args, {
     cwd: CWD,
     env: {
       // Not the bootstrap's channel-default ports: install.sh would take them
