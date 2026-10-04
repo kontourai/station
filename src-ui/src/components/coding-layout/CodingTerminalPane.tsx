@@ -156,7 +156,7 @@ export function CodingTerminalPane({
     }
     shellOpened.current = true;
     // "The reader closed the last terminal" is remembered beside the tab
-    // list itself (the pane's own session storage, per project), so a
+    // list itself (the tab's session storage, keyed like the list), so a
     // remount — a reload, a crossing of the layout's fold — does not open a
     // shell they just closed. Opening one again forgets it.
     if (readClosedLastTerminal()) return;
