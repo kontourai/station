@@ -58,6 +58,8 @@
 
     "src-server/runtime/agents/runtime-default-agent.ts",
 
+    "src-server/runtime/agents/station-capability-discovery.ts",
+
     "src-server/runtime/bootstrap/native-engine-adoption.ts",
 
     "src-server/runtime/bootstrap/station-control-runtime-env.ts",
@@ -114,9 +116,7 @@
 
     "src-ui/src/components/monitoring/FleetRoutingReceipts.tsx",
 
-    "src-ui/src/hooks/useActiveChatSessionLifecycle.ts",
-
-    "src-server/runtime/agents/station-capability-discovery.ts"
+    "src-ui/src/hooks/useActiveChatSessionLifecycle.ts"
   ],
 
   "checks": [

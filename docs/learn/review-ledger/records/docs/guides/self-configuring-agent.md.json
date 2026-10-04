@@ -132,19 +132,19 @@
 
     "src-ui/src/platform/native/stationProfileStorage.ts",
 
+    "src-ui/src/views/ConnectionsHub.tsx",
+
     "src-ui/src/views/connections-hub/AddMachineModal.tsx",
 
     "src-ui/src/views/connections-hub/ComputersSection.tsx",
 
-    "src-ui/src/views/connections-hub/connection-sections.ts",
-
     "src-ui/src/views/connections-hub/RelayRouteKeyApproval.tsx",
 
-    "src-ui/src/views/ConnectionsHub.tsx",
+    "src-ui/src/views/connections-hub/connection-sections.ts",
 
-    "src-ui/src/views/provider-settings/providerCatalog.tsx",
+    "src-ui/src/views/provider-settings/ProviderConnectionForm.tsx",
 
-    "src-ui/src/views/provider-settings/ProviderConnectionForm.tsx"
+    "src-ui/src/views/provider-settings/providerCatalog.tsx"
   ],
 
   "checks": [

@@ -10,11 +10,11 @@
 
     "src-ui/src/index.css",
 
+    "src-ui/src/views/page-layout.css",
+
     "src-ui/src/views/TaskWorkspaceView.css",
 
     "src-ui/src/views/TaskWorkspaceView.tsx",
-
-    "src-ui/src/views/page-layout.css",
 
     "src-ui/src/workspace-panes/ProjectTaskRoomConversation.tsx",
 

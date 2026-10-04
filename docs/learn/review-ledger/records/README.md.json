@@ -20,6 +20,8 @@
 
     "docs/guides/nightly.md",
 
+    "docs/guides/release-channel-ports.md",
+
     "docs/privacy-policy.md",
 
     "docs/reference/cli.md",
@@ -40,9 +42,7 @@
 
     "src-ui/src/hooks/voiceWsUrl.ts",
 
-    "src-ui/src/providers/voice/NovaVoiceSessionAdapter.ts",
-
-    "docs/guides/release-channel-ports.md"
+    "src-ui/src/providers/voice/NovaVoiceSessionAdapter.ts"
   ],
 
   "checks": [
