@@ -157,7 +157,7 @@ export type SendToSessionResult =
 /** A request the route refused or could not run; never stored. */
 interface RequestFailure {
   readonly outcome: 'failed';
-  readonly message: string;
+  readonly detail: string;
 }
 
 /** What `interrupt_session` stores and returns for one request. */
@@ -428,7 +428,7 @@ function sendResponse(
         409,
       );
     case 'failed':
-      return c.json({ success: false, error: result.message }, 400);
+      return c.json({ success: false, error: result.detail }, 400);
   }
 }
 
@@ -596,7 +596,7 @@ export function createSessionAgentControlRoutes(deps: SessionAgentControlDeps) {
             // no effect: free the key so the caller's retry runs afresh.
             return {
               settle: 'release',
-              result: { outcome: 'failed', message: errorMessage(error) },
+              result: { outcome: 'failed', detail: errorMessage(error) },
             };
           }
         },
@@ -662,7 +662,7 @@ export function createSessionAgentControlRoutes(deps: SessionAgentControlDeps) {
                 settle: 'release',
                 result: {
                   outcome: 'failed',
-                  message: 'The interrupt did not report an outcome.',
+                  detail: 'The interrupt did not report an outcome.',
                 },
               };
             return {
@@ -676,7 +676,7 @@ export function createSessionAgentControlRoutes(deps: SessionAgentControlDeps) {
           } catch (error) {
             return {
               settle: 'release',
-              result: { outcome: 'failed', message: errorMessage(error) },
+              result: { outcome: 'failed', detail: errorMessage(error) },
             };
           }
         },
@@ -684,7 +684,7 @@ export function createSessionAgentControlRoutes(deps: SessionAgentControlDeps) {
       if (outcome.kind !== 'executed' && outcome.kind !== 'replayed')
         return keyRefusal(c, outcome);
       if (outcome.result.outcome === 'failed')
-        return c.json({ success: false, error: outcome.result.message }, 400);
+        return c.json({ success: false, error: outcome.result.detail }, 400);
       return c.json({
         success: true,
         data: {
