@@ -12,7 +12,7 @@
   "document": {"digest":"b57c8e11f45a7a52030614f2ef963a169b8b7be5b4e004becd5a8f483075ff06","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
   "sources": [
-    {"path":"docs/reference/sdk.md","digest":"2651190e0d10e2c51377c01ac633ef724421ea621cedcd91282ebee146a34059","revision":"f575b48480af7db79f68548006fdd1b0ff71a72a"},
+    {"path":"docs/reference/sdk.md","digest":"5dee1f9fb7990fd45f7871a98829072d3d3ae603ab6fe32e52f48a12eb8bce79","revision":"a7c4261add7c6a1ec7f976b77f0954f40e2b1af7"},
 
     {"path":"packages/sdk/package.json","digest":"473accfbc92fb87d86af0b017864a7738ddcf798d0b5a4e4aa986e9a403f891c","revision":"d9279aaf5f36478cbce5401e427eb674d114967f"},
 

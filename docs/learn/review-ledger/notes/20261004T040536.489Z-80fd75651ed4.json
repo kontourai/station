@@ -1,0 +1,7 @@
+{
+  "revision": "a7c4261add7c6a1ec7f976b77f0954f40e2b1af7",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Re-reviewed after merging origin/main (b72488d610 added getProjectSharedTaskPublication member read documentation, unrelated to this lane). Branch claims unchanged and still hold: refusal helper adoption across client fetchers, the x-station-envelope header requirement for stationEnvelope, header-seen-per-origin fallback, desktop native transport limitation, and opaque answer Basis/narrative/gate/quote/action reads. Checked against packages/sdk/src/client/chatHttpError.ts and the station-envelope-marker test."}
+  ]
+}
