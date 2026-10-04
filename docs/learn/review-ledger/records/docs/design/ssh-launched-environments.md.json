@@ -9,30 +9,28 @@
 
   "limits": "No native build, live SSH/remote Git/install/pairing/reconnect or dispatch qualification. Source absence search cannot prove all future dynamic callers; historical end-to-end acceptance is not currently mounted.\n\nMerge anchor history (structural reconciliation only; no semantic approval): source src-desktop/src/lib.rs ours={\"digest\":\"57a47dd3656d47a5c43eaf4001895942d350d61b6de896fa4d1d3da498bfd821\",\"revision\":\"d5e4502434838cc29b63091ae689474d6488cfe4\"}; origin/main={\"digest\":\"ad3b52011a9be6e6a18133b2367c04d0a6245907e5b7e13fa324bcd8b5255557\",\"revision\":\"464d602fb7fb5fa9bd0df9d241dc03495b398b96\"}. The merged source bytes require supported review after the merge commit.",
 
-  "document": {"digest":"2590a6e3c1723f7c66b04ce9333756755f25750762b271480dcffe17d1d04b69","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
-
   "sources": [
-    {"path":"packages/connect/src/core/types.ts","digest":"1a69c7971eda8664c5bdbd272d474dde9e9bd46f191fc319b08f008cf6e35675","revision":"2fd15755236ce5a8c62318e4047d67fdcc200463"},
+    "packages/connect/src/core/types.ts",
 
-    {"path":"src-desktop/src/lib.rs","digest":"c1f14ebce1d8326b17d071eec351ca84af929b8058bfc6ce456b2f6a4b73867c","revision":"2c506080536ad8cb02b6af0b53bbd19c6d1e3ecb"},
+    "src-desktop/src/lib.rs",
 
-    {"path":"src-desktop/src/ssh_launcher.rs","digest":"b687664310160032657179ad40dfff3ccac0cfa6d8735bcc9dc712d237f1457a","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "src-desktop/src/ssh_launcher.rs",
 
-    {"path":"src-ui/src/__tests__/AddMachineModal.test.tsx","digest":"3fce4ffec26e38c01b639b40b520cf63767637a655e4fa019a46f9cf58aba4b8","revision":"8edef4f56df4d3c42dbf9427d754cc569f3b87b0"},
+    "src-ui/src/__tests__/AddMachineModal.test.tsx",
 
-    {"path":"src-ui/src/__tests__/SshComputerCreatorDialog.test.tsx","digest":"d4ad08541356768779013b50906117eaaab1936b54d12d5718fb8d87afc7bfcc","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "src-ui/src/__tests__/SshComputerCreatorDialog.test.tsx",
 
-    {"path":"src-ui/src/platform/native/sshLauncher.ts","digest":"ca38ef73e8a330f4ea802b9d3547163c94d00837a90d2e68f2f8593f5528ef51","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "src-ui/src/platform/native/sshLauncher.ts",
 
-    {"path":"src-ui/src/views/connections-hub/AddMachineModal.tsx","digest":"61b56cb2a7c895a1c41884990c359a2ce790ef3d1f010308cdf56b0f86c26238","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "src-ui/src/views/connections-hub/AddMachineModal.tsx",
 
-    {"path":"src-ui/src/views/connections-hub/ComputersSection.tsx","digest":"f5df4b3706df44a90bf6babbb73952515bb1d84fb313aab97f13de7952b42b56","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "src-ui/src/views/connections-hub/ComputersSection.tsx",
 
-    {"path":"src-ui/src/views/connections-hub/SshComputerCreatorDialog.tsx","digest":"afa116512df03572fe9b957466d284eac07497a659547f4d18c34b811706807f","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "src-ui/src/views/connections-hub/SshComputerCreatorDialog.tsx",
 
-    {"path":"src-ui/src/views/connections-hub/__tests__/sshForwardState.test.ts","digest":"19a09921d450d96c5b1ae97621e334ee0796ea97841e3393904d78a60346c478","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "src-ui/src/views/connections-hub/__tests__/sshForwardState.test.ts",
 
-    {"path":"src-ui/src/views/connections-hub/sshForwardState.ts","digest":"e4b85d01c33e9059a5a618d179145872e862e538fe54df6105e875f12bf4441b","revision":"c8bae67dac38dce6107177638464f9f9944fef92"}
+    "src-ui/src/views/connections-hub/sshForwardState.ts"
   ],
 
   "checks": [
