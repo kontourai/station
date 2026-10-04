@@ -534,18 +534,18 @@ export async function checkDocumentationFreshness({
         rule: 'stale',
       })),
   ];
+  const baselineProblem =
+    resolved.mode === 'scoped' && resolved.baselineChange
+      ? await baselineAdvanceProblem(
+          root,
+          resolved.baselineChange,
+          resolved.mergeBase,
+        )
+      : undefined;
   const blocking = [
     ...stale.filter((entry) => freshnessBlocks(resolved, entry)),
     ...(resolved.sourceDrops ?? []),
-    ...(resolved.mode === 'scoped' && resolved.baselineChange
-      ? [
-          await baselineAdvanceProblem(
-            root,
-            resolved.baselineChange,
-            resolved.mergeBase,
-          ),
-        ].filter(Boolean)
-      : []),
+    ...(baselineProblem ? [baselineProblem] : []),
   ];
   return {
     policy: resolved,
