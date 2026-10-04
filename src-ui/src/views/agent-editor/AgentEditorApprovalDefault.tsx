@@ -1,4 +1,5 @@
 import type { ApprovalMode } from '@kontourai/station-contracts/provider';
+import { InfoTip } from '../../components/InfoTip';
 import {
   APPROVAL_MODE_OPTIONS,
   approvalModeKnobSupported,
@@ -28,15 +29,23 @@ export function AgentEditorApprovalDefault({
   const value = form.execution.approvalMode ?? '';
   return (
     <div className="editor-field">
-      <label className="editor-label" htmlFor="ae-approval-default">
-        Default approval mode
-      </label>
+      <div className="editor-label-row">
+        <label className="editor-label" htmlFor="ae-approval-default">
+          Default approval mode
+        </label>
+        <InfoTip label="Default approval mode">
+          The approval mode a chat with this agent starts in, and what picking
+          Default in a chat returns to. A chat can still pick its own.
+        </InfoTip>
+      </div>
       <select
         id="ae-approval-default"
         className="editor-input"
         value={value}
         disabled={locked}
-        aria-describedby="ae-approval-default-hint"
+        aria-describedby={
+          value === 'never' ? 'ae-approval-default-hint' : undefined
+        }
         onChange={(event) =>
           setForm((current) => ({
             ...current,
@@ -58,11 +67,12 @@ export function AgentEditorApprovalDefault({
           </option>
         ))}
       </select>
-      <span className="editor-hint" id="ae-approval-default-hint">
-        {value === 'never'
-          ? 'Every chat with this agent starts at full access: no sandbox and no approval prompts, as you. Anyone using it can still tighten a chat.'
-          : 'The approval mode a chat with this agent starts in, and what picking Default in a chat returns to. A chat can still pick its own.'}
-      </span>
+      {value === 'never' && (
+        <span className="editor-hint" id="ae-approval-default-hint">
+          Every chat with this agent starts at full access: no sandbox and no
+          approval prompts, as you. Anyone using it can still tighten a chat.
+        </span>
+      )}
     </div>
   );
 }

@@ -53,7 +53,10 @@ The replacement model:
 What does *not* change: the engine still owns its loop. For external engines Station
 remains the provisioning plane (connections-onboarding.md §5) — it hands the engine a
 definition through sanctioned channels; it does not execute inside the engine's loop,
-and per-tool permissioning/policy gates remain native-only. The glossary's "who runs
+and policy delivery remains engine-specific. The later
+[Tools picker](../guides/agents.md#mcp-tool-configuration) delivers selected MCP
+names to Claude and Codex; selecting names does not add a general pre-tool
+interception seam to Codex. The glossary's "who runs
 the loop" question stays the right question — the answer just becomes a property of the
 agent (`its engine`) instead of a type of agent.
 

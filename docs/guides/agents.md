@@ -45,8 +45,37 @@ For full field reference see [docs/reference/config.md](../reference/config.md).
 
 ### MCP Tool Configuration
 
-For Station-engine Agents, `tools` selects MCP connections and exposed tools.
-External delivery follows the [engine policy contract](../conformance/tool-policy-delivery.md):
+Open an Agent's **Tools** section to add integrations. **Station**
+adds read-only built-in controls; expand the row to choose **Read only**, **All**,
+**None**, or individual tools. Use the group picker to narrow Station controls to
+Knowledge, Projects, Tasks, Scheduling, and other areas. The three shortcuts apply
+to the chosen group and preserve choices elsewhere. Search narrows the checklist. The shield opens approval settings; the gear
+opens harness settings. **Advanced** contains browser and workflow options.
+Saved changes apply to new chats. Hover over or click an info icon for field
+explanations and engine capabilities. Keyboard users can press Enter to open it,
+use arrow or Page keys to scroll long help, and press Escape to dismiss it.
+
+Station Control publishes native MCP titles and behavioral annotations. The
+`ai.kontour/tool-group` vendor metadata organizes the picker; third-party
+integrations can supply the same display hint. It does not grant access or
+change approval rules. MCP has no standard category field; grouping does not
+require separate servers.
+
+Claude and Codex offer **Keep harness tools**. New Agents add integrations to
+the harness configuration; existing Agents keep their previous behavior until
+you change this switch. Turning it off replaces the configured MCP list; the harness keeps its built-in tools. Claude
+also offers **Harness default**, **On demand**, and **Always available** loading.
+On demand uses Claude's native tool search and requires a compatible model and
+endpoint; it is not a Station search proxy. Other engines keep their own loading
+behavior.
+
+`tools` selects MCP connections and exposed tools. Station applies its runtime
+filter; Claude applies SDK exclusions plus a pre-tool refusal, and Codex receives
+its native `enabled_tools` / `disabled_tools` configuration. Station Control also
+filters its served catalog and calls to the session's selection. Engines reached
+through the generic connected-engine protocol cannot deliver individual-tool
+selection: a restricted integration is reported undelivered rather than widened.
+External policy delivery follows the [engine policy contract](../conformance/tool-policy-delivery.md):
 
 ```json
 {
@@ -58,8 +87,10 @@ External delivery follows the [engine policy contract](../conformance/tool-polic
 }
 ```
 
-- `mcpServers` — IDs of MCP servers to connect (each defined in `<STATION_HOME>/integrations/<id>/tool.json`)
-- `available` — allowlist of tool names exposed to the agent; omit or set `["*"]` to expose all tools from connected servers
+- `mcpServers` — IDs of MCP servers to connect (each defined in `<STATION_HOME>/integrations/<id>/integration.json`)
+- `mcpMode` — `add` preserves harness integrations; `replace` supplies only the Agent's list. Omission retains legacy engine behavior
+- `mcpLoading` — `on-demand` or `always`, delivered through Claude's `ENABLE_TOOL_SEARCH`; omission preserves the harness setting
+- `available` — allowlist of tool names exposed to the agent; omit or set `["*"]` to expose all tools from connected servers; an empty list exposes none from these integrations
 - `autoApprove` — patterns consulted for automatic approval; they do not override earlier runtime-generation, delegation or configuration-protection refusals. A pattern covers plain calls to a tool and never an escalation or a plan exit, even `*` (see [below](#what-autoapprove-never-covers))
 - `unattendedAutoApprove` — explicit opt-in for tools the agent may run when nobody is there to confirm (see [Unattended runs](#unattended-runs))
 
@@ -201,6 +232,21 @@ needs approval), a write or delete outside the working directories in an `&&` or
 `;` chain or behind a pipeline's output redirect, and a part's non-safety
 warning are answered by the pattern. A safety check on any part still
 prompts ([delivery boundary](../conformance/tool-policy-delivery.md)).
+
+An approval-guardian allow has the same limits on these engines (#2947). The
+guardian reviews the tool's name and arguments (and, on ACP, the call's
+title); it isn't shown the session's working directories or why the engine
+asks. On Claude Code its allow answers a plain call without a prompt, for the
+input it reviewed, and everything in the list above still reaches a person,
+including a read outside the working directories that the guardian allowed.
+Like a `Bash` pattern, a guardian allow answers a chained Bash command,
+including the chained-command gaps described above: an ask rule or an
+outside-directory write hidden inside the chain does not prompt. On ACP engines its allow answers any call except a
+plan exit, a question, or a sandbox network-host ask. A guardian deny in
+`enforce` mode still blocks the call. A delegated child that cannot grant
+approvals is denied an escalation at once, guardian allow or not. With the
+guardian enabled, a headless run on these engines that reaches an escalation
+waits on an approval request where it used to run on the guardian's allow.
 
 ### Unattended runs
 

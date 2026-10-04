@@ -2,6 +2,7 @@ import type { DeploymentAuthenticationConfiguration } from '@kontourai/station-c
 import { sessionLifecycleOutcome } from '@kontourai/station-contracts/session-lifecycle';
 import { ClaudeTranscriptSessionSource } from '../../providers/sessions/claude-transcript-session-source.js';
 import { CodexRolloutSessionSource } from '../../providers/sessions/codex-rollout-session-source.js';
+import { NativeSurfaceRegistry } from '../../services/connections/native-surface-registry.js';
 import { createApplicationSessionRuntime } from '../../services/identity/application-session-runtime.js';
 import {
   type LoadedDeploymentAuthentication,
@@ -14,6 +15,7 @@ import {
   loadLocalAccounts,
   readLocalAccountConfiguration,
 } from '../../services/identity/local-account-runtime.js';
+import { NativeRelayEnrollmentService } from '../../services/identity/native-relay-enrollment-service.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../services/identity/principal-resolver.js';
 import { createRelayEnrollmentRuntime } from '../../services/identity/relay-enrollment-service.js';
 import {
@@ -31,6 +33,8 @@ import {
   type RegistryTrustPolicyAuthority,
 } from '../../services/plugins/registry-trust-policy.js';
 import { createProjectMembershipRuntime } from '../../services/projects/project-membership-runtime.js';
+import { NativeRelayEnrollmentJournal } from '../../services/relay/native-relay-enrollment-journal.js';
+import { ConnectionSigningKeyStore } from '../../services/ssh/connection-signing-key-store.js';
 import { awaitSettlementWithin } from '../../utils/bounded-async.js';
 import { errorMessage } from '../../utils/error-message.js';
 import {
@@ -555,6 +559,8 @@ export class StationRuntime {
    * unsupported configuration fails closed at startup.
    */
   private nativeDeviceProofPilot?: NativeDeviceProofRuntime;
+  private nativeRelayEnrollment?: NativeRelayEnrollmentService;
+  private nativeSurfaceRegistry?: NativeSurfaceRegistry;
   private relayEnrollment?: Awaited<
     ReturnType<typeof createRelayEnrollmentRuntime>
   >;
@@ -940,12 +946,17 @@ export class StationRuntime {
     // constructor body (same lazy-capture posture as
     // `getStationControlEnv` above), but this closure is only invoked at
     // `startSession` time, well after construction completes.
-    mintStationControlMcpAuth: (threadId: string, tenantExecutionContext) => {
+    mintStationControlMcpAuth: (
+      threadId: string,
+      tenantExecutionContext,
+      allowedTools,
+    ) => {
       const { token } = mintStationControlMcpToken(
         threadId,
         'url-token',
         undefined,
         tenantExecutionContext,
+        allowedTools,
       );
       return buildStationControlMcpUrl(this.port, token);
     },
@@ -3359,6 +3370,12 @@ export class StationRuntime {
           cleanupErrors.push(cause);
         }
       };
+      await retire(async () => {
+        await this.nativeRelayEnrollment?.close();
+        this.nativeRelayEnrollment = undefined;
+        this.nativeSurfaceRegistry?.close();
+        this.nativeSurfaceRegistry = undefined;
+      });
       await retire(() => {
         this.nativeDeviceProofPilot?.close();
         this.nativeDeviceProofPilot = undefined;
@@ -3451,6 +3468,60 @@ export class StationRuntime {
           this.selfHostedBrokerConfiguration?.nativeApplication,
         pairing: this.environmentSecurityService.devicePairing,
       });
+    }
+    const freshNativeFlag = process.env.STATION_NATIVE_ENROLLMENT_PILOT;
+    if (
+      freshNativeFlag !== undefined &&
+      freshNativeFlag !== '0' &&
+      freshNativeFlag !== '1'
+    )
+      throw new Error('STATION_NATIVE_ENROLLMENT_PILOT must be 0 or 1.');
+    if (freshNativeFlag === '1' && !this.nativeRelayEnrollment) {
+      if (
+        !nativeProofEnabled ||
+        !this.nativeDeviceProofPilot ||
+        !this.deploymentAuthentication?.service.pendingEnrollmentCapabilities()
+          .available ||
+        !this.virtualApplicationConfiguration ||
+        !this.selfHostedBrokerConfiguration?.nativeApplication
+      )
+        throw new Error(
+          'Native enrollment requires the native Device pilot, a configured relay and a supported pending account provider.',
+        );
+      this.nativeSurfaceRegistry ??= new NativeSurfaceRegistry(
+        this.configLoader.getProjectHomeDir(),
+        identity.environmentId,
+      );
+      const journal = new NativeRelayEnrollmentJournal(
+        join(
+          this.configLoader.getProjectHomeDir(),
+          'authentication',
+          'native-relay-enrollment.sqlite',
+        ),
+        identity.environmentId,
+      );
+      const service = new NativeRelayEnrollmentService({
+        stationId: identity.environmentId,
+        origin: this.virtualApplicationConfiguration.origin,
+        registry: this.nativeSurfaceRegistry,
+        journal,
+        pairing: this.environmentSecurityService.devicePairing,
+        bindings: this.nativeDeviceProofPilot.bindings,
+        authentication: this.deploymentAuthentication.service,
+        signing: new ConnectionSigningKeyStore(
+          this.configLoader.getProjectHomeDir(),
+        ),
+        operatorSecurity: this.environmentSecurityService,
+      });
+      try {
+        await service.recoverBeforeAdmission();
+        this.nativeRelayEnrollment = service;
+      } catch (error) {
+        await service.close();
+        throw error;
+      }
+    } else if (this.nativeRelayEnrollment) {
+      await this.nativeRelayEnrollment.recoverBeforeAdmission();
     }
     if (this.deploymentAuthentication && !this.applicationSessions) {
       this.applicationSessions = createApplicationSessionRuntime(
@@ -4134,6 +4205,8 @@ export class StationRuntime {
       deploymentAuthentication: this.deploymentAuthentication,
       localAccounts: this.localAccounts,
       applicationSessions: this.applicationSessions,
+      nativeRelayEnrollment: this.nativeRelayEnrollment,
+      nativeSurfaceRegistry: this.nativeSurfaceRegistry,
       relayEnrollment: this.relayEnrollment,
       app,
       logger: this.logger,
@@ -4178,6 +4251,7 @@ export class StationRuntime {
       orchestrationService: this.orchestrationService,
       resourcePosture: this.resourcePosture,
       orchestrationEventStore: this.orchestrationEventStore,
+      operationalEventPublisher: this.operationalEventPublisher,
       pluginInstallationHost: this.pluginInstallationHost,
       pluginOperationalEventSubscriptions:
         this.pluginOperationalEventSubscriptions,
@@ -4696,6 +4770,14 @@ export class StationRuntime {
     const mcpUiFrameServer = this.mcpUiFrameServer;
     const consentListener = this.consentListener;
     const failures: unknown[] = [];
+    try {
+      await this.nativeRelayEnrollment?.close();
+      this.nativeRelayEnrollment = undefined;
+      this.nativeSurfaceRegistry?.close();
+      this.nativeSurfaceRegistry = undefined;
+    } catch (error) {
+      failures.push(error);
+    }
     try {
       this.relayEnrollment?.close();
       this.relayEnrollment = undefined;

@@ -14,6 +14,11 @@ import { createProjectSharedTaskRoutes } from '../../routes/projects/project-sha
 import { createApplicationSessionRoutes } from '../../routes/system/application-session-routes.js';
 import { createDeploymentAuthenticationRoutes } from '../../routes/system/deployment-authentication-routes.js';
 import { createLocalAccountAdministrationRoutes } from '../../routes/system/local-account-administration-routes.js';
+import {
+  createNativeRelayEnrollmentOperatorRoutes,
+  createNativeRelayEnrollmentRoutes,
+} from '../../routes/system/native-relay-enrollment-routes.js';
+import { createNativeRelaySurfaceRoutes } from '../../routes/system/native-relay-surface-routes.js';
 import { createRelayEnrollmentRoutes } from '../../routes/system/relay-enrollment-routes.js';
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
 import { writeLocalGrantSecretFile } from '../../security/local-grant-file.js';
@@ -40,6 +45,7 @@ import {
   createBrowserService,
 } from '../../services/browser/browser-service.js';
 import { suggestLocalTargets } from '../../services/browser/local-port-scanner.js';
+import type { NativeSurfaceRegistry } from '../../services/connections/native-surface-registry.js';
 import { createAndroidAvdResolver } from '../../services/devices/android-avd.js';
 import {
   type DeviceAccess,
@@ -79,6 +85,7 @@ import {
   isDeploymentAccountPrincipalId,
 } from '../../services/identity/deployment-authentication-service.js';
 import type { LoadedLocalAccounts } from '../../services/identity/local-account-runtime.js';
+import type { NativeRelayEnrollmentService } from '../../services/identity/native-relay-enrollment-service.js';
 import {
   RelayEnrollmentRefusal,
   type RelayEnrollmentService,
@@ -475,6 +482,7 @@ import {
 import type { NotificationDeliveryRouter } from '../../services/notifications/delivery/router.js';
 import type { NotificationService } from '../../services/notifications/notification-service.js';
 import type { WebPushService } from '../../services/notifications/web-push-service.js';
+import type { OperationalEventPublisher } from '../../services/operational-events/operational-event-outbox.js';
 import { actionOperationActorForRequest } from '../../services/operations/action-operation-authority.js';
 import type { ActionOperationService } from '../../services/operations/action-operation-service.js';
 import { AttachmentStagingService } from '../../services/orchestration/attachment-staging-service.js';
@@ -505,6 +513,7 @@ import {
   isMcpUiRenderRevoked,
   setMcpUiRenderAllowed,
 } from '../../services/plugins/mcp-ui-permissions.js';
+import { createPluginCommandRequirementResolver } from '../../services/plugins/plugin-command-effect-admission.js';
 import { PluginDraftService } from '../../services/plugins/plugin-draft-service.js';
 import type { PluginInstallationHost } from '../../services/plugins/plugin-installation-service.js';
 import { PluginLifecycleProposalService } from '../../services/plugins/plugin-lifecycle-proposals.js';
@@ -740,6 +749,8 @@ export interface ConfigureRuntimeRoutesContext {
   deploymentAuthentication?: LoadedDeploymentAuthentication;
   localAccounts?: LoadedLocalAccounts;
   applicationSessions?: ApplicationSessionService;
+  nativeRelayEnrollment?: NativeRelayEnrollmentService;
+  nativeSurfaceRegistry?: NativeSurfaceRegistry;
   relayEnrollment?: RelayEnrollmentService;
   runtimeSearch?: import('../../services/search/runtime-search.js').RuntimeSearch;
   app: HonoApp;
@@ -801,6 +812,8 @@ export interface ConfigureRuntimeRoutesContext {
    */
   delegationAttemptClaims: import('../../services/orchestration/delegation-attempt-claim-store.js').DelegationAttemptClaimStore;
   orchestrationEventStore?: EventStore;
+  /** Runtime's notification-bearing durable operational-event publisher. */
+  operationalEventPublisher?: OperationalEventPublisher;
   pluginInstallationHost?: PluginInstallationHost;
   pluginOperationalEventSubscriptions: Pick<
     import('../plugins/plugin-operational-event-subscriptions.js').PluginOperationalEventSubscriptionService,
@@ -1302,6 +1315,7 @@ export function configureRuntimeRoutes(
     ...(nativeDeviceProofAuthority
       ? { nativeDeviceProof: nativeDeviceProofAuthority }
       : {}),
+    nativeEnrollment: context.nativeRelayEnrollment,
     deploymentAuthentication: context.deploymentAuthentication?.service,
     verifyCredential: (
       credential: string,
@@ -1949,6 +1963,51 @@ export function configureRuntimeRoutes(
     '/api/account-auth/continuations',
     createApplicationSessionRoutes(context.applicationSessions),
   );
+  if (context.nativeRelayEnrollment) {
+    const nativeRoutes = createNativeRelayEnrollmentRoutes(
+      context.nativeRelayEnrollment,
+    );
+    context.app.post(
+      '/.well-known/station/v1/relay/native-enrollment/begin',
+      (c) => nativeRoutes.fetch(c.req.raw),
+    );
+    context.app.post(
+      '/.well-known/station/v1/relay/native-enrollment/login',
+      (c) => nativeRoutes.fetch(c.req.raw),
+    );
+    context.app.post(
+      '/.well-known/station/v1/relay/native-enrollment/register',
+      (c) => nativeRoutes.fetch(c.req.raw),
+    );
+    context.app.post(
+      '/.well-known/station/v1/relay/native-enrollment/finalize',
+      (c) => nativeRoutes.fetch(c.req.raw),
+    );
+    context.app.post(
+      '/.well-known/station/v1/relay/native-enrollment/activate',
+      (c) => nativeRoutes.fetch(c.req.raw),
+    );
+    context.app.post(
+      '/.well-known/station/v1/relay/native-enrollment/status',
+      (c) => nativeRoutes.fetch(c.req.raw),
+    );
+    context.app.post(
+      '/.well-known/station/v1/relay/native-enrollment/cancel',
+      (c) => nativeRoutes.fetch(c.req.raw),
+    );
+    context.app.route(
+      '/api/pairing/native-relay-enrollments',
+      createNativeRelayEnrollmentOperatorRoutes(context.nativeRelayEnrollment),
+    );
+  }
+  if (context.nativeSurfaceRegistry)
+    context.app.route(
+      '/api/pairing/native-relay-surfaces',
+      createNativeRelaySurfaceRoutes({
+        registry: context.nativeSurfaceRegistry,
+        security: context.environmentSecurityService,
+      }),
+    );
   if (context.relayEnrollment) {
     const relayEnrollmentRoutes = createRelayEnrollmentRoutes(
       context.relayEnrollment,
@@ -2546,6 +2605,38 @@ export function configureRuntimeRoutes(
           context.pluginOperationalEventSubscriptions.quiesce(plugin),
         reconcileEventSubscriptions: () =>
           context.pluginOperationalEventSubscriptions.reconcile(),
+        commandEffects: {
+          // F6 (kontourai/station#1419): hosted deployments keep refusing.
+          isHostedDeployment: () => hostedTenantRegistry !== undefined,
+          publishAudit: (event) => {
+            const outcome = context.operationalEventPublisher?.append(event);
+            return (
+              outcome?.kind === 'appended' || outcome?.kind === 'duplicate'
+            );
+          },
+          // M5 (kontourai/station#1419): answered for the CALLER. Sessions go
+          // through the same read predicate every other session read uses.
+          resolveRequirement: createPluginCommandRequirementResolver({
+            canReadSession: (sessionId, authority) =>
+              context.orchestrationService.canUserReadSession(
+                sessionId,
+                readAuthorityForRequest(authority),
+              ),
+            projectExists: (slug) => {
+              try {
+                return Boolean(context.projectService.getProject(slug));
+              } catch {
+                return false;
+              }
+            },
+            taskInProject: (taskId, projectSlug) => {
+              const task = context.taskGraphService.readTask(taskId);
+              return Boolean(
+                task && (!projectSlug || task.projectId === projectSlug),
+              );
+            },
+          }),
+        },
         // #2067. The SAME memoized, fail-closed resolver every other
         // identity-bearing route in this file reads, so `GET /api/plugins`
         // projects onto the request's own caller and no header or body can

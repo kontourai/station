@@ -91,6 +91,8 @@ interface StreamPrimaryAgentChatArgs {
    * persistence seams below keep receiving the typed `input`.
    */
   ambientContext?: string;
+  /** Private, source-admitted instructions from the authenticated native relay only. */
+  skillExperienceContext?: string;
   restOptions: Record<string, unknown>;
   injectContext: string | null;
   ragContext: string | null;
@@ -166,6 +168,7 @@ export function streamPrimaryAgentChat({
   plugin,
   input,
   ambientContext,
+  skillExperienceContext,
   restOptions,
   injectContext,
   ragContext,
@@ -431,8 +434,21 @@ export function streamPrimaryAgentChat({
         input,
         ambientContext,
       );
+      const skillInput = skillExperienceContext
+        ? typeof ambientApplication.input === 'string'
+          ? `${skillExperienceContext}\n\n${ambientApplication.input}`
+          : [
+              {
+                role: 'user' as const,
+                parts: [
+                  { type: 'text' as const, text: skillExperienceContext },
+                ],
+              },
+              ...ambientApplication.input,
+            ]
+        : ambientApplication.input;
       const combinedApplication = applyCombinedContextToInput(
-        ambientApplication.input,
+        skillInput,
         injectContext,
         effectiveRagContext,
       );

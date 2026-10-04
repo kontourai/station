@@ -11,7 +11,7 @@ not grant any of those permissions.
 Its root and `/health-probe` entries select compiled `dist/` output; other named
 entries, including `/connection-trust`, `/device-pairing`,
 `/application-channel`, `/application-channel-frames`, `/self-hosted-browser`, `/native-diagnostic-echo` and
-`/native-application`,
+`/native-application`, `/native-enrollment` and `/relay-ice`,
 select TypeScript source. The former `/node-storage` entry is no longer exported.
 
 From a managed Station checkout, `npm run build --prefix packages/connect`
@@ -76,11 +76,70 @@ host to sign the exact bounded request for the approved Device; it refuses
 caller-supplied Authorization, Cookie or Device-proof headers. It has no direct
 HTTP fallback and does not read the routing-grant bearer or signing key.
 
-This remains an opt-in library contract. It does not enable a default UI route,
-enroll or activate a Device, authenticate an account, or grant Project access.
-The separate account-continuation proof is still required where applicable.
+When relay-only ICE gathering stalls, a bounded offer snapshot can proceed
+with validated UDP relay candidates. Trust, cancellation and transport failure
+checks still apply, and signaling and proof verification retain the same exact
+SDP bytes. See the [native transport contract](../../docs/reference/connect.md#optional-native-application-transport)
+for the fallback's candidate and deadline conditions.
+
+The library does not enroll or activate a Device, authenticate an account or
+grant Project access. Station now composes it in its native saved-route owner
+for a configured host-owned Device binding. Each peer obtains fresh ICE, and
+a separate account bridge supplies continuation proof for bounded Project
+reads. Unsupported resources and writes fail before peer allocation in the
+[Station runtime owner](../../src-ui/src/platform/native/nativeRelayApplicationRuntime.ts).
+The generic library does not choose that policy.
+[ApiBaseContext](../../src-ui/src/contexts/ApiBaseContext.tsx) and the
+[selected connection owner](../../src-ui/src/platform/native/nativeRelayConnectionOwner.ts)
+mount the host transport; the
+[member entry boundary](../../src-ui/src/platform/native/NativeRelayEntryBoundary.tsx)
+keeps its account-partitioned reads separate from operator Workspace providers.
+The CLI continues to exclude these routes from default selection.
 Source and focused tests do not establish executed Tauri IPC, packaged-client,
 physical-device or complete authenticated Project-journey evidence.
+
+## Native enrollment exchange composition
+
+The `/native-application` entry also exports
+`createNativeVerifiedPeerTransport`. It shares the verified handshake without
+Device signing. Its explicit peer version distinguishes an enrollment peer
+from an authenticated application peer; verifying the Station transcript does
+not create Device, account or Project authority. The returned owner exposes
+its channel, captured public peer metadata, an asynchronous close, and an
+authoritative trust check that remains usable after the one-request channel
+closes. Preparing or sending another request still requires a live channel.
+
+`@kontourai/station-connect/native-enrollment` exports
+`createNativeEnrollmentExchange`. The host bridge supplies one freshly admitted
+peer and fixed prepared operation for each exchange. Connect copies the exact
+POST target, JSON body and headers, pins them to that peer, bounds the request
+at 16 KiB and JSON response at 64 KiB, and forwards the opaque request handle,
+successful response and HTTP status to host acceptance. Non-success responses
+retain only an exact allowlisted refusal code, or a fixed generic refusal, at
+the application-response stage. It uses the encrypted application
+channel with no direct HTTP or cookie fallback. The exchange deadline is 45
+seconds, in addition to the peer deadline.
+
+The application-channel core closes at response EOF. Host acceptance therefore
+checks its retained operation capture and current owners, rather than requiring
+a live RTC channel. It must authenticate signed Station responses and perform
+credential custody or activation itself; this generic transport does neither.
+The host also owns cancellation of pending enrollment and reconciliation of an
+unknown activation outcome. Closing a network peer alone is not cancellation
+of a staged or committed enrollment. These library primitives do not establish
+a mounted native onboarding workflow or a released client. Station supplies
+that source composition in its
+[default native enrollment client](../../src-ui/src/platform/native/nativeRelayEnrollmentClient.ts)
+and [wizard](../../src-ui/src/views/connections-hub/NativeRelayEnrollmentWizard.tsx).
+The simulator Station manager entry reaches that UI, but fresh enrollment,
+public native application traffic and physical Nightly acceptance remain
+unverified; the library tests do not establish them.
+
+The `/relay-ice` entry validates a closed relay-only receipt against the exact
+scope/surface and current time. The host/connector owns obtaining it with its
+current routing credential, and callers must keep peer lifetime within the
+credential expiry. End-user TURN credentials are allocation metadata, not
+Station, Device, account or Project authority; no issuer secret belongs here.
 
 ## Optional self-hosted browser transport
 
