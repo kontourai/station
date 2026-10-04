@@ -10,7 +10,7 @@
  * `ProjectSidebarReturnFocus.test.tsx`'s mock shape).
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import type { ReactElement } from 'react';
 import { describe, expect, test, vi } from 'vitest';
 import { openChatsStore } from '../contexts/open-chats-store';
@@ -424,6 +424,49 @@ describe('ProjectSidebar WORK list labeling (station#1300)', () => {
     expect(screen.queryByText('Drafts')).toBeNull();
     expect(screen.queryByText('Remember migration')).toBeNull();
     expect(screen.getAllByText('Finish release notes')).toHaveLength(1);
+    // Not listed twice must not mean not listed: the one row carries the
+    // draft, as its "Unsent draft" chip.
+    const openChats = document.getElementById('sidebar-open-chats');
+    if (!openChats) throw new Error('Open chats section did not render');
+    const row = within(openChats)
+      .getByText('Finish release notes')
+      .closest('.chat-dock-inbox__item') as HTMLElement;
+    expect(row).toBeTruthy();
+    const chip = row.querySelector('[data-chip="draft"]');
+    expect(chip?.textContent).toBe('Unsent draft');
+  });
+
+  /**
+   * D6's one-row rule must not hide a draft: a collapsed Open chats shows no
+   * rows, so its chats' drafts are listed under Drafts until it is expanded.
+   */
+  test('a draft in a chat under a collapsed Open chats is listed under Drafts', async () => {
+    resetState();
+    chats['session-draft'] = {
+      title: 'Finish release notes',
+      agentSlug: 'writer',
+    };
+    agents.push({ slug: 'writer', name: 'Writer' });
+    deviceSettingsStore.set('sidebarSections', {
+      ...deviceSettingsStore.getSnapshot().sidebarSections,
+      openChatsCollapsed: true,
+    });
+    renderSidebar(<ProjectSidebar />);
+
+    act(() => chatDraftsStore.set('session-draft', 'Remember migration'));
+    const toggle = screen.getByRole('button', { name: 'Open chats' });
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(screen.getByText('Drafts')).toBeTruthy();
+    expect(
+      screen.getByRole('button', {
+        name: /finish release notes.*remember migration/i,
+      }),
+    ).toBeTruthy();
+
+    // Expanded again, the Open chats row carries it and Drafts lets it go.
+    fireEvent.click(toggle);
+    expect(screen.queryByText('Drafts')).toBeNull();
+    expect(screen.queryByText('Remember migration')).toBeNull();
   });
 });
 

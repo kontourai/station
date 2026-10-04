@@ -175,15 +175,19 @@ function ProjectSidebarImpl() {
   // D6: one row per chat. A chat already listed under Open chats carries its
   // draft on that row (the "Unsent draft" chip, or the Draft status of a chat
   // that never sent), so it is not listed a second time here; Drafts holds
-  // the drafts of chats that section does not show.
+  // the drafts of chats that section does not show. A collapsed Open chats
+  // shows none of its rows, so while it is collapsed every draft is listed
+  // here: a draft is always visible somewhere.
+  const openChatsShowRows =
+    !sidebarSections.openChatsHidden && !sidebarSections.openChatsCollapsed;
   const openChatSessionIds = useMemo(
     () =>
       new Set(
-        sidebarSections.openChatsHidden
-          ? []
-          : recentTasks.map((task) => chatTaskSessionId(task)),
+        openChatsShowRows
+          ? recentTasks.map((task) => chatTaskSessionId(task))
+          : [],
       ),
-    [recentTasks, sidebarSections.openChatsHidden],
+    [recentTasks, openChatsShowRows],
   );
   const unsentDrafts = useMemo(
     () =>
