@@ -392,7 +392,9 @@
 
     "src-ui/src/views/agent-editor/useAgentsViewModel.ts",
 
-    "src-ui/src/views/layout-workspace-shape.ts"
+    "src-ui/src/views/layout-workspace-shape.ts",
+
+    "src-server/runtime/bootstrap/agent-audience-gate.ts"
   ],
 
   "checks": [
