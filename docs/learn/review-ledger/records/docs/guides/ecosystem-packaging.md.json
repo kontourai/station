@@ -9,32 +9,30 @@
 
   "limits": "No installer, Homebrew, native launch, hosted workflow, publication, current release, production key custody, or external protection settings verified. Fixture flow is not production evidence.",
 
-  "document": {"digest":"e66f5793fee5134a95659ae766e2751206850bc2f2e5c3ad3de4f57a2da3dc76","revision":"614c216de6de9d4c06ef56963853ccff52f2f685"},
-
   "sources": [
-    {"path":".github/workflows/ecosystem-packaging.yml","digest":"ff10660eba202fb5e45f06877caf8ae8f33cee0b07c11806ee213d154c49c794","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    ".github/workflows/ecosystem-packaging.yml",
 
-    {"path":".github/workflows/portable-server-archives.yml","digest":"38fce21ba49019f4d79fdcb7b953756a3239bb81b059dfd9523ce2fcf9cb2bcf","revision":"c5d3acbbda8ab0a072d4039bc91c7b9668a741d9"},
+    ".github/workflows/portable-server-archives.yml",
 
-    {"path":"install.sh","digest":"f2b2fbf2dba1198f08637b48ad3a1cd7ae684cee020621cd293668e6bbb8b4bc","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "install.sh",
 
-    {"path":"packages/shared/src/portable-server-targets.mjs","digest":"71b45690e7857b34a2e244e5afa31fba2d07560669b0f2c99c9c3f3ee33dce6c","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/shared/src/portable-server-targets.mjs",
 
-    {"path":"packages/shared/src/release-manifest.mjs","digest":"9dbda2644188254731d9806fc22278870a713b6dcddf7a7c1467fee1170fbf83","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/shared/src/release-manifest.mjs",
 
-    {"path":"packaging/homebrew/README.md","digest":"bb9a2d6edabef5780c331b7e9562a75aafc6e513fe919eb0393b8242722e1779","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packaging/homebrew/README.md",
 
-    {"path":"packaging/manifest/README.md","digest":"54b625415596f5a8347a9b98caa705978def18f23ad22d69da3a27e12f641047","revision":"614c216de6de9d4c06ef56963853ccff52f2f685"},
+    "packaging/manifest/README.md",
 
-    {"path":"scripts/__tests__/release-manifest-vectors.test.ts","digest":"2d2416f7ea846fd8ba91d4ddacec28219107af7d4269d597d3f3424758babfd6","revision":"614c216de6de9d4c06ef56963853ccff52f2f685"},
+    "scripts/__tests__/release-manifest-vectors.test.ts",
 
-    {"path":"scripts/ecosystem-manifest.mjs","digest":"00924f84cf27a5683761b6511fb017b7013c8eeaaecdac8637901faf7efaeff8","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "scripts/ecosystem-manifest.mjs",
 
-    {"path":"scripts/ecosystem-publish-boundary.sh","digest":"5e742ed0cca5994877e7130124d4c28e7c5ec2a32bbdb5398fc1d356adcbd10a","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "scripts/ecosystem-publish-boundary.sh",
 
-    {"path":"scripts/exercise-ecosystem-packaging-dry-run.sh","digest":"1379e9a1f413a6b7f4f86d7c50aa4b517fbff379de9ab29bf35a254dbb3628c6","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "scripts/exercise-ecosystem-packaging-dry-run.sh",
 
-    {"path":"scripts/install-script-generated.mjs","digest":"b6cc8658bf3390211a0601fbfcb7081c9553d1e1814bed5c479cf1df6915a9e4","revision":"614c216de6de9d4c06ef56963853ccff52f2f685"}
+    "scripts/install-script-generated.mjs"
   ],
 
   "checks": [

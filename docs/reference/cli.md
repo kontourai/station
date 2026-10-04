@@ -1782,16 +1782,23 @@ station service uninstall [--instance=<name>] [--home=<dir>] [--base=<dir>] [--p
 station service run [--instance=<name>] [--home=<dir>] [--base=<dir>] [--port=<n>] [--ui-port=<n>] [--host=<address>] [--features=<flags>] [--allowed-origin=<origin>]...
 ```
 
-`run` is the foreground supervisor. It runs the server and UI in the current
-process and does not return, so it is the process an external supervisor
-wraps rather than a command that registers one: the installed systemd unit,
-the launchd plist, and this repository's container image all invoke it. Use it
-directly when the host has no service manager to register with — a container,
-or any Linux without a systemd user session — where `service install` fails by
-design (see the backend table below). It is not a replacement for
-`station start`, which builds if needed and launches both processes detached;
-`run` deliberately stays in the foreground so its supervisor owns the
-lifecycle.
+`run` is the foreground supervisor used by installed OS units and containers.
+It takes the same atomic home claim before starting Station. With no installed
+policy, it creates a service owner record with its PID and birth fingerprint;
+existing installed policy is preserved. A conflicting live owner keeps the
+supervisor alive without running Station. It polls at 5, 10, 20, then at most
+30-second intervals, logging only refusal-reason changes, and claims and starts
+when the owner is gone. Unreadable registry state exits nonzero. Lost ownership
+at readiness stops Station before returning to the same wait. Install still
+writes policy and a live installer reservation before starting the backend,
+restoring prior policy if backend startup fails.
+
+The container image's existing `service run` invocation self-claims a fresh
+home without a policy-registration step. Direct `command-station.js` is still
+unfenced and must not be described as exclusive ownership when sharing a
+writable home.
+`station start` remains the detached lifecycle command with its separate
+shared-home checks and overrides.
 
 The default service uses the selected channel's runtime home and generated
 server/UI ports (`~/.station/instances/stable`, `18141`, and `18000` for
@@ -1925,7 +1932,7 @@ origins on an `origins` line.
 | macOS | LaunchAgent in `~/Library/LaunchAgents/` | after reboot and login | `<STATION_HOME>/logs/*-service.{out,err}.log` |
 | Linux | systemd user unit in `~/.config/systemd/user/` | user-manager startup, including reboot without login | `journalctl --user -u station-<instance>.service` |
 | Windows | Task Scheduler task, `ONLOGON`, `LIMITED`, no time limit, no battery rules | installing user's logon | `<STATION_HOME>\logs\*-service.{out,err}.log` |
-| No service manager (container, or Linux without a systemd user session) | none — supervise `station service run` yourself | whenever its supervisor starts it | the supervisor's own stdout/stderr |
+| No service manager (container, or Linux without a systemd user session) | foreground `service run` with an atomic home claim | when invoked after winning the claim; waits while another live owner holds the home | supervisor stdout/stderr and `<STATION_HOME>/logs/<instance>.log` |
 
 `service status` reports the OS unit, lifecycle instance/processes, and both
 server/UI identity endpoints. `--json` emits the same data for automation. An
@@ -2957,6 +2964,12 @@ station plugin list
 Request removal by manifest name through the server's lifecycle owner. Managed
 contributions are retired there; retained data and pending cleanup are separate
 dispositions. The CLI prints completion only after an accepted success response.
+When that response carries the plugin's own `commandEffects` withdrawal with a
+status other than `completed` (Station answers 202 until captured palette
+command effects settle), the CLI appends the outstanding count, status and
+withdrawal id; with `commandEffectsUnavailable` it says completion cannot be
+confirmed. The removal has already committed in both cases. A dependency's
+`dependencyCommandEffects` are not summarized.
 
 ```
 station plugin remove <name>
@@ -2980,7 +2993,7 @@ station plugin info my-plugin
 
 ### `plugin update <name>`
 
-Update an installed plugin through the running Station server. The server resolves its source, rebuilds it, and applies registry and runtime changes as one lifecycle operation.
+Update an installed plugin through the running Station server. The server resolves its source, rebuilds it, and applies registry and runtime changes as one lifecycle operation. Its success message carries the same command-effect note as `plugin remove`.
 
 ```
 station plugin update <name>

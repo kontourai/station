@@ -9,32 +9,30 @@
 
   "limits": "install.sh was read, not executed. No release/attestation download, actual installation/upgrade, profile operation, live distribution or production signing-custody proof. The manifest/cask CLI fixture does not establish installer/platform behavior.",
 
-  "document": {"digest":"54b625415596f5a8347a9b98caa705978def18f23ad22d69da3a27e12f641047","revision":"614c216de6de9d4c06ef56963853ccff52f2f685"},
-
   "sources": [
-    {"path":".github/workflows/portable-server-archives.yml","digest":"38fce21ba49019f4d79fdcb7b953756a3239bb81b059dfd9523ce2fcf9cb2bcf","revision":"c5d3acbbda8ab0a072d4039bc91c7b9668a741d9"},
+    ".github/workflows/portable-server-archives.yml",
 
-    {"path":"config/release-manifest-keys.json","digest":"28b356665f581456dcddd64ae86ebf3bde1fb1ee12408c480b7a2fa68923f0c3","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "config/release-manifest-keys.json",
 
-    {"path":"install.sh","digest":"f2b2fbf2dba1198f08637b48ad3a1cd7ae684cee020621cd293668e6bbb8b4bc","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "install.sh",
 
-    {"path":"packages/shared/src/portable-server-targets.mjs","digest":"71b45690e7857b34a2e244e5afa31fba2d07560669b0f2c99c9c3f3ee33dce6c","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/shared/src/portable-server-targets.mjs",
 
-    {"path":"packages/shared/src/release-manifest.mjs","digest":"9dbda2644188254731d9806fc22278870a713b6dcddf7a7c1467fee1170fbf83","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/shared/src/release-manifest.mjs",
 
-    {"path":"scripts/__tests__/release-manifest-vectors.test.ts","digest":"2d2416f7ea846fd8ba91d4ddacec28219107af7d4269d597d3f3424758babfd6","revision":"614c216de6de9d4c06ef56963853ccff52f2f685"},
+    "scripts/__tests__/release-manifest-vectors.test.ts",
 
-    {"path":"scripts/ecosystem-manifest.mjs","digest":"00924f84cf27a5683761b6511fb017b7013c8eeaaecdac8637901faf7efaeff8","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "scripts/ecosystem-manifest.mjs",
 
-    {"path":"scripts/ecosystem-publish-boundary.sh","digest":"5e742ed0cca5994877e7130124d4c28e7c5ec2a32bbdb5398fc1d356adcbd10a","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "scripts/ecosystem-publish-boundary.sh",
 
-    {"path":"scripts/exercise-ecosystem-packaging-dry-run.sh","digest":"1379e9a1f413a6b7f4f86d7c50aa4b517fbff379de9ab29bf35a254dbb3628c6","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "scripts/exercise-ecosystem-packaging-dry-run.sh",
 
-    {"path":"scripts/smoke-install-prebuilt-archive.sh","digest":"244d90cb7cac757aabeeced510fc4bf18ecfc6664bab71d03f2f4f306b4169f6","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "scripts/smoke-install-prebuilt-archive.sh",
 
-    {"path":".github/workflows/install-smoke.yml","digest":"2709b01ebe6bca1e7ec152578cfa9f7b8f352daebeb1fc55d168430f22b02719","revision":"ec6faf20ba1d2fff4e72712303ea1a9c8c22d13b"},
+    ".github/workflows/install-smoke.yml",
 
-    {"path":".github/workflows/portable-nightly-publish.yml","digest":"bdf3341cca00666ca0adaa2a849d90dbba893e0c55ca9f387da5bf4d8b488702","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"}
+    ".github/workflows/portable-nightly-publish.yml"
   ],
 
   "checks": [

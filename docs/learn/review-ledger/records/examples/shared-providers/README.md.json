@@ -9,32 +9,30 @@
 
   "limits": "Complete for concrete documented claims and actual named callers, not an exhaustive security audit or every possible implementation path. No installed-plugin journey, external provider/registry mutation, public package distribution, native/device operation or cross-host qualification performed.",
 
-  "document": {"digest":"4f31679ccd691df8a48158128f81aa0dddaebd8de69162e6f119b7809ec503e0","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
-
   "sources": [
-    {"path":"examples/shared-providers/package.json","digest":"b8b50efa8eea64634fc2956f8abf1c5807646b5cee89e160d71e7bb801f8d6c5","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "examples/shared-providers/package.json",
 
-    {"path":"examples/shared-providers/plugin.json","digest":"035868ae1a26d8a3d3411aecfacd7af1081ca6e3a3f93aa8c2a3cda0cadd3bc3","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "examples/shared-providers/plugin.json",
 
-    {"path":"examples/shared-providers/providers/agent-registry.js","digest":"07bb2fdeb4d37bf2997487fe30ff946e75378ff1e9c620a1543b93b361db3504","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "examples/shared-providers/providers/agent-registry.js",
 
-    {"path":"examples/shared-providers/providers/ldap-directory.js","digest":"e50284c2a105b39003ce57ceb822a7f0762d76f0dffae31ae1190c4e483a4826","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "examples/shared-providers/providers/ldap-directory.js",
 
-    {"path":"examples/shared-providers/providers/ldap-user.js","digest":"43a268b10494d63a1fa50128402fbecaf53b28177326d2d10ff1ac4ae3d16523","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "examples/shared-providers/providers/ldap-user.js",
 
-    {"path":"examples/shared-providers/providers/npm-registry.js","digest":"172564651d85d03b71f3d6400a9d48b5c582b4b11610f4f0327fcbf37ed51f76","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "examples/shared-providers/providers/npm-registry.js",
 
-    {"path":"examples/shared-providers/providers/oauth-auth.js","digest":"c6a48c139fa13620ceee34f23b159908257b89087bc859ee08f1517984f2345a","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "examples/shared-providers/providers/oauth-auth.js",
 
-    {"path":"src-server/providers/plugin-provider-loader.ts","digest":"7b780f31c1d234d708632b146294f59530984baec971edabdb8e0265f55ceb94","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "src-server/providers/plugin-provider-loader.ts",
 
-    {"path":"src-server/services/plugins/plugin-install-transaction.ts","digest":"01ba3b7fe2249e6215c6fb62c6372e21324c863bee37bcac6e739a7b0170db61","revision":"63833ae5666cb06da0b5671dc0e3bf63bdc1d0fa"},
+    "src-server/services/plugins/plugin-install-transaction.ts",
 
-    {"path":"src-server/services/plugins/plugin-permissions.ts","digest":"12fa3b2a465074275d4317cc1a356000b2c1a53af247b56c352db754a8727c7c","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
+    "src-server/services/plugins/plugin-permissions.ts",
 
-    {"path":"src-ui/src/core/PluginRegistry.ts","digest":"69836e5e1dd4762f58da6f2495e96f0cab41d586e65327fc4c1dc08d80acc8f9","revision":"1373230550904315438e5bd2869a3c41a9e419ca"},
+    "src-ui/src/core/PluginRegistry.ts",
 
-    {"path":"src-ui/src/pages/ProfilePage.tsx","digest":"1619fbb8aea95d9164f3ebf68177f459b42f117ae78193fefe85687813011440","revision":"a11755821186eaeb034b77e970dfa372c5c7f789"}
+    "src-ui/src/pages/ProfilePage.tsx"
   ],
 
   "checks": [

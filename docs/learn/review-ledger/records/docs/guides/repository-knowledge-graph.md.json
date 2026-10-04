@@ -9,26 +9,24 @@
 
   "limits": "Actual retained snapshot import/readback: 1149 records, 2089 links; repeat zero creates/links. Source-built Flow Agents candidate 6a24b4ee3fb528ee2abbdba2c861e4b5925a6161 installed through public CLI matched all 123 Kit files and all canonical fields/bytes; full provider projection retained 1149 provenance objects and 2089 labels. Published 6.4.0 failures and local fixes are not a release claim. No live embedding/model/Neo4j/native proof. Later 6.5.0 registry/tag integrity and public installed consumer/update checks were inspected: 30 tests passed, canonical test-store bytes/provenance/link labels preserved and recorded/observed Kit artifact hashes matched. macOS/Node24 only; registry metadata matching is not independent npm attestation verification. Additional main merge b269a6cf9: structural reconciliation only; prior distinct anchors below are historical reviews, not approval of combined bytes. Active bindings retain existing anchors; combined dependency bytes remain stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"package.json\",\"ours\":{\"digest\":\"33148f13d0b86a0fc46e74f38eba8e87cef542801cca0606fd9c0ab6f287a380\",\"revision\":\"b50eeb9584c1808e429e59dcb3c3c2253307bbbe\"},\"main\":{\"digest\":\"7263c035fa5946e593a759d3a0b55d8f504e955eb14fab5a401b71c7d3b2ac50\",\"revision\":\"df9188971e1a93d2c5525a7f5f38e3da93c9e4de\"}}].\n\nAdditional existing main limits (preserved verbatim): Actual retained snapshot import/readback: 1149 records, 2089 links; repeat zero creates/links. Source-built Flow Agents candidate 6a24b4ee3fb528ee2abbdba2c861e4b5925a6161 installed through public CLI matched all 123 Kit files and all canonical fields/bytes; full provider projection retained 1149 provenance objects and 2089 labels. Published 6.4.0 failures and local fixes are not a release claim. No live embedding/model/Neo4j/native proof. Later 6.5.0 registry/tag integrity and public installed consumer/update checks were inspected: 30 tests passed, canonical test-store bytes/provenance/link labels preserved and recorded/observed Kit artifact hashes matched. macOS/Node24 only; registry metadata matching is not independent npm attestation verification.\n\nStructural merge of 5fd2dd86ad0cd35018ce09537c1aa01ce58e0e55 and 8f9ea788561518398a488d35bb768b78a272e73b preserves both prior immutable document/source anchors and historical checks. Selecting an existing current-byte binding is structural reconciliation only, not semantic approval of merged inputs. No new digest/revision or coverage baseline was minted. Competing prior anchors remain pending semantic review and supported recording after the merge commit: [{\"path\":\"package.json\",\"ours\":{\"path\":\"package.json\",\"digest\":\"a6deceaea9701a9deb9d05ebd0b1f42db716b05f155c155b2e872443511def48\",\"revision\":\"8e884d84b5609d130f29937159601c65d119b664\"},\"main\":{\"path\":\"package.json\",\"digest\":\"8161e13f46212729130685df12cc34747e385002183410cd57e47d5cdd125306\",\"revision\":\"2fc8f69d15e5c8fa3188bb2ee4731f1b63c66218\"},\"active\":{\"path\":\"package.json\",\"digest\":\"a6deceaea9701a9deb9d05ebd0b1f42db716b05f155c155b2e872443511def48\",\"revision\":\"8e884d84b5609d130f29937159601c65d119b664\"},\"decision\":\"neitherMatch\"}]",
 
-  "document": {"digest":"795329bc7eebf970ee23c935aefb39752a33158c02683407368ed36ddcc47f8e","revision":"e48e25d6c7787782bb5168862ca17b800ce799e2"},
-
   "sources": [
-    {"path":"examples/knowledge-library/src/KnowledgeLibrary.tsx","digest":"54c0aa1a3d3e9dfe341ed67348a0ab96b1aca65e562dbe0080810f6b51f40cca","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "examples/knowledge-library/src/KnowledgeLibrary.tsx",
 
-    {"path":"examples/repository-knowledge-graph/README.md","digest":"803feff52df735990c76c1c4904bd37da46d379f7e8083e6e361220fb957ecec","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "examples/repository-knowledge-graph/README.md",
 
-    {"path":"examples/repository-knowledge-graph/graph.mjs","digest":"de40997e8d65d348d1a1212d7e8a472a2e631f292c5f36266ea0431190280c4f","revision":"8199fd1541fc2af0053845c9253ed0962dd7fbb8"},
+    "examples/repository-knowledge-graph/graph.mjs",
 
-    {"path":"examples/repository-knowledge-graph/ingest.mjs","digest":"ecc5cf0ae31dc269b62525c2e6a99bbc996c1329c634ec77c94ca1823a2966a9","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "examples/repository-knowledge-graph/ingest.mjs",
 
-    {"path":"package.json","digest":"658ca698680a7d2ec3692bb2f47c282b1bb48056a1238ab4ac44f0aee5ed4388","revision":"e4344fd10ef7a80a6a6f65d7e709fb1be56b64df"},
+    "package.json",
 
-    {"path":"packages/contracts/src/knowledge-store.ts","digest":"681a068bbd122d766068a39934873ff9bdf071033753317a380af8023a4335b3","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "packages/contracts/src/knowledge-store.ts",
 
-    {"path":"packages/sdk/src/client/knowledge.ts","digest":"3b99041b2b4df1ae1a08ea6584eaec86a649756ffb134a817666ec6919fda743","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+    "packages/sdk/src/client/knowledge.ts",
 
-    {"path":"src-server/knowledge-store/adapters/default-store.ts","digest":"003db4b89b4f5fb5238cfececcffdb33c36953e8922fc12ba941c1619d619cc6","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "src-server/knowledge-store/adapters/default-store.ts",
 
-    {"path":"src-server/knowledge-store/adapters/shared/frontmatter.ts","digest":"cfc92a9832ac1c4adc42b94a1fa669f26e45fbe3cb5ddc89eb90ecb72d6c6152","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"}
+    "src-server/knowledge-store/adapters/shared/frontmatter.ts"
   ],
 
   "checks": [

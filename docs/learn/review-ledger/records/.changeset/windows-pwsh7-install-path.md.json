@@ -9,8 +9,6 @@
 
   "limits": "A changeset does not prove publication, installation, a Windows host result or a current release version. Canonical guides carry the current source review.",
 
-  "document": {"digest":"ace0b530d943cc6bd0c3e3f5dd5a7647f1e5b31ed562d0bb49f10d878c1ed84a","revision":"6fa523e4d5b5a265a9e545edcbba6f5602193bef"},
-
   "sources": [],
 
   "checks": []

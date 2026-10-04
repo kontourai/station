@@ -320,7 +320,7 @@
     "@kontourai/ferry": "0.6.0",
     "@kontourai/fieldwork": "0.10.0",
     "@kontourai/flow": "5.1.1",
-    "@kontourai/flow-agents": "6.4.0",
+    "@kontourai/flow-agents": "6.5.1",
     "@kontourai/relay": "0.6.0",
     "@kontourai/station-basis-pane": "^0.3.0",
     "@kontourai/station-board-pane": "0.1.2",

@@ -18,14 +18,9 @@ import type {
   LayoutMetadata,
   LayoutReadView,
 } from '@kontourai/station-contracts/layout';
+import { envelopeError } from './api-error-message';
 import type { ClientRequestOptions } from './http';
-import {
-  envelopeErrorMessage,
-  getJson,
-  mutateJson,
-  readJsonBody,
-  StationHttpError,
-} from './http';
+import { getJson, mutateJson, readJsonBody } from './http';
 import { unwrapProjectResponse as unwrapOrThrow } from './project-response';
 
 /** The fields a caller may supply when creating a Board. */
@@ -143,13 +138,8 @@ export async function deletePersonalLayout(
   const result = (await readJsonBody(response)) as
     | { success?: boolean }
     | undefined;
-  if (!response.ok) {
-    throw new StationHttpError(
-      response.status,
-      envelopeErrorMessage(result, 'Failed to delete Board'),
-    );
-  }
-  if (!result?.success) {
-    throw new Error(envelopeErrorMessage(result, 'Failed to delete Board'));
+  // A 2xx `success:false` is a refusal too, and keeps its observed status.
+  if (!response.ok || !result?.success) {
+    throw envelopeError(response, result, 'Failed to delete Board');
   }
 }

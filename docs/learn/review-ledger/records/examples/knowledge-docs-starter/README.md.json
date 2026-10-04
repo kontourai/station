@@ -9,24 +9,22 @@
 
   "limits": "EXECUTED PASS: public plugin build. GitHub issue 268 was read and confirmed closed as batched into 570; the explicit current-repository URL is correct. No live model invocation, real document retrieval or answer-quality evidence.",
 
-  "document": {"digest":"75285d1e90058ea4e6cb084057f98c5f4ca2b5f05c793fd9c35eb30e82ce75f5","revision":"a1478b242401c5da824956478bd77fef1f4dfa51"},
-
   "sources": [
-    {"path":"examples/knowledge-docs-starter/layout.json","digest":"1f39626634569aafc66ea649f1283cf71dab8f9955865a7238a2012c44ea2abe","revision":"e464b70652dade22324fda9d6111f49082e80df3"},
+    "examples/knowledge-docs-starter/layout.json",
 
-    {"path":"examples/knowledge-docs-starter/plugin.json","digest":"2ef46955ac528996af8139e572f9b1ed4f35d300f8a6526becd0e68ed1b128f4","revision":"e464b70652dade22324fda9d6111f49082e80df3"},
+    "examples/knowledge-docs-starter/plugin.json",
 
-    {"path":"examples/knowledge-docs-starter/src/index.tsx","digest":"7f3d327d7db11c0dfe6674c8006b9d83bd209266626b76aa9ec5c4353ef8635d","revision":"e464b70652dade22324fda9d6111f49082e80df3"},
+    "examples/knowledge-docs-starter/src/index.tsx",
 
-    {"path":"packages/cli/src/commands/build.ts","digest":"fe59b0aec5413bc16de44073be4669a2345d1a2c3ab0519f50b4dea615ce5b55","revision":"e464b70652dade22324fda9d6111f49082e80df3"},
+    "packages/cli/src/commands/build.ts",
 
-    {"path":"packages/sdk/src/api-agent-runtime.ts","digest":"4b5cff321da3b39dca67b50c39d64090b9f794f95d52b0e1d6504c18dfedfc14","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+    "packages/sdk/src/api-agent-runtime.ts",
 
-    {"path":"packages/shared/src/build.ts","digest":"20f919a4a98519ce20e8e2f0d5d498a4be8daeba1314a97ddae752fd36df4630","revision":"1e6450e0caa47975d33f505a1348bdc01ae1382e"},
+    "packages/shared/src/build.ts",
 
-    {"path":"src-server/services/plugins/workspace-pane-host-actions.ts","digest":"75590eb71c83be080b9f8b7fb080bc6276c18202b48f91f80cda8eff461c9474","revision":"e464b70652dade22324fda9d6111f49082e80df3"},
+    "src-server/services/plugins/workspace-pane-host-actions.ts",
 
-    {"path":"src-server/services/plugins/workspace-pane-host-admission.ts","digest":"e7cb42a0b3b5cd8d41f5f5ef20e8d32334ae3871cb2aca771b5f32f0e7b7f05d","revision":"e464b70652dade22324fda9d6111f49082e80df3"}
+    "src-server/services/plugins/workspace-pane-host-admission.ts"
   ],
 
   "checks": [

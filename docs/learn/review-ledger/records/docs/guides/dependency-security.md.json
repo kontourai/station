@@ -9,84 +9,82 @@
 
   "limits": "No fresh registry audit or current advisory disposition, hosted CodeQL/dependency-review capability, GitHub SARIF ingestion, Rust scan, full lifecycle threat-model proof or Windows native artifact qualification. Structural local SARIF acceptance is not proof of trusted production. Historical July/August inventories and timing observations were not promoted to current evidence. Additional main merge b269a6cf9: structural reconciliation only; prior distinct anchors below are historical reviews, not approval of combined bytes. Active bindings retain existing anchors; combined dependency bytes remain stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"pnpm-lock.yaml\",\"ours\":{\"digest\":\"2907b97d6a2e98b4211695a78cf83b03419218f1dd95ce090ca753d9bdbad14a\",\"revision\":\"b50eeb9584c1808e429e59dcb3c3c2253307bbbe\"},\"main\":{\"digest\":\"29dbdce300fcd3d881ae511317af478da6e9c098a8e8cf51c6b2269a937525df\",\"revision\":\"df9188971e1a93d2c5525a7f5f38e3da93c9e4de\"}},{\"path\":\"package.json\",\"ours\":{\"digest\":\"33148f13d0b86a0fc46e74f38eba8e87cef542801cca0606fd9c0ab6f287a380\",\"revision\":\"b50eeb9584c1808e429e59dcb3c3c2253307bbbe\"},\"main\":{\"digest\":\"7263c035fa5946e593a759d3a0b55d8f504e955eb14fab5a401b71c7d3b2ac50\",\"revision\":\"df9188971e1a93d2c5525a7f5f38e3da93c9e4de\"}}].\n\nAdditional existing main limits (preserved verbatim): No fresh registry audit or current advisory disposition, hosted CodeQL/dependency-review capability, GitHub SARIF ingestion, Rust scan, full lifecycle threat-model proof or Windows native artifact qualification. Structural local SARIF acceptance is not proof of trusted production. Historical July/August inventories and timing observations were not promoted to current evidence.\n\nStructural merge of 5fd2dd86ad0cd35018ce09537c1aa01ce58e0e55 and 8f9ea788561518398a488d35bb768b78a272e73b preserves both prior immutable document/source anchors and historical checks. Selecting an existing current-byte binding is structural reconciliation only, not semantic approval of merged inputs. No new digest/revision or coverage baseline was minted. Competing prior anchors remain pending semantic review and supported recording after the merge commit: [{\"path\":\".github/workflows/ci.yml\",\"ours\":{\"path\":\".github/workflows/ci.yml\",\"digest\":\"092798d877aa8138f197a0edbd7547e876dc2e310b54b4e00598f8f48b3535b8\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},\"main\":{\"path\":\".github/workflows/ci.yml\",\"digest\":\"aedbb116a4ce043ec251ec20c47368aa89f77ebc1b5b526fecb9580af280bb91\",\"revision\":\"de240170769fcf739c188b104f801d4371f8086d\"},\"active\":{\"path\":\".github/workflows/ci.yml\",\"digest\":\"aedbb116a4ce043ec251ec20c47368aa89f77ebc1b5b526fecb9580af280bb91\",\"revision\":\"de240170769fcf739c188b104f801d4371f8086d\"},\"decision\":\"mainMatch\"},{\"path\":\"package.json\",\"ours\":{\"path\":\"package.json\",\"digest\":\"a6deceaea9701a9deb9d05ebd0b1f42db716b05f155c155b2e872443511def48\",\"revision\":\"8e884d84b5609d130f29937159601c65d119b664\"},\"main\":{\"path\":\"package.json\",\"digest\":\"8161e13f46212729130685df12cc34747e385002183410cd57e47d5cdd125306\",\"revision\":\"2fc8f69d15e5c8fa3188bb2ee4731f1b63c66218\"},\"active\":{\"path\":\"package.json\",\"digest\":\"a6deceaea9701a9deb9d05ebd0b1f42db716b05f155c155b2e872443511def48\",\"revision\":\"8e884d84b5609d130f29937159601c65d119b664\"},\"decision\":\"neitherMatch\"},{\"path\":\"pnpm-lock.yaml\",\"ours\":{\"path\":\"pnpm-lock.yaml\",\"digest\":\"5827b0dac0aa1d3a2beb2a0ab719df8fcbd2fdac0bc4a4a7e01c4cae620ba122\",\"revision\":\"8e884d84b5609d130f29937159601c65d119b664\"},\"main\":{\"path\":\"pnpm-lock.yaml\",\"digest\":\"29dbdce300fcd3d881ae511317af478da6e9c098a8e8cf51c6b2269a937525df\",\"revision\":\"df9188971e1a93d2c5525a7f5f38e3da93c9e4de\"},\"active\":{\"path\":\"pnpm-lock.yaml\",\"digest\":\"5827b0dac0aa1d3a2beb2a0ab719df8fcbd2fdac0bc4a4a7e01c4cae620ba122\",\"revision\":\"8e884d84b5609d130f29937159601c65d119b664\"},\"decision\":\"oursMatch\"},{\"path\":\"scripts/__tests__/dependency-advisory-policy.test.ts\",\"ours\":{\"path\":\"scripts/__tests__/dependency-advisory-policy.test.ts\",\"digest\":\"c1addc6e597e61d26ea55291e670d7dd0f2c27ef04d635250fb74fc5529d8229\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},\"main\":{\"path\":\"scripts/__tests__/dependency-advisory-policy.test.ts\",\"digest\":\"31779347634626ddbd22bf88ab67bb029416544eb47362ecf922b644cf800528\",\"revision\":\"a33fbfe917004ff85a30e503fd141a47233b74e7\"},\"active\":{\"path\":\"scripts/__tests__/dependency-advisory-policy.test.ts\",\"digest\":\"31779347634626ddbd22bf88ab67bb029416544eb47362ecf922b644cf800528\",\"revision\":\"a33fbfe917004ff85a30e503fd141a47233b74e7\"},\"decision\":\"mainMatch\"},{\"path\":\"scripts/dependency-advisory-exceptions.json\",\"ours\":{\"path\":\"scripts/dependency-advisory-exceptions.json\",\"digest\":\"493e0b7dad9b3a6c9820e288aea2829d4289ad8be113ced5e7133d00796c88db\",\"revision\":\"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc\"},\"main\":{\"path\":\"scripts/dependency-advisory-exceptions.json\",\"digest\":\"0fb4da6e30f5363ff33bbe1634a8267383766e88651fc878ad958d10d4730ab0\",\"revision\":\"a43b54f6cfe9479ea77cd6e783aa5e1419bc5168\"},\"active\":{\"path\":\"scripts/dependency-advisory-exceptions.json\",\"digest\":\"0fb4da6e30f5363ff33bbe1634a8267383766e88651fc878ad958d10d4730ab0\",\"revision\":\"a43b54f6cfe9479ea77cd6e783aa5e1419bc5168\"},\"decision\":\"mainMatch\"}]",
 
-  "document": {"digest":"a20eaba5f0f2d0701e85a50da690ff0f39167db2a9df95181b6c9c3e2eec77c7","revision":"22ffd796d86ec7f841cb3c75764ed2a3fb7783b0"},
-
   "sources": [
-    {"path":".github/workflows/ci.yml","digest":"9b586bd70bb7c94986ce19ee41151ff768bad2a308a196a15047375c92f9646a","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
+    ".github/workflows/ci.yml",
 
-    {"path":".github/workflows/dependency-advisory.yml","digest":"e24f516a6b3344160eccacbe494bb0f975a31f225c63301924de5fa91440b851","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    ".github/workflows/dependency-advisory.yml",
 
-    {"path":".github/workflows/main-health.yml","digest":"397e6b49220a66359241c76a4412c1d98de25f5087b0177673f26a7ae146679d","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    ".github/workflows/main-health.yml",
 
-    {"path":".github/workflows/security-analysis.yml","digest":"9c846e48c9b46b176db769350facf7d698d9012311e5706637648a3a33782422","revision":"983f3de3740aa9ee6878a0d4feec0b650aa67f3c"},
+    ".github/workflows/security-analysis.yml",
 
-    {"path":".npmrc","digest":"494a0451b5f0162e3935bd1c352fdafc8454ee42485693d23e9890ff24528403","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    ".npmrc",
 
-    {"path":"config/dependency-lifecycle-allowlist.json","digest":"4b8f259cd745009531fe4740668a878289b06285414efa2e5a5319c5faf54f4a","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
+    "config/dependency-lifecycle-allowlist.json",
 
-    {"path":"package.json","digest":"658ca698680a7d2ec3692bb2f47c282b1bb48056a1238ab4ac44f0aee5ed4388","revision":"e4344fd10ef7a80a6a6f65d7e709fb1be56b64df"},
+    "package.json",
 
-    {"path":"patches/voltagent-core-2.10.0.patch","digest":"8eda67a9681b85cf7adbeb5669184db3412ccc9f1954e068ac32ee5dd409170a","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "patches/voltagent-core-2.10.0.patch",
 
-    {"path":"pnpm-lock.yaml","digest":"4f9a974bd49f637fd690699b3bcd9b6ce915114eb4f52e2e6bdd5b0f3b699f2a","revision":"ea49cb8678208b9037f8e9ab3ceb2a95fe2647ff"},
+    "pnpm-lock.yaml",
 
-    {"path":"pnpm-workspace.yaml","digest":"d8755daab4e9f4a491239888610ae28b412aa80de9b15625b785b26577131953","revision":"3ff5522abf460ad69d2e2ed4c53740d82e9ec289"},
+    "pnpm-workspace.yaml",
 
-    {"path":"scripts/__tests__/codeql-sarif-policy.test.ts","digest":"a7e2db81ccf7daabe0d4e1b3d91cc46401d20f5aafa351c72ca56068bd4fd608","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "scripts/__tests__/codeql-sarif-policy.test.ts",
 
-    {"path":"scripts/__tests__/dependency-advisory-policy.test.ts","digest":"5eb5092f5b43684e2951604008ad397505611acc4a20ead74adcb4db18f8777a","revision":"02ea170a2bb483f3313a4019b1231313fb14aeed"},
+    "scripts/__tests__/dependency-advisory-policy.test.ts",
 
-    {"path":"scripts/__tests__/pnpm-advisory-command.test.ts","digest":"235c4174211032d0199025a05c3190e12e688d0d093c04491da603caf2654c0d","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "scripts/__tests__/pnpm-advisory-command.test.ts",
 
-    {"path":"scripts/actionlint-gate.mjs","digest":"9b0c7c38f1f3b82c0b49acfb35b35870a72b85c1daa95c820ab23636bfed43c0","revision":"8de1b741d83aec880c76c3cece6bb3e9cdee740d"},
+    "scripts/actionlint-gate.mjs",
 
-    {"path":"scripts/classify-ci-change.mjs","digest":"bfe2eb23055b9149b644b1c81d3db2cc09b35a9ecd56d702653b38e77c2910ba","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "scripts/classify-ci-change.mjs",
 
-    {"path":"scripts/codeql-error-baseline.json","digest":"4ba71828ec6796808f7440edd8745d5ce9cb6d4f802f47eff4e869f1f1e648e3","revision":"1188208f32995f08e02bc87c2a0063184540fb6a"},
+    "scripts/codeql-error-baseline.json",
 
-    {"path":"scripts/codeql-sarif-normalize.mjs","digest":"dae3215a2b7cea533257b8803bce83b065630d72c7b9cb4c53894f5b92586b66","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "scripts/codeql-sarif-normalize.mjs",
 
-    {"path":"scripts/codeql-sarif-policy.mjs","digest":"19227477b52acfe22fe18feb777bf30c2163a40e51fda2ad0a834a1fdae86f32","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "scripts/codeql-sarif-policy.mjs",
 
-    {"path":"scripts/dependency-advisory-exceptions.json","digest":"256210c8ab8edf3b3fd0d3e37e475919f1ad30cfaf7414ebe4bfa3859f4e0f1b","revision":"595059eafa17ef6b7a39217a405619ecbfac2270"},
+    "scripts/dependency-advisory-exceptions.json",
 
-    {"path":"scripts/dependency-advisory-policy.mjs","digest":"9dfdd2899708f23256aa01e6ac899438c80b0fecba5497c8fc25270d6a8f6ae8","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "scripts/dependency-advisory-policy.mjs",
 
-    {"path":"scripts/dependency-lifecycle.mjs","digest":"59182737dece9f0981ba7857efd524e5c6a30eb45c25dc963d3a0c9bba7b6163","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "scripts/dependency-lifecycle.mjs",
 
-    {"path":"scripts/generate-pnpm-sbom.mjs","digest":"fbe38893e96627ae38f4a6087cd31d2a4af124ef2134a573cd8eeaa9fe74175a","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "scripts/generate-pnpm-sbom.mjs",
 
-    {"path":"scripts/lib/dependency-audit-diagnostics.mjs","digest":"c81447d6f6746f19a8a75c5937359850d74935dd43ed53d991ee90929404993a","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "scripts/lib/dependency-audit-diagnostics.mjs",
 
-    {"path":"scripts/lib/dependency-install-retirement.mjs","digest":"ef2130ec72f2b095466ac2b115b20cdd5c076a8829c0327f4745efb8db3a93eb","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "scripts/lib/dependency-install-retirement.mjs",
 
-    {"path":"scripts/lib/dependency-lifecycle-policy.mjs","digest":"3221df34cc1ffaa99b9dedfcff8e2b1dce41baa44170464d2b8d3e88cd2894f4","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "scripts/lib/dependency-lifecycle-policy.mjs",
 
-    {"path":"scripts/lib/pnpm-advisory.mjs","digest":"d744934bbc925b7a8cf799b335864c0e8555d6b099de2acf6e6990ca5a580bc7","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "scripts/lib/pnpm-advisory.mjs",
 
-    {"path":"scripts/lib/pnpm-dependency-graph.mjs","digest":"4c60e90ac272295d63aa0f302b41d1b6c5aaebda7d828098da843a5335b6422e","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "scripts/lib/pnpm-dependency-graph.mjs",
 
-    {"path":"scripts/lib/pnpm-lockfile.mjs","digest":"6a269e99d1324e63b0f26cc46aeaa7a92c25e14567f2581344444369f2910eeb","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "scripts/lib/pnpm-lockfile.mjs",
 
-    {"path":"scripts/lib/release-sbom-generation.mjs","digest":"7c994c5cbc4832402ab7479b4c005395ba63fc7953231370e57db3ccf9c59f3e","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "scripts/lib/release-sbom-generation.mjs",
 
-    {"path":"scripts/lib/release-sboms.mjs","digest":"22a283e108c25da5ae116b2e6782520dec564a7263e7991673bdb3ed4f9ce5b2","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "scripts/lib/release-sboms.mjs",
 
-    {"path":"scripts/lib/test-reliability.mjs","digest":"98e4353f73733faa96bfdc45a5df0df763bd66abf0b3d3554c6a17f7f6a349ad","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "scripts/lib/test-reliability.mjs",
 
-    {"path":"scripts/lib/verification-environment-preflight.mjs","digest":"b40ff2489b52784a30f9f0ab810741ab54aa5f9d04e4e82e5964e3cc65b37dbb","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "scripts/lib/verification-environment-preflight.mjs",
 
-    {"path":"scripts/lockfile-sync-gate.mjs","digest":"86b9ec7ef8fb7c45eb44d6718b4e0ff9fc003bc2020a6681afbe0f3b11073aac","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "scripts/lockfile-sync-gate.mjs",
 
-    {"path":"scripts/release-sbom-context.mjs","digest":"6d23b3d0993d5e9e91c75d851e45842bc30f17070b739befae42fa3f2871ae5a","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "scripts/release-sbom-context.mjs",
 
-    {"path":"scripts/workspace-dependency-provenance.mjs","digest":"8e26b9bba267b682ba2f800bbb948dc46fad7071ff93ffcfe8060b60908c400b","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "scripts/workspace-dependency-provenance.mjs",
 
-    {"path":"src-server/runtime/frameworks/__tests__/voltagent-memory-order.test.ts","digest":"8b5245ec85e9c85728be53067a9916953ab979880a3172a09d6cc4e89ded07fb","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "src-server/runtime/frameworks/__tests__/voltagent-memory-order.test.ts",
 
-    {"path":"src-ui/src/components/chat/SanitizedHtml.tsx","digest":"801ed68ce1b7b8dc71b1f2e269d600f89b868ce1bcf00c7afac819c667bfab2f","revision":"3517d8f66db867fd982a8f9883ed85052c4e1fc1"},
+    "src-ui/src/components/chat/SanitizedHtml.tsx",
 
-    {"path":"src-ui/src/core/pluginSharedRuntime.ts","digest":"b9b3865a69ebf0b8246ac7b6b7b294b24f7a05f51004dd8a8b5ea273fc2fae49","revision":"3517d8f66db867fd982a8f9883ed85052c4e1fc1"}
+    "src-ui/src/core/pluginSharedRuntime.ts"
   ],
 
   "checks": [

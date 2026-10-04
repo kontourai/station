@@ -9,50 +9,48 @@
 
   "limits": "Decision record only; no behavior ships with it. Context statements describe origin/main on 2026-09-29 and were checked against the listed sources; the decisions are implemented and proven by #2959-#2962, not by this record.",
 
-  "document": {"digest":"d5acbd007ab05fd13e9689943a2040edbc5a8980c4c04eb7a3f0aa6e2dc03372","revision":"54e0ffb5c1ae765b4127f031e525793087fb9669"},
-
   "sources": [
-    {"path":"install.sh","digest":"f2b2fbf2dba1198f08637b48ad3a1cd7ae684cee020621cd293668e6bbb8b4bc","revision":"54e0ffb5c1ae765b4127f031e525793087fb9669"},
+    "install.sh",
 
-    {"path":"packages/shared/src/service-launcher-protocol.ts","digest":"fdbe729811c373d0bdf059c51ea72dbc5d1e3240c88c91fa553d878107a9b68e","revision":"54e0ffb5c1ae765b4127f031e525793087fb9669"},
+    "packages/shared/src/service-launcher-protocol.ts",
 
-    {"path":"src-server/routes/system/archive-update.ts","digest":"11cd46218325618ceefcd54079f5012b981eb6b1c2872d562434523de1ef63e9","revision":"ce2b6c35d2cb46e08b3b0f162df6e2c581dd03a9"},
+    "src-server/routes/system/archive-update.ts",
 
-    {"path":"packages/contracts/src/environment-security.ts","digest":"5e95b203695a37807a3b3c9464df4f0153ca32b408496dc12f59274f61fd2486","revision":"91d79c3f0ce9ca5ae304e4248b67b6189103016e"},
+    "packages/contracts/src/environment-security.ts",
 
-    {"path":"src-ui/src/lib/compatibility.ts","digest":"4c3ddfb66d0c660278dbb12f3dcc66fbb4a7c3c24a882c3d65afe3c89bd9dac3","revision":"54e0ffb5c1ae765b4127f031e525793087fb9669"},
+    "src-ui/src/lib/compatibility.ts",
 
-    {"path":"packages/shared/src/station-home-schema.ts","digest":"db4b3e2883079cf1f4aa55f10b955f42b767e580bbf5a51350c75f3c56d4e1db","revision":"54e0ffb5c1ae765b4127f031e525793087fb9669"},
+    "packages/shared/src/station-home-schema.ts",
 
-    {"path":"packages/cli/src/commands/lifecycle.ts","digest":"ce8322baa64d2e25c711ec0816c6cb013c8742f651a265e1657239185dba9ecc","revision":"b49b1db1601f36c9457e0d9d7c766d15be6302f7"},
+    "packages/cli/src/commands/lifecycle.ts",
 
-    {"path":"config/release-manifest-keys.json","digest":"28b356665f581456dcddd64ae86ebf3bde1fb1ee12408c480b7a2fa68923f0c3","revision":"54e0ffb5c1ae765b4127f031e525793087fb9669"},
+    "config/release-manifest-keys.json",
 
-    {"path":"config/channel-ports.json","digest":"b57f2202d6b699d201df79f80e3dd7b3049b3a4c5b3455185e8d35c619a69bcf","revision":"54e0ffb5c1ae765b4127f031e525793087fb9669"},
+    "config/channel-ports.json",
 
-    {"path":"docs/adr/0015-restore-desktop-owned-command-station-sidecar.md","digest":"ae630ad46482a84ef322e83bf470c9936219e5ba452eeff3a7e45ecc047d43d4","revision":"54e0ffb5c1ae765b4127f031e525793087fb9669"},
+    "docs/adr/0015-restore-desktop-owned-command-station-sidecar.md",
 
-    {"path":"packaging/portable-server/bin/station-launcher.mjs","digest":"bb4b5acbe1ca4528b66c51821919b0c048d51102ae47eda12ada64bc236f14a2","revision":"54e0ffb5c1ae765b4127f031e525793087fb9669"},
+    "packaging/portable-server/bin/station-launcher.mjs",
 
-    {"path":"scripts/portable-nightly-publication.mjs","digest":"1255aa0d27678ed50716dde09f566464e385256a31889a1240d58b6516cbba9c","revision":"51684c027d476a8ed882b73f3a608dfadfb91b04"},
+    "scripts/portable-nightly-publication.mjs",
 
-    {"path":"src-desktop/tauri.conf.json","digest":"24ce785160cae3c41db78a82861ee7e4934490bb6a7ed986b30a278cc19c8ab1","revision":"54e0ffb5c1ae765b4127f031e525793087fb9669"},
+    "src-desktop/tauri.conf.json",
 
-    {"path":"src-desktop/tauri.beta.conf.json","digest":"91b0495f471651c383602046d4a2d4d32ff5cd5e4b7219cf4f7c9daf3486ccc5","revision":"54e0ffb5c1ae765b4127f031e525793087fb9669"},
+    "src-desktop/tauri.beta.conf.json",
 
-    {"path":"src-desktop/tauri.nightly.conf.json","digest":"31118cc5e3789ef2533327af987ce549d282fc383ae5c17569edbe27297634f8","revision":"c5d3acbbda8ab0a072d4039bc91c7b9668a741d9"},
+    "src-desktop/tauri.nightly.conf.json",
 
-    {"path":"packages/connect/src/core/pairingDeepLink.ts","digest":"e52ea12978d577a648ca00eecbd9bede7f7e6257c34b3fb573c5f976ad92feda","revision":"54e0ffb5c1ae765b4127f031e525793087fb9669"},
+    "packages/connect/src/core/pairingDeepLink.ts",
 
-    {"path":"src-server/routes/system/build-provenance.ts","digest":"825fc8c500a09d351fbedb19373d2c65aca0549b45296d62c411cad41f6adb7b","revision":"54e0ffb5c1ae765b4127f031e525793087fb9669"},
+    "src-server/routes/system/build-provenance.ts",
 
-    {"path":"packages/shared/src/station-home-store-registry.ts","digest":"bf725d365318f670cdc54f2f4354bec8d1041f3c9866ac72439f3e0d11ff5e1f","revision":"4a67fd3e4060f01379184350cdfd49637bba8d0e"},
+    "packages/shared/src/station-home-store-registry.ts",
 
-    {"path":"packages/shared/src/release-manifest.mjs","digest":"9dbda2644188254731d9806fc22278870a713b6dcddf7a7c1467fee1170fbf83","revision":"54e0ffb5c1ae765b4127f031e525793087fb9669"},
+    "packages/shared/src/release-manifest.mjs",
 
-    {"path":"packages/shared/src/prebuilt-archive.ts","digest":"73f956c32b937353113b247025a4c7e7feba6e4f305703d4366593b9e5ba78d8","revision":"54e0ffb5c1ae765b4127f031e525793087fb9669"},
+    "packages/shared/src/prebuilt-archive.ts",
 
-    {"path":"scripts/lib/portable-publication.mjs","digest":"bd3921ac4a297658473ee51e4af9256844c4c668bba1533ac39bc77fc62ad510","revision":"e3fa2cf8c4bdcb7d8438495ff3122028719b5bca"}
+    "scripts/lib/portable-publication.mjs"
   ],
 
   "checks": [

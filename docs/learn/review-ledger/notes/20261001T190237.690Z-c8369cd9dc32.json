@@ -1,0 +1,9 @@
+{
+  "revision": "a71a583813b3f137da6a9716acc7e9b198df5847",
+
+  "notes": [
+    {"path":"README.md","note":"Read current README and complete sole changed recorded Nightly guide delta. The guide now separates the dated empty-signing-key incident from actual caller-secret/job-environment ownership; YAML behavior is unchanged and official GitHub guidance supports the correction. README links Nightly support and explicitly asks testers to inspect artifact versions, without asserting the removed mechanism. No README change needed and no release, installation, signing or provider availability inferred.","inputs":["README.md"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Reviewed generated content delta against recorded revision and its independently reviewed module-map/atlas owners. Added native enrollment/account reading topics and corrected account, mobile renewal, resource and qualification explanations are static canonical prose, not live state. Topic catalog remains typed literals; no credential, filesystem, network or live operation added. docs:mcp:generate followed by check validated 103 topics and digest66ca90ab2145f87664ae86753f5e94a6822510e0214d5852932e879ab3f914a9. Unchanged manual topics not blanket re-reviewed; source-only/static consistency is separate from fresh native/public/physical release acceptance.","inputs":["docs/reference/station-docs.md"]}
+  ]
+}

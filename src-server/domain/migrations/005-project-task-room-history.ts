@@ -21,5 +21,13 @@ CREATE TABLE IF NOT EXISTS project_task_room_identities (
  receipt_bytes INTEGER NOT NULL CHECK(receipt_bytes >= 0), receipt_digest TEXT NOT NULL,
  PRIMARY KEY(channel_id, proposal_id), UNIQUE(channel_id, epoch, seq)
 );
+CREATE TABLE IF NOT EXISTS project_task_room_formats (
+ channel_id TEXT PRIMARY KEY, version INTEGER NOT NULL CHECK(version = 3)
+);
+CREATE TRIGGER IF NOT EXISTS project_task_room_v3_writer_fence
+ BEFORE INSERT ON project_task_room_records
+ WHEN EXISTS(SELECT 1 FROM project_task_room_formats WHERE channel_id=NEW.channel_id)
+ AND json_extract(NEW.record_json, '$.schemaVersion') IS NOT 'station.project-task-room/v3'
+ BEGIN SELECT RAISE(ABORT, 'room requires v3 writer'); END;
 CREATE INDEX IF NOT EXISTS idx_project_task_room_records_page ON project_task_room_records(channel_id,epoch,seq);
 `;

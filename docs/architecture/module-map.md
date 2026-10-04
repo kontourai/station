@@ -80,6 +80,7 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 | [KnowledgeSourceObservation](#knowledgesourceobservation) | Observe one registered canonical record without bootstrap, repair, or learning authority. | `src-server/knowledge-store/knowledge-store-provider.ts` |
 | [PluginCompositionModule](#plugincompositionmodule) | Stage and atomically activate scoped, reversible plugin capability graphs. | `src-server/services/plugins/plugin-composition.ts` |
 | [PluginGrantReconciliation](#plugingrantreconciliation) | Converge runtime capability generations after a durable plugin grant change. | `src-server/services/plugins/plugin-grant-reconciliation.ts` |
+| [PluginCommandEffects](#plugincommandeffects) | Admit plugin palette effects for browser documents, one per request, and report withdrawals honestly until each captured effect settles. | `src-server/services/plugins/plugin-command-effects.ts` |
 | [RegistrySourceManager](#registrysourcemanager) | Persist connected catalogs and bind discovery, inspection and acquisition to the exact current source. | `src-server/providers/registries/registry-source-manager.ts` |
 | [RegistrySupplyChainPolicy](#registrysupplychainpolicy) | Verify registry package signatures and prepare exact pins and rollback sources. | `src-server/services/plugins/registry-supply-chain.ts` |
 | [ReviewEvidenceModule](#reviewevidencemodule) | Run independent read-only reviewers over one exact revision range and retain attributable findings without minting a verdict. | `src-server/services/evidence/review-evidence-module.ts` |
@@ -1108,6 +1109,37 @@ there is no separately verified remote path. Source tests include the
 [scope reader](../../src-server/runtime/mcp/__tests__/station-control-dispatch-scope.test.ts),
 [mounted route composition](../../src-server/runtime/routes/__tests__/runtime-routes-station-control-dispatch-scope.test.ts)
 and [target resolver](../../src-server/services/execution-target/__tests__/execution-target-resolver.test.ts).
+
+**Start-time repeat.** The resolved directory is still a string when the engine
+starts. For a new Session and any caller except a bound operator, the route
+helper also returns its decision as a
+[DispatchCwdAdmission](../../src-server/services/orchestration/dispatch-cwd-admission.ts).
+The dispatch carries it in the start's command context, never in a request
+body or to another Station. `OrchestrationService` runs it when it prepares
+the start and again directly before the adapter call, outside the start
+boundary so a refusal is recorded as a rejected start rather than an uncertain
+one. It decides on the directory the start is bound to: the Session's own
+`cwd`, or, when the Session has none, the directory its ACP connection
+configures (`resolveConnectionDefaultCwd`, wired by
+[runtime initialization](../../src-server/runtime/bootstrap/runtime-initialize.ts)
+from the config the adapter reads). A directory Station provisioned itself,
+such as a worktree, is not substituted. The admitted canonical path is written
+to the Session's start metadata as `dispatchCanonicalCwd`; a caller-supplied
+value is removed first. Recovery and the credential-profile restart compare
+the re-resolved folder with that record before starting an engine, and a
+continuation child in the same folder inherits it. The refusal reaches the
+dispatch route as an error with a station-control code and becomes a 403.
+The repeat does not hold a directory handle: the adapter resolves the path
+once more when it spawns the process. Conversation forks and non-engine uses
+of the folder are outside it. So is a later start for a Session that carries
+no record, one the operator started or one started before the record existed:
+a constrained caller's follow-up to it gets the route's admission check only,
+not the check before the engine starts. The
+[spawn composition test](../../src-server/runtime/routes/__tests__/runtime-routes-station-control-dispatch-spawn.test.ts)
+drives both dispatch routes into a real `OrchestrationService` with a recording
+engine double, and the
+[runtime wiring test](../../src-server/runtime/bootstrap/__tests__/runtime-initialize-connection-default-cwd.test.ts)
+covers the connection reader; the credential-profile restart has no test.
 Their presence is not a new executed or remote-device receipt. See
 [agent configuration](../guides/self-configuring-agent.md#dispatch-authority) for tool-level
 restrictions and caller binding.
@@ -1900,6 +1932,16 @@ currently poll the journal read and link to existing execution
 inspection; they are not room-SSE lifecycle events. Invited/public result
 projection and actual-provider acceptance remain unfinished.
 
+Immutable output review uses the same room history, rather than a second
+feedback journal. [TaskOutputModule](../../src-server/services/projects/task-output-module.ts)
+validates fresh version targets against retained output and Task/Project identity;
+permanent room identities resolve exact duplicates before output validation.
+A per-room SQLite format fence prevents v2 writes after v3 adoption.
+The [output surface](../../src-ui/src/views/task-workspace/TaskOutputsSection.tsx)
+checks authorized downloaded bytes before offering a human review statement.
+Reviewer acceptance changes no Task or workflow state. Source and focused
+contract evidence do not establish a two-human or installed acceptance journey.
+
 The [SDK](../../packages/sdk/src/client/project-task-rooms.ts) parses opaque
 edit receipts and the shared SSE stream. Accepted document objects are offered
 synchronously to mounted listeners before the same object enters query-cache
@@ -2517,6 +2559,14 @@ reintroduce:** grant-route provider mutation, fire-and-forget subscription retir
 completion evidence, unbounded response waits, source-wide provider clearing,
 implementation import outside the content-generation lease, or cleanup that can publish
 after its installation generation was replaced.
+
+## PluginCommandEffects
+
+**Intent and Interface.** A plugin command row in the palette is not authority (kontourai/station#1418). `createPluginCommandEffectAdmission().admit()` admits one argument-free `navigate` or `seed-composer` effect for one browser document and returns a receipt whose effect content Station read from the installed declaration. `PluginCommandEffectService` owns the durable ledger in the Station home (`plugin-command-effects.json`): `recordAdmission`, `settle`, `beginWithdrawal`, `withdrawal`, `listWithdrawals`, `listUncapturedEffects`, `awaitWithdrawal`, `resolveWithdrawal` and `abandonEffect`. Wire shapes, including the operational event's data, live in `@kontourai/station-contracts/plugin-command-effect`.
+
+**Contract.** Linearization points (kontourai/station#1419): LP-A is the atomic ledger append of an `admitted` effect, reached only after visibility (an invisible plugin is refused as absent), then inside the plugin content lock the installed artifact, exact generation, declaration, target and requirements (a session the caller can read; project and task existence), a fresh currentness check, for `plugin-server` commands the grants read lease, and finally the request-window check at the append. LP-W is `beginWithdrawal`, called after an authority change is durable and under the serialization admission of that authority uses: uninstall (including owned-dependency removal and install rollback) and install-over inside the install transaction's content locks, the legacy update route inside its content lock, and `plugin.server` withdrawal after the grants write admissions append inside. A plugin has at most one open withdrawal; a later change joins it, so a withdrawal is never refused for capacity, and a change is never vetoed or rolled back by ledger trouble (it reports `commandEffectsUnavailable`). LP-K is the atomic settlement write: first terminal outcome wins, the same outcome is idempotent, a different one is a counted 409 conflict, and a cancel before any admission is kept, never displaced, until no matching admission can still be accepted. LP-C is a ledger read finding a withdrawal with nothing outstanding. `closed-indeterminate` derives only from the withdrawal's own operator resolution. Request identity, cancels and settlement are scoped to the caller's principal and document key. Bounds refuse growth and never evict outstanding effects or open withdrawals; every write is measured with the writer's own serializer, and a ledger at every bound fits under the growth limit. The audit event follows the ledger commit; a crash between them loses the event, not the record. The ledger lock is always taken last.
+
+**Seam, Implementation, callers, and tests.** `routes/plugins/plugin-command-effect-routes.ts` is the HTTP seam; `plugins.ts` composes it with principal resolution, plugin visibility and the `commandEffects` options `runtime-routes.ts` supplies (hosted-deployment check, the runtime operational-event audit publisher, `createPluginCommandRequirementResolver`). Hosted deployments, and a composition without those options, refuse every route; admission, `resolve` and `abandon` also refuse non-person callers. `plugin-install-transaction.ts`, `plugin-lifecycle-routes.ts`, `plugin-public-routes.ts` and `plugin-host-approval-routes.ts` call `withdrawPluginCommandEffects`; lifecycle, install, registry and grant routes call `settlePluginCommandEffectsForResponse`, and `GET /api/plugins/host-approvals/:id` re-reads the withdrawal from the ledger. The UI uses the built-in palette's page-placement path for region-surface destinations and checks the ordinary navigation guard before route destinations; a blocked route settles `aborted` rather than opening an asynchronous confirmation. Ledger invariants, bounds, coalescing, scoping and fault-injected commits are in `plugin-command-effects.test.ts`; the real withdrawal paths against forced interleavings are in `plugin-command-effect-lifecycle.test.ts`; dependency capture is in `plugin-install-transaction.test.ts` and `plugin-managed-dependencies.test.ts`. **Do not reintroduce:** a palette row or cached intent as effect content, an audit event as the admission record, eviction of outstanding effects or unexpired cancels, a second open withdrawal per plugin, a lifecycle change refused because its withdrawal could not be recorded, a withdrawal reported complete without settlement proof, or a lifecycle response that waits while holding a plugin lock.
 
 ## RegistrySupplyChainPolicy
 
