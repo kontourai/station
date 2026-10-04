@@ -30,6 +30,26 @@ Do not apply that override to make a disposable recipe work on a real home.
 
 ## Docker Production
 
+`station service run` claims the home atomically before starting Station, even
+on a fresh home without `service install`. It records the supervisor's PID and
+birth fingerprint as a service owner. If Desktop or another live service holds
+the home, the supervisor stays alive without starting Station and polls with
+backoff capped at 30 seconds; it starts after the owner is gone. Lost ownership
+at readiness or on an existing five-second health tick stops and reaps Station
+before returning to that wait. Each tick checks the service id, type, PID and
+birth without renewing the claim. Only a successful read showing a missing or
+different owner triggers recovery; an unreadable tick read keeps Station
+running and retries next tick. Startup claim read errors still exit nonzero.
+Recovery waits for a live replacement service even at the same registry id.
+Retraction clears only the supervisor's own PID and birth. Existing Dockerfile
+and Compose commands need no policy-registration step.
+
+Direct `command-station.js` launches remain unfenced and can serve the same
+writable home as a registry claimant. When bound to `0.0.0.0`, they are reachable
+through container networking and any published or proxied ports. The recipes
+and historical qualifications below are not current image or cloud proof.
+
+
 The default Compose mapping exposes port 3000. The lifecycle UI proxy serves
 the UI, HTTP API, event streams, identity and Device pairing through that origin.
 Dedicated terminal and voice listeners are separate; this proxy has no WebSocket
