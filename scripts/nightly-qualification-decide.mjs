@@ -53,7 +53,7 @@ import {
  */
 export const MIN_PUBLICATION_INTERVAL_MS = 20 * 60 * 60 * 1000;
 
-export const NATIVE_LEDGER_CHANNELS = Object.freeze([
+const NATIVE_LEDGER_CHANNELS = Object.freeze([
   'nightly-android',
   'nightly-desktop',
 ]);
@@ -85,7 +85,7 @@ export function parseReservationRefs(text) {
 }
 
 /** Native ledger rows, newest first, each with a validated timestamp. */
-export function nativeShips(ledgerEntries) {
+function nativeShips(ledgerEntries) {
   assertLedgerEntries(ledgerEntries);
   return ledgerEntries
     .filter((entry) => NATIVE_LEDGER_CHANNELS.includes(entry.channel))
@@ -179,7 +179,7 @@ function usage() {
   ].join('\n');
 }
 
-export function parseArgs(argv) {
+function parseArgs(argv) {
   const options = { ledgerRef: DEFAULT_LEDGER_REF, repoRoot: process.cwd() };
   const seen = new Set();
   for (let index = 0; index < argv.length; index += 2) {

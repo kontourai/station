@@ -127,7 +127,7 @@ function emitSummary(lines) {
  * `git merge-base --is-ancestor` exits 0 for yes and 1 for no; anything else
  * (an unknown commit, a shallow history) throws rather than reading as "no".
  */
-export function isStrictAncestorFromGit(repoRoot, ancestor, descendant) {
+function isStrictAncestorFromGit(repoRoot, ancestor, descendant) {
   if (ancestor === descendant) return false;
   const result = spawnSync(
     'git',
