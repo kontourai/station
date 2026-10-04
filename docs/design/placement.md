@@ -1738,11 +1738,17 @@ per conversation.** Below the fold nothing above changes.
   setters); a separator drag writes the room's custom properties directly
   and commits once on release, so a drag, a room measurement or an
   announcement renders the workbench but not Station's one Chat controller.
-- **Diff's head.** Beside Chat the Diff pane draws no "GIT DIFF" row: its
-  stats join the head after the name, Collapse all and Expand all are named
-  icons, and the view (unified or split) and line wrap are rows of one
-  overflow. On its own it keeps its row. File Preview's head is left for
-  the per-file Changes rework in flight to build on.
+- **Diff's head.** Beside Chat the Diff pane draws no row of its own: its
+  stats join the head after the name, and its four icon tools (Collapse
+  all, Expand all, and Split view and Wrap lines as pressed toggles) sit
+  before the close. They are the same tools the pane draws as its own row
+  elsewhere. The pane has no overflow, so the head keeps its own ⋯ for Pop
+  out and Remove pane. The head's tools are 32px beside the 32px close, and
+  44px boxes on a pointer that cannot hover, since the side panel opens by
+  width alone. A pull request review inside the pane fences its own
+  changed-files diff from the head, so the head always speaks for the Diff
+  pane. File Preview's head is left for the per-file Changes rework in
+  flight to build on.
 
 - **The folded inbox's edge.** While the inbox is folded past the fold (by
   the layout or by hand) on a fine pointer, the Chat column's left edge
