@@ -414,8 +414,10 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
     });
   });
 
-  /** Every touch-chrome action is 44x44, beside its row, never wrapped under
-   *  it, and the row's title keeps a readable width. */
+  /** Every touch-chrome action is 44x44 and sits inside its row without
+   *  covering any of the row's text (#3144 pins the phone sheet's one
+   *  overflow control at the row's bottom-right, over space the row's text
+   *  reserves for it), and the row's title keeps a readable width. */
   async function auditTouchRows(
     pg: import('@playwright/test').Page,
     minimumTitleWidth: number,
@@ -439,27 +441,59 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
         const open = row
           .querySelector('.inbox-row__open')!
           .getBoundingClientRect();
+        const rowBox = row.getBoundingClientRect();
         const actionsBox = row
           .querySelector('.inbox-row__actions')
           ?.getBoundingClientRect();
+        // The text each element actually paints: its box less its padding,
+        // so space a title reserves with padding-right is not "covered".
+        const coveredText = actionsBox
+          ? [...row.querySelectorAll('.inbox-row__open *')]
+              .filter((element) =>
+                [...element.childNodes].some(
+                  (node) =>
+                    node.nodeType === Node.TEXT_NODE &&
+                    (node.textContent ?? '').trim(),
+                ),
+              )
+              .filter((element) => {
+                const box = element.getBoundingClientRect();
+                const style = getComputedStyle(element);
+                if (style.clipPath !== 'none' || box.width <= 1) return false;
+                const left = box.left + parseFloat(style.paddingLeft);
+                const right = box.right - parseFloat(style.paddingRight);
+                const top = box.top + parseFloat(style.paddingTop);
+                const bottom = box.bottom - parseFloat(style.paddingBottom);
+                return (
+                  left < actionsBox.right - 0.5 &&
+                  right > actionsBox.left + 0.5 &&
+                  top < actionsBox.bottom - 0.5 &&
+                  bottom > actionsBox.top + 0.5
+                );
+              })
+              .map((element) => (element.textContent ?? '').trim())
+          : [];
         return {
           key: row.getAttribute('data-row-key'),
           targets: row.querySelectorAll('.inbox-row__action').length,
           title: row.querySelector('.inbox-row__title')!.getBoundingClientRect()
             .width,
-          right: row.getBoundingClientRect().right,
-          wrapped: actionsBox
-            ? actionsBox.left < open.right - 0.5 ||
+          right: rowBox.right,
+          outsideRow: actionsBox
+            ? actionsBox.left < rowBox.left - 0.5 ||
+              actionsBox.right > rowBox.right + 0.5 ||
+              actionsBox.top < rowBox.top - 0.5 ||
+              actionsBox.bottom > rowBox.bottom + 0.5 ||
               actionsBox.top >= open.bottom
             : false,
+          coveredText,
         };
       }),
     );
     expect(rows.length).toBe(ITEMS.length);
     for (const row of rows) {
-      expect(row.wrapped, `${row.key} actions wrapped under the row`).toBe(
-        false,
-      );
+      expect(row.outsideRow, `${row.key} actions outside the row`).toBe(false);
+      expect(row.coveredText, `${row.key} text under its actions`).toEqual([]);
       // Details plus at most one more target, on every row.
       expect(row.targets, `${row.key} targets`).toBeLessThanOrEqual(2);
       expect(row.title, `${row.key} title width`).toBeGreaterThanOrEqual(
@@ -473,7 +507,7 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
     [390, 200],
     [320, 160],
   ])(
-    'touch chrome at %ipx: 44px actions beside the row and a title of at least %ipx',
+    'touch chrome at %ipx: 44px actions inside the row, over no text, and a title of at least %ipx',
     async (width, minimumTitleWidth) => {
       const markup = sheetMarkup();
       const pg = await browser.newPage({
