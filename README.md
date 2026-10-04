@@ -51,7 +51,7 @@ Station brings several parts of agent work into one workspace:
 | Keep a long piece of work alive | A Task spans as many Sessions as it needs. Follow it from a paired device and come back to the same context, files, and evidence. |
 | Use agents without a cloud account | A configured local model can provide inference without a cloud account. Tools, engines, and other enabled integrations retain their own network behavior. |
 | Coordinate several agents | Delegate bounded work from one agent to another, or run it on a remote computer over SSH with that machine's own agents, credentials, and workspace. |
-| Run Station on a server you control | Review the deployment recipe and its current container policy-registration limitation before selecting an image and authenticated ingress. |
+| Run Station on a server you control | Review the deployment recipe, image provenance, home ownership, and authenticated ingress. |
 | Build a purpose-built work surface | Write a plugin using the public SDK: a review workbench, a release console, or a domain-specific layout. |
 
 ## Get Station

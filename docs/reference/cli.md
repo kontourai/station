@@ -1782,17 +1782,21 @@ station service uninstall [--instance=<name>] [--home=<dir>] [--base=<dir>] [--p
 station service run [--instance=<name>] [--home=<dir>] [--base=<dir>] [--port=<n>] [--ui-port=<n>] [--host=<address>] [--features=<flags>] [--allowed-origin=<origin>]...
 ```
 
-`run` is the foreground supervisor used by installed OS units. It requires
-that instance's installed service policy entry and claims the home before
-starting Station. Missing policy, a conflicting live owner, or unreadable
-registry exits nonzero with a remedy; readiness-publication failure stops
-Station. Install writes policy and a live installer reservation before starting
-the backend, restoring prior policy if backend startup fails.
+`run` is the foreground supervisor used by installed OS units and containers.
+It takes the same atomic home claim before starting Station. With no installed
+policy, it creates a service owner record with its PID and birth fingerprint;
+existing installed policy is preserved. A conflicting live owner keeps the
+supervisor alive without running Station. It polls at 5, 10, 20, then at most
+30-second intervals, logging only refusal-reason changes, and claims and starts
+when the owner is gone. Unreadable registry state exits nonzero. Lost ownership
+at readiness stops Station before returning to the same wait. Install still
+writes policy and a live installer reservation before starting the backend,
+restoring prior policy if backend startup fails.
 
-The current container image also invokes `run`, but has no fresh-home policy
-registration. That invocation now refuses; container policy registration is an
-unresolved lifecycle boundary. Direct `command-station.js` is still unfenced
-and must not be described as exclusive ownership when sharing a writable home.
+The container image's existing `service run` invocation self-claims a fresh
+home without a policy-registration step. Direct `command-station.js` is still
+unfenced and must not be described as exclusive ownership when sharing a
+writable home.
 `station start` remains the detached lifecycle command with its separate
 shared-home checks and overrides.
 
@@ -1928,7 +1932,7 @@ origins on an `origins` line.
 | macOS | LaunchAgent in `~/Library/LaunchAgents/` | after reboot and login | `<STATION_HOME>/logs/*-service.{out,err}.log` |
 | Linux | systemd user unit in `~/.config/systemd/user/` | user-manager startup, including reboot without login | `journalctl --user -u station-<instance>.service` |
 | Windows | Task Scheduler task, `ONLOGON`, `LIMITED`, no time limit, no battery rules | installing user's logon | `<STATION_HOME>\logs\*-service.{out,err}.log` |
-| No service manager (container, or Linux without a systemd user session) | no fresh-home policy registration; bare `service run` refuses | requires a separate policy-registration lifecycle | the supervisor's refusal on stdout/stderr |
+| No service manager (container, or Linux without a systemd user session) | foreground `service run` with an atomic home claim | when invoked after winning the claim; waits while another live owner holds the home | supervisor stdout/stderr and `<STATION_HOME>/logs/<instance>.log` |
 
 `service status` reports the OS unit, lifecycle instance/processes, and both
 server/UI identity endpoints. `--json` emits the same data for automation. An
