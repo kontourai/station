@@ -210,9 +210,15 @@ export function parseRecordFile(file, text, recordLayout = 'canonical') {
     throw reviewError('invalid-shape', 'Unknown review record layout mode', {
       file,
     });
-  const keys = Object.hasOwn(JSON.parse(text), 'document')
-    ? RECORD_KEYS
-    : RECORD_KEYS.filter((key) => key !== 'document');
+  // parseCanonical reports malformed JSON; this read only picks the layout.
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch {}
+  const keys =
+    parsed && typeof parsed === 'object' && Object.hasOwn(parsed, 'document')
+      ? RECORD_KEYS
+      : RECORD_KEYS.filter((key) => key !== 'document');
   const record = parseCanonical(
     file,
     text,
@@ -233,7 +239,7 @@ export function parseRecordFile(file, text, recordLayout = 'canonical') {
     /^[a-f0-9]{40}$/.test(value.revision);
   // A path-only record names its sources; the older layout binds the document
   // and each source to digests. One record never mixes the two.
-  const pathOnly = !record.document;
+  const pathOnly = !Object.hasOwn(record, 'document');
   if (!pathOnly) {
     exactKeys(record.document, ['digest', 'revision'], file);
     if (!validIdentity(record.document))
