@@ -362,7 +362,7 @@ function parseNotesFile(file, text) {
  */
 export function parseReviewLedgerFiles(
   files,
-  { recordLayout = 'canonical' } = {},
+  { recordLayout = 'canonical', enforcePathBudget = true } = {},
 ) {
   const indexText = files.get(REVIEW_LEDGER_INDEX);
   if (indexText === undefined)
@@ -387,7 +387,7 @@ export function parseReviewLedgerFiles(
   const captures = new Map();
   const notes = [];
   for (const file of files.keys())
-    if (file.length > REVIEW_LEDGER_PATH_BUDGET)
+    if (enforcePathBudget && file.length > REVIEW_LEDGER_PATH_BUDGET)
       throw reviewError(
         'path-too-long',
         `Review ledger path is ${file.length} characters, over the ${REVIEW_LEDGER_PATH_BUDGET} budget that keeps checkouts under the Windows 260-character limit: ${file}; shorten or move the document`,
@@ -637,8 +637,8 @@ export function writeReviewFiles(root, after, before) {
       if (before.get(file) === text) continue;
       const target = nodePath.join(root, file);
       const prior = existsSync(target) ? readFileSync(target) : undefined;
-      touched.push({ file, target, prior });
       mkdirSync(nodePath.dirname(target), { recursive: true });
+      touched.push({ file, target, prior });
       writeFileSync(target, text);
     }
   } catch (cause) {
@@ -759,6 +759,10 @@ export function readReviewStateAt(root, ref, { purpose } = {}) {
       parseReviewLedgerFiles(
         new Map(files.map((file) => [file, blobs.get(file).toString('utf8')])),
         {
+          // History and base reads must still parse a ledger that carries an
+          // over-budget path, or no PR could delete it. The budget guards the
+          // working tree (readReviewFiles) and what the record command writes.
+          enforcePathBudget: false,
           recordLayout:
             purpose === 'advisory-dependency-history'
               ? 'advisory-dependency-history'

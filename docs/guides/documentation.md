@@ -239,7 +239,16 @@ Four guards sit on top of the layout (#3036):
 - **Batch writes roll back.** `docs:review:record` writes its files together;
   if one write fails it restores the prior bytes of files it rewrote, removes
   files it created and fails with `write-failed`, listing any file it could not
-  restore. The gate proves that a covering
+  restore.
+
+The append-only check does not run when `STATION_DOCS_FRESHNESS=strict` is set
+explicitly, or when a shallow checkout falls back to advisory; in a pull
+request context `docs:freshness:check` then prints `Append-only notes: not
+checked (<mode>)`. The path budget applies to the working tree and to what the
+record command writes, not to merge-base or history reads, so a pull request
+can still delete an over-budget record that reached `main`. Notes are never
+pruned: the notes of a removed document stay in `notes/` forever, because
+deleting them would fail `note-removed`. The gate proves that a covering
 note exists for each touched input, not that its prose is accurate. All consumers
 use
 [`review-ledger-store.mjs`](../../scripts/lib/review-ledger-store.mjs), including

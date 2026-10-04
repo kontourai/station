@@ -305,6 +305,21 @@ describe('missing merge base (#3036)', () => {
       expect(result.appendOnly).toBe('not-checked');
     },
   );
+
+  it('says so when the check is skipped in a pull request context', () => {
+    const { root } = fixture();
+    const skipped = run(root, 'check-documentation-freshness.mjs', [], {
+      ...prEvent,
+      STATION_DOCS_FRESHNESS: 'strict',
+    });
+    expect(skipped.status).toBe(0);
+    expect(skipped.stderr).toContain('Append-only notes: not checked (strict)');
+    const queue = run(root, 'check-documentation-freshness.mjs', [], {
+      GITHUB_ACTIONS: 'true',
+      GITHUB_EVENT_NAME: 'merge_group',
+    });
+    expect(queue.stderr).not.toContain('Append-only notes');
+  });
 });
 
 describe('ledger path budget (#3036)', () => {
@@ -357,6 +372,20 @@ describe('ledger path budget (#3036)', () => {
     expect(refused.status).toBe(1);
     expect(refused.error?.code).toBe('path-too-long');
   });
+
+  it('lets a PR delete an over-budget record that already reached the base', () => {
+    const f = fixture();
+    const over = docOfRecordLength(BUDGET + 1);
+    f.write(over, '# Long\n');
+    f.write(recordFile(over), pathOnlyRecord(over, ['src/a.ts']));
+    commit(f.root, 'an over-budget record lands on main');
+    git(f.root, ['update-ref', 'refs/remotes/origin/main', 'main']);
+    git(f.root, ['switch', '-qc', 'pr']);
+    git(f.root, ['rm', '-q', recordFile(over)]);
+    commit(f.root, 'remove the over-budget record');
+    // History and merge-base reads do not enforce the budget.
+    expect(check(f.root, scoped)).toMatchObject({ status: 0, blocking: [] });
+  });
 });
 
 describe('write rollback (#3036)', () => {
@@ -386,6 +415,31 @@ describe('write rollback (#3036)', () => {
       'prior bytes',
     );
     expect(existsSync(join(root, 'ledger/created/new.json'))).toBe(false);
+  });
+
+  it('does not report a file it never wrote as unrestored when a directory cannot be made', () => {
+    const root = makeTempDir('station-ledger-write-');
+    mkdirSync(join(root, 'ledger'));
+    writeFileSync(join(root, 'ledger/existing.json'), 'prior bytes');
+    // A file where a directory belongs makes mkdir fail with ENOTDIR.
+    writeFileSync(join(root, 'ledger/blocked'), 'a file');
+    let error: any;
+    try {
+      writeReviewFiles(
+        root,
+        new Map([
+          ['ledger/existing.json', 'new bytes'],
+          ['ledger/blocked/new.json', 'cannot be written'],
+        ]),
+        new Map([['ledger/existing.json', 'prior bytes']]),
+      );
+    } catch (caught) {
+      error = caught;
+    }
+    expect(error).toMatchObject({ code: 'write-failed', unrestored: [] });
+    expect(readFileSync(join(root, 'ledger/existing.json'), 'utf8')).toBe(
+      'prior bytes',
+    );
   });
 
   it('writes every changed file when nothing fails', () => {

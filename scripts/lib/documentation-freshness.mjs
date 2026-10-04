@@ -71,7 +71,7 @@ const NOTES_DIR = `${REVIEW_LEDGER_DIR}/notes`;
  * every non-PR GitHub event (merge queue, push, Nightly) to advisory before
  * any scope is computed, so only PR events and ci:fast reach a scope.
  */
-function isPullRequestContext(env) {
+export function isPullRequestContext(env) {
   return (
     (env.GITHUB_ACTIONS === 'true' && PR_EVENTS.has(env.GITHUB_EVENT_NAME)) ||
     Boolean(env[CI_FAST_BASE_ENV])

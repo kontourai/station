@@ -12,6 +12,7 @@ import {
   assertDocumentationFresh,
   checkDocumentationFreshness,
   formatFreshnessAdvisory,
+  isPullRequestContext,
 } from './lib/documentation-freshness.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
@@ -48,6 +49,13 @@ export async function main(argv = process.argv.slice(2)) {
   if (result.policy.appendOnly === 'NOT_VERIFIED')
     console.warn(
       'Append-only notes: NOT_VERIFIED (no merge base to compare against); a deleted note would pass this run.',
+    );
+  else if (
+    !['verified', 'not-applicable'].includes(result.policy.appendOnly) &&
+    isPullRequestContext(process.env)
+  )
+    console.warn(
+      `Append-only notes: not checked (${result.policy.mode}); a deleted note would pass this run.`,
     );
   const advisory = formatFreshnessAdvisory(result.policy, result.advisory);
   if (advisory) console.warn(advisory);
