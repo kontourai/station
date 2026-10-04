@@ -25,6 +25,8 @@
     "LICENSE"
   ],
   "exports": {
+    "./native-relay-link": "./src/native-relay-link.ts",
+    "./relay-ice": "./src/relay-ice.ts",
     "./self-hosted-broker": "./src/self-hosted-broker.ts",
     "./connection-proof": "./src/connection-proof.ts",
     "./mobile-device": "./src/mobile-device.ts",
@@ -32,6 +34,7 @@
     "./device-tools": "./src/device-tools.ts",
     "./native-push": "./src/native-push.ts",
     "./native-device-proof": "./src/native-device-proof.ts",
+    "./native-relay-enrollment": "./src/native-relay-enrollment.ts",
     "./presence": "./src/presence.ts",
     ".": "./src/index.ts",
     "./acp": "./src/acp.ts",
@@ -105,6 +108,7 @@
     "./principal": "./src/principal.ts",
     "./proposed-change": "./src/proposed-change.ts",
     "./plugin": "./src/plugin.ts",
+    "./plugin-command-effect": "./src/plugin-command-effect.ts",
     "./plugin-draft": "./src/plugin-draft.ts",
     "./plugin-foreground-work": "./src/plugin-foreground-work.ts",
     "./project": "./src/project.ts",
@@ -202,7 +206,7 @@
   "dependencies": {
     "@kontourai/datum": "0.8.0",
     "@kontourai/flow": "5.1.1",
-    "@kontourai/flow-agents": "6.4.0",
+    "@kontourai/flow-agents": "6.5.1",
     "@kontourai/surface": "^3.2.0",
     "@kontourai/thread": "0.5.0"
   },

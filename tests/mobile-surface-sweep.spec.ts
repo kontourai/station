@@ -168,28 +168,34 @@ test.describe('Mobile surface sweep at 390x844', () => {
     for (const route of ROUTES) {
       await page.goto(route);
       // The shell paints its own frame before a lazy route chunk resolves, so
-      // wait for the route's own heading before measuring.
-      await expect(page.locator('h1').first()).toBeVisible({
+      // wait for the route's own heading before measuring. Activity opens as
+      // a dock pane titled by an h2, and Home's h1 stays in the DOM under it,
+      // hidden; every other route is a page with its own h1.
+      const heading =
+        route === '/?surface=activity'
+          ? page.getByRole('heading', { level: 2, name: 'Activity' })
+          : page.locator('h1').filter({ visible: true }).first();
+      await expect(heading).toBeVisible({
         timeout: 30_000,
       });
       await assertNoHorizontalScroll(page, route);
     }
   });
 
-  test('the project layout chips wrap inside the drawer and keep the 44px floor', async ({
+  test('the project layout chips scroll in one row inside the drawer and keep the 44px floor', async ({
     page,
   }) => {
     await page.goto(`/projects/${SWEEP_PROJECT_SLUG}`);
     await page.getByRole('button', { name: 'Toggle menu' }).click();
 
-    const chips = page.locator('.sidebar__layout-chips .sidebar__layout-chip');
+    const row = page.locator('.sidebar__layout-chips');
+    const chips = row.locator('.sidebar__layout-chip');
     await expect(chips.first()).toBeVisible({ timeout: 30_000 });
     const boxes = await chips.evaluateAll((elements) =>
       elements.map((element) => {
         const rect = element.getBoundingClientRect();
         return {
           top: Math.round(rect.top),
-          right: rect.right,
           width: rect.width,
           height: rect.height,
           text: element.textContent ?? '',
@@ -198,16 +204,37 @@ test.describe('Mobile surface sweep at 390x844', () => {
     );
     expect(boxes.length).toBe(SWEEP_LAYOUTS.length);
 
-    // Wrapped, not overflowed: more than one row of chips, and none reaching
-    // past the viewport's right edge.
-    expect(new Set(boxes.map((box) => box.top)).size).toBeGreaterThan(1);
+    // One line that scrolls sideways, not a wrap (#2150): every chip on one
+    // row, and the row itself inside the drawer rather than the page.
+    expect(new Set(boxes.map((box) => box.top)).size).toBe(1);
     const undersized = boxes
       .filter((box) => box.width < 44 || box.height < 44)
       .map(
         (box) => `${box.text} ${box.width.toFixed(0)}x${box.height.toFixed(0)}`,
       );
     expect(undersized, 'layout chips below the 44px touch floor').toEqual([]);
-    for (const box of boxes) expect(box.right).toBeLessThanOrEqual(390);
+    const rowBox = await row.boundingBox();
+    const drawerBox = await page.locator('#mobile-navigation').boundingBox();
+    expect(drawerBox).not.toBeNull();
+    const drawerRight = drawerBox!.x + drawerBox!.width;
+    expect(drawerRight).toBeLessThan(390);
+    expect(rowBox).not.toBeNull();
+    expect(rowBox!.x + rowBox!.width).toBeLessThanOrEqual(drawerRight + 0.5);
+
+    // The seeded layouts overflow the drawer, so the row really scrolls, and
+    // the chips past its edge are reachable: scrolling brings the last one
+    // inside the row's own box.
+    const overflows = await row.evaluate(
+      (element) => element.scrollWidth > element.clientWidth,
+    );
+    expect(overflows, 'the seeded chips no longer overflow the row').toBe(true);
+    const last = chips.last();
+    await last.scrollIntoViewIfNeeded();
+    const lastBox = await last.boundingBox();
+    expect(lastBox).not.toBeNull();
+    expect(lastBox!.x + lastBox!.width).toBeLessThanOrEqual(
+      rowBox!.x + rowBox!.width + 0.5,
+    );
 
     await assertNoHorizontalScroll(page, `/projects/${SWEEP_PROJECT_SLUG}`);
   });

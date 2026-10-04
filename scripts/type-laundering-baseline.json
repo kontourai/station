@@ -1761,12 +1761,6 @@
       "reason": "legacy-cast"
     },
     {
-      "file": "src-server/services/orchestration/conversation-fork.ts",
-      "rule": "as-unknown",
-      "fingerprint": "0688f7bc96e4526512872a9c16b40c03e97cd0d9dce2fb97a2a7094ebb49f41a",
-      "reason": "legacy-cast"
-    },
-    {
       "file": "src-server/services/orchestration/delta-coalescer.ts",
       "rule": "as-unknown",
       "fingerprint": "8ffdd7b4094778f16d7cedb68c90d4522bb0b521e5e2c206ff82dd55a5549376",

@@ -53,3 +53,244 @@
 .pull-request-review__diff {
   flex-shrink: 0;
 }
+.pull-request-review__muted {
+  color: var(--text-muted);
+}
+.pull-request-review__checks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0;
+}
+/* Each row is as tall as its icon's 44px hit area, so the areas of
+   neighbouring rows' links do not overlap. */
+.pull-request-review__checks li {
+  min-height: 44px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.pull-request-review__check-name {
+  flex: 1 1 12ch;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+/* The state word carries the meaning; the tone only reinforces it. */
+.pull-request-review__check-state {
+  flex: 0 0 auto;
+  min-width: 9ch;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.pull-request-review__check-state--failure {
+  color: var(--error-text);
+}
+.pull-request-review__check-state--success {
+  color: var(--success-text);
+}
+.pull-request-review__check-state--pending {
+  color: var(--warning-text);
+}
+.pull-request-review__mergeability[data-mergeability="conflicting"] {
+  color: var(--error-text);
+  font-weight: 600;
+}
+/* A native disclosure with its own caret: `display: flex` on a summary
+   drops the browser marker, so the glyph is the affordance, in secondary
+   tone, turning when open. The 44px floor holds at every pointer. */
+.pull-request-review__summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  list-style: none;
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+.pull-request-review__summary::-webkit-details-marker {
+  display: none;
+}
+.pull-request-review__summary:hover {
+  color: var(--text-primary);
+}
+/* The turn rides the shared motion tokens; tokens.css clamps them under
+   prefers-reduced-motion, so no page-local at-rule is needed. */
+.pull-request-review__caret {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  transition: transform var(--motion-base) var(--ease-standard);
+}
+details[open] > .pull-request-review__summary .pull-request-review__caret {
+  transform: rotate(90deg);
+}
+/* The head: chips, branches, author, then the quieter identity line. */
+.pull-request-review__head {
+  display: grid;
+  gap: 6px;
+}
+.pull-request-review__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  margin: 0;
+  min-width: 0;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+.pull-request-review__meta--secondary {
+  color: var(--text-tertiary);
+}
+.pull-request-review__meta code {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-primary);
+}
+.pull-request-review__meta--secondary code {
+  color: inherit;
+}
+.pull-request-review__branches {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+/* State and decision chips share the engine chip's recipe: an opaque
+   `--bg-tertiary` fill so the ratio is set by the token pair alone, and a
+   toned word (never colour alone) on it. */
+.pull-request-review__chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-tertiary);
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+.pull-request-review__chip[data-tone="success"] {
+  color: var(--success-text);
+}
+.pull-request-review__chip[data-tone="failure"] {
+  color: var(--error-text);
+}
+.pull-request-review__chip[data-tone="pending"] {
+  color: var(--warning-text);
+}
+/* Check counts: small, toned, failures first by source order. */
+.pull-request-review__checks-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  margin: 0;
+  font-size: var(--text-sm);
+}
+.pull-request-review__count {
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.pull-request-review__count[data-tone="failure"] {
+  color: var(--error-text);
+}
+.pull-request-review__count[data-tone="pending"] {
+  color: var(--warning-text);
+}
+.pull-request-review__count[data-tone="success"] {
+  color: var(--success-text);
+}
+.pull-request-review__handoff {
+  flex-shrink: 0;
+  min-height: 44px;
+}
+/* Forge comments the diff could not place: each a named group. */
+.pull-request-review__forge-comments {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.pull-request-review__forge-comment {
+  padding: 8px 10px;
+  border-left: 2px solid var(--border-secondary);
+  background: var(--bg-secondary);
+  border-radius: 4px;
+}
+.pull-request-review__forge-comment-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  min-height: 30px;
+  font-size: var(--text-sm);
+}
+.pull-request-review__forge-comment-meta .pull-request-review__icon {
+  margin-left: auto;
+}
+.pull-request-review__forge-comment .pull-request-review__body {
+  margin-top: 4px;
+  font-size: var(--text-sm);
+}
+/* One row: back, title, refresh, open on the forge. */
+.pull-request-review__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  /* 14px keeps neighbouring 44px hit areas apart: 30px icon + 14px = 44. */
+  gap: 14px;
+  min-width: 0;
+}
+/* The title keeps at least this much line before the actions wrap under
+   it as one unit (right-aligned), so a phone-width bar is not a one-word
+   column beside a button. */
+.pull-request-review__title {
+  flex: 1 1 auto;
+  min-width: min(16ch, 100%);
+  margin: 0;
+  font-size: var(--text-lg);
+  overflow-wrap: anywhere;
+}
+.pull-request-review__bar-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 14px;
+  margin-left: auto;
+}
+/* 30px icons with a 44px hit area at every width, without a page-local
+   breakpoint (mobile-css-ratchet). */
+.pull-request-review__icon {
+  position: relative;
+  flex-shrink: 0;
+}
+.pull-request-review__icon::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 44px;
+  height: 44px;
+  transform: translate(-50%, -50%);
+}
+.pull-request-review__check-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.pull-request-review__check-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
