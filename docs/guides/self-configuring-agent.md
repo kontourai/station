@@ -93,6 +93,10 @@ not inherit the record, and neither does a child Session that continues the
 conversation in a different folder than the previous Session recorded: it
 starts with no record.
 
+Interrupting a delegated task follows the same scope as a follow-up to it.
+The same applies to the Session commands that act on another Session: steer
+and steer-input inspection, adopt, interrupt, stop and draft discard.
+
 Saved-Environment discovery and remote dispatch require a bound operator caller.
 Remote task listings, task reads, event reads, and interrupts carry the same
 restriction.

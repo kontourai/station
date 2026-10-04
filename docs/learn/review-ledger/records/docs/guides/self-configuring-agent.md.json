@@ -132,29 +132,19 @@
 
     "src-ui/src/platform/native/stationProfileStorage.ts",
 
-    "src-ui/src/views/ConnectionsHub.tsx",
-
     "src-ui/src/views/connections-hub/AddMachineModal.tsx",
 
     "src-ui/src/views/connections-hub/ComputersSection.tsx",
 
-    "src-ui/src/views/connections-hub/RelayRouteKeyApproval.tsx",
-
     "src-ui/src/views/connections-hub/connection-sections.ts",
 
-    "src-ui/src/views/provider-settings/ProviderConnectionForm.tsx",
+    "src-ui/src/views/connections-hub/RelayRouteKeyApproval.tsx",
+
+    "src-ui/src/views/ConnectionsHub.tsx",
 
     "src-ui/src/views/provider-settings/providerCatalog.tsx",
 
-    "src-server/routes/orchestration/session-agent-control.ts",
-
-    "src-server/services/orchestration/session-control-request-keys.ts",
-
-    "src-server/services/orchestration/session-message-delivery.ts",
-
-    "src-server/services/orchestration/session-turn-wait.ts",
-
-    "src-server/tools/station-control-session-tools.ts"
+    "src-ui/src/views/provider-settings/ProviderConnectionForm.tsx"
   ],
 
   "checks": [

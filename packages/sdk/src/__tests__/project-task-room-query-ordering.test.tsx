@@ -5,6 +5,8 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { type ReactNode, useLayoutEffect, useState } from 'react';
 import { afterEach, expect, test, vi } from 'vitest';
 
+const feedbackAppend = vi.hoisted(() => vi.fn());
+
 let resolveDocument: ((value: unknown) => void) | undefined;
 let documentSignal: AbortSignal | undefined;
 const documentRequests: Array<{
@@ -62,6 +64,7 @@ vi.mock('../client/project-task-rooms', () => ({
   parseProjectTaskRoomDocumentResponse: (value: any) => value,
   parseProjectTaskRoomBrowserLiveSnapshot: () => undefined,
   appendProjectTaskRoomHumanMessage: vi.fn(),
+  appendProjectTaskRoomOutputFeedback: feedbackAppend,
   commandProjectTaskRoomLive: vi.fn(),
   discoverProjectTaskRoom: vi.fn(),
   fetchProjectTaskRoomHistory: vi.fn(),
@@ -74,6 +77,7 @@ import {
   ProjectTaskRoomProtocolError,
   projectTaskRoomQueries,
   refetchAuthoritativeProjectTaskRoomDocument,
+  useAppendProjectTaskRoomOutputFeedbackMutation,
   useProjectTaskRoomDocumentQuery,
   useProjectTaskRoomStream,
 } from '../query-domains/projectTaskRooms';
@@ -866,4 +870,71 @@ test('a gap recovery GET cannot overwrite a later committed SSE', async () => {
   expect(
     client.getQueryData(projectTaskRoomQueries.document('task-1').queryKey),
   ).toEqual({ kind: 'snapshot', revision: 'rev3', text: 'three' });
+});
+
+test('feedback loses delivery authority without adopting an old connection settlement', async () => {
+  const client = new QueryClient({
+    defaultOptions: { mutations: { retry: false } },
+  });
+  const invalidate = vi.spyOn(client, 'invalidateQueries');
+  let current = true;
+  let settle!: (value: unknown) => void;
+  feedbackAppend.mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        settle = resolve;
+      }),
+  );
+  const scope = {
+    apiBase: 'https://first.test',
+    authorityKey: 'first',
+    isCurrent: () => current,
+  };
+  const wrapper = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={client}>{children}</QueryClientProvider>
+  );
+  const hook = renderHook(
+    () =>
+      useAppendProjectTaskRoomOutputFeedbackMutation(
+        'task-1',
+        '2026-10-01T00:00:00.000Z',
+        scope,
+      ),
+    { wrapper },
+  );
+  const input = {
+    proposalId: 'same-statement',
+    occurredAt: '2026-10-03T00:00:00.000Z',
+    feedback: {
+      kind: 'output-feedback' as const,
+      target: {
+        outputId: 'output-1',
+        digest: `sha256:${'a'.repeat(64)}` as const,
+        taskCreatedAt: '2026-10-01T00:00:00.000Z',
+      },
+      review: 'accepted' as const,
+      text: 'Reviewed exact bytes',
+    },
+  };
+  let waiting!: Promise<unknown>;
+  act(() => {
+    waiting = hook.result.current.mutateAsync(input);
+  });
+  const refused = expect(waiting).rejects.toThrow(
+    'Connection changed after sending',
+  );
+  await waitFor(() => expect(feedbackAppend).toHaveBeenCalled());
+  current = false;
+  await act(async () => {
+    settle({ kind: 'duplicate' });
+    await refused;
+  });
+  expect(invalidate).not.toHaveBeenCalled();
+  feedbackAppend.mockClear();
+  await expect(hook.result.current.mutateAsync(input)).rejects.toThrow(
+    'connection or Task identity',
+  );
+  expect(feedbackAppend).not.toHaveBeenCalled();
+  hook.unmount();
+  client.clear();
 });

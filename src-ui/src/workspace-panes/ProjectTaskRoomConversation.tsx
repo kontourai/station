@@ -7,9 +7,19 @@ import { useProjectTaskRoomContext } from './ProjectTaskRoomContext';
 import { TaskRoomComposer } from './TaskRoomComposer';
 import { taskRoomRevisionLink } from './taskRoomRevisionLink';
 
-function roomRecord(record: ProjectTaskRoomBrowserRecord): string {
+function roomRecord(
+  record: ProjectTaskRoomBrowserRecord,
+  taskCreatedAt?: string,
+): string {
   const actor = record.actor.label;
   const body = record.body;
+  if (body.kind === 'output-feedback') {
+    const version =
+      taskCreatedAt && body.target.taskCreatedAt !== taskCreatedAt
+        ? 'Earlier Task version. '
+        : '';
+    return `${actor}: ${version}${body.review === 'accepted' ? 'Reviewer accepted this version' : body.review === 'changes-requested' ? 'Reviewer requested changes' : 'Comment'} (${body.target.outputId}, version ${body.target.digest.slice(7, 15)}): ${body.text}`;
+  }
   if (body.kind === 'human-message') return `${actor}: ${body.text}`;
   if (body.kind === 'live-work-started')
     return `${actor} is working on this Task.`;
@@ -72,6 +82,9 @@ export function ProjectTaskRoomConversation({
           Room history is unavailable. Retry when the connection is restored.
         </p>
       ) : null}
+      {records.some((record) => record.body.kind === 'output-feedback') ? (
+        <p>Output reviews are human statements. Task status is unchanged.</p>
+      ) : null}
       <ol aria-live="polite" aria-label="Task room history">
         {records.map((record) => {
           const revision = taskRoomRevisionLink(
@@ -86,7 +99,17 @@ export function ProjectTaskRoomConversation({
               record.body.link.kind === 'revision');
           return (
             <li key={record.sequence}>
-              {roomRecord(record)}
+              {roomRecord(record, taskCreatedAt)}
+              {record.body.kind === 'output-feedback' ? (
+                <details>
+                  <summary>Reviewed version details</summary>
+                  <p>
+                    Output {record.body.target.outputId}. Full version:{' '}
+                    {record.body.target.digest}. Task created{' '}
+                    {record.body.target.taskCreatedAt}.
+                  </p>
+                </details>
+              ) : null}
               {revisionBearing ? (
                 revision.state === 'available' ? (
                   <span>{` Revision ${revision.link.stableId}.`}</span>
