@@ -27,10 +27,15 @@ import { createAgentHooks } from '../../../runtime/agents/agent-hooks.js';
 import { VoltAgentFramework } from '../../../runtime/frameworks/voltagent-adapter.js';
 import { captureRuntimeConfigurationLease } from '../../../runtime/plugins/runtime-configuration-lease.js';
 import type { IAgent } from '../../../runtime/types.js';
+import { bindStationControlRequestAuthority } from '../../../security/station-control-request-authority.js';
 import { ApprovalRegistry } from '../../../services/approvals/approval-registry.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
+import {
+  type StationControlCaller,
+  stationControlCallerPrincipal,
+} from '../../../tools/station-control-shared.js';
 import { streamPrimaryAgentChat } from '../chat-primary-stream.js';
 import { prepareChatRequest } from '../chat-request-preparation.js';
 import {
@@ -195,7 +200,11 @@ describe('Station-agent conversation storage (#3112)', () => {
     }
   }
 
-  async function startSession(threadId: string, conversationId: string) {
+  async function startSession(
+    threadId: string,
+    conversationId: string,
+    owner = OWNER,
+  ) {
     const started = await service.sessionCommands.execute(
       {
         type: 'start-session',
@@ -206,23 +215,28 @@ describe('Station-agent conversation storage (#3112)', () => {
           metadata: {
             agentId: SLUG,
             agentSlug: SLUG,
-            userId: OWNER,
+            userId: owner,
             conversationId,
           },
         },
       },
-      { userId: OWNER },
+      { userId: owner },
     );
     if (started.status !== 'accepted') throw new Error(started.message);
   }
 
-  async function send(threadId: string, text: string, turns: number) {
+  async function send(
+    threadId: string,
+    text: string,
+    turns: number,
+    owner = OWNER,
+  ) {
     await service.dispatch(
       {
         type: 'sendTurn',
         input: { threadId, input: text, ambientContext: TIMEZONE },
       },
-      { userId: OWNER },
+      { userId: owner },
     );
     return waitForTurnEnd(threadId, turns);
   }
@@ -256,9 +270,13 @@ describe('Station-agent conversation storage (#3112)', () => {
     );
   }
 
-  /** The production composition of the referenced-conversation read. */
-  function referenceReadRoutes() {
-    return createConversationReferenceReadRoutes(
+  /**
+   * The production composition of the referenced-conversation read. With a
+   * `caller`, each request carries the station-control authority the guard
+   * binds for a tool call, so its reads are scoped to that principal.
+   */
+  function referenceReadRoutes(caller?: StationControlCaller) {
+    const routes = createConversationReferenceReadRoutes(
       conversationReferenceReadDeps({
         memoryAdapters: new Map([[SLUG, memoryAdapter]]) as any,
         sessions: service,
@@ -269,6 +287,18 @@ describe('Station-agent conversation storage (#3112)', () => {
         logger: quietLogger(),
       }),
     );
+    if (!caller) return routes;
+    const host = new Hono();
+    host.use('*', async (c, next) => {
+      bindStationControlRequestAuthority(c.req.raw, {
+        kind: 'caller',
+        caller,
+        boundOperator: caller.assurance === 'bound',
+      });
+      await next();
+    });
+    host.route('/', routes);
+    return host;
   }
 
   async function readJson<T>(app: Hono, path: string): Promise<T> {
@@ -603,5 +633,49 @@ describe('Station-agent conversation storage (#3112)', () => {
       'conv-paged',
       'conv-direct',
     ]);
+  });
+
+  test("a principal-scoped read serves only the Sessions its principal owns, a successor's included", async () => {
+    // The root is the owner's; the successor ran for someone else, so both
+    // its store record and its runtime events are another principal's.
+    modelMode.fail = true;
+    await startSession('conv-owned', 'conv-owned');
+    await send('conv-owned', 'Owner turn', 1);
+    const continuation = await service.resolveConversationContinuation(
+      'conv-owned',
+      INTERNAL_SESSION_READ_SCOPE,
+      { provider: 'station-agent' },
+    );
+    await startSession(continuation.sessionId, 'conv-owned', 'other-user');
+    await send(continuation.sessionId, 'Other turn', 1, 'other-user');
+    expect(
+      (await memoryAdapter.getConversation(continuation.sessionId))?.userId,
+    ).toBe('other-user');
+    expect(
+      service.readSessionMessages(
+        continuation.sessionId,
+        INTERNAL_SESSION_READ_SCOPE,
+      ).length,
+    ).toBeGreaterThan(0);
+
+    // A station-control agent on the owner's own conversation, not a bound
+    // operator: its reads are scoped to the owner.
+    const caller: StationControlCaller = {
+      sessionId: 'conv-owned',
+      assurance: 'delegated-custody',
+      principal: stationControlCallerPrincipal(OWNER, 'session-owner'),
+      conversationId: 'conv-owned',
+    };
+    const read = await readJson<{
+      access: string;
+      messages: Array<{ text: string }>;
+    }>(referenceReadRoutes(caller), '/conv-owned/read');
+    expect(read.access).toBe('own');
+    const texts = read.messages.map((message) => message.text);
+    expect(texts).toEqual([
+      'Owner turn',
+      expect.stringMatching(/^\[SYSTEM_EVENT\] \[CHAT_ERROR\] /),
+    ]);
+    expect(texts.join('\n')).not.toContain('Other turn');
   });
 });
