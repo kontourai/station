@@ -2,12 +2,12 @@
  * @vitest-environment node
  */
 
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createServer, type ViteDevServer } from 'vite';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
+import { trackTempDirs } from '../../../src-server/__test-utils__/temp-dirs';
 import {
   INTERNAL_API_TOKEN_HEADER,
   INTERNAL_INGRESS_IDENTITY_HEADER,
@@ -166,11 +166,11 @@ describe('station dev server file access (#3254 review)', () => {
   const repo = resolve(fileURLToPath(new URL('../../../', import.meta.url)));
   const configFile = join(repo, 'vite.config.ts');
   let server: ViteDevServer | undefined;
-  let cacheDir: string | undefined;
+  const makeTempDir = trackTempDirs({ lifetime: 'file' });
   let origin = '';
 
   beforeAll(async () => {
-    cacheDir = mkdtempSync(join(tmpdir(), 'station-vite-access-'));
+    const cacheDir = makeTempDir('station-vite-access-');
     server = await createServer({
       configFile,
       logLevel: 'error',
@@ -185,7 +185,6 @@ describe('station dev server file access (#3254 review)', () => {
 
   afterAll(async () => {
     await server?.close();
-    if (cacheDir) rmSync(cacheDir, { recursive: true, force: true });
   });
 
   test('turns CORS off and allows only the UI import roots', () => {
