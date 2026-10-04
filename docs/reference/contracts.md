@@ -636,6 +636,19 @@ means account attribution is unknown; consumers must not infer the current
 active account. These fields are observations, never billing or routing authority.
 
 
+### Usage observation provenance
+
+`@kontourai/station-contracts/usage-rollup` owns `UsageReceipt`, `UsageCoverage`,
+and `UsageRollup`. A receipt's optional `sourceSequence` is durable order within
+its Station/thread, not a provider-clock timestamp or an authorization grant.
+Same-source cumulative replacements use that order and preserve omitted
+measured components. Older peers can omit it and retain timestamp ordering.
+Sparse or mixed-model/pricing evidence cannot substantiate a combined estimate.
+`aggregateReceipts` is bounded logical transfer material, separate from the
+receipt drilldown. See the [analytics API](api.md#read-usage-receipts-and-rollups)
+for limits and observation-window semantics.
+
+
 ## Immutable Task output review
 
 `@kontourai/station-contracts/project-task-room` defines
