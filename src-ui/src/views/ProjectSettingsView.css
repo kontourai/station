@@ -204,12 +204,16 @@
 /* #2799: PageSection's actions slot never shrinks (it holds buttons), so an
    unbreakable working directory in the identity preview took the whole row
    and squeezed the heading to one word per line. Here the slot holds text:
-   cap it at half the row so the description keeps its measure. Below 641px
-   the shared header stacks and the slot is already the full width. */
-@media (min-width: 641px) {
-  .project-settings__section--hero .page-section__actions {
-    max-width: 50%;
-  }
+   let it shrink, and reserve half the row for the heading so the description
+   keeps its measure. No breakpoint: when the shared header stacks (column
+   direction) the percentage basis has no height to resolve against and falls
+   back to content size. */
+.project-settings__section--hero .page-section__heading {
+  flex: 1 0 50%;
+}
+.project-settings__section--hero .page-section__actions {
+  flex: 0 1 auto;
+  min-width: 0;
 }
 .project-settings__identity-preview {
   display: flex;
