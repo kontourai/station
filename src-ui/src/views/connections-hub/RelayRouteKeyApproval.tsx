@@ -164,11 +164,11 @@ export function RelayRouteKeyApproval({
     mutationFn: () => nativeRelayKeyApproval.prepare(profileName),
     onSuccess: (prepared) => {
       setSurface(prepared);
-      setMessage('Device details ready. Send them to the Station owner.');
+      setMessage('Setup info ready. Send it to the owner.');
     },
     onError: () =>
       setMessage(
-        'Couldn’t prepare device details. Your Station confirmation is unchanged.',
+        'Couldn’t prepare setup info. Your Station confirmation is unchanged.',
       ),
   });
   const approve = useMutation({
@@ -313,11 +313,9 @@ export function RelayRouteKeyApproval({
     if (!surfaceMatchesRoute || !surface) return;
     try {
       await navigator.clipboard.writeText(JSON.stringify(surface, null, 2));
-      setMessage('Device details copied. Share them with the Station owner.');
+      setMessage('Setup info copied. Send it to the owner.');
     } catch {
-      setMessage(
-        'Couldn’t copy device details. Open the public details and share them with the Station owner.',
-      );
+      setMessage('Couldn’t copy. Open Setup info and send it to the owner.');
     }
   }
   function cancelKeyReview() {
@@ -381,7 +379,7 @@ export function RelayRouteKeyApproval({
         {!compactConfirmed && status !== 'untrusted' && (
           <span>
             {status === 'approved'
-              ? 'Identity confirmed. Device access is a separate step.'
+              ? null
               : statusQuery.isError
                 ? 'Try again when this device’s secure storage is available.'
                 : 'Ask the Station owner to help you confirm its identity.'}
@@ -391,7 +389,7 @@ export function RelayRouteKeyApproval({
       {canPrepareSurface && !candidate && !surfaceMatchesRoute && (
         <div className="relay-route-key-approval__prepare">
           <p className="connections-computers__note">
-            Send these details to the owner so they can approve this device.
+            Send setup info to the owner for approval.
           </p>
           <Button
             variant="primary"
@@ -400,7 +398,7 @@ export function RelayRouteKeyApproval({
             pendingLabel="Preparing…"
             onClick={() => void prepare.mutateAsync().catch(() => undefined)}
           >
-            Share device details
+            Share setup info
           </Button>
           {status === 'approved' && rotationReview && (
             <Button
@@ -420,11 +418,11 @@ export function RelayRouteKeyApproval({
         >
           <p>
             {linkedInvitation
-              ? 'Check this Station with its owner before continuing.'
-              : 'Share these device details with the Station owner for approval.'}
+              ? 'Confirm this Station with its owner.'
+              : 'Send setup info to the owner for approval.'}
           </p>
           <details>
-            <summary>Device details (public)</summary>
+            <summary>Setup info</summary>
             <dl>
               <div>
                 <dt>App</dt>
@@ -459,7 +457,7 @@ export function RelayRouteKeyApproval({
               variant="primary"
               onClick={() => void copySurfaceMetadata()}
             >
-              Copy device details
+              Copy setup info
             </Button>
           )}
           {!linkedInvitation && (

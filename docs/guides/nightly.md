@@ -122,6 +122,11 @@ newer than the rolling manifest, uploads the archives and the manifest to the
 immutable prerelease `v<version>` (never marked latest), re-downloads them and
 compares digests, replaces `station-portable-nightly-manifest.json` on the
 rolling `portable-nightly` release last, and re-fetches and re-verifies it.
+Unlike the stable and preview host pointers, Nightly checks "newer than the
+rolling manifest" against the cacheable download URL only and does not plan
+again against the release's own bytes before replacing, so a stale cached
+copy can let an older Nightly replace a newer one. Nightly also has no
+restore if the replace or re-verification fails.
 
 While the gate is off, the dry run cannot turn Nightly red: its jobs are
 `continue-on-error`, so a failed dry-run job shows red in the run but the run

@@ -48,7 +48,9 @@
 
     "packages/shared/src/release-manifest.mjs",
 
-    "packages/shared/src/prebuilt-archive.ts"
+    "packages/shared/src/prebuilt-archive.ts",
+
+    "scripts/lib/portable-publication.mjs"
   ],
 
   "checks": [

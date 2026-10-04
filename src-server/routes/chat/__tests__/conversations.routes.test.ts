@@ -1698,6 +1698,67 @@ describe('Conversation Routes', () => {
     expect(eventStore.appendConversationForkIfAbsent).toHaveBeenCalledOnce();
   });
 
+  test('fork of a conversation with an oversized stored title succeeds with a bounded seed heading (#3164)', async () => {
+    const source = createMockAdapter();
+    // Rename accepts a title of any length; a stored 8k-emoji title must not
+    // make the seed builder refuse its heading.
+    source.getConversation.mockResolvedValue({
+      id: 'c1',
+      userId: 'agent:default',
+      title: '\u{1F642}'.repeat(8_000),
+      metadata: {},
+    });
+    source.getMessages.mockResolvedValue([
+      { id: 'u1', role: 'user', content: 'first' },
+      {
+        id: 'a1',
+        role: 'assistant',
+        content: 'first answer',
+        metadata: { turnId: 'turn-1', answerEligible: true },
+      },
+    ]);
+    const target = createMockAdapter();
+    target.getConversation.mockResolvedValue(null);
+    const eventStore = {
+      appendConversationFork: vi.fn(),
+      appendConversationForkIfAbsent: vi.fn(() => true),
+      readConversationForkProvenance: vi.fn(() => ({ forkedTo: [] })),
+    };
+    const app = createConversationRoutes(
+      new Map([
+        ['default', source],
+        ['codex', target],
+      ]) as any,
+      mockLogger,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      () => 'fork-user',
+      undefined,
+      undefined,
+      eventStore,
+      () => true,
+    );
+
+    const response = await app.request('/station/conversations/c1/fork', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ targetAgent: 'codex' }),
+    });
+    const body = await json(response);
+
+    expect(response.status).toBe(200);
+    const heading = (body.data.seed as string).split('\n')[0]!;
+    expect(heading).toContain('\u2026, on station)');
+    expect(Buffer.byteLength(heading, 'utf8')).toBeLessThan(1_000);
+    expect(body.data.seed).toContain('Assistant: first answer');
+    expect(target.addMessages).toHaveBeenCalledOnce();
+  });
+
   test('DELETE /:slug/conversations/:id deletes its owner-scoped derived summary', async () => {
     const adapter = createMockAdapter();
     const adapters = new Map([['default', adapter]]);

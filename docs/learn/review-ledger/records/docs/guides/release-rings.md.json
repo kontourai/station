@@ -82,7 +82,11 @@
 
     "src-server/services/notifications/agent-activity-publisher.ts",
 
-    "package.json#/version"
+    "package.json#/version",
+
+    "scripts/lib/public-release-locations.mjs",
+
+    "scripts/portable-release-publication.mjs"
   ],
 
   "checks": [

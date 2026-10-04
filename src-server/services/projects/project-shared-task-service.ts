@@ -5,6 +5,7 @@ import {
   type ProjectSharedTaskSummary,
 } from '@kontourai/station-contracts/project-shared-task';
 import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
+import { ProjectMembershipRefusal } from './project-membership-store.js';
 import {
   type ProjectSharedTaskAdmission,
   ProjectSharedTaskRefusal,
@@ -117,19 +118,32 @@ export class ProjectSharedTaskService {
       .filter(({ admission }) => this.current(admission))
       .map(({ summary }) => summary);
   }
+  /**
+   * Publication state of one Task in `scope`.
+   *
+   * An operator reviews either state, including `unshared`, which is what
+   * the share control needs. A member who may read the Project sees only a
+   * Task currently shared into exactly this scope, and only the summary the
+   * shared-work list already gives them. Every other case is the same
+   * `not-found` refusal, so a member cannot tell an unshared Task from a
+   * missing one. The role is fixed by the first `operator()` answer and both
+   * roles take the same principal, membership and incarnation re-checks.
+   */
   async publication(
     scope: ProjectMembershipScope,
     taskId: string,
     authority: ProjectSharedTaskAuthority,
   ) {
     const initial = await authority.current();
-    await authority.operator();
+    const operator = await isOperator(authority);
     await authority.requireProjectRead(scope);
     const task = this.task(scope, taskId);
     const admission = this.deps.store.admission(taskId);
     if (admission && !sameScope(admission.scope, scope))
       throw new ProjectSharedTaskRefusal('not-found');
-    await authority.operator();
+    if (!admission && !operator)
+      throw new ProjectSharedTaskRefusal('not-found');
+    if (operator) await authority.operator();
     const current = await authority.current();
     if (current.principalId !== initial.principalId)
       throw new ProjectSharedTaskRefusal('conflict');
@@ -254,6 +268,21 @@ export class ProjectSharedTaskService {
     )
       throw new ProjectSharedTaskRefusal('not-found');
     return task;
+  }
+}
+/**
+ * Whether the caller currently holds Station operator authority. Only a
+ * forbidden membership refusal means "not an operator"; any other failure propagates
+ * so an unavailable authority never downgrades into a member read.
+ */
+async function isOperator(authority: ProjectSharedTaskAuthority) {
+  try {
+    await authority.operator();
+    return true;
+  } catch (error) {
+    if (error instanceof ProjectMembershipRefusal && error.code === 'forbidden')
+      return false;
+    throw error;
   }
 }
 function sameScope(
