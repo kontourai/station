@@ -249,13 +249,27 @@ function runAsync(program, args, env, cwd = undefined) {
       stderr += chunk;
     });
     const timer = setTimeout(() => child.kill(), RUN_TIMEOUT_MS);
-    child.on('close', (status) => {
+    let finished = false;
+    const finish = (status, held) => {
+      if (finished) return;
+      finished = true;
       clearTimeout(timer);
       process.stdout.write(
         `--- ${program} ${args.join(' ')} -> ${status}\n${stdout}${stderr}\n`,
       );
+      // A process the installer left running (a started Station) must not
+      // hold the installer's output open: a caller reading it, such as
+      // PowerShell's own pipeline, would wait for Station to stop.
+      if (held)
+        throw new Error(
+          'smoke failed: the run exited, but a process it left behind still holds its output open',
+        );
       done({ status, stdout, stderr });
+    };
+    child.on('exit', (status) => {
+      setTimeout(() => finish(status, true), 15_000).unref();
     });
+    child.on('close', (status) => finish(status, false));
   });
 }
 
