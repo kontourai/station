@@ -42,30 +42,70 @@ async function expectSettledTouchTargetHeight(locator: Locator) {
     .toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
 }
 
+/**
+ * An open, empty chat with `agentSlug`, in the shape a client-only draft chat
+ * has before its first send (`<agent>:<timestamp>`, no conversation yet).
+ *
+ * #3201 made the New chat draft the start surface: choosing an Agent there
+ * selects it for the draft and only Send starts the chat. This spec measures
+ * the composer, which needs a chat that has not been sent to, and no Home
+ * journey reaches one any more (a Send starts a turn). The chat is therefore
+ * seeded in the state the old pick-an-agent journey produced; the draft
+ * journey itself is exercised by 'the New chat draft starts the chat with the
+ * chosen Agent only on Send'.
+ */
 async function openComposer(
   page: Page,
   projectScoped = false,
   agentSlug = 'claude',
+  options: {
+    /** Overrides for a spec whose connections differ from the shared shell's. */
+    execution?: Record<string, unknown>;
+  } = {},
 ) {
-  await page.goto('/');
+  const sessionId = `${agentSlug}:1760000000000`;
+  await seedActiveChats(page, [
+    {
+      sessionId,
+      agentSlug,
+      // The execution a chat opened from the draft carries (read back from
+      // `activeChats` after a real draft Send; see `useChatDockActions`).
+      ...(agentSlug === 'claude'
+        ? {
+            model: 'model-selected',
+            modelSource: 'agent default',
+            requestedModel: 'model-selected',
+            requestedModelSource: 'agent default',
+            defaultModel: 'model-selected',
+            defaultModelSource: 'agent default',
+            executionMode: 'external',
+            agentConnectionId: 'claude',
+            provider: 'claude',
+            providerOptions: { thinking: true, effort: 'medium' },
+          }
+        : {
+            model: 'test-model',
+            modelSource: 'agent default',
+            requestedModel: 'test-model',
+            requestedModelSource: 'agent default',
+            defaultModel: 'test-model',
+            defaultModelSource: 'agent default',
+            executionMode: 'station',
+            executionScope: 'global',
+            providerId: 'ollama-local',
+            defaultProviderId: 'ollama-local',
+            provider: 'ollama',
+            providerOptions: {},
+          }),
+      ...options.execution,
+      ...(projectScoped
+        ? { projectSlug: 'default', projectName: 'Default' }
+        : {}),
+    },
+  ]);
+  await page.goto(`/?dock=open&chat=${encodeURIComponent(sessionId)}`);
   await dismissSetupLauncher(page);
-  await page
-    .locator('.home-view__actions')
-    .getByRole('button', { name: /Chat options/i })
-    .click();
-  const modal = page.getByRole('dialog', { name: 'New Chat' });
-  await expect(modal).toBeVisible({ timeout: 15_000 });
-  const runtimeRow = modal.locator(`[data-agent-slug="${agentSlug}"]`).first();
   const textarea = page.locator('textarea[placeholder*="Type a message"]');
-  await expect(runtimeRow).toBeVisible({ timeout: 15_000 });
-  if (projectScoped) {
-    await page.locator('.new-chat-modal__context-button').click();
-    const projectRow = page.locator('[data-context-value="default"]');
-    await expect(projectRow).toBeVisible();
-    await projectRow.click();
-  }
-  await runtimeRow.click();
-  await expect(modal).toBeHidden();
   await expect(textarea).toBeVisible({ timeout: 15_000 });
   if (agentSlug === 'claude') {
     await expect(
@@ -75,8 +115,8 @@ async function openComposer(
       'Selected Test Model',
     );
   }
-  // Home opens the collapsed dock. Geometry assertions begin after its
-  // actual height transition, rather than comparing boxes from different frames.
+  // The dock settles its height before geometry is compared; compare boxes
+  // from one frame, not from a transition.
   await page.locator('.chat-dock').evaluate(async (element) => {
     await Promise.allSettled(
       element.getAnimations().map((animation) => animation.finished),
@@ -84,6 +124,75 @@ async function openComposer(
   });
   return textarea;
 }
+
+// #3201: Home's "New chat" opens a draft. Choosing an Agent selects it for the
+// draft; only Send starts the chat, so no composer exists until then.
+test('the New chat draft starts the chat with the chosen Agent only on Send', async ({
+  page,
+}) => {
+  test.setTimeout(60_000);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await installMockOrchestrationSse(page);
+  await mockChatShell(page);
+  const dispatched: Record<string, unknown>[] = [];
+  await page.route('**/api/orchestration/chat', async (route) => {
+    dispatched.push(route.request().postDataJSON() as Record<string, unknown>);
+    await route.fulfill(
+      json(
+        foregroundMessageReceiptEnvelope({
+          conversationId: 'draft-send-conversation',
+          agent: 'agent:claude',
+        }),
+      ),
+    );
+  });
+  const startedTurns = buildLongSessionTurns({
+    threadId: 'draft-send-conversation',
+    provider: 'claude',
+    turnCount: 1,
+    replyText: () => 'Started from the draft.',
+  });
+  await mockRuntimeConversation(page, {
+    id: 'draft-send-conversation',
+    agentSlug: 'claude',
+    title: 'Start from the draft.',
+    provider: 'claude',
+    model: 'model-selected',
+    canContinue: true,
+    turns: () => startedTurns,
+  });
+  await page.goto('/');
+  await dismissSetupLauncher(page);
+  await page
+    .locator('.home-view__goal-actions')
+    .getByRole('button', { name: 'New chat', exact: true })
+    .click();
+  const draft = page.getByRole('form', { name: 'New chat draft' });
+  await expect(draft).toBeVisible({ timeout: 15_000 });
+  await draft.getByRole('button', { name: /^Agent:/ }).click();
+  await page
+    .locator('.new-chat-modal__agent[data-agent-slug="claude"]')
+    .click();
+  await expect(
+    draft.getByRole('button', { name: 'Agent: Claude', exact: true }),
+  ).toBeVisible();
+  // Choosing the Agent did not start anything.
+  await expect(
+    page.locator('textarea[placeholder*="Type a message"]'),
+  ).toHaveCount(0);
+  expect(dispatched).toHaveLength(0);
+  await draft
+    .getByRole('textbox', { name: 'Message', exact: true })
+    .fill('Start from the draft.');
+  expect(dispatched).toHaveLength(0);
+  await draft.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect.poll(() => dispatched.length).toBe(1);
+  expect(JSON.stringify(dispatched[0])).toContain('Start from the draft.');
+  // The chat the draft started belongs to the Agent that was chosen.
+  await expect(
+    page.getByRole('button', { name: /^Chats and tasks — Claude/ }),
+  ).toBeVisible({ timeout: 15_000 });
+});
 
 test('ChatDock sends scoped file and conversation references while preserving the saved quote across reload', async ({
   page,
@@ -1444,10 +1553,16 @@ test('switches between mobile tasks and restores the exact active chat context',
   expect(new URL(page.url()).searchParams.get('dock')).toBe('open');
   expect(new URL(page.url()).searchParams.get('maximize')).toBe('true');
   await expect(textarea).toHaveValue('return to this draft');
-  // Primary project context stays directly reachable beside conversation switching.
+  // Primary project context stays directly reachable beside conversation
+  // switching. Since #3144 it names where NEW chats start ("New chats"), and
+  // opening a chat that belongs to Default does not move that default: the
+  // chat's own project is on its inbox row ("Station Chat, Default") instead.
   await expect(
     page.getByRole('button', { name: /^Switch project/ }),
-  ).toContainText('Default');
+  ).toContainText('New chats');
+  await expect(
+    page.getByRole('button', { name: /^Switch project/ }),
+  ).toContainText('No project');
   await expect(page.locator('.chat-input__model-name')).toHaveText(
     'Model Selected',
   );
@@ -1740,7 +1855,7 @@ test('mobile messages prioritize text and reveal 44px actions on demand', async 
   await header
     .getByRole('button', { name: 'Chat actions', exact: true })
     .click();
-  for (const name of ['New chat', 'Full screen']) {
+  for (const name of ['New chat', 'Exit full screen']) {
     await expect(
       page.getByRole('menuitem', { name, exact: true }),
     ).toBeVisible();
@@ -2062,7 +2177,7 @@ test('the 320px header reserves title space and exposes secondary actions in its
   await header
     .getByRole('button', { name: 'Chat actions', exact: true })
     .click();
-  for (const name of ['New chat', 'Full screen']) {
+  for (const name of ['New chat', 'Exit full screen']) {
     await expect(
       page.getByRole('menuitem', { name, exact: true }),
     ).toBeVisible();
@@ -2694,19 +2809,28 @@ for (const viewport of [
         return hit === button || button.contains(hit);
       }),
     ).toBe(true);
-    // The outage is the pane's floating status pill: it floats over the
-    // transcript, clear of the composer, and moves nothing in the layout.
+    // The outage is the pane's status pill. On a phone (#3126) it is the first
+    // row of the composer's own rail, above the Agent, Model and Approval
+    // controls, so it covers neither them nor the draft and moves nothing.
     const reconnectStatus = page.locator(
       '[data-chat-status-pill="reconnecting"]',
     );
-    await expect(reconnectStatus).toContainText('Reconnecting live updates');
+    // #3126 shortened the label; the paused-updates sentence is now the
+    // pill's disclosed detail rather than its text.
+    await expect(reconnectStatus).toContainText('Reconnecting');
     const reconnectBox = await reconnectStatus.boundingBox();
     const composerBox = await page.locator('.chat-input').boundingBox();
+    const railControlBox = await page
+      .locator('.chat-input__agent-btn')
+      .boundingBox();
     expect(reconnectBox).not.toBeNull();
     expect(composerBox).not.toBeNull();
+    expect(railControlBox).not.toBeNull();
+    expect(reconnectBox!.y).toBeGreaterThanOrEqual(composerBox!.y);
     expect(reconnectBox!.y + reconnectBox!.height).toBeLessThanOrEqual(
-      composerBox!.y,
+      railControlBox!.y,
     );
+    expect(reconnectBox!.x).toBeGreaterThanOrEqual(0);
     expect(reconnectBox!.x + reconnectBox!.width).toBeLessThanOrEqual(
       viewport.width,
     );
@@ -3332,7 +3456,18 @@ for (const theme of ['dark', 'light'] as const) {
         }),
       ),
     );
-    await openComposer(page, true, 'station');
+    // The only model connection here is Bedrock, so that is the provider a
+    // Station chat opened from the draft would be bound to.
+    await openComposer(page, true, 'station', {
+      execution: {
+        model: 'sonnet',
+        requestedModel: 'sonnet',
+        defaultModel: 'sonnet',
+        providerId: 'bedrock-prod',
+        defaultProviderId: 'bedrock-prod',
+        provider: 'bedrock',
+      },
+    });
     await page.evaluate((value) => {
       document.documentElement.setAttribute('data-theme', value);
     }, theme);
@@ -3570,7 +3705,9 @@ test('keeps primary context controls draggable and navigation actions tap-only (
       expect(
         name,
         'navigation and action buttons keep a gesture-free tap path',
-      ).toMatch(/^(Expand chat|Collapse chat|Toggle menu|Chat actions)$/);
+      ).toMatch(
+        /^(Expand chat|Collapse chat|Toggle menu|Chat actions|New chat)$/,
+      );
       continue;
     }
     await expect(
@@ -3710,16 +3847,26 @@ for (const width of [320, 390, 1280]) {
         );
         expect(await contrastRatio(control)).toBeGreaterThanOrEqual(4.5);
       }
+      // #3127 made Clear an icon action named "Clear message"; it no longer
+      // carries a visible "Clear" word.
       const clear = page.getByRole('button', {
-        name: 'Clear input',
+        name: 'Clear message',
         exact: true,
       });
-      await expect(clear).toHaveText('Clear');
+      await expect(clear).toBeVisible();
+      await expect(clear).toHaveText('');
       const clearBox = (await clear.boundingBox())!;
       expect(clearBox.y).toBeGreaterThanOrEqual(inputBox.y + inputBox.height);
-      expect(clearBox.x + clearBox.width).toBeLessThanOrEqual(
-        (await send.boundingBox())!.x,
-      );
+      // The actions may wrap at 320px (Send then sits on the row below, as
+      // an icon beside the others would not fit); they must not collide.
+      const sendBox = (await send.boundingBox())!;
+      expect(
+        clearBox.x + clearBox.width <= sendBox.x ||
+          sendBox.x + sendBox.width <= clearBox.x ||
+          clearBox.y + clearBox.height <= sendBox.y ||
+          sendBox.y + sendBox.height <= clearBox.y,
+        `Clear ${JSON.stringify(clearBox)} overlaps Send ${JSON.stringify(sendBox)}`,
+      ).toBe(true);
       await expect(textarea).toHaveCSS('outline-style', 'none');
       const capsule = page.locator('.chat-input__capsule');
       await expect(capsule).toHaveCSS('outline-style', 'solid');
@@ -3790,17 +3937,7 @@ for (const width of [320, 431]) {
   }) => {
     await page.setViewportSize({ width, height: 900 });
     await mockChatShell(page);
-    await page.goto('/?dock=open');
-    await dismissSetupLauncher(page);
-    await page
-      .getByRole('button', { name: 'Start a chat', exact: true })
-      .last()
-      .click();
-    const modal = page.getByRole('dialog', { name: 'New Chat' });
-    await expect(modal).toBeVisible();
-    await modal.locator('[data-agent-slug="claude"]').first().click();
-    const input = page.locator('textarea[placeholder*="Type a message"]');
-    await expect(input).toBeVisible();
+    const input = await openComposer(page);
     const header = page.getByTestId('chat-dock-mobile-header');
     const outer = (await header.boundingBox())!;
     const identity = (await header
