@@ -1036,8 +1036,26 @@ test('virtualizes a long real transcript while preserving reader controls on mob
   // ...and exactly one page, not two (nothing scrolled it into a second load).
   await expect.poll(() => requestedWindows.length).toBe(windowsBeforeEnter + 1);
 
+  // A real reader scroll to the top right after a press still loads exactly
+  // one page: the restoration suppression ends when the layout settles or the
+  // reader acts, so it neither raises a second load for the press nor swallows
+  // this one. A mouse wheel is reader input, with no scrollIntoView involved.
+  await transcript.hover();
+  await page.mouse.wheel(0, -1_000_000);
+  await expect.poll(() => requestedWindows.length).toBe(windowsBeforeEnter + 2);
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        let frames = 0;
+        const tick = () =>
+          ++frames >= 12 ? resolve() : requestAnimationFrame(tick);
+        requestAnimationFrame(tick);
+      }),
+  );
+  expect(requestedWindows).toHaveLength(windowsBeforeEnter + 2);
+
   for (
-    let requestCount = windowsBeforeEnter + 2;
+    let requestCount = windowsBeforeEnter + 3;
     requestCount <= 11;
     requestCount++
   ) {

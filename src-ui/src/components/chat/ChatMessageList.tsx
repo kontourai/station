@@ -158,11 +158,12 @@ const RESIZE_REANCHOR_THRESHOLD_PX = 4;
 // the reader landing pixel-exact on a stale write minutes later.
 const PROGRAMMATIC_SCROLL_ECHO_MS = 500;
 const PROGRAMMATIC_SCROLL_ECHO_PX = 1;
+// A scroll this close to the top loads earlier history (#2706).
+const OLDER_AUTO_LOAD_BAND_PX = 96;
 // Scroll-driven history loads stay suppressed after an "Earlier messages"
-// request until the reader's row is back within this distance of where it was
-// for this many consecutive frames.
-const OLDER_RESTORE_TOLERANCE_PX = 1;
-const OLDER_RESTORE_STABLE_FRAMES = 3;
+// request until the transcript's scrollTop and scrollHeight have held for this
+// many consecutive frames.
+const OLDER_RESTORE_STABLE_FRAMES = 4;
 const VIRTUALIZE_AFTER_MESSAGE_COUNT = 40;
 const EMPTY_MESSAGES: ChatMessage[] = [];
 const NO_PENDING_APPROVALS: ReturnType<typeof unansweredApprovalRequests> = [];
@@ -258,7 +259,8 @@ function ChatMessageListComponent({
   const loadingOlderRef = useRef(false);
   const olderCommitPendingRef = useRef(false);
   const olderRestoringRef = useRef(false);
-  const olderRestoreAnchorRef = useRef<ChatScrollAnchor | null>(null);
+  const olderRequestHeightRef = useRef(0);
+  const olderGenerationRef = useRef(0);
   const olderRestoreFrameRef = useRef<number | undefined>(undefined);
   const [olderCommitEpoch, setOlderCommitEpoch] = useState(0);
   const previousTranscriptRows = useRef<readonly TranscriptRow[]>([]);
@@ -579,19 +581,37 @@ function ChatMessageListComponent({
     return () => observer.disconnect();
   }, [noteProgrammaticScroll, writeProgrammaticScroll]);
 
-  const loadOlder = async () => {
-    if (!onLoadOlder || historyLoading || loadingOlderRef.current) return;
-    loadingOlderRef.current = true;
-    // A press during an earlier request's restoration starts a new one; the
-    // old frame loop must not clear the new request's scroll suppression.
+  // Ends the scroll-load suppression a press's restoration holds. Genuine
+  // reader input, a session switch and the settle loop all end it the same way.
+  const endOlderRestoreSuppression = useCallback(() => {
     if (olderRestoreFrameRef.current !== undefined)
       cancelAnimationFrame(olderRestoreFrameRef.current);
     olderRestoreFrameRef.current = undefined;
+    olderRestoringRef.current = false;
+  }, []);
+  // ChatDockBody keeps this component mounted across chats, so one chat's
+  // request state must not outlive the chat: a request still in flight for the
+  // previous session finds a newer generation when it settles and stands down.
+  useEffect(() => {
+    void activeSession.id;
+    olderGenerationRef.current += 1;
+    olderCommitPendingRef.current = false;
+    loadingOlderRef.current = false;
+    endOlderRestoreSuppression();
+  }, [activeSession.id, endOlderRestoreSuppression]);
+
+  const loadOlder = async () => {
+    if (!onLoadOlder || historyLoading || loadingOlderRef.current) return;
+    loadingOlderRef.current = true;
+    const generation = olderGenerationRef.current;
+    // A press during an earlier request's restoration starts a new one; the
+    // old frame loop must not clear the new request's scroll suppression.
+    endOlderRestoreSuppression();
     olderRestoringRef.current = true;
     const element = messagesContainerRef.current;
-    const anchor = element ? captureChatScrollAnchor(element) : null;
+    olderRequestHeightRef.current = element?.scrollHeight ?? 0;
     if (element) {
-      visibleAnchorRef.current = anchor;
+      visibleAnchorRef.current = captureChatScrollAnchor(element);
       isUserScrolledUpRef.current = true;
       setIsUserScrolledUp(true);
       setScrollAnchorVersion((version) => version + 1);
@@ -599,10 +619,13 @@ function ChatMessageListComponent({
     try {
       await onLoadOlder();
     } catch (error) {
-      loadingOlderRef.current = false;
-      olderRestoringRef.current = false;
+      if (generation === olderGenerationRef.current) {
+        loadingOlderRef.current = false;
+        olderRestoringRef.current = false;
+      }
       throw error;
     }
+    if (generation !== olderGenerationRef.current) return;
     // The request is not over when its promise settles, and the stretch after
     // it has two parts (#3288). Until the merged page commits, the DOM still
     // shows the old top with the button enabled, so a press there is a press
@@ -612,10 +635,10 @@ function ChatMessageListComponent({
     // back over several frames, through positions inside the auto-load band
     // that nothing marks as ours, and those scroll events are the press's own
     // restoration, not the reader: scroll-driven loads stay suppressed until
-    // the row is back where it was (the frame loop below). The state write
-    // guarantees a commit even when the load changed nothing, and batches with
-    // the hook's own writes so that commit carries the page.
-    olderRestoreAnchorRef.current = anchor;
+    // the layout stops moving (the frame loop below) or the reader provides
+    // input. The state write guarantees a commit even when the load changed
+    // nothing, and batches with the hook's own writes so that commit carries
+    // the page.
     olderCommitPendingRef.current = true;
     setOlderCommitEpoch((epoch) => epoch + 1);
   };
@@ -623,45 +646,38 @@ function ChatMessageListComponent({
     void olderCommitEpoch;
     if (!olderCommitPendingRef.current) return;
     olderCommitPendingRef.current = false;
-    const anchor = olderRestoreAnchorRef.current;
-    olderRestoreAnchorRef.current = null;
     loadingOlderRef.current = false;
+    const requestHeight = olderRequestHeightRef.current;
     let stableFrames = 0;
     let frames = 0;
-    const release = () => {
-      olderRestoreFrameRef.current = undefined;
-      olderRestoringRef.current = false;
-    };
+    let lastTop: number | undefined;
+    let lastHeight: number | undefined;
     const step = () => {
+      olderRestoreFrameRef.current = undefined;
       const element = messagesContainerRef.current;
       frames += 1;
-      if (!element || !anchor) return release();
-      const node = Array.from(
-        element.querySelectorAll<HTMLElement>('[data-chat-message-key]'),
-      ).find((candidate) => candidate.dataset.chatMessageKey === anchor.key);
-      const restored =
-        node !== undefined &&
-        Math.abs(
-          node.getBoundingClientRect().top -
-            element.getBoundingClientRect().top -
-            anchor.offset,
-        ) <= OLDER_RESTORE_TOLERANCE_PX;
-      stableFrames = restored ? stableFrames + 1 : 0;
-      // The frame cap only bounds a reader who drags the row away mid-restore
-      // (or a row that never comes back), so the suppression cannot stay on.
+      if (!element) return endOlderRestoreSuppression();
+      // Settled means the layout has stopped moving. The row to restore is not
+      // tracked by key: under virtualization its node is recycled out and may
+      // not return for a long time. A page that grew the content while the
+      // reader sits inside the band has not been restored yet, however still
+      // it is.
+      const moved =
+        element.scrollTop !== lastTop || element.scrollHeight !== lastHeight;
+      const unrestored =
+        element.scrollTop <= OLDER_AUTO_LOAD_BAND_PX &&
+        element.scrollHeight > requestHeight;
+      lastTop = element.scrollTop;
+      lastHeight = element.scrollHeight;
+      stableFrames = moved || unrestored ? 0 : stableFrames + 1;
+      // The cap only bounds a layout that never stops moving.
       if (stableFrames >= OLDER_RESTORE_STABLE_FRAMES || frames >= 120)
-        return release();
+        return endOlderRestoreSuppression();
       olderRestoreFrameRef.current = requestAnimationFrame(step);
     };
     olderRestoreFrameRef.current = requestAnimationFrame(step);
-  }, [olderCommitEpoch]);
-  useEffect(
-    () => () => {
-      if (olderRestoreFrameRef.current !== undefined)
-        cancelAnimationFrame(olderRestoreFrameRef.current);
-    },
-    [],
-  );
+  }, [olderCommitEpoch, endOlderRestoreSuppression]);
+  useEffect(() => endOlderRestoreSuppression, [endOlderRestoreSuppression]);
 
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const target = e.currentTarget;
@@ -709,7 +725,7 @@ function ChatMessageListComponent({
     setReaderRestoreRequest(null);
     if (
       hasOlderMessages &&
-      target.scrollTop <= 96 &&
+      target.scrollTop <= OLDER_AUTO_LOAD_BAND_PX &&
       !olderRestoringRef.current
     )
       void loadOlder();
@@ -947,6 +963,10 @@ function ChatMessageListComponent({
         aria-live="polite"
         style={{ fontSize: `${fontSize}px` }}
         onScroll={handleScroll}
+        onWheel={endOlderRestoreSuppression}
+        onTouchStart={endOlderRestoreSuppression}
+        onPointerDown={endOlderRestoreSuppression}
+        onKeyDown={endOlderRestoreSuppression}
       >
         {hasOlderMessages && (
           <div className="session-history-controls">
