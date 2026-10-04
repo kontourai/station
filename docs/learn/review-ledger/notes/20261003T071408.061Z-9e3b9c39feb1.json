@@ -1,7 +1,0 @@
-{
-  "revision": "913da0b4838c0c929420ce1a4de4f37e8efa14fb",
-
-  "notes": [
-    {"path":"docs/reference/config.md","note":"ChatDock.tsx's change (Needs-you publication to a folding host) adds no configuration. No prose change."}
-  ]
-}

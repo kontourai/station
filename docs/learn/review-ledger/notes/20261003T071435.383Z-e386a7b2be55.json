@@ -1,7 +1,0 @@
-{
-  "revision": "913da0b4838c0c929420ce1a4de4f37e8efa14fb",
-
-  "notes": [
-    {"path":"docs/user/getting-started.md","note":"Checked the navigation and chat claims against NavigationContext.tsx, navigation-store.ts and ChatDock.tsx: setLayout's extra options and the inbox count publication change no user-facing step described here. No prose change."}
-  ]
-}

@@ -1,7 +1,0 @@
-{
-  "revision": "fb91b0deacf9ac3d59fd86e8e5eaaa3182df74e5",
-
-  "notes": [
-    {"path":"docs/testing/browser-smoke.md","note":"Reviewed against the manifest change: only an extended-bucket spec's rationale changed; the PR browser smoke contract is untouched."}
-  ]
-}

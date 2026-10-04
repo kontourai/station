@@ -1,7 +1,0 @@
-{
-  "revision": "cde061c4f07a24ed6e82d9291915c9e95f51be1d",
-
-  "notes": [
-    {"path":"docs/guides/starter-work.md","note":"Upstream merge moved packages/contracts/src/device-settings.ts; this branch's change there is the codingPanels record, not a starter-work key. No prose change."}
-  ]
-}

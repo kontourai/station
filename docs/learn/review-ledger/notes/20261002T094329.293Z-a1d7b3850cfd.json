@@ -1,0 +1,7 @@
+{
+  "revision": "a33fbfe917004ff85a30e503fd141a47233b74e7",
+
+  "notes": [
+    {"path":"docs/guides/dependency-security.md","note":"Re-record after the policy-test fix: the composition tests now derive their expectations from the committed exceptions file's own shape (clearing exceptions where the assertion is about residuals) instead of assuming the file ships none; the guide's exception contract — owner, reason, exact tracking issue, short-lived expiry — is unchanged and the file's node-forge entry (#3122) still conforms.","inputs":["docs/guides/dependency-security.md"]}
+  ]
+}

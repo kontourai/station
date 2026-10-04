@@ -1,0 +1,7 @@
+{
+  "revision": "c5364f269c1fa068755974e957adba21c461a6fa",
+
+  "notes": [
+    {"path":"docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md","note":"#3071 final round, after merging origin/main. Added one passage to the reading-status note on why recovery's expired resolution is consistent with rejecting a boot-time synthetic resolution; checked against interrupted-turn-recovery.ts (expired, written with the recovery abort) and the ADR's own option (c) objections (process-local, time-varying, claimed cancelled). No other change.","inputs":["docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md"]}
+  ]
+}

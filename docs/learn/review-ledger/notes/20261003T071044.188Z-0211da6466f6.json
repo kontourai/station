@@ -1,7 +1,0 @@
-{
-  "revision": "913da0b4838c0c929420ce1a4de4f37e8efa14fb",
-
-  "notes": [
-    {"path":"docs/guides/home-transfer-controller.md","note":"The registry change is the Files pane's write marker on setLayout; the home-transfer controller claims cite the registry only as a renderer registration site. No prose change."}
-  ]
-}

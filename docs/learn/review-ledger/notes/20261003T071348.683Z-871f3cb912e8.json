@@ -1,7 +1,0 @@
-{
-  "revision": "913da0b4838c0c929420ce1a4de4f37e8efa14fb",
-
-  "notes": [
-    {"path":"docs/reference/api.md","note":"ChatDock.tsx remains the orchestration-based chat consumer; the branch adds a host-facing Needs-you count publication, not an API surface. No prose change."}
-  ]
-}

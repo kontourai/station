@@ -1,0 +1,7 @@
+{
+  "revision": "b32a5620fe462b45e737680f849e03d1bfd7602a",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Retained the upstream ACP binding after exact-byte verification and source inspection. Static docs producers and schema claims remain accurate; all original limits and both note histories are preserved.","inputs":["docs/reference/station-docs.md"]}
+  ]
+}

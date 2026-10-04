@@ -9,40 +9,38 @@
 
   "limits": "Historical comparative research and slice acceptance remain dated; the target model is not a claim that every setting, migration or physical-platform interaction was exercised anew.",
 
-  "document": {"digest":"32071612f7703e74291cd5bcf8d80595ff05356293892f2ffc8c7271963d9ed8","revision":"d6a3158c22a62d9530592c6366a1624790ee9401"},
-
   "sources": [
-    {"path":"docs/reference/config.md","digest":"75eb18568340e206957366d15dafef202282bcb2d86d1b96c01a2922ffb1ddc6","revision":"45c71d38091f91e917006dacdc7e2a0bb3cd58a4"},
+    "docs/reference/config.md",
 
-    {"path":"docs/reference/settings-deep-links.md","digest":"504697512af473efd0be4ba655151406b11450e87e3bbe497a7ac3d03ec88434","revision":"d6a3158c22a62d9530592c6366a1624790ee9401"},
+    "docs/reference/settings-deep-links.md",
 
-    {"path":"packages/cli/src/commands/config.ts","digest":"c1bfda2c2163a25eb8893ee6bb2417d3949059da5b027f39b5ecd82e12d86b5d","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+    "packages/cli/src/commands/config.ts",
 
-    {"path":"packages/contracts/src/project-settings-overrides.ts","digest":"cd938a190a0ab9297c54a99fb5a7580167a67b395e55a52115ac31e5af90d49a","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+    "packages/contracts/src/project-settings-overrides.ts",
 
-    {"path":"packages/contracts/src/settings-registry.ts","digest":"1b22ce258daf0a7e941b8aa8d738b701595ba0d1a162547c4c1f560a69dad582","revision":"d6a3158c22a62d9530592c6366a1624790ee9401"},
+    "packages/contracts/src/settings-registry.ts",
 
-    {"path":"packages/sdk/src/__tests__/update-app-config.test.ts","digest":"ae86370e904beb0524e62d3699ab19a94cae239a504f718cc00fcc4ae39eb9db","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+    "packages/sdk/src/__tests__/update-app-config.test.ts",
 
-    {"path":"packages/sdk/src/app-config.ts","digest":"f6210399f52444c8b414ce40fdfba0e29a20091b0068a97e21af53088db12c48","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+    "packages/sdk/src/app-config.ts",
 
-    {"path":"src-server/domain/settings-effective.ts","digest":"714c3bdff3915fb95a03c791dc2f3d764fe65b6f0e1218658285375b39fa8f50","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+    "src-server/domain/settings-effective.ts",
 
-    {"path":"src-server/knowledge-store/conversation-root-bootstrap.ts","digest":"658683fe19a2d352c6ab3e9b7a18d96d8752fcc20c2808a08050f5062b4ab31c","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+    "src-server/knowledge-store/conversation-root-bootstrap.ts",
 
-    {"path":"src-server/routes/system/config.ts","digest":"45bb6618c88a4128d7932840acee69f83b0eff5fbdbc151012ae1e4361a6c610","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+    "src-server/routes/system/config.ts",
 
-    {"path":"src-ui/src/components/project-sidebar/CustomizeDialog.tsx","digest":"3db76b75e91d1cf6f1d418b0aada9566de3b5210d27530877e52b1a9a0b3f92e","revision":"b2f50f803b524348c434b47dd69b5c158bfe45bb"},
+    "src-ui/src/components/project-sidebar/CustomizeDialog.tsx",
 
-    {"path":"src-ui/src/lib/device-settings-store.ts","digest":"35154d1a280a19606705efe1591f6fc4cd5127ba5f688aac54665ba87b483b74","revision":"ef69511d6f8027fe0b5f9fb0d6afc95f2a3a2c38"},
+    "src-ui/src/lib/device-settings-store.ts",
 
-    {"path":"src-ui/src/views/SettingsView.tsx","digest":"1ede27735768ba3e57c06aabe2313abe5369045a9020512f32099e22980225ef","revision":"00bada2726c33a49f7edc8803d08831b46b6deb3"},
+    "src-ui/src/views/SettingsView.tsx",
 
-    {"path":"src-ui/src/views/settings/SettingDescription.tsx","digest":"7c0376011e9e19c7e686ecfe684096dc632663d1fadabe63a70012d4da571037","revision":"75785f43c80623e548f4ae8f5282be9585e203dd"},
+    "src-ui/src/views/settings/SettingDescription.tsx",
 
-    {"path":"src-ui/src/views/settings/settings-catalog.ts","digest":"3237f2153b03149c49e99e749340177fb8b6f627e1a223bed5894665c681d259","revision":"d6a3158c22a62d9530592c6366a1624790ee9401"},
+    "src-ui/src/views/settings/settings-catalog.ts",
 
-    {"path":"src-ui/src/views/settings/settings-pages.ts","digest":"51532779b04e0d2ee33b5f69ddd00e306bb63bde48d26d495bf82c45c67ba291","revision":"75785f43c80623e548f4ae8f5282be9585e203dd"}
+    "src-ui/src/views/settings/settings-pages.ts"
   ],
 
   "checks": [

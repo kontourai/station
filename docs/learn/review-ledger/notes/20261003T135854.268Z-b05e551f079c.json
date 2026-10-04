@@ -1,7 +1,0 @@
-{
-  "revision": "cde061c4f07a24ed6e82d9291915c9e95f51be1d",
-
-  "notes": [
-    {"path":"docs/design/chat-composer.md","note":"Delta round touched CodingWorkbench (Escape scope, host actions, rail), not the composer's picker record or dock claims cited here. No prose change."}
-  ]
-}

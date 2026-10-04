@@ -9,46 +9,44 @@
 
   "limits": "No actual PR smoke/full browser run, seeded browser-failure mutation, hosted CI, physical phone or model/provider. Source and focused manifest/coordinator tests verify composition, not current journey success.",
 
-  "document": {"digest":"2bc25a448c6189b75253f9b26a10665f40107d168858254c46752f8a2f559412","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
   "sources": [
-    {"path":".github/workflows/ci.yml","digest":"9b586bd70bb7c94986ce19ee41151ff768bad2a308a196a15047375c92f9646a","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
+    ".github/workflows/ci.yml",
 
-    {"path":"scripts/__tests__/ci-fast-checks-job-graph.test.ts","digest":"6b102e92ea63fb9103d801ec2ad0da304204de5c39d5cdb6540f7e21070c21e5","revision":"de240170769fcf739c188b104f801d4371f8086d"},
+    "scripts/__tests__/ci-fast-checks-job-graph.test.ts",
 
-    {"path":"scripts/__tests__/e2e-coverage.test.ts","digest":"f62d79ceaa3fd83f136477158e595af8a6aa44f5125a314f1a69a2d7fee385dc","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "scripts/__tests__/e2e-coverage.test.ts",
 
-    {"path":"scripts/__tests__/e2e-manifest.test.ts","digest":"117cf89146518ac74ddfc9befe51172135b198266eb372f83e308e9a1f57e94a","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "scripts/__tests__/e2e-manifest.test.ts",
 
-    {"path":"scripts/__tests__/run-ci-fast.test.ts","digest":"3de2360a632570b4e567c8397ce0b7388512b50fb17b6bdffbb10230babdbc35","revision":"a1478b242401c5da824956478bd77fef1f4dfa51"},
+    "scripts/__tests__/run-ci-fast.test.ts",
 
-    {"path":"scripts/critical-browser-reporter.mjs","digest":"fa41f65ec79861edeb1cec7d9b9874f561af1912d4b2ef5bbde3841843baf2b6","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "scripts/critical-browser-reporter.mjs",
 
-    {"path":"scripts/fast-checks-shard.mjs","digest":"175bfe5bbb4e6c3a3a334dbcbf1b28f6b7579068bbd41095613b458cae438ef6","revision":"de240170769fcf739c188b104f801d4371f8086d"},
+    "scripts/fast-checks-shard.mjs",
 
-    {"path":"scripts/lib/fast-checks-shards.mjs","digest":"6c0ded4c94e1316dcb83406c37c762398b15da198498a1037d62f21625d661fc","revision":"555c5aa3646e08ef44d26002f81508daf7a32305"},
+    "scripts/lib/fast-checks-shards.mjs",
 
-    {"path":"scripts/run-e2e-suite.mjs","digest":"6a11a2a611efee2a6ea5aee135d7ea1a8fffcf9bc9c73f0936508ba1e4bde4dc","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "scripts/run-e2e-suite.mjs",
 
-    {"path":"tests/connect-modal.spec.ts","digest":"e9dc0d34c938e4e853b9526575bfb31bdfbff80e9526b1a09cc0c9e61ea5a5e4","revision":"c10772e15ed1dbd83968746a45a20d6c26bbd4f2"},
+    "tests/connect-modal.spec.ts",
 
-    {"path":"tests/connect-remote-auth-recovery.spec.ts","digest":"cad2b1bd2981df02fffb35b094cd8853c60c987fa786f229f7695a5cc3fccc81","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "tests/connect-remote-auth-recovery.spec.ts",
 
-    {"path":"tests/cross-runtime-chat-switching.spec.ts","digest":"5426df79b21ad75b2f2ef15da154371b231f89c57bd97f01a8461de216cc0c44","revision":"390777781dc66faa6f34003ed872e2a5fcadc7e6"},
+    "tests/cross-runtime-chat-switching.spec.ts",
 
-    {"path":"tests/csp-shell.spec.ts","digest":"2d4188a6409f2de786843b35a2fa405f5257af78467ad9fce030d73a6f69511e","revision":"c10772e15ed1dbd83968746a45a20d6c26bbd4f2"},
+    "tests/csp-shell.spec.ts",
 
-    {"path":"tests/e2e-manifest.mjs","digest":"1640f5bd8ecce94275a90dc941b0515da1b881c6a10db8e5ca028ebcc77496b9","revision":"92977a2a51bf0d4410bc5871cba4b2f5e87410c9"},
+    "tests/e2e-manifest.mjs",
 
-    {"path":"tests/helpers/browser-health.ts","digest":"67b5cf9fe4f17a137bea6daeffc4a3cd81433f2058938f9d0bcf90a91efc3921","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "tests/helpers/browser-health.ts",
 
-    {"path":"tests/helpers/ollama-fixture.ts","digest":"1f9e2f666db8c43303edfd0b8fbf3d263dc39e8395c43028aa74128a51a8b8ae","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "tests/helpers/ollama-fixture.ts",
 
-    {"path":"tests/orchestration-chat-flow.spec.ts","digest":"24c14104688ee219d5d5e78e0099e740d6132e03f5a2a218ae64b6fd5b231716","revision":"b6e91add12d9c42b59c59f070ca541e9a9d63e62"},
+    "tests/orchestration-chat-flow.spec.ts",
 
-    {"path":"tests/pr-smoke-live-chat-send.spec.ts","digest":"235c7afa385a52002bfa7a0c07a25584c4025572cc6569277561df90c21c9918","revision":"390777781dc66faa6f34003ed872e2a5fcadc7e6"},
+    "tests/pr-smoke-live-chat-send.spec.ts",
 
-    {"path":"tests/ui-crud-smoke.spec.ts","digest":"7d7ff82fd5933733973d5fec0cf27e833842307ebdbe96a73be0e76aee7eddaa","revision":"42811285ef04d069daf576d46253ac833573f848"}
+    "tests/ui-crud-smoke.spec.ts"
   ],
 
   "checks": [

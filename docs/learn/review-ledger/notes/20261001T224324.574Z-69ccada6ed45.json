@@ -1,7 +1,0 @@
-{
-  "revision": "fb91b0deacf9ac3d59fd86e8e5eaaa3182df74e5",
-
-  "notes": [
-    {"path":"docs/reference/api.md","note":"Reviewed against ChatDock.tsx's change: a full-screen ChatWorkspacePane gains an onInboxNeedsYouChange callback computed client-side from the inbox's own partition; no HTTP route, request or response shape changed, so the API reference stands."}
-  ]
-}

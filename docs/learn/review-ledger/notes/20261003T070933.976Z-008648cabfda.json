@@ -1,7 +1,0 @@
-{
-  "revision": "913da0b4838c0c929420ce1a4de4f37e8efa14fb",
-
-  "notes": [
-    {"path":"docs/design/chat-composer.md","note":"Checked the device-settings record and dock claims against navigation-store.ts and ChatDock.tsx: the branch adds the inbox Needs-you publication (onInboxNeedsYouChange) and a layout write marker; neither changes the composer's provider/picker record or the File Tree to File Preview flow. No prose change."}
-  ]
-}

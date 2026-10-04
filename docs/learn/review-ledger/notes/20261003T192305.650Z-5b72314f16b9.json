@@ -1,7 +1,0 @@
-{
-  "revision": "397b4cb16ee64b1693eddff490ac75947d250436",
-
-  "notes": [
-    {"path":"docs/design/placement.md","note":"After merging origin/main (fac321f9fd): re-read the wide-fold, audit-round and delta-round text against ProjectLayoutRenderer (replace selection, Browser ordinal, one Terminal mount), ChatDock (Needs-you), navigation-store (in-place write, marker, preserveChatProjectDefault), device-settings contract/store (codingPanels), workspacePaneHostController (replace). Claims hold; no prose change in this record."}
-  ]
-}

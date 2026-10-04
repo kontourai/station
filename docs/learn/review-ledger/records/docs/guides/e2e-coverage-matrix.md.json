@@ -9,90 +9,88 @@
 
   "limits": "No new Playwright run, browser/native/physical Android receipt, live account or provider journey, current coverage percentage or complete surface tier qualification. Spec assertions include fixtures and intercepted requests. Manifest membership and runnable ownership do not establish a passed execution or exhaustive behavioral coverage.",
 
-  "document": {"digest":"0a67c15e1ab58bbc6955bffa4b049a305da6cba208478e7ed8e59e2adabe244d","revision":"04123ca275d85ac19e95a3f0fd87ae68b138324f"},
-
   "sources": [
-    {"path":".github/workflows/ci-extended.yml","digest":"6cd65c4dae77a42df037641d1175f753185ad04e23e031f0dd5e26b9aefa3fd2","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    ".github/workflows/ci-extended.yml",
 
-    {"path":"package.json#/scripts/test:e2e:product","digest":"b2836b88d563c7316dc6611ee12f30e09c71d33af5211a47915fcb0c825fc5df","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
+    "package.json#/scripts/test:e2e:product",
 
-    {"path":"package.json#/scripts/verify","digest":"f23e8cff5f2a50cacd77392afb718bd69b9e6ac4ee3d757de4d9ffd554db135d","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
+    "package.json#/scripts/verify",
 
-    {"path":"package.json#/scripts/verify:e2e:full","digest":"2dd4ee20128013b80e12dfc5e60f8a551952b968863963d6e44331304e6db342","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
+    "package.json#/scripts/verify:e2e:full",
 
-    {"path":"scripts/__tests__/e2e-coverage.test.ts","digest":"f62d79ceaa3fd83f136477158e595af8a6aa44f5125a314f1a69a2d7fee385dc","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "scripts/__tests__/e2e-coverage.test.ts",
 
-    {"path":"scripts/__tests__/e2e-manifest.test.ts","digest":"117cf89146518ac74ddfc9befe51172135b198266eb372f83e308e9a1f57e94a","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "scripts/__tests__/e2e-manifest.test.ts",
 
-    {"path":"scripts/run-e2e-coverage.mjs","digest":"46b6f6f2d14cdb189ed88c5fd660d3cbe7572439b1b22b6ec7bf67d4b0f07de1","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "scripts/run-e2e-coverage.mjs",
 
-    {"path":"scripts/run-e2e-suite.mjs","digest":"6a11a2a611efee2a6ea5aee135d7ea1a8fffcf9bc9c73f0936508ba1e4bde4dc","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "scripts/run-e2e-suite.mjs",
 
-    {"path":"scripts/verification-lanes.mjs","digest":"3fb1be3bd88d1d5139983eaf770e8a5474ce6cc6ef304d4e008df63d0c143fef","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "scripts/verification-lanes.mjs",
 
-    {"path":"src-server/providers/llm/defaults.ts","digest":"5a7c47c56107d89a2d450d11a6931155332c7990e7f1de79d807f9c5c9f038f7","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "src-server/providers/llm/defaults.ts",
 
-    {"path":"src-server/runtime/bootstrap/runtime-initialize.ts","digest":"bd381c9d60f70ac986c9eee0977752d883f52a018842fee300d3e352933aea6d","revision":"56f4c4897a189eeb30430119a4f4895e95fbb541"},
+    "src-server/runtime/bootstrap/runtime-initialize.ts",
 
-    {"path":"src-server/services/connections/connection-service.ts","digest":"cf2120e16b0ee9f0e54df18a114b616ef896d84c648a20e4d9e0df5054715f44","revision":"4d32eb785473b3261621900889fb9fa3fbfd8a49"},
+    "src-server/services/connections/connection-service.ts",
 
-    {"path":"tests/agents-copy-existing.spec.ts","digest":"f8cfe3870c6b37748dc1f74f3604ddb04296cc1246e8d29a71b22f6daed6cfb8","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "tests/agents-copy-existing.spec.ts",
 
-    {"path":"tests/agents-editor-gates.spec.ts","digest":"dd880763ad634e898f84b01317194a94fa0e9632ecccf6149a6590f19382a477","revision":"42811285ef04d069daf576d46253ac833573f848"},
+    "tests/agents-editor-gates.spec.ts",
 
-    {"path":"tests/agents-editor-roundtrip.spec.ts","digest":"b8459d9185c13fb77600679f37a2d2dd685bc21f83d473dce1bb7eca48ee2a2c","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "tests/agents-editor-roundtrip.spec.ts",
 
-    {"path":"tests/agents-new-cli-turn.spec.ts","digest":"36a1453086cd2a66724d9b90d3d1f00b760516e62adc2db1d8aa468670504631","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "tests/agents-new-cli-turn.spec.ts",
 
-    {"path":"tests/agents-new-model-turn.spec.ts","digest":"9b08dad60969098410c51ef899d3afc319913df22c7a834cdd683ea7aa3f816d","revision":"42811285ef04d069daf576d46253ac833573f848"},
+    "tests/agents-new-model-turn.spec.ts",
 
-    {"path":"tests/agents-new-muse-echo-turn.spec.ts","digest":"2ce8fa9a4e4df0cb06eb0ddd05812ebbbbc728a9397895fd2c821810bfe50922","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "tests/agents-new-muse-echo-turn.spec.ts",
 
-    {"path":"tests/agents-pane.spec.ts","digest":"8fd2f45e57980348671a765d1f010f2624ebb63aeedc0fbec41cf438ebc6efe5","revision":"df62575539f60e72aaabb60b9688b87c531aea37"},
+    "tests/agents-pane.spec.ts",
 
-    {"path":"tests/agents-readiness-board.spec.ts","digest":"3b2f83838f7efc9d8b7de06de6ba69e4869faefabdfc52329086e49e195a97b7","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "tests/agents-readiness-board.spec.ts",
 
-    {"path":"tests/android/mobile-layout.spec.ts","digest":"397b6aed1feb90de3c5c98c9a82944589859919822e4f5803e5e6bd9c6c4462f","revision":"0c7e662906e06fd356753bcc2c0e64d84c7f7541"},
+    "tests/android/mobile-layout.spec.ts",
 
-    {"path":"tests/coding-layout-plan-panel.spec.ts","digest":"3eb6fdaefd45a205b80b988270e401978996b71e779b743dccb33cfa463f3eab","revision":"955afd3f496da8d9536e133d2cdeea83bb967c34"},
+    "tests/coding-layout-plan-panel.spec.ts",
 
-    {"path":"tests/connect-modal.spec.ts","digest":"e9dc0d34c938e4e853b9526575bfb31bdfbff80e9526b1a09cc0c9e61ea5a5e4","revision":"c10772e15ed1dbd83968746a45a20d6c26bbd4f2"},
+    "tests/connect-modal.spec.ts",
 
-    {"path":"tests/connect-reconnect-banner.spec.ts","digest":"bab4e941ef2f1f5d5cc72bbb970a727c0750d6ad772600b03ed96d208078cdc1","revision":"ce3f4c795551e3838afb14389cd5a0fd7f260649"},
+    "tests/connect-reconnect-banner.spec.ts",
 
-    {"path":"tests/connect-remote-auth-recovery.spec.ts","digest":"cad2b1bd2981df02fffb35b094cd8853c60c987fa786f229f7695a5cc3fccc81","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "tests/connect-remote-auth-recovery.spec.ts",
 
-    {"path":"tests/connections-crud.spec.ts","digest":"b0c33e5e552b3651adf99dbe92ef3d43a38bb130ca13c26f7dff1bfeb3dbc9e5","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "tests/connections-crud.spec.ts",
 
-    {"path":"tests/default-agent-workflow.spec.ts","digest":"a568dd21059a806543958a1dd8603afcf6aa753c1a0d2c63960d305b8af325d5","revision":"32ababfbffaa8b43bc56f3382fc4e110a8309fd6"},
+    "tests/default-agent-workflow.spec.ts",
 
-    {"path":"tests/e2e-manifest.mjs","digest":"1640f5bd8ecce94275a90dc941b0515da1b881c6a10db8e5ca028ebcc77496b9","revision":"92977a2a51bf0d4410bc5871cba4b2f5e87410c9"},
+    "tests/e2e-manifest.mjs",
 
-    {"path":"tests/mobile-chat-composer.spec.ts","digest":"4e61f27460b5ed99def9c4c55c42435400e130fecb534243909f7fd5607cf282","revision":"b14f1b80ec27c38844b3d16e8a4bdfe624a778c9"},
+    "tests/mobile-chat-composer.spec.ts",
 
-    {"path":"tests/monitoring.spec.ts","digest":"2e6c15a60934379f643596a29d2e11b277fbd76046c1a0608878f7ee4dec980e","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "tests/monitoring.spec.ts",
 
-    {"path":"tests/plugin-preview.spec.ts","digest":"8641a782756af131333a8261a2511f7ba5edd3fe4ce8a8f88ea7532165811a53","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "tests/plugin-preview.spec.ts",
 
-    {"path":"tests/plugin-update.spec.ts","digest":"763fcd2f7eb0895885768c211dfd34ec0f4eb548f3073f715267d6d91f88aa29","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "tests/plugin-update.spec.ts",
 
-    {"path":"tests/project-architecture.spec.ts","digest":"a02aded42efd999f49a482e0b3be6984e418ccfada537726484f203cb9505f7c","revision":"9af1b6418f1fcdcd4124339b93f8484296cc4b5a"},
+    "tests/project-architecture.spec.ts",
 
-    {"path":"tests/project-forms.spec.ts","digest":"b7cc6160772a22f3cab8ceeafe53fc5faab18648df52935679bcc3c98cb73db3","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "tests/project-forms.spec.ts",
 
-    {"path":"tests/project-lifecycle.spec.ts","digest":"ee20ad928e01c437068d3ea0cec848bf5b57191e23857230fdf9b73399582b16","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "tests/project-lifecycle.spec.ts",
 
-    {"path":"tests/registry.spec.ts","digest":"7161a9fabd41940c69d064540dca0db2cfac5b1b40145899f8a75d109937f715","revision":"9af1b6418f1fcdcd4124339b93f8484296cc4b5a"},
+    "tests/registry.spec.ts",
 
-    {"path":"tests/root-route-restore.spec.ts","digest":"f91cf5602f3cde40d21ecda73db252c51d96b9028b512307fdf00e7d1951ede6","revision":"ce3f4c795551e3838afb14389cd5a0fd7f260649"},
+    "tests/root-route-restore.spec.ts",
 
-    {"path":"tests/schedule-runs.spec.ts","digest":"c96036935dd0cded02123e8c7313b7059e485d941bf398bae0b90ca72edab330","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "tests/schedule-runs.spec.ts",
 
-    {"path":"tests/schedule.spec.ts","digest":"c537a1ac865002da5f215d008cff17e193e2764c1ac9acc93ac65a00149c0035","revision":"42c6acac29ae1ed79bb95eefbcd2de84f8b6f456"},
+    "tests/schedule.spec.ts",
 
-    {"path":"tests/skills.spec.ts","digest":"a8279deb8e8e0c76cd68310c47c5f3581a218502169785ba7da91d0ebb261ec0","revision":"df740ad0d1e328b2e6216b1d20845ff3bf04bf31"},
+    "tests/skills.spec.ts",
 
-    {"path":"tests/task-first-home.spec.ts","digest":"abc64b21fabda29a7db0d7d34cf65bb480e1f2b90266605932227625ce588cf8","revision":"d6a3158c22a62d9530592c6366a1624790ee9401"}
+    "tests/task-first-home.spec.ts"
   ],
 
   "checks": [
