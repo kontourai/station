@@ -1039,20 +1039,18 @@ export class NativeApplicationSessionClient {
     )
       throw new Error('Native application session target changed.');
     if (isHostProofProvider(this.key)) {
-      const requestProof = management
-        ? this.key.managementHeaders
-        : this.key.requestHeaders;
-      if (!requestProof)
+      if (management && !this.key.managementHeaders)
         throw new Error('Native relay management proof is unavailable.');
+      const hostContinuation = Object.freeze({
+        credential: current.credential,
+        nonce: current.nonce,
+        expiresAtMs: Date.parse(current.expiresAt),
+      });
       const headers = hostRequestHeaders.parse(
-        await requestProof.call(this.key, {
-          continuation: Object.freeze({
-            credential: current.credential,
-            nonce: current.nonce,
-            expiresAtMs: Date.parse(current.expiresAt),
-          }),
-          request: management
-            ? {
+        management
+          ? await this.key.managementHeaders!({
+              continuation: hostContinuation,
+              request: {
                 method:
                   request.method === 'POST'
                     ? 'POST'
@@ -1060,9 +1058,12 @@ export class NativeApplicationSessionClient {
                       ? 'HEAD'
                       : 'GET',
                 path,
-              }
-            : localReadRequest(request),
-        }),
+              },
+            })
+          : await this.key.requestHeaders({
+              continuation: hostContinuation,
+              request: localReadRequest(request),
+            }),
       );
       if (headers[APPLICATION_SESSION_NATIVE_HEADER] !== current.credential)
         throw new Error('Native host account continuation changed.');
