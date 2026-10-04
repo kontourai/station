@@ -2750,9 +2750,16 @@ response shape can also include Project and fork-provenance fields.
 `POST /api/conversations/:id/agent-title` with `{title}` is the route behind the
 station-control `rename_session` tool. It answers only a station-control tool
 call with a verified caller (anything else gets `403`
-`station_control_caller_required`), and only for a conversation the calling
-Session's owner owns (another person's reads as `404`). A title is one line of
-1 to 80 characters; anything else is a `400`, never truncated. It stamps
+`station_control_caller_required`), and a store conversation only: a native
+Claude or Codex conversation answers `runtime_title_unsupported`, and
+`POST /api/search` hits are mostly those. Unless the caller is a bound operator
+it reaches only a conversation the calling Session's owner owns (another
+person's reads as `404`); a bound operator caller is not limited to one owner's
+conversations, as with `DELETE /agents/:slug/conversations/:id`. A title is one
+line of 1 to 80 characters with no control, line or paragraph separator, bidi
+embedding, override or isolate, zero-width space or byte-order-mark character
+(the zero-width joiner and non-joiner are allowed); anything else is a `400`,
+never truncated or trimmed into shape. It stamps
 `titleSource: 'agent'` in the same serialized step that checks the stored title:
 a title with `titleSource: 'user'` answers `409` `person_title` and is left as
 it was, and a native Claude or Codex conversation answers `409`

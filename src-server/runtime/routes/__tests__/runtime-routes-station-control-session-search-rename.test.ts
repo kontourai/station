@@ -223,7 +223,8 @@ describe('station-control session search and rename (#176)', () => {
         // that window and the check reports the retirement as still pending
         // while the termination carries on. Only that exact report, with no
         // other cleanup failure alongside it, is tolerated; anything else
-        // still fails the test.
+        // still fails the test. Tracked in the follow-up issue linked from
+        // PR #3263.
         const causes =
           error instanceof AggregateError ? (error.errors as unknown[]) : [];
         if (
@@ -329,6 +330,16 @@ describe('station-control session search and rename (#176)', () => {
     );
     const base = `http://127.0.0.1:${await listening}`;
     process.env.STATION_API_BASE = base;
+    // The requests the tools send to Station's own routes. A refusal made by a
+    // tool's own schema never sends one.
+    const routeRequests: string[] = [];
+    const realFetch = globalThis.fetch;
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input instanceof Request ? input.url : input);
+      if (url.startsWith(base) && /\/api\/(search|conversations)/.test(url))
+        routeRequests.push(new URL(url).pathname);
+      return realFetch(input, init);
+    });
 
     // The real MCP server, over an in-memory transport.
     const mcp = createStationControlMcpServer();
@@ -432,7 +443,7 @@ describe('station-control session search and rename (#176)', () => {
       };
     };
 
-    return { base, memory, tool, asTool, personRenames, stored };
+    return { base, memory, tool, asTool, personRenames, stored, routeRequests };
   }
 
   const sessionIds = (body: any): string[] =>
@@ -513,14 +524,29 @@ describe('station-control session search and rename (#176)', () => {
       expect(bare.code).toBe('station_control_caller_required');
     });
 
-    test('a query of 1 or 257 characters is refused, never truncated, at the tool and at the route', async () => {
-      const { tool, asTool } = await setup();
+    test('the tool schema refuses a query of 1 or 257 characters itself, before any request is sent', async () => {
+      const { tool, routeRequests } = await setup();
       for (const query of ['c', 'c'.repeat(257)]) {
+        routeRequests.length = 0;
         const refused = await tool(bearer('carol-global'), 'search_sessions', {
           query,
         });
         expect([query.length, refused.isError]).toEqual([query.length, true]);
-        // The route holds the same bound for a caller that skips the schema.
+        expect(String(refused.body)).toMatch(/Input validation error/);
+        expect([query.length, routeRequests]).toEqual([query.length, []]);
+      }
+      // The bounds themselves are admitted.
+      for (const query of ['co', `cobalt${'x'.repeat(250)}`]) {
+        expect(
+          (await tool(bearer('carol-global'), 'search_sessions', { query }))
+            .isError,
+        ).toBe(false);
+      }
+    });
+
+    test('the search route refuses a query of 1 or 257 characters itself, for a caller that skips the tool', async () => {
+      const { asTool } = await setup();
+      for (const query of ['c', 'c'.repeat(257)]) {
         const direct = await asTool(bearer('carol-global'), '/api/search', {
           method: 'POST',
           body: JSON.stringify({
@@ -529,14 +555,11 @@ describe('station-control session search and rename (#176)', () => {
             filters: { kinds: ['session', 'message'] },
           }),
         });
-        expect([query.length, direct.success]).toEqual([query.length, false]);
-      }
-      // The bounds themselves are admitted.
-      for (const query of ['co', `cobalt${'x'.repeat(250)}`]) {
-        expect(
-          (await tool(bearer('carol-global'), 'search_sessions', { query }))
-            .isError,
-        ).toBe(false);
+        // The route's own validation, not the search service's later refusal.
+        expect([query.length, direct]).toMatchObject([
+          query.length,
+          { success: false, error: 'Validation failed' },
+        ]);
       }
     });
 
@@ -684,41 +707,72 @@ describe('station-control session search and rename (#176)', () => {
       expect((await stored('carol-global-conv')).titleSource).toBe('user');
     });
 
-    test('a title over the bound, empty or multi-line is refused and the title is unchanged', async () => {
-      const { tool, asTool, stored } = await setup();
-      const original = await stored('carol-global-conv');
-      const atBound = 'あ'.repeat(80);
-      for (const title of ['x'.repeat(81), 'あ'.repeat(81), '   ', 'a\nb']) {
+    // Over the bound, empty, a line or paragraph separator, a bidi override and
+    // a zero-width space: each is refused by the tool schema and by the route.
+    const REFUSED_TITLES: [string, string][] = [
+      ['81 characters', 'x'.repeat(81)],
+      ['81 multi-byte characters', 'あ'.repeat(81)],
+      ['empty', ''],
+      ['newline', 'a\nb'],
+      ['line separator U+2028', 'a\u2028b'],
+      ['paragraph separator U+2029', 'a\u2029b'],
+      ['bidi override U+202E', 'a\u202Eb'],
+      ['bidi isolate U+2066', 'a\u2066b'],
+      ['zero-width space U+200B', 'a\u200Bb'],
+      ['byte-order mark U+FEFF', 'a\uFEFFb'],
+      ['trailing line separator', 'ab\u2028'],
+    ];
+
+    test.each(REFUSED_TITLES)(
+      'the tool schema refuses a title with %s itself, before any request is sent',
+      async (_label, title) => {
+        const { tool, stored, routeRequests } = await setup();
+        const original = await stored('carol-global-conv');
         const refused = await tool(bearer('carol-global'), 'rename_session', {
           conversationId: 'carol-global-conv',
           title,
         });
-        expect([JSON.stringify(title), refused.isError]).toEqual([
-          JSON.stringify(title),
-          true,
-        ]);
-        // The route holds the same bound for a caller that skips the schema.
+        expect(refused.isError).toBe(true);
+        expect(String(refused.body)).toMatch(/Input validation error/);
+        expect(routeRequests).toEqual([]);
+        expect(await stored('carol-global-conv')).toEqual(original);
+      },
+    );
+
+    test.each([...REFUSED_TITLES, ['only spaces', '   '] as [string, string]])(
+      'the route refuses a title with %s itself, for a caller that skips the tool',
+      async (_label, title) => {
+        const { asTool, stored } = await setup();
+        const original = await stored('carol-global-conv');
         const direct = await asTool(
           bearer('carol-global'),
           '/api/conversations/carol-global-conv/agent-title',
           { method: 'POST', body: JSON.stringify({ title }) },
         );
-        expect([JSON.stringify(title), direct.success]).toEqual([
-          JSON.stringify(title),
-          false,
-        ]);
+        expect(direct).toMatchObject({
+          success: false,
+          error: 'Validation failed',
+        });
+        expect(await stored('carol-global-conv')).toEqual(original);
+      },
+    );
+
+    test('titles at the bound, and ones using joiners that build emoji and scripts, are accepted', async () => {
+      const { tool, stored } = await setup();
+      for (const title of [
+        'あ'.repeat(80),
+        // A family emoji is four emoji joined by U+200D.
+        '👨\u200D👩\u200D👧\u200D👦 plans',
+        // Persian uses U+200C (zero-width non-joiner) inside words.
+        'می\u200Cخواهم',
+      ]) {
+        const accepted = await tool(bearer('carol-global'), 'rename_session', {
+          conversationId: 'carol-global-conv',
+          title,
+        });
+        expect([title, accepted.isError]).toEqual([title, false]);
+        expect((await stored('carol-global-conv')).title).toBe(title);
       }
-      expect(await stored('carol-global-conv')).toEqual(original);
-      // The bound itself is admitted, counted in characters.
-      expect(
-        (
-          await tool(bearer('carol-global'), 'rename_session', {
-            conversationId: 'carol-global-conv',
-            title: atBound,
-          })
-        ).isError,
-      ).toBe(false);
-      expect((await stored('carol-global-conv')).title).toBe(atBound);
     });
 
     test('a native runtime conversation is refused with runtime_title_unsupported', async () => {

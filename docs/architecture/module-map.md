@@ -1116,7 +1116,7 @@ and [target resolver](../../src-server/services/execution-target/__tests__/execu
 caller to the same rule for a stored conversation, which has no Session record
 to read: it asks `target` for the Project named in the conversation's own
 metadata (global when it names none) and passes that to the shared rule, after
-the owner check. A named Project Station cannot read refuses.
+the owner check (which a bound operator caller skips). A named Project Station cannot read refuses.
 
 **Start-time repeat.** The resolved directory is still a string when the engine
 starts. For a new Session and any caller except a bound operator, the route

@@ -11,7 +11,10 @@ import {
   isPrincipalScopedAgentRequest,
   stationControlRequestAuthority,
 } from '../../security/station-control-request-authority.js';
-import { CONVERSATION_TITLE_MAX_CODE_POINTS } from '../../services/orchestration/conversation-title.js';
+import {
+  CONVERSATION_TITLE_MAX_CODE_POINTS,
+  hasUnsafeTitleCharacters,
+} from '../../services/orchestration/conversation-title.js';
 import {
   stationControlRefusal,
   stationControlRefusalBody,
@@ -42,15 +45,17 @@ const requestSchema = z
   .object({
     title: z
       .string()
+      // Checked before the trim, so a separator or mark at either end is
+      // refused rather than quietly dropped.
+      .refine(
+        (value) => !hasUnsafeTitleCharacters(value),
+        'Title must be a single line of plain text',
+      )
       .transform((value) => value.trim())
       .refine((value) => value.length > 0, 'Title must not be empty')
       .refine(
         (value) => [...value].length <= CONVERSATION_TITLE_MAX_CODE_POINTS,
         `Title must be at most ${CONVERSATION_TITLE_MAX_CODE_POINTS} characters`,
-      )
-      .refine(
-        (value) => !/\p{Cc}/u.test(value),
-        'Title must be a single line of text',
       ),
   })
   .strict();

@@ -16,6 +16,20 @@
  */
 export const CONVERSATION_TITLE_MAX_CODE_POINTS = 80;
 
+/**
+ * Characters a title an agent supplies may not contain: control characters
+ * (`Cc`), line and paragraph separators (`Zl`, `Zp`), the bidi embedding,
+ * override and isolate controls that reorder what a reader sees, and the
+ * zero-width space and byte-order mark. Not all of `Cf`: the zero-width
+ * joiner and non-joiner build emoji sequences and some scripts' words.
+ */
+const UNSAFE_TITLE_CHARACTERS =
+  /[\p{Cc}\p{Zl}\p{Zp}\u200B\uFEFF\u202A-\u202E\u2066-\u2069]/u;
+
+export function hasUnsafeTitleCharacters(title: string): boolean {
+  return UNSAFE_TITLE_CHARACTERS.test(title);
+}
+
 // Emphasis only counts as markdown where it opens at a word start and closes
 // at a word end, as CommonMark would read it. Characters INSIDE a word are
 // never markup: `user_id`, `__init__.py`, `2*3*4` are identifiers and maths,

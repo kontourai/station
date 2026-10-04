@@ -1,7 +1,10 @@
 import { UNIFIED_SEARCH_V1 } from '@kontourai/station-contracts/unified-search';
 import { z } from 'zod';
 
-import { CONVERSATION_TITLE_MAX_CODE_POINTS } from '../services/orchestration/conversation-title.js';
+import {
+  CONVERSATION_TITLE_MAX_CODE_POINTS,
+  hasUnsafeTitleCharacters,
+} from '../services/orchestration/conversation-title.js';
 import type { StationControlToolRegistry } from './station-control-mcp-server.js';
 import { api, jsonToolResult } from './station-control-shared.js';
 
@@ -127,6 +130,9 @@ const titleSchema = z
   .min(1)
   .refine((value) => [...value].length <= CONVERSATION_TITLE_MAX_CODE_POINTS, {
     message: `Title must be at most ${CONVERSATION_TITLE_MAX_CODE_POINTS} characters`,
+  })
+  .refine((value) => !hasUnsafeTitleCharacters(value), {
+    message: 'Title must be a single line of plain text',
   });
 
 export function registerSessionSearchTools(server: StationControlToolRegistry) {
@@ -134,6 +140,7 @@ export function registerSessionSearchTools(server: StationControlToolRegistry) {
     'search_sessions',
     "Search the calling session owner's own conversation transcripts for a phrase. " +
       'Returns matching messages with the session each belongs to, a snippet and the ids that open it. ' +
+      'Hits are mostly from native Claude and Codex session transcripts, whose titles `rename_session` cannot change. ' +
       'Results are limited to what the person this session acts for may read. ' +
       'A response with `incompleteSources` is partial, not empty; pass its `continuation` to read more when present.',
     {
@@ -185,9 +192,10 @@ export function registerSessionSearchTools(server: StationControlToolRegistry) {
 
   server.tool(
     'rename_session',
-    'Rename a conversation. A title a person set is never replaced (refused with `person_title`); ' +
+    'Rename a Station-stored conversation. A title a person set is never replaced (refused with `person_title`); ' +
       'a title this tool set earlier is. Native Claude and Codex sessions keep their runtime-managed titles ' +
-      '(refused with `runtime_title_unsupported`). Only the conversation of the person this session acts for.',
+      '(refused with `runtime_title_unsupported`), and `search_sessions` hits are mostly those, so a search result is not a conversation to rename. ' +
+      'Only a conversation of the person this session acts for, unless the caller is a bound operator.',
     {
       conversationId: z.string().min(1).max(256),
       title: titleSchema.describe(
