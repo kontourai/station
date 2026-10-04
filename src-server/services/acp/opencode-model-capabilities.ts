@@ -30,12 +30,12 @@ import {
 } from '../../providers/auth/cli-auth.js';
 import { forceKillProcess, spawnOwnedChild } from '../infra/process-utils.js';
 
-export const OPENCODE_LISTING_TIMEOUT_MS = 8_000;
+const OPENCODE_LISTING_TIMEOUT_MS = 8_000;
 /** The real listing is ~550KB for ~460 models; this is generous headroom. */
-export const OPENCODE_LISTING_MAX_BYTES = 2 * 1024 * 1024;
-export const OPENCODE_CAPABILITIES_TTL_MS = 60 * 60_000;
+const OPENCODE_LISTING_MAX_BYTES = 2 * 1024 * 1024;
+const OPENCODE_CAPABILITIES_TTL_MS = 60 * 60_000;
 /** A failed listing is retried sooner than a good one is refreshed. */
-export const OPENCODE_CAPABILITIES_FAILURE_TTL_MS = 15 * 60_000;
+const OPENCODE_CAPABILITIES_FAILURE_TTL_MS = 15 * 60_000;
 
 export type OpenCodeListingFailure =
   | 'not-installed'
@@ -87,7 +87,7 @@ function commandBasename(command: string): string {
     .replace(/\.(exe|cmd|bat)$/, '');
 }
 
-export function isOpenCodeCommand(command: string): boolean {
+function isOpenCodeCommand(command: string): boolean {
   return commandBasename(command) === 'opencode';
 }
 
