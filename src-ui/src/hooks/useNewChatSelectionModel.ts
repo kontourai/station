@@ -24,6 +24,7 @@ import {
 } from '../components/modals/new-chat-modal-utils';
 import { activeChatsStore } from '../contexts/ActiveChatsContext';
 import type { AgentData } from '../contexts/AgentsContext';
+import { useAuthorityPersistence } from '../contexts/AuthorityPersistenceContext';
 import { useConfig } from '../contexts/ConfigContext';
 import { useNavigation } from '../contexts/NavigationContext';
 import {
@@ -68,7 +69,7 @@ export function resolveProviderManagedAgentConnectionId(
   return managedRuntimeId ? engineConnectionId(managedRuntimeId) : undefined;
 }
 
-import { getRecentAgentSlugs } from './useRecentAgents';
+import { getContextAgent, getRecentAgentSlugs } from './useRecentAgents';
 
 export interface ACPSelectionConnection {
   id: string;
@@ -182,6 +183,7 @@ export function useNewChatSelectionModel({
       selectedProjectLayout: state.selectedProjectLayout,
     }));
   const appConfig = useConfig();
+  const { namespace } = useAuthorityPersistence();
   const agentCatalog = useAgentsQuery();
   useReconcilingCatalogRefresh(
     agentCatalog.catalogState,
@@ -263,6 +265,7 @@ export function useNewChatSelectionModel({
       agents?: AgentId[];
       defaultProviderId?: string;
       defaultModel?: string;
+      defaultAgent?: AgentId;
     };
   };
 
@@ -379,6 +382,16 @@ export function useNewChatSelectionModel({
     modelConnections,
     acpConnections,
     projectDefaultModel: selectedProjectConfig?.defaultModel,
+    preferredAgentSlug:
+      getContextAgent(namespace, selectedContext) ??
+      getRecentAgentSlugsForContext(
+        activeChatsSnapshot,
+        selectedContext,
+        [],
+      )[0] ??
+      selectedProjectConfig?.defaultAgent ??
+      layout?.defaultAgent,
+
     lastChosenModelByBinding,
   });
   const [modelChoices, setModelChoices] = useState<

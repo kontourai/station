@@ -122,8 +122,8 @@ path; installed, unconnected apps can be connected when needed. Explicitly
 disabled apps remain disabled. A missing account, permission, or working target
 is shown at the point where it is needed, without claiming preparation succeeded.
 
-**Chat options** opens the full picker when you want a different app, Model,
-or workspace. **Explore agents** remains available for deliberate customization.
+**New chat** opens a separate message draft with Agent, Model and Workspace
+controls when you want a different choice. **Explore agents** remains available for deliberate customization.
 The usage disclosure ends after your usage decision. **Personalize Station**
 opens optional preferences after the work entry; it is not a prerequisite for a
 chat.
@@ -142,13 +142,26 @@ questions add no profile. If saving those answers fails, setup stays open so
 you can retry. Closing setup or navigating back during that save cancels the
 next navigation; answers that already saved remain saved.
 
-New Chat lets you choose an Agent, Model, and workspace. It shows loading,
-connection errors, or setup actions when a choice is not ready. Opening it does
-not send a message. **Take the tour** and **Connect another device** are optional alternatives.
+**New chat** opens a message draft with Agent and Model controls beside it.
+Opening it or changing either choice starts no conversation or engine; **Send**
+opens the conversation and submits the message once. It remembers your last
+Agent separately for each project and for **No project**, on this browser and
+Station access. With no remembered choice, it uses the project’s **Default
+agent**, then the current layout default or Station’s runnable suggestion.
+A remembered Agent needing repair stays visible; a removed choice asks you to
+choose another. Home’s quick-start path continues to use a runnable suggestion.
+
+**Continue working** shows up to five recent chats from the selected workspace,
+using the inbox’s status and details. Choose one to resume it, or **View all**
+to open the chat inventory. Loading and failed reads are shown separately from
+an empty list. Choosing an Agent opens the expanded picker, where visual skills
+and setup actions remain available. **Take the tour** and **Connect another device** are optional alternatives.
 Both save the same selected answers before opening their next step.
 
-On a phone, tap the current chat title to open **Chats and tasks**, then use
-**+** at the lower right to start a chat. **Projects** has the same add control
+On a phone, use the compose button at the right of the chat bar, or tap the
+current chat title to open **Chats and tasks** and choose **New chat** at the
+lower right. The three-dot menu holds chat actions; connection health remains
+in the app header. **Projects** has the same add control
 for creating a project, including a short first-project prompt when empty.
 
 Selecting a project in the sidebar opens its workspace and makes it the default
@@ -158,8 +171,8 @@ The next sidebar project selection updates that default again.
 
 ### Prepare a visual skill
 
-Ordinary New Chat also lists installed visual skills, including when only one
-Agent is ready. A card describes its purpose, example and owning plugin. Choose
+Open the Agent control in New chat to browse installed visual skills, including
+when only one Agent is ready. A card describes its purpose, example and owning plugin. Choose
 a card and fill its text or choice inputs, then choose an Agent, Model and
 workspace. This prepares an unsent chat. Attach any required files using the
 ordinary composer, assign files to the named roles when shown, and send
@@ -195,6 +208,15 @@ conversation controls.
 
 
 ### Finish setup and return
+
+When no selected Agent can respond, New chat shows a setup helper alongside
+your message and recent chats. It offers AI app setup, model-account setup,
+and a recheck. Available engine prerequisites include installation steps,
+commands, and links supplied by that engine’s integration. Commands are shown
+for you to run; opening a guide does not install software. Install AI apps on
+the computer hosting Station, including when using Station from a phone.
+Claude and Codex account management opens their existing in-UI sign-in flow;
+other integrations retain their own authorization instructions.
 
 If New Chat offers **Connect**, **Set up**, **Edit agent**, or **Set up
 Connections**, use that action to open the owning setup page. The picker steps

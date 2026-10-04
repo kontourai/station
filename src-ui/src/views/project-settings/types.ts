@@ -19,6 +19,7 @@ export type ProjectForm = Pick<
   | 'name'
   | 'icon'
   | 'description'
+  | 'defaultAgent'
   | 'defaultModel'
   | 'defaultProviderId'
   | 'defaultEnvironment'

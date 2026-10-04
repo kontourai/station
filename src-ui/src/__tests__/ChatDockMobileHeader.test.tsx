@@ -306,17 +306,16 @@ describe('mobile conversation focus', () => {
     expect(onOpenProject).toHaveBeenCalledWith('kontour-ai');
     expect(onSwitchProject).not.toHaveBeenCalled();
   });
-  test('shows live connection state and a visible management label on request', async () => {
-    renderHeader();
+  test('New chat is directly reachable and overflow keeps chat actions without repeating connection health', async () => {
+    const onNewChat = vi.fn();
+    renderHeader({ onNewChat });
+    fireEvent.click(screen.getByRole('button', { name: 'New chat' }));
+    expect(onNewChat).toHaveBeenCalledOnce();
     await openActions();
-    const indicator = screen.getByTestId('chat-dock-mobile-connection');
-    expect(indicator.dataset.connectionState).toBeTruthy();
-    expect(indicator.textContent).toBeTruthy();
-    const listener = vi.fn();
-    window.addEventListener('station:open-connections-modal', listener);
-    fireEvent.click(indicator);
-    expect(listener).toHaveBeenCalledOnce();
-    window.removeEventListener('station:open-connections-modal', listener);
+    expect(screen.queryByTestId('chat-dock-mobile-connection')).toBeNull();
+    expect(
+      screen.getByRole('menuitem', { name: 'Chat settings' }),
+    ).toBeTruthy();
   });
   test('does not duplicate connection management while the app toolbar owns it', async () => {
     renderHeader({ showConnection: false });

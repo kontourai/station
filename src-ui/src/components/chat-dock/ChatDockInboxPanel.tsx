@@ -12,6 +12,7 @@ import {
   workItemOpenFailureMessage,
 } from '../../views/home/work-item-open-policy';
 import { MessageGlyph } from '../icons/Glyph';
+import { NewChatAction } from '../NewChatAction';
 import { Empty } from '../state';
 import {
   type CollapsibleInboxSectionId,
@@ -56,6 +57,7 @@ export interface ChatDockInboxPanelProps {
   /** Marks the rendered conversation version as seen before opening it. */
   onAcknowledgeConversation?: (item: HomeWorkItem) => void;
   onOpenHistory: () => void;
+  onNewChat?: () => void;
   /**
    * station#3309: mounted only to play its exit. The panel is still on screen,
    * but the user's decision to collapse it is already complete, so it is inert
@@ -100,6 +102,7 @@ function ChatDockInboxPanelImpl({
   onCloseChat,
   onAcknowledgeConversation,
   onOpenHistory,
+  onNewChat,
   exiting = false,
   now: suppliedNow,
   agents,
@@ -218,6 +221,7 @@ function ChatDockInboxPanelImpl({
           <MessageGlyph />
           Conversation history
         </button>
+        {onNewChat && <NewChatAction onClick={onNewChat} />}
       </footer>
     </aside>
   );

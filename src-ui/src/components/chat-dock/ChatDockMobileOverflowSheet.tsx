@@ -1,4 +1,3 @@
-import { ChatDockMobileConnection } from './ChatDockMobileConnection';
 import './ChatDockMobileOverflowSheet.css';
 import {
   ResponsiveDialogHeader,
@@ -17,7 +16,6 @@ import type { ChatDockMobileOverflowActions } from './ChatDockMobileHeader';
 export function ChatDockMobileOverflowSheet({
   overflow,
   projectScope,
-  showConnection,
   onNewChat,
   branchLabel,
   returnFocusTarget,
@@ -68,7 +66,6 @@ export function ChatDockMobileOverflowSheet({
           </button>
         )}
         {branchLabel && <p>{branchLabel}</p>}
-        {showConnection && <ChatDockMobileConnection showLabel />}
         {/* Desktop More-menu parity first, like the desktop menu's own order:
             identities are occasionally needed for paste, never read
             continuously, and a coarse device has no tooltip to carry them. */}
