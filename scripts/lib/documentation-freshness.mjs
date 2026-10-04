@@ -16,9 +16,9 @@ import {
   touchedReviewInputs,
 } from './review-history.mjs';
 import {
+  REVIEW_LEDGER_INDEX,
   readReviewState,
   readReviewStateAt,
-  REVIEW_LEDGER_INDEX,
 } from './review-ledger-store.mjs';
 
 /**
@@ -597,7 +597,12 @@ async function baselineAdvanceProblem(root, { from, to }, mergeBase) {
     );
   } catch (error) {
     return fail(
-      `${label}: strict freshness does not pass at the new baseline (${String(error?.message ?? error).split('\n').slice(0, 4).join('; ')}).`,
+      `${label}: strict freshness does not pass at the new baseline (${String(
+        error?.message ?? error,
+      )
+        .split('\n')
+        .slice(0, 4)
+        .join('; ')}).`,
     );
   } finally {
     try {
