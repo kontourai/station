@@ -122,7 +122,7 @@
 
     {"path":"src-ui/src/workspace-panes/__tests__/RegionPaneHost.openInRegion.test.tsx","digest":"32be112f3c900922621a776004e10c9e242d75df7d9d34b68e16d4961a7c97c4","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/workspace-panes/__tests__/RegionPaneHost.project.test.tsx","digest":"d446b96ce94f5596f3b9ba22e2180c8fefa1b58c7ad96519ccb26f10123c1da2","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"src-ui/src/workspace-panes/__tests__/RegionPaneHost.project.test.tsx","digest":"bdf9cdc078c0d1b5aa25794c36ff46c25a2d17a82338c56adf709f53ce8cef39","revision":"12e2341b5f3f4b34b15e7a11eedf51d11873323d"},
 
     {"path":"src-ui/src/workspace-panes/__tests__/RegionPaneHost.tabs.test.tsx","digest":"466d25073741824d65a8de1be3b0d6ec94bd32c2716731ca2b170c99834dd27f","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
