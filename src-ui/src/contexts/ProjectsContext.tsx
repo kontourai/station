@@ -458,6 +458,7 @@ export interface ProjectMetadata {
 export interface ProjectConfig extends ProjectMetadata {
   workingDirectory?: string;
   defaultModel?: string;
+  defaultAgent?: AgentId;
   defaultEmbeddingProviderId?: string;
   defaultEmbeddingModel?: string;
   similarityThreshold?: number;
