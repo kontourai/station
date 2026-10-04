@@ -196,7 +196,7 @@ server-owned caller declares it, and no production caller does today
 builds the Muse adapter with neither `turnIdleTimeoutMs`
 nor `turnTimeoutMs`), so production Muse turns carry no Station-imposed
 bound. A turn that goes silent is surfaced instead: the stall watchdog's
-`progressSilence` (below) shows "No output for …" and the stall notice with a
+`progressSilence` (below) shows "No progress from <engine> for 4m" and the stall notice with a
 Stop button, and the user decides. On the exec fallback, Stop signals the
 child's process group and settles the turn `turn.aborted`; the serve transport
 uses its interrupt protocol, described below. The following idle/total timer
