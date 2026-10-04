@@ -69,13 +69,15 @@ rounding differences.
 | ACP, including ACP-backed engines | Reported context occupancy/window | Occupancy is not consumed tokens; arbitrary-currency ACP costs are not projected |
 | Station agent / direct model-provider chat | Saved messages and their recorded usage/estimates | The orchestration scan excludes conversations already counted in file memory |
 
-One attached-transcript defect remains in the per-turn conversation window:
-[late Claude turn-duration records can split a turn's usage](https://github.com/kontourai/station/issues/581).
-A bounded reproducer against the current importer emitted two usage events for
-one turn (5/7 and 11/13 input/output), while the conversation-window projection
-keeps only the latest usage event for that turn. The full-session fold and raw
-receipt rollup can sum the two events; the per-turn window must not be treated
-as complete until that importer/cursor defect is repaired.
+Attached Claude transcripts retain a bounded record-to-turn ancestry map in the
+persisted cursor. A late turn-duration record closes its known parent turn
+without clearing a newer turn's usage. Unknown or evicted ancestry does not
+close the current turn; the next user boundary can still flush its usage.
+The bounded per-turn conversation window retains all Claude and Muse usage
+observations, including split observations already persisted before this fix.
+Codex session-cumulative observations still use the latest snapshot. This
+repairs [#581](https://github.com/kontourai/station/issues/581); it does not
+expand the window's event or byte limits.
 
 These are implementation and captured-wire/fixture boundaries, not a new live
 billing reconciliation across every account and model. The scope declarations
