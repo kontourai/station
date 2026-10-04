@@ -2318,8 +2318,8 @@ describe('lifecycle instance state', () => {
             .mockReturnValueOnce(uiChild),
         },
         platformOverrides: {
-          captureStableProcessFingerprint:
-            realPlatform.inspectProcessFingerprint,
+          captureStableProcessFingerprint: (pid: number) =>
+            realPlatform.inspectProcessFingerprint(pid),
         },
       });
       try {
