@@ -30,6 +30,7 @@ import {
   livenessScale,
   overrideFrom,
 } from './liveness-scale.mjs';
+import { invokedDirectly } from './module-entry.mjs';
 import {
   createHostCpuSampler,
   DEFAULT_HOST_CPU_THRESHOLD_PERCENT,
@@ -134,4 +135,17 @@ export async function ensureLivenessScale({
   const line = describeLivenessScale(resolved);
   if (line) log(line);
   return resolved.scale;
+}
+
+// CLI for shell entry points such as .githooks/pre-push: the resolved factor
+// goes to stdout, the visibility line to stderr, and a refused override exits 2.
+if (invokedDirectly(import.meta.url)) {
+  try {
+    process.stdout.write(`${await ensureLivenessScale()}\n`);
+  } catch (error) {
+    process.stderr.write(
+      `${error instanceof Error ? error.message : String(error)}\n`,
+    );
+    process.exitCode = 2;
+  }
 }

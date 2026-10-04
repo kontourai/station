@@ -205,17 +205,21 @@ describe('liveness scale factor', () => {
 
   test('the CLI prints the factor on stdout, and refuses an invalid override with exit 2', () => {
     const run = (extra: Record<string, string>) =>
-      spawnSync(process.execPath, [join(ROOT, 'scripts/liveness-scale.mjs')], {
-        encoding: 'utf8',
-        windowsHide: true,
-        env: {
-          ...process.env,
-          STATION_LIVENESS_SCALE: undefined,
-          STATION_LIVENESS_SCALE_RESOLVED: undefined,
-          CI: 'true',
-          ...extra,
+      spawnSync(
+        process.execPath,
+        [join(ROOT, 'scripts/lib/liveness-scale-resolve.mjs')],
+        {
+          encoding: 'utf8',
+          windowsHide: true,
+          env: {
+            ...process.env,
+            STATION_LIVENESS_SCALE: undefined,
+            STATION_LIVENESS_SCALE_RESOLVED: undefined,
+            CI: 'true',
+            ...extra,
+          },
         },
-      });
+      );
     const ok = run({ STATION_LIVENESS_SCALE: '3' });
     expect(ok.status).toBe(0);
     expect(ok.stdout.trim()).toBe('3');
@@ -228,7 +232,9 @@ describe('liveness scale factor', () => {
 
   test('the pre-push hook resolves the factor before its first check', () => {
     const hook = readFileSync(join(ROOT, '.githooks/pre-push'), 'utf8');
-    const resolveAt = hook.indexOf('node scripts/liveness-scale.mjs');
+    const resolveAt = hook.indexOf(
+      'node scripts/lib/liveness-scale-resolve.mjs',
+    );
     expect(resolveAt).toBeGreaterThan(0);
     expect(hook).toContain('export STATION_LIVENESS_SCALE_RESOLVED=1');
     expect(resolveAt).toBeLessThan(hook.indexOf('npm run --silent lint:check'));

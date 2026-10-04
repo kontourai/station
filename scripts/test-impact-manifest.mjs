@@ -910,12 +910,8 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
   {
     pattern: 'scripts/lib/liveness-scale-resolve.mjs',
     tests: ['scripts/__tests__/liveness-scale.test.ts'],
-    reason: 'host-pressure liveness scale resolution',
-  },
-  {
-    pattern: 'scripts/liveness-scale.mjs',
-    tests: ['scripts/__tests__/liveness-scale.test.ts'],
-    reason: 'pre-push liveness scale resolver CLI',
+    reason:
+      'host-pressure liveness scale resolution and the pre-push resolver CLI',
   },
   {
     pattern: 'scripts/lib/transfer-capture-progress.ts',
