@@ -8,6 +8,7 @@ import {
 } from '@kontourai/station-shared/instance-registry';
 import { lookupProcessBirthFingerprint } from '@kontourai/station-shared/process-identity';
 import { afterAll, afterEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.js';
 import type { CollectedChildStatus } from '../commands/lifecycle.js';
 import { superviseService } from '../commands/service-run.js';
 
@@ -980,6 +981,7 @@ describe('service supervisor', () => {
  * ever wrote a live service record.
  */
 describe('supervised service liveness (station#3064)', () => {
+  const makeTempDir = trackTempDirs();
   const serviceLifecycle = (baseDir: string) => ({
     baseDir,
     homeSource: '--base' as const,
@@ -1154,7 +1156,7 @@ describe('supervised service liveness (station#3064)', () => {
     // One host per home (ADR 0020 D4): the supervisor claims BEFORE it starts
     // Station, so a live sidecar keeps it waiting in-process rather than
     // serving the same home or exiting into a KeepAlive restart loop.
-    const home = mkdtempSync(join(tmpdir(), 'station-svc-live-'));
+    const home = makeTempDir('station-svc-live-');
     upsertInstance(
       'service-test',
       { port: 3242, type: 'service', env: { ALLOWED_ORIGINS: 'x' } },
@@ -1232,7 +1234,7 @@ describe('supervised service liveness (station#3064)', () => {
   });
 
   test('refuses startup with a corrupt service registry (#2961)', async () => {
-    const home = mkdtempSync(join(tmpdir(), 'station-svc-live-'));
+    const home = makeTempDir('station-svc-live-');
     writeFileSync(join(home, 'instances.json'), '{broken');
     const start = vi.fn().mockResolvedValue(undefined);
     const exit = vi.fn();
