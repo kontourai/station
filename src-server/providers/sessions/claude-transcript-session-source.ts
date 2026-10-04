@@ -472,7 +472,9 @@ export class ClaudeTranscriptSessionSource implements AttachedSessionSource {
     // identities after their exact user boundary, never counters or events.
     const start = Math.max(0, cursorOffset - this.maxBytes);
     const content = readWindow(file, start, cursorOffset - start);
-    let offset = start > 0 ? content.indexOf(0x0a) + 1 : 0;
+    const startsAtBoundary =
+      start === 0 || readWindow(file, start - 1, 1)[0] === 0x0a;
+    let offset = startsAtBoundary ? 0 : content.indexOf(0x0a) + 1;
     let inActiveTurn = false;
     let lines = 0;
     while (offset < content.length) {

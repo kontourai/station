@@ -754,35 +754,44 @@ describe('ClaudeTranscriptSessionSource', () => {
     },
   );
 
-  test.each([true, false])(
+  test.each(['full', 'aligned', 'unavailable'])(
     'an older aggregation cursor recovers only an available user boundary (%s)',
-    async (boundaryAvailable) => {
+    async (window) => {
+      const boundaryAvailable = window !== 'unavailable';
       const root = fixtureDir();
       const directory = join(root, 'projects', 'encoded-project');
       mkdirSync(directory, { recursive: true });
       const transcript = join(directory, 'session-a.jsonl');
+      const prefix = record({
+        type: 'user',
+        uuid: 'prior-turn',
+        sessionId: 'session-a',
+        cwd: '[redacted]',
+        message: { role: 'user', content: 'prior question' },
+      });
       writeFileSync(
         transcript,
-        [
-          {
-            type: 'user',
-            uuid: 'turn-1',
-            sessionId: 'session-a',
-            cwd: '[redacted]',
-            message: { role: 'user', content: 'question'.repeat(500) },
-          },
-          {
-            type: 'assistant',
-            uuid: 'call-1',
-            parentUuid: 'turn-1',
-            message: {
-              content: [],
-              usage: { input_tokens: 5, output_tokens: 7 },
+        prefix +
+          [
+            {
+              type: 'user',
+              uuid: 'turn-1',
+              sessionId: 'session-a',
+              cwd: '[redacted]',
+              message: { role: 'user', content: 'question'.repeat(500) },
             },
-          },
-        ]
-          .map(record)
-          .join(''),
+            {
+              type: 'assistant',
+              uuid: 'call-1',
+              parentUuid: 'turn-1',
+              message: {
+                content: [],
+                usage: { input_tokens: 5, output_tokens: 7 },
+              },
+            },
+          ]
+            .map(record)
+            .join(''),
       );
       const source = new ClaudeTranscriptSessionSource({ configDir: root });
       const [session] = (await source.discover()).sessions;
@@ -802,7 +811,14 @@ describe('ClaudeTranscriptSessionSource', () => {
       );
       const restarted = new ClaudeTranscriptSessionSource({
         configDir: root,
-        ...(boundaryAvailable ? {} : { maxBytes: 512 }),
+        ...(window === 'full'
+          ? {}
+          : {
+              maxBytes:
+                window === 'aligned'
+                  ? oldCursor.offset - Buffer.byteLength(prefix, 'utf8')
+                  : 512,
+            }),
       });
       const [restoredSession] = (await restarted.discover()).sessions;
       const after = await restarted.read(
