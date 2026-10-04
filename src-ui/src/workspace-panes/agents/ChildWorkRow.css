@@ -164,3 +164,75 @@
   color: var(--text-tertiary);
   font-size: var(--text-2xs);
 }
+
+/* #3163: the subagent's own model, or that none was reported. */
+.child-work-row__model {
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.child-work-row__model[data-reported="false"] {
+  color: var(--text-tertiary);
+  font-family: inherit;
+  font-style: italic;
+}
+
+/* #3163: the read-only transcript. Bounded by the server's page size. */
+.child-work-transcript {
+  display: flex;
+  max-height: 360px;
+  flex-direction: column;
+  gap: var(--space-2);
+  overflow-y: auto;
+}
+
+.child-work-transcript__entries {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.child-work-transcript__entry {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.child-work-transcript__label {
+  color: var(--text-tertiary);
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.child-work-transcript__text {
+  margin: 0;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+}
+
+.child-work-transcript__code {
+  display: block;
+  max-height: 120px;
+  overflow: auto;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--bg-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  white-space: pre-wrap;
+}
+
+.child-work-transcript__note,
+.child-work-transcript__cut {
+  margin: 0;
+  color: var(--text-tertiary);
+  font-size: var(--text-2xs);
+}

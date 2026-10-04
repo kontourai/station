@@ -1026,6 +1026,11 @@ export interface OrchestrationSessionSummary extends ProviderSession {
   lastEventMethod?: CanonicalRuntimeEvent['method'];
   /** Current terminal runtime error text when the event fold can prove one. */
   lastRuntimeErrorMessage?: string;
+  /**
+   * #3157: that terminal runtime error is a provider usage limit
+   * (`UsageLimitFailureDetails`). Clients hold queued follow-ups on it.
+   */
+  lastRuntimeErrorUsageLimit?: true;
   /** Reason from the latest non-recovery turn abort, when it is terminal. */
   lastTurnAbortReason?: string;
   /** Present only while this process is watching this session's active turn. */
@@ -1506,8 +1511,10 @@ export interface ConversationListItem {
   /**
    * Durable title provenance for mutable store conversations. A UI must ask
    * before replacing a human-owned title; runtime conversations have none.
+   * `agent` is a title a station-control agent set with `rename_session`: it
+   * is not a person's, so any later rename replaces it without asking.
    */
-  titleSource?: 'user' | 'generated' | 'provider' | 'prompt';
+  titleSource?: 'user' | 'generated' | 'provider' | 'prompt' | 'agent';
   /**
    * Carried from the base summary's decoration. Required on this shape too:
    * `useConversationInventoryQuery`'s consumers fold the same

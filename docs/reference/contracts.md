@@ -37,7 +37,7 @@ Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shar
 | `@kontourai/station-contracts/native-relay-link` | Closed v1 public route intent or unchanged native v2 invitation envelope, untrusted origin hints, fixed native channels and secret-free host delivery metadata/opaque handles; no trust, person, Device, Project or compute authority |
 | `@kontourai/station-contracts/deployment-authentication` | Public operator-installed authentication provider configuration, factory, descriptor, operations and verified account-session results; see [deployment authentication](../guides/deployment-authentication.md) |
 | `@kontourai/station-contracts/catalog` | Registry items, install results, skills, guidance assets |
-| `@kontourai/station-contracts/child-work` | Provider-neutral child work (engine subagents and Station delegates): items, deltas, the session read model, and the one pure reducer over them |
+| `@kontourai/station-contracts/child-work` | Provider-neutral child work (engine subagents and Station delegates): items, deltas, the session read model, and the one pure reducer over them. An item's optional `model` is the child's own model with its `source` (never the parent's), and `transcript` names the engine records its read-only transcript is served from |
 | `@kontourai/station-contracts/cloud-move` | Cloud preparation target/inventory, enrolled target observations, unavailable-transfer projection, and workspace package capture/inspection/verification receipts |
 | `@kontourai/station-contracts/registry-trust` | Candidate registry policies, bounded applied identity/epoch shapes, and untrusted signed-package claim shapes |
 | `@kontourai/station-contracts/config` | App config and template variables |
@@ -45,6 +45,7 @@ Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shar
 | `@kontourai/station-contracts/connection-quota` | Provider-reported quota snapshots, explicit unavailable outcomes, and pure rolling-observation merging; absent provider data stays absent |
 | `@kontourai/station-contracts/self-hosted-broker` | Versioned browser Origin scope, native proof-key surface and distinct v2 native offer metadata and closed invitation-authenticated older-scope observations; routing authority is separate from signing trust, account identity and Project permission |
 | `@kontourai/station-contracts/relay-ice` | Closed relay-only short-lived end-user ICE receipt, exact native scope/optional surface, issue/expiry times and a 600-second ceiling; no issuer secret or application/Device/account grant |
+| `@kontourai/station-contracts/execution-preparation` | Version requirement, typed refusal codes and path-free receipt for version-matched portable execution; see [remote execution preparation](../design/remote-execution-preparation.md) |
 | `@kontourai/station-contracts/execution-target` | Environment, Agent and workspace intent, including exact portable Project/resource execution; see [receiver execution offers](../design/portable-project-identity.md#receiver-execution-offers) |
 | `@kontourai/station-contracts/harness-questions` | Types for normalized harness questionnaires and batches of choice/custom answers; validation lives in shared |
 | `@kontourai/station-contracts/knowledge` | Knowledge namespaces, tree/search/document metadata |
@@ -93,7 +94,10 @@ execution child for the row's conversation, including when no turn is open.
 It is omitted when the current child is outside the caller's readable scope.
 `lastRuntimeErrorMessage` carries the current terminal error when the event
 fold can prove one; `lastTurnAbortReason` carries a non-recovery abort's
-reason. A later successful terminal clears them.
+reason. A later successful terminal clears them. `lastRuntimeErrorUsageLimit`
+is `true` when that terminal error carried an engine adapter's
+`UsageLimitFailureDetails` (a Claude Code or Codex usage limit); clients hold
+queued follow-ups on it until a turn starts or the user sends one.
 
 `ORCHESTRATION_STREAM_ACTIVITY_EVENT` names an idless SSE frame carrying the
 current conversation activity after a burst of coalesced runtime events. It
@@ -196,8 +200,9 @@ server-owned caller declares it, and no production caller does today
 builds the Muse adapter with neither `turnIdleTimeoutMs`
 nor `turnTimeoutMs`), so production Muse turns carry no Station-imposed
 bound. A turn that goes silent is surfaced instead: the stall watchdog's
-`progressSilence` (below) shows "No response from <engine> for …" and the stall notice with a
-Stop button, and the user decides. On the exec fallback, Stop signals the
+`progressSilence` (below) names the turn's engine ("No response from Claude
+Code for …") and shows the stall notice with a Stop button, and the user
+decides. On the exec fallback, Stop signals the
 child's process group and settles the turn `turn.aborted`; the serve transport
 uses its interrupt protocol, described below. The following idle/total timer
 details describe the [exec adapter](../../src-server/providers/adapters/muse-adapter.ts).
@@ -650,6 +655,19 @@ identity values or credentials. `UsageReceipt.accountKey` is an optional opaque
 engine/profile observation from the applied process environment. Its absence
 means account attribution is unknown; consumers must not infer the current
 active account. These fields are observations, never billing or routing authority.
+
+
+### Usage observation provenance
+
+`@kontourai/station-contracts/usage-rollup` owns `UsageReceipt`, `UsageCoverage`,
+and `UsageRollup`. A receipt's optional `sourceSequence` is durable order within
+its Station/thread, not a provider-clock timestamp or an authorization grant.
+Same-source cumulative replacements use that order and preserve omitted
+measured components. Older peers can omit it and retain timestamp ordering.
+Sparse or mixed-model/pricing evidence cannot substantiate a combined estimate.
+`aggregateReceipts` is bounded logical transfer material, separate from the
+receipt drilldown. See the [analytics API](api.md#read-usage-receipts-and-rollups)
+for limits and observation-window semantics.
 
 
 ## Immutable Task output review

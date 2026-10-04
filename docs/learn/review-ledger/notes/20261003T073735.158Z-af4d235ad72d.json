@@ -1,0 +1,7 @@
+{
+  "revision": "f114b42162757399cb32b714f860c67c95011988",
+
+  "notes": [
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Design round: builtinWorkspacePaneRegistry.tsx changed only in CodingDiffPane, which now renders CodingDiffPaneBody instead of composing BranchToolbar, PullRequestsPanel and DiffPanel as two columns; the pull-request pane, binding and directory derivation are untouched. Re-read this guide for any claim about that composition: none. No prose change.","inputs":["package.json","pnpm-workspace.yaml","scripts/codeql-error-baseline.json","src-server/routes/orchestration/orchestration.ts","src-server/runtime/routes/runtime-routes.ts","src-server/tools/station-control-delegation.ts","src-ui/src/workspace-panes/builtinWorkspacePaneRegistry.tsx"]}
+  ]
+}

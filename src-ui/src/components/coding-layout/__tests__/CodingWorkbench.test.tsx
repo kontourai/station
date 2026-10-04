@@ -1744,7 +1744,7 @@ describe('CodingWorkbench — delta review: one ⋯ per head, Escape’s reach, 
   const pressEscape = () =>
     harness.shortcuts.get('codingStack.escape')!.handler();
 
-  /** A pane with an overflow of its own, as File Preview and Diff have. */
+  /** A pane with an overflow of its own, as File Preview has. */
   function PaneWithOverflow() {
     const slots = usePaneHeadSlots();
     const take = slots?.takeHostActions;
