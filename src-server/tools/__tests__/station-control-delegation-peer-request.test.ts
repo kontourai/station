@@ -2,14 +2,20 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ReviewPendingAttentionItem } from '@kontourai/station-contracts/attention';
+import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { EventBus } from '../../services/orchestration/event-bus.js';
 import { EventStore } from '../../services/orchestration/event-store.js';
-import { OrchestrationService } from '../../services/orchestration/orchestration-service.js';
+import {
+  OrchestrationService,
+  PEER_PENDING_REQUEST_ID_MAX_CHARS,
+  PEER_PENDING_REQUEST_TITLE_MAX_CHARS,
+} from '../../services/orchestration/orchestration-service.js';
 import { AttentionProjectionService } from '../../services/projects/attention-projection.js';
 import { createRemoteStationForwarder } from '../../services/remote-stations/remote-station-forwarder.js';
 import {
   observeDelegatedTask,
+  PEER_RESPOND_ENVIRONMENT_MISMATCH_MESSAGE,
   PEER_RESPOND_FORBIDDEN_MESSAGE,
   respondToDelegatedTaskRequest,
 } from '../station-control-delegation.js';
@@ -31,16 +37,20 @@ const CURRENT_API = 'http://peer-request.test';
 const PEER_API = 'http://127.0.0.1:45177';
 const ENVIRONMENT_ID = 'environment-peer';
 const TASK_ID = 'task-peer-request';
+/** Another paired Station this Station also holds a credential for. */
+const OTHER_ENVIRONMENT_ID = 'environment-other';
+const OTHER_PEER_API = 'http://127.0.0.1:45178';
 const fetchMock = vi.fn<typeof fetch>();
 
 const remote = createRemoteStationForwarder({
   ssh: { list: () => [], connect: async () => undefined as never },
   peers: {
     get: (environmentId: string) =>
-      environmentId === ENVIRONMENT_ID
+      environmentId === ENVIRONMENT_ID || environmentId === OTHER_ENVIRONMENT_ID
         ? {
             environmentId,
-            apiBase: PEER_API,
+            apiBase:
+              environmentId === ENVIRONMENT_ID ? PEER_API : OTHER_PEER_API,
             scope: 'orchestration:read orchestration:operate',
             credential: 'peer-secret',
             label: 'Station B',
@@ -309,5 +319,89 @@ describe('a decision on it is forwarded to the paired Station', () => {
         remote,
       ),
     ).rejects.toThrow(PEER_RESPOND_FORBIDDEN_MESSAGE);
+  });
+});
+
+describe('bounds on what the paired Station reports', () => {
+  test(`an id of exactly ${PEER_PENDING_REQUEST_ID_MAX_CHARS} characters is stored`, async () => {
+    const { observe, item } = fixture();
+    const id = 'r'.repeat(PEER_PENDING_REQUEST_ID_MAX_CHARS);
+    expect(id).toHaveLength(512);
+    peerResponse = () =>
+      json({ success: true, data: peerSnapshot({ id, type: 'approval' }) });
+    await observe();
+    expect((await item())?.peerRequestReference?.requestId).toBe(id);
+  });
+
+  test('an id one character over the bound is refused, not truncated', async () => {
+    const { observe, item } = fixture();
+    peerResponse = () =>
+      json({
+        success: true,
+        data: peerSnapshot({
+          id: 'r'.repeat(PEER_PENDING_REQUEST_ID_MAX_CHARS + 1),
+          type: 'approval',
+        }),
+      });
+    await observe();
+    const projected = await item();
+    expect(projected).toBeDefined();
+    expect(projected).not.toHaveProperty('peerRequestReference');
+  });
+
+  test('a title over the bound is cut with a visible ellipsis', async () => {
+    const { service, observe, threadId } = fixture();
+    peerResponse = () =>
+      json({
+        success: true,
+        data: peerSnapshot({
+          id: 'req-long-title',
+          type: 'approval',
+          title: 't'.repeat(PEER_PENDING_REQUEST_TITLE_MAX_CHARS + 1),
+        }),
+      });
+    await observe();
+    const summary = (
+      await service.listSessionReadModel(
+        sessionReadAuthorityFromRequest('default', undefined, undefined),
+      )
+    ).find((session) => session.threadId === threadId);
+    const title = summary?.delegation?.peerPendingRequest?.title ?? '';
+    expect(Array.from(title)).toHaveLength(
+      PEER_PENDING_REQUEST_TITLE_MAX_CHARS,
+    );
+    expect(title.endsWith('…')).toBe(true);
+  });
+});
+
+describe('a decision goes only to the recorded hosting Station', () => {
+  test('a respond naming another paired Station is refused before any request', async () => {
+    const { service, observe } = fixture();
+    peerResponse = () =>
+      json({
+        success: true,
+        data: peerSnapshot({ id: 'req-peer-6', type: 'approval' }),
+      });
+    await observe();
+    const before = fetchMock.mock.calls.length;
+    await expect(
+      respondToDelegatedTaskRequest(
+        {
+          taskId: TASK_ID,
+          environmentId: OTHER_ENVIRONMENT_ID,
+          requestId: 'req-peer-6',
+          decision: 'accept',
+          userId: 'default',
+        } as never,
+        service,
+        remote,
+      ),
+    ).rejects.toThrow(PEER_RESPOND_ENVIRONMENT_MISMATCH_MESSAGE);
+    expect(respondCalls).toHaveLength(0);
+    expect(
+      fetchMock.mock.calls
+        .slice(before)
+        .some(([url]) => String(url).startsWith(OTHER_PEER_API)),
+    ).toBe(false);
   });
 });

@@ -998,8 +998,19 @@ interface PeerDelegationActivityDispatch {
 }
 
 /** Bounds on the paired Station's request fields this Station persists. */
-const PEER_PENDING_REQUEST_ID_MAX_CHARS = 512;
-const PEER_PENDING_REQUEST_TITLE_MAX_CHARS = 512;
+export const PEER_PENDING_REQUEST_ID_MAX_CHARS = 512;
+export const PEER_PENDING_REQUEST_TITLE_MAX_CHARS = 512;
+
+/**
+ * A display title past the bound is cut with a visible ellipsis, so a reader
+ * can tell it was shortened; the request id carries identity, not the title.
+ */
+export function boundedPeerRequestTitle(title: string): string {
+  const characters = Array.from(title);
+  return characters.length > PEER_PENDING_REQUEST_TITLE_MAX_CHARS
+    ? `${characters.slice(0, PEER_PENDING_REQUEST_TITLE_MAX_CHARS - 1).join('')}…`
+    : title;
+}
 
 function peerDelegationActivityThreadId(
   environmentId: string,
@@ -3691,20 +3702,26 @@ export class OrchestrationService {
       current?.id !== input.resolvedRequestId
     )
       return false;
-    const id = input.pendingRequest?.id.trim();
+    const rawId = input.pendingRequest?.id.trim();
+    // An id past the bound is refused, never truncated: a cut id would name
+    // a different (or no) request on the paired Station. Nothing usable is
+    // stored, so the inbox shows the note instead of a decision.
+    const idRefused =
+      rawId !== undefined && rawId.length > PEER_PENDING_REQUEST_ID_MAX_CHARS;
+    if (idRefused)
+      this.options.logger.warn(
+        'Refused a paired Station request id over the stored bound',
+        { threadId, length: rawId.length },
+      );
+    const id = idRefused ? undefined : rawId;
+    const title = input.pendingRequest?.title?.trim();
     const next = id
       ? {
-          id: id.slice(0, PEER_PENDING_REQUEST_ID_MAX_CHARS),
+          id,
           ...(input.pendingRequest?.type
             ? { type: input.pendingRequest.type }
             : {}),
-          ...(input.pendingRequest?.title?.trim()
-            ? {
-                title: Array.from(input.pendingRequest.title.trim())
-                  .slice(0, PEER_PENDING_REQUEST_TITLE_MAX_CHARS)
-                  .join(''),
-              }
-            : {}),
+          ...(title ? { title: boundedPeerRequestTitle(title) } : {}),
           observedAt: new Date().toISOString(),
         }
       : null;
@@ -3726,6 +3743,28 @@ export class OrchestrationService {
       metadata: { [PEER_PENDING_REQUEST_METADATA_KEY]: next },
     });
     return true;
+  }
+
+  /**
+   * The paired Stations this Station recorded as hosting `taskId`
+   * (`recordPeerDelegationActivityDispatch` writes one record per
+   * environment and task). Empty when no peer record names the task.
+   */
+  async peerDelegationHostingEnvironmentIds(taskId: string): Promise<string[]> {
+    const sessions = await this.listSessionReadModel(
+      INTERNAL_SESSION_READ_SCOPE,
+    );
+    return [
+      ...new Set(
+        sessions.flatMap((session) =>
+          session.delegation?.environmentKind === 'peer' &&
+          session.delegation.taskId === taskId &&
+          session.delegation.environmentId
+            ? [session.delegation.environmentId]
+            : [],
+        ),
+      ),
+    ];
   }
 
   /** Advance a peer Activity record only from an observed peer lifecycle. */
