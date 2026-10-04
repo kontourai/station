@@ -112,7 +112,7 @@
 
     {"path":"src-server/tools/station-docs-server.ts","digest":"c76912b19734775f650634f5b97639c60168fe9995b61f927c0e35a62b3fb1ae","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/components/agent-selection-policy.ts","digest":"e96d360cff1e8f5c32f70c99687d240b6707b7a5d3de781f8f4227f796fded12","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-ui/src/components/agent-selection-policy.ts","digest":"ba07a4073a25eed9744e5a93aac5637ac563207191078f969b9f54151e168f30","revision":"4a2ce52b385a6518ad71e3f5a89d52b9a3e9f273"},
 
     {"path":"src-ui/src/components/mcp-ui/MCPToolUIFrame.tsx","digest":"732a76fa3772bbc163f0c9c5b8da98c530614a27acfaba1b93fbecb497f240b3","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
