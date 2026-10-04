@@ -230,6 +230,12 @@ export interface ModelOptionCapabilities {
   fastModeLabel?: string;
   supportsAutoMode?: boolean;
   contextWindow?: number;
+  /**
+   * Whether the engine reports this model accepts image input. Absent means
+   * the runtime did not say (never "no"); `false` is a positive statement that
+   * the model cannot read an image.
+   */
+  imageInput?: boolean;
 }
 
 export interface ModelOption {

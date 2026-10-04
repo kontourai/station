@@ -92,9 +92,9 @@
 
     "packages/contracts/package.json#/files",
 
-    "packages/shared/package.json#/engines",
-
     "packages/shared/package.json#/exports",
+
+    "packages/shared/package.json#/engines",
 
     "packages/contracts/package.json",
 

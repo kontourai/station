@@ -165,44 +165,35 @@
   color: var(--text-primary);
 }
 
+/* One line cut at its START, so the leaf folder stays in view: an rtl line
+   overflows on the left and puts the ellipsis there, while a path that fits
+   starts at the left. The inner `dir="ltr"` isolate keeps character order
+   (#304; Project settings' Workspace preview uses the same line). Parent and
+   leaf are inline spans, not flex items: as flex items the path's innerText
+   read as two lines (#2799). The line is its own block so the cut does not
+   depend on the button's flex layout. */
 .project-page__dir-path {
-  display: flex;
+  display: block;
   font-family: var(--font-mono);
   font-size: var(--text-base);
   color: var(--text-muted);
   transition: color var(--motion-fast);
   overflow: hidden;
   white-space: nowrap;
-  min-width: 0;
-}
-
-/* Middle/parent truncates; the leaf never does. rtl puts the ellipsis at the
-   START of the parent; the inner ltr isolate keeps character order (#304).
-   This is the last surface using that treatment: the dock header's own
-   `.chat-dock__project-dir-parent` was retired with the path segment it
-   truncated (#1536 F — it left the conversation title beside it about one
-   character), so #304's bidi guard lives here alone now. */
-.project-page__dir-parent {
-  overflow: hidden;
   text-overflow: ellipsis;
   direction: rtl;
-  flex-shrink: 1;
+  text-align: left;
   min-width: 0;
-}
-
-.project-page__dir-parent-text {
-  direction: ltr;
-  unicode-bidi: isolate;
 }
 
 .project-page__dir-leaf {
-  flex-shrink: 0;
   color: var(--accent-primary);
   font-weight: 500;
 }
 
 .project-page__dir-path--unset {
   font-style: italic;
+  direction: ltr;
 }
 
 .project-page__dir-edit-icon {

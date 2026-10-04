@@ -1,0 +1,7 @@
+{
+  "revision": "cc0ac8a7a50dac68be01c51c6ae9b5393274cab8",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"#2898: added that a turn started unconfined refuses steering after a revoke (confinement-changed, returned before the steer input is claimed) and that the message is kept for the next, confined turn. Checked against the steerTurn branch order in orchestration-service.ts (refusal precedes claimSteerInput), steerRefusalMessage, and the refusal handling in ChatDockBody and useActiveChatSessionMessaging, which keep the queued message or restore the draft.","inputs":["docs/design/chat-composer.md","packages/contracts/src/orchestration.ts","src-ui/src/components/chat-dock/MobileTaskSwitcher.tsx","src-ui/src/contexts/navigation-store.ts","tests/cross-runtime-chat-switching.spec.ts","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx","src-ui/src/components/chat-dock/ChatDockMobileOverflowSheet.tsx"]}
+  ]
+}
