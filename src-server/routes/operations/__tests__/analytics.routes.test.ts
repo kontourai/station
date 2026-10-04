@@ -1,5 +1,6 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import {
   parseHostedTenantRegistry,
   sessionReadAuthorityFromRequest,
@@ -9,6 +10,7 @@ import { describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { UsageAggregator } from '../../../analytics/usage-aggregator.js';
+import { createEmptyUsageStats } from '../../../analytics/usage-aggregator-state.js';
 import {
   bindRuntimeLocalOperator,
   isBoundRuntimeLocalOperator,
@@ -21,6 +23,52 @@ vi.mock('../../../telemetry/metrics.js', () => ({
 
 const { createAnalyticsRoutes } = await import('../analytics.js');
 const makeHome = trackTempDirs();
+
+test('ordinary analytics and rescan responses omit the operator-only person breakdown', async () => {
+  const aggregator = new UsageAggregator(makeHome('station-private-usage-'));
+  const stats = createEmptyUsageStats();
+  const principal = humanPrincipal(
+    'oidc',
+    'recorded-user',
+    'Recorded person',
+  );
+  stats.byPrincipal = {
+    [principal.id]: {
+      principal,
+      usage: {
+        messages: 1,
+        inputTokens: 12,
+        outputTokens: 4,
+        cost: 0,
+      },
+    },
+  };
+  vi.spyOn(aggregator, 'readStats').mockResolvedValue(stats);
+  vi.spyOn(aggregator, 'fullRescan').mockResolvedValue(stats);
+  const app = createAnalyticsRoutes(
+    aggregator,
+    undefined,
+    undefined,
+    undefined,
+    'instance',
+    () => true,
+  );
+  for (const [path, method] of [
+    ['/usage', 'GET'],
+    ['/usage?from=2026-10-01&to=2026-10-04', 'GET'],
+    ['/rescan', 'POST'],
+  ]) {
+    const response = await app.request(path, { method });
+    expect(response.status).toBe(200);
+    const body = await json(response);
+    expect(body.data.byPrincipal).toBeUndefined();
+    expect(JSON.stringify(body)).not.toContain(principal.id);
+  }
+  const protectedBody = await json(await app.request('/station-usage'));
+  expect(protectedBody.data.byPrincipal[principal.id].usage.inputTokens).toBe(
+    12,
+  );
+});
 
 test('station overview requires bound operator authority and reads the whole local instance', async () => {
   const home = makeHome('station-operator-usage-');

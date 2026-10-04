@@ -3,6 +3,7 @@
  */
 
 import { MS_PER_DAY } from '@kontourai/station-contracts/time';
+import type { UsageStats } from '@kontourai/station-contracts/usage-stats';
 import { Hono } from 'hono';
 import { LocalUsageReceiptSource } from '../../analytics/local-usage-receipt-source.js';
 import type { UsageAggregator } from '../../analytics/usage-aggregator.js';
@@ -18,6 +19,11 @@ import {
   credentialProfileRefSchema,
   errorMessage,
 } from '../schemas/schemas.js';
+
+function publicUsageStats(stats: UsageStats) {
+  const { byPrincipal: _operatorPrincipals, ...publicStats } = stats;
+  return publicStats;
+}
 
 export function createAnalyticsRoutes(
   usageAggregator: UsageAggregator | undefined,
@@ -65,7 +71,7 @@ export function createAnalyticsRoutes(
         );
       }
       analyticsOps.add(1, { op: 'get_usage' });
-      const stats = await usageAggregator.readStats();
+      const stats = publicUsageStats(await usageAggregator.readStats());
       const from = c.req.query('from');
       const to = c.req.query('to');
       if (from || to) {
@@ -282,7 +288,7 @@ export function createAnalyticsRoutes(
           500,
         );
       }
-      const stats = await usageAggregator.fullRescan();
+      const stats = publicUsageStats(await usageAggregator.fullRescan());
       analyticsOps.add(1, { op: 'rescan' });
       return c.json({
         success: true,

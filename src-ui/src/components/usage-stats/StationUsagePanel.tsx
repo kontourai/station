@@ -25,7 +25,7 @@ function rowsFor(stats: UsageStats, group: Group): Row[] {
   const rows: Row[] =
     group === 'principal'
       ? Object.entries(stats.byPrincipal ?? {}).map(([id, entry]) => ({
-          id,
+          id: `${group}:${id}`,
           label: entry.principal.display,
           ...entry.usage,
         }))
@@ -35,7 +35,7 @@ function rowsFor(stats: UsageStats, group: Group): Row[] {
             : group === 'model'
               ? stats.byModel
               : stats.byDate,
-        ).map(([id, usage]) => ({ id, label: id, ...usage }));
+        ).map(([id, usage]) => ({ id: `${group}:${id}`, label: id, ...usage }));
   const unknown = stats.unallocated?.[group];
   if (unknown)
     rows.push({
@@ -127,6 +127,29 @@ export function StationUsagePanel() {
               Reported costs and estimates are separate subtotals. A person is
               attributed only from recorded identity evidence.
             </p>
+            <details>
+              <summary>Measurement coverage</summary>
+              <p>
+                This overview includes retained conversation history and engine
+                sessions. Direct invocations, inference served for peers, voice,
+                realtime, embeddings, and provider activity outside recorded
+                sessions are not independently metered here. Fleet-routed usage
+                recorded in a conversation is counted once.
+              </p>
+              <p>
+                Context occupancy is not consumed tokens. Some harnesses report
+                activity without token or cost measurements. UTC days describe
+                recorded observations, not exact billing dates.
+              </p>
+              <p>
+                Engine source:{' '}
+                {overview.stats.snapshot?.engineUsage ?? 'unknown'}. Skipped
+                message records:{' '}
+                {overview.stats.snapshot?.skippedMessages ?? 'unknown'}. Saved
+                messages missing cost:{' '}
+                {overview.stats.snapshot?.missingMessageCosts ?? 'unknown'}.
+              </p>
+            </details>
             <div className="usage-rollup__table-wrap">
               <table>
                 <thead>
