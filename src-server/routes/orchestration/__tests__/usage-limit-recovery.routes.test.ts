@@ -241,4 +241,56 @@ describe('usage-limit banner routes (#3157)', () => {
         ).status,
       ).toBe(404);
   });
+
+  test('an ordinary timed retry is not a usage-limit stop: nothing to read, resume or cancel, and it stays armed', async () => {
+    const f = await fixture();
+    f.store.upsertSession({
+      provider: 'claude',
+      threadId: 'session-b',
+      status: 'ready',
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+    f.store.appendEvent({
+      eventId: 'configured-b',
+      provider: 'claude',
+      threadId: 'session-b',
+      method: 'session.configured',
+      sessionId: 'session-b',
+      createdAt: NOW,
+      metadata: { userId: 'owner' },
+    });
+    f.ledger.arm({
+      fingerprint: 'session-b:turn-b:rate-limit:provider',
+      threadId: 'session-b',
+      provider: 'claude',
+      sourceEventId: 'start-b',
+      sourceTurnId: 'turn-b',
+      failureKind: 'rate-limit',
+      scope: 'provider',
+      decision: 'retry-later',
+      dueAt: RESET_AT,
+      maxAttempts: 1,
+      outcome: 'armed',
+      createdAt: NOW,
+      updatedAt: NOW,
+    } as never);
+    expect(
+      await (await f.app.request('/sessions/session-b/usage-limit')).json(),
+    ).toEqual({ success: true, data: { recovery: null } });
+    for (const action of ['resume', 'cancel'])
+      expect(
+        await (
+          await f.app.request(`/sessions/session-b/usage-limit/${action}`, {
+            method: 'POST',
+          })
+        ).json(),
+      ).toEqual({
+        success: true,
+        data: { result: { kind: 'not-waiting' }, recovery: null },
+      });
+    expect(f.ledger.latestProjection('session-b')).toMatchObject({
+      outcome: 'armed',
+    });
+  });
 });

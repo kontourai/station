@@ -103,6 +103,8 @@ vi.mock('../components/chat/ChatInputArea', () => ({
   ChatInputArea: () => <div data-testid="chat-input-area" />,
 }));
 
+import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import { buildOrchestrationSessionSummary } from '../../../src-server/services/orchestration/orchestration-session-state';
 import { ChatDockBody } from '../components/chat-dock/ChatDockBody';
 import { activeChatsStore } from '../contexts/active-chats-store';
 import { useDerivedSessions } from '../hooks/useDerivedSessions';
@@ -173,6 +175,51 @@ function clearChats() {
   for (const id of Object.keys(activeChatsStore.getSnapshot())) {
     activeChatsStore.removeChat(id);
   }
+}
+
+const USAGE_LIMIT_EVENTS: CanonicalRuntimeEvent[] = [
+  {
+    eventId: 'e-start',
+    provider: 'claude',
+    threadId: SESSION,
+    turnId: 't1',
+    createdAt: '2026-09-24T21:00:00.000Z',
+    method: 'turn.started',
+    prompt: 'Finish the migration.',
+  },
+  {
+    eventId: 'e-limit',
+    provider: 'claude',
+    threadId: SESSION,
+    turnId: 't1',
+    createdAt: '2026-09-24T21:00:01.000Z',
+    method: 'runtime.error',
+    severity: 'error',
+    code: 'engine-turn-failed',
+    retriable: false,
+    message: "You've hit your usage limit.",
+    details: { usageLimit: true, scope: 'account' },
+  },
+];
+
+/** The summary the server's own producer builds for these events. */
+function realSummary(events: CanonicalRuntimeEvent[]) {
+  return buildOrchestrationSessionSummary({
+    persisted: {
+      provider: 'claude',
+      threadId: SESSION,
+      status: 'ready',
+      createdAt: '2026-09-24T21:00:00.000Z',
+      updatedAt: '2026-09-24T21:00:01.000Z',
+    },
+    events,
+    answerability: {
+      threadAttachment: 'detached',
+      providerRegistered: true,
+      observedBy: 'test',
+      observedAt: '2026-09-24T21:00:02.000Z',
+    },
+  }) as unknown as Record<string, unknown>;
 }
 
 const PROJECTION = {
@@ -250,17 +297,44 @@ describe('ChatDockBody usage-limit banner (#3157)', () => {
   });
 
   test('a chat opened fresh is limited by the server summary alone, with no hold flag set on it', async () => {
-    summary = {
-      threadId: SESSION,
+    summary = realSummary(USAGE_LIMIT_EVENTS);
+    // The activation reads exactly what the producer writes.
+    expect(summary).toMatchObject({
       lastEventMethod: 'runtime.error',
       lastRuntimeErrorUsageLimit: true,
-    };
+    });
     mountDock();
     const banner = await screen.findByTestId('usage-limit-banner');
     expect(banner.textContent).toContain('Usage limit reached');
     expect(activeChatsStore.getSnapshot()[SESSION]?.usageLimitStopped).toBe(
       undefined,
     );
+  });
+
+  test('an ordinary provider error shows no banner and asks the server nothing', async () => {
+    summary = realSummary([
+      USAGE_LIMIT_EVENTS[0] as CanonicalRuntimeEvent,
+      {
+        eventId: 'e-error',
+        provider: 'claude',
+        threadId: SESSION,
+        turnId: 't1',
+        createdAt: '2026-09-24T21:00:00.000Z',
+        method: 'runtime.error',
+        severity: 'error',
+        code: 'rate_limit',
+        retriable: false,
+        message: '429 too many requests',
+        details: { scope: 'provider', retryAfterMs: 60_000 },
+      },
+    ]);
+    expect(summary).toMatchObject({ lastEventMethod: 'runtime.error' });
+    expect(summary).not.toHaveProperty('lastRuntimeErrorUsageLimit');
+    mountDock();
+    // real-time: negative assertion; the banner must stay absent
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(screen.queryByTestId('usage-limit-banner')).toBeNull();
+    expect(requested).toEqual([]);
   });
 
   test('a summary whose latest event is not a usage-limit error shows nothing and asks nothing', async () => {
