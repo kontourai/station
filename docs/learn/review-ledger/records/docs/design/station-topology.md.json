@@ -9,14 +9,12 @@
 
   "limits": "Not a full authorization, tenancy, plugin isolation, multi-human room, broker, inference or remote-execution audit. Original product-target promises remain a decision record.",
 
-  "document": {"digest":"f6bc98daaafe1fa9b46d983cebc2826ef9b867a91b573708b710a3921039ec5f","revision":"d0ca944c58c8dd4de5a17563eb97d06dbdbe3512"},
-
   "sources": [
-    {"path":"packages/shared/src/instance-registry.ts","digest":"10d0493b2427ff32a9a12f7c0af9ceeb84442e73a487dd711d95eee8680273c3","revision":"798719a427d66ba88ef7d61f79dd9f24564b6dd2"},
+    "packages/shared/src/instance-registry.ts",
 
-    {"path":"src-server/routes/orchestration/project-task-rooms.ts","digest":"a0be99c27d8f8795b5dfee2bac64b05ae9e957e7110db08414d76e1fdbd91cc8","revision":"ee7cb7c444fb45f465be3f4ea5c938e5a130145e"},
+    "src-server/routes/orchestration/project-task-rooms.ts",
 
-    {"path":"src-server/services/identity/principal-resolver.ts","digest":"479b1c2d15f60ec6e3c1f4b15f2536390ed265a63307c27c9a52329c9c4985e6","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"}
+    "src-server/services/identity/principal-resolver.ts"
   ],
 
   "checks": [

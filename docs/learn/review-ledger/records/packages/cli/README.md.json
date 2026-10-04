@@ -9,42 +9,40 @@
 
   "limits": "No published tarball installation, real hosted pairing, OS keyring/service, external agent or destructive restore was executed. Mode flags are requests to an installed agent, not independent enforcement proof.",
 
-  "document": {"digest":"844966cbd66882d8e5ea0cf80fc00caed4f10183e6600ec8f77fcd3d9b268cc5","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
   "sources": [
-    {"path":"docs/reference/cli.md","digest":"6d996a4b967c6416c20a8e28e08f94f39056b578510fe5c3d7c881cfe423da24","revision":"6121edc82abb9f804fb64b5220f7e63308289521"},
+    "docs/reference/cli.md",
 
-    {"path":"packages/cli/bundle-externals.mjs","digest":"5a8122d158b0c5e2bc91e6bbed446b42461bf0da3f0c3c8c69178ebd8339ef85","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/cli/bundle-externals.mjs",
 
-    {"path":"packages/cli/package.json","digest":"726eb9347e66a3cd4fb6b0092e7a6e8246b85c25a3f8ca0531055447e2392573","revision":"565a005d46e40c313432a0fbe6fa3054a74a5941"},
+    "packages/cli/package.json",
 
-    {"path":"packages/cli/src/cli.ts","digest":"041c54fff5c3dc2848cf234cf13e4ea52e5069548c273755ee77b53955be1f27","revision":"036d5d3d2289fc22e325a9ded733e8de561e9b30"},
+    "packages/cli/src/cli.ts",
 
-    {"path":"packages/cli/src/commands/checkpoints.ts","digest":"49a8d7d0a682a32133ccf024f47f4e4d1651036aa872b8f0b914032ddfdb19bd","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/cli/src/commands/checkpoints.ts",
 
-    {"path":"packages/cli/src/commands/core-api.ts","digest":"c6d8bf6197cceb12bdfa8962ca20785089c4fa0b6116968dd07e4f25a11a1c10","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/cli/src/commands/core-api.ts",
 
-    {"path":"packages/cli/src/commands/core.ts","digest":"0e18d32b586b3453b16f57669f84c0460a474889d71ebbd1c188774e12fe325b","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/cli/src/commands/core.ts",
 
-    {"path":"packages/cli/src/commands/environment.ts","digest":"e0f0a2b430058c5bbd399df755dbc098b5356474206f473fa24ffbb3d77c7331","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+    "packages/cli/src/commands/environment.ts",
 
-    {"path":"packages/cli/src/commands/model-options.ts","digest":"e68be321336c9a6cccdd2e6fb30ce12921e8007106ec94e548f81218ba17120a","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/cli/src/commands/model-options.ts",
 
-    {"path":"packages/cli/src/commands/session-client.ts","digest":"0328bc971c138d5a5d4f0077f4faa39d5450b0827035b7b8f9eb78fb700b4cd8","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/cli/src/commands/session-client.ts",
 
-    {"path":"packages/cli/src/commands/setup-command.ts","digest":"fc821a03d73cef8a98a056f97a4224def873556737889359d5fa6cc53d60d7e2","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/cli/src/commands/setup-command.ts",
 
-    {"path":"packages/cli/src/commands/target-command.ts","digest":"fd308f3257b43fcce35e31beedc476be5e27db17cd257af61754eafd6be14ad4","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/cli/src/commands/target-command.ts",
 
-    {"path":"packages/cli/src/commands/triage.ts","digest":"1a22f280a072e252978b006e6510300150d453b90ddd98f5caa655aa99ed9275","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/cli/src/commands/triage.ts",
 
-    {"path":"packages/cli/src/commands/version.ts","digest":"2b95694dbea1ea07b95792aec2e0f2438b72dd296848a960bc67ecf35c588be0","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/cli/src/commands/version.ts",
 
-    {"path":"packages/cli/src/distribution.ts","digest":"6c36f09c162ba2cdc4a6cc98cb878ca5ac1be9177fbfe584340aee4b79c8b69b","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/cli/src/distribution.ts",
 
-    {"path":"scripts/station-dev.mjs","digest":"97c0d7c3aad1150ee3fda38e45e3af87938fd24d8a424c1290ca944da293574b","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "scripts/station-dev.mjs",
 
-    {"path":"station","digest":"bb8adba630a450e835cfab89f27a3640bfd40664d3eb2223726b91c6e3786ebb","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"}
+    "station"
   ],
 
   "checks": [

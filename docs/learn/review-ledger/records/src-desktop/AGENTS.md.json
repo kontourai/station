@@ -9,12 +9,10 @@
 
   "limits": "Normative contributor policy. Routing and named owners were checked; this is not proof that every implementation or contributor complies, nor completion evidence for CI, performance, native devices, or hosted delivery.\n\nMerge anchor history (structural reconciliation only; no semantic approval): source docs/guides/native-shell-verification.md ours={\"digest\":\"02022b49c8533609bcf561776a2dd5c1b20cdfb3b8ae4cf5f5b5ae141e28e86e\",\"revision\":\"d5e4502434838cc29b63091ae689474d6488cfe4\"}; origin/main={\"digest\":\"db5ef187c02545195074cac011b8bd21fab7ff9eb23d28bf884dd36922b14c29\",\"revision\":\"464d602fb7fb5fa9bd0df9d241dc03495b398b96\"}. The merged source bytes require supported review after the merge commit.",
 
-  "document": {"digest":"639c22132706ff3f95576f36d67379fe01240546042bb299f4075c3571dd1de4","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},
-
   "sources": [
-    {"path":"docs/guides/native-shell-verification.md","digest":"a9cd227932854e615fc50e919b4692057691fcc2c422d9563c087655b60338fc","revision":"d606c17132af7b1d9ec0d576871937dc37f79864"},
+    "docs/guides/native-shell-verification.md",
 
-    {"path":"scripts/gate-for.mjs","digest":"6cb1fa0145dee1a979cf8d31c47bfd71f78313437a86d85ba29437605183f68f","revision":"a1478b242401c5da824956478bd77fef1f4dfa51"}
+    "scripts/gate-for.mjs"
   ],
 
   "checks": [

@@ -1,0 +1,7 @@
+{
+  "revision": "fb82d3d9619cdb345148501d010222c8b1332662",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Live selected-chat repair: Skills delegates creation, selection, reveal and send to canonical useLaunchChat. Executed 90 focused tests; launch integration uses real query/context/lifecycle/send/dispatch owners with only fetch mocked, verifying selected chat and substituted request, refused send retry draft/error, and no launch for an empty catalog. Run tracking remains a use count separate from outcomes; neither acceptance nor that counter proves model task success. Existing Skills prose remains accurate; real provider follow-through stays independently qualified.","inputs":["docs/user/getting-started.md"]}
+  ]
+}

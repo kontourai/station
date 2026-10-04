@@ -1,0 +1,7 @@
+{
+  "revision": "14ed8256e37a8984bedd979efc30e58fe6a04a18",
+
+  "notes": [
+    {"path":"docs/guides/native-shell-verification.md","note":"Updated verification instructions to match the visible review and confirmation labels and collapsed technical details. Reviewed the native enrollment and recovery caller and mounted UI assertions; the installed-shell evidence limits remain explicit.","inputs":["docs/guides/native-shell-verification.md"]}
+  ]
+}
