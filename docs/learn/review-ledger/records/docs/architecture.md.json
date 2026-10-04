@@ -16,8 +16,6 @@
 
     "packages/connect/package.json",
 
-    "packages/contracts/package.json",
-
     "packages/contracts/package.json#/exports",
 
     "packages/contracts/package.json#/files",
@@ -31,8 +29,6 @@
     "packages/sdk/src/index.ts",
 
     "packages/sdk/src/voice/registry.ts",
-
-    "packages/shared/package.json",
 
     "packages/shared/package.json#/engines",
 
@@ -98,7 +94,11 @@
 
     "src-ui/src/hooks/voiceWsUrl.ts",
 
-    "src-ui/src/providers/voice/NovaVoiceSessionAdapter.ts"
+    "src-ui/src/providers/voice/NovaVoiceSessionAdapter.ts",
+
+    "packages/contracts/package.json",
+
+    "packages/shared/package.json"
   ],
 
   "checks": [

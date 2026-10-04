@@ -54,15 +54,15 @@
 
     "src-server/services/orchestration/project-task-room-history.ts",
 
-    "src-server/services/orchestration/project-task-room-runtime.ts",
-
     "src-server/services/orchestration/remote-home-transfer-coordinator.ts",
 
     "src-server/services/orchestration/session-turn-boundary.ts",
 
     "src-server/services/projects/task-dispatcher.ts",
 
-    "src-server/services/ssh/device-pairing-service.ts"
+    "src-server/services/ssh/device-pairing-service.ts",
+
+    "src-server/services/orchestration/project-task-room-runtime.ts"
   ],
 
   "checks": [

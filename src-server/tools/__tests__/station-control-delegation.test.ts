@@ -1757,6 +1757,60 @@ describe('Station Control canonical Environment + Agent execution', () => {
     );
   });
 
+  test('stops a never-used predecessor through the stopSession command once the successor has started', async () => {
+    fetchMock.mockImplementation(async (input) => {
+      const url = String(input);
+      if (url === `${CURRENT_API}/.well-known/station/v1`) {
+        return json({ environmentId: 'environment-current' });
+      }
+      if (url === `${CURRENT_API}/api/agents/codex`) {
+        return json({
+          success: true,
+          data: { slug: 'codex', available: true },
+        });
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    const orchestrationService = localService();
+    Object.assign(orchestrationService, {
+      resolveConversationContinuation: vi.fn(async () => ({
+        sessionId: 'conversation:retire:session:2',
+        startRequired: true,
+        retirePredecessorSessionId: 'conversation:retire',
+      })),
+    });
+    orchestrationService.readSession.mockResolvedValue({
+      session: { cwd: '/srv/scratch' },
+      events: [
+        {
+          method: 'session.configured',
+          metadata: {
+            environmentId: 'environment-current',
+            targetKind: 'agent',
+            targetId: 'codex',
+          },
+        },
+      ],
+    } as never);
+    const { continueExecutionTargetMessage } = await import(
+      '../station-control-delegation.js'
+    );
+
+    await continueExecutionTargetMessage(
+      {
+        userId: 'test-user',
+        conversationId: 'conversation:retire',
+        message: 'Use the other model',
+      },
+      orchestrationService as never,
+    );
+
+    expect(orchestrationService.dispatchWithReceipt).toHaveBeenCalledWith(
+      { type: 'stopSession', threadId: 'conversation:retire' },
+      expect.anything(),
+    );
+  });
+
   // archive#3421: this is the seam the bug lived in. The pure binding function
   // is tested separately; what was broken is that a DIRECTORY-bound
   // conversation reached the continuation with no workspace at all, because
