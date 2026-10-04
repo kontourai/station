@@ -12,7 +12,7 @@
   "document": {"digest":"e8c9cb6ea4e4e516529a411d1b03bffbf94dc7df2bfbe2a6a8d30af2813057fc","revision":"94da87e3016992b8cdbdde3be15b978b489a1c63"},
 
   "sources": [
-    {"path":"package.json","digest":"658ca698680a7d2ec3692bb2f47c282b1bb48056a1238ab4ac44f0aee5ed4388","revision":"e4344fd10ef7a80a6a6f65d7e709fb1be56b64df"},
+    {"path":"package.json","digest":"ee32f6a73f2428a8734396a7667e8ec009485b1c5a87f779652801ed4c51af1f","revision":"fdca33b1896b280299ba72fc70a3c9b9cda7f3af"},
 
     {"path":"packages/cli/src/commands/lifecycle.ts","digest":"ce8322baa64d2e25c711ec0816c6cb013c8742f651a265e1657239185dba9ecc","revision":"b49b1db1601f36c9457e0d9d7c766d15be6302f7"},
 
@@ -22,7 +22,7 @@
 
     {"path":"packages/sdk/src/client/projects.ts","digest":"9fd218a7c499cab4fcc9d04e04ca8ff4a7cd7465d2c4176d3b4434cf627c2ffa","revision":"1da4798fab6730e9c81fb91d9d3dbbebc952f976"},
 
-    {"path":"pnpm-lock.yaml","digest":"4f9a974bd49f637fd690699b3bcd9b6ce915114eb4f52e2e6bdd5b0f3b699f2a","revision":"ea49cb8678208b9037f8e9ab3ceb2a95fe2647ff"},
+    {"path":"pnpm-lock.yaml","digest":"e5666b03a0bedc8656564f5371ea01b19879ac4a8ed732280e1d0903025de0c5","revision":"fdca33b1896b280299ba72fc70a3c9b9cda7f3af"},
 
     {"path":"src-desktop/src/lib.rs","digest":"c1f14ebce1d8326b17d071eec351ca84af929b8058bfc6ce456b2f6a4b73867c","revision":"2c506080536ad8cb02b6af0b53bbd19c6d1e3ecb"},
 
@@ -50,11 +50,11 @@
 
     {"path":"src-server/runtime/bootstrap/runtime-service-bootstrap.ts","digest":"2cf5c807666f495b88ded90ba448c7e4e4e03733b2e2afed684409cd5ffc8356","revision":"56f4c4897a189eeb30430119a4f4895e95fbb541"},
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"21831e2e97672cb946b2e23f9e183477773a632390b02daf66b3e6cf3fe20e71","revision":"595059eafa17ef6b7a39217a405619ecbfac2270"},
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"88a3a2161a61eaee174d5404833230e31768afb8ea60fae898cfda39bb49ae09","revision":"efa773acac88792cda31595f9afca4a37d3efebc"},
 
     {"path":"src-server/security/coding-authority.ts","digest":"213af116a09a02c70ea15a8346b3d8fd2e25f279c975ef9b12d8ab21a519205d","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-server/security/pairing-route-scopes.ts","digest":"cd0d7cf06b6f68355d4e509648ac649c62bdf1cabd52b220e7578776b5e01873","revision":"e4344fd10ef7a80a6a6f65d7e709fb1be56b64df"},
+    {"path":"src-server/security/pairing-route-scopes.ts","digest":"5188e91b51f45578c8d64d05d71ec69114158ec73af91a69b3de5d316f46e6c8","revision":"efa773acac88792cda31595f9afca4a37d3efebc"},
 
     {"path":"src-server/security/runtime-request-security.ts","digest":"c3219b8afbdd24e8969fb407d2a0a0aa77c08a7656a0e147f64f99f0ed9af3c4","revision":"904729ae7f4058a2cd7dbaf11a4daaa6b8837d08"},
 
