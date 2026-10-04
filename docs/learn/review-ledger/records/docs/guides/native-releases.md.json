@@ -156,7 +156,7 @@
 
     {"path":"scripts/release-platform-matrix.mjs","digest":"c7a97e393c6cb12edaee3f360ee922f6bd1fc2ab257c0c3f3872313b31bc5b35","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"scripts/smoke-portable-server-archive.mjs","digest":"b894e8d5bf19a17035488aa5c0bf77d08835f7b3cf5ace39bf798e24c89f1503","revision":"3b71b9049d8861aad67400cf43013db416c19af9"},
+    {"path":"scripts/smoke-portable-server-archive.mjs","digest":"0ca6c055cf5aa007cebd6bb4e8bdaeb0dd1a49386ec5223a0ce52ffa69d793c0","revision":"5068f9cb2deda94059546cee76d09d05b9c6e573"},
 
     {"path":"scripts/stage-desktop-server-runtime.mjs","digest":"756e63a0573d25eccecacc0f85d8f3fbfc7672684639ec33dac18d534f781089","revision":"c5d3acbbda8ab0a072d4039bc91c7b9668a741d9"},
 
