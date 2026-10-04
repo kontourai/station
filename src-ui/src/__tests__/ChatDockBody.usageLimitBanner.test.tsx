@@ -145,6 +145,7 @@ function buildChatInput() {
 }
 
 /** The dock as ChatDock builds it: its session comes from the derivation hook. */
+let summary: Record<string, unknown> | null = null;
 function DerivedDock() {
   const session = useDerivedSessions('', null, null).find(
     (s) => s.id === SESSION,
@@ -153,6 +154,7 @@ function DerivedDock() {
   return (
     <ChatDockBody
       activeSession={session}
+      activeOrchestrationSession={summary as never}
       chatFontSize={14}
       dockHeight={400}
       showStatsPanel={false}
@@ -190,6 +192,7 @@ let requested: string[];
 describe('ChatDockBody usage-limit banner (#3157)', () => {
   beforeEach(() => {
     clearChats();
+    summary = null;
     requested = [];
     vi.stubGlobal(
       'fetch',
@@ -244,5 +247,31 @@ describe('ChatDockBody usage-limit banner (#3157)', () => {
       activeChatsStore.updateChat(SESSION, { usageLimitStopped: undefined });
     });
     expect(screen.queryByTestId('usage-limit-banner')).toBeNull();
+  });
+
+  test('a chat opened fresh is limited by the server summary alone, with no hold flag set on it', async () => {
+    summary = {
+      threadId: SESSION,
+      lastEventMethod: 'runtime.error',
+      lastRuntimeErrorUsageLimit: true,
+    };
+    mountDock();
+    const banner = await screen.findByTestId('usage-limit-banner');
+    expect(banner.textContent).toContain('Usage limit reached');
+    expect(activeChatsStore.getSnapshot()[SESSION]?.usageLimitStopped).toBe(
+      undefined,
+    );
+  });
+
+  test('a summary whose latest event is not a usage-limit error shows nothing and asks nothing', async () => {
+    summary = {
+      threadId: SESSION,
+      lastEventMethod: 'turn.started',
+      lastRuntimeErrorUsageLimit: true,
+    };
+    mountDock();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(screen.queryByTestId('usage-limit-banner')).toBeNull();
+    expect(requested).toEqual([]);
   });
 });
