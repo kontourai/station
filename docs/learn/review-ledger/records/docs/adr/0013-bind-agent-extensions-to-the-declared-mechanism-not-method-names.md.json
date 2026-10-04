@@ -14,7 +14,7 @@
   "sources": [
     {"path":"src-server/providers/__tests__/acp-adapter-inbound-extension.test.ts","digest":"94a5f5c8bc9164484c4bc27d4273b2fc25cd7e58a8ce582190f8ac2a38860902","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
 
-    {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"061da89e00216d5c3250d7f13dc1dea5717765b50db7ebf8c49672208524a3d0","revision":"423cbe55b9e35e4cd8954fd441cb9f3c69740d66"},
+    {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"f44a4e94ca0f335cfc5ee2a803ed1659f140e149b0cd0e66e4c9b5bef9179718","revision":"4f3acdc5478e27a733c06e91a202a325817c2f53"},
 
     {"path":"src-server/services/acp/__tests__/acp-inbound-extension-policy.test.ts","digest":"75d9e788dd399671e3b40fb6bf4d5e0396d38caa48db2abf636644af8c417be5","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
 

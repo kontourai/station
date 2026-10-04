@@ -944,7 +944,7 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
    * can continue, and the composer is NOT disabled — disabling it would be a
    * second untruth in the opposite direction.
    */
-  test('the banner says the session can be continued, and the composer stays usable', () => {
+  test('the banner says the session can be continued, and the composer stays usable', async () => {
     renderDock({
       orchestrationSession: buildOrchestrationSession({
         blockedReason: 'Engine crashed',
@@ -954,8 +954,10 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
     expect(
       screen.getByTestId('chat-dock-session-failure').textContent,
     ).toContain('You can send a message to try to continue this session.');
-    expect(screen.getByTestId('chat-input-area')).toBeTruthy();
-    expect(chatInputPropsMock.current?.disabled).toBe(false);
+    expect(await screen.findByTestId('chat-input-area')).toBeTruthy();
+    await waitFor(() =>
+      expect(chatInputPropsMock.current?.disabled).toBe(false),
+    );
   });
 
   test('a running session gets no banner and no continuation claim', () => {
@@ -978,11 +980,11 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
    * send, or the direct `/chat` path. Nothing is known about a failure here,
    * and the honest render of that is silence, not a fabricated one.
    */
-  test('a chat with no server session record renders no banner', () => {
+  test('a chat with no server session record renders no banner', async () => {
     renderDock({ orchestrationSession: null });
 
     expect(screen.queryByTestId('chat-dock-session-failure')).toBeNull();
-    expect(screen.getByTestId('chat-input-area')).toBeTruthy();
+    expect(await screen.findByTestId('chat-input-area')).toBeTruthy();
   });
 
   // The "Stopped." copy itself is owned by describeStopTurnOutcome's table in
@@ -1090,7 +1092,9 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
       }),
     });
 
-    expect(chatInputPropsMock.current?.disabled).toBe(true);
+    await waitFor(() =>
+      expect(chatInputPropsMock.current?.disabled).toBe(true),
+    );
     // The wait is announced by the repo's skeleton vocabulary, not a bespoke
     // sentence, and not by `role="alert"` — `role`/tone are what made this
     // ordinary phase read as a failure.
@@ -1360,7 +1364,9 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
         />
       </QueryClientProvider>,
     );
-    expect(chatInputPropsMock.current?.disabled).toBe(true);
+    await waitFor(() =>
+      expect(chatInputPropsMock.current?.disabled).toBe(true),
+    );
     fireEvent.click(await screen.findByRole('button', { name: 'Retry' }));
     fireEvent.click(
       await screen.findByRole('button', { name: 'Start new chat' }),
@@ -1448,7 +1454,7 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
     expect(screen.queryByText(/couldn't confirm/)).toBeNull();
   });
 
-  test('#749 respects canContinue rather than Agent availability', () => {
+  test('#749 respects canContinue rather than Agent availability', async () => {
     const base = {
       status: 'resolved' as const,
       conversation: {
@@ -1481,7 +1487,9 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
       }),
     });
     expect(screen.queryByTestId('chat-dock-session-record-missing')).toBeNull();
-    expect(chatInputPropsMock.current?.disabled).toBe(true);
+    await waitFor(() =>
+      expect(chatInputPropsMock.current?.disabled).toBe(true),
+    );
     // #2424 mirror: a continuation the server DENIED is a derived verdict, and
     // is the case that keeps the read-only wording.
     expect(chatInputPropsMock.current?.sendBlockedReason).toBe(
@@ -1508,10 +1516,12 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
         />
       </QueryClientProvider>,
     );
-    expect(chatInputPropsMock.current?.disabled).toBe(false);
+    await waitFor(() =>
+      expect(chatInputPropsMock.current?.disabled).toBe(false),
+    );
   });
 
-  test('allows a draft during an authorized active-turn continuation wait', () => {
+  test('allows a draft during an authorized active-turn continuation wait', async () => {
     renderDock({
       session: buildSession({
         conversationOpenState: {
@@ -1521,7 +1531,9 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
         } as ChatSession['conversationOpenState'],
       }),
     });
-    expect(chatInputPropsMock.current?.disabled).toBe(true);
+    await waitFor(() =>
+      expect(chatInputPropsMock.current?.disabled).toBe(true),
+    );
     expect(chatInputPropsMock.current?.allowDraftWhileDisabled).toBe(true);
   });
 
@@ -1530,7 +1542,7 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
   // current child's answerability decoration stays `past_resume` (the steady
   // state of every stopped, unloaded session). The composer must key on the
   // server's continuation decision, not re-derive one from answerability.
-  test('#834 re-enables the composer for a stopped conversation resolved continuable', () => {
+  test('#834 re-enables the composer for a stopped conversation resolved continuable', async () => {
     const stoppedAnswerability = {
       answerable: false as const,
       qualification: 'past_resume' as const,
@@ -1564,6 +1576,8 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
         },
       }),
     });
-    expect(chatInputPropsMock.current?.disabled).toBe(false);
+    await waitFor(() =>
+      expect(chatInputPropsMock.current?.disabled).toBe(false),
+    );
   });
 });

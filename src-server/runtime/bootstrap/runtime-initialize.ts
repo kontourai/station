@@ -191,6 +191,9 @@ export interface InitializeRuntimeDeps {
   };
   storageAdapter: FileStorageAdapter;
   skillService: {
+    listSkillExperiences?: import('../../services/orchestration/skill-experience-runtime.js').SkillExperienceSource['listSkillExperiences'];
+    withSkillExperience?: import('../../services/orchestration/skill-experience-runtime.js').SkillExperienceSource['withSkillExperience'];
+    enableExperienceExecution?: () => void;
     discoverSkills: (...args: any[]) => Promise<void>;
     /** archive#895 wave A: resolve a skill id to its installed on-disk directory. */
     getSkill: (id: string) => Promise<{ path?: string }>;
@@ -655,6 +658,17 @@ export async function initializeRuntime(
     >,
     logger,
   });
+  if (
+    deps.skillService.withSkillExperience &&
+    deps.skillService.listSkillExperiences &&
+    orchestrationService.registerSkillExperienceSource({
+      listSkillExperiences: () => deps.skillService.listSkillExperiences!(),
+      withSkillExperience: (identity, effect, permission) =>
+        deps.skillService.withSkillExperience!(identity, effect, permission),
+    })
+  )
+    deps.skillService.enableExperienceExecution?.();
+
   orchestrationService.initialize();
 
   // archive#1501, seam S5 (`docs/design/portable-project-identity.md`

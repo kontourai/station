@@ -82,3 +82,57 @@
 .registry-catalog__version {
   margin-top: 0.75rem;
 }
+
+.marketplaces {
+  display: grid;
+  gap: var(--k-space-3);
+  margin-block: var(--k-space-4);
+}
+.marketplaces__toolbar,
+.marketplaces__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--k-space-3);
+}
+.marketplaces__toolbar label,
+.marketplaces__form label {
+  display: grid;
+  gap: var(--k-space-2);
+  flex: 1;
+}
+.marketplaces__source {
+  display: grid;
+  gap: var(--k-space-3);
+  border-top: 1px solid var(--k-line);
+  padding-block: var(--k-space-3);
+}
+.marketplaces__source code {
+  overflow-wrap: anywhere;
+}
+.marketplaces__form {
+  display: grid;
+  gap: var(--k-space-4);
+}
+.marketplaces select,
+.marketplaces__form input,
+.marketplaces__form select {
+  min-height: 44px;
+  width: 100%;
+  color: var(--k-text);
+  background: var(--k-panel);
+  border: 1px solid var(--k-line-strong);
+  border-radius: var(--k-radius-control);
+  padding: var(--k-space-2);
+}
+.marketplaces__instructions {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 24rem;
+  overflow: auto;
+}
+
+.registry-catalog__source {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}

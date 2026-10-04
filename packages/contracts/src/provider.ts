@@ -250,8 +250,11 @@ export const STATION_CONFINEMENT_GRANTOR_METADATA_KEY =
  * launch plan, typed receipt, requested/effective selector and options, and
  * independently reported identity are all server- or adapter-derived facts.
  */
+export const SKILL_EXPERIENCE_METADATA_KEY = 'stationSkillExperience' as const;
+
 export const RESERVED_ORCHESTRATION_METADATA_KEYS = [
   'usageAccountKey',
+  SKILL_EXPERIENCE_METADATA_KEY,
   SESSION_CAPABILITY_DELIVERY_METADATA_KEY,
   MODEL_LAUNCH_PLAN_METADATA_KEY,
   MODEL_LAUNCH_REQUESTED_OVERRIDE_METADATA_KEY,

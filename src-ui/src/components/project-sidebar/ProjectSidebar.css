@@ -873,8 +873,8 @@
   /* #2063: a layout chip is the same navigation chrome, and the floor applies
      to it too. It is sized rather than merely floored — a chip is content-
      width, so `min-height` alone would leave a 44px-tall pill with a tap
-     target narrower than a fingertip on a short name. The row keeps wrapping,
-     so a project with many layouts grows the band instead of overflowing it. */
+     target narrower than a fingertip on a short name. The row stays one line
+     (#2150), so the larger chips scroll sideways instead of growing the band. */
   .sidebar__layout-chip {
     min-height: 44px;
     min-width: 44px;
