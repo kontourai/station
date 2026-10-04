@@ -74,7 +74,7 @@
 
     {"path":"src-ui/src/components/chat-dock/ChatDockMobileOverflowSheet.tsx","digest":"639b692002c457ec1e901ca10854660aaf0fe77cb13f783fb375ab46ea05a746","revision":"ffc972585fbd9f6397726ad39ed842ff7c897f49"},
 
-    {"path":"src-ui/src/components/chat-dock/ChatDockProjectContext.tsx","digest":"4014822b2ec774379491ce299aff2736b8fadcf1e6fb7b0adb69b6b268ee85af","revision":"b14f1b80ec27c38844b3d16e8a4bdfe624a778c9"},
+    {"path":"src-ui/src/components/chat-dock/ChatDockProjectContext.tsx","digest":"97ce9065099378da4f7f2f0c275d9ecfc44c284dc5310a64205ccda3f628b5d0","revision":"3d4674bf8f60442c202efe5872b616324a808484"},
 
     {"path":"src-ui/src/components/chat-dock/ChatDockProjectSwitcherSheet.tsx","digest":"8e443583cd1836a979e782680e6587a697264c496a06ffe732bce13a06a88e75","revision":"381388a5c221a50c4e5b8c775538218bc02ce431"},
 
@@ -120,7 +120,9 @@
 
     {"path":"tests/helpers/visible-action-count.ts","digest":"b598b668d2fad8e2b6076100868eb5f9bc446b01487f1a761415b5fcc25ed412","revision":"df740ad0d1e328b2e6216b1d20845ff3bf04bf31"},
 
-    {"path":"src-ui/src/components/NewChatAction.tsx","digest":"d2d026c7b81e25c93c966350bd2df6cac1fcbf21f59034f06619d57427d32c3d","revision":"ed4b7b2c4440e328d5367f3d8f4a319a81dfba7e"}
+    {"path":"src-ui/src/components/NewChatAction.tsx","digest":"d2d026c7b81e25c93c966350bd2df6cac1fcbf21f59034f06619d57427d32c3d","revision":"ed4b7b2c4440e328d5367f3d8f4a319a81dfba7e"},
+
+    {"path":"src-ui/src/components/chat-dock/ChatDockProjectContext.css","digest":"821e1a1fa48d43e3caa203d54c6b26854830841aeb2c3e2eaa6bd496db52f0cc","revision":"6af8b6156629786bb230e8fccc0335ed45f483d8"}
   ],
 
   "checks": [
