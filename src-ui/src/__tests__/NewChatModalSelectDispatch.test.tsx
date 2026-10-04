@@ -1144,3 +1144,109 @@ describe('visual skill selection through the New Chat picker', () => {
     ).toHaveProperty('value', 'Retain this');
   });
 });
+
+describe('composer-first New chat', () => {
+  function start(onSelect = vi.fn()) {
+    render(
+      <NewChatModal
+        startSurface
+        agents={selectionModelState.agents}
+        projects={[]}
+        onSelect={onSelect}
+        onClose={vi.fn()}
+      />,
+    );
+    return onSelect;
+  }
+  test('typing and choosing another Agent do not open a chat; Send starts the chosen Agent once with the draft', () => {
+    selectionModelState.agents = [AGENT, AUTHORED_CODEX];
+    const onSelect = start();
+    fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), {
+      target: { value: 'Review this change' },
+    });
+    expect(onSelect).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Agent: Assistant' }));
+    clickAgent('codex-agent');
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(
+      (screen.getByRole('textbox', { name: 'Message' }) as HTMLTextAreaElement)
+        .value,
+    ).toBe('Review this change');
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    fireEvent.submit(screen.getByRole('form', { name: 'New chat draft' }));
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(onSelect.mock.calls[0][0].slug).toBe('codex-agent');
+    expect(onSelect.mock.calls[0][3]).toBe('Review this change');
+    expect(onSelect.mock.calls[0][12]).toBe(true);
+  });
+  test('an unavailable remembered Agent shows setup and retains the draft without dispatching', async () => {
+    selectionModelState.agents = [UNAVAILABLE_AGENT, AGENT];
+    selectionModelState.recommendedAgent = UNAVAILABLE_AGENT;
+    const onSelect = start();
+    fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), {
+      target: { value: 'Keep this draft' },
+    });
+    expect(
+      (await screen.findByRole('region', { name: 'Set up an AI connection' }))
+        .textContent,
+    ).toContain('connection offline');
+    expect(
+      (screen.getByRole('button', { name: 'Send' }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    expect(onSelect).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Agent: Downed' }));
+    clickAgent('assistant');
+    expect(
+      (screen.getByRole('textbox', { name: 'Message' }) as HTMLTextAreaElement)
+        .value,
+    ).toBe('Keep this draft');
+    expect(
+      (screen.getByRole('button', { name: 'Send' }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
+  });
+  test('a failed start retains the message and allows a retry', async () => {
+    const onSelect = start(
+      vi
+        .fn()
+        .mockRejectedValueOnce(new Error('offline'))
+        .mockResolvedValue(undefined),
+    );
+    fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), {
+      target: { value: 'Do this later' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    await waitFor(() =>
+      expect(screen.getByRole('alert').textContent).toContain(
+        'Could not start',
+      ),
+    );
+    expect(
+      (screen.getByRole('textbox', { name: 'Message' }) as HTMLTextAreaElement)
+        .value,
+    ).toBe('Do this later');
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    expect(onSelect).toHaveBeenCalledTimes(2);
+  });
+  test('Enable prepares an Agent and returns to the draft without opening a conversation', async () => {
+    selectionModelState.agents = [ENABLEABLE_ALIAS, AUTHORED_CODEX];
+    selectionModelState.recommendedAgent = ENABLEABLE_ALIAS;
+    const onSelect = start();
+    fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), {
+      target: { value: 'Wait until I send' },
+    });
+    fireEvent.click(await screen.findByRole('button', { name: /Enable/ }));
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'Agent: Codex Agent' }),
+      ).toBeTruthy(),
+    );
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(materializeMock).not.toHaveBeenCalled();
+    expect(
+      (screen.getByRole('textbox', { name: 'Message' }) as HTMLTextAreaElement)
+        .value,
+    ).toBe('Wait until I send');
+  });
+});

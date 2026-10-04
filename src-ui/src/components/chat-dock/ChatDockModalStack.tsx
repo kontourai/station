@@ -68,6 +68,7 @@ interface ChatDockModalStackProps {
   newChatRequestEpoch?: number;
   newChatStartWithDefault?: boolean;
   newChatInitialPrompt?: string;
+  recentChats?: ComponentProps<typeof NewChatModal>['recentChats'];
   showChatSettings: boolean;
   showSessionPicker: boolean;
   chatFontSize: number;
@@ -88,6 +89,7 @@ interface ChatDockModalStackProps {
     providerId?: string,
     providerType?: string,
     experienceDraft?: SkillExperienceDraft,
+    sendInitialMessage?: boolean,
   ) => void;
   onCloseNewChat: () => void;
   onCloseSettings: () => void;
@@ -123,6 +125,7 @@ export function ChatDockModalStack({
   newChatRequestEpoch,
   newChatStartWithDefault,
   newChatInitialPrompt,
+  recentChats,
   showChatSettings,
   showSessionPicker,
   chatFontSize,
@@ -168,6 +171,8 @@ export function ChatDockModalStack({
             requestAuthority,
             startWithDefault: newChatStartWithDefault,
             initialPrompt: newChatInitialPrompt,
+            startSurface: true,
+            recentChats,
             activeProjectSlug:
               newChatProjectOverride?.slug ?? activeProjectSlug,
             onSelect: handleNewChatSelect,
