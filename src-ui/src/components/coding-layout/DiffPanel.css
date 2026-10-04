@@ -140,8 +140,39 @@
   transform: rotate(-90deg);
 }
 
-@media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
+/* The same tools in a host's head row (the Coding layout's side panel, past
+   the wide fold): 32px targets like the head's own close and its other
+   panes' controls. The bar's 44px hit areas would overrun the 40px row and
+   reach the close. */
+.diff-panel__tools--head {
+  gap: var(--space-1);
+}
+
+.diff-panel__tools--head .diff-tool {
+  width: 32px;
+  height: 32px;
+}
+
+.diff-panel__tools--head .diff-tool::after {
+  content: none;
+}
+
+/* Touch floors. `(hover: none)` joins the phone queries because the Coding
+   side panel opens by width alone, so a wide touch tablet gets the Diff's
+   head tools (and its per-file toggles) too. In the head each tool becomes a
+   44px box of its own and the row grows to hold them. Boxes rather than the
+   bar's 44px pseudo-element: in a 40px row with 4px gaps those areas would
+   overlap each other and reach the close. This sheet is a lazy chunk that
+   lands after index.css, so the rule lives here rather than in the entry
+   sheet's shared `(hover: none)` block. */
+@media (max-width: 768px), (max-height: 540px) and (pointer: coarse),
+  (hover: none) {
   .diff-file-collapse-toggle {
+    width: 44px;
+    height: 44px;
+  }
+
+  .diff-panel__tools--head .diff-tool {
     width: 44px;
     height: 44px;
   }
@@ -270,35 +301,4 @@
 .diff-comment-composer__submit:disabled {
   opacity: 0.5;
   cursor: not-allowed;
-}
-
-/* The same tools in a host's head row (the Coding layout's side panel, past
-   the wide fold): 32px targets like the head's own close and its other
-   panes' controls. The bar's 44px hit areas would overrun the 40px row and
-   reach the close. */
-.diff-panel__tools--head {
-  gap: var(--space-1);
-}
-
-.diff-panel__tools--head .diff-tool {
-  width: 32px;
-  height: 32px;
-}
-
-.diff-panel__tools--head .diff-tool::after {
-  content: none;
-}
-
-/* The side panel opens by width alone, so a wide touch tablet gets the head
-   too. On a pointer that cannot hover each tool is a 44px box of its own and
-   the head row grows to hold them. Boxes rather than the bar's 44px
-   pseudo-element: in a 40px row with 4px gaps those areas would overlap
-   each other and reach the close. This lives here, not in index.css's
-   shared `(hover: none)` block, because this sheet is a lazy chunk that
-   lands after the entry sheet and would win the tie. */
-@media (hover: none) {
-  .diff-panel__tools--head .diff-tool {
-    width: 44px;
-    height: 44px;
-  }
 }
