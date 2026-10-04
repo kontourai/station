@@ -63,6 +63,13 @@ export type UsageLimitRecoveryActionResult =
  */
 const REARM_MIN_WAIT_MS = 60_000;
 
+/**
+ * #3157: how many times in a row a refused replay may re-arm for a later
+ * reset before the intent just ends failed. A user turn resets the count. It
+ * is process-local: a restart forgets it, which can only allow a few more.
+ */
+const MAX_CONSECUTIVE_REARMS = 3;
+
 const DEFAULT_MAX_ATTEMPTS = 1;
 const RECOVERY_SHUTDOWN_SETTLEMENT_MS = 250;
 const CANCELLATION_RETRY_MS = 100;
@@ -82,6 +89,7 @@ export class SessionRecoveryCoordinator {
   private readonly inFlight = new Set<Promise<void>>();
   private readonly lifecycleByFingerprint = new Map<string, Promise<void>>();
   private readonly dispatchControllers = new Map<string, AbortController>();
+  private readonly rearmsByThread = new Map<string, number>();
   private readonly activeByThread = new Map<string, string>();
   private readonly ledger: RecoveryLedger;
   private readonly completingFingerprints = new Set<string>();
@@ -250,6 +258,9 @@ export class SessionRecoveryCoordinator {
       this.enqueueLifecycle(resumed.fingerprint, async () => {
         await this.failIntent(resumed);
         if (!limitedAgain || this.disposed || this.stopping) return;
+        const rearms = this.rearmsByThread.get(event.threadId) ?? 0;
+        if (rearms >= MAX_CONSECUTIVE_REARMS) return;
+        this.rearmsByThread.set(event.threadId, rearms + 1);
         try {
           this.armForRuntimeError(event, REARM_MIN_WAIT_MS);
         } catch {
@@ -265,6 +276,7 @@ export class SessionRecoveryCoordinator {
     try {
       const correlationId = event.metadata?.recoveryCorrelationId;
       if (typeof correlationId !== 'string') {
+        this.rearmsByThread.delete(event.threadId);
         this.retireSupersededBy(event);
         return;
       }

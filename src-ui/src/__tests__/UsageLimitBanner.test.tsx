@@ -482,4 +482,26 @@ describe('UsageLimitBanner (#3157)', () => {
     expect(calls.filter((call) => call.method === 'GET')).toHaveLength(2);
     expect(screen.queryByTestId('usage-limit-banner')).toBeNull();
   });
+
+  test('a resume that reads back resumed and later ends failed still says so', async () => {
+    const { rerenderWith } = renderBanner();
+    await banner();
+    fireEvent.click(button('Resume now') as HTMLElement);
+    await waitFor(() =>
+      expect(screen.getByTestId('usage-limit-banner').textContent).toContain(
+        'Resuming this conversation',
+      ),
+    );
+    // The refusal came back too soon to wait out: nothing was armed.
+    answers.read = () => ({
+      recovery: projection({ outcome: 'failed', attempts: 1 }),
+    });
+    rerenderWith({ eventCount: 2 });
+    await waitFor(() =>
+      expect(screen.getByRole('status').textContent).toBe(
+        "Resume didn't go through. Send a message to continue.",
+      ),
+    );
+    expect(button('Resume now')).toBeNull();
+  });
 });

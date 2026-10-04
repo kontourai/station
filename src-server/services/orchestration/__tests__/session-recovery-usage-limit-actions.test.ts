@@ -38,10 +38,16 @@ describe('#3157 usage-limit banner actions', () => {
       new EventStore(
         join(makeTempDir('usage-limit-actions-'), 'orchestration.sqlite'),
       );
+    let dispatched = 0;
     const dispatch = vi.fn<RecoveryDispatchAdapter['dispatch']>(
       async ({ replay }) => {
         replay.signal.throwIfAborted();
-        return { kind: 'accepted', turnId: 'resumed-turn' };
+        dispatched += 1;
+        return {
+          kind: 'accepted',
+          turnId:
+            dispatched === 1 ? 'resumed-turn' : `resumed-turn-${dispatched}`,
+        };
       },
     );
     const coordinator = new SessionRecoveryCoordinator({
@@ -360,6 +366,59 @@ describe('#3157 usage-limit banner actions', () => {
     expect(dispatch).toHaveBeenCalledOnce();
     await vi.advanceTimersByTimeAsync(UNTIL_RESET_MS);
     expect(dispatch).toHaveBeenCalledTimes(2);
+    await coordinator.dispose();
+    store.close();
+  });
+
+  test('a provider that always names a later reset re-arms at most three times in a row, then the intent ends failed', async () => {
+    vi.useFakeTimers({ now: STOPPED_AT });
+    const { store, coordinator, dispatch } = setup(() => true);
+    stopOnUsageLimit(coordinator, store);
+    const refuse = async (turnId: string, call: number) => {
+      const replay = dispatch.mock.calls[call - 1]?.[0].replay;
+      observe(coordinator, store, {
+        eventId: `${turnId}-start`,
+        provider: 'codex',
+        threadId: THREAD,
+        turnId,
+        createdAt: new Date(Date.now()).toISOString(),
+        method: 'turn.started',
+        prompt: 'Finish the migration.',
+        metadata: { recoveryCorrelationId: replay?.recoveryCorrelationId },
+      });
+      observe(coordinator, store, {
+        eventId: `${turnId}-error`,
+        provider: 'codex',
+        threadId: THREAD,
+        turnId,
+        createdAt: new Date(Date.now()).toISOString(),
+        method: 'runtime.error',
+        severity: 'error',
+        code: 'usageLimitExceeded',
+        retriable: false,
+        message: "You've hit your usage limit.",
+        details: { usageLimit: true, scope: 'account', resetAt: RESET_AT },
+      });
+      await vi.advanceTimersByTimeAsync(0);
+    };
+    // Resume now, refused: re-armed (1), (2), (3); the fourth refusal ends it.
+    const turns = [
+      'resumed-turn',
+      'resumed-turn-2',
+      'resumed-turn-3',
+      'resumed-turn-4',
+    ];
+    for (const [index, turnId] of turns.entries()) {
+      await coordinator.resumeUsageLimitNow(THREAD);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(dispatch).toHaveBeenCalledTimes(index + 1);
+      await refuse(turnId, index + 1);
+      expect(coordinator.latestProjection(THREAD)).toMatchObject({
+        outcome: index < 3 ? 'armed' : 'failed',
+      });
+    }
+    await vi.advanceTimersByTimeAsync(UNTIL_RESET_MS);
+    expect(dispatch).toHaveBeenCalledTimes(4);
     await coordinator.dispose();
     store.close();
   });

@@ -179,8 +179,13 @@ function UsageLimitBannerFor({
       return;
     }
     if (!wasEngaged.current || recovery?.usageLimit !== true) return;
-    wasEngaged.current = false;
+    // `resumed` is not an ending: the dispatch is in flight and can still end
+    // failed, indeterminate or canceled. Reads stop being forced, but the next
+    // natural one (the hold coming back on, or a summary update while active)
+    // still says how it ended.
     setEngaged(false);
+    if (recovery.outcome === 'resumed') return;
+    wasEngaged.current = false;
     setNotice(settledNotice(recovery));
   }, [recovery]);
 
