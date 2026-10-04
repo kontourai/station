@@ -74,7 +74,25 @@
 
     "src-ui/src/views/project-settings/KnowledgeSection.tsx",
 
-    "src-ui/src/views/settings/KnowledgeStoreSection.tsx"
+    "src-ui/src/views/settings/KnowledgeStoreSection.tsx",
+
+    "src-server/tools/station-knowledge-tools.ts",
+
+    "src-server/tools/station-knowledge-mcp-server.ts",
+
+    "src-server/runtime/mcp/station-knowledge-native-tools.ts",
+
+    "src-server/runtime/mcp/__tests__/station-knowledge-native-tools.test.ts",
+
+    "src-server/runtime/mcp/station-control-mcp-token.ts",
+
+    "src-server/runtime/mcp/station-control-in-process.ts",
+
+    "src-server/providers/adapters/station-agent-adapter.ts",
+
+    "src-server/runtime/agents/runtime-default-agent.ts",
+
+    "src-server/runtime/routes/__tests__/runtime-routes-station-control-read-scope.test.ts"
   ],
 
   "checks": [
