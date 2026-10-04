@@ -59,3 +59,33 @@ describe.each(['browser', 'node'] as const)('Agent SDK on %s', (platform) => {
     expect(forbidden).toEqual([]);
   });
 });
+
+// #3209: first-paint UI code imports client/execution for ordinary sends. Only
+// the static-default send wrapper may reach the canonical reader and its large
+// generated validator; an entry build keeps every execution export alive.
+describe('execution client graph', () => {
+  const reader =
+    /skill-experience-reader\.ts$|agent-plugin-validators\.generated\.mjs$/;
+  const graph = async (entry: string) => {
+    const result = await esbuild.build({
+      bundle: true,
+      entryPoints: [fileURLToPath(new URL(entry, import.meta.url))],
+      format: 'esm',
+      logLevel: 'silent',
+      metafile: true,
+      platform: 'browser',
+      write: false,
+    });
+    return Object.keys(result.metafile.inputs).filter((path) =>
+      reader.test(path),
+    );
+  };
+
+  test('client/execution does not reach the skill-experience reader', async () => {
+    expect(await graph('../client/execution.ts')).toEqual([]);
+  });
+
+  test('positive control: the static send wrapper does reach it', async () => {
+    expect(await graph('../client/send-execution-message.ts')).toHaveLength(2);
+  });
+});

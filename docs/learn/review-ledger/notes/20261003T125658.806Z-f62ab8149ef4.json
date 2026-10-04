@@ -1,0 +1,7 @@
+{
+  "revision": "be34938f4652aa3b7f5a1a7749189d0e536690ed",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Re-recorded after merging main took main's record over the base branch's (feat/pr-review-checks, PR #3171). The branch delta this review covers is that branch's: the review snapshot's optional checks and reviewComments observations (partial/unavailable semantics, the 1000-context rollup cap, GitLab merged-results pipelines unavailable with a reason, file-level comments with null line) as documented in the pull-request contract section, traced to pull-request-provider.ts and pull-request-review.ts. This design lane adds no contract and changes no SDK; its UI reads those fields (checks list, per-check add to chat, unplaced comments) exactly as the reference describes. No prose change.","inputs":["docs/reference/contracts.md","packages/contracts/package.json","packages/contracts/src/application-session.ts","packages/contracts/src/orchestration.ts","packages/contracts/src/plugin.ts","packages/contracts/src/pull-request-provider.ts","src-server/providers/adapters/acp-adapter.ts","src-server/routes/orchestration/orchestration.ts","src-server/runtime/bootstrap/station-runtime.ts","src-server/services/identity/application-session-service.ts","src-server/services/orchestration/orchestration-service.ts","src-server/tools/station-control-delegation.ts","packages/contracts/src/skill-experience.ts"]}
+  ]
+}

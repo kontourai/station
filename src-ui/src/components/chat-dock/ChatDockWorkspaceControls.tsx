@@ -1,9 +1,10 @@
+import { Tooltip } from '@kontourai/ui/react';
 import { useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { withShortcutHint } from '../../contexts/KeyboardShortcutsContext';
 import { useShortcutDisplay } from '../../hooks/useKeyboardShortcut';
-import { MessageGlyph } from '../icons/Glyph';
+import { EditGlyph, MessageGlyph } from '../icons/Glyph';
 import { LazyBoundary } from '../LazyBoundary';
 import { NewChatAction } from '../NewChatAction';
 import type { ChatDockWorkspaceControls as Controls } from './ChatDockHeader';
@@ -78,9 +79,67 @@ export function ChatDockSessionInventoryHost({
 export function ChatDockWorkspaceActions({
   onOpenConversation,
   onNewChat,
-}: Pick<Controls, 'onOpenConversation' | 'onNewChat'>) {
+  iconOnly = false,
+  sessionCount = 0,
+}: Pick<Controls, 'onOpenConversation' | 'onNewChat'> & {
+  /**
+   * Icon-only, named and tipped (#3046): in a bar that names the pane, the
+   * two verbs keep their glyphs and give up their words, so the bar stays
+   * within the button cap and the title keeps the width.
+   */
+  iconOnly?: boolean;
+  /**
+   * How many conversations are open, when icon-only: more than one is a
+   * count worth a badge on the Open icon and a line in its tooltip.
+   */
+  sessionCount?: number;
+}) {
   const openShortcut = useShortcutDisplay('dock.openConversation');
   const newShortcut = useShortcutDisplay('dock.newChat');
+  if (iconOnly) {
+    const counted = sessionCount > 1 ? `${sessionCount} sessions` : null;
+    const openHint = withShortcutHint(
+      counted ? `Open conversation — ${counted}` : 'Open conversation',
+      'dock.openConversation',
+      () => openShortcut,
+    );
+    const newHint = withShortcutHint(
+      'New chat',
+      'dock.newChat',
+      () => newShortcut,
+    );
+    return (
+      <div className="chat-dock__tab-actions chat-dock__tab-actions--icons">
+        <Tooltip label={openHint} placement="bottom">
+          <button
+            type="button"
+            className="chat-dock__new chat-dock__open chat-dock__new--icon"
+            aria-label={
+              counted ? `Open conversation, ${counted}` : 'Open conversation'
+            }
+            onClick={onOpenConversation}
+          >
+            <MessageGlyph />
+            {counted ? (
+              <span className="chat-dock__new-count" aria-hidden="true">
+                {sessionCount > 99 ? '99+' : sessionCount}
+              </span>
+            ) : null}
+          </button>
+        </Tooltip>
+        <Tooltip label={newHint} placement="bottom">
+          <button
+            type="button"
+            className="chat-dock__new chat-dock__new--icon"
+            aria-label="New chat"
+            onClick={onNewChat}
+          >
+            <EditGlyph />
+          </button>
+        </Tooltip>
+      </div>
+    );
+  }
   return (
     <div className="chat-dock__tab-actions">
       <button

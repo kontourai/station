@@ -1,0 +1,9 @@
+{
+  "revision": "3c1bd99662d4823d0e1ca07995c330813e4b16fb",
+
+  "notes": [
+    {"path":"docs/adr/0021-separate-plugin-and-agent-sdk-surfaces.md","note":"#3217 guard commit 3c1bd99662 appends an execution client graph block to browser-entry-bundles.test.ts: an esbuild entry build of client/execution.ts must not reach skill-experience-reader.ts or the generated validator, with send-execution-message.ts as a positive control (fault-injected: moving the static wrapper back into execution.ts fails it, EXECUTED). The existing Agent SDK browser/node block this document cites as evidence of the Agent entry excluding UI and application dependencies is unchanged and still passes (8 passed, EXECUTED). No prose change.","inputs":["docs/adr/0021-separate-plugin-and-agent-sdk-surfaces.md","packages/sdk/src/__tests__/browser-entry-bundles.test.ts"]},
+
+    {"path":"docs/guides/agent-development.md","note":"#3217 guard commit 3c1bd99662 appends an execution client graph block to browser-entry-bundles.test.ts: an esbuild entry build of client/execution.ts must not reach skill-experience-reader.ts or the generated validator, with send-execution-message.ts as a positive control (fault-injected: moving the static wrapper back into execution.ts fails it, EXECUTED). The existing Agent SDK browser/node block this document cites as evidence of the Agent entry excluding UI and application dependencies is unchanged and still passes (8 passed, EXECUTED). No prose change.","inputs":["docs/guides/agent-development.md","packages/sdk/src/__tests__/browser-entry-bundles.test.ts"]}
+  ]
+}

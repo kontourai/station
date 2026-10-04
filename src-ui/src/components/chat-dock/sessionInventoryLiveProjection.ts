@@ -35,7 +35,7 @@ export function selectSessionInventoryLiveNow(
         source: 'provider-task' as const,
         chatThreadId: capturedSessionId,
         title: task.description || task.subagentType || 'Background task',
-        detail: task.subagentType,
+        detail: task.subagentType ?? task.model?.id,
         startedAt: matched.startedAt,
         state: 'running' as const,
       },

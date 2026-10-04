@@ -193,9 +193,11 @@ not change turn progress. Snapshots expose `blockingOpenRequestIds` separately
 from all `openRequestIds`; older hosts omit that field and retain the legacy
 blocking interpretation. A snapshot carries ids only, so after a reload a
 client reads the conversation's newest turn to rebuild each open approval's
-tool, preview and grant label. It keeps a generic placeholder when the host
-cannot supply it, including a request opened in a turn older than the newest
-(the read covers the newest turn only). Request inspection sets `requiresAnswers` so clients
+tool, preview and grant label. When a request is not in that turn, the client
+follows the event window's `nextCursor` to older turns, at most three further
+pages of five turns, and stops as soon as every open request is found. It keeps
+a generic placeholder when the host cannot supply the request, including one
+older than that bound. Request inspection sets `requiresAnswers` so clients
 route to the Session instead of offering a generic approval button.
 
 `acceptForSession` also grants later calls to the same tool in that Session.
@@ -634,6 +636,37 @@ tool/text boundaries. Match assistant messages by `metadata.turnId` to the
 handle's `providerTurnId` when proving one turn, so an earlier answer cannot
 satisfy a later check. The shared projection assembles streamed text and handles
 aggregate `turn.completed.outputText` where appropriate.
+
+### Subagent transcript (`GET /sessions/:threadId/child-work/:childId/transcript`)
+
+An engine subagent's own conversation, read-only. `threadId` is the session
+that reported the subagent and `childId` is its child-work id. The server
+finds the transcript from that session's persisted child-work facts (the
+`transcript` reference on the `ChildWorkItem`), so the request carries no
+file path, and the read works the same after a server restart. Reads are
+authorized like the session's other reads and are never cached
+(`Cache-Control: private, no-store`).
+
+Query: `offset` (message index, default `0`) and `limit` (messages per page,
+`1`–`50`, default `30`). The response's `data` is a `ChildWorkTranscriptPage`:
+`entries` (prompt and reply text, tool calls, tool results; inline image data
+replaced by a placeholder, then each text cut at 4,000 characters and flagged) and `nextOffset` when another page follows.
+`404` means no transcript for a session you can read; `503` means the engine
+no longer has it.
+
+Only Claude subagents have a transcript today. Claude Code keeps it under the
+config home the session's engine was spawned with (its app-home or credential
+profile, a connection's config home, or the global one); the adapter records
+that config home with the reference, so a profile session's transcript is
+read from its own profile. Symbolic links below that config home are refused
+by checks made immediately before the file is opened; the checks are not
+atomic against a concurrent swap by a process running as the same user.
+Codex child threads have no transcript reference.
+
+The transcript is shown in file order, so it can include what Claude Code's
+own reader hides: a branch abandoned by a retry or an edit, and a compaction
+summary. A single record of any type larger than 4 MiB is skipped and shown
+as one `too-large` entry.
 
 ### Live SSE feed (`GET /events`)
 

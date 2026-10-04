@@ -1010,6 +1010,55 @@ The pre-push hook and pull-request CI own the full typecheck. Locally, iterate
 with `npm run gate:for` evidence and a single `typecheck:<lane>`; do not start
 the full aggregate or `ci:fast` in the background and poll for its result.
 
+### Host-pressure liveness scale (#3302)
+
+A fixed liveness bound is a dead-child guard sized for an idle machine. On a
+CPU-saturated shared host, an honest run can outlast it and report a timeout
+that says nothing about the change. `scripts/lib/liveness-scale.mjs` and
+`scripts/lib/liveness-scale-resolve.mjs` therefore derive one bounded factor
+from the same portable sampler the verification coordinator uses
+(`verification-host-pressure.mjs`, two `os.cpus()` snapshots; load average
+stays telemetry only):
+
+| Measured host CPU busy | Factor |
+| --- | --- |
+| 60% or less | 1 |
+| 61% to 70% | 2 |
+| 71% to 85% | 3 |
+| above 85% | 4 (the sampled cap) |
+
+The pre-push hook, `test:focused`, `scripts/run-verification.mjs`, the
+product-law gate, the code-health gate, the fallow runner and the transfer gate
+each resolve the factor once and publish it in `STATION_LIVENESS_SCALE` (with
+`STATION_LIVENESS_SCALE_RESOLVED=1`), so children read it and never re-sample.
+A scaled run prints one line, for example `host under CPU pressure (87% busy):
+liveness bounds ×4`.
+
+- Under `CI=true` or `GITHUB_ACTIONS=true` the sampled factor is always 1, so
+  hosted behaviour is unchanged. An unavailable sample is also 1.
+- Setting `STATION_LIVENESS_SCALE` yourself may only raise the factor, to at
+  most 8. A value below 1, above 8 or malformed is refused with an error rather
+  than clamped.
+- Only liveness bounds are multiplied; every one stays finite, so a genuine hang
+  still fails. No performance budget or assertion is scaled.
+- Test workers start without the factor (`vitest.setup.ts`), so a test that
+  asserts a default bound does not depend on host load.
+
+| Bound | Base | Where |
+| --- | --- | --- |
+| Vitest `testTimeout` and `hookTimeout` | 30 s | `vitest.config.ts` |
+| Product-law per-observation default | 30 s | `productLawObservationTimeoutMs` |
+| Product-law total runtime ceiling | 150 s | `productLawRuntimeBudgetMs` |
+| Fallow watchdog per command | 120 s | `runFallowAnalysis` |
+| Transfer capture child default | 60 s | `transferCaptureLivenessTimeoutMs` |
+| Transfer capture in-process barrier | 5 s | `scripts/orchestration-transfer-capture.ts` |
+
+An explicit `PRODUCT_LAW_OBSERVATION_TIMEOUT_MS` or
+`STATION_TRANSFER_CAPTURE_TIMEOUT_MS` is the operator's chosen bound and is used
+as given. The Veritas evidence-check default (600 s) lives in the external
+`@kontourai/veritas` package and cannot be scaled from this repository;
+`documentation-truth` already sets its own `timeoutMs` in `.veritas/repo-map.json`.
+
 ### Shared Vitest worker policy
 
 Ordinary and focused Vitest invocations inherit the checked-in four-worker
@@ -1172,7 +1221,8 @@ critical browser smoke; security and relevant platform checks remain required.
 The merge path does not run the full corpus.
 
 [Main qualification](../../.github/workflows/main-qualification.yml) runs every
-six hours outside the queue. A failure collects the available independent
+six hours outside the queue. A pass may start a Nightly for that commit
+([release procedure](releasing.md#release-procedure)). A failure collects the available independent
 failures and starts one bounded repair episode instead of repeatedly dequeuing
 unrelated PRs. See [qualification and repair](releasing.md#one-repair-sweep-per-failure-episode).
 

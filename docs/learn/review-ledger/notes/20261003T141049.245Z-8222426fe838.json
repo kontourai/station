@@ -1,0 +1,7 @@
+{
+  "revision": "af2c5a1b24139844384671833445ff2a17c4d9aa",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Design round 2: ActionOverflowMenu gained two additive row options (exclusive → menuitemradio, separatorBefore) for the review's merge menu, and the action-surface inventory re-describes PullRequestReviewPanel (icon add-to-chat, one-row bar, Approve + Merge menu, the 390px hit-target audit). The guide's account of the overflow menu, the inventory and the ratchets still matches; the mobile CSS ratchet count is unchanged. No prose change.","inputs":["docs/guides/responsive-ui.md","docs/ui/responsive-action-surfaces.txt","packages/sdk/src/index.ts","packages/sdk/src/queries.ts","pnpm-lock.yaml","src-server/runtime/bootstrap/runtime-http.ts","src-server/security/pairing-route-scopes.ts","src-ui/src/components/ActionOverflowMenu.tsx","src-ui/src/main.tsx","src-ui/src/platform/PlatformProfileContext.tsx","src-ui/src/components/chat-dock/MobileTaskSwitcher.tsx","src-ui/src/contexts/navigation-store.ts","tests/cross-runtime-chat-switching.spec.ts","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx","src-ui/src/components/chat-dock/ChatDockMobileOverflowSheet.tsx"]}
+  ]
+}
