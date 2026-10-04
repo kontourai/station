@@ -264,7 +264,8 @@ export function installAccountBoundDeviceGate(
       const permitted =
         path === '/' ||
         path.startsWith('/assets/') ||
-        nativeDeviceOnlyObservationRoute(method, path) ||
+        (getRuntimeNativeDeviceProofPrincipal(c.req.raw) &&
+          nativeDeviceOnlyObservationRoute(method, path)) ||
         path === '/api/projects' ||
         /^\/api\/projects\/[^/]+$/.test(path) ||
         /^\/api\/projects\/[^/]+\/shared-work(?:\/[^/]+\/(?:history|document|publication))?$/.test(

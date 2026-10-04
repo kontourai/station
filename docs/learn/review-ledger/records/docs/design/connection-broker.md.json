@@ -52,7 +52,7 @@
 
     {"path":"src-server/runtime/bootstrap/self-hosted-broker-pion-runtime.ts","digest":"d0eaf0a7651d34680ab4ee3398f7c1f1f9924534ad0e26f9a8e7bff14fef7120","revision":"55606e0498d0cbd6e7edad154f82dce3c102b186"},
 
-    {"path":"src-server/runtime/routes/__tests__/runtime-routes-native-device-proof-pilot.test.ts","digest":"5673579a96ac8ba2dc24c1a2d95bca847e7f86c83b4f3ecbf1215c0b7781872f","revision":"a7868266f630efa56f7a68b2d8b32fb41c90e611"},
+    {"path":"src-server/runtime/routes/__tests__/runtime-routes-native-device-proof-pilot.test.ts","digest":"9a6c38f8dd83ab730a86a15016301366869e8b9bfcdc622ea68b111ef83d082b","revision":"072e636d803ae052480cb7d3b62b316da7fdda1d"},
 
     {"path":"src-server/security/native-device-request-authority.ts","digest":"1c45b668b337e71894ff067e35213f415cfc830aa6603efbf13f615114087d02","revision":"d4b8f59be510d5eb8220bc5a883dd1691cfa2679"},
 
