@@ -1579,7 +1579,9 @@ export async function credentialAuthorizedForScope(
  */
 export interface ConsentDecisionCredentialResolver {
   verifyOperatorCredential(candidate: string): boolean;
-  identifyDevice(candidate: string): { scope?: string } | null;
+  identifyDevice(
+    candidate: string,
+  ): { scope?: string; id?: string; name?: string } | null;
 }
 
 export type ConsentCredentialAuthority =
@@ -2089,6 +2091,30 @@ export const EXTERNAL_SURFACE_CAPABILITY_TABLE: readonly ExternalSurfaceCapabili
       match: 'prefix',
       capability: 'pairing-scope',
       scope: PAIRING_SCOPE_CONSENT_DECIDE,
+    },
+    // #3257 (S2b): operator passkey enrollment. Public in THIS table's sense
+    // (no pairing scope applies) because each handler authenticates itself:
+    // it needs a paired-device or operator cookie, STATION_TRUSTED_CONSENT_ORIGIN,
+    // an exact Origin on every state change, and a host-confirmed request. The
+    // page and its script carry no secret and answer without a cookie.
+    {
+      id: 'consent-http:operator-passkey-enrollment',
+      transport: 'consent-http',
+      method: '*',
+      prefix: '/operator/passkeys/enroll',
+      match: 'prefix',
+      capability: 'public',
+      reason:
+        'operator passkey enrollment authenticates in-handler: paired-device cookie, exact consent origin, host-confirmed single-use request',
+    },
+    {
+      id: 'consent-http:operator-passkey-enrollment-script',
+      transport: 'consent-http',
+      method: 'GET',
+      prefix: '/operator/passkeys/enroll.js',
+      match: 'exact',
+      capability: 'public',
+      reason: 'static enrollment page script; carries no secret',
     },
     {
       id: 'consent-http:not-found',

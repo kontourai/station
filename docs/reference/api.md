@@ -3092,6 +3092,22 @@ The promotion satisfies the pending-request route scope without granting
 not admit other Device-management routes or verified-person/account binding.
 Ordinary Device presets do not include the promotion.
 
+## Operator passkey administration (host)
+
+`GET /api/pairing/operator-passkeys` lists enrollment availability, active
+passkeys (metadata only: id, label, relying-party ID, origin, transports,
+timestamps) and pending enrollment requests **without their codes**.
+`POST /api/pairing/operator-passkeys/requests/approve` and `.../deny` take
+`{ "code": "<six digits>" }`; `DELETE /api/pairing/operator-passkeys/:id` revokes
+a passkey. Only the operator credential is accepted; a paired device holding
+`access:manage` is refused (401). Errors: `invalid_code` (404), `rate_limited`
+(429, with `retryAfterMs`), `passkey_not_found` (404), `enrollment_unavailable`
+(503, `STATION_TRUSTED_CONSENT_ORIGIN` unset). The browser half is served on the
+consent origin under `/operator/passkeys/enroll`; see the
+[enrollment guide](../guides/operator-passkeys.md). Owner:
+[host routes](../../src-server/routes/operator-passkeys/operator-passkey-host-routes.ts),
+[service](../../src-server/services/identity/operator-passkey-enrollment.ts).
+
 ## Bind a paired device to its verified person
 
 ```http

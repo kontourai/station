@@ -8,6 +8,7 @@ import {
 } from 'node:fs';
 import { networkInterfaces, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { type HttpBindings } from '@hono/node-server';
 import {
   DEFAULT_GRANT_PAIRING_SCOPE,
@@ -28,6 +29,8 @@ import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { PairingFailureLimiter } from '../../security/pairing-failure-limiter.js';
 import { getRuntimeAuthenticatedRequestPrincipal } from '../../security/runtime-request-security.js';
+import { OperatorPasskeyEnrollmentService } from '../../services/identity/operator-passkey-enrollment.js';
+import { OperatorPasskeyRegistry } from '../../services/identity/operator-passkey-registry.js';
 import { RelayEnrollmentService } from '../../services/identity/relay-enrollment-service.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
 import { openRelayEnrollmentJournal } from '../../services/relay/relay-enrollment-journal.js';
@@ -143,6 +146,7 @@ function createHarness(
       pairing: DevicePairingService,
       homeDir: string,
     ) => RelayEnrollmentService;
+    operatorPasskeys?: OperatorPasskeyEnrollmentService;
   } = {},
 ) {
   const homeDir = mkdtempSync(join(tmpdir(), 'station-pairing-routes-'));
@@ -256,6 +260,7 @@ function createHarness(
         );
       }),
     relayEnrollment,
+    operatorPasskeys: options.operatorPasskeys,
   });
   app.get('/api/projects', (c) => c.json({ projects: [] }));
   app.post('/api/projects', (c) => c.json({ projects: [] }));
@@ -4657,3 +4662,62 @@ test.each([{}, { bindVerifiedIdentity: true }])(
     ).toThrow('request_not_confirmed');
   },
 );
+
+describe('operator passkey host routes in the runtime auth boundary (#3257)', () => {
+  function passkeyHarness() {
+    // In memory: this test is about the auth boundary, not the file.
+    const registry = new OperatorPasskeyRegistry(new DatabaseSync(':memory:'));
+    const service = new OperatorPasskeyEnrollmentService({
+      registry,
+      origin: 'https://station.example.ts.net',
+    });
+    return {
+      registry,
+      service,
+      harness: createHarness({ operatorPasskeys: service }),
+    };
+  }
+
+  test('the operator credential reaches them; a paired device and an anonymous caller do not', async () => {
+    const { registry, service, harness } = passkeyHarness();
+    try {
+      const { code } = service.createRequest({
+        credential: 'browser',
+        deviceLabel: 'Phone browser',
+      });
+      const paired = await pairDevice(harness, 'Phone');
+
+      const operator = await harness.request('/api/pairing/operator-passkeys', {
+        headers: { Authorization: `Bearer ${MASTER_CREDENTIAL}` },
+      });
+      expect(operator.status).toBe(200);
+      expect(
+        ((await operator.json()) as { pending: unknown[] }).pending,
+      ).toHaveLength(1);
+
+      for (const [path, init] of [
+        ['/api/pairing/operator-passkeys', {}],
+        [
+          '/api/pairing/operator-passkeys/requests/approve',
+          harness.json({ code }),
+        ],
+        ['/api/pairing/operator-passkeys/someid', { method: 'DELETE' }],
+      ] as const) {
+        const anonymous = await harness.request(path, init);
+        expect(anonymous.status, `anonymous ${path}`).toBe(401);
+        const device = await harness.request(path, {
+          ...init,
+          headers: {
+            ...((init as RequestInit).headers as Record<string, string>),
+            Authorization: `Bearer ${paired.credential}`,
+          },
+        });
+        expect([401, 403], `device ${path}`).toContain(device.status);
+      }
+      // Neither the device nor the anonymous caller confirmed anything.
+      expect(service.listPending()).toHaveLength(1);
+    } finally {
+      registry.close();
+    }
+  });
+});
