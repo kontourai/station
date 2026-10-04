@@ -5,6 +5,7 @@ import { withShortcutHint } from '../../contexts/KeyboardShortcutsContext';
 import { useShortcutDisplay } from '../../hooks/useKeyboardShortcut';
 import { MessageGlyph } from '../icons/Glyph';
 import { LazyBoundary } from '../LazyBoundary';
+import { NewChatAction } from '../NewChatAction';
 import type { ChatDockWorkspaceControls as Controls } from './ChatDockHeader';
 import {
   closeSessionInventoryOccurrence,
@@ -16,14 +17,6 @@ const loadSessionInventoryEntryPoint = () =>
   import('./SessionInventoryEntryPoint').then((module) => ({
     default: module.SessionInventoryEntryPoint,
   }));
-
-function NewChatGlyph() {
-  return (
-    <svg aria-hidden="true" fill="none" viewBox="0 0 16 16">
-      <path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="1.8" />
-    </svg>
-  );
-}
 
 /**
  * The session inventory's host: the authority-scoped registration the store
@@ -103,15 +96,13 @@ export function ChatDockWorkspaceActions({
         <MessageGlyph />
         <span className="chat-dock__new-label">Open</span>
       </button>
-      <button
-        type="button"
+      <NewChatAction
         className="chat-dock__new"
         onClick={onNewChat}
-        title={withShortcutHint('New Chat', 'dock.newChat', () => newShortcut)}
+        title={withShortcutHint('New chat', 'dock.newChat', () => newShortcut)}
       >
-        <NewChatGlyph />
-        <span className="chat-dock__new-label">New</span>
-      </button>
+        New
+      </NewChatAction>
     </div>
   );
 }

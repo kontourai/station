@@ -23,6 +23,18 @@ export interface PluginRuntimeArtifact
   isCurrentAsync(): Promise<boolean>;
 }
 
+/**
+ * The opaque installation generation clients echo back: the incarnation (null
+ * for a legacy root) and the exact content digest. Inventory, host actions and
+ * command admission compare this one derivation.
+ */
+export function pluginInstallationGeneration(artifact: {
+  readonly generation?: string;
+  readonly digest: string;
+}): string {
+  return JSON.stringify([artifact.generation ?? null, artifact.digest]);
+}
+
 function runtimeArtifactCandidate(
   pluginsDir: string,
   pluginId: string,
