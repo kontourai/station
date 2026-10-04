@@ -551,37 +551,6 @@ describe('install.ps1 installer core: full install (#2675 W2)', () => {
     );
     expect(versionDirs(f)).toEqual([]);
   });
-
-  it('runs the CLI from the version directory when a launcher reaches it through current', () => {
-    const f = fixture();
-    expect(
-      install(f, buildWindowsArchive(f.dir, '0.7.0-nightly.12'), {
-        STATION_INSTALL_NO_START: '1',
-      }).status,
-    ).toBe(0);
-    // bin\station.cmd's `cd /d "%~dp0.."` leaves the working directory on
-    // the `current` link's path; bin/station.mjs must resolve it.
-    const current = join(f.installRoot, 'current');
-    const run = spawnSync(
-      process.execPath,
-      [join(current, 'bin', 'station.mjs'), 'status'],
-      {
-        cwd: current,
-        encoding: 'utf8',
-        windowsHide: true,
-        env: {
-          PATH: process.env.PATH ?? '',
-          STATION_CHANNEL: 'nightly',
-          STATION_TEST_CLI_LOG: f.log,
-        },
-      },
-    );
-    expect(run.status, run.stderr).toBe(0);
-    const [status] = takeCliRuns(f);
-    expect(status.cwd).toBe(
-      real(join(f.installRoot, 'versions', '0.7.0-nightly.12')),
-    );
-  });
 });
 
 describe('install.ps1 installer core: uninstall (#2675 W2)', () => {

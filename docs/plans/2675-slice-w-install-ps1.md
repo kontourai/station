@@ -355,6 +355,7 @@ W3 needs, beyond section 4:
   the stop/flip/start and the launcher handoff.
 - `pointCurrentAt` and `recoverCurrent` (`installer/full-install.ts`) are the
   Windows switch and recovery rule the launcher should share.
-- The upgrade's `cmd.exe` keeps its working directory on `current` while the
-  installer replaces the junction; the Windows smoke shows whether that holds
-  (it did not block in the W2 run if the job passed).
+- During `station upgrade` the launcher's `cmd.exe` keeps its working
+  directory on `current` while the installer replaces the junction. The W2
+  Windows smoke exercises exactly this path without a service; a service
+  wrapper adds its own `cmd.exe`, which W3 must exercise too.
