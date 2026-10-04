@@ -393,7 +393,9 @@ store.
 - **#2962 — client API compatibility is separate from peer authority.** The
   host advertises `compatibility.capabilities.clientProtocolHeader: 1`; SDK
   requests declare `X-Station-Client-Protocol`, with cross-origin browser
-  carriage conditioned on observing that capability. Paired-scope HTTP and
+  carriage conditioned on observing that capability. The UI clears prior origin
+  acceptance before re-handshaking; failed responses, invalid JSON and transport
+  errors leave it cleared. Paired-scope HTTP and
   pairing request/access-request/exchange refuse a protocol below
   `minClientProtocol` with `426 client_protocol_unsupported`; malformed is
   `400`, and absent means legacy protocol 1. The public handshake remains

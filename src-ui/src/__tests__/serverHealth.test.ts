@@ -199,7 +199,7 @@ describe('probeServerConnection', () => {
         'X-Station-Client-Protocol',
       );
       vi.mocked(fetch).mockImplementationOnce(respond);
-      expect((await probe()).ok).toBe(false);
+      expect(await probe()).toMatchObject({ ok: false });
       expect(
         clientProtocolHeaders(`${url}/api/projects`),
         'failed re-handshake must forget cross-origin header acceptance',

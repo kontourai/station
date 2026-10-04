@@ -372,6 +372,10 @@ exchange, notification action, local UI identity request and CLI operate event
 stream, and fails if the minimum rises while those callers remain listed.
 Malformed declarations return `400 client_protocol_invalid`; unsupported and
 malformed refusals emit denial audits without retaining raw header text.
+Those refusals share the direct-peer authentication failure budget (default:
+10 per 60 seconds). Exhaustion suppresses protocol audits while 400/426
+responses continue. The UI clears prior header acceptance before re-handshaking;
+non-OK responses, invalid JSON and transport errors leave it cleared.
 
 ## Consequences
 
