@@ -18,7 +18,7 @@
 
     {"path":"src-server/services/layouts/personal-layout-service.ts","digest":"8eb0ce41fa821ca92d56f36224fb1e0e09485274315148a1e37971e9195055c7","revision":"e5efef30008198db7198fe9dac38f3ad632c6621"},
 
-    {"path":"src-ui/src/components/project-sidebar/ProjectSidebar.tsx","digest":"0e2ee8fdb35f8c8f96a0361bc9c1d6e04a07e95ccb48efcd3960f2fe0f2452fd","revision":"f72d10a25d52edf088e612237943fdd0dcaa007e"},
+    {"path":"src-ui/src/components/project-sidebar/ProjectSidebar.tsx","digest":"09e495b6794fd930af556177aea979537b83eb1c35a86eb6653a5c2f7130100d","revision":"472b5de6226bddaea6f335fc70ad93a1cb5cdc3e"},
 
     {"path":"src-ui/src/components/project-sidebar/ProjectSidebarBoards.tsx","digest":"df8a426d1bc0629c595ea02efc46fc39f5eb2933cb715ef1f4a7b50acd1e9302","revision":"e5efef30008198db7198fe9dac38f3ad632c6621"},
 

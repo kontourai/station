@@ -12,7 +12,7 @@
   "document": {"digest":"f22a765808cc9067032740b95e53c631476bb217ecdfa02e2ffd921fd6ef36ad","revision":"b14f1b80ec27c38844b3d16e8a4bdfe624a778c9"},
 
   "sources": [
-    {"path":"docs/ui/responsive-action-surfaces.txt","digest":"f36e4793f37ad4671188b2645a037b4eeb73b44d699b94c30062cb15b04ee53f","revision":"793ad2bb50d50f43d7601fb75d3736fc86550cd6"},
+    {"path":"docs/ui/responsive-action-surfaces.txt","digest":"e666c1a276746b78d66e30da4031efba8ec0c7c314016f63628385c27abc4788","revision":"04452aa72b2b7ad42790ccbf3e92b95d1b9e37ec"},
 
     {"path":"docs/ui/responsive-surfaces.json","digest":"ed85a588d1029bca3f050c4225772a2b58c42e944af63014960389794d0b24c5","revision":"d1708e0a66e7328c9c62a95865f1bb1dcfbeb8d1"},
 
@@ -66,25 +66,25 @@
 
     {"path":"src-ui/src/components/ResponsiveDialogSurface.tsx","digest":"ff389dc7c2632309151df7065f56f8434712b5cba120324bbba48c7693a56612","revision":"f4eb9345e808edfbcadd25b1cf88a69db088f117"},
 
-    {"path":"src-ui/src/components/chat-dock/ChatDock.tsx","digest":"ea96d9b1e01df4219ee45a05f4b894bf7db7dc7f55ade3d3fcd063c6ecfb88a5","revision":"bc542083c3919bc80d36e5e165dc6da009c6ac05"},
+    {"path":"src-ui/src/components/chat-dock/ChatDock.tsx","digest":"b5f610fd62427ae800634fdc1861ec2920a269d52d01df346ba6ed9b1807c395","revision":"ee91b3c22044c36448de9fdc156916f8d1db4bf2"},
 
-    {"path":"src-ui/src/components/chat-dock/ChatDockInboxRows.tsx","digest":"0850b9f30797c40cbc19c8817bf574d046065a600163d1925d50fbcc4d4c0c2c","revision":"b14f1b80ec27c38844b3d16e8a4bdfe624a778c9"},
+    {"path":"src-ui/src/components/chat-dock/ChatDockInboxRows.tsx","digest":"1f1521dd54b22054545dfe7d1d3c20289b87c77905e02154205c764ccb406354","revision":"f839dde2f787fe0fd94842c715748a3885dec59e"},
 
     {"path":"src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx","digest":"66f0394440649ebf2fd68d1292cd7e009ca0a449d85681a2ee1d36a0d192e107","revision":"b14f1b80ec27c38844b3d16e8a4bdfe624a778c9"},
 
-    {"path":"src-ui/src/components/chat-dock/ChatDockMobileOverflowSheet.tsx","digest":"a8bc823744ae5fbe11ca4d59391185963104e36549cf5fdc2b178afceb603650","revision":"af7dbb3005e9e1f29dd1450b0a06ec5703afb0d6"},
+    {"path":"src-ui/src/components/chat-dock/ChatDockMobileOverflowSheet.tsx","digest":"42ef59576278b4e4070cb59a03b15536ec2adff0e75329feca13a5f2487d8142","revision":"e754feb2928d66ce46b873832ca2424a6d66c4a0"},
 
     {"path":"src-ui/src/components/chat-dock/ChatDockProjectContext.tsx","digest":"4014822b2ec774379491ce299aff2736b8fadcf1e6fb7b0adb69b6b268ee85af","revision":"b14f1b80ec27c38844b3d16e8a4bdfe624a778c9"},
 
     {"path":"src-ui/src/components/chat-dock/ChatDockProjectSwitcherSheet.tsx","digest":"8e443583cd1836a979e782680e6587a697264c496a06ffe732bce13a06a88e75","revision":"381388a5c221a50c4e5b8c775538218bc02ce431"},
 
-    {"path":"src-ui/src/components/chat-dock/MobileTaskSwitcher.tsx","digest":"f6bfc2c8317353e7daf9ccae233d947cf0260159c57134b3045d7dd25c26f84f","revision":"b14f1b80ec27c38844b3d16e8a4bdfe624a778c9"},
+    {"path":"src-ui/src/components/chat-dock/MobileTaskSwitcher.tsx","digest":"eaccab88355986bd543bbdb9481e8456bcf53dafaa984cbd65c2de08628224f5","revision":"f72d10a25d52edf088e612237943fdd0dcaa007e"},
 
     {"path":"src-ui/src/components/chat/chat.css","digest":"adb79623618600c59d7259aa50d59628aee20850643f00c97ef918a0c220b67c","revision":"c6ebec77b17b679e630a3857b10a6f814d7fb436"},
 
     {"path":"src-ui/src/components/header/ThemeToggle.tsx","digest":"5cd7fb99ff38e6e9a6bf1f572c2ed488604b341e85569767a836a580fba63e9f","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/components/inbox-row/InboxRowStatus.tsx","digest":"d7cc9d13090f4c7d529e76bcd4828113375a1c52711ba6009d6e0cb8cad85418","revision":"b14f1b80ec27c38844b3d16e8a4bdfe624a778c9"},
+    {"path":"src-ui/src/components/inbox-row/InboxRowStatus.tsx","digest":"58b4f6382f349a42f1ab632bddf4bd5ad663f1a77a1ccff99fa08d1d262a643b","revision":"737aa52ae1e34d5b82a6555966414f815f85557a"},
 
     {"path":"src-ui/src/contexts/navigation-store.ts","digest":"7c56b3435db459e9467c2adc3120feeef84c91f1dc4cf0eb96429e68429a036b","revision":"efa773acac88792cda31595f9afca4a37d3efebc"},
 

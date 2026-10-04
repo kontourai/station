@@ -156,7 +156,7 @@
 
     {"path":"src-ui/src/components/chat/harnessQuestionDrafts.ts","digest":"341c5d3a3184a8249eb65e9808523812bec532b49cb89cde1dcdae2d9fa95176","revision":"754e48394b02f670894b419807274752fd9676d4"},
 
-    {"path":"src-ui/src/components/kontour/station-tones.ts","digest":"aa02747ff27196bbfeddd883bbe2b68423c4b8e00a19ef15964f210813256179","revision":"76bed9917dc158af93355aaea9705b9168ac7efd"},
+    {"path":"src-ui/src/components/kontour/station-tones.ts","digest":"e9256efe321bc7b7171a6138c07c1010f40dceb9a5e61c9371071595c4050164","revision":"c76e971796179bb5f81bff51c7a01a8e4d186262"},
 
     {"path":"src-ui/src/components/session/SessionModelPicker.tsx","digest":"bd0b0496ff4a4a794ae1e5218f3cf536b825a51604a431e8c575cae79eb403d3","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

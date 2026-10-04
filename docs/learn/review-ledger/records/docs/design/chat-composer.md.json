@@ -38,7 +38,7 @@
 
     {"path":"tests/cross-runtime-chat-switching.spec.ts","digest":"0aeb646fe962c41108316c65360c405268ea7061ea2504e7441b51a0a9bd2878","revision":"8fd71c3714eceeb651bd8e52f200aa1532fa33c6"},
 
-    {"path":"src-ui/src/components/chat-dock/ChatDock.tsx","digest":"ea96d9b1e01df4219ee45a05f4b894bf7db7dc7f55ade3d3fcd063c6ecfb88a5","revision":"bc542083c3919bc80d36e5e165dc6da009c6ac05"},
+    {"path":"src-ui/src/components/chat-dock/ChatDock.tsx","digest":"b5f610fd62427ae800634fdc1861ec2920a269d52d01df346ba6ed9b1807c395","revision":"ee91b3c22044c36448de9fdc156916f8d1db4bf2"},
 
     {"path":"src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx","digest":"66f0394440649ebf2fd68d1292cd7e009ca0a449d85681a2ee1d36a0d192e107","revision":"b14f1b80ec27c38844b3d16e8a4bdfe624a778c9"},
 
@@ -76,7 +76,7 @@
 
     {"path":"src-ui/src/__tests__/ChatInputArea.test.tsx","digest":"2375598b03e2b9fe8003ff24a7ef15712d471c5024a7befd4ab22ab6879b98d5","revision":"4711f21b516d04300b15ad4da473e24bf2e7adb2"},
 
-    {"path":"src-ui/src/__tests__/ChatDockBody.sessionFailureBanner.test.tsx","digest":"32ff25bba570c4a207cc7e4f329ef880fc1feea7ab210531e2df3133eee6a7d6","revision":"01aafdec40053c4c52244823d395f6924e8212ef"},
+    {"path":"src-ui/src/__tests__/ChatDockBody.sessionFailureBanner.test.tsx","digest":"fc6f9db34e35d467819b97c2219b4ea4e42d2c6f3dc29cac845ac2c0991fe1ed","revision":"4b4371d9873c4b1081e7f06dc9e015f90714f04f"},
 
     {"path":"src-ui/src/components/chat/QueuedMessages.css","digest":"a24d97fa21ac0aaba1eab7d2d273ed54d34e5cad41f9a94cafeebc429ef25ebe","revision":"57e1daf6e0d4fe2c366e51d67e20c1a70587966f"},
 
