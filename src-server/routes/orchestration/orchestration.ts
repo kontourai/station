@@ -2082,6 +2082,21 @@ export function createOrchestrationRoutes(
       }
       try {
         const body = getBody(c);
+        // #2377 slice C3b: no station-control tool reaches this route today;
+        // if one ever does, it hands off without an approval posture.
+        const postureRefused = refuseCarriedPosture(c, [
+          {
+            path: 'setApprovalMode',
+            value: (body as { setApprovalMode?: unknown }).setApprovalMode,
+            kind: 'pick',
+          },
+          {
+            path: 'target.model.options',
+            value: body.target.model?.options,
+            kind: 'options',
+          },
+        ]);
+        if (postureRefused) return postureRefused;
         const fullAccessRefused = refuseUngrantedFullAccess(c, [
           (body as { setApprovalMode?: unknown }).setApprovalMode,
           requestedApprovalMode(body.target.model?.options),

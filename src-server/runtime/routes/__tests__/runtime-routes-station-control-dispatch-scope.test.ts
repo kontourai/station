@@ -28,6 +28,7 @@ import { POSTURE_OPTION_KEYS } from '../../../routes/orchestration/dispatch-scop
 import {
   continueDelegatedTaskBodySchema,
   continueForegroundMessageSchema,
+  conversationHandoffSchema,
   delegateTaskSchema,
   foregroundMessageObjectSchema,
 } from '../../../routes/orchestration/orchestration.js';
@@ -1491,12 +1492,21 @@ describe('configureRuntimeRoutes: station-control dispatch stays in scope (slice
     path: string,
     place: (options: Record<string, unknown>) => Record<string, unknown>,
   ): Record<string, Record<string, unknown>> =>
-    Object.fromEntries(
-      POSTURE_OPTION_KEY_LITERALS.map((key) => [
+    Object.fromEntries([
+      ...POSTURE_OPTION_KEY_LITERALS.map((key) => [
         `${path}.${key}`,
         place({ [key]: withOptions(key) }),
       ]),
-    );
+      // A posture beside an ordinary option is still a posture.
+      [
+        `${path}.approvalMode (with effort)`,
+        place({ effort: 'high', approvalMode: 'auto' }),
+      ],
+      [
+        `${path}.autoMode (with effort)`,
+        place({ effort: 'high', autoMode: false }),
+      ],
+    ]);
   const pickVariants = {
     'setApprovalMode (ask)': {
       setApprovalMode: 'ask',
@@ -1635,41 +1645,38 @@ describe('configureRuntimeRoutes: station-control dispatch stays in scope (slice
     // Case-sensitive on `Mode`, so `model` and `modelOptions` are not
     // mistaken for one; a bare `mode` field is.
     const SUSPECT =
-      /approv|Approv|permission|Permission|posture|Posture|sandbox|Sandbox|bypass|Bypass|trust|Trust|yolo|unsafe|Unsafe|danger|Danger|^mode$|Mode/;
+      /approv|Approv|permission|Permission|posture|Posture|sandbox|Sandbox|bypass|Bypass|trust|Trust|autonom|Autonom|unattended|Unattended|yolo|unsafe|Unsafe|danger|Danger|^mode$|Mode/;
     const REVIEWED: Record<string, string> = {
       // The basis of a pick; meaningless without `setApprovalMode`.
       setApprovalModeBasedOn: 'basis only',
       // The delegation shape (`isolated-child`), not an approval mode.
       'delegation.mode': 'delegation shape',
-      // Only tightens, and only honored when Station's own engine attests
-      // the delegation claim (`resolveRequestDelegation`, #2601).
+      // Only tightens, and a verified caller's claimed delegation is not
+      // read at all: it is rebuilt from the caller
+      // (`createRequestDelegationResolver`, `deriveCallerChildDelegation`).
       'delegation.denyApprovals': 'tightens; attested claims only',
     };
-    const refused: Record<string, ReadonlySet<string>> = {
-      foreground: new Set(
-        Object.keys(POSTURE_ROUTES['POST /chat']!.variants).map((field) =>
+    const fieldsOf = (route: string): ReadonlySet<string> =>
+      new Set(
+        Object.keys(POSTURE_ROUTES[route]!.variants).map((field) =>
           field.replace(/ \(.*\)$/, ''),
         ),
-      ),
-      continueForeground: new Set(
-        Object.keys(
-          POSTURE_ROUTES['POST /chat/:conversationId/continue']!.variants,
-        ).map((field) => field.replace(/ \(.*\)$/, '')),
-      ),
-      delegate: new Set(
-        Object.keys(POSTURE_ROUTES['POST /delegations']!.variants),
-      ),
-      continueDelegated: new Set(
-        Object.keys(
-          POSTURE_ROUTES['POST /delegations/:taskId/continue']!.variants,
-        ),
-      ),
+      );
+    const refused: Record<string, ReadonlySet<string>> = {
+      foreground: fieldsOf('POST /chat'),
+      continueForeground: fieldsOf('POST /chat/:conversationId/continue'),
+      delegate: fieldsOf('POST /delegations'),
+      continueDelegated: fieldsOf('POST /delegations/:taskId/continue'),
+      // No tool reaches the handoff route; its check, on the same fields as
+      // `/chat`, is driven in `handoff-posture.routes.test.ts`.
+      handoff: fieldsOf('POST /chat'),
     };
     const schemas: Record<string, z.ZodTypeAny> = {
       foreground: foregroundMessageObjectSchema,
       continueForeground: continueForegroundMessageSchema,
       delegate: delegateTaskSchema,
       continueDelegated: continueDelegatedTaskBodySchema,
+      handoff: conversationHandoffSchema,
     };
     type Def = {
       typeName?: string;
