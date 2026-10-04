@@ -4,6 +4,7 @@ import {
   OPEN_NEW_CHAT_EVENT,
 } from '../../lib/newChatIntent';
 import { Button } from '../Button';
+import { NewChatAction } from '../NewChatAction';
 
 export function HomeChatStartForm({
   identity,
@@ -60,14 +61,11 @@ export function HomeChatStartForm({
         >
           Start a chat
         </Button>
-        <Button
-          type="button"
+        <NewChatAction
           variant="link"
           disabled={pending}
           onClick={() => window.dispatchEvent(new Event(OPEN_NEW_CHAT_EVENT))}
-        >
-          Chat options
-        </Button>
+        />
       </div>
     </form>
   );

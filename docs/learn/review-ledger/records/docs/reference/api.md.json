@@ -226,7 +226,7 @@
 
     {"path":"src-server/routes/projects/ui-commands.ts","digest":"6119ed0faf54416dabf39f6f0c437a251142002f92fc5db92855ceb5f3b8d768","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/routes/schemas/schema-definitions/content.ts","digest":"ed5b32e05c610a8446e131fbddd2fd7b6cda0f8501da04737ca36e4300c92337","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/routes/schemas/schema-definitions/content.ts","digest":"ceb707d17aef79107333cc01d8d3e79f90b87d300217a0f123a086a1b5261553","revision":"ed4b7b2c4440e328d5367f3d8f4a319a81dfba7e"},
 
     {"path":"src-server/routes/schemas/schema-definitions/runtime.ts","digest":"ec02780cdeda147a6d6e28b9e95fc31c0a84e353983a5c4ef5db51d02e133d42","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -368,7 +368,7 @@
 
     {"path":"src-shared/monitoring-keys.ts","digest":"1c2939ae04a2df7205ff75d2e16531e200199b7b785c672b1820a06a0a736f25","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/components/chat-dock/ChatDock.tsx","digest":"5a474d9d1704e96ac761c8c963e7068b633684c190917724b6bbd43ce63a80bc","revision":"c8a4c8b75fd57cf6b9a909ddaafce31d476d4d49"},
+    {"path":"src-ui/src/components/chat-dock/ChatDock.tsx","digest":"fa74f87bb3db229b4d3fbfd354e450f212d0250f9e7325cf1b6f2d967ec8bfd6","revision":"ed4b7b2c4440e328d5367f3d8f4a319a81dfba7e"},
 
     {"path":"src-ui/src/components/chat-dock/retry-attachments.ts","digest":"e35fc0d7d193cd614829fddbf3f822b4118510a0776e5f8853fdcb8bf1ea3d93","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

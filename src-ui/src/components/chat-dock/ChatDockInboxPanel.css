@@ -143,12 +143,17 @@
 }
 
 .chat-dock-inbox__footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: var(--k-space-2);
   flex-shrink: 0;
   padding: var(--space-2);
   border-top: 1px solid var(--border-primary);
 }
 
-.chat-dock-inbox__footer button {
+.chat-dock-inbox__footer > button:not(.new-chat-action) {
   display: flex;
   width: 100%;
   align-items: center;
@@ -162,8 +167,8 @@
   cursor: pointer;
 }
 
-.chat-dock-inbox__footer button:hover,
-.chat-dock-inbox__footer button:focus-visible {
+.chat-dock-inbox__footer > button:not(.new-chat-action):hover,
+.chat-dock-inbox__footer > button:not(.new-chat-action):focus-visible {
   background: var(--bg-tertiary);
   color: var(--text-primary);
 }

@@ -23,7 +23,7 @@ import {
   workItemOpenFailureMessage,
 } from '../../views/home/work-item-open-policy';
 import { registerDialogHistory } from '../dialog-history';
-import { PickerCreateAction } from '../PickerCreateAction';
+import { NewChatAction } from '../NewChatAction';
 import { ResponsiveDialogHeader } from '../ResponsiveDialogSurface';
 import { Empty, ErrorState, SkeletonList } from '../state';
 import {
@@ -357,8 +357,8 @@ export function MobileTaskSwitcher({
           />
         </div>
         {onNewChat && (
-          <PickerCreateAction
-            label="New chat"
+          <NewChatAction
+            className="chat-start__inbox-action"
             onClick={() => {
               closeAndRestoreFocus();
               onNewChat();

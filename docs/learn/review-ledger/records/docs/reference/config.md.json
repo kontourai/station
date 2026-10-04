@@ -130,9 +130,9 @@
 
     {"path":"src-shared/monitoring-keys.ts","digest":"1c2939ae04a2df7205ff75d2e16531e200199b7b785c672b1820a06a0a736f25","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/components/chat-dock/ChatDock.tsx","digest":"5a474d9d1704e96ac761c8c963e7068b633684c190917724b6bbd43ce63a80bc","revision":"c8a4c8b75fd57cf6b9a909ddaafce31d476d4d49"},
+    {"path":"src-ui/src/components/chat-dock/ChatDock.tsx","digest":"fa74f87bb3db229b4d3fbfd354e450f212d0250f9e7325cf1b6f2d967ec8bfd6","revision":"ed4b7b2c4440e328d5367f3d8f4a319a81dfba7e"},
 
-    {"path":"src-ui/src/components/chat-dock/ChatDockBody.tsx","digest":"72b7c7ca456b147db86f65e3a6516d1ca22b9ec30fadb1752d734c72d103d22a","revision":"c8a4c8b75fd57cf6b9a909ddaafce31d476d4d49"},
+    {"path":"src-ui/src/components/chat-dock/ChatDockBody.tsx","digest":"8aff93c3bf3d4887bfa746859b475c2d0ae2b18ff3b8701b861ff6e835e98cdf","revision":"bcf92230693bda2172f72834280d9f1798371197"},
 
     {"path":"src-ui/src/components/chat-dock/retry-attachments.ts","digest":"e35fc0d7d193cd614829fddbf3f822b4118510a0776e5f8853fdcb8bf1ea3d93","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

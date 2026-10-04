@@ -20,16 +20,13 @@ import { createRef, type ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const dispatch = vi.hoisted(() => vi.fn());
+vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  useHostRequestAuthorityScope: () => undefined,
+}));
 vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   dispatchOrchestrationCommandWithReceipt: dispatch,
-}));
-// The picker row's ⋯ sheet (#3144) holds Discard and reads a connection
-// scope for its on-demand sections; with none they stay disabled, which is
-// all this test needs of them.
-vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../contexts/ApiBaseContext')>()),
-  useHostRequestAuthorityScope: () => null,
 }));
 
 import { ChatDockInboxPanel } from '../components/chat-dock/ChatDockInboxPanel';
