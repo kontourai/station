@@ -2735,6 +2735,22 @@ reader. Hosted mode skips the two personal storage branches. File-memory Agent
 attribution comes from the stored resource ID, with the adapter key as fallback;
 response shape can also include Project and fork-provenance fields.
 
+### Agent Conversation Title
+
+`POST /api/conversations/:id/agent-title` with `{title}` is the route behind the
+station-control `rename_session` tool. It answers only a station-control tool
+call with a verified caller (anything else gets `403`
+`station_control_caller_required`), and only for a conversation the calling
+Session's owner owns (another person's reads as `404`). A title is one line of
+1 to 80 characters; anything else is a `400`, never truncated. It stamps
+`titleSource: 'agent'` in the same serialized step that checks the stored title:
+a title with `titleSource: 'user'` answers `409` `person_title` and is left as
+it was, and a native Claude or Codex conversation answers `409`
+`runtime_title_unsupported`. The success body is
+`{success: true, data: {conversationId, title, titleSource: 'agent'}}`. The
+person's rename stays `PATCH /agents/:slug/conversations/:id`, which stamps
+`titleSource: 'user'`.
+
 ## Additional System Routes
 
 ### Get Runtime Info

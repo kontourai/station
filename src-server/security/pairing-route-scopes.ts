@@ -2688,6 +2688,12 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // expose another Station's data, so the conversations family's normal
     // mutating `orchestration:operate` scope applies.
     { method: 'POST', path: '/api/conversations/:id/acknowledgement' },
+    // `rename_session`'s leaf. It writes one conversation title, so the
+    // family's mutating `orchestration:operate` scope applies. The handler
+    // answers only a station-control tool call with a verified caller (it
+    // stamps `titleSource: 'agent'`), so a paired device that reaches it is
+    // refused there; the scope is the floor, not the gate.
+    { method: 'POST', path: '/api/conversations/:id/agent-title' },
     { method: 'GET', path: '/api/diagnostics/bundle' },
     // archive#1896 logging slice 2: server log entries are redacted on
     // egress unless the caller's credential was minted with home-possession

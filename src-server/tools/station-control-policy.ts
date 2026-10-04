@@ -342,6 +342,24 @@ export const STATION_CONTROL_TOOL_POLICY = {
     routes: [del('/agents/:slug/conversations/:conversationId')],
   },
 
+  // #176: search reads as the session's owner (`POST /api/search` answers
+  // with that principal's transcripts and never another Station's). Renaming
+  // is its own leaf, not the person's `PATCH`: it refuses a title a person set
+  // and a runtime-managed conversation, and only the owner's own conversation
+  // is reachable (a bound operator caller is not scoped, as for
+  // `delete_conversation`).
+  search_sessions: {
+    ...SELF_READ,
+    routes: [post('/api/search')],
+  },
+  rename_session: {
+    assurance: 'any',
+    role: 'self',
+    toolClass: 'mutating',
+    personOnly: 'never',
+    routes: [post('/api/conversations/:id/agent-title')],
+  },
+
   // ── board ──────────────────────────────────────────────────────────────
   // A session face is the owner's when the owner may read the session; a
   // Task face follows the owner's Project access (`board-route-authorization.ts`).

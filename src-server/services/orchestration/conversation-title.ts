@@ -14,7 +14,7 @@
  * in the second half of the budget and is marked with "…", instead of slicing
  * a word ("`git statu").
  */
-const TITLE_MAX_CODE_POINTS = 80;
+export const CONVERSATION_TITLE_MAX_CODE_POINTS = 80;
 
 // Emphasis only counts as markdown where it opens at a word start and closes
 // at a word end, as CommonMark would read it. Characters INSIDE a word are
@@ -130,11 +130,13 @@ function plainTitleText(text: string): string {
 
 function boundedTitle(text: string): string {
   const points = Array.from(text);
-  if (points.length <= TITLE_MAX_CODE_POINTS) return text;
-  const head = points.slice(0, TITLE_MAX_CODE_POINTS - 1).join('');
+  if (points.length <= CONVERSATION_TITLE_MAX_CODE_POINTS) return text;
+  const head = points.slice(0, CONVERSATION_TITLE_MAX_CODE_POINTS - 1).join('');
   const boundary = head.search(/\s\S*$/);
   const cut =
-    boundary >= TITLE_MAX_CODE_POINTS / 2 ? head.slice(0, boundary) : head;
+    boundary >= CONVERSATION_TITLE_MAX_CODE_POINTS / 2
+      ? head.slice(0, boundary)
+      : head;
   return `${cut.trimEnd()}\u2026`;
 }
 

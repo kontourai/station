@@ -31,6 +31,8 @@ example does not grant one implicitly.
   Station Agent or external engine, on this Station or a supported saved environment
 - `respond_to_task_request` for an open approval or permission request from a
   delegated worker
+- `search_sessions` and `rename_session` for finding and naming conversations
+  (see [Searching and renaming conversations](#searching-and-renaming-conversations))
 - config and navigation tools for steering the workspace
 - the full scheduler lifecycle: `list_jobs`, `list_scheduler_providers`,
   `get_scheduler_stats`, `get_scheduler_status`, `preview_schedule`,
@@ -40,6 +42,28 @@ example does not grant one implicitly.
 The Agent's tool allowlist and the calling Session's authority still apply.
 Exposing a management tool does not grant the operator's identity or bypass
 Project access checks.
+
+### Searching and renaming conversations
+
+`search_sessions` takes a `query` of 2 to 256 characters (anything outside that
+is refused, not truncated) and returns message hits from the calling Session
+owner's own transcripts, each with the `sessionId`, a snippet and the ids that
+open it, through the same search service as the workspace search. It never
+returns another person's transcript, a Task or a file. A result with
+`incompleteSources` is partial rather than empty; `continuation`, when a result
+carries one, is passed back to read more.
+
+`rename_session` takes a `conversationId` and a one-line `title` of at most 80
+characters (refused over that, never truncated). It stamps the title
+`titleSource: 'agent'`, which a later agent rename or any person's rename
+replaces. A title a person set (`titleSource: 'user'`) is never replaced: the
+tool answers `person_title`, and the check is made in the same step as the
+write, so a person's rename racing the agent's still wins. A native Claude or
+Codex conversation answers `runtime_title_unsupported`: the runtime owns that
+title, and the person's own rename refuses it too. A caller reaches only a
+conversation its Session's owner owns (another person's reads as not found);
+unless it is a bound caller, it also stays in its own Session's Project or the
+global space, as dispatch does.
 
 ### Dispatch authority
 
