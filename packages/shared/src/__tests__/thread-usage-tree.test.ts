@@ -280,7 +280,7 @@ describe('roll-up', () => {
     });
   });
 
-  test('says whether the summed input contains cached input, and when engines disagree', () => {
+  test('says whether the summed input contains cached input, and never calls unknown conventions different', () => {
     const own = (provider: string) =>
       receipt(`${provider}-t`, {
         provider,
@@ -308,17 +308,24 @@ describe('roll-up', () => {
       conversation({ receipts: [own('codex')] }),
     );
     expect(codexOnly.total.tokens.cacheInclusion).toBe('not-established');
-    const mixed = buildThreadUsageTree(
-      conversation({
-        receipts: [own('claude')],
-        delegates: [delegate('d', 'codex')],
-      }),
-    );
-    expect(mixed.total.tokens).toMatchObject({
-      totalTokens: 22,
-      providers: ['claude', 'codex'],
-      cacheInclusion: 'mixed',
-    });
+    // Claude declares uncached input; Codex is unverified and Muse is
+    // undeclared. Unknown is not "different", so neither pair is mixed.
+    for (const [first, second] of [
+      ['claude', 'codex'],
+      ['codex', 'muse'],
+    ])
+      expect(
+        buildThreadUsageTree(
+          conversation({
+            receipts: [own(first)],
+            delegates: [delegate('d', second)],
+          }),
+        ).total.tokens,
+      ).toMatchObject({
+        totalTokens: 22,
+        providers: [first, second],
+        cacheInclusion: 'not-established',
+      });
   });
 
   test("an undeclared engine's subagent figure is kept as unverified, never as tokens used", () => {

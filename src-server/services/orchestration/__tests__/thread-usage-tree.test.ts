@@ -438,10 +438,10 @@ describe('conversation usage tree', () => {
     store.close();
   });
 
-  test('a level with more delegate records than its bound is refused, readable or not', () => {
+  test('a level with 1,000 delegate records is read; 1,001 is refused, readable or not', () => {
     const store = fixtureStore();
     start(store, 'conv-many', 'codex');
-    for (let index = 0; index < 1_000; index += 1)
+    for (let index = 0; index < 1000; index += 1)
       start(
         store,
         `many-${index}`,
@@ -449,10 +449,19 @@ describe('conversation usage tree', () => {
         delegateMetadata(`many-${index}`, 'conv-many'),
         'someone-else',
       );
+    const atBound = service(store).readThreadUsageTree('conv-many', as(OWNER));
+    expect(atBound.status).toBe('found');
+    start(
+      store,
+      'many-1000',
+      'codex',
+      delegateMetadata('many-1000', 'conv-many'),
+      'someone-else',
+    );
     expect(service(store).readThreadUsageTree('conv-many', as(OWNER))).toEqual({
       status: 'too-large',
       limit: 'delegate-records',
-      max: 1_000,
+      max: 1000,
     });
     store.close();
   });

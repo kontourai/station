@@ -51,7 +51,9 @@ export function describeCacheInclusion(
     case 'excluded':
       return 'Cache reads and writes are not included.';
     case 'not-established':
-      return `Cache reads and writes are not added; whether ${engines} counts cached input inside its input figure isn't established.`;
+      return (tokens.providers?.length ?? 0) > 1
+        ? `Cache reads and writes are not added. It isn't established whether these engines (${engines}) count cached input the same way.`
+        : `Cache reads and writes are not added. It isn't established whether ${engines} counts cached input inside its input figure.`;
     case 'mixed':
       return `Adds engines that count cached input differently (${engines}), so this sum mixes two measures.`;
     default:

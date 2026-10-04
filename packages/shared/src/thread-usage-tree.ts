@@ -399,18 +399,22 @@ function addFiguresToTotal(
 
 /**
  * Sums of input figures mean one thing only when every summed engine counts
- * cached input the same way; say which case the total is.
+ * cached input the same way. `mixed` is claimed only from two DECLARED
+ * conventions that differ (`disjoint` beside `subset`); an `unverified` or
+ * undeclared engine is unknown, not different, so with one present the
+ * answer is `not-established`.
  */
 function cacheInclusion(
   providers: ReadonlySet<string>,
 ): NonNullable<ThreadUsageTotal['tokens']['cacheInclusion']> {
-  const conventions = new Set(
-    [...providers].map(
-      (provider) => providerPromptCacheInclusivity(provider) ?? 'undeclared',
-    ),
+  const conventions = [...providers].map((provider) =>
+    providerPromptCacheInclusivity(provider),
   );
-  if (conventions.size > 1) return 'mixed';
-  return conventions.has('disjoint') ? 'excluded' : 'not-established';
+  if (conventions.includes('disjoint') && conventions.includes('subset'))
+    return 'mixed';
+  return conventions.every((convention) => convention === 'disjoint')
+    ? 'excluded'
+    : 'not-established';
 }
 
 function addCostToTotal(total: ThreadUsageTotal, own: ThreadUsageFigures) {

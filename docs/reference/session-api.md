@@ -609,25 +609,28 @@ A session is a child of the conversation when its launch names any session of
 the conversation's lineage as its parent:
 
 - by its delegation context (`metadata.delegation.parentConversationId`).
-  When an agent calls `delegate_task` through session-bound station-control
-  (Claude Code's in-process server, Codex's per-session HTTP server, Station's
-  own agent), Station derives this from the calling session's own record, not
-  from the request. On a direct request it is the requester's own claim. A
-  paired-Station dispatch record keeps the same value as
-  `metadata.parentConversationId`;
+  When a Claude Code or Codex session calls `delegate_task` through its
+  session-bound station-control (Claude Code's in-process server, Codex's
+  per-session HTTP server), Station derives it from the calling session's own
+  record. For Station's own agent, the runtime attests it from the
+  conversation it ran the tool call in. Neither comes from the request. On a
+  direct request it is the requester's own claim. A paired-Station dispatch
+  record keeps the same value as `metadata.parentConversationId`;
 - otherwise by `metadata.parentTaskId`, which a request may set itself. A
   delegation context naming another conversation always wins over it.
 
 A task launched through a caller-less station-control process (a stdio child
-with no per-session credential) carries no delegation context. Unless its
+with no per-session credential, as a Strands-runtime agent uses) carries no
+delegation context. Unless its
 request named `parentTaskId`, it is not found as a child and the total doesn't
 show it as missing.
 
 Tokens: `totalTokens` is input + output as each engine reported them; cache
 reads and writes are listed separately and are not added. `total.tokens`
 says what the summed input means in `cacheInclusion`: `excluded` (every engine
-reports uncached input), `not-established`, or `mixed` (engines that count
-cached input differently were summed). A subagent's own figure goes where its
+reports uncached input), `mixed` (two declared conventions that differ were
+summed), or `not-established` (any other case, including an engine whose
+convention is unverified or undeclared; unknown is never called different). A subagent's own figure goes where its
 engine's meaning puts it: tokens used become `totalTokens`, a Claude Code
 subagent's last-request size is `lastRequestTokens`, and an undeclared
 engine's figure is `unverifiedTokens`. Only `totalTokens` is ever added.
@@ -644,7 +647,7 @@ paired Station is shown from this Station's own record, with `not-reported`
 usage, and no peer is contacted. Responses are `Cache-Control: private,
 no-store`. `404` means no conversation you can read. `422` means the tree is
 past a bound (200 nodes, delegates nested 8 deep, 5,000 usage observations,
-or 1,000 session records naming one level's parents) and is refused rather
+or more than 1,000 session records naming one level's parents) and is refused rather
 than cut. Each level's parent lookup scans session start records; there is no
 index on the JSON fields it matches.
 

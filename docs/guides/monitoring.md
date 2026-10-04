@@ -109,16 +109,19 @@ and the per-engine rules live in
 "Not counted" makes the total partial, and the dialog lists why. A subagent's
 own figure is still shown in the breakdown. The token total is input + output
 only, unlike the dialog's own "Total", which adds cache where that is backed;
-the breakdown says whether its input figures exclude cached input, and says so
-when it adds engines that count cached input differently. Costs in different
+the breakdown says whether its input figures exclude cached input, says so when
+that isn't established for an engine, and says the sum mixes measures only when
+two engines are declared to count cached input differently. Costs in different
 currencies, and estimates under different price snapshots, are listed side by
 side and not added together. The tree covers sessions on this Station only.
 
-Delegated tasks are found from the delegation context Station stamps when a
-conversation's agent calls `delegate_task` through session-bound
-station-control, or from a `parentTaskId` the request names. A task launched
-through a caller-less station-control process names neither, so it is not
-found and not shown as missing. The tree refreshes every 15 seconds while the
+Delegated tasks are found from the delegation context Station stamps at
+launch, or from a `parentTaskId` the request names. For a Claude Code or Codex
+session's `delegate_task` call Station derives the context from the calling
+session's own record; for Station's own agent the runtime attests it from the
+conversation the tool call ran in. A task launched through a caller-less
+station-control process (as a Strands-runtime agent uses) names neither, so it
+is not found and not shown as missing. The tree refreshes every 15 seconds while the
 dialog is open, and stops after a 404 or 422.
 
 **People paired with this Station** reads the existing paired-device registry

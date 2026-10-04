@@ -149,9 +149,10 @@ export interface ThreadUsageTotal {
     /**
      * Whether the summed input figures contain cached input, from each
      * contributing engine's declared convention: `excluded` (every engine
-     * reports uncached input), `not-established` (one convention, not
-     * established as cache-free) or `mixed` (engines that count cached input
-     * differently are summed, so the total mixes measures).
+     * reports uncached input), `mixed` (two declared conventions that differ
+     * were summed, so the total mixes measures) or `not-established` (any
+     * other case, including an engine whose convention is unverified or
+     * undeclared).
      */
     cacheInclusion?: 'excluded' | 'not-established' | 'mixed';
     /** The engines whose tokens are in the total. */

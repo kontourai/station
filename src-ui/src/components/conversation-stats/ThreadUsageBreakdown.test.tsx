@@ -97,11 +97,12 @@ describe('conversation usage breakdown in the stats dialog', () => {
     expect(
       within(section).getByText('Total: 1,550 input + output tokens'),
     ).toBeTruthy();
-    // Claude counts uncached input, Codex's convention isn't established, so
-    // the dialog says the sum mixes measures.
+    // Claude counts uncached input and Codex's convention isn't established:
+    // the dialog says so instead of claiming they differ.
     expect(section.textContent).toContain(
-      'Adds engines that count cached input differently (Claude Code, Codex), so this sum mixes two measures.',
+      "It isn't established whether these engines (Claude Code, Codex) count cached input the same way.",
     );
+    expect(section.textContent).not.toContain('mixes two measures');
     expect(section.textContent).toContain('$0.25 reported');
     expect(section.textContent).toContain('€2.00 estimated');
     expect(within(section).getByText('Partial')).toBeTruthy();

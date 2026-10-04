@@ -4703,9 +4703,9 @@ export class EventStore {
    *
    * Every session.started/session.configured row is examined once for the
    * whole batch of parents (one level of a tree read), through the method
-   * index; there is no index on the JSON fields. Examines at most `limit`
-   * candidate sessions per chunk of parents and reports `truncated` when a
-   * chunk reached it, so the caller can refuse rather than read a cut list.
+   * index; there is no index on the JSON fields. Reads one candidate past
+   * `limit` per chunk of parents and reports `truncated` when a chunk has
+   * more than `limit`, so the caller can refuse rather than read a cut list.
    */
   listSessionsNamingParents(
     parentIds: readonly string[],
@@ -4753,12 +4753,13 @@ export class EventStore {
             ORDER BY first_sequence ASC
             LIMIT ?`,
         )
-        .all(...chunk, ...chunk, ...chunk, limit) as Array<{
+        .all(...chunk, ...chunk, ...chunk, limit + 1) as Array<{
         thread_id: string;
         verified_parent: unknown;
         claimed_parent: unknown;
       }>;
-      if (rows.length >= limit) truncated = true;
+      // One row past the bound proves there is more than it allows.
+      if (rows.length > limit) truncated = true;
       const named = new Set(chunk);
       for (const row of rows) {
         // Matched by another chunk's parents already.
