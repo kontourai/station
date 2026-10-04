@@ -91,20 +91,29 @@ its running turn from the verified caller, takes a body of exactly
 identity), and answers `{status}` with `declared`, `already-declared` or
 `no-active-turn`. A pull request in another repository than the Session's, or one
 the provider cannot return at that identity, is `409`. The declaration lands with
-the turn's completion and is dropped if the turn is aborted; the keep above
-applies to it unchanged.
+the turn's completion: it is held, with no time limit, while the turn runs, and
+is dropped if the turn is aborted, interrupted or replaced, or if Station
+restarts before the turn completes (declarations wait in memory until the
+terminal event is stored). The keep above applies to it unchanged.
 
 `PUT /api/tasks/:taskId/close-on-merge` accepts `{enabled}` and sets or clears the
 Task's `closeOnMerge` flag. It is a person's opt-in: no Station Control tool
 reaches it, and the authority guard refuses an agent's request to it. A Task with
 the flag moves to `done` when every pull request kept on it reports `MERGED` at its
-provider, if `done` is a transition its status allows and it is still the same Task
-incarnation; a pull request closed without merging does not complete it. The check
-rides the conversation pull request refresh (`GET /api/conversation-pull-requests/:conversationId`):
-a refresh that observes a merged pull request reconciles the Tasks that kept it, in
-the background. There is no timer, so a merge is noticed when a client next
-refreshes that conversation. A store carrying the flag is refused by older Station
-builds.
+provider, matched by declaration and pull request (one turn's declarations share
+an event, so the event alone is not the match), if it is still the same Task
+incarnation, nothing was kept since the reads, and `canTransitionTaskStatus` allows
+`done`: a Task in todo, ready, triage or blocked never closes by itself. A pull
+request closed without merging does not complete it; un-keeping an unmerged pull
+request lets the remaining merged ones close it. The check rides the conversation
+pull request refresh (`GET /api/conversation-pull-requests/:conversationId`): a
+refresh that observes a merged pull request reconciles the Tasks that kept it, in
+the background, but only when the viewer holds the pairing scope
+`PATCH /api/tasks/:taskId/status` needs (`orchestration:operate`), and never for a
+Station Control tool call. There is no timer, so a merge is noticed when an
+operate-tier viewer next refreshes that conversation, and nothing reconciles
+without one. A store carrying the flag is refused by older Station builds: clear
+it before a rollback.
 
 New snapshots store their Task creation identity and, for admitted Session
 declarations, the declaration's Session/event/turn/tool identities privately.

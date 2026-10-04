@@ -35,15 +35,26 @@ example does not grant one implicitly.
   declare a pull request it opened, by `provider`, `host`, `repository`
   (`owner` and `name`) and `ref`: the identity shape the conversation link
   routes take. It records the same declared output Station's own engine records
-  with `declare_output`, in the caller's own Session and the turn it is running:
-  the record lands when that turn completes and is dropped if the turn aborts.
+  with `declare_output`, in the caller's own Session and the turn it is running.
+  A declaration is held, with no time limit, for as long as that turn runs, and
+  the record lands when the turn completes. It is dropped if the turn aborts or
+  is interrupted, and it is dropped if Station restarts before the turn completes:
+  declarations wait in memory until their turn's terminal event is stored, as
+  native ones do, so declare again in a later turn.
   The tool answers `declared`, `already-declared` or `no-active-turn`. It reads
   the pull request from the Session's own repository, so a pull request in
   another repository (`owner/repo-2` is not `owner/repo`) is refused. It does not
-  link or keep anything: a person keeps a declared pull request onto a Task,
-  and a Task a person opted in (`closeOnMerge`) moves to `done` only when every
-  kept pull request is `MERGED` at its provider. No agent tool sets that
-  opt-in.
+  link or keep anything: a person keeps a declared pull request onto a Task.
+  A Task a person opted in (`closeOnMerge`) moves to `done` only when every kept
+  pull request is `MERGED` at its provider, matched by declaration and pull
+  request (a stack from one turn is told apart), and only from a status
+  `canTransitionTaskStatus` lets reach `done`: a Task in todo, ready, triage or
+  blocked never closes by itself. Un-keeping a pull request that has not merged
+  lets the remaining merged ones close the Task. Nothing polls: the check runs
+  when a viewer holding the operate tier (the tier that may change a Task's
+  status) refreshes the Conversation's pull-request links, so nothing reconciles
+  without such a viewer. No agent tool sets the opt-in, and an older Station
+  build refuses a Task store that carries it, so clear it before a rollback.
 - config and navigation tools for steering the workspace
 - the full scheduler lifecycle: `list_jobs`, `list_scheduler_providers`,
   `get_scheduler_stats`, `get_scheduler_status`, `preview_schedule`,

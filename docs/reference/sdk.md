@@ -3983,8 +3983,8 @@ observation stale and require refresh before review or other actions. Explicit
 unlink changes only the Conversation association; it never changes the pull
 request or deletes Task-kept provenance.
 A refresh that observes a pull request merged also lets Station reconcile the
-Tasks a person opted in to closing on merge; it changes nothing in what the read
-returns (see the [API reference](api.md#keep-a-declared-output)).
+Tasks a person opted in to closing on merge when the caller holds the operate tier;
+it changes nothing in what the read returns (see the [API reference](api.md#keep-a-declared-output)).
 
 The [client](../../packages/sdk/src/client/conversation-pull-request-links.ts)
 and [route/store boundary](../../src-server/routes/pull-requests/conversation-pull-request-links.ts)
