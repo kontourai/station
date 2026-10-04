@@ -362,6 +362,7 @@ import {
 import { SessionEventReads } from './session-event-reads.js';
 import {
   SessionExecutionCoordinator,
+  SessionLifecycleClaimRefusedError,
   SessionTurnStartIndeterminateError,
 } from './session-execution-coordinator.js';
 import {
@@ -8023,10 +8024,11 @@ export class OrchestrationService {
         },
       );
     } catch (error) {
-      // The lifecycle claim refuses while a turn start owns the boundary.
+      // Only the boundary's own refusal means a turn won; a stop that failed
+      // (a start still in progress, an adapter error) is the caller's to see.
       if (
-        this.sendTurnsInDispatch.has(threadId) ||
-        this.sessionExecutionCoordinator.hasActiveTurn(threadId)
+        error instanceof SessionLifecycleClaimRefusedError &&
+        error.reason === 'active-turn'
       )
         return { stopped: false, reason: 'turn_in_flight' };
       throw error;

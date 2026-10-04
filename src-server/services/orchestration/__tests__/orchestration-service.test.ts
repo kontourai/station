@@ -138,6 +138,7 @@ import { recoverOrchestrationSessions } from '../orchestration-session-state.js'
 import { OrchestrationStreamPresence } from '../orchestration-stream-presence.js';
 import { ProjectTaskRoomRuntime } from '../project-task-room-runtime.js';
 import { createSessionAgentResolver } from '../session-agent-resolution.js';
+import { SessionLifecycleClaimRefusedError } from '../session-execution-coordinator.js';
 import {
   ACTIVE_TURN_FOLD_METHODS,
   activeTurnIdForEvents,
@@ -2503,6 +2504,90 @@ describe('OrchestrationService', () => {
       expect(outcome).toEqual({ stopped: false, reason: 'turn_in_flight' });
       expect(claude.stopSession).not.toHaveBeenCalled();
       expect(claude.sendTurn).toHaveBeenCalledOnce();
+    });
+
+    const lifecycleCoordinator = () =>
+      (
+        service as unknown as {
+          sessionExecutionCoordinator: {
+            runLifecycleTransition<T>(
+              threadId: string,
+              operation: () => Promise<T>,
+            ): Promise<T>;
+          };
+        }
+      ).sessionExecutionCoordinator;
+
+    test('a send dispatched after the early check but before the stop runs still wins', async () => {
+      await startWithSuccessor('retire-late');
+      await supersede('retire-late');
+      // Force the interleaving: the lifecycle lock is held, so retire passes
+      // its early check (no marker, no turn, no facts) and then queues for it.
+      const release = deferred<void>();
+      const held = lifecycleCoordinator().runLifecycleTransition(
+        'retire-late',
+        () => release.promise,
+      );
+      const retiring = service.retireNeverRanSession('retire-late', {
+        userId: 'owner-user',
+      });
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      // The send is dispatched while retire waits; it queues behind retire.
+      const send = sendTo('retire-late', 'client-turn-late');
+      release.resolve();
+      await held;
+      const outcome = await retiring;
+      await send;
+      expect(outcome).toEqual({ stopped: false, reason: 'turn_in_flight' });
+      expect(claude.stopSession).not.toHaveBeenCalled();
+      expect(claude.sendTurn).toHaveBeenCalledOnce();
+    });
+
+    test('a stop that itself fails is not reported as a turn in flight', async () => {
+      await startWithSuccessor('retire-fails');
+      await supersede('retire-fails');
+      const stopFails = deferred<void>();
+      claude.stopSession.mockImplementationOnce(() =>
+        stopFails.promise.then(() => {
+          throw new Error('adapter refused to stop');
+        }),
+      );
+      const retiring = service.retireNeverRanSession('retire-fails', {
+        userId: 'owner-user',
+      });
+      const settled = retiring.then(
+        (value) => ({ value }),
+        (error: unknown) => ({ error }),
+      );
+      await vi.waitFor(() => expect(claude.stopSession).toHaveBeenCalled());
+      // A send arrives while the stop is running, so a broad catch would
+      // misread the failure as the turn winning.
+      const send = sendTo('retire-fails', 'client-turn-fails');
+      stopFails.resolve();
+      const result = await settled;
+      await send.catch(() => undefined);
+      expect(result).toMatchObject({
+        error: expect.objectContaining({ message: 'adapter refused to stop' }),
+      });
+    });
+
+    test('a lifecycle claim refused for an active turn is reported as a turn in flight', async () => {
+      await startWithSuccessor('retire-claim');
+      await supersede('retire-claim');
+      // The boundary refusal is only reachable once a turn has begun its
+      // provider effect without the service-side markers; force it.
+      vi.spyOn(
+        lifecycleCoordinator(),
+        'runLifecycleTransition',
+      ).mockRejectedValueOnce(
+        new SessionLifecycleClaimRefusedError('active-turn', 'active turn'),
+      );
+      await expect(
+        service.retireNeverRanSession('retire-claim', {
+          userId: 'owner-user',
+        }),
+      ).resolves.toEqual({ stopped: false, reason: 'turn_in_flight' });
+      expect(claude.stopSession).not.toHaveBeenCalled();
     });
 
     test('does not stop a predecessor that recorded a turn', async () => {
