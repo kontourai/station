@@ -71,3 +71,17 @@ describe('steerRefusalMessage (station#4075 stage 2 review round 2)', () => {
     );
   });
 });
+
+// #2898 review: a newer server's outcome this build does not know must still
+// render as a sentence, never as the result object.
+describe('steerRefusalMessage for an outcome this build does not know', () => {
+  it('returns a plain string', () => {
+    const unknown = {
+      outcome: 'a-future-outcome',
+      threadId: 'thread-1',
+    } as unknown as Exclude<SteerTurnResult, { outcome: 'steered' }>;
+    expect(steerRefusalMessage(unknown)).toBe(
+      'The steer was not sent. Your message is kept.',
+    );
+  });
+});

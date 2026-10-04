@@ -418,10 +418,16 @@ export type SteerTurnResult =
     }
   | {
       /**
-       * #2898: the running turn started under a confinement that no longer
-       * holds (the full access that unconfined it was revoked). It finishes
-       * as it is, but takes no new instructions; send them as a new turn,
-       * which runs confined. Nothing was delivered.
+       * #2898: the running turn started unconfined (`host`) and `workspace`
+       * applies now (the full access that unconfined it was revoked). It
+       * finishes as it is, but takes no new instructions; send them as a new
+       * turn, which runs confined. Nothing was delivered. Only a narrowing
+       * refuses: a widening (a recorded `never`) does not.
+       *
+       * Version skew: a UI from before #2898 does not know this outcome; its
+       * `steerRefusalMessage` falls through to a default that returns the
+       * result object, which may be rendered as the message content. UIs
+       * from #2898 on return a plain sentence for any unknown outcome.
        */
       outcome: 'confinement-changed';
       threadId: string;

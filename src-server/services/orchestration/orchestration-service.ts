@@ -7333,11 +7333,11 @@ export class OrchestrationService {
             this.persistReceipt(receipt);
             return { receipt, result };
           }
-          // #2898: a turn that started under a confinement which no longer
-          // holds (its device grantor lost full access) finishes as it is,
-          // but is not given new instructions: those go in a new turn, which
-          // runs confined.
-          if (this.runsUnderStaleConfinement(command.threadId, activeTurnId)) {
+          // #2898: a turn that started unconfined, where `workspace` applies
+          // now (its device grantor lost full access), finishes as it is, but
+          // is not given new instructions: those go in a new turn, which runs
+          // confined. A widening (a recorded `never`) never refuses a steer.
+          if (this.ranUnconfinedNowConfined(command.threadId, activeTurnId)) {
             const result: SteerTurnResult = {
               outcome: 'confinement-changed',
               threadId: command.threadId,
@@ -9302,7 +9302,7 @@ export class OrchestrationService {
       const running = [...new Set(granted)].filter(
         (threadId) =>
           this.sessionAdapters.has(threadId) &&
-          this.runsUnderStaleConfinement(threadId),
+          this.ranUnconfinedNowConfined(threadId),
       );
       if (!this.options.isFullAccessGrantorCurrent)
         stillUnconfined.push({ conversationId, until: 'grant-not-checked' });
@@ -9399,16 +9399,15 @@ export class OrchestrationService {
   }
 
   /**
-   * #2898: whether `threadId`'s engine last ran a turn under a confinement
-   * that no longer holds: the confinement of its last accepted turn (when
-   * `turnId` is given, only if it is that turn), else the one it started
-   * under, against the one a turn would get now. A host stamp whose device
-   * grantor lost `approval:full-access` makes them differ.
+   * #2898: whether `threadId`'s engine last ran a turn unconfined (`host`)
+   * while `workspace` applies now: a NARROWING, such as a host stamp whose
+   * device grantor lost `approval:full-access`. The turn's confinement is
+   * that of the engine's last accepted turn (when `turnId` is given, only if
+   * it is that turn), else the one the engine started under. A widening (a
+   * recorded `never`, a grant given back) is not stale: the turn ran
+   * stricter than what applies now.
    */
-  private runsUnderStaleConfinement(
-    threadId: string,
-    turnId?: string,
-  ): boolean {
+  private ranUnconfinedNowConfined(threadId: string, turnId?: string): boolean {
     const accepted = this.acceptedTurnConfinement.get(threadId);
     const ran =
       accepted && (turnId === undefined || accepted.turnId === turnId)
@@ -9418,11 +9417,11 @@ export class OrchestrationService {
             this.readStartConfinementStampAsWritten(threadId),
           );
     return (
-      ran !==
+      ran === 'host' &&
       this.approvalPosture.standingConfinement(
         threadId,
         this.readStartConfinementStamp(threadId),
-      )
+      ) === 'workspace'
     );
   }
 

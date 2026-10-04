@@ -150,6 +150,7 @@ class RecordingEngine implements ProviderAdapterShape {
       status: 'ready',
       createdAt: now,
       updatedAt: now,
+      ...(this.resumable ? { resumeCursor: { threadId: input.threadId } } : {}),
     };
     this.sessions.set(input.threadId, session);
     return session;
@@ -219,8 +220,20 @@ class RecordingEngine implements ProviderAdapterShape {
     return { outcome: 'no-active-turn' } as const;
   }
   async respondToRequest(): Promise<void> {}
+  /** When set, sessions carry a resume cursor (parkable, #2540). */
+  resumable = false;
+  /** When set, `stopSession` reports the engine's exit, as a real one does. */
+  exitOnStop = false;
   async stopSession(threadId: string): Promise<void> {
     this.sessions.delete(threadId);
+    if (this.exitOnStop)
+      this.events.push({
+        eventId: `${threadId}:exited:${Date.now()}`,
+        provider: this.provider,
+        threadId,
+        createdAt: new Date().toISOString(),
+        method: 'session.exited',
+      } as CanonicalRuntimeEvent);
   }
   async listSessions(): Promise<ProviderSession[]> {
     return [...this.sessions.values()];
@@ -1855,6 +1868,111 @@ describe('#1796 G3: revoking a device resets the full access it granted', () => 
       'before',
       'confined',
     ]);
+  });
+
+  /**
+   * #2898 delta review: only a narrowing refuses a steer. A turn that ran
+   * confined is steerable when the conversation is widened (a recorded
+   * `never`), and a revoke that is given back leaves nothing to refuse.
+   */
+  test('a confined turn widened by a recorded never is still steerable', async () => {
+    const f = await fixture({});
+    f.claude.openTurns = true;
+    const phone = f.pair('Phone');
+    await f.chat(f.bearer(phone.credential), 'claude-agent');
+    const threadId = f.claude.starts.at(-1)!.threadId;
+    expect(f.claude.turns.at(-1)?.confinement).toBe('workspace');
+    const decided = await f.request(
+      f.bearer(f.operator.credential),
+      '/api/orchestration/commands',
+      {
+        type: 'setApprovalMode',
+        threadId,
+        approvalMode: 'never',
+        basedOnSequence: null,
+      },
+    );
+    expect(decided.status, decided.text).toBe(200);
+    expect(f.service.sessionRunsHost(threadId)).toBe(true);
+    await vi.waitFor(async () =>
+      expect(
+        await f.service.dispatch({
+          type: 'steerTurn',
+          threadId,
+          input: 'more',
+        }),
+      ).toMatchObject({ outcome: 'steered' }),
+    );
+    expect(f.claude.steers.map((entry) => entry.input)).toEqual(['more']);
+  });
+
+  test('a revoke steers no more; giving the grant back makes the same turn steerable again', async () => {
+    const f = await fixture({ agents: { 'claude-agent': 'never' } });
+    f.claude.openTurns = true;
+    const laptop = f.pair('Laptop', true);
+    await f.chat(f.bearer(laptop.credential), 'claude-agent');
+    const threadId = f.claude.starts.at(-1)!.threadId;
+    const steer = (input: string) =>
+      f.service.dispatch({ type: 'steerTurn', threadId, input });
+    await vi.waitFor(async () =>
+      expect(await steer('before')).toMatchObject({ outcome: 'steered' }),
+    );
+    await removeFullAccess(f, laptop.device.id);
+    expect(await steer('revoked')).toEqual({
+      outcome: 'confinement-changed',
+      threadId,
+    });
+    const regranted = await f.request(
+      f.bearer(f.operator.credential),
+      `/api/pairing/devices/${encodeURIComponent(laptop.device.id)}/scope`,
+      { scope: [...standardScope, PAIRING_SCOPE_APPROVAL_FULL_ACCESS] },
+    );
+    expect(regranted.status, regranted.text).toBe(200);
+    expect(await steer('regranted')).toMatchObject({ outcome: 'steered' });
+    expect(f.claude.steers.map((entry) => entry.input)).toEqual([
+      'before',
+      'regranted',
+    ]);
+  });
+
+  /**
+   * #2898 delta review LOW: an engine's last accepted turn is forgotten
+   * with the engine, on its exit and when it is parked, so a respawned
+   * engine is judged by its own start.
+   */
+  test('the last accepted turn confinement is forgotten on exit and on park', async () => {
+    const f = await fixture({});
+    f.claude.completeTurns = true;
+    f.claude.resumable = true;
+    f.claude.exitOnStop = true;
+    const accepted = () =>
+      (
+        f.service as unknown as {
+          acceptedTurnConfinement: Map<string, unknown>;
+        }
+      ).acceptedTurnConfinement;
+    await f.chat(f.bearer(f.operator.credential), 'claude-agent');
+    const parked = f.claude.starts.at(-1)!.threadId;
+    await f.chat(f.bearer(f.operator.credential), 'claude-agent');
+    const exited = f.claude.starts.at(-1)!.threadId;
+    expect(accepted().has(parked)).toBe(true);
+    expect(accepted().has(exited)).toBe(true);
+
+    // Exit: the engine reports `session.exited` on its own.
+    f.claude.events.push({
+      eventId: `${exited}:exited`,
+      provider: 'claude',
+      threadId: exited,
+      createdAt: new Date().toISOString(),
+      method: 'session.exited',
+    } as CanonicalRuntimeEvent);
+    await vi.waitFor(() => expect(accepted().has(exited)).toBe(false));
+
+    // Park: the sweep stops the idle engine; its exit is absorbed.
+    expect(await f.service.sweepIdleSessions(Date.now() + 86_400_000)).toEqual([
+      parked,
+    ]);
+    expect(accepted().has(parked)).toBe(false);
   });
 
   test('a running session listed unconfined can be stopped at once, and its next start is confined', async () => {
