@@ -9,14 +9,12 @@
 
   "limits": "Individual API behavior and deployed availability require their own route and runtime review.",
 
-  "document": {"digest":"6f7cc874b9ec86a158514b996c6da61666a977b72ac4d86db8fc037e9e3e6c55","revision":"eec64aa6defda8dd84ffebbe430eea95b35aea3f"},
-
   "sources": [
-    {"path":"scripts/__tests__/public-doc-contract-examples.test.ts","digest":"8a50498ae6b2e46f6ba15189674cae36d293bfae4439b563850d98bdcbfa2013","revision":"eec64aa6defda8dd84ffebbe430eea95b35aea3f"},
+    "scripts/__tests__/public-doc-contract-examples.test.ts",
 
-    {"path":"scripts/generate-openapi.ts","digest":"c42ee96928d177a114cd9c545afeb179673f99d96b8a380ac93ec0a3b137dc82","revision":"eec64aa6defda8dd84ffebbe430eea95b35aea3f"},
+    "scripts/generate-openapi.ts",
 
-    {"path":"src-server/openapi/spec.ts","digest":"460ef919bf27b1c27f6eea15395455a48c3ab31cb0a01a9e32aa54bbda8c80bb","revision":"c2b1caf535d375c5195cc8b8a66c9dc6ce83205d"}
+    "src-server/openapi/spec.ts"
   ],
 
   "checks": [

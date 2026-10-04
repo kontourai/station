@@ -1,0 +1,7 @@
+{
+  "revision": "33814c6acf112c3d4fa1260b27ac0820bd349005",
+
+  "notes": [
+    {"path":"docs/strategy/kontour-integration-surface.md","note":"Relabelled the 2026-07-19 Veritas paragraph from 'Current Station contract' to a dated historical snapshot in past tense, because package.json now pins @kontourai/veritas 1.7.6 and the page's own convention treats its package assessments as history. The paragraph now routes the current pin to the @kontourai/veritas entry in package.json (checked: 1.7.6) and pnpm-lock.yaml instead of stating a version. The 2026-07-24 package snapshot line and the flow@0.1.19 + veritas@0.5.0 finding were already dated and are unchanged. No other prose changed; the gate, panel and record-path statements were not re-verified, only moved to past tense.","inputs":["docs/strategy/kontour-integration-surface.md","package.json"]}
+  ]
+}

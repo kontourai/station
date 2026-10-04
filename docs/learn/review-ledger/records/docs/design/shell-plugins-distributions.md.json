@@ -9,42 +9,40 @@
 
   "limits": "Design, not shipped behavior. Current-state claims are source inspection at 2e8ddc0f7; no test executed. The feat/coding-chat-main branch diff was not reviewed. Plugin-to-plugin isolation claims rest on the build shim source, not an executed probe.",
 
-  "document": {"digest":"2d05e3cf3bbeebb0ad6a66a4362d44c89ec4271e1820b34ec06734f1f01168b2","revision":"8ab38fac0c72242e6cb8f4d7a6d58e693e13a066"},
-
   "sources": [
-    {"path":"packages/contracts/src/distribution.ts","digest":"0e46476abfa24b54bd36bc84ec2faec647d9ea8d6bd5767576af4f0a79c77ee4","revision":"25e49629d9894a7e601ae2923a53cfe932560dd8"},
+    "packages/contracts/src/distribution.ts",
 
-    {"path":"packages/contracts/src/layout.ts","digest":"d239a39ed06c9dcb103e89da3a86f4d358aa3261a7623b1c5a86eff69e897a43","revision":"25e49629d9894a7e601ae2923a53cfe932560dd8"},
+    "packages/contracts/src/layout.ts",
 
-    {"path":"packages/contracts/src/project-membership.ts","digest":"8b3317731a3d6766b08756ae78895e214e2c34ee48c2256da4961a8f2aa0d332","revision":"623ff3525e54ab5b505d1c4f4790da5a0b3aec24"},
+    "packages/contracts/src/project-membership.ts",
 
-    {"path":"packages/contracts/src/workspace-home-role.ts","digest":"afdd6ec33526422a7a455cfc575cdd5d662277a8a5c356db6f5b2b564de038f4","revision":"25e49629d9894a7e601ae2923a53cfe932560dd8"},
+    "packages/contracts/src/workspace-home-role.ts",
 
-    {"path":"packages/shared/src/build.ts","digest":"8db6bc04bffe80ead5af5e8d9b23be2ae02f1e5afbae67f850e583b8ca40c783","revision":"e78cdc9c00d09b69f333e1609821d8fa70bce58c"},
+    "packages/shared/src/build.ts",
 
-    {"path":"src-server/routes/plugins/plugin-home-role-routes.ts","digest":"ad2b553accde4e731ec6db42c7d4c69092ccda2a50ed8cfefc6cc6f4d1dcba00","revision":"25e49629d9894a7e601ae2923a53cfe932560dd8"},
+    "src-server/routes/plugins/plugin-home-role-routes.ts",
 
-    {"path":"src-server/services/plugins/plugin-permissions.ts","digest":"12fa3b2a465074275d4317cc1a356000b2c1a53af247b56c352db754a8727c7c","revision":"25e49629d9894a7e601ae2923a53cfe932560dd8"},
+    "src-server/services/plugins/plugin-permissions.ts",
 
-    {"path":"src-server/services/plugins/plugin-visibility-service.ts","digest":"3fbbb277c5cc0b0d9c4a7f1a5e8b79913a7bfa4bb93971374aebcb6aba7ae579","revision":"25e49629d9894a7e601ae2923a53cfe932560dd8"},
+    "src-server/services/plugins/plugin-visibility-service.ts",
 
-    {"path":"src-ui/src/app-shell/project-layout-kind.ts","digest":"7bcad7adebc9f9b0c3270523bfb6b5976b2fc85177d36237afe00631fb826305","revision":"2694ff185bfb985714d2c76bac302fb2db3959dd"},
+    "src-ui/src/app-shell/project-layout-kind.ts",
 
-    {"path":"src-ui/src/components/project-sidebar/ProjectSidebarBoards.tsx","digest":"df8a426d1bc0629c595ea02efc46fc39f5eb2933cb715ef1f4a7b50acd1e9302","revision":"25e49629d9894a7e601ae2923a53cfe932560dd8"},
+    "src-ui/src/components/project-sidebar/ProjectSidebarBoards.tsx",
 
-    {"path":"src-ui/src/core/PluginRegistry.ts","digest":"69836e5e1dd4762f58da6f2495e96f0cab41d586e65327fc4c1dc08d80acc8f9","revision":"1373230550904315438e5bd2869a3c41a9e419ca"},
+    "src-ui/src/core/PluginRegistry.ts",
 
-    {"path":"src-ui/src/lib/branding-theme.ts","digest":"6b0a440ba723e5af74ff8230c50b2f268a87a85aa3dadce7f12a1de13257cd9d","revision":"1e5f63186142dd36fcb720deb7660808dbf2f56b"},
+    "src-ui/src/lib/branding-theme.ts",
 
-    {"path":"src-ui/src/workspace-panes/workspacePaneRendererSelection.ts","digest":"7050620c120bbdf48a658e1c210d1ea06281691a0b0b63bc0644430207a10cc8","revision":"25e49629d9894a7e601ae2923a53cfe932560dd8"},
+    "src-ui/src/workspace-panes/workspacePaneRendererSelection.ts",
 
-    {"path":"src-server/routes/agents/invoke.ts","digest":"55fdb13e6bb43918ab53fd268ee4fb05b7f48974d3c49686a5a651130813a818","revision":"25e49629d9894a7e601ae2923a53cfe932560dd8"},
+    "src-server/routes/agents/invoke.ts",
 
-    {"path":"src-ui/src/core/remotePluginBundleConsent.ts","digest":"072d17e0411a6196054b37d74cc6325777d880455c8e90d7c419d89eea34e75c","revision":"25e49629d9894a7e601ae2923a53cfe932560dd8"},
+    "src-ui/src/core/remotePluginBundleConsent.ts",
 
-    {"path":"src-server/services/approvals/approval-registry.ts","digest":"3b23285f102a3fa0d14e98f210bbba6ec2a98d8dbfa57421988a810d302d00ff","revision":"25e49629d9894a7e601ae2923a53cfe932560dd8"},
+    "src-server/services/approvals/approval-registry.ts",
 
-    {"path":"docs/guides/theming.md","digest":"c059c4caf5104cfcadc5b665c07c375a6b32685536d96abbf406bb01c7ab1e6b","revision":"647868f882dfecc365336d5ff45adad83cbfb2a3"}
+    "docs/guides/theming.md"
   ],
 
   "checks": [

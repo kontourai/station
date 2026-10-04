@@ -1,0 +1,25 @@
+{
+  "revision": "c75f24edf36e9dc018be74053f55ebcaeb5309c5",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed merged Home composition: built-in/granted Home remains selected by existing authorization; goal entry precedes optional callouts. The usage disclosure alone auto-opens, with personalization explicit. Module owners and Home role grants unchanged.","inputs":["docs/architecture/module-map.md"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Reviewed intent-first Home and the retained main account-profile update: canonical fresh default, installed app preparation, disabled-app exclusion, warned-result refusal and catalog refresh precede goal dispatch. Actual disclosure choice returns to work; optional setup stays explicit. Claude account status remains CLI-owned and namespace scoped.","inputs":["docs/design/connections-onboarding.md"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed merged Broker routes disclosure and connection descriptions against BrowserRelayRoutes, connection-sections and ProviderConnectionForm. Saved routes remain outside Advanced; trust approval, invitation and TURN controls retain owning authority. Provider test disclosure still names potential charged prompt; newer CLI-owned account sign-in guidance preserved.","inputs":["docs/guides/connections.md"]},
+
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Reviewed changed keeper journeys: Home explicit options retain picker coverage, new written-goal path asserts exact sendExecutionMessage without configuration; agent selectors use model-connection label; schedule empty catalog enters agent setup; reconnect/root routes retain destination checks. Scope remains fixture/browser evidence, not blanket provider/device proof.","inputs":["docs/guides/e2e-coverage-matrix.md"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed merged responsive action inventory: HomeChatStartForm owns the real goal textarea and shared Button actions, wrapping layout and 44px action floor. Retained 375px browser and iOS Safari evidence is scoped to web UI, not a native release. No server or theme authority changes.","inputs":["docs/guides/responsive-ui.md"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed Models/Engines/Tools descriptions and provider testing copy against the attended Station-engine example. Model connection requirement, tool allowlist and caller authority remain unchanged; no prose correction needed.","inputs":["docs/guides/self-configuring-agent.md"]},
+
+    {"path":"docs/guides/theming.md","note":"Reviewed merged responsive action inventory: HomeChatStartForm owns the real goal textarea and shared Button actions, wrapping layout and 44px action floor. Retained 375px browser and iOS Safari evidence is scoped to web UI, not a native release. No server or theme authority changes.","inputs":["docs/guides/theming.md"]},
+
+    {"path":"docs/patterns/backend.md","note":"Reviewed merged responsive action inventory: HomeChatStartForm owns the real goal textarea and shared Button actions, wrapping layout and 44px action floor. Retained 375px browser and iOS Safari evidence is scoped to web UI, not a native release. No server or theme authority changes.","inputs":["docs/patterns/backend.md"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Reviewed merged responsive action inventory: HomeChatStartForm owns the real goal textarea and shared Button actions, wrapping layout and 44px action floor. Retained 375px browser and iOS Safari evidence is scoped to web UI, not a native release. No server or theme authority changes.","inputs":["docs/patterns/frontend.md"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Reviewed connection labels and provider test disclosure against the example prerequisite. It remains a Station-engine agent requiring a usable model connection; no authority or approval changes.","inputs":["examples/self-configuring-agent/README.md"]}
+  ]
+}

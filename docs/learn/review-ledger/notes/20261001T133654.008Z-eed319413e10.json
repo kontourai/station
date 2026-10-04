@@ -1,0 +1,7 @@
+{
+  "revision": "6c2cd5fa91bdd90c87d03e9f55df59b7e6a7f247",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Reviewed #2941 optional pushTargetOwner and sourceOwner through the real resolver, explicit context route projection, narrow GitHub normalization, SDK hooks and mounted chip. Verified pushRemote/pushDefault/upstream precedence, pushurl, case-insensitive owners, local branch matching and unknown-owner fallback with real git checkouts; both requested fault injections failed at the intended assertions. GitLab omits sourceOwner; read repository selection is unchanged.","inputs":["docs/reference/contracts.md"]}
+  ]
+}

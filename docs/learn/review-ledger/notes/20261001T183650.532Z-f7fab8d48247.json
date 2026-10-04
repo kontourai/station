@@ -1,0 +1,9 @@
+{
+  "revision": "3bb48eb84260ba2ca66edc5c2df1f24482bd51db",
+
+  "notes": [
+    {"path":"docs/guides/dependency-security.md","note":"Corrects the earlier batch note for this page, which wrongly said it names neither re-resolved package. The advisory table has a root picomatch row: it records that the affected 2.x paths are fixed at 2.3.2 by the anymatch override without downgrading 4.x consumers. This change only moves two 4.x consumers (Veritas and tinyglobby) from 4.0.5 to an already-locked 4.0.7; the 2.x override entry and its resolved 2.3.2 are untouched in the lockfile delta, so the row stays true. The page states no Veritas version.","inputs":["docs/guides/dependency-security.md"]},
+
+    {"path":"docs/strategy/kontour-integration-surface.md","note":"Corrects the earlier batch note for this page, which wrongly said it states no Veritas version. It states three: a package-contract snapshot dated 2026-07-24, an empirical observation tied to a named historical version pair, and a Current Station contract sentence dated 2026-07-19 giving a caret range. All three are explicitly dated and were already behind the 1.7.4 pin before this change, so moving the pin to 1.7.6 makes none of them newly untrue; the dated contract sentence is pre-existing drift reported separately and not edited here. The page names neither re-resolved package and no attestation identity field.","inputs":["docs/strategy/kontour-integration-surface.md"]}
+  ]
+}

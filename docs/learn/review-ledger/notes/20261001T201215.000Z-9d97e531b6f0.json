@@ -1,0 +1,7 @@
+{
+  "revision": "c259630c0b3c332e6808dcc79425ea2eb3f4732c",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Rewrote the main-region section for #2986 and #2988 and checked each sentence against RegionModelContext.tsx, main-page-history.ts and navigation-store.ts: a page swap at / is a navigation entry stamped in history.state; a traversal onto a stamped / entry restores the page; route entries carry no stamp and an unstamped / entry is stamped on arrival; the three traversals that are not obeyed (bare popstate, a landing while traversalAwaitsGuard, a traversal within one navigation entry by traversalDepartedIndex); a deep-link adoption adds no entry; placeSurface into main restores a maximized dock and keeps lastDockMaximized. The stated limits (orphaned dialog entry costing a Forward press, a swap closing other dialogs and abandoning a pending precommit, no entry for a swap made inside another navigation's notification, the removed page's guards not asked) were each traced in code or reproduced by the tests in RegionModelContext-main-page-history.test.tsx. Exercised live on desktop and a phone viewport.","inputs":["docs/design/placement.md"]}
+  ]
+}

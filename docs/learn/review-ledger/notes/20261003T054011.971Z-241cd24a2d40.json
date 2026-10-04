@@ -1,0 +1,7 @@
+{
+  "revision": "c39aff0b1a3c953b56d510989d1810e235961029",
+
+  "notes": [
+    {"path":"docs/README.md","note":"Reviewed main integration c39aff0b1a: the Monitoring index description now names Profile usage and paired people, matching the owning monitoring guide sections. The new experience authoring route remains linked. All other audience routes, source relationships and existing runtime or hosted limits are retained.","inputs":["docs/README.md"]}
+  ]
+}

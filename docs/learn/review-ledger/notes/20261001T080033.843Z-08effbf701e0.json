@@ -1,0 +1,7 @@
+{
+  "revision": "c5364f269c1fa068755974e957adba21c461a6fa",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"#3071 final round, after merging origin/main. Changed inputs: muse-serve-session.ts (#3071: a request with a subagent origin no longer carries turnId); orchestration-session-state.ts (a comment in the run fold now names interrupted-turn recovery as a producer of request.resolved; no behavior change this round). Read the Muse passage (requests are request.opened events attributed to a subagent; acknowledgement): it does not say which requests carry turnId, and the #3071 sentence on openRequestIds points to the Session API. No prose change.","inputs":["docs/reference/contracts.md"]}
+  ]
+}
