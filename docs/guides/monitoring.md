@@ -32,8 +32,8 @@ observations. UTC days use saved-message timestamps and canonical provider-event
 `createdAt` values, not precise consumption dates or the receipt ingestion clock. Completed external-engine turns contribute activity on their
 recorded UTC day. Missing or invalid dates, missing models and unknown principal or
 provider attribution remain in `unallocated`. Saved messages have no authenticated
-principal writer and remain principal-unallocated even if arbitrary metadata names
-a principal. Engine person attribution uses the server-stamped `turn.started`
+principal or provider writer and remain unallocated in those dimensions even if
+arbitrary metadata names them. Engine person attribution uses the server-stamped `turn.started`
 principal; usage-event principal fields cannot override it. Current app or Agent configuration
 never fills historical gaps.
 The hero graph shows the last 14 UTC days rather than the last 14 populated rows.
