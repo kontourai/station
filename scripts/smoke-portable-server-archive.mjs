@@ -363,7 +363,14 @@ async function choosePorts() {
  * environment): an unset port falls back to a channel default the owner's
  * own Station uses.
  */
-async function bootAndProbe({ root, launcher, nextLauncher, env, home, release }) {
+async function bootAndProbe({
+  root,
+  launcher,
+  nextLauncher,
+  env,
+  home,
+  release,
+}) {
   // The home a release of this channel owns (runtime-path-resolver's
   // runtimeInstancePath); a development checkout would pick instances/dev/<id>.
   const stationHome = join(home, '.station', 'instances', release.channel);
