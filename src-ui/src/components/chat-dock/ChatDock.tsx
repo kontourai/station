@@ -1105,12 +1105,13 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     onPresentationTitleChange?.(presentationTitle);
   }, [onPresentationTitleChange, presentationTitle]);
   // The inbox's "Needs you" count, from the same partition the inbox panel
-  // renders, for a host that folds the inbox. Read with the item list, as
-  // the panel's own grouping is.
+  // renders: named on the inbox toggle while the inbox is hidden, and handed
+  // to a host that folds the inbox (the Coding edge's tooltip). Read with
+  // the item list, as the panel's own grouping is.
   const onInboxNeedsYouChange = props.onInboxNeedsYouChange;
   const inboxNeedsYou = useMemo(
-    () => (onInboxNeedsYouChange ? needsYouCount(taskItems, Date.now()) : 0),
-    [onInboxNeedsYouChange, taskItems],
+    () => needsYouCount(taskItems, Date.now()),
+    [taskItems],
   );
   useEffect(() => {
     onInboxNeedsYouChange?.(inboxNeedsYou);
@@ -2437,6 +2438,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                         isFullscreenPlacement,
                       }),
                       isInboxOpen,
+                      inboxNeedsYouCount: inboxNeedsYou,
                       onToggleInbox: toggleInbox,
                       backgroundTasksTriggerRef,
                       backgroundTasksRunningCount: importedSessionId

@@ -14,6 +14,7 @@ import {
   ChatDockHeaderMoreMenu,
   type DockMoreAction,
 } from './ChatDockHeaderMoreMenu';
+import { inboxToggleLabel } from './inbox-toggle-label';
 import {
   toggleSessionInventoryOccurrence,
   useSessionInventoryHostRegistered,
@@ -63,6 +64,8 @@ export interface ChatDockWorkspaceControls {
   /** False in right-dock mode, where the inbox panel does not render. */
   showInboxToggle: boolean;
   isInboxOpen: boolean;
+  /** The inbox's "Needs you" count, named on the toggle while it is hidden. */
+  inboxNeedsYouCount?: number;
   onToggleInbox: () => void;
   /** station#1301 slice 1: the Background tasks sheet's desktop anchor. */
   backgroundTasksTriggerRef: React.RefObject<HTMLButtonElement | null>;
@@ -298,10 +301,14 @@ export function ChatDockHeader({
         <button
           type="button"
           className="chat-dock__icon-btn"
-          aria-label={
-            workspaceControls.isInboxOpen ? 'Hide inbox' : 'Show inbox'
-          }
-          title={workspaceControls.isInboxOpen ? 'Hide inbox' : 'Show inbox'}
+          aria-label={inboxToggleLabel(
+            workspaceControls.isInboxOpen,
+            workspaceControls.inboxNeedsYouCount,
+          )}
+          title={inboxToggleLabel(
+            workspaceControls.isInboxOpen,
+            workspaceControls.inboxNeedsYouCount,
+          )}
           aria-pressed={workspaceControls.isInboxOpen}
           onClick={workspaceControls.onToggleInbox}
         >

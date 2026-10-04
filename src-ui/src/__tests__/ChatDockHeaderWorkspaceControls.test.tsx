@@ -110,6 +110,28 @@ describe('header inbox toggle (from #1064 AC1/AC2)', () => {
     expect(row.getAttribute('aria-pressed')).toBe('false');
   });
 
+  test('a hidden inbox names what it holds for you on its one toggle', async () => {
+    renderHeader({
+      workspaceControls: workspaceControls({
+        isInboxOpen: false,
+        inboxNeedsYouCount: 3,
+      }),
+    });
+    const toggle = await screen.findByRole('button', {
+      name: 'Show inbox, 3 need you',
+    });
+    expect(toggle.getAttribute('title')).toBe('Show inbox, 3 need you');
+  });
+
+  test('an open inbox is just "Hide inbox", whatever it holds', async () => {
+    renderHeader({
+      workspaceControls: workspaceControls({ inboxNeedsYouCount: 3 }),
+    });
+    expect(
+      await screen.findByRole('button', { name: 'Hide inbox' }),
+    ).toBeTruthy();
+  });
+
   test('offers no chat-list row when showInboxToggle is false (right-mode gate)', () => {
     renderHeader({
       workspaceControls: workspaceControls({ showInboxToggle: false }),

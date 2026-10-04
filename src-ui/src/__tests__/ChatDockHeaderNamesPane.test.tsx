@@ -15,7 +15,7 @@ vi.mock('../contexts/NavigationContext', () => ({
 }));
 const SHORTCUT_DISPLAY: Record<string, string> = {
   'dock.openConversation': '⌘O',
-  'dock.newChat': '⌘N',
+  'dock.newChat': '⌘T',
 };
 vi.mock('../hooks/useKeyboardShortcut', () => ({
   useShortcutDisplay: (id: string) => SHORTCUT_DISPLAY[id] ?? '',
@@ -94,7 +94,7 @@ describe('ChatDockHeader in a bar that names the pane', () => {
       expect(create.textContent).toBe('');
       const tip = (button: HTMLElement) =>
         button.parentElement?.querySelector('[role="tooltip"]')?.textContent;
-      expect(tip(create)).toBe('New chat (⌘N)');
+      expect(tip(create)).toBe('New chat (⌘T)');
       // One verb, not two: no Open beside it.
       expect(
         within(trailing).queryByRole('button', { name: /^Open/ }),
