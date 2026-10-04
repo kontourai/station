@@ -16,21 +16,25 @@ export function parseCaptureTimeoutMs(raw: string | undefined): number {
 }
 
 /**
- * Each internal barrier gets half of the configured outer liveness bound. The
+ * Every barrier in the capture, including the scenario's own, gets half of the configured outer liveness bound. The
  * gate kills the whole child at the full bound, so a barrier that is genuinely
  * stuck reports itself, and the setting that governs it, before that kill
  * rather than being masked by a generic liveness failure. The bound stays
  * finite, so a hung capture still fails. A barrier is a dead-child guard, not a
  * performance budget: it fails on host load, not on a regression.
  */
+export function captureBarrierTimeoutMs(captureTimeoutMs: number): number {
+  return Math.max(1, Math.floor(captureTimeoutMs / 2));
+}
+
 export function createCaptureBarrier(captureTimeoutMs: number) {
-  const barrierTimeoutMs = Math.max(1, Math.floor(captureTimeoutMs / 2));
+  const barrierTimeoutMs = captureBarrierTimeoutMs(captureTimeoutMs);
   return async (predicate: () => boolean, name: string) => {
     const deadline = performance.now() + barrierTimeoutMs;
     while (!predicate()) {
       if (performance.now() > deadline)
         throw new Error(
-          `capture barrier timed out after ${barrierTimeoutMs}ms: ${name}. This barrier is half of ${TRANSFER_CAPTURE_TIMEOUT_ENV}=${captureTimeoutMs}; on a loaded host raise it for this run with ${TRANSFER_CAPTURE_TIMEOUT_ENV}=<milliseconds>`,
+          `capture barrier timed out after ${barrierTimeoutMs}ms: ${name} (half of ${TRANSFER_CAPTURE_TIMEOUT_ENV}=${captureTimeoutMs}; on a loaded host raise it for this run with ${TRANSFER_CAPTURE_TIMEOUT_ENV}=<milliseconds>)`,
         );
       await new Promise((resolveWait) => setTimeout(resolveWait, 5));
     }

@@ -124,6 +124,13 @@ export class HttpTransferRecorder {
     active.resetEventIdentities();
   }
 
+  /** Activity frames seen on the active response since the checkpoint. */
+  activityFramesSinceCheckpoint(): number {
+    const active = this.#active;
+    if (!active) throw new Error('transfer recorder has no active response');
+    return active.activityFrames() - (this.#checkpoint?.activityFrames ?? 0);
+  }
+
   #active:
     | {
         socket: { bytesRead: number };

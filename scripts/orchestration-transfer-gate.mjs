@@ -461,10 +461,9 @@ export function runTransferCapture({
     // A barrier timing out is host load, not a regression, and the child's own
     // message already names the setting; repeat it on the FAIL line, which is
     // what a push refusal shows.
-    const barrierTimeout =
-      /capture barrier timed out after \d+ms: [^\n.]+/.exec(
-        result.stderr ?? '',
-      );
+    const barrierTimeout = /capture barrier timed out after \d+ms: [^\n]+/.exec(
+      result.stderr ?? '',
+    );
     if (barrierTimeout)
       fail(
         `${barrierTimeout[0]} for ${targetRoot}. This is host load, not a measured regression: raise it for this run with ${TRANSFER_CAPTURE_TIMEOUT_ENV}=<milliseconds> (currently ${timeout})`,

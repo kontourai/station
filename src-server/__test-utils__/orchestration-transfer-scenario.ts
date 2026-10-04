@@ -40,19 +40,24 @@ interface ScenarioSource {
   finalToolOutput(): string;
   finalReplayEventCount: number;
   heavyLiveFrameCount: number;
-  /**
-   * Trailing `orchestration:activity` frames the live phase may carry. The
-   * route flushes one 100ms after the last coalesced event of a burst, so
-   * whether it lands before the harness closes the stream is host speed. Each
-   * coalesced (non-activity-bearing) event opens one such window: station-native
-   * emits two `session.state-changed` events around the turn; the external
-   * engine emits none.
-   */
-  maxLiveActivityFrames: number;
   seedRetained(): Promise<void>;
   startHeavyPrefix(): Promise<void>;
   finishHeavyTurn(): Promise<void>;
 }
+
+/**
+ * Exact `orchestration:activity` frames each source's live phase carries. The
+ * route flushes one 100ms after a trailing coalesced event that carried no
+ * activity binding. Station-native ends its heavy turn with such an event
+ * (`session.state-changed`), the external engine does not. The scenario waits
+ * for that frame before closing the stream, so a slow host cannot close the
+ * stream first: the frame and its bytes are always in the phase, and two
+ * baseline captures compare equal. Capture and tests read this one table.
+ */
+export const ORCHESTRATION_TRANSFER_LIVE_ACTIVITY_FRAMES = Object.freeze({
+  'external-engine': 0,
+  'station-native': 1,
+} as const);
 
 interface Budget {
   wireBytes: number;
@@ -85,6 +90,7 @@ interface MeasureOrchestrationTransferOptions {
   recorder: {
     attempts: TransferAttempt[];
     checkpoint(): void;
+    activityFramesSinceCheckpoint(): number;
   };
   sdk: {
     getOrchestrationSessionEventWindow<T>(
@@ -103,6 +109,8 @@ interface MeasureOrchestrationTransferOptions {
     ): SseConnection;
   };
   budget: Record<string, Budget>;
+  /** Deadline for each internal barrier; the capture derives it from its bound. */
+  barrierTimeoutMs?: number;
 }
 
 export function groupTransferEventsByTurn(
@@ -122,10 +130,15 @@ function fail(message: string): never {
   throw new Error(`orchestration transfer scenario: ${message}`);
 }
 
-async function until(predicate: () => boolean, description: string) {
-  const deadline = performance.now() + 5_000;
+async function untilWithin(
+  predicate: () => boolean,
+  description: string,
+  timeoutMs: number,
+) {
+  const deadline = performance.now() + timeoutMs;
   while (!predicate()) {
-    if (performance.now() > deadline) fail(`barrier timed out: ${description}`);
+    if (performance.now() > deadline)
+      fail(`barrier timed out after ${timeoutMs}ms: ${description}`);
     await new Promise<void>((resolve) => setTimeout(resolve, 5));
   }
 }
@@ -229,6 +242,8 @@ export async function measureOrchestrationTransfer(
   finalCursor: number;
 }> {
   const { source } = options;
+  const until = (predicate: () => boolean, description: string) =>
+    untilWithin(predicate, description, options.barrierTimeoutMs ?? 5_000);
   await source.seedRetained();
   const retained = options.store
     .listEvents(source.threadId)
@@ -296,6 +311,12 @@ export async function measureOrchestrationTransfer(
         );
       }),
     `${source.scenario} heavy terminal delivered live`,
+  );
+  const expectedActivity =
+    ORCHESTRATION_TRANSFER_LIVE_ACTIVITY_FRAMES[source.scenario];
+  await until(
+    () => options.recorder.activityFramesSinceCheckpoint() >= expectedActivity,
+    `${source.scenario} trailing activity frame delivered live`,
   );
   live.connection.close();
   await until(
@@ -385,12 +406,16 @@ export async function measureOrchestrationTransfer(
   );
   assertWithinBudget(phases, options.budget, options.recorder.attempts);
   options.recorder.attempts.forEach((attempt, index) => {
-    const limit = index === 2 ? source.maxLiveActivityFrames : 0;
-    if (attempt.activityFrames > limit)
+    const expected =
+      index === 2
+        ? ORCHESTRATION_TRANSFER_LIVE_ACTIVITY_FRAMES[source.scenario]
+        : 0;
+    if (attempt.activityFrames !== expected)
       fail(
-        `${source.scenario}/${ORCHESTRATION_TRANSFER_PHASE_NAMES[index]} carried ${attempt.activityFrames} activity frames > ${limit}`,
+        `${source.scenario}/${ORCHESTRATION_TRANSFER_PHASE_NAMES[index]} carried ${attempt.activityFrames} activity frames, expected ${expected}`,
       );
   });
+
   if (phases[2]?.frames !== source.heavyLiveFrameCount)
     fail(`${source.scenario} live phase did not contain one heavy turn`);
   const finalCursor = options.service.readEventStreamHead();

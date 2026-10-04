@@ -7,6 +7,7 @@ import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import * as sdk from '../../../packages/sdk/src/client/index.js';
+import { assertDeterministicBaseline } from '../../../scripts/orchestration-transfer-budget.mjs';
 import { HttpTransferRecorder } from '../../__test-utils__/http-transfer-recorder.js';
 import { GateTestAdapter } from '../../__test-utils__/orchestration-gate-test-harness.js';
 import {
@@ -21,6 +22,7 @@ import {
   createStationTransferBoundary,
   groupTransferEventsByTurn,
   measureOrchestrationTransfer,
+  ORCHESTRATION_TRANSFER_LIVE_ACTIVITY_FRAMES,
   ORCHESTRATION_TRANSFER_PHASE_NAMES,
 } from '../../__test-utils__/orchestration-transfer-scenario.js';
 import { StationAgentAdapter } from '../../providers/adapters/station-agent-adapter.js';
@@ -174,6 +176,196 @@ async function runtime() {
   };
 }
 
+async function startMeasurement({
+  refusal,
+  holdLiveOpenMs,
+}: {
+  refusal: boolean;
+  holdLiveOpenMs: number;
+}) {
+  const {
+    baseUrl,
+    externalAdapter,
+    nativeAdapter,
+    nativeBoundary,
+    service,
+    store,
+  } = await runtime();
+  const externalRecorder = new HttpTransferRecorder(baseUrl);
+  sdk.setClientCredentialResolver(() => ({
+    origin: baseUrl,
+    transport: externalRecorder.transport,
+  }));
+  const externalFinalPair = heavyTransferFinalPair();
+  const externalMeasurement = await measureOrchestrationTransfer({
+    source: {
+      scenario: 'external-engine',
+      provider: 'claude',
+      threadId: ORCHESTRATION_TRANSFER_THREAD_ID,
+      heavyTurnId: () => 'transfer-heavy-turn',
+      finalToolOutput: () => finalToolOutputOf(externalFinalPair),
+      finalReplayEventCount: 3,
+      heavyLiveFrameCount: 42,
+      maxLiveActivityFrames: 0,
+      async seedRetained() {
+        for (const event of retainedTransferEvents())
+          externalAdapter.events.push(event);
+        await until(
+          () =>
+            store.listEvents(ORCHESTRATION_TRANSFER_THREAD_ID).length ===
+            retainedTransferEvents().length,
+          'external retained history persisted through adapter ingestion',
+        );
+      },
+      async startHeavyPrefix() {
+        for (const event of heavyTransferPrefix())
+          externalAdapter.events.push(event);
+        await until(
+          () =>
+            store.listEvents(ORCHESTRATION_TRANSFER_THREAD_ID).length ===
+            retainedTransferEvents().length + heavyTransferPrefix().length,
+          'external heavy prefix persisted through adapter ingestion',
+        );
+      },
+      async finishHeavyTurn() {
+        for (const event of externalFinalPair)
+          externalAdapter.events.push(event);
+        await until(
+          () =>
+            store
+              .listEvents(ORCHESTRATION_TRANSFER_THREAD_ID)
+              .some(
+                (stored) =>
+                  (stored.payload as { eventId?: unknown }).eventId ===
+                  externalFinalPair[2]!.eventId,
+              ),
+          'external heavy terminal persisted through adapter ingestion',
+        );
+      },
+    },
+    baseUrl,
+    store,
+    service,
+    recorder: externalRecorder,
+    sdk,
+    budget: transferBudget.policy,
+  });
+
+  const nativeThreadId = 'transfer-budget-station-agent-thread';
+  let nativeHeavyTurnId: string | undefined;
+  const nativeRecorder = new HttpTransferRecorder(baseUrl);
+  sdk.setClientCredentialResolver(() => ({
+    origin: baseUrl,
+    transport: nativeRecorder.transport,
+  }));
+  const nativeMeasurementPromise = measureOrchestrationTransfer({
+    source: {
+      scenario: 'station-native',
+      provider: 'station-agent',
+      threadId: nativeThreadId,
+      heavyTurnId: () => {
+        if (!nativeHeavyTurnId) throw new Error('native heavy turn missing');
+        return nativeHeavyTurnId;
+      },
+      finalToolOutput: () => finalToolOutputOf(heavyTransferFinalPair()),
+      finalReplayEventCount: 4,
+      heavyLiveFrameCount: 44,
+      maxLiveActivityFrames: 2,
+      async seedRetained() {
+        await nativeAdapter.startSession({
+          threadId: nativeThreadId,
+          provider: 'station-agent',
+          metadata: {
+            agentId: 'transfer-native-agent',
+            userId: ORCHESTRATION_TRANSFER_OWNER,
+          },
+        });
+        for (const [index, turn] of groupTransferEventsByTurn(
+          retainedTransferEvents(),
+        ).entries()) {
+          nativeBoundary.queueComplete(turn);
+          await nativeAdapter.sendTurn({
+            threadId: nativeThreadId,
+            input: `Run retained transfer turn ${index}.`,
+            modelId: 'fixture-model',
+          });
+          await until(
+            () =>
+              store
+                .listEvents(nativeThreadId)
+                .filter(
+                  (stored) =>
+                    (stored.payload as { method?: unknown }).method ===
+                    'turn.completed',
+                ).length ===
+              index + 1,
+            `native retained turn ${index} persisted through adapter ingestion`,
+          );
+        }
+      },
+      async startHeavyPrefix() {
+        nativeBoundary.queuePaused(heavyTransferPrefix(), externalFinalPair);
+        const nativeTurn = await nativeAdapter.sendTurn({
+          threadId: nativeThreadId,
+          input: 'Run the bounded native transfer fixture.',
+          modelId: 'fixture-model',
+        });
+        nativeHeavyTurnId = nativeTurn.turnId;
+        await until(
+          () =>
+            store
+              .listEvents(nativeThreadId)
+              .filter(
+                (stored) =>
+                  (stored.payload as { turnId?: unknown }).turnId ===
+                    nativeHeavyTurnId &&
+                  (stored.payload as { method?: unknown }).method ===
+                    'tool.completed',
+              ).length === 19,
+          'native heavy prefix persisted through adapter ingestion',
+        );
+      },
+      async finishHeavyTurn() {
+        nativeBoundary.releaseFinal();
+        await until(
+          () =>
+            store
+              .listEvents(nativeThreadId)
+              .filter(
+                (stored) =>
+                  (stored.payload as { turnId?: unknown }).turnId ===
+                    nativeHeavyTurnId &&
+                  (stored.payload as { method?: unknown }).method ===
+                    'turn.completed',
+              ).length === 1,
+          'native heavy terminal persisted through adapter ingestion',
+        );
+        if (holdLiveOpenMs)
+          await new Promise((resolve) => setTimeout(resolve, holdLiveOpenMs));
+      },
+    },
+    baseUrl,
+    store,
+    service,
+    recorder: nativeRecorder,
+    sdk,
+    budget: refusal
+      ? {
+          ...transferBudget.policy,
+          live: { ...transferBudget.policy.live, frames: 43 },
+        }
+      : transferBudget.policy,
+  });
+  return {
+    externalMeasurement,
+    nativeMeasurementPromise,
+    nativeRecorder,
+    externalRecorder,
+    nativeBoundary,
+    externalFinalPair,
+  };
+}
+
 describe('orchestration transfer byte budgets', () => {
   // `holdLiveOpenMs` forces the slow-host path: the harness keeps the live
   // stream open past the route's 100ms activity debounce after the heavy turn.
@@ -185,184 +377,13 @@ describe('orchestration transfer byte budgets', () => {
     'measures five bounded phases and retains refusal diagnostics (%o)',
     async ({ refusal, holdLiveOpenMs }) => {
       const {
-        baseUrl,
-        externalAdapter,
-        nativeAdapter,
+        externalMeasurement,
+        nativeMeasurementPromise,
+        nativeRecorder,
+        externalRecorder,
         nativeBoundary,
-        service,
-        store,
-      } = await runtime();
-      const externalRecorder = new HttpTransferRecorder(baseUrl);
-      sdk.setClientCredentialResolver(() => ({
-        origin: baseUrl,
-        transport: externalRecorder.transport,
-      }));
-      const externalFinalPair = heavyTransferFinalPair();
-      const externalMeasurement = await measureOrchestrationTransfer({
-        source: {
-          scenario: 'external-engine',
-          provider: 'claude',
-          threadId: ORCHESTRATION_TRANSFER_THREAD_ID,
-          heavyTurnId: () => 'transfer-heavy-turn',
-          finalToolOutput: () => finalToolOutputOf(externalFinalPair),
-          finalReplayEventCount: 3,
-          heavyLiveFrameCount: 42,
-          maxLiveActivityFrames: 0,
-          async seedRetained() {
-            for (const event of retainedTransferEvents())
-              externalAdapter.events.push(event);
-            await until(
-              () =>
-                store.listEvents(ORCHESTRATION_TRANSFER_THREAD_ID).length ===
-                retainedTransferEvents().length,
-              'external retained history persisted through adapter ingestion',
-            );
-          },
-          async startHeavyPrefix() {
-            for (const event of heavyTransferPrefix())
-              externalAdapter.events.push(event);
-            await until(
-              () =>
-                store.listEvents(ORCHESTRATION_TRANSFER_THREAD_ID).length ===
-                retainedTransferEvents().length + heavyTransferPrefix().length,
-              'external heavy prefix persisted through adapter ingestion',
-            );
-          },
-          async finishHeavyTurn() {
-            for (const event of externalFinalPair)
-              externalAdapter.events.push(event);
-            await until(
-              () =>
-                store
-                  .listEvents(ORCHESTRATION_TRANSFER_THREAD_ID)
-                  .some(
-                    (stored) =>
-                      (stored.payload as { eventId?: unknown }).eventId ===
-                      externalFinalPair[2]!.eventId,
-                  ),
-              'external heavy terminal persisted through adapter ingestion',
-            );
-          },
-        },
-        baseUrl,
-        store,
-        service,
-        recorder: externalRecorder,
-        sdk,
-        budget: transferBudget.policy,
-      });
-
-      const nativeThreadId = 'transfer-budget-station-agent-thread';
-      let nativeHeavyTurnId: string | undefined;
-      const nativeRecorder = new HttpTransferRecorder(baseUrl);
-      sdk.setClientCredentialResolver(() => ({
-        origin: baseUrl,
-        transport: nativeRecorder.transport,
-      }));
-      const nativeMeasurementPromise = measureOrchestrationTransfer({
-        source: {
-          scenario: 'station-native',
-          provider: 'station-agent',
-          threadId: nativeThreadId,
-          heavyTurnId: () => {
-            if (!nativeHeavyTurnId)
-              throw new Error('native heavy turn missing');
-            return nativeHeavyTurnId;
-          },
-          finalToolOutput: () => finalToolOutputOf(heavyTransferFinalPair()),
-          finalReplayEventCount: 4,
-          heavyLiveFrameCount: 44,
-          maxLiveActivityFrames: 2,
-          async seedRetained() {
-            await nativeAdapter.startSession({
-              threadId: nativeThreadId,
-              provider: 'station-agent',
-              metadata: {
-                agentId: 'transfer-native-agent',
-                userId: ORCHESTRATION_TRANSFER_OWNER,
-              },
-            });
-            for (const [index, turn] of groupTransferEventsByTurn(
-              retainedTransferEvents(),
-            ).entries()) {
-              nativeBoundary.queueComplete(turn);
-              await nativeAdapter.sendTurn({
-                threadId: nativeThreadId,
-                input: `Run retained transfer turn ${index}.`,
-                modelId: 'fixture-model',
-              });
-              await until(
-                () =>
-                  store
-                    .listEvents(nativeThreadId)
-                    .filter(
-                      (stored) =>
-                        (stored.payload as { method?: unknown }).method ===
-                        'turn.completed',
-                    ).length ===
-                  index + 1,
-                `native retained turn ${index} persisted through adapter ingestion`,
-              );
-            }
-          },
-          async startHeavyPrefix() {
-            nativeBoundary.queuePaused(
-              heavyTransferPrefix(),
-              externalFinalPair,
-            );
-            const nativeTurn = await nativeAdapter.sendTurn({
-              threadId: nativeThreadId,
-              input: 'Run the bounded native transfer fixture.',
-              modelId: 'fixture-model',
-            });
-            nativeHeavyTurnId = nativeTurn.turnId;
-            await until(
-              () =>
-                store
-                  .listEvents(nativeThreadId)
-                  .filter(
-                    (stored) =>
-                      (stored.payload as { turnId?: unknown }).turnId ===
-                        nativeHeavyTurnId &&
-                      (stored.payload as { method?: unknown }).method ===
-                        'tool.completed',
-                  ).length === 19,
-              'native heavy prefix persisted through adapter ingestion',
-            );
-          },
-          async finishHeavyTurn() {
-            nativeBoundary.releaseFinal();
-            await until(
-              () =>
-                store
-                  .listEvents(nativeThreadId)
-                  .filter(
-                    (stored) =>
-                      (stored.payload as { turnId?: unknown }).turnId ===
-                        nativeHeavyTurnId &&
-                      (stored.payload as { method?: unknown }).method ===
-                        'turn.completed',
-                  ).length === 1,
-              'native heavy terminal persisted through adapter ingestion',
-            );
-            if (holdLiveOpenMs)
-              await new Promise((resolve) =>
-                setTimeout(resolve, holdLiveOpenMs),
-              );
-          },
-        },
-        baseUrl,
-        store,
-        service,
-        recorder: nativeRecorder,
-        sdk,
-        budget: refusal
-          ? {
-              ...transferBudget.policy,
-              live: { ...transferBudget.policy.live, frames: 43 },
-            }
-          : transferBudget.policy,
-      });
+        externalFinalPair,
+      } = await startMeasurement({ refusal, holdLiveOpenMs });
 
       if (refusal) {
         await expect(nativeMeasurementPromise).rejects.toMatchObject({
@@ -401,17 +422,16 @@ describe('orchestration transfer byte budgets', () => {
       expect(nativeMeasurement.finalCursor).toBeGreaterThan(
         nativeMeasurement.beforeHeavyCursor,
       );
-      // The trailing session.state-changed opens an activity window; when the
-      // host is slow the frame lands inside the live phase but is not counted.
+      // The trailing session.state-changed leaves the thread dirty, so the
+      // route's debounced activity frame always follows it; the scenario waits
+      // for that frame instead of racing the 100ms timer.
       const nativeLive = nativeRecorder.attempts[2]!;
       expect(nativeLive.frames).toBe(44);
-      expect(nativeLive.activityFrames).toBeLessThanOrEqual(2);
-      if (holdLiveOpenMs) {
-        expect(nativeLive.activityFrames).toBe(1);
-        expect(nativeLive.eventIdentities.at(-1)).toMatchObject({
-          event: 'orchestration:activity',
-        });
-      }
+      expect(nativeLive.activityFrames).toBe(1);
+      expect(externalRecorder.attempts[2]!.activityFrames).toBe(0);
+      expect(nativeLive.eventIdentities.at(-1)).toMatchObject({
+        event: 'orchestration:activity',
+      });
       expect(nativeBoundary.calls).toHaveLength(11);
       expect(
         nativeBoundary.calls.every(([url]) =>
@@ -421,4 +441,42 @@ describe('orchestration transfer byte budgets', () => {
       expect(transferFixtureDigest()).toMatch(/^[0-9a-f]{64}$/);
     },
   );
+
+  test('the activity frame is part of the measured live phase, so captures that differ in timing compare equal', async () => {
+    const capture = async (holdLiveOpenMs: number) => {
+      const run = await startMeasurement({ refusal: false, holdLiveOpenMs });
+      const native = await run.nativeMeasurementPromise;
+      return { external: run.externalMeasurement, native };
+    };
+    const fast = await capture(0);
+    sdk.setClientCredentialResolver();
+    await Promise.all(closers.splice(0).map((close) => close()));
+    const slow = await capture(400);
+    const report = (run: Awaited<ReturnType<typeof capture>>) => ({
+      schemaVersion: 1,
+      subjectSha: 'a'.repeat(40),
+      baseSha: 'b'.repeat(40),
+      dirty: false,
+      fixtureDigest: 'c'.repeat(64),
+      toolDigest: 'd'.repeat(64),
+      node: process.version,
+      platform: process.platform,
+      arch: process.arch,
+      phases: [...run.external.phases, ...run.native.phases],
+    });
+    // The gate's own A/B comparator, over the real measured phases.
+    expect(() =>
+      assertDeterministicBaseline(report(fast), report(slow)),
+    ).not.toThrow();
+    const live = (run: Awaited<ReturnType<typeof capture>>) =>
+      run.native.phases.find((phase) => phase.name === 'live')!;
+    expect(live(fast).wireBytes).toBe(live(slow).wireBytes);
+  }, 60_000);
+
+  test('pins the expected activity frames per source', () => {
+    expect(ORCHESTRATION_TRANSFER_LIVE_ACTIVITY_FRAMES).toEqual({
+      'external-engine': 0,
+      'station-native': 1,
+    });
+  });
 });

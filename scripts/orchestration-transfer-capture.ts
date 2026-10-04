@@ -9,6 +9,7 @@ import { pathToFileURL } from 'node:url';
 import { HttpTransferRecorder } from '../src-server/__test-utils__/http-transfer-recorder.js';
 import { TransferMeasurementFailure } from '../src-server/__test-utils__/orchestration-transfer-scenario.js';
 import {
+  captureBarrierTimeoutMs,
   createCaptureBarrier,
   parseCaptureTimeoutMs,
 } from './lib/transfer-capture-barrier.js';
@@ -98,6 +99,7 @@ const [
   toolMod('src-server/__test-utils__/orchestration-transfer-fixture.ts'),
   mod('packages/sdk/src/client/index.ts'),
 ]);
+const barrierTimeoutMs = captureBarrierTimeoutMs(captureTimeoutMs);
 const wait = createCaptureBarrier(captureTimeoutMs);
 const logger = {
   debug() {},
@@ -217,7 +219,6 @@ try {
       finalToolOutput: () => externalFinalPair[1].output,
       finalReplayEventCount: 3,
       heavyLiveFrameCount: 42,
-      maxLiveActivityFrames: 0,
       async seedRetained() {
         for (const event of transferFixture.retainedTransferEvents())
           externalEvents.push(event);
@@ -260,6 +261,7 @@ try {
     recorder: externalRecorder,
     sdk,
     budget,
+    barrierTimeoutMs,
   });
 
   progress('native-measurement');
@@ -282,7 +284,6 @@ try {
       finalToolOutput: () => transferFixture.heavyTransferFinalPair()[1].output,
       finalReplayEventCount: 4,
       heavyLiveFrameCount: 44,
-      maxLiveActivityFrames: 2,
       async seedRetained() {
         await nativeAdapter.startSession({
           threadId: nativeThreadId,
@@ -357,6 +358,7 @@ try {
     recorder: nativeRecorder,
     sdk,
     budget,
+    barrierTimeoutMs,
   });
   const report = {
     schemaVersion: 1,

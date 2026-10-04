@@ -69,7 +69,7 @@ describe('capture barrier deadline follows the configured bound', () => {
     const result = runBarrier(600, 60_000);
     expect(result.status).toBe(1);
     expect(result.stderr).toMatch(
-      /capture barrier timed out after 300ms: slow barrier\./,
+      /capture barrier timed out after 300ms: slow barrier \(half of /,
     );
     expect(result.stderr).toContain(`${TRANSFER_CAPTURE_TIMEOUT_ENV}=600`);
     expect(result.stderr).toContain(
