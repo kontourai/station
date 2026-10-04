@@ -363,6 +363,7 @@ import {
 import { SessionEventReads } from './session-event-reads.js';
 import {
   SessionExecutionCoordinator,
+  SessionLifecycleClaimRefusedError,
   SessionTurnStartIndeterminateError,
 } from './session-execution-coordinator.js';
 import {
@@ -1732,6 +1733,13 @@ export class OrchestrationService {
    * in flight for this thread, at all.
    */
   private readonly inFlightSteers = new Set<string>();
+  /**
+   * Threads with a `sendTurn` dispatch between entry and settlement, counted
+   * (one thread can carry several). A turn holds no coordinator claim or turn
+   * fact until `runTurnStart`, after a run of awaits; this is what makes it
+   * visible to `retireNeverRanSession` during that stretch.
+   */
+  private readonly sendTurnsInDispatch = new Map<string, number>();
   /**
    * #2898: the confinement of the last turn each live engine accepted, and
    * that turn's id. A revocation compares it with the confinement that holds
@@ -4936,7 +4944,13 @@ export class OrchestrationService {
   listUsageReceipts(
     authority: SessionReadAuthority,
     stationId: string,
-    request: { from: string; to: string; cursor?: string; pageSize?: number },
+    request: {
+      from: string;
+      to: string;
+      cursor?: string;
+      pageSize?: number;
+      aggregate?: boolean;
+    },
   ): {
     receipts: import('@kontourai/station-contracts/usage-rollup').UsageReceipt[];
     nextCursor?: string;
@@ -6168,6 +6182,16 @@ export class OrchestrationService {
 
     let steerMetricEngine = 'unknown';
     let steerMetricRecorded = false;
+    // Marked in the same synchronous run that entered the dispatch, before any
+    // await, so `retireNeverRanSession` can see a turn that has been accepted
+    // for dispatch but holds no coordinator claim or turn fact yet.
+    const dispatchedTurnThread =
+      command.type === 'sendTurn' ? command.input.threadId : undefined;
+    if (dispatchedTurnThread !== undefined)
+      this.sendTurnsInDispatch.set(
+        dispatchedTurnThread,
+        (this.sendTurnsInDispatch.get(dispatchedTurnThread) ?? 0) + 1,
+      );
     try {
       switch (command.type) {
         case 'adoptSession':
@@ -7938,6 +7962,116 @@ export class OrchestrationService {
           ? error.code
           : retryableAdapterRefusalCode(error),
       );
+    } finally {
+      if (dispatchedTurnThread !== undefined) {
+        const remaining =
+          (this.sendTurnsInDispatch.get(dispatchedTurnThread) ?? 1) - 1;
+        if (remaining > 0)
+          this.sendTurnsInDispatch.set(dispatchedTurnThread, remaining);
+        else this.sendTurnsInDispatch.delete(dispatchedTurnThread);
+      }
+    }
+    // Unreachable (the switch is exhaustive and every arm returns or throws);
+    // a `finally` stops TypeScript proving that for itself.
+    const unhandled: never = command;
+    throw new Error(`Unhandled orchestration command: ${String(unhandled)}`);
+  }
+
+  /**
+   * Stop the engine of a Session that a model-change successor replaced before
+   * it ever ran a turn (see `ConversationLineage`'s `retirePredecessorSessionId`).
+   *
+   * Unlike the `stopSession` command, this is conditional at the moment it
+   * runs. Under the Session's lifecycle lock (the one `sendTurn` queues behind
+   * to start a turn, and the one an idle park re-checks under) it stops only a
+   * Session that still has no turn fact, has no dispatched or active turn, and
+   * is no longer its conversation's current Session. Every check is synchronous
+   * and the stop begins in the same lock hold, so a turn accepted first wins
+   * and one that arrives later cannot invoke its provider until the stop ends.
+   *
+   * Not covered: a send that has resolved this Session but not yet called
+   * `dispatch` (its resolve-to-dispatch gap in the foreground seam) is
+   * invisible here; closing that needs the resolve step to reserve the Session.
+   */
+  async retireNeverRanSession(
+    threadId: string,
+    context?: {
+      userId?: string;
+      tenantExecutionContext?: TenantExecutionContext;
+    },
+  ): Promise<
+    | { stopped: true }
+    | {
+        stopped: false;
+        reason:
+          | 'not_found'
+          | 'ineligible'
+          | 'current_session'
+          | 'turn_in_flight'
+          | 'turn_facts';
+      }
+  > {
+    this.initialize();
+    const store = this.options.eventStore;
+    if (
+      !store ||
+      (context?.userId !== undefined &&
+        !this.sessionAuthz.canReadSessionForCommand(
+          threadId,
+          context.userId,
+          context.tenantExecutionContext,
+        ))
+    )
+      return { stopped: false, reason: 'not_found' };
+    if (
+      this.quarantinedThreads.has(threadId) ||
+      this.isPeerDelegationActivityRecord(threadId) ||
+      this.isReadOnlyAttachedSession(threadId)
+    )
+      return { stopped: false, reason: 'ineligible' };
+    const refusal = ():
+      | {
+          stopped: false;
+          reason: 'current_session' | 'turn_in_flight' | 'turn_facts';
+        }
+      | undefined => {
+      const lineage = store.conversationForSession(threadId);
+      if (
+        !lineage ||
+        store.conversationSessions(lineage.conversationId).at(-1)?.sessionId ===
+          threadId
+      )
+        return { stopped: false, reason: 'current_session' };
+      if (
+        this.sendTurnsInDispatch.has(threadId) ||
+        this.sessionExecutionCoordinator.hasActiveTurn(threadId)
+      )
+        return { stopped: false, reason: 'turn_in_flight' };
+      if (store.hasTurnFacts(threadId))
+        return { stopped: false, reason: 'turn_facts' };
+      return undefined;
+    };
+    const early = refusal();
+    if (early) return early;
+    try {
+      return await this.sessionExecutionCoordinator.runLifecycleTransition(
+        threadId,
+        async () => {
+          const late = refusal();
+          if (late) return late;
+          await this.stopSessionNow(threadId);
+          return { stopped: true } as const;
+        },
+      );
+    } catch (error) {
+      // Only the boundary's own refusal means a turn won; a stop that failed
+      // (a start still in progress, an adapter error) is the caller's to see.
+      if (
+        error instanceof SessionLifecycleClaimRefusedError &&
+        error.reason === 'active-turn'
+      )
+        return { stopped: false, reason: 'turn_in_flight' };
+      throw error;
     }
   }
 

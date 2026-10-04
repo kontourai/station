@@ -72,16 +72,14 @@ import {
 } from 'react';
 import { Button } from '../components/Button';
 import { ChatWorkspacePane } from '../components/chat-dock/ChatDock';
-import { BranchToolbar } from '../components/coding-layout/BranchToolbar';
+import { CodingDiffPaneBody } from '../components/coding-layout/CodingDiffPaneBody';
 import {
   ReadinessInspectorContent,
   TrustInspectorContent,
   WorkflowPlanInspectorContent,
 } from '../components/coding-layout/CodingInspectorPanel';
 import { CodingTerminalPane } from '../components/coding-layout/CodingTerminalPane';
-import { DiffPanel } from '../components/coding-layout/DiffPanel';
 import { FileTreePanel } from '../components/coding-layout/FileTreePanel';
-import { PullRequestsPanel } from '../components/coding-layout/PullRequestsPanel';
 import { selectWorkflowPlanSession } from '../components/coding-layout/planSession';
 import { FlowRunConsole } from '../components/flow/FlowRunConsole';
 import {
@@ -497,7 +495,6 @@ function CodingDiffPane({ instance }: BuiltinWorkspacePaneProps) {
   } = useProjectLayoutQuery(projectSlug, layoutSlug, {
     enabled: identity.state === 'resolved',
   });
-  const [activeRepoRoot, setActiveRepoRoot] = useState<string | null>(null);
   // #2049: a layout-less Diff pane is a dock region's, where a linked pull
   // request has somewhere better to go than this panel's own inner view —
   // its own tab, beside the conversation that linked it. In a coding layout
@@ -566,24 +563,11 @@ function CodingDiffPane({ instance }: BuiltinWorkspacePaneProps) {
     );
   }
   return (
-    <div className="workspace-coding-diff-pane">
-      <BranchToolbar
-        projectSlug={projectSlug}
-        workingDir={workingDir}
-        onActiveRepoChange={setActiveRepoRoot}
-      />
-      <div className="workspace-coding-review-panels">
-        <PullRequestsPanel
-          projectSlug={projectSlug}
-          activeRepoRoot={activeRepoRoot ?? workingDir}
-          onOpenLinkedAsPane={openLinkedAsPane}
-        />
-        <DiffPanel
-          workingDir={activeRepoRoot ?? workingDir}
-          projectSlug={projectSlug}
-        />
-      </div>
-    </div>
+    <CodingDiffPaneBody
+      projectSlug={projectSlug}
+      workingDir={workingDir}
+      onOpenLinkedAsPane={openLinkedAsPane}
+    />
   );
 }
 

@@ -37,7 +37,8 @@ vi.mock('../../../contexts/active-chats-store', () => ({
 const { hydrateOpenApprovalToasts } = await import(
   '../hydrateOpenApprovalToasts'
 );
-const { handleRequestOpenedEvent } = await import('../approvalHandlers');
+const { handleRequestOpenedEvent, settlePendingApprovalsOnTurnEnd } =
+  await import('../approvalHandlers');
 
 function requestOpened(overrides: Record<string, unknown> = {}) {
   return {
@@ -107,7 +108,7 @@ describe('hydrateOpenApprovalToasts (approvals opened before a reload)', () => {
     expect(chat?.approvalToasts.get('req-1')).toBe('real-toast');
   });
 
-  test('rebuilds only the toast: the snapshot already holds the chat state', async () => {
+  test('never writes the chat status: the snapshot already holds the chat state', async () => {
     // The request opened in a turn that has since ended: the snapshot left the
     // chat idle with the request still pending. Replaying the live handler's
     // state write would set it back to awaiting-approval.
@@ -121,8 +122,75 @@ describe('hydrateOpenApprovalToasts (approvals opened before a reload)', () => {
 
     expect(showToolApproval).toHaveBeenCalledOnce();
     expect(chat?.orchestrationStatus).toBe('idle');
-    for (const [, updates] of updateChat.mock.calls)
-      expect(Object.keys(updates)).toEqual(['approvalToasts']);
+    expect(chat?.pendingApprovals).toEqual(['req-1']);
+    expect(chat?.answeredApprovals).toBeUndefined();
+    // Only the toast map and the turn binding are ever written.
+    const written = new Set(
+      updateChat.mock.calls.flatMap(([, updates]) => Object.keys(updates)),
+    );
+    expect([...written].sort()).toEqual([
+      'approvalToasts',
+      'pendingApprovalTurnIds',
+    ]);
+  });
+
+  test('learns the turn a pending request names, so a live abort of that turn settles it as on a live client', async () => {
+    const abort = {
+      eventId: 'abort-1',
+      provider: 'claude',
+      threadId: 'thread-1',
+      createdAt: '2026-09-05T00:00:01.000Z',
+      method: 'turn.aborted',
+      turnId: 'turn-1',
+      reason: 'interrupted',
+    } as never;
+
+    // A client that saw the request open live.
+    chat = {
+      title: 'Conversation',
+      agentName: 'Claude',
+      pendingApprovals: [],
+      approvalToasts: new Map(),
+    };
+    handleRequestOpenedEvent(
+      'http://api',
+      requestOpened({ turnId: 'turn-1' }) as never,
+    );
+    const liveSettled = settlePendingApprovalsOnTurnEnd(chat as never, abort);
+    expect(liveSettled).toMatchObject({ pendingApprovals: [] });
+
+    // A reloaded client.
+    afterReload();
+    fetchWindow.mockResolvedValue(window(requestOpened({ turnId: 'turn-1' })));
+    await hydrateOpenApprovalToasts(
+      'http://api',
+      'thread-1',
+      new Map([['req-1', 'placeholder-toast']]),
+    );
+    expect(chat?.pendingApprovalTurnIds).toEqual({ 'req-1': 'turn-1' });
+    expect(settlePendingApprovalsOnTurnEnd(chat as never, abort)).toMatchObject(
+      { pendingApprovals: [], pendingApprovalTurnIds: {} },
+    );
+  });
+
+  test('keeps a binding the chat already has, and binds nothing for an event naming no turn', async () => {
+    chat = { ...chat, pendingApprovalTurnIds: { 'req-1': 'turn-live' } };
+    fetchWindow.mockResolvedValue(window(requestOpened({ turnId: 'turn-1' })));
+    await hydrateOpenApprovalToasts(
+      'http://api',
+      'thread-1',
+      new Map([['req-1', 'placeholder-toast']]),
+    );
+    expect(chat?.pendingApprovalTurnIds).toEqual({ 'req-1': 'turn-live' });
+
+    afterReload();
+    fetchWindow.mockResolvedValue(window(requestOpened()));
+    await hydrateOpenApprovalToasts(
+      'http://api',
+      'thread-1',
+      new Map([['req-1', 'placeholder-toast']]),
+    );
+    expect(chat?.pendingApprovalTurnIds).toBeUndefined();
   });
 
   test('an open id the window does not carry keeps its placeholder', async () => {
@@ -155,7 +223,7 @@ describe('hydrateOpenApprovalToasts (approvals opened before a reload)', () => {
   test('a request answered while the window was read is not offered again', async () => {
     fetchWindow.mockImplementation(async () => {
       chat = { ...chat, pendingApprovals: [], approvalToasts: new Map() };
-      return window(requestOpened());
+      return window(requestOpened({ turnId: 'turn-1' }));
     });
     await hydrateOpenApprovalToasts(
       'http://api',
@@ -164,6 +232,7 @@ describe('hydrateOpenApprovalToasts (approvals opened before a reload)', () => {
     );
     expect(showToolApproval).not.toHaveBeenCalled();
     expect(dismiss).not.toHaveBeenCalled();
+    expect(chat?.pendingApprovalTurnIds).toBeUndefined();
   });
 
   test('a toast raised live meanwhile is not duplicated', async () => {
@@ -172,7 +241,7 @@ describe('hydrateOpenApprovalToasts (approvals opened before a reload)', () => {
         ...chat,
         approvalToasts: new Map([['req-1', 'live-toast']]),
       };
-      return window(requestOpened());
+      return window(requestOpened({ turnId: 'turn-1' }));
     });
     await hydrateOpenApprovalToasts(
       'http://api',
@@ -181,5 +250,6 @@ describe('hydrateOpenApprovalToasts (approvals opened before a reload)', () => {
     );
     expect(showToolApproval).not.toHaveBeenCalled();
     expect(chat?.approvalToasts.get('req-1')).toBe('live-toast');
+    expect(chat?.pendingApprovalTurnIds).toBeUndefined();
   });
 });

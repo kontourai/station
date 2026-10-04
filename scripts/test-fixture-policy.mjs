@@ -1,10 +1,10 @@
 #!/usr/bin/env node
-import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
+import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 export const STRICT_BROWSER_FILES = [
@@ -321,13 +321,17 @@ export function main(
   }
   const baseline = JSON.parse(readFileSync(join(root, BASELINE), 'utf8'));
   const gitOptions = { cwd: root, encoding: 'utf8', windowsHide: true };
-  execFileSync('git', ['rev-parse', '--verify', 'origin/main'], gitOptions);
-  const upstreamHasBaseline = execFileSync(
+  execFileSyncBounded(
+    'git',
+    ['rev-parse', '--verify', 'origin/main'],
+    gitOptions,
+  );
+  const upstreamHasBaseline = execFileSyncBounded(
     'git',
     ['ls-tree', '--name-only', 'origin/main', '--', BASELINE],
     gitOptions,
   ).trim();
-  const introduction = execFileSync(
+  const introduction = execFileSyncBounded(
     'git',
     ['log', '--diff-filter=A', '--format=%H', '--', BASELINE],
     gitOptions,
@@ -339,7 +343,11 @@ export function main(
   const baselineRef = upstreamHasBaseline ? 'origin/main' : introduction;
   const previous = baselineRef
     ? JSON.parse(
-        execFileSync('git', ['show', `${baselineRef}:${BASELINE}`], gitOptions),
+        execFileSyncBounded(
+          'git',
+          ['show', `${baselineRef}:${BASELINE}`],
+          gitOptions,
+        ),
       )
     : undefined;
   const result = evaluateFixturePolicy(findings, baseline, previous);

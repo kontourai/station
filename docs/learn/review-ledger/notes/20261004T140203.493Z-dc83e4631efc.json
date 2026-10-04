@@ -1,0 +1,7 @@
+{
+  "revision": "330a2a55a6fe241ac3506026ed4bfc64ef20b904",
+
+  "notes": [
+    {"path":"deploy/public-ingress/README.md","note":"Reviewed against #3253 lifecycle change (stop signals only recorded fingerprint-checked PIDs, never port owners; start refuses overlapping registered port bands). No claim in this document about lifecycle stop, ports or instance liveness is affected.","inputs":["deploy/public-ingress/README.md","packages/cli/src/commands/lifecycle.ts"]}
+  ]
+}

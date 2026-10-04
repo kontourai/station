@@ -135,6 +135,13 @@ const expectedDependencies = new Map(
     'src-ui/src/lib/device-settings-store.ts': 'persistence',
     'src-ui/src/components/coding-layout/BranchToolbar.css': 'presentation',
     'src-ui/src/components/coding-layout/BranchToolbar.tsx': 'git-review',
+    // The Diff pane's body: the git rows, then ONE view at full width (the
+    // working tree's changes or the pull requests). `aggregate-host`, like
+    // the workbench: it composes the pane's surfaces and owns none of them.
+    'src-ui/src/components/coding-layout/CodingDiffPaneBody.css':
+      'presentation',
+    'src-ui/src/components/coding-layout/CodingDiffPaneBody.tsx':
+      'aggregate-host',
     'src-ui/src/components/coding-layout/CodingTerminalPane.tsx':
       'privileged-renderer',
     'src-ui/src/components/coding-layout/CodingTerminalPanel.tsx':
@@ -148,6 +155,9 @@ const expectedDependencies = new Map(
     'src-ui/src/components/coding-layout/DiffCommentThread.tsx': 'git-review',
     'src-ui/src/components/coding-layout/DiffPanel.css': 'presentation',
     'src-ui/src/components/coding-layout/DiffPanel.tsx': 'git-review',
+    // The Diff toolbar's four glyphs, kept out of the entry's shared Glyph
+    // module: drawn pixels, nothing decided.
+    'src-ui/src/components/coding-layout/diffGlyphs.tsx': 'presentation',
     'src-ui/src/components/coding-layout/FileContentViewer.tsx':
       'privileged-renderer',
     'src-ui/src/components/coding-layout/FileTreeContextMenu.tsx':
@@ -203,7 +213,6 @@ const expectedDependencies = new Map(
     'src-ui/src/workspace-panes/RegionBuiltinPane.tsx': 'private-import',
     'src-ui/src/views/TaskWorkspaceView.tsx': 'private-import',
     'src-ui/src/workspace-panes/FilePreviewPane.tsx': 'privileged-renderer',
-    'src-ui/src/workspace-panes/WorkspacePaneHost.css': 'presentation',
     'src-ui/src/workspace-panes/builtinWorkspacePaneCanonical.ts':
       'pane-contract',
     'src-ui/src/workspace-panes/builtinWorkspacePaneRegistry.tsx':

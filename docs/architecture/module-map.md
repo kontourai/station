@@ -1189,6 +1189,12 @@ room effect fires.
 `isSessionLifecycleStateAtRest` answers "is this session doing anything";
 `sessionLifecycleOutcome` is the one lifecycle-to-outcome mapping.
 
+A model change on a Session that never ran a turn also names it for retirement.
+The stop is `OrchestrationService.retireNeverRanSession`, decided under that
+Session's lifecycle lock: it refuses a Session with turn facts, a dispatched or
+active turn, or one that is the conversation's current Session again. A send that
+has resolved the predecessor but not yet called `dispatch` is not visible to it.
+
 A child reservation is not an engine start and carries no caller-controlled workspace,
 owner, tenant, cursor, or transcript fact. Those remain composed by the
 foreground/orchestration seam from the immutable predecessor binding.

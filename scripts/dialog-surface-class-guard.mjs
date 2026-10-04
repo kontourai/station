@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+
 // Zero-tolerance gate for #1130 (and the identical shape found beside it,
 // #1170's sibling class-of-defect) — a `overlayClassName` or
 // `panelClassName` passed DIRECTLY to a `<ResponsiveDialogSurface>` element
@@ -72,8 +73,8 @@
 // instead of reporting vacuously green). Modeled directly on
 // `random-uuid-guard.mjs`.
 
-import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 /**
@@ -138,10 +139,14 @@ function escapeRegExp(value) {
 }
 
 export function listScannedSourceFiles() {
-  const output = execFileSync('git', ['ls-files', '--', ...SCAN_PATHSPECS], {
-    encoding: 'utf8',
-    windowsHide: true,
-  });
+  const output = execFileSyncBounded(
+    'git',
+    ['ls-files', '--', ...SCAN_PATHSPECS],
+    {
+      encoding: 'utf8',
+      windowsHide: true,
+    },
+  );
   return output
     .split('\n')
     .filter((line) => line.endsWith('.tsx'))
@@ -149,10 +154,14 @@ export function listScannedSourceFiles() {
 }
 
 export function listScannedStyleFiles() {
-  const output = execFileSync('git', ['ls-files', '--', ...SCAN_PATHSPECS], {
-    encoding: 'utf8',
-    windowsHide: true,
-  });
+  const output = execFileSyncBounded(
+    'git',
+    ['ls-files', '--', ...SCAN_PATHSPECS],
+    {
+      encoding: 'utf8',
+      windowsHide: true,
+    },
+  );
   return output.split('\n').filter((line) => line.endsWith('.css'));
 }
 
