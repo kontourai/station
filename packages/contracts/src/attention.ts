@@ -151,6 +151,32 @@ export interface AttentionSessionEnvironment {
   environmentKind?: 'peer';
   /** The paired Station's saved Environment name, when the record carries one. */
   environmentName?: string;
+  /**
+   * The open request the paired Station last reported for this task
+   * (`OrchestrationDelegationContext.peerPendingRequest`). It names the
+   * request ON THE PAIRED STATION: a consumer answers it only through
+   * `POST /api/orchestration/delegations/:taskId/respond` with
+   * `environmentId`, never through the local request inspection route or a
+   * local `respondToRequest`. Absent when the paired Station reported no open
+   * request, or this Station has not observed one (an older record, or a
+   * status read that has not run yet).
+   */
+  peerRequestReference?: AttentionPeerRequestReference;
+  /**
+   * Whether the caller this read answers may use that respond route —
+   * computed at the HTTP seam from the same checks the route applies on this
+   * Station. It says nothing about the paired Station's own authorization,
+   * which can still refuse. Absent means unknown and fails closed.
+   */
+  viewerCanRespond?: boolean;
+}
+
+/** See `AttentionSessionEnvironment.peerRequestReference`. */
+export interface AttentionPeerRequestReference {
+  environmentId: string;
+  taskId: string;
+  requestId: string;
+  requestType?: AttentionRequestType;
 }
 
 /** See `NeedsInputAttentionItem` — same request-evidence projection, review_pending kind. */

@@ -1,4 +1,7 @@
-import type { AttentionRequestReference } from '@kontourai/station-contracts/attention';
+import type {
+  AttentionPeerRequestReference,
+  AttentionRequestReference,
+} from '@kontourai/station-contracts/attention';
 import type {
   ApprovalAttentionItem,
   AttentionItem,
@@ -24,6 +27,7 @@ import {
   useNotificationActionMutation,
   useQueryClient,
 } from '@kontourai/station-sdk';
+import { respondToDelegatedTaskRequest } from '@kontourai/station-sdk/client';
 import { useMutation } from '@tanstack/react-query';
 import { useEffect, useId, useRef, useState } from 'react';
 import {
@@ -36,6 +40,7 @@ import {
   isApprovalLivePending,
   isPeerHostedAttentionItem,
   peerAttentionElsewhereText,
+  peerRequestDecision,
   sessionFailedIdentity,
   sessionFailureCause,
 } from '../../utils/attention';
@@ -515,16 +520,83 @@ function PeerHostedAction({
 }: {
   item: NeedsInputAttentionItem | ReviewPendingAttentionItem;
 }) {
+  const decision = peerRequestDecision(item);
   return (
     <>
-      <div
-        className="attention-item__detail"
-        data-testid="attention-peer-elsewhere"
-      >
-        {peerAttentionElsewhereText(item.environmentName)}
-      </div>
+      {decision.kind === 'decide' ? (
+        <PeerRequestDecisionActions reference={decision.reference} />
+      ) : (
+        <div
+          className="attention-item__detail"
+          data-testid="attention-peer-elsewhere"
+        >
+          {decision.reason ? `${decision.reason} ` : ''}
+          {peerAttentionElsewhereText(item.environmentName)}
+        </div>
+      )}
       {/* The projection links a peer item to the Activity detail. */}
       <OpenSessionLink href={item.openHref} label="Open in Activity" />
+    </>
+  );
+}
+
+/**
+ * Allow/Deny for the paired Station's own open request, forwarded through
+ * `POST /api/orchestration/delegations/:taskId/respond` with the record's
+ * `environmentId` — the paired Station re-checks that the request is still
+ * open and decides it there. Never a local `respondToRequest`: the request
+ * id names a request on the other Station.
+ */
+function PeerRequestDecisionActions({
+  reference,
+}: {
+  reference: AttentionPeerRequestReference;
+}) {
+  const scope = useHostRequestAuthorityScope();
+  const queryClient = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: (decision: 'accept' | 'decline') => {
+      if (!scope?.isCurrent())
+        throw new Error('Reconnect to this Station to decide this request.');
+      return respondToDelegatedTaskRequest(
+        scope.apiBase,
+        reference.taskId,
+        {
+          requestId: reference.requestId,
+          decision,
+          environmentId: reference.environmentId,
+        },
+        { requestScope: scope },
+      );
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['attention'] }),
+        queryClient.invalidateQueries({ queryKey: ['orchestration-sessions'] }),
+      ]);
+    },
+  });
+  return (
+    <>
+      <div className="attention-item__actions">
+        <button
+          type="button"
+          className="attention-item__action attention-item__action--primary"
+          disabled={mutation.isPending || mutation.isSuccess}
+          onClick={() => mutation.mutate('accept')}
+        >
+          Allow
+        </button>
+        <button
+          type="button"
+          className="attention-item__action attention-item__action--danger"
+          disabled={mutation.isPending || mutation.isSuccess}
+          onClick={() => mutation.mutate('decline')}
+        >
+          Deny
+        </button>
+      </div>
+      <MutationError error={mutation.error} />
     </>
   );
 }

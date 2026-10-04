@@ -329,6 +329,8 @@ import { OrchestrationMonitoringBridge } from './orchestration-monitoring-bridge
 import {
   buildAgentRunSummary,
   buildOrchestrationSessionSummary,
+  extractPeerPendingRequestObservation,
+  PEER_PENDING_REQUEST_METADATA_KEY,
   projectOrchestrationEventToReadModel,
   type RecoveredSessionStartOptions,
   recoverOrchestrationSessions,
@@ -994,6 +996,10 @@ interface PeerDelegationActivityDispatch {
   projectSlug?: string;
   parentTaskId?: string;
 }
+
+/** Bounds on the paired Station's request fields this Station persists. */
+const PEER_PENDING_REQUEST_ID_MAX_CHARS = 512;
+const PEER_PENDING_REQUEST_TITLE_MAX_CHARS = 512;
 
 function peerDelegationActivityThreadId(
   environmentId: string,
@@ -3647,6 +3653,79 @@ export class OrchestrationService {
       },
     });
     return threadId;
+  }
+
+  /**
+   * Record the open request the PAIRED Station reported on its delegated-task
+   * status read (`pendingRequest`), or its absence (`null`). Appends one
+   * `session.configured` observation only when it differs from the last one,
+   * so a steady poll writes nothing. The request id names the paired
+   * Station's request; nothing here makes it answerable locally.
+   */
+  recordPeerDelegationPendingRequest(input: {
+    taskId: string;
+    environmentId: string;
+    pendingRequest: { id: string; type?: string; title?: string } | null;
+    /**
+     * Set when the paired Station has just answered `respond` for this
+     * request id: clear the observation only if it still names that request,
+     * so a newer request observed meanwhile is never erased.
+     */
+    resolvedRequestId?: string;
+  }): boolean {
+    this.initialize();
+    const threadId = peerDelegationActivityThreadId(
+      input.environmentId,
+      input.taskId,
+    );
+    const persisted = this.options.eventStore?.readSessionByThread(threadId);
+    const session = this.sessionReadModel.get(threadId) ?? persisted;
+    if (!session) return false;
+    const events =
+      this.options.eventStore
+        ?.listSessionProjectionEvents(threadId)
+        .map((event) => event.payload) ?? [];
+    const current = extractPeerPendingRequestObservation(events);
+    if (
+      input.resolvedRequestId !== undefined &&
+      current?.id !== input.resolvedRequestId
+    )
+      return false;
+    const id = input.pendingRequest?.id.trim();
+    const next = id
+      ? {
+          id: id.slice(0, PEER_PENDING_REQUEST_ID_MAX_CHARS),
+          ...(input.pendingRequest?.type
+            ? { type: input.pendingRequest.type }
+            : {}),
+          ...(input.pendingRequest?.title?.trim()
+            ? {
+                title: Array.from(input.pendingRequest.title.trim())
+                  .slice(0, PEER_PENDING_REQUEST_TITLE_MAX_CHARS)
+                  .join(''),
+              }
+            : {}),
+          observedAt: new Date().toISOString(),
+        }
+      : null;
+    if (
+      next === null
+        ? current === null || current === undefined
+        : current?.id === next.id &&
+          current.type === next.type &&
+          current.title === next.title
+    )
+      return false;
+    this.projectAndPublishEvent({
+      eventId: `peer-pending-request:${threadId}:${crypto.randomUUID()}`,
+      provider: session.provider,
+      threadId,
+      createdAt: new Date().toISOString(),
+      method: 'session.configured',
+      sessionId: threadId,
+      metadata: { [PEER_PENDING_REQUEST_METADATA_KEY]: next },
+    });
+    return true;
   }
 
   /** Advance a peer Activity record only from an observed peer lifecycle. */

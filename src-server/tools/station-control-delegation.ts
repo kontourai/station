@@ -2079,11 +2079,21 @@ async function postDelegationJson(
  * (403 + known code) keeps its code and 403 at this Station, and every
  * other failure becomes the generic sentinel — never peer text.
  */
+/** See `postPeerPortableFollowUp`'s `forbiddenMessage`. */
+export const PEER_RESPOND_FORBIDDEN_MESSAGE =
+  'The paired Station refused this decision: the access this Station holds there does not allow answering its requests.';
+
 async function postPeerPortableFollowUp<T>(
   target: Pick<DelegationTarget, 'apiBase' | 'requestOptions' | 'kind'>,
   path: string,
   body: unknown,
   unavailableMessage: string,
+  /**
+   * This Station's own sentence for an HTTP 403 from the selected Station.
+   * The selected Station's diagnostics still never cross this seam (#2708);
+   * only the status is read.
+   */
+  forbiddenMessage?: string,
 ): Promise<T> {
   let response: Response;
   try {
@@ -2103,6 +2113,8 @@ async function postPeerPortableFollowUp<T>(
   if (!response.ok) {
     const refusal = peerPortableFollowUpRefusalFor(response.status, payload);
     if (refusal) throw refusal;
+    if (response.status === 403 && forbiddenMessage)
+      throw new PeerPortableFollowUpError(forbiddenMessage);
     // The sentinel itself stays code-free: a peer's diagnostics never cross
     // this seam. Only this Station's own answer rides along, as a cause the
     // routes never read (#2708, `LocalStationRefusal`).
@@ -4189,6 +4201,11 @@ export async function observeDelegatedTask(
             environmentId: target.environmentId,
             status: snapshot.status,
           });
+          orchestrationService.recordPeerDelegationPendingRequest({
+            taskId: snapshot.taskId,
+            environmentId: target.environmentId,
+            pendingRequest: peerPendingRequestOf(snapshot),
+          });
         } catch {
           // The peer read is authoritative; local Activity bookkeeping is not.
         }
@@ -4224,6 +4241,11 @@ export async function observeDelegatedTask(
             environmentId: target.environmentId,
             status: snapshot.status,
           });
+          orchestrationService.recordPeerDelegationPendingRequest({
+            taskId: snapshot.taskId,
+            environmentId: target.environmentId,
+            pendingRequest: peerPendingRequestOf(snapshot),
+          });
         } catch {
           // The peer read is authoritative; local Activity bookkeeping is not.
         }
@@ -4234,6 +4256,24 @@ export async function observeDelegatedTask(
   return snapshotFor(
     await loadDelegatedTask(input, orchestrationService, remote),
   );
+}
+
+/**
+ * The paired Station's reported open request, exactly as its status read
+ * carried it (id, type, title); `null` when it reported none. Nothing here is
+ * derived on this Station.
+ */
+function peerPendingRequestOf(
+  snapshot: DelegatedTaskSnapshot,
+): { id: string; type?: string; title?: string } | null {
+  const request = snapshot.pendingRequest;
+  if (!request || typeof request.id !== 'string' || !request.id.trim())
+    return null;
+  return {
+    id: request.id,
+    ...(typeof request.type === 'string' ? { type: request.type } : {}),
+    ...(typeof request.title === 'string' ? { title: request.title } : {}),
+  };
 }
 
 /**
@@ -4452,7 +4492,7 @@ export async function respondToDelegatedTaskRequest(
       );
     // Same follow-up poster as the continue path — a receiver's closed
     // portable refusal keeps its code/403 here too.
-    return normalizeDelegatedIdentity(
+    const handle = normalizeDelegatedIdentity(
       await postPeerPortableFollowUp<DelegatedTaskRequestResponseHandle>(
         selectedTarget,
         `/api/orchestration/delegations/${encodeURIComponent(input.taskId)}/respond`,
@@ -4462,8 +4502,29 @@ export async function respondToDelegatedTaskRequest(
           ...relayQuery(selectedTarget),
         },
         'The selected Station could not resolve the delegated task request',
+        PEER_RESPOND_FORBIDDEN_MESSAGE,
       ),
     );
+    // The paired Station resolved this exact request: the mirror record
+    // stops offering it now rather than on the next status poll.
+    if (
+      selectedTarget.kind === 'peer' &&
+      orchestrationService &&
+      handle.status === 'resolved' &&
+      handle.requestId === input.requestId
+    ) {
+      try {
+        orchestrationService.recordPeerDelegationPendingRequest({
+          taskId: input.taskId,
+          environmentId: selectedTarget.environmentId,
+          pendingRequest: null,
+          resolvedRequestId: input.requestId,
+        });
+      } catch {
+        // Local Activity bookkeeping; the next status read reconciles it.
+      }
+    }
+    return handle;
   }
   const loaded = await loadDelegatedTask(input, orchestrationService, remote);
   // Same fresh-admission enforcement as the continue path.

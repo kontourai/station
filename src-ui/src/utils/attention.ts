@@ -217,3 +217,31 @@ export function peerAttentionElsewhereText(environmentName?: string): string {
     ? `Answer this on ${environmentName}, the paired Station that runs the task.`
     : 'Answer this on the paired Station that runs the task.';
 }
+
+/**
+ * Whether the inbox may offer Allow/Deny for a paired-Station item: the
+ * paired Station reported an open approval or permission request, and this
+ * Station's own checks on the respond route pass for the caller
+ * (`viewerCanRespond`, absent = unknown = no). The paired Station still
+ * authorizes on its side; its refusal is shown when it comes back.
+ */
+export function peerRequestDecision(
+  item: NeedsInputAttentionItem | ReviewPendingAttentionItem,
+):
+  | { kind: 'decide'; reference: NonNullable<typeof item.peerRequestReference> }
+  | { kind: 'note'; reason?: string } {
+  const reference = item.peerRequestReference;
+  const decidable =
+    reference?.requestType === 'approval' ||
+    reference?.requestType === 'permission';
+  if (reference && decidable) {
+    return item.viewerCanRespond === true
+      ? { kind: 'decide', reference }
+      : {
+          kind: 'note',
+          reason:
+            "Your access to this Station doesn't allow deciding paired-Station requests from here.",
+        };
+  }
+  return { kind: 'note' };
+}

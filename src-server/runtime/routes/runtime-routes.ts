@@ -293,6 +293,7 @@ import { fullAccessGrantForRequest } from '../../routes/orchestration/approval-a
 import { createAttachmentStagingRoutes } from '../../routes/orchestration/attachment-staging.js';
 import { createAttachmentRoutes } from '../../routes/orchestration/attachments.js';
 import { createAttentionRoutes } from '../../routes/orchestration/attention.js';
+import { scopeDispatch } from '../../routes/orchestration/dispatch-scope.js';
 import { createEventRoutes } from '../../routes/orchestration/events.js';
 import { createLiveActivityRoutes } from '../../routes/orchestration/live-activity.js';
 import { createOperatingStateRoutes } from '../../routes/orchestration/operating-state.js';
@@ -390,6 +391,7 @@ import {
   resolveClientOriginForRequest,
   resolveInboundDelegationDeviceForRequest,
   resolveInboundDeviceKindForRequest,
+  runtimeRequestPrincipalMayAccessHttpRoute,
 } from '../../security/runtime-request-security.js';
 import { resolveStationBrowserOrigins } from '../../security/station-browser-origins.js';
 import { runAsStationServer } from '../../security/station-server-scope.js';
@@ -6550,6 +6552,30 @@ export function configureRuntimeRoutes(
       // The attested internal principal (station-control/MCP) bypasses both
       // gates in `configureRuntimeHttp`, so it decides too; an absent
       // principal or an unmapped table entry fails closed.
+      // The respond route's own two checks on THIS Station, in its order:
+      // the HTTP boundary (credential + pairing scope for that exact path),
+      // then the station-control dispatch scope with the `approve` action on
+      // a remote task. The paired Station still authorizes on its side.
+      viewerMayRespondToPeerTask: (c, taskId) => {
+        const path = `/api/orchestration/delegations/${encodeURIComponent(taskId)}/respond`;
+        if (
+          !runtimeRequestPrincipalMayAccessHttpRoute(
+            c.req.raw,
+            context.environmentSecurityService,
+            { method: 'POST', path },
+          )
+        )
+          return false;
+        return !(
+          'refused' in
+          scopeDispatch(
+            c,
+            stationControlDispatchScope,
+            () => ({ kind: 'task', taskId, remote: true }),
+            'approve',
+          )
+        );
+      },
       viewerMayDecidePairingRequests: (request) => {
         const principal = getRuntimeAuthenticatedRequestPrincipal(request);
         if (!principal) return false;
