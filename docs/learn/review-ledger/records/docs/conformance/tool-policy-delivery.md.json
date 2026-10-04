@@ -26,7 +26,7 @@
 
     {"path":"pnpm-lock.yaml","digest":"4f9a974bd49f637fd690699b3bcd9b6ce915114eb4f52e2e6bdd5b0f3b699f2a","revision":"ea49cb8678208b9037f8e9ab3ceb2a95fe2647ff"},
 
-    {"path":"src-server/providers/__tests__/claude-adapter.test.ts","digest":"1db553a9692fefb8cfaa1cf8f090235bae08bdf6d32e13fd8955b82a0d41bce7","revision":"4f3acdc5478e27a733c06e91a202a325817c2f53"},
+    {"path":"src-server/providers/__tests__/claude-adapter.test.ts","digest":"9028968f401a15e3f7075ba3f3922255abb06a2a8feaa37cf72e79ff2c7d8de3","revision":"d36ac5f6addb7207e49d08faffb7cf3d3dc18a4a"},
 
     {"path":"src-server/providers/__tests__/tool-policy-delivery-tripwire.test.ts","digest":"3f35d0f1dd97e1fad8d28fcffafcaef9e001e2edc45f982e471dcf8e11c5f2df","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
