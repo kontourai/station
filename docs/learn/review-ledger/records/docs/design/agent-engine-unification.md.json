@@ -9,14 +9,12 @@
 
   "limits": "Current matrix/resolver ownership was checked; every adapter channel, UI field, dated probe, and slice completion claim was not revalidated.",
 
-  "document": {"digest":"df8bf3c999b4b942bd933d1491ee701a7b7f79be18be31d2edd113b301c0cc7e","revision":"423cbe55b9e35e4cd8954fd441cb9f3c69740d66"},
-
   "sources": [
-    {"path":"packages/contracts/src/agent.ts","digest":"e325363bc2303d78102c7c4c45b118756d71d66cae3d801eee303761d0715b6c","revision":"423cbe55b9e35e4cd8954fd441cb9f3c69740d66"},
+    "packages/contracts/src/agent.ts",
 
-    {"path":"packages/contracts/src/engine-capability-matrix.ts","digest":"db82340760d09e965ac7ed17830f36060573fe48545995d4ad9149b755d36ea1","revision":"518fae654af981373e872c2ab85438bb1b1b0e67"},
+    "packages/contracts/src/engine-capability-matrix.ts",
 
-    {"path":"src-server/services/orchestration/session-agent-resolution.ts","digest":"eea912e5afec264ab495d93b40eaa2eee6d478f5bab262aa84b56068210991b2","revision":"aadb5aa183a58e97344d13b8c5f34f92a7d78a94"}
+    "src-server/services/orchestration/session-agent-resolution.ts"
   ],
 
   "checks": [

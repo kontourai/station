@@ -9,22 +9,20 @@
 
   "limits": "Contract/renderer/form-submit/foreground callers checked. Dated live evidence not rerun; no full validation, content safety, provenance, action authorization, or MCP-UI sandbox audit.",
 
-  "document": {"digest":"345f2a8053c0620b5125b6d2c3c6ce1902f02648a40cb2359a251c17eb227c50","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
-
   "sources": [
-    {"path":"packages/contracts/src/ui-block.ts","digest":"acba5fd6c32e0a2471bcd7cd72641f02b33acae7a73f0442c2aa2f54ceaf34f0","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+    "packages/contracts/src/ui-block.ts",
 
-    {"path":"src-server/runtime/tools/vended-tool-compat.ts","digest":"17d6d189ee131f47fe61d075dd703f1fabf0b2a9342bea3d0f9dfa6e0522c828","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+    "src-server/runtime/tools/vended-tool-compat.ts",
 
-    {"path":"src-ui/src/components/chat/ChatMessageList.tsx","digest":"342465879169f7e1d3dee6faff4170becf82d722034b77b1b5bcdf263c380e46","revision":"82fea394a09cdf62071b073d09aa6cb08ebbca48"},
+    "src-ui/src/components/chat/ChatMessageList.tsx",
 
-    {"path":"src-ui/src/components/chat/UIBlockRenderer.tsx","digest":"e5f4a78399502b4e89cfa1f4c80105e7318a00668b5807bf120b936d2362cdd3","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+    "src-ui/src/components/chat/UIBlockRenderer.tsx",
 
-    {"path":"src-ui/src/hooks/useActiveChatSessionMessaging.ts","digest":"9318eb8735235a5cf39ece24756ba0a90405a79b9c24982199f65326b4c4c6b2","revision":"34d62da501fa53187b7062288f6e1dbaec8c20ed"},
+    "src-ui/src/hooks/useActiveChatSessionMessaging.ts",
 
-    {"path":"src-ui/src/hooks/useActiveChatSessions.ts","digest":"16ea2d7d3f011a253b70b90e9a24b087e87a06c442090dec428c6b0ffb62330b","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+    "src-ui/src/hooks/useActiveChatSessions.ts",
 
-    {"path":"src-ui/src/lib/foregroundMessageDispatch.ts","digest":"e2eb4d3d4647f06dcd2275f7d95ea43cfa4abd66beaf1b6d96a656aaa71019bb","revision":"1f43155ddcfe86c48422d3f4b0041ddbdad16c3d"}
+    "src-ui/src/lib/foregroundMessageDispatch.ts"
   ],
 
   "checks": [

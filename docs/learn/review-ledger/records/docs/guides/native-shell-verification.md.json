@@ -9,142 +9,140 @@
 
   "limits": "Bounded source/delta review, independently executed isolated Node Runtime/membership/pairing smoke and inspected final frozen-harness macOS debug log. This is not release artifact provenance/signing, mobile or Windows/Linux qualification, remote internet or production TURN/TLS, external provider, two-person, ordinary UI enablement or fresh relay-only enrollment evidence.\n\nMerge anchor history (structural reconciliation only; no semantic approval): document ours={\"digest\":\"02022b49c8533609bcf561776a2dd5c1b20cdfb3b8ae4cf5f5b5ae141e28e86e\",\"revision\":\"d5e4502434838cc29b63091ae689474d6488cfe4\"}; origin/main={\"digest\":\"db5ef187c02545195074cac011b8bd21fab7ff9eb23d28bf884dd36922b14c29\",\"revision\":\"464d602fb7fb5fa9bd0df9d241dc03495b398b96\"}. The merged document bytes require supported review after the merge commit.\n\nMerge anchor history (structural reconciliation only; no semantic approval): source src-desktop/src/lib.rs ours={\"digest\":\"57a47dd3656d47a5c43eaf4001895942d350d61b6de896fa4d1d3da498bfd821\",\"revision\":\"d5e4502434838cc29b63091ae689474d6488cfe4\"}; origin/main={\"digest\":\"ad3b52011a9be6e6a18133b2367c04d0a6245907e5b7e13fa324bcd8b5255557\",\"revision\":\"464d602fb7fb5fa9bd0df9d241dc03495b398b96\"}. The merged source bytes require supported review after the merge commit.",
 
-  "document": {"digest":"a9cd227932854e615fc50e919b4692057691fcc2c422d9563c087655b60338fc","revision":"d606c17132af7b1d9ec0d576871937dc37f79864"},
-
   "sources": [
-    {"path":"packages/cli/src/cli.ts","digest":"041c54fff5c3dc2848cf234cf13e4ea52e5069548c273755ee77b53955be1f27","revision":"036d5d3d2289fc22e325a9ded733e8de561e9b30"},
+    "packages/cli/src/cli.ts",
 
-    {"path":"packages/cli/src/commands/desktop-companion.ts","digest":"f33b07c369544b549f720ef7bc012cf35fb7cb1211162f78c61bb463170ffdb5","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/cli/src/commands/desktop-companion.ts",
 
-    {"path":"packages/cli/src/commands/lifecycle-doctor.ts","digest":"faccc3081c4b2f0bf2af1f51827b4d8458addca4690425f35e621f74dfdb972b","revision":"df558c03ac2dd6e437223c64f8100b2766f5e04b"},
+    "packages/cli/src/commands/lifecycle-doctor.ts",
 
-    {"path":"packages/cli/src/commands/lifecycle.ts","digest":"ce8322baa64d2e25c711ec0816c6cb013c8742f651a265e1657239185dba9ecc","revision":"b49b1db1601f36c9457e0d9d7c766d15be6302f7"},
+    "packages/cli/src/commands/lifecycle.ts",
 
-    {"path":"packages/cli/src/commands/service.ts","digest":"66660b960af7fe541ec7c5a35f9e0c0ad4a0525060ac967372249b05108ed349","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/cli/src/commands/service.ts",
 
-    {"path":"packages/cli/src/commands/target-command.ts","digest":"fd308f3257b43fcce35e31beedc476be5e27db17cd257af61754eafd6be14ad4","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/cli/src/commands/target-command.ts",
 
-    {"path":"packages/shared/src/process-identity.mjs","digest":"c51afd74ac7c56c24ad8f5cdc13c88e63f1966478b8829d30ea781d8c559127b","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/shared/src/process-identity.mjs",
 
-    {"path":"packages/shared/src/windows-path-trust.ts","digest":"7c8562cce50d76622e7f54c9046de1795ce4f5609dd7d102eb5dfba4ca0ed8f8","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/shared/src/windows-path-trust.ts",
 
-    {"path":"packages/shared/src/windows-system-utility.mjs","digest":"308c7079b142c94dbfc4a36ae000e38bfafdec41cda0ba67a5f55fa04b687ab5","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/shared/src/windows-system-utility.mjs",
 
-    {"path":"scripts/__tests__/local-collaboration-station-config.test.ts","digest":"486bf107742ff632711fa290a2d578bd22a0b40b5c844d6994022ab5683cea55","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
+    "scripts/__tests__/startup-readiness-static.test.ts",
 
-    {"path":"scripts/__tests__/startup-readiness-static.test.ts","digest":"04a33c59977c6a5b079cbd452bece433bab6dd0296980330b06393737410d2df","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "scripts/__tests__/windows-nightly.test.ts",
 
-    {"path":"scripts/__tests__/windows-nightly.test.ts","digest":"079edbe2692f9aec8ebc539f0e16340f0672bc52c69901e9b3f696c334092162","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "scripts/build-windows-nightly.ps1",
 
-    {"path":"scripts/build-windows-nightly.ps1","digest":"050c7665938f852e610fdcaf230206344f81a82b7ab20a61ef63150fd67cbcaf","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "scripts/ios-simulator-build.mjs",
 
-    {"path":"scripts/ios-simulator-build.mjs","digest":"3a813b6fcca91ac673f085f5863e09ad93c165aeadd0c225c507cb43681f2866","revision":"e33331ee19520c8bd546c878fdd503063a682634"},
+    "scripts/lib/windows-nightly.mjs",
 
-    {"path":"scripts/lib/local-collaboration-relay-account.ts","digest":"157157e7fa3f0b182b50ccba2dd6bf298f6fba9c787252f617bda3d82fe9380a","revision":"363462bb4b6ebc1a46303a31187d2996e8e57579"},
+    "scripts/run-tauri-shell-e2e.mjs",
 
-    {"path":"scripts/lib/local-collaboration-station-child.ts","digest":"dae3a254331b78deb31c01518369be85d251f9bc28f95c92c3ab55e5ef6889c3","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
+    "scripts/verify-windows-installer-upgrade.ps1",
 
-    {"path":"scripts/lib/local-collaboration-station.ts","digest":"94250f9184c8a4a45c434ba30ef119ce96c0981c4ec063a5c99773281b48b656","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
+    "src-desktop/Cargo.lock",
 
-    {"path":"scripts/lib/native-fresh-relay-fixture.ts","digest":"4673c2cc2af412718ed9aeebcd64afd8a248e38c1646b7d8131b66175dcb390f","revision":"e0ed479b4a907eb23a4aa1a788a4921e14f5f3bb"},
+    "src-desktop/Info.ios.plist",
 
-    {"path":"scripts/lib/windows-nightly.mjs","digest":"6ad16d115434c40d429c7ed7323c6b8659b6edd284530bac01cebd4fafa5dedd","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-desktop/src/bundled_server_state.rs",
 
-    {"path":"scripts/native-fresh-relay-fixture.ts","digest":"d9f4f79eb7f4b46e575d2b1bd80ff3311ed78668a6f4b0b8a4df1edaf70906bf","revision":"92bfe7c3dce4d852c22f5c1175ebdfb9981ca0a1"},
+    "src-desktop/src/lib.rs",
 
-    {"path":"scripts/run-tauri-shell-e2e.mjs","digest":"f1e6230b040d8affe5cc8214bd311b8035927517dc3d904325e7ee91650f5add","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
+    "src-desktop/src/native_relay_redemption.rs",
 
-    {"path":"scripts/verify-windows-installer-upgrade.ps1","digest":"e7935481402cf99f16b2ad2489e07a51677c0878828a9e7a50fecc393e159754","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-desktop/src/startup_readiness.rs",
 
-    {"path":"src-desktop/build.rs","digest":"28425e2f907fb0875014dccb6737d4bb98768f27a8c7a6f7d9e77b2a18cb0609","revision":"6f7521ea2fc94d945814f683c64bdfccccb480bd"},
+    "src-server/index.ts",
 
-    {"path":"src-desktop/Cargo.lock","digest":"6b27bee2d6f95c5f3039652d8f16d3f05575ec6c03512a3a223705050c854a63","revision":"6f7521ea2fc94d945814f683c64bdfccccb480bd"},
+    "src-server/runtime/bootstrap/__tests__/readiness-handshake.test.ts",
 
-    {"path":"src-desktop/Info.ios.plist","digest":"d2c1f1e17b523101bbc9b2e64ec5fa1e7a173ad0229f37f6a796bd3a2b549f4b","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-server/runtime/bootstrap/readiness-handshake.ts",
 
-    {"path":"src-desktop/src/bundled_server_state.rs","digest":"7a2f05fedf131f51c4f57d42906a8642aec2633ef05ff9a9dacdec494f8d8051","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-server/security/local-grant-file.ts",
 
-    {"path":"src-desktop/src/lib.rs","digest":"c1f14ebce1d8326b17d071eec351ca84af929b8058bfc6ce456b2f6a4b73867c","revision":"2c506080536ad8cb02b6af0b53bbd19c6d1e3ecb"},
+    "src-ui/src/contexts/ApiBaseContext.tsx",
 
-    {"path":"src-desktop/src/native_account_proof_key.rs","digest":"fb0830359c1b28f49429a1f837df81afe5af2d83e14fe7ad92aa5c54ec2e3e5c","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
+    "src-ui/src/main.tsx",
 
-    {"path":"src-desktop/src/native_device_binding_candidate.rs","digest":"83e1d464487d41fb5dc361259a2b80bfb91e0711cdc3c9a6c52e3f8726b76ffc","revision":"34838898143e9a6048203520cdc6da3f78ecf49e"},
+    "src-ui/src/platform/native/__tests__/nativeRelayGrantRenewalAdapter.test.ts",
 
-    {"path":"src-desktop/src/native_device_proof_key.rs","digest":"f209cb152047378666116d08bf220264b0a9ef569fbd0f5cde827e259ec0d5f6","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
+    "src-ui/src/platform/native/__tests__/nativeRelayGrantRenewalSupervisor.test.ts",
 
-    {"path":"src-desktop/src/native_proof_key_core.rs","digest":"f66b190b738f1e3fe0623e5c8140797cd413fcb0701d6f3004e3c652c7b60a59","revision":"8d92d732808201554ba801334e2a19f7081fd09d"},
+    "src-ui/src/platform/native/__tests__/rendererLiveness.test.tsx",
 
-    {"path":"src-desktop/src/native_relay_ios_launch.rs","digest":"135f11afc3cc411a915de32a9c399487a8ca3f4eb1bf0afc381abf30c3f4ab66","revision":"b1b2d1fd15ddfd6dea0be7371a81d5008f6ffbf7"},
+    "src-ui/src/platform/native/nativeRelayGrantRenewalAdapter.ts",
 
-    {"path":"src-desktop/src/native_relay_link_intake.rs","digest":"f9006742ccebb94eeaa9b18936d480697bad199322ac1f5161cada86198b97c9","revision":"7ad03486b8521649247b6a728da71d08780069ac"},
+    "src-ui/src/platform/native/nativeRelayGrantRenewalSupervisor.ts",
 
-    {"path":"src-desktop/src/native_relay_redemption.rs","digest":"a56d97c24bdf73ff4e2328bd73c022a2c12815c0ca1420e49cc964f7cdf2d22c","revision":"11b4ccc5932fa6788af8276326296bd86f51542c"},
+    "src-ui/src/platform/native/rendererLiveness.tsx",
 
-    {"path":"src-desktop/src/native_secure_entry.rs","digest":"d6ff8051df4be60ff738f524488fe877b0711b95aa606cb70b378e74962bd209","revision":"8d92d732808201554ba801334e2a19f7081fd09d"},
+    "src-ui/src/views/connections-hub/RelayRouteProfiles.tsx",
 
-    {"path":"src-desktop/src/startup_readiness.rs","digest":"77c26585b925bf67038df2ff3aea842c9ef0c4262914bbf957b2ca30f0332f82","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-ui/src/views/connections-hub/__tests__/RelayRouteProfiles.test.tsx",
 
-    {"path":"src-server/index.ts","digest":"53c36afff3a1c5a96e7c2054c7c0f2ce97c2d5b373e876e41d7c505163f30c27","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "tests/tauri-shell/native-relay-grant-lifecycle.e2e.ts",
 
-    {"path":"src-server/runtime/bootstrap/__tests__/readiness-handshake.test.ts","digest":"ac54650959eec3125a36daf9094e8992dd5d5ee0ede19bb62c4aed47f7c4118e","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "tests/tauri-shell/plugin-host-security.e2e.ts",
 
-    {"path":"src-server/runtime/bootstrap/readiness-handshake.ts","digest":"321dc2ec9238434fb5b52e7e263c71b64546db0bc56292c164d73ab6fc6fd449","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "tests/tauri-shell/native-chat-dispatch.e2e.ts",
 
-    {"path":"src-server/security/local-grant-file.ts","digest":"651df6a68213436e33656482acad95b099fcd3bf0d686d62c6cd39e0b10c5a20","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "tests/tauri-shell/native-project-runtime-fixture.ts",
 
-    {"path":"src-ui/src/components/OnboardingGate.tsx","digest":"a162e42d41ed579ec24bfa787aaefb332c1dd3671250191619d976513520fbd5","revision":"e58fcedea713f7fc640bf51abe384f17503f72e4"},
+    "tests/tauri-shell/native-project-acceptance.e2e.ts",
 
-    {"path":"src-ui/src/contexts/ApiBaseContext.tsx","digest":"8069807d592f2aeb22ec5fdd999dcb4574f134c7bfcb7fdfea1e02c51a410ef3","revision":"2835c77d95f1902ec333eee0c5f57d19fd9f5077"},
+    "tests/tauri-shell/native-project-acceptance-webview.ts",
 
-    {"path":"src-ui/src/lib/queryDefaults.ts","digest":"ada88d7152a2ebe1e9c89bbd4d9da4ca5681849e5c499546fa0e81b6b90d27ae","revision":"3fd1eca58b46371b83b05cac0fbb61560acdbb92"},
+    "scripts/lib/local-collaboration-station.ts",
 
-    {"path":"src-ui/src/main.tsx","digest":"d00e280a16d70b37c42498476af7d21dc192a9d9ea62e337e71094c54cf39a33","revision":"4cf503807d144ac197e10fcf4aee5e301b96e28d"},
+    "scripts/lib/local-collaboration-station-child.ts",
 
-    {"path":"src-ui/src/platform/native/__tests__/authenticatedTransport.test.ts","digest":"2d20c70fb3a0cb6690d377ea952a97c77aacb2162cf888ac2092a73f450fdc00","revision":"4bb060037a5ec0146e4cab01d5992402ba41869f"},
+    "scripts/lib/local-collaboration-relay-account.ts",
 
-    {"path":"src-ui/src/platform/native/__tests__/nativeRelayGrantRenewalAdapter.test.ts","digest":"1e387b759067cc0076ae7a46d2e0dc7948591cd200e48878ba72fe3bc426453b","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "scripts/__tests__/local-collaboration-station-config.test.ts",
 
-    {"path":"src-ui/src/platform/native/__tests__/nativeRelayGrantRenewalSupervisor.test.ts","digest":"cfaf202f379a51d5bbe0b5752a43f8eedb794b27273d18cb5034fccfd7c60807","revision":"63b38388826be9b989d3a94c88052e65c69b2d63"},
+    "src-desktop/src/native_proof_key_core.rs",
 
-    {"path":"src-ui/src/platform/native/__tests__/NativeRelayLinkIntake.test.tsx","digest":"e8c4774b0553d5325d7b3d9501a7d2f31c396f38be5665617ed1b7001302fc7a","revision":"6783c3816613cd15f9daaa85a1bfad0b77056d6c"},
+    "src-desktop/src/native_device_proof_key.rs",
 
-    {"path":"src-ui/src/platform/native/__tests__/rendererLiveness.test.tsx","digest":"ccc6ecb72b88623cffc931a3b44f59a1d9367f15e283aea5286d339c44a0c2d3","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-desktop/src/native_account_proof_key.rs",
 
-    {"path":"src-ui/src/platform/native/authenticatedTransport.ts","digest":"9012676f5874a8bd8c33a140764d6c83abeac50fdbdb667468fb5800a6216602","revision":"4bb060037a5ec0146e4cab01d5992402ba41869f"},
+    "src-desktop/src/native_device_binding_candidate.rs",
 
-    {"path":"src-ui/src/platform/native/nativeCommandError.ts","digest":"ab08d2ab71b4029623c73156de493399908a9282c4249326fa8014faa74216ff","revision":"4bb060037a5ec0146e4cab01d5992402ba41869f"},
+    "src-ui/src/platform/native/authenticatedTransport.ts",
 
-    {"path":"src-ui/src/platform/native/NativeRelayConnectionRecovery.tsx","digest":"0ead82ed69299a2ba13de260f856b66901accc989adc19b5cd4eb3048686d0a7","revision":"d606c17132af7b1d9ec0d576871937dc37f79864"},
+    "src-ui/src/platform/native/nativeCommandError.ts",
 
-    {"path":"src-ui/src/platform/native/nativeRelayGrantRenewalAdapter.ts","digest":"f10ac7b4278a67648f946bc05c717da27f9fa59fced4576e1d0df41944657e49","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-ui/src/platform/native/__tests__/authenticatedTransport.test.ts",
 
-    {"path":"src-ui/src/platform/native/nativeRelayGrantRenewalSupervisor.ts","digest":"a7a28335632f47d95b026e4f7edc9011bdabef0adafa8815339f436fd69aa2a3","revision":"63b38388826be9b989d3a94c88052e65c69b2d63"},
+    "src-ui/src/lib/queryDefaults.ts",
 
-    {"path":"src-ui/src/platform/native/NativeRelayLinkReview.tsx","digest":"e25569817376f5d0dc1ea00e379042b7dba49049178662a7d45fdee23b8357c5","revision":"d606c17132af7b1d9ec0d576871937dc37f79864"},
+    "scripts/lib/native-fresh-relay-fixture.ts",
 
-    {"path":"src-ui/src/platform/native/rendererLiveness.tsx","digest":"8a47896392329e0bce4fc0ca3ce544171cff1e2df6bcb77097c97ff26ce78c63","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "scripts/native-fresh-relay-fixture.ts",
 
-    {"path":"src-ui/src/views/connections-hub/__tests__/RelayRouteProfiles.test.tsx","digest":"0daf870839a1a2f932dd84c38cf9d27e86dbd21f5c61f139eb51898d9c99ea7c","revision":"6783c3816613cd15f9daaa85a1bfad0b77056d6c"},
+    "src-desktop/build.rs",
 
-    {"path":"src-ui/src/views/connections-hub/NativeRelayEnrollmentWizard.tsx","digest":"79cb2659b18787521916dfabca3b3cd4bf26ed24bb81e7ec488a3823e3e872b2","revision":"fc7857beb8210ea8db44cf3ffe50ae30b3aca057"},
+    "src-desktop/src/native_relay_ios_launch.rs",
 
-    {"path":"src-ui/src/views/connections-hub/RelayRouteProfiles.tsx","digest":"5a2c5e83c1e520101960b2a3dc70736acaf621fda9ccfa95fddf9fc62e4b7007","revision":"8a10893609b9e3cd63909b6f9b5b889c4e82af15"},
+    "src-desktop/src/native_relay_link_intake.rs",
 
-    {"path":"tests/tauri-shell/native-chat-dispatch.e2e.ts","digest":"cfe0f18ba9cbfb723a4e7ccebe99dfe28f2e83f2adad8728fb144222cad67766","revision":"dd0afb6e8e5b3f37b2d42d3dbb2305c839525f44"},
+    "src-desktop/src/native_secure_entry.rs",
 
-    {"path":"tests/tauri-shell/native-fresh-relay-acceptance-webview.ts","digest":"3618b4a5b6517ced5f38e274952dac2cbfd7a276bba743581dbc30c1a305080e","revision":"058b19b63d88ffc68b5af83c3dda88ac9add9c63"},
+    "src-ui/src/components/OnboardingGate.tsx",
 
-    {"path":"tests/tauri-shell/native-fresh-relay-fixture.md","digest":"a94e1fe6d17e507eb7c476063331a309bc40e570236723915d45eec61288b32d","revision":"7698b96f8c3b5d9c4ffe81030a3db5d9bad686ce"},
+    "src-ui/src/platform/native/__tests__/NativeRelayLinkIntake.test.tsx",
 
-    {"path":"tests/tauri-shell/native-project-acceptance-webview.ts","digest":"4ab4a1f98e3d2e677da5bda05f7bb9d6e8186f684f88f63faa23841b179911a8","revision":"2e4f061f91ffb0338e45de62382cf6da59cd5c76"},
+    "src-ui/src/platform/native/NativeRelayConnectionRecovery.tsx",
 
-    {"path":"tests/tauri-shell/native-project-acceptance.e2e.ts","digest":"3c000df5ce38034fd4827a42b5dc6ef0930e65960253ebce6c62c588ddbab7e5","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
+    "src-ui/src/platform/native/NativeRelayLinkReview.tsx",
 
-    {"path":"tests/tauri-shell/native-project-runtime-fixture.ts","digest":"9ca2c8b47bd89de9ae743875ce10a940df5e1be5dcf69ba8d81e1f855ef4a861","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
+    "src-ui/src/views/connections-hub/NativeRelayEnrollmentWizard.tsx",
 
-    {"path":"tests/tauri-shell/native-relay-grant-lifecycle.e2e.ts","digest":"cb255bdf8a7a0d869688c4d1bd3d2fddab8be6e7005279897e2fd4cef3db5efe","revision":"7923470413a32b1a4d4223a6390f0708fc7beaee"},
+    "tests/tauri-shell/native-fresh-relay-acceptance-webview.ts",
 
-    {"path":"tests/tauri-shell/plugin-host-security.e2e.ts","digest":"963d8b6cd74e474a5fd2c7891e564e51ddc16dc0562a2aef6a04ef07c76618bd","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"}
+    "tests/tauri-shell/native-fresh-relay-fixture.md"
   ],
 
   "checks": [

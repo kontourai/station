@@ -1,7 +1,0 @@
-{
-  "revision": "337b71accf3eff965f1f7002fb2ab0ff1580b60f",
-
-  "notes": [
-    {"path":"docs/user/getting-started.md","note":"#2799 merge integration: origin/main's record (sources re-sorted, ProjectPage.tsx rebound) conflicted with this branch's ProjectPage.css rebinding; took origin/main's record and re-reviewed. ProjectPage.css changed only the header working-directory line (inline rtl line with a start ellipsis; parent and leaf copy as one string). The guide makes no claim about that line's layout or copy behaviour; Copy button unchanged. No prose change."}
-  ]
-}

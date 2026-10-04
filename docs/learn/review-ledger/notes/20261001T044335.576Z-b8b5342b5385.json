@@ -1,0 +1,7 @@
+{
+  "revision": "66619dbe76e6d19eb63f6be3e77a2643601b6f8e",
+
+  "notes": [
+    {"path":"docs/guides/self-hosted-broker.md","note":"Read the complete broker guide and traced closed short-lived ICE contract/parser, fixed Cloudflare issuer/private config, durable rolling attempt ledger and bounded in-memory exact-owner receipt reuse through CLI and real mounted native/connector routes. Source 7dc84da36 focused56PASS/1Windows-only skipped plus Connect typecheckPASS; 32fe4ff3c owner40PASS; private-ledger identity delta owner41PASS with actual replacement/symlink refusals. Post-issuer currentness mutation at7dc returned200 instead401 in mounted withdrawal test and exposed a native retired-owner receipt, restored38PASS. Seven independently signed config requests used one fake unit-boundary provider issuance, while actual native grant revocation refused the cached receipt; restart retained mint limits. HTTP offload used operator-pinned HTTPS origin with matching HTTP request host and forged Host/XForwarded refusal. Fixed official provider endpoint and honest UA checked; no actual provider credential was read or minted in this lane. Static community TURN example remains manual deployment-only; no byte/spend cap, instant provider revoke, mounted native/Pion dynamic consumer, physical iOS Nightly or public NAT onboarding claimed. Root owns final consumer/full-CI integration; no broad ledger or coverage refresh.","inputs":["docs/guides/self-hosted-broker.md"]}
+  ]
+}

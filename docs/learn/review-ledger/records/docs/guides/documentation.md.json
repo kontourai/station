@@ -9,32 +9,34 @@
 
   "limits": "Normative contributor guidance; this classification does not establish that every document or future feature has followed it.",
 
-  "document": {"digest":"35dd6dd9ae31089fcab2adaf2d58595f809a9e93cf85025c430b71350c576c15","revision":"595059eafa17ef6b7a39217a405619ecbfac2270"},
-
   "sources": [
-    {"path":".veritas/repo-map.json","digest":"fcabfcd9d0ad7a59d2ef216c943591575656f039e1d9df2d05565b96347ebca4","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    ".veritas/repo-map.json",
 
-    {"path":".veritas/repo-standards/default.repo-standards.json","digest":"03b4e8ec9e6d2369d81fe31700dd3804df1a1259d3ba4c3e977feb27e17edbed","revision":"888c42dffff4aae57a7a6f6f397c8ba1ecca96ee"},
+    ".veritas/repo-standards/default.repo-standards.json",
 
-    {"path":".veritas/attestations/HEAD","digest":"b6ddfc606b19dead23131c3004da1420574a4fc90c96623c3f5c2e4b13e6fc04","revision":"65b3516d12cdf594553a2dc8f0e6883b8b0db89d"},
+    ".veritas/attestations/HEAD",
 
-    {"path":"scripts/lib/documentation-freshness.mjs","digest":"1015b8a88ace1d10171a04a1b5da6a192b0397174fa51127c66211736c06ab74","revision":"8199fd1541fc2af0053845c9253ed0962dd7fbb8"},
+    "scripts/lib/documentation-freshness.mjs",
 
-    {"path":"scripts/check-documentation-freshness.mjs","digest":"41d1622754ffb7a8671a277b2728c5cee2f226da71340666bf4a2be6e8f11d5f","revision":"8199fd1541fc2af0053845c9253ed0962dd7fbb8"},
+    "scripts/check-documentation-freshness.mjs",
 
-    {"path":"scripts/record-documentation-review.mjs","digest":"2541d1547706a30bf5cd19927d4b0567b00ae379e4f61ddcd7d36da382f6f54f","revision":"8199fd1541fc2af0053845c9253ed0962dd7fbb8"},
+    "scripts/record-documentation-review.mjs",
 
-    {"path":"scripts/docs-freshness-sweep.mjs","digest":"b081d84f26484adc6afe330b37976a38e6ed9312c2ed5c394e701a212934c8e8","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
+    "scripts/docs-freshness-sweep.mjs",
 
-    {"path":".github/workflows/docs-freshness-sweep.yml","digest":"fbcd659bb24451546b1f61500f3b0b0f26b497216e99f98244b1750a6d769ec4","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    ".github/workflows/docs-freshness-sweep.yml",
 
-    {"path":"scripts/run-repo-scan-suites.mjs","digest":"06c1be69f439b1676b78bfe673c310f5abaf3c4a29ddfd25160ae5a36f684584","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    "scripts/run-repo-scan-suites.mjs",
 
-    {"path":"scripts/lib/review-ledger-store.mjs","digest":"444d83be0ef4e28ed9acc3db60a705ab01e8e094d6da7cbe23f34b6d60990d8a","revision":"870f87665091ffd778281fd578835377526b7bb1"},
+    "scripts/lib/review-ledger-store.mjs",
 
-    {"path":"scripts/lib/review-binding.mjs","digest":"09c45446e0d7070b8310fd86f888b37dbe873f53854f48e8bf63ed18481fa692","revision":"6c3604888394821808a5617ddd044c6e61d86fc2"},
+    "scripts/lib/review-binding.mjs",
 
-    {"path":"scripts/migrate-review-ledger.mjs","digest":"398aff22df16bea250357c6a24e04cb28f915a407e97570503798cb8af1f9c14","revision":"377a56b36cbb87cab716ef441d3202057d4486e8"}
+    "scripts/migrate-review-ledger.mjs",
+
+    "scripts/lib/review-history.mjs",
+
+    "scripts/lib/review-git.mjs"
   ],
 
   "checks": [

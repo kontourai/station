@@ -9,20 +9,18 @@
 
   "limits": "Current component/header/route ownership and ratchet source patterns checked. Original measurements are not remeasured; no rendered-layout, visual parity, breakpoint, focus, or accessibility certification.",
 
-  "document": {"digest":"994c25f6cbacf02076b0ff5aa1db16f9fb708aa5faaa5af69e2bd91ac79db379","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},
-
   "sources": [
-    {"path":"scripts/shell-conformance-ratchet.mjs","digest":"6f4dd399649c9fc64ed9416a23a9a437abd19b270c129bd7bcb83ec2e2b54469","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},
+    "scripts/shell-conformance-ratchet.mjs",
 
-    {"path":"src-ui/src/app-shell/page-frame-registry.ts","digest":"f7c858e6d53e55db464ffc7e9af1594fc9b7df4695a7a9932ad8f4cb6d92c378","revision":"75785f43c80623e548f4ae8f5282be9585e203dd"},
+    "src-ui/src/app-shell/page-frame-registry.ts",
 
-    {"path":"src-ui/src/components/SplitPaneLayout.tsx","digest":"afa5bac34d039da9bdb075158d39ca552af35b773c2ca0b7a5c79b5fd85681ff","revision":"cd7dabcd93bf05a27d66f74e667667dcf771d615"},
+    "src-ui/src/components/SplitPaneLayout.tsx",
 
-    {"path":"src-ui/src/views/ConnectionsHub.tsx","digest":"5c0aa36c80d1c78197030068ba0151e39fbe2bf4566dc492e3555b0ce3046567","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},
+    "src-ui/src/views/ConnectionsHub.tsx",
 
-    {"path":"src-ui/src/views/KnowledgeConnectionView.tsx","digest":"181467ae0c819b14bc7ddfa09fd13b0e805951c3c1e7572f0a77ebfa9b482b93","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},
+    "src-ui/src/views/KnowledgeConnectionView.tsx",
 
-    {"path":"src-ui/src/views/ProjectSettingsView.tsx","digest":"94a49e9e13f6a908b2b189479ed48193c6a90ed1d940d1515636f8b5a533d9fe","revision":"3ff57bc91496fd66f7b97eb67df16f6d49bd7ed5"}
+    "src-ui/src/views/ProjectSettingsView.tsx"
   ],
 
   "checks": [
