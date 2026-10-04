@@ -3681,6 +3681,8 @@ describe('SessionsView', () => {
       expect(rowNames(container)).toContain('Run the peer checks');
       // The paired Station owns the turn: no local Stop… on its row.
       expect(rowMenuItems('Run the peer checks')).not.toContain('Stop…');
+      // Its agent slug and conversation are the peer's: no local chat.
+      expect(rowMenuItems('Run the peer checks')).not.toContain('Open in chat');
     });
 
     test('every row carries a relative time', () => {
