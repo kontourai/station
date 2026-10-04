@@ -9,98 +9,96 @@
 
   "limits": "Source and focused fixtures, not every function in the linked owners or live provider/engine/tool-server, collector, voice, device, proxy deployment or native package qualification. Diagram syntax and anchors were checked; final visual layout review remains separate. Merge reconciliation preserves both prior review anchors below as historical evidence, not a new review of combined source bytes. Active bindings retain existing reviewed anchors; any mismatch with merged bytes remains stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"src-server/routes/orchestration/orchestration.ts\",\"ours\":{\"digest\":\"d1b4c866cb5dd31ef5538ce7c8f19fe272d36fe49963a4b7b03178f0183ddc64\",\"revision\":\"0bf65df71b04f48768c1f5bdb16db77e361a3177\"},\"main\":{\"digest\":\"9d81b62b47bea3aee158c535ce04742eb5b33a0855ffd4b8a39b7d0f897ee838\",\"revision\":\"ee7cb7c444fb45f465be3f4ea5c938e5a130145e\"}},{\"path\":\"packages/shared/package.json\",\"ours\":{\"digest\":\"dfb51da6f4002814559793d901ace8674805d1fcc84d5efe3aa4ebcb4c794c96\",\"revision\":\"565a005d46e40c313432a0fbe6fa3054a74a5941\"},\"main\":{\"digest\":\"3d498c9980c805fad291b809e3400392dd3c5c29515074c2438f785f4812e69c\",\"revision\":\"4e19fa6ac6b87dff5b671d3c90d3a5b48b5e6ec5\"}},{\"path\":\"src-server/runtime/bootstrap/station-runtime.ts\",\"ours\":{\"digest\":\"d055b5251c1dd749a04c7024406f262a097b24f87f68caba2f8a83fdc257c779\",\"revision\":\"34838898143e9a6048203520cdc6da3f78ecf49e\"},\"main\":{\"digest\":\"4e02fdbdc3ab121af4b11113970aaca7f19ee98ad4e52bfdfc743ad74e6f9a90\",\"revision\":\"9f8b407fac4a9e5536d72ca49be3a0b77715e1d8\"}},{\"path\":\"src-server/runtime/bootstrap/runtime-http.ts\",\"ours\":{\"digest\":\"bf1b7671bc40fe53615a39f8e9f12b5ad27beace97a86fc50e2ebb4e9717d20e\",\"revision\":\"54ca710a3594bf1f3b7ac3d4464a2db2edc6e6c0\"},\"main\":{\"digest\":\"400f3e49be7138980b286334db40de4fa4a6fbaa1ea37c285ae9774ddc5fbbb7\",\"revision\":\"2c5134e4bfc4db4d19877df92119078a80bf27e7\"}},{\"path\":\"packages/connect/package.json\",\"ours\":{\"digest\":\"f9a3187cebc1e432ca28f10546e12fb42089b27fe8229b8c12bf90d996790b80\",\"revision\":\"7dc84da36281cace63d55fbd59fac3f64fcb3721\"},\"main\":{\"digest\":\"880e5cac1c66ca9387136b8fff36a4f6aa8c0514d45780dcb8a8a38ff7c616ca\",\"revision\":\"22ffd796d86ec7f841cb3c75764ed2a3fb7783b0\"}},{\"path\":\"packages/sdk/src/index.ts\",\"ours\":{\"digest\":\"c5c0dd7612ef1716e79187abc407ebf73b4a49145fbcb1c9728eeb77822c3255\",\"revision\":\"df950bd9f41b1227b3de566dbf5e396aa8bf3a2a\"},\"main\":{\"digest\":\"c857e48c98e4eb793501c0544975eeb08287b55512885e14830ada1c6b23d625\",\"revision\":\"7576509655a6bbef0ef61d5f4645722922b8ec43\"}},{\"path\":\"packages/contracts/package.json\",\"ours\":{\"digest\":\"43543da11ee56e6978d3f13131846cd118a4390639c84528a840eb54880f60b4\",\"revision\":\"7dc84da36281cace63d55fbd59fac3f64fcb3721\"},\"main\":{\"digest\":\"e68c62ed1e493e0b8834dc4586ccb37b750313b65a19a61ac00512e30564f684\",\"revision\":\"b004ed8cb3e885da544adf960b2894780aaf2b51\"}},{\"path\":\"src-server/services/orchestration/orchestration-service.ts\",\"ours\":{\"digest\":\"7d2f48c82a5a3d9421ac2bbb67ecf249e892c4f9024fd65f0edfa7eb2e4f459a\",\"revision\":\"0bf65df71b04f48768c1f5bdb16db77e361a3177\"},\"main\":{\"digest\":\"d22d84695d84c9341467067e356483457115768ac3b5f34e2c8cd5c27144fbab\",\"revision\":\"4e19fa6ac6b87dff5b671d3c90d3a5b48b5e6ec5\"}},{\"path\":\"packages/sdk/package.json\",\"ours\":{\"digest\":\"64ccd22f32ad10aa0218633f333b3ee1fec4c1fc0f0ef1547780218d6415ba11\",\"revision\":\"1e5f63186142dd36fcb720deb7660808dbf2f56b\"},\"main\":{\"digest\":\"31286b6e99fa502f8eb1bf6c744a4a34041d21bf6e0e0e5d22f27f2771dc5c06\",\"revision\":\"18ae5d5640f6a47eb953b72f1d0a55b06a137677\"}},{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"ours\":{\"digest\":\"8da16e71c4909bef8f7cf21eb6cde9fbebc2b72997baeebbff7445db19fb237a\",\"revision\":\"904729ae7f4058a2cd7dbaf11a4daaa6b8837d08\"},\"main\":{\"digest\":\"e54cf49af965f2acabb5a7a97caead30fc8e4e3b619f5dea1cb7f6a464b2d901\",\"revision\":\"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac\"}}].\n\nAdditional existing main limits (preserved verbatim): Source and focused fixtures, not every function in the linked owners or live provider/engine/tool-server, collector, voice, device, proxy deployment or native package qualification. Diagram syntax and anchors were checked; final visual layout review remains separate.\n\nStructural merge of 5dff1dc5d6661c9ced8a5ff40994b96f3e258e2e and d1f68396648a4d450f1d743e436df703be0935be preserves both prior immutable document/source anchors and historical checks. Selecting an existing current-byte binding is structural reconciliation only, not semantic approval of merged inputs. No new digest/revision or coverage baseline was minted. Competing prior anchors remain pending semantic review and supported recording after the merge commit: [{\"path\":\"packages/connect/package.json\",\"ours\":{\"path\":\"packages/connect/package.json\",\"digest\":\"7e5503ba0ee016008cd7397ffc2c71988149f291d6827b8a570e134b0f731a31\",\"revision\":\"e33331ee19520c8bd546c878fdd503063a682634\"},\"main\":{\"path\":\"packages/connect/package.json\",\"digest\":\"880e5cac1c66ca9387136b8fff36a4f6aa8c0514d45780dcb8a8a38ff7c616ca\",\"revision\":\"22ffd796d86ec7f841cb3c75764ed2a3fb7783b0\"},\"active\":{\"path\":\"packages/connect/package.json\",\"digest\":\"7e5503ba0ee016008cd7397ffc2c71988149f291d6827b8a570e134b0f731a31\",\"revision\":\"e33331ee19520c8bd546c878fdd503063a682634\"},\"decision\":\"oursMatch\"},{\"path\":\"packages/contracts/package.json\",\"ours\":{\"path\":\"packages/contracts/package.json\",\"digest\":\"99b398c3d5908625e6b0fc3b8b451dbdb3b499ba10ed2c67590a45a1275f2b6d\",\"revision\":\"e33331ee19520c8bd546c878fdd503063a682634\"},\"main\":{\"path\":\"packages/contracts/package.json\",\"digest\":\"e68c62ed1e493e0b8834dc4586ccb37b750313b65a19a61ac00512e30564f684\",\"revision\":\"b004ed8cb3e885da544adf960b2894780aaf2b51\"},\"active\":{\"path\":\"packages/contracts/package.json\",\"digest\":\"99b398c3d5908625e6b0fc3b8b451dbdb3b499ba10ed2c67590a45a1275f2b6d\",\"revision\":\"e33331ee19520c8bd546c878fdd503063a682634\"},\"decision\":\"oursMatch\"},{\"path\":\"src-server/runtime/bootstrap/runtime-http.ts\",\"ours\":{\"path\":\"src-server/runtime/bootstrap/runtime-http.ts\",\"digest\":\"bf1b7671bc40fe53615a39f8e9f12b5ad27beace97a86fc50e2ebb4e9717d20e\",\"revision\":\"54ca710a3594bf1f3b7ac3d4464a2db2edc6e6c0\"},\"main\":{\"path\":\"src-server/runtime/bootstrap/runtime-http.ts\",\"digest\":\"400f3e49be7138980b286334db40de4fa4a6fbaa1ea37c285ae9774ddc5fbbb7\",\"revision\":\"2c5134e4bfc4db4d19877df92119078a80bf27e7\"},\"active\":{\"path\":\"src-server/runtime/bootstrap/runtime-http.ts\",\"digest\":\"bf1b7671bc40fe53615a39f8e9f12b5ad27beace97a86fc50e2ebb4e9717d20e\",\"revision\":\"54ca710a3594bf1f3b7ac3d4464a2db2edc6e6c0\"},\"decision\":\"oursMatch\"},{\"path\":\"src-server/runtime/bootstrap/station-runtime.ts\",\"ours\":{\"path\":\"src-server/runtime/bootstrap/station-runtime.ts\",\"digest\":\"9ff2f86499e6ed1a0d562c3a470536c57f97f9dc2bc66829c22d96fbb0ce29bc\",\"revision\":\"83c4111b8c4dcda1e978d78bb191c974888c9ca4\"},\"main\":{\"path\":\"src-server/runtime/bootstrap/station-runtime.ts\",\"digest\":\"92d31dd655d7c0a62ce68dc6fd804268cda2f357bb775a512ee974d7c09564db\",\"revision\":\"1a235cd9bc482738abe4c3f011f73be86074d667\"},\"active\":{\"path\":\"src-server/runtime/bootstrap/station-runtime.ts\",\"digest\":\"9ff2f86499e6ed1a0d562c3a470536c57f97f9dc2bc66829c22d96fbb0ce29bc\",\"revision\":\"83c4111b8c4dcda1e978d78bb191c974888c9ca4\"},\"decision\":\"neitherMatch\"},{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"ours\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"33e19d52230c0339923db1768b0cae89a71077634c4632f9a10c11f6a3e05f78\",\"revision\":\"83c4111b8c4dcda1e978d78bb191c974888c9ca4\"},\"main\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"e54cf49af965f2acabb5a7a97caead30fc8e4e3b619f5dea1cb7f6a464b2d901\",\"revision\":\"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac\"},\"active\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"33e19d52230c0339923db1768b0cae89a71077634c4632f9a10c11f6a3e05f78\",\"revision\":\"83c4111b8c4dcda1e978d78bb191c974888c9ca4\"},\"decision\":\"oursMatch\"}]\n\nAdditional existing main limits (preserved verbatim): Source and focused fixtures, not every function in the linked owners or live provider/engine/tool-server, collector, voice, device, proxy deployment or native package qualification. Diagram syntax and anchors were checked; final visual layout review remains separate.\n\nStructural merge of 5fd2dd86ad0cd35018ce09537c1aa01ce58e0e55 and 8f9ea788561518398a488d35bb768b78a272e73b preserves both prior immutable document/source anchors and historical checks. Selecting an existing current-byte binding is structural reconciliation only, not semantic approval of merged inputs. No new digest/revision or coverage baseline was minted. Competing prior anchors remain pending semantic review and supported recording after the merge commit: [{\"path\":\"packages/connect/package.json\",\"ours\":{\"path\":\"packages/connect/package.json\",\"digest\":\"7e5503ba0ee016008cd7397ffc2c71988149f291d6827b8a570e134b0f731a31\",\"revision\":\"e33331ee19520c8bd546c878fdd503063a682634\"},\"main\":{\"path\":\"packages/connect/package.json\",\"digest\":\"880e5cac1c66ca9387136b8fff36a4f6aa8c0514d45780dcb8a8a38ff7c616ca\",\"revision\":\"22ffd796d86ec7f841cb3c75764ed2a3fb7783b0\"},\"active\":{\"path\":\"packages/connect/package.json\",\"digest\":\"7e5503ba0ee016008cd7397ffc2c71988149f291d6827b8a570e134b0f731a31\",\"revision\":\"e33331ee19520c8bd546c878fdd503063a682634\"},\"decision\":\"oursMatch\"},{\"path\":\"packages/contracts/package.json\",\"ours\":{\"path\":\"packages/contracts/package.json\",\"digest\":\"99b398c3d5908625e6b0fc3b8b451dbdb3b499ba10ed2c67590a45a1275f2b6d\",\"revision\":\"e33331ee19520c8bd546c878fdd503063a682634\"},\"main\":{\"path\":\"packages/contracts/package.json\",\"digest\":\"e68c62ed1e493e0b8834dc4586ccb37b750313b65a19a61ac00512e30564f684\",\"revision\":\"b004ed8cb3e885da544adf960b2894780aaf2b51\"},\"active\":{\"path\":\"packages/contracts/package.json\",\"digest\":\"99b398c3d5908625e6b0fc3b8b451dbdb3b499ba10ed2c67590a45a1275f2b6d\",\"revision\":\"e33331ee19520c8bd546c878fdd503063a682634\"},\"decision\":\"oursMatch\"},{\"path\":\"src-server/routes/orchestration/orchestration.ts\",\"ours\":{\"path\":\"src-server/routes/orchestration/orchestration.ts\",\"digest\":\"9d81b62b47bea3aee158c535ce04742eb5b33a0855ffd4b8a39b7d0f897ee838\",\"revision\":\"ee7cb7c444fb45f465be3f4ea5c938e5a130145e\"},\"main\":{\"path\":\"src-server/routes/orchestration/orchestration.ts\",\"digest\":\"ed64b770e478fc8bed2649efcedd5fe86b6ccd43fe1447bf926fae1db5f93717\",\"revision\":\"7d294a14e8b7644fc42492389b8ba81651d0cced\"},\"active\":{\"path\":\"src-server/routes/orchestration/orchestration.ts\",\"digest\":\"ed64b770e478fc8bed2649efcedd5fe86b6ccd43fe1447bf926fae1db5f93717\",\"revision\":\"7d294a14e8b7644fc42492389b8ba81651d0cced\"},\"decision\":\"mainMatch\"},{\"path\":\"src-server/runtime/bootstrap/runtime-http.ts\",\"ours\":{\"path\":\"src-server/runtime/bootstrap/runtime-http.ts\",\"digest\":\"bf1b7671bc40fe53615a39f8e9f12b5ad27beace97a86fc50e2ebb4e9717d20e\",\"revision\":\"54ca710a3594bf1f3b7ac3d4464a2db2edc6e6c0\"},\"main\":{\"path\":\"src-server/runtime/bootstrap/runtime-http.ts\",\"digest\":\"400f3e49be7138980b286334db40de4fa4a6fbaa1ea37c285ae9774ddc5fbbb7\",\"revision\":\"2c5134e4bfc4db4d19877df92119078a80bf27e7\"},\"active\":{\"path\":\"src-server/runtime/bootstrap/runtime-http.ts\",\"digest\":\"bf1b7671bc40fe53615a39f8e9f12b5ad27beace97a86fc50e2ebb4e9717d20e\",\"revision\":\"54ca710a3594bf1f3b7ac3d4464a2db2edc6e6c0\"},\"decision\":\"oursMatch\"},{\"path\":\"src-server/runtime/bootstrap/station-runtime.ts\",\"ours\":{\"path\":\"src-server/runtime/bootstrap/station-runtime.ts\",\"digest\":\"7c26b7e6d8f099d1076579d5d219dbe2e73eb37a928316ee44da285bb5762544\",\"revision\":\"cc4f7016217bc65a2cf928481052ffeb68d49cb2\"},\"main\":{\"path\":\"src-server/runtime/bootstrap/station-runtime.ts\",\"digest\":\"92d31dd655d7c0a62ce68dc6fd804268cda2f357bb775a512ee974d7c09564db\",\"revision\":\"1a235cd9bc482738abe4c3f011f73be86074d667\"},\"active\":{\"path\":\"src-server/runtime/bootstrap/station-runtime.ts\",\"digest\":\"7c26b7e6d8f099d1076579d5d219dbe2e73eb37a928316ee44da285bb5762544\",\"revision\":\"cc4f7016217bc65a2cf928481052ffeb68d49cb2\"},\"decision\":\"oursMatch\"},{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"ours\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"33e19d52230c0339923db1768b0cae89a71077634c4632f9a10c11f6a3e05f78\",\"revision\":\"83c4111b8c4dcda1e978d78bb191c974888c9ca4\"},\"main\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"ed83b5af4f41e38ea85de7ba4d975066b1c15f136b215926bd5cd31a45183a21\",\"revision\":\"068722323b07f15f14280d43b1c05dbc2ca212eb\"},\"active\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"33e19d52230c0339923db1768b0cae89a71077634c4632f9a10c11f6a3e05f78\",\"revision\":\"83c4111b8c4dcda1e978d78bb191c974888c9ca4\"},\"decision\":\"neitherMatch\"},{\"path\":\"src-server/services/orchestration/orchestration-service.ts\",\"ours\":{\"path\":\"src-server/services/orchestration/orchestration-service.ts\",\"digest\":\"d22d84695d84c9341467067e356483457115768ac3b5f34e2c8cd5c27144fbab\",\"revision\":\"4e19fa6ac6b87dff5b671d3c90d3a5b48b5e6ec5\"},\"main\":{\"path\":\"src-server/services/orchestration/orchestration-service.ts\",\"digest\":\"14d4d68ff2f8715e1428ca985125a9eff9eb5a05ea52946dc16b4f5971405a34\",\"revision\":\"bc671142a7ae70587daf5bb0d94732e8ca74600a\"},\"active\":{\"path\":\"src-server/services/orchestration/orchestration-service.ts\",\"digest\":\"14d4d68ff2f8715e1428ca985125a9eff9eb5a05ea52946dc16b4f5971405a34\",\"revision\":\"bc671142a7ae70587daf5bb0d94732e8ca74600a\"},\"decision\":\"mainMatch\"}]\n\nMerge anchor history (structural reconciliation only; no semantic approval): source packages/contracts/package.json ours={\"digest\":\"2b52cd05c0425c00020227cb2bcd14ad0ae4efedcc3c02d63ec62655b33ffbef\",\"revision\":\"efa773acac88792cda31595f9afca4a37d3efebc\"}; origin/main={\"digest\":\"4207a40b79f1ca84ab14d89cbfa7dd56b3f1c95ff20d9b37abd90216969325ca\",\"revision\":\"fdca33b1896b280299ba72fc70a3c9b9cda7f3af\"}. The merged source bytes require supported review after the merge commit.\n\nMerge anchor history (structural reconciliation only; no semantic approval): source packages/sdk/package.json ours={\"digest\":\"14ca105046b127182cd13a45959cad3450f8ff4e49a4bfd467bef75ea2f65de8\",\"revision\":\"efa773acac88792cda31595f9afca4a37d3efebc\"}; origin/main={\"digest\":\"42fe4326a8a49db222c65e5536cbdf7a2bd1885671e292fcb7fd454dc79249db\",\"revision\":\"fdca33b1896b280299ba72fc70a3c9b9cda7f3af\"}. The merged source bytes require supported review after the merge commit.",
 
-  "document": {"digest":"e403d3522a0b1c4e8f4cf0788f91923acfc8c1a846d295429482eafc5780a20f","revision":"d326e74f0f416a770b08cb1b66badf150618b3c0"},
-
   "sources": [
-    {"path":"packages/cli/package.json","digest":"726eb9347e66a3cd4fb6b0092e7a6e8246b85c25a3f8ca0531055447e2392573","revision":"565a005d46e40c313432a0fbe6fa3054a74a5941"},
+    "packages/cli/package.json",
 
-    {"path":"packages/cli/src/distribution.ts","digest":"6c36f09c162ba2cdc4a6cc98cb878ca5ac1be9177fbfe584340aee4b79c8b69b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "packages/cli/src/distribution.ts",
 
-    {"path":"packages/connect/package.json","digest":"7e5503ba0ee016008cd7397ffc2c71988149f291d6827b8a570e134b0f731a31","revision":"e33331ee19520c8bd546c878fdd503063a682634"},
+    "packages/connect/package.json",
 
-    {"path":"packages/contracts/package.json","digest":"e22df1bc0996eb10206565d66054adedb06faa477174abe7f705a31f88c8c183","revision":"d9279aaf5f36478cbce5401e427eb674d114967f"},
+    "packages/contracts/src/tool.ts",
 
-    {"path":"packages/contracts/package.json#/exports","digest":"7203143140cc89ad58fefca0f47632c876bc0c2231637841c2826335b9fe92ab","revision":"efa773acac88792cda31595f9afca4a37d3efebc"},
+    "packages/sdk/package.json",
 
-    {"path":"packages/contracts/package.json#/files","digest":"43219f75df025fd68c4b3a47b045f822115a0cb02eb1a21f6f0003b466db6b24","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
+    "packages/sdk/src/agent/index.ts",
 
-    {"path":"packages/contracts/src/tool.ts","digest":"5333089345f6d5bc620294d7eda8ca8b6a8e9f4f559abc7fb100207b87e633e3","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "packages/sdk/src/index.ts",
 
-    {"path":"packages/sdk/package.json","digest":"473accfbc92fb87d86af0b017864a7738ddcf798d0b5a4e4aa986e9a403f891c","revision":"d9279aaf5f36478cbce5401e427eb674d114967f"},
+    "packages/sdk/src/voice/registry.ts",
 
-    {"path":"packages/sdk/src/agent/index.ts","digest":"27b8861c43936cd4996215ce8ad0f3a2bbd7835adba4740e160e8b8efd02f54e","revision":"d326e74f0f416a770b08cb1b66badf150618b3c0"},
+    "packages/shared/src/mcp-connection.ts",
 
-    {"path":"packages/sdk/src/index.ts","digest":"f73107a4c0e92647e409563d7ccf7472bea46c81cf67864d9c160c979f39ca75","revision":"34d62da501fa53187b7062288f6e1dbaec8c20ed"},
+    "src-server/index.ts",
 
-    {"path":"packages/sdk/src/voice/registry.ts","digest":"62ce9013b0c9d5e935c88ae2912bf31768f58ef5f40409745df9676ebfb87408","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/monitoring/emitter.ts",
 
-    {"path":"packages/shared/package.json","digest":"2b5baa810e13794d2b50232ad620ba68e89ca9fae0e8321bb31749f560d28c63","revision":"8924149a7e6ef1356fc078c9a387c6a60ada429a"},
+    "src-server/providers/plugin-provider-loader.ts",
 
-    {"path":"packages/shared/package.json#/engines","digest":"6c12acb1990a85e4fe6986ad29ad44b644eca474a81f946d053aabd14ba62059","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
+    "src-server/providers/sessions/claude-transcript-session-source.ts",
 
-    {"path":"packages/shared/package.json#/exports","digest":"6161c789a56e833fd356eb62224bc93cfa55546faade3eed921efcc152d6e79c","revision":"8924149a7e6ef1356fc078c9a387c6a60ada429a"},
+    "src-server/providers/sessions/codex-rollout-session-source.ts",
 
-    {"path":"packages/shared/src/mcp-connection.ts","digest":"7820dc126d63a74fbb6b81f8c8ce080ac9d52af0fe3d80f55e882baf772d3a76","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/routes/orchestration/orchestration.ts",
 
-    {"path":"src-server/index.ts","digest":"53c36afff3a1c5a96e7c2054c7c0f2ce97c2d5b373e876e41d7c505163f30c27","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/runtime/agents/agent-engine-classification.ts",
 
-    {"path":"src-server/monitoring/emitter.ts","digest":"18a46c3c352fa9f5305e5bf2b03c20eb39cb2fe934d53e51900d908cd15fecf4","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/runtime/agents/delegation.ts",
 
-    {"path":"src-server/providers/plugin-provider-loader.ts","digest":"7b780f31c1d234d708632b146294f59530984baec971edabdb8e0265f55ceb94","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/runtime/agents/runtime-agent-builder.ts",
 
-    {"path":"src-server/providers/sessions/claude-transcript-session-source.ts","digest":"d1dc78e049ebbd92c6dabf54436f3b82779bbe0c801d6e31514351f1c58c560d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/runtime/bootstrap/runtime-http.ts",
 
-    {"path":"src-server/providers/sessions/codex-rollout-session-source.ts","digest":"35e09b5648c9969919fa37fed58ff37af1e3b7e802a3b42c5fd236fa5100fba9","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/runtime/bootstrap/runtime-initialize.ts",
 
-    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"1f67cf0801d3536792f91bac2cc2045baf6db854bc450cfa598641d3ce9fe45a","revision":"47b5368b2ae657ecce3d9b66e2ff00f646d6c70d"},
+    "src-server/runtime/bootstrap/runtime-service-bootstrap.ts",
 
-    {"path":"src-server/runtime/agents/agent-engine-classification.ts","digest":"cec04bb10726e4ce741930da266458c95fa1f53acd475d8d696a5271c32f7c6d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/runtime/bootstrap/station-runtime.ts",
 
-    {"path":"src-server/runtime/agents/delegation.ts","digest":"68f406b4334bf5b4ed0bb64efc3a7149199fa6b8dcbab9aca17213dba5c3e363","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/runtime/conversation/runtime-event-log.ts",
 
-    {"path":"src-server/runtime/agents/runtime-agent-builder.ts","digest":"eee33c81babd2b13cc0ff1af05da1b946493e1aa0be09ece57b6f0925494337f","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/runtime/conversation/stream-orchestrator.ts",
 
-    {"path":"src-server/runtime/bootstrap/runtime-http.ts","digest":"bf1b7671bc40fe53615a39f8e9f12b5ad27beace97a86fc50e2ebb4e9717d20e","revision":"54ca710a3594bf1f3b7ac3d4464a2db2edc6e6c0"},
+    "src-server/runtime/mcp/mcp-manager.ts",
 
-    {"path":"src-server/runtime/bootstrap/runtime-initialize.ts","digest":"bd381c9d60f70ac986c9eee0977752d883f52a018842fee300d3e352933aea6d","revision":"56f4c4897a189eeb30430119a4f4895e95fbb541"},
+    "src-server/runtime/routes/runtime-routes.ts",
 
-    {"path":"src-server/runtime/bootstrap/runtime-service-bootstrap.ts","digest":"2cf5c807666f495b88ded90ba448c7e4e4e03733b2e2afed684409cd5ffc8356","revision":"56f4c4897a189eeb30430119a4f4895e95fbb541"},
+    "src-server/runtime/streaming/InjectableStream.ts",
 
-    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"7d26818fb47194e3a8bfbe9303f48be26207889b7bb84806af0ff1efaacfc34f","revision":"efa773acac88792cda31595f9afca4a37d3efebc"},
+    "src-server/runtime/streaming/StreamPipeline.ts",
 
-    {"path":"src-server/runtime/conversation/runtime-event-log.ts","digest":"c73565025ce6279646a17c4c6f2e3b339d8ff79a1c6d2ca444b98fc6232b1b26","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/runtime/tools/tool-executor.ts",
 
-    {"path":"src-server/runtime/conversation/stream-orchestrator.ts","digest":"7fc42bc4728646375044efd3b85bc5341f828dbbca0bbed63cdb3cef997451f3","revision":"b3e03916cee441245a015ac51c5b06bf44165fc9"},
+    "src-server/services/execution-target/execution-target-execution.ts",
 
-    {"path":"src-server/runtime/mcp/mcp-manager.ts","digest":"2b111148f423e896011695de09bca6f6f2990bc8285b4466a5fd70a3c93c65d1","revision":"c2c67c2f25d565ea97d757b370f2bbf942a9588b"},
+    "src-server/services/flow/flow-run-service.ts",
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"6c3122386be7938a0cea57b7189c35aa93e99154520d5dbe53b36636e16498e6","revision":"47b5368b2ae657ecce3d9b66e2ff00f646d6c70d"},
+    "src-server/services/orchestration/orchestration-service.ts",
 
-    {"path":"src-server/runtime/streaming/InjectableStream.ts","digest":"a35d9612bd7e68cf748b8cb9c5188b064446ac47a40b9ed7757cf109b7434ed1","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/services/plugins/plugin-install-transaction.ts",
 
-    {"path":"src-server/runtime/streaming/StreamPipeline.ts","digest":"cdf3e6786b92a321ffa13c413f25b8b7bf367436b389f7212492cb2eccf1c6f2","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/telemetry.ts",
 
-    {"path":"src-server/runtime/tools/tool-executor.ts","digest":"3acb6e34cbb9e134d85acc405b4dacfc48d3f0520974a7ec15ce4d0f6cd2c9df","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/telemetry/metrics.ts",
 
-    {"path":"src-server/services/execution-target/execution-target-execution.ts","digest":"376fcedbde14978515ed735d00423cc6b89b613788149e634174b39bf165c317","revision":"8540fafb86b969775254b898711ad3ae40ccc39d"},
+    "src-server/voice/voice-session.ts",
 
-    {"path":"src-server/services/flow/flow-run-service.ts","digest":"501881355a01c561de9ecdbe2cc99a9f83bb565873615997cba75965e6e29271","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-ui/src/components/coding-layout/TerminalPanel.tsx",
 
-    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"c5a85fefbe06e5a903444325293d46a80fefb7a0f938100fbceee8c60492d893","revision":"958350328eafd360124e1892c1945a2ae455e43c"},
+    "src-ui/src/hooks/voiceWsUrl.ts",
 
-    {"path":"src-server/services/plugins/plugin-install-transaction.ts","digest":"467e7b1890294780e4d2a379624a4275add33e2dbb5a4505040f54d14bd79afc","revision":"efa773acac88792cda31595f9afca4a37d3efebc"},
+    "src-ui/src/providers/voice/NovaVoiceSessionAdapter.ts",
 
-    {"path":"src-server/telemetry.ts","digest":"f682958dc24d74cfee413e2986b257df4177c5645386a0ec9ed5e3774bab090c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "packages/contracts/package.json#/exports",
 
-    {"path":"src-server/telemetry/metrics.ts","digest":"d5cafe742934bc8b575d2374e3e83767b3026af1ff78ee10b62bbaaa0c166d9c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "packages/contracts/package.json#/files",
 
-    {"path":"src-server/voice/voice-session.ts","digest":"957f092791868376ee49c32261dc73d32fa25a8bdbfe5d79d6b70265ea685b28","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "packages/shared/package.json#/engines",
 
-    {"path":"src-ui/src/components/coding-layout/TerminalPanel.tsx","digest":"971647009fb435dcdb7370c484b0e1e3a7d94112a08de080cae4b06ec2a79983","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "packages/shared/package.json#/exports",
 
-    {"path":"src-ui/src/hooks/voiceWsUrl.ts","digest":"4b609c4ad165efdf372f565aacdf1617ed9f0c793fbba7cca2005a0ab33f71b1","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "packages/contracts/package.json",
 
-    {"path":"src-ui/src/providers/voice/NovaVoiceSessionAdapter.ts","digest":"e0af5660bc581fae84121a3890cb5a180960213d761eef4a23319e5fa1bece2c","revision":"0c1f436037261c43eeca3e079f5106948360c591"}
+    "packages/shared/package.json"
   ],
 
   "checks": [

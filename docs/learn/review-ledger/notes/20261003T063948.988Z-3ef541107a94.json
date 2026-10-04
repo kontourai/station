@@ -1,0 +1,37 @@
+{
+  "revision": "94e8e5781a2c23d2bc828682a1157aef3934e897",
+
+  "notes": [
+    {"path":"README.md","note":"#2959 merge of origin/main 261d6ec887. Delta in docs/guides/release-channel-ports.md: main's install.ps1 stage-only paragraphs (#2974) plus #2959's stable/preview signed-manifest note. The README's prebuilt-archive link anchor and macOS/Linux bundled-Node claim are unchanged and still accurate; no prose change.","inputs":["README.md"]},
+
+    {"path":"docs/user/getting-started.md","note":"#2959 merge of origin/main 261d6ec887. Delta in docs/guides/release-channel-ports.md: main's install.ps1 stage-only paragraphs (#2974) plus #2959's stable/preview signed-manifest note. The archive-install anchor and the 'requires a published manifest for the requested channel' claim still hold; no prose change.","inputs":["docs/user/getting-started.md"]},
+
+    {"path":"docs/guides/android-build.md","note":"#2959 merge of origin/main 261d6ec887. release.yml delta since the recorded revision is only #3146's top-level 'actions: read' permission; this guide's release.yml claims are unaffected.","inputs":["docs/guides/android-build.md"]},
+
+    {"path":"docs/guides/desktop-build.md","note":"#2959 merge of origin/main 261d6ec887. release.yml delta since the recorded revision is only #3146's top-level 'actions: read' permission; this guide's release.yml claims are unaffected.","inputs":["docs/guides/desktop-build.md"]},
+
+    {"path":"docs/guides/desktop-tray.md","note":"#2959 merge of origin/main 261d6ec887. release.yml delta since the recorded revision is only #3146's top-level 'actions: read' permission; this guide's release.yml claims are unaffected.","inputs":["docs/guides/desktop-tray.md"]},
+
+    {"path":"src-desktop/icons/README.md","note":"#2959 merge of origin/main 261d6ec887. release.yml delta since the recorded revision is only #3146's top-level 'actions: read' permission; this file's release.yml claims are unaffected.","inputs":["src-desktop/icons/README.md"]},
+
+    {"path":"docs/guides/mobile-release.md","note":"#2959 merge of origin/main 261d6ec887. Deltas: #3146 adds 'actions: read' to release.yml/nightly.yml/publish-release.yml, moves Nightly to a daily 06:43 cron, and inserts the reusable 'qualification' job (skipped for pointer repair) before publish; release-workflow.test.ts pins that. No mobile/TestFlight claim here depends on publish's needs or the Nightly cadence; no prose change.","inputs":["docs/guides/mobile-release.md"]},
+
+    {"path":"docs/guides/store-entry.md","note":"#2959 merge of origin/main 261d6ec887. Deltas: #3146 'actions: read' permissions, daily Nightly cron, and the 'qualification' job before publish in publish-release.yml (pinned in release-workflow.test.ts). Store owner-setup and upload claims do not depend on these; no prose change.","inputs":["docs/guides/store-entry.md"]},
+
+    {"path":"docs/guides/store-listing.md","note":"#2959 merge of origin/main 261d6ec887. Deltas: #3146 'actions: read' permissions and the 'qualification' job before publish in publish-release.yml (pinned in release-workflow.test.ts). Listing copy and capture claims do not depend on these; no prose change.","inputs":["docs/guides/store-listing.md"]},
+
+    {"path":"docs/reference/cli.md","note":"#2959 merge of origin/main 261d6ec887. Deltas: #3146 'actions: read' permissions and the 'qualification' job before publish in publish-release.yml. The CLI reference's release-artifact claims are unaffected; no prose change.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/guides/nightly.md","note":"#2959 merge of origin/main 261d6ec887. Deltas: #3146 'actions: read' permissions and the 'qualification' job before publish in publish-release.yml (pinned in release-workflow.test.ts). main's own text already states the six-hourly main qualification and daily Nightly; the #2959 re-verify claims are unchanged; no prose change.","inputs":["docs/guides/nightly.md"]},
+
+    {"path":"docs/guides/native-releases.md","note":"#2959 merge of origin/main 261d6ec887. The document now carries main's releasing.md pointer, daily Nightly cadence and install.ps1 stage-only text alongside #2959's host-stream admission and native-release-publish secret text; both merged cleanly. publish-release.yml now runs 'qualification' between resolve and publish; the host-pointer job still needs [resolve, publish] and keys on publish.outputs.released, so the host-stream claims still hold.","inputs":["docs/guides/native-releases.md"]},
+
+    {"path":"docs/guides/release-rings.md","note":"#2959 merge of origin/main 261d6ec887. Document gains main's releasing.md pointer; #2959's signed host-stream section is unchanged. publish-release.yml now gates publish on the reusable 'qualification' job (or pointer repair); host-pointer still runs after publish reports released, not after cancel, and its failure still does not skip release-availability. nightly.yml/release.yml deltas are 'actions: read' and the daily cron only; no prose change.","inputs":["docs/guides/release-rings.md"]},
+
+    {"path":"docs/guides/release-channel-ports.md","note":"#2959 merge of origin/main 261d6ec887. Merged document combines main's install.ps1 stage-only paragraphs (#2974) with #2959's stable/preview signed-manifest note; they touch separate sentences and read consistently. release.yml delta is #3146's 'actions: read' only.","inputs":["docs/guides/release-channel-ports.md"]},
+
+    {"path":"docs/guides/releasing.md","note":"#2959 merge into this branch. release.yml/publish-release.yml now also carry #2959's host-manifest job and host-pointer job. Step 5's claim that publish re-admits exact-source qualification before changing public update authorities still holds: host-pointer needs publish, which needs qualification unless pointer_repair_only (the break glass the guide already describes). No prose change.","inputs":["docs/guides/releasing.md"]},
+
+    {"path":"scripts/AGENTS.md","note":"#2959 merge of origin/main 261d6ec887. vitest-resource-manifest.mjs now carries main's new process-heavy entries and quarantine comment plus #2959's child-process test classification; the classification rule this file states is followed.","inputs":["scripts/AGENTS.md"]}
+  ]
+}
