@@ -16,7 +16,11 @@
 
     "src-server/providers/adapters/codex-adapter.ts",
 
+    "src-ui/src/__tests__/ChatMessageList.reasoning.test.tsx",
+
     "src-ui/src/components/chat/ChatSettingsPanel.tsx",
+
+    "src-ui/src/components/chat/ReasoningSection.tsx",
 
     "src-ui/src/contexts/active-chats-state.ts",
 
@@ -44,13 +48,9 @@
 
     "src-ui/src/hooks/orchestration/replay/timeline.ts",
 
-    "tests/chat-replay.spec.ts",
-
-    "src-ui/src/components/chat/ReasoningSection.tsx",
-
     "src-ui/src/index.css",
 
-    "src-ui/src/__tests__/ChatMessageList.reasoning.test.tsx"
+    "tests/chat-replay.spec.ts"
   ],
 
   "checks": [

@@ -28,6 +28,8 @@
 
     "packages/shared/src/windows-system-utility.mjs",
 
+    "scripts/__tests__/local-collaboration-station-config.test.ts",
+
     "scripts/__tests__/startup-readiness-static.test.ts",
 
     "scripts/__tests__/windows-nightly.test.ts",
@@ -36,11 +38,23 @@
 
     "scripts/ios-simulator-build.mjs",
 
+    "scripts/lib/local-collaboration-relay-account.ts",
+
+    "scripts/lib/local-collaboration-station-child.ts",
+
+    "scripts/lib/local-collaboration-station.ts",
+
+    "scripts/lib/native-fresh-relay-fixture.ts",
+
     "scripts/lib/windows-nightly.mjs",
+
+    "scripts/native-fresh-relay-fixture.ts",
 
     "scripts/run-tauri-shell-e2e.mjs",
 
     "scripts/verify-windows-installer-upgrade.ps1",
+
+    "src-desktop/build.rs",
 
     "src-desktop/Cargo.lock",
 
@@ -50,7 +64,21 @@
 
     "src-desktop/src/lib.rs",
 
+    "src-desktop/src/native_account_proof_key.rs",
+
+    "src-desktop/src/native_device_binding_candidate.rs",
+
+    "src-desktop/src/native_device_proof_key.rs",
+
+    "src-desktop/src/native_proof_key_core.rs",
+
+    "src-desktop/src/native_relay_ios_launch.rs",
+
+    "src-desktop/src/native_relay_link_intake.rs",
+
     "src-desktop/src/native_relay_redemption.rs",
+
+    "src-desktop/src/native_secure_entry.rs",
 
     "src-desktop/src/startup_readiness.rs",
 
@@ -62,87 +90,59 @@
 
     "src-server/security/local-grant-file.ts",
 
+    "src-ui/src/components/OnboardingGate.tsx",
+
     "src-ui/src/contexts/ApiBaseContext.tsx",
 
+    "src-ui/src/lib/queryDefaults.ts",
+
     "src-ui/src/main.tsx",
+
+    "src-ui/src/platform/native/__tests__/authenticatedTransport.test.ts",
 
     "src-ui/src/platform/native/__tests__/nativeRelayGrantRenewalAdapter.test.ts",
 
     "src-ui/src/platform/native/__tests__/nativeRelayGrantRenewalSupervisor.test.ts",
 
+    "src-ui/src/platform/native/__tests__/NativeRelayLinkIntake.test.tsx",
+
     "src-ui/src/platform/native/__tests__/rendererLiveness.test.tsx",
-
-    "src-ui/src/platform/native/nativeRelayGrantRenewalAdapter.ts",
-
-    "src-ui/src/platform/native/nativeRelayGrantRenewalSupervisor.ts",
-
-    "src-ui/src/platform/native/rendererLiveness.tsx",
-
-    "src-ui/src/views/connections-hub/RelayRouteProfiles.tsx",
-
-    "src-ui/src/views/connections-hub/__tests__/RelayRouteProfiles.test.tsx",
-
-    "tests/tauri-shell/native-relay-grant-lifecycle.e2e.ts",
-
-    "tests/tauri-shell/plugin-host-security.e2e.ts",
-
-    "tests/tauri-shell/native-chat-dispatch.e2e.ts",
-
-    "tests/tauri-shell/native-project-runtime-fixture.ts",
-
-    "tests/tauri-shell/native-project-acceptance.e2e.ts",
-
-    "tests/tauri-shell/native-project-acceptance-webview.ts",
-
-    "scripts/lib/local-collaboration-station.ts",
-
-    "scripts/lib/local-collaboration-station-child.ts",
-
-    "scripts/lib/local-collaboration-relay-account.ts",
-
-    "scripts/__tests__/local-collaboration-station-config.test.ts",
-
-    "src-desktop/src/native_proof_key_core.rs",
-
-    "src-desktop/src/native_device_proof_key.rs",
-
-    "src-desktop/src/native_account_proof_key.rs",
-
-    "src-desktop/src/native_device_binding_candidate.rs",
 
     "src-ui/src/platform/native/authenticatedTransport.ts",
 
     "src-ui/src/platform/native/nativeCommandError.ts",
 
-    "src-ui/src/platform/native/__tests__/authenticatedTransport.test.ts",
-
-    "src-ui/src/lib/queryDefaults.ts",
-
-    "scripts/lib/native-fresh-relay-fixture.ts",
-
-    "scripts/native-fresh-relay-fixture.ts",
-
-    "src-desktop/build.rs",
-
-    "src-desktop/src/native_relay_ios_launch.rs",
-
-    "src-desktop/src/native_relay_link_intake.rs",
-
-    "src-desktop/src/native_secure_entry.rs",
-
-    "src-ui/src/components/OnboardingGate.tsx",
-
-    "src-ui/src/platform/native/__tests__/NativeRelayLinkIntake.test.tsx",
-
     "src-ui/src/platform/native/NativeRelayConnectionRecovery.tsx",
+
+    "src-ui/src/platform/native/nativeRelayGrantRenewalAdapter.ts",
+
+    "src-ui/src/platform/native/nativeRelayGrantRenewalSupervisor.ts",
 
     "src-ui/src/platform/native/NativeRelayLinkReview.tsx",
 
+    "src-ui/src/platform/native/rendererLiveness.tsx",
+
+    "src-ui/src/views/connections-hub/__tests__/RelayRouteProfiles.test.tsx",
+
     "src-ui/src/views/connections-hub/NativeRelayEnrollmentWizard.tsx",
+
+    "src-ui/src/views/connections-hub/RelayRouteProfiles.tsx",
+
+    "tests/tauri-shell/native-chat-dispatch.e2e.ts",
 
     "tests/tauri-shell/native-fresh-relay-acceptance-webview.ts",
 
-    "tests/tauri-shell/native-fresh-relay-fixture.md"
+    "tests/tauri-shell/native-fresh-relay-fixture.md",
+
+    "tests/tauri-shell/native-project-acceptance-webview.ts",
+
+    "tests/tauri-shell/native-project-acceptance.e2e.ts",
+
+    "tests/tauri-shell/native-project-runtime-fixture.ts",
+
+    "tests/tauri-shell/native-relay-grant-lifecycle.e2e.ts",
+
+    "tests/tauri-shell/plugin-host-security.e2e.ts"
   ],
 
   "checks": [

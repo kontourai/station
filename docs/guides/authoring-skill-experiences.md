@@ -30,6 +30,9 @@ references, setup material, scripts/assets, a source digest, gaps and an agent
 authoring prompt. It indexes nested Skills by their parsed names and follows
 literal Skill-tool calls and slash-name references. This deliberately collects
 conservative leads: a path or router mention can look like a Skill invocation.
+Referenced files outside a Skill’s directory contribute their literal calls to
+that Skill’s dependency edges too. Shared references and reference cycles are
+inspected without executing their contents.
 A malformed Skill parser input is reported as a gap and indexed only if its
 literal name is readable; packaging still uses the strict portable validator.
 

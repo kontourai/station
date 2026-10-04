@@ -279,7 +279,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/security/__tests__/station-control-authority-pooled-child.process.test.ts',
   // station#4457 drives the registry bridge's stdin/stdout entry point through
   // bounded single-shot Node children to prove exact success/refusal protocol
-  // envelopes; every child exits after its one requested operation.
+  // envelopes; every child exits after its one requested operation. #2961
+  // adds six claimant children (three desktops each running one bridge claim,
+  // three service claims) that stay alive only until the test closes stdin.
   'src-server/tools/__tests__/instance-registry-bridge.test.ts',
   // #2888: binds a real loopback HTTP server and two independently
   // authenticated streaming clients against worker-backed SQLite state. The
@@ -306,6 +308,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // station#2923: imports commands/service.ts, whose production command probe
   // uses spawnSync; the direct-import detector cannot see that child seam.
   'packages/cli/src/__tests__/service.test.ts',
+  // Real listener children prove service startup fencing and refusal cleanup.
+  'packages/cli/src/__tests__/service-run.test.ts',
+  // Opt-in Dockerfile command qualification owns real supervisor/server/UI children.
+  'scripts/__tests__/service-container-command.test.ts',
   // station#2689: builds a real git checkout fixture (git init/commit/rev-parse)
   // and drives the real lifecycle stamp check, which runs `git rev-parse HEAD`.
   'packages/cli/src/__tests__/service-build-stamp.test.ts',
@@ -326,6 +332,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // through the shared file-mutation lock. Its bound is a count (2N), not a
   // wall-clock constant, so it does not add a contention cliff to this group.
   'src-server/services/agents/__tests__/skill-usage-service.cross-process.test.ts',
+  // #2961: six real claimants race the one host-owner claim, and a real
+  // SIGKILLed process proves stale-sidecar reclamation.
   'packages/shared/src/__tests__/instance-registry.test.ts',
   'packages/shared/src/__tests__/lifecycle-events.test.ts',
   // #2012: a real child runtime races the home maintenance ownership fence.

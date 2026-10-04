@@ -134,7 +134,17 @@
 
     "tests/tauri-shell/native-project-runtime-fixture.ts",
 
-    "vitest.setup.ts"
+    "vitest.setup.ts",
+
+    "scripts/orchestration-transfer-capture.ts",
+
+    "scripts/lib/transfer-capture-progress.ts",
+
+    "scripts/__tests__/transfer-capture-progress.test.ts",
+
+    "scripts/check-prepush-orchestration-transfer.mjs",
+
+    "scripts/__tests__/prepush-orchestration-transfer.test.ts"
   ],
 
   "checks": [

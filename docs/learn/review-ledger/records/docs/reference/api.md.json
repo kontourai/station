@@ -52,6 +52,8 @@
 
     "packages/contracts/src/tool.ts",
 
+    "packages/contracts/src/usage-rollup.ts",
+
     "packages/sdk/src/api-core.ts",
 
     "packages/sdk/src/client/http.ts",
@@ -89,6 +91,8 @@
     "src-server/analytics/usage-aggregator-state.ts",
 
     "src-server/analytics/usage-aggregator.ts",
+
+    "src-server/analytics/usage-rollup-service.ts",
 
     "src-server/constants.ts",
 
@@ -260,7 +264,11 @@
 
     "src-server/services/agents/runtime-agent-identity.ts",
 
+    "src-server/services/connections/__tests__/engine-account-history.test.ts",
+
     "src-server/services/connections/connection-service.ts",
+
+    "src-server/services/connections/engine-account-history.ts",
 
     "src-server/services/connections/launchable-model-inventory.ts",
 
@@ -280,6 +288,8 @@
 
     "src-server/services/layouts/personal-layout-service.ts",
 
+    "src-server/services/orchestration/__tests__/engine-account-usage-attribution.test.ts",
+
     "src-server/services/orchestration/model-launch-planning.ts",
 
     "src-server/services/orchestration/orchestration-service.ts",
@@ -287,6 +297,8 @@
     "src-server/services/orchestration/orchestration-session-state.ts",
 
     "src-server/services/orchestration/run-service.ts",
+
+    "src-server/services/orchestration/session-transcript-reads.ts",
 
     "src-server/services/plugins/mcp-service.ts",
 
@@ -357,18 +369,6 @@
     "src-ui/src/views/agent-editor/useAgentsViewModel.ts",
 
     "src-ui/src/views/layout-workspace-shape.ts",
-
-    "packages/contracts/src/usage-rollup.ts",
-
-    "src-server/analytics/usage-rollup-service.ts",
-
-    "src-server/services/connections/__tests__/engine-account-history.test.ts",
-
-    "src-server/services/connections/engine-account-history.ts",
-
-    "src-server/services/orchestration/__tests__/engine-account-usage-attribution.test.ts",
-
-    "src-server/services/orchestration/session-transcript-reads.ts",
 
     "src-server/providers/registries/github-skill-registry.ts",
 
