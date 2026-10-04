@@ -5,11 +5,11 @@
  * connects to this test. `runGate` is repeated from the original file, where
  * the fixture-repo cases still use it.
  */
-import { execFileSync, spawnSync } from 'node:child_process';
-import { execFileSyncBounded } from '../lib/bounded-capture.mjs';
+import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
+import { execFileSyncBounded } from '../lib/bounded-capture.mjs';
 import { TEST_FILE_PATTERN } from '../test-import-existence-gate.mjs';
 import { VITEST_TEST_FILE_PATTERN } from '../verification-policy-gate.mjs';
 

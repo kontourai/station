@@ -5,12 +5,11 @@
  * connects to this test. The fixture-repo control that proves the oracle is
  * content-derived stays in the original file.
  */
-import { execFileSync } from 'node:child_process';
-import { execFileSyncBounded } from '../lib/bounded-capture.mjs';
 import { extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { BINARY_EXCLUDES } from '../content-integrity-gate.mjs';
+import { execFileSyncBounded } from '../lib/bounded-capture.mjs';
 
 const repoRoot = fileURLToPath(new URL('../../', import.meta.url));
 

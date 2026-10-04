@@ -1,11 +1,11 @@
 import { execFileSync } from 'node:child_process';
-import { execFileSyncBounded } from '../lib/bounded-capture.mjs';
 import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { expect, it } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import { buildLearningGuide } from '../build-learning-guide.mjs';
+import { execFileSyncBounded } from '../lib/bounded-capture.mjs';
 import {
   freshnessRequirement,
   resolveDocumentationFreshness,
