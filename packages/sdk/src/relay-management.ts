@@ -1,4 +1,6 @@
+import { parseNativeRelayLink } from '@kontourai/station-connect/native-relay-link';
 import { NATIVE_DEVICE_BINDING_CANDIDATE_VERSION } from '@kontourai/station-contracts/native-device-proof';
+import type { NativeRelayLinkRoute } from '@kontourai/station-contracts/native-relay-link';
 import type {
   RelayInvitationLifetime,
   RelayManagementView,
@@ -54,6 +56,7 @@ const approval: z.ZodType<RelaySetupApproval> = z
   .object({
     approvalId: uuid,
     revision: z.number().int().positive(),
+    approvedBy: z.string().optional(),
     scope,
     surface,
   })
@@ -120,10 +123,36 @@ export async function getRelayManagement(
   base: string,
   input?: ClientRequestOptions,
 ): Promise<RelayManagementView> {
-  return z
+  const result = z
     .object({ data: view })
     .strict()
     .parse(await relayResponse(await getJson(url(base), options(input)))).data;
+  for (const channel of ['stable', 'beta', 'nightly'] as const) {
+    const parsed = parseNativeRelayLink(result.setupLinks[channel], {
+      channel,
+      appIdentifier: 'io.kontourai.station',
+    });
+    if (
+      parsed.kind !== 'route-intent' ||
+      parsed.applicationOrigin !== result.route.applicationOrigin ||
+      parsed.brokerOrigin !== result.route.brokerOrigin ||
+      parsed.stationId !== result.route.stationId ||
+      parsed.enrollmentId !== result.route.enrollmentId
+    )
+      throw new Error('Relay setup link does not match this Station.');
+  }
+  if (
+    result.approvals.some(
+      (entry) =>
+        entry.scope.stationId !== result.route.stationId ||
+        entry.scope.enrollmentId !== result.route.enrollmentId,
+    ) ||
+    result.pendingDevices.some(
+      (entry) => entry.candidate.stationId !== result.route.stationId,
+    )
+  )
+    throw new Error('Relay management response names another Station.');
+  return result;
 }
 export async function approveRelaySetup(
   base: string,
@@ -143,16 +172,36 @@ export async function approveRelaySetup(
 }
 export async function createRelayInvitation(
   base: string,
+  expectedRoute: NativeRelayLinkRoute,
   prepare: unknown,
   lifetime: RelayInvitationLifetime,
   input?: ClientRequestOptions,
 ): Promise<{ link: string; expiresAt: number }> {
-  return z
+  const expected = z
+    .object({
+      brokerOrigin: z.string().url(),
+      stationId: uuid,
+      enrollmentId: uuid,
+      appIdentifier: z.string().min(1).max(255),
+      channel: z.enum(['stable', 'beta', 'nightly']),
+      clientInstanceId: uuid,
+      keyThumbprint: opaque,
+    })
+    .passthrough()
+    .parse(prepare);
+  if (
+    expected.stationId !== expectedRoute.stationId ||
+    expected.enrollmentId !== expectedRoute.enrollmentId ||
+    expected.brokerOrigin !== expectedRoute.brokerOrigin
+  )
+    throw new Error('Recipient setup belongs to another Station.');
+  const started = Date.now();
+  const result = z
     .object({
       data: z
         .object({
           link: z.string().min(1).max(24_000),
-          expiresAt: z.number().int().positive(),
+          expiresAt: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
         })
         .strict(),
     })
@@ -165,7 +214,43 @@ export async function createRelayInvitation(
         }),
       ),
     ).data;
+  const parsed = parseNativeRelayLink(result.link, {
+    channel: expected.channel,
+    appIdentifier: expected.appIdentifier,
+  });
+  if (
+    parsed.kind !== 'bound-invitation' ||
+    parsed.applicationOrigin !== expectedRoute.applicationOrigin
+  )
+    throw new Error('Relay invitation does not match this Station.');
+  const invite = parsed.invitation;
+  if (
+    invite.brokerOrigin !== expected.brokerOrigin ||
+    invite.scope.stationId !== expected.stationId ||
+    invite.scope.enrollmentId !== expected.enrollmentId ||
+    invite.surface.clientInstanceId !== expected.clientInstanceId ||
+    invite.surface.keyThumbprint !== expected.keyThumbprint ||
+    invite.expiresAt !== result.expiresAt
+  )
+    throw new Error('Relay invitation does not match the approved recipient.');
+  const durations = {
+    '5m': 300_000,
+    '15m': 900_000,
+    '1h': 3_600_000,
+    '24h': 86_400_000,
+  };
+  if (
+    lifetime === 'never'
+      ? result.expiresAt !== Number.MAX_SAFE_INTEGER
+      : result.expiresAt < started + durations[lifetime] - 5000 ||
+        result.expiresAt > Date.now() + durations[lifetime] + 5000
+  )
+    throw new Error(
+      'Relay invitation expiry differs from the requested lifetime.',
+    );
+  return result;
 }
+
 export async function approveRelayDevice(
   base: string,
   device: RelayManagementView['pendingDevices'][number],

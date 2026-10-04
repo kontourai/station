@@ -1,11 +1,13 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
+import { isPrincipalRef } from '@kontourai/station-contracts/principal';
 import type {
   SelfHostedBrokerNativeClientSurfaceV2,
   SelfHostedBrokerNativeScopeV2,
 } from '@kontourai/station-contracts/self-hosted-broker';
 import { z } from 'zod';
+import { RelayManagementApproval } from '../../security/relay-management-authority.js';
 import { openPrivateSqlite } from '../../utils/private-sqlite.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../identity/principal-resolver.js';
 
@@ -40,6 +42,12 @@ const recordSchema = z
     surface: surfaceSchema,
     state: z.enum(['approved', 'revoked']),
     approvedAt: z.number().int().positive(),
+    approvedBy: z
+      .string()
+      .refine((id) =>
+        isPrincipalRef({ kind: 'human', id, display: 'approver' }),
+      )
+      .optional(),
     revision: z.number().int().positive(),
   })
   .strict();
@@ -82,8 +90,33 @@ export class NativeSurfaceOperatorAuthority {
     const { scope, surface } = tupleSchema.parse(tuple);
     if (operation !== 'approve' && operation !== 'revoke')
       throw new Error('native_surface_operation_invalid');
-    return new NativeSurfaceApproval(TOKEN, operation, { scope, surface });
+    return new NativeSurfaceApproval(
+      TOKEN,
+      operation,
+      { scope, surface },
+      operatorPrincipalId,
+    );
   }
+}
+
+export function approveNativeSurfaceAsManager(
+  decision: RelayManagementApproval,
+  operation: 'approve' | 'revoke',
+  value: unknown,
+): NativeSurfaceApproval {
+  const tuple = tupleSchema.parse(value);
+  if (
+    !(decision instanceof RelayManagementApproval) ||
+    !decision.isCurrent() ||
+    decision.subjectId !== tuple.surface.clientInstanceId
+  )
+    throw new Error('native_surface_operator_required');
+  return new NativeSurfaceApproval(
+    TOKEN,
+    operation,
+    tuple,
+    decision.actorPrincipalId,
+  );
 }
 
 class NativeSurfaceApproval {
@@ -93,6 +126,7 @@ class NativeSurfaceApproval {
     token: symbol,
     readonly operation: 'approve' | 'revoke',
     tuple: NativeSurfaceTuple,
+    readonly actorPrincipalId: string,
   ) {
     if (token !== TOKEN) throw new Error('native_surface_operator_required');
     this.tuple = Object.freeze({
@@ -111,6 +145,7 @@ class NativeSurfaceApproval {
 export interface ApprovedNativeSurface extends NativeSurfaceTuple {
   readonly approvalId: string;
   readonly revision: number;
+  readonly approvedBy: string;
   isCurrent(): boolean;
 }
 
@@ -219,6 +254,7 @@ export class NativeSurfaceRegistry {
           ...context.tuple,
           state: 'approved',
           approvedAt: this.now(),
+          approvedBy: context.actorPrincipalId,
           revision: 1,
         });
       context.consume();
@@ -269,6 +305,7 @@ export class NativeSurfaceRegistry {
     return Object.freeze({
       approvalId: captured.approvalId,
       revision: captured.revision,
+      approvedBy: captured.approvedBy ?? LOCAL_OPERATOR_PRINCIPAL_ID,
       scope: Object.freeze(captured.scope),
       surface: Object.freeze(captured.surface),
       isCurrent: () => {

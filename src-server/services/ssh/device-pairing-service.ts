@@ -1551,8 +1551,8 @@ export class DevicePairingService {
     }
     const managedRelayApproval =
       approval instanceof RelayManagementApproval &&
-      relayVerification?.enrollmentId === approval.enrollmentId &&
-      offer.relayEnrollmentId === approval.enrollmentId &&
+      relayVerification?.enrollmentId === approval.subjectId &&
+      offer.relayEnrollmentId === approval.subjectId &&
       approval.isCurrent();
     // A scoped relay decision is valid only for its exact verified native attempt.
     // Other unrecognized approval sources use the unauthenticated floor, so a
@@ -1963,7 +1963,7 @@ export class DevicePairingService {
       device.revokedAt !== null ||
       device.relayEnrollmentId !== enrollmentId ||
       device.pendingEnrollmentId !== undefined ||
-      device.scope !== PAIRING_SCOPE_ORCHESTRATION_READ ||
+      !pairingScopeIncludes(device.scope, PAIRING_SCOPE_ORCHESTRATION_READ) ||
       !binding ||
       !('kind' in binding) ||
       binding.kind !== 'account'
@@ -2404,13 +2404,7 @@ export class DevicePairingService {
   ): PairedDevice {
     if (
       approval.kind !== 'presented-credential' &&
-      approval.kind !== 'local-grant' &&
-      !(
-        approval instanceof RelayManagementApproval &&
-        relayVerification?.enrollmentId === approval.enrollmentId &&
-        offer.relayEnrollmentId === approval.enrollmentId &&
-        approval.isCurrent()
-      )
+      approval.kind !== 'local-grant'
     ) {
       throw new DevicePairingError('approval_requires_operator');
     }

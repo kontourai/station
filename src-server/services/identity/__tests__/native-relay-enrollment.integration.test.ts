@@ -19,7 +19,7 @@ import {
   type NativeRelayEnrollmentDelivery,
   NATIVE_RELAY_ENROLLMENT_VERSION as VERSION,
 } from '@kontourai/station-contracts/native-relay-enrollment';
-import { humanPrincipal } from '@kontourai/station-contracts/principal';
+import { humanPrincipal, humanPrincipal } from '@kontourai/station-contracts/principal';
 import { Hono } from 'hono';
 import {
   CompactSign,
@@ -36,8 +36,12 @@ import {
 } from '../../../routes/system/native-relay-enrollment-routes.js';
 import { createNativeRelaySurfaceRoutes } from '../../../routes/system/native-relay-surface-routes.js';
 import { createRelayManagementRoutes } from '../../../routes/system/relay-management-routes.js';
+import { createOrchestrationRequestPrincipalResolver } from '../../../runtime/bootstrap/orchestration-request-principal.js';
 import { configureRuntimeHttp } from '../../../runtime/bootstrap/runtime-http.js';
-import { hasRelayManagementAuthority } from '../../../security/relay-management-authority.js';
+import {
+  captureRelayManagementApproval,
+  hasRelayManagementAuthority,
+} from '../../../security/relay-management-authority.js';
 import { NativeSurfaceRegistry } from '../../connections/native-surface-registry.js';
 import {
   createResolvedNativeV2PionApplicationAdapter,
@@ -209,6 +213,18 @@ async function fixture(initialGeneration = 1) {
     createRelayManagementRoutes({
       registry,
       enrollment: service,
+      resolveActor: createOrchestrationRequestPrincipalResolver({
+        environmentSecurityService: security,
+        deploymentAuthentication: accounts.service,
+      }),
+      captureDecision: (request, subjectId, actor) =>
+        captureRelayManagementApproval(
+          request,
+          subjectId,
+          security,
+          pairing,
+          actor,
+        ),
       owner: {
         describe: async () => {
           throw new Error('Unused broker boundary');
@@ -925,4 +941,31 @@ test('an operator declines an actual pending native registration through the man
       )
     ).kind,
   ).toBe('invalid');
+});
+
+test('delegated native approval durably records the authenticated manager rather than the local owner', async () => {
+  const h = await fixture();
+  const registered = await h.proved('register', { enrollmentId: h.challenge.enrollmentId, candidate: h.candidate, credentials: { username: 'managed-recipient', password: 'Native invitation fixture password' }, invitation: h.invite.token });
+  expect(registered.response.status, registered.raw).toBe(200);
+  const offer = h.pairing.createOffer({ endpoint: ORIGIN });
+  const pending = h.pairing.requestPairing({ requesterPosition: 'off-box', offerId: offer.offerId, proof: offer.challenge, deviceName: 'Manager phone', source: 'tailnet', requester: { provider: 'tailscale-serve', login: 'manager@example.test' } });
+  h.pairing.confirmRequest(pending.requestId, { kind: 'presented-credential' }, { principalId: 'human:local:operator', kind: 'verified-ingress' });
+  const manager = h.pairing.exchange({ offerId: offer.offerId, proof: offer.challenge, requestId: pending.requestId });
+  h.pairing.setDeviceScope(manager.device.id, ['orchestration:read', 'relay:manage'], { kind: 'presented-credential' });
+  const approved = await h.operatorPost(`/api/relay-management/devices/${h.challenge.enrollmentId}/approve`, { candidate: h.candidate }, manager.credential);
+  expect(approved.status, await approved.clone().text()).toBe(200);
+  const actorId = humanPrincipal('tailscale-serve', 'manager@example.test', 'Manager').id;
+  expect(h.journal.get(h.challenge.enrollmentId)?.approvedBy).toBe(actorId);
+  const finalized = await h.proved('finalize', { enrollmentId: h.challenge.enrollmentId });
+  expect(finalized.response.status, finalized.raw).toBe(200);
+  const activated = await h.activate(finalized.data);
+  expect(activated.response.status, activated.raw).toBe(200);
+  expect(h.pairing.listDevices().find(device => device.id === h.candidate.deviceId)?.principalBinding?.approvedBy).toBe(actorId);
+  expect(h.bindings.bindingById({ bindingId: h.candidate.bindingId })?.approvedBy).toBe(actorId);
+  h.pairing.setDeviceScope(h.candidate.deviceId, ['orchestration:read', 'relay:manage'], { kind: 'presented-credential' });
+  const promoted = await h.proved('status', { enrollmentId: h.challenge.enrollmentId });
+  expect(promoted.response.status, promoted.raw).toBe(200);
+  expect(promoted.data.state).toBe('active');
+  expect(h.pairing.deviceHoldsScope(h.candidate.deviceId, 'relay:manage')).toBe(true);
+
 });

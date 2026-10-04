@@ -1,21 +1,22 @@
 import { encodeNativeRelayLink } from '@kontourai/station-connect/native-relay-link';
+import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import type { RelayManagementView } from '@kontourai/station-contracts/relay-management';
 import {
   formatStationConnectionKeyConfirmationCode,
   stationConnectionKeyConfirmationCode,
   stationConnectionSigningKeyId,
 } from '@kontourai/station-shared/connection-proof';
-import { Hono } from 'hono';
+import { type Context, Hono } from 'hono';
 import { z } from 'zod';
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
+import type { RelayManagementApproval } from '../../security/relay-management-authority.js';
 import {
-  NativeSurfaceOperatorAuthority,
+  approveNativeSurfaceAsManager,
   type NativeSurfaceRegistry,
 } from '../../services/connections/native-surface-registry.js';
 import type { RelayInvitationOwner } from '../../services/connections/relay-invitation-owner.js';
 import { guardAccountResponse } from '../../services/identity/account-response-guard.js';
 import type { NativeRelayEnrollmentService } from '../../services/identity/native-relay-enrollment-service.js';
-import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../services/identity/principal-resolver.js';
 
 const approveSchema = z.object({ prepare: z.unknown() }).strict();
 const invitationSchema = z
@@ -38,17 +39,29 @@ export function createRelayManagementRoutes(deps: {
   registry: NativeSurfaceRegistry;
   enrollment?: NativeRelayEnrollmentService;
   isManager(request: Request): boolean;
+  resolveActor(context: Context): PrincipalRef;
+  captureDecision(
+    request: Request,
+    subjectId: string,
+    actor: PrincipalRef,
+  ): RelayManagementApproval;
   recordDecision?(request: Request, operation: string, subject: string): void;
 }) {
   const app = new Hono();
-  const authority = new NativeSurfaceOperatorAuthority();
-  app.get('/capabilities', (c) =>
-    c.json(
-      { data: { canManage: deps.isManager(c.req.raw), configured: true } },
-      200,
-      { 'Cache-Control': 'no-store' },
-    ),
-  );
+
+  app.get('/capabilities', (c) => {
+    let canManage = deps.isManager(c.req.raw);
+    if (canManage) {
+      try {
+        deps.resolveActor(c);
+      } catch {
+        canManage = false;
+      }
+    }
+    return c.json({ data: { canManage, configured: true } }, 200, {
+      'Cache-Control': 'no-store',
+    });
+  });
   app.use('*', async (c, next) => {
     c.header('Cache-Control', 'no-store');
     if (!deps.isManager(c.req.raw))
@@ -85,9 +98,10 @@ export function createRelayManagementRoutes(deps: {
         },
         approvals: deps.registry
           .approvedSurfaces()
-          .map(({ approvalId, revision, scope, surface }) => ({
+          .map(({ approvalId, revision, scope, surface, approvedBy }) => ({
             approvalId,
             revision,
+            approvedBy,
             scope,
             surface,
           })),
@@ -116,12 +130,21 @@ export function createRelayManagementRoutes(deps: {
         tuple.surface.clientInstanceId,
       );
       const result = deps.registry.approve(
-        authority.approve(LOCAL_OPERATOR_PRINCIPAL_ID, 'approve', tuple),
+        approveNativeSurfaceAsManager(
+          deps.captureDecision(
+            c.req.raw,
+            tuple.surface.clientInstanceId,
+            deps.resolveActor(c),
+          ),
+          'approve',
+          tuple,
+        ),
       );
       return c.json({
         data: {
           approvalId: result.approvalId,
           revision: result.revision,
+          approvedBy: result.approvedBy,
           scope: result.scope,
           surface: result.surface,
         },
@@ -165,10 +188,18 @@ export function createRelayManagementRoutes(deps: {
         return c.json({ error: { code: 'relay_management_required' } }, 403);
       deps.recordDecision?.(c.req.raw, 'revoke-setup', approved.approvalId);
       deps.registry.revoke(
-        authority.approve(LOCAL_OPERATOR_PRINCIPAL_ID, 'revoke', {
-          scope: approved.scope,
-          surface: approved.surface,
-        }),
+        approveNativeSurfaceAsManager(
+          deps.captureDecision(
+            c.req.raw,
+            approved.surface.clientInstanceId,
+            deps.resolveActor(c),
+          ),
+          'revoke',
+          {
+            scope: approved.scope,
+            surface: approved.surface,
+          },
+        ),
       );
       return c.json({ data: { state: 'revoked' } });
     } catch {
@@ -276,6 +307,11 @@ export function createRelayManagementRoutes(deps: {
         c.req.raw,
         c.req.param('enrollmentId'),
         input.candidate,
+        deps.captureDecision(
+          c.req.raw,
+          c.req.param('enrollmentId'),
+          deps.resolveActor(c),
+        ),
       );
       return c.json({ data: { state: 'approved' } });
     } catch {

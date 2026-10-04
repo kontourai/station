@@ -23,7 +23,10 @@ import { createRelayEnrollmentRoutes } from '../../routes/system/relay-enrollmen
 import { createRelayManagementRoutes } from '../../routes/system/relay-management-routes.js';
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
 import { writeLocalGrantSecretFile } from '../../security/local-grant-file.js';
-import { hasRelayManagementAuthority } from '../../security/relay-management-authority.js';
+import {
+  captureRelayManagementApproval,
+  hasRelayManagementAuthority,
+} from '../../security/relay-management-authority.js';
 import { createStationControlAuthorityGuard } from '../../security/station-control-authority-guard.js';
 import {
   isPrincipalScopedAgentRequest,
@@ -382,6 +385,7 @@ import {
   classifyDirectDeviceActivityPeer,
   classifyRuntimePeer,
   getRuntimeAuthenticatedRequestPrincipal,
+  getRuntimeNativeDeviceProofPrincipal,
   isBoundRuntimeLocalOperator,
   isLoopbackAuthority,
   isRuntimeRequestPrincipalCurrent,
@@ -2007,6 +2011,15 @@ export function configureRuntimeRoutes(
         owner: context.relayInvitationOwner,
         registry: context.nativeSurfaceRegistry,
         enrollment: context.nativeRelayEnrollment,
+        resolveActor: (c) => resolveOrchestrationRequestPrincipal(c),
+        captureDecision: (request, subjectId, actor) =>
+          captureRelayManagementApproval(
+            request,
+            subjectId,
+            context.environmentSecurityService,
+            context.environmentSecurityService.devicePairing,
+            actor,
+          ),
         recordDecision: (request, operation, subject) => {
           const native = getRuntimeNativeDeviceProofPrincipal(request);
           const principal = getRuntimeAuthenticatedRequestPrincipal(request);

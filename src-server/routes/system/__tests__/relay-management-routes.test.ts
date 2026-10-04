@@ -1,15 +1,20 @@
 import { generateKeyPairSync, randomUUID } from 'node:crypto';
 import { parseNativeRelayLink } from '@kontourai/station-connect/native-relay-link';
+import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import type { SelfHostedBrokerNativeRouteInvitationV2 } from '@kontourai/station-contracts/self-hosted-broker';
 import { Hono } from 'hono';
 import { afterEach, expect, test, vi } from 'vitest';
 import { z } from 'zod';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { createOrchestrationRequestPrincipalResolver } from '../../../runtime/bootstrap/orchestration-request-principal.js';
 import {
   pairingScopeSatisfiesHttpRoute,
   requiredPairingScope,
 } from '../../../security/pairing-route-scopes.js';
-import { hasRelayManagementAuthority } from '../../../security/relay-management-authority.js';
+import {
+  captureRelayManagementApproval,
+  hasRelayManagementAuthority,
+} from '../../../security/relay-management-authority.js';
 import { setRuntimeAuthenticatedRequestPrincipal } from '../../../security/runtime-request-security.js';
 import { NativeSurfaceRegistry } from '../../../services/connections/native-surface-registry.js';
 import type { RelayInvitationOwner } from '../../../services/connections/relay-invitation-owner.js';
@@ -99,6 +104,17 @@ async function fixture() {
     createRelayManagementRoutes({
       owner,
       registry,
+      resolveActor: createOrchestrationRequestPrincipalResolver({
+        environmentSecurityService: security,
+      }),
+      captureDecision: (request, subjectId, actor) =>
+        captureRelayManagementApproval(
+          request,
+          subjectId,
+          security,
+          security.devicePairing,
+          actor,
+        ),
       isManager: (request) =>
         hasRelayManagementAuthority(request, security, security.devicePairing),
     }),
@@ -121,10 +137,14 @@ async function fixture() {
       offerId: offer.offerId,
       proof: offer.challenge,
       deviceName: 'Operator phone',
+      source: 'tailnet',
+      requester: { provider: 'tailscale-serve', login: 'manager@example.test' },
     });
-    security.devicePairing.confirmRequest(request.requestId, {
-      kind: 'presented-credential',
-    });
+    security.devicePairing.confirmRequest(
+      request.requestId,
+      { kind: 'presented-credential' },
+      { principalId: 'human:local:operator', kind: 'verified-ingress' },
+    );
     return security.devicePairing.exchange({
       offerId: offer.offerId,
       proof: offer.challenge,
@@ -192,6 +212,9 @@ test('ordinary paired authority and inherited manage access refuse; an explicit 
   expect(
     (await f.send('/approvals', { prepare: {} }, paired.credential)).status,
   ).toBe(200);
+  expect(f.registry.approvedSurfaces()[0]?.approvedBy).toBe(
+    humanPrincipal('tailscale-serve', 'manager@example.test', 'Manager').id,
+  );
   f.security.devicePairing.setDeviceScope(
     paired.device.id,
     ['orchestration:read'],

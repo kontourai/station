@@ -1,4 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite';
+import { isPrincipalRef } from '@kontourai/station-contracts/principal';
 import { z } from 'zod';
 import { openPrivateSqlite } from '../../utils/private-sqlite.js';
 import {
@@ -45,6 +46,14 @@ const recordSchema = z
     offerProof: z.string().min(1).max(2048).optional(),
     requestId: z.string().min(1).max(512).optional(),
     approvalId: z.string().max(512).optional(),
+    approvedBy: z
+      .string()
+      .min(1)
+      .max(512)
+      .refine((id) =>
+        isPrincipalRef({ kind: 'human', id, display: 'approver' }),
+      )
+      .optional(),
     activationNonce: nativeEnrollmentOpaque.optional(),
     bundleDigest: nativeEnrollmentOpaque.optional(),
     ackDigest: nativeEnrollmentOpaque.optional(),

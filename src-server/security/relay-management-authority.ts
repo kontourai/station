@@ -2,6 +2,11 @@ import {
   PAIRING_SCOPE_RELAY_MANAGE,
   pairingScopeIncludes,
 } from '@kontourai/station-contracts/environment-security';
+import {
+  isPrincipalRef,
+  type PrincipalRef,
+} from '@kontourai/station-contracts/principal';
+import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../services/identity/principal-resolver.js';
 import type { DevicePairingService } from '../services/ssh/device-pairing-service.js';
 import type { EnvironmentSecurityService } from '../services/ssh/environment-security-service.js';
 import {
@@ -54,10 +59,17 @@ export class RelayManagementApproval {
   readonly kind = 'relay-management' as const;
   constructor(
     token: symbol,
-    readonly enrollmentId: string,
+    readonly subjectId: string,
+    readonly actorPrincipalId: string,
     private readonly current: () => boolean,
   ) {
-    if (token !== APPROVAL_ORIGIN || !/^[A-Za-z0-9_-]{43}$/u.test(enrollmentId))
+    if (
+      token !== APPROVAL_ORIGIN ||
+      !(
+        /^[A-Za-z0-9_-]{43}$/u.test(subjectId) ||
+        /^[0-9a-f-]{36}$/u.test(subjectId)
+      )
+    )
       throw new Error('relay_management_required');
     Object.freeze(this);
   }
@@ -67,11 +79,25 @@ export class RelayManagementApproval {
 }
 export function captureRelayManagementApproval(
   request: Request,
-  enrollmentId: string,
+  subjectId: string,
   security: Security,
   pairing: Pick<DevicePairingService, 'deviceHoldsScope'>,
+  actor: PrincipalRef,
 ): RelayManagementApproval {
   const current = () => hasRelayManagementAuthority(request, security, pairing);
   if (!current()) throw new Error('relay_management_required');
-  return new RelayManagementApproval(APPROVAL_ORIGIN, enrollmentId, current);
+  if (actor.kind !== 'human' || !isPrincipalRef(actor))
+    throw new Error('relay_management_actor_required');
+  const principal = getRuntimeAuthenticatedRequestPrincipal(request);
+  const owner =
+    principal?.authority === 'operator-credential' ||
+    isBoundRuntimeLocalOperator(request);
+  if (!owner && actor.id === LOCAL_OPERATOR_PRINCIPAL_ID)
+    throw new Error('relay_management_actor_required');
+  return new RelayManagementApproval(
+    APPROVAL_ORIGIN,
+    subjectId,
+    actor.id,
+    current,
+  );
 }

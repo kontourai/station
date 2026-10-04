@@ -145,7 +145,7 @@ test('the actual setup actions require approval before creating and copying a on
   fireEvent.click(
     await screen.findByRole('button', { name: 'Copy invitation' }),
   );
-  expect(state.invite.mock.calls[0]?.[2]).toBe('never');
+  expect(state.invite.mock.calls[0]?.[3]).toBe('never');
   await waitFor(() =>
     expect(state.copy).toHaveBeenLastCalledWith(
       'station-relay-nightly://bound-invitation',

@@ -82,8 +82,11 @@ function OperatorPanel({
     gcTime: 0,
     mutationFn: async () => {
       if (!scope.isCurrent()) throw new Error('Station access changed.');
+      if (!query.data)
+        throw new Error('Station invitation setup is unavailable.');
       return createRelayInvitation(
         scope.apiBase,
+        query.data.route,
         JSON.parse(prepareText),
         lifetime,
         request,
