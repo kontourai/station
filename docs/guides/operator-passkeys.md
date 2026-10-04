@@ -31,12 +31,25 @@ until then an enrolled passkey is stored but nothing accepts it yet.
    station environment operator passkeys approve 482913
    ```
 
-   The host listing (`station environment operator passkeys`) shows who is
-   asking and for which host name, but **never the code**. You type the code
-   from the browser, so confirming means comparing the two screens, not copying
-   one. The code works once and expires after five minutes. Five wrong codes in
-   five minutes lock confirmation (including the right code) until the window
-   passes. `deny <code>` rejects a request.
+   Any paired device can open a request, and a device chooses its own name, so
+   the name proves nothing. The host listing (`station environment operator
+   passkeys`) therefore shows, for each request, the device id (first eight
+   characters), when it was paired and its scopes, and it **never shows the
+   code**. On a terminal, `approve` prints those details and asks you to
+   confirm before it commits. Without a terminal, pass the id of the device you
+   expect, which must match the requesting device or nothing is confirmed:
+
+   ```bash
+   station environment operator passkeys approve 482913 --device aaaa1111
+   ```
+
+   A device that names itself like the operator's own browser is shown as a
+   paired device that calls itself that, never as the operator. You type the
+   code from the browser, so confirming means comparing the two screens, not
+   copying one. The code works once and expires after five minutes. Five wrong
+   codes in five minutes lock confirmation (including the right code) until
+   the window passes. `deny <code>` rejects a request, and also withdraws one
+   you approved by mistake until the passkey has been created.
 3. The page advances to **Create passkey**. Name it, choose **Create passkey**,
    and complete the browser or operating-system prompt. Station requires user
    verification (biometric or PIN), asks for no attestation, and accepts any
@@ -49,8 +62,8 @@ until then an enrolled passkey is stored but nothing accepts it yet.
 
 ```bash
 station environment operator passkeys                 # list passkeys and pending requests
-station environment operator passkeys approve <code>  # confirm the code the browser shows
-station environment operator passkeys deny <code>     # reject a request
+station environment operator passkeys approve <code> [--device <id-prefix>]  # confirm the code the browser shows
+station environment operator passkeys deny <code>     # reject a request, or withdraw an approval
 station environment operator passkeys revoke <id>     # revoke a passkey by the id in the list
 ```
 
@@ -60,14 +73,16 @@ Revoking a passkey remotely, with a step-up from a different passkey, comes
 later.
 
 Passkeys are kept in `authentication/operator-passkeys.sqlite` under the
-Station home, a private file (mode 0600 in a 0700 directory) that holds each
-passkey's credential id, public key, signature counter, transports and label.
+Station home. The file is created when the first enrollment begins; a Station
+without `STATION_TRUSTED_CONSENT_ORIGIN` never creates it. It is a private file (mode 0600 in a 0700 directory) that
+holds each passkey's credential id, public key, signature counter, transports and label.
 
 ## What can go wrong
 
 | Message | Meaning |
 | --- | --- |
 | Enrollment is unavailable | `STATION_TRUSTED_CONSENT_ORIGIN` is not set. |
+| The request with that code was not opened by the device you named | `--device` does not match the requesting device. Nothing was confirmed; list the requests and check who asked. |
 | No pending enrollment request has that code | The code is wrong, was already used, or expired. |
 | Too many wrong codes | Wait for the five-minute window, then retry. |
 | The passkey could not be verified for this Station | The browser's origin or the authenticator's relying-party ID did not match the configured origin, or user verification was skipped. Nothing was saved; start again. |

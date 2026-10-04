@@ -81,8 +81,14 @@ in `operator-passkey-enrollment.test.ts`:
   cross-origin (framed) ceremony is refused. Every state-changing route also
   needs the exact `Origin`, `Sec-Fetch-Site: same-origin`, a JSON content type
   and a paired-device cookie.
-- Only the public key is stored, in a private SQLite file under the Station
-  home. Logs and metrics carry no code, request id, challenge or credential id.
+- Any paired device may open a request, so approval is informed: the host sees
+  the requesting device's id, pairing date and scopes (from the pairing
+  registry, not the device-chosen name), an interactive `approve` asks for
+  confirmation, a non-interactive one must name the device (`--device`), and a
+  device that borrows the operator-browser label is shown as a paired device.
+  `deny` can withdraw an approval until the passkey is created.
+- Only the public key is stored, in a private SQLite file created at the first
+  enrollment under the Station home. Logs and metrics carry no code, request id, challenge or credential id.
 - The enrollment state lives in process memory; a restart drops pending
   requests, and the browser asks again.
 

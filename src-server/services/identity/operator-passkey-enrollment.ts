@@ -37,9 +37,11 @@ import {
 } from '@simplewebauthn/server';
 import { operatorPasskeyEnrollmentOps } from '../../telemetry/metrics.js';
 import type { Logger } from '../../utils/logger.js';
-import type {
-  OperatorPasskey,
+import {
+  fixedRegistry,
+  type OperatorPasskey,
   OperatorPasskeyRegistry,
+  type OperatorPasskeyRegistryProvider,
 } from './operator-passkey-registry.js';
 
 /** How long the browser has to get the host to confirm. */
@@ -79,7 +81,8 @@ export type EnrollmentErrorCode =
   | 'challenge_invalid'
   | 'verification_failed'
   | 'invalid_label'
-  | 'passkey_not_found';
+  | 'passkey_not_found'
+  | 'device_mismatch';
 
 export class OperatorPasskeyEnrollmentError extends Error {
   constructor(
@@ -106,6 +109,7 @@ interface EnrollmentRequest {
   /** SHA-256 of the requesting browser's credential; never the credential. */
   readonly binding: Buffer;
   readonly deviceLabel: string;
+  readonly requester: EnrollmentRequester;
   readonly createdAt: number;
   readonly expiresAt: number;
   state: 'pending' | 'confirmed' | 'denied' | 'consumed';
@@ -114,10 +118,37 @@ interface EnrollmentRequest {
   challenge: { value: string; expiresAt: number } | null;
 }
 
+/**
+ * Who opened a request, as the SERVER knows them. The label is chosen by the
+ * device and proves nothing; the id, pairing date and scope come from the
+ * pairing registry and are what the host operator should weigh.
+ */
+export interface EnrollmentRequester {
+  readonly kind: 'operator-credential' | 'paired-device';
+  readonly deviceId: string;
+  readonly pairedAt: number | null;
+  readonly scope: string;
+}
+
+/** Eight characters: enough to tell devices apart, short enough to retype. */
+const SHORT_DEVICE_ID_LENGTH = 8;
+/** A `--device` prefix shorter than this is not a selector. */
+export const MIN_DEVICE_SELECTOR_LENGTH = 4;
+/** The label Station gives the operator's own credential; a device cannot borrow it. */
+export const OPERATOR_BROWSER_LABEL = 'Station operator browser';
+
+export interface EnrollmentRequesterSummary {
+  readonly kind: EnrollmentRequester['kind'];
+  readonly deviceId: string;
+  readonly pairedAt: number | null;
+  readonly scope: string;
+}
+
 export interface PendingEnrollmentSummary {
   /** Short, non-secret handle for correlation in the host's own listing. */
   readonly reference: string;
   readonly deviceLabel: string;
+  readonly requester: EnrollmentRequesterSummary;
   readonly rpId: string;
   readonly createdAt: number;
   readonly expiresAt: number;
@@ -132,7 +163,8 @@ export interface EnrollmentAvailability {
 }
 
 export interface OperatorPasskeyEnrollmentOptions {
-  readonly registry: OperatorPasskeyRegistry;
+  /** A registry, or a provider that opens it only when first needed. */
+  readonly registry: OperatorPasskeyRegistry | OperatorPasskeyRegistryProvider;
   /** `STATION_TRUSTED_CONSENT_ORIGIN`, already validated; null when unset. */
   readonly origin: string | null;
   readonly now?: () => number;
@@ -148,7 +180,7 @@ function equalDigests(left: Buffer, right: Buffer): boolean {
 }
 
 export class OperatorPasskeyEnrollmentService {
-  readonly #registry: OperatorPasskeyRegistry;
+  readonly #registry: OperatorPasskeyRegistryProvider;
   readonly #origin: string | null;
   readonly #rpId: string | null;
   readonly #now: () => number;
@@ -157,7 +189,10 @@ export class OperatorPasskeyEnrollmentService {
   #codeFailures: number[] = [];
 
   constructor(options: OperatorPasskeyEnrollmentOptions) {
-    this.#registry = options.registry;
+    this.#registry =
+      options.registry instanceof OperatorPasskeyRegistry
+        ? fixedRegistry(options.registry)
+        : options.registry;
     this.#origin = options.origin;
     // The RP ID derives from the CONFIGURED origin's host, never from a
     // request's Host header, so a request cannot choose which domain a
@@ -190,7 +225,11 @@ export class OperatorPasskeyEnrollmentService {
    * Opens a pending request for the browser holding `credential` (a paired
    * device's or the operator's own session credential).
    */
-  createRequest(input: { credential: string; deviceLabel: string }): {
+  createRequest(input: {
+    credential: string;
+    deviceLabel: string;
+    requester?: EnrollmentRequester;
+  }): {
     requestId: string;
     code: string;
     expiresAt: number;
@@ -234,7 +273,13 @@ export class OperatorPasskeyEnrollmentService {
       id: randomBytes(32).toString('base64url'),
       code,
       binding,
-      deviceLabel: sanitizeLabel(input.deviceLabel) ?? 'Paired browser',
+      deviceLabel: requesterLabel(input),
+      requester: input.requester ?? {
+        kind: 'paired-device',
+        deviceId: 'unknown',
+        pairedAt: null,
+        scope: '',
+      },
       createdAt: now,
       expiresAt: now + ENROLLMENT_REQUEST_TTL_MS,
       state: 'pending',
@@ -279,6 +324,7 @@ export class OperatorPasskeyEnrollmentService {
       throw refuse('request_closed', 'This enrollment request is used up.');
     }
     request.ceremonyAttempts += 1;
+    const registry = this.#openRegistry();
     // A new challenge replaces any earlier one: only the latest is valid.
     request.challenge = null;
     const options = await generateRegistrationOptions({
@@ -286,11 +332,11 @@ export class OperatorPasskeyEnrollmentService {
       rpID: rpId,
       userName: 'station-operator',
       userDisplayName: 'Station operator',
-      userID: this.#registry.userHandle(),
+      userID: registry.userHandle(),
       attestationType: 'none',
       timeout: ENROLLMENT_CHALLENGE_TTL_MS,
       supportedAlgorithmIDs: SUPPORTED_ALGORITHMS,
-      excludeCredentials: this.#registry
+      excludeCredentials: registry
         .activeCredentialIds()
         .map(({ id, transports }) => ({ id, transports })),
       authenticatorSelection: {
@@ -332,9 +378,10 @@ export class OperatorPasskeyEnrollmentService {
         'The registration challenge is missing, used or expired. Start again.',
       );
     }
+    const registry = this.#openRegistry();
     const cleanLabel =
       label === undefined || label === null || label === ''
-        ? `Passkey ${this.#registry.listActive().length + 1}`
+        ? `Passkey ${registry.listActive().length + 1}`
         : sanitizeLabel(label);
     if (cleanLabel === null) {
       throw refuse(
@@ -364,7 +411,7 @@ export class OperatorPasskeyEnrollmentService {
     const info = verification.registrationInfo;
     let stored: OperatorPasskey;
     try {
-      stored = this.#registry.add({
+      stored = registry.add({
         credentialId: info.credential.id,
         publicKey: info.credential.publicKey,
         counter: info.credential.counter,
@@ -399,15 +446,59 @@ export class OperatorPasskeyEnrollmentService {
       .map((request) => ({
         reference: referenceOf(request),
         deviceLabel: request.deviceLabel,
+        requester: summarizeRequester(request.requester),
         rpId,
         createdAt: request.createdAt,
         expiresAt: request.expiresAt,
       }));
   }
 
-  /** Confirms the pending request whose browser displays `code`. */
-  confirm(code: unknown): { deviceLabel: string; rpId: string } {
-    const request = this.#matchCode(code);
+  /**
+   * Looks up the pending request that shows `code` WITHOUT confirming it, so
+   * the host can show who asked before the operator commits. It spends the
+   * same failure budget as a confirmation.
+   */
+  inspect(code: unknown): {
+    deviceLabel: string;
+    requester: EnrollmentRequesterSummary;
+    rpId: string;
+    expiresAt: number;
+  } {
+    const request = this.#matchCode(code, ['pending']);
+    return {
+      deviceLabel: request.deviceLabel,
+      requester: summarizeRequester(request.requester),
+      rpId: this.#rpId ?? '',
+      expiresAt: request.expiresAt,
+    };
+  }
+
+  /**
+   * Confirms the pending request whose browser displays `code`. When
+   * `device` is given it must be a prefix of the requesting device's id,
+   * otherwise nothing is confirmed.
+   */
+  confirm(
+    code: unknown,
+    device?: unknown,
+  ): { deviceLabel: string; rpId: string } {
+    const request = this.#matchCode(code, ['pending']);
+    if (device !== undefined) {
+      const selector = typeof device === 'string' ? device.toLowerCase() : '';
+      if (
+        selector.length < MIN_DEVICE_SELECTOR_LENGTH ||
+        !request.requester.deviceId.toLowerCase().startsWith(selector)
+      ) {
+        operatorPasskeyEnrollmentOps.add(1, {
+          step: 'refused',
+          reason: 'device_mismatch',
+        });
+        throw new OperatorPasskeyEnrollmentError(
+          'device_mismatch',
+          'The request with that code was not opened by the device you named. Nothing was confirmed; run `station environment operator passkeys` to see who asked.',
+        );
+      }
+    }
     request.state = 'confirmed';
     request.ceremonyExpiresAt = this.#now() + ENROLLMENT_CEREMONY_TTL_MS;
     operatorPasskeyEnrollmentOps.add(1, { step: 'confirmed' });
@@ -417,9 +508,15 @@ export class OperatorPasskeyEnrollmentService {
     return { deviceLabel: request.deviceLabel, rpId: this.#rpId ?? '' };
   }
 
+  /**
+   * Rejects a pending request, or withdraws a confirmed one whose passkey has
+   * not been created yet (a mistaken approve). A passkey already stored is
+   * revoked, not denied.
+   */
   deny(code: unknown): { deviceLabel: string } {
-    const request = this.#matchCode(code);
+    const request = this.#matchCode(code, ['pending', 'confirmed']);
     request.state = 'denied';
+    request.challenge = null;
     operatorPasskeyEnrollmentOps.add(1, { step: 'denied' });
     this.#logger?.info('Operator passkey enrollment denied', {
       reference: referenceOf(request),
@@ -428,11 +525,12 @@ export class OperatorPasskeyEnrollmentService {
   }
 
   listPasskeys(): OperatorPasskey[] {
-    return this.#registry.listActive();
+    return this.#registry.existing()?.listActive() ?? [];
   }
 
   revokePasskey(id: unknown): OperatorPasskey {
-    if (typeof id !== 'string' || !this.#registry.revoke(id)) {
+    const registry = this.#registry.existing();
+    if (typeof id !== 'string' || !registry?.revoke(id)) {
       throw new OperatorPasskeyEnrollmentError(
         'passkey_not_found',
         'No active operator passkey has that id.',
@@ -440,10 +538,22 @@ export class OperatorPasskeyEnrollmentService {
     }
     operatorPasskeyEnrollmentOps.add(1, { step: 'revoked' });
     this.#logger?.info('Operator passkey revoked', { passkeyId: id });
-    return this.#registry.get(id) as OperatorPasskey;
+    return registry.get(id) as OperatorPasskey;
   }
 
   // ---- internals ----------------------------------------------------------
+
+  /** Creates the database on first real use; a store that cannot open fails closed. */
+  #openRegistry(): OperatorPasskeyRegistry {
+    try {
+      return this.#registry.ensure();
+    } catch {
+      throw new OperatorPasskeyEnrollmentError(
+        'enrollment_unavailable',
+        'The operator passkey store could not be opened privately, so enrollment is unavailable.',
+      );
+    }
+  }
 
   #requireAvailable(): string {
     if (this.#rpId === null || this.#origin === null) {
@@ -465,7 +575,10 @@ export class OperatorPasskeyEnrollmentService {
    * right code: otherwise the lockout would only slow a guesser who has not
    * yet guessed correctly.
    */
-  #matchCode(code: unknown): EnrollmentRequest {
+  #matchCode(
+    code: unknown,
+    states: readonly EnrollmentRequest['state'][],
+  ): EnrollmentRequest {
     this.#requireAvailable();
     this.#sweep();
     const now = this.#now();
@@ -494,7 +607,7 @@ export class OperatorPasskeyEnrollmentService {
     let matched: EnrollmentRequest | null = null;
     for (const request of this.#requests.values()) {
       const equal = equalDigests(candidate, digest(request.code));
-      if (equal && wellFormed && request.state === 'pending') {
+      if (equal && wellFormed && states.includes(request.state)) {
         matched = request;
       }
     }
@@ -613,4 +726,34 @@ function sanitizeLabel(value: unknown): string | null {
     return null;
   }
   return cleaned;
+}
+
+function summarizeRequester(
+  requester: EnrollmentRequester,
+): EnrollmentRequesterSummary {
+  return {
+    kind: requester.kind,
+    deviceId: requester.deviceId.slice(0, SHORT_DEVICE_ID_LENGTH),
+    pairedAt: requester.pairedAt,
+    scope: requester.scope,
+  };
+}
+
+/**
+ * The display label. A paired device names itself, so a device that borrows
+ * the label Station gives the operator's own credential is shown as exactly
+ * that, never as the operator.
+ */
+function requesterLabel(input: {
+  deviceLabel: string;
+  requester?: EnrollmentRequester;
+}): string {
+  const label = sanitizeLabel(input.deviceLabel) ?? 'Paired browser';
+  if (
+    input.requester?.kind !== 'operator-credential' &&
+    label.toLowerCase() === OPERATOR_BROWSER_LABEL.toLowerCase()
+  ) {
+    return `Paired device that calls itself "${label}" (not the operator)`;
+  }
+  return label;
 }

@@ -12,6 +12,7 @@
  * audit trail but never matches a lookup or an `excludeCredentials` list.
  */
 import { randomBytes } from 'node:crypto';
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { openPrivateSqlite } from '../../utils/private-sqlite.js';
@@ -223,4 +224,49 @@ function toPasskey(row: Record<string, unknown>): OperatorPasskey {
     lastUsedAt: nullableNumber(row.last_used_at),
     revokedAt: nullableNumber(row.revoked_at),
   };
+}
+
+/**
+ * Opens the registry on demand, so a Station that never enrolls a passkey
+ * never creates the database. `existing()` opens only a file that is already
+ * there (reads and revokes of enrolled passkeys); `ensure()` creates it and is
+ * called only once an enrollment ceremony is actually under way.
+ */
+export class LazyOperatorPasskeyRegistry {
+  #registry: OperatorPasskeyRegistry | null = null;
+
+  constructor(
+    private readonly home: string,
+    private readonly now?: () => number,
+  ) {}
+
+  existing(): OperatorPasskeyRegistry | null {
+    if (this.#registry) return this.#registry;
+    if (!existsSync(join(this.home, OPERATOR_PASSKEY_DB_RELATIVE_PATH))) {
+      return null;
+    }
+    return this.ensure();
+  }
+
+  ensure(): OperatorPasskeyRegistry {
+    this.#registry ??= OperatorPasskeyRegistry.open(this.home, this.now);
+    return this.#registry;
+  }
+
+  close(): void {
+    this.#registry?.close();
+    this.#registry = null;
+  }
+}
+
+/** What the enrollment service needs from storage. */
+export interface OperatorPasskeyRegistryProvider {
+  existing(): OperatorPasskeyRegistry | null;
+  ensure(): OperatorPasskeyRegistry;
+}
+
+export function fixedRegistry(
+  registry: OperatorPasskeyRegistry,
+): OperatorPasskeyRegistryProvider {
+  return { existing: () => registry, ensure: () => registry };
 }

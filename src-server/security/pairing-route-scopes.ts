@@ -1581,7 +1581,7 @@ export interface ConsentDecisionCredentialResolver {
   verifyOperatorCredential(candidate: string): boolean;
   identifyDevice(
     candidate: string,
-  ): { scope?: string; id?: string; name?: string } | null;
+  ): { scope?: string; id?: string; name?: string; createdAt?: number } | null;
 }
 
 export type ConsentCredentialAuthority =

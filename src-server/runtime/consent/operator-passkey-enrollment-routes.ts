@@ -22,9 +22,12 @@
  * there is no inline script and no third-party code.
  */
 import type { Context, Hono } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
 import type { ConsentDecisionCredentialResolver } from '../../security/pairing-route-scopes.js';
 import type { ConsentChannelService } from '../../services/consent/consent-channel.js';
 import {
+  type EnrollmentRequester,
+  OPERATOR_BROWSER_LABEL,
   OperatorPasskeyEnrollmentError,
   type OperatorPasskeyEnrollmentService,
 } from '../../services/identity/operator-passkey-enrollment.js';
@@ -125,22 +128,44 @@ export function registerOperatorPasskeyEnrollmentRoutes(
   /** The paired browser (or operator) making this request, or null. */
   const requester = (
     c: Ctx,
-  ): { credential: string; deviceLabel: string } | null => {
+  ): {
+    credential: string;
+    deviceLabel: string;
+    requester: EnrollmentRequester;
+  } | null => {
     const credential = parseDeviceSessionCookie(c.req.header('cookie'));
     if (credential === undefined) return null;
     if (deps.credentials.verifyOperatorCredential(credential)) {
-      return { credential, deviceLabel: 'Station operator browser' };
+      return {
+        credential,
+        deviceLabel: OPERATOR_BROWSER_LABEL,
+        requester: {
+          kind: 'operator-credential',
+          deviceId: 'operator',
+          pairedAt: null,
+          scope: '',
+        },
+      };
     }
     const device = deps.credentials.identifyDevice(credential);
     if (device === null) return null;
-    return { credential, deviceLabel: device.name ?? 'Paired browser' };
+    return {
+      credential,
+      deviceLabel: device.name ?? 'Paired browser',
+      requester: {
+        kind: 'paired-device',
+        deviceId: device.id ?? 'unknown',
+        pairedAt: device.createdAt ?? null,
+        scope: device.scope ?? '',
+      },
+    };
   };
 
   /** Shared gate for every JSON route. Returns a refusal or the requester. */
   const gate = (
     c: Ctx,
     options: { mutating: boolean },
-  ): Response | { credential: string; deviceLabel: string } => {
+  ): Response | NonNullable<ReturnType<typeof requester>> => {
     const reason = unavailable();
     if (reason !== null) return fail(c, 503, 'enrollment_unavailable', reason);
     const origin = deps.channel.trustedOrigin as string;
@@ -182,9 +207,14 @@ export function registerOperatorPasskeyEnrollmentRoutes(
     return who;
   };
 
+  const limited = bodyLimit({
+    maxSize: JSON_BODY_LIMIT,
+    onError: (c) =>
+      fail(c, 413, 'payload_too_large', 'The request body is too large.'),
+  });
+
   const readJson = async (c: Ctx): Promise<Record<string, unknown> | null> => {
     const text = await c.req.text();
-    if (text.length > JSON_BODY_LIMIT) return null;
     try {
       const parsed: unknown = JSON.parse(text);
       return parsed !== null &&
@@ -233,7 +263,7 @@ export function registerOperatorPasskeyEnrollmentRoutes(
     }),
   );
 
-  app.post(`${OPERATOR_PASSKEY_ENROLL_PATH}/requests`, (c) =>
+  app.post(`${OPERATOR_PASSKEY_ENROLL_PATH}/requests`, limited, (c) =>
     guarded(c, () => {
       const who = gate(c, { mutating: true });
       if (who instanceof Response) return who;
@@ -249,45 +279,54 @@ export function registerOperatorPasskeyEnrollmentRoutes(
     }),
   );
 
-  app.post(`${OPERATOR_PASSKEY_ENROLL_PATH}/requests/:id/options`, (c) =>
-    guarded(c, async () => {
-      const who = gate(c, { mutating: true });
-      if (who instanceof Response) return who;
-      return c.json(
-        await deps.service.beginRegistration(c.req.param('id'), who.credential),
-      );
-    }),
+  app.post(
+    `${OPERATOR_PASSKEY_ENROLL_PATH}/requests/:id/options`,
+    limited,
+    (c) =>
+      guarded(c, async () => {
+        const who = gate(c, { mutating: true });
+        if (who instanceof Response) return who;
+        return c.json(
+          await deps.service.beginRegistration(
+            c.req.param('id'),
+            who.credential,
+          ),
+        );
+      }),
   );
 
-  app.post(`${OPERATOR_PASSKEY_ENROLL_PATH}/requests/:id/verify`, (c) =>
-    guarded(c, async () => {
-      const who = gate(c, { mutating: true });
-      if (who instanceof Response) return who;
-      const body = await readJson(c);
-      const response = body?.response;
-      if (
-        response === null ||
-        typeof response !== 'object' ||
-        typeof (response as { id?: unknown }).id !== 'string' ||
-        typeof (response as { response?: unknown }).response !== 'object' ||
-        (response as { response?: unknown }).response === null
-      ) {
-        return fail(
-          c,
-          400,
-          'invalid_request',
-          'Expected a registration response.',
+  app.post(
+    `${OPERATOR_PASSKEY_ENROLL_PATH}/requests/:id/verify`,
+    limited,
+    (c) =>
+      guarded(c, async () => {
+        const who = gate(c, { mutating: true });
+        if (who instanceof Response) return who;
+        const body = await readJson(c);
+        const response = body?.response;
+        if (
+          response === null ||
+          typeof response !== 'object' ||
+          typeof (response as { id?: unknown }).id !== 'string' ||
+          typeof (response as { response?: unknown }).response !== 'object' ||
+          (response as { response?: unknown }).response === null
+        ) {
+          return fail(
+            c,
+            400,
+            'invalid_request',
+            'Expected a registration response.',
+          );
+        }
+        const stored = await deps.service.finishRegistration(
+          c.req.param('id'),
+          who.credential,
+          response as Parameters<
+            OperatorPasskeyEnrollmentService['finishRegistration']
+          >[2],
+          body?.label,
         );
-      }
-      const stored = await deps.service.finishRegistration(
-        c.req.param('id'),
-        who.credential,
-        response as Parameters<
-          OperatorPasskeyEnrollmentService['finishRegistration']
-        >[2],
-        body?.label,
-      );
-      return c.json({ passkey: stored }, 201);
-    }),
+        return c.json({ passkey: stored }, 201);
+      }),
   );
 }

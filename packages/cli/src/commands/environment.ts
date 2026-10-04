@@ -238,7 +238,7 @@ const USAGE = `Usage:
   station environment access scopes [--json]
   station environment access request --api-base=<host-url> [--station=<name>] [--device-name=<name>] [--timeout=<seconds>] [--force]
   station environment operator passkeys [list] [--json] [--api-base=<loopback-url>|--station=<name>]
-  station environment operator passkeys approve <code> [--api-base=<loopback-url>|--station=<name>]
+  station environment operator passkeys approve <code> [--device=<id-prefix>] [--api-base=<loopback-url>|--station=<name>]
   station environment operator passkeys deny <code> [--api-base=<loopback-url>|--station=<name>]
   station environment operator passkeys revoke <passkey-id> [--api-base=<loopback-url>|--station=<name>]
   station environment offer [--client-channel=<stable|beta|nightly>] [--tailscale] [--tailscale-serve-port=<port>] [--payload-only] [--advertise-url=<url>]
@@ -1629,9 +1629,39 @@ const PASSKEY_ERROR_TEXT: Record<string, string> = {
   enrollment_unavailable:
     'Operator passkey enrollment needs STATION_TRUSTED_CONSENT_ORIGIN (an HTTPS origin on a DNS name) on the Station. A Station reachable only by IP has no remote operator sign-in.',
   passkey_not_found: 'No active operator passkey has that id.',
+  device_mismatch:
+    'The request with that code was not opened by the device you named. Nothing was confirmed; run `station environment operator passkeys` to see who asked.',
   authentication_required:
     "The Station did not accept this home's operator credential.",
 };
+
+interface PasskeyRequestDetails {
+  deviceLabel?: unknown;
+  rpId?: unknown;
+  expiresAt?: unknown;
+  requester?: {
+    kind?: unknown;
+    deviceId?: unknown;
+    pairedAt?: unknown;
+    scope?: unknown;
+  };
+}
+
+/** The label is the device's own claim; the id, pairing date and scope are Station's. */
+function describePasskeyRequest(request: PasskeyRequestDetails): string {
+  const who = request.requester ?? {};
+  const paired =
+    typeof who.pairedAt === 'number'
+      ? new Date(who.pairedAt).toISOString()
+      : 'n/a';
+  return [
+    `Device name (chosen by the device): ${terminalSafeText(String(request.deviceLabel))}`,
+    `Device id: ${terminalSafeText(String(who.deviceId ?? 'unknown'))} (${who.kind === 'operator-credential' ? 'the operator credential' : 'paired device'})`,
+    `Paired: ${paired}`,
+    `Scopes: ${terminalSafeText(String(who.scope || 'n/a'))}`,
+    `For: ${terminalSafeText(String(request.rpId))}, expires ${new Date(Number(request.expiresAt)).toISOString()}`,
+  ].join('\n');
+}
 
 function passkeyCommandFailure(error: unknown): Error {
   const code = (error as { code?: unknown }).code;
@@ -1656,6 +1686,7 @@ async function runOperatorPasskeysCommand(
       'api-base',
       'station',
       ...(action === 'list' ? ['json'] : []),
+      ...(action === 'approve' ? ['device'] : []),
     ]) ||
     (parsed.flags.json !== undefined && parsed.flags.json !== true)
   ) {
@@ -1686,18 +1717,57 @@ async function runOperatorPasskeysCommand(
   const base = '/api/pairing/operator-passkeys';
   try {
     if (action === 'approve' || action === 'deny') {
+      let device: string | undefined;
+      if (action === 'approve') {
+        device =
+          typeof parsed.flags.device === 'string'
+            ? parsed.flags.device
+            : undefined;
+        if (parsed.flags.device !== undefined && device === undefined) {
+          throw new Error('--device needs a device id prefix.');
+        }
+        if (device === undefined) {
+          // Show who asked, then require a human to commit.
+          if (!dependencies.isInteractive || !dependencies.confirm) {
+            throw new Error(
+              'Approving needs to know WHICH device asked. Run `station environment operator passkeys` to see the requests, then pass --device <id-prefix> of the device you expect (or run this on a terminal and confirm).',
+            );
+          }
+          const details = (await requestOperatorJson(
+            `${base}/requests/inspect`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ code: operand }),
+            },
+          )) as PasskeyRequestDetails;
+          write(describePasskeyRequest(details));
+          if (
+            !(await dependencies.confirm(
+              'Enroll an operator passkey for this device?',
+            ))
+          ) {
+            write('Cancelled. Nothing was confirmed.');
+            return true;
+          }
+          device = String(details.requester?.deviceId ?? '');
+        }
+      }
       const result = (await requestOperatorJson(`${base}/requests/${action}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code: operand }),
+        body: JSON.stringify({
+          code: operand,
+          ...(device !== undefined ? { device } : {}),
+        }),
       })) as { deviceLabel?: unknown; rpId?: unknown };
-      const device = terminalSafeText(
+      const label = terminalSafeText(
         String(result.deviceLabel ?? 'the browser'),
       );
       write(
         action === 'approve'
-          ? `Confirmed. Finish creating the passkey in ${device}.`
-          : `Denied the enrollment request from ${device}.`,
+          ? `Confirmed. Finish creating the passkey in ${label}.`
+          : `Denied the enrollment request from ${label}.`,
       );
       return true;
     }
@@ -1746,11 +1816,11 @@ async function runOperatorPasskeysCommand(
       );
       for (const request of pending) {
         write(
-          `  ${terminalSafeText(String(request.deviceLabel))} for ${terminalSafeText(String(request.rpId))}, expires ${new Date(Number(request.expiresAt)).toISOString()}`,
+          `  ${describePasskeyRequest(request as PasskeyRequestDetails).replace(/\n/g, '\n  ')}`,
         );
       }
       write(
-        'Confirm one with: station environment operator passkeys approve <code>',
+        'Confirm one with: station environment operator passkeys approve <code> --device <id-prefix>',
       );
     }
     return true;
@@ -2120,6 +2190,8 @@ export function normalizeEnvironmentArgsForParsing(args: string[]): string[] {
     '--remove',
     '--set',
     '--tailscale-serve-port',
+    // `operator passkeys approve --device <id-prefix>`.
+    '--device',
   ]);
   const normalized: string[] = [];
   for (let index = 0; index < args.length; index += 1) {

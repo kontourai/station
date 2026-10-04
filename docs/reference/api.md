@@ -3097,10 +3097,17 @@ Ordinary Device presets do not include the promotion.
 `GET /api/pairing/operator-passkeys` lists enrollment availability, active
 passkeys (metadata only: id, label, relying-party ID, origin, transports,
 timestamps) and pending enrollment requests **without their codes**.
-`POST /api/pairing/operator-passkeys/requests/approve` and `.../deny` take
-`{ "code": "<six digits>" }`; `DELETE /api/pairing/operator-passkeys/:id` revokes
+Each pending request carries `requester` (`kind`, the first eight characters of
+`deviceId`, `pairedAt`, `scope`) from the pairing registry, beside the
+device-chosen `deviceLabel`. `POST .../requests/inspect` takes
+`{ "code" }` and returns that without confirming. `POST .../requests/approve`
+takes `{ "code", "device"? }`; `device`, when sent, must be a prefix (at least
+four characters) of the requesting device's id or nothing is confirmed (409
+`device_mismatch`). `POST .../requests/deny` takes `{ "code" }` and also
+withdraws a confirmed request whose passkey is not yet created. Bodies over 1 KiB
+are refused (413). `DELETE /api/pairing/operator-passkeys/:id` revokes
 a passkey. Only the operator credential is accepted; a paired device holding
-`access:manage` is refused (401). Errors: `invalid_code` (404), `rate_limited`
+`access:manage` is refused (401 `authentication_required`, pinned by a test that lets the device reach the handler). Errors: `invalid_code` (404), `device_mismatch` (409), `rate_limited`
 (429, with `retryAfterMs`), `passkey_not_found` (404), `enrollment_unavailable`
 (503, `STATION_TRUSTED_CONSENT_ORIGIN` unset). The browser half is served on the
 consent origin under `/operator/passkeys/enroll`; see the

@@ -15,6 +15,7 @@
  * host-confirmed path only.
  */
 import { type Context, Hono } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
 import {
   OperatorPasskeyEnrollmentError,
   type OperatorPasskeyEnrollmentService,
@@ -30,10 +31,12 @@ const BODY_LIMIT_BYTES = 1_024;
 
 function statusFor(
   error: OperatorPasskeyEnrollmentError,
-): 400 | 404 | 429 | 503 {
+): 400 | 404 | 409 | 429 | 503 {
   switch (error.code) {
     case 'invalid_code':
       return 404;
+    case 'device_mismatch':
+      return 409;
     case 'passkey_not_found':
       return 404;
     case 'rate_limited':
@@ -75,13 +78,21 @@ export function createOperatorPasskeyHostRoutes(
       }
     };
 
-  async function readCode(request: Request): Promise<unknown> {
-    const text = await request.text();
-    if (text.length > BODY_LIMIT_BYTES) return undefined;
+  const limited = bodyLimit({
+    maxSize: BODY_LIMIT_BYTES,
+    onError: (c) => c.json({ error: 'payload_too_large' }, 413),
+  });
+
+  async function readBody(
+    request: Request,
+  ): Promise<{ code?: unknown; device?: unknown }> {
     try {
-      return (JSON.parse(text) as { code?: unknown } | null)?.code;
+      const parsed: unknown = JSON.parse(await request.text());
+      return parsed !== null && typeof parsed === 'object'
+        ? (parsed as { code?: unknown; device?: unknown })
+        : {};
     } catch {
-      return undefined;
+      return {};
     }
   }
 
@@ -97,15 +108,28 @@ export function createOperatorPasskeyHostRoutes(
   );
 
   app.post(
-    '/requests/approve',
+    '/requests/inspect',
+    limited,
     guarded(async (c) =>
-      c.json(deps.service.confirm(await readCode(c.req.raw))),
+      c.json(deps.service.inspect((await readBody(c.req.raw)).code)),
     ),
   );
 
   app.post(
+    '/requests/approve',
+    limited,
+    guarded(async (c) => {
+      const body = await readBody(c.req.raw);
+      return c.json(deps.service.confirm(body.code, body.device));
+    }),
+  );
+
+  app.post(
     '/requests/deny',
-    guarded(async (c) => c.json(deps.service.deny(await readCode(c.req.raw)))),
+    limited,
+    guarded(async (c) =>
+      c.json(deps.service.deny((await readBody(c.req.raw)).code)),
+    ),
   );
 
   app.delete(

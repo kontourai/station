@@ -5,7 +5,7 @@
  * authenticator that builds genuine attestation-none responses), and the real
  * private SQLite registry.
  */
-import { readFileSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { Hono } from 'hono';
@@ -24,6 +24,7 @@ import {
   OperatorPasskeyEnrollmentService,
 } from '../../../services/identity/operator-passkey-enrollment.js';
 import {
+  LazyOperatorPasskeyRegistry,
   OPERATOR_PASSKEY_DB_RELATIVE_PATH,
   OperatorPasskeyRegistry,
 } from '../../../services/identity/operator-passkey-registry.js';
@@ -35,6 +36,31 @@ const ORIGIN = 'https://station.example.ts.net';
 const HOST = 'station.example.ts.net';
 const PHONE_COOKIE = `__Host-station-device=${'P'.repeat(43)}`;
 const LAPTOP_COOKIE = `__Host-station-device=${'L'.repeat(43)}`;
+const SPOOF_COOKIE = `__Host-station-device=${'S'.repeat(43)}`;
+/** What the pairing registry knows; the NAME is the device's own claim. */
+const DEVICES: Record<
+  string,
+  { id: string; name: string; scope: string; createdAt: number }
+> = {
+  [`${'P'.repeat(43)}`]: {
+    id: 'aaaa1111-0000-4000-8000-000000000001',
+    name: 'Phone browser',
+    scope: 'orchestration:read',
+    createdAt: 1_790_000_000_000,
+  },
+  [`${'L'.repeat(43)}`]: {
+    id: 'bbbb2222-0000-4000-8000-000000000002',
+    name: 'Laptop browser',
+    scope: 'orchestration:read orchestration:operate',
+    createdAt: 1_791_000_000_000,
+  },
+  [`${'S'.repeat(43)}`]: {
+    id: 'cccc3333-0000-4000-8000-000000000003',
+    name: 'station operator BROWSER',
+    scope: 'orchestration:read',
+    createdAt: 1_792_000_000_000,
+  },
+};
 const OPERATOR_HEADER = 'x-test-operator';
 const PATH = '/operator/passkeys/enroll';
 
@@ -84,20 +110,7 @@ function build(origin: string | null = ORIGIN): Harness {
     channel,
     credentials: {
       verifyOperatorCredential: () => false,
-      identifyDevice: (candidate) =>
-        candidate === 'P'.repeat(43)
-          ? {
-              id: 'dev-phone',
-              name: 'Phone browser',
-              scope: 'orchestration:read',
-            }
-          : candidate === 'L'.repeat(43)
-            ? {
-                id: 'dev-laptop',
-                name: 'Laptop browser',
-                scope: 'orchestration:read',
-              }
-            : null,
+      identifyDevice: (candidate) => DEVICES[candidate] ?? null,
     },
     passkeys: service,
   });
@@ -812,5 +825,166 @@ describe('what logs and metrics carry', () => {
         'refused',
       ]),
     );
+  });
+});
+
+describe('approval context', () => {
+  test('the host listing names the requester by id, pairing date and scopes, not just its label', async () => {
+    await startRequest(h);
+    await startRequest(h, LAPTOP_COOKIE);
+    const listing = await json(await hostCall(h, ''));
+    const byLabel = Object.fromEntries(
+      listing.pending.map((entry: Record<string, any>) => [
+        entry.deviceLabel,
+        entry.requester,
+      ]),
+    );
+    expect(byLabel['Phone browser']).toEqual({
+      kind: 'paired-device',
+      deviceId: 'aaaa1111',
+      pairedAt: 1_790_000_000_000,
+      scope: 'orchestration:read',
+    });
+    expect(byLabel['Laptop browser']).toMatchObject({
+      deviceId: 'bbbb2222',
+      scope: 'orchestration:read orchestration:operate',
+    });
+  });
+
+  test('a device cannot borrow the operator browser label', async () => {
+    h.service.createRequest({
+      credential: 'op',
+      deviceLabel: 'Station operator browser',
+      requester: {
+        kind: 'operator-credential',
+        deviceId: 'operator',
+        pairedAt: null,
+        scope: '',
+      },
+    });
+    await startRequest(h, SPOOF_COOKIE);
+    const labels = (await json(await hostCall(h, ''))).pending.map(
+      (entry: Record<string, any>) => entry.deviceLabel as string,
+    );
+    expect(labels).toContain('Station operator browser');
+    const spoof = labels.find((label: string) => label.includes('BROWSER'));
+    expect(spoof).toMatch(/not the operator/);
+    expect(spoof).not.toBe('Station operator browser');
+  });
+
+  test('inspect shows the requester without confirming', async () => {
+    const started = await startRequest(h);
+    const res = await hostCall(h, '/requests/inspect', {
+      method: 'POST',
+      body: JSON.stringify({ code: started.code }),
+    });
+    expect(res.status).toBe(200);
+    expect((await json(res)).requester.deviceId).toBe('aaaa1111');
+    expect((await json(await fetchStatus(h, started.requestId))).state).toBe(
+      'pending',
+    );
+  });
+
+  test('approve --device must match the requesting device, or nothing is confirmed', async () => {
+    const started = await startRequest(h);
+    const approve = (device: unknown) =>
+      hostCall(h, '/requests/approve', {
+        method: 'POST',
+        body: JSON.stringify({ code: started.code, device }),
+      });
+    for (const wrong of ['bbbb2222', 'cccc', 'aaa', '', 7]) {
+      const res = await approve(wrong);
+      expect(res.status, String(wrong)).toBe(409);
+      expect((await json(res)).error).toBe('device_mismatch');
+    }
+    expect((await json(await fetchStatus(h, started.requestId))).state).toBe(
+      'pending',
+    );
+    // A mismatch is not a wrong code: it does not spend the lockout budget.
+    expect((await approve('AAAA1111')).status).toBe(200);
+    expect((await json(await fetchStatus(h, started.requestId))).state).toBe(
+      'confirmed',
+    );
+  });
+
+  test('deny withdraws a confirmed request before the passkey is created', async () => {
+    const started = await startRequest(h);
+    expect((await confirm(h, started.code)).status).toBe(200);
+    const { options } = await optionsFor(h, started.requestId).then((r) => ({
+      options: r.body as { challenge: string; rp: { id: string } },
+    }));
+    const denied = await hostCall(h, '/requests/deny', {
+      method: 'POST',
+      body: JSON.stringify({ code: started.code }),
+    });
+    expect(denied.status).toBe(200);
+    // The ceremony is closed even though a challenge was outstanding.
+    const res = await verify(
+      h,
+      started.requestId,
+      new SoftwareAuthenticator().register(options, { origin: ORIGIN }),
+    );
+    expect(res.status).toBe(409);
+    expect((await json(await hostCall(h, ''))).passkeys).toHaveLength(0);
+    // And approve cannot be replayed to revive it.
+    expect((await confirm(h, started.code)).status).toBe(404);
+  });
+});
+
+describe('request bodies are bounded', () => {
+  test('oversized host and browser bodies are refused with 413', async () => {
+    const big = JSON.stringify({ code: '1'.repeat(2_000) });
+    const host = await hostCall(h, '/requests/approve', {
+      method: 'POST',
+      body: big,
+    });
+    expect(host.status).toBe(413);
+    const browser = await post(h, `${PATH}/requests`, {
+      pad: 'x'.repeat(40_000),
+    });
+    expect(browser.status).toBe(413);
+    expect((await json(await hostCall(h, ''))).pending).toHaveLength(0);
+  });
+});
+
+describe('the passkey database is created only when needed', () => {
+  const dbFile = (home: string) =>
+    join(home, OPERATOR_PASSKEY_DB_RELATIVE_PATH);
+
+  test('a Station without the consent origin never creates it', () => {
+    const home = makeTempDir('station-passkey-lazy-');
+    const lazy = new LazyOperatorPasskeyRegistry(home);
+    const off = new OperatorPasskeyEnrollmentService({
+      registry: lazy,
+      origin: null,
+    });
+    expect(off.availability().available).toBe(false);
+    expect(off.listPasskeys()).toEqual([]);
+    expect(off.listPending()).toEqual([]);
+    expect(() =>
+      off.createRequest({ credential: 'c', deviceLabel: 'd' }),
+    ).toThrowError(/STATION_TRUSTED_CONSENT_ORIGIN/);
+    expect(() => off.revokePasskey('x')).toThrowError(/No active/);
+    lazy.close();
+    expect(existsSync(dbFile(home))).toBe(false);
+  });
+
+  test('with the origin set it is created at the first ceremony, not at startup', async () => {
+    const home = makeTempDir('station-passkey-lazy-');
+    const lazy = new LazyOperatorPasskeyRegistry(home);
+    const service = new OperatorPasskeyEnrollmentService({
+      registry: lazy,
+      origin: ORIGIN,
+    });
+    expect(service.listPasskeys()).toEqual([]);
+    const { requestId, code } = service.createRequest({
+      credential: 'c',
+      deviceLabel: 'd',
+    });
+    service.confirm(code);
+    expect(existsSync(dbFile(home))).toBe(false);
+    await service.beginRegistration(requestId, 'c');
+    expect(existsSync(dbFile(home))).toBe(true);
+    lazy.close();
   });
 });

@@ -87,6 +87,8 @@ const request = vi.fn(
 
 const stdout = vi.fn();
 const printed = () => stdout.mock.calls.map((call) => call[0]).join('\n');
+const confirmPrompt = vi.fn<(question: string) => Promise<boolean>>();
+let interactive = false;
 const run = (...args: string[]) =>
   runEnvironmentCommand(
     ['operator', 'passkeys', ...args, `--api-base=${API}`],
@@ -102,13 +104,29 @@ const run = (...args: string[]) =>
       request: request as never,
       stdout,
       stderr: vi.fn(),
-      isInteractive: false,
+      isInteractive: interactive,
+      confirm: confirmPrompt,
     },
   );
+
+const DEVICE = {
+  kind: 'paired-device' as const,
+  deviceId: 'aaaa1111-0000-4000-8000-000000000001',
+  pairedAt: Date.UTC(2026, 8, 1),
+  scope: 'orchestration:read',
+};
+const ask = (deviceLabel = 'Phone browser') =>
+  service.createRequest({
+    credential: 'browser',
+    deviceLabel,
+    requester: DEVICE,
+  });
 
 beforeEach(() => {
   stdout.mockReset();
   request.mockClear();
+  confirmPrompt.mockReset();
+  interactive = false;
 });
 
 function enroll(label: string) {
@@ -129,10 +147,7 @@ function enroll(label: string) {
 describe('station environment operator passkeys', () => {
   test('list shows passkeys and pending requests, never a code, and nudges toward a second passkey', async () => {
     enroll('Primary');
-    const { code } = service.createRequest({
-      credential: 'browser',
-      deviceLabel: 'Phone browser',
-    });
+    const { code } = ask();
     await run();
     const text = printed();
     expect(text).toContain('Primary');
@@ -144,23 +159,67 @@ describe('station environment operator passkeys', () => {
     expect(seenAuthorization).toContain(`Bearer ${HOME.credential}`);
   });
 
-  test('approve <code> confirms the matching request; a split code works too', async () => {
-    const { code } = service.createRequest({
-      credential: 'browser',
-      deviceLabel: 'Phone browser',
-    });
-    await run('approve', `${code.slice(0, 3)}`, `${code.slice(3)}`);
+  test('list shows who asked: device id, pairing date and scopes, plus the device-chosen name', async () => {
+    ask();
+    await run();
+    const text = printed();
+    expect(text).toContain('Device name (chosen by the device): Phone browser');
+    expect(text).toContain('Device id: aaaa1111');
+    expect(text).toContain('Paired: 2026-09-01T00:00:00.000Z');
+    expect(text).toContain('Scopes: orchestration:read');
+  });
+
+  test('non-interactive approve needs --device, and refuses before confirming anything', async () => {
+    const { code } = ask();
+    await expect(run('approve', code)).rejects.toThrow(/--device/);
+    expect(service.listPending()).toHaveLength(1);
+    const paths = request.mock.calls.map((call) => call[1]);
+    expect(paths.some((path) => path.includes('/requests/'))).toBe(false);
+  });
+
+  test('approve --device <prefix> confirms when it matches; a split code works too', async () => {
+    const { code } = ask();
+    await run('approve', code.slice(0, 3), code.slice(3), '--device=AAAA1111');
     expect(printed()).toContain('Confirmed');
     expect(service.listPending()).toEqual([]);
   });
 
+  test('approve --device that names another device is refused and confirms nothing', async () => {
+    const { code } = ask();
+    await expect(run('approve', code, '--device=bbbb2222')).rejects.toThrow(
+      /not opened by the device you named/,
+    );
+    expect(service.listPending()).toHaveLength(1);
+  });
+
+  test('interactive approve shows the requester and needs a yes', async () => {
+    interactive = true;
+    const { code } = ask();
+    confirmPrompt.mockResolvedValueOnce(false);
+    await run('approve', code);
+    expect(printed()).toContain('Device id: aaaa1111');
+    expect(printed()).toContain('Scopes: orchestration:read');
+    expect(printed()).toContain('Cancelled');
+    expect(service.listPending()).toHaveLength(1);
+
+    confirmPrompt.mockResolvedValueOnce(true);
+    await run('approve', code);
+    expect(confirmPrompt).toHaveBeenCalledTimes(2);
+    expect(printed()).toContain('Confirmed');
+    expect(service.listPending()).toEqual([]);
+  });
+
+  test('deny withdraws a request that was already approved', async () => {
+    const { code } = ask();
+    await run('approve', code, '--device=aaaa1111');
+    await run('deny', code);
+    expect(printed()).toContain('Denied');
+  });
+
   test('approve with a wrong code fails with the readable reason and confirms nothing', async () => {
-    const { code } = service.createRequest({
-      credential: 'browser',
-      deviceLabel: 'Phone browser',
-    });
+    const { code } = ask();
     const wrong = String((Number(code) + 1) % 1_000_000).padStart(6, '0');
-    await expect(run('approve', wrong)).rejects.toThrow(
+    await expect(run('approve', wrong, '--device=aaaa1111')).rejects.toThrow(
       /No pending enrollment/,
     );
     expect(service.listPending()).toHaveLength(1);
@@ -172,10 +231,7 @@ describe('station environment operator passkeys', () => {
   });
 
   test('deny <code> closes the request', async () => {
-    const { code } = service.createRequest({
-      credential: 'browser',
-      deviceLabel: 'Phone browser',
-    });
+    const { code } = ask();
     await run('deny', code);
     expect(printed()).toContain('Denied');
     expect(service.listPending()).toEqual([]);
@@ -207,7 +263,7 @@ describe('station environment operator passkeys', () => {
     await run();
     expect(printed()).toContain('Enrollment is unavailable');
     expect(printed()).toContain('STATION_TRUSTED_CONSENT_ORIGIN');
-    await expect(run('approve', '123456')).rejects.toThrow(
+    await expect(run('approve', '123456', '--device=aaaa1111')).rejects.toThrow(
       /STATION_TRUSTED_CONSENT_ORIGIN/,
     );
   });

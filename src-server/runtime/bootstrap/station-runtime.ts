@@ -154,7 +154,7 @@ import {
 } from '../../services/feature-previews/feature-preview-registry.js';
 import type { FeedbackService } from '../../services/feedback/feedback-service.js';
 import { OperatorPasskeyEnrollmentService } from '../../services/identity/operator-passkey-enrollment.js';
-import { OperatorPasskeyRegistry } from '../../services/identity/operator-passkey-registry.js';
+import { LazyOperatorPasskeyRegistry } from '../../services/identity/operator-passkey-registry.js';
 import { FleetCandidateService } from '../../services/inference/fleet-candidate-service.js';
 import { FleetProbeService } from '../../services/inference/fleet-probe-service.js';
 import type { KnowledgeService } from '../../services/knowledge/knowledge-service.js';
@@ -214,7 +214,6 @@ import {
   logStartupLogLevelDiagnostics,
   resolveLogLevel,
 } from '../../utils/logger.js';
-import { sanitizedTransportError } from '../../utils/outward-error.js';
 import { expandTilde, resolveHomeDir } from '../../utils/paths.js';
 import type { VoiceSessionService } from '../../voice/voice-session.js';
 import { isExternalEngineBoundAgent } from '../agents/agent-engine-classification.js';
@@ -1119,10 +1118,11 @@ export class StationRuntime {
     ),
   });
   private consentListener: ConsentListener | null = null;
-  // #3257 (S2b): the operator passkey registry and enrollment ceremony. Opened
-  // on first use so a Station that never enrolls a passkey never creates the
-  // database; closed with the other private stores at shutdown.
-  private operatorPasskeyRegistry?: OperatorPasskeyRegistry;
+  // #3257 (S2b): the operator passkey enrollment ceremony. The registry file is
+  // created only when a ceremony actually begins (which needs
+  // STATION_TRUSTED_CONSENT_ORIGIN), so a Station that never enrolls a passkey
+  // never creates the database; it is closed with the other private stores.
+  private operatorPasskeyRegistry?: LazyOperatorPasskeyRegistry;
   private operatorPasskeys?: OperatorPasskeyEnrollmentService;
   private usageTelemetry?: UsageTelemetryService;
   /** One durable operation authority shared by route and fleet composition. */
@@ -4148,29 +4148,22 @@ export class StationRuntime {
    * MCP frame proxy's silent `resolve(null)` optional-degrade shape.
    */
   /**
-   * The enrollment service, or undefined where it must not exist: hosted
-   * tenants (D11) and a registry that cannot open privately. A failure here
-   * only leaves enrollment unavailable; it never blocks startup.
+   * The enrollment service, or undefined where it must not exist (hosted
+   * tenants, D11). Opening the store is deferred to first use, and a store
+   * that cannot open privately fails that call closed; it never blocks startup.
    */
   private getOperatorPasskeys(): OperatorPasskeyEnrollmentService | undefined {
     if (this.operatorPasskeys) return this.operatorPasskeys;
     if (isHostedTenantExecutionRequired()) return undefined;
-    try {
-      this.operatorPasskeyRegistry = OperatorPasskeyRegistry.open(
-        this.configLoader.getProjectHomeDir(),
-      );
-      this.operatorPasskeys = new OperatorPasskeyEnrollmentService({
-        registry: this.operatorPasskeyRegistry,
-        origin: this.consentChannel.trustedOrigin,
-        logger: this.logger,
-      });
-      return this.operatorPasskeys;
-    } catch (error) {
-      this.logger.error('Operator passkey registry unavailable', {
-        error: sanitizedTransportError(error).message,
-      });
-      return undefined;
-    }
+    this.operatorPasskeyRegistry = new LazyOperatorPasskeyRegistry(
+      this.configLoader.getProjectHomeDir(),
+    );
+    this.operatorPasskeys = new OperatorPasskeyEnrollmentService({
+      registry: this.operatorPasskeyRegistry,
+      origin: this.consentChannel.trustedOrigin,
+      logger: this.logger,
+    });
+    return this.operatorPasskeys;
   }
 
   private async startConsentListenerOrReport(): Promise<void> {

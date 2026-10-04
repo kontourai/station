@@ -147,6 +147,12 @@ function createHarness(
       homeDir: string,
     ) => RelayEnrollmentService;
     operatorPasskeys?: OperatorPasskeyEnrollmentService;
+    /**
+     * By default the harness stops a paired device at the `/api/pairing`
+     * middleware (403) before any handler runs. This lets it through, so a
+     * test can prove the HANDLER's own operator check.
+     */
+    devicesReachPairingRoutes?: boolean;
   } = {},
 ) {
   const homeDir = mkdtempSync(join(tmpdir(), 'station-pairing-routes-'));
@@ -212,7 +218,8 @@ function createHarness(
     security: {
       verifyCredential: (credential, request) =>
         credential === MASTER_CREDENTIAL ||
-        (!request?.path.startsWith('/api/pairing') &&
+        ((options.devicesReachPairingRoutes ||
+          !request?.path.startsWith('/api/pairing')) &&
           pairing.verifyCredential(credential)),
       recognizeCredential: (credential) =>
         credential === MASTER_CREDENTIAL ||
@@ -4664,7 +4671,7 @@ test.each([{}, { bindVerifiedIdentity: true }])(
 );
 
 describe('operator passkey host routes in the runtime auth boundary (#3257)', () => {
-  function passkeyHarness() {
+  function passkeyHarness(devicesReachPairingRoutes = false) {
     // In memory: this test is about the auth boundary, not the file.
     const registry = new OperatorPasskeyRegistry(new DatabaseSync(':memory:'));
     const service = new OperatorPasskeyEnrollmentService({
@@ -4674,7 +4681,10 @@ describe('operator passkey host routes in the runtime auth boundary (#3257)', ()
     return {
       registry,
       service,
-      harness: createHarness({ operatorPasskeys: service }),
+      harness: createHarness({
+        operatorPasskeys: service,
+        devicesReachPairingRoutes,
+      }),
     };
   }
 
@@ -4715,6 +4725,52 @@ describe('operator passkey host routes in the runtime auth boundary (#3257)', ()
         expect([401, 403], `device ${path}`).toContain(device.status);
       }
       // Neither the device nor the anonymous caller confirmed anything.
+      expect(service.listPending()).toHaveLength(1);
+    } finally {
+      registry.close();
+    }
+  });
+
+  test('a paired device that REACHES the handler is still refused by the handler: 401 authentication_required', async () => {
+    const { registry, service, harness } = passkeyHarness(true);
+    try {
+      const { code } = service.createRequest({
+        credential: 'browser',
+        deviceLabel: 'Phone browser',
+      });
+      // The default grant carries access:manage (and access:approve), the
+      // scopes the /api/pairing family asks for.
+      const paired = await pairDevice(harness, 'Phone');
+      expect(paired.device.scope).toContain('access:manage');
+      const calls: Array<[string, RequestInit]> = [
+        ['/api/pairing/operator-passkeys', {}],
+        [
+          '/api/pairing/operator-passkeys/requests/inspect',
+          harness.json({ code }),
+        ],
+        [
+          '/api/pairing/operator-passkeys/requests/approve',
+          harness.json({ code, device: 'aaaa1111' }),
+        ],
+        [
+          '/api/pairing/operator-passkeys/requests/deny',
+          harness.json({ code }),
+        ],
+        ['/api/pairing/operator-passkeys/someid', { method: 'DELETE' }],
+      ];
+      for (const [path, init] of calls) {
+        const response = await harness.request(path, {
+          ...init,
+          headers: {
+            ...((init.headers as Record<string, string>) ?? {}),
+            Authorization: `Bearer ${paired.credential}`,
+          },
+        });
+        expect(response.status, path).toBe(401);
+        expect(await response.json(), path).toEqual({
+          error: 'authentication_required',
+        });
+      }
       expect(service.listPending()).toHaveLength(1);
     } finally {
       registry.close();
