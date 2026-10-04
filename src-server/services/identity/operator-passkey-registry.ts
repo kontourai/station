@@ -42,22 +42,6 @@ export interface NewOperatorPasskey {
   readonly origin: string;
 }
 
-interface PasskeyRow {
-  id: string;
-  credential_id: string;
-  public_key: Uint8Array;
-  counter: number;
-  transports: string;
-  device_type: string;
-  backed_up: number;
-  label: string;
-  rp_id: string;
-  origin: string;
-  created_at: number;
-  last_used_at: number | null;
-  revoked_at: number | null;
-}
-
 export const OPERATOR_PASSKEY_DB_RELATIVE_PATH = join(
   'authentication',
   'operator-passkeys.sqlite',
@@ -112,11 +96,12 @@ export class OperatorPasskeyRegistry {
    * it). One handle per operator lets an authenticator replace, rather than
    * duplicate, a discoverable credential it already holds for this RP.
    */
-  userHandle(): Uint8Array {
+  userHandle(): Uint8Array<ArrayBuffer> {
     const existing = this.#db
       .prepare("SELECT value FROM operator_meta WHERE key = 'user_handle'")
       .get() as { value: string } | undefined;
-    if (existing) return Buffer.from(existing.value, 'base64url');
+    if (existing)
+      return Uint8Array.from(Buffer.from(existing.value, 'base64url'));
     const created = randomBytes(32).toString('base64url');
     this.#db
       .prepare(
@@ -126,7 +111,7 @@ export class OperatorPasskeyRegistry {
     const stored = this.#db
       .prepare("SELECT value FROM operator_meta WHERE key = 'user_handle'")
       .get() as { value: string };
-    return Buffer.from(stored.value, 'base64url');
+    return Uint8Array.from(Buffer.from(stored.value, 'base64url'));
   }
 
   /** @throws when the credential id is already registered. */
@@ -158,11 +143,12 @@ export class OperatorPasskeyRegistry {
 
   /** Active and revoked passkeys, newest first, public metadata only. */
   list(): OperatorPasskey[] {
-    return (
-      this.#db
-        .prepare('SELECT * FROM operator_passkeys ORDER BY created_at DESC')
-        .all() as unknown as PasskeyRow[]
-    ).map((row) => toPasskey(row));
+    return this.#db
+      .prepare(
+        `SELECT ${METADATA_COLUMNS} FROM operator_passkeys ORDER BY created_at DESC`,
+      )
+      .all()
+      .map((row) => toPasskey(row));
   }
 
   listActive(): OperatorPasskey[] {
@@ -171,26 +157,22 @@ export class OperatorPasskeyRegistry {
 
   get(id: string): OperatorPasskey | null {
     const row = this.#db
-      .prepare('SELECT * FROM operator_passkeys WHERE id = ?')
-      .get(id) as unknown as PasskeyRow | undefined;
+      .prepare(`SELECT ${METADATA_COLUMNS} FROM operator_passkeys WHERE id = ?`)
+      .get(id);
     return row ? toPasskey(row) : null;
   }
 
   /** Credential ids of active passkeys, for `excludeCredentials`. */
   activeCredentialIds(): Array<{ id: string; transports: string[] }> {
-    return (
-      this.#db
-        .prepare(
-          'SELECT credential_id, transports FROM operator_passkeys WHERE revoked_at IS NULL',
-        )
-        .all() as unknown as Array<{
-        credential_id: string;
-        transports: string;
-      }>
-    ).map((row) => ({
-      id: row.credential_id,
-      transports: parseTransports(row.transports),
-    }));
+    return this.#db
+      .prepare(
+        'SELECT credential_id, transports FROM operator_passkeys WHERE revoked_at IS NULL',
+      )
+      .all()
+      .map((row) => ({
+        id: String(row.credential_id),
+        transports: parseTransports(String(row.transports)),
+      }));
   }
 
   /** Marks a passkey revoked. Returns false when unknown or already revoked. */
@@ -219,18 +201,26 @@ function parseTransports(raw: string): string[] {
   }
 }
 
-function toPasskey(row: PasskeyRow): OperatorPasskey {
+/** Every column except the key material and counter, which never leave. */
+const METADATA_COLUMNS =
+  'id, transports, device_type, backed_up, label, rp_id, origin, created_at, last_used_at, revoked_at';
+
+function nullableNumber(value: unknown): number | null {
+  return value === null || value === undefined ? null : Number(value);
+}
+
+function toPasskey(row: Record<string, unknown>): OperatorPasskey {
   return {
-    id: row.id,
-    label: row.label,
-    rpId: row.rp_id,
-    origin: row.origin,
-    transports: parseTransports(row.transports),
+    id: String(row.id),
+    label: String(row.label),
+    rpId: String(row.rp_id),
+    origin: String(row.origin),
+    transports: parseTransports(String(row.transports)),
     deviceType:
       row.device_type === 'multiDevice' ? 'multiDevice' : 'singleDevice',
-    backedUp: row.backed_up === 1,
-    createdAt: row.created_at,
-    lastUsedAt: row.last_used_at,
-    revokedAt: row.revoked_at,
+    backedUp: Number(row.backed_up) === 1,
+    createdAt: Number(row.created_at),
+    lastUsedAt: nullableNumber(row.last_used_at),
+    revokedAt: nullableNumber(row.revoked_at),
   };
 }
