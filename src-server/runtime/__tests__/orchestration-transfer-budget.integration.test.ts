@@ -1,13 +1,14 @@
 import { once } from 'node:events';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { serve } from '@hono/node-server';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import * as sdk from '../../../packages/sdk/src/client/index.js';
 import { assertDeterministicBaseline } from '../../../scripts/orchestration-transfer-budget.mjs';
+import { runTransferCapture } from '../../../scripts/orchestration-transfer-gate.mjs';
 import { HttpTransferRecorder } from '../../__test-utils__/http-transfer-recorder.js';
 import { GateTestAdapter } from '../../__test-utils__/orchestration-gate-test-harness.js';
 import {
@@ -179,9 +180,19 @@ async function runtime() {
 async function startMeasurement({
   refusal,
   holdLiveOpenMs,
+  hideActivityFrames = false,
+  stallAttempts = false,
+  nativeBarrierTimeoutMs,
+  nativeHeavyLiveFrameCount = 44,
 }: {
   refusal: boolean;
   holdLiveOpenMs: number;
+  /** Simulates a route that never flushes its trailing activity frame. */
+  hideActivityFrames?: boolean;
+  /** The recorder never reports a completed response, so a barrier times out. */
+  stallAttempts?: boolean;
+  nativeBarrierTimeoutMs?: number;
+  nativeHeavyLiveFrameCount?: number;
 }) {
   const {
     baseUrl,
@@ -268,7 +279,7 @@ async function startMeasurement({
       },
       finalToolOutput: () => finalToolOutputOf(heavyTransferFinalPair()),
       finalReplayEventCount: 4,
-      heavyLiveFrameCount: 44,
+      heavyLiveFrameCount: nativeHeavyLiveFrameCount,
       async seedRetained() {
         await nativeAdapter.startSession({
           threadId: nativeThreadId,
@@ -345,8 +356,16 @@ async function startMeasurement({
     baseUrl,
     store,
     service,
-    recorder: nativeRecorder,
+    recorder:
+      hideActivityFrames || stallAttempts
+        ? {
+            attempts: stallAttempts ? [] : nativeRecorder.attempts,
+            checkpoint: () => nativeRecorder.checkpoint(),
+            activityFramesSinceCheckpoint: () => 0,
+          }
+        : nativeRecorder,
     sdk,
+    barrierTimeoutMs: nativeBarrierTimeoutMs,
     budget: refusal
       ? {
           ...transferBudget.policy,
@@ -477,4 +496,74 @@ describe('orchestration transfer byte budgets', () => {
       'station-native': 1,
     });
   });
+
+  // The real scenario failure text through the real gate FAIL-line path.
+  const gateFailLine = (stderr: string) => {
+    try {
+      runTransferCapture({
+        candidateRoot: resolve(import.meta.dirname, '../../..'),
+        targetRoot: '/fixture-target',
+        output: '/fixture-output.json',
+        baseSha: 'a'.repeat(40),
+        timeout: 4_000,
+        spawn: (() => ({ status: 1, stdout: '', stderr })) as never,
+      } as never);
+    } catch (error) {
+      return String((error as Error).message);
+    }
+    return '';
+  };
+
+  test('a slow scenario barrier is reported through the gate with the remedy', async () => {
+    const run = await startMeasurement({
+      refusal: false,
+      holdLiveOpenMs: 0,
+      stallAttempts: true,
+      nativeBarrierTimeoutMs: 1,
+    });
+    const failure = await run.nativeMeasurementPromise.catch((error) => error);
+    expect(String(failure.message)).toMatch(/barrier timed out after 1ms/);
+    const line = gateFailLine(`Error: ${failure.message}\n    at x`);
+    expect(line).toContain(
+      'STATION_TRANSFER_CAPTURE_TIMEOUT_MS=<milliseconds>',
+    );
+    expect(line).toMatch(/barrier timed out after 1ms/);
+  }, 60_000);
+
+  test('a trailing activity frame that never arrives is reported as a possible regression, not load', async () => {
+    const run = await startMeasurement({
+      refusal: false,
+      holdLiveOpenMs: 0,
+      hideActivityFrames: true,
+      nativeBarrierTimeoutMs: 600,
+    });
+    const failure = await run.nativeMeasurementPromise.catch((error) => error);
+    expect(String(failure.message)).toContain(
+      'saw 0 activity frames, expected 1',
+    );
+    const line = gateFailLine(`Error: ${failure.message}\n    at x`);
+    expect(line).toContain('may be a regression in the route');
+    expect(line).not.toContain('raise it for this run');
+  }, 60_000);
+
+  test('a live phase that is not one heavy turn fails with frames, activity frames and identities', async () => {
+    const run = await startMeasurement({
+      refusal: false,
+      holdLiveOpenMs: 0,
+      nativeHeavyLiveFrameCount: 43,
+    });
+    const failure = await run.nativeMeasurementPromise.catch((error) => error);
+    expect(String(failure.message)).toContain(
+      'live phase did not contain one heavy turn: frames 44 != 43, activityFrames 1',
+    );
+    expect(failure.diagnostic).toMatchObject({
+      kind: 'station-transfer-failure',
+      activityFrames: 1,
+      expectedFrames: 43,
+      truncated: false,
+      eventIdentities: expect.arrayContaining([
+        expect.objectContaining({ event: 'orchestration:activity' }),
+      ]),
+    });
+  }, 60_000);
 });

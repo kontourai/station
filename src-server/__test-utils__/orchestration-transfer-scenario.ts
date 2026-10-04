@@ -74,6 +74,9 @@ export class TransferMeasurementFailure extends Error {
       limit: Budget;
       eventIdentities: TransferAttempt['eventIdentities'];
       truncated: boolean;
+      /** Set when the phase's frame count, not a byte ceiling, was refused. */
+      activityFrames?: number;
+      expectedFrames?: number;
     },
   ) {
     super(`orchestration transfer scenario: ${message}`);
@@ -314,10 +317,17 @@ export async function measureOrchestrationTransfer(
   );
   const expectedActivity =
     ORCHESTRATION_TRANSFER_LIVE_ACTIVITY_FRAMES[source.scenario];
-  await until(
-    () => options.recorder.activityFramesSinceCheckpoint() >= expectedActivity,
-    `${source.scenario} trailing activity frame delivered live`,
-  );
+  const activityWaitMs = options.barrierTimeoutMs ?? 5_000;
+  const activityDeadline = performance.now() + activityWaitMs;
+  while (options.recorder.activityFramesSinceCheckpoint() < expectedActivity) {
+    // Unlike the other barriers this one waits for an event the route owes,
+    // so a miss is reported as a possible regression, not as host load.
+    if (performance.now() > activityDeadline)
+      fail(
+        `${source.scenario} trailing activity frame did not arrive within ${activityWaitMs}ms: the live phase saw ${options.recorder.activityFramesSinceCheckpoint()} activity frames, expected ${expectedActivity}. This may be a regression in the route's trailing activity flush, not only host load; check it before raising the timeout`,
+      );
+    await new Promise<void>((resolve) => setTimeout(resolve, 5));
+  }
   live.connection.close();
   await until(
     () => options.recorder.attempts.length === 3,
@@ -416,8 +426,21 @@ export async function measureOrchestrationTransfer(
       );
   });
 
-  if (phases[2]?.frames !== source.heavyLiveFrameCount)
-    fail(`${source.scenario} live phase did not contain one heavy turn`);
+  if (phases[2]?.frames !== source.heavyLiveFrameCount) {
+    const attempt = options.recorder.attempts[2]!;
+    throw new TransferMeasurementFailure(
+      `${source.scenario} live phase did not contain one heavy turn: frames ${phases[2]?.frames} != ${source.heavyLiveFrameCount}, activityFrames ${attempt.activityFrames}`,
+      {
+        kind: 'station-transfer-failure',
+        phase: phases[2]!,
+        limit: options.budget.live!,
+        eventIdentities: attempt.eventIdentities,
+        truncated: attempt.frames > attempt.eventIdentities.length,
+        activityFrames: attempt.activityFrames,
+        expectedFrames: source.heavyLiveFrameCount,
+      },
+    );
+  }
   const finalCursor = options.service.readEventStreamHead();
   return { phases, beforeHeavyCursor, shortReplayCursor, finalCursor };
 }

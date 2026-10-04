@@ -461,17 +461,23 @@ export function runTransferCapture({
     // A barrier timing out is host load, not a regression, and the child's own
     // message already names the setting; repeat it on the FAIL line, which is
     // what a push refusal shows.
-    const barrierTimeout = /capture barrier timed out after \d+ms: [^\n]+/.exec(
+    const barrierTimeout = /barrier timed out after \d+ms: [^\n]+/.exec(
       result.stderr ?? '',
     );
     if (barrierTimeout)
       fail(
         `${barrierTimeout[0]} for ${targetRoot}. This is host load, not a measured regression: raise it for this run with ${TRANSFER_CAPTURE_TIMEOUT_ENV}=<milliseconds> (currently ${timeout})`,
       );
+    // The scenario's own refusals (an expected event that never arrived, a
+    // frame count that is not one heavy turn) are not load and carry their
+    // own text; surface it on the FAIL line instead of a bare "capture failed".
+    const scenarioFailure = /orchestration transfer scenario: [^\n]+/.exec(
+      result.stderr ?? '',
+    );
     fail(
       resolutionFailure
         ? `capture dependency resolution failed for ${targetRoot}; inspect the module error above (preparing the baseline again will not repair resolution)`
-        : `capture failed for ${targetRoot}`,
+        : `capture failed for ${targetRoot}${scenarioFailure ? `: ${scenarioFailure[0]}` : ''}`,
     );
   }
   if (!existsSync(output)) fail(`capture produced no report: ${output}`);
