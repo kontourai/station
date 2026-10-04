@@ -1008,10 +1008,15 @@ test.describe('Task-first Home (#332, mocked)', () => {
       return picker;
     };
     // Unlike the dock's picker, the draft's stays open after a choice; its
-    // Close button is how the user returns to the draft.
+    // Close button is how the user returns to the draft, and focus returns to
+    // the chip that opened it (the first opening also loads the picker chunk
+    // behind a loading frame, which must not take the return target with it).
     const closePicker = async (picker: Locator) => {
       await picker.getByRole('button', { name: 'Close model picker' }).click();
       await expect(picker).toHaveCount(0);
+      await expect(
+        draft.getByRole('button', { name: /^Model: / }),
+      ).toBeFocused();
     };
     const bedrockOption = (picker: Locator) =>
       picker.getByRole('option', { name: /Bedrock · Prod · shared-model/ });
