@@ -366,6 +366,18 @@ export class ConversationLineage {
       : [conversationId];
   }
 
+  /**
+   * #3112: the durable conversation a successor execution Session continues,
+   * or undefined for a conversation's own root Session and for an id with no
+   * lineage.
+   */
+  successorConversationId(sessionId: string): string | undefined {
+    const lineage = this.deps.eventStore?.conversationForSession(sessionId);
+    return lineage && lineage.conversationId !== sessionId
+      ? lineage.conversationId
+      : undefined;
+  }
+
   /** Current replaceable Session for a durable conversation; legacy falls back to its id. */
   currentConversationSessionId(conversationId: string): string {
     return (

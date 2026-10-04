@@ -2001,6 +2001,9 @@ export class OrchestrationService {
         this.sessionAuthz.canReadSession(threadId, authority),
       isEphemeralSession: (threadId) => this.isEphemeralSession(threadId),
       sessionAttributionFor: (threadId) => this.sessionAttributionFor(threadId),
+      conversationIdForThread: (threadId) =>
+        this.options.eventStore?.conversationForSession(threadId)
+          ?.conversationId ?? threadId,
       listEventPayloads: (threadId) =>
         (this.options.eventStore?.listEvents(threadId) ?? []).map(
           (event) => event.payload,
@@ -4233,6 +4236,11 @@ export class OrchestrationService {
     return this.conversationLineage.currentConversationSessionId(
       conversationId,
     );
+  }
+
+  /** The conversation a successor execution Session continues, if it is one. */
+  successorConversationId(sessionId: string): string | undefined {
+    return this.conversationLineage.successorConversationId(sessionId);
   }
 
   /** Every execution Session of a durable conversation, in lineage order. */

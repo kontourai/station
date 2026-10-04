@@ -46,6 +46,12 @@ interface SessionTranscriptReadsDeps {
     threadId: string,
   ) => { conversationId: string; slug?: string } | null | undefined;
   listEventPayloads: (threadId: string) => CanonicalRuntimeEvent[];
+  /**
+   * #3112: the durable conversation an execution Session belongs to (the
+   * thread itself when it has no lineage). A successor Session is not a
+   * conversation of its own.
+   */
+  conversationIdForThread?: (threadId: string) => string;
   listUsageEventRecords: (
     threadId: string,
   ) => ReturnType<EventStore['listEvents']>;
@@ -132,7 +138,8 @@ export class SessionTranscriptReads {
       .filter((row) => this.deps.canReadSession(row.threadId, authority))
       .slice(0, Math.min(Math.max(limit, 1), 20))
       .map((row) => ({
-        conversationId: row.threadId,
+        conversationId:
+          this.deps.conversationIdForThread?.(row.threadId) ?? row.threadId,
         // The transcript's stable ids are based on turn.started.  A user
         // row is its own anchor; an assistant row uses the turn anchor.
         messageId:

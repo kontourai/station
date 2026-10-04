@@ -236,6 +236,12 @@ interface SessionMessageReader {
    */
   conversationSessionIds?(conversationId: string): readonly string[];
   /**
+   * #3112: the conversation a successor execution Session continues. A
+   * successor keeps its own file-store record (its turns are stored under
+   * its id), but it is part of that conversation, never one of its own.
+   */
+  successorConversationId?(sessionId: string): string | undefined;
+  /**
    * Fold a native-SDK session's persisted events into engine-agnostic usage
    * totals (archive#1299) — the stats-route counterpart to
    * `readSessionMessages`'s messages-route compatibility path. Optional so a reader
@@ -461,16 +467,24 @@ async function _listPersonalFileConversationItems(
   memoryAdapters: Map<string, FileMemoryAdapter>,
   userId: string,
   limit: number,
+  lineage?: Pick<SessionMessageReader, 'successorConversationId'>,
 ): Promise<{ items: ConversationListItem[]; hasMore: boolean }> {
   const pages = await Promise.all(
     [...memoryAdapters].map(async ([slug, adapter]) => {
-      const conversations = await adapter.queryConversations({
-        userId,
-        resourceId: slug,
-        orderBy: 'updated_at',
-        orderDirection: 'DESC',
-        limit: limit + 1,
-      });
+      // #3112: a successor Session's record belongs to its conversation, which
+      // is listed under its own id.
+      const conversations = (
+        await adapter.queryConversations({
+          userId,
+          resourceId: slug,
+          orderBy: 'updated_at',
+          orderDirection: 'DESC',
+          limit: limit + 1,
+        })
+      ).filter(
+        (conversation) =>
+          lineage?.successorConversationId?.(conversation.id) === undefined,
+      );
       return {
         hasMore: conversations.length > limit,
         items: await Promise.all(
@@ -1218,6 +1232,7 @@ export function createConversationRoutes(
               new Map([[runtimeSlug, adapter]]),
               authority.userId,
               pageQuery.data.limit,
+              sessionMessageReader,
             )
           : { items: [], hasMore: false };
       const historyPage = sessionMessageReader
@@ -2313,7 +2328,9 @@ export function createGlobalConversationRoutes(
   _createMemoryAdapter: ((slug: string) => FileMemoryAdapter) | undefined,
   sessionConversationReader: Pick<
     SessionMessageReader,
-    'readSessionConversation' | 'searchSessionMessages'
+    | 'readSessionConversation'
+    | 'searchSessionMessages'
+    | 'successorConversationId'
   > & {
     listConversationHistoryPage(
       authority: SessionReadAuthority,
@@ -2493,6 +2510,7 @@ export function createGlobalConversationRoutes(
             memoryAdapters,
             authority.userId,
             pageQuery.data.limit,
+            sessionConversationReader,
           );
       const byId = new Map(
         [...storePage.items, ...sessionItems].map((item) => [item.id, item]),

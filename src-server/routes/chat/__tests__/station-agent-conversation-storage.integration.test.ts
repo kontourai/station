@@ -29,7 +29,10 @@ import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
 import { streamPrimaryAgentChat } from '../chat-primary-stream.js';
 import { prepareChatRequest } from '../chat-request-preparation.js';
-import { createConversationRoutes } from '../conversations.js';
+import {
+  createConversationRoutes,
+  createGlobalConversationRoutes,
+} from '../conversations.js';
 
 // Created before the suite's hooks so the store closes before its directory goes.
 const makeTempDir = trackTempDirs();
@@ -209,6 +212,63 @@ describe('Station-agent conversation storage (#3112)', () => {
     return waitForTurnEnd(threadId, turns);
   }
 
+  const quietLogger = () =>
+    ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }) as any;
+
+  function agentRoutes() {
+    return createConversationRoutes(
+      new Map([[SLUG, memoryAdapter]]) as any,
+      quietLogger(),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      service as any,
+      () => OWNER,
+    );
+  }
+
+  function globalRoutes() {
+    return createGlobalConversationRoutes(
+      new Map([[SLUG, memoryAdapter]]) as any,
+      { getConversation: () => null },
+      quietLogger(),
+      undefined,
+      service as any,
+      () => OWNER,
+    );
+  }
+
+  async function readJson<T>(app: Hono, path: string): Promise<T> {
+    const response = await app.request(path);
+    expect(response.status, path).toBe(200);
+    return ((await response.json()) as { data: T }).data;
+  }
+
+  /** A conversation whose second turn ran in a successor Session. */
+  async function failTwice(conversationId: string) {
+    modelMode.fail = true;
+    await startSession(conversationId, conversationId);
+    const failed = await send(conversationId, 'First try', 1);
+    expect(failed.session.status).toBe('error');
+    // The follow-up resolves the way every conversation send does: the
+    // failed binding cannot take another turn, so the real lineage code
+    // reserves a successor Session beneath the same conversation.
+    const continuation = await service.resolveConversationContinuation(
+      conversationId,
+      INTERNAL_SESSION_READ_SCOPE,
+      { provider: 'station-agent' },
+    );
+    expect(continuation.startRequired).toBe(true);
+    expect(continuation.sessionId).not.toBe(conversationId);
+    expect(eventStore.conversationSessions(conversationId)).toHaveLength(2);
+    await startSession(continuation.sessionId, conversationId);
+    await send(continuation.sessionId, 'Second try', 1);
+    return continuation.sessionId;
+  }
+
   async function readMessages(conversationId: string) {
     const routes = createConversationRoutes(
       new Map([[SLUG, memoryAdapter]]) as any,
@@ -300,24 +360,7 @@ describe('Station-agent conversation storage (#3112)', () => {
   });
 
   test('a turn sent after a failed turn is in the conversation read, with its failure marker, in order', async () => {
-    modelMode.fail = true;
-    await startSession('conv-failed', 'conv-failed');
-    const failed = await send('conv-failed', 'First try', 1);
-    expect(failed.session.status).toBe('error');
-
-    // The follow-up resolves the way every conversation send does: the
-    // failed binding cannot take another turn, so the real lineage code
-    // reserves a successor Session beneath the same conversation.
-    const continuation = await service.resolveConversationContinuation(
-      'conv-failed',
-      INTERNAL_SESSION_READ_SCOPE,
-      { provider: 'station-agent' },
-    );
-    expect(continuation.startRequired).toBe(true);
-    expect(continuation.sessionId).not.toBe('conv-failed');
-    expect(eventStore.conversationSessions('conv-failed')).toHaveLength(2);
-    await startSession(continuation.sessionId, 'conv-failed');
-    await send(continuation.sessionId, 'Second try', 1);
+    await failTwice('conv-failed');
 
     const messages = await readMessages('conv-failed');
     // Each failed turn reads as exactly its prompt and its failure marker,
@@ -335,5 +378,32 @@ describe('Station-agent conversation storage (#3112)', () => {
       { role: 'user', text: 'Second try' },
       { role: 'user', text: marker },
     ]);
+  });
+
+  test('a successor Session is not listed or found as a conversation of its own', async () => {
+    const successor = await failTwice('conv-listed');
+    // The successor's turn really is stored under its own id.
+    expect(
+      (await memoryAdapter.getMessages(OWNER, successor)).length,
+    ).toBeGreaterThan(0);
+
+    const agentList = await readJson<{ items: Array<{ id: string }> }>(
+      agentRoutes(),
+      `/${SLUG}/conversations`,
+    );
+    expect(agentList.items.map((item) => item.id)).toEqual(['conv-listed']);
+
+    const inventory = await readJson<{ items: Array<{ id: string }> }>(
+      globalRoutes(),
+      '/',
+    );
+    expect(inventory.items.map((item) => item.id)).toEqual(['conv-listed']);
+
+    const hits = await readJson<Array<{ conversationId: string }>>(
+      globalRoutes(),
+      '/search?query=Second%20try',
+    );
+    expect(hits.length).toBeGreaterThan(0);
+    for (const hit of hits) expect(hit.conversationId).toBe('conv-listed');
   });
 });
