@@ -361,6 +361,23 @@ export function latestQueuedRetryNotice<
   return undefined;
 }
 
+/**
+ * The chat's ephemeral messages once the queue panel's "x" has discarded a
+ * queued turn: only the queued-retry notices go, and only when no queued turn
+ * is left for them to explain. Undefined when nothing changes, so a send
+ * failure or a command's output survives the discard.
+ */
+export function ephemeralAfterQueueDiscard<Message extends object>(
+  ephemeral: readonly Message[],
+  remaining: number,
+) {
+  if (remaining > 0) return undefined;
+  const kept = ephemeral.filter(
+    (message) => !(message as { queuedRetry?: boolean }).queuedRetry,
+  );
+  return kept.length === ephemeral.length ? undefined : kept;
+}
+
 function noticeLine(content: string) {
   if (!content) return undefined;
   const line = content
@@ -1554,13 +1571,13 @@ export function ChatDockBody({
             // The "x" discards the same queued turn as the notice's Discard;
             // once none is left, the notice has nothing to explain.
             onDiscarded: (remaining: number) => {
-              if (
-                remaining === 0 &&
-                activeSession.messages.some(
-                  (m: any) => m.ephemeral && m.queuedRetry,
-                )
-              )
-                clearEphemeralMessages(activeSession.id);
+              const kept = ephemeralAfterQueueDiscard(
+                ephemeralMessages,
+                remaining,
+              );
+              if (!kept) return;
+              if (kept.length === 0) clearEphemeralMessages(activeSession.id);
+              else updateChat(activeSession.id, { ephemeralMessages: kept });
             },
             onRetry: async (clientTurnId: string) => {
               try {

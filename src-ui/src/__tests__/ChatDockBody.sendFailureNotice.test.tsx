@@ -139,6 +139,7 @@ vi.mock('../components/chat/QueuedMessages', () => ({
 
 import {
   ChatDockBody,
+  ephemeralAfterQueueDiscard,
   latestQueuedRetryNotice,
   latestSendFailureLine,
 } from '../components/chat-dock/ChatDockBody';
@@ -397,5 +398,31 @@ describe('ChatDockBody queued-retry notice', () => {
     );
     const area = await screen.findByTestId('chat-input-area');
     expect(area.getAttribute('data-queued-retry')).toBeNull();
+  });
+});
+
+describe('ephemeralAfterQueueDiscard', () => {
+  type Notice = { content: string; queuedRetry?: boolean };
+  const retry: Notice = { queuedRetry: true, content: 'Queued to retry' };
+  const failure: Notice = { content: 'Could not send' };
+  const command: Notice = { content: 'Conversation Statistics' };
+
+  test('keeps everything while a queued turn remains', () => {
+    expect(ephemeralAfterQueueDiscard([retry, failure], 1)).toBeUndefined();
+  });
+
+  test('drops only the queued-retry notice once none remains', () => {
+    expect(ephemeralAfterQueueDiscard([failure, retry, command], 0)).toEqual([
+      failure,
+      command,
+    ]);
+  });
+
+  test('changes nothing when there is no queued-retry notice', () => {
+    expect(ephemeralAfterQueueDiscard([failure, command], 0)).toBeUndefined();
+  });
+
+  test('leaves an empty list when the notice was the only message', () => {
+    expect(ephemeralAfterQueueDiscard([retry], 0)).toEqual([]);
   });
 });
