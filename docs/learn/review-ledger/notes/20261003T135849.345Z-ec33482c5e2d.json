@@ -1,0 +1,7 @@
+{
+  "revision": "cde061c4f07a24ed6e82d9291915c9e95f51be1d",
+
+  "notes": [
+    {"path":"docs/contexts/workspace-surfaces/CONTEXT.md","note":"Delta round: File Preview and Diff now merge the host's Pop out / Remove pane rows into their own overflow through PaneHeadSlots (hostActions, takeHostActions); the context's pane and host-selection claims hold. No prose change.","inputs":["docs/contexts/workspace-surfaces/CONTEXT.md","src-ui/src/contexts/navigation-store.ts","src-ui/src/workspace-panes/CodingChatPane.tsx","src-ui/src/workspace-panes/FilePreviewPane.tsx","src-ui/src/workspace-panes/builtinWorkspacePaneRegistry.tsx"]}
+  ]
+}
