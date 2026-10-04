@@ -32,10 +32,12 @@ export function createAttentionRoutes(
      */
     viewerIsOperator?: (c: Context) => boolean;
     /**
-     * Whether THIS request's caller would pass this Station's checks on
-     * `POST /api/orchestration/delegations/:taskId/respond` for a
-     * paired-Station task. Absent fails closed: no item claims the caller
-     * can respond.
+     * Whether THIS request's caller passes the HTTP boundary and the
+     * station-control dispatch scope (`approve`) for
+     * `POST /api/orchestration/delegations/:taskId/respond` on a
+     * paired-Station task. A model of those two gates only: the handler can
+     * still refuse. Absent fails closed: no item claims the caller can
+     * respond.
      */
     viewerMayRespondToPeerTask?: (c: Context, taskId: string) => boolean;
   } = {},

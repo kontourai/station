@@ -315,10 +315,11 @@ export class AttentionProjectionService {
        */
       isOperator?: boolean;
       /**
-       * Whether the caller may use `POST /delegations/:taskId/respond` for
-       * this paired-Station task on THIS Station — the route's own checks,
-       * evaluated at the HTTP seam. Absent means unknown: no item claims
-       * the caller can respond.
+       * Whether the caller passes this Station's HTTP boundary and
+       * station-control dispatch scope for `POST /delegations/:taskId/respond`
+       * on this paired-Station task, evaluated at the HTTP seam. The handler
+       * can still refuse. Absent means unknown: no item claims the caller
+       * can respond.
        */
       mayRespondToPeerTask?: (taskId: string) => boolean;
     },

@@ -293,7 +293,6 @@ import { fullAccessGrantForRequest } from '../../routes/orchestration/approval-a
 import { createAttachmentStagingRoutes } from '../../routes/orchestration/attachment-staging.js';
 import { createAttachmentRoutes } from '../../routes/orchestration/attachments.js';
 import { createAttentionRoutes } from '../../routes/orchestration/attention.js';
-import { scopeDispatch } from '../../routes/orchestration/dispatch-scope.js';
 import { createEventRoutes } from '../../routes/orchestration/events.js';
 import { createLiveActivityRoutes } from '../../routes/orchestration/live-activity.js';
 import { createOperatingStateRoutes } from '../../routes/orchestration/operating-state.js';
@@ -309,7 +308,6 @@ import { createWorkItemRoutes } from '../../routes/orchestration/work-items.js';
 import { createWorkspacePaneHostActionRoutes } from '../../routes/orchestration/workspace-pane-host-actions.js';
 import { createPluginDraftRoutes } from '../../routes/plugins/plugin-draft-routes.js';
 import { createPluginEventRelayGate } from '../../routes/plugins/plugin-identity-enumeration.js';
-import { isNonPersonCaller } from '../../routes/plugins/plugin-person-approval.js';
 import { createPluginProposalRoutes } from '../../routes/plugins/plugin-proposal-routes.js';
 import { createPluginSourceStatusRoutes } from '../../routes/plugins/plugin-source-status-routes.js';
 import { createPluginRoutes } from '../../routes/plugins/plugins.js';
@@ -372,8 +370,6 @@ import {
 import {
   grantedPairingScope,
   type PairingScopeContextStore,
-  pairingScopeSatisfiesHttpRoute,
-  requiredPairingScope,
 } from '../../security/pairing-route-scopes.js';
 import {
   attestedBrowserVisibleHost,
@@ -391,7 +387,6 @@ import {
   resolveClientOriginForRequest,
   resolveInboundDelegationDeviceForRequest,
   resolveInboundDeviceKindForRequest,
-  runtimeRequestPrincipalMayAccessHttpRoute,
 } from '../../security/runtime-request-security.js';
 import { resolveStationBrowserOrigins } from '../../security/station-browser-origins.js';
 import { runAsStationServer } from '../../security/station-server-scope.js';
@@ -685,6 +680,7 @@ import {
 } from './api-docs-launch.js';
 import { createOrchestrationBoardAuthorization } from './board-route-authorization.js';
 import { createClientStreamPresence } from './client-stream-presence.js';
+import { runtimeAttentionRouteOptions } from './runtime-attention-route-options.js';
 import {
   configureRuntimeSupportServices,
   createRuntimeSystemRouteDeps,
@@ -6524,89 +6520,15 @@ export function configureRuntimeRoutes(
   );
   context.app.route(
     '/api/attention',
-    createAttentionRoutes(attentionProjection, {
-      readAuthorityForRequest: conversationReadAuthorityForRequest,
-      // #2323 S5 review M6: plugin proposals are addressed to the operator,
-      // decided by the same resolver `/api/plugin-proposals` reads.
-      // Station's own agents resolve as the operator too; they see none
-      // (#2323 S5 delta review).
-      viewerIsOperator: (c) => {
-        if (isNonPersonCaller(c.req.raw)) return false;
-        try {
-          return (
-            resolveOrchestrationRequestPrincipal(c).id ===
-            LOCAL_OPERATOR_PRINCIPAL_ID
-          );
-        } catch {
-          return false;
-        }
-      },
-      // #765 D5: derive the device-pairing items' `viewerCanDecide` from the
-      // SAME two gates the middleware applies to an approve/deny request, in
-      // the same order: the pairing family's authority boundary
-      // (`authorizeCredential`, via the exported predicate) and then the
-      // scope requirement for the confirm/deny leaves, including the narrow
-      // explicit approval grant. The same matcher runs at ingress and delayed
-      // revalidation, so an operator-promoted device need not carry management
-      // authority to decide a pending request.
-      // The attested internal principal (station-control/MCP) bypasses both
-      // gates in `configureRuntimeHttp`, so it decides too; an absent
-      // principal or an unmapped table entry fails closed.
-      // The respond route's own two checks on THIS Station, in its order:
-      // the HTTP boundary (credential + pairing scope for that exact path),
-      // then the station-control dispatch scope with the `approve` action on
-      // a remote task. The paired Station still authorizes on its side.
-      viewerMayRespondToPeerTask: (c, taskId) => {
-        const path = `/api/orchestration/delegations/${encodeURIComponent(taskId)}/respond`;
-        if (
-          !runtimeRequestPrincipalMayAccessHttpRoute(
-            c.req.raw,
-            context.environmentSecurityService,
-            { method: 'POST', path },
-          )
-        )
-          return false;
-        return !(
-          'refused' in
-          scopeDispatch(
-            c,
-            stationControlDispatchScope,
-            () => ({ kind: 'task', taskId, remote: true }),
-            'approve',
-          )
-        );
-      },
-      viewerMayDecidePairingRequests: (request) => {
-        const principal = getRuntimeAuthenticatedRequestPrincipal(request);
-        if (!principal) return false;
-        if (principal.kind === 'internal') return true;
-        if (
-          !context.environmentSecurityService.credentialMayDecidePairingRequests(
-            principal.credential,
-          )
-        ) {
-          return false;
-        }
-        // Confirm and deny share the `/api/pairing` single-tier rule
-        // (method-agnostic), so one representative leaf answers for both.
-        const requiredScope = requiredPairingScope(
-          'POST',
-          '/api/pairing/requests/:requestId/confirm',
-        );
-        if (requiredScope === undefined) return false;
-        const grantedScope =
-          context.environmentSecurityService.resolveGrantedScope(
-            principal.credential,
-          );
-        return (
-          grantedScope !== undefined &&
-          pairingScopeSatisfiesHttpRoute(grantedScope, requiredScope, {
-            method: 'POST',
-            path: '/api/pairing/requests/request/confirm',
-          })
-        );
-      },
-    }),
+    createAttentionRoutes(
+      attentionProjection,
+      runtimeAttentionRouteOptions({
+        readAuthorityForRequest: conversationReadAuthorityForRequest,
+        resolvePrincipal: resolveOrchestrationRequestPrincipal,
+        security: context.environmentSecurityService,
+        stationControlDispatchScope,
+      }),
+    ),
   );
   context.app.route(
     '/api/action-operations',

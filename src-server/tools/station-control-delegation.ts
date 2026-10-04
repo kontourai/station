@@ -2103,6 +2103,10 @@ async function postDelegationJson(
  * (403 + known code) keeps its code and 403 at this Station, and every
  * other failure becomes the generic sentinel — never peer text.
  */
+/** A respond naming an environment that is not the task's recorded host. */
+export const PEER_RESPOND_ENVIRONMENT_MISMATCH_MESSAGE =
+  'This task is not recorded as running on the selected Station; the decision was not sent.';
+
 /** See `postPeerPortableFollowUp`'s `forbiddenMessage`. */
 export const PEER_RESPOND_FORBIDDEN_MESSAGE =
   'The paired Station refused this decision: the access this Station holds there does not allow answering its requests.';
@@ -4642,6 +4646,17 @@ export async function respondToDelegatedTaskRequest(
         'receiver_execution_authority_changed',
         RECEIVER_EXECUTION_REFUSAL_COPY.receiver_execution_authority_changed,
       );
+    // A decision goes only to the paired Station this Station recorded as
+    // hosting the task: a body naming another environment is refused before
+    // any outbound request, so a request id is never decided elsewhere.
+    if (selectedTarget.kind === 'peer' && orchestrationService) {
+      const hosts =
+        await orchestrationService.peerDelegationHostingEnvironmentIds(
+          input.taskId,
+        );
+      if (!hosts.includes(selectedTarget.environmentId))
+        throw new Error(PEER_RESPOND_ENVIRONMENT_MISMATCH_MESSAGE);
+    }
     // Same follow-up poster as the continue path — a receiver's closed
     // portable refusal keeps its code/403 here too.
     const handle = normalizeDelegatedIdentity(

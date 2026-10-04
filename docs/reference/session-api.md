@@ -815,10 +815,12 @@ for that request id. The attention item then carries `peerRequestReference`:
 request on the paired Station. It never carries `requestReference` or
 `inputReference`, so local request inspection and `respondToRequest` cannot use it.
 
-`viewerCanRespond` says whether the reader passes this Station's own checks on
-`POST /api/orchestration/delegations/:taskId/respond`: the credential and
-pairing-scope gate for that path, then the station-control dispatch scope with
-the `approve` action. Absent means unknown, and clients offer nothing. For an
+`viewerCanRespond` models two gates this Station applies before the
+`POST /api/orchestration/delegations/:taskId/respond` handler: the credential
+and pairing-scope gate for that path, then the station-control dispatch scope
+with the `approve` action. The handler can still refuse, for example an inbound
+delegation peer, hosted mode, or an environment that is not the task's
+recorded host. Absent means unknown, and clients offer nothing. For an
 `approval` or `permission` request with `viewerCanRespond: true`, clients post
 `{ requestId, decision, environmentId }` to that route; the paired Station
 re-checks the request is open and decides it there. When the paired Station
@@ -826,6 +828,11 @@ answers 403, the route reports "The paired Station refused this decision" in
 this Station's words; the paired Station's own diagnostics are not relayed.
 `input` and `confirmation` requests keep the note, because `respond` carries a
 decision, not an answer.
+
+The route forwards a decision only to the environment this Station recorded as
+hosting the task. A body naming another environment is refused before any
+outbound request. A request id longer than 512 characters is not stored, so
+the item shows the note. A longer title is cut with a trailing ellipsis.
 
 Both kinds link into the item's own Project Review layout at the exact item —
 `/projects/<projectSlug>/layouts/review?change=<id>` and

@@ -163,10 +163,13 @@ export interface AttentionSessionEnvironment {
    */
   peerRequestReference?: AttentionPeerRequestReference;
   /**
-   * Whether the caller this read answers may use that respond route —
-   * computed at the HTTP seam from the same checks the route applies on this
-   * Station. It says nothing about the paired Station's own authorization,
-   * which can still refuse. Absent means unknown and fails closed.
+   * Whether the caller this read answers passes the two gates this Station
+   * applies before that respond route's handler: the HTTP boundary
+   * (credential and pairing scope for that path) and the station-control
+   * dispatch scope with `approve`. The handler can still refuse (an inbound
+   * delegation peer, hosted mode, an environment it cannot resolve or that
+   * is not the task's recorded host), and so can the paired Station. Absent
+   * means not evaluated, and fails closed.
    */
   viewerCanRespond?: boolean;
 }
