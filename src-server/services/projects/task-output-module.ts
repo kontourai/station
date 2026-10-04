@@ -217,7 +217,8 @@ export class TaskOutputModule {
         throw new TaskOutputDeletedOperationError('Task output was deleted');
       }
       if (
-        store.outputs.filter((output) => output.taskId === taskId).length >=
+        store.outputs.filter((output) => belongsToTask(output, identity))
+          .length >=
         this.limits.maxPerTask
       ) {
         throw new TaskOutputUnavailableError('Task output limit reached');
@@ -389,7 +390,8 @@ export class TaskOutputModule {
           output: stripStoredOutput(existingTarget),
         };
       if (
-        store.outputs.filter((output) => output.taskId === taskId).length >=
+        store.outputs.filter((output) => belongsToTask(output, identity))
+          .length >=
         this.limits.maxPerTask
       )
         throw new TaskOutputUnavailableError('Task output limit reached');

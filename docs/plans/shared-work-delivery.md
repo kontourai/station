@@ -1,6 +1,6 @@
 # Shared work delivery ledger
 
-Status: active, 2026-09-30. Owner request: drive the full discussed program to
+Status: active, refreshed 2026-10-03. Owner request: drive the full discussed program to
 completion. This ledger is not completion evidence. The product target is
 [Shared Task channels](../design/shared-task-channels.md).
 GitHub program: [#3034](https://github.com/kontourai/station/issues/3034).
@@ -18,7 +18,7 @@ unfinished work, not silent exclusions.
 | Product value | Backlog idea to accepted result, visibly shared by people and agents; explain the advantage over direct chat | Design target recorded; user journey not yet executed |
 | Task board and channel | Recorded-status board, brief/conversation first, readable contributions, decisions and results; keyboard and narrow-width proof | Initial board and shared-workspace slice merged in #3037; complete channel journey remains |
 | Connected backlog | Pick up an exact provider item, probe it, retain source, and explicitly choose implementation or disposition; supported write-back uses provider authority | Existing provider rows are read-only in inspected UI; remaining implementation |
-| Agent participation | Project-scoped @agent autocomplete with keyboard/touch/IME support and exact removable tokens; send-time readiness/authority checks; accessible equivalent, scoped context, requester attribution, durable request/work card, result and steering | Personal request journal/composer in #3080; independent lifecycle history follow-up implemented locally with real persistence controls; versioned shared context/preview implemented locally with storage/transport/UI controls; contribution artifacts, browser/team and result acceptance remain |
+| Agent participation | Project-scoped @agent autocomplete with keyboard/touch/IME support and exact removable tokens; send-time readiness/authority checks; accessible equivalent, scoped context, requester attribution, durable request/work card, result and steering | Merged personal request journal/composer #3080, independent lifecycle history #3084, fixed brief preview/binding #3099; contribution artifacts, invited/public and result acceptance remain |
 | Invited collaboration | Two humans can discuss and call agents where authorized; permissions, approvals and revocation remain enforced | Existing room/membership foundation; redesigned journey not verified |
 | Public viewing and contributions | Deliberate publication, versioned results, attributable proposals and revocation without private-data disclosure | Existing sharing targets authorized Project viewers; public modes remain to implement |
 | Previews | Inspect a produced app/document/change and submit feedback against its exact version; stale and isolated content cases | Existing file/diff/output inspection; preview-feedback composition remains |
@@ -54,3 +54,46 @@ claiming repair. Preserve other sessions' ownership and in-flight PRs.
 
 Use independent review and verification for substantive slices. Each receipt
 must bind the exact revision, environment, commands and observed result.
+
+
+## Resumed landing and remaining work: 2026-10-03
+
+Live GitHub REST confirmed #3037, #3080, #3084 and #3099 merged into main.
+#3113 merged into the results branch, not main. Its private output provenance
+therefore remains part of open #3106. The restored orchestration checkout owns
+no implementation edits; the preserved results lane was clean at `09ee00c6c7`.
+Its local main merges and remote provenance squash `0ab2fcb159` were both
+preserved, then current main was merged at `992f86ee6f`.
+
+Five focused output route/store/SQLite suites passed 265 tests on that combined
+revision. Independent source review found a replacement-Task quota defect:
+old incarnation outputs were hidden but still consumed the per-Task quota.
+Two owner-boundary cases, ordinary and declared creation, failed with the
+expected limit error before repair. Landing remains pending until the fix,
+delta review, CI and required pre-push gates complete. Hosted queue and release
+proof remain separate.
+
+This thread owns the remaining sixteen-track ledger. Next active slice is
+exact-output-version feedback and review through immutable Task outputs and
+attributed room history. Current blockers are delivery work and unexecuted
+acceptance journeys, not a claim that available foundations complete them:
+
+- Results: private provenance landing, version-bound feedback, disagreement and
+  explicit human acceptance still need delivery and browser evidence.
+- Collaboration: invited two-human calls/revocation and deliberate public
+  publication/proposals need their own authority and privacy acceptance.
+- Backlog: exact source pickup, disposition and supported tracker write-back
+  need the existing provider admission owner and a real tracker receipt.
+- Continuity: installed host-to-phone journey needs installed/runtime and
+  physical-device proof; artifact transfer alone is insufficient.
+- Provider/evaluation: sign-in eligibility, managed execution, cloud/computer
+  use, model latency/repair/cost and security workflow need current official
+  contract assessment and bounded real-job receipts.
+- Distribution/responsibilities: ChatGPT workflow and specialist distribution,
+  scoped event/recurring work, budgets/escalation/cancellation need acceptance.
+
+Ownership refresh found active relay, featured-Station/distribution,
+knowledge/tools, profile and chat-start sessions. Open #3197, #3213 and #3188
+cover adjacent relay, bundled marketplace and usage-limit recovery work;
+coordinate those owners before changing their surfaces or arming their PRs.
+These lanes are not this programme's acceptance evidence.
