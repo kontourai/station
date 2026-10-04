@@ -655,6 +655,55 @@ describe('HomeView', () => {
     unregister();
   });
 
+  // #3312: with work on the page the start form is the compact one, and it
+  // still names the Agent and Model Start will run on. The note reads the
+  // same default selection (`useNewChatSelectionModel`) that the start path
+  // opens on, so changing that selection changes the note.
+  const workSession = () => ({
+    threadId: 'work-thread',
+    provider: 'codex',
+    status: 'ready',
+    createdAt: '2026-07-13T00:00:00Z',
+    updatedAt: '2026-07-13T00:00:00Z',
+    isLoaded: true,
+    isPersisted: true,
+    answerability: { answerable: true },
+    eventCount: 3,
+  });
+  test.each([
+    ['gpt-5.3-codex', 'Codex · gpt-5.3-codex'],
+    ['gpt-5.4', 'Codex · gpt-5.4'],
+    ['Model not reported', 'Codex'],
+  ])(
+    'the compact start form names the default selection (%s) beside Start',
+    (modelLabel, expected) => {
+      fixtures.defaultModelLabel = modelLabel;
+      fixtures.sessions = [workSession()];
+      renderHomeView({ continuation: null, onNavigate: vi.fn() });
+      const form = screen.getByRole('form', { name: 'Start work' });
+      expect(form.classList.contains('home-view__goal--compact')).toBe(true);
+      const start = within(form).getByRole('button', { name: 'Start a chat' });
+      const note = document.getElementById(
+        start.getAttribute('aria-describedby') ?? '',
+      );
+      expect(note?.textContent).toBe(expected);
+    },
+  );
+
+  test('the compact start form names no identity when no Agent is ready', () => {
+    fixtures.defaultAgent = undefined;
+    fixtures.sessions = [workSession()];
+    renderHomeView({ continuation: null, onNavigate: vi.fn() });
+    const form = screen.getByRole('form', { name: 'Start work' });
+    expect(form.classList.contains('home-view__goal--compact')).toBe(true);
+    expect(
+      within(form)
+        .getByRole('button', { name: 'Start a chat' })
+        .getAttribute('aria-describedby'),
+    ).toBeNull();
+    expect(form.querySelector('.home-view__goal-identity')).toBeNull();
+  });
+
   test('uses honest identity fallbacks and selects exact orchestration continuation', () => {
     fixtures.agents = [];
     fixtures.defaultAgent = undefined;

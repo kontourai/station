@@ -873,13 +873,24 @@ test.describe('Task-first Home (#332, mocked)', () => {
     await mockTaskFirstHome(page, { commands });
     await page.goto('/');
     const prompt = 'Reply exactly GOAL READY. Use no tools.';
+    // #3312: with work on the page the compact form names the Agent and
+    // Model Start will run on, beside Start. What it advertises is what the
+    // started chat runs on, read back below.
+    const form = page.locator('.home-view__goal--compact');
+    const start = form.getByRole('button', {
+      name: 'Start a chat',
+      exact: true,
+    });
+    const advertised = form.locator('.home-view__goal-identity');
+    await expect(advertised).toHaveText('Codex · gpt-5.3-codex');
+    await expect(start).toHaveAccessibleDescription('Codex · gpt-5.3-codex');
+    const [advertisedAgent, advertisedModel] = (
+      (await advertised.textContent()) ?? ''
+    ).split(' · ');
     await page
       .getByRole('textbox', { name: 'What would you like done?' })
       .fill(prompt);
-    await page
-      .locator('.home-view__goal')
-      .getByRole('button', { name: 'Start a chat', exact: true })
-      .click();
+    await start.click();
     await expect
       .poll(() =>
         commands.some((command) => command.type === 'sendExecutionMessage'),
@@ -888,8 +899,32 @@ test.describe('Task-first Home (#332, mocked)', () => {
     const sent = commands.find(
       (command) => command.type === 'sendExecutionMessage',
     );
-    expect(sent?.input).toMatchObject({ message: prompt });
+    expect(sent?.input).toMatchObject({
+      message: prompt,
+      target: { agent: 'codex-agent' },
+    });
     await expect(page.getByRole('dialog', { name: 'New Chat' })).toHaveCount(0);
+    // The started chat's own Agent and Model controls name the advertised
+    // ones. The composer qualifies them ("Agent: Codex. Wait for…", "Model:
+    // Codex Runtime — gpt-5.3-codex (agent default)"), so each is matched as
+    // a whole name segment, not a substring.
+    const literal = (text = '') => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const transcript = page.getByRole('log', {
+      name: 'Conversation transcript',
+    });
+    await expect(transcript).toContainText(prompt);
+    await expect(
+      page.getByRole('button', {
+        name: new RegExp(`^Agent: ${literal(advertisedAgent)}(?:\\.|$)`),
+      }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('button', {
+        name: new RegExp(
+          `^Model: (?:.+ — )?${literal(advertisedModel)}(?: \\(|$)`,
+        ),
+      }),
+    ).toBeVisible();
     await expect(
       page.getByRole('button', { name: 'Workspace: No workspace' }),
     ).toHaveCount(0);
@@ -1140,11 +1175,16 @@ test.describe('Task-first Home (#332, mocked)', () => {
     const continuation = page.getByRole('button', { name: /^Continue/ });
     await expect(continuation).toContainText('Codex · gpt-5.3-codex');
     // Home's New chat button carries no identity line anymore (#3201). With
-    // work on the page the goal field is the compact one-line form, which
-    // drops the "Using …" caption too (design round 2026-10, V1); the default
-    // identity is the one the New chat draft opens with, asserted below.
+    // work on the page the goal field is the compact one-line form: no
+    // "Using …" caption (design round 2026-10, V1), but the identity Start
+    // will use stays beside Start (#3312). It is the one the New chat draft
+    // opens with, asserted below.
     await expect(page.locator('.home-view__goal--compact')).toBeVisible();
-    await expect(page.locator('.home-view__goal-identity')).toHaveCount(0);
+    const advertised = page.locator(
+      '.home-view__goal--compact .home-view__goal-identity',
+    );
+    await expect(advertised).toHaveText('Codex · gpt-5.3-codex');
+    await expect(page.getByText(/^Using /)).toHaveCount(0);
     await expect(
       page
         .locator('.home-view__goal-actions')
@@ -1173,8 +1213,9 @@ test.describe('Task-first Home (#332, mocked)', () => {
       .toBeNull();
     await expect(page.getByText('No chat open')).toBeVisible();
 
-    // The default identity is the one the New chat draft opens with, as its
-    // Agent and Model controls.
+    // The identity Home advertises is the one the New chat draft opens with,
+    // as its Agent and Model controls.
+    await expect(advertised).toHaveText('Codex · gpt-5.3-codex');
     const { dialog, draft } = await openNewChatDraft(page);
     await expect(
       draft.getByRole('button', { name: 'Agent: Codex', exact: true }),
