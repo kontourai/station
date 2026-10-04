@@ -458,7 +458,7 @@ async function openDefaultAgentSession(
   options?: {
     firstMessage?: string;
     /** When given, the opening turn is answered so the composer is idle. */
-    answerWith?: Array<{ message: string; conversationId?: string }>;
+    answerWith?: Array<{ message?: string; conversationId?: string }>;
   },
 ) {
   await page.addInitScript(() => {
