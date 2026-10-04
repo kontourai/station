@@ -109,6 +109,16 @@ application-session client owns key/proof construction; a relay only carries the
 authenticated encrypted request/response stream. Provider hooks resolve private session
 references; no virtual response installs a browser cookie.
 
+Operator passkeys are a separate, enrollment-only owner so far (#3257). The
+[enrollment service](../../src-server/services/identity/operator-passkey-enrollment.ts)
+owns the confirm-by-code request and the single-use WebAuthn ceremony, and the
+[registry](../../src-server/services/identity/operator-passkey-registry.ts) owns the
+private SQLite file of public keys. The browser half is mounted on the consent
+listener ([routes](../../src-server/runtime/consent/operator-passkey-enrollment-routes.ts));
+the host half is the [operator-only route set](../../src-server/routes/operator-passkeys/operator-passkey-host-routes.ts)
+behind `station environment operator passkeys`. Nothing authenticates with an
+enrolled passkey yet.
+
 The opt-in native continuation uses a separate protocol and headers. Its
 challenge/exchange routes require server-owned provenance from an admitted
 native application peer, an approved account-bound Device and provider session
