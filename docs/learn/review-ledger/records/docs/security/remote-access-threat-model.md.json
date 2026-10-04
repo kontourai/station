@@ -50,7 +50,7 @@
 
     {"path":"src-server/runtime/bootstrap/runtime-service-bootstrap.ts","digest":"2cf5c807666f495b88ded90ba448c7e4e4e03733b2e2afed684409cd5ffc8356","revision":"56f4c4897a189eeb30430119a4f4895e95fbb541"},
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"88a3a2161a61eaee174d5404833230e31768afb8ea60fae898cfda39bb49ae09","revision":"efa773acac88792cda31595f9afca4a37d3efebc"},
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"6c3122386be7938a0cea57b7189c35aa93e99154520d5dbe53b36636e16498e6","revision":"47b5368b2ae657ecce3d9b66e2ff00f646d6c70d"},
 
     {"path":"src-server/security/coding-authority.ts","digest":"213af116a09a02c70ea15a8346b3d8fd2e25f279c975ef9b12d8ab21a519205d","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
@@ -60,7 +60,7 @@
 
     {"path":"src-server/security/station-browser-origins.ts","digest":"2044349f4351a616298922879bccfde0ff147a165bdadc6683e0a1c1f6a7b8b2","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-server/security/station-control-authority-guard.ts","digest":"0e3d20ae5bb4f5815cc8030595663768964ac5a7222004176edb35cb7697d6de","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"src-server/security/station-control-authority-guard.ts","digest":"b3d45b09a4e044096553ee40dee0747487d4ccf4ea89caf0ce147dc18733e4d4","revision":"2ade65e7ee4872d2d3ac4dbedc45eef6aa18b9e6"},
 
     {"path":"src-server/security/station-control-request-authority.ts","digest":"b522bde2d245f4d682cf1468329f5314fbfd5f5abb431cc916b88b56aa7c9ec6","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 

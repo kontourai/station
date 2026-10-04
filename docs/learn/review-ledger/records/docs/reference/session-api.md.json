@@ -38,13 +38,13 @@
 
     {"path":"src-server/routes/orchestration/dispatch-scope.ts","digest":"8e311c1696036d143a124c97da344056077ac6dfde1f1db0925c0efefd085aed","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"c3febaa85af6fa1d6b6edce04539a96b88cb7cb0660b7d0ee0de8d4fb6595530","revision":"b208a334880a96bb3f4267c2d2ffd6d03e118218"},
+    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"1f67cf0801d3536792f91bac2cc2045baf6db854bc450cfa598641d3ce9fe45a","revision":"47b5368b2ae657ecce3d9b66e2ff00f646d6c70d"},
 
     {"path":"src-server/runtime/mcp/__tests__/station-control-dispatch-scope.test.ts","digest":"5c90078ba35ab314048e6efa0533de427b92fdc22f26425174cdbcdb144db30e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
     {"path":"src-server/runtime/mcp/station-control-dispatch-scope.ts","digest":"cf22738353be6006483825dd4bfe99ae96d0f18c91b944402457a7bc9f25f8a8","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/runtime/routes/__tests__/runtime-routes-station-control-dispatch-scope.test.ts","digest":"0d2fe916d5a7818714950c763ab11ee67d325b0779b55c8221c377a0a1239801","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+    {"path":"src-server/runtime/routes/__tests__/runtime-routes-station-control-dispatch-scope.test.ts","digest":"80776e1a17cd1c99adcc63300cff1c8b4de76e5dc4bbfa28dbd16729782b8069","revision":"2ade65e7ee4872d2d3ac4dbedc45eef6aa18b9e6"},
 
     {"path":"src-server/services/execution-target/__tests__/execution-target-resolver.test.ts","digest":"db14b46978051e775c9415ad7104054bb41892df40fe50a6be2da0c2ba5b1373","revision":"03240cbbac3f4c9d20200582858c5b516be93912"},
 
@@ -60,7 +60,7 @@
 
     {"path":"src-server/services/projects/attention-projection.ts","digest":"b7c9e2ff4537606981e0415023039ed89cb9033175e3140cb7eef50df4fb6763","revision":"42811285ef04d069daf576d46253ac833573f848"},
 
-    {"path":"src-server/tools/station-control-policy.ts","digest":"7861e4666c9ab7bdfafb6d38b4b9a742f707ca64741f1351b042384f4a51dc94","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+    {"path":"src-server/tools/station-control-policy.ts","digest":"18eddfcee98c87696d2e844bf239986a599e744a87b20ab851b7027487270dde","revision":"79c4a010c54f63c58ea68df6ba058cf4a3e1c039"},
 
     {"path":"src-server/utils/path-containment.ts","digest":"e6a7867d0d39ee6b6c4dee4d7b697b8ab4ab55e86c7f9503d6ce657e0ed1d083","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
