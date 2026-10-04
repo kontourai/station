@@ -20,9 +20,11 @@ import {
 import {
   MAX_PRODUCT_LAW_RUNTIME_MS,
   PRODUCT_LAW_OBSERVATION_TIMEOUT_MS,
+  productLawEffectiveObservationTimeoutMs,
   productLawObservationTimeoutMs,
   productLawRuntimeBudgetMs,
 } from '../lib/product-laws.mjs';
+import { digestVerificationEnvironment } from '../lib/test-reliability.mjs';
 import {
   runTransferCapture,
   TRANSFER_CAPTURE_LIVENESS_TIMEOUT_MS,
@@ -261,12 +263,17 @@ describe('consumers multiply their liveness bound', () => {
     expect(PRODUCT_LAW_OBSERVATION_TIMEOUT_MS).toBe(30_000);
     expect(MAX_PRODUCT_LAW_RUNTIME_MS).toBe(150_000);
     const env = { STATION_LIVENESS_SCALE: '3' };
-    expect(productLawObservationTimeoutMs(env)).toBe(90_000);
+    expect(productLawEffectiveObservationTimeoutMs(env)).toBe(90_000);
+    // The policy value that feeds receipt digests never depends on host load.
+    expect(productLawObservationTimeoutMs(env)).toBe(30_000);
+    expect(digestVerificationEnvironment({ ...env })).toBe(
+      digestVerificationEnvironment({}),
+    );
     expect(productLawRuntimeBudgetMs(env)).toBe(450_000);
-    expect(productLawObservationTimeoutMs({})).toBe(30_000);
+    expect(productLawEffectiveObservationTimeoutMs({})).toBe(30_000);
     // An explicit per-observation value is the caller's own bound.
     expect(
-      productLawObservationTimeoutMs({
+      productLawEffectiveObservationTimeoutMs({
         ...env,
         PRODUCT_LAW_OBSERVATION_TIMEOUT_MS: '5',
       }),

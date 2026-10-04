@@ -17,7 +17,7 @@ import {
   formatProductLawReport,
   loadProductLawManifest,
   PRODUCT_LAW_TIMEOUT_EXIT_CODE,
-  productLawObservationTimeoutMs,
+  productLawEffectiveObservationTimeoutMs,
   productLawRuntimeBudgetMs,
   renderProductLawSection,
   validateProductLawManifest,
@@ -204,7 +204,7 @@ export async function runProductLawGate({
   if (errors.length > 0) return { errors, report: null, projection };
 
   const startedAt = now();
-  const observationTimeoutMs = productLawObservationTimeoutMs(env);
+  const observationTimeoutMs = productLawEffectiveObservationTimeoutMs(env);
   const runtimeBudgetMs = productLawRuntimeBudgetMs(env);
   const report = await evaluateProductLawManifest(manifest, {
     observeLawTest: (observation) => {

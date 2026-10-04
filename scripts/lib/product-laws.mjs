@@ -38,11 +38,23 @@ function nonEmptyString(value) {
 
 export function productLawObservationTimeoutMs(env = process.env) {
   const configured = Number(env?.[PRODUCT_LAW_OBSERVATION_TIMEOUT_ENV]);
-  // An explicit per-observation value is the caller's choice; only the
-  // default is a liveness bound that scales with host pressure (#3302).
   return Number.isFinite(configured) && configured > 0
     ? configured
-    : scaleLivenessMs(PRODUCT_LAW_OBSERVATION_TIMEOUT_MS, env);
+    : PRODUCT_LAW_OBSERVATION_TIMEOUT_MS;
+}
+
+/**
+ * The bound the gate actually applies. Only the DEFAULT scales with host
+ * pressure (#3302); an explicit per-observation value is the caller's own
+ * bound. `productLawObservationTimeoutMs` stays the unscaled policy value
+ * because it feeds the receipt environment digest and provenance: scaling it
+ * would make receipt reuse depend on how busy the host was.
+ */
+export function productLawEffectiveObservationTimeoutMs(env = process.env) {
+  const policy = productLawObservationTimeoutMs(env);
+  return policy === PRODUCT_LAW_OBSERVATION_TIMEOUT_MS
+    ? scaleLivenessMs(policy, env)
+    : policy;
 }
 
 /** The shared liveness ceiling for all observations, scaled like the default. */
