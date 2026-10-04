@@ -1,7 +1,7 @@
 # @kontourai/station-shared
 
 The explicit `@kontourai/station-shared/native-relay-link` subpath owns the
-canonical native relay link scheme/encode/parse helpers and codec types.
+canonical native relay link scheme/encode/parse helpers.
 Connect's existing entry re-exports that same implementation, while published
 SDK and server consumers use Shared directly. Parsing a link supplies no
 trust or application authority, and receiving invitation secrets remains with

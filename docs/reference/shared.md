@@ -26,7 +26,7 @@ owning declarations; import the canonical type rather than copying an interface.
 ## Native relay link codec
 
 `@kontourai/station-shared/native-relay-link` owns `nativeRelayLinkScheme`,
-`encodeNativeRelayLink` and `parseNativeRelayLink`, plus their codec types.
+`encodeNativeRelayLink` and `parseNativeRelayLink`.
 The [canonical implementation](../../packages/shared/src/native-relay-link.ts)
 validates the closed native link envelope, channel scheme and bounded fragment
 payload. Public route intent and installation-bound invitation parsing grant
