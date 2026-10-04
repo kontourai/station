@@ -1,0 +1,7 @@
+{
+  "revision": "59ff1320004e16e144207a7c82853c68f01e26ef",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"Reworked the usage-limit recovery section for the #3157 fix round: Resume now's refused-replay re-arm, Cancel retiring the whole stop, the failed result kind, and the precise authority (the Session's own person, personal-home devices with operate scope, hosted strict owner and tenant). Checked each statement against orchestration.ts, the coordinator (resumeUsageLimitNow, cancelUsageLimitWaiting, observeRuntimeError) and canUserMutateSession; the rest of the document is unchanged.","inputs":["docs/reference/session-api.md"]}
+  ]
+}
