@@ -20,7 +20,7 @@
 
     {"path":"packages/sdk/src/client/application-session-native.ts","digest":"300c8da40100c1d2659a8324654ee9216129b58ab5756b3724080f72e4b0bbcf","revision":"2e4f061f91ffb0338e45de62382cf6da59cd5c76"},
 
-    {"path":"scripts/native-platform-boundary.mjs","digest":"683fa02581626bf5dfdd57e45be7224aa4df112aaa341646233f0ef9254eb883","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    {"path":"scripts/native-platform-boundary.mjs","digest":"a0176df2f5411e5dd3450b78585a56d92c0a47ed9667d159837570b25d351e5d","revision":"0c041c578e2dcab24b2b42486a590f11dccaefc0"},
 
     {"path":"src-desktop/build.rs","digest":"28425e2f907fb0875014dccb6737d4bb98768f27a8c7a6f7d9e77b2a18cb0609","revision":"6f7521ea2fc94d945814f683c64bdfccccb480bd"},
 

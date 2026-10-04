@@ -1,0 +1,7 @@
+{
+  "revision": "0c041c578e2dcab24b2b42486a590f11dccaefc0",
+
+  "notes": [
+    {"path":"docs/design/native-capabilities.md","note":"Correction to the immediately preceding note: 19 focused resource/installer cases passed, but the complete native-platform ratchet FAILED on an inherited nativeRelayLinkAdapter.ts:139 Tauri event import outside its allowlist. The new exact resource maps are accepted; the independent native event-boundary repair belongs to the existing coordinator. I have not widened that boundary or claimed the executable ratchet passed."}
+  ]
+}
