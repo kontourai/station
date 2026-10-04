@@ -91,6 +91,7 @@ import {
   workItemOpenFailureMessage,
 } from '../../views/home/work-item-open-policy';
 import { durableMentionAuthority } from '../chat/composer-mentions';
+import { publishReferenceableConversations } from '../chat/conversationReferenceDrag';
 import { MarkdownLinkContext } from '../chat/MarkdownLinkContext';
 import { ShareIntakeController } from '../chat/ShareIntakeController';
 import { ContextPercentage } from '../conversation-stats/ConversationStats';
@@ -451,6 +452,8 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   // Get data from contexts
   const { apiBase } = useApiBase();
   const requestAuthority = useHostRequestAuthorityScope();
+  // #3159: inbox rows drag a conversation reference under this scope;
+  // stable across renders for the inbox panel's `memo()`.
   const [pendingGoalSend, setPendingGoalSend] = useState<{
     sessionId: string;
     prompt: string;
@@ -637,6 +640,22 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       ),
     [inventory.data],
   );
+  // #3159: publish which conversations a message may reference (the
+  // inventory's `referenceEligibility`) for this Station, so Activity and
+  // inbox rows can offer themselves as drag sources onto a composer.
+  const referenceApiBase = requestAuthority?.apiBase;
+  useEffect(() => {
+    if (referenceApiBase === undefined) return;
+    publishReferenceableConversations({
+      apiBase: referenceApiBase,
+      ids: new Set(
+        [...inventoryById.values()]
+          .filter((conversation) => conversation.referenceEligibility?.eligible)
+          .map((conversation) => conversation.id),
+      ),
+    });
+    return () => publishReferenceableConversations(null);
+  }, [referenceApiBase, inventoryById]);
   // The chats open in this tab as the inbox lists them, for the context
   // meter's membership check.
   const openChatRows = useMemo(
