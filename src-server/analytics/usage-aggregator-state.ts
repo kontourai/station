@@ -99,7 +99,6 @@ interface MessageLike {
     usage?: UsageLike;
     model?: string;
     timestamp?: string | number;
-    provider?: string;
   };
 }
 
@@ -113,9 +112,9 @@ export function createEmptyUsageStats(): UsageStats {
       totalCost: 0,
       uniqueAgents: [],
     },
-    byModel: {},
-    byAgent: {},
-    byDate: {},
+    byModel: Object.create(null),
+    byAgent: Object.create(null),
+    byDate: Object.create(null),
   };
 }
 
@@ -275,7 +274,10 @@ function applyObservationAttribution(
   };
   const date = recordedDate(observation.recordedAt);
   if (date) {
-    stats.byDate[date] ??= { ...emptyUnallocatedUsage(), byAgent: {} };
+    stats.byDate[date] ??= {
+      ...emptyUnallocatedUsage(),
+      byAgent: Object.create(null),
+    };
     const day = stats.byDate[date];
     addUsage(day, observation, cost);
     if (observation.messages) {
@@ -300,18 +302,22 @@ function applyObservationAttribution(
     applyModelPromptCacheAttribution(model, observation);
   } else addUsage(stats.unallocated.model, observation, cost);
   if (observation.provider) {
-    stats.byProvider ??= {};
-    stats.byProvider[observation.provider] ??= emptyUnallocatedUsage();
-    const provider = stats.byProvider[observation.provider];
+    const byProvider: NonNullable<UsageStats['byProvider']> =
+      stats.byProvider ?? Object.create(null);
+    stats.byProvider = byProvider;
+    byProvider[observation.provider] ??= emptyUnallocatedUsage();
+    const provider = byProvider[observation.provider];
     addUsage(provider, observation, cost);
   } else addUsage(stats.unallocated.provider, observation, cost);
   if (observation.principal) {
-    stats.byPrincipal ??= {};
-    stats.byPrincipal[observation.principal.id] ??= {
+    const byPrincipal: NonNullable<UsageStats['byPrincipal']> =
+      stats.byPrincipal ?? Object.create(null);
+    stats.byPrincipal = byPrincipal;
+    byPrincipal[observation.principal.id] ??= {
       principal: observation.principal,
       usage: emptyUnallocatedUsage(),
     };
-    const principal = stats.byPrincipal[observation.principal.id];
+    const principal = byPrincipal[observation.principal.id];
     addUsage(principal.usage, observation, cost);
   } else addUsage(stats.unallocated.principal, observation, cost);
 }
@@ -350,10 +356,6 @@ export function applyMessageToUsageStats(
       modelId:
         typeof message.metadata?.model === 'string'
           ? message.metadata.model
-          : undefined,
-      provider:
-        typeof message.metadata?.provider === 'string'
-          ? message.metadata.provider
           : undefined,
       inputTokens,
       outputTokens,

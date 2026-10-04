@@ -736,3 +736,49 @@ test('retained usage and terminal facts without session configuration remain vis
     f.store.close();
   }
 });
+
+test('opaque model and agent keys remain data and arbitrary saved provider metadata cannot claim a harness', async () => {
+  const f = fixture();
+  const modelKey = '__proto__';
+  const agentKey = 'constructor';
+  const targets = [Object.prototype, Object];
+  const before = targets.map((target) =>
+    Object.getOwnPropertyDescriptors(target),
+  );
+  try {
+    await memory(f.home, 'opaque-memory', {
+      timestamp: day1,
+      provider: '__proto__',
+      model: '__proto__',
+      usage: { inputTokens: 1, estimatedCost: 0 },
+    });
+    f.start('opaque-engine', 'muse', day1, '__proto__', {
+      agentSlug: 'constructor',
+    });
+    f.turn('opaque-engine', 'muse', 'opaque-turn', day1, { promptTokens: 5 });
+    const stats = await f.current();
+    expect(stats.lifetime.totalInputTokens).toBe(6);
+    expect(Object.hasOwn(stats.byModel, '__proto__')).toBe(true);
+    expect(stats.byModel[modelKey]).toMatchObject({
+      messages: 2,
+      inputTokens: 6,
+    });
+    expect(Object.hasOwn(stats.byAgent, 'constructor')).toBe(true);
+    expect(stats.byAgent[agentKey]).toMatchObject({
+      messages: 1,
+      conversations: 1,
+    });
+    expect(stats.byDate['2026-08-01'].byAgent[agentKey]).toBe(1);
+    expect(stats.byProvider?.muse.inputTokens).toBe(5);
+    expect(stats.unallocated?.provider.inputTokens).toBe(1);
+  } finally {
+    for (const [index, target] of targets.entries()) {
+      const descriptors = before[index];
+      for (const key of Reflect.ownKeys(target))
+        if (!Object.hasOwn(descriptors, key))
+          Reflect.deleteProperty(target, key);
+      Object.defineProperties(target, descriptors);
+    }
+    f.store.close();
+  }
+});
