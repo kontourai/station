@@ -1656,6 +1656,17 @@ describe('configureRuntimeRoutes: station-control dispatch stays in scope (slice
       // (`createRequestDelegationResolver`, `deriveCallerChildDelegation`).
       'delegation.denyApprovals': 'tightens; attested claims only',
     };
+    // Open bags that no engine reads as an option. A bag listed here is
+    // user data, never applied to the engine's settings.
+    const REVIEWED_BAGS: Record<string, string> = {
+      // Keyed by the selected skill's declared input ids (an undeclared key
+      // is refused in `skill-experience-runtime.ts`) and embedded in the
+      // prompt as "user data"; values are strings or attachment indices and
+      // are never read as an approval mode or a model option.
+      'skillExperience.inputs': 'skill input data, declared ids only',
+      'skillExperience.attachmentInputs':
+        'attachment indices, declared ids only',
+    };
     const fieldsOf = (route: string): ReadonlySet<string> =>
       new Set(
         Object.keys(POSTURE_ROUTES[route]!.variants).map((field) =>
@@ -1744,7 +1755,8 @@ describe('configureRuntimeRoutes: station-control dispatch stays in scope (slice
       );
       for (const { path, bag } of fields) {
         if (bag) {
-          if (!bags.has(path)) unclassified.push(`${name}: open bag ${path}`);
+          if (!bags.has(path) && !Object.hasOwn(REVIEWED_BAGS, path))
+            unclassified.push(`${name}: open bag ${path}`);
           continue;
         }
         const leaf = path.split('.').at(-1)!;
