@@ -88,7 +88,24 @@ export function foldUsageReceipts(input: UsageRollupFoldInput): UsageRollup {
   // repeated id is replacement, not another billable event; later observed
   // data wins so delayed corrections cannot double-count.
   const deduplicated = new Map<string, UsageReceipt>();
-  for (const receipt of input.aggregateReceipts ?? input.receipts) {
+  const observations = [...(input.aggregateReceipts ?? input.receipts)].sort(
+    (left, right) => {
+      const identity =
+        left.id.localeCompare(right.id) ||
+        left.stationId.localeCompare(right.stationId) ||
+        (left.threadId ?? '').localeCompare(right.threadId ?? '');
+      if (identity) return identity;
+      const hasSequence =
+        Number(left.sourceSequence !== undefined) -
+        Number(right.sourceSequence !== undefined);
+      if (hasSequence) return hasSequence;
+      return (
+        (left.sourceSequence ?? 0) - (right.sourceSequence ?? 0) ||
+        (left.observedAt ?? '').localeCompare(right.observedAt ?? '')
+      );
+    },
+  );
+  for (const receipt of observations) {
     const current = deduplicated.get(receipt.id);
     deduplicated.set(
       receipt.id,

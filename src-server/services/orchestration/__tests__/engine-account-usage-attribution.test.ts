@@ -366,7 +366,7 @@ test('durable sequence orders tied cumulative snapshots and preserves sparse res
   try {
     startSession(store, 'codex', 'tied', 'reader');
     store.appendEvent({
-      eventId: 'z-old',
+      eventId: 'a-old',
       provider: 'codex',
       threadId: 'tied',
       turnId: 'turn-1',
@@ -377,7 +377,7 @@ test('durable sequence orders tied cumulative snapshots and preserves sparse res
     });
     startSession(store, 'codex', 'tied', 'reader', 2);
     store.appendEvent({
-      eventId: 'a-new',
+      eventId: 'z-middle',
       provider: 'codex',
       threadId: 'tied',
       turnId: 'turn-2',
