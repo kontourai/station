@@ -231,6 +231,10 @@ import { createBoardRoutes } from '../../routes/board.js';
 import { createAgentConversationTitleRoutes } from '../../routes/chat/agent-conversation-title.js';
 import { createChatRoutes } from '../../routes/chat/chat.js';
 import {
+  conversationReferenceReadDeps,
+  createConversationReferenceReadRoutes,
+} from '../../routes/chat/conversation-reference-read.js';
+import {
   createConversationRoutes,
   createGlobalConversationRoutes,
 } from '../../routes/chat/conversations.js';
@@ -1840,12 +1844,12 @@ export function configureRuntimeRoutes(
     },
     // The same membership rule as the Project routes: an account principal
     // holds exactly its membership's actions; any other owner is
-    // unrestricted in its own requests, so it may execute. Approving a
-    // worker's request is the operator's there: no membership row names
-    // anyone else an admin.
+    // unrestricted in its own requests, so it may view and execute.
+    // Approving a worker's request is the operator's there: no membership
+    // row names anyone else an admin.
     ownerMay: (ownerId, localProjectId, action) => {
       if (!isDeploymentAccountPrincipalId(ownerId))
-        return action === 'execute' || ownerId === LOCAL_OPERATOR_PRINCIPAL_ID;
+        return action !== 'approve' || ownerId === LOCAL_OPERATOR_PRINCIPAL_ID;
       if (!context.projectMembership) return false;
       return context.projectMembership
         .admissionsForResolvedPrincipal(ownerId)
@@ -6161,6 +6165,26 @@ export function configureRuntimeRoutes(
       scope: stationControlDispatchScope,
       logger: context.logger,
     }),
+  );
+  // #3159: the paged, read-only transcript read behind station-control's
+  // `read_conversation` — an agent's own conversation, one in its scope, or
+  // one a person referenced in its conversation.
+  context.app.route(
+    '/api/conversations',
+    createConversationReferenceReadRoutes(
+      conversationReferenceReadDeps({
+        memoryAdapters: context.memoryAdapters,
+        sessions: context.orchestrationService,
+        eventStore: context.orchestrationEventStore,
+        deviceKind: (deviceId) =>
+          context.environmentSecurityService.devicePairing
+            .listDevices()
+            .find((device) => device.id === deviceId)?.kind,
+        authorityFor: conversationReadAuthorityForRequest,
+        scope: stationControlDispatchScope,
+        logger: context.logger,
+      }),
+    ),
   );
 
   const {
