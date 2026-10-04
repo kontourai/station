@@ -812,15 +812,18 @@ Session in the conversation's lineage, oldest first, and concatenates them
 reads the file-memory record first and, when that has no usable record, the
 authorized messages restored from orchestration. A successor stores only its
 own turns; earlier history reaches its model without being copied into its
-record. Export, fork and summary use the same read. Messages carry the owner's current parts/metadata shape; do not depend on
+record. Export, fork and summary use the same read. A successor's own record
+is never listed as a conversation of its own, and conversation message search
+reports its hits under the conversation it continues. Messages carry the owner's current parts/metadata shape; do not depend on
 every message having the old `content: string`/`timestamp` pair.
 
 A stored user turn is the typed text (and its attachments) alone. Ambient
 context such as `[Timezone: …]`, skill instructions, project rules and
 retrieved knowledge reach only the model's input for that turn.
 
-A `/chat` turn that failed before producing output is recorded as a user-role
-`[SYSTEM_EVENT] [CHAT_ERROR] <text>` message. `<text>` is never the model
+A `/chat` turn that failed before producing output is recorded as its prompt
+followed by a user-role `[SYSTEM_EVENT] [CHAT_ERROR] <text>` message, with no
+empty assistant reply between them. `<text>` is never the model
 provider's own error message. It is one of: a status sentence such as
 "The model provider returned an error (HTTP 500).", "The model provider
 rejected the credentials.", "Stream aborted by client", or "The response

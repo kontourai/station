@@ -273,8 +273,27 @@ test.describe('Send again on a stored failed turn (#3112)', () => {
       texts.slice(markerIndexes[0]! + 1, markerIndexes[1]!),
       'the resent prompt is stored between the two failure markers',
     ).toContain(PROMPT);
-    // Every stored user turn is the typed text alone.
+    // Every stored user turn is the typed text alone, and each failed turn
+    // is exactly its prompt and its marker.
     for (const message of stored.filter((entry) => entry.role === 'user'))
       expect(storedText(message)).not.toContain('[Timezone:');
+    expect(
+      stored.map((message) =>
+        storedText(message).startsWith('[SYSTEM_EVENT] [CHAT_ERROR]')
+          ? 'marker'
+          : `${message.role}:${storedText(message)}`,
+      ),
+    ).toEqual([`user:${PROMPT}`, 'marker', `user:${PROMPT}`, 'marker']);
+
+    // The successor Session the resend ran in is not a conversation of its
+    // own.
+    const listed = await authenticatedRequest.get(
+      `/agents/${encodeURIComponent(agentSlug)}/conversations`,
+    );
+    expect(listed.ok()).toBe(true);
+    const listedIds = (
+      (await listed.json()) as { data: { items: Array<{ id: string }> } }
+    ).data.items.map((item) => item.id);
+    expect(listedIds).toEqual([threadId]);
   });
 });
