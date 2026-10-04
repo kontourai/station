@@ -43,6 +43,42 @@ async function expectSettledTouchTargetHeight(locator: Locator) {
 }
 
 /**
+ * The execution a chat opened from the New chat draft carries, per Agent of the
+ * shared shell. The draft test below reads a real draft Send back out of
+ * `activeChats` and requires exactly these values, so the seed cannot drift
+ * from what the product writes.
+ */
+function draftChatExecution(agentSlug: string) {
+  return agentSlug === 'claude'
+    ? {
+        model: 'model-selected',
+        modelSource: 'agent default',
+        requestedModel: 'model-selected',
+        requestedModelSource: 'agent default',
+        defaultModel: 'model-selected',
+        defaultModelSource: 'agent default',
+        executionMode: 'external' as const,
+        agentConnectionId: 'claude',
+        provider: 'claude',
+        providerOptions: { thinking: true, effort: 'medium' },
+      }
+    : {
+        model: 'test-model',
+        modelSource: 'agent default',
+        requestedModel: 'test-model',
+        requestedModelSource: 'agent default',
+        defaultModel: 'test-model',
+        defaultModelSource: 'agent default',
+        executionMode: 'station' as const,
+        executionScope: 'global' as const,
+        providerId: 'ollama-local',
+        defaultProviderId: 'ollama-local',
+        provider: 'ollama',
+        providerOptions: {},
+      };
+}
+
+/**
  * An open, empty chat with `agentSlug`, in the shape a client-only draft chat
  * has before its first send (`<agent>:<timestamp>`, no conversation yet).
  *
@@ -68,35 +104,7 @@ async function openComposer(
     {
       sessionId,
       agentSlug,
-      // The execution a chat opened from the draft carries (read back from
-      // `activeChats` after a real draft Send; see `useChatDockActions`).
-      ...(agentSlug === 'claude'
-        ? {
-            model: 'model-selected',
-            modelSource: 'agent default',
-            requestedModel: 'model-selected',
-            requestedModelSource: 'agent default',
-            defaultModel: 'model-selected',
-            defaultModelSource: 'agent default',
-            executionMode: 'external',
-            agentConnectionId: 'claude',
-            provider: 'claude',
-            providerOptions: { thinking: true, effort: 'medium' },
-          }
-        : {
-            model: 'test-model',
-            modelSource: 'agent default',
-            requestedModel: 'test-model',
-            requestedModelSource: 'agent default',
-            defaultModel: 'test-model',
-            defaultModelSource: 'agent default',
-            executionMode: 'station',
-            executionScope: 'global',
-            providerId: 'ollama-local',
-            defaultProviderId: 'ollama-local',
-            provider: 'ollama',
-            providerOptions: {},
-          }),
+      ...draftChatExecution(agentSlug),
       ...options.execution,
       ...(projectScoped
         ? { projectSlug: 'default', projectName: 'Default' }
@@ -127,72 +135,108 @@ async function openComposer(
 
 // #3201: Home's "New chat" opens a draft. Choosing an Agent selects it for the
 // draft; only Send starts the chat, so no composer exists until then.
-test('the New chat draft starts the chat with the chosen Agent only on Send', async ({
-  page,
-}) => {
-  test.setTimeout(60_000);
-  await page.setViewportSize({ width: 390, height: 844 });
-  await installMockOrchestrationSse(page);
-  await mockChatShell(page);
-  const dispatched: Record<string, unknown>[] = [];
-  await page.route('**/api/orchestration/chat', async (route) => {
-    dispatched.push(route.request().postDataJSON() as Record<string, unknown>);
-    await route.fulfill(
-      json(
-        foregroundMessageReceiptEnvelope({
-          conversationId: 'draft-send-conversation',
-          agent: 'agent:claude',
-        }),
-      ),
+for (const [slug, name] of [
+  ['claude', 'Claude'],
+  ['station', 'Station'],
+] as const) {
+  test(`the New chat draft starts a ${name} chat only on Send`, async ({
+    page,
+  }) => {
+    test.setTimeout(60_000);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await installMockOrchestrationSse(page);
+    await mockChatShell(page);
+    const dispatched: Record<string, unknown>[] = [];
+    await page.route(
+      '**/api/orchestration/chat{,/background}',
+      async (route) => {
+        dispatched.push(
+          route.request().postDataJSON() as Record<string, unknown>,
+        );
+        await route.fulfill(
+          json(
+            foregroundMessageReceiptEnvelope({
+              conversationId: 'draft-send-conversation',
+              agent: `agent:${slug}`,
+            }),
+          ),
+        );
+      },
     );
+    const startedTurns = buildLongSessionTurns({
+      threadId: 'draft-send-conversation',
+      provider: slug,
+      turnCount: 1,
+      replyText: () => 'Started from the draft.',
+    });
+    await mockRuntimeConversation(page, {
+      id: 'draft-send-conversation',
+      agentSlug: slug,
+      title: 'Start from the draft.',
+      provider: slug,
+      model: 'model-selected',
+      canContinue: true,
+      turns: () => startedTurns,
+    });
+    await page.goto('/');
+    await dismissSetupLauncher(page);
+    await page
+      .locator('.home-view__goal-actions')
+      .getByRole('button', { name: 'New chat', exact: true })
+      .click();
+    const draft = page.getByRole('form', { name: 'New chat draft' });
+    await expect(draft).toBeVisible({ timeout: 15_000 });
+    await draft.getByRole('button', { name: /^Agent:/ }).click();
+    await page
+      .locator(`.new-chat-modal__agent[data-agent-slug="${slug}"]`)
+      .click();
+    await expect(
+      draft.getByRole('button', { name: `Agent: ${name}`, exact: true }),
+    ).toBeVisible();
+    // Choosing the Agent did not start anything.
+    await expect(
+      page.locator('textarea[placeholder*="Type a message"]'),
+    ).toHaveCount(0);
+    expect(dispatched).toHaveLength(0);
+    await draft
+      .getByRole('textbox', { name: 'Message', exact: true })
+      .fill('Start from the draft.');
+    expect(dispatched).toHaveLength(0);
+    await draft.getByRole('button', { name: 'Send', exact: true }).click();
+    await expect.poll(() => dispatched.length).toBe(1);
+    const expected = draftChatExecution(slug);
+    // The Agent and model the turn was dispatched with are the chosen ones.
+    expect(dispatched[0]).toMatchObject({
+      target: {
+        agent: slug,
+        model: {
+          override: expected.model,
+          options: expected.providerOptions,
+        },
+      },
+      message: 'Start from the draft.',
+    });
+    // And the chat it opened carries exactly the execution `openComposer`
+    // seeds, so that seed cannot drift from what the product writes.
+    const stored = await page.evaluate(
+      (agentSlug) =>
+        (
+          JSON.parse(sessionStorage.getItem('activeChats') ?? '[]') as Record<
+            string,
+            unknown
+          >[]
+        ).find((chat) => chat.agentSlug === agentSlug),
+      slug,
+    );
+    expect(stored).toMatchObject(expected);
+    // The chat the draft started belongs to the Agent that was chosen.
+    await expect(
+      page.getByRole('button', {
+        name: new RegExp(`^Chats and tasks — ${name}`),
+      }),
+    ).toBeVisible({ timeout: 15_000 });
   });
-  const startedTurns = buildLongSessionTurns({
-    threadId: 'draft-send-conversation',
-    provider: 'claude',
-    turnCount: 1,
-    replyText: () => 'Started from the draft.',
-  });
-  await mockRuntimeConversation(page, {
-    id: 'draft-send-conversation',
-    agentSlug: 'claude',
-    title: 'Start from the draft.',
-    provider: 'claude',
-    model: 'model-selected',
-    canContinue: true,
-    turns: () => startedTurns,
-  });
-  await page.goto('/');
-  await dismissSetupLauncher(page);
-  await page
-    .locator('.home-view__goal-actions')
-    .getByRole('button', { name: 'New chat', exact: true })
-    .click();
-  const draft = page.getByRole('form', { name: 'New chat draft' });
-  await expect(draft).toBeVisible({ timeout: 15_000 });
-  await draft.getByRole('button', { name: /^Agent:/ }).click();
-  await page
-    .locator('.new-chat-modal__agent[data-agent-slug="claude"]')
-    .click();
-  await expect(
-    draft.getByRole('button', { name: 'Agent: Claude', exact: true }),
-  ).toBeVisible();
-  // Choosing the Agent did not start anything.
-  await expect(
-    page.locator('textarea[placeholder*="Type a message"]'),
-  ).toHaveCount(0);
-  expect(dispatched).toHaveLength(0);
-  await draft
-    .getByRole('textbox', { name: 'Message', exact: true })
-    .fill('Start from the draft.');
-  expect(dispatched).toHaveLength(0);
-  await draft.getByRole('button', { name: 'Send', exact: true }).click();
-  await expect.poll(() => dispatched.length).toBe(1);
-  expect(JSON.stringify(dispatched[0])).toContain('Start from the draft.');
-  // The chat the draft started belongs to the Agent that was chosen.
-  await expect(
-    page.getByRole('button', { name: /^Chats and tasks — Claude/ }),
-  ).toBeVisible({ timeout: 15_000 });
-});
+}
 
 test('ChatDock sends scoped file and conversation references while preserving the saved quote across reload', async ({
   page,
@@ -1563,6 +1607,16 @@ test('switches between mobile tasks and restores the exact active chat context',
   await expect(
     page.getByRole('button', { name: /^Switch project/ }),
   ).toContainText('No project');
+  // The positive half of that comment: the chat keeps its own project, which
+  // the switcher's row for it names.
+  await switcher.click();
+  await expect(
+    menu
+      .getByRole('button', { name: 'Station Chat, Default' })
+      .filter({ hasText: 'Waiting on you' }),
+  ).toBeVisible();
+  await menu.getByRole('button', { name: 'Close task switcher' }).click();
+  await expect(menu).toBeHidden();
   await expect(page.locator('.chat-input__model-name')).toHaveText(
     'Model Selected',
   );
@@ -3863,16 +3917,21 @@ for (const width of [320, 390, 1280]) {
       await expect(clear).toHaveText('');
       const clearBox = (await clear.boundingBox())!;
       expect(clearBox.y).toBeGreaterThanOrEqual(inputBox.y + inputBox.height);
-      // The actions may wrap at 320px (Send then sits on the row below, as
-      // an icon beside the others would not fit); they must not collide.
       const sendBox = (await send.boundingBox())!;
-      expect(
-        clearBox.x + clearBox.width <= sendBox.x ||
-          sendBox.x + sendBox.width <= clearBox.x ||
-          clearBox.y + clearBox.height <= sendBox.y ||
-          sendBox.y + sendBox.height <= clearBox.y,
-        `Clear ${JSON.stringify(clearBox)} overlaps Send ${JSON.stringify(sendBox)}`,
-      ).toBe(true);
+      if (width === 320) {
+        // Only at 320px do the actions wrap (Send then sits on the row below);
+        // there they must not collide.
+        expect(
+          clearBox.x + clearBox.width <= sendBox.x ||
+            sendBox.x + sendBox.width <= clearBox.x ||
+            clearBox.y + clearBox.height <= sendBox.y ||
+            sendBox.y + sendBox.height <= clearBox.y,
+          `Clear ${JSON.stringify(clearBox)} overlaps Send ${JSON.stringify(sendBox)}`,
+        ).toBe(true);
+      } else {
+        // Where the row does not wrap, Clear stays on Send's row, to its left.
+        expect(clearBox.x + clearBox.width).toBeLessThanOrEqual(sendBox.x);
+      }
       await expect(textarea).toHaveCSS('outline-style', 'none');
       const capsule = page.locator('.chat-input__capsule');
       await expect(capsule).toHaveCSS('outline-style', 'solid');
@@ -4590,3 +4649,23 @@ for (const [name, viewport, maximize] of [
     ).toHaveCount(0);
   });
 }
+
+// The queue panel's "x" ("Delete message") discards the same queued turn as the
+// notice's Discard. It must leave the same state: no stale "queued to retry"
+// notice, and no Discard for a turn that is gone.
+test('deleting the queued message from the queue panel clears its queued-retry notice', async ({
+  page,
+}) => {
+  test.setTimeout(60_000);
+  await queueSendForRetry(page, { width: 375, height: 667 });
+  const notice = page
+    .locator('.chat-messages')
+    .getByText("Send wasn't confirmed — queued to retry automatically");
+  await expect(notice).toHaveCount(1);
+  await page.getByRole('button', { name: 'Delete message' }).click();
+  await expect(page.getByText(/waiting to send/i)).toHaveCount(0);
+  await expect(notice).toHaveCount(0);
+  await expect(
+    page.getByRole('button', { name: 'Discard', exact: true }),
+  ).toHaveCount(0);
+});
