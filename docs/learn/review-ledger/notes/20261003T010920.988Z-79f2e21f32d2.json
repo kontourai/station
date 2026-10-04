@@ -1,0 +1,15 @@
+{
+  "revision": "d1708e0a66e7328c9c62a95865f1bb1dcfbeb8d1",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed only the linked responsive inventory delta: SkillRunModal declares its existing Dialog owner and mounted evidence, while its obsolete bespoke footer action entry is removed because Dialog already owns ResponsiveSurfaceActions. Shared-owner guidance and these unchanged document claims remain accurate; no exceptions or policy ceilings widened. Both actual ratchets and 116 focused owner/policy tests passed. This does not requalify unrelated runtime, backend, theme or device behavior.","inputs":["docs/guides/responsive-ui.md"]},
+
+    {"path":"docs/guides/theming.md","note":"Reviewed only the linked responsive inventory delta: SkillRunModal declares its existing Dialog owner and mounted evidence, while its obsolete bespoke footer action entry is removed because Dialog already owns ResponsiveSurfaceActions. Shared-owner guidance and these unchanged document claims remain accurate; no exceptions or policy ceilings widened. Both actual ratchets and 116 focused owner/policy tests passed. This does not requalify unrelated runtime, backend, theme or device behavior.","inputs":["docs/guides/theming.md"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Reviewed only the linked responsive inventory delta: SkillRunModal declares its existing Dialog owner and mounted evidence, while its obsolete bespoke footer action entry is removed because Dialog already owns ResponsiveSurfaceActions. Shared-owner guidance and these unchanged document claims remain accurate; no exceptions or policy ceilings widened. Both actual ratchets and 116 focused owner/policy tests passed. This does not requalify unrelated runtime, backend, theme or device behavior.","inputs":["docs/patterns/frontend.md"]},
+
+    {"path":"docs/patterns/backend.md","note":"Reviewed only the linked responsive inventory delta: SkillRunModal declares its existing Dialog owner and mounted evidence, while its obsolete bespoke footer action entry is removed because Dialog already owns ResponsiveSurfaceActions. Shared-owner guidance and these unchanged document claims remain accurate; no exceptions or policy ceilings widened. Both actual ratchets and 116 focused owner/policy tests passed. This does not requalify unrelated runtime, backend, theme or device behavior.","inputs":["docs/patterns/backend.md"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed the Skills welcome heading change from page-level h2 to section-level h3 under SplitPaneLayout, preserving text and styling. User journey prose is unchanged and remains accurate. Both actual shell/responsive ratchets and 116 focused owner/policy tests passed; no broader user journey qualification upgraded.","inputs":["docs/user/getting-started.md"]}
+  ]
+}

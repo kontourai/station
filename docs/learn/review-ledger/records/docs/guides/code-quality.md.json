@@ -9,96 +9,94 @@
 
   "limits": "Full reading and bounded source review are not all-platform execution or universal semantic certification. No hosted CI, cloud, release or real provider/device proof. Protected policy activation is limited to the approved documentation additions in this branch. Additional main merge b269a6cf9: structural reconciliation only; prior distinct anchors below are historical reviews, not approval of combined bytes. Active bindings retain existing anchors; combined dependency bytes remain stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"docs/guides/documentation.md\",\"ours\":{\"digest\":\"4bb625cdd2f031a95e4bac93c14bb36eb419008be56ebb18d47f548a6dff6fc0\",\"revision\":\"fbf6a786c7c77831e16ee1ee3f239b295da5e907\"},\"main\":{\"digest\":\"9e299a73ec55cd8792f40d976dda64b1af1c8b206a24ebfd638ca0db3ab12633\",\"revision\":\"cda5879b28558d002561d656b869c4f7b05bc4ca\"}},{\"path\":\"package.json\",\"ours\":{\"digest\":\"33148f13d0b86a0fc46e74f38eba8e87cef542801cca0606fd9c0ab6f287a380\",\"revision\":\"b50eeb9584c1808e429e59dcb3c3c2253307bbbe\"},\"main\":{\"digest\":\"7263c035fa5946e593a759d3a0b55d8f504e955eb14fab5a401b71c7d3b2ac50\",\"revision\":\"df9188971e1a93d2c5525a7f5f38e3da93c9e4de\"}}].\n\nAdditional existing main limits (preserved verbatim): Full reading and bounded source review are not all-platform execution or universal semantic certification. No hosted CI, cloud, release or real provider/device proof. Protected policy activation is limited to the approved documentation additions in this branch.\n\nStructural merge of 5fd2dd86ad0cd35018ce09537c1aa01ce58e0e55 and 8f9ea788561518398a488d35bb768b78a272e73b preserves both prior immutable document/source anchors and historical checks. Selecting an existing current-byte binding is structural reconciliation only, not semantic approval of merged inputs. No new digest/revision or coverage baseline was minted. Competing prior anchors remain pending semantic review and supported recording after the merge commit: [{\"path\":\"docs/guides/code-quality.md\",\"ours\":{\"digest\":\"96a55448c92106cb87224425635a37fa97882c1c52da11aa3a1fe31a7e56cbba\",\"revision\":\"a1478b242401c5da824956478bd77fef1f4dfa51\"},\"main\":{\"digest\":\"e55382f741c8ed1783b7aa5848beb764fe08cf95326319aa21e9de4d0ed6427f\",\"revision\":\"de240170769fcf739c188b104f801d4371f8086d\"},\"active\":{\"digest\":\"e55382f741c8ed1783b7aa5848beb764fe08cf95326319aa21e9de4d0ed6427f\",\"revision\":\"de240170769fcf739c188b104f801d4371f8086d\"},\"decision\":\"mainMatch\"},{\"path\":\".github/workflows/ci.yml\",\"ours\":{\"path\":\".github/workflows/ci.yml\",\"digest\":\"092798d877aa8138f197a0edbd7547e876dc2e310b54b4e00598f8f48b3535b8\",\"revision\":\"998b7be07c2298ead61e8cffa39dab7583d8b6f3\"},\"main\":{\"path\":\".github/workflows/ci.yml\",\"digest\":\"aedbb116a4ce043ec251ec20c47368aa89f77ebc1b5b526fecb9580af280bb91\",\"revision\":\"de240170769fcf739c188b104f801d4371f8086d\"},\"active\":{\"path\":\".github/workflows/ci.yml\",\"digest\":\"aedbb116a4ce043ec251ec20c47368aa89f77ebc1b5b526fecb9580af280bb91\",\"revision\":\"de240170769fcf739c188b104f801d4371f8086d\"},\"decision\":\"mainMatch\"},{\"path\":\"docs/guides/documentation.md\",\"ours\":{\"path\":\"docs/guides/documentation.md\",\"digest\":\"4bb625cdd2f031a95e4bac93c14bb36eb419008be56ebb18d47f548a6dff6fc0\",\"revision\":\"fbf6a786c7c77831e16ee1ee3f239b295da5e907\"},\"main\":{\"path\":\"docs/guides/documentation.md\",\"digest\":\"9e299a73ec55cd8792f40d976dda64b1af1c8b206a24ebfd638ca0db3ab12633\",\"revision\":\"cda5879b28558d002561d656b869c4f7b05bc4ca\"},\"active\":{\"path\":\"docs/guides/documentation.md\",\"digest\":\"4bb625cdd2f031a95e4bac93c14bb36eb419008be56ebb18d47f548a6dff6fc0\",\"revision\":\"fbf6a786c7c77831e16ee1ee3f239b295da5e907\"},\"decision\":\"oursMatch\"},{\"path\":\"docs/guides/testing.md\",\"ours\":{\"path\":\"docs/guides/testing.md\",\"digest\":\"e848363d4357e9a2f8de392a6024fd7525262b8b92e138da4a50a05057128916\",\"revision\":\"0c26d863c1ac3b3e93ea79c2375ebde95e906e8f\"},\"main\":{\"path\":\"docs/guides/testing.md\",\"digest\":\"f4ce0f21c08d460df52405d68cfa34a847dcbdaa0976cf218151226a37225925\",\"revision\":\"1c13dd90939769cd3ca557a36649aa25823194db\"},\"active\":{\"path\":\"docs/guides/testing.md\",\"digest\":\"f4ce0f21c08d460df52405d68cfa34a847dcbdaa0976cf218151226a37225925\",\"revision\":\"1c13dd90939769cd3ca557a36649aa25823194db\"},\"decision\":\"mainMatch\"},{\"path\":\"package.json\",\"ours\":{\"path\":\"package.json\",\"digest\":\"a6deceaea9701a9deb9d05ebd0b1f42db716b05f155c155b2e872443511def48\",\"revision\":\"8e884d84b5609d130f29937159601c65d119b664\"},\"main\":{\"path\":\"package.json\",\"digest\":\"8161e13f46212729130685df12cc34747e385002183410cd57e47d5cdd125306\",\"revision\":\"2fc8f69d15e5c8fa3188bb2ee4731f1b63c66218\"},\"active\":{\"path\":\"package.json\",\"digest\":\"a6deceaea9701a9deb9d05ebd0b1f42db716b05f155c155b2e872443511def48\",\"revision\":\"8e884d84b5609d130f29937159601c65d119b664\"},\"decision\":\"neitherMatch\"},{\"path\":\"scripts/__tests__/ci-fast-checks-job-graph.test.ts\",\"ours\":{\"path\":\"scripts/__tests__/ci-fast-checks-job-graph.test.ts\",\"digest\":\"6dd1caae1b87f19ed95a7275cd4b175c1f717e8c12e366c491dceeefea078750\",\"revision\":\"998b7be07c2298ead61e8cffa39dab7583d8b6f3\"},\"main\":{\"path\":\"scripts/__tests__/ci-fast-checks-job-graph.test.ts\",\"digest\":\"6b102e92ea63fb9103d801ec2ad0da304204de5c39d5cdb6540f7e21070c21e5\",\"revision\":\"de240170769fcf739c188b104f801d4371f8086d\"},\"active\":{\"path\":\"scripts/__tests__/ci-fast-checks-job-graph.test.ts\",\"digest\":\"6b102e92ea63fb9103d801ec2ad0da304204de5c39d5cdb6540f7e21070c21e5\",\"revision\":\"de240170769fcf739c188b104f801d4371f8086d\"},\"decision\":\"mainMatch\"},{\"path\":\"scripts/fast-checks-shard.mjs\",\"ours\":{\"path\":\"scripts/fast-checks-shard.mjs\",\"digest\":\"51f793094813cf4b6d7307f03ae1519fea2ecd4c253427c58a1eb86241e311e1\",\"revision\":\"998b7be07c2298ead61e8cffa39dab7583d8b6f3\"},\"main\":{\"path\":\"scripts/fast-checks-shard.mjs\",\"digest\":\"175bfe5bbb4e6c3a3a334dbcbf1b28f6b7579068bbd41095613b458cae438ef6\",\"revision\":\"de240170769fcf739c188b104f801d4371f8086d\"},\"active\":{\"path\":\"scripts/fast-checks-shard.mjs\",\"digest\":\"175bfe5bbb4e6c3a3a334dbcbf1b28f6b7579068bbd41095613b458cae438ef6\",\"revision\":\"de240170769fcf739c188b104f801d4371f8086d\"},\"decision\":\"mainMatch\"},{\"path\":\"scripts/lib/fast-checks-shards.mjs\",\"ours\":{\"path\":\"scripts/lib/fast-checks-shards.mjs\",\"digest\":\"bf2ae7c3888d17e789aeb7a5f3acda22b53540fa85ce98b5fe517ea5ede6c590\",\"revision\":\"998b7be07c2298ead61e8cffa39dab7583d8b6f3\"},\"main\":{\"path\":\"scripts/lib/fast-checks-shards.mjs\",\"digest\":\"6c0ded4c94e1316dcb83406c37c762398b15da198498a1037d62f21625d661fc\",\"revision\":\"555c5aa3646e08ef44d26002f81508daf7a32305\"},\"active\":{\"path\":\"scripts/lib/fast-checks-shards.mjs\",\"digest\":\"6c0ded4c94e1316dcb83406c37c762398b15da198498a1037d62f21625d661fc\",\"revision\":\"555c5aa3646e08ef44d26002f81508daf7a32305\"},\"decision\":\"mainMatch\"}]",
 
-  "document": {"digest":"1b7bc04797256f903db6149fa6a8bb770af637ca3c2635280bc79a8d513a71a6","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
-
   "sources": [
-    {"path":".agents/skills/documentation-audit/SKILL.md","digest":"2f5e193ebfb24a08597fd9dc31663a7d293bceaf1847e2df508b093e898845a6","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
+    ".agents/skills/documentation-audit/SKILL.md",
 
-    {"path":".codex/hooks.json","digest":"0b4b8164d668905f799f658696343d1b34bf7570a81a336165eab50770443bb8","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    ".codex/hooks.json",
 
-    {"path":".githooks/commit-msg","digest":"1796be57853b0dcc60ce8753ca1562cb623b9e0966f72ee9b374b7aaa7231bbc","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    ".githooks/commit-msg",
 
-    {"path":".githooks/pre-push","digest":"eb2d5cdd2c9f91b4e2dc96dd0d4ef36c55f313074f4f05aa30e0269cd5c0a6c9","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    ".githooks/pre-push",
 
-    {"path":".github/workflows/ci.yml","digest":"9b586bd70bb7c94986ce19ee41151ff768bad2a308a196a15047375c92f9646a","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
+    ".github/workflows/ci.yml",
 
-    {"path":".github/workflows/full-regression.yml","digest":"064212250fcc5a2d13bed01a3de5a7a72620616b9847ded3cfcdb166b6f694f2","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
+    ".github/workflows/full-regression.yml",
 
-    {"path":".github/workflows/merge-queue-regression.yml","digest":"ba13e009f55d64dc1059167c9f1ed009c1518605483c42f4e3a3509e579e9480","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
+    ".github/workflows/merge-queue-regression.yml",
 
-    {"path":".github/workflows/windows-pr-verification.yml","digest":"608bbdfac16fd9d0379b4fcffbb79d8a1a94ab014736442765087fe3f17a21ae","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    ".github/workflows/windows-pr-verification.yml",
 
-    {"path":".veritas/GOVERNANCE.md","digest":"896ca1d26e71e4e8d691fb2539888282903f15024cd1dc2585299d682b9d269c","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    ".veritas/GOVERNANCE.md",
 
-    {"path":".veritas/authority/default.authority-settings.json","digest":"b47233d5d20d847ee85c5b77ccbd991ff13159270690a6adb957134b72cf57ac","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    ".veritas/authority/default.authority-settings.json",
 
-    {"path":".veritas/repo-map.json","digest":"fcabfcd9d0ad7a59d2ef216c943591575656f039e1d9df2d05565b96347ebca4","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    ".veritas/repo-map.json",
 
-    {"path":".veritas/repo-standards/default.repo-standards.json","digest":"03b4e8ec9e6d2369d81fe31700dd3804df1a1259d3ba4c3e977feb27e17edbed","revision":"888c42dffff4aae57a7a6f6f397c8ba1ecca96ee"},
+    ".veritas/repo-standards/default.repo-standards.json",
 
-    {"path":"AGENTS.md","digest":"f5409d83bf1c7772c37b3738209f5f8a4602d8f29ead5fb9f7f8918bc9929c8c","revision":"a1478b242401c5da824956478bd77fef1f4dfa51"},
+    "AGENTS.md",
 
-    {"path":"docs/guides/documentation.md","digest":"35dd6dd9ae31089fcab2adaf2d58595f809a9e93cf85025c430b71350c576c15","revision":"595059eafa17ef6b7a39217a405619ecbfac2270"},
+    "docs/guides/documentation.md",
 
-    {"path":"docs/guides/testing.md","digest":"53af26e5853101d07b3c331f1ce1bca2ca6e5c19555f7d0045cca9a9483b052b","revision":"26c576127006fc775278e3da2eea0ab23bc9e90c"},
+    "docs/guides/testing.md",
 
-    {"path":"docs/plans/documentation-code-audit.md","digest":"6fa130fb00cc3544f3d80499c120ebf50b3700beb3186e71f9da2b470653a6b8","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
+    "docs/plans/documentation-code-audit.md",
 
-    {"path":"package.json","digest":"ee32f6a73f2428a8734396a7667e8ec009485b1c5a87f779652801ed4c51af1f","revision":"fdca33b1896b280299ba72fc70a3c9b9cda7f3af"},
+    "package.json",
 
-    {"path":"scripts/__tests__/ci-fast-checks-job-graph.test.ts","digest":"6b102e92ea63fb9103d801ec2ad0da304204de5c39d5cdb6540f7e21070c21e5","revision":"de240170769fcf739c188b104f801d4371f8086d"},
+    "scripts/__tests__/ci-fast-checks-job-graph.test.ts",
 
-    {"path":"scripts/__tests__/docs-index-reachability.test.ts","digest":"f0376c008b04dedfd81e4e52b4198c463b57fe70d37de1cb6541fc1baad6ee9d","revision":"8199fd1541fc2af0053845c9253ed0962dd7fbb8"},
+    "scripts/__tests__/docs-index-reachability.test.ts",
 
-    {"path":"scripts/__tests__/prepush-typecheck.test.ts","digest":"c0744d3ac567cc2dd3daaf6536c76661653716650ff1875caa4b6e9150039650","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    "scripts/__tests__/prepush-typecheck.test.ts",
 
-    {"path":"scripts/__tests__/run-ci-fast.test.ts","digest":"3de2360a632570b4e567c8397ce0b7388512b50fb17b6bdffbb10230babdbc35","revision":"a1478b242401c5da824956478bd77fef1f4dfa51"},
+    "scripts/__tests__/run-ci-fast.test.ts",
 
-    {"path":"scripts/cli-agent-e2e.mjs","digest":"d08c8d36c33e9ed6e682817bca9ef214d8a77b286c7cb426f9a82747f8e6d217","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    "scripts/cli-agent-e2e.mjs",
 
-    {"path":"scripts/dependency-lifecycle.mjs","digest":"59182737dece9f0981ba7857efd524e5c6a30eb45c25dc963d3a0c9bba7b6163","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    "scripts/dependency-lifecycle.mjs",
 
-    {"path":"scripts/docs-truth-gate-aggregate.mjs","digest":"6e7e018a0038b35720985250cbac60ffab14f87ccb1834a281a926376923b35b","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    "scripts/docs-truth-gate-aggregate.mjs",
 
-    {"path":"scripts/fast-checks-shard.mjs","digest":"175bfe5bbb4e6c3a3a334dbcbf1b28f6b7579068bbd41095613b458cae438ef6","revision":"de240170769fcf739c188b104f801d4371f8086d"},
+    "scripts/fast-checks-shard.mjs",
 
-    {"path":"scripts/just-interface.mjs","digest":"f2660b18a8d6df42872d5953c61181eea377bbf51e3dbcc31e04c31d94c69219","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    "scripts/just-interface.mjs",
 
-    {"path":"scripts/lib/dependency-lifecycle-policy.mjs","digest":"3221df34cc1ffaa99b9dedfcff8e2b1dce41baa44170464d2b8d3e88cd2894f4","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    "scripts/lib/dependency-lifecycle-policy.mjs",
 
-    {"path":"scripts/lib/documentation-freshness.mjs","digest":"1015b8a88ace1d10171a04a1b5da6a192b0397174fa51127c66211736c06ab74","revision":"8199fd1541fc2af0053845c9253ed0962dd7fbb8"},
+    "scripts/lib/documentation-freshness.mjs",
 
-    {"path":"scripts/lib/documentation-review.mjs","digest":"d227f0fd1b1d90823e3cbfa3236a0a3de8540df0cb022c9762f374c9b3797331","revision":"8199fd1541fc2af0053845c9253ed0962dd7fbb8"},
+    "scripts/lib/documentation-review.mjs",
 
-    {"path":"scripts/lib/fast-checks-shards.mjs","digest":"6c0ded4c94e1316dcb83406c37c762398b15da198498a1037d62f21625d661fc","revision":"555c5aa3646e08ef44d26002f81508daf7a32305"},
+    "scripts/lib/fast-checks-shards.mjs",
 
-    {"path":"scripts/lib/git-environment.mjs","digest":"e0557da6e34d1a58ec3d045261e1a7f4655cc1848ec94cc3cb8294fad7b0803f","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    "scripts/lib/git-environment.mjs",
 
-    {"path":"scripts/prepare-verify-static.mjs","digest":"fdfb52b1da5d1d22e155f8d1d681c9847f3076549b4d7997d3c0c3a1bf713c2d","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    "scripts/prepare-verify-static.mjs",
 
-    {"path":"scripts/run-ci-fast.mjs","digest":"9bb2bc8250a117ba45d8433cd353d22195cfca26f6c96e30e3358ca392b61a4d","revision":"a1478b242401c5da824956478bd77fef1f4dfa51"},
+    "scripts/run-ci-fast.mjs",
 
-    {"path":"scripts/run-focused-tests.mjs","digest":"7587827cfbb7d8f6cde2181a8a0e392a4788acad7df3e69c5155ff849abea79c","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    "scripts/run-focused-tests.mjs",
 
-    {"path":"scripts/run-local-verification.mjs","digest":"0794ea25e144bf95547470d7f3a863e2e1d90379f43c200882ddd25de0141749","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    "scripts/run-local-verification.mjs",
 
-    {"path":"scripts/run-repo-scan-suites.mjs","digest":"06c1be69f439b1676b78bfe673c310f5abaf3c4a29ddfd25160ae5a36f684584","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    "scripts/run-repo-scan-suites.mjs",
 
-    {"path":"scripts/scripts-typecheck-coverage.mjs","digest":"47923e081d0c0e079d9d609495eabc363a81dea09b8da2b54e9933828764fc4e","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    "scripts/scripts-typecheck-coverage.mjs",
 
-    {"path":"scripts/typecheck-aggregate.mjs","digest":"e77e37ce2ad7303f0dbab76261307517feee3edc12f0b7e7662327df521c5706","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    "scripts/typecheck-aggregate.mjs",
 
-    {"path":"scripts/verification-lanes.mjs","digest":"3fb1be3bd88d1d5139983eaf770e8a5474ce6cc6ef304d4e008df63d0c143fef","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    "scripts/verification-lanes.mjs",
 
-    {"path":"scripts/verification-policy-gate.mjs","digest":"9d80e6bff858fd5d42ee9606bb2278233c60c665808dfb356777502a06a7ddc7","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    "scripts/verification-policy-gate.mjs",
 
-    {"path":"src-server/__test-utils__/read-json.ts","digest":"2a9da454f0fa8c6436934d34c3f3e1df53ae6afbf3760e80b163fe99d025c3f6","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    "src-server/__test-utils__/read-json.ts",
 
-    {"path":"src-server/__test-utils__/route-test-app.ts","digest":"099f2e8dc0822ef60cb3265734e91f1b257462ee093589a4a760ee118944e886","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    "src-server/__test-utils__/route-test-app.ts",
 
-    {"path":"src-server/__test-utils__/sse-helpers.ts","digest":"daa4853dc02cf11574f8afb6c813145c58cc5356a2ff432870e55b1b23511492","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    "src-server/__test-utils__/sse-helpers.ts",
 
-    {"path":"src-server/routes/spatial-board.ts","digest":"461e485ff2a4597e62552c2ae8c9067b9da58347c737be91f925afecf8bab5da","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"}
+    "src-server/routes/spatial-board.ts"
   ],
 
   "checks": [

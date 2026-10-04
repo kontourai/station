@@ -1,9 +1,9 @@
-import { ChatDockMobileConnection } from './ChatDockMobileConnection';
 import './ChatDockMobileOverflowSheet.css';
 import {
   ResponsiveDialogHeader,
   ResponsiveDialogSurface,
 } from '../ResponsiveDialogSurface';
+import { ChatDockMobileConnection } from './ChatDockMobileConnection';
 import type { ChatDockMobileOverflowActions } from './ChatDockMobileHeader';
 
 /**

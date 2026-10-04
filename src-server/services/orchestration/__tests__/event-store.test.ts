@@ -4297,6 +4297,50 @@ describe('EventStore', () => {
     });
   });
 
+  test.each(['claude', 'muse', 'codex'])(
+    'turn windows preserve %s usage according to its declared measurement scope',
+    (provider) => {
+      const threadId = `usage-window-${provider}`;
+      store.appendEvent({
+        eventId: `${provider}-start`,
+        provider,
+        threadId,
+        turnId: 'turn-1',
+        method: 'turn.started',
+        prompt: 'question',
+        createdAt: '2026-08-19T04:00:00.000Z',
+      });
+      store.appendEvent({
+        eventId: `${provider}-usage-a`,
+        provider,
+        threadId,
+        turnId: 'turn-1',
+        method: 'token-usage.updated',
+        promptTokens: 5,
+        completionTokens: 7,
+        createdAt: '2026-08-19T04:00:01.000Z',
+      });
+      store.appendEvent({
+        eventId: `${provider}-usage-b`,
+        provider,
+        threadId,
+        turnId: 'turn-1',
+        method: 'token-usage.updated',
+        promptTokens: 11,
+        completionTokens: 13,
+        createdAt: '2026-08-19T04:00:02.000Z',
+      });
+      const usage = store
+        .listEventWindowByTurn(threadId, { turnLimit: 1 })
+        .events.filter((event) => event.method === 'token-usage.updated');
+      expect(usage.map((event) => event.id)).toEqual(
+        provider === 'codex'
+          ? [`${provider}-usage-b`]
+          : [`${provider}-usage-a`, `${provider}-usage-b`],
+      );
+    },
+  );
+
   /**
    * archive#3462. `snapshotEvent`'s `output` handling used a bare
    * `String(value)` coercion, so a persisted `output: null` read back as the

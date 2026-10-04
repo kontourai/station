@@ -9,30 +9,28 @@
 
   "limits": "No independent npm installation or registry publication, arbitrary loader compatibility, full package build or live plugin activation. Registry signing fixture does not establish real key custody.",
 
-  "document": {"digest":"b9e00aaca6fcf32699879221c708492f8bc18660c9741fba51ebe9ff03be18b2","revision":"6a847d3c029f4f3e5c1dbe82f2459194573d43e9"},
-
   "sources": [
-    {"path":"packages/shared/package.json#/engines","digest":"6c12acb1990a85e4fe6986ad29ad44b644eca474a81f946d053aabd14ba62059","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
+    "packages/shared/src/build.ts",
 
-    {"path":"packages/shared/package.json#/exports","digest":"6161c789a56e833fd356eb62224bc93cfa55546faade3eed921efcc152d6e79c","revision":"8924149a7e6ef1356fc078c9a387c6a60ada429a"},
+    "packages/shared/src/index.ts",
 
-    {"path":"packages/shared/package.json#/files","digest":"43219f75df025fd68c4b3a47b045f822115a0cb02eb1a21f6f0003b466db6b24","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
+    "packages/shared/src/parsers.ts",
 
-    {"path":"packages/shared/package.json#/name","digest":"eb6db31391235bff717fc0a3d661bc46ba6062af9105e84d03a53af12010b98b","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
+    "packages/shared/src/plugin-registry-signature.ts",
 
-    {"path":"packages/shared/src/build.ts","digest":"8db6bc04bffe80ead5af5e8d9b23be2ae02f1e5afbae67f850e583b8ca40c783","revision":"e78cdc9c00d09b69f333e1609821d8fa70bce58c"},
+    "packages/shared/src/plugin-tree-digest.ts",
 
-    {"path":"packages/shared/src/index.ts","digest":"61ae87e4180d5ee0fd0176ef8cf4b2279efcb998e9b1c4f241cf1e70681daca8","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/shared/package.json#/engines",
 
-    {"path":"packages/shared/src/parsers.ts","digest":"c239e53a4ef3706906a4511520e716f1282619f855d34d298c3bab3f4e8aac0f","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/shared/package.json#/exports",
 
-    {"path":"packages/shared/src/plugin-registry-signature.ts","digest":"49bee9910d27cbe2112b9bf53287eedf254ba5df0da99785b74478ae51df2c8b","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/shared/package.json#/files",
 
-    {"path":"packages/shared/src/plugin-tree-digest.ts","digest":"04812da769074e8021b798e569e1f474b5ab86f26ab7556548426e1f6de91f7d","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/shared/package.json#/name",
 
-    {"path":"packages/shared/src/skill-experience-reader.ts","digest":"94bf4043af0cbb2bbf589b4e13b334fb0066bbb32536bc8eed48d2e0504c66bb","revision":"6a847d3c029f4f3e5c1dbe82f2459194573d43e9"},
+    "packages/shared/src/skill-experience-values.ts",
 
-    {"path":"packages/shared/src/skill-experience-values.ts","digest":"275b6320c8c8108a303ab7bbfbc5f9555ee5069d3197d89e7aa15eb173ed66c9","revision":"6a847d3c029f4f3e5c1dbe82f2459194573d43e9"}
+    "packages/shared/src/skill-experience-reader.ts"
   ],
 
   "checks": [

@@ -49,6 +49,7 @@ import { safeSanitizeUIBlockEventProvenance } from '../../runtime/conversation/u
 import { errorMessage } from '../../utils/error-message.js';
 import { receiptBus } from '../infra/receipt-bus.js';
 import type { RuntimeEngineStartLease } from '../infra/resource-posture.js';
+import { assertDispatchCwdUnmoved } from './dispatch-cwd-admission.js';
 import type { EventStore } from './event-store.js';
 import {
   projectRequestAnswerability,
@@ -1612,6 +1613,9 @@ export async function startRecoveredOrchestrationSession(options: {
     const admissionLease = await deps.admitEngineStart?.(startInput.threadId);
     let recovered: ProviderSession;
     try {
+      // #2873: a respawn re-resolves the folder an agent's dispatch recorded
+      // and refuses a different result, before any adapter call.
+      assertDispatchCwdUnmoved(startInput, startInput.cwd);
       recovered = await withTenantExecutionContext(
         startInput.tenantExecutionContext,
         () =>

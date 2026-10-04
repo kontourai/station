@@ -9,18 +9,16 @@
 
   "limits": "The historical 37 folds,30 decisions,21 client sites and12 injected failures are not a current inventory. All notification/CLI/UI consumers, residual slice completion and cross-instance user journeys were not re-audited.",
 
-  "document": {"digest":"ea5a4cfd61eef661cd2e50d189f1b61ea276413804fb29a4ea2f4d5301d1c6e7","revision":"af3c8fbfee90c9179a0ac19659b76d24c707d574"},
-
   "sources": [
-    {"path":"packages/contracts/src/__tests__/orchestration-answerability.test.ts","digest":"e99338dcd3d28fa85a96b56c8a5d1f1bae01b08b8de45e70760698b005144a59","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+    "packages/contracts/src/__tests__/orchestration-answerability.test.ts",
 
-    {"path":"packages/contracts/src/orchestration.ts","digest":"4332df216bd71da65ad47a0c7b001aacd9ba43a8c66cfd6f7cb213940e2f991d","revision":"26b93f9dd99add41e8c6e781c66f52dc35ce14b6"},
+    "packages/contracts/src/orchestration.ts",
 
-    {"path":"src-server/services/orchestration/__tests__/session-answerability-decoration.test.ts","digest":"dc5892f4e22b7519c07757392fc61e968ecc79cd5320dc73ba2d5cd70152f971","revision":"495d7cda0df2abf2d64ed377d3dcbf1ebc238169"},
+    "src-server/services/orchestration/__tests__/session-answerability-decoration.test.ts",
 
-    {"path":"src-server/services/orchestration/open-requests.ts","digest":"85d2aa9a7def85c2578945a32443f90bf2416821274b3777b6f1f082bf3d46ab","revision":"4e19fa6ac6b87dff5b671d3c90d3a5b48b5e6ec5"},
+    "src-server/services/orchestration/open-requests.ts",
 
-    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"0e4e4f41563fb2d95c68f7c53f4cbc1986569cf781f36204c0afa3d0c221650e","revision":"26b93f9dd99add41e8c6e781c66f52dc35ce14b6"}
+    "src-server/services/orchestration/orchestration-service.ts"
   ],
 
   "checks": [

@@ -1,6 +1,8 @@
+import { createHash } from 'node:crypto';
 import { request as nodeRequest } from 'node:http';
 import { Readable, Transform } from 'node:stream';
 import { createGunzip } from 'node:zlib';
+import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import type { ClientAuthenticatedTransport } from '../../packages/sdk/src/client/http.js';
 
 export type TransferAttempt = {
@@ -11,9 +13,55 @@ export type TransferAttempt = {
   encodedBodyBytes: number;
   decodedBodyBytes: number;
   frames: number;
+  eventIdentities: Array<{
+    frame: number;
+    event: string;
+    cursor?: string;
+    eventDigest?: string;
+    methodDigest?: string;
+    threadDigest?: string;
+    turnDigest?: string;
+  }>;
   complete: boolean;
   abortedByClient: boolean;
 };
+
+const knownEvents = new Set<string>([
+  ...Object.values(SERVER_EVENTS),
+  'orchestration:snapshot',
+  'orchestration:caughtUp',
+]);
+
+function frameIdentity(frame: string, index: number) {
+  const lines = frame.split('\n');
+  const event = lines[0]!.slice('event: '.length);
+  const digest = (value: string) =>
+    createHash('sha256').update(value).digest('hex').slice(0, 16);
+  const identity: TransferAttempt['eventIdentities'][number] = {
+    frame: index,
+    event: knownEvents.has(event) ? event : 'other',
+    ...(!knownEvents.has(event) ? { eventDigest: digest(event) } : {}),
+  };
+  const cursor = lines.find((line) => line.startsWith('id: '))?.slice(4);
+  if (cursor && /^\d{1,20}$/.test(cursor)) identity.cursor = cursor;
+  if (event === SERVER_EVENTS.ORCHESTRATION_EVENT) {
+    try {
+      const data = lines.find((line) => line.startsWith('data: '));
+      const value = data ? JSON.parse(data.slice(6)).event : undefined;
+      for (const [key, target] of [
+        ['method', 'methodDigest'],
+        ['threadId', 'threadDigest'],
+        ['turnId', 'turnDigest'],
+      ] as const) {
+        if (typeof value?.[key] === 'string' && value[key].length <= 256)
+          identity[target] = digest(value[key]);
+      }
+    } catch {
+      // Malformed data still counts as a frame, with header identity only.
+    }
+  }
+  return identity;
+}
 
 function responseHeaders(
   headers: Record<string, string | string[] | undefined>,
@@ -60,6 +108,7 @@ export class HttpTransferRecorder {
       decodedBodyBytes: active.decodedBodyBytes(),
       frames: active.frames(),
     };
+    active.resetEventIdentities();
   }
 
   #active:
@@ -68,6 +117,7 @@ export class HttpTransferRecorder {
         encodedBodyBytes: () => number;
         decodedBodyBytes: () => number;
         frames: () => number;
+        resetEventIdentities(): void;
       }
     | undefined;
 
@@ -116,6 +166,7 @@ export class HttpTransferRecorder {
         let encodedBodyBytes = 0;
         let decodedBodyBytes = 0;
         let frames = 0;
+        const eventIdentities: TransferAttempt['eventIdentities'] = [];
         let frameBuffer = '';
         let complete = false;
         let settled = false;
@@ -124,6 +175,9 @@ export class HttpTransferRecorder {
           encodedBodyBytes: () => encodedBodyBytes,
           decodedBodyBytes: () => decodedBodyBytes,
           frames: () => frames,
+          resetEventIdentities: () => {
+            eventIdentities.length = 0;
+          },
         };
         const counter = new Transform({
           transform(chunk, _encoding, callback) {
@@ -133,7 +187,11 @@ export class HttpTransferRecorder {
             while (boundary >= 0) {
               const frame = frameBuffer.slice(0, boundary);
               frameBuffer = frameBuffer.slice(boundary + 2);
-              if (frame.startsWith('event: ')) frames += 1;
+              if (frame.startsWith('event: ')) {
+                frames += 1;
+                if (eventIdentities.length < 128)
+                  eventIdentities.push(frameIdentity(frame, frames));
+              }
               boundary = frameBuffer.indexOf('\n\n');
             }
             callback(null, chunk);
@@ -172,6 +230,10 @@ export class HttpTransferRecorder {
             encodedBodyBytes: phaseEncodedBodyBytes,
             decodedBodyBytes: phaseDecodedBodyBytes,
             frames: checkpoint ? frames - checkpoint.frames : frames,
+            eventIdentities: eventIdentities.map((identity) => ({
+              ...identity,
+              frame: identity.frame - (checkpoint?.frames ?? 0),
+            })),
             complete,
             abortedByClient,
           });

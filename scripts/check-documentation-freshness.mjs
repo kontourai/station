@@ -33,6 +33,7 @@ export async function main(argv = process.argv.slice(2)) {
     console.log(
       JSON.stringify({
         mode: result.policy.mode,
+        historyUnavailable: result.historyUnavailable,
         reviews: result.reviews.size,
         captures: result.captures.size,
         blocking: result.blocking.map(entryJson),
@@ -42,6 +43,7 @@ export async function main(argv = process.argv.slice(2)) {
     if (result.blocking.length) process.exitCode = 1;
     return;
   }
+  if (result.historyUnavailable) console.warn(result.historyUnavailable);
   const advisory = formatFreshnessAdvisory(result.policy, result.advisory);
   if (advisory) console.warn(advisory);
   assertDocumentationFresh(result);

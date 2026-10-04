@@ -9,42 +9,40 @@
 
   "limits": "Source review of the stated entry-point claims; linked guides have their own records. No new hosted publication, release installation, external provider or physical device qualification. Merge reconciliation preserves both prior review anchors below as historical evidence, not a new review of combined source bytes. Active bindings retain existing reviewed anchors; any mismatch with merged bytes remains stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"docs/reference/cli.md\",\"ours\":{\"digest\":\"eaea8f22af0b8823b27d60b48cec742ab153e7c05dea78a86ebacbbb0e5fb65a\",\"revision\":\"7fcc0a65c4067afc51dfc094037b4275177177d8\"},\"main\":{\"digest\":\"98f975022501b6d33e43422fc2652317fb84f72eab24522a582238bf244252ee\",\"revision\":\"4a1fc2197028ded07d0e389e98a30042ab7cadb5\"}},{\"path\":\"docs/architecture/module-map.md\",\"ours\":{\"digest\":\"52cd3cfb4c4e811e087ee89b0d844695e85a21a0e085409850936bd613653957\",\"revision\":\"801b6662aff67a25eff4927c1c50e92f4c9b4e53\"},\"main\":{\"digest\":\"8f082631ce14f9b1114110e69a7f336404340c0c8f58a02ebf2646973277a22b\",\"revision\":\"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac\"}},{\"path\":\"docs/guides/nightly.md\",\"ours\":{\"digest\":\"ca0edefb20627f48284c7527c1e696c5a32070ab1c48e2b2eefe7fff8024e108\",\"revision\":\"401e7c7ca5cf5b194b76a21a317fd8ec34591301\"},\"main\":{\"digest\":\"7a459f9e8b71560ce041403a37d667d004c15ae25017f2149de30a64649c569a\",\"revision\":\"ec29a8774f2c138bfd9e9818c0f0cc36fc5ebefe\"}}].\n\nAdditional existing main limits (preserved verbatim): Source review of the stated entry-point claims; linked guides have their own records. No new hosted publication, release installation, external provider or physical device qualification.\n\nStructural merge of 5fd2dd86ad0cd35018ce09537c1aa01ce58e0e55 and 8f9ea788561518398a488d35bb768b78a272e73b preserves both prior immutable document/source anchors and historical checks. Selecting an existing current-byte binding is structural reconciliation only, not semantic approval of merged inputs. No new digest/revision or coverage baseline was minted. Competing prior anchors remain pending semantic review and supported recording after the merge commit: [{\"path\":\"docs/architecture/module-map.md\",\"ours\":{\"path\":\"docs/architecture/module-map.md\",\"digest\":\"8d33787e4ca8472ad4d2d5c91d8eaea168553090163766c9b957ab9e48dd0f79\",\"revision\":\"a3ac8721653c1c4dc646f54a5401f03f02ba795f\"},\"main\":{\"path\":\"docs/architecture/module-map.md\",\"digest\":\"8f082631ce14f9b1114110e69a7f336404340c0c8f58a02ebf2646973277a22b\",\"revision\":\"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac\"},\"active\":{\"path\":\"docs/architecture/module-map.md\",\"digest\":\"8d33787e4ca8472ad4d2d5c91d8eaea168553090163766c9b957ab9e48dd0f79\",\"revision\":\"a3ac8721653c1c4dc646f54a5401f03f02ba795f\"},\"decision\":\"oursMatch\"},{\"path\":\"docs/guides/nightly.md\",\"ours\":{\"path\":\"docs/guides/nightly.md\",\"digest\":\"ca0edefb20627f48284c7527c1e696c5a32070ab1c48e2b2eefe7fff8024e108\",\"revision\":\"401e7c7ca5cf5b194b76a21a317fd8ec34591301\"},\"main\":{\"path\":\"docs/guides/nightly.md\",\"digest\":\"1d2d768b4dddb1cfae5f123b0322621f5e70565918118fb8027d7e840041aba3\",\"revision\":\"614c216de6de9d4c06ef56963853ccff52f2f685\"},\"active\":{\"path\":\"docs/guides/nightly.md\",\"digest\":\"ca0edefb20627f48284c7527c1e696c5a32070ab1c48e2b2eefe7fff8024e108\",\"revision\":\"401e7c7ca5cf5b194b76a21a317fd8ec34591301\"},\"decision\":\"neitherMatch\"},{\"path\":\"docs/guides/release-channel-ports.md\",\"ours\":{\"path\":\"docs/guides/release-channel-ports.md\",\"digest\":\"3483f6ad81e2f9c47e478a4c3156ac39656cc0371fd19902d05c43c2cf76c00d\",\"revision\":\"6b720068a6a3d8ccf6aa3260e8da6ee4cf99ea80\"},\"main\":{\"path\":\"docs/guides/release-channel-ports.md\",\"digest\":\"b90cd2926db148fda6e028bab7d9a1746956db1a90e6fedcb0c7b9920c46f156\",\"revision\":\"332b227345684d098aaaf3191ac0e9d927ac9401\"},\"active\":{\"path\":\"docs/guides/release-channel-ports.md\",\"digest\":\"b90cd2926db148fda6e028bab7d9a1746956db1a90e6fedcb0c7b9920c46f156\",\"revision\":\"332b227345684d098aaaf3191ac0e9d927ac9401\"},\"decision\":\"mainMatch\"},{\"path\":\"docs/reference/cli.md\",\"ours\":{\"path\":\"docs/reference/cli.md\",\"digest\":\"98f975022501b6d33e43422fc2652317fb84f72eab24522a582238bf244252ee\",\"revision\":\"4a1fc2197028ded07d0e389e98a30042ab7cadb5\"},\"main\":{\"path\":\"docs/reference/cli.md\",\"digest\":\"5db0e299c9a461a4e17cfb614d26f13f10c64260eae57d435b0f4088be8b325a\",\"revision\":\"1b73087d156d008468234fa83d218468d21add03\"},\"active\":{\"path\":\"docs/reference/cli.md\",\"digest\":\"5db0e299c9a461a4e17cfb614d26f13f10c64260eae57d435b0f4088be8b325a\",\"revision\":\"1b73087d156d008468234fa83d218468d21add03\"},\"decision\":\"mainMatch\"},{\"path\":\"packages/contracts/src/engine-capability-matrix.ts\",\"ours\":{\"path\":\"packages/contracts/src/engine-capability-matrix.ts\",\"digest\":\"e6d2c0397a5894f2f2c8aa175e9a6cd240c8a4445269041c982019245c5cc102\",\"revision\":\"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74\"},\"main\":{\"path\":\"packages/contracts/src/engine-capability-matrix.ts\",\"digest\":\"db82340760d09e965ac7ed17830f36060573fe48545995d4ad9149b755d36ea1\",\"revision\":\"518fae654af981373e872c2ab85438bb1b1b0e67\"},\"active\":{\"path\":\"packages/contracts/src/engine-capability-matrix.ts\",\"digest\":\"db82340760d09e965ac7ed17830f36060573fe48545995d4ad9149b755d36ea1\",\"revision\":\"518fae654af981373e872c2ab85438bb1b1b0e67\"},\"decision\":\"mainMatch\"}]",
 
-  "document": {"digest":"ecb3a3e0418f1f70ecd02ffc92dc46c5a11457c67a2464829e23c7b09ff8206d","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
   "sources": [
-    {"path":"Dockerfile","digest":"7cbabfe80425ae5b5e3c30c978e20e53274d9cbbb6d069fc6f87c126f664f0e4","revision":"6a0d3e154170e88514a9ad71e1b7af587073aeb4"},
+    "Dockerfile",
 
-    {"path":"docker-compose.yml","digest":"d8ae74f82e6fba7768be16dd601d1f98d0462b22576cb125023e0d868a99bfc8","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "docker-compose.yml",
 
-    {"path":"docs/architecture/module-map.md","digest":"de929ac56dc445514fc41e2a01af1e1a08ab062f73536fb082c11b13dcf027da","revision":"26b93f9dd99add41e8c6e781c66f52dc35ce14b6"},
+    "docs/architecture/module-map.md",
 
-    {"path":"docs/guides/deployment.md","digest":"1edc373a6f45ca03a1f4e989e59cabe26d36afe4b5b06ccf9717f8b715bf99f2","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "docs/guides/deployment.md",
 
-    {"path":"docs/guides/nightly.md","digest":"2b84aea2af084c020cd825886a044ea3c700ef490990f44f2984994d1fbf6a99","revision":"7dca71dec74980aa52bfdc28fcec1eed24581f1f"},
+    "docs/guides/nightly.md",
 
-    {"path":"docs/guides/release-channel-ports.md","digest":"2d4b76cdb9f3d20c261abc0ae4b4deee424f732b04ae451bd4b5cc8c8896b3a0","revision":"94e8e5781a2c23d2bc828682a1157aef3934e897"},
+    "docs/guides/release-channel-ports.md",
 
-    {"path":"docs/privacy-policy.md","digest":"fb5be7ad7342be17509e79e40a6e2dbbe7046ea7dbbe8db4ba637fcdbb21d403","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "docs/privacy-policy.md",
 
-    {"path":"docs/reference/cli.md","digest":"62c03f1a50009e0973510034c314c46df560dddf761547e6798d86808eb116fd","revision":"19aff2a08b9739ad9ffbda39ff8cb19b026fda82"},
+    "docs/reference/cli.md",
 
-    {"path":"install.sh","digest":"f2b2fbf2dba1198f08637b48ad3a1cd7ae684cee020621cd293668e6bbb8b4bc","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "install.sh",
 
-    {"path":"packages/cli/src/cli.ts","digest":"041c54fff5c3dc2848cf234cf13e4ea52e5069548c273755ee77b53955be1f27","revision":"19aff2a08b9739ad9ffbda39ff8cb19b026fda82"},
+    "packages/cli/src/cli.ts",
 
-    {"path":"packages/cli/src/commands/lifecycle.ts","digest":"ce8322baa64d2e25c711ec0816c6cb013c8742f651a265e1657239185dba9ecc","revision":"b49b1db1601f36c9457e0d9d7c766d15be6302f7"},
+    "packages/cli/src/commands/lifecycle.ts",
 
-    {"path":"packages/cli/src/distribution.ts","digest":"6c36f09c162ba2cdc4a6cc98cb878ca5ac1be9177fbfe584340aee4b79c8b69b","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/cli/src/distribution.ts",
 
-    {"path":"packages/contracts/src/engine-capability-matrix.ts","digest":"db82340760d09e965ac7ed17830f36060573fe48545995d4ad9149b755d36ea1","revision":"518fae654af981373e872c2ab85438bb1b1b0e67"},
+    "packages/contracts/src/engine-capability-matrix.ts",
 
-    {"path":"src-server/services/orchestration/flow-policy-sidecar.ts","digest":"437b48f82ba45cedac66ea4c8c933758226ad017ca957313fb9353b3a9abbe44","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-server/services/orchestration/flow-policy-sidecar.ts",
 
-    {"path":"src-server/services/privacy-inventory.ts","digest":"469cc6a8bea5a9943040b373be225917c6aa8cbe5de5a5fe003e6ae2810752b9","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-server/services/privacy-inventory.ts",
 
-    {"path":"src-ui/src/hooks/voiceWsUrl.ts","digest":"4b609c4ad165efdf372f565aacdf1617ed9f0c793fbba7cca2005a0ab33f71b1","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-ui/src/hooks/voiceWsUrl.ts",
 
-    {"path":"src-ui/src/providers/voice/NovaVoiceSessionAdapter.ts","digest":"e0af5660bc581fae84121a3890cb5a180960213d761eef4a23319e5fa1bece2c","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"}
+    "src-ui/src/providers/voice/NovaVoiceSessionAdapter.ts"
   ],
 
   "checks": [
@@ -78,6 +76,8 @@
 
     "Integration source review through 84d56b9a8: e1af43c2c (#2880) adds a 'Recorded versus acknowledged decisions' subsection to docs/reference/cli.md under station delegate. The auto-merged cli.md reads coherently with the branch text. The README still correctly points to the CLI reference for target and credential setup. Prose accurate. Source review is separate from executed test evidence.",
 
-    "Integration source review through 5731eba07: 3ab09593d (#2881) wraps install.sh in a brace group, adds stage-only mode, hands off to a launcher-run service and extends cli.md with archive self-update. The README's claims (verified installer via a temp file, staging before the current link switches, a separate prebuilt-archive path linked out) still hold. The cli.md merge is main-only additive text. Prose accurate. Source review is separate from executed test evidence."
+    "Integration source review through 5731eba07: 3ab09593d (#2881) wraps install.sh in a brace group, adds stage-only mode, hands off to a launcher-run service and extends cli.md with archive self-update. The README's claims (verified installer via a temp file, staging before the current link switches, a separate prebuilt-archive path linked out) still hold. The cli.md merge is main-only additive text. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Structural reconciliation of plugin-command branch and origin/main 84fb656cf0. Both prior bindings preserved here; this is not semantic approval of merged bytes. Conflicting historical anchors: [{\"field\":\"source\",\"path\":\"docs/architecture/module-map.md\",\"branch\":{\"path\":\"docs/architecture/module-map.md\",\"digest\":\"d0be6b1c2c72aca9f8d17ea3a3796568b3a1cb9d2eb66fa391a68eaa445f451b\",\"revision\":\"efa773acac88792cda31595f9afca4a37d3efebc\"},\"main\":{\"path\":\"docs/architecture/module-map.md\",\"digest\":\"bc19269b0710219c166e937aa7f637e5e069ebfeee86518e1f10384f0ff5b8a0\",\"revision\":\"d73d9f64333504f027a200482e978cc4445338da\"}},{\"field\":\"source\",\"path\":\"docs/reference/cli.md\",\"branch\":{\"path\":\"docs/reference/cli.md\",\"digest\":\"76106a61e5e2d8924c8857876b8f38011be5f9af421bf6697cbe71a5e795971a\",\"revision\":\"efa773acac88792cda31595f9afca4a37d3efebc\"},\"main\":{\"path\":\"docs/reference/cli.md\",\"digest\":\"62c03f1a50009e0973510034c314c46df560dddf761547e6798d86808eb116fd\",\"revision\":\"19aff2a08b9739ad9ffbda39ff8cb19b026fda82\"}},{\"field\":\"source\",\"path\":\"packages/cli/src/cli.ts\",\"branch\":{\"path\":\"packages/cli/src/cli.ts\",\"digest\":\"041c54fff5c3dc2848cf234cf13e4ea52e5069548c273755ee77b53955be1f27\",\"revision\":\"036d5d3d2289fc22e325a9ded733e8de561e9b30\"},\"main\":{\"path\":\"packages/cli/src/cli.ts\",\"digest\":\"041c54fff5c3dc2848cf234cf13e4ea52e5069548c273755ee77b53955be1f27\",\"revision\":\"19aff2a08b9739ad9ffbda39ff8cb19b026fda82\"}}]"
   ]
 }

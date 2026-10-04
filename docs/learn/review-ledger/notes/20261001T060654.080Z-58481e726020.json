@@ -1,0 +1,7 @@
+{
+  "revision": "c7dcc1ff793055c5bc1161b9a7db519cfb9d6e96",
+
+  "notes": [
+    {"path":"docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md","note":"#3071 source delta in open-requests.ts: collectOpenRequests now also drops requests settled by their turn's abort, derived from the event log alone. Checked that projectRequestAnswerability is unchanged and that no process-local fact enters the fold, so the decision and its reading-status note stand. The line 'collectOpenRequests deletes only on request.resolved' sits in the dated option (c) argument and is left as history. No prose change.","inputs":["docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md"]}
+  ]
+}
