@@ -24,11 +24,11 @@
 
     {"path":"src-ui/src/components/chat/ReasoningSection.tsx","digest":"01a6a616e89aea27b77f751c2326cb2b6d2ce9e7280f1c6c6334107d782e4d49","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/contexts/active-chats-state.ts","digest":"79ca1865beaf2362fa332605fadb3e23574de7a74ebd5601d7b97bb4f8f65dec","revision":"34d62da501fa53187b7062288f6e1dbaec8c20ed"},
+    {"path":"src-ui/src/contexts/active-chats-state.ts","digest":"4400ffac650db8ab7c1e56d36d1aa603572b03cd724b8054ac6b53d6844a10f5","revision":"cdd9b1a215d1756acd9f9218c062a207e1ac4e35"},
 
     {"path":"src-ui/src/hooks/orchestration/eventHandlers.ts","digest":"ce141146262f533040c74c9a99914eef351b075ce3f0cde1ee190bb5c1afbbf7","revision":"89765352964045a079d13a17bee54ab2de7b83e0"},
 
-    {"path":"src-ui/src/hooks/orchestration/queueDrain.ts","digest":"5172f08676c5ae320d10b42f23f7b5158ab77172a54c537235de9156ea504eb8","revision":"89765352964045a079d13a17bee54ab2de7b83e0"},
+    {"path":"src-ui/src/hooks/orchestration/queueDrain.ts","digest":"ff191a9ae3da8d55eac8e1cee728fb9485076f6d10349e4cec72f9dff5830e87","revision":"cdd9b1a215d1756acd9f9218c062a207e1ac4e35"},
 
     {"path":"src-ui/src/hooks/orchestration/replay/controller.ts","digest":"967105e5dad4144cbe9377c2e66302377ac84a747c34ceffd44e2cb60a44b7be","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -50,7 +50,7 @@
 
     {"path":"src-ui/src/hooks/orchestration/replay/timeline.ts","digest":"e4ef9cf2e00be49810869092c67c0f9b6358a31429fcee394d313b8eaf9baabb","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/index.css","digest":"e3bf9bb5c0dbeea17eb06bf2536ebcd445ce60875becb64ca97da08118422dcd","revision":"8fd71c3714eceeb651bd8e52f200aa1532fa33c6"},
+    {"path":"src-ui/src/index.css","digest":"810cff865aad9c44484991043c8107d5439505e3d960c307f0f95d2cebf2a744","revision":"502a33b8a8b76dbd9a91fc0c72f8cf7272d8f313"},
 
     {"path":"tests/chat-replay.spec.ts","digest":"22a340eb879c7e716b037e94f47bd065ffff2aae0b826ab8faac417cc421c6f2","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"}
   ],

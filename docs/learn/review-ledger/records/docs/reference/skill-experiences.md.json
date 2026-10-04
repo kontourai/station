@@ -70,7 +70,7 @@
 
     {"path":"src-ui/src/components/skill-experiences/SkillExperiencePanel.tsx","digest":"e9f7f5467f02d8c4d5a229cda219109cd5585772ba0b1d65668ea9530fd37069","revision":"a54c2f48d0adf6af1f9818f6b33ab646238b533e"},
 
-    {"path":"src-ui/src/hooks/useActiveChatSessionMessaging.ts","digest":"9318eb8735235a5cf39ece24756ba0a90405a79b9c24982199f65326b4c4c6b2","revision":"34d62da501fa53187b7062288f6e1dbaec8c20ed"},
+    {"path":"src-ui/src/hooks/useActiveChatSessionMessaging.ts","digest":"117eac5cc258ae0744de9619182eddd741d9e21694789349aaa844361d2951ff","revision":"cdd9b1a215d1756acd9f9218c062a207e1ac4e35"},
 
     {"path":"src-ui/src/hooks/useChatInput.ts","digest":"2df84cb7f0075d4ee0d7ad529acb263cf5ef3237af7c65668147d6341e40578a","revision":"34d62da501fa53187b7062288f6e1dbaec8c20ed"},
 
