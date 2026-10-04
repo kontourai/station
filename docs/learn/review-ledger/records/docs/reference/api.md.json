@@ -362,7 +362,7 @@
 
     {"path":"src-server/services/starter-work/starter-work-module.ts","digest":"c522e7213724f7c058c6b22ddf4fd206533a34997afad3de6be1b4edc96932d6","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/tools/station-control-delegation.ts","digest":"5501f0fc0eeb1dcdb870a32a59fde3d568c061b13f846654e71fa4f4493e31db","revision":"f0fa959c03b663a0cefa2f37953406e1b19859a0"},
+    {"path":"src-server/tools/station-control-delegation.ts","digest":"1ffedd4b780a7ad37b83433e14e213878d17327aebfc0ec930a14e5f1ff07bbe","revision":"56191ed22b313f4920e73a846446e8cf4fa69ed3"},
 
     {"path":"src-server/utils/path-access-failure.ts","digest":"6c1ea7d51fa72a42eea5915cb26fe5a63181371644f6d1c4fbbf5a7f715b10c4","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

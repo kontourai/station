@@ -52,7 +52,7 @@
 
     {"path":"src-server/services/projects/task-room-work-module.ts","digest":"acf9afa37babc44c9281e95040e057726a71b03c0ab49e98989e59069f450f9c","revision":"81ffd01123b6ad2a2591308e02a0c5f1cddc2feb"},
 
-    {"path":"src-server/tools/station-control-delegation.ts","digest":"5501f0fc0eeb1dcdb870a32a59fde3d568c061b13f846654e71fa4f4493e31db","revision":"f0fa959c03b663a0cefa2f37953406e1b19859a0"},
+    {"path":"src-server/tools/station-control-delegation.ts","digest":"1ffedd4b780a7ad37b83433e14e213878d17327aebfc0ec930a14e5f1ff07bbe","revision":"56191ed22b313f4920e73a846446e8cf4fa69ed3"},
 
     {"path":"src-ui/src/__tests__/TaskRoomComposer.test.tsx","digest":"af8e3f33aa53115fd99b63149cca098158324409a4bdb00910c41f652b37c9fb","revision":"4bcb32e2752dbd10db63b5acd96b0280be033c9e"},
 

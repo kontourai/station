@@ -9,16 +9,16 @@
 
   "limits": "Design, not shipped behavior beyond slice 1. Current-state claims are source inspection at c2c67c2f25. Slice 1 behavior is established only by the tests named in the implementing change; a genuinely older receiver build is not exercised.",
 
-  "document": {"digest":"ff3a34a8df365a76574cb93cf5140f4f2aa6c6fffdb90f9d0908ff01fdd337aa","revision":"0ad2f560e1d13e4262d5637f173abc3d95959848"},
+  "document": {"digest":"62d76e59ce3d2c99ac51d9ec0c85359764d510893d454c07629757c2d9328907","revision":"a032dad8a0f25e991396e4440ea258513037b068"},
 
   "sources": [
     {"path":"packages/contracts/src/execution-target.ts","digest":"72d723355a5efeef79519cad76f77122289362f791202f84cf00c3d03b75826c","revision":"0ad2f560e1d13e4262d5637f173abc3d95959848"},
 
-    {"path":"src-server/tools/station-control-delegation.ts","digest":"5501f0fc0eeb1dcdb870a32a59fde3d568c061b13f846654e71fa4f4493e31db","revision":"f0fa959c03b663a0cefa2f37953406e1b19859a0"},
+    {"path":"src-server/tools/station-control-delegation.ts","digest":"1ffedd4b780a7ad37b83433e14e213878d17327aebfc0ec930a14e5f1ff07bbe","revision":"56191ed22b313f4920e73a846446e8cf4fa69ed3"},
 
-    {"path":"src-server/services/orchestration/delegation-attempt-claim-store.ts","digest":"74f907b131807d1ddf3f46496b875dc5833ab270bb9cfe00fb95bc160a514377","revision":"0ad2f560e1d13e4262d5637f173abc3d95959848"},
+    {"path":"src-server/services/orchestration/delegation-attempt-claim-store.ts","digest":"ea1c4592fff417db4b59323ed0a03d8886a99fc426e88aa59091a2c6faa0db00","revision":"56191ed22b313f4920e73a846446e8cf4fa69ed3"},
 
-    {"path":"src-server/services/projects/project-contribution-service.ts","digest":"6fea433b2e41b6b1e63688972e17268742b8db91b9c3d1a664e807344dddda0f","revision":"0ad2f560e1d13e4262d5637f173abc3d95959848"},
+    {"path":"src-server/services/projects/project-contribution-service.ts","digest":"5f8baa34120ca70dbe2133442ee8869e1c1b3e96deca3e7c925cb7937f3f0190","revision":"56191ed22b313f4920e73a846446e8cf4fa69ed3"},
 
     {"path":"src-server/services/projects/git-read-repository.ts","digest":"4116e0e69da11f5e17c61e7ee10014235241850e5e963cb0b2ae748d464bd7be","revision":"e7fb9b3161de5d6a3e006ad9760ced9c862130c8"},
 
@@ -26,13 +26,13 @@
 
     {"path":"packages/contracts/src/project-identity.ts","digest":"c81f85061a8223065edd232c39c98b972caae30d6f93b8ee919cc39294d44aee","revision":"eb6363dd58678dd61ba83d5402fc868440ed7851"},
 
-    {"path":"packages/contracts/src/execution-preparation.ts","digest":"c040c53379df17d17320fb10616fa6fe8a5a87caa065c1fed71687763ebd257b","revision":"0ad2f560e1d13e4262d5637f173abc3d95959848"},
+    {"path":"packages/contracts/src/execution-preparation.ts","digest":"59817600c670a00f7bdd8fdc39718221647c2ea9d15ffbac4398ca4256d2f667","revision":"56191ed22b313f4920e73a846446e8cf4fa69ed3"},
 
-    {"path":"src-server/services/execution-target/execution-preparation.ts","digest":"b1038d9b40258288ccf1cd4d01c5d9e6617a9102f7c4dc8df022ea1253245392","revision":"52c2e6372f58e0e3c9870fb32f09fc0d871a0e54"},
+    {"path":"src-server/services/execution-target/execution-preparation.ts","digest":"8c445e5e8368c26c239a24ecc0ebf76e04cf54de0eabf469ce84216912ef1981","revision":"56191ed22b313f4920e73a846446e8cf4fa69ed3"},
 
-    {"path":"src-server/services/execution-target/__tests__/execution-preparation.test.ts","digest":"6c08b315454c4d07b4db0ac2e98b9081b80d63ab38db615019d1d9b348f1dc8c","revision":"52c2e6372f58e0e3c9870fb32f09fc0d871a0e54"},
+    {"path":"src-server/services/execution-target/__tests__/execution-preparation.test.ts","digest":"05e7b7d33d542999b6c7c97b681d837af12a3064fcee3df0ab4a429b27e9089c","revision":"56191ed22b313f4920e73a846446e8cf4fa69ed3"},
 
-    {"path":"src-server/tools/__tests__/station-control-delegation-preparation.test.ts","digest":"21c84a0e5e19d2f314fb1c55bb1b419bf6a680e1711c51a5047535f3cdb2bcba","revision":"60d4784f693b1d26d7aeb1e31ff97320239e4908"},
+    {"path":"src-server/tools/__tests__/station-control-delegation-preparation.test.ts","digest":"0f66a45f2417af7f9bed851a0fb6527c061c6c05adb605060054b2b97b88e105","revision":"56191ed22b313f4920e73a846446e8cf4fa69ed3"},
 
     {"path":"tests/portable-receiver-live-proof.spec.ts","digest":"82184d99edb12ee9e67e1a593f9d6f8ecce17d24fad74b8e112fcad7098b335b","revision":"0ad2f560e1d13e4262d5637f173abc3d95959848"}
   ],
