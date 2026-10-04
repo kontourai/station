@@ -512,7 +512,7 @@ async function _listPersonalFileConversationItems(
           orderBy: 'updated_at',
           orderDirection: 'DESC',
           limit: limit + 1,
-          offset,
+          ...(offset > 0 ? { offset } : {}),
         });
         conversations.push(
           ...batch.filter(
