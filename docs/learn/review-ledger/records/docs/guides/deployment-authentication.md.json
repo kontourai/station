@@ -22,7 +22,7 @@
 
     {"path":"packages/sdk/src/client/projects.ts","digest":"9fd218a7c499cab4fcc9d04e04ca8ff4a7cd7465d2c4176d3b4434cf627c2ffa","revision":"1da4798fab6730e9c81fb91d9d3dbbebc952f976"},
 
-    {"path":"pnpm-lock.yaml","digest":"4f9a974bd49f637fd690699b3bcd9b6ce915114eb4f52e2e6bdd5b0f3b699f2a","revision":"ea49cb8678208b9037f8e9ab3ceb2a95fe2647ff"},
+    {"path":"pnpm-lock.yaml","digest":"e5666b03a0bedc8656564f5371ea01b19879ac4a8ed732280e1d0903025de0c5","revision":"fdca33b1896b280299ba72fc70a3c9b9cda7f3af"},
 
     {"path":"src-desktop/src/native_account_operations.rs","digest":"63d05ea979a9a335c0ded3a400d8f899b6ff5f60deb8a062c5e260d7daeecbec","revision":"2e4f061f91ffb0338e45de62382cf6da59cd5c76"},
 
@@ -46,7 +46,7 @@
 
     {"path":"src-server/security/native-device-request-authority.ts","digest":"1c45b668b337e71894ff067e35213f415cfc830aa6603efbf13f615114087d02","revision":"d4b8f59be510d5eb8220bc5a883dd1691cfa2679"},
 
-    {"path":"src-server/security/pairing-route-scopes.ts","digest":"cd0d7cf06b6f68355d4e509648ac649c62bdf1cabd52b220e7578776b5e01873","revision":"d73d9f64333504f027a200482e978cc4445338da"},
+    {"path":"src-server/security/pairing-route-scopes.ts","digest":"cd0d7cf06b6f68355d4e509648ac649c62bdf1cabd52b220e7578776b5e01873","revision":"e4344fd10ef7a80a6a6f65d7e709fb1be56b64df"},
 
     {"path":"src-server/services/connections/native-v2-pion-application-adapter.ts","digest":"4c2c4ce56b35cdedb57187141df0ac4d24bbb0c69da1dbe541acf54faf843dd7","revision":"55606e0498d0cbd6e7edad154f82dce3c102b186"},
 

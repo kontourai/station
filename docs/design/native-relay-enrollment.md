@@ -207,6 +207,10 @@ reference only with the matching published Station identity; that metadata adds
 no account, Project or Device authority. Redemption keeps its fresh-profile path.
 Saved enrollment recovery resolves its own credential reference from the journal
 and refuses ambiguous references before checking the current route.
+Station-key status and explicit revocation also remain available after publication,
+with the exact profile, application, installation, broker, Station and enrollment
+binding. Credential-bearing profiles must name that same Station. Preparing or
+approving fresh key enrollment still requires an unconfigured manual profile.
 Active receipt deadline validation permits at most five seconds of positive
 clock skew beyond Station's 30-second receipt window, matching the existing
 status timestamp allowance. Already expired receipts and deadlines beyond that
