@@ -182,6 +182,8 @@ describe('DEVICE_SETTINGS_REGISTRY completeness', () => {
         'regionArrangement',
         // #2144 slice 6 — whether deleting a conversation asks first.
         'confirmConversationDelete',
+        // #3051 — the Coding layout's panels, per session.
+        'codingPanels',
         'chatReturnBehavior',
       ].sort(),
     );

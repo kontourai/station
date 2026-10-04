@@ -1,0 +1,7 @@
+{
+  "revision": "397b4cb16ee64b1693eddff490ac75947d250436",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Upstream record taken on merge; re-checked the dock layering and navigation claims against ChatDock.tsx, navigation-store.ts and device-settings-store.ts: the Needs-you publication, the in-place preview write and the typed parser table change no layer, portal or breakpoint. No prose change.","inputs":["docs/guides/responsive-ui.md","docs/ui/responsive-action-surfaces.txt","pnpm-lock.yaml","src-server/security/pairing-route-scopes.ts","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx","src-ui/src/components/chat-dock/ChatDockMobileOverflowSheet.tsx","src-ui/src/components/chat-dock/MobileTaskSwitcher.tsx","src-ui/src/contexts/navigation-store.ts","src-ui/src/lib/device-settings-store.ts","tests/cross-runtime-chat-switching.spec.ts"]}
+  ]
+}

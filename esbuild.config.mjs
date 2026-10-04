@@ -62,6 +62,11 @@ await Promise.all([
     entryPoints: ['./src-server/tools/station-control-server.ts'],
     outfile: `${serverDir}/station-control.js`,
   }),
+  esbuild.build({
+    ...shared,
+    entryPoints: ['./src-server/tools/station-knowledge-server.ts'],
+    outfile: `${serverDir}/station-knowledge.js`,
+  }),
   // station#1547: the credential-free docs server. Bundling it here is what
   // makes "documentation ships with Station, never fetched at runtime" a
   // build property — the topic prose is compiled into this artifact.

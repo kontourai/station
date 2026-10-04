@@ -21,10 +21,12 @@ import {
   isHostedTenantExecutionRequired,
 } from '../bootstrap/runtime-tenant-context.js';
 import {
+  builtinStationApiServerId,
   isBuiltinStationControl,
   withStationControlRuntimeEnv,
 } from '../bootstrap/station-control-runtime-env.js';
 import { sameMCPConnectionDefinition } from '../mcp/mcp-definition-currentness.js';
+import { createNativeStationKnowledgeTools } from '../mcp/station-knowledge-native-tools.js';
 import {
   describeLoaderFailure,
   isLoaderProgrammingFailure,
@@ -180,6 +182,7 @@ export type StrandsToolLoadOptions = Pick<
   | 'mcpToolProvenanceGeneration'
   | 'integrationSecretResolver'
   | 'logger'
+  | 'serverPort'
 >;
 
 export function createStrandsFunctionTools(
@@ -301,6 +304,56 @@ export async function loadStrandsTools(options: {
       if (!claim.isCurrent()) throw new MCPLocalCustodyError('stale');
 
       if (toolDef.enabled === false) {
+        opts.mcpConnectionStatus.set(toolId, { connected: false });
+        continue;
+      }
+
+      if (builtinStationApiServerId(toolId, toolDef) === 'station-knowledge') {
+        const native = createNativeStationKnowledgeTools(
+          toolDef,
+          opts.serverPort,
+          claim,
+          opts.mcpCustody,
+        );
+        const registered = native.tools;
+        const normalized = normalizeLoadedMCPTools(
+          slug,
+          registered.map((tool) => ({
+            ...tool,
+            name: `${toolId}_${tool.name}`,
+          })),
+          opts.toolNameMapping,
+          opts.toolNameReverseMapping,
+          provenanceGeneration,
+          toolId,
+          (tool) => ({
+            serverId: toolId,
+            originalToolName: originalMcpToolName(toolId, tool.name),
+          }),
+          opts.logger,
+        );
+        allTools.push(
+          ...wrapPlatformMutationGatedTools(
+            normalized.filter(
+              (tool) =>
+                !mcpToolDisabled(
+                  toolId,
+                  originalMcpToolName(
+                    toolId,
+                    opts.toolNameMapping.get(tool.name)?.original ?? tool.name,
+                  ),
+                  toolDef.disabledTools,
+                ),
+            ),
+            { agentSlug: slug, toolId },
+          ),
+        );
+        retained = native.retained;
+        opts.integrationMetadata.set(toolId, {
+          type: 'mcp',
+          transport: 'streamable-http',
+          toolCount: registered.length,
+        });
         opts.mcpConnectionStatus.set(toolId, { connected: false });
         continue;
       }
