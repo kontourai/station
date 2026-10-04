@@ -4894,6 +4894,18 @@ export class OrchestrationService {
     return this.transcriptReads.readSessionUsage(threadId, authority);
   }
 
+  /** #3112: a conversation's usage across every Session in its lineage. */
+  readConversationUsage(
+    conversationId: string,
+    authority: SessionReadScope,
+  ): SessionUsageAggregate {
+    this.initialize();
+    return this.transcriptReads.readConversationUsage(
+      this.conversationLineage.conversationSessionIds(conversationId),
+      authority,
+    );
+  }
+
   /**
    * Every persisted session's usage, for lifetime analytics (archive#3245).
    *

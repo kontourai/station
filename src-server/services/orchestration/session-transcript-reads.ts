@@ -170,6 +170,25 @@ export class SessionTranscriptReads {
     );
   }
 
+  /**
+   * #3112: one conversation's usage across its execution Sessions, folded in
+   * lineage order as one event stream, so cumulative figures sum and
+   * "latest" figures (context occupancy, model) come from the newest turn.
+   * A Session the authority cannot read contributes nothing, as in the
+   * conversation message read.
+   */
+  readConversationUsage(
+    threadIds: readonly string[],
+    authority: SessionReadScope,
+  ): SessionUsageAggregate {
+    return foldUsageEvents(
+      threadIds
+        .filter((threadId) => this.deps.canReadSession(threadId, authority))
+        .flatMap((threadId) => this.deps.listEventPayloads(threadId)),
+      (dropped) => this.deps.reportDroppedUsageFigure(dropped),
+    );
+  }
+
   listSessionUsage(authority: SessionReadScope): OrchestrationSessionUsage[] {
     // Its one consumer is `analytics/stats.json`, a home-global lifetime
     // store with no per-user partition, served by a route that applies no

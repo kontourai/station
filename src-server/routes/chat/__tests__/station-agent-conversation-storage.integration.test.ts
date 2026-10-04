@@ -20,6 +20,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { FileMemoryAdapter } from '../../../adapters/file/memory-adapter.js';
 import { StationAgentAdapter } from '../../../providers/adapters/station-agent-adapter.js';
+import { createAgentHooks } from '../../../runtime/agents/agent-hooks.js';
 import { VoltAgentFramework } from '../../../runtime/frameworks/voltagent-adapter.js';
 import { captureRuntimeConfigurationLease } from '../../../runtime/plugins/runtime-configuration-lease.js';
 import type { IAgent } from '../../../runtime/types.js';
@@ -193,7 +194,13 @@ describe('Station-agent conversation storage (#3112)', () => {
         input: {
           threadId,
           provider: 'station-agent',
-          metadata: { agentId: SLUG, userId: OWNER, conversationId },
+          // The start metadata a foreground chat send records.
+          metadata: {
+            agentId: SLUG,
+            agentSlug: SLUG,
+            userId: OWNER,
+            conversationId,
+          },
         },
       },
       { userId: OWNER },
@@ -219,10 +226,10 @@ describe('Station-agent conversation storage (#3112)', () => {
     return createConversationRoutes(
       new Map([[SLUG, memoryAdapter]]) as any,
       quietLogger(),
-      undefined,
-      undefined,
-      undefined,
-      undefined,
+      new Map(),
+      new Map(),
+      { loadAgent: async () => ({ model: 'mock-model-id' }) } as any,
+      { defaultModel: 'mock-model-id' } as any,
       undefined,
       undefined,
       service as any,
@@ -303,6 +310,17 @@ describe('Station-agent conversation storage (#3112)', () => {
       instructions: 'Answer briefly.',
       model: languageModel,
       memoryAdapter: memoryAdapter as any,
+      // The real lifecycle hooks: they record each turn's usage on the
+      // conversation record the turn ran under.
+      hooks: createAgentHooks({
+        spec: { name: SLUG, prompt: 'Answer briefly.' },
+        appConfig: { defaultModel: 'mock-model-id' },
+        configLoader: { loadAgent: async () => ({ model: 'mock-model-id' }) },
+        agentFixedTokens: new Map(),
+        memoryAdapters: new Map([[SLUG, memoryAdapter]]),
+        toolNameMapping: new Map(),
+        logger: quietLogger(),
+      } as any),
     });
     adapter = new StationAgentAdapter({
       apiBase: 'http://127.0.0.1:1',
@@ -405,5 +423,54 @@ describe('Station-agent conversation storage (#3112)', () => {
     );
     expect(hits.length).toBeGreaterThan(0);
     for (const hit of hits) expect(hit.conversationId).toBe('conv-listed');
+  });
+
+  test('a conversation with a successor Session is read-only to the file-store delete, root and successor alike', async () => {
+    const successor = await failTwice('conv-deleted');
+    for (const id of ['conv-deleted', successor]) {
+      const response = await agentRoutes().request(
+        `/${SLUG}/conversations/${encodeURIComponent(id)}`,
+        { method: 'DELETE' },
+      );
+      expect(response.status, id).toBe(409);
+    }
+    // Nothing was removed, so the conversation still reads whole.
+    expect(await memoryAdapter.getConversation('conv-deleted')).not.toBeNull();
+    expect(await memoryAdapter.getConversation(successor)).not.toBeNull();
+    expect(await readMessages('conv-deleted')).toHaveLength(4);
+  });
+
+  test('the conversation stats count every Session in its lineage', async () => {
+    await startSession('conv-stats', 'conv-stats');
+    await send('conv-stats', 'Answered first', 1);
+    modelMode.fail = true;
+    const failed = await send('conv-stats', 'Fails', 2);
+    expect(failed.session.status).toBe('error');
+    modelMode.fail = false;
+    const continuation = await service.resolveConversationContinuation(
+      'conv-stats',
+      INTERNAL_SESSION_READ_SCOPE,
+      { provider: 'station-agent' },
+    );
+    expect(continuation.startRequired).toBe(true);
+    await startSession(continuation.sessionId, 'conv-stats');
+    await send(continuation.sessionId, 'Answered after', 1);
+
+    // Each answered turn's usage is on the record its Session ran under.
+    const recordTurns = async (id: string) =>
+      (
+        (await memoryAdapter.getConversation(id))?.metadata as
+          | { stats?: { turns?: number } }
+          | undefined
+      )?.stats?.turns;
+    expect(await recordTurns('conv-stats')).toBe(1);
+    expect(await recordTurns(continuation.sessionId)).toBe(1);
+
+    const stats = await readJson<{
+      turns: number;
+      inputTokens?: number;
+      outputTokens?: number;
+    }>(agentRoutes(), `/${SLUG}/conversations/conv-stats/stats`);
+    expect(stats).toMatchObject({ turns: 2, inputTokens: 2, outputTokens: 2 });
   });
 });

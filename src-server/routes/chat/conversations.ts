@@ -252,6 +252,11 @@ interface SessionMessageReader {
     threadId: string,
     authority: SessionReadAuthority,
   ): SessionUsageAggregate;
+  /** #3112: `readSessionUsage` across the conversation's whole lineage. */
+  readConversationUsage?(
+    conversationId: string,
+    authority: SessionReadAuthority,
+  ): SessionUsageAggregate;
   listConversationHistoryPage(
     authority: SessionReadAuthority,
     options: { limit: number; cursor?: string; agentSlug?: string },
@@ -2298,9 +2303,15 @@ export function createConversationRoutes(
         logger,
         sessionMessageReader
           ? (threadId: string) =>
-              sessionMessageReader.readSessionUsage?.(threadId, authority)
+              sessionMessageReader.readConversationUsage?.(
+                threadId,
+                authority,
+              ) ?? sessionMessageReader.readSessionUsage?.(threadId, authority)
           : undefined,
         resolveContextWindowTokens,
+        // #3112: the conversation's stats are its whole lineage's, as its
+        // message read is.
+        sessionMessageReader?.conversationSessionIds?.(conversationId),
       );
       const response = parseConversationStatsResponse(data);
       if (!response) throw new Error('Conversation stats response was invalid');
