@@ -7930,6 +7930,10 @@ export class OrchestrationService {
         else this.sendTurnsInDispatch.delete(dispatchedTurnThread);
       }
     }
+    // Unreachable (the switch is exhaustive and every arm returns or throws);
+    // a `finally` stops TypeScript proving that for itself.
+    const unhandled: never = command;
+    throw new Error(`Unhandled orchestration command: ${String(unhandled)}`);
   }
 
   /**
