@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { execSync as realExecSync, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import {
@@ -17,7 +17,10 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { request as nodeRequest } from 'node:http';
-import { createConnection as createRawConnection } from 'node:net';
+import {
+  createConnection as createRawConnection,
+  createServer as createRawServer,
+} from 'node:net';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -792,6 +795,53 @@ async function settleLongRunningFixtures(): Promise<void> {
   await reapAllLongRunningFixtureChildren();
 }
 
+/** True when nothing accepts a TCP bind on `port` right now. */
+async function portIsFree(port: number): Promise<boolean> {
+  return new Promise((resolveFree) => {
+    const probe = createRawServer();
+    probe.once('error', () => resolveFree(false));
+    probe.listen(port, '127.0.0.1', () => probe.close(() => resolveFree(true)));
+  });
+}
+
+/**
+ * A base port whose whole four-port band and the three offsets this suite
+ * uses for UI ports are unbound. Random, never the owner's 3141/3000.
+ */
+async function reserveFreePortBase(): Promise<number> {
+  for (let attempt = 0; attempt < 50; attempt++) {
+    const base = 41_000 + Math.floor(Math.random() * 18_000);
+    const ports = [0, 1, 2, 3, 10, 20, 30].map((offset) => base + offset);
+    if ((await Promise.all(ports.map(portIsFree))).every(Boolean)) return base;
+  }
+  throw new Error('no free port band found');
+}
+
+/** A real process that owns a TCP listener, like a sibling Station would. */
+async function spawnPortOwner(port: number): Promise<number> {
+  const child = spawn(
+    process.execPath,
+    [
+      '-e',
+      `require('node:net').createServer().listen(${port}, '127.0.0.1', () => console.log('ready')); setInterval(() => {}, 10000);`,
+    ],
+    { detached: true, stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true },
+  );
+  child.unref();
+  await new Promise<void>((resolveReady, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error('port owner did not start')),
+      5_000,
+    );
+    child.stdout!.once('data', () => {
+      clearTimeout(timer);
+      resolveReady();
+    });
+    child.once('error', reject);
+  });
+  return child.pid!;
+}
+
 function isAlive(pid: number): boolean {
   try {
     process.kill(pid, 0);
@@ -1305,26 +1355,25 @@ describe('lifecycle instance state', () => {
       },
     });
     const killProcessTree = vi.fn();
+    // Discovery sees the server alive (its first probe), and it is gone by the
+    // time stopRecord re-checks it: a process that exits between the two. A
+    // port listener no longer keeps a record alive (#3253), so liveness has to
+    // come from the recorded pid for stopRecord's own decision to be reached.
+    let serverProbes = 0;
     const killSpy = vi.spyOn(process, 'kill').mockImplementation(((
       pid: number,
       signal?: NodeJS.Signals | number,
     ) => {
+      if (signal === 0 && pid === 45001 && serverProbes++ === 0) {
+        return true;
+      }
       if (signal === 0 && (pid === 45001 || pid === 45002)) {
         throw new Error('gone');
       }
       return true;
     }) as typeof process.kill);
     const { lifecycle } = await loadLifecycleModule({
-      // A stale port listener (unrelated pid) keeps `isInstanceRunning`
-      // true at discovery, so `stop` reaches `stopRecord` instead of the
-      // outer discovery pass reclaiming it first — the case that exercises
-      // stopRecord's own `already_absent` decision rather than the
-      // discovery-time short-circuit.
-      childProcessMock: {
-        execSync: vi.fn((command: string) =>
-          command.includes('lsof') ? '99999\n' : '',
-        ),
-      },
+      childProcessMock: { execSync: vi.fn(() => '') },
       platformOverrides: {
         killProcessTree,
         sleepSync: vi.fn(),
@@ -1766,7 +1815,7 @@ describe('lifecycle instance state', () => {
     }
   }, 15_000);
 
-  it('kills lingering listeners before removing instance state', async () => {
+  it('signals only the recorded pids and never a lingering port owner (#3253)', async () => {
     ensureDir(TEST_CWD);
     ensureDir(TEST_ALT_HOME);
 
@@ -1779,52 +1828,37 @@ describe('lifecycle instance state', () => {
       uiPort: 5274,
     });
 
-    let now = 0;
-    let listenerAlive = true;
+    let serverAlive = true;
     const killProcessTree = vi.fn((pid: number) => {
-      if (pid === 51001) {
-        listenerAlive = false;
-      }
+      if (pid === 41001) serverAlive = false;
     });
-    const execSync = vi.fn((command: string) => {
-      if (
-        command.includes('lsof') &&
-        command.includes('5274') &&
-        listenerAlive
-      ) {
-        return '51001\n';
-      }
-      return '';
-    });
+    // 51001 is somebody else: it holds the instance's UI port but is not a
+    // recorded pid, so there is no proof it belongs to this instance.
+    const execSync = vi.fn((command: string) =>
+      command.includes('lsof') && command.includes('5274') ? '51001\n' : '',
+    );
     const killSpy = vi.spyOn(process, 'kill').mockImplementation(((
       pid: number,
       signal?: NodeJS.Signals | number,
     ) => {
-      if (signal === 0 && pid === 41001) {
+      if (signal === 0 && pid === 41001 && !serverAlive) {
         throw new Error('gone');
       }
       return true;
     }) as typeof process.kill);
-    const dateSpy = vi.spyOn(Date, 'now').mockImplementation(() => now);
 
     const { lifecycle } = await loadLifecycleModule({
       childProcessMock: { execSync },
-      platformOverrides: {
-        killProcessTree,
-        sleepSync: vi.fn((ms: number) => {
-          now += ms;
-        }),
-      },
+      platformOverrides: { killProcessTree, sleepSync: vi.fn() },
     });
 
     try {
       lifecycle.stop({ instanceName: 'alpha' });
       expect(killProcessTree).toHaveBeenCalledWith(41001);
-      expect(killProcessTree).toHaveBeenCalledWith(51001);
+      expect(killProcessTree).not.toHaveBeenCalledWith(51001);
       expect(existsSync(statePath)).toBe(false);
     } finally {
       killSpy.mockRestore();
-      dateSpy.mockRestore();
     }
   });
 
@@ -1832,8 +1866,8 @@ describe('lifecycle instance state', () => {
     ['terminal', 3243],
     ['voice', 3244],
   ])(
-    'treats a %s-only listener as live and kills it before removing state',
-    (_name, lingeringPort) => {
+    'does not treat a %s-only listener as the instance, and never kills it (#3253)',
+    async (_name, lingeringPort) => {
       ensureDir(TEST_CWD);
       const statePath = writeInstanceState({
         baseDir: TEST_ALT_HOME,
@@ -1843,39 +1877,23 @@ describe('lifecycle instance state', () => {
         uiPid: null,
         uiPort: 5274,
       });
-      let now = 0;
-      let listenerAlive = true;
-      const execSync = vi.fn((command: string) => {
-        if (command.includes(`iTCP:${lingeringPort}`) && listenerAlive) {
-          return '52001\n';
-        }
-        return '';
-      });
-      const killProcessTree = vi.fn((pid: number) => {
-        if (pid === 52001) listenerAlive = false;
-      });
-      const dateSpy = vi.spyOn(Date, 'now').mockImplementation(() => now);
+      const execSync = vi.fn((command: string) =>
+        command.includes(`iTCP:${lingeringPort}`) ? '52001\n' : '',
+      );
+      const killProcessTree = vi.fn();
 
-      return loadLifecycleModule({
+      const { lifecycle } = await loadLifecycleModule({
         childProcessMock: { execSync },
-        platformOverrides: {
-          killProcessTree,
-          sleepSync: vi.fn((ms: number) => {
-            now += ms;
-          }),
-        },
-      }).then(({ lifecycle }) => {
-        try {
-          expect(
-            lifecycle.isRunning({ instanceName: `lingering-${_name}` }),
-          ).toBe(true);
-          lifecycle.stop({ instanceName: `lingering-${_name}` });
-          expect(killProcessTree).toHaveBeenCalledWith(52001);
-          expect(existsSync(statePath)).toBe(false);
-        } finally {
-          dateSpy.mockRestore();
-        }
+        platformOverrides: { killProcessTree, sleepSync: vi.fn() },
       });
+      // The record names no live pid, so it is stale however busy its ports
+      // are; reading it reclaims it instead of holding the sibling's ports.
+      expect(lifecycle.isRunning({ instanceName: `lingering-${_name}` })).toBe(
+        false,
+      );
+      lifecycle.stop({ instanceName: `lingering-${_name}` });
+      expect(killProcessTree).not.toHaveBeenCalled();
+      expect(existsSync(statePath)).toBe(false);
     },
   );
 
@@ -2260,6 +2278,219 @@ describe('lifecycle instance state', () => {
 
     process.kill(siblingPid, 'SIGKILL');
   }, 15_000);
+
+  it(
+    'stop after a start that lost a colliding port leaves the sibling Station running (#3253)',
+    async () => {
+      ensureDir(TEST_CWD);
+      ensureDir(TEST_ALT_HOME);
+      writeBuildManifest('collide-b');
+      const base = await reserveFreePortBase();
+      // The sibling started from another checkout, so this checkout holds no
+      // record of it: only the real listener on its terminal port exists.
+      const siblingPid = await spawnPortOwner(base);
+      // The new server dies at once, as a Station does when its port is taken;
+      // its UI child keeps running until the failed start rolls it back.
+      const serverChild = spawn(process.execPath, ['-e', 'process.exit(1)'], {
+        detached: true,
+        stdio: 'ignore',
+        windowsHide: true,
+      });
+      const uiPid = await spawnLongRunning();
+      const uiChild = { pid: uiPid, unref: vi.fn() };
+      const realPlatform = await vi.importActual<PlatformModule>(
+        '../commands/platform.js',
+      );
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(() => Promise.reject(new Error('ECONNREFUSED'))),
+      );
+      // Real lsof, so a port-based stop would really find the sibling.
+      const execSync = vi.fn((command: string, options?: object) =>
+        command.includes('lsof') ? realExecSync(command, options as never) : '',
+      );
+      const { lifecycle } = await loadLifecycleModule({
+        childProcessMock: {
+          execSync,
+          spawn: vi
+            .fn()
+            .mockReturnValueOnce(serverChild)
+            .mockReturnValueOnce(uiChild),
+        },
+        platformOverrides: {
+          captureStableProcessFingerprint:
+            realPlatform.inspectProcessFingerprint,
+        },
+      });
+      try {
+        await expect(
+          lifecycle.start({
+            baseDir: TEST_ALT_HOME,
+            host: '127.0.0.1',
+            instanceName: 'collide-b',
+            serverPort: base,
+            uiPort: base + 10,
+          }),
+        ).rejects.toThrow(/Failed to start instance/);
+        // The failed start rolled itself back completely.
+        for (let i = 0; i < 40 && isAlive(uiPid); i++) {
+          await new Promise((r) => setTimeout(r, 50));
+        }
+        expect(isAlive(uiPid)).toBe(false);
+        expect(
+          liveStateRecords().filter((record) => record.serverPort === base),
+        ).toEqual([]);
+        expect(() =>
+          lifecycle.stop({ instanceName: 'collide-b' }),
+        ).not.toThrow();
+        expect(isAlive(siblingPid)).toBe(true);
+        expect(await portIsFree(base)).toBe(false);
+      } finally {
+        process.kill(siblingPid, 'SIGKILL');
+      }
+    },
+    PROCESS_INTEGRATION_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    'stop never signals the sibling that holds a port a leftover record claims (#3253)',
+    async () => {
+      ensureDir(TEST_CWD);
+      const base = await reserveFreePortBase();
+      const siblingPid = await spawnPortOwner(base);
+      // What a failed start used to leave behind: a record for a dead server
+      // that claims the live sibling's port.
+      const leftover = writeInstanceState({
+        instanceName: 'leftover-b',
+        serverPid: 2_147_000_001,
+        uiPid: null,
+        serverPort: base,
+        uiPort: base + 10,
+      });
+      const execSync = vi.fn((command: string, options?: object) =>
+        command.includes('lsof') ? realExecSync(command, options as never) : '',
+      );
+      const { lifecycle } = await loadLifecycleModule({
+        childProcessMock: { execSync },
+      });
+      try {
+        expect(() =>
+          lifecycle.stop({ instanceName: 'leftover-b' }),
+        ).not.toThrow();
+        expect(isAlive(siblingPid)).toBe(true);
+        expect(existsSync(leftover)).toBe(false);
+      } finally {
+        process.kill(siblingPid, 'SIGKILL');
+      }
+    },
+    PROCESS_INTEGRATION_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    'refuses to signal a recorded pid whose process is no longer the one that was started (#3253)',
+    async () => {
+      ensureDir(TEST_CWD);
+      // A live process stands in for a pid the OS reused for a sibling Station.
+      const reusedPid = await spawnLongRunning();
+      const statePath = writeInstanceState({
+        instanceName: 'reused-pid',
+        serverPid: reusedPid,
+        uiPid: null,
+        serverPort: 44_731,
+        uiPort: 44_741,
+        serverFingerprint: {
+          pid: reusedPid,
+          startToken: 'not-the-start-token-of-this-process',
+          commandDigest: 'f'.repeat(64),
+        },
+      });
+      const realPlatform = await vi.importActual<PlatformModule>(
+        '../commands/platform.js',
+      );
+      const killProcessTree = vi.fn(realPlatform.killProcessTree);
+      const { lifecycle } = await loadLifecycleModule({
+        childProcessMock: { execSync: vi.fn(() => '') },
+        platformOverrides: { killProcessTree, sleepSync: vi.fn() },
+      });
+      expect(() => lifecycle.stop({ instanceName: 'reused-pid' })).toThrow(
+        /Refusing to signal PID/,
+      );
+      expect(killProcessTree).not.toHaveBeenCalled();
+      expect(isAlive(reusedPid)).toBe(true);
+      expect(existsSync(statePath)).toBe(true);
+    },
+    PROCESS_INTEGRATION_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    'refuses a start whose band overlaps a registered sibling, naming it (#3253)',
+    async () => {
+      ensureDir(TEST_CWD);
+      ensureBuildOutputs('registry-b');
+      ensureOwnerControlledStationHome(TEST_ALT_HOME);
+      ensureStationHomeSchemaSync(TEST_ALT_HOME);
+      const base = await reserveFreePortBase();
+      const siblingPid = await spawnLongRunning();
+      upsertInstance(
+        'registered-a',
+        {
+          port: base - 1,
+          uiPort: base + 20,
+          type: 'worktree',
+          status: 'running',
+          pid: siblingPid,
+          checkout: '/elsewhere/checkout',
+        },
+        TEST_ALT_HOME,
+      );
+      const spawnChild = vi.fn(() => {
+        throw new Error('band check passed');
+      });
+      const { lifecycle } = await loadLifecycleModule({
+        childProcessMock: { execSync: vi.fn(() => ''), spawn: spawnChild },
+      });
+      try {
+        // registered-a reserves base-1 .. base+2 plus its UI port base+20.
+        await expect(
+          lifecycle.start({
+            allowSharedHome: true,
+            baseDir: TEST_ALT_HOME,
+            instanceName: 'registry-b',
+            serverPort: base,
+            uiPort: base + 10,
+          }),
+        ).rejects.toThrow(
+          /overlap another registered Station instance[\s\S]*registered-a/,
+        );
+        // Its UI port can collide too, even when the server bands are apart.
+        await expect(
+          lifecycle.start({
+            allowSharedHome: true,
+            baseDir: TEST_ALT_HOME,
+            instanceName: 'registry-b',
+            serverPort: base + 30,
+            uiPort: base + 20,
+          }),
+        ).rejects.toThrow(/registered-a/);
+        expect(spawnChild).not.toHaveBeenCalled();
+        // False-positive control: a disjoint band passes the check and reaches
+        // the spawn.
+        await expect(
+          lifecycle.start({
+            allowSharedHome: true,
+            baseDir: TEST_ALT_HOME,
+            instanceName: 'registry-b',
+            serverPort: base + 4,
+            uiPort: base + 10,
+          }),
+        ).rejects.toThrow('band check passed');
+        expect(spawnChild).toHaveBeenCalledTimes(1);
+      } finally {
+        process.kill(siblingPid, 'SIGKILL');
+      }
+    },
+    PROCESS_INTEGRATION_TEST_TIMEOUT_MS,
+  );
 
   it('keeps startup when aggregate status hangs but authenticated identity becomes ready', async () => {
     ensureDir(TEST_CWD);
