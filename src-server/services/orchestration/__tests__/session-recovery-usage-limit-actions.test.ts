@@ -308,4 +308,95 @@ describe('#3157 usage-limit banner actions', () => {
     await coordinator.dispose();
     store.close();
   });
+
+  test('an early Resume now refused by the same limit arms the replay for the reset instead of ending the wait', async () => {
+    vi.useFakeTimers({ now: STOPPED_AT });
+    const { store, coordinator, dispatch } = setup(() => true);
+    stopOnUsageLimit(coordinator, store);
+    await vi.advanceTimersByTimeAsync(60_000);
+    await expect(coordinator.resumeUsageLimitNow(THREAD)).resolves.toEqual({
+      kind: 'resumed',
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(dispatch).toHaveBeenCalledOnce();
+
+    // The replayed turn starts with the claim's correlation, then the provider
+    // refuses it with the same limit and the same reset.
+    const replay = dispatch.mock.calls[0]?.[0].replay;
+    observe(coordinator, store, {
+      eventId: 'replay-start',
+      provider: 'codex',
+      threadId: THREAD,
+      turnId: 'resumed-turn',
+      createdAt: new Date(Date.now()).toISOString(),
+      method: 'turn.started',
+      prompt: 'Finish the migration.',
+      metadata: { recoveryCorrelationId: replay?.recoveryCorrelationId },
+    });
+    observe(coordinator, store, {
+      eventId: 'replay-error',
+      provider: 'codex',
+      threadId: THREAD,
+      turnId: 'resumed-turn',
+      createdAt: new Date(Date.now()).toISOString(),
+      method: 'runtime.error',
+      severity: 'error',
+      code: 'usageLimitExceeded',
+      retriable: false,
+      message: "You've hit your usage limit.",
+      details: { usageLimit: true, scope: 'account', resetAt: RESET_AT },
+    });
+    await vi.advanceTimersByTimeAsync(0);
+
+    // The user still sees a waiting stop for the reset, not a spent one.
+    expect(coordinator.latestProjection(THREAD)).toMatchObject({
+      decision: 'wait-until-reset',
+      outcome: 'armed',
+      dueAt: RESET_AT,
+      usageLimit: true,
+    });
+    expect(dispatch).toHaveBeenCalledOnce();
+    await vi.advanceTimersByTimeAsync(UNTIL_RESET_MS);
+    expect(dispatch).toHaveBeenCalledTimes(2);
+    await coordinator.dispose();
+    store.close();
+  });
+
+  test('a resumed turn that fails for another reason still ends the intent, with nothing armed', async () => {
+    vi.useFakeTimers({ now: STOPPED_AT });
+    const { store, coordinator, dispatch } = setup(() => true);
+    stopOnUsageLimit(coordinator, store);
+    await coordinator.resumeUsageLimitNow(THREAD);
+    await vi.advanceTimersByTimeAsync(0);
+    const replay = dispatch.mock.calls[0]?.[0].replay;
+    observe(coordinator, store, {
+      eventId: 'replay-start',
+      provider: 'codex',
+      threadId: THREAD,
+      turnId: 'resumed-turn',
+      createdAt: new Date(Date.now()).toISOString(),
+      method: 'turn.started',
+      prompt: 'Finish the migration.',
+      metadata: { recoveryCorrelationId: replay?.recoveryCorrelationId },
+    });
+    observe(coordinator, store, {
+      eventId: 'replay-error',
+      provider: 'codex',
+      threadId: THREAD,
+      turnId: 'resumed-turn',
+      createdAt: new Date(Date.now()).toISOString(),
+      method: 'runtime.error',
+      severity: 'error',
+      code: 'engine-turn-failed',
+      retriable: false,
+      message: 'The engine crashed.',
+    });
+    await vi.advanceTimersByTimeAsync(UNTIL_RESET_MS + 60_000);
+    expect(coordinator.latestProjection(THREAD)).toMatchObject({
+      outcome: 'failed',
+    });
+    expect(dispatch).toHaveBeenCalledOnce();
+    await coordinator.dispose();
+    store.close();
+  });
 });

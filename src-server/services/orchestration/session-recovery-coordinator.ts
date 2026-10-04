@@ -227,9 +227,23 @@ export class SessionRecoveryCoordinator {
         return;
       }
       if (this.completingFingerprints.has(resumed.fingerprint)) return;
-      this.enqueueLifecycle(resumed.fingerprint, () =>
-        this.failIntent(resumed),
-      );
+      // #3157: a resume sent before the reset (the user's Resume now) can be
+      // refused by the same limit. That is a new stop of the replayed turn, not
+      // the end of the wait: settle the spent intent, then arm the replay's own
+      // (its fingerprint names the replay turn) so the reset still resumes it.
+      // The old one is settled first, so the new one is the Session's latest.
+      const limitedAgain =
+        resumed.usageLimit === true &&
+        classifyConnectionFailure(event).usageLimit === true;
+      this.enqueueLifecycle(resumed.fingerprint, async () => {
+        await this.failIntent(resumed);
+        if (!limitedAgain || this.disposed || this.stopping) return;
+        try {
+          this.armForRuntimeError(event);
+        } catch {
+          // Fail closed, as the rest of this observer does.
+        }
+      });
     } catch {
       // Fail closed: preserve the runtime event without a recovery action.
     }
