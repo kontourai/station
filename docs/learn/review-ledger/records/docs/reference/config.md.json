@@ -72,7 +72,7 @@
 
     {"path":"src-server/runtime/agents/runtime-template-variables.ts","digest":"bd513e1ef20fe3f80633064c0ea8a3b6bde1ca8fd515baa0a81193f8ed71e894","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/runtime/bootstrap/runtime-http.ts","digest":"b769b523e74c89d511cf1b826eca27595038187b42ed987e3332ea40a0c6cdd0","revision":"0371f7dc7c6adc213a577809267f86740b64a676"},
+    {"path":"src-server/runtime/bootstrap/runtime-http.ts","digest":"bfc0f085cd03881cd354e384588eea7b114cd8fada2a88e28ecc340c157b1c4e","revision":"92d7e8ed802362c72136e0072b5d16c4a4bf84b4"},
 
     {"path":"src-server/runtime/bootstrap/runtime-initialize.ts","digest":"bd381c9d60f70ac986c9eee0977752d883f52a018842fee300d3e352933aea6d","revision":"56f4c4897a189eeb30430119a4f4895e95fbb541"},
 

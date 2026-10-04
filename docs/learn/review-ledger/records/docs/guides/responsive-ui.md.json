@@ -40,7 +40,7 @@
 
     {"path":"src-server/routes/agents/agents.ts","digest":"06d20a294112b76993e9a1efd4ab9ce639242ab9116e04a7f1cbb7f68153ba23","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-server/runtime/bootstrap/runtime-http.ts","digest":"b769b523e74c89d511cf1b826eca27595038187b42ed987e3332ea40a0c6cdd0","revision":"0371f7dc7c6adc213a577809267f86740b64a676"},
+    {"path":"src-server/runtime/bootstrap/runtime-http.ts","digest":"bfc0f085cd03881cd354e384588eea7b114cd8fada2a88e28ecc340c157b1c4e","revision":"92d7e8ed802362c72136e0072b5d16c4a4bf84b4"},
 
     {"path":"src-server/runtime/streaming/StreamPipeline.ts","digest":"cdf3e6786b92a321ffa13c413f25b8b7bf367436b389f7212492cb2eccf1c6f2","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
