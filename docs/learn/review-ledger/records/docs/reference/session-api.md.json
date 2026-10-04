@@ -10,19 +10,43 @@
   "limits": "Source and fixture evidence do not establish installed native CLI compatibility, a live engine turn, physical UI behavior, or hosted deployment. No version-specific native fork qualification is claimed.",
 
   "sources": [
+    "packages/sdk/src/client/chatHttpError.ts",
+
     "scripts/session-api-roundtrip.mjs",
+
+    "src-server/providers/__tests__/codex-adapter-rpc-id.test.ts",
+
+    "src-server/providers/adapters/acp-adapter-events.ts",
 
     "src-server/providers/adapters/acp-adapter.ts",
 
     "src-server/providers/adapters/claude-adapter.ts",
 
+    "src-server/providers/adapters/codex-adapter-transport.ts",
+
+    "src-server/providers/adapters/codex-adapter-types.ts",
+
     "src-server/providers/adapters/codex-adapter.ts",
+
+    "src-server/providers/adapters/harness-questions.ts",
 
     "src-server/providers/sessions/claude-transcript-session-source.ts",
 
     "src-server/providers/sessions/codex-rollout-session-source.ts",
 
+    "src-server/routes/orchestration/dispatch-scope.ts",
+
     "src-server/routes/orchestration/orchestration.ts",
+
+    "src-server/runtime/mcp/__tests__/station-control-dispatch-scope.test.ts",
+
+    "src-server/runtime/mcp/station-control-dispatch-scope.ts",
+
+    "src-server/runtime/routes/__tests__/runtime-routes-station-control-dispatch-scope.test.ts",
+
+    "src-server/services/execution-target/__tests__/execution-target-resolver.test.ts",
+
+    "src-server/services/execution-target/execution-target-resolver.ts",
 
     "src-server/services/flow/survey-flow-review-service.ts",
 
@@ -34,41 +58,17 @@
 
     "src-server/services/projects/attention-projection.ts",
 
-    "src-ui/src/components/attention/AttentionCard.tsx",
-
-    "src-server/runtime/mcp/station-control-dispatch-scope.ts",
-
-    "src-server/routes/orchestration/dispatch-scope.ts",
-
     "src-server/tools/station-control-policy.ts",
-
-    "src-server/runtime/mcp/__tests__/station-control-dispatch-scope.test.ts",
-
-    "src-server/runtime/routes/__tests__/runtime-routes-station-control-dispatch-scope.test.ts",
-
-    "src-server/services/execution-target/execution-target-resolver.ts",
-
-    "src-server/services/execution-target/__tests__/execution-target-resolver.test.ts",
 
     "src-server/utils/path-containment.ts",
 
-    "src-server/providers/adapters/codex-adapter-transport.ts",
-
-    "src-server/providers/adapters/codex-adapter-types.ts",
-
-    "src-server/providers/__tests__/codex-adapter-rpc-id.test.ts",
-
-    "src-ui/src/hooks/orchestration/queueDrain.ts",
-
-    "src-ui/src/hooks/useActiveChatSessionMessaging.ts",
+    "src-ui/src/components/attention/AttentionCard.tsx",
 
     "src-ui/src/components/chat-dock/ConversationHandoffDialog.tsx",
 
-    "packages/sdk/src/client/chatHttpError.ts",
+    "src-ui/src/hooks/orchestration/queueDrain.ts",
 
-    "src-server/providers/adapters/harness-questions.ts",
-
-    "src-server/providers/adapters/acp-adapter-events.ts"
+    "src-ui/src/hooks/useActiveChatSessionMessaging.ts"
   ],
 
   "checks": [

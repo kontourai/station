@@ -96,6 +96,7 @@ import {
   delegationAttemptClaimKey,
   delegationAttemptIntentDigest,
 } from '../services/orchestration/delegation-attempt-claim-store.js';
+import type { DispatchCwdAdmission } from '../services/orchestration/dispatch-cwd-admission.js';
 import { captureExecutionWorkspaceBinding } from '../services/orchestration/execution-workspace-binding.js';
 import {
   type ForegroundInvocationAdmission,
@@ -376,6 +377,11 @@ export interface DelegateTaskInput {
    * in-process caller) starts it confined to its workspace.
    */
   fullAccessGrant?: FullAccessGrant | null;
+  /**
+   * #2873: route-set only: the dispatch route's scope decision for the
+   * folder this task starts in, run again where its engine is spawned.
+   */
+  dispatchCwdAdmission?: DispatchCwdAdmission;
   /** Trusted request authority supplied only by runtime composition. */
   readAuthority?: SessionReadAuthority;
   /** Resolved at the authenticated request seam; never accepted as tool input. */
@@ -1700,6 +1706,9 @@ function dispatchContextForAuthority(
   // #2493: the route's full-access grant for a start this dispatch causes.
   // `prepareStart` reads it (`startConfinement`); absent confines the start.
   fullAccessGrant?: FullAccessGrant | null,
+  // #2873: the route's scope decision for a new session's folder; the
+  // service runs it again beside the adapter start.
+  dispatchCwdAdmission?: DispatchCwdAdmission,
 ): {
   userId: string;
   tenantExecutionContext?: SessionReadAuthority['tenantExecutionContext'];
@@ -1707,6 +1716,7 @@ function dispatchContextForAuthority(
   principal?: PrincipalRef;
   ownerAttribution?: StartOwnerAttribution;
   fullAccessGrant?: FullAccessGrant;
+  dispatchCwdAdmission?: DispatchCwdAdmission;
 } {
   return {
     userId: authority.userId,
@@ -1717,6 +1727,7 @@ function dispatchContextForAuthority(
     ...(principal ? { principal } : {}),
     ...(ownerAttribution ? { ownerAttribution } : {}),
     ...(fullAccessGrant ? { fullAccessGrant } : {}),
+    ...(dispatchCwdAdmission ? { dispatchCwdAdmission } : {}),
   };
 }
 
@@ -5311,6 +5322,7 @@ export async function delegateTask(
           input.principal,
           input.ownerAttribution,
           input.fullAccessGrant,
+          input.dispatchCwdAdmission,
         ),
         {
           conversationIdentity: {
@@ -5626,6 +5638,8 @@ export async function executeExecutionTargetMessage(
     const {
       automaticBackground: _automaticBackground,
       fullAccessGrant: _fullAccessGrant,
+      // #2873: this Station's own scope decision; never forwarded.
+      dispatchCwdAdmission: _dispatchCwdAdmission,
       delegation: _claimedDelegation,
       delegationAttestation: _claimedAttestation,
       stationControlToolCall: _stationControlToolCall,
@@ -5983,6 +5997,7 @@ export async function executeExecutionTargetMessage(
           input.principal,
           input.ownerAttribution,
           input.fullAccessGrant,
+          input.dispatchCwdAdmission,
         ),
         {
           ...(executionWorkspace ? { executionWorkspace } : {}),
