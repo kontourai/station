@@ -1,0 +1,7 @@
+{
+  "revision": "540e333a79fee816719cfb110466541ce12cf90e",
+
+  "notes": [
+    {"path":"docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md","note":"#3164 review: the seed change replaces the last-N-characters continuation/handoff seed with whole messages under an estimated-token budget and relabels the authorizedTranscript handoff disclosure. Checked this document: it states no seed size, character limit, transcript-carry wording or disclosure label text, so its claims remain accurate.","inputs":["docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md"]}
+  ]
+}

@@ -9,12 +9,10 @@
 
   "limits": "Generated contract or retained release evidence; no new hosted release, live label mutation or platform result is claimed.",
 
-  "document": {"digest":"e26be060e5809cad7815188bf55841d34f08857f33f92ee1a7f6ca3d1dd2d39d","revision":"2dd99129dc84d2589b416ca56f5e0060fc30c1ab"},
-
   "sources": [
-    {"path":"scripts/lib/product-laws.mjs","digest":"b7a549ca0025afb7f662b215e56aad007308b999a3700e0bd7e28464954cc275","revision":"2dd99129dc84d2589b416ca56f5e0060fc30c1ab"},
+    "scripts/lib/product-laws.mjs",
 
-    {"path":"scripts/product-law-gate.mjs","digest":"3611528993c47648caa7c64150902820410f1f330c235891396f4927033e4766","revision":"2dd99129dc84d2589b416ca56f5e0060fc30c1ab"}
+    "scripts/product-law-gate.mjs"
   ],
 
   "checks": [

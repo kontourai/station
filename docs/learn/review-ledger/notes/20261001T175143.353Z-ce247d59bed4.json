@@ -1,0 +1,7 @@
+{
+  "revision": "0f2037dcc2b0a3a4d9f0e086c61c3dccaf8141de",
+
+  "notes": [
+    {"path":"docs/design/task-room-agent-requests.md","note":"Follow-up fixture review at0f2037dcc: SDK test changes are formatter-only; the mounted TaskWorkspace fixture intentionally advertises only legacy request support, so it now explicitly unchecks Include Task brief before sending. The same captured Project/Task/incarnation binding is still asserted. All72 selected SDK/hook/composer/conversation/workspace tests passed. This does not qualify live provider, team/public, native or new browser acceptance; prior limits remain.","inputs":["docs/design/task-room-agent-requests.md"]}
+  ]
+}

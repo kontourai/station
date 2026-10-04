@@ -1,7 +1,0 @@
-{
-  "revision": "8fb86e238ff256f452a6d28ef6392e211082c7cd",
-
-  "notes": [
-    {"path":"docs/reference/api.md","note":"Declared-output keep delta reviewed at8fb86e238: route captures Task.createdAt with original Project/workspace and rechecks under file and PR commit witnesses. Independent source/claim review found no actionable issue; independent focused29 tests passed. Typed delayed SessionOutputs port forwards into real TaskOutput persistence: pre-fix recreated witness returned201 instead404; fixed rejects with no output and stable control preserves exact bytes. This is route witness/file persistence proof, not durable TaskGraph recreation, production declaration association or PR race execution. Separate output/TaskGraph locks do not establish a joint transaction. New API subsection matches201/409/410/503/opaque404 behavior and retains attribution/quality/feedback limits; unrelated page and release claims are not renewed."}
-  ]
-}

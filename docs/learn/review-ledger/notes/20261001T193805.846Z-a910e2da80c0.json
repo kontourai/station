@@ -1,7 +1,0 @@
-{
-  "revision": "3a241015cbd3cdaff6f29f9d0b90d3fddcdd026a",
-
-  "notes": [
-    {"path":"docs/reference/api.md","note":"Fixture cleanup delta: the new declared-output route cases now use existing trackTempDirs() for both owned directories; the two inherited raw calls and baseline remain unchanged. Temp-dir ratchet passed; all12 route tests passed. Production publication witness and API prose are unchanged from8fb86e238 and independent review. Earlier CI failed at the new raw temp count; that receipt is retained. No broader declaration, atomicity, browser, provider or release claim is renewed."}
-  ]
-}

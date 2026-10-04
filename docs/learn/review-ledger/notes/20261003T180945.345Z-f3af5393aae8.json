@@ -1,0 +1,7 @@
+{
+  "revision": "bad750f9e9f14414b07c2c9d4c5464b3dc7b0c3f",
+
+  "notes": [
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"#3164 fix round: conversation-lineage.ts seed call now also counts messages with no text. Re-read the context; it states only that handoff can require a reserved successor, which is unchanged.","inputs":["docs/contexts/agent-runtime/CONTEXT.md"]}
+  ]
+}

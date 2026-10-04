@@ -726,3 +726,67 @@ test('a written goal returns from setup automatically when its selected agent is
   expect(view.onSelect.mock.calls[0]?.[3]).toBe(goal);
   expect(navigationStore.getSnapshot().pathname).toBe('/');
 });
+
+test('opening setup commits the destination before retiring dialog history and keeps the returned draft writable', async () => {
+  const back = vi.spyOn(window.history, 'back').mockImplementation(() => {});
+  try {
+    const view = harness({ agents: [READY] });
+    fireEvent.change(screen.getByPlaceholderText('Search agents...'), {
+      target: { value: '' },
+    });
+    view.update({ agents: [NEEDS_SETUP] });
+    await openSetup();
+    expect(back).not.toHaveBeenCalled();
+    view.update({ agents: [READY] });
+    await returnToChat();
+    fireEvent.keyDown(screen.getByPlaceholderText('Search agents...'), {
+      key: 'Enter',
+    });
+    expect(view.onSelect).toHaveBeenCalledOnce();
+  } finally {
+    cleanup();
+    back.mockRestore();
+  }
+});
+
+test('a refused setup navigation restores the draft with feedback instead of leaving a waiting banner', async () => {
+  const view = harness();
+  const unregister = navigationStore.registerNavigationGuard(
+    Symbol('cancel setup'),
+    (_proceed, cancel) => cancel?.(),
+  );
+  try {
+    fireEvent.click(screen.getByRole('button', { name: 'Connect Assistant' }));
+    await screen.findByText(/Could not open setup/);
+    expect(screen.getByRole('dialog', { name: 'New Chat' })).toBeTruthy();
+    expect(
+      screen.queryByRole('button', { name: 'Return to New Chat' }),
+    ).toBeNull();
+    expect(navigationStore.getSnapshot().pathname).toBe('/');
+    expect(view.onSelect).not.toHaveBeenCalled();
+  } finally {
+    unregister();
+  }
+});
+
+test('composer setup returns directly to the retained message and repaired Agent without starting work', async () => {
+  const view = harness({ startSurface: true, agents: [NEEDS_SETUP] });
+  fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), {
+    target: { value: 'Keep my message' },
+  });
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Connect Assistant' }),
+  );
+  await waitFor(() =>
+    expect(navigationStore.getSnapshot().pathname).toBe('/connections/models'),
+  );
+  view.update({ agents: [READY] });
+  fireEvent.click(screen.getByRole('button', { name: 'Return to New Chat' }));
+  expect(
+    await screen.findByRole('textbox', { name: 'Message' }),
+  ).toHaveProperty('value', 'Keep my message');
+  expect(view.onSelect).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+  expect(view.onSelect).toHaveBeenCalledOnce();
+  expect(view.onSelect.mock.calls[0][3]).toBe('Keep my message');
+});
