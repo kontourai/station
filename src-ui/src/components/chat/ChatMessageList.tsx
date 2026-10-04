@@ -251,6 +251,8 @@ function ChatMessageListComponent({
     () => new Set(),
   );
   const loadingOlderRef = useRef(false);
+  const olderCommitPendingRef = useRef(false);
+  const [olderCommitEpoch, setOlderCommitEpoch] = useState(0);
   const previousTranscriptRows = useRef<readonly TranscriptRow[]>([]);
 
   // Every programmatic scrollTop write goes through these so the scroll
@@ -581,10 +583,28 @@ function ChatMessageListComponent({
     }
     try {
       await onLoadOlder();
-    } finally {
+    } catch (error) {
       loadingOlderRef.current = false;
+      throw error;
     }
+    // The request is not over when its promise settles: the page the hook just
+    // merged is still queued behind this tick, and until that render commits
+    // (and the virtualizer restores the reader's row in the same commit) the
+    // DOM still shows the old top, button enabled and scrollTop in the
+    // auto-load band. A press or scroll event landing in that gap would
+    // request the same cursor's successor for one visible action. Hold the
+    // shared in-flight flag until the next commit; a state write here
+    // guarantees one even when the load changed nothing, and it batches with
+    // the hook's own writes, so that commit carries the page.
+    olderCommitPendingRef.current = true;
+    setOlderCommitEpoch((epoch) => epoch + 1);
   };
+  useLayoutEffect(() => {
+    void olderCommitEpoch;
+    if (!olderCommitPendingRef.current) return;
+    olderCommitPendingRef.current = false;
+    loadingOlderRef.current = false;
+  }, [olderCommitEpoch]);
 
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const target = e.currentTarget;

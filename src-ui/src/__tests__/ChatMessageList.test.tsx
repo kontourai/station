@@ -4,7 +4,7 @@
 
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReactElement } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
@@ -180,6 +180,68 @@ describe('ChatMessageList', () => {
     fireEvent.wheel(log);
     fireEvent.scroll(log);
     expect(loadOlder).toHaveBeenCalledTimes(1);
+  });
+
+  test('one press loads one page: the gap between the request settling and its page committing is still in flight', async () => {
+    const releaseLoads: Array<() => void> = [];
+    const loadOlder = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          releaseLoads.push(resolve);
+        }),
+    );
+    render(
+      <ChatMessageList
+        activeSession={resizeSession()}
+        fontSize={14}
+        showReasoning={false}
+        showToolDetails={false}
+        hasOlderMessages
+        onLoadOlder={loadOlder}
+      />,
+    );
+    const log = screen.getByRole('log');
+    installScrollGeometry(log);
+    const press = screen.getByRole('button', { name: 'Earlier messages' });
+    fireEvent.click(press);
+    expect(loadOlder).toHaveBeenCalledTimes(1);
+    // The request settles, but React has not committed the page it carries
+    // (nothing here flushes it): the DOM still shows the old top, the button
+    // enabled and the reader in the auto-load band. This is the window a
+    // browser press, or the scroll that brought the reader to the top, lands
+    // in under a slow render. Neither is a second request.
+    releaseLoads[0]();
+    for (let tick = 0; tick < 5; tick++) await Promise.resolve();
+    fireEvent.click(press);
+    log.scrollTop = 50;
+    fireEvent.scroll(log);
+    expect(loadOlder).toHaveBeenCalledTimes(1);
+    // Once the commit has landed the in-flight request is over: the reader
+    // reaching the top again loads the next page, by design (#2706).
+    await act(async () => {});
+    log.scrollTop = 20;
+    fireEvent.scroll(log);
+    expect(loadOlder).toHaveBeenCalledTimes(2);
+  });
+
+  test('a load that settles with nothing to commit still releases the in-flight request', async () => {
+    const loadOlder = vi.fn(async () => {});
+    render(
+      <ChatMessageList
+        activeSession={resizeSession()}
+        fontSize={14}
+        showReasoning={false}
+        showToolDetails={false}
+        hasOlderMessages
+        onLoadOlder={loadOlder}
+      />,
+    );
+    const press = screen.getByRole('button', { name: 'Earlier messages' });
+    fireEvent.click(press);
+    await act(async () => {});
+    fireEvent.click(press);
+    await act(async () => {});
+    expect(loadOlder).toHaveBeenCalledTimes(2);
   });
 
   test('layoutHeight preserves pinned-bottom and scrolled-up reader intent before ResizeObserver delivery', () => {
