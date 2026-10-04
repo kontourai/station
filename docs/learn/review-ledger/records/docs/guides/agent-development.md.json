@@ -7,30 +7,28 @@
 
   "summary": "Reviewed Agent definition, package composition, explicit target/authority, canonical operation/error exports and headless authoring journey.",
 
-  "limits": "Source, bundle and fixture evidence; no live authenticated Station/provider execution or package release.",
-
-  "document": {"digest":"e83934b1f14c3a3a2fe217f419ef7e3a12167c2c73ba1bfaadf59562ccc47cd3","revision":"f72daba9492778d9418abbf9730b6482b73a300c"},
+  "limits": "Source, bundle and fixture evidence; no live authenticated Station/provider execution or package release.\n\nMerge anchor history (structural reconciliation only; no semantic approval): source packages/sdk/package.json ours={\"digest\":\"14ca105046b127182cd13a45959cad3450f8ff4e49a4bfd467bef75ea2f65de8\",\"revision\":\"efa773acac88792cda31595f9afca4a37d3efebc\"}; origin/main={\"digest\":\"42fe4326a8a49db222c65e5536cbdf7a2bd1885671e292fcb7fd454dc79249db\",\"revision\":\"fdca33b1896b280299ba72fc70a3c9b9cda7f3af\"}. The merged source bytes require supported review after the merge commit.",
 
   "sources": [
-    {"path":"examples/headless-agent/src/main.ts","digest":"edeab2ac383f1e67dd569a15ac04a98eafdb39ee49441392fde4eb010dbb9036","revision":"f72daba9492778d9418abbf9730b6482b73a300c"},
+    "examples/headless-agent/src/main.ts",
 
-    {"path":"packages/contracts/src/agent.ts","digest":"e325363bc2303d78102c7c4c45b118756d71d66cae3d801eee303761d0715b6c","revision":"423cbe55b9e35e4cd8954fd441cb9f3c69740d66"},
+    "packages/contracts/src/agent.ts",
 
-    {"path":"packages/sdk/package.json","digest":"42fe4326a8a49db222c65e5536cbdf7a2bd1885671e292fcb7fd454dc79249db","revision":"fdca33b1896b280299ba72fc70a3c9b9cda7f3af"},
+    "packages/sdk/package.json",
 
-    {"path":"packages/sdk/src/__tests__/browser-entry-bundles.test.ts","digest":"cbd20ee2ae028c4276a9412ddc5335b10957251f5d37597e53369968264d37f5","revision":"f72daba9492778d9418abbf9730b6482b73a300c"},
+    "packages/sdk/src/__tests__/browser-entry-bundles.test.ts",
 
-    {"path":"packages/sdk/src/agent/index.ts","digest":"27b8861c43936cd4996215ce8ad0f3a2bbd7835adba4740e160e8b8efd02f54e","revision":"f72daba9492778d9418abbf9730b6482b73a300c"},
+    "packages/sdk/src/agent/index.ts",
 
-    {"path":"packages/sdk/src/client/delegations.ts","digest":"148d12ffed1091b83149a7d0caa834088f58eebf295ce4c97b697ec1fad747db","revision":"f72daba9492778d9418abbf9730b6482b73a300c"},
+    "packages/sdk/src/client/delegations.ts",
 
-    {"path":"packages/sdk/src/client/execution.ts","digest":"a72a224bd2f86732da2bcbfbe2614c0e2454a6ce25f4b857b4d9383e98a052a0","revision":"f2a6ca3693f2f676d33ec8e09151c0563aa66b10"},
+    "packages/sdk/src/client/execution.ts",
 
-    {"path":"packages/sdk/src/client/http.ts","digest":"68cf352bfc07dc47297ecaaccaa548adb394478ba8a7ff8baff6817a8beccd44","revision":"fadd647731c00e53b2aeb25a7873ee66c0aa7608"},
+    "packages/sdk/src/client/http.ts",
 
-    {"path":"packages/shared/src/build.ts","digest":"8db6bc04bffe80ead5af5e8d9b23be2ae02f1e5afbae67f850e583b8ca40c783","revision":"e78cdc9c00d09b69f333e1609821d8fa70bce58c"},
+    "packages/shared/src/build.ts",
 
-    {"path":"src-ui/src/core/pluginSharedRuntime.ts","digest":"b9b3865a69ebf0b8246ac7b6b7b294b24f7a05f51004dd8a8b5ea273fc2fae49","revision":"f72daba9492778d9418abbf9730b6482b73a300c"}
+    "src-ui/src/core/pluginSharedRuntime.ts"
   ],
 
   "checks": [

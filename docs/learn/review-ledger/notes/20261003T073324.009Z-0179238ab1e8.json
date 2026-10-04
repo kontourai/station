@@ -1,0 +1,7 @@
+{
+  "revision": "c27d8a6e486d3a0bb360a74d6cdd50d25ea9c0ef",
+
+  "notes": [
+    {"path":"docs/guides/agents.md","note":"Reviewed the engine-help condition: capability help remains available for Station and every bound external engine; no empty help is rendered before an external engine is chosen. Existing engine picker suite passed 10/10. Binding, readiness actions, approval boundaries and documented tool configuration are unchanged.","inputs":["docs/guides/agents.md"]}
+  ]
+}

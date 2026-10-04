@@ -9,36 +9,34 @@
 
   "limits": "Source and caller review; controlled local tests do not establish live provider/device, deployed-service or production-performance outcomes.",
 
-  "document": {"digest":"d4d785878952c344a498b0db6b9341f784b4bb290a4256bd6aea24bcecab0322","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
   "sources": [
-    {"path":"packages/contracts/src/engine-capability-matrix.ts","digest":"db82340760d09e965ac7ed17830f36060573fe48545995d4ad9149b755d36ea1","revision":"518fae654af981373e872c2ab85438bb1b1b0e67"},
+    "packages/contracts/src/engine-capability-matrix.ts",
 
-    {"path":"packages/contracts/src/plugin.ts","digest":"98607c85d86241ccf638de4d207ebb64285752092eb7a827e4304c75df409b95","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/contracts/src/plugin.ts",
 
-    {"path":"packages/contracts/src/registry-lifecycle.ts","digest":"5d5bf20ef5f65b7b63145db7df3a2cb97fb1a6697346bff694e2db5d4cffe1c9","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/contracts/src/registry-lifecycle.ts",
 
-    {"path":"src-server/knowledge-store/knowledge-store-provider.ts","digest":"268f67326c695832ef2a1577353ee6ece0a41218e7711dda87cc62a0ee814e85","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-server/knowledge-store/knowledge-store-provider.ts",
 
-    {"path":"src-server/providers/plugin-provider-loader.ts","digest":"7b780f31c1d234d708632b146294f59530984baec971edabdb8e0265f55ceb94","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-server/providers/plugin-provider-loader.ts",
 
-    {"path":"src-server/services/plugins/agent-plugin-loader.ts","digest":"5e2ebd404a26505676a99a207854fc10fe3692fa02628c891bed0156eb1b231c","revision":"56f4c4897a189eeb30430119a4f4895e95fbb541"},
+    "src-server/services/plugins/agent-plugin-loader.ts",
 
-    {"path":"src-server/services/plugins/plugin-catalog-installation.ts","digest":"4663e57bee8360c76be9b0e5f20daddce153e11103045627d8b8c55df58a9363","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-server/services/plugins/plugin-catalog-installation.ts",
 
-    {"path":"src-server/services/plugins/plugin-composition.ts","digest":"83d8c6b84afdf16bd7e9a5673150d290da4dcbd43d260f07f5fa6ffb1d9ce647","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-server/services/plugins/plugin-composition.ts",
 
-    {"path":"src-server/services/plugins/plugin-grant-reconciliation.ts","digest":"287d0f3a1185664279eba08e403d06e17dc5512dd6f974b3fc8de76022a31cb9","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-server/services/plugins/plugin-grant-reconciliation.ts",
 
-    {"path":"src-server/services/plugins/plugin-install-consent.ts","digest":"6e34e0844061dd5311e027973b1919483bf29047e18721ecae8b72ece98765ed","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-server/services/plugins/plugin-install-consent.ts",
 
-    {"path":"src-server/services/plugins/plugin-installation-service.ts","digest":"50b9f54d4c3a5c179ca58439aeea4cf2e9880e110ced910454678425717cca0a","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-server/services/plugins/plugin-installation-service.ts",
 
-    {"path":"src-server/services/plugins/plugin-manifest-loader.ts","digest":"ad125ed75cbb1bed948db758bded2ab2407b02f4f8b56bfbb6a03a0e80dad0df","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-server/services/plugins/plugin-manifest-loader.ts",
 
-    {"path":"src-server/services/plugins/plugin-runtime-artifact.ts","digest":"3f63050b8c51fc7698e12b14501edf35d8cb902ede18d49b2599564488313a85","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-server/services/plugins/plugin-runtime-artifact.ts",
 
-    {"path":"src-ui/src/components/mcp-ui/MCPToolUIFrame.tsx","digest":"732a76fa3772bbc163f0c9c5b8da98c530614a27acfaba1b93fbecb497f240b3","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"}
+    "src-ui/src/components/mcp-ui/MCPToolUIFrame.tsx"
   ],
 
   "checks": [

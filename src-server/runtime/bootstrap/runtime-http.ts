@@ -15,6 +15,8 @@ import {
 } from '@kontourai/station-contracts/environment-security';
 import {
   AUTH_RATE_LIMITED_ERROR_CODE,
+  STATION_ENVELOPE_HEADER,
+  STATION_ENVELOPE_HEADER_VALUE,
   STATION_PLUGIN_HEADER,
 } from '@kontourai/station-contracts/http';
 import { NATIVE_DEVICE_PROOF_HEADER } from '@kontourai/station-contracts/native-device-proof';
@@ -78,6 +80,7 @@ import {
 } from '../../services/connections/virtual-application.js';
 import { guardAccountResponse } from '../../services/identity/account-response-guard.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
+import { RELAYED_RESPONSE_HEADER } from '../../services/remote-stations/remote-station-forwarder.js';
 import { HOST_STATION_COMPATIBILITY } from '../../services/ssh/environment-security-service.js';
 import {
   deviceSessionAuthorizations,
@@ -237,12 +240,46 @@ interface RuntimeHttpContext {
   security?: RuntimeHttpSecurityOptions;
 }
 
+const envelopeMarkedApps = new WeakSet<object>();
+
+/**
+ * #2842: the one place a response is marked as this Station's own answer.
+ *
+ * Every JSON response the app answers gets `STATION_ENVELOPE_HEADER`,
+ * whichever handler, middleware or error boundary wrote it, so a client can
+ * tell Station's refusal from an intermediary's JSON of the same shape. A
+ * response relayed from another Station (`RELAYED_RESPONSE_HEADER`, set by
+ * `fetchRemoteStation`) is the exception: it leaves without this Station's
+ * marker and without the peer's.
+ *
+ * It must wrap every writer, so it is installed before any other middleware.
+ * `configureRuntimeHttp` installs it; runtime composition calls it earlier
+ * still, ahead of the hosted tenant gate, and the second call is a no-op.
+ */
+export function installStationEnvelopeMarker(app: RuntimeApp): void {
+  if (envelopeMarkedApps.has(app)) return;
+  envelopeMarkedApps.add(app);
+  app.use('*', async (c, next) => {
+    await next();
+    if (c.res.headers.has(RELAYED_RESPONSE_HEADER)) {
+      c.header(RELAYED_RESPONSE_HEADER, undefined);
+      c.header(STATION_ENVELOPE_HEADER, undefined);
+      return;
+    }
+    const contentType = c.res.headers.get('content-type') ?? '';
+    if (/^application\/json\s*(;|$)/i.test(contentType)) {
+      c.header(STATION_ENVELOPE_HEADER, STATION_ENVELOPE_HEADER_VALUE);
+    }
+  });
+}
+
 export function configureRuntimeHttp({
   app,
   logger,
   eventBus,
   security,
 }: RuntimeHttpContext): void {
+  installStationEnvelopeMarker(app);
   app.use('*', async (c, next) => {
     await next();
     const authentication = security?.deploymentAuthentication;
@@ -359,6 +396,8 @@ export function configureRuntimeHttp({
       cors({
         origin: resolveRuntimeCorsOrigin,
         credentials: true,
+        // #2842: a cross-origin client must be able to read the marker.
+        exposeHeaders: [STATION_ENVELOPE_HEADER],
       }),
     );
   }
@@ -708,7 +747,7 @@ function configureRuntimeSecurity(
       c.header('Access-Control-Allow-Origin', origin);
       c.header(
         'Access-Control-Expose-Headers',
-        `${ACCOUNT_AUTHENTICATION_FAILURE_HEADER}, Retry-After`,
+        `${ACCOUNT_AUTHENTICATION_FAILURE_HEADER}, Retry-After, ${STATION_ENVELOPE_HEADER}`,
       );
       c.header('Vary', 'Origin');
       c.header('Access-Control-Allow-Credentials', 'true');

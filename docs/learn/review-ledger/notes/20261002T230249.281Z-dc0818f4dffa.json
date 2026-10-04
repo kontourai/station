@@ -1,0 +1,7 @@
+{
+  "revision": "c1841d01497260f6e3c951d4439553bfc9663e04",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Independent review repair: traced imported Open skill through real NavigationProvider/store/useUrlSelection and retained canonical navigation guard only. Executed Cancel retaining the original dirty draft and Discard opening the imported skill. Blank and whitespace defaults now read as required consistently with substitution; nonempty defaults still start without input. 66 rendered focused tests passed. Existing Skills guide remains accurate; no broader guide claims re-reviewed.","inputs":["docs/user/getting-started.md"]}
+  ]
+}

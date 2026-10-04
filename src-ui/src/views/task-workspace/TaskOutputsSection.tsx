@@ -2,20 +2,30 @@ import type {
   TaskOutputRecord,
   TaskRecord,
 } from '@kontourai/station-contracts';
+import type { ProjectTaskRoomOutputFeedback } from '@kontourai/station-contracts/project-task-room';
+import {
+  useAppendProjectTaskRoomOutputFeedbackMutation,
+  useProjectTaskRoomDiscoveryQuery,
+} from '@kontourai/station-sdk/project-task-rooms';
 import {
   downloadTaskOutputContent,
   useCreateTaskOutputMutation,
   useDeleteTaskOutputMutation,
   useTaskOutputsQuery,
 } from '@kontourai/station-sdk/task-outputs';
-import { useEffect, useRef, useState } from 'react';
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import {
   ResponsiveDialogSurface,
   ResponsiveSurfaceActions,
 } from '../../components/ResponsiveDialogSurface';
 import { Empty, SkeletonBlock } from '../../components/state';
-import { useApiBase } from '../../contexts/ApiBaseContext';
+import {
+  useApiBase,
+  useHostRequestAuthorityScope,
+} from '../../contexts/ApiBaseContext';
+import { useUnsavedGuard } from '../../hooks/useUnsavedGuard';
 import { userFacingErrorMessage } from '../../utils/errorText';
 
 export interface TaskOutputPromotion {
@@ -36,7 +46,11 @@ export function TaskOutputsSection({
     success: boolean,
   ) => void;
 }) {
-  const outputs = useTaskOutputsQuery(task.id);
+  const outputScope = useHostRequestAuthorityScope();
+  const outputs = useTaskOutputsQuery(task.id, {
+    requestScope: outputScope,
+    taskCreatedAt: task.createdAt,
+  });
   const create = useCreateTaskOutputMutation();
   const remove = useDeleteTaskOutputMutation();
   const [feedback, setFeedback] = useState<
@@ -163,8 +177,16 @@ export function TaskOutputsSection({
         <ul className="task-outputs__list" aria-label="Task outputs">
           {outputs.data.map((output) => (
             <TaskOutputRow
-              key={output.id}
+              key={JSON.stringify([
+                outputScope?.apiBase,
+                outputScope?.authorityKey,
+                task.id,
+                task.createdAt,
+                output.id,
+                output.materialization.digest,
+              ])}
               taskId={task.id}
+              taskCreatedAt={task.createdAt}
               output={output}
               onDelete={(trigger) => {
                 deleteTrigger.current = trigger;
@@ -234,15 +256,21 @@ export function TaskOutputsSection({
 
 function TaskOutputRow({
   taskId,
+  taskCreatedAt,
   output,
   onDelete,
 }: {
   taskId: string;
   output: TaskOutputRecord;
+  taskCreatedAt: string;
   onDelete: (trigger: HTMLButtonElement) => void;
 }) {
   const [showContent, setShowContent] = useState(false);
+  const [contentReady, setContentReady] = useState(false);
+  const [reviewDirty, setReviewDirty] = useState(false);
+  const { guard, DiscardModal } = useUnsavedGuard(reviewDirty);
   const deleteRef = useRef<HTMLButtonElement | null>(null);
+  const scope = useHostRequestAuthorityScope();
   return (
     <li className="task-outputs__item">
       <div className="task-outputs__summary">
@@ -258,7 +286,13 @@ function TaskOutputRow({
       <div className="task-outputs__actions">
         <Button
           size="sm"
-          onClick={() => setShowContent((value) => !value)}
+          onClick={() =>
+            guard(() => {
+              setContentReady(false);
+              setReviewDirty(false);
+              setShowContent((value) => !value);
+            })
+          }
           aria-label={`${showContent ? 'Hide' : 'View'} output ${output.title}`}
         >
           {showContent ? 'Hide' : 'View'}
@@ -266,27 +300,218 @@ function TaskOutputRow({
         <Button
           size="sm"
           ref={deleteRef}
-          onClick={() => deleteRef.current && onDelete(deleteRef.current)}
+          onClick={() =>
+            guard(() => {
+              if (deleteRef.current) onDelete(deleteRef.current);
+            })
+          }
           aria-label={`Delete output ${output.title}`}
         >
           Delete
         </Button>
       </div>
       {showContent ? (
-        <TaskOutputContent taskId={taskId} output={output} />
+        <>
+          <TaskOutputContent
+            taskId={taskId}
+            output={output}
+            onReady={setContentReady}
+          />
+          {contentReady ? (
+            <TaskOutputFeedback
+              key={JSON.stringify([
+                scope?.apiBase,
+                scope?.authorityKey,
+                taskId,
+                taskCreatedAt,
+                output.id,
+                output.materialization.digest,
+              ])}
+              taskId={taskId}
+              taskCreatedAt={taskCreatedAt}
+              output={output}
+              onDirty={setReviewDirty}
+            />
+          ) : null}
+        </>
       ) : null}
+      <DiscardModal />
     </li>
+  );
+}
+
+function TaskOutputFeedback({
+  taskId,
+  taskCreatedAt,
+  output,
+  onDirty,
+}: {
+  taskId: string;
+  taskCreatedAt: string;
+  output: TaskOutputRecord;
+  onDirty(dirty: boolean): void;
+}) {
+  const scope = useHostRequestAuthorityScope();
+  const discovery = useProjectTaskRoomDiscoveryQuery(taskId, {
+    requestScope: scope,
+    taskCreatedAt,
+  });
+  const mutation = useAppendProjectTaskRoomOutputFeedbackMutation(
+    taskId,
+    taskCreatedAt,
+    scope,
+  );
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [review, setReview] = useState<
+    'comment' | 'changes-requested' | 'accepted'
+  >('comment');
+  const [notice, setNotice] = useState('');
+  const [retry, setRetry] = useState<{
+    proposalId: string;
+    occurredAt: string;
+    feedback: ProjectTaskRoomOutputFeedback;
+  }>();
+  const active = useRef(true);
+  useEffect(() => {
+    active.current = true;
+    return () => {
+      active.current = false;
+    };
+  }, []);
+  useLayoutEffect(() => {
+    onDirty(!!draft || !!retry);
+  }, [draft, retry, onDirty]);
+  const writable =
+    !discovery.isError &&
+    (discovery.data?.kind === 'opened' ||
+      discovery.data?.kind === 'existing') &&
+    discovery.data.capabilities.messageWrite &&
+    !!scope?.isCurrent();
+  const send = async () => {
+    if (!writable || mutation.isPending || !draft.trim() || !scope?.isCurrent())
+      return;
+    const input = retry ?? {
+      proposalId: randomCorrelationId(),
+      occurredAt: new Date().toISOString(),
+      feedback: {
+        kind: 'output-feedback' as const,
+        target: {
+          outputId: output.id,
+          digest: output.materialization.digest,
+          taskCreatedAt,
+        },
+        review,
+        text: draft.trim(),
+      },
+    };
+    setRetry(input);
+    try {
+      const result = await mutation.mutateAsync(input);
+      if (!active.current || !scope.isCurrent()) return;
+      if (result.kind === 'committed' || result.kind === 'duplicate') {
+        setDraft('');
+        setRetry(undefined);
+        setNotice(
+          'Human review recorded in Task room history. Task status is unchanged.',
+        );
+      } else
+        setNotice(
+          `Feedback was not recorded (${result.kind}). Draft retained.`,
+        );
+    } catch (error) {
+      if (active.current && scope.isCurrent())
+        setNotice(
+          message(
+            error,
+            'Feedback could not be confirmed. Retry the same statement.',
+          ),
+        );
+    }
+  };
+  return (
+    <div className="task-outputs__feedback">
+      <Button
+        size="sm"
+        onClick={() => setOpen((value) => !value)}
+        aria-expanded={open}
+      >
+        Review this version
+      </Button>
+      {open ? (
+        <div className="task-outputs__review-fields">
+          <p>
+            Review “{output.title}”, version{' '}
+            {output.materialization.digest.slice(7, 15)}. Your statement does
+            not change Task status.
+          </p>
+          <label>
+            Review{' '}
+            <select
+              value={review}
+              disabled={!!retry || mutation.isPending}
+              onChange={(event) =>
+                setReview(event.target.value as typeof review)
+              }
+            >
+              <option value="comment">Comment</option>
+              <option value="changes-requested">Request changes</option>
+              <option value="accepted">Reviewer accepted this version</option>
+            </select>
+          </label>
+          <label>
+            Comment{' '}
+            <textarea
+              value={draft}
+              maxLength={8192}
+              disabled={!!retry || mutation.isPending}
+              onChange={(event) => setDraft(event.target.value)}
+            />
+          </label>
+          <Button
+            size="sm"
+            onClick={() => void send()}
+            disabled={!writable || !draft.trim()}
+            pending={mutation.isPending}
+          >
+            {retry ? 'Retry same statement' : 'Record review'}
+          </Button>
+          {retry && !mutation.isPending ? (
+            <Button
+              size="sm"
+              onClick={() => {
+                setRetry(undefined);
+                setNotice(
+                  'Previous statement may already be recorded. Check room history before sending a changed statement.',
+                );
+              }}
+            >
+              Edit a new statement
+            </Button>
+          ) : null}
+          {!writable ? (
+            <p role="status">
+              Review writing is unavailable on this connection.
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+      {notice ? <p role="status">{notice}</p> : null}
+    </div>
   );
 }
 
 function TaskOutputContent({
   taskId,
   output,
+  onReady,
 }: {
   taskId: string;
   output: TaskOutputRecord;
+  onReady(ready: boolean): void;
 }) {
   const { apiBase } = useApiBase();
+  const scope = useHostRequestAuthorityScope();
   const [state, setState] = useState<
     | { kind: 'loading' }
     | {
@@ -305,12 +530,43 @@ function TaskOutputContent({
   useEffect(() => {
     let active = true;
     setState({ kind: 'loading' });
-    void downloadTaskOutputContent(apiBase, taskId, output.id)
-      .then((content) => {
-        if (active) setState({ kind: 'ready', ...content });
+    onReady(false);
+    if (!scope?.isCurrent()) {
+      setState({
+        kind: 'error',
+        message: 'Task output connection is unavailable.',
+      });
+      return () => {
+        active = false;
+      };
+    }
+    void downloadTaskOutputContent(apiBase, taskId, output.id, {
+      requestScope: scope,
+    })
+      .then(async (content) => {
+        const copy = new Uint8Array(content.bytes.byteLength);
+        copy.set(content.bytes);
+        const hashed = globalThis.crypto?.subtle
+          ? new Uint8Array(
+              await globalThis.crypto.subtle.digest('SHA-256', copy.buffer),
+            )
+          : (await import('@noble/hashes/sha2.js')).sha256(copy);
+        const digest = `sha256:${Array.from(hashed, (byte) => byte.toString(16).padStart(2, '0')).join('')}`;
+        if (
+          digest !== output.materialization.digest ||
+          content.etag !== `"${digest}"` ||
+          content.bytes.byteLength !== output.materialization.byteLength
+        )
+          throw new Error(
+            'Output content did not match this immutable version.',
+          );
+        if (active && scope.isCurrent()) {
+          setState({ kind: 'ready', ...content });
+          onReady(true);
+        }
       })
       .catch((error) => {
-        if (active)
+        if (active && scope.isCurrent())
           setState({
             kind: 'error',
             message: message(error, 'Output content is unavailable.'),
@@ -319,7 +575,15 @@ function TaskOutputContent({
     return () => {
       active = false;
     };
-  }, [apiBase, output.id, taskId]);
+  }, [
+    apiBase,
+    output.id,
+    output.materialization.digest,
+    output.materialization.byteLength,
+    taskId,
+    scope,
+    onReady,
+  ]);
   const safePng =
     state.kind === 'ready' &&
     state.safePreview === 'image/png' &&

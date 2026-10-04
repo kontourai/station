@@ -2493,3 +2493,53 @@ describe('an untitled open chat takes its session name before "<Agent> Chat"', (
     expect(row?.title).toBe('Code Reviewer Chat');
   });
 });
+
+describe('buildActiveChatTaskItems: approvals waiting on the user', () => {
+  // The chat's status pill counts `pendingApprovals` minus `answeredApprovals`;
+  // the inbox lane used to read the raw list and kept saying "Needs attention"
+  // from the moment an approval was answered until `request.resolved`.
+  const chat = (overrides: Record<string, unknown>) =>
+    ({
+      'approval-chat': {
+        agentSlug: 'codex',
+        agentName: 'Codex',
+        model: 'gpt-5.6-sol',
+        title: 'Approving',
+        createdAt: 10,
+        messages: [{ timestamp: '2026-08-24T12:00:00Z' }],
+        ...overrides,
+      },
+    }) as any;
+  const labelFor = (overrides: Record<string, unknown>) =>
+    buildActiveChatTaskItems({ chats: chat(overrides), agents: [] as any })[0]
+      ?.lifecycleLabel;
+
+  test('an unanswered request needs attention', () => {
+    expect(
+      labelFor({
+        pendingApprovals: ['req-1'],
+        orchestrationStatus: 'awaiting-approval',
+      }),
+    ).toBe('Needs attention');
+  });
+
+  test('a request the user already answered does not, though the session still reports awaiting-approval', () => {
+    expect(
+      labelFor({
+        pendingApprovals: ['req-1'],
+        answeredApprovals: ['req-1'],
+        orchestrationStatus: 'awaiting-approval',
+      }),
+    ).not.toBe('Needs attention');
+  });
+
+  test('one answered and one still waiting keeps the chat in Needs attention', () => {
+    expect(
+      labelFor({
+        pendingApprovals: ['req-1', 'req-2'],
+        answeredApprovals: ['req-1'],
+        orchestrationStatus: 'awaiting-approval',
+      }),
+    ).toBe('Needs attention');
+  });
+});

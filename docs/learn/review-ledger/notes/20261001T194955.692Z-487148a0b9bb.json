@@ -1,0 +1,7 @@
+{
+  "revision": "b9ed99fffb44db5295c2652b34dfc2adc10e1c83",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Reviewed merged bytes: retained engine account metadata/parser/source-scope claims alongside upstream Chat-centre navigation behavior from #3035. Traced show-Chat navigation ownership and scoped account SDK callers; these independent public contracts remain accurately described. Prior source review and live metadata limits remain unchanged.","inputs":["docs/reference/sdk.md"]}
+  ]
+}

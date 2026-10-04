@@ -1,29 +1,5 @@
 {
   "issue": "#2708",
   "note": "Client fetchers that build their own error from a response envelope (see the rule in scripts/sdk-error-message-ratchet.mjs). May only fall; lower with node scripts/sdk-error-message-ratchet.mjs --update. New code throws envelopeError(response, body, fallback) from packages/sdk/src/client/api-error-message.ts.",
-  "files": {
-    "packages/sdk/src/client/account-authentication.ts": 1,
-    "packages/sdk/src/client/action-operations.ts": 1,
-    "packages/sdk/src/client/answer-basis.ts": 2,
-    "packages/sdk/src/client/answer-narrative-binding.ts": 1,
-    "packages/sdk/src/client/answer-support.ts": 2,
-    "packages/sdk/src/client/application-session.ts": 1,
-    "packages/sdk/src/client/attachment-staging.ts": 1,
-    "packages/sdk/src/client/authority-observation.ts": 1,
-    "packages/sdk/src/client/board.ts": 3,
-    "packages/sdk/src/client/checkpoint-restore.ts": 2,
-    "packages/sdk/src/client/conversation-pull-request-links.ts": 1,
-    "packages/sdk/src/client/delegations.ts": 2,
-    "packages/sdk/src/client/fleet-routing.ts": 1,
-    "packages/sdk/src/client/flow-gate-evaluations.ts": 1,
-    "packages/sdk/src/client/http.ts": 1,
-    "packages/sdk/src/client/learning-source.ts": 1,
-    "packages/sdk/src/client/live-activity.ts": 1,
-    "packages/sdk/src/client/personal-layouts.ts": 2,
-    "packages/sdk/src/client/projects.ts": 2,
-    "packages/sdk/src/client/pull-request-review.ts": 1,
-    "packages/sdk/src/client/quote-source.ts": 1,
-    "packages/sdk/src/client/runs.ts": 2,
-    "packages/sdk/src/client/setup-imports.ts": 1
-  }
+  "files": {}
 }

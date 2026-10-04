@@ -1,0 +1,7 @@
+{
+  "revision": "0ab9b2a8123e608900bae2492b40c0b35483ac2d",
+
+  "notes": [
+    {"path":"src-ui/AGENTS.md","note":"Merged bytes. Re-read this guide's navigation and unsaved-guard instructions against this branch's navigation-store changes (same-URL index assignment, two read-only getters, navigationEntryIndex, the page stamp not copied by navigate) and main's entryLocations map; no instruction describes same-URL entries or the store's index bookkeeping, and none is contradicted.","inputs":["src-ui/AGENTS.md"]}
+  ]
+}
