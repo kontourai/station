@@ -14,19 +14,19 @@
   "sources": [
     {"path":"packages/connect/src/react/connection-manager-modal/PairedDevicesPanel.tsx","digest":"b8ccfa4cb9a801363e1e61457e01cd8f8c97c6c70ad8679863d6c22f3da1a5ff","revision":"a30f084b3b93f254337127cb18907d041570f9fc"},
 
-    {"path":"src-desktop/src/lib.rs","digest":"87107637c2b0c4d1c470664c3ae3d5b4f1f377777f561ea2c25bd63df8cf2cd6","revision":"01ae5b65e67e7456ed5d777266bb54b3774b4a56"},
+    {"path":"src-desktop/src/lib.rs","digest":"c1f14ebce1d8326b17d071eec351ca84af929b8058bfc6ce456b2f6a4b73867c","revision":"8a5cd786f009ac84be86cbe39fe20f27ec4828a2"},
 
     {"path":"src-server/runtime/__tests__/operator-credential-host-locality.test.ts","digest":"6c896589d21ea60847aca41b08df7d96b8d8a4461fea89bda63638fac5815ecd","revision":"ac1660c74658094e6a7f617a5a2518a6c3d1aa3d"},
 
     {"path":"src-server/runtime/consent/consent-listener.ts","digest":"277b028e8716aa85aefe159da4b336052b0c5a4e4433785e44e504753ab4e2e2","revision":"dac129f874d7edf85a1834f2295412bc8f9603e1"},
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"5bcddcd24d51da35158e1dba0b787c0bf3cea7f33c901c4bc792bcb5f4a9fbef","revision":"6ff32302c09e3703febfc3f96d27149cd4f02e25"},
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"85bca21440f20f911798b563835133d06fc4a0acf2f3e64333169b389612224c","revision":"89f6185d1e18d1da4b3faa803f77a0caa1bd54f0"},
 
     {"path":"src-server/security/host-operator-credential.ts","digest":"c7b490514c56b0beff110da362640803f48b4079edcc60a76b4f4654722ff819","revision":"782a93682304a7de7a3bc5980a9ad85053967502"},
 
     {"path":"src-server/security/runtime-request-security.ts","digest":"c3219b8afbdd24e8969fb407d2a0a0aa77c08a7656a0e147f64f99f0ed9af3c4","revision":"01ae5b65e67e7456ed5d777266bb54b3774b4a56"},
 
-    {"path":"src-server/services/consent/consent-transactions.ts","digest":"e33143fb0b0bbd862036f0c5aca2b29b9457d74d8766dd32ec5659be0a12c600","revision":"4feaf4bb77e8bd569dbde16d4ec02424fece3839"},
+    {"path":"src-server/services/consent/consent-transactions.ts","digest":"5a7ab41edbd033de28228b9bbffc0e0b16dc3fb920fb3f5efb91f9f6f855329b","revision":"91ec8af5d451ec5be73d2cfe18dcc7afa2170909"},
 
     {"path":"src-server/services/ssh/environment-security-service.ts","digest":"3861107c8d4a4e1bc9a82e3f5f1c3f5d68be08e34e04d909635d7f70b1407a3d","revision":"5ecd682d3dda93a00a126e31328fb563f3b427b8"}
   ],
