@@ -276,6 +276,11 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // and the stdio tools' own REST helper against an in-process guard, proving
   // a real pooled child reaches reads only; no real services.
   'src-server/security/__tests__/station-control-authority-pooled-child.process.test.ts',
+  // #3160: one bounded Node child registers the real station-control server
+  // as a caller-less stdio child and calls the three Session tools over an
+  // in-memory transport, proving each refuses before any request; the child
+  // exits after its one probe and no real service is reached.
+  'src-server/tools/__tests__/station-control-session-tools.process.test.ts',
   // station#4457 drives the registry bridge's stdin/stdout entry point through
   // bounded single-shot Node children to prove exact success/refusal protocol
   // envelopes; every child exits after its one requested operation.

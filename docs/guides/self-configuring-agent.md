@@ -144,8 +144,12 @@ Session by its `sessionId`, without creating a task.
   later sends from that session) a retry under it is not guaranteed to be
   deduplicated downstream, because the chat-turn claim table holds 2,000 entries
   Station-wide and a retry from another branch of the work is not caught at all;
-  and unresolved claims are never dropped, so 300 permanently stuck ones lock
-  that session out of these two tools until the seven-day expiry.
+  and unresolved claims are never dropped, so 300 stuck ones leave that session
+  unable to use new requestKeys until the seven-day expiry. A re-driven attempt
+  that is refused answers with `pinned: true`; its key stays tied to its first
+  attempt, so check the Session before using a new key. A re-driven interrupt
+  that finds nothing running also keeps its claim, so a later re-drive could
+  interrupt a newer turn; that is rare (it follows a crash) and accepted.
 - `wait_session` watches exactly the Session it is given. When a newer Session
   now serves that Session's conversation the answer carries `superseded: true`
   and `currentSessionId`, so the caller can wait on the current one.

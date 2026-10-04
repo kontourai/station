@@ -146,11 +146,14 @@ export type SendToSessionResult =
       readonly reason: 'turn-active' | 'steer-unsupported' | 'steer-in-flight';
       readonly sessionId: string;
       readonly eventCursor: number;
+      /** A re-drive of an earlier attempt: its key is pinned to that attempt. */
+      readonly pinned?: true;
     }
   | {
       readonly outcome: 'no_active_turn';
       readonly sessionId: string;
       readonly eventCursor: number;
+      readonly pinned?: true;
     }
   | { readonly outcome: 'indeterminate'; readonly sessionId: string };
 
@@ -338,6 +341,8 @@ function settleSend(
   delivery: SessionMessageDelivery,
   threadId: string,
   cursorBefore: number,
+  /** The attempt re-drove an earlier one and so keeps its claim and branch. */
+  pinned: boolean,
 ): SendAttempt {
   switch (delivery.outcome) {
     case 'started':
@@ -362,8 +367,10 @@ function settleSend(
           eventCursor: cursorBefore,
         },
       };
-    // A refusal delivered nothing: free the key so the same request can run
-    // again once the Session is ready, rather than replaying the refusal.
+    // A refusal delivered nothing: a fresh claim is freed so the same request
+    // can run again once the Session is ready, rather than replaying the
+    // refusal. A re-driven claim is kept (the key table decides), so its
+    // result says it is pinned and the text must not offer another mode.
     case 'session_busy':
       return {
         settle: 'release',
@@ -372,6 +379,7 @@ function settleSend(
           reason: delivery.reason,
           sessionId: threadId,
           eventCursor: cursorBefore,
+          ...(pinned ? { pinned: true as const } : {}),
         },
       };
     case 'no_active_turn':
@@ -381,6 +389,7 @@ function settleSend(
           outcome: 'no_active_turn',
           sessionId: threadId,
           eventCursor: cursorBefore,
+          ...(pinned ? { pinned: true as const } : {}),
         },
       };
     case 'indeterminate':
@@ -397,6 +406,25 @@ function sendResponse(
   replayed: boolean,
 ) {
   const replay = replayed ? { replayed: true } : {};
+  if (
+    (result.outcome === 'session_busy' ||
+      result.outcome === 'no_active_turn') &&
+    result.pinned
+  )
+    // A re-drive keeps the first attempt's branch, and the mode is part of the
+    // request's digest, so offering another mode or a retry here would only
+    // meet `request_key_conflict`.
+    return c.json(
+      {
+        success: false,
+        code: result.outcome,
+        error:
+          'This requestKey is pinned to its first attempt, which may have been delivered. Wait for a running turn, or read the Session and use a new requestKey only if the text was not delivered.',
+        ...result,
+        ...replay,
+      },
+      409,
+    );
   switch (result.outcome) {
     case 'started':
     case 'steered':
@@ -618,7 +646,12 @@ export function createSessionAgentControlRoutes(deps: SessionAgentControlDeps) {
               recordDecision: (branch) =>
                 resume.recordDecision(`${branch}:${threadId}`),
             });
-            return settleSend(delivery, threadId, cursorBefore);
+            return settleSend(
+              delivery,
+              threadId,
+              cursorBefore,
+              pinned !== undefined,
+            );
           } catch (error) {
             // A refused delivery that did not report itself indeterminate had
             // no effect: free the key so the caller's retry runs afresh.

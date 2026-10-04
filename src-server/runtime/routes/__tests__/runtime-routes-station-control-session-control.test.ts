@@ -780,6 +780,19 @@ describe('configureRuntimeRoutes: Station Control Session tools (#3160)', () => 
         409,
         'no_active_turn',
       ]);
+      // The text must not send the agent to another mode or a plain retry:
+      // both would meet request_key_conflict or the same pin.
+      expect(refused.body.pinned).toBe(true);
+      expect(refused.body.error).toContain('pinned to its first attempt');
+      expect(refused.body.error).not.toContain('mode "auto"');
+      expect(refused.body.error).not.toContain('may be reused');
+      // A fresh refusal (not a re-drive) still says what to do.
+      const fresh = await post(base, 'send', caller(), {
+        ...sendReq('op-thread-a'),
+        mode: 'steer',
+      });
+      expect(fresh.body.pinned).toBeUndefined();
+      expect(fresh.body.error).toContain('same requestKey may be reused');
       // The same call again: still pinned to steer, so it must NOT start a
       // turn (the start's clientTurnId is not linked to the steer's input id).
       support.steerOutcome = 'steered';

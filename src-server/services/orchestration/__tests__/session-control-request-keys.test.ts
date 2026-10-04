@@ -1,7 +1,6 @@
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { EventStore } from '../event-store.js';
 import {
   createSqliteSessionControlRequestKeys,
@@ -14,17 +13,14 @@ import {
 } from '../session-control-request-keys.js';
 import type { SqliteDatabase } from '../sqlite-database.js';
 
-const dirs: string[] = [];
+// Registered first so the stores close (the hook below) before the directories go.
+const makeTempDir = trackTempDirs();
 const stores: EventStore[] = [];
 afterEach(() => {
   for (const store of stores.splice(0)) store.close();
-  for (const dir of dirs.splice(0))
-    rmSync(dir, { recursive: true, force: true });
 });
 function open(path?: string) {
-  const dir = path ? undefined : mkdtempSync(join(tmpdir(), 'sc-keys-'));
-  if (dir) dirs.push(dir);
-  const file = path ?? join(dir!, 'events.sqlite');
+  const file = path ?? join(makeTempDir('sc-keys-'), 'events.sqlite');
   const store = new EventStore(file);
   stores.push(store);
   return { store, file };
