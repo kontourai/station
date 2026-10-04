@@ -448,7 +448,7 @@ export function runTransferCapture({
     touchTransferBaselineMarker(resolve(targetRoot));
   const result = spawn(
     process.execPath,
-    [tsx, capture, targetRoot, output, baseSha, candidateRoot],
+    [tsx, capture, targetRoot, output, baseSha, candidateRoot, String(timeout)],
     {
       cwd: candidateRoot,
       encoding: 'utf8',
@@ -468,10 +468,31 @@ export function runTransferCapture({
       /does not provide an export named|ERR_MODULE_NOT_FOUND|Cannot find (?:module|package)/.test(
         result.stderr ?? '',
       );
+    // A barrier timing out is host load, not a regression, and the child's own
+    // message already names the setting; repeat it on the FAIL line, which is
+    // what a push refusal shows.
+    // Anchored to the thrown error's own line: Node prints the source line that
+    // threw (which contains the message template) before it, and prints an
+    // Error subclass as `ClassName [Error]: …` (TransferMeasurementFailure).
+    const barrierTimeout =
+      /^(?:\w+ \[Error\]|Error): ([^\n]*barrier timed out after \d+ms: [^\n]+)/m.exec(
+        result.stderr ?? '',
+      );
+    if (barrierTimeout)
+      fail(
+        `${barrierTimeout[1]} for ${targetRoot}. This is host load, not a measured regression: raise it for this run with ${TRANSFER_CAPTURE_TIMEOUT_ENV}=<milliseconds> (currently ${timeout})`,
+      );
+    // The scenario's own refusals (an expected event that never arrived, a
+    // frame count that is not one heavy turn) are not load and carry their
+    // own text; surface it on the FAIL line instead of a bare "capture failed".
+    const scenarioFailure =
+      /^(?:\w+ \[Error\]|Error): (orchestration transfer scenario: [^\n]+)/m.exec(
+        result.stderr ?? '',
+      );
     fail(
       resolutionFailure
         ? `capture dependency resolution failed for ${targetRoot}; inspect the module error above (preparing the baseline again will not repair resolution)`
-        : `capture failed for ${targetRoot}`,
+        : `capture failed for ${targetRoot}${scenarioFailure ? `: ${scenarioFailure[1]}` : ''}`,
     );
   }
   if (!existsSync(output)) fail(`capture produced no report: ${output}`);
