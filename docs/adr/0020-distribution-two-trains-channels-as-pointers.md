@@ -212,7 +212,33 @@ system Node.
   stays removed for ADR 0015's reasons.
 - The ownership logic collapses to one atomic claim path. `sidecar` and
   `service` differ only in supervisor (the app, or launchd, systemd, or Task
-  Scheduler) and lifetime policy.
+  Scheduler) and lifetime policy. #2961 implements this as `claimHostOwner`
+  ([Instance Registry](../design/instance-registry.md)): the desktop launch,
+  `station service install`, and the service supervisor all claim through it,
+  and the desktop maps its result to an owner without a separate launch read.
+  Installation reserves the home with the installer's live PID and writes
+  policy before starting the OS backend; backend failure restores the prior
+  registry entry. A supervisor without installed policy takes the same atomic
+  claim itself, publishing a service owner with its PID and birth before start.
+  A conflicting live owner keeps it alive and waiting, without running Station;
+  polling backs off to at most 30 seconds and logs only reason changes. Lost
+  ownership at readiness or on an existing five-second health tick stops and
+  reaps Station before the same wait. The tick checks the service id, type,
+  PID and birth without refreshing the claim; recovery also waits for a live
+  replacement service at the same registry id. Only a successful registry read
+  proving a missing or different owner triggers recovery. An unreadable tick
+  read keeps Station running until the next tick; an unreadable startup claim
+  still fails closed. Desktop records the spawned child's PID and birth before
+  waiting for Listening, so
+  an orphan still shutting down holds the reservation after desktop death.
+  Runtime preparation's safety read does not choose the launch owner.
+  This is cooperative fencing for service supervisors and Desktop sidecars,
+  not an OS lock around every server. Direct `command-station.js` launches
+  do not claim the registry, including a container that invokes that entry
+  point directly; when bound to `0.0.0.0`, they are reachable through the
+  container's exposed/published ports. The Dockerfile's existing
+  `service run --instance=container` command self-claims a fresh home without
+  requiring `service install` or a separate policy-registration lifecycle.
 
 Mobile apps keep their bundled web UI and store-gated builds. Store rules
 forbid downloading executable code, so the download model applies only to
@@ -333,14 +359,17 @@ roots keyed by channel until promotion.
 
 ## NOT_VERIFIED
 
-Nothing here is implemented. Each decision is unproven until its phase lands
-with enforcing tests. These packaged-build divergences from
+Decisions remain implementation targets until their phases land with
+enforcing tests. The #2961 claim-path notes describe that bounded source
+slice, not delivery of D4's first-run fetch or package changes. These packaged-build divergences from
 [ADR 0015's evidence addendum](0015-restore-desktop-owned-command-station-sidecar.md#evidence-addendum-2026-09-29-2957)
 bear on D4's claim path and startup, and the implementing phases carry them:
 
 - the Windows first launch exceeded the 30 s readiness budget;
 - a Windows sidecar outlived its dead desktop by about 100 s;
-- stale `type: sidecar` entries remain after an abrupt death;
+- stale `type: sidecar` entries remain after an abrupt death (since #2961
+  the next host claim reaps an entry whose pid and birth prove it gone; a
+  test covers this with a real `SIGKILL`, a packaged run does not);
 - shared roots without saved metadata refuse the first launch.
 
 ## Consequences

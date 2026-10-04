@@ -22,6 +22,8 @@
 
     "packages/cli/src/commands/profile-store.ts",
 
+    "packages/connect/src/__tests__/DevicePairingPanel.test.tsx",
+
     "packages/connect/src/core/applicationChannel.ts",
 
     "packages/connect/src/core/applicationChannelFrames.ts",
@@ -32,11 +34,17 @@
 
     "packages/connect/src/core/connectionTrust.ts",
 
+    "packages/connect/src/core/hostInput.ts",
+
     "packages/connect/src/core/selfHostedApplicationTransport.ts",
 
     "packages/connect/src/core/selfHostedBrokerBrowserClient.ts",
 
+    "packages/connect/src/react/connection-manager-modal-utils.ts",
+
     "packages/connect/src/react/connection-manager-modal/ConnectionListPanel.tsx",
+
+    "packages/connect/src/react/HttpConnectionConsent.tsx",
 
     "packages/contracts/src/agent.ts",
 
@@ -47,6 +55,10 @@
     "packages/contracts/src/project-settings-overrides.ts",
 
     "packages/contracts/src/self-hosted-broker.ts",
+
+    "packages/contracts/src/usage-rollup.ts",
+
+    "packages/sdk/src/engine-accounts.ts",
 
     "packages/shared/src/connection-proof.ts",
 
@@ -65,6 +77,8 @@
     "src-desktop/src/native_relay_redemption.rs",
 
     "src-desktop/src/native_station_key_custody.rs",
+
+    "src-server/analytics/usage-rollup-service.ts",
 
     "src-server/domain/config-loader-agents.ts",
 
@@ -148,11 +162,23 @@
 
     "src-server/services/agents/skill-service.ts",
 
+    "src-server/services/connections/__tests__/credential-usage.test.ts",
+
+    "src-server/services/connections/__tests__/engine-account-history.test.ts",
+
+    "src-server/services/connections/browser-code-login.ts",
+
     "src-server/services/connections/connection-env.ts",
 
     "src-server/services/connections/credential-enrolment.ts",
 
+    "src-server/services/connections/credential-usage-metadata.ts",
+
+    "src-server/services/connections/credential-usage.ts",
+
     "src-server/services/connections/device-code-login.ts",
+
+    "src-server/services/connections/engine-account-history.ts",
 
     "src-server/services/connections/provider-service.ts",
 
@@ -166,9 +192,13 @@
 
     "src-server/services/identity/relay-enrollment-service.ts",
 
+    "src-server/services/orchestration/__tests__/engine-account-usage-attribution.test.ts",
+
     "src-server/services/orchestration/approval-posture.ts",
 
     "src-server/services/orchestration/orchestration-service.ts",
+
+    "src-server/services/orchestration/session-transcript-reads.ts",
 
     "src-server/services/terminal/terminal-ws-server.ts",
 
@@ -180,6 +210,8 @@
 
     "src-server/tools/station-control-policy.ts",
 
+    "src-ui/src/__tests__/EngineAccountOverview.test.tsx",
+
     "src-ui/src/app-shell/routing.ts",
 
     "src-ui/src/components/acp-connections/ACPConnectionSetupStages.tsx",
@@ -188,7 +220,13 @@
 
     "src-ui/src/components/header/Header.tsx",
 
+    "src-ui/src/components/header/HeaderActions.tsx",
+
+    "src-ui/src/components/header/StationSwitcherMenu.tsx",
+
     "src-ui/src/components/header/useHeaderViewModel.ts",
+
+    "src-ui/src/components/OnboardingGate.tsx",
 
     "src-ui/src/components/session/SessionModelPicker.tsx",
 
@@ -208,9 +246,13 @@
 
     "src-ui/src/lib/browserRelayTurnCustody.ts",
 
+    "src-ui/src/platform/native/__tests__/pairingTransport.test.ts",
+
     "src-ui/src/platform/native/nativeRelayGrantRenewalAdapter.ts",
 
     "src-ui/src/platform/native/nativeRelayGrantRenewalSupervisor.ts",
+
+    "src-ui/src/platform/native/pairingTransport.ts",
 
     "src-ui/src/platform/native/relayKeyApproval.ts",
 
@@ -236,6 +278,8 @@
 
     "src-ui/src/views/CredentialProfileDeviceCodeLogin.tsx",
 
+    "src-ui/src/views/EngineAccountOverview.tsx",
+
     "src-ui/src/views/page-layout.css",
 
     "src-ui/src/views/provider-settings/providerCatalog.tsx",
@@ -247,50 +291,6 @@
     "src-ui/src/views/ProviderSettingsView.tsx",
 
     "tests/connections-crud.spec.ts",
-
-    "src-ui/src/views/EngineAccountOverview.tsx",
-
-    "src-server/services/connections/browser-code-login.ts",
-
-    "src-server/services/connections/credential-usage.ts",
-
-    "packages/sdk/src/engine-accounts.ts",
-
-    "src-ui/src/__tests__/EngineAccountOverview.test.tsx",
-
-    "packages/connect/src/__tests__/DevicePairingPanel.test.tsx",
-
-    "packages/connect/src/core/hostInput.ts",
-
-    "packages/connect/src/react/connection-manager-modal-utils.ts",
-
-    "packages/connect/src/react/HttpConnectionConsent.tsx",
-
-    "packages/contracts/src/usage-rollup.ts",
-
-    "src-server/analytics/usage-rollup-service.ts",
-
-    "src-server/services/connections/__tests__/credential-usage.test.ts",
-
-    "src-server/services/connections/__tests__/engine-account-history.test.ts",
-
-    "src-server/services/connections/credential-usage-metadata.ts",
-
-    "src-server/services/connections/engine-account-history.ts",
-
-    "src-server/services/orchestration/__tests__/engine-account-usage-attribution.test.ts",
-
-    "src-server/services/orchestration/session-transcript-reads.ts",
-
-    "src-ui/src/components/header/HeaderActions.tsx",
-
-    "src-ui/src/components/header/StationSwitcherMenu.tsx",
-
-    "src-ui/src/components/OnboardingGate.tsx",
-
-    "src-ui/src/platform/native/__tests__/pairingTransport.test.ts",
-
-    "src-ui/src/platform/native/pairingTransport.ts",
 
     "src-ui/src/platform/native/NativeRelayConnectionRecovery.tsx",
 

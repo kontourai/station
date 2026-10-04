@@ -12,13 +12,13 @@
 
     "src-ui/src/views/ConnectionsSectionFrame.tsx",
 
-    "src-ui/src/views/ProviderSettingsView.tsx",
-
     "src-ui/src/views/page-layout.css",
 
     "src-ui/src/views/provider-settings/ProviderConnectionForm.tsx",
 
     "src-ui/src/views/provider-settings/ProviderStackOverview.tsx",
+
+    "src-ui/src/views/ProviderSettingsView.tsx",
 
     "tests/connections-crud.spec.ts"
   ],

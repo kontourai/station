@@ -665,6 +665,17 @@ describe('status facts for chat, task and merged rows', () => {
     );
   });
 
+  it('an approval the user already answered does not read as needs-approval', () => {
+    // Open on the server until `request.resolved`, but it waits on the engine.
+    expect(
+      build({
+        pendingApprovals: ['r1'],
+        answeredApprovals: ['r1'],
+        status: 'queued',
+      }).line,
+    ).toBe('Queued to send');
+  });
+
   it('a send queued while offline reads as queued', () => {
     expect(build({ status: 'queued' }).line).toBe('Queued to send');
   });

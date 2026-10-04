@@ -59,8 +59,11 @@ the checks passed all 11 mounted principal-suite tests. These are local
 implementation receipts, not shipped, browser or actual-provider proof.
 
 This publishes lifecycle facts and agent presence, not an accepted result. Agent
-document edits still use the lead Task/session association. Explicit shared brief context is implemented locally as described below;
-artifact/result links, versioned previews and feedback remain unfinished. The
+document edits still use the lead Task/session association. Explicit shared brief context is implemented locally as described below. Personal
+output previews and human review statements are implemented in the
+[Task-room history contract](project-task-room-history.md); these local slices do
+not complete agent result attribution, invited/public review or the accepted-work
+journey. The
 existing private room agent principal includes its requesting owner identity;
 this history is not a public publication projection.
 
