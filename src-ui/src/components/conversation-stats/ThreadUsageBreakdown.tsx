@@ -7,6 +7,7 @@ import type {
   ThreadUsageTree,
 } from '@kontourai/station-contracts/thread-usage-tree';
 import { useState } from 'react';
+import { Button } from '../Button';
 import { describeReadFailure } from '../state';
 import './ThreadUsageBreakdown.css';
 
@@ -202,15 +203,16 @@ export function ThreadUsageBreakdown({
           ))}
         </ul>
       )}
-      <button
-        type="button"
+      <Button
+        size="sm"
+        variant="secondary"
         className="thread-usage-breakdown__toggle"
         aria-expanded={expanded}
         aria-controls="thread-usage-breakdown-rows"
         onClick={() => setExpanded((value) => !value)}
       >
         {expanded ? 'Hide breakdown' : `Show breakdown (${rows.length})`}
-      </button>
+      </Button>
       {expanded && (
         <ul
           id="thread-usage-breakdown-rows"

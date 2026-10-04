@@ -42,27 +42,7 @@
 }
 
 .thread-usage-breakdown__toggle {
-  min-height: 44px;
   margin-top: var(--k-space-2);
-  padding: 0 var(--k-space-2);
-  border: var(--k-border-thin) solid var(--k-line);
-  border-radius: var(--k-radius-control);
-  background: transparent;
-  color: var(--k-action);
-  font: inherit;
-  cursor: pointer;
-}
-
-@media (pointer: fine) {
-  .thread-usage-breakdown__toggle {
-    min-height: 0;
-    padding-block: var(--k-space-1);
-  }
-}
-
-.thread-usage-breakdown__toggle:focus-visible {
-  outline: 2px solid var(--k-focus);
-  outline-offset: 2px;
 }
 
 .thread-usage-breakdown__rows {
