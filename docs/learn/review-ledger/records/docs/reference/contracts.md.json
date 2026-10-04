@@ -9,12 +9,12 @@
 
   "limits": "Review covers every current documented claim, not all possible behaviors of every exported module. Detailed historical Muse/Claude captures remain historical; no live provider, native push gateway, physical device, deployed account or relay journey was run. Contract declarations and valid parsers never prove authorization, delivery or owner completion. No new security probe.",
 
-  "document": {"digest":"ca2a0e06b0feda8d4ae82b8acd8810a8261c834b0c5850c008fc478f1e087f67","revision":"487bd978d1599eaf52ad405d36bbe20d5bd638a7"},
+  "document": {"digest":"8983fd9729093ed1f034e121c4da16d26b3fdb98b042384830c9e99e38226559","revision":"0ad2f560e1d13e4262d5637f173abc3d95959848"},
 
   "sources": [
     {"path":"packages/cli/src/commands/delegate.ts","digest":"9e1e324cb71d85c563afd74dbd8da063fe8a13a3faaa174690eaebea7ca8518d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"packages/contracts/package.json","digest":"c61c582837114518152e9f403f25738e93121d527cea4ac73070bcef85949c07","revision":"487bd978d1599eaf52ad405d36bbe20d5bd638a7"},
+    {"path":"packages/contracts/package.json","digest":"16200446d13abe91aa5c8f45611c38cb77bcd4acee9372043b14005b9831009f","revision":"0ad2f560e1d13e4262d5637f173abc3d95959848"},
 
     {"path":"packages/contracts/src/__tests__/learning-review.test.ts","digest":"d91c0dcd54fc02fd99e0c7959b63a7dc1216b0556cfb2f8d1ff0996df1651347","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -30,7 +30,7 @@
 
     {"path":"packages/contracts/src/harness-questions.ts","digest":"09d2fbff4ff198f3903249bc83a77e6f02d25d87532fb6324db67ccc478f2a05","revision":"92636a1751411426e2972236b7416e50b18daf32"},
 
-    {"path":"packages/contracts/src/index.ts","digest":"8622b3bbcdb622dbc385cf285e83654139eaea3d9338464125c1d103bd99f29c","revision":"1e6450e0caa47975d33f505a1348bdc01ae1382e"},
+    {"path":"packages/contracts/src/index.ts","digest":"3d00b7228b4e170c5f4abdeded6babdf725bd2db7336871693b17a9a47d0557a","revision":"0ad2f560e1d13e4262d5637f173abc3d95959848"},
 
     {"path":"packages/contracts/src/layout.ts","digest":"d239a39ed06c9dcb103e89da3a86f4d358aa3261a7623b1c5a86eff69e897a43","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -82,7 +82,7 @@
 
     {"path":"src-server/routes/operations/native-push-routes.ts","digest":"1b07cce4f490719d705ce042ea58337c59464d07d499069ee7cc2a7ef2c61e8b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"755ec9f2a3b4e0523ad5fd4126605f4433a4ac90b0075160d21acb280359c704","revision":"c6ebec77b17b679e630a3857b10a6f814d7fb436"},
+    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"f2f5f6f3160e2f4077c2982b843cc0dfe93352d9eca9a49155c22ad7fd7cc9a3","revision":"0ad2f560e1d13e4262d5637f173abc3d95959848"},
 
     {"path":"src-server/routes/pull-requests/__tests__/conversation-pull-request-links.test.ts","digest":"066dbb143af1e66c125ca416437a17ec9a852c181ce6ef2f60f9e4dec1db7c45","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -116,7 +116,7 @@
 
     {"path":"src-server/services/pull-requests/pull-request-review.ts","digest":"ac2b9f7a46736ecc544a8ff555b75773917cbcd67b842acd60474b8fea9933f6","revision":"04f7c604a7cb98c981198b77fb07f1c62d32fd2a"},
 
-    {"path":"src-server/tools/station-control-delegation.ts","digest":"b924e289e8e485cf249ec99ebd3097b014f001f58942aa29f91e0196bbc5af70","revision":"ee7cb7c444fb45f465be3f4ea5c938e5a130145e"},
+    {"path":"src-server/tools/station-control-delegation.ts","digest":"6008efd459d72ccf822f13da79fb91bf775deeeaab16f099fb9efed8cd1a6639","revision":"0ad2f560e1d13e4262d5637f173abc3d95959848"},
 
     {"path":"src-ui/src/hooks/orchestration/ensureOrchestrationEventStream.ts","digest":"08e8b202ab12395f8eed5cb5859919470cd0723eb6bbafa7befcd0af6df33f45","revision":"92636a1751411426e2972236b7416e50b18daf32"},
 

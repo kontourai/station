@@ -72,7 +72,7 @@
 
     {"path":"src-server/services/ssh/remote-session-reader.ts","digest":"60ed7d86fd255199cbbc2af5e309bc3b2959633f253ec3eaf980e1e8bc9f5c09","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
 
-    {"path":"src-server/tools/station-control-delegation.ts","digest":"b924e289e8e485cf249ec99ebd3097b014f001f58942aa29f91e0196bbc5af70","revision":"ee7cb7c444fb45f465be3f4ea5c938e5a130145e"},
+    {"path":"src-server/tools/station-control-delegation.ts","digest":"6008efd459d72ccf822f13da79fb91bf775deeeaab16f099fb9efed8cd1a6639","revision":"0ad2f560e1d13e4262d5637f173abc3d95959848"},
 
     {"path":"src-ui/src/lib/browserRelayEnrollmentController.ts","digest":"fa5b8a6212f796c4302346dbd82370ab0d8fae95d76ad58db584080c4086b7bf","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
 

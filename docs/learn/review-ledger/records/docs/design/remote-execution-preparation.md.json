@@ -9,20 +9,20 @@
 
   "limits": "Design, not shipped behavior beyond slice 1. Current-state claims are source inspection at c2c67c2f25. Slice 1 behavior is established only by the tests named in the implementing change; a genuinely older receiver build is not exercised.",
 
-  "document": {"digest":"42da3dabc161e46ab36247627e9603b534830c65ead67ddb7057c72bf1d29de4","revision":"af849d12b1c8ea9ac86eb8fe98bdaee5f2049c41"},
+  "document": {"digest":"ff3a34a8df365a76574cb93cf5140f4f2aa6c6fffdb90f9d0908ff01fdd337aa","revision":"0ad2f560e1d13e4262d5637f173abc3d95959848"},
 
   "sources": [
-    {"path":"packages/contracts/src/execution-target.ts","digest":"cae7680dbc66f58819bece79acbbb2e3a30246c465b13a4537755ab55fa59639","revision":"17c17a1af4259807885d880c3ec042d6a7737dd7"},
+    {"path":"packages/contracts/src/execution-target.ts","digest":"72d723355a5efeef79519cad76f77122289362f791202f84cf00c3d03b75826c","revision":"0ad2f560e1d13e4262d5637f173abc3d95959848"},
 
-    {"path":"src-server/tools/station-control-delegation.ts","digest":"b924e289e8e485cf249ec99ebd3097b014f001f58942aa29f91e0196bbc5af70","revision":"cf099c6275ffb239f2825c0e53b75be6fa19c6a6"},
+    {"path":"src-server/tools/station-control-delegation.ts","digest":"6008efd459d72ccf822f13da79fb91bf775deeeaab16f099fb9efed8cd1a6639","revision":"0ad2f560e1d13e4262d5637f173abc3d95959848"},
 
-    {"path":"src-server/services/orchestration/delegation-attempt-claim-store.ts","digest":"50dcada7bbbd9f55739a41f024393046c3845e1979aae4113ca9e4eb57f94171","revision":"31278d5413178ad74da3890b30bea83a845499d7"},
+    {"path":"src-server/services/orchestration/delegation-attempt-claim-store.ts","digest":"74f907b131807d1ddf3f46496b875dc5833ab270bb9cfe00fb95bc160a514377","revision":"0ad2f560e1d13e4262d5637f173abc3d95959848"},
 
-    {"path":"src-server/services/projects/project-contribution-service.ts","digest":"84ffcb8cc5d7c6692cd34b03907103b6516f38e6498895e981b7396d3aa82c15","revision":"31278d5413178ad74da3890b30bea83a845499d7"},
+    {"path":"src-server/services/projects/project-contribution-service.ts","digest":"6fea433b2e41b6b1e63688972e17268742b8db91b9c3d1a664e807344dddda0f","revision":"0ad2f560e1d13e4262d5637f173abc3d95959848"},
 
     {"path":"src-server/services/projects/git-read-repository.ts","digest":"4116e0e69da11f5e17c61e7ee10014235241850e5e963cb0b2ae748d464bd7be","revision":"e7fb9b3161de5d6a3e006ad9760ced9c862130c8"},
 
-    {"path":"src-server/capabilities/station-capability-flags.ts","digest":"2b5b60b15b2b0cbd8010ee48cfff95a97173921b09fc12ce11cd46dabdbbf723","revision":"31278d5413178ad74da3890b30bea83a845499d7"},
+    {"path":"src-server/capabilities/station-capability-flags.ts","digest":"aee7b5890981c6f75fbaf4be903c995973bcc52d9bfb9ec96e074cdaa3f80794","revision":"0ad2f560e1d13e4262d5637f173abc3d95959848"},
 
     {"path":"packages/contracts/src/project-identity.ts","digest":"c81f85061a8223065edd232c39c98b972caae30d6f93b8ee919cc39294d44aee","revision":"eb6363dd58678dd61ba83d5402fc868440ed7851"}
   ],

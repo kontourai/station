@@ -24,13 +24,13 @@
 
     {"path":"src-server/services/projects/task-room-work-module.ts","digest":"acf9afa37babc44c9281e95040e057726a71b03c0ab49e98989e59069f450f9c","revision":"81ffd01123b6ad2a2591308e02a0c5f1cddc2feb"},
 
-    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"755ec9f2a3b4e0523ad5fd4126605f4433a4ac90b0075160d21acb280359c704","revision":"c6ebec77b17b679e630a3857b10a6f814d7fb436"},
+    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"f2f5f6f3160e2f4077c2982b843cc0dfe93352d9eca9a49155c22ad7fd7cc9a3","revision":"0ad2f560e1d13e4262d5637f173abc3d95959848"},
 
     {"path":"src-server/routes/orchestration/project-task-rooms.ts","digest":"a0be99c27d8f8795b5dfee2bac64b05ae9e957e7110db08414d76e1fdbd91cc8","revision":"a258f06c1515ccdde83e198862ae8efe43d71207"},
 
     {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"90e94e3a617cb7c9642c029f8dd1c58fbebeca19e29dbd1b097af41952fe4b93","revision":"cf12c0d848d0dc068f3dcaa530e9a1f213618834"},
 
-    {"path":"src-server/tools/station-control-delegation.ts","digest":"b924e289e8e485cf249ec99ebd3097b014f001f58942aa29f91e0196bbc5af70","revision":"a258f06c1515ccdde83e198862ae8efe43d71207"},
+    {"path":"src-server/tools/station-control-delegation.ts","digest":"6008efd459d72ccf822f13da79fb91bf775deeeaab16f099fb9efed8cd1a6639","revision":"0ad2f560e1d13e4262d5637f173abc3d95959848"},
 
     {"path":"src-server/services/orchestration/project-task-room-runtime.ts","digest":"feb48a41131f04260c92e3a7757eda5aa61799a7015b3386a931d950250e3d58","revision":"9f8b407fac4a9e5536d72ca49be3a0b77715e1d8"},
 

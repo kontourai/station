@@ -72,7 +72,7 @@
 
     {"path":"packages/connect/src/react/useHostUrl.ts","digest":"31bc1a68625bee0516607c476367aef5e1ca4f90db61849699a99613ae49d4f4","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
-    {"path":"packages/contracts/src/environment-security.ts","digest":"5e95b203695a37807a3b3c9464df4f0153ca32b408496dc12f59274f61fd2486","revision":"91d79c3f0ce9ca5ae304e4248b67b6189103016e"},
+    {"path":"packages/contracts/src/environment-security.ts","digest":"7a23af10fb1599e1fd493e3608f67bad609b63d278401e2cd2e2f24a455ec0e2","revision":"0ad2f560e1d13e4262d5637f173abc3d95959848"},
 
     {"path":"packages/sdk/src/client/http.ts","digest":"9892699e68483e0df3dd67ce71956994e98a43755a0c931dd6c3c5660caee00e","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 

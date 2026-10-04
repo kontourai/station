@@ -12,7 +12,7 @@
   "document": {"digest":"ec8920fcb32e04182559991d3301afec584a03478e9772ee33ebc90af05281a8","revision":"4775195c62ee67b1c20882a1561a4578b8db017f"},
 
   "sources": [
-    {"path":"packages/contracts/src/environment-security.ts","digest":"5e95b203695a37807a3b3c9464df4f0153ca32b408496dc12f59274f61fd2486","revision":"91d79c3f0ce9ca5ae304e4248b67b6189103016e"},
+    {"path":"packages/contracts/src/environment-security.ts","digest":"7a23af10fb1599e1fd493e3608f67bad609b63d278401e2cd2e2f24a455ec0e2","revision":"0ad2f560e1d13e4262d5637f173abc3d95959848"},
 
     {"path":"src-server/routes/environments/home-authority-routes.ts","digest":"64c1875089078327e3e74481923ecdec9ed1e6751e6b795b54ada44c7fca7ef4","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
