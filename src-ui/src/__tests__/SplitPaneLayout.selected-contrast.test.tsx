@@ -34,19 +34,25 @@
  *   seeded hue swatch — text, which axe rates here like any other.
  * The fixture waits for the brand marks to load before it captures the
  * markup and carries `BrandIcon.css`, so neither is an empty grey tile.
- * The marks are not rated for contrast: they are logos beside the agent's
- * name, and what they are drawn with and on belongs to the icon, not the
- * row. What a selected row could do is repaint them, or show through
- * them, so each page checks that a selected row's mark sits on an opaque
- * tile and is painted exactly as the same mark in an unselected row.
+ * The marks are logos beside the agent's name, and what they are drawn
+ * with and on belongs to the icon, so their legibility in general is not
+ * rated here. What this file owns is what selecting the row does to them.
+ * Selection reaches a mark in one deliberate way: the selected row
+ * re-points --text-muted (SplitPaneLayout.css), and OpenCode's mark fills
+ * one shape with it. So each page checks that a selected row's mark sits
+ * on an opaque tile and is painted exactly as the same mark in an
+ * unselected row, except shapes whose fill reads a token the selected row
+ * re-points (read from the live rule); those must still clear non-text
+ * 3:1 against the tile.
  *
  * Anti-inert guards: each page asserts the selected rows exist and that axe
  * PASSED colour-contrast on text inside them (so a renamed class or a rule
  * axe could not evaluate is a failure, not a silent green), that nothing was
  * left `incomplete` except symbol-only status glyphs, which 1.4.3 (text)
- * does not cover, that axe rated every selected row's agent-icon initials,
- * and that every selected brand mark was drawn and found its unselected
- * twin. Glyph and brand-mark non-text contrast is NOT measured here.
+ * does not cover, that axe rated every agent-icon initials node drawn in a
+ * selected row, and that every selected brand mark was drawn and found its
+ * unselected twin. Glyph non-text contrast, and brand-mark contrast other
+ * than a re-pointed fill, are NOT measured here.
  */
 
 import { createRequire } from 'node:module';
@@ -141,6 +147,13 @@ const AGENTS = [
     engineConnectionType: 'acp',
     connectionName: 'Gemini CLI',
   },
+  // OpenCode's mark has a shape filled with --text-muted, a token the
+  // selected row re-points: the one mark selection is meant to change.
+  {
+    slug: 'ui-tidier',
+    name: 'UI Tidier',
+    engineId: 'opencode',
+  },
 ] as unknown as AgentData[];
 
 async function railMarkup(
@@ -167,7 +180,12 @@ async function railMarkup(
     const undrawn = Array.from(
       left.querySelectorAll('.brand-icon[data-brand-key]'),
     ).filter((icon) => !icon.querySelector('svg, img'));
-    expect(undrawn).toEqual([]);
+    if (undrawn.length > 0)
+      throw new Error(
+        `brand marks never drew: ${undrawn
+          .map((icon) => icon.getAttribute('data-brand-key'))
+          .join(', ')}`,
+      );
   });
   const html = left.outerHTML;
   unmount();
@@ -302,7 +320,9 @@ describe.skipIf(!chromiumAvailable)(
       incomplete: string[];
       marksCompared: number;
       repaintedMarks: string[];
+      repointedTokens: string[];
       initialsRated: number;
+      initialsDrawn: number;
     }> {
       const page = await browser.newPage({
         viewport: { width: 1000, height: 2400 },
@@ -431,16 +451,72 @@ describe.skipIf(!chromiumAvailable)(
         // A selected row's brand mark against the same mark in an unselected
         // row: the slot, the tile and every painted shape.
         const marks = await page.evaluate(() => {
+          // Tokens the selected row re-points for its whole subtree, read
+          // from the live `.split-pane__item--selected` rule
+          // (SplitPaneLayout.css re-points --text-muted, on purpose, to
+          // keep the faintest text step at AA on the tint).
+          const styleRules: CSSStyleRule[] = [];
+          const collect = (rules: CSSRuleList) => {
+            for (const rule of rules) {
+              if (rule instanceof CSSStyleRule) styleRules.push(rule);
+              if ('cssRules' in rule)
+                collect((rule as CSSGroupingRule).cssRules);
+            }
+          };
+          for (const sheet of document.styleSheets) collect(sheet.cssRules);
+          const repointed = styleRules
+            .filter(
+              (rule) => rule.selectorText === '.split-pane__item--selected',
+            )
+            .flatMap((rule) =>
+              Array.from(rule.style).filter((name) => name.startsWith('--')),
+            );
+          // A shape whose own fill reads a re-pointed token is meant to
+          // change when the row is selected.
+          const readsRepointed = (shape: Element) =>
+            styleRules.some(
+              (rule) =>
+                // Token test first: only fill rules reach `matches`.
+                repointed.some((token) =>
+                  rule.style.getPropertyValue('fill').includes(`var(${token})`),
+                ) && shape.matches(rule.selectorText),
+            );
+          const canvas = document.createElement('canvas').getContext('2d')!;
+          const luminance = (color: string) => {
+            canvas.clearRect(0, 0, 1, 1);
+            canvas.fillStyle = color;
+            canvas.fillRect(0, 0, 1, 1);
+            const [r, g, b] = Array.from(
+              canvas.getImageData(0, 0, 1, 1).data.slice(0, 3),
+              (byte) => {
+                const c = byte / 255;
+                return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+              },
+            );
+            return 0.2126 * r! + 0.7152 * g! + 0.0722 * b!;
+          };
+          const contrast = (a: string, b: string) => {
+            const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+            return (hi! + 0.05) / (lo! + 0.05);
+          };
+          const shapesOf = (icon: Element) =>
+            Array.from(icon.querySelectorAll('svg rect, svg path'));
           const paint = (icon: Element) => {
             const slot = icon.closest('.split-pane__item-icon');
             return JSON.stringify({
               slot: slot && getComputedStyle(slot).backgroundColor,
               tile: getComputedStyle(icon).backgroundColor,
               border: getComputedStyle(icon).borderTopColor,
-              shapes: Array.from(
-                icon.querySelectorAll('svg rect, svg path'),
-                (shape) => getComputedStyle(shape).fill,
+              shapes: shapesOf(icon).map((shape) =>
+                readsRepointed(shape)
+                  ? 're-pointed by the selected row'
+                  : getComputedStyle(shape).fill,
               ),
+              images: Array.from(icon.querySelectorAll('img'), (image) => {
+                const style = getComputedStyle(image);
+                const box = image.getBoundingClientRect();
+                return [style.opacity, style.visibility, box.width, box.height];
+              }),
             });
           };
           const repainted: string[] = [];
@@ -456,7 +532,7 @@ describe.skipIf(!chromiumAvailable)(
               repainted.push(`${key}: no unselected row draws this mark`);
               continue;
             }
-            if (!icon.querySelector('svg rect, svg path')) {
+            if (!icon.querySelector('svg rect, svg path, img')) {
               // An empty tile matches an empty twin; that is not a mark.
               repainted.push(`${key}: the mark was not drawn`);
               continue;
@@ -481,9 +557,23 @@ describe.skipIf(!chromiumAvailable)(
               repainted.push(
                 `${key}: selected ${selected} vs unselected ${unselected}`,
               );
+            // A re-pointed fill may change, but not below non-text 3:1
+            // against its tile (1.4.11).
+            for (const shape of shapesOf(icon).filter(readsRepointed)) {
+              const fill = getComputedStyle(shape).fill;
+              const ratio = contrast(fill, tile);
+              if (ratio < 3)
+                repainted.push(
+                  `${key}: re-pointed fill ${fill} is ${ratio.toFixed(2)}:1 on its tile ${tile}`,
+                );
+            }
           }
-          return { compared, repainted };
+          return { compared, repainted, repointed };
         });
+        // The selected rows' drawn initials, to hold axe's count against.
+        const initialsDrawn = await page
+          .locator('.split-pane__item--selected .brand-icon__initials')
+          .count();
         return {
           selectedRows,
           passedPerRow: result.passedPerRow,
@@ -491,7 +581,9 @@ describe.skipIf(!chromiumAvailable)(
           incomplete: result.incomplete,
           marksCompared: marks.compared,
           repaintedMarks: marks.repainted,
+          repointedTokens: marks.repointed,
           initialsRated: result.initialsRated,
+          initialsDrawn,
         };
       } finally {
         await page.close();
@@ -508,19 +600,24 @@ describe.skipIf(!chromiumAvailable)(
           incomplete,
           marksCompared,
           repaintedMarks,
+          repointedTokens,
           initialsRated,
+          initialsDrawn,
         } = await audit(preset, false);
-        // 3 Agents rails + 4 Activity rails + 1 plain rail.
-        expect(selectedRows).toBe(8);
+        // 4 Agents rails + 4 Activity rails + 1 plain rail.
+        expect(selectedRows).toBe(9);
         // Violations first, so a contrast regression reports the contrast.
         expect(violations).toEqual([]);
         expect(incomplete).toEqual([]);
         expect(repaintedMarks).toEqual([]);
-        // Station and Codex in the Agents rails, Codex in two Activity rails.
-        expect(marksCompared).toBe(4);
-        // The custom-engine agent's "RN": its Agents rail and two Activity
-        // rails.
-        expect(initialsRated).toBe(3);
+        // Every selected mark either counts here or lands in repaintedMarks.
+        expect(marksCompared).toBeGreaterThan(0);
+        // Read from the live rule; without it the OpenCode mark's muted
+        // shape would be compared as if selection could not touch it.
+        expect(repointedTokens).toContain('--text-muted');
+        // Every initials node drawn in a selected row was rated by axe.
+        expect(initialsDrawn).toBeGreaterThan(0);
+        expect(initialsRated).toBe(initialsDrawn);
         expect(passedPerRow).toHaveLength(selectedRows);
         // Every row has at least a name and a second text node (subtitle or
         // badge); a row with fewer passes is one axe was not looking at.
@@ -538,12 +635,14 @@ describe.skipIf(!chromiumAvailable)(
           marksCompared,
           repaintedMarks,
           initialsRated,
+          initialsDrawn,
         } = await audit(preset, true);
         expect(violations).toEqual([]);
         expect(incomplete).toEqual([]);
         expect(repaintedMarks).toEqual([]);
-        expect(marksCompared).toBe(4);
-        expect(initialsRated).toBe(3);
+        expect(marksCompared).toBeGreaterThan(0);
+        expect(initialsDrawn).toBeGreaterThan(0);
+        expect(initialsRated).toBe(initialsDrawn);
         expect(Math.min(...passedPerRow)).toBeGreaterThanOrEqual(2);
       },
     );
