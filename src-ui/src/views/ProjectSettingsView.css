@@ -185,6 +185,8 @@
    several lines tall. */
 .project-settings__path-pill {
   display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
   align-items: baseline;
   gap: 0.35rem;
   padding: 0.35rem 0.65rem;
