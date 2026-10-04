@@ -9,16 +9,14 @@
 
   "limits": "No actual plugin installation, native/device/audio journey, public package distribution, provider operation or cross-host qualification. Source/fixture checks do not establish those outcomes.",
 
-  "document": {"digest":"49405cd7c528e06fe7379cdaac3e800d0ae125298692e920b7256fb53075312e","revision":"6676a48eefb1138e35b49af59b100d086c9fff01"},
-
   "sources": [
-    {"path":"examples/nova-sonic-voice/plugin.json","digest":"f2d7336bc67741a6dc528f3d74920556b6c0c19646c13ab4681ea2b735629daf","revision":"6676a48eefb1138e35b49af59b100d086c9fff01"},
+    "examples/nova-sonic-voice/plugin.json",
 
-    {"path":"examples/nova-sonic-voice/plugin.mjs","digest":"ab2f5505b7ca7956286abc173e63a390aae7fd9d5496c33248a4f829c5e6f349","revision":"6676a48eefb1138e35b49af59b100d086c9fff01"},
+    "examples/nova-sonic-voice/plugin.mjs",
 
-    {"path":"examples/nova-sonic-voice/src/NovaSonicProvider.ts","digest":"8d00abf46a28880097951ae72e906d40e4bebd8b2ae269633fa16e09e7e9bc3a","revision":"6676a48eefb1138e35b49af59b100d086c9fff01"},
+    "examples/nova-sonic-voice/src/NovaSonicProvider.ts",
 
-    {"path":"examples/nova-sonic-voice/src/index.ts","digest":"15f81267c690d5034c5971383f22ea43a41c3aea6737418957418746ccfbf9f4","revision":"6676a48eefb1138e35b49af59b100d086c9fff01"}
+    "examples/nova-sonic-voice/src/index.ts"
   ],
 
   "checks": [

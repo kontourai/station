@@ -9,14 +9,12 @@
 
   "limits": "This defines required classification, not a claim that the live backlog is always compliant.",
 
-  "document": {"digest":"1f1e9852756ba0e75e7bf4b141b191d6655c3af728f813575b711f5a1f840494","revision":"2dd99129dc84d2589b416ca56f5e0060fc30c1ab"},
-
   "sources": [
-    {"path":".github/workflows/backlog-priority-policy.yml","digest":"81dfb5ce883babb1a19dea742bcc2eb06714ea5f3d6361b0bf687ae751ae371d","revision":"2dd99129dc84d2589b416ca56f5e0060fc30c1ab"},
+    ".github/workflows/backlog-priority-policy.yml",
 
-    {"path":"scripts/__tests__/backlog-priority-policy.test.ts","digest":"775d1513e5ab0374f5a16a83401557fee5ed3337025dc86088700f6dd06ba258","revision":"2dd99129dc84d2589b416ca56f5e0060fc30c1ab"},
+    "scripts/__tests__/backlog-priority-policy.test.ts",
 
-    {"path":"scripts/backlog-priority-policy.mjs","digest":"6a43c903dcbf11b08f1cb68c9681cd851312ed169e37a956a8a50406ed5b154e","revision":"2dd99129dc84d2589b416ca56f5e0060fc30c1ab"}
+    "scripts/backlog-priority-policy.mjs"
   ],
 
   "checks": [

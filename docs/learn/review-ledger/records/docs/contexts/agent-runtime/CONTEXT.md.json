@@ -9,20 +9,18 @@
 
   "limits": "Source/composition review; no live engine, native device, hosted application or external Flow journey.",
 
-  "document": {"digest":"65e814615ee79543753261e413d46c6eef26dd2ac6f8d664fc37daaa70908164","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
-
   "sources": [
-    {"path":"src-server/domain/agent-registry.ts","digest":"b25558e066b73e96a09310d9d8a4bc8a0db41f893047a6f86035411ee0df3f50","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/domain/agent-registry.ts",
 
-    {"path":"src-server/runtime/agents/runtime-agent-registry.ts","digest":"7cb6673e6d45f3636e1b4964e7830ebfa281611a38e3c69b117f15c74777f69e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/runtime/agents/runtime-agent-registry.ts",
 
-    {"path":"src-server/runtime/bootstrap/runtime-initialize.ts","digest":"ee99d427e163251de81cfde91df440ea8644cf540f20aca7c63e83206b6b3b2c","revision":"dad445bd2331afaf30f70ab9ae2df1410f8acb93"},
+    "src-server/runtime/bootstrap/runtime-initialize.ts",
 
-    {"path":"src-server/services/orchestration/conversation-lineage.ts","digest":"7280f9906fb68b76b56471b98f490e2b4e57e3ab30e87d1b03807d4e15e102ff","revision":"2b31d6dd3b08301c81fa89dd566b144e78794bd3"},
+    "src-server/services/orchestration/conversation-lineage.ts",
 
-    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"cef065aba654e6b8c977273f5b0a7fb1ec601fbfd307f5ae5736b79064786692","revision":"dad445bd2331afaf30f70ab9ae2df1410f8acb93"},
+    "src-server/services/orchestration/orchestration-service.ts",
 
-    {"path":"src-server/services/orchestration/session-command-module.ts","digest":"a331fc7e27c6541583d642f979f27f4cc7345546c9d40c858a1b3aeba60ff785","revision":"f28ea67cceea02a6cb306952553587cbf6652bc2"}
+    "src-server/services/orchestration/session-command-module.ts"
   ],
 
   "checks": [

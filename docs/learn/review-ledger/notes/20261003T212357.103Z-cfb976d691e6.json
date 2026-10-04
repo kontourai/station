@@ -1,0 +1,7 @@
+{
+  "revision": "933430b75d35242601d9ac5adf9fb4c703c50c0a",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Reviewed native-only layout refinement: header keeps the shared theme action beside the Station title, preserves safe-area padding and 44px targets, and reduces the nested frame top gap using theme spacing. Desktop/shared frame behavior and connection authority are unchanged. This changes presentation only; the existing guide remains accurate.","inputs":["docs/guides/connections.md"]}
+  ]
+}

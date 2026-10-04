@@ -1,0 +1,17 @@
+{
+  "revision": "b21b81a4caef3a1563f591714b029ab79c7cc839",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"src-ui/src/components/chat/chat.css: the steer note's end clearance now applies at every width and the send-blocked line's Remove attachments action sits in a .chat-input__blocked-actions wrapper (two page-local media rules removed). Searched this document for steer, blocked and Remove attachments: it makes no claim about either, so no prose change.","inputs":["docs/design/placement.md"]},
+
+    {"path":"docs/user/getting-started.md","note":"src-ui/src/components/chat/ChatInputArea.tsx: the Remove attachments button on the send-blocked line is wrapped in a .chat-input__blocked-actions span so the shared mobile rule gives it its touch size; label and behaviour unchanged. Searched this document for blocked and Remove attachments: no claim affected.","inputs":["docs/user/getting-started.md"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"docs/ui/responsive-action-surfaces.txt: added the ChatInputArea.tsx action-surface entry (exception: the send-blocked line's Remove attachments action inherits the shared __actions 44px rule; driven under jsdom, rendered but not measured in a browser). This document describes the inventory and the ratchet without counts or a list of entries, so the addition contradicts nothing.","inputs":["docs/guides/responsive-ui.md"]},
+
+    {"path":"docs/guides/theming.md","note":"docs/ui/responsive-action-surfaces.txt: added the ChatInputArea.tsx action-surface entry (exception; geometry inherited from the shared __actions rule). This document states no action-surface count or entry list, so no claim is affected.","inputs":["docs/guides/theming.md"]},
+
+    {"path":"docs/patterns/backend.md","note":"docs/ui/responsive-action-surfaces.txt: added the ChatInputArea.tsx action-surface entry (exception; geometry inherited from the shared __actions rule). This document states no action-surface count or entry list, so no claim is affected.","inputs":["docs/patterns/backend.md"]},
+
+    {"path":"docs/patterns/frontend.md","note":"docs/ui/responsive-action-surfaces.txt: added the ChatInputArea.tsx action-surface entry (exception; geometry inherited from the shared __actions rule). This document states no action-surface count or entry list, so no claim is affected.","inputs":["docs/patterns/frontend.md"]}
+  ]
+}
