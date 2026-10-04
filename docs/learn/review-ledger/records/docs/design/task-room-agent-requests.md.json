@@ -12,7 +12,7 @@
   "document": {"digest":"052186ada638d173143ffc2ca94f14ca4bba5b88aed09a6bdcc37c979f218571","revision":"66913813f737980beb0e845d0e84e2d8d8674098"},
 
   "sources": [
-    {"path":"packages/contracts/package.json","digest":"e22df1bc0996eb10206565d66054adedb06faa477174abe7f705a31f88c8c183","revision":"d9279aaf5f36478cbce5401e427eb674d114967f"},
+    {"path":"packages/contracts/package.json","digest":"13ec6eb0c1deb39f7525f2861b209c700eabd4c93d2cc5efa2056ec87d4a09a1","revision":"28118219085cc9454bc8b7af6e013edaea8ccb26"},
 
     {"path":"packages/contracts/package.json#/exports/.~1task-room-work","digest":"581c042771ed026476503019c1528e261058e922122e701490659ab861bac4ba","revision":"cf099c6275ffb239f2825c0e53b75be6fa19c6a6"},
 
@@ -32,7 +32,7 @@
 
     {"path":"src-server/routes/orchestration/__tests__/task-room-work.routes.test.ts","digest":"1b273db3ecf301804980105fabf37cdb3e8b5cce519499801e1e52948a883c97","revision":"078747c0143ca02d52107439754ca3a51e5479d1"},
 
-    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"c3febaa85af6fa1d6b6edce04539a96b88cb7cb0660b7d0ee0de8d4fb6595530","revision":"b208a334880a96bb3f4267c2d2ffd6d03e118218"},
+    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"04e0ac5039ece5682f49be9bc2d272e90ed56e6db90b7439cefa1db1f09d252b","revision":"f0fa959c03b663a0cefa2f37953406e1b19859a0"},
 
     {"path":"src-server/routes/orchestration/project-task-rooms.ts","digest":"a0be99c27d8f8795b5dfee2bac64b05ae9e957e7110db08414d76e1fdbd91cc8","revision":"a258f06c1515ccdde83e198862ae8efe43d71207"},
 
@@ -52,7 +52,7 @@
 
     {"path":"src-server/services/projects/task-room-work-module.ts","digest":"acf9afa37babc44c9281e95040e057726a71b03c0ab49e98989e59069f450f9c","revision":"81ffd01123b6ad2a2591308e02a0c5f1cddc2feb"},
 
-    {"path":"src-server/tools/station-control-delegation.ts","digest":"e5e4d1979cfa4997ce4b808f5268e69bbd0926f5c838ac1388bbdd5009389467","revision":"56f4c4897a189eeb30430119a4f4895e95fbb541"},
+    {"path":"src-server/tools/station-control-delegation.ts","digest":"5501f0fc0eeb1dcdb870a32a59fde3d568c061b13f846654e71fa4f4493e31db","revision":"f0fa959c03b663a0cefa2f37953406e1b19859a0"},
 
     {"path":"src-ui/src/__tests__/TaskRoomComposer.test.tsx","digest":"af8e3f33aa53115fd99b63149cca098158324409a4bdb00910c41f652b37c9fb","revision":"4bcb32e2752dbd10db63b5acd96b0280be033c9e"},
 
