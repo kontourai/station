@@ -1469,14 +1469,9 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   // #3310: fires from the chat-settings menu; the transcript's summary card
   // observes progress/failure through the shared mutation key.
   const generateSessionSummary = useGenerateSessionSummaryMutation();
-  // station#4525 Phase 2: the single-ready-agent direct-New path used to
-  // call `openChatForAgentInScopedPane(direct)` with no project at all,
-  // which is the OTHER reset mechanism the investigation named — the fresh
-  // session's own `projectSlug` came back `undefined`, and the badge (at the
-  // time, derived straight from the active session) fell to "No project"
-  // even though the dock had one bound a moment earlier. The new chat now
-  // inherits the dock's own binding by default, so both the real session and
-  // the badge agree from the start.
+  // #3170: New always opens the New Chat picker, which defaults to the dock's
+  // project (`resolveNewChatModalDefaultProjectSlug`); nothing is created
+  // until the user picks an agent or Skill there.
   const openNewChatDirect = useCallback(() => {
     setImportedSessionId(null);
     setShowNewChatModal(true);
@@ -1600,9 +1595,9 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     await openConversationForDock(conversationOpenRecovery.conversation);
   }, [conversationOpenRecovery, openConversationForDock]);
   const startNewFromConversationRecovery = useCallback(() => {
-    // Direct-new creates and selects a replacement synchronously. If a picker
-    // is required it creates nothing, so keep the failed recovery visible
-    // until the user has actually selected a replacement there.
+    // New opens the picker and creates nothing synchronously (#3170), so keep
+    // the failed recovery visible until the user has actually selected a
+    // replacement there.
     const before = new Set(Object.keys(activeChatsStore.getSnapshot()));
     openNewChatDirect();
     if (
@@ -2233,8 +2228,8 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                       onCollapse: () => applyDockSnap('collapsed'),
                     }
               }
-              // #3309: New chat is the bar's pinned far-right icon now, with
-              // the same single-ready-agent shortcut the desktop New has.
+              // #3309: New chat is the bar's pinned far-right icon; like the
+              // desktop New it opens the New Chat picker (#3170).
               onNewChat={openNewChatDirect}
               overflow={{
                 onOpenConversation: () => setShowSessionPicker(true),
@@ -2955,8 +2950,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
             // header agrees with the chat that's about to open instead of
             // the new session immediately diverging from a stale badge.
             // Never CLEARS the binding: a modal chat started with no project
-            // chosen leaves it exactly where it was (the same "new chats
-            // preserve the binding" contract `openNewChatDirect` follows).
+            // chosen leaves it exactly where it was.
             const sessionId = openChatForAgentInScopedPane(
               agent,
               projectSlug,
