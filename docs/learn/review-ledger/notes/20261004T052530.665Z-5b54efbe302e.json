@@ -1,0 +1,7 @@
+{
+  "revision": "b5f8cd338eb76d300658e740681cca38a3cde2eb",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Fix round: tests/default-agent-workflow.spec.ts now opens chats through the New chat draft introduced by #3201 (pinning Agent: Station and Model: llama3.2 on the draft), starts the slash-command test's chat with its first message, leaves the draft before the #749 reopen, and sends the provider-error turn from the draft. The matrix still names default-agent-workflow only as an Agents-surface product spec; bucket, ownership and journey description are unchanged, so the prose remains accurate.","inputs":["docs/guides/e2e-coverage-matrix.md"]}
+  ]
+}
