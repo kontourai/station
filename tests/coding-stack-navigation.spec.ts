@@ -638,8 +638,10 @@ test.describe('Coding stack — wide (1440px): tools beside Chat', () => {
     await expect(inbox(page)).toHaveCount(0);
     await page.getByRole('button', { name: 'Expand chat list' }).click();
 
+    // The first conversation's row carries the seeded title until the
+    // conversation list's own title arrives; either names conv-1.
     await inbox(page)
-      .getByRole('button', { name: /Dev Agent Chat/ })
+      .getByRole('button', { name: /Dev Agent Chat|Fix the login flake/ })
       .first()
       .click();
     await expect(page).toHaveURL(/chat=conv-1|chat=session-1/);
