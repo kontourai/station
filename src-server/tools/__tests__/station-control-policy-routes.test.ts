@@ -27,6 +27,7 @@ import { claudeInProcessStationControlOptions } from '../../runtime/mcp/station-
 import { __resetStationControlMcpTokensForTests } from '../../runtime/mcp/station-control-mcp-token.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../services/identity/principal-resolver.js';
 import { INTERNAL_API_TOKEN_HEADER } from '../../utils/internal-api-token.js';
+import { stationControlToolCatalog } from '../station-control-mcp-server.js';
 import {
   matchStationControlRoute,
   STATION_CONTROL_TOOL_POLICY,
@@ -220,7 +221,14 @@ describe('the authority table routes are the routes the tools call', () => {
     const undeclared: string[] = [];
     const silent: string[] = [];
     let id = 10;
-    for (const name of Object.keys(STATION_CONTROL_TOOL_POLICY)) {
+    // The policy table also names the tools of the separate `station-knowledge`
+    // server (#3196), which this station-control instance does not serve.
+    const served = new Set(
+      stationControlToolCatalog().map((tool) => tool.name),
+    );
+    for (const name of Object.keys(STATION_CONTROL_TOOL_POLICY).filter((name) =>
+      served.has(name),
+    )) {
       recorded.length = 0;
       id += 1;
       const result = await request(id, 'tools/call', {
