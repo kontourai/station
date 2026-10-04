@@ -1,0 +1,13 @@
+{
+  "revision": "436dd204b8e1e12a0e1c879671513b51304c5848",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Source delta is one added row in docs/ui/responsive-action-surfaces.txt for src-ui/src/components/chat/McpElicitationCard.tsx (#3284), classified covered with its e2e evidence. This document's claims about the action-surface inventory format, the global mobile floor and how entries are classified are unchanged by an added row. No prose change needed.","inputs":["docs/guides/responsive-ui.md","docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/guides/theming.md","note":"Source delta is one added row in docs/ui/responsive-action-surfaces.txt for src-ui/src/components/chat/McpElicitationCard.tsx (#3284), classified covered with its e2e evidence. This document's claims about the action-surface inventory format, the global mobile floor and how entries are classified are unchanged by an added row. No prose change needed.","inputs":["docs/guides/theming.md","docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/patterns/backend.md","note":"Source delta is one added row in docs/ui/responsive-action-surfaces.txt for src-ui/src/components/chat/McpElicitationCard.tsx (#3284), classified covered with its e2e evidence. This document's claims about the action-surface inventory format, the global mobile floor and how entries are classified are unchanged by an added row. No prose change needed.","inputs":["docs/patterns/backend.md","docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Source delta is one added row in docs/ui/responsive-action-surfaces.txt for src-ui/src/components/chat/McpElicitationCard.tsx (#3284), classified covered with its e2e evidence. This document's claims about the action-surface inventory format, the global mobile floor and how entries are classified are unchanged by an added row. No prose change needed.","inputs":["docs/patterns/frontend.md","docs/ui/responsive-action-surfaces.txt"]}
+  ]
+}
