@@ -1,0 +1,7 @@
+{
+  "revision": "588eae2a9ce0653a1ea92b44de34c56bce5a5c78",
+
+  "notes": [
+    {"path":"docs/guides/monitoring.md","note":"Reviewed the final Profile delta: graph heights now use an explicit relative length and a 2px baseline, activity dates use UTC formatting, and an open paired profile is bound to its captured Station authority. Browser baseline proved the old CSS flattened every bar to 12px; the temporary geometry control distinguished 2px missing-day baselines from 96px activity. Final compiled-browser verification is recorded separately. These changes do not resolve the guide's named collector, Insights file-completeness, historical billing, or native-device limits.","inputs":["docs/guides/monitoring.md"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "8cb0d9b4d83f8bc6e8cf68c8b37f7b44ba60a677",
+
+  "notes": [
+    {"path":"scripts/AGENTS.md","note":"After merging origin/main c6c7d4dd4: main's own changes to this page and its sources are covered by main's record, which this merge kept. This branch's delta to the bound sources (scripts/vitest-resource-manifest.mjs) is unchanged since its last review, whose finding is carried forward, not re-derived: main's own changes to this page and its sources are covered by main's record, which this merge kept. This branch's delta to the bound sources (scripts/vitest-resource-manifest.mjs) is unchanged since its last review, whose finding is carried forward, not re-derived: main's own changes to this page and its sources are covered by main's record, which this merge kept. This branch's delta to the bound sources (scripts/vitest-resource-manifest.mjs) is unchanged since its last review, whose finding is carried forward, not re-derived: this branch's only delta to a bound source is one added entry in scripts/vitest-resource-manifest.mjs classifying InboxRow.geometry.test.tsx as process-heavy (it owns Chromium). That follows the page's rule that new child-process tests are classified in the manifest; no statement on the page changes. Other claims on the page were not re-reviewed.","inputs":["scripts/AGENTS.md"]}
+  ]
+}

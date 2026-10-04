@@ -1,0 +1,7 @@
+{
+  "revision": "20d703d387612f032748b56eae2b17a60d1e6984",
+
+  "notes": [
+    {"path":"docs/guides/native-shell-verification.md","note":"Updated the verification instructions to use Review saved connections and Remove saved connections. The preview remains explicit and technical routing details stay collapsed. Mounted UI assertions passed; installed-shell qualification is still separate.","inputs":["docs/guides/native-shell-verification.md"]}
+  ]
+}

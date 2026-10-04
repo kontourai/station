@@ -1,0 +1,11 @@
+{
+  "revision": "66b01ad6049f453749d7b5c9edae47d0ab2703b6",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed inherited packages/shared/package.json delta: only the public skill-experience-workflow subpath is added. Token/primitive adoption, theme roles, responsive geometry, transport/query ownership and package boundaries described here remain accurate; no CSS or header/keyboard behavior changes in this manifest delta. Native relay UI still uses the independently inspected shared tokens/primitives and scoped safe-inset/theme controls.","inputs":["docs/guides/responsive-ui.md"]},
+
+    {"path":"docs/guides/theming.md","note":"Reviewed inherited packages/shared/package.json delta: only the public skill-experience-workflow subpath is added. Token/primitive adoption, theme roles, responsive geometry, transport/query ownership and package boundaries described here remain accurate; no CSS or header/keyboard behavior changes in this manifest delta. Native relay UI still uses the independently inspected shared tokens/primitives and scoped safe-inset/theme controls.","inputs":["docs/guides/theming.md"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Reviewed inherited packages/shared/package.json delta: only the public skill-experience-workflow subpath is added. Token/primitive adoption, theme roles, responsive geometry, transport/query ownership and package boundaries described here remain accurate; no CSS or header/keyboard behavior changes in this manifest delta. Native relay UI still uses the independently inspected shared tokens/primitives and scoped safe-inset/theme controls.","inputs":["docs/patterns/frontend.md"]}
+  ]
+}

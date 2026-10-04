@@ -1,0 +1,7 @@
+{
+  "revision": "43d5daf2e8844311876589bd4b4d13fe91679e3e",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Reviewed the coding-stack slice's placement claims against App.tsx after changing the ambient-Chat gate from the layout query's isLoading to isPending: the restore frame of PersistQueryClientProvider left isLoading false with no record, so the dock's Chat mounted and was then suspended for the centre's (CI trace on #3035, reproduced by holding the IndexedDB open). Added one sentence stating that App mounts no Chat until the record is known. Mobile full-screen, folded-region and mirror claims re-read; unchanged.","inputs":["docs/design/placement.md"]}
+  ]
+}

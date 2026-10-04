@@ -1,0 +1,7 @@
+{
+  "revision": "bf1a808633ee202b3766b5845fc01cb3923efff6",
+
+  "notes": [
+    {"path":"docs/learn/media/inspect-request.webm","note":"#3071: orchestration-service.ts changed only what request inspection returns for a request settled by its turn's abort (now resolved) and what respondToRequest does for a resolved or settled request (refused). The capture shows the inspector for a genuinely open request with Deny and Approve once; that response and the UI that renders it are unchanged. Not re-captured and not viewed in a running app for this review: judged from the source delta only.","inputs":["docs/learn/media/inspect-request.webm"]}
+  ]
+}

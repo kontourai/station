@@ -1,0 +1,7 @@
+{
+  "revision": "26c576127006fc775278e3da2eea0ab23bc9e90c",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed the Profile capture exclusion against hideVolatileChrome. Only paragraphs beginning Snapshot rebuilt are CSS-hidden; the unavailable timestamp fallback, usage scope, refresh failures and controls remain visible. Typecheck:e2e and 33 fixture guard checks passed. The original CI image exposed a real live timestamp; a new capture and reviewed baseline from the pinned CI renderer are still required. Screenshot pixels do not prove accounting freshness.","inputs":["docs/guides/testing.md"]}
+  ]
+}
