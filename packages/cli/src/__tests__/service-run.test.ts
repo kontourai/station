@@ -1234,6 +1234,7 @@ describe('supervised service liveness (station#3064)', () => {
       await exited;
     });
     const exit = vi.fn();
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
     const collect = readyCollect().mockImplementation(async () => {
       // A conflicting owner appears after startup but before readiness publication.
       upsertInstance(
@@ -1241,7 +1242,7 @@ describe('supervised service liveness (station#3064)', () => {
         { port: 38141, type: 'sidecar', pid: process.ppid },
         home,
       );
-      return instanceStatus(okChild(10), okChild(11));
+      return instanceStatus(okChild(host!.pid!), okChild(host!.pid!));
     });
     try {
       await superviseService(serviceLifecycle(home), {
@@ -1257,6 +1258,9 @@ describe('supervised service liveness (station#3064)', () => {
         stateHome: home,
       });
       expect(exit).toHaveBeenCalledWith(1);
+      expect(errors).toHaveBeenCalledWith(
+        expect.stringContaining('lost its home ownership fence'),
+      );
       expect(
         readInstanceRegistry(home).instances['service-test'].pid,
       ).toBeUndefined();
@@ -1265,6 +1269,7 @@ describe('supervised service liveness (station#3064)', () => {
         'refused publication must reap the running host',
       ).toBe(true);
     } finally {
+      errors.mockRestore();
       if (host && host.exitCode === null && host.signalCode === null) {
         const exited = once(host, 'exit');
         host.kill();

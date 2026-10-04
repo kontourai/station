@@ -241,7 +241,8 @@ Two disclosed limits of the discipline (verified by probe, not assumed):
   home through `claimHostOwner`. A conflicting live owner, missing installed
   policy, or unreadable registry refuses startup with a readable reason and
   nonzero exit. A won claim publishes its PID (`starting`) unless a live
-  process of this unit (installer or update launcher) already fences it.
+  update launcher or replaced generation of this unit already fences it.
+  An `installing` reservation always transfers to the supervisor before start.
   Readiness publishes `running`; refusal or publication I/O failure stops
   Station and exits nonzero. Retraction during shutdown remains best effort.
   Bare `service run` no longer starts an unfenced container supervisor. The
