@@ -1,0 +1,7 @@
+{
+  "revision": "c940b8d8bd415857e855a1674fc214f5d456b5a8",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"Checked the corrected contracts paragraph (checks partial only beyond a 1000-context cap): no integration step or claim changes.","inputs":["docs/guides/integrating-station.md"]}
+  ]
+}

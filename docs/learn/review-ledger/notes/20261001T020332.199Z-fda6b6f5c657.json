@@ -1,0 +1,7 @@
+{
+  "revision": "84d3f24dd2a73d8376e85c715547942487a5768a",
+
+  "notes": [
+    {"path":"docs/testing/browser-smoke.md","note":"Reviewed retained UI CRUD smoke journey against the renamed model-connection starting point. Its creation, persistence, edit and deletion assertions and real user actions are unchanged; no smoke coverage removed. Agent starting-point callbacks and model/prompt gates pass in focused/browser tests.","inputs":["docs/testing/browser-smoke.md"]}
+  ]
+}

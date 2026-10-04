@@ -1,0 +1,7 @@
+{
+  "revision": "020eb6a14e05313bb66724ec3504e613717e6ed1",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"Reviewed additive CLI authoring reference: does not change architectural findings, ownership or existing lifecycle recommendations; linked public command reference remains valid.","inputs":["docs/architecture/abstraction-review.md"]}
+  ]
+}

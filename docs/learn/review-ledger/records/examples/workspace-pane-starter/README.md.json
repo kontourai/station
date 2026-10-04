@@ -9,14 +9,12 @@
 
   "limits": "No actual plugin installation, native/device/audio journey, public package distribution, provider operation or cross-host qualification. Source/fixture checks do not establish those outcomes.",
 
-  "document": {"digest":"068a9e38ccfb656990eff347312a20c2870462d24370aca4c23cac92b9a7f451","revision":"6676a48eefb1138e35b49af59b100d086c9fff01"},
-
   "sources": [
-    {"path":"examples/station-sessions-mcp/server.mjs","digest":"d4fb9811db1250a44018041f40fb80b8e07c809d41a16b6a5e14137be403e079","revision":"6676a48eefb1138e35b49af59b100d086c9fff01"},
+    "examples/station-sessions-mcp/server.mjs",
 
-    {"path":"examples/workspace-pane-starter/plugin.json","digest":"fea347ce5510741fa02083dd3dcec76cb6fe0c890a12dc178bdcbefd663a318d","revision":"6676a48eefb1138e35b49af59b100d086c9fff01"},
+    "examples/workspace-pane-starter/plugin.json",
 
-    {"path":"scripts/__tests__/examples-conformance.test.ts","digest":"c2552e50d70b2fa63caed572f34869d3a60c11fd10488c87cb86884864986d7a","revision":"6676a48eefb1138e35b49af59b100d086c9fff01"}
+    "scripts/__tests__/examples-conformance.test.ts"
   ],
 
   "checks": [
