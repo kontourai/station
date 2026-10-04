@@ -80,7 +80,7 @@
 
     {"path":"src-ui/src/components/chat-dock/MobileTaskSwitcher.tsx","digest":"6a6954729e58f66310ecd1287bcec0ea0c49d248106ec296d59e7be306e38a4b","revision":"ed4b7b2c4440e328d5367f3d8f4a319a81dfba7e"},
 
-    {"path":"src-ui/src/components/chat/chat.css","digest":"adb79623618600c59d7259aa50d59628aee20850643f00c97ef918a0c220b67c","revision":"c6ebec77b17b679e630a3857b10a6f814d7fb436"},
+    {"path":"src-ui/src/components/chat/chat.css","digest":"5acf31bba4323c730fb2ed80010fb0f43b3ae13268ad54ac5567d2b89253bec7","revision":"75ba9fe511e2b52500a44d0c3050a4fa66e05148"},
 
     {"path":"src-ui/src/components/header/ThemeToggle.tsx","digest":"5cd7fb99ff38e6e9a6bf1f572c2ed488604b341e85569767a836a580fba63e9f","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
