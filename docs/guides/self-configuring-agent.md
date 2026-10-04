@@ -127,12 +127,21 @@ Session by its `sessionId`, without creating a task.
   never interrupts: a timeout leaves the Session running, and the caller calls
   again. Wait with the `sessionId` and `eventCursor` that `send_to_session`
   returned. A calling Session may hold at most 4 waits at once, and Station 256.
-- Send and interrupt carry a `requestKey`. Repeating a call with the same key
-  and arguments returns the first answer (`replayed: true`) without acting
-  again; the same key with different arguments is `request_key_conflict`. Keys
-  belong to the verified calling Session and expire after seven days.
-  An `indeterminate` answer means the message may have been delivered, so repeat
-  the same call to re-check rather than sending under a new key.
+- Send and interrupt carry a `requestKey`. Repeating a call that delivered or
+  interrupted, with the same key and arguments, returns the first answer
+  (`replayed: true`) without acting again; the same key with different arguments
+  is `request_key_conflict`. A refusal that did nothing (`session_busy`,
+  `no_active_turn`) frees the key, so the same call may be repeated once the
+  Session is ready. Keys belong to the verified calling Session and expire after
+  seven days. A calling Session keeps at most 300 keys: past that its own oldest
+  completed keys are dropped (they no longer replay), and it is refused
+  (`request_key_caller_capacity`) only while every one of its keys is an
+  unresolved `indeterminate` request. An `indeterminate` answer means the
+  message may have been delivered, so repeat the same call to re-check rather
+  than sending under a new key.
+- `wait_session` watches exactly the Session it is given. When a newer Session
+  now serves that Session's conversation the answer carries `superseded: true`
+  and `currentSessionId`, so the caller can wait on the current one.
 
 Send and interrupt use the dispatch scope above for their target Session: the
 same owner, in the caller's Project (or both global), never a conversation that
