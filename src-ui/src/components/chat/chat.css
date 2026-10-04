@@ -1247,15 +1247,6 @@
   display: inline-flex;
 }
 
-/* The transcript's own action button (Retry, Discard, New chat…) is a touch
-   target on a phone or a touch screen; inline styles set its look, not this. */
-@media (max-width: 768px), (pointer: coarse) {
-  .ephemeral-message__action {
-    min-height: 44px;
-    min-width: 44px;
-  }
-}
-
 .chat-input__queued-retry-actions > button {
   padding: 0 var(--space-1);
   border: 0;

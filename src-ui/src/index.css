@@ -1593,17 +1593,20 @@ button:hover {
     pointer-events: auto;
   }
 
-  /* The send-blocked line's one fix, "Remove attachments". Its 44px floor
+  /* The send-blocked line's one fix, "Remove attachments", the queued-retry
+     "Discard" the composer repeats in a short dock, and the transcript notice
+     action ("Discard", "Retry"…). Their 44px floor
      comes from the width-gated mobile block's shared action-row rule, which a
      touch tablet wider than 768px and taller than 540px never reaches. The
      floor is a property of the pointer, not the width, and a pointer that
-     cannot hover is the touch one. This is deliberately ONE control, not the
+     cannot hover is the touch one. This is deliberately THESE controls, not the
      whole action-row vocabulary: that rule's selectors also match header,
      footer and toolbar rows (the 38px dock header's actions, live-work rows,
      the inbox footer, tool-call actions) that have no wrap rule or coverage at
      this width. */
   .chat-input__blocked-actions > button,
-  .chat-input__queued-retry-actions > button {
+  .chat-input__queued-retry-actions > button,
+  .ephemeral-message__action {
     min-height: 44px;
     min-width: 44px;
   }
@@ -6561,6 +6564,13 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     max-width: 100%;
     flex-wrap: wrap;
     padding-bottom: max(0px, var(--safe-bottom, 0px));
+  }
+
+  /* The transcript's own notice action (Retry, Discard, New chat…): its look is
+     inline, its touch floor is here. */
+  .ephemeral-message__action {
+    min-width: 44px;
+    min-height: 44px;
   }
 
   .responsive-surface-actions > :is(button, a, .button, [role="button"]) {
