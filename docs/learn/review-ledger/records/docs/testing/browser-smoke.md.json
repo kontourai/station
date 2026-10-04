@@ -34,7 +34,7 @@
 
     {"path":"tests/connect-remote-auth-recovery.spec.ts","digest":"cad2b1bd2981df02fffb35b094cd8853c60c987fa786f229f7695a5cc3fccc81","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"tests/cross-runtime-chat-switching.spec.ts","digest":"0aeb646fe962c41108316c65360c405268ea7061ea2504e7441b51a0a9bd2878","revision":"8fd71c3714eceeb651bd8e52f200aa1532fa33c6"},
+    {"path":"tests/cross-runtime-chat-switching.spec.ts","digest":"5426df79b21ad75b2f2ef15da154371b231f89c57bd97f01a8461de216cc0c44","revision":"390777781dc66faa6f34003ed872e2a5fcadc7e6"},
 
     {"path":"tests/csp-shell.spec.ts","digest":"2d4188a6409f2de786843b35a2fa405f5257af78467ad9fce030d73a6f69511e","revision":"c10772e15ed1dbd83968746a45a20d6c26bbd4f2"},
 
@@ -46,7 +46,7 @@
 
     {"path":"tests/orchestration-chat-flow.spec.ts","digest":"24c14104688ee219d5d5e78e0099e740d6132e03f5a2a218ae64b6fd5b231716","revision":"b6e91add12d9c42b59c59f070ca541e9a9d63e62"},
 
-    {"path":"tests/pr-smoke-live-chat-send.spec.ts","digest":"34e256af4b0ff8c90928093987dcc152ee370f4719677716c2082d639833db45","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"tests/pr-smoke-live-chat-send.spec.ts","digest":"235c7afa385a52002bfa7a0c07a25584c4025572cc6569277561df90c21c9918","revision":"390777781dc66faa6f34003ed872e2a5fcadc7e6"},
 
     {"path":"tests/ui-crud-smoke.spec.ts","digest":"7d7ff82fd5933733973d5fec0cf27e833842307ebdbe96a73be0e76aee7eddaa","revision":"42811285ef04d069daf576d46253ac833573f848"}
   ],

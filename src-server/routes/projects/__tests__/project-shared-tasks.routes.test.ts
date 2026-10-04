@@ -1,6 +1,12 @@
 import { DatabaseSync } from 'node:sqlite';
 import type { ProjectMembershipScope } from '@kontourai/station-contracts/project-membership';
-import { readProjectSharedTaskHistory } from '@kontourai/station-sdk/project-shared-tasks';
+import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
+import {
+  getProjectSharedTaskPublication,
+  listProjectSharedTasks,
+  readProjectSharedTaskDocument,
+  readProjectSharedTaskHistory,
+} from '@kontourai/station-sdk/project-shared-tasks';
 import { Hono } from 'hono';
 import { describe, expect, test, vi } from 'vitest';
 import { ProjectMembershipRefusal } from '../../../services/projects/project-membership-store.js';
@@ -361,5 +367,250 @@ describe('project shared Task routes', () => {
     ).toBe(404);
     expect(owner.operator).toHaveBeenCalledTimes(4);
     db.close();
+  });
+});
+
+// #3193: the member read path that MemberProjectPage depends on, through the
+// real service, store and routes. Only the room producer is a stand-in.
+function memberFixture() {
+  const db = new DatabaseSync(':memory:');
+  const record = (id: string, createdAt = '2026-09-20T00:00:00.000Z') =>
+    ({
+      id,
+      projectId: 'project-1',
+      title: `Task ${id}`,
+      description: 'private description',
+      priority: 'normal',
+      status: 'ready',
+      createdBy: 'owner',
+      createdAt,
+      updatedAt: createdAt,
+    }) satisfies TaskRecord;
+  const tasks = new Map<string, TaskRecord>(
+    ['task-1', 'private-task', 'elsewhere-task', 'stale-task'].map((id) => [
+      id,
+      record(id),
+    ]),
+  );
+  const store = new ProjectSharedTaskStore(db);
+  const service = new ProjectSharedTaskService({
+    store,
+    readTask: (id) => tasks.get(id) ?? null,
+    projectCandidates: () => [{ id: 'project-1', slug: 'example' }],
+  });
+  const owner = {
+    current: vi.fn(async () => ({ principalId: 'human:owner' })),
+    operator: vi.fn(async () => {}),
+    requireProjectRead: vi.fn(async () => {}),
+  };
+  const member = {
+    current: vi.fn(async () => ({ principalId: 'human:member' })),
+    operator: vi.fn(async () => {
+      throw new ProjectMembershipRefusal('forbidden');
+    }),
+    requireProjectRead: vi.fn(async (_scope: ProjectMembershipScope) => {}),
+  };
+  const app = (authority: typeof owner | typeof member) =>
+    new Hono().route(
+      '/api/projects',
+      createProjectSharedTaskRoutes({
+        service,
+        room: fixture().room as never,
+        scope: vi.fn(async () => scope),
+        authority: vi.fn(async () => authority),
+      }),
+    );
+  return {
+    db,
+    tasks,
+    record,
+    store,
+    service,
+    owner,
+    member,
+    ownerApp: app(owner),
+    memberApp: app(member),
+  };
+}
+async function exactResponse(response: Response) {
+  return {
+    status: response.status,
+    headers: [...response.headers.entries()].sort(),
+    body: await response.text(),
+  };
+}
+describe('member publication read over the real service', () => {
+  test('a member reads the shared summary, and history and document then open', async () => {
+    const h = memberFixture();
+    const shared = await h.ownerApp.request(
+      '/api/projects/example/shared-work/task-1',
+      { method: 'PUT' },
+    );
+    expect(shared.status).toBe(201);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: string | URL | Request, init?: RequestInit) =>
+        h.memberApp.request(
+          input instanceof Request ? input : String(input),
+          init,
+        ),
+      ),
+    );
+    try {
+      const options = { authentication: 'omit' as const };
+      const [listed] = await listProjectSharedTasks(
+        'http://localhost',
+        'example',
+        options,
+      );
+      expect(listed?.task.id).toBe('task-1');
+      const publication = await getProjectSharedTaskPublication(
+        'http://localhost',
+        'example',
+        'task-1',
+        options,
+      );
+      // The member sees exactly the summary the shared-work list already
+      // gives them; nothing more (no sharer, no description).
+      expect(publication).toEqual({ kind: 'shared', publication: listed });
+      // MemberProjectPage's gate (ProjectsContext `publicationIsCurrent`)
+      // opens history and document only for a current shared publication.
+      const gateOpens =
+        publication.kind === 'shared' &&
+        publication.publication.shareId === listed!.shareId &&
+        publication.publication.task.createdAt === listed!.task.createdAt;
+      expect(gateOpens).toBe(true);
+      await expect(
+        readProjectSharedTaskHistory(
+          'http://localhost',
+          'example',
+          'task-1',
+          options,
+        ),
+      ).resolves.toMatchObject({ kind: 'available' });
+      await expect(
+        readProjectSharedTaskDocument(
+          'http://localhost',
+          'example',
+          'task-1',
+          options,
+        ),
+      ).resolves.toMatchObject({ kind: 'snapshot', text: 'shared document' });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+    const raw = (await (
+      await h.memberApp.request(
+        '/api/projects/example/shared-work/task-1/publication',
+      )
+    ).json()) as {
+      data: { publication: { task: Record<string, unknown> } };
+    };
+    expect(Object.keys(raw.data.publication).sort()).toEqual([
+      'project',
+      'shareId',
+      'sharedAt',
+      'task',
+      'version',
+    ]);
+    expect(Object.keys(raw.data.publication.task).sort()).toEqual([
+      'createdAt',
+      'id',
+      'status',
+      'title',
+    ]);
+    expect(JSON.stringify(raw)).not.toMatch(/human:owner|private description/);
+    h.db.close();
+  });
+  test('a member cannot tell unshared, elsewhere, stale and missing Tasks apart', async () => {
+    const h = memberFixture();
+    await h.service.share(scope, 'task-1', h.owner);
+    await h.service.share(
+      { ...scope, portableProjectId: 'portable-elsewhere' },
+      'elsewhere-task',
+      h.owner,
+    );
+    await h.service.share(scope, 'stale-task', h.owner);
+    h.tasks.set(
+      'stale-task',
+      h.record('stale-task', '2026-09-21T00:00:00.000Z'),
+    );
+    const read = async (taskId: string) =>
+      exactResponse(
+        await h.memberApp.request(
+          `/api/projects/example/shared-work/${taskId}/publication`,
+        ),
+      );
+    const missing = await read('no-such-task');
+    expect(missing).toEqual({
+      status: 404,
+      headers: [
+        ['cache-control', 'no-store'],
+        ['content-type', 'application/json'],
+      ],
+      body: JSON.stringify({ success: false, error: 'Shared Task not found' }),
+    });
+    expect(await read('private-task')).toEqual(missing);
+    expect(await read('elsewhere-task')).toEqual(missing);
+    expect(await read('stale-task')).toEqual(missing);
+    const shareId = h.store.admission('task-1')!.shareId;
+    expect((await read('task-1')).status).toBe(200);
+    await h.service.unshare(scope, 'task-1', shareId, h.owner);
+    expect(await read('task-1')).toEqual(missing);
+    // The operator still reviews the private state the share control needs.
+    const review = await h.ownerApp.request(
+      '/api/projects/example/shared-work/private-task/publication',
+    );
+    expect(review.status).toBe(200);
+    expect(await review.json()).toMatchObject({
+      data: { kind: 'unshared', task: { id: 'private-task' } },
+    });
+    h.db.close();
+  });
+  test('share and unshare stay operator-only for a member', async () => {
+    const h = memberFixture();
+    const refused = await h.memberApp.request(
+      '/api/projects/example/shared-work/private-task',
+      { method: 'PUT' },
+    );
+    expect(refused.status).toBe(404);
+    expect(h.store.admission('private-task')).toBeUndefined();
+    const admission = await h.service.share(scope, 'task-1', h.owner);
+    const unshare = await h.memberApp.request(
+      '/api/projects/example/shared-work/task-1',
+      {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ shareId: admission.shareId }),
+      },
+    );
+    expect(unshare.status).toBe(404);
+    expect(h.store.admission('task-1')?.shareId).toBe(admission.shareId);
+    h.db.close();
+  });
+  test('membership or publication ending mid-read withholds the summary', async () => {
+    const h = memberFixture();
+    const admission = await h.service.share(scope, 'task-1', h.owner);
+    let reads = 0;
+    h.member.requireProjectRead.mockImplementation(async () => {
+      reads += 1;
+      if (reads === 2) throw new ProjectMembershipRefusal('forbidden');
+    });
+    const revoked = await h.memberApp.request(
+      '/api/projects/example/shared-work/task-1/publication',
+    );
+    expect(revoked.status).toBe(404);
+    expect(await revoked.text()).not.toContain(admission.shareId);
+    reads = 0;
+    h.member.requireProjectRead.mockImplementation(async () => {
+      reads += 1;
+      if (reads === 2) h.store.unshare('task-1', admission.shareId);
+    });
+    const unshared = await h.memberApp.request(
+      '/api/projects/example/shared-work/task-1/publication',
+    );
+    expect(unshared.status).toBe(404);
+    expect(await unshared.text()).not.toContain(admission.shareId);
+    h.db.close();
   });
 });

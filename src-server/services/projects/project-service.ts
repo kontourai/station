@@ -118,10 +118,13 @@ export async function raceWorktreeDirectoryCheck<T>(
  * absent key from one the caller explicitly left out.
  */
 export type ProjectUpdate = Partial<
-  Omit<ProjectConfig, 'id' | 'slug' | 'createdAt' | ProjectOverrideRecordField>
+  Omit<
+    ProjectConfig,
+    'id' | 'slug' | 'createdAt' | ProjectOverrideRecordField | 'defaultAgent'
+  >
 > & {
   [K in ProjectOverrideRecordField]?: ProjectConfig[K] | null;
-};
+} & { defaultAgent?: ProjectConfig['defaultAgent'] | null };
 
 /**
  * A `POST /projects` body, as `createProject` accepts it.
@@ -134,10 +137,10 @@ export type ProjectUpdate = Partial<
  */
 export type ProjectCreate = Omit<
   ProjectConfig,
-  'id' | 'createdAt' | 'updatedAt' | ProjectOverrideRecordField
+  'id' | 'createdAt' | 'updatedAt' | ProjectOverrideRecordField | 'defaultAgent'
 > & {
   [K in ProjectOverrideRecordField]?: ProjectConfig[K] | null;
-};
+} & { defaultAgent?: ProjectConfig['defaultAgent'] | null };
 
 export async function assertProjectWorktreeDirectory(
   projectSlug: string,
@@ -412,6 +415,7 @@ export class ProjectService {
     }
     // Rebound, not reassigned: a reassigned parameter keeps its declared
     // (nullable) type, and every read below must see the narrowed one.
+    if (config.defaultAgent === null) delete normalized.defaultAgent;
     const input = normalized;
 
     // Derive name from working directory basename if not provided
@@ -495,6 +499,7 @@ export class ProjectService {
         delete updated[field];
       }
     }
+    if (updates.defaultAgent === null) delete updated.defaultAgent;
     if (updated.defaultEnvironment?.kind === 'current') {
       delete updated.defaultEnvironment;
     }

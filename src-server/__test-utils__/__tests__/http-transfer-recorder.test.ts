@@ -14,7 +14,11 @@ describe('HttpTransferRecorder', () => {
   test('waits for gunzip output before finalizing a complete gzip response', async () => {
     const server = createServer((_request, response) => {
       const body = gzipSync(
-        Buffer.from('event: proof\ndata: gzip\n\n'.repeat(8192)),
+        Buffer.from(
+          'event: orchestration:event\ndata: {"event":{"method":"turn.completed","threadId":"PRIVATE_THREAD_SENTINEL","turnId":"PRIVATE_TURN_SENTINEL","output":"PRIVATE_BODY_SENTINEL"}}\n\n'.repeat(
+            8192,
+          ),
+        ),
       );
       response.writeHead(200, {
         'content-encoding': 'gzip',
@@ -47,7 +51,17 @@ describe('HttpTransferRecorder', () => {
     });
     expect(recorder.attempts[0]!.decodedBodyBytes).toBeGreaterThan(0);
     expect(recorder.attempts[0]!.compressionRatio).toBeGreaterThan(0);
-    expect(recorder.attempts[0]!.frames).toBeGreaterThan(0);
+    expect(recorder.attempts[0]!.frames).toBe(8192);
+    const identities = recorder.attempts[0]!.eventIdentities;
+    expect(identities).toHaveLength(128);
+    expect(identities[0]).toMatchObject({
+      frame: 1,
+      event: 'orchestration:event',
+      methodDigest: expect.stringMatching(/^[0-9a-f]{16}$/),
+      threadDigest: expect.stringMatching(/^[0-9a-f]{16}$/),
+      turnDigest: expect.stringMatching(/^[0-9a-f]{16}$/),
+    });
+    expect(JSON.stringify(identities)).not.toContain('PRIVATE_');
   });
 
   test('calculates a gzip ratio from checkpointed phase deltas only', async () => {
@@ -80,6 +94,8 @@ describe('HttpTransferRecorder', () => {
     expect(recorder.attempts).toHaveLength(1);
     const phase = recorder.attempts[0]!;
     expect(phase.decodedBodyBytes).toBe(second.byteLength);
+    expect(phase.eventIdentities).toHaveLength(128);
+    expect(phase.eventIdentities[0]!.frame).toBe(1);
     expect(phase.compressionRatio).toBeCloseTo(
       phase.encodedBodyBytes / second.byteLength,
       12,

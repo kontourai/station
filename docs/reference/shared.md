@@ -144,7 +144,7 @@ interface PluginPreview {
 }
 
 interface PluginComponent {
-  type: 'agent' | 'layout' | 'pane' | 'provider' | 'tool';
+  type: 'agent' | 'command' | 'layout' | 'pane' | 'provider' | 'tool';
   id: string;
   name?: string; // declared display name, e.g. a Pane's `name`
   detail?: string;
@@ -487,6 +487,7 @@ interface ProjectConfig {
   workingDirectory?: string;
   defaultProviderId?: string;
   defaultModel?: string;
+  defaultAgent?: AgentId;
   defaultEmbeddingProviderId?: string;
   defaultEmbeddingModel?: string;
   similarityThreshold?: number;
@@ -497,6 +498,11 @@ interface ProjectConfig {
   updatedAt: string;
 }
 ```
+
+`defaultAgent` supplies the new-chat choice when there is no remembered Agent
+for that Station access and project. The remembered choice takes precedence;
+No project has its own remembered choice. Create/update requests accept `null`
+to clear `defaultAgent`; stored and read configuration omit the cleared field.
 
 `agents` is optional by design: `undefined` means the project can use all
 known agents, while an explicit empty array means the project exposes no agents.
