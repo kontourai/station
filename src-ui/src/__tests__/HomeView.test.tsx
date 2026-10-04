@@ -989,7 +989,7 @@ describe('HomeView', () => {
     expect(container.querySelector('.home-view__empty')).toBeNull();
     // One line (V6); the start form above it is the action.
     expect(container.querySelector('.empty.empty--compact')).toBeTruthy();
-    expect(screen.getByText('No work yet')).toBeTruthy();
+    expect(screen.getByText('Nothing here yet')).toBeTruthy();
   });
 
   /**
@@ -1004,7 +1004,7 @@ describe('HomeView', () => {
     expect(
       screen.queryByRole('button', { name: 'Start your first chat' }),
     ).toBeNull();
-    expect(screen.getByText('No work yet')).toBeTruthy();
+    expect(screen.getByText('Nothing here yet')).toBeTruthy();
     // The form it defers to is the one that stays.
     expect(screen.getByText('Start a chat')).toBeTruthy();
     expect(

@@ -265,7 +265,7 @@ function RecentWorkError({ onViewActivity }: { onViewActivity: () => void }) {
  * section is the action; the empty state only says there is nothing yet.
  */
 function RecentWorkEmpty() {
-  return <Empty variant="compact" label="No work yet" />;
+  return <Empty variant="compact" label="Nothing here yet" />;
 }
 
 function HomeWorkLanesContent({

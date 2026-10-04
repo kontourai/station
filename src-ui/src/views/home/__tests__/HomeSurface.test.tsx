@@ -360,7 +360,7 @@ describe('HomeSurface composition', () => {
     expect(
       screen.queryByRole('heading', { name: 'Where the work has been' }),
     ).toBeNull();
-    expect(screen.getByText('No work yet')).toBeTruthy();
+    expect(screen.getByText('Nothing here yet')).toBeTruthy();
   });
 
   test('one project row is not a chart either (V3)', () => {
