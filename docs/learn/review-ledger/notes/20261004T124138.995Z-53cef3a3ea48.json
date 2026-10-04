@@ -1,0 +1,7 @@
+{
+  "revision": "7c16f2265a7154d30bb772d222841f359b0c418b",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"The manifest test now lists chat-send-again-failed-turn among smoke-live specs, matching the manifest entry; no doc claim changes.","inputs":["docs/guides/e2e-coverage-matrix.md","scripts/__tests__/e2e-manifest.test.ts"]}
+  ]
+}
