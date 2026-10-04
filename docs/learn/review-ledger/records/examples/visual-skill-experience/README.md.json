@@ -22,7 +22,7 @@
 
     {"path":"packages/shared/src/__tests__/skill-experience-author.test.ts","digest":"019fbaff285008de176690a8d64ff9e44e9da462495c64483105c5798bf9d9cf","revision":"f2bb7d8a1e4b56ac783fb9d0cfe167fe7a0fdde5"},
 
-    {"path":"packages/shared/src/build.ts","digest":"20f919a4a98519ce20e8e2f0d5d498a4be8daeba1314a97ddae752fd36df4630","revision":"4846133db20d56a37c3941d83b0dca5444f21a52"},
+    {"path":"packages/shared/src/build.ts","digest":"8db6bc04bffe80ead5af5e8d9b23be2ae02f1e5afbae67f850e583b8ca40c783","revision":"e78cdc9c00d09b69f333e1609821d8fa70bce58c"},
 
     {"path":"packages/shared/src/skill-experience-author.ts","digest":"78eff8e23674a648d904c12919b137ff62c04520fc3f164f66a482102047754b","revision":"f2bb7d8a1e4b56ac783fb9d0cfe167fe7a0fdde5"},
 

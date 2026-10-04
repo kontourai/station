@@ -7,16 +7,16 @@
 
   "summary": "Full README read (including the original 556 lines). Checked source exports versus local dist output, exact authoring bundle input, host externalization, plugin install/approval boundaries, current chat/Dock/notification signatures, protected result APIs, opt-in Pane/voice surfaces and host theme/context requirements. Follow-up: Directory-source paragraph traced through install helper and actual target-source resolver. Final wording explicitly names automatic source categories and refuses explicit/saved localhost targets.",
 
-  "limits": "Scope is the README named surfaces and corrected examples, not every SDK export or the full SDK reference. No fresh npm installation/publication, full package build, live Agent/tool/voice execution, rendered visual/theme audit, real provider or native-device proof. Code-fence checks establish syntax only; the extracted authoring bundle uses preprovided dependencies.",
+  "limits": "Scope is the README named surfaces and corrected examples, not every SDK export or the full SDK reference. No fresh npm installation/publication, full package build, live Agent/tool/voice execution, rendered visual/theme audit, real provider or native-device proof. Code-fence checks establish syntax only; the extracted authoring bundle uses preprovided dependencies.\n\nMerge anchor history (structural reconciliation only; no semantic approval): source packages/sdk/package.json ours={\"digest\":\"14ca105046b127182cd13a45959cad3450f8ff4e49a4bfd467bef75ea2f65de8\",\"revision\":\"efa773acac88792cda31595f9afca4a37d3efebc\"}; origin/main={\"digest\":\"42fe4326a8a49db222c65e5536cbdf7a2bd1885671e292fcb7fd454dc79249db\",\"revision\":\"fdca33b1896b280299ba72fc70a3c9b9cda7f3af\"}. The merged source bytes require supported review after the merge commit.",
 
   "document": {"digest":"f2cdd9967e14fdbb21b97804ca6bac56ac8fac214d8da1f7a1f6678b6da37e91","revision":"68b8e4d5a9b11c85b8922c370acaf98e929d0275"},
 
   "sources": [
     {"path":"packages/cli/src/commands/core-api.ts","digest":"c6d8bf6197cceb12bdfa8962ca20785089c4fa0b6116968dd07e4f25a11a1c10","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"packages/cli/src/commands/install.ts","digest":"ca98a0fa5d41930d6b3bb5d33000804411d82ec80650a7d97294cb7dcd020ac5","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"packages/cli/src/commands/install.ts","digest":"5c476173280f26004cb081d43a6e276530a09d048a19680d56c0acfd3bc7c188","revision":"c2b1caf535d375c5195cc8b8a66c9dc6ce83205d"},
 
-    {"path":"packages/sdk/package.json","digest":"42fe4326a8a49db222c65e5536cbdf7a2bd1885671e292fcb7fd454dc79249db","revision":"fdca33b1896b280299ba72fc70a3c9b9cda7f3af"},
+    {"path":"packages/sdk/package.json","digest":"473accfbc92fb87d86af0b017864a7738ddcf798d0b5a4e4aa986e9a403f891c","revision":"d9279aaf5f36478cbce5401e427eb674d114967f"},
 
     {"path":"packages/sdk/src/agent/index.ts","digest":"27b8861c43936cd4996215ce8ad0f3a2bbd7835adba4740e160e8b8efd02f54e","revision":"f72daba9492778d9418abbf9730b6482b73a300c"},
 
@@ -50,11 +50,11 @@
 
     {"path":"packages/sdk/tsconfig.json","digest":"6178c809c220a4aeb4c07c45fa2c988172c8de8f308383719214db1baf741467","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"packages/shared/src/build.ts","digest":"20f919a4a98519ce20e8e2f0d5d498a4be8daeba1314a97ddae752fd36df4630","revision":"1e6450e0caa47975d33f505a1348bdc01ae1382e"},
+    {"path":"packages/shared/src/build.ts","digest":"8db6bc04bffe80ead5af5e8d9b23be2ae02f1e5afbae67f850e583b8ca40c783","revision":"e78cdc9c00d09b69f333e1609821d8fa70bce58c"},
 
     {"path":"src-server/routes/orchestration/tasks.ts","digest":"8ed321060c9fc811bc408ff9aeee527fdde7555f6c0fd628fa1eb2920a285b46","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-server/services/plugins/plugin-install-transaction.ts","digest":"01ba3b7fe2249e6215c6fb62c6372e21324c863bee37bcac6e739a7b0170db61","revision":"63833ae5666cb06da0b5671dc0e3bf63bdc1d0fa"},
+    {"path":"src-server/services/plugins/plugin-install-transaction.ts","digest":"467e7b1890294780e4d2a379624a4275add33e2dbb5a4505040f54d14bd79afc","revision":"efa773acac88792cda31595f9afca4a37d3efebc"},
 
     {"path":"src-ui/src/core/SDKAdapter.tsx","digest":"6b97757f9bfe3c29837ba06546c68a7a05c18447466f1535768dc936f4d86feb","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
