@@ -9,10 +9,10 @@
 
   "limits": "Current HTTP schemas and send/per-Agent caller boundaries were checked. Dated UI observations and mobile policy are preserved; no exhaustive composer, approval, accessibility, or physical-device certification.",
 
-  "document": {"digest":"7e0ce7e525475c6db375c257c17ed4170bedc11936a4d0fe4f6ff415860898ec","revision":"ffc972585fbd9f6397726ad39ed842ff7c897f49"},
+  "document": {"digest":"b57dadf809c4252ffae0efdbba787ee8ff2d8e0f8b8bc1176ba77d59437b3e9b","revision":"02f31a2344cb70a5a68a5b71a813fcb37f38ebc2"},
 
   "sources": [
-    {"path":"packages/contracts/src/orchestration.ts","digest":"b85426d08406de6a1e6f42dd2b8e356ea3995df5be0929390fa7d17fa00bfd64","revision":"68231f2caead4680fb4dfa036d25b1a4a2a836bb"},
+    {"path":"packages/contracts/src/orchestration.ts","digest":"39896305628573c2fa191ea536addffbc754b309e04503c36d2c502262396065","revision":"1aeb4b1e270b05116eb09b561d5785c6070e9d95"},
 
     {"path":"src-server/routes/chat/chat.ts","digest":"6a21c19b74d6dda3764d207c8768b588df7cb4e5e1f5529955e153cbde99f8cc","revision":"56f4c4897a189eeb30430119a4f4895e95fbb541"},
 
