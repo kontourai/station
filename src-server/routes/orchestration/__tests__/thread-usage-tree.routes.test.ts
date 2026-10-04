@@ -2,17 +2,19 @@
  * The conversation usage-tree route: authorized like the conversation's other
  * reads, `no-store`, and refused (422) past its bound rather than cut.
  */
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import type { ThreadUsageTree } from '@kontourai/station-contracts/thread-usage-tree';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { EventBus } from '../../../services/orchestration/event-bus';
 import { EventStore } from '../../../services/orchestration/event-store';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service';
 import { createOrchestrationRoutes } from '../orchestration';
 
+// Created before the cleanup hook below, so its directories are removed
+// after the service and store close (after-hooks run in reverse order).
+const makeTempDir = trackTempDirs();
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
@@ -43,7 +45,7 @@ function start(
 }
 
 function fixture(options: { user?: string; principalCurrent?: boolean } = {}) {
-  const directory = mkdtempSync(join(tmpdir(), 'station-usage-tree-route-'));
+  const directory = makeTempDir('station-usage-tree-route-');
   const store = new EventStore(join(directory, 'events.sqlite'));
   const service = new OrchestrationService({
     adapterRegistry: { register() {}, get: () => undefined, list: () => [] },
@@ -73,7 +75,6 @@ function fixture(options: { user?: string; principalCurrent?: boolean } = {}) {
   cleanups.push(async () => {
     await service.shutdown();
     store.close();
-    rmSync(directory, { recursive: true, force: true });
   });
   return { app, store };
 }

@@ -33,7 +33,7 @@ import { usageReceiptsForEventRow } from './session-transcript-reads.js';
  * conversation in it. A tree past this is refused, never cut: a cut total
  * would read as complete.
  */
-export const THREAD_USAGE_TREE_MAX_USAGE_EVENTS = 5_000;
+const THREAD_USAGE_TREE_MAX_USAGE_EVENTS = 5_000;
 
 export interface ThreadUsageTreeReadDeps {
   stationId: string;

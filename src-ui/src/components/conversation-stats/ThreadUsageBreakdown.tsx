@@ -41,7 +41,7 @@ function formatTokens(value: number | undefined): string | undefined {
 }
 
 /** What the summed input figures mean, in words; absent with no total. */
-export function describeCacheInclusion(
+function describeCacheInclusion(
   tokens: ThreadUsageTree['total']['tokens'],
 ): string | undefined {
   const engines = (tokens.providers ?? [])
@@ -74,7 +74,7 @@ function formatMoney(amount: number, currency: string): string {
   }
 }
 
-export function formatCostBuckets(
+function formatCostBuckets(
   reported: readonly ThreadUsageReportedCost[] | undefined,
   estimated: readonly ThreadUsageEstimatedCost[] | undefined,
 ): string | undefined {
@@ -117,7 +117,7 @@ function figureParts(own: ThreadUsageFigures | undefined): string[] {
   ].filter((part): part is string => part !== undefined);
 }
 
-export function describeRelation(node: ThreadUsageNode): string | undefined {
+function describeRelation(node: ThreadUsageNode): string | undefined {
   const relation = node.relation;
   if (!relation) return undefined;
   if (relation.tokens === relation.cost)
