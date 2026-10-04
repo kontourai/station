@@ -2,6 +2,7 @@ import type {
   PaneHostFacts,
   PaneHostNotice,
   PaneNavigationTarget,
+  PaneSkillExperienceHost,
   PaneUnavailableReason,
   WorkspacePaneHostContract,
 } from '@kontourai/station-contracts/workspace-pane-host-contract';
@@ -102,6 +103,8 @@ type PaneHostNavigate = (
 ) => void;
 
 interface FramePaneHostOptions {
+  skillExperience?: PaneSkillExperienceHost;
+  authorizeExperience?: () => boolean;
   /**
    * Increments when the plugin frame's document is replaced. An outstanding
    * confirm belongs to the document that asked for it; see
@@ -188,6 +191,21 @@ function readText(value: unknown, maxChars: number): string | null {
 
 export function useFramePaneHost(options: FramePaneHostOptions): FramePaneHost {
   const { pluginName, granted, projectSlug, active } = options;
+  const experienceGeneration = useRef({
+    generation: options.generation,
+    active,
+    pending: 0,
+  });
+  useEffect(() => {
+    experienceGeneration.current = {
+      generation: options.generation,
+      active,
+      pending: 0,
+    };
+    return () => {
+      experienceGeneration.current.active = false;
+    };
+  }, [options.generation, active]);
 
   // Both collaborators are held in refs rather than read from the closure:
   // this hook's `receive` is what the placement's ONE message listener is
@@ -362,8 +380,18 @@ export function useFramePaneHost(options: FramePaneHostOptions): FramePaneHost {
       presentUnavailable,
       confirm,
       facts,
+      ...(options.skillExperience
+        ? { skillExperience: options.skillExperience }
+        : {}),
     }),
-    [navigateTo, notify, presentUnavailable, confirm, facts],
+    [
+      navigateTo,
+      notify,
+      presentUnavailable,
+      confirm,
+      facts,
+      options.skillExperience,
+    ],
   );
 
   // One live facts subscription per frame, taken out when the frame asks and
@@ -406,6 +434,124 @@ export function useFramePaneHost(options: FramePaneHostOptions): FramePaneHost {
       const params = readParams(message);
       if (!params) {
         refuse(method, 'params must be an object');
+        return true;
+      }
+
+      if (
+        method === 'pane-host/experience-read' ||
+        method === 'pane-host/experience-answer' ||
+        method === 'pane-host/experience-continue'
+      ) {
+        const id = params.id;
+        const capability = options.skillExperience;
+        const lifetime = experienceGeneration.current;
+        if (
+          typeof id !== 'string' ||
+          id.length === 0 ||
+          id.length > 128 ||
+          !capability ||
+          !active ||
+          lifetime.pending >= 16 ||
+          !granted?.includes('agents.invoke') ||
+          options.authorizeExperience?.() !== true
+        ) {
+          refuse(method, 'experience-unavailable', id);
+          return true;
+        }
+        let operation: Promise<unknown>;
+        if (
+          method === 'pane-host/experience-read' &&
+          Object.keys(params).length === 1
+        ) {
+          operation = capability.read();
+        } else if (
+          method === 'pane-host/experience-continue' &&
+          Object.keys(params).every((key) =>
+            ['id', 'experienceId', 'inputs'].includes(key),
+          ) &&
+          typeof params.experienceId === 'string' &&
+          params.experienceId.length <= 128 &&
+          params.inputs &&
+          typeof params.inputs === 'object' &&
+          !Array.isArray(params.inputs) &&
+          Object.entries(params.inputs).length <= 32 &&
+          Object.entries(params.inputs).every(
+            ([key, value]) =>
+              key.length <= 128 &&
+              typeof value === 'string' &&
+              value.length <= 30000,
+          )
+        ) {
+          operation = capability.continue({
+            experienceId: params.experienceId,
+            inputs: params.inputs as Record<string, string>,
+          });
+        } else if (
+          method === 'pane-host/experience-answer' &&
+          Object.keys(params).every((key) =>
+            ['id', 'requestId', 'requestEventId', 'answers'].includes(key),
+          ) &&
+          typeof params.requestId === 'string' &&
+          params.requestId.length > 0 &&
+          params.requestId.length <= 512 &&
+          typeof params.requestEventId === 'string' &&
+          params.requestEventId.length > 0 &&
+          params.requestEventId.length <= 512 &&
+          params.answers &&
+          typeof params.answers === 'object' &&
+          !Array.isArray(params.answers) &&
+          Object.entries(params.answers).length <= 32 &&
+          Object.entries(params.answers).every(
+            ([questionId, answer]) =>
+              questionId.length <= 128 &&
+              answer &&
+              typeof answer === 'object' &&
+              Object.keys(answer).every((key) =>
+                ['optionIds', 'custom'].includes(key),
+              ) &&
+              'optionIds' in answer &&
+              Array.isArray(answer.optionIds) &&
+              answer.optionIds.length <= 32 &&
+              answer.optionIds.every(
+                (value: unknown) =>
+                  typeof value === 'string' && value.length <= 128,
+              ) &&
+              (!('custom' in answer) ||
+                (typeof answer.custom === 'string' &&
+                  answer.custom.length <= 30000)),
+          )
+        ) {
+          operation = capability.answer({
+            requestId: params.requestId,
+            requestEventId: params.requestEventId,
+            answers: params.answers as Parameters<
+              PaneSkillExperienceHost['answer']
+            >[0]['answers'],
+          });
+        } else {
+          refuse(method, 'invalid-experience-request', id);
+          return true;
+        }
+        lifetime.pending += 1;
+        void operation.then(
+          (data) => {
+            lifetime.pending -= 1;
+            if (
+              lifetime === experienceGeneration.current &&
+              lifetime.active &&
+              options.authorizeExperience?.() === true
+            )
+              post({
+                method: 'pane-host/experience-result',
+                params: { id, data },
+              });
+          },
+          () => {
+            lifetime.pending -= 1;
+            if (lifetime === experienceGeneration.current && lifetime.active)
+              refuse(method, 'experience-unavailable', id);
+          },
+        );
         return true;
       }
 
@@ -489,7 +635,16 @@ export function useFramePaneHost(options: FramePaneHostOptions): FramePaneHost {
         }
       }
     },
-    [host, post, refuse, subscribeFacts],
+    [
+      host,
+      post,
+      refuse,
+      subscribeFacts,
+      options.skillExperience,
+      options.authorizeExperience,
+      active,
+      granted,
+    ],
   );
 
   // `refuse` is deliberately NOT returned. It was exposed for the one uplink

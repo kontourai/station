@@ -23,6 +23,10 @@ import { navigationStore } from '../contexts/navigation-store';
 // SDK mutation; a minimal mock keeps react-query's provider requirement out
 // of this render tree.
 vi.mock('@kontourai/station-sdk', () => ({
+  useSkillExperienceInventoryQuery: () => ({
+    data: { experiences: [], diagnostics: [] },
+    refetch: vi.fn(),
+  }),
   useMaterializeEngineAgentMutation: () => ({ mutateAsync: vi.fn() }),
   authenticatedFetch: vi.fn(async () => ({ ok: false })),
 }));
@@ -373,12 +377,12 @@ describe('NewChatModal engine chips', () => {
 
     expect(onSelect).not.toHaveBeenCalled();
     expect(onClose).not.toHaveBeenCalled();
-    expect(screen.queryByRole('dialog')).toBeNull();
     await waitFor(() =>
       expect(navigationStore.getSnapshot().pathname).toBe(
         '/connections/models',
       ),
     );
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   });
 
   test('leaves agent configuration and unknown unavailable states with an editor action, not a guessed fix', async () => {
@@ -421,12 +425,12 @@ describe('NewChatModal engine chips', () => {
       screen.getByRole('button', { name: 'Edit agent Custom configuration' }),
     );
     expect(onClose).not.toHaveBeenCalled();
-    expect(screen.queryByRole('dialog')).toBeNull();
     await waitFor(() =>
       expect(navigationStore.getSnapshot().pathname).toBe(
         '/agents/custom-config-agent',
       ),
     );
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   });
 });
 

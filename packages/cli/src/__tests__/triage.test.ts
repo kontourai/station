@@ -11,8 +11,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
+  getProfileCredentialStore,
   profileCredentialRef,
-  resetProfileCredentialStoreForTests,
   setProfileCredentialStore,
 } from '../commands/profile-credentials.js';
 import { upsertProfile } from '../commands/profile-store.js';
@@ -29,8 +29,10 @@ import {
 let root: string;
 let previousRoot: string | undefined;
 let previousMarker: unknown;
+let previousCredentialStore: ReturnType<typeof getProfileCredentialStore>;
 
 beforeEach(() => {
+  previousCredentialStore = getProfileCredentialStore();
   root = mkdtempSync(join(tmpdir(), 'station-triage-'));
   previousRoot = process.env.STATION_ROOT;
   previousMarker = (globalThis as { __STATION_CLI_BUNDLE__?: unknown })
@@ -41,7 +43,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  resetProfileCredentialStoreForTests();
+  setProfileCredentialStore(previousCredentialStore);
   if (previousRoot === undefined) delete process.env.STATION_ROOT;
   else process.env.STATION_ROOT = previousRoot;
   if (previousMarker === undefined)

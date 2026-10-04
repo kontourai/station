@@ -57,6 +57,20 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
   return Uint8Array.from([...rawData].map((c) => c.charCodeAt(0)));
 }
 
+function matchesVapidKey(
+  subscription: PushSubscription,
+  publicKey: string | undefined,
+): boolean {
+  const buffer = subscription.options?.applicationServerKey;
+  if (!buffer || !publicKey) return false;
+  const actual = new Uint8Array(buffer);
+  const expected = urlBase64ToUint8Array(publicKey);
+  return (
+    actual.length === expected.length &&
+    actual.every((byte, index) => byte === expected[index])
+  );
+}
+
 export function usePushNotifications({
   enabled,
   apiBase,
@@ -67,89 +81,268 @@ export function usePushNotifications({
   const [permission, setPermission] = useState<NotificationPermission>(() =>
     typeof Notification !== 'undefined' ? Notification.permission : 'default',
   );
-  const [subscribed, setSubscribed] = useState(false);
+  const [receipt, setReceipt] = useState<{
+    apiBase: string;
+    version: number;
+    endpoint: string;
+  } | null>(null);
   const [pairingRequired, setPairingRequired] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const swRegRef = useRef<ServiceWorkerRegistration | null>(null);
+  const scopeRef = useRef({ enabled, apiBase, version: 0 });
+  const cancelledThrough = useRef(-1);
+  if (
+    scopeRef.current.enabled !== enabled ||
+    scopeRef.current.apiBase !== apiBase
+  ) {
+    if (!enabled) cancelledThrough.current = scopeRef.current.version;
+    scopeRef.current = {
+      enabled,
+      apiBase,
+      version: scopeRef.current.version + 1,
+    };
+  }
+  const workTail = useRef<Promise<void>>(Promise.resolve());
+  const enabling = useRef<{ version: number; promise: Promise<void> } | null>(
+    null,
+  );
+  const cleanupRef = useRef<Promise<void> | null>(null);
+  const registeredScopes = useRef(new Map<string, string>());
+  const publicKeys = useRef(new Map<string, string>());
 
-  // Register service worker on mount (no-op if already registered)
+  const enqueue = useCallback((run: () => Promise<void>) => {
+    const operation = workTail.current.then(run, run);
+    workTail.current = operation;
+    return operation;
+  }, []);
+
+  const removeSubscription = useCallback(
+    async (
+      subscription: PushSubscription,
+      candidateApiBase: string,
+      attemptedOwner?: string,
+    ) => {
+      await subscription.unsubscribe();
+      const owners = new Set(
+        [...registeredScopes.current]
+          .filter(([, endpoint]) => endpoint === subscription.endpoint)
+          .map(([base]) => base),
+      );
+      if (attemptedOwner) owners.add(attemptedOwner);
+      if (owners.size === 0) {
+        const key =
+          publicKeys.current.get(candidateApiBase) ??
+          (await fetchVapidPublicKey(candidateApiBase).catch(() => undefined));
+        if (matchesVapidKey(subscription, key)) owners.add(candidateApiBase);
+      }
+      await Promise.all(
+        [...owners].map(async (base) => {
+          try {
+            await unsubscribePushNotifications(subscription.endpoint, base);
+            registeredScopes.current.delete(base);
+          } catch {
+            /* Local revocation stops delivery; host cleanup is best effort. */
+          }
+        }),
+      );
+    },
+    [],
+  );
+
+  useEffect(
+    () => () => {
+      cancelledThrough.current = scopeRef.current.version;
+      scopeRef.current.version += 1;
+    },
+    [],
+  );
+
   useEffect(() => {
-    if (!supported || !enabled) return;
-    navigator.serviceWorker
-      .register('/sw.js')
-      .then((reg) => {
-        swRegRef.current = reg;
-        return reg.pushManager.getSubscription();
-      })
-      .then((sub) => {
-        setSubscribed(!!sub);
-      })
-      .catch((err) => setError(err.message));
-  }, [supported, enabled]);
-
-  const subscribe = useCallback(async () => {
-    if (!supported || !enabled) return;
+    if (!supported) return;
+    let cancelled = false;
+    const version = scopeRef.current.version;
+    const isCurrent = () => !cancelled && version === scopeRef.current.version;
+    const previousCleanup = cleanupRef.current;
     setError(null);
     setPairingRequired(false);
-
-    try {
-      // Request notification permission
-      const perm = await Notification.requestPermission();
-      setPermission(perm);
-      if (perm !== 'granted') {
-        setError('Notification permission denied');
-        return;
+    const run = async () => {
+      try {
+        await previousCleanup;
+        if (!isCurrent()) return;
+        const reg = enabled
+          ? await navigator.serviceWorker.register('/sw.js')
+          : await navigator.serviceWorker.getRegistration('/sw.js');
+        if (!reg || !isCurrent()) return;
+        swRegRef.current = reg;
+        const subscription = await reg.pushManager.getSubscription();
+        if (!subscription || !isCurrent()) return;
+        if (!enabled) {
+          await removeSubscription(subscription, apiBase);
+          if (isCurrent()) setReceipt(null);
+          return;
+        }
+        const key = await fetchVapidPublicKey(apiBase);
+        if (!isCurrent()) return;
+        publicKeys.current.set(apiBase, key);
+        if (!matchesVapidKey(subscription, key)) {
+          setError(
+            'This browser subscription uses another Station’s key. Enable push notifications here to switch.',
+          );
+          return;
+        }
+        await subscribePushNotifications(subscription.toJSON(), apiBase);
+        registeredScopes.current.set(apiBase, subscription.endpoint);
+        if (version <= cancelledThrough.current) {
+          await removeSubscription(subscription, apiBase, apiBase);
+          return;
+        }
+        if (isCurrent())
+          setReceipt({ apiBase, version, endpoint: subscription.endpoint });
+      } catch (cause) {
+        if (!isCurrent()) return;
+        if (cause instanceof DevicePairingRequiredError)
+          setPairingRequired(true);
+        setError(
+          cause instanceof DevicePairingRequiredError
+            ? 'Pair this device first'
+            : cause instanceof Error
+              ? cause.message
+              : 'Push notifications could not be checked.',
+        );
       }
-
-      // Get VAPID public key from server
-      const publicKey = await fetchVapidPublicKey(apiBase);
-
-      // Register SW if not yet done
-      const reg =
-        swRegRef.current ?? (await navigator.serviceWorker.register('/sw.js'));
-      swRegRef.current = reg;
-
-      // Subscribe to push
-      const subscription = await reg.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(publicKey) as BufferSource,
-      });
-
-      // Send subscription to server
-      await subscribePushNotifications(subscription.toJSON(), apiBase);
-
-      setSubscribed(true);
-    } catch (err: any) {
-      if (err instanceof DevicePairingRequiredError) {
-        setPairingRequired(true);
-        setError('Pair this device first');
-        return;
-      }
-      setError(err.message);
+    };
+    if (enabled) void enqueue(run);
+    else {
+      const cleanup = run();
+      cleanupRef.current = cleanup;
     }
-  }, [supported, enabled, apiBase]);
+    return () => {
+      cancelled = true;
+    };
+  }, [supported, enabled, apiBase, enqueue, removeSubscription]);
 
-  const unsubscribe = useCallback(async () => {
-    if (!swRegRef.current) return;
-    try {
-      const sub = await swRegRef.current.pushManager.getSubscription();
-      if (sub) {
-        await sub.unsubscribe();
-        // Notify server to remove subscription
-        await unsubscribePushNotifications(sub.endpoint, apiBase).catch(() => {
-          /* best-effort */
-        });
+  const subscribe = useCallback(() => {
+    if (!supported || !enabled) return Promise.resolve();
+    const version = scopeRef.current.version;
+    if (enabling.current?.version === version) return enabling.current.promise;
+    const isCurrent = () => version === scopeRef.current.version;
+    const run = async () => {
+      await cleanupRef.current;
+      if (!isCurrent()) return;
+      setError(null);
+      setPairingRequired(false);
+      let subscription: PushSubscription | null = null;
+      let created = false;
+      let posted = false;
+      try {
+        const perm = await Notification.requestPermission();
+        if (!isCurrent()) return;
+        setPermission(perm);
+        if (perm !== 'granted')
+          throw new Error('Notification permission denied');
+        const key = await fetchVapidPublicKey(apiBase);
+        if (!isCurrent()) return;
+        publicKeys.current.set(apiBase, key);
+        const reg =
+          swRegRef.current ??
+          (await navigator.serviceWorker.register('/sw.js'));
+        swRegRef.current = reg;
+        if (!isCurrent()) return;
+        subscription = await reg.pushManager.getSubscription();
+        if (!isCurrent()) return;
+        if (subscription && !matchesVapidKey(subscription, key)) {
+          await removeSubscription(subscription, apiBase);
+          subscription = null;
+          if (!isCurrent()) return;
+        }
+        if (!subscription) {
+          subscription = await reg.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: urlBase64ToUint8Array(key) as BufferSource,
+          });
+          created = true;
+        }
+        if (!matchesVapidKey(subscription, key))
+          throw new Error(
+            'The browser subscription does not match this Station’s push key.',
+          );
+        if (!isCurrent()) {
+          if (created || version <= cancelledThrough.current)
+            await removeSubscription(subscription, apiBase);
+          return;
+        }
+        posted = true;
+        await subscribePushNotifications(subscription.toJSON(), apiBase);
+        registeredScopes.current.set(apiBase, subscription.endpoint);
+        if (version <= cancelledThrough.current) {
+          await removeSubscription(subscription, apiBase, apiBase);
+          return;
+        }
+        if (isCurrent())
+          setReceipt({ apiBase, version, endpoint: subscription.endpoint });
+      } catch (cause) {
+        if (subscription && created)
+          await removeSubscription(
+            subscription,
+            apiBase,
+            posted ? apiBase : undefined,
+          ).catch(() => {});
+        if (!isCurrent()) return;
+        setReceipt(null);
+        if (cause instanceof DevicePairingRequiredError)
+          setPairingRequired(true);
+        setError(
+          cause instanceof DevicePairingRequiredError
+            ? 'Pair this device first'
+            : cause instanceof Error
+              ? cause.message
+              : 'Push notifications could not be enabled.',
+        );
       }
-      setSubscribed(false);
-    } catch (err: any) {
-      setError(err.message);
-    }
-  }, [apiBase]);
+    };
+    const promise = enqueue(run);
+    enabling.current = { version, promise };
+    const finished = () => {
+      if (enabling.current?.promise === promise) enabling.current = null;
+    };
+    void promise.then(finished, finished);
+    return promise;
+  }, [supported, enabled, apiBase, enqueue, removeSubscription]);
+
+  const unsubscribe = useCallback(() => {
+    cancelledThrough.current = scopeRef.current.version;
+    const version = ++scopeRef.current.version;
+    setReceipt(null);
+    const previousCleanup = cleanupRef.current;
+    const cleanup = (async () => {
+      await previousCleanup;
+      if (!supported) return;
+      try {
+        const reg =
+          swRegRef.current ??
+          (await navigator.serviceWorker.getRegistration('/sw.js'));
+        const subscription = await reg?.pushManager.getSubscription();
+        if (subscription) await removeSubscription(subscription, apiBase);
+      } catch (cause) {
+        if (version === scopeRef.current.version)
+          setError(
+            cause instanceof Error
+              ? cause.message
+              : 'Push notifications could not be disabled.',
+          );
+      }
+    })();
+    cleanupRef.current = cleanup;
+    return cleanup;
+  }, [supported, apiBase, removeSubscription]);
 
   return {
     supported: supported && enabled,
     permission,
-    subscribed,
+    subscribed:
+      enabled &&
+      receipt?.apiBase === apiBase &&
+      receipt.version === scopeRef.current.version,
     pairingRequired,
     subscribe,
     unsubscribe,

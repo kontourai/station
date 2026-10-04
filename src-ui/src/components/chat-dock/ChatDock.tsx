@@ -1,8 +1,5 @@
 import { resolveEngineCapabilityMatrix } from '@kontourai/station-contracts/engine-capability-matrix';
-import {
-  type ConnectionConfig,
-  EXECUTION_MODE,
-} from '@kontourai/station-contracts/tool';
+import { EXECUTION_MODE } from '@kontourai/station-contracts/tool';
 import type { WorkspacePaneInstance } from '@kontourai/station-contracts/workspace-pane';
 import {
   conversationQueries,
@@ -10,7 +7,6 @@ import {
   telemetry,
   useAcknowledgeConversationMutation,
   useConversationInventoryQuery,
-  useEngineConnectionsQuery,
   useGenerateSessionSummaryMutation,
   useInvalidateQuery,
   useOrchestrationSessionsQuery,
@@ -91,9 +87,9 @@ import {
 } from '../../views/home/useInboxWorkItems';
 import { useWorkFacts } from '../../views/home/useWorkFacts';
 import {
-  selectChatReadyAgents,
-  selectDirectNewChatAgent,
-} from '../agent-selection-policy';
+  openWorkItem,
+  workItemOpenFailureMessage,
+} from '../../views/home/work-item-open-policy';
 import { durableMentionAuthority } from '../chat/composer-mentions';
 import { MarkdownLinkContext } from '../chat/MarkdownLinkContext';
 import { ShareIntakeController } from '../chat/ShareIntakeController';
@@ -122,8 +118,6 @@ import {
   chatModelLabel,
   effectiveChatModelId,
   inboxPanelMounts,
-  projectDisplayName,
-  resolveDirectNewChatProjectSlug,
   resolveDockBadgeProjectName,
   resolveDockProjectContextDirectory,
   resolveNewChatModalDefaultProjectSlug,
@@ -1476,56 +1470,14 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     },
     [activeSession, agents, openChatForAgentInScopedPane, setShowNewChatModal],
   );
-  // #3309: the retired tab strip's "New" behavior, now behind the header's
-  // New button — exactly one chat-ready agent opens directly, else the modal.
-  const { data: agentConnections = [] } = useEngineConnectionsQuery() as {
-    data?: ConnectionConfig[];
-  };
   // #3310: fires from the chat-settings menu; the transcript's summary card
   // observes progress/failure through the shared mutation key.
   const generateSessionSummary = useGenerateSessionSummaryMutation();
-  // station#4525 Phase 2: the single-ready-agent direct-New path used to
-  // call `openChatForAgentInScopedPane(direct)` with no project at all,
-  // which is the OTHER reset mechanism the investigation named — the fresh
-  // session's own `projectSlug` came back `undefined`, and the badge (at the
-  // time, derived straight from the active session) fell to "No project"
-  // even though the dock had one bound a moment earlier. The new chat now
-  // inherits the dock's own binding by default, so both the real session and
-  // the badge agree from the start.
+  // New chats inherit the dock’s bound project, including explicit No project.
   const openNewChatDirect = useCallback(() => {
     setImportedSessionId(null);
-    const direct = selectDirectNewChatAgent(
-      selectChatReadyAgents({ agents, agentConnections }),
-    );
-    if (direct) {
-      // station#4525 review HIGH-3 (blocking): an immutably project-scoped
-      // placement (a project's own Coding layout) must target its OWN
-      // project, never the dock's ambient, device-global binding — passing
-      // the binding there tripped `routeToScopedChatProject` into
-      // navigating away instead of creating a chat. See
-      // `resolveDirectNewChatProjectSlug`.
-      const targetProjectSlug = resolveDirectNewChatProjectSlug({
-        hasImmutableProjectScope,
-        immutableProjectSlug: projectSlug,
-        dockChromeProjectSlug,
-      });
-      openChatForAgentInScopedPane(
-        direct,
-        targetProjectSlug,
-        projectDisplayName(targetProjectSlug, projects) ?? undefined,
-      );
-    } else setShowNewChatModal(true);
-  }, [
-    agentConnections,
-    agents,
-    dockChromeProjectSlug,
-    hasImmutableProjectScope,
-    openChatForAgentInScopedPane,
-    projectSlug,
-    projects,
-    setShowNewChatModal,
-    setImportedSessionId,
-  ]);
+    setShowNewChatModal(true);
+  }, [setShowNewChatModal, setImportedSessionId]);
   const openConversationInScopedPane = useCallback(
     (
       conversationId: string,
@@ -2278,8 +2230,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                       onCollapse: () => applyDockSnap('collapsed'),
                     }
               }
-              // #3309: New chat is the bar's pinned far-right icon now, with
-              // the same single-ready-agent shortcut the desktop New has.
+              // Shared creation action opens a draft without starting an engine.
               onNewChat={openNewChatDirect}
               overflow={{
                 onOpenConversation: () => setShowSessionPicker(true),
@@ -2542,6 +2493,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                         onCloseChat: removeSession,
                         onAcknowledgeConversation: acknowledgeTaskConversation,
                         onOpenHistory: openInboxHistory,
+                        onNewChat: openNewChatDirect,
                         agentsLoaded,
                         onOpenFailed: showInboxOpenFailure,
                       }}
@@ -2954,6 +2906,39 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
           newChatRequestEpoch,
           newChatStartWithDefault,
           newChatInitialPrompt,
+          recentChats: {
+            items: taskItems,
+            pending: taskItemsPending,
+            error: taskItemsFailed,
+            workFacts,
+            onRetry: () => {
+              void refetchOrchestrationSessions();
+              void inventory.refetch();
+            },
+            onViewAll: () => {
+              setShowNewChatModal(false);
+              openInboxHistory();
+            },
+            onOpen: async (item) => {
+              try {
+                const outcome = await openWorkItem(item, {
+                  onFocusChat: focusSessionInPane,
+                  onOpenConversation: openUserSelectedConversationInScopedPane,
+                  onOpenSession: openImportedSessionInPane,
+                  agentsLoaded,
+                });
+                if (outcome === 'opened' || outcome === 'fallback') {
+                  acknowledgeTaskConversation(item);
+                  setShowNewChatModal(false);
+                } else
+                  showInboxOpenFailure(
+                    workItemOpenFailureMessage(item, outcome),
+                  );
+              } catch {
+                showInboxOpenFailure('Could not open this chat. Try again.');
+              }
+            },
+          },
           showChatSettings,
           showSessionPicker,
           chatFontSize,
@@ -2991,6 +2976,8 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
             providerOptions,
             providerId,
             providerType,
+            experienceDraft,
+            sendInitialMessage,
           ) => {
             // station#4525: an explicit project choice inside the New Chat
             // modal is exactly as deliberate as a picker pick (#4524's
@@ -3015,18 +3002,31 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
               providerId,
               providerType,
             );
+            if (sessionId && experienceDraft)
+              updateChat(sessionId, {
+                skillExperienceDraft: experienceDraft,
+                skillExperienceDraftInvalid: undefined,
+                skillExperienceMode:
+                  experienceDraft.definition.presentation.defaultMode,
+              });
             if (
               sessionId &&
-              newChatStartWithDefault &&
-              newChatInitialPrompt?.trim()
+              ((newChatStartWithDefault && newChatInitialPrompt?.trim()) ||
+                (sendInitialMessage && initialMessage?.trim()))
             ) {
               setPendingGoalSend({
                 sessionId,
-                prompt: newChatInitialPrompt,
+                prompt: (sendInitialMessage
+                  ? initialMessage
+                  : newChatInitialPrompt)!,
                 authority: requestAuthority,
               });
             }
-            if (sessionId) navigate(pathname, { chat: sessionId });
+            if (!sessionId)
+              throw new Error(
+                'The chat could not be opened. Check the selected Agent and try again.',
+              );
+            navigate(pathname, { chat: sessionId });
             setShowNewChatModal(false);
             setNewChatProjectOverride(null);
             setHandoffSource(null);

@@ -570,7 +570,6 @@
     "src-server/services/infra/__tests__/engine-spawn-tmpdir.test.ts": 1,
     "src-server/services/infra/__tests__/json-store-fsync-mode.test.ts": 2,
     "src-server/services/infra/__tests__/json-store.test.ts": 1,
-    "src-server/services/infra/__tests__/operating-state-service.critique-extension.test.ts": 1,
     "src-server/services/infra/__tests__/operating-state-service.test.ts": 2,
     "src-server/services/infra/__tests__/owned-process-reaping.test.ts": 21,
     "src-server/services/infra/__tests__/server-log-reader.test.ts": 1,

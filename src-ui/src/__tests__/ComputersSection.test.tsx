@@ -139,8 +139,13 @@ vi.mock('@kontourai/station-sdk/developer-runtime', () => ({
   useSystemInstanceQuery: () => ({ data: undefined }),
 }));
 
-vi.mock('@kontourai/station-connect', () => ({
-  useConnections: () => ({ connections: connectionsState.data }),
+vi.mock('@kontourai/station-connect', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@kontourai/station-connect')>()),
+  useConnections: () => ({
+    connections: connectionsState.data,
+    captureCredentialEvidence: () => null,
+    isCredentialEvidenceCurrent: () => false,
+  }),
 }));
 
 vi.mock('../platform/native/sshLauncher', () => ({

@@ -1,0 +1,107 @@
+{
+  "schemaVersion": "1.0",
+  "status": "pass",
+  "observer": "Root qualification agent",
+  "recordedAt": "2026-10-03",
+  "scope": "One local Focus Board clarification, reviewed specification and approved ticket publication journey.",
+  "runtimeSourceRevision": "1bd0513eb81f13b3e86d43c701ed378da60c8422",
+  "reloadSourceRevision": "7462eca12e0fc5417920cb061894158ce6d4287e",
+  "instance": "visual-skills-qual-20261003",
+  "environment": {
+    "platform": "macOS browser",
+    "engine": "Codex",
+    "requestedModel": "gpt-6.1-sol",
+    "nativeSkillTool": "unavailable; model applied pinned inline Skill content"
+  },
+  "conversationId": "codex:1791013867196",
+  "observedAt": "2026-10-03T08:46:15.874Z",
+  "installedSourceIdentity": {
+    "contentDigest": "sha256:8d1741f76e604994c8ac2c5b8df95954b2f14fde8e975690c363a853c7b6439e",
+    "definitionDigest": "fbe5bdc94c31df4f707546b21aeb5b620b15d0cf0c1bee4cb2c173bfe8cc275a",
+    "experienceId": "to-tickets",
+    "incarnation": "b76f0a17-f3d8-4b7b-8fdf-d7d56047463b",
+    "materialization": "8b600d83-1da1-4630-941c-f01d4557dfc2",
+    "pluginId": "matt-pocock-engineering",
+    "pluginVersion": "1.0.0"
+  },
+  "stages": [
+    {
+      "experienceId": "grill-me",
+      "eventId": "083043f2-db5b-4f64-84d2-51090887e0d9",
+      "invocationId": "f3293808-35a7-416e-aa6d-350b88057777",
+      "snapshotDigest": "50c226430dcd5dce63cdccaf2ce76fe39eee64a47f4e6d183ff5a0f626cc637f"
+    },
+    {
+      "experienceId": "to-spec",
+      "eventId": "199ea501-2439-4c52-bbda-5228aca8f973",
+      "invocationId": "8ce57314-58ad-4dc8-a87a-a9273e54850e",
+      "snapshotDigest": "5977bdd1d78abb804a2e1533b758140b2b50c0e877a2722ac67273622a4f1975"
+    },
+    {
+      "experienceId": "to-tickets",
+      "eventId": "2b2c6549-f466-4dd6-b430-86ebc77276c6",
+      "invocationId": "096b555b-b030-4fea-89fa-b7de0b2e5b22",
+      "snapshotDigest": "cc516d96e3e8c9e252cb283c26a40d1dae3c5857ba853e5283ae214b8e2ca873"
+    }
+  ],
+  "observed": [
+    "Fresh-home preview and consent-bound install completed",
+    "Five admitted experiences and zero diagnostics",
+    "Real two-round adaptive clarification with retained prior answers",
+    "User stop produced reviewed decisions and explicit unresolved assumptions",
+    "Explicit user-selected to-spec and to-tickets stages",
+    "Specification draft awaited review before file publication",
+    "Ticket breakdown awaited review before local ticket publication",
+    "Guided to alongside and chat preserved same composer node and transcript",
+    "Three immutable invocation references retained in canonical Session history",
+    "Approved specification has 127 lines and the recorded SHA-256.",
+    "Six local ticket files exist in dependency order; acceptance criteria remain unchecked.",
+    "Reload at source 746 retained the three immutable stage snapshots."
+  ],
+  "outputs": [
+    {
+      "path": ".scratch/focus-board/SPEC.md",
+      "sha256": "f978bdd67153b78d23717485d7c66048a80bc35285a48ca4ff857d82a58de6fd"
+    },
+    {
+      "path": ".scratch/focus-board/issues/01-create-durable-weekly-board.md",
+      "sha256": "5ce2821e3a48d19a9470797db3af84b676c1ffcfdb121660e8b4a5f509aecf61"
+    },
+    {
+      "path": ".scratch/focus-board/issues/02-adapt-priorities-retain-changes.md",
+      "sha256": "d06a2bf0640befc90c44569b5eb1149966f96a35dd095e40ccbfbd3481b10128"
+    },
+    {
+      "path": ".scratch/focus-board/issues/03-move-between-weeks.md",
+      "sha256": "b137f6eaffdd34efe34160085f74777d8a15edefd64ce42e18534343e222404a"
+    },
+    {
+      "path": ".scratch/focus-board/issues/04-review-weekly-differences.md",
+      "sha256": "a1cd740d106e4a7f4100ceb4de802c1586b7ae99099d4a13ae3f11707dc8909f"
+    },
+    {
+      "path": ".scratch/focus-board/issues/05-backup-restore-recover.md",
+      "sha256": "8d892ded2e6e0ce3d93076fffd105968c2beb06ef944aa79f970bc927347a7c8"
+    },
+    {
+      "path": ".scratch/focus-board/issues/06-reopen-use-offline.md",
+      "sha256": "20f8be34085ca61eeb5a25f09f78b8c04b5d4da12da8b4ac3981b6e4a6b15820"
+    }
+  ],
+  "screenshots": [
+    "browser-screenshot-localhost-mus5dtj8-2f78f45f.png",
+    "browser-screenshot-localhost-mus3hjv4-7cf1c2ab.png"
+  ],
+  "limits": [
+    "Only this observed scenario passed; the other planned evaluation cases remain not-run.",
+    "The source1bd model/browser journey and source746 reload do not qualify later composer/runtime changes.",
+    "Questions used ordinary conversation text; canonical questionnaire controls and rich answer RPC effects were not observed.",
+    "Native Skill tooling was unavailable; the model received pinned inline Skill context.",
+    "No application implementation, external issue publication, physical device, store or released SDK proof is claimed.",
+    "Screenshots and original runtime receipt are retained as local qualification artifacts, not bundled executable source.",
+    "Ticket publication included one failed tool command before all six files, dependency edges and hashes were verified; this does not claim every command passed."
+  ],
+  "evidenceRoot": "/private/tmp/station-visual-skills-qual-20261003",
+  "stationHome": "/private/var/folders/zz/8n7yx67d751dfk33tz367rxm0000gn/T/station/dev-home-f5dist",
+  "projectRoot": "/private/tmp/station-visual-skills-qual-20261003/project"
+}

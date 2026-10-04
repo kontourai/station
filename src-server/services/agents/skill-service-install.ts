@@ -1,6 +1,10 @@
 import { existsSync } from 'node:fs';
 import { lstat, mkdir, mkdtemp, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
+import type {
+  RegistryCatalogSelection,
+  RegistryItem,
+} from '@kontourai/station-contracts/catalog';
 import type { SkillConfig } from '../../domain/config-loader.js';
 import type { ISkillRegistryProvider } from '../../providers/provider-interfaces.js';
 import { withLocalSkillMutation } from './skill-local-mutation.js';
@@ -29,6 +33,14 @@ interface InstallSkillDeps {
   configLoader: SkillInstallConfigLoader;
   providers: Array<{ provider: ISkillRegistryProvider }>;
   rediscover: () => Promise<void>;
+  selected?: {
+    catalog: RegistryCatalogSelection;
+    source: string;
+    packageRevision?: string;
+    item: RegistryItem;
+    assertCurrent: () => Promise<void>;
+  };
+  expectedInstalledRevision?: string;
 }
 
 interface RemoveSkillDeps {
@@ -52,6 +64,8 @@ export async function installSkillFromRegistry({
   configLoader,
   providers,
   rediscover,
+  selected,
+  expectedInstalledRevision,
 }: InstallSkillDeps): Promise<{ success: boolean; message: string }> {
   // This is the public boundary used by SkillService and by direct callers.
   // Keep locking here, then call only the owned helper below: nesting the same
@@ -68,6 +82,8 @@ export async function installSkillFromRegistry({
         configLoader,
         providers,
         rediscover,
+        selected,
+        expectedInstalledRevision,
       }),
   );
 }
@@ -79,6 +95,8 @@ async function installSkillFromRegistryOwned({
   configLoader,
   providers,
   rediscover,
+  selected,
+  expectedInstalledRevision,
 }: InstallSkillDeps): Promise<{ success: boolean; message: string }> {
   if (providers.length === 0) {
     return { success: false, message: 'No skill registry configured' };
@@ -96,6 +114,7 @@ async function installSkillFromRegistryOwned({
   // therefore cannot observe or force-overwrite the live package, including
   // a winner created by setup or another Station process.
   let published = false;
+  let backup: string | undefined;
   for (const { provider } of providers) {
     // One provider gets one stage. A failed provider must not leave files for
     // the next provider to accidentally validate and publish.
@@ -104,8 +123,15 @@ async function installSkillFromRegistryOwned({
     );
     const stagedSkillDir = join(stagingParent, name);
     try {
-      const result = await provider.install(name, stagingParent);
-      if (!result.success) continue;
+      const result = selected
+        ? await provider.install(name, stagingParent, {
+            expectedPackageRevision: selected.packageRevision,
+          })
+        : await provider.install(name, stagingParent);
+      if (!result.success) {
+        if (selected) return result;
+        continue;
+      }
 
       try {
         const staged = await lstat(stagedSkillDir);
@@ -129,9 +155,31 @@ async function installSkillFromRegistryOwned({
       // rename therefore form the no-overwrite publication protocol; an
       // existing package (including one that won setup's conditional create)
       // is retained rather than being replaced by a provider's force-copy.
+      await selected?.assertCurrent();
+      const contentDigest =
+        await localSkillRevisionFromDirectory(stagedSkillDir);
       if (existsSync(skillDir)) {
-        return { success: false, message: `Skill '${name}' already exists` };
-      }
+        if (!expectedInstalledRevision)
+          return {
+            success: false,
+            message: `Skill '${name}' already exists. Manage the installed copy before adding a same-name skill.`,
+          };
+        if (
+          (await localSkillRevisionFromDirectory(skillDir)) !==
+          expectedInstalledRevision
+        )
+          return {
+            success: false,
+            message:
+              'Installed skill changed; inspect it again before updating.',
+          };
+        backup = join(stagingParent, '.previous');
+        await rename(skillDir, backup);
+      } else if (expectedInstalledRevision)
+        return {
+          success: false,
+          message: 'Installed skill is no longer available.',
+        };
       await rename(stagedSkillDir, skillDir);
       published = true;
 
@@ -146,12 +194,22 @@ async function installSkillFromRegistryOwned({
       // opposite of what the sentence above promises (delta review 4, M1).
       let items: Awaited<ReturnType<typeof provider.listAvailable>> = [];
       try {
-        const listed = await provider.listAvailable();
+        const listed = selected ? [] : await provider.listAvailable();
         if (Array.isArray(listed)) items = listed;
       } catch {}
-      const item = items.find((entry) => entry.id === name);
+      const item = selected?.item ?? items.find((entry) => entry.id === name);
       const version = item?.version ?? 'unknown';
       const installedAt = new Date().toISOString();
+      const provenance = selected
+        ? {
+            catalog: {
+              ...selected.catalog,
+              source: selected.source,
+              contentDigest,
+              installedAt,
+            },
+          }
+        : undefined;
       try {
         await writeFile(
           join(skillDir, '.station-meta.json'),
@@ -171,14 +229,21 @@ async function installSkillFromRegistryOwned({
         version,
         path: skillDir,
         origin: 'registry',
+        provenance,
       });
 
+      backup = undefined;
       // Nothing failed, so a rediscovery that fails is the only thing that
       // went wrong and is reported as itself. Deliberately NOT in the
       // `finally` below: a throw from there overwrites the return.
       await rediscover();
       return result;
     } catch (error) {
+      if (backup) {
+        if (published) await rm(skillDir, { recursive: true, force: true });
+        await rename(backup, skillDir);
+        backup = undefined;
+      }
       // REDISCOVER WHATEVER HAPPENED AFTER THE RENAME. The package is on disk
       // from that moment, and this branch makes a recordless package
       // answerable from discovery (#1614) — so a failed record write that

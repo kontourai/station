@@ -40,12 +40,12 @@ test('submits the goal once and keeps its text when preparation closes', () => {
     window.removeEventListener(OPEN_NEW_CHAT_EVENT, receive);
   }
 });
-test('configuration choices are an explicit optional action', () => {
+test('New chat opens an unsent draft rather than submitting the Home goal', () => {
   const receive = vi.fn();
   window.addEventListener(OPEN_NEW_CHAT_EVENT, receive);
   try {
     render(<HomeChatStartForm />);
-    fireEvent.click(screen.getByRole('button', { name: 'Chat options' }));
+    fireEvent.click(screen.getByRole('button', { name: 'New chat' }));
     expect(receive).toHaveBeenCalledOnce();
     expect(
       readNewChatIntent(receive.mock.calls[0]![0]).startWithDefault,

@@ -1713,27 +1713,50 @@ function runtimeImportKey(path, source) {
  * already reach the changed module through the import graph.
  *
  * A binding's ORIGINS are every module its value can come from: each
- * module on its re-export chain, plus, for a local `const`/`let`/`var`
- * export or `export default <expr>`, the origins of the imported bindings
- * its initializer reads at load time. "At load time" follows invocation:
- * an IIFE body, a function passed as a call argument, and a local helper
- * called in the initializer are read; a function in any other position (a
- * variable initializer, an object property value, an array element, a
- * return value, a class method) is not, since nothing calls it while the
- * module loads. A local class contributes its heritage and static members
- * wherever it is read (they run when it is declared), and, when it is
- * constructed with `new`, its constructor and instance field initializers,
- * with the heritage read as invoked (the base constructor runs). Calling a
- * function or method later at top level from another module
- * (`queries.resolved()`) is the documented two-hop gap.
+ * module on its re-export chain, plus, for a local export, the origins of
+ * the imported bindings its declaration reads when it is used. How a value
+ * is used decides what that is (#2766):
+ * - READ (only the value): a `const`/`let`/`var` or `export default <expr>`
+ *   contributes what its initializer reads at load; a class, its decorators,
+ *   heritage, computed keys and static members; a function, nothing.
+ * - RUN (called or constructed) or MEMBER (a property read, which can run a
+ *   getter or a method called next): a function or class contributes
+ *   everything its code names; an object or array literal used as MEMBER,
+ *   every member it holds.
+ * - ALL (RUN and MEMBER): anything handed to a call, at any depth inside
+ *   array and object literals, and every operand used implicitly through
+ *   its members: destructured, iterated (for-of, for-in, spread), awaited,
+ *   coerced (template spans, operators other than `===`/`!==`/`&&`/`||`/
+ *   `??`/comma, including `in` and `instanceof`).
+ * Positions are read exactly only in code evaluated directly at load (an
+ * initializer, the use-site statement). Code that runs is read whole: every
+ * binding it names is ALL, so returned and aliased values are followed. A
+ * function in a non-invoked position of an initializer (an object property
+ * value, an array element, a class method) is not read until that value is
+ * itself used as RUN, MEMBER or ALL. Each imported binding is then resolved
+ * in the mode it is used, into its own module, and so on.
  *
- * At a USE site (the side-effect statement itself) everything the statement
- * reads is taken, including every local binding it names, whole: that side
- * over-approximates.
+ * At a USE site (the side-effect statement itself) every binding the
+ * statement names, through local bindings too, is an origin; the modes above
+ * decide how far each is followed.
  *
- * Resolution fails CLOSED: a star it cannot enumerate, or a module it cannot
- * read, is ANY origin. An import cycle is neither provided nor cached; the
- * frame that first entered it explores the sibling branches.
+ * Resolution fails CLOSED: a star it cannot enumerate, a module it cannot
+ * read, or an export whose declaration it cannot find is ANY origin; a chain
+ * of more than MAX_RUN_DEPTH modules each running the next is cut and counts
+ * as a use of every module. An import cycle is neither provided nor cached;
+ * the frame that first entered it explores the sibling branches.
+ *
+ * Known gaps, not traced:
+ * - code a module runs at its own load through a LOCAL class or function
+ *   that `topLevelSideEffect` treats as pure (`export const v = L.x` with a
+ *   static getter on a local `L`) is a use only when some barrel-loaded
+ *   statement consumes the export; with no consumer it is missed, because
+ *   local declarations do not join the alias set `pureExpression` checks;
+ * - a top-level dynamic `import()`: the module it loads, and what the use
+ *   then calls on it, are not followed;
+ * - a value assigned into a property, element or mutable binding and later
+ *   called or hitting a setter (`reg.x = h`, `let x; x = h; x()`), property-
+ *   key coercion (`registry[k]`, computed names), and `using`'s dispose.
  *
  * The analysis does not depend on the changed module, so it runs once per
  * graph and is shared by every candidate.
@@ -1752,8 +1775,36 @@ function barrelReachable(graph) {
   return reached;
 }
 
-/** Identifiers `node` reads while the module loads (see above). */
-function loadTimeIdentifiers(node, locals, into = new Set(), seen = new Set()) {
+// How a load-time read uses a binding's value (#2766). Flags combine.
+// READ: the value is only read. RUN: it is called or constructed. MEMBER: a
+// property of it is read, which can run a getter, or a method called next.
+// ALL: both; anything handed to a call, or used implicitly through its
+// members (iterated, destructured, awaited, coerced).
+const READ = 0;
+const RUN = 1;
+const MEMBER = 2;
+const ALL = RUN | MEMBER;
+// Cross-module hops a traced invocation may take (a binding run from a use
+// site whose own code runs another module's binding, and so on). A deeper
+// chain is cut and marked `bounded`: a use of every changed module.
+const MAX_RUN_DEPTH = 8;
+
+/**
+ * Identifiers `node` reads while the module loads (see above), each with the
+ * READ/RUN/MEMBER flags of how it is used. `node` may be an expression, a
+ * statement, or the declaration of a binding being used in `mode`.
+ *
+ * Code that runs (a called function's body, an invoked class) is not read
+ * positionally: every identifier it mentions, nested functions included,
+ * counts as RUN|MEMBER, since a local alias or a returned value can call
+ * anything it names. Positions are honoured only in code evaluated directly
+ * at load (initializers, the use-site statement), where they are exact.
+ */
+function loadTimeIdentifiers(node, locals, mode = READ) {
+  const into = new Map();
+  const seen = new Set();
+  const note = (name, flags) =>
+    into.set(name, (into.get(name) ?? READ) | flags);
   const isFunction = (candidate) =>
     ts.isArrowFunction(candidate) || ts.isFunctionExpression(candidate);
   const unwrap = (candidate) => {
@@ -1761,49 +1812,76 @@ function loadTimeIdentifiers(node, locals, into = new Set(), seen = new Set()) {
     while (ts.isParenthesizedExpression(current)) current = current.expression;
     return current;
   };
-  const readLocal = (name, invoked) => {
+  const readLocal = (name, flags) => {
     const local = locals.get(name);
-    const key = `${name}\0${invoked}`;
+    const key = `${name}\0${flags}`;
     if (!local || seen.has(key)) return;
     seen.add(key);
-    if (ts.isFunctionDeclaration(local)) {
-      if (invoked && local.body) visit(local.body, false);
-    } else if (ts.isClassDeclaration(local)) visitClass(local, invoked);
-    else if (local.initializer) visit(local.initializer, invoked);
+    visit(local, flags);
   };
-  // A class's heritage and static members run when it is declared; `new`
-  // also runs the base constructor (so the heritage counts as invoked), the
-  // constructor and the instance field initializers. Methods run only when
-  // called.
-  const visitClass = (node, constructed) => {
-    for (const clause of node.heritageClauses ?? [])
-      for (const type of clause.types) visit(type.expression, constructed);
-    for (const member of node.members) {
-      const isStatic = hasModifier(member, ts.SyntaxKind.StaticKeyword);
-      if (ts.isClassStaticBlockDeclaration(member)) visit(member.body, false);
-      else if (ts.isPropertyDeclaration(member)) {
-        if (member.initializer && (isStatic || constructed))
-          visit(member.initializer, false);
-      } else if (ts.isConstructorDeclaration(member) && constructed) {
-        for (const parameter of member.parameters)
-          if (parameter.initializer) visit(parameter.initializer, false);
-        if (member.body) visit(member.body, false);
-      }
+  const run = (code) => {
+    for (const name of referencedIdentifiers(code)) {
+      note(name, ALL);
+      readLocal(name, ALL);
     }
   };
-  const visit = (current, invoked) => {
+  // Declaring a class evaluates its decorators, heritage, computed keys,
+  // static initializers and static blocks. Constructing it, or using any
+  // member of it (a static getter or method, or a method on an instance),
+  // can run any of its code, so that runs the whole class.
+  const visitClass = (current, flags) => {
+    if (flags !== READ) {
+      run(current);
+      return;
+    }
+    for (const decorator of ts.getDecorators?.(current) ?? [])
+      visit(decorator.expression, RUN);
+    for (const clause of current.heritageClauses ?? [])
+      for (const type of clause.types) visit(type.expression, READ);
+    for (const member of current.members) {
+      for (const decorator of ts.getDecorators?.(member) ?? [])
+        visit(decorator.expression, RUN);
+      if (member.name && ts.isComputedPropertyName(member.name))
+        visit(member.name.expression, READ);
+      if (ts.isClassStaticBlockDeclaration(member)) run(member.body);
+      else if (
+        ts.isPropertyDeclaration(member) &&
+        hasModifier(member, ts.SyntaxKind.StaticKeyword) &&
+        member.initializer
+      )
+        visit(member.initializer, READ);
+    }
+  };
+  const visit = (current, flags) => {
     if (ts.isIdentifier(current)) {
-      into.add(current.text);
-      readLocal(current.text, invoked);
+      note(current.text, flags);
+      readLocal(current.text, flags);
+      return;
+    }
+    // Declarations: what using the binding they declare in `flags` reads.
+    if (ts.isFunctionDeclaration(current)) {
+      if (flags !== READ && current.body) run(current);
+      return;
+    }
+    if (ts.isClassDeclaration(current) || ts.isClassExpression(current)) {
+      visitClass(current, flags);
+      return;
+    }
+    if (ts.isVariableDeclaration(current)) {
+      // Destructuring reads members of the value (getters, an iterator).
+      const pattern = !ts.isIdentifier(current.name);
+      if (pattern) visit(current.name, READ); // defaults evaluated
+      if (current.initializer)
+        visit(current.initializer, pattern ? ALL : flags);
+      return;
+    }
+    if (ts.isExportAssignment(current)) {
+      visit(current.expression, flags);
       return;
     }
     if (isFunction(current)) {
       // Its body runs now only when this position invokes it.
-      if (invoked) visit(current.body, false);
-      return;
-    }
-    if (ts.isClassExpression(current)) {
-      visitClass(current, invoked);
+      if (flags !== READ) run(current);
       return;
     }
     if (
@@ -1813,25 +1891,126 @@ function loadTimeIdentifiers(node, locals, into = new Set(), seen = new Set()) {
       ts.isConstructorDeclaration(current)
     )
       return;
+    if (
+      ts.isParenthesizedExpression(current) ||
+      ts.isAsExpression(current) ||
+      ts.isSatisfiesExpression(current) ||
+      ts.isTypeAssertionExpression(current) ||
+      ts.isNonNullExpression(current)
+    ) {
+      visit(current.expression, flags);
+      return;
+    }
+    if (ts.isConditionalExpression(current)) {
+      visit(current.condition, READ);
+      visit(current.whenTrue, flags);
+      visit(current.whenFalse, flags);
+      return;
+    }
+    if (ts.isBinaryExpression(current)) {
+      const operator = current.operatorToken.kind;
+      const either =
+        operator === ts.SyntaxKind.BarBarToken ||
+        operator === ts.SyntaxKind.AmpersandAmpersandToken ||
+        operator === ts.SyntaxKind.QuestionQuestionToken;
+      // `a || b`, `a ?? b`, `a && b` and `a, b` evaluate to an operand.
+      if (either || operator === ts.SyntaxKind.CommaToken) {
+        visit(current.left, either ? flags : READ);
+        visit(current.right, flags);
+        return;
+      }
+      if (operator === ts.SyntaxKind.EqualsToken) {
+        // `({ a } = value)` destructures the value; `x = value` yields it.
+        const pattern =
+          ts.isObjectLiteralExpression(current.left) ||
+          ts.isArrayLiteralExpression(current.left);
+        visit(current.left, READ);
+        visit(current.right, pattern ? ALL : flags);
+        return;
+      }
+      if (
+        operator !== ts.SyntaxKind.EqualsEqualsEqualsToken &&
+        operator !== ts.SyntaxKind.ExclamationEqualsEqualsToken
+      ) {
+        // Every other operator can coerce an operand (valueOf, toString,
+        // Symbol.toPrimitive) or run its code (instanceof's
+        // Symbol.hasInstance, a proxy's `in` trap).
+        visit(current.left, ALL);
+        visit(current.right, ALL);
+        return;
+      }
+    }
+    if (
+      ts.isPrefixUnaryExpression(current) ||
+      ts.isPostfixUnaryExpression(current)
+    ) {
+      // `+x`, `-x`, `~x`, `++x` coerce; `!x` does not.
+      visit(
+        current.operand,
+        current.operator === ts.SyntaxKind.ExclamationToken ? READ : ALL,
+      );
+      return;
+    }
+    if (
+      // Implicit member use: iteration, a thenable, string coercion.
+      ts.isSpreadElement(current) ||
+      ts.isSpreadAssignment(current) ||
+      ts.isAwaitExpression(current) ||
+      ts.isTemplateSpan(current)
+    ) {
+      visit(current.expression, ALL);
+      return;
+    }
+    if (ts.isForOfStatement(current) || ts.isForInStatement(current)) {
+      visit(current.initializer, READ);
+      visit(current.expression, ALL);
+      visit(current.statement, READ);
+      return;
+    }
     if (ts.isPropertyAccessExpression(current)) {
-      visit(current.expression, false);
+      // A member read can run a getter, or a method called next.
+      visit(current.expression, MEMBER);
+      return;
+    }
+    if (ts.isElementAccessExpression(current)) {
+      visit(current.expression, MEMBER);
+      visit(current.argumentExpression, READ);
+      return;
+    }
+    if (ts.isObjectLiteralExpression(current) && flags & MEMBER) {
+      // Any member may be read or called.
+      for (const property of current.properties) {
+        if (property.name && ts.isComputedPropertyName(property.name))
+          visit(property.name.expression, READ);
+        if (ts.isPropertyAssignment(property)) visit(property.initializer, ALL);
+        else if (ts.isShorthandPropertyAssignment(property))
+          visit(property.name, ALL);
+        else if (ts.isSpreadAssignment(property))
+          visit(property.expression, ALL);
+        else run(property);
+      }
+      return;
+    }
+    if (ts.isArrayLiteralExpression(current) && flags & MEMBER) {
+      for (const element of current.elements) visit(element, ALL);
       return;
     }
     if (ts.isPropertyAssignment(current)) {
       if (ts.isComputedPropertyName(current.name))
-        visit(current.name.expression, false);
-      visit(current.initializer, false);
+        visit(current.name.expression, READ);
+      visit(current.initializer, READ);
       return;
     }
     if (ts.isCallExpression(current) || ts.isNewExpression(current)) {
-      // The callee runs; a function handed to it may run too.
-      visit(unwrap(current.expression), true);
-      for (const argument of current.arguments ?? []) visit(argument, true);
+      // The callee runs. It may call, construct, iterate or read members
+      // of anything handed to it, nested values included (#2766).
+      visit(unwrap(current.expression), RUN);
+      for (const argument of current.arguments ?? []) visit(argument, ALL);
       return;
     }
     if (ts.isTaggedTemplateExpression(current)) {
-      visit(unwrap(current.tag), true);
-      visit(current.template, true);
+      visit(unwrap(current.tag), RUN);
+      visit(current.template, ALL);
       return;
     }
     if (ts.isPropertyDeclaration(current)) {
@@ -1841,19 +2020,65 @@ function loadTimeIdentifiers(node, locals, into = new Set(), seen = new Set()) {
         hasModifier(current, ts.SyntaxKind.StaticKeyword) &&
         current.initializer
       )
-        visit(current.initializer, false);
+        visit(current.initializer, READ);
       return;
     }
     if (ts.isClassStaticBlockDeclaration(current)) {
-      visit(current.body, false);
+      run(current.body);
       return;
     }
     ts.forEachChild(current, (child) => {
-      visit(child, false);
+      visit(child, READ);
     });
   };
-  visit(node, false);
+  visit(node, mode);
   return into;
+}
+
+/**
+ * The declarations that give a module's local export `name` its value, or
+ * null when this analysis cannot find them (and so cannot say what using the
+ * binding runs). `export { local as name }` is followed to `local`.
+ */
+function exportedDeclarations(file, name) {
+  let local = name;
+  for (const statement of file.statements)
+    if (
+      ts.isExportDeclaration(statement) &&
+      !statement.moduleSpecifier &&
+      statement.exportClause &&
+      ts.isNamedExports(statement.exportClause)
+    )
+      for (const element of statement.exportClause.elements)
+        if (element.name.text === name)
+          local = (element.propertyName ?? element.name).text;
+  const found = [];
+  for (const statement of file.statements) {
+    if (local === 'default') {
+      if (ts.isExportAssignment(statement)) found.push(statement);
+      else if (
+        hasModifier(statement, ts.SyntaxKind.DefaultKeyword) &&
+        (ts.isFunctionDeclaration(statement) ||
+          ts.isClassDeclaration(statement))
+      )
+        found.push(statement);
+      continue;
+    }
+    if (ts.isVariableStatement(statement)) {
+      for (const declaration of statement.declarationList.declarations)
+        if (bindingNames(declaration.name, []).includes(local))
+          found.push(declaration);
+    } else if (
+      (ts.isFunctionDeclaration(statement) ||
+        ts.isClassDeclaration(statement) ||
+        ts.isEnumDeclaration(statement) ||
+        ts.isInterfaceDeclaration(statement) ||
+        ts.isTypeAliasDeclaration(statement)) &&
+      statement.name?.text === local
+    )
+      found.push(statement);
+  }
+  return found.length ? found : null;
 }
 
 /**
@@ -1918,11 +2143,13 @@ export function topLevelUseAnalysis(graph) {
     any: false,
     found: false,
     cyclic: false,
+    bounded: false,
   });
   const merge = (into, from) => {
     for (const module of from.mods) into.mods.add(module);
     into.any ||= from.any;
     into.cyclic ||= from.cyclic;
+    into.bounded ||= from.bounded;
   };
   const stack = new Set();
   const memoized = (key, compute) => {
@@ -1935,38 +2162,54 @@ export function topLevelUseAnalysis(graph) {
     if (!result.cyclic) memo.set(key, result);
     return result;
   };
-  const bindingOrigins = (target, importedName) => {
+  // `depth` counts the cross-module hops of running code that led here.
+  // Results are memoized without it: a result cut at the bound is marked
+  // `bounded`, which is only more conservative wherever it is reused.
+  const bindingOrigins = (target, importedName, mode, depth) => {
     if (target === UNKNOWN) return { ...fresh(null), any: true, found: true };
+    if (depth > MAX_RUN_DEPTH)
+      // Not `any`: the bound is reported only when it alone decides.
+      return { ...fresh(target), found: true, bounded: true };
     return importedName === null
-      ? namespaceOrigins(target)
-      : origins(target, importedName);
+      ? namespaceOrigins(target, mode, depth)
+      : origins(target, importedName, mode, depth);
   };
-  const localOrigins = (module, name, result) => {
+  // What using a local export in `mode` reads: its initializer, or, for a
+  // function or class, the code that use runs. Fails closed when the
+  // declaration cannot be found (a TS namespace, `export import`).
+  const localOrigins = (module, name, mode, depth, result) => {
     const moduleInfo = info(module);
-    if (!moduleInfo) {
+    const declarations = moduleInfo
+      ? exportedDeclarations(moduleInfo.file, name)
+      : null;
+    if (!declarations) {
       result.any = true;
       return;
     }
-    let initializer;
-    for (const statement of moduleInfo.file.statements) {
-      if (name === 'default' && ts.isExportAssignment(statement))
-        initializer = statement.expression;
-      else if (ts.isVariableStatement(statement))
-        for (const declaration of statement.declarationList.declarations)
-          if (bindingNames(declaration.name, []).includes(name))
-            initializer = declaration.initializer;
-    }
-    if (!initializer) return; // a function or class: its body is not run
-    for (const identifier of loadTimeIdentifiers(
-      initializer,
-      moduleInfo.locals,
-    )) {
+    const reads = new Map();
+    for (const declaration of declarations)
+      for (const [identifier, flags] of loadTimeIdentifiers(
+        declaration,
+        moduleInfo.locals,
+        mode,
+      ))
+        reads.set(identifier, (reads.get(identifier) ?? READ) | flags);
+    for (const [identifier, flags] of reads) {
       const source = moduleInfo.importedFrom.get(identifier);
-      if (source) merge(result, bindingOrigins(source[0], source[1]));
+      if (source)
+        merge(
+          result,
+          bindingOrigins(
+            source[0],
+            source[1],
+            flags,
+            flags === READ ? depth : depth + 1,
+          ),
+        );
     }
   };
-  const origins = (module, name) =>
-    memoized(`${module}\0${name}`, () => {
+  const origins = (module, name, mode, depth) =>
+    memoized(`${module}\0${name}\0${mode}`, () => {
       const result = fresh(module);
       const table = graph.exportsOf(module);
       if (!table) {
@@ -1975,7 +2218,7 @@ export function topLevelUseAnalysis(graph) {
       }
       if (table.local.has(name)) {
         result.found = true;
-        localOrigins(module, name, result);
+        localOrigins(module, name, mode, depth, result);
         return result;
       }
       const entry = table.named.get(name);
@@ -1983,7 +2226,7 @@ export function topLevelUseAnalysis(graph) {
         result.found = true;
         const target = graph.resolveSpecifier(module, entry.specifier);
         if (target === null) return result;
-        merge(result, bindingOrigins(target, entry.name));
+        merge(result, bindingOrigins(target, entry.name, mode, depth));
         return result;
       }
       if (name === 'default') return result;
@@ -1994,7 +2237,7 @@ export function topLevelUseAnalysis(graph) {
           result.any = result.found = true;
           continue;
         }
-        const nested = origins(target, name);
+        const nested = origins(target, name, mode, depth);
         if (nested.found || nested.any) {
           merge(result, nested);
           result.found = true;
@@ -2003,8 +2246,8 @@ export function topLevelUseAnalysis(graph) {
       return result;
     });
   // A namespace binds every export; a star re-export is not enumerated.
-  const namespaceOrigins = (module) =>
-    memoized(`${module}\0*`, () => {
+  const namespaceOrigins = (module, mode, depth) =>
+    memoized(`${module}\0*\0${mode}`, () => {
       const result = fresh(module);
       result.found = true;
       const table = graph.exportsOf(module);
@@ -2013,7 +2256,7 @@ export function topLevelUseAnalysis(graph) {
         return result;
       }
       for (const name of [...table.local, ...table.named.keys()])
-        merge(result, origins(module, name));
+        merge(result, origins(module, name, mode, depth));
       return result;
     });
 
@@ -2034,17 +2277,26 @@ export function topLevelUseAnalysis(graph) {
         const local = moduleInfo.locals.get(identifier);
         if (local) referencedIdentifiers(local, read);
       }
+      // How the statement uses each binding: calling or constructing one,
+      // or reading a member of it, runs its code too (#2766).
+      const flags = loadTimeIdentifiers(statement, moduleInfo.locals);
       for (const identifier of read) {
         const source = moduleInfo.importedFrom.get(identifier);
-        if (source) merge(use, bindingOrigins(source[0], source[1]));
+        const mode = flags.get(identifier) ?? READ;
+        if (source)
+          merge(
+            use,
+            bindingOrigins(source[0], source[1], mode, mode === READ ? 0 : 1),
+          );
       }
-      if (use.any || use.mods.size)
+      if (use.any || use.bounded || use.mods.size)
         uses.push({
           importer,
           line:
             moduleInfo.file.getLineAndCharacterOfPosition(statement.getStart())
               .line + 1,
           any: use.any,
+          bounded: use.bounded,
           mods: use.mods,
         });
     }
@@ -2054,10 +2306,17 @@ export function topLevelUseAnalysis(graph) {
 }
 
 function topLevelUseOf(graph, changed) {
-  for (const use of topLevelUseAnalysis(graph))
-    if (use.importer !== changed && (use.any || use.mods.has(changed)))
-      return { importer: use.importer, line: use.line };
-  return null;
+  const uses = topLevelUseAnalysis(graph).filter(
+    (use) => use.importer !== changed,
+  );
+  // A traced origin or an unresolvable binding decides on its own; a chain
+  // cut at the bound decides only when no use does.
+  const direct = uses.find((use) => use.any || use.mods.has(changed));
+  if (direct) return { importer: direct.importer, line: direct.line };
+  const bounded = uses.find((use) => use.bounded);
+  return bounded
+    ? { importer: bounded.importer, line: bounded.line, bounded: true }
+    : null;
 }
 
 /** One changed module's disposition: refined with seeds, or whole-barrel. */
@@ -2101,7 +2360,7 @@ function decideCandidate(root, base, path, graph, readBase, importContext) {
   const use = topLevelUseOf(graph, path);
   if (use)
     return whole(
-      `${use.importer} line ${use.line} uses it in a top-level side effect`,
+      `${use.importer} line ${use.line} uses it in a top-level side effect${use.bounded ? ` (a call chain deeper than ${MAX_RUN_DEPTH} modules is not traced)` : ''}`,
     );
   const baseExportNames = new Set();
   if (baseSource) {

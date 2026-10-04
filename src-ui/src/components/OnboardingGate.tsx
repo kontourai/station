@@ -87,6 +87,37 @@ type ConnectionModalMode =
   | 'devices'
   | 'pair-host';
 
+const loadNativeRelayRouteProfiles = () =>
+  import('../views/connections-hub/RelayRouteProfiles').then((module) => ({
+    default: module.RelayRouteProfiles,
+  }));
+
+function NativeRelayRouteSetupFooter() {
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <>
+      <h3>Connect through a broker route</h3>
+      <p>
+        Save a Station and broker route when a direct address or pairing code is
+        not available.
+      </p>
+      <Button
+        aria-expanded={expanded}
+        onClick={() => setExpanded((current) => !current)}
+      >
+        {expanded ? 'Hide broker route setup' : 'Set up a broker route'}
+      </Button>
+      {expanded ? (
+        <LazyBoundary
+          load={loadNativeRelayRouteProfiles}
+          componentProps={{}}
+          pending={null}
+        />
+      ) : null}
+    </>
+  );
+}
+
 const PAIRING_APPROVAL_BANNER_ID = 'chrome:onboarding:pairing-approval';
 /**
  * Module-scope loaders (archive#2605 keeps these out of render), handed to
@@ -864,6 +895,9 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
           profile.channel === 'dev' ? 'stable' : profile.channel
         }
         initialPanel={connectionModalMode}
+        listFooterContent={
+          profile.isTauri ? <NativeRelayRouteSetupFooter /> : undefined
+        }
         initialPairingPayload={pairingPayload}
         pairingLinkError={pairingLinkError}
         onPairingReviewDismissed={() => {
