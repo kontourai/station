@@ -700,7 +700,7 @@ test.describe('Coding stack — wide (1440px): one bar, the inbox, a file from F
     await seed(page);
   });
 
-  test('one bar above the transcript: the title once, Chat’s verbs as named icons beside the breadcrumb', async ({
+  test('one bar above the transcript: the title once, Chat’s one verb (New) as a named icon beside the breadcrumb', async ({
     page,
   }) => {
     await landOnChat(page);
@@ -711,13 +711,15 @@ test.describe('Coding stack — wide (1440px): one bar, the inbox, a file from F
       centreChat(page).locator('.chat-dock__header-identity'),
     ).toHaveCount(0);
     await expect(bar(page).getByText('Dev Agent Chat')).toHaveCount(1);
-    const open = bar(page).getByRole('button', { name: 'Open conversation' });
     const create = bar(page).getByRole('button', { name: 'New chat' });
-    await expect(open).toBeVisible();
     await expect(create).toBeVisible();
-    // No words: the Open icon may carry its session-count badge, nothing else.
-    await expect(open).toHaveText(/^\d*$/);
+    // No words, and no Open beside it: the inbox sits beside Chat. No
+    // session count either; the inbox enumerates the chats.
     await expect(create).toHaveText('');
+    await expect(
+      bar(page).getByRole('button', { name: /^Open conversation/ }),
+    ).toHaveCount(0);
+    await expect(bar(page)).not.toContainText(/\bsessions?\b/i);
     await expect(
       bar(page).getByRole('button', { name: 'More dock actions' }),
     ).toBeVisible();
