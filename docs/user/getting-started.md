@@ -161,7 +161,8 @@ Both save the same selected answers before opening their next step.
 On a phone, use the compose button at the right of the chat bar, or tap the
 current chat title to open **Chats and tasks** and choose **New chat** at the
 lower right. The three-dot menu holds chat actions; connection health remains
-in the app header. **Projects** has the same add control
+in the app header. In fullscreen chat, where that header is hidden, Station
+management remains in the chat actions menu. **Projects** has the same add control
 for creating a project, including a short first-project prompt when empty.
 
 Selecting a project in the sidebar opens its workspace and makes it the default

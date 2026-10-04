@@ -308,7 +308,7 @@ describe('mobile conversation focus', () => {
   });
   test('New chat is directly reachable and overflow keeps chat actions without repeating connection health', async () => {
     const onNewChat = vi.fn();
-    renderHeader({ onNewChat });
+    renderHeader({ onNewChat, showConnection: false });
     fireEvent.click(screen.getByRole('button', { name: 'New chat' }));
     expect(onNewChat).toHaveBeenCalledOnce();
     await openActions();

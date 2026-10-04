@@ -102,6 +102,7 @@ interface ChatDockMobileHeaderProps {
 /** Project and conversation context stay directly operable; secondary actions use the sheet. */
 export function ChatDockMobileHeader({
   showDrawerToggle,
+  showConnection,
   sessionTitle,
   sessionProjectMismatchLabel,
   agentIdentity,
@@ -284,6 +285,7 @@ export function ChatDockMobileHeader({
           componentProps={{
             overflow,
             projectScope,
+            showConnection,
             onNewChat,
             branchLabel,
             returnFocusTarget: chatActionsTriggerRef.current,
