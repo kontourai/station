@@ -194,6 +194,11 @@ test('real usage GET allocates retained per-call facts across UTC days, models a
       cacheReadTokens: 18400,
       cacheWriteTokens: 10100,
       reportedCostUsd: 0.2,
+      principal: humanPrincipal(
+        'fixture',
+        'untrusted-event',
+        'Untrusted usage actor',
+      ),
     });
     f.start('muse', 'muse', day2, 'model-b');
     f.turn('muse', 'muse', 'two', day2, {
@@ -463,59 +468,76 @@ test('only canonical relay provenance selects a memory primary ledger; same-ID f
   }
 });
 
-test('file-memory enrichment keeps the original timestamp and repeated notifications rebuild one corrected usage fact', async () => {
-  const f = fixture();
-  const adapter = new FileMemoryAdapter({
-    projectHomeDir: f.home,
-    usageAggregator: f.aggregator,
-  });
-  try {
-    await adapter.createConversation({
-      id: 'one',
-      resourceId: 'station',
-      userId: 'reader',
-      title: 'one',
-      metadata: {},
+test.each([day1, undefined, null])(
+  'file-memory enrichment preserves recorded or unknown dates and repeated notifications rebuild one corrected usage fact (%s)',
+  async (timestamp) => {
+    const f = fixture();
+    const adapter = new FileMemoryAdapter({
+      projectHomeDir: f.home,
+      usageAggregator: f.aggregator,
     });
-    await adapter.addMessage(
-      {
-        id: 'assistant',
-        role: 'assistant',
-        parts: [],
-        metadata: { timestamp: day1 },
-      },
-      'reader',
-      'one',
-      { model: 'old', usage: { inputTokens: 100, estimatedCost: 10 } },
-    );
-    await f.current();
-    const stored = (await adapter.getMessages('reader', 'one'))[0];
-    expect(stored).toBeDefined();
-    await adapter.removeLastMessage('reader', 'one');
-    await adapter.addMessage(stored, 'reader', 'one', {
-      model: 'new',
-      usage: { inputTokens: 5, estimatedCost: 0 },
-      suppressUsageAggregation: true,
-    });
-    for (let index = 0; index < 2; index++)
-      await adapter.applyEnrichmentUsage('reader', 'one', stored, 'old');
-    const stats = await f.current();
-    expect(stats.lifetime).toMatchObject({
-      totalMessages: 1,
-      totalInputTokens: 5,
-      totalCost: 0,
-    });
-    expect(Object.keys(stats.byDate)).toEqual(['2026-08-01']);
-    expect(Object.keys(stats.byModel)).toEqual(['new']);
-    const rows = await readFile(
-      join(f.home, 'agents', 'station', 'memory', 'sessions', 'one.ndjson'),
-      'utf8',
-    );
-    expect(JSON.parse(rows.trim()).metadata.timestamp).toBe(day1);
-  } finally {
-    f.store.close();
-  }
-});
+    try {
+      await adapter.createConversation({
+        id: 'one',
+        resourceId: 'station',
+        userId: 'reader',
+        title: 'one',
+        metadata: {},
+      });
+      await adapter.addMessage(
+        {
+          id: 'assistant',
+          role: 'assistant',
+          parts: [],
+          metadata: { timestamp },
+        },
+        'reader',
+        'one',
+        { model: 'old', usage: { inputTokens: 100, estimatedCost: 10 } },
+      );
+      if (timestamp === undefined || timestamp === null) {
+        await memory(f.home, 'one', {
+          timestamp,
+          model: 'old',
+          usage: { inputTokens: 100, estimatedCost: 10 },
+        });
+      }
+      await f.current();
+      const stored = (await adapter.getMessages('reader', 'one'))[0];
+      expect(stored).toBeDefined();
+      await adapter.removeLastMessage('reader', 'one');
+      await adapter.addMessage(stored, 'reader', 'one', {
+        model: 'new',
+        usage: { inputTokens: 5, estimatedCost: 0 },
+        suppressUsageAggregation: true,
+      });
+      for (let index = 0; index < 2; index++)
+        await adapter.applyEnrichmentUsage('reader', 'one', stored, 'old');
+      const stats = await f.current();
+      expect(stats.lifetime).toMatchObject({
+        totalMessages: 1,
+        totalInputTokens: 5,
+        totalCost: 0,
+      });
+      expect(Object.keys(stats.byDate)).toEqual(
+        timestamp === day1 ? ['2026-08-01'] : [],
+      );
+      if (timestamp !== day1)
+        expect(stats.unallocated?.date).toMatchObject({
+          messages: 1,
+          inputTokens: 5,
+        });
+      expect(Object.keys(stats.byModel)).toEqual(['new']);
+      const rows = await readFile(
+        join(f.home, 'agents', 'station', 'memory', 'sessions', 'one.ndjson'),
+        'utf8',
+      );
+      expect(JSON.parse(rows.trim()).metadata.timestamp).toBe(timestamp);
+    } finally {
+      f.store.close();
+    }
+  },
+);
 
 test.each([false, true])(
   'model cache inclusivity follows every contributing retained source (mixed memory: %s)',

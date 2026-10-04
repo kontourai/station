@@ -144,7 +144,11 @@
 
     "src-server/tools/station-control-delegation.ts",
 
-    "src-ui/src/hooks/orchestration/ensureOrchestrationEventStream.ts"
+    "src-ui/src/hooks/orchestration/ensureOrchestrationEventStream.ts",
+
+    "packages/contracts/src/usage-stats.ts",
+
+    "src-server/analytics/__tests__/usage-observation-projection.test.ts"
   ],
 
   "checks": [

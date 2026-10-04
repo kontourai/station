@@ -28,12 +28,13 @@ identity next to usage on the connected Station. These are different scopes:
 the identity does not make the Station-wide retained-source summary a personal total.
 Lifetime counts combine saved messages with completed external-engine turns.
 Daily and model breakdowns include retained file-memory messages and external-engine
-observations. UTC days describe when the source records were recorded, not exact
-consumption dates. Completed external-engine turns contribute activity on their
+observations. UTC days use saved-message timestamps and canonical provider-event
+`createdAt` values, not precise consumption dates or the receipt ingestion clock. Completed external-engine turns contribute activity on their
 recorded UTC day. Missing or invalid dates, missing models and unknown principal or
 provider attribution remain in `unallocated`. Saved messages have no authenticated
 principal writer and remain principal-unallocated even if arbitrary metadata names
-a principal. Current app or Agent configuration
+a principal. Engine person attribution uses the server-stamped `turn.started`
+principal; usage-event principal fields cannot override it. Current app or Agent configuration
 never fills historical gaps.
 The hero graph shows the last 14 UTC days rather than the last 14 populated rows.
 
@@ -81,7 +82,9 @@ Station milestones use this current retained-source summary, not a person's
 sent-message count. A cost milestone does not unlock from unreported engine or saved-assistant
 cost, completed engine turns without cost, unknown exact relay overlap, skipped
 message records, or a failed engine read. Message-write and enrichment notifications invalidate the projection; the next
-active reader rebuilds it rather than adding replacement usage again. Its
+active reader rebuilds it rather than adding replacement usage again. Replacement
+retains the original timestamp, including an unknown or invalid timestamp; it
+never gives an undated retained record today's date. Its
 API result supplies `measurementUnavailableReason` and omits numeric progress;
 the UI shows that gap instead of a budget amount or progress bar. A reported
 zero cost remains a real measurement. `snapshot.projection` identifies
