@@ -40,7 +40,7 @@
 
     {"path":"src-desktop/tauri.beta.conf.json","digest":"91b0495f471651c383602046d4a2d4d32ff5cd5e4b7219cf4f7c9daf3486ccc5","revision":"54e0ffb5c1ae765b4127f031e525793087fb9669"},
 
-    {"path":"src-desktop/tauri.nightly.conf.json","digest":"7958e34fb92ec4938b550c12306bc6b300dcb302a69906753b70ff8ce1181262","revision":"54e0ffb5c1ae765b4127f031e525793087fb9669"},
+    {"path":"src-desktop/tauri.nightly.conf.json","digest":"31118cc5e3789ef2533327af987ce549d282fc383ae5c17569edbe27297634f8","revision":"c5d3acbbda8ab0a072d4039bc91c7b9668a741d9"},
 
     {"path":"packages/connect/src/core/pairingDeepLink.ts","digest":"e52ea12978d577a648ca00eecbd9bede7f7e6257c34b3fb573c5f976ad92feda","revision":"54e0ffb5c1ae765b4127f031e525793087fb9669"},
 

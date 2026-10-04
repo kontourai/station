@@ -22,7 +22,7 @@
 
     {"path":".github/workflows/nightly.yml","digest":"0a1753a37519218e6a6afccc12785f34be4a376e3e82c303819e5c4da9614202","revision":"01ae5b65e67e7456ed5d777266bb54b3774b4a56"},
 
-    {"path":".github/workflows/portable-server-archives.yml","digest":"c7c7ff935b2bd8df40440aa8a7b6fd4405304e99e87c4a892de073fe0ae72924","revision":"614c216de6de9d4c06ef56963853ccff52f2f685"},
+    {"path":".github/workflows/portable-server-archives.yml","digest":"38fce21ba49019f4d79fdcb7b953756a3239bb81b059dfd9523ce2fcf9cb2bcf","revision":"c5d3acbbda8ab0a072d4039bc91c7b9668a741d9"},
 
     {"path":".github/workflows/publish-release.yml","digest":"177c206b2b12a2421bd83d3b803b7e7a4555a982725d2b2b775837fc6aa87db6","revision":"0fef6012b6853144e65d4ba2eb0db5fb6c2d1a05"},
 
@@ -72,7 +72,7 @@
 
     {"path":"scripts/lib/native-release-config.mjs","digest":"e26ea6f37e258847dbd060dc54f881a70b62bd054d36f613c93147b16a135d67","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"scripts/lib/portable-server-archive.mjs","digest":"5f03affc9ae69b585e7b6395f7ae42f73b678ed9571737d7e18dbd6904da154d","revision":"614c216de6de9d4c06ef56963853ccff52f2f685"},
+    {"path":"scripts/lib/portable-server-archive.mjs","digest":"01559c09840642dcd3f4f45bb193ce35a40c39c32f9ad333269dbbf2403c9ec3","revision":"c5d3acbbda8ab0a072d4039bc91c7b9668a741d9"},
 
     {"path":"scripts/lib/release-artifacts.mjs","digest":"671bce22d83208bd0f1ae93519bf1ecabcc0e61602dec2ef32294bc141563c42","revision":"780dbbe2bb02372ad22a92e269e2fc3fa62bcd22"},
 

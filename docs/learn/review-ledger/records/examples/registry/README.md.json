@@ -9,7 +9,7 @@
 
   "limits": "No actual plugin installation, native/device/audio journey, public package distribution, provider operation or cross-host qualification. Source/fixture checks do not establish those outcomes.",
 
-  "document": {"digest":"c2b2a3e581bf685a4ae436016d2dfb331502c5183ab966ee2516515f4d0f5d61","revision":"9284c690de029594417d7599810fbfbe9eca3d92"},
+  "document": {"digest":"c6264b4d9576c571b6ae181ab1ac6a8a88dae3ce4a32ceb0d735674c5fff1ddf","revision":"c5d3acbbda8ab0a072d4039bc91c7b9668a741d9"},
 
   "sources": [
     {"path":"examples/registry/default.json","digest":"ef03a6a928d57756719fa0ef4086397b87042e6aa9d825ce7a9f0f9b003162d1","revision":"19aff2a08b9739ad9ffbda39ff8cb19b026fda82"},

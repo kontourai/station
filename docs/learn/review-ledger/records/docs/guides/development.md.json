@@ -26,7 +26,7 @@
 
     {"path":".github/workflows/merge-queue-regression.yml","digest":"ba13e009f55d64dc1059167c9f1ed009c1518605483c42f4e3a3509e579e9480","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
 
-    {"path":".github/workflows/portable-server-archives.yml","digest":"c7c7ff935b2bd8df40440aa8a7b6fd4405304e99e87c4a892de073fe0ae72924","revision":"614c216de6de9d4c06ef56963853ccff52f2f685"},
+    {"path":".github/workflows/portable-server-archives.yml","digest":"38fce21ba49019f4d79fdcb7b953756a3239bb81b059dfd9523ce2fcf9cb2bcf","revision":"c5d3acbbda8ab0a072d4039bc91c7b9668a741d9"},
 
     {"path":".github/workflows/windows-pr-verification.yml","digest":"608bbdfac16fd9d0379b4fcffbb79d8a1a94ab014736442765087fe3f17a21ae","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
@@ -78,7 +78,7 @@
 
     {"path":"scripts/lib/fast-checks-shards.mjs","digest":"6c0ded4c94e1316dcb83406c37c762398b15da198498a1037d62f21625d661fc","revision":"555c5aa3646e08ef44d26002f81508daf7a32305"},
 
-    {"path":"scripts/lib/portable-server-archive.mjs","digest":"5f03affc9ae69b585e7b6395f7ae42f73b678ed9571737d7e18dbd6904da154d","revision":"614c216de6de9d4c06ef56963853ccff52f2f685"},
+    {"path":"scripts/lib/portable-server-archive.mjs","digest":"01559c09840642dcd3f4f45bb193ce35a40c39c32f9ad333269dbbf2403c9ec3","revision":"c5d3acbbda8ab0a072d4039bc91c7b9668a741d9"},
 
     {"path":"scripts/prepare-verify-static.mjs","digest":"fdfb52b1da5d1d22e155f8d1d681c9847f3076549b4d7997d3c0c3a1bf713c2d","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 

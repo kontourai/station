@@ -190,7 +190,7 @@
 
     {"path":"src-server/utils/path-containment.ts","digest":"e6a7867d0d39ee6b6c4dee4d7b697b8ab4ab55e86c7f9503d6ce657e0ed1d083","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"scripts/lib/portable-server-archive.mjs","digest":"5f03affc9ae69b585e7b6395f7ae42f73b678ed9571737d7e18dbd6904da154d","revision":"614c216de6de9d4c06ef56963853ccff52f2f685"},
+    {"path":"scripts/lib/portable-server-archive.mjs","digest":"01559c09840642dcd3f4f45bb193ce35a40c39c32f9ad333269dbbf2403c9ec3","revision":"c5d3acbbda8ab0a072d4039bc91c7b9668a741d9"},
 
     {"path":"packages/shared/src/station-home-store-registry.ts","digest":"bf725d365318f670cdc54f2f4354bec8d1041f3c9866ac72439f3e0d11ff5e1f","revision":"4a67fd3e4060f01379184350cdfd49637bba8d0e"},
 

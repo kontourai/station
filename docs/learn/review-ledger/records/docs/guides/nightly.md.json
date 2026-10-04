@@ -102,7 +102,7 @@
 
     {"path":"scripts/lib/native-release-config.mjs","digest":"e26ea6f37e258847dbd060dc54f881a70b62bd054d36f613c93147b16a135d67","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"scripts/lib/portable-server-archive.mjs","digest":"5f03affc9ae69b585e7b6395f7ae42f73b678ed9571737d7e18dbd6904da154d","revision":"614c216de6de9d4c06ef56963853ccff52f2f685"},
+    {"path":"scripts/lib/portable-server-archive.mjs","digest":"01559c09840642dcd3f4f45bb193ce35a40c39c32f9ad333269dbbf2403c9ec3","revision":"c5d3acbbda8ab0a072d4039bc91c7b9668a741d9"},
 
     {"path":"scripts/lib/portable-smoke-diagnostics.mjs","digest":"3b176f0e3239428ab7e98b029126eec214165ddd857b85d4fcf970cb406799ba","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
@@ -124,9 +124,9 @@
 
     {"path":"scripts/release-platform-matrix.mjs","digest":"c7a97e393c6cb12edaee3f360ee922f6bd1fc2ab257c0c3f3872313b31bc5b35","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"scripts/smoke-portable-server-archive.mjs","digest":"df2b1353270dd0a379ed083172d8f0cdbb355cc630d030a7f5767011060246c8","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"scripts/smoke-portable-server-archive.mjs","digest":"b894e8d5bf19a17035488aa5c0bf77d08835f7b3cf5ace39bf798e24c89f1503","revision":"3b71b9049d8861aad67400cf43013db416c19af9"},
 
-    {"path":"scripts/stage-desktop-server-runtime.mjs","digest":"8c0784f430f6e0ff39eafeb132bb509bffe6f2c57b3d9c43da7a70ecee6c9d17","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"scripts/stage-desktop-server-runtime.mjs","digest":"756e63a0573d25eccecacc0f85d8f3fbfc7672684639ec33dac18d534f781089","revision":"c5d3acbbda8ab0a072d4039bc91c7b9668a741d9"},
 
     {"path":"scripts/verify-release-cohort.mjs","digest":"39d3b092de88091434e614273e6f13d8eaf675fc70b3013ddebcd6d79c43142b","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
@@ -136,9 +136,9 @@
 
     {"path":"src-desktop/src/lib.rs","digest":"c1f14ebce1d8326b17d071eec351ca84af929b8058bfc6ce456b2f6a4b73867c","revision":"2c506080536ad8cb02b6af0b53bbd19c6d1e3ecb"},
 
-    {"path":"src-desktop/tauri.linux-appimage.conf.json","digest":"c590f935a579a9cf6c14a6110587a7fb223b5c91e6def12c9d13e2082186a8ab","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"src-desktop/tauri.linux-appimage.conf.json","digest":"d21288c58091b1cf2307ca6bc850f35e97cb969b027b6be76c6e39e55df2f7c5","revision":"c5d3acbbda8ab0a072d4039bc91c7b9668a741d9"},
 
-    {"path":"src-desktop/tauri.linux.conf.json","digest":"eb80b54e5bc986f6f4760b5b25a1032101cf583f766a19a735679947c1f46a84","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"src-desktop/tauri.linux.conf.json","digest":"a47ee2c3a6bf4781d8bc633cfce7f07fb6dd55498b59008e2c2fcb11418d3e52","revision":"c5d3acbbda8ab0a072d4039bc91c7b9668a741d9"},
 
     {"path":"src-server/security/local-grant-file.ts","digest":"651df6a68213436e33656482acad95b099fcd3bf0d686d62c6cd39e0b10c5a20","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 

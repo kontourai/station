@@ -112,7 +112,7 @@
 
     {"path":"src-desktop/tauri.ios.dev.conf.json","digest":"0396582e1474e3e56c326dc9e8ed351301dcd0158842dabe5bd1646a9d57cccf","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-desktop/tauri.nightly.conf.json","digest":"7958e34fb92ec4938b550c12306bc6b300dcb302a69906753b70ff8ce1181262","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"src-desktop/tauri.nightly.conf.json","digest":"31118cc5e3789ef2533327af987ce549d282fc383ae5c17569edbe27297634f8","revision":"c5d3acbbda8ab0a072d4039bc91c7b9668a741d9"},
 
     {"path":"src-server/tools/instance-registry-bridge.ts","digest":"bb68aa5e87bf85c0262beda833b5d5a69a8f279fecc151e61a3c8be4bda45b13","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
