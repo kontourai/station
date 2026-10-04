@@ -12,15 +12,15 @@
   "document": {"digest":"4480def2cafbc901b67500e70198b8a8e5897784f0f33dc17fbdda12e3f5174e","revision":"57980be1afd64ff365472c005a13fce3d5c76ced"},
 
   "sources": [
-    {"path":"packages/contracts/package.json","digest":"4207a40b79f1ca84ab14d89cbfa7dd56b3f1c95ff20d9b37abd90216969325ca","revision":"fdca33b1896b280299ba72fc70a3c9b9cda7f3af"},
+    {"path":"packages/contracts/package.json","digest":"2473f4c2e7edade053cb8da766fbe12fba771c372c5b1f5fa10d70e4f6774cfa","revision":"f0fa959c03b663a0cefa2f37953406e1b19859a0"},
 
-    {"path":"packages/contracts/package.json#/exports","digest":"068810cc8b3594e03c2fef6ca250d233e62e378fb6cf06d66b4832d7beae112a","revision":"88a7f8ed59c055ea6ac713120ba6069d33fbb892"},
+    {"path":"packages/contracts/package.json#/exports","digest":"d467758a14daf95a37dcb6b60a15d642c3c5be25b4c1471304bef4e5be5fb312","revision":"f0fa959c03b663a0cefa2f37953406e1b19859a0"},
 
     {"path":"packages/contracts/package.json#/files","digest":"43219f75df025fd68c4b3a47b045f822115a0cb02eb1a21f6f0003b466db6b24","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
 
     {"path":"packages/contracts/src/child-work.ts","digest":"329d495e2344cd739eb4f47ec8329e424e2e1d37320acf5970d963d51b73dd35","revision":"9ed8cdffa9ba991c5bcd085b9a53c4368798fac2"},
 
-    {"path":"packages/contracts/src/index.ts","digest":"8622b3bbcdb622dbc385cf285e83654139eaea3d9338464125c1d103bd99f29c","revision":"1e6450e0caa47975d33f505a1348bdc01ae1382e"},
+    {"path":"packages/contracts/src/index.ts","digest":"3d00b7228b4e170c5f4abdeded6babdf725bd2db7336871693b17a9a47d0557a","revision":"0ad2f560e1d13e4262d5637f173abc3d95959848"},
 
     {"path":"packages/contracts/src/live-surface.ts","digest":"249e322f147816c782477257489efbd2069d5222d188a081f11ed7d3e4238546","revision":"b2a69152a03d8221d5a04283d645f9e36bd0fdef"},
 

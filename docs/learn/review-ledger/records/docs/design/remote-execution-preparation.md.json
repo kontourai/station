@@ -14,7 +14,7 @@
   "sources": [
     {"path":"packages/contracts/src/execution-target.ts","digest":"72d723355a5efeef79519cad76f77122289362f791202f84cf00c3d03b75826c","revision":"0ad2f560e1d13e4262d5637f173abc3d95959848"},
 
-    {"path":"src-server/tools/station-control-delegation.ts","digest":"6008efd459d72ccf822f13da79fb91bf775deeeaab16f099fb9efed8cd1a6639","revision":"0ad2f560e1d13e4262d5637f173abc3d95959848"},
+    {"path":"src-server/tools/station-control-delegation.ts","digest":"5501f0fc0eeb1dcdb870a32a59fde3d568c061b13f846654e71fa4f4493e31db","revision":"f0fa959c03b663a0cefa2f37953406e1b19859a0"},
 
     {"path":"src-server/services/orchestration/delegation-attempt-claim-store.ts","digest":"74f907b131807d1ddf3f46496b875dc5833ab270bb9cfe00fb95bc160a514377","revision":"0ad2f560e1d13e4262d5637f173abc3d95959848"},
 
@@ -30,9 +30,9 @@
 
     {"path":"src-server/services/execution-target/execution-preparation.ts","digest":"e427ed201939297502e9f4193c0026113b87607d22ca4468ad358183a53ce2bb","revision":"0ad2f560e1d13e4262d5637f173abc3d95959848"},
 
-    {"path":"src-server/services/execution-target/__tests__/execution-preparation.test.ts","digest":"48ead27335faa4410f7e0ee7b9b3dc314199a7a61f48fbdeaa6da44f7ff74d36","revision":"0ad2f560e1d13e4262d5637f173abc3d95959848"},
+    {"path":"src-server/services/execution-target/__tests__/execution-preparation.test.ts","digest":"c83c49768ea2f462747f271e81033234d5b3be3e4ecb5be792990ea2f965c11e","revision":"60d4784f693b1d26d7aeb1e31ff97320239e4908"},
 
-    {"path":"src-server/tools/__tests__/station-control-delegation-preparation.test.ts","digest":"c61f5efe8880cae6746dabdba8fcd012762f430b3969813e2dd5fd78913946aa","revision":"0ad2f560e1d13e4262d5637f173abc3d95959848"},
+    {"path":"src-server/tools/__tests__/station-control-delegation-preparation.test.ts","digest":"21c84a0e5e19d2f314fb1c55bb1b419bf6a680e1711c51a5047535f3cdb2bcba","revision":"60d4784f693b1d26d7aeb1e31ff97320239e4908"},
 
     {"path":"tests/portable-receiver-live-proof.spec.ts","digest":"82184d99edb12ee9e67e1a593f9d6f8ecce17d24fad74b8e112fcad7098b335b","revision":"0ad2f560e1d13e4262d5637f173abc3d95959848"}
   ],
