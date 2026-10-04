@@ -1,0 +1,11 @@
+{
+  "revision": "8cfd3514b2d67f7b6a3b415f3cc5c76f4bf1126f",
+
+  "notes": [
+    {"path":"docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md","note":"#2898 changed only the revocation report's classification (stillUnconfined while a running engine's last turn ran under the revoked confinement), ApprovalPosture's confinement-change re-application on turns, a steerTurn refusal (confinement-changed) for a turn accepted under a revoked confinement, and the revocation notice's Stop now. Searched this document for approval posture, steering, revocation, confinement and paired-device claims; none describe those behaviours, so its prose stays accurate."},
+
+    {"path":"docs/design/chat-composer.md","note":"#2898 changed only the revocation report's classification (stillUnconfined while a running engine's last turn ran under the revoked confinement), ApprovalPosture's confinement-change re-application on turns, a steerTurn refusal (confinement-changed) for a turn accepted under a revoked confinement, and the revocation notice's Stop now. Searched this document for approval posture, steering, revocation, confinement and paired-device claims; none describe those behaviours, so its prose stays accurate."},
+
+    {"path":"docs/reference/contracts.md","note":"#2898 changed only the revocation report's classification (stillUnconfined while a running engine's last turn ran under the revoked confinement), ApprovalPosture's confinement-change re-application on turns, a steerTurn refusal (confinement-changed) for a turn accepted under a revoked confinement, and the revocation notice's Stop now. Searched this document for approval posture, steering, revocation, confinement and paired-device claims; none describe those behaviours, so its prose stays accurate."}
+  ]
+}
