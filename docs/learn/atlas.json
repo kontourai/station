@@ -42,6 +42,7 @@
         "SessionQueryModule",
         "ConversationSessionLineage",
         "SessionCommandModule",
+        "SkillExperienceRuntime",
         "SessionLifecycleModule",
         "SessionTurnBoundaryAuthority",
         "TurnDeduplicator",
@@ -105,6 +106,9 @@
         "VirtualApplicationIngress",
         "NativeRelayGrantRenewalSupervisor",
         "NativeApplicationSignaling",
+        "Native relay enrollment",
+        "Native relay link intake",
+        "Native relay account and requests",
         "PendingPairingCompletion",
         "ConnectionInspector",
         "SecretBindingAdministration and IntegrationSecretResolver",
@@ -177,12 +181,14 @@
         "docs/guides/distribution-profiles.md"
       ],
       "modules": [
+        "RegistrySourceManager",
         "Registry trust policy decisions",
         "AgentPluginLoader",
         "PackageMcpAdmissionJournal",
         "InstalledPluginInventory",
         "PluginCompositionModule",
         "PluginGrantReconciliation",
+        "PluginCommandEffects",
         "RegistrySupplyChainPolicy",
         "LocalSkillMutationAuthority and SetupImportEffectJournal"
       ],

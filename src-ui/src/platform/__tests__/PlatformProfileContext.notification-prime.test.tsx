@@ -8,6 +8,7 @@ const profileStorage = vi.hoisted(() => ({
   authorizeDefaultProfile: vi.fn(async () => true),
   authorizeRememberedProfile: vi.fn(async () => true),
   hasSavedProfiles: vi.fn(() => true),
+  subscribeRelayRouteProfiles: vi.fn(() => () => {}),
 }));
 
 vi.mock('../native', () => ({

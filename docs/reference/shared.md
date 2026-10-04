@@ -23,6 +23,17 @@ The [export map](../../packages/shared/package.json) selects source files, mostl
 requirements. The type excerpts below are not exhaustive replacements for their
 owning declarations; import the canonical type rather than copying an interface.
 
+## Skill experience validation
+
+`@kontourai/station-shared/skill-experience-author` owns
+`readValidatedSkillExperiences` and `validateAuthoredSkillExperiences`.
+The reader returns typed definitions after closed-schema and bounded,
+contained bundled Skill validation; the validation wrapper discards that result.
+The author build and installed inventory use the same reader. It does not
+activate a package, grant resources, or authorize execution. Installed identity
+and current admission remain with the server's package journal/loader. See the
+[experience contract](skill-experiences.md) for the exact bounds and refusal path.
+
 ## Skill experience authoring
 
 `@kontourai/station-shared/skill-experience-workflow` exports local
@@ -133,7 +144,7 @@ interface PluginPreview {
 }
 
 interface PluginComponent {
-  type: 'agent' | 'layout' | 'pane' | 'provider' | 'tool';
+  type: 'agent' | 'command' | 'layout' | 'pane' | 'provider' | 'tool';
   id: string;
   name?: string; // declared display name, e.g. a Pane's `name`
   detail?: string;
@@ -476,6 +487,7 @@ interface ProjectConfig {
   workingDirectory?: string;
   defaultProviderId?: string;
   defaultModel?: string;
+  defaultAgent?: AgentId;
   defaultEmbeddingProviderId?: string;
   defaultEmbeddingModel?: string;
   similarityThreshold?: number;
@@ -486,6 +498,11 @@ interface ProjectConfig {
   updatedAt: string;
 }
 ```
+
+`defaultAgent` supplies the new-chat choice when there is no remembered Agent
+for that Station access and project. The remembered choice takes precedence;
+No project has its own remembered choice. Create/update requests accept `null`
+to clear `defaultAgent`; stored and read configuration omit the cleared field.
 
 `agents` is optional by design: `undefined` means the project can use all
 known agents, while an explicit empty array means the project exposes no agents.

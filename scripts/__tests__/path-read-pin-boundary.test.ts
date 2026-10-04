@@ -1122,6 +1122,24 @@ describe('the scanner resolves only what it can justify', () => {
     ).toEqual(['src-ui/src/main.tsx']);
   });
 
+  it('resolves aliased Node URL value imports without guessing other constructors', () => {
+    const read =
+      "readFileSync(new NodeURL('../App.tsx', import.meta.url), 'utf8');\n";
+    for (const imported of [
+      "import { URL as NodeURL } from 'node:url';\n",
+      "import { fileURLToPath, URL as NodeURL } from 'node:url';\n",
+    ])
+      expect(scan(imported + read)).toEqual(['src-ui/src/App.tsx']);
+    for (const imported of [
+      "import { URL as NodeURL } from 'another-package';\n",
+      "import type { URL as NodeURL } from 'node:url';\n",
+      "import { type URL as NodeURL } from 'node:url';\n",
+      "// import { URL as NodeURL } from 'node:url';\n",
+      'const NodeURL = arbitraryConstructor;\n',
+    ])
+      expect(scan(imported + read)).toEqual([]);
+  });
+
   it('resolves a read-helper parameter (arrow and function forms)', () => {
     // The idiom behind #2221's blind spot: the literal sits at the CALL, the
     // anchor sits in the helper body, and no import edge connects them.
