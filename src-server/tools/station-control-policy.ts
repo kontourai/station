@@ -117,8 +117,10 @@ export type StationControlHttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE';
  *   respond, which slice C adds; until then only the operator).
  * - `thread-commands-stay-in-scope` (slices C1 and C2a, owner decisions
  *   recorded on #2377): the same leaf carries `steerTurn`, which injects
- *   input into a live turn, and `adoptSession`, which copies another
- *   session's transcript and joins its posture. Both are held to the one
+ *   input into a live turn, `adoptSession`, which copies another session's
+ *   transcript and joins its posture, and (slice C3) `interruptTurn`,
+ *   `stopSession` and `discardDraft` (`SCOPED_THREAD_COMMAND_FIELD`). All
+ *   are held to the one
  *   scope rule every dispatch route applies (`stationControlScopeRefusal`):
  *   a bound operator keeps the operator's reach; anyone else only its own
  *   owner's sessions, with the owner's Project `execute` action, never
@@ -965,7 +967,7 @@ export interface StationControlPolicyContext {
   readonly retargetsGrantedJob?: boolean;
   /**
    * For `thread-commands-stay-in-scope`: what the server's records say about
-   * the thread a `steerTurn` or `adoptSession` names. Only the server can
+   * the thread a scoped command names. Only the server can
    * know it; absent means the guard could not read it, which refuses.
    */
   readonly commandThread?: StationControlDispatchTarget;
@@ -1214,18 +1216,35 @@ function approvalCommandRefusal(
   return undefined;
 }
 
-/** The commands `thread-commands-stay-in-scope` holds to the caller's scope. */
-const SCOPED_THREAD_COMMANDS: ReadonlySet<string> = new Set([
-  'steerTurn',
-  'adoptSession',
-]);
+/**
+ * The commands `thread-commands-stay-in-scope` holds to the caller's scope,
+ * each with the body field that names its thread. The guard reads the thread
+ * through this same map, so a command scoped here is always one it can read.
+ *
+ * Slice C3: `interruptTurn`, `stopSession` and `discardDraft` act on another
+ * session as surely as a steer (stop its turn, end it, discard it), so they
+ * stay in scope too, as do `steerTurnOnce` and `inspectSteerInput`. Every other command on the leaf is an approval command,
+ * which needs a bound operator.
+ */
+export const SCOPED_THREAD_COMMAND_FIELD: Readonly<Record<string, string>> = {
+  steerTurn: 'threadId',
+  // The receipted steer (#3127) is a steer; inspecting a steer's input reads
+  // another session's live turn.
+  steerTurnOnce: 'threadId',
+  inspectSteerInput: 'threadId',
+  adoptSession: 'sourceThreadId',
+  interruptTurn: 'threadId',
+  stopSession: 'threadId',
+  discardDraft: 'threadId',
+};
 
 /** `thread-commands-stay-in-scope`: the shared scope rule, for these commands. */
 function threadCommandRefusal(
   context: StationControlPolicyContext,
 ): StationControlRefusal | undefined {
   const type = commandType(context.body);
-  if (type === undefined || !SCOPED_THREAD_COMMANDS.has(type)) return undefined;
+  if (type === undefined || !Object.hasOwn(SCOPED_THREAD_COMMAND_FIELD, type))
+    return undefined;
   return stationControlScopeRefusal(
     context.caller,
     context.commandThread,

@@ -432,8 +432,6 @@ describe('#2309 what the turn is doing', () => {
         }),
       ),
     );
-    // #3127: the watchdog silence names the engine and says Station is still
-    // waiting, rather than "No output for".
     expect(progressText()).toBe(
       'Last: bash · done· No response from Claude Code for 12m 0s. Still waiting.',
     );
