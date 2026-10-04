@@ -2413,6 +2413,20 @@ describe('OrchestrationService', () => {
         },
         { userId: 'owner-user' },
       );
+    // A guard that fails to refuse queues the stop behind the turn start's
+    // lifecycle lock; report that as a distinct outcome instead of hanging.
+    const retireWhileTurnPending = async (threadId: string) => {
+      const retiring = service.retireNeverRanSession(threadId, {
+        userId: 'owner-user',
+      });
+      const outcome = await Promise.race([
+        retiring,
+        new Promise<'blocked behind the pending turn'>((resolve) =>
+          setTimeout(() => resolve('blocked behind the pending turn'), 250),
+        ),
+      ]);
+      return { outcome, retiring };
+    };
     const deferred = <T>() => {
       let resolve!: (value: T) => void;
       const promise = new Promise<T>((r) => {
@@ -2441,18 +2455,16 @@ describe('OrchestrationService', () => {
       await vi.waitFor(() => expect(claude.sendTurn).toHaveBeenCalled());
       expect(eventStore.hasTurnFacts('retire-accepted')).toBe(false);
 
-      await expect(
-        service.retireNeverRanSession('retire-accepted', {
-          userId: 'owner-user',
-        }),
-      ).resolves.toEqual({ stopped: false, reason: 'turn_in_flight' });
-      expect(claude.stopSession).not.toHaveBeenCalled();
-
+      const { outcome, retiring } =
+        await retireWhileTurnPending('retire-accepted');
       providerAccepts.resolve({
         threadId: 'retire-accepted',
         turnId: 'claude-turn-accepted',
       });
       await send;
+      await retiring.catch(() => undefined);
+      expect(outcome).toEqual({ stopped: false, reason: 'turn_in_flight' });
+      expect(claude.stopSession).not.toHaveBeenCalled();
     });
 
     test('does not stop a predecessor whose send has been dispatched but not yet reached the turn boundary', async () => {
@@ -2482,16 +2494,14 @@ describe('OrchestrationService', () => {
       expect(eventStore.hasTurnFacts('retire-dispatched')).toBe(false);
       expect(claude.sendTurn).not.toHaveBeenCalled();
 
-      await expect(
-        service.retireNeverRanSession('retire-dispatched', {
-          userId: 'owner-user',
-        }),
-      ).resolves.toEqual({ stopped: false, reason: 'turn_in_flight' });
-      expect(claude.stopSession).not.toHaveBeenCalled();
-
+      const { outcome, retiring } =
+        await retireWhileTurnPending('retire-dispatched');
       release.resolve();
       await held;
       await send;
+      await retiring.catch(() => undefined);
+      expect(outcome).toEqual({ stopped: false, reason: 'turn_in_flight' });
+      expect(claude.stopSession).not.toHaveBeenCalled();
       expect(claude.sendTurn).toHaveBeenCalledOnce();
     });
 
