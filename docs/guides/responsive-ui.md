@@ -146,6 +146,13 @@ safe area and on-screen keyboard), stays below dialogs, and hides while a
 maximized chat or a detail sheet fills the screen. Use it only for creating
 something; Connections is the first adopter.
 
+The mobile header's **New chat** uses an icon-only chat-bubble-plus control in
+the same toolbar button family as its neighbours, retaining its accessible
+name. Source and component checks establish these placements and disabled
+states. The relay UX screenshot harness omits the real dock and uses stubbed
+data, so its geometry does not qualify dock/keyboard clearance, native operator
+flow, physical devices or a released Nightly.
+
 Shared panel entrances fade and translate upward by `--k-space-4` on mobile,
 without scaling touch targets. Existing surfaces with a directional entrance
 keep their own motion. The global reduced-motion reset still applies. Source

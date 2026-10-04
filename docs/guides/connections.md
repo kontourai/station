@@ -195,10 +195,11 @@ independent requirements. It grants no Agent, terminal, or Task publication
    Station. Invitations are single-use. The default lifetime is 24 hours; choices are
    5 minutes, 15 minutes, 1 hour, 24 hours, or **Never expires**. A non-expiring
    invitation still permits only one redemption.
-4. Review the pending account-bound Device request in **Devices** and approve or
-   decline it.
-   Project access is a separate invitation and membership decision. Removing
-   an installation approval is also a separate action and requires confirmation.
+
+After the three-step dialog, review the pending account-bound Device request
+in **Devices** and approve or decline it. Project access is a separate
+invitation and membership decision. Removing an installation approval is also
+a separate action and requires confirmation.
 
 Native registration and Project invitation acceptance accept a full Project
 invitation link or its code. They extract the token without switching the
@@ -350,6 +351,13 @@ distinguishes **In use · sign in needed** from **In use** using the current nat
 status says the workspace is connected. Sign in with the Station account only
 after selecting its route. Account sign-in does not approve a Device or create
 Project membership.
+
+Before account sign-in, the native member shell shows Station setup on the
+page. After sign-in, shared Projects come first and **Stations** opens the
+connection controls in a dialog. An empty Project list offers **Use a Project
+invitation** through that same dialog. Technical setup and the outbound
+delegation command stay behind **Advanced** disclosures; they do not supply
+additional authority.
 
 The selected route's **Accept account invitation** action requires that account
 session. Station returns a typed Project membership receipt with the exact
