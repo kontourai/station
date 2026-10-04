@@ -9,134 +9,132 @@
 
   "limits": "Full reading and bounded source review are not all-platform execution or universal semantic certification. No hosted CI, cloud, release or real provider/device proof. Protected policy activation is limited to the approved documentation additions in this branch. Additional main merge b269a6cf9: structural reconciliation only; prior distinct anchors below are historical reviews, not approval of combined bytes. Active bindings retain existing anchors; combined dependency bytes remain stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"tests/tauri-shell/native-project-acceptance-webview.ts\",\"ours\":{\"digest\":\"4ab4a1f98e3d2e677da5bda05f7bb9d6e8186f684f88f63faa23841b179911a8\",\"revision\":\"2e4f061f91ffb0338e45de62382cf6da59cd5c76\"},\"main\":{\"digest\":\"fc99c2b19334dce34f5fe44d0f19db0a9c1bdfef8429272e43231c6c61b70619\",\"revision\":\"0114a7cecb46255b1a87068cbc76f2bf1bd1b720\"}},{\"path\":\"docs/guides/native-shell-verification.md\",\"ours\":{\"digest\":\"0dc1e36afaee9186e0164f601a59dde5434fc3d9f06a6c5fd06a7dbf08e8e133\",\"revision\":\"93a6062e306f412f1c9382143b03d675c9450c1f\"},\"main\":{\"digest\":\"9813ab25fff5c75ee94223bf9384765d09adf0f0acf176f093dd27af1bf3b7e3\",\"revision\":\"c75bec0547019930c54180d793516d033641ff0a\"}},{\"path\":\"docs/guides/documentation.md\",\"ours\":{\"digest\":\"4bb625cdd2f031a95e4bac93c14bb36eb419008be56ebb18d47f548a6dff6fc0\",\"revision\":\"fbf6a786c7c77831e16ee1ee3f239b295da5e907\"},\"main\":{\"digest\":\"9e299a73ec55cd8792f40d976dda64b1af1c8b206a24ebfd638ca0db3ab12633\",\"revision\":\"cda5879b28558d002561d656b869c4f7b05bc4ca\"}},{\"path\":\"package.json\",\"ours\":{\"digest\":\"33148f13d0b86a0fc46e74f38eba8e87cef542801cca0606fd9c0ab6f287a380\",\"revision\":\"b50eeb9584c1808e429e59dcb3c3c2253307bbbe\"},\"main\":{\"digest\":\"7263c035fa5946e593a759d3a0b55d8f504e955eb14fab5a401b71c7d3b2ac50\",\"revision\":\"df9188971e1a93d2c5525a7f5f38e3da93c9e4de\"}}].\n\nAdditional existing main limits (preserved verbatim): Full reading and bounded source review are not all-platform execution or universal semantic certification. No hosted CI, cloud, release or real provider/device proof. Protected policy activation is limited to the approved documentation additions in this branch.\n\nStructural merge of 5fd2dd86ad0cd35018ce09537c1aa01ce58e0e55 and 8f9ea788561518398a488d35bb768b78a272e73b preserves both prior immutable document/source anchors and historical checks. Selecting an existing current-byte binding is structural reconciliation only, not semantic approval of merged inputs. No new digest/revision or coverage baseline was minted. Competing prior anchors remain pending semantic review and supported recording after the merge commit: [{\"path\":\"docs/guides/testing.md\",\"ours\":{\"digest\":\"e848363d4357e9a2f8de392a6024fd7525262b8b92e138da4a50a05057128916\",\"revision\":\"0c26d863c1ac3b3e93ea79c2375ebde95e906e8f\"},\"main\":{\"digest\":\"f4ce0f21c08d460df52405d68cfa34a847dcbdaa0976cf218151226a37225925\",\"revision\":\"1c13dd90939769cd3ca557a36649aa25823194db\"},\"active\":{\"digest\":\"f4ce0f21c08d460df52405d68cfa34a847dcbdaa0976cf218151226a37225925\",\"revision\":\"1c13dd90939769cd3ca557a36649aa25823194db\"},\"decision\":\"mainMatch\"},{\"path\":\".github/workflows/ci.yml\",\"ours\":{\"path\":\".github/workflows/ci.yml\",\"digest\":\"092798d877aa8138f197a0edbd7547e876dc2e310b54b4e00598f8f48b3535b8\",\"revision\":\"998b7be07c2298ead61e8cffa39dab7583d8b6f3\"},\"main\":{\"path\":\".github/workflows/ci.yml\",\"digest\":\"aedbb116a4ce043ec251ec20c47368aa89f77ebc1b5b526fecb9580af280bb91\",\"revision\":\"de240170769fcf739c188b104f801d4371f8086d\"},\"active\":{\"path\":\".github/workflows/ci.yml\",\"digest\":\"aedbb116a4ce043ec251ec20c47368aa89f77ebc1b5b526fecb9580af280bb91\",\"revision\":\"de240170769fcf739c188b104f801d4371f8086d\"},\"decision\":\"mainMatch\"},{\"path\":\".github/workflows/portable-server-archives.yml\",\"ours\":{\"path\":\".github/workflows/portable-server-archives.yml\",\"digest\":\"bdad9b494f9c66c4d350ec8c766be5defc47983305e2b178b21ad5542e4616c3\",\"revision\":\"998b7be07c2298ead61e8cffa39dab7583d8b6f3\"},\"main\":{\"path\":\".github/workflows/portable-server-archives.yml\",\"digest\":\"c7c7ff935b2bd8df40440aa8a7b6fd4405304e99e87c4a892de073fe0ae72924\",\"revision\":\"614c216de6de9d4c06ef56963853ccff52f2f685\"},\"active\":{\"path\":\".github/workflows/portable-server-archives.yml\",\"digest\":\"c7c7ff935b2bd8df40440aa8a7b6fd4405304e99e87c4a892de073fe0ae72924\",\"revision\":\"614c216de6de9d4c06ef56963853ccff52f2f685\"},\"decision\":\"mainMatch\"},{\"path\":\"docs/guides/documentation.md\",\"ours\":{\"path\":\"docs/guides/documentation.md\",\"digest\":\"4bb625cdd2f031a95e4bac93c14bb36eb419008be56ebb18d47f548a6dff6fc0\",\"revision\":\"fbf6a786c7c77831e16ee1ee3f239b295da5e907\"},\"main\":{\"path\":\"docs/guides/documentation.md\",\"digest\":\"9e299a73ec55cd8792f40d976dda64b1af1c8b206a24ebfd638ca0db3ab12633\",\"revision\":\"cda5879b28558d002561d656b869c4f7b05bc4ca\"},\"active\":{\"path\":\"docs/guides/documentation.md\",\"digest\":\"4bb625cdd2f031a95e4bac93c14bb36eb419008be56ebb18d47f548a6dff6fc0\",\"revision\":\"fbf6a786c7c77831e16ee1ee3f239b295da5e907\"},\"decision\":\"oursMatch\"},{\"path\":\"docs/guides/native-shell-verification.md\",\"ours\":{\"path\":\"docs/guides/native-shell-verification.md\",\"digest\":\"811180a699dc7ff7ecbd525e98aa00099c83efd00113c9154b52c55a3763f1bd\",\"revision\":\"193a4a5ece772653262138bf748d52abd753f667\"},\"main\":{\"path\":\"docs/guides/native-shell-verification.md\",\"digest\":\"9813ab25fff5c75ee94223bf9384765d09adf0f0acf176f093dd27af1bf3b7e3\",\"revision\":\"c75bec0547019930c54180d793516d033641ff0a\"},\"active\":{\"path\":\"docs/guides/native-shell-verification.md\",\"digest\":\"811180a699dc7ff7ecbd525e98aa00099c83efd00113c9154b52c55a3763f1bd\",\"revision\":\"193a4a5ece772653262138bf748d52abd753f667\"},\"decision\":\"oursMatch\"},{\"path\":\"package.json\",\"ours\":{\"path\":\"package.json\",\"digest\":\"a6deceaea9701a9deb9d05ebd0b1f42db716b05f155c155b2e872443511def48\",\"revision\":\"8e884d84b5609d130f29937159601c65d119b664\"},\"main\":{\"path\":\"package.json\",\"digest\":\"8161e13f46212729130685df12cc34747e385002183410cd57e47d5cdd125306\",\"revision\":\"2fc8f69d15e5c8fa3188bb2ee4731f1b63c66218\"},\"active\":{\"path\":\"package.json\",\"digest\":\"a6deceaea9701a9deb9d05ebd0b1f42db716b05f155c155b2e872443511def48\",\"revision\":\"8e884d84b5609d130f29937159601c65d119b664\"},\"decision\":\"neitherMatch\"},{\"path\":\"scripts/__tests__/ci-fast-checks-job-graph.test.ts\",\"ours\":{\"path\":\"scripts/__tests__/ci-fast-checks-job-graph.test.ts\",\"digest\":\"6dd1caae1b87f19ed95a7275cd4b175c1f717e8c12e366c491dceeefea078750\",\"revision\":\"998b7be07c2298ead61e8cffa39dab7583d8b6f3\"},\"main\":{\"path\":\"scripts/__tests__/ci-fast-checks-job-graph.test.ts\",\"digest\":\"6b102e92ea63fb9103d801ec2ad0da304204de5c39d5cdb6540f7e21070c21e5\",\"revision\":\"de240170769fcf739c188b104f801d4371f8086d\"},\"active\":{\"path\":\"scripts/__tests__/ci-fast-checks-job-graph.test.ts\",\"digest\":\"6b102e92ea63fb9103d801ec2ad0da304204de5c39d5cdb6540f7e21070c21e5\",\"revision\":\"de240170769fcf739c188b104f801d4371f8086d\"},\"decision\":\"mainMatch\"},{\"path\":\"scripts/__tests__/ci-workflow-contract.test.ts\",\"ours\":{\"path\":\"scripts/__tests__/ci-workflow-contract.test.ts\",\"digest\":\"72a4c7cfe5d8abbda57a925c7e14c8f46f8a76a1b683abf807085a449b4cf0be\",\"revision\":\"8012fb77b1b95d1461c59827bf9690884526f30c\"},\"main\":{\"path\":\"scripts/__tests__/ci-workflow-contract.test.ts\",\"digest\":\"deaa1c8c3f09f99cfd21894ef8cf069a0648c1750711bc97ff4771395f85ae6d\",\"revision\":\"de240170769fcf739c188b104f801d4371f8086d\"},\"active\":{\"path\":\"scripts/__tests__/ci-workflow-contract.test.ts\",\"digest\":\"deaa1c8c3f09f99cfd21894ef8cf069a0648c1750711bc97ff4771395f85ae6d\",\"revision\":\"de240170769fcf739c188b104f801d4371f8086d\"},\"decision\":\"mainMatch\"},{\"path\":\"scripts/__tests__/fast-checks-shard-cli.test.ts\",\"ours\":{\"path\":\"scripts/__tests__/fast-checks-shard-cli.test.ts\",\"digest\":\"a90b55560ee262930585540e8a6458b4bc6f8de918294fecc012eed2c87487cc\",\"revision\":\"29fa8649d8b61deb25adf50c4424d9ed0154c5ab\"},\"main\":{\"path\":\"scripts/__tests__/fast-checks-shard-cli.test.ts\",\"digest\":\"4b23f683ba0e4e429321e14d13b611e065b59b501131bb0f381c6a258d21e744\",\"revision\":\"e3aa94d61398bd351129bb14663daefd2b11e2ec\"},\"active\":{\"path\":\"scripts/__tests__/fast-checks-shard-cli.test.ts\",\"digest\":\"4b23f683ba0e4e429321e14d13b611e065b59b501131bb0f381c6a258d21e744\",\"revision\":\"e3aa94d61398bd351129bb14663daefd2b11e2ec\"},\"decision\":\"mainMatch\"},{\"path\":\"scripts/__tests__/path-read-pin-boundary.test.ts\",\"ours\":{\"path\":\"scripts/__tests__/path-read-pin-boundary.test.ts\",\"digest\":\"e1f9ca1c3fbfb5c9368447ec82975b33d7745f330f1cf78f15d9b5de9f1c15a5\",\"revision\":\"11f79a2a4fc292de1adfd5cd21e4925ca2d2501d\"},\"main\":{\"path\":\"scripts/__tests__/path-read-pin-boundary.test.ts\",\"digest\":\"01211e6de3353b7773a35a910287e1dea2de931fca837de9d55a76cc3e0ad5fa\",\"revision\":\"b45e66e498207045e6f2d36a48075c702cbf4d92\"},\"active\":{\"path\":\"scripts/__tests__/path-read-pin-boundary.test.ts\",\"digest\":\"01211e6de3353b7773a35a910287e1dea2de931fca837de9d55a76cc3e0ad5fa\",\"revision\":\"b45e66e498207045e6f2d36a48075c702cbf4d92\"},\"decision\":\"mainMatch\"},{\"path\":\"scripts/__tests__/portable-server-archive.test.ts\",\"ours\":{\"path\":\"scripts/__tests__/portable-server-archive.test.ts\",\"digest\":\"080cf7aa36c4680b1a4e296ae8aa96b83ee57a84c71c61c225a074e9e3468b4a\",\"revision\":\"998b7be07c2298ead61e8cffa39dab7583d8b6f3\"},\"main\":{\"path\":\"scripts/__tests__/portable-server-archive.test.ts\",\"digest\":\"f35ee8e8fcf9966fbcbdfa872a3e3b6ac8bd7be0c2f99086fa290b99b239b181\",\"revision\":\"614c216de6de9d4c06ef56963853ccff52f2f685\"},\"active\":{\"path\":\"scripts/__tests__/portable-server-archive.test.ts\",\"digest\":\"f35ee8e8fcf9966fbcbdfa872a3e3b6ac8bd7be0c2f99086fa290b99b239b181\",\"revision\":\"614c216de6de9d4c06ef56963853ccff52f2f685\"},\"decision\":\"mainMatch\"},{\"path\":\"scripts/fast-checks-shard.mjs\",\"ours\":{\"path\":\"scripts/fast-checks-shard.mjs\",\"digest\":\"51f793094813cf4b6d7307f03ae1519fea2ecd4c253427c58a1eb86241e311e1\",\"revision\":\"998b7be07c2298ead61e8cffa39dab7583d8b6f3\"},\"main\":{\"path\":\"scripts/fast-checks-shard.mjs\",\"digest\":\"175bfe5bbb4e6c3a3a334dbcbf1b28f6b7579068bbd41095613b458cae438ef6\",\"revision\":\"de240170769fcf739c188b104f801d4371f8086d\"},\"active\":{\"path\":\"scripts/fast-checks-shard.mjs\",\"digest\":\"175bfe5bbb4e6c3a3a334dbcbf1b28f6b7579068bbd41095613b458cae438ef6\",\"revision\":\"de240170769fcf739c188b104f801d4371f8086d\"},\"decision\":\"mainMatch\"},{\"path\":\"scripts/lib/fast-checks-shards.mjs\",\"ours\":{\"path\":\"scripts/lib/fast-checks-shards.mjs\",\"digest\":\"bf2ae7c3888d17e789aeb7a5f3acda22b53540fa85ce98b5fe517ea5ede6c590\",\"revision\":\"998b7be07c2298ead61e8cffa39dab7583d8b6f3\"},\"main\":{\"path\":\"scripts/lib/fast-checks-shards.mjs\",\"digest\":\"6c0ded4c94e1316dcb83406c37c762398b15da198498a1037d62f21625d661fc\",\"revision\":\"555c5aa3646e08ef44d26002f81508daf7a32305\"},\"active\":{\"path\":\"scripts/lib/fast-checks-shards.mjs\",\"digest\":\"6c0ded4c94e1316dcb83406c37c762398b15da198498a1037d62f21625d661fc\",\"revision\":\"555c5aa3646e08ef44d26002f81508daf7a32305\"},\"decision\":\"mainMatch\"},{\"path\":\"scripts/test-impact-manifest.mjs\",\"ours\":{\"path\":\"scripts/test-impact-manifest.mjs\",\"digest\":\"0c791fec362bdc43dbbc24e650c79b39e121462e818d30beeb8e2edae3383333\",\"revision\":\"11f79a2a4fc292de1adfd5cd21e4925ca2d2501d\"},\"main\":{\"path\":\"scripts/test-impact-manifest.mjs\",\"digest\":\"6fd22302dee661b3b37ea175558dc38176f3e7c9778df0734448aff5b1fe38c4\",\"revision\":\"b45e66e498207045e6f2d36a48075c702cbf4d92\"},\"active\":{\"path\":\"scripts/test-impact-manifest.mjs\",\"digest\":\"6fd22302dee661b3b37ea175558dc38176f3e7c9778df0734448aff5b1fe38c4\",\"revision\":\"b45e66e498207045e6f2d36a48075c702cbf4d92\"},\"decision\":\"mainMatch\"},{\"path\":\"tests/tauri-shell/native-project-acceptance-webview.ts\",\"ours\":{\"path\":\"tests/tauri-shell/native-project-acceptance-webview.ts\",\"digest\":\"4ab4a1f98e3d2e677da5bda05f7bb9d6e8186f684f88f63faa23841b179911a8\",\"revision\":\"2e4f061f91ffb0338e45de62382cf6da59cd5c76\"},\"main\":{\"path\":\"tests/tauri-shell/native-project-acceptance-webview.ts\",\"digest\":\"fc99c2b19334dce34f5fe44d0f19db0a9c1bdfef8429272e43231c6c61b70619\",\"revision\":\"0114a7cecb46255b1a87068cbc76f2bf1bd1b720\"},\"active\":{\"path\":\"tests/tauri-shell/native-project-acceptance-webview.ts\",\"digest\":\"4ab4a1f98e3d2e677da5bda05f7bb9d6e8186f684f88f63faa23841b179911a8\",\"revision\":\"2e4f061f91ffb0338e45de62382cf6da59cd5c76\"},\"decision\":\"oursMatch\"}]\n\nFull reading and bounded source review are not all-platform execution or universal semantic certification. No hosted CI, cloud, release or real provider/device proof. Protected policy activation is limited to the approved documentation additions in this branch.\n\nMerge anchor history (structural reconciliation only; no semantic approval): source docs/guides/native-shell-verification.md ours={\"digest\":\"02022b49c8533609bcf561776a2dd5c1b20cdfb3b8ae4cf5f5b5ae141e28e86e\",\"revision\":\"d5e4502434838cc29b63091ae689474d6488cfe4\"}; origin/main={\"digest\":\"db5ef187c02545195074cac011b8bd21fab7ff9eb23d28bf884dd36922b14c29\",\"revision\":\"464d602fb7fb5fa9bd0df9d241dc03495b398b96\"}. The merged source bytes require supported review after the merge commit.",
 
-  "document": {"digest":"53af26e5853101d07b3c331f1ce1bca2ca6e5c19555f7d0045cca9a9483b052b","revision":"26c576127006fc775278e3da2eea0ab23bc9e90c"},
-
   "sources": [
-    {"path":".agents/skills/documentation-audit/SKILL.md","digest":"2f5e193ebfb24a08597fd9dc31663a7d293bceaf1847e2df508b093e898845a6","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
+    ".agents/skills/documentation-audit/SKILL.md",
 
-    {"path":".codex/hooks.json","digest":"0b4b8164d668905f799f658696343d1b34bf7570a81a336165eab50770443bb8","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    ".codex/hooks.json",
 
-    {"path":".githooks/commit-msg","digest":"1796be57853b0dcc60ce8753ca1562cb623b9e0966f72ee9b374b7aaa7231bbc","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    ".githooks/commit-msg",
 
-    {"path":".githooks/pre-push","digest":"eb2d5cdd2c9f91b4e2dc96dd0d4ef36c55f313074f4f05aa30e0269cd5c0a6c9","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    ".githooks/pre-push",
 
-    {"path":".github/workflows/ci.yml","digest":"9b586bd70bb7c94986ce19ee41151ff768bad2a308a196a15047375c92f9646a","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
+    ".github/workflows/ci.yml",
 
-    {"path":".github/workflows/full-regression.yml","digest":"064212250fcc5a2d13bed01a3de5a7a72620616b9847ded3cfcdb166b6f694f2","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
+    ".github/workflows/full-regression.yml",
 
-    {"path":".github/workflows/merge-queue-regression.yml","digest":"ba13e009f55d64dc1059167c9f1ed009c1518605483c42f4e3a3509e579e9480","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
+    ".github/workflows/merge-queue-regression.yml",
 
-    {"path":".github/workflows/portable-server-archives.yml","digest":"c7c7ff935b2bd8df40440aa8a7b6fd4405304e99e87c4a892de073fe0ae72924","revision":"614c216de6de9d4c06ef56963853ccff52f2f685"},
+    ".github/workflows/portable-server-archives.yml",
 
-    {"path":".github/workflows/windows-pr-verification.yml","digest":"608bbdfac16fd9d0379b4fcffbb79d8a1a94ab014736442765087fe3f17a21ae","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    ".github/workflows/windows-pr-verification.yml",
 
-    {"path":".veritas/GOVERNANCE.md","digest":"896ca1d26e71e4e8d691fb2539888282903f15024cd1dc2585299d682b9d269c","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    ".veritas/GOVERNANCE.md",
 
-    {"path":".veritas/authority/default.authority-settings.json","digest":"b47233d5d20d847ee85c5b77ccbd991ff13159270690a6adb957134b72cf57ac","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    ".veritas/authority/default.authority-settings.json",
 
-    {"path":".veritas/repo-map.json","digest":"fcabfcd9d0ad7a59d2ef216c943591575656f039e1d9df2d05565b96347ebca4","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    ".veritas/repo-map.json",
 
-    {"path":".veritas/repo-standards/default.repo-standards.json","digest":"03b4e8ec9e6d2369d81fe31700dd3804df1a1259d3ba4c3e977feb27e17edbed","revision":"888c42dffff4aae57a7a6f6f397c8ba1ecca96ee"},
+    ".veritas/repo-standards/default.repo-standards.json",
 
-    {"path":"docs/guides/documentation.md","digest":"35dd6dd9ae31089fcab2adaf2d58595f809a9e93cf85025c430b71350c576c15","revision":"595059eafa17ef6b7a39217a405619ecbfac2270"},
+    "docs/guides/documentation.md",
 
-    {"path":"docs/guides/native-shell-verification.md","digest":"a9cd227932854e615fc50e919b4692057691fcc2c422d9563c087655b60338fc","revision":"d606c17132af7b1d9ec0d576871937dc37f79864"},
+    "docs/guides/native-shell-verification.md",
 
-    {"path":"docs/plans/documentation-code-audit.md","digest":"6fa130fb00cc3544f3d80499c120ebf50b3700beb3186e71f9da2b470653a6b8","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
+    "docs/plans/documentation-code-audit.md",
 
-    {"path":"package.json","digest":"ee32f6a73f2428a8734396a7667e8ec009485b1c5a87f779652801ed4c51af1f","revision":"fdca33b1896b280299ba72fc70a3c9b9cda7f3af"},
+    "package.json",
 
-    {"path":"scripts/__tests__/changed-verification.test.ts","digest":"9f3cb341f88aec79a92c18573d2c0f770ab8b01fac0a58f61250d8439f50adb1","revision":"394d2592f7f015a3191a96dfecc4b639fdce29d3"},
+    "scripts/__tests__/changed-verification.test.ts",
 
-    {"path":"scripts/__tests__/ci-fast-checks-job-graph.test.ts","digest":"6b102e92ea63fb9103d801ec2ad0da304204de5c39d5cdb6540f7e21070c21e5","revision":"de240170769fcf739c188b104f801d4371f8086d"},
+    "scripts/__tests__/ci-fast-checks-job-graph.test.ts",
 
-    {"path":"scripts/__tests__/ci-health.test.ts","digest":"8e35d3f672ee8526019af7b1464c875999f26147b4de037d818285f595c3c3de","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
+    "scripts/__tests__/ci-workflow-contract.test.ts",
 
-    {"path":"scripts/__tests__/ci-workflow-contract.test.ts","digest":"03b2cbdaacc45e0ac8a541c0dcbc7cba72bffa44e2f3935a5be170b856b12801","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
+    "scripts/__tests__/docs-index-reachability.test.ts",
 
-    {"path":"scripts/__tests__/docs-index-reachability.test.ts","digest":"f0376c008b04dedfd81e4e52b4198c463b57fe70d37de1cb6541fc1baad6ee9d","revision":"8199fd1541fc2af0053845c9253ed0962dd7fbb8"},
+    "scripts/__tests__/fast-checks-shard-cli.test.ts",
 
-    {"path":"scripts/__tests__/fast-checks-shard-cli.test.ts","digest":"4b23f683ba0e4e429321e14d13b611e065b59b501131bb0f381c6a258d21e744","revision":"e3aa94d61398bd351129bb14663daefd2b11e2ec"},
+    "scripts/__tests__/guardrail-execution-coverage.test.ts",
 
-    {"path":"scripts/__tests__/guardrail-execution-coverage.test.ts","digest":"2190d92cae1d16fd63f0b1bdbbc00e44f0e6884830f9101897ba1ac498d85153","revision":"945fa7d18dadefa7b5050f103d99903e054ca1cc"},
+    "scripts/__tests__/local-collaboration-station-config.test.ts",
 
-    {"path":"scripts/__tests__/local-collaboration-station-config.test.ts","digest":"486bf107742ff632711fa290a2d578bd22a0b40b5c844d6994022ab5683cea55","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
+    "scripts/__tests__/metric-reference.test.ts",
 
-    {"path":"scripts/__tests__/metric-reference.test.ts","digest":"9c432501ef9d37322a972c2f54b52fd38552731b9b3bc59a5894a70bc557fb81","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    "scripts/__tests__/path-read-pin-boundary.test.ts",
 
-    {"path":"scripts/__tests__/path-read-pin-boundary.test.ts","digest":"40d7c1708ac66781ec300065398daf3e5274dedcac39e25b7520b952b7de8a10","revision":"64f79d4cfc8d468b475bf7c1ba871fb17534dcc2"},
+    "scripts/__tests__/portable-server-archive.test.ts",
 
-    {"path":"scripts/__tests__/portable-server-archive.test.ts","digest":"f35ee8e8fcf9966fbcbdfa872a3e3b6ac8bd7be0c2f99086fa290b99b239b181","revision":"614c216de6de9d4c06ef56963853ccff52f2f685"},
+    "scripts/__tests__/prepush-typecheck.test.ts",
 
-    {"path":"scripts/__tests__/prepush-typecheck.test.ts","digest":"c0744d3ac567cc2dd3daaf6536c76661653716650ff1875caa4b6e9150039650","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    "scripts/__tests__/run-ci-fast.test.ts",
 
-    {"path":"scripts/__tests__/run-ci-fast.test.ts","digest":"3de2360a632570b4e567c8397ce0b7388512b50fb17b6bdffbb10230babdbc35","revision":"a492cba4e1bec65beda3916a70eed4588e3f85d7"},
+    "scripts/cli-agent-e2e.mjs",
 
-    {"path":"scripts/ci-health.mjs","digest":"edac396d278bf3956ee1d16409cdd4856088b7d9862d1be22f875238cc801aaf","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
+    "scripts/dependency-lifecycle.mjs",
 
-    {"path":"scripts/cli-agent-e2e.mjs","digest":"d08c8d36c33e9ed6e682817bca9ef214d8a77b286c7cb426f9a82747f8e6d217","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    "scripts/docs-truth-gate-aggregate.mjs",
 
-    {"path":"scripts/dependency-lifecycle.mjs","digest":"59182737dece9f0981ba7857efd524e5c6a30eb45c25dc963d3a0c9bba7b6163","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    "scripts/fast-checks-shard.mjs",
 
-    {"path":"scripts/docs-truth-gate-aggregate.mjs","digest":"6e7e018a0038b35720985250cbac60ffab14f87ccb1834a281a926376923b35b","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    "scripts/just-interface.mjs",
 
-    {"path":"scripts/fast-checks-shard.mjs","digest":"175bfe5bbb4e6c3a3a334dbcbf1b28f6b7579068bbd41095613b458cae438ef6","revision":"de240170769fcf739c188b104f801d4371f8086d"},
+    "scripts/lib/ci-event-environment.mjs",
 
-    {"path":"scripts/just-interface.mjs","digest":"f2660b18a8d6df42872d5953c61181eea377bbf51e3dbcc31e04c31d94c69219","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    "scripts/lib/dependency-lifecycle-policy.mjs",
 
-    {"path":"scripts/lib/ci-event-environment.mjs","digest":"99de79de95d1fe18f28d36d13161d2fcc4db27cc4d7eda6d25741db39ad8080d","revision":"c322e3bff535a1d8d7a84d882dd84d75bddf041f"},
+    "scripts/lib/documentation-review.mjs",
 
-    {"path":"scripts/lib/dependency-lifecycle-policy.mjs","digest":"3221df34cc1ffaa99b9dedfcff8e2b1dce41baa44170464d2b8d3e88cd2894f4","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    "scripts/lib/fast-checks-shards.mjs",
 
-    {"path":"scripts/lib/documentation-review.mjs","digest":"d227f0fd1b1d90823e3cbfa3236a0a3de8540df0cb022c9762f374c9b3797331","revision":"8199fd1541fc2af0053845c9253ed0962dd7fbb8"},
+    "scripts/lib/git-environment.mjs",
 
-    {"path":"scripts/lib/fast-checks-shards.mjs","digest":"6c0ded4c94e1316dcb83406c37c762398b15da198498a1037d62f21625d661fc","revision":"555c5aa3646e08ef44d26002f81508daf7a32305"},
+    "scripts/lib/local-collaboration-station-child.ts",
 
-    {"path":"scripts/lib/git-environment.mjs","digest":"e0557da6e34d1a58ec3d045261e1a7f4655cc1848ec94cc3cb8294fad7b0803f","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    "scripts/lib/local-collaboration-station.ts",
 
-    {"path":"scripts/lib/local-collaboration-station-child.ts","digest":"dae3a254331b78deb31c01518369be85d251f9bc28f95c92c3ab55e5ef6889c3","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
+    "scripts/prepare-verify-static.mjs",
 
-    {"path":"scripts/lib/local-collaboration-station.ts","digest":"94250f9184c8a4a45c434ba30ef119ce96c0981c4ec063a5c99773281b48b656","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
+    "scripts/run-changed-verification.mjs",
 
-    {"path":"scripts/prepare-verify-static.mjs","digest":"fdfb52b1da5d1d22e155f8d1d681c9847f3076549b4d7997d3c0c3a1bf713c2d","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    "scripts/run-ci-fast.mjs",
 
-    {"path":"scripts/run-changed-verification.mjs","digest":"24e1af297dc3857d60e751386c93697fdc77eeef59fbdc5f7efdc41a061bf862","revision":"3e1907f8c81b0b7c818c7c34f95d2c5ffa4ea008"},
+    "scripts/run-focused-tests.mjs",
 
-    {"path":"scripts/run-ci-fast.mjs","digest":"9bb2bc8250a117ba45d8433cd353d22195cfca26f6c96e30e3358ca392b61a4d","revision":"a492cba4e1bec65beda3916a70eed4588e3f85d7"},
+    "scripts/run-local-verification.mjs",
 
-    {"path":"scripts/run-focused-tests.mjs","digest":"7587827cfbb7d8f6cde2181a8a0e392a4788acad7df3e69c5155ff849abea79c","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    "scripts/run-tauri-shell-e2e.mjs",
 
-    {"path":"scripts/run-local-verification.mjs","digest":"0794ea25e144bf95547470d7f3a863e2e1d90379f43c200882ddd25de0141749","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    "scripts/scripts-typecheck-coverage.mjs",
 
-    {"path":"scripts/run-tauri-shell-e2e.mjs","digest":"f1e6230b040d8affe5cc8214bd311b8035927517dc3d904325e7ee91650f5add","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
+    "scripts/test-impact-manifest.mjs",
 
-    {"path":"scripts/scripts-typecheck-coverage.mjs","digest":"47923e081d0c0e079d9d609495eabc363a81dea09b8da2b54e9933828764fc4e","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    "scripts/typecheck-aggregate.mjs",
 
-    {"path":"scripts/test-impact-manifest.mjs","digest":"87015ac4e8a59981bf0d600886c0a3e6538a1b3e7a0b105d0129218f1870e476","revision":"efa773acac88792cda31595f9afca4a37d3efebc"},
+    "scripts/verification-lanes.mjs",
 
-    {"path":"scripts/typecheck-aggregate.mjs","digest":"e77e37ce2ad7303f0dbab76261307517feee3edc12f0b7e7662327df521c5706","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    "scripts/verification-policy-gate.mjs",
 
-    {"path":"scripts/verification-lanes.mjs","digest":"3fb1be3bd88d1d5139983eaf770e8a5474ce6cc6ef304d4e008df63d0c143fef","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    "src-server/__test-utils__/read-json.ts",
 
-    {"path":"scripts/verification-policy-gate.mjs","digest":"9d80e6bff858fd5d42ee9606bb2278233c60c665808dfb356777502a06a7ddc7","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    "src-server/__test-utils__/route-test-app.ts",
 
-    {"path":"src-server/__test-utils__/read-json.ts","digest":"2a9da454f0fa8c6436934d34c3f3e1df53ae6afbf3760e80b163fe99d025c3f6","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    "src-server/__test-utils__/sse-helpers.ts",
 
-    {"path":"src-server/__test-utils__/route-test-app.ts","digest":"099f2e8dc0822ef60cb3265734e91f1b257462ee093589a4a760ee118944e886","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    "src-server/routes/spatial-board.ts",
 
-    {"path":"src-server/__test-utils__/sse-helpers.ts","digest":"daa4853dc02cf11574f8afb6c813145c58cc5356a2ff432870e55b1b23511492","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    "tests/tauri-shell/native-project-acceptance-webview.ts",
 
-    {"path":"src-server/routes/spatial-board.ts","digest":"461e485ff2a4597e62552c2ae8c9067b9da58347c737be91f925afecf8bab5da","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    "tests/tauri-shell/native-project-acceptance.e2e.ts",
 
-    {"path":"tests/screenshots.spec.ts","digest":"83983f57915b3a64af96da2800b3a9a46e9bd8361b433006983851be2c6e9dd7","revision":"e47c752ea766fd8cc107d0a37d8d156775c280c7"},
+    "tests/tauri-shell/native-project-runtime-fixture.ts",
 
-    {"path":"tests/tauri-shell/native-project-acceptance-webview.ts","digest":"4ab4a1f98e3d2e677da5bda05f7bb9d6e8186f684f88f63faa23841b179911a8","revision":"2e4f061f91ffb0338e45de62382cf6da59cd5c76"},
+    "vitest.setup.ts",
 
-    {"path":"tests/tauri-shell/native-project-acceptance.e2e.ts","digest":"3c000df5ce38034fd4827a42b5dc6ef0930e65960253ebce6c62c588ddbab7e5","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
+    "scripts/ci-health.mjs",
 
-    {"path":"tests/tauri-shell/native-project-runtime-fixture.ts","digest":"9ca2c8b47bd89de9ae743875ce10a940df5e1be5dcf69ba8d81e1f855ef4a861","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
+    "scripts/__tests__/ci-health.test.ts",
 
-    {"path":"vitest.setup.ts","digest":"38b7e04f1819daa86f0ebf0f332e29ddc6d62a6576cad2b736870749b18b87e3","revision":"c322e3bff535a1d8d7a84d882dd84d75bddf041f"}
+    "tests/screenshots.spec.ts"
   ],
 
   "checks": [

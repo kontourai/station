@@ -9,32 +9,30 @@
 
   "limits": "Design, not shipped behavior beyond slice 1. Current-state claims are source inspection at c2c67c2f25. Slice 1 behavior is established only by the tests named in the implementing change; a genuinely older receiver build is not exercised.",
 
-  "document": {"digest":"62d76e59ce3d2c99ac51d9ec0c85359764d510893d454c07629757c2d9328907","revision":"a032dad8a0f25e991396e4440ea258513037b068"},
-
   "sources": [
-    {"path":"packages/contracts/src/execution-target.ts","digest":"72d723355a5efeef79519cad76f77122289362f791202f84cf00c3d03b75826c","revision":"0ad2f560e1d13e4262d5637f173abc3d95959848"},
+    "packages/contracts/src/execution-target.ts",
 
-    {"path":"src-server/tools/station-control-delegation.ts","digest":"1ffedd4b780a7ad37b83433e14e213878d17327aebfc0ec930a14e5f1ff07bbe","revision":"56191ed22b313f4920e73a846446e8cf4fa69ed3"},
+    "src-server/tools/station-control-delegation.ts",
 
-    {"path":"src-server/services/orchestration/delegation-attempt-claim-store.ts","digest":"ea1c4592fff417db4b59323ed0a03d8886a99fc426e88aa59091a2c6faa0db00","revision":"56191ed22b313f4920e73a846446e8cf4fa69ed3"},
+    "src-server/services/orchestration/delegation-attempt-claim-store.ts",
 
-    {"path":"src-server/services/projects/project-contribution-service.ts","digest":"5f8baa34120ca70dbe2133442ee8869e1c1b3e96deca3e7c925cb7937f3f0190","revision":"56191ed22b313f4920e73a846446e8cf4fa69ed3"},
+    "src-server/services/projects/project-contribution-service.ts",
 
-    {"path":"src-server/services/projects/git-read-repository.ts","digest":"4116e0e69da11f5e17c61e7ee10014235241850e5e963cb0b2ae748d464bd7be","revision":"e7fb9b3161de5d6a3e006ad9760ced9c862130c8"},
+    "src-server/services/projects/git-read-repository.ts",
 
-    {"path":"src-server/capabilities/station-capability-flags.ts","digest":"aee7b5890981c6f75fbaf4be903c995973bcc52d9bfb9ec96e074cdaa3f80794","revision":"0ad2f560e1d13e4262d5637f173abc3d95959848"},
+    "src-server/capabilities/station-capability-flags.ts",
 
-    {"path":"packages/contracts/src/project-identity.ts","digest":"c81f85061a8223065edd232c39c98b972caae30d6f93b8ee919cc39294d44aee","revision":"eb6363dd58678dd61ba83d5402fc868440ed7851"},
+    "packages/contracts/src/project-identity.ts",
 
-    {"path":"packages/contracts/src/execution-preparation.ts","digest":"59817600c670a00f7bdd8fdc39718221647c2ea9d15ffbac4398ca4256d2f667","revision":"56191ed22b313f4920e73a846446e8cf4fa69ed3"},
+    "packages/contracts/src/execution-preparation.ts",
 
-    {"path":"src-server/services/execution-target/execution-preparation.ts","digest":"8c445e5e8368c26c239a24ecc0ebf76e04cf54de0eabf469ce84216912ef1981","revision":"56191ed22b313f4920e73a846446e8cf4fa69ed3"},
+    "src-server/services/execution-target/execution-preparation.ts",
 
-    {"path":"src-server/services/execution-target/__tests__/execution-preparation.test.ts","digest":"05e7b7d33d542999b6c7c97b681d837af12a3064fcee3df0ab4a429b27e9089c","revision":"56191ed22b313f4920e73a846446e8cf4fa69ed3"},
+    "src-server/services/execution-target/__tests__/execution-preparation.test.ts",
 
-    {"path":"src-server/tools/__tests__/station-control-delegation-preparation.test.ts","digest":"0f66a45f2417af7f9bed851a0fb6527c061c6c05adb605060054b2b97b88e105","revision":"56191ed22b313f4920e73a846446e8cf4fa69ed3"},
+    "src-server/tools/__tests__/station-control-delegation-preparation.test.ts",
 
-    {"path":"tests/portable-receiver-live-proof.spec.ts","digest":"82184d99edb12ee9e67e1a593f9d6f8ecce17d24fad74b8e112fcad7098b335b","revision":"0ad2f560e1d13e4262d5637f173abc3d95959848"}
+    "tests/portable-receiver-live-proof.spec.ts"
   ],
 
   "checks": []

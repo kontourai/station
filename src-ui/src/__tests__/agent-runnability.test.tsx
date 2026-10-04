@@ -292,6 +292,33 @@ describe('the three consumers agree on one fixture set', () => {
     expect(resolveNewChatAgentUnavailability(agent!)).toBeUndefined();
   });
 
+  test.each([NOT_SET_UP, CONNECTION_DOWN])(
+    'an unavailable preference stays visible to the draft while quick start recommends a runnable Agent',
+    (preferred) => {
+      const selection = resolveNewChatDefaultSelection({
+        flatList: [preferred, READY],
+        preferredAgentSlug: preferred.slug,
+        agentConnections: CONNECTIONS,
+        modelConnections: [],
+        acpConnections: [],
+      });
+      expect(selection.agent?.slug).toBe(READY.slug);
+      expect(selection.preferredAgent?.slug).toBe(preferred.slug);
+    },
+  );
+  test('a removed preference requires explicit replacement in the draft without breaking quick start', () => {
+    const selection = resolveNewChatDefaultSelection({
+      flatList: [READY],
+      preferredAgentSlug: 'removed-agent',
+      agentConnections: CONNECTIONS,
+      modelConnections: [],
+      acpConnections: [],
+    });
+    expect(selection.agent?.slug).toBe(READY.slug);
+    expect(selection.preferredAgent).toBeUndefined();
+    expect(selection.missingPreferredAgentSlug).toBe('removed-agent');
+  });
+
   test('with nothing runnable, Home recommends NOTHING (it renders the set-up CTA)', () => {
     // The earlier version of this test blessed a `?? flatList[0]` fallback,
     // which put the contradiction back exactly where it hurts most: a fresh

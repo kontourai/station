@@ -9,192 +9,190 @@
 
   "limits": "Source-reviewed means current documented claims, not all exported commands or every implementation branch. Existing source/SDK/API reviews support referenced owner semantics without rerunning full SDK scope.257 executed fixture tests/16files and an independent real synthetic HTTP operate/SDK comparison do not establish real provider enforcement, hosted/network/account/device/Windows/PTY journeys, production service operations, or destructive user-home recovery. No real home backup/reset/restore, cloud provision, transfer to a remote target, live model/securityprobe, GitHub write or release was performed. Shell examples with placeholders require operator prerequisites;3 JSON/TS fences only have syntax validation. The raw operate stream lacks auth; home reset lacks the backup/restore maintenance lease/home-registry check; triage terminal streams differ from redacted disk artifacts. These are documented current limits, not repaired code.",
 
-  "document": {"digest":"76106a61e5e2d8924c8857876b8f38011be5f9af421bf6697cbe71a5e795971a","revision":"efa773acac88792cda31595f9afca4a37d3efebc"},
-
   "sources": [
-    {"path":".github/workflows/publish-release.yml","digest":"177c206b2b12a2421bd83d3b803b7e7a4555a982725d2b2b775837fc6aa87db6","revision":"0fef6012b6853144e65d4ba2eb0db5fb6c2d1a05"},
+    ".github/workflows/publish-release.yml",
 
-    {"path":".github/workflows/release.yml","digest":"178d355f1c2141a4587db894e9f015983340a0c09a4f1c4f633c61503d58b577","revision":"94e8e5781a2c23d2bc828682a1157aef3934e897"},
+    ".github/workflows/release.yml",
 
-    {"path":"install.sh","digest":"f2b2fbf2dba1198f08637b48ad3a1cd7ae684cee020621cd293668e6bbb8b4bc","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "install.sh",
 
-    {"path":"packages/cli/bundle-externals.mjs","digest":"5a8122d158b0c5e2bc91e6bbed446b42461bf0da3f0c3c8c69178ebd8339ef85","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/cli/bundle-externals.mjs",
 
-    {"path":"packages/cli/package.json","digest":"726eb9347e66a3cd4fb6b0092e7a6e8246b85c25a3f8ca0531055447e2392573","revision":"565a005d46e40c313432a0fbe6fa3054a74a5941"},
+    "packages/cli/package.json",
 
-    {"path":"packages/cli/src/__tests__/cloud-project-import-durability.test.ts","digest":"a0f8da626a15433a4ebcd6744a1e344e3907f53ef72a47be039057292c15bf97","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/cli/src/__tests__/cloud-project-import-durability.test.ts",
 
-    {"path":"packages/cli/src/__tests__/cloud-project-import.test.ts","digest":"ff8a60860f9bd93f0ac1ec3a818565eb0f6d7d874ae7b02e56c260e53461f1c7","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/cli/src/__tests__/cloud-project-import.test.ts",
 
-    {"path":"packages/cli/src/__tests__/cloud-target.test.ts","digest":"ef5b77114b6e7e31912ec2dac8b936872ed7e6f4cb961f7785447b4a7ed00307","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/cli/src/__tests__/cloud-target.test.ts",
 
-    {"path":"packages/cli/src/__tests__/cloud.test.ts","digest":"fd8a8d62ab57907fa78fdedb02e0d0e69851578ca54df02b707f947f2da55e19","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/cli/src/__tests__/cloud.test.ts",
 
-    {"path":"packages/cli/src/__tests__/operate-shell.test.ts","digest":"2bc3683f26076fcb84fcc902b956da6ab662d0d847511ba1e8a52c13af4fc0d6","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/cli/src/__tests__/operate-shell.test.ts",
 
-    {"path":"packages/cli/src/__tests__/portability.test.ts","digest":"6d4f0b4cd4744807fcc72f2e76f34b8510ef89defdff11ce7afdec93df35fb1f","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/cli/src/__tests__/portability.test.ts",
 
-    {"path":"packages/cli/src/__tests__/project-identity.test.ts","digest":"bd7f12d6cd4bc5bc6b667e6f218589eb2096b68f7b8f42247209aea5bf7836d8","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/cli/src/__tests__/project-identity.test.ts",
 
-    {"path":"packages/cli/src/__tests__/surface-http.test.ts","digest":"2e781829aa3a0bd3cfe81ae4bfd6ff1a89f80aa8fcfafe943f225935e607f253","revision":"49163293f64dc49fe19e33a4e776542aee913c92"},
+    "packages/cli/src/__tests__/surface-http.test.ts",
 
-    {"path":"packages/cli/src/__tests__/triage.test.ts","digest":"8fa1ad8fa4b6d232b5178c51a1bc876d7bf415646b86ba6431b5d3a3b6030561","revision":"49163293f64dc49fe19e33a4e776542aee913c92"},
+    "packages/cli/src/__tests__/triage.test.ts",
 
-    {"path":"packages/cli/src/cli.ts","digest":"041c54fff5c3dc2848cf234cf13e4ea52e5069548c273755ee77b53955be1f27","revision":"036d5d3d2289fc22e325a9ded733e8de561e9b30"},
+    "packages/cli/src/cli.ts",
 
-    {"path":"packages/cli/src/commands/checkpoints.ts","digest":"49a8d7d0a682a32133ccf024f47f4e4d1651036aa872b8f0b914032ddfdb19bd","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/cli/src/commands/checkpoints.ts",
 
-    {"path":"packages/cli/src/commands/cloud-project-import.ts","digest":"0831594f687da39abbf2bc7655663d459b97de900728d0d03e7fa2e28b2c5543","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/cli/src/commands/cloud-project-import.ts",
 
-    {"path":"packages/cli/src/commands/cloud-target.ts","digest":"b0e28c9a4cdf50e53f48e0fc45ccbd1fa3f61611076ac7c57968e59a95757d94","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/cli/src/commands/cloud-target.ts",
 
-    {"path":"packages/cli/src/commands/cloud.ts","digest":"7c50391b36b9c61736cc806b55296bed80d4c376921295ff406bdea000e9cd51","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/cli/src/commands/cloud.ts",
 
-    {"path":"packages/cli/src/commands/core-api.ts","digest":"c6d8bf6197cceb12bdfa8962ca20785089c4fa0b6116968dd07e4f25a11a1c10","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/cli/src/commands/core-api.ts",
 
-    {"path":"packages/cli/src/commands/core.ts","digest":"0e18d32b586b3453b16f57669f84c0460a474889d71ebbd1c188774e12fe325b","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/cli/src/commands/core.ts",
 
-    {"path":"packages/cli/src/commands/environment.ts","digest":"e0f0a2b430058c5bbd399df755dbc098b5356474206f473fa24ffbb3d77c7331","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+    "packages/cli/src/commands/environment.ts",
 
-    {"path":"packages/cli/src/commands/export.ts","digest":"e6ab16b5a85f113c559318a2616e04f7ee1cf9936aa82607909c2ad1be9d5736","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/cli/src/commands/export.ts",
 
-    {"path":"packages/cli/src/commands/helpers.ts","digest":"f6e70cbfa9d41d834a8ad4f2faaa22b1f3568cf483a69b4ebcf657626f88e1e1","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/cli/src/commands/helpers.ts",
 
-    {"path":"packages/cli/src/commands/import.ts","digest":"92d0d913ed08347bdc184dd73cea881214a1d8af02a3f8d5f6b232af0d8c3c40","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/cli/src/commands/import.ts",
 
-    {"path":"packages/cli/src/commands/init.ts","digest":"fcb691b8cdbf28db96da3330c656f221d076ae85ddcafbb9948b7048190e4e53","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/cli/src/commands/init.ts",
 
-    {"path":"packages/cli/src/commands/install-registry.ts","digest":"f718a3fb5c763792c60f9a488f2369a1806f281683e62f13525ed851bcf0ec74","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/cli/src/commands/install-registry.ts",
 
-    {"path":"packages/cli/src/commands/install.ts","digest":"5c476173280f26004cb081d43a6e276530a09d048a19680d56c0acfd3bc7c188","revision":"c2b1caf535d375c5195cc8b8a66c9dc6ce83205d"},
+    "packages/cli/src/commands/install.ts",
 
-    {"path":"packages/cli/src/commands/lifecycle.ts","digest":"ce8322baa64d2e25c711ec0816c6cb013c8742f651a265e1657239185dba9ecc","revision":"b49b1db1601f36c9457e0d9d7c766d15be6302f7"},
+    "packages/cli/src/commands/lifecycle.ts",
 
-    {"path":"packages/cli/src/commands/model-options.ts","digest":"e68be321336c9a6cccdd2e6fb30ce12921e8007106ec94e548f81218ba17120a","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/cli/src/commands/model-options.ts",
 
-    {"path":"packages/cli/src/commands/operate/derive.ts","digest":"25ee621853ce35ad9d4c03deeb4307cf5b7963fea4c6a81c3d79dac883e6712e","revision":"af3c8fbfee90c9179a0ac19659b76d24c707d574"},
+    "packages/cli/src/commands/operate/derive.ts",
 
-    {"path":"packages/cli/src/commands/operate/index.ts","digest":"bbb3600be4fd61c890fbbd4ad44bfbbb2ae3c40284811fbe1c41ab61dab5c761","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/cli/src/commands/operate/index.ts",
 
-    {"path":"packages/cli/src/commands/operate/render.ts","digest":"432ff905abc0f165fc6ed2603de62abf6ada7cdce842d3259cb28cb8c4fdabaa","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/cli/src/commands/operate/render.ts",
 
-    {"path":"packages/cli/src/commands/operate/shell.ts","digest":"1cbd71620acac3790d27463b708ced0bd6f07f1a54a85a43cfb66e4773723ee4","revision":"95701d07650e3601d9f5a2f5744fc005b9880f63"},
+    "packages/cli/src/commands/operate/shell.ts",
 
-    {"path":"packages/cli/src/commands/operate/state.ts","digest":"e8e55fa0625791363d7b798ec14121bcca6894a179777c59c89b0e67d1e06483","revision":"af3c8fbfee90c9179a0ac19659b76d24c707d574"},
+    "packages/cli/src/commands/operate/state.ts",
 
-    {"path":"packages/cli/src/commands/portability-io.ts","digest":"bfdfb01ce86fef0f5906b05485fc1857adc514bc186510475480ac981db31b97","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/cli/src/commands/portability-io.ts",
 
-    {"path":"packages/cli/src/commands/profile-store.ts","digest":"e169198969311f9d708a955f0137ebeba4a1fd69d9a9f89f0b914df961ee6109","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/cli/src/commands/profile-store.ts",
 
-    {"path":"packages/cli/src/commands/project-identity.ts","digest":"233fce00c3c785c456346db765fa7679c03fe0795a05fe3d8a55ff10b7ef030e","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/cli/src/commands/project-identity.ts",
 
-    {"path":"packages/cli/src/commands/service.ts","digest":"66660b960af7fe541ec7c5a35f9e0c0ad4a0525060ac967372249b05108ed349","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/cli/src/commands/service.ts",
 
-    {"path":"packages/cli/src/commands/session-client.ts","digest":"0328bc971c138d5a5d4f0077f4faa39d5450b0827035b7b8f9eb78fb700b4cd8","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/cli/src/commands/session-client.ts",
 
-    {"path":"packages/cli/src/commands/surfaces.ts","digest":"000cb910665422c91d26694ca96491e78d704b0b77405c7903b4048c479ff004","revision":"4d32eb785473b3261621900889fb9fa3fbfd8a49"},
+    "packages/cli/src/commands/surfaces.ts",
 
-    {"path":"packages/cli/src/commands/triage.ts","digest":"1a22f280a072e252978b006e6510300150d453b90ddd98f5caa655aa99ed9275","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/cli/src/commands/triage.ts",
 
-    {"path":"packages/cli/src/commands/version.ts","digest":"2b95694dbea1ea07b95792aec2e0f2438b72dd296848a960bc67ecf35c588be0","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/cli/src/commands/version.ts",
 
-    {"path":"packages/cli/src/dev/http.ts","digest":"3997773f71f58676ec9bfe8ccde2e408554fca263a75d5a2912ac526ef7b553a","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/cli/src/dev/http.ts",
 
-    {"path":"packages/cli/src/dev/security.ts","digest":"8731290a66b62df1bd415d9c233516d40d8f977a2dfc4009b1c0c321a952b32a","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/cli/src/dev/security.ts",
 
-    {"path":"packages/cli/src/dev/server.ts","digest":"c5b9e90a6057a165ae81bfcd251eb06dc1d23a2c7fa7399cb34918f72482979c","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/cli/src/dev/server.ts",
 
-    {"path":"packages/cli/src/dev/watchers.ts","digest":"84d7e142a2ee88d419333d9464bccd8072f126d3746d0c3ae748fb7ae293b70c","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/cli/src/dev/watchers.ts",
 
-    {"path":"packages/cli/src/distribution.ts","digest":"6c36f09c162ba2cdc4a6cc98cb878ca5ac1be9177fbfe584340aee4b79c8b69b","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/cli/src/distribution.ts",
 
-    {"path":"packages/contracts/src/engine-capability-matrix.ts","digest":"db82340760d09e965ac7ed17830f36060573fe48545995d4ad9149b755d36ea1","revision":"518fae654af981373e872c2ab85438bb1b1b0e67"},
+    "packages/contracts/src/engine-capability-matrix.ts",
 
-    {"path":"packages/sdk/src/client/cloud-move.ts","digest":"f7404988ec3cb8cd76a14b1126cbc27d87952901fa1218cd6670fa5745d054b0","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+    "packages/sdk/src/client/cloud-move.ts",
 
-    {"path":"packages/sdk/src/client/http.ts","digest":"9892699e68483e0df3dd67ce71956994e98a43755a0c931dd6c3c5660caee00e","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+    "packages/sdk/src/client/http.ts",
 
-    {"path":"packages/sdk/src/client/reviews.ts","digest":"8100a4534fcd3c3ca1a848a799e3928ff2fba3f39609cfe3660eea7014fc141d","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/sdk/src/client/reviews.ts",
 
-    {"path":"packages/sdk/src/client/runs.ts","digest":"ef0428d474c4785754f509f1ce70544391eb42f3bdc79fbf2d39f0571ed22a5a","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+    "packages/sdk/src/client/runs.ts",
 
-    {"path":"packages/shared/src/__tests__/cloud-move.test.ts","digest":"8e6a7ce1c84b2fd2638a615d4c9297125103b1a9d680f82839af706fe093b588","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/shared/src/__tests__/cloud-move.test.ts",
 
-    {"path":"packages/shared/src/__tests__/portability.test.ts","digest":"6cb8e9f9c886ef564c3126a4675212746f1e59246a6c802c392d5de202010b34","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/shared/src/__tests__/portability.test.ts",
 
-    {"path":"packages/shared/src/__tests__/station-home-archive.test.ts","digest":"ce829589c9970323b8ee82261114fe465f70a89a281f898af73b83ad3be7a335","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/shared/src/__tests__/station-home-archive.test.ts",
 
-    {"path":"packages/shared/src/__tests__/workspace-package.test.ts","digest":"497404cbd345974a98cb4397a6d06dfe8669c72e922af320e59c08f759626d61","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/shared/src/__tests__/workspace-package.test.ts",
 
-    {"path":"packages/shared/src/cloud-aws-ec2.ts","digest":"172a15fb14cb6478b96d9e4c67ae24a7f5bb4e4b62065fa521a0d9b32c6acf8c","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/shared/src/cloud-aws-ec2.ts",
 
-    {"path":"packages/shared/src/cloud-move.ts","digest":"9c8c56f5c228b667fc13f583ae5b59117bd4026633984ac9fe7a27c0e1b5245a","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/shared/src/cloud-move.ts",
 
-    {"path":"packages/shared/src/portability.ts","digest":"925f3f2ecd89d50ec46df23e51cac1794a247eec9ca900bcad1dfef31c605847","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/shared/src/portability.ts",
 
-    {"path":"packages/shared/src/station-home-archive.ts","digest":"2d857da29eb1de501523692cb04839be37b3375b354456fe5b676ae53ef38294","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/shared/src/station-home-archive.ts",
 
-    {"path":"packages/shared/src/workspace-package-io.ts","digest":"39be3f0a5c1621a8421073c2fbf80ac835d4dd2dfb71e1a41d943af4fdcf41d7","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/shared/src/workspace-package-io.ts",
 
-    {"path":"packages/shared/src/workspace-package.ts","digest":"34c9a91798a6b8259dc7106387c94ffafe970aa43707887923c651d4313b4a40","revision":"5c18724d4ba50fd9b5f6c4043e7a00ebc893c70d"},
+    "packages/shared/src/workspace-package.ts",
 
-    {"path":"scripts/__tests__/release-artifacts.test.ts","digest":"be144f4783d2914d90e54413c38ae2c0b3f2b9a1b22e00076813f2226e99874f","revision":"780dbbe2bb02372ad22a92e269e2fc3fa62bcd22"},
+    "scripts/__tests__/release-artifacts.test.ts",
 
-    {"path":"scripts/__tests__/release-sbom-generation.test.ts","digest":"32ec8766c0ab9e4238e56a71f99a29a59a9485da7c80d7eff005a6dcaafaa4c1","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "scripts/__tests__/release-sbom-generation.test.ts",
 
-    {"path":"scripts/__tests__/release-sboms.test.ts","digest":"e7669f04bdeecaf1548fc9b5d380e5ee5435e9978424167a9ec91f7ab637d5f3","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "scripts/__tests__/release-sboms.test.ts",
 
-    {"path":"scripts/generate-release-sboms.mjs","digest":"e451ccfafb6f723e58c225a0654c1da0ba4ed22fbf86d88023e65cfa541ab546","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "scripts/generate-release-sboms.mjs",
 
-    {"path":"scripts/lib/release-artifacts.mjs","digest":"671bce22d83208bd0f1ae93519bf1ecabcc0e61602dec2ef32294bc141563c42","revision":"780dbbe2bb02372ad22a92e269e2fc3fa62bcd22"},
+    "scripts/lib/release-artifacts.mjs",
 
-    {"path":"scripts/lib/release-sbom-generation.mjs","digest":"7c994c5cbc4832402ab7479b4c005395ba63fc7953231370e57db3ccf9c59f3e","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "scripts/lib/release-sbom-generation.mjs",
 
-    {"path":"scripts/lib/release-sboms.mjs","digest":"22a283e108c25da5ae116b2e6782520dec564a7263e7991673bdb3ed4f9ce5b2","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "scripts/lib/release-sboms.mjs",
 
-    {"path":"scripts/release-container-sbom-source.mjs","digest":"32f36646b51a79f6bd499545a2095d83fa7c5dc7ae5de067cc075ee6ba6e79e7","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "scripts/release-container-sbom-source.mjs",
 
-    {"path":"scripts/station-cli-implementation.ts","digest":"e747e51f4b5b6dd72ed1505ea99027dc18ea67a4aa272139b9ad013cbca46a22","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "scripts/station-cli-implementation.ts",
 
-    {"path":"scripts/station-dev.mjs","digest":"97c0d7c3aad1150ee3fda38e45e3af87938fd24d8a424c1290ca944da293574b","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "scripts/station-dev.mjs",
 
-    {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"f44a4e94ca0f335cfc5ee2a803ed1659f140e149b0cd0e66e4c9b5bef9179718","revision":"4f3acdc5478e27a733c06e91a202a325817c2f53"},
+    "src-server/providers/adapters/acp-adapter.ts",
 
-    {"path":"src-server/routes/evidence/flow-runs.ts","digest":"2bf992db2df5a2b0b84c8964baf0784419c72ee9abe1ab0aadec55ce51985527","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-server/routes/evidence/flow-runs.ts",
 
-    {"path":"src-server/routes/operations/monitoring.ts","digest":"18de408f94cfbe0d5a572a7dcb5b5cc95e8f05d14c700869bb83179f464f96b9","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-server/routes/operations/monitoring.ts",
 
-    {"path":"src-server/routes/orchestration/runs.ts","digest":"f247aba8556b954a0fbbbb46b89870c75b736340cf9c0b4f1c617005bf31aebd","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-server/routes/orchestration/runs.ts",
 
-    {"path":"src-server/services/evidence/review-evidence-module.ts","digest":"0dc790fd626a256b19036d2d78228933ae35f43f67c06674db727602bf8a6ac2","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-server/services/evidence/review-evidence-module.ts",
 
-    {"path":"src-server/services/flow/flow-run-service.ts","digest":"501881355a01c561de9ecdbe2cc99a9f83bb565873615997cba75965e6e29271","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-server/services/flow/flow-run-service.ts",
 
-    {"path":"src-server/services/orchestration/run-service.ts","digest":"d7549045a5ee8c7f4fea3ab4249562bf98bc9a409031c2207788f0381b55c21d","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-server/services/orchestration/run-service.ts",
 
-    {"path":"station","digest":"bb8adba630a450e835cfab89f27a3640bfd40664d3eb2223726b91c6e3786ebb","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "station",
 
-    {"path":"src-server/runtime/mcp/station-control-dispatch-scope.ts","digest":"cf22738353be6006483825dd4bfe99ae96d0f18c91b944402457a7bc9f25f8a8","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-server/runtime/mcp/station-control-dispatch-scope.ts",
 
-    {"path":"src-server/routes/orchestration/dispatch-scope.ts","digest":"5aaef8214e8466769563e79ef3d1f7df24daefc87e61b62845020160ec34fe74","revision":"0ad2f560e1d13e4262d5637f173abc3d95959848"},
+    "src-server/routes/orchestration/dispatch-scope.ts",
 
-    {"path":"src-server/tools/station-control-policy.ts","digest":"7861e4666c9ab7bdfafb6d38b4b9a742f707ca64741f1351b042384f4a51dc94","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+    "src-server/tools/station-control-policy.ts",
 
-    {"path":"src-server/runtime/mcp/__tests__/station-control-dispatch-scope.test.ts","digest":"5c90078ba35ab314048e6efa0533de427b92fdc22f26425174cdbcdb144db30e","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-server/runtime/mcp/__tests__/station-control-dispatch-scope.test.ts",
 
-    {"path":"src-server/runtime/routes/__tests__/runtime-routes-station-control-dispatch-scope.test.ts","digest":"0d2fe916d5a7818714950c763ab11ee67d325b0779b55c8221c377a0a1239801","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+    "src-server/runtime/routes/__tests__/runtime-routes-station-control-dispatch-scope.test.ts",
 
-    {"path":"src-server/services/execution-target/execution-target-resolver.ts","digest":"b7c7b4df4203baf14bab742b5031b4311f1af62f14e2b2c58ef53e35a72b25fc","revision":"0ad2f560e1d13e4262d5637f173abc3d95959848"},
+    "src-server/services/execution-target/execution-target-resolver.ts",
 
-    {"path":"src-server/services/execution-target/__tests__/execution-target-resolver.test.ts","digest":"db14b46978051e775c9415ad7104054bb41892df40fe50a6be2da0c2ba5b1373","revision":"03240cbbac3f4c9d20200582858c5b516be93912"},
+    "src-server/services/execution-target/__tests__/execution-target-resolver.test.ts",
 
-    {"path":"src-server/utils/path-containment.ts","digest":"e6a7867d0d39ee6b6c4dee4d7b697b8ab4ab55e86c7f9503d6ce657e0ed1d083","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-server/utils/path-containment.ts",
 
-    {"path":"scripts/lib/portable-server-archive.mjs","digest":"5f03affc9ae69b585e7b6395f7ae42f73b678ed9571737d7e18dbd6904da154d","revision":"614c216de6de9d4c06ef56963853ccff52f2f685"},
+    "scripts/lib/portable-server-archive.mjs",
 
-    {"path":"packages/shared/src/station-home-store-registry.ts","digest":"bf725d365318f670cdc54f2f4354bec8d1041f3c9866ac72439f3e0d11ff5e1f","revision":"4a67fd3e4060f01379184350cdfd49637bba8d0e"},
+    "packages/shared/src/station-home-store-registry.ts",
 
-    {"path":"packages/shared/src/sqlite-store-integrity.ts","digest":"eed69a82721f6f84ff9d703b4bcdaee9ff8bd9fba045a4d874be8f402276aaa4","revision":"7abc84fcb97288d80f1b25cfc99de23d93817d4c"}
+    "packages/shared/src/sqlite-store-integrity.ts"
   ],
 
   "checks": [

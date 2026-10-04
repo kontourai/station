@@ -1,0 +1,9 @@
+{
+  "revision": "7dca71dec74980aa52bfdc28fcec1eed24581f1f",
+
+  "notes": [
+    {"path":"docs/guides/release-rings.md","note":"Read against publish-release.yml host-pointer replace/restore and portable-publication.mjs fetchBytes (30s per attempt, 10 attempts): disclosed that a persistently hanging host can still reach the 20-minute job timeout and that the restore can overwrite a hand-edited pointer.","inputs":["docs/guides/release-rings.md"]},
+
+    {"path":"docs/guides/nightly.md","note":"Read against portable-nightly-publish.yml lines 268-301: not-regressing reads the cacheable ROLLING_MANIFEST_URL, the --clobber has no re-plan and no restore trap; disclosed both.","inputs":["docs/guides/nightly.md"]}
+  ]
+}

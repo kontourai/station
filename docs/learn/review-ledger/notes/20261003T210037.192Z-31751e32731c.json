@@ -1,0 +1,7 @@
+{
+  "revision": "ed4b7b2c4440e328d5367f3d8f4a319a81dfba7e",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Independent source-delta review: Project create/update gains optional defaultAgent, with null clearing stored preference. Existing selected route families, response/error behavior and orchestration consumer boundaries remain unchanged. This reference is explicitly not an exhaustive field inventory; owning shared reference and user guide now describe the field.","inputs":["docs/reference/api.md"]}
+  ]
+}

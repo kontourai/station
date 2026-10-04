@@ -1,0 +1,7 @@
+{
+  "revision": "e56b7b6bf847135adcce152d99112d104542d029",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed SettingsView mobile picker against DestinationRegistry: both navigation forms derive the same advertised destinations and canonical route action; URL section and unsaved-guard contracts remain accurate. Focused UI suites and mobile/desktop settings E2E pass; physical device and native release NOT_VERIFIED.","inputs":["docs/architecture/module-map.md"]}
+  ]
+}

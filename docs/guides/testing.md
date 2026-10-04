@@ -421,6 +421,15 @@ once on the candidate, and compares them against
 among the required CI checks, so a push that skips it with `--no-verify` lands
 unverified on `main`. Do not skip it; use the knobs below.
 
+A capture refused by a measured byte or frame budget retains a separate
+`<capture-path>.failure.json`. It binds the target revision and tool digest to
+the failed phase, its limit, and at most 128 checkpoint-relative frame
+identities. Known routing names and numeric cursors remain readable; method,
+thread and turn identities are hashes. Payloads and tool output are excluded.
+The capture still exits nonzero, and this diagnostic cannot satisfy the
+successful matrix or promotion receipt. Preserve it when diagnosing a red gate.
+
+
 **The gate finds its own baseline (#2925).** With
 `STATION_TRANSFER_BASELINE_ROOT` unset, the gate resolves the merge base and
 reuses any registered worktree that is detached at exactly that SHA, is clean,

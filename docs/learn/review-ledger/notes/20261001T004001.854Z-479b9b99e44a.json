@@ -1,0 +1,7 @@
+{
+  "revision": "c58a2114ee41d76fd4e54362bf0694eede749eb0",
+
+  "notes": [
+    {"path":"docs/guides/web-push-notifications.md","note":"Reviewed merged pairing attention URL against notification metadata and exact Inbox request route. Incoming native proof authorization source changes are preserved; decision and push-delivery authority are unchanged by this UI fix. Pairing projection and NotificationsPage evidence retained; no physical push receipt claimed.","inputs":["docs/guides/web-push-notifications.md"]}
+  ]
+}

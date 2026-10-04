@@ -1,0 +1,7 @@
+{
+  "revision": "fc1298f7bac4dd9f42786551ea5f4761f631ac56",
+
+  "notes": [
+    {"path":"tests/tauri-shell/native-fresh-relay-fixture.md","note":"Reviewed actual fixed human TaskRoom message/edit-plan/batch publication, published snapshot verification, private runtime EOF capture and failure aggregation; scripts and E2E types pass. Public runtime/Pion/physical receiver execution remains NOT_VERIFIED.","inputs":["tests/tauri-shell/native-fresh-relay-fixture.md"]}
+  ]
+}

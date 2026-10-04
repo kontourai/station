@@ -9,12 +9,10 @@
 
   "limits": "Current workspace resolver/provisioning owners were checked. No CLI availability claim is inferred from the proposed command, and no isolated-run or cleanup journey was executed.",
 
-  "document": {"digest":"8a5c45200daf2b3e9c137c8f1f7a81e21e1b64b3758b78714ea0a444b75e73cc","revision":"b78b164722084d11b93b3565bd3d128c26c99ea7"},
-
   "sources": [
-    {"path":"src-server/services/execution-target/execution-target-execution.ts","digest":"376fcedbde14978515ed735d00423cc6b89b613788149e634174b39bf165c317","revision":"8540fafb86b969775254b898711ad3ae40ccc39d"},
+    "src-server/services/execution-target/execution-target-execution.ts",
 
-    {"path":"src-server/services/execution-target/execution-target-resolver.ts","digest":"b7c7b4df4203baf14bab742b5031b4311f1af62f14e2b2c58ef53e35a72b25fc","revision":"0ad2f560e1d13e4262d5637f173abc3d95959848"}
+    "src-server/services/execution-target/execution-target-resolver.ts"
   ],
 
   "checks": [

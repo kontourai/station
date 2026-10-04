@@ -9,18 +9,16 @@
 
   "limits": "No user-home migration or rollback was executed. The historical vocabulary-count claim, all legacy fixtures, upgrade paths and every skill consumer were not exhaustively verified. This is not evidence of a current published package or live migration.",
 
-  "document": {"digest":"5188225d3fee15a72caa4c4f87046baa744cc3e4f214b56090c2cb3e54840556","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
-
   "sources": [
-    {"path":"packages/cli/src/cli.ts","digest":"041c54fff5c3dc2848cf234cf13e4ea52e5069548c273755ee77b53955be1f27","revision":"036d5d3d2289fc22e325a9ded733e8de561e9b30"},
+    "packages/cli/src/cli.ts",
 
-    {"path":"packages/cli/src/help.ts","digest":"43ae7ddeaa469ae6177b797f45fc3efa9e4b092827a467ee5b0febf82c900d8d","revision":"036d5d3d2289fc22e325a9ded733e8de561e9b30"},
+    "packages/cli/src/help.ts",
 
-    {"path":"src-server/routes/schemas/schema-definitions/content.ts","digest":"ed5b32e05c610a8446e131fbddd2fd7b6cda0f8501da04737ca36e4300c92337","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+    "src-server/routes/schemas/schema-definitions/content.ts",
 
-    {"path":"src-server/services/agents/playbook-skill-migration-cli.ts","digest":"f38a44411adc324b5ebd95e77df03e9bef4491a6adb7bc0d724e0a94cc452c2e","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+    "src-server/services/agents/playbook-skill-migration-cli.ts",
 
-    {"path":"src-server/services/agents/playbook-skill-migration.ts","digest":"6a8bc32ae785aefbd21356a58c75d37fedd75da2c52236bec9c49037e50c30bd","revision":"fcd4407178cb5509ea47a958714603034fe20004"}
+    "src-server/services/agents/playbook-skill-migration.ts"
   ],
 
   "checks": [
