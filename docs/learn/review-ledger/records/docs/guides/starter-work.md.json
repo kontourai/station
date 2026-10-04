@@ -94,7 +94,7 @@
 
     {"path":"src-ui/src/components/ProjectTaskBoard.tsx","digest":"f44e595e00051a0b9a39bb0ea86c0024182e9d4502c5716df78797a4c1c79fa4","revision":"62306ed51dd5dafdf744d3b779a251030f0e8bcb"},
 
-    {"path":"src-ui/src/components/session-detail/AttachedSessionDetail.tsx","digest":"5893ceb687e1e92f050fa4d3832312027256ba48da701c93517d857c4be6674a","revision":"167bf32502413ff18cd2f5aff350382b76cf7625"},
+    {"path":"src-ui/src/components/session-detail/AttachedSessionDetail.tsx","digest":"8317c01495b346dcf17b5293867571d4ab7301603d4070a446bf3610b8db3924","revision":"56efe36881a0a9c565af878e07fa7347a8f00965"},
 
     {"path":"src-ui/src/components/TasksLayout.tsx","digest":"a4adf70ce83c23e2fb4819aeae36bca2958f2c43941276bb0199b8a630ee76ec","revision":"2ff9f47beb496145a4ac4752a1f1fe5f4c9dd694"},
 
