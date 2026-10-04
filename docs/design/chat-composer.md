@@ -177,6 +177,9 @@ turn finishes. **Steer** uses native mid-turn input only where the selected
 engine can prove that capability. Claude Code and Codex have additive steering.
 ACP's capability matrix also includes cancel-and-reprompt, which is not proof
 of native steering for the current session.
+After a device's full access is revoked, a turn that started unconfined is not
+steerable: the server refuses with `confinement-changed` before claiming the
+input, and the message stays for the next turn, which runs confined (#2898).
 
 For other engines, Steer holds the message for a supported safe boundary before
 stopping and sending. Current adapters expose no such safe-boundary receipt, so
