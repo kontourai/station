@@ -4,6 +4,13 @@
  */
 
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
+import type { McpElicitationResult } from '@kontourai/station-contracts/mcp-elicitation';
+import { MS_PER_MINUTE } from '@kontourai/station-contracts/time';
+import {
+  mcpElicitationFormFromRequest,
+  readMcpElicitationResult,
+  validateMcpElicitationContent,
+} from '@kontourai/station-shared/mcp-elicitation';
 import { APICallError } from 'ai';
 import {
   findModelProviderError,
@@ -26,6 +33,97 @@ import {
   isIntrinsicStationEngineGrant,
 } from '../tools/tool-executor.js';
 import { STREAM_ABORTED_BY_CLIENT } from './chat-error-marker.js';
+
+/**
+ * How long a tool server's form waits for a person (#3284). A server's own
+ * request timeout can end the wait sooner; then the request is cancelled.
+ */
+export const MCP_ELICITATION_TIMEOUT_MS = 10 * MS_PER_MINUTE;
+
+/** A tool server's form elicitation, raised by the MCP tool wrapper. */
+export interface McpElicitationCallbackRequest {
+  type: 'mcp-elicitation';
+  serverId: string;
+  /** SDK-validated `elicitation/create` params. */
+  params: unknown;
+  /** Aborts when the server cancels the request or the turn is stopped. */
+  signal?: AbortSignal;
+}
+
+/**
+ * #3284: show a tool server's form to the person this turn runs for, and
+ * return what they did. Rides the same channel as a tool approval — the
+ * injected chunk becomes the thread's `request.opened`, and the answer comes
+ * back through the approval registry — carrying the form and its answer.
+ *
+ * Truthfulness: `accept` only with content that passes the requested form;
+ * `decline` only when the person declined; everything else (timeout, turn
+ * or server cancellation, session stopped) is `cancel`. A request nobody
+ * could be asked (an unrenderable form, an unbound hosted session) is an
+ * error to the server, never a fabricated answer.
+ */
+async function requestMcpElicitation(
+  request: McpElicitationCallbackRequest,
+  context: {
+    agentName?: string;
+    approvalRegistry: ApprovalRegistry;
+    injectableStream: InjectableStream;
+    conversationId: string | undefined;
+    orchestrationThreadId?: string;
+  },
+): Promise<McpElicitationResult> {
+  const form = mcpElicitationFormFromRequest(request.serverId, request.params);
+  if (!form)
+    throw new Error(
+      'Station cannot show this form: it uses a field type or size Station does not render.',
+    );
+  if (request.signal?.aborted) return { action: 'cancel' };
+  const approvalId = `elicitation-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+  context.injectableStream.inject({
+    type: 'mcp-elicitation-request',
+    approvalId,
+    form,
+  } as unknown as any);
+  // Registered in the same tick as the inject, before any await, so the
+  // answer can never arrive for an id the registry does not hold yet.
+  const waiting = context.approvalRegistry.registerForAnswer(approvalId, {
+    metadata: {
+      agentName: context.agentName,
+      conversationId: context.conversationId,
+      ...(context.orchestrationThreadId &&
+      context.orchestrationThreadId === context.conversationId
+        ? { orchestrationThreadId: context.orchestrationThreadId }
+        : {}),
+      description: form.message,
+      server: form.serverId,
+      source: 'runtime',
+      title: `${form.serverId} needs your input`,
+    },
+    timeoutMs: MCP_ELICITATION_TIMEOUT_MS,
+  });
+  const onAbort = () => context.approvalRegistry.cancel(approvalId);
+  request.signal?.addEventListener('abort', onAbort, { once: true });
+  try {
+    const { outcome, answer } = await waiting;
+    if (outcome === 'unbound')
+      throw new Error(
+        'This form could not be shown: the turn is not bound to a session that can answer it.',
+      );
+    const result = readMcpElicitationResult(answer);
+    if (outcome === 'approved' && result?.action === 'accept')
+      return {
+        action: 'accept',
+        // Re-checked here, at the last seam before the server: whatever
+        // settled the request, only content that fits the form leaves.
+        content: validateMcpElicitationContent(form, result.content),
+      };
+    if (outcome === 'denied' && result?.action === 'decline')
+      return { action: 'decline' };
+    return { action: 'cancel' };
+  } finally {
+    request.signal?.removeEventListener('abort', onAbort);
+  }
+}
 
 /**
  * Create elicitation callback for tool approval
@@ -56,6 +154,15 @@ export function createElicitationCallback(
   const autoApprove = agentSpec?.tools?.autoApprove || [];
 
   return async (request: any) => {
+    if (request?.type === 'mcp-elicitation') {
+      return requestMcpElicitation(request as McpElicitationCallbackRequest, {
+        agentName: agentSpec?.name,
+        approvalRegistry,
+        injectableStream,
+        conversationId: getConversationId(),
+        orchestrationThreadId,
+      });
+    }
     if (request.type === 'tool-approval') {
       const toolName = request.toolName;
 

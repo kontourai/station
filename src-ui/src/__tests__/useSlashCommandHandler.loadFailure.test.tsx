@@ -34,6 +34,8 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@kontourai/station-sdk', () => ({
   useRunSkill: () => ({ mutateAsync: mocks.runSkill }),
   useSkillDetailReader: () => mocks.readSkillDetail,
+  agentMcpPromptsQueryKey: (slug: string) => ['agent-mcp-prompts', slug],
+  runAgentMcpPrompt: vi.fn(),
 }));
 vi.mock('../contexts/ActiveChatsContext', () => ({
   activeChatsStore: {

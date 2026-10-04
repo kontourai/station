@@ -1,5 +1,6 @@
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { readHarnessQuestionnaire } from '@kontourai/station-shared/harness-questions';
+import { readMcpElicitationForm } from '@kontourai/station-shared/mcp-elicitation';
 import {
   approvalRetiredBy,
   isSubagentApprovalRequest,
@@ -109,11 +110,15 @@ export function unansweredApprovalRequests(
   const unanswered = open.filter(
     (request) =>
       readHarnessQuestionnaire(request.payload?.questionnaire) !== null ||
+      readMcpElicitationForm(request.payload?.mcpElicitation) !== null ||
       !bound.has(requestKey(request.threadId, request.requestId)),
   );
   if (unanswered.length === 0) return NO_REQUESTS;
   return unanswered.map((request) => {
     const { toolName, toolInput } = toolRequestFromPayload(request.payload);
+    const mcpElicitation = readMcpElicitationForm(
+      request.payload?.mcpElicitation,
+    );
     const toolCallId = request.payload?.toolCallId;
     return {
       type: 'tool-invocation',
@@ -139,6 +144,7 @@ export function unansweredApprovalRequests(
             )!,
           }
         : {}),
+      ...(mcpElicitation ? { mcpElicitation } : {}),
       approvalThreadId: request.threadId,
       approvalEventId: request.eventId,
       approvalSessionGrant: toolRequestSessionGrantFromPayload(request.payload),

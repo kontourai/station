@@ -1,4 +1,5 @@
 import type { HarnessQuestionAnswers } from '@kontourai/station-contracts/harness-questions';
+import type { McpElicitationContent } from '@kontourai/station-contracts/mcp-elicitation';
 /**
  * Canonical orchestration fetchers (#165/#173 Wave 1, inside the #167 DRY
  * client layer). One HTTP-call implementation per operation, shared by the
@@ -104,6 +105,8 @@ export interface RespondToRequestInput {
   expectedRequestEventId?: string;
   decision: ApprovalDecision;
   answers?: HarnessQuestionAnswers;
+  /** #3284: accepted content for a tool server's form; validated server-side. */
+  elicitationContent?: McpElicitationContent;
 }
 
 export interface RespondToRequestResult {

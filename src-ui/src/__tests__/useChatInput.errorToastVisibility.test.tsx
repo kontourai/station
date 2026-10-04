@@ -42,6 +42,9 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => {
     useProviderCommandsQuery: () => ({ data: [] }),
     useRunSkill: () => ({ mutateAsync: vi.fn() }),
     useSkillDetailReader: () => vi.fn(),
+    agentMcpPromptsQueryKey: (slug: string) => ['agent-mcp-prompts', slug],
+    runAgentMcpPrompt: vi.fn(),
+    useAgentMcpPromptsQuery: () => ({ data: undefined }),
     interruptOrchestrationTurn: (...args: unknown[]) =>
       interruptOrchestrationTurnMock(...args),
   };

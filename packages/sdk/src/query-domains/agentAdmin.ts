@@ -3,6 +3,10 @@ import type {
   FirstRunState,
   FirstRunTransitionRequest,
 } from '@kontourai/station-contracts/config';
+import type {
+  AgentMcpPromptListing,
+  AgentMcpPromptRun,
+} from '@kontourai/station-contracts/mcp-prompts';
 import type { ConversationStatsResponse } from '@kontourai/station-contracts/runtime';
 import type { SettingProvenanceEntry } from '@kontourai/station-contracts/settings-registry';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -313,6 +317,63 @@ export function useModelsQuery(config?: QueryConfig<any>) {
     },
     config,
   );
+}
+
+/**
+ * #3284: `GET /agents/:slug/mcp-prompts` — the MCP server prompts this agent
+ * is offered as slash commands, plus the servers whose prompts could not be
+ * read (so a missing command has a stated reason, not silence).
+ */
+export function useAgentMcpPromptsQuery(
+  agentSlug: string | null | undefined,
+  config?: QueryConfig<AgentMcpPromptListing>,
+) {
+  return useApiQuery(
+    agentMcpPromptsQueryKey(agentSlug ?? ''),
+    async () => {
+      const apiBase = await _getApiBase();
+      const response = await authenticatedFetch(
+        `${apiBase}/agents/${encodeURIComponent(agentSlug!)}/mcp-prompts`,
+      );
+      const result = await response.json();
+      if (!response.ok || !result.success)
+        throw new Error(apiErrorMessage(result, 'Failed to list MCP prompts'));
+      return result.data as AgentMcpPromptListing;
+    },
+    { ...config, enabled: !!agentSlug && (config?.enabled ?? true) },
+  );
+}
+
+export const agentMcpPromptsQueryKey = (agentSlug: string) =>
+  ['agent-mcp-prompts', agentSlug] as const;
+
+/**
+ * #3284: `POST /agents/:slug/mcp-prompts/run` — read one prompt with its
+ * arguments. Returns the text to send as the turn; a refusal (missing or
+ * unknown argument, content Station cannot insert) throws the server's
+ * reason and nothing is sent.
+ */
+export async function runAgentMcpPrompt(
+  agentSlug: string,
+  input: {
+    serverId: string;
+    name: string;
+    arguments: Record<string, string>;
+  },
+): Promise<AgentMcpPromptRun> {
+  const apiBase = await _getApiBase();
+  const response = await authenticatedFetch(
+    `${apiBase}/agents/${encodeURIComponent(agentSlug)}/mcp-prompts/run`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    },
+  );
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || !result.success)
+    throw new Error(apiErrorMessage(result, 'Failed to run the MCP prompt'));
+  return result.data as AgentMcpPromptRun;
 }
 
 export interface AwsProfilesResult {

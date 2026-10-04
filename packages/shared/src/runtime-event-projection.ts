@@ -8,6 +8,7 @@ import type {
   MessagePart,
 } from './conversation-message.js';
 import { readHarnessQuestionnaire } from './harness-questions.js';
+import { readMcpElicitationForm } from './mcp-elicitation.js';
 import { toolRequestSessionGrantFromPayload } from './tool-request-preview.js';
 import { assembleTurnProvenanceEnvelopes } from './turn-provenance-fold.js';
 
@@ -904,7 +905,12 @@ export function projectRuntimeEventsToMessages(
         break;
       }
       case 'request.opened': {
-        if (readHarnessQuestionnaire(ev.payload?.questionnaire)) break;
+        // Answered with content on its own card, never as a tool's Allow/Deny.
+        if (
+          readHarnessQuestionnaire(ev.payload?.questionnaire) ||
+          readMcpElicitationForm(ev.payload?.mcpElicitation)
+        )
+          break;
         const toolName = ev.payload?.toolName ?? ev.payload?.tool;
         const toolCallId = ev.payload?.toolCallId;
         // #2316: a request id is answerable only by the session that minted

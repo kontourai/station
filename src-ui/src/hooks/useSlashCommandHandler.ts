@@ -1,5 +1,11 @@
 import type { Skill } from '@kontourai/station-contracts/catalog';
-import { useRunSkill, useSkillDetailReader } from '@kontourai/station-sdk';
+import type { AgentMcpPromptListing } from '@kontourai/station-contracts/mcp-prompts';
+import {
+  agentMcpPromptsQueryKey,
+  runAgentMcpPrompt,
+  useRunSkill,
+  useSkillDetailReader,
+} from '@kontourai/station-sdk';
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect } from 'react';
 import {
@@ -167,6 +173,68 @@ export function useSlashCommandHandler() {
         void runSkillMutation.mutateAsync(match.name).catch(() => undefined);
         cleanup();
         return substitution.content;
+      }
+
+      // 2b. #3284: an MCP server prompt (`/<server>:<prompt>`). Arguments
+      // use the same `name=value` / positional parser as skill variables,
+      // the server reads the prompt, and its text is sent as this turn. A
+      // missing required argument or a refused read sends nothing.
+      const promptListing = chatState.agentSlug
+        ? queryClient.getQueryData<AgentMcpPromptListing>(
+            agentMcpPromptsQueryKey(chatState.agentSlug),
+          )
+        : undefined;
+      const prompt = promptListing?.prompts.find(
+        (candidate) => candidate.command.toLowerCase() === cmd,
+      );
+      if (prompt && chatState.agentSlug) {
+        const assignment = assignSkillVariableArgs(
+          prompt.arguments.map((argument) => ({ name: argument.name })),
+          args,
+        );
+        if (!assignment.ok) {
+          addEphemeralMessage(sessionId, {
+            role: 'system',
+            content: `/${prompt.command}: ${assignment.error} — nothing was sent`,
+          });
+          cleanup();
+          return true;
+        }
+        const provided = Object.fromEntries(
+          Object.entries(assignment.provided).filter(
+            (entry): entry is [string, string] =>
+              typeof entry[1] === 'string' && entry[1].trim() !== '',
+          ),
+        );
+        const missing = prompt.arguments
+          .filter(
+            (argument) => argument.required && !(argument.name in provided),
+          )
+          .map((argument) => `<${argument.name}>`);
+        if (missing.length) {
+          addEphemeralMessage(sessionId, {
+            role: 'system',
+            content: `/${prompt.command} needs a value for ${missing.join(', ')} — nothing was sent`,
+          });
+          cleanup();
+          return true;
+        }
+        try {
+          const run = await runAgentMcpPrompt(chatState.agentSlug, {
+            serverId: prompt.serverId,
+            name: prompt.name,
+            arguments: provided,
+          });
+          cleanup();
+          return run.text;
+        } catch (error) {
+          addEphemeralMessage(sessionId, {
+            role: 'system',
+            content: `Could not run /${prompt.command}: ${error instanceof Error ? error.message : 'unknown error'}`,
+          });
+          cleanup();
+          return true;
+        }
       }
 
       // 3. Check registered commands

@@ -42,6 +42,9 @@ vi.mock('@kontourai/station-sdk', () => ({
   useProviderCommandsQuery: () => ({ data: [] }),
   useRunSkill: () => ({ mutateAsync: vi.fn() }),
   useSkillDetailReader: () => vi.fn(),
+  agentMcpPromptsQueryKey: (slug: string) => ['agent-mcp-prompts', slug],
+  runAgentMcpPrompt: vi.fn(),
+  useAgentMcpPromptsQuery: () => ({ data: undefined }),
 }));
 
 vi.mock('../contexts/ActiveChatsContext', async () => {

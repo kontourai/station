@@ -1,4 +1,5 @@
 import { readHarnessQuestionnaire } from '@kontourai/station-shared/harness-questions';
+import { readMcpElicitationForm } from '@kontourai/station-shared/mcp-elicitation';
 import { requestIdsSettledByTurnAbort } from '@kontourai/station-shared/request-settlement';
 import {
   toolRequestDisplayName,
@@ -68,7 +69,12 @@ export function raiseRequestOpenedToast(
 ) {
   const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
   if (!chat || event.blocking === false) return;
-  if (readHarnessQuestionnaire(event.payload?.questionnaire)) return;
+  // A form has no one-click answer; the pending-requests card collects it.
+  if (
+    readHarnessQuestionnaire(event.payload?.questionnaire) ||
+    readMcpElicitationForm(event.payload?.mcpElicitation)
+  )
+    return;
 
   const agentName = chat.agentName || chat.agentSlug || event.provider;
   // #1545: the tool name alone ("Codex wants to use Bash") is not a decision an

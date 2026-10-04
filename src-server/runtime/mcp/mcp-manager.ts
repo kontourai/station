@@ -8,6 +8,7 @@ import type { TenantExecutionContext } from '@kontourai/station-contracts/tenanc
 import type { ToolDef } from '@kontourai/station-contracts/tool';
 import {
   type MCPConnection,
+  type MCPElicitationRoute,
   type MCPLocalClaim,
   type MCPLocalConnectionCustody,
   MCPLocalCustodyError,
@@ -774,13 +775,20 @@ function toStationMCPTool(
     },
     _meta: tool._meta,
     ui: tool.ui,
-    execute: async (args: Record<string, unknown>) => {
+    execute: async (args: Record<string, unknown>, execOptions?: unknown) => {
       try {
-        const result = await (execute?.(args) ??
+        const call = () =>
+          execute?.(args) ??
           connection.client.callTool({
             name: tool.originalName,
             arguments: args ?? {},
-          }));
+          });
+        const route = isNativeStationControl
+          ? undefined
+          : turnElicitationRoute(execOptions);
+        const result = await (route && connection.withElicitationRoute
+          ? connection.withElicitationRoute(route, call)
+          : call());
         return isNativeStationControl
           ? result
           : requireToolServerResult(result, 'tool-call', tool.serverId, logger);
@@ -800,6 +808,47 @@ function toStationMCPTool(
   return isNativeStationControl
     ? markTrustedNativeStationControlTool(stationTool)
     : stationTool;
+}
+
+/**
+ * #3284: while this tool call runs, a form the server sends is shown to the
+ * person the turn runs for, through the turn's own elicitation bridge (the
+ * `elicitation` operation-context callback `createElicitationCallback`
+ * builds). A call with no bridge — an unattended or REST dispatch — opens no
+ * route, so the connection refuses the elicitation instead of guessing who
+ * should answer it. The turn's abort cancels a form still open.
+ */
+function turnElicitationRoute(
+  execOptions: unknown,
+): MCPElicitationRoute | undefined {
+  const options = execOptions as
+    | {
+        elicitation?: unknown;
+        abortController?: { signal?: AbortSignal };
+        abortSignal?: AbortSignal;
+      }
+    | undefined;
+  const elicit = options?.elicitation;
+  if (typeof elicit !== 'function') return undefined;
+  const turnSignal =
+    options?.abortController?.signal ?? options?.abortSignal ?? undefined;
+  return async ({ serverId, params, signal }) => {
+    const answer = await elicit({
+      type: 'mcp-elicitation',
+      serverId,
+      params,
+      signal: turnSignal ? AbortSignal.any([signal, turnSignal]) : signal,
+    });
+    if (
+      !answer ||
+      typeof answer !== 'object' ||
+      !['accept', 'decline', 'cancel'].includes(
+        (answer as { action?: unknown }).action as string,
+      )
+    )
+      throw new Error('This turn cannot answer a tool server form.');
+    return answer as Awaited<ReturnType<MCPElicitationRoute>>;
+  };
 }
 
 function boundedProtocolVersion(version: string | undefined): string {

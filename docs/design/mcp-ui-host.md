@@ -144,6 +144,45 @@ servers fall back to the legacy initialize exchange only when the transport
 identifies that protocol era. Silence or transport failure remains an outage,
 not a legacy signal.
 
+## MCP client feature support
+
+This is the compatibility record for Station as an MCP client (#3284, part of
+#3274). Station targets MCP core `2026-07-28` through
+`@modelcontextprotocol/client` 2.0.0 and falls back to the 2025-era
+`initialize` handshake for deployed legacy servers.
+
+| Feature | Supported subset | Not supported |
+| --- | --- | --- |
+| Tools | Listing, calls, structured results; MCP Apps metadata | — |
+| MCP Apps extension `2026-01-26` | Declared; see the sections below | — |
+| Prompts | `prompts/list` and `prompts/get` for servers in an agent's tool view, offered as `/<server>:<prompt>` slash commands with named string arguments ([commands guide](../guides/commands.md)). Inserted content: text, and embedded resources that carry text | Image, audio, blob and resource-link prompt content is refused, not dropped; `prompts/list_changed` is not followed (the list is re-read when the command menu refreshes) |
+| Elicitation | Capability `elicitation: { form: {} }`. Form mode only, on both eras: a 2025-era server's `elicitation/create` request and a 2026-07-28 `input_required` result reach the same handler. Rendered for the person the Station-agent turn runs for; accept with content validated against the requested schema, decline, or cancel | URL mode (not declared, so the SDK refuses it); an elicitation outside a Station-agent tool call, or while two tool calls on the same pooled connection are in flight, is refused with an error rather than shown to someone who may not own it; Strands-engine turns |
+| Resources | `ui://` App resource reads only | General listing, reading and subscription (#3284, later slice) |
+| Sampling | — | Not declared; a server's sampling request is refused (#3284, later slice) |
+| Roots | — | Not declared |
+
+### Elicitation path
+
+A server's form arrives on the connection's `elicitation/create` handler,
+which hands it to the one Station turn whose tool call is in flight on that
+connection. That turn's elicitation bridge normalizes the schema
+(`@kontourai/station-shared/mcp-elicitation`), refusing any property type or
+bound it cannot render, and injects the form into the turn's `/chat` stream.
+The Station-agent adapter publishes it as the thread's `request.opened`
+(payload `mcpElicitation`), and the pending-requests strip renders the form.
+The answer returns through the orchestration `respondToRequest` command,
+pinned to the exact opened event; the service validates accepted content
+against that form and refuses invalid content with a reason, and the bridge
+re-checks it before the server sees it. Nothing is coerced or truncated.
+
+Truthfulness rules: `accept` only with content the person entered; `decline`
+only when they declined; a timeout (10 minutes, or the server's own request
+timeout), a stopped turn, a server cancellation or a stopped session all
+return `cancel`. A form that cannot be rendered, or a hosted turn with no
+bound session, is an error to the server, never a fabricated answer. The
+agent audience rule for member-facing turns named in #3284 has no runtime
+concept to bind to yet and is not implemented.
+
 ## App metadata
 
 The preferred tool shape is nested:

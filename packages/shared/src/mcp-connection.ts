@@ -7,8 +7,11 @@
 
 import {
   Client,
+  type ElicitResult,
   type FetchLike,
   type OAuthClientProvider,
+  ProtocolError,
+  ProtocolErrorCode,
   SSEClientTransport,
   StreamableHTTPClientTransport,
   type Transport,
@@ -65,6 +68,17 @@ export interface MCPToolUIResolution {
   reason?: string;
 }
 
+/**
+ * Who answers a server's form elicitation: the one Station turn whose tool
+ * call is in flight on this connection. `params` is the SDK-validated
+ * `elicitation/create` params; `signal` aborts when the server cancels.
+ */
+export type MCPElicitationRoute = (request: {
+  serverId: string;
+  params: unknown;
+  signal: AbortSignal;
+}) => Promise<ElicitResult>;
+
 export interface MCPConnection {
   client: Client;
   serverId: string;
@@ -72,6 +86,17 @@ export interface MCPConnection {
   negotiation: MCPNegotiation;
   close: () => Promise<void>;
   disconnect: () => Promise<void>;
+  /**
+   * Run `operation` with `route` answering any elicitation the server sends
+   * meanwhile. Present on owned connections. A connection is shared across
+   * turns, and neither protocol era tells the client which in-flight call an
+   * elicitation belongs to, so while two routes are open an elicitation is
+   * refused rather than shown to a person who may not own it.
+   */
+  withElicitationRoute?: <T>(
+    route: MCPElicitationRoute,
+    operation: () => Promise<T>,
+  ) => Promise<T>;
   /** Present on owned connections; false after a local retirement fence. */
   isUsable?: () => boolean;
   localState?: () => ReturnType<MCPPreparedConnection['inspect']>;
@@ -126,6 +151,20 @@ const MCP_APPS_EXTENSION_ID = 'io.modelcontextprotocol/ui';
 const MCP_APPS_MIME_TYPE = 'text/html;profile=mcp-app';
 
 /**
+ * Client capabilities Station declares. Form-mode elicitation only: URL mode
+ * sends the person to a third-party page Station cannot vouch for, so it is
+ * not declared and the SDK refuses it. Sampling is not declared.
+ */
+export const STATION_MCP_CLIENT_CAPABILITIES = {
+  elicitation: { form: {} },
+  extensions: {
+    [MCP_APPS_EXTENSION_ID]: {
+      mimeTypes: [MCP_APPS_MIME_TYPE],
+    },
+  },
+};
+
+/**
  * Create an MCP client from a tool definition.
  * Returns the connected client with its tool catalog.
  */
@@ -145,6 +184,7 @@ export function prepareMCPConnection(
   const pending = new Set<Promise<void>>();
   let connecting: Promise<MCPConnection> | undefined;
   let closing: Promise<void> | undefined;
+  const elicitationRoutes = new Set<{ route: MCPElicitationRoute }>();
   const current = () => !retired && isCurrent() === true;
   const assertCurrent = () => {
     if (!current())
@@ -266,13 +306,7 @@ export function prepareMCPConnection(
             client = new Client(
               { name: 'station', version: '0.1.0' },
               {
-                capabilities: {
-                  extensions: {
-                    [MCP_APPS_EXTENSION_ID]: {
-                      mimeTypes: [MCP_APPS_MIME_TYPE],
-                    },
-                  },
-                },
+                capabilities: STATION_MCP_CLIENT_CAPABILITIES,
                 versionNegotiation: {
                   mode: 'auto',
                   ...(def.timeouts?.startupMs
@@ -282,6 +316,27 @@ export function prepareMCPConnection(
               },
             );
             const rawClient = client;
+            // Legacy servers send this as a request; on the 2026-07-28 era the
+            // SDK fulfils an embedded `input_required` through this same
+            // handler. Either way, only a single open route may answer.
+            rawClient.setRequestHandler(
+              'elicitation/create',
+              async (request, ctx) => {
+                const open = [...elicitationRoutes];
+                if (open.length !== 1)
+                  throw new ProtocolError(
+                    ProtocolErrorCode.InvalidRequest,
+                    open.length === 0
+                      ? 'No Station turn is waiting on this server, so nobody can answer this elicitation.'
+                      : 'Station cannot tell which of several concurrent tool calls this elicitation belongs to.',
+                  );
+                return open[0].route({
+                  serverId: def.id,
+                  params: request.params,
+                  signal: ctx.mcpReq.signal,
+                });
+              },
+            );
             const originalClose = rawClient.close.bind(rawClient);
             closeClient = closeOnce(originalClose);
             rawClient.close = closeClient;
@@ -335,6 +390,15 @@ export function prepareMCPConnection(
               disconnect: handle.close,
               isUsable: () => current() && phase === 'connected',
               localState: handle.inspect,
+              withElicitationRoute: async (route, operation) => {
+                const entry = { route };
+                elicitationRoutes.add(entry);
+                try {
+                  return await operation();
+                } finally {
+                  elicitationRoutes.delete(entry);
+                }
+              },
             };
           } catch (error) {
             if (!retired) phase = 'failed';
