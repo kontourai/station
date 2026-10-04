@@ -8,7 +8,7 @@ import {
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { basename, join, resolve } from 'node:path';
 import { load } from 'js-yaml';
 import { describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
@@ -35,6 +35,7 @@ import {
 import { buildTestImpactManifest } from '../test-impact-manifest.mjs';
 import { listWorkspacePackageManifests } from '../workspace-dependency-provenance.mjs';
 import { FIXTURE_TOOLCHAIN_IDENTITY } from './fixtures/verification-toolchain.mjs';
+import { runWorkflowShell } from './fixtures/workflow-shell.js';
 
 const root = resolve(import.meta.dirname, '../..');
 const makeTempDir = trackTempDirs();
@@ -695,17 +696,7 @@ describe('transitional legacy path: the base-controlled shell in ci.yml (child p
     env: Record<string, string>,
   ) {
     if (!script) throw new Error('ci.yml step not found');
-    return spawnSync(
-      'bash',
-      ['--noprofile', '--norc', '-eo', 'pipefail', '-c', script],
-      {
-        cwd,
-        encoding: 'utf8',
-        env: { PATH: process.env.PATH ?? '', ...env },
-        timeout: 30_000,
-        windowsHide: true,
-      },
-    );
+    return runWorkflowShell(script, cwd, env, 30_000);
   }
 
   function detect(withScript: boolean) {
@@ -918,7 +909,7 @@ describe("a real shard run inherits the lane coordinator's bindings (review H1)"
     );
     mkdirSync(probeDir, { recursive: true });
     try {
-      const probe = `test-results/${probeDir.split('/').pop()}/history-ref.probe.test.ts`;
+      const probe = `test-results/${basename(probeDir)}/history-ref.probe.test.ts`;
       const observed = join(probeDir, 'observed.json');
       writeFileSync(
         join(root, probe),

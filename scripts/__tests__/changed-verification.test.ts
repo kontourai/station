@@ -2796,7 +2796,7 @@ setInterval(() => {}, 1000);`,
     });
     expect(runChanged).toHaveBeenCalledWith(['--base=HEAD'], {
       root: expect.stringContaining('station-test-changed-fixture-'),
-      vitestPath: expect.stringContaining('node_modules/vitest/vitest.mjs'),
+      vitestPath: join(process.cwd(), 'node_modules', 'vitest', 'vitest.mjs'),
     });
     expect(worktreeCommand).toHaveBeenNthCalledWith(
       1,
