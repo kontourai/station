@@ -130,12 +130,35 @@ const regenerateTitleSchema = z
   .object({ replaceManualTitle: z.boolean().optional() })
   .strict();
 
+/**
+ * #3112: the most execution Sessions one conversation read follows. A
+ * conversation gains a Session only when its current one cannot take the
+ * next turn, so a longer lineage is refused rather than read partially.
+ */
+export const CONVERSATION_READ_MAX_SESSIONS = 64;
+
+export class ConversationLineageTooLongError extends Error {
+  readonly name = 'ConversationLineageTooLongError';
+  readonly code = 'conversation_lineage_too_long';
+  constructor(readonly sessionCount: number) {
+    super(
+      `This conversation spans ${sessionCount} Sessions; at most ${CONVERSATION_READ_MAX_SESSIONS} can be read.`,
+    );
+  }
+}
+
 function conversationRouteFailure(
   c: Context,
   logger: Logger,
   message: string,
   error: unknown,
 ) {
+  if (error instanceof ConversationLineageTooLongError) {
+    return c.json(
+      { success: false, code: error.code, error: error.message },
+      422,
+    );
+  }
   if (error instanceof ReservedAgentIdentityError) {
     return c.json(
       { success: false, code: error.code, error: error.message },
@@ -1577,6 +1600,16 @@ export function createConversationRoutes(
       (message, meta) => logger.warn(message, meta),
     );
 
+  /** The conversation's lineage Session ids, refused past the read bound. */
+  const boundedLineage = (conversationId: string): readonly string[] => {
+    const sessionIds = sessionMessageReader?.conversationSessionIds?.(
+      conversationId,
+    ) ?? [conversationId];
+    if (sessionIds.length > CONVERSATION_READ_MAX_SESSIONS)
+      throw new ConversationLineageTooLongError(sessionIds.length);
+    return sessionIds;
+  };
+
   /**
    * One execution Session's share of a conversation read: memory store first
    * (standard userId, then location scan), then the runtime-event projection
@@ -1694,9 +1727,7 @@ export function createConversationRoutes(
   }> => {
     const runtimeSlug = runtimeAgentKey(slug);
     const authority = resolvedAuthority ?? authorityFor(request);
-    const sessionIds = sessionMessageReader?.conversationSessionIds?.(
-      conversationId,
-    ) ?? [conversationId];
+    const sessionIds = boundedLineage(conversationId);
     const messages: ConversationMessage[] = [];
     const sources = new Set<'store' | 'orchestration' | 'empty'>();
     let absence: 'not-found' | 'no-messages' | undefined;
@@ -2311,7 +2342,7 @@ export function createConversationRoutes(
         resolveContextWindowTokens,
         // #3112: the conversation's stats are its whole lineage's, as its
         // message read is.
-        sessionMessageReader?.conversationSessionIds?.(conversationId),
+        boundedLineage(conversationId),
       );
       const response = parseConversationStatsResponse(data);
       if (!response) throw new Error('Conversation stats response was invalid');

@@ -31,6 +31,7 @@ import { OrchestrationService } from '../../../services/orchestration/orchestrat
 import { streamPrimaryAgentChat } from '../chat-primary-stream.js';
 import { prepareChatRequest } from '../chat-request-preparation.js';
 import {
+  CONVERSATION_READ_MAX_SESSIONS,
   createConversationRoutes,
   createGlobalConversationRoutes,
 } from '../conversations.js';
@@ -487,5 +488,38 @@ describe('Station-agent conversation storage (#3112)', () => {
       service.readConversationUsage('conv-stats', INTERNAL_SESSION_READ_SCOPE)
         .turns,
     ).toBe(perSession[0]!.turns + perSession[1]!.turns);
+  });
+
+  test('a conversation read refuses a lineage longer than its bound instead of truncating it', async () => {
+    // Pinned beside the constant it bounds: a change to either is deliberate.
+    expect(CONVERSATION_READ_MAX_SESSIONS).toBe(64);
+    await startSession('conv-long', 'conv-long');
+    let predecessor = 'conv-long';
+    const reserveTo = (count: number) => {
+      while (eventStore.conversationSessions('conv-long').length < count) {
+        predecessor = eventStore.reserveNextConversationSession({
+          conversationId: 'conv-long',
+          predecessorSessionId: predecessor,
+          proposedSessionId: `conv-long:session:${crypto.randomUUID()}`,
+          createdAt: new Date().toISOString(),
+        }).lineage.sessionId;
+      }
+    };
+    const get = (path: string) =>
+      agentRoutes().request(`/${SLUG}/conversations/conv-long/${path}`);
+
+    reserveTo(CONVERSATION_READ_MAX_SESSIONS);
+    expect((await get('messages')).status).toBe(200);
+    expect((await get('stats')).status).toBe(200);
+
+    reserveTo(CONVERSATION_READ_MAX_SESSIONS + 1);
+    for (const path of ['messages', 'stats', 'export']) {
+      const response = await get(path);
+      expect(response.status, path).toBe(422);
+      expect(await response.json(), path).toMatchObject({
+        success: false,
+        code: 'conversation_lineage_too_long',
+      });
+    }
   });
 });
