@@ -68,8 +68,7 @@ publication witness under its lock. A successful keep is `201` with a
 `task-declared-output-keep/v1` result; conflicts are `409`, previously deleted kept outputs
 are `410`, unavailable storage is `503`, and lost current authority is opaque
 `404`. A keep preserves an artifact or reference; it does not establish agent
-attribution, accepted quality or feedback. Shared review and exact-version
-feedback remain programme work.
+attribution, accepted quality or feedback. Exact-version review is described below; it remains a human statement rather than Task acceptance.
 
 New snapshots store their Task creation identity and, for admitted Session
 declarations, the declaration's Session/event/turn/tool identities privately.
@@ -1464,6 +1463,33 @@ returns unexpected failures as a generic 500 with
 still return a string `error`; a message substring is not a universal API error
 code. Authentication, origin, scope, membership, and operation-specific refusals
 also have their own shapes.
+
+Every JSON response the runtime writes itself, success or refusal, carries the
+response header `x-station-envelope: 1`
+(`STATION_ENVELOPE_HEADER` in `@kontourai/station-contracts/http`), and CORS
+exposes it. Because there is no universal envelope, a reverse proxy or gateway
+can answer with JSON in a Station shape; the header is how a client tells
+Station's own answer from one written in between. The header is set by
+[one middleware](../../src-server/runtime/bootstrap/runtime-http.ts) around
+every handler. The refusals Station writes outside that app set it
+themselves: the [virtual application ingress](../../src-server/services/connections/virtual-application.ts)
+(its admission refusals, and the 502 that replaces an app answer which tried
+to set a cookie) and the self-hosted broker's
+[gated application](../../src-server/runtime/bootstrap/self-hosted-broker-pion-runtime.ts)
+(retired trust, forbidden origin). It
+describes one hop: a response relayed from another Station through
+`fetchRemoteStation` leaves without it. Non-JSON bodies (event streams, files,
+plain text) do not carry it. A Station older than the header never sends it,
+so its absence proves nothing about such a Station.
+
+The SDK treats a missing header as "not Station's answer" only for an origin
+that has already sent it, and forgets an origin when its credential changes
+or the client switches Station. One case it cannot tell apart: Stations of
+different versions behind one origin (a rolling deploy, or a downgrade). Until
+the origin is forgotten, the older Station's refusals read as an
+intermediary's, so a queued chat message is retried instead of dropped and may
+be refused again on each retry until a reload. That fails toward retrying,
+never toward dropping a message.
 
 Clients must check HTTP status and the family's body/stream result. Treat 202
 as acceptance with pending work when the response says so, 409 indeterminate
@@ -3097,3 +3123,41 @@ The [pairing panel](../../packages/connect/src/react/DevicePairingPanel.tsx) off
 explicit choice through the [CLI owner](../../packages/cli/src/commands/environment.ts).
 See [Project membership and enrollment](../design/project-membership.md) for the
 separate account-binding and membership paths.
+
+
+### Review an immutable Task output
+
+In personal Station, `POST /api/tasks/:taskId/room/output-feedback` accepts
+`{proposalId, occurredAt, target: {outputId, digest, taskCreatedAt}, review, text}`.
+`digest` is the retained output's `sha256:` value, `taskCreatedAt` identifies the
+Task incarnation, and `review` is `comment`, `changes-requested` or `accepted`.
+The server derives the human principal and requires current room message-write
+authority. Agents cannot append this body. A fresh statement must resolve an
+output in that Task and Project with the exact digest and Task incarnation.
+
+The statement enters the same ordered, attributed room history and stream as
+conversation messages. `accepted` means that reviewer accepted this version;
+it does not change Task status, approve a workflow, or establish quality. Room
+history labels feedback from a different Task creation time as an earlier Task
+version; retained review never establishes acceptance of a replacement Task.
+Use the same proposal ID and unchanged payload after an uncertain response.
+Current authority is rechecked before a duplicate receipt is returned; exact
+retries survive output deletion and room-record retention. Changed content
+under that ID conflicts. Fresh statements about a deleted output are refused.
+
+Rooms retain existing v2 record bytes. The first output review and later writes
+use v3; a durable per-room database trigger rejects v2 inserts after that room
+has adopted v3, including after its feedback records have expired. Legacy
+readers may be unable to read a room once it contains v3 records.
+
+The Task output UI offers review only after authorized downloaded bytes match
+the selected version's length, ETag and SHA-256 digest. Supported plain-HTTP
+browser connections use the pinned portable SHA-256 implementation when
+SubtleCrypto is absent. Text/JSON previews are
+bounded and safe PNG previews retain the existing download policy. Other media
+remain download-only; loading bytes does not prove a person inspected them.
+Drafts and uncertain retries are guarded when hiding or deleting the output.
+Invited/public result reads currently omit output feedback: their human-history
+projection includes conversation messages only. Invited/public participation,
+browser acceptance and installed delivery require separate evidence from these
+source contracts.

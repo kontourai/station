@@ -110,6 +110,7 @@ import { getAuthorityObservation } from '@kontourai/station-sdk/authority-observ
 import {
   type ApiRequestScope,
   DEFAULT_CLIENT_REQUEST_TIMEOUT_MS,
+  StationHttpError,
   StationRequestAuthorityError,
 } from '@kontourai/station-sdk/client';
 import {
@@ -182,12 +183,12 @@ function defaultFetchAuthorityObservation(
     });
 }
 
-/** A 401 from the observation read: the credential is not authorized. */
+/**
+ * A 401 from the observation read: the credential is not authorized. Read
+ * from the refusal's status (#2708), never from its sentence.
+ */
 function isUnauthorizedObservationFailure(error: unknown): boolean {
-  return (
-    error instanceof Error &&
-    /did not accept the presented credential/.test(error.message)
-  );
+  return error instanceof StationHttpError && error.status === 401;
 }
 
 interface ActiveAuthorityClient {

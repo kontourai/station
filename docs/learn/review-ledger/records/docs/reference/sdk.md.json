@@ -24,11 +24,7 @@
 
     "packages/contracts/src/application-session.ts",
 
-    "packages/contracts/src/catalog.ts",
-
     "packages/contracts/src/connection-recovery.ts",
-
-    "packages/contracts/src/engine-accounts.ts",
 
     "packages/contracts/src/notification.ts",
 
@@ -37,8 +33,6 @@
     "packages/contracts/src/task-basis-mcp.ts",
 
     "packages/contracts/src/task-basis.ts",
-
-    "packages/contracts/src/usage-rollup.ts",
 
     "packages/sdk/package.json",
 
@@ -132,8 +126,6 @@
 
     "packages/sdk/src/client/session-outputs.ts",
 
-    "packages/sdk/src/client/skill-experiences.ts",
-
     "packages/sdk/src/client/skills.ts",
 
     "packages/sdk/src/client/task-basis.ts",
@@ -171,8 +163,6 @@
     "packages/sdk/src/core/ListenerManager.ts",
 
     "packages/sdk/src/device-code-login.ts",
-
-    "packages/sdk/src/engine-accounts.ts",
 
     "packages/sdk/src/flow-gate-evaluations.ts",
 
@@ -223,8 +213,6 @@
     "packages/sdk/src/query-domains/plugin-queries.ts",
 
     "packages/sdk/src/query-domains/projectData.ts",
-
-    "packages/sdk/src/query-domains/skillExperiences.ts",
 
     "packages/sdk/src/query-domains/systemRuntime.ts",
 
@@ -278,15 +266,11 @@
 
     "packages/shared/src/mcp-ui-csp.ts",
 
-    "packages/shared/src/skill-experience-reader.ts",
-
     "packages/shared/src/station-home-archive.ts",
 
     "pnpm-lock.yaml",
 
     "src-desktop/src/native_account_operations.rs",
-
-    "src-server/analytics/usage-rollup-service.ts",
 
     "src-server/knowledge-store/adapters/shared/file-transactions.ts",
 
@@ -295,16 +279,6 @@
     "src-server/knowledge-store/knowledge-store-provider.ts",
 
     "src-server/providers/adapters/station-agent-adapter.ts",
-
-    "src-server/providers/registries/filesystem-skill-registry.ts",
-
-    "src-server/providers/registries/json-manifest-registry.ts",
-
-    "src-server/providers/registries/registry-catalog-installed-state.ts",
-
-    "src-server/providers/registries/registry-source-configuration.ts",
-
-    "src-server/providers/registries/registry-source-manager.ts",
 
     "src-server/routes/agents/invoke-agent.ts",
 
@@ -324,13 +298,9 @@
 
     "src-server/routes/orchestration/workspace-pane-host-actions.ts",
 
-    "src-server/routes/plugins/__tests__/registry-marketplaces.routes.test.ts",
-
     "src-server/routes/plugins/plugin-install-routes.ts",
 
     "src-server/routes/plugins/plugin-public-routes.ts",
-
-    "src-server/routes/plugins/registry.ts",
 
     "src-server/routes/projects/coding.ts",
 
@@ -378,13 +348,7 @@
 
     "src-server/security/pairing-route-scopes.ts",
 
-    "src-server/services/agents/skill-service.ts",
-
     "src-server/services/checkpoints/checkpoint-restore.ts",
-
-    "src-server/services/connections/__tests__/engine-account-history.test.ts",
-
-    "src-server/services/connections/engine-account-history.ts",
 
     "src-server/services/evidence/answer-assessment-module.ts",
 
@@ -399,8 +363,6 @@
     "src-server/services/identity/relay-enrollment-service.ts",
 
     "src-server/services/notifications/notification-service.ts",
-
-    "src-server/services/orchestration/__tests__/engine-account-usage-attribution.test.ts",
 
     "src-server/services/orchestration/conversation-open-resolver.ts",
 
@@ -417,8 +379,6 @@
     "src-server/services/orchestration/run-projection.ts",
 
     "src-server/services/orchestration/session-query-module.ts",
-
-    "src-server/services/orchestration/session-transcript-reads.ts",
 
     "src-server/services/orchestration/transcript-search-queries.ts",
 
@@ -460,27 +420,27 @@
 
     "src-server/voice/voice-session.ts",
 
-    "src-ui/src/components/CommandPalette.tsx",
-
-    "src-ui/src/components/EnvironmentPicker.tsx",
-
     "src-ui/src/components/attention/NeedsInputReply.tsx",
 
-    "src-ui/src/components/chat-dock/ConversationOpenRevalidator.tsx",
-
     "src-ui/src/components/chat-dock/conversationOpenController.ts",
+
+    "src-ui/src/components/chat-dock/ConversationOpenRevalidator.tsx",
 
     "src-ui/src/components/chat/CheckpointRestoreButton.tsx",
 
     "src-ui/src/components/chat/QuoteSourceLink.tsx",
 
+    "src-ui/src/components/CommandPalette.tsx",
+
+    "src-ui/src/components/EnvironmentPicker.tsx",
+
     "src-ui/src/components/mcp-ui/MCPToolUIFrame.tsx",
 
     "src-ui/src/components/search/WorkspaceSearchPalette.tsx",
 
-    "src-ui/src/contexts/ApiBaseContext.tsx",
-
     "src-ui/src/contexts/AuthorityQueryContext.tsx",
+
+    "src-ui/src/contexts/chat-drafts-store.ts",
 
     "src-ui/src/contexts/MessageContextContext.tsx",
 
@@ -488,15 +448,13 @@
 
     "src-ui/src/contexts/VoiceProviderContext.tsx",
 
-    "src-ui/src/contexts/chat-drafts-store.ts",
+    "src-ui/src/core/layoutProviders.ts",
 
     "src-ui/src/core/PluginRegistry.ts",
 
-    "src-ui/src/core/SDKAdapter.tsx",
-
-    "src-ui/src/core/layoutProviders.ts",
-
     "src-ui/src/core/pluginSharedRuntime.ts",
+
+    "src-ui/src/core/SDKAdapter.tsx",
 
     "src-ui/src/hooks/orchestration/queueDrain.ts",
 
@@ -520,29 +478,19 @@
 
     "src-ui/src/lib/queryPersistence.ts",
 
-    "src-ui/src/lib/skill-experience-preview.ts",
-
     "src-ui/src/main.tsx",
 
     "src-ui/src/platform/PlatformSessionGate.tsx",
 
-    "src-ui/src/platform/native/nativeAccountSessionBridge.ts",
-
-    "src-ui/src/platform/native/nativeRelayConnectionOwner.ts",
-
     "src-ui/src/utils/answer-quotes.ts",
-
-    "src-ui/src/views/CredentialProfileLoginProfiles.tsx",
-
-    "src-ui/src/views/ProjectPage.tsx",
 
     "src-ui/src/views/account/GuestProjectAccessView.tsx",
 
-    "src-ui/src/views/connections-hub/RelayRouteProfiles.tsx",
+    "src-ui/src/views/CredentialProfileLoginProfiles.tsx",
 
     "src-ui/src/views/learning-review/LearningSourceDialog.tsx",
 
-    "src-ui/src/views/native-relay/NativeRelayMemberShell.tsx",
+    "src-ui/src/views/ProjectPage.tsx",
 
     "src-ui/src/views/settings/CoreUpdateCheck.tsx",
 
@@ -552,7 +500,59 @@
 
     "src-ui/src/workspace-panes/PluginWorkspacePaneSDKBoundary.tsx",
 
-    "src-ui/src/workspace-panes/WorkspacePaneHostActions.tsx"
+    "src-ui/src/workspace-panes/WorkspacePaneHostActions.tsx",
+
+    "packages/sdk/src/engine-accounts.ts",
+
+    "packages/contracts/src/engine-accounts.ts",
+
+    "src-server/services/connections/engine-account-history.ts",
+
+    "src-server/services/connections/__tests__/engine-account-history.test.ts",
+
+    "src-server/services/orchestration/__tests__/engine-account-usage-attribution.test.ts",
+
+    "src-server/analytics/usage-rollup-service.ts",
+
+    "src-server/services/orchestration/session-transcript-reads.ts",
+
+    "packages/contracts/src/usage-rollup.ts",
+
+    "packages/contracts/src/catalog.ts",
+
+    "packages/sdk/src/client/skill-experiences.ts",
+
+    "packages/sdk/src/query-domains/skillExperiences.ts",
+
+    "packages/shared/src/skill-experience-reader.ts",
+
+    "src-server/providers/registries/filesystem-skill-registry.ts",
+
+    "src-server/providers/registries/json-manifest-registry.ts",
+
+    "src-server/providers/registries/registry-catalog-installed-state.ts",
+
+    "src-server/providers/registries/registry-source-configuration.ts",
+
+    "src-server/providers/registries/registry-source-manager.ts",
+
+    "src-server/routes/plugins/__tests__/registry-marketplaces.routes.test.ts",
+
+    "src-server/routes/plugins/registry.ts",
+
+    "src-server/services/agents/skill-service.ts",
+
+    "src-ui/src/contexts/ApiBaseContext.tsx",
+
+    "src-ui/src/lib/skill-experience-preview.ts",
+
+    "src-ui/src/platform/native/nativeAccountSessionBridge.ts",
+
+    "src-ui/src/platform/native/nativeRelayConnectionOwner.ts",
+
+    "src-ui/src/views/connections-hub/RelayRouteProfiles.tsx",
+
+    "src-ui/src/views/native-relay/NativeRelayMemberShell.tsx"
   ],
 
   "checks": [

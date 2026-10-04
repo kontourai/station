@@ -26,7 +26,11 @@
 
     "packages/sdk/src/queryFactories.ts",
 
+    "packages/shared/package.json",
+
     "pnpm-lock.yaml",
+
+    "scripts/button-cap-ratchet.mjs",
 
     "scripts/mobile-css-ratchet.mjs",
 
@@ -48,13 +52,43 @@
 
     "src-server/utils/logger.ts",
 
+    "src-ui/src/components/ActionOverflowMenu.tsx",
+
+    "src-ui/src/components/ActionRow.tsx",
+
     "src-ui/src/components/Dialog.tsx",
 
-    "src-ui/src/components/header/ThemeToggle.tsx",
+    "src-ui/src/components/PickerCreateAction.css",
+
+    "src-ui/src/components/PickerCreateAction.tsx",
 
     "src-ui/src/components/ResponsiveDialogSurface.tsx",
 
+    "src-ui/src/components/chat-dock/ChatDock.tsx",
+
+    "src-ui/src/components/chat-dock/ChatDockInboxRows.tsx",
+
+    "src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx",
+
+    "src-ui/src/components/chat-dock/ChatDockMobileOverflowSheet.tsx",
+
+    "src-ui/src/components/chat-dock/ChatDockProjectContext.tsx",
+
+    "src-ui/src/components/chat-dock/ChatDockProjectSwitcherSheet.tsx",
+
+    "src-ui/src/components/chat-dock/MobileTaskSwitcher.tsx",
+
+    "src-ui/src/components/chat/chat.css",
+
+    "src-ui/src/components/header/ThemeToggle.tsx",
+
+    "src-ui/src/components/inbox-row/InboxRowStatus.tsx",
+
+    "src-ui/src/contexts/navigation-store.ts",
+
     "src-ui/src/hooks/useIsMobile.ts",
+
+    "src-ui/src/hooks/useLongPress.ts",
 
     "src-ui/src/hooks/useMobileVisualViewport.ts",
 
@@ -74,51 +108,19 @@
 
     "src-ui/src/utils/logger.ts",
 
-    "scripts/button-cap-ratchet.mjs",
-
-    "src-ui/src/components/ActionRow.tsx",
-
-    "src-ui/src/components/ActionOverflowMenu.tsx",
-
-    "tests/helpers/visible-action-count.ts",
-
-    "src-ui/src/components/chat-dock/MobileTaskSwitcher.tsx",
-
-    "src-ui/src/components/chat-dock/ChatDockProjectSwitcherSheet.tsx",
-
-    "src-ui/src/components/chat-dock/ChatDockProjectContext.tsx",
-
-    "src-ui/src/components/PickerCreateAction.tsx",
-
-    "src-ui/src/components/PickerCreateAction.css",
-
-    "src-ui/src/components/inbox-row/InboxRowStatus.tsx",
-
-    "src-ui/src/contexts/navigation-store.ts",
-
-    "tests/cross-runtime-chat-switching.spec.ts",
-
-    "src-ui/src/components/chat-dock/ChatDock.tsx",
-
-    "src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx",
-
-    "src-ui/src/components/chat-dock/ChatDockInboxRows.tsx",
-
-    "src-ui/src/components/chat-dock/ChatDockMobileOverflowSheet.tsx",
-
-    "src-ui/src/components/chat/chat.css",
+    "src-ui/src/views/home/work-facts.ts",
 
     "src-ui/src/views/home/work-status.ts",
 
-    "src-ui/src/views/home/work-facts.ts",
-
-    "src-ui/src/hooks/useLongPress.ts",
+    "tests/cross-runtime-chat-switching.spec.ts",
 
     "tests/helpers/long-press.ts",
 
-    "packages/shared/package.json",
+    "tests/helpers/visible-action-count.ts",
 
-    "src-ui/src/components/NewChatAction.tsx"
+    "src-ui/src/components/NewChatAction.tsx",
+
+    "src-ui/src/components/chat-dock/ChatDockProjectContext.css"
   ],
 
   "checks": [
