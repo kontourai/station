@@ -26,6 +26,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
+import { sanitizedGitEnvironment } from '../lib/git-environment.mjs';
 import { fingerprintFor } from '../type-laundering-gate.mjs';
 
 const GATE = fileURLToPath(
@@ -135,7 +136,7 @@ describe('type-laundering baseline growth is judged against the merge base', () 
   function repo() {
     const checkout = spacedCheckout(`${castA}\n`);
     const env = {
-      ...process.env,
+      ...sanitizedGitEnvironment(process.env),
       GIT_CEILING_DIRECTORIES: dirname(checkout),
       GIT_CONFIG_GLOBAL: '/dev/null',
       GIT_CONFIG_NOSYSTEM: '1',
@@ -144,8 +145,6 @@ describe('type-laundering baseline growth is judged against the merge base', () 
       GIT_COMMITTER_NAME: 'Fixture',
       GIT_COMMITTER_EMAIL: 'fixture@example.invalid',
     };
-    for (const key of Object.keys(env))
-      if (/^GIT_(DIR|WORK_TREE|INDEX_FILE)$/.test(key)) delete env[key];
     const git = (...args: string[]) => {
       const result = spawnSync('git', args, {
         cwd: checkout,
