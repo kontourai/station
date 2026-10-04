@@ -1,0 +1,7 @@
+{
+  "revision": "74a5cf14585db34917d862e6c8b79276c35ebe50",
+
+  "notes": [
+    {"path":"src-desktop/AGENTS.md","note":"Reviewed the verification-guide delta: only native recovery labels and collapsed technical detail wording changed. Desktop routing and evidence instructions remain accurate; no native build or physical-device claim is introduced.","inputs":["src-desktop/AGENTS.md"]}
+  ]
+}

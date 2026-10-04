@@ -1,0 +1,7 @@
+{
+  "revision": "707749d31f0c095a87d8b4838361a64791068bf0",
+
+  "notes": [
+    {"path":"scripts/AGENTS.md","note":"Reviewed the merged test-resource manifest: retains CI evidence/repair CLI fixtures and adds the visual Skill author-build FIFO fixture. All child-process fixtures remain in the process-heavy class; routed instruction scope is unchanged. This replaces both divergent source bindings with the committed combined bytes.","inputs":["scripts/AGENTS.md"]}
+  ]
+}

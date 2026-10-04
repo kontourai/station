@@ -1,0 +1,7 @@
+{
+  "revision": "c7dcc1ff793055c5bc1161b9a7db519cfb9d6e96",
+
+  "notes": [
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"#3071 input delta: session-api.md gained a paragraph on requests closed by their turn's abort. The ADR only routes readers to the Session API for current behavior and makes no claim about request settlement. No prose change.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md"]}
+  ]
+}

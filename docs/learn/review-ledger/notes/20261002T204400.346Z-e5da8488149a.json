@@ -1,0 +1,7 @@
+{
+  "revision": "b38fa3bf89210ebfba30a32ced0c7f5027261bcd",
+
+  "notes": [
+    {"path":"docs/guides/self-hosted-broker.md","note":"Reviewed the local saved-credential summary against the broker's retirement and renewal contracts. No broker behavior or remote availability check changed; the UI now avoids treating local expiry as a live service result.","inputs":["docs/guides/self-hosted-broker.md"]}
+  ]
+}

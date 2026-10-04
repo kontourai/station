@@ -1,0 +1,7 @@
+{
+  "revision": "59d3d5ae54cbcb63b06e7b6539e5a304493cf7c0",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed merged chat-controls section against upstream owner changes and the mobile-picker/default-project contract. Chat-only URL updates preserve the selected next-chat default; explicit workspace selection changes it after guards commit. Existing status, notification and native evidence limits remain in force.","inputs":["docs/design/chat-composer.md"]}
+  ]
+}

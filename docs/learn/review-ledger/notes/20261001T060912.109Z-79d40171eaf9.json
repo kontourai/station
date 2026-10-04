@@ -1,0 +1,7 @@
+{
+  "revision": "1a588585de1f0495239eed5f4f9c563c66f3224b",
+
+  "notes": [
+    {"path":"packages/contracts/AGENTS.md","note":"#3071 input delta: contracts.md gained two sentences on openRequestIds/pendingReview. This file routes to the contracts reference and sets package rules; no contracts source changed in this work. No prose change.","inputs":["packages/contracts/AGENTS.md"]}
+  ]
+}

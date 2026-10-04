@@ -76,9 +76,9 @@ Commit and confirm a clean tree before mutation. Preserve intervening edits and 
 
 ## Issue references
 
-`archive#NNNN` — and any `station#NNNN` or bare `#NNNN` below #550, the reseeded backlog's start — refers to [kontourai/station-archive](https://github.com/kontourai/station-archive), the pre-2026-08-28 backlog and history. Those discussions remain readable there; this repository's own issues start fresh. Write new references as plain `#NNNN` for this repo or `archive#NNNN` for the archive.
+`archive#NNNN` is [kontourai/station-archive](https://github.com/kontourai/station-archive), the pre-2026-08-28 history. Here, #27–#601 re-file archive issues under new numbers (most carry a "Migrated from the pre-public backlog" line), so low numbers exist in both repos.
 
-Bare `#NNNN` references in areas the sweep has not touched (notably `packages/cli`, `packages/sdk`, `packages/connect`, `scripts`) predate the reset and refer to the archive as well.
+A bare `#NNNN` means this repo, except pre-reset text in areas the sweep skipped (notably `packages/cli`, `packages/sdk`, `packages/connect`, `scripts`). When unsure, check both repos. Write `#NNNN` for this repo, `archive#NNNN` for the archive.
 
 ## Read only the route you need
 

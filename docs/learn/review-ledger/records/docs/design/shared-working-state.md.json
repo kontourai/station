@@ -9,18 +9,16 @@
 
   "limits": "Reviewed the documented contract and actual callers, not every implementation branch. No new external engine, provider, cross-host, native/device or power-loss result. Historical test and issue receipts keep their original scope.",
 
-  "document": {"digest":"1934cf0e1e341c669f57f475a1ae4ecd3a3077dd70720190a23070776f0d71b0","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
-
   "sources": [
-    {"path":"src-server/domain/__tests__/shared-working-state.test.ts","digest":"645f8af42ee712f770a63c50ba68117870d06c748134f046f8f6e0d10806f424","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/domain/__tests__/shared-working-state.test.ts",
 
-    {"path":"src-server/domain/shared-working-state-editing.ts","digest":"6aa91555717974ec7fa40fadbe781eb0f0ec2be8739b212065a2182f9da01e18","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/domain/shared-working-state-editing.ts",
 
-    {"path":"src-server/domain/shared-working-state.ts","digest":"d93d73bc2c9331933a64b5e2aa891cc87bbcbeb70f5578a4009331b2c89c36ad","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/domain/shared-working-state.ts",
 
-    {"path":"src-server/services/orchestration/event-store.ts","digest":"93c3dbecfc298b2ae05f65a29fe897f34f13a69ba0cbd72b6fca8013a9a6361a","revision":"b208a334880a96bb3f4267c2d2ffd6d03e118218"},
+    "src-server/services/orchestration/event-store.ts",
 
-    {"path":"src-server/services/orchestration/project-task-room-working-state.ts","digest":"08a0f3c3ce86080d5bffee5b50af42354c55d6fb3aa69e471793aba8b874c820","revision":"0c1f436037261c43eeca3e079f5106948360c591"}
+    "src-server/services/orchestration/project-task-room-working-state.ts"
   ],
 
   "checks": [

@@ -1,0 +1,7 @@
+{
+  "revision": "6c2cd5fa91bdd90c87d03e9f55df59b7e6a7f247",
+
+  "notes": [
+    {"path":"packages/contracts/AGENTS.md","note":"Reviewed contracts reference #2941 optional owner additions against this domain-type and compatibility guidance. Types remain in pull-request-provider, no runtime helper was added to contracts, and real consumer evidence passed; guidance unchanged.","inputs":["packages/contracts/AGENTS.md"]}
+  ]
+}

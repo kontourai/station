@@ -1,0 +1,19 @@
+{
+  "revision": "16c39c73ebb3cd08baa22e9ee63335206655f369",
+
+  "notes": [
+    {"path":".veritas/README.md","note":"Reviewed the documentation-guide delta and this page's maintenance/freshness references. The added no-commit merge step applies to legacy capture reviews; per-record freshness, evidence distinctions, review routing and improvement workflow remain accurate. Source inspection only; no blanket semantic or runtime certification.","inputs":[".veritas/README.md"]},
+
+    {"path":"docs/README.md","note":"Reviewed the documentation-guide delta and this page's maintenance/freshness references. The added no-commit merge step applies to legacy capture reviews; per-record freshness, evidence distinctions, review routing and improvement workflow remain accurate. Source inspection only; no blanket semantic or runtime certification.","inputs":["docs/README.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Reviewed the documentation-guide delta and this page's maintenance/freshness references. The added no-commit merge step applies to legacy capture reviews; per-record freshness, evidence distinctions, review routing and improvement workflow remain accurate. Source inspection only; no blanket semantic or runtime certification.","inputs":["docs/architecture/abstraction-review.md"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Reviewed the documentation-guide delta and this page's maintenance/freshness references. The added no-commit merge step applies to legacy capture reviews; per-record freshness, evidence distinctions, review routing and improvement workflow remain accurate. Source inspection only; no blanket semantic or runtime certification.","inputs":["docs/guides/code-quality.md"]},
+
+    {"path":"docs/guides/development.md","note":"Reviewed the documentation-guide delta and this page's maintenance/freshness references. The added no-commit merge step applies to legacy capture reviews; per-record freshness, evidence distinctions, review routing and improvement workflow remain accurate. Source inspection only; no blanket semantic or runtime certification.","inputs":["docs/guides/development.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed the documentation-guide delta and this page's maintenance/freshness references. The added no-commit merge step applies to legacy capture reviews; per-record freshness, evidence distinctions, review routing and improvement workflow remain accurate. Source inspection only; no blanket semantic or runtime certification.","inputs":["docs/guides/integrating-station.md"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed the documentation-guide delta and this page's maintenance/freshness references. The added no-commit merge step applies to legacy capture reviews; per-record freshness, evidence distinctions, review routing and improvement workflow remain accurate. Source inspection only; no blanket semantic or runtime certification. Also inspected the screenshots.spec.ts delta since its recorded revision: five project-dialog locators follow the renamed Projects sheet; the gallery capture, container, selection and byte-comparison contract is unchanged. This is source review, not a new browser capture.","inputs":["docs/guides/testing.md"]}
+  ]
+}
