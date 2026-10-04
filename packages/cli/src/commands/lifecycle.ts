@@ -86,6 +86,7 @@ import {
   publishActiveLocalStation,
   removeOwnedActiveLocalStation,
 } from './active-local-station.js';
+import { isLoopbackHost, planWatchChildren } from './dev-watch.js';
 import {
   CWD,
   DEFAULT_INSTANCE_ID,
@@ -133,6 +134,7 @@ import {
   IGNORE_SERVICE_STATE_FLAG,
   renderSupervisingServiceRefusal,
 } from './service-upgrade-guard.js';
+import { UI_PROXY_BACKEND_PREFIXES } from './ui-proxy-prefixes.js';
 
 // Moved to lifecycle-code-root.ts (#2675 B1); re-exported for existing importers.
 export {
@@ -159,38 +161,7 @@ export const UI_MIME_TYPES: Record<string, string> = {
   '.map': 'application/json',
 };
 
-/**
- * Bare top-level backend mounts the UI-server proxy forwards to when a
- * request has no matching static asset. Mirrors the non-`/api` mounts in
- * `src-server/runtime/routes/runtime-routes.ts` (`/agents`, `/acp`, `/events`,
- * `/integrations`, `/config`, `/bedrock`, `/monitoring`, `/scheduler`,
- * `/notifications`) plus bare framework routes registered directly on the
- * same Hono app by `@voltagent/server-core`/`@voltagent/server-hono` that are
- * not declared in `runtime-routes.ts` at all: `/tools` and `/observability`
- * (confirmed via their framework route registrations in
- * `node_modules/@voltagent/server-core/dist/index.js`, wired
- * unconditionally by `honoServer`'s `createApp` — no current `src-ui` call
- * site hits it yet, but it is a live mount today, not hypothetical). `/api`
- * covers every `/api/*` mount as one prefix. This list is empirically
- * derived, not a static enumeration of `runtime-routes.ts` alone — re-check
- * both `runtime-routes.ts` and the VoltAgent server packages' own route
- * wiring before assuming it is exhaustive.
- */
-export const UI_PROXY_BACKEND_PREFIXES: string[] = [
-  '/.well-known',
-  '/api',
-  '/agents',
-  '/acp',
-  '/events',
-  '/integrations',
-  '/config',
-  '/bedrock',
-  '/monitoring',
-  '/scheduler',
-  '/notifications',
-  '/tools',
-  '/observability',
-];
+export { UI_PROXY_BACKEND_PREFIXES };
 
 /**
  * Backend-owned HTML documents that must not be replaced by the SPA fallback.
@@ -1225,6 +1196,11 @@ export interface StartOptions extends InstanceSelector {
   /** Extra pairing-trust origins merged into ALLOWED_ORIGINS (#1672). */
   allowedOrigins?: string[];
   build?: boolean;
+  /**
+   * Development mode (`--watch`): the server runs under `tsx watch` from
+   * source and the UI is the Vite dev server proxying to it. Builds nothing.
+   */
+  watch?: boolean;
   /**
    * Explicit consent-listener port (station#3677). Default: serverPort + 3,
    * the same derivation the runtime uses — validated and collision-checked
@@ -4133,8 +4109,22 @@ export async function waitForTcpOk(
 }
 
 export async function start(opts: StartOptions = {}): Promise<void> {
-  const { build, features, force } = opts;
-  const host = normalizeLifecycleHost(opts.host);
+  const { build, features, force, watch } = opts;
+  if (watch && build) {
+    throw new Error(
+      '--watch runs from source and builds nothing; --build does not apply.',
+    );
+  }
+  // Watch mode serves the UI from Vite, which Station documents as
+  // loopback-only (development.md), so it defaults to and requires loopback.
+  const host = normalizeLifecycleHost(
+    opts.host ?? (watch ? '127.0.0.1' : undefined),
+  );
+  if (watch && !isLoopbackHost(host)) {
+    throw new Error(
+      `--watch serves the Vite dev server, which is loopback-only; --host=${host} is not supported.`,
+    );
+  }
   const {
     serverPort,
     uiPort,
@@ -4184,7 +4174,10 @@ export async function start(opts: StartOptions = {}): Promise<void> {
   // exist and a custom --base path may have a multi-level missing ancestor
   // chain (#1570 review; supersedes the earlier pre-mkdir call from #1567).
   const buildPaths = resolveBuildPaths(instanceId);
-  const needsBuild = Boolean(build) || !isInstalled(instanceId);
+  const needsBuild = !watch && (Boolean(build) || !isInstalled(instanceId));
+  const warnStale = () => {
+    if (!watch) warnIfBuildStale(buildPaths);
+  };
 
   assertNoPortConflicts(
     instanceId,
@@ -4216,7 +4209,7 @@ export async function start(opts: StartOptions = {}): Promise<void> {
     }
   } else if (runningMatch) {
     if (!force) {
-      warnIfBuildStale(buildPaths);
+      warnStale();
       console.log(
         `✓ Already running\n  UI:   http://localhost:${runningMatch.uiPort}\n  Stop: ${renderStopCommand(runningMatch.instanceId, projectHome, homeSource)}`,
       );
@@ -4238,7 +4231,7 @@ export async function start(opts: StartOptions = {}): Promise<void> {
       return;
     }
     console.log('Restarting instance (reusing existing build)...');
-    warnIfBuildStale(buildPaths);
+    warnStale();
     stopRecord(runningMatch, false, opts.intent ?? 'operator_stop');
     if (opts.rotateLogOnRestart && logFile && existsSync(logFile)) {
       const previousLog = `${logFile}.previous`;
@@ -4246,7 +4239,7 @@ export async function start(opts: StartOptions = {}): Promise<void> {
       renameSync(logFile, previousLog);
     }
   } else {
-    warnIfBuildStale(buildPaths);
+    warnStale();
   }
 
   announceHome(projectHome, homeSource);
@@ -4436,7 +4429,12 @@ export async function start(opts: StartOptions = {}): Promise<void> {
         : []),
     ]),
   ].join(',');
-  const buildManifest = readBuildManifest(instanceId);
+  // Nothing is built in watch mode, so there is no manifest to read; the
+  // server's identity route refuses a start without a full git SHA, so the
+  // source HEAD at launch stands in. It does not follow later edits.
+  const buildManifest = watch
+    ? resolveSourceBuildManifest()
+    : readBuildManifest(instanceId);
   const bootId = randomUUID();
   serverEnv.STATION_BUILD_SHA = buildManifest?.sha ?? 'unknown';
   serverEnv.STATION_BUILD_BRANCH = buildManifest?.branch ?? 'unknown';
@@ -4453,17 +4451,29 @@ export async function start(opts: StartOptions = {}): Promise<void> {
   if (features) serverEnv.STATION_FEATURES = features;
   serverEnv.STATION_LOG_FILE = logFile;
 
+  const watchPlan = watch
+    ? planWatchChildren({
+        nodeExecPath: process.execPath,
+        codeRoot: CWD,
+        serverPort,
+        uiPort,
+        host,
+        poll: process.env.STATION_DEV_WATCH_POLL === '1',
+      })
+    : undefined;
   let serverProc: ReturnType<typeof spawn>;
   try {
     serverProc = spawn(
-      process.execPath,
-      [`${buildPaths.server}/${SERVER_ENTRY_FILENAME}`],
+      watchPlan?.server.command ?? process.execPath,
+      watchPlan?.server.args ?? [
+        `${buildPaths.server}/${SERVER_ENTRY_FILENAME}`,
+      ],
       {
         cwd: CWD,
         stdio: serverStdio,
         detached: true,
         windowsHide: true,
-        env: serverEnv,
+        env: watchPlan ? { ...serverEnv, ...watchPlan.server.env } : serverEnv,
       },
     );
     if (logDescriptor !== null) {
@@ -4498,9 +4508,17 @@ export async function start(opts: StartOptions = {}): Promise<void> {
     // always passed so the UI server's reverse proxy (see `uiRequestHandler`)
     // knows where to forward backend calls regardless of the override.
     const apiBaseOverride = process.env.STATION_API_BASE || undefined;
+    const uiLogDescriptor = watchPlan
+      ? openSync(
+          logFile,
+          fsConstants.O_APPEND |
+            fsConstants.O_WRONLY |
+            (fsConstants.O_NOFOLLOW ?? 0),
+        )
+      : null;
     uiProc = spawn(
-      process.execPath,
-      [
+      watchPlan?.ui.command ?? process.execPath,
+      watchPlan?.ui.args ?? [
         '-e',
         buildUiServerScript({
           uiDir: join(CWD, buildPaths.ui),
@@ -4521,13 +4539,28 @@ export async function start(opts: StartOptions = {}): Promise<void> {
       ],
       {
         cwd: CWD,
-        stdio: 'ignore',
+        // Vite's log (HMR updates, proxy errors) is the dev loop's feedback;
+        // the production UI listener has none and stays silent.
+        stdio:
+          uiLogDescriptor === null
+            ? 'ignore'
+            : ['ignore', uiLogDescriptor, uiLogDescriptor],
         detached: true,
         windowsHide: true,
         env: (() => {
           const uiEnv: Record<string, string> = {
             ...(process.env as Record<string, string>),
             STATION_INTERNAL_API_TOKEN: internalApiToken,
+            // Read by `vite.config.ts` in watch mode only; the production UI
+            // listener is handed these as script arguments instead.
+            ...(watchPlan
+              ? {
+                  ...watchPlan.ui.env,
+                  STATION_INSTANCE_ID: instanceId,
+                  STATION_BUILD_SHA: buildManifest?.sha ?? 'unknown',
+                  STATION_BOOT_ID: bootId,
+                }
+              : {}),
           };
           // The UI child is never supervised by the server's parent watchdog.
           delete uiEnv.STATION_SUPERVISOR_PID;
@@ -4537,6 +4570,7 @@ export async function start(opts: StartOptions = {}): Promise<void> {
         })(),
       },
     );
+    if (uiLogDescriptor !== null) closeSync(uiLogDescriptor);
     uiProc.unref();
 
     const serverFingerprint = serverProc.pid
