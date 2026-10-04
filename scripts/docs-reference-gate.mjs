@@ -76,6 +76,18 @@ function isGlobPath(path) {
  */
 export const ALLOWED_MISSING = new Map([
   [
+    'src-server/services/identity/operator-passkey-service.ts',
+    'planned by docs/design/operator-device-access.md (#2894), which names it as a new file the operator-passkey slice will add; drop this entry when the file lands',
+  ],
+  [
+    'src-server/routes/system/operator-auth-routes.ts',
+    'planned by docs/design/operator-device-access.md (#2894), which names it as a new file the operator-passkey slice will add; drop this entry when the file lands',
+  ],
+  [
+    'tests/operator-passkey-device-access.spec.ts',
+    'planned by docs/design/operator-device-access.md (#2894), which names it as a new file the operator-passkey slice will add; drop this entry when the file lands',
+  ],
+  [
     'src-server/services/flow/producer-pin.ts',
     'retired by the 2026-08-26 supersession (#4414): Flow 5.1 enforces the producer pin natively; ADR-0011 names the file as history',
   ],

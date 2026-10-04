@@ -117,7 +117,8 @@ list never loads, whatever is pasted.
   (`packages/cli/src/commands/device-access.ts:10-37`).
 - The only channel today is `openLocalOperatorChannel`. It refuses a
   non-loopback `--api-base`, proves the listener owns the home, and then sends
-  the home's operator credential (`packages/cli/src/commands/environment.ts:1455-1490, 1640-1668`).
+  the home's operator credential (`packages/cli/src/commands/environment.ts:1455-1490`
+  and `packages/cli/src/commands/environment.ts:1640-1668`).
 - `runDeviceScopeCommand` requires the POST answer to be the updated device
   (`id` and `scope` match) and reads `fullAccessRevocation` from the same body
   (`device-access.ts:297-331`).
