@@ -12,11 +12,11 @@
   "document": {"digest":"5188225d3fee15a72caa4c4f87046baa744cc3e4f214b56090c2cb3e54840556","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
 
   "sources": [
-    {"path":"packages/cli/src/cli.ts","digest":"ecf39393a34edc99d05222a41947a1ba086cf8fc60bac7fe3cdd4651e825881a","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+    {"path":"packages/cli/src/cli.ts","digest":"041c54fff5c3dc2848cf234cf13e4ea52e5069548c273755ee77b53955be1f27","revision":"036d5d3d2289fc22e325a9ded733e8de561e9b30"},
 
-    {"path":"packages/cli/src/help.ts","digest":"3164b377334a123ab051a7fc449ce05305e44e6180155707a5391365c0c102a2","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+    {"path":"packages/cli/src/help.ts","digest":"43ae7ddeaa469ae6177b797f45fc3efa9e4b092827a467ee5b0febf82c900d8d","revision":"036d5d3d2289fc22e325a9ded733e8de561e9b30"},
 
-    {"path":"src-server/routes/schemas/schema-definitions/content.ts","digest":"ed5b32e05c610a8446e131fbddd2fd7b6cda0f8501da04737ca36e4300c92337","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+    {"path":"src-server/routes/schemas/schema-definitions/content.ts","digest":"ceb707d17aef79107333cc01d8d3e79f90b87d300217a0f123a086a1b5261553","revision":"ed4b7b2c4440e328d5367f3d8f4a319a81dfba7e"},
 
     {"path":"src-server/services/agents/playbook-skill-migration-cli.ts","digest":"f38a44411adc324b5ebd95e77df03e9bef4491a6adb7bc0d724e0a94cc452c2e","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
 

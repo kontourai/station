@@ -59,6 +59,37 @@ function handleClaudeNotification(
   event: Extract<OrchestrationEvent, { method: 'extension.notification' }>,
   consumer: ExtensionNotificationConsumer,
 ) {
+  if (consumer === 'ui.claude.api-retry') {
+    const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
+    if (
+      !chat?.orchestrationTurnOpen ||
+      (event.turnId && chat.openTurnId && event.turnId !== chat.openTurnId)
+    )
+      return;
+    const attempt = readPayloadNumber(event.payload, 'attempt');
+    const delayMs = readPayloadNumber(event.payload, 'delayMs');
+    const reason = readPayloadString(event.payload, 'reason');
+    const safeReasons = [
+      'No response headers',
+      'Connection failed',
+      'Rate limited',
+      'Provider overloaded',
+      'Provider request failed',
+    ];
+    activeChatsStore.updateChat(event.threadId, {
+      activityHint: {
+        kind: 'retrying',
+        attempt:
+          attempt !== undefined && Number.isInteger(attempt) && attempt > 0
+            ? attempt
+            : undefined,
+        delayMs: delayMs !== undefined && delayMs >= 0 ? delayMs : undefined,
+        detail: reason && safeReasons.includes(reason) ? reason : undefined,
+      },
+    });
+    return;
+  }
+
   if (consumer === 'ui.claude.thinking-tokens') {
     const estimated = readPayloadNumber(event.payload, 'estimatedTokens');
     const hint: ChatActivityHint = {

@@ -287,29 +287,24 @@ export function resolveNewChatDefaultSelection({
   acpConnections,
   projectDefaultModel,
   lastChosenModelByBinding = {},
+  preferredAgentSlug,
 }: {
   flatList: AgentData[];
   agentConnections: AgentConnectionView[];
   modelConnections: ConnectionConfig[];
   acpConnections: ACPSelectionConnection[];
   projectDefaultModel?: string;
+  preferredAgentSlug?: string;
   lastChosenModelByBinding?: LastChosenModelMap;
 }) {
-  // The first RUNNABLE row, or NONE. `flatList` deliberately includes
-  // unavailable Agents (the picker lists them so their reason and repair path
-  // are visible), so `flatList[0]` recommended an Agent the very same modal
-  // labels "Not set up" — and Home's "Start direct chat" card, which reads
-  // this, printed exactly that.
-  //
-  // The first fix kept `?? flatList[0]` as a fallback so the card would still
-  // name something. That reintroduced the contradiction for exactly the home
-  // that suffers most from it — a fresh install where nothing is set up yet —
-  // and it is the wrong shape anyway: when no agent can run, the honest card
-  // is a SET-UP call to action, not a recommendation. `undefined` is that
-  // signal; Home renders the CTA (see `useHomeViewModel.startReady`).
-  const agent = flatList.find(
-    (candidate) => agentRunnability(candidate).runnable,
-  );
+  const preferredAgent = preferredAgentSlug
+    ? flatList.find((candidate) => candidate.slug === preferredAgentSlug)
+    : undefined;
+  // Quick-start consumers need a runnable recommendation. The draft can show a preferred Agent needing repair.
+  const agent =
+    preferredAgent && agentRunnability(preferredAgent).runnable
+      ? preferredAgent
+      : flatList.find((candidate) => agentRunnability(candidate).runnable);
   const runtimeConnection = agentConnections.find(
     (connection) => connection.id === agent?.execution?.agentConnectionId,
   );
@@ -330,7 +325,13 @@ export function resolveNewChatDefaultSelection({
     projectDefaultModel: newChatProjectDefaultModel(agent, projectDefaultModel),
     lastChosenModel: newChatLastChosenModel(agent, lastChosenModelByBinding),
   });
-  return { agent, effectiveModel: guaranteeConcreteModel(effectiveModel) };
+  return {
+    agent,
+    preferredAgent,
+    missingPreferredAgentSlug:
+      preferredAgentSlug && !preferredAgent ? preferredAgentSlug : undefined,
+    effectiveModel: guaranteeConcreteModel(effectiveModel),
+  };
 }
 
 type ActiveChatSnapshot = Record<

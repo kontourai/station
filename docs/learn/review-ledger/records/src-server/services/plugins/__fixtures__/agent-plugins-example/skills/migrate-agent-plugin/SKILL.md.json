@@ -18,7 +18,7 @@
 
     {"path":"src-server/services/plugins/__tests__/agent-plugin-loader.test.ts","digest":"8fa82879e7405b2a4f7dad2415af06ca8a0195c0b682ee5aea90d6a777db1a05","revision":"e1e8339750ff5b7210254866bd2d853454efaf04"},
 
-    {"path":"src-server/services/plugins/agent-plugin-loader.ts","digest":"91dd9928c383d1db4197a5c2e4cf7f80bcbcfb15a6ffad5ffeb1d27362d9c5b6","revision":"e1e8339750ff5b7210254866bd2d853454efaf04"}
+    {"path":"src-server/services/plugins/agent-plugin-loader.ts","digest":"5e2ebd404a26505676a99a207854fc10fe3692fa02628c891bed0156eb1b231c","revision":"56f4c4897a189eeb30430119a4f4895e95fbb541"}
   ],
 
   "checks": [

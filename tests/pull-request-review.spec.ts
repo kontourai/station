@@ -252,9 +252,7 @@ test('review diff, comment, approve and merge the exact displayed head', async (
   await expect(
     page.getByText('const answer = 2;', { exact: false }).first(),
   ).toBeVisible();
-  await page
-    .getByRole('button', { name: 'Add review context to open chat' })
-    .click();
+  await page.getByRole('button', { name: 'Add to chat', exact: true }).click();
   await expect(page.getByRole('status')).toContainText(
     'Added review context to the open chat without sending',
   );

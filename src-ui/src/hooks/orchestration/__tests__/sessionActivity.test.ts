@@ -297,6 +297,70 @@ describe('handleSessionExitedEvent / handleSessionStateChangedEvent — clearing
     vi.resetModules();
   });
 
+  test('Codex reported retry keeps the same turn open until resumed progress or termination', async () => {
+    handleTurnStartedEvent(
+      {
+        eventId: 'start',
+        provider: 'codex',
+        threadId,
+        createdAt: '2026-10-02T17:00:00.000Z',
+        method: 'turn.started',
+        turnId: 't1',
+      },
+      activeChatsStore,
+    );
+    handleRuntimeErrorEvent({
+      eventId: 'retry',
+      provider: 'codex',
+      threadId,
+      createdAt: '2026-10-02T17:00:01.000Z',
+      method: 'runtime.error',
+      severity: 'error',
+      turnId: 't1',
+      retriable: true,
+      message: 'request timeout',
+    });
+    const retrying = activeChatsStore.getSnapshot()[threadId];
+    expect(retrying.orchestrationTurnOpen).toBe(true);
+    expect(retrying.openTurnId).toBe('t1');
+    expect(retrying.activityHint).toEqual({
+      kind: 'retrying',
+      detail: 'Response timed out',
+    });
+    expect(retrying.error).toBeUndefined();
+    const { handleReasoningDeltaEvent } = await import('../streamHandlers');
+    handleReasoningDeltaEvent({
+      eventId: 'progress',
+      provider: 'codex',
+      threadId,
+      createdAt: '2026-10-02T17:00:02.000Z',
+      method: 'content.reasoning-delta',
+      turnId: 't1',
+      itemId: 'reason',
+      delta: 'thinking',
+    });
+    expect(
+      activeChatsStore.getSnapshot()[threadId].activityHint,
+    ).toBeUndefined();
+    handleRuntimeErrorEvent({
+      eventId: 'failed',
+      provider: 'codex',
+      threadId,
+      createdAt: '2026-10-02T17:00:03.000Z',
+      method: 'runtime.error',
+      severity: 'error',
+      turnId: 't1',
+      retriable: false,
+      message: 'failed',
+    });
+    expect(activeChatsStore.getSnapshot()[threadId].orchestrationTurnOpen).toBe(
+      false,
+    );
+    expect(
+      activeChatsStore.getSnapshot()[threadId].activityHint,
+    ).toBeUndefined();
+  });
+
   test('session.exited clears a live activityHint and pending backgroundTasks', () => {
     activeChatsStore.updateChat(threadId, {
       activityHint: { kind: 'thinking', detail: '~1.2k tokens' },

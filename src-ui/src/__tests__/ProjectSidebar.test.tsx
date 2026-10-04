@@ -604,7 +604,7 @@ describe('ProjectSidebar panel order (#2059)', () => {
       ).textContent?.trim(),
     );
 
-  test('lists header, Home, Activity, then the projects — and no other destination rows', () => {
+  test('lists Home and Activity before the projects', () => {
     resetState();
     projects.push(
       { id: 'p1', slug: 'station', name: 'Station' },
@@ -618,7 +618,7 @@ describe('ProjectSidebar panel order (#2059)', () => {
     expect(panelRowLabels()).toEqual(['Home', 'Activity', 'Station', 'Ferry']);
   });
 
-  test('removes every configuration destination and both group headers from the panel', () => {
+  test('keeps individual customization destinations out of the panel', () => {
     resetState();
     renderSidebar(<ProjectSidebar />);
 
@@ -631,11 +631,9 @@ describe('ProjectSidebar panel order (#2059)', () => {
       'Registry',
       'Review',
       'Plugins',
-      'Schedule',
       'Developer',
       'Notifications',
       'Settings',
-      'Customize',
       'System',
     ]) {
       expect(

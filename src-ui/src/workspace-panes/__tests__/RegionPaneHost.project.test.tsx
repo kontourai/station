@@ -224,6 +224,9 @@ function tabs(region: string): [string, string | null][] {
  * runner fact, not a product one: every later assertion is immediate.
  */
 async function awaitChatPane() {
+  await act(async () => {
+    await vi.dynamicImportSettled();
+  });
   await waitFor(() => expect(model).not.toBeNull());
   await waitFor(
     () => expect(screen.queryByTestId('ambient-chat-occupant')).not.toBeNull(),
@@ -652,7 +655,6 @@ test('while the dock’s project read is in flight the region waits and writes n
  * clears the binding.
  */
 test('a dock binding naming a project that no longer exists falls back to the route’s project', async () => {
-  deviceSettingsStore.set('chatDockProjectSlug', 'deleted-project');
   deviceSettingsStore.set('regionArrangement', {
     version: 1,
     regions: {
@@ -679,6 +681,9 @@ test('a dock binding naming a project that no longer exists falls back to the ro
     maximize: null,
     dockSlotPlacement: null,
   });
+  // Project entry chooses its chat default; restore the stale saved binding
+  // after that transition so this fixture reaches the read-only fallback.
+  deviceSettingsStore.set('chatDockProjectSlug', 'deleted-project');
   renderShells();
   await waitFor(() => expect(model).not.toBeNull());
   await waitFor(() =>
@@ -795,12 +800,14 @@ test('a pull request and a file preview render as their own dock tabs, named by 
     ['#2049', 'false'],
     ['Header.tsx', 'true'],
   ]);
-  const pane = await screen.findByTestId('coding-pane');
-  expect(pane.closest('.chat-dock')).toBe(shell('right'));
-  expect(pane.dataset.descriptor).toBe(
-    'pane:builtin:workspace-preview:file-preview',
-  );
-  expect(pane.dataset.project).toBe('alpha-id');
+  await waitFor(() => {
+    const pane = within(shell('right')).getByTestId('coding-pane');
+    expect(pane.closest('.chat-dock')).toBe(shell('right'));
+    expect(pane.dataset.descriptor).toBe(
+      'pane:builtin:workspace-preview:file-preview',
+    );
+    expect(pane.dataset.project).toBe('alpha-id');
+  });
 
   act(() => currentModel().selectPane('right', PR_PANE_ID));
   await act(async () => {

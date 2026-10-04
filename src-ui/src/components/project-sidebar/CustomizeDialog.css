@@ -1,0 +1,27 @@
+.customize-dialog__links {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-1);
+}
+.customize-dialog__link {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-3);
+  min-height: 44px;
+  padding: var(--k-space-3);
+  border-radius: var(--k-radius-md);
+  color: var(--k-text);
+  font-size: var(--k-text-md);
+  text-decoration: none;
+}
+.customize-dialog__link:hover {
+  background: var(--k-panel-raised);
+}
+.customize-dialog__link:focus-visible {
+  outline: var(--k-focus-ring-width) solid var(--k-focus);
+  outline-offset: var(--k-focus-ring-offset);
+}
+.customize-dialog__link > span:last-child {
+  margin-left: auto;
+  color: var(--k-text-muted);
+}
