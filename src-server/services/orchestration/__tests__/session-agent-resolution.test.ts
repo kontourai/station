@@ -46,6 +46,60 @@ function baseInput(
 
 describe('createSessionAgentResolver', () => {
   test.each([
+    {
+      tools: { mcpServers: [], mcpMode: 'add' as const, available: [] },
+      mode: 'add',
+      allowed: [],
+    },
+    {
+      tools: {
+        mcpServers: ['base'],
+        mcpMode: 'replace' as const,
+        available: ['read'],
+        autoApprove: ['base_read'],
+      },
+      mode: 'replace',
+      allowed: ['read'],
+    },
+  ])(
+    'Project additions preserve Agent restrictions and mode $mode',
+    async ({ tools, mode, allowed }) => {
+      const resolver = createSessionAgentResolver({
+        loadAgentSpec: async () => agentSpec({ tools }),
+        resolveProjectToolServers: async () => ['weather'],
+        resolveToolServer: async (id) => ({
+          id,
+          kind: 'mcp',
+          transport: 'stdio',
+          command: 'fixture',
+          probe: {
+            ok: true,
+            checkedAt: '2026-10-03T00:00:00Z',
+            toolCount: 2,
+            toolNames: ['read', 'write'],
+          },
+        }),
+        resolveSkillDir: async () => null,
+      });
+      const result = await resolver(
+        baseInput({
+          provider: 'codex',
+          metadata: { agentSlug: 'reader', projectSlug: 'demo' },
+        }),
+      );
+      expect(result.agent?.toolServerMode).toBe(mode);
+      expect(
+        result.agent?.toolServers?.find((server) => server.id === 'weather')
+          ?.allowedTools,
+      ).toEqual(allowed);
+      expect(result.agent?.autoApprove ?? []).not.toContain('weather_read');
+      expect(result.agent?.toolServers?.map((server) => server.id)).toEqual(
+        mode === 'replace' ? ['base', 'weather'] : ['weather'],
+      );
+    },
+  );
+
+  test.each([
     { available: ['weather_read'], allowed: ['read'] },
     { available: ['read'], allowed: ['read'] },
     { available: ['weather/*'], allowed: undefined },

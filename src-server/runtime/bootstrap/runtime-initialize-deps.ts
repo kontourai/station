@@ -53,6 +53,7 @@ type ToolNameMapping = Map<
 >;
 
 interface RuntimeInitializationContext {
+  resolveProjectToolServers?: InitializeRuntimeDeps['resolveProjectToolServers'];
   attachedSessionSources?: AttachedSessionSource[];
   port: number;
   host?: string;
@@ -178,6 +179,7 @@ export function createRuntimeInitializationDeps(
     timers: context.timers,
     configLoader: context.configLoader,
     storageAdapter: context.storageAdapter,
+    resolveProjectToolServers: context.resolveProjectToolServers,
     skillService: context.skillService,
     feedbackService: context.feedbackService,
     voiceService: context.voiceService,

@@ -24,6 +24,7 @@ export type ProjectForm = Pick<
   | 'defaultEnvironment'
   | 'workingDirectory'
   | 'agents'
+  | 'toolDefaults'
 > & {
   defaultWorkspaceIsolation: ProjectWorkspaceIsolationChoice;
 };

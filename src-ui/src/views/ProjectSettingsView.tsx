@@ -39,6 +39,7 @@ import { AgentsSection } from './project-settings/AgentsSection';
 import { KnowledgeSection } from './project-settings/KnowledgeSection';
 import { LayoutsSection } from './project-settings/LayoutsSection';
 import { ResourcesSection } from './project-settings/ResourcesSection';
+import { ToolsSection } from './project-settings/ToolsSection';
 import type { ProjectForm } from './project-settings/types';
 import {
   buildProjectForm,
@@ -54,6 +55,7 @@ const PROJECT_SETTINGS_SECTIONS = [
   ['model', 'Model'],
   ['thread-execution', 'Thread execution'],
   ['agents', 'Agents'],
+  ['tools', 'Tools'],
   ['layouts', 'Layouts'],
   ['resources', 'Resources'],
   ['access', 'People and access'],
@@ -585,6 +587,7 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
 
         {/* Layouts — list + save as template */}
         <AgentsSection form={form} setForm={setForm} />
+        <ToolsSection slug={slug} form={form} setForm={setForm} />
 
         <LayoutsSection slug={slug} />
 

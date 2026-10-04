@@ -3,6 +3,7 @@ import {
   publicAgentIdFromRuntimeKey,
   runtimeAgentKey,
 } from '../../services/agents/runtime-agent-identity.js';
+import { addAgentTools } from '../tools/agent-tool-view.js';
 /**
  * Strands Agents SDK adapter — maps Strands API to the framework-agnostic interfaces.
  *
@@ -124,11 +125,18 @@ class StrandsAgentWrapper implements IAgent {
       companion?: NativeMemoryHistoryCompanion;
       isHistoryCurrent?: () => Promise<boolean>;
     },
+    readonly instructions?: string | (() => string),
+    private readonly toolView?: (tools: ITool[]) => IAgent,
   ) {
     this.strandsAgent = strandsAgent;
     this.memory = memory;
     this.tools = tools;
     this._invocationCtx = invocationCtx;
+  }
+
+  withAdditionalTools(tools: ITool[]): IAgent {
+    if (!this.toolView) throw new Error('Agent tool views are unavailable.');
+    return this.toolView(tools);
   }
 
   /** VoltAgent compat — used by server-core's handleGetAgents / handleListTools */
@@ -502,6 +510,7 @@ export class StrandsFramework {
       companion?: NativeMemoryHistoryCompanion,
       ownedInvocation?: InvocationContext,
       isHistoryCurrent?: () => Promise<boolean>,
+      viewTools: ITool[] = tools,
     ): StrandsAgentWrapper => {
       const deniedToolCalls = new Map<string, ToolCallDenial>();
       const purposeEnabledToolNames = new Set<string>();
@@ -515,7 +524,7 @@ export class StrandsFramework {
         messages: history,
         systemPrompt: resolvedPrompt,
         tools: createStrandsFunctionTools(
-          tools,
+          viewTools,
           deniedToolCalls,
           purposeEnabledToolNames,
         ),
@@ -533,7 +542,7 @@ export class StrandsFramework {
         model,
         opts.memoryAdapter as unknown as IMemory,
         invocationCtx,
-        tools,
+        viewTools,
         {
           agentKey: slug,
           adapter: opts.memoryAdapter,
@@ -542,8 +551,20 @@ export class StrandsFramework {
           fork:
             history === undefined
               ? (messages, owner, invocation, current) =>
-                  makeWrapper(messages, owner, invocation, current)
+                  makeWrapper(messages, owner, invocation, current, viewTools)
               : undefined,
+        },
+        opts.processedPrompt,
+        (additions) => {
+          if (!config.hooks?.beforeToolCall)
+            throw new Error('Agent tool approvals are unavailable.');
+          return makeWrapper(
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            addAgentTools(tools, additions),
+          );
         },
       );
       if (history)
@@ -559,7 +580,7 @@ export class StrandsFramework {
         resolvedModel,
         getLastStreamUsage: () => wrapper._lastStreamUsage,
         findMCPToolProvenance: (runtimeName) =>
-          tools
+          viewTools
             .filter((tool) => tool.name === runtimeName)
             .map(getLoadedMCPToolProvenance)
             .find((provenance) => provenance !== undefined),
@@ -640,6 +661,7 @@ export class StrandsFramework {
       companion?: NativeMemoryHistoryCompanion,
       ownedInvocation?: InvocationContext,
       isHistoryCurrent?: () => Promise<boolean>,
+      viewTools: ITool[] = opts.tools ?? [],
     ): StrandsAgentWrapper => {
       const deniedToolCalls = new Map<string, ToolCallDenial>();
       const purposeEnabledToolNames = new Set<string>();
@@ -648,7 +670,7 @@ export class StrandsFramework {
         messages: history,
         systemPrompt: resolved,
         tools: createStrandsFunctionTools(
-          opts.tools || [],
+          viewTools,
           deniedToolCalls,
           purposeEnabledToolNames,
         ),
@@ -691,7 +713,7 @@ export class StrandsFramework {
         opts.model,
         (opts.memoryAdapter as unknown as IMemory) ?? null,
         invocationCtx,
-        opts.tools,
+        viewTools,
         {
           agentKey: opts.agentId,
           adapter: opts.memoryAdapter,
@@ -700,8 +722,20 @@ export class StrandsFramework {
           fork:
             history === undefined
               ? (messages, owner, invocation, current) =>
-                  makeWrapper(messages, owner, invocation, current)
+                  makeWrapper(messages, owner, invocation, current, viewTools)
               : undefined,
+        },
+        opts.instructions,
+        (additions) => {
+          if (!opts.hooks?.beforeToolCall)
+            throw new Error('Agent tool approvals are unavailable.');
+          return makeWrapper(
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            addAgentTools(opts.tools ?? [], additions),
+          );
         },
       );
       if (history && opts.memoryAdapter) {

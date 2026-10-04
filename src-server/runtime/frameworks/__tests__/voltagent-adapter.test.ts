@@ -29,6 +29,10 @@ async function startOpenAICompatServer(options?: {
   expectedPath?: string;
   responseText?: string;
   statusCode?: number;
+  onRequest?: (payload: {
+    messages: unknown;
+    tools?: Array<{ function: { name: string } }>;
+  }) => void;
 }): Promise<TestServer> {
   const expectedPath = options?.expectedPath ?? '/chat/completions';
   const responseText = options?.responseText ?? 'compat-ok';
@@ -45,6 +49,7 @@ async function startOpenAICompatServer(options?: {
       body += chunk.toString();
     }
     const payload = JSON.parse(body);
+    options?.onRequest?.(payload);
 
     res.statusCode = options?.statusCode ?? 200;
     res.setHeader('content-type', 'application/json');
@@ -104,8 +109,13 @@ describe('VoltAgentFramework', () => {
   ])(
     'runs managed models with the correct temporary Agent hook owner: $hookOwner',
     async ({ agentId, hookOwner }) => {
+      const requests: Array<{
+        messages: unknown;
+        tools?: Array<{ function: { name: string } }>;
+      }> = [];
       const server = await startOpenAICompatServer({
         responseText: 'compat-managed-ok',
+        onRequest: (payload) => requests.push(payload),
       });
       servers.push(server);
 
@@ -148,13 +158,32 @@ describe('VoltAgentFramework', () => {
         instructions: 'Be concise.',
         model,
         tools: [],
-        hooks: { afterInvocation },
+        hooks: { afterInvocation, beforeToolCall: async () => false },
       });
       const result = await agent.generateText('hello', {
         conversationId: `temp-owner-${hookOwner}`,
         userId: 'owner-user',
       });
 
+      const view = agent.withAdditionalTools?.([
+        {
+          name: 'project_read',
+          description: 'Project tool',
+          parameters: jsonSchema({ type: 'object', properties: {} }),
+          execute: async () => 'read',
+        },
+      ]);
+      if (!view) throw new Error('Project tool view unavailable');
+      await view.generateText('hello with Project tools', {
+        conversationId: `view-owner-${hookOwner}`,
+        userId: 'owner-user',
+      });
+      expect(requests).toHaveLength(2);
+      expect(JSON.stringify(requests[1].messages)).toContain('Be concise.');
+      expect(requests[0].tools ?? []).toHaveLength(0);
+      expect(requests[1].tools?.map((tool) => tool.function.name)).toEqual([
+        'project_read',
+      ]);
       expect(result.text).toContain('compat-managed-ok');
       expect(afterInvocation).toHaveBeenCalledWith(
         expect.objectContaining({
