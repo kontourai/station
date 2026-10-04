@@ -529,13 +529,15 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
   });
 
   it('refuses to construct a runtime when STATION_TRUSTED_CONSENT_ORIGIN is malformed', () => {
-    home = mkdtempSync(join(tmpdir(), 'station-consent-origin-'));
+    // The field initializer throws before the home is read, so nothing is created.
+    const unusedHome = join(tmpdir(), 'station-consent-origin-never-created');
     const previous = process.env.STATION_TRUSTED_CONSENT_ORIGIN;
     try {
       for (const bad of ['http://station.example.ts.net', 'https://10.0.0.1']) {
         process.env.STATION_TRUSTED_CONSENT_ORIGIN = bad;
         expect(
-          () => new StationRuntime({ projectHomeDir: home, port: TEST_PORT }),
+          () =>
+            new StationRuntime({ projectHomeDir: unusedHome, port: TEST_PORT }),
         ).toThrow(/STATION_TRUSTED_CONSENT_ORIGIN/);
       }
     } finally {
