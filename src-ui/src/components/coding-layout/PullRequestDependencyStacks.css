@@ -37,6 +37,10 @@
   color: var(--text-tertiary);
 }
 .pull-request-stacks__open {
+  /* 44px tall, with a one-line title set at the bottom so it sits as close
+     to its branches line as a wrapped title does. */
+  display: flex;
+  align-items: flex-end;
   min-height: 44px;
   padding: 0;
   border: none;
