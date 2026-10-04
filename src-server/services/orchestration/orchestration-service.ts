@@ -999,7 +999,10 @@ interface PeerDelegationActivityDispatch {
   parentTaskId?: string;
 }
 
-/** Bounds on the paired Station's request fields this Station persists. */
+/**
+ * Bounds on the paired Station's request fields this Station persists, in
+ * Unicode code points (`Array.from`), for the id and the title alike.
+ */
 export const PEER_PENDING_REQUEST_ID_MAX_CHARS = 512;
 export const PEER_PENDING_REQUEST_TITLE_MAX_CHARS = 512;
 
@@ -3755,7 +3758,8 @@ export class OrchestrationService {
     // a different (or no) request on the paired Station. Nothing usable is
     // stored, so the inbox shows the note instead of a decision.
     const idRefused =
-      rawId !== undefined && rawId.length > PEER_PENDING_REQUEST_ID_MAX_CHARS;
+      rawId !== undefined &&
+      Array.from(rawId).length > PEER_PENDING_REQUEST_ID_MAX_CHARS;
     if (idRefused)
       this.options.logger.warn(
         'Refused a paired Station request id over the stored bound',
@@ -3771,8 +3775,8 @@ export class OrchestrationService {
     const binding =
       reported?.eventId &&
       reported.threadId &&
-      reported.eventId.length <= ATTENTION_REQUEST_ID_MAX_CHARS &&
-      reported.threadId.length <= ATTENTION_REQUEST_ID_MAX_CHARS
+      Array.from(reported.eventId).length <= ATTENTION_REQUEST_ID_MAX_CHARS &&
+      Array.from(reported.threadId).length <= ATTENTION_REQUEST_ID_MAX_CHARS
         ? { eventId: reported.eventId, threadId: reported.threadId }
         : undefined;
     const next = id
@@ -3818,12 +3822,16 @@ export class OrchestrationService {
   /**
    * The paired Stations this Station recorded as hosting `taskId`
    * (`recordPeerDelegationActivityDispatch` writes one record per
-   * environment and task). Empty when no peer record names the task.
+   * environment and task) among the records `authority` may read. Empty
+   * when no such record names the task.
    */
-  async peerDelegationHostingEnvironmentIds(taskId: string): Promise<string[]> {
-    const sessions = await this.listSessionReadModel(
-      INTERNAL_SESSION_READ_SCOPE,
-    );
+  async peerDelegationHostingEnvironmentIds(
+    taskId: string,
+    authority: SessionReadScope,
+  ): Promise<string[]> {
+    // Read with the caller's own authority: a record the caller cannot read
+    // names no host for it.
+    const sessions = await this.listSessionReadModel(authority);
     return [
       ...new Set(
         sessions.flatMap((session) =>

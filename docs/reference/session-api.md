@@ -866,8 +866,8 @@ presents it), and, for a read it serves itself, `callerCanRespond`. That last
 field models the HTTP boundary and station-control dispatch scope of the
 answering route for the reading credential: `continue` with `execute` for an
 input request, `respond` with `approve` otherwise. A delegator records these
-fields on its peer record (body bounded to 4,000 characters; the binding stored
-only whole and within 1,024 characters per id). The attention item's
+fields on its peer record (body bounded to 4,000 code points; the binding stored
+only whole and within 1,024 code points per id). The attention item's
 `peerRequestReference` then carries `threadId`, `requestEventId` and
 `callerCanRespond`. Clients offer an answer box only for an `input` request
 with that binding, `viewerCanRespond: true`, and `callerCanRespond` not
@@ -876,8 +876,10 @@ is absent, clients offer the action and show any refusal.
 
 The route forwards a decision only to the environment this Station recorded as
 hosting the task. A body naming another environment is refused before any
-outbound request. A request id longer than 512 characters is not stored, so
-the item shows the note. A longer title is cut with a trailing ellipsis.
+outbound request. The recorded host is read with the caller's own read
+authority, so a task record the caller cannot read names no host. A request id
+longer than 512 Unicode code points is not stored, so the item shows the note.
+A title longer than 512 code points is cut with a trailing ellipsis.
 
 Both kinds link into the item's own Project Review layout at the exact item —
 `/projects/<projectSlug>/layouts/review?change=<id>` and

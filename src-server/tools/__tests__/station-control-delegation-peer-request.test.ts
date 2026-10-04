@@ -384,6 +384,20 @@ describe('a decision goes only to the recorded hosting Station', () => {
         data: peerSnapshot({ id: 'req-peer-6', type: 'approval' }),
       });
     await observe();
+    // Another paired Station IS recorded, but as host of a different task:
+    // that must not make it a host of this one.
+    service.recordPeerDelegationActivityDispatch({
+      taskId: 'task-elsewhere',
+      conversationId: 'task-elsewhere',
+      prompt: 'Unrelated work',
+      userId: 'default',
+      environment: {
+        id: OTHER_ENVIRONMENT_ID,
+        name: 'Station C',
+        kind: 'peer',
+      },
+      target: { kind: 'agent', id: 'codex' },
+    });
     const before = fetchMock.mock.calls.length;
     await expect(
       respondToDelegatedTaskRequest(
