@@ -63,6 +63,7 @@ test('detects only current Project stores and loads canonical records on expansi
     {
       id: 'demo-store',
       adapterId: 'kit-default-store',
+      createdAt: '2026-10-03T00:00:00.000Z',
       storeRoot: '/tmp/demo',
       displayName: 'Demo records',
       scope: { kind: 'project', projectSlug: 'demo' },
@@ -70,6 +71,7 @@ test('detects only current Project stores and loads canonical records on expansi
     {
       id: 'other-store',
       adapterId: 'kit-default-store',
+      createdAt: '2026-10-03T00:00:00.000Z',
       storeRoot: '/tmp/other',
       displayName: 'Other records',
       scope: { kind: 'project', projectSlug: 'other' },

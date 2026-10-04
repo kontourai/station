@@ -1,11 +1,9 @@
 import assert from 'node:assert';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import { MCPLocalConnectionCustody } from '@kontourai/station-shared/mcp';
 import type { McpClient } from '@strands-agents/sdk';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { ConfigLoader } from '../../../domain/config-loader.js';
 import { withTenantExecutionContext } from '../../bootstrap/runtime-tenant-context.js';
 import { builtinStationControlServerPath } from '../../bootstrap/station-control-runtime-env.js';
@@ -31,6 +29,8 @@ const strandsMcpTestState = vi.hoisted(() => ({
   resolveDeferredClient: undefined as (() => void) | undefined,
   rejectNextListTools: undefined as Error | undefined,
 }));
+
+const makeTempDir = trackTempDirs();
 
 vi.mock('@strands-agents/sdk', () => ({
   FunctionTool: class {
@@ -125,7 +125,7 @@ async function loadBuiltinStationControlTools(
 }
 
 test('Agent retirement closes clients retained by successive Project tool loads', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'station-project-tools-'));
+  const home = makeTempDir('station-project-tools-');
   const loader = new ConfigLoader({ projectHomeDir: home });
   const custody = new MCPLocalConnectionCustody();
   const state = {
@@ -169,7 +169,6 @@ test('Agent retirement closes clients retained by successive Project tool loads'
     expect(state.mcpClients.size).toBe(0);
   } finally {
     await custody.shutdown();
-    await rm(home, { recursive: true, force: true });
   }
 });
 

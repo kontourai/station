@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import type { KnowledgeStoreRoot } from '@kontourai/station-contracts/knowledge-store';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { useState } from 'react';
 import { expect, test, vi } from 'vitest';
@@ -23,8 +24,15 @@ vi.mock('@kontourai/station-sdk', () => ({
   }),
   useKnowledgeRootsQuery: () => ({
     data: [
-      { id: 'demo-store', scope: { kind: 'project', projectSlug: 'demo' } },
-    ],
+      {
+        id: 'demo-store',
+        adapterId: 'kit-default-store',
+        storeRoot: '/tmp/demo',
+        displayName: 'Demo records',
+        createdAt: '2026-10-03T00:00:00.000Z',
+        scope: { kind: 'project', projectSlug: 'demo' },
+      },
+    ] satisfies KnowledgeStoreRoot[],
     isLoading: false,
     isError: false,
   }),
@@ -33,6 +41,7 @@ vi.mock('@kontourai/station-sdk', () => ({
 function Editor({ save }: { save: (payload: unknown) => void }) {
   const [form, setForm] = useState<ProjectForm | null>({
     name: 'Demo',
+    defaultWorkspaceIsolation: 'inherit',
     toolDefaults: { mcpServers: ['missing'] },
   });
   return (
