@@ -627,6 +627,22 @@ describe('Project Routes', () => {
         body: JSON.stringify(body),
       });
 
+    test('default Agent IDs are validated before writing; null explicitly clears the preference', async () => {
+      const { service, app } = await seeded();
+      expect((await put(app, { defaultAgent: 'bad/agent' })).status).toBe(400);
+      expect(service.updateProject).not.toHaveBeenCalled();
+      expect((await put(app, { defaultAgent: 'codex' })).status).toBe(200);
+      expect(service.updateProject).toHaveBeenLastCalledWith(
+        'atlas',
+        expect.objectContaining({ defaultAgent: 'codex' }),
+      );
+      expect((await put(app, { defaultAgent: null })).status).toBe(200);
+      expect(service.updateProject).toHaveBeenLastCalledWith(
+        'atlas',
+        expect.objectContaining({ defaultAgent: null }),
+      );
+    });
+
     test('the model pair is accepted', async () => {
       const { service, app } = await seeded();
       const res = await put(app, {

@@ -38,6 +38,24 @@ The shared popover shell opens toward the roomier viewport edge, including when
 the dock is maximized. A narrow Activity region shows its list or its selected
 detail, with a Back to list control, instead of squeezing both columns.
 
+## Starting and resuming work
+
+Ordinary New chat opens an unsent message draft, with compact Agent and Model
+controls and up to five recent chats from the selected project or No project.
+The inbox, mobile switcher, and start surface share their row anatomy. Touch
+cards allow two title lines while status and metadata keep predictable positions.
+The shared New chat action remains directly reachable in mobile chrome and at
+the lower right of the inbox; footer space keeps it from covering rows.
+
+Choosing an Agent or Model in this draft does not start an engine. Send hands
+the message to the dock’s existing sender once. Setup actions retain the draft
+through the authority-fenced return journey. A removed preference requires an
+explicit replacement; an unavailable preference keeps its reason and repair.
+Home’s quick-start recommendation remains runnable. The mobile overflow holds
+chat actions rather than repeating the app header’s connection-health row.
+When fullscreen chat hides that header, its actions sheet retains Station
+management and connection state.
+
 ## Chat controls and attention
 
 Live approval, connection, and working status sit above the composer, on the
