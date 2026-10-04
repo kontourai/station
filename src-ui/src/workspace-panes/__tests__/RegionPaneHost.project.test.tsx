@@ -91,9 +91,15 @@ vi.mock('../../contexts/ProjectsContext', () => ({
  * The registry's one seam. The stub renders the instance it was handed, so
  * every assertion about "which project the pane is bound to" reads the
  * host's real derivation, not the stub's.
+ *
+ * The real registry returns the SAME component for a descriptor on every
+ * call, so the stub must too: a component built per call is a new element
+ * type on each host re-render, which remounts the pane and strands any
+ * element a test already holds. Under load that re-render lands between the
+ * test's find and its assertions.
  */
-vi.mock('../builtinWorkspacePaneRegistry', () => ({
-  getBuiltinWorkspacePaneRenderer: () =>
+const CodingStub = vi.hoisted(
+  () =>
     function CodingStub({ instance }: { instance: WorkspacePaneInstance }) {
       return (
         <p
@@ -105,6 +111,9 @@ vi.mock('../builtinWorkspacePaneRegistry', () => ({
         </p>
       );
     },
+);
+vi.mock('../builtinWorkspacePaneRegistry', () => ({
+  getBuiltinWorkspacePaneRenderer: () => CodingStub,
 }));
 
 const STORAGE_PREFIX = 'station:workspace-pane-host:v2:ambient:';
