@@ -1,0 +1,7 @@
+{
+  "revision": "ff8d4704b92d64b50d39bdc28cd02c49f779de49",
+
+  "notes": [
+    {"path":"docs/guides/releasing.md","note":"Release procedure documents both Nightly entry points: main-qualification.yml calls nightly.yml for its github.sha (decide skips on native ledger row, reservation tag, or native ship under 20h), caller_qualification replaces Nightly's full-regression call, CLI skips without a confirmed trusted publisher, native backwards refusal, repair keyed to the Full source qualification job. Checked against workflows and scripts.","inputs":["docs/guides/releasing.md",".github/workflows/main-qualification.yml",".github/workflows/nightly.yml","scripts/__tests__/qualification-repair.test.ts","scripts/qualification-repair.mjs"]}
+  ]
+}

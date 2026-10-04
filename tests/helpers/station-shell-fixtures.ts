@@ -59,6 +59,15 @@ const READS: Readonly<Record<string, unknown>> = {
     message: 'Updates unavailable in this browser fixture',
   },
   '/api/system/skills': { success: true, data: [] },
+  // #3201: the New chat draft reads the installed Skill experiences. The
+  // envelope is the route's own (`src-server/routes/agents/skills.ts` GET
+  // `/experiences`); a Station with no experience plugin installed has no
+  // experiences, no diagnostics and no `executionContract`
+  // (`SkillService.listSkillExperiences`).
+  '/api/skills/experiences': {
+    success: true,
+    data: { experiences: [], diagnostics: [] },
+  },
   '/api/usage-telemetry/disclosure': {
     success: true,
     data: { acknowledged: true, inventoryRevision: 'fixture', events: {} },
@@ -314,6 +323,26 @@ export async function fulfillStationShellRead(
           observedAt: FIXTURE_OBSERVED_AT,
           links: [],
         },
+      }),
+    });
+    return true;
+  }
+  if (
+    request.method() === 'GET' &&
+    /^\/api\/orchestration\/sessions\/[^/]+\/skill-experience$/.test(path)
+  ) {
+    // #3170: an open Session reads its Skill experience. The envelope and
+    // view are the route's own (`orchestration.ts` GET
+    // `/sessions/:threadId/skill-experience`, `SkillExperienceRuntime.read`,
+    // parsed closed by `readSkillExperienceSession`). A Session that never
+    // invoked a Skill has no current invocation, an empty history, and no
+    // cursor; these fixtures start none.
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        success: true,
+        data: { current: null, history: [], hasMore: false },
       }),
     });
     return true;

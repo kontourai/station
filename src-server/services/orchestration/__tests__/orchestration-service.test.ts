@@ -138,6 +138,7 @@ import { recoverOrchestrationSessions } from '../orchestration-session-state.js'
 import { OrchestrationStreamPresence } from '../orchestration-stream-presence.js';
 import { ProjectTaskRoomRuntime } from '../project-task-room-runtime.js';
 import { createSessionAgentResolver } from '../session-agent-resolution.js';
+import { SessionLifecycleClaimRefusedError } from '../session-execution-coordinator.js';
 import {
   ACTIVE_TURN_FOLD_METHODS,
   activeTurnIdForEvents,
@@ -2340,6 +2341,302 @@ describe('OrchestrationService', () => {
     ).resolves.toMatchObject({
       startRequired: true,
       retirePredecessorSessionId: 'conversation-unused',
+    });
+  });
+
+  describe('retireNeverRanSession', () => {
+    // A never-used conversation root whose model change has already reserved a
+    // successor, i.e. the state the start seam is in when it asks to retire.
+    const startWithSuccessor = async (conversationId: string) => {
+      claude.startSession.mockImplementationOnce(async (input) => {
+        const session = {
+          provider: 'claude' as const,
+          threadId: input.threadId,
+          status: 'ready' as const,
+          model: 'claude-sonnet',
+          createdAt: '2026-08-24T00:00:00.000Z',
+          updatedAt: '2026-08-24T00:00:00.000Z',
+        };
+        claude.sessions.set(input.threadId, session);
+        return session;
+      });
+      const started = await service.sessionCommands.execute(
+        {
+          type: 'start-session',
+          input: {
+            threadId: conversationId,
+            provider: 'claude',
+            metadata: { userId: 'owner-user', connectionId: 'connection-a' },
+          },
+        },
+        { userId: 'owner-user' },
+      );
+      if (started.status !== 'accepted') throw new Error(started.message);
+      eventStore.appendEvent({
+        eventId: `${conversationId}-configured`,
+        provider: 'claude',
+        threadId: conversationId,
+        sessionId: conversationId,
+        method: 'session.configured',
+        metadata: {
+          userId: 'owner-user',
+          agentSlug: 'station',
+          connectionId: 'connection-a',
+        },
+        createdAt: '2026-08-24T00:00:00.500Z',
+      });
+      claude.metadata.modelLaunch = {
+        ...claude.metadata.modelLaunch!,
+        overridePerTurn: false,
+      };
+    };
+    const supersede = async (conversationId: string) => {
+      const resolved = await service.resolveConversationContinuation(
+        conversationId,
+        INTERNAL_SESSION_READ_SCOPE,
+        {
+          provider: 'claude',
+          connectionId: 'connection-a',
+          modelOverride: 'claude-opus',
+        },
+      );
+      expect(resolved).toMatchObject({
+        startRequired: true,
+        retirePredecessorSessionId: conversationId,
+      });
+      return resolved.sessionId;
+    };
+    const sendTo = (threadId: string, clientTurnId: string) =>
+      service.dispatchWithReceipt(
+        {
+          type: 'sendTurn',
+          input: { threadId, input: 'first', clientTurnId },
+        },
+        { userId: 'owner-user' },
+      );
+    // A guard that fails to refuse queues the stop behind the turn start's
+    // lifecycle lock; report that as a distinct outcome instead of hanging.
+    const retireWhileTurnPending = async (threadId: string) => {
+      const retiring = service.retireNeverRanSession(threadId, {
+        userId: 'owner-user',
+      });
+      const outcome = await Promise.race([
+        retiring,
+        new Promise<'blocked behind the pending turn'>((resolve) =>
+          setTimeout(() => resolve('blocked behind the pending turn'), 250),
+        ),
+      ]);
+      return { outcome, retiring };
+    };
+    const deferred = <T>() => {
+      let resolve!: (value: T) => void;
+      const promise = new Promise<T>((r) => {
+        resolve = r;
+      });
+      return { promise, resolve };
+    };
+
+    test('stops a replaced predecessor that never ran a turn', async () => {
+      await startWithSuccessor('retire-unused');
+      await supersede('retire-unused');
+      await expect(
+        service.retireNeverRanSession('retire-unused', {
+          userId: 'owner-user',
+        }),
+      ).resolves.toEqual({ stopped: true });
+      expect(claude.stopSession).toHaveBeenCalledWith('retire-unused');
+    });
+
+    test('does not stop a predecessor whose turn is accepted but has not started', async () => {
+      await startWithSuccessor('retire-accepted');
+      await supersede('retire-accepted');
+      const providerAccepts = deferred<ProviderTurnStartResult>();
+      claude.sendTurn.mockImplementationOnce(() => providerAccepts.promise);
+      const send = sendTo('retire-accepted', 'client-turn-accepted');
+      await vi.waitFor(() => expect(claude.sendTurn).toHaveBeenCalled());
+      expect(eventStore.hasTurnFacts('retire-accepted')).toBe(false);
+
+      const { outcome, retiring } =
+        await retireWhileTurnPending('retire-accepted');
+      providerAccepts.resolve({
+        threadId: 'retire-accepted',
+        turnId: 'claude-turn-accepted',
+      });
+      await send;
+      await retiring.catch(() => undefined);
+      expect(outcome).toEqual({ stopped: false, reason: 'turn_in_flight' });
+      expect(claude.stopSession).not.toHaveBeenCalled();
+    });
+
+    test('does not stop a predecessor whose send has been dispatched but not yet reached the turn boundary', async () => {
+      await startWithSuccessor('retire-dispatched');
+      await supersede('retire-dispatched');
+      // Hold the Session's lifecycle lock so the send parks before it takes
+      // any coordinator claim: only the dispatch itself marks it.
+      const release = deferred<void>();
+      const coordinator = (
+        service as unknown as {
+          sessionExecutionCoordinator: {
+            runLifecycleTransition(
+              threadId: string,
+              operation: () => Promise<void>,
+            ): Promise<void>;
+            hasActiveTurn(threadId: string): boolean;
+          };
+        }
+      ).sessionExecutionCoordinator;
+      const held = coordinator.runLifecycleTransition(
+        'retire-dispatched',
+        () => release.promise,
+      );
+      const send = sendTo('retire-dispatched', 'client-turn-dispatched');
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(coordinator.hasActiveTurn('retire-dispatched')).toBe(false);
+      expect(eventStore.hasTurnFacts('retire-dispatched')).toBe(false);
+      expect(claude.sendTurn).not.toHaveBeenCalled();
+
+      const { outcome, retiring } =
+        await retireWhileTurnPending('retire-dispatched');
+      release.resolve();
+      await held;
+      await send;
+      await retiring.catch(() => undefined);
+      expect(outcome).toEqual({ stopped: false, reason: 'turn_in_flight' });
+      expect(claude.stopSession).not.toHaveBeenCalled();
+      expect(claude.sendTurn).toHaveBeenCalledOnce();
+    });
+
+    const lifecycleCoordinator = () =>
+      (
+        service as unknown as {
+          sessionExecutionCoordinator: {
+            runLifecycleTransition<T>(
+              threadId: string,
+              operation: () => Promise<T>,
+            ): Promise<T>;
+          };
+        }
+      ).sessionExecutionCoordinator;
+
+    test('a send dispatched after the early check but before the stop runs still wins', async () => {
+      await startWithSuccessor('retire-late');
+      await supersede('retire-late');
+      // Force the interleaving: the lifecycle lock is held, so retire passes
+      // its early check (no marker, no turn, no facts) and then queues for it.
+      const release = deferred<void>();
+      const held = lifecycleCoordinator().runLifecycleTransition(
+        'retire-late',
+        () => release.promise,
+      );
+      const retiring = service.retireNeverRanSession('retire-late', {
+        userId: 'owner-user',
+      });
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      // The send is dispatched while retire waits; it queues behind retire.
+      const send = sendTo('retire-late', 'client-turn-late');
+      release.resolve();
+      await held;
+      const outcome = await retiring;
+      await send;
+      expect(outcome).toEqual({ stopped: false, reason: 'turn_in_flight' });
+      expect(claude.stopSession).not.toHaveBeenCalled();
+      expect(claude.sendTurn).toHaveBeenCalledOnce();
+    });
+
+    test('a stop that itself fails is not reported as a turn in flight', async () => {
+      await startWithSuccessor('retire-fails');
+      await supersede('retire-fails');
+      const stopFails = deferred<void>();
+      claude.stopSession.mockImplementationOnce(() =>
+        stopFails.promise.then(() => {
+          throw new Error('adapter refused to stop');
+        }),
+      );
+      const retiring = service.retireNeverRanSession('retire-fails', {
+        userId: 'owner-user',
+      });
+      const settled = retiring.then(
+        (value) => ({ value }),
+        (error: unknown) => ({ error }),
+      );
+      await vi.waitFor(() => expect(claude.stopSession).toHaveBeenCalled());
+      // A send arrives while the stop is running, so a broad catch would
+      // misread the failure as the turn winning.
+      const send = sendTo('retire-fails', 'client-turn-fails');
+      stopFails.resolve();
+      const result = await settled;
+      await send.catch(() => undefined);
+      expect(result).toMatchObject({
+        error: expect.objectContaining({ message: 'adapter refused to stop' }),
+      });
+    });
+
+    test('a lifecycle claim refused for an active turn is reported as a turn in flight', async () => {
+      await startWithSuccessor('retire-claim');
+      await supersede('retire-claim');
+      // The boundary refusal is only reachable once a turn has begun its
+      // provider effect without the service-side markers; force it.
+      vi.spyOn(
+        lifecycleCoordinator(),
+        'runLifecycleTransition',
+      ).mockRejectedValueOnce(
+        new SessionLifecycleClaimRefusedError('active-turn', 'active turn'),
+      );
+      await expect(
+        service.retireNeverRanSession('retire-claim', {
+          userId: 'owner-user',
+        }),
+      ).resolves.toEqual({ stopped: false, reason: 'turn_in_flight' });
+      expect(claude.stopSession).not.toHaveBeenCalled();
+    });
+
+    test('does not stop a predecessor that recorded a turn', async () => {
+      await startWithSuccessor('retire-ran');
+      await supersede('retire-ran');
+      eventStore.appendEvent({
+        eventId: 'retire-ran-turn-started',
+        provider: 'claude',
+        threadId: 'retire-ran',
+        turnId: 'turn-one',
+        method: 'turn.started',
+        prompt: 'first',
+        createdAt: '2026-08-24T00:00:01.000Z',
+      });
+      eventStore.appendEvent({
+        eventId: 'retire-ran-turn-completed',
+        provider: 'claude',
+        threadId: 'retire-ran',
+        turnId: 'turn-one',
+        method: 'turn.completed',
+        finishReason: 'stop',
+        createdAt: '2026-08-24T00:00:02.000Z',
+      });
+      await expect(
+        service.retireNeverRanSession('retire-ran', { userId: 'owner-user' }),
+      ).resolves.toEqual({ stopped: false, reason: 'turn_facts' });
+      expect(claude.stopSession).not.toHaveBeenCalled();
+    });
+
+    test('does not stop a predecessor that is the conversation current Session again', async () => {
+      await startWithSuccessor('retire-current');
+      // No successor was reserved (or the lineage tail is this Session again).
+      await expect(
+        service.retireNeverRanSession('retire-current', {
+          userId: 'owner-user',
+        }),
+      ).resolves.toEqual({ stopped: false, reason: 'current_session' });
+      expect(claude.stopSession).not.toHaveBeenCalled();
+    });
+
+    test('does not stop a Session the caller cannot read', async () => {
+      await startWithSuccessor('retire-foreign');
+      await supersede('retire-foreign');
+      await expect(
+        service.retireNeverRanSession('retire-foreign', {
+          userId: 'someone-else',
+        }),
+      ).resolves.toEqual({ stopped: false, reason: 'not_found' });
+      expect(claude.stopSession).not.toHaveBeenCalled();
     });
   });
 

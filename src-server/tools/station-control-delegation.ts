@@ -5866,14 +5866,15 @@ export async function executeExecutionTargetMessage(
       );
     },
     retireSession: async (_access: EnvironmentAccess, sessionId: string) => {
-      await orchestrationService.dispatchWithReceipt(
-        { type: 'stopSession', threadId: sessionId },
-        dispatchContextForAuthority(
-          readAuthority,
-          input.clientOrigin,
-          input.principal,
-        ),
-      );
+      // Conditional at execution time inside the service, not here: the
+      // predecessor may have taken a turn since the successor was reserved.
+      const context = dispatchContextForAuthority(readAuthority);
+      await orchestrationService.retireNeverRanSession(sessionId, {
+        userId: context.userId,
+        ...(context.tenantExecutionContext
+          ? { tenantExecutionContext: context.tenantExecutionContext }
+          : {}),
+      });
     },
     prepareConversationHandoff: async (access: EnvironmentAccess, handoff) => {
       // The target was resolved by the foreground seam immediately before

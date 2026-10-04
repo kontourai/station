@@ -5150,6 +5150,19 @@ export class EventStore {
     return row ? this.mapEventRow(row) : undefined;
   }
 
+  /** Whether the thread has ever recorded any `turn.*` event. */
+  hasTurnFacts(threadId: string): boolean {
+    return (
+      this.db
+        .prepare(
+          `SELECT 1 FROM orchestration_events
+           WHERE thread_id = ? AND method LIKE 'turn.%'
+           LIMIT 1`,
+        )
+        .get(threadId) !== undefined
+    );
+  }
+
   firstEventByMethod(
     threadId: string,
     method: string,
@@ -5226,6 +5239,51 @@ export class EventStore {
       )
       .get(threadId) as any;
     return row ? this.mapEventRow(row) : undefined;
+  }
+
+  /**
+   * #3159: the typed prompts of `threadIds`' turns that contain `needle`,
+   * with who sent each (`clientOrigin.actor`, which Station resolved from the
+   * request's credential; absent on turns recorded without one). `needle` is
+   * only a narrowing prefilter: the caller parses each prompt for the exact
+   * reference it is looking for. One indexed lookup per thread
+   * (`thread_id, method, sequence`), at most `limitPerThread` rows each.
+   */
+  turnPromptsContaining(
+    threadIds: readonly string[],
+    needle: string,
+    limitPerThread = 256,
+  ): Array<{ prompt: string; actor?: unknown }> {
+    const statement = this.db.prepare(
+      `SELECT json_extract(payload, '$.prompt') AS prompt,
+              json_extract(payload, '$.clientOrigin.actor') AS actor
+       FROM orchestration_events
+       WHERE thread_id = ? AND method = 'turn.started'
+         AND typeof(json_extract(payload, '$.prompt')) = 'text'
+         AND instr(json_extract(payload, '$.prompt'), ?) > 0
+       ORDER BY sequence ASC
+       LIMIT ?`,
+    );
+    const prompts: Array<{ prompt: string; actor?: unknown }> = [];
+    for (const threadId of new Set(threadIds)) {
+      const rows = statement.all(threadId, needle, limitPerThread) as Array<{
+        prompt: string;
+        actor: string | null;
+      }>;
+      for (const row of rows) {
+        let actor: unknown;
+        try {
+          actor = row.actor === null ? undefined : JSON.parse(row.actor);
+        } catch {
+          actor = undefined;
+        }
+        prompts.push({
+          prompt: row.prompt,
+          ...(actor === undefined ? {} : { actor }),
+        });
+      }
+    }
+    return prompts;
   }
 
   /**

@@ -204,7 +204,13 @@ export class SessionTranscriptReads {
   listUsageReceipts(
     authority: SessionReadAuthority,
     stationId: string,
-    request: { from: string; to: string; cursor?: string; pageSize?: number },
+    request: {
+      from: string;
+      to: string;
+      cursor?: string;
+      pageSize?: number;
+      aggregate?: boolean;
+    },
   ): {
     receipts: UsageReceipt[];
     nextCursor?: string;
@@ -228,7 +234,10 @@ export class SessionTranscriptReads {
         },
       };
     }
-    const pageSize = Math.min(Math.max(request.pageSize ?? 50, 1), 100);
+    const pageSize = Math.min(
+      Math.max(request.pageSize ?? 50, 1),
+      request.aggregate ? 500 : 100,
+    );
     const after = decodeUsageCursor(request.cursor);
     // The same owner set transcript reads bind: the caller's own principal,
     // plus (personal mode) the owners of the personal conversation account
@@ -318,7 +327,11 @@ export class SessionTranscriptReads {
         const key = `${event.threadId}:${event.turnId ?? event.id}`;
         provider.terminalTurns.add(key);
       }
-      if (event.payload.method === 'token-usage.updated') {
+      if (
+        event.payload.method === 'token-usage.updated' &&
+        (hasTokenMeasurements(event.payload) ||
+          isReportedAmount(event.payload.reportedCostUsd))
+      ) {
         provider.usageTurns.add(
           `${event.threadId}:${event.turnId ?? event.id}`,
         );
@@ -393,7 +406,9 @@ export class SessionTranscriptReads {
               : hasStaleProvider
                 ? STALE_OBSERVATION_REASON
                 : rows.length > pageSize
-                  ? 'bounded receipt material truncated'
+                  ? request.aggregate
+                    ? 'aggregate observation limit reached (500); additional window material is missing'
+                    : 'bounded receipt material truncated'
                   : observedTurnCount === 0
                     ? 'no terminal turns observed in this window'
                     : 'terminal turns missing usage reports',
@@ -460,11 +475,12 @@ export { messageSearchExcerpt } from './transcript-search-queries.js';
 
 /**
  * The usage receipts one `token-usage.updated` row stands for: a token
- * receipt (priced only from the snapshot captured with the event, never a
- * current catalog), plus a reported-cost receipt when the engine reported a
- * cost. A cumulative reporter's receipts take an id per engine process, so a
- * later restatement replaces the earlier one instead of adding to it. Shared
- * by the windowed rollup and the conversation usage tree.
+ * receipt when the engine reported any token figure (priced only from the
+ * snapshot captured with the event, never a current catalog), plus a
+ * reported-cost receipt when it reported a cost. A cumulative reporter's
+ * receipts share one id, so a later restatement is reconciled with the
+ * earlier one (`reconcileUsageReceiptObservations`) instead of adding to it.
+ * Shared by the windowed rollup and the conversation usage tree.
  */
 export function usageReceiptsForEventRow(
   {
@@ -482,6 +498,7 @@ export function usageReceiptsForEventRow(
   const common = {
     ...(accountKey !== undefined ? { accountKey } : {}),
     sourceEventId: event.id,
+    sourceSequence: event.sequence,
     stationId,
     provider: event.provider,
     threadId: event.threadId,
@@ -494,15 +511,23 @@ export function usageReceiptsForEventRow(
   };
   const tokenId =
     providerUsageScope(event.provider) === 'session-cumulative'
-      ? `usage:${event.threadId}:${event.provider}:tokens:${processEpoch}`
+      ? `usage:${event.threadId}:${event.provider}:tokens`
       : `usage:${event.id}:tokens`;
   const unpricedTokenReceipt: UsageReceipt = {
     id: tokenId,
     ...common,
-    inputTokens: usage.promptTokens,
-    outputTokens: usage.completionTokens,
-    cacheReadTokens: usage.cacheReadTokens,
-    cacheWriteTokens: usage.cacheWriteTokens,
+    inputTokens: isReportedAmount(usage.promptTokens)
+      ? usage.promptTokens
+      : undefined,
+    outputTokens: isReportedAmount(usage.completionTokens)
+      ? usage.completionTokens
+      : undefined,
+    cacheReadTokens: isReportedAmount(usage.cacheReadTokens)
+      ? usage.cacheReadTokens
+      : undefined,
+    cacheWriteTokens: isReportedAmount(usage.cacheWriteTokens)
+      ? usage.cacheWriteTokens
+      : undefined,
     // Pricing is deliberately stamped onto the receipt. This read path
     // never asks a catalog or provider for a current price: doing so
     // would rewrite history when a catalog changes.
@@ -515,13 +540,14 @@ export function usageReceiptsForEventRow(
           new CatalogUsagePricingSnapshotReader([usage.pricingSnapshot]),
         )
       : unpricedTokenReceipt;
-  if (typeof usage.reportedCostUsd !== 'number') return [tokenReceipt];
+  const tokenReceipts = hasTokenMeasurements(usage) ? [tokenReceipt] : [];
+  if (!isReportedAmount(usage.reportedCostUsd)) return tokenReceipts;
   const costId =
     providerCostScope(event.provider) === 'engine-process-cumulative'
       ? `usage:${event.threadId}:${event.provider}:cost:${processEpoch}`
       : `usage:${event.id}:cost`;
   return [
-    tokenReceipt,
+    ...tokenReceipts,
     {
       id: costId,
       ...common,
@@ -529,4 +555,19 @@ export function usageReceiptsForEventRow(
       pricing: { status: 'unpriced' },
     } satisfies UsageReceipt,
   ];
+}
+
+function isReportedAmount(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0;
+}
+
+function hasTokenMeasurements(
+  event: Extract<CanonicalRuntimeEvent, { method: 'token-usage.updated' }>,
+): boolean {
+  return [
+    event.promptTokens,
+    event.completionTokens,
+    event.cacheReadTokens,
+    event.cacheWriteTokens,
+  ].some(isReportedAmount);
 }

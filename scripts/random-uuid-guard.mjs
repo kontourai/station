@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+
 // Zero-tolerance gate for station#1137 (a bare `crypto.randomUUID()` white-
 // screens Station off localhost).
 //
@@ -30,8 +31,8 @@
 // instead of reporting vacuously green). Modeled directly on
 // `sdk-error-message-ratchet.mjs`.
 
-import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 export const SCAN_PATHSPECS = [
@@ -90,10 +91,14 @@ export const SCOPE_SENTINELS = [
 export const BARE_RANDOM_UUID = /(?:globalThis\.)?crypto\.randomUUID\s*\(/g;
 
 export function listScannedFiles() {
-  const output = execFileSync('git', ['ls-files', '--', ...SCAN_PATHSPECS], {
-    encoding: 'utf8',
-    windowsHide: true,
-  });
+  const output = execFileSyncBounded(
+    'git',
+    ['ls-files', '--', ...SCAN_PATHSPECS],
+    {
+      encoding: 'utf8',
+      windowsHide: true,
+    },
+  );
   return output
     .split('\n')
     .filter((line) => /\.(ts|tsx|mjs|js)$/.test(line))

@@ -17,6 +17,7 @@ import {
   validateChatAttachment,
   validateChatAttachments,
 } from '@kontourai/station-contracts/chat-attachment';
+import { CHILD_WORK_TRANSCRIPT_PAGE_MAX } from '@kontourai/station-contracts/child-work';
 import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
 import type {
   ConversationContextBoundaryProjection,
@@ -169,6 +170,7 @@ import {
   foregroundDispatchTarget,
   namesAnotherStation,
   newSessionFacts,
+  refuseCarriedPosture,
   refuseOutOfScopeDispatch,
   refuseRemoteForStationControlCaller,
   scopeDispatch,
@@ -250,6 +252,18 @@ const sessionOutputsQuerySchema = z
   .object({
     cursor: z.string().min(1).max(1024).optional(),
     limit: z.coerce.number().int().min(1).max(50).optional(),
+  })
+  .strict();
+/** #3163: a child transcript page, by message offset. */
+const childWorkTranscriptQuerySchema = z
+  .object({
+    offset: z.coerce.number().int().min(0).max(1_000_000).default(0),
+    limit: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(CHILD_WORK_TRANSCRIPT_PAGE_MAX)
+      .default(30),
   })
   .strict();
 const sessionInventoryQueryBaseSchema = z
@@ -1897,6 +1911,16 @@ export function createOrchestrationRoutes(
         delegationAttestation?: string;
         automaticBackground?: true;
       };
+      // #2377 slice C3b: an agent sends without an approval posture.
+      const postureRefused = refuseCarriedPosture(c, [
+        { path: 'setApprovalMode', value: body.setApprovalMode, kind: 'pick' },
+        {
+          path: 'target.model.options',
+          value: body.target.model?.options,
+          kind: 'options',
+        },
+      ]);
+      if (postureRefused) return postureRefused;
       // #2436: full access needs the operator in person or a granted device,
       // whether the send carries it as a pick or asks for it on the options.
       const fullAccessRefused = refuseUngrantedFullAccess(c, [
@@ -2194,6 +2218,21 @@ export function createOrchestrationRoutes(
       }
       try {
         const body = getBody(c);
+        // #2377 slice C3b: no station-control tool reaches this route today;
+        // if one ever does, it hands off without an approval posture.
+        const postureRefused = refuseCarriedPosture(c, [
+          {
+            path: 'setApprovalMode',
+            value: (body as { setApprovalMode?: unknown }).setApprovalMode,
+            kind: 'pick',
+          },
+          {
+            path: 'target.model.options',
+            value: body.target.model?.options,
+            kind: 'options',
+          },
+        ]);
+        if (postureRefused) return postureRefused;
         const fullAccessRefused = refuseUngrantedFullAccess(c, [
           (body as { setApprovalMode?: unknown }).setApprovalMode,
           requestedApprovalMode(body.target.model?.options),
@@ -2384,6 +2423,20 @@ export function createOrchestrationRoutes(
       }
       try {
         const body = getBody(c);
+        // #2377 slice C3b: an agent continues without an approval posture.
+        const postureRefused = refuseCarriedPosture(c, [
+          {
+            path: 'setApprovalMode',
+            value: body.setApprovalMode,
+            kind: 'pick',
+          },
+          {
+            path: 'model.options',
+            value: body.model?.options,
+            kind: 'options',
+          },
+        ]);
+        if (postureRefused) return postureRefused;
         const fullAccessRefused = refuseUngrantedFullAccess(c, [
           body.setApprovalMode,
           requestedApprovalMode(body.model?.options),
@@ -2504,6 +2557,16 @@ export function createOrchestrationRoutes(
     }
     try {
       const body = getBody(c);
+      // #2377 slice C3b: an agent delegates without an approval posture.
+      const postureRefused = refuseCarriedPosture(c, [
+        {
+          path: 'target.model.options',
+          value: (body as { target?: { model?: { options?: unknown } } }).target
+            ?.model?.options,
+          kind: 'options',
+        },
+      ]);
+      if (postureRefused) return postureRefused;
       const fullAccessRefused = refuseUngrantedFullAccess(c, [
         requestedApprovalMode(
           (body as { target?: { model?: { options?: unknown } } }).target?.model
@@ -3046,6 +3109,15 @@ export function createOrchestrationRoutes(
         );
       }
       try {
+        // #2377 slice C3b: an agent's follow-up carries no approval posture.
+        const postureRefused = refuseCarriedPosture(c, [
+          {
+            path: 'modelOptions',
+            value: (getBody(c) as { modelOptions?: unknown }).modelOptions,
+            kind: 'options',
+          },
+        ]);
+        if (postureRefused) return postureRefused;
         const fullAccessRefused = refuseUngrantedFullAccess(c, [
           requestedApprovalMode(
             (getBody(c) as { modelOptions?: unknown }).modelOptions,
@@ -3726,6 +3798,44 @@ export function createOrchestrationRoutes(
       return c.json({ success: true, data: outcome.inspection });
     },
   );
+  /**
+   * #3163: one engine subagent's own transcript, read-only and paged. The
+   * client names the reporting session and the child; the server resolves
+   * the transcript from that session's persisted child-work facts, so no
+   * path crosses this route. Authorized exactly as the session's outputs.
+   */
+  app.get('/sessions/:threadId/child-work/:childId/transcript', async (c) => {
+    c.header('Cache-Control', 'private, no-store');
+    const unavailable = (status: 404 | 503 = 404) =>
+      c.json({ success: false, error: 'Child transcript unavailable' }, status);
+    const parsed = childWorkTranscriptQuerySchema.safeParse({
+      offset: c.req.query('offset'),
+      limit: c.req.query('limit'),
+    });
+    if (!parsed.success)
+      return c.json({ success: false, error: 'Invalid transcript page' }, 400);
+    if (deps.isRequestPrincipalCurrent?.(c.req.raw) !== true)
+      return unavailable();
+    const threadId = param(c, 'threadId');
+    const authority = readAuthorityFor(c);
+    if (!orchestrationService.canUserReadSession(threadId, authority))
+      return unavailable();
+    const outcome = await orchestrationService.childWorkTranscripts.read({
+      threadId,
+      childId: param(c, 'childId'),
+      ...parsed.data,
+      authority,
+    });
+    if (outcome.status === 'unavailable') return unavailable(503);
+    if (outcome.status !== 'found') return unavailable();
+    // Authority can change while the engine's transcript is read.
+    if (
+      deps.isRequestPrincipalCurrent?.(c.req.raw) !== true ||
+      !orchestrationService.canUserReadSession(threadId, authority)
+    )
+      return unavailable();
+    return c.json({ success: true, data: outcome.page });
+  });
   const sessionInventoryUnavailable = (c: Context, status: 404 | 503 = 404) => {
     c.header('Cache-Control', 'private, no-store');
     return c.json(

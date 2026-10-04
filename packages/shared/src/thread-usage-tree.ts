@@ -13,6 +13,7 @@ import type {
 } from '@kontourai/station-contracts/thread-usage-tree';
 import type { UsageReceipt } from '@kontourai/station-contracts/usage-rollup';
 import { providerPromptCacheInclusivity } from './usage-fold.js';
+import { reconcileUsageReceiptObservations } from './usage-rollup.js';
 
 /**
  * How an engine's subagents relate to the usage its parent session reports,
@@ -222,20 +223,15 @@ function compactFigures(
 }
 
 /**
- * A conversation's own figures from its receipts. A repeated receipt id is a
- * replacement (the later observation wins), exactly as the usage rollup
- * treats it, so a cumulative cost restated every turn is counted once per
- * engine process.
+ * A conversation's own figures from its receipts, reconciled exactly as the
+ * usage rollup reconciles them: a repeated receipt id is one fact observed
+ * again (a cumulative restatement, a cost restated every turn), never a
+ * second billable event.
  */
 export function threadUsageFiguresFromReceipts(
   receipts: readonly UsageReceipt[],
 ): ThreadUsageFigures | undefined {
-  const latest = new Map<string, UsageReceipt>();
-  for (const receipt of receipts) {
-    const current = latest.get(receipt.id);
-    if (!current || (receipt.observedAt ?? '') >= (current.observedAt ?? ''))
-      latest.set(receipt.id, receipt);
-  }
+  const latest = reconcileUsageReceiptObservations(receipts);
   const figures: ThreadUsageFigures = {};
   const reportedCost: ThreadUsageReportedCost[] = [];
   const estimatedCost: ThreadUsageEstimatedCost[] = [];
