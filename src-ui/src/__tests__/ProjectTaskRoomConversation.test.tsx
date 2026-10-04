@@ -1,5 +1,6 @@
 /** @vitest-environment jsdom */
 
+import type { ProjectTaskRoomBrowserRecord } from '@kontourai/station-contracts/project-task-room-browser';
 import { render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
@@ -9,6 +10,7 @@ const mocks = vi.hoisted(() => ({
     isLoading: false,
   },
   stream: 'live' as 'live' | 'terminal',
+  records: [] as ProjectTaskRoomBrowserRecord[],
 }));
 vi.mock('../contexts/ApiBaseContext', () => ({
   useHostRequestAuthorityScope: () => ({
@@ -39,7 +41,7 @@ vi.mock('@kontourai/station-sdk/project-task-rooms', () => ({
   }),
   useProjectTaskRoomDiscoveryQuery: () => mocks.discovery,
   useProjectTaskRoomHistoryQuery: () => ({
-    data: { pages: [] },
+    data: { pages: [{ kind: 'available', records: mocks.records }] },
     isError: false,
     hasNextPage: false,
     isFetchingNextPage: false,
@@ -64,6 +66,7 @@ beforeEach(() => {
   mocks.discovery.isLoading = false;
   mocks.discovery.data = { kind: 'unavailable' };
   mocks.stream = 'live';
+  mocks.records = [];
 });
 
 describe('ProjectTaskRoomConversation capability states', () => {
@@ -122,4 +125,61 @@ describe('ProjectTaskRoomConversation capability states', () => {
       screen.getByRole('textbox', { name: 'Message' }).matches(':disabled'),
     ).toBe(true);
   });
+});
+
+test('room review distinguishes a previous Task incarnation while retaining exact output identity', () => {
+  const digest = `sha256:${'a'.repeat(64)}` as const;
+  mocks.discovery.data = {
+    kind: 'existing',
+    capabilities: {
+      historyRead: true,
+      messageWrite: false,
+      revisionLinks: false,
+    },
+  };
+  mocks.records = [
+    {
+      actor: { kind: 'human', label: 'Reviewer' },
+      sequence: 1,
+      body: {
+        kind: 'output-feedback',
+        target: {
+          outputId: 'previous-output',
+          digest,
+          taskCreatedAt: '2026-09-30T12:00:00.000Z',
+        },
+        review: 'accepted',
+        text: 'Reviewed earlier bytes',
+      },
+      digests: { proposal: 'a'.repeat(64), checkpoint: 'b'.repeat(64) },
+      integrity: 'L0',
+    },
+  ];
+  const view = render(
+    <ProjectTaskRoomConversation
+      taskId="task-1"
+      projectSlug="demo"
+      taskCreatedAt="2026-10-03T12:00:00.000Z"
+    />,
+  );
+  const history = screen.getByRole('list', { name: 'Task room history' });
+  expect(history.textContent).toContain(
+    'Earlier Task version. Reviewer accepted this version',
+  );
+  expect(history.textContent).toContain('previous-output');
+  expect(history.textContent).toContain(digest);
+  expect(
+    screen.getByText(
+      'Output reviews are human statements. Task status is unchanged.',
+    ),
+  ).toBeTruthy();
+  view.rerender(
+    <ProjectTaskRoomConversation
+      taskId="task-1"
+      projectSlug="demo"
+      taskCreatedAt="2026-09-30T12:00:00.000Z"
+    />,
+  );
+  expect(history.textContent).toContain('Reviewer accepted this version');
+  expect(history.textContent).not.toContain('Earlier Task version');
 });

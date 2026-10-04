@@ -1860,3 +1860,17 @@ describe('ChatInputArea dock reservation', () => {
     }
   });
 });
+
+describe('ChatInputArea send-failure notice', () => {
+  test('repeats the notice as a status line above the draft', () => {
+    renderChatInputArea({ sendFailureNotice: 'The engine is offline' });
+    const line = document.querySelector('.chat-input__send-failure');
+    expect(line?.textContent).toBe('The engine is offline');
+    expect(line?.getAttribute('role')).toBe('status');
+  });
+
+  test('renders nothing without a notice', () => {
+    renderChatInputArea({ sendFailureNotice: undefined });
+    expect(document.querySelector('.chat-input__send-failure')).toBeNull();
+  });
+});

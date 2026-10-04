@@ -432,7 +432,9 @@ describe('#2309 what the turn is doing', () => {
         }),
       ),
     );
-    expect(progressText()).toBe('Last: bash · done· No output for 12m 0s');
+    expect(progressText()).toBe(
+      'Last: bash · done· No response from Claude Code for 12m 0s. Still waiting.',
+    );
   });
 
   test('when the turn ends there is no working row and no Stop', () => {

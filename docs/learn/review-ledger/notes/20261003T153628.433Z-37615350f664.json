@@ -1,0 +1,7 @@
+{
+  "revision": "4a4eb711585b5e32cd54eb805ff9b4e25194f991",
+
+  "notes": [
+    {"path":"docs/reference/cli.md","note":"Reviewed credential test-isolation delta: tests capture and restore the prior adapter through existing runtime getter/setter; triage no-fetch race and saved-credential HTTP/header/output assertions remain. Native entry construction still loads the OS addon lazily and preserves the service/account namespace, with no plaintext fallback. Documented credential and triage behavior unchanged. Executed 180 focused tests; eager-load and wrong-namespace mutations caught, restored byte-for-byte and rerun green. No physical keyring, published install, live provider or device proof.","inputs":["docs/reference/cli.md"]}
+  ]
+}

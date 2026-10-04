@@ -93,15 +93,19 @@ access), Station records a new decision of **Ask**, attributed to the
 operator's revocation. Nothing is deleted from the conversation's history.
 
 The sessions its grant had unconfined also run confined again (inside the
-workspace), because Station checks the grant each time it hands the engine a
-posture. That happens at every turn while a decision stands, and at the
-session's next start. A turn already running finishes. The next turn is
-confined and asks. The command lists these conversations as re-confined.
+workspace), from their next turn, without restarting the engine. Station
+checks the grant each time it hands the engine a posture: at every turn while
+a decision stands, at the session's next start, and on the first turns after
+the grant was taken back even when no decision stands (for example a session
+at full access only because of its Agent's or the Station's default). A turn
+already running finishes, but it cannot be given new instructions by steering:
+Station refuses the steer and keeps the message for the next turn, which is
+confined.
 
-One case waits: a running session with no decision standing, at full access
-only because of its Agent's or the Station's default. Station re-applies no
-posture on a turn of such a session, so it stays unconfined until its engine
-restarts. It is listed as "still unconfined".
+The command lists each session whose engine is still running unconfined as
+"still unconfined" until its next turn, and a conversation whose sessions are
+stopped or have already taken a confined turn as re-confined. The desktop app's notice offers **Stop now** on each running
+session, which stops its engine at once; its next start is confined.
 
 Some conversations stay at full access, and the command lists them without
 changing them:

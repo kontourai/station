@@ -236,6 +236,38 @@ describe('a turn ending settles the pending requests that name it (#3071)', () =
     expect(live?.orchestrationStatus).toBe('aborted');
   });
 
+  test('an "answered here" mark leaves with the request the turn end settled, live and by snapshot', () => {
+    initChat('live');
+    initChat('snapshot');
+    const answered = ['named-request', 'unnamed-request'];
+    // Both requests were answered from the queue before the turn ended.
+    for (const threadId of ['live', 'snapshot']) {
+      foldLive(
+        abortedTurnTrace(threadId, { method: 'turn.aborted' }).slice(0, -1),
+      );
+      activeChatsStore.updateChat(threadId, { answeredApprovals: answered });
+    }
+    foldSnapshot(
+      'snapshot',
+      abortedTurnTrace('snapshot', { method: 'turn.aborted' }),
+    );
+    handleTurnAbortedEvent(
+      abortedTurnTrace('live', { method: 'turn.aborted' }).at(-1) as never,
+    );
+
+    // The named request is settled and gone; the unnamed one is still open, so
+    // its mark stays (it is still answered, still awaiting `request.resolved`).
+    expect(activeChatsStore.getSnapshot().live?.pendingApprovals).toEqual([
+      'unnamed-request',
+    ]);
+    expect(activeChatsStore.getSnapshot().live?.answeredApprovals).toEqual([
+      'unnamed-request',
+    ]);
+    expect(activeChatsStore.getSnapshot().snapshot?.answeredApprovals).toEqual([
+      'unnamed-request',
+    ]);
+  });
+
   test('turn.completed with finishReason cancelled settles the same way', () => {
     initChat('live');
     initChat('snapshot');

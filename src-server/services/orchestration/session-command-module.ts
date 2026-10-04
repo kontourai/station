@@ -22,6 +22,7 @@ import {
   ReceiverExecutionRefusal,
   requirePortableIncarnationMatch,
 } from '../projects/project-contribution-service.js';
+import type { DispatchCwdAdmission } from './dispatch-cwd-admission.js';
 import type { ExecutionWorkspaceBinding } from './execution-workspace-binding.js';
 import type { ForegroundInvocationAdmission } from './foreground-invocation-admission.js';
 import type { StartOwnerAttribution } from './session-owner-attribution.js';
@@ -60,6 +61,13 @@ export type SessionCommandContext = {
    * confined to its workspace unless the conversation recorded `never`.
    */
   fullAccessGrant?: FullAccessGrant | null;
+  /**
+   * #2873: the dispatch route's scope decision for the folder this start
+   * runs in, for a station-control caller the scope rule constrains. The
+   * service runs it again beside the adapter start
+   * (`dispatch-cwd-admission.ts`). Route-set only, never JSON.
+   */
+  dispatchCwdAdmission?: DispatchCwdAdmission;
 };
 
 export type SessionCommandOutcome =

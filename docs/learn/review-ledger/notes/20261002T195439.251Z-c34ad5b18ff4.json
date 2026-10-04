@@ -1,0 +1,7 @@
+{
+  "revision": "14ed8256e37a8984bedd979efc30e58fe6a04a18",
+
+  "notes": [
+    {"path":"docs/reference/connect.md","note":"Reviewed the native enrollment UI consumer delta and the reference's Connect transport contract. Only the user-facing explanation of an unconfirmed device setup step changed; transport, fallback and authority claims remain accurate. Focused mounted test passed; no installed-device qualification is implied.","inputs":["docs/reference/connect.md"]}
+  ]
+}

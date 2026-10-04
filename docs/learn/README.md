@@ -14,12 +14,13 @@ Classification describes the document's purpose; it is not verification of its
 runtime claims. Unlisted documents remain unreviewed.
 
 A record states its review scope, supporting source files, checks, and limits.
-It binds the reviewed Markdown and code to content hashes. If either changes,
-the reader shows **Review out of date**. The documentation checks require the
-change that touched those bytes to revisit the record; see
-[keeping reviews fresh](../guides/documentation.md#keep-reviews-fresh). Refresh
-the hashes with `npm run docs:review:record` only after reviewing the changed
-claim and evidence; changing a hash by itself is not a review.
+Git history and append-only notes identify changes still needing review. If a
+landing commit touches a document or listed source without a covering note,
+the reader shows **Review out of date**. The PR checks require new notes for
+that PR's touched inputs; another PR landing does not invalidate its notes.
+See [keeping reviews fresh](../guides/documentation.md#keep-reviews-fresh).
+Use `npm run docs:review:record` only after inspecting the changed claims and
+evidence. A note is a reviewer's decision, not proof of semantic accuracy.
 
 The deploy ledger has a narrower generated-output contract. Its current data
 must contain valid, unique release identities and render byte-for-byte to the
@@ -71,15 +72,15 @@ diagram source cannot enable executable click actions.
 
 Selected application captures appear beside the relevant explanation. Each
 caption names the scenario, its evidence limits, the capture revision and the
-revisions at which its sources were reviewed.
+notes about its supporting source review.
 A browser running sample fixtures is not a live provider or physical-device test.
 Open a screenshot for full size; videos have ordinary playback controls and do
 not autoplay. Keep a written explanation of the steps alongside a video.
 
 `media.json` admits tracked PNG screenshots and WebM recordings under
 `docs/learn/media/`. It records the asset digest, capture revision, evidence and
-owning documents. Each capture's source dependencies, their reviewed revisions
-and its review notes live in the review ledger under `captures/`, so reviewing
+owning documents. Each capture's source path list
+and historical review notes live in the review ledger under `captures/`, so reviewing
 a capture does not rewrite `media.json`. The builder uses local immutable URLs,
 preserves original capture provenance, and warns when supporting code has
 changed. The check refuses a stale capture when the current change touched it,
@@ -90,8 +91,7 @@ When adding a capture, inspect it for private data, record the actual fixture or
 service used, and add its asset and source dependencies to each owning document's
 review record. This connects UI changes to the impact/catch-up report. Re-capture
 when behavior or presentation changes; if a reviewed code delta leaves the image
-accurate, retain its capture revision and record the new source hashes and
-revisions with `npm run docs:review:record -- docs/learn/media/<file> --note
+accurate, retain its capture revision and record the inspected inputs with `npm run docs:review:record -- docs/learn/media/<file> --note
 "<what you checked>"`. The note is added to the ledger's notes files. The
 command refuses a capture whose image bytes changed. Never relabel old media as
 a new capture.
@@ -136,7 +136,7 @@ the original observation and a link to the fix.
 Use `npm run docs:impact -- <changed-paths...>` before an edit and
 `npm run docs:impact -- --catch-up --json` to find accumulated review work.
 The report links changed sources to their documented owners, distinguishes a
-page's last edit from the revision at which each changed input was reviewed,
+page's last edit from the coverage baseline and covering review notes,
 and exposes unmapped changes.
 See [incremental maintenance](../guides/documentation.md#find-affected-documentation-and-catch-up)
 for the comparison baseline and limits.
@@ -148,7 +148,7 @@ when needed. Snapshot digests bind rendered content, review metadata, and source
 dependencies to the manifest that selected them; a mismatched lazy payload asks
 the reader to reload. Changing supporting code without changing Markdown still
 invalidates that identity. The builder hashes and writes the same captured
-source bytes, including the bytes used to evaluate review freshness. A cached
+source bytes; review freshness separately derives from Git history and notes. A cached
 page retains its original content and evidence across rebuilds. Mobile navigation
 uses a native modal dialog so the reading content comes first and the background
 is inert while the menu is open.

@@ -116,6 +116,25 @@ Query result, with values in `data` and separate loading/error state; they do
 not return the data array itself. A hook being exported also does not prove
 that the default Station host supplies its optional context.
 
+### Immutable output review
+
+`@kontourai/station-sdk/project-task-rooms` exports
+`appendProjectTaskRoomOutputFeedback(apiBase, input, options?)` and
+`useAppendProjectTaskRoomOutputFeedbackMutation(taskId, taskCreatedAt, scope)`.
+The client input contains `taskId`, `proposalId`, `occurredAt` and a
+`ProjectTaskRoomOutputFeedback` body. Preserve all fields for an uncertain
+retry; mutation retries are disabled. The hook requires captured connection
+authority and matching Task incarnation before sending, refuses stale late
+settlement, and invalidates room history only under current authority.
+
+`useProjectTaskRoomDiscoveryQuery(taskId, {requestScope, taskCreatedAt})` and
+`useTaskOutputsQuery(taskId, {requestScope, taskCreatedAt})` partition reads by
+connection authority and Task incarnation and refuse stale settlement.
+The optional scoped configuration is used by Station's output review surface;
+legacy unscoped callers keep their existing behavior. See the
+[review HTTP contract](api.md#review-an-immutable-task-output) for authority,
+idempotency, compatibility and the meaning of reviewer acceptance.
+
 ### Task room agent requests
 
 `@kontourai/station-sdk/client` exports `fetchTaskRoomAgentRequests`,
@@ -1751,6 +1770,12 @@ fields. The current server reports an incomplete history page as `unavailable`.
 Callers also treat `hasMore`, gap, stale or invalid-cursor results as incomplete;
 unavailable and too-large results retain their named states. None is an empty
 complete history, and none permits inferring private records.
+`getProjectSharedTaskPublication(...)` gives a member
+`{ kind: 'shared', publication }`, where `publication` is the same summary the
+list returns for that Task. An unshared, stale, unknown or other-scope Task
+refuses with the same not-found error, so a member cannot tell those cases
+apart. Member pages read history and document only after that publication
+matches the listed item.
 
 These reads require the current account-bound Device, account session and active
 Project membership. Station rechecks the exact Project, publication and Task
@@ -1760,7 +1785,8 @@ does not publish every Task. Project owner/admin publication remains pending;
 the initial management surface requires current Station operator authority.
 
 Operators can use `getProjectSharedTaskPublication`, `shareProjectTask`, and
-`unshareProjectTask` from the same SDK subpath. Capture one `ApiRequestScope`
+`unshareProjectTask` from the same SDK subpath. Only an operator's publication
+review also reports `unshared`; sharing and unsharing stay operator-only. Capture one `ApiRequestScope`
 before review and pass it to the read and mutation. The review returns the full
 Station/local/portable Project scope plus the exact Task id and creation time.
 Send that identity back unchanged when publishing or revoking; revocation also
@@ -3190,10 +3216,32 @@ throws this error for a non-2xx response or a missing/false `success` value.
 It checks truthiness, not a literal-boolean schema, and does not validate the
 returned `data`; individual fetchers own any stronger success-payload checks.
 A body that is not JSON keeps its status on a non-2xx; on a
-2xx it is a protocol failure and throws a plain `Error`. Other fetchers still
-throw their own errors — some a `StationHttpError` without `details`, some a
-plain `Error` or a family-specific subclass — and move onto the same fields
-in later releases, keeping their subclasses (#2708).
+2xx it is a protocol failure and throws a plain `Error`.
+
+Every fetcher under `@kontourai/station-sdk/client` that throws a refusal now
+builds it through the same helper (#2708); the plugin command-effect client
+returns business refusals as values instead. The account, application-session,
+authority-observation, checkpoint-restore, conversation pull-request link,
+fleet-routing receipt, learning-source, personal Board and Project layout
+delete, pull-request review, quote-source, runs and setup-import fetchers
+throw a `StationHttpError` where some threw a plain `Error` before. Their
+family subclasses stay and gain the refusal's fields:
+
+| Class | Base | Gains on a refusal |
+|---|---|---|
+| `BoardResponseError`, `BoardProvenanceRefusedError` | `StationHttpError` | `details`, `retryAfterMs`; the provenance refusal keeps its observed status |
+| `DelegationApiError` | `Error` | `status`, `retryAfterMs` (it already carried `code`, `retryable`, `details`) |
+| `AnswerSupportRequestError` | `Error` | `code`, `details`, `retryAfterMs` |
+| `ActionOperationProtocolError`, `LiveActivityProtocolError` | `Error` | `status`, `code`, `details`, `retryAfterMs`; absent on a malformed response |
+| `AnswerBasisRequestError`, `AnswerNarrativeBindingRequestError`, `FlowGateEvaluationRequestError` | `Error` | `code`, `retryAfterMs`; the message stays fixed |
+
+Each keeps its earlier constructor; the new form takes the helper's
+`StationHttpError`. A delegation response whose body is not JSON throws a
+`StationHttpError`, not a `DelegationApiError`: a page is not Station's
+refusal. `getAuthorityObservation` keeps its own two sentences and reports the
+refusal's `status` and `code`; branch on `status === 401`, not on the
+sentence. Fetchers outside `client/` (the React query domains) are not yet on
+the helper.
 
 Some family subclasses are `StationHttpError`s too. The scheduler's
 `SchedulerResponseError` and its run errors (`SchedulerRunIndeterminateError`,
@@ -3209,11 +3257,21 @@ Host-action execution deliberately returns `indeterminate` after any failed or
 unreadable response; it does not expose the helper's exception to the caller.
 
 `ChatHttpError`, thrown by execution fetchers, now extends `StationHttpError`;
-`serverMessage` retains the helper's message. Execution fetchers derive
-`stationEnvelope` from a boolean `success` field or an object `error` with a
-string `code`. An HTML proxy response keeps its HTTP status but sets this flag
+`serverMessage` retains the helper's message. The execution, attachment
+staging, orchestration-command, steer-command and chat-stream producers set
+`stationEnvelope`
+to say whether Station itself answered. The body must have Station's shape (a
+boolean `success` field, or an object `error` with a string `code`), and the
+response must carry the `x-station-envelope` header a current Station puts on
+every JSON body it writes. An HTML proxy response, or gateway JSON in
+Station's shape without the header, keeps its HTTP status but sets this flag
 to `false`, so status alone must not be treated as a definitive Station
-refusal. This shape check is not independent proof of the responder's identity.
+refusal. A Station older than the header never sends it: until an origin has
+sent the header once in this process (on any response the SDK's request
+functions return), the shape alone decides, as before. That fallback is not
+independent proof of the responder's identity. The desktop native transport
+does not yet pass the header to the renderer, so requests it carries stay on
+the fallback.
 `ForegroundMessageIndeterminateError` keeps its `detail` and fixed `code`.
 Both classes retain their positional constructors.
 
@@ -3227,6 +3285,8 @@ with a fixed generic message. The Task and Session reference reads use
 `TaskToolResultRequestError`, `TaskUserInputReferenceRequestError`,
 `TaskBasisRequestError`, `SessionOutputsRequestError` and
 `SessionInventoryRequestError`, which remain plain `Error` subclasses.
+The answer Basis, answer narrative, gate-evaluation and quote-source reads,
+and the action-operation list and watch, are opaque in the same way.
 These opaque errors retain the observed `status`, supplied `code` and
 `retryAfterMs`, without `details`. A status of `0` is a local failure marker,
 not an HTTP response status; callers must not interpret it as a server refusal.
