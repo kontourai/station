@@ -2116,6 +2116,87 @@ describe('append-only review notes and Git history (#3101)', () => {
     expect(check(f.root, strict).status).toBe(0);
   });
 
+  describe('a PR that hand-edits coverageBaseline (#3101)', () => {
+    const index = `${REVIEW_LEDGER_DIR}/ledger.json`;
+    const setBaseline = (f: ReturnType<typeof fixture>, sha: string) =>
+      f.write(
+        index,
+        f
+          .read(index)
+          .replace(
+            /"coverageBaseline": "[a-f0-9]+"/,
+            `"coverageBaseline": "${sha}"`,
+          ),
+      );
+    /** Main holds an uncovered source landing, then a later commit. */
+    function uncoveredMain() {
+      const f = pathOnlyFixture();
+      f.write('src/c.ts', SHARED_C.replace('c1 = 1', 'c1 = 2'));
+      commit(f.root, 'unreviewed landing');
+      f.write('unrelated.txt', 'later main commit');
+      const later = commit(f.root, 'later main commit');
+      git(f.root, ['update-ref', 'refs/remotes/origin/main', 'main']);
+      git(f.root, ['switch', '-qc', 'pr']);
+      return { f, later };
+    }
+
+    it('blocks a baseline moved past an uncovered main commit and names --advance-baseline', () => {
+      const { f, later } = uncoveredMain();
+      expect(check(f.root, strict).status).toBe(1);
+      setBaseline(f, later);
+      commit(f.root, 'hand-edit baseline');
+      const result = check(f.root, scoped);
+      expect(result.status).toBe(1);
+      expect(result.blocking.map((entry) => entry.kind)).toEqual(['baseline']);
+      const blocked = run(
+        f.root,
+        'check-documentation-freshness.mjs',
+        [],
+        scoped,
+      );
+      expect(blocked.stderr).toContain('--advance-baseline');
+      // The strict gate after the squash would otherwise pass vacuously.
+      git(f.root, ['switch', 'main']);
+      git(f.root, ['merge', '-q', '--ff-only', 'pr']);
+      expect(check(f.root, strict).status).toBe(0);
+    }, 180_000);
+
+    it('allows a hand edit to a covered main commit and a baseline set by the command', () => {
+      const f = pathOnlyFixture();
+      f.write('src/c.ts', SHARED_C.replace('c1 = 1', 'c1 = 2'));
+      commit(f.root, 'unreviewed landing');
+      reviewShared(f, 'Catch-up review.');
+      const covered = commit(f.root, 'cover gaps');
+      f.write('unrelated.txt', 'later main commit');
+      commit(f.root, 'later main commit');
+      git(f.root, ['update-ref', 'refs/remotes/origin/main', 'main']);
+      git(f.root, ['switch', '-qc', 'pr']);
+      setBaseline(f, covered);
+      commit(f.root, 'hand-edit to a covered commit');
+      expect(check(f.root, scoped).status).toBe(0);
+      git(f.root, ['reset', '-q', '--hard', 'main']);
+      git(f.root, ['switch', 'main']);
+      const advanced = run(f.root, 'record-documentation-review.mjs', [
+        '--advance-baseline',
+      ]);
+      expect(advanced.status, advanced.stderr).toBe(0);
+      git(f.root, ['switch', '-qc', 'pr2']);
+      commit(f.root, 'advance baseline');
+      expect(check(f.root, scoped).status).toBe(0);
+    }, 180_000);
+
+    it('blocks a baseline that is not reachable from the merge base', () => {
+      const { f } = uncoveredMain();
+      f.write('pr-only.txt', 'PR work');
+      const prOnly = commit(f.root, 'PR-only commit');
+      setBaseline(f, prOnly);
+      commit(f.root, 'point the baseline at a PR commit');
+      const result = check(f.root, scoped);
+      expect(result.status).toBe(1);
+      expect(result.blocking.map((entry) => entry.kind)).toEqual(['baseline']);
+    }, 180_000);
+  });
+
   it('legacy conversion covers only reviewed binding lines and leaves another changed source blocking', () => {
     const f = fixture();
     git(f.root, ['switch', '-qc', 'old-pr']);
