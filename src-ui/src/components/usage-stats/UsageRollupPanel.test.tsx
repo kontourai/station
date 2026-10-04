@@ -72,6 +72,13 @@ const result = vi.hoisted(() => ({
 vi.mock('@kontourai/station-sdk', () => ({
   useUsageRollupQuery: () => result,
 }));
+vi.mock('../../contexts/ApiBaseContext', () => ({
+  useHostRequestAuthorityScope: () => ({
+    apiBase: 'http://station.test',
+    authorityKey: 'local',
+    isCurrent: () => true,
+  }),
+}));
 
 import { UsageRollupPanel } from './UsageRollupPanel';
 

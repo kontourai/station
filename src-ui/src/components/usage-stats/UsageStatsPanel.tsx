@@ -1,3 +1,4 @@
+import type { UsageStats } from '@kontourai/station-contracts/usage-stats';
 import { useActivityUsageQuery } from '@kontourai/station-sdk';
 import { useState } from 'react';
 import { useAgents } from '../../contexts/AgentsContext';
@@ -106,6 +107,13 @@ function UsagePeriodSection({ from, to }: { from: string; to: string }) {
     totalCost: rangeSummary.totalCost,
     totalMessages: rangeSummary.totalMessages,
   });
+  const datedUsage: UsageStats['byDate'] = data.byDate ?? {};
+  const costMeasured =
+    data.snapshot?.projection !== 'retained-source-v1' ||
+    Object.values(datedUsage).some(
+      (day) =>
+        day.reportedCostUsd !== undefined || day.estimatedCostUsd !== undefined,
+    );
   return (
     <>
       <div className="usage-stats-cards">
@@ -117,13 +125,19 @@ function UsagePeriodSection({ from, to }: { from: string; to: string }) {
         />
         <StatCard
           icon={<MoneyGlyph />}
-          label="Cost"
-          value={`$${rangeSummary.totalCost.toFixed(2)}`}
+          label="Recorded cost"
+          value={
+            costMeasured
+              ? `$${rangeSummary.totalCost.toFixed(2)}`
+              : 'Not reported'
+          }
         />
         <StatCard
           icon={<ChartGlyph />}
           label="Avg/Message"
-          value={`$${avgCostPerMessage.toFixed(4)}`}
+          value={
+            costMeasured ? `$${avgCostPerMessage.toFixed(4)}` : 'Not reported'
+          }
         />
         <StatCard
           icon={<CalendarGlyph />}
@@ -208,6 +222,11 @@ export function UsageStatsPanel() {
           totalConversations={totalConversations}
           totalCost={lifetime.totalCost}
           totalMessages={lifetime.totalMessages}
+          costMeasured={
+            usageStats.snapshot?.projection !== 'retained-source-v1' ||
+            lifetime.reportedCostUsd !== undefined ||
+            lifetime.estimatedCostUsd !== undefined
+          }
         />
       )}
 

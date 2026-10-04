@@ -48,6 +48,9 @@ vi.mock('@kontourai/station-sdk', () => ({
 vi.mock('../components/profile/StationPeoplePanel', () => ({
   StationPeoplePanel: () => <div>Paired profiles</div>,
 }));
+vi.mock('../contexts/ApiBaseContext', () => ({
+  useHostRequestAuthorityScope: () => null,
+}));
 
 vi.mock('../components/usage-stats/StationUsagePanel', () => ({
   StationUsagePanel: () => <div>Station operator overview</div>,

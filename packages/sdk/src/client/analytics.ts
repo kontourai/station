@@ -112,6 +112,8 @@ export async function fetchUsageRollup(
     `${apiBase}/api/analytics/usage-rollup?${params}`,
     opts,
   );
+  if (!response.ok)
+    throw new StationHttpError(response.status, 'Usage rollup unavailable');
   return response.json() as Promise<UsageRollupResponse>;
 }
 

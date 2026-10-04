@@ -131,6 +131,36 @@ function selectPeriod(label: string) {
 }
 
 describe('UsageStatsPanel period selector', () => {
+  test.each([undefined, 0])(
+    'current cost cards distinguish an absent estimate from reported %s',
+    (estimatedCostUsd) => {
+      const lifetime = buildLifetimeStats();
+      analyticsState.usageStats = {
+        ...lifetime,
+        snapshot: { projection: 'retained-source-v1' },
+        lifetime: { ...lifetime.lifetime, totalCost: 0, estimatedCostUsd },
+      };
+      sdkState.ranged.data = buildRangedData({
+        snapshot: { projection: 'retained-source-v1' },
+        byDate: { '2026-08-17': { messages: 1, cost: 0, estimatedCostUsd } },
+        rangeSummary: {
+          totalDays: 30,
+          activeDays: 1,
+          totalMessages: 1,
+          totalCost: 0,
+          avgPerDay: 1,
+        },
+      });
+      render(<UsageStatsPanel />);
+      if (estimatedCostUsd === undefined)
+        expect(screen.getAllByText('Not reported')).toHaveLength(2);
+      else expect(screen.getByText('$0.00')).toBeTruthy();
+      selectPeriod('30 days');
+      if (estimatedCostUsd === undefined)
+        expect(screen.getAllByText('Not reported')).toHaveLength(2);
+      else expect(screen.getByText('$0.00')).toBeTruthy();
+    },
+  );
   test('defaults to All time, reading the lifetime fields', () => {
     render(<UsageStatsPanel />);
     expect(

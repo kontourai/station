@@ -6,6 +6,7 @@ import { expect, test, vi } from 'vitest';
 import {
   useStationUsageQuery,
   useUsageQuery,
+  useUsageRollupQuery,
 } from '../query-domains/analytics';
 import { usePairedDevicesQuery } from '../query-domains/devicePairingRequests';
 
@@ -24,6 +25,61 @@ function wrapperFor(client: QueryClient) {
     );
   };
 }
+
+test('receipt observers partition credential profiles and current caller authority', async () => {
+  vi.useFakeTimers();
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  let label = 'work';
+  fetch.mockImplementation(async () =>
+    Response.json({ success: true, data: { rows: [{ key: label }] } }),
+  );
+  let profile: string | null | undefined = 'work';
+  let scope = {
+    apiBase: 'http://station.test',
+    authorityKey: 'local',
+    isCurrent: () => true,
+  };
+  const view = renderHook(
+    () => {
+      const query = useUsageRollupQuery(
+        { days: 14, provider: 'claude', credentialProfileRef: profile },
+        { requestScope: scope, requireRequestScope: true },
+      );
+      return { data: query.data, error: query.error };
+    },
+    { wrapper: wrapperFor(client) },
+  );
+  try {
+    await act(() => vi.advanceTimersByTimeAsync(10));
+    expect(view.result.current.data?.rows[0].key).toBe('work');
+    for (const [nextProfile, nextLabel] of [
+      ['personal', 'personal'],
+      [null, 'default'],
+      [undefined, 'all'],
+    ] as const) {
+      profile = nextProfile;
+      label = nextLabel;
+      view.rerender();
+      expect(view.result.current.data).toBeUndefined();
+      await act(() => vi.advanceTimersByTimeAsync(10));
+      expect(view.result.current.data?.rows[0].key).toBe(nextLabel);
+    }
+    label = 'another caller';
+    scope = { ...scope, authorityKey: 'other' };
+    view.rerender();
+    expect(view.result.current.data).toBeUndefined();
+    await act(() => vi.advanceTimersByTimeAsync(10));
+    expect(view.result.current.data?.rows[0].key).toBe('another caller');
+    expect(fetch).toHaveBeenCalledTimes(5);
+  } finally {
+    view.unmount();
+    client.clear();
+    vi.useRealTimers();
+    fetch.mockReset();
+  }
+});
 
 test('operator overview cache follows authority and pauses refused polling until retry', async () => {
   vi.useFakeTimers();
