@@ -1,0 +1,7 @@
+{
+  "revision": "88140cbe836a8eb84d768f11b57872824ac1aef6",
+
+  "notes": [
+    {"path":"docs/guides/releasing.md","note":"Checked the review follow-up: the qualified Nightly entry is gated on the STATION_QUALIFIED_NIGHTLY repository variable (documented as dormant until the owner admits main-qualification.yml to the GCP workload identity condition), and qualification-evidence reuse now judges a Main qualification run by its single Full source qualification gate job, which the guide now states alongside the repair rule.","inputs":["docs/guides/releasing.md",".github/workflows/main-qualification.yml","scripts/__tests__/qualification-evidence.test.ts","scripts/qualification-evidence.mjs"]}
+  ]
+}
