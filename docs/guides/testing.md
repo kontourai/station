@@ -432,7 +432,7 @@ successful matrix or promotion receipt. Preserve it when diagnosing a red gate.
 After resolving the target revision and tool digest, capture also maintains
 `<capture-path>.progress.json`. This bounded snapshot contains only those
 digests, the baseline revision, a fixed phase name, and monotonic elapsed
-milliseconds. It marks source validation, imports, runtime startup, both
+milliseconds since snapshot creation, not since child spawn. It marks source validation, imports, runtime startup, both
 measurements, report writing, and cleanup. A child killed by the liveness bound
 can leave its last phase even when no measurement report exists. The snapshot
 contains no payloads or error text. A diagnostic write failure emits a fixed
