@@ -1,0 +1,7 @@
+{
+  "revision": "498122e093cd04ec3539e91c3311d03002df3e36",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Checked against #3170/#3127: no claim of a single-ready-agent direct New or of 'No output for' wording; New always opens the picker.","inputs":["src-server/routes/schemas/schema-definitions/content.ts","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}

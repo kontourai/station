@@ -208,13 +208,25 @@ function resolveListenerAuthority(
  * The consent origin as proven by this request's own Host header, or null
  * when the Host is unusable or names a different port than the one this
  * listener was configured with. The hostname is deliberately the
- * request-visible one (decision 4) — only the PORT is pinned.
+ * request-visible one (decision 4) — only the PORT is pinned. The one
+ * exception is the configured `STATION_TRUSTED_CONSENT_ORIGIN`, whose exact
+ * host is accepted and yields that origin.
  */
 function requestConsentOrigin(
   hostHeader: string | undefined,
   consentPort: number,
+  trustedOrigin: string | null,
 ): string | null {
   if (!hostHeader) return null;
+  // Behind an HTTPS mapping the Host is the mapped name, not the consent
+  // port. Only the exact configured host qualifies; the Origin header must
+  // then equal the configured origin, so any other https origin still fails.
+  if (
+    trustedOrigin !== null &&
+    hostHeader.toLowerCase() === new URL(trustedOrigin).host
+  ) {
+    return trustedOrigin;
+  }
   let url: URL;
   try {
     url = new URL(`http://${hostHeader}`);
@@ -326,7 +338,11 @@ export function createConsentApp(deps: ConsentListenerDeps): Hono {
     const expectedOrigin =
       consentPort === null
         ? null
-        : requestConsentOrigin(c.req.header('host'), consentPort);
+        : requestConsentOrigin(
+            c.req.header('host'),
+            consentPort,
+            deps.channel.trustedOrigin,
+          );
     if (expectedOrigin === null) {
       return refuse(
         'origin_unresolvable',

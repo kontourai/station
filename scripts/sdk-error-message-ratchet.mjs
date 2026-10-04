@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+
 // Zero-tolerance gate for #3749 (hand-rolled refusal messages in the SDK).
 //
 // The shared zod middleware answers a rejected body with
@@ -87,9 +88,9 @@
 //
 //   node scripts/sdk-error-message-ratchet.mjs [--update]
 
-import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import ts from 'typescript';
+import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 export const SCAN_PATHSPECS = ['packages/sdk/src'];
@@ -123,10 +124,14 @@ export const SCOPE_SENTINELS = [
 export const HAND_ROLLED_REFUSAL = /[\w$)\]]\??\.error\s*(\|\||\?\?)/g;
 
 export function listScannedFiles() {
-  const output = execFileSync('git', ['ls-files', '--', ...SCAN_PATHSPECS], {
-    encoding: 'utf8',
-    windowsHide: true,
-  });
+  const output = execFileSyncBounded(
+    'git',
+    ['ls-files', '--', ...SCAN_PATHSPECS],
+    {
+      encoding: 'utf8',
+      windowsHide: true,
+    },
+  );
   return output
     .split('\n')
     .filter((line) => line.endsWith('.ts') || line.endsWith('.tsx'))
@@ -529,7 +534,7 @@ export function findEnvelopeReads(source, fileName = 'sample.ts') {
 }
 
 export function listEnvelopeScannedFiles() {
-  const output = execFileSync(
+  const output = execFileSyncBounded(
     'git',
     [
       'ls-files',
