@@ -461,23 +461,27 @@ export function runTransferCapture({
     // A barrier timing out is host load, not a regression, and the child's own
     // message already names the setting; repeat it on the FAIL line, which is
     // what a push refusal shows.
-    const barrierTimeout = /barrier timed out after \d+ms: [^\n]+/.exec(
-      result.stderr ?? '',
-    );
+    // Anchored to the thrown error's own line: Node prints the source line that
+    // threw (which contains the message template) before it.
+    const barrierTimeout =
+      /^Error: ([^\n]*barrier timed out after \d+ms: [^\n]+)/m.exec(
+        result.stderr ?? '',
+      );
     if (barrierTimeout)
       fail(
-        `${barrierTimeout[0]} for ${targetRoot}. This is host load, not a measured regression: raise it for this run with ${TRANSFER_CAPTURE_TIMEOUT_ENV}=<milliseconds> (currently ${timeout})`,
+        `${barrierTimeout[1]} for ${targetRoot}. This is host load, not a measured regression: raise it for this run with ${TRANSFER_CAPTURE_TIMEOUT_ENV}=<milliseconds> (currently ${timeout})`,
       );
     // The scenario's own refusals (an expected event that never arrived, a
     // frame count that is not one heavy turn) are not load and carry their
     // own text; surface it on the FAIL line instead of a bare "capture failed".
-    const scenarioFailure = /orchestration transfer scenario: [^\n]+/.exec(
-      result.stderr ?? '',
-    );
+    const scenarioFailure =
+      /^Error: (orchestration transfer scenario: [^\n]+)/m.exec(
+        result.stderr ?? '',
+      );
     fail(
       resolutionFailure
         ? `capture dependency resolution failed for ${targetRoot}; inspect the module error above (preparing the baseline again will not repair resolution)`
-        : `capture failed for ${targetRoot}${scenarioFailure ? `: ${scenarioFailure[0]}` : ''}`,
+        : `capture failed for ${targetRoot}${scenarioFailure ? `: ${scenarioFailure[1]}` : ''}`,
     );
   }
   if (!existsSync(output)) fail(`capture produced no report: ${output}`);

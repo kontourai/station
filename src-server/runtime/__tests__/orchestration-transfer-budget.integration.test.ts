@@ -514,6 +514,20 @@ describe('orchestration transfer byte budgets', () => {
     return '';
   };
 
+  /**
+   * The shape Node prints for an uncaught error: the source line that threw
+   * (which contains the message template) comes before the `Error:` line.
+   */
+  const uncaughtStderr = (message: string) =>
+    [
+      'file:///repo/src-server/__test-utils__/orchestration-transfer-scenario.ts:133',
+      '    throw new Error(`orchestration transfer scenario: ${message}`);',
+      '          ^',
+      '',
+      `Error: ${message}`,
+      '    at fail (file:///repo/src-server/__test-utils__/orchestration-transfer-scenario.ts:133:11)',
+    ].join('\n');
+
   test('a slow scenario barrier is reported through the gate with the remedy', async () => {
     const run = await startMeasurement({
       refusal: false,
@@ -523,7 +537,7 @@ describe('orchestration transfer byte budgets', () => {
     });
     const failure = await run.nativeMeasurementPromise.catch((error) => error);
     expect(String(failure.message)).toMatch(/barrier timed out after 1ms/);
-    const line = gateFailLine(`Error: ${failure.message}\n    at x`);
+    const line = gateFailLine(uncaughtStderr(failure.message));
     expect(line).toContain(
       'STATION_TRANSFER_CAPTURE_TIMEOUT_MS=<milliseconds>',
     );
@@ -541,7 +555,7 @@ describe('orchestration transfer byte budgets', () => {
     expect(String(failure.message)).toContain(
       'saw 0 activity frames, expected 1',
     );
-    const line = gateFailLine(`Error: ${failure.message}\n    at x`);
+    const line = gateFailLine(uncaughtStderr(failure.message));
     expect(line).toContain('may be a regression in the route');
     expect(line).not.toContain('raise it for this run');
   }, 60_000);
