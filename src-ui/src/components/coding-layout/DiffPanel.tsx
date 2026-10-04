@@ -1,3 +1,4 @@
+import type { PullRequestReviewComment } from '@kontourai/station-contracts/pull-request-provider';
 import {
   type DiffComment,
   useCodingDiffQuery,
@@ -51,6 +52,37 @@ type DiffCommentSide = DiffComment['side'];
 interface DiffCommentAnnotation {
   comments: DiffComment[];
   composing: boolean;
+  /** Read-only comments the forge anchored to this line. */
+  provider?: PullRequestReviewComment[];
+}
+
+/** A forge's inline comments on one diff line, read-only. */
+function ProviderCommentThread({
+  comments,
+}: {
+  comments: PullRequestReviewComment[];
+}) {
+  return (
+    <div className="diff-comment-thread diff-comment-thread--provider">
+      {comments.map((comment) => (
+        <div
+          key={comment.id}
+          className="diff-comment"
+          data-provider-comment={comment.id}
+        >
+          <div className="diff-comment__meta">
+            <strong>{comment.author || 'Unknown author'}</strong>
+            <span className="diff-comment__time">
+              {Number.isNaN(Date.parse(comment.createdAt))
+                ? ''
+                : new Date(comment.createdAt).toLocaleString()}
+            </span>
+          </div>
+          <div className="diff-comment__body">{comment.body}</div>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 interface ActiveComposer {
@@ -272,12 +304,18 @@ export function ObservedDiffPanel({
   error = null,
   observationKey,
   projectSlug,
+  providerComments,
 }: {
   diff: string;
   loading?: boolean;
   error?: string | null;
   observationKey: string;
   projectSlug?: string;
+  /**
+   * A forge's inline review comments to show read-only on their lines. Only
+   * comments with a line are placed; the caller lists the rest.
+   */
+  providerComments?: readonly PullRequestReviewComment[];
 }) {
   const performanceSurfaceRef = useRef<HTMLDivElement | null>(null);
 
@@ -430,6 +468,18 @@ export function ObservedDiffPanel({
     return byFile;
   }, [comments]);
 
+  const providerByFile = useMemo(() => {
+    const byFile = new Map<string, Map<string, PullRequestReviewComment[]>>();
+    for (const comment of providerComments ?? []) {
+      if (comment.line === null) continue;
+      const lines = byFile.get(comment.path) ?? new Map();
+      const key = sideLineKey(comment.side, comment.line);
+      lines.set(key, [...(lines.get(key) ?? []), comment]);
+      byFile.set(comment.path, lines);
+    }
+    return byFile;
+  }, [providerComments]);
+
   // @pierre/diffs' controlled CodeView only refreshes an item's internal
   // record — including re-invoking renderHeaderPrefix/renderHeaderMetadata —
   // when `item.version` changes (components/CodeView.js's `syncItemRecord`:
@@ -448,8 +498,12 @@ export function ObservedDiffPanel({
       const id = diffItemId(fileDiff, index);
       const filePath = fileDiff.name;
       const lineComments = commentsByFile.get(filePath);
+      const forgeComments = providerByFile.get(filePath);
       // Annotate every line that has comments, plus the active composer line.
-      const keys = new Set<string>(lineComments ? lineComments.keys() : []);
+      const keys = new Set<string>([
+        ...(lineComments ? lineComments.keys() : []),
+        ...(forgeComments ? forgeComments.keys() : []),
+      ]);
       if (composer && composer.filePath === filePath) {
         keys.add(sideLineKey(composer.side, composer.lineNumber));
       }
@@ -464,6 +518,9 @@ export function ObservedDiffPanel({
           lineNumber,
           metadata: {
             comments: lineComments?.get(key) ?? [],
+            ...(forgeComments?.has(key)
+              ? { provider: forgeComments.get(key) }
+              : {}),
             composing:
               !!composer &&
               composer.filePath === filePath &&
@@ -485,7 +542,14 @@ export function ObservedDiffPanel({
         ...(annotations.length > 0 ? { annotations } : {}),
       };
     });
-  }, [files, commentsByFile, composer, collapseOverrides, fileCounts]);
+  }, [
+    files,
+    commentsByFile,
+    providerByFile,
+    composer,
+    collapseOverrides,
+    fileCounts,
+  ]);
 
   const fileOf = (item: CodeViewItem<DiffCommentAnnotation>): string =>
     item.type === 'diff' ? item.fileDiff.name : '';
@@ -497,32 +561,39 @@ export function ObservedDiffPanel({
     const filePath = fileOf(item);
     const meta = annotation.metadata;
     if (!meta) return null;
+    if (!commentsEnabled)
+      return meta.provider ? (
+        <ProviderCommentThread comments={meta.provider} />
+      ) : null;
     return (
-      <DiffCommentThread
-        comments={meta.comments}
-        composing={meta.composing}
-        busy={createComment.isPending}
-        onSubmit={(body) =>
-          createComment.mutate(
-            {
+      <>
+        {meta.provider && <ProviderCommentThread comments={meta.provider} />}
+        <DiffCommentThread
+          comments={meta.comments}
+          composing={meta.composing}
+          busy={createComment.isPending}
+          onSubmit={(body) =>
+            createComment.mutate(
+              {
+                filePath,
+                side: annotation.side,
+                lineNumber: annotation.lineNumber,
+                body,
+              },
+              { onSuccess: () => setComposer(null) },
+            )
+          }
+          onCancel={() => setComposer(null)}
+          onStartReply={() =>
+            setComposer({
               filePath,
               side: annotation.side,
               lineNumber: annotation.lineNumber,
-              body,
-            },
-            { onSuccess: () => setComposer(null) },
-          )
-        }
-        onCancel={() => setComposer(null)}
-        onStartReply={() =>
-          setComposer({
-            filePath,
-            side: annotation.side,
-            lineNumber: annotation.lineNumber,
-          })
-        }
-        onDelete={(id) => deleteComment.mutate(id)}
-      />
+            })
+          }
+          onDelete={(id) => deleteComment.mutate(id)}
+        />
+      </>
     );
   };
 
@@ -626,7 +697,11 @@ export function ObservedDiffPanel({
       key={diffTheme}
       disableWorkerPool
       items={items}
-      renderAnnotation={commentsEnabled ? renderAnnotation : undefined}
+      renderAnnotation={
+        commentsEnabled || providerByFile.size > 0
+          ? renderAnnotation
+          : undefined
+      }
       renderGutterUtility={commentsEnabled ? renderGutterUtility : undefined}
       renderHeaderPrefix={renderHeaderPrefix}
       renderHeaderMetadata={renderHeaderMetadata}
