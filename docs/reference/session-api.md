@@ -427,6 +427,19 @@ are reported as incomplete observations. Cursor progress is saved after the
 page's events, so an interrupted import replays through durable event-id
 deduplication.
 
+Claude transcript observation persists a bounded, source-owned ancestry map
+with its cursor. Late turn-duration records close their known parent turn;
+unknown or evicted parents leave the current turn's usage accumulator intact.
+An older aggregation cursor without ancestry uses one bounded look-behind to
+recover identities after its exact active user boundary. It replays no counters
+or events; a boundary outside that window remains unknown.
+An event-limited page that stops within a record retains that record's incoming
+turn and usage state so replay resumes coherently. The per-turn conversation
+window retains all per-turn Claude and Muse usage observations within its
+existing bounds; it coalesces session-cumulative Codex observations to the latest
+snapshot. See [Profile usage](../guides/monitoring.md#profile-usage-and-paired-people)
+for measurement scopes and remaining coverage limits.
+
 Claude and Codex continuation require a verified source configuration identity.
 The local sources expose an opaque reference to the configured home; the native
 adapter resolves that reference again before use. A replaced or mismatched home

@@ -63,6 +63,7 @@ import {
 } from '@kontourai/station-shared/sqlite-corruption-marker';
 import { watchForSqliteCorruption } from '@kontourai/station-shared/sqlite-corruption-watch';
 import { explicitCorruption } from '@kontourai/station-shared/sqlite-integrity';
+import { providerUsageScope } from '@kontourai/station-shared/usage-fold';
 import { CHAT_INPUT_MAX_CHARS } from '../../../src-shared/chat-input-limits.js';
 import {
   canonicalPersistedRequestId,
@@ -7808,7 +7809,11 @@ export class EventStore {
       const boundedRows = rows.slice(0, SESSION_EVENT_WINDOW_MAX_EVENTS);
       const latestContext = new Map<string, string>();
       for (const row of boundedRows) {
-        if (row.method === 'token-usage.updated' && row.turn_id)
+        if (
+          row.method === 'token-usage.updated' &&
+          row.turn_id &&
+          providerUsageScope(row.provider) !== 'per-turn'
+        )
           latestContext.set(row.turn_id, row.id);
       }
       const raw = boundedRows
@@ -7816,6 +7821,7 @@ export class EventStore {
           (row) =>
             row.method !== 'token-usage.updated' ||
             !row.turn_id ||
+            providerUsageScope(row.provider) === 'per-turn' ||
             latestContext.get(row.turn_id) === row.id,
         )
         // Deliberately NOT `mapEventRow`: this window is byte-budgeted, and
