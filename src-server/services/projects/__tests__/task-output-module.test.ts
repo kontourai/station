@@ -148,6 +148,43 @@ describe('TaskOutputModule', () => {
     ).toBe('original');
   });
 
+  test.each(['workspace', 'declared'] as const)(
+    '%s output quota belongs to the current Task incarnation',
+    async (kind) => {
+      const { workspace, module, setTaskCreatedAt } = fixture();
+      const bytes = 'one';
+      writeFileSync(join(workspace, 'one.txt'), bytes);
+      const create = async (operationId: string) => {
+        const owner = module({ limits: { maxPerTask: 1 } });
+        const input = { operationId, relativePath: 'one.txt', title: 'One' };
+        if (kind === 'workspace') return owner.create('task-a', input);
+        const kept = await owner.createDeclared('task-a', {
+          ...input,
+          sourceWorkspace: workspace,
+          digest: createHash('sha256').update(bytes).digest('hex'),
+          length: Buffer.byteLength(bytes),
+          fingerprintContext: operationId,
+        });
+        return kept.output;
+      };
+      const original = await create('original');
+      await expect(create('original-overflow')).rejects.toBeInstanceOf(
+        TaskOutputUnavailableError,
+      );
+      setTaskCreatedAt('2026-10-01T01:00:00.000Z');
+      expect(await module().list('task-a')).toEqual([]);
+      const replacement = await create('replacement');
+      expect(replacement.id).not.toBe(original.id);
+      expect(await module().list('task-a')).toEqual([replacement]);
+      await expect(create('replacement-overflow')).rejects.toBeInstanceOf(
+        TaskOutputUnavailableError,
+      );
+      await expect(
+        module().read('task-a', original.id),
+      ).rejects.toBeInstanceOf(TaskOutputNotFoundError);
+    },
+  );
+
   test('deleted operation receipts remain tied to their original Task incarnation', async () => {
     const { home, workspace, module, setTaskCreatedAt } = fixture();
     writeFileSync(join(workspace, 'one.txt'), 'one');
