@@ -112,7 +112,7 @@ performance.now = () => real() * 1000;
       message = String((error as Error).message);
     }
     expect(message).toMatch(
-      /capture barrier timed out after 1ms: external retained.*STATION_TRANSFER_CAPTURE_TIMEOUT_MS=<milliseconds> \(currently 4000\)/,
+      /barrier timed out after 1ms: external retained.*STATION_TRANSFER_CAPTURE_TIMEOUT_MS=<milliseconds> \(currently 4000\)/,
     );
   }, 240_000);
 });
