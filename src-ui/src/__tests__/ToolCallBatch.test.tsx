@@ -433,7 +433,7 @@ test('a collapsed batch discloses an awaiting-approval call without being opened
     name: /1 file read, 1 file edit/,
   });
   expect(button.textContent).not.toMatch(/edited/i);
-  const flag = screen.getByText('Awaiting approval');
+  const flag = screen.getByText('Needs approval');
   expect(flag.className).toContain('tool-call-batch__awaiting');
 });
 

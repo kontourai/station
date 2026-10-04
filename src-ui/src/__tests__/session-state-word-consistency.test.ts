@@ -35,7 +35,11 @@ const LANE_VOCABULARY: Record<SessionLaneId, ReadonlySet<string>> = {
   // Started in another app; this Station cannot answer in it.
   external: new Set(['Elsewhere']),
   // You owe this session something. Which thing you owe is the refinement;
-  // "Waiting on you" is the generic rung when no kind was recorded.
+  // "Waiting on you" is the generic rung when no kind was recorded. The
+  // ladder's "Queued to send" is also a Needs-you word, but it comes from a
+  // device-local chat fact (a send queued offline) that a session list never
+  // carries, so this walk cannot produce it and the test below would refuse
+  // it; `work-status.test.ts` pins its lane.
   needsYou: new Set([
     'Needs approval',
     'Needs answer',
@@ -397,6 +401,9 @@ const SURFACE_ROOTS = [
   'components/chat/PendingApprovalStrip.tsx',
   'components/chat/TurnActivityProgress.tsx',
   'components/chat/ChatEmptyState.tsx',
+  // The transcript's approval marker sits beside the status pill (#3312).
+  'components/chat/ToolCallDisplay.tsx',
+  'components/chat/ToolCallBatch.tsx',
 ];
 
 /**
@@ -510,6 +517,8 @@ describe('one vocabulary on the work surfaces', () => {
       'components/chat-dock/ChatDockHeader.tsx',
       'components/home/HomeRecentWorkSection.tsx',
       'components/flow/WorkflowPlanPanel.tsx',
+      'components/chat/ToolCallDisplay.tsx',
+      'components/chat/ToolCallBatch.tsx',
     ]) {
       expect(names).toContain(guarded);
     }
