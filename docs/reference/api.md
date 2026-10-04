@@ -804,10 +804,20 @@ Respect `hasMore` rather than assuming one response contains the entire history.
 ### Get Conversation Messages
 
 `GET /agents/:slug/conversations/:conversationId/messages` returns
-`{success: true, data: messages}`. The reader can restore authorized messages
-from orchestration when the file-memory path has no usable record. Messages
-carry the owner's current parts/metadata shape; do not depend on every message
-having the old `content: string`/`timestamp` pair.
+`{success: true, data: messages}`. A conversation can span several execution
+Sessions: a follow-up its current Session cannot take, such as one after a
+failed Station-agent turn, runs in a successor Session. The read covers every
+Session in the conversation's lineage, oldest first, and concatenates them
+([read seam](../../src-server/routes/chat/conversations.ts)). For each Session it
+reads the file-memory record first and, when that has no usable record, the
+authorized messages restored from orchestration. A successor stores only its
+own turns; earlier history reaches its model without being copied into its
+record. Export, fork and summary use the same read. Messages carry the owner's current parts/metadata shape; do not depend on
+every message having the old `content: string`/`timestamp` pair.
+
+A stored user turn is the typed text (and its attachments) alone. Ambient
+context such as `[Timezone: …]`, skill instructions, project rules and
+retrieved knowledge reach only the model's input for that turn.
 
 A `/chat` turn that failed before producing output is recorded as a user-role
 `[SYSTEM_EVENT] [CHAT_ERROR] <text>` message. `<text>` is never the model
