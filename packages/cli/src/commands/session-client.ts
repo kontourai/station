@@ -1,6 +1,7 @@
 import {
   type ConnectionConfig,
   type ConnectionRecoveryProjection,
+  describeConnectionBlockers,
   type EngineId,
 } from '@kontourai/station-contracts';
 import {
@@ -161,8 +162,11 @@ async function resolveRuntimeSessionTargetForConnection(
     connection.status === 'missing_prerequisites' ||
     connection.status === 'error'
   ) {
+    const blockers = describeConnectionBlockers(connection);
     throw new Error(
-      `Connection '${connectionId}' is not ready (${connection.status}). Run station connections test ${connectionId} for diagnostics.`,
+      `Connection '${connectionId}' is not ready (${connection.status})${
+        blockers ? `: ${blockers}` : ''
+      }. Run station connections test ${connectionId} for diagnostics.`,
     );
   }
   if (!connection.capabilities.includes('agent-runtime')) {
@@ -268,16 +272,33 @@ async function resolveSessionTarget(
   return { kind: 'managed', agentSlug: target.agentSlug };
 }
 
+/**
+ * A 401/403 here almost always means the shell carries no credential Station
+ * accepts, which a bare status code does not say.
+ */
+export function orchestrationStreamFailureMessage(status: number): string {
+  const base = `Orchestration event stream failed with HTTP ${status}`;
+  if (status !== 401 && status !== 403) return base;
+  return `${base}: Station rejected this CLI's credential or none was sent. Set STATION_API_CREDENTIAL in this shell, pass --credential=<token>, or target a saved Station with --station=<name> (see station setup existing <name> <endpoint> --pair).`;
+}
+
 function createManagedSessionClient(
   apiBase: string,
   agentSlug: AgentId,
 ): CliSessionClient {
   return {
     async listSessions() {
-      const conversations = (await requestJson<Array<Record<string, unknown>>>(
-        apiBase,
-        `/agents/${encodeURIComponent(agentSlug)}/conversations`,
-      )) as Array<Record<string, unknown>>;
+      // The route answers a page, `{ items, hasMore }`; a bare array is what
+      // older Stations returned.
+      const listed = await requestJson<
+        | Array<Record<string, unknown>>
+        | { items?: Array<Record<string, unknown>> }
+      >(apiBase, `/agents/${encodeURIComponent(agentSlug)}/conversations`);
+      const conversations = Array.isArray(listed)
+        ? listed
+        : Array.isArray((listed as { items?: unknown }).items)
+          ? (listed as { items: Array<Record<string, unknown>> }).items
+          : [];
 
       return conversations.map((conversation) => ({
         id: String(conversation.id),
@@ -380,9 +401,7 @@ async function sendOrchestrationChat(
     { signal: abortController.signal },
   );
   if (!response.ok) {
-    throw new Error(
-      `Orchestration event stream failed with HTTP ${response.status}`,
-    );
+    throw new Error(orchestrationStreamFailureMessage(response.status));
   }
 
   let acceptedSessionId = threadId;

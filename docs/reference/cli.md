@@ -605,6 +605,12 @@ link is single use, and minting one replaces any earlier unspent link, including
 the one `station start` printed (#2612). Without `--print`, the command never
 prints the token.
 
+The link names the host the instance's UI listener bound, as recorded in the
+registry at start (`127.0.0.1` for `start --watch`, which is loopback-only). A
+wildcard bind (`0.0.0.0`, `::`) or an entry that recorded no host keeps
+`localhost`. The host matters because the sign-in a link completes belongs to
+that origin: `localhost` and `127.0.0.1` do not share it.
+
 It is deliberate about refusing rather than guessing: no live instance in the
 home names it and points at `--home`; several live instances require
 `--instance=<name>`; an instance with no recorded browser address points at

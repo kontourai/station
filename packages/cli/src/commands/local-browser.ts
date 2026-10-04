@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { isIP } from 'node:net';
 import { hostname } from 'node:os';
 import { join } from 'node:path';
 import { PUBLIC_DEVICE_PAIRING_UI_BOOTSTRAP_MINT_PATH } from '@kontourai/station-contracts/environment-security';
@@ -43,6 +44,19 @@ export async function mintLocalBrowserToken(
   } catch {
     return null;
   }
+}
+
+/**
+ * The host the printed link uses. An instance bound to one address (Watch mode
+ * is loopback-only, `--host=127.0.0.1`) is reached at THAT address: `localhost`
+ * can resolve to a different loopback family than the listener, and it is a
+ * different origin, so the sign-in it completes would not cover the address the
+ * person is using. A wildcard bind, or an entry with no recorded host (older
+ * entries, the Desktop sidecar), keeps `localhost`.
+ */
+function browserHostFor(host: string | undefined): string {
+  if (!host || host === '0.0.0.0' || host === '::') return 'localhost';
+  return isIP(host) === 6 ? `[${host}]` : host;
 }
 
 export async function runOpenCommand(
@@ -97,7 +111,7 @@ export async function runOpenCommand(
     throw new Error(
       'This Station could not authorize the browser. Verify that the selected home belongs to the running instance.',
     );
-  const visibleUrl = `http://localhost:${target.uiPort}/`;
+  const visibleUrl = `http://${browserHostFor(target.host)}:${target.uiPort}/`;
   const link = `${visibleUrl}#station-ui-bootstrap=${token}`;
   const stdout = dependencies.stdout ?? console.log;
   // #2612: for a browser this command cannot launch (a simulator, another
