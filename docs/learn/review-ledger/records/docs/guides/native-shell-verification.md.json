@@ -148,7 +148,7 @@
 
     {"path":"src-desktop/src/native_account_operations.rs","digest":"bff10011fef84880826a284b36b1351623b0e6d7117187e85fee5c869c3b5fe7","revision":"0ccabd1ab89272334dbe2515a89907f21fb3b7fe"},
 
-    {"path":"src-ui/src/views/connections-hub/RelayOperatorPanel.tsx","digest":"a1e8b3172a1387042500808bd150984a2195091fdf36e582408be1ee5e7dcc67","revision":"9551da1bbc1f9d6d3e7c3f74729b9a968dab9b4f"}
+    {"path":"src-ui/src/views/connections-hub/RelayOperatorPanel.tsx","digest":"712bca43fdb0868268c336fc341a59e0539e2ad2f6db7c6d27ccf859be22e68c","revision":"499c073ec1545472eb31510aaf5fec07c5b96f34"}
   ],
 
   "checks": [

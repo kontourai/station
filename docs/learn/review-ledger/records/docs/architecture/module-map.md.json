@@ -960,7 +960,7 @@
 
     {"path":"src-server/security/relay-management-authority.ts","digest":"250ce20a766a0a18866f4390a608059dc6124bd22a7308cbea2bf2d4fec8ca5a","revision":"b2884a5e70a4ab0c278c9f15ce0972f08077341e"},
 
-    {"path":"src-ui/src/views/connections-hub/RelayOperatorPanel.tsx","digest":"a1e8b3172a1387042500808bd150984a2195091fdf36e582408be1ee5e7dcc67","revision":"9551da1bbc1f9d6d3e7c3f74729b9a968dab9b4f"}
+    {"path":"src-ui/src/views/connections-hub/RelayOperatorPanel.tsx","digest":"712bca43fdb0868268c336fc341a59e0539e2ad2f6db7c6d27ccf859be22e68c","revision":"499c073ec1545472eb31510aaf5fec07c5b96f34"}
   ],
 
   "checks": [

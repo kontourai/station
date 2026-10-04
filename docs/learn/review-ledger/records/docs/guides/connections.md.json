@@ -310,7 +310,7 @@
 
     {"path":"tests/connections-crud.spec.ts","digest":"b0c33e5e552b3651adf99dbe92ef3d43a38bb130ca13c26f7dff1bfeb3dbc9e5","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/views/connections-hub/RelayOperatorPanel.tsx","digest":"a1e8b3172a1387042500808bd150984a2195091fdf36e582408be1ee5e7dcc67","revision":"9551da1bbc1f9d6d3e7c3f74729b9a968dab9b4f"},
+    {"path":"src-ui/src/views/connections-hub/RelayOperatorPanel.tsx","digest":"712bca43fdb0868268c336fc341a59e0539e2ad2f6db7c6d27ccf859be22e68c","revision":"499c073ec1545472eb31510aaf5fec07c5b96f34"},
 
     {"path":"src-server/routes/system/relay-management-routes.ts","digest":"8fc232c40990a24621eb5ef10a3020abfae191d0ce5cc0236a8399f4294ab437","revision":"33a055774ef37a2d4b5c23e94e2f6552e6ab57c8"}
   ],
