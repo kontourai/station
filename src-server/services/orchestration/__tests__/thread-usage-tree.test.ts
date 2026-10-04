@@ -487,15 +487,17 @@ describe('conversation usage tree', () => {
         stationDelegationProvenance: 'runtime-attested',
       },
     } as CanonicalRuntimeEvent);
-    // Stamped on its start, but naming another conversation there; a later
-    // configuration names this one. (The other id sorts first, so the link
-    // the read picks is this conversation's.)
+    // Stamped on its start, but naming another conversation there (and
+    // claiming this one by parentTaskId); a later configuration names this
+    // one. The other id sorts first, so the link the read picks is this
+    // conversation's, which the stamp never vouched for.
     start(
       store,
       'other-parent',
       'codex',
       {
         taskId: 'other-parent',
+        parentTaskId: 'conv-codex',
         delegation: createChildDelegationContext({
           agentSlug: 'coder',
           conversationId: 'conv-a-elsewhere',
