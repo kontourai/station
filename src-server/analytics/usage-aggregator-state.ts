@@ -298,18 +298,22 @@ function applyObservationAttribution(
     applyModelPromptCacheAttribution(model, observation);
   } else addUsage(stats.unallocated.model, observation, cost);
   if (observation.provider) {
-    stats.byProvider ??= Object.create(null);
-    stats.byProvider[observation.provider] ??= emptyUnallocatedUsage();
-    const provider = stats.byProvider[observation.provider];
+    const byProvider: NonNullable<UsageStats['byProvider']> =
+      stats.byProvider ?? Object.create(null);
+    stats.byProvider = byProvider;
+    byProvider[observation.provider] ??= emptyUnallocatedUsage();
+    const provider = byProvider[observation.provider];
     addUsage(provider, observation, cost);
   } else addUsage(stats.unallocated.provider, observation, cost);
   if (observation.principal) {
-    stats.byPrincipal ??= Object.create(null);
-    stats.byPrincipal[observation.principal.id] ??= {
+    const byPrincipal: NonNullable<UsageStats['byPrincipal']> =
+      stats.byPrincipal ?? Object.create(null);
+    stats.byPrincipal = byPrincipal;
+    byPrincipal[observation.principal.id] ??= {
       principal: observation.principal,
       usage: emptyUnallocatedUsage(),
     };
-    const principal = stats.byPrincipal[observation.principal.id];
+    const principal = byPrincipal[observation.principal.id];
     addUsage(principal.usage, observation, cost);
   } else addUsage(stats.unallocated.principal, observation, cost);
 }
