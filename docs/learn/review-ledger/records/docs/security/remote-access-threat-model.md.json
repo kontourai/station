@@ -26,6 +26,8 @@
 
     "src-desktop/src/ssh_launcher.rs",
 
+    "src-server/providers/app-home/app-home-profiles.ts",
+
     "src-server/routes/inference/fleet-inference.ts",
 
     "src-server/routes/operations/voice.ts",
@@ -61,6 +63,8 @@
     "src-server/security/station-control-request-authority.ts",
 
     "src-server/security/websocket-auth.ts",
+
+    "src-server/services/connections/browser-code-login.ts",
 
     "src-server/services/identity/application-session-service.ts",
 
@@ -100,19 +104,15 @@
 
     "src-server/utils/private-sqlite.ts",
 
-    "src-ui/src/views/account/account-entry-continuation.ts",
-
     "src-ui/src/views/account/AccountEntryView.tsx",
-
-    "src-ui/src/views/account/guest-account-authority.ts",
 
     "src-ui/src/views/account/GuestDeviceOnboarding.tsx",
 
     "src-ui/src/views/account/GuestProjectAccessView.tsx",
 
-    "src-server/services/connections/browser-code-login.ts",
+    "src-ui/src/views/account/account-entry-continuation.ts",
 
-    "src-server/providers/app-home/app-home-profiles.ts"
+    "src-ui/src/views/account/guest-account-authority.ts"
   ],
 
   "checks": [
