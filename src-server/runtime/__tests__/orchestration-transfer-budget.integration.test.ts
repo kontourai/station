@@ -206,7 +206,6 @@ async function startMeasurement({
       finalToolOutput: () => finalToolOutputOf(externalFinalPair),
       finalReplayEventCount: 3,
       heavyLiveFrameCount: 42,
-      maxLiveActivityFrames: 0,
       async seedRetained() {
         for (const event of retainedTransferEvents())
           externalAdapter.events.push(event);
@@ -270,7 +269,6 @@ async function startMeasurement({
       finalToolOutput: () => finalToolOutputOf(heavyTransferFinalPair()),
       finalReplayEventCount: 4,
       heavyLiveFrameCount: 44,
-      maxLiveActivityFrames: 2,
       async seedRetained() {
         await nativeAdapter.startSession({
           threadId: nativeThreadId,
