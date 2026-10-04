@@ -4542,7 +4542,15 @@ for (const [name, viewport, maximize] of [
       ).toBeLessThanOrEqual(send!.x + 0.5);
     } else {
       // Not short enough to engage the composer's priority: the transcript's
-      // own Discard serves, and the draft keeps its full two-line floor.
+      // own Discard serves (the composer does not repeat it), and the draft
+      // keeps its full two-line floor.
+      const repeated = (await discardButtonReport(page)).filter(
+        (report) => report.inComposer && report.box[2] > 0,
+      );
+      expect(
+        repeated,
+        'the composer repeats Discard only in a short dock',
+      ).toEqual([]);
       const geometry = await textarea.evaluate((element) => {
         const box = element.getBoundingClientRect();
         const style = getComputedStyle(element);
