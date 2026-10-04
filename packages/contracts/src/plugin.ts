@@ -228,6 +228,11 @@ export interface PluginManifest {
   build?: string;
   capabilities?: string[];
   commands?: PluginCommandContribution[];
+  /**
+   * Set by Station when `commands` failed validation and was dropped; the
+   * plugin still loads. Not a manifest field an author writes.
+   */
+  commandsRejected?: { reason: string };
   permissions?: string[];
   links?: unknown;
   agents?: Array<{ slug: string; source: string }>;
@@ -293,7 +298,7 @@ export interface ConflictInfo {
 }
 
 export interface PluginComponent {
-  type: 'agent' | 'layout' | 'pane' | 'provider' | 'tool';
+  type: 'agent' | 'command' | 'layout' | 'pane' | 'provider' | 'tool';
   id: string;
   /**
    * Human-readable name the manifest declares for this component (a Pane's

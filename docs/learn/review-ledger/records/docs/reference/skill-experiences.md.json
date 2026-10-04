@@ -34,7 +34,7 @@
 
     {"path":"packages/shared/src/agent-plugin-manifest.ts","digest":"a1b0dab918c8787193cc23e0f5362fc3ea5be6885440b56522314329974d55ba","revision":"4846133db20d56a37c3941d83b0dca5444f21a52"},
 
-    {"path":"packages/shared/src/build.ts","digest":"20f919a4a98519ce20e8e2f0d5d498a4be8daeba1314a97ddae752fd36df4630","revision":"4846133db20d56a37c3941d83b0dca5444f21a52"},
+    {"path":"packages/shared/src/build.ts","digest":"8db6bc04bffe80ead5af5e8d9b23be2ae02f1e5afbae67f850e583b8ca40c783","revision":"e78cdc9c00d09b69f333e1609821d8fa70bce58c"},
 
     {"path":"packages/shared/src/regular-file.ts","digest":"e6b1a4bfa2c1379a327d70dc3b357aadfe2d814bab4f6a0e0dc0270560eb7a78","revision":"4846133db20d56a37c3941d83b0dca5444f21a52"},
 
@@ -54,7 +54,7 @@
 
     {"path":"src-server/runtime/conversation/authorized-turn-correlation.ts","digest":"1c837e169f84074062b8467fc8d6653ff8b8512b491baa86ca3b00b727a37d63","revision":"56f4c4897a189eeb30430119a4f4895e95fbb541"},
 
-    {"path":"src-server/services/agents/skill-service.ts","digest":"9f92c44195a5c87a63c1a14a3079b3cc91e00149f2b2f4e400a72189bb64d7f6","revision":"adbeb32e99a86e9a8b6fca370b944f3b2147ca9f"},
+    {"path":"src-server/services/agents/skill-service.ts","digest":"9f92c44195a5c87a63c1a14a3079b3cc91e00149f2b2f4e400a72189bb64d7f6","revision":"569b7dcead02252ba2786c9f326bb54daebbbde2"},
 
     {"path":"src-server/services/orchestration/client-origin-propagation.ts","digest":"347ca06b63592fd53a0f45c9d7b38cf1625c3f079e65f4deea998d7f9519e141","revision":"8540fafb86b969775254b898711ad3ae40ccc39d"},
 
