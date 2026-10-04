@@ -1006,7 +1006,10 @@ async function openNewChatModal(page: Page) {
   await expect(newChatButton).toBeVisible({ timeout: 10_000 });
   await newChatButton.click();
   await expect(page.locator('.new-chat-modal')).toBeVisible({ timeout: 5_000 });
-  await page.getByRole('button', { name: /^Agent:/ }).click();
+  await page
+    .getByRole('form', { name: 'New chat draft' })
+    .getByRole('button', { name: /^Agent:/ })
+    .click();
 }
 
 function assistantRows(page: Page) {
@@ -1433,7 +1436,9 @@ test.describe('P1-G5 cross-runtime chat switching proof', () => {
       .locator('.new-chat-modal__agent', { hasText: 'Codex Runtime' })
       .click();
     await expect(
-      page.getByRole('button', { name: 'Agent: Codex Runtime', exact: true }),
+      page
+        .getByRole('form', { name: 'New chat draft' })
+        .getByRole('button', { name: 'Agent: Codex Runtime', exact: true }),
     ).toBeVisible();
     await page
       .getByRole('dialog', { name: 'New chat', exact: true })

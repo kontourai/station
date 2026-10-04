@@ -168,7 +168,10 @@ test.describe('pr-smoke live chat send', () => {
       .locator('.home-view__goal-actions')
       .getByRole('button', { name: 'New chat', exact: true })
       .click();
-    await page.getByRole('button', { name: /^Agent:/ }).click();
+    await page
+      .getByRole('form', { name: 'New chat draft' })
+      .getByRole('button', { name: /^Agent:/ })
+      .click();
     const agentRow = page.locator(
       `.new-chat-modal__agent[data-agent-slug="${agentSlug}"]`,
     );
