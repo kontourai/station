@@ -794,6 +794,17 @@ approval or a project-less session. Per-project counts are derived from
 `pendingCount` (`attentionCountForProject`, `@kontourai/station-contracts/attention`);
 the server publishes no per-project number for a client to trust.
 
+`needs_input` and `review_pending` items carry `environmentKind: 'peer'`, plus
+the saved `environmentName` when recorded, when the session is this Station's
+lifecycle record of a delegated task that runs on a paired Station. The value
+is read from the session's own `delegation.environmentKind`, the same field the
+Activity detail uses to withhold local controls. The item's thread names only
+that record, and the server refuses a local turn on it. Such an item therefore
+links to the Activity detail instead of the chat dock. Clients show where to
+answer it instead of offering a local reply. The field is absent for work this
+Station runs. A server that predates the field omits it; a reply sent to a peer
+record through that server is still refused, not delivered elsewhere.
+
 Both kinds link into the item's own Project Review layout at the exact item —
 `/projects/<projectSlug>/layouts/review?change=<id>` and
 `?review=<reviewSessionRef>`, alongside Starter work's

@@ -531,7 +531,9 @@ ordinary notification history. An approval or `review_pending` item with an
 exact request reference opens the request's decision controls. An approval
 without that reference uses its persisted notification's Allow/Deny actions;
 `review_pending` without one opens the session. `needs_input` sends a normal
-orchestration turn to the owning session. The header
+orchestration turn to the owning session. An item for a delegated task that
+runs on a paired Station offers no reply. It says to answer on that Station
+and opens the Activity detail. The header
 badge is the same deduplicated active-attention count shown in the Inbox.
 Concrete approval requests suppress a duplicate lifecycle item for the same
 session. Gate exceptions also suppress that session's lifecycle duplicate;
