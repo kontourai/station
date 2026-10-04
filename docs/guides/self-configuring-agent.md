@@ -60,6 +60,40 @@ Session directory. Conversation follow-ups use the newest started Session's
 scope and check unconfined execution across the conversation's lineage,
 including reserved successors.
 
+For every caller except a bound operator, Station makes the folder decision a
+second time immediately before it starts the engine for a new Session:
+
+- A folder the Agent named must still resolve to the canonical path that was
+  admitted, and that path must still be in scope. If a parent directory was
+  replaced by a symbolic link, the folder was removed, or a Project now
+  contains it, the dispatch is refused and no engine starts.
+- Station records the admitted canonical path on the Session. A later engine
+  start for that Session, or for a child Session that continues the
+  conversation in the same folder, refuses when the folder resolves anywhere
+  else. This applies to whoever sends the follow-up, including the operator;
+  the follow-up fails and names the folder.
+- An ACP connection can set its own working directory, which a Session with
+  no workspace starts in. Station scopes that dispatch by the connection's
+  directory as well as the default Session directory, so a connection
+  configured inside a Project is not reachable from the global scope.
+
+These refusals use the same codes as the admission check:
+`station_control_role_required` when the folder is no longer the one admitted,
+and `station_control_assurance_insufficient` when it is in another scope. The
+check runs before Station calls the engine adapter. The adapter then starts
+the process with the same path string, so the check narrows the interval in
+which a folder can be swapped; it does not pin the directory. Other uses of a
+Session's folder, such as terminals, are not covered. A follow-up to a Session
+with no recorded folder, such as one the operator started or one from before
+this check existed, gets only the admission check. A forked conversation does
+not inherit the record, and neither does a child Session that continues the
+conversation in a different folder than the previous Session recorded: it
+starts with no record.
+
+Interrupting a delegated task follows the same scope as a follow-up to it.
+The same applies to the Session commands that act on another Session: steer
+and steer-input inspection, adopt, interrupt, stop and draft discard.
+
 Saved-Environment discovery and remote dispatch require a bound operator caller.
 Remote task listings, task reads, event reads, and interrupts carry the same
 restriction.
@@ -72,8 +106,9 @@ station-control.
 These rules apply to station-control callers. The operator UI, paired Devices,
 and Station's own server code retain their separate authorization boundaries.
 The [scope owner](../../src-server/runtime/mcp/station-control-dispatch-scope.ts)
-and [policy](../../src-server/tools/station-control-policy.ts) define the checks;
-tool approval does not bypass them.
+and [policy](../../src-server/tools/station-control-policy.ts) define the checks,
+and the [start-time record](../../src-server/services/orchestration/dispatch-cwd-admission.ts)
+repeats the folder decision; tool approval does not bypass them.
 
 ## Recommended setup pattern
 

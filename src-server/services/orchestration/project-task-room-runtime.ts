@@ -17,6 +17,7 @@ import type {
   ProjectTaskRoomGrant,
   ProjectTaskRoomGrantKind,
   ProjectTaskRoomOpenOutcome,
+  ProjectTaskRoomOutputFeedback,
   ProjectTaskRoomPrincipal,
   ProjectTaskRoomReadOutcome,
   ProjectTaskRoomScope,
@@ -56,6 +57,7 @@ import type {
   ProjectTaskRoomCapabilityResolution,
   ProjectTaskRoomHistory,
   ProjectTaskRoomLinkAuthority,
+  ProjectTaskRoomOutputFeedbackTargets,
 } from './project-task-room-history.js';
 import { projectTaskRoomChannelId } from './project-task-room-history.js';
 import type { ProjectTaskRoomRevisionEvidencePort } from './project-task-room-revision-evidence-bridge.js';
@@ -133,9 +135,11 @@ interface ProjectTaskRoomRuntimeDeps {
     capabilities: ProjectTaskRoomCapabilityAuthority;
     agents: ProjectTaskRoomAgentGrantAuthority;
     links?: ProjectTaskRoomLinkAuthority;
+    outputFeedbackTargets?: ProjectTaskRoomOutputFeedbackTargets;
   }) => RecoverableRoomHistory;
   /** archive#3546 bridge: recorder, scope-bound resolver, and lifecycle owner. */
   readonly revisionEvidence?: ProjectTaskRoomRevisionEvidencePort;
+  readonly outputFeedbackTargets?: ProjectTaskRoomOutputFeedbackTargets;
   readonly working: ProjectTaskRoomWorkingState;
   readonly requestAuthority: ProjectTaskRoomRequestAuthority;
   /** Private journal lookup, filtered by current Task incarnation and immutable execution binding. */
@@ -336,6 +340,9 @@ export class ProjectTaskRoomRuntime {
       capabilities: {
         resolve: (input) => this.#resolveGrant(input.grant, input.required),
       },
+      ...(deps.outputFeedbackTargets
+        ? { outputFeedbackTargets: deps.outputFeedbackTargets }
+        : {}),
       agents: { revalidate: (receipt) => this.#revalidateAgent(receipt) },
       ...(deps.revisionEvidence ? { links: deps.revisionEvidence.links } : {}),
     });
@@ -982,6 +989,45 @@ export class ProjectTaskRoomRuntime {
           documentId: documentIdFor(scope),
         });
     }
+    return result.kind === 'denied' ? { kind: 'not-found' } : result;
+  }
+
+  async outputFeedback(input: {
+    taskId: string;
+    request: Request;
+    proposalId: string;
+    occurredAt: string;
+    feedback: ProjectTaskRoomOutputFeedback;
+  }): Promise<ProjectTaskRoomRuntimeOutcome<ProjectTaskRoomAppendOutcome>> {
+    const grant = await this.#issue(
+      input.taskId,
+      input.request,
+      'message-write',
+      undefined,
+      input.feedback.target.taskCreatedAt,
+    );
+    if (!grant) return { kind: 'not-found' };
+    const result = await this.#history.append({
+      grant,
+      intent: {
+        proposalId: input.proposalId,
+        occurredAt: input.occurredAt,
+        body: input.feedback,
+      },
+    });
+    if (result.kind === 'committed' || result.kind === 'duplicate') {
+      const delivery = await this.#resolveGrant(grant, 'message-write');
+      if (delivery.kind !== 'granted') return { kind: 'not-found' };
+      const scope = this.#scope(input.taskId);
+      if (scope)
+        await this.#publishHistory({
+          projectId: scope.projectId,
+          taskId: scope.taskId,
+          documentId: documentIdFor(scope),
+        });
+    }
+    const current = await this.#resolveGrant(grant, 'message-write');
+    if (current.kind !== 'granted') return { kind: 'not-found' };
     return result.kind === 'denied' ? { kind: 'not-found' } : result;
   }
 
@@ -3539,6 +3585,13 @@ function projectCheckpoint(value: any) {
   };
 }
 function projectBody(value: any): unknown {
+  if (value?.kind === 'output-feedback')
+    return {
+      kind: value.kind,
+      target: { ...value.target },
+      review: value.review,
+      text: value.text,
+    };
   if (value?.kind === 'human-message')
     return { kind: value.kind, text: value.text };
   if (value?.kind === 'live-work-started')

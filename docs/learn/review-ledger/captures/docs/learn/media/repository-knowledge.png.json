@@ -6,13 +6,13 @@
 
     "examples/knowledge-library/plugin.json",
 
-    "examples/knowledge-library/src/KnowledgeLibrary.tsx",
-
-    "examples/knowledge-library/src/RootPicker.tsx",
-
     "examples/knowledge-library/src/index.tsx",
 
     "examples/knowledge-library/src/knowledge-library.css",
+
+    "examples/knowledge-library/src/KnowledgeLibrary.tsx",
+
+    "examples/knowledge-library/src/RootPicker.tsx",
 
     "packages/sdk/src/client/knowledge.ts",
 

@@ -16,10 +16,12 @@ export class ChatHttpError extends StationHttpError {
   readonly serverMessage?: string;
 
   /**
-   * Whether the body parsed as Station's own answer (`isStationEnvelope`).
-   * A proxy or gateway page (an HTML 403 or 502) keeps its status but is
-   * `false`: it says nothing about what Station decided, so a caller must not
-   * treat it as a definitive refusal of the request (#2708).
+   * Whether Station itself answered (`isStationAnswer`): the body has
+   * Station's shape and, for a Station that marks its answers (#2842), the
+   * response carried the marker. A proxy or gateway answer (an HTML 403 or
+   * 502, or JSON in Station's shape without the marker) keeps its status but
+   * is `false`: it says nothing about what Station decided, so a caller must
+   * not treat it as a definitive refusal of the request (#2708).
    */
   readonly stationEnvelope: boolean;
 
@@ -55,18 +57,5 @@ export class ChatHttpError extends StationHttpError {
   }
 }
 
-/**
- * Whether a parsed body is Station's own answer: a route envelope (a boolean
- * `success`) or the runtime's auth refusal (`{ error: { code } }`). Anything
- * else — no JSON, or some other JSON — came from something in between.
- */
-export function isStationEnvelope(body: unknown): boolean {
-  if (typeof body !== 'object' || body === null) return false;
-  const value = body as { success?: unknown; error?: unknown };
-  if (typeof value.success === 'boolean') return true;
-  return (
-    typeof value.error === 'object' &&
-    value.error !== null &&
-    typeof (value.error as { code?: unknown }).code === 'string'
-  );
-}
+// Kept here for its existing importers; the rule lives with the marker.
+export { isStationEnvelope } from './station-envelope';
