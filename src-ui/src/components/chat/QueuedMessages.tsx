@@ -121,7 +121,7 @@ export function QueuedMessages({
         <ArrowDownGlyph />
       </button>
       {heldByUsageLimit && (
-        <div className="queued-messages__failure" role="status">
+        <div className="queued-messages__hold" role="status">
           <span className="queued-messages__failure-text">
             Held until the usage limit resets. Send now to send anyway.
           </span>

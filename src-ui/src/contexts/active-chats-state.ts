@@ -1175,7 +1175,6 @@ export function serializeActiveChats(
       ...(chat.queuedMessageFailure
         ? { queuedMessageFailure: chat.queuedMessageFailure }
         : {}),
-      ...(chat.usageLimitStopped ? { usageLimitStopped: true } : {}),
       ...(chat.unsentMessages?.length
         ? { unsentMessages: chat.unsentMessages }
         : {}),
