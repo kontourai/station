@@ -17,12 +17,23 @@ import {
   type RuntimeAuthenticatedRequestPrincipal,
   setRuntimeAuthenticatedRequestPrincipal,
 } from '../../../security/runtime-request-security.js';
+import { bindStationControlRequestAuthority } from '../../../security/station-control-request-authority.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
 import { AttentionProjectionService } from '../../../services/projects/attention-projection.js';
+import { STATION_CONTROL_OPERATOR_PRINCIPAL_ID } from '../../../tools/station-control-policy.js';
+import type { StationControlCallerAssurance } from '../../../tools/station-control-shared.js';
+import {
+  getInternalApiToken,
+  INTERNAL_API_TOKEN_HEADER,
+} from '../../../utils/internal-api-token.js';
 import { runtimeAttentionRouteOptions } from '../runtime-attention-route-options.js';
+
+interface StationControlCallerSetup {
+  assurance: StationControlCallerAssurance;
+}
 
 /**
  * The runtime's `/api/attention` composition decides whether a paired-Station
@@ -116,16 +127,40 @@ function projectionWithPeerApproval() {
 }
 
 async function peerItemAs(
-  credential: string,
+  credential: string | StationControlCallerSetup,
   options: Parameters<typeof createAttentionRoutes>[1] | 'runtime' = 'runtime',
 ): Promise<ReviewPendingAttentionItem | undefined> {
   const projection = projectionWithPeerApproval();
   const app = new Hono();
   app.use('*', async (c, next) => {
-    setRuntimeAuthenticatedRequestPrincipal(
-      c.req.raw,
-      principalFor(credential),
-    );
+    if (typeof credential === 'string') {
+      setRuntimeAuthenticatedRequestPrincipal(
+        c.req.raw,
+        principalFor(credential),
+      );
+    } else {
+      // A station-control call: Station's own internal principal (which
+      // passes the HTTP gate) carrying the guard's caller authority.
+      setRuntimeAuthenticatedRequestPrincipal(c.req.raw, {
+        kind: 'internal',
+        credential: 'internal',
+        authority: undefined,
+        source: 'bearer',
+      });
+      bindStationControlRequestAuthority(c.req.raw, {
+        kind: 'caller',
+        caller: {
+          sessionId: 'agent-session',
+          assurance: credential.assurance,
+          principal: {
+            id: STATION_CONTROL_OPERATOR_PRINCIPAL_ID,
+            source: 'session-owner',
+            elevationEligible: true,
+          } as never,
+        },
+        boundOperator: credential.assurance === 'bound',
+      });
+    }
     await next();
   });
   app.route(
@@ -143,7 +178,9 @@ async function peerItemAs(
         : options,
     ),
   );
-  const response = await app.request('/api/attention');
+  const response = await app.request('/api/attention', {
+    headers: { [INTERNAL_API_TOKEN_HEADER]: getInternalApiToken() },
+  });
   expect(response.status).toBe(200);
   const body = (await response.json()) as { data: AttentionProjection };
   return body.data.items.find(
@@ -174,4 +211,23 @@ test('a route composed without the predicate claims nothing', async () => {
   });
   expect(item).toHaveProperty('peerRequestReference');
   expect(item).not.toHaveProperty('viewerCanRespond');
+});
+
+/**
+ * The second gate: a station-control caller (an agent's tool call) passes the
+ * HTTP boundary as Station's own internal principal, and the dispatch scope
+ * then decides. Deciding a request on another Station needs a bound
+ * operator; a bearer-exposed caller is refused, so the inbox it reads must
+ * not offer the decision.
+ */
+test('a station-control caller the dispatch scope refuses on a remote task may not respond', async () => {
+  expect(
+    (await peerItemAs({ assurance: 'bearer-exposed' }))?.viewerCanRespond,
+  ).toBe(false);
+});
+
+test('a bound operator station-control caller may respond (control)', async () => {
+  expect((await peerItemAs({ assurance: 'bound' }))?.viewerCanRespond).toBe(
+    true,
+  );
 });

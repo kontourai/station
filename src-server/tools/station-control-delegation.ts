@@ -2073,12 +2073,6 @@ async function postDelegationJson(
   });
 }
 
-/**
- * The portable follow-up's own peer poster: identical wire behavior to
- * `postCanonical` for success, but a receiver's closed portable refusal
- * (403 + known code) keeps its code and 403 at this Station, and every
- * other failure becomes the generic sentinel — never peer text.
- */
 /** A respond naming an environment that is not the task's recorded host. */
 export const PEER_RESPOND_ENVIRONMENT_MISMATCH_MESSAGE =
   'This task is not recorded as running on the selected Station; the decision was not sent.';
@@ -2087,6 +2081,12 @@ export const PEER_RESPOND_ENVIRONMENT_MISMATCH_MESSAGE =
 export const PEER_RESPOND_FORBIDDEN_MESSAGE =
   'The paired Station refused this decision: the access this Station holds there does not allow answering its requests.';
 
+/**
+ * The portable follow-up's own peer poster: identical wire behavior to
+ * `postCanonical` for success, but a receiver's closed portable refusal
+ * (403 + known code) keeps its code and 403 at this Station, and every
+ * other failure becomes the generic sentinel — never peer text.
+ */
 async function postPeerPortableFollowUp<T>(
   target: Pick<DelegationTarget, 'apiBase' | 'requestOptions' | 'kind'>,
   path: string,
@@ -4501,6 +4501,7 @@ export async function respondToDelegatedTaskRequest(
       const hosts =
         await orchestrationService.peerDelegationHostingEnvironmentIds(
           input.taskId,
+          readAuthority,
         );
       if (!hosts.includes(selectedTarget.environmentId))
         throw new Error(PEER_RESPOND_ENVIRONMENT_MISMATCH_MESSAGE);

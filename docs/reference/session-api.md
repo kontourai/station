@@ -831,8 +831,10 @@ decision, not an answer.
 
 The route forwards a decision only to the environment this Station recorded as
 hosting the task. A body naming another environment is refused before any
-outbound request. A request id longer than 512 characters is not stored, so
-the item shows the note. A longer title is cut with a trailing ellipsis.
+outbound request. The recorded host is read with the caller's own read
+authority, so a task record the caller cannot read names no host. A request id
+longer than 512 Unicode code points is not stored, so the item shows the note.
+A title longer than 512 code points is cut with a trailing ellipsis.
 
 Both kinds link into the item's own Project Review layout at the exact item —
 `/projects/<projectSlug>/layouts/review?change=<id>` and
