@@ -305,6 +305,8 @@ export const WORKSPACE_HOME_PROJECTION_FIELD_DESCRIPTIONS = {
   agentSlug: 'Which Agent each item is bound to',
   projectSlug: 'Which Project each item belongs to',
   controlMode: 'Whether a session is owned here or followed read-only',
+  delegationEnvironmentKind:
+    'Whether a session is this Station’s record of a task running on a paired Station',
   environmentId: 'Remote environment identifiers',
   environmentLabel: 'Remote environment names',
 } as const satisfies Record<string, string>;
