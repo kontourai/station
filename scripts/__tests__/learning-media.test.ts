@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process';
+import { execFileSyncBounded } from '../lib/bounded-capture.mjs';
 import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -326,7 +327,7 @@ it('the real builder publishes immutable media bytes and its strict entry detect
 it('checks the actual capture manifest and recorded source bytes in the required documentation lane', async () => {
   const reader = createLearningSourceReader(process.cwd());
   const files = new Set(
-    execFileSync('git', ['ls-files', '-z'], {
+    execFileSyncBounded('git', ['ls-files', '-z'], {
       encoding: 'utf8',
       env: sanitizedGitEnvironment(),
       windowsHide: true,

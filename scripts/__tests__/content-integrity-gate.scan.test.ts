@@ -6,6 +6,7 @@
  * content-derived stays in the original file.
  */
 import { execFileSync } from 'node:child_process';
+import { execFileSyncBounded } from '../lib/bounded-capture.mjs';
 import { extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -40,7 +41,7 @@ describe('BINARY_EXCLUDES cross-checked against the independent git-binary-detec
   }
 
   function gitEolClassification(): Map<string, boolean> {
-    const out = execFileSync('git', ['ls-files', '--eol'], {
+    const out = execFileSyncBounded('git', ['ls-files', '--eol'], {
       cwd: repoRoot,
       encoding: 'utf8',
     });
@@ -64,7 +65,7 @@ describe('BINARY_EXCLUDES cross-checked against the independent git-binary-detec
   // self-maintaining: both sides move together as files are added or
   // removed, with no number to hand-update, ever.
   function trackedFileCount(): number {
-    return execFileSync('git', ['ls-files'], {
+    return execFileSyncBounded('git', ['ls-files'], {
       cwd: repoRoot,
       encoding: 'utf8',
     })
