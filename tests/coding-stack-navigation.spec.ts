@@ -565,7 +565,7 @@ test.describe('Coding stack — wide (1440px): tools beside Chat', () => {
       .getByRole('tab', { name: 'Shell 1' })
       .boundingBox())!;
     expect(tab.x - titleTextEnd).toBeGreaterThanOrEqual(0);
-    expect(tab.x - titleTextEnd).toBeLessThanOrEqual(24);
+    expect(tab.x - titleTextEnd).toBeLessThanOrEqual(16);
     await expect(sidePanel(page)).toBeVisible();
     await expect(page).toHaveURL(/[?&]pane=/);
     const chat = (await chatPage(page).boundingBox())!;
