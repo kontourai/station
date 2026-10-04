@@ -309,12 +309,12 @@ function assertStagedVersion(installRoot, archive) {
   );
 }
 
-async function freePort() {
-  const probe = createNetServer();
-  await new Promise((ready) => probe.listen(0, '127.0.0.1', ready));
-  const { port } = probe.address();
-  await new Promise((done) => probe.close(done));
-  return port;
+function portIsFree(port) {
+  return new Promise((done) => {
+    const probe = createNetServer();
+    probe.once('error', () => done(false));
+    probe.listen(port, '127.0.0.1', () => probe.close(() => done(true)));
+  });
 }
 
 async function identityOf(uiPort) {
@@ -364,8 +364,15 @@ async function fullInstall() {
     'bin',
     `station-${first.runtime}.cmd`,
   );
-  const serverPort = await freePort();
-  const uiPort = await freePort();
+  // Station derives its terminal, voice and consent ports from the server
+  // port (+1..+3), so the two are chosen far apart, off every channel's
+  // defaults, and checked free.
+  const serverPort = 47141;
+  const uiPort = 47000;
+  check(
+    (await portIsFree(serverPort)) && (await portIsFree(uiPort)),
+    'the smoke ports 47141/47000 are in use',
+  );
   const full = (manifestUrl, overrides = {}) =>
     environment(stationRoot, manifestUrl, {
       STATION_INSTALL_STAGE_ONLY: '',
