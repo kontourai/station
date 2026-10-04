@@ -81,11 +81,26 @@ describe('ProjectPageHeader working directory (station#3317)', () => {
     expect(isolate.textContent).toBe('/Users/me/dev/github/station');
   });
 
+  test('the edit button names the path it edits, and the cut line offers it whole (#2799)', () => {
+    renderHeader();
+
+    // The visible line may be cut at its start; its aria-label replaces the
+    // text, so the path has to be in the name for a screen reader to hear it.
+    const editButton = screen.getByRole('button', {
+      name: 'Edit working directory /Users/me/dev/github/station',
+    });
+    expect(
+      editButton
+        .querySelector('.project-page__dir-path')
+        ?.getAttribute('title'),
+    ).toBe('/Users/me/dev/github/station');
+  });
+
   test('edit affordance is rendered, not hover-revealed, and opens the editor', () => {
     const props = renderHeader();
 
     const editButton = screen.getByRole('button', {
-      name: 'Edit working directory',
+      name: 'Edit working directory /Users/me/dev/github/station',
     });
     expect(editButton.querySelector('.project-page__dir-edit-icon')).not.toBe(
       null,
@@ -142,7 +157,7 @@ describe('ProjectPageHeader working directory (station#3317)', () => {
     expect(
       document.querySelector('.project-page__dir-copy-status')?.textContent,
     ).toBe(
-      'This browser refused clipboard access. Select the path to copy it manually.',
+      'This browser refused clipboard access. Click the path to edit it, then copy it from the field.',
     );
     // The haptic is a second success channel — no confirmation buzz for
     // something that did not happen.

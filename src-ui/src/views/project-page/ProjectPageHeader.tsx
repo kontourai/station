@@ -86,7 +86,7 @@ export function ProjectPageHeader({
                   className="project-page__dir-display"
                   aria-label={
                     hasWorkingDirectory
-                      ? 'Edit working directory'
+                      ? `Edit working directory ${project.workingDirectory}`
                       : 'Set working directory'
                   }
                   onClick={() => {
@@ -95,10 +95,15 @@ export function ProjectPageHeader({
                   }}
                 >
                   {hasWorkingDirectory ? (
-                    <span className="project-page__dir-path">
+                    <span
+                      className="project-page__dir-path"
+                      title={project.workingDirectory ?? undefined}
+                    >
                       {/* rtl only for the start-side ellipsis; the ltr isolate
                           restores character order (#304). Parent and leaf stay
-                          inline so the path reads and copies as one string. */}
+                          inline so the path's text is one string. The line
+                          sits inside the edit button and cannot be selected;
+                          the button's label and the title carry the path. */}
                       <span dir="ltr" className="project-page__dir-path-text">
                         <span className="project-page__dir-parent">
                           {parentPath}
@@ -129,7 +134,7 @@ export function ProjectPageHeader({
                       aria-label="Copy working directory path"
                       title={
                         copyState === 'failed'
-                          ? 'This browser refused clipboard access — select the path above to copy it manually.'
+                          ? 'This browser refused clipboard access — click the path to edit it, then copy it from the field.'
                           : 'Copy working directory path'
                       }
                       onClick={() => {
@@ -151,7 +156,7 @@ export function ProjectPageHeader({
                       {copyState === 'copied'
                         ? 'Working directory path copied.'
                         : copyState === 'failed'
-                          ? 'This browser refused clipboard access. Select the path to copy it manually.'
+                          ? 'This browser refused clipboard access. Click the path to edit it, then copy it from the field.'
                           : ''}
                     </span>
                   </>

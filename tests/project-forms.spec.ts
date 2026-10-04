@@ -222,9 +222,10 @@ async function routeLongPathProject(page: Page) {
 }
 
 /**
- * A start-truncated path line: read, copied and drawn as one path. Laid out as
- * flex items, the parent and leaf read (innerText) and copied (a selection)
- * as two lines, so a pasted path carried a line break (#2799 review).
+ * A start-truncated path line: its text reads as one path. Laid out as flex
+ * items, the parent and leaf read (innerText) and selected as two lines with
+ * a line break between them (#2799 review). The Settings preview can be
+ * selected and copied; the Project page line sits inside its edit button.
  */
 async function expectPathReadsWhole(
   line: Locator,
@@ -283,7 +284,8 @@ async function expectPathReadsWhole(
     'one unbroken segment',
   );
   // The parent's last separator is drawn against the leaf. Without the ltr
-  // isolate the rtl line moves it to the far (cut) end.
+  // isolate the rtl line reorders the neutral separators: the parent's
+  // trailing `/` is drawn at its far (cut) end instead.
   expect(
     Math.abs(geometry.separatorRight - geometry.leafLeft),
     `${context}: separator adjoins the leaf`,
@@ -538,8 +540,8 @@ test.describe('Project forms', () => {
 
   /**
    * The Project page header draws the same start-truncated path (#304's
-   * treatment) and had the same flex split: its failed-copy hint tells the
-   * user to select the path by hand, which pasted a line break (#2799 review).
+   * treatment) and had the same flex split, so its text read as two lines
+   * (#2799 review). It sits inside the edit button, which names the path.
    */
   test('the Project page header path reads and copies as one path with its leaf in view at 360px, 768px and 1280px (#2799)', async ({
     page,
