@@ -5,11 +5,14 @@
  */
 import { simulateReadableStream } from 'ai';
 import { MockLanguageModelV3 } from 'ai/test';
-import { beforeEach, expect, test } from 'vitest';
+import { beforeEach, describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { FileMemoryAdapter } from '../../../adapters/file/memory-adapter.js';
 import type { ModelInputMessage } from '../../types.js';
-import { VoltAgentFramework } from '../voltagent-adapter.js';
+import {
+  composeInputAtModelSeam,
+  VoltAgentFramework,
+} from '../voltagent-adapter.js';
 
 const CONTEXT = '[Timezone: Europe/Berlin]';
 
@@ -241,4 +244,90 @@ test("the caller's and the agent's own prepare hooks still run, after the compos
     expect(prompt).toContain(CONTEXT);
     expect(prompt).toContain(label);
   }
+});
+
+describe('composeInputAtModelSeam rejects any tail that is not the authored turn', () => {
+  const compose = (input: string | ModelInputMessage[]) =>
+    typeof input === 'string' ? `${CONTEXT}\n${input}` : input;
+  const history = {
+    id: 'h1',
+    role: 'assistant',
+    parts: [{ type: 'text', text: 'Earlier.' }],
+  };
+  const user = (id: string, text: string, role = 'user') => ({
+    id,
+    role,
+    parts: [{ type: 'text', text }],
+  });
+
+  test.each([
+    ['different text', [history, user('u1', 'Something else')]],
+    ['not a user message', [history, user('u1', 'Typed', 'assistant')]],
+    [
+      'more than one part',
+      [
+        history,
+        {
+          id: 'u1',
+          role: 'user',
+          parts: [
+            { type: 'text', text: 'Typed' },
+            { type: 'text', text: 'Extra' },
+          ],
+        },
+      ],
+    ],
+    ['no messages at all', []],
+  ])('string turn: %s', async (_label, messages) => {
+    await expect(
+      composeInputAtModelSeam('Typed', compose)({ messages: messages as any }),
+    ).rejects.toThrow('does not end with the authored turn');
+  });
+
+  test('string turn: the exact tail is composed', async () => {
+    const result = await composeInputAtModelSeam(
+      'Typed',
+      compose,
+    )({
+      messages: [history, user('u1', 'Typed')] as any,
+    });
+    expect(result.messages.at(-1)).toMatchObject({
+      parts: [{ type: 'text', text: `${CONTEXT}\nTyped` }],
+    });
+  });
+
+  test.each([
+    [
+      'a different id',
+      [user('a1', 'Typed')],
+      [history, user('other', 'Typed')],
+    ],
+    [
+      'a different role',
+      [user('a1', 'Typed')],
+      [history, user('a1', 'Typed', 'assistant')],
+    ],
+    [
+      'an id-less input',
+      [{ role: 'user', parts: [{ type: 'text', text: 'Typed' }] }],
+      [history, { role: 'user', parts: [{ type: 'text', text: 'Typed' }] }],
+    ],
+    [
+      'duplicate input ids',
+      [user('a1', 'One'), user('a1', 'Two')],
+      [user('a1', 'One'), user('a1', 'Two')],
+    ],
+    [
+      'a shorter tail',
+      [user('a1', 'One'), user('a2', 'Two')],
+      [user('a2', 'Two')],
+    ],
+  ])('array turn: %s', async (_label, input, messages) => {
+    await expect(
+      composeInputAtModelSeam(
+        input as ModelInputMessage[],
+        compose,
+      )({ messages: messages as any }),
+    ).rejects.toThrow('does not end with the authored turn');
+  });
 });
