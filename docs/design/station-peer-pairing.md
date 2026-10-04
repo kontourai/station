@@ -394,8 +394,9 @@ store.
   host advertises `compatibility.capabilities.clientProtocolHeader: 1`; SDK
   requests declare `X-Station-Client-Protocol`, with cross-origin browser
   carriage conditioned on observing that capability. The UI clears prior origin
-  acceptance before re-handshaking; failed responses, invalid JSON and transport
-  errors leave it cleared. Paired-scope HTTP and
+  acceptance when a handshake starts. Only the latest-started handshake per
+  origin may restore it; its failed response, invalid JSON or transport error
+  leaves acceptance cleared even if an older overlapping handshake succeeds. Paired-scope HTTP and
   pairing request/access-request/exchange refuse a protocol below
   `minClientProtocol` with `426 client_protocol_unsupported`; malformed is
   `400`, and absent means legacy protocol 1. The public handshake remains

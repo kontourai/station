@@ -372,10 +372,13 @@ exchange, notification action, local UI identity request and CLI operate event
 stream, and fails if the minimum rises while those callers remain listed.
 Malformed declarations return `400 client_protocol_invalid`; unsupported and
 malformed refusals emit denial audits without retaining raw header text.
-Those refusals share the direct-peer authentication failure budget (default:
-10 per 60 seconds). Exhaustion suppresses protocol audits while 400/426
-responses continue. The UI clears prior header acceptance before re-handshaking;
-non-OK responses, invalid JSON and transport errors leave it cleared.
+Those refusals use a separate direct-socket-peer audit budget (default: 10 per
+60 seconds), reusing the existing limiter and its 1,024-peer cap. Exhaustion
+suppresses protocol audits while 400/426 responses continue; refusals neither
+consult nor consume the authentication budget. The UI clears prior header
+acceptance when a handshake starts. Only the latest-started handshake per
+origin may restore it; its non-OK response, invalid JSON or transport error
+leaves acceptance cleared, even if an older overlapping handshake succeeds.
 
 ## Consequences
 

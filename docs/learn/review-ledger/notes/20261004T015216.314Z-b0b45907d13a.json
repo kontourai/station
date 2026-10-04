@@ -1,0 +1,7 @@
+{
+  "revision": "92d7e8ed802362c72136e0072b5d16c4a4bf84b4",
+
+  "notes": [
+    {"path":"docs/security/remote-access-threat-model.md","note":"Delta review for #2962: traced direct socket keying and separate capped RuntimeAuthFailureLimiter audit instance in runtime-http.ts; executed 100-refusal/10-audit and 12-malformed-then-valid-account admission tests. Reviewed shared per-origin handshake generation and both UI callers; four controlled cross-caller overlap cases passed. Local focused baseline: 96 tests, Duration 66.12s. Hosted CI, native devices, release and live deployment NOT_VERIFIED."}
+  ]
+}

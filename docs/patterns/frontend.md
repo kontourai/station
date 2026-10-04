@@ -75,9 +75,10 @@ selected connection's credential/transport policy. A direct `fetch` copy can
 lose that authority, timeout and failure behavior. Plugins consume public SDK
 exports, never `src-ui` contexts or `src-server` services.
 
-The UI clears the origin's previous header acceptance before each re-handshake.
-A non-OK response, invalid JSON or transport failure leaves it cleared; only
-a valid advertisement restores cross-origin carriage.
+The UI clears the origin's previous header acceptance when a handshake starts.
+Only the latest-started handshake at that origin may restore acceptance. Its
+non-OK response, invalid JSON or transport failure leaves acceptance cleared;
+an older overlapping success cannot restore cross-origin carriage.
 
 The SDK also owns the client API protocol declaration. Cross-origin browser
 requests carry `X-Station-Client-Protocol` only after a public handshake

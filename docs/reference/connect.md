@@ -607,9 +607,10 @@ access-request and exchange before credentials: below `minClientProtocol` is
 `426 client_protocol_unsupported`, malformed is `400 client_protocol_invalid`,
 and absent means protocol 1. The handshake remains reachable. A protocol
 refusal requires correcting/updating the client rather than re-pairing to gain
-authority. Protocol refusals share the direct-peer authentication failure
-budget (default: 10 per 60 seconds): each audited refusal counts toward it,
-and further protocol audits are suppressed while 400/426 responses continue.
+authority. Protocol refusals use a separate direct-socket-peer audit budget
+(default: 10 per 60 seconds), reusing the existing limiter and its 1,024-peer
+cap. Exhaustion suppresses only audits while every refusal receives 400/426.
+Refusals neither consult nor consume the authentication budget.
 The separate native Rust pairing exchange and direct fetch callers
 remain undeclared; terminal/voice WebSockets are outside this HTTP check.
 
