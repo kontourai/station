@@ -1,7 +1,0 @@
-{
-  "revision": "a6c28926c020a3130400a954b42191d59c6d1210",
-
-  "notes": [
-    {"path":"docs/reference/sdk.md","note":"Checked the SDK client change: fetchSkillExperienceInventory and fetchSkillExperienceSession keep their signatures and behavior; only the reader is now imported statically instead of with dynamic import(). No documented claim changed.","inputs":["docs/reference/sdk.md","packages/sdk/src/client/skill-experiences.ts"]}
-  ]
-}
