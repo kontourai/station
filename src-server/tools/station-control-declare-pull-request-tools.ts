@@ -27,7 +27,7 @@ const DECLARE_PULL_REQUEST_API_PATH =
   '/api/orchestration/station-control/declare-pull-request';
 
 const DECLARE_PULL_REQUEST_DESCRIPTION =
-  'Declare a pull request this session opened or updated, so Station shows it with the Task\'s work. Call it once for each pull request you open, after the pull request exists. Give the exact forge identity: `provider` ("github" or "gitlab"), `host` (e.g. "github.com"), `repository` {owner, name} and `ref` (the pull request number, as a string). The pull request must be in this session\'s own repository, or the call fails. Returns `declared` (it is recorded when this turn completes; a turn that is cancelled or fails records nothing), `already-declared` (nothing to do), or `no-active-turn` (this session is not running a turn). It does not link, keep or close anything: a person keeps a declared pull request onto a Task.';
+  'Declare a pull request this session opened or updated, so Station shows it with the Task\'s work. Call it once for each pull request you open, after the pull request exists. Give the exact forge identity: `provider` ("github" or "gitlab"), `host` (e.g. "github.com"), `repository` {owner, name} and `ref` (the pull request number, as a string). The pull request must be in this session\'s own repository, or the call fails. Returns `declared` (it is recorded when this turn completes; a turn that is aborted or interrupted records nothing), `already-declared` (nothing to do), or `no-active-turn` (this session is not running a turn). It does not link, keep or close anything: a person keeps a declared pull request onto a Task.';
 
 const declarePullRequestShape = {
   provider: z.string().min(1).max(255).describe('"github" or "gitlab".'),
