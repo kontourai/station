@@ -10,9 +10,6 @@ type ClaudeCredentials = {
   };
 };
 
-/** Output bound for the `claude auth status` probe: its JSON is well under 1 KiB. */
-const AUTH_STATUS_MAX_OUTPUT_CHARS = 64 * 1024;
-
 /**
  * Asks the Claude CLI itself whether it is logged in (`claude auth status`),
  * for the case the credentials file cannot answer: on macOS the login lives
@@ -24,17 +21,15 @@ export type ClaudeAuthStatusProbe = () => Promise<CliCommandResult | null>;
 /**
  * Reads `claude auth status` output. Only an explicit boolean `loggedIn` is an
  * answer, taken from stdout whatever the exit code (the CLI exits 1 when logged
- * out, still printing the JSON). A timeout, oversized output, or anything
- * unparseable is `unknown`: a probe failure must never read as authenticated.
+ * out, still printing the JSON). A timeout, output cut at the capture bound,
+ * or anything unparseable is `unknown`: a probe failure must never read as authenticated.
  */
 export function parseClaudeAuthStatus(
   result: CliCommandResult | null,
 ): CliAuthState {
-  if (!result || result.timedOut) return 'unknown';
+  if (!result || result.timedOut || result.outputTruncated) return 'unknown';
   const output = result.stdout.trim();
-  if (output.length === 0 || output.length > AUTH_STATUS_MAX_OUTPUT_CHARS) {
-    return 'unknown';
-  }
+  if (output.length === 0) return 'unknown';
   try {
     const parsed: unknown = JSON.parse(output);
     const loggedIn =
@@ -44,7 +39,7 @@ export function parseClaudeAuthStatus(
     if (loggedIn === true) return 'authenticated';
     if (loggedIn === false) return 'unauthenticated';
   } catch {
-    // Not JSON (an older CLI, or a banner): fall through to unknown.
+    // Not JSON (a banner, or a CLI that does not know the command): unknown.
   }
   return 'unknown';
 }

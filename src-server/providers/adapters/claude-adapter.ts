@@ -214,17 +214,27 @@ const CLAUDE_CLI_PREREQUISITE_ID = `${CLAUDE_CLI_COMMAND}-cli`;
 /** The one probe both readiness and the launch decision share (#1551). */
 const CLAUDE_VERSION_ARGS = ['--version'];
 /**
- * #3303: the CLI's own login answer, for hosts where the credentials live in
- * the macOS Keychain and no `.credentials.json` exists. Older CLIs parse
- * `auth status` as a chat prompt, so it runs only once the version probe has
- * shown a CLI new enough to have the `auth` command.
+ * #3303: the installed CLI's own login answer, for hosts where the credentials
+ * live in the macOS Keychain and no `.credentials.json` exists. The `auth`
+ * command arrived in 2.1.41 (upstream CHANGELOG); a CLI before that parses
+ * `auth status` as a chat prompt, so it is asked only once the version probe
+ * has shown a CLI at least that new.
  */
 const CLAUDE_AUTH_STATUS_ARGS = ['auth', 'status', '--json'];
-const CLAUDE_AUTH_STATUS_MIN_VERSION = '2.0.0';
+const CLAUDE_AUTH_STATUS_MIN_VERSION = '2.1.41';
+/**
+ * SIGKILL at the deadline: a CLI that ignores SIGTERM would otherwise outlive
+ * it. Only the direct child is killed; a grandchild of a wrapper launcher
+ * (mise/npx) can be orphaned.
+ */
 const CLAUDE_AUTH_STATUS_TIMEOUT_MS = 8_000;
 const CLAUDE_AUTH_STATUS_MAX_BUFFER = 64 * 1024;
-/** Readiness is polled; a definitive answer is reused this long. */
+/**
+ * Readiness is polled: a definitive answer is reused this long, and a failed
+ * probe a shorter while so a broken or hanging CLI is not spawned on every poll.
+ */
 const CLAUDE_AUTH_STATUS_TTL_MS = 15_000;
+const CLAUDE_AUTH_STATUS_FAILURE_TTL_MS = 5_000;
 /**
  * A version at the START of a line — never mid-sentence, so prose such as
  * "a newer version 2.1.300 is available" cannot be mistaken for the version
@@ -1198,7 +1208,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
   /** #3303: recent definitive `claude auth status` answers, keyed by executable + env. */
   private readonly authStatusProbes = new Map<
     string,
-    { at: number; result: Promise<CliCommandResult | null> }
+    { expiresAt: number; result: Promise<CliCommandResult | null> }
   >();
   /** #2482: the shared, TTL-bounded model catalog probe (see `listModelCatalog`). */
   private readonly modelCatalog = new KeyedCatalogSingleFlight<{
@@ -2456,7 +2466,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       // profile directories, which a readiness read must not do.
       //
       // Where neither the env nor a credentials file answers (macOS keeps
-      // the login in the Keychain), the launchable CLI is asked itself,
+      // the login in the Keychain), the installed CLI is asked itself,
       // under the same connection env (#3303).
       detectAuthState: async () => {
         const connectionEnv = claudeConnectionEnvForSpawn(
@@ -3804,9 +3814,10 @@ export class ClaudeAdapter implements ProviderAdapterShape {
    * The login probe for `detectClaudeAuthState`, or `undefined` when there is
    * nothing safe to ask: no spawnable installed CLI, or one not shown to be
    * new enough to have `auth status`. Station then keeps the file-only answer.
-   * Asks the CLI under the connection env, so a `CLAUDE_CONFIG_DIR` there is
-   * the dir it reports on. Only definitive answers are reused (single-flight
-   * for a few seconds); a failure re-probes next time.
+   * Asks the installed CLI under the connection env, so a `CLAUDE_CONFIG_DIR`
+   * there is the dir it reports on. Answers are reused single-flight for
+   * {@link CLAUDE_AUTH_STATUS_TTL_MS}, failures for the shorter
+   * {@link CLAUDE_AUTH_STATUS_FAILURE_TTL_MS}.
    */
   private claudeAuthStatusProbe(
     executable: ClaudeExecutableResolution,
@@ -3826,18 +3837,26 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     const [command, args] = spawnable.toLowerCase().endsWith('.js')
       ? [process.execPath, [spawnable, ...CLAUDE_AUTH_STATUS_ARGS]]
       : [spawnable, CLAUDE_AUTH_STATUS_ARGS];
-    const key = JSON.stringify([
-      spawnable,
-      process.env[CLAUDE_CONFIG_DIR_ENV_KEY] ?? null,
-      Object.entries(connectionEnv ?? {}).sort(([a], [b]) =>
-        a < b ? -1 : a > b ? 1 : 0,
-      ),
-    ]);
+    // Hashed: the env can carry secrets, which must not sit in a Map key.
+    const key = crypto
+      .createHash('sha256')
+      .update(
+        JSON.stringify([
+          spawnable,
+          process.env[CLAUDE_CONFIG_DIR_ENV_KEY] ?? null,
+          Object.entries(connectionEnv ?? {}).sort(([a], [b]) =>
+            a < b ? -1 : a > b ? 1 : 0,
+          ),
+        ]),
+      )
+      .digest('hex');
     return () => {
-      const cached = this.authStatusProbes.get(key);
-      if (cached && Date.now() - cached.at < CLAUDE_AUTH_STATUS_TTL_MS) {
-        return cached.result;
+      const now = Date.now();
+      for (const [entryKey, entry] of this.authStatusProbes) {
+        if (entry.expiresAt <= now) this.authStatusProbes.delete(entryKey);
       }
+      const cached = this.authStatusProbes.get(key);
+      if (cached) return cached.result;
       const result = (this.options.runAuthStatusCommand ?? runCliCommand)(
         command,
         args,
@@ -3846,18 +3865,24 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         {
           timeoutMs: CLAUDE_AUTH_STATUS_TIMEOUT_MS,
           maxBuffer: CLAUDE_AUTH_STATUS_MAX_BUFFER,
+          killSignal: 'SIGKILL',
         },
       );
-      const entry = { at: Date.now(), result };
-      this.authStatusProbes.set(key, entry);
-      const forget = () => {
-        if (this.authStatusProbes.get(key) === entry) {
-          this.authStatusProbes.delete(key);
-        }
+      // In flight, the entry is reused for the definitive window; once the
+      // probe settles, the answer decides how much longer it lives.
+      const entry = {
+        expiresAt: now + CLAUDE_AUTH_STATUS_TTL_MS,
+        result,
       };
-      result.then((resolved) => {
-        if (parseClaudeAuthStatus(resolved) === 'unknown') forget();
-      }, forget);
+      this.authStatusProbes.set(key, entry);
+      const settle = (resolved: CliCommandResult | null) => {
+        const ttl =
+          parseClaudeAuthStatus(resolved) === 'unknown'
+            ? CLAUDE_AUTH_STATUS_FAILURE_TTL_MS
+            : CLAUDE_AUTH_STATUS_TTL_MS;
+        entry.expiresAt = Date.now() + ttl;
+      };
+      result.then(settle, () => settle(null));
       return result;
     };
   }

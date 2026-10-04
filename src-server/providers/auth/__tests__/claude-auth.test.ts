@@ -79,8 +79,8 @@ describe('detectClaudeAuthState with a login probe (#3303)', () => {
     ['prints JSON without loggedIn', result('{"ok":true}')],
     ['prints a non-boolean loggedIn', result('{"loggedIn":"true"}')],
     [
-      'prints oversized output',
-      result(`{"loggedIn":true,"x":"${'a'.repeat(70_000)}"}`),
+      'is cut at the capture bound',
+      { ...result('{"loggedIn":true'), outputTruncated: true as const },
     ],
     [
       'is killed at its deadline',
@@ -173,7 +173,12 @@ describe.skipIf(process.platform === 'win32')(
       return path;
     }
 
-    async function probeVia(stub: string, configDir: string, timeoutMs = 5000) {
+    async function probeVia(
+      stub: string,
+      configDir: string,
+      timeoutMs = 5000,
+      maxBuffer = 64 * 1024,
+    ) {
       return detectClaudeAuthState(
         { CLAUDE_CONFIG_DIR: configDir },
         '/unused',
@@ -183,7 +188,7 @@ describe.skipIf(process.platform === 'win32')(
             ['auth', 'status', '--json'],
             undefined,
             { CLAUDE_CONFIG_DIR: configDir },
-            { timeoutMs, maxBuffer: 64 * 1024 },
+            { timeoutMs, maxBuffer, killSignal: 'SIGKILL' },
           ),
       );
     }
@@ -218,6 +223,40 @@ describe.skipIf(process.platform === 'win32')(
           cfg,
           300,
         ),
+      ).resolves.toBe('unknown');
+    });
+
+    test('output past the capture bound is unknown, flagged as truncated', async () => {
+      const cfg = makeTempDir('station-claude-cfg-');
+      const stub = await stubClaude(
+        'printf \'{"loggedIn":true,"pad":"%s"}\' "$(head -c 4000 /dev/zero | tr \'\\0\' a)"',
+      );
+      await expect(probeVia(stub, cfg, 5000, 512)).resolves.toBe('unknown');
+      const raw = await runCliCommand(stub, [], undefined, undefined, {
+        maxBuffer: 512,
+      });
+      expect(raw?.outputTruncated).toBe(true);
+      expect(raw?.timedOut).toBeUndefined();
+    });
+
+    test('a child that ignores SIGTERM is still killed at the deadline', async () => {
+      const dir = makeTempDir('station-claude-stub-');
+      const stub = join(dir, 'claude');
+      await writeFile(
+        stub,
+        `#!${process.execPath}\nprocess.on('SIGTERM', () => {});\nconsole.log('{"loggedIn":true}');\nsetInterval(() => {}, 1000);\n`,
+      );
+      await chmod(stub, 0o755);
+      const startedAt = Date.now();
+      const raw = await runCliCommand(stub, [], undefined, undefined, {
+        timeoutMs: 400,
+        killSignal: 'SIGKILL',
+      });
+      expect(raw?.timedOut).toBe(true);
+      expect(raw?.outputTruncated).toBeUndefined();
+      expect(Date.now() - startedAt).toBeLessThan(4000);
+      await expect(
+        probeVia(stub, makeTempDir('station-claude-cfg-'), 400),
       ).resolves.toBe('unknown');
     });
   },
