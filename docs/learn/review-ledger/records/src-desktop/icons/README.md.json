@@ -9,32 +9,30 @@
 
   "limits": "No native build, real device, Keychain/Keystore write, signed artifact, Linux/Windows launch, provider account mutation, publication, upgrade or rollback executed in this continuation. Fixture and source checks do not establish live outcomes. Parent owns combined CI and final ledger integration.",
 
-  "document": {"digest":"93c8c818dd83849cbbddde1804064669a0dc7cc2780cd6eb3d4c0e2b93b5b8dc","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
   "sources": [
-    {"path":".github/workflows/build-ios.yml","digest":"b4afee0a3cf62cd46226b9b68b648d15d00524a9d7bc27449e640fac6e3f9b73","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    ".github/workflows/build-ios.yml",
 
-    {"path":".github/workflows/nightly-native-stage.yml","digest":"90a8d29da6c024c539a0abc1eb35ba490791780917e174eb7023d6fb45a90030","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
+    ".github/workflows/nightly-native-stage.yml",
 
-    {"path":".github/workflows/release.yml","digest":"178d355f1c2141a4587db894e9f015983340a0c09a4f1c4f633c61503d58b577","revision":"94e8e5781a2c23d2bc828682a1157aef3934e897"},
+    ".github/workflows/release.yml",
 
-    {"path":".github/workflows/testflight-delivery.yml","digest":"b65be60d29e76e922b07ed19bd89576ef1cac76e20712dd28d140c72d36012bb","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
+    ".github/workflows/testflight-delivery.yml",
 
-    {"path":"scripts/__tests__/ios-channel-icons.test.ts","digest":"070beef8b71ea052d7e7db75b03b10ce85353c4cbbeb0f4e023586ab352be5a7","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "scripts/__tests__/ios-channel-icons.test.ts",
 
-    {"path":"scripts/__tests__/verify-desktop-clean-checkout.test.ts","digest":"87a508ba232114c55a47c8199ebfddf1988bda33383939419d817f1b0d684a76","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "scripts/__tests__/verify-desktop-clean-checkout.test.ts",
 
-    {"path":"scripts/apply-android-channel-icons.mjs","digest":"2118f8daf8bab71ca4f5173df63c9f67331b49c1cac8b9f1b0f060ffe901272a","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "scripts/apply-android-channel-icons.mjs",
 
-    {"path":"scripts/generate-app-icons.mjs","digest":"b5e45b3774131fa471d9200af2aa5c292b797e48df149b8a7b690eb900f1c1ae","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "scripts/generate-app-icons.mjs",
 
-    {"path":"scripts/ios-channel-icons.mjs","digest":"f7e3a770d2476b55ff5ed555a55c8c6251bef0f50e65b5083d604d70c3e32537","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "scripts/ios-channel-icons.mjs",
 
-    {"path":"scripts/verify-desktop-clean-checkout.mjs","digest":"5931addf88d2c9fc83a5a10c545dce9f72d34d246d4d3894705896da3aa0d6bc","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "scripts/verify-desktop-clean-checkout.mjs",
 
-    {"path":"src-desktop/tauri.conf.json","digest":"24ce785160cae3c41db78a82861ee7e4934490bb6a7ed986b30a278cc19c8ab1","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-desktop/tauri.conf.json",
 
-    {"path":"src-ui/src/index.css","digest":"810cff865aad9c44484991043c8107d5439505e3d960c307f0f95d2cebf2a744","revision":"502a33b8a8b76dbd9a91fc0c72f8cf7272d8f313"}
+    "src-ui/src/index.css"
   ],
 
   "checks": [

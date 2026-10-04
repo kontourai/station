@@ -2,27 +2,27 @@
   "path": "docs/learn/media/inspect-request.png",
 
   "sources": [
-    {"path":"src-server/routes/orchestration/attention.ts","digest":"13aa257c345f3e3b4bd37e49e4399b83aac95315113c3386f64d1c17972b8c07","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+    "src-server/routes/orchestration/attention.ts",
 
-    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"c5a85fefbe06e5a903444325293d46a80fefb7a0f938100fbceee8c60492d893","revision":"958350328eafd360124e1892c1945a2ae455e43c"},
+    "src-server/services/orchestration/orchestration-service.ts",
 
-    {"path":"src-ui/src/components/attention/RequestInspectionDialog.css","digest":"a1d787a1581edcd31fa4f208e9a50a899dc23e95ee93cf23720f94ec03a9e2da","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+    "src-ui/src/components/attention/RequestInspectionDialog.css",
 
-    {"path":"src-ui/src/components/attention/RequestInspectionDialog.tsx","digest":"57aa853ab758d299d83b7e783816f9930d9a191faef8122dbc19ee0a8934c817","revision":"3f6a2ef106d0d4b08be749d1e9273d9c1a61bbd4"},
+    "src-ui/src/components/attention/RequestInspectionDialog.tsx",
 
-    {"path":"src-ui/src/components/header/Header.tsx","digest":"6f6a5020fab5d5295a0561c87651162d390dfdbec2138bc144ab6199d442b753","revision":"502a33b8a8b76dbd9a91fc0c72f8cf7272d8f313"},
+    "src-ui/src/components/header/Header.tsx",
 
-    {"path":"src-ui/src/components/header/useHeaderViewModel.ts","digest":"589545ed487887bf4f8dd17aaaf236e5a74976589c00b7167a0bbb6998554061","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+    "src-ui/src/components/header/useHeaderViewModel.ts",
 
-    {"path":"src-ui/src/index.css","digest":"810cff865aad9c44484991043c8107d5439505e3d960c307f0f95d2cebf2a744","revision":"502a33b8a8b76dbd9a91fc0c72f8cf7272d8f313"},
+    "src-ui/src/index.css",
 
-    {"path":"src-ui/src/pages/NotificationsPage.css","digest":"cdf0711c5fb4a0f9112aaad12dd8af43d6b6e55e5aefb33ad0463b858d8d62d5","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+    "src-ui/src/pages/NotificationsPage.css",
 
-    {"path":"src-ui/src/pages/NotificationsPage.tsx","digest":"afda200c80afb1a0578d72389ec5d1284784b053e4575a181aefb8250027800a","revision":"c529c7acb0f882a9872308f65fcb7b744746ea76"},
+    "src-ui/src/pages/NotificationsPage.tsx",
 
-    {"path":"src-ui/src/views/page-layout.css","digest":"c36c04594f1f156ce8320772503607bcecfe8a1dcb11bbe589d004e4385ceef4","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+    "src-ui/src/views/page-layout.css",
 
-    {"path":"tests/helpers/exact-request-backend.ts","digest":"ddfd358fd04c7274ce9e2522af61fc153e5b051fa4826b72792f3b8a05537fff","revision":"fcd4407178cb5509ea47a958714603034fe20004"}
+    "tests/helpers/exact-request-backend.ts"
   ],
 
   "reviewNotes": []

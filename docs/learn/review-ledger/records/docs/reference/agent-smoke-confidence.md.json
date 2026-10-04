@@ -9,46 +9,44 @@
 
   "limits": "No browser collaboration acceptance, physical Windows reference run, native build, live provider, deployment, IAM or device proof. No runtime fixes; recommendations retained for parent backlog triage.",
 
-  "document": {"digest":"2b19d6d311994f2b925c67e87ae7e762e6864c2e9401f6c6e4759f7315d6aee5","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
-
   "sources": [
-    {"path":"docs/learn/media.json#/captures/2","digest":"f2a946d384b5a3a18d0c1711604b220f6435ec6e2b0b484a5e2ed03ba6966018","revision":"48fd2c0212f17cc11ba07ed86b52f253c63e3f68"},
+    "docs/learn/media.json#/captures/2",
 
-    {"path":"docs/learn/media/connections-models.png","digest":"c104e7d0d0251a50957dc40a2f70774bb316425c806322603f1d015bc59e680c","revision":"cd7dabcd93bf05a27d66f74e667667dcf771d615"},
+    "docs/learn/media/connections-models.png",
 
-    {"path":"scripts/station-agent-smoke.mjs","digest":"b3632d2947ae62ea4d1a14912a2de70e3935ee7d3acbca9c02d68ca49cbd01b3","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+    "scripts/station-agent-smoke.mjs",
 
-    {"path":"src-server/services/connections/connection-readiness-evidence.ts","digest":"ef862329790c4a2f477162da8f4f64ccf974c46ebc54aeb66125b13895c2bd99","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+    "src-server/services/connections/connection-readiness-evidence.ts",
 
-    {"path":"src-server/services/connections/connection-service.ts","digest":"cf2120e16b0ee9f0e54df18a114b616ef896d84c648a20e4d9e0df5054715f44","revision":"4d32eb785473b3261621900889fb9fa3fbfd8a49"},
+    "src-server/services/connections/connection-service.ts",
 
-    {"path":"src-server/services/connections/connection-smoke-evidence-store.ts","digest":"68f09d520822631e1854a5ccc13d6f8b9d08654bc2ced26eb8438d19c458a52f","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+    "src-server/services/connections/connection-smoke-evidence-store.ts",
 
-    {"path":"src-server/services/orchestration/connection-smoke.ts","digest":"2f6a3b7b282139b711a6b1aa82614ca2dc97f9536727343eb7485fc3ab5dc383","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+    "src-server/services/orchestration/connection-smoke.ts",
 
-    {"path":"src-ui/src/components/header/Header.tsx","digest":"6f6a5020fab5d5295a0561c87651162d390dfdbec2138bc144ab6199d442b753","revision":"502a33b8a8b76dbd9a91fc0c72f8cf7272d8f313"},
+    "src-ui/src/components/header/Header.tsx",
 
-    {"path":"src-ui/src/components/header/useHeaderViewModel.ts","digest":"589545ed487887bf4f8dd17aaaf236e5a74976589c00b7167a0bbb6998554061","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+    "src-ui/src/components/header/useHeaderViewModel.ts",
 
-    {"path":"src-ui/src/components/SplitPaneLayout.css","digest":"6433a2150e6308c6c3121af9c5beffdab52786e43723288790af24a41fdf630f","revision":"429c70d487f02c105a523de55b2f02f498520703"},
+    "src-ui/src/components/SplitPaneLayout.css",
 
-    {"path":"src-ui/src/components/SplitPaneLayout.tsx","digest":"afa5bac34d039da9bdb075158d39ca552af35b773c2ca0b7a5c79b5fd85681ff","revision":"cd7dabcd93bf05a27d66f74e667667dcf771d615"},
+    "src-ui/src/components/SplitPaneLayout.tsx",
 
-    {"path":"src-ui/src/index.css","digest":"810cff865aad9c44484991043c8107d5439505e3d960c307f0f95d2cebf2a744","revision":"502a33b8a8b76dbd9a91fc0c72f8cf7272d8f313"},
+    "src-ui/src/index.css",
 
-    {"path":"src-ui/src/views/AgentConnectionView.tsx","digest":"8ec56bd2a4de7fc240781373aafdec325c2d3fc75ea3945c51258f90cf204d77","revision":"91d79c3f0ce9ca5ae304e4248b67b6189103016e"},
+    "src-ui/src/views/AgentConnectionView.tsx",
 
-    {"path":"src-ui/src/views/ConnectionsSectionFrame.tsx","digest":"78a8cef4a703a2eb9f0382386d738ecd1f0909a4b11a7219771ac0e92f2c7b6c","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+    "src-ui/src/views/ConnectionsSectionFrame.tsx",
 
-    {"path":"src-ui/src/views/page-layout.css","digest":"c36c04594f1f156ce8320772503607bcecfe8a1dcb11bbe589d004e4385ceef4","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+    "src-ui/src/views/page-layout.css",
 
-    {"path":"src-ui/src/views/provider-settings/ProviderConnectionForm.tsx","digest":"0ad7474fb672c1eafa97d2a517089f499b7dadcb9b7ac3366b75976bbedd7d2a","revision":"54fc4a556486e17d1f4f0546c02be91fedf3b6b7"},
+    "src-ui/src/views/provider-settings/ProviderConnectionForm.tsx",
 
-    {"path":"src-ui/src/views/provider-settings/ProviderStackOverview.tsx","digest":"5406c4305a3719253205722ab0b77c995556decab6ee6ba9ccee0c986f8a2208","revision":"ccce3163574c601d42215c789621fa84f34a5296"},
+    "src-ui/src/views/provider-settings/ProviderStackOverview.tsx",
 
-    {"path":"src-ui/src/views/ProviderSettingsView.tsx","digest":"9d5cc117730655c3cba8987dbccd4b059acf287f1ace1677f720c43c17b8fcff","revision":"84fce0d121e631ed7bfd42048d113d9e34692594"},
+    "src-ui/src/views/ProviderSettingsView.tsx",
 
-    {"path":"tests/connections-crud.spec.ts","digest":"b0c33e5e552b3651adf99dbe92ef3d43a38bb130ca13c26f7dff1bfeb3dbc9e5","revision":"ccce3163574c601d42215c789621fa84f34a5296"}
+    "tests/connections-crud.spec.ts"
   ],
 
   "checks": [

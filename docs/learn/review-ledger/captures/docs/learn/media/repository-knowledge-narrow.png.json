@@ -2,37 +2,37 @@
   "path": "docs/learn/media/repository-knowledge-narrow.png",
 
   "sources": [
-    {"path":"examples/knowledge-library/layout.json","digest":"9fd8a841ae7073614bee6c644c21e986ab63dd70cf355328a4703e6eb67884fa","revision":"44468b740ff5c3e0c02b2cf684ba9437ec890ca8"},
+    "examples/knowledge-library/layout.json",
 
-    {"path":"examples/knowledge-library/plugin.json","digest":"56bac5bbfb1463d997ae52f3c40d4d66eb02c97809539261cac0b1aabae01318","revision":"44468b740ff5c3e0c02b2cf684ba9437ec890ca8"},
+    "examples/knowledge-library/plugin.json",
 
-    {"path":"examples/knowledge-library/src/index.tsx","digest":"0feb9269285b2d433e74ce230ebba9bfcae1547965dd96c17eda9f7f68dfed55","revision":"44468b740ff5c3e0c02b2cf684ba9437ec890ca8"},
+    "examples/knowledge-library/src/index.tsx",
 
-    {"path":"examples/knowledge-library/src/knowledge-library.css","digest":"1cc33286979d84d186c75d3921a1a616cb0f859a16a04333a8385882d39737b7","revision":"44468b740ff5c3e0c02b2cf684ba9437ec890ca8"},
+    "examples/knowledge-library/src/knowledge-library.css",
 
-    {"path":"examples/knowledge-library/src/KnowledgeLibrary.tsx","digest":"54c0aa1a3d3e9dfe341ed67348a0ab96b1aca65e562dbe0080810f6b51f40cca","revision":"44468b740ff5c3e0c02b2cf684ba9437ec890ca8"},
+    "examples/knowledge-library/src/KnowledgeLibrary.tsx",
 
-    {"path":"examples/knowledge-library/src/RootPicker.tsx","digest":"f33525957c47e6804d431ed809486c8de0827f344b9d814f4a24e877aeed7cfa","revision":"44468b740ff5c3e0c02b2cf684ba9437ec890ca8"},
+    "examples/knowledge-library/src/RootPicker.tsx",
 
-    {"path":"packages/sdk/src/client/knowledge.ts","digest":"3b99041b2b4df1ae1a08ea6584eaec86a649756ffb134a817666ec6919fda743","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+    "packages/sdk/src/client/knowledge.ts",
 
-    {"path":"packages/sdk/src/components/KnowledgeRecall.css","digest":"c10eeb9534ec0df6147b1f2cae7ab5907ca25675abbf87727794aa15b89c5474","revision":"44468b740ff5c3e0c02b2cf684ba9437ec890ca8"},
+    "packages/sdk/src/components/KnowledgeRecall.css",
 
-    {"path":"packages/sdk/src/components/KnowledgeRecall.tsx","digest":"d0742a663f4a68f786c1e1772cf37ee90a0265701f2996f8a0a6de2b4e092c12","revision":"44468b740ff5c3e0c02b2cf684ba9437ec890ca8"},
+    "packages/sdk/src/components/KnowledgeRecall.tsx",
 
-    {"path":"packages/sdk/src/hooks/knowledge.ts","digest":"b023d3ffd71fa7483ecee0b01f9e60e4deb66964197f663e5ca74e634c7c2d53","revision":"44468b740ff5c3e0c02b2cf684ba9437ec890ca8"},
+    "packages/sdk/src/hooks/knowledge.ts",
 
-    {"path":"packages/sdk/src/query-domains/knowledgeStores.ts","digest":"52d61ed41a6e407387005a60f4c0504016471de1c42eed9d22ec7146a98516d6","revision":"44468b740ff5c3e0c02b2cf684ba9437ec890ca8"},
+    "packages/sdk/src/query-domains/knowledgeStores.ts",
 
-    {"path":"src-server/knowledge-store/knowledge-store-provider.ts","digest":"268f67326c695832ef2a1577353ee6ece0a41218e7711dda87cc62a0ee814e85","revision":"44468b740ff5c3e0c02b2cf684ba9437ec890ca8"},
+    "src-server/knowledge-store/knowledge-store-provider.ts",
 
-    {"path":"src-ui/src/components/header/Header.tsx","digest":"6f6a5020fab5d5295a0561c87651162d390dfdbec2138bc144ab6199d442b753","revision":"502a33b8a8b76dbd9a91fc0c72f8cf7272d8f313"},
+    "src-ui/src/components/header/Header.tsx",
 
-    {"path":"src-ui/src/components/header/useHeaderViewModel.ts","digest":"589545ed487887bf4f8dd17aaaf236e5a74976589c00b7167a0bbb6998554061","revision":"44468b740ff5c3e0c02b2cf684ba9437ec890ca8"},
+    "src-ui/src/components/header/useHeaderViewModel.ts",
 
-    {"path":"src-ui/src/index.css","digest":"810cff865aad9c44484991043c8107d5439505e3d960c307f0f95d2cebf2a744","revision":"502a33b8a8b76dbd9a91fc0c72f8cf7272d8f313"},
+    "src-ui/src/index.css",
 
-    {"path":"src-ui/src/views/page-layout.css","digest":"c36c04594f1f156ce8320772503607bcecfe8a1dcb11bbe589d004e4385ceef4","revision":"44468b740ff5c3e0c02b2cf684ba9437ec890ca8"}
+    "src-ui/src/views/page-layout.css"
   ],
 
   "reviewNotes": []

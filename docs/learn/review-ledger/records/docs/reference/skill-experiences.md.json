@@ -9,76 +9,74 @@
 
   "limits": "Controlled local Node/macOS author-file tests and CLI build only. No installed runtime, model/provider, native/device, hosted schema URI or released-package proof. FIFO controls are POSIX-only and skip Windows; this is not hostile concurrent filesystem isolation or complete transitive Skill dependency discovery.",
 
-  "document": {"digest":"1c88d7156a8696a1f724a023ba76d81dced8229ca164ae59495d4c1c040dabac","revision":"68b8e4d5a9b11c85b8922c370acaf98e929d0275"},
-
   "sources": [
-    {"path":"examples/rich-skill-experience/README.md","digest":"425a86ce6411adab13391ab0453fcb924eebc7a496f034528cfef6f6174353b0","revision":"56f4c4897a189eeb30430119a4f4895e95fbb541"},
+    "examples/rich-skill-experience/README.md",
 
-    {"path":"examples/visual-skill-experience/io.kontourai.station/experiences/stress-test-idea.json","digest":"b09ffb2394b1f81a15df043bd9befbb19d0dbf30256781cb33da4cfe88c8e208","revision":"4846133db20d56a37c3941d83b0dca5444f21a52"},
+    "examples/visual-skill-experience/io.kontourai.station/experiences/stress-test-idea.json",
 
-    {"path":"examples/visual-skill-experience/plugin.json","digest":"0ff451e1841bd1be69321dd1fcebe88a472dcc4b6b19f14ec83061212171c128","revision":"4846133db20d56a37c3941d83b0dca5444f21a52"},
+    "examples/visual-skill-experience/plugin.json",
 
-    {"path":"examples/visual-skill-experience/skills/stress-test-idea/SKILL.md","digest":"d5e7270b300e941d361be53562712fa04274a3076ba0201803d422832966e35d","revision":"4846133db20d56a37c3941d83b0dca5444f21a52"},
+    "examples/visual-skill-experience/skills/stress-test-idea/SKILL.md",
 
-    {"path":"packages/contracts/src/agent-plugin.ts","digest":"2e3d120f5eae47814db06203169553f98b31a39263efae9d768762cf8452b1a9","revision":"4846133db20d56a37c3941d83b0dca5444f21a52"},
+    "packages/contracts/src/agent-plugin.ts",
 
-    {"path":"packages/contracts/src/skill-experience.ts","digest":"1a26de992f677139d4e55580e45861b4b920b4f93e5d52efcd4f3ee990c9321d","revision":"8540fafb86b969775254b898711ad3ae40ccc39d"},
+    "packages/contracts/src/skill-experience.ts",
 
-    {"path":"packages/contracts/src/workspace-pane-host-contract.ts","digest":"064ef9c3654c3296074caced9eab79ffd204c0d98fcebd9221b5a2b540cd6191","revision":"56f4c4897a189eeb30430119a4f4895e95fbb541"},
+    "packages/contracts/src/workspace-pane-host-contract.ts",
 
-    {"path":"packages/sdk/src/client/skill-experiences.ts","digest":"96e9bbfa542662b64db6757e8bd2242253ad222dba6ea8576bcbd86b866db766","revision":"6a847d3c029f4f3e5c1dbe82f2459194573d43e9"},
+    "packages/sdk/src/client/skill-experiences.ts",
 
-    {"path":"packages/sdk/src/skill-experience-pane.ts","digest":"141aaf4eadd4a696ae54eaaf279f8398fdd443d0adeb798924ddd02994dddc97","revision":"1a91c5d3bffa9bff7857c4dde0a69b2dd6d88a02"},
+    "packages/sdk/src/skill-experience-pane.ts",
 
-    {"path":"packages/shared/src/__tests__/skill-experience-author.test.ts","digest":"019fbaff285008de176690a8d64ff9e44e9da462495c64483105c5798bf9d9cf","revision":"f2bb7d8a1e4b56ac783fb9d0cfe167fe7a0fdde5"},
+    "packages/shared/src/__tests__/skill-experience-author.test.ts",
 
-    {"path":"packages/shared/src/agent-plugin-manifest.ts","digest":"a1b0dab918c8787193cc23e0f5362fc3ea5be6885440b56522314329974d55ba","revision":"4846133db20d56a37c3941d83b0dca5444f21a52"},
+    "packages/shared/src/agent-plugin-manifest.ts",
 
-    {"path":"packages/shared/src/build.ts","digest":"8db6bc04bffe80ead5af5e8d9b23be2ae02f1e5afbae67f850e583b8ca40c783","revision":"e78cdc9c00d09b69f333e1609821d8fa70bce58c"},
+    "packages/shared/src/build.ts",
 
-    {"path":"packages/shared/src/regular-file.ts","digest":"e6b1a4bfa2c1379a327d70dc3b357aadfe2d814bab4f6a0e0dc0270560eb7a78","revision":"4846133db20d56a37c3941d83b0dca5444f21a52"},
+    "packages/shared/src/regular-file.ts",
 
-    {"path":"packages/shared/src/skill-experience-author.ts","digest":"78eff8e23674a648d904c12919b137ff62c04520fc3f164f66a482102047754b","revision":"f2bb7d8a1e4b56ac783fb9d0cfe167fe7a0fdde5"},
+    "packages/shared/src/skill-experience-author.ts",
 
-    {"path":"schemas/agent-plugins/io.kontourai.station-1.0.schema.json","digest":"e3ddeacd09b521057a214a203eb486d277b5be0256bfe2c99bee9696aed26ed5","revision":"4846133db20d56a37c3941d83b0dca5444f21a52"},
+    "schemas/agent-plugins/io.kontourai.station-1.0.schema.json",
 
-    {"path":"schemas/agent-plugins/skill-experience-1.0.schema.json","digest":"5e2d5929feb55233f7ad84af131eb5a833e51388fe7e51aed1393d8a4de95fcb","revision":"f2bb7d8a1e4b56ac783fb9d0cfe167fe7a0fdde5"},
+    "schemas/agent-plugins/skill-experience-1.0.schema.json",
 
-    {"path":"src-server/__test-utils__/temp-dirs.ts","digest":"20c81129e9cd3db2df51d96b788515b8afde2a2740112ca25e101a6880f72cb1","revision":"cd4139fe26bdaac578c408aaa75784fff0391a5a"},
+    "src-server/__test-utils__/temp-dirs.ts",
 
-    {"path":"src-server/routes/agents/__tests__/skill-experiences.routes.test.ts","digest":"25f91dde6ecca6a5bf5839088c945d52454f313ea757d51d77b2410fc7abae9a","revision":"9f993f436f37659ce5b7c005e7b616d83474ac44"},
+    "src-server/routes/agents/__tests__/skill-experiences.routes.test.ts",
 
-    {"path":"src-server/routes/agents/skills.ts","digest":"e39a612adc1d35767a9149cc5079d2c2732b4a2848171e2115ce3d4e4c25c62d","revision":"a366557a12a4f5e6a41d38ce92aacbd0ab32193b"},
+    "src-server/routes/agents/skills.ts",
 
-    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"c3febaa85af6fa1d6b6edce04539a96b88cb7cb0660b7d0ee0de8d4fb6595530","revision":"b208a334880a96bb3f4267c2d2ffd6d03e118218"},
+    "src-server/routes/orchestration/orchestration.ts",
 
-    {"path":"src-server/runtime/conversation/authorized-turn-correlation.ts","digest":"1c837e169f84074062b8467fc8d6653ff8b8512b491baa86ca3b00b727a37d63","revision":"56f4c4897a189eeb30430119a4f4895e95fbb541"},
+    "src-server/runtime/conversation/authorized-turn-correlation.ts",
 
-    {"path":"src-server/services/agents/skill-service.ts","digest":"9f92c44195a5c87a63c1a14a3079b3cc91e00149f2b2f4e400a72189bb64d7f6","revision":"569b7dcead02252ba2786c9f326bb54daebbbde2"},
+    "src-server/services/agents/skill-service.ts",
 
-    {"path":"src-server/services/orchestration/client-origin-propagation.ts","digest":"347ca06b63592fd53a0f45c9d7b38cf1625c3f079e65f4deea998d7f9519e141","revision":"8540fafb86b969775254b898711ad3ae40ccc39d"},
+    "src-server/services/orchestration/client-origin-propagation.ts",
 
-    {"path":"src-server/services/orchestration/skill-experience-model.ts","digest":"5fe8bb3a77445038899fc5229a303f7ffe0baf4be98ed61ab29098e621ee73bf","revision":"8540fafb86b969775254b898711ad3ae40ccc39d"},
+    "src-server/services/orchestration/skill-experience-model.ts",
 
-    {"path":"src-server/services/orchestration/skill-experience-runtime.ts","digest":"b252ba13ed0ad0990e3b44b39f64d2186713dcc9c311c90967624fe5615d13a6","revision":"958350328eafd360124e1892c1945a2ae455e43c"},
+    "src-server/services/orchestration/skill-experience-runtime.ts",
 
-    {"path":"src-server/services/orchestration/skill-experience-snapshots.ts","digest":"9079311d2fe9958697c05144599af2881aa8f9690e986ebe28d4c44fd94e30f6","revision":"56f4c4897a189eeb30430119a4f4895e95fbb541"},
+    "src-server/services/orchestration/skill-experience-snapshots.ts",
 
-    {"path":"src-server/services/plugins/agent-plugin-loader.ts","digest":"5e2ebd404a26505676a99a207854fc10fe3692fa02628c891bed0156eb1b231c","revision":"56f4c4897a189eeb30430119a4f4895e95fbb541"},
+    "src-server/services/plugins/agent-plugin-loader.ts",
 
-    {"path":"src-ui/src/components/skill-experiences/SkillExperienceForm.tsx","digest":"a996cc6dd08fe68f3260b0b7d7f928dd292af7bf6a2d1954419253273970e0a8","revision":"5fbf250d4a967a71b0d5e6544d6680cc66797735"},
+    "src-ui/src/components/skill-experiences/SkillExperienceForm.tsx",
 
-    {"path":"src-ui/src/components/skill-experiences/SkillExperiencePanel.tsx","digest":"e9f7f5467f02d8c4d5a229cda219109cd5585772ba0b1d65668ea9530fd37069","revision":"a54c2f48d0adf6af1f9818f6b33ab646238b533e"},
+    "src-ui/src/components/skill-experiences/SkillExperiencePanel.tsx",
 
-    {"path":"src-ui/src/hooks/useActiveChatSessionMessaging.ts","digest":"117eac5cc258ae0744de9619182eddd741d9e21694789349aaa844361d2951ff","revision":"cdd9b1a215d1756acd9f9218c062a207e1ac4e35"},
+    "src-ui/src/hooks/useActiveChatSessionMessaging.ts",
 
-    {"path":"src-ui/src/hooks/useChatInput.ts","digest":"2df84cb7f0075d4ee0d7ad529acb263cf5ef3237af7c65668147d6341e40578a","revision":"34d62da501fa53187b7062288f6e1dbaec8c20ed"},
+    "src-ui/src/hooks/useChatInput.ts",
 
-    {"path":"src-ui/src/lib/foregroundMessageDispatch.ts","digest":"e2eb4d3d4647f06dcd2275f7d95ea43cfa4abd66beaf1b6d96a656aaa71019bb","revision":"1f43155ddcfe86c48422d3f4b0041ddbdad16c3d"},
+    "src-ui/src/lib/foregroundMessageDispatch.ts",
 
-    {"path":"src-ui/src/lib/skill-experience-draft.ts","digest":"11764534d93e66db650772673b7e2c702bf7820d2a5036f4666ebccc51a6284a","revision":"6a847d3c029f4f3e5c1dbe82f2459194573d43e9"},
+    "src-ui/src/lib/skill-experience-draft.ts",
 
-    {"path":"src-ui/src/lib/skill-experience-preview.ts","digest":"006c259ab6bb4d126ad6bf5652a9acf6ee1d367b715f646f6828db7be762e7bd","revision":"6a847d3c029f4f3e5c1dbe82f2459194573d43e9"}
+    "src-ui/src/lib/skill-experience-preview.ts"
   ],
 
   "checks": [

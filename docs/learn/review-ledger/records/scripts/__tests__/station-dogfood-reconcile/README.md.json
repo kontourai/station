@@ -9,12 +9,10 @@
 
   "limits": "Fixture organization does not establish an installer, release or physical host journey.",
 
-  "document": {"digest":"3fd6f2a7e12023cb119f81a846261cc168d26ec3c7c292f72cf52765dfd72cf8","revision":"5cc708df16559f8e2038af25f5eb6312188d5d51"},
-
   "sources": [
-    {"path":"scripts/__tests__/dogfood-reconcile-scenario-parity.test.ts","digest":"3c51dd671fb7dc708a55b49f039c286212c8c9b0ba78c257f790f2b9be779a8b","revision":"5cc708df16559f8e2038af25f5eb6312188d5d51"},
+    "scripts/__tests__/dogfood-reconcile-scenario-parity.test.ts",
 
-    {"path":"scripts/__tests__/station-dogfood-reconcile.shared.ts","digest":"4b66cc2b60a6dded13b258784f69eab27bc2cfd48dd2470545d6090d3ad8c90a","revision":"5cc708df16559f8e2038af25f5eb6312188d5d51"}
+    "scripts/__tests__/station-dogfood-reconcile.shared.ts"
   ],
 
   "checks": []

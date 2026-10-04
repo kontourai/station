@@ -1,0 +1,7 @@
+{
+  "revision": "f8708fe79c7aa1b77ba37b591541e95c7fe533a7",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the Browser test evidence mutation-runner contract against the source delta: only the CI health bot-login mutation was added. Clean-baseline ownership, exact replacement, named intended failure, restoration and prerequisite rejection behavior are unchanged; the section remains accurate.","inputs":["docs/architecture/module-map.md"]}
+  ]
+}
