@@ -1,0 +1,7 @@
+{
+  "revision": "b38fa3bf89210ebfba30a32ced0c7f5027261bcd",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Updated the native saved-route summary to say the invitation is stored on this device without confirming a live connection or current access. The expiry date is collapsed and described as local credential expiry, not Station availability. The mounted redemption test covers the saved grant and disclosure; no network or authorization behavior changed.","inputs":["docs/guides/connections.md"]}
+  ]
+}

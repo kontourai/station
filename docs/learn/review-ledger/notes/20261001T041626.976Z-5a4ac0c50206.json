@@ -1,0 +1,7 @@
+{
+  "revision": "61410a44aec31b84e10034f877de1bcd069f3534",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"Reviewed walkthrough delta: historical sample media provenance stays intact and updated copy distinguishes current contrast/discovery labels. Existing architecture review and learning-reader scope remain valid.","inputs":["docs/architecture/abstraction-review.md"]}
+  ]
+}
