@@ -959,6 +959,11 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Checkpoint capture and restore over real repositories, with a `.git`
   // swapped or a config rewritten at a chosen git call.
   'src-server/services/checkpoints/__tests__/checkpoint-own-repository.test.ts',
+  // #2875: the git-commit preparation adapter over real repositories, with
+  // planted repository config, and the delegation path reading a real
+  // checkout that a test moves between checks.
+  'src-server/services/execution-target/__tests__/execution-preparation.test.ts',
+  'src-server/tools/__tests__/station-control-delegation-preparation.test.ts',
   // station#3278: builds the real watchdog bundle and spawns it through
   // symlinked paths to prove the entrypoint guard fires; the esbuild step and
   // child spawns keep it out of ordinary workers.
