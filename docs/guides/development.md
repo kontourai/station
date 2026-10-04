@@ -121,6 +121,15 @@ just dev --watch --instance=hot --temp-home --port=3342 --ui-port=3374
   attestation, so the UI is same-origin with its API and passes the session
   gate. The server's allowed origins are not widened: the UI port is already one.
   The sign-in link printed at start works as for any instance.
+- **File access.** The dev server serves only the UI's import roots
+  (`src-ui`, `src-shared`, the workspace packages' `src`, and `node_modules`)
+  and turns Vite's CORS off, so a page on another localhost port cannot read
+  repo files such as `CLAUDE.md` through `/@fs/`. The UI is same-origin with
+  this server, including in the Tauri shell.
+- **Process identity.** The registered server PID is the `tsx watch` parent,
+  not the node child it restarts; `stop` signals the parent's process tree. A
+  legacy unmanaged record with no captured fingerprint is still trusted by PID
+  alone (the residual accepted in #3253).
 - **Loopback only.** `--watch` binds `127.0.0.1` and refuses another `--host`,
   as for the root Vite server below.
 - **Distinct home.** A dev instance must use its own Station home
