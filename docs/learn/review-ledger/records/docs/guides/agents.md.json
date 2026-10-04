@@ -130,7 +130,7 @@
 
     {"path":"src-server/tools/station-control-operations-tools.ts","digest":"9174a9e845abca770133b6300050562fbfb220cac01bd611698d56a949f0eb3a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/tools/station-control-policy.ts","digest":"2f661940d3e0aacc7733081792989ea24016a8a826e14ae21d6e9e4470a635a5","revision":"52982b10d017a24966d01167cd33e7c042ecb69b"},
+    {"path":"src-server/tools/station-control-policy.ts","digest":"d82c93b6f4043c5d48797ba009a0f6a70bb90879cbfab5c8bc53c6928b97f432","revision":"47dade37280a196923c37f2ed62019112f3e9cc8"},
 
     {"path":"src-ui/src/app-shell/routing.ts","digest":"64eb187dd30dffe0d9317242bb454ab41ff0116af6ad02c7dc6ad805a8dd65f2","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
