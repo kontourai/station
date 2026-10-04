@@ -114,15 +114,6 @@ export type SessionMessageDelivery =
   /** The message may have been delivered; do not send it again. */
   | { readonly outcome: 'indeterminate' };
 
-/** The delivery's branch, when its outcome means the branch had an effect. */
-export function deliveryBranchTaken(
-  delivery: SessionMessageDelivery,
-): SessionDeliveryBranch | undefined {
-  if (delivery.outcome === 'started') return 'start';
-  if (delivery.outcome === 'steered') return 'steer';
-  return undefined;
-}
-
 export async function deliverSessionMessage(
   ports: SessionMessageDeliveryPorts,
   input: {

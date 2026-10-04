@@ -34,6 +34,9 @@ const resolveRecord: StationControlCallerRecordResolver = () => ({
 });
 
 const requests: { method: string; path: string; body?: unknown }[] = [];
+type Reply = { status: number; body: unknown };
+const OK_REPLY: Reply = { status: 200, body: { success: true, data: {} } };
+let reply: Reply = OK_REPLY;
 let server: ReturnType<typeof serve>;
 
 beforeAll(async () => {
@@ -45,7 +48,7 @@ beforeAll(async () => {
       path: `${c.req.path}${new URL(c.req.url).search}`,
       ...(text ? { body: JSON.parse(text) } : {}),
     });
-    return c.json({ success: true, data: {} });
+    return c.json(reply.body as object, reply.status as 200);
   });
   let resolvePort!: (value: number) => void;
   const listening = new Promise<number>((resolve) => {
@@ -62,6 +65,7 @@ afterAll(async () => {
 });
 beforeEach(() => {
   requests.length = 0;
+  reply = OK_REPLY;
   __resetStationControlMcpTokensForTests();
 });
 
@@ -272,6 +276,52 @@ describe('the Session tools call their own leaves with exactly their fields', ()
         path: '/api/orchestration/session-control/session%2F1/wait?until=turn-settled&timeoutMs=30000&afterEventCursor=4',
       },
     ]);
+    await close();
+  });
+});
+
+describe('wait_session answers a refusal as an MCP error and a timeout as a result (#2795)', () => {
+  const wait = { sessionId: 'session-1', until: 'idle' };
+  const toolResult = (response: any) => response.result;
+
+  // A refusal the route words as `success: false` must be `isError`: the
+  // native invoke route and every MCP host see a failed tool only by it.
+  test.each([
+    ['a Session the owner may not read', 404, 'not_found'],
+    ['a station-wide wait capacity refusal', 429, 'wait_capacity'],
+    ['a cancelled wait', 408, 'wait_aborted'],
+    ['a rejected query', 400, 'invalid_request'],
+  ] as const)('%s is an MCP error carrying its code', async (_name, status, code) => {
+    reply = { status, body: { success: false, code, error: 'refused' } };
+    const { call, close } = await connect();
+    const result = toolResult(await call('wait_session', wait));
+    expect(result.isError).toBe(true);
+    expect(JSON.parse(result.content[0].text)).toMatchObject({
+      success: false,
+      code,
+    });
+    expect(requests).toHaveLength(1);
+    await close();
+  });
+
+  // A wait that ran its full time with the turn still running did what it was
+  // asked: it observed the Session. `timedOut: true` is the answer, not a
+  // failure, so it is NOT an error and carries its own flag.
+  test('a timeout with the turn still running is a result, not an error', async () => {
+    reply = {
+      status: 200,
+      body: {
+        success: true,
+        data: { sessionId: 'session-1', settled: false, timedOut: true },
+      },
+    };
+    const { call, close } = await connect();
+    const result = toolResult(await call('wait_session', wait));
+    expect(result.isError).toBeUndefined();
+    expect(JSON.parse(result.content[0].text).data).toMatchObject({
+      settled: false,
+      timedOut: true,
+    });
     await close();
   });
 });

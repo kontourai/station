@@ -93,7 +93,7 @@ const requestKeySchema = z
   .max(128)
   .regex(/^[A-Za-z0-9._:-]+$/);
 
-export const sendToSessionBodySchema = z
+const sendToSessionBodySchema = z
   .object({
     sessionId: sessionIdSchema,
     text: z.string().trim().min(1).max(CHAT_INPUT_MAX_CHARS),
@@ -102,7 +102,7 @@ export const sendToSessionBodySchema = z
   })
   .strict();
 
-export const interruptSessionBodySchema = z
+const interruptSessionBodySchema = z
   .object({
     sessionId: sessionIdSchema,
     turnId: z.string().min(1).max(512).optional(),
@@ -110,7 +110,7 @@ export const interruptSessionBodySchema = z
   })
   .strict();
 
-export const waitSessionQuerySchema = z
+const waitSessionQuerySchema = z
   .object({
     until: z.enum(['turn-settled', 'idle']),
     timeoutMs: z.coerce
@@ -226,7 +226,7 @@ export interface SessionAgentControlDeps {
 }
 
 /** The wait's reads, over the same durable fold the steer path uses. */
-export function sessionTurnWaitPorts(
+function sessionTurnWaitPorts(
   deps: Pick<
     SessionAgentControlDeps,
     'eventStore' | 'eventBus' | 'orchestrationService'
