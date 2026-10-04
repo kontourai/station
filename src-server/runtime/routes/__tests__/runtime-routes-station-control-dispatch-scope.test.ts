@@ -1668,7 +1668,10 @@ describe('configureRuntimeRoutes: station-control dispatch stays in scope (slice
       delegate: fieldsOf('POST /delegations'),
       continueDelegated: fieldsOf('POST /delegations/:taskId/continue'),
       // No tool reaches the handoff route; its check, on the same fields as
-      // `/chat`, is driven in `handoff-posture.routes.test.ts`.
+      // `/chat`, is driven in `handoff-posture.routes.test.ts`. Borrowing the
+      // `/chat` fields relies on `conversationHandoffSchema` extending
+      // `foregroundMessageObjectSchema` (the walk below still visits every
+      // handoff field, so one it adds is checked).
       handoff: fieldsOf('POST /chat'),
     };
     const schemas: Record<string, z.ZodTypeAny> = {

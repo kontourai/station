@@ -68,9 +68,9 @@ A dispatch, delegation or follow-up from a caller that is not a bound operator
 cannot carry an approval mode. That covers `setApprovalMode` and the
 `approvalMode`, `mode`, `permissionMode` and `autoMode` model options, whatever
 their value. Station refuses such a request with
-`station_control_posture_not_allowed` rather than adjusting it. A new Session
-runs with its Agent's saved default; a follow-up keeps the conversation's
-recorded mode.
+`station_control_posture_not_allowed` rather than adjusting it. Without an
+approval mode, the Session uses the conversation's recorded mode, else the
+Agent's saved default, else this Station's default.
 
 Saved-Environment discovery and remote dispatch require a bound operator caller.
 Remote task listings, task reads, event reads, and interrupts carry the same

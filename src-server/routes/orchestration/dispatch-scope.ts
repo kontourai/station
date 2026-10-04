@@ -148,9 +148,9 @@ export function carriedPostureFields(
 /**
  * #2377 slice C3b: a station-control caller that is not a bound operator
  * may not choose the approval posture of a session it starts or continues.
- * A request that carries one is refused (never clamped): a new session runs
- * with its Agent's saved default; a follow-up keeps the conversation's
- * recorded mode. Bound operators, the operator's UI, paired
+ * A request that carries one is refused (never clamped). Without an approval
+ * mode, the Session uses the conversation's recorded mode, else the Agent's
+ * saved default, else this Station's default. Bound operators, the operator's UI, paired
  * devices and Station's own server code are not decided here.
  */
 export function refuseCarriedPosture(

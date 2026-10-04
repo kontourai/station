@@ -822,7 +822,7 @@ const REFUSAL_MESSAGES: Record<StationControlRefusalCode, string> = {
   station_control_route_unmapped:
     'No station-control tool reaches this Station route, so Station refuses it for internal callers.',
   station_control_posture_not_allowed:
-    "An agent may not choose the approval mode of a Session it starts or continues. Send the request without an approval mode: a new Session runs with its Agent's saved default; a follow-up keeps the conversation's recorded mode. Ask the person to change the mode in Station if it needs to differ.",
+    "An agent may not choose the approval mode of a Session it starts or continues. Send the request without one. Without an approval mode, the Session uses the conversation's recorded mode, else the Agent's saved default, else this Station's default. Ask the person to change the mode in Station if it needs to differ.",
 };
 
 export function stationControlRefusal(
