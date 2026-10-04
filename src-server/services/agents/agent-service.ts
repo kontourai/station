@@ -87,6 +87,8 @@ export interface EnrichedAgent {
   unavailableReason?: string;
   /** Owning project slug; absent = global scope (agent-engine-unification.md §3.3). */
   project?: string;
+  /** #3276: who besides the operator may use this Agent; absent = operator only. */
+  audience?: AgentSpec['audience'];
 }
 
 /** `POST /agents/materialize-engine` was handed an id no registry identity claims. */
@@ -464,6 +466,7 @@ export class AgentService {
               unavailableReason: reason ?? 'Agent is not currently launchable.',
             }),
         ...(spec.project !== undefined ? { project: spec.project } : {}),
+        ...(spec.audience ? { audience: spec.audience } : {}),
       });
     }
     return [...enrichedAgents, ...storeOnly];
@@ -499,6 +502,7 @@ export class AgentService {
             execution: spec.execution,
             updatedAt: metadata.updatedAt,
             ...(spec.project !== undefined ? { project: spec.project } : {}),
+            ...(spec.audience ? { audience: spec.audience } : {}),
           } as EnrichedAgent;
         } catch (e) {
           this.logger.warn('Agent spec not found, skipping', {

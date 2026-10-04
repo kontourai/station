@@ -203,6 +203,71 @@ Missing, stale and unavailable authorization fail closed with distinguishable
 outcomes. Recheck after asynchronous preparation and immediately before the
 commit or external effect; record the actual membership/grant revision used.
 
+## Agent audience
+
+> Status: the declaration and the list/read/turn refusal are implemented for
+> [#3276](https://github.com/kontourai/station/issues/3276). Member turns, and
+> the intersection authority they must run with, are
+> [#3277](https://github.com/kontourai/station/issues/3277).
+
+An Agent declares who besides the operator may use it in its versioned
+`audience` ([contract](../../packages/contracts/src/agent.ts),
+[reference](../reference/config.md#audience)). The audience is not a principal
+list. It names a Project action or role set, and it is composed with the
+current membership of the request's resolved `PrincipalRef.id` in the Agent's
+owning Project. Absent means operator only, so every existing Agent stays hidden
+from members.
+
+**Who is a member caller.** A member caller is a request that resolves to a
+deployment account: an account session on a credential that is not
+account-bound, or a station-control tool call whose session that account owns
+(#2377 slice B). This uses the same rule as the Project routes'
+`authenticatedProjectMember`. A station-control call that resolves to no
+principal is admitted to no Agent. The operator, personal and peer Devices, and
+Tailnet persons keep the operator's rules. Device and Station identities are
+not Project members. Account-bound collaborator Devices are refused every Agent
+path by their own gate before audience is consulted.
+
+**What a member caller gets.** The
+[Agent audience gate](../../src-server/runtime/bootstrap/agent-audience-gate.ts)
+answers every Agent surface such a caller reaches. A request never reaches an
+Agent handler:
+
+- the Agent lists (`GET /agents`, `GET /api/agents`) contain only admitted
+  Agents, each as `station.member-agent/v1` (slug, name, description, Project);
+  prompt, tools and engine configuration are excluded;
+- an Agent that is unknown or not admitted returns the same uniform
+  `404 Agent not found`, whether addressed by path or named as a turn's
+  `target.agent`;
+- a turn on an admitted Agent is refused with `403
+  member_agent_turns_unavailable`. This covers invoke, chat, tools, and new,
+  continued or delegated orchestration turns.
+
+The caller's own conversation history under `/agents/:slug/conversations` stays
+readable; those routes already authorize by conversation owner.
+
+**Authority rule for member turns (R2).** When #3277 admits a member's turn on
+a member-facing Agent, that turn's effective authority is the intersection of:
+
+1. the Agent's declared tool and data scope (its tools, integrations and
+   knowledge roots), and
+2. the member's own current access: membership actions in the owning Project,
+   Station Control and knowledge reads as that member (slice B), and only
+   credentials bound to the Agent or the member (#3279).
+
+A turn never runs with the operator's ambient authority: operator tool tokens,
+host shell or file tools, other Projects, or other members' conversations. Each
+tool call rechecks both sides at its own boundary, so revoking membership or
+narrowing the audience takes effect before the next effect. The tool view must
+be resolved from the intersection before the engine starts. Leaving a tool out
+of the prompt does not remove it. An engine that cannot enforce the
+intersection per tool must not run member turns.
+
+Until that path exists, Station refuses member turns rather than running them
+with the operator's authority. This removes one earlier capability: an account
+member's station-control dispatch into a Project where it holds `execute`
+(#2377 slice C2a).
+
 ## Revocation and concurrent work
 
 Use revisions to prevent a stale invite or grant update from restoring revoked

@@ -639,6 +639,7 @@ import {
   type RequestDelegationSources,
 } from '../agents/request-delegation.js';
 import { installAccountBoundDeviceGate } from '../bootstrap/account-bound-device-gate.js';
+import { installAgentAudienceGate } from '../bootstrap/agent-audience-gate.js';
 import { createOrchestrationRequestPrincipalResolver } from '../bootstrap/orchestration-request-principal.js';
 import {
   createPersonalHomeAuthorityDatabase,
@@ -1908,6 +1909,58 @@ export function configureRuntimeRoutes(
         ),
     }),
   );
+  // #3276: a request acting for a deployment account (a Project member)
+  // sees and uses only the Agents whose audience admits it. Installed after
+  // the station-control guard, which records whom a tool call acts for, and
+  // ahead of every Agent and orchestration mount (Hono runs middleware in
+  // registration order). The caller rule is `authenticatedProjectMember`'s:
+  // an authenticated account, or a station-control call whose session an
+  // account owns, is a member; every other request keeps its own rules.
+  const agentAudienceAdmissions = (principalId: string) => () =>
+    context.projectMembership
+      ? context.projectMembership
+          .admissionsForResolvedPrincipal(principalId)
+          .map(({ scope, member }) => ({
+            projectSlug: scope.localProjectSlug,
+            role: member.role,
+            actions: member.actions,
+            status: member.status,
+          }))
+      : [];
+  installAgentAudienceGate(context.app, {
+    caller: async (c) => {
+      const request = c.req.raw;
+      try {
+        const account =
+          await context.deploymentAuthentication?.service.authenticate(request);
+        if (account?.kind === 'authenticated') {
+          roomRequestPrincipals.set(
+            request,
+            resolveOrchestrationRequestPrincipal(c),
+          );
+          const actor = await projectMembershipAuthority(request).current();
+          return {
+            kind: 'member',
+            admissions: agentAudienceAdmissions(actor.principal.id),
+          };
+        }
+        if (account && account.kind !== 'absent') return { kind: 'none' };
+      } catch {
+        return { kind: 'none' };
+      }
+      const ownerId = agentOwnerIdForRequest(request);
+      // A station-control call that acts for no resolved principal (caller-
+      // less, or a session with no recorded owner) fails closed: it is
+      // admitted to no Agent, as Task-room authority refuses an unresolved
+      // principal. The audience is always composed with the membership of
+      // the resolved `PrincipalRef.id`, never granted by the id alone.
+      if (ownerId === null) return { kind: 'none' };
+      if (ownerId !== undefined && isDeploymentAccountPrincipalId(ownerId))
+        return { kind: 'member', admissions: agentAudienceAdmissions(ownerId) };
+      return { kind: 'operator' };
+    },
+    listAgents: () => context.agentService.listAgents(),
+  });
   // #2561: every route family below decides a session or conversation read
   // (or records an owner that a later session read compares against), so it
   // must use the request's principal, exactly like the chat routes bound

@@ -1,4 +1,8 @@
 import type { AgentId, EngineConnectionId } from './agent-identity.js';
+import type {
+  ProjectMemberAction,
+  ProjectMemberRole,
+} from './project-membership.js';
 import type { ApprovalMode } from './provider.js';
 import type {
   WorkspaceIsolationConfig,
@@ -321,6 +325,63 @@ export interface AgentDelegationContext {
   denyApprovals?: boolean;
 }
 
+/**
+ * #3276: who may list, read and invoke an Agent besides the operator.
+ *
+ * Versioned so a later grammar is an explicit contract change, never a
+ * silent reinterpretation. The operator's own requests are admitted to every
+ * Agent whatever its audience. A Project member's request is admitted only
+ * by a member audience on an Agent owned by a Project where that member's
+ * current, active membership holds the named permission or one of the named
+ * roles. A member audience therefore requires the Agent's `project`.
+ *
+ * Absent means `operator` — every Agent written before this field existed
+ * keeps its behavior with no migration. Admission to an audience is not
+ * authority: the turn a member starts runs with the intersection of the
+ * Agent's declared scope and the member's current access
+ * (docs/design/project-membership.md, "Agent audience").
+ */
+export const AGENT_AUDIENCE_VERSION = 'station.agent-audience/v1' as const;
+export const AGENT_AUDIENCE_KINDS = [
+  'operator',
+  'project-permission',
+  'project-roles',
+] as const;
+export type AgentAudienceKind = (typeof AGENT_AUDIENCE_KINDS)[number];
+
+export type AgentAudience =
+  | { version: typeof AGENT_AUDIENCE_VERSION; kind: 'operator' }
+  | {
+      version: typeof AGENT_AUDIENCE_VERSION;
+      kind: 'project-permission';
+      /** Members whose current membership holds this action. */
+      permission: ProjectMemberAction;
+    }
+  | {
+      version: typeof AGENT_AUDIENCE_VERSION;
+      kind: 'project-roles';
+      /** Members whose current membership role is one of these. Non-empty. */
+      roles: readonly ProjectMemberRole[];
+    };
+
+export const MEMBER_AGENT_VIEW_VERSION = 'station.member-agent/v1' as const;
+
+/**
+ * #3276: what a Project member's request receives for an Agent its audience
+ * admits — identity and presentation only. The prompt, tools, engine binding
+ * and every other piece of operator configuration stay out, as
+ * `MemberProjectView` keeps workspace and provider settings out.
+ */
+export interface MemberAgentView {
+  version: typeof MEMBER_AGENT_VIEW_VERSION;
+  kind: 'member-agent';
+  slug: AgentId;
+  name: string;
+  description?: string;
+  /** The owning Project whose membership admitted the caller. */
+  project: string;
+}
+
 export interface AgentSpec {
   name: string;
   prompt: string;
@@ -329,6 +390,8 @@ export interface AgentSpec {
   model?: string;
   /** Owning project slug; absent = global scope (agent-engine-unification.md §3.3). */
   project?: string;
+  /** #3276: who besides the operator may use this Agent; absent = operator only. */
+  audience?: AgentAudience;
   execution?: AgentExecutionConfig;
   delegation?: AgentDelegationPolicy;
   region?: string;
@@ -361,6 +424,8 @@ export interface AgentMetadata {
   plugin?: string;
   /** Owning project slug; absent = global scope (agent-engine-unification.md §3.3). */
   project?: string;
+  /** #3276: carried from the spec so catalog reads can apply it; absent = operator only. */
+  audience?: AgentAudience;
   ui?: AgentUIConfig;
   workflowWarnings?: string[];
   /**

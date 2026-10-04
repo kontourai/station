@@ -314,6 +314,16 @@ below is a field excerpt, not a fixed response for every Agent.
 }
 ```
 
+A request acting for a deployment account (a Project member) never receives
+this shape. The
+[Agent audience gate](../../src-server/runtime/bootstrap/agent-audience-gate.ts)
+answers `GET /agents`, `GET /api/agents` and `GET /api/agents/:slug` for it
+with `station.member-agent/v1` views of Agents whose
+[audience](config.md#audience) admits it. Any other or unknown Agent slug, in a
+path or as an orchestration `target.agent`, returns `404 Agent not found`. A
+turn on an admitted Agent returns `403 member_agent_turns_unavailable`. All of
+these responses are `no-store`. See
+[Agent audience](../design/project-membership.md#agent-audience).
 
 ---
 

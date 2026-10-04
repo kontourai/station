@@ -288,6 +288,13 @@ controls does not confer administration: current membership and the separately
 approved Device scope still govern each action. Independent-person browser and
 native qualification remain separate from backend and component-test evidence.
 
+An account session presented on a credential that is not account-bound is also
+a member caller for Agents. It sees only Agents whose
+[audience](../reference/config.md#audience) admits its current membership, as
+member views. Every other Agent returns the uniform not-found, and member turns
+are refused until [#3277](https://github.com/kontourai/station/issues/3277).
+See [Agent audience](../design/project-membership.md#agent-audience).
+
 For authenticated members, the existing Project catalogue/detail endpoints
 return `station.member-project/v1` views: Project ID, slug, name, optional icon
 and description, and currently effective actions (`view` in this profile).
