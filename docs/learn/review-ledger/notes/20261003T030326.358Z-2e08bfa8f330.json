@@ -1,0 +1,7 @@
+{
+  "revision": "175664a68b3252e6550c323bc9771462cd395265",
+
+  "notes": [
+    {"path":"packages/shared/README.md","note":"Reviewed the new explicit Node source subpath skill-experience-author and its inert validated reader. README routes the export inventory to package.json and describes source-loader and local author-build boundaries accurately. Installed availability remains separate admission owned by AgentPluginLoader; validation does not activate or render a workflow. No npm/release or live model proof.","inputs":["packages/shared/README.md"]}
+  ]
+}

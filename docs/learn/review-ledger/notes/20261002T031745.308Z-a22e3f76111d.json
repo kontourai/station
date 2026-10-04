@@ -1,0 +1,7 @@
+{
+  "revision": "9a92a7b471088cf6f151d39799ff16c7ef19ead2",
+
+  "notes": [
+    {"path":"scripts/AGENTS.md","note":"Re-record after merging main #3077: scripts/vitest-resource-manifest.mjs gained the InboxRow.geometry test entry (additive); scripts/AGENTS.md manifest guidance claims unchanged.","inputs":["scripts/AGENTS.md"]}
+  ]
+}

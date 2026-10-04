@@ -1,0 +1,11 @@
+{
+  "revision": "48fd2c0212f17cc11ba07ed86b52f253c63e3f68",
+
+  "notes": [
+    {"path":"docs/learn/media/connections-models.png","note":"Reviewed unchanged historical media against current provider-create callback and guidance. New credential and potentially billable Create disclosure is absent from this older capture; captions/walkthrough explicitly state that limit. Original capture revision and digest remain; no recapture or live provider success claimed.","inputs":["docs/learn/media/connections-models.png"]},
+
+    {"path":"docs/learn/media/connections-tour.webm","note":"Reviewed unchanged historical media against current provider-create callback and guidance. New credential and potentially billable Create disclosure is absent from this older capture; captions/walkthrough explicitly state that limit. Original capture revision and digest remain; no recapture or live provider success claimed.","inputs":["docs/learn/media/connections-tour.webm"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Reviewed unchanged historical media against current provider-create callback and guidance. New credential and potentially billable Create disclosure is absent from this older capture; captions/walkthrough explicitly state that limit. Original capture revision and digest remain; no recapture or live provider success claimed.","inputs":["docs/learn/walkthroughs.md"]}
+  ]
+}

@@ -1,0 +1,111 @@
+{
+  "revision": "780dbbe2bb02372ad22a92e269e2fc3fa62bcd22",
+
+  "notes": [
+    {"path":"docs/adr/0020-distribution-two-trains-channels-as-pointers.md","note":"#2959 merge: archive-update.ts changed on main only to follow bounded https redirects (#2975); the ADR's claims (refuses an out-of-range release, ring from the baked marker, manifest URL from install state) still hold. portable-nightly-publication.mjs now re-exports the launcher protocol range from scripts/lib/portable-publication.mjs, which the release publisher also reads: still one publisher copy of the four the Context lists. Context still accurate that only Nightly publishes a manifest today; #2959's stable/preview publication is owner-gated.","inputs":["docs/adr/0020-distribution-two-trains-channels-as-pointers.md"]},
+
+    {"path":"docs/guides/android-build.md","note":"#2959 delta: release.yml adds host-stream archive/manifest jobs; the Android job, provenance and signing steps are unchanged, so no Android claim changes.","inputs":["docs/guides/android-build.md"]},
+
+    {"path":"docs/guides/android-build.md","note":"#2959 review fixes: release.yml dry run now requires the unpinned-key refusal message; publish-release.yml moves the rolling host pointer into a separate host-pointer job with a pointer plan, bootstrap input and compensation; release-artifacts admits the signed manifest only when validating. No claim in this document changes; re-read the sections citing these sources.","inputs":["docs/guides/android-build.md"]},
+
+    {"path":"docs/guides/android-build.md","note":"Merged origin/main (fa78d02a lineage, ADR 0020 now on main) into #2959. Main's side changed only pinned action SHAs in release.yml/publish-release.yml; #2959's host-stream jobs and steps are unchanged by the merge. Re-read this document's claims citing these workflows; none changes.","inputs":["docs/guides/android-build.md"]},
+
+    {"path":"docs/guides/desktop-build.md","note":"#2959 delta: release.yml adds host-stream archive/manifest jobs; desktop build, updater overlay and CSP steps unchanged. No claim changes.","inputs":["docs/guides/desktop-build.md"]},
+
+    {"path":"docs/guides/desktop-build.md","note":"#2959 review fixes: release.yml dry run now requires the unpinned-key refusal message; publish-release.yml moves the rolling host pointer into a separate host-pointer job with a pointer plan, bootstrap input and compensation; release-artifacts admits the signed manifest only when validating. No claim in this document changes; re-read the sections citing these sources.","inputs":["docs/guides/desktop-build.md"]},
+
+    {"path":"docs/guides/desktop-build.md","note":"Merged origin/main (fa78d02a lineage, ADR 0020 now on main) into #2959. Main's side changed only pinned action SHAs in release.yml/publish-release.yml; #2959's host-stream jobs and steps are unchanged by the merge. Re-read this document's claims citing these workflows; none changes.","inputs":["docs/guides/desktop-build.md"]},
+
+    {"path":"docs/guides/desktop-tray.md","note":"#2959 delta: release.yml adds host-stream jobs only; tray and service claims unaffected.","inputs":["docs/guides/desktop-tray.md"]},
+
+    {"path":"docs/guides/desktop-tray.md","note":"#2959 review fixes: release.yml dry run now requires the unpinned-key refusal message; publish-release.yml moves the rolling host pointer into a separate host-pointer job with a pointer plan, bootstrap input and compensation; release-artifacts admits the signed manifest only when validating. No claim in this document changes; re-read the sections citing these sources.","inputs":["docs/guides/desktop-tray.md"]},
+
+    {"path":"docs/guides/desktop-tray.md","note":"Merged origin/main (fa78d02a lineage, ADR 0020 now on main) into #2959. Main's side changed only pinned action SHAs in release.yml/publish-release.yml; #2959's host-stream jobs and steps are unchanged by the merge. Re-read this document's claims citing these workflows; none changes.","inputs":["docs/guides/desktop-tray.md"]},
+
+    {"path":"docs/guides/mobile-release.md","note":"#2959 delta: release.yml gains host-archives/host-manifest jobs feeding assemble-draft; publish-release.yml gains gated host-stream steps; inventory schema gains host-archive/host-manifest-payload roles. No mobile feed, TestFlight, Play or credential claim changes; re-checked the draft/publish sequence claims still hold.","inputs":["docs/guides/mobile-release.md"]},
+
+    {"path":"docs/guides/mobile-release.md","note":"#2959 review fixes: release.yml dry run now requires the unpinned-key refusal message; publish-release.yml moves the rolling host pointer into a separate host-pointer job with a pointer plan, bootstrap input and compensation; release-artifacts admits the signed manifest only when validating. No claim in this document changes; re-read the sections citing these sources.","inputs":["docs/guides/mobile-release.md"]},
+
+    {"path":"docs/guides/mobile-release.md","note":"#2959 round 3: publish-release.yml exposes a released output and the host-pointer job now runs on it and reads the signed manifest from the public versioned release (no artifact hand-over); skip-older warns. No claim in this document changes.","inputs":["docs/guides/mobile-release.md"]},
+
+    {"path":"docs/guides/mobile-release.md","note":"#2959 final round: host-pointer now checks the fetched payload against this run's version, tag and source SHA, pointer-plan refuses a signed manifest for another version, and the job runs on !cancelled(). No claim in this document changes.","inputs":["docs/guides/mobile-release.md"]},
+
+    {"path":"docs/guides/mobile-release.md","note":"Merged origin/main (fa78d02a lineage, ADR 0020 now on main) into #2959. Main's side changed only pinned action SHAs in release.yml/publish-release.yml; #2959's host-stream jobs and steps are unchanged by the merge. Re-read this document's claims citing these workflows; none changes.","inputs":["docs/guides/mobile-release.md"]},
+
+    {"path":"docs/guides/native-releases.md","note":"#2959: documented the native-release-publish signing secret and gate variable, the host-stream draft assets, the single attestation-loop exemption for the signed manifest (verified by inventory revalidation) and the gated step order; qualified the every-asset provenance claim. Other publish/rollback claims re-read against publish-release.yml and unchanged.","inputs":["docs/guides/native-releases.md"]},
+
+    {"path":"docs/guides/native-releases.md","note":"#2959 review fixes: updated the host-stream paragraph for the separate host-pointer job, ledger/availability independence, compensation, rerun and rollback behavior; checked against publish-release.yml.","inputs":["docs/guides/native-releases.md"]},
+
+    {"path":"docs/guides/native-releases.md","note":"#2959 round 3: publish-release.yml exposes a released output and the host-pointer job now runs on it and reads the signed manifest from the public versioned release (no artifact hand-over); skip-older warns. Updated the host-pointer sentences to match; checked against publish-release.yml.","inputs":["docs/guides/native-releases.md"]},
+
+    {"path":"docs/guides/native-releases.md","note":"#2959 final round: host-pointer now checks the fetched payload against this run's version, tag and source SHA, pointer-plan refuses a signed manifest for another version, and the job runs on !cancelled(). Its host-pointer sentences stay accurate (it takes the manifest from the versioned release and verifies it before any pointer write).","inputs":["docs/guides/native-releases.md"]},
+
+    {"path":"docs/guides/native-releases.md","note":"Merged origin/main (fa78d02a lineage, ADR 0020 now on main) into #2959. Main's side changed only pinned action SHAs in release.yml/publish-release.yml; #2959's host-stream jobs and steps are unchanged by the merge. Re-read this document's claims citing these workflows; none changes.","inputs":["docs/guides/native-releases.md"]},
+
+    {"path":"docs/guides/nightly.md","note":"#2959 delta: portable-nightly-publication.mjs now wraps the ring-generic scripts/lib/portable-publication.mjs with its API, CLI and URLs unchanged (existing nightly tests pass unmodified); release workflow and inventory changes touch tagged releases only. Nightly claims unchanged.","inputs":["docs/guides/nightly.md"]},
+
+    {"path":"docs/guides/nightly.md","note":"#2959 review fixes: release.yml dry run now requires the unpinned-key refusal message; publish-release.yml moves the rolling host pointer into a separate host-pointer job with a pointer plan, bootstrap input and compensation; release-artifacts admits the signed manifest only when validating. No claim in this document changes; re-read the sections citing these sources.","inputs":["docs/guides/nightly.md"]},
+
+    {"path":"docs/guides/nightly.md","note":"#2959 round 3: publish-release.yml exposes a released output and the host-pointer job now runs on it and reads the signed manifest from the public versioned release (no artifact hand-over); skip-older warns. No claim in this document changes.","inputs":["docs/guides/nightly.md"]},
+
+    {"path":"docs/guides/nightly.md","note":"#2959 final round: host-pointer now checks the fetched payload against this run's version, tag and source SHA, pointer-plan refuses a signed manifest for another version, and the job runs on !cancelled(). No claim in this document changes.","inputs":["docs/guides/nightly.md"]},
+
+    {"path":"docs/guides/nightly.md","note":"Merged origin/main (fa78d02a lineage, ADR 0020 now on main) into #2959. Main's side changed only pinned action SHAs in release.yml/publish-release.yml; #2959's host-stream jobs and steps are unchanged by the merge. Re-read this document's claims citing these workflows; none changes.","inputs":["docs/guides/nightly.md"]},
+
+    {"path":"docs/guides/release-channel-ports.md","note":"#2959: stable/beta also accept a signed public manifest via STATION_INSTALL_PUBLIC_MANIFEST_URL (existing install.sh behavior, ecosystem-manifest tests) and may be published per ring once the owner enables it; default path unchanged. release.yml change adds host-stream jobs only; port and identity claims unaffected.","inputs":["docs/guides/release-channel-ports.md"]},
+
+    {"path":"docs/guides/release-channel-ports.md","note":"#2959 review fixes: release.yml dry run now requires the unpinned-key refusal message; publish-release.yml moves the rolling host pointer into a separate host-pointer job with a pointer plan, bootstrap input and compensation; release-artifacts admits the signed manifest only when validating. No claim in this document changes; re-read the sections citing these sources.","inputs":["docs/guides/release-channel-ports.md"]},
+
+    {"path":"docs/guides/release-channel-ports.md","note":"Merged origin/main (fa78d02a lineage, ADR 0020 now on main) into #2959. Main's side changed only pinned action SHAs in release.yml/publish-release.yml; #2959's host-stream jobs and steps are unchanged by the merge. Re-read this document's claims citing these workflows; none changes.","inputs":["docs/guides/release-channel-ports.md"]},
+
+    {"path":"docs/guides/release-rings.md","note":"#2959: added the signed host-stream manifests section; checked every claim against release.yml host-archives/host-manifest, publish-release.yml gated host steps and their order, public-release-locations.mjs URLs, the key table and the installer's existing STATION_INSTALL_PUBLIC_MANIFEST_URL acceptance. States nothing is published and installer defaults are unchanged.","inputs":["docs/guides/release-rings.md"]},
+
+    {"path":"docs/guides/release-rings.md","note":"#2959: PUBLIC_RELEASE_REPOSITORY became module-private; the documented base URL and pointer locations are unchanged.","inputs":["docs/guides/release-rings.md"]},
+
+    {"path":"docs/guides/release-rings.md","note":"#2959 review fixes: rewrote the gated flow to the publish job plus host-pointer job; checked pointer-plan outcomes (replace, unchanged rerun, skip-older rollback, refusals), the allow_empty_host_manifest_bootstrap input, compensation on failed replace/re-verify, and added the pre-change-tag note against publish-release.yml and portable-release-publication.mjs.","inputs":["docs/guides/release-rings.md"]},
+
+    {"path":"docs/guides/release-rings.md","note":"#2959 round 3: publish-release.yml exposes a released output and the host-pointer job now runs on it and reads the signed manifest from the public versioned release (no artifact hand-over); skip-older warns. Rewrote the host-pointer paragraph (released gating, pinned verify of the fetched manifest before any write, warning in the run summary, mis-tagged high version recovery is an owner action); checked against publish-release.yml.","inputs":["docs/guides/release-rings.md"]},
+
+    {"path":"docs/guides/release-rings.md","note":"#2959 final round: host-pointer now checks the fetched payload against this run's version, tag and source SHA, pointer-plan refuses a signed manifest for another version, and the job runs on !cancelled(). Added the run binding and cancel behavior to the host-pointer paragraph; checked against publish-release.yml and portable-release-publication.mjs.","inputs":["docs/guides/release-rings.md"]},
+
+    {"path":"docs/guides/release-rings.md","note":"#2959: added the cancel-during-clobber runbook note (empty pointer, fail-safe empty-pointer refusal, bootstrap re-run recovery); checked against the host-pointer replace step and the pointer-plan refusal.","inputs":["docs/guides/release-rings.md"]},
+
+    {"path":"docs/guides/release-rings.md","note":"Merged origin/main (fa78d02a lineage, ADR 0020 now on main) into #2959. Main's side changed only pinned action SHAs in release.yml/publish-release.yml; #2959's host-stream jobs and steps are unchanged by the merge. Linked ADR 0020 from the host-stream section now that it is on main; re-read the section against publish-release.yml and release.yml.","inputs":["docs/guides/release-rings.md"]},
+
+    {"path":"docs/guides/store-entry.md","note":"#2959 delta: release/publish workflows gain host-stream jobs and gated steps and the inventory gains two roles; store owner-setup and upload claims unaffected.","inputs":["docs/guides/store-entry.md"]},
+
+    {"path":"docs/guides/store-entry.md","note":"#2959 review fixes: release.yml dry run now requires the unpinned-key refusal message; publish-release.yml moves the rolling host pointer into a separate host-pointer job with a pointer plan, bootstrap input and compensation; release-artifacts admits the signed manifest only when validating. No claim in this document changes; re-read the sections citing these sources.","inputs":["docs/guides/store-entry.md"]},
+
+    {"path":"docs/guides/store-entry.md","note":"#2959 round 3: publish-release.yml exposes a released output and the host-pointer job now runs on it and reads the signed manifest from the public versioned release (no artifact hand-over); skip-older warns. No claim in this document changes.","inputs":["docs/guides/store-entry.md"]},
+
+    {"path":"docs/guides/store-entry.md","note":"#2959 final round: host-pointer now checks the fetched payload against this run's version, tag and source SHA, pointer-plan refuses a signed manifest for another version, and the job runs on !cancelled(). No claim in this document changes.","inputs":["docs/guides/store-entry.md"]},
+
+    {"path":"docs/guides/store-entry.md","note":"Merged origin/main (fa78d02a lineage, ADR 0020 now on main) into #2959. Main's side changed only pinned action SHAs in release.yml/publish-release.yml; #2959's host-stream jobs and steps are unchanged by the merge. Re-read this document's claims citing these workflows; none changes.","inputs":["docs/guides/store-entry.md"]},
+
+    {"path":"docs/guides/store-listing.md","note":"#2959 delta: release/publish workflow and inventory changes are host-stream only; listing copy and capture claims unaffected.","inputs":["docs/guides/store-listing.md"]},
+
+    {"path":"docs/guides/store-listing.md","note":"#2959 review fixes: release.yml dry run now requires the unpinned-key refusal message; publish-release.yml moves the rolling host pointer into a separate host-pointer job with a pointer plan, bootstrap input and compensation; release-artifacts admits the signed manifest only when validating. No claim in this document changes; re-read the sections citing these sources.","inputs":["docs/guides/store-listing.md"]},
+
+    {"path":"docs/guides/store-listing.md","note":"#2959 round 3: publish-release.yml exposes a released output and the host-pointer job now runs on it and reads the signed manifest from the public versioned release (no artifact hand-over); skip-older warns. No claim in this document changes.","inputs":["docs/guides/store-listing.md"]},
+
+    {"path":"docs/guides/store-listing.md","note":"#2959 final round: host-pointer now checks the fetched payload against this run's version, tag and source SHA, pointer-plan refuses a signed manifest for another version, and the job runs on !cancelled(). No claim in this document changes.","inputs":["docs/guides/store-listing.md"]},
+
+    {"path":"docs/guides/store-listing.md","note":"Merged origin/main (fa78d02a lineage, ADR 0020 now on main) into #2959. Main's side changed only pinned action SHAs in release.yml/publish-release.yml; #2959's host-stream jobs and steps are unchanged by the merge. Re-read this document's claims citing these workflows; none changes.","inputs":["docs/guides/store-listing.md"]},
+
+    {"path":"docs/reference/cli.md","note":"#2959 delta: release-artifacts assemble/validate now also require the host archives and payload and verify an attached signed host manifest; the documented assemble/validate behavior (every asset digest, SBOM bindings, validation before draft and publish) still holds. No CLI claim changes.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/reference/cli.md","note":"#2959 review fixes: release.yml dry run now requires the unpinned-key refusal message; publish-release.yml moves the rolling host pointer into a separate host-pointer job with a pointer plan, bootstrap input and compensation; release-artifacts admits the signed manifest only when validating. No claim in this document changes; re-read the sections citing these sources.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/reference/cli.md","note":"#2959 round 3: publish-release.yml exposes a released output and the host-pointer job now runs on it and reads the signed manifest from the public versioned release (no artifact hand-over); skip-older warns. No claim in this document changes.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/reference/cli.md","note":"#2959 final round: host-pointer now checks the fetched payload against this run's version, tag and source SHA, pointer-plan refuses a signed manifest for another version, and the job runs on !cancelled(). No claim in this document changes.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/reference/cli.md","note":"Merged origin/main (fa78d02a lineage, ADR 0020 now on main) into #2959. Main's side changed only pinned action SHAs in release.yml/publish-release.yml; #2959's host-stream jobs and steps are unchanged by the merge. Re-read this document's claims citing these workflows; none changes.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"src-desktop/icons/README.md","note":"#2959 delta: release.yml adds host-stream jobs; icon generation and channel overlay steps unchanged.","inputs":["src-desktop/icons/README.md"]},
+
+    {"path":"src-desktop/icons/README.md","note":"#2959 review fixes: release.yml dry run now requires the unpinned-key refusal message; publish-release.yml moves the rolling host pointer into a separate host-pointer job with a pointer plan, bootstrap input and compensation; release-artifacts admits the signed manifest only when validating. No claim in this document changes; re-read the sections citing these sources.","inputs":["src-desktop/icons/README.md"]},
+
+    {"path":"src-desktop/icons/README.md","note":"Merged origin/main (fa78d02a lineage, ADR 0020 now on main) into #2959. Main's side changed only pinned action SHAs in release.yml/publish-release.yml; #2959's host-stream jobs and steps are unchanged by the merge. Re-read this document's claims citing these workflows; none changes.","inputs":["src-desktop/icons/README.md"]}
+  ]
+}
