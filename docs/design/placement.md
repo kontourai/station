@@ -512,7 +512,7 @@ it. The strip lives in the region's chrome bar (`RegionChromeBar`, in the
 placement grab, the strip, maximize and visibility, and the click surface
 that collapses the bar — and carries two slots the selected pane's own
 toolbar renders into: `ChatDockHeader` is Chat's toolbar now (identity,
-context meter, project context, chat-list toggle, session counter, More menu) and portals into
+context meter, project context, chat-list toggle, More menu) and portals into
 the bar, so a dock still has ONE chrome bar (#1064, #3309); `ActivityDockPane`
 has no bar of its own. The pane host's `dock` presentation mounts the
 selected pane as the strip's `tabpanel` and nothing else — a pane behind a
@@ -1708,8 +1708,10 @@ per conversation.** Below the fold nothing above changes.
   own toolbar renders into the bar's two slots beside it through
   `RegionChromeSlots` with `namesPane` — the full-screen Chat joins a bar
   that names it and ignores a region's bar as before — omitting its identity
-  (the crumb is the title) and keeping Open/New icon-only, named and tipped
-  with their chords (`ChatDockWorkspaceActions iconOnly`). The dock's own
+  (the crumb is the title) and keeping its one verb, New, icon-only: the
+  shared `NewChatAction` with `iconOnly`, named "New chat" and tipped with
+  its chord (`ChatDockWorkspaceActions iconOnly`). There is no Open in this
+  bar: the inbox sits beside Chat and lists the chats to open. The dock's own
   Chat header elsewhere is unchanged. On a drill-in page the bar is the
   pane's again (the slots are not offered).
 - **One head per panel.** The side and lower panel heads offer
@@ -1764,9 +1766,9 @@ per conversation.** Below the fold nothing above changes.
   an inbox the layout folded once the transcript would clear its floor by
   24px (hysteresis, so a width on the line does not flap). A fold or unfold
   the reader made is never revisited by a resize.
-- **Session count on the Open icon.** Under the naming bar the "N sessions"
-  text is gone: more than one open conversation badges the Open-conversation
-  icon and joins its tooltip and accessible name. The Terminal's head "+"
+- **No session count.** Under the naming bar there is no "N sessions" text
+  and no count badge: the inbox beside Chat enumerates the chats. The
+  Terminal's head "+"
   appears once a terminal exists (the empty state's own "New Terminal" says
   it first), and a file row truncates with an ellipsis and a full-name title
   rather than widening its panel.

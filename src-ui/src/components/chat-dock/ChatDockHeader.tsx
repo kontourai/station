@@ -39,7 +39,7 @@ interface Session {
 /**
  * Session/identity content only Chat has. `undefined` for every non-Chat
  * occupant (Home, Activity) — those simply don't render this cluster
- * (gear, session counter/"Start a chat", activity dropdown, unread badge),
+ * (gear, "Start a chat", activity dropdown, unread badge),
  * rather than a second component carrying a curated subset of it.
  */
 export interface ChatDockHeaderChatControls {
@@ -99,7 +99,7 @@ export interface ChatDockWorkspaceControls {
 
 /**
  * Chat's OWN toolbar (#2046 2b): the identity, context meter, project
- * context, session counter, unread badge and More menu of the Chat pane.
+ * context, unread badge and More menu of the Chat pane.
  * Inside a region host it renders into the region bar's two slots
  * (`RegionChromeSlots`) so the dock keeps one chrome bar; the region's own
  * controls — placement grab, tab strip, maximize, visibility, the click
