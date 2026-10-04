@@ -28,7 +28,7 @@ This source addition requires a published version that exports `/agent`.
 | Foreground execution | `sendExecutionMessage`, `continueExecutionMessage`, `handoffExecutionMessage`, `getConversationHandoffStatus` |
 | Durable delegation | `discoverDelegationOptions`, `delegateTask`, `observeDelegatedTask`, `observeDelegatedTaskEvents`, `continueDelegatedTask`, `listDelegatedTasks`, `lookupDelegationAttempt` |
 | Decisions and interruption | `respondToDelegatedTaskRequest`, `interruptDelegatedTask`, `respondToRequest`, `interruptTurn` |
-| Session observation | `getOrchestrationSession`, `getOrchestrationSessionEventPage`, `getOrchestrationSessionEventWindow`, `getOrchestrationConversationEventWindow` |
+| Session observation | `getOrchestrationSession`, `getOrchestrationSessionEventPage`, `getOrchestrationSessionEventWindow`, `getOrchestrationConversationEventWindow`, `getConversationUsageTree` |
 | Outputs | `listSessionOutputs`, `inspectSessionOutput` and their contract types |
 | Failure handling | Canonical HTTP/authority errors, `ChatHttpError`, `ForegroundMessageIndeterminateError`, `DelegationApiError`, `SessionOutputsRequestError` |
 
@@ -891,6 +891,14 @@ Fetches app configuration.
 ### `useStatsQuery(agentSlug, conversationId, config?)`
 
 Fetches conversation stats. Disabled when either param is undefined.
+
+### `useConversationUsageTreeQuery(conversationId, apiBase?, config?)`
+
+Fetches the conversation's usage with its children (`getConversationUsageTree`,
+[`GET /api/orchestration/conversations/:conversationId/usage-tree`](session-api.md#conversation-usage-tree-get-conversationsconversationidusage-tree)).
+Disabled until `config.enabled` and for an empty id; it polls only when
+`config.refetchInterval` is set. A 404 (no conversation you can read) and a 422
+(a tree past its bound) reject with `StationHttpError` and are not retried.
 
 ### `useUsageQuery(config?)`
 

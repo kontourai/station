@@ -869,6 +869,11 @@ resolved. Render that as unavailable. See the
 [stats owner](../../src-server/runtime/conversation/conversation-manager.ts)
 and [response contract](../../packages/contracts/src/runtime.ts).
 
+These statistics cover the conversation's own turns. Its usage with every
+subagent and delegated task under it, with a total that says what it leaves
+out, is the
+[conversation usage tree](session-api.md#conversation-usage-tree-get-conversationsconversationidusage-tree).
+
 ---
 
 ## Configuration
