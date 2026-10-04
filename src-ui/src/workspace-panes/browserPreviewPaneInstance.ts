@@ -144,6 +144,27 @@ export function browserPreviewPanePresentationLabel(
     : null;
 }
 
+/**
+ * Which Browser this is among the host's Browsers, in the host's order,
+ * when there is more than one: the second is 2. One alone has no number.
+ */
+export function browserPreviewPaneOrdinal(
+  instances: readonly WorkspacePaneInstance[],
+  instance: WorkspacePaneInstance,
+): number | null {
+  if (instance.descriptorId !== WORKSPACE_BROWSER_PREVIEW_PANE_DESCRIPTOR.id)
+    return null;
+  const browsers = instances.filter(
+    (candidate) =>
+      candidate.descriptorId === WORKSPACE_BROWSER_PREVIEW_PANE_DESCRIPTOR.id,
+  );
+  if (browsers.length < 2) return null;
+  const index = browsers.findIndex(
+    (candidate) => candidate.instanceId === instance.instanceId,
+  );
+  return index === -1 ? null : index + 1;
+}
+
 export function removeRemovedBrowserPreviewPaneState(
   projectId: string,
   instance: WorkspacePaneInstance,
