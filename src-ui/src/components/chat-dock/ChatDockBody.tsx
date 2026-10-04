@@ -96,6 +96,7 @@ import {
   resolveRetryAttachments,
   retryAttachmentsFromParts,
 } from './retry-attachments';
+import { UsageLimitBanner } from './UsageLimitBanner';
 import { useChatStatusPill } from './useChatStatusPill';
 
 const loadChatInputArea = () =>
@@ -1631,6 +1632,14 @@ export function ChatDockBody({
         className="chat-dock__session-failure"
         testId="chat-dock-session-failure"
         note={sessionFailureNote(activeOrchestrationSession)}
+      />
+      {/* #3157: the limited conversation's own banner, from the server's
+          recovery projection; it re-reads with each snapshot update. */}
+      <UsageLimitBanner
+        apiBase={apiBase}
+        scope={mentionRequestScope}
+        session={activeSession}
+        summary={activeOrchestrationSession}
       />
       {agent?.available === false &&
         activeSession.modelSource !== 'session override' && (

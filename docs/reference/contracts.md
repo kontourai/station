@@ -99,6 +99,12 @@ is `true` when that terminal error carried an engine adapter's
 `UsageLimitFailureDetails` (a Claude Code or Codex usage limit); clients hold
 queued follow-ups on it until a turn starts or the user sends one.
 
+`ConnectionRecoveryProjection.outcomeReason` says why a usage-limit stop did
+not resume on its own: `auto-resume-off`, `superseded`, `request-pending`,
+`session-ended`, or `user-canceled` (the user chose Cancel auto-resume). The
+chat banner reads it through the Session API's
+[usage-limit routes](session-api.md#usage-limit-recovery-sessionsthreadidusage-limit).
+
 `ORCHESTRATION_STREAM_ACTIVITY_EVENT` names an idless SSE frame carrying the
 current conversation activity after a burst of coalesced runtime events. It
 updates liveness without advancing the event replay cursor.

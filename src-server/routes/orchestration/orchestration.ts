@@ -3645,6 +3645,48 @@ export function createOrchestrationRoutes(
     });
   });
 
+  // #3157: the chat banner for a Session that stopped on a provider usage
+  // limit. The read answers with the recovery projection alone (never the
+  // Session's event list). Resume now and Cancel auto-resume are the person's
+  // own act on their own Session: the request principal must be current and
+  // own the Session, as for a checkpoint restore. No station-control tool maps
+  // these routes, so the central guard refuses an agent's internal token.
+  app.get('/sessions/:threadId/usage-limit', async (c) => {
+    const threadId = param(c, 'threadId');
+    if (!orchestrationService.canUserReadSession(threadId, readAuthorityFor(c)))
+      return c.json({ success: false, error: 'Session not found' }, 404);
+    return c.json({
+      success: true,
+      data: {
+        recovery: await orchestrationService.readUsageLimitRecovery(threadId),
+      },
+    });
+  });
+
+  for (const action of ['resume', 'cancel'] as const) {
+    app.post(`/sessions/:threadId/usage-limit/${action}`, async (c) => {
+      const threadId = param(c, 'threadId');
+      if (deps.isRequestPrincipalCurrent?.(c.req.raw) !== true)
+        return c.json({ success: false, error: 'Session not found' }, 404);
+      const identity = mutationIdentity(c);
+      if (
+        !orchestrationService.canUserMutateSession(
+          threadId,
+          identity.userId,
+          identity.tenant,
+        )
+      )
+        return c.json({ success: false, error: 'Session not found' }, 404);
+      return c.json({
+        success: true,
+        data: await orchestrationService.actOnUsageLimitRecovery(
+          threadId,
+          action,
+        ),
+      });
+    });
+  }
+
   // Session -> Builder run join (archive#189 S4). A separate route from
   // `/flow-run` on purpose: the two runs have independent lifecycles, and a
   // session commonly has one and not the other. 404 means "no Builder run
