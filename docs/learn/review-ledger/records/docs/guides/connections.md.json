@@ -312,7 +312,7 @@
 
     {"path":"src-ui/src/views/connections-hub/RelayOperatorPanel.tsx","digest":"a1e8b3172a1387042500808bd150984a2195091fdf36e582408be1ee5e7dcc67","revision":"9551da1bbc1f9d6d3e7c3f74729b9a968dab9b4f"},
 
-    {"path":"src-server/routes/system/relay-management-routes.ts","digest":"9ae79b36ebae260a8094c6398e68ac860be685ee36d5ed671108be25bf6ea096","revision":"8b38be97741d48ba9d2292fdbd75c5f65044ac39"}
+    {"path":"src-server/routes/system/relay-management-routes.ts","digest":"8fc232c40990a24621eb5ef10a3020abfae191d0ce5cc0236a8399f4294ab437","revision":"33a055774ef37a2d4b5c23e94e2f6552e6ab57c8"}
   ],
 
   "checks": [

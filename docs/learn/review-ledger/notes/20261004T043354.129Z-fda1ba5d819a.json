@@ -1,0 +1,11 @@
+{
+  "revision": "33a055774ef37a2d4b5c23e94e2f6552e6ab57c8",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed 33a055774e guard registration delta: identical manager admission and post-response account currency now attach only to GET root and the five declared POST leaves; neutral capabilities unchanged. Actual isolated runtime startup rejected the former ALL wildcard; existing mounted route fixture invokes the same startup classifier, baseline5 failures2pass and corrected7pass. No declared operation or authority changed. Physical and released delivery remain unverified."},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed 33a055774e guard registration delta: identical manager admission and post-response account currency now attach only to GET root and the five declared POST leaves; neutral capabilities unchanged. Actual isolated runtime startup rejected the former ALL wildcard; existing mounted route fixture invokes the same startup classifier, baseline5 failures2pass and corrected7pass. No declared operation or authority changed. Physical and released delivery remain unverified."},
+
+    {"path":"docs/guides/self-hosted-broker.md","note":"Reviewed 33a055774e guard registration delta: identical manager admission and post-response account currency now attach only to GET root and the five declared POST leaves; neutral capabilities unchanged. Actual isolated runtime startup rejected the former ALL wildcard; existing mounted route fixture invokes the same startup classifier, baseline5 failures2pass and corrected7pass. No declared operation or authority changed. Physical and released delivery remain unverified."}
+  ]
+}
