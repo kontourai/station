@@ -812,6 +812,11 @@ const STATION_CONTROL_REFUSAL_CODES = [
   'station_control_person_only',
   /** An internal request to a route no tool reaches: fail closed. */
   'station_control_route_unmapped',
+  /**
+   * #2377 slice C3b: a dispatch or follow-up that carries an approval posture
+   * from a caller that is not a bound operator.
+   */
+  'station_control_posture_not_allowed',
 ] as const;
 export type StationControlRefusalCode =
   (typeof STATION_CONTROL_REFUSAL_CODES)[number];
@@ -841,6 +846,8 @@ const REFUSAL_MESSAGES: Record<StationControlRefusalCode, string> = {
     "A person must do this in Station: it runs code on this host or stores credentials. Ask the person to do it in Station's UI; no agent tool can.",
   station_control_route_unmapped:
     'No station-control tool reaches this Station route, so Station refuses it for internal callers.',
+  station_control_posture_not_allowed:
+    "An agent may not choose the approval mode of a Session it starts or continues. Send the request without one. Without an approval mode, the Session uses the conversation's recorded mode, else the Agent's saved default, else this Station's default. Ask the person to change the mode in Station if it needs to differ.",
 };
 
 export function stationControlRefusal(
@@ -1073,6 +1080,8 @@ const REFUSAL_STAGE: Record<StationControlRefusalCode, number> = {
   station_control_caller_required: 2,
   station_control_assurance_insufficient: 3,
   station_control_role_required: 4,
+  // Decided at the dispatch routes, never by the table.
+  station_control_posture_not_allowed: 5,
 };
 
 // ── route matching ─────────────────────────────────────────────────────────

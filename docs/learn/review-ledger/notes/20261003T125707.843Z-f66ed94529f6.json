@@ -1,0 +1,7 @@
+{
+  "revision": "be34938f4652aa3b7f5a1a7749189d0e536690ed",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"Re-recorded after the main merge replaced the base branch's record. Vocabulary unchanged by this lane; the pull request review vocabulary (observation, partial, unavailable) the base branch introduced in the contracts reference is used, not redefined, here. UI copy on this lane says GitHub/GitLab or nothing where it used to say forge or provider, in line with the glossary's naming policy. No prose change.","inputs":["docs/architecture/module-map.md","docs/reference/connect.md","docs/reference/contracts.md","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}
