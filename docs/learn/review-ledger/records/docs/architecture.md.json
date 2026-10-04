@@ -30,7 +30,7 @@
 
     {"path":"packages/sdk/src/agent/index.ts","digest":"27b8861c43936cd4996215ce8ad0f3a2bbd7835adba4740e160e8b8efd02f54e","revision":"d326e74f0f416a770b08cb1b66badf150618b3c0"},
 
-    {"path":"packages/sdk/src/index.ts","digest":"f73107a4c0e92647e409563d7ccf7472bea46c81cf67864d9c160c979f39ca75","revision":"34d62da501fa53187b7062288f6e1dbaec8c20ed"},
+    {"path":"packages/sdk/src/index.ts","digest":"007c979957d79aa02e7107139786cf78e8fab3e9bc16cf90c7afa5a37ee52f21","revision":"e8f2611660d3167942c6e5707419149546bc8023"},
 
     {"path":"packages/sdk/src/voice/registry.ts","digest":"62ce9013b0c9d5e935c88ae2912bf31768f58ef5f40409745df9676ebfb87408","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -52,7 +52,7 @@
 
     {"path":"src-server/providers/sessions/codex-rollout-session-source.ts","digest":"35e09b5648c9969919fa37fed58ff37af1e3b7e802a3b42c5fd236fa5100fba9","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"c3febaa85af6fa1d6b6edce04539a96b88cb7cb0660b7d0ee0de8d4fb6595530","revision":"b208a334880a96bb3f4267c2d2ffd6d03e118218"},
+    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"165123677ce998479dcc076090f291590703a08f75c54cd06a1cb3aa2f5e6bb1","revision":"e8f2611660d3167942c6e5707419149546bc8023"},
 
     {"path":"src-server/runtime/agents/agent-engine-classification.ts","digest":"cec04bb10726e4ce741930da266458c95fa1f53acd475d8d696a5271c32f7c6d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -86,7 +86,7 @@
 
     {"path":"src-server/services/flow/flow-run-service.ts","digest":"501881355a01c561de9ecdbe2cc99a9f83bb565873615997cba75965e6e29271","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"c5a85fefbe06e5a903444325293d46a80fefb7a0f938100fbceee8c60492d893","revision":"958350328eafd360124e1892c1945a2ae455e43c"},
+    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"3424976bf1f71e298c5509e30acf0df6dde1eb7117868bce14955116f1526d72","revision":"e8f2611660d3167942c6e5707419149546bc8023"},
 
     {"path":"src-server/services/plugins/plugin-install-transaction.ts","digest":"467e7b1890294780e4d2a379624a4275add33e2dbb5a4505040f54d14bd79afc","revision":"efa773acac88792cda31595f9afca4a37d3efebc"},
 

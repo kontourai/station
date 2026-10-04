@@ -14,7 +14,7 @@
   "sources": [
     {"path":"packages/contracts/src/workspace-pane-host-contract.ts","digest":"064ef9c3654c3296074caced9eab79ffd204c0d98fcebd9221b5a2b540cd6191","revision":"56f4c4897a189eeb30430119a4f4895e95fbb541"},
 
-    {"path":"packages/sdk/src/index.ts","digest":"f73107a4c0e92647e409563d7ccf7472bea46c81cf67864d9c160c979f39ca75","revision":"34d62da501fa53187b7062288f6e1dbaec8c20ed"},
+    {"path":"packages/sdk/src/index.ts","digest":"007c979957d79aa02e7107139786cf78e8fab3e9bc16cf90c7afa5a37ee52f21","revision":"e8f2611660d3167942c6e5707419149546bc8023"},
 
     {"path":"src-ui/src/components/plugins/PluginFrameHost.tsx","digest":"311d451d47f78ab255af9831d8268d867165daed9b529c8bbb1516ad60bc4ee4","revision":"1188208f32995f08e02bc87c2a0063184540fb6a"},
 
