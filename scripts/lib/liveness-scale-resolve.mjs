@@ -58,12 +58,15 @@ export function isCiEnvironment(env = process.env) {
 }
 
 /**
+ * @typedef {{ status?: string, busyPercent?: number }} PressureSample
+ * @typedef {Record<string, string | undefined>} LivenessEnv
+ */
+
+/**
  * Computes the factor for this run: max(sampled, override). Samples only when
  * not in CI. Returns the evidence for the visibility line.
  *
- * @param {object} [options]
- * @param {Record<string, string | undefined>} [options.env]
- * @param {() => Promise<{status?: string, busyPercent?: number}>} [options.sampler]
+ * @param {{ env?: LivenessEnv, sampler?: () => Promise<PressureSample> }} [options]
  */
 export async function resolveLivenessScale({
   env = process.env,
@@ -109,6 +112,12 @@ export function describeLivenessScale({ scale, sampled, busyPercent }) {
  * Entry-point call: resolves once, prints one line when above 1, and publishes
  * the factor to `env` so children read it instead of sampling again. When a
  * parent already resolved it (marker present) the value is reused as-is.
+ *
+ * @param {{
+ *   env?: LivenessEnv,
+ *   sampler?: () => Promise<PressureSample>,
+ *   log?: (line: string) => unknown,
+ * }} [options]
  */
 export async function ensureLivenessScale({
   env = process.env,

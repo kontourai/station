@@ -239,7 +239,7 @@ describe('consumers multiply their liveness bound', () => {
       vi.resetModules();
       if (scale === undefined) vi.stubEnv('STATION_LIVENESS_SCALE', '');
       else vi.stubEnv('STATION_LIVENESS_SCALE', scale);
-      const mod = await import('../../vitest.config.ts');
+      const mod = await import('../../vitest.config');
       return (mod.default as any).test;
     };
     expect(await load()).toMatchObject({
@@ -254,9 +254,7 @@ describe('consumers multiply their liveness bound', () => {
     expect(max.testTimeout).toBe(240_000);
     vi.resetModules();
     vi.stubEnv('STATION_LIVENESS_SCALE', '9');
-    await expect(import('../../vitest.config.ts')).rejects.toThrow(
-      /\[1\.\.8\]/,
-    );
+    await expect(import('../../vitest.config')).rejects.toThrow(/\[1\.\.8\]/);
   });
 
   test('product-law per-observation and total bounds', () => {
@@ -315,7 +313,9 @@ describe('consumers multiply their liveness bound', () => {
   test('the fallow watchdog timer', async () => {
     expect(FALLOW_WATCHDOG_BASE_MS).toBe(120_000);
     const delays: number[] = [];
-    const real = globalThis.setTimeout;
+    const real = globalThis.setTimeout as unknown as (
+      ...args: unknown[]
+    ) => unknown;
     vi.spyOn(globalThis, 'setTimeout').mockImplementation(((
       fn: () => void,
       ms?: number,
