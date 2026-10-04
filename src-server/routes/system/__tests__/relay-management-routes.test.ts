@@ -17,7 +17,10 @@ import {
   hasRelayManagementAuthority,
 } from '../../../security/relay-management-authority.js';
 import { setRuntimeAuthenticatedRequestPrincipal } from '../../../security/runtime-request-security.js';
-import { NativeSurfaceRegistry } from '../../../services/connections/native-surface-registry.js';
+import {
+  NativeSurfaceOperatorAuthority,
+  NativeSurfaceRegistry,
+} from '../../../services/connections/native-surface-registry.js';
 import type { RelayInvitationOwner } from '../../../services/connections/relay-invitation-owner.js';
 import { ConnectionSigningKeyStore } from '../../../services/ssh/connection-signing-key-store.js';
 import { EnvironmentSecurityService } from '../../../services/ssh/environment-security-service.js';
@@ -28,7 +31,9 @@ const registries: NativeSurfaceRegistry[] = [];
 afterEach(() => {
   for (const registry of registries.splice(0)) registry.close();
 });
-async function fixture() {
+async function fixture(
+  beforeActorRefresh?: (request: Request) => Promise<void> | void,
+) {
   const home = temp('relay-management-');
   const security = new EnvironmentSecurityService({ homeDir: home });
   const { credential } = await security.initialize();
@@ -79,6 +84,23 @@ async function fixture() {
     prepare,
     issueNativeInvitation: issue,
   };
+  const actorCurrency = (
+    request: Request,
+    actor: import('@kontourai/station-contracts/principal').PrincipalRef,
+  ) => {
+    const base = captureRelayManagementActor(
+      request,
+      actor,
+      security.devicePairing,
+    );
+    return {
+      current: base.current,
+      refresh: async () => {
+        await beforeActorRefresh?.(request);
+        return base.refresh();
+      },
+    };
+  };
   const app = new Hono();
   app.use('*', async (c, next) => {
     const bearer = c.req.header('Authorization')?.replace(/^Bearer /u, '');
@@ -108,8 +130,7 @@ async function fixture() {
       resolveActor: createOrchestrationRequestPrincipalResolver({
         environmentSecurityService: security,
       }),
-      actorCurrency: (request, actor) =>
-        captureRelayManagementActor(request, actor, security.devicePairing),
+      actorCurrency,
       captureDecision: (request, subjectId, actor) =>
         captureRelayManagementApproval(
           request,
@@ -117,7 +138,7 @@ async function fixture() {
           security,
           security.devicePairing,
           actor,
-          captureRelayManagementActor(request, actor, security.devicePairing),
+          actorCurrency(request, actor),
         ),
       isManager: (request) =>
         hasRelayManagementAuthority(request, security, security.devicePairing),
@@ -322,4 +343,27 @@ test('remote access management opens only Project membership operations, preserv
       path: '/api/orchestration/submit',
     }),
   ).toBe(false);
+});
+
+test('a setup revoked during authoritative actor refresh never dispatches broker issuance', async () => {
+  let f: Awaited<ReturnType<typeof fixture>>;
+  f = await fixture((request) => {
+    if (!new URL(request.url).pathname.endsWith('/invitations')) return;
+    const approved = f.registry.approvedSurfaces()[0];
+    if (approved)
+      f.registry.revoke(
+        new NativeSurfaceOperatorAuthority().approve(
+          'human:local:operator',
+          'revoke',
+          { scope: approved.scope, surface: approved.surface },
+        ),
+      );
+  });
+  expect((await f.send('/approvals', { prepare: {} })).status).toBe(200);
+  const result = await f.send('/invitations', { prepare: {}, lifetime: '24h' });
+  expect(result.status).toBe(409);
+  expect(await result.json()).toEqual({
+    error: { code: 'setup_approval_changed' },
+  });
+  expect(f.issue).not.toHaveBeenCalled();
 });

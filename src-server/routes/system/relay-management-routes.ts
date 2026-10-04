@@ -260,6 +260,8 @@ export function createRelayManagementRoutes(deps: {
       );
       if (!(await decision.refresh()))
         return c.json({ error: { code: 'relay_management_required' } }, 403);
+      if (!approved.isCurrent())
+        return c.json({ error: { code: 'setup_approval_changed' } }, 409);
       deps.recordDecision?.(
         c.req.raw,
         'create-invitation',
