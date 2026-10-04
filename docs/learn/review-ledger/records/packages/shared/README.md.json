@@ -9,7 +9,7 @@
 
   "limits": "No independent npm installation or registry publication, arbitrary loader compatibility, full package build or live plugin activation. Registry signing fixture does not establish real key custody.",
 
-  "document": {"digest":"b9e00aaca6fcf32699879221c708492f8bc18660c9741fba51ebe9ff03be18b2","revision":"6a847d3c029f4f3e5c1dbe82f2459194573d43e9"},
+  "document": {"digest":"5b7e34b540aa5b9c1d6dbcad8dfea6421a34fb5356d3aaf05beef45ee768d575","revision":"8de24b8a7f1ec1bb022a098a000f37aee9ba8182"},
 
   "sources": [
     {"path":"packages/shared/package.json#/engines","digest":"6c12acb1990a85e4fe6986ad29ad44b644eca474a81f946d053aabd14ba62059","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
