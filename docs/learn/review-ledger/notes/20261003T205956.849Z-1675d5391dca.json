@@ -1,0 +1,7 @@
+{
+  "revision": "ed4b7b2c4440e328d5367f3d8f4a319a81dfba7e",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Reviewed the complete guide and composer-first start delta: draft selection creates no session until Send; dock pendingGoalSend sends the submitted message once under its captured authority; runnable Home defaults remain separate from unavailable draft preferences. Context memory is browser-local and Station-authority scoped; project defaults are persisted and explicitly clearable. RecentChatList scopes five inbox rows and uses the canonical open policy. Setup helper displays engine-provided install guidance and opens existing account/connection pages, retaining the draft through revalidation. 132 focused mounted tests plus real file-backed project-default and route proofs passed; browser confirmed no sessions after typing and Agent changes and 44px controls at 320 and 412px. External installation, account sign-in completion and physical keyboard/device delivery were not executed.","inputs":["docs/user/getting-started.md"]}
+  ]
+}

@@ -78,7 +78,13 @@
 
     "src-ui/src/components/chat/QueuedMessages.css",
 
-    "src-ui/src/components/chat/ComposerStopButton.tsx"
+    "src-ui/src/components/chat/ComposerStopButton.tsx",
+
+    "src-ui/src/components/NewChatAction.tsx",
+
+    "src-ui/src/components/chat-start/RecentChatList.tsx",
+
+    "src-ui/src/components/modals/NewChatModal.tsx"
   ],
 
   "checks": [

@@ -37,6 +37,15 @@ work after that choice; it does not proceed into engine or personalization
 questions or mark the optional setup run complete. **Personalize Station** opens
 that run explicitly after the work entry.
 
+Ordinary New chat opens an unsent message draft with Agent and Model controls
+and recent chats from the selected workspace. A setup helper appears when the
+selected Agent cannot respond. It shows server-supplied prerequisites and links
+to engine installation instructions, existing account sign-in, or Model setup.
+Installation commands are display guidance, never automatic execution. The
+existing setup-return owner retains the draft and revalidates the same Station
+access before returning. Choosing a ready replacement in the draft still waits
+for Send; Home’s automatic goal path continues to use a runnable recommendation.
+
 ## 1. The detection principle: observe infrastructure, never read secrets
 
 Detection exists to shorten onboarding, not to configure on the user's behalf. The line:

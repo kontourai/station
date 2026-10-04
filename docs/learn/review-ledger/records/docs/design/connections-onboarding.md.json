@@ -64,7 +64,9 @@
 
     "src-ui/src/components/modals/NewChatModal.tsx",
 
-    "src-ui/src/components/modals/AutomaticEnginePreparation.tsx"
+    "src-ui/src/components/modals/AutomaticEnginePreparation.tsx",
+
+    "src-ui/src/components/chat-start/ChatSetupHelper.tsx"
   ],
 
   "checks": [

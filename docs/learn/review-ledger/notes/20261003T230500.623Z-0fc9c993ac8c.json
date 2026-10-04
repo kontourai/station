@@ -1,0 +1,7 @@
+{
+  "revision": "bd88b3c4690b302c4e23ac6aea32c588f915c268",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Reviewed scoped Agent memory persistence correction: a private fixed literal storage key holds a JSON authority-and-context map, matching the existing last-model memory pattern. Null namespace reads and writes nothing; only string choices are read; best-effort writes cannot block a chat. The exact raw-storage inventory adds this derived runtime-memory contract while the computed-key allowlist remains unchanged. Access/project/No-project isolation and no-write tests passed alongside the raw-storage policy and real SDK admission fixture. Documented default precedence and browser-local scope are unchanged.","inputs":["docs/user/getting-started.md"]}
+  ]
+}

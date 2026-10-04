@@ -116,7 +116,9 @@
 
     "tests/helpers/long-press.ts",
 
-    "packages/shared/package.json"
+    "packages/shared/package.json",
+
+    "src-ui/src/components/NewChatAction.tsx"
   ],
 
   "checks": [

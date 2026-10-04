@@ -30,10 +30,8 @@ Related: [#2339](https://github.com/kontourai/station/pull/2339), a separate
 fix that requires a Station origin for browser WebSocket upgrades on
 loopback.
 
-Issue references follow `AGENTS.md`. Bare numbers of #550 and above refer to
-this repository. #90 and #121–#125 are below 550 but belong to this
-repository too, so they are linked in full on first mention. `archive#` names
-the archived backlog.
+Issue references follow `AGENTS.md`. Bare numbers refer to this repository,
+and `archive#` names the archived backlog.
 
 ## Context
 

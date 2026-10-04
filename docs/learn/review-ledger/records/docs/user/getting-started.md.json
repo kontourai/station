@@ -180,7 +180,21 @@
 
     "src-ui/src/lib/skill-experience-draft.ts",
 
-    "src-ui/src/lib/skill-experience-preview.ts"
+    "src-ui/src/lib/skill-experience-preview.ts",
+
+    "src-ui/src/components/chat-start/ChatSetupHelper.tsx",
+
+    "src-ui/src/components/chat-start/RecentChatList.tsx",
+
+    "src-ui/src/components/NewChatAction.tsx",
+
+    "src-ui/src/hooks/useRecentAgents.ts",
+
+    "src-ui/src/views/project-settings/AgentsSection.tsx",
+
+    "src-server/services/projects/project-service.ts",
+
+    "packages/contracts/src/project.ts"
   ],
 
   "checks": [
