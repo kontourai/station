@@ -205,6 +205,30 @@ describe('UsageStatsPanel period selector', () => {
     expect(screen.queryByText(/engine session/)).toBeNull();
   });
 
+  test.each([0, 100])(
+    'current projections disclose only the actual undated input subtotal (%s)',
+    (inputTokens) => {
+      sdkState.ranged.data = buildRangedData({
+        snapshot: { projection: 'retained-source-v1' },
+        unallocated: {
+          date: { messages: 0, inputTokens, outputTokens: 0, cost: 0 },
+        },
+      });
+      render(<UsageStatsPanel />);
+      selectPeriod('30 days');
+      expect(
+        screen.queryByText(
+          /engine sessions are counted in lifetime totals but not in daily history/,
+        ),
+      ).toBeNull();
+      expect(
+        !!screen.queryByText(
+          'Some retained usage has no reliable date and is excluded from daily totals.',
+        ),
+      ).toBe(inputTokens > 0);
+    },
+  );
+
   test('the lifetime breakdowns do not change with the period, and say so', () => {
     sdkState.ranged.data = buildRangedData();
     render(<UsageStatsPanel />);

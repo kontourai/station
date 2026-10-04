@@ -71,6 +71,8 @@ function UsagePeriodSection({ from, to }: { from: string; to: string }) {
     | undefined;
   const historyGap = describeDailyHistoryGap(
     data.lifetime?.engineUsageCoverage,
+    data.snapshot,
+    data.unallocated?.date,
   );
 
   if (!rangeSummary) {

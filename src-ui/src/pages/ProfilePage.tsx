@@ -124,6 +124,8 @@ export function ProfilePage() {
   );
   const historyGap = describeDailyHistoryGap(
     usageStats?.lifetime.engineUsageCoverage,
+    usageStats?.snapshot,
+    usageStats?.unallocated?.date,
   );
   const rebuild = async () => {
     setRebuilding(true);
@@ -300,7 +302,11 @@ export function ProfilePage() {
               )}
               {costCoverage && <p>{costCoverage}</p>}
               <ProfileUsageGraph usageStats={usageStats ?? null} />
-              <p>Daily history covers Station-recorded messages only.</p>
+              <p>
+                {usageStats?.snapshot?.projection === 'retained-source-v1'
+                  ? 'Daily history covers dated retained observations, including completed engine turns.'
+                  : 'Daily history covers Station-recorded messages only.'}
+              </p>
               {historyGap && <p>{historyGap}</p>}
             </div>
           </div>
