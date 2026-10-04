@@ -177,7 +177,6 @@ describe('an external engine declares a pull request: the Task shows it, a merge
     // Station reads an engine's events from `streamEvents`; this one has
     // none to say, since the test publishes the turn's events itself.
     const engineEvents = new AsyncEventQueue<CanonicalRuntimeEvent>();
-    closers.unshift(async () => engineEvents.close());
     const adapter = {
       provider: 'codex',
       metadata: { displayName: 'Codex' },
@@ -202,6 +201,10 @@ describe('an external engine declares a pull request: the Task shows it, a merge
     closers.unshift(async () => {
       await orchestration.shutdown();
     });
+    // Teardown runs the newest first: the engine's event stream ends before
+    // the service shuts down (its shutdown marks sessions closed in the
+    // store), and the store closes last.
+    closers.unshift(async () => engineEvents.close());
     const projectService = {
       listProjects: () => [
         { id: PROJECT, slug: PROJECT, workingDirectory: workspace },

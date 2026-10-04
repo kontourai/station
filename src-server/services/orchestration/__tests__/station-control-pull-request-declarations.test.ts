@@ -380,32 +380,51 @@ describe('declare_pull_request admission for an external engine session', () => 
     expect(h.declared()).toEqual([]);
   });
 
-  test('a turn that is aborted records nothing, even if the engine goes on to complete it', async () => {
+  test('an aborted turn records nothing, even if the engine then completes that same turn', async () => {
     const h = harness();
     h.startTurn('turn-1');
     await h.declare(named('station', '44'));
     h.abortTurn('turn-1');
     expect(h.declared()).toEqual([]);
-
-    // A later turn is not admitted for the aborted one's declaration.
+    // The engine's late completion of the aborted turn admits nothing...
+    h.completeTurn('turn-1');
+    expect(h.declared()).toEqual([]);
+    // ...and a later turn is not admitted for the aborted one's declaration.
     h.startTurn('turn-2');
     h.completeTurn('turn-2');
     expect(h.declared()).toEqual([]);
   });
 
-  test('a revoked turn admits nothing more, even if the engine goes on to complete it', async () => {
+  // The lease follows the running turn. A turn another turn has superseded
+  // (its terminal arrives late, after the engine started the next) is no
+  // longer the live one, whatever its adapter still says.
+  test('a declaration from a turn that is no longer the running one is not admitted', async () => {
     const h = harness();
     h.startTurn('turn-1');
     await h.declare(named('station', '44'));
-    (h.service as any).stationControlPullRequests.retireSession(THREAD);
-    // A declaration made after the revoke is refused...
-    await expect(h.declare(named('station', '45'))).rejects.toBeInstanceOf(
-      StationControlPullRequestUnavailableError,
-    );
-    // ...and the engine completing the turn anyway admits neither.
+    h.startTurn('turn-2');
     h.completeTurn('turn-1');
     expect(h.declared()).toEqual([]);
   });
+
+  // A terminal retires the turn's grant. The authority holds at most 256
+  // live grants, so a grant left behind by every turn would end declaring
+  // after 256 turns.
+  test('each terminal releases its turn: 260 turns in a row can each declare', async () => {
+    const h = harness();
+    for (let turn = 1; turn <= 260; turn += 1) {
+      FORGE.add(`kontourai/station#${1000 + turn}`);
+      h.startTurn(`turn-${turn}`);
+      await expect(
+        h.declare(named('station', String(1000 + turn))),
+      ).resolves.toBe('declared');
+      h.completeTurn(`turn-${turn}`);
+    }
+    const row = (h.store as any).db
+      .prepare('SELECT COUNT(*) AS n FROM orchestration_declared_outputs')
+      .get() as { n: number };
+    expect(row.n).toBe(260);
+  }, 120_000);
 
   // The interrupt command revokes the running turn's declarations, as it
   // revokes a native turn's grants. The engine acknowledges the stop, and

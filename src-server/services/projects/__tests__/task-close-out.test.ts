@@ -144,6 +144,7 @@ function fixture(forge: Partial<Forge> = {}) {
     getPullRequestByIdentity,
     graph,
     closeOut,
+    providers: () => [provider],
     storePath: join(home, 'task-graph.json'),
     /** A Task a person opted in, moved to `status`. */
     async task(status: TaskStatus = 'in_progress', id?: string, optIn = true) {
@@ -469,6 +470,45 @@ describe('Task close-out riding a refresh that observed a merge', () => {
     f.closeOut.afterMergeObserved(['session-1'], [merged('repo', '1')]);
     await vi.waitFor(() => expect(f.status(task.id)).toBe('done'));
     expect(f.reads).toEqual(['owner/repo#1']);
+  });
+
+  // `completeTaskOnMerge` writes the store, so it can reject after the
+  // refresh has long since answered: the detached reconcile owns that failure.
+  test('a store write that rejects is reported, leaves the Task as it is, and does not strand the Task', async () => {
+    const f = fixture({ states: { 'owner/repo#1': 'MERGED' } });
+    const task = await f.task();
+    await f.keep(task.id, '1');
+    const unhandled = vi.fn();
+    process.on('unhandledRejection', unhandled);
+    try {
+      let failing = true;
+      const onError = vi.fn();
+      const closeOut = createTaskCloseOut({
+        taskGraph: {
+          readCloseOutPlan: (id) => f.graph.readCloseOutPlan(id),
+          listKeptDeclaredPullRequestsForSessions: (ids) =>
+            f.graph.listKeptDeclaredPullRequestsForSessions(ids),
+          completeTaskOnMerge: async (input) => {
+            await new Promise((resolve) => setTimeout(resolve, 5));
+            if (failing) throw new Error('store write failed');
+            return f.graph.completeTaskOnMerge(input);
+          },
+        },
+        providers: f.providers,
+        onError,
+      });
+      closeOut.afterMergeObserved(['session-1'], [merged('repo', '1')]);
+      await vi.waitFor(() => expect(onError).toHaveBeenCalledOnce());
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(unhandled).not.toHaveBeenCalled();
+      expect(f.status(task.id)).toBe('in_progress');
+      // The failed attempt released the Task: the next refresh closes it.
+      failing = false;
+      closeOut.afterMergeObserved(['session-1'], [merged('repo', '1')]);
+      await vi.waitFor(() => expect(f.status(task.id)).toBe('done'));
+    } finally {
+      process.off('unhandledRejection', unhandled);
+    }
   });
 
   test('never throws and never waits, even when the store cannot be read', () => {
