@@ -447,6 +447,11 @@ details. Choose **Approve once** or **Deny** only after reviewing the request.
 You can expand **Request identity** for its exact record or open the Session for
 more context.
 
+For a task that runs on a paired Station, the card shows **Allow** and **Deny**
+for that Station's approval when your access here permits it. The paired Station
+checks that the request is still open and makes the decision. Its questions are
+answered on that Station.
+
 A resolved or changed request must be inspected again from refreshed attention.
 A request that cannot currently be answered remains visible without decision
 buttons. If the decision cannot be confirmed, **Check request again** refreshes
