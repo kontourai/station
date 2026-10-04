@@ -135,6 +135,17 @@ and an accessible name. Creation controls remain outside the scrolling lists. Th
 Input/Approval compactly and keeps reasons readable in full through details;
 Git and PR data are read only when that details surface opens.
 
+A page's one creation action uses
+[PageCreateAction](../../src-ui/src/components/PageCreateAction.tsx): the
+labelled primary button in the page header on desktop, and on phones a floating
+round "+" in the lower right, so the stacked header does not give it a row of
+its own. The "+" is [CreatePlusButton](../../src-ui/src/components/CreatePlusButton.tsx),
+the same control the picker footers use. It keeps the label as its accessible
+name, sits on the floating-action layer above `--dock-bottom-clearance` (dock,
+safe area and on-screen keyboard), stays below dialogs, and hides while a
+maximized chat or a detail sheet fills the screen. Use it only for creating
+something; Connections is the first adopter.
+
 Shared panel entrances fade and translate upward by `--k-space-4` on mobile,
 without scaling touch targets. Existing surfaces with a directional entrance
 keep their own motion. The global reduced-motion reset still applies. Source

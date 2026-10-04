@@ -2,7 +2,7 @@ import type { MouseEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { Button } from './Button';
-import { PlusGlyph } from './icons/Glyph';
+import { CreatePlusButton } from './CreatePlusButton';
 import { PageFrameActions } from './page-frame';
 import './PageCreateAction.css';
 
@@ -45,16 +45,14 @@ export function PageCreateAction({
   // Portaled: the page frame's entrance animation would otherwise become the
   // containing block for `position: fixed`.
   return createPortal(
-    <button
-      type="button"
-      className="page-create-action"
-      aria-label={label}
-      title={title ?? label}
-      disabled={disabled}
-      onClick={onClick}
-    >
-      <PlusGlyph />
-    </button>,
+    <div className="page-create-action">
+      <CreatePlusButton
+        label={label}
+        title={title}
+        disabled={disabled}
+        onClick={onClick}
+      />
+    </div>,
     document.body,
   );
 }

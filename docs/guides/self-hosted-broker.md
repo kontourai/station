@@ -118,7 +118,7 @@ single-use installation-bound invitations, and approve or deny pending Device
 requests. The WebView and SDK never receive the connector issuer credential.
 
 The [Connections panel](../../src-ui/src/views/connections-hub/RelayOperatorPanel.tsx)
-shows **Invite a device** for current operators and explicitly promoted
+shows **Devices** and **Invite device** for current operators and explicitly promoted
 `relay:manage` Devices. This is the **Manage remote access** permission; presets
 and default pairing grants exclude it. Invitation lifetime defaults to 24 hours,
 with 5-minute, 15-minute, 1-hour and non-expiring choices. Non-expiring does not

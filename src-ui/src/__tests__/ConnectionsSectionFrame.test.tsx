@@ -261,10 +261,12 @@ describe('ConnectionsSectionFrame', () => {
     );
     expect(screen.queryByTestId('frame-actions')).toBeNull();
     const add = screen.getByRole('button', { name: 'Add computer' });
-    expect(add.className).toBe('page-create-action');
+    expect(add.classList.contains('create-plus-button')).toBe(true);
     // Portaled out of the page frame, whose entrance animation would
     // otherwise contain `position: fixed`.
-    expect(add.parentElement).toBe(document.body);
+    expect(add.closest('.page-create-action')?.parentElement).toBe(
+      document.body,
+    );
     expect(add.textContent).toBe('');
     fireEvent.click(add);
     expect(screen.getByTestId('chooser')).toBeTruthy();

@@ -169,7 +169,8 @@ exchange, every provider plan or Windows secure-store behavior.
 
 ## Invite a device to a relay Station
 
-Under **Connections → Computers**, **Invite a device** appears when the selected
+Under **Connections → Computers**, the **Devices** list and its **Invite device**
+action appear when the selected
 Station has a configured connector and the caller can manage relay access. A
 Station operator can explicitly promote a paired Device with **Manage remote
 access** (`relay:manage`). This permission is absent from presets and default
@@ -178,16 +179,24 @@ management routes; Project membership and its `manage-members` action remain
 independent requirements. It grants no Agent, terminal, or Task publication
 (share/unshare) authority.
 
-1. Choose the recipient app and copy its setup link. The link supplies routing
-   intent; it does not approve a Device or a Station signing key.
-2. The recipient opens the link, compares the Station confirmation code, and
-   returns their setup info. Paste that info under **Approve recipient** and
-   approve the exact installation.
-3. Create an invitation for that approved installation and send its link.
-   Invitations are single-use. The default lifetime is 24 hours; choices are
+**Invite device** opens three steps:
+
+1. **Send the app link.** Choose the recipient app and copy its setup link. The
+   link supplies routing intent; it does not approve a Device or a Station
+   signing key.
+2. **Approve their phone.** The recipient opens the link and returns their setup
+   info. Paste it (surrounding message text is ignored); setup info for another
+   Station is refused before any write. **Approve and invite** approves that
+   exact installation and then creates its invitation. If the invitation's
+   outcome is uncertain, the action stays disabled instead of retrying; check
+   with the recipient before starting again.
+3. **Send the invitation.** Copy the invitation link and share the Station code
+   and key ID by a separate call or message so the recipient can confirm the
+   Station. Invitations are single-use. The default lifetime is 24 hours; choices are
    5 minutes, 15 minutes, 1 hour, 24 hours, or **Never expires**. A non-expiring
    invitation still permits only one redemption.
-4. Review the pending account-bound Device request and approve or deny it.
+4. Review the pending account-bound Device request in **Devices** and approve or
+   decline it.
    Project access is a separate invitation and membership decision. Removing
    an installation approval is also a separate action and requires confirmation.
 
@@ -336,9 +345,8 @@ uncertain activation needs its own status recovery; keep that setup open.
 
 
 Configured routes are not selected automatically. A configured row says
-**Device configured · not selected** until you choose **Use this Station**. A
-selected configured row distinguishes **account sign-in required** from
-**account session active** using the current native account scope; neither
+**Not in use** until you choose **Use this Station**. A selected configured row
+distinguishes **In use · sign in needed** from **In use** using the current native account scope; neither
 status says the workspace is connected. Sign in with the Station account only
 after selecting its route. Account sign-in does not approve a Device or create
 Project membership.

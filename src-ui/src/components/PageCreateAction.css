@@ -1,4 +1,5 @@
-/* The mobile form of a page's creation action. `--dock-bottom-clearance`
+/* The phone form of a page's creation action: the shared round plus
+   (CreatePlusButton), fixed bottom-right. `--dock-bottom-clearance`
    (index.css) already sums the dock, safe area and on-screen keyboard; the
    floating-action layer sits above the dock and below dialogs and sheets. */
 .page-create-action {
@@ -6,30 +7,6 @@
   right: calc(var(--safe-right, 0px) + var(--k-space-4));
   bottom: calc(var(--dock-bottom-clearance, 0px) + var(--k-space-4));
   z-index: var(--layer-floating-action);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 56px;
-  height: 56px;
-  padding: 0;
-  border: 0;
-  border-radius: 50%;
-  background: var(--k-action);
-  color: var(--k-action-contrast);
-  box-shadow: var(--k-shadow);
-  cursor: pointer;
-}
-.page-create-action svg {
-  width: 24px;
-  height: 24px;
-}
-.page-create-action:focus-visible {
-  outline: var(--k-focus-ring-width, 2px) solid var(--k-focus);
-  outline-offset: var(--k-focus-ring-offset, 2px);
-}
-.page-create-action:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
 }
 /* A maximized chat or an open detail sheet owns the screen; the collection's
    "+" belongs to the list underneath it. */
