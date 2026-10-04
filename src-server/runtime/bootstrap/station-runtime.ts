@@ -476,9 +476,11 @@ import {
 import { readVerifiedPionApplicationRequest } from './self-hosted-broker-pion-runtime.js';
 import {
   BUILTIN_STATION_DOCS_TOOL_SERVER_ID,
+  BUILTIN_STATION_KNOWLEDGE_TOOL_SERVER_ID,
   stationControlRuntimeIdentity,
   stationControlSpawnEnv,
   stationDocsRuntimeIdentity,
+  stationKnowledgeRuntimeIdentity,
 } from './station-control-runtime-env.js';
 import { isManagedChatOrchestrationFeatureEnabled } from './station-features.js';
 import { startStoreIntegrityVerification } from './store-integrity-verification.js';
@@ -960,6 +962,21 @@ export class StationRuntime {
       );
       return buildStationControlMcpUrl(this.port, token);
     },
+    mintStationKnowledgeMcpAuth: (
+      threadId,
+      tenantExecutionContext,
+      allowedTools,
+    ) => {
+      const { token } = mintStationControlMcpToken(
+        threadId,
+        'url-token',
+        undefined,
+        tenantExecutionContext,
+        allowedTools,
+        'station-knowledge',
+      );
+      return buildStationControlMcpUrl(this.port, token, 'station-knowledge');
+    },
     revokeStationControlMcpAuth: (threadId: string) =>
       revokeStationControlMcpToken(threadId),
     // `this.logger` is not assigned until later in the constructor body
@@ -1259,6 +1276,10 @@ export class StationRuntime {
       this.configLoader.registerBuiltinIntegrationRuntimeIdentity(
         BUILTIN_STATION_DOCS_TOOL_SERVER_ID,
         () => stationDocsRuntimeIdentity(),
+      );
+      this.configLoader.registerBuiltinIntegrationRuntimeIdentity(
+        BUILTIN_STATION_KNOWLEDGE_TOOL_SERVER_ID,
+        () => stationKnowledgeRuntimeIdentity(this.port),
       );
       this.orchestrationDatabasePath = orchestrationDatabasePath;
       this.orchestrationEventStore = openedEventStore = new EventStore(
