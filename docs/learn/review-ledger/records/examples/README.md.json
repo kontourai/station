@@ -9,20 +9,20 @@
 
   "limits": "No actual plugin installation, native/device/audio journey, public package distribution, provider operation or cross-host qualification. Source/fixture checks do not establish those outcomes.",
 
-  "document": {"digest":"6f6647f4cdd23eb1409a6a54278c3df62fc4750cebd08fce0cc8cfe500a8c6b9","revision":"658940306f93a624422600ea2d89e8c0b974d576"},
+  "document": {"digest":"6f6647f4cdd23eb1409a6a54278c3df62fc4750cebd08fce0cc8cfe500a8c6b9","revision":"cc20083220b0814410b14ced68431b9f0acef37d"},
 
   "sources": [
     {"path":"examples/portable-author-kit/plugin.json","digest":"332b41c7aff2bf308211fa388999aa5580185763512b10ade5336f221825d714","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"scripts/examples-conformance.mjs","digest":"2eac8e0f018acdf56bc2ead72e428a38cf7d40c3be2dde34b4945f969fa4d587","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
-    {"path":"package.json#/scripts/examples:conformance","digest":"2424d0e55a2ccff023d5369220c5233c3dee7defedacee9dc2ba5f94fb202c6d","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
-
-    {"path":"package.json#/scripts/typecheck:examples","digest":"95542be9cf2a8a535bc1c35b1633822aa1095c2abe409ce344ceab8c92239456","revision":"1f43155ddcfe86c48422d3f4b0041ddbdad16c3d"},
+    {"path":"examples/rich-skill-experience/README.md","digest":"425a86ce6411adab13391ab0453fcb924eebc7a496f034528cfef6f6174353b0","revision":"56f4c4897a189eeb30430119a4f4895e95fbb541"},
 
     {"path":"examples/rich-skill-experience/tsconfig.json","digest":"a9c5e803d4f89dce92aadda521244a8907b90d304959a2ad1b4e419926e953a0","revision":"56f4c4897a189eeb30430119a4f4895e95fbb541"},
 
-    {"path":"examples/rich-skill-experience/README.md","digest":"425a86ce6411adab13391ab0453fcb924eebc7a496f034528cfef6f6174353b0","revision":"56f4c4897a189eeb30430119a4f4895e95fbb541"}
+    {"path":"package.json#/scripts/examples:conformance","digest":"2424d0e55a2ccff023d5369220c5233c3dee7defedacee9dc2ba5f94fb202c6d","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
+
+    {"path":"package.json#/scripts/typecheck:examples","digest":"95542be9cf2a8a535bc1c35b1633822aa1095c2abe409ce344ceab8c92239456","revision":"cc20083220b0814410b14ced68431b9f0acef37d"},
+
+    {"path":"scripts/examples-conformance.mjs","digest":"2eac8e0f018acdf56bc2ead72e428a38cf7d40c3be2dde34b4945f969fa4d587","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"}
   ],
 
   "checks": [
