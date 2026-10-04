@@ -40,6 +40,15 @@ interface ScenarioSource {
   finalToolOutput(): string;
   finalReplayEventCount: number;
   heavyLiveFrameCount: number;
+  /**
+   * Trailing `orchestration:activity` frames the live phase may carry. The
+   * route flushes one 100ms after the last coalesced event of a burst, so
+   * whether it lands before the harness closes the stream is host speed. Each
+   * coalesced (non-activity-bearing) event opens one such window: station-native
+   * emits two `session.state-changed` events around the turn; the external
+   * engine emits none.
+   */
+  maxLiveActivityFrames: number;
   seedRetained(): Promise<void>;
   startHeavyPrefix(): Promise<void>;
   finishHeavyTurn(): Promise<void>;
@@ -375,6 +384,13 @@ export async function measureOrchestrationTransfer(
     phase(source.scenario, name, options.recorder.attempts[index]),
   );
   assertWithinBudget(phases, options.budget, options.recorder.attempts);
+  options.recorder.attempts.forEach((attempt, index) => {
+    const limit = index === 2 ? source.maxLiveActivityFrames : 0;
+    if (attempt.activityFrames > limit)
+      fail(
+        `${source.scenario}/${ORCHESTRATION_TRANSFER_PHASE_NAMES[index]} carried ${attempt.activityFrames} activity frames > ${limit}`,
+      );
+  });
   if (phases[2]?.frames !== source.heavyLiveFrameCount)
     fail(`${source.scenario} live phase did not contain one heavy turn`);
   const finalCursor = options.service.readEventStreamHead();

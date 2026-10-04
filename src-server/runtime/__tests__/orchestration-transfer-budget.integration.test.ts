@@ -175,9 +175,15 @@ async function runtime() {
 }
 
 describe('orchestration transfer byte budgets', () => {
-  test.each([false, true])(
-    'measures five bounded phases and retains refusal diagnostics (%s)',
-    async (refusal) => {
+  // `holdLiveOpenMs` forces the slow-host path: the harness keeps the live
+  // stream open past the route's 100ms activity debounce after the heavy turn.
+  test.each([
+    { refusal: false, holdLiveOpenMs: 0 },
+    { refusal: true, holdLiveOpenMs: 0 },
+    { refusal: false, holdLiveOpenMs: 400 },
+  ])(
+    'measures five bounded phases and retains refusal diagnostics (%o)',
+    async ({ refusal, holdLiveOpenMs }) => {
       const {
         baseUrl,
         externalAdapter,
@@ -201,6 +207,7 @@ describe('orchestration transfer byte budgets', () => {
           finalToolOutput: () => finalToolOutputOf(externalFinalPair),
           finalReplayEventCount: 3,
           heavyLiveFrameCount: 42,
+          maxLiveActivityFrames: 0,
           async seedRetained() {
             for (const event of retainedTransferEvents())
               externalAdapter.events.push(event);
@@ -265,6 +272,7 @@ describe('orchestration transfer byte budgets', () => {
           finalToolOutput: () => finalToolOutputOf(heavyTransferFinalPair()),
           finalReplayEventCount: 4,
           heavyLiveFrameCount: 44,
+          maxLiveActivityFrames: 2,
           async seedRetained() {
             await nativeAdapter.startSession({
               threadId: nativeThreadId,
@@ -337,6 +345,10 @@ describe('orchestration transfer byte budgets', () => {
                   ).length === 1,
               'native heavy terminal persisted through adapter ingestion',
             );
+            if (holdLiveOpenMs)
+              await new Promise((resolve) =>
+                setTimeout(resolve, holdLiveOpenMs),
+              );
           },
         },
         baseUrl,
@@ -389,6 +401,17 @@ describe('orchestration transfer byte budgets', () => {
       expect(nativeMeasurement.finalCursor).toBeGreaterThan(
         nativeMeasurement.beforeHeavyCursor,
       );
+      // The trailing session.state-changed opens an activity window; when the
+      // host is slow the frame lands inside the live phase but is not counted.
+      const nativeLive = nativeRecorder.attempts[2]!;
+      expect(nativeLive.frames).toBe(44);
+      expect(nativeLive.activityFrames).toBeLessThanOrEqual(2);
+      if (holdLiveOpenMs) {
+        expect(nativeLive.activityFrames).toBe(1);
+        expect(nativeLive.eventIdentities.at(-1)).toMatchObject({
+          event: 'orchestration:activity',
+        });
+      }
       expect(nativeBoundary.calls).toHaveLength(11);
       expect(
         nativeBoundary.calls.every(([url]) =>
