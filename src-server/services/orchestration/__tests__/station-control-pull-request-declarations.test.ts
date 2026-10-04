@@ -294,6 +294,44 @@ describe('declare_pull_request admission for an external engine session', () => 
     ).toEqual(['44', '45']);
   });
 
+  // An external engine goes on working long after it declares: waiting on CI,
+  // answering review. The native engine's 60 second wait does not apply.
+  test('a declaration waits for its turn, not for 60 seconds', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      const h = harness();
+      h.startTurn('turn-1');
+      await h.declare(named('station', '44'));
+      vi.setSystemTime(Date.now() + 30 * 60_000);
+      // Still pending, so still a repeat rather than a silent second chance.
+      await expect(h.declare(named('station', '44'))).resolves.toBe(
+        'already-declared',
+      );
+      h.completeTurn('turn-1');
+      expect(h.declared().map((row) => (row.descriptor as any).ref)).toEqual([
+        '44',
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // Owner and repository names are case-insensitive at the forge.
+  test('Owner/Station names the workspace repository kontourai/station', async () => {
+    const h = harness();
+    h.startTurn('turn-1');
+    const written = { ...named('Station', '44'), owner: 'Kontourai' };
+    await expect(h.declare(written)).resolves.toBe('declared');
+    await expect(h.declare(named('station', '44'))).resolves.toBe(
+      'already-declared',
+    );
+    h.completeTurn('turn-1');
+    // The provider's own casing is what is recorded.
+    expect(h.declared()[0]?.descriptor).toMatchObject({
+      repository: { owner: 'kontourai', name: 'station' },
+    });
+  });
+
   test('a pull request declared in an earlier turn is already-declared in a later one', async () => {
     const h = harness();
     h.startTurn('turn-1');

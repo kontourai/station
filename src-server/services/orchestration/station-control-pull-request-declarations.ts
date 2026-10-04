@@ -159,6 +159,9 @@ export function createStationControlPullRequestDeclarations(
       authority,
       workspaceForCall: (facts) => facts.workspaceRoot,
       readPullRequest: (input) => deps.resolver.read(input),
+      // The engine keeps working long after it declares (waiting on CI, on
+      // review): a declaration waits for its turn, not for 60 seconds.
+      retention: 'turn-lease',
     });
   const principal = servicePrincipal('station-control', 'Station Control');
   const grants = new Map<

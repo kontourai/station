@@ -70,7 +70,7 @@ export class NativeDeclaredPullRequestResolver {
     nativeId: string;
     workingDirectory: string;
   }): Promise<DeclaredPullRequest | null> {
-    const detail = await this.readDetail(input);
+    const detail = await this.readDetail(input, exactName);
     return exactDeclaredIdentity(detail, input)
       ? declaredIdentity(detail)
       : null;
@@ -79,8 +79,9 @@ export class NativeDeclaredPullRequestResolver {
   /**
    * The same exact read for a caller that names a pull request by the link
    * store's identity (no provider-native id): the provider's answer must
-   * still match the requested provider, host, repository and ref exactly,
-   * and the repository must be the workspace's own. The native id is then
+   * still match the requested provider and ref exactly and the host, owner and
+   * repository name case-insensitively, and the repository must be the
+   * workspace's own. The native id is then
    * the provider's, to be carried into the declaration that re-reads it.
    */
   async readIdentity(input: {
@@ -91,25 +92,28 @@ export class NativeDeclaredPullRequestResolver {
     ref: string;
     workingDirectory: string;
   }): Promise<DeclaredPullRequest | null> {
-    const detail = await this.readDetail(input);
+    const detail = await this.readDetail(input, sameName);
     return detail &&
       detail.provider === input.provider &&
-      detail.host === input.host &&
-      detail.repository.owner === input.owner &&
-      detail.repository.name === input.repository &&
+      sameName(detail.host, input.host) &&
+      sameName(detail.repository.owner, input.owner) &&
+      sameName(detail.repository.name, input.repository) &&
       detail.ref === input.ref
       ? declaredIdentity(detail)
       : null;
   }
 
-  private async readDetail(input: {
-    provider: string;
-    host: string;
-    owner: string;
-    repository: string;
-    ref: string;
-    workingDirectory: string;
-  }): Promise<PullRequest | undefined> {
+  private async readDetail(
+    input: {
+      provider: string;
+      host: string;
+      owner: string;
+      repository: string;
+      ref: string;
+      workingDirectory: string;
+    },
+    sameAs: (observed: string, requested: string) => boolean,
+  ): Promise<PullRequest | undefined> {
     const contexts =
       this.deps.contexts ?? new PullRequestRepositoryContextResolver();
     const resolved = await contexts.readExactIdentity(
@@ -126,9 +130,9 @@ export class NativeDeclaredPullRequestResolver {
       { workingDirectory: input.workingDirectory },
       async (context) => {
         if (
-          context.host !== input.host ||
-          context.repository.owner !== input.owner ||
-          context.repository.name !== input.repository
+          !sameAs(context.host, input.host) ||
+          !sameAs(context.repository.owner, input.owner) ||
+          !sameAs(context.repository.name, input.repository)
         )
           return undefined;
         const provider = this.deps
@@ -150,6 +154,17 @@ export class NativeDeclaredPullRequestResolver {
     return resolved.available ? resolved.value : undefined;
   }
 }
+
+const exactName = (observed: string, requested: string) =>
+  observed === requested;
+/**
+ * Hosts, owners and repository names are case-insensitive on every forge
+ * Station reads, and the repeat check already compares them so; a caller that
+ * writes `Owner/Repo` names the workspace's `owner/repo`. The provider's own
+ * casing is what the declaration records.
+ */
+const sameName = (observed: string, requested: string) =>
+  observed.toLowerCase() === requested.toLowerCase();
 
 function declaredIdentity(detail: PullRequest): DeclaredPullRequest {
   return {

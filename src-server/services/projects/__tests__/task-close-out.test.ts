@@ -20,6 +20,19 @@ import { TaskGraphService } from '../task-graph-service.js';
 
 const makeTempDir = trackTempDirs();
 
+/** What a reconcile reports merged for the keeps it read. */
+const mergedOf = (
+  keeps: readonly import('@kontourai/station-contracts').TaskKeptDeclaredPullRequest[],
+) =>
+  keeps.map((keep) => ({
+    declarationId: keep.provenance.declarationId,
+    provider: keep.provider,
+    host: keep.host,
+    repository: keep.repository,
+    ref: keep.ref,
+    nativeId: keep.nativeId,
+  }));
+
 const answer = (data: PullRequest): PullRequestResult<PullRequest> => ({
   available: true,
   data,
@@ -154,6 +167,8 @@ function fixture(forge: Partial<Forge> = {}) {
       ref: string,
       repository = { owner: 'owner', name: 'repo' },
       sessionId = 'session-1',
+      /** One turn's declarations all carry that turn's terminal event. */
+      eventId = `event-${repository.name}-${ref}`,
     ) {
       return graph.keepDeclaredPullRequest(
         {
@@ -169,7 +184,7 @@ function fixture(forge: Partial<Forge> = {}) {
             turnId: `turn-${ref}`,
             toolCallId: `call-${ref}`,
             declarationId: `declaration-${ref}`,
-            eventId: `event-${repository.name}-${ref}`,
+            eventId,
           },
         },
         authorization,
@@ -306,10 +321,26 @@ describe('Task close-out on merge', () => {
       f.graph.completeTaskOnMerge({
         taskId: task.id,
         taskCreatedAt: plan.taskCreatedAt,
-        mergedKeeps: plan.keeps.map((keep) => ({
-          sessionId: keep.provenance.sessionId,
-          eventId: keep.provenance.eventId,
-        })),
+        mergedKeeps: mergedOf(plan.keeps),
+      }),
+    ).resolves.toBe(false);
+    expect(f.status(task.id)).toBe('in_progress');
+  });
+
+  // A stack of pull requests from one turn: every declaration shares that
+  // turn's terminal event, so the event alone cannot tell them apart.
+  test('a pull request kept from the same turn event during the reads blocks the close', async () => {
+    const f = fixture({ states: { 'owner/repo#1': 'MERGED' } });
+    const task = await f.task();
+    await f.keep(task.id, '1', undefined, 'session-1', 'event-turn-1');
+    const plan = f.graph.readCloseOutPlan(task.id)!;
+    // A person keeps #2 (still open) from the same turn while the reads ran.
+    await f.keep(task.id, '2', undefined, 'session-1', 'event-turn-1');
+    await expect(
+      f.graph.completeTaskOnMerge({
+        taskId: task.id,
+        taskCreatedAt: plan.taskCreatedAt,
+        mergedKeeps: mergedOf(plan.keeps),
       }),
     ).resolves.toBe(false);
     expect(f.status(task.id)).toBe('in_progress');
@@ -377,10 +408,7 @@ describe('Task close-out on merge', () => {
         f.graph.completeTaskOnMerge({
           taskId: replacement.id,
           taskCreatedAt: plan.taskCreatedAt,
-          mergedKeeps: plan.keeps.map((keep) => ({
-            sessionId: keep.provenance.sessionId,
-            eventId: keep.provenance.eventId,
-          })),
+          mergedKeeps: mergedOf(plan.keeps),
         }),
       ).resolves.toBe(false);
       expect(f.status(replacement.id)).toBe('in_progress');

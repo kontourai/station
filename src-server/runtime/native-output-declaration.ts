@@ -337,15 +337,29 @@ export function createNativeOutputDeclarationOperation(input: {
     facts: NativeOutputCallFacts;
   }) => Promise<PullRequestIdentity | null>;
   now?: () => number;
+  /**
+   * How long a pending declaration waits for its turn's terminal.
+   * `ttl` (the native engine's) drops it after 60 seconds: the call and its
+   * turn end together. `turn-lease` is for a caller whose turn keeps running
+   * long after it declares (an external engine waiting on CI): the
+   * declaration waits for as long as its grant's lease holds, and is dropped
+   * as soon as the lease no longer does. The pending-count bound applies to
+   * both.
+   */
+  retention?: 'ttl' | 'turn-lease';
 }): NativeOutputDeclarationOperation {
   const pending = new Map<string, Pending>();
   const reservations = new Map<NativeOutputCallScope, object>();
   const pendingByScope = new Map<NativeOutputCallScope, string>();
   const now = input.now ?? Date.now;
+  const leased = input.retention === 'turn-lease';
   const prune = () => {
     const at = now();
     for (const [handle, value] of pending) {
-      if (value.expiresAt <= at) {
+      const expired = leased
+        ? input.authority.admit(value.scope) === null
+        : value.expiresAt <= at;
+      if (expired) {
         pendingByScope.delete(value.scope);
         pending.delete(handle);
       }
@@ -440,7 +454,9 @@ export function createNativeOutputDeclarationOperation(input: {
         pending.set(handle, {
           scope,
           facts,
-          expiresAt: now() + NATIVE_OUTPUT_DECLARATION_TTL_MS,
+          expiresAt: leased
+            ? Number.POSITIVE_INFINITY
+            : now() + NATIVE_OUTPUT_DECLARATION_TTL_MS,
           declaration: {
             version: DECLARED_SESSION_OUTPUT_V1,
             declarationId: crypto.randomUUID(),

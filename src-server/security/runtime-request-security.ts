@@ -1312,6 +1312,12 @@ export interface CurrentRuntimeRequestPrincipalSecurity {
 export function isRuntimeRequestPrincipalCurrent(
   request: Request,
   security: CurrentRuntimeRequestPrincipalSecurity,
+  /**
+   * Ask the question of another route: whether this request's principal is
+   * current for, and holds the pairing scope of, `method path`. Absent, the
+   * route the request itself reached.
+   */
+  route?: { method: string; path: string },
 ): boolean {
   const principal = getRuntimeAuthenticatedRequestPrincipal(request);
   if (!principal) return false;
@@ -1319,10 +1325,11 @@ export function isRuntimeRequestPrincipalCurrent(
     return isTrustedInternalApiToken(
       request.headers.get(INTERNAL_API_TOKEN_HEADER) ?? undefined,
     );
-  const path = new URL(request.url).pathname;
+  const path = route?.path ?? new URL(request.url).pathname;
+  const method = route?.method ?? request.method;
   if (
     !security.authorizeCredential(principal.credential, {
-      method: request.method,
+      method,
       path,
     })
   ) {
@@ -1330,11 +1337,7 @@ export function isRuntimeRequestPrincipalCurrent(
   }
   // Match ingress exactly: an unmapped capability or a no-longer-granted
   // pairing scope both fail closed at the delayed publication boundary.
-  const capability = requiredExternalSurfaceCapability(
-    'http',
-    request.method,
-    path,
-  );
+  const capability = requiredExternalSurfaceCapability('http', method, path);
   if (capability?.capability !== 'pairing-scope' || !capability.scope)
     return false;
   const grantedScope = security.resolveGrantedScope(principal.credential);
@@ -1343,10 +1346,7 @@ export function isRuntimeRequestPrincipalCurrent(
     pairingScopeSatisfiesHttpRoute(
       grantedScope,
       capability.scope,
-      {
-        method: request.method,
-        path,
-      },
+      { method, path },
       security.verifyOperatorCredential?.(principal.credential) === true,
     )
   );

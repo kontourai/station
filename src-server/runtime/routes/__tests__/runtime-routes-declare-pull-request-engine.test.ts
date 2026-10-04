@@ -39,6 +39,7 @@ import { SESSION_LOCAL_PROJECT_ID_METADATA_KEY } from '../../../services/orchest
 import { TaskGraphService } from '../../../services/projects/task-graph-service.js';
 import { NativeDeclaredPullRequestResolver } from '../../../services/pull-requests/native-declared-pull-request-resolver.js';
 import type { PullRequestRepositoryContextResolver } from '../../../services/pull-requests/pull-request-repository-context-resolver.js';
+import { DevicePairingService } from '../../../services/ssh/device-pairing-service.js';
 import {
   getInternalApiToken,
   INTERNAL_API_TOKEN_HEADER,
@@ -265,6 +266,32 @@ describe('an external engine declares a pull request: the Task shows it, a merge
       () => new Promise<void>((resolve) => server.close(() => resolve())),
     );
     const port = await listening;
+    // A real paired device on this host holding the read tier only
+    // (local-grant, so it acts for the person; its scope is what is under test).
+    const pairingHome = join(homeDir, 'pairing');
+    mkdirSync(join(pairingHome, 'security'), { recursive: true, mode: 0o700 });
+    const pairing = new DevicePairingService({
+      homeDir: pairingHome,
+      environmentId: '22222222-2222-4222-8222-222222222222',
+    });
+    const offer = pairing.createOffer({
+      endpoint: 'https://station.example.test',
+      scope: 'orchestration:read',
+    });
+    const pairRequest = pairing.requestPairing({
+      requesterPosition: 'off-box',
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      deviceName: 'Read-only device',
+    });
+    pairing.confirmRequest(pairRequest.requestId, { kind: 'local-grant' });
+    const readerCredential = pairing.exchange({
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      requestId: pairRequest.requestId,
+      locality: 'home-possession',
+      mintKind: 'local-grant',
+    }).credential;
     const context = deepStub({
       projectSharedTasks: undefined,
       deploymentAuthentication: undefined,
@@ -301,17 +328,24 @@ describe('an external engine declares a pull request: the Task shows it, a merge
       projectService,
       environmentSecurityService: deepStub({
         verifyCredential: (credential: string) =>
-          credential === OPERATOR_CREDENTIAL,
+          credential === OPERATOR_CREDENTIAL ||
+          pairing.verifyCredential(credential),
         authorizeCredential: (credential: string) =>
-          credential === OPERATOR_CREDENTIAL,
+          credential === OPERATOR_CREDENTIAL ||
+          pairing.verifyCredential(credential),
         verifyOperatorCredential: (credential: string) =>
           credential === OPERATOR_CREDENTIAL,
         resolveGrantedScope: (credential: string) =>
           credential === OPERATOR_CREDENTIAL
             ? 'orchestration:read orchestration:operate'
-            : undefined,
-        identifyDevice: () => undefined,
-        devicePairing: deepStub({}),
+            : pairing.identifyDevice(credential)?.scope,
+        identifyDevice: (credential: string) =>
+          pairing.identifyDevice(credential),
+        credentialLocality: (credential: string) =>
+          pairing.credentialLocality(credential),
+        credentialMintKind: (credential: string) =>
+          pairing.credentialMintKind(credential),
+        devicePairing: pairing,
       }),
     });
     Reflect.set(context as object, 'buildRuntimeContext', () => context);
@@ -328,14 +362,15 @@ describe('an external engine declares a pull request: the Task shows it, a merge
       'content-type': 'application/json',
       authorization: `Bearer ${OPERATOR_CREDENTIAL}`,
     };
-    const asOperator = async (
+    const asCredential = async (
+      credential: string,
       method: string,
       path: string,
       body?: unknown,
     ): Promise<{ status: number; json: any }> => {
       const response = await fetch(`${base}${path}`, {
         method,
-        headers: operator,
+        headers: { ...operator, authorization: `Bearer ${credential}` },
         ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       });
       const text = await response.text();
@@ -347,6 +382,10 @@ describe('an external engine declares a pull request: the Task shows it, a merge
       }
       return { status: response.status, json };
     };
+    const asOperator = (method: string, path: string, body?: unknown) =>
+      asCredential(OPERATOR_CREDENTIAL, method, path, body);
+    const asReader = (method: string, path: string, body?: unknown) =>
+      asCredential(readerCredential, method, path, body);
 
     /**
      * The engine's own station-control MCP connection: the URL-token
@@ -399,6 +438,7 @@ describe('an external engine declares a pull request: the Task shows it, a merge
       emit,
       declare,
       asOperator,
+      asReader,
       workspace,
       base,
     };
@@ -556,6 +596,36 @@ describe('an external engine declares a pull request: the Task shows it, a merge
     expect(e.taskGraph.readTask(task.id)?.status).toBe('in_progress');
 
     e.states['kontourai/station#7'] = 'MERGED';
+    await e.asOperator('GET', `/api/conversation-pull-requests/${THREAD}`);
+    await vi.waitFor(() =>
+      expect(e.taskGraph.readTask(task.id)?.status).toBe('done'),
+    );
+  });
+
+  // A refresh is an `orchestration:read` call; moving a Task to done needs the
+  // tier `PATCH /api/tasks/:id/status` needs.
+  test('a read-only paired device refreshing does not close the Task; an operate-tier viewer does', async () => {
+    const e = await setup();
+    e.states['kontourai/station#7'] = 'OPEN';
+    const task = await declaredAndKept(e);
+    await e.asOperator('PUT', `/api/tasks/${task.id}/close-on-merge`, {
+      enabled: true,
+    });
+    e.states['kontourai/station#7'] = 'MERGED';
+
+    const read = await e.asReader(
+      'GET',
+      `/api/conversation-pull-requests/${THREAD}`,
+    );
+    // The device may read the refresh, and it sees the merge...
+    expect(read.status, JSON.stringify(read.json)).toBe(200);
+    expect(read.json.data.links).toMatchObject([
+      { status: { pullRequestState: 'MERGED' } },
+    ]);
+    // ...but it does not move the Task.
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(e.taskGraph.readTask(task.id)?.status).toBe('in_progress');
+
     await e.asOperator('GET', `/api/conversation-pull-requests/${THREAD}`);
     await vi.waitFor(() =>
       expect(e.taskGraph.readTask(task.id)?.status).toBe('done'),

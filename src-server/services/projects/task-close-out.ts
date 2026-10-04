@@ -90,7 +90,7 @@ export function createTaskCloseOut(deps: {
     const plan = deps.taskGraph.readCloseOutPlan(taskId);
     if (!plan) return 'not-applicable';
     if (plan.keeps.length > MAX_KEPT_PULL_REQUESTS) return 'pending';
-    const merged: { sessionId: string; eventId: string }[] = [];
+    const merged: TaskKeptDeclaredPullRequest[] = [];
     for (let at = 0; at < plan.keeps.length; at += READ_CONCURRENCY) {
       const batch = plan.keeps.slice(at, at + READ_CONCURRENCY);
       const reads = await Promise.all(
@@ -106,10 +106,7 @@ export function createTaskCloseOut(deps: {
           read.pullRequest.state === 'MERGED' &&
           sameKeptPullRequest(keep, read.pullRequest)
         )
-          merged.push({
-            sessionId: keep.provenance.sessionId,
-            eventId: keep.provenance.eventId,
-          });
+          merged.push(keep);
       });
       // A pull request not merged settles the question; stop reading.
       if (merged.length < Math.min(at + READ_CONCURRENCY, plan.keeps.length))
@@ -118,7 +115,14 @@ export function createTaskCloseOut(deps: {
     const moved = await deps.taskGraph.completeTaskOnMerge({
       taskId,
       taskCreatedAt: plan.taskCreatedAt,
-      mergedKeeps: merged,
+      mergedKeeps: merged.map((keep) => ({
+        declarationId: keep.provenance.declarationId,
+        provider: keep.provider,
+        host: keep.host,
+        repository: keep.repository,
+        ref: keep.ref,
+        nativeId: keep.nativeId,
+      })),
     });
     return moved ? 'closed' : 'pending';
   };

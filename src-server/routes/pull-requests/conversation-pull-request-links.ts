@@ -54,6 +54,7 @@ type Access = {
    * is ignored. It is not a poller: nothing here schedules another refresh.
    */
   observed?: (
+    request: Request,
     conversationId: string,
     observations: readonly ConversationPullRequestLinkObservation[],
   ) => void;
@@ -152,7 +153,7 @@ export function createConversationPullRequestLinkRoutes(
         );
     }
     try {
-      access.observed?.(conversationId, observations);
+      access.observed?.(c.req.raw, conversationId, observations);
     } catch {
       /* best effort: a refresh never fails because of its observer */
     }

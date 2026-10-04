@@ -180,6 +180,27 @@ describe('NativeDeclaredPullRequestResolver.readIdentity', () => {
     });
   });
 
+  test('names differing only in case are the same repository; the provider casing is returned', async () => {
+    const { resolver: subject } = resolver(exact);
+    await expect(
+      subject.readIdentity({
+        ...named,
+        owner: 'Kontourai',
+        repository: 'STATION',
+      }),
+    ).resolves.toMatchObject({
+      repository: { owner: 'kontourai', name: 'station' },
+    });
+  });
+
+  // The native declaration tool keeps its exact comparison.
+  test('the native read stays exact about case', async () => {
+    const { resolver: subject } = resolver(exact);
+    await expect(
+      subject.read({ ...request, owner: 'Kontourai', nativeId: '9044' }),
+    ).resolves.toBeNull();
+  });
+
   // `station-2` is not `station`: the workspace's repository is compared as
   // its own owner and name, so a longer name sharing a prefix is refused
   // before any provider is asked.

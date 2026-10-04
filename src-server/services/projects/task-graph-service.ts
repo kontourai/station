@@ -1924,8 +1924,19 @@ export class TaskGraphService {
   async completeTaskOnMerge(input: {
     taskId: string;
     taskCreatedAt: string;
-    /** The keeps observed merged, by the Session event that declared them. */
-    mergedKeeps: readonly { sessionId: string; eventId: string }[];
+    /**
+     * The keeps observed merged, by declaration and target. Every
+     * declaration in one turn shares that turn's terminal event, so the
+     * event cannot tell two kept pull requests of one turn apart.
+     */
+    mergedKeeps: readonly {
+      declarationId: string;
+      provider: string;
+      host: string;
+      repository: { owner: string; name: string };
+      ref: string;
+      nativeId: string;
+    }[];
   }): Promise<boolean> {
     const moved = await this.mutateStore((data) => {
       const task = data.tasks.find((item) => item.id === input.taskId);
@@ -1938,8 +1949,13 @@ export class TaskGraphService {
         !keeps.every((keep) =>
           input.mergedKeeps.some(
             (merged) =>
-              merged.sessionId === keep.provenance.sessionId &&
-              merged.eventId === keep.provenance.eventId,
+              merged.declarationId === keep.provenance.declarationId &&
+              merged.provider === keep.provider &&
+              merged.host === keep.host &&
+              merged.repository.owner === keep.repository.owner &&
+              merged.repository.name === keep.repository.name &&
+              merged.ref === keep.ref &&
+              merged.nativeId === keep.nativeId,
           ),
         )
       )

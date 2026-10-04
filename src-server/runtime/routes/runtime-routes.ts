@@ -5289,7 +5289,21 @@ export function configureRuntimeRoutes(
               conversationId,
             ) ?? []
           ).map((linked) => linked.sessionId),
-        observed: (conversationId, observations) => {
+        observed: (request, conversationId, observations) => {
+          // A refresh is a read; moving a Task to done is not. Only a viewer
+          // who could `PATCH /api/tasks/:id/status` itself triggers it
+          // (the same pairing scope, current now), and never an agent's tool
+          // call, whose status changes the authority guard refuses.
+          if (
+            getRuntimeAuthenticatedRequestPrincipal(request)?.kind ===
+              'internal' ||
+            !isRuntimeRequestPrincipalCurrent(
+              request,
+              context.environmentSecurityService,
+              { method: 'PATCH', path: '/api/tasks/close-out/status' },
+            )
+          )
+            return;
           const merged = observations.filter(
             (observation) =>
               observation.status.state === 'current' &&
