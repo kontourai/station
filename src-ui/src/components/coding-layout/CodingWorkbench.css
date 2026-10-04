@@ -717,6 +717,9 @@
   padding: 0;
   border: 0;
   border-right: 1px solid var(--border-primary);
+  /* The base button rule's radius would round the rule's ends; a strip on
+     the column's edge is square, like the splitters. */
+  border-radius: 0;
   background: transparent;
   color: var(--accent-primary);
   cursor: pointer;
@@ -822,9 +825,10 @@
 }
 
 /* At rest the edge reads as a control: a 3px bar with a small low-emphasis
-   chevron on it (design audit U4). The bar is neutral until something asks
-   for the reader — the Needs-you count, hover or focus — so it is not a
-   fourth accent on a light screen; the count badge above is always accent. */
+   chevron on it (design audit U4). The bar is the neutral border until
+   something asks for the reader, so it is not a fourth accent on a light
+   screen: a Needs-you count tints it with a 60% mix of the accent, and hover
+   or focus draws the full accent. The count badge above is always accent. */
 .coding-workbench__inbox-edge {
   border-right-width: 3px;
   border-right-color: var(--border-primary);

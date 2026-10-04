@@ -1601,7 +1601,10 @@ function PanelSeparator({
   };
   return (
     <Tooltip
-      label={`${label}: drag or arrow keys; double-click resets`}
+      // The tip names the edge and no more (quiet chrome). The separator
+      // role and its value already tell assistive tech it moves with the
+      // arrow keys; Enter and a double-click return it to its default.
+      label={label}
       placement={orientation === 'vertical' ? 'left' : 'top'}
       className={`coding-workbench__separator-slot coding-workbench__separator-slot--${orientation}`}
     >
