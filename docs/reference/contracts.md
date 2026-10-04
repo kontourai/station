@@ -569,7 +569,17 @@ and [chip integration tests](../../src-ui/src/__tests__/SessionPullRequestConfli
 `AttentionInputReplyContext` on the attention subpath projects one exact open
 input request's reply binding and declared file/image transport. `needs_input`
 items may carry `inputReference`; approval/permission references keep their
-separate meaning. `OrchestrationSendTurnInput.expectedInputRequest` is a
+separate meaning. `needs_input` and `review_pending` items may also carry the
+optional `environmentKind: 'peer'` and `environmentName` fields
+(`AttentionSessionEnvironment`). They mark a delegated task that runs on a
+paired Station, where a local reply cannot reach it. The fields are additive.
+Their absence means the task runs on this Station, or the server predates them.
+`peerRequestReference` names the paired Station's open request (`environmentId`,
+`taskId`, `requestId`, `requestType`), and `viewerCanRespond` reports this
+Station's checks on the delegated `respond` route. Both are additive and
+optional; neither feeds the local request routes. The source is
+`OrchestrationDelegationContext.peerPendingRequest` on the orchestration
+subpath, copied from the paired Station's status read and never derived here. `OrchestrationSendTurnInput.expectedInputRequest` is a
 constraint, not a grant, and is removed before the adapter receives input.
 
 The [orchestration routes](../../src-server/routes/orchestration/orchestration.ts)

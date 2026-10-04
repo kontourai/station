@@ -866,6 +866,48 @@ approval or a project-less session. Per-project counts are derived from
 `pendingCount` (`attentionCountForProject`, `@kontourai/station-contracts/attention`);
 the server publishes no per-project number for a client to trust.
 
+`needs_input` and `review_pending` items carry `environmentKind: 'peer'`, plus
+the saved `environmentName` when recorded, when the session is this Station's
+lifecycle record of a delegated task that runs on a paired Station. The value
+is read from the session's own `delegation.environmentKind`, the same field the
+Activity detail uses to withhold local controls. The item's thread names only
+that record, and the server refuses a local turn on it. Such an item therefore
+links to the Activity detail instead of the chat dock. Clients show where to
+answer it instead of offering a local reply. The field is absent for work this
+Station runs. A server that predates the field omits it; a reply sent to a peer
+record through that server is still refused, not delivered elsewhere.
+
+The paired Station's own open request reaches this Station through its
+delegated-task status read (`GET /api/orchestration/delegations/:taskId`,
+field `pendingRequest`). Each status refresh records it on the peer record as
+`delegation.peerPendingRequest` (id, type, title, `observedAt`). The record is
+cleared when the paired Station reports no open request, or answers `respond`
+for that request id. The attention item then carries `peerRequestReference`:
+`environmentId`, `taskId`, `requestId` and `requestType`. These ids name the
+request on the paired Station. It never carries `requestReference` or
+`inputReference`, so local request inspection and `respondToRequest` cannot use it.
+
+`viewerCanRespond` models two gates this Station applies before the
+`POST /api/orchestration/delegations/:taskId/respond` handler: the credential
+and pairing-scope gate for that path, then the station-control dispatch scope
+with the `approve` action. The handler can still refuse, for example an inbound
+delegation peer, hosted mode, or an environment that is not the task's
+recorded host. Absent means unknown, and clients offer nothing. For an
+`approval` or `permission` request with `viewerCanRespond: true`, clients post
+`{ requestId, decision, environmentId }` to that route; the paired Station
+re-checks the request is open and decides it there. When the paired Station
+answers 403, the route reports "The paired Station refused this decision" in
+this Station's words; the paired Station's own diagnostics are not relayed.
+`input` and `confirmation` requests keep the note, because `respond` carries a
+decision, not an answer.
+
+The route forwards a decision only to the environment this Station recorded as
+hosting the task. A body naming another environment is refused before any
+outbound request. The recorded host is read with the caller's own read
+authority, so a task record the caller cannot read names no host. A request id
+longer than 512 Unicode code points is not stored, so the item shows the note.
+A title longer than 512 code points is cut with a trailing ellipsis.
+
 Both kinds link into the item's own Project Review layout at the exact item —
 `/projects/<projectSlug>/layouts/review?change=<id>` and
 `?review=<reviewSessionRef>`, alongside Starter work's
