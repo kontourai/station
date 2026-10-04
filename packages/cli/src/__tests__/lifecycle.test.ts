@@ -5103,6 +5103,7 @@ describe('upgrade', () => {
 
 describe('uiRequestHandler (static UI server SPA fallback + reverse proxy)', () => {
   let serverModule: any;
+  const makeTrackedUiDir = trackTempDirs();
   let uiDir: string;
   let upstream: import('node:http').Server | ReturnType<typeof serve> | null =
     null;
@@ -5862,7 +5863,7 @@ describe('uiRequestHandler (static UI server SPA fallback + reverse proxy)', () 
   });
 
   it('#2894: attests that its client sent forwarding headers, and discards a client-supplied attestation', async () => {
-    uiDir = mkdtempSync(join(tmpdir(), 'station-ui-client-forwarded-'));
+    uiDir = makeTrackedUiDir('station-ui-client-forwarded-');
     writeFileSync(join(uiDir, 'index.html'), '<head></head><body>app</body>');
     const seen: Record<string, string | string[] | undefined>[] = [];
     await startUpstream((req, res) => {
