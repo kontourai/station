@@ -267,7 +267,9 @@ function callerOf(c: Context): StationControlCaller | Response {
 
 function keyRefusal(
   c: Context,
-  outcome: { kind: 'conflict' | 'in-progress' | 'capacity' },
+  outcome:
+    | { kind: 'conflict' | 'in-progress' }
+    | { kind: 'capacity'; scope: 'caller' | 'station' },
 ): Response {
   switch (outcome.kind) {
     case 'conflict':
@@ -291,14 +293,24 @@ function keyRefusal(
         409,
       );
     case 'capacity':
-      return c.json(
-        {
-          success: false,
-          code: 'request_key_capacity',
-          error: 'Station is holding too many unexpired request keys.',
-        },
-        429,
-      );
+      return outcome.scope === 'caller'
+        ? c.json(
+            {
+              success: false,
+              code: 'request_key_caller_capacity',
+              error:
+                'This session has too many requests still unresolved (indeterminate). Repeat those calls with their original requestKeys to resolve them before sending more.',
+            },
+            429,
+          )
+        : c.json(
+            {
+              success: false,
+              code: 'request_key_capacity',
+              error: 'Station is holding too many unexpired request keys.',
+            },
+            429,
+          );
   }
 }
 
@@ -350,9 +362,11 @@ function settleSend(
           eventCursor: cursorBefore,
         },
       };
+    // A refusal delivered nothing: free the key so the same request can run
+    // again once the Session is ready, rather than replaying the refusal.
     case 'session_busy':
       return {
-        settle: 'final',
+        settle: 'release',
         result: {
           outcome: 'session_busy',
           reason: delivery.reason,
@@ -362,7 +376,7 @@ function settleSend(
       };
     case 'no_active_turn':
       return {
-        settle: 'final',
+        settle: 'release',
         result: {
           outcome: 'no_active_turn',
           sessionId: threadId,
@@ -394,10 +408,10 @@ function sendResponse(
           code: 'session_busy',
           error:
             result.reason === 'turn-active'
-              ? 'The Session is running a turn, so a start was refused. Use mode "auto" or "steer" to add to it, or call wait_session until it is idle.'
+              ? 'The Session is running a turn, so a start was refused. Use mode "auto" or "steer" to add to it, or call wait_session until it is idle. Nothing was sent; the same requestKey may be reused.'
               : result.reason === 'steer-unsupported'
-                ? 'The Session is running a turn and its engine cannot take a message mid-turn. Call wait_session until it is idle, then send again with a new requestKey.'
-                : 'Another steer to this Session is still settling. Send again shortly with a new requestKey.',
+                ? 'The Session is running a turn and its engine cannot take a message mid-turn. Nothing was sent. Call wait_session until it is idle, then send again (the same requestKey may be reused).'
+                : 'Another steer to this Session is still settling. Nothing was sent; send again shortly (the same requestKey may be reused).',
           ...result,
           ...replay,
         },
@@ -409,7 +423,7 @@ function sendResponse(
           success: false,
           code: 'no_active_turn',
           error:
-            'The Session has no running turn to steer. Use mode "auto" or "start" to start one.',
+            'The Session has no running turn to steer. Nothing was sent; use mode "auto" or "start" to start one (the same requestKey may be reused).',
           ...result,
           ...replay,
         },
@@ -510,6 +524,7 @@ export function createSessionAgentControlRoutes(deps: SessionAgentControlDeps) {
         tenantExecutionContext: tenantExecutionContextForRequest(c.req.raw),
         clientOrigin: resolveClientOriginForRequest(c.req.raw),
       };
+      let refusedPinned: Response | undefined;
       const outcome = await runWithSessionControlKey<
         SendToSessionResult | RequestFailure
       >(
@@ -520,6 +535,19 @@ export function createSessionAgentControlRoutes(deps: SessionAgentControlDeps) {
           // A re-driven attempt acts on the Session its first attempt chose.
           const pinned = parseDecision(resume.decision);
           const threadId = pinned?.threadId ?? target.threadId;
+          // The pinned Session may no longer be the current one the scope
+          // check ran on: it must pass the same checks before it is acted on.
+          if (pinned && pinned.threadId !== target.threadId) {
+            const pinnedRefused = authorizeTarget(c, pinned);
+            if (pinnedRefused) {
+              refusedPinned = pinnedRefused;
+              // Nothing was done; the claim stays for a later re-drive.
+              return {
+                settle: 'pending',
+                result: { outcome: 'failed', detail: 'Refused.' },
+              };
+            }
+          }
           const cursorBefore =
             deps.eventStore.readSessionInventoryHighWater(threadId);
           const ports: SessionMessageDeliveryPorts = {
@@ -601,6 +629,7 @@ export function createSessionAgentControlRoutes(deps: SessionAgentControlDeps) {
           }
         },
       );
+      if (refusedPinned) return refusedPinned;
       if (outcome.kind !== 'executed' && outcome.kind !== 'replayed')
         return keyRefusal(c, outcome);
       return sendResponse(c, outcome.result, outcome.kind === 'replayed');
@@ -666,7 +695,9 @@ export function createSessionAgentControlRoutes(deps: SessionAgentControlDeps) {
                 },
               };
             return {
-              settle: 'final',
+              // Nothing to interrupt had no effect: free the key, as a refused
+              // send does, so the same request can run when a turn is running.
+              settle: result.outcome === 'no-active-turn' ? 'release' : 'final',
               result: {
                 outcome: result.outcome,
                 sessionId: target.threadId,
@@ -752,12 +783,18 @@ export function createSessionAgentControlRoutes(deps: SessionAgentControlDeps) {
         408,
       );
     const { kind, ...state } = result;
+    // The wait watched exactly the Session named. When a successor now serves
+    // the conversation, say so: the named Session will not see its turns.
+    const current = actingSession(sessionId).threadId;
     return c.json({
       success: true,
       data: {
         sessionId,
         settled: kind === 'settled',
         timedOut: kind === 'timeout',
+        ...(current !== sessionId
+          ? { superseded: true, currentSessionId: current }
+          : {}),
         ...state,
       },
     });

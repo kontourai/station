@@ -5,6 +5,8 @@ import { afterEach, describe, expect, test } from 'vitest';
 import { EventStore } from '../event-store.js';
 import {
   runWithSessionControlKey,
+  SESSION_CONTROL_REQUEST_KEY_MAX_ROWS,
+  SESSION_CONTROL_REQUEST_KEY_MAX_ROWS_PER_CALLER,
   SESSION_CONTROL_REQUEST_KEY_TTL_MS,
   sessionControlDeliveryId,
   sessionControlRequestDigest,
@@ -238,5 +240,183 @@ describe('session control request keys (real SQLite table)', () => {
     } finally {
       Date.now = realNow;
     }
+  });
+
+  describe('quotas', () => {
+    const digest = sessionControlRequestDigest(['x']);
+    const done = async () => ({ settle: 'final' as const, result: 'ok' });
+    const fill = async (
+      keys: ReturnType<EventStore['sessionControlRequestKeys']>,
+      caller: string,
+      count: number,
+      attempt: () => Promise<{
+        settle: 'final' | 'pending';
+        result: string;
+      }> = done,
+    ) => {
+      for (let index = 0; index < count; index += 1)
+        await runWithSessionControlKey(
+          keys,
+          id(`fill-${String(index).padStart(6, '0')}`, caller),
+          digest,
+          attempt,
+        );
+    };
+
+    test('one caller filling its quota never touches another caller', async () => {
+      const keys = open().store.sessionControlRequestKeys();
+      // Far more claims than the station-wide backstop holds: without a
+      // per-caller quota this would fill the table for everyone.
+      await fill(keys, 'noisy', SESSION_CONTROL_REQUEST_KEY_MAX_ROWS + 50);
+      // Another caller claims, replays and completes as usual.
+      expect(
+        (
+          await runWithSessionControlKey(
+            keys,
+            id('mine-0001', 'quiet'),
+            digest,
+            done,
+          )
+        ).kind,
+      ).toBe('executed');
+      expect(
+        (
+          await runWithSessionControlKey(
+            keys,
+            id('mine-0001', 'quiet'),
+            digest,
+            done,
+          )
+        ).kind,
+      ).toBe('replayed');
+    });
+
+    test('past its quota a caller loses its OWN oldest completed rows, newest keep replaying', async () => {
+      const keys = open().store.sessionControlRequestKeys();
+      const cap = SESSION_CONTROL_REQUEST_KEY_MAX_ROWS_PER_CALLER;
+      await fill(keys, 'noisy', cap);
+      await fill(keys, 'other', 3);
+      // One more: the oldest of ITS rows goes, nothing else.
+      const extra = await runWithSessionControlKey(
+        keys,
+        id('extra-0001', 'noisy'),
+        digest,
+        done,
+      );
+      expect(extra.kind).toBe('executed');
+      expect(
+        (
+          await runWithSessionControlKey(
+            keys,
+            id('fill-000000', 'noisy'),
+            digest,
+            done,
+          )
+        ).kind,
+      ).toBe('executed');
+      expect(
+        (
+          await runWithSessionControlKey(
+            keys,
+            id(`fill-${String(cap - 1).padStart(6, '0')}`, 'noisy'),
+            digest,
+            done,
+          )
+        ).kind,
+      ).toBe('replayed');
+      expect(
+        (
+          await runWithSessionControlKey(
+            keys,
+            id('fill-000000', 'other'),
+            digest,
+            done,
+          )
+        ).kind,
+      ).toBe('replayed');
+    });
+
+    test('unresolved claims are never evicted: a caller with only those is refused with a caller-scoped code', async () => {
+      const keys = open().store.sessionControlRequestKeys();
+      const cap = SESSION_CONTROL_REQUEST_KEY_MAX_ROWS_PER_CALLER;
+      await fill(keys, 'stuck', cap, async () => ({
+        settle: 'pending' as const,
+        result: 'indeterminate',
+      }));
+      expect(
+        await runWithSessionControlKey(
+          keys,
+          id('one-more-1', 'stuck'),
+          digest,
+          done,
+        ),
+      ).toEqual({ kind: 'capacity', scope: 'caller' });
+      // All of its claims are still there to be resolved, and another caller is fine.
+      let resumed = 0;
+      await runWithSessionControlKey(
+        keys,
+        id('fill-000000', 'stuck'),
+        digest,
+        async () => {
+          resumed += 1;
+          return { settle: 'final' as const, result: 'ok' };
+        },
+      );
+      expect(resumed).toBe(1);
+      expect(
+        (
+          await runWithSessionControlKey(
+            keys,
+            id('mine-0001', 'quiet'),
+            digest,
+            done,
+          )
+        ).kind,
+      ).toBe('executed');
+      // Resolving one frees room for the stuck caller's next claim.
+      expect(
+        (
+          await runWithSessionControlKey(
+            keys,
+            id('one-more-1', 'stuck'),
+            digest,
+            done,
+          )
+        ).kind,
+      ).toBe('executed');
+    });
+
+    test('the station-wide backstop still refuses, with a station-scoped code', async () => {
+      const { store } = open();
+      const keys = store.sessionControlRequestKeys();
+      const db = (
+        store as unknown as {
+          db: {
+            exec(sql: string): void;
+            prepare(sql: string): { run(...v: unknown[]): unknown };
+          };
+        }
+      ).db;
+      db.exec('BEGIN');
+      const insert = db.prepare(
+        `INSERT INTO session_control_request_keys (caller_session_id, tool, request_key, digest, result_json, created_at)
+         VALUES (?, 'send_to_session', 'k', 'd', '"ok"', ?)`,
+      );
+      for (
+        let index = 0;
+        index < SESSION_CONTROL_REQUEST_KEY_MAX_ROWS;
+        index += 1
+      )
+        insert.run(`bulk-${index}`, Date.now());
+      db.exec('COMMIT');
+      expect(
+        await runWithSessionControlKey(
+          keys,
+          id('late-0001', 'newcomer'),
+          digest,
+          done,
+        ),
+      ).toEqual({ kind: 'capacity', scope: 'station' });
+    });
   });
 });

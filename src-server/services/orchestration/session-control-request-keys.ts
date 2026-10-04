@@ -25,8 +25,16 @@ import type { SqliteDatabase } from './sqlite-database.js';
 /** Rows older than this are forgotten; a retry that late is a new request. */
 export const SESSION_CONTROL_REQUEST_KEY_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 /**
- * Refuse new claims past this many live rows instead of evicting one: an
- * evicted key would silently re-allow a duplicate delivery.
+ * The most rows one calling Session keeps. Past it, that caller's OWN oldest
+ * completed rows are evicted to make room (a key that old no longer replays);
+ * only when every one of its rows is an unresolved claim is the caller refused.
+ * One caller therefore cannot fill the table for the others.
+ */
+export const SESSION_CONTROL_REQUEST_KEY_MAX_ROWS_PER_CALLER = 300;
+/**
+ * Station-wide backstop: refuse new claims past this many live rows instead of
+ * evicting another caller's row, whose eviction would silently re-allow a
+ * duplicate delivery.
  */
 export const SESSION_CONTROL_REQUEST_KEY_MAX_ROWS = 10_000;
 
@@ -56,7 +64,8 @@ export type SessionControlKeyClaim =
   | { readonly kind: 'in-progress' }
   | { readonly kind: 'replay'; readonly result: unknown }
   | { readonly kind: 'conflict' }
-  | { readonly kind: 'capacity' };
+  /** `caller`: all of this caller's rows are unresolved; `station`: the backstop. */
+  | { readonly kind: 'capacity'; readonly scope: 'caller' | 'station' };
 
 export interface SessionControlRequestKeys {
   /** Claim the key for a request with this digest. */
@@ -146,11 +155,37 @@ export function createSqliteSessionControlRequestKeys(
             : {}),
         };
       }
+      // The caller's own quota first: make room by dropping ITS oldest
+      // completed rows, never an unresolved claim and never another caller's.
+      const owned = db
+        .prepare(
+          `SELECT COUNT(*) AS total FROM session_control_request_keys
+           WHERE caller_session_id = ?`,
+        )
+        .get(id.callerSessionId) as { total: number };
+      const excess =
+        owned.total - SESSION_CONTROL_REQUEST_KEY_MAX_ROWS_PER_CALLER + 1;
+      if (excess > 0) {
+        db.prepare(
+          `DELETE FROM session_control_request_keys WHERE rowid IN (
+             SELECT rowid FROM session_control_request_keys
+             WHERE caller_session_id = ? AND result_json IS NOT NULL
+             ORDER BY created_at ASC, rowid ASC LIMIT ?)`,
+        ).run(id.callerSessionId, excess);
+        const left = db
+          .prepare(
+            `SELECT COUNT(*) AS total FROM session_control_request_keys
+             WHERE caller_session_id = ?`,
+          )
+          .get(id.callerSessionId) as { total: number };
+        if (left.total >= SESSION_CONTROL_REQUEST_KEY_MAX_ROWS_PER_CALLER)
+          return { kind: 'capacity', scope: 'caller' };
+      }
       const count = db
         .prepare('SELECT COUNT(*) AS total FROM session_control_request_keys')
         .get() as { total: number };
       if (count.total >= SESSION_CONTROL_REQUEST_KEY_MAX_ROWS)
-        return { kind: 'capacity' };
+        return { kind: 'capacity', scope: 'station' };
       const inserted = db
         .prepare(
           `INSERT OR IGNORE INTO session_control_request_keys
@@ -214,7 +249,7 @@ export type SessionControlKeyedOutcome<Result> =
   | { readonly kind: 'replayed'; readonly result: Result }
   | { readonly kind: 'conflict' }
   | { readonly kind: 'in-progress' }
-  | { readonly kind: 'capacity' };
+  | { readonly kind: 'capacity'; readonly scope: 'caller' | 'station' };
 
 /**
  * Run one keyed request exactly as the table says: claim, attempt, settle. A
@@ -234,8 +269,9 @@ export async function runWithSessionControlKey<Result>(
   switch (claim.kind) {
     case 'conflict':
     case 'in-progress':
-    case 'capacity':
       return { kind: claim.kind };
+    case 'capacity':
+      return { kind: 'capacity', scope: claim.scope };
     case 'replay':
       return { kind: 'replayed', result: claim.result as Result };
     case 'claimed':

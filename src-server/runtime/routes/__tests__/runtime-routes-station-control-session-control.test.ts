@@ -52,6 +52,9 @@ const support = vi.hoisted(() => ({
   /** Each session's lifecycle fold events, oldest first. */
   fold: new Map<string, { sequence: number; payload: unknown }[]>(),
   /** What a steer answers (`SteerTurnResult.outcome`). */
+  /** A session's conversation, and a conversation's current session. */
+  conversations: new Map<string, string>(),
+  current: new Map<string, string>(),
   steerOutcome: 'steered' as string,
   /** What an interrupt answers. */
   interruptOutcome: 'cooperative' as string,
@@ -150,6 +153,8 @@ describe('configureRuntimeRoutes: Station Control Session tools (#3160)', () => 
     support.hostThreads.clear();
     support.busy.clear();
     support.fold.clear();
+    support.conversations.clear();
+    support.current.clear();
     support.steerOutcome = 'steered';
     support.interruptOutcome = 'cooperative';
     for (const close of closers.splice(0)) await close();
@@ -196,7 +201,10 @@ describe('configureRuntimeRoutes: Station Control Session tools (#3160)', () => 
         sessionTurnBoundaryAuthority: () => ({
           reconcile: () => ({ kind: 'available', interrupted: [] }),
         }),
-        conversationForSession: () => undefined,
+        conversationForSession: (threadId: string) => {
+          const conversationId = support.conversations.get(threadId);
+          return conversationId ? { conversationId } : undefined;
+        },
         conversationSessions: () => [],
         readSessionByThread: () => undefined,
         sessionControlRequestKeys: () => keys,
@@ -214,7 +222,7 @@ describe('configureRuntimeRoutes: Station Control Session tools (#3160)', () => 
         hasSessionStartRecord: (threadId: string) =>
           !threadId.startsWith('new-'),
         currentConversationSessionId: (conversationId: string) =>
-          conversationId,
+          support.current.get(conversationId) ?? conversationId,
         // The owner reads only its own sessions.
         canUserReadSession: (threadId: string, authority: { userId: string }) =>
           ownerOf(threadId) !== undefined &&
@@ -715,6 +723,76 @@ describe('configureRuntimeRoutes: Station Control Session tools (#3160)', () => 
       expect(support.commands).toHaveLength(2);
     });
 
+    test('a refusal delivered nothing, so the same key runs again once the Session is ready', async () => {
+      const { base } = await setup();
+      const caller = as('bearer-exposed', 'op-caller-a');
+      support.busy.add('op-thread-a');
+      appendFold('op-thread-a', 'turn.started', 'live-turn');
+      const busy = {
+        ...sendReq('op-thread-a'),
+        mode: 'start',
+      };
+      const refused = await post(base, 'send', caller(), busy);
+      expect([refused.status, refused.body.code]).toEqual([
+        409,
+        'session_busy',
+      ]);
+      expect(refused.body.error).toContain('same requestKey may be reused');
+      // The turn ends; the identical request now starts a turn, not a replay.
+      support.busy.clear();
+      appendFold('op-thread-a', 'turn.completed', 'live-turn');
+      const started = await post(base, 'send', caller(), busy);
+      expect(started.status).toBe(200);
+      expect(started.body.data).toMatchObject({ outcome: 'started' });
+      expect(started.body.data.replayed).toBeUndefined();
+      expect(support.continued).toHaveLength(1);
+      // The same holds for steer on an idle Session, and an unsupported steer.
+      const idleSteer = { ...sendReq('op-thread-a'), mode: 'steer' };
+      expect((await post(base, 'send', caller(), idleSteer)).body.code).toBe(
+        'no_active_turn',
+      );
+      support.busy.add('op-thread-a');
+      appendFold('op-thread-a', 'turn.started', 'turn-2');
+      const again = await post(base, 'send', caller(), idleSteer);
+      expect(again.body.data).toMatchObject({ outcome: 'steered' });
+      expect(again.body.data.replayed).toBeUndefined();
+    });
+
+    test('an interrupt with nothing running frees its key too', async () => {
+      const { base } = await setup();
+      const caller = as('bearer-exposed', 'op-caller-a');
+      const body = interruptReq('op-thread-a');
+      support.interruptOutcome = 'no-active-turn';
+      const first = await post(base, 'interrupt', caller(), body);
+      expect(first.body.data.outcome).toBe('no-active-turn');
+      support.interruptOutcome = 'cooperative';
+      const second = await post(base, 'interrupt', caller(), body);
+      expect(second.body.data).toMatchObject({ outcome: 'cooperative' });
+      expect(second.body.data.replayed).toBeUndefined();
+      expect(support.commands).toHaveLength(2);
+    });
+
+    test('a re-driven attempt on a pinned Session that is no longer in scope is refused, nothing is steered', async () => {
+      const { base } = await setup();
+      const caller = as('bearer-exposed', 'op-caller-a');
+      support.busy.add('op-thread-a');
+      appendFold('op-thread-a', 'turn.started', 'live-turn');
+      support.steerOutcome = 'indeterminate';
+      const body = sendReq('op-thread-a');
+      expect((await post(base, 'send', caller(), body)).body.code).toBe(
+        'delivery_indeterminate',
+      );
+      expect(support.commands).toHaveLength(1);
+      // The conversation moves on to a successor that is in scope; the pinned
+      // Session now runs unconfined.
+      support.current.set('op-thread-a', 'op-thread-a2');
+      support.hostThreads.add('op-thread-a');
+      const refused = await post(base, 'send', caller(), body);
+      expect([refused.status, refused.body.code]).toEqual([403, ASSURANCE]);
+      expect(support.commands).toHaveLength(1);
+      expect(support.continued).toHaveLength(0);
+    });
+
     test('interrupt replays: one interruptTurn command', async () => {
       const { base } = await setup();
       const caller = as('bearer-exposed', 'op-caller-a');
@@ -829,6 +907,25 @@ describe('configureRuntimeRoutes: Station Control Session tools (#3160)', () => 
       expect(support.continued).toEqual([]);
       expect(support.busy.has('op-thread-a')).toBe(true);
       expect(support.fold.get('op-thread-a')).toHaveLength(1);
+    });
+
+    test('a superseded Session says so and names the current one', async () => {
+      const { base } = await setup();
+      const caller = as('bearer-exposed', 'op-caller-a');
+      support.current.set('op-thread-a', 'op-thread-a2');
+      support.conversations.set('op-thread-a', 'op-thread-a');
+      const old = await wait(base, 'op-thread-a', caller(), { until: 'idle' });
+      expect(old.body.data).toMatchObject({
+        sessionId: 'op-thread-a',
+        superseded: true,
+        currentSessionId: 'op-thread-a2',
+        settled: true,
+      });
+      const current = await wait(base, 'op-thread-a2', caller(), {
+        until: 'idle',
+      });
+      expect(current.body.data.superseded).toBeUndefined();
+      expect(current.body.data.currentSessionId).toBeUndefined();
     });
 
     test('it wakes when the turn settles, and reports the outcome', async () => {
