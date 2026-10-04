@@ -40,10 +40,19 @@ export type StationControlPullRequestDeclarationOutcome =
   | 'already-declared'
   | 'no-active-turn';
 
+/** Why a declaration was refused; the route answers each with fixed copy. */
+export type StationControlPullRequestUnavailableReason =
+  | 'unconfigured'
+  | 'too-many-declarations'
+  | 'no-workspace'
+  | 'unreadable-identity'
+  | 'turn-closed'
+  | 'not-admitted';
+
 /** The pull request could not be read, or could not be admitted, as asked. */
 export class StationControlPullRequestUnavailableError extends Error {
-  constructor(message: string) {
-    super(message);
+  constructor(readonly reason: StationControlPullRequestUnavailableReason) {
+    super(`Station Control pull request declaration refused: ${reason}`);
     this.name = 'StationControlPullRequestUnavailableError';
   }
 }
@@ -199,7 +208,7 @@ export function createStationControlPullRequestDeclarations(
     const durable = deps.declaredPullRequests(sessionId);
     if (!durable)
       throw new StationControlPullRequestUnavailableError(
-        'This session has too many declared outputs to compare against.',
+        'too-many-declarations',
       );
     return () =>
       [
@@ -225,16 +234,14 @@ export function createStationControlPullRequestDeclarations(
   ) => {
     const workspaceRoot = deps.workspaceRoot(sessionId);
     if (!workspaceRoot)
-      throw new StationControlPullRequestUnavailableError(
-        'This session has no workspace to read the pull request from.',
-      );
+      throw new StationControlPullRequestUnavailableError('no-workspace');
     const exact = await deps.resolver.readIdentity({
       ...pullRequest,
       workingDirectory: workspaceRoot,
     });
     if (!exact)
       throw new StationControlPullRequestUnavailableError(
-        'The pull request could not be read at that exact identity in this session workspace.',
+        'unreadable-identity',
       );
     return exact;
   };
@@ -250,9 +257,7 @@ export function createStationControlPullRequestDeclarations(
     // A server-minted call id: the model names no call, session or turn.
     const scope = grant ? authority.bindNativeCall(grant, randomUUID()) : null;
     if (!scope)
-      throw new StationControlPullRequestUnavailableError(
-        'This turn can no longer declare an output.',
-      );
+      throw new StationControlPullRequestUnavailableError('turn-closed');
     try {
       await operation.declare(scope, {
         ...(label === undefined ? {} : { label }),
@@ -265,14 +270,10 @@ export function createStationControlPullRequestDeclarations(
           nativeId: exact.nativeId,
         },
       });
-    } catch (error) {
+    } catch {
       // The operation's text names its own seams; the caller gets one answer.
       if (!deps.activeTurn(sessionId)) return 'no-active-turn';
-      throw new StationControlPullRequestUnavailableError(
-        error instanceof Error
-          ? error.message
-          : 'The pull request could not be declared.',
-      );
+      throw new StationControlPullRequestUnavailableError('not-admitted');
     }
     return 'declared';
   };

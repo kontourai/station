@@ -25,6 +25,7 @@ import {
   type StationControlPullRequestDeclarationOutcome,
   type StationControlPullRequestIdentity,
   StationControlPullRequestUnavailableError,
+  type StationControlPullRequestUnavailableReason,
 } from '../../services/orchestration/station-control-pull-request-declarations.js';
 import { assertPullRequestLinkIdentity } from '../../services/pull-requests/conversation-pull-request-link-store.js';
 import {
@@ -35,6 +36,20 @@ import { pullRequestLinkIdentitySchema } from '../pull-requests/conversation-pul
 import { refuseOutOfScopeDispatch } from './dispatch-scope.js';
 
 const MAX_BODY_BYTES = 4 * 1024;
+const UNAVAILABLE_COPY: Record<
+  StationControlPullRequestUnavailableReason,
+  string
+> = {
+  unconfigured: 'Pull request declarations are unavailable on this Station.',
+  'too-many-declarations':
+    'This session has too many declared outputs to compare against.',
+  'no-workspace':
+    'This session has no workspace to read the pull request from.',
+  'unreadable-identity':
+    'The pull request could not be read at that exact identity in this session workspace.',
+  'turn-closed': 'This turn can no longer declare an output.',
+  'not-admitted': 'The pull request could not be declared.',
+};
 const NO_STORE = { 'Cache-Control': 'no-store' };
 
 /** The link identity plus the one optional word a person reads beside it. */
@@ -142,7 +157,11 @@ export function createDeclarePullRequestRoutes(
       return c.json({ status }, 200, NO_STORE);
     } catch (error) {
       if (error instanceof StationControlPullRequestUnavailableError)
-        return c.json({ success: false, error: error.message }, 409, NO_STORE);
+        return c.json(
+          { success: false, error: UNAVAILABLE_COPY[error.reason] },
+          409,
+          NO_STORE,
+        );
       throw error;
     }
   });

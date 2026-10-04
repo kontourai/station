@@ -173,7 +173,7 @@ describe('configureRuntimeRoutes: declare_pull_request', () => {
           const status = support.answer();
           if (status === 'unavailable')
             throw new StationControlPullRequestUnavailableError(
-              'The pull request could not be read.',
+              'unreadable-identity',
             );
           return status;
         },
@@ -309,7 +309,12 @@ describe('configureRuntimeRoutes: declare_pull_request', () => {
     support.answer = () => 'unavailable';
     const response = await post(base, as('bound', 'op-caller-a'), IDENTITY);
     expect(response.status).toBe(409);
-    expect(response.json).toMatchObject({ success: false });
+    // Fixed copy per reason: no internal text reaches the engine.
+    expect(response.json).toEqual({
+      success: false,
+      error:
+        'The pull request could not be read at that exact identity in this session workspace.',
+    });
   });
 
   // The scope rule every session-aimed call answers (`refuseOutOfScopeDispatch`

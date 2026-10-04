@@ -118,7 +118,11 @@ const named = (repository: string, ref: string) => ({
   ref,
 });
 
-const harnesses: { service: OrchestrationService; store: EventStore }[] = [];
+const harnesses: {
+  service: OrchestrationService;
+  store: EventStore;
+  engineEvents: AsyncEventQueue<CanonicalRuntimeEvent>;
+}[] = [];
 
 function harness() {
   const root = makeTempDir('station-control-declare-pr-');

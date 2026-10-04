@@ -9594,9 +9594,7 @@ export class OrchestrationService {
     label?: string;
   }): Promise<StationControlPullRequestDeclarationOutcome> {
     if (!this.stationControlPullRequests)
-      throw new StationControlPullRequestUnavailableError(
-        'Pull request declarations are unavailable on this Station.',
-      );
+      throw new StationControlPullRequestUnavailableError('unconfigured');
     return this.stationControlPullRequests.declare(input);
   }
 
