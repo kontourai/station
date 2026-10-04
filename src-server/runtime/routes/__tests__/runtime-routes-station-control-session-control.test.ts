@@ -299,7 +299,9 @@ describe('configureRuntimeRoutes: Station Control Session tools (#3160)', () => 
     closers.unshift(
       () =>
         new Promise<void>((resolve) => {
-          server.closeAllConnections?.();
+          (
+            server as unknown as { closeAllConnections?: () => void }
+          ).closeAllConnections?.();
           server.close(() => resolve());
         }),
     );
@@ -348,7 +350,10 @@ describe('configureRuntimeRoutes: Station Control Session tools (#3160)', () => 
       headers,
       body: JSON.stringify(body),
     });
-    return { status: response.status, body: await response.json() };
+    return {
+      status: response.status,
+      body: (await response.json()) as Record<string, any>,
+    };
   }
   async function wait(
     base: string,
@@ -361,7 +366,10 @@ describe('configureRuntimeRoutes: Station Control Session tools (#3160)', () => 
       `${base}${BASE_PATH}/${encodeURIComponent(sessionId)}/wait?${new URLSearchParams(query)}`,
       { headers, ...(signal ? { signal } : {}) },
     );
-    return { status: response.status, body: await response.json() };
+    return {
+      status: response.status,
+      body: (await response.json()) as Record<string, any>,
+    };
   }
 
   /** The verdict of one request: a typed refusal, 404, or `reached`. */
