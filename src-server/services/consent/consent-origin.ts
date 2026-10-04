@@ -84,9 +84,7 @@ export function parseTrustedConsentOrigin(
   // Exact comparison with the canonical serialisation catches trailing junk,
   // a trailing slash, uppercase, whitespace and a spelled-out default port.
   if (raw !== url.origin) {
-    throw new TrustedConsentOriginError(
-      `use the canonical form ${url.origin}`,
-    );
+    throw new TrustedConsentOriginError(`use the canonical form ${url.origin}`);
   }
   return url.origin;
 }
