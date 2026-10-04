@@ -1,0 +1,7 @@
+{
+  "revision": "3ff57bc91496fd66f7b97eb67df16f6d49bd7ed5",
+
+  "notes": [
+    {"path":"docs/design/shell-skeletons.md","note":"Read the ProjectSettingsView.tsx delta: the Workspace preview path became a start-truncated inline parent/leaf line (#2799) and the unset text a separate element. The doc's claims about ProjectSettingsView (imports and renders DetailHeader; root wrapper still the bespoke project-settings div; still on the shell-conformance ratchet) concern none of that and still hold. Reasoned from the diff, no check executed.","inputs":["src-ui/src/views/ProjectSettingsView.tsx"]}
+  ]
+}

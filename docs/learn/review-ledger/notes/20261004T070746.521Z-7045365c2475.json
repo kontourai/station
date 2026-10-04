@@ -1,0 +1,9 @@
+{
+  "revision": "6bc85bb52f48b248d176bba707f8591a14f6f571",
+
+  "notes": [
+    {"path":"docs/guides/deployment.md","note":"Reviewed the final Dockerfile-command fixture against the temp-dir ratchet: homes are now registered with trackTempDirs at collection time and remain under this worktree via a relative prefix. Its afterEach cleanup runs even on assertion failure, after the function has signaled the PID/birth-verified supervisor and reaped real detached lifecycle children. This changes test resource ownership only, not service startup, schema admission, policy preservation, claim refusal or wait semantics.","inputs":["docs/guides/deployment.md","scripts/__tests__/service-container-command.test.ts"]},
+
+    {"path":"docs/design/instance-registry.md","note":"Reviewed the final Dockerfile-command fixture against the temp-dir ratchet: homes are now registered with trackTempDirs at collection time and remain under this worktree via a relative prefix. Its afterEach cleanup runs even on assertion failure, after the function has signaled the PID/birth-verified supervisor and reaped real detached lifecycle children. This changes test resource ownership only, not service startup, schema admission, policy preservation, claim refusal or wait semantics.","inputs":["docs/design/instance-registry.md","scripts/__tests__/service-container-command.test.ts"]}
+  ]
+}

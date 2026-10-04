@@ -239,7 +239,7 @@ class ConnectionInspectorImplementation implements ConnectionInspector {
       // catalog — project it so the composer's wire-channel gate sees the
       // observed evidence it requires instead of an absent field. Hoisted so
       // the not-ready state reason below can quote the same observation.
-      const runtimeCatalog = acpRuntimeCatalogStatus(liveStatus);
+      const runtimeCatalog = acpRuntimeCatalogStatus(liveStatus, config);
       connections.push({
         id: identity.id,
         kind: 'agent',

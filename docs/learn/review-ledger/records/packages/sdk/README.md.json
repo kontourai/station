@@ -20,6 +20,8 @@
 
     "packages/sdk/src/api-agent-runtime.ts",
 
+    "packages/sdk/src/client/skill-experiences.ts",
+
     "packages/sdk/src/client/task-tool-results.ts",
 
     "packages/sdk/src/components/Button.tsx",
@@ -33,6 +35,8 @@
     "packages/sdk/src/index.ts",
 
     "packages/sdk/src/providers.tsx",
+
+    "packages/sdk/src/query-domains/skillExperiences.ts",
 
     "packages/sdk/src/task-tool-results.ts",
 
@@ -58,11 +62,7 @@
 
     "src-ui/src/hooks/useActiveChatSessionMessaging.ts",
 
-    "src-ui/src/workspace-panes/ConnectedStationBasisPane.tsx",
-
-    "packages/sdk/src/client/skill-experiences.ts",
-
-    "packages/sdk/src/query-domains/skillExperiences.ts"
+    "src-ui/src/workspace-panes/ConnectedStationBasisPane.tsx"
   ],
 
   "checks": [

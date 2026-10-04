@@ -8,6 +8,7 @@ import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { HttpTransferRecorder } from '../src-server/__test-utils__/http-transfer-recorder.js';
 import { TransferMeasurementFailure } from '../src-server/__test-utils__/orchestration-transfer-scenario.js';
+import { createTransferCaptureProgress } from './lib/transfer-capture-progress.js';
 
 const targetRoot = resolve(process.argv[2] ?? '');
 const outputPath = process.argv[3];
@@ -28,6 +29,26 @@ const productionFiles = [
 const git = (...args: string[]) =>
   execFileSync('git', ['-C', targetRoot, ...args], { encoding: 'utf8' }).trim();
 const subjectSha = git('rev-parse', 'HEAD');
+const toolDigest = createHash('sha256')
+  .update(
+    [
+      'scripts/orchestration-transfer-capture.ts',
+      'scripts/lib/transfer-capture-progress.ts',
+      'src-server/__test-utils__/orchestration-transfer-scenario.ts',
+      'src-server/__test-utils__/http-transfer-recorder.ts',
+      'src-server/__test-utils__/orchestration-transfer-fixture.ts',
+      'scripts/orchestration-transfer-budget.mjs',
+    ]
+      .map((file) => readFileSync(join(toolRoot, file)))
+      .join('\n'),
+  )
+  .digest('hex');
+const progress = createTransferCaptureProgress(outputPath, {
+  subjectSha,
+  baseSha: baseSha ?? subjectSha,
+  toolDigest,
+});
+progress('source-validation');
 if (git('status', '--porcelain', '--', ...productionFiles))
   throw new Error('target production files are dirty');
 for (const file of productionFiles) {
@@ -36,6 +57,7 @@ for (const file of productionFiles) {
   if (disk !== committed)
     throw new Error(`target production hash mismatch: ${file}`);
 }
+progress('imports');
 const mod = async (file: string) =>
   import(pathToFileURL(join(targetRoot, file)).href);
 const toolMod = async (file: string) =>
@@ -84,20 +106,8 @@ const logger = {
   trace() {},
   fatal() {},
 };
+progress('runtime-startup');
 // Byte comparisons measure the same burst, including clock-coalesced activity bindings.
-const toolDigest = createHash('sha256')
-  .update(
-    [
-      'scripts/orchestration-transfer-capture.ts',
-      'src-server/__test-utils__/orchestration-transfer-scenario.ts',
-      'src-server/__test-utils__/http-transfer-recorder.ts',
-      'src-server/__test-utils__/orchestration-transfer-fixture.ts',
-      'scripts/orchestration-transfer-budget.mjs',
-    ]
-      .map((file) => readFileSync(join(toolRoot, file)))
-      .join('\n'),
-  )
-  .digest('hex');
 const realNow = Date.now;
 Date.now = () => Date.UTC(2026, 7, 25);
 
@@ -190,6 +200,7 @@ const budget = JSON.parse(
 ).policy;
 
 try {
+  progress('external-measurement');
   const externalRecorder = new HttpTransferRecorder(baseUrl);
   sdk.setClientCredentialResolver(() => ({
     origin: baseUrl,
@@ -249,6 +260,7 @@ try {
     budget,
   });
 
+  progress('native-measurement');
   const nativeThreadId = 'transfer-budget-station-agent-thread';
   let nativeHeavyTurnId: string | undefined;
   const nativeRecorder = new HttpTransferRecorder(baseUrl);
@@ -355,6 +367,7 @@ try {
     platform: process.platform,
     arch: process.arch,
   };
+  progress('report-write');
   writeFileSync(outputPath, `${JSON.stringify(report)}\n`);
   console.log(JSON.stringify(report));
 } catch (error) {
@@ -374,11 +387,15 @@ try {
 } finally {
   Date.now = realNow;
   sdk.setClientCredentialResolver();
+  progress('listener-close');
   listener.closeAllConnections?.();
   await new Promise<void>((resolveClose) =>
     listener.close(() => resolveClose()),
   );
+  progress('service-shutdown');
   await service.shutdown();
+  progress('store-close');
   store.close();
   rmSync(root, { recursive: true, force: true });
+  progress('cleanup-complete');
 }

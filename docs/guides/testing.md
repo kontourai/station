@@ -429,6 +429,19 @@ thread and turn identities are hashes. Payloads and tool output are excluded.
 The capture still exits nonzero, and this diagnostic cannot satisfy the
 successful matrix or promotion receipt. Preserve it when diagnosing a red gate.
 
+After resolving the target revision and tool digest, capture also maintains
+`<capture-path>.progress.json`. This bounded snapshot contains only those
+digests, the baseline revision, a fixed phase name, and monotonic elapsed
+milliseconds since snapshot creation, not since child spawn. It marks source validation, imports, runtime startup, both
+measurements, report writing, and cleanup. A child killed by the liveness bound
+can leave its last phase even when no measurement report exists. The snapshot
+contains no payloads or error text. A diagnostic write failure emits a fixed
+phase-only warning and does not interrupt measurement or cleanup. Neither
+the snapshot nor its warning establishes success; the gate
+still requires a completed capture and comparison. `cleanup-complete` means
+cleanup settled, including after a measurement refusal. Failures before the
+initial revision/digest resolution can still leave no snapshot.
+
 
 **The gate finds its own baseline (#2925).** With
 `STATION_TRANSFER_BASELINE_ROOT` unset, the gate resolves the merge base and

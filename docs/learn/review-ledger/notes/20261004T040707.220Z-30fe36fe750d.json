@@ -1,0 +1,7 @@
+{
+  "revision": "3b6fd451a7d74b396dd9087a7433b9274622847e",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Reviewed formatter-only delta to TaskOutputModule quota predicates: whitespace changes preserve current-incarnation filtering and global storage/identity bounds. Earlier source review, owner28 passing and independent route mutation receipts retain their exact revisions; no runtime or manual/provider/team/device/release claim renewed.","inputs":["src-server/services/projects/task-output-module.ts"]}
+  ]
+}
