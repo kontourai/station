@@ -47,3 +47,6 @@ c7b354a90db1e78e1203e2bff4e2bf9e1408fe29:src-desktop/src/native_station_key_cust
 # #3176: owner-attested synthetic public provider identity, not a credential.
 # Exact historical location only; fresh-context control remains detected.
 0814cc6ddb168cff69e5572b185a853540a4f6e0:src-server/routes/plugins/__tests__/registry-marketplaces.routes.test.ts:generic-api-key:430
+# Review-note prose about design tokens ("radius tokens: labels/captions 12.5px")
+# at one location in #3227's squash commit; no credential.
+c1d07db19cb827749835a9ca7d7f0f4c0fdf49a2:docs/learn/review-ledger/notes/20261001T130629.148Z-544c9256a5b7.json:generic-api-key:5

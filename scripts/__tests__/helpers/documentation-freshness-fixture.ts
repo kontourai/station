@@ -25,7 +25,7 @@ export const makeTempDir = trackTempDirs();
 export const scripts = resolve(import.meta.dirname, '../..');
 export const hash = (bytes: string | Buffer) =>
   createHash('sha256').update(bytes).digest('hex');
-export const image = Buffer.from(
+const image = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aF9sAAAAASUVORK5CYII=',
   'base64',
 );
@@ -75,7 +75,7 @@ export function merge(root: string, ref: string) {
   });
 }
 
-export function record(
+function record(
   path: string,
   sources: [string, string][],
   doc: string,
@@ -102,7 +102,7 @@ export const SHARED_C =
   'export const c1 = 1;\n// one\n// two\n// three\nexport const c2 = 1;\n';
 
 // A broad manifest that docs/pkg.md cites by one value, not as a whole.
-export const PACKAGE_JSON = `${JSON.stringify(
+const PACKAGE_JSON = `${JSON.stringify(
   { scripts: { docs: 'node docs.mjs', other: 'node other.mjs' } },
   null,
   2,
@@ -249,7 +249,7 @@ export function run(
     windowsHide: true,
   });
 }
-export type Entry = {
+type Entry = {
   kind: string;
   path: string;
   changed: string[];
@@ -257,7 +257,7 @@ export type Entry = {
 };
 
 /** The last stdout line as JSON: the CLIs' `--json` result. */
-export const lastJson = (stdout: string) => {
+const lastJson = (stdout: string) => {
   const line = stdout.trim().split('\n').at(-1);
   return line ? JSON.parse(line) : {};
 };
