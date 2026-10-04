@@ -34,11 +34,11 @@
 
     {"path":"src-ui/src/components/inbox-row/InboxRowStatus.tsx","digest":"d7cc9d13090f4c7d529e76bcd4828113375a1c52711ba6009d6e0cb8cad85418","revision":"b14f1b80ec27c38844b3d16e8a4bdfe624a778c9"},
 
-    {"path":"src-ui/src/contexts/navigation-store.ts","digest":"7c56b3435db459e9467c2adc3120feeef84c91f1dc4cf0eb96429e68429a036b","revision":"efa773acac88792cda31595f9afca4a37d3efebc"},
+    {"path":"src-ui/src/contexts/navigation-store.ts","digest":"57242aff66d969f4f3e6819f6b91dbeab3afc37a14856b59320731cf6f88d532","revision":"b8c14361a8bd8286ce7ca2f6e78035d937ac36c0"},
 
     {"path":"tests/cross-runtime-chat-switching.spec.ts","digest":"5426df79b21ad75b2f2ef15da154371b231f89c57bd97f01a8461de216cc0c44","revision":"390777781dc66faa6f34003ed872e2a5fcadc7e6"},
 
-    {"path":"src-ui/src/components/chat-dock/ChatDock.tsx","digest":"fa74f87bb3db229b4d3fbfd354e450f212d0250f9e7325cf1b6f2d967ec8bfd6","revision":"ed4b7b2c4440e328d5367f3d8f4a319a81dfba7e"},
+    {"path":"src-ui/src/components/chat-dock/ChatDock.tsx","digest":"d3a25d835baf83184526ca515bee7d5c87e93699ce3900ad847770a36f04ade5","revision":"b8c14361a8bd8286ce7ca2f6e78035d937ac36c0"},
 
     {"path":"src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx","digest":"c5e5d25bbd551b624adc140e460b0fe9fea20bff335baeedc9abb39d99227198","revision":"ffc972585fbd9f6397726ad39ed842ff7c897f49"},
 
@@ -68,7 +68,7 @@
 
     {"path":"src-ui/src/components/chat/ChatSettingsPanel.tsx","digest":"49032d0e229840abde143440d3c444f5164b241243cd081c53b5ab1f93538d3a","revision":"89765352964045a079d13a17bee54ab2de7b83e0"},
 
-    {"path":"packages/contracts/src/device-settings.ts","digest":"d289d1c6c2f89a5825880333cc1c1995a404e24e4890bdb4a5fc7fac5424a082","revision":"11b4ccc5932fa6788af8276326296bd86f51542c"},
+    {"path":"packages/contracts/src/device-settings.ts","digest":"b98486a9496e85718dfeec10a94c92f2d826261696de38a0f5d5d1a0417cb7bc","revision":"c63d2e949f92b218c2a7cd38941625c5446ce4cf"},
 
     {"path":"src-ui/src/components/status/chatStatus.ts","digest":"61867106c8e2218abab46c172f70c6359aeb515c443e259a38cbc3ebe125d988","revision":"c6ebec77b17b679e630a3857b10a6f814d7fb436"},
 
