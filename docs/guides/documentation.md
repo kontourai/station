@@ -226,7 +226,8 @@ Four guards sit on top of the layout (#3036):
   Re-record with `docs:review:record` instead; that adds a note.
 - **A missing merge base never skips that check.** In a pull request context
   (a `pull_request` event or `STATION_CI_FAST_BASE`) an unresolvable base
-  blocks with `append-only-unverified`. Locally the run falls back to strict
+  blocks with `append-only-unverified` (the version 3 layout only; older layouts
+  have no notes to protect). Locally the run falls back to strict
   and reports `Append-only notes: NOT_VERIFIED`, and `--json` carries
   `appendOnly: "NOT_VERIFIED"` (`verified` when checked, `not-checked` in
   advisory mode). Merge queue, push and Nightly events resolve to advisory
