@@ -174,10 +174,14 @@ function ActivityRowMeta({
   // The server's own account of how a run ended, in the row's accessible
   // text: a failure's cause is already on the line, a stop's is the
   // ladder's reason.
-  const terminalAttribution =
-    status.detail ??
-    freshFailure ??
-    (status.rung === 'stopped' ? status.reason : undefined);
+  // Only a run that ENDED has one: a running row's detail is its current
+  // tool, never an attribution of how it ended.
+  const ended = status.rung === 'failed' || status.rung === 'stopped';
+  const terminalAttribution = ended
+    ? (status.detail ??
+      freshFailure ??
+      (status.rung === 'stopped' ? status.reason : undefined))
+    : undefined;
   // When the cause IS the line's detail it is attributed in place: a second
   // sr-only copy read the failure twice.
   const attributedInLine =

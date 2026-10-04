@@ -360,6 +360,11 @@ describe('Activity list', () => {
     expect(within(meta).getByTestId('activity-row-state').textContent).toBe(
       'Running · Bash · 3m',
     );
+    // The tool is what it is doing, not how it ended: a running row carries
+    // no terminal attribution.
+    expect(
+      meta.querySelector('[data-testid="session-member-terminal-attribution"]'),
+    ).toBeNull();
     expect(meta.querySelector('[data-segment="project"]')?.textContent).toBe(
       'station',
     );
