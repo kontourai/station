@@ -123,6 +123,36 @@ function runOnlyFastGate(
 
 describe('bounded ci:fast runner', () => {
   it.skipIf(process.platform !== 'win32')(
+    'reports an unavailable npm launcher as infrastructure through the real CLI owner',
+    () => {
+      const root = makeTempDir('station-ci-fast-missing-npm-');
+      mkdirSync(join(root, 'scripts'));
+      writeFileSync(
+        join(root, 'scripts', 'node-runtime-contract.mjs'),
+        'process.exit(0);',
+      );
+      vi.stubEnv('npm_execpath', join(root, 'absent npm', 'npm-cli.js'));
+      let errorOutput = '';
+
+      const status = runCiFastCli({
+        run: () =>
+          runCiFast({
+            cwd: root,
+            env: { [FAST_SCOPE_ENV]: 'statics' },
+            report: () => {},
+          }),
+        error: (message) => {
+          errorOutput += message;
+        },
+      });
+
+      expect(status).toBe(CI_FAST_INFRASTRUCTURE_EXIT_CODE);
+      expect(errorOutput).toContain(CI_FAST_OWNER_INFRASTRUCTURE_PREFIX);
+      expect(errorOutput).toContain('cannot resolve npm CLI as a local file');
+    },
+  );
+
+  it.skipIf(process.platform !== 'win32')(
     'runs a required npm invariant through the selected CLI and propagates its failure',
     () => {
       const root = makeTempDir('station-ci-fast-npm-');
