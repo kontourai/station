@@ -46,7 +46,7 @@
 
     {"path":"src-server/providers/adapters/codex-approval-mode.ts","digest":"72b03e79d4d54962b60769c3749da7f421a822e271edebb0c6a9adbc0deaa321","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/providers/auth/claude-auth.ts","digest":"87dfd10433dabfd92ce895d165bcf9c9c7256c147a807748f8edcc1c04540dbd","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/providers/auth/claude-auth.ts","digest":"2d78bd04f3a89d7cabaa696c4bf5cded8b02f6864b4755c59e3f289d8bb9a3c5","revision":"dced8f7dced2957c7978b24a066f7f5dcfdec100"},
 
     {"path":"src-server/providers/llm/bedrock-credentials.ts","digest":"6d8ae20f4a862150ce14dcbbb75c580b4eef2fd3daa2f5f61fa7bed85dee7873","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
