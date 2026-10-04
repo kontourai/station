@@ -322,6 +322,24 @@ test('a Terminal placed beside Chat is the dock project’s: rendered, persisted
 });
 
 /**
+ * A host re-render must not remount the pane: the registry hands back one
+ * component per descriptor, and a remount strands any element a caller holds
+ * (it also restarts a real terminal). A registry stub that builds a component
+ * per call fails here deterministically, where it otherwise failed only when
+ * a re-render landed between a test's find and its assertions under load.
+ */
+test('a host re-render keeps the mounted coding pane element connected', async () => {
+  deviceSettingsStore.set('chatDockProjectSlug', 'alpha');
+  const { pane } = await renderWithChatAndTerminal();
+  act(() => deviceSettingsStore.set('chatDockProjectSlug', 'beta'));
+  await waitFor(() =>
+    expect(screen.getByTestId('coding-pane').dataset.project).toBe('beta-id'),
+  );
+  expect(pane.isConnected).toBe(true);
+  expect(screen.getByTestId('coding-pane')).toBe(pane);
+});
+
+/**
  * A project switch is a new authority fingerprint (the instance's
  * `boundContext` is part of it), not a pane-set change: the instance ids
  * stay, the region's shell is not remounted, and the mounted pane is handed
