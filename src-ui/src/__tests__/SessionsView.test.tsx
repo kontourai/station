@@ -3662,6 +3662,11 @@ describe('SessionsView', () => {
         {
           ...sessions[0],
           threadId: 'peer-delegation:847',
+          // The real writer's shape: the peer's target as the agent slug and
+          // the peer's conversation id.
+          assignedAgentSlug: 'codex',
+          conversationId: 'task-peer-847',
+          controlMode: 'station-owned',
           displayTitle: 'Run the peer checks',
           lifecycleState: 'queued',
           hasActiveTurn: false,
