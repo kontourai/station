@@ -121,7 +121,7 @@ export default function ImportedConversationPane({
         </div>
       )}
       {source.isLoading && (
-        <SkeletonBlock count={1} label="Opening conversation" />
+        <SkeletonBlock count={1} label="Opening chat" />
       )}
       {source.isError && (
         <ErrorState

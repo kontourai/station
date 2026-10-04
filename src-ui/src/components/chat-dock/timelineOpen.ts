@@ -15,7 +15,7 @@ export function openTimeline(
   selectChat: (storeId: string, routeId: string) => void,
 ) {
   if (opening) return opening;
-  const toastId = notify('Loading conversation history…', undefined, 0);
+  const toastId = notify('Loading history…', undefined, 0);
   opening = Promise.resolve()
     .then(() => {
       if (
@@ -48,7 +48,7 @@ export function openTimeline(
       notify(
         error instanceof Error
           ? error.message
-          : 'Could not open conversation history.',
+          : 'Could not open history.',
       );
     })
     .finally(() => {

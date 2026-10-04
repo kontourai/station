@@ -396,6 +396,7 @@ const SURFACE_ROOTS = [
   'components/flow/WorkflowPlanPanel.tsx',
   'components/chat/PendingApprovalStrip.tsx',
   'components/chat/TurnActivityProgress.tsx',
+  'components/chat/ChatEmptyState.tsx',
 ];
 
 /**
@@ -436,6 +437,13 @@ const RETIRED: ReadonlyArray<[retired: string, use: string]> = [
   ['Session inventory', 'Chat inventory'],
   ['Open code layout', 'Open in Coding'],
   ['Model not reported', 'omit the model'],
+  ['Loading conversation', 'Loading chat'],
+  ['Opening conversation', 'Opening chat'],
+  ['Catching up conversation', 'Catching up'],
+  ['Start a conversation', 'Start a chat'],
+  ['Conversation details', 'Chat details'],
+  ['Close conversation history', 'Close history'],
+  ['Earlier today', 'Earlier (the lane; the row time says when)'],
 ];
 
 /** Where a retired string may still legitimately appear, and why. */

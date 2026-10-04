@@ -1079,7 +1079,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     : sessionProjectMismatchLabel;
   const importedTitle = importedSession
     ? sessionTitle(importedSession)
-    : 'Conversation';
+    : 'Chat';
   const importedOrigin = importedSession
     ? `Started in ${displayProvider(importedSession)}`
     : 'Started in another app';
@@ -2305,7 +2305,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                       title: importedTitle,
                       agentName: importedSession
                         ? displayProvider(importedSession)
-                        : 'Conversation',
+                        : 'Chat',
                     }}
                     originLabel={importedOrigin}
                     originProvider={importedSession?.provider}
@@ -2587,7 +2587,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                         ) => openConversationForDock(id, isCurrent, true),
                       }}
                       pending={
-                        <SkeletonBlock count={1} label="Opening conversation" />
+                        <SkeletonBlock count={1} label="Opening chat" />
                       }
                     />
                   ) : null}

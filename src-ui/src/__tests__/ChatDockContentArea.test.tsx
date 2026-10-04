@@ -64,7 +64,7 @@ describe('ChatDockContentArea', () => {
     );
 
     const backdrop = screen.getByRole('button', {
-      name: 'Close conversation history',
+      name: 'Close history',
     });
     expect(backdrop.getAttribute('type')).toBe('button');
     expect(backdrop.getAttribute('tabindex')).toBe('-1');
@@ -82,7 +82,7 @@ describe('ChatDockContentArea', () => {
 
     expect(
       await screen.findByRole('status', {
-        name: 'Loading conversation history',
+        name: 'Loading history',
       }),
     ).toBeTruthy();
     historyPending = null;
@@ -101,7 +101,7 @@ describe('ChatDockContentArea', () => {
     expect(await screen.findByRole('alert')).toBeTruthy();
     expect(screen.getByText('No chat open')).toBeTruthy();
     fireEvent.click(
-      screen.getByRole('button', { name: 'Close conversation history' }),
+      screen.getByRole('button', { name: 'Close history' }),
     );
     expect(onCloseHistory).toHaveBeenCalledOnce();
 

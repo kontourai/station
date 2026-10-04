@@ -433,7 +433,7 @@ export function ChatDockBody({
    * point-read (`resolvingOpen`, seeded by `hydrateActiveChats` for every
    * persisted chat with a conversation id) and the transcript's first read
    * (`settled`). Before #1582 E3/B6 these produced a red "is read-only" alert,
-   * an empty "Start a conversation" placeholder and a second red line under
+   * an empty "Start a chat" placeholder and a second red line under
    * the composer — three contradictory claims about a healthy conversation.
    */
   const transcriptPending =
@@ -475,7 +475,7 @@ export function ChatDockBody({
    * after it. A turn ending bumps the history revision (and can re-key the
    * window when the conversation id lands), and that refetch is a background
    * refresh of a transcript already on screen: counting it flashed a
-   * "Loading conversation" skeleton and a "Start new chat" escape under the
+   * "Loading chat" skeleton and a "Start new chat" escape under the
    * finished answer on every turn. Once this session has shown messages, a
    * pending refetch keeps showing them and claims nothing is loading.
    */
@@ -1087,7 +1087,7 @@ export function ChatDockBody({
           {historyFailureNotice ??
             (conversationLoading ? (
               /*
-               * "Start a conversation" is a CLAIM that this chat has none, and
+               * "Start a chat" is a CLAIM that this chat has none, and
                * a transcript read that has not landed has established nothing.
                * It rendered here for ~1.7s on every reload of a conversation
                * that had turns in it (#1582 E3/B6). The skeleton keeps the flex
@@ -1097,8 +1097,8 @@ export function ChatDockBody({
                 count={4}
                 label={
                   transcript.catchingUp
-                    ? 'Catching up conversation'
-                    : 'Loading conversation'
+                    ? 'Catching up'
+                    : 'Loading chat'
                 }
               />
             ) : (
@@ -1112,7 +1112,7 @@ export function ChatDockBody({
       {displayedTranscriptMessages.length > 0 && (
         <LazyBoundary
           load={loadChatMessageList}
-          pending={<SkeletonList count={4} label="Loading conversation" />}
+          pending={<SkeletonList count={4} label="Loading chat" />}
           componentProps={{
             activeSession: renderedSession,
             suppressStreamingRow: transcript.openTurnProjected,
@@ -1644,7 +1644,7 @@ export function ChatDockBody({
         (delta-review M1).
       */}
       {conversationLoading && displayedTranscriptMessages.length > 0 ? (
-        <SkeletonBlock count={1} label="Loading conversation" />
+        <SkeletonBlock count={1} label="Loading chat" />
       ) : null}
       {/*
         The one way out of the wait. `.session-history-controls` is this pane's
@@ -1766,7 +1766,7 @@ export function ChatDockBody({
                     connection.id === activeSession.agentConnectionId,
                 )?.name ??
                 engineDisplayLabel(turnProgressSilence.provider) ??
-                'the engine'
+                'the agent'
               }
             />
             {'. '}

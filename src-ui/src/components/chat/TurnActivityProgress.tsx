@@ -96,7 +96,7 @@ function describeTurnActivity(
   const silentSince = epochMs(activity.progressSilence?.silentSinceEventAt);
   if (silentSince !== undefined) {
     // The status ladder's word ("No progress"), naming who went quiet.
-    parts.silence = `No progress from ${engineDisplayLabel(activity.progressSilence?.provider ?? '') ?? 'the engine'} for ${formatActivityDuration(now - silentSince)}`;
+    parts.silence = `No progress from ${engineDisplayLabel(activity.progressSilence?.provider ?? '') ?? 'the agent'} for ${formatActivityDuration(now - silentSince)}`;
   }
   return parts;
 }

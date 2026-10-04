@@ -57,8 +57,6 @@ import {
   activityOriginOptions,
   activityOriginShortLabel,
   activityProjectOptions,
-  DATED_STREAM_ORDER,
-  datedStreamBucket,
   matchesActivityKind,
   matchesActivityOrigin,
   NO_ACTIVITY_FILTERS,
@@ -88,18 +86,8 @@ import './page-layout.css';
 /** Live-refresh cadence for the all-sessions list (the SSE feed is per-session). */
 const SESSION_LIST_REFRESH_MS = 5000;
 
-/** How often relative times, lanes and dated buckets re-derive. */
+/** How often relative times and lanes re-derive. */
 const ACTIVITY_CLOCK_MS = 30_000;
-
-/**
- * The terminal history lane that reads as a dated stream ("what happened
- * while I was away", docs/design/shell-ownership-and-boards.md). Typed as a
- * lane id on purpose: if the lane model renames or drops it, this line stops
- * compiling instead of silently rendering an undated lane. Every OTHER lane
- * heading is rendered generically from `SESSION_LANE_ORDER` /
- * `SESSION_LANE_LABELS`.
- */
-const DATED_STREAM_LANE: SessionLaneId = 'earlier';
 
 function isReadOnlyAttachedSession(
   session: OrchestrationSessionSummary,
@@ -362,8 +350,7 @@ export function SessionsView({
     useState<SessionEvidenceReveal | null>(null);
   const [search, setSearch] = useState('');
   // One clock for everything time-based on this surface — lane membership
-  // (the recently-finished window), the dated history buckets and the row
-  // times — so they age together instead of freezing at the last data change.
+  // (the recently-finished window) and the row times — so they age together instead of freezing at the last data change.
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), ACTIVITY_CLOCK_MS);
@@ -643,8 +630,7 @@ export function SessionsView({
     const order = Math.min(
       ...members.map((member) => orderByThreadId.get(member.threadId)!),
     );
-    const recency = Math.max(...members.map(activityRecency));
-    return { presentation, members, laneId, order, recency };
+    return { presentation, members, laneId, order };
   });
   // #2312: Drafts untouched for a day fold under "N older drafts", collapsed
   // until opened. They are the Drafts lane's trailing rows (the lane is
@@ -804,20 +790,6 @@ export function SessionsView({
               row.presentation.kind !== 'run' && isOlderDraft(row.members),
           ).length
         : 0;
-    // The dated stream: the terminal history lane splits into "Earlier
-    // today" / "Yesterday" / "This week" / "Older" by the same recency fold
-    // the lane sorts by. Sorting by bucket first keeps each sub-section
-    // contiguous even when a run's position and recency disagree.
-    const dated = laneId === DATED_STREAM_LANE;
-    const bucketOf = (row: (typeof lanePresentations)[number]) =>
-      datedStreamBucket(row.recency, now);
-    if (dated)
-      lanePresentations.sort(
-        (left, right) =>
-          DATED_STREAM_ORDER.indexOf(bucketOf(left)) -
-            DATED_STREAM_ORDER.indexOf(bucketOf(right)) ||
-          left.order - right.order,
-      );
     // A section's count means members CLASSIFIED into this lane. A mixed-state
     // run RENDERS in its highest-priority member lane, but its members still
     // count where their own state belongs: one waiting child in an
@@ -827,27 +799,21 @@ export function SessionsView({
     // folded conversation is the unit this list shows, the same population
     // Home and Project Live Work count.
     //
-    // A dated sub-section counts the rows PLACED in it: a run goes where its
-    // newest member is, and every member of it classified into this lane is
-    // counted there, so each heading's count is what sits under it.
+    // The history lane is "Earlier", as on Home and in the dock (design round
+    // 2026-10, C2): it used to split into "Earlier today" / "Yesterday" /
+    // "This week" / "Older", a second set of names for one lane. Each row's
+    // own time ("3h", "2d", "Sep 12") already says when.
     const classifiedIn = (row: (typeof lanePresentations)[number]) =>
       row.members.filter(
         (member) => lanesByThreadId.get(member.threadId) === laneId,
       ).length;
-    const countBySection = new Map<string, number>();
-    const sectionKeyOf = (row: (typeof lanePresentations)[number]) =>
-      dated ? bucketOf(row) : SESSION_LANE_LABELS[laneId];
-    for (const row of lanePresentations) {
-      const key = sectionKeyOf(row);
-      countBySection.set(
-        key,
-        (countBySection.get(key) ?? 0) + classifiedIn(row),
-      );
-    }
+    const laneCount = lanePresentations.reduce(
+      (total, row) => total + classifiedIn(row),
+      0,
+    );
+    const section = `${SESSION_LANE_LABELS[laneId]} · ${laneCount}`;
     return lanePresentations.flatMap((row) => {
       const { presentation, members } = row;
-      const sectionKey = sectionKeyOf(row);
-      const section = `${sectionKey} · ${countBySection.get(sectionKey)}`;
       const subtaskCount = members.length - 1;
       // A run renders in its highest-priority member's lane — the point is
       // that a waiting subtask surfaces the run. When that pulls the run
@@ -1137,7 +1103,6 @@ export function SessionsView({
            ones). */
         label="Activity"
         title="Activity"
-        subtitle="What's running, what needs you, and what happened."
         emptyDescription="Select an item to read what happened and review its evidence."
         firstRunAnchor="activity"
       >

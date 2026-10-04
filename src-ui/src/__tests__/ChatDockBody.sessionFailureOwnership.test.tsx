@@ -527,14 +527,21 @@ describe('ChatDockBody turn-stall notice (#765)', () => {
     const chatInput = buildChatInput();
     // `isTurnInFlight` — status 'sending' is the local in-flight signal.
     const session = buildSession({ status: 'sending' });
+    // Four minutes after the last progress event, so the elapsed reading is
+    // a known value rather than however long ago the fixture's date is.
+    const now = vi
+      .spyOn(Date, 'now')
+      .mockReturnValue(Date.parse('2026-08-29T12:04:00.000Z'));
     renderDock(session, stalledOrchestrationSession(), chatInput);
 
     expect(screen.getByTestId('chat-dock-turn-stall-notice')).toBeTruthy();
-    // The ladder's word, naming who went quiet; main's "No response from X
-    // … Still waiting." was a second way of saying it.
+    // The ladder's word, naming who went quiet, in the row's elapsed format;
+    // main's "No response from X … Still waiting." was a second way of
+    // saying it.
     expect(
-      screen.getByText(/No progress from Claude Code for \d+s/),
+      screen.getByText('No progress from Claude Code for 4m 00s'),
     ).toBeTruthy();
+    now.mockRestore();
     expect(screen.queryByText(/retrying/i)).toBeNull();
     expect(screen.queryByText(/No response/i)).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: /stop this turn/i }));

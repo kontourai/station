@@ -1098,7 +1098,7 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
     // The wait is announced by the repo's skeleton vocabulary, not a bespoke
     // sentence, and not by `role="alert"` — `role`/tone are what made this
     // ordinary phase read as a failure.
-    const notice = await screen.findByLabelText('Loading conversation');
+    const notice = await screen.findByLabelText('Loading chat');
     expect(notice.getAttribute('role')).toBe('status');
     expect(notice.getAttribute('aria-busy')).toBe('true');
     // The conversation-open banner specifically: this suite's default session
@@ -1124,7 +1124,7 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
       }),
     });
 
-    await screen.findByLabelText('Loading conversation');
+    await screen.findByLabelText('Loading chat');
     // 1. no red read-only banner — asserted on the error BOX as well as the
     //    words, because the box is what makes the state read as a failure.
     expect(screen.queryByText(/is read-only/)).toBeNull();
@@ -1134,9 +1134,9 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
     expect(document.querySelector('.session-history-error')).toBeNull();
     expect(screen.queryByRole('alert')).toBeNull();
     // 2. no empty-conversation placeholder over a transcript that has not
-    //    finished loading — "Start a conversation" is a claim that this chat
+    //    finished loading — "Start a chat" is a claim that this chat
     //    has none, which nothing has established yet.
-    expect(screen.queryByText('Start a conversation')).toBeNull();
+    expect(screen.queryByText('Start a chat')).toBeNull();
     // 3. no second sentence under the composer saying the same thing again
     expect(chatInputPropsMock.current?.sendBlockedReason).toBeUndefined();
   });
@@ -1169,7 +1169,7 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
         onRetryConversationOpen: vi.fn(),
         loadingEscapeDelayMs: 1_500,
       });
-      expect(screen.getByLabelText('Loading conversation')).toBeTruthy();
+      expect(screen.getByLabelText('Loading chat')).toBeTruthy();
       expect(
         screen.queryByRole('button', { name: 'Start new chat' }),
       ).toBeNull();
@@ -1282,8 +1282,8 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
       }),
     });
 
-    expect(screen.queryByText('Start a conversation')).toBeNull();
-    expect(await screen.findByLabelText('Loading conversation')).toBeTruthy();
+    expect(screen.queryByText('Start a chat')).toBeNull();
+    expect(await screen.findByLabelText('Loading chat')).toBeTruthy();
     // The composer is NOT disabled by a transcript read: nothing about an
     // unrendered history stops a new message, and disabling it here would be a
     // new refusal wearing the fix's name.
@@ -1305,8 +1305,8 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
       }),
     });
 
-    expect(await screen.findByText('Start a conversation')).toBeTruthy();
-    expect(screen.queryByLabelText('Loading conversation')).toBeNull();
+    expect(await screen.findByText('Start a chat')).toBeTruthy();
+    expect(screen.queryByLabelText('Loading chat')).toBeNull();
   });
 
   // The mirror: once the read lands on a genuine verdict the error chrome is
@@ -1332,7 +1332,7 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
       ),
     ).toBeTruthy();
     expect(screen.queryByText(/is read-only/)).toBeNull();
-    expect(screen.queryByLabelText('Loading conversation')).toBeNull();
+    expect(screen.queryByLabelText('Loading chat')).toBeNull();
     expect(chatInputPropsMock.current?.disabled).toBe(true);
     // The notice carries the explanation and the Retry; the composer does not
     // repeat it, and above all does not call the chat read-only.

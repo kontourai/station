@@ -3837,15 +3837,14 @@ describe('SessionsView', () => {
       const { container } = renderView();
 
       // The live lanes have no members here and therefore emit nothing at all.
-      // The six-hour-old row reads under the dated history stream, whose
-      // sub-section depends on the local hour the suite runs at.
-      const headings = sectionHeadings(container);
-      expect(headings.slice(0, 2)).toEqual([
+      // The six-hour-old row reads under "Earlier", the lane's one name on
+      // every surface — not a dated sub-section ("Earlier today",
+      // "Yesterday", …) that renamed it here alone (design round 2026-10, C2).
+      expect(sectionHeadings(container)).toEqual([
         'Needs you · 2',
         'Just finished · 1',
+        'Earlier · 1',
       ]);
-      expect(['Earlier today · 1', 'Yesterday · 1']).toContain(headings[2]);
-      expect(headings).toHaveLength(3);
       expect(rowNames(container)).toEqual([
         'Waiting on a decision',
         'Also waiting on you',
@@ -3879,11 +3878,7 @@ describe('SessionsView', () => {
         Running: ['Running'],
         Idle: ['Idle', 'Elsewhere'],
         'Just finished': FINISHED,
-        // The history lane's dated sub-sections.
-        'Earlier today': FINISHED,
-        Yesterday: FINISHED,
-        'This week': FINISHED,
-        Older: FINISHED,
+        Earlier: FINISHED,
       };
 
       sessions = [
@@ -3987,12 +3982,13 @@ describe('SessionsView', () => {
       // while checking nothing.
       expect(rendered).toHaveLength(7);
       const headings = new Set(rendered.map((entry) => entry.heading));
-      expect(
-        [...headings].filter(
-          (heading) => heading !== 'Earlier today' && heading !== 'Yesterday',
-        ),
-      ).toEqual(['Needs you', 'Running', 'Idle', 'Just finished']);
-      expect(headings.size).toBe(5);
+      expect([...headings]).toEqual([
+        'Needs you',
+        'Running',
+        'Idle',
+        'Just finished',
+        'Earlier',
+      ]);
 
       for (const entry of rendered) {
         const permitted = LANE_VOCABULARY[entry.heading];

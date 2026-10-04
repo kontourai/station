@@ -48,7 +48,7 @@ test('shows one persistent loading notice and coalesces duplicate opens', async 
   );
   expect(first).toBe(duplicate);
   expect(notify).toHaveBeenCalledWith(
-    'Loading conversation history…',
+    'Loading history…',
     undefined,
     0,
   );

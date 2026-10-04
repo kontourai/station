@@ -136,8 +136,8 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => {
 
 import { SessionsView } from '../../SessionsView';
 
-// A fixed local "now" so the dated sub-sections do not depend on the hour
-// the suite runs at. Only `Date` is faked; timers stay real for waitFor.
+// A fixed local "now" so row times do not depend on the hour the suite
+// runs at. Only `Date` is faked; timers stay real for waitFor.
 const NOW = new Date(2026, 8, 29, 15, 0, 0).getTime();
 const minutesAgo = (minutes: number) =>
   new Date(NOW - minutes * 60_000).toISOString();
@@ -206,6 +206,12 @@ function renderView() {
       </NavigationProvider>
     </QueryClientProvider>,
   );
+}
+
+function rowNames(container: HTMLElement): string[] {
+  return Array.from(
+    container.querySelectorAll('.split-pane__list .split-pane__item-name'),
+  ).map((name) => name.textContent?.trim() ?? '');
 }
 
 function sectionHeadings(container: HTMLElement): string[] {
@@ -282,7 +288,7 @@ describe('Activity list', () => {
     ).toBe('The model provider returned an error (HTTP 500).');
   });
 
-  test('renders the state lane headings, live lanes first, and splits the history lane into dated sub-sections', () => {
+  test('renders the state lane headings, live lanes first, and names the history lane Earlier like every other surface', () => {
     sessions = [
       session('Answer my question', { lifecycleState: 'needs_input' }),
       runningChat(),
@@ -306,10 +312,16 @@ describe('Activity list', () => {
       `${label('needsYou')} · 1`,
       `${label('running')} · 1`,
       `${label('recentlyFinished')} · 1`,
-      'Earlier today · 1',
-      'Yesterday · 1',
-      'This week · 1',
-      'Older · 1',
+      // One lane, one name (design round 2026-10, C2): not "Earlier today" /
+      // "Yesterday" / "This week" / "Older" here and "Earlier" on Home and in
+      // the dock. The four history rows sit under it, newest first.
+      'Earlier · 4',
+    ]);
+    expect(rowNames(container).slice(-4)).toEqual([
+      'Morning cleanup',
+      'Yesterday review',
+      'Tuesday notes',
+      'Last month',
     ]);
     // Failed work sits in its lane with its reason, never among the clean
     // completions without a word.
