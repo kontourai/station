@@ -9,6 +9,7 @@ import {
   skillExperiencesCanExecute,
 } from '@kontourai/station-shared/skill-experience-values';
 import React, {
+  type ComponentProps,
   useCallback,
   useEffect,
   useEffectEvent,
@@ -21,7 +22,10 @@ import type { ProjectMetadata } from '../../contexts/ProjectsContext';
 import { useDevicePresentation } from '../../hooks/useDevicePresentation';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useNewChatSelectionModel } from '../../hooks/useNewChatSelectionModel';
-import { trackRecentAgent } from '../../hooks/useRecentAgents';
+import {
+  trackContextAgent,
+  trackRecentAgent,
+} from '../../hooks/useRecentAgents';
 import { isComposingKeyEvent } from '../../lib/isComposingKeyEvent';
 import type { SkillExperienceDraft } from '../../lib/skill-experience-draft';
 import { agentEngineDescriptor } from '../../utils/engine';
@@ -37,10 +41,12 @@ import { agentRunnability } from '../agent-runnability';
 import { Button } from '../Button';
 import { EngineChip, engineChipLabel } from '../badges/EngineChip';
 import { normalizedDisplayLabel } from '../chat/message-bubble/MessageAttribution';
+import type { RecentChatList as RecentList } from '../chat-start/RecentChatList';
 import {
   buildCodingChatInitialMessage,
   type CodingChatContextDraft,
 } from '../coding-layout/chatContextDraft';
+import '../chat-start/ChatStart.css';
 import { HomeFolderLabel } from '../HomeFolderLabel';
 import { AgentIcon } from '../icons/AgentIcon';
 import {
@@ -56,6 +62,7 @@ import { LayoutIcon } from '../icons/LayoutIcon';
 import {
   ResponsiveDialogCloseButton,
   ResponsiveDialogSurface,
+  ResponsiveSurfaceActions,
 } from '../ResponsiveDialogSurface';
 import { ModelPickerDialogFrame } from '../session/ModelPickerDialogFrame';
 import { SkillExperiencePicker } from '../skill-experiences/SkillExperiencePicker';
@@ -77,6 +84,17 @@ import {
   type NewChatSetupAuthority,
   useNewChatSetupReturn,
 } from './useNewChatSetupReturn';
+
+const ChatSetupHelper = React.lazy(() =>
+  import('../chat-start/ChatSetupHelper').then((module) => ({
+    default: module.ChatSetupHelper,
+  })),
+);
+const RecentChatList = React.lazy(() =>
+  import('../chat-start/RecentChatList').then((module) => ({
+    default: module.RecentChatList,
+  })),
+);
 
 const SessionModelPicker = React.lazy(() =>
   import('../session/SessionModelPicker').then((module) => ({
@@ -111,6 +129,7 @@ interface NewChatModalProps {
     providerId?: string,
     providerType?: string,
     experienceDraft?: SkillExperienceDraft,
+    sendInitialMessage?: boolean,
   ) => void | Promise<void>;
   onClose: () => void;
   draftContext?: CodingChatContextDraft | null;
@@ -118,6 +137,8 @@ interface NewChatModalProps {
   requestAuthority?: NewChatSetupAuthority;
   startWithDefault?: boolean;
   initialPrompt?: string;
+  startSurface?: boolean;
+  recentChats?: Omit<ComponentProps<typeof RecentList>, 'context' | 'agents'>;
 }
 
 /** "Global" sentinel for the context picker */
@@ -132,6 +153,8 @@ export function NewChatModal({
   requestAuthority,
   startWithDefault = false,
   initialPrompt,
+  startSurface = false,
+  recentChats,
 }: NewChatModalProps) {
   const { namespace, status: authorityStatus } = useAuthorityPersistence();
   const experienceInventory = useSkillExperienceInventoryQuery({
@@ -165,6 +188,20 @@ export function NewChatModal({
     string | undefined
   >();
   const [showChatOptions, setShowChatOptions] = useState(false);
+  const [prompt, setPrompt] = useState('');
+  const [draftAgentSlug, setDraftAgentSlug] = useState<string>();
+  const [submitting, setSubmitting] = useState(false);
+  const submitInFlight = useRef(false);
+  const promptRef = useRef<HTMLTextAreaElement>(null);
+  const composerFirst =
+    startSurface &&
+    !mode &&
+    !draftContext &&
+    !initialPrompt &&
+    !startWithDefault &&
+    !experience;
+  const showStart = composerFirst && !showChatOptions;
+
   const automaticMode = startWithDefault && !mode && !showChatOptions;
   const [agentSearch, setAgentSearch] = useState('');
   const preservedAgentSlug = useRef<string | undefined>(undefined);
@@ -241,6 +278,7 @@ export function NewChatModal({
     modelsError,
     refetchAgentConnections,
     refetchModelConnections,
+    agentConnections = [],
     modelConnections = [],
     modelChoices,
     setModelChoices,
@@ -255,7 +293,7 @@ export function NewChatModal({
     selectedContext,
     contextSearch,
     agentSearch,
-    revalidateSelection: startWithDefault || returnedFromSetup,
+    revalidateSelection: startSurface || startWithDefault || returnedFromSetup,
   });
   const {
     isGlobal,
@@ -269,6 +307,12 @@ export function NewChatModal({
     scopedAgents = [],
     compatibilityMessage,
   } = viewModel;
+  const draftAgent = draftAgentSlug
+    ? (scopedAgents.find((agent) => agent.slug === draftAgentSlug) ??
+      flatList.find((agent) => agent.slug === draftAgentSlug))
+    : defaultSelection?.missingPreferredAgentSlug
+      ? undefined
+      : (defaultSelection?.preferredAgent ?? defaultSelection?.agent);
   const preferredAgentSlug = mode?.preferredAgentSlug;
   const preferredAgentIndex = preferredAgentSlug
     ? flatList.findIndex((agent) => agent.slug === preferredAgentSlug)
@@ -295,7 +339,7 @@ export function NewChatModal({
           : defaultSelection?.agent,
       ),
     onCancel: onClose,
-    allowedPaths: ['/registry', '/connections'],
+    allowedPaths: ['/registry', '/connections', '/agents'],
     revalidate: async () => {
       if (!mode && !startWithDefault && !initialPrompt)
         await experienceInventory.refetch();
@@ -307,6 +351,10 @@ export function NewChatModal({
         ]);
     },
     onResume: (error) => {
+      if (composerFirst) {
+        setShowChatOptions(false);
+        setAgentSearch('');
+      }
       setAdmissionError(error);
       setReturnedFromSetup(true);
       const slug = preservedAgentSlug.current;
@@ -329,6 +377,7 @@ export function NewChatModal({
     },
   });
   const beginSetup = (path: string, agentSlug?: string) => {
+    if (composerFirst && agentSlug) setDraftAgentSlug(agentSlug);
     if (!setupReturn.begin(path)) {
       setSelectFeedback('Reconnect to this Station before opening setup.');
       return;
@@ -386,7 +435,7 @@ export function NewChatModal({
   // engine connection's own Working Directory outranks `$HOME` for a project
   // that names no directory — see resolveNewChatWorkspaceHint.
   const workspaceHint = resolveNewChatWorkspaceHint({
-    agent: flatList[selectedAgentIndex],
+    agent: showStart ? draftAgent : flatList[selectedAgentIndex],
     project: selectedProject,
     acpConnections,
   });
@@ -405,8 +454,11 @@ export function NewChatModal({
   useEffect(() => {
     // Opening a picker must never summon the software keyboard before a phone
     // user asks to type. Desktop keeps the fast keyboard-first flow.
-    if (!isMobile && !contextOpen) agentInputRef.current?.focus();
-  }, [contextOpen, isMobile]);
+    if (!isMobile && !contextOpen) {
+      if (showStart) promptRef.current?.focus();
+      else agentInputRef.current?.focus();
+    }
+  }, [contextOpen, isMobile, showStart]);
 
   // Mobile sheet focus management. The sheet is a DOM sibling of the trigger
   // button (both children of `contextRef`), not a descendant of it, and
@@ -483,13 +535,28 @@ export function NewChatModal({
 
   const materializeEngineAgent = useMaterializeEngineAgentMutation();
 
-  const handleSelect = (agent: AgentData) => {
+  const handleSelect = (agent: AgentData, sendInitialMessage = false) => {
     if (
       !requestActive.current ||
       (initialAuthority.current && !initialAuthority.current.isCurrent())
     )
       return;
-    if (mode?.pending) return;
+    if (mode?.pending || setupReturn.pending) return;
+    if (
+      sendInitialMessage &&
+      (runtimeError ||
+        modelsError ||
+        setupError ||
+        setupFetching ||
+        runtimeFetching ||
+        modelsFetching ||
+        !projectCatalogResolved)
+    ) {
+      setSelectFeedback(
+        'Wait for chat setup to finish checking, or retry the failed connection read.',
+      );
+      return;
+    }
     if (checkingSetup) {
       setSelectFeedback('Wait for connections to finish checking.');
       return;
@@ -536,7 +603,7 @@ export function NewChatModal({
         selectedDraftContextIds.includes(item.id),
       ) || [];
     const initialMessage =
-      initialPrompt ??
+      (sendInitialMessage ? prompt.trim() : initialPrompt) ??
       buildCodingChatInitialMessage(draftItems, draftContext?.framing);
     const defaultEffectiveModel = defaultEffectiveModelForAgent(agent);
     const choice = modelChoices[modelChoiceKey(agent)];
@@ -604,7 +671,29 @@ export function NewChatModal({
         );
         return;
       }
+      const experienceDraft: SkillExperienceDraft | undefined =
+        experience && namespace && requestAuthority
+          ? {
+              namespace,
+              apiBase: requestAuthority.apiBase,
+              definition: experience.definition,
+              start: {
+                identity: experience.identity,
+                inputs: experienceInputs,
+              },
+            }
+          : undefined;
+      const startOptions: [SkillExperienceDraft?, boolean?] = sendInitialMessage
+        ? [experienceDraft, true]
+        : experienceDraft
+          ? [experienceDraft]
+          : [];
       try {
+        if (sendInitialMessage && submitInFlight.current) return;
+        if (sendInitialMessage) {
+          submitInFlight.current = true;
+          setSubmitting(true);
+        }
         void Promise.resolve(
           onSelect(
             agent,
@@ -621,32 +710,32 @@ export function NewChatModal({
             choice?.providerOptions,
             choice?.providerId,
             choice?.providerType,
-            ...(experience && namespace && requestAuthority
-              ? ([
-                  {
-                    namespace,
-                    apiBase: requestAuthority.apiBase,
-                    definition: experience.definition,
-                    start: {
-                      identity: experience.identity,
-                      inputs: experienceInputs,
-                    },
-                  },
-                ] as const)
-              : ([] as const)),
+            ...startOptions,
           ),
-        ).catch((error) => {
-          console.error(
-            mode?.kind === 'fork'
-              ? 'Conversation fork failed:'
-              : 'New chat start failed:',
-            error,
-          );
-          setSelectFeedback(
-            'Could not start the chat. Try again; if it keeps failing, restart Station.',
-          );
-        });
+        )
+          .then(() => {
+            try {
+              trackContextAgent(namespace, selectedContext, agent.slug);
+            } catch {
+              /* Recency must not block a started chat. */
+            }
+          })
+          .catch((error) => {
+            submitInFlight.current = false;
+            setSubmitting(false);
+            console.error(
+              mode?.kind === 'fork'
+                ? 'Conversation fork failed:'
+                : 'New chat start failed:',
+              error,
+            );
+            setSelectFeedback(
+              'Could not start the chat. Try again; if it keeps failing, restart Station.',
+            );
+          });
       } catch (error) {
+        submitInFlight.current = false;
+        setSubmitting(false);
         console.error('New chat start failed:', error);
         setSelectFeedback(
           'Could not start the chat. Try again; if it keeps failing, restart Station.',
@@ -785,7 +874,10 @@ export function NewChatModal({
       enable.engineConnectionId,
     );
     if (existing) {
-      handleSelect(existing);
+      if (composerFirst) {
+        setDraftAgentSlug(existing.slug);
+        setShowChatOptions(false);
+      } else handleSelect(existing);
       return;
     }
     const engineLabel = agent.engineDisplayName ?? agent.name;
@@ -826,7 +918,11 @@ export function NewChatModal({
         return;
       }
       setSelectFeedback(null);
-      handleSelect(materialized);
+      if (composerFirst) {
+        setDraftAgentSlug(materialized.slug);
+        setShowChatOptions(false);
+        if (refreshSetup) await refreshSetup();
+      } else handleSelect(materialized);
     } catch (error) {
       setSelectFeedback(
         `Could not enable ${engineLabel}: ${
@@ -869,7 +965,7 @@ export function NewChatModal({
       discoveryInProgress ||
       selectFeedback ||
       automaticStartAttempted.current ||
-      setupReturn.suspended ||
+      setupReturn.pending ||
       runtimeLoading ||
       modelsLoading ||
       runtimeFetching ||
@@ -898,7 +994,7 @@ export function NewChatModal({
     automaticMode,
     discoveryInProgress,
     selectFeedback,
-    setupReturn.suspended,
+    setupReturn.pending,
     runtimeLoading,
     modelsLoading,
     runtimeFetching,
@@ -916,8 +1012,7 @@ export function NewChatModal({
   ]);
 
   const closeChatRequest = () => {
-    requestActive.current = false;
-    setupReturn.close();
+    if (setupReturn.close()) requestActive.current = false;
   };
 
   if (setupReturn.suspended) return null;
@@ -1055,17 +1150,23 @@ export function NewChatModal({
   return (
     <ResponsiveDialogSurface
       layer="dialog"
-      ariaLabel={mode?.kind === 'fork' ? 'Fork from here' : 'New Chat'}
+      ariaLabel={
+        mode?.kind === 'fork'
+          ? 'Fork from here'
+          : showStart
+            ? 'New chat'
+            : 'New Chat'
+      }
       overlayClassName="new-chat-modal__overlay"
       panelClassName="new-chat-modal"
-      initialFocusRef={agentInputRef}
+      initialFocusRef={showStart ? promptRef : agentInputRef}
       initialFocusPolicy="desktop"
       onClose={closeChatRequest}
     >
       <div className="new-chat-modal__header">
         <div className="new-chat-modal__title-row">
           <h3 className="new-chat-modal__title">
-            {mode?.kind === 'fork' ? 'Fork from here' : 'New Chat'}
+            {mode?.kind === 'fork' ? 'Fork from here' : 'New chat'}
           </h3>
           <ResponsiveDialogCloseButton
             label={mode?.kind === 'fork' ? 'Cancel fork' : 'Close new chat'}
@@ -1079,7 +1180,7 @@ export function NewChatModal({
           </div>
         )}
 
-        {!mode && !startWithDefault && !initialPrompt && (
+        {!showStart && !mode && !startWithDefault && !initialPrompt && (
           <SkillExperiencePicker
             query={experienceInventory}
             selected={experience}
@@ -1168,6 +1269,7 @@ export function NewChatModal({
                 onSelectContext={(value) => {
                   contextSelectionTouchedRef.current = true;
                   preservedAgentSlug.current = undefined;
+                  setDraftAgentSlug(undefined);
                   setSelectedContext(value);
                   setContextOpen(false);
                   setSelectedAgentIndex(0);
@@ -1209,6 +1311,7 @@ export function NewChatModal({
                     onSelectContext={(value) => {
                       contextSelectionTouchedRef.current = true;
                       preservedAgentSlug.current = undefined;
+                      setDraftAgentSlug(undefined);
                       setSelectedContext(value);
                       setContextOpen(false);
                       setSelectedAgentIndex(0);
@@ -1220,37 +1323,57 @@ export function NewChatModal({
           )}
         </div>
 
-        {/* Agent search */}
-        <input
-          ref={agentInputRef}
-          type="text"
-          placeholder="Search agents..."
-          value={agentSearch}
-          onChange={(e) => {
-            preservedAgentSlug.current = undefined;
-            setAgentSearch(e.target.value);
-            setSelectedAgentIndex(0);
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'ArrowDown') {
-              preservedAgentSlug.current = undefined;
-              e.preventDefault();
-              setSelectedAgentIndex((p) =>
-                Math.min(p + 1, flatList.length - 1),
-              );
-            } else if (e.key === 'ArrowUp') {
-              preservedAgentSlug.current = undefined;
-              e.preventDefault();
-              setSelectedAgentIndex((p) => Math.max(p - 1, 0));
-            } else if (
-              e.key === 'Enter' &&
-              !isComposingKeyEvent(e) &&
-              flatList[selectedAgentIndex]
-            )
-              handleSelect(flatList[selectedAgentIndex]);
-          }}
-          className="new-chat-modal__search"
-        />
+        {!showStart && (
+          <>
+            {composerFirst && (
+              <Button
+                variant="link"
+                onClick={() => {
+                  setShowChatOptions(false);
+                  setAgentSearch('');
+                }}
+              >
+                Back to chat
+              </Button>
+            )}
+            {/* Agent search */}
+            <input
+              ref={agentInputRef}
+              type="text"
+              placeholder="Search agents..."
+              value={agentSearch}
+              onChange={(e) => {
+                preservedAgentSlug.current = undefined;
+                setAgentSearch(e.target.value);
+                setSelectedAgentIndex(0);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'ArrowDown') {
+                  preservedAgentSlug.current = undefined;
+                  e.preventDefault();
+                  setSelectedAgentIndex((p) =>
+                    Math.min(p + 1, flatList.length - 1),
+                  );
+                } else if (e.key === 'ArrowUp') {
+                  preservedAgentSlug.current = undefined;
+                  e.preventDefault();
+                  setSelectedAgentIndex((p) => Math.max(p - 1, 0));
+                } else if (
+                  e.key === 'Enter' &&
+                  !isComposingKeyEvent(e) &&
+                  flatList[selectedAgentIndex]
+                ) {
+                  if (composerFirst) {
+                    setDraftAgentSlug(flatList[selectedAgentIndex].slug);
+                    setAgentSearch('');
+                    setShowChatOptions(false);
+                  } else handleSelect(flatList[selectedAgentIndex]);
+                }
+              }}
+              className="new-chat-modal__search"
+            />
+          </>
+        )}
 
         {draftContext && draftContext.items.length > 0 && (
           <div className="new-chat-modal__draft-context">
@@ -1290,44 +1413,228 @@ export function NewChatModal({
         )}
       </div>
 
-      <div className="new-chat-modal__list">
-        {compatibilityMessage && (
-          <div className="new-chat-modal__compat-warning">
-            <WarningGlyph /> {compatibilityMessage}
-          </div>
-        )}
-        {(selectFeedback || mode?.error || mode?.pending) && (
-          <div
-            key={selectFeedback?.nonce ?? mode?.error ?? 'pending'}
-            className="new-chat-modal__compat-warning new-chat-modal__select-feedback"
-            role={mode?.pending ? 'status' : 'alert'}
-            aria-busy={mode?.pending || undefined}
+      {showStart ? (
+        <div className="chat-start__body">
+          {defaultSelection?.missingPreferredAgentSlug && !draftAgentSlug && (
+            <p role="alert">
+              Your previous Agent is no longer available in this workspace.
+              Choose an Agent to continue.
+            </p>
+          )}
+          <form
+            className="chat-start__composer"
+            aria-label="New chat draft"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (prompt.trim() && draftAgent && !submitInFlight.current)
+                handleSelect(draftAgent, true);
+            }}
           >
-            <WarningGlyph />{' '}
-            {mode?.pending
-              ? 'Creating the fork…'
-              : (mode?.error ?? selectFeedback?.text)}
-          </div>
-        )}
-        {flatList.length === 0 &&
-          (runtimeLoading || modelsLoading ? (
-            <div className="new-chat-modal__loading">
-              <SkeletonList count={4} label="Loading agents" />
+            <textarea
+              ref={promptRef}
+              aria-label="Message"
+              placeholder="What would you like to work on?"
+              value={prompt}
+              onChange={(event) => setPrompt(event.target.value)}
+            />
+            <div className="chat-start__controls">
+              <button
+                type="button"
+                className="choice-trigger"
+                aria-label={`Agent: ${draftAgent?.name ?? 'Choose an agent'}`}
+                onClick={() => setShowChatOptions(true)}
+              >
+                {draftAgent?.name ?? 'Choose an agent'}{' '}
+                <ArrowDownGlyph className="choice-caret" />
+              </button>
+              {draftAgent && (
+                <button
+                  type="button"
+                  className="choice-trigger"
+                  aria-label={`Model: ${modelFor(draftAgent).label}`}
+                  onClick={() => setModelPickerAgent(draftAgent)}
+                >
+                  {modelFor(draftAgent).label}{' '}
+                  <ArrowDownGlyph className="choice-caret" />
+                </button>
+              )}
             </div>
-          ) : returnError || runtimeError || modelsError ? (
-            // archive#771: a settled error here used to fall straight
-            // through to "Nothing to chat with yet" — indistinguishable from
-            // a host with no connections at all.
+            <ResponsiveSurfaceActions className="chat-start__send">
+              <Button
+                type="submit"
+                variant="primary"
+                pending={submitting}
+                pendingLabel="Starting…"
+                disabled={
+                  !prompt.trim() ||
+                  !draftAgent ||
+                  !agentRunnability(draftAgent).runnable ||
+                  runtimeLoading ||
+                  modelsLoading ||
+                  checkingSetup ||
+                  setupReturn.pending ||
+                  Boolean(
+                    returnError || runtimeError || modelsError || setupError,
+                  ) ||
+                  setupFetching ||
+                  runtimeFetching ||
+                  modelsFetching ||
+                  !projectCatalogResolved
+                }
+              >
+                Send
+              </Button>
+            </ResponsiveSurfaceActions>
+          </form>
+          {(selectFeedback || returnError || runtimeError || modelsError) && (
+            <p role="alert">
+              {selectFeedback?.text ??
+                describeReadFailure(returnError ?? runtimeError ?? modelsError)}
+            </p>
+          )}
+          {runtimeLoading || modelsLoading ? (
+            <SkeletonList count={1} label="Checking chat setup" />
+          ) : !draftAgent || !agentRunnability(draftAgent).runnable ? (
+            <React.Suspense
+              fallback={
+                <SkeletonList count={1} label="Loading setup options" />
+              }
+            >
+              <ChatSetupHelper
+                agents={
+                  draftAgent
+                    ? [draftAgent]
+                    : flatList.filter(
+                        (agent) => !agentRunnability(agent).runnable,
+                      )
+                }
+                connections={agentConnections}
+                devicePresentation={devicePresentation}
+                busy={
+                  enableInFlight ||
+                  setupFetching ||
+                  runtimeFetching ||
+                  modelsFetching
+                }
+                onRepair={repairAgent}
+                onSetup={(agent) =>
+                  beginSetup(
+                    agent?.execution?.agentConnectionId
+                      ? `/connections/engines/${encodeURIComponent(agent.execution.agentConnectionId)}`
+                      : '/connections/engines',
+                    agent?.slug ?? draftAgent?.slug,
+                  )
+                }
+                onModels={() =>
+                  beginSetup('/connections/models', draftAgent?.slug)
+                }
+                onCheck={() => {
+                  if (refreshSetup)
+                    void refreshSetup().catch((error) =>
+                      setSelectFeedback(userFacingErrorMessage(error)),
+                    );
+                }}
+              />
+            </React.Suspense>
+          ) : null}
+          {recentChats && (
+            <React.Suspense
+              fallback={<SkeletonList count={1} label="Loading recent chats" />}
+            >
+              <RecentChatList
+                {...recentChats}
+                context={selectedContext}
+                agents={agents}
+              />
+            </React.Suspense>
+          )}
+        </div>
+      ) : (
+        <div className="new-chat-modal__list">
+          {compatibilityMessage && (
+            <div className="new-chat-modal__compat-warning">
+              <WarningGlyph /> {compatibilityMessage}
+            </div>
+          )}
+          {(selectFeedback || mode?.error || mode?.pending) && (
+            <div
+              key={selectFeedback?.nonce ?? mode?.error ?? 'pending'}
+              className="new-chat-modal__compat-warning new-chat-modal__select-feedback"
+              role={mode?.pending ? 'status' : 'alert'}
+              aria-busy={mode?.pending || undefined}
+            >
+              <WarningGlyph />{' '}
+              {mode?.pending
+                ? 'Creating the fork…'
+                : (mode?.error ?? selectFeedback?.text)}
+            </div>
+          )}
+          {flatList.length === 0 &&
+            (runtimeLoading || modelsLoading ? (
+              <div className="new-chat-modal__loading">
+                <SkeletonList count={4} label="Loading agents" />
+              </div>
+            ) : returnError || runtimeError || modelsError ? (
+              // archive#771: a settled error here used to fall straight
+              // through to "Nothing to chat with yet" — indistinguishable from
+              // a host with no connections at all.
+              <ErrorState
+                variant="compact"
+                title={
+                  returnError
+                    ? "Couldn't recheck chat setup"
+                    : "Couldn't load engines or models"
+                }
+                description={describeReadFailure(
+                  returnError ?? runtimeError ?? modelsError,
+                )}
+                action={
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (returnedFromSetup) {
+                        if (!setupReturn.retry())
+                          setSelectFeedback(
+                            'Reconnect to this Station before checking setup.',
+                          );
+                        return;
+                      }
+                      if (refreshSetup) {
+                        void refreshSetup().catch(() => undefined);
+                        return;
+                      }
+                      if (runtimeError) void refetchAgentConnections?.();
+                      if (modelsError) void refetchModelConnections?.();
+                    }}
+                  >
+                    Retry
+                  </button>
+                }
+              />
+            ) : (
+              <Empty
+                variant="compact"
+                label="Nothing to chat with yet"
+                description="Connect an engine (Claude Code, Codex, OpenCode…) or add a Model connection, and new chats appear here automatically."
+                action={
+                  <button
+                    type="button"
+                    className="new-chat-modal__setup-action"
+                    onClick={() => beginSetup('/connections')}
+                  >
+                    Set up Connections
+                  </button>
+                }
+              />
+            ))}
+          {checkingSetup ? (
+            <SkeletonList count={1} label="Checking connections" />
+          ) : null}
+          {flatList.length > 0 && returnError ? (
             <ErrorState
               variant="compact"
-              title={
-                returnError
-                  ? "Couldn't recheck chat setup"
-                  : "Couldn't load engines or models"
-              }
-              description={describeReadFailure(
-                returnError ?? runtimeError ?? modelsError,
-              )}
+              title="Couldn't recheck chat setup"
+              description={describeReadFailure(returnError)}
               action={
                 <button
                   type="button"
@@ -1347,108 +1654,74 @@ export function NewChatModal({
                     if (modelsError) void refetchModelConnections?.();
                   }}
                 >
-                  Retry
+                  Retry connections
                 </button>
               }
             />
-          ) : (
-            <Empty
-              variant="compact"
-              label="Nothing to chat with yet"
-              description="Connect an engine (Claude Code, Codex, OpenCode…) or add a Model connection, and new chats appear here automatically."
-              action={
-                <button
-                  type="button"
-                  className="new-chat-modal__setup-action"
-                  onClick={() => beginSetup('/connections')}
+          ) : null}
+          {!admissionError &&
+            groups.map((group, gi) => (
+              <React.Fragment key={group.label}>
+                <div
+                  className={`new-chat-modal__group-label ${group.glyph === 'plug' ? 'new-chat-modal__group-label--acp' : ''} ${
+                    // The rule between groups was an inline border; it is a class
+                    // now so the header's hairline is declared beside the row
+                    // hairlines it has to line up with.
+                    gi > 0 ? 'new-chat-modal__group-label--divided' : ''
+                  }`.trim()}
                 >
-                  Set up Connections
-                </button>
-              }
-            />
-          ))}
-        {checkingSetup ? (
-          <SkeletonList count={1} label="Checking connections" />
-        ) : null}
-        {flatList.length > 0 && returnError ? (
-          <ErrorState
-            variant="compact"
-            title="Couldn't recheck chat setup"
-            description={describeReadFailure(returnError)}
-            action={
-              <button
-                type="button"
-                onClick={() => {
-                  if (returnedFromSetup) {
-                    if (!setupReturn.retry())
-                      setSelectFeedback(
-                        'Reconnect to this Station before checking setup.',
-                      );
-                    return;
-                  }
-                  if (refreshSetup) {
-                    void refreshSetup().catch(() => undefined);
-                    return;
-                  }
-                  if (runtimeError) void refetchAgentConnections?.();
-                  if (modelsError) void refetchModelConnections?.();
-                }}
-              >
-                Retry connections
-              </button>
-            }
-          />
-        ) : null}
-        {!admissionError &&
-          groups.map((group, gi) => (
-            <React.Fragment key={group.label}>
-              <div
-                className={`new-chat-modal__group-label ${group.glyph === 'plug' ? 'new-chat-modal__group-label--acp' : ''} ${
-                  // The rule between groups was an inline border; it is a class
-                  // now so the header's hairline is declared beside the row
-                  // hairlines it has to line up with.
-                  gi > 0 ? 'new-chat-modal__group-label--divided' : ''
-                }`.trim()}
-              >
-                {group.icon || contextGlyph(group.glyph)} {group.label}
-              </div>
-              {group.agents.map((agent) => {
-                const idx = flatList.indexOf(agent);
-                const enable = resolveNewChatAgentEnable(agent);
-                const fixRoute = agentFixRoute(agent);
-                return (
-                  <AgentRow
-                    key={agent.slug}
-                    agent={agent}
-                    isSelected={idx === selectedAgentIndex}
-                    selectedRef={
-                      idx === selectedAgentIndex ? selectedAgentRef : undefined
-                    }
-                    onSelect={() => handleSelect(agent)}
-                    onHover={() => {
-                      if (!checkingSetup) {
-                        preservedAgentSlug.current = undefined;
-                        setSelectedAgentIndex(idx);
+                  {group.icon || contextGlyph(group.glyph)} {group.label}
+                </div>
+                {group.agents.map((agent) => {
+                  const idx = flatList.indexOf(agent);
+                  const enable = resolveNewChatAgentEnable(agent);
+                  const fixRoute = agentFixRoute(agent);
+                  return (
+                    <AgentRow
+                      key={agent.slug}
+                      agent={agent}
+                      isSelected={idx === selectedAgentIndex}
+                      selectedRef={
+                        idx === selectedAgentIndex
+                          ? selectedAgentRef
+                          : undefined
                       }
-                    }}
-                    modelLabel={modelFor(agent).label}
-                    modelUnavailable={
-                      modelsForAgent(agent).length === 0 && !modelsLoading
-                    }
-                    onOpenModel={() => setModelPickerAgent(agent)}
-                    interactionDisabled={mode?.pending || checkingSetup}
-                    fixDisabled={
-                      fixRoute === 'enable' && enable
-                        ? enableInFlight
-                        : undefined
-                    }
-                    onFix={(route) => repairAgent(agent, route)}
-                  />
-                );
-              })}
-            </React.Fragment>
-          ))}
-      </div>
+                      onSelect={() => {
+                        if (composerFirst) {
+                          setDraftAgentSlug(agent.slug);
+                          preservedAgentSlug.current = agent.slug;
+                          setAgentSearch('');
+                          setShowChatOptions(false);
+                          setSelectFeedback(null);
+                        } else handleSelect(agent);
+                      }}
+                      onHover={() => {
+                        if (!checkingSetup) {
+                          preservedAgentSlug.current = undefined;
+                          setSelectedAgentIndex(idx);
+                        }
+                      }}
+                      modelLabel={modelFor(agent).label}
+                      modelUnavailable={
+                        modelsForAgent(agent).length === 0 && !modelsLoading
+                      }
+                      onOpenModel={() => setModelPickerAgent(agent)}
+                      interactionDisabled={
+                        mode?.pending || checkingSetup || setupReturn.pending
+                      }
+                      fixDisabled={
+                        fixRoute === 'enable' && enable
+                          ? enableInFlight
+                          : undefined
+                      }
+                      onFix={(route) => repairAgent(agent, route)}
+                    />
+                  );
+                })}
+              </React.Fragment>
+            ))}
+        </div>
+      )}
       {modelPickerAgent && (
         <div
           className="new-chat-modal__model-picker-backdrop"
