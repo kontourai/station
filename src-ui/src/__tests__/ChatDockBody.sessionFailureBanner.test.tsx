@@ -1041,7 +1041,7 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
 
     expect(screen.queryByTestId('chat-dock-session-record-missing')).toBeNull();
     expect(
-      screen.getByRole('status', { name: "Reading this session's record" }),
+      screen.getByRole('status', { name: "Reading this chat's record" }),
     ).toBeTruthy();
   });
 
@@ -1056,7 +1056,7 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
 
     expect(screen.queryByTestId('chat-dock-session-record-missing')).toBeNull();
     expect(
-      screen.getByText("Could not read this Station's session records"),
+      screen.getByText("Could not read this Station's chat records"),
     ).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     expect(onRetryOrchestrationSessions).toHaveBeenCalledTimes(1);

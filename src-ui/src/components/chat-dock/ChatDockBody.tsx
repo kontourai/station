@@ -1030,12 +1030,12 @@ export function ChatDockBody({
         displayedTranscriptMessages.length > 0 &&
         historyFailureNotice}
       {sessionRecordPending && (
-        <SkeletonList count={1} label="Reading this session's record" />
+        <SkeletonList count={1} label="Reading this chat's record" />
       )}
       {sessionRecordUnreadable && (
         <ErrorState
-          title="Could not read this Station's session records"
-          description="The chat below is what this browser still holds. Retry to find out whether the session is still there."
+          title="Could not read this Station's chat records"
+          description="The chat below is what this browser still holds. Retry to find out whether the chat is still there."
           action={
             onRetryOrchestrationSessions ? (
               <button
