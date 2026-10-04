@@ -83,6 +83,7 @@ holds each passkey's credential id, public key, signature counter, transports an
 | --- | --- |
 | Enrollment is unavailable | `STATION_TRUSTED_CONSENT_ORIGIN` is not set. |
 | The request with that code was not opened by the device you named | `--device` does not match the requesting device. Nothing was confirmed; list the requests and check who asked. |
+| The device that opened this request is no longer paired | It was revoked or unpaired after asking. Nothing was confirmed. |
 | No pending enrollment request has that code | The code is wrong, was already used, or expired. |
 | Too many wrong codes | Wait for the five-minute window, then retry. |
 | The passkey could not be verified for this Station | The browser's origin or the authenticator's relying-party ID did not match the configured origin, or user verification was skipped. Nothing was saved; start again. |

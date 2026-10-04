@@ -3144,7 +3144,7 @@ four characters) of the requesting device's id or nothing is confirmed (409
 withdraws a confirmed request whose passkey is not yet created. Bodies over 1 KiB
 are refused (413). `DELETE /api/pairing/operator-passkeys/:id` revokes
 a passkey. Only the operator credential is accepted; a paired device holding
-`access:manage` is refused (401 `authentication_required`, pinned by a test that lets the device reach the handler). Errors: `invalid_code` (404), `device_mismatch` (409), `rate_limited`
+`access:manage` is refused (401 `authentication_required`, pinned by a test that lets the device reach the handler). Errors: `invalid_code` (404), `device_mismatch` (409), `device_gone` (409, the requesting device was revoked or unpaired after it asked; pending requests also show its current scope and `active`), `rate_limited`
 (429, with `retryAfterMs`), `passkey_not_found` (404), `enrollment_unavailable`
 (503, `STATION_TRUSTED_CONSENT_ORIGIN` unset). The browser half is served on the
 consent origin under `/operator/passkeys/enroll`; see the
