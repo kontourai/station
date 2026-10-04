@@ -18,11 +18,11 @@
 
     {"path":"packages/cli/src/commands/install-registry.ts","digest":"f718a3fb5c763792c60f9a488f2369a1806f281683e62f13525ed851bcf0ec74","revision":"ed05e6f6c98c5b2bb994a88ff8fa8e1421639269"},
 
-    {"path":"packages/cli/src/commands/install.ts","digest":"ca98a0fa5d41930d6b3bb5d33000804411d82ec80650a7d97294cb7dcd020ac5","revision":"ed05e6f6c98c5b2bb994a88ff8fa8e1421639269"},
+    {"path":"packages/cli/src/commands/install.ts","digest":"5c476173280f26004cb081d43a6e276530a09d048a19680d56c0acfd3bc7c188","revision":"c2b1caf535d375c5195cc8b8a66c9dc6ce83205d"},
 
     {"path":"src-server/providers/registries/default-registry.ts","digest":"37610478ac1fcc60b9a777d7a9cbd05ee88f9f20b5d3ce57f5806907332600c8","revision":"ed05e6f6c98c5b2bb994a88ff8fa8e1421639269"},
 
-    {"path":"src-server/routes/plugins/registry.ts","digest":"f3f5be48240bb62b1bd0e1a5a0349d5205a99891cf15c4e3930cb1250fd900a6","revision":"47fbbbd8f767858f60a0a323b74e26cb60abce62"},
+    {"path":"src-server/routes/plugins/registry.ts","digest":"472ef054a5948150ed8f52bb59fbef9ce19c9ec29964a4c2fa78d8d8ef3d8fbc","revision":"efa773acac88792cda31595f9afca4a37d3efebc"},
 
     {"path":"src-server/services/plugins/plugin-install-consent.ts","digest":"6e34e0844061dd5311e027973b1919483bf29047e18721ecae8b72ece98765ed","revision":"ed05e6f6c98c5b2bb994a88ff8fa8e1421639269"}
   ],

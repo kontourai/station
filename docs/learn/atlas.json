@@ -188,6 +188,7 @@
         "InstalledPluginInventory",
         "PluginCompositionModule",
         "PluginGrantReconciliation",
+        "PluginCommandEffects",
         "RegistrySupplyChainPolicy",
         "LocalSkillMutationAuthority and SetupImportEffectJournal"
       ],
