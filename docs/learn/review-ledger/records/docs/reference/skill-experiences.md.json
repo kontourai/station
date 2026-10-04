@@ -26,7 +26,7 @@
 
     {"path":"packages/contracts/src/workspace-pane-host-contract.ts","digest":"064ef9c3654c3296074caced9eab79ffd204c0d98fcebd9221b5a2b540cd6191","revision":"56f4c4897a189eeb30430119a4f4895e95fbb541"},
 
-    {"path":"packages/sdk/src/client/skill-experiences.ts","digest":"96e9bbfa542662b64db6757e8bd2242253ad222dba6ea8576bcbd86b866db766","revision":"6a847d3c029f4f3e5c1dbe82f2459194573d43e9"},
+    {"path":"packages/sdk/src/client/skill-experiences.ts","digest":"63eb99c596b8f23f04daedbf9a8622857f7dd3d13a7166b85819cb849fd1c8b0","revision":"84791e5a838652c5aef9015062d9fa50facc3581"},
 
     {"path":"packages/sdk/src/skill-experience-pane.ts","digest":"141aaf4eadd4a696ae54eaaf279f8398fdd443d0adeb798924ddd02994dddc97","revision":"1a91c5d3bffa9bff7857c4dde0a69b2dd6d88a02"},
 
