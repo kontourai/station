@@ -1,0 +1,7 @@
+{
+  "revision": "52ea5c0ea31d3a2efa5eabfd1e8aeb319959b4b3",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Re-recorded after merging main: the phone picker search box is a 44px touch target in chat.css; no doc claim changes.","inputs":["src-ui/src/components/SplitPaneLayout.css"]}
+  ]
+}

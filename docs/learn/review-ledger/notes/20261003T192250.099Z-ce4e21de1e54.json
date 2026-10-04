@@ -1,0 +1,7 @@
+{
+  "revision": "397b4cb16ee64b1693eddff490ac75947d250436",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"After merging origin/main (fac321f9fd) the upstream record was taken; re-checked this branch's deltas in navigation-store.ts (in-place preview write, writer marker), ChatDock.tsx (Needs-you publication) and the device-settings contract (codingPanels record): none touch the composer's provider/picker record or dock claims here. No prose change.","inputs":["docs/design/chat-composer.md","packages/contracts/src/orchestration.ts","src-ui/src/components/chat-dock/MobileTaskSwitcher.tsx","src-ui/src/contexts/navigation-store.ts","tests/cross-runtime-chat-switching.spec.ts","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx","src-ui/src/components/chat-dock/ChatDockMobileOverflowSheet.tsx","packages/contracts/src/device-settings.ts","src-ui/src/__tests__/ChatDockBody.sessionFailureBanner.test.tsx"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "ef69511d6f8027fe0b5f9fb0d6afc95f2a3a2c38",
+
+  "notes": [
+    {"path":"docs/design/settings-architecture.md","note":"Re-reviewed after the rename to CodingSessionPanelsRecord and the parser table in the store: the codingPanels key is still a composite, direct-manipulation device setting validated by its own parser, following regionArrangement; no enumeration here needs it.","inputs":["docs/design/settings-architecture.md","docs/reference/config.md","docs/reference/settings-deep-links.md","packages/contracts/src/settings-registry.ts","src-ui/src/lib/device-settings-store.ts","src-ui/src/views/SettingsView.tsx","src-ui/src/views/settings/settings-catalog.ts"]}
+  ]
+}
