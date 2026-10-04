@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import {
   constants,
   existsSync,
@@ -54,6 +54,79 @@ function dictionary<T>(): Record<string, T> {
 const DIRECTORY_MODE = 0o700;
 const FILE_MODE = 0o600;
 const FILE = 'tool-server-credentials.json';
+/**
+ * #3279: credentials owned by a person rather than the Station instance live
+ * in their own document. Instance buckets keep their exact pre-#3279 file and
+ * keys, so an older reader, portability export, and every existing operator
+ * path see the shared document unchanged and never mistake a person's token
+ * for the instance's.
+ */
+const PRINCIPAL_FILE = 'tool-server-principal-credentials.json';
+
+export type ToolServerCredentialStoreScope = 'instance' | 'principal';
+
+/** The non-instance owner shapes a person-owned bucket can name. */
+export type ToolServerPrincipalCredentialOwner =
+  | { kind: 'principal'; principalId: string }
+  | { kind: 'principal-project'; principalId: string; projectSlug: string };
+
+const PRINCIPAL_BUCKET_DIGEST = /^[0-9a-f]{32}$/;
+
+/**
+ * #3279: a person's bucket in the principal document. It joins a digest of
+ * the whole owner tuple to the server id, so two owners never share a bucket
+ * and every bucket of one server can be found (and removed) without storing a
+ * readable principal id beside the token.
+ */
+export function principalToolServerCredentialBucket(
+  serverId: string,
+  owner: ToolServerPrincipalCredentialOwner,
+): string {
+  assertCredentialKey(serverId, 'server id');
+  const digest = createHash('sha256')
+    .update(
+      JSON.stringify([
+        'tool-server-credential-owner/v1',
+        owner.kind,
+        owner.principalId,
+        owner.kind === 'principal-project' ? owner.projectSlug : null,
+      ]),
+    )
+    .digest('hex')
+    .slice(0, 32);
+  return `${digest}.${serverId}`;
+}
+
+export function isPrincipalToolServerCredentialBucketFor(
+  bucketId: string,
+  serverId: string,
+): boolean {
+  return (
+    bucketId.length === serverId.length + 33 &&
+    bucketId[32] === '.' &&
+    bucketId.slice(33) === serverId &&
+    PRINCIPAL_BUCKET_DIGEST.test(bucketId.slice(0, 32))
+  );
+}
+
+/** Removes every person's credentials for one server; a no-op without a document. */
+export async function removePrincipalToolServerCredentials(
+  homeDir: string,
+  serverId: string,
+): Promise<void> {
+  assertCredentialKey(serverId, 'server id');
+  if (!existsSync(join(homeDir, 'security', PRINCIPAL_FILE))) return;
+  const store = new ToolServerCredentialStore(homeDir, 'principal');
+  if (
+    !store
+      .bucketIds()
+      .some((id) => isPrincipalToolServerCredentialBucketFor(id, serverId))
+  )
+    return;
+  await store.removeServers((id) =>
+    isPrincipalToolServerCredentialBucketFor(id, serverId),
+  );
+}
 
 export function toolServerIntegrationMutationLockPath(
   homeDir: string,
@@ -65,8 +138,13 @@ export function toolServerIntegrationMutationLockPath(
 
 export function toolServerCredentialStoreMutationLockPath(
   homeDir: string,
+  scope: ToolServerCredentialStoreScope = 'instance',
 ): string {
-  return join(homeDir, 'security', `${FILE}.mutation`);
+  return join(
+    homeDir,
+    'security',
+    `${scope === 'principal' ? PRINCIPAL_FILE : FILE}.mutation`,
+  );
 }
 
 function validate(value: unknown): Document {
@@ -111,9 +189,17 @@ function validate(value: unknown): Document {
 export class ToolServerCredentialStore {
   readonly #directory: string;
   readonly #file: string;
-  constructor(homeDir: string) {
+  readonly #scope: ToolServerCredentialStoreScope;
+  constructor(
+    homeDir: string,
+    scope: ToolServerCredentialStoreScope = 'instance',
+  ) {
+    this.#scope = scope;
     this.#directory = join(homeDir, 'security');
-    this.#file = join(this.#directory, FILE);
+    this.#file = join(
+      this.#directory,
+      scope === 'principal' ? PRINCIPAL_FILE : FILE,
+    );
     mkdirSync(this.#directory, { recursive: true, mode: DIRECTORY_MODE });
     const directory = lstatSync(this.#directory);
     if (
@@ -123,6 +209,9 @@ export class ToolServerCredentialStore {
     )
       throw new Error('Unsafe tool-server credential directory');
     if (existsSync(this.#file)) this.#read();
+  }
+  get scope(): ToolServerCredentialStoreScope {
+    return this.#scope;
   }
   get(serverId: string, name: string): string {
     assertCredentialKey(serverId, 'server id');
@@ -196,6 +285,19 @@ export class ToolServerCredentialStore {
       return { ...document, credentials };
     });
   }
+  /** Bucket ids currently present; names only, never values. */
+  bucketIds(): string[] {
+    return Object.keys(this.#read().credentials);
+  }
+  /** Remove every matching bucket in one publication. */
+  async removeServers(matches: (bucketId: string) => boolean): Promise<void> {
+    await this.#mutate((document) => {
+      const credentials = dictionary<Record<string, string>>();
+      for (const [bucketId, bucket] of Object.entries(document.credentials))
+        if (!matches(bucketId)) credentials[bucketId] = bucket;
+      return { ...document, credentials };
+    });
+  }
   async reconcileServer(
     serverId: string,
     referencedNames: readonly string[],
@@ -239,6 +341,7 @@ export class ToolServerCredentialStore {
   async #mutate(change: (document: Document) => Document): Promise<void> {
     const lockPath = toolServerCredentialStoreMutationLockPath(
       dirname(this.#directory),
+      this.#scope,
     );
     mkdirSync(dirname(lockPath), { recursive: true });
     const release = await acquireFileMutationLockAsync(lockPath);

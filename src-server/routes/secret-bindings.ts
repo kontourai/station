@@ -1,9 +1,10 @@
 import type { SecretBindingGrant } from '@kontourai/station-contracts/secret-binding';
-import { Hono } from 'hono';
+import { type Context, Hono } from 'hono';
 import type {
   SecretBindingAdministration,
   SecretBindingIntegrationAdministration,
   SecretBindingIntegrationOutcome,
+  SecretBindingViewer,
 } from '../services/secrets/secret-binding-administration.js';
 import {
   SECRET_BINDING_CONFLICT_MESSAGE,
@@ -20,8 +21,20 @@ export function createSecretBindingRoutes(
       bindings: Record<string, { bindingId: string; expectedRevision: number }>;
     }): Promise<{ outcome: 'migrated'; migratedEnvNames: string[] }>;
   },
+  options: {
+    /**
+     * #3279: the calling request's own principal id. Bindings owned by a
+     * person are listed, read, and changed only for that person; without a
+     * resolvable caller only instance bindings are visible.
+     */
+    resolveViewerPrincipalId?: (c: Context) => string | undefined;
+  } = {},
 ) {
   const app = new Hono();
+  const viewerOf = (c: Context): SecretBindingViewer | undefined => {
+    const principalId = options.resolveViewerPrincipalId?.(c);
+    return principalId ? { principalId } : undefined;
+  };
   app.get('/integrations/:integrationId', async (c) => {
     if (!consumers)
       return c.json(
@@ -38,10 +51,10 @@ export function createSecretBindingRoutes(
     );
   });
   app.get('/', async (c) =>
-    c.json({ success: true, data: await service.list() }),
+    c.json({ success: true, data: await service.list(viewerOf(c)) }),
   );
   app.get('/:id', async (c) => {
-    const binding = await service.get(c.req.param('id'));
+    const binding = await service.get(c.req.param('id'), viewerOf(c));
     return binding
       ? c.json({ success: true, data: binding })
       : c.json({ success: false, error: 'Secret binding not found.' }, 404);
@@ -49,12 +62,39 @@ export function createSecretBindingRoutes(
   app.post('/', async (c) =>
     respond(
       c,
-      async () =>
-        service.create(
-          (await body(c)) as Parameters<
-            SecretBindingAdministration['create']
-          >[0],
-        ),
+      async () => {
+        const input = await body(c);
+        const viewer = viewerOf(c);
+        // `owner: 'self'` is the only person-owned form; the owner is the
+        // caller, never a principal named in the body.
+        if (input.owner !== undefined && input.owner !== 'self')
+          throw new Error('owner must be self when present.');
+        if (input.projectSlug !== undefined && input.owner !== 'self')
+          throw new Error('projectSlug requires owner self.');
+        if (input.owner === 'self' && !viewer)
+          throw new Error('The caller could not be identified.');
+        return service.create({
+          id: input.id as string,
+          name: input.name as string,
+          authRef: input.authRef,
+          ...(input.owner === 'self' && viewer
+            ? {
+                owner:
+                  typeof input.projectSlug === 'string'
+                    ? {
+                        kind: 'principal-project' as const,
+                        principalId: viewer.principalId,
+                        projectSlug: input.projectSlug,
+                      }
+                    : {
+                        kind: 'principal' as const,
+                        principalId: viewer.principalId,
+                      },
+              }
+            : {}),
+          ...(viewer ? { viewer } : {}),
+        });
+      },
       201,
     ),
   );
@@ -63,6 +103,7 @@ export function createSecretBindingRoutes(
       service.replace({
         ...(await body(c)),
         id: c.req.param('id'),
+        viewer: viewerOf(c),
       } as Parameters<SecretBindingAdministration['replace']>[0]),
     ),
   );
@@ -71,14 +112,29 @@ export function createSecretBindingRoutes(
       service.revoke({
         ...(await body(c)),
         id: c.req.param('id'),
+        viewer: viewerOf(c),
       } as Parameters<SecretBindingAdministration['revoke']>[0]),
     ),
   );
   app.post('/:id/bind', async (c) =>
-    respondBindingMutation(c, service, consumers, 'bind', c.req.param('id')),
+    respondBindingMutation(
+      c,
+      service,
+      consumers,
+      'bind',
+      c.req.param('id'),
+      viewerOf(c),
+    ),
   );
   app.post('/:id/unbind', async (c) =>
-    respondBindingMutation(c, service, consumers, 'unbind', c.req.param('id')),
+    respondBindingMutation(
+      c,
+      service,
+      consumers,
+      'unbind',
+      c.req.param('id'),
+      viewerOf(c),
+    ),
   );
   const migrateStoredEnv = async (c: any, integrationId: string) => {
     if (!migration)
@@ -115,6 +171,7 @@ async function respondBindingMutation(
   consumers: SecretBindingIntegrationAdministration | undefined,
   operation: 'bind' | 'unbind',
   id: string,
+  viewer: SecretBindingViewer | undefined,
 ) {
   let input: Record<string, unknown>;
   try {
@@ -138,6 +195,7 @@ async function respondBindingMutation(
       id,
       grant,
       expectedRevision: input.expectedRevision as number,
+      ...(viewer ? { viewer } : {}),
     }),
   );
 }

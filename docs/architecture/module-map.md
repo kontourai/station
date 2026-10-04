@@ -1353,6 +1353,17 @@ Datum only; they never materialize. Resolution requires one current, non-revoked
 integration/env grant, materializes each distinct binding at most once per call, returns
 no cache, and maps Datum failures to Station-safe reason codes.
 
+**Ownership (#3279).** A binding has an owner: `instance` (absent on records written
+before #3279, which keep their behavior), `principal`, or `principal-project`. The
+owner id is an existing human `PrincipalRef.id` from request resolution; a paired
+device without a person, a non-human principal, or a hosted request owns none
+([connected-account owner](../../src-server/services/identity/connected-account-owner.ts)).
+List, get, and every mutation take the request principal as viewer: another person's
+binding is indistinguishable from a missing one, and a caller without a viewer sees
+only instance bindings. Resolution refuses a person-owned binding with
+`owner_mismatch` unless the invocation names that principal (and Project); shared MCP
+children and ACP providers name none, so they never receive a person's secret.
+
 **Seam, Implementation, callers, and tests.** Runtime bootstrap constructs
 `FileSecretBindingAdministration`, retains administration for `/api/secret-bindings`,
 and injects the narrow resolver into MCP establishment. `establishMcpSecretChild()`

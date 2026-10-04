@@ -110,6 +110,21 @@ export interface ToolDef {
     intervalMs?: number;
   };
   exposedTools?: string[];
+  /**
+   * #3279 connected accounts. Absent means the integration uses the shared
+   * `instance` credential exactly as before. `principal` means each person
+   * connects their own account: a turn uses only the credential owned by the
+   * principal it runs as (a Project-narrowed credential for the Agent's
+   * Project first, then the person's own), and a person with no credential
+   * gets a "connect your account" refusal. The shared instance credential is
+   * used for such a turn only when `allowInstanceFallback` is true.
+   */
+  credentialOwnership?: ToolCredentialOwnership;
+}
+
+export interface ToolCredentialOwnership {
+  owner: 'principal';
+  allowInstanceFallback?: boolean;
 }
 
 export interface ToolServerProbeResult {

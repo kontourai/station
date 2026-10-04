@@ -277,6 +277,20 @@
         "type": "string"
       },
       "description": "Hint of tool names exposed by MCP server"
+    },
+    "credentialOwnership": {
+      "type": "object",
+      "description": "Each person connects their own account; turns use only the credential of the principal they run as (#3279).",
+      "properties": {
+        "owner": {
+          "const": "principal"
+        },
+        "allowInstanceFallback": {
+          "type": "boolean"
+        }
+      },
+      "required": ["owner"],
+      "additionalProperties": false
     }
   },
   "additionalProperties": false

@@ -703,3 +703,185 @@ describe('FileSecretBindingAdministration', () => {
     });
   });
 });
+
+describe('secret binding ownership (#3279)', () => {
+  const ALICE = 'human:tailscale-serve:alice';
+  const BOB = 'human:tailscale-serve:bob';
+
+  test('a pre-#3279 binding document reads as instance-owned and keeps resolving for the shared child', async () => {
+    const root = await home();
+    const { mkdir } = await import('node:fs/promises');
+    await mkdir(join(root, 'security'), { recursive: true, mode: 0o700 });
+    const timestamp = '2026-01-01T00:00:00.000Z';
+    // The exact shape the pre-#3279 writer persisted: no `owner` key.
+    await writeFile(
+      join(root, 'security', 'secret-bindings.json'),
+      JSON.stringify({
+        schemaVersion: 1,
+        bindings: {
+          'legacy-token': {
+            id: 'legacy-token',
+            name: 'Legacy token',
+            authRef: { env: 'LEGACY_TOKEN' },
+            revision: 2,
+            grants: [
+              {
+                kind: 'mcp-integration-env',
+                integrationId: 'legacy-mcp',
+                envName: 'TOKEN',
+              },
+            ],
+            createdAt: timestamp,
+            updatedAt: timestamp,
+          },
+        },
+      }),
+      { mode: 0o600 },
+    );
+    const service = new FileSecretBindingAdministration(root, {
+      environment: { LEGACY_TOKEN: 'legacy-value' },
+    });
+    expect(await service.list()).toEqual([
+      expect.objectContaining({
+        id: 'legacy-token',
+        owner: { kind: 'instance' },
+      }),
+    ]);
+    // Every viewer sees the shared binding, as before.
+    expect(await service.list({ principalId: ALICE })).toHaveLength(1);
+    const resolution = await service.resolveForIntegration({
+      integrationId: 'legacy-mcp',
+      secretEnvRefs: { TOKEN: 'legacy-token' },
+    });
+    expect(resolution.environment).toEqual({ TOKEN: 'legacy-value' });
+    // A later write keeps the record ownerless (byte-compatible).
+    await service.replace({
+      id: 'legacy-token',
+      name: 'Legacy token renamed',
+      authRef: { env: 'LEGACY_TOKEN' },
+      expectedRevision: 2,
+    });
+    const persisted = JSON.parse(
+      await readFile(join(root, 'security', 'secret-bindings.json'), 'utf8'),
+    );
+    expect(persisted.bindings['legacy-token']).not.toHaveProperty('owner');
+  });
+
+  test('a person-owned binding is visible, mutable, and materializable only for its owner', async () => {
+    const root = await home();
+    const service = new FileSecretBindingAdministration(root, {
+      environment: { ALICE_TOKEN: 'alice-value' },
+    });
+    await expect(
+      service.create({
+        id: 'forged',
+        name: 'Forged',
+        authRef: { env: 'ALICE_TOKEN' },
+        owner: { kind: 'principal', principalId: ALICE },
+        viewer: { principalId: BOB },
+      }),
+    ).rejects.toThrow('owned only by its creator');
+    await expect(
+      service.create({
+        id: 'device-owned',
+        name: 'Device owned',
+        authRef: { env: 'ALICE_TOKEN' },
+        owner: { kind: 'principal', principalId: 'not-a-principal' },
+        viewer: { principalId: 'not-a-principal' },
+      }),
+    ).rejects.toThrow('Invalid secret binding owner');
+    const created = await service.create({
+      id: 'alice-mail',
+      name: 'Alice mail',
+      authRef: { env: 'ALICE_TOKEN' },
+      owner: { kind: 'principal', principalId: ALICE },
+      viewer: { principalId: ALICE },
+    });
+    expect(created.owner).toEqual({ kind: 'principal', principalId: ALICE });
+    expect(await service.list({ principalId: BOB })).toEqual([]);
+    expect(await service.list()).toEqual([]);
+    expect(await service.get('alice-mail', { principalId: BOB })).toBeNull();
+    await expect(
+      service.revoke({
+        id: 'alice-mail',
+        expectedRevision: 1,
+        viewer: { principalId: BOB },
+      }),
+    ).rejects.toThrow('Secret binding not found.');
+    const granted = await service.grant({
+      id: 'alice-mail',
+      grant: {
+        kind: 'mcp-integration-env',
+        integrationId: 'mail',
+        envName: 'TOKEN',
+      },
+      expectedRevision: 1,
+      viewer: { principalId: ALICE },
+    });
+    expect(granted.revision).toBe(2);
+    const refs = { TOKEN: 'alice-mail' };
+    // A shared child (no principal) and another person are refused.
+    for (const principalId of [undefined, BOB]) {
+      await expect(
+        service.resolveForIntegration({
+          integrationId: 'mail',
+          secretEnvRefs: refs,
+          ...(principalId ? { principalId } : {}),
+        }),
+      ).rejects.toMatchObject({ reason: 'owner_mismatch' });
+    }
+    const own = await service.resolveForIntegration({
+      integrationId: 'mail',
+      secretEnvRefs: refs,
+      principalId: ALICE,
+    });
+    expect(own.environment).toEqual({ TOKEN: 'alice-value' });
+  });
+
+  test('a Project-narrowed binding resolves only in that Project', async () => {
+    const root = await home();
+    const service = new FileSecretBindingAdministration(root, {
+      environment: { CRM: 'crm-value' },
+    });
+    await service.create({
+      id: 'alice-crm',
+      name: 'Alice CRM',
+      authRef: { env: 'CRM' },
+      owner: {
+        kind: 'principal-project',
+        principalId: ALICE,
+        projectSlug: 'sales',
+      },
+      viewer: { principalId: ALICE },
+    });
+    await service.grant({
+      id: 'alice-crm',
+      grant: {
+        kind: 'mcp-integration-env',
+        integrationId: 'crm',
+        envName: 'K',
+      },
+      expectedRevision: 1,
+      viewer: { principalId: ALICE },
+    });
+    const refs = { K: 'alice-crm' };
+    await expect(
+      service.resolveForIntegration({
+        integrationId: 'crm',
+        secretEnvRefs: refs,
+        principalId: ALICE,
+        projectSlug: 'support',
+      }),
+    ).rejects.toMatchObject({ reason: 'owner_mismatch' });
+    expect(
+      (
+        await service.resolveForIntegration({
+          integrationId: 'crm',
+          secretEnvRefs: refs,
+          principalId: ALICE,
+          projectSlug: 'sales',
+        })
+      ).environment,
+    ).toEqual({ K: 'crm-value' });
+  });
+});

@@ -5,6 +5,12 @@ import {
 } from '../../utils/internal-api-token.js';
 
 /**
+ * The provider a paired device's own credential resolves to when it carries
+ * no person binding: per-device attribution, not a person.
+ */
+export const DEVICE_IDENTITY_PROVIDER = 'device' as const;
+
+/**
  * A provider-agnostic verified identity. This is the seam that lets Station
  * grow additional identity providers (e.g. a Kontour account signed in via
  * GitHub/Google) without the authz/pairing layer knowing which provider
@@ -18,7 +24,10 @@ import {
  */
 export interface VerifiedIdentity {
   /** Which identity provider vouched for this subject. */
-  provider: 'tailscale-serve' | 'kontour-account' | 'device';
+  provider:
+    | 'tailscale-serve'
+    | 'kontour-account'
+    | typeof DEVICE_IDENTITY_PROVIDER;
   /** Stable id within the provider (today: the Tailscale Serve login). */
   subject: string;
   displayName?: string;
