@@ -14,7 +14,7 @@
   "sources": [
     {"path":"scripts/fixtures/orchestration-transfer/budget.json","digest":"47a0ff2379a93d58de745f0fdc26350e448ae31290eb87cdcd22ee0205d47f9b","revision":"e1e8339750ff5b7210254866bd2d853454efaf04"},
 
-    {"path":"scripts/orchestration-transfer-capture.ts","digest":"adf18ce35d2a25a5212634badd51a44fa1d95b571fa9233a0dc58fe249c9ddf5","revision":"16f724ba91f1608281f6bc758e02a4396d6aeeac"},
+    {"path":"scripts/orchestration-transfer-capture.ts","digest":"ba4a10c37c9f079a8365238564edd2e181f566c4340885adbd67fa28256ad150","revision":"2dbaa00a465eb63e07c4b524cec5298ebffd449c"},
 
     {"path":"scripts/orchestration-transfer-gate.mjs","digest":"c10941f00e2d434ca22c4cc4e4bdfb1c892cde9e18e7fb8cf558d4acf3c5eaed","revision":"10355abb29c67ba8bac4c9ad44c8718d0f42a85c"},
 
