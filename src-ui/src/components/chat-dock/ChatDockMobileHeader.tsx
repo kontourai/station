@@ -269,12 +269,11 @@ export function ChatDockMobileHeader({
           )}
         </button>
         <NewChatAction
-          variant="ghost"
+          appearance="toolbar-icon"
           className="chat-dock__mobile-header-icon chat-dock__mobile-new"
+          data-no-dock-drag=""
           onClick={onNewChat}
-        >
-          New
-        </NewChatAction>
+        />
       </div>
       {isOverflowOpen && (
         <LazyBoundary
