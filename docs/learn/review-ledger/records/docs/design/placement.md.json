@@ -40,7 +40,7 @@
 
     {"path":"src-ui/src/App.tsx","digest":"8adeb594b372c2fb6dfa134c8f7ed472e56afae50f78a3becf59e4c3d272edf5","revision":"d6a3158c22a62d9530592c6366a1624790ee9401"},
 
-    {"path":"src-ui/src/components/chat-dock/ChatDock.tsx","digest":"0a2461d5f560fe411d3c3fc9bfb00b4644a93578d2c704d87ff48560b63d2b1f","revision":"498122e093cd04ec3539e91c3311d03002df3e36"},
+    {"path":"src-ui/src/components/chat-dock/ChatDock.tsx","digest":"fa74f87bb3db229b4d3fbfd354e450f212d0250f9e7325cf1b6f2d967ec8bfd6","revision":"ed4b7b2c4440e328d5367f3d8f4a319a81dfba7e"},
 
     {"path":"src-ui/src/components/chat-dock/DockShell.tsx","digest":"1961ea14eef051a37498d1e172a5e4ae52eefd07334cb71bfa1fda44064ccfb7","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -122,7 +122,7 @@
 
     {"path":"src-ui/src/workspace-panes/__tests__/RegionPaneHost.openInRegion.test.tsx","digest":"32be112f3c900922621a776004e10c9e242d75df7d9d34b68e16d4961a7c97c4","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/workspace-panes/__tests__/RegionPaneHost.project.test.tsx","digest":"6625b0f1536bddb776e68c9322119e1dea2f96501d6ba8f6b3548af782018ee3","revision":"e1544fe9cb9f8309b7c608efac65601f6f4804a4"},
+    {"path":"src-ui/src/workspace-panes/__tests__/RegionPaneHost.project.test.tsx","digest":"bdf9cdc078c0d1b5aa25794c36ff46c25a2d17a82338c56adf709f53ce8cef39","revision":"12e2341b5f3f4b34b15e7a11eedf51d11873323d"},
 
     {"path":"src-ui/src/workspace-panes/__tests__/RegionPaneHost.tabs.test.tsx","digest":"466d25073741824d65a8de1be3b0d6ec94bd32c2716731ca2b170c99834dd27f","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 

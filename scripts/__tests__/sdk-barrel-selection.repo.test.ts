@@ -18,6 +18,7 @@ import {
   loadSdkImportGraph,
   refinedSeedsFor,
   refineSdkBarrelRelatedPaths,
+  topLevelUseAnalysis,
 } from '../lib/sdk-barrel-selection.mjs';
 
 const ROOT = fileURLToPath(new URL('../..', import.meta.url));
@@ -110,6 +111,23 @@ describe('SDK barrel selection on the real corpus', () => {
     expect(decision.reason).toMatch(
       /packages\/sdk\/src\/(context|voice)\/registry\.ts line \d+ uses it in a top-level side effect/,
     );
+  });
+
+  test('fail-closed tracing stays precise on the real uses (#2766)', () => {
+    // The barrel-loaded registries construct ListenerManager subclasses
+    // (above). Following what they run must still resolve to real modules:
+    // no use may collapse to ANY or the depth bound, which would make every
+    // changed SDK module whole-barrel, and no client module is reached.
+    const uses = topLevelUseAnalysis(graph);
+    expect(uses.length).toBeGreaterThan(0);
+    for (const use of uses) {
+      expect(use).toMatchObject({ any: false, bounded: false });
+      expect(
+        [...use.mods].filter((module) =>
+          module.startsWith('packages/sdk/src/client/'),
+        ),
+      ).toEqual([]);
+    }
   });
 
   test('before/after: resolving named imports narrows a single-client edit', () => {

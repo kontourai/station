@@ -620,6 +620,7 @@ export function executeOwnedCommand(
   const settleTree = async (forceWrapper = false) => {
     if (treeSettlement.proven) {
       releaseLauncher();
+      if (forceWrapper && execution.isAlive()) execution.child.kill('SIGKILL');
       return;
     }
     if (!treeSettlement.abortRequested) {

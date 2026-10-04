@@ -86,6 +86,10 @@ import {
   useInboxWorkItems,
 } from '../../views/home/useInboxWorkItems';
 import { useWorkFacts } from '../../views/home/useWorkFacts';
+import {
+  openWorkItem,
+  workItemOpenFailureMessage,
+} from '../../views/home/work-item-open-policy';
 import { durableMentionAuthority } from '../chat/composer-mentions';
 import { MarkdownLinkContext } from '../chat/MarkdownLinkContext';
 import { ShareIntakeController } from '../chat/ShareIntakeController';
@@ -1469,9 +1473,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   // #3310: fires from the chat-settings menu; the transcript's summary card
   // observes progress/failure through the shared mutation key.
   const generateSessionSummary = useGenerateSessionSummaryMutation();
-  // #3170: New always opens the New Chat picker, which defaults to the dock's
-  // project (`resolveNewChatModalDefaultProjectSlug`); nothing is created
-  // until the user picks an agent or Skill there.
+  // New chats inherit the dock’s bound project, including explicit No project.
   const openNewChatDirect = useCallback(() => {
     setImportedSessionId(null);
     setShowNewChatModal(true);
@@ -2228,8 +2230,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                       onCollapse: () => applyDockSnap('collapsed'),
                     }
               }
-              // #3309: New chat is the bar's pinned far-right icon; like the
-              // desktop New it opens the New Chat picker (#3170).
+              // Shared creation action opens a draft without starting an engine.
               onNewChat={openNewChatDirect}
               overflow={{
                 onOpenConversation: () => setShowSessionPicker(true),
@@ -2492,6 +2493,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                         onCloseChat: removeSession,
                         onAcknowledgeConversation: acknowledgeTaskConversation,
                         onOpenHistory: openInboxHistory,
+                        onNewChat: openNewChatDirect,
                         agentsLoaded,
                         onOpenFailed: showInboxOpenFailure,
                       }}
@@ -2904,6 +2906,39 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
           newChatRequestEpoch,
           newChatStartWithDefault,
           newChatInitialPrompt,
+          recentChats: {
+            items: taskItems,
+            pending: taskItemsPending,
+            error: taskItemsFailed,
+            workFacts,
+            onRetry: () => {
+              void refetchOrchestrationSessions();
+              void inventory.refetch();
+            },
+            onViewAll: () => {
+              setShowNewChatModal(false);
+              openInboxHistory();
+            },
+            onOpen: async (item) => {
+              try {
+                const outcome = await openWorkItem(item, {
+                  onFocusChat: focusSessionInPane,
+                  onOpenConversation: openUserSelectedConversationInScopedPane,
+                  onOpenSession: openImportedSessionInPane,
+                  agentsLoaded,
+                });
+                if (outcome === 'opened' || outcome === 'fallback') {
+                  acknowledgeTaskConversation(item);
+                  setShowNewChatModal(false);
+                } else
+                  showInboxOpenFailure(
+                    workItemOpenFailureMessage(item, outcome),
+                  );
+              } catch {
+                showInboxOpenFailure('Could not open this chat. Try again.');
+              }
+            },
+          },
           showChatSettings,
           showSessionPicker,
           chatFontSize,
@@ -2942,6 +2977,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
             providerId,
             providerType,
             experienceDraft,
+            sendInitialMessage,
           ) => {
             // station#4525: an explicit project choice inside the New Chat
             // modal is exactly as deliberate as a picker pick (#4524's
@@ -2974,16 +3010,22 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
               });
             if (
               sessionId &&
-              newChatStartWithDefault &&
-              newChatInitialPrompt?.trim()
+              ((newChatStartWithDefault && newChatInitialPrompt?.trim()) ||
+                (sendInitialMessage && initialMessage?.trim()))
             ) {
               setPendingGoalSend({
                 sessionId,
-                prompt: newChatInitialPrompt,
+                prompt: (sendInitialMessage
+                  ? initialMessage
+                  : newChatInitialPrompt)!,
                 authority: requestAuthority,
               });
             }
-            if (sessionId) navigate(pathname, { chat: sessionId });
+            if (!sessionId)
+              throw new Error(
+                'The chat could not be opened. Check the selected Agent and try again.',
+              );
+            navigate(pathname, { chat: sessionId });
             setShowNewChatModal(false);
             setNewChatProjectOverride(null);
             setHandoffSource(null);
