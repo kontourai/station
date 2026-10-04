@@ -35,31 +35,31 @@
       "name": "connections",
       "width": 1440,
       "height": 900,
-      "sha256": "6576ede8a6e94911ee13083d83c2f5e51f0216c44412c13445f0c59499d6c632"
+      "sha256": "c80870d0cdd3ffab0d3e6cbbf5702fe6fe92c81e9df271612d9972106365d3da"
     },
     {
       "name": "connections-agent-apps",
       "width": 1440,
       "height": 900,
-      "sha256": "9c9ad768d524b7f6761da209c81b2404ee83c35389ef4d06787791541ed021e3"
+      "sha256": "2880f07d088329bce507465b6cf3e6b49110b8afbf76a81619636aea147dfec7"
     },
     {
       "name": "connections-knowledge",
       "width": 1440,
       "height": 900,
-      "sha256": "a18ebc6290dc559bed548b84b1e61ed1dab5ce61bcad7a877cea01ee60ca7f90"
+      "sha256": "4ba6afe43349558bd1cceb4e61d85cea9015d31fa5dfa0d523fe0edb200c7c02"
     },
     {
       "name": "connections-models",
       "width": 1440,
       "height": 900,
-      "sha256": "6576ede8a6e94911ee13083d83c2f5e51f0216c44412c13445f0c59499d6c632"
+      "sha256": "c80870d0cdd3ffab0d3e6cbbf5702fe6fe92c81e9df271612d9972106365d3da"
     },
     {
       "name": "connections-tools",
       "width": 1440,
       "height": 900,
-      "sha256": "bdbee16f87b1c9a6e7aabb6601cd5d08e6046e0e04a7e9e68a9f458858a3ae51"
+      "sha256": "d7def26c2c1586e8d743c6ca8c986273fba86026e694f828506202936b10b31e"
     },
     {
       "name": "developer-telemetry",
@@ -125,7 +125,7 @@
       "name": "mobile-connections",
       "width": 390,
       "height": 844,
-      "sha256": "4a715edc85b34777ddf2c09fec2a32203fbd885d6826e5ac39b15683c2e8dbd1"
+      "sha256": "772f2b78e67bea72f70586474b08e00670a812ae7113e0b82b00979ff3fe8d8d"
     },
     {
       "name": "mobile-home",
