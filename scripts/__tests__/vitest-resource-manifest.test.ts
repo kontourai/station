@@ -94,6 +94,30 @@ describe('Vitest resource manifest', () => {
     expect(assertOrdinaryVitestSelection(groups)).toEqual(groups.ordinary);
   }, 70_000);
 
+  it('refuses a discovery listing past the 64 MiB capture bound by name (#2787)', () => {
+    let requested: unknown;
+    expect(() =>
+      discoverVitestFiles({
+        spawnSync: ((
+          _command: string,
+          _args: string[],
+          options: { maxBuffer?: number },
+        ) => {
+          requested = options.maxBuffer;
+          return {
+            status: null,
+            stdout: 'scripts/__tests__/truncated.test.ts\n',
+            stderr: '',
+            error: Object.assign(new Error('spawnSync node ENOBUFS'), {
+              code: 'ENOBUFS',
+            }),
+          };
+        }) as never,
+      }),
+    ).toThrow(/list --filesOnly wrote more than 67108864 bytes/);
+    expect(requested).toBe(67_108_864);
+  });
+
   it('proves eight ordinary slices cover the canonical corpus exactly once', async () => {
     // Vitest sorts a SHA-1 path projection and slices that ordered set. This
     // calls the installed selector itself—not a reimplementation—so changes

@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
   closeSync,
@@ -14,6 +13,7 @@ import {
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
+import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import {
   captureOwnedProcessOutput,
@@ -601,7 +601,7 @@ async function focused(root, file, log) {
 export async function main(argv = process.argv.slice(2)) {
   const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
   const git = (args) =>
-    execFileSync('git', args, {
+    execFileSyncBounded('git', args, {
       cwd: root,
       encoding: 'utf8',
       windowsHide: true,
@@ -640,7 +640,7 @@ export async function main(argv = process.argv.slice(2)) {
       if (
         !allowed.has(file.path) ||
         digest(
-          execFileSync(
+          execFileSyncBounded(
             'git',
             ['show', `${record.sourceRevision}:${file.path}`],
             { cwd: root, encoding: 'utf8', windowsHide: true },
