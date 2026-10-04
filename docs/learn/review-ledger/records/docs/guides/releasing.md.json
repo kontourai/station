@@ -40,7 +40,9 @@
 
     "scripts/__tests__/qualification-evidence.test.ts",
 
-    "scripts/__tests__/qualification-repair.test.ts"
+    "scripts/__tests__/qualification-repair.test.ts",
+
+    "scripts/merge-queue-dequeue.mjs"
   ],
 
   "checks": [
