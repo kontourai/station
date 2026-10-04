@@ -83,6 +83,9 @@ type AgentLike = {
   tools: 'clone',
   skills: 'clone',
   project: 'exclude',
+  // #3276: who may use the Agent is an exposure decision, never copied; a
+  // member audience also requires the `project` a clone does not keep.
+  audience: 'exclude',
   delegation: 'exclude',
   streaming: 'exclude',
   commands: 'exclude',
