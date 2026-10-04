@@ -463,9 +463,64 @@ test('#3163: a child reporting every 500 ms for 10 s still gets its transcript r
       vi.advanceTimersByTime(500);
     });
   }
-  // 10 s of reports every 500 ms: re-read, but throttled to one per 2 s.
-  expect(refetch.mock.calls.length).toBeGreaterThanOrEqual(1);
-  expect(refetch.mock.calls.length).toBeLessThanOrEqual(5);
+  // 10 s of reports every 500 ms: one re-read per 2 s window, every window.
+  expect(refetch).toHaveBeenCalledTimes(5);
+  vi.useRealTimers();
+});
+
+test('#3163: a change after a throttled re-read fires another one', () => {
+  vi.useFakeTimers();
+  useChildWorkTranscriptQuery.mockReturnValue(
+    transcriptQuery({ isSuccess: true, data: { pages: [{ entries: [] }] } }),
+  );
+  const mountAt = (progress: string) => (
+    <ul>
+      <ChildWorkRow
+        row={row({ transcript: TRANSCRIPT, progress })}
+        now={100_000}
+        showProvenance={false}
+        onOpenSession={onOpenSession}
+      />
+    </ul>
+  );
+  const view = render(mountAt('first'));
+  fireEvent.click(screen.getByRole('button', { name: 'View transcript' }));
+  view.rerender(mountAt('second'));
+  act(() => {
+    vi.advanceTimersByTime(2_000);
+  });
+  expect(refetch).toHaveBeenCalledTimes(1);
+  view.rerender(mountAt('third'));
+  act(() => {
+    vi.advanceTimersByTime(2_000);
+  });
+  expect(refetch).toHaveBeenCalledTimes(2);
+  vi.useRealTimers();
+});
+
+test('#3163: unmounting with a re-read pending cancels it', () => {
+  vi.useFakeTimers();
+  useChildWorkTranscriptQuery.mockReturnValue(
+    transcriptQuery({ isSuccess: true, data: { pages: [{ entries: [] }] } }),
+  );
+  const mountAt = (progress: string) => (
+    <ul>
+      <ChildWorkRow
+        row={row({ transcript: TRANSCRIPT, progress })}
+        now={100_000}
+        showProvenance={false}
+        onOpenSession={onOpenSession}
+      />
+    </ul>
+  );
+  const view = render(mountAt('first'));
+  fireEvent.click(screen.getByRole('button', { name: 'View transcript' }));
+  view.rerender(mountAt('second'));
+  view.unmount();
+  act(() => {
+    vi.advanceTimersByTime(10_000);
+  });
+  expect(refetch).not.toHaveBeenCalled();
   vi.useRealTimers();
 });
 
