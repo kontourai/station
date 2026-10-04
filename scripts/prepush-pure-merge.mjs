@@ -73,14 +73,28 @@ function tryGit(git, args) {
  * @param {{ localSha: string, remoteSha: string, baseRef: string, git?: (args: string[]) => string }} input
  * @returns {{ pure: boolean, reason: string, merges?: number }}
  */
-export function classifyPushedRef({ localSha, remoteSha, baseRef, git = defaultGit }) {
-  if (!SHA.test(localSha ?? '')) return { pure: false, reason: `unreadable local object ${localSha}` };
+export function classifyPushedRef({
+  localSha,
+  remoteSha,
+  baseRef,
+  git = defaultGit,
+}) {
+  if (!SHA.test(localSha ?? ''))
+    return { pure: false, reason: `unreadable local object ${localSha}` };
   if (!remoteSha || ZERO.test(remoteSha))
-    return { pure: false, reason: 'a new remote ref has no previously gated tip' };
-  if (!SHA.test(remoteSha)) return { pure: false, reason: `unreadable remote object ${remoteSha}` };
-  if (localSha === remoteSha) return { pure: false, reason: 'the ref does not move' };
+    return {
+      pure: false,
+      reason: 'a new remote ref has no previously gated tip',
+    };
+  if (!SHA.test(remoteSha))
+    return { pure: false, reason: `unreadable remote object ${remoteSha}` };
+  if (localSha === remoteSha)
+    return { pure: false, reason: 'the ref does not move' };
   if (tryGit(git, ['cat-file', '-e', `${remoteSha}^{commit}`]) === null)
-    return { pure: false, reason: `the remote tip ${remoteSha.slice(0, 12)} is not available locally` };
+    return {
+      pure: false,
+      reason: `the remote tip ${remoteSha.slice(0, 12)} is not available locally`,
+    };
   const base = tryGit(git, ['rev-parse', '--verify', `${baseRef}^{commit}`]);
   if (!base) return { pure: false, reason: `${baseRef} could not be resolved` };
 
@@ -88,9 +102,16 @@ export function classifyPushedRef({ localSha, remoteSha, baseRef, git = defaultG
   let merges = 0;
   while (commit !== remoteSha) {
     if (merges >= MAX_PURE_MERGE_COMMITS)
-      return { pure: false, reason: `more than ${MAX_PURE_MERGE_COMMITS} first-parent commits before the remote tip` };
+      return {
+        pure: false,
+        reason: `more than ${MAX_PURE_MERGE_COMMITS} first-parent commits before the remote tip`,
+      };
     const line = tryGit(git, ['rev-list', '--parents', '-n', '1', commit]);
-    if (!line) return { pure: false, reason: `cannot read commit ${commit.slice(0, 12)}` };
+    if (!line)
+      return {
+        pure: false,
+        reason: `cannot read commit ${commit.slice(0, 12)}`,
+      };
     const [, ...parents] = line.split(/\s+/);
     const short = commit.slice(0, 12);
     if (parents.length !== 2)
@@ -103,18 +124,35 @@ export function classifyPushedRef({ localSha, remoteSha, baseRef, git = defaultG
       };
     const [first, second] = parents;
     if (tryGit(git, ['merge-base', '--is-ancestor', second, base]) === null)
-      return { pure: false, reason: `${short} merges ${second.slice(0, 12)}, which is not on ${baseRef}` };
+      return {
+        pure: false,
+        reason: `${short} merges ${second.slice(0, 12)}, which is not on ${baseRef}`,
+      };
     // Exit 1 (conflicts) throws, so a conflicted merge reads as null here.
-    const automatic = tryGit(git, ['merge-tree', '--write-tree', '--no-messages', first, second]);
-    if (!automatic) return { pure: false, reason: `${short} needed conflict resolution` };
+    const automatic = tryGit(git, [
+      'merge-tree',
+      '--write-tree',
+      '--no-messages',
+      first,
+      second,
+    ]);
+    if (!automatic)
+      return { pure: false, reason: `${short} needed conflict resolution` };
     const autoTree = automatic.split('\n')[0];
     const tree = tryGit(git, ['rev-parse', `${commit}^{tree}`]);
     if (!tree || tree !== autoTree)
-      return { pure: false, reason: `${short} differs from the automatic merge of its parents (edited resolution)` };
+      return {
+        pure: false,
+        reason: `${short} differs from the automatic merge of its parents (edited resolution)`,
+      };
     merges += 1;
     commit = first;
   }
-  return { pure: true, reason: `${merges} clean merge(s) of ${baseRef} onto the gated remote tip`, merges };
+  return {
+    pure: true,
+    reason: `${merges} clean merge(s) of ${baseRef} onto the gated remote tip`,
+    merges,
+  };
 }
 
 /** Parse git's four-field pre-push lines; deletions are skipped by the hook. */
@@ -133,8 +171,12 @@ export function parsePushLines(text) {
  * A push is pure only if it names at least one ref and every ref is pure.
  * @returns {{ pure: boolean, reasons: string[] }}
  */
-export function classifyPush(lines, { baseRef, git = defaultGit } = { baseRef: 'origin/main' }) {
-  if (lines.length === 0) return { pure: false, reasons: ['no pushed refs were read'] };
+export function classifyPush(
+  lines,
+  { baseRef, git = defaultGit } = { baseRef: 'origin/main' },
+) {
+  if (lines.length === 0)
+    return { pure: false, reasons: ['no pushed refs were read'] };
   const reasons = [];
   let pure = true;
   for (const line of lines) {
