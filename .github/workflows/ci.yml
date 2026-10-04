@@ -338,6 +338,19 @@ jobs:
           include-hidden-files: true
           retention-days: 14
 
+      # Diagnostics (#3101 C): a failing shard's whole redacted Vitest JSON
+      # report. Not verdict-bearing, and outside the receipt download pattern.
+      - name: Upload failing fast-checks Vitest reports
+        if: failure()
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: fast-checks-vitest-reports-${{ matrix.shard }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .kontourai/fast-checks/vitest-reports/
+          if-no-files-found: ignore
+          include-hidden-files: true
+          retention-days: 14
+
   fast-checks-statics:
     name: fast-checks statics
     needs: classify
