@@ -15,7 +15,7 @@ vi.mock('../contexts/NavigationContext', () => ({
 }));
 const SHORTCUT_DISPLAY: Record<string, string> = {
   'dock.openConversation': '⌘O',
-  'dock.newChat': '⌘N',
+  'dock.newChat': '⌘T',
 };
 vi.mock('../hooks/useKeyboardShortcut', () => ({
   useShortcutDisplay: (id: string) => SHORTCUT_DISPLAY[id] ?? '',
@@ -42,11 +42,12 @@ function workspaceControls() {
 /**
  * #3046: a bar that names the pane (the Coding layout's breadcrumb) takes
  * the full-screen Chat's toolbar into its slots — no second bar, no second
- * title — and the two verbs give up their words for a name and a tooltip
- * that carries the chord.
+ * title. Its one verb, New, gives up its word for a name and a tooltip that
+ * carries the chord. There is no Open (the inbox sits beside Chat) and no
+ * session count (the inbox enumerates the chats).
  */
 describe('ChatDockHeader in a bar that names the pane', () => {
-  test('joins the bar, omits its identity, and keeps Open/New as named icons with tipped shortcuts', async () => {
+  test('joins the bar, omits its identity, and keeps New as a named icon with a tipped shortcut, with no Open and no session count', async () => {
     const leading = document.createElement('span');
     const trailing = document.createElement('span');
     document.body.append(leading, trailing);
@@ -75,29 +76,30 @@ describe('ChatDockHeader in a bar that names the pane', () => {
         </RegionChromeSlotsContext.Provider>,
       );
       expect(container.querySelector('.chat-dock__header')).toBeNull();
-      // The session count is not loose text in the bar: it rides the Open
-      // icon as its badge and tooltip.
-      expect(trailing.textContent).not.toContain('sessions');
+      // No session count anywhere in the bar: the inbox enumerates them.
+      expect(trailing.textContent).not.toMatch(/sessions?/i);
       // The title is the bar's: the identity is not repeated.
       expect(leading.textContent).not.toContain('Dev Agent Chat');
       expect(leading.textContent).toContain('Dev');
 
       // The verbs arrive with a lazily loaded chunk; a cold transform of it
       // can take seconds in this runner.
-      const open = await within(trailing).findByRole(
+      const create = await within(trailing).findByRole(
         'button',
-        { name: 'Open conversation, 2 sessions' },
+        { name: 'New chat' },
         { timeout: 15_000 },
       );
-      const create = within(trailing).getByRole('button', { name: 'New chat' });
-      expect(open.querySelector('.chat-dock__new-count')?.textContent).toBe(
-        '2',
-      );
+      // The shared creation action, icon-only: no word, a name and a tip.
+      expect(create.classList).toContain('new-chat-action');
       expect(create.textContent).toBe('');
       const tip = (button: HTMLElement) =>
         button.parentElement?.querySelector('[role="tooltip"]')?.textContent;
-      expect(tip(open)).toBe('Open conversation — 2 sessions (⌘O)');
-      expect(tip(create)).toBe('New chat (⌘N)');
+      expect(tip(create)).toBe('New chat (⌘T)');
+      // One verb, not two: no Open beside it.
+      expect(
+        within(trailing).queryByRole('button', { name: /^Open/ }),
+      ).toBeNull();
+      expect(document.body.textContent).not.toMatch(/\bsessions?\b/i);
       // The dock's own menu still rides the bar.
       expect(
         within(trailing).getByRole('button', { name: 'More dock actions' }),
@@ -128,7 +130,8 @@ describe('ChatDockHeader in a bar that names the pane', () => {
       expect(
         await screen.findByText('New', {}, { timeout: 15_000 }),
       ).toBeTruthy();
-      expect(screen.getByText('Open')).toBeTruthy();
+      // The bar's one labelled action; Open is a row of its ⋯ menu.
+      expect(screen.queryByText('Open')).toBeNull();
     } finally {
       leading.remove();
       trailing.remove();

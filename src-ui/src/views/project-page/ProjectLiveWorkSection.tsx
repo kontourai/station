@@ -9,8 +9,7 @@ import {
   useShowSurface,
   useShowSurfacePage,
 } from '../../contexts/useShowSurface';
-import { relativeTimeAgo } from '../../utils/relativeTime';
-import { sessionStatusWord } from '../../utils/session-state';
+import { relativeTime } from '../../utils/relativeTime';
 import {
   type SessionIconAgent,
   sessionIconAgent,
@@ -26,9 +25,10 @@ import {
   focusChatEventDetailForAction,
   resolveConversationOpenAction,
 } from '../home/work-item-open-policy';
-import type {
-  SessionLane,
-  SessionLaneId,
+import {
+  type SessionLane,
+  type SessionLaneId,
+  sessionWorkStatus,
 } from '../sessions/sessions-lane-model';
 import { projectLiveLanes } from './project-live-work-model';
 
@@ -49,7 +49,7 @@ function liveWorkMeta(
   const parts: string[] = [ownerName];
   if (session.delegation) parts.push(sessionKindLabel(session));
   const recency = sessionRecency(session);
-  if (recency > 0) parts.push(relativeTimeAgo(recency, now));
+  if (recency > 0) parts.push(relativeTime(recency, now));
   return parts.join(' · ');
 }
 
@@ -250,6 +250,7 @@ function SessionLiveWorkRow({
   laneId,
   open,
 }: ProjectLiveWorkRowProps) {
+  const status = sessionWorkStatus(session, useAgents(), now);
   return (
     <button
       type="button"
@@ -270,9 +271,7 @@ function SessionLiveWorkRow({
         </span>
       </span>
       <span className="project-page__live-work-trailing">
-        <span className="project-page__live-work-state">
-          {sessionStatusWord(session)}
-        </span>
+        <span className="project-page__live-work-state">{status.word}</span>
         <span className="project-page__live-work-cta" aria-hidden="true">
           {LANE_CALL_TO_ACTION[laneId] ?? 'Open'}
         </span>
@@ -289,6 +288,7 @@ function TaskRoomLiveWorkRow({
   open,
   taskId,
 }: ProjectLiveWorkRowProps & { taskId: string }) {
+  const status = sessionWorkStatus(session, useAgents(), now);
   const room = useProjectTaskRoomContext(taskId);
   const command = useCommandProjectTaskRoomLiveMutation(taskId);
   const target = room?.live?.participants.find(
@@ -340,9 +340,7 @@ function TaskRoomLiveWorkRow({
         <span className="project-page__live-work-working-on">{presence}</span>
       </span>
       <span className="project-page__live-work-trailing">
-        <span className="project-page__live-work-state">
-          {sessionStatusWord(session)}
-        </span>
+        <span className="project-page__live-work-state">{status.word}</span>
         <span className="project-page__live-work-cta" aria-hidden="true">
           {LANE_CALL_TO_ACTION[laneId] ?? 'Open'}
         </span>

@@ -208,6 +208,9 @@ const BANNER_LINK_BUTTON_STYLE: React.CSSProperties = {
   padding: 0,
 };
 
+/** D3: see `ChatDockBodyProps.loadingEscapeDelayMs`. */
+const LOADING_ESCAPE_DELAY_MS = 6_000;
+
 interface ChatDockBodyProps {
   activeSession: ChatSession;
   workingDirectory?: string | null;
@@ -255,6 +258,13 @@ interface ChatDockBodyProps {
   ) => void | Promise<void>;
   /** Re-resolves the exact durable conversation identity, never an Agent guess. */
   onRetryConversationOpen?: () => void | Promise<void>;
+  /**
+   * D3 (design round 2026-10): how long a load runs before the "Start new
+   * chat" escape joins the skeleton. One state at a time: a load that is
+   * going to land shows a skeleton and nothing else; the escape is for a
+   * load that has stopped looking like one. Tests set it to 0.
+   */
+  loadingEscapeDelayMs?: number;
   onForkFromTurn?: (source: ForkTurnSource) => void;
   chatInput: ReturnType<typeof useChatInput>;
   setShowStatsPanel: (show: boolean) => void;
@@ -417,6 +427,7 @@ export function ChatDockBody({
   onOpenBackgroundTasks,
   onNewChat,
   onRetryConversationOpen,
+  loadingEscapeDelayMs = LOADING_ESCAPE_DELAY_MS,
   onForkFromTurn,
   setShowStatsPanel,
 }: ChatDockBodyProps) {
@@ -497,7 +508,7 @@ export function ChatDockBody({
    * point-read (`resolvingOpen`, seeded by `hydrateActiveChats` for every
    * persisted chat with a conversation id) and the transcript's first read
    * (`settled`). Before #1582 E3/B6 these produced a red "is read-only" alert,
-   * an empty "Start a conversation" placeholder and a second red line under
+   * an empty "Start a chat" placeholder and a second red line under
    * the composer — three contradictory claims about a healthy conversation.
    */
   const transcriptPending =
@@ -539,13 +550,28 @@ export function ChatDockBody({
    * after it. A turn ending bumps the history revision (and can re-key the
    * window when the conversation id lands), and that refetch is a background
    * refresh of a transcript already on screen: counting it flashed a
-   * "Loading conversation" skeleton and a "Start new chat" escape under the
+   * "Loading chat" skeleton and a "Start new chat" escape under the
    * finished answer on every turn. Once this session has shown messages, a
    * pending refetch keeps showing them and claims nothing is loading.
    */
   const transcriptLoaded = stickyTranscriptRef.current.messages.length > 0;
   const conversationLoading =
     resolvingOpen || (transcriptPending && !transcriptLoaded);
+  // D3: the escape joins the skeleton only once a load has run long; a load
+  // that lands in the ordinary second or two shows one state, the skeleton.
+  const [loadingLong, setLoadingLong] = useState(false);
+  useEffect(() => {
+    if (!conversationLoading) {
+      setLoadingLong(false);
+      return;
+    }
+    if (loadingEscapeDelayMs <= 0) {
+      setLoadingLong(true);
+      return;
+    }
+    const timer = setTimeout(() => setLoadingLong(true), loadingEscapeDelayMs);
+    return () => clearTimeout(timer);
+  }, [conversationLoading, loadingEscapeDelayMs]);
   /*
    * The wait is BOUNDED but not short: both reads go through the SDK client,
    * whose `DEFAULT_CLIENT_REQUEST_TIMEOUT_MS` is 30_000, so a resolution that
@@ -1099,12 +1125,12 @@ export function ChatDockBody({
         displayedTranscriptMessages.length > 0 &&
         historyFailureNotice}
       {sessionRecordPending && (
-        <SkeletonList count={1} label="Reading this session's record" />
+        <SkeletonList count={1} label="Reading this chat's record" />
       )}
       {sessionRecordUnreadable && (
         <ErrorState
-          title="Could not read this Station's session records"
-          description="The chat below is what this browser still holds. Retry to find out whether the session is still there."
+          title="Could not read this Station's chat records"
+          description="The chat below is what this browser still holds. Retry to find out whether the chat is still there."
           action={
             onRetryOrchestrationSessions ? (
               <button
@@ -1156,7 +1182,7 @@ export function ChatDockBody({
           {historyFailureNotice ??
             (conversationLoading ? (
               /*
-               * "Start a conversation" is a CLAIM that this chat has none, and
+               * "Start a chat" is a CLAIM that this chat has none, and
                * a transcript read that has not landed has established nothing.
                * It rendered here for ~1.7s on every reload of a conversation
                * that had turns in it (#1582 E3/B6). The skeleton keeps the flex
@@ -1164,11 +1190,7 @@ export function ChatDockBody({
                */
               <SkeletonList
                 count={4}
-                label={
-                  transcript.catchingUp
-                    ? 'Catching up conversation'
-                    : 'Loading conversation'
-                }
+                label={transcript.catchingUp ? 'Catching up' : 'Loading chat'}
               />
             ) : (
               <ChatEmptyState
@@ -1181,7 +1203,7 @@ export function ChatDockBody({
       {displayedTranscriptMessages.length > 0 && (
         <LazyBoundary
           load={loadChatMessageList}
-          pending={<SkeletonList count={4} label="Loading conversation" />}
+          pending={<SkeletonList count={4} label="Loading chat" />}
           componentProps={{
             activeSession: renderedSession,
             suppressStreamingRow: transcript.openTurnProjected,
@@ -1734,7 +1756,7 @@ export function ChatDockBody({
         (delta-review M1).
       */}
       {conversationLoading && displayedTranscriptMessages.length > 0 ? (
-        <SkeletonBlock count={1} label="Loading conversation" />
+        <SkeletonBlock count={1} label="Loading chat" />
       ) : null}
       {/*
         The one way out of the wait. `.session-history-controls` is this pane's
@@ -1747,7 +1769,7 @@ export function ChatDockBody({
         BEFORE the transcript's first read satisfies both conditions at once,
         and rendered the control twice (delta-review L1).
       */}
-      {conversationLoading && !recoveryOpen ? (
+      {conversationLoading && loadingLong && !recoveryOpen ? (
         <div className="session-history-controls">
           {onNewChat ? (
             <button
@@ -1804,7 +1826,7 @@ export function ChatDockBody({
       {busyOpen && !isTurnInFlight(activeSession) ? (
         <div className="session-history-controls" role="status">
           <span>
-            Still waiting on the active turn. If it already finished, check
+            Waiting for the active turn to finish. If it already has, check
             again to send.
           </span>
           {onRetryConversationOpen ? (
@@ -1856,19 +1878,18 @@ export function ChatDockBody({
                     connection.id === activeSession.agentConnectionId,
                 )?.name ??
                 engineDisplayLabel(turnProgressSilence.provider) ??
-                'the engine'
+                'the agent'
               }
-            />{' '}
-            You can{' '}
+            />
+            {'. '}
             <button
               type="button"
               onClick={() => void chatInput.handleCancel()}
               disabled={!!activeSession.stopPending}
               style={BANNER_LINK_BUTTON_STYLE}
             >
-              stop this turn
+              Stop this turn
             </button>
-            .
           </div>
         )}
       {activeSession.replay?.mode === 'timeline' ? (

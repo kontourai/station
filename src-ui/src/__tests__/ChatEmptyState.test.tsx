@@ -121,7 +121,7 @@ describe('ChatEmptyState', () => {
 
     render(<ChatEmptyState agentSlug="dev-agent" agentName="Dev Agent" />);
 
-    expect(screen.getByText('Start a conversation')).toBeTruthy();
+    expect(screen.getByText('Start a chat')).toBeTruthy();
     expect(
       screen.getByText('Type a message below to chat with Dev Agent'),
     ).toBeTruthy();
@@ -133,7 +133,7 @@ describe('ChatEmptyState', () => {
 
     render(<ChatEmptyState agentSlug="dev-agent" agentName="Dev Agent" />);
 
-    expect(screen.getByText('Start a conversation')).toBeTruthy();
+    expect(screen.getByText('Start a chat')).toBeTruthy();
     expect(screen.queryByTestId('chat-empty-state-unconfigured')).toBeNull();
   });
 
@@ -154,7 +154,7 @@ describe('ChatEmptyState', () => {
 
     expect(screen.getByTestId('chat-empty-state-unconfigured')).toBeTruthy();
     expect(screen.getByText('Connect a model to start chatting')).toBeTruthy();
-    expect(screen.queryByText('Start a conversation')).toBeNull();
+    expect(screen.queryByText('Start a chat')).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: 'Open Connections' }));
 
@@ -225,7 +225,7 @@ describe('ChatEmptyState', () => {
 
     render(<ChatEmptyState agentSlug="codex" agentName="Codex" />);
 
-    expect(screen.getByText('Start a conversation')).toBeTruthy();
+    expect(screen.getByText('Start a chat')).toBeTruthy();
     expect(screen.queryByTestId('chat-empty-state-unconfigured')).toBeNull();
   });
 
@@ -256,7 +256,7 @@ describe('ChatEmptyState', () => {
         />,
       );
 
-      expect(screen.getByText('Start a conversation')).toBeTruthy();
+      expect(screen.getByText('Start a chat')).toBeTruthy();
       expect(screen.queryByTestId('chat-empty-state-unconfigured')).toBeNull();
     });
 
@@ -300,7 +300,7 @@ describe('ChatEmptyState', () => {
         />,
       );
 
-      expect(screen.getByText('Start a conversation')).toBeTruthy();
+      expect(screen.getByText('Start a chat')).toBeTruthy();
       expect(screen.queryByTestId('chat-empty-state-unconfigured')).toBeNull();
     });
   });
