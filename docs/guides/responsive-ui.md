@@ -58,8 +58,11 @@ completion/recovery path.
 Wrap custom footer controls in `ResponsiveSurfaceActions`; `Dialog` already
 does this for its footer. Feature classes own desktop layout and colors. The
 shared mobile rules permit wrapping, add bottom safe-area padding, and give
-matching direct-child controls a 44px minimum. Nested controls and overflowing
-content still need their own caller test.
+matching direct-child controls a 44px minimum, under the phone-width query
+only. A wide touch tablet does not match that query; a control that needs the
+floor there declares it itself, inside the existing `(hover: none)` block in
+`index.css` (today the send-blocked line's Remove attachments). Nested
+controls and overflowing content still need their own caller test.
 
 Every `ResponsiveDialogSurface` declares `layer="dialog"`, `"popover"` or
 `"system"`. [The token scale](../../src-ui/src/tokens.css) includes dock,

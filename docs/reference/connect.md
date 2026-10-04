@@ -18,8 +18,11 @@ where — see
 
 ## Native relay link publication
 
-The `/native-relay-link` source entry exports `nativeRelayLinkScheme`,
-`encodeNativeRelayLink` and `parseNativeRelayLink`. It publishes or inspects the
+The `/native-relay-link` source entry re-exports `nativeRelayLinkScheme`,
+`encodeNativeRelayLink` and `parseNativeRelayLink` from the published
+[`@kontourai/station-shared/native-relay-link`](shared.md#native-relay-link-codec)
+leaf. Connect retains this entry for compatibility; Shared owns the single
+canonical codec used by SDK and server consumers. It publishes or inspects the
 closed `station-native-relay-link/v1` envelope: public first-contact route
 intent, or an untrusted application-origin hint wrapping an unchanged native
 v2 installation-bound invitation. The distinct URI association carries the

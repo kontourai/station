@@ -1,4 +1,4 @@
-import { parseNativeRelayLink } from '@kontourai/station-connect/native-relay-link';
+import { parseNativeRelayLink } from '@kontourai/station-shared/native-relay-link';
 import { NATIVE_DEVICE_BINDING_CANDIDATE_VERSION } from '@kontourai/station-contracts/native-device-proof';
 import type { NativeRelayLinkRoute } from '@kontourai/station-contracts/native-relay-link';
 import type {

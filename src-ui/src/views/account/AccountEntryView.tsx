@@ -16,7 +16,7 @@ import { Button } from '../../components/Button';
 import { LazyBoundary } from '../../components/LazyBoundary';
 import { PageFrame } from '../../components/page-frame';
 import { ErrorState, SkeletonList } from '../../components/state';
-import { errorText } from '../../utils/errorText';
+import { errorText, userFacingErrorMessage } from '../../utils/errorText';
 import {
   clearAccountEntryContinuation,
   readAccountEntryContinuation,
@@ -163,7 +163,7 @@ export function AccountEntryView({
         );
       window.location.assign(url.href);
     } catch (cause) {
-      setError(errorText(cause));
+      setError(userFacingErrorMessage(cause));
     } finally {
       mutation.reset();
     }
@@ -229,7 +229,7 @@ export function AccountEntryView({
       }
       await client.resetQueries({ queryKey: ['account', apiBase, 'session'] });
     } catch (cause) {
-      setError(errorText(cause));
+      setError(userFacingErrorMessage(cause));
     } finally {
       setPassword('');
       mutation.reset();
@@ -254,7 +254,7 @@ export function AccountEntryView({
       setInvitation(undefined);
       clearAccountEntryContinuation(invitation);
     } catch (cause) {
-      setError(errorText(cause));
+      setError(userFacingErrorMessage(cause));
     } finally {
       mutation.reset();
     }
@@ -268,7 +268,7 @@ export function AccountEntryView({
       await client.resetQueries({ queryKey: ['account', apiBase, 'session'] });
       setJoined(false);
     } catch (cause) {
-      setError(errorText(cause));
+      setError(userFacingErrorMessage(cause));
     } finally {
       mutation.reset();
     }

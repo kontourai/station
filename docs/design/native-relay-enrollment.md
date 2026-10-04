@@ -57,7 +57,7 @@ exact installation. The operator's surface approval and independent Station
 key comparison remain mandatory. Neither form grants account, Device, Project
 or compute authority merely by being opened.
 
-The [sender codec](../../packages/connect/src/core/nativeRelayLink.ts) encodes
+The [sender codec](../../packages/shared/src/native-relay-link.ts) encodes
 the envelope in a fragment under a distinct `station-relay-*` scheme. Production
 links require canonical HTTPS origins. Only development links allow exact
 numeric loopback HTTP origins. The host checks its installed channel and

@@ -1,4 +1,4 @@
-import { encodeNativeRelayLink } from '@kontourai/station-connect/native-relay-link';
+import { encodeNativeRelayLink } from '@kontourai/station-shared/native-relay-link';
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import type { RelayManagementView } from '@kontourai/station-contracts/relay-management';
 import {

@@ -953,6 +953,12 @@ actual process recovery and two-person public delivery remain unqualified.
 
 ## Native relay link intake
 
+The public [link codec](../../packages/shared/src/native-relay-link.ts) belongs
+to `@kontourai/station-shared/native-relay-link`. SDK and server consumers use
+that published leaf; Connect retains a compatibility re-export of the same
+implementation. Moving its package owner preserves parsing, wire format and
+refusal rules; it does not grant trust or move native secret custody.
+
 The [host intake](../../src-desktop/src/native_relay_link_intake.rs) owns bounded
 invitation custody, public pending handles, cancellation and expiry. The
 [typed envelope](../../packages/contracts/src/native-relay-link.ts) separates a

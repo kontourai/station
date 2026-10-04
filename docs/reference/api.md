@@ -1465,6 +1465,33 @@ still return a string `error`; a message substring is not a universal API error
 code. Authentication, origin, scope, membership, and operation-specific refusals
 also have their own shapes.
 
+Every JSON response the runtime writes itself, success or refusal, carries the
+response header `x-station-envelope: 1`
+(`STATION_ENVELOPE_HEADER` in `@kontourai/station-contracts/http`), and CORS
+exposes it. Because there is no universal envelope, a reverse proxy or gateway
+can answer with JSON in a Station shape; the header is how a client tells
+Station's own answer from one written in between. The header is set by
+[one middleware](../../src-server/runtime/bootstrap/runtime-http.ts) around
+every handler. The refusals Station writes outside that app set it
+themselves: the [virtual application ingress](../../src-server/services/connections/virtual-application.ts)
+(its admission refusals, and the 502 that replaces an app answer which tried
+to set a cookie) and the self-hosted broker's
+[gated application](../../src-server/runtime/bootstrap/self-hosted-broker-pion-runtime.ts)
+(retired trust, forbidden origin). It
+describes one hop: a response relayed from another Station through
+`fetchRemoteStation` leaves without it. Non-JSON bodies (event streams, files,
+plain text) do not carry it. A Station older than the header never sends it,
+so its absence proves nothing about such a Station.
+
+The SDK treats a missing header as "not Station's answer" only for an origin
+that has already sent it, and forgets an origin when its credential changes
+or the client switches Station. One case it cannot tell apart: Stations of
+different versions behind one origin (a rolling deploy, or a downgrade). Until
+the origin is forgotten, the older Station's refusals read as an
+intermediary's, so a queued chat message is retried instead of dropped and may
+be refused again on each retry until a reload. That fails toward retrying,
+never toward dropping a message.
+
 Clients must check HTTP status and the family's body/stream result. Treat 202
 as acceptance with pending work when the response says so, 409 indeterminate
 receipts as requiring observation, and a failed health result as different

@@ -1,4 +1,4 @@
-import { encodeNativeRelayLink } from '@kontourai/station-connect/native-relay-link';
+import { encodeNativeRelayLink } from '@kontourai/station-shared/native-relay-link';
 import type { SelfHostedBrokerNativeRouteInvitationV2 } from '@kontourai/station-contracts/self-hosted-broker';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { StationHttpError } from '../client/http';

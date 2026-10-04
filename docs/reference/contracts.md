@@ -131,7 +131,8 @@ The [native relay link contract](../../packages/contracts/src/native-relay-link.
 distinguishes public first contact from an invitation already bound to the
 installation's proof key. Its receiving `NativeRelayLinkDelivery` omits the
 invitation secret and exposes only routing metadata and a pending handle.
-The [publication codec](../../packages/connect/src/core/nativeRelayLink.ts) and
+The [publication codec](../../packages/shared/src/native-relay-link.ts), published
+as `@kontourai/station-shared/native-relay-link`, and
 [native intake](../../src-desktop/src/native_relay_link_intake.rs) own parsing
 and lifetime checks; declarations neither create a proof key nor approve a
 surface. Origin hints are not Station identity. The existing operator surface

@@ -12,7 +12,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { serve } from '@hono/node-server';
-import { parseNativeRelayLink } from '@kontourai/station-connect/native-relay-link';
+import { parseNativeRelayLink } from '@kontourai/station-shared/native-relay-link';
 import type { SelfHostedBrokerNativeRouteInvitationV2 } from '@kontourai/station-contracts/self-hosted-broker';
 import { Hono } from 'hono';
 import { calculateJwkThumbprint, exportJWK, generateKeyPair } from 'jose';
