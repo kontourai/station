@@ -136,7 +136,9 @@ describe('usage-limit banner routes (#3157)', () => {
   test('a Session without a usage-limit stop reads null', async () => {
     const f = await fixture();
     f.ledger.cancel(`${THREAD}:limited-turn:rate-limit:account`, NOW);
-    const settled = await (await f.app.request(PATH)).json();
+    const settled = (await (await f.app.request(PATH)).json()) as {
+      data: { recovery: unknown };
+    };
     expect(settled.data.recovery).toMatchObject({ outcome: 'canceled' });
     f.store.upsertSession({
       provider: 'claude',

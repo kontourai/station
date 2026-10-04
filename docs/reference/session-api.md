@@ -635,6 +635,29 @@ handle's `providerTurnId` when proving one turn, so an earlier answer cannot
 satisfy a later check. The shared projection assembles streamed text and handles
 aggregate `turn.completed.outputText` where appropriate.
 
+### Usage-limit recovery (`/sessions/:threadId/usage-limit`)
+
+When a Claude Code or Codex turn stops on a provider usage limit, Station
+records a recovery intent for the Session (see `ConnectionRecoveryProjection`
+in [contracts](contracts.md)). Three routes serve the chat banner:
+
+- `GET /sessions/:threadId/usage-limit` answers `{ recovery }`: the Session's
+  latest recovery projection when it came from a usage limit, with `autoResume`
+  (the current `usageLimitAutoResume` setting) while the stop waits, or `null`.
+  It carries no event list and sits at the Session read tier.
+- `POST /sessions/:threadId/usage-limit/resume` ("Resume now") sends the
+  stopped turn again at once, whatever the setting and before the reset. It
+  runs the same pre-dispatch checks as the timer: a newer turn, an open request
+  or a closed Session retires the stop with that `outcomeReason` instead.
+- `POST /sessions/:threadId/usage-limit/cancel` ("Cancel auto-resume") retires
+  a waiting stop unsent with `outcomeReason: "user-canceled"`.
+
+Both POSTs answer `{ result, recovery }`: `result.kind` is `resumed`,
+`canceled`, `retired` (with `reason`) or `not-waiting` (nothing was left to act
+on), and `recovery` is the projection afterward. They need the operate scope
+and a request whose principal owns the Session; no station-control tool maps
+them, so an agent's internal token is refused.
+
 ### Live SSE feed (`GET /events`)
 
 ```
