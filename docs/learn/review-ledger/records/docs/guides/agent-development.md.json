@@ -16,7 +16,7 @@
 
     {"path":"packages/contracts/src/agent.ts","digest":"e325363bc2303d78102c7c4c45b118756d71d66cae3d801eee303761d0715b6c","revision":"423cbe55b9e35e4cd8954fd441cb9f3c69740d66"},
 
-    {"path":"packages/sdk/package.json","digest":"31286b6e99fa502f8eb1bf6c744a4a34041d21bf6e0e0e5d22f27f2771dc5c06","revision":"18ae5d5640f6a47eb953b72f1d0a55b06a137677"},
+    {"path":"packages/sdk/package.json","digest":"42fe4326a8a49db222c65e5536cbdf7a2bd1885671e292fcb7fd454dc79249db","revision":"fdca33b1896b280299ba72fc70a3c9b9cda7f3af"},
 
     {"path":"packages/sdk/src/__tests__/browser-entry-bundles.test.ts","digest":"cbd20ee2ae028c4276a9412ddc5335b10957251f5d37597e53369968264d37f5","revision":"f72daba9492778d9418abbf9730b6482b73a300c"},
 
@@ -24,11 +24,11 @@
 
     {"path":"packages/sdk/src/client/delegations.ts","digest":"df331c17128d242eccbc056434c43997b92fc4c0264cb4b64424f2eb6e7c72ba","revision":"0ad2f560e1d13e4262d5637f173abc3d95959848"},
 
-    {"path":"packages/sdk/src/client/execution.ts","digest":"e70868b9e5f5495e542a872093749d25042588af482cec1d50c70c2df00004a9","revision":"f72daba9492778d9418abbf9730b6482b73a300c"},
+    {"path":"packages/sdk/src/client/execution.ts","digest":"a72a224bd2f86732da2bcbfbe2614c0e2454a6ce25f4b857b4d9383e98a052a0","revision":"f2a6ca3693f2f676d33ec8e09151c0563aa66b10"},
 
     {"path":"packages/sdk/src/client/http.ts","digest":"9892699e68483e0df3dd67ce71956994e98a43755a0c931dd6c3c5660caee00e","revision":"f72daba9492778d9418abbf9730b6482b73a300c"},
 
-    {"path":"packages/shared/src/build.ts","digest":"20f919a4a98519ce20e8e2f0d5d498a4be8daeba1314a97ddae752fd36df4630","revision":"1e6450e0caa47975d33f505a1348bdc01ae1382e"},
+    {"path":"packages/shared/src/build.ts","digest":"8db6bc04bffe80ead5af5e8d9b23be2ae02f1e5afbae67f850e583b8ca40c783","revision":"e78cdc9c00d09b69f333e1609821d8fa70bce58c"},
 
     {"path":"src-ui/src/core/pluginSharedRuntime.ts","digest":"b9b3865a69ebf0b8246ac7b6b7b294b24f7a05f51004dd8a8b5ea273fc2fae49","revision":"f72daba9492778d9418abbf9730b6482b73a300c"}
   ],

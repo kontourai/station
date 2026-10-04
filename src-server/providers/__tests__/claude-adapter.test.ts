@@ -9,6 +9,7 @@ import {
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import type { ResolvedAgentToolServer } from '@kontourai/station-contracts/provider';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import {
@@ -99,7 +100,10 @@ vi.mock('../auth/cli-auth.js', () => ({
 
 import type { PermissionResult } from '@anthropic-ai/claude-agent-sdk';
 import { toolRequestSessionGrantFromPayload } from '@kontourai/station-shared/tool-request-preview';
-import { createStagedPreToolPolicyEvaluator } from '../../runtime/agents/pre-tool-policy.js';
+import {
+  createStagedPreToolPolicyEvaluator,
+  type StagedPreToolPolicyEvaluator,
+} from '../../runtime/agents/pre-tool-policy.js';
 import { builtinStationControlServerPath } from '../../runtime/bootstrap/station-control-runtime-env.js';
 import {
   __resetStationControlMcpTokensForTests,
@@ -2103,13 +2107,29 @@ describe('ClaudeAdapter', () => {
       options: {
         modelOptions?: Record<string, unknown>;
         query?: ReturnType<typeof createControlledMockQuery>;
-        agent?: { slug: string; autoApprove?: string[] };
+        agent?: {
+          slug: string;
+          autoApprove?: string[];
+          toolServers?: ResolvedAgentToolServer[];
+        };
         metadata?: Record<string, unknown>;
+        /** #2947: the staged evaluator the PreToolUse hook runs. */
+        preToolPolicy?: StagedPreToolPolicyEvaluator;
+        logger?: {
+          info: (...args: any[]) => void;
+          warn: (...args: any[]) => void;
+        };
       } = {},
     ) {
       const query = options.query ?? createMockQuery([]);
       mockQuery.mockReturnValue(query);
-      const adapter = new ClaudeAdapter();
+      const { preToolPolicy } = options;
+      const adapter = new ClaudeAdapter({
+        ...(preToolPolicy
+          ? { resolvePreToolPolicy: async () => preToolPolicy }
+          : {}),
+        ...(options.logger ? { logger: options.logger } : {}),
+      });
       const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
       await adapter.startSession({
         provider: 'claude',
@@ -2120,9 +2140,27 @@ describe('ClaudeAdapter', () => {
       });
       await iterator.next();
       await iterator.next();
-      const canUseTool =
-        mockQuery.mock.calls[mockQuery.mock.calls.length - 1][0].options
-          .canUseTool;
+      const queryOptions =
+        mockQuery.mock.calls[mockQuery.mock.calls.length - 1][0].options;
+      const canUseTool = queryOptions.canUseTool;
+      /**
+       * #2947: the adapter's real PreToolUse hook for one call, as the
+       * engine runs it before its own permission check.
+       */
+      const hook = (
+        toolName: string,
+        toolInput: Record<string, unknown>,
+        toolUseId: string,
+      ): Promise<unknown> =>
+        queryOptions.hooks.PreToolUse[0].hooks[0](
+          {
+            tool_name: toolName,
+            tool_input: toolInput,
+            tool_use_id: toolUseId,
+          },
+          toolUseId,
+          { signal: new AbortController().signal },
+        );
       let nextEvent = iterator.next();
       let calls = 0;
       /** Events consumed while waiting for a specific one. */
@@ -2214,7 +2252,7 @@ describe('ClaudeAdapter', () => {
           sdkCanUseToolOptions(requestId, request),
         );
       };
-      return { adapter, ask, askFrame, query, seen, waitFor };
+      return { adapter, ask, askFrame, hook, query, seen, waitFor };
     }
 
     /**
@@ -3061,6 +3099,520 @@ describe('ClaudeAdapter', () => {
         expect(safety.kind).toBe('prompted');
         if (safety.kind === 'prompted') await safety.answer('decline');
         await adapter.stopSession('thread-auto-other');
+      });
+    });
+
+    describe('#2947: an approval-guardian allow never answers an escalation or a plan exit', () => {
+      /**
+       * The staged evaluator as station-runtime.ts composes it for Claude,
+       * with no autoApprove pattern, and a guardian whose verdict the test
+       * sets. Only the guardian's model call is replaced.
+       */
+      function guardianPolicy(
+        decision: 'allow' | 'deny' | 'defer',
+        mode: 'review' | 'enforce' = 'enforce',
+      ) {
+        const reviewToolCall = vi.fn(async () => ({
+          decision,
+          reason: `guardian says ${decision}`,
+        }));
+        const evaluator = createStagedPreToolPolicyEvaluator({
+          spec: { name: 'engine-lab' },
+          toolNameMapping: new Map(),
+          isGranted: () => false,
+          approvalGuardian: {
+            isEnabled: () => true,
+            getMode: () => mode,
+            reviewToolCall,
+          },
+          logger: { info: vi.fn(), warn: vi.fn() },
+        } as any);
+        return { evaluator, reviewToolCall };
+      }
+      const agent = { slug: 'engine-lab' };
+      /** The engine's ask for a Read outside the working directories. */
+      const outsideRead = (toolUseId: string): ClaudeCanUseToolRequest => ({
+        tool_name: 'Read',
+        display_name: 'Read',
+        input: { file_path: '/elsewhere/notes.md' },
+        permission_suggestions: [
+          {
+            type: 'addRules',
+            rules: [{ toolName: 'Read', ruleContent: '//elsewhere/**' }],
+            behavior: 'allow',
+            destination: 'session',
+          },
+        ],
+        decision_reason: 'Path is outside allowed working directories',
+        decision_reason_type: 'workingDir',
+        tool_use_id: toolUseId,
+      });
+      /** The ordinary ask for a single Bash command no rule matched. */
+      const plainBash = (
+        command: string,
+        toolUseId: string,
+      ): ClaudeCanUseToolRequest => ({
+        tool_name: 'Bash',
+        display_name: 'Bash',
+        input: { command },
+        description: command,
+        decision_reason: 'This command requires approval',
+        decision_reason_type: 'other',
+        tool_use_id: toolUseId,
+      });
+      const childDelegation = {
+        delegation: {
+          mode: 'isolated-child',
+          depth: 1,
+          maxDepth: 2,
+          parentAgentSlug: 'parent',
+          rootAgentSlug: 'parent',
+          denyApprovals: true,
+        },
+      };
+
+      test('a plain call the guardian allows runs without a prompt, on one review (positive control)', async () => {
+        const { evaluator, reviewToolCall } = guardianPolicy('allow');
+        const { adapter, askFrame, hook } = await grantHarness(
+          'thread-guardian-plain',
+          { agent, preToolPolicy: evaluator },
+        );
+        // The hook states no opinion: the engine runs its own checks.
+        await expect(
+          hook('Bash', { command: 'git status' }, 'toolu_plain'),
+        ).resolves.toEqual({ continue: true });
+        await expect(
+          askFrame(plainBash('git status', 'toolu_plain')),
+        ).resolves.toMatchObject({
+          kind: 'allowed',
+          result: {
+            behavior: 'allow',
+            updatedInput: { command: 'git status' },
+          },
+        });
+        expect(reviewToolCall).toHaveBeenCalledTimes(1);
+        expect(reviewToolCall).toHaveBeenCalledWith(
+          expect.objectContaining({
+            toolName: 'Bash',
+            toolArgs: { command: 'git status' },
+          }),
+        );
+
+        // The allow is for that one call: a call the guardian never reviewed
+        // prompts, and so does a second ask under the same id.
+        for (const toolUseId of ['toolu_unreviewed', 'toolu_plain']) {
+          const other = await askFrame(plainBash('git log', toolUseId));
+          expect(other.kind).toBe('prompted');
+          if (other.kind === 'prompted') await other.answer('decline');
+        }
+        // Nor does it carry to another tool under the same id.
+        await hook('Bash', { command: 'git diff' }, 'toolu_shared');
+        const otherTool = await askFrame({
+          tool_name: 'mcp__github__create_issue',
+          input: { title: 'x' },
+          tool_use_id: 'toolu_shared',
+        });
+        expect(otherTool.kind).toBe('prompted');
+        if (otherTool.kind === 'prompted') await otherTool.answer('decline');
+        await adapter.stopSession('thread-guardian-plain');
+      });
+
+      /** What the adapter logs when it does not apply a guardian allow. */
+      const NOT_APPLIED =
+        'Approval guardian allow not applied; the request goes to a person';
+      /** A plain file edit inside the working directories, default mode. */
+      const plainEdit = (toolUseId: string): ClaudeCanUseToolRequest => ({
+        tool_name: 'Edit',
+        display_name: 'Edit',
+        input: { file_path: '/work/a/x.ts', old_string: 'a', new_string: 'b' },
+        permission_suggestions: [
+          { type: 'setMode', mode: 'acceptEdits', destination: 'session' },
+        ],
+        tool_use_id: toolUseId,
+      });
+
+      test('the allow is bound to the input the guardian reviewed: a different input prompts and consumes it', async () => {
+        const { evaluator } = guardianPolicy('allow');
+        const logger = { info: vi.fn(), warn: vi.fn() };
+        const { adapter, askFrame, hook } = await grantHarness(
+          'thread-guardian-input',
+          { agent, preToolPolicy: evaluator, logger },
+        );
+        // Another PreToolUse hook rewrote the command after the guardian
+        // reviewed it: the engine asks about an input nobody reviewed.
+        await hook('Bash', { command: 'git status' }, 'toolu_rewritten');
+        const rewritten = await askFrame(
+          plainBash('git push --force', 'toolu_rewritten'),
+        );
+        expect(rewritten.kind).toBe('prompted');
+        if (rewritten.kind === 'prompted') await rewritten.answer('decline');
+        expect(logger.info).toHaveBeenCalledWith(NOT_APPLIED, {
+          toolName: 'Bash',
+          threadId: 'thread-guardian-input',
+          reason: 'the input changed after the guardian reviewed it',
+        });
+        // The entry is gone: the reviewed input under that id prompts too.
+        const replay = await askFrame(
+          plainBash('git status', 'toolu_rewritten'),
+        );
+        expect(replay.kind).toBe('prompted');
+        if (replay.kind === 'prompted') await replay.answer('decline');
+
+        // Key order is no difference (positive control).
+        await hook(
+          'mcp__github__create_issue',
+          { title: 'x', labels: { b: 1, a: [2, { d: 3, c: 4 }] } },
+          'toolu_reordered',
+        );
+        await expect(
+          askFrame({
+            tool_name: 'mcp__github__create_issue',
+            input: { labels: { a: [2, { c: 4, d: 3 }], b: 1 }, title: 'x' },
+            tool_use_id: 'toolu_reordered',
+          }),
+        ).resolves.toMatchObject({
+          kind: 'allowed',
+          result: { behavior: 'allow' },
+        });
+        await adapter.stopSession('thread-guardian-input');
+      });
+
+      test('an allow under an empty tool-use id is never kept', async () => {
+        const { evaluator } = guardianPolicy('allow');
+        const { adapter, askFrame, hook } = await grantHarness(
+          'thread-guardian-empty-id',
+          { agent, preToolPolicy: evaluator },
+        );
+        await hook('Bash', { command: 'git status' }, '');
+        const asked = await askFrame(plainBash('git status', ''));
+        expect(asked.kind).toBe('prompted');
+        if (asked.kind === 'prompted') await asked.answer('decline');
+        await adapter.stopSession('thread-guardian-empty-id');
+      });
+
+      test('a guardian-allowed AskUserQuestion still opens the question card', async () => {
+        const { evaluator } = guardianPolicy('allow');
+        const logger = { info: vi.fn(), warn: vi.fn() };
+        const { adapter, askFrame, hook } = await grantHarness(
+          'thread-guardian-question',
+          { agent, preToolPolicy: evaluator, logger },
+        );
+        const input = {
+          questions: [
+            {
+              question: 'Where should we deploy?',
+              header: 'Target',
+              multiSelect: false,
+              options: [
+                { label: 'Staging', description: 'Try first' },
+                { label: 'Production', description: 'Release' },
+              ],
+            },
+          ],
+        };
+        await expect(
+          hook('AskUserQuestion', input, 'toolu_question'),
+        ).resolves.toEqual({ continue: true });
+        const question = await askFrame({
+          tool_name: 'AskUserQuestion',
+          input,
+          requires_user_interaction: true,
+          tool_use_id: 'toolu_question',
+        });
+        if (question.kind !== 'prompted') throw new Error('expected a prompt');
+        expect(question.event).toMatchObject({
+          title: 'The agent has questions for you',
+          payload: { questionnaire: expect.anything() },
+        });
+        expect(logger.info).toHaveBeenCalledWith(
+          NOT_APPLIED,
+          expect.objectContaining({
+            toolName: 'AskUserQuestion',
+            reason: 'the request is a question for a person',
+          }),
+        );
+        // Stopping the session settles the open card.
+        await adapter.stopSession('thread-guardian-question');
+      });
+
+      test('a file edit asked in plan mode prompts; the same edit in default mode is allowed', async () => {
+        const { evaluator } = guardianPolicy('allow');
+        const logger = { info: vi.fn(), warn: vi.fn() };
+        const plan = await grantHarness('thread-guardian-plan-edit', {
+          agent,
+          preToolPolicy: evaluator,
+          modelOptions: { permissionMode: 'plan' },
+          logger,
+        });
+        await plan.hook('Edit', plainEdit('x').input, 'toolu_plan_edit');
+        const edit = await plan.askFrame(plainEdit('toolu_plan_edit'));
+        if (edit.kind !== 'prompted') throw new Error('expected a prompt');
+        expect(edit.event.payload).toMatchObject({ permissionMode: 'plan' });
+        expect(logger.info).toHaveBeenCalledWith(
+          NOT_APPLIED,
+          expect.objectContaining({
+            toolName: 'Edit',
+            reason: 'the request is an escalation or a plan exit',
+          }),
+        );
+        await edit.answer('decline');
+        await plan.adapter.stopSession('thread-guardian-plan-edit');
+
+        // Positive control: only the mode differs.
+        const normal = await grantHarness('thread-guardian-default-edit', {
+          agent,
+          preToolPolicy: evaluator,
+        });
+        await normal.hook('Edit', plainEdit('x').input, 'toolu_edit');
+        await expect(
+          normal.askFrame(plainEdit('toolu_edit')),
+        ).resolves.toMatchObject({
+          kind: 'allowed',
+          result: { behavior: 'allow' },
+        });
+        await normal.adapter.stopSession('thread-guardian-default-edit');
+      });
+
+      test('an ask whose frame was not read prompts', async () => {
+        const { evaluator } = guardianPolicy('allow');
+        const { adapter, ask, hook } = await grantHarness(
+          'thread-guardian-no-frame',
+          { agent, preToolPolicy: evaluator },
+        );
+        await hook('Bash', { command: 'git status' }, 'toolu_no_frame');
+        // The ordinary options, under a request id no frame carried.
+        const missing = await ask(
+          'Bash',
+          { command: 'git status' },
+          sdkCanUseToolOptions(
+            'never-on-stdout',
+            plainBash('git status', 'toolu_no_frame'),
+          ),
+        );
+        if (missing.kind !== 'prompted') throw new Error('expected a prompt');
+        expect(missing.event.payload.claudeAsk).toBeNull();
+        await missing.answer('decline');
+        await adapter.stopSession('thread-guardian-no-frame');
+      });
+
+      test('a chained Bash command the guardian allows is allowed (known behaviour: the #2932 chained-command gap)', async () => {
+        const { evaluator } = guardianPolicy('allow');
+        const { adapter, askFrame, hook } = await grantHarness(
+          'thread-guardian-chain',
+          { agent, preToolPolicy: evaluator },
+        );
+        const command = 'make build && git push origin main';
+        const chain = (toolUseId: string): ClaudeCanUseToolRequest => ({
+          tool_name: 'Bash',
+          display_name: 'Bash',
+          input: { command },
+          description: command,
+          decision_reason_type: 'subcommandResults',
+          tool_use_id: toolUseId,
+        });
+        await hook('Bash', { command }, 'toolu_chain');
+        await expect(askFrame(chain('toolu_chain'))).resolves.toMatchObject({
+          kind: 'allowed',
+          result: { behavior: 'allow' },
+        });
+        // A safety check on any part still prompts.
+        await hook('Bash', { command }, 'toolu_chain_safety');
+        const safety = await askFrame({
+          ...chain('toolu_chain_safety'),
+          classifier_approvable: false,
+        });
+        expect(safety.kind).toBe('prompted');
+        if (safety.kind === 'prompted') await safety.answer('decline');
+        await adapter.stopSession('thread-guardian-chain');
+      });
+
+      test('an unselected MCP tool is denied at the hook before the guardian, and no allow is kept for it (#3155)', async () => {
+        const { evaluator, reviewToolCall } = guardianPolicy('allow');
+        const { adapter, askFrame, hook } = await grantHarness(
+          'thread-guardian-mcp-unselected',
+          {
+            agent: {
+              slug: 'engine-lab',
+              toolServers: [
+                {
+                  id: 'weather',
+                  transport: 'stdio',
+                  command: process.execPath,
+                  allowedTools: ['read'],
+                  toolNames: ['read', 'write'],
+                },
+              ],
+            },
+            preToolPolicy: evaluator,
+          },
+        );
+        await expect(
+          hook('mcp__weather__write', { city: 'Oslo' }, 'toolu_unselected'),
+        ).resolves.toMatchObject({
+          hookSpecificOutput: {
+            permissionDecision: 'deny',
+            permissionDecisionReason: 'Tool not selected for this agent.',
+          },
+        });
+        expect(reviewToolCall).not.toHaveBeenCalled();
+        // Were the engine to ask about it anyway, nothing answers for it.
+        const asked = await askFrame({
+          tool_name: 'mcp__weather__write',
+          input: { city: 'Oslo' },
+          tool_use_id: 'toolu_unselected',
+        });
+        expect(asked.kind).toBe('prompted');
+        if (asked.kind === 'prompted') await asked.answer('decline');
+
+        // Positive control: a selected tool goes to the guardian, whose
+        // allow answers the plain ask.
+        await expect(
+          hook('mcp__weather__read', { city: 'Oslo' }, 'toolu_selected'),
+        ).resolves.toEqual({ continue: true });
+        expect(reviewToolCall).toHaveBeenCalledTimes(1);
+        await expect(
+          askFrame({
+            tool_name: 'mcp__weather__read',
+            input: { city: 'Oslo' },
+            tool_use_id: 'toolu_selected',
+          }),
+        ).resolves.toMatchObject({
+          kind: 'allowed',
+          result: { behavior: 'allow' },
+        });
+        await adapter.stopSession('thread-guardian-mcp-unselected');
+      });
+
+      test('at most 256 unanswered allows are kept: the oldest is dropped and prompts', async () => {
+        const { evaluator } = guardianPolicy('allow');
+        const { adapter, askFrame, hook } = await grantHarness(
+          'thread-guardian-bound',
+          { agent, preToolPolicy: evaluator },
+        );
+        // The engine allows most calls itself and never asks about them, so
+        // their allows are never consumed. 257 of them: one over the bound.
+        for (let index = 0; index <= 256; index += 1) {
+          await hook('Bash', { command: 'git status' }, `toolu_${index}`);
+        }
+        const dropped = await askFrame(plainBash('git status', 'toolu_0'));
+        expect(dropped.kind).toBe('prompted');
+        if (dropped.kind === 'prompted') await dropped.answer('decline');
+        for (const kept of ['toolu_1', 'toolu_256']) {
+          await expect(
+            askFrame(plainBash('git status', kept)),
+          ).resolves.toMatchObject({
+            kind: 'allowed',
+            result: { behavior: 'allow' },
+          });
+        }
+        await adapter.stopSession('thread-guardian-bound');
+      });
+
+      test('a Read outside the working directories prompts', async () => {
+        const { evaluator, reviewToolCall } = guardianPolicy('allow');
+        const { adapter, askFrame, hook } = await grantHarness(
+          'thread-guardian-outside',
+          { agent, preToolPolicy: evaluator },
+        );
+        // A hook allow would skip the engine's working-directory check, so
+        // this ask would never be raised at all.
+        await expect(
+          hook('Read', { file_path: '/elsewhere/notes.md' }, 'toolu_read'),
+        ).resolves.toEqual({ continue: true });
+        expect(reviewToolCall).toHaveBeenCalledTimes(1);
+        const outside = await askFrame(outsideRead('toolu_read'));
+        if (outside.kind !== 'prompted') throw new Error('expected a prompt');
+        expect(toolRequestSessionGrantFromPayload(outside.event.payload)).toBe(
+          'read-folder',
+        );
+        await outside.answer('decline');
+        await adapter.stopSession('thread-guardian-outside');
+      });
+
+      test('ExitPlanMode prompts', async () => {
+        const { evaluator } = guardianPolicy('allow');
+        const { adapter, askFrame, hook } = await grantHarness(
+          'thread-guardian-plan',
+          { agent, preToolPolicy: evaluator },
+        );
+        await expect(
+          hook('ExitPlanMode', { plan: 'Step 1' }, 'toolu_plan'),
+        ).resolves.toEqual({ continue: true });
+        const exit = await askFrame({
+          tool_name: 'ExitPlanMode',
+          input: { plan: 'Step 1' },
+          requires_user_interaction: true,
+          tool_use_id: 'toolu_plan',
+        });
+        expect(exit.kind).toBe('prompted');
+        if (exit.kind === 'prompted') await exit.answer('decline');
+        await adapter.stopSession('thread-guardian-plan');
+      });
+
+      test('a guardian deny still denies at the hook, and leaves no allow behind', async () => {
+        const { evaluator } = guardianPolicy('deny');
+        const { adapter, askFrame, hook } = await grantHarness(
+          'thread-guardian-deny',
+          { agent, preToolPolicy: evaluator },
+        );
+        await expect(
+          hook('Bash', { command: 'rm -rf build' }, 'toolu_deny'),
+        ).resolves.toMatchObject({
+          continue: false,
+          hookSpecificOutput: {
+            hookEventName: 'PreToolUse',
+            permissionDecision: 'deny',
+            permissionDecisionReason: expect.stringContaining(
+              'was denied by the approval guardian',
+            ),
+          },
+        });
+        const asked = await askFrame(plainBash('rm -rf build', 'toolu_deny'));
+        expect(asked.kind).toBe('prompted');
+        if (asked.kind === 'prompted') await asked.answer('decline');
+        await adapter.stopSession('thread-guardian-deny');
+      });
+
+      test('a guardian defer leaves the call to the person', async () => {
+        const { evaluator } = guardianPolicy('defer');
+        const { adapter, askFrame, hook } = await grantHarness(
+          'thread-guardian-defer',
+          { agent, preToolPolicy: evaluator },
+        );
+        await expect(
+          hook('Bash', { command: 'git push' }, 'toolu_defer'),
+        ).resolves.toEqual({ continue: true });
+        const asked = await askFrame(plainBash('git push', 'toolu_defer'));
+        expect(asked.kind).toBe('prompted');
+        if (asked.kind === 'prompted') await asked.answer('decline');
+        await adapter.stopSession('thread-guardian-defer');
+      });
+
+      test('a delegated child that may not grant approvals keeps a guardian-allowed plain call and is denied an escalation fail-fast', async () => {
+        const { evaluator } = guardianPolicy('allow');
+        const { adapter, askFrame, hook } = await grantHarness(
+          'thread-guardian-child',
+          { agent, preToolPolicy: evaluator, metadata: childDelegation },
+        );
+        await hook('Bash', { command: 'git status' }, 'toolu_child_plain');
+        await expect(
+          askFrame(plainBash('git status', 'toolu_child_plain')),
+        ).resolves.toMatchObject({
+          kind: 'allowed',
+          result: { behavior: 'allow' },
+        });
+        await hook('Read', { file_path: '/elsewhere/notes.md' }, 'toolu_child');
+        // `allowed` here means the call settled without a request.opened.
+        const outside = await askFrame(outsideRead('toolu_child'));
+        expect(outside.kind).toBe('allowed');
+        if (outside.kind !== 'allowed') throw new Error('unreachable');
+        expect(outside.result).toEqual({
+          behavior: 'deny',
+          message: expect.stringContaining(
+            'delegated child sessions cannot grant approvals',
+          ),
+        });
+        await adapter.stopSession('thread-guardian-child');
       });
     });
 
@@ -4461,34 +5013,6 @@ describe('ClaudeAdapter', () => {
         ).resolves.toEqual({ continue: true });
       }
       await adapter.stopSession('thread-pre-tool-auto-approve');
-    });
-
-    test('an allow the evaluator reached past the tool grant is still a hook allow', async () => {
-      mockQuery.mockReturnValue(createMockQuery([]));
-      // e.g. an approval-guardian allow: not a tool-level grant.
-      const adapter = new ClaudeAdapter({
-        resolvePreToolPolicy: async () => async () => ({
-          behavior: 'allow' as const,
-        }),
-      });
-      await adapter.startSession({
-        provider: 'claude',
-        threadId: 'thread-pre-tool-guardian-allow',
-        agent: { slug: 'engine-lab' },
-      });
-      const queryArgs = mockQuery.mock.calls[0][0];
-      await expect(
-        preToolUse(queryArgs)(preToolInput, preToolInput.tool_use_id, {
-          signal: new AbortController().signal,
-        }),
-      ).resolves.toEqual({
-        continue: true,
-        hookSpecificOutput: {
-          hookEventName: 'PreToolUse',
-          permissionDecision: 'allow',
-        },
-      });
-      await adapter.stopSession('thread-pre-tool-guardian-allow');
     });
 
     test('sets the SDK matcher strictly beyond the in-process denial bound', async () => {

@@ -20,6 +20,7 @@ import {
 import { NATIVE_DEVICE_PROOF_SELF_RECEIPT_BASE_PATH } from '@kontourai/station-contracts/native-device-proof';
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import { humanPrincipal as deploymentHumanPrincipal } from '@kontourai/station-contracts/principal';
+import { nativeDeviceOnlyObservationRoute } from '../../security/native-device-request-authority.js';
 import {
   getRuntimeAuthenticatedRequestPrincipal,
   getRuntimeNativeDeviceProofPrincipal,
@@ -207,6 +208,10 @@ export function installAccountBoundDeviceGate(
     if (
       accountBinding &&
       !accountOperation &&
+      !(
+        getRuntimeNativeDeviceProofPrincipal(c.req.raw) &&
+        nativeDeviceOnlyObservationRoute(c.req.method, c.req.path)
+      ) &&
       account?.kind !== 'authenticated'
     ) {
       c.header(ACCOUNT_AUTHENTICATION_FAILURE_HEADER, 'account');
@@ -259,9 +264,10 @@ export function installAccountBoundDeviceGate(
       const permitted =
         path === '/' ||
         path.startsWith('/assets/') ||
+        nativeDeviceOnlyObservationRoute(method, path) ||
         path === '/api/projects' ||
         /^\/api\/projects\/[^/]+$/.test(path) ||
-        /^\/api\/projects\/[^/]+\/shared-work(?:\/[^/]+\/(?:history|document))?$/.test(
+        /^\/api\/projects\/[^/]+\/shared-work(?:\/[^/]+\/(?:history|document|publication))?$/.test(
           path,
         ) ||
         isAccountBoundGuestAdminLeaf(path, method) ||

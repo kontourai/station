@@ -17,7 +17,8 @@
 > [#2451](https://github.com/kontourai/station/pull/2451); native client delivery,
 > remote/physical proof and production enablement remain separate.
 > [#1963](https://github.com/kontourai/station/issues/1963) owns the full
-> implementation. No internet-facing deployment is delivered by this decision.
+> implementation. This decision did not itself deliver an internet-facing deployment.
+> The later operator-approved test deployment is recorded separately below.
 
 ## Implementation target — September 20, 2026
 
@@ -31,17 +32,20 @@ qualify independently. The Node UDP backend remains useful diagnostic evidence;
 it does not acquire TURN/TCP support from Pion's results.
 
 Native desktop has a separate [OS-keyring routing-grant vault](../../src-desktop/src/relay_grant_vault.rs),
-but the ordinary saved-route client does not yet use a grant to connect. The
-opt-in `/native-application` Connect library and `nativeClient` server connector
-now provide a distinct application lane; they do not wire that user-facing
-activation. The browser protocol binds
+and a host-owned Device enrollment ceremony. The ordinary saved-route owner
+now composes `/native-application`, fresh ICE, Device proof and a separate
+account continuation for bounded health and member Project reads. Operator
+Workspace features, contribution writes and physical iOS qualification remain
+separate. See [native enrollment](native-relay-enrollment.md). The browser protocol binds
 `browserOrigin` to a canonical HTTP(S) page Origin and the broker checks that
 same Origin on signaling. Packaged Tauri WebViews use different platform
 schemes, so a saved native grant cannot be activated by pretending its WebView
 has an HTTPS browser Origin or by returning the grant secret to renderer JS.
 [#2485](https://github.com/kontourai/station/issues/2485) owns the versioned
 native client identity and host-owned signaling contract required before native
-route activation. Actual packaged WebView Origin behavior remains unverified.
+route activation. The dated paired macOS debug and development iOS simulator
+receipts below observed their actual WebView/native surfaces; fresh physical
+Nightly behavior remains unverified.
 
 The broker is a separate process and state owner. It carries bounded enrollment,
 reachability and signaling metadata, never decrypted application requests or
@@ -91,6 +95,39 @@ those boundaries fail. [#1985](https://github.com/kontourai/station/issues/1985)
 retains integrated lab acceptance, and [#497](https://github.com/kontourai/station/issues/497)
 retains the real two-person/device journey. Separate code, local-runtime,
 remote/native and hostile-tenant isolation receipts throughout delivery.
+
+## Public test deployment — October 1, 2026
+
+The operator-approved test broker runs as a separate loopback-bound process on
+the operator's Linux host, reached through the named Cloudflare Tunnel at
+`https://relay-test.kontourai.com`. The tunnel exposes broker signaling only;
+Station application HTTP is not published through it. Cloudflare TURN supplies
+short-lived ICE credentials. Application traffic remains encrypted to the
+independently approved Station peer.
+
+Executed setup checks establish public TLS, authenticated scoped ICE issuance,
+credential reuse and rejection of unauthenticated/foreign Station requests,
+a TURN allocation, and broker service restart/SQLite backup restoration. These
+checks do not establish native application traffic or Zach's physical iPhone
+journey. The approved $0 subscription includes metered overage and has no hard
+spending cap; this is a limited monitored test, not unlimited free hosting.
+The [operator guide](../guides/self-hosted-broker.md) owns issuer configuration,
+rate limits and the distinction between issuance limits and byte/spending caps.
+
+A later isolated normal Station run at source
+`d8dd1a41494a9ffbfe42d6f994b3f7f30cc132d4` observed public connector registration
+at lease revision 1 and renewal at revision 15. Its real local operator
+published fixed human TaskRoom message/document text, and the owned process
+group/native routing-grant cleanup completed. The earlier failed scope remains
+preserved: provisioning before artifact preparation let the initial 60-second
+lease expire before registration. See the
+[fixture diagnosis](../../tests/tauri-shell/native-fresh-relay-fixture.md#executed-startup-failure-provisioned-too-early).
+Neither run exercised a fresh native client or public encrypted application peer.
+
+Development simulator source `99b6eec01dda1d7149816678f0d8e395725267f3` built,
+installed and opened; its Station manager broker action reaches the real route
+UI. That is a separate UI-entry result, not fresh enrollment, application
+traffic, physical iOS Nightly or release promotion.
 
 ## Purpose and boundaries
 
@@ -371,8 +408,12 @@ The closed version-1 binding names the Station, enrollment, positive generation,
 connection ID, client nonce, client and Station certificate fingerprints, and
 SHA-256 digests of the exact offer and answer bytes. The nonce and connection
 ID originate in the Device. Binding expectations and signing-key trust come
-from their local owners, never from decoded broker claims. Full gathering
-precedes signing; extra unsigned candidate updates are refused. A future
+from their local owners, never from decoded broker claims. Browser gathering
+precedes signing. The native client also permits a bounded relay-only local
+offer snapshot when gathering stalls after valid UDP relay candidates arrive;
+the exact snapshot remains bound to signaling and proof digests. See the
+[native transport contract](../reference/connect.md#optional-native-application-transport).
+Extra unsigned candidate updates are refused. A future
 trickle-ICE protocol needs its own authenticated update contract.
 
 Proofs use integer-second `iat`, `nbf` and `exp`, with `nbf = iat` and an exact
@@ -539,19 +580,25 @@ The binding service requires an exact approved app, channel, client instance and
 route-key thumbprint, with a separate Device key. Private Pion Request facts
 carry the offer nonce through bounded-body replacement.
 
-**Pilot composition (source opt-in; not product UI).** `configureRuntimeHttp`
+**Native proof composition (server source opt-in).** `configureRuntimeHttp`
 now admits a presented Device proof BEFORE deployment-account authentication:
 cheap private peer/route/rate checks, a bounded exact-body read (16 KiB) whose
 bytes build the final Request and carry the private peer provenance at that one
 byte-copy owner, then Device JWS/JTI admission, then Device scope against the
-central route declaration, then the native account continuation
-(challenge/exchange) or a required current account session. A proof attempt
+central route declaration, then the native account continuation controls or a
+required current account session. Only the three neutral health observations
+may omit account material; presenting invalid account material never falls
+through to Device-only authority. A proof attempt
 never falls back to a bearer or cookie; a conflicting credential, missing
 private Pion provenance, unsupported configuration or non-pilot route refuses
-closed. The pilot allowlist is exactly the native challenge/exchange POSTs and
-`GET/HEAD /api/projects` and `/api/projects/:slug`; privileged, terminal,
-plugin, pairing, consent and operator routes refuse proof authority even when
-the proven Device holds broad scopes. The one [native Device request
+closed. The [current allowlist](../../src-server/security/native-device-request-authority.ts)
+contains native challenge/exchange/revoke and invitation acceptance POST leaves;
+GET/HEAD Station health/authority, Project list/detail, shared-work list, and
+scoped document/history/publication reads. Neutral Device-only observations are
+`/.well-known/station/v1`, `/api/system/status` and `/api/system/identity`.
+Authority and member reads still require the separate account. Privileged,
+terminal, plugin, pairing, consent and operator routes refuse proof authority
+even when the proven Device holds broad scopes. The one [native Device request
 authority](../../src-server/security/native-device-request-authority.ts) mints
 the credential-free principal on the final Request, and every later seam
 (account-bound gate, orchestration principal, Project membership authority,
@@ -629,11 +676,19 @@ before the Device hook freezes/signs it. Account claims/hashes/JTI/time come fro
 the host, with a separate key and bounded owner-fenced context. One exchange,
 full host challenge-consumption retention and post-sign expiry/key checks prevent
 replay or expiry-hint laundering. Native challenge/exchange still need an already
-account-bound approved Device and real supported provider login; no principal,
-cookie or Device bearer is manufactured. The manual pilot composes these owners
+account-bound approved Device and real supported provider login; that Device
+may be paired already or come from the separately acknowledged
+[native fresh ceremony](native-relay-enrollment.md). No principal, cookie or
+renderer-visible Device bearer is manufactured. The manual pilot composes these owners
 with real local-provider login and separately accepted Project membership.
-Its dated debug-shell receipt is separate from packaged acceptance and default
-transport enablement.
+Its dated debug-shell receipt is separate from later builds and physical
+acceptance. The ordinary
+[selected native owner](../../src-ui/src/platform/native/nativeRelayConnectionOwner.ts)
+now supplies the [account bridge](../../src-ui/src/platform/native/nativeAccountSessionBridge.ts)
+and bounded member-read consumer. Host preparation exposes a fixed deadline,
+which clamps public account expiry; fixed remote logout clears local account
+scope on confirmed or unknown outcomes while preserving Device custody. Only a
+confirmed provider-revocation acknowledgment establishes remote completion.
 
 ### Transport qualification
 
@@ -670,3 +725,15 @@ required delivery path alongside actual selected-transport acceptance, not a
 substitute for it. This proposal makes no infrastructure purchase,
 production exposure or service-level commitment. Protocol fixtures cannot prove
 actual remote delivery or a transport provider's security boundary.
+
+### Superseded native routing scope observation
+
+The [broker guide](../guides/self-hosted-broker.md#authenticated-observation-of-a-superseded-native-scope)
+owns the invitation-authenticated observation contract. A live, unconsumed
+current invitation and its bound installation key can observe only that an
+exact strictly older scope in the same Station/enrollment cannot admit a
+native grant. This observation does not prove grant existence or individual
+revocation, redeem the invitation, rotate signing trust, or authorize any
+application request. Equal-generation expiry and missing grant rows remain
+outside this recovery basis. Native local cleanup must separately retain
+explicit owner confirmation, durable basis and exact custody fences.

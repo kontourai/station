@@ -22,7 +22,7 @@
 
     {"path":"src-server/providers/plugin-provider-loader.ts","digest":"7b780f31c1d234d708632b146294f59530984baec971edabdb8e0265f55ceb94","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-server/services/plugins/agent-plugin-loader.ts","digest":"91dd9928c383d1db4197a5c2e4cf7f80bcbcfb15a6ffad5ffeb1d27362d9c5b6","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"src-server/services/plugins/agent-plugin-loader.ts","digest":"5e2ebd404a26505676a99a207854fc10fe3692fa02628c891bed0156eb1b231c","revision":"56f4c4897a189eeb30430119a4f4895e95fbb541"},
 
     {"path":"src-server/services/plugins/plugin-catalog-installation.ts","digest":"4663e57bee8360c76be9b0e5f20daddce153e11103045627d8b8c55df58a9363","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 

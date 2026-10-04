@@ -36,7 +36,7 @@ overrides:
   socks>ip-address: ^10.5.1
   '@kontourai/bearing>csv-parse': ^7.0.2
 
-packageExtensionsChecksum: sha256-2l2UxmczKrQr+ImU0nARNUkyKUq+bpu55jGVFAPzU4I=
+packageExtensionsChecksum: sha256-V9jQTPrRdqf6Z859wSbwGftx8ZFtQKJ6xDqATP3e4pk=
 
 patchedDependencies:
   '@voltagent/core@2.10.0': 8eda67a9681b85cf7adbeb5669184db3412ccc9f1954e068ac32ee5dd409170a
@@ -88,6 +88,9 @@ importers:
       '@hono/node-server':
         specifier: ^2.1.1
         version: 2.1.1(hono@4.13.8)
+      '@hpke/core':
+        specifier: 1.9.0
+        version: 1.9.0
       '@kontourai/conduit':
         specifier: 0.7.1
         version: 0.7.1
@@ -116,8 +119,8 @@ importers:
         specifier: 5.1.1
         version: 5.1.1(supports-color@7.2.0)
       '@kontourai/flow-agents':
-        specifier: 6.4.0
-        version: 6.4.0(@ai-sdk/provider@3.0.16)(@kontourai/bearing@0.2.0(playwright@1.63.0))(playwright@1.63.0)(supports-color@7.2.0)(typescript@5.9.3)(zod@4.6.5)
+        specifier: 6.5.1
+        version: 6.5.1(@ai-sdk/provider@3.0.16)(@kontourai/bearing@0.2.0(playwright@1.63.0))(playwright@1.63.0)(supports-color@7.2.0)(typescript@5.9.3)(zod@4.6.5)
       '@kontourai/relay':
         specifier: 0.6.0
         version: 0.6.0(@ai-sdk/provider@3.0.16)(@anthropic-ai/sdk@0.122.0(zod@4.6.5))
@@ -265,6 +268,9 @@ importers:
       better-auth:
         specifier: 1.7.5
         version: 1.7.5(@opentelemetry/api@1.9.1)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(vitest@4.1.11)
+      canonicalize:
+        specifier: 5.1.0
+        version: 5.1.0
       chokidar:
         specifier: ^5.0.0
         version: 5.0.0
@@ -492,8 +498,8 @@ importers:
   examples/builder-delivery-viewer:
     dependencies:
       '@kontourai/flow-agents':
-        specifier: 6.4.0
-        version: 6.4.0(@ai-sdk/provider@3.0.16)(@kontourai/bearing@0.2.0(playwright@1.63.0))(playwright@1.63.0)(supports-color@7.2.0)(typescript@5.9.3)(zod@4.6.5)
+        specifier: 6.5.1
+        version: 6.5.1(@ai-sdk/provider@3.0.16)(@kontourai/bearing@0.2.0(playwright@1.63.0))(playwright@1.63.0)(supports-color@7.2.0)(typescript@5.9.3)(zod@4.6.5)
       '@kontourai/station-sdk':
         specifier: '*'
         version: link:../../packages/sdk
@@ -699,8 +705,8 @@ importers:
         specifier: 5.1.1
         version: 5.1.1(supports-color@7.2.0)
       '@kontourai/flow-agents':
-        specifier: 6.4.0
-        version: 6.4.0(@ai-sdk/provider@3.0.16)(@kontourai/bearing@0.2.0(playwright@1.63.0))(playwright@1.63.0)(supports-color@7.2.0)(typescript@5.9.3)(zod@4.6.5)
+        specifier: 6.5.1
+        version: 6.5.1(@ai-sdk/provider@3.0.16)(@kontourai/bearing@0.2.0(playwright@1.63.0))(playwright@1.63.0)(supports-color@7.2.0)(typescript@5.9.3)(zod@4.6.5)
       '@kontourai/surface':
         specifier: ^3.2.0
         version: 3.2.0(supports-color@7.2.0)
@@ -717,8 +723,8 @@ importers:
         specifier: 5.1.1
         version: 5.1.1(supports-color@7.2.0)
       '@kontourai/flow-agents':
-        specifier: 6.4.0
-        version: 6.4.0(@ai-sdk/provider@3.0.16)(@kontourai/bearing@0.2.0(playwright@1.63.0))(playwright@1.63.0)(supports-color@7.2.0)(typescript@5.9.3)(zod@4.6.5)
+        specifier: 6.5.1
+        version: 6.5.1(@ai-sdk/provider@3.0.16)(@kontourai/bearing@0.2.0(playwright@1.63.0))(playwright@1.63.0)(supports-color@7.2.0)(typescript@5.9.3)(zod@4.6.5)
       '@kontourai/station-contracts':
         specifier: ^0.8.0
         version: link:../contracts
@@ -2124,6 +2130,14 @@ packages:
     peerDependencies:
       hono: '>=4.0.0'
 
+  '@hpke/common@1.10.1':
+    resolution: {integrity: sha512-moJwhmtLtuxiUzzNp1jpfBfx8yefKoO9D/RCR9dmwrnc7qjJqId1rEtQz+lSlU5cabX8daToMSx/7HayXOiaFw==}
+    engines: {node: '>=16.0.0'}
+
+  '@hpke/core@1.9.0':
+    resolution: {integrity: sha512-pFxWl1nNJeQCSUFs7+GAblHvXBCjn9EPN65vdKlYQil2aURaRxfGMO6vBKGqm1YHTKwiAxJQNEI70PbSowMP9Q==}
+    engines: {node: '>=16.0.0'}
+
   '@iconify/types@2.0.0':
     resolution: {integrity: sha512-+wluvCrRhXrhyOmRDJ3q8mux9JkKy5SJ/v8ol2tu4FVjyYvtEzkc/3pK15ET6RKg4b4w4BmTk1+gsCUhf21Ykg==}
 
@@ -2259,8 +2273,8 @@ packages:
       '@anthropic-ai/sdk':
         optional: true
 
-  '@kontourai/flow-agents@6.4.0':
-    resolution: {integrity: sha512-PEQy4AWDuPvoZDjpKK9vBNyCT3ccOKrnl7NE10fqXEEn+aD8RWIVQ2f1tL18h2D9icki+MEIDznso7/1EHhTXQ==}
+  '@kontourai/flow-agents@6.5.1':
+    resolution: {integrity: sha512-0+EfeBdKRQa7SSjLqbWmoETj5KHKcwATLkmg9NBNRRJ+CRuVB9nfenrYEqfLYZ7uxIqMALDomXacTQ/667Aczg==}
     engines: {node: '>=22'}
     hasBin: true
 
@@ -2269,13 +2283,13 @@ packages:
     engines: {node: '>=22'}
     hasBin: true
 
-  '@kontourai/flow@5.0.0':
-    resolution: {integrity: sha512-LPsXkDn5xHJPh5HIwfXbQ47UBmluzPUPMfqwhvcZU6Y2B8huf1HGK/AJSHowCJRCFC78mOFz6/WpnkQ89KJjkg==}
+  '@kontourai/flow@5.1.1':
+    resolution: {integrity: sha512-/aWpKJE+PwaRAvELuweGV8inAX5ecPHF7iivW/Hea3AW3nQc6eQJ/BG+YbxWjoVL5qt8N0KCr+kab1DBp/ad/g==}
     engines: {node: '>=22'}
     hasBin: true
 
-  '@kontourai/flow@5.1.1':
-    resolution: {integrity: sha512-/aWpKJE+PwaRAvELuweGV8inAX5ecPHF7iivW/Hea3AW3nQc6eQJ/BG+YbxWjoVL5qt8N0KCr+kab1DBp/ad/g==}
+  '@kontourai/flow@5.1.3':
+    resolution: {integrity: sha512-6GPTb+gj+oPoZKLt1sitCv4QrZ6/ov1VLw3snRwhJbu5SqV1XW/OfUEIK9eXdkEwDpZixlEIbBoITm7vwLKItQ==}
     engines: {node: '>=22'}
     hasBin: true
 
@@ -4656,6 +4670,11 @@ packages:
 
   caniuse-lite@1.0.30001806:
     resolution: {integrity: sha512-72Cuvd95zbSYPKq6Fhg8eDJRlzgWDf7/mtoZv6Qe/DYNCEBdNxoA3+rZAU2ZhGCpZlns3EssFavaZomckT5Uuw==}
+
+  canonicalize@5.1.0:
+    resolution: {integrity: sha512-bab9+WefZljqQ8jT0qRwVmTyzAUU63K97QIQD3agynIBrb6sa5M2eAy8Hv8K3p4V9+ONVYZKtGYl4Dg+/5Gumw==}
+    engines: {node: '>=22'}
+    hasBin: true
 
   ccount@2.0.1:
     resolution: {integrity: sha512-eyrF0jiFpY+3drT6383f1qhkbGsLSifNAjA61IUjZjmLCWjItY6LB9ft9YhoDgwfmclB2zhu51Lc7+95b8NRAg==}
@@ -9454,6 +9473,12 @@ snapshots:
     dependencies:
       hono: 4.13.8
 
+  '@hpke/common@1.10.1': {}
+
+  '@hpke/core@1.9.0':
+    dependencies:
+      '@hpke/common': 1.10.1
+
   '@iconify/types@2.0.0': {}
 
   '@iconify/utils@3.1.7':
@@ -9613,12 +9638,12 @@ snapshots:
       - supports-color
       - typescript
 
-  '@kontourai/flow-agents@6.4.0(@ai-sdk/provider@3.0.16)(@kontourai/bearing@0.2.0(playwright@1.63.0))(playwright@1.63.0)(supports-color@7.2.0)(typescript@5.9.3)(zod@4.6.5)':
+  '@kontourai/flow-agents@6.5.1(@ai-sdk/provider@3.0.16)(@kontourai/bearing@0.2.0(playwright@1.63.0))(playwright@1.63.0)(supports-color@7.2.0)(typescript@5.9.3)(zod@4.6.5)':
     dependencies:
       '@kontourai/conduit': 0.7.1
       '@kontourai/datum': 0.7.0(playwright@1.63.0)
       '@kontourai/dispatch': 0.3.0(@ai-sdk/provider@3.0.16)(@anthropic-ai/sdk@0.116.0(zod@4.6.5))(@kontourai/bearing@0.2.0(playwright@1.63.0))(@kontourai/datum@0.7.0(playwright@1.63.0))
-      '@kontourai/flow': 5.0.0(supports-color@7.2.0)
+      '@kontourai/flow': 5.1.3(supports-color@7.2.0)
       '@kontourai/relay': 0.6.0(@ai-sdk/provider@3.0.16)(@anthropic-ai/sdk@0.116.0(zod@4.6.5))
       '@kontourai/surface': 2.17.0(supports-color@7.2.0)
       '@kontourai/survey': 2.0.0(supports-color@7.2.0)(typescript@5.9.3)
@@ -9643,7 +9668,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@kontourai/flow@5.0.0(supports-color@7.2.0)':
+  '@kontourai/flow@5.1.1(supports-color@7.2.0)':
     dependencies:
       '@kontourai/surface': 2.14.0(supports-color@7.2.0)
       ajv: 8.20.0
@@ -9653,7 +9678,7 @@ snapshots:
       - kerberos
       - supports-color
 
-  '@kontourai/flow@5.1.1(supports-color@7.2.0)':
+  '@kontourai/flow@5.1.3(supports-color@7.2.0)':
     dependencies:
       '@kontourai/surface': 2.14.0(supports-color@7.2.0)
       ajv: 8.20.0
@@ -12294,6 +12319,8 @@ snapshots:
   camelcase@6.3.0: {}
 
   caniuse-lite@1.0.30001806: {}
+
+  canonicalize@5.1.0: {}
 
   ccount@2.0.1: {}
 

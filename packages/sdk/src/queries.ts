@@ -134,6 +134,9 @@ export {
   useRegistryItemsQuery,
   useRegistryLayoutActionMutation,
   useRegistrySkillActionMutation,
+  useRegistrySkillContentQuery,
+  useRegistrySourceActionMutation,
+  useRegistrySourcesQuery,
   useSaveIntegrationMutation,
   useSetIntegrationEnabledMutation,
   useSetIntegrationRenderPermissionMutation,
@@ -543,6 +546,10 @@ export type {
   SetupImportPreview,
   SetupImportReceipt,
 } from './query-domains/setupImports';
+export {
+  useSkillExperienceInventoryQuery,
+  useSkillExperienceSessionQuery,
+} from './query-domains/skillExperiences';
 export type {
   SkillImportFile,
   SkillImportResult,

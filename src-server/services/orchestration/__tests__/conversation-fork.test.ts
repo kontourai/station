@@ -1,40 +1,63 @@
 import { describe, expect, test } from 'vitest';
 import {
-  FORK_OMITTED_MARKER,
   renderForkTranscript,
   selectForkTranscriptSlice,
 } from '../conversation-fork.js';
 
 describe('renderForkTranscript', () => {
   test('renders a complete, delimited transcript when it fits', () => {
-    expect(
-      renderForkTranscript({
-        sourceTitle: 'Planning',
-        sourceAgent: 'Claude',
-        messages: [
-          { role: 'user', content: 'first' },
-          { role: 'assistant', content: 'second' },
-        ] as any,
-        maxChars: 100,
-      }),
-    ).toBe(
-      'Continued from a previous conversation (Planning, on Claude):\n\nUser: first\n\nAssistant: second',
+    const rendered = renderForkTranscript({
+      sourceTitle: 'Planning',
+      sourceAgent: 'Claude',
+      // Legacy file-store rows carry a string `content`.
+      messages: [
+        { role: 'user', content: 'first' },
+        { role: 'assistant', content: 'second' },
+      ] as any,
+    });
+    expect(rendered).toMatch(
+      /^Continued from a previous conversation \(Planning, on Claude\)/,
     );
+    expect(rendered).toContain(
+      'All 2 earlier user and assistant text messages are included',
+    );
+    expect(rendered).toMatch(/\n\nUser: first\n\nAssistant: second$/);
   });
 
-  test('drops from the head and pins the omission marker at the boundary', () => {
+  test('drops whole older messages and counts them', () => {
+    const newest = 'x'.repeat(30_000);
     const rendered = renderForkTranscript({
       sourceTitle: 'Planning',
       sourceAgent: 'Claude',
       messages: [
-        { role: 'user', content: 'old' },
-        { role: 'assistant', content: 'x'.repeat(100) },
+        { role: 'user', content: `old question ${'y'.repeat(2_000)}` },
+        { role: 'assistant', content: newest },
       ] as any,
-      maxChars: 40,
     });
-    expect(rendered).toContain(FORK_OMITTED_MARKER);
-    expect(rendered).not.toContain('User: old');
-    expect(rendered).toContain('Assistant:');
+    expect(rendered).toContain('The 1 earlier one is omitted;');
+    expect(rendered).not.toContain('old question');
+    expect(rendered).toContain(`Assistant: ${newest}`);
+  });
+
+  test('counts a message with no text parts instead of claiming everything is included', () => {
+    const rendered = renderForkTranscript({
+      sourceTitle: 'Planning',
+      sourceAgent: 'Claude',
+      messages: [
+        { id: 'u', role: 'user', parts: [{ type: 'text', text: 'first' }] },
+        {
+          id: 'a',
+          role: 'assistant',
+          parts: [{ type: 'tool', toolCallId: 'call-1', toolName: 'read' }],
+        },
+      ],
+    });
+    expect(rendered).toContain(
+      'The 1 earlier user or assistant text message is included below.',
+    );
+    expect(rendered).toContain(
+      '1 other user or assistant message had no text parts to carry',
+    );
   });
 
   test('branches only through the selected completed assistant turn', () => {

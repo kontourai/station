@@ -18,7 +18,7 @@
 
     {"path":"src-server/services/config/log-level-edit-service.ts","digest":"c1e9e5480814c05a959a885280798ee17d2718eb560c9dd14739a2f9295eae26","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
 
-    {"path":"src-ui/src/hooks/useActiveChatSessionMessaging.ts","digest":"c0609512c0eff8faabaddd90b55198a6c2ddabb3fceeda419ed8b60b70340bc9","revision":"4711f21b516d04300b15ad4da473e24bf2e7adb2"},
+    {"path":"src-ui/src/hooks/useActiveChatSessionMessaging.ts","digest":"9318eb8735235a5cf39ece24756ba0a90405a79b9c24982199f65326b4c4c6b2","revision":"34d62da501fa53187b7062288f6e1dbaec8c20ed"},
 
     {"path":"src-ui/src/lib/outboundQueue.ts","digest":"f5d6b23d36ce463a6f819530e4a4d5bc7c64efb376750829d8a24fb82f427d6c","revision":"fcd4407178cb5509ea47a958714603034fe20004"}
   ],
