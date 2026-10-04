@@ -308,6 +308,7 @@ describe('UsageLimitBanner (#3157)', () => {
     });
     renderBanner();
     await waitFor(() => expect(calls).toHaveLength(1));
+    // real-time: negative assertion; the banner must stay absent once the read settles
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(screen.queryByTestId('usage-limit-banner')).toBeNull();
     expect(screen.queryByRole('button')).toBeNull();
@@ -317,12 +318,14 @@ describe('UsageLimitBanner (#3157)', () => {
     answers.read = () => ({ recovery: null });
     renderBanner();
     await waitFor(() => expect(calls).toHaveLength(1));
+    // real-time: negative assertion; the banner must stay absent once the read settles
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(screen.queryByTestId('usage-limit-banner')).toBeNull();
   });
 
   test('a conversation the snapshot does not call limited renders nothing and asks the server nothing', async () => {
     renderBanner({ active: false });
+    // real-time: negative assertion; the banner must stay absent once the read settles
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(screen.queryByTestId('usage-limit-banner')).toBeNull();
     expect(calls).toEqual([]);

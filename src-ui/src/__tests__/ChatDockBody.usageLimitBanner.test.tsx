@@ -270,6 +270,7 @@ describe('ChatDockBody usage-limit banner (#3157)', () => {
       lastRuntimeErrorUsageLimit: true,
     };
     mountDock();
+    // real-time: negative assertion; the banner must stay absent once the read settles
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(screen.queryByTestId('usage-limit-banner')).toBeNull();
     expect(requested).toEqual([]);
