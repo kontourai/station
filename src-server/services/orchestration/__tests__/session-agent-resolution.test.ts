@@ -278,8 +278,13 @@ describe('createSessionAgentResolver', () => {
           // what makes `undelivered` the interesting assertion: a requested
           // server the host cannot resolve must be receipted, never dropped
           // silently.
-          requested: ['station-control', 'station-docs'],
+          requested: ['station-control', 'station-knowledge', 'station-docs'],
           undelivered: [
+            {
+              capability: 'toolServers',
+              id: 'station-knowledge',
+              reason: 'not-found',
+            },
             {
               capability: 'toolServers',
               id: 'station-docs',
@@ -370,8 +375,14 @@ describe('createSessionAgentResolver', () => {
       result.metadata?.[SESSION_CAPABILITY_DELIVERY_METADATA_KEY],
     ).toMatchObject({
       toolServers: {
-        requested: ['station-control', 'station-docs'],
-        undelivered: [],
+        requested: ['station-control', 'station-knowledge', 'station-docs'],
+        undelivered: [
+          {
+            capability: 'toolServers',
+            id: 'station-knowledge',
+            reason: 'not-found',
+          },
+        ],
       },
     });
   });
