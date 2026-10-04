@@ -1,5 +1,8 @@
 import type { AttentionItem } from '@kontourai/station-sdk';
-import { attentionKindLabel } from '../../utils/attention';
+import {
+  attentionKindLabel,
+  peerAttentionElsewhereText,
+} from '../../utils/attention';
 import { AttentionCard } from '../attention/AttentionCard';
 import { Button } from '../Button';
 import { ErrorState } from '../state';
@@ -67,7 +70,7 @@ export function SessionDetailAttention({
               </div>
               <div className="attention-item__message">{item.title}</div>
               <div className="attention-item__detail">
-                Answer this on the paired Station that runs the task.
+                {peerAttentionElsewhereText()}
               </div>
             </article>
           ))}

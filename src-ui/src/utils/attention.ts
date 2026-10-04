@@ -6,6 +6,8 @@ import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display'
 import type {
   ApprovalAttentionItem,
   AttentionItem,
+  NeedsInputAttentionItem,
+  ReviewPendingAttentionItem,
   SessionFailedAttentionItem,
 } from '@kontourai/station-sdk';
 import { notificationCategoryLabel } from './notificationLabels';
@@ -188,4 +190,30 @@ export function sessionFailedIdentity(
     item.agent ?? null,
   ].filter((part): part is string => Boolean(part));
   return parts.length > 0 ? parts.join(' · ') : null;
+}
+
+/**
+ * A waiting item whose task runs on a PAIRED Station. The server derives
+ * `environmentKind` from the session's own delegation record — the same
+ * field `isPeerDelegationRecord` reads in the Activity detail — so the inbox
+ * and the detail apply one rule. Its thread id names this Station's lifecycle
+ * record only, so no surface may offer a local reply for it.
+ */
+export function isPeerHostedAttentionItem(item: AttentionItem): item is (
+  | NeedsInputAttentionItem
+  | ReviewPendingAttentionItem
+) & {
+  environmentKind: 'peer';
+} {
+  return (
+    (item.kind === 'needs_input' || item.kind === 'review_pending') &&
+    item.environmentKind === 'peer'
+  );
+}
+
+/** Where a peer-hosted item is answered. Shared by the inbox, bell and detail. */
+export function peerAttentionElsewhereText(environmentName?: string): string {
+  return environmentName
+    ? `Answer this on ${environmentName}, the paired Station that runs the task.`
+    : 'Answer this on the paired Station that runs the task.';
 }

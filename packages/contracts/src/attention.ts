@@ -117,7 +117,9 @@ export interface ApprovalAttentionItem extends AttentionItemBase {
  * existing `gate-blocked` kind is a Flow-gate verdict with a run/gate
  * source shape a session-level block does not have.
  */
-export interface NeedsInputAttentionItem extends AttentionItemBase {
+export interface NeedsInputAttentionItem
+  extends AttentionItemBase,
+    AttentionSessionEnvironment {
   kind: 'needs_input';
   /** Exact input question; never an approval/permission decision. */
   inputReference?: AttentionRequestReference;
@@ -126,8 +128,35 @@ export interface NeedsInputAttentionItem extends AttentionItemBase {
   requestType?: AttentionRequestType;
 }
 
+/**
+ * Where the task behind a session-derived waiting item runs, when that is a
+ * PAIRED Station rather than this one. Read off the session's own
+ * `OrchestrationDelegationContext` (`environmentKind`/`environmentName`), the
+ * same record the Activity detail decides "peer" from, so the inbox and the
+ * detail cannot disagree.
+ *
+ * A peer item's `source.threadId` names this Station's compact lifecycle
+ * record of the task, not a session that can take input: a local reply or a
+ * chat opened against it reaches nothing. A consumer that sees
+ * `environmentKind: 'peer'` must not offer a local reply; the item's
+ * `openHref` then lands on the Activity detail, which says where the task is
+ * answered.
+ *
+ * ABSENT means this Station runs the task — or the server predates the
+ * field. Such a server still refuses a local turn on a peer record ("Peer
+ * delegation Activity records are read-only."), so a reply sent through an
+ * older server fails visibly rather than reaching another session.
+ */
+export interface AttentionSessionEnvironment {
+  environmentKind?: 'peer';
+  /** The paired Station's saved Environment name, when the record carries one. */
+  environmentName?: string;
+}
+
 /** See `NeedsInputAttentionItem` — same request-evidence projection, review_pending kind. */
-export interface ReviewPendingAttentionItem extends AttentionItemBase {
+export interface ReviewPendingAttentionItem
+  extends AttentionItemBase,
+    AttentionSessionEnvironment {
   kind: 'review_pending';
   requestReference?: AttentionRequestReference;
   source: { threadId: string };

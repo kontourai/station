@@ -34,6 +34,8 @@ import {
   attentionKindLabel,
   isAcknowledgeableAttentionItem,
   isApprovalLivePending,
+  isPeerHostedAttentionItem,
+  peerAttentionElsewhereText,
   sessionFailedIdentity,
   sessionFailureCause,
 } from '../../utils/attention';
@@ -146,6 +148,10 @@ function SessionFailedDetail({ item }: { item: SessionFailedAttentionItem }) {
 }
 
 function AttentionAction({ item }: { item: AttentionItem }) {
+  // A task running on a paired Station: its thread id here names only the
+  // local lifecycle record, so a reply or request inspection would address
+  // nothing. Same rule, and same note, as the Activity detail's peer branch.
+  if (isPeerHostedAttentionItem(item)) return <PeerHostedAction item={item} />;
   switch (item.kind) {
     case 'approval':
       return item.requestReference ? (
@@ -500,6 +506,24 @@ function ApprovalActions({ item }: { item: ApprovalAttentionItem }) {
       )}
       <MutationError error={mutation.error} />
       <MutationError error={dismissMutation.error} />
+    </>
+  );
+}
+
+function PeerHostedAction({
+  item,
+}: {
+  item: NeedsInputAttentionItem | ReviewPendingAttentionItem;
+}) {
+  return (
+    <>
+      <div
+        className="attention-item__detail"
+        data-testid="attention-peer-elsewhere"
+      >
+        {peerAttentionElsewhereText(item.environmentName)}
+      </div>
+      <OpenSessionLink href={item.openHref} />
     </>
   );
 }

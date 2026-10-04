@@ -793,6 +793,14 @@ export class AttentionProjectionService {
         ? attentionRequestReference(openRequest, session.threadId)
         : undefined;
     const projectSlug = sessionProjectSlug(session);
+    // A delegated task running on a PAIRED Station: this thread is only the
+    // local lifecycle record, so the item says so and links to the Activity
+    // detail (which renders the peer note) instead of rehydrating a chat
+    // whose conversation id is the peer's.
+    const peer = session.delegation?.environmentKind === 'peer';
+    const environmentName = peer
+      ? session.delegation?.environmentName
+      : undefined;
     return {
       id: `${kind}:${session.threadId}`,
       kind,
@@ -805,8 +813,12 @@ export class AttentionProjectionService {
       // #2064 (D4): the project row's count reads this. Omitted, never
       // guessed, for a project-less session.
       ...(projectSlug ? { projectSlug } : {}),
-      openHref: sessionOpenHref(session),
+      openHref: peer
+        ? activityDeepLink({ sessionId: session.threadId })
+        : sessionOpenHref(session),
       source: { threadId: session.threadId },
+      ...(peer ? { environmentKind: 'peer' as const } : {}),
+      ...(environmentName ? { environmentName } : {}),
       ...(kind === 'needs_input' &&
       openRequest &&
       inputRequestReference(openRequest, session.threadId)
