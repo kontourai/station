@@ -982,6 +982,11 @@ export interface OrchestrationSessionSummary extends ProviderSession {
   lastEventMethod?: CanonicalRuntimeEvent['method'];
   /** Current terminal runtime error text when the event fold can prove one. */
   lastRuntimeErrorMessage?: string;
+  /**
+   * #3157: that terminal runtime error is a provider usage limit
+   * (`UsageLimitFailureDetails`). Clients hold queued follow-ups on it.
+   */
+  lastRuntimeErrorUsageLimit?: true;
   /** Reason from the latest non-recovery turn abort, when it is terminal. */
   lastTurnAbortReason?: string;
   /** Present only while this process is watching this session's active turn. */

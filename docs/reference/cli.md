@@ -2039,7 +2039,7 @@ release-specific and must not contain the Station home.
 Start the application server and UI. Builds automatically on first run if `dist-server/` or `dist-ui/` are missing.
 
 ```
-station start [--port=<n>] [--ui-port=<n>] [--host=<address>] [--clean] [--force] [--allow-default-home-clean] [--build] [--home=<dir>] [--base=<dir>] [--temp-home] [--instance=<name>] [--features=<flags>] [--log[=<path>]] [--allowed-origin=<origin>]...
+station start [--port=<n>] [--ui-port=<n>] [--host=<address>] [--clean] [--force] [--allow-default-home-clean] [--build] [--watch] [--home=<dir>] [--base=<dir>] [--temp-home] [--instance=<name>] [--features=<flags>] [--log[=<path>]] [--allowed-origin=<origin>]...
 ```
 
 | Flag | Default | Description |
@@ -2051,6 +2051,7 @@ station start [--port=<n>] [--ui-port=<n>] [--host=<address>] [--clean] [--force
 | `--force` | — | Skip the confirmation prompt for destructive cleanup |
 | `--allow-default-home-clean` | — | Required together with `--force` to delete the selected default runtime home |
 | `--build` | — | Force rebuild before starting (even if dist exists) |
+| `--watch` | — | Development mode: server under `tsx watch`, UI as the Vite dev server proxying to it; loopback only, builds nothing. See [Development](../guides/development.md#running-a-second-station-in-development-mode) |
 | `--home=<dir>` | current `STATION_HOME` or `<STATION_ROOT>/instances/<channel>` | Runtime home for this instance — isolated **and** persistent. It never changes shared profiles; cannot be combined with `--temp-home` or `--base` |
 | `--base=<dir>` | current `STATION_HOME` or `<STATION_ROOT>/instances/<channel>` | The same runtime-only setting as `--home` |
 | `--temp-home` | — | Create and use a temporary home under the system temp directory |
@@ -2137,7 +2138,7 @@ stays valid across restarts. It does not fork the start logic — it derives the
 ports/instance/home, then runs the same path as [`start`](#start).
 
 ```
-station dev [--port-offset=<n>] [--host=<address>] [--build] [--clean] [--force] [--features=<flags>] [--dry-run]
+station dev [--port-offset=<n>] [--host=<address>] [--build] [--watch] [--clean] [--force] [--features=<flags>] [--dry-run]
 ```
 
 | Flag | Default | Description |
@@ -2145,6 +2146,7 @@ station dev [--port-offset=<n>] [--host=<address>] [--build] [--clean] [--force]
 | `--port-offset=<n>` | derived | Force an exact offset (`0`-`500`), overriding the derivation. `--port-offset=0` is valid and yields the base ports `39140`/`40140` (just below the derived `39141`-`39640` band). |
 | `--host=<address>` | `0.0.0.0` | Bind address; the default is a wildcard so a phone or LAN/tailnet client can reach the stable URL |
 | `--build` | — | Force a rebuild before starting |
+| `--watch` | — | Hot-reload mode, as `station start --watch` |
 | `--clean` | — | Wipe this dev instance's isolated home before starting (with `--force` to skip the prompt) |
 | `--force` | — | Skip the cleanup prompt / force a restart of an already-running dev instance |
 | `--features=<flags>` | — | Comma-separated feature flags |
@@ -3145,7 +3147,7 @@ Findings are evidence input only and do not approve, reject, satisfy a gate, or 
 
 When `station start` launches the server and UI processes, it writes per-instance state to `.station/instances/<instance-id>.json` in the current working directory. Each record includes the instance id, home directory, ports, and current server/UI PIDs.
 
-`station stop` resolves the matching instance from `--instance`, `--home`/`--base`, `--port`, or `--ui-port`, then terminates only that instance. If multiple instances are live and the selector is ambiguous, the CLI refuses and prints the matching records so you can choose the intended one.
+`station stop` resolves the matching instance from `--instance`, `--home`/`--base`, `--port`, or `--ui-port`, then terminates only that instance: the PIDs it recorded, checked against the process fingerprint recorded at start. A process that merely listens on one of the instance's ports is never signalled, and a port listener alone does not keep an instance record alive, so a record left by a start that lost its port race is reclaimed without touching the sibling that owns the port. A recorded PID whose process no longer matches its fingerprint is not signalled and the stop refuses. `station start` refuses, before binding, a port band (server port through consent port, plus the UI port) that overlaps another live instance recorded in this checkout or published to the home's instance registry, and names that instance. If multiple instances are live and the selector is ambiguous, the CLI refuses and prints the matching records so you can choose the intended one.
 
 During rollout, Station still recognizes the prior `<cwd>/.station.pids` file when present and migrates away from it as new-format state is written.
 
