@@ -838,6 +838,16 @@ answer it instead of offering a local reply. The field is absent for work this
 Station runs. A server that predates the field omits it; a reply sent to a peer
 record through that server is still refused, not delivered elsewhere.
 
+The same record also opens in Activity from every work-item surface: Home's
+continue action and lists, the dock inbox, the mobile task switcher, the
+Sessions list, and a project's live work. Its agent slug and conversation id
+are the paired Station's, so rehydrating it as a local chat would show an empty
+transcript whose composer cannot reach the task. Home's work items carry
+`delegationEnvironmentKind: 'peer'` for this. The workspace Home projection
+record names that field, so a Home role grant made before it no longer covers
+the projection, and Home falls back to the built-in view until the grant is
+approved again.
+
 The paired Station's own open request reaches this Station through its
 delegated-task status read (`GET /api/orchestration/delegations/:taskId`,
 field `pendingRequest`). Each status refresh records it on the peer record as
