@@ -118,6 +118,13 @@ Codex session-cumulative observations still use the latest snapshot. This
 repairs [#581](https://github.com/kontourai/station/issues/581); it does not
 expand the window's event or byte limits.
 
+The viewer receipt panel partitions its cache by captured Station authority and
+credential-profile filter. A lost scope hides cached rows; 401/403 pauses polling
+until retry. Pagination restarts when authority changes. Current cost cards say
+**Not reported** when no cost contribution exists, while measured zero stays
+numeric. An empty retained history cannot certify a cost-per-message milestone.
+Cache-only and total-only engine measurements count in token-reporting coverage.
+
 The receipt panel reads an aggregate separately from its drilldown page. Local
 aggregate reads select at most 500 observations; a page selects at most 100.
 Reaching the aggregate limit produces partial coverage. Paired transfer applies

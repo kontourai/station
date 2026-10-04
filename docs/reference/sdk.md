@@ -4113,7 +4113,7 @@ API base and authority key, never credentials. The React-free client export
 The returned `StationUsageOverview` contains `stationId` and canonical
 `UsageStats` from `@kontourai/station-contracts/usage-stats`.
 
-The hook polls every 30 seconds while enabled and refreshes on mount/focus.
+The hook polls every 30 seconds while enabled and refreshes stale data on mount/focus.
 HTTP 401/403 stops polling; explicit retry can reauthorize the read. A consumer
 must hide cached data on an error or lost authority, as the Profile operator
 panel does. A query key is not an operator grant. The server requires the bound
@@ -4123,3 +4123,16 @@ workers are refused. Ordinary usage/rescan responses omit the person breakdown.
 The [monitoring guide](../guides/monitoring.md#operator-view-of-this-instance)
 owns measurement and attribution limits. Source exports require a release
 containing this change; source presence is not evidence of npm publication.
+
+
+### Authorized receipt observers
+
+`useUsageRollupQuery(query, config?)` accepts `requestScope` and
+`requireRequestScope`, with the same captured-authority rules as the operator
+query. Scoped keys include Station, authority, and the explicit credential-profile
+filter; all accounts, the default profile, and a named profile remain distinct.
+The Profile receipt panel requires a scope and clears its page position when
+authority changes. HTTP 401/403 pauses default polling; cached rows are hidden
+on error or lost authority. `fetchUsageRollup(query, options?)` forwards captured
+request options, while the React-free client fetcher preserves HTTP refusal
+status as `StationHttpError`. These client controls confer no access.
