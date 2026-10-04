@@ -46,6 +46,7 @@ import {
   APPROVAL_MODES,
   type ApprovalMode,
   ATTACHMENT_INPUT_UNSUPPORTED_CODE,
+  type DelegationProvenance,
 } from '@kontourai/station-contracts/provider';
 import {
   ORCHESTRATION_STREAM_ACTIVITY_EVENT,
@@ -905,6 +906,8 @@ interface DelegateTaskRequest {
   taskRoomInvocationAdmission?: TaskRoomInvocationAdmission;
   /** #2601: `deps.resolveRequestDelegation`'s derivation, never body JSON. */
   delegation?: AgentDelegationContext;
+  /** #3323: how the route came by `delegation`; never body JSON. */
+  delegationProvenance?: DelegationProvenance;
   userId: string;
   principal?: PrincipalRef;
   /**
@@ -992,6 +995,8 @@ interface ForegroundMessageRequest {
   /** #2873: `scopeDispatch`'s decision, run again at the engine spawn. */
   dispatchCwdAdmission?: DispatchCwdAdmission;
   clientOrigin?: ClientOrigin;
+  /** #3323: how the route came by the stamped delegation; never body JSON. */
+  delegationProvenance?: DelegationProvenance;
 }
 
 interface ContinueForegroundMessageRequest {
@@ -2026,18 +2031,26 @@ export function createOrchestrationRoutes(
         throw new Error('Attachment staging is unavailable for this Station.');
       }
       // #2601: the body's context is a claim; this is what gets stamped.
-      const delegation = await deps.resolveRequestDelegation?.(c.req.raw, {
-        ...(claimedDelegation
-          ? { delegation: claimedDelegation as AgentDelegationContext }
-          : {}),
-        ...(delegationAttestation
-          ? { attestation: delegationAttestation }
-          : {}),
-      });
+      const resolvedDelegation = await deps.resolveRequestDelegation?.(
+        c.req.raw,
+        {
+          ...(claimedDelegation
+            ? { delegation: claimedDelegation as AgentDelegationContext }
+            : {}),
+          ...(delegationAttestation
+            ? { attestation: delegationAttestation }
+            : {}),
+        },
+      );
+      const delegation = resolvedDelegation?.context;
       let stagedBinding: { threadId: string; clientTurnId: string } | undefined;
       const foregroundRequest = {
         ...body,
         ...(delegation ? { delegation } : {}),
+        // #3323: how the route came by `delegation`, stamped beside it by the
+        // start. Set here only, after the body spread, so a body can never
+        // supply it.
+        delegationProvenance: resolvedDelegation?.provenance,
         ...(stagedAttachments?.length
           ? {
               resolveAttachments: (binding) =>
@@ -2633,14 +2646,18 @@ export function createOrchestrationRoutes(
         delegationAttestation,
         ...request
       } = body;
-      const delegation = await deps.resolveRequestDelegation?.(c.req.raw, {
-        ...(claimedDelegation
-          ? { delegation: claimedDelegation as AgentDelegationContext }
-          : {}),
-        ...(delegationAttestation
-          ? { attestation: delegationAttestation }
-          : {}),
-      });
+      const resolvedDelegation = await deps.resolveRequestDelegation?.(
+        c.req.raw,
+        {
+          ...(claimedDelegation
+            ? { delegation: claimedDelegation as AgentDelegationContext }
+            : {}),
+          ...(delegationAttestation
+            ? { attestation: delegationAttestation }
+            : {}),
+        },
+      );
+      const delegation = resolvedDelegation?.context;
       const delegate = deps.delegateTask;
       const roomRequest = body.taskRoomRequest;
       const dispatch = (
@@ -2657,6 +2674,8 @@ export function createOrchestrationRoutes(
               }
             : {}),
           ...(delegation ? { delegation } : {}),
+          // #3323: how the route came by `delegation`; set only here.
+          delegationProvenance: resolvedDelegation?.provenance,
           target: normalizeExecutionTarget(
             withCanonicalCwd(body.target, scoped.canonicalCwd),
           ),

@@ -6,6 +6,7 @@ import type {
   OrchestrationStartSessionInput,
 } from '@kontourai/station-contracts/orchestration';
 import type {
+  DelegationProvenance,
   ProviderSession,
   ProviderSessionStartInput,
 } from '@kontourai/station-contracts/provider';
@@ -184,6 +185,12 @@ export type SessionCommandInternalOptions = {
     resourceId: string;
     localProjectId: string;
   };
+  /**
+   * #3323: how the dispatch route came by the start's `metadata.delegation`,
+   * re-stamped as `DELEGATION_PROVENANCE_METADATA_KEY` after the reserved-key
+   * strip. Never accepted from public JSON.
+   */
+  delegationProvenance?: DelegationProvenance;
   /** Server-derived caller topology; never accepted from a command body. */
   resourceAdmissionIntent?: RuntimeEngineStartIntent;
   /** Opaque controller capability; only the foreground route can carry it. */
