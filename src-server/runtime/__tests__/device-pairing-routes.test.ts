@@ -4692,6 +4692,12 @@ describe('operator passkey host routes in the runtime auth boundary (#3257)', ()
     const { registry, service, harness } = passkeyHarness();
     try {
       const { code } = service.createRequest({
+        requester: {
+          kind: 'paired-device',
+          deviceId: 'test-device',
+          pairedAt: null,
+          scope: '',
+        },
         credential: 'browser',
         deviceLabel: 'Phone browser',
       });
@@ -4735,6 +4741,12 @@ describe('operator passkey host routes in the runtime auth boundary (#3257)', ()
     const { registry, service, harness } = passkeyHarness(true);
     try {
       const { code } = service.createRequest({
+        requester: {
+          kind: 'paired-device',
+          deviceId: 'test-device',
+          pairedAt: null,
+          scope: '',
+        },
         credential: 'browser',
         deviceLabel: 'Phone browser',
       });

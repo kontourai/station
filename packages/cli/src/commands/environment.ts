@@ -1629,6 +1629,8 @@ const PASSKEY_ERROR_TEXT: Record<string, string> = {
   enrollment_unavailable:
     'Operator passkey enrollment needs STATION_TRUSTED_CONSENT_ORIGIN (an HTTPS origin on a DNS name) on the Station. A Station reachable only by IP has no remote operator sign-in.',
   passkey_not_found: 'No active operator passkey has that id.',
+  device_gone:
+    'The device that opened this request is no longer paired. Nothing was confirmed.',
   device_mismatch:
     'The request with that code was not opened by the device you named. Nothing was confirmed; run `station environment operator passkeys` to see who asked.',
   authentication_required:
@@ -1644,6 +1646,7 @@ interface PasskeyRequestDetails {
     deviceId?: unknown;
     pairedAt?: unknown;
     scope?: unknown;
+    active?: unknown;
   };
 }
 
@@ -1657,7 +1660,7 @@ function describePasskeyRequest(request: PasskeyRequestDetails): string {
   return [
     `Device name (chosen by the device): ${terminalSafeText(String(request.deviceLabel))}`,
     `Device id: ${terminalSafeText(String(who.deviceId ?? 'unknown'))} (${who.kind === 'operator-credential' ? 'the operator credential' : 'paired device'})`,
-    `Paired: ${paired}`,
+    `Paired: ${paired}${who.active === false ? ' (NO LONGER PAIRED)' : ''}`,
     `Scopes: ${terminalSafeText(String(who.scope || 'n/a'))}`,
     `For: ${terminalSafeText(String(request.rpId))}, expires ${new Date(Number(request.expiresAt)).toISOString()}`,
   ].join('\n');

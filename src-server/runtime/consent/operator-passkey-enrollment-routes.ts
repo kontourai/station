@@ -148,13 +148,17 @@ export function registerOperatorPasskeyEnrollmentRoutes(
       };
     }
     const device = deps.credentials.identifyDevice(credential);
-    if (device === null) return null;
+    // A device without an id cannot be identified to the host: refuse rather
+    // than invent one.
+    if (device === null || typeof device.id !== 'string' || device.id === '') {
+      return null;
+    }
     return {
       credential,
       deviceLabel: device.name ?? 'Paired browser',
       requester: {
         kind: 'paired-device',
-        deviceId: device.id ?? 'unknown',
+        deviceId: device.id,
         pairedAt: device.createdAt ?? null,
         scope: device.scope ?? '',
       },

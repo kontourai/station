@@ -4161,6 +4161,14 @@ export class StationRuntime {
     this.operatorPasskeys = new OperatorPasskeyEnrollmentService({
       registry: this.operatorPasskeyRegistry,
       origin: this.consentChannel.trustedOrigin,
+      resolveDevice: (deviceId) => {
+        const device = this.environmentSecurityService.devicePairing
+          .listDevices()
+          .find((item) => item.id === deviceId);
+        return device && device.revokedAt === null
+          ? { scope: device.scope }
+          : null;
+      },
       logger: this.logger,
     });
     return this.operatorPasskeys;

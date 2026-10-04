@@ -5,7 +5,7 @@
  * authenticator that builds genuine attestation-none responses), and the real
  * private SQLite registry.
  */
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { Hono } from 'hono';
@@ -110,7 +110,10 @@ function build(origin: string | null = ORIGIN): Harness {
     channel,
     credentials: {
       verifyOperatorCredential: () => false,
-      identifyDevice: (candidate) => DEVICES[candidate] ?? null,
+      identifyDevice: (candidate) =>
+        candidate === 'N'.repeat(43)
+          ? { name: 'No id' }
+          : (DEVICES[candidate] ?? null),
     },
     passkeys: service,
   });
@@ -441,10 +444,28 @@ describe('code confirmation', () => {
   test('the number of live requests is capped', async () => {
     const many = build();
     for (let i = 0; i < ENROLLMENT_MAX_LIVE_REQUESTS; i += 1) {
-      many.service.createRequest({ credential: `c${i}`, deviceLabel: `d${i}` });
+      many.service.createRequest({
+        requester: {
+          kind: 'paired-device',
+          deviceId: 'test-device',
+          pairedAt: null,
+          scope: '',
+        },
+        credential: `c${i}`,
+        deviceLabel: `d${i}`,
+      });
     }
     expect(() =>
-      many.service.createRequest({ credential: 'extra', deviceLabel: 'x' }),
+      many.service.createRequest({
+        requester: {
+          kind: 'paired-device',
+          deviceId: 'test-device',
+          pairedAt: null,
+          scope: '',
+        },
+        credential: 'extra',
+        deviceLabel: 'x',
+      }),
     ).toThrowError(/Too many enrollment requests/);
     many.registry.close();
   });
@@ -761,7 +782,16 @@ describe('without STATION_TRUSTED_CONSENT_ORIGIN', () => {
       const approve = await confirm(off, '123456');
       expect(approve.status).toBe(503);
       expect(() =>
-        off.service.createRequest({ credential: 'c', deviceLabel: 'd' }),
+        off.service.createRequest({
+          requester: {
+            kind: 'paired-device',
+            deviceId: 'test-device',
+            pairedAt: null,
+            scope: '',
+          },
+          credential: 'c',
+          deviceLabel: 'd',
+        }),
       ).toThrowError(/STATION_TRUSTED_CONSENT_ORIGIN/);
     } finally {
       off.registry.close();
@@ -840,6 +870,7 @@ describe('approval context', () => {
       ]),
     );
     expect(byLabel['Phone browser']).toEqual({
+      active: true,
       kind: 'paired-device',
       deviceId: 'aaaa1111',
       pairedAt: 1_790_000_000_000,
@@ -962,7 +993,16 @@ describe('the passkey database is created only when needed', () => {
     expect(off.listPasskeys()).toEqual([]);
     expect(off.listPending()).toEqual([]);
     expect(() =>
-      off.createRequest({ credential: 'c', deviceLabel: 'd' }),
+      off.createRequest({
+        requester: {
+          kind: 'paired-device',
+          deviceId: 'test-device',
+          pairedAt: null,
+          scope: '',
+        },
+        credential: 'c',
+        deviceLabel: 'd',
+      }),
     ).toThrowError(/STATION_TRUSTED_CONSENT_ORIGIN/);
     expect(() => off.revokePasskey('x')).toThrowError(/No active/);
     lazy.close();
@@ -978,6 +1018,12 @@ describe('the passkey database is created only when needed', () => {
     });
     expect(service.listPasskeys()).toEqual([]);
     const { requestId, code } = service.createRequest({
+      requester: {
+        kind: 'paired-device',
+        deviceId: 'test-device',
+        pairedAt: null,
+        scope: '',
+      },
       credential: 'c',
       deviceLabel: 'd',
     });
@@ -985,6 +1031,147 @@ describe('the passkey database is created only when needed', () => {
     expect(existsSync(dbFile(home))).toBe(false);
     await service.beginRegistration(requestId, 'c');
     expect(existsSync(dbFile(home))).toBe(true);
+    lazy.close();
+  });
+});
+
+describe('review round: races and live device state', () => {
+  test('a deny that lands while verification is in flight stops the enrollment', async () => {
+    const { started, options } = await confirmedWithOptions(h);
+    const response = new SoftwareAuthenticator().register(options, {
+      origin: ORIGIN,
+    });
+    // finishRegistration runs synchronously up to its first await (the
+    // WebAuthn verification), so the deny below lands inside that window.
+    const finishing = h.service.finishRegistration(
+      started.requestId,
+      'P'.repeat(43),
+      response as never,
+      'Raced',
+    );
+    h.service.deny(started.code);
+    await expect(finishing).rejects.toMatchObject({ code: 'request_closed' });
+    expect(h.registry.listActive()).toEqual([]);
+    expect((await json(await hostCall(h, ''))).passkeys).toHaveLength(0);
+  });
+
+  test('a request whose ceremony window lapses during verification stores nothing', async () => {
+    const { started, options } = await confirmedWithOptions(h);
+    const response = new SoftwareAuthenticator().register(options, {
+      origin: ORIGIN,
+    });
+    const finishing = h.service.finishRegistration(
+      started.requestId,
+      'P'.repeat(43),
+      response as never,
+      undefined,
+    );
+    h.clock.now += ENROLLMENT_CEREMONY_TTL_MS + 1;
+    await expect(finishing).rejects.toMatchObject({ code: 'request_closed' });
+    expect(h.registry.listActive()).toEqual([]);
+  });
+
+  test('approve re-resolves the device: a revoked one is refused, and the current scope is shown', async () => {
+    const live = { scope: 'orchestration:read' } as { scope: string } | null;
+    const service = new OperatorPasskeyEnrollmentService({
+      registry: h.registry,
+      origin: ORIGIN,
+      now: () => h.clock.now,
+      resolveDevice: () => live,
+    });
+    const host = new Hono();
+    host.route(
+      '/api/pairing/operator-passkeys',
+      createOperatorPasskeyHostRoutes({ service, isOperator: () => true }),
+    );
+    const call = (path: string, body?: unknown) =>
+      host.request(`/api/pairing/operator-passkeys${path}`, {
+        method: body === undefined ? 'GET' : 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      });
+    const { code } = service.createRequest({
+      credential: 'c',
+      deviceLabel: 'Phone',
+      requester: {
+        kind: 'paired-device',
+        deviceId: 'aaaa1111-x',
+        pairedAt: 1,
+        scope: 'orchestration:read',
+      },
+    });
+    // The device was widened after it asked: the host sees the CURRENT scope.
+    live!.scope = 'orchestration:read orchestration:operate terminal:operate';
+    const shown = (await json(await call(''))).pending[0].requester;
+    expect(shown).toMatchObject({
+      active: true,
+      scope: 'orchestration:read orchestration:operate terminal:operate',
+    });
+    expect(
+      (await json(await call('/requests/inspect', { code }))).requester.scope,
+    ).toContain('terminal:operate');
+
+    // Then it was revoked: nothing can be confirmed or even listed as live.
+    const revoked = null as { scope: string } | null;
+    const gone = new OperatorPasskeyEnrollmentService({
+      registry: h.registry,
+      origin: ORIGIN,
+      now: () => h.clock.now,
+      resolveDevice: () => revoked,
+    });
+    const created = gone.createRequest({
+      credential: 'd',
+      deviceLabel: 'Revoked phone',
+      requester: {
+        kind: 'paired-device',
+        deviceId: 'bbbb2222-x',
+        pairedAt: 1,
+        scope: 'orchestration:read',
+      },
+    });
+    expect(gone.listPending()[0]?.requester.active).toBe(false);
+    expect(() => gone.confirm(created.code)).toThrowError(/no longer paired/);
+    expect(() => gone.confirm(created.code)).toThrowError(
+      expect.objectContaining({ code: 'device_gone' }),
+    );
+    expect(gone.listPending()).toHaveLength(1);
+  });
+
+  test('a device without an id cannot open a request (no invented id)', async () => {
+    const res = await post(
+      h,
+      `${PATH}/requests`,
+      {},
+      `__Host-station-device=${'N'.repeat(43)}`,
+    );
+    expect(res.status).toBe(401);
+    expect((await json(await hostCall(h, ''))).pending).toHaveLength(0);
+  });
+
+  test('an unreadable existing store fails the list and revoke paths as typed 503, not a raw error', async () => {
+    const home = makeTempDir('station-passkey-broken-');
+    // The database path is a directory: it exists, and cannot be opened privately.
+    mkdirSync(join(home, OPERATOR_PASSKEY_DB_RELATIVE_PATH), {
+      recursive: true,
+    });
+    const lazy = new LazyOperatorPasskeyRegistry(home);
+    const service = new OperatorPasskeyEnrollmentService({
+      registry: lazy,
+      origin: ORIGIN,
+    });
+    const host = new Hono();
+    host.route(
+      '/api/pairing/operator-passkeys',
+      createOperatorPasskeyHostRoutes({ service, isOperator: () => true }),
+    );
+    const list = await host.request('/api/pairing/operator-passkeys');
+    expect(list.status).toBe(503);
+    expect((await json(list)).error).toBe('enrollment_unavailable');
+    const revoke = await host.request('/api/pairing/operator-passkeys/x', {
+      method: 'DELETE',
+    });
+    expect(revoke.status).toBe(503);
+    expect((await json(revoke)).error).toBe('enrollment_unavailable');
     lazy.close();
   });
 });

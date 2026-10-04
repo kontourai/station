@@ -36,6 +36,7 @@ function statusFor(
     case 'invalid_code':
       return 404;
     case 'device_mismatch':
+    case 'device_gone':
       return 409;
     case 'passkey_not_found':
       return 404;

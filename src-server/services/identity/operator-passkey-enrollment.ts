@@ -81,7 +81,8 @@ export type EnrollmentErrorCode =
   | 'verification_failed'
   | 'invalid_label'
   | 'passkey_not_found'
-  | 'device_mismatch';
+  | 'device_mismatch'
+  | 'device_gone';
 
 export class OperatorPasskeyEnrollmentError extends Error {
   constructor(
@@ -137,6 +138,8 @@ const MIN_DEVICE_SELECTOR_LENGTH = 4;
 export const OPERATOR_BROWSER_LABEL = 'Station operator browser';
 
 export interface EnrollmentRequesterSummary {
+  /** False when the pairing registry no longer holds this device live. */
+  readonly active: boolean;
   readonly kind: EnrollmentRequester['kind'];
   readonly deviceId: string;
   readonly pairedAt: number | null;
@@ -166,6 +169,11 @@ export interface OperatorPasskeyEnrollmentOptions {
   readonly registry: OperatorPasskeyRegistry | LazyOperatorPasskeyRegistry;
   /** `STATION_TRUSTED_CONSENT_ORIGIN`, already validated; null when unset. */
   readonly origin: string | null;
+  /**
+   * Re-resolves a paired device by id at approval time: null when it is gone
+   * or revoked. Without it the request's snapshot is trusted (tests only).
+   */
+  readonly resolveDevice?: (deviceId: string) => { scope: string } | null;
   readonly now?: () => number;
   readonly logger?: Logger;
 }
@@ -184,6 +192,7 @@ export class OperatorPasskeyEnrollmentService {
   readonly #rpId: string | null;
   readonly #now: () => number;
   readonly #logger: Logger | undefined;
+  readonly #resolveDevice: OperatorPasskeyEnrollmentOptions['resolveDevice'];
   readonly #requests = new Map<string, EnrollmentRequest>();
   #codeFailures: number[] = [];
 
@@ -200,6 +209,7 @@ export class OperatorPasskeyEnrollmentService {
       options.origin === null ? null : new URL(options.origin).hostname;
     this.#now = options.now ?? Date.now;
     this.#logger = options.logger;
+    this.#resolveDevice = options.resolveDevice;
   }
 
   availability(): EnrollmentAvailability {
@@ -227,7 +237,7 @@ export class OperatorPasskeyEnrollmentService {
   createRequest(input: {
     credential: string;
     deviceLabel: string;
-    requester?: EnrollmentRequester;
+    requester: EnrollmentRequester;
   }): {
     requestId: string;
     code: string;
@@ -273,12 +283,7 @@ export class OperatorPasskeyEnrollmentService {
       code,
       binding,
       deviceLabel: requesterLabel(input),
-      requester: input.requester ?? {
-        kind: 'paired-device',
-        deviceId: 'unknown',
-        pairedAt: null,
-        scope: '',
-      },
+      requester: input.requester,
       createdAt: now,
       expiresAt: now + ENROLLMENT_REQUEST_TTL_MS,
       state: 'pending',
@@ -407,6 +412,16 @@ export class OperatorPasskeyEnrollmentService {
     if (!verification.verified || !verification.registrationInfo) {
       return this.#failedVerification(request);
     }
+    // The await above is a window: the host may have denied (withdrawn) this
+    // request, it may have lapsed, or a newer challenge may have been minted.
+    // None of those may still enroll a passkey.
+    this.#requireConfirmed(request);
+    if (request.challenge !== null) {
+      throw refuse(
+        'challenge_invalid',
+        'A newer registration challenge replaced this one. Start again.',
+      );
+    }
     const info = verification.registrationInfo;
     let stored: OperatorPasskey;
     try {
@@ -445,7 +460,7 @@ export class OperatorPasskeyEnrollmentService {
       .map((request) => ({
         reference: referenceOf(request),
         deviceLabel: request.deviceLabel,
-        requester: summarizeRequester(request.requester),
+        requester: this.#summaryOf(request),
         rpId,
         createdAt: request.createdAt,
         expiresAt: request.expiresAt,
@@ -466,7 +481,7 @@ export class OperatorPasskeyEnrollmentService {
     const request = this.#matchCode(code, ['pending']);
     return {
       deviceLabel: request.deviceLabel,
-      requester: summarizeRequester(request.requester),
+      requester: this.#summaryOf(request),
       rpId: this.#rpId ?? '',
       expiresAt: request.expiresAt,
     };
@@ -482,6 +497,7 @@ export class OperatorPasskeyEnrollmentService {
     device?: unknown,
   ): { deviceLabel: string; rpId: string } {
     const request = this.#matchCode(code, ['pending']);
+    this.#requireDeviceLive(request);
     if (device !== undefined) {
       const selector = typeof device === 'string' ? device.toLowerCase() : '';
       if (
@@ -524,11 +540,11 @@ export class OperatorPasskeyEnrollmentService {
   }
 
   listPasskeys(): OperatorPasskey[] {
-    return this.#registry.existing()?.listActive() ?? [];
+    return this.#existingRegistry()?.listActive() ?? [];
   }
 
   revokePasskey(id: unknown): OperatorPasskey {
-    const registry = this.#registry.existing();
+    const registry = this.#existingRegistry();
     if (typeof id !== 'string' || !registry?.revoke(id)) {
       throw new OperatorPasskeyEnrollmentError(
         'passkey_not_found',
@@ -541,6 +557,46 @@ export class OperatorPasskeyEnrollmentService {
   }
 
   // ---- internals ----------------------------------------------------------
+
+  /** The requester as the pairing registry holds it NOW, not as it was snapshotted. */
+  #summaryOf(request: EnrollmentRequest): EnrollmentRequesterSummary {
+    const { requester } = request;
+    if (requester.kind !== 'paired-device' || !this.#resolveDevice) {
+      return summarizeRequester(requester, true, requester.scope);
+    }
+    const current = this.#resolveDevice(requester.deviceId);
+    return summarizeRequester(
+      requester,
+      current !== null,
+      current?.scope ?? requester.scope,
+    );
+  }
+
+  /** A device that was revoked or unpaired after asking cannot be approved. */
+  #requireDeviceLive(request: EnrollmentRequest): void {
+    if (!this.#summaryOf(request).active) {
+      operatorPasskeyEnrollmentOps.add(1, {
+        step: 'refused',
+        reason: 'device_gone',
+      });
+      throw new OperatorPasskeyEnrollmentError(
+        'device_gone',
+        'The device that opened this request is no longer paired. Nothing was confirmed.',
+      );
+    }
+  }
+
+  /** Reads of an existing store fail closed and typed, never as a raw 500. */
+  #existingRegistry(): OperatorPasskeyRegistry | null {
+    try {
+      return this.#registry.existing();
+    } catch {
+      throw new OperatorPasskeyEnrollmentError(
+        'enrollment_unavailable',
+        'The operator passkey store could not be opened privately, so passkeys cannot be read or changed.',
+      );
+    }
+  }
 
   /** Creates the database on first real use; a store that cannot open fails closed. */
   #openRegistry(): OperatorPasskeyRegistry {
@@ -729,12 +785,15 @@ function sanitizeLabel(value: unknown): string | null {
 
 function summarizeRequester(
   requester: EnrollmentRequester,
+  active: boolean,
+  scope: string,
 ): EnrollmentRequesterSummary {
   return {
+    active,
     kind: requester.kind,
     deviceId: requester.deviceId.slice(0, SHORT_DEVICE_ID_LENGTH),
     pairedAt: requester.pairedAt,
-    scope: requester.scope,
+    scope,
   };
 }
 
@@ -745,11 +804,11 @@ function summarizeRequester(
  */
 function requesterLabel(input: {
   deviceLabel: string;
-  requester?: EnrollmentRequester;
+  requester: EnrollmentRequester;
 }): string {
   const label = sanitizeLabel(input.deviceLabel) ?? 'Paired browser';
   if (
-    input.requester?.kind !== 'operator-credential' &&
+    input.requester.kind !== 'operator-credential' &&
     label.toLowerCase() === OPERATOR_BROWSER_LABEL.toLowerCase()
   ) {
     return `Paired device that calls itself "${label}" (not the operator)`;
