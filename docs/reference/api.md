@@ -2686,7 +2686,9 @@ only the parsed protocol is recorded, never the raw header. This compatibility
 signal grants no authority, and passing it does not skip authentication.
 A separate direct-socket-peer audit limiter bounds emission to 10 audits per
 60-second window by default, using `RuntimeAuthFailureLimiter` and its
-1,024-peer cap. Exhaustion suppresses only audits; every refusal still receives
+1,024-peer cap. The cap evicts live entries, so refusals from more than 1,024
+distinct peers can reset a peer's count and let it emit more than 10 audits in
+one window; memory stays bounded either way. Exhaustion suppresses only audits; every refusal still receives
 400/426. Protocol refusals neither consult nor consume the authentication
 budget, so correcting the header permits account verification even after many
 refusals from the same proxy or NAT.

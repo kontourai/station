@@ -159,7 +159,10 @@ protocol audit budget (default: 10 audits per 60-second window), with outcome
 parsed integer; a malformed value is never copied into the audit. The owner is
 [`runtime-http.ts`](../../src-server/runtime/bootstrap/runtime-http.ts).
 The audit limiter reuses `RuntimeAuthFailureLimiter` with its 1,024-peer cap,
-keyed by the direct socket address. Exhaustion suppresses only audits: every
+keyed by the direct socket address. The cap evicts live entries, so an
+attacker holding more than 1,024 distinct socket sources can reset a peer's
+count and exceed 10 audits per window; the bound is per peer only while fewer
+peers are tracked, and memory stays bounded. Exhaustion suppresses only audits: every
 refusal still receives 400/426. Protocol refusals neither consult nor consume
 the authentication budget, so clients sharing a proxy or NAT can correct their
 header and authenticate without being locked out by protocol refusals.
