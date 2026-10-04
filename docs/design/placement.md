@@ -1749,13 +1749,17 @@ per conversation.** Below the fold nothing above changes.
 - **The folded inbox's edge.** While the inbox is folded past the fold (by
   the layout or by hand) on a fine pointer, the Chat column's left edge
   carries a slim strip — 6px with a 3px accent bar and a small chevron at
-  rest, 24px with its glyph brought up on hover or keyboard focus, full
-  height, a real button named "Show inbox"
-  with a tooltip — whose activation opens the inbox as the reader's own
-  choice (the session remembers it). It wears the inbox's "Needs you" count,
-  published by Chat from the same partition the inbox panel renders
-  (`needsYouCount`, `onInboxNeedsYouChange`), so a fold never hides that
-  something is waiting. A coarse pointer has no hover to widen it and gets
+  rest, 24px with its glyph brought up on hover, full height, with a
+  tooltip — whose click opens the inbox as the reader's own choice (the
+  session remembers it). It is a pointer-only shortcut (`aria-hidden`, out
+  of the tab order): the bar's inbox toggle is the one keyboard and
+  screen-reader control, so the folded inbox is never two controls with one
+  name. Both carry the inbox's "Needs you" count, published by Chat from
+  the same partition the inbox panel renders (`needsYouCount`,
+  `onInboxNeedsYouChange`): the strip as its badge and tooltip, the toggle
+  in its name and tooltip ("Show inbox, 3 need you",
+  `inbox-toggle-label.ts`), so a fold never hides that something is
+  waiting. A coarse pointer has no hover to widen it and gets
   none; below the fold the inbox is not folded by the layout. Hover-peek (the
   inbox as an overlay while hovering) was not built: the inbox panel takes
   the dock's whole handler set and lazy chunk, so a second mount for a peek
