@@ -9,20 +9,18 @@
 
   "limits": "No actual plugin installation, native/device/audio journey, public package distribution, provider operation or cross-host qualification. Source/fixture checks do not establish those outcomes.",
 
-  "document": {"digest":"28a67db53af713b00865785456aec52759d872dbd4447d053aaf338bd67b9d9f","revision":"ed05e6f6c98c5b2bb994a88ff8fa8e1421639269"},
-
   "sources": [
-    {"path":"examples/demo-layout/agents/assistant/agent.json","digest":"322849b31ac2b498aa3f26781ff4c0604509d8b0dacd34b219662ebad61be81e","revision":"ed05e6f6c98c5b2bb994a88ff8fa8e1421639269"},
+    "examples/demo-layout/agents/assistant/agent.json",
 
-    {"path":"examples/demo-layout/layout.json","digest":"43dd5984e6e278bc05332e9db0ca6259053fc4eed0ba1702e3316c2caabbd8bb","revision":"ed05e6f6c98c5b2bb994a88ff8fa8e1421639269"},
+    "examples/demo-layout/layout.json",
 
-    {"path":"examples/demo-layout/plugin.json","digest":"27aa1552067734c5043ebc11c694cdc51e1d35fb91e75e33151987909964349f","revision":"ed05e6f6c98c5b2bb994a88ff8fa8e1421639269"},
+    "examples/demo-layout/plugin.json",
 
-    {"path":"examples/demo-layout/src/index.tsx","digest":"e55480e9363f6a94227ffebb29b0f1e42d8a2f273f228d85997ff71e2a4c3f81","revision":"ed05e6f6c98c5b2bb994a88ff8fa8e1421639269"},
+    "examples/demo-layout/src/index.tsx",
 
-    {"path":"packages/cli/src/commands/install.ts","digest":"5c476173280f26004cb081d43a6e276530a09d048a19680d56c0acfd3bc7c188","revision":"c2b1caf535d375c5195cc8b8a66c9dc6ce83205d"},
+    "packages/cli/src/commands/install.ts",
 
-    {"path":"src-server/services/plugins/plugin-install-consent.ts","digest":"6e34e0844061dd5311e027973b1919483bf29047e18721ecae8b72ece98765ed","revision":"ed05e6f6c98c5b2bb994a88ff8fa8e1421639269"}
+    "src-server/services/plugins/plugin-install-consent.ts"
   ],
 
   "checks": [

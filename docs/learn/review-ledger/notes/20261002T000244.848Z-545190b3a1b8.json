@@ -1,0 +1,11 @@
+{
+  "revision": "75135a1d44bf47412b85e454f9370ed4015f5d91",
+
+  "notes": [
+    {"path":"README.md","note":"#2959 delta: release-channel-ports.md gained a note that stable/beta signed public manifests may be published once enabled; README installation claims remain qualified and unchanged.","inputs":["README.md"]},
+
+    {"path":"docs/user/getting-started.md","note":"#2959 delta: cited release-channel-ports.md gained a publication note; install and first-run claims here unchanged.","inputs":["docs/user/getting-started.md"]},
+
+    {"path":"scripts/AGENTS.md","note":"#2959 delta: vitest-resource-manifest.mjs classifies the new portable-release-publish-workflow child-process test; the classification rule this file states is followed.","inputs":["scripts/AGENTS.md"]}
+  ]
+}

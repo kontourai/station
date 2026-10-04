@@ -9,22 +9,20 @@
 
   "limits": "Raw historical hosted SARIF artifacts and verbatim result provenance were not independently re-downloaded. Recorded CodeQL/action versions describe the historical fixture, not current production scanner versions or absence of vulnerabilities.",
 
-  "document": {"digest":"5a307d869e13496693f9fc2d2c326babbc8f41d642f2a205e99c3f5d04d7b0b9","revision":"e1e8339750ff5b7210254866bd2d853454efaf04"},
-
   "sources": [
-    {"path":"scripts/__tests__/codeql-sarif-policy.test.ts","digest":"a7e2db81ccf7daabe0d4e1b3d91cc46401d20f5aafa351c72ca56068bd4fd608","revision":"e1e8339750ff5b7210254866bd2d853454efaf04"},
+    "scripts/__tests__/codeql-sarif-policy.test.ts",
 
-    {"path":"scripts/__tests__/fixtures/codeql-sarif/codeql-2.26.3-no-level.sarif","digest":"8cba93de488c3234d605f2e2f371f9285fc99df78d753a9f35a5d474916c4085","revision":"e1e8339750ff5b7210254866bd2d853454efaf04"},
+    "scripts/__tests__/fixtures/codeql-sarif/codeql-2.26.3-no-level.sarif",
 
-    {"path":"scripts/__tests__/fixtures/codeql-sarif/pinned-codeql-analysis-error.sarif","digest":"a2c5960dfd057840bee33d877ccebcd55c04460dfd2479111b424a25321cb944","revision":"e1e8339750ff5b7210254866bd2d853454efaf04"},
+    "scripts/__tests__/fixtures/codeql-sarif/pinned-codeql-analysis-error.sarif",
 
-    {"path":"scripts/__tests__/fixtures/codeql-sarif/pinned-codeql-clean.sarif","digest":"7dec53f4b0db44caebf2e7fd875e4b0b1dd23b2c978b22ce0a47d4a984af8eb1","revision":"e1e8339750ff5b7210254866bd2d853454efaf04"},
+    "scripts/__tests__/fixtures/codeql-sarif/pinned-codeql-clean.sarif",
 
-    {"path":"scripts/__tests__/fixtures/codeql-sarif/pinned-codeql-finding.sarif","digest":"ae1df04a0cb3d212c3b35b5e5d725657f0101e4546676fdc436fa4e9143fcf5c","revision":"e1e8339750ff5b7210254866bd2d853454efaf04"},
+    "scripts/__tests__/fixtures/codeql-sarif/pinned-codeql-finding.sarif",
 
-    {"path":"scripts/__tests__/fixtures/codeql-sarif/pinned-codeql-legacy-driver-rules.sarif","digest":"4c8ee460492d9f70226a43b786399a783e37de70f3571d5fb275dd69b33ac33e","revision":"e1e8339750ff5b7210254866bd2d853454efaf04"},
+    "scripts/__tests__/fixtures/codeql-sarif/pinned-codeql-legacy-driver-rules.sarif",
 
-    {"path":"scripts/codeql-error-baseline.json","digest":"4ba71828ec6796808f7440edd8745d5ce9cb6d4f802f47eff4e869f1f1e648e3","revision":"1188208f32995f08e02bc87c2a0063184540fb6a"}
+    "scripts/codeql-error-baseline.json"
   ],
 
   "checks": [

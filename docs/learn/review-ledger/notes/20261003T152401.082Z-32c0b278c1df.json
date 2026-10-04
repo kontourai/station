@@ -1,0 +1,7 @@
+{
+  "revision": "37f0ed25455007f32bdf69468451bf9dd85f9fde",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"Reviewed merged experience foreground/read/lineage/grant contract together with main #3180 guardian paragraph. Source adapters now keep escalations, questions and plan exits addressed to a person; ordinary experience controls and pinned-frame grant admission remain unchanged. Incoming adapter bindings and both note histories retained. Existing live questionnaire/native/release limits remain.","inputs":["docs/reference/session-api.md"]}
+  ]
+}

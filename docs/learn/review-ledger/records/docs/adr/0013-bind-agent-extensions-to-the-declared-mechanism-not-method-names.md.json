@@ -9,18 +9,16 @@
 
   "limits": "No live Kiro/authentication run or refreshed ACP ecosystem survey was performed. The generic channel, every proposed core/vendor binding, receipt path and upstream filing are not certified complete. Fake-agent wire tests establish the selected refusal boundary only.",
 
-  "document": {"digest":"6b6946364912a18ae801808ae379ad81ce687efffc0e0a48594ecb7dee07a4c9","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
-
   "sources": [
-    {"path":"src-server/providers/__tests__/acp-adapter-inbound-extension.test.ts","digest":"94a5f5c8bc9164484c4bc27d4273b2fc25cd7e58a8ce582190f8ac2a38860902","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
+    "src-server/providers/__tests__/acp-adapter-inbound-extension.test.ts",
 
-    {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"bcaf191b5d4124ca5de2c26654fa2a70c8897a729ba82cb24a347133a84eb155","revision":"e2637079bd55a47964f12faedfb5c43abc7f1e95"},
+    "src-server/providers/adapters/acp-adapter.ts",
 
-    {"path":"src-server/services/acp/__tests__/acp-inbound-extension-policy.test.ts","digest":"75d9e788dd399671e3b40fb6bf4d5e0396d38caa48db2abf636644af8c417be5","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
+    "src-server/services/acp/__tests__/acp-inbound-extension-policy.test.ts",
 
-    {"path":"src-server/services/acp/acp-inbound-extension-policy.ts","digest":"6c413ed244ebe55e4a3ede4b091f40278038d4173593e5de44a9d9cd488974c3","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
+    "src-server/services/acp/acp-inbound-extension-policy.ts",
 
-    {"path":"src-shared/extension-notification-bindings.ts","digest":"23059844999bc5d7f2e7f8f4137b965e6f98129207fd765eb871d46ce976c11b","revision":"89765352964045a079d13a17bee54ab2de7b83e0"}
+    "src-shared/extension-notification-bindings.ts"
   ],
 
   "checks": [

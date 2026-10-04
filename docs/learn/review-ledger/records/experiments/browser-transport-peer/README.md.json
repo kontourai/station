@@ -9,10 +9,8 @@
 
   "limits": "No native build, simulator/device, keychain, Linux artifact, transport/broker/provider, cloud or release execution. Source/fixture checks do not renew dated runtime/security evidence.",
 
-  "document": {"digest":"dd897f888714d2b588e7eb20073b0837f2f1ea7a46075616749254e459a0e483","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},
-
   "sources": [
-    {"path":"src-server/services/connections/pion-peer/README.md","digest":"b1a56cbfb7ac3c067c4b105ba00f4f34b4e7a4a33b9526074a7e28352d6dc2ac","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"}
+    "src-server/services/connections/pion-peer/README.md"
   ],
 
   "checks": [

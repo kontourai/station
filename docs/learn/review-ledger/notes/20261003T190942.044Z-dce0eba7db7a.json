@@ -1,0 +1,7 @@
+{
+  "revision": "e70cad9b9ed6b96c438871e21b7349e1ab3d8fe0",
+
+  "notes": [
+    {"path":"docs/guides/code-quality.md","note":"AGENTS.md change only tightens the issue-reference section; this guide makes no issue-numbering claim.","inputs":["docs/guides/code-quality.md"]}
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "revision": "d9abfb6ac8c7179a9b80770aa03dbcea0b184a90",
+
+  "notes": [
+    {"path":"README.md","note":"Carried forward after merging origin/main into #3062, whose ledger conflicted: this page's review against the PR's delta was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.","inputs":["README.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Carried forward after merging origin/main into #3062, whose ledger conflicted: this page's review against the PR's delta was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.","inputs":["docs/architecture/abstraction-review.md"]},
+
+    {"path":"docs/reference/cli.md","note":"Carried forward after merging origin/main into #3062, whose ledger conflicted: this page's review against the PR's delta was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.","inputs":["docs/reference/cli.md"]}
+  ]
+}
