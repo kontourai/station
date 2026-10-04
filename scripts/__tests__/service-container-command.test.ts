@@ -1,14 +1,9 @@
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-} from 'node:fs';
+import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { createServer, type Server } from 'node:net';
-import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { join, relative } from 'node:path';
 import {
   claimHostOwner,
   readInstanceRegistry,
@@ -17,6 +12,7 @@ import { lookupProcessBirthFingerprint } from '@kontourai/station-shared/process
 import { ensureStationHomeSchemaSync } from '@kontourai/station-shared/station-home-schema';
 import { describe, expect, test } from 'vitest';
 import { stop } from '../../packages/cli/src/commands/lifecycle.js';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import { checkContainerHealth } from '../container-healthcheck.mjs';
 import {
   executeOwnedProcess,
@@ -29,6 +25,7 @@ import {
 // The explicit opt-in owns real server/UI listeners and existing container build
 // output; missing builds fail rather than being counted as runtime evidence.
 const enabled = process.env.STATION_CONTAINER_COMMAND_TEST === '1';
+const makeTempDir = trackTempDirs();
 
 async function listen(port: number): Promise<Server> {
   const server = createServer();
@@ -75,7 +72,9 @@ async function isolatedPorts(): Promise<{ port: number; uiPort: number }> {
 
 async function runContainerCommand(heldBySidecar: boolean): Promise<void> {
   const root = process.cwd();
-  const stationRoot = mkdtempSync(join(root, '.station', 'container-command-'));
+  const stationRoot = makeTempDir(
+    relative(tmpdir(), join(root, '.station', 'container-command-')),
+  );
   const home = join(stationRoot, 'instances', 'stable');
   mkdirSync(home, { recursive: true, mode: 0o700 });
   const { port, uiPort } = await isolatedPorts();
@@ -292,7 +291,6 @@ async function runContainerCommand(heldBySidecar: boolean): Promise<void> {
         'teardown must release the home for the next host owner',
       ).toMatchObject({ won: true });
     }
-    rmSync(stationRoot, { recursive: true, force: true });
   }
 }
 
