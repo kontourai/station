@@ -97,6 +97,8 @@ export const RECEIVER_EXECUTION_REFUSAL_COPY: Record<
     'Version-matched execution must be requested with an attempt id.',
   execution_preparation_mode_unsupported:
     'The receiving Station does not support the requested preparation mode.',
+  execution_preparation_remote_reference_unsupported:
+    'The receiving Station does not support working against a remote reference yet; it can only check a checkout it already has.',
   execution_preparation_scheme_unsupported:
     'The receiving Station cannot check the requested version scheme for this resource.',
   execution_preparation_guarantee_unsupported:
@@ -109,6 +111,8 @@ export const RECEIVER_EXECUTION_REFUSAL_COPY: Record<
     'The offered Project resource runs in an isolated worktree, so its checked version would not be the one the work runs in.',
   execution_preparation_tracked_changes:
     'The offered Project resource has uncommitted changes to tracked files.',
+  execution_preparation_tracked_state_unverifiable:
+    'The offered Project resource marks tracked files as assume-unchanged or skip-worktree, so their changes cannot be checked.',
   execution_preparation_version_mismatch:
     'The offered Project resource is not at the requested version.',
   execution_preparation_unavailable:

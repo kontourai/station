@@ -35,8 +35,11 @@ export interface ExecutionPreparationRequirement {
 }
 
 /**
- * Typed refusals, each raised before any session or provider effect and
- * recorded on the #485 attempt claim.
+ * Typed refusals, each raised before any session or provider effect. A
+ * receiver records every refusal it raises after reserving the #485 claim
+ * on that claim; `execution_preparation_attempt_required` (no attempt to
+ * record on) and a sender's `execution_preparation_unsupported` (nothing
+ * was sent) are never on a claim.
  */
 export type ExecutionPreparationRefusalCode =
   /** No capability: an older receiver, or an unknown protocol version. */
@@ -44,6 +47,8 @@ export type ExecutionPreparationRefusalCode =
   /** A prepared intent must ride a #485 attempt. */
   | 'execution_preparation_attempt_required'
   | 'execution_preparation_mode_unsupported'
+  /** `remote-reference` is a known mode this build does not support yet. */
+  | 'execution_preparation_remote_reference_unsupported'
   | 'execution_preparation_scheme_unsupported'
   | 'execution_preparation_guarantee_unsupported'
   /** No adapter is registered for the admitted resource's kind. */
@@ -52,7 +57,10 @@ export type ExecutionPreparationRefusalCode =
   | 'execution_preparation_protection_unavailable'
   /** The receiver would run in a worktree, not the checked checkout. */
   | 'execution_preparation_isolation_unsupported'
+  /** A tracked file or a submodule commit differs from HEAD. */
   | 'execution_preparation_tracked_changes'
+  /** Index entries are assume-unchanged or skip-worktree: changes are hidden. */
+  | 'execution_preparation_tracked_state_unverifiable'
   | 'execution_preparation_version_mismatch'
   /** The checkout could not be read; not a policy denial. */
   | 'execution_preparation_unavailable';

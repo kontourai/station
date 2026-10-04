@@ -31,6 +31,8 @@ import {
  */
 
 const SUPPORTED_MODE = 'existing-realization';
+/** Known and deferred: refused by its own name, not as an unknown mode. */
+const REMOTE_REFERENCE_MODE = 'remote-reference';
 const SUPPORTED_GUARANTEE = 'version-matched-when-checked';
 /** Known, deliberately refused by name: nothing can fence writers yet (#484). */
 const PROTECTION_GUARANTEE = 'protected-during-execution';
@@ -43,7 +45,12 @@ type CheckoutObservation =
   | {
       readonly state: 'readable';
       readonly version: string;
-      readonly trackedChanges: boolean;
+      /**
+       * `changed`: a tracked file or a submodule commit differs from HEAD.
+       * `unverifiable`: the index marks entries assume-unchanged or
+       * skip-worktree, so git would not report their changes at all.
+       */
+      readonly tracked: 'clean' | 'changed' | 'unverifiable';
       readonly untrackedFiles: number;
     }
   | { readonly state: 'unavailable' };
@@ -61,12 +68,43 @@ interface ExecutionPreparationAdapter {
   }) => Promise<CheckoutObservation>;
 }
 
+/** `HEAD`'s gitlinks or the index's: path → recorded submodule commit. */
+function gitlinks(listing: string, pattern: RegExp): Map<string, string> {
+  const links = new Map<string, string>();
+  for (const entry of listing.split('\0')) {
+    const match = pattern.exec(entry);
+    if (match) links.set(match[2]!, match[1]!);
+  }
+  return links;
+}
+
+function sameGitlinks(
+  left: ReadonlyMap<string, string>,
+  right: ReadonlyMap<string, string>,
+): boolean {
+  if (left.size !== right.size) return false;
+  for (const [path, commit] of left)
+    if (right.get(path) !== commit) return false;
+  return true;
+}
+
 /**
  * Git: the commit `HEAD` names, whether any TRACKED file differs from it
  * (staged or not), and how many untracked files exist. Read through the
  * repository-read owner, which runs git against a judged copy of the
  * repository's config and refuses repository-defined programs (filters,
  * fsmonitor) instead of running them.
+ *
+ * `status` alone is not enough: the hardened runner forces
+ * `--ignore-submodules=all` onto it (utils/git-exec.ts, so no nested
+ * repository's config is ever run), and git never reports an entry marked
+ * assume-unchanged or skip-worktree. So the adapter also
+ * - refuses as unverifiable when `ls-files -v` shows either index flag;
+ * - compares the index's gitlinks with HEAD's (staged submodule drift);
+ * - asks `ls-files --modified`, which compares a populated submodule's
+ *   checked-out commit in-process, without running git inside it
+ *   (unstaged submodule drift). Neither verb is rewritten by the runner,
+ *   and neither runs a program.
  */
 const gitCommitAdapter: ExecutionPreparationAdapter = {
   scheme: 'git-commit',
@@ -85,7 +123,7 @@ const gitCommitAdapter: ExecutionPreparationAdapter = {
     }
     let outcome: ProjectRepositoryRead<{
       version: string;
-      trackedChanges: boolean;
+      tracked: 'clean' | 'changed' | 'unverifiable';
       untrackedFiles: number;
     }>;
     try {
@@ -115,9 +153,31 @@ const gitCommitAdapter: ExecutionPreparationAdapter = {
             '--exclude-standard',
             '-z',
           ]);
+          const flagged = await git(['ls-files', '-v', '-z']);
+          const modified = await git(['ls-files', '--modified', '-z']);
+          const indexed = await git(['ls-files', '--stage', '-z']);
+          const committed = await git(['ls-tree', '-r', '-z', 'HEAD']);
+          // `ls-files -v` tags assume-unchanged entries in lowercase and
+          // skip-worktree entries `S`.
+          const unverifiable = flagged.stdout
+            .split('\0')
+            .some((entry) => /^(?:[a-z]|S) /.test(entry));
+          const submoduleDrift = !sameGitlinks(
+            gitlinks(indexed.stdout, /^160000 ([0-9a-f]+) \d\t([\s\S]+)$/),
+            gitlinks(
+              committed.stdout,
+              /^160000 commit ([0-9a-f]+)\t([\s\S]+)$/,
+            ),
+          );
           return {
             version: head.stdout.trim().toLowerCase(),
-            trackedChanges: tracked.stdout.length > 0,
+            tracked: unverifiable
+              ? ('unverifiable' as const)
+              : tracked.stdout.length > 0 ||
+                  modified.stdout.length > 0 ||
+                  submoduleDrift
+                ? ('changed' as const)
+                : ('clean' as const),
             untrackedFiles: untracked.stdout
               .split('\0')
               .filter((entry) => entry.length > 0).length,
@@ -161,6 +221,8 @@ export function assertPreparationRequirementSupported(
 ): void {
   if (requirement.protocol !== EXECUTION_PREPARATION_PROTOCOL)
     throw refuse('execution_preparation_unsupported');
+  if (requirement.mode === REMOTE_REFERENCE_MODE)
+    throw refuse('execution_preparation_remote_reference_unsupported');
   if (requirement.mode !== SUPPORTED_MODE)
     throw refuse('execution_preparation_mode_unsupported');
   if (requirement.guarantees.includes(PROTECTION_GUARANTEE))
@@ -195,18 +257,21 @@ export async function verifyPreparedCheckout(input: {
   const requested = input.requirement.version;
   if (requested.scheme !== adapter.scheme)
     throw refuse('execution_preparation_scheme_unsupported');
+  // Before any read: a value this scheme could never observe refuses
+  // without the caller learning anything about the checkout's state.
+  if (!adapter.isWellFormed(requested.value))
+    throw refuse('execution_preparation_version_mismatch');
   const observation = await adapter.observe({
     root: input.checkoutRoot,
     cwd: input.cwd,
   });
   if (observation.state !== 'readable')
     throw refuse('execution_preparation_unavailable');
-  if (observation.trackedChanges)
+  if (observation.tracked === 'unverifiable')
+    throw refuse('execution_preparation_tracked_state_unverifiable');
+  if (observation.tracked === 'changed')
     throw refuse('execution_preparation_tracked_changes');
-  if (
-    !adapter.isWellFormed(requested.value) ||
-    observation.version !== requested.value
-  )
+  if (observation.version !== requested.value)
     throw refuse('execution_preparation_version_mismatch');
   return {
     protocol: EXECUTION_PREPARATION_PROTOCOL,

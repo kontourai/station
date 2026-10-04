@@ -103,6 +103,81 @@ describe('git-commit adapter', () => {
     expect(existsSync(marker), 'the clean filter ran').toBe(false);
   });
 
+  describe('state git status hides', () => {
+    function addSubmodule(): void {
+      const sub = join(dir, 'sub');
+      mkdirSync(sub);
+      git(sub, ['init', '--initial-branch', 'main']);
+      writeFileSync(join(sub, 'f'), '1\n');
+      git(sub, ['add', 'f']);
+      git(sub, ['commit', '-m', 's1']);
+      writeFileSync(join(sub, 'f'), '2\n');
+      git(sub, ['commit', '-am', 's2']);
+      git(checkout, [
+        '-c',
+        'protocol.file.allow=always',
+        'submodule',
+        'add',
+        '-q',
+        sub,
+        'sub',
+      ]);
+      git(checkout, ['commit', '-m', 'add submodule']);
+      head = git(checkout, ['rev-parse', 'HEAD']);
+    }
+
+    test('control: a clean checkout with a submodule matches', async () => {
+      addSubmodule();
+      expect((await verify()).observed.value).toBe(head);
+    });
+
+    test('an unstaged submodule commit change refuses as a tracked change', async () => {
+      addSubmodule();
+      git(join(checkout, 'sub'), ['checkout', '-q', 'HEAD~1']);
+      expect(await refusalCode(verify())).toBe(
+        'execution_preparation_tracked_changes',
+      );
+    });
+
+    test('a staged submodule commit change refuses as a tracked change', async () => {
+      addSubmodule();
+      git(join(checkout, 'sub'), ['checkout', '-q', 'HEAD~1']);
+      git(checkout, ['add', 'sub']);
+      expect(await refusalCode(verify())).toBe(
+        'execution_preparation_tracked_changes',
+      );
+    });
+
+    test('an assume-unchanged entry refuses as unverifiable', async () => {
+      git(checkout, [
+        'update-index',
+        '--assume-unchanged',
+        'service/inner/A.md',
+      ]);
+      writeFileSync(join(checkout, 'service', 'inner', 'A.md'), 'hidden\n');
+      expect(await refusalCode(verify())).toBe(
+        'execution_preparation_tracked_state_unverifiable',
+      );
+    });
+
+    test('a skip-worktree entry refuses as unverifiable', async () => {
+      git(checkout, ['update-index', '--skip-worktree', 'service/inner/A.md']);
+      writeFileSync(join(checkout, 'service', 'inner', 'A.md'), 'hidden\n');
+      expect(await refusalCode(verify())).toBe(
+        'execution_preparation_tracked_state_unverifiable',
+      );
+    });
+  });
+
+  test('a malformed version refuses before the checkout is read', async () => {
+    // Dirty AND malformed: the answer is the mismatch, so the caller learns
+    // nothing about the tree.
+    writeFileSync(join(checkout, 'service', 'inner', 'A.md'), 'dirty\n');
+    expect(await refusalCode(verify(checkout, head.slice(0, 7)))).toBe(
+      'execution_preparation_version_mismatch',
+    );
+  });
+
   test('a directory that is not a repository is unavailable, not a mismatch', async () => {
     const plain = join(dir, 'plain');
     mkdirSync(plain);

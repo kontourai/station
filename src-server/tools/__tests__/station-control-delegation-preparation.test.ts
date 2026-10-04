@@ -315,7 +315,10 @@ describe('receiver-local version check', () => {
       'execution_preparation_unsupported',
     ],
     [{ mode: 'materialized-copy' }, 'execution_preparation_mode_unsupported'],
-    [{ mode: 'remote-reference' }, 'execution_preparation_mode_unsupported'],
+    [
+      { mode: 'remote-reference' },
+      'execution_preparation_remote_reference_unsupported',
+    ],
     [
       { guarantees: ['atomic-capture'] },
       'execution_preparation_guarantee_unsupported',
@@ -408,6 +411,58 @@ describe('receiver-local version check', () => {
       'execution_preparation_version_mismatch',
     );
     expect(rechecks).toBe(1);
+    await expectClaimRefusedWith('execution_preparation_version_mismatch');
+    // The first check passed and was bound, but a refused attempt keeps no
+    // "version matched" receipt.
+    const record = await new FileDelegationAttemptClaimStore(dir).read(
+      CLAIM_KEY,
+    );
+    expect(record?.admitted).toBeDefined();
+    expect(record?.admitted?.preparation).toBeUndefined();
+  });
+
+  test('the reattach path rechecks the version before its turn', async () => {
+    const { delegateTask } = await import('../station-control-delegation.js');
+    // Lift the exact server-stamped binding from one normal start, as the
+    // #485 reattach test does, so the reattach read passes its binding check.
+    const calibrator = localService();
+    await delegateTask(
+      claimInput(versionRequirement(head), {
+        userId: 'reattach-user',
+        delegationAttemptId: 'calibrate',
+      }),
+      calibrator as never,
+    );
+    const bindingMetadata = (
+      calibrator.startSessionInternal.mock.calls[0]![0] as {
+        input: { metadata: Record<string, unknown> };
+      }
+    ).input.metadata;
+    const existingSessionId = 'task:22222222-2222-4222-8222-222222222222';
+    const service = {
+      ...localService(),
+      readSession: vi.fn(async () => {
+        // HEAD moves after the first check, while the session is read.
+        writeFileSync(join(checkout, 'TRACKED.md'), 'reattached\n');
+        git(checkout, ['commit', '-am', 'moved during reattach']);
+        return {
+          session: { threadId: existingSessionId },
+          events: [{ method: 'session.configured', metadata: bindingMetadata }],
+        };
+      }),
+    };
+    const error = await delegateTask(
+      claimInput(versionRequirement(head), {
+        userId: 'reattach-user',
+        sessionId: existingSessionId,
+      }),
+      service as never,
+    ).catch((caught: unknown) => caught);
+    expect((error as ReceiverExecutionRefusal).code).toBe(
+      'execution_preparation_version_mismatch',
+    );
+    expect(service.readSession).toHaveBeenCalled();
+    expect(service.dispatchWithReceipt).not.toHaveBeenCalled();
     await expectClaimRefusedWith('execution_preparation_version_mismatch');
   });
 

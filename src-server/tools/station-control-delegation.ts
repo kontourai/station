@@ -5287,6 +5287,9 @@ export async function delegateTask(
         bindingTarget,
         readAuthority.userId,
       );
+      // #2875: the reattach path starts no session, so its version check
+      // runs here instead, before the claim advances and before the turn.
+      if (preparedWorkspace) preparationReceipt = await checkPreparedCheckout();
       // #485: reattach path — the read just proved the reserved session
       // exists. Record `session-started` (NOT accepted: the requested
       // initial turn is still unproven) before the turn dispatch below.

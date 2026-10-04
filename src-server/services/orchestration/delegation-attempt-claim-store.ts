@@ -783,6 +783,12 @@ export class FileDelegationAttemptClaimStore
       (record) => {
         record.state = 'refused';
         if (code !== undefined) record.refusalCode = code;
+        // #2875: a refused attempt never ran, so it keeps no "version
+        // matched" receipt — the pre-start recheck may be what refused it.
+        if (record.admitted?.preparation) {
+          const { preparation: _dropped, ...admitted } = record.admitted;
+          record.admitted = admitted;
+        }
       },
     );
   }
