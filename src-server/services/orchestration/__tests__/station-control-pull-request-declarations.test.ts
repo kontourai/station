@@ -20,6 +20,7 @@ import type {
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { AsyncEventQueue } from '../../../providers/sessions/async-event-queue.js';
 import { NativeDeclaredPullRequestResolver } from '../../pull-requests/native-declared-pull-request-resolver.js';
 import type { PullRequestRepositoryContextResolver } from '../../pull-requests/pull-request-repository-context-resolver.js';
 import { EventBus } from '../event-bus.js';
@@ -131,10 +132,21 @@ function harness() {
     createdAt: AT,
     updatedAt: AT,
   });
+  const engineEvents = new AsyncEventQueue<CanonicalRuntimeEvent>();
   const adapter = {
     provider: 'codex',
     metadata: { displayName: 'Codex' },
     stopAll: async () => {},
+    hasSession: async () => true,
+    stopSession: async () => {},
+    // Station reads an engine's events from `streamEvents`; the test
+    // publishes the turn's events itself, so this one has none to say.
+    streamEvents: (options?: { signal?: AbortSignal }) =>
+      engineEvents.iterable(options),
+    interruptTurn: async () => ({
+      outcome: 'cancelled' as const,
+      turnId: 'turn-1',
+    }),
   };
   const { provider, getPullRequestByIdentity } = forgeProvider();
   const service = new OrchestrationService({
@@ -170,6 +182,7 @@ function harness() {
     service,
     store,
     adapter,
+    engineEvents,
     getPullRequestByIdentity,
     startTurn: (turnId: string) =>
       emit({ method: 'turn.started', turnId, prompt: 'open a pull request' }),
@@ -201,6 +214,7 @@ function harness() {
 
 afterEach(async () => {
   for (const made of harnesses.splice(0)) {
+    made.engineEvents.close();
     await made.service.shutdown();
     made.store.close();
   }
@@ -343,6 +357,28 @@ describe('declare_pull_request admission for an external engine session', () => 
     await h.declare(named('station', '44'));
     (h.service as any).stationControlPullRequests.retireSession(THREAD);
     // A declaration made after the revoke is refused...
+    await expect(h.declare(named('station', '45'))).rejects.toBeInstanceOf(
+      StationControlPullRequestUnavailableError,
+    );
+    // ...and the engine completing the turn anyway admits neither.
+    h.completeTurn('turn-1');
+    expect(h.declared()).toEqual([]);
+  });
+
+  // The interrupt command revokes the running turn's declarations, as it
+  // revokes a native turn's grants. The engine acknowledges the stop, and
+  // then (as some do) completes the turn anyway.
+  test('the interrupt command revokes the turn: a late completion records nothing', async () => {
+    const h = harness();
+    (h.service as any).threadProviders.set(THREAD, 'codex');
+    h.startTurn('turn-1');
+    await h.declare(named('station', '44'));
+    const stopped = await h.service.dispatch({
+      type: 'interruptTurn',
+      threadId: THREAD,
+    } as never);
+    expect(stopped).toMatchObject({ outcome: 'cooperative' });
+    // A declaration made after the stop is refused...
     await expect(h.declare(named('station', '45'))).rejects.toBeInstanceOf(
       StationControlPullRequestUnavailableError,
     );
