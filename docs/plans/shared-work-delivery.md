@@ -87,7 +87,8 @@ At `678c6e415b`, related-test discovery exhausted its 117887ms selection budget
 before running tests (receipt `36bcc35f7e20f603be80ff8eeeaf67a193d3dd4b176604bbb12510af3b780cac`).
 This is not passing CI evidence. Required pre-push gates passed at `a496c4a733`,
 including all twelve typecheck lanes, transfer, static, governance and readiness
-checks. #3106 is pushed, mergeable and auto-merge enabled; landing remains pending.
+checks. GitHub REST confirms #3106 merged into main on 2026-10-04 at 06:29:27Z,
+including its child provenance layer. Hosted promotion remains separate.
 
 This thread owns the remaining sixteen-track ledger. Next active slice is
 exact-output-version feedback and review through immutable Task outputs and
@@ -134,3 +135,28 @@ journey proof was obtained. Provider pickup/writeback is not implemented by the
 existing read-only WorkItemProvider. Published Flow Agents contracts expose a
 GitHub mutation renderer, which is not an applied tracker receipt. Managed Agents
 and plan access still require eligible configured accounts and real-job proof.
+
+## Personal feedback browser receipt: 2026-10-04
+
+Isolated built revision `70fecefef9` (later commits only add documentation review
+notes) ran on server 42731/UI 42741 in a throwaway Station home. Bootstrap pairing,
+Project/Task/output setup used the actual authenticated routes. The collaborative
+browser inspected a 63-byte retained text snapshot, recorded a comment and an
+accepted-version statement, and displayed both attributed statements against
+output `f69a3f5b-bf70-43a2-852a-44547c187013`, digest
+`sha256:8e441ba14bb2c59b5e1716e6f4d07291d16c82a0deb51b5c888f7d5c83200c8a`.
+Task status remained `todo` on the actual GET; reload retained both statements.
+At 390x844, document width remained 390, with review select/button heights 44px
+and textarea 96px. Tab moved from comment to Record review; Enter submitted.
+Native select keyboard automation did not change the selection; acceptance
+selection used the DOM change event before the keyboard submission. Hide opened
+the existing unsaved-changes dialog; Cancel preserved the draft. Dark and light
+token rendering were visually inspected, with light selected through the DOM
+theme attribute rather than a Settings journey.
+
+Screenshots: `browser-screenshot-localhost-mutgk25e-d7add16b.png` (dark) and
+`browser-screenshot-localhost-mutgkl3v-df30473e.png` (light), retained in the T3
+browser-artifacts directory. A post-reload connection-health timeout banner
+appeared while Task history still loaded; this receipt does not certify overall
+connection reliability. No provider invocation, two-human invitation, public
+publication, physical-phone or hosted release journey was executed.
