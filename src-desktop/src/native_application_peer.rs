@@ -1807,7 +1807,10 @@ mod tests {
         for (method, path, body) in [
             ("POST", "/api/projects", b"{}".as_slice()),
             ("GET", "/api/pairing/devices", &[]),
-            ("GET", "/api/projects/demo/access", &[]),
+            ("GET", "/api/projects/demo/access/enable", &[]),
+            ("POST", "/api/projects/demo/access/enable", b"{}"),
+            ("DELETE", "/api/projects/demo/access/members", &[]),
+            ("GET", "/api/projects/demo/access?x=1", &[]),
             ("GET", "/api/projects/../pairing", &[]),
             ("GET", "/api/projects", b"x"),
             ("get", "/api/projects", &[]),
@@ -1838,9 +1841,19 @@ mod tests {
                 .sign(&prepared.peer_handle, method, path, body)
                 .is_err());
         }
-        for path in [
-            "/api/account-auth/continuations/native/challenge",
-            "/api/account-auth/continuations/native/exchange",
+        for (method, path, body) in [
+            ("GET", "/api/projects/demo/access", b"".as_slice()),
+            ("HEAD", "/api/projects/demo/access", b"".as_slice()),
+            (
+                "POST",
+                "/api/account-auth/continuations/native/challenge",
+                br#" {"challenge":"opaque"} "#.as_slice(),
+            ),
+            (
+                "POST",
+                "/api/account-auth/continuations/native/exchange",
+                br#" {"challenge":"opaque"} "#.as_slice(),
+            ),
         ] {
             let host = MemoryHost::new();
             let peers = NativeApplicationPeers::default();
@@ -1850,12 +1863,7 @@ mod tests {
             };
             let prepared = verified(&service);
             assert!(service
-                .sign(
-                    &prepared.peer_handle,
-                    "POST",
-                    path,
-                    br#" {"challenge":"opaque"} "#
-                )
+                .sign(&prepared.peer_handle, method, path, body)
                 .is_ok());
         }
         let host = MemoryHost::new();
