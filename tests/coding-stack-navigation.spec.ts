@@ -80,13 +80,18 @@ async function seed(page: Page) {
       },
     },
   });
-  await page.route('**/api/coding/diff**', (route) =>
+  // The Diff pane reads `/api/coding/git/diff` (`fetchCodingDiff`); the
+  // shared seed answers it with an empty patch, so this one change is
+  // registered after it and wins.
+  await page.route('**/api/coding/git/diff?**', (route) =>
     route.fulfill({
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify({
         success: true,
-        data: '@@ -1 +1 @@\n-console.log("old")\n+console.log("new")\n',
+        data: {
+          diff: 'diff --git a/app.ts b/app.ts\n--- a/app.ts\n+++ b/app.ts\n@@ -1 +1 @@\n-console.log("old")\n+console.log("new")\n',
+        },
       }),
     }),
   );
@@ -148,7 +153,7 @@ test.describe('Coding stack — desktop below the wide fold (1180px)', () => {
   }) => {
     const diffReads: string[] = [];
     page.on('request', (request) => {
-      if (/\/api\/coding\/diff/.test(request.url()))
+      if (/\/api\/coding\/git\/diff/.test(request.url()))
         diffReads.push(request.url());
     });
     await landOnChat(page);
