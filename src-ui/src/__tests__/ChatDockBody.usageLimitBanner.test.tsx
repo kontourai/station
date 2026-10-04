@@ -10,12 +10,7 @@
  */
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import {
-  act,
-  cleanup,
-  render,
-  screen,
-} from '@testing-library/react';
+import { act, cleanup, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const STABLE_AGENTS = [{ slug: 'agent-one', name: 'Agent One' }];
