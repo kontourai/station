@@ -22,7 +22,7 @@
 
     {"path":"package.json#/scripts/typecheck:examples","digest":"95542be9cf2a8a535bc1c35b1633822aa1095c2abe409ce344ceab8c92239456","revision":"cc20083220b0814410b14ced68431b9f0acef37d"},
 
-    {"path":"scripts/examples-conformance.mjs","digest":"2eac8e0f018acdf56bc2ead72e428a38cf7d40c3be2dde34b4945f969fa4d587","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"}
+    {"path":"scripts/examples-conformance.mjs","digest":"951a60876f5fd3ea6d0b6daaaf194e737280ed8000a4d3808a0cfbd3bd2085e4","revision":"d1519a65a54ea7738269a1f1c02c4985a45f074c"}
   ],
 
   "checks": [
