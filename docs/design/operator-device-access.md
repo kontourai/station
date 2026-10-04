@@ -194,10 +194,11 @@ in `authorizeCredential`) but gets `401 authentication_required` on scope
 change, revoke and record removal. S1 pins this through the real boundary
 with the exact local-grant exchange the desktop performs (EXECUTED, server
 side). The Rust half, that the broker sends the self-provisioned credential,
-is source inspection only (**REASONED**). The panel's native-host text, which
-says the operator credential is "managed by" the host app
-(`PairedDevicesPanel.tsx:161-162`), describes a credential the desktop does
-not hold.
+is source inspection only (**REASONED**). The panel's native-host text said
+the operator credential is "managed by" the host app, which describes a
+credential the desktop does not hold. For a scope change it now names the
+host CLI (`station environment access scope`, #3256). Revoke and record
+removal still carry the old text, because the CLI has no command for them yet.
 
 Consequence for the design: "host operator" via `isBoundLocalGrantMintedOperator`
 (section 3.1, item 5) is a **new** acceptance on the write routes, not the
