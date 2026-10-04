@@ -8,6 +8,7 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  readlinkSync,
   realpathSync,
   rmSync,
   symlinkSync,
@@ -1507,6 +1508,46 @@ describe('bundled registry distribution', () => {
     expect(
       existsSync(join(outputRoot, 'examples/rounds/private-untracked.txt')),
     ).toBe(false);
+  });
+
+  it('keeps a contained tracked file link relocatable after the source is removed', () => {
+    const root = sourceFixture();
+    symlinkSync(
+      'skills/rounds/SKILL.md',
+      join(root, 'examples/rounds/entry.md'),
+    );
+    execFileSync('git', ['add', 'examples'], {
+      cwd: root,
+      windowsHide: true,
+      stdio: 'ignore',
+    });
+    const outputRoot = join(root, 'staged');
+    stageBundledRegistry({ projectRoot: root, outputRoot });
+    const link = join(outputRoot, 'examples/rounds/entry.md');
+    expect(readlinkSync(link).replaceAll('\\', '/')).toBe(
+      'skills/rounds/SKILL.md',
+    );
+    rmSync(join(root, 'examples'), { recursive: true });
+    expect(readFileSync(link, 'utf8')).toBe('Review the plan.');
+  });
+
+  it('refuses an absolute build-host catalog locator even inside examples', () => {
+    const root = sourceFixture();
+    writeFileSync(
+      join(root, 'examples/registry/default.json'),
+      JSON.stringify({
+        version: 1,
+        plugins: [
+          { id: 'rounds', source: realpathSync(join(root, 'examples/rounds')) },
+        ],
+      }),
+    );
+    expect(() =>
+      stageBundledRegistry({
+        projectRoot: root,
+        outputRoot: join(root, 'staged'),
+      }),
+    ).toThrow('source must be relative');
   });
 
   it('refuses a declared local package with no tracked bytes', () => {

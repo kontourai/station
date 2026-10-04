@@ -24,6 +24,10 @@ export function stageBundledRegistry({ projectRoot, outputRoot }) {
       if (typeof entry.source !== 'string')
         throw new Error('Bundled registry entry is missing its source');
       if (/^https?:\/\//i.test(entry.source)) continue;
+      if (isAbsolute(entry.source))
+        throw new Error(
+          `Bundled registry source must be relative: ${entry.source}`,
+        );
       const source = resolve(dirname(manifestPath), entry.source);
       const local = relative(join(root, 'examples'), source);
       if (isAbsolute(local) || local === '..' || local.startsWith(`..${sep}`))
@@ -64,6 +68,6 @@ export function stageBundledRegistry({ projectRoot, outputRoot }) {
     }
     const destination = join(outputRoot, path);
     mkdirSync(dirname(destination), { recursive: true });
-    cpSync(source, destination, { dereference: false });
+    cpSync(source, destination, { dereference: false, verbatimSymlinks: true });
   }
 }
