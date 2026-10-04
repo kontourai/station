@@ -61,7 +61,9 @@ shared mobile rules permit wrapping, add bottom safe-area padding, and give
 matching direct-child controls a 44px minimum, under the phone-width query
 only. A wide touch tablet does not match that query; a control that needs the
 floor there declares it itself, inside the existing `(hover: none)` block in
-`index.css` (today the send-blocked line's Remove attachments). Nested
+`index.css` (today the send-blocked line's Remove attachments, the
+queued-retry Discard the composer repeats in a short dock, and the transcript
+notice actions such as Retry and Discard). Nested
 controls and overflowing content still need their own caller test.
 
 Every `ResponsiveDialogSurface` declares `layer="dialog"`, `"popover"` or
