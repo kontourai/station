@@ -16,6 +16,7 @@ import {
 import { lookupProcessBirthFingerprint } from '@kontourai/station-shared/process-identity';
 import { ensureStationHomeSchemaSync } from '@kontourai/station-shared/station-home-schema';
 import { describe, expect, test } from 'vitest';
+import { stop } from '../../packages/cli/src/commands/lifecycle.js';
 import { checkContainerHealth } from '../container-healthcheck.mjs';
 import {
   executeOwnedProcess,
@@ -259,6 +260,14 @@ async function runContainerCommand(heldBySidecar: boolean): Promise<void> {
       await exited;
     }
     if (execution) {
+      const owner = readInstanceRegistry(home).instances.container;
+      if (
+        owner?.pid &&
+        owner.birth === lookupProcessBirthFingerprint(owner.pid)
+      ) {
+        process.kill(owner.pid, 'SIGTERM');
+        await waitForSuiteSettlement(execution, 30_000);
+      }
       const cleanup = await terminateSuiteExecution(execution, {
         processLabel: 'container command',
         terminationGraceMs: 30_000,
@@ -269,12 +278,19 @@ async function runContainerCommand(heldBySidecar: boolean): Promise<void> {
         cleanup,
         'supervisor and owned process group must settle',
       ).toMatchObject({ settled: true, errors: [] });
-      const owner = readInstanceRegistry(home).instances.container;
-      if (owner)
-        expect(
-          owner.pid,
-          'normal shutdown retracts the service owner',
-        ).toBeUndefined();
+      // start() owns detached server/UI children outside the source launcher's
+      // process group. Reap by their real lifecycle identities before deleting
+      // the fixture home or allowing Vitest to retire its temporary lock root.
+      await stop({ instanceName: 'container', stateHome: home });
+      expect(
+        claimHostOwner('post-shutdown-desktop', {
+          home,
+          type: 'sidecar',
+          ownerPids: [process.pid],
+          publish: () => null,
+        }),
+        'teardown must release the home for the next host owner',
+      ).toMatchObject({ won: true });
     }
     rmSync(stationRoot, { recursive: true, force: true });
   }
