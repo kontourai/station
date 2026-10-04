@@ -34,7 +34,7 @@
 
     {"path":"packages/cli/src/commands/environment.ts","digest":"e0f0a2b430058c5bbd399df755dbc098b5356474206f473fa24ffbb3d77c7331","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
-    {"path":"packages/cli/src/commands/lifecycle.ts","digest":"ce8322baa64d2e25c711ec0816c6cb013c8742f651a265e1657239185dba9ecc","revision":"b49b1db1601f36c9457e0d9d7c766d15be6302f7"},
+    {"path":"packages/cli/src/commands/lifecycle.ts","digest":"a617e2d373f27b25ecc264d38fcf5b863f03aafd4acb354c08d7971c7c5dc1af","revision":"26f0a22a2308c8fed2085428b528026553672610"},
 
     {"path":"packages/cli/src/commands/service-windows.ts","digest":"28e4f5acb3c03d08b41550290265ae2ee013f36f6e274a88d617727ea5d68581","revision":"c8d9944f3aedde24e7acd1f862d5ee1163ffbe59"},
 
@@ -78,7 +78,7 @@
 
     {"path":"src-server/runtime/mcp/mcp-manager.ts","digest":"2b111148f423e896011695de09bca6f6f2990bc8285b4466a5fd70a3c93c65d1","revision":"aadb5aa183a58e97344d13b8c5f34f92a7d78a94"},
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"85bca21440f20f911798b563835133d06fc4a0acf2f3e64333169b389612224c","revision":"89f6185d1e18d1da4b3faa803f77a0caa1bd54f0"},
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"16b68c0730416a7a7f193c0f3e229d57201c6719d7024187b905fa116f0eb501","revision":"26f0a22a2308c8fed2085428b528026553672610"},
 
     {"path":"src-server/services/orchestration/__tests__/home-reference-recovery.test.ts","digest":"fb52355a2508fffa30621e7fd7a131f809fb4c4eeebf9b59bc0fe8a95435dbaf","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

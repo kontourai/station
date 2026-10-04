@@ -14,7 +14,7 @@
   "sources": [
     {"path":"config/channel-ports.json","digest":"b57f2202d6b699d201df79f80e3dd7b3049b3a4c5b3455185e8d35c619a69bcf","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"packages/cli/src/commands/lifecycle.ts","digest":"ce8322baa64d2e25c711ec0816c6cb013c8742f651a265e1657239185dba9ecc","revision":"b49b1db1601f36c9457e0d9d7c766d15be6302f7"},
+    {"path":"packages/cli/src/commands/lifecycle.ts","digest":"a617e2d373f27b25ecc264d38fcf5b863f03aafd4acb354c08d7971c7c5dc1af","revision":"26f0a22a2308c8fed2085428b528026553672610"},
 
     {"path":"packages/contracts/src/tenancy.ts","digest":"0206fdcf4071f2fd5140a8f096cad83deaf801dd05b381840548c320bc25c8ef","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -52,7 +52,7 @@
 
     {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"7d26818fb47194e3a8bfbe9303f48be26207889b7bb84806af0ff1efaacfc34f","revision":"efa773acac88792cda31595f9afca4a37d3efebc"},
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"85bca21440f20f911798b563835133d06fc4a0acf2f3e64333169b389612224c","revision":"89f6185d1e18d1da4b3faa803f77a0caa1bd54f0"},
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"16b68c0730416a7a7f193c0f3e229d57201c6719d7024187b905fa116f0eb501","revision":"26f0a22a2308c8fed2085428b528026553672610"},
 
     {"path":"src-server/security/station-browser-origins.ts","digest":"2044349f4351a616298922879bccfde0ff147a165bdadc6683e0a1c1f6a7b8b2","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 

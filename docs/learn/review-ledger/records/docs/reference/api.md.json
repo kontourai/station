@@ -14,7 +14,7 @@
   "sources": [
     {"path":"packages/cli/src/commands/environment.ts","digest":"e0f0a2b430058c5bbd399df755dbc098b5356474206f473fa24ffbb3d77c7331","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
-    {"path":"packages/cli/src/commands/lifecycle.ts","digest":"ce8322baa64d2e25c711ec0816c6cb013c8742f651a265e1657239185dba9ecc","revision":"b49b1db1601f36c9457e0d9d7c766d15be6302f7"},
+    {"path":"packages/cli/src/commands/lifecycle.ts","digest":"a617e2d373f27b25ecc264d38fcf5b863f03aafd4acb354c08d7971c7c5dc1af","revision":"26f0a22a2308c8fed2085428b528026553672610"},
 
     {"path":"packages/cli/src/commands/surfaces.ts","digest":"000cb910665422c91d26694ca96491e78d704b0b77405c7903b4048c479ff004","revision":"4d32eb785473b3261621900889fb9fa3fbfd8a49"},
 
@@ -276,7 +276,7 @@
 
     {"path":"src-server/runtime/conversation/runtime-event-log.ts","digest":"c73565025ce6279646a17c4c6f2e3b339d8ff79a1c6d2ca444b98fc6232b1b26","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"85bca21440f20f911798b563835133d06fc4a0acf2f3e64333169b389612224c","revision":"89f6185d1e18d1da4b3faa803f77a0caa1bd54f0"},
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"16b68c0730416a7a7f193c0f3e229d57201c6719d7024187b905fa116f0eb501","revision":"26f0a22a2308c8fed2085428b528026553672610"},
 
     {"path":"src-server/security/pairing-route-scopes.ts","digest":"5188e91b51f45578c8d64d05d71ec69114158ec73af91a69b3de5d316f46e6c8","revision":"efa773acac88792cda31595f9afca4a37d3efebc"},
 
