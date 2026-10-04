@@ -652,7 +652,9 @@ in [contracts](contracts.md)). Three routes serve the chat banner:
   the provider refuses the replay with the same limit, the replay arms its own
   wait for the reset, so an early click does not end the wait. That re-arm
   needs a reset at least a minute away; a past or sooner reset ends the stop as
-  `failed` instead, so a refusing provider cannot loop the resume.
+  `failed` instead, and so does a fourth refusal in a row for the same
+  conversation (a user turn resets the count), so a refusing provider cannot
+  loop the resume.
 - `POST /sessions/:threadId/usage-limit/cancel` ("Cancel auto-resume") retires
   a waiting stop unsent with `outcomeReason: "user-canceled"`. That retires the
   whole stop, so Resume now is no longer offered for it either; the user sends
