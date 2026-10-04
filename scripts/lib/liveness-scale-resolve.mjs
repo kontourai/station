@@ -53,7 +53,7 @@ export function scaleFromBusyPercent(busyPercent) {
   return MAX_SAMPLED_LIVENESS_SCALE;
 }
 
-export function isCiEnvironment(env = process.env) {
+function isCiEnvironment(env = process.env) {
   return env.CI === 'true' || env.CI === '1' || env.GITHUB_ACTIONS === 'true';
 }
 
