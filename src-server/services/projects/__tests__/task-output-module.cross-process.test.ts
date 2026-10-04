@@ -19,12 +19,19 @@ afterEach(() => {
 function taskGraph(workspace: string) {
   return {
     readTask: (taskId: string) =>
-      taskId === 'task-a' ? { id: taskId, projectId: 'project-a' } : null,
+      taskId === 'task-a'
+        ? {
+            id: taskId,
+            projectId: 'project-a',
+            createdAt: '2026-10-01T00:00:00.000Z',
+          }
+        : null,
     readTaskForOpen: async (taskId: string) =>
       taskId === 'task-a'
         ? {
             id: taskId,
             projectId: 'project-a',
+            createdAt: '2026-10-01T00:00:00.000Z',
             workspaceBinding: {
               availability: 'available' as const,
               workingDirectory: workspace,
@@ -46,9 +53,9 @@ function promoteInChild(input: {
     import { TaskOutputModule } from ${JSON.stringify(moduleUrl)};
     const [home, workspace, relativePath, operationId, maxPerTask] = process.argv.slice(1);
     const tasks = {
-      readTask: (taskId) => taskId === 'task-a' ? { id: taskId, projectId: 'project-a' } : null,
+      readTask: (taskId) => taskId === 'task-a' ? { id: taskId, projectId: 'project-a', createdAt: '2026-10-01T00:00:00.000Z' } : null,
       readTaskForOpen: async (taskId) => taskId === 'task-a' ? {
-        id: taskId, projectId: 'project-a',
+        id: taskId, projectId: 'project-a', createdAt: '2026-10-01T00:00:00.000Z',
         workspaceBinding: { availability: 'available', workingDirectory: workspace },
       } : null,
     };
@@ -119,7 +126,7 @@ test('two Station processes retain distinct promotions and enforce one shared pe
   await expect(
     new TaskOutputModule({
       homeDir: home,
-      taskGraphService: taskGraph(workspace) as any,
+      taskGraphService: taskGraph(workspace),
     }).list('task-a'),
   ).resolves.toHaveLength(2);
 
@@ -152,7 +159,7 @@ test('two Station processes retain distinct promotions and enforce one shared pe
   await expect(
     new TaskOutputModule({
       homeDir: limitedHome,
-      taskGraphService: taskGraph(workspace) as any,
+      taskGraphService: taskGraph(workspace),
       limits: { maxPerTask: 1 },
     }).list('task-a'),
   ).resolves.toHaveLength(1);
