@@ -551,15 +551,21 @@ test.describe('Coding stack — wide (1440px): tools beside Chat', () => {
       lowerPanel(page).getByRole('dialog', { name: 'New terminal' }),
     ).toHaveCount(0);
     // The strip follows the title, not the row's centre: the first tab
-    // starts within a few px of the title's end.
-    const title = (await lowerPanel(page)
+    // starts within a few px of the title's TEXT. (The heading's box is
+    // not enough: a heading that took the free space would end right where
+    // the strip starts, with its text far to the left.)
+    const titleTextEnd = await lowerPanel(page)
       .getByRole('heading', { name: 'Terminal' })
-      .boundingBox())!;
+      .evaluate((heading) => {
+        const range = document.createRange();
+        range.selectNodeContents(heading);
+        return range.getBoundingClientRect().right;
+      });
     const tab = (await lowerPanel(page)
       .getByRole('tab', { name: 'Shell 1' })
       .boundingBox())!;
-    expect(tab.x - (title.x + title.width)).toBeGreaterThanOrEqual(0);
-    expect(tab.x - (title.x + title.width)).toBeLessThanOrEqual(16);
+    expect(tab.x - titleTextEnd).toBeGreaterThanOrEqual(0);
+    expect(tab.x - titleTextEnd).toBeLessThanOrEqual(24);
     await expect(sidePanel(page)).toBeVisible();
     await expect(page).toHaveURL(/[?&]pane=/);
     const chat = (await chatPage(page).boundingBox())!;
