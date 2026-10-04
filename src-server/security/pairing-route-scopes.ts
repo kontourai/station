@@ -1929,6 +1929,16 @@ export const EXTERNAL_SURFACE_CAPABILITY_TABLE: readonly ExternalSurfaceCapabili
       reason: 'explicit HEAD semantics for public liveness probe',
     },
     {
+      id: 'mcp-token:station-knowledge',
+      transport: 'http',
+      method: '*',
+      prefix: '/mcp/station-knowledge',
+      match: 'exact',
+      capability: 'mcp-token',
+      reason:
+        'per-session Knowledge MCP token; loopback and server purpose verified by the MCP router',
+    },
+    {
       id: 'mcp-token:station-control',
       transport: 'http',
       method: '*',
@@ -2417,6 +2427,9 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // room publications and an identity-free connected-client aggregate.
     { method: 'GET', path: '/api/live-activity' },
     { method: 'POST', path: '/api/tasks/:taskId/room/messages' },
+    // Human review appends to the caller's authorized personal Task room;
+    // it neither invokes an agent nor changes Task/workflow acceptance.
+    { method: 'POST', path: '/api/tasks/:taskId/room/output-feedback' },
     { method: 'POST', path: '/api/tasks/:taskId/room/live' },
     // These mutate only the exact task document resolved from the paired
     // caller's request. They mint no cross-environment authority and expose

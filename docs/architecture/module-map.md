@@ -60,6 +60,7 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 | [StationHomeRecoveryPreflight](#stationhomerecoverypreflight) | Observe bounded recovery metadata without granting mutation or execution authority. | `packages/shared/src/station-home-recovery-preflight.ts` |
 | [ProjectFileTransactions](#projectfiletransactions) | Serialize Project lifecycle and nested record mutations under exact revision capabilities. | `src-server/domain/project-file-transactions.ts` |
 | [ProjectIdentity](#projectidentity) | Prepare and attach portable identity while preserving receiver-local Project identity. | `src-server/services/projects/project-identity-service.ts` |
+| [StationKnowledgeMcpServer](#stationknowledgemcpserver) | Serve scoped read/capture tools separately from platform controls. | `src-server/tools/station-knowledge-mcp-server.ts` |
 | [KnowledgeStoreProvider](#knowledgestoreprovider) | Register canonical roots and resolve their record adapters. | `src-server/knowledge-store/knowledge-store-provider.ts` |
 | [SqliteVecIndexProvider](#sqlitevecindexprovider) | Rebuild and query derived root partitions with explicit freshness limits. | `src-server/knowledge-index/sqlite-vec-index-provider.ts` |
 | [Workspace checkpoints](#workspace-checkpoints) | Capture turn-associated file snapshots and restore one through current workspace and caller checks. | `src-server/services/checkpoints/checkpoint-restore.ts` |
@@ -1695,6 +1696,23 @@ surface; `client-project-identity.test.ts` covers the public wire consumer and
 incompatible/changed responses. Physical multi-machine and independent-human
 acceptance remain separate from these tests.
 
+## StationKnowledgeMcpServer
+
+The [Knowledge MCP factory](../../src-server/tools/station-knowledge-mcp-server.ts)
+registers five read/capture tools through the shared caller-policy wrapper.
+Station Control retains index rebuild, migration, and its compatibility search.
+[Runtime routes](../../src-server/runtime/routes/runtime-routes.ts) admit only
+loopback MCP requests with a credential for this server and enforce the Session
+owner’s store access before reading or writing records.
+
+Claude uses a session-bound in-process server. Native agents use the
+[custodied HTTP bridge](../../src-server/runtime/mcp/station-knowledge-native-tools.ts)
+inside the accepted authorized turn, while Codex and ACP use their existing
+wire delivery channels with separate Knowledge credentials. SDK cleanup and
+cancellation bound local waiting; they do not undo a write already admitted by
+the store. See the [Knowledge guide](../guides/knowledge.md#agent-tools) and
+[mounted owner/access evidence](../../src-server/runtime/routes/__tests__/runtime-routes-station-control-read-scope.test.ts).
+
 ## KnowledgeStoreProvider
 
 **Purpose and interface.** `KnowledgeStoreProvider` registers roots and their adapters,
@@ -1931,6 +1949,16 @@ Task incarnation that the history grant rechecks before commit. Request cards
 currently poll the journal read and link to existing execution
 inspection; they are not room-SSE lifecycle events. Invited/public result
 projection and actual-provider acceptance remain unfinished.
+
+Immutable output review uses the same room history, rather than a second
+feedback journal. [TaskOutputModule](../../src-server/services/projects/task-output-module.ts)
+validates fresh version targets against retained output and Task/Project identity;
+permanent room identities resolve exact duplicates before output validation.
+A per-room SQLite format fence prevents v2 writes after v3 adoption.
+The [output surface](../../src-ui/src/views/task-workspace/TaskOutputsSection.tsx)
+checks authorized downloaded bytes before offering a human review statement.
+Reviewer acceptance changes no Task or workflow state. Source and focused
+contract evidence do not establish a two-human or installed acceptance journey.
 
 The [SDK](../../packages/sdk/src/client/project-task-rooms.ts) parses opaque
 edit receipts and the shared SSE stream. Accepted document objects are offered

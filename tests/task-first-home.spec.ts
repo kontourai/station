@@ -1,5 +1,6 @@
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import type { ConversationOpenResolution } from '@kontourai/station-contracts/orchestration';
+import { PROJECT_IDENTITY_NOT_PREPARED_CODE } from '@kontourai/station-contracts/project-identity';
 import type {
   BrowserPaneAccessView,
   BrowserSessionView,
@@ -215,6 +216,25 @@ async function mockTaskFirstHome(
     }
     if (path === '/api/projects/station') {
       await route.fulfill(json(project));
+      return;
+    }
+    // The project-scoped launcher reads the portable identity. This fixture's
+    // Project never prepared one, which the real route answers with its
+    // discriminated not-prepared 404 (`project-identity-routes.ts`).
+    if (
+      path === '/api/projects/station/identity' &&
+      route.request().method() === 'GET'
+    ) {
+      await route.fulfill({
+        status: 404,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: false,
+          error:
+            'This Project has no prepared portable identity. Prepare it explicitly before placing it elsewhere.',
+          code: PROJECT_IDENTITY_NOT_PREPARED_CODE,
+        }),
+      });
       return;
     }
     if (path === '/api/projects/station/layouts') {

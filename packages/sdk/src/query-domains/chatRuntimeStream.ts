@@ -1,7 +1,8 @@
 import { readWithStallWatchdog } from '@kontourai/station-contracts/stall-watchdog';
 import type { UIBlock } from '@kontourai/station-contracts/ui-block';
 import { StationHttpError } from '../client/api-error-message';
-import { ChatHttpError, isStationEnvelope } from '../client/chatHttpError';
+import { ChatHttpError } from '../client/chatHttpError';
+import { isStationAnswer } from '../client/station-envelope';
 import { resolveApiBase } from '../query-core';
 import type {
   ChatAttachmentInput,
@@ -36,7 +37,7 @@ async function buildChatHttpError(response: Response): Promise<ChatHttpError> {
         code,
         details: body?.details ?? undefined,
       }),
-      isStationEnvelope(body),
+      isStationAnswer(response, body),
     );
   } catch (error) {
     rethrowDeadline(error);

@@ -120,6 +120,23 @@ export function snoozeKeyFor(item: HomeWorkItem): string {
  * this list in already sorted by recency, and the partition is a single
  * stable pass.
  */
+/**
+ * How many items the inbox's "Needs you" lane holds — the same partition
+ * the inbox panel renders (`groupMobileActivity`), read for a folded inbox
+ * whose edge strip must still say that something is waiting (#3046 round).
+ */
+export function needsYouCount(
+  items: HomeWorkItem[],
+  now: number,
+  snoozed: SnoozeMap = readSnoozes(now),
+): number {
+  return (
+    groupMobileActivity(items, now, snoozed).find(
+      (group) => group.id === 'needsYou',
+    )?.items.length ?? 0
+  );
+}
+
 export function groupMobileActivity(
   items: HomeWorkItem[],
   now: number,

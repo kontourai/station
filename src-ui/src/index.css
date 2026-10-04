@@ -1177,6 +1177,9 @@ button:hover {
 .app-toolbar__sidebar-toggle {
   display: none;
 }
+.app-toolbar__lockup {
+  display: none;
+}
 .app-toolbar__logo {
   display: none;
 }
@@ -1588,6 +1591,20 @@ button:hover {
   .chat-dock__active-identity-close {
     opacity: 1;
     pointer-events: auto;
+  }
+
+  /* The send-blocked line's one fix, "Remove attachments". Its 44px floor
+     comes from the width-gated mobile block's shared action-row rule, which a
+     touch tablet wider than 768px and taller than 540px never reaches. The
+     floor is a property of the pointer, not the width, and a pointer that
+     cannot hover is the touch one. This is deliberately ONE control, not the
+     whole action-row vocabulary: that rule's selectors also match header,
+     footer and toolbar rows (the 38px dock header's actions, live-work rows,
+     the inbox footer, tool-call actions) that have no wrap rule or coverage at
+     this width. */
+  .chat-input__blocked-actions > button {
+    min-height: 44px;
+    min-width: 44px;
   }
 }
 
@@ -6611,8 +6628,46 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     min-height: 44px;
   }
 
+  /* The logo and the wordmark are ONE wrapping line, a fixed 22px tall with
+     overflow clipped. When the row cannot hold both, the wordmark wraps to a
+     second line that the clip removes, so the app name is either shown in full
+     or not at all - a text-overflow ellipsis here is what produced "S...". The
+     logo stays (it is the home link) and the toolbar stays one row. The
+     connection chip is a fixed 44px dot (chat.css), so the lockup is the one
+     member of the row that gives up width. Both children are 22px tall and
+     share one line, so nothing of the wrapped line peeks into the clip. */
+  .app-toolbar__lockup {
+    display: flex;
+    flex-wrap: wrap;
+    align-content: flex-start;
+    align-items: center;
+    column-gap: 10px;
+    /* The gap below the first line keeps the wrapped wordmark out of the
+       4px the clip margin lends to the focus ring. */
+    row-gap: 8px;
+    /* Shrinkable, never below the logo. When the name does not fit, the lockup
+       shrinks to the room there is; the blank remainder is invisible and the
+       action cluster stays put. */
+    flex: 0 1 auto;
+    min-width: 22px;
+    height: 22px;
+    overflow: hidden;
+  }
+
+  /* Where supported, clip with a margin so the 2px + 2px focus ring of the home
+     link is not cut off by the lockup's own edge. `clip`, unlike `hidden`, is
+     also never scrolled: focusing a wordmark that has wrapped out of view
+     cannot drag the logo out of the box with it. */
+  @supports (overflow: clip) {
+    .app-toolbar__lockup {
+      overflow: clip;
+      overflow-clip-margin: 4px;
+    }
+  }
+
   .app-toolbar__logo {
     display: block;
+    flex: none;
     width: 22px;
     height: 22px;
     cursor: pointer;
@@ -6620,19 +6675,30 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 
   .app-toolbar__brand {
     display: block;
+    flex: none;
     font-size: var(--text-15);
     font-weight: 600;
+    line-height: 22px;
+    /* The shared link/button padding would add 16px the lockup cannot spare. */
+    padding: 0;
+    white-space: nowrap;
     color: var(--text-primary);
     cursor: pointer;
-    margin-right: auto;
   }
 
   .header-divider {
     display: none;
   }
 
+  /* On a phone the action cluster is right-anchored by its own auto margin;
+     this empty flex:1 item only added two 8px gaps to a row that has none to
+     spare. */
+  .app-toolbar__spacer {
+    display: none;
+  }
+
   /* Hidden on mobile: the top bar is already tight (even the app name
-     truncates), and the SplitPaneLayout panel header right below repeats the
+     can drop out), and the SplitPaneLayout panel header right below repeats the
      same context, so a top-bar crumb here just clips to noise ("Age…"). The
      universal breadcrumb stays a desktop affordance. Higher specificity than
      the base `.app-toolbar__breadcrumb` rule so the hide wins. */
@@ -6660,21 +6726,14 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
        banner telling them they were disconnected.
 
        The toolbar's height is a shared geometry token; a bar that can grow a
-       row is a bar that token lies about. The brand truncates instead — it
-       already carries `min-width: 0` and an ellipsis for exactly this. */
+       row is a bar that token lies about. The wordmark drops out whole
+       (`.app-toolbar__lockup`) before the row would grow. */
     flex-wrap: nowrap;
   }
 
-  /* The brand truncates so the right-side action cluster (notifications,
-     profile, overflow, settings) always stays on-screen at ≤390px instead of
-     overflowing past the right edge. */
-  .app-toolbar__brand {
-    min-width: 0;
-    flex-shrink: 1;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
+  /* The wordmark never truncates (see `.app-toolbar__lockup`). The right-hand
+     action cluster stays on-screen at <=390px because the lockup is the one
+     member of the row that gives up width. */
 
   /* Phone connection chrome is a touchable status dot. Its full accessible
      name and long-press hint are owned by HeaderActions; chat.css sizes it. */

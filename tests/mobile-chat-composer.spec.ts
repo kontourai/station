@@ -726,7 +726,7 @@ test('virtualizes a long real transcript while preserving reader controls on mob
   ).toBeLessThan(80);
   await page.evaluate(() => document.fonts.ready);
   // History loading lives above the rows. Capture what the reader actually
-  // sees there, after bringing the control into view, before prepending.
+  // sees there once they reach it, before the page is prepended.
   await loadEarlier.scrollIntoViewIfNeeded();
   await expect(
     transcript.getByText('Transcript fixture 9930: prompt.', { exact: true }),
@@ -748,8 +748,22 @@ test('virtualizes a long real transcript while preserving reader controls on mob
       : null;
   });
   expect(anchoredRow?.key).toBeTruthy();
-  await loadEarlier.click();
+  // The reader REACHING the top loads the next page by itself: since #2706
+  // (63ad7bcca) any scroll that is not one of our own echoes is the reader —
+  // keyboard and scrollbar drags included, not only wheel and touch — and
+  // `handleScroll` loads older history at `scrollTop <= 96`. This step used to
+  // click the button here and expect the fifth window from the click; but the
+  // page the scroll itself loads restores the reader to the row they were on,
+  // which moves the button out of view, so a Playwright click would scroll to
+  // the top AGAIN and re-anchor on different rows. What the step guarantees is
+  // unchanged: exactly one page loads (not two), and the row the reader was on
+  // stays put when it is prepended (asserted below). The button's own
+  // one-click-one-page contract is the first three clicks above and the loop
+  // below.
   await expect.poll(() => requestedWindows.length).toBe(5);
+  expect(new URL(requestedWindows[4]).searchParams.get('cursor')).toBe(
+    'older-turns-70',
+  );
   await expect
     .poll(() =>
       transcript.evaluate((element, anchor) => {
@@ -790,7 +804,65 @@ test('virtualizes a long real transcript while preserving reader controls on mob
   );
   expect(Math.max(...settledAnchorDrift)).toBeLessThanOrEqual(2);
 
-  for (let requestCount = 6; requestCount <= 11; requestCount++) {
+  // The BUTTON path keeps the reader's row too. A click cannot prove it here:
+  // the button sits above the first row, so showing it scrolls the reader
+  // within the auto-load threshold and that load, not the click, would be
+  // under test. The reader is now mid-transcript (the auto-load restored their
+  // row), so focus the button without scrolling and activate it from the
+  // keyboard: one real Enter, no scroll event, one page, the same row.
+  const sampleAnchor = () =>
+    transcript.evaluate((element) => {
+      const bounds = element.getBoundingClientRect();
+      const row = [
+        ...element.querySelectorAll<HTMLElement>('[data-transcript-row]'),
+      ].find(
+        (candidate) =>
+          candidate.getBoundingClientRect().bottom > bounds.top + 8 &&
+          candidate.getBoundingClientRect().top < bounds.bottom,
+      );
+      return row
+        ? {
+            key: row.dataset.transcriptRow,
+            offset: row.getBoundingClientRect().top - bounds.top,
+            scrollTop: element.scrollTop,
+          }
+        : null;
+    });
+  const keyboardAnchor = await sampleAnchor();
+  expect(keyboardAnchor?.key).toBeTruthy();
+  expect(
+    keyboardAnchor!.scrollTop,
+    'the reader is clear of the auto-load threshold (96px)',
+  ).toBeGreaterThan(200);
+  const windowsBeforeEnter = requestedWindows.length;
+  await loadEarlier.evaluate((button) =>
+    (button as HTMLElement).focus({ preventScroll: true }),
+  );
+  await page.keyboard.press('Enter');
+  await expect.poll(() => requestedWindows.length).toBe(windowsBeforeEnter + 1);
+  await expect
+    .poll(() =>
+      transcript.evaluate((element, anchor) => {
+        const bounds = element.getBoundingClientRect();
+        const row = [
+          ...element.querySelectorAll<HTMLElement>('[data-transcript-row]'),
+        ].find((candidate) => candidate.dataset.transcriptRow === anchor.key);
+        return row
+          ? Math.abs(
+              row.getBoundingClientRect().top - bounds.top - anchor.offset,
+            )
+          : Number.POSITIVE_INFINITY;
+      }, keyboardAnchor!),
+    )
+    .toBeLessThanOrEqual(2);
+  // ...and exactly one page, not two (nothing scrolled it into a second load).
+  await expect.poll(() => requestedWindows.length).toBe(windowsBeforeEnter + 1);
+
+  for (
+    let requestCount = windowsBeforeEnter + 2;
+    requestCount <= 11;
+    requestCount++
+  ) {
     await loadEarlier.click();
     await expect.poll(() => requestedWindows.length).toBe(requestCount);
   }
@@ -1801,6 +1873,55 @@ test('keeps delegation actions reachable above the mobile keyboard', async ({
     return route.fulfill(
       json({ success: true, data: { session: delegatedSession, events: [] } }),
     );
+  });
+  // Two reads the journey now makes that this fixture never declared:
+  // - the launcher reads the Project's prepared portable identity when it
+  //   opens, to place the task (#2289, 2026-09-25 — the fixture predates it);
+  // - revealing the task opens its conversation's event window.
+  // Both are declared with their real shapes rather than answered empty.
+  await page.route('**/api/projects/default/identity', (route) =>
+    route.request().method() === 'GET'
+      ? route.fulfill(
+          json({
+            success: true,
+            data: {
+              identity: {
+                schemaVersion: 1,
+                id: 'portable:default',
+                repos: [
+                  {
+                    kind: 'git',
+                    id: 'https://git.example.test/default.git',
+                    canonicalRemote: 'https://git.example.test/default.git',
+                    label: 'default',
+                  },
+                ],
+                executionRoot: {
+                  repoId: 'https://git.example.test/default.git',
+                  path: '.',
+                },
+                createdAt: '2026-07-19T10:00:00Z',
+                updatedAt: '2026-07-19T10:00:00Z',
+              },
+              association: {
+                portableProjectId: 'portable:default',
+                localProjectId: 'project:default',
+                localProjectSlug: 'default',
+              },
+            },
+          }),
+        )
+      : rejectUnexpectedFixtureRequest(route),
+  );
+  await mockRuntimeConversation(page, {
+    id: delegatedSession.threadId,
+    agentSlug: 'station',
+    title: delegatedSession.displayTitle,
+    provider: 'codex',
+    model: 'model-selected',
+    projectSlug: 'default',
+    canContinue: false,
+    turns: () => [],
   });
   await openComposer(page, true);
   const parentTaskId = await page.evaluate(() =>
@@ -3843,16 +3964,16 @@ test('a refused send keeps a two-line draft clear of every row in a 375x667 half
   expect(geometry.visibleContent).toBeGreaterThanOrEqual(geometry.twoLines - 1);
 });
 
-// The state the reviewer measured: a reload after a refused first send. The
-// failure banner, the restored attachment chips (they lost their bytes, so
-// they ask for the file again), their block line and a three-line draft all
-// compete for a 375x667 half dock. The controls row used to paint over the
-// draft (0px visible).
-test('after a reload with the failure banner, a 375x667 half dock keeps a two-line draft clear', async ({
-  page,
-}) => {
-  test.setTimeout(45_000);
-  await page.setViewportSize({ width: 375, height: 667 });
+/**
+ * The state the reviewer measured, set up once for the journeys that need it:
+ * a reload after a refused first send, so the failure banner, the restored
+ * attachment chips and their block line (with its "Remove attachments" fix)
+ * are on screen. The caller owns the viewport.
+ */
+async function openReloadedRefusedFirstSend(
+  page: Page,
+  options: { capacityFull?: boolean } = {},
+) {
   await installMockOrchestrationSse(page);
   await mockChatShell(page);
   const id = 'refused-first-send';
@@ -3943,6 +4064,9 @@ test('after a reload with the failure banner, a 375x667 half dock keeps a two-li
     state: 'complete',
     progress: 1,
     delivery: 'staged',
+    // The upload quota is the block whose only fix is removing the files, which
+    // is what puts "Remove attachments" on the line.
+    ...(options.capacityFull ? { capacityFull: true } : {}),
   });
   await seedActiveChats(page, [
     {
@@ -3984,6 +4108,20 @@ test('after a reload with the failure banner, a 375x667 half dock keeps a two-li
   // keeps the reason on screen.
   await expect(page.getByTestId('chat-dock-session-failure')).toHaveCount(1);
   await expect(page.locator('.chat-input__attachment-error')).toBeVisible();
+  return { textarea };
+}
+
+// The state the reviewer measured: a reload after a refused first send. The
+// failure banner, the restored attachment chips (they lost their bytes, so
+// they ask for the file again), their block line and a three-line draft all
+// compete for a 375x667 half dock. The controls row used to paint over the
+// draft (0px visible).
+test('after a reload with the failure banner, a 375x667 half dock keeps a two-line draft clear', async ({
+  page,
+}) => {
+  test.setTimeout(45_000);
+  await page.setViewportSize({ width: 375, height: 667 });
+  const { textarea } = await openReloadedRefusedFirstSend(page);
 
   const geometry = await textarea.evaluate((element) => {
     const box = element.getBoundingClientRect();
@@ -4024,4 +4162,79 @@ test('after a reload with the failure banner, a 375x667 half dock keeps a two-li
     geometry.visibleContent,
     JSON.stringify(geometry),
   ).toBeGreaterThanOrEqual(geometry.twoLines - 1);
+});
+
+/**
+ * A control's laid-out box is at least 44px each way and wholly on screen.
+ * Polled, because a viewport change re-lays the dock out over a few frames.
+ */
+async function expectTouchTarget(page: Page, control: Locator) {
+  await expect(control).toBeVisible();
+  await expect
+    .poll(async () => {
+      const box = await control.boundingBox();
+      const viewport = page.viewportSize();
+      if (!box || !viewport) return 'no box';
+      const problems: string[] = [];
+      if (box.width < 44) problems.push(`width ${box.width}`);
+      if (box.height < 44) problems.push(`height ${box.height}`);
+      if (box.x < 0 || box.x + box.width > viewport.width)
+        problems.push(`x ${box.x}..${box.x + box.width} of ${viewport.width}`);
+      if (box.y < 0 || box.y + box.height > viewport.height)
+        problems.push(
+          `y ${box.y}..${box.y + box.height} of ${viewport.height}`,
+        );
+      return problems.join(', ') || 'ok';
+    })
+    .toBe('ok');
+}
+
+// The send-blocked line's one fix is a button whose 44px floor is INHERITED
+// from the shared `__actions` rule in index.css, so it is measured here rather
+// than assumed: on a 390px phone it is a touch target wholly inside the screen.
+test('the refused-send line keeps a 44px Remove attachments button inside a 390px screen', async ({
+  page,
+}) => {
+  test.setTimeout(45_000);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openReloadedRefusedFirstSend(page, { capacityFull: true });
+  await expectTouchTarget(
+    page,
+    page.getByRole('button', { name: 'Remove attachments' }),
+  );
+});
+
+test.describe('on a touch tablet wider than the phone breakpoint', () => {
+  // 820x1180 is taller than 540px and wider than 768px, so the shared mobile
+  // query does not match; the device is still a touch one.
+  test.use({
+    viewport: { width: 820, height: 1180 },
+    hasTouch: true,
+    isMobile: true,
+  });
+
+  test('the refused-send line keeps a 44px Remove attachments button', async ({
+    page,
+  }) => {
+    test.setTimeout(45_000);
+    await openReloadedRefusedFirstSend(page, { capacityFull: true });
+    // The precondition that makes this a different case from the phone one:
+    // the width-gated mobile rules are NOT in force, the pointer is touch.
+    expect(
+      await page.evaluate(() => ({
+        sharedMobileQuery: matchMedia(
+          '(max-width: 768px), (max-height: 540px) and (pointer: coarse)',
+        ).matches,
+        coarse: matchMedia('(pointer: coarse)').matches,
+        noHover: matchMedia('(hover: none)').matches,
+      })),
+    ).toEqual({ sharedMobileQuery: false, coarse: true, noHover: true });
+    await expectTouchTarget(
+      page,
+      page.getByRole('button', { name: 'Remove attachments' }),
+    );
+    // Known gap, not intended behaviour: other `__actions`-family rows (the
+    // dock header's) have no touch floor at this width yet; this test does
+    // not pin their size either way.
+  });
 });

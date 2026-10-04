@@ -305,10 +305,18 @@ describe('one-bar rule (#3309)', () => {
     );
   });
 
-  test('a collapsed pane offers none of the workspace controls', () => {
-    renderHeader();
+  test('a collapsed pane offers none of the workspace controls', async () => {
+    const { props, rerender } = renderHeader({
+      workspaceControls: workspaceControls(),
+    });
+    expect(
+      await screen.findByRole('button', { name: 'New chat' }),
+    ).toBeTruthy();
+    expect(screen.queryByTitle('Open Conversation')).toBeNull();
+    rerender(<ChatDockHeader {...props} workspaceControls={undefined} />);
 
     expect(screen.queryByTitle('New chat')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'New chat' })).toBeNull();
     // With every pane command gone, Chat settings — the dock's own command, not
     // the pane's — is the only one left to fold, so there is no ⋯ at all and it
     // renders inline (D2). That is also why the two rows below are absent from
@@ -413,9 +421,7 @@ describe('one-bar rule (#3309)', () => {
             button.getAttribute('aria-label') ?? button.textContent ?? '',
         ),
     ).toEqual([
-      // Open/New are labelled by their visible text; their chords are in the
-      // tooltips ("Open Conversation", "New Chat"), which is where every
-      // shortcut in this bar lives since #1536 F retired the keycap spans.
+      // New uses the shared creation action's explicit accessible name.
       // The placement grab, maximize and the visibility chevron that used to
       // bracket these are the REGION's since #2046 2b and render in the
       // region bar (`RegionChromeBar.test.tsx` pins them there).

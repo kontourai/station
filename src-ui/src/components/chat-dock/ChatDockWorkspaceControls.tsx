@@ -82,12 +82,24 @@ export function ChatDockSessionInventoryHost({
  */
 export function ChatDockWorkspaceActions({
   onNewChat,
-}: Pick<Controls, 'onNewChat'>) {
+  iconOnly = false,
+}: Pick<Controls, 'onNewChat'> & {
+  /**
+   * Icon-only, named and tipped (#3046): in a bar that names the pane (the
+   * Coding workbench), New keeps its glyph and gives up its word, so the
+   * title keeps the width. There is no Open here either: the inbox sits
+   * beside Chat and lists the chats to open.
+   */
+  iconOnly?: boolean;
+}) {
   const newShortcut = useShortcutDisplay('dock.newChat');
   return (
-    <div className="chat-dock__tab-actions">
+    <div
+      className={`chat-dock__tab-actions${iconOnly ? ' chat-dock__tab-actions--icons' : ''}`}
+    >
       <NewChatAction
-        className="chat-dock__new"
+        className={`chat-dock__new${iconOnly ? ' chat-dock__new--icon' : ''}`}
+        iconOnly={iconOnly}
         onClick={onNewChat}
         title={withShortcutHint('New chat', 'dock.newChat', () => newShortcut)}
       >

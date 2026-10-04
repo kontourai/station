@@ -1,4 +1,5 @@
 import { expect, type Page } from '@playwright/test';
+import { buildLongSessionTurns } from './fixtures/long-session';
 import {
   codingNavigation,
   codingViewItem,
@@ -10,6 +11,7 @@ import {
   DEFAULT_CONVERSATION_LOOKUPS,
   DEFAULT_CONVERSATIONS,
   dismissSetupLauncher,
+  installMockOrchestrationEventWindow,
   installMockOrchestrationSse,
   seedActiveChats,
   seedOrchestrationRoutes,
@@ -115,8 +117,10 @@ async function drillIntoDiff(page: Page) {
   ]);
 }
 
-test.describe('Coding stack — desktop (1280px)', () => {
-  test.use({ viewport: { width: 1280, height: 800 } });
+// Below the wide fold (1280px, `codingPanels.ts`) a pane is a full-page
+// drill-in; past it the same pane opens beside Chat (the last describe).
+test.describe('Coding stack — desktop below the wide fold (1180px)', () => {
+  test.use({ viewport: { width: 1180, height: 800 } });
 
   test.beforeEach(async ({ page }) => {
     await seed(page);
@@ -266,10 +270,7 @@ test.describe('Coding stack — desktop (1280px)', () => {
     // The conversation has resolved (its title reaches the breadcrumb), so
     // the header's menu is not rebuilt under the click.
     await expect(crumbs(page)).toContainText('Dev Agent Chat');
-    await page.getByRole('button', { name: 'More dock actions' }).click();
-    await page
-      .getByRole('menuitemcheckbox', { name: 'Collapse chat list' })
-      .click();
+    await page.getByRole('button', { name: 'Collapse chat list' }).click();
     await expect(inbox(page)).toHaveCount(0);
 
     await page.reload();
@@ -277,10 +278,7 @@ test.describe('Coding stack — desktop (1280px)', () => {
     await expect(crumbs(page)).toContainText('Dev Agent Chat');
     await expect(inbox(page)).toHaveCount(0);
 
-    await page.getByRole('button', { name: 'More dock actions' }).click();
-    await page
-      .getByRole('menuitemcheckbox', { name: 'Expand chat list' })
-      .click();
+    await page.getByRole('button', { name: 'Expand chat list' }).click();
     await expect(inbox(page)).toBeVisible();
   });
 
@@ -306,6 +304,14 @@ test.describe('Coding stack — desktop (1280px)', () => {
     expect(
       Number.parseFloat(duration) * (duration.endsWith('ms') ? 1 : 1000),
     ).toBeLessThanOrEqual(0.01);
+    // A 0.01ms animation is still "current" on the frame it starts; count
+    // after the frame it ends in, not during it.
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+        ),
+    );
     expect(
       await page.evaluate(
         () =>
@@ -322,7 +328,7 @@ test.describe('Coding stack — desktop (1280px)', () => {
 });
 
 test.describe('Coding stack — the dock is left as the reader had it', () => {
-  test.use({ viewport: { width: 1280, height: 800 } });
+  test.use({ viewport: { width: 1180, height: 800 } });
 
   test.beforeEach(async ({ page }) => {
     await seed(page);
@@ -456,5 +462,720 @@ test.describe('Coding stack — phone (390px)', () => {
     await expect(page.locator('#chat-dock')).toBeVisible({ timeout: 20_000 });
     await expect(page.locator('#chat-dock')).toHaveClass(/is-maximized/);
     await expect(page.locator('#chat-workspace-pane')).toHaveCount(0);
+  });
+});
+
+/**
+ * #3040 / #3051: past the wide fold a rail pick opens the tool BESIDE Chat
+ * (the same `?pane=`, written in place), the Terminal below both, and each
+ * conversation remembers its own panels.
+ */
+test.describe('Coding stack — wide (1440px): tools beside Chat', () => {
+  test.use({ viewport: { width: 1440, height: 900 } });
+
+  const sidePanel = (page: Page) =>
+    page.locator('.coding-workbench__page--drill-in');
+  const lowerPanel = (page: Page) => page.locator('.coding-workbench__lower');
+  const historyLength = (page: Page) =>
+    page.evaluate(() => window.history.length);
+
+  test.beforeEach(async ({ page }) => {
+    await seed(page);
+  });
+
+  test('a rail pick opens the tool beside Chat, Chat stays visible, and no toggle is a history entry', async ({
+    page,
+  }) => {
+    await landOnChat(page);
+    const length = await historyLength(page);
+    await expect(sidePanel(page)).toBeHidden();
+
+    await openCodingView(page, 'Diff');
+    await expect(sidePanel(page)).toBeVisible();
+    await expect(
+      sidePanel(page).getByRole('heading', { name: 'Diff' }),
+    ).toBeVisible();
+    await expect(centreChat(page)).toBeVisible();
+    await expect(chatPage(page)).toHaveAttribute('data-active', 'true');
+    await expect(page).toHaveURL(/[?&]pane=/);
+    expect(await historyLength(page)).toBe(length);
+    await expect(codingViewItem(page, 'Diff')).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    // Chat is still the page: the crumbs are the conversation's.
+    await expect(crumbs(page).getByRole('listitem')).toHaveText([
+      'Inbox',
+      'Dev Agent Chat',
+    ]);
+    // Side by side, not over: the panel starts where Chat ends.
+    const chat = (await chatPage(page).boundingBox())!;
+    const side = (await sidePanel(page).boundingBox())!;
+    expect(side.x).toBeGreaterThanOrEqual(chat.x + chat.width - 1);
+    expect(chat.width).toBeGreaterThanOrEqual(480);
+    expect(side.width).toBeGreaterThanOrEqual(320);
+
+    // Another item switches; the same item closes. Still no entry.
+    await openCodingView(page, 'Files');
+    await expect(sidePanel(page).locator('.file-tree-panel')).toBeVisible();
+    await expect(codingViewItem(page, 'Diff')).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
+    await openCodingView(page, 'Files');
+    await expect(sidePanel(page)).toBeHidden();
+    await expect(page).not.toHaveURL(/[?&]pane=/);
+    await expect(centreChat(page)).toBeVisible();
+    expect(await historyLength(page)).toBe(length);
+  });
+
+  test('the Terminal opens in the lower panel, under Chat and the side tool together', async ({
+    page,
+  }) => {
+    await landOnChat(page);
+    await expect(lowerPanel(page)).toHaveCount(0);
+    await openCodingView(page, 'Files');
+    await openCodingView(page, 'Terminal');
+    await expect(lowerPanel(page)).toBeVisible();
+    await expect(lowerPanel(page)).toHaveAttribute('data-active', 'true');
+    await expect(codingViewItem(page, 'Terminal')).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    // The shell is the only kind of terminal here, so the panel opens one
+    // rather than an empty state and a one-option picker (design audit U7).
+    await expect(
+      lowerPanel(page).getByRole('tab', { name: 'Shell 1' }),
+    ).toBeVisible({ timeout: 15_000 });
+    await expect(
+      lowerPanel(page).getByRole('dialog', { name: 'New terminal' }),
+    ).toHaveCount(0);
+    // The strip follows the title, not the row's centre: the first tab
+    // starts within a few px of the title's TEXT. (The heading's box is
+    // not enough: a heading that took the free space would end right where
+    // the strip starts, with its text far to the left.)
+    const titleTextEnd = await lowerPanel(page)
+      .getByRole('heading', { name: 'Terminal' })
+      .evaluate((heading) => {
+        const range = document.createRange();
+        range.selectNodeContents(heading);
+        return range.getBoundingClientRect().right;
+      });
+    const tab = (await lowerPanel(page)
+      .getByRole('tab', { name: 'Shell 1' })
+      .boundingBox())!;
+    expect(tab.x - titleTextEnd).toBeGreaterThanOrEqual(0);
+    expect(tab.x - titleTextEnd).toBeLessThanOrEqual(16);
+    await expect(sidePanel(page)).toBeVisible();
+    await expect(page).toHaveURL(/[?&]pane=/);
+    const chat = (await chatPage(page).boundingBox())!;
+    const side = (await sidePanel(page).boundingBox())!;
+    const lower = (await lowerPanel(page).boundingBox())!;
+    expect(lower.y).toBeGreaterThanOrEqual(chat.y + chat.height - 1);
+    expect(lower.y).toBeGreaterThanOrEqual(side.y + side.height - 1);
+    expect(lower.width).toBeGreaterThanOrEqual(chat.width + side.width - 1);
+    await expect(centreChat(page)).toBeVisible();
+
+    await openCodingView(page, 'Terminal');
+    await expect(lowerPanel(page)).toBeHidden();
+    await expect(sidePanel(page)).toBeVisible();
+  });
+
+  test('the side panel resizes from the keyboard and its width survives a reload', async ({
+    page,
+  }) => {
+    await landOnChat(page);
+    await openCodingView(page, 'Diff');
+    const separator = page.getByRole('separator', {
+      name: 'Resize Diff panel',
+    });
+    await expect(separator).toHaveAttribute('aria-orientation', 'vertical');
+    const before = Number(await separator.getAttribute('aria-valuenow'));
+    await separator.focus();
+    await page.keyboard.press('ArrowLeft');
+    await page.keyboard.press('ArrowLeft');
+    await expect(separator).toHaveAttribute(
+      'aria-valuenow',
+      String(before + 32),
+    );
+    const side = (await sidePanel(page).boundingBox())!;
+    expect(Math.round(side.width)).toBe(before + 32);
+
+    await page.reload();
+    await expect(centreChat(page)).toBeVisible({ timeout: 20_000 });
+    await expect(sidePanel(page)).toBeVisible();
+    await expect(
+      page.getByRole('separator', { name: 'Resize Diff panel' }),
+    ).toHaveAttribute('aria-valuenow', String(before + 32));
+  });
+
+  test('each conversation keeps its own panels; a new one starts closed', async ({
+    page,
+  }) => {
+    await landOnChat(page);
+    const length = await historyLength(page);
+    await openCodingView(page, 'Diff');
+    await openCodingView(page, 'Terminal');
+    await expect(lowerPanel(page)).toBeVisible();
+    // The Diff folded the inbox (the transcript's floor); unfold it by hand
+    // to pick another conversation — the reader's choice for this session.
+    await expect(inbox(page)).toHaveCount(0);
+    await page.getByRole('button', { name: 'Expand chat list' }).click();
+    await expect(inbox(page)).toBeVisible();
+
+    await inbox(page)
+      .getByRole('button', { name: /Tidy the README/ })
+      .first()
+      .click();
+    await expect(page).toHaveURL(/chat=conv-2|chat=session-2/);
+    await expect(sidePanel(page)).toBeHidden();
+    await expect(lowerPanel(page)).toBeHidden();
+    await expect(page).not.toHaveURL(/[?&]pane=/);
+    await openCodingView(page, 'Files');
+    await expect(sidePanel(page).locator('.file-tree-panel')).toBeVisible();
+    // This conversation has no choice of its own yet, so Files folded the
+    // inbox; unfold it to go back.
+    await expect(inbox(page)).toHaveCount(0);
+    await page.getByRole('button', { name: 'Expand chat list' }).click();
+
+    // The first conversation's row carries the seeded title until the
+    // conversation list's own title arrives; either names conv-1.
+    await inbox(page)
+      .getByRole('button', { name: /Dev Agent Chat|Fix the login flake/ })
+      .first()
+      .click();
+    await expect(page).toHaveURL(/chat=conv-1|chat=session-1/);
+    await expect(
+      sidePanel(page).getByRole('heading', { name: 'Diff' }),
+    ).toBeVisible();
+    await expect(lowerPanel(page)).toBeVisible();
+    await expect(codingViewItem(page, 'Diff')).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    expect(await historyLength(page)).toBe(length);
+  });
+
+  test('crossing the fold keeps the conversation as it was: a drill-in becomes the side panel and the draft survives', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1180, height: 800 });
+    await landOnChat(page);
+    const composer = centreChat(page).locator('.chat-input textarea');
+    await composer.fill('a draft the reader has not sent');
+    await openCodingView(page, 'Diff');
+    await expect(centreChat(page)).toBeHidden();
+
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await expect(centreChat(page)).toBeVisible();
+    await expect(sidePanel(page)).toBeVisible();
+    await expect(codingViewItem(page, 'Diff')).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    await expect(composer).toHaveValue('a draft the reader has not sent');
+
+    await page.setViewportSize({ width: 1180, height: 800 });
+    await expect(centreChat(page)).toBeHidden();
+    await expect(crumbs(page)).toContainText('Diff');
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await expect(composer).toHaveValue('a draft the reader has not sent');
+  });
+});
+
+/**
+ * #3046 / #3047 round: one bar above the transcript, the inbox folding for a
+ * tool that would crowd it, and a file opened from Files landing beside Chat.
+ */
+test.describe('Coding stack — wide (1440px): one bar, the inbox, a file from Files', () => {
+  test.use({ viewport: { width: 1440, height: 900 } });
+
+  const sidePanel = (page: Page) =>
+    page.locator('.coding-workbench__page--drill-in');
+  const bar = (page: Page) => page.locator('.coding-workbench__bar');
+  const historyLength = (page: Page) =>
+    page.evaluate(() => window.history.length);
+
+  test.beforeEach(async ({ page }) => {
+    await seed(page);
+  });
+
+  test('one bar above the transcript: the title once, Chat’s verbs as named icons beside the breadcrumb', async ({
+    page,
+  }) => {
+    await landOnChat(page);
+    await expect(crumbs(page)).toContainText('Dev Agent Chat');
+    // No second header row under the bar.
+    await expect(centreChat(page).locator('.chat-dock__header')).toHaveCount(0);
+    await expect(
+      centreChat(page).locator('.chat-dock__header-identity'),
+    ).toHaveCount(0);
+    await expect(bar(page).getByText('Dev Agent Chat')).toHaveCount(1);
+    const open = bar(page).getByRole('button', { name: 'Open conversation' });
+    const create = bar(page).getByRole('button', { name: 'New chat' });
+    await expect(open).toBeVisible();
+    await expect(create).toBeVisible();
+    // No words: the Open icon may carry its session-count badge, nothing else.
+    await expect(open).toHaveText(/^\d*$/);
+    await expect(create).toHaveText('');
+    await expect(
+      bar(page).getByRole('button', { name: 'More dock actions' }),
+    ).toBeVisible();
+    // The bar is one row: every control shares the breadcrumb's line.
+    const crumb = (await crumbs(page).boundingBox())!;
+    const verb = (await create.boundingBox())!;
+    expect(
+      Math.abs(verb.y + verb.height / 2 - (crumb.y + crumb.height / 2)),
+    ).toBeLessThan(12);
+  });
+
+  test('a tool that would crowd the transcript folds the inbox, unfolds it on close, and never overrides the reader’s own choice', async ({
+    page,
+  }) => {
+    await landOnChat(page);
+    await expect(inbox(page)).toBeVisible();
+    await openCodingView(page, 'Diff');
+    await expect(sidePanel(page)).toBeVisible();
+    await expect(inbox(page)).toHaveCount(0);
+    const transcript = (await centreChat(page).boundingBox())!;
+    expect(transcript.width).toBeGreaterThanOrEqual(640);
+    await openCodingView(page, 'Diff');
+    await expect(sidePanel(page)).toBeHidden();
+    await expect(inbox(page)).toBeVisible();
+
+    // The reader expands it by hand while the tool is open: their choice.
+    await openCodingView(page, 'Files');
+    await expect(inbox(page)).toHaveCount(0);
+    await page.getByRole('button', { name: 'Expand chat list' }).click();
+    await expect(inbox(page)).toBeVisible();
+    await openCodingView(page, 'Diff');
+    await expect(inbox(page)).toBeVisible();
+    await openCodingView(page, 'Diff');
+    await expect(inbox(page)).toBeVisible();
+    await openCodingView(page, 'Files');
+    await expect(inbox(page)).toBeVisible();
+  });
+
+  test('a file opened from Files lands beside Chat by replace, named by its file and tipped with its path', async ({
+    page,
+  }) => {
+    await page.route('**/api/coding/files**', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          data: [
+            {
+              name: 'src',
+              path: 'src',
+              type: 'directory',
+              children: [{ name: 'app.ts', path: 'src/app.ts', type: 'file' }],
+            },
+          ],
+        }),
+      }),
+    );
+    await page.route('**/api/projects/dev/file-preview', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          data: {
+            path: 'src/app.ts',
+            status: 'ready',
+            renderKind: 'text',
+            content: 'export const app = true;\n',
+          },
+        }),
+      }),
+    );
+    await landOnChat(page);
+    const length = await historyLength(page);
+    await openCodingView(page, 'Files');
+    // A root directory opens expanded; the file is one click away.
+    await sidePanel(page).getByText('app.ts', { exact: true }).click();
+    await expect(
+      sidePanel(page).getByRole('heading', { name: 'app.ts' }),
+    ).toBeVisible();
+    await expect(centreChat(page)).toBeVisible();
+    expect(await historyLength(page)).toBe(length);
+    await expect(page).toHaveURL(/[?&]pane=/);
+    const item = codingViewItem(page, 'app.ts');
+    await expect(item).toHaveAttribute('aria-pressed', 'true');
+    // The tooltip shows on hover (drawn on the body), and says the whole path.
+    await item.hover();
+    await expect(page.getByRole('tooltip')).toBeVisible();
+    await expect(page.getByRole('tooltip')).toHaveText('src/app.ts');
+    // The preview's head offers the way back to Files (design audit U5).
+    await sidePanel(page)
+      .getByRole('button', { name: 'Back to Files' })
+      .click();
+    await expect(sidePanel(page).locator('.file-tree-panel')).toBeVisible();
+    await expect(codingViewItem(page, 'Files')).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    await expect(
+      sidePanel(page).getByRole('button', { name: /^Back to/ }),
+    ).toHaveCount(0);
+    // Back leaves the layout; it does not step through the panel.
+    await page.goBack();
+    await expect(page).not.toHaveURL(/layouts\/code/);
+  });
+
+  test('the Browser flyout opens beside the rail, on screen and under the pointer; the rail’s tooltips are not clipped (D1, U12)', async ({
+    page,
+  }) => {
+    await landOnChat(page);
+    const viewport = page.viewportSize()!;
+    await page.getByRole('button', { name: 'Open Browser pane' }).click();
+    const flyout = page.getByRole('region', { name: 'Browser' });
+    await expect(flyout).toBeVisible();
+    const rail = (await codingViewRail(page).boundingBox())!;
+    const box = (await flyout.boundingBox())!;
+    expect(box.width).toBeGreaterThan(200);
+    expect(box.height).toBeGreaterThan(40);
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.y).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width).toBeLessThanOrEqual(rail.x);
+    expect(box.y + box.height).toBeLessThanOrEqual(viewport.height);
+    // Painted, not merely laid out: the point at its centre hits it.
+    const hit = await page.evaluate(
+      ({ x, y }) =>
+        document.elementFromPoint(x, y)?.closest('[aria-label="Browser"]') !==
+        null,
+      { x: box.x + box.width / 2, y: box.y + box.height / 2 },
+    );
+    expect(hit).toBe(true);
+    await expect(flyout.getByRole('textbox')).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(flyout).toHaveCount(0);
+    await expect(
+      page.getByRole('button', { name: 'Open Browser pane' }),
+    ).toBeFocused();
+
+    // A rail tooltip, whole and to the left of the rail.
+    await page.mouse.move(10, 10);
+    const item = codingViewItem(page, 'Files');
+    await item.hover();
+    const tip = page.getByRole('tooltip');
+    await expect(tip).toBeVisible();
+    await expect(tip).toHaveText('Files');
+    const tipBox = (await tip.boundingBox())!;
+    expect(tipBox.width).toBeGreaterThan(24);
+    expect(tipBox.x).toBeGreaterThanOrEqual(0);
+    expect(tipBox.x + tipBox.width).toBeLessThanOrEqual(rail.x + 1);
+  });
+
+  test('Escape never leaves the layout: a panel opened from the keyboard takes focus, Escape closes it back to the rail, and Escape on the rail stays put (U6, D5)', async ({
+    page,
+  }) => {
+    await landOnChat(page);
+    const item = codingViewItem(page, 'Diff');
+    await item.focus();
+    await page.keyboard.press('Enter');
+    await expect(sidePanel(page)).toBeVisible();
+    await expect(
+      sidePanel(page).getByRole('heading', { name: 'Diff' }),
+    ).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(sidePanel(page)).toBeHidden();
+    await expect(item).toBeFocused();
+    await expect(page).toHaveURL(/layouts\/code/);
+    await page.keyboard.press('Escape');
+    await expect(page).toHaveURL(/layouts\/code/);
+    await expect(centreChat(page)).toBeVisible();
+  });
+});
+
+/**
+ * #3046 round 3: the folded inbox's edge strip, and the fold judged again
+ * when the window is resized.
+ */
+test.describe('Coding stack — wide (1440px): the folded inbox’s edge', () => {
+  test.use({ viewport: { width: 1440, height: 900 } });
+
+  const sidePanel = (page: Page) =>
+    page.locator('.coding-workbench__page--drill-in');
+  const edge = (page: Page) =>
+    page.getByRole('button', { name: /^Show inbox/ });
+
+  test.beforeEach(async ({ page }) => {
+    await seed(page);
+  });
+
+  test('a folded inbox leaves a strip that widens on hover and focus, and a click brings the inbox back as the reader’s choice', async ({
+    page,
+  }) => {
+    await landOnChat(page);
+    await expect(edge(page)).toHaveCount(0);
+    await openCodingView(page, 'Diff');
+    await expect(inbox(page)).toHaveCount(0);
+    await expect(edge(page)).toBeVisible();
+    const rest = (await edge(page).boundingBox())!;
+    expect(rest.width).toBeLessThanOrEqual(8);
+    expect(rest.height).toBeGreaterThanOrEqual(44);
+    const chat = (await chatPage(page).boundingBox())!;
+    expect(Math.abs(rest.x - chat.x)).toBeLessThan(2);
+    // Nothing needs the reader here, so the strip's rule is the neutral
+    // border at rest and the accent only under the pointer.
+    await expect(edge(page)).toHaveAccessibleName('Show inbox');
+    const ruleColours = () =>
+      page.evaluate(() => {
+        const strip = document.querySelector<HTMLElement>(
+          '.coding-workbench__inbox-edge',
+        )!;
+        const resolve = (token: string) => {
+          const probe = document.createElement('span');
+          probe.style.color = `var(${token})`;
+          strip.parentElement!.append(probe);
+          const value = getComputedStyle(probe).color;
+          probe.remove();
+          return value;
+        };
+        return {
+          rule: getComputedStyle(strip).borderRightColor,
+          neutral: resolve('--border-primary'),
+          accent: resolve('--accent-primary'),
+        };
+      });
+    const atRest = await ruleColours();
+    expect(atRest.neutral).not.toBe(atRest.accent);
+    expect(atRest.rule).toBe(atRest.neutral);
+    // Settle the pointer in the transcript first, then come to the edge.
+    await page.mouse.move(chat.x + chat.width / 2, chat.y + chat.height / 2);
+    await edge(page).hover();
+    await expect
+      .poll(async () => {
+        const now = await ruleColours();
+        return now.rule === now.accent;
+      })
+      .toBe(true);
+    await expect
+      .poll(async () => {
+        const box = (await edge(page).boundingBox())!;
+        const hovered = await page.evaluate(
+          () =>
+            document.querySelector('.coding-workbench__inbox-edge:hover') !==
+            null,
+        );
+        return `${Math.round(box.width)} hover=${hovered}`;
+      })
+      .toMatch(/^(2\d|3\d) hover=true$/);
+    await page.mouse.move(chat.x + chat.width / 2, chat.y + chat.height / 2);
+    // Keyboard focus — a key before the focus is what makes it visible
+    // (`:focus-visible`), as a Tab would.
+    await page.keyboard.press('Shift');
+    await edge(page).focus();
+    await expect
+      .poll(async () =>
+        page.evaluate(
+          () =>
+            `${document.activeElement?.getAttribute('aria-label') ?? ''} visible=${
+              document.querySelector(
+                '.coding-workbench__inbox-edge:focus-visible',
+              ) !== null
+            }`,
+        ),
+      )
+      .toMatch(/^Show inbox.* visible=true$/);
+    await expect
+      .poll(async () => (await edge(page).boundingBox())!.width)
+      .toBeGreaterThanOrEqual(20);
+    await page.keyboard.press('Enter');
+    await expect(inbox(page)).toBeVisible();
+    await expect(edge(page)).toHaveCount(0);
+    // The reader's choice: the tool closing and reopening leaves it.
+    await openCodingView(page, 'Diff');
+    await expect(sidePanel(page)).toBeHidden();
+    await openCodingView(page, 'Diff');
+    await expect(inbox(page)).toBeVisible();
+  });
+
+  test('a window dragged narrower folds the inbox once it rests, and wider unfolds it', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 2000, height: 900 });
+    await landOnChat(page);
+    await openCodingView(page, 'Diff');
+    await expect(inbox(page)).toBeVisible();
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await expect(inbox(page)).toHaveCount(0);
+    await expect(edge(page)).toBeVisible();
+    await page.setViewportSize({ width: 2000, height: 900 });
+    await expect(inbox(page)).toBeVisible();
+  });
+});
+
+/**
+ * Review round (#3040 M1, M2, M5): a file link from the transcript opens
+ * beside Chat whatever tool is there; a fold the layout made survives a
+ * reload; one Terminal across the fold.
+ */
+test.describe('Coding stack — wide (1440px): links, reloads and the Terminal across the fold', () => {
+  test.use({ viewport: { width: 1440, height: 900 } });
+
+  const sidePanel = (page: Page) =>
+    page.locator('.coding-workbench__page--drill-in');
+  const lowerPanel = (page: Page) => page.locator('.coding-workbench__lower');
+  const historyLength = (page: Page) =>
+    page.evaluate(() => window.history.length);
+
+  async function seedWithTranscriptLink(page: Page) {
+    await seedActiveChats(page, [
+      {
+        sessionId: 'session-1',
+        conversationId: 'conv-1',
+        agentSlug: 'dev-agent',
+        title: 'Fix the login flake',
+        model: 'claude-sonnet',
+        provider: 'codex',
+        providerOptions: {},
+        projectSlug: 'dev',
+        projectName: 'Dev',
+        orchestrationSessionStarted: true,
+        inputHistory: [],
+        ephemeralMessages: [],
+      },
+    ]);
+    await installMockOrchestrationSse(page);
+    await seedOrchestrationRoutes(page, {
+      conversations: DEFAULT_CONVERSATIONS,
+      conversationLookups: DEFAULT_CONVERSATION_LOOKUPS,
+    });
+    // The transcript is the conversation's event window: one completed turn
+    // whose reply names a file in the Project, as an agent's answer would.
+    await installMockOrchestrationEventWindow(page, 'codex', {
+      'session-1': buildLongSessionTurns({
+        threadId: 'session-1',
+        provider: 'codex',
+        turnCount: 1,
+        promptText: () => 'Where does the app start?',
+        replyText: () => 'The entry point is [src/app.ts](src/app.ts).',
+      }).flat(),
+    });
+    await page.route('**/api/projects/dev/file-preview', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          data: {
+            path: 'src/app.ts',
+            status: 'ready',
+            renderKind: 'text',
+            content: 'export const app = true;\n',
+          },
+        }),
+      }),
+    );
+  }
+
+  test('a file link in the transcript opens beside Chat with Diff open, with Files open, and with nothing open — never as a history entry', async ({
+    page,
+  }) => {
+    await seedWithTranscriptLink(page);
+    await landOnChat(page);
+    // The transcript renders the path as a file chip: a link named by the
+    // file, titled with the path.
+    const link = centreChat(page).getByRole('link', { name: 'app.ts' });
+    await expect(link).toBeVisible();
+    const length = await historyLength(page);
+
+    // Diff beside Chat.
+    await openCodingView(page, 'Diff');
+    await expect(
+      sidePanel(page).getByRole('heading', { name: 'Diff' }),
+    ).toBeVisible();
+    await link.click();
+    await expect(
+      sidePanel(page).getByRole('heading', { name: 'app.ts' }),
+    ).toBeVisible();
+    await expect(centreChat(page)).toBeVisible();
+    expect(await historyLength(page)).toBe(length);
+    await expect(page).not.toHaveURL(/previewPath=/);
+    await expect(codingViewItem(page, 'app.ts')).toHaveCount(1);
+
+    // Files beside Chat: a link is not the pane's own row; the preview that
+    // is already open is shown, not opened again.
+    await openCodingView(page, 'Files');
+    await expect(sidePanel(page).locator('.file-tree-panel')).toBeVisible();
+    await link.click();
+    await expect(
+      sidePanel(page).getByRole('heading', { name: 'app.ts' }),
+    ).toBeVisible();
+    await expect(codingViewItem(page, 'app.ts')).toHaveCount(1);
+    expect(await historyLength(page)).toBe(length);
+
+    // Nothing beside Chat.
+    await codingViewItem(page, 'app.ts').click();
+    await expect(sidePanel(page)).toBeHidden();
+    await link.click();
+    await expect(sidePanel(page)).toBeVisible();
+    await expect(
+      sidePanel(page).getByRole('heading', { name: 'app.ts' }),
+    ).toBeVisible();
+    expect(await historyLength(page)).toBe(length);
+  });
+
+  test('a fold the layout made comes back after a reload once the tool closes, and after leaving and returning', async ({
+    page,
+  }) => {
+    await seed(page);
+    await landOnChat(page);
+    await openCodingView(page, 'Diff');
+    await expect(inbox(page)).toHaveCount(0);
+
+    await page.reload();
+    await expect(centreChat(page)).toBeVisible({ timeout: 20_000 });
+    await expect(sidePanel(page)).toBeVisible();
+    await expect(inbox(page)).toHaveCount(0);
+    await openCodingView(page, 'Diff');
+    await expect(sidePanel(page)).toBeHidden();
+    await expect(inbox(page)).toBeVisible();
+
+    // Leave with the tool open and the inbox folded, return, close the tool.
+    await openCodingView(page, 'Diff');
+    await expect(inbox(page)).toHaveCount(0);
+    await page.getByRole('button', { name: 'Home', exact: true }).click();
+    await expect(centreChat(page)).toHaveCount(0);
+    await page.goBack();
+    await expect(centreChat(page)).toBeVisible({ timeout: 20_000 });
+    await expect(sidePanel(page)).toBeVisible();
+    await openCodingView(page, 'Diff');
+    await expect(inbox(page)).toBeVisible();
+  });
+
+  test('one Terminal across the fold: a drill-in below it becomes the lower panel above it, and never both', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1180, height: 800 });
+    await seed(page);
+    await landOnChat(page);
+    await openCodingView(page, 'Terminal');
+    await expect(drillInPage(page)).toHaveAttribute('data-active', 'true');
+    await expect(page.locator('.coding-layout__terminal')).toHaveCount(1);
+    await expect(page).toHaveURL(/[?&]pane=/);
+
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await expect(lowerPanel(page)).toBeVisible();
+    await expect(centreChat(page)).toBeVisible();
+    await expect(page).not.toHaveURL(/[?&]pane=/);
+    // The host's own selection is still the Terminal; it draws nothing for
+    // it past the fold, so there is exactly one terminal on the page.
+    await expect(page.locator('.coding-layout__terminal')).toHaveCount(1);
+    await openCodingView(page, 'Files');
+    await expect(sidePanel(page)).toBeVisible();
+    await expect(page.locator('.coding-layout__terminal')).toHaveCount(1);
+
+    // Back below the fold with the lower panel open: the Terminal is the
+    // page, in place, not gone.
+    await codingViewItem(page, 'Files').click();
+    await page.setViewportSize({ width: 1180, height: 800 });
+    await expect(drillInPage(page)).toHaveAttribute('data-active', 'true');
+    await expect(crumbs(page)).toContainText('Terminal');
+    await expect(page.locator('.coding-layout__terminal')).toHaveCount(1);
   });
 });

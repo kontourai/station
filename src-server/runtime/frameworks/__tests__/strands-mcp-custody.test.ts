@@ -54,6 +54,7 @@ function fixture() {
     command: process.execPath,
   };
   const opts = {
+    serverPort: 41031,
     mcpCustody: custody,
     configLoader: { loadIntegration: vi.fn(async () => def) } as never,
     mcpConnectionStatus: new Map(),

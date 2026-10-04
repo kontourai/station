@@ -353,13 +353,12 @@ test('project header path suggestions dismiss before an outside navigation actio
   await seedProjectRoutes(page);
   await page.goto('/projects/demo');
 
-  // The working-directory button carries an explicit `aria-label`, which
-  // overrides its text — so the path itself is no longer its accessible name
-  // (`src-ui/src/views/project-page/ProjectPageHeader.tsx:76-84`). `demo` is
-  // seeded WITH a working directory, so the label is the edit spelling; if
-  // that ever stops being true this fails rather than picking another button.
+  // The working-directory button carries an explicit `aria-label` naming the
+  // action and the path (`ProjectPageHeader.tsx`). `demo` is seeded WITH a
+  // working directory, so the label is the edit spelling; if that ever stops
+  // being true this fails rather than picking another button.
   await page
-    .getByRole('button', { name: 'Edit working directory', exact: true })
+    .getByRole('button', { name: /^Edit working directory \S/ })
     .click();
   const directory = page.getByPlaceholder('/path/to/project');
   await directory.fill('/tmp/pro');

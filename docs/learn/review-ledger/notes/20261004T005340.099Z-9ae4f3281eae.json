@@ -1,0 +1,7 @@
+{
+  "revision": "2d9687d2fa3dfd8350dedc8c8dea8e8dc8c05f76",
+
+  "notes": [
+    {"path":"docs/guides/starter-work.md","note":"AttachedSessionDetail.tsx maps transcript parts with chat's shared conversationPartToContentParts and then drops the approval binding (needsApproval and approval ids), because this read-only view cannot answer a request. This document's claims about the attached session's continue-here starter, adoption and composer are unchanged; it makes no claim about transcript part rendering or answer controls.","inputs":["packages/contracts/src/device-settings.ts","src-server/providers/adapters/claude-adapter.ts","src-server/runtime/routes/runtime-routes.ts","src-server/services/orchestration/orchestration-service.ts","src-ui/src/components/session-detail/AttachedSessionDetail.tsx","src-ui/src/views/ProjectPage.tsx"]}
+  ]
+}

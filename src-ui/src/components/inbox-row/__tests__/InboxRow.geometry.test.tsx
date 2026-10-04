@@ -506,11 +506,14 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
     return rows;
   }
 
+  // #3144's phone picker owns a card layout: the single Details action sits
+  // inside the card, with space reserved beside the two-line title/metadata.
+  // The coarse-pointer dock panel above still owns the beside-the-row layout.
   test.each([
     [390, 200],
     [320, 160],
   ])(
-    'touch chrome at %ipx: 44px actions beside the row and a title of at least %ipx',
+    'phone cards at %ipx: one unobscured 44px Details target and a two-line title of at least %ipx',
     async (width, minimumTitleWidth) => {
       const markup = sheetMarkup();
       const pg = await browser.newPage({
@@ -521,9 +524,129 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
       try {
         await pg.setContent(page(markup));
         await settle(pg);
-        const rows = await auditTouchRows(pg, minimumTitleWidth);
-        for (const row of rows) {
-          expect(row.right, `${row.key} right edge`).toBeLessThanOrEqual(width);
+        const rows = pg.locator(
+          '.mobile-task-switcher__list .inbox-row--touch',
+        );
+        expect(await rows.count()).toBe(ITEMS.length);
+        for (let index = 0; index < ITEMS.length; index += 1) {
+          const row = rows.nth(index);
+          await row.scrollIntoViewIfNeeded();
+          const measured = await row.evaluate((element) => {
+            const box = element.getBoundingClientRect();
+            const title = element.querySelector('.inbox-row__title');
+            if (!title) throw new Error('missing title');
+            const titleBox = title.getBoundingClientRect();
+            const titleStyle = getComputedStyle(title);
+            const actions = [...element.querySelectorAll('.inbox-row__action')];
+            const textBoxes = [
+              '.inbox-row__meta',
+              '.inbox-row__title',
+              '.inbox-row__status',
+              '.inbox-row__slim-status',
+              '.inbox-row__slim-word',
+              '.inbox-row__project-context',
+              '.inbox-row__chips',
+            ].flatMap((selector) => {
+              const text = element.querySelector(selector);
+              if (!text) return [];
+              const rect = text.getBoundingClientRect();
+              const style = getComputedStyle(text);
+              return [
+                {
+                  selector,
+                  left: rect.left + Number.parseFloat(style.paddingLeft),
+                  right: rect.right - Number.parseFloat(style.paddingRight),
+                  top: rect.top,
+                  bottom: rect.bottom,
+                },
+              ];
+            });
+            return {
+              key: element.getAttribute('data-row-key'),
+              row: {
+                left: box.left,
+                right: box.right,
+                top: box.top,
+                bottom: box.bottom,
+              },
+              title: {
+                width:
+                  titleBox.width -
+                  Number.parseFloat(titleStyle.paddingLeft) -
+                  Number.parseFloat(titleStyle.paddingRight),
+                height: titleBox.height,
+                fontSize: Number.parseFloat(titleStyle.fontSize),
+                lineHeight: Number.parseFloat(titleStyle.lineHeight),
+              },
+              targets: actions.map((action) => {
+                const rect = action.getBoundingClientRect();
+                const hits = [
+                  [rect.left + rect.width / 2, rect.top + 1],
+                  [rect.left + rect.width / 2, rect.bottom - 1],
+                  [rect.left + 1, rect.top + rect.height / 2],
+                  [rect.right - 1, rect.top + rect.height / 2],
+                  [rect.left + rect.width / 2, rect.top + rect.height / 2],
+                ].map(
+                  ([x, y]) =>
+                    document
+                      .elementFromPoint(x, y)
+                      ?.closest('.inbox-row__action') === action,
+                );
+                return {
+                  label: action.getAttribute('aria-label'),
+                  width: rect.width,
+                  height: rect.height,
+                  left: rect.left,
+                  right: rect.right,
+                  top: rect.top,
+                  bottom: rect.bottom,
+                  hits,
+                  overlaps: textBoxes
+                    .filter(
+                      (text) =>
+                        text.left < rect.right - 0.5 &&
+                        text.right > rect.left + 0.5 &&
+                        text.top < rect.bottom - 0.5 &&
+                        text.bottom > rect.top + 0.5,
+                    )
+                    .map((text) => text.selector),
+                };
+              }),
+            };
+          });
+          expect(
+            measured.targets,
+            `${measured.key} has one Details action`,
+          ).toHaveLength(1);
+          expect(
+            measured.row.right,
+            `${measured.key} right edge`,
+          ).toBeLessThanOrEqual(width);
+          expect(
+            measured.title.width,
+            `${measured.key} readable title width`,
+          ).toBeGreaterThanOrEqual(minimumTitleWidth);
+          expect(measured.title.fontSize).toBe(18);
+          expect(measured.title.height).toBeLessThanOrEqual(
+            measured.title.lineHeight * 2 + 1,
+          );
+          for (const target of measured.targets) {
+            expect(target.label).toMatch(/^Details for /);
+            expect(target.width).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
+            expect(target.height).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
+            expect(target.left).toBeGreaterThanOrEqual(measured.row.left);
+            expect(target.right).toBeLessThanOrEqual(measured.row.right);
+            expect(target.top).toBeGreaterThanOrEqual(measured.row.top);
+            expect(target.bottom).toBeLessThanOrEqual(measured.row.bottom);
+            expect(
+              target.hits,
+              `${measured.key} Details target hit testing`,
+            ).toEqual([true, true, true, true, true]);
+            expect(
+              target.overlaps,
+              `${measured.key} Details target covers text`,
+            ).toEqual([]);
+          }
         }
       } finally {
         await pg.close();

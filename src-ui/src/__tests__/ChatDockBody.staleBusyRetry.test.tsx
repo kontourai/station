@@ -15,7 +15,13 @@
 
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const agentsMock = vi.hoisted(() => ({ current: [] as any[] }));
@@ -33,6 +39,7 @@ const queuedMessagesPropsMock = vi.hoisted(() => ({
 }));
 const realControlsMock = vi.hoisted(() => ({ enabled: false }));
 const steerOrchestrationTurnMock = vi.hoisted(() => vi.fn());
+const addEphemeralMessageMock = vi.hoisted(() => vi.fn());
 const cancelTurnMock = vi.hoisted(() => vi.fn());
 
 vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
@@ -80,7 +87,7 @@ vi.mock('../contexts/ActiveChatsContext', () => ({
   useActiveChatActions: () => ({
     updateChat: vi.fn(),
     clearEphemeralMessages: vi.fn(),
-    addEphemeralMessage: vi.fn(),
+    addEphemeralMessage: addEphemeralMessageMock,
   }),
 }));
 
@@ -161,6 +168,7 @@ vi.mock('../components/chat/QueuedMessages', async (importOriginal) => {
 });
 
 import { ChatDockBody } from '../components/chat-dock/ChatDockBody';
+import { activeChatsStore } from '../contexts/active-chats-store';
 import { PreviewProvider } from '../contexts/PreviewContext';
 import type { ChatSession } from '../types';
 
@@ -298,7 +306,44 @@ describe('ChatDockBody stale busy wait', () => {
     queuedMessagesPropsMock.current = null;
     realControlsMock.enabled = false;
     steerOrchestrationTurnMock.mockReset();
+    addEphemeralMessageMock.mockReset();
     cancelTurnMock.mockReset();
+  });
+
+  // A refused steer is a send that did not go: the short-dock composer line
+  // repeats it, so the notice carries sendFailure. (A steer whose delivery
+  // cannot be confirmed is held as unconfirmed since #3127, not a failure.)
+  test('a refused steer is a send-failure notice', async () => {
+    steerOrchestrationTurnMock.mockResolvedValueOnce({
+      outcome: 'no-active-turn',
+    });
+    // The steer path reads the held message from the store (#3127).
+    activeChatsStore.initChat('thread-busy');
+    activeChatsStore.updateChat('thread-busy', {
+      queuedMessages: ['steer me'],
+      queuedMessageMetadata: [{ id: 'steer-1', mode: 'steer' }],
+    });
+    renderDock({
+      session: buildSession({
+        queuedMessages: ['steer me'],
+        queuedMessageMetadata: [{ id: 'steer-1', mode: 'steer' }],
+        status: 'sending',
+        orchestrationProvider: 'claude',
+        orchestrationSessionStarted: true,
+        orchestrationTurnOpen: true,
+      } as Partial<ChatSession>),
+    });
+    await screen.findByTestId('queued-messages');
+    const onSteer = queuedMessagesPropsMock.current?.onSteer;
+    expect(onSteer).toBeTypeOf('function');
+    await act(async () => {
+      await onSteer('steer me', 'steer-1');
+    });
+    expect(steerOrchestrationTurnMock).toHaveBeenCalledTimes(1);
+    expect(addEphemeralMessageMock).toHaveBeenCalledWith(
+      'thread-busy',
+      expect.objectContaining({ role: 'system', sendFailure: true }),
+    );
   });
 
   test.each([false, true])(
