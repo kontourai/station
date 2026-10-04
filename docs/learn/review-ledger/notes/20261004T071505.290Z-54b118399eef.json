@@ -1,0 +1,7 @@
+{
+  "revision": "3badbed61353cad6ff411962569f03361e215104",
+
+  "notes": [
+    {"path":"docs/reference/config.md","note":"#3112: Send again now reads the failed turn from the rendered transcript rows instead of the stored message list at the same index. Re-checked the attachment retention claim: projected transcript file parts carry blobRef/url (conversationTranscriptParts.ts), so retryAttachmentsFromParts still yields reference attachments that resolveRetryAttachments fetches from GET /api/attachments/:ref and refuses on 404; 'the chat dock refuses to re-send that turn' stays accurate. No prose change.","inputs":["docs/reference/config.md","src-ui/src/components/chat-dock/ChatDockBody.tsx"]}
+  ]
+}
