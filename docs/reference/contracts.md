@@ -634,3 +634,21 @@ identity values or credentials. `UsageReceipt.accountKey` is an optional opaque
 engine/profile observation from the applied process environment. Its absence
 means account attribution is unknown; consumers must not infer the current
 active account. These fields are observations, never billing or routing authority.
+
+
+## Immutable Task output review
+
+`@kontourai/station-contracts/project-task-room` defines
+`ProjectTaskRoomOutputFeedback`: `kind: 'output-feedback'`, an exact
+`target: {outputId, digest, taskCreatedAt}`, `review` and nonempty `text`.
+The digest is `sha256:` plus 64 lowercase hexadecimal characters and the Task
+creation time is canonical ISO UTC. Review values are `comment`,
+`changes-requested` and `accepted`; all are human speech, never a Task status
+transition or workflow approval. The browser DTO retains this target and the
+attributed human actor in ordinary room history.
+
+Room records accept legacy `station.project-task-room/v2` and new
+`station.project-task-room/v3`; output feedback requires v3 and an operator
+principal. Existing records retain their exact bytes and integrity digests.
+See the [API review contract](api.md#review-an-immutable-task-output) for the
+per-room old-writer fence and permanent duplicate identity behavior.

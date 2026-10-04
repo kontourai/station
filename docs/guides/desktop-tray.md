@@ -8,7 +8,10 @@ then validates that runtime's exact `service/<instance-id>.json` manifest. It
 never guesses from `service/default.json`, filename order, or the shared global
 default, so selecting another channel or a remote Station cannot retarget tray
 service actions. For a Desktop-owned sidecar, it reports the built-in backend
-but does not offer service controls. Startup
+but does not offer service controls. Desktop sidecars and installed services
+claim the home through the same registry protocol, so a service
+that starts while this app's sidecar holds the home refuses with a remedy,
+and quitting never signals a service-owned backend. Startup
 recovery and its evidence boundary live in [Recover a desktop
 start](../user/native-recovery.md) and [Native shell
 verification](native-shell-verification.md).
@@ -238,3 +241,23 @@ For a hidden-window timeout, a sidecar failure, or a distinction between this
 shell log and service/server logs, use [Recover a desktop
 start](../user/native-recovery.md). Logs are diagnostic evidence, not proof
 that native chrome was displayed or that a renderer recovered.
+
+Service install reserves the home and writes policy before starting its OS
+backend. A bare `station service run` takes the same atomic claim itself,
+recording a service owner with its PID and birth on a fresh home; installed
+policy is preserved when present. If Desktop or another live owner holds the
+home, the supervisor stays alive without running Station, polling with backoff
+capped at 30 seconds and logging reason changes. Once the owner is gone it
+claims and starts. Lost ownership at readiness or on an existing five-second
+health tick stops and reaps Station before the same wait. Recovery waits for a
+live replacement at the same service id, and retraction checks PID and birth.
+An unreadable tick read keeps Station running until the next tick; a
+successful read showing a missing or different owner triggers recovery.
+An unreadable startup claim still fails closed.
+
+Desktop publishes the child PID/birth immediately after spawn, before Listening,
+retaining the fence while an orphan is shutting down. This does not make spawn
+and publication one atomic OS operation. The Dockerfile's existing supervisor
+command needs no policy registration. Direct `command-station.js` launches
+remain unfenced, including containers invoking that entry point; a `0.0.0.0`
+listener is reachable through their exposed/published ports.

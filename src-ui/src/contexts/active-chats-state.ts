@@ -195,6 +195,12 @@ export type EphemeralMessage = ChatMessage & {
   terminalSession?: boolean;
   /** #1796: rendered by `FullAccessRefusalCard`, never as Markdown. */
   fullAccessRefusal?: FullAccessRefusalNotice;
+  /**
+   * This notice says why a SEND did not go (a refused or failed send, a queued
+   * message dropped), as opposed to slash-command output or a status line. The
+   * composer repeats only these, and only until a later send is accepted.
+   */
+  sendFailure?: boolean;
   id?: string;
   timestamp?: number;
   /** archive#1292: the one flag every ephemeral-notice reader checks. Always
@@ -1602,6 +1608,7 @@ export function createEphemeralMessageState(
     content: string;
     attachments?: any[];
     action?: { label: string; handler: () => void };
+    sendFailure?: boolean;
   },
   now: () => number,
   randomId: () => string,

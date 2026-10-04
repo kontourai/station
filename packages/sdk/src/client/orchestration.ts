@@ -44,7 +44,7 @@ import type {
 } from '@kontourai/station-contracts/orchestration';
 import type { SkillExperienceIdentityV1 } from '@kontourai/station-contracts/skill-experience';
 import { envelopeError } from './api-error-message';
-import { ChatHttpError, isStationEnvelope } from './chatHttpError';
+import { ChatHttpError } from './chatHttpError';
 import {
   authenticatedFetch,
   type ClientRequestOptions,
@@ -53,6 +53,7 @@ import {
   type StationHttpError,
 } from './http';
 import { rethrowDeadline } from './request-deadline';
+import { isStationAnswer } from './station-envelope';
 
 interface OrchestrationEnvelope<T> {
   success: boolean;
@@ -487,7 +488,7 @@ async function dispatchSteerCommand<T>(
   };
   if (!response.ok || !result.success) {
     const failure = envelopeError(response, result, `HTTP ${response.status}`);
-    throw new ChatHttpError(failure, isStationEnvelope(result));
+    throw new ChatHttpError(failure, isStationAnswer(response, result));
   }
   return result.data as T;
 }

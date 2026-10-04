@@ -57,6 +57,7 @@ import type {
   EngineId,
   ProviderSendTurnInput,
   ProviderSession,
+  StationConfinement,
 } from '@kontourai/station-contracts/provider';
 import {
   FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
@@ -1731,6 +1732,17 @@ export class OrchestrationService {
    * in flight for this thread, at all.
    */
   private readonly inFlightSteers = new Set<string>();
+  /**
+   * #2898: the confinement of the last turn each live engine accepted, and
+   * that turn's id. A revocation compares it with the confinement that holds
+   * now: an engine whose last turn ran under a confinement that no longer
+   * holds is still unconfined (listed, and its running turn cannot be
+   * steered). Cleared with the engine, like `ApprovalPosture.forgetThread`.
+   */
+  private readonly acceptedTurnConfinement = new Map<
+    string,
+    { turnId: string; confinement: StationConfinement }
+  >();
   private readonly sessionReadModel = new Map<string, ProviderSession>();
   /**
    * #484 phase A follow-up: per-thread verdict cache for the central
@@ -7080,6 +7092,10 @@ export class OrchestrationService {
               throw error;
             }
             obtainedResult = result;
+            this.acceptedTurnConfinement.set(turnInput.threadId, {
+              turnId: result.turnId,
+              confinement: turnInput.confinement ?? 'workspace',
+            });
             // Durable provider acceptance is the authoritative no-replay
             // boundary. Everything below is projection/observation and may
             // fail without making this client turn executable again.
@@ -7385,6 +7401,23 @@ export class OrchestrationService {
           ) {
             const result: SteerTurnResult = {
               outcome: 'no-active-turn',
+              threadId: command.threadId,
+            };
+            orchestrationSteerDispatches.add(1, {
+              outcome: result.outcome,
+              engine: engineId,
+            });
+            steerMetricRecorded = true;
+            this.persistReceipt(receipt);
+            return { receipt, result };
+          }
+          // #2898: a turn that started unconfined, where `workspace` applies
+          // now (its device grantor lost full access), finishes as it is, but
+          // is not given new instructions: those go in a new turn, which runs
+          // confined. A widening (a recorded `never`) never refuses a steer.
+          if (this.ranUnconfinedNowConfined(command.threadId, activeTurnId)) {
+            const result: SteerTurnResult = {
+              outcome: 'confinement-changed',
               threadId: command.threadId,
             };
             orchestrationSteerDispatches.add(1, {
@@ -9234,10 +9267,13 @@ export class OrchestrationService {
    * of the revoking request) carrying `revocation`; history is never
    * deleted. Recording a decision does not touch a running turn: the next
    * turn start or respawn applies it (`ApprovalPosture.resolve`, where a
-   * decision wins over a start's carried mode). A `host` start stamp stays,
-   * so the next turn runs unconfined but at Ask: the engine asks before
-   * acting. `never` decisions from before decisions carried an actor are
-   * listed as unattributed, never reset.
+   * decision wins over a start's carried mode). A `host` start stamp stays as
+   * written. One this device granted applies as `workspace` from then on
+   * (`readStartConfinementStamp`), so that session's next turn runs
+   * confined; one someone else granted still runs unconfined, at Ask where
+   * an Ask was recorded: the engine asks before acting. `never` decisions
+   * from before decisions carried an actor are listed as unattributed, never
+   * reset.
    */
   async resetFullAccessGrantedBy(input: {
     deviceId: string;
@@ -9421,24 +9457,35 @@ export class OrchestrationService {
       }
     }
     // Sessions this device's grant unconfined. The applied stamp reads the
-    // grant live, so each is confined from the next time Station hands its
-    // engine a posture: every turn while a decision stands (the decision's
-    // mode is re-applied under `workspace`), or its next start or respawn.
-    // A live engine with no decision standing is sent no posture on a turn
-    // (#2144 slice 6), so it keeps what it started with until it restarts:
-    // listed as still unconfined. So is everything when this Station cannot
-    // check the grant. A standing `never` from someone else keeps the
-    // conversation unconfined anyway and is listed as still at full access.
+    // grant live, so each is confined from its next turn: a standing
+    // decision's mode is re-applied under `workspace`, and with no decision
+    // the turn re-applies the mode its engine runs (#2898, the confinement
+    // change exception to #2144 slice 6); or from its next start or respawn.
+    // A running engine whose last turn ran under the confinement that no
+    // longer holds is listed as still unconfined until that next turn, one
+    // entry per running session, so the operator can stop it at once. A
+    // conversation with none such (no engine running, or one already
+    // re-confined by a turn) is listed as re-confined. Everything is
+    // listed as still unconfined when this Station cannot check the grant.
+    // A standing `never` from someone else keeps the conversation unconfined
+    // anyway and is listed as still at full access.
     for (const [conversationId, seed, granted] of grantedConversations) {
       const standing = this.approvalPosture.decision(seed);
       if (standing?.approvalMode === 'never') continue;
+      const running = [...new Set(granted)].filter(
+        (threadId) =>
+          this.sessionAdapters.has(threadId) &&
+          this.ranUnconfinedNowConfined(threadId),
+      );
       if (!this.options.isFullAccessGrantorCurrent)
         stillUnconfined.push({ conversationId, until: 'grant-not-checked' });
-      else if (
-        !standing &&
-        granted.some((threadId) => this.sessionAdapters.has(threadId))
-      )
-        stillUnconfined.push({ conversationId, until: 'engine-restart' });
+      else if (running.length > 0)
+        for (const sessionId of running)
+          stillUnconfined.push({
+            conversationId,
+            sessionId,
+            until: 'next-turn',
+          });
       else reconfined.push({ conversationId });
     }
     // Live `host` sessions started before the grantor was recorded: listed,
@@ -9490,7 +9537,12 @@ export class OrchestrationService {
         entry.conversationId,
         ...threadsOf(entry.conversationId, seed),
       ]);
-      return { ...entry, sessionId: seed, ...(title ? { title } : {}) };
+      // An entry that names its session (a running one) keeps it.
+      return {
+        sessionId: seed,
+        ...entry,
+        ...(title ? { title } : {}),
+      };
     };
     return {
       cause: input.cause,
@@ -9516,6 +9568,33 @@ export class OrchestrationService {
         threadId,
         this.readStartConfinementStamp(threadId),
       ) === 'host'
+    );
+  }
+
+  /**
+   * #2898: whether `threadId`'s engine last ran a turn unconfined (`host`)
+   * while `workspace` applies now: a NARROWING, such as a host stamp whose
+   * device grantor lost `approval:full-access`. The turn's confinement is
+   * that of the engine's last accepted turn (when `turnId` is given, only if
+   * it is that turn), else the one the engine started under. A widening (a
+   * recorded `never`, a grant given back) is not stale: the turn ran
+   * stricter than what applies now.
+   */
+  private ranUnconfinedNowConfined(threadId: string, turnId?: string): boolean {
+    const accepted = this.acceptedTurnConfinement.get(threadId);
+    const ran =
+      accepted && (turnId === undefined || accepted.turnId === turnId)
+        ? accepted.confinement
+        : this.approvalPosture.standingConfinement(
+            threadId,
+            this.readStartConfinementStampAsWritten(threadId),
+          );
+    return (
+      ran === 'host' &&
+      this.approvalPosture.standingConfinement(
+        threadId,
+        this.readStartConfinementStamp(threadId),
+      ) === 'workspace'
     );
   }
 
@@ -9999,6 +10078,7 @@ export class OrchestrationService {
       // #2409: a respawned engine starts at whatever its start resolves, so
       // nothing Station set on the exited one is still in effect.
       this.approvalPosture.forgetThread(event.threadId);
+      this.acceptedTurnConfinement.delete(event.threadId);
     }
     if (
       event.method === 'turn.completed' ||
@@ -10306,6 +10386,7 @@ export class OrchestrationService {
         // starts at whatever its own start resolves.
         this.clientOriginTurns.clearThread(threadId);
         this.approvalPosture.forgetThread(threadId);
+        this.acceptedTurnConfinement.delete(threadId);
         this.options.logger.debug('Parked idle session engine', { threadId });
         return true;
       },

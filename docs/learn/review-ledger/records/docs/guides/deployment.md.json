@@ -88,7 +88,13 @@
 
     "src-server/services/ssh/device-pairing-service.ts",
 
-    "src-server/services/ssh/environment-security-service.ts"
+    "src-server/services/ssh/environment-security-service.ts",
+
+    "packages/cli/src/commands/service-liveness.ts",
+
+    "packages/cli/src/commands/service-run.ts",
+
+    "scripts/__tests__/service-container-command.test.ts"
   ],
 
   "checks": [

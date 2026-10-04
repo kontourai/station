@@ -6,6 +6,19 @@ a completed cloud-move workflow. The shared cloud preview supports the
 `gcp-compute` profile; automatic GCP template generation and setup transfer
 remain unavailable. See [cloud move](../../docs/design/cloud-move.md).
 
+`station service run` claims the home atomically before starting Station, even
+on a fresh home without `service install`. It records the supervisor's PID and
+birth fingerprint as a service owner. If Desktop or another live service holds
+the home, the supervisor stays alive without starting Station and polls with
+backoff capped at 30 seconds; it starts after the owner is gone. Lost ownership
+at readiness stops Station before returning to that wait. Existing Dockerfile
+and Compose commands need no policy-registration step.
+
+Direct `command-station.js` launches remain unfenced and can serve the same
+writable home as a registry claimant. When bound to `0.0.0.0`, they are reachable
+through container networking and any published or proxied ports. The recipes
+and historical qualifications below are not current image or cloud proof.
+
 ## Prerequisites and budget
 
 Use a dedicated project in your organization, linked to your billing account.

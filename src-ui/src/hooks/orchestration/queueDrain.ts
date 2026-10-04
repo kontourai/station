@@ -391,6 +391,7 @@ export function drainQueuedMessageOnTurnCompleted(
     if (blocked) {
       activeChatsStore.addEphemeralMessage(threadId, {
         role: 'system',
+        sendFailure: true,
         content: blocked,
       });
       return;
@@ -762,6 +763,7 @@ export function drainQueuedMessageOnTurnCompleted(
         // id/timestamp, same as every other failure-path notice.
         activeChatsStore.addEphemeralMessage(threadId, {
           role: 'system',
+          sendFailure: true,
           // The dropped text is echoed into the notice because it survives
           // nowhere else on the drop path (bubble rolled back, queue entry
           // removed) — the user must be able to copy it back out. The requeue

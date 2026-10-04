@@ -15,7 +15,7 @@ import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useInfiniteQuery, useMutation, useQuery } from '@tanstack/react-query';
 import { apiErrorMessage } from '../api-core';
 import { StationHttpError } from '../client/api-error-message';
-import { ChatHttpError, isStationEnvelope } from '../client/chatHttpError';
+import { ChatHttpError } from '../client/chatHttpError';
 import {
   type DelegatedTaskHandle,
   type DelegatedTaskInterruptResult,
@@ -51,6 +51,7 @@ import {
   steerTurn as steerTurnClient,
 } from '../client/orchestration';
 import { StationRequestTimeoutError } from '../client/request-deadline';
+import { isStationAnswer } from '../client/station-envelope';
 import {
   type MutationOptions,
   type QueryConfig,
@@ -592,7 +593,7 @@ export async function dispatchOrchestrationCommand<T = unknown>(
             code: result.code,
             details: result.details ?? undefined,
           }),
-          isStationEnvelope(result),
+          isStationAnswer(response, result),
         )
       : new Error(message);
   }
