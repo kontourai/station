@@ -47,7 +47,11 @@ The [lineage owner](../../../src-server/services/orchestration/conversation-sess
 records that relationship. Reserving a child does not prove its engine started.
 A model change on a Session that never ran a turn stops that predecessor's engine
 once the successor has started. The stop runs detached, so it neither delays
-nor fails the send, and a Session with turns is never stopped this way.
+nor fails the send. It is decided again when it runs, under the Session's
+lifecycle lock: a Session with turn facts, a dispatched or active turn, or that
+is again the conversation's current Session is not stopped, so a turn accepted
+first wins. A send that has resolved the predecessor but not yet dispatched is
+not visible to that check.
 
 Keep the records distinct: a Task records durable work; a command receipt records
 acceptance and its durability; a provider boundary records possible execution;
