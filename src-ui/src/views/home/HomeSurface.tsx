@@ -24,7 +24,7 @@ export interface HomeSurfaceProps {
 
 const ACTIVITY_HEADING_ID = 'home-activity-heading';
 /** The recent-work section's id: the skip target (U2). */
-export const RECENT_WORK_SECTION_ID = 'home-recent-work';
+const RECENT_WORK_SECTION_ID = 'home-recent-work';
 
 /**
  * The one Home (archive#3122's experiment, concluded).

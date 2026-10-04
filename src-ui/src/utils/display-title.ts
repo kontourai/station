@@ -7,7 +7,7 @@
  */
 const AMBIENT_PREAMBLE = /^\s*\[Timezone:\s*[^\]]*\]\s*/i;
 
-export const DISPLAY_TITLE_MAX_LENGTH = 100;
+const DISPLAY_TITLE_MAX_LENGTH = 100;
 
 export function displayTitleFromPrompt(prompt: string): string {
   return prompt
