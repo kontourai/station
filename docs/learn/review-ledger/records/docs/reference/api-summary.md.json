@@ -16,7 +16,7 @@
 
     {"path":"scripts/generate-openapi.ts","digest":"c42ee96928d177a114cd9c545afeb179673f99d96b8a380ac93ec0a3b137dc82","revision":"eec64aa6defda8dd84ffebbe430eea95b35aea3f"},
 
-    {"path":"src-server/openapi/spec.ts","digest":"5762b9679616cfbb1a326f8d465d43138d1ff0ec4b9f9019b0786a543addb20d","revision":"eec64aa6defda8dd84ffebbe430eea95b35aea3f"}
+    {"path":"src-server/openapi/spec.ts","digest":"460ef919bf27b1c27f6eea15395455a48c3ab31cb0a01a9e32aa54bbda8c80bb","revision":"c2b1caf535d375c5195cc8b8a66c9dc6ce83205d"}
   ],
 
   "checks": [
