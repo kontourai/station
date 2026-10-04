@@ -25,10 +25,16 @@ this binding before an enabled endpoint alone can establish metric collection:
 
 The [Profile page](../../src-ui/src/pages/ProfilePage.tsx) puts the current
 identity next to usage on the connected Station. These are different scopes:
-the identity does not make the retained lifetime summary a personal total.
+the identity does not make the Station-wide retained-source summary a personal total.
 Lifetime counts combine saved messages with completed external-engine turns.
-Daily graphs and period statistics cover file-memory messages on UTC dates;
-external-engine sessions contribute lifetime totals but no daily distribution.
+Daily and model breakdowns include retained file-memory messages and external-engine
+observations. UTC days describe when the source records were recorded, not exact
+consumption dates. Completed external-engine turns contribute activity on their
+recorded UTC day. Missing or invalid dates, missing models and unknown principal or
+provider attribution remain in `unallocated`. Saved messages have no authenticated
+principal writer and remain principal-unallocated even if arbitrary metadata names
+a principal. Current app or Agent configuration
+never fills historical gaps.
 The hero graph shows the last 14 UTC days rather than the last 14 populated rows.
 
 [UsageAggregator](../../src-server/analytics/usage-aggregator.ts) rebuilds the
@@ -40,24 +46,51 @@ forces the existing rescan. Clearing the aggregate is not a history deletion;
 retained transcripts and receipts rebuild it, so the profile does not offer a
 permanent-reset action.
 
-Lifetime summaries preserve historical high-water counters and attribute an
-engine session's model totals to its latest model. They are not a billing
-statement or an exact split of mixed-model sessions. The receipt rollup below
-keeps provider-reported cost, estimates, currencies, pricing snapshots, and
-missing-source coverage separate. Use those receipts for bounded provider/model
-comparisons. Unsupported or unreported figures remain unknown.
+The current summary is rebuilt from retained records. Corrected or deleted facts
+can decrease its counters and remove obsolete date, model and Agent buckets. Any
+saved summary from before this projection is preserved separately as
+`legacySummary` with `evidence: "unverified"`; it contributes nothing to current
+figures. Retention therefore limits current coverage.
 
-Station milestones use this retained summary, not a person's sent-message
-count. A cost milestone does not unlock from unreported engine or saved-assistant
-cost, skipped message records, a failed engine read, or retained measurements
-that the latest scan could not remeasure. Incremental message writes and usage
-enrichment invalidate cost coverage until the next rebuild. Its
+The shared usage fold applies each provider's token and cost scopes once while
+producing record allocations. Per-call measurements use their recorded model.
+Initial cumulative thread/process baselines and intervals crossing model changes
+remain unallocated by model and principal. A downward cumulative correction cannot
+identify the earlier buckets to subtract from, so that field's corrected total is
+unallocated by date, model and principal. Thread-cumulative Codex tokens survive
+process restarts; Claude cost begins a separate process epoch. These distributions
+are recorded observations, not an exact consumption split or a billing statement.
+
+`tokenReports` counts retained measurement contributions, including explicit zero.
+A numeric compatibility sum without a corresponding report remains unmeasured.
+Optional `reportedCostUsd` and `estimatedCostUsd` keep provider-reported amounts
+and saved estimates distinct. No rescan reprices historical records. The receipt
+rollup below separately carries currencies, pricing snapshots and missing-source
+coverage for bounded comparisons.
+
+A Station-agent relay identifies its saved transcript only through canonical
+relay provider, one consistent recorded `agentId`, and the exact thread ID used
+by its `/chat` request. Saved messages remain the primary ledger for that join;
+`mirroredEngineActivity` separately discloses relay sessions and completed turns
+with partial coverage because exact per-turn overlap is unavailable. A matching
+conversation ID alone never excludes an unrelated external engine. Ambiguous
+Station-agent overlap is held outside current totals as `ambiguousRelayActivity`,
+with its activity count and any measured evidence preserved separately.
+
+Station milestones use this current retained-source summary, not a person's
+sent-message count. A cost milestone does not unlock from unreported engine or saved-assistant
+cost, completed engine turns without cost, unknown exact relay overlap, skipped
+message records, or a failed engine read. Message-write and enrichment notifications invalidate the projection; the next
+active reader rebuilds it rather than adding replacement usage again. Its
 API result supplies `measurementUnavailableReason` and omits numeric progress;
 the UI shows that gap instead of a budget amount or progress bar. A reported
-zero cost remains a real measurement. `snapshot.retainedUsage` compares retained
-message, token and cost totals with the current scan; it is not a claim of
-complete historical coverage. The cost comparison tolerates floating-point
-rounding differences.
+zero cost remains a real measurement. `snapshot.projection` identifies
+`retained-source-v1`; `snapshot.dayScope` identifies
+`recorded-observations-utc`. These markers do not establish complete historical
+coverage. The [public stats DTO](../../packages/contracts/src/usage-stats.ts)
+exposes recorded-principal and recorded-provider buckets for authorized consumers.
+Recorded-person breakdowns require the bound local operator boundary; a principal
+is attribution, never a grant or a claim of personal lifetime totals.
 
 | Ingress | Usage the current implementation can observe | Limits |
 | --- | --- | --- |
@@ -68,7 +101,7 @@ rounding differences.
 | Muse serve | Model-call input/output/cache figures, emitted as per-turn usage | Uses the wire `usage` object rather than `cumulative`; child-work usage stays a separate projection |
 | Muse stdio | Completed work and other reported lifecycle facts | Its envelope supplies no token-usage event |
 | ACP, including ACP-backed engines | Reported context occupancy/window | Occupancy is not consumed tokens; arbitrary-currency ACP costs are not projected |
-| Station agent / direct model-provider chat | Saved messages and their recorded usage/estimates | The orchestration scan excludes conversations already counted in file memory |
+| Station agent / direct model-provider chat | Saved messages and their recorded usage/estimates | Canonical relay joins use saved messages as primary; overlapping engine activity is separately disclosed |
 
 Attached Claude transcripts retain a bounded record-to-turn ancestry map in the
 persisted cursor. Older aggregation cursors recover identities from a bounded
