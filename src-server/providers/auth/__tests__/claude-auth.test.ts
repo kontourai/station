@@ -1,8 +1,10 @@
-import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { detectClaudeAuthState } from '../claude-auth.js';
+
+const makeTempDir = trackTempDirs();
 
 const secure = vi.hoisted(() => ({
   platform: 'darwin',
@@ -102,7 +104,7 @@ describe('detectClaudeAuthState', () => {
   );
 
   test('does not borrow a file credential after malformed secure state', async () => {
-    const home = await mkdtemp(join(tmpdir(), 'station-claude-auth-'));
+    const home = makeTempDir('station-claude-auth-');
     await mkdir(join(home, '.claude'));
     await writeFile(
       join(home, '.claude', '.credentials.json'),
@@ -113,7 +115,7 @@ describe('detectClaudeAuthState', () => {
   });
 
   test('recognizes a user-owned OAuth credential without exposing it', async () => {
-    const home = await mkdtemp(join(tmpdir(), 'station-claude-auth-'));
+    const home = makeTempDir('station-claude-auth-');
     await mkdir(join(home, '.claude'));
     await writeFile(
       join(home, '.claude', '.credentials.json'),
@@ -127,14 +129,14 @@ describe('detectClaudeAuthState', () => {
   });
 
   test('reports absent credentials as unauthenticated', async () => {
-    const home = await mkdtemp(join(tmpdir(), 'station-claude-auth-'));
+    const home = makeTempDir('station-claude-auth-');
     await expect(detectClaudeAuthState({}, home)).resolves.toBe(
       'unauthenticated',
     );
   });
 
   test('fails closed on malformed credential state', async () => {
-    const home = await mkdtemp(join(tmpdir(), 'station-claude-auth-'));
+    const home = makeTempDir('station-claude-auth-');
     await mkdir(join(home, '.claude'));
     await writeFile(join(home, '.claude', '.credentials.json'), '{');
     await expect(detectClaudeAuthState({}, home)).resolves.toBe('unknown');
