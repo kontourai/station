@@ -523,7 +523,8 @@ function PeerHostedAction({
       >
         {peerAttentionElsewhereText(item.environmentName)}
       </div>
-      <OpenSessionLink href={item.openHref} />
+      {/* The projection links a peer item to the Activity detail. */}
+      <OpenSessionLink href={item.openHref} label="Open in Activity" />
     </>
   );
 }
@@ -881,9 +882,11 @@ function invalidateGateQueries(
 function OpenSessionLink({
   href,
   onOpen,
+  label = 'Open session',
 }: {
   href: string;
   onOpen?: () => Promise<unknown>;
+  label?: string;
 }) {
   return (
     <a
@@ -898,7 +901,7 @@ function OpenSessionLink({
         });
       }}
     >
-      Open session
+      {label}
     </a>
   );
 }

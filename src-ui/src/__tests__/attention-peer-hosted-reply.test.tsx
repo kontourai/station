@@ -5,6 +5,7 @@
 import type {
   AttentionProjection,
   NeedsInputAttentionItem,
+  ReviewPendingAttentionItem,
 } from '@kontourai/station-contracts/attention';
 import { activityDeepLink } from '@kontourai/station-contracts/surface-deep-link';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -104,6 +105,39 @@ function peerItem(): NeedsInputAttentionItem {
   };
 }
 
+/**
+ * A peer `review_pending` carrying a `requestReference`. The projection never
+ * builds one (the peer's request events never reach this Station), but if a
+ * reference ever rides along, inspecting it here would still address the
+ * local record, so the card must not offer it.
+ */
+function reviewItem(
+  title: string,
+  threadId: string,
+  peer: boolean,
+): ReviewPendingAttentionItem {
+  return {
+    id: `review_pending:${threadId}`,
+    kind: 'review_pending',
+    title,
+    createdAt: now,
+    updatedAt: now,
+    sessionId: threadId,
+    openHref: peer
+      ? activityDeepLink({ sessionId: threadId })
+      : `/projects/campfit?chat=${threadId}&dock=open`,
+    source: { threadId },
+    requestType: 'approval',
+    requestReference: {
+      threadId,
+      requestId: 'req-1',
+      requestEventId: 'evt-1',
+    },
+    // No `environmentName`: the record did not carry one.
+    ...(peer ? { environmentKind: 'peer' as const } : {}),
+  };
+}
+
 function row(testId: string, title: string): HTMLElement {
   const match = screen
     .getAllByTestId(testId)
@@ -149,10 +183,54 @@ describe('Notifications inbox: a paired-Station item offers no local reply', () 
     ).toBe('Answer this on Station B, the paired Station that runs the task.');
     expect(
       within(peer)
-        .getByRole('link', { name: 'Open session' })
+        .getByRole('link', { name: 'Open in Activity' })
         .getAttribute('href'),
     ).toBe(PEER_HREF);
     expect(sendTurn).not.toHaveBeenCalled();
+  });
+});
+
+describe('Notifications inbox: a paired-Station review offers no request inspection', () => {
+  beforeEach(() => {
+    attention = {
+      items: [
+        reviewItem('Local review', 'thread-local-review', false),
+        reviewItem('Peer review', 'peer-delegation-review', true),
+      ],
+      pendingCount: 2,
+    };
+  });
+
+  function renderPage() {
+    return render(
+      <QueryClientProvider client={new QueryClient()}>
+        <NotificationsPage />
+      </QueryClientProvider>,
+    );
+  }
+
+  test('the local review keeps Inspect request (control)', () => {
+    renderPage();
+    const local = row('attention-item', 'Local review');
+    expect(
+      within(local).getByRole('button', { name: 'Inspect request' }),
+    ).toBeTruthy();
+  });
+
+  test('the peer review has no Inspect request and uses the generic sentence without a name', () => {
+    renderPage();
+    const peer = row('attention-item', 'Peer review');
+    expect(
+      within(peer).queryByRole('button', { name: 'Inspect request' }),
+    ).toBeNull();
+    expect(
+      within(peer).getByTestId('attention-peer-elsewhere').textContent,
+    ).toBe('Answer this on the paired Station that runs the task.');
+    expect(
+      within(peer)
+        .getByRole('link', { name: 'Open in Activity' })
+        .getAttribute('href'),
+    ).toBe(activityDeepLink({ sessionId: 'peer-delegation-review' }));
   });
 });
 
@@ -181,7 +259,7 @@ describe('Bell popover: a paired-Station item says where it is answered', () => 
     expect(peerRow?.textContent).toContain('Peer task needs input');
     expect(
       within(peerRow as HTMLElement)
-        .getByRole('link', { name: 'Open session' })
+        .getByRole('link', { name: 'Open in Activity' })
         .getAttribute('href'),
     ).toBe(PEER_HREF);
   });

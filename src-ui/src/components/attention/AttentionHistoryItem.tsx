@@ -92,7 +92,9 @@ export function AttentionHistoryItem({
                 href={item.openHref}
                 onClick={onClose}
               >
-                {openLinkLabel(item.kind)}
+                {isPeerHostedAttentionItem(item)
+                  ? 'Open in Activity'
+                  : openLinkLabel(item.kind)}
               </a>
             )
           )}

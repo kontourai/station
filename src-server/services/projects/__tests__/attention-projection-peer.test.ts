@@ -1,7 +1,10 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { NeedsInputAttentionItem } from '@kontourai/station-contracts/attention';
+import type {
+  NeedsInputAttentionItem,
+  ReviewPendingAttentionItem,
+} from '@kontourai/station-contracts/attention';
 import { activityDeepLink } from '@kontourai/station-contracts/surface-deep-link';
 import { afterEach, expect, test } from 'vitest';
 import { EventBus } from '../../orchestration/event-bus.js';
@@ -96,6 +99,39 @@ test('a peer-hosted needs_input item names its paired Station and links to Activ
   // The peer's request events never reach this Station: nothing here may
   // claim an exact local input request to answer.
   expect(item).not.toHaveProperty('inputReference');
+});
+
+test('a peer-hosted review_pending item is marked the same way and claims no request', async () => {
+  const { service, projection } = fixture();
+  const threadId = service.recordPeerDelegationActivityDispatch({
+    taskId: 'task:peer-review',
+    conversationId: 'task:peer-review',
+    prompt: 'Review on the peer',
+    userId: 'default',
+    // No project: the Activity link must not depend on one.
+    environment: { id: 'environment-peer', name: 'Station B', kind: 'peer' },
+    target: { kind: 'agent', id: 'codex' },
+  });
+  expect(
+    service.recordPeerDelegationActivityOutcome({
+      taskId: 'task:peer-review',
+      environmentId: 'environment-peer',
+      status: 'review_pending',
+    }),
+  ).toBe(true);
+
+  const { items } = await projection.list();
+  const item = items.find(
+    (candidate): candidate is ReviewPendingAttentionItem =>
+      candidate.kind === 'review_pending' &&
+      candidate.source.threadId === threadId,
+  );
+  expect(item).toMatchObject({
+    environmentKind: 'peer',
+    environmentName: 'Station B',
+    openHref: activityDeepLink({ sessionId: threadId }),
+  });
+  expect(item).not.toHaveProperty('requestReference');
 });
 
 test('a local needs_input item carries no environment and keeps its chat link (control)', async () => {
