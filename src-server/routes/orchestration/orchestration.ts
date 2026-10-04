@@ -58,6 +58,7 @@ import {
   STATION_SESSION_INVENTORY_MCP_V2_VERSION,
 } from '@kontourai/station-contracts/session-inventory-mcp';
 import { SESSION_LIFECYCLE_STATES } from '@kontourai/station-contracts/session-lifecycle';
+import type { SkillExperienceStartInputV1 } from '@kontourai/station-contracts/skill-experience';
 import {
   TASK_ROOM_CONTEXT_VERSION,
   type TaskRoomContextSnapshot,
@@ -128,6 +129,7 @@ import {
   type StartOwnerAttribution,
   UNATTRIBUTED_AGENT_OWNER_ATTRIBUTION,
 } from '../../services/orchestration/session-owner-attribution.js';
+import { parseExperienceIdentity } from '../../services/orchestration/skill-experience-model.js';
 import { MAX_TOOL_RESULT_DESCRIPTOR_ID_BYTES } from '../../services/orchestration/thread-tool-result-adapter.js';
 import type { ReceiverExecutionAdmission } from '../../services/projects/project-contribution-service.js';
 import {
@@ -402,8 +404,38 @@ const steerTurnOnceCommandSchema = steerTurnCommandSchema.extend({
   clientInputId: z.string().min(1).max(128),
 });
 
+const experienceIdentitySchema = z
+  .object({
+    pluginId: z.string().min(1).max(128),
+    pluginVersion: z.string().min(1).max(128),
+    experienceId: z.string().min(1).max(128),
+    incarnation: z.string().min(1).max(128),
+    materialization: z.string().min(1).max(128),
+    contentDigest: z
+      .string()
+      .max(71)
+      .regex(/^sha256:[a-f0-9]{64}$/),
+    definitionDigest: z
+      .string()
+      .max(64)
+      .regex(/^[a-f0-9]{64}$/),
+  })
+  .strict()
+  .refine(
+    (value) => Boolean(parseExperienceIdentity(value)),
+    'Invalid installed experience identity',
+  );
+
+const experienceFrameReferenceSchema = z
+  .object({
+    identity: experienceIdentitySchema,
+    eventId: z.string().min(1).max(512),
+  })
+  .strict();
+
 const respondToRequestCommandSchema = z.object({
   type: z.literal('respondToRequest'),
+  expectedSkillExperience: experienceFrameReferenceSchema.optional(),
   threadId: z.string().min(1),
   requestId: z.string().min(1),
   expectedRequestEventId: z
@@ -614,7 +646,31 @@ const inputRequestReferenceSchema = z.object({
   requestId: z.string().min(1).max(ATTENTION_REQUEST_ID_MAX_CHARS),
   requestEventId: z.string().min(1).max(ATTENTION_REQUEST_ID_MAX_CHARS),
 });
+const skillExperienceSelectionSchema = z
+  .object({
+    identity: experienceIdentitySchema,
+    inputs: z
+      .record(z.string().max(128), z.string().max(CHAT_INPUT_MAX_CHARS))
+      .refine(
+        (value) => Object.keys(value).length <= 32,
+        'Too many experience inputs',
+      ),
+    expectedPreviousInvocationEventId: z.string().min(1).max(512).optional(),
+    attachmentInputs: z
+      .record(
+        z.string().max(128),
+        z.array(z.number().int().min(0).max(4)).max(5),
+      )
+      .refine(
+        (value) => Object.keys(value).length <= 32,
+        'Too many attachment inputs',
+      )
+      .optional(),
+  })
+  .strict();
+
 export const foregroundMessageObjectSchema = z.object({
+  skillExperience: skillExperienceSelectionSchema.optional(),
   expectedInputRequest: inputRequestReferenceSchema.optional(),
   target: executionTargetSchema,
   // An image-only turn is meaningful: the attachment is the prompt. Keep the
@@ -896,6 +952,7 @@ interface DelegateTaskRequest {
 }
 
 interface ForegroundMessageRequest {
+  skillExperience?: SkillExperienceStartInputV1;
   expectedInputRequest?: AttentionRequestReference;
   target: ExecutionTarget;
   message: string;
@@ -1788,6 +1845,39 @@ export function createOrchestrationRoutes(
     return c.json({ success: true, data });
   });
 
+  app.get('/sessions/:threadId/skill-experience', async (c) => {
+    try {
+      if (deps.isRequestPrincipalCurrent?.(c.req.raw) === false)
+        return c.json({ success: false, error: 'Session not found' }, 404);
+      const query = z
+        .object({
+          expectedSkillExperience: z.string().max(2048).optional(),
+          cursor: z.string().min(1).max(512).optional(),
+          limit: z.coerce.number().int().min(1).max(100).default(20),
+        })
+        .parse(c.req.query());
+      const expected = query.expectedSkillExperience
+        ? experienceFrameReferenceSchema.parse(
+            JSON.parse(query.expectedSkillExperience),
+          )
+        : undefined;
+      const data = await orchestrationService.readSkillExperience(
+        param(c, 'threadId'),
+        readAuthorityFor(c),
+        query.cursor,
+        query.limit,
+        expected,
+      );
+      if (deps.isRequestPrincipalCurrent?.(c.req.raw) === false)
+        return c.json({ success: false, error: 'Session not found' }, 404);
+      return data
+        ? c.json({ success: true, data })
+        : c.json({ success: false, error: 'Session not found' }, 404);
+    } catch (error) {
+      return c.json({ success: false, error: errorMessage(error) }, 400);
+    }
+  });
+
   const handleForegroundMessage = async (c: Context) => {
     if (!deps.executeForegroundMessage) {
       return c.json(
@@ -1821,6 +1911,18 @@ export function createOrchestrationRoutes(
         requestedApprovalMode(body.target.model?.options),
       ]);
       if (fullAccessRefused) return fullAccessRefused;
+      if (
+        body.skillExperience &&
+        (body.automaticBackground || !body.clientTurnId)
+      )
+        return c.json(
+          {
+            success: false,
+            error:
+              'Skill experiences require foreground execution on this Station and a client turn id.',
+          },
+          400,
+        );
       const projectSlug =
         body.target.workspace?.kind === 'project'
           ? body.target.workspace.projectSlug
@@ -1844,6 +1946,22 @@ export function createOrchestrationRoutes(
           }),
       );
       if ('refused' in scoped) return scoped.refused;
+      const resolvedTarget = normalizeExecutionTarget(
+        withCanonicalCwd(body.target, scoped.canonicalCwd),
+        !body.target.environment && projectSlug
+          ? deps.projectDefaultEnvironment?.(projectSlug)
+          : undefined,
+      );
+      if (body.skillExperience && resolvedTarget.environment.kind !== 'current')
+        return c.json(
+          {
+            success: false,
+            error:
+              'Skill experiences require foreground execution on this Station.',
+          },
+          400,
+        );
+
       const { principal, userId, ownerAttribution, fullAccessGrant } =
         resolveDispatchActor(deps, c);
       if (body.expectedInputRequest) {
@@ -1921,12 +2039,7 @@ export function createOrchestrationRoutes(
           : body.attachments
             ? { attachments: body.attachments as ChatAttachmentInput[] }
             : {}),
-        target: normalizeExecutionTarget(
-          withCanonicalCwd(body.target, scoped.canonicalCwd),
-          !body.target.environment && projectSlug
-            ? deps.projectDefaultEnvironment?.(projectSlug)
-            : undefined,
-        ),
+        target: resolvedTarget,
         userId,
         // archive#4075 stage 2: rides alongside `userId` to the ONE
         // production `sendTurn` implementation (station-control-delegation.ts),

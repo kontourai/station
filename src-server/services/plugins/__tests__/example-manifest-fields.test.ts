@@ -67,7 +67,9 @@ const LEGACY_MANIFEST_FIELDS = {
   prompts: true,
   skills: true,
   settings: true,
-} satisfies Record<keyof PluginManifest, true>;
+  // `commandsRejected` is Station's verdict on `commands`, not an authored
+  // field: the loader deletes any copy a manifest carries before deriving it.
+} satisfies Record<Exclude<keyof PluginManifest, 'commandsRejected'>, true>;
 
 /**
  * Fields an example still declares outside the contract, each with

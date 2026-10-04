@@ -42,6 +42,7 @@ import type {
   SteerInputInspectionResult,
   SteerTurnResult,
 } from '@kontourai/station-contracts/orchestration';
+import type { SkillExperienceIdentityV1 } from '@kontourai/station-contracts/skill-experience';
 import { envelopeError } from './api-error-message';
 import { ChatHttpError, isStationEnvelope } from './chatHttpError';
 import {
@@ -94,6 +95,10 @@ export type ApprovalDecision =
   | 'cancel';
 
 export interface RespondToRequestInput {
+  expectedSkillExperience?: {
+    identity: SkillExperienceIdentityV1;
+    eventId: string;
+  };
   threadId: string;
   requestId: string;
   expectedRequestEventId?: string;
