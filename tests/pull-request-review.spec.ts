@@ -5,6 +5,7 @@ import type { PullRequestReviewSnapshot } from '@kontourai/station-contracts/pul
 import { expect, type Page } from '@playwright/test';
 import { build } from 'esbuild';
 import { rejectUnexpectedFixtureRequest, test } from './helpers/fixture-audit';
+import { HIT_TARGET_AUDIT, type HitTargetAudit } from './helpers/hit-target-audit';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 let script = '',
@@ -373,46 +374,6 @@ test('a lost comment acknowledgement retains the draft and a changed head is ref
  * chat on its own. The 440px case mounts the pane inside a container of that
  * width, as the Coding layout's side panel does.
  */
-/**
- * Every control's hit target, from its box and the 44px pseudo-element the
- * pane's sheets give a small control (centred on it): each must be at least
- * 44px both ways, and no two may overlap, or a finger aiming at one presses
- * another. Reads the light DOM only (the diff's own shadow tree is
- * @pierre/diffs' business).
- */
-const HIT_TARGET_AUDIT = `(() => {
-  const root = document.getElementById('root');
-  const interactive = Array.from(root.querySelectorAll(
-    'button, input, textarea, summary, a[href], [role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"]',
-  )).filter((el) => {
-    const r = el.getBoundingClientRect();
-    return r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== 'hidden';
-  });
-  const zones = interactive.map((el) => {
-    const r = el.getBoundingClientRect();
-    let w = r.width, h = r.height;
-    for (const pseudo of ['::before', '::after']) {
-      const cs = getComputedStyle(el, pseudo);
-      if (cs.content !== 'none' && cs.position === 'absolute') {
-        const pw = parseFloat(cs.width), ph = parseFloat(cs.height);
-        if (pw > w) w = pw;
-        if (ph > h) h = ph;
-      }
-    }
-    const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
-    const name = el.getAttribute('aria-label') || (el.textContent || '').trim().slice(0, 30) || el.tagName;
-    return { name, w, h, l: cx - w / 2, r: cx + w / 2, t: cy - h / 2, b: cy + h / 2 };
-  });
-  const small = zones.filter((z) => z.w < 43.5 || z.h < 43.5).map((z) => z.name + ' ' + Math.round(z.w) + 'x' + Math.round(z.h));
-  const overlaps = [];
-  for (let i = 0; i < zones.length; i += 1) for (let j = i + 1; j < zones.length; j += 1) {
-    const a = zones[i], b = zones[j];
-    const ox = Math.min(a.r, b.r) - Math.max(a.l, b.l), oy = Math.min(a.b, b.b) - Math.max(a.t, b.t);
-    if (ox > 1 && oy > 1) overlaps.push(a.name + ' / ' + b.name + ' ' + Math.round(ox) + 'x' + Math.round(oy));
-  }
-  return { count: zones.length, small, overlaps };
-})()`;
-
 for (const [label, width, panel] of [
   ['a 440px side panel', 1440, 440],
   ['a 320px side panel', 1440, 320],
@@ -474,11 +435,7 @@ for (const [label, width, panel] of [
     if (!panel) {
       // A phone: every control a finger can reach is at least 44px both
       // ways and shares no pixel with a neighbour's target.
-      const audit = (await page.evaluate(HIT_TARGET_AUDIT)) as {
-        count: number;
-        small: string[];
-        overlaps: string[];
-      };
+      const audit = (await page.evaluate(HIT_TARGET_AUDIT)) as HitTargetAudit;
       expect(audit.count).toBeGreaterThan(8);
       expect(audit.small).toEqual([]);
       expect(audit.overlaps).toEqual([]);

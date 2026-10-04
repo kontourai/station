@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { expect, type Page, type Route } from '@playwright/test';
 import { build } from 'esbuild';
 import { rejectUnexpectedFixtureRequest, test } from './helpers/fixture-audit';
+import { HIT_TARGET_AUDIT, type HitTargetAudit } from './helpers/hit-target-audit';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 let script = '';
@@ -487,55 +488,16 @@ async function mountPane(page: Page) {
   await expect(page.getByRole('button', { name: 'Wrap lines' })).toBeVisible();
 }
 
-/**
- * Every control's hit target, from its box and the 44px pseudo-element the
- * pane's sheets give a small control (centred on it): at least 44px both
- * ways, and no two overlapping. Light DOM only.
- */
-const PANE_HIT_TARGET_AUDIT = `(() => {
-  const root = document.getElementById('root');
-  const interactive = Array.from(root.querySelectorAll(
-    'button, input, textarea, summary, a[href], [role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"]',
-  )).filter((el) => {
-    const r = el.getBoundingClientRect();
-    return r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== 'hidden';
-  });
-  const zones = interactive.map((el) => {
-    const r = el.getBoundingClientRect();
-    let w = r.width, h = r.height;
-    for (const pseudo of ['::before', '::after']) {
-      const cs = getComputedStyle(el, pseudo);
-      if (cs.content !== 'none' && cs.position === 'absolute') {
-        const pw = parseFloat(cs.width), ph = parseFloat(cs.height);
-        if (pw > w) w = pw;
-        if (ph > h) h = ph;
-      }
-    }
-    const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
-    const name = el.getAttribute('aria-label') || (el.textContent || '').trim().slice(0, 30) || el.tagName;
-    return { name, w, h, l: cx - w / 2, r: cx + w / 2, t: cy - h / 2, b: cy + h / 2 };
-  });
-  const small = zones.filter((z) => z.w < 43.5 || z.h < 43.5).map((z) => z.name + ' ' + Math.round(z.w) + 'x' + Math.round(z.h));
-  const overlaps = [];
-  for (let i = 0; i < zones.length; i += 1) for (let j = i + 1; j < zones.length; j += 1) {
-    const a = zones[i], b = zones[j];
-    const ox = Math.min(a.r, b.r) - Math.max(a.l, b.l), oy = Math.min(a.b, b.b) - Math.max(a.t, b.t);
-    if (ox > 1 && oy > 1) overlaps.push(a.name + ' / ' + b.name + ' ' + Math.round(ox) + 'x' + Math.round(oy));
-  }
-  return { count: zones.length, small, overlaps };
-})()`;
-
 test('at phone width every Diff pane control has a 44px target of its own, in both views', async ({
   page,
 }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await mountPane(page);
-  type Audit = { count: number; small: string[]; overlaps: string[] };
   // Changes: git rows, the branch line, the toolbar, the file toggles.
   await expect(
     page.getByRole('button', { name: /Open pull request #42/ }),
   ).toBeVisible();
-  const changes = (await page.evaluate(PANE_HIT_TARGET_AUDIT)) as Audit;
+  const changes = (await page.evaluate(HIT_TARGET_AUDIT)) as HitTargetAudit;
   expect(changes.count).toBeGreaterThan(8);
   expect(changes.small).toEqual([]);
   expect(changes.overlaps).toEqual([]);
@@ -554,7 +516,7 @@ test('at phone width every Diff pane control has a 44px target of its own, in bo
   await expect(
     page.getByRole('textbox', { name: 'Pull request' }),
   ).toBeVisible();
-  const pulls = (await page.evaluate(PANE_HIT_TARGET_AUDIT)) as Audit;
+  const pulls = (await page.evaluate(HIT_TARGET_AUDIT)) as HitTargetAudit;
   expect(pulls.count).toBeGreaterThan(8);
   expect(pulls.small).toEqual([]);
   expect(pulls.overlaps).toEqual([]);
