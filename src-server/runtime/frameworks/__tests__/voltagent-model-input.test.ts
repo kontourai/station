@@ -3,28 +3,23 @@
  * authored turn plus a model-input composer. The store keeps the authored
  * turn; only the model reads the composed one.
  */
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { simulateReadableStream } from 'ai';
 import { MockLanguageModelV3 } from 'ai/test';
-import { afterEach, beforeEach, expect, test } from 'vitest';
+import { beforeEach, expect, test } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { FileMemoryAdapter } from '../../../adapters/file/memory-adapter.js';
 import type { ModelInputMessage } from '../../types.js';
 import { VoltAgentFramework } from '../voltagent-adapter.js';
 
 const CONTEXT = '[Timezone: Europe/Berlin]';
 
-let root: string;
+const makeTempDir = trackTempDirs();
 let storage: FileMemoryAdapter;
 
 beforeEach(() => {
-  root = mkdtempSync(join(tmpdir(), 'station-volt-model-input-'));
-  storage = new FileMemoryAdapter({ projectHomeDir: root });
-});
-
-afterEach(() => {
-  rmSync(root, { recursive: true, force: true });
+  storage = new FileMemoryAdapter({
+    projectHomeDir: makeTempDir('station-volt-model-input-'),
+  });
 });
 
 function answeringModel() {

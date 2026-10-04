@@ -11,14 +11,13 @@
  *
  * Only the language model is a fixture.
  */
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
 import { simulateReadableStream } from 'ai';
 import { MockLanguageModelV3 } from 'ai/test';
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { FileMemoryAdapter } from '../../../adapters/file/memory-adapter.js';
 import { StationAgentAdapter } from '../../../providers/adapters/station-agent-adapter.js';
 import { VoltAgentFramework } from '../../../runtime/frameworks/voltagent-adapter.js';
@@ -31,6 +30,9 @@ import { OrchestrationService } from '../../../services/orchestration/orchestrat
 import { streamPrimaryAgentChat } from '../chat-primary-stream.js';
 import { prepareChatRequest } from '../chat-request-preparation.js';
 import { createConversationRoutes } from '../conversations.js';
+
+// Created before the suite's hooks so the store closes before its directory goes.
+const makeTempDir = trackTempDirs();
 
 const SLUG = 'assistant';
 const OWNER = 'owner-user';
@@ -229,7 +231,7 @@ describe('Station-agent conversation storage (#3112)', () => {
   }
 
   beforeEach(async () => {
-    tmp = mkdtempSync(join(tmpdir(), 'station-agent-storage-'));
+    tmp = makeTempDir('station-agent-storage-');
     memoryAdapter = new FileMemoryAdapter({ projectHomeDir: tmp });
     eventStore = new EventStore(join(tmp, 'orchestration.sqlite'));
     const eventBus = new EventBus();
@@ -269,7 +271,6 @@ describe('Station-agent conversation storage (#3112)', () => {
   afterEach(async () => {
     await adapter.stopAll().catch(() => undefined);
     eventStore.close();
-    rmSync(tmp, { recursive: true, force: true });
   });
 
   test('the stored user turn is the typed text while the model still receives its context', async () => {
