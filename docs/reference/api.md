@@ -814,7 +814,9 @@ authorized messages restored from orchestration. A successor stores only its
 own turns; earlier history reaches its model without being copied into its
 record. Export, fork and summary use the same read. A successor's own record
 is never listed as a conversation of its own, and conversation message search
-reports its hits under the conversation it continues. Messages carry the owner's current parts/metadata shape; do not depend on
+reports its hits under the conversation it continues. A conversation whose
+lineage exceeds 64 Sessions is refused with 422 `conversation_lineage_too_long`
+by this read, export, fork, summary and stats, rather than read partially. Messages carry the owner's current parts/metadata shape; do not depend on
 every message having the old `content: string`/`timestamp` pair.
 
 A stored user turn is the typed text (and its attachments) alone. Ambient
