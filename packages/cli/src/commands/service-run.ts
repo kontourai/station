@@ -10,6 +10,7 @@ import {
   collectInstanceStatus,
   describeSourceBuildStampProblem,
   findListeningPidsForPorts,
+  type InstanceStateRecord,
   isBuildStale,
   resolveBuildPaths,
   sourceBuildStampNeedsRebuild,
@@ -242,6 +243,9 @@ export async function superviseService(
   let timer: NodeJS.Timeout | undefined;
   let consecutiveSupervisorFailures = 0;
   let startPromise: Promise<void> | undefined;
+  let generation: InstanceStateRecord | null = null;
+  const stopOwnedGeneration = () =>
+    stopInstance({ instanceName, stateHome: lifecycle.baseDir, generation });
   let shutdownPromise: Promise<void> | undefined;
   let wakeOwnershipWait: (() => void) | undefined;
   const childState: Record<'server' | 'ui', ChildProbeState> = {
@@ -289,12 +293,12 @@ export async function superviseService(
     }
     shutdownPromise = (async () => {
       // start() can detach children before it publishes their instance record.
-      // Wait for that in-flight transaction to settle, then stop by record so a
-      // signal cannot strand children in the publication window.
+      // Wait for that transaction to settle, then stop its captured generation
+      // so a signal cannot strand children in the publication window.
       await startPromise?.catch(() => undefined);
       try {
         if (startPromise) {
-          await stopInstance({ instanceName, stateHome: lifecycle.baseDir });
+          await stopOwnedGeneration();
         }
       } catch (error) {
         console.error('Station service cleanup failed:', error);
@@ -385,7 +389,11 @@ export async function superviseService(
         // gets, and the prune in `buildApplication` clears any orphan candidate
         // dirs a previous killed-mid-build supervisor left behind.
         const buildIfStale = needsBuildForInstance(instanceName);
+        generation = null;
         startPromise = startInstance({
+          onSpawned: (spawned) => {
+            generation = spawned;
+          },
           allowedOrigins: lifecycle.allowedOrigins,
           // The host-owner claim above already fences this home. The CLI's
           // advisory shared-home warning is separate from that atomic decision.
@@ -454,7 +462,7 @@ export async function superviseService(
         );
         recoveringOwnership = true;
         try {
-          await stopInstance({ instanceName, stateHome: lifecycle.baseDir });
+          await stopOwnedGeneration();
         } catch (stopError) {
           console.error('Station service cleanup failed:', stopError);
           await shutdown(1);
@@ -675,7 +683,7 @@ export async function superviseService(
         `Station service '${instanceName}' lost its home ownership fence; stopping Station and waiting for ownership.`,
       );
       recoveringOwnership = true;
-      await stopInstance({ instanceName, stateHome: lifecycle.baseDir });
+      await stopOwnedGeneration();
       startPromise = undefined;
       publishServiceLiveness(false);
       resetChildProbeState('server');

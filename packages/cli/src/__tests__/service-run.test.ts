@@ -5,6 +5,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -17,9 +18,14 @@ import {
   writeInstanceRegistry,
 } from '@kontourai/station-shared/instance-registry';
 import { lookupProcessBirthFingerprint } from '@kontourai/station-shared/process-identity';
+import { ensureStationHomeSchemaSync } from '@kontourai/station-shared/station-home-schema';
 import { afterAll, afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.js';
-import type { CollectedChildStatus } from '../commands/lifecycle.js';
+import type {
+  CollectedChildStatus,
+  InstanceStateRecord,
+  StartOptions,
+} from '../commands/lifecycle.js';
 import { superviseService } from '../commands/service-run.js';
 
 // The supervisor base was the fixed path `/tmp/station-service`. The
@@ -223,6 +229,7 @@ describe('service supervisor', () => {
     expect(stop).toHaveBeenCalledWith({
       instanceName: 'service-test',
       stateHome: SERVICE_BASE,
+      generation: null,
     });
     expect(exit).toHaveBeenCalledWith(0);
   });
@@ -292,6 +299,7 @@ describe('service supervisor', () => {
       expect(stop).toHaveBeenCalledWith({
         instanceName: 'service-test',
         stateHome: SERVICE_BASE,
+        generation: null,
       }),
     );
 
@@ -401,6 +409,7 @@ describe('service supervisor', () => {
     expect(stop).toHaveBeenCalledWith({
       instanceName: 'service-test',
       stateHome: SERVICE_BASE,
+      generation: null,
     });
     expect(exit).toHaveBeenCalledWith(0);
   });
@@ -462,6 +471,7 @@ describe('service supervisor', () => {
     expect(stop).toHaveBeenCalledWith({
       instanceName: 'service-test',
       stateHome: SERVICE_BASE,
+      generation: null,
     });
     expect(exit).toHaveBeenCalledWith(1);
   });
@@ -581,6 +591,7 @@ describe('service supervisor', () => {
     expect(harness.stop).toHaveBeenCalledWith({
       instanceName: 'service-test',
       stateHome: SERVICE_BASE,
+      generation: null,
     });
     expect(harness.exit).toHaveBeenCalledWith(1);
     expect(
@@ -609,6 +620,7 @@ describe('service supervisor', () => {
     expect(harness.stop).toHaveBeenCalledWith({
       instanceName: 'service-test',
       stateHome: SERVICE_BASE,
+      generation: null,
     });
     expect(harness.exit).toHaveBeenCalledWith(1);
   });
@@ -631,6 +643,7 @@ describe('service supervisor', () => {
     expect(harness.stop).toHaveBeenCalledWith({
       instanceName: 'service-test',
       stateHome: SERVICE_BASE,
+      generation: null,
     });
     expect(harness.exit).toHaveBeenCalledWith(1);
     expect(
@@ -661,6 +674,7 @@ describe('service supervisor', () => {
     expect(harness.stop).toHaveBeenCalledWith({
       instanceName: 'service-test',
       stateHome: SERVICE_BASE,
+      generation: null,
     });
     expect(
       error.mock.calls.some(([, reason]) =>
@@ -742,6 +756,7 @@ describe('service supervisor', () => {
     expect(harness.stop).toHaveBeenCalledWith({
       instanceName: 'service-test',
       stateHome: SERVICE_BASE,
+      generation: null,
     });
     expect(harness.exit).toHaveBeenCalledWith(1);
     expect(
@@ -785,6 +800,7 @@ describe('service supervisor', () => {
     expect(harness.stop).toHaveBeenCalledWith({
       instanceName: 'service-test',
       stateHome: SERVICE_BASE,
+      generation: null,
     });
     expect(
       error.mock.calls.some(([, reason]) =>
@@ -816,6 +832,7 @@ describe('service supervisor', () => {
     expect(harness.stop).toHaveBeenCalledWith({
       instanceName: 'service-test',
       stateHome: SERVICE_BASE,
+      generation: null,
     });
     expect(
       error.mock.calls.some(([, reason]) =>
@@ -851,6 +868,7 @@ describe('service supervisor', () => {
     expect(harness.stop).toHaveBeenCalledWith({
       instanceName: 'service-test',
       stateHome: SERVICE_BASE,
+      generation: null,
     });
   });
 
@@ -923,6 +941,7 @@ describe('service supervisor', () => {
     expect(harness.stop).toHaveBeenCalledWith({
       instanceName: 'service-test',
       stateHome: SERVICE_BASE,
+      generation: null,
     });
   });
 
@@ -943,6 +962,7 @@ describe('service supervisor', () => {
     expect(harness.stop).toHaveBeenCalledWith({
       instanceName: 'service-test',
       stateHome: SERVICE_BASE,
+      generation: null,
     });
     expect(harness.exit).toHaveBeenCalledWith(1);
     expect(
@@ -1327,6 +1347,7 @@ describe('supervised service liveness (station#3064)', () => {
       expect(stop).toHaveBeenCalledWith({
         instanceName: 'service-test',
         stateHome: home,
+        generation: null,
       });
       expect(exit).not.toHaveBeenCalled();
       expect(errors).toHaveBeenCalledWith(
@@ -1622,4 +1643,220 @@ describe('supervised service liveness (station#3064)', () => {
     expect(entry.type).toBe('worktree');
     expect(entry.port).toBe(4000);
   });
+});
+
+describe('supervisor generation cleanup through real lifecycle stop (#2961)', () => {
+  const makeTempDir = trackTempDirs();
+  test.each(['loss tick', 'readiness refusal', 'SIGTERM'] as const)(
+    '%s reaps only its spawned child and preserves the replacement records',
+    async (trigger) => {
+      const home = makeTempDir('station-svc-generation-');
+      ensureStationHomeSchemaSync(home);
+      const archive = makeTempDir('station-svc-archive-');
+      writeFileSync(
+        join(archive, '.station-prebuilt-archive'),
+        'station-prebuilt-archive-v1\n',
+      );
+      writeFileSync(
+        join(archive, '.station-release.json'),
+        JSON.stringify({
+          schemaVersion: 2,
+          sha: 'a'.repeat(40),
+          ref: 'v0.0.0',
+          createdAt: '2026-09-26T00:00:00.000Z',
+          channel: 'stable',
+          releaseChannel: 'stable',
+          prerelease: false,
+        }),
+      );
+      vi.resetModules();
+      vi.spyOn(process, 'cwd').mockReturnValue(archive);
+      vi.stubEnv('STATION_ROOT', '');
+      vi.stubEnv('STATION_HOME', home);
+      const { superviseService: supervise } = await import(
+        '../commands/service-run.js'
+      );
+      const { inspectProcessFingerprint } = await import(
+        '../commands/platform.js'
+      );
+      const { getInstanceStatePath } = await import('../commands/helpers.js');
+      const statePath = getInstanceStatePath('service-test', home);
+      mkdirSync(join(statePath, '..'), { recursive: true, mode: 0o700 });
+      const children: ChildProcess[] = [];
+      const spawnChild = async () => {
+        const child = spawn(
+          process.execPath,
+          ['-e', "console.log('ready'); setInterval(() => {}, 1000)"],
+          { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] },
+        );
+        children.push(child);
+        await once(child.stdout!, 'data');
+        return child;
+      };
+      const publishGeneration = (
+        child: ChildProcess,
+        bootId: string,
+      ): InstanceStateRecord => {
+        const fingerprint = inspectProcessFingerprint(child.pid!);
+        expect(
+          fingerprint,
+          'real child identity must be readable',
+        ).not.toBeNull();
+        const record: InstanceStateRecord = {
+          instanceId: 'service-test',
+          bootId,
+          serverPid: child.pid!,
+          uiPid: child.pid!,
+          serverFingerprint: fingerprint!,
+          uiFingerprint: fingerprint!,
+          serverPort: 45211,
+          uiPort: 45215,
+          host: '127.0.0.1',
+          baseDir: home,
+          homeSource: '--base',
+          cwd: archive,
+          build: null,
+          startedAt: new Date().toISOString(),
+          statePath,
+          lifecycleJournal: join(home, `${bootId}.jsonl`),
+        };
+        const content = JSON.stringify(record);
+        writeFileSync(statePath, content, { mode: 0o600 });
+        const identity = statSync(statePath);
+        return {
+          ...record,
+          stateContent: content,
+          stateIdentity: { dev: identity.dev, ino: identity.ino },
+        };
+      };
+      const ticks: Array<() => void> = [];
+      const signals = new Map<string, () => void>();
+      const exit = vi.fn();
+      let oldChild!: ChildProcess;
+      let replacement!: ChildProcess;
+      let replacementContent!: string;
+      let replacementEntry!: ReturnType<
+        typeof readInstanceRegistry
+      >['instances'][string];
+      const replace = async () => {
+        replacement = await spawnChild();
+        publishGeneration(replacement, 'replacement-boot');
+        upsertInstance(
+          'service-test',
+          {
+            port: 45211,
+            type: 'service',
+            status: 'running',
+            pid: replacement.pid!,
+            birth: lookupProcessBirthFingerprint(replacement.pid!)!,
+          },
+          home,
+        );
+        replacementContent = readFileSync(statePath, 'utf8');
+        replacementEntry = readInstanceRegistry(home).instances['service-test'];
+      };
+      try {
+        const start = vi.fn(async (options: StartOptions = {}) => {
+          oldChild = await spawnChild();
+          options.onSpawned!(publishGeneration(oldChild, 'old-boot'));
+        });
+        const collect = vi.fn(async () => {
+          if (trigger === 'readiness refusal') {
+            await replace();
+            upsertInstance(
+              'replacement-desktop',
+              {
+                port: 45221,
+                type: 'sidecar',
+                pid: replacement.pid!,
+                birth: lookupProcessBirthFingerprint(replacement.pid!)!,
+                status: 'running',
+              },
+              home,
+            );
+          }
+          return instanceStatus(
+            okChild(oldChild.pid!),
+            okChild(oldChild.pid!),
+            'old-boot',
+          );
+        });
+        const supervision = supervise(
+          { ...lifecycle, baseDir: home, serverPort: 45211, uiPort: 45215 },
+          {
+            start,
+            collect,
+            exit,
+            needsBuildForInstance: () => false,
+            desktopCompanion: { check: vi.fn() },
+            launcherLink: null,
+            onSignal: (signal, listener) => signals.set(signal, listener),
+            setTimer: (callback) => {
+              ticks.push(callback);
+              return 1 as never;
+            },
+          },
+        );
+        if (trigger === 'readiness refusal') {
+          await vi.waitFor(() => expect(ticks).toHaveLength(1), {
+            timeout: 20000,
+          });
+        } else {
+          await supervision;
+          await replace();
+          if (trigger === 'loss tick') ticks.shift()!();
+          else signals.get('SIGTERM')!();
+        }
+        await vi.waitFor(
+          () => {
+            if (trigger === 'SIGTERM') expect(exit).toHaveBeenCalledWith(0);
+            else expect(ticks).toHaveLength(1);
+          },
+          { timeout: 20000 },
+        );
+        await new Promise((resolve) => setImmediate(resolve));
+        await new Promise((resolve) => setImmediate(resolve));
+        expect(
+          replacement.exitCode,
+          'replacement child must remain alive',
+        ).toBeNull();
+        expect(
+          replacement.signalCode,
+          'replacement child must not be signalled',
+        ).toBeNull();
+        await vi.waitFor(
+          () =>
+            expect(
+              oldChild.exitCode !== null || oldChild.signalCode !== null,
+              'old child must be dead after generation cleanup',
+            ).toBe(true),
+          { timeout: 20000 },
+        );
+        expect(
+          readFileSync(statePath, 'utf8'),
+          'replacement lifecycle record must remain intact',
+        ).toBe(replacementContent);
+        expect(readInstanceRegistry(home).instances['service-test']).toEqual(
+          replacementEntry,
+        );
+        if (trigger !== 'SIGTERM') {
+          signals.get('SIGTERM')!();
+          await supervision;
+        }
+        await vi.waitFor(() => expect(exit).toHaveBeenCalledWith(0));
+      } finally {
+        for (const child of children) {
+          if (child.exitCode === null && child.signalCode === null) {
+            const exited = once(child, 'exit');
+            child.kill();
+            await exited;
+          }
+        }
+        vi.restoreAllMocks();
+        vi.unstubAllEnvs();
+        vi.resetModules();
+      }
+    },
+    30000,
+  );
 });

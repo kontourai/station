@@ -247,10 +247,13 @@ Two disclosed limits of the discipline (verified by probe, not assumed):
   refusal reason changes, claiming and starting when that owner is gone.
   An unreadable registry still refuses startup with a nonzero exit. A won claim
   publishes `starting` unless a live update launcher or replaced generation of
-  this unit already fences it. An `installing` reservation always transfers to
-  the supervisor before start. Readiness publishes `running`; lost ownership
+  this unit already fences it. On initial startup, an `installing` reservation
+  transfers to the supervisor before start. During recovery, the supervisor
+  waits while a live installer holds that reservation. Readiness publishes
+  `running`; lost ownership
   at readiness or on an existing five-second health tick stops and reaps
-  Station, retracts only this supervisor's own PID and birth, and returns to
+  only the captured child generation, preserves replacement lifecycle records,
+  retracts only this supervisor's own PID and birth, and returns to
   the same wait. Recovery also waits for a live replacement service at the
   same id, rather than adopting its reservation. The tick reads the same
   validated registry as the claim and
