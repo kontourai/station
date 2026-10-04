@@ -23,6 +23,14 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, '../../../../../');
 const INDEX_CSS_PATH = resolve(HERE, '../../../index.css');
 const WORKBENCH_CSS_PATH = resolve(HERE, '../CodingWorkbench.css');
+const ROUTE_TRANSITION_CSS_PATH = resolve(
+  HERE,
+  '../../../app-shell/route-transition.css',
+);
+const HOST_ACTIONS_CSS_PATH = resolve(
+  HERE,
+  '../../../workspace-panes/WorkspacePaneHostActions.css',
+);
 const VIEWPORT = { width: 1280, height: 800 };
 const ITEMS = 20;
 
@@ -32,7 +40,10 @@ function railMarkup(): string {
     (_, index) =>
       `<span class="coding-workbench__rail-tip-anchor"><button type="button" class="coding-workbench__rail-item" data-rail-item="pane-${index}" aria-label="Pane ${index}">${index}</button></span>`,
   ).join('');
-  return `<div class="app__main" style="height:100%;overflow:hidden;display:flex">
+  // The shell's own chain above the layout, as the app mounts it: the route
+  // wrapper keeps its automatic minimum height (flow routes scroll in
+  // `.content-view`), so nothing above the workbench bounds its height.
+  return `<div id="root"><div class="app app--with-sidebar"><div class="app__main"><main class="main-content" id="station-main"><div class="content-view"><div class="route-transition"><div class="workspace-host-actions__frame"><div class="workspace-host-actions__content">
   <div class="coding-workbench" data-mode="panels">
     <div class="coding-workbench__main"><div class="coding-workbench__pages"></div></div>
     <nav class="coding-workbench__rail" aria-label="Views">${items}
@@ -40,7 +51,7 @@ function railMarkup(): string {
       <span class="coding-workbench__rail-tip-anchor"><button type="button" class="coding-workbench__rail-item coding-workbench__rail-item--add" aria-label="Add pane">+</button></span>
     </nav>
   </div>
-</div>`;
+</div></div></div></main></div></div></div>`;
 }
 
 const chromiumAvailable = chromiumIsInstalled(REPO_ROOT);
@@ -59,6 +70,10 @@ describe.skipIf(!chromiumAvailable)(
     test('at 800px tall with 20 items the rail scrolls to its last item, and a fixed flyout and tooltip placed from an item render unclipped', async () => {
       const css =
         resolveCssImports(INDEX_CSS_PATH) +
+        '\n' +
+        readFileSync(ROUTE_TRANSITION_CSS_PATH, 'utf8') +
+        '\n' +
+        readFileSync(HOST_ACTIONS_CSS_PATH, 'utf8') +
         '\n' +
         readFileSync(WORKBENCH_CSS_PATH, 'utf8');
       assertNoImportsSurvive(css);
@@ -80,6 +95,17 @@ describe.skipIf(!chromiumAvailable)(
           overflowY: getComputedStyle(el).overflowY,
         }));
         expect(before.overflowY).toBe('auto');
+        // The rail scrolls inside the window; the layout does not grow past
+        // it (the route's scroller has nothing to scroll).
+        const railBox = (await rail.boundingBox())!;
+        // Sub-pixel rounding only: an unbounded rail ends near 1,000px.
+        expect(railBox.y + railBox.height).toBeLessThanOrEqual(
+          VIEWPORT.height + 1,
+        );
+        const outer = await page
+          .locator('.content-view')
+          .evaluate((el) => el.scrollHeight - el.clientHeight);
+        expect(outer).toBeLessThanOrEqual(0);
         expect(before.scrollHeight).toBeGreaterThan(before.clientHeight);
         const addBefore = (await add.boundingBox())!;
         expect(addBefore.y + addBefore.height).toBeGreaterThan(VIEWPORT.height);

@@ -197,7 +197,13 @@
   /* Scrolls: a workspace can hold more panes than a short window shows,
      and the launcher and "+" at the end must stay reachable. The flyout
      and the tooltips are drawn on the body (fixed, placed from the item's
-     box), so the scrolling rail clips neither (design audit D1/U12). */
+     box), so the scrolling rail clips neither (design audit D1/U12).
+     `contain: size` keeps the items out of the layout's own height: the
+     route wrapper above keeps its automatic minimum (flow routes scroll in
+     `.content-view`), so a rail sized by its items would grow the whole
+     layout past the window and never scroll itself. Contained, it takes
+     the row's height and scrolls inside it. */
+  contain: size;
   overflow-y: auto;
   overflow-x: hidden;
   scrollbar-width: none;
