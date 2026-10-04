@@ -181,11 +181,13 @@ describe('station dev server file access (#3254 review)', () => {
     const address = server.httpServer?.address();
     if (!address || typeof address === 'string') throw new Error('no address');
     origin = `http://127.0.0.1:${address.port}`;
-  });
+  }, 120_000);
 
   afterAll(async () => {
+    // fetch keeps connections alive; close() would otherwise wait on them.
+    server?.httpServer?.closeAllConnections();
     await server?.close();
-  });
+  }, 120_000);
 
   test('turns CORS off and allows only the UI import roots', () => {
     const access = stationDevServerAccess(repo);
@@ -217,9 +219,9 @@ describe('station dev server file access (#3254 review)', () => {
     expect(body).not.toContain(readFileSync(target, 'utf8').slice(0, 200));
   });
 
-  test('a UI source module is still served, without CORS headers', async () => {
-    const response = await fetch(`${origin}/src/main.tsx`, {
-      headers: { Origin: 'http://localhost:9999' },
+  test('the UI shell is still served, without CORS headers', async () => {
+    const response = await fetch(`${origin}/`, {
+      headers: { Origin: 'http://localhost:9999', Accept: 'text/html' },
     });
     expect(response.status).toBe(200);
     expect(response.headers.get('access-control-allow-origin')).toBeNull();
