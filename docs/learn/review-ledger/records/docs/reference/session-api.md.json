@@ -24,7 +24,7 @@
 
     {"path":"src-server/providers/sessions/codex-rollout-session-source.ts","digest":"35e09b5648c9969919fa37fed58ff37af1e3b7e802a3b42c5fd236fa5100fba9","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"25d5567f609e84815cbf51d3d7670733f6dea7abc2b3ad7027a6aa731822bebe","revision":"cb38616d44325b145965c8c03c6d5aacad470660"},
+    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"4cc7b1bd67a9a9cf35a904dfa0806bfcc811ffc63de3a5c9af26c92a754f9687","revision":"52982b10d017a24966d01167cd33e7c042ecb69b"},
 
     {"path":"src-server/services/flow/survey-flow-review-service.ts","digest":"7ccd40600cbf40abfb8c5bd187b1d87366ebef492ffb7edfc128193b482e398e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -40,13 +40,13 @@
 
     {"path":"src-server/runtime/mcp/station-control-dispatch-scope.ts","digest":"cf22738353be6006483825dd4bfe99ae96d0f18c91b944402457a7bc9f25f8a8","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/routes/orchestration/dispatch-scope.ts","digest":"8e311c1696036d143a124c97da344056077ac6dfde1f1db0925c0efefd085aed","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/routes/orchestration/dispatch-scope.ts","digest":"319f9db13cc4eae859a96468e659b035141190260148024d61aad2b28de680e8","revision":"52982b10d017a24966d01167cd33e7c042ecb69b"},
 
-    {"path":"src-server/tools/station-control-policy.ts","digest":"18eddfcee98c87696d2e844bf239986a599e744a87b20ab851b7027487270dde","revision":"79c4a010c54f63c58ea68df6ba058cf4a3e1c039"},
+    {"path":"src-server/tools/station-control-policy.ts","digest":"2f661940d3e0aacc7733081792989ea24016a8a826e14ae21d6e9e4470a635a5","revision":"52982b10d017a24966d01167cd33e7c042ecb69b"},
 
     {"path":"src-server/runtime/mcp/__tests__/station-control-dispatch-scope.test.ts","digest":"5c90078ba35ab314048e6efa0533de427b92fdc22f26425174cdbcdb144db30e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/runtime/routes/__tests__/runtime-routes-station-control-dispatch-scope.test.ts","digest":"80776e1a17cd1c99adcc63300cff1c8b4de76e5dc4bbfa28dbd16729782b8069","revision":"2ade65e7ee4872d2d3ac4dbedc45eef6aa18b9e6"},
+    {"path":"src-server/runtime/routes/__tests__/runtime-routes-station-control-dispatch-scope.test.ts","digest":"84db4f730d0bac4acb3fc2ab4f5d561d36c193bdc33823d12608fe95c203b042","revision":"52982b10d017a24966d01167cd33e7c042ecb69b"},
 
     {"path":"src-server/services/execution-target/execution-target-resolver.ts","digest":"bd0c0c061874d5900ccbcf8332f4a4efa94299c82631873ebd7a5a66187382f8","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
 
