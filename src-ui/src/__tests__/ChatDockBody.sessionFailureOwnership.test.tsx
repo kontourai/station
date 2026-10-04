@@ -307,7 +307,7 @@ describe('ChatDockBody session-failure ownership (station#3299)', () => {
   // whose record carries only the ATTRIBUTION sentence, and the send path
   // wrote its own translated notice. Text arbitration could not match the two,
   // so the dock showed both — the card's advice and the banner's "send a
-  // message to try to continue this session" for a session that never began.
+  // message to try to continue this chat" for a session that never began.
   const refusedFirstSend = (): OrchestrationSessionSummary => ({
     ...failedOrchestrationSession(),
     lifecycleState: 'idle',
@@ -347,7 +347,7 @@ describe('ChatDockBody session-failure ownership (station#3299)', () => {
     expect(banner.textContent).toContain(
       'Station refused the send before it started.',
     );
-    expect(banner.textContent).toContain('Nothing reached the engine.');
+    expect(banner.textContent).toContain('Nothing reached the agent.');
     expect(banner.textContent).not.toContain('continue this session');
   });
 

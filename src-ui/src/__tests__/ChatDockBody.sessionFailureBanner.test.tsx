@@ -953,7 +953,7 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
 
     expect(
       screen.getByTestId('chat-dock-session-failure').textContent,
-    ).toContain('You can send a message to try to continue this session.');
+    ).toContain('You can send a message to try to continue this chat.');
     expect(await screen.findByTestId('chat-input-area')).toBeTruthy();
     await waitFor(() =>
       expect(chatInputPropsMock.current?.disabled).toBe(false),
