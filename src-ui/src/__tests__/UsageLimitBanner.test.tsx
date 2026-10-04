@@ -149,8 +149,10 @@ describe('UsageLimitBanner (#3157)', () => {
       RESET_AT,
     );
     expect(element.textContent).toContain(
-      'Station will resume this conversation at 11:00 PM.',
+      'Station will resume this conversation automatically.',
     );
+    // The reset time is said once.
+    expect(element.textContent?.match(/11:00 PM/g)).toHaveLength(1);
     expect(button('Resume now')).not.toBeNull();
     expect(button('Cancel auto-resume')).not.toBeNull();
     // It reads this Session's own projection, on the documented route.
@@ -160,7 +162,7 @@ describe('UsageLimitBanner (#3157)', () => {
     });
   });
 
-  test('with auto-resume off it says so and holds Resume now until the reset passes', async () => {
+  test('with auto-resume off before the reset it says so, warns the limit may not have reset, and still offers Resume now', async () => {
     answers.read = () => ({
       recovery: projection({
         autoResume: false,
@@ -170,12 +172,19 @@ describe('UsageLimitBanner (#3157)', () => {
     renderBanner();
     const element = await banner();
     expect(element.textContent).toContain('Auto-resume is off.');
+    expect(element.textContent).toContain('your limit may not have reset yet');
     expect(element.textContent).not.toContain('will resume');
-    expect(button('Resume now')).toBeNull();
+    expect(button('Resume now')).not.toBeNull();
+    // There is no automatic resume to cancel.
     expect(button('Cancel auto-resume')).toBeNull();
+    fireEvent.click(button('Resume now') as HTMLElement);
+    await waitFor(() => expect(posts()).toHaveLength(1));
+    expect(posts()[0]?.url).toBe(
+      `${API}/api/orchestration/sessions/${THREAD}/usage-limit/resume`,
+    );
   });
 
-  test('with auto-resume off, the reset passing reads the settled stop and offers Resume now', async () => {
+  test('with auto-resume off, the reset passing reads the settled stop and the wording follows', async () => {
     vi.useRealTimers();
     const dueAt = new Date(Date.now() + 2_000).toISOString();
     answers.read = () =>
@@ -190,14 +199,19 @@ describe('UsageLimitBanner (#3157)', () => {
             }),
           };
     renderBanner();
-    await banner();
-    expect(button('Resume now')).toBeNull();
-    await waitFor(() => expect(button('Resume now')).not.toBeNull(), {
-      timeout: 6_000,
-    });
+    const element = await banner();
+    expect(element.textContent).toContain('may not have reset yet');
+    await waitFor(
+      () =>
+        expect(screen.getByTestId('usage-limit-banner').textContent).toContain(
+          'Auto-resume is off. Resume it yourself.',
+        ),
+      { timeout: 6_000 },
+    );
     expect(screen.getByTestId('usage-limit-banner').textContent).toContain(
       'Reset ',
     );
+    expect(button('Resume now')).not.toBeNull();
     expect(button('Cancel auto-resume')).toBeNull();
   }, 10_000);
 
@@ -340,5 +354,111 @@ describe('UsageLimitBanner (#3157)', () => {
     await waitFor(() => expect(screen.getByRole('alert')).not.toBeNull());
     expect(button('Cancel auto-resume')).not.toBeNull();
     expect(button('Resume now')).not.toBeNull();
+  });
+
+  test('a stop retired by a newer message says so even though the conversation no longer looks limited', async () => {
+    const { rerenderWith } = renderBanner();
+    await banner();
+    answers.read = () => ({
+      recovery: projection({
+        outcome: 'canceled',
+        outcomeReason: 'superseded',
+      }),
+    });
+    // The newer turn clears the hold, so `active` drops with the same update.
+    rerenderWith({ active: false, eventCount: 2 });
+    await waitFor(() =>
+      expect(screen.getByRole('status').textContent).toBe(
+        'Auto-resume canceled: a newer message was sent.',
+      ),
+    );
+    expect(button('Resume now')).toBeNull();
+    expect(button('Cancel auto-resume')).toBeNull();
+    fireEvent.click(button('Dismiss') as HTMLElement);
+    expect(screen.queryByTestId('usage-limit-banner')).toBeNull();
+  });
+
+  test('a stale waiting stop is never offered once the conversation stops looking limited', async () => {
+    const { rerenderWith } = renderBanner();
+    await banner();
+    // The re-read has not landed yet: the cached stop is still "waiting", and
+    // it is checked at once, before any response can replace it.
+    rerenderWith({ active: false, eventCount: 2 });
+    expect(screen.queryByTestId('usage-limit-banner')).toBeNull();
+    expect(button('Resume now')).toBeNull();
+  });
+
+  test.each([
+    ['failed', {}, "Resume didn't go through. Send a message to continue."],
+    [
+      'indeterminate',
+      {},
+      'Resume may not have gone through. Check the conversation before trying again.',
+    ],
+    [
+      'compensation-required',
+      {},
+      'Resume may not have gone through. Check the conversation before trying again.',
+    ],
+    ['canceled', {}, 'Auto-resume was canceled.'],
+  ] as const)(
+    'a watched stop that settles as %s says so and offers nothing',
+    async (outcome, extra, copy) => {
+      const { rerenderWith } = renderBanner();
+      await banner();
+      answers.read = () => ({
+        recovery: projection({ outcome, ...extra }),
+      });
+      rerenderWith({ eventCount: 2 });
+      await waitFor(() =>
+        expect(screen.getByRole('status').textContent).toBe(copy),
+      );
+      expect(button('Resume now')).toBeNull();
+      expect(button('Cancel auto-resume')).toBeNull();
+    },
+  );
+
+  test('Resume now that fails to send reads back the failed stop and says so', async () => {
+    answers.resume = () => ({
+      result: { kind: 'failed' },
+      recovery: projection({ outcome: 'failed', attempts: 1 }),
+    });
+    renderBanner();
+    await banner();
+    fireEvent.click(button('Resume now') as HTMLElement);
+    await waitFor(() =>
+      expect(screen.getByRole('status').textContent).toContain(
+        "Resume didn't go through",
+      ),
+    );
+    expect(button('Resume now')).toBeNull();
+  });
+
+  test('a replay refused by the same limit shows the new wait, not a spent one', async () => {
+    const { rerenderWith } = renderBanner();
+    await banner();
+    fireEvent.click(button('Resume now') as HTMLElement);
+    await waitFor(() =>
+      expect(screen.getByTestId('usage-limit-banner').textContent).toContain(
+        'Resuming this conversation',
+      ),
+    );
+    // The replay was refused; the server armed its own wait for the reset.
+    answers.read = () => ({ recovery: projection({ attempts: 0 }) });
+    rerenderWith({ eventCount: 2 });
+    await waitFor(() => expect(button('Resume now')).not.toBeNull());
+    expect(screen.getByTestId('usage-limit-banner').textContent).toContain(
+      'Resets 11:00 PM',
+    );
+    expect(screen.queryByRole('status')).toBeNull();
+  });
+
+  test('the reset is shown in the viewer’s own zone, not UTC', async () => {
+    vi.stubEnv('TZ', 'America/Chicago');
+    renderBanner();
+    const element = await banner();
+    // 23:00Z on 24 September is 6:00 PM in Chicago (CDT, UTC-5).
+    expect(element.textContent).toContain('Resets 6:00 PM');
+    expect(element.textContent).not.toContain('11:00 PM');
   });
 });

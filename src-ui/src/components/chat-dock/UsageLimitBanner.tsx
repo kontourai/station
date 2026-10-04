@@ -28,6 +28,27 @@ const RETIRED_COPY: Record<ConnectionRecoveryOutcomeReason, string> = {
   'user-canceled': 'Auto-resume canceled.',
 };
 
+/**
+ * What a stop that was waiting (or being resumed) settled into, in words. Every
+ * outcome that ends a wait says so: nothing settles silently. `succeeded` is
+ * the resumed turn's own result, which the conversation shows.
+ */
+function settledNotice(recovery: ConnectionRecoveryProjection): string | null {
+  switch (recovery.outcome) {
+    case 'canceled':
+      return recovery.outcomeReason
+        ? RETIRED_COPY[recovery.outcomeReason]
+        : 'Auto-resume was canceled.';
+    case 'failed':
+      return "Resume didn't go through. Send a message to continue.";
+    case 'indeterminate':
+    case 'compensation-required':
+      return 'Resume may not have gone through. Check the conversation before trying again.';
+    default:
+      return null;
+  }
+}
+
 /** The reset as a local time, with the weekday when it is not today. */
 function formatReset(iso: string, nowMs: number): string {
   const at = new Date(iso);
@@ -101,17 +122,20 @@ function UsageLimitBannerFor({
   active: boolean;
   refreshKey: string;
 }) {
+  // A banner that showed a waiting or resuming stop keeps reading until that
+  // stop settles, even after the conversation stops looking limited (a newer
+  // message clears the hold), so the reason it settled for can be said.
+  const [engaged, setEngaged] = useState(false);
+  const enabled = active || engaged;
   const { recovery, refetch, resume, cancel } = useUsageLimitRecovery({
     apiBase,
     scope,
     threadId,
-    enabled: active,
+    enabled,
   });
   const [nowMs, setNowMs] = useState(() => Date.now());
-  const [notice, setNotice] = useState<ConnectionRecoveryOutcomeReason | null>(
-    null,
-  );
-  const wasWaiting = useRef(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const wasEngaged = useRef(false);
   const titleId = useId();
 
   const firstRefresh = useRef(true);
@@ -121,12 +145,12 @@ function UsageLimitBannerFor({
       firstRefresh.current = false;
       return;
     }
-    if (active) void refetch();
+    if (enabled) void refetch();
   }, [refreshKey]);
 
   const dueMs = recovery?.dueAt ? Date.parse(recovery.dueAt) : Number.NaN;
   useEffect(() => {
-    if (!active || !Number.isFinite(dueMs)) return;
+    if (!enabled || !Number.isFinite(dueMs)) return;
     const wait = dueMs - Date.now();
     if (wait <= 0) {
       setNowMs(Date.now());
@@ -140,21 +164,24 @@ function UsageLimitBannerFor({
       void refetch();
     }, wait + SETTLE_MS);
     return () => clearTimeout(timer);
-  }, [active, dueMs, refetch]);
+  }, [enabled, dueMs, refetch]);
 
-  // A stop this view watched go from waiting to retired says why, briefly.
-  // A retirement already in the past when the view opened is not news.
+  // A stop this view watched go from waiting (or resuming) to settled says how,
+  // briefly. A settlement already in the past when the view opened is not news.
   useEffect(() => {
-    const waiting = isWaiting(recovery);
-    if (
-      wasWaiting.current &&
-      recovery?.usageLimit &&
-      recovery.outcome === 'canceled' &&
-      recovery.outcomeReason
-    )
-      setNotice(recovery.outcomeReason);
-    else if (waiting) setNotice(null);
-    wasWaiting.current = waiting;
+    const live =
+      recovery?.usageLimit === true &&
+      (isWaiting(recovery) || recovery.outcome === 'resumed');
+    if (live) {
+      wasEngaged.current = true;
+      setEngaged(true);
+      if (isWaiting(recovery)) setNotice(null);
+      return;
+    }
+    if (!wasEngaged.current || recovery?.usageLimit !== true) return;
+    wasEngaged.current = false;
+    setEngaged(false);
+    setNotice(settledNotice(recovery));
   }, [recovery]);
 
   useEffect(() => {
@@ -163,26 +190,29 @@ function UsageLimitBannerFor({
     return () => clearTimeout(timer);
   }, [notice]);
 
+  if (notice)
+    return (
+      <section
+        className="usage-limit-banner usage-limit-banner--notice"
+        aria-label="Usage limit"
+        data-testid="usage-limit-banner"
+      >
+        <p className="usage-limit-banner__body" role="status">
+          {notice}
+        </p>
+        <div className="usage-limit-banner__actions">
+          <Button size="sm" onClick={() => setNotice(null)}>
+            Dismiss
+          </Button>
+        </div>
+      </section>
+    );
+
+  // The actions and the resuming line speak for a conversation that still
+  // looks limited; once a newer turn has started they would be stale.
   if (!active) return null;
 
   if (!isWaiting(recovery)) {
-    if (notice)
-      return (
-        <section
-          className="usage-limit-banner usage-limit-banner--notice"
-          aria-label="Usage limit"
-          data-testid="usage-limit-banner"
-        >
-          <p className="usage-limit-banner__body" role="status">
-            {RETIRED_COPY[notice]}
-          </p>
-          <div className="usage-limit-banner__actions">
-            <Button size="sm" onClick={() => setNotice(null)}>
-              Dismiss
-            </Button>
-          </div>
-        </section>
-      );
     if (recovery?.usageLimit && recovery.outcome === 'resumed')
       return (
         <section
@@ -203,15 +233,13 @@ function UsageLimitBannerFor({
   const resetLabel = dueKnown
     ? formatReset(recovery?.dueAt as string, nowMs)
     : undefined;
-  const armed = recovery?.outcome === 'armed';
-  const autoOn = armed && recovery?.autoResume === true;
-  // With automatic resume off, Resume now is the way forward once the reset
-  // has passed (the server leaves the stop to the user then).
-  const canResume = !armed || autoOn || resetPassed;
+  const autoOn = recovery?.outcome === 'armed' && recovery.autoResume === true;
+  // The reset time is said once, in the title. Resume now is always offered:
+  // before the reset it may be refused again, and the wait then carries on.
   const body = autoOn
-    ? `Station will resume this conversation at ${resetLabel}.`
-    : armed && !resetPassed
-      ? 'Auto-resume is off. Resume it yourself once your limit resets.'
+    ? 'Station will resume this conversation automatically.'
+    : dueKnown && !resetPassed
+      ? 'Auto-resume is off. You can resume now, but your limit may not have reset yet.'
       : dueKnown
         ? 'Auto-resume is off. Resume it yourself.'
         : "Station can't tell when your limit resets, so it won't resume on its own. Resume it yourself when your limit is back.";
@@ -241,18 +269,16 @@ function UsageLimitBannerFor({
         </p>
       ) : null}
       <div className="usage-limit-banner__actions">
-        {canResume ? (
-          <Button
-            variant="primary"
-            size="sm"
-            pending={resume.isPending}
-            pendingLabel="Resuming…"
-            disabled={busy}
-            onClick={() => resume.mutate()}
-          >
-            Resume now
-          </Button>
-        ) : null}
+        <Button
+          variant="primary"
+          size="sm"
+          pending={resume.isPending}
+          pendingLabel="Resuming…"
+          disabled={busy}
+          onClick={() => resume.mutate()}
+        >
+          Resume now
+        </Button>
         {autoOn ? (
           <Button
             size="sm"
