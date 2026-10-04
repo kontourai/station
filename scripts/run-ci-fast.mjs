@@ -333,8 +333,17 @@ export function classifyCiFastCommandResult(result) {
 }
 
 function run(command, args, { cwd, timeout, env }) {
-  const invocation =
-    command === 'npm' ? npmInvocation(args, { env }) : { command, args };
+  let invocation = { command, args };
+  if (command === 'npm') {
+    try {
+      invocation = npmInvocation(args, { env });
+    } catch (cause) {
+      throw new CiFastInfrastructureError(
+        `ci:fast npm launcher could not resolve: ${cause instanceof Error ? cause.message : String(cause)}`,
+        { cause },
+      );
+    }
+  }
   const result = spawnSync(invocation.command, invocation.args, {
     cwd,
     ...(env ? { env } : {}),
