@@ -56,7 +56,7 @@
 
     {"path":"src-server/providers/llm/openai-compat-provider.ts","digest":"3947c2c6bc098058e2890b79b56953ebccfc8f22a6021aed5f9081dbd82eafe6","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/providers/sessions/claude-transcript-session-source.ts","digest":"d1dc78e049ebbd92c6dabf54436f3b82779bbe0c801d6e31514351f1c58c560d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/providers/sessions/claude-transcript-session-source.ts","digest":"4b162676424e9dce65c53f21d3a43209fa9bb0164eac65ad6a08746f0bc82d77","revision":"f9902e2692c5b9c6c2f25b2d63574c8e833ce3e6"},
 
     {"path":"src-server/providers/sessions/codex-rollout-session-source.ts","digest":"35e09b5648c9969919fa37fed58ff37af1e3b7e802a3b42c5fd236fa5100fba9","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

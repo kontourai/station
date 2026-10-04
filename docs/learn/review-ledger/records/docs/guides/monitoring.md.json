@@ -9,7 +9,7 @@
 
   "limits": "Source and bounded fixtures/in-memory exporter probes do not establish real collector export, historical timing reproduction, complete billing or production reliability. Named recording families are reviewed; the generated catalog lists declarations only. Additional main merge b269a6cf9: structural reconciliation only; prior distinct anchors below are historical reviews, not approval of combined bytes. Active bindings retain existing anchors; combined dependency bytes remain stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"pnpm-lock.yaml\",\"ours\":{\"digest\":\"2907b97d6a2e98b4211695a78cf83b03419218f1dd95ce090ca753d9bdbad14a\",\"revision\":\"b50eeb9584c1808e429e59dcb3c3c2253307bbbe\"},\"main\":{\"digest\":\"29dbdce300fcd3d881ae511317af478da6e9c098a8e8cf51c6b2269a937525df\",\"revision\":\"df9188971e1a93d2c5525a7f5f38e3da93c9e4de\"}}].",
 
-  "document": {"digest":"b015e5cd44b250ca16a49aaae95721d5529325200b70d1ff32056c515c0fd06c","revision":"a11755821186eaeb034b77e970dfa372c5c7f789"},
+  "document": {"digest":"8a7868dabd01bb89c0c50f3584b7b5d6f32138bdcef8497e4a3ab1d5e4fe5b41","revision":"dcfaa7bd3ae31a080794196e260953cc4066684b"},
 
   "sources": [
     {"path":"pnpm-lock.yaml","digest":"e5666b03a0bedc8656564f5371ea01b19879ac4a8ed732280e1d0903025de0c5","revision":"fdca33b1896b280299ba72fc70a3c9b9cda7f3af"},
@@ -72,9 +72,9 @@
 
     {"path":"src-server/providers/__tests__/muse-serve-adapter.test.ts","digest":"41cd71aac44bb98e4a39f3e9a8f6629b48be3409f3578a22f6269978d5ee644c","revision":"5e6fbfedca2315119d1d20a7829252899c52c15a"},
 
-    {"path":"src-server/providers/sessions/claude-transcript-session-source.ts","digest":"d1dc78e049ebbd92c6dabf54436f3b82779bbe0c801d6e31514351f1c58c560d","revision":"ed7aacb2c9d560efe6c8af7c9bed5a4e711f5053"},
+    {"path":"src-server/providers/sessions/claude-transcript-session-source.ts","digest":"4b162676424e9dce65c53f21d3a43209fa9bb0164eac65ad6a08746f0bc82d77","revision":"f9902e2692c5b9c6c2f25b2d63574c8e833ce3e6"},
 
-    {"path":"src-server/services/orchestration/event-store.ts","digest":"93c3dbecfc298b2ae05f65a29fe897f34f13a69ba0cbd72b6fca8013a9a6361a","revision":"b208a334880a96bb3f4267c2d2ffd6d03e118218"},
+    {"path":"src-server/services/orchestration/event-store.ts","digest":"1409fd66ae6bbbe5926e55acdf5cab6bd7f637ff7425587ace5703576e72fa3e","revision":"581ec415b580f0d2c6350499977ccf6b8906d947"},
 
     {"path":"src-ui/src/pages/ProfilePage.css","digest":"9a36e5f00b440a12ae1c2cd2222a59e52c7f030d2a8c23119c600527714cd1e8","revision":"b0568b6eb4305aa50f762e2715f69661608c94e3"},
 
