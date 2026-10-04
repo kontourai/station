@@ -462,9 +462,10 @@ export function runTransferCapture({
     // message already names the setting; repeat it on the FAIL line, which is
     // what a push refusal shows.
     // Anchored to the thrown error's own line: Node prints the source line that
-    // threw (which contains the message template) before it.
+    // threw (which contains the message template) before it, and prints an
+    // Error subclass as `ClassName [Error]: …` (TransferMeasurementFailure).
     const barrierTimeout =
-      /^Error: ([^\n]*barrier timed out after \d+ms: [^\n]+)/m.exec(
+      /^(?:\w+ \[Error\]|Error): ([^\n]*barrier timed out after \d+ms: [^\n]+)/m.exec(
         result.stderr ?? '',
       );
     if (barrierTimeout)
@@ -475,7 +476,7 @@ export function runTransferCapture({
     // frame count that is not one heavy turn) are not load and carry their
     // own text; surface it on the FAIL line instead of a bare "capture failed".
     const scenarioFailure =
-      /^Error: (orchestration transfer scenario: [^\n]+)/m.exec(
+      /^(?:\w+ \[Error\]|Error): (orchestration transfer scenario: [^\n]+)/m.exec(
         result.stderr ?? '',
       );
     fail(

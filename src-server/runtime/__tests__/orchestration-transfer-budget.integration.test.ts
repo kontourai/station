@@ -2,6 +2,7 @@ import { once } from 'node:events';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { inspect } from 'node:util';
 import { serve } from '@hono/node-server';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { Hono } from 'hono';
@@ -516,15 +517,16 @@ describe('orchestration transfer byte budgets', () => {
 
   /**
    * The shape Node prints for an uncaught error: the source line that threw
-   * (which contains the message template) comes before the `Error:` line.
+   * (which contains the message template) comes before the error line, and an
+   * Error subclass is named `ClassName [Error]` there.
    */
-  const uncaughtStderr = (message: string) =>
+  const uncaughtStderr = (message: string, errorName = 'Error') =>
     [
       'file:///repo/src-server/__test-utils__/orchestration-transfer-scenario.ts:133',
       '    throw new Error(`orchestration transfer scenario: ${message}`);',
       '          ^',
       '',
-      `Error: ${message}`,
+      `${errorName}: ${message}`,
       '    at fail (file:///repo/src-server/__test-utils__/orchestration-transfer-scenario.ts:133:11)',
     ].join('\n');
 
@@ -579,5 +581,16 @@ describe('orchestration transfer byte budgets', () => {
         expect.objectContaining({ event: 'orchestration:activity' }),
       ]),
     });
+    // Node names an Error subclass in its uncaught output; take the line from
+    // Node's own formatting rather than restating it.
+    const printed = inspect(failure).split('\n')[0]!;
+    expect(printed).toMatch(/^TransferMeasurementFailure \[Error\]: /);
+    const line = gateFailLine(
+      uncaughtStderr(
+        printed.replace(/^[^:]+: /, ''),
+        printed.slice(0, printed.indexOf(': ')),
+      ),
+    );
+    expect(line).toContain('frames 44 != 43, activityFrames 1');
   }, 60_000);
 });
