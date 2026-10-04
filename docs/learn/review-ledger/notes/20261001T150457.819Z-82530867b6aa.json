@@ -1,0 +1,7 @@
+{
+  "revision": "33c0de450a1c232f6b2f2f02d22b0ae9cf238fb8",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Integration source review through 33c0de450: 5a2e68619 (#3077) changes ChatDock's inbox item derivation (the shared useInboxWorkItems; the sidebar reads the same items) and re-sources the context meter's open-chat membership check to openChatInboxRows over those items, the same chat set as before. ChatDockHeader still owns identity, context meter, project context, session counter and More menu and still portals into the region's one chrome bar; nothing about placement, the tab strip or pane mounting changes. Prose accurate. Source review is separate from executed test evidence.","inputs":["docs/design/placement.md"]}
+  ]
+}

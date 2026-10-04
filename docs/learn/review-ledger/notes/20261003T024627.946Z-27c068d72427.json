@@ -1,0 +1,21 @@
+{
+  "revision": "4d59eb1868139f2faeaf1a1467811c22726f741c",
+
+  "notes": [
+    {"path":"docs/contexts/workspace-surfaces/CONTEXT.md","note":"Checked destination/navigation ownership: preserved conversation-driven project changes use canonical guarded navigation; workspace selection continues to set the ambient chat default. No pane admission or persistence schema changed.","inputs":["docs/contexts/workspace-surfaces/CONTEXT.md"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked the documented independent next-chat default against guarded URL updates and scoped existing-conversation open/focus callers. Explicit workspace/picker/new-chat choices update it; opening an old chat preserves it. Retain upstream status/control text and native evidence limits.","inputs":["docs/design/chat-composer.md"]},
+
+    {"path":"docs/design/placement.md","note":"Checked scoped conversation route and canonical layout/region owners after the default-preservation fix. Destination project remains immutable for the conversation; ambient default survives conversation-driven navigation. Merged status/touch CSS leaves region placement and persistence contracts intact.","inputs":["docs/design/placement.md"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Checked merged chat stylesheet, canonical project navigation and project-directory browser assertion update. Mobile sheet typography and focus/geometry descriptions remain accurate; source-only review does not renew physical-device evidence.","inputs":["docs/guides/responsive-ui.md"]},
+
+    {"path":"docs/reference/api.md","note":"Checked ChatDock conversation-open consumer delta: only local navigation/default binding changes; API requests, conversation identities, authorization and server schemas remain unchanged.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/reference/config.md","note":"Checked ChatDock project-default preservation changes against configuration ownership. No Agent/model/configuration API or persisted device-setting format changed.","inputs":["docs/reference/config.md"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked sidebar workspace selection, guarded scoped conversation navigation and New Chat creation. Explicit workspace selection sets the next-chat default; opening existing chats preserves it and their original project. Shared creation controls and directory tooltips remain owned by their existing components.","inputs":["docs/user/getting-started.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Checked guarded canonical navigation and setLayout preservation option used by existing-conversation open/focus. The single guard ownership instruction remains accurate; UI focus/typography and test evidence limits are unchanged.","inputs":["src-ui/AGENTS.md"]}
+  ]
+}

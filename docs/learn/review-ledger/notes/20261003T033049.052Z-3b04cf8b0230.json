@@ -1,0 +1,7 @@
+{
+  "revision": "671be0593127cb01daf7085071ea22003752fe2c",
+
+  "notes": [
+    {"path":"scripts/fixtures/orchestration-transfer/README.md","note":"Reviewed unchanged byte ceilings and the capture-only logical clock. Retained decoded diagnostic frames proved that delaying the identical native completion by 1200ms adds a 439-byte conversation binding, with 44 frames in both reports. Both barrier loops retain monotonic real deadlines. Six focused transfer/recorder tests passed; this is controlled byte-burst evidence, not coalescing cadence or runtime latency qualification. Independent delta review found no issue; its execution was blocked by ENOSPC and is not counted as passing.","inputs":["scripts/fixtures/orchestration-transfer/README.md"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "5dce8a075c0673267293f6d4d669c36e80b651a3",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Reviewed account overview typography using Kontour text/font/radius tokens: labels/captions 12.5px, body/section headings 14px, highlighted numbers 22px. Shared Empty replaces ad-hoc unavailable copy; account permissions and metadata projection are unchanged. Four real-SDK UI cases passed; browser computes the intended type sizes and preserves 44px disclosures.","inputs":["docs/guides/connections.md"]}
+  ]
+}

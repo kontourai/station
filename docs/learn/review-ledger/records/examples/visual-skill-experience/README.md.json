@@ -9,24 +9,22 @@
 
   "limits": "No third-party Skill collection redistribution, installed experience, renderer, model/provider, native or cross-client runtime qualification. Schema URI and public package release are not claimed.",
 
-  "document": {"digest":"83ee67767aa8bb2c1391696a2fceade6d3bff519fab17951453c8dfc946aa53c","revision":"4846133db20d56a37c3941d83b0dca5444f21a52"},
-
   "sources": [
-    {"path":"docs/reference/skill-experiences.md","digest":"8e351bc61bf2cadb1fd0848c74822d7c5ad1271a3752ad5d0e993a75d40684bd","revision":"ce9c623c034f83ec7590f8fae3f6b427da26d921"},
+    "examples/visual-skill-experience/plugin.json",
 
-    {"path":"examples/visual-skill-experience/io.kontourai.station/experiences/stress-test-idea.json","digest":"b09ffb2394b1f81a15df043bd9befbb19d0dbf30256781cb33da4cfe88c8e208","revision":"4846133db20d56a37c3941d83b0dca5444f21a52"},
+    "examples/visual-skill-experience/io.kontourai.station/experiences/stress-test-idea.json",
 
-    {"path":"examples/visual-skill-experience/plugin.json","digest":"0ff451e1841bd1be69321dd1fcebe88a472dcc4b6b19f14ec83061212171c128","revision":"4846133db20d56a37c3941d83b0dca5444f21a52"},
+    "examples/visual-skill-experience/skills/stress-test-idea/SKILL.md",
 
-    {"path":"examples/visual-skill-experience/skills/stress-test-idea/SKILL.md","digest":"d5e7270b300e941d361be53562712fa04274a3076ba0201803d422832966e35d","revision":"4846133db20d56a37c3941d83b0dca5444f21a52"},
+    "packages/shared/src/build.ts",
 
-    {"path":"packages/shared/src/__tests__/skill-experience-author.test.ts","digest":"019fbaff285008de176690a8d64ff9e44e9da462495c64483105c5798bf9d9cf","revision":"f2bb7d8a1e4b56ac783fb9d0cfe167fe7a0fdde5"},
+    "packages/shared/src/skill-experience-author.ts",
 
-    {"path":"packages/shared/src/build.ts","digest":"8db6bc04bffe80ead5af5e8d9b23be2ae02f1e5afbae67f850e583b8ca40c783","revision":"e78cdc9c00d09b69f333e1609821d8fa70bce58c"},
+    "packages/shared/src/__tests__/skill-experience-author.test.ts",
 
-    {"path":"packages/shared/src/skill-experience-author.ts","digest":"78eff8e23674a648d904c12919b137ff62c04520fc3f164f66a482102047754b","revision":"f2bb7d8a1e4b56ac783fb9d0cfe167fe7a0fdde5"},
+    "docs/reference/skill-experiences.md",
 
-    {"path":"src-server/__test-utils__/temp-dirs.ts","digest":"20c81129e9cd3db2df51d96b788515b8afde2a2740112ca25e101a6880f72cb1","revision":"cd4139fe26bdaac578c408aaa75784fff0391a5a"}
+    "src-server/__test-utils__/temp-dirs.ts"
   ],
 
   "checks": [

@@ -1,0 +1,7 @@
+{
+  "revision": "e219871c414d351695127ff92ee3280ca38dff9c",
+
+  "notes": [
+    {"path":"docs/patterns/backend.md","note":"Reviewed merged responsive action inventory. Browser pane entries retain their owned SDK/dialog action boundaries; the Home goal entry retains canonical dispatch and server authority. No backend or authentication contract changed by the inventory merge.","inputs":["docs/patterns/backend.md"]}
+  ]
+}

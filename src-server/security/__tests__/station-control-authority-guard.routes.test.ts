@@ -1299,7 +1299,11 @@ describe('answering a pending request (M4): only the bound operator', () => {
     expect(refusals).toEqual([]);
   });
 
-  test('other commands keep the dispatch policy, and the operator UI still answers', async () => {
+  // Slice C3: an interrupt is held to the caller's scope like a steer; this
+  // harness composes no thread reader, so the guard cannot read the thread
+  // and refuses (fail closed). The scoped outcomes are proved in the
+  // production composition (`runtime-routes-station-control-authority`).
+  test('an interrupt whose thread the guard cannot read is refused, and the operator UI still answers', async () => {
     const bearer = forwardedCaller('bearer-exposed', nextSession('op-'));
     expect(
       await rest(
@@ -1308,7 +1312,9 @@ describe('answering a pending request (M4): only the bound operator', () => {
         internalHeaders({ [STATION_CONTROL_CALLER_TOKEN_HEADER]: bearer! }),
         { type: 'interruptTurn', threadId: 't' },
       ),
-    ).toEqual({ status: 200 });
+    ).toEqual({ status: 403, code: 'station_control_assurance_insufficient' });
+    expect(refusals).toEqual(['station_control_assurance_insufficient']);
+    refusals.length = 0;
     expect(
       await rest(
         'POST',

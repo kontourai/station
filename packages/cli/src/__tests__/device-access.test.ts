@@ -317,6 +317,12 @@ describe('station environment access devices / scope / scopes (#1796)', () => {
         ],
         reconfined: [{ conversationId: 'conversation:a' }],
         stillUnconfined: [
+          {
+            conversationId: 'conversation:d',
+            sessionId: 'session:d',
+            until: 'next-turn',
+          },
+          // An older Station's answer (before #2898).
           { conversationId: 'conversation:c', until: 'engine-restart' },
         ],
         unattributedHostStarts: {
@@ -345,7 +351,7 @@ describe('station environment access devices / scope / scopes (#1796)', () => {
       'Re-confined from its next turn (runs inside the workspace again):\n  conversation:a',
     );
     expect(printed()).toContain(
-      'Still unconfined, not changed:\n  conversation:c  because its engine is running with no decision to re-apply',
+      'Still unconfined:\n  conversation:d  because its engine is running: a turn already running finishes unconfined, and its next turn runs confined\n  conversation:c  because its engine is running with no decision to re-apply',
     );
     expect(printed()).not.toContain('\u001b');
   });

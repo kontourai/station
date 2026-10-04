@@ -101,6 +101,17 @@ export function isConversationContinuationPending(
   });
 }
 
+/**
+ * Whether the session ever started a turn (any `turn.*` event on record).
+ * Known gap: a second send that resolves in the instant between a first turn's
+ * dispatch and its `turn.started` write sees no turn and may stop the
+ * predecessor mid-start; the window is a single event write and the stop is
+ * best effort, so it is accepted rather than guarded.
+ */
+function hasTurnFacts(detail: OrchestrationSessionDetail): boolean {
+  return detail.events.some((event) => event.method.startsWith('turn.'));
+}
+
 export function canResolveConversationContinuation(
   detail: OrchestrationSessionDetail,
 ): boolean {
@@ -198,6 +209,7 @@ export class ConversationLineage {
     resumeModel?: string;
     transcriptSeed?: string;
     contextBoundary?: ConversationContextBoundaryProjection;
+    retirePredecessorSessionId?: string;
   }> {
     const store = this.deps.eventStore;
     if (!store) {
@@ -325,6 +337,13 @@ export class ConversationLineage {
     return {
       sessionId: child.lineage.sessionId,
       startRequired: true,
+      // A model change on a session that never ran a turn leaves its engine
+      // process resident for nothing; name it so the start seam can end it
+      // once the successor is up. Any session with turn facts keeps today's
+      // lineage and lifecycle behaviour untouched.
+      ...(needsModelRestart && !hasTurnFacts(detail)
+        ? { retirePredecessorSessionId: current.sessionId }
+        : {}),
       ...continuationLaunchContext(
         detail,
         requested,

@@ -1,0 +1,27 @@
+{
+  "revision": "de9cc36b5eae4daaabdbc19156d7e5a5b6e63025",
+
+  "notes": [
+    {"path":".github/codex/qualification-repair.md","note":"Reviewed dedicated Station automation app wiring and the explicit station-autoland label. Trusted-base topology remains pinned; app stays outside bypass lists. Receipt semantics, source qualification and release signing/provider boundaries are unchanged. Focused topology, late-label and label reconciliation checks executed.","inputs":[".github/codex/qualification-repair.md"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Reviewed dedicated Station automation app wiring and the explicit station-autoland label. Trusted-base topology remains pinned; app stays outside bypass lists. Receipt semantics, source qualification and release signing/provider boundaries are unchanged. Focused topology, late-label and label reconciliation checks executed.","inputs":["docs/guides/delegation-attempt-claims.md"]},
+
+    {"path":"docs/guides/dependency-security.md","note":"Reviewed dedicated Station automation app wiring and the explicit station-autoland label. Trusted-base topology remains pinned; app stays outside bypass lists. Receipt semantics, source qualification and release signing/provider boundaries are unchanged. Focused topology, late-label and label reconciliation checks executed.","inputs":["docs/guides/dependency-security.md"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Reviewed dedicated Station automation app wiring and the explicit station-autoland label. Trusted-base topology remains pinned; app stays outside bypass lists. Receipt semantics, source qualification and release signing/provider boundaries are unchanged. Focused topology, late-label and label reconciliation checks executed.","inputs":["docs/guides/home-transfer-controller.md"]},
+
+    {"path":"docs/guides/private-runner-partition.md","note":"Reviewed dedicated Station automation app wiring and the explicit station-autoland label. Trusted-base topology remains pinned; app stays outside bypass lists. Receipt semantics, source qualification and release signing/provider boundaries are unchanged. Focused topology, late-label and label reconciliation checks executed.","inputs":["docs/guides/private-runner-partition.md"]},
+
+    {"path":"docs/guides/product-law-authoring.md","note":"Reviewed dedicated Station automation app wiring and the explicit station-autoland label. Trusted-base topology remains pinned; app stays outside bypass lists. Receipt semantics, source qualification and release signing/provider boundaries are unchanged. Focused topology, late-label and label reconciliation checks executed.","inputs":["docs/guides/product-law-authoring.md"]},
+
+    {"path":"docs/guides/releasing.md","note":"Reviewed dedicated Station automation app wiring and the explicit station-autoland label. Trusted-base topology remains pinned; app stays outside bypass lists. Receipt semantics, source qualification and release signing/provider boundaries are unchanged. Focused topology, late-label and label reconciliation checks executed.","inputs":["docs/guides/releasing.md"]},
+
+    {"path":"docs/guides/repository-layout.md","note":"Reviewed dedicated Station automation app wiring and the explicit station-autoland label. Trusted-base topology remains pinned; app stays outside bypass lists. Receipt semantics, source qualification and release signing/provider boundaries are unchanged. Focused topology, late-label and label reconciliation checks executed.","inputs":["docs/guides/repository-layout.md"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"Reviewed dedicated Station automation app wiring and the explicit station-autoland label. Trusted-base topology remains pinned; app stays outside bypass lists. Receipt semantics, source qualification and release signing/provider boundaries are unchanged. Focused topology, late-label and label reconciliation checks executed.","inputs":["docs/guides/work-board-security.md"]},
+
+    {"path":"docs/guides/workspace-packages.md","note":"Reviewed dedicated Station automation app wiring and the explicit station-autoland label. Trusted-base topology remains pinned; app stays outside bypass lists. Receipt semantics, source qualification and release signing/provider boundaries are unchanged. Focused topology, late-label and label reconciliation checks executed.","inputs":["docs/guides/workspace-packages.md"]},
+
+    {"path":"docs/reference/issue-lifecycle.md","note":"Reviewed dedicated Station automation app wiring and the explicit station-autoland label. Trusted-base topology remains pinned; app stays outside bypass lists. Receipt semantics, source qualification and release signing/provider boundaries are unchanged. Focused topology, late-label and label reconciliation checks executed.","inputs":["docs/reference/issue-lifecycle.md"]}
+  ]
+}

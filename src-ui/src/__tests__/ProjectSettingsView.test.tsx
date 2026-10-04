@@ -185,14 +185,21 @@ vi.mock('@kontourai/station-sdk', () => ({
   })),
   useUpdateProjectMutation: vi.fn(() => ({
     isPending: false,
-    mutateAsync: async (payload: Partial<ProjectConfig> & { slug: string }) => {
+    mutateAsync: async (
+      payload: Partial<Omit<ProjectConfig, 'defaultAgent'>> & {
+        slug: string;
+        defaultAgent?: ProjectConfig['defaultAgent'] | null;
+      },
+    ) => {
       sdkMocks.updateProject(payload);
       if (sdkMocks.updateFailure) throw sdkMocks.updateFailure;
-      return {
+      const saved = {
         ...(sdkMocks.project as ProjectConfig),
         ...payload,
         updatedAt: '2026-07-07T23:45:00.000Z',
       };
+      if (saved.defaultAgent === null) delete saved.defaultAgent;
+      return saved;
     },
   })),
   useModelConnectionsQuery: vi.fn(() => ({
@@ -792,6 +799,7 @@ describe('ProjectSettingsView (#250 shell port)', () => {
         description: 'Demo project description',
         defaultModel: 'openai:gpt-5',
         defaultProviderId: '',
+        defaultAgent: null,
         defaultWorkspaceIsolation: 'worktree',
         defaultEnvironment: { kind: 'current' },
         workingDirectory: '~/dev/demo',

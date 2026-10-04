@@ -1,0 +1,7 @@
+{
+  "revision": "00e4d696ef242a1032f41392e9248698bbb49aaa",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Removed contributor implementation links from the public user guide after public hygiene identified them. Skills behavior prose is unchanged; implementation and test sources remain attached to this record.","inputs":["docs/user/getting-started.md"]}
+  ]
+}

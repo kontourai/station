@@ -645,6 +645,7 @@ import {
 } from '../bootstrap/personal-home-authority-database.js';
 import {
   configureRuntimeHttp,
+  installStationEnvelopeMarker,
   LOOPBACK_DEVICE_SESSION_COOKIE,
   parseDeviceSessionCookie,
   SECURE_DEVICE_SESSION_COOKIE,
@@ -1743,6 +1744,9 @@ export function configureRuntimeRoutes(
     canReadSession: (sessionId, authority) =>
       context.orchestrationService.canUserReadSession(sessionId, authority),
   });
+  // #2842: ahead of the hosted tenant gate, so its refusals are marked as
+  // this Station's own like every other answer.
+  installStationEnvelopeMarker(context.app);
   if (hostedTenantRegistry) {
     context.app.use(
       '*',
@@ -1889,7 +1893,7 @@ export function configureRuntimeRoutes(
           () => schedulerService.listJobs(),
           unattendedGrantStore,
         ),
-      // Slices C1 and C2a: the thread a `steerTurn` or `adoptSession` names.
+      // Slices C1, C2a and C3: the thread a scoped `/commands` command names.
       commandThread: (threadId) =>
         stationControlDispatchScope.target({
           kind: 'thread',
@@ -3654,6 +3658,10 @@ export function configureRuntimeRoutes(
       // Room editing remains available; discovery names revision-link absence.
     }
     const roomRuntime = new ProjectTaskRoomRuntime({
+      outputFeedbackTargets: {
+        validate: (scope, target) =>
+          taskOutputs.validateFeedbackTarget(scope, target),
+      },
       taskGraph: context.taskGraphService,
       projectForId: (id) => {
         const project = context.projectService
@@ -3669,6 +3677,9 @@ export function configureRuntimeRoutes(
         context.orchestrationEventStore!.createProjectTaskRoomHistory({
           capabilities: authority.capabilities,
           agents: authority.agents,
+          ...(authority.outputFeedbackTargets
+            ? { outputFeedbackTargets: authority.outputFeedbackTargets }
+            : {}),
           ...(authority.links ? { links: authority.links } : {}),
         }),
       working:
