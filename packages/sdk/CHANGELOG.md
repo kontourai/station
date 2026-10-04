@@ -1,5 +1,87 @@
 # @kontourai/station-sdk
 
+## 0.9.0
+
+### Minor Changes
+
+- 306ebf4: Add optional `clientInputId` to turn steering and an explicit indeterminate
+  result so acknowledgement retries preserve one engine invocation. Add a
+  per-device Return preference. Preserve nonterminal retry errors in the runtime
+  transcript projection instead of treating them as failed turns.
+- fc181b4: Expose bounded allowance observation history and optional credential-profile activity filters. Older usage without an account observation remains unattributed.
+- fc181b4: Expose optional provider account/credit metadata, actual quota window durations,
+  model availability and a bounded response-shape audit. Preserve metadata when
+  quota percentages are unavailable.
+- a91c50d: Add strict engine-account, quota and login contracts and authority-scoped hooks.
+  Engine activity queries can select a provider and local Station receipts while
+  preserving coverage and separating reported costs from estimates.
+- 3b001e5: Add minimal engine sign-in profile contracts and an authority-scoped profile query.
+  Clients with an explicit engine sign-in grant can list existing profiles without
+  reading credential-management metadata or manual enrolment commands.
+- e7fb9b3: The File Preview's Changes view: one previewed file's diff against HEAD.
+  `workspace-file-preview` gains `WorkspaceFileChanges` (`changed`, `unchanged`,
+  `untracked`, `no-commits`, `not-a-repository`, `oversized` or `refused` with
+  a reason), `WorkspaceFileChangesRequest` and
+  `WORKSPACE_FILE_CHANGES_MAX_BYTES`. The SDK's `workspace-file-preview`
+  subpath adds `readProjectWorkspaceFileChanges` (`POST
+  /api/projects/:slug/file-preview/changes`, the preview's path and session
+  rules), `useProjectWorkspaceFileChangesQuery`, which asks again after a `503
+  repository-busy` answer when the server's `Retry-After` says to, and
+  `isRepositoryBusyError`, which names that answer. The read runs on the
+  Project's own repository through the same confined read as the coding diff;
+  a repository that is being written answers busy, not a refusal.
+- eee7f74: Expose source-qualified marketplace selections, persisted source management, provider catalog boundaries and SDK query/mutation hooks. Installed skills retain source and package digest provenance.
+- d3e3396: Expose optional pull-request context `pushTargetOwner` and branch mergeability `sourceOwner` so conflict indicators can distinguish forks with the same branch name.
+- cf099c6: Add versioned Task room agent request records and clients, with explicit agent selection, incarnation checks, authority-bound reads, readiness checks, and stable retries after lost acknowledgements.
+- 8f66f37: Add optional versioned Task brief references and saved snapshots to room agent requests. The SDK negotiates support, sends only the selected reference and verifies its acknowledgement; retries preserve the original brief. Context-free callers retain the public v1 protocol.
+- fac321f: Add validated visual skill inventory/session clients and React Query hooks, plus source-bound foreground start preflight and shared inert input parsers. Defer the canonical wire reader until a successful feature response. Provide the opt-in workspace-pane producer for host-bound reads, canonical question answers and unsent stage preparation with pinned invocation preconditions.
+
+### Patch Changes
+
+- ebf24b4: Depends on `@kontourai/ui` `^1.18.0` (was `^1.16.0`), so the workspace resolves
+  one version of the design kit. The SDK's own use of it (`Empty`) is unchanged.
+  
+  Behaviour change for white-label branding providers, in the Station app that
+  ships with this release: `@kontourai/ui` 1.18 rates `--k-brand` as text at
+  4.5:1 on the raised panel as well as on the page and the panel. A dark-mode
+  brand that cleared the page and the panel but is under 4.5:1 on the dark
+  raised panel `#16202d` (relative luminance from about 0.2155 up to 0.2377, for
+  example `#9364ff` or `#007efa`) was accepted before and is now rejected.
+  Acceptance is all or nothing, so such a theme falls back to the default
+  colours in both modes until the dark brand is lightened. Each rejection is
+  logged in the browser console with a `[branding-theme]` prefix, naming the
+  value, the surface and the ratio it needs. Light-mode brands are unaffected.
+- 1aecbf3: Refresh invalidated Trust readers on remount and cancel retired reads before
+  they can reach another Station.
+- Updated dependencies [31cac46]
+- Updated dependencies [c2c67c2]
+- Updated dependencies [53f9482]
+- Updated dependencies [31cac46]
+- Updated dependencies [d48225d]
+- Updated dependencies [c7a394e]
+- Updated dependencies [306ebf4]
+- Updated dependencies [fc181b4]
+- Updated dependencies [fc181b4]
+- Updated dependencies [a91c50d]
+- Updated dependencies [3b001e5]
+- Updated dependencies [e7fb9b3]
+- Updated dependencies [d4fbcaf]
+- Updated dependencies [eee7f74]
+- Updated dependencies [24205de]
+- Updated dependencies [d3e3396]
+- Updated dependencies [84fb656]
+- Updated dependencies [1aecbf3]
+- Updated dependencies [c6c7d4d]
+- Updated dependencies [cf099c6]
+- Updated dependencies [8f66f37]
+- Updated dependencies [fac321f]
+- Updated dependencies [fac321f]
+- Updated dependencies [6601a65]
+- Updated dependencies [19aff2a]
+- Updated dependencies [fac321f]
+  - @kontourai/station-contracts@0.9.0
+  - @kontourai/station-shared@0.9.0
+
 ## 0.8.0
 
 ### Minor Changes

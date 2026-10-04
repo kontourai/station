@@ -1,5 +1,105 @@
 # @kontourai/station-contracts
 
+## 0.9.0
+
+### Minor Changes
+
+- 31cac46: `tool.started` and `tool.completed` carry an optional `toolKind`
+  (`EngineToolKind`, the Agent Client Protocol `ToolKind` vocabulary) when the
+  engine reported one, and the shared transcript projection copies it onto the
+  tool part as `MessagePart.toolKind`. A tool part bound to a pending approval
+  also carries `approvalToolName`, the tool name the request itself reported.
+  `toolRequestGrantLabel` now reads "Allow for this session" when the request
+  reported no tool name: what such a grant covers is decided per adapter or
+  engine, so the label claims only the session scope.
+- c2c67c2: Add optional Agent MCP composition and loading preferences, with exact per-server tool selections for external-engine delivery. Existing declarations retain their prior defaults.
+  
+  Expose the existing connection-quota contract through its public package subpath for CLI and shared consumer resolution.
+- 31cac46: Add `ATTACHMENT_INPUT_UNSUPPORTED_CODE` for a send refused because the engine
+  cannot take its attachments, `ComposerImageSupport.caveat` for an attach-time
+  note when image support is unconfirmed (with the `modelSupportVaries` input),
+  and `TurnStartedEvent.steerInterruptedRun` for a steer delivered by stopping the
+  running step. The runtime event projection now splits a turn at a steer.
+- 306ebf4: Add optional `clientInputId` to turn steering and an explicit indeterminate
+  result so acknowledgement retries preserve one engine invocation. Add a
+  per-device Return preference. Preserve nonterminal retry errors in the runtime
+  transcript projection instead of treating them as failed turns.
+- fc181b4: Expose bounded allowance observation history and optional credential-profile activity filters. Older usage without an account observation remains unattributed.
+- fc181b4: Expose optional provider account/credit metadata, actual quota window durations,
+  model availability and a bounded response-shape audit. Preserve metadata when
+  quota percentages are unavailable.
+- a91c50d: Add strict engine-account, quota and login contracts and authority-scoped hooks.
+  Engine activity queries can select a provider and local Station receipts while
+  preserving coverage and separating reported costs from estimates.
+- 3b001e5: Add minimal engine sign-in profile contracts and an authority-scoped profile query.
+  Clients with an explicit engine sign-in grant can list existing profiles without
+  reading credential-management metadata or manual enrolment commands.
+- e7fb9b3: The File Preview's Changes view: one previewed file's diff against HEAD.
+  `workspace-file-preview` gains `WorkspaceFileChanges` (`changed`, `unchanged`,
+  `untracked`, `no-commits`, `not-a-repository`, `oversized` or `refused` with
+  a reason), `WorkspaceFileChangesRequest` and
+  `WORKSPACE_FILE_CHANGES_MAX_BYTES`. The SDK's `workspace-file-preview`
+  subpath adds `readProjectWorkspaceFileChanges` (`POST
+  /api/projects/:slug/file-preview/changes`, the preview's path and session
+  rules), `useProjectWorkspaceFileChangesQuery`, which asks again after a `503
+  repository-busy` answer when the server's `Retry-After` says to, and
+  `isRepositoryBusyError`, which names that answer. The read runs on the
+  Project's own repository through the same confined read as the coding diff;
+  a repository that is being written answers busy, not a refusal.
+- eee7f74: Expose source-qualified marketplace selections, persisted source management, provider catalog boundaries and SDK query/mutation hooks. Installed skills retain source and package digest provenance.
+- d3e3396: Expose optional pull-request context `pushTargetOwner` and branch mergeability `sourceOwner` so conflict indicators can distinguish forks with the same branch name.
+- 84fb656: The pull-request review snapshot (`pull-request-provider`) gains two optional
+  observations from the forge. `checks` is a `PullRequestChecksObservation`:
+  `available` with `PullRequestCheck[]` (`name`, `state` of
+  `PullRequestCheckState`, optional `group` and `url`) and `partial`, or
+  `unavailable` with a reason; GitHub's check runs and commit statuses and
+  GitLab's head pipeline are its sources, and a gh that cannot report the
+  field answers `unavailable`. `reviewComments` is a
+  `PullRequestReviewCommentsObservation`: `available` with
+  `PullRequestReviewComment[]` (`id`, `author`, `body`, `createdAt`, `path`,
+  `side` of `additions` or `deletions`, `subject` of `line` or `file`, `line`
+  null once the forge no longer maps the comment or when the subject is the
+  file, optional `inReplyTo` and `url`) and `partial`, or
+  `unavailable` with a reason. Either field absent means the server did not
+  observe it; neither is an empty list standing in for none. The existing
+  `mergeability` on the pull request is what the review pane now states beside
+  them.
+- cf099c6: Add versioned Task room agent request records and clients, with explicit agent selection, incarnation checks, authority-bound reads, readiness checks, and stable retries after lost acknowledgements.
+- 8f66f37: Add optional versioned Task brief references and saved snapshots to room agent requests. The SDK negotiates support, sends only the selected reference and verifies its acknowledgement; retries preserve the original brief. Context-free callers retain the public v1 protocol.
+- fac321f: Add host-observed installed visual Skill experience identity and inventory contracts,
+  and export the shared inert definition reader used by author builds and runtime inventory.
+  Inventory availability follows exact package admission and current Skill precedence;
+  this does not authorize execution or render a guided workflow.
+- fac321f: Add optional foreground Skill experience selection, immutable invocation and Session
+  history contracts, authored entry and stage transitions, and a scoped Workspace
+  Pane host for reading and answering canonical questions or staging continuation.
+  Execution remains behind exact installed source and current Session admission.
+- 6601a65: Add inert visual Skill experience declarations and a versioned authoring contract.
+  Portable author builds validate referenced definitions and bundled Skill digests;
+  installed experience activation and rendering remain deferred.
+
+### Patch Changes
+
+- d4fbcaf: `CONVERSATION_HANDOFF_DISCLOSURE_LABELS.authorizedTranscript` now reads
+  "Recent conversation messages, up to a size limit" (was "Conversation
+  transcript"). An Agent/engine handoff, and a continuation that cannot resume a
+  native cursor, now seed the new engine with the most recent whole messages under
+  an estimated-token budget instead of the last 6,000 characters. The seed tells
+  the engine how many earlier user and assistant text messages were left out, how
+  many messages had no text to carry, and that the full conversation remains
+  stored in Station.
+- 1aecbf3: Reject malformed date/time template format options before configuration reaches
+  prompt substitution. Settings, online/offline config writes, and persisted
+  configuration reads use the same validation semantics.
+- c6c7d4d: A request left open by an aborted turn is settled instead of staying pending.
+  `@kontourai/station-shared/request-settlement` exports
+  `requestIdsSettledByTurnAbort`, the fold the server and the CLI both apply.
+  `station approvals list` and `station operate` no longer offer such a request,
+  `approvals list` rows carry `requestEventId`, and `approvals respond` and
+  `operate` bind a decision to the request event they showed. The contracts
+  change is documentation of `request.opened.turnId` and of what a
+  `request.resolved` with status `cancelled` or `expired` means.
+
 ## 0.8.0
 
 ### Minor Changes

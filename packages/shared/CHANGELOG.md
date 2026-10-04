@@ -1,5 +1,120 @@
 # @kontourai/station-shared
 
+## 0.9.0
+
+### Minor Changes
+
+- 31cac46: `tool.started` and `tool.completed` carry an optional `toolKind`
+  (`EngineToolKind`, the Agent Client Protocol `ToolKind` vocabulary) when the
+  engine reported one, and the shared transcript projection copies it onto the
+  tool part as `MessagePart.toolKind`. A tool part bound to a pending approval
+  also carries `approvalToolName`, the tool name the request itself reported.
+  `toolRequestGrantLabel` now reads "Allow for this session" when the request
+  reported no tool name: what such a grant covers is decided per adapter or
+  engine, so the label claims only the session scope.
+- c2c67c2: Add optional Agent MCP composition and loading preferences, with exact per-server tool selections for external-engine delivery. Existing declarations retain their prior defaults.
+  
+  Expose the existing connection-quota contract through its public package subpath for CLI and shared consumer resolution.
+- 53f9482: Say which requests a tool-level allowance may answer (#2933).
+  `tool-request-preview` adds `toolRequestIsPlainCall`, true only for the `tool`
+  and `edit-mode` session grants, and `toolRequestIsPlanExit`, which also treats
+  an ACP `switch_mode` tool kind as a plan exit, and `toolRequestNeedsPerson`,
+  true for a plan exit or a harness question (`AskUserQuestion`). `ToolRequestGrantInput` gains an
+  optional `toolKind`, read from a payload's `toolKind`, and such a request offers
+  no session grant. Station uses them so an agent's `tools.autoApprove` pattern
+  never answers an escalation or a plan exit. On Claude Code and ACP a broad
+  pattern therefore no longer covers escalations: a headless run that reaches one
+  waits on an approval request, and a delegated child that cannot grant approvals
+  is denied the call at once. An ACP plan exit answered "for this session" is
+  sent as the agent's allow-once option, so its `allow_always` option (such as
+  "yes, and auto-accept edits") is not reachable from a session answer.
+- 31cac46: Add `ATTACHMENT_INPUT_UNSUPPORTED_CODE` for a send refused because the engine
+  cannot take its attachments, `ComposerImageSupport.caveat` for an attach-time
+  note when image support is unconfirmed (with the `modelSupportVaries` input),
+  and `TurnStartedEvent.steerInterruptedRun` for a steer delivered by stopping the
+  running step. The runtime event projection now splits a turn at a steer.
+- d48225d: Treat Claude Code's known escalation signals as asks that always prompt
+  (#2932). `ToolRequestGrantInput` gains optional `toolInput`, `decisionReason`,
+  `suppressAlwaysAllowRule`, `defaultToNo` and `requiresUserInteraction`, and
+  `toolRequestSessionGrantFromPayload` reads them from a `request.opened`
+  payload. A request escalates, so neither a tool grant nor
+  `toolRequestIsPlainCall` covers it, when its input sets
+  `dangerouslyDisableSandbox: true`, its `decisionReason` is exactly
+  `dangerouslyDisableSandbox`, `requiresUserInteraction` or the MCP organization
+  ceiling, or any of the three flags is true. A `SandboxNetworkAccess` request,
+  and one flagged `suppressAlwaysAllowRule`, offers no session grant. Bash safety
+  checks and plain ask rules still carry no signal and are not covered.
+  Agent SDK 0.3.278 forwards `suppressAlwaysAllowRule` and `defaultToNo`, so
+  those two apply now; `requiresUserInteraction` applies once an SDK forwards it.
+- c7a394e: Read Claude Code's structured ask reason when deciding what a tool-level
+  allowance may answer (#2932). `tool-request-preview` adds `claudeAskEscalates`
+  and the `ClaudeAskReason` type, `ToolRequestGrantInput` gains an optional
+  `claudeAsk`, and `toolRequestSessionGrantFromPayload` reads it from a
+  `request.opened` payload. A Claude ask escalates, so neither a tool grant nor
+  `toolRequestIsPlainCall` covers it, when `classifierApprovable` or a
+  `decisionReasonCode` is set; when its reason type is anything but `other` or
+  `subcommandResults`; when type `other` carries any reason but `This command
+  requires approval`; when a `subcommandResults` ask is not on Bash (every
+  PowerShell ask) or carries a `matchedAskRule` or any `decisionReason` text;
+  when a Bash or PowerShell ask carries no reason type; or when `claudeAsk` is
+  present but is not an object (`null`: the engine's request was not read).
+  Any other ask with no reason type, and a request with no `claudeAsk` at all
+  (another engine), is judged as before. Station's Claude sessions therefore
+  prompt for safety checks, ask rules on a single command, sensitive-file
+  edits and every PowerShell ask, under a session grant and under an agent's
+  `tools.autoApprove`. A chained Bash command with no safety check is still
+  answered by a grant. When more than one part needs approval, an ask rule on
+  the chain or on one of its parts, a write or delete outside the working
+  directories in an `&&` or `;` chain or behind a pipeline's redirect, and a
+  part's warning that is not a safety check are not visible on the engine's
+  request, as before this change.
+- 24205de: Export `validateWorkspacePackagePaths` from `@kontourai/station-shared/workspace-package` so registry acquisition can reuse the workspace codec's portable filename and path collision validation.
+- c6c7d4d: A request left open by an aborted turn is settled instead of staying pending.
+  `@kontourai/station-shared/request-settlement` exports
+  `requestIdsSettledByTurnAbort`, the fold the server and the CLI both apply.
+  `station approvals list` and `station operate` no longer offer such a request,
+  `approvals list` rows carry `requestEventId`, and `approvals respond` and
+  `operate` bind a decision to the request event they showed. The contracts
+  change is documentation of `request.opened.turnId` and of what a
+  `request.resolved` with status `cancelled` or `expired` means.
+- fac321f: Add host-observed installed visual Skill experience identity and inventory contracts,
+  and export the shared inert definition reader used by author builds and runtime inventory.
+  Inventory availability follows exact package admission and current Skill precedence;
+  this does not authorize execution or render a guided workflow.
+- 6601a65: Add inert visual Skill experience declarations and a versioned authoring contract.
+  Portable author builds validate referenced definitions and bundled Skill digests;
+  installed experience activation and rendering remain deferred.
+- 19aff2a: Add local Skill library inspection and revision-bound experience author review commands. Include a Station-curated attributed Matt Pocock engineering Agent Plugin example with portable dependency materialization and explicit workflow stops.
+- fac321f: Add validated visual skill inventory/session clients and React Query hooks, plus source-bound foreground start preflight and shared inert input parsers. Defer the canonical wire reader until a successful feature response. Provide the opt-in workspace-pane producer for host-bound reads, canonical question answers and unsent stage preparation with pinned invocation preconditions.
+
+### Patch Changes
+
+- 306ebf4: Add optional `clientInputId` to turn steering and an explicit indeterminate
+  result so acknowledgement retries preserve one engine invocation. Add a
+  per-device Return preference. Preserve nonterminal retry errors in the runtime
+  transcript projection instead of treating them as failed turns.
+- Updated dependencies [31cac46]
+- Updated dependencies [c2c67c2]
+- Updated dependencies [31cac46]
+- Updated dependencies [306ebf4]
+- Updated dependencies [fc181b4]
+- Updated dependencies [fc181b4]
+- Updated dependencies [a91c50d]
+- Updated dependencies [3b001e5]
+- Updated dependencies [e7fb9b3]
+- Updated dependencies [d4fbcaf]
+- Updated dependencies [eee7f74]
+- Updated dependencies [d3e3396]
+- Updated dependencies [84fb656]
+- Updated dependencies [1aecbf3]
+- Updated dependencies [c6c7d4d]
+- Updated dependencies [cf099c6]
+- Updated dependencies [8f66f37]
+- Updated dependencies [fac321f]
+- Updated dependencies [fac321f]
+- Updated dependencies [6601a65]
+  - @kontourai/station-contracts@0.9.0
+
 ## 0.8.0
 
 ### Minor Changes
