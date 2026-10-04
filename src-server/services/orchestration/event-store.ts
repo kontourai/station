@@ -204,6 +204,7 @@ import {
   parseDurableProjectTaskRoomAppendReceipt,
   projectTaskRoomReceiptLookupIdentifier,
 } from './project-task-room-append-receipt.js';
+import type { ProjectTaskRoomOutputFeedbackTargets } from './project-task-room-history.js';
 import {
   createProjectTaskRoomHistory,
   type ProjectTaskRoomAgentGrantAuthority,
@@ -2586,6 +2587,7 @@ export class EventStore {
     links?: ProjectTaskRoomLinkAuthority;
     agents?: ProjectTaskRoomAgentGrantAuthority;
     roomWriteAdmissions?: ProjectTaskRoomWriteAdmissionPort;
+    outputFeedbackTargets?: ProjectTaskRoomOutputFeedbackTargets;
     /** Test-only response-loss seam for sequential-instance recovery proof. */
     unavailableAfterCommitOnce?: boolean;
   }): ProjectTaskRoomHistory {
@@ -4508,7 +4510,7 @@ export class EventStore {
   ): DeclaredOutputDescriptorRow | undefined {
     const row = this.db
       .prepare(
-        `SELECT o.event_id, o.thread_id, o.turn_id, o.tool_call_id,
+        `SELECT o.event_id, o.declaration_id, o.thread_id, o.turn_id, o.tool_call_id,
                 o.declared_at, o.label, o.descriptor, e.sequence
            FROM orchestration_declared_outputs o
            INNER JOIN orchestration_events e ON e.id = o.event_id

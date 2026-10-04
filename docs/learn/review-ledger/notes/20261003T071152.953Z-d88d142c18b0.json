@@ -1,0 +1,7 @@
+{
+  "revision": "913da0b4838c0c929420ce1a4de4f37e8efa14fb",
+
+  "notes": [
+    {"path":"docs/guides/product-law-authoring.md","note":"The registry change is the Files pane's write marker on setLayout; the authoring guide's registry reference is unaffected. No prose change.","inputs":["package.json","pnpm-workspace.yaml","scripts/codeql-error-baseline.json","src-server/routes/orchestration/orchestration.ts","src-server/runtime/routes/runtime-routes.ts","src-server/tools/station-control-delegation.ts","src-ui/src/workspace-panes/builtinWorkspacePaneRegistry.tsx"]}
+  ]
+}

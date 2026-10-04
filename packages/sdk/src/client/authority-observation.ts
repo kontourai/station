@@ -20,7 +20,8 @@ import {
   type AuthorityObservation,
   isAuthorityObservation,
 } from '@kontourai/station-contracts/authority-observation';
-import { type ClientRequestOptions, getJson } from './http';
+import { envelopeError } from './api-error-message';
+import { type ClientRequestOptions, getJson, readJsonBody } from './http';
 
 export type {
   AuthorityObservation,
@@ -34,15 +35,19 @@ export async function getAuthorityObservation(
   opts?: ClientRequestOptions,
 ): Promise<AuthorityObservation> {
   const response = await getJson(`${apiBase}/api/auth/authority`, opts);
-  const parsed: unknown = await response.json();
-  if (response.status === 401) {
-    throw new Error('This Station did not accept the presented credential.');
-  }
   if (!response.ok) {
-    throw new Error(
-      `This Station refused the authority observation (HTTP ${response.status}).`,
-    );
+    // The sentences are this client's own; the refusal's status, `code` and
+    // Retry-After ride on the error (#2708), and a refusal whose body is not
+    // JSON keeps its status.
+    const message =
+      response.status === 401
+        ? 'This Station did not accept the presented credential.'
+        : `This Station refused the authority observation (HTTP ${response.status}).`;
+    throw envelopeError(response, await readJsonBody(response), message, {
+      message,
+    });
   }
+  const parsed: unknown = await response.json();
   if (!isAuthorityObservation(parsed)) {
     throw new Error(
       `This Station returned an incompatible authority observation.`,

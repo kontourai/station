@@ -60,6 +60,7 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 | [StationHomeRecoveryPreflight](#stationhomerecoverypreflight) | Observe bounded recovery metadata without granting mutation or execution authority. | `packages/shared/src/station-home-recovery-preflight.ts` |
 | [ProjectFileTransactions](#projectfiletransactions) | Serialize Project lifecycle and nested record mutations under exact revision capabilities. | `src-server/domain/project-file-transactions.ts` |
 | [ProjectIdentity](#projectidentity) | Prepare and attach portable identity while preserving receiver-local Project identity. | `src-server/services/projects/project-identity-service.ts` |
+| [StationKnowledgeMcpServer](#stationknowledgemcpserver) | Serve scoped read/capture tools separately from platform controls. | `src-server/tools/station-knowledge-mcp-server.ts` |
 | [KnowledgeStoreProvider](#knowledgestoreprovider) | Register canonical roots and resolve their record adapters. | `src-server/knowledge-store/knowledge-store-provider.ts` |
 | [SqliteVecIndexProvider](#sqlitevecindexprovider) | Rebuild and query derived root partitions with explicit freshness limits. | `src-server/knowledge-index/sqlite-vec-index-provider.ts` |
 | [Workspace checkpoints](#workspace-checkpoints) | Capture turn-associated file snapshots and restore one through current workspace and caller checks. | `src-server/services/checkpoints/checkpoint-restore.ts` |
@@ -1109,6 +1110,37 @@ there is no separately verified remote path. Source tests include the
 [scope reader](../../src-server/runtime/mcp/__tests__/station-control-dispatch-scope.test.ts),
 [mounted route composition](../../src-server/runtime/routes/__tests__/runtime-routes-station-control-dispatch-scope.test.ts)
 and [target resolver](../../src-server/services/execution-target/__tests__/execution-target-resolver.test.ts).
+
+**Start-time repeat.** The resolved directory is still a string when the engine
+starts. For a new Session and any caller except a bound operator, the route
+helper also returns its decision as a
+[DispatchCwdAdmission](../../src-server/services/orchestration/dispatch-cwd-admission.ts).
+The dispatch carries it in the start's command context, never in a request
+body or to another Station. `OrchestrationService` runs it when it prepares
+the start and again directly before the adapter call, outside the start
+boundary so a refusal is recorded as a rejected start rather than an uncertain
+one. It decides on the directory the start is bound to: the Session's own
+`cwd`, or, when the Session has none, the directory its ACP connection
+configures (`resolveConnectionDefaultCwd`, wired by
+[runtime initialization](../../src-server/runtime/bootstrap/runtime-initialize.ts)
+from the config the adapter reads). A directory Station provisioned itself,
+such as a worktree, is not substituted. The admitted canonical path is written
+to the Session's start metadata as `dispatchCanonicalCwd`; a caller-supplied
+value is removed first. Recovery and the credential-profile restart compare
+the re-resolved folder with that record before starting an engine, and a
+continuation child in the same folder inherits it. The refusal reaches the
+dispatch route as an error with a station-control code and becomes a 403.
+The repeat does not hold a directory handle: the adapter resolves the path
+once more when it spawns the process. Conversation forks and non-engine uses
+of the folder are outside it. So is a later start for a Session that carries
+no record, one the operator started or one started before the record existed:
+a constrained caller's follow-up to it gets the route's admission check only,
+not the check before the engine starts. The
+[spawn composition test](../../src-server/runtime/routes/__tests__/runtime-routes-station-control-dispatch-spawn.test.ts)
+drives both dispatch routes into a real `OrchestrationService` with a recording
+engine double, and the
+[runtime wiring test](../../src-server/runtime/bootstrap/__tests__/runtime-initialize-connection-default-cwd.test.ts)
+covers the connection reader; the credential-profile restart has no test.
 Their presence is not a new executed or remote-device receipt. See
 [agent configuration](../guides/self-configuring-agent.md#dispatch-authority) for tool-level
 restrictions and caller binding.
@@ -1664,6 +1696,23 @@ surface; `client-project-identity.test.ts` covers the public wire consumer and
 incompatible/changed responses. Physical multi-machine and independent-human
 acceptance remain separate from these tests.
 
+## StationKnowledgeMcpServer
+
+The [Knowledge MCP factory](../../src-server/tools/station-knowledge-mcp-server.ts)
+registers five read/capture tools through the shared caller-policy wrapper.
+Station Control retains index rebuild, migration, and its compatibility search.
+[Runtime routes](../../src-server/runtime/routes/runtime-routes.ts) admit only
+loopback MCP requests with a credential for this server and enforce the Session
+owner’s store access before reading or writing records.
+
+Claude uses a session-bound in-process server. Native agents use the
+[custodied HTTP bridge](../../src-server/runtime/mcp/station-knowledge-native-tools.ts)
+inside the accepted authorized turn, while Codex and ACP use their existing
+wire delivery channels with separate Knowledge credentials. SDK cleanup and
+cancellation bound local waiting; they do not undo a write already admitted by
+the store. See the [Knowledge guide](../guides/knowledge.md#agent-tools) and
+[mounted owner/access evidence](../../src-server/runtime/routes/__tests__/runtime-routes-station-control-read-scope.test.ts).
+
 ## KnowledgeStoreProvider
 
 **Purpose and interface.** `KnowledgeStoreProvider` registers roots and their adapters,
@@ -1900,6 +1949,16 @@ Task incarnation that the history grant rechecks before commit. Request cards
 currently poll the journal read and link to existing execution
 inspection; they are not room-SSE lifecycle events. Invited/public result
 projection and actual-provider acceptance remain unfinished.
+
+Immutable output review uses the same room history, rather than a second
+feedback journal. [TaskOutputModule](../../src-server/services/projects/task-output-module.ts)
+validates fresh version targets against retained output and Task/Project identity;
+permanent room identities resolve exact duplicates before output validation.
+A per-room SQLite format fence prevents v2 writes after v3 adoption.
+The [output surface](../../src-ui/src/views/task-workspace/TaskOutputsSection.tsx)
+checks authorized downloaded bytes before offering a human review statement.
+Reviewer acceptance changes no Task or workflow state. Source and focused
+contract evidence do not establish a two-human or installed acceptance journey.
 
 The [SDK](../../packages/sdk/src/client/project-task-rooms.ts) parses opaque
 edit receipts and the shared SSE stream. Accepted document objects are offered

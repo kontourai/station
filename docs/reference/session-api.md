@@ -83,6 +83,10 @@ Calls made by a station-control Agent also pass the
 owner and Project scope constrain local work, and remote reach requires a bound
 operator caller. These checks also cover input replies and follow-ups. They do
 not replace the operator UI or paired Device's own request authorization.
+For a new Session, Station repeats the folder decision immediately before it
+starts the engine. If the folder no longer resolves to the admitted canonical
+path, or the directory the engine would start in belongs to another scope, the
+request returns the same typed `403` and no engine starts.
 
 The response is a foreground handle containing `conversationId`, `sessionId`,
 `providerTurnId`, the
@@ -187,7 +191,11 @@ question IDs and the original RPC ID. Cancellation sends Codex an empty answer
 map. `blocking: false` means an optional question: opening or resolving it does
 not change turn progress. Snapshots expose `blockingOpenRequestIds` separately
 from all `openRequestIds`; older hosts omit that field and retain the legacy
-blocking interpretation. Request inspection sets `requiresAnswers` so clients
+blocking interpretation. A snapshot carries ids only, so after a reload a
+client reads the conversation's newest turn to rebuild each open approval's
+tool, preview and grant label. It keeps a generic placeholder when the host
+cannot supply it, including a request opened in a turn older than the newest
+(the read covers the newest turn only). Request inspection sets `requiresAnswers` so clients
 route to the Session instead of offering a generic approval button.
 
 `acceptForSession` also grants later calls to the same tool in that Session.

@@ -10,6 +10,10 @@
   "limits": "Local source and fixture/SQLite evidence. No live embedding provider, Neo4j server, external Kit interoperability, physical-device capture, or historical dogfood revalidation. Known model/content identity and provenance gaps remain linked to GitHub.",
 
   "sources": [
+    "docs/learn/media.json#/captures/6",
+
+    "docs/learn/media.json#/captures/7",
+
     "docs/learn/media/repository-knowledge-narrow.png",
 
     "docs/learn/media/repository-knowledge.png",
@@ -72,9 +76,23 @@
 
     "src-ui/src/views/settings/KnowledgeStoreSection.tsx",
 
-    "docs/learn/media.json#/captures/6",
+    "src-server/tools/station-knowledge-tools.ts",
 
-    "docs/learn/media.json#/captures/7"
+    "src-server/tools/station-knowledge-mcp-server.ts",
+
+    "src-server/runtime/mcp/station-knowledge-native-tools.ts",
+
+    "src-server/runtime/mcp/__tests__/station-knowledge-native-tools.test.ts",
+
+    "src-server/runtime/mcp/station-control-mcp-token.ts",
+
+    "src-server/runtime/mcp/station-control-in-process.ts",
+
+    "src-server/providers/adapters/station-agent-adapter.ts",
+
+    "src-server/runtime/agents/runtime-default-agent.ts",
+
+    "src-server/runtime/routes/__tests__/runtime-routes-station-control-read-scope.test.ts"
   ],
 
   "checks": [

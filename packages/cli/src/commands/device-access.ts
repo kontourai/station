@@ -339,6 +339,9 @@ const RESET_WAS: Record<string, string> = {
   'auto-on-host': 'its Auto decision on a session its grant had unconfined',
 };
 const UNCONFINED_UNTIL: Record<string, string> = {
+  'next-turn':
+    'its engine is running: a turn already running finishes unconfined, and its next turn runs confined',
+  // Sent by Stations from before #2898.
   'engine-restart':
     'its engine is running with no decision to re-apply, so it keeps its starting posture until it restarts',
   'grant-not-checked': 'this Station does not re-check the grant at each turn',
@@ -455,7 +458,7 @@ function reportFullAccessRevocation(
     for (const entry of reconfined) write(`  ${named(entry)}`);
   }
   if (unconfined.length > 0) {
-    write('Still unconfined, not changed:');
+    write('Still unconfined:');
     for (const entry of unconfined)
       write(
         `  ${named(entry)}  because ${UNCONFINED_UNTIL[String(entry.until)] ?? id(entry.until)}`,
