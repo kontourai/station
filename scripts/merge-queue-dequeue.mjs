@@ -24,7 +24,7 @@ import { readFileSync } from 'node:fs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import { github, listGithub } from './qualification-evidence.mjs';
 
-export const REPORT_MARKER = '<!-- station-merge-queue-dequeue';
+const REPORT_MARKER = '<!-- station-merge-queue-dequeue';
 // Reasons measured on this repository's RemovedFromMergeQueueEvent timeline.
 const REASONS = new Map([
   ['failed_checks', 'failure'],
@@ -48,12 +48,12 @@ const LIMITS = Object.freeze({
 });
 
 /** The removal's lower-case reason, mapped to what this script explains. */
-export function classifyRemoval(reason) {
+function classifyRemoval(reason) {
   return REASONS.get(String(reason ?? '').toLowerCase()) ?? null;
 }
 
 /** The newest merge-group run whose branch names this PR, before `removedAt`. */
-export function groupRunFor(runs, number, removedAt) {
+function groupRunFor(runs, number, removedAt) {
   return (
     runs
       .filter((run) => {
@@ -70,11 +70,11 @@ export function groupRunFor(runs, number, removedAt) {
   );
 }
 
-export function failingCheckRuns(checkRuns) {
+function failingCheckRuns(checkRuns) {
   return checkRuns.filter((check) => FAILED_CONCLUSIONS.has(check.conclusion));
 }
 
-export function usefulAnnotations(annotations) {
+function usefulAnnotations(annotations) {
   return annotations.filter(
     (annotation) =>
       annotation.annotation_level === 'failure' &&
@@ -86,7 +86,7 @@ export function usefulAnnotations(annotations) {
  * The PR has already been dequeued for a conflict at this head: a second
  * conflict removal after the head commit means re-arming did not help.
  */
-export function repeatedConflict(removals, headCommittedAt) {
+function repeatedConflict(removals, headCommittedAt) {
   const since = Date.parse(headCommittedAt);
   return (
     removals.filter(
@@ -97,7 +97,7 @@ export function repeatedConflict(removals, headCommittedAt) {
   );
 }
 
-export function rearmEligible(pr, repository) {
+function rearmEligible(pr, repository) {
   return (
     pr.state === 'open' &&
     !pr.draft &&
@@ -133,13 +133,7 @@ function marker(key) {
   return `${REPORT_MARKER} ${key} -->`;
 }
 
-export function renderFailureReport({
-  removedAt,
-  group,
-  checks,
-  server,
-  repository,
-}) {
+function renderFailureReport({ removedAt, group, checks, server, repository }) {
   const lines = [
     marker(`failure:${removedAt}`),
     '### Removed from the merge queue: failing checks',
@@ -215,13 +209,7 @@ export function renderFailureReport({
   return lines.join('\n');
 }
 
-export function renderConflictReport({
-  removedAt,
-  files,
-  headSha,
-  mainSha,
-  outcome,
-}) {
+function renderConflictReport({ removedAt, files, headSha, mainSha, outcome }) {
   const lines = [
     marker(`conflict:${removedAt}`),
     '### Removed from the merge queue: merge conflict',
@@ -252,7 +240,7 @@ export function renderConflictReport({
 }
 
 /** The comment to edit: only this app's own marked comment. */
-export function existingReport(comments, author) {
+function existingReport(comments, author) {
   return (
     comments.find(
       (comment) =>
@@ -310,7 +298,7 @@ function git(args, cwd) {
 }
 
 /** Exact conflicting paths of head against current main, from Git itself. */
-export function conflictingFiles(cwd, headSha) {
+function conflictingFiles(cwd, headSha) {
   if (!SHA.test(headSha)) throw new Error('head SHA must be 40 hex digits');
   git(['fetch', '--no-tags', '--quiet', 'origin', 'main', headSha], cwd);
   const mainSha = git(['rev-parse', 'refs/remotes/origin/main'], cwd);
@@ -404,7 +392,7 @@ async function upsertReport(number, body, env) {
   );
 }
 
-export async function explainDequeue({
+async function explainDequeue({
   env = process.env,
   cwd = process.cwd(),
   now = Date.now,

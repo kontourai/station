@@ -71,7 +71,7 @@ export function parseFastChecksArgs(args) {
 }
 
 /** Beside the receipt; ci.yml uploads it when a shard fails (#3101 C). */
-export const FAILED_REPORT_DIR = 'vitest-reports';
+const FAILED_REPORT_DIR = 'vitest-reports';
 // GitHub keeps at most ten error annotations per step.
 const ANNOTATION_LIMIT = 10;
 
@@ -90,7 +90,7 @@ function escapeCommandProperty(value) {
  * annotations name the failing tests: the merge-queue dequeue report reads
  * them from the Checks API instead of parsing logs.
  */
-export function failedTestAnnotations(receipt) {
+function failedTestAnnotations(receipt) {
   const failed = (receipt.executions ?? []).flatMap(
     (execution) => execution.failedTests ?? [],
   );
