@@ -37,8 +37,9 @@ example does not grant one implicitly.
   routes take. It records the same declared output Station's own engine records
   with `declare_output`, in the caller's own Session and the turn it is running.
   A declaration is held, with no time limit, for as long as that turn runs, and
-  the record lands when the turn completes. It is dropped if the turn aborts or
-  is interrupted, and it is dropped if Station restarts before the turn completes:
+  the record lands when the turn completes. It is dropped if the turn aborts,
+  is interrupted or ends in an error (a Codex retry of a transient error keeps
+  the turn, and the declaration, alive), and it is dropped if Station restarts before the turn completes:
   declarations wait in memory until their turn's terminal event is stored, as
   native ones do, so declare again in a later turn.
   The tool answers `declared`, `already-declared` or `no-active-turn`. It reads

@@ -1949,6 +1949,10 @@ export class TaskGraphService {
         !keeps.every((keep) =>
           input.mergedKeeps.some(
             (merged) =>
+              // The target fields below already tell two keeps of one Task
+              // apart (a Task keeps one pull request once); the declaration
+              // is defense in depth, so a keep replaced under the same target
+              // is not taken for the one that was read.
               merged.declarationId === keep.provenance.declarationId &&
               merged.provider === keep.provider &&
               merged.host === keep.host &&

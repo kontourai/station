@@ -372,6 +372,7 @@ import {
   ACTIVE_TURN_FOLD_METHODS,
   activeTurnIdForEvents,
   createManualSessionTransitionEvent,
+  interruptibleTurnIdForEvents,
   isDeferredRetriableTurnError,
   normalizeCanonicalRuntimeEventLifecycle,
   projectSessionLifecycle,
@@ -9618,7 +9619,11 @@ export class OrchestrationService {
   }
 
   private activeTurnIdOfThread(threadId: string): string | undefined {
-    return activeTurnIdForEvents(
+    // The fold that keeps a turn live through Codex's deferred-retriable error
+    // (`willRetry`): the engine is still working that turn and will complete
+    // it, so a declaration made in it must not be dropped. A real terminal (a
+    // non-retriable error, an abort, a completion, an exit) still ends it.
+    return interruptibleTurnIdForEvents(
       (
         this.options.eventStore?.listEventsByMethods(
           threadId,
@@ -10294,6 +10299,10 @@ export class OrchestrationService {
         this.nativeTurnGenerations.delete(projectedEvent.threadId);
       }
     }
+    // An engine that exits mid-turn ends with `session.exited` and no turn
+    // terminal: nothing else would release the session's declaration grants.
+    if (projectedEvent.method === 'session.exited')
+      this.stationControlPullRequests?.retireSession(projectedEvent.threadId);
     // Already observed raw at the coalescing seam above; observing the merged
     // delta again would double-count progress for one stretch of text.
     if (!isCoalescableDelta(event))

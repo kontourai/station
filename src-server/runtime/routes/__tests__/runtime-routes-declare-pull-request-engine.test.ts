@@ -665,6 +665,37 @@ describe('an external engine declares a pull request: the Task shows it, a merge
     expect(e.taskGraph.readTask(task.id)?.status).toBe('in_progress');
   });
 
+  // The refresh route is named by no station-control tool, so the guard refuses
+  // a tool's request to it before it can reach the close-out observer.
+  test('a station-control tool request to the refresh route is refused and closes nothing', async () => {
+    const e = await setup();
+    e.states['kontourai/station#7'] = 'OPEN';
+    const task = await declaredAndKept(e);
+    await e.asOperator('PUT', `/api/tasks/${task.id}/close-on-merge`, {
+      enabled: true,
+    });
+    e.states['kontourai/station#7'] = 'MERGED';
+    const response = await fetch(
+      `${e.base}/api/conversation-pull-requests/${THREAD}`,
+      {
+        headers: {
+          [INTERNAL_API_TOKEN_HEADER]: getInternalApiToken(),
+          [INTERNAL_PROXY_CALLER_HEADER]: 'local',
+          'x-station-control-caller-token': mintStationControlMcpToken(
+            THREAD,
+            'sdk-in-process',
+          ).token,
+        },
+      },
+    );
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({
+      code: 'station_control_route_unmapped',
+    });
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(e.taskGraph.readTask(task.id)?.status).toBe('in_progress');
+  });
+
   test('an agent cannot opt a Task in: the authority guard names no tool for the route', async () => {
     const e = await setup();
     const task = await e.taskGraph.createTask({

@@ -26,7 +26,10 @@ import type { PullRequestRepositoryContextResolver } from '../../pull-requests/p
 import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
 import { OrchestrationService } from '../orchestration-service.js';
-import { StationControlPullRequestUnavailableError } from '../station-control-pull-request-declarations.js';
+import {
+  createStationControlPullRequestDeclarations,
+  StationControlPullRequestUnavailableError,
+} from '../station-control-pull-request-declarations.js';
 
 const makeTempDir = trackTempDirs();
 const THREAD = 'codex-thread';
@@ -192,6 +195,16 @@ function harness() {
       emit({ method: 'turn.started', turnId, prompt: 'open a pull request' }),
     completeTurn: (turnId: string) =>
       emit({ method: 'turn.completed', turnId, finishReason: 'stop' }),
+    exitSession: () =>
+      emit({ method: 'session.exited', sessionId: THREAD, exitCode: 1 }),
+    runtimeError: (turnId: string, retriable: boolean) =>
+      emit({
+        method: 'runtime.error',
+        turnId,
+        severity: 'error',
+        message: 'engine error',
+        retriable,
+      }),
     abortTurn: (turnId: string) =>
       emit({ method: 'turn.aborted', turnId, reason: 'user' }),
     declared: () =>
@@ -448,6 +461,58 @@ describe('declare_pull_request admission for an external engine session', () => 
     expect(h.declared()).toEqual([]);
   });
 
+  // Codex reports a transient failure as a deferred-retriable error and goes
+  // on to complete the same turn. The turn is still live; a declaration made
+  // in it was reported `declared` and must land.
+  test('a deferred-retriable engine error does not drop a declaration: the retried turn completes', async () => {
+    const h = harness();
+    h.startTurn('turn-1');
+    await h.declare(named('station', '44'));
+    h.runtimeError('turn-1', true);
+    h.completeTurn('turn-1');
+    expect(h.declared().map((row) => (row.descriptor as any).ref)).toEqual([
+      '44',
+    ]);
+  });
+
+  test('a non-retriable engine error ends the turn, and the declaration with it', async () => {
+    const h = harness();
+    h.startTurn('turn-1');
+    await h.declare(named('station', '44'));
+    h.runtimeError('turn-1', false);
+    h.completeTurn('turn-1');
+    expect(h.declared()).toEqual([]);
+  });
+
+  // An engine that exits mid-turn ends with `session.exited` and no turn
+  // terminal. The authority admits 256 live grants service-wide.
+  test('an engine exiting mid-turn releases its grant: 260 turns that end in an exit can each declare', async () => {
+    const h = harness();
+    for (let turn = 1; turn <= 260; turn += 1) {
+      FORGE.add(`kontourai/station#${2000 + turn}`);
+      h.startTurn(`turn-${turn}`);
+      await expect(
+        h.declare(named('station', String(2000 + turn))),
+      ).resolves.toBe('declared');
+      h.exitSession();
+    }
+  }, 120_000);
+
+  test('session.exited retires the session at the retirement boundary', async () => {
+    const h = harness();
+    h.startTurn('turn-1');
+    await h.declare(named('station', '44'));
+    const retire = vi.spyOn(
+      (h.service as any).stationControlPullRequests,
+      'retireSession',
+    );
+    h.exitSession();
+    expect(retire).toHaveBeenCalledWith(THREAD);
+    // Nothing the exited turn declared lands if a late completion arrives.
+    h.completeTurn('turn-1');
+    expect(h.declared()).toEqual([]);
+  });
+
   test('a session whose adapter was replaced mid-turn records nothing', async () => {
     const h = harness();
     h.startTurn('turn-1');
@@ -475,4 +540,59 @@ describe('declare_pull_request admission for an external engine session', () => 
     // The call id is server-minted, never an engine's.
     expect(row?.toolCallId).toMatch(/^[0-9a-f-]{36}$/);
   });
+});
+
+// The sweep, on its own: turns whose lease has failed with no terminal and no
+// retirement call (an adapter replaced, a thread quarantined) must not hold
+// the authority's 256 grants.
+describe('declaration grants of turns that are no longer live', () => {
+  test('260 turns whose lease failed without any retirement can each declare', async () => {
+    let issued = 0;
+    const current = new Set<number>();
+    const descriptor = (ref: string) => ({
+      kind: 'pull-request' as const,
+      provider: 'github',
+      host: 'github.com',
+      repository: { owner: 'o', name: 'r' },
+      ref,
+      nativeId: ref,
+    });
+    const declarations = createStationControlPullRequestDeclarations({
+      activeTurn: () => {
+        if (current.size === 0) {
+          issued += 1;
+          current.add(issued);
+        }
+        const mine = [...current][0]!;
+        return {
+          turnId: `turn-${mine}`,
+          adapterId: 'codex',
+          isCurrent: () => current.has(mine),
+        };
+      },
+      workspaceRoot: () => '/workspace',
+      declaredPullRequests: () => [],
+      resolver: {
+        read: async (input) => descriptor(input.ref),
+        readIdentity: async (input) => descriptor(input.ref),
+      },
+    });
+    for (let turn = 1; turn <= 260; turn += 1) {
+      await expect(
+        declarations.declare({
+          sessionId: 'session-x',
+          pullRequest: {
+            provider: 'github',
+            host: 'github.com',
+            owner: 'o',
+            repository: 'r',
+            ref: String(turn),
+          },
+        }),
+      ).resolves.toBe('declared');
+      // The turn ends with no terminal and no retirement call.
+      current.clear();
+    }
+    declarations.dispose();
+  }, 60_000);
 });

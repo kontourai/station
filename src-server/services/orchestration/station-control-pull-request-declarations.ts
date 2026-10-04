@@ -170,6 +170,7 @@ export function createStationControlPullRequestDeclarations(
       sessionId: string;
       turnId: string;
       grant: ReturnType<typeof authority.issue>;
+      turn: StationControlActiveTurn;
     }
   >();
   const turnKey = (sessionId: string, turnId: string) =>
@@ -181,11 +182,28 @@ export function createStationControlPullRequestDeclarations(
   // pull request cannot both pass the repeat check.
   const queues = new Map<string, Promise<unknown>>();
 
+  /**
+   * Release the grants of turns that are no longer live. A turn that ends
+   * with no terminal event (the engine exits, the adapter is replaced) never
+   * reaches `retireTerminal`, and the authority admits at most 256 live
+   * grants for the whole service: without this, such turns would end
+   * declaring until a restart.
+   */
+  const sweepStale = () => {
+    for (const [key, entry] of grants) {
+      if (entry.turn.isCurrent()) continue;
+      grants.delete(key);
+      revokedTurns.delete(key);
+      authority.retireTerminal(entry.sessionId, entry.turnId);
+    }
+  };
+
   const grantFor = (sessionId: string, turn: StationControlActiveTurn) => {
     const key = turnKey(sessionId, turn.turnId);
     if (revokedTurns.has(key)) return null;
     const existing = grants.get(key);
     if (existing) return existing.grant;
+    sweepStale();
     const workspaceRoot = deps.workspaceRoot(sessionId);
     const grant = authority.issue(
       {
@@ -198,7 +216,7 @@ export function createStationControlPullRequestDeclarations(
       },
       { isCurrent: () => turn.isCurrent() },
     );
-    if (grant) grants.set(key, { sessionId, turnId: turn.turnId, grant });
+    if (grant) grants.set(key, { sessionId, turnId: turn.turnId, grant, turn });
     return grant;
   };
 

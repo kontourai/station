@@ -5293,7 +5293,11 @@ export function configureRuntimeRoutes(
           // A refresh is a read; moving a Task to done is not. Only a viewer
           // who could `PATCH /api/tasks/:id/status` itself triggers it
           // (the same pairing scope, current now), and never an agent's tool
-          // call, whose status changes the authority guard refuses.
+          // call, whose status changes the authority guard refuses. The
+          // internal-principal clause is defense in depth: the guard already
+          // answers a tool's request to this refresh route `route_unmapped`
+          // (pinned by runtime-routes-declare-pull-request-engine.test.ts),
+          // and an internal principal would otherwise count as current.
           if (
             getRuntimeAuthenticatedRequestPrincipal(request)?.kind ===
               'internal' ||

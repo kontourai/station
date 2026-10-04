@@ -92,7 +92,8 @@ identity), and answers `{status}` with `declared`, `already-declared` or
 `no-active-turn`. A pull request in another repository than the Session's, or one
 the provider cannot return at that identity, is `409`. The declaration lands with
 the turn's completion: it is held, with no time limit, while the turn runs, and
-is dropped if the turn is aborted, interrupted or replaced, or if Station
+is dropped if the turn is aborted, interrupted, ends in an error or is replaced
+(a retried transient error keeps the turn alive), or if Station
 restarts before the turn completes (declarations wait in memory until the
 terminal event is stored). The keep above applies to it unchanged.
 
