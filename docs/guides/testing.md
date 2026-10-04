@@ -429,6 +429,16 @@ thread and turn identities are hashes. Payloads and tool output are excluded.
 The capture still exits nonzero, and this diagnostic cannot satisfy the
 successful matrix or promotion receipt. Preserve it when diagnosing a red gate.
 
+`frames` counts a phase's event frames only. The route flushes a trailing
+`orchestration:activity` frame 100 ms after the last coalesced event of a
+burst, so whether one lands before the harness closes a stream depends on host
+speed, not on the transfer: station-native ends its heavy turn with a coalesced
+`session.state-changed` and measured 45 frames instead of 44 on a slow host.
+The recorder counts those frames apart (`activityFrames`; their bytes still
+count toward the wire and decoded ceilings) and the scenario fails a phase that
+carries more than its source allows: none for the external engine, two for
+station-native (one window per coalesced event around the turn).
+
 After resolving the target revision and tool digest, capture also maintains
 `<capture-path>.progress.json`. This bounded snapshot contains only those
 digests, the baseline revision, a fixed phase name, and monotonic elapsed
@@ -470,7 +480,12 @@ moving does not invalidate it; merging `origin/main` into the candidate does.
 capture is bounded by a liveness timeout that defaults to 60 000 ms,
 calibrated at just under 28 s on the reference Mac. It is a dead-child guard,
 not a performance budget, so raising it weakens no measured claim; the value
-must stay a finite positive integer so a hung capture still fails:
+must stay a finite positive integer so a hung capture still fails. One setting
+covers the whole capture: the gate passes the bound to the capture child, and
+each internal barrier (retained history persisted, heavy prefix persisted, and
+so on) gets half of it, so a barrier that is genuinely stuck reports itself
+before the outer kill. A barrier timeout names this variable in its `FAIL:`
+line (#3058):
 
 ```bash
 STATION_TRANSFER_CAPTURE_TIMEOUT_MS=180000 \
