@@ -407,8 +407,10 @@ describe('configureRuntimeRoutes: Station Control Session tools (#3160)', () => 
     ['global', 'op-caller-a', 'op-thread-global', ASSURANCE, 'reached'],
     ['host thread', 'op-caller-a', 'op-host-a', ASSURANCE, 'reached'],
     ['another owner', 'op-caller-a', 'person-thread-a', ASSURANCE, NOT_FOUND],
-    // A Session on another Station has no record here at all.
-    ['remote / unknown', 'op-caller-a', 'new-thread-a', ASSURANCE, NOT_FOUND],
+    // `new-*` has no start record here. This is NOT another Station: these
+    // leaves carry no environment, so a remote target is unreachable through
+    // the schema (an `environment` field is refused as an unknown key).
+    ['unknown session', 'op-caller-a', 'new-thread-a', ASSURANCE, NOT_FOUND],
     [
       'global caller → global',
       'op-caller-global',

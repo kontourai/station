@@ -109,9 +109,18 @@ export function sessionControlDeliveryId(
 
 export function createSqliteSessionControlRequestKeys(
   db: SqliteDatabase,
-  options: { now?: () => number } = {},
+  options: {
+    now?: () => number;
+    /** Test seam: smaller caps than the defaults, so a cap can be reached cheaply. */
+    limits?: { perCaller?: number; station?: number };
+  } = {},
 ): SessionControlRequestKeys {
   const now = options.now ?? (() => Date.now());
+  const perCallerCap =
+    options.limits?.perCaller ??
+    SESSION_CONTROL_REQUEST_KEY_MAX_ROWS_PER_CALLER;
+  const stationCap =
+    options.limits?.station ?? SESSION_CONTROL_REQUEST_KEY_MAX_ROWS;
   // Attempts running in THIS process. A stored claim with no result and no
   // entry here is an attempt a crash or an indeterminate outcome left behind.
   const running = new Set<string>();
@@ -163,8 +172,7 @@ export function createSqliteSessionControlRequestKeys(
            WHERE caller_session_id = ?`,
         )
         .get(id.callerSessionId) as { total: number };
-      const excess =
-        owned.total - SESSION_CONTROL_REQUEST_KEY_MAX_ROWS_PER_CALLER + 1;
+      const excess = owned.total - perCallerCap + 1;
       if (excess > 0) {
         db.prepare(
           `DELETE FROM session_control_request_keys WHERE rowid IN (
@@ -178,13 +186,13 @@ export function createSqliteSessionControlRequestKeys(
              WHERE caller_session_id = ?`,
           )
           .get(id.callerSessionId) as { total: number };
-        if (left.total >= SESSION_CONTROL_REQUEST_KEY_MAX_ROWS_PER_CALLER)
+        if (left.total >= perCallerCap)
           return { kind: 'capacity', scope: 'caller' };
       }
       const count = db
         .prepare('SELECT COUNT(*) AS total FROM session_control_request_keys')
         .get() as { total: number };
-      if (count.total >= SESSION_CONTROL_REQUEST_KEY_MAX_ROWS)
+      if (count.total >= stationCap)
         return { kind: 'capacity', scope: 'station' };
       const inserted = db
         .prepare(

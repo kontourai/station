@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
 import { EventStore } from '../event-store.js';
 import {
+  createSqliteSessionControlRequestKeys,
   runWithSessionControlKey,
   SESSION_CONTROL_REQUEST_KEY_MAX_ROWS,
   SESSION_CONTROL_REQUEST_KEY_MAX_ROWS_PER_CALLER,
@@ -11,6 +12,7 @@ import {
   sessionControlDeliveryId,
   sessionControlRequestDigest,
 } from '../session-control-request-keys.js';
+import type { SqliteDatabase } from '../sqlite-database.js';
 
 const dirs: string[] = [];
 const stores: EventStore[] = [];
@@ -386,33 +388,79 @@ describe('session control request keys (real SQLite table)', () => {
       ).toBe('executed');
     });
 
-    test('the station-wide backstop still refuses, with a station-scoped code', async () => {
+    test('the defaults are the documented literals', () => {
+      expect(SESSION_CONTROL_REQUEST_KEY_MAX_ROWS).toBe(10_000);
+      expect(SESSION_CONTROL_REQUEST_KEY_MAX_ROWS_PER_CALLER).toBe(300);
+    });
+
+    test('the station-wide backstop refuses a new claim at the cap, while replays, conflicts and resumes still answer', async () => {
       const { store } = open();
-      const keys = store.sessionControlRequestKeys();
-      const db = (
-        store as unknown as {
-          db: {
-            exec(sql: string): void;
-            prepare(sql: string): { run(...v: unknown[]): unknown };
-          };
-        }
-      ).db;
-      db.exec('BEGIN');
-      const insert = db.prepare(
-        `INSERT INTO session_control_request_keys (caller_session_id, tool, request_key, digest, result_json, created_at)
-         VALUES (?, 'send_to_session', 'k', 'd', '"ok"', ?)`,
+      const keys = createSqliteSessionControlRequestKeys(
+        (store as unknown as { db: SqliteDatabase }).db,
+        { limits: { station: 4, perCaller: 100 } },
       );
-      for (
-        let index = 0;
-        index < SESSION_CONTROL_REQUEST_KEY_MAX_ROWS;
-        index += 1
-      )
-        insert.run(`bulk-${index}`, Date.now());
-      db.exec('COMMIT');
+      for (const caller of ['c1', 'c2', 'c3'])
+        await runWithSessionControlKey(
+          keys,
+          id('done-0001', caller),
+          digest,
+          done,
+        );
+      // The fourth row is an unresolved claim.
+      await runWithSessionControlKey(
+        keys,
+        id('stuck-0001', 'c4'),
+        digest,
+        async () => ({
+          settle: 'pending' as const,
+          result: 'indeterminate',
+        }),
+      );
+      // At the cap a NEW claim is refused with the station-scoped code.
       expect(
         await runWithSessionControlKey(
           keys,
-          id('late-0001', 'newcomer'),
+          id('late-0001', 'c5'),
+          digest,
+          done,
+        ),
+      ).toEqual({ kind: 'capacity', scope: 'station' });
+      // Existing keys keep answering.
+      expect(
+        (
+          await runWithSessionControlKey(
+            keys,
+            id('done-0001', 'c1'),
+            digest,
+            done,
+          )
+        ).kind,
+      ).toBe('replayed');
+      expect(
+        (
+          await runWithSessionControlKey(
+            keys,
+            id('done-0001', 'c1'),
+            sessionControlRequestDigest(['other']),
+            done,
+          )
+        ).kind,
+      ).toBe('conflict');
+      expect(
+        (
+          await runWithSessionControlKey(
+            keys,
+            id('stuck-0001', 'c4'),
+            digest,
+            done,
+          )
+        ).kind,
+      ).toBe('executed');
+      // One more row than the cap holds never appears.
+      expect(
+        await runWithSessionControlKey(
+          keys,
+          id('late-0002', 'c5'),
           digest,
           done,
         ),

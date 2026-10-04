@@ -19,6 +19,7 @@ import type { StationControlCallerRecordResolver } from '../../runtime/mcp/stati
 import { claudeInProcessStationControlOptions } from '../../runtime/mcp/station-control-in-process.js';
 import { __resetStationControlMcpTokensForTests } from '../../runtime/mcp/station-control-mcp-token.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../services/identity/principal-resolver.js';
+import { stationControlToolCatalog } from '../station-control-mcp-server.js';
 import {
   interruptSessionInputSchema,
   sendToSessionInputSchema,
@@ -218,6 +219,18 @@ describe('the Session tool schemas are strict and carry no approval, model or en
       sendToSessionInputSchema.safeParse({ ...send, requestKey: 'short' })
         .success,
     ).toBe(false);
+  });
+});
+
+describe('the Session tools are listed in the Chats group', () => {
+  test('the catalog groups send, interrupt and wait with Chats, wait as read-only', () => {
+    const catalog = stationControlToolCatalog();
+    const entry = (name: string) => catalog.find((tool) => tool.name === name);
+    for (const name of ['send_to_session', 'interrupt_session', 'wait_session'])
+      expect([name, entry(name)?.group]).toEqual([name, 'Chats']);
+    expect(entry('wait_session')?.readOnly).toBe(true);
+    expect(entry('send_to_session')?.readOnly).toBe(false);
+    expect(entry('interrupt_session')?.readOnly).toBe(false);
   });
 });
 

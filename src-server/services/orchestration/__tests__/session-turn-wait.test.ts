@@ -3,6 +3,8 @@ import { describe, expect, test } from 'vitest';
 import {
   evaluateSessionWait,
   SESSION_WAIT_MAX_PER_CALLER,
+  SESSION_WAIT_MAX_TIMEOUT_MS,
+  SESSION_WAIT_MAX_TOTAL,
   SessionTurnWaiter,
   type SessionTurnWaitPorts,
   type SessionWaitFoldEvent,
@@ -93,6 +95,18 @@ describe('evaluateSessionWait', () => {
 });
 
 describe('SessionTurnWaiter', () => {
+  test('the defaults are the documented literals', () => {
+    expect(SESSION_WAIT_MAX_PER_CALLER).toBe(4);
+    expect(SESSION_WAIT_MAX_TOTAL).toBe(256);
+    expect(SESSION_WAIT_MAX_TIMEOUT_MS).toBe(50_000);
+    // And a waiter built without limits uses them.
+    const session = fakeSession();
+    const waiter = new SessionTurnWaiter(session.ports) as unknown as {
+      limits: { perCaller: number; total: number };
+    };
+    expect(waiter.limits).toEqual({ perCaller: 4, total: 256 });
+  });
+
   test('turn-settled with no cursor and nothing running is already settled', async () => {
     const session = fakeSession();
     const waiter = new SessionTurnWaiter(session.ports);
