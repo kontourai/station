@@ -12,6 +12,7 @@ import { PageRow } from '../../components/PageRow';
 import { PageSection } from '../../components/PageSection';
 import { ErrorState, Skeleton } from '../../components/state';
 import { Toggle } from '../../components/Toggle';
+import './ToolsSection.css';
 import type { ProjectForm } from './types';
 
 export function ToolsSection({
@@ -57,11 +58,14 @@ export function ToolsSection({
     });
   const renderIntegration = (integration: (typeof catalog)[number]) => (
     <PageRow
+      className="project-tools__row"
       key={integration.id}
       label={
         <>
           <IntegrationGlyph id={integration.id} size={18} />{' '}
-          {integration.displayName || integration.id}{' '}
+          <span className="project-tools__name">
+            {integration.displayName || integration.id}
+          </span>{' '}
           {integration.description && (
             <InfoTip label={integration.displayName || integration.id}>
               {integration.description}
@@ -88,7 +92,7 @@ export function ToolsSection({
   return (
     <PageSection
       id="section-tools"
-      className="project-settings__section"
+      className="project-settings__section project-tools"
       title={
         <>
           Tools{' '}
@@ -111,6 +115,7 @@ export function ToolsSection({
       }
     >
       <PageRow
+        className="project-tools__row"
         label={
           <>
             Use Knowledge{' '}
@@ -136,7 +141,7 @@ export function ToolsSection({
             }
           />
         }
-        status={
+        description={
           <span className="editor-hint">
             {roots.isError
               ? 'Store status unavailable'

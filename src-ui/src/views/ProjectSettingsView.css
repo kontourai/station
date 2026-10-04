@@ -181,6 +181,9 @@
 }
 .project-settings__path-pill {
   display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+  white-space: nowrap;
   align-items: center;
   gap: 0.35rem;
   padding: 0.35rem 0.65rem;
@@ -191,6 +194,9 @@
   font-size: 0.72rem;
 }
 .project-settings__path-pill code {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   color: var(--text-primary);
 }
 .project-settings__identity-preview {
