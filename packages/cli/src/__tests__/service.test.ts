@@ -1103,20 +1103,30 @@ describe('station service dispatch', () => {
       );
     });
     let supervision: Promise<void> | undefined;
+    const supervisorExit = vi.fn();
+    const supervisorStop = vi.fn();
     installLaunchd.mockImplementationOnce((instanceId, input) => {
       // Real supervisor starts at the OS-backend seam, before install returns.
       supervision = realSupervisor(lifecycle(baseDir), {
         start,
-        stop: vi.fn(),
-        exit: vi.fn(),
+        stop: supervisorStop,
+        exit: supervisorExit,
         onSignal: vi.fn(),
         needsBuildForInstance: () => false,
-        collect: vi.fn().mockResolvedValue({
+        collect: vi.fn(async () => ({
           found: true,
           healthy: true,
           bootId: 'boot',
           sha: 'sha',
-        }),
+          instanceId: 'service-test',
+          server: {
+            pid: host!.pid,
+            probe: 'ok',
+            listening: true,
+            reachable: true,
+          },
+          ui: { pid: host!.pid, probe: 'ok', listening: true, reachable: true },
+        })),
         setTimer: vi.fn(() => 1 as never),
       });
       const sidecar = spawnSync(
@@ -1157,6 +1167,8 @@ describe('station service dispatch', () => {
         'service-host',
       );
       expect(start).toHaveBeenCalledTimes(1);
+      expect(supervisorExit).not.toHaveBeenCalled();
+      expect(supervisorStop).not.toHaveBeenCalled();
       expect(Object.keys(readInstanceRegistry(baseDir).instances)).toEqual([
         'service-test',
       ]);
