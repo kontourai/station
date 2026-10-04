@@ -31,6 +31,7 @@ type SnapshotChatState = Pick<
   | 'currentSessionId'
   | 'conversationId'
   | 'pendingApprovals'
+  | 'answeredApprovals'
   | 'pendingApprovalTurnIds'
   | 'approvalToasts'
 >;
@@ -480,7 +481,19 @@ function planSnapshot(
                   ? 'idle'
                   : session.status,
           ...(blockingOpenRequestIds
-            ? { pendingApprovals: blockingOpenRequestIds }
+            ? {
+                pendingApprovals: blockingOpenRequestIds,
+                // An answer is only meaningful while its request is still
+                // open: one the server no longer lists was resolved, and its
+                // mark would otherwise outlive it.
+                ...(chat?.answeredApprovals
+                  ? {
+                      answeredApprovals: chat.answeredApprovals.filter((id) =>
+                        blockingOpenRequestIds.includes(id),
+                      ),
+                    }
+                  : {}),
+              }
             : {}),
           // Reseed the client turn fold only from an EXPLICIT server
           // verdict (archive#1076) — a reconnect during an in-turn approval must
@@ -642,6 +655,7 @@ export function applyOrchestrationSnapshot(
   for (const { threadId, updates } of plan.sessionUpdates) {
     let approvalToasts: Map<string, string> | undefined;
     let pendingApprovalTurnIds: Record<string, string> | undefined;
+    const placeholders = new Map<string, string>();
     if (updates.pendingApprovals) {
       const openIds = new Set(updates.pendingApprovals);
       // #3071: the server's list already excludes what a turn's abort
@@ -667,6 +681,7 @@ export function applyOrchestrationSnapshot(
           0,
         );
         approvalToasts.set(requestId, toastId);
+        placeholders.set(requestId, toastId);
       }
     }
     // One write per thread. Each `updateChat` copies the whole chat map and
@@ -685,6 +700,18 @@ export function applyOrchestrationSnapshot(
           )
         : {}),
     });
+    // The snapshot has only ids; swap each placeholder for the real approval
+    // toast once the request's payload is read (loaded on demand, off the
+    // entry chunk).
+    if (!replayId && options?.apiBase && placeholders.size > 0) {
+      const { apiBase } = options;
+      // A failed chunk load leaves the placeholder in place.
+      void import('./hydrateOpenApprovalToasts')
+        .then((module) =>
+          module.hydrateOpenApprovalToasts(apiBase, threadId, placeholders),
+        )
+        .catch(() => {});
+    }
   }
 
   for (const threadId of plan.exitedThreadIds) {

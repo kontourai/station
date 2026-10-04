@@ -1932,6 +1932,16 @@ currently poll the journal read and link to existing execution
 inspection; they are not room-SSE lifecycle events. Invited/public result
 projection and actual-provider acceptance remain unfinished.
 
+Immutable output review uses the same room history, rather than a second
+feedback journal. [TaskOutputModule](../../src-server/services/projects/task-output-module.ts)
+validates fresh version targets against retained output and Task/Project identity;
+permanent room identities resolve exact duplicates before output validation.
+A per-room SQLite format fence prevents v2 writes after v3 adoption.
+The [output surface](../../src-ui/src/views/task-workspace/TaskOutputsSection.tsx)
+checks authorized downloaded bytes before offering a human review statement.
+Reviewer acceptance changes no Task or workflow state. Source and focused
+contract evidence do not establish a two-human or installed acceptance journey.
+
 The [SDK](../../packages/sdk/src/client/project-task-rooms.ts) parses opaque
 edit receipts and the shared SSE stream. Accepted document objects are offered
 synchronously to mounted listeners before the same object enters query-cache

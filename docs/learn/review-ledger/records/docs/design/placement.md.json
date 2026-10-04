@@ -26,47 +26,45 @@
 
     "packages/sdk/src/components/LayoutHeader.tsx",
 
-    "src-ui/src/App.tsx",
-
     "src-ui/src/__tests__/region-model.test.ts",
-
-    "src-ui/src/app-shell/ProjectLayoutRenderer.tsx",
-
-    "src-ui/src/app-shell/RegionShells.tsx",
 
     "src-ui/src/app-shell/destination-registry.ts",
 
     "src-ui/src/app-shell/project-layout-kind.ts",
 
+    "src-ui/src/app-shell/ProjectLayoutRenderer.tsx",
+
+    "src-ui/src/app-shell/RegionShells.tsx",
+
+    "src-ui/src/App.tsx",
+
     "src-ui/src/components/chat-dock/ChatDock.tsx",
 
     "src-ui/src/components/chat-dock/DockShell.tsx",
-
-    "src-ui/src/components/chat/ChatMarkdownAnchor.tsx",
-
-    "src-ui/src/components/chat/MarkdownLinkContext.ts",
 
     "src-ui/src/components/chat/__tests__/ChatMarkdownAnchor.test.tsx",
 
     "src-ui/src/components/chat/chat.css",
 
-    "src-ui/src/components/dialog-history.ts",
+    "src-ui/src/components/chat/ChatMarkdownAnchor.tsx",
 
-    "src-ui/src/components/header/RegionToolbarControls.tsx",
+    "src-ui/src/components/chat/MarkdownLinkContext.ts",
+
+    "src-ui/src/components/dialog-history.ts",
 
     "src-ui/src/components/header/__tests__/RegionToolbarControls.test.tsx",
 
+    "src-ui/src/components/header/RegionToolbarControls.tsx",
+
     "src-ui/src/components/header/useRegionSurfaceMenu.ts",
-
-    "src-ui/src/components/project-sidebar/ProjectLayoutChipMenu.tsx",
-
-    "src-ui/src/components/project-sidebar/ProjectLayoutChips.tsx",
 
     "src-ui/src/components/project-sidebar/pill-region-open.ts",
 
     "src-ui/src/components/project-sidebar/pill-region-placement.ts",
 
-    "src-ui/src/contexts/RegionModelContext.tsx",
+    "src-ui/src/components/project-sidebar/ProjectLayoutChipMenu.tsx",
+
+    "src-ui/src/components/project-sidebar/ProjectLayoutChips.tsx",
 
     "src-ui/src/contexts/__tests__/RegionModelContext-arrangement-record.test.tsx",
 
@@ -79,6 +77,8 @@
     "src-ui/src/contexts/__tests__/RegionModelContext-phone-layer.test.tsx",
 
     "src-ui/src/contexts/navigation-store.ts",
+
+    "src-ui/src/contexts/RegionModelContext.tsx",
 
     "src-ui/src/contexts/useDismissPhoneLayer.ts",
 
@@ -112,20 +112,6 @@
 
     "src-ui/src/views/PersonalBoardView.tsx",
 
-    "src-ui/src/workspace-panes/AgentsWorkspacePane.tsx",
-
-    "src-ui/src/workspace-panes/LayoutPaneTitles.tsx",
-
-    "src-ui/src/workspace-panes/LayoutWorkspacePane.tsx",
-
-    "src-ui/src/workspace-panes/RegionChooserPanel.tsx",
-
-    "src-ui/src/workspace-panes/RegionChromeBar.tsx",
-
-    "src-ui/src/workspace-panes/RegionEmptyChooser.tsx",
-
-    "src-ui/src/workspace-panes/RegionPaneHost.tsx",
-
     "src-ui/src/workspace-panes/__tests__/RegionChromeBar.test.tsx",
 
     "src-ui/src/workspace-panes/__tests__/RegionEmptyChooser.test.tsx",
@@ -139,6 +125,20 @@
     "src-ui/src/workspace-panes/__tests__/RegionPaneHost.tabs.test.tsx",
 
     "src-ui/src/workspace-panes/agents/ChildWorkRow.tsx",
+
+    "src-ui/src/workspace-panes/AgentsWorkspacePane.tsx",
+
+    "src-ui/src/workspace-panes/LayoutPaneTitles.tsx",
+
+    "src-ui/src/workspace-panes/LayoutWorkspacePane.tsx",
+
+    "src-ui/src/workspace-panes/RegionChooserPanel.tsx",
+
+    "src-ui/src/workspace-panes/RegionChromeBar.tsx",
+
+    "src-ui/src/workspace-panes/RegionEmptyChooser.tsx",
+
+    "src-ui/src/workspace-panes/RegionPaneHost.tsx",
 
     "src-ui/src/workspace-panes/useDockProject.ts",
 

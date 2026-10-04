@@ -900,6 +900,16 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
     reason: 'fail-closed orchestration transfer comparator',
   },
   {
+    pattern: 'scripts/lib/transfer-capture-progress.ts',
+    tests: [
+      'scripts/__tests__/transfer-capture-progress.test.ts',
+      'scripts/__tests__/prepush-orchestration-transfer.test.ts',
+      'scripts/__tests__/orchestration-transfer-gate.test.ts',
+      'src-server/runtime/__tests__/orchestration-transfer-budget.integration.test.ts',
+    ],
+    reason: 'bounded exact-source capture phase diagnostic writer',
+  },
+  {
     pattern: 'scripts/orchestration-transfer-capture.ts',
     tests: [
       'src-server/runtime/__tests__/orchestration-transfer-budget.integration.test.ts',
