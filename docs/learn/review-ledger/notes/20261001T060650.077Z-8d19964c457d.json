@@ -1,0 +1,7 @@
+{
+  "revision": "c7dcc1ff793055c5bc1161b9a7db519cfb9d6e96",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"#3071: added the paragraph on requests closed without a decision when their turn is aborted. Checked against interrupted-turn-recovery.ts (request.resolved expired, response.reason turn-interrupted, published before the abort), foldRequestTurnOwnership in session-lifecycle-service.ts (abort-only settlement, no owner between turns, ordinary turn.completed settles nothing) and its readers in open-requests.ts, orchestration-session-state.ts and session-event-reads.ts; executed request-turn-settlement.test.ts and the #3071 block of interrupted-turn-recovery.test.ts, including the refused late decision. Not rechecked: the rest of the page, and each adapter's own cancelled-on-abort publication beyond reading the Claude, Codex and ACP sites.","inputs":["docs/reference/session-api.md"]}
+  ]
+}

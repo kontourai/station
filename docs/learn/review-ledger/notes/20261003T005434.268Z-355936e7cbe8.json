@@ -1,0 +1,7 @@
+{
+  "revision": "39a9b348e9f283080439de010b5a0d26b507e3c3",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Narrow test typing repair: explicitly require the selected chat's transcript messages before the unchanged exact substituted-content assertion. Missing messages still fail the launch evidence. Focused launch suite passed 3 tests and scoped UI typecheck passed; production sources and user-guide claims are unchanged.","inputs":["docs/user/getting-started.md"]}
+  ]
+}

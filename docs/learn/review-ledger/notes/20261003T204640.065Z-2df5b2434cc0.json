@@ -1,0 +1,7 @@
+{
+  "revision": "09c6f7979363346b0182ff0900d5bb0c21ddb0e1",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed device-settings.ts at 09c6f79793: Return help preserves automatic touch/newline and desktop/send behavior, Shift+Return newline, Ctrl/Cmd+Return send and attached-keyboard scope in one sentence. The composer design remains accurate; no default, input resolver or dispatch behavior changed. Focused contracts/SDK/readiness suites pass 28/28 after seven baseline failures.","inputs":["docs/design/chat-composer.md"]}
+  ]
+}

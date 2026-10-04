@@ -1,0 +1,19 @@
+{
+  "revision": "f249300b2162c4ef35f8978e4cf9ded407027304",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed author-package conformance repair: manifest names/catalog IDs now match example directories; added example navigation links, ordinary source paths/version/source requirements unchanged. Executed example conformance30/30, default catalog source resolution and curated author validation. No installed model/native/release outcome inferred.","inputs":["docs/guides/integrating-station.md"]},
+
+    {"path":"docs/guides/plugins.md","note":"Reviewed author-package conformance repair: manifest names/catalog IDs now match example directories; added example navigation links, ordinary source paths/version/source requirements unchanged. Executed example conformance30/30, default catalog source resolution and curated author validation. No installed model/native/release outcome inferred.","inputs":["docs/guides/plugins.md"]},
+
+    {"path":"examples/README.md","note":"Reviewed author-package conformance repair: manifest names/catalog IDs now match example directories; added example navigation links, ordinary source paths/version/source requirements unchanged. Executed example conformance30/30, default catalog source resolution and curated author validation. No installed model/native/release outcome inferred.","inputs":["examples/README.md"]},
+
+    {"path":"examples/builder-delivery-viewer/README.md","note":"Reviewed author-package conformance repair: manifest names/catalog IDs now match example directories; added example navigation links, ordinary source paths/version/source requirements unchanged. Executed example conformance30/30, default catalog source resolution and curated author validation. No installed model/native/release outcome inferred.","inputs":["examples/builder-delivery-viewer/README.md"]},
+
+    {"path":"examples/matt-pocock-engineering/README.md","note":"Reviewed author-package conformance repair: manifest names/catalog IDs now match example directories; added example navigation links, ordinary source paths/version/source requirements unchanged. Executed example conformance30/30, default catalog source resolution and curated author validation. No installed model/native/release outcome inferred.","inputs":["examples/matt-pocock-engineering/README.md"]},
+
+    {"path":"examples/registry/README.md","note":"Reviewed author-package conformance repair: manifest names/catalog IDs now match example directories; added example navigation links, ordinary source paths/version/source requirements unchanged. Executed example conformance30/30, default catalog source resolution and curated author validation. No installed model/native/release outcome inferred.","inputs":["examples/registry/README.md"]},
+
+    {"path":"examples/visual-project-inspection/README.md","note":"Reviewed author-package conformance repair: manifest names/catalog IDs now match example directories; added example navigation links, ordinary source paths/version/source requirements unchanged. Executed example conformance30/30, default catalog source resolution and curated author validation. No installed model/native/release outcome inferred.","inputs":["examples/visual-project-inspection/README.md"]}
+  ]
+}

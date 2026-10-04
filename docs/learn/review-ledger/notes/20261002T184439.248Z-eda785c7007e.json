@@ -1,0 +1,7 @@
+{
+  "revision": "588db1257e6d61dc7dc29911706255bc2a95f78c",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Reviewed the host-qualified touch floor and composer-scoped popup alignment; both retain their intended precedence regardless of stylesheet load order. Updated responsive-baseline explanations with unchanged counts and ceiling. Browser emulated coarse-pointer rule measured a 44px actionable pill in a wide pane. No region placement contract change.","inputs":["docs/design/placement.md"]}
+  ]
+}

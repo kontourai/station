@@ -1,0 +1,17 @@
+{
+  "revision": "a15d7b09e3b1a1434ac3d51a25d52773d30746a7",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"Reviewed merged bytes from the mobile discovery slice and newer main: advanced broker disclosure and copy changes retain the same custody, account and operator authority. Replacement capture provenance and older labels remain explicit; no live provider or native-release proof is inferred from the captures.","inputs":["docs/architecture/abstraction-review.md"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed merged bytes from the mobile discovery slice and newer main: advanced broker disclosure and copy changes retain the same custody, account and operator authority. Replacement capture provenance and older labels remain explicit; no live provider or native-release proof is inferred from the captures.","inputs":["docs/guides/connections.md"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"Reviewed merged bytes from the mobile discovery slice and newer main: advanced broker disclosure and copy changes retain the same custody, account and operator authority. Replacement capture provenance and older labels remain explicit; no live provider or native-release proof is inferred from the captures.","inputs":["docs/guides/local-collaboration-lab.md"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed merged bytes from the mobile discovery slice and newer main: advanced broker disclosure and copy changes retain the same custody, account and operator authority. Replacement capture provenance and older labels remain explicit; no live provider or native-release proof is inferred from the captures.","inputs":["docs/guides/self-configuring-agent.md"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Reviewed merged bytes from the mobile discovery slice and newer main: advanced broker disclosure and copy changes retain the same custody, account and operator authority. Replacement capture provenance and older labels remain explicit; no live provider or native-release proof is inferred from the captures.","inputs":["docs/learn/walkthroughs.md"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Reviewed merged bytes from the mobile discovery slice and newer main: advanced broker disclosure and copy changes retain the same custody, account and operator authority. Replacement capture provenance and older labels remain explicit; no live provider or native-release proof is inferred from the captures.","inputs":["examples/self-configuring-agent/README.md"]}
+  ]
+}
