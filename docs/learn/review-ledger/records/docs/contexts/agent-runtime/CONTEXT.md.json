@@ -16,11 +16,11 @@
 
     {"path":"src-server/runtime/agents/runtime-agent-registry.ts","digest":"7cb6673e6d45f3636e1b4964e7830ebfa281611a38e3c69b117f15c74777f69e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/runtime/bootstrap/runtime-initialize.ts","digest":"bd381c9d60f70ac986c9eee0977752d883f52a018842fee300d3e352933aea6d","revision":"56f4c4897a189eeb30430119a4f4895e95fbb541"},
+    {"path":"src-server/runtime/bootstrap/runtime-initialize.ts","digest":"a26d891390f45dfdea6402fa64ab0914dcc053137c85d77ab100e99d29e6c92a","revision":"26b93f9dd99add41e8c6e781c66f52dc35ce14b6"},
 
     {"path":"src-server/services/orchestration/conversation-lineage.ts","digest":"7280f9906fb68b76b56471b98f490e2b4e57e3ab30e87d1b03807d4e15e102ff","revision":"2b31d6dd3b08301c81fa89dd566b144e78794bd3"},
 
-    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"c5a85fefbe06e5a903444325293d46a80fefb7a0f938100fbceee8c60492d893","revision":"958350328eafd360124e1892c1945a2ae455e43c"},
+    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"0e4e4f41563fb2d95c68f7c53f4cbc1986569cf781f36204c0afa3d0c221650e","revision":"26b93f9dd99add41e8c6e781c66f52dc35ce14b6"},
 
     {"path":"src-server/services/orchestration/session-command-module.ts","digest":"a187447cec48eca40e8933bce7600c5e00baebfae55c4ecf2ca4ef5d70626622","revision":"0c1f436037261c43eeca3e079f5106948360c591"}
   ],

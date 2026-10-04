@@ -28,7 +28,7 @@
 
     {"path":"src-server/services/orchestration/home-transfer-room-probe.ts","digest":"452280720043dd06eabfa63058e4ae10bd65db403adf427ccc7b64061c102129","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
-    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"c5a85fefbe06e5a903444325293d46a80fefb7a0f938100fbceee8c60492d893","revision":"958350328eafd360124e1892c1945a2ae455e43c"},
+    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"0e4e4f41563fb2d95c68f7c53f4cbc1986569cf781f36204c0afa3d0c221650e","revision":"26b93f9dd99add41e8c6e781c66f52dc35ce14b6"},
 
     {"path":"src-server/services/orchestration/paired-home-transfer-authority.ts","digest":"085a90751ac616c54bca77ce48112a951334d1d644fdb4fa3287e6aed72f503f","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 

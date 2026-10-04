@@ -12,7 +12,7 @@
   "document": {"digest":"01b5e0f57a74ae8f20ed5c9bde68a9851bbe6cf16ae44fab42ba6597fc9e63b5","revision":"c6ebec77b17b679e630a3857b10a6f814d7fb436"},
 
   "sources": [
-    {"path":"packages/contracts/src/orchestration.ts","digest":"b85426d08406de6a1e6f42dd2b8e356ea3995df5be0929390fa7d17fa00bfd64","revision":"68231f2caead4680fb4dfa036d25b1a4a2a836bb"},
+    {"path":"packages/contracts/src/orchestration.ts","digest":"4332df216bd71da65ad47a0c7b001aacd9ba43a8c66cfd6f7cb213940e2f991d","revision":"26b93f9dd99add41e8c6e781c66f52dc35ce14b6"},
 
     {"path":"src-server/routes/chat/chat.ts","digest":"6a21c19b74d6dda3764d207c8768b588df7cb4e5e1f5529955e153cbde99f8cc","revision":"56f4c4897a189eeb30430119a4f4895e95fbb541"},
 
@@ -60,7 +60,7 @@
 
     {"path":"src-ui/src/components/chat/ChatInputArea.tsx","digest":"e69a0da43b5324c5f5ad032a6f5168edf25451764baea09e65ffd074f2138b1f","revision":"bcf92230693bda2172f72834280d9f1798371197"},
 
-    {"path":"src-ui/src/components/chat/QueuedMessages.tsx","digest":"1d0938dd073df3ecd07aff6bd97128182a629530c425af7f8e622eede164d7bd","revision":"8f54568ace0014007eee673a58f3d26d3588e282"},
+    {"path":"src-ui/src/components/chat/QueuedMessages.tsx","digest":"c11bbecabec929f10dbbc291d9ecd3d86451e5dead15b1bf3d40515f6468b189","revision":"8cdb58b5fdabe32fed85261b544f867e7d4fa1d0"},
 
     {"path":"src-ui/src/components/chat/ComposerIconAction.tsx","digest":"ec75533d5cc10aaed540da2063fb547b9b5a9118dd53d33e642e0297f51d41cb","revision":"89765352964045a079d13a17bee54ab2de7b83e0"},
 
@@ -72,7 +72,7 @@
 
     {"path":"src-ui/src/components/status/chatStatus.ts","digest":"61867106c8e2218abab46c172f70c6359aeb515c443e259a38cbc3ebe125d988","revision":"c6ebec77b17b679e630a3857b10a6f814d7fb436"},
 
-    {"path":"src-server/services/orchestration/event-store.ts","digest":"93c3dbecfc298b2ae05f65a29fe897f34f13a69ba0cbd72b6fca8013a9a6361a","revision":"b208a334880a96bb3f4267c2d2ffd6d03e118218"},
+    {"path":"src-server/services/orchestration/event-store.ts","digest":"5da5030322c702bb8947a6707ebfa0f4582a309ab79c545e4b0ce80127cf80e1","revision":"26b93f9dd99add41e8c6e781c66f52dc35ce14b6"},
 
     {"path":"src-ui/src/__tests__/ChatInputArea.test.tsx","digest":"2375598b03e2b9fe8003ff24a7ef15712d471c5024a7befd4ab22ab6879b98d5","revision":"4711f21b516d04300b15ad4da473e24bf2e7adb2"},
 

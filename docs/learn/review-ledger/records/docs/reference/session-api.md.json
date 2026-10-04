@@ -26,7 +26,7 @@
 
     {"path":"src-server/providers/adapters/codex-adapter-transport.ts","digest":"ddc57bdc7eead816bff59653f324a25f2349d9ff9478005264cac8e7a099b4fc","revision":"0bf65df71b04f48768c1f5bdb16db77e361a3177"},
 
-    {"path":"src-server/providers/adapters/codex-adapter-types.ts","digest":"f198dc43900198c9f803f64173dcf911d3a76c831a1ec659e28d63542279cddf","revision":"0bf65df71b04f48768c1f5bdb16db77e361a3177"},
+    {"path":"src-server/providers/adapters/codex-adapter-types.ts","digest":"e037a01f82b6a329bc624471a28ba46c9daf4e31e3072ec05cce2c708d4aefaf","revision":"faad29d67dec3873fdb6a4d5d0e18168caa1237e"},
 
     {"path":"src-server/providers/adapters/codex-adapter.ts","digest":"3dcbbfc821c7d5a35287ba8e2eb9a13b24cc4e0b4a59841fbb6b16bed846aa20","revision":"423cbe55b9e35e4cd8954fd441cb9f3c69740d66"},
 
@@ -68,7 +68,7 @@
 
     {"path":"src-ui/src/components/chat-dock/ConversationHandoffDialog.tsx","digest":"311cb357976129526312eddafdaea13d78f1bdb9f96b28adfdf0187388bc1769","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/hooks/orchestration/queueDrain.ts","digest":"5172f08676c5ae320d10b42f23f7b5158ab77172a54c537235de9156ea504eb8","revision":"89765352964045a079d13a17bee54ab2de7b83e0"},
+    {"path":"src-ui/src/hooks/orchestration/queueDrain.ts","digest":"cf717e781483c79e1100edf268c8df602f0e6561179cca3e824dacde944b78db","revision":"462c43a89905ea97ae2d67fd097deb676f79822f"},
 
     {"path":"src-ui/src/hooks/useActiveChatSessionMessaging.ts","digest":"9318eb8735235a5cf39ece24756ba0a90405a79b9c24982199f65326b4c4c6b2","revision":"34d62da501fa53187b7062288f6e1dbaec8c20ed"}
   ],
