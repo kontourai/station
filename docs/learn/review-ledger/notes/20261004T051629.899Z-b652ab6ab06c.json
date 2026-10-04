@@ -1,0 +1,35 @@
+{
+  "revision": "dcfaa7bd3ae31a080794196e260953cc4066684b",
+
+  "notes": [
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Reviewed the session-api delta: bounded attached-Claude ancestry and per-turn usage retention do not alter this historical chat-cutover rationale or its supersession notice.","inputs":["docs/reference/session-api.md"]},
+
+    {"path":"docs/architecture.md","note":"Reviewed attached external-session follow against the importer delta: ancestry/cursor bookkeeping remains bounded read-only observation; original-process control and independent adoption authority are unchanged.","inputs":["src-server/providers/sessions/claude-transcript-session-source.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Reviewed the monitoring-guide delta against its telemetry abstraction discussion: repaired attached per-turn accounting preserves the distinctions between recording, projection, and live billing evidence.","inputs":["docs/guides/monitoring.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the EventStore delta against SessionQueryModule and retained persistence composition. Scope-aware per-turn observation retention preserves descriptor-only turn-window bounds, authorization, ordering, and corruption outcomes; no new Module or raw replay fallback.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","note":"Reviewed the narrow EventStore turn-window filtering delta. Receipt, evidence, Flow gate, independent review, and exception owners and semantics are untouched.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Reviewed the EventStore turn-window filtering delta. Operational jobs, monitoring versus canonical-event storage, and verification evidence semantics remain unchanged.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Reviewed EventStore per-turn usage filtering against composer history and chat controls. No composer entry, transport, focus, authority, lifecycle, or retained-history bounds change.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"Reviewed EventStore per-turn-window delta. It changes observation selection only; ledger extraction dispositions, recovery claims, atomic adoption, and retained session journal boundaries remain accurate.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/project-task-room-history.md","note":"Reviewed EventStore turn-window filtering delta against room-history persistence and worker callers. Room sequencing, authority, retention, worker shutdown, and cursor contracts are untouched.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/revision-bound-evidence.md","note":"Reviewed EventStore turn-window filtering delta. Revision evidence receipt identity, capacity, freeze/restore, close fencing, and room attribution do not use this usage observation coalescing path.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/shared-working-state.md","note":"Reviewed EventStore turn-window filtering delta against shared state owners. Operation admission, snapshot/replay ordering, authority, and bounded replay configuration are unchanged.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/guides/agents.md","note":"Reviewed importer ancestry and existing-cursor upgrade delta against Agent engine/runtime and continuation guidance. Configuration, invocation, source-home affinity, and control/adoption contracts remain unchanged.","inputs":["src-server/providers/sessions/claude-transcript-session-source.ts"]},
+
+    {"path":"docs/guides/monitoring.md","note":"Replaced the #581 limitation with bounded parent-turn ancestry, upgrade look-behind without counter replay, coherent event-cap cursor state, and retention of all per-turn observations. Source/source-restart fixtures and real EventStore regressions prove this slice; no new live provider reconciliation or expanded history bounds is claimed.","inputs":["docs/guides/monitoring.md","src-server/providers/sessions/claude-transcript-session-source.ts","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Reviewed EventStore per-turn-window delta against configuration and persistence guidance. No settings, defaults, read authority, log retention, attachments, or credential owner behavior changes.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Documented source-owned bounded ancestry, unknown-parent behavior, existing-cursor identity recovery, and coherent partial-record replay. Per-turn versus cumulative observation retention remains bounded; source-home affinity, adoption, and control authority stay unchanged.","inputs":["docs/reference/session-api.md","src-server/providers/sessions/claude-transcript-session-source.ts"]}
+  ]
+}

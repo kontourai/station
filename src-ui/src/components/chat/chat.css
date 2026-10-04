@@ -57,8 +57,8 @@
  * phone user could not reach the surface that would reconnect them.
  *
  * The cluster is the toolbar's last-resort chrome and holds its size; the
- * brand beside it already truncates (`index.css`'s `.app-toolbar__brand`) and
- * is what absorbs the overflow. `overflow: hidden` is gone with the shrink it
+ * logo/wordmark lockup beside it (`index.css`'s `.app-toolbar__lockup`) is what
+ * absorbs the overflow, by dropping the wordmark out whole. `overflow: hidden` is gone with the shrink it
  * existed to clip — it also clipped nothing useful, since the overflow menu
  * renders in a portal (see `components/header/OverflowMenu.tsx`).
  */
@@ -85,8 +85,8 @@
   gap: 4px;
   /* Fixed-size controls: the fieldset must not pack below their sum, or the
      last control lands under the first connection action (#917). At the coarse
-     widths where that happened, `.app-toolbar__brand` is the shrinking member
-     (index.css `.app-toolbar__brand`). */
+     widths where that happened, `.app-toolbar__lockup` is the shrinking member
+     (index.css `.app-toolbar__lockup`). */
   flex-shrink: 0;
   margin: 0;
   padding: 0;

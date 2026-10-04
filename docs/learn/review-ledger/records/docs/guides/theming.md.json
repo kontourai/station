@@ -26,6 +26,8 @@
 
     "packages/sdk/src/queryFactories.ts",
 
+    "packages/shared/package.json",
+
     "pnpm-lock.yaml",
 
     "scripts/mobile-css-ratchet.mjs",
@@ -56,9 +58,9 @@
 
     "src-ui/src/components/Dialog.tsx",
 
-    "src-ui/src/components/header/ThemeToggle.tsx",
-
     "src-ui/src/components/ResponsiveDialogSurface.tsx",
+
+    "src-ui/src/components/header/ThemeToggle.tsx",
 
     "src-ui/src/hooks/useIsMobile.ts",
 
@@ -80,9 +82,7 @@
 
     "src-ui/src/tokens.css",
 
-    "src-ui/src/utils/logger.ts",
-
-    "packages/shared/package.json"
+    "src-ui/src/utils/logger.ts"
   ],
 
   "checks": [

@@ -181,6 +181,21 @@ const messageSchema = z
     expectedTaskCreatedAt: z.string().min(1).max(40).optional(),
   })
   .strict();
+const outputFeedbackSchema = z
+  .object({
+    proposalId: z.string().min(1).max(256),
+    occurredAt: z.string().datetime(),
+    target: z
+      .object({
+        outputId: z.string().min(1).max(256),
+        digest: z.string().regex(/^sha256:[0-9a-f]{64}$/),
+        taskCreatedAt: z.string().datetime(),
+      })
+      .strict(),
+    review: z.enum(['comment', 'changes-requested', 'accepted']),
+    text: z.string().min(1).max(8192),
+  })
+  .strict();
 const liveSchema = z.discriminatedUnion('command', [
   z
     .object({
@@ -463,6 +478,23 @@ export function createProjectTaskRoomRoutes(
         unsubscribe?.();
       }
     }),
+  );
+  app.post(
+    '/:taskId/room/output-feedback',
+    validate(outputFeedbackSchema),
+    async (c) => {
+      const { proposalId, occurredAt, ...feedback } = getBody(c);
+      return response(
+        c,
+        await runtime.outputFeedback({
+          taskId: param(c, 'taskId'),
+          request: c.req.raw,
+          proposalId,
+          occurredAt,
+          feedback: { kind: 'output-feedback', ...feedback },
+        }),
+      );
+    },
   );
   app.post('/:taskId/room/messages', validate(messageSchema), async (c) => {
     const body = getBody(c);

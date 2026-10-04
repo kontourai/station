@@ -1,0 +1,17 @@
+{
+  "revision": "bc69af1db032e199f1091d9def9ce74c583ab6b2",
+
+  "notes": [
+    {"path":"docs/guides/code-quality.md","note":"Reviewed unchanged hook order, fail-closed two-baseline-plus-candidate transfer evidence, exact-SHA completion distinction and historical timing disclaimer against the new testing-guide phase paragraph. Optional phase snapshots cannot satisfy capture/comparison or promotion receipts; no limits or hook admission semantics changed.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"scripts/AGENTS.md","note":"Reviewed unchanged script instructions against the phase diagnostic addition: fail-closed gates, owned output, declared child-resource classifications, introduced code-health reporting and explicit exit-status proof still apply. The phase helper owns only a private diagnostic file and does not create a child or alter an evidence result.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"scripts/fixtures/orchestration-transfer/README.md","note":"Reviewed retained historical calibration and fixed logical event clock against current collector changes. The added phase writer uses performance.now only and writes outside the transfer payload; Date.now fixture freeze, byte/frame ceilings and real HTTP recording remain unchanged. No new measurement or cause attribution is claimed.","inputs":["scripts/orchestration-transfer-capture.ts"]},
+
+    {"path":"src-server/AGENTS.md","note":"Reviewed unchanged server instructions and testing-guide reference. New CLI phase metadata does not change route/domain boundaries, public service APIs, request authority or read freshness; fixture, real-PTY and source-qualified evidence requirements remain intact.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Reviewed unchanged UI instructions and testing-guide reference. The transfer CLI diagnostic paragraph changes no UI navigation/state, contracts, style tokens, geometry, hit targets or shell-evidence requirements.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"Reviewed unchanged fixture fidelity, managed resource ownership, real user action and no-rerun-as-completion instructions against the new diagnostic paragraph. Phase metadata and helper-only tests remain diagnostic; they cannot stand in for actual collector, browser/native or exact-source qualification.","inputs":["docs/guides/testing.md"]}
+  ]
+}

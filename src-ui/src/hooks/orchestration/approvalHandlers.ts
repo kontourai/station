@@ -52,6 +52,22 @@ export function handleRequestOpenedEvent(
     orchestrationStatus: 'awaiting-approval',
   });
 
+  raiseRequestOpenedToast(apiBase, event);
+}
+
+/**
+ * The toast a `request.opened` raises, without the chat state the live event
+ * also writes. A reload rebuilds the toasts of requests a snapshot reports
+ * open (`hydrateOpenApprovalToasts`), and must not replay the state: the
+ * snapshot already holds it, and setting `awaiting-approval` again would
+ * contradict a turn that ended after the request opened.
+ */
+export function raiseRequestOpenedToast(
+  apiBase: string,
+  event: Extract<OrchestrationEvent, { method: 'request.opened' }>,
+) {
+  const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
+  if (!chat || event.blocking === false) return;
   if (readHarnessQuestionnaire(event.payload?.questionnaire)) return;
 
   const agentName = chat.agentName || chat.agentSlug || event.provider;
@@ -299,7 +315,10 @@ export function handleRequestResolvedEvent(
 
 type PendingApprovalState = Pick<
   ChatUIState,
-  'pendingApprovals' | 'pendingApprovalTurnIds' | 'approvalToasts'
+  | 'pendingApprovals'
+  | 'answeredApprovals'
+  | 'pendingApprovalTurnIds'
+  | 'approvalToasts'
 >;
 
 /**
@@ -349,6 +368,10 @@ export function settlePendingApprovalsOnTurnEnd(
   }
   return {
     pendingApprovals: pending.filter((requestId) => !settled.has(requestId)),
+    // A settled request is gone; its "answered here" mark goes with it.
+    answeredApprovals: (chat?.answeredApprovals ?? []).filter(
+      (requestId) => !settled.has(requestId),
+    ),
     pendingApprovalTurnIds: Object.fromEntries(
       Object.entries(turnIds).filter(([requestId]) => !settled.has(requestId)),
     ),

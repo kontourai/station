@@ -1,4 +1,4 @@
-import { apiErrorMessage } from './api-error-message';
+import { envelopeError } from './api-error-message';
 import { type ApiRequestScope, mutateJson, StationHttpError } from './http';
 import { rethrowDeadline } from './request-deadline';
 
@@ -32,6 +32,7 @@ export interface CheckpointRestorePreview {
 }
 
 async function unwrap<T>(response: Response): Promise<T> {
+  const fallback = `Checkpoint restore failed: ${response.status}`;
   let body: {
     success?: boolean;
     data?: T;
@@ -44,16 +45,10 @@ async function unwrap<T>(response: Response): Promise<T> {
     body = await response.json();
   } catch (error) {
     rethrowDeadline(error);
-    throw new StationHttpError(
-      response.status,
-      `Checkpoint restore failed: ${response.status}`,
-    );
+    throw envelopeError(response, undefined, fallback);
   }
   if (!response.ok || !body.success) {
-    const error = new StationHttpError(
-      response.status,
-      apiErrorMessage(body, `Checkpoint restore failed: ${response.status}`),
-    );
+    const error = envelopeError(response, body, fallback);
     if (typeof body.reason === 'string')
       Object.assign(error, { reason: body.reason });
     throw error;
