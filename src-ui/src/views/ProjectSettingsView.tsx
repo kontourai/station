@@ -584,7 +584,7 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
         </PageSection>
 
         {/* Layouts — list + save as template */}
-        <AgentsSection form={form} setForm={setForm} />
+        <AgentsSection form={form} setForm={setForm} projectSlug={slug} />
 
         <LayoutsSection slug={slug} />
 
