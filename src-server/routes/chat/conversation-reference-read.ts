@@ -55,6 +55,7 @@ import {
 import type { StationControlCaller } from '../../tools/station-control-shared.js';
 import type { Logger } from '../../utils/logger.js';
 import {
+  CONVERSATION_LINEAGE_TOO_LONG_REFUSAL,
   type ConversationLineageReader,
   ConversationLineageTooLongError,
   type ConversationMessageRead,
@@ -580,7 +581,11 @@ export function createConversationReferenceReadRoutes(
       // #3112: a lineage past the read bound is refused, never truncated.
       if (error instanceof ConversationLineageTooLongError)
         return c.json(
-          { success: false, code: error.code, error: error.message },
+          {
+            success: false,
+            code: error.code,
+            error: CONVERSATION_LINEAGE_TOO_LONG_REFUSAL,
+          },
           422,
         );
       deps.logger.warn('Failed to read conversation', {

@@ -47,6 +47,9 @@ export interface ConversationLineageReader {
  */
 export const CONVERSATION_READ_MAX_SESSIONS = 64;
 
+/** The outward refusal for a lineage past the bound; no internal detail. */
+export const CONVERSATION_LINEAGE_TOO_LONG_REFUSAL = `This conversation spans more than ${CONVERSATION_READ_MAX_SESSIONS} Sessions and cannot be read in one piece.`;
+
 export class ConversationLineageTooLongError extends Error {
   readonly name = 'ConversationLineageTooLongError';
   readonly code = 'conversation_lineage_too_long';

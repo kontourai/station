@@ -88,6 +88,7 @@ import {
 import { generateConversationTitle } from './chat-title-generation.js';
 import {
   boundedConversationSessionIds,
+  CONVERSATION_LINEAGE_TOO_LONG_REFUSAL,
   ConversationLineageTooLongError,
   createConversationMessageReader,
 } from './conversation-message-reader.js';
@@ -146,7 +147,11 @@ function conversationRouteFailure(
 ) {
   if (error instanceof ConversationLineageTooLongError) {
     return c.json(
-      { success: false, code: error.code, error: error.message },
+      {
+        success: false,
+        code: error.code,
+        error: CONVERSATION_LINEAGE_TOO_LONG_REFUSAL,
+      },
       422,
     );
   }
