@@ -49,14 +49,13 @@ export type HomeLifecycleLabel = (typeof HOME_LIFECYCLE_LABELS)[number];
  * above `Completed`: it has not finished, and nothing here can act on it. An
  * earlier version of this comment claimed the renumbering was what stopped a
  * dead session "pinning the top of Home" — review caught that as a claim
- * about a mechanism this file does not have. The genuine top-slot fix is
- * `delegatedTaskPriority` (`utils/sessionDisplay.ts`), which IS an ordering
- * and does feed `prioritizedDelegatedTasks`. What the ranking here actually
- * buys is that a merged chat+orchestration row cannot show "Needs attention"
- * for a request nothing can answer.
+ * about a mechanism this file does not have. (The top-slot fix was a
+ * separate rank for the delegated-work card, removed with that card.) What
+ * the ranking here buys is that a merged chat+orchestration row cannot show
+ * "Needs attention" for a request nothing can answer.
  *
- * Nothing is removed from any list under either mechanism, so the row and
- * its basis stay readable (annotate, never filter).
+ * Nothing is removed from any list by it, so the row and its basis stay
+ * readable (annotate, never filter).
  */
 export const LIFECYCLE_PRIORITY: Record<HomeLifecycleLabel, number> = {
   'Needs attention': 7,
