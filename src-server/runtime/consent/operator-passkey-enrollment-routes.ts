@@ -31,7 +31,7 @@ import {
 import { parseDeviceSessionCookie } from '../bootstrap/runtime-http.js';
 import { ENROLLMENT_PAGE_SCRIPT } from './operator-passkey-enrollment-script.js';
 
-export const OPERATOR_PASSKEY_ENROLL_PATH = '/operator/passkeys/enroll';
+const OPERATOR_PASSKEY_ENROLL_PATH = '/operator/passkeys/enroll';
 
 export interface OperatorPasskeyConsentDeps {
   readonly service: OperatorPasskeyEnrollmentService;

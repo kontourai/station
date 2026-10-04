@@ -48,15 +48,15 @@ export const ENROLLMENT_REQUEST_TTL_MS = 5 * 60_000;
 export const ENROLLMENT_CEREMONY_TTL_MS = 5 * 60_000;
 /** One registration challenge is valid this long, and for one verification. */
 export const ENROLLMENT_CHALLENGE_TTL_MS = 2 * 60_000;
-export const ENROLLMENT_CODE_DIGITS = 6;
+const ENROLLMENT_CODE_DIGITS = 6;
 /** Live requests at once. A larger pool would make a blind code guess likelier. */
 export const ENROLLMENT_MAX_LIVE_REQUESTS = 5;
 /** Option mints and failed verifications one confirmation may spend. */
-export const ENROLLMENT_MAX_CEREMONY_ATTEMPTS = 3;
+const ENROLLMENT_MAX_CEREMONY_ATTEMPTS = 3;
 /** Wrong or malformed host-side codes tolerated per window before a lockout. */
 export const ENROLLMENT_CODE_FAILURE_LIMIT = 5;
 export const ENROLLMENT_CODE_FAILURE_WINDOW_MS = 5 * 60_000;
-export const OPERATOR_PASSKEY_LABEL_MAX = 64;
+const OPERATOR_PASSKEY_LABEL_MAX = 64;
 
 const SUPPORTED_ALGORITHMS = [-8, -7, -257]; // EdDSA, ES256, RS256
 const KNOWN_TRANSPORTS = new Set([
