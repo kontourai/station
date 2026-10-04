@@ -9,18 +9,16 @@
 
   "limits": "No live governed delivery, every upstream producer/authority policy combination, historic 3.x Flow behavior, or retired fault-injection transcript was reproduced. Current focused service tests are narrower than end-to-end governance assurance. Additional main merge b269a6cf9: structural reconciliation only; prior distinct anchors below are historical reviews, not approval of combined bytes. Active bindings retain existing anchors; combined dependency bytes remain stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"package.json\",\"ours\":{\"digest\":\"33148f13d0b86a0fc46e74f38eba8e87cef542801cca0606fd9c0ab6f287a380\",\"revision\":\"b50eeb9584c1808e429e59dcb3c3c2253307bbbe\"},\"main\":{\"digest\":\"7263c035fa5946e593a759d3a0b55d8f504e955eb14fab5a401b71c7d3b2ac50\",\"revision\":\"df9188971e1a93d2c5525a7f5f38e3da93c9e4de\"}}].\n\nAdditional existing main limits (preserved verbatim): No live governed delivery, every upstream producer/authority policy combination, historic 3.x Flow behavior, or retired fault-injection transcript was reproduced. Current focused service tests are narrower than end-to-end governance assurance.\n\nStructural merge of 5fd2dd86ad0cd35018ce09537c1aa01ce58e0e55 and 8f9ea788561518398a488d35bb768b78a272e73b preserves both prior immutable document/source anchors and historical checks. Selecting an existing current-byte binding is structural reconciliation only, not semantic approval of merged inputs. No new digest/revision or coverage baseline was minted. Competing prior anchors remain pending semantic review and supported recording after the merge commit: [{\"path\":\"package.json\",\"ours\":{\"path\":\"package.json\",\"digest\":\"a6deceaea9701a9deb9d05ebd0b1f42db716b05f155c155b2e872443511def48\",\"revision\":\"8e884d84b5609d130f29937159601c65d119b664\"},\"main\":{\"path\":\"package.json\",\"digest\":\"8161e13f46212729130685df12cc34747e385002183410cd57e47d5cdd125306\",\"revision\":\"2fc8f69d15e5c8fa3188bb2ee4731f1b63c66218\"},\"active\":{\"path\":\"package.json\",\"digest\":\"a6deceaea9701a9deb9d05ebd0b1f42db716b05f155c155b2e872443511def48\",\"revision\":\"8e884d84b5609d130f29937159601c65d119b664\"},\"decision\":\"neitherMatch\"},{\"path\":\"packages/contracts/src/runtime-events.ts\",\"ours\":{\"path\":\"packages/contracts/src/runtime-events.ts\",\"digest\":\"f58bc6f78acd49d8857178c91306d6ea19ff790cd453b8dd8ea0d8495ee78114\",\"revision\":\"94e8da3b253080c2450e333ebbe98acfaf35b7b8\"},\"main\":{\"path\":\"packages/contracts/src/runtime-events.ts\",\"digest\":\"2ceec56becea487e1bbd88c353c425c609f5724643ffa33828d3ca05c2b4ed3d\",\"revision\":\"bc671142a7ae70587daf5bb0d94732e8ca74600a\"},\"active\":{\"path\":\"packages/contracts/src/runtime-events.ts\",\"digest\":\"2ceec56becea487e1bbd88c353c425c609f5724643ffa33828d3ca05c2b4ed3d\",\"revision\":\"bc671142a7ae70587daf5bb0d94732e8ca74600a\"},\"decision\":\"mainMatch\"}]",
 
-  "document": {"digest":"31dcc16a60ac8b64122625111ae8c14f82d31dbbe3c9733b2a87f913cd9d1525","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
   "sources": [
-    {"path":".flow/config.json","digest":"5cb4aedb42cb258e03eb68c3174c5a5da3d45f53864fccd25b865b7585942c03","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    ".flow/config.json",
 
-    {"path":"package.json","digest":"ee32f6a73f2428a8734396a7667e8ec009485b1c5a87f779652801ed4c51af1f","revision":"fdca33b1896b280299ba72fc70a3c9b9cda7f3af"},
+    "package.json",
 
-    {"path":"packages/contracts/src/runtime-events.ts","digest":"2ceec56becea487e1bbd88c353c425c609f5724643ffa33828d3ca05c2b4ed3d","revision":"bc671142a7ae70587daf5bb0d94732e8ca74600a"},
+    "packages/contracts/src/runtime-events.ts",
 
-    {"path":"src-server/services/flow/__tests__/flow-run-service.test.ts","digest":"fa250aec61923e14b6c9fb84f5b24ba54f92d2085412a2dd967fb1b0e5c52bf3","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "src-server/services/flow/__tests__/flow-run-service.test.ts",
 
-    {"path":"src-server/services/flow/flow-run-service.ts","digest":"501881355a01c561de9ecdbe2cc99a9f83bb565873615997cba75965e6e29271","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"}
+    "src-server/services/flow/flow-run-service.ts"
   ],
 
   "checks": [

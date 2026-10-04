@@ -1,7 +1,0 @@
-{
-  "revision": "0d71215d3c9a4e15c331243a6b7d231d2662c344",
-
-  "notes": [
-    {"path":"docs/guides/e2e-coverage-matrix.md","note":"tests/default-agent-workflow.spec.ts changed only the provider-error assertion: it now checks the ephemeral notice's 'Error' title and the server's failure text as separate visible blocks, following the titled notice format. The matrix names default-agent-workflow only as an Agents-surface product spec; its bucket (product), ownership and journey description are unchanged, so the prose remains accurate."}
-  ]
-}
