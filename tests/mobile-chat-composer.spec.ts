@@ -4043,62 +4043,86 @@ test('a refused send keeps a two-line draft clear of every row in a 375x667 half
   ).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('refused-half-dock.png') });
 
-  const geometry = await textarea.evaluate((element) => {
-    const box = element.getBoundingClientRect();
-    const style = getComputedStyle(element);
-    const line =
-      Number.parseFloat(style.lineHeight) ||
-      Number.parseFloat(style.fontSize) * 1.2;
-    const chrome =
-      Number.parseFloat(style.paddingTop) +
-      Number.parseFloat(style.paddingBottom);
-    const others = [
-      ...document.querySelectorAll(
-        '.composer-attachments__chip, .chat-input__attachment-error, .chat-input__attachment-notice, .chat-controls-row, [data-testid="chat-dock-session-failure"], .chat-input__meta',
-      ),
-    ].map((other) => {
-      const rect = other.getBoundingClientRect();
+  // The send's "Working" pill leaves over a moment, and while it does its 44px
+  // row is part of the composer. Judge the layout once that has settled.
+  const sampleGeometry = () =>
+    textarea.evaluate((element) => {
+      const box = element.getBoundingClientRect();
+      const style = getComputedStyle(element);
+      const line =
+        Number.parseFloat(style.lineHeight) ||
+        Number.parseFloat(style.fontSize) * 1.2;
+      const chrome =
+        Number.parseFloat(style.paddingTop) +
+        Number.parseFloat(style.paddingBottom);
+      const others = [
+        ...document.querySelectorAll(
+          '.composer-attachments__chip, .chat-input__attachment-error, .chat-input__attachment-notice, .chat-controls-row, [data-testid="chat-dock-session-failure"], .chat-input__meta',
+        ),
+      ].map((other) => {
+        const rect = other.getBoundingClientRect();
+        return {
+          name: other.className || other.getAttribute('data-testid'),
+          overlaps:
+            rect.height > 0 &&
+            rect.top < box.bottom - 0.5 &&
+            rect.bottom > box.top + 0.5 &&
+            rect.left < box.right &&
+            rect.right > box.left,
+        };
+      });
+      const root = element.closest('.chat-input') as HTMLElement;
+      const body = root?.parentElement as HTMLElement;
+      const debug = {
+        ta: [
+          box.top,
+          box.bottom,
+          element.style.height,
+          element.style.minHeight,
+        ],
+        root: [
+          root.getBoundingClientRect().top,
+          root.getBoundingClientRect().bottom,
+          root.style.minHeight,
+          root.scrollHeight,
+          getComputedStyle(root).maxHeight,
+        ],
+        body: [
+          body.className,
+          body.getBoundingClientRect().top,
+          body.getBoundingClientRect().bottom,
+        ],
+        kids: [...body.children].map(
+          (k) =>
+            `${k.className}:${Math.round(k.getBoundingClientRect().height)}`,
+        ),
+      };
       return {
-        name: other.className || other.getAttribute('data-testid'),
-        overlaps:
-          rect.height > 0 &&
-          rect.top < box.bottom - 0.5 &&
-          rect.bottom > box.top + 0.5 &&
-          rect.left < box.right &&
-          rect.right > box.left,
+        debug,
+        visibleContent: box.height - chrome,
+        twoLines: 2 * line,
+        inViewport: box.top >= 0 && box.bottom <= innerHeight,
+        overlapping: others
+          .filter((other) => other.overlaps)
+          .map((o) => o.name),
       };
     });
-    const root = element.closest('.chat-input') as HTMLElement;
-    const body = root?.parentElement as HTMLElement;
-    const debug = {
-      ta: [box.top, box.bottom, element.style.height, element.style.minHeight],
-      root: [
-        root.getBoundingClientRect().top,
-        root.getBoundingClientRect().bottom,
-        root.style.minHeight,
-        root.scrollHeight,
-        getComputedStyle(root).maxHeight,
-      ],
-      body: [
-        body.className,
-        body.getBoundingClientRect().top,
-        body.getBoundingClientRect().bottom,
-      ],
-      kids: [...body.children].map(
-        (k) => `${k.className}:${Math.round(k.getBoundingClientRect().height)}`,
-      ),
-    };
-    return {
-      debug,
-      visibleContent: box.height - chrome,
-      twoLines: 2 * line,
-      inViewport: box.top >= 0 && box.bottom <= innerHeight,
-      overlapping: others.filter((other) => other.overlaps).map((o) => o.name),
-    };
-  });
-  expect(geometry.overlapping, JSON.stringify(geometry.debug)).toEqual([]);
-  expect(geometry.inViewport, JSON.stringify(geometry.debug)).toBe(true);
-  expect(geometry.visibleContent).toBeGreaterThanOrEqual(geometry.twoLines - 1);
+  await expect
+    .poll(async () => {
+      const geometry = await sampleGeometry();
+      const problems: string[] = [];
+      if (geometry.overlapping.length > 0)
+        problems.push(`overlapping ${geometry.overlapping.join(', ')}`);
+      if (!geometry.inViewport) problems.push('draft outside the viewport');
+      if (geometry.visibleContent < geometry.twoLines - 1)
+        problems.push(
+          `visible ${geometry.visibleContent} < two lines ${geometry.twoLines}`,
+        );
+      return problems.length > 0
+        ? `${problems.join('; ')} ${JSON.stringify(geometry.debug)}`
+        : 'clear';
+    })
+    .toBe('clear');
 });
 
 /**
