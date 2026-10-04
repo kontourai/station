@@ -2,6 +2,10 @@ import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
 import type { ServerEventName } from '@kontourai/station-contracts/runtime-events';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { ACPProbe, type ACPProbeInitiator } from './acp-probe.js';
+import {
+  invalidateOpenCodeModelCapabilities,
+  refreshOpenCodeModelCapabilities,
+} from './opencode-model-capabilities.js';
 
 type EventBus = {
   emit: (event: ServerEventName, data?: Record<string, unknown>) => void;
@@ -79,7 +83,18 @@ export async function addACPManagerConnection({
   managedWorkspaceHomeDir,
   eventBus,
   createProbe = (connectionConfig, probeLogger, workspaceHomeDir) =>
-    new ACPProbe(connectionConfig, probeLogger, workspaceHomeDir),
+    new ACPProbe(
+      connectionConfig,
+      probeLogger,
+      workspaceHomeDir,
+      undefined,
+      undefined,
+      undefined,
+      // Detached and best effort: OpenCode's per-model image support is read
+      // from its own listing after the handshake, never on a request path.
+      (probed) =>
+        void refreshOpenCodeModelCapabilities(probed, { logger: probeLogger }),
+    ),
   removeConnection,
   initiator = 'request',
 }: {
@@ -132,6 +147,7 @@ export async function removeACPManagerConnection({
   await probes.get(id)?.dispose?.();
   probes.delete(id);
   configs.delete(id);
+  invalidateOpenCodeModelCapabilities(id);
 }
 
 export async function reconnectACPManagerConnection({
@@ -174,6 +190,8 @@ export async function reconnectACPManagerConnection({
   // `now - lastProbeAt >= ACP_PROBE_STALE_AFTER_MS`, so a connection that
   // falls due just after a tick waits for the next one. The tradeoff is
   // forced by the client deadlines, not chosen for tidiness.
+  // A re-probe re-reads the engine's own model listing too.
+  invalidateOpenCodeModelCapabilities(id);
   const ok = await probe.probe('request');
   if (ok) {
     eventBus?.emit(SERVER_EVENTS.AGENTS_CHANGED);

@@ -204,6 +204,7 @@ import {
   parseDurableProjectTaskRoomAppendReceipt,
   projectTaskRoomReceiptLookupIdentifier,
 } from './project-task-room-append-receipt.js';
+import type { ProjectTaskRoomOutputFeedbackTargets } from './project-task-room-history.js';
 import {
   createProjectTaskRoomHistory,
   type ProjectTaskRoomAgentGrantAuthority,
@@ -2586,6 +2587,7 @@ export class EventStore {
     links?: ProjectTaskRoomLinkAuthority;
     agents?: ProjectTaskRoomAgentGrantAuthority;
     roomWriteAdmissions?: ProjectTaskRoomWriteAdmissionPort;
+    outputFeedbackTargets?: ProjectTaskRoomOutputFeedbackTargets;
     /** Test-only response-loss seam for sequential-instance recovery proof. */
     unavailableAfterCommitOnce?: boolean;
   }): ProjectTaskRoomHistory {

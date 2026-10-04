@@ -144,7 +144,19 @@ function mount() {
         };
         content.append(form);
       }
-      for (const stage of invocation.snapshot.definition.transitions ?? []) {
+      const stages = [
+        {
+          label: 'Prepare another round',
+          experienceId: invocation.snapshot.definition.id,
+          inputs: invocation.snapshot.inputs,
+        },
+        ...(invocation.snapshot.definition.transitions ?? []).map((stage) => ({
+          label: stage.label,
+          experienceId: stage.experienceId,
+          inputs: {},
+        })),
+      ];
+      for (const stage of stages) {
         const next = element('button', stage.label);
         next.type = 'button';
         next.onclick = async () => {
@@ -152,7 +164,7 @@ function mount() {
           try {
             await host.continue({
               experienceId: stage.experienceId,
-              inputs: {},
+              inputs: stage.inputs,
             });
             status.textContent =
               'The next stage is ready in Station’s composer. Review its inputs and send when ready.';

@@ -10,9 +10,51 @@
   "limits": "Bounded native pilot source review and inspected debug macOS frozen-harness receipt; not a complete signaling/encryption/key/trust/rotation/cookie/cancellation audit, release qualification, fresh relay-only enrollment, remote deployment or external-provider proof.\n\nMerge anchor history (structural reconciliation only; no semantic approval): source src-desktop/src/lib.rs ours={\"digest\":\"57a47dd3656d47a5c43eaf4001895942d350d61b6de896fa4d1d3da498bfd821\",\"revision\":\"d5e4502434838cc29b63091ae689474d6488cfe4\"}; origin/main={\"digest\":\"ad3b52011a9be6e6a18133b2367c04d0a6245907e5b7e13fa324bcd8b5255557\",\"revision\":\"464d602fb7fb5fa9bd0df9d241dc03495b398b96\"}. The merged source bytes require supported review after the merge commit.\n\nMerge anchor history (structural reconciliation only; no semantic approval): source docs/guides/native-shell-verification.md ours={\"digest\":\"02022b49c8533609bcf561776a2dd5c1b20cdfb3b8ae4cf5f5b5ae141e28e86e\",\"revision\":\"d5e4502434838cc29b63091ae689474d6488cfe4\"}; origin/main={\"digest\":\"db5ef187c02545195074cac011b8bd21fab7ff9eb23d28bf884dd36922b14c29\",\"revision\":\"464d602fb7fb5fa9bd0df9d241dc03495b398b96\"}. The merged source bytes require supported review after the merge commit.",
 
   "sources": [
+    "docs/guides/native-shell-verification.md",
+
+    "packages/connect/src/core/applicationChannel.ts",
+
     "packages/connect/src/core/brokerRouteEnrollment.ts",
 
+    "packages/connect/src/core/nativeApplicationTransport.ts",
+
+    "scripts/lib/local-collaboration-station-child.ts",
+
+    "scripts/lib/local-collaboration-station.ts",
+
+    "src-desktop/src/lib.rs",
+
+    "src-desktop/src/native_account_operations.rs",
+
+    "src-desktop/src/native_application_peer.rs",
+
+    "src-desktop/src/native_device_binding_candidate.rs",
+
+    "src-desktop/src/native_device_proof_key.rs",
+
+    "src-desktop/src/native_proof_key_core.rs",
+
+    "src-desktop/src/native_relay_redemption.rs",
+
+    "src-desktop/src/native_secure_entry.rs",
+
     "src-desktop/src/relay_grant_vault.rs",
+
+    "src-server/routes/system/native-device-proof-binding-routes.ts",
+
+    "src-server/routes/system/native-device-proof-self-receipt-routes.ts",
+
+    "src-server/runtime/bootstrap/native-device-proof-runtime.ts",
+
+    "src-server/runtime/bootstrap/runtime-http.ts",
+
+    "src-server/runtime/bootstrap/self-hosted-broker-pion-runtime.ts",
+
+    "src-server/runtime/routes/__tests__/runtime-routes-native-device-proof-pilot.test.ts",
+
+    "src-server/security/native-device-request-authority.ts",
+
+    "src-server/services/connections/native-v2-pion-application-adapter.ts",
 
     "src-server/services/connections/self-hosted-broker-connector.ts",
 
@@ -20,67 +62,25 @@
 
     "src-server/services/connections/virtual-application.ts",
 
-    "packages/connect/src/core/nativeApplicationTransport.ts",
-
-    "src-server/services/connections/native-v2-pion-application-adapter.ts",
-
-    "src-server/runtime/bootstrap/self-hosted-broker-pion-runtime.ts",
-
-    "src-server/services/ssh/native-device-proof-binding-service.ts",
-
     "src-server/services/identity/native-device-proof-verifier.ts",
 
     "src-server/services/identity/native-device-replay-store.ts",
 
-    "src-desktop/src/native_device_proof_key.rs",
-
-    "src-desktop/src/native_proof_key_core.rs",
-
-    "src-server/runtime/bootstrap/native-device-proof-runtime.ts",
-
-    "src-server/security/native-device-request-authority.ts",
-
-    "src-server/routes/system/native-device-proof-binding-routes.ts",
-
-    "src-desktop/src/native_device_binding_candidate.rs",
-
-    "src-server/routes/system/native-device-proof-self-receipt-routes.ts",
-
-    "src-server/runtime/routes/__tests__/runtime-routes-native-device-proof-pilot.test.ts",
-
-    "src-desktop/src/native_relay_redemption.rs",
-
-    "src-desktop/src/lib.rs",
-
-    "packages/connect/src/core/applicationChannel.ts",
-
-    "src-desktop/src/native_application_peer.rs",
-
-    "src-desktop/src/native_account_operations.rs",
-
-    "src-ui/src/platform/native/nativeApplicationSignalingBridge.ts",
-
-    "tests/tauri-shell/native-project-runtime-fixture.ts",
-
-    "tests/tauri-shell/native-project-acceptance.e2e.ts",
-
-    "tests/tauri-shell/native-project-acceptance-webview.ts",
-
-    "scripts/lib/local-collaboration-station.ts",
-
-    "scripts/lib/local-collaboration-station-child.ts",
-
-    "docs/guides/native-shell-verification.md",
-
-    "src-desktop/src/native_secure_entry.rs",
-
-    "src-server/runtime/bootstrap/runtime-http.ts",
+    "src-server/services/ssh/native-device-proof-binding-service.ts",
 
     "src-ui/src/platform/native/nativeAccountSessionBridge.ts",
 
+    "src-ui/src/platform/native/nativeApplicationSignalingBridge.ts",
+
     "src-ui/src/platform/native/nativeRelayConnectionOwner.ts",
 
-    "tests/tauri-shell/native-fresh-relay-fixture.md"
+    "tests/tauri-shell/native-fresh-relay-fixture.md",
+
+    "tests/tauri-shell/native-project-acceptance-webview.ts",
+
+    "tests/tauri-shell/native-project-acceptance.e2e.ts",
+
+    "tests/tauri-shell/native-project-runtime-fixture.ts"
   ],
 
   "checks": [

@@ -10,6 +10,7 @@ import {
   useHostRequestAuthorityScope,
 } from '../../contexts/ApiBaseContext';
 import { useToast } from '../../contexts/ToastContext';
+import { userFacingErrorMessage } from '../../utils/errorText';
 import { Dialog } from '../Dialog';
 
 function restoreFailureMessage(cause: unknown): string {
@@ -43,7 +44,8 @@ function restoreFailureMessage(cause: unknown): string {
               : 'The checkpoint identity changed. Review a new preview.';
     return `${action} No files were changed.`;
   }
-  const detail = cause instanceof Error ? cause.message : String(cause);
+  const detail =
+    cause instanceof Error ? userFacingErrorMessage(cause) : String(cause);
   return `Restore outcome not confirmed: ${detail}. Inspect the workspace before trying again.`;
 }
 

@@ -32,25 +32,17 @@
 
     "packages/connect/src/core/nativeApplicationTransport.ts",
 
-    "packages/connect/src/core/nativeRelayLink.ts",
-
     "packages/connect/src/core/pendingPairingCompletion.ts",
 
     "packages/connect/src/core/pendingPairingCompletionLoader.ts",
 
     "packages/contracts/src/__tests__/learning-review.test.ts",
 
-    "packages/contracts/src/catalog.ts",
-
     "packages/contracts/src/cloud-move.ts",
 
     "packages/contracts/src/learning-review.ts",
 
     "packages/contracts/src/live-surface.ts",
-
-    "packages/contracts/src/native-relay-enrollment.ts",
-
-    "packages/contracts/src/native-relay-link.ts",
 
     "packages/contracts/src/plugin-foreground-work.ts",
 
@@ -170,21 +162,11 @@
 
     "src-desktop/src/native_device_proof_key.rs",
 
-    "src-desktop/src/native_enrollment.rs",
-
-    "src-desktop/src/native_enrollment_host.rs",
-
     "src-desktop/src/native_proof_key_core.rs",
-
-    "src-desktop/src/native_relay_ios_launch.rs",
 
     "src-desktop/src/native_relay_key_approval.rs",
 
-    "src-desktop/src/native_relay_link_intake.rs",
-
     "src-desktop/src/native_relay_redemption.rs",
-
-    "src-desktop/src/native_secure_entry.rs",
 
     "src-desktop/src/notification_feed.rs",
 
@@ -256,15 +238,7 @@
 
     "src-server/providers/plugin-provider-loader.ts",
 
-    "src-server/providers/registries/filesystem-skill-registry.ts",
-
     "src-server/providers/registries/json-manifest-registry.ts",
-
-    "src-server/providers/registries/registry-catalog-installed-state.ts",
-
-    "src-server/providers/registries/registry-source-configuration.ts",
-
-    "src-server/providers/registries/registry-source-manager.ts",
 
     "src-server/providers/registries/registry.ts",
 
@@ -318,8 +292,6 @@
 
     "src-server/routes/orchestration/workspace-pane-host-actions.ts",
 
-    "src-server/routes/plugins/__tests__/registry-marketplaces.routes.test.ts",
-
     "src-server/routes/plugins/plugin-config-routes.ts",
 
     "src-server/routes/plugins/plugin-host-approval-routes.ts",
@@ -327,8 +299,6 @@
     "src-server/routes/plugins/plugin-public-routes.ts",
 
     "src-server/routes/plugins/plugins.ts",
-
-    "src-server/routes/plugins/registry.ts",
 
     "src-server/routes/projects/project-identity-routes.ts",
 
@@ -518,8 +488,6 @@
 
     "src-server/services/identity/native-device-replay-store.ts",
 
-    "src-server/services/identity/native-relay-enrollment-service.ts",
-
     "src-server/services/infra/__tests__/resource-posture.test.ts",
 
     "src-server/services/infra/resource-posture.ts",
@@ -575,8 +543,6 @@
     "src-server/services/orchestration/__tests__/native-invocation-runs.test.ts",
 
     "src-server/services/orchestration/__tests__/project-task-room-revision-evidence-bridge.test.ts",
-
-    "src-server/services/orchestration/__tests__/project-task-room-runtime.test.ts",
 
     "src-server/services/orchestration/__tests__/revision-evidence-persistence.test.ts",
 
@@ -728,8 +694,6 @@
 
     "src-server/services/projects/task-graph-service.ts",
 
-    "src-server/services/projects/task-room-context.ts",
-
     "src-server/services/projects/task-room-work-module.ts",
 
     "src-server/services/scheduling/__tests__/builtin-scheduler-execution.test.ts",
@@ -820,8 +784,6 @@
 
     "src-ui/src/components/mcp-ui/MCPToolUIFrame.tsx",
 
-    "src-ui/src/components/plugins/plugin-frame-runtime.ts",
-
     "src-ui/src/components/project-sidebar/ProjectSidebarNav.tsx",
 
     "src-ui/src/components/review/ReviewLayout.tsx",
@@ -866,47 +828,27 @@
 
     "src-ui/src/live-surface/useLiveSurface.ts",
 
-    "src-ui/src/platform/native/NativeRelayLinkIntake.tsx",
-
-    "src-ui/src/platform/native/NativeRelayLinkReview.tsx",
-
     "src-ui/src/platform/native/__tests__/nativeRelayGrantRenewalAdapter.test.ts",
 
     "src-ui/src/platform/native/__tests__/nativeRelayGrantRenewalSupervisor.test.ts",
 
     "src-ui/src/platform/native/deliveryFeed.ts",
 
-    "src-ui/src/platform/native/nativeAccountSessionBridge.ts",
-
     "src-ui/src/platform/native/nativeApplicationSignalingBridge.ts",
-
-    "src-ui/src/platform/native/nativeRelayApplicationRuntime.ts",
-
-    "src-ui/src/platform/native/nativeRelayConnectionOwner.ts",
-
-    "src-ui/src/platform/native/nativeRelayEnrollmentClient.ts",
 
     "src-ui/src/platform/native/nativeRelayGrantRenewalAdapter.ts",
 
     "src-ui/src/platform/native/nativeRelayGrantRenewalSupervisor.ts",
 
-    "src-ui/src/platform/native/nativeRelayLinkAdapter.ts",
-
     "src-ui/src/platform/native/rendererLiveness.tsx",
 
     "src-ui/src/settings/shortcutPreferences.ts",
 
+    "src-ui/src/views/developer/MemoryTab.tsx",
+
     "src-ui/src/views/HomeView.tsx",
 
     "src-ui/src/views/LayoutView.tsx",
-
-    "src-ui/src/views/SettingsView.tsx",
-
-    "src-ui/src/views/TaskWorkspaceView.tsx",
-
-    "src-ui/src/views/connections-hub/NativeRelayEnrollmentWizard.tsx",
-
-    "src-ui/src/views/developer/MemoryTab.tsx",
 
     "src-ui/src/views/learning-review/LearningSourceAction.tsx",
 
@@ -916,7 +858,21 @@
 
     "src-ui/src/views/settings/utils.ts",
 
+    "src-ui/src/views/SettingsView.tsx",
+
+    "src-ui/src/views/TaskWorkspaceView.tsx",
+
     "src-ui/src/workspace-panes/BasisMcpWorkspacePane.tsx",
+
+    "src-ui/src/workspace-panes/browser-pane/BrowserAcquisitionPanel.tsx",
+
+    "src-ui/src/workspace-panes/browser-pane/BrowserAgentSettingsPanel.tsx",
+
+    "src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx",
+
+    "src-ui/src/workspace-panes/browser-pane/browserPaneApi.ts",
+
+    "src-ui/src/workspace-panes/browser-pane/BrowserSetup.tsx",
 
     "src-ui/src/workspace-panes/BrowserPreviewWorkspacePane.tsx",
 
@@ -938,19 +894,63 @@
 
     "src-ui/src/workspace-panes/WorkspacePaneHostActions.tsx",
 
-    "src-ui/src/workspace-panes/browser-pane/BrowserAcquisitionPanel.tsx",
-
-    "src-ui/src/workspace-panes/browser-pane/BrowserAgentSettingsPanel.tsx",
-
-    "src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx",
-
-    "src-ui/src/workspace-panes/browser-pane/BrowserSetup.tsx",
-
-    "src-ui/src/workspace-panes/browser-pane/browserPaneApi.ts",
-
     "tests/helpers/fixture-audit.ts",
 
-    "tests/helpers/journey-profile.ts"
+    "tests/helpers/journey-profile.ts",
+
+    "src-server/services/orchestration/__tests__/project-task-room-runtime.test.ts",
+
+    "src-server/services/projects/task-room-context.ts",
+
+    "packages/connect/src/core/nativeRelayLink.ts",
+
+    "packages/contracts/src/catalog.ts",
+
+    "packages/contracts/src/native-relay-enrollment.ts",
+
+    "packages/contracts/src/native-relay-link.ts",
+
+    "src-desktop/src/native_enrollment.rs",
+
+    "src-desktop/src/native_enrollment_host.rs",
+
+    "src-desktop/src/native_relay_ios_launch.rs",
+
+    "src-desktop/src/native_relay_link_intake.rs",
+
+    "src-desktop/src/native_secure_entry.rs",
+
+    "src-server/providers/registries/filesystem-skill-registry.ts",
+
+    "src-server/providers/registries/registry-catalog-installed-state.ts",
+
+    "src-server/providers/registries/registry-source-configuration.ts",
+
+    "src-server/providers/registries/registry-source-manager.ts",
+
+    "src-server/routes/plugins/__tests__/registry-marketplaces.routes.test.ts",
+
+    "src-server/routes/plugins/registry.ts",
+
+    "src-server/services/identity/native-relay-enrollment-service.ts",
+
+    "src-ui/src/components/plugins/plugin-frame-runtime.ts",
+
+    "src-ui/src/platform/native/NativeRelayLinkIntake.tsx",
+
+    "src-ui/src/platform/native/NativeRelayLinkReview.tsx",
+
+    "src-ui/src/platform/native/nativeAccountSessionBridge.ts",
+
+    "src-ui/src/platform/native/nativeRelayApplicationRuntime.ts",
+
+    "src-ui/src/platform/native/nativeRelayConnectionOwner.ts",
+
+    "src-ui/src/platform/native/nativeRelayEnrollmentClient.ts",
+
+    "src-ui/src/platform/native/nativeRelayLinkAdapter.ts",
+
+    "src-ui/src/views/connections-hub/NativeRelayEnrollmentWizard.tsx"
   ],
 
   "checks": [
