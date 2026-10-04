@@ -5,6 +5,7 @@
  * framework-agnostic interfaces in runtime/types.ts.
  */
 
+import { randomUUID } from 'node:crypto';
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
 import type {
   MCPConnection,
@@ -20,7 +21,7 @@ import {
   type Tool,
   ToolDeniedError,
 } from '@voltagent/core';
-import { jsonSchema } from 'ai';
+import { jsonSchema, type UIMessage } from 'ai';
 import type { FileMemoryAdapter } from '../../adapters/file/memory-adapter.js';
 import { createPromptOnlyMemoryView } from '../../adapters/file/memory-adapter-prompt-view.js';
 import { resolveMaxSteps } from '../../constants.js';
@@ -63,6 +64,8 @@ import type {
   IStreamChunk,
   IStreamResult,
   ITool,
+  ModelInputComposer,
+  ModelInputMessage,
   ToolCallContext,
   ToolCallDenial,
 } from '../types.js';
@@ -389,6 +392,64 @@ async function* bindVoltAgentToolPurposes(
   }
 }
 
+/**
+ * #3112: VoltAgent's model-only seam for one turn's context. `prepareMessages`
+ * appends the authored input after memory history as the newest message(s)
+ * — a string as one user text message, an array as its own messages — and
+ * passes the result here before the model call. Only that tail is composed;
+ * the copy VoltAgent saved to memory stays the authored turn.
+ *
+ * A tail that is not the authored input fails the turn rather than sending
+ * it without its context.
+ */
+export function composeInputAtModelSeam(
+  input: string | ModelInputMessage[],
+  compose: ModelInputComposer,
+): (args: { messages: UIMessage[] }) => Promise<{ messages: UIMessage[] }> {
+  const unexpected = () =>
+    new Error('The prepared model input does not end with the authored turn.');
+  return async ({ messages }) => {
+    if (typeof input === 'string') {
+      const last = messages.at(-1);
+      const part = last?.parts[0];
+      if (
+        last?.role !== 'user' ||
+        last.parts.length !== 1 ||
+        part?.type !== 'text' ||
+        part.text !== input
+      )
+        throw unexpected();
+      const composed = compose(input);
+      if (typeof composed !== 'string') throw unexpected();
+      return {
+        messages: [
+          ...messages.slice(0, -1),
+          { ...last, parts: [{ ...part, text: composed }] },
+        ],
+      };
+    }
+    const tail = messages.slice(-input.length);
+    if (
+      input.length === 0 ||
+      tail.length !== input.length ||
+      tail.some((message, index) => message.id !== input[index]!.id)
+    )
+      throw unexpected();
+    const composed = compose(tail as ModelInputMessage[]);
+    if (!Array.isArray(composed)) throw unexpected();
+    return {
+      messages: [
+        ...messages.slice(0, -input.length),
+        // A composed context message is new; the model input still needs ids.
+        ...composed.map(
+          (message) =>
+            ({ ...message, id: message.id ?? randomUUID() }) as UIMessage,
+        ),
+      ],
+    };
+  };
+}
+
 class VoltAgentWrapper implements IAgent {
   constructor(
     private inner: Agent,
@@ -433,10 +494,25 @@ class VoltAgentWrapper implements IAgent {
     // (which are per-AGENT and shared by concurrent turns) only through
     // this call's own operation context.
     const observedDenials: ObservedToolDenial[] = [];
+    const { composeModelInput, ...invokeOptions } = options ?? {};
     const result = await this.inner.streamText(input, {
-      ...options,
+      ...invokeOptions,
+      // #3112: VoltAgent persists (and titles from) the input it is handed,
+      // so it is handed the authored turn and the context joins only the
+      // messages prepared for the model.
+      ...(composeModelInput
+        ? {
+            hooks: {
+              ...invokeOptions.hooks,
+              onPrepareMessages: composeInputAtModelSeam(
+                input as string | ModelInputMessage[],
+                composeModelInput as ModelInputComposer,
+              ),
+            },
+          }
+        : {}),
       context: contextWithToolDenialObservations(
-        options?.context,
+        invokeOptions.context,
         observedDenials,
       ),
     });
