@@ -148,6 +148,35 @@ is not a claim that every client is offline. A failed registry read hides cached
 profiles. HTTP 401/403 pauses registry polling to avoid consuming the auth-failure
 rate limit; an explicit retry can reauthorize it. This surface grants no access and shares no personal usage statistics.
 
+### Operator view of this instance
+
+Open **Profile → This Station · operator overview → View station usage**.
+The authorized local operator can inspect retained usage by recorded engine or
+provider, model, person/principal, and UTC day. **Unknown / unallocated** keeps
+missing attribution visible. Identity comes from server-stamped events; saved
+message metadata cannot certify a person. Corrections and deletions change
+current totals. Ambiguous relay activity is shown separately and excluded from
+those totals. Token report counts preserve measured zero; a missing measurement
+shows a dash. Reported cost and recorded estimates stay separate.
+
+The instance read requires the runtime-bound home-possession local operator and
+is unavailable on hosted deployments or tenant workers. Ordinary analytics and
+rescan responses omit the person breakdown. The SDK partitions its cache by
+Station and captured authority; an access error hides cached results, and
+401/403 pauses polling until retry. The view queries no peer Station.
+
+Measurements currently come from retained conversation history and
+orchestration events. Native direct invocations, inference served for peers,
+voice/realtime, embeddings, and provider activity outside recorded sessions are
+not independently metered here. Their existing lifecycle/routing receipts do not
+contain durable token/cost measurements. Fleet-routed measurements saved in a
+conversation are counted through that conversation once. Do not add serving and
+consumer observations together without shared call correlation. Context
+occupancy is not consumed tokens, and some harnesses report activity without
+usage. The overview's **Measurement coverage** explains these boundaries;
+missing measurements are not zero. Fixture/source verification does not prove a
+live provider invoice, every plan, or historical usage recovery.
+
 ## Quick Start
 
 ```bash

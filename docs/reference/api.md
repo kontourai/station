@@ -1250,15 +1250,32 @@ at most once a minute, sharing an in-flight rebuild with other readers.
 `snapshot.engineUsage` distinguishes available, unavailable, and unconfigured
 engine sources, and `snapshot.skippedMessages` counts unreadable message rows.
 `snapshot.missingMessageCosts` counts saved assistant/usage rows without a valid
-cost, while `snapshot.costCoverageChecked` becomes false after incremental
-writes or enrichment until a rebuild. `snapshot.retainedUsage` flags retained
-message, token or cost totals larger than the currently rescanned corpus
-(ignoring cost rounding differences).
+cost, while `snapshot.costCoverageChecked` becomes false after message writes or
+enrichment until a rebuild. `snapshot.projection: "retained-source-v1"` marks
+current counters rebuilt from retained observations; corrections or deletions
+can reduce them. Earlier summaries remain in `legacySummary` as unverified
+migration evidence, excluded from current totals. `unallocated` keeps missing
+or ambiguous date/model/provider/principal allocations explicit. `tokenReports`
+distinguishes a measured zero from an unmeasured compatibility sum. Optional
+`reportedCostUsd` and `estimatedCostUsd` remain separate. Ordinary usage and
+rescan responses omit `byPrincipal`.
 A completed scan does not prove historical totals or every provider's accounting
 are complete. The date map is `byDate`, not `byDay`.
 Optional `from`/`to` date strings filter `byDate` and add `rangeSummary`; other
 fields retain their existing aggregate scope. Do not relabel those other fields
 as totals for the selected window.
+
+### Read Station Operator Usage
+
+`GET /api/analytics/station-usage` returns
+`{success: true, data: stats, scope: {kind: "station", stationId}}` with the
+local instance's retained-source statistics, including `byPrincipal`.
+Authorization uses the runtime-bound home-possession local-operator predicate;
+request flags, an ordinary paired credential, or a person attribution do not
+grant it. Hosted deployments and tenant workers are refused. Missing operator
+authority returns 403 before a source read; responses use `Cache-Control: no-store`.
+Peer Stations are excluded. This is an instance overview, not a person billing
+statement or complete provider-wide usage. See [measurement coverage](../guides/monitoring.md#operator-view-of-this-instance).
 
 ### Read Usage Receipts and Rollups
 

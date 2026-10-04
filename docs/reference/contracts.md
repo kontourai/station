@@ -650,6 +650,16 @@ retain their separate evidence scopes. See the
 [Profile measurement scopes](../guides/monitoring.md#profile-usage-and-paired-people)
 and [analytics rescan](api.md#rescan-analytics).
 
+### Current statistics and instance scope
+
+`@kontourai/station-contracts/usage-stats` owns the current statistics DTO.
+Recorded principal buckets describe emit-time attribution; they grant no access
+and are returned only by the authorized instance-operator route. Ordinary
+analytics and rescan responses omit `byPrincipal`. `tokenReports` counts actual
+present measurements, including zero, so numeric compatibility sums must not be
+read as proof that every field was reported. `legacySummary` is unverified
+migration evidence and contributes nothing to current counters.
+
 ### Usage observation provenance
 
 `@kontourai/station-contracts/usage-rollup` owns `UsageReceipt`, `UsageCoverage`,
