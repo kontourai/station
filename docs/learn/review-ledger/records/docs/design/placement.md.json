@@ -40,7 +40,7 @@
 
     {"path":"src-ui/src/App.tsx","digest":"8adeb594b372c2fb6dfa134c8f7ed472e56afae50f78a3becf59e4c3d272edf5","revision":"d6a3158c22a62d9530592c6366a1624790ee9401"},
 
-    {"path":"src-ui/src/components/chat-dock/ChatDock.tsx","digest":"ea96d9b1e01df4219ee45a05f4b894bf7db7dc7f55ade3d3fcd063c6ecfb88a5","revision":"bc542083c3919bc80d36e5e165dc6da009c6ac05"},
+    {"path":"src-ui/src/components/chat-dock/ChatDock.tsx","digest":"fa74f87bb3db229b4d3fbfd354e450f212d0250f9e7325cf1b6f2d967ec8bfd6","revision":"ed4b7b2c4440e328d5367f3d8f4a319a81dfba7e"},
 
     {"path":"src-ui/src/components/chat-dock/DockShell.tsx","digest":"1961ea14eef051a37498d1e172a5e4ae52eefd07334cb71bfa1fda44064ccfb7","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
@@ -122,7 +122,7 @@
 
     {"path":"src-ui/src/workspace-panes/__tests__/RegionPaneHost.openInRegion.test.tsx","digest":"32be112f3c900922621a776004e10c9e242d75df7d9d34b68e16d4961a7c97c4","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/workspace-panes/__tests__/RegionPaneHost.project.test.tsx","digest":"d446b96ce94f5596f3b9ba22e2180c8fefa1b58c7ad96519ccb26f10123c1da2","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    {"path":"src-ui/src/workspace-panes/__tests__/RegionPaneHost.project.test.tsx","digest":"bdf9cdc078c0d1b5aa25794c36ff46c25a2d17a82338c56adf709f53ce8cef39","revision":"12e2341b5f3f4b34b15e7a11eedf51d11873323d"},
 
     {"path":"src-ui/src/workspace-panes/__tests__/RegionPaneHost.tabs.test.tsx","digest":"466d25073741824d65a8de1be3b0d6ec94bd32c2716731ca2b170c99834dd27f","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 

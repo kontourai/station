@@ -59,6 +59,7 @@ const projectSchema = z
       .optional(),
     defaultProviderId: optionalString,
     defaultModel: optionalString,
+    defaultAgent: z.string().regex(CLEAN_ID_PATTERN).optional(),
     defaultEmbeddingProviderId: optionalString,
     defaultEmbeddingModel: optionalString,
     similarityThreshold: z.number().finite().optional(),
