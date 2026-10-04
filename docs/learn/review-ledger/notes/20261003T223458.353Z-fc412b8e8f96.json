@@ -1,0 +1,7 @@
+{
+  "revision": "38b0d0d5f27b6e9e7b1c518826deac90fce13981",
+
+  "notes": [
+    {"path":"docs/reference/shared.md","note":"Resolved the shared-reference review-record conflict after merging current main. Retained incoming append-only reviews and dependency-pin updates for published Flow Agents 6.5.1, then rechecked the merged ProjectConfig declaration and reference: defaultAgent remains optional, context memory takes precedence, write null clears it, and stored/read records omit the cleared value. The merged prose and project interface retain this feature; no upstream behavior was discarded. Other incoming source bytes are unchanged from main’s recorded reviews.","inputs":["docs/reference/shared.md"]}
+  ]
+}

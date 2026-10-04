@@ -1,0 +1,35 @@
+{
+  "revision": "37273326edafdc6317763c16bb46d085bb48a43f",
+
+  "notes": [
+    {"path":"docs/adr/0015-restore-desktop-owned-command-station-sidecar.md","note":"Reviewed native-shell guide G9 addition: simulator relay Device challenge evidence does not alter Desktop-owned sidecar lifecycle or signed packaged-build limits.","inputs":["docs/adr/0015-restore-desktop-owned-command-station-sidecar.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed merged NativeRelayEnrollmentWizard: newer invitations review older grants before redeem, saved ambiguity stays refused, expired Device challenges close through signed status/cancel and return to idle; module authority boundaries remain independent.","inputs":["docs/architecture/module-map.md"]},
+
+    {"path":"docs/design/connection-broker.md","note":"Reviewed native-shell guide G9 observations: broker remained encrypted-routing intermediary, G9 lease/peer opening succeeded on simulator, no account/Project member or physical Nightly claim follows.","inputs":["docs/design/connection-broker.md"]},
+
+    {"path":"docs/design/native-capabilities.md","note":"Reviewed RelayRouteProfiles summary: locally saved routing credential and its expiry no longer claim current Station availability; native OS custody and capability limits remain unchanged.","inputs":["docs/design/native-capabilities.md"]},
+
+    {"path":"docs/design/native-relay-enrollment.md","note":"Reviewed merged wizard and host/client/service: five-minute challenge expiry blocks login, retained public candidate permits signed terminal status/cancel only, and new setup needs fresh request; provider/Device/Project authority remains separate.","inputs":["docs/design/native-relay-enrollment.md"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed current user path: older saved grants require explicit preview/removal before redeem, local saved invitation does not prove live Station access, and expired Device request must be closed before starting fresh. G9 installed recovery/peer-open passed; expired recovery fix itself remains unverified installed.","inputs":["docs/guides/connections.md"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"Reviewed native-shell G9 evidence: isolated broker and local account fixture published a Project, but installed iOS account registration never completed; synthetic and physical acceptance remain separate.","inputs":["docs/guides/local-collaboration-lab.md"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Reviewed Connections guide and saved-card copy: route selection and local credential expiry are not live connectivity or Station/Device/Project authority; relationship description remains accurate.","inputs":["docs/guides/machine-relationships.md"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"Reviewed exact G9 simulator receipt/source05288/app hashca4c: old gen8 observed unavailable, gen9 individually retired, same fresh invitation redeemed, peer opened to public candidate; later challenge expired and no account/member read. New expiry recovery and saved-card copy have source/test proof only, not installed G10/physical proof.","inputs":["docs/guides/native-shell-verification.md"]},
+
+    {"path":"docs/guides/self-hosted-broker.md","note":"Reviewed G9 native guide and merged wizard: live broker lease/grant and peer candidate do not imply Device/account/Project access; explicit grant retirement and cleanup remain scoped, and expiry recovery has no broker authority change.","inputs":["docs/guides/self-hosted-broker.md"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed native-shell proof boundary: simulator G9 exposed peer-open and expiry failure, while unit/host tests of new recovery do not qualify installed, signed, or physical iOS.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"docs/reference/connect.md","note":"Reviewed nativeEnrollmentFailure allowlist and merged wizard: fixed ambiguity/expired diagnostics are bounded and redact raw response/credentials; transport proof and Device authority remain distinct.","inputs":["docs/reference/connect.md"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed RelayRouteProfiles saved credential summary: no SDK member/Project grant or live Station availability follows from a local routing invitation label.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"packages/connect/README.md","note":"Reviewed merged wizard/client expiry handling: native exchange continues to bind one peer and owned proof; status/cancel recovery after expiry does not create login or Project authority.","inputs":["packages/connect/README.md"]},
+
+    {"path":"src-desktop/AGENTS.md","note":"Reviewed linked native-shell guide and native host candidate/status change: platform proof still requires installed shell and physical-device evidence; iOS target compile and G9 simulator have distinct limits.","inputs":["src-desktop/AGENTS.md"]}
+  ]
+}

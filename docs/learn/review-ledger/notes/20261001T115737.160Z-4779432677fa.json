@@ -1,0 +1,7 @@
+{
+  "revision": "d5eb7744278abf8bdc6d62b416e857c6321919a2",
+
+  "notes": [
+    {"path":"tests/tauri-shell/native-fresh-relay-fixture.md","note":"Recorded executed initial-lease failure diagnosis and repaired artifact-first/provision-last operator sequence; exact same-generation provisioning cannot refresh expired authority. Public registration/native application/physical iOS acceptance remain NOT_VERIFIED.","inputs":["tests/tauri-shell/native-fresh-relay-fixture.md"]}
+  ]
+}

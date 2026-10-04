@@ -1,0 +1,7 @@
+{
+  "revision": "74a5cf14585db34917d862e6c8b79276c35ebe50",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed the verification-guide delta: only native recovery labels and collapsed technical detail wording changed. Testing commands and evidence boundaries in this guide remain accurate; mounted UI checks do not qualify an installed shell.","inputs":["docs/guides/testing.md"]}
+  ]
+}

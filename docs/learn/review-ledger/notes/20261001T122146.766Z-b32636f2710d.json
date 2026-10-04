@@ -1,0 +1,7 @@
+{
+  "revision": "7a327814d48d76faaca497206b6529d781d111dd",
+
+  "notes": [
+    {"path":"docs/reference/connect.md","note":"Reviewed ConnectionManagerModal listFooterContent against its modal wrapper, content, and list-panel caller; confirmed it renders only on the list surface and leaves existing request, pairing, and address actions in place. Executed Connect modal and OnboardingGate mounted tests (90/90), Connect source build, UI typecheck, Biome, and static gates. Limits: hosted/public and installed-client qualification are not established by this local review; root is running the installed iOS path.","inputs":["docs/reference/connect.md"]}
+  ]
+}

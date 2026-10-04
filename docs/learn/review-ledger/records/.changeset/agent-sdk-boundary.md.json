@@ -9,8 +9,6 @@
 
   "limits": "Intent only; does not establish package publication.",
 
-  "document": {"digest":"338a1db797027da5421cb129d9c9e27411335ff8e7e64d746ecb2b680b4acdf9","revision":"12e161f7032b17c2f97702c0c41116b0c82bbb91"},
-
   "sources": [],
 
   "checks": []
