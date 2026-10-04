@@ -295,5 +295,13 @@ test.describe('Send again on a stored failed turn (#3112)', () => {
       (await listed.json()) as { data: { items: Array<{ id: string }> } }
     ).data.items.map((item) => item.id);
     expect(listedIds).toEqual([threadId]);
+
+    // A runtime conversation is read-only to the file-store delete, so its
+    // lineage is never left half-deleted.
+    const deleted = await authenticatedRequest.delete(
+      `/agents/${encodeURIComponent(agentSlug)}/conversations/${encodeURIComponent(threadId)}`,
+    );
+    expect(deleted.status()).toBe(409);
+    expect(failureMarkers(await readMessages())).toHaveLength(2);
   });
 });

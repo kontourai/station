@@ -847,7 +847,9 @@ are refused. Use the orchestration operation for its owned history.
 
 `DELETE /agents/:slug/conversations/:conversationId` returns `{success: true}`
 after deleting file-memory history and its derived summary. Orchestration
-history is read-only through this path (409), and hosted requests return 404.
+history is read-only through this path (409), including a conversation whose
+later turns run in successor Sessions and each successor itself, and hosted
+requests return 404.
 A caller-scoped station-control deletion additionally checks the stored owner.
 This is not a general endpoint for deleting any Session visible in a list.
 
@@ -875,7 +877,12 @@ these file-memory mutations before invoking the owner.
 `{success: true, data: stats}` after the shared stats parser. The owner uses
 file-memory stats or authorized orchestration usage when available. Prompt/tool
 estimates, reported tokens, cost, and observed model/context values are distinct
-inputs; missing provider observations are not measurements of zero.
+inputs; missing provider observations are not measurements of zero. Like the
+message read, stats cover every Session in the conversation's lineage: stored
+cumulative figures (tokens, turns, tool calls, cost) sum across the Sessions'
+records, and context occupancy comes from the newest one. Without a stored
+record, the orchestration usage fold runs over every authorized Session's
+events in lineage order.
 
 `contextWindowPercentage` is absent when the model's context window cannot be
 resolved. Render that as unavailable. See the
