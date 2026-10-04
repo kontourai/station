@@ -153,6 +153,7 @@ describe('e2e manifest', () => {
       'tests/paired-device-chat.spec.ts',
       'tests/pr-smoke-live-chat-send.spec.ts',
       'tests/native-conversation-restart.spec.ts',
+      'tests/chat-send-again-failed-turn.spec.ts',
       'tests/chat-multi-turn-context.spec.ts',
       'tests/agents-new-cli-turn.spec.ts',
       'tests/agents-new-muse-echo-turn.spec.ts',

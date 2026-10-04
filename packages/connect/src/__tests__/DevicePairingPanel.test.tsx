@@ -1185,6 +1185,92 @@ describe('device pairing panels', () => {
     );
   });
 
+  test('#2898: the host panel offers Stop now on a session a revoke left running unconfined', async () => {
+    const posts: Array<{ path: string; body: unknown; auth: string | null }> =
+      [];
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const path = new URL(String(input)).pathname;
+      if (path === '/api/pairing/requests') return response({ requests: [] });
+      if (path === '/api/pairing/devices')
+        return response({
+          devices: [
+            {
+              id: 'abc',
+              name: 'Pixel 9',
+              scope: 'station:interactive',
+              kind: 'device',
+              createdAt: Date.now() - 86_400_000,
+              activityTracking: 'tracked-since-issued',
+              lastSeenFrom: null,
+              usageCount: 0,
+              lastActiveDay: null,
+              revokedAt: null,
+              revocation: { state: 'not-revoked' },
+            },
+          ],
+        });
+      if (path === '/api/pairing/devices/abc' && init?.method === 'DELETE')
+        return response({
+          id: 'abc',
+          fullAccessRevocation: {
+            cause: 'device-revoked',
+            reset: [],
+            stillFullAccess: [],
+            reconfined: [],
+            stillUnconfined: [
+              {
+                conversationId: 'conversation:running',
+                title: 'Deploy',
+                sessionId: 'session-running',
+                until: 'next-turn',
+              },
+            ],
+            unattributedHostStarts: { sessions: [], total: 0 },
+          },
+        });
+      if (path === '/api/orchestration/commands' && init?.method === 'POST') {
+        posts.push({
+          path,
+          body: JSON.parse(String(init.body)),
+          auth: new Headers(init.headers).get('Authorization'),
+        });
+        return response({ success: true });
+      }
+      return response({ error: 'unexpected' }, 500);
+    });
+
+    render(
+      <HostDevicePairingPanel
+        apiBase="https://station.example.test"
+        publicEndpoint="https://station.public.test"
+        getCredential={() => 'operator-credential'}
+        onCancel={vi.fn()}
+      />,
+    );
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Revoke Pixel 9' }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Stop Deploy now' }),
+    );
+
+    await waitFor(() =>
+      expect(
+        screen.getByTestId('full-access-revocation').textContent,
+      ).toContain(
+        'Deploy conversation:running, stopped: its next start runs confined.',
+      ),
+    );
+    expect(posts).toEqual([
+      {
+        path: '/api/orchestration/commands',
+        body: { type: 'stopSession', threadId: 'session-running' },
+        auth: 'Bearer operator-credential',
+      },
+    ]);
+  });
+
   test('names the host CLI when this Station refuses the approval (station#1490)', async () => {
     const request = {
       requestId: 'request-refused',

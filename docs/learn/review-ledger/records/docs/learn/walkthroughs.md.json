@@ -10,6 +10,22 @@
   "limits": "Browser captures with sample data and a substituted display name. No external Agent/provider execution, physical native-device result or approval decision is established. The images retain the actual Task editor limitations.",
 
   "sources": [
+    "docs/learn/media.json#/captures/0",
+
+    "docs/learn/media.json#/captures/1",
+
+    "docs/learn/media.json#/captures/2",
+
+    "docs/learn/media.json#/captures/3",
+
+    "docs/learn/media.json#/captures/4",
+
+    "docs/learn/media.json#/captures/5",
+
+    "docs/learn/media.json#/captures/6",
+
+    "docs/learn/media.json#/captures/7",
+
     "docs/learn/media/connections-models.png",
 
     "docs/learn/media/connections-tour.webm",
@@ -30,13 +46,13 @@
 
     "examples/knowledge-library/plugin.json",
 
-    "examples/knowledge-library/src/KnowledgeLibrary.tsx",
-
-    "examples/knowledge-library/src/RootPicker.tsx",
-
     "examples/knowledge-library/src/index.tsx",
 
     "examples/knowledge-library/src/knowledge-library.css",
+
+    "examples/knowledge-library/src/KnowledgeLibrary.tsx",
+
+    "examples/knowledge-library/src/RootPicker.tsx",
 
     "packages/sdk/src/client/knowledge.ts",
 
@@ -56,10 +72,6 @@
 
     "src-server/services/orchestration/project-task-room-runtime.ts",
 
-    "src-ui/src/components/SplitPaneLayout.css",
-
-    "src-ui/src/components/SplitPaneLayout.tsx",
-
     "src-ui/src/components/attention/RequestInspectionDialog.css",
 
     "src-ui/src/components/attention/RequestInspectionDialog.tsx",
@@ -67,6 +79,10 @@
     "src-ui/src/components/header/Header.tsx",
 
     "src-ui/src/components/header/useHeaderViewModel.ts",
+
+    "src-ui/src/components/SplitPaneLayout.css",
+
+    "src-ui/src/components/SplitPaneLayout.tsx",
 
     "src-ui/src/index.css",
 
@@ -78,21 +94,21 @@
 
     "src-ui/src/views/ConnectionsSectionFrame.tsx",
 
+    "src-ui/src/views/page-layout.css",
+
     "src-ui/src/views/ProjectPage.css",
 
     "src-ui/src/views/ProjectPage.tsx",
+
+    "src-ui/src/views/provider-settings/ProviderConnectionForm.tsx",
+
+    "src-ui/src/views/provider-settings/ProviderStackOverview.tsx",
 
     "src-ui/src/views/ProviderSettingsView.tsx",
 
     "src-ui/src/views/TaskWorkspaceView.css",
 
     "src-ui/src/views/TaskWorkspaceView.tsx",
-
-    "src-ui/src/views/page-layout.css",
-
-    "src-ui/src/views/provider-settings/ProviderConnectionForm.tsx",
-
-    "src-ui/src/views/provider-settings/ProviderStackOverview.tsx",
 
     "src-ui/src/workspace-panes/ProjectTaskRoomConversation.tsx",
 
@@ -104,23 +120,7 @@
 
     "tests/helpers/exact-request-backend.ts",
 
-    "tests/helpers/live-station-task.ts",
-
-    "docs/learn/media.json#/captures/0",
-
-    "docs/learn/media.json#/captures/1",
-
-    "docs/learn/media.json#/captures/2",
-
-    "docs/learn/media.json#/captures/3",
-
-    "docs/learn/media.json#/captures/4",
-
-    "docs/learn/media.json#/captures/5",
-
-    "docs/learn/media.json#/captures/6",
-
-    "docs/learn/media.json#/captures/7"
+    "tests/helpers/live-station-task.ts"
   ],
 
   "checks": [

@@ -133,6 +133,9 @@ export {
   isCanonicalBuiltinTrustDescriptor,
 } from './builtinWorkspacePaneCanonical';
 
+import type { ChatSession } from '../types';
+import { requestsWaitingOnUser } from '../utils/waiting-approvals';
+
 const LazyFilePreviewPane = lazy(() =>
   import('./FilePreviewPane').then(({ FilePreviewPane }) => ({
     default: FilePreviewPane,
@@ -617,6 +620,23 @@ function CodingTerminalWorkspacePane({ instance }: BuiltinWorkspacePaneProps) {
   );
 }
 
+/**
+ * What the plan panel shows of its chat's runtime: the status word and how
+ * many approval requests still wait on the USER (a request already answered
+ * from the queue stays open on the server but no longer waits on them).
+ */
+export function workflowPlanRuntimeState(
+  planSession: ChatSession | null | undefined,
+) {
+  return {
+    status: planSession?.orchestrationStatus ?? planSession?.status ?? null,
+    pendingApprovals: planSession
+      ? requestsWaitingOnUser(planSession).length
+      : 0,
+    isProcessingStep: planSession?.isProcessingStep ?? false,
+  };
+}
+
 function WorkspacePlanPane({ instance }: BuiltinWorkspacePaneProps) {
   const identity = useResolvedPaneIdentity(instance, false);
   const projectSlug =
@@ -635,11 +655,7 @@ function WorkspacePlanPane({ instance }: BuiltinWorkspacePaneProps) {
     [planSession],
   );
   const runtimeState = useMemo(
-    () => ({
-      status: planSession?.orchestrationStatus ?? planSession?.status ?? null,
-      pendingApprovals: planSession?.pendingApprovals?.length ?? 0,
-      isProcessingStep: planSession?.isProcessingStep ?? false,
-    }),
+    () => workflowPlanRuntimeState(planSession),
     [planSession],
   );
 

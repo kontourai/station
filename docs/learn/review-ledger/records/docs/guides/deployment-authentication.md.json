@@ -76,15 +76,15 @@
 
     "src-server/utils/private-sqlite.ts",
 
-    "src-ui/src/views/account/account-entry-continuation.ts",
-
     "src-ui/src/views/account/AccountEntryView.tsx",
-
-    "src-ui/src/views/account/guest-account-authority.ts",
 
     "src-ui/src/views/account/GuestDeviceOnboarding.tsx",
 
-    "src-ui/src/views/account/GuestProjectAccessView.tsx"
+    "src-ui/src/views/account/GuestProjectAccessView.tsx",
+
+    "src-ui/src/views/account/account-entry-continuation.ts",
+
+    "src-ui/src/views/account/guest-account-authority.ts"
   ],
 
   "checks": [

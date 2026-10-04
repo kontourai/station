@@ -10,6 +10,10 @@
   "limits": "EXECUTED PASS: public plugin build and focused component tests. Reviewed actual installed-plugin receipt at 1440x1000 and 390x844, application f56c28a44 and plugin 09a56847d: deep record selection, canonical detail, keyboard return/next record, no overflow/page errors; sample display name only. No native/device, live model/embedding or multi-person authorization qualification.",
 
   "sources": [
+    "docs/learn/media.json#/captures/6",
+
+    "docs/learn/media.json#/captures/7",
+
     "docs/learn/media/repository-knowledge-narrow.png",
 
     "docs/learn/media/repository-knowledge.png",
@@ -20,13 +24,13 @@
 
     "examples/knowledge-library/plugin.json",
 
-    "examples/knowledge-library/src/KnowledgeLibrary.tsx",
-
-    "examples/knowledge-library/src/RootPicker.tsx",
-
     "examples/knowledge-library/src/index.tsx",
 
     "examples/knowledge-library/src/knowledge-library.css",
+
+    "examples/knowledge-library/src/KnowledgeLibrary.tsx",
+
+    "examples/knowledge-library/src/RootPicker.tsx",
 
     "packages/sdk/src/client/knowledge.ts",
 
@@ -52,11 +56,7 @@
 
     "src-ui/src/views/page-layout.css",
 
-    "src-ui/src/views/settings/KnowledgeStoreSection.tsx",
-
-    "docs/learn/media.json#/captures/6",
-
-    "docs/learn/media.json#/captures/7"
+    "src-ui/src/views/settings/KnowledgeStoreSection.tsx"
   ],
 
   "checks": [

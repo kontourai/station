@@ -7,6 +7,7 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
+import { userFacingErrorMessage } from '../../utils/errorText';
 
 export const linkKey = (link: PullRequestLinkIdentity) =>
   JSON.stringify([
@@ -70,7 +71,9 @@ export function useConversationPullRequestLinks(conversationId: string) {
     } catch (error) {
       if (scope.isCurrent())
         setMutationError(
-          error instanceof Error ? error.message : 'Pull request link failed',
+          error instanceof Error
+            ? userFacingErrorMessage(error)
+            : 'Pull request link failed',
         );
       return false;
     } finally {

@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 
+import { StationHttpError } from '@kontourai/station-sdk/client';
+import { getConversationPullRequestLinks } from '@kontourai/station-sdk/conversation-pull-request-links';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   cleanup,
@@ -98,4 +100,57 @@ describe('ConversationPullRequestLinks link field', () => {
     expect(await screen.findByText('Nothing linked')).toBeTruthy();
     expect(screen.queryByText(/appear here|yet\./)).toBeNull();
   });
+});
+
+// #2708 A-3b: the read's refusal shows the server's reason, not the
+// field-qualified message the SDK throws for CLI readers.
+test('an unavailable read shows its reason, not its field key', async () => {
+  vi.mocked(getConversationPullRequestLinks).mockRejectedValueOnce(
+    new StationHttpError(
+      400,
+      'Validation failed: conversationId Unknown conversation.',
+      {
+        details: {
+          formErrors: [],
+          fieldErrors: { conversationId: ['Unknown conversation.'] },
+        },
+      },
+    ),
+  );
+  render(
+    <QueryClientProvider
+      client={
+        new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      }
+    >
+      <ConversationPullRequestLinks conversationId="c1" />
+    </QueryClientProvider>,
+  );
+  const alert = await screen.findByRole('alert');
+  expect(alert.textContent).toContain('Unknown conversation.');
+  expect(alert.textContent).not.toContain('conversationId');
+});
+
+test('a refused link shows its reason, not its field key', async () => {
+  linkConversationPullRequest.mockRejectedValueOnce(
+    new StationHttpError(
+      400,
+      'Validation failed: ref Use a pull request number.',
+      {
+        details: {
+          formErrors: [],
+          fieldErrors: { ref: ['Use a pull request number.'] },
+        },
+      },
+    ),
+  );
+  renderLinks(false);
+  await screen.findByText('Nothing linked');
+  fireEvent.change(screen.getByRole('textbox', { name: 'Pull request' }), {
+    target: { value: '12' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Link' }));
+  expect((await screen.findByRole('alert')).textContent).toBe(
+    'Use a pull request number.',
+  );
 });

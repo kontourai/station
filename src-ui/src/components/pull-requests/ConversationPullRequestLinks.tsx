@@ -3,6 +3,7 @@ import type {
   PullRequestLinkIdentity,
 } from '@kontourai/station-contracts/conversation-pull-request-links';
 import { useState } from 'react';
+import { userFacingErrorMessage } from '../../utils/errorText';
 import { IconButton } from '../IconButton';
 import { PlusGlyph, RefreshGlyph } from '../icons/Glyph';
 import { SkeletonList } from '../state';
@@ -98,7 +99,7 @@ export function ConversationPullRequestLinks({
         <SkeletonList count={1} label="Reading linked pull requests" />
       ) : links.error ? (
         <p className="conversation-pr-links__note" role="alert">
-          {links.error.message}{' '}
+          {userFacingErrorMessage(links.error)}{' '}
           <button
             type="button"
             className="button button--link"

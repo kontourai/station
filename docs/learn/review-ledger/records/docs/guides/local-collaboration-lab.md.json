@@ -54,6 +54,8 @@
 
     "packages/shared/src/connection-proof.ts",
 
+    "scripts/__tests__/browser-transport-fixture.test.ts",
+
     "scripts/__tests__/local-collaboration-station-config.test.ts",
 
     "scripts/browser-transport-lab.ts",
@@ -81,6 +83,8 @@
     "scripts/lib/remote-relay-ssh.ts",
 
     "scripts/lib/remote-relay-station.ts",
+
+    "scripts/lib/self-hosted-broker-process.ts",
 
     "scripts/lib/turn-fixture.ts",
 
@@ -194,11 +198,7 @@
 
     "tests/tauri-shell/native-project-runtime-fixture.ts",
 
-    "tests/tauri-shell/native-relay-diagnostic-echo-webview.ts",
-
-    "scripts/__tests__/browser-transport-fixture.test.ts",
-
-    "scripts/lib/self-hosted-broker-process.ts"
+    "tests/tauri-shell/native-relay-diagnostic-echo-webview.ts"
   ],
 
   "checks": [
