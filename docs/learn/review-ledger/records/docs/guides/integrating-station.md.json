@@ -16,7 +16,7 @@
 
     {"path":"deploy/gcp-dev/bootstrap.sh","digest":"e6c628e0cbafedc499f4fe2ce923649c0b3e58d3a9abffa1d86ff3bfe27d5f5d","revision":"18002c0871ea8538605e922464aab5356c77593c"},
 
-    {"path":"docs/guides/deployment-authentication.md","digest":"2e8708d33989f8b92dc797facf5cee30ec407ac5738e59f6f37a9ea0b1f836e2","revision":"0a0d6417078e087a8ef10b9d1ccf92038fb31798"},
+    {"path":"docs/guides/deployment-authentication.md","digest":"9fb5f92a1141f2a0a91920f7c0ad6dbe2dcdcfeeceea6757e7b9509bef9b2135","revision":"1ac8069c32480355596ff5e29a8deb80df5fab1c"},
 
     {"path":"docs/guides/deployment.md","digest":"1edc373a6f45ca03a1f4e989e59cabe26d36afe4b5b06ccf9717f8b715bf99f2","revision":"18002c0871ea8538605e922464aab5356c77593c"},
 
