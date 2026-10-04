@@ -240,6 +240,13 @@ export class LazyOperatorPasskeyRegistry {
     private readonly now?: () => number,
   ) {}
 
+  /** Wraps an already-open registry (tests, and callers that opened it themselves). */
+  static of(registry: OperatorPasskeyRegistry): LazyOperatorPasskeyRegistry {
+    const lazy = new LazyOperatorPasskeyRegistry('');
+    lazy.#registry = registry;
+    return lazy;
+  }
+
   existing(): OperatorPasskeyRegistry | null {
     if (this.#registry) return this.#registry;
     if (!existsSync(join(this.home, OPERATOR_PASSKEY_DB_RELATIVE_PATH))) {
@@ -257,16 +264,4 @@ export class LazyOperatorPasskeyRegistry {
     this.#registry?.close();
     this.#registry = null;
   }
-}
-
-/** What the enrollment service needs from storage. */
-export interface OperatorPasskeyRegistryProvider {
-  existing(): OperatorPasskeyRegistry | null;
-  ensure(): OperatorPasskeyRegistry;
-}
-
-export function fixedRegistry(
-  registry: OperatorPasskeyRegistry,
-): OperatorPasskeyRegistryProvider {
-  return { existing: () => registry, ensure: () => registry };
 }

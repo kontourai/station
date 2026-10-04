@@ -38,10 +38,9 @@ import {
 import { operatorPasskeyEnrollmentOps } from '../../telemetry/metrics.js';
 import type { Logger } from '../../utils/logger.js';
 import {
-  fixedRegistry,
+  LazyOperatorPasskeyRegistry,
   type OperatorPasskey,
   OperatorPasskeyRegistry,
-  type OperatorPasskeyRegistryProvider,
 } from './operator-passkey-registry.js';
 
 /** How long the browser has to get the host to confirm. */
@@ -133,7 +132,7 @@ export interface EnrollmentRequester {
 /** Eight characters: enough to tell devices apart, short enough to retype. */
 const SHORT_DEVICE_ID_LENGTH = 8;
 /** A `--device` prefix shorter than this is not a selector. */
-export const MIN_DEVICE_SELECTOR_LENGTH = 4;
+const MIN_DEVICE_SELECTOR_LENGTH = 4;
 /** The label Station gives the operator's own credential; a device cannot borrow it. */
 export const OPERATOR_BROWSER_LABEL = 'Station operator browser';
 
@@ -164,7 +163,7 @@ export interface EnrollmentAvailability {
 
 export interface OperatorPasskeyEnrollmentOptions {
   /** A registry, or a provider that opens it only when first needed. */
-  readonly registry: OperatorPasskeyRegistry | OperatorPasskeyRegistryProvider;
+  readonly registry: OperatorPasskeyRegistry | LazyOperatorPasskeyRegistry;
   /** `STATION_TRUSTED_CONSENT_ORIGIN`, already validated; null when unset. */
   readonly origin: string | null;
   readonly now?: () => number;
@@ -180,7 +179,7 @@ function equalDigests(left: Buffer, right: Buffer): boolean {
 }
 
 export class OperatorPasskeyEnrollmentService {
-  readonly #registry: OperatorPasskeyRegistryProvider;
+  readonly #registry: LazyOperatorPasskeyRegistry;
   readonly #origin: string | null;
   readonly #rpId: string | null;
   readonly #now: () => number;
@@ -191,7 +190,7 @@ export class OperatorPasskeyEnrollmentService {
   constructor(options: OperatorPasskeyEnrollmentOptions) {
     this.#registry =
       options.registry instanceof OperatorPasskeyRegistry
-        ? fixedRegistry(options.registry)
+        ? LazyOperatorPasskeyRegistry.of(options.registry)
         : options.registry;
     this.#origin = options.origin;
     // The RP ID derives from the CONFIGURED origin's host, never from a
