@@ -9,82 +9,80 @@
 
   "limits": "Contributor guidance and named source/fixture checks do not establish universal adoption, rendered contrast, physical keyboard/device/native behavior or provider execution. Merge reconciliation preserves both prior review anchors below as historical evidence, not a new review of combined source bytes. Active bindings retain existing reviewed anchors; any mismatch with merged bytes remains stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"packages/shared/package.json\",\"ours\":{\"digest\":\"dfb51da6f4002814559793d901ace8674805d1fcc84d5efe3aa4ebcb4c794c96\",\"revision\":\"565a005d46e40c313432a0fbe6fa3054a74a5941\"},\"main\":{\"digest\":\"3d498c9980c805fad291b809e3400392dd3c5c29515074c2438f785f4812e69c\",\"revision\":\"4e19fa6ac6b87dff5b671d3c90d3a5b48b5e6ec5\"}},{\"path\":\"src-ui/src/platform/PlatformProfileContext.tsx\",\"ours\":{\"digest\":\"726adb901507dc26d08f542e68f3d7e51734080a874356b3111476dbff56c714\",\"revision\":\"2fd15755236ce5a8c62318e4047d67fdcc200463\"},\"main\":{\"digest\":\"69d1e522c214436378d6dd4322a23f5fb737aa530b6f44856292270502830d48\",\"revision\":\"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74\"}},{\"path\":\"src-ui/AGENTS.md\",\"ours\":{\"digest\":\"1338a31cc8b249dc8d8459e682b72b0ef9076562ed4a4e1bad4cd36daa34fb61\",\"revision\":\"801b6662aff67a25eff4927c1c50e92f4c9b4e53\"},\"main\":{\"digest\":\"1861af0378a679a97a10955cf6f250ce58e073b68c4147d9d9c333de609d1aa8\",\"revision\":\"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74\"}},{\"path\":\"src-server/runtime/bootstrap/runtime-http.ts\",\"ours\":{\"digest\":\"bf1b7671bc40fe53615a39f8e9f12b5ad27beace97a86fc50e2ebb4e9717d20e\",\"revision\":\"54ca710a3594bf1f3b7ac3d4464a2db2edc6e6c0\"},\"main\":{\"digest\":\"400f3e49be7138980b286334db40de4fa4a6fbaa1ea37c285ae9774ddc5fbbb7\",\"revision\":\"2c5134e4bfc4db4d19877df92119078a80bf27e7\"}},{\"path\":\"docs/ui/responsive-action-surfaces.txt\",\"ours\":{\"digest\":\"e7222ac1eccf9ed8922512f08d6323a1b398d14b51e0b9533a15f1c0c4b9ae0c\",\"revision\":\"2dee75143bca994a270d7038965d1a825bbde516\"},\"main\":{\"digest\":\"79138ba3d68fed1437d2c541c1517dd833788be5369fe9f2f86c1a2b52b5de5e\",\"revision\":\"a47e99c46dd2e877f8b9d0750db41b314f676d49\"}},{\"path\":\"packages/sdk/src/queries.ts\",\"ours\":{\"digest\":\"c074b876d3f3ef8dee821083c1c351c5e9578a3da325e7695ccb1461ddd75578\",\"revision\":\"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74\"},\"main\":{\"digest\":\"75dcfcf06bb87e23c3b6d8d7b742bb50e235d4f4f4dd2aa069e1d3728ede1b5b\",\"revision\":\"7576509655a6bbef0ef61d5f4645722922b8ec43\"}},{\"path\":\"src-ui/src/main.tsx\",\"ours\":{\"digest\":\"274ab7dbbfac9ab4a7f844cfcca5b16029bcc2b2ae1f937294f695b965add3bb\",\"revision\":\"967e08d408de5a4ae0a4106c4b082688f816d2f1\"},\"main\":{\"digest\":\"ea8ad745a9a86e49c5811a8320a01cce7764d38278a67f97b9ab2443d1f50e86\",\"revision\":\"2b22c2609a75d0f40b77472fe918de3c34094b69\"}},{\"path\":\"src-server/security/pairing-route-scopes.ts\",\"ours\":{\"digest\":\"695ea92f345988962929764a4072cc5056f51cb0d7280f333d242c42ed3314b1\",\"revision\":\"904729ae7f4058a2cd7dbaf11a4daaa6b8837d08\"},\"main\":{\"digest\":\"6135d879afff21c7d3c8f82d0fb701f04c7bc8de28724848ce0ffa39b0ded204\",\"revision\":\"b004ed8cb3e885da544adf960b2894780aaf2b51\"}},{\"path\":\"packages/sdk/src/index.ts\",\"ours\":{\"digest\":\"c5c0dd7612ef1716e79187abc407ebf73b4a49145fbcb1c9728eeb77822c3255\",\"revision\":\"2b22c2609a75d0f40b77472fe918de3c34094b69\"},\"main\":{\"digest\":\"c857e48c98e4eb793501c0544975eeb08287b55512885e14830ada1c6b23d625\",\"revision\":\"7576509655a6bbef0ef61d5f4645722922b8ec43\"}},{\"path\":\"docs/ui/responsive-surfaces.json\",\"ours\":{\"digest\":\"7487e817e5111ec1ad5d559659086d00a16f3800e21d5fff742937e27be02576\",\"revision\":\"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74\"},\"main\":{\"digest\":\"ee8207bccc55812d339f0fff7412c6196a5cbde791829603666a4f55fe2dfbd6\",\"revision\":\"027c189b201b8f67d786e9843bd00b84cb5475a5\"}},{\"path\":\"src-ui/src/index.css\",\"ours\":{\"digest\":\"e6ef8e4fe614a10df1ff1349ce83414d03fc6e88bbb5b0c791162350c6ff7dde\",\"revision\":\"1e5f63186142dd36fcb720deb7660808dbf2f56b\"},\"main\":{\"digest\":\"709e6eb845dd8e93cc89e2818f0f1f80bd7aa03d370b86bd2460df314baeb889\",\"revision\":\"28ee475ceed3623c147d918bcd6c30d99a49bc00\"}},{\"path\":\"pnpm-lock.yaml\",\"ours\":{\"digest\":\"2907b97d6a2e98b4211695a78cf83b03419218f1dd95ce090ca753d9bdbad14a\",\"revision\":\"b50eeb9584c1808e429e59dcb3c3c2253307bbbe\"},\"main\":{\"digest\":\"fd7359aa74c6fa2ce27a20c84f69722273ec162933c580280bdca21dce9d28ff\",\"revision\":\"1e5f63186142dd36fcb720deb7660808dbf2f56b\"}}]. Additional main merge b269a6cf9: structural reconciliation only; prior distinct anchors below are historical reviews, not approval of combined bytes. Active bindings retain existing anchors; combined dependency bytes remain stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"src-ui/AGENTS.md\",\"ours\":{\"digest\":\"1338a31cc8b249dc8d8459e682b72b0ef9076562ed4a4e1bad4cd36daa34fb61\",\"revision\":\"801b6662aff67a25eff4927c1c50e92f4c9b4e53\"},\"main\":{\"digest\":\"1861af0378a679a97a10955cf6f250ce58e073b68c4147d9d9c333de609d1aa8\",\"revision\":\"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74\"}},{\"path\":\"src-ui/src/platform/PlatformProfileContext.tsx\",\"ours\":{\"digest\":\"726adb901507dc26d08f542e68f3d7e51734080a874356b3111476dbff56c714\",\"revision\":\"2fd15755236ce5a8c62318e4047d67fdcc200463\"},\"main\":{\"digest\":\"69d1e522c214436378d6dd4322a23f5fb737aa530b6f44856292270502830d48\",\"revision\":\"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74\"}},{\"path\":\"src-server/runtime/bootstrap/runtime-http.ts\",\"ours\":{\"digest\":\"bf1b7671bc40fe53615a39f8e9f12b5ad27beace97a86fc50e2ebb4e9717d20e\",\"revision\":\"54ca710a3594bf1f3b7ac3d4464a2db2edc6e6c0\"},\"main\":{\"digest\":\"400f3e49be7138980b286334db40de4fa4a6fbaa1ea37c285ae9774ddc5fbbb7\",\"revision\":\"2c5134e4bfc4db4d19877df92119078a80bf27e7\"}},{\"path\":\"src-server/security/pairing-route-scopes.ts\",\"ours\":{\"digest\":\"ff18eca46b9725e26dd7245ba08c5b1463491eef5ae4cb0f7b80b785b4d4aced\",\"revision\":\"83c4111b8c4dcda1e978d78bb191c974888c9ca4\"},\"main\":{\"digest\":\"6135d879afff21c7d3c8f82d0fb701f04c7bc8de28724848ce0ffa39b0ded204\",\"revision\":\"b004ed8cb3e885da544adf960b2894780aaf2b51\"}},{\"path\":\"src-ui/src/main.tsx\",\"ours\":{\"digest\":\"274ab7dbbfac9ab4a7f844cfcca5b16029bcc2b2ae1f937294f695b965add3bb\",\"revision\":\"967e08d408de5a4ae0a4106c4b082688f816d2f1\"},\"main\":{\"digest\":\"ea8ad745a9a86e49c5811a8320a01cce7764d38278a67f97b9ab2443d1f50e86\",\"revision\":\"2b22c2609a75d0f40b77472fe918de3c34094b69\"}},{\"path\":\"pnpm-lock.yaml\",\"ours\":{\"digest\":\"2907b97d6a2e98b4211695a78cf83b03419218f1dd95ce090ca753d9bdbad14a\",\"revision\":\"b50eeb9584c1808e429e59dcb3c3c2253307bbbe\"},\"main\":{\"digest\":\"29dbdce300fcd3d881ae511317af478da6e9c098a8e8cf51c6b2269a937525df\",\"revision\":\"df9188971e1a93d2c5525a7f5f38e3da93c9e4de\"}}].",
 
-  "document": {"digest":"42c6c7765de30e437f348e2e027d1cdddf6b5ab456da49fcfa6e762f530666c3","revision":"2b22c2609a75d0f40b77472fe918de3c34094b69"},
-
   "sources": [
-    {"path":"docs/ui/responsive-action-surfaces.txt","digest":"f36e4793f37ad4671188b2645a037b4eeb73b44d699b94c30062cb15b04ee53f","revision":"793ad2bb50d50f43d7601fb75d3736fc86550cd6"},
+    "docs/ui/responsive-action-surfaces.txt",
 
-    {"path":"docs/ui/responsive-surfaces.json","digest":"ed85a588d1029bca3f050c4225772a2b58c42e944af63014960389794d0b24c5","revision":"d1708e0a66e7328c9c62a95865f1bb1dcfbeb8d1"},
+    "docs/ui/responsive-surfaces.json",
 
-    {"path":"packages/sdk/src/client/http.ts","digest":"9892699e68483e0df3dd67ce71956994e98a43755a0c931dd6c3c5660caee00e","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+    "packages/sdk/src/client/http.ts",
 
-    {"path":"packages/sdk/src/index.ts","digest":"f73107a4c0e92647e409563d7ccf7472bea46c81cf67864d9c160c979f39ca75","revision":"34d62da501fa53187b7062288f6e1dbaec8c20ed"},
+    "packages/sdk/src/index.ts",
 
-    {"path":"packages/sdk/src/queries.ts","digest":"7afdef915cf3241d320b76d7e6ae6bbc1b1dd145eff019692b3f9889c0164c33","revision":"34d62da501fa53187b7062288f6e1dbaec8c20ed"},
+    "packages/sdk/src/queries.ts",
 
-    {"path":"packages/sdk/src/query-core.ts","digest":"f61dfd3363e3afe8bcf0ca97330e4e799e44aeb0d1348a212a117d1f755873e9","revision":"9bb90045b7aeb926e7003b27fc4fd62252638524"},
+    "packages/sdk/src/query-core.ts",
 
-    {"path":"packages/sdk/src/query-domains/agentAdmin.ts","digest":"d17ef2aeb91c21d5cf1e207289bd2936b2896752d5254cea6b94a9c82aaf62fb","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/sdk/src/query-domains/agentAdmin.ts",
 
-    {"path":"packages/sdk/src/queryFactories.ts","digest":"1359417720b7dd3507f5909d835d7f9c06200e2cadaa7c3c66e754cb1a5ee8ea","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+    "packages/sdk/src/queryFactories.ts",
 
-    {"path":"packages/shared/package.json","digest":"2b5baa810e13794d2b50232ad620ba68e89ca9fae0e8321bb31749f560d28c63","revision":"8924149a7e6ef1356fc078c9a387c6a60ada429a"},
+    "pnpm-lock.yaml",
 
-    {"path":"packages/shared/package.json#/exports/.~1build","digest":"7ad7900a109bea8e9d548359becc3f0e887fba3634cff5d171fe108df0b29d24","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
+    "scripts/mobile-css-ratchet.mjs",
 
-    {"path":"packages/shared/package.json#/exports/.~1git","digest":"0076ffb2fb4effe48ae5684d3ab1b0499ecd07192939091512a2101f3d351269","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
+    "scripts/responsive-surface-ratchet.mjs",
 
-    {"path":"packages/shared/package.json#/exports/.~1parsers","digest":"49e52fdc77a433d5a628077b8727c8e8a0ac9e1473b750cb4a371069948289a4","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
+    "src-server/routes/agents/agents.ts",
 
-    {"path":"pnpm-lock.yaml","digest":"e5666b03a0bedc8656564f5371ea01b19879ac4a8ed732280e1d0903025de0c5","revision":"fdca33b1896b280299ba72fc70a3c9b9cda7f3af"},
+    "src-server/runtime/bootstrap/runtime-http.ts",
 
-    {"path":"scripts/mobile-css-ratchet.mjs","digest":"fda86f326ff20d297ae799164c8ebeada155f55ea2560eabd39e8270ed7372c1","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-server/runtime/streaming/StreamPipeline.ts",
 
-    {"path":"scripts/responsive-surface-ratchet.mjs","digest":"e95fee0262929bf025295a0f5915c8da95e8b8d565f49f6f84a920edca5da57c","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-server/runtime/streaming/types.ts",
 
-    {"path":"src-server/routes/agents/agents.ts","digest":"06d20a294112b76993e9a1efd4ab9ce639242ab9116e04a7f1cbb7f68153ba23","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-server/security/pairing-route-scopes.ts",
 
-    {"path":"src-server/runtime/bootstrap/runtime-http.ts","digest":"bf1b7671bc40fe53615a39f8e9f12b5ad27beace97a86fc50e2ebb4e9717d20e","revision":"54ca710a3594bf1f3b7ac3d4464a2db2edc6e6c0"},
+    "src-server/services/approvals/approval-registry.ts",
 
-    {"path":"src-server/runtime/streaming/StreamPipeline.ts","digest":"cdf3e6786b92a321ffa13c413f25b8b7bf367436b389f7212492cb2eccf1c6f2","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-server/services/orchestration/event-bus.ts",
 
-    {"path":"src-server/runtime/streaming/types.ts","digest":"31789bc824034a421a368940714ba41424538e715801c7770d5794ffccb3143f","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-server/utils/logger.ts",
 
-    {"path":"src-server/security/pairing-route-scopes.ts","digest":"5188e91b51f45578c8d64d05d71ec69114158ec73af91a69b3de5d316f46e6c8","revision":"efa773acac88792cda31595f9afca4a37d3efebc"},
+    "src-ui/AGENTS.md",
 
-    {"path":"src-server/services/approvals/approval-registry.ts","digest":"3b23285f102a3fa0d14e98f210bbba6ec2a98d8dbfa57421988a810d302d00ff","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-ui/src/components/Dialog.tsx",
 
-    {"path":"src-server/services/orchestration/event-bus.ts","digest":"e2a2fc5c1689bbed48617bede62d985ba9e645f413479cc49e03c5bb730e803e","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-ui/src/components/header/ThemeToggle.tsx",
 
-    {"path":"src-server/utils/logger.ts","digest":"d74d211202a1a38bd4caaa9814b6de202ac0c9420c521baecc8fdaff243197b1","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-ui/src/components/ResponsiveDialogSurface.tsx",
 
-    {"path":"src-ui/AGENTS.md","digest":"1338a31cc8b249dc8d8459e682b72b0ef9076562ed4a4e1bad4cd36daa34fb61","revision":"801b6662aff67a25eff4927c1c50e92f4c9b4e53"},
+    "src-ui/src/hooks/useIsMobile.ts",
 
-    {"path":"src-ui/src/components/Dialog.tsx","digest":"0e52c3a21b2c7c989eb41ac5a2e2cb3897bddfa55f90cc0914aece0470242dd2","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-ui/src/hooks/useMobileVisualViewport.ts",
 
-    {"path":"src-ui/src/components/ResponsiveDialogSurface.tsx","digest":"ff389dc7c2632309151df7065f56f8434712b5cba120324bbba48c7693a56612","revision":"f4eb9345e808edfbcadd25b1cf88a69db088f117"},
+    "src-ui/src/index.css",
 
-    {"path":"src-ui/src/components/header/ThemeToggle.tsx","digest":"5cd7fb99ff38e6e9a6bf1f572c2ed488604b341e85569767a836a580fba63e9f","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-ui/src/lib/accent-contrast.ts",
 
-    {"path":"src-ui/src/hooks/useIsMobile.ts","digest":"6cedc0e8a70136acb36e40078106a880663ea10b9d5d7da97a503c9c39b20ddd","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-ui/src/lib/device-settings-store.ts",
 
-    {"path":"src-ui/src/hooks/useMobileVisualViewport.ts","digest":"5bb1bd2e86eee7e46b6a4e2cc87a858c51884acde125aad363771df20783aa5e","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-ui/src/main.tsx",
 
-    {"path":"src-ui/src/index.css","digest":"e3bf9bb5c0dbeea17eb06bf2536ebcd445ce60875becb64ca97da08118422dcd","revision":"8fd71c3714eceeb651bd8e52f200aa1532fa33c6"},
+    "src-ui/src/platform/PlatformProfileContext.tsx",
 
-    {"path":"src-ui/src/lib/accent-contrast.ts","digest":"54291f7600d527c9ea3f9a4af8eca21f0c56a046cf0776292766c4d2b0ac768b","revision":"2b22c2609a75d0f40b77472fe918de3c34094b69"},
+    "src-ui/src/slashCommands/tools.ts",
 
-    {"path":"src-ui/src/lib/device-settings-store.ts","digest":"2c9c1dfb7259dbe56a3c101aba0c370c481516a6e0b67a666655a518d2a90fd7","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-ui/src/tokens.css",
 
-    {"path":"src-ui/src/main.tsx","digest":"d00e280a16d70b37c42498476af7d21dc192a9d9ea62e337e71094c54cf39a33","revision":"4cf503807d144ac197e10fcf4aee5e301b96e28d"},
+    "src-ui/src/utils/logger.ts",
 
-    {"path":"src-ui/src/platform/PlatformProfileContext.tsx","digest":"726adb901507dc26d08f542e68f3d7e51734080a874356b3111476dbff56c714","revision":"2fd15755236ce5a8c62318e4047d67fdcc200463"},
+    "packages/shared/package.json#/exports/.~1parsers",
 
-    {"path":"src-ui/src/slashCommands/tools.ts","digest":"a44a9b6201815f334653b659c1b9be35af315ef9dfd897f34d728c51033d6f00","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/shared/package.json#/exports/.~1build",
 
-    {"path":"src-ui/src/tokens.css","digest":"482e8e1faaaa1131ac3cd7079c7e222c9b309305b6e9a0be0582b26aa5aa887c","revision":"de4d8ae141f5831213eacd90dee84bcdc45d87ba"},
+    "packages/shared/package.json#/exports/.~1git",
 
-    {"path":"src-ui/src/utils/logger.ts","digest":"268bafae97a21bd4af060d50ba5d121f2553376a22369440276cc60ee8108076","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"}
+    "packages/shared/package.json"
   ],
 
   "checks": [

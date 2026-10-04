@@ -1,0 +1,9 @@
+{
+  "revision": "091f3e68a4456e9fba912d0c810e4e71dcbf9859",
+
+  "notes": [
+    {"path":"docs/guides/agents.md","note":"Reviewed final gate cleanup: selection presets expose their actual pressed state; Strands identity normalization accepts the real named shape without a cast or dispatch algorithm change. Existing grouping, native/raw names, authorization and configuration explanations remain accurate. Type-laundering and button-cap gates passed; UI, Strands and normalization tests passed 43/43 and server-test typecheck passed. Source-delta review only, no hosted or release proof.","inputs":["docs/guides/agents.md"]},
+
+    {"path":"docs/reference/config.md","note":"Reviewed final gate cleanup: selection presets expose their actual pressed state; Strands identity normalization accepts the real named shape without a cast or dispatch algorithm change. Existing grouping, native/raw names, authorization and configuration explanations remain accurate. Type-laundering and button-cap gates passed; UI, Strands and normalization tests passed 43/43 and server-test typecheck passed. Source-delta review only, no hosted or release proof.","inputs":["docs/reference/config.md"]}
+  ]
+}

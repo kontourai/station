@@ -1,0 +1,7 @@
+{
+  "revision": "7685ef951b69eb1abc033e851f46b86bacc92418",
+
+  "notes": [
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Reviewed complete historical ADR and the six new guardian lines in its Session API source. They leave ADR0014 unconditional-cutover routing and explicit historical flag/rollback classification unchanged. No historical, live-engine or installed-platform claim upgraded.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md"]}
+  ]
+}

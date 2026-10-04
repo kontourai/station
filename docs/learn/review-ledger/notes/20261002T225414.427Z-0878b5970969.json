@@ -1,0 +1,7 @@
+{
+  "revision": "2d2041d2e37ac1e09e9094647767b6f676bf1b1c",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Reviewed the nested GitHub Skill provider against its real Registry route, staged SkillService install owner, and acquisition tests. Commit/tree/blob pinning, binary and executable assets, ambiguity/truncation/refresh refusal are covered; cross-source identity, per-source status, persisted source provenance, and old UI selection revision binding remain pending.","inputs":["docs/reference/api.md"]}
+  ]
+}
