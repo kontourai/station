@@ -278,7 +278,7 @@
 
     {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"e0a80b940394488c400e8df3bc931ec0be271dfbe7b1231d95835cfc73cd09a8","revision":"f2ce6315249e276d6a84c953d91cfc2646159fb4"},
 
-    {"path":"src-server/security/pairing-route-scopes.ts","digest":"e3f907cfec7b31cf9995495011e25216d1e26f16c593a691896c9c5d7d3f03f5","revision":"f2ce6315249e276d6a84c953d91cfc2646159fb4"},
+    {"path":"src-server/security/pairing-route-scopes.ts","digest":"321a98b54fbbb8f8a3d6a57345fb2a2a2434f2c88c4669ae4af88b3d8362ce60","revision":"0f02e37fa34d72ff39aad01d38bab665a38329e8"},
 
     {"path":"src-server/security/station-browser-origins.ts","digest":"2044349f4351a616298922879bccfde0ff147a165bdadc6683e0a1c1f6a7b8b2","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

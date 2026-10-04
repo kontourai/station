@@ -12,7 +12,7 @@
   "document": {"digest":"0e2418c0ae1bdd49c406a1ef60e9a138cec6330f336465de8baeb8894f3cc4ca","revision":"e8e783c8e3eef665c4836c20b8555d9a90b68d94"},
 
   "sources": [
-    {"path":"docs/guides/connections.md","digest":"01574e3b727a9c4ca2397b20e2e25e790eb4994b429a14812038a8e553727490","revision":"cd948fbcd88d50f27ad0033c61804578dfb28f84"},
+    {"path":"docs/guides/connections.md","digest":"16083550189c36a8f9f0c356e796e54c655ee0772d56b0bbb3c4be52121ed09b","revision":"c4820d9bc48c6219391e2af97a902a604e91e035"},
 
     {"path":"packages/connect/src/core/applicationChannel.ts","digest":"572c3b2ab6630c448abff1c49f99a2371425b64c818e5cce2d132fe348afb0c1","revision":"7abc84fcb97288d80f1b25cfc99de23d93817d4c"},
 
@@ -104,9 +104,9 @@
 
     {"path":"src-ui/src/views/connections-hub/AddMachineModal.tsx","digest":"61b56cb2a7c895a1c41884990c359a2ce790ef3d1f010308cdf56b0f86c26238","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
 
-    {"path":"src-ui/src/views/connections-hub/BrowserRelayRoutes.tsx","digest":"73f608345988cfe00d297d4605da138d9772d326d90b267aa23e3e68c3f20b9e","revision":"3eb0ca8d962b21e22b041e6b0d92af2a0d178054"},
+    {"path":"src-ui/src/views/connections-hub/BrowserRelayRoutes.tsx","digest":"03f492f728598b5967818251584ffddc8ee1a054fdc9d96378111c189b0623c8","revision":"612d106ad0f34f77c45747f471c3a49310803f8c"},
 
-    {"path":"src-ui/src/views/connections-hub/RelayRouteProfiles.tsx","digest":"50898d3adf18c5e830b25fb787e55c592a54de5e8379f30a2846da0a31c0f0f0","revision":"0ccabd1ab89272334dbe2515a89907f21fb3b7fe"},
+    {"path":"src-ui/src/views/connections-hub/RelayRouteProfiles.tsx","digest":"438161381ee5f31cb7b7b610649b9f4522ac48eb30c1c65bf64465ff6cf84124","revision":"1517a41a480fc9c8277f240807a12816319b603a"},
 
     {"path":"src-ui/src/views/connections-hub/SshComputerCreatorDialog.tsx","digest":"afa116512df03572fe9b957466d284eac07497a659547f4d18c34b811706807f","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"}
   ],

@@ -9,7 +9,7 @@
 
   "limits": "Source review of the stated broker/native pilot contracts and inspected debug macOS frozen-harness receipt, not an exhaustive audit or release/mobile/Windows/Linux, remote/public deployment, production TURN/TLS, external identity-provider, two-person, default UI or fresh relay-only enrollment qualification. Prior dated receipts remain historical.\n\nMerge anchor history (structural reconciliation only; no semantic approval): source src-desktop/src/lib.rs ours={\"digest\":\"57a47dd3656d47a5c43eaf4001895942d350d61b6de896fa4d1d3da498bfd821\",\"revision\":\"d5e4502434838cc29b63091ae689474d6488cfe4\"}; origin/main={\"digest\":\"ad3b52011a9be6e6a18133b2367c04d0a6245907e5b7e13fa324bcd8b5255557\",\"revision\":\"464d602fb7fb5fa9bd0df9d241dc03495b398b96\"}. The merged source bytes require supported review after the merge commit.\n\nMerge anchor history (structural reconciliation only; no semantic approval): source docs/guides/native-shell-verification.md ours={\"digest\":\"02022b49c8533609bcf561776a2dd5c1b20cdfb3b8ae4cf5f5b5ae141e28e86e\",\"revision\":\"d5e4502434838cc29b63091ae689474d6488cfe4\"}; origin/main={\"digest\":\"db5ef187c02545195074cac011b8bd21fab7ff9eb23d28bf884dd36922b14c29\",\"revision\":\"464d602fb7fb5fa9bd0df9d241dc03495b398b96\"}. The merged source bytes require supported review after the merge commit.",
 
-  "document": {"digest":"d8ee6de0cf62672d9bdc1263970851fae83d66ee0d242462e8cb489809da69e0","revision":"cd948fbcd88d50f27ad0033c61804578dfb28f84"},
+  "document": {"digest":"fc62062a2cd2af92c646e068e4b82aea21a2fa71a3217cafc33b33bea8067369","revision":"3a1f4ca3c431b7558865e20631f00e8329df65c0"},
 
   "sources": [
     {"path":"deployment/self-hosted-broker/.env.example","digest":"556b997484fc854ea509f91bb0f39b12829ddd882e89619180098ed9b95bd101","revision":"ce1dff921cfc4c580e38ae66f5d27f32eda7f0ce"},
@@ -164,13 +164,13 @@
 
     {"path":"src-ui/src/platform/native/nativeRelaySignalingBridge.ts","digest":"4a04ae2c635c320bc13782ed9932efec3a135cea5cc30a6adbe14d4784c54257","revision":"699a02c3954e4be022d48267e4c5fc9aa2737a4e"},
 
-    {"path":"src-ui/src/views/connections-hub/BrowserRelayRoutes.tsx","digest":"73f608345988cfe00d297d4605da138d9772d326d90b267aa23e3e68c3f20b9e","revision":"3eb0ca8d962b21e22b041e6b0d92af2a0d178054"},
+    {"path":"src-ui/src/views/connections-hub/BrowserRelayRoutes.tsx","digest":"03f492f728598b5967818251584ffddc8ee1a054fdc9d96378111c189b0623c8","revision":"612d106ad0f34f77c45747f471c3a49310803f8c"},
 
     {"path":"src-ui/src/views/connections-hub/NativeRelayEnrollmentWizard.tsx","digest":"26b2bcb3c2904abd556f42142f659249bdfb7b0234679ec066d0a1ef36783c16","revision":"0ccabd1ab89272334dbe2515a89907f21fb3b7fe"},
 
-    {"path":"src-ui/src/views/connections-hub/RelayRouteProfiles.tsx","digest":"50898d3adf18c5e830b25fb787e55c592a54de5e8379f30a2846da0a31c0f0f0","revision":"0ccabd1ab89272334dbe2515a89907f21fb3b7fe"},
+    {"path":"src-ui/src/views/connections-hub/RelayRouteProfiles.tsx","digest":"438161381ee5f31cb7b7b610649b9f4522ac48eb30c1c65bf64465ff6cf84124","revision":"1517a41a480fc9c8277f240807a12816319b603a"},
 
-    {"path":"tests/tauri-shell/native-fresh-relay-fixture.md","digest":"7617eadd09f0235a5330b87f138d08c4778bf178bdd901ac34593f9463821edc","revision":"e8e783c8e3eef665c4836c20b8555d9a90b68d94"},
+    {"path":"tests/tauri-shell/native-fresh-relay-fixture.md","digest":"b6b56384ac7a6320219cbaf1b6fb833abc0518a8f02aa1fdee63842bf0b21037","revision":"c4820d9bc48c6219391e2af97a902a604e91e035"},
 
     {"path":"tests/tauri-shell/native-project-acceptance-webview.ts","digest":"4ab4a1f98e3d2e677da5bda05f7bb9d6e8186f684f88f63faa23841b179911a8","revision":"2e4f061f91ffb0338e45de62382cf6da59cd5c76"},
 

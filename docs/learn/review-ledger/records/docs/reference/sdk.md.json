@@ -378,7 +378,7 @@
 
     {"path":"src-server/runtime/tools/vended-tool-compat.ts","digest":"17d6d189ee131f47fe61d075dd703f1fabf0b2a9342bea3d0f9dfa6e0522c828","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/security/pairing-route-scopes.ts","digest":"e3f907cfec7b31cf9995495011e25216d1e26f16c593a691896c9c5d7d3f03f5","revision":"f2ce6315249e276d6a84c953d91cfc2646159fb4"},
+    {"path":"src-server/security/pairing-route-scopes.ts","digest":"321a98b54fbbb8f8a3d6a57345fb2a2a2434f2c88c4669ae4af88b3d8362ce60","revision":"0f02e37fa34d72ff39aad01d38bab665a38329e8"},
 
     {"path":"src-server/services/agents/skill-service.ts","digest":"9f92c44195a5c87a63c1a14a3079b3cc91e00149f2b2f4e400a72189bb64d7f6","revision":"569b7dcead02252ba2786c9f326bb54daebbbde2"},
 
@@ -540,11 +540,11 @@
 
     {"path":"src-ui/src/views/account/GuestProjectAccessView.tsx","digest":"e8bbd1c403d5076532f3948ddc500bcb5f720bea8d43aa6fa09d177dfb8f627c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/views/connections-hub/RelayRouteProfiles.tsx","digest":"50898d3adf18c5e830b25fb787e55c592a54de5e8379f30a2846da0a31c0f0f0","revision":"0ccabd1ab89272334dbe2515a89907f21fb3b7fe"},
+    {"path":"src-ui/src/views/connections-hub/RelayRouteProfiles.tsx","digest":"438161381ee5f31cb7b7b610649b9f4522ac48eb30c1c65bf64465ff6cf84124","revision":"1517a41a480fc9c8277f240807a12816319b603a"},
 
     {"path":"src-ui/src/views/learning-review/LearningSourceDialog.tsx","digest":"77759902c0d35d498b1f9476c74f5b7829f1c45daf3aca9f87a3add53764447d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-ui/src/views/native-relay/NativeRelayMemberShell.tsx","digest":"f137a9b13c4cbb3adb92bb20e09c05db2b6005745acf1c7ca321949cd640137a","revision":"0ccabd1ab89272334dbe2515a89907f21fb3b7fe"},
+    {"path":"src-ui/src/views/native-relay/NativeRelayMemberShell.tsx","digest":"27f5d84c84e2dc00cff89edd4d7e656e9a7d248dfa0968c603252001a71505f9","revision":"1517a41a480fc9c8277f240807a12816319b603a"},
 
     {"path":"src-ui/src/views/settings/CoreUpdateCheck.tsx","digest":"741884aa974710daf98a46aa0f7cb7990b71847b52f748467ee584db96766471","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

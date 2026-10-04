@@ -124,17 +124,17 @@
 
     {"path":"src-ui/src/platform/native/rendererLiveness.tsx","digest":"8a47896392329e0bce4fc0ca3ce544171cff1e2df6bcb77097c97ff26ce78c63","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-ui/src/views/connections-hub/__tests__/RelayRouteProfiles.test.tsx","digest":"8b0f9798d7bf09529ded7e3b624d75760641e5068e30dab6ea7e6f1df99f33f1","revision":"0ccabd1ab89272334dbe2515a89907f21fb3b7fe"},
+    {"path":"src-ui/src/views/connections-hub/__tests__/RelayRouteProfiles.test.tsx","digest":"0cc55b3815edf75cc9ed970efc3230bd0f2355104509a2055a2d7cfe2c89b587","revision":"612d106ad0f34f77c45747f471c3a49310803f8c"},
 
     {"path":"src-ui/src/views/connections-hub/NativeRelayEnrollmentWizard.tsx","digest":"26b2bcb3c2904abd556f42142f659249bdfb7b0234679ec066d0a1ef36783c16","revision":"0ccabd1ab89272334dbe2515a89907f21fb3b7fe"},
 
-    {"path":"src-ui/src/views/connections-hub/RelayRouteProfiles.tsx","digest":"50898d3adf18c5e830b25fb787e55c592a54de5e8379f30a2846da0a31c0f0f0","revision":"0ccabd1ab89272334dbe2515a89907f21fb3b7fe"},
+    {"path":"src-ui/src/views/connections-hub/RelayRouteProfiles.tsx","digest":"438161381ee5f31cb7b7b610649b9f4522ac48eb30c1c65bf64465ff6cf84124","revision":"1517a41a480fc9c8277f240807a12816319b603a"},
 
     {"path":"tests/tauri-shell/native-chat-dispatch.e2e.ts","digest":"cfe0f18ba9cbfb723a4e7ccebe99dfe28f2e83f2adad8728fb144222cad67766","revision":"dd0afb6e8e5b3f37b2d42d3dbb2305c839525f44"},
 
     {"path":"tests/tauri-shell/native-fresh-relay-acceptance-webview.ts","digest":"3618b4a5b6517ced5f38e274952dac2cbfd7a276bba743581dbc30c1a305080e","revision":"058b19b63d88ffc68b5af83c3dda88ac9add9c63"},
 
-    {"path":"tests/tauri-shell/native-fresh-relay-fixture.md","digest":"7617eadd09f0235a5330b87f138d08c4778bf178bdd901ac34593f9463821edc","revision":"e8e783c8e3eef665c4836c20b8555d9a90b68d94"},
+    {"path":"tests/tauri-shell/native-fresh-relay-fixture.md","digest":"b6b56384ac7a6320219cbaf1b6fb833abc0518a8f02aa1fdee63842bf0b21037","revision":"c4820d9bc48c6219391e2af97a902a604e91e035"},
 
     {"path":"tests/tauri-shell/native-project-acceptance-webview.ts","digest":"4ab4a1f98e3d2e677da5bda05f7bb9d6e8186f684f88f63faa23841b179911a8","revision":"2e4f061f91ffb0338e45de62382cf6da59cd5c76"},
 
@@ -148,7 +148,7 @@
 
     {"path":"src-desktop/src/native_account_operations.rs","digest":"bff10011fef84880826a284b36b1351623b0e6d7117187e85fee5c869c3b5fe7","revision":"0ccabd1ab89272334dbe2515a89907f21fb3b7fe"},
 
-    {"path":"src-ui/src/views/connections-hub/RelayOperatorPanel.tsx","digest":"712bca43fdb0868268c336fc341a59e0539e2ad2f6db7c6d27ccf859be22e68c","revision":"499c073ec1545472eb31510aaf5fec07c5b96f34"}
+    {"path":"src-ui/src/views/connections-hub/RelayOperatorPanel.tsx","digest":"7389d06d00826513f86410d17f6392594f244b3a36d04b71cdda934a741cd910","revision":"1517a41a480fc9c8277f240807a12816319b603a"}
   ],
 
   "checks": [

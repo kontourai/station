@@ -26,7 +26,7 @@
 
     {"path":"src-ui/src/views/connections-hub/AddMachineModal.tsx","digest":"61b56cb2a7c895a1c41884990c359a2ce790ef3d1f010308cdf56b0f86c26238","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 
-    {"path":"src-ui/src/views/connections-hub/ComputersSection.tsx","digest":"f9d0223f4dd7c924efbae3c09ce13a75054a695c61841dc2b8d3da064203e4e8","revision":"0ccabd1ab89272334dbe2515a89907f21fb3b7fe"},
+    {"path":"src-ui/src/views/connections-hub/ComputersSection.tsx","digest":"42390d83938ef02a06e29bab5a418d68c180771d267fc1f3beae7377960c05be","revision":"612d106ad0f34f77c45747f471c3a49310803f8c"},
 
     {"path":"src-ui/src/views/connections-hub/SshComputerCreatorDialog.tsx","digest":"afa116512df03572fe9b957466d284eac07497a659547f4d18c34b811706807f","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
 

@@ -394,7 +394,7 @@
 
     {"path":"src-server/security/native-device-request-authority.ts","digest":"5c6b6c789c8c593f5a56c6bfe61bbb66ca5cf7e95b44947d1a7c73dbd354a166","revision":"d377480c4b92a7011b0c8ebbf345cd307525789d"},
 
-    {"path":"src-server/security/pairing-route-scopes.ts","digest":"e3f907cfec7b31cf9995495011e25216d1e26f16c593a691896c9c5d7d3f03f5","revision":"f2ce6315249e276d6a84c953d91cfc2646159fb4"},
+    {"path":"src-server/security/pairing-route-scopes.ts","digest":"321a98b54fbbb8f8a3d6a57345fb2a2a2434f2c88c4669ae4af88b3d8362ce60","revision":"0f02e37fa34d72ff39aad01d38bab665a38329e8"},
 
     {"path":"src-server/services/__tests__/scheduler.test.ts","digest":"74bb68bb7b32fd0414bbef71ac778852c4b8e77c79008ae437bd64f77d3a0b40","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
 
@@ -960,7 +960,7 @@
 
     {"path":"src-server/security/relay-management-authority.ts","digest":"250ce20a766a0a18866f4390a608059dc6124bd22a7308cbea2bf2d4fec8ca5a","revision":"b2884a5e70a4ab0c278c9f15ce0972f08077341e"},
 
-    {"path":"src-ui/src/views/connections-hub/RelayOperatorPanel.tsx","digest":"712bca43fdb0868268c336fc341a59e0539e2ad2f6db7c6d27ccf859be22e68c","revision":"499c073ec1545472eb31510aaf5fec07c5b96f34"}
+    {"path":"src-ui/src/views/connections-hub/RelayOperatorPanel.tsx","digest":"7389d06d00826513f86410d17f6392594f244b3a36d04b71cdda934a741cd910","revision":"1517a41a480fc9c8277f240807a12816319b603a"}
   ],
 
   "checks": [
