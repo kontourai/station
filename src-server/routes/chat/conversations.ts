@@ -93,10 +93,7 @@ import {
   createConversationMessageReader,
 } from './conversation-message-reader.js';
 
-export {
-  CONVERSATION_READ_MAX_SESSIONS,
-  ConversationLineageTooLongError,
-} from './conversation-message-reader.js';
+export { CONVERSATION_READ_MAX_SESSIONS } from './conversation-message-reader.js';
 
 import {
   conversationIntentRevision,
