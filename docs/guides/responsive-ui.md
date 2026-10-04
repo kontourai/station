@@ -58,8 +58,11 @@ completion/recovery path.
 Wrap custom footer controls in `ResponsiveSurfaceActions`; `Dialog` already
 does this for its footer. Feature classes own desktop layout and colors. The
 shared mobile rules permit wrapping, add bottom safe-area padding, and give
-matching direct-child controls a 44px minimum. Nested controls and overflowing
-content still need their own caller test.
+matching direct-child controls a 44px minimum, under the phone-width query
+only. A wide touch tablet does not match that query; a control that needs the
+floor there declares it itself, inside the existing `(hover: none)` block in
+`index.css` (today the send-blocked line's Remove attachments). Nested
+controls and overflowing content still need their own caller test.
 
 Every `ResponsiveDialogSurface` declares `layer="dialog"`, `"popover"` or
 `"system"`. [The token scale](../../src-ui/src/tokens.css) includes dock,
@@ -127,10 +130,11 @@ Station text aliases to the published Kontour UI tokens: supporting text uses
 `--k-text-md` (14px), and shared sheet headings and action-menu labels use
 `--k-text-lg` (18px). Desktop density remains owned by each surface. The task
 picker uses 18px titles with up to two lines, Agent icons, 14px project/status
-metadata, and a pinned circular add action. Project names wrap, and both pickers
-reuse [PickerCreateAction](../../src-ui/src/components/PickerCreateAction.tsx)
-for the same 52px icon button, accessible name, hover label and footer geometry.
-Creation controls remain outside the scrolling lists. The task picker presents
+metadata, and a pinned New chat action at the lower right. Project names wrap.
+The project picker retains [PickerCreateAction](../../src-ui/src/components/PickerCreateAction.tsx)
+for its 52px add button. Chat creation shares [NewChatAction](../../src-ui/src/components/NewChatAction.tsx)
+across the mobile bar, task picker, and desktop inbox, with a 44px minimum target
+and an accessible name. Creation controls remain outside the scrolling lists. The task picker presents
 Input/Approval compactly and keeps reasons readable in full through details;
 Git and PR data are read only when that details surface opens.
 

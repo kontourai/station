@@ -1,0 +1,7 @@
+{
+  "revision": "9d6022e1d490dc013a0b29b526fbc26089c9181d",
+
+  "notes": [
+    {"path":"docs/learn/walkthroughs.md","note":"SplitPaneLayout.css gained one rule in its existing (pointer: coarse) block: the list search box takes min-height 44px. Searched this document for touch-target, search-box and list-density claims; it makes none, and reaches the stylesheet only through the Connections split-pane capture, which is a fine-pointer render the rule does not affect.","inputs":["docs/learn/walkthroughs.md"]}
+  ]
+}

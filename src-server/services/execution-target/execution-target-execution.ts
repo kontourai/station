@@ -38,6 +38,7 @@ import {
 } from '../../security/coding-authority.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { createLogger } from '../../utils/logger.js';
+import type { DispatchCwdAdmission } from '../orchestration/dispatch-cwd-admission.js';
 import type { StartOwnerAttribution } from '../orchestration/session-owner-attribution.js';
 import { assertProjectWorktreeDirectory } from '../projects/project-service.js';
 import {
@@ -122,6 +123,13 @@ export interface ForegroundMessageInput {
    * `OrchestrationService` lets the session run `host` only with it.
    */
   fullAccessGrant?: FullAccessGrant | null;
+  /**
+   * #2873: set only by the dispatch route that starts a new session for a
+   * scoped station-control caller. It rides the start's dispatch context,
+   * where `OrchestrationService` runs the scope decision again beside the
+   * engine spawn.
+   */
+  dispatchCwdAdmission?: DispatchCwdAdmission;
   /** Resolved at the HTTP/auth seam; not accepted by public JSON schemas. */
   clientOrigin?: ClientOrigin;
   /**
@@ -375,7 +383,14 @@ export interface ExecutionTargetExecutionDependencies
     transcriptSeed?: string;
     /** Explicit one-shot context policy, never inferred from a restart. */
     contextBoundary?: ConversationContextBoundaryProjection;
+    /** A never-ran predecessor to stop once this start succeeds. */
+    retirePredecessorSessionId?: string;
   }>;
+  /** Best-effort teardown of a retired predecessor's engine process. */
+  retireSession?: (
+    access: EnvironmentAccess,
+    sessionId: string,
+  ) => Promise<void>;
   claimConversationContextBoundaryColdStart?: (
     access: EnvironmentAccess,
     boundaryId: string,
@@ -959,6 +974,20 @@ export async function executeForegroundMessage(
         }
       }
       throw error;
+    }
+    if (continuation?.retirePredecessorSessionId) {
+      // Detached: a stop waits on the predecessor's engine teardown (and any
+      // in-flight start), and the user's send must not wait on that. The
+      // successor is already running, so a predecessor that stays resident
+      // until the idle park is a cost, not a reason to fail or delay the send.
+      const predecessorId = continuation.retirePredecessorSessionId;
+      void Promise.resolve()
+        .then(() => deps.retireSession?.(resolved.access, predecessorId))
+        .catch((error: unknown) => {
+          const message = `Could not stop the never-used predecessor session: ${errorMessage(error)}`;
+          logger.warn(message, { sessionId: predecessorId });
+          deps.warn?.(message, { sessionId: predecessorId });
+        });
     }
   }
   const effectiveClientTurnId = requestedHandoff

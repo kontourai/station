@@ -1,0 +1,9 @@
+{
+  "revision": "674ccd9011dff6a29286c8b91123f90065a3c2f8",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Reviewed merged API claims: retained pinned GitHub acquisition and inspectable unsupported metadata alongside Task context version/digest snapshots, saved-operation reuse, and refusal/conflict semantics. Registry product bytes match the live acquisition probe. Source inspection and prior focused evidence are distinct from new native or release proof.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed merged API claims: retained pinned GitHub acquisition and inspectable unsupported metadata alongside Task context version/digest snapshots, saved-operation reuse, and refusal/conflict semantics. Registry product bytes match the live acquisition probe. Source inspection and prior focused evidence are distinct from new native or release proof.","inputs":["docs/guides/integrating-station.md"]}
+  ]
+}
