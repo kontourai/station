@@ -9,18 +9,16 @@
 
   "limits": "No actual plugin installation, native/device/audio journey, public package distribution, provider operation or cross-host qualification. Source/fixture checks do not establish those outcomes.",
 
-  "document": {"digest":"e32230f6b56183e0e3ff58e33eb00aa370397d5a51631274ac0917fad36e49d9","revision":"e464b70652dade22324fda9d6111f49082e80df3"},
-
   "sources": [
-    {"path":"examples/getting-started-starter/layout.json","digest":"7f6c31c30da05d949703c24a40835e80cf9b68e67334ba6d1b807e3695c73c99","revision":"e464b70652dade22324fda9d6111f49082e80df3"},
+    "examples/getting-started-starter/layout.json",
 
-    {"path":"examples/getting-started-starter/plugin.json","digest":"e9a3a569bdb02f579af0478888f175e0d1d755f2001067f53725a214e3884ef6","revision":"e464b70652dade22324fda9d6111f49082e80df3"},
+    "examples/getting-started-starter/plugin.json",
 
-    {"path":"examples/getting-started-starter/src/index.tsx","digest":"9ab34fee61e07d891ddb51a3b6fe29eadb311835d09e1331a22b1e8cbd17df3f","revision":"e464b70652dade22324fda9d6111f49082e80df3"},
+    "examples/getting-started-starter/src/index.tsx",
 
-    {"path":"packages/cli/src/cli.ts","digest":"ecf39393a34edc99d05222a41947a1ba086cf8fc60bac7fe3cdd4651e825881a","revision":"e464b70652dade22324fda9d6111f49082e80df3"},
+    "packages/cli/src/cli.ts",
 
-    {"path":"packages/cli/src/commands/install.ts","digest":"ca98a0fa5d41930d6b3bb5d33000804411d82ec80650a7d97294cb7dcd020ac5","revision":"e464b70652dade22324fda9d6111f49082e80df3"}
+    "packages/cli/src/commands/install.ts"
   ],
 
   "checks": [

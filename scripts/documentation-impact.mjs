@@ -181,7 +181,12 @@ function ledgerRevisionsSince(root, base) {
 /** Compiled ledgers at each ref, in either storage layout. */
 function historicalLedgers(root, refs) {
   return [...new Set(refs)].flatMap((ref) => {
-    const { ledger } = readReviewStateAt(root, ref);
+    // Historical records supply dependency leads, not current review approval.
+    // Their semantic bindings remain strict even if an intermediate commit was
+    // reformatted; working-tree records and append-only notes retain byte checks.
+    const { ledger } = readReviewStateAt(root, ref, {
+      purpose: 'advisory-dependency-history',
+    });
     if (!ledger) return [];
     validateLedger(ledger);
     return [ledger];
@@ -214,6 +219,9 @@ export function formatDocumentationImpact(report) {
     'Documentation impact — review leads from recorded source dependencies:',
     ...(report.catchUp
       ? [
+          ...(report.catchUp.historyUnavailable
+            ? [report.catchUp.historyUnavailable]
+            : []),
           `  Catch-up since coverage baseline ${report.catchUp.coverageBase}: ${report.catchUp.staleReviews.length} stale reviews; ${report.catchUp.unchangedReviews} unchanged ordinary records; ${report.catchUp.generatedValidated.length} generated validations; ${report.catchUp.absentHistorical.length} absent historical notes.`,
           ...report.catchUp.generatedValidated.map(
             (entry) =>
@@ -276,7 +284,10 @@ export async function documentationCatchUp({
     throw new Error(
       'Catch-up requires --base=<ref> or a ledger coverageBaseline.',
     );
-  const selection = collectDocumentationChanges(root, coverageBase);
+  const selection = collectDocumentationChanges(
+    root,
+    ledger.historyUnavailable && base === undefined ? 'HEAD' : coverageBase,
+  );
   const priorRecords = new Map();
   for (const previous of historicalLedgers(
     root,
@@ -376,9 +387,10 @@ export async function documentationCatchUp({
     const reviewedRevisions = Object.fromEntries(
       sorted(changed).map((input) => [
         input,
-        input === record.path
-          ? record.documentRevision
-          : record.sources.find((source) => source.path === input)?.revision,
+        record.reviewBaseline ??
+          (input === record.path
+            ? record.documentRevision
+            : record.sources.find((source) => source.path === input)?.revision),
       ]),
     );
     const revisions = [...new Set(Object.values(reviewedRevisions))];
@@ -413,7 +425,10 @@ export async function documentationCatchUp({
   return {
     ...report,
     catchUp: {
-      coverageBase: selection.mergeBase,
+      historyUnavailable: ledger.historyUnavailable,
+      coverageBase: ledger.historyUnavailable
+        ? coverageBase
+        : selection.mergeBase,
       reviewedDocuments: ledger.records.length,
       staleReviews: reviews,
       generatedValidated,
@@ -425,7 +440,7 @@ export async function documentationCatchUp({
         generatedValidated.length -
         absentHistorical.length,
       limits:
-        'Ordinary review hashes compare recorded document/source bytes; this is not a semantic rescan. Generated validation and absent historical notes use the shared review compiler rules; generated validation is not human review of new release claims, and note absence is not publication proof. Last committed edit excludes working-tree edits. The recorded revision and hash of each input identify the reviewed bytes, separately from the page edit commit. Unmapped changes are searched since coverageBase, including staged, unstaged and untracked files. Do not advance that baseline to hide unresolved coverage.',
+        'Review freshness is derived from source changes and covering notes in Git history (legacy records compare stored bytes); this is not a semantic rescan. Generated validation and absent historical notes use the shared review compiler rules; generated validation is not human review of new release claims, and note absence is not publication proof. Last committed edit excludes working-tree edits. The coverage baseline anchors history inspection, separately from the page edit commit. Unmapped changes are searched since coverageBase, including staged, unstaged and untracked files. Do not advance that baseline to hide unresolved coverage.',
     },
   };
 }

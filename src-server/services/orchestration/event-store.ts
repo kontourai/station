@@ -33,6 +33,7 @@ import type {
 import type {
   OrchestrationCommandReceipt,
   RuntimeEventElisionReason,
+  SteerTurnResult,
 } from '@kontourai/station-contracts/orchestration';
 import {
   type ProviderSession,
@@ -62,6 +63,7 @@ import {
 } from '@kontourai/station-shared/sqlite-corruption-marker';
 import { watchForSqliteCorruption } from '@kontourai/station-shared/sqlite-corruption-watch';
 import { explicitCorruption } from '@kontourai/station-shared/sqlite-integrity';
+import { providerUsageScope } from '@kontourai/station-shared/usage-fold';
 import { CHAT_INPUT_MAX_CHARS } from '../../../src-shared/chat-input-limits.js';
 import {
   canonicalPersistedRequestId,
@@ -251,6 +253,10 @@ import {
   type SessionWorkItemAdmissionRegistry,
 } from './session-work-item-admission.js';
 import type { SessionWorkItemCandidate } from './session-work-item-candidate.js';
+import {
+  createSkillExperienceSnapshots,
+  type SkillExperienceSnapshots,
+} from './skill-experience-snapshots.js';
 import { createSqliteAdoptionCoordinator } from './sqlite-adoption-persistence.js';
 import { createSqliteRevisionEvidencePersistence } from './sqlite-revision-evidence-persistence.js';
 import {
@@ -1801,6 +1807,7 @@ export class EventStore {
   private transcriptReadClose?: Promise<unknown>;
   private storeClosed = false;
   private packageMcpAdmissionJournal?: PackageMcpAdmissionJournal;
+  private skillExperienceSnapshots?: SkillExperienceSnapshots;
   private registryTrustPolicyDecisions?: RegistryTrustPolicyDecisions;
 
   constructor(
@@ -1943,6 +1950,13 @@ export class EventStore {
     applyWalJournalMode(this.db, { store: 'orchestration event store' });
     try {
       this.db.exec(ORCHESTRATION_EVENT_STORE_MIGRATION);
+      this.db.exec(`CREATE TABLE IF NOT EXISTS orchestration_steer_inputs (
+        thread_id TEXT NOT NULL,
+        client_input_id TEXT NOT NULL,
+        input_digest TEXT NOT NULL,
+        confirmed_turn_id TEXT,
+        PRIMARY KEY (thread_id, client_input_id)
+      )`);
       this.db.exec(PACKAGE_MCP_ADMISSION_SCHEMA);
       this.db.exec(REGISTRY_TRUST_POLICY_SCHEMA);
       this.db
@@ -2050,6 +2064,7 @@ export class EventStore {
       }
       this.nativeInvocationRuns = this.composeNativeInvocationRuns();
       this.initializeNativeInvocationRuns();
+      this.skillExperienceSnapshots = createSkillExperienceSnapshots(this.db);
       this.voiceTurnRuns = this.composeVoiceTurnRuns();
       this.initializeVoiceTurnRuns();
       this.sessionTurnBoundaries = this.composeSessionTurnBoundaries();
@@ -4329,6 +4344,42 @@ export class EventStore {
       .run(event.threadId, event.eventId);
   }
 
+  listSkillExperienceEvents(
+    threadId: string,
+    cursor?: string,
+    limit = 21,
+  ): PersistedRuntimeEvent[] {
+    if (!Number.isInteger(limit) || limit < 1 || limit > 101)
+      throw new Error('Invalid experience history limit');
+    const conversationId =
+      this.conversationForSession(threadId)?.conversationId ?? threadId;
+    let before: number | undefined;
+    if (cursor) {
+      const row = this.db
+        .prepare(`SELECT e.global_sequence FROM orchestration_events e
+        WHERE e.id = ? AND e.thread_id IN (SELECT session_id FROM orchestration_conversation_sessions WHERE conversation_id = ? UNION SELECT ?)`)
+        .get(cursor, conversationId, conversationId) as
+        | { global_sequence?: number }
+        | undefined;
+      if (row?.global_sequence === undefined)
+        throw new Error('Invalid experience history cursor');
+      before = row.global_sequence;
+    }
+    return this.db
+      .prepare(`SELECT e.id, e.provider, e.thread_id, e.turn_id, e.method, e.payload, e.created_at, e.observed_at, e.sequence, e.global_sequence
+      FROM orchestration_events e
+      WHERE e.thread_id IN (SELECT session_id FROM orchestration_conversation_sessions WHERE conversation_id = ? UNION SELECT ?) AND e.method = 'turn.started'
+      AND json_type(e.payload, '$.metadata.stationSkillExperience') IS NOT NULL
+      ${before === undefined ? '' : 'AND e.global_sequence < ?'} ORDER BY e.global_sequence DESC LIMIT ?`)
+      .all(
+        conversationId,
+        conversationId,
+        ...(before === undefined ? [] : [before]),
+        limit,
+      )
+      .map((row) => this.mapEventRow(row));
+  }
+
   listEvents(threadId?: string): PersistedRuntimeEvent[] {
     const rows = threadId
       ? this.db
@@ -4457,7 +4508,7 @@ export class EventStore {
   ): DeclaredOutputDescriptorRow | undefined {
     const row = this.db
       .prepare(
-        `SELECT o.event_id, o.thread_id, o.turn_id, o.tool_call_id,
+        `SELECT o.event_id, o.declaration_id, o.thread_id, o.turn_id, o.tool_call_id,
                 o.declared_at, o.label, o.descriptor, e.sequence
            FROM orchestration_declared_outputs o
            INNER JOIN orchestration_events e ON e.id = o.event_id
@@ -7758,7 +7809,11 @@ export class EventStore {
       const boundedRows = rows.slice(0, SESSION_EVENT_WINDOW_MAX_EVENTS);
       const latestContext = new Map<string, string>();
       for (const row of boundedRows) {
-        if (row.method === 'token-usage.updated' && row.turn_id)
+        if (
+          row.method === 'token-usage.updated' &&
+          row.turn_id &&
+          providerUsageScope(row.provider) !== 'per-turn'
+        )
           latestContext.set(row.turn_id, row.id);
       }
       const raw = boundedRows
@@ -7766,6 +7821,7 @@ export class EventStore {
           (row) =>
             row.method !== 'token-usage.updated' ||
             !row.turn_id ||
+            providerUsageScope(row.provider) === 'per-turn' ||
             latestContext.get(row.turn_id) === row.id,
         )
         // Deliberately NOT `mapEventRow`: this window is byte-budgeted, and
@@ -9618,6 +9674,12 @@ export class EventStore {
   }
 
   /** Deliberate composition seam; SQLite coordination remains private. */
+  createSkillExperienceSnapshots(): SkillExperienceSnapshots {
+    if (!this.skillExperienceSnapshots)
+      this.skillExperienceSnapshots = createSkillExperienceSnapshots(this.db);
+    return this.skillExperienceSnapshots;
+  }
+
   createAdoptionLedger(): AdoptionLedger {
     return createAdoptionLedger({
       coordinator: createSqliteAdoptionCoordinator({
@@ -11001,6 +11063,83 @@ export class EventStore {
       );
   }
 
+  /** A pending steer claim is never reclaimed: its engine may have accepted it. */
+  readSteerInput(input: {
+    threadId: string;
+    clientInputId: string;
+    input: string;
+    turnId?: string;
+  }):
+    | Extract<SteerTurnResult, { outcome: 'steered' | 'indeterminate' }>
+    | undefined {
+    const row = this.db
+      .prepare(
+        `SELECT input_digest, confirmed_turn_id FROM orchestration_steer_inputs WHERE thread_id = ? AND client_input_id = ?`,
+      )
+      .get(input.threadId, input.clientInputId) as
+      | { input_digest: string; confirmed_turn_id: string | null }
+      | undefined;
+    if (!row) return undefined;
+    if (
+      row.input_digest === this.steerInputDigest(input) &&
+      row.confirmed_turn_id !== null
+    ) {
+      return {
+        outcome: 'steered',
+        threadId: input.threadId,
+        turnId: row.confirmed_turn_id,
+      };
+    }
+    return {
+      outcome: 'indeterminate',
+      threadId: input.threadId,
+      clientInputId: input.clientInputId,
+    };
+  }
+
+  claimSteerInput(input: {
+    threadId: string;
+    clientInputId: string;
+    input: string;
+    turnId?: string;
+  }): boolean {
+    const result = this.db
+      .prepare(
+        `INSERT OR IGNORE INTO orchestration_steer_inputs (thread_id, client_input_id, input_digest) VALUES (?, ?, ?)`,
+      )
+      .run(input.threadId, input.clientInputId, this.steerInputDigest(input));
+    return sqliteRunChanges(result) === 1;
+  }
+
+  confirmSteerInput(
+    input: {
+      threadId: string;
+      clientInputId: string;
+      input: string;
+      turnId?: string;
+    },
+    confirmedTurnId: string,
+  ): void {
+    const result = this.db
+      .prepare(
+        `UPDATE orchestration_steer_inputs SET confirmed_turn_id = ? WHERE thread_id = ? AND client_input_id = ? AND input_digest = ? AND confirmed_turn_id IS NULL`,
+      )
+      .run(
+        confirmedTurnId,
+        input.threadId,
+        input.clientInputId,
+        this.steerInputDigest(input),
+      );
+    if (sqliteRunChanges(result) !== 1)
+      throw new Error('Steer delivery confirmation was not recorded.');
+  }
+
+  private steerInputDigest(input: { input: string; turnId?: string }): string {
+    return createHash('sha256')
+      .update(JSON.stringify([input.input, input.turnId ?? null]))
+      .digest('hex');
+  }
+
   readCommandReceipt(commandId: string): OrchestrationCommandReceipt | null {
     const row = this.db
       .prepare(
@@ -11559,6 +11698,7 @@ export class EventStore {
     ).map((row) => row.blob_ref);
     this.db.exec('BEGIN IMMEDIATE');
     try {
+      this.createSkillExperienceSnapshots().deleteThread(threadId);
       // Every retired or active search projection retains bodies independently
       // of canonical events, so none may outlive a deliberately deleted thread.
       this.db
@@ -11594,6 +11734,9 @@ export class EventStore {
         .prepare(
           'DELETE FROM orchestration_command_receipts WHERE thread_id = ?',
         )
+        .run(threadId);
+      this.db
+        .prepare('DELETE FROM orchestration_steer_inputs WHERE thread_id = ?')
         .run(threadId);
       this.db
         .prepare('DELETE FROM orchestration_request_state WHERE thread_id = ?')
@@ -12705,6 +12848,17 @@ interface CommandReceiptRow {
   status: OrchestrationCommandReceipt['status'];
   created_at: string;
   client_origin: string | null;
+}
+
+function sqliteRunChanges(result: unknown): number {
+  if (
+    typeof result !== 'object' ||
+    result === null ||
+    !('changes' in result) ||
+    (typeof result.changes !== 'number' && typeof result.changes !== 'bigint')
+  )
+    throw new Error('SQLite write returned an invalid change count.');
+  return Number(result.changes);
 }
 
 function recoveryTransition(result: {

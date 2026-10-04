@@ -7,18 +7,16 @@
 
   "summary": "Reviewed clean Agent identity, persisted defaults, schema refusal, internal adapter selector and explicit removal inventory. Corrected the original issue to archive#1417.",
 
-  "limits": "The scanner proves its named symbol inventory; it is not a standalone end-to-end identity proof.",
-
-  "document": {"digest":"ba112d8c8c0c4747ab25296c4482cdaa407f5ac7973e3f00a373af8ca072577c","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+  "limits": "The scanner proves its named symbol inventory; it is not a standalone end-to-end identity proof. Merge reconciliation preserves both prior review anchors below as historical evidence, not a new review of combined source bytes. Active bindings retain existing reviewed anchors; any mismatch with merged bytes remains stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"docs/architecture/module-map.md\",\"ours\":{\"digest\":\"52cd3cfb4c4e811e087ee89b0d844695e85a21a0e085409850936bd613653957\",\"revision\":\"801b6662aff67a25eff4927c1c50e92f4c9b4e53\"},\"main\":{\"digest\":\"8f082631ce14f9b1114110e69a7f336404340c0c8f58a02ebf2646973277a22b\",\"revision\":\"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac\"}},{\"path\":\"docs/guides/agents.md\",\"ours\":{\"digest\":\"b28d533268d33758318539723a00a9259b904c777690a4c947c71e3be7a7f8c7\",\"revision\":\"5148a05e2089e41546cfed52b0046ed64f938af5\"},\"main\":{\"digest\":\"1ebaf5821d7fe94bf50fae7d2ddbd516ff3993eee61939d2a959f91b65b82fef\",\"revision\":\"0f9c1b3cdb7012c7dd9f96a08c67430a14ad3f86\"}}].",
 
   "sources": [
-    {"path":"docs/architecture/module-map.md","digest":"8f082631ce14f9b1114110e69a7f336404340c0c8f58a02ebf2646973277a22b","revision":"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac"},
+    "docs/architecture/module-map.md",
 
-    {"path":"docs/guides/agents.md","digest":"588e8d2ca5ffc05565f354e8702e0e62785e1d1e99cf97dbf61897563ca42244","revision":"1d49e432472043f4c3ab7d870104fb3baaf4ad05"},
+    "docs/guides/agents.md",
 
-    {"path":"packages/contracts/src/agent-identity.ts","digest":"d352f22b4698f100c1cc2a7466fd62556a6a69c03bffaf66e54c1bbdfc1410b7","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/contracts/src/agent-identity.ts",
 
-    {"path":"scripts/agent-identity-supported-surface-inventory.mjs","digest":"7733c9d3ed67777db8bcd6415bc058f25f03d4319cfb66f8f32739ecdec731e0","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"}
+    "scripts/agent-identity-supported-surface-inventory.mjs"
   ],
 
   "checks": [

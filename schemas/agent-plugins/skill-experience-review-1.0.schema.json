@@ -1,0 +1,166 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kontour.ai/schemas/agent-plugins/skill-experience-review/1.0/schema.json",
+  "title": "Local author Skill experience review receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "sourceDigest": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "packageDigest": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "reviewer": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "decision": {
+      "enum": ["approve", "revise"]
+    },
+    "evidence": {
+      "type": "array",
+      "maxItems": 256,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "experienceId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "pointer": {
+            "type": "string",
+            "pattern": "^/(inputs/[0-9]+|outputs/[0-9]+|requiredContext/[0-9]+|interaction|capabilities)$"
+          },
+          "origin": {
+            "enum": ["skill-declared", "reviewer-inferred", "station-added"]
+          },
+          "explanation": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "source": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "path": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000
+              },
+              "startLine": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100000
+              },
+              "endLine": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100000
+              }
+            },
+            "required": ["path", "startLine", "endLine"]
+          }
+        },
+        "required": ["experienceId", "pointer", "origin", "explanation"]
+      }
+    },
+    "gapDispositions": {
+      "type": "array",
+      "maxItems": 256,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "gap": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "disposition": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          }
+        },
+        "required": ["gap", "disposition"]
+      }
+    },
+    "evaluations": {
+      "type": "array",
+      "maxItems": 64,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "experienceId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "kind": {
+            "enum": ["representative", "refusal-stop"]
+          },
+          "scenario": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "expected": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "observed": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "status": {
+            "enum": ["pass", "fail", "not-run"]
+          },
+          "transcript": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "path": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000
+              },
+              "sha256": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              }
+            },
+            "required": ["path", "sha256"]
+          }
+        },
+        "required": [
+          "experienceId",
+          "kind",
+          "scenario",
+          "expected",
+          "observed",
+          "status",
+          "transcript"
+        ]
+      }
+    }
+  },
+  "required": [
+    "sourceDigest",
+    "packageDigest",
+    "reviewer",
+    "decision",
+    "evidence",
+    "gapDispositions",
+    "evaluations"
+  ]
+}

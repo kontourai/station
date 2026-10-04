@@ -9,12 +9,10 @@
 
   "limits": "Not whole-agent/skill/runtime/project semantic audit. Original design and supersession notes retained; unchecked phases are not current backlog status.",
 
-  "document": {"digest":"3d073ff4e3d37f619a5381fe3d3dd0bcdb01a8c359a1602d4dccf305fde0250b","revision":"e5efef30008198db7198fe9dac38f3ad632c6621"},
-
   "sources": [
-    {"path":"src-ui/src/__tests__/AgentEditorForm.test.tsx","digest":"5902de49fbc2061e43b970a1edaad8a3ad5dc324274df2211bf671c5edc2bcfa","revision":"e5efef30008198db7198fe9dac38f3ad632c6621"},
+    "src-ui/src/__tests__/AgentEditorForm.test.tsx",
 
-    {"path":"src-ui/src/views/AgentEditorForm.tsx","digest":"730e1e765b8a6f4567a5219ba4b90d29f1ed3f71ed57887020e317037441496d","revision":"e5efef30008198db7198fe9dac38f3ad632c6621"}
+    "src-ui/src/views/AgentEditorForm.tsx"
   ],
 
   "checks": [

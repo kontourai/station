@@ -589,14 +589,21 @@ type SessionExecutionActivity = SessionExecutionSummary & {
  * Whether a running turn can take more user input on the engine's live
  * channel (`steerTurn` / `turn.started` with `inputKind: 'steer'`).
  * Authority is the capability matrix, not a connection `capabilities`
- * string — Claude, Codex (`turn/steer`), and ACP (native method or
- * cancel+reprompt) are true. Muse and Station queue until `turn.completed`.
+ * string. Claude and Codex expose additive steering. ACP is held because
+ * its matrix also admits cancel+reprompt, without a session-native receipt.
  */
 export function sessionAdapterSupportsSteering(
   agentConnectionId?: string | null,
   agentConnections: ConnectionConfig[] = [],
   orchestrationProvider?: string | null,
 ): boolean {
+  const connection = agentConnectionId
+    ? agentConnections.find((candidate) => candidate.id === agentConnectionId)
+    : undefined;
+  // ACP's matrix also permits interruptive cancel-and-reprompt. It is not
+  // evidence of an additive input channel on this particular session.
+  if (orchestrationProvider === 'acp' || connection?.type === 'acp')
+    return false;
   if (
     orchestrationProvider &&
     orchestrationProvider in ENGINE_CAPABILITY_MATRICES
@@ -605,9 +612,6 @@ export function sessionAdapterSupportsSteering(
       ENGINE_CAPABILITY_MATRICES[orchestrationProvider].midTurnSteer === true
     );
   }
-  const connection = agentConnectionId
-    ? agentConnections.find((candidate) => candidate.id === agentConnectionId)
-    : undefined;
   return (
     resolveEngineCapabilityMatrix(agentConnectionId, connection)
       .midTurnSteer === true

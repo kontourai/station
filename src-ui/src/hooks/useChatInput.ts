@@ -77,6 +77,7 @@ type ComposerChatSlice = Pick<
   | 'conversationOpenPending'
   | 'conversationOpenFailed'
   | 'input'
+  | 'skillExperienceDraft'
   | 'attachments'
   | 'attachmentStages'
   | 'model'
@@ -103,6 +104,7 @@ function selectComposerSlice(
     conversationOpenPending: state.conversationOpenPending,
     conversationOpenFailed: state.conversationOpenFailed,
     input: state.input,
+    skillExperienceDraft: state.skillExperienceDraft,
     attachments: state.attachments,
     attachmentStages: state.attachmentStages,
     model: state.model,
@@ -496,6 +498,7 @@ export function useChatInput({
       // after a just-issued handleInputChange.
       // Explicit overrides bypass the persisted composer value, so sanitize at
       // the shared send boundary as well as on ordinary input updates.
+      const submittedExperienceDraft = activeChatState?.skillExperienceDraft;
       const submittedQuotes = chatDraftsStore.getQuotes(sessionId);
       if (submittedQuotes.some((quote) => quote.origin !== apiBase)) {
         showToast(
@@ -566,7 +569,15 @@ export function useChatInput({
         selectedAttachments,
         options?.ambientContext,
         undefined,
-        options?.queueOnBusy ? { queueOnBusy: true } : undefined,
+        submittedExperienceDraft
+          ? {
+              skillExperienceDraft: submittedExperienceDraft,
+              experienceRequestScope: mentionRequestScope,
+              ...(options?.queueOnBusy ? { queueOnBusy: true } : {}),
+            }
+          : options?.queueOnBusy
+            ? { queueOnBusy: true }
+            : undefined,
       );
       // A durable offline row owns queued text. Clearing its draft prevents
       // the composer from rendering a second editable copy after a resume.
@@ -581,7 +592,7 @@ export function useChatInput({
       if (
         sent === true ||
         postSendState?.status === 'queued' ||
-        postSendState?.queuedMessages?.includes(text.trim())
+        (sent !== false && postSendState?.queuedMessages?.includes(text.trim()))
       ) {
         if (
           (postSendState?.input && postSendState.input !== input) ||
@@ -607,6 +618,7 @@ export function useChatInput({
       attachments,
       attachmentStages,
       sendMessageAction,
+      activeChatState?.skillExperienceDraft,
       addToInputHistory,
       clearDraft,
       showToast,

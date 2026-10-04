@@ -7,118 +7,142 @@
 
   "summary": "Completed startup epoch/ticket/retry/supervisor, pinned log retention, simulator entitlements, actual shell-lane selector, and doctor dispatch claims. Frozen renewal IPC/durable intent and actual ApiBaseProvider supervisor, DTO parsing, route cap and diagnostic echo harness reviewed. Updated current source wiring while retaining native execution limits.",
 
-  "limits": "Bounded source/delta review, independently executed isolated Node Runtime/membership/pairing smoke and inspected final frozen-harness macOS debug log. This is not release artifact provenance/signing, mobile or Windows/Linux qualification, remote internet or production TURN/TLS, external provider, two-person, ordinary UI enablement or fresh relay-only enrollment evidence.",
-
-  "document": {"digest":"db5ef187c02545195074cac011b8bd21fab7ff9eb23d28bf884dd36922b14c29","revision":"464d602fb7fb5fa9bd0df9d241dc03495b398b96"},
+  "limits": "Bounded source/delta review, independently executed isolated Node Runtime/membership/pairing smoke and inspected final frozen-harness macOS debug log. This is not release artifact provenance/signing, mobile or Windows/Linux qualification, remote internet or production TURN/TLS, external provider, two-person, ordinary UI enablement or fresh relay-only enrollment evidence.\n\nMerge anchor history (structural reconciliation only; no semantic approval): document ours={\"digest\":\"02022b49c8533609bcf561776a2dd5c1b20cdfb3b8ae4cf5f5b5ae141e28e86e\",\"revision\":\"d5e4502434838cc29b63091ae689474d6488cfe4\"}; origin/main={\"digest\":\"db5ef187c02545195074cac011b8bd21fab7ff9eb23d28bf884dd36922b14c29\",\"revision\":\"464d602fb7fb5fa9bd0df9d241dc03495b398b96\"}. The merged document bytes require supported review after the merge commit.\n\nMerge anchor history (structural reconciliation only; no semantic approval): source src-desktop/src/lib.rs ours={\"digest\":\"57a47dd3656d47a5c43eaf4001895942d350d61b6de896fa4d1d3da498bfd821\",\"revision\":\"d5e4502434838cc29b63091ae689474d6488cfe4\"}; origin/main={\"digest\":\"ad3b52011a9be6e6a18133b2367c04d0a6245907e5b7e13fa324bcd8b5255557\",\"revision\":\"464d602fb7fb5fa9bd0df9d241dc03495b398b96\"}. The merged source bytes require supported review after the merge commit.",
 
   "sources": [
-    {"path":"packages/cli/src/cli.ts","digest":"ecf39393a34edc99d05222a41947a1ba086cf8fc60bac7fe3cdd4651e825881a","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/cli/src/cli.ts",
 
-    {"path":"packages/cli/src/commands/desktop-companion.ts","digest":"f33b07c369544b549f720ef7bc012cf35fb7cb1211162f78c61bb463170ffdb5","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/cli/src/commands/desktop-companion.ts",
 
-    {"path":"packages/cli/src/commands/lifecycle-doctor.ts","digest":"faccc3081c4b2f0bf2af1f51827b4d8458addca4690425f35e621f74dfdb972b","revision":"df558c03ac2dd6e437223c64f8100b2766f5e04b"},
+    "packages/cli/src/commands/lifecycle-doctor.ts",
 
-    {"path":"packages/cli/src/commands/lifecycle.ts","digest":"ce8322baa64d2e25c711ec0816c6cb013c8742f651a265e1657239185dba9ecc","revision":"b49b1db1601f36c9457e0d9d7c766d15be6302f7"},
+    "packages/cli/src/commands/lifecycle.ts",
 
-    {"path":"packages/cli/src/commands/service.ts","digest":"66660b960af7fe541ec7c5a35f9e0c0ad4a0525060ac967372249b05108ed349","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/cli/src/commands/service.ts",
 
-    {"path":"packages/cli/src/commands/target-command.ts","digest":"fd308f3257b43fcce35e31beedc476be5e27db17cd257af61754eafd6be14ad4","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/cli/src/commands/target-command.ts",
 
-    {"path":"packages/shared/src/process-identity.mjs","digest":"c51afd74ac7c56c24ad8f5cdc13c88e63f1966478b8829d30ea781d8c559127b","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/shared/src/process-identity.mjs",
 
-    {"path":"packages/shared/src/windows-path-trust.ts","digest":"7c8562cce50d76622e7f54c9046de1795ce4f5609dd7d102eb5dfba4ca0ed8f8","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/shared/src/windows-path-trust.ts",
 
-    {"path":"packages/shared/src/windows-system-utility.mjs","digest":"308c7079b142c94dbfc4a36ae000e38bfafdec41cda0ba67a5f55fa04b687ab5","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/shared/src/windows-system-utility.mjs",
 
-    {"path":"scripts/__tests__/startup-readiness-static.test.ts","digest":"04a33c59977c6a5b079cbd452bece433bab6dd0296980330b06393737410d2df","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "scripts/__tests__/startup-readiness-static.test.ts",
 
-    {"path":"scripts/__tests__/windows-nightly.test.ts","digest":"079edbe2692f9aec8ebc539f0e16340f0672bc52c69901e9b3f696c334092162","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "scripts/__tests__/windows-nightly.test.ts",
 
-    {"path":"scripts/build-windows-nightly.ps1","digest":"050c7665938f852e610fdcaf230206344f81a82b7ab20a61ef63150fd67cbcaf","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "scripts/build-windows-nightly.ps1",
 
-    {"path":"scripts/ios-simulator-build.mjs","digest":"4d51daa51536951d6ad0f4046146f4a77ac5a4a8ba3a8780eedd44f02a72f6f3","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "scripts/ios-simulator-build.mjs",
 
-    {"path":"scripts/lib/windows-nightly.mjs","digest":"6ad16d115434c40d429c7ed7323c6b8659b6edd284530bac01cebd4fafa5dedd","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "scripts/lib/windows-nightly.mjs",
 
-    {"path":"scripts/run-tauri-shell-e2e.mjs","digest":"f1e6230b040d8affe5cc8214bd311b8035927517dc3d904325e7ee91650f5add","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
+    "scripts/run-tauri-shell-e2e.mjs",
 
-    {"path":"scripts/verify-windows-installer-upgrade.ps1","digest":"e7935481402cf99f16b2ad2489e07a51677c0878828a9e7a50fecc393e159754","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "scripts/verify-windows-installer-upgrade.ps1",
 
-    {"path":"src-desktop/Cargo.lock","digest":"38624df3105a4d464e085d4034e32a78e7fe867334cfac2006d6d8b73a31fc4b","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-desktop/Cargo.lock",
 
-    {"path":"src-desktop/Info.ios.plist","digest":"d2c1f1e17b523101bbc9b2e64ec5fa1e7a173ad0229f37f6a796bd3a2b549f4b","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-desktop/Info.ios.plist",
 
-    {"path":"src-desktop/src/bundled_server_state.rs","digest":"7a2f05fedf131f51c4f57d42906a8642aec2633ef05ff9a9dacdec494f8d8051","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-desktop/src/bundled_server_state.rs",
 
-    {"path":"src-desktop/src/lib.rs","digest":"ad3b52011a9be6e6a18133b2367c04d0a6245907e5b7e13fa324bcd8b5255557","revision":"464d602fb7fb5fa9bd0df9d241dc03495b398b96"},
+    "src-desktop/src/lib.rs",
 
-    {"path":"src-desktop/src/native_relay_redemption.rs","digest":"87ad20dc50fab39c24c7afe527c8be853b5e464f01fca6739d119cb73dbc45e4","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
+    "src-desktop/src/native_relay_redemption.rs",
 
-    {"path":"src-desktop/src/startup_readiness.rs","digest":"77c26585b925bf67038df2ff3aea842c9ef0c4262914bbf957b2ca30f0332f82","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-desktop/src/startup_readiness.rs",
 
-    {"path":"src-server/index.ts","digest":"53c36afff3a1c5a96e7c2054c7c0f2ce97c2d5b373e876e41d7c505163f30c27","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-server/index.ts",
 
-    {"path":"src-server/runtime/bootstrap/__tests__/readiness-handshake.test.ts","digest":"ac54650959eec3125a36daf9094e8992dd5d5ee0ede19bb62c4aed47f7c4118e","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-server/runtime/bootstrap/__tests__/readiness-handshake.test.ts",
 
-    {"path":"src-server/runtime/bootstrap/readiness-handshake.ts","digest":"321dc2ec9238434fb5b52e7e263c71b64546db0bc56292c164d73ab6fc6fd449","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-server/runtime/bootstrap/readiness-handshake.ts",
 
-    {"path":"src-server/security/local-grant-file.ts","digest":"651df6a68213436e33656482acad95b099fcd3bf0d686d62c6cd39e0b10c5a20","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-server/security/local-grant-file.ts",
 
-    {"path":"src-ui/src/contexts/ApiBaseContext.tsx","digest":"3605f56290eb2b613aa26eb476a7801cba350dea1acd4736301a6afaaa8bdfe8","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-ui/src/contexts/ApiBaseContext.tsx",
 
-    {"path":"src-ui/src/main.tsx","digest":"ea8ad745a9a86e49c5811a8320a01cce7764d38278a67f97b9ab2443d1f50e86","revision":"f654ac16d7b2bc4944641044d0b33ee42320028a"},
+    "src-ui/src/main.tsx",
 
-    {"path":"src-ui/src/platform/native/__tests__/nativeRelayGrantRenewalAdapter.test.ts","digest":"1e387b759067cc0076ae7a46d2e0dc7948591cd200e48878ba72fe3bc426453b","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-ui/src/platform/native/__tests__/nativeRelayGrantRenewalAdapter.test.ts",
 
-    {"path":"src-ui/src/platform/native/__tests__/nativeRelayGrantRenewalSupervisor.test.ts","digest":"3a97e55ae6554da8cb18ac763a6c8c42e62ff6835c3c00cee1d48fc902543088","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-ui/src/platform/native/__tests__/nativeRelayGrantRenewalSupervisor.test.ts",
 
-    {"path":"src-ui/src/platform/native/__tests__/rendererLiveness.test.tsx","digest":"ccc6ecb72b88623cffc931a3b44f59a1d9367f15e283aea5286d339c44a0c2d3","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-ui/src/platform/native/__tests__/rendererLiveness.test.tsx",
 
-    {"path":"src-ui/src/platform/native/nativeRelayGrantRenewalAdapter.ts","digest":"f10ac7b4278a67648f946bc05c717da27f9fa59fced4576e1d0df41944657e49","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-ui/src/platform/native/nativeRelayGrantRenewalAdapter.ts",
 
-    {"path":"src-ui/src/platform/native/nativeRelayGrantRenewalSupervisor.ts","digest":"173870d9be71cb18fec95ffde4b9963edeedf8e911c3ee3453133dffadb08fce","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-ui/src/platform/native/nativeRelayGrantRenewalSupervisor.ts",
 
-    {"path":"src-ui/src/platform/native/rendererLiveness.tsx","digest":"8a47896392329e0bce4fc0ca3ce544171cff1e2df6bcb77097c97ff26ce78c63","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-ui/src/platform/native/rendererLiveness.tsx",
 
-    {"path":"src-ui/src/views/connections-hub/RelayRouteProfiles.tsx","digest":"30081203cfc874044d63728638eac74f7c8dd15a62f4d5a51e20320fd64d1c7a","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-ui/src/views/connections-hub/RelayRouteProfiles.tsx",
 
-    {"path":"src-ui/src/views/connections-hub/__tests__/RelayRouteProfiles.test.tsx","digest":"0969a7ae3dfa609ff4f9bf8c24ee44097d0f2dfa3ddfc3c7bc00635d894870bb","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-ui/src/views/connections-hub/__tests__/RelayRouteProfiles.test.tsx",
 
-    {"path":"tests/tauri-shell/native-relay-grant-lifecycle.e2e.ts","digest":"e38fdd0e01c5ac3ea83a499ebee2f37598adaab04f61d81f8c284d1d4ddb4b8d","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "tests/tauri-shell/native-relay-grant-lifecycle.e2e.ts",
 
-    {"path":"tests/tauri-shell/plugin-host-security.e2e.ts","digest":"963d8b6cd74e474a5fd2c7891e564e51ddc16dc0562a2aef6a04ef07c76618bd","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "tests/tauri-shell/plugin-host-security.e2e.ts",
 
-    {"path":"tests/tauri-shell/native-chat-dispatch.e2e.ts","digest":"cfe0f18ba9cbfb723a4e7ccebe99dfe28f2e83f2adad8728fb144222cad67766","revision":"dd0afb6e8e5b3f37b2d42d3dbb2305c839525f44"},
+    "tests/tauri-shell/native-chat-dispatch.e2e.ts",
 
-    {"path":"tests/tauri-shell/native-project-runtime-fixture.ts","digest":"9ca2c8b47bd89de9ae743875ce10a940df5e1be5dcf69ba8d81e1f855ef4a861","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
+    "tests/tauri-shell/native-project-runtime-fixture.ts",
 
-    {"path":"tests/tauri-shell/native-project-acceptance.e2e.ts","digest":"3c000df5ce38034fd4827a42b5dc6ef0930e65960253ebce6c62c588ddbab7e5","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
+    "tests/tauri-shell/native-project-acceptance.e2e.ts",
 
-    {"path":"tests/tauri-shell/native-project-acceptance-webview.ts","digest":"fc99c2b19334dce34f5fe44d0f19db0a9c1bdfef8429272e43231c6c61b70619","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
+    "tests/tauri-shell/native-project-acceptance-webview.ts",
 
-    {"path":"scripts/lib/local-collaboration-station.ts","digest":"94250f9184c8a4a45c434ba30ef119ce96c0981c4ec063a5c99773281b48b656","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
+    "scripts/lib/local-collaboration-station.ts",
 
-    {"path":"scripts/lib/local-collaboration-station-child.ts","digest":"dae3a254331b78deb31c01518369be85d251f9bc28f95c92c3ab55e5ef6889c3","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
+    "scripts/lib/local-collaboration-station-child.ts",
 
-    {"path":"scripts/lib/local-collaboration-relay-account.ts","digest":"e56a15010ac61143e57b63af5e8ecbfb3d192dcf50576a1a7d5fd6c2127ec5b0","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
+    "scripts/lib/local-collaboration-relay-account.ts",
 
-    {"path":"scripts/__tests__/local-collaboration-station-config.test.ts","digest":"486bf107742ff632711fa290a2d578bd22a0b40b5c844d6994022ab5683cea55","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
+    "scripts/__tests__/local-collaboration-station-config.test.ts",
 
-    {"path":"src-desktop/src/native_proof_key_core.rs","digest":"d66f1b0037e2bd3ba564cf56fed94cae48b52647817dcbf72ae025a79eacd968","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
+    "src-desktop/src/native_proof_key_core.rs",
 
-    {"path":"src-desktop/src/native_device_proof_key.rs","digest":"f209cb152047378666116d08bf220264b0a9ef569fbd0f5cde827e259ec0d5f6","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
+    "src-desktop/src/native_device_proof_key.rs",
 
-    {"path":"src-desktop/src/native_account_proof_key.rs","digest":"fb0830359c1b28f49429a1f837df81afe5af2d83e14fe7ad92aa5c54ec2e3e5c","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
+    "src-desktop/src/native_account_proof_key.rs",
 
-    {"path":"src-desktop/src/native_device_binding_candidate.rs","digest":"4ada0d91f7ff75f113043d149fb66b0588a71bdd9d7ea30690c4eb2df8251341","revision":"0114a7cecb46255b1a87068cbc76f2bf1bd1b720"},
+    "src-desktop/src/native_device_binding_candidate.rs",
 
-    {"path":"src-ui/src/platform/native/authenticatedTransport.ts","digest":"9012676f5874a8bd8c33a140764d6c83abeac50fdbdb667468fb5800a6216602","revision":"4bb060037a5ec0146e4cab01d5992402ba41869f"},
+    "src-ui/src/platform/native/authenticatedTransport.ts",
 
-    {"path":"src-ui/src/platform/native/nativeCommandError.ts","digest":"ab08d2ab71b4029623c73156de493399908a9282c4249326fa8014faa74216ff","revision":"4bb060037a5ec0146e4cab01d5992402ba41869f"},
+    "src-ui/src/platform/native/nativeCommandError.ts",
 
-    {"path":"src-ui/src/platform/native/__tests__/authenticatedTransport.test.ts","digest":"2d20c70fb3a0cb6690d377ea952a97c77aacb2162cf888ac2092a73f450fdc00","revision":"4bb060037a5ec0146e4cab01d5992402ba41869f"},
+    "src-ui/src/platform/native/__tests__/authenticatedTransport.test.ts",
 
-    {"path":"src-ui/src/lib/queryDefaults.ts","digest":"ada88d7152a2ebe1e9c89bbd4d9da4ca5681849e5c499546fa0e81b6b90d27ae","revision":"3fd1eca58b46371b83b05cac0fbb61560acdbb92"}
+    "src-ui/src/lib/queryDefaults.ts",
+
+    "scripts/lib/native-fresh-relay-fixture.ts",
+
+    "scripts/native-fresh-relay-fixture.ts",
+
+    "src-desktop/build.rs",
+
+    "src-desktop/src/native_relay_ios_launch.rs",
+
+    "src-desktop/src/native_relay_link_intake.rs",
+
+    "src-desktop/src/native_secure_entry.rs",
+
+    "src-ui/src/components/OnboardingGate.tsx",
+
+    "src-ui/src/platform/native/__tests__/NativeRelayLinkIntake.test.tsx",
+
+    "src-ui/src/platform/native/NativeRelayConnectionRecovery.tsx",
+
+    "src-ui/src/platform/native/NativeRelayLinkReview.tsx",
+
+    "src-ui/src/views/connections-hub/NativeRelayEnrollmentWizard.tsx",
+
+    "tests/tauri-shell/native-fresh-relay-acceptance-webview.ts",
+
+    "tests/tauri-shell/native-fresh-relay-fixture.md"
   ],
 
   "checks": [

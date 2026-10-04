@@ -7,6 +7,7 @@ import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display'
 import type { ConnectionConfig } from '@kontourai/station-contracts/tool';
 import { EngineCapabilitySummary } from '../../components/acp-connections/EngineCapabilitySummary';
 import { EngineChip } from '../../components/badges/EngineChip';
+import { InfoTip } from '../../components/InfoTip';
 import { navigationStore } from '../../contexts/navigation-store';
 import {
   connectionStatusLabel,
@@ -123,13 +124,33 @@ export function AgentEditorEngineSelection({
   if (isStationAgentIdentity(form.slug)) {
     return (
       <div className="editor-field">
-        <span className="editor-label" id="ae-engine-builtin-label">
-          Engine
-        </span>
-        <output
-          className="editor-readonly"
-          aria-labelledby="ae-engine-builtin-label"
-        >
+        <div className="editor-label-row">
+          <h3 id="agent-engine" className="agent-editor__section-title">
+            Engine
+          </h3>
+          <InfoTip label="Engine capabilities">
+            <p>The built-in Agent uses the engine chosen in Settings.</p>
+            <EngineCapabilitySummary
+              matrix={resolveEngineCapabilityMatrix(
+                boundConnectionId,
+                boundConnection,
+              )}
+              connectionName={
+                isStationBound
+                  ? 'Station'
+                  : (boundConnection?.name ??
+                    engineDisplayLabel(
+                      resolveEngineCapabilityMatrix(
+                        boundConnectionId,
+                        boundConnection,
+                      ).engineId,
+                    ) ??
+                    boundConnectionId)
+              }
+            />
+          </InfoTip>
+        </div>
+        <output className="editor-readonly" aria-labelledby="agent-engine">
           {isStationBound
             ? 'Station'
             : (boundConnection?.name ??
@@ -142,9 +163,6 @@ export function AgentEditorEngineSelection({
               boundConnectionId)}
         </output>
         <span className="editor-hint">
-          The built-in Agent runs on whichever engine this Station is set up to
-          use, and that choice is a Settings one — it is resolved fresh each
-          time Station starts, so it is not stored on this Agent.{' '}
           <button
             type="button"
             className="agent-editor__capability-banner-action"
@@ -163,34 +181,35 @@ export function AgentEditorEngineSelection({
             Change it in Settings
           </button>
         </span>
-        {/* archive#3728: omitting the PICKER here is the
-            documented decision; omitting the capability summary was not —
-            this was the one editor case that named an engine without
-            explaining it. Read-only, from the runtime-resolved binding. */}
-        <EngineCapabilitySummary
-          matrix={resolveEngineCapabilityMatrix(
-            boundConnectionId,
-            boundConnection,
-          )}
-          connectionName={
-            isStationBound
-              ? 'Station'
-              : (boundConnection?.name ??
-                engineDisplayLabel(
-                  resolveEngineCapabilityMatrix(
-                    boundConnectionId,
-                    boundConnection,
-                  ).engineId,
-                ) ??
-                boundConnectionId)
-          }
-        />
       </div>
     );
   }
 
   return (
     <div className="editor-field">
+      <div className="editor-label-row">
+        <h3 id="agent-engine" className="agent-editor__section-title">
+          Engine
+        </h3>
+        {(engineKind === 'model' || boundConnectionId) && (
+          <InfoTip label="Engine capabilities">
+            {engineKind === 'model' ? (
+              <EngineCapabilitySummary
+                matrix={ENGINE_CAPABILITY_MATRICES.station}
+                connectionName="Station"
+              />
+            ) : boundConnectionId ? (
+              <EngineCapabilitySummary
+                matrix={resolveEngineCapabilityMatrix(
+                  boundConnectionId,
+                  boundConnection,
+                )}
+                connectionName={boundConnection?.name ?? 'this engine'}
+              />
+            ) : null}
+          </InfoTip>
+        )}
+      </div>
       <div
         className="agent-engine-choices"
         role="radiogroup"
@@ -209,7 +228,6 @@ export function AgentEditorEngineSelection({
           />
           <span>
             <EngineChip engine={{ name: 'Station' }} />
-            <small>Runs on a model you pick below.</small>
           </span>
         </label>
         {cliOptions.length === 0
@@ -246,10 +264,12 @@ export function AgentEditorEngineSelection({
                   {/* The SERVER's readiness sentence (archive#3649 evidence), not
                       the evidence KIND — "Catalog: Live" is internal
                       vocabulary (Y5). */}
-                  <small>
-                    {connection.readinessEvidence?.summary ??
-                      connectionStatusLabel(connection.status)}
-                  </small>
+                  {!isAgentConnectionSelectable(connection) && (
+                    <small>
+                      {connection.readinessEvidence?.summary ??
+                        connectionStatusLabel(connection.status)}
+                    </small>
+                  )}
                   {!isAgentConnectionSelectable(connection) && (
                     <button
                       type="button"
@@ -267,29 +287,6 @@ export function AgentEditorEngineSelection({
               </label>
             ))}
       </div>
-
-      {/* archive#3722: the two-row capability summary for the engine
-          this agent is actually bound to. The MODEL branch resolves to the
-          Station matrix EXPLICITLY (#3728 review, LOW): "Use a model
-          connection" means Station's own engine, and during the transient
-          window where the model radio is selected while a CLI binding has
-          not been rewritten yet, resolving from the stale binding would
-          describe an engine the user is not choosing. The CLI branch shows
-          the summary only once a concrete CLI is bound. */}
-      {engineKind === 'model' ? (
-        <EngineCapabilitySummary
-          matrix={ENGINE_CAPABILITY_MATRICES.station}
-          connectionName="Station"
-        />
-      ) : boundConnectionId ? (
-        <EngineCapabilitySummary
-          matrix={resolveEngineCapabilityMatrix(
-            boundConnectionId,
-            boundConnection,
-          )}
-          connectionName={boundConnection?.name ?? 'this engine'}
-        />
-      ) : null}
     </div>
   );
 }

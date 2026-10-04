@@ -2,7 +2,19 @@
  * @vitest-environment jsdom
  */
 
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import type { useValidateKnowledgeRootMutation } from '@kontourai/station-sdk';
+import {
+  QueryClient,
+  QueryClientProvider,
+  useMutation,
+} from '@tanstack/react-query';
+import {
+  fireEvent,
+  render as renderUI,
+  screen,
+  waitFor,
+} from '@testing-library/react';
+import type { ReactElement } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { navigationStore } from '../contexts/navigation-store';
 
@@ -22,11 +34,14 @@ let rootsQueryResult: {
 };
 
 const createRootMutate = vi.fn();
-const validateRootMutateAsync = vi.fn();
+type ValidateRoot = ReturnType<
+  typeof useValidateKnowledgeRootMutation
+>['mutateAsync'];
+const validateRootMutateAsync =
+  vi.fn<(input: Parameters<ValidateRoot>[0]) => ReturnType<ValidateRoot>>();
 let createRootIsPending = false;
 let createRootIsError = false;
 let createRootError: unknown;
-let validateRootIsPending = false;
 
 vi.mock('@kontourai/station-connect', () => ({
   RejectingCredentialStorage: class RejectingCredentialStorage {},
@@ -60,10 +75,8 @@ vi.mock('@kontourai/station-sdk', () => ({
     isError: createRootIsError,
     error: createRootError,
   }),
-  useValidateKnowledgeRootMutation: () => ({
-    mutateAsync: validateRootMutateAsync,
-    isPending: validateRootIsPending,
-  }),
+  useValidateKnowledgeRootMutation: () =>
+    useMutation({ mutationFn: validateRootMutateAsync }),
 }));
 
 vi.mock('../components/PathAutocomplete', () => ({
@@ -88,6 +101,15 @@ vi.mock('../components/PathAutocomplete', () => ({
 import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
 import { KnowledgeStoreSection } from '../views/settings/KnowledgeStoreSection';
 
+function render(ui: ReactElement) {
+  const client = new QueryClient({
+    defaultOptions: { mutations: { retry: false } },
+  });
+  return renderUI(
+    <QueryClientProvider client={client}>{ui}</QueryClientProvider>,
+  );
+}
+
 /** The parent registers its dirty state with the real navigation store. */
 function GuardedHarness({ dirty }: { dirty: boolean }) {
   const { DiscardModal } = useUnsavedGuard(dirty);
@@ -106,7 +128,6 @@ describe('KnowledgeStoreSection', () => {
     createRootIsPending = false;
     createRootIsError = false;
     createRootError = undefined;
-    validateRootIsPending = false;
     rootsQueryResult = {
       data: [],
       isLoading: false,
@@ -253,10 +274,12 @@ describe('KnowledgeStoreSection', () => {
       ).toBeTruthy();
     });
 
-    expect(validateRootMutateAsync).toHaveBeenCalledWith({
-      adapterId: 'kit-obsidian-store',
-      storeRoot: '/tmp/empty-dir',
-    });
+    expect(validateRootMutateAsync.mock.calls.map(([input]) => input)).toEqual([
+      {
+        adapterId: 'kit-obsidian-store',
+        storeRoot: '/tmp/empty-dir',
+      },
+    ]);
     expect(
       (screen.getByRole('button', { name: 'Connect' }) as HTMLButtonElement)
         .disabled,

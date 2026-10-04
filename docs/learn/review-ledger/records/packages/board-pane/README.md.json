@@ -9,18 +9,16 @@
 
   "limits": "Boundary tests prove package import/shape rules, not absence of behavioral drift. No real Board execution, consent/provider operation, responsive visual/physical device proof or npm publication.",
 
-  "document": {"digest":"f7fde6380c810e97b0e606ffbf2e0b82a1686695b840fcd9baff9d2c91873069","revision":"3d607908cd1b34cbb6f3ac4331150c9e1080477f"},
-
   "sources": [
-    {"path":"packages/board-pane/package.json","digest":"c357feefe2e40c50408849518611918e7c8adf610dab432a1fdcc67948cb7047","revision":"1e5f63186142dd36fcb720deb7660808dbf2f56b"},
+    "packages/board-pane/package.json",
 
-    {"path":"packages/board-pane/src/ConsoleBoardPane.tsx","digest":"d60f642e10d03ab7ee6ea284dbcc3bb0e4aabfdfbc5f407a591ea787767e8f2c","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+    "packages/board-pane/src/ConsoleBoardPane.tsx",
 
-    {"path":"packages/board-pane/src/index.ts","digest":"148438fd97b147f43826c33f74d6dc303420c011055d2f49fc81968dedb0b05f","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+    "packages/board-pane/src/index.ts",
 
-    {"path":"packages/board-pane/src/workspace-board-pane.ts","digest":"92c83e5a637cb8571ffb1d2bf579ce884445475ff3206c6dc692b1a51d5410c0","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+    "packages/board-pane/src/workspace-board-pane.ts",
 
-    {"path":"src-ui/src/views/board/BoardWorkspacePane.tsx","digest":"48c4933174dd69e1bac7bf8fdd8ed2f4f405be3a36a8a1570dc1ab201926248d","revision":"42491ca6bab31b1365b33e3190c171819881eb72"}
+    "src-ui/src/views/board/BoardWorkspacePane.tsx"
   ],
 
   "checks": [

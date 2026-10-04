@@ -39,9 +39,9 @@ call does not prove what that dependency ultimately emits or persists.
 
 The learning reader's [review ledger](../learn/review-ledger/) records
 document purpose separately from source review. A source-reviewed record needs
-the checked claims, code owners, executed checks, and limits. Its document and
-source hashes make later changes visible; they are not evidence of accuracy by
-themselves. Revisit the affected claims before refreshing a stale record. Never
+the checked claims, code owners, executed checks, and limits. Append-only notes record which inputs a reviewer checked; Git history makes
+later unreviewed changes visible. Neither a note nor a passing gate proves
+accuracy. Revisit the affected claims before recording a new review. Never
 mark a file reviewed merely because it appears in the inventory or has valid
 links. Historical evidence and policy goals keep their own classifications.
 
@@ -68,21 +68,55 @@ working tree, so removing a source link
 does not silently erase the old review lead. An unreadable base or malformed
 input fails the report rather than returning an empty impact list.
 
-Catch-up compares the recorded document and source hashes with current bytes.
-For each stale review it lists the changed inputs, the revision at which each
-was reviewed, and the last commit that edited the page. A page's edit commit is not proof
-that someone reviewed its supporting code. Use the recorded revision and changed
-paths to inspect the relevant Git diff (`docs:review:record -- --show-delta`
-prints it); the hashes identify the exact bytes previously reviewed.
-Unchanged records do not need another whole-application review.
+Catch-up derives outstanding reviews from Git history since the ledger's
+`coverageBaseline`. Each first-parent landing commit that changes a document
+or a cited source needs an added note covering that document and input. Squash
+commits contain both source changes and notes. Ordinary merges introduce the
+other branch's notes with its source changes. A later deliberate catch-up note
+can cover named outstanding inputs; restoring old bytes alone cannot erase an
+unreviewed change. `docs:review:record -- --show-delta` shows the input diff
+since the coverage baseline, including working edits. This is an inspection
+lead, not an assertion that every intermediate change is visible in the net diff.
 
-The ledger's `coverageBaseline` is the starting revision for searching new or
-unmapped changes during catch-up; `--base=<ref>` overrides that search. It is
-separate from each page's review revision. Advance it only after accounting for
-its outstanding coverage, never just to shorten a report. A missing baseline
-requires an explicit ref. Both modes report files with no known documentation
-dependency. Trace those through actual callers, add missing source relationships,
-or give a concrete no-documentation-impact reason in the PR.
+`--base=<ref>` overrides the catch-up search for new or unmapped paths, but does
+not change the freshness baseline. The one-time path-only migration sets the
+baseline to its pre-migration HEAD and grandfathers existing decisions; it does
+not establish a new semantic review. Do not advance it just to hide gaps.
+The scoped PR check reads only the change's own range and never replays the
+coverage baseline. Main-history reader state uses one first-parent
+`git log --name-status` stream and one batched read of relevant notes, record
+changes and JSON values. Git process count is constant as commits increase;
+bytes read and replay work grow with the range. Replay uses HEAD's source lists
+for old commits: removed citations stop tracking older changes, and newly
+added citations can expose older changes that now need review.
+
+After catch-up has covered every outstanding input, run this on a clean,
+fully fetched checkout of main and commit the resulting index:
+
+```sh
+npm run docs:review:record -- --advance-baseline
+```
+
+The command checks strict coverage before moving the baseline to HEAD. Run it
+after a catch-up audit, and periodically (for example weekly) when strict is
+green, to bound history cost. It refuses dirty trees and unavailable history;
+it cannot erase outstanding gaps. HEAD must be reachable from `origin/main`;
+fetch remote main before retrying if that ref is missing or stale. PR-only
+commits cannot become the baseline because a squash merge does not retain them.
+
+Both modes report files with no known documentation dependency. Trace those
+through actual callers, add missing source relationships, or give a concrete
+no-documentation-impact reason in the PR. Shallow or unavailable history is
+reported explicitly; fetch full history before judging accumulated freshness.
+
+Historical dependency collection accepts a semantically valid record whose
+JSON layout was reformatted in an intermediate commit. It retains that record's
+source links rather than dropping them. This tolerance belongs only to the
+advisory impact report: current records, default historical reads, capture
+reviews and append-only note hashes still require their canonical bytes.
+Malformed JSON, unknown fields, misplaced records and invalid source bindings
+remain errors. Collecting an old dependency never approves a current claim or
+refreshes a review hash.
 
 The map records reviewed relationships. It does not discover every code import,
 runtime call, dependency default or business requirement. Broad owners such as
@@ -99,169 +133,137 @@ retains the owner approval and failure/restoration controls.
 
 ## Keep reviews fresh
 
-Staleness is caught once, in the pull request that caused it. One decision in
+A pull request adds human review notes, not derived hashes or source revisions.
+The policy in
 [`documentation-freshness.mjs`](../../scripts/lib/documentation-freshness.mjs)
-serves every consumer: the ledger test in `docs:truth:gate` (and so Veritas
-readiness, pre-push and `ci:fast`), `docs:learn:check`, the capture check and
-`npm run docs:freshness:check`. The mode follows where the check runs, not
-which command runs it: `ci:fast` is scoped on a pull request and advisory in
-the merge queue.
+serves `docs:truth:gate`, Veritas readiness, `docs:learn:check`, captures and
+`docs:freshness:check`. The mode follows the event, not the command:
 
-- **Scoped** (outside GitHub Actions, such as local runs and pre-push, and in
-  `pull_request` or `pull_request_target` workflows): a stale review or capture
-  blocks when this change's own diff against its merge base touches its
-  document, capture or a recorded source, including deleting it, or edits its
-  record, capture metadata or capture review. Other stale entries are printed as advisory.
-  The base is `STATION_DOCS_FRESHNESS_BASE`, then `STATION_CI_FAST_BASE` (the
-  PR check sets it to the pull request base), then `origin/main`. If the scope
-  cannot be computed, every stale entry blocks. The non-required fork-smoke job
-  can hit that fallback when its checkout lacks the upstream base commit.
-- **Advisory** (every other GitHub Actions event: the merge queue, pushes to
-  `main`, Nightly and manual runs): stale entries, including records whose
-  document or source another change removed, are reported and never fail. A
-  queue candidate contains other pull requests' changes, and each pull request
-  already passed the scoped check on its own head, so another PR's change
-  cannot dequeue yours. The repository-scan job also reports rather than
-  judges: its one-commit checkout cannot compute a pull request's scope.
-- **Strict**: every stale entry blocks. Set `STATION_DOCS_FRESHNESS=strict` to
-  audit the whole ledger locally.
+- **Scoped** (local runs, pre-push, `pull_request` and `pull_request_target`):
+  every document whose file or listed sources the PR's diff against its merge
+  base touches needs a new note covering those inputs. Human record edits also
+  need a note. Dependencies at the merge base and in the working tree are both
+  considered, so dropping a citation cannot hide a changed input. A removed
+  record whose document remains cannot hide source changes either. Committed
+  notes must name a revision inside `merge base..HEAD`; an
+  uncommitted note must name HEAD. After squash, that revision remains context
+  only. Notes already on the base branch do not qualify as this PR's review. A later edit
+  on the PR needs another review; another PR landing on the base branch never
+  invalidates its notes.
+  The base resolution order remains `STATION_DOCS_FRESHNESS_BASE`, then
+  `STATION_CI_FAST_BASE`, then `origin/main`. An unavailable base falls back to
+  strict checking. Fetch before checking so the comparison uses current refs.
+- **Advisory** (other GitHub Actions events, including the merge queue, main
+  pushes, Nightly and manual runs): outstanding reviews are reported, never
+  failed. One-commit shallow checkouts report unavailable history instead of
+  judging it, including when scoped mode was requested. In `ci.yml`, the
+  `fast-checks` aggregate and `repo-scans` jobs use fetch-depth 1;
+  `fast-checks-statics` and `fork-smoke` use depth 1 only for their initial
+  base-policy/title checkout, then fetch full candidate history. The scoped
+  freshness jobs and Nightly sweep use fetch-depth 0.
+- **Strict** (`STATION_DOCS_FRESHNESS=strict`): all known outstanding reviews
+  block. Shallow history, a missing or invalid baseline, or a baseline that is
+  absent or unreachable fails with an explicit unavailable-history error.
 
-A long branch therefore does not re-review records after merging `main`: only
-entries its own changes touch are in scope. Fetch before checking, because an
-old `origin/main` makes the scope larger, not smaller.
-
-After reviewing the changed claims, record the review instead of editing hashes:
+After inspecting the changed claims and their callers:
 
 ```sh
-npm run docs:review:record -- --show-delta docs/guides/example.md   # git diff <reviewed revision> HEAD -- <changed inputs>
+npm run docs:review:record -- --show-delta docs/guides/example.md
 npm run docs:review:record -- docs/guides/example.md --note "Checked the new retry limit against its caller."
 npm run docs:review:record -- docs/guides/example.md --note "..." --drop-source src-server/removed.ts --add-source src-server/new-owner.ts
-npm run docs:review:record -- docs/guides/example.md --note "..." --rereview   # a new review of unchanged bytes
-npm run docs:review:record -- --batch reviews.json   # [{ "path", "note", "removedSources"?, "addedSources"?, "rereview"? }]
-npm run docs:review:record -- --verify-bindings      # revisions that do not contain their recorded bytes
-npm run docs:review:record -- docs/guides/example.md --note "..." --drop-source package.json --add-source 'package.json#/scripts/docs:truth:gate'
+npm run docs:review:record -- --batch reviews.json
+npm run docs:freshness:check
 ```
 
-Commit the reviewed document and source changes first. The command binds each
-changed document or source to the last commit that set it to its current bytes,
-so `--show-delta` can later show exactly what changed since the review. It
-refuses bytes that are not committed yet. It recomputes only the changed
-hashes, leaves every other line alone, and adds the notes as one new notes
-file. A capture path under `docs/learn/media/` refreshes the capture's source
-bindings and notes, but never its capture identity in `media.json`. The command
-refuses:
+Batch input is `[{ "path", "note", "removedSources"?, "addedSources"? }]`.
+Commit the reviewed document and source changes first, then record and commit
+the note. The note records the context HEAD and the inputs inspected; the
+context revision does not have to survive a squash merge. While the PR is open,
+notes bind to the commits they were recorded on. Rebasing, amending or rewording
+those commits after recording requires a re-record against the rewritten HEAD.
+The root `AGENTS.md` rule to integrate upstream with merge, not rebase, keeps
+those note revisions valid. Recording writes
+only a new uniquely named notes file, plus a record edit if the dependency list
+really changes. It refuses empty notes, unknown paths, invalid or duplicate
+sources, uncommitted reviewed inputs, and captures whose image identity changed.
+It validates the entire batch before writing. New records still need their
+kind, state, summary and limits decided by a reviewer. A deliberate review of
+unchanged inputs is allowed (`--rereview` remains accepted for compatibility).
+`--verify-bindings` applies only to legacy digest records; path-only records
+have no bindings to verify.
 
-- an empty note, an unknown path or an unresolvable `HEAD`;
-- an untracked or duplicate source, and a capture whose image changed;
-- a record whose recorded bytes are all unchanged, unless you pass
-  `--rereview`, so nothing is recorded without a change or a deliberate
-  re-review.
-
-It writes nothing unless every entry in the batch is valid. New records still
-need their kind, summary and limits written by hand. It then lists records that
-remain stale on inputs the batch touched, such as a page that cites a document
-you just changed. With `--json`, the command and `docs:freshness:check` print a
-machine-readable result, and a refusal carries a stable `code`.
-
-A source can name one value in a JSON file by
-[JSON Pointer](https://www.rfc-editor.org/rfc/rfc6901), such as
-`package.json#/scripts/docs:truth:gate` or `package.json#/engines`. Only that
-value is hashed, and the binding names the commit that set it. Cite values
-instead of a whole broad manifest when the page depends only on named scripts
-or fields: adding an unrelated script then stales nothing, while changing a
-cited value still does. Whole-file bindings remain right when a page describes
-the manifest as a whole, such as its dependency set. Value bindings apply to
-JSON files only; `pnpm-lock.yaml` and other YAML stay whole-file.
-
-`--verify-bindings` lists each binding whose revision does not contain its
-recorded bytes, such as bytes recorded before they were committed or a record
-assembled by hand from two branches. Such a delta is only approximate.
-Re-review the record with `--rereview` to rebind it.
-
-A pull request that drops a cited source it also changes must add a review
-note to that record, which `--drop-source` does. Deleting the citation by hand
-leaves no note, and the scoped check refuses it. Removing a whole record while
-its document remains and a cited source changed is also refused.
+A cited JSON value can still use a JSON Pointer, for example
+`package.json#/scripts/docs:truth:gate`. Git comparisons compute the value's
+change at runtime; unrelated committed manifest edits do not require a review
+of that value. No value digest is stored in a record. Other formats use whole
+file paths. Notes document review decisions, not automated semantic approval.
 
 ### Ledger layout and merges
 
-GitHub computes whether a pull request can merge on the server, with Git's
-default text merge. It never runs a local merge driver. The ledger is therefore
-[a directory](../learn/review-ledger/) laid out so that independent reviews
-merge as plain text:
+GitHub uses Git's default text merge; this layout needs no local merge driver.
 
 | Path | Contents |
 | --- | --- |
-| `ledger.json` | Layout version and the catch-up `coverageBaseline` |
-| `records/<document>.json` | One reviewed document: kind, state, summary, limits, document and source bindings, and notes recorded before this layout |
-| `captures/<capture>.json` | One capture's source bindings; its metadata stays in `media.json` |
-| `notes/<time>-<hash>.json` | The notes of one recording run, named by time and content hash |
+| `ledger.json` | Layout version 3 and the history `coverageBaseline` |
+| `records/<document>.json` | Path, kind, state, summary, limits, source path list and retained historical checks |
+| `captures/<capture>.json` | Source path list and retained historical review notes; image identity stays in `media.json` |
+| `notes/<time>-<hash>.json` | Context revision and reviews: document/capture path, note text and covered inputs |
 
-Each document or source binding is one line holding its hash and revision. An
-unchanged blank line separates it from the next binding, because Git reports a
-conflict when two branches change adjacent lines. As a result:
+Each source path occupies its own line, separated from the next by a blank
+line. Ordinary source reviews leave all record and capture files untouched.
+Two PRs can review different edits to the same source and add distinct notes
+files; neither rewrites shared derived data. Real concurrent edits to the same
+human decision or additions at the same place in a dependency list can still
+conflict and need a human resolution. The loader requires canonical bytes and
+rejects edited notes or unexpected files. The name hash detects accidental
+changes; it is not protection against forgery. The gate proves that a covering
+note exists for each touched input, not that its prose is accurate. All consumers
+use
+[`review-ledger-store.mjs`](../../scripts/lib/review-ledger-store.mjs), including
+impact/catch-up, the learning reader and knowledge graph. Legacy digest layouts
+remain readable from history.
 
-- Two branches that refresh different sources of one record, such as the module
-  map, or different records, merge without conflict. Each adds its own notes file.
-- Two branches that review the same new bytes of a source bind the same commit.
-  Their lines are identical, so they merge.
-- Two branches that review different bytes of one source, including the
-  document itself, change the same line and conflict, even when the source
-  itself merges. Resolve by merging `main` and recording a new review of the
-  merged bytes. Keeping one side's line leaves a stale record that the scoped
-  check refuses.
-- Two branches that add sources at the same place in one record conflict.
-
-The loader accepts only the exact bytes the record command writes, so a
-reformatted file cannot silently lose its separators. It rejects a notes file
-whose content no longer matches its name, because notes are append-only, and
-any unexpected file. Every consumer reads the compiled ledger through
-[`review-ledger-store.mjs`](../../scripts/lib/review-ledger-store.mjs): freshness,
-impact and catch-up, the learning reader, the knowledge-graph example and the
-record command. Catch-up also reads the earlier single-file layout
-(`docs/learn/review-ledger.json`) from history. The layout change alone never
-puts a record into a change's scope.
-
-A branch that recorded reviews in the old single file conflicts when it merges
-`main`: the file is modified on the branch and deleted on `main`. Git leaves
-the branch's version in the working tree. Fold it into the new layout while
-the merge is still in progress:
+The deterministic one-time migration is:
 
 ```sh
-node scripts/migrate-review-ledger.mjs --base "$(git merge-base HEAD MERGE_HEAD)"
-git add -A docs/learn && git commit --no-edit
+node scripts/migrate-review-ledger.mjs --path-only
 ```
 
-If the branch also re-reviewed a capture, `docs/learn/media.json` conflicts
-too, and a branch that re-reviewed only captures conflicts there alone. The
-command resolves that file itself. It merges each capture field by field
-against the merge base: the side that still has the old layout keeps its
-review fields, and any other field takes whichever side changed it. Where both
-sides changed one field differently, it names the field and stops without
+It drops document/source bindings in place, keeps human decisions and notes,
+and sets the baseline to the existing HEAD. Rerunning it preserves the baseline
+and bytes. An older branch that rewrote binding lines may get text conflicts
+when it merges main. While that merge is in progress, run the same command;
+it folds Git's three index stages after discarding bindings and preserves
+independent source-list edits. Then stage `docs/learn/review-ledger` and finish
+the merge. It stops and names genuinely conflicting human fields; it never
+picks a source digest as a resolution. Notes recorded by that old branch are
+converted into notes covering only binding lines changed by that branch
+relative to its merge base, using the record at the note's introduction. If
+those bindings cannot be recovered, coverage is limited to the document itself.
+The original note is replaced so checks do not duplicate it. No fresh review of
+merged
+source bytes is required merely because main moved.
+
+For the older single-file layout, use
+`node scripts/migrate-review-ledger.mjs --base "$(git merge-base HEAD MERGE_HEAD)"`
+first to fold that file and capture metadata, then run `--path-only`.
+
+If the branch also re-reviewed a capture, `docs/learn/media.json` may conflict
+too. Git can instead auto-merge away the old review fields. For a branch with
+legacy capture reviews, use `git merge --no-commit origin/main` and run that
+folding command before committing, even when Git reports no conflict.
+
+The command reads both merge parents to recover those review fields and merges
+each capture field against the merge base. It preserves the working copy's
+metadata and review edits when Git already merged the file. Where both sides
+changed one metadata field differently, it names the field and stops without
 writing anything, so you resolve that field and rerun. It judges bindings to
 `media.json` against the bytes it writes, not the conflicted working copy.
 
-The command applies each record the branch changed since that base. It merges
-bindings per source, adds the branch's appended checks as one new notes file
-and deletes the old file. Where both sides reviewed different bytes of one
-source, it keeps the binding that matches the current bytes. If neither
-matches, the record stays stale, and the command names it so you can review it.
-It also carries the branch's in-place edits to earlier checks, such as a
-redaction. Where both sides edited the same check, or the branch removed one,
-it keeps ours and names the record so you can apply the branch's change by
-hand.
-
-Staleness that no single pull request owns, such as two merges that combine,
-is collected by the Nightly
-[freshness sweep](../../.github/workflows/docs-freshness-sweep.yml). It runs
-the catch-up report on `main` and keeps one tracking issue, titled
-"Documentation freshness sweep", current. The issue is open while anything is
-stale and closed when nothing is. The sweep never fails a required check.
-
-Land a repository-wide audit in subsystem slices of roughly 20 to 40
-documents, and merge each one before starting the next. A long audit branch
-otherwise accumulates source changes from `main` faster than it can re-review
-them.
+Nightly's [freshness sweep](../../.github/workflows/docs-freshness-sweep.yml)
+tracks outstanding reviews on main in one issue. It never fails a required
+check. Land broad semantic audits in subsystem slices to keep review scope
+manageable; passing a note-coverage gate does not certify prose accuracy.
 
 ## Generated release records and removed notes
 
@@ -269,9 +271,8 @@ Automatic release bookkeeping must not masquerade as a new human review. The
 review compiler recognizes one named generated-output contract: the deploy
 ledger. It validates the current JSON entries, rejects duplicate release
 identities, and requires the exact Markdown projection for this repository.
-The reviewed generator and validator source hashes must still match. Current
-output receives a separate generated-validation status; the prior review
-revision and hashes remain intact. This validates data shape and rendering,
+The generator and validator owners must have no outstanding input review gaps. Current
+output receives a separate generated-validation status; the human review decisions remain intact. This validates data shape and rendering,
 not publication outcomes, history completeness, artifact availability or platform
 behavior.
 

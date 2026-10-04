@@ -19,8 +19,13 @@ import {
   useQueryClient,
 } from '@kontourai/station-sdk';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
+import {
+  skillExperienceAttachmentInputs,
+  skillExperienceInputErrors,
+} from '@kontourai/station-shared/skill-experience-values';
 import { useCallback } from 'react';
 import { useActiveChatActions } from '../contexts/ActiveChatsContext';
+import { useAuthorityPersistence } from '../contexts/AuthorityPersistenceContext';
 import {
   type ChatMessage,
   isTurnInFlight,
@@ -33,6 +38,7 @@ import type {
   OutboundDispatchClaim,
   OutboundDispatchTransportResult,
 } from '../lib/outboundQueue';
+import type { SkillExperienceDraft } from '../lib/skill-experience-draft';
 import type { ComposerAttachmentStageSnapshot, FileAttachment } from '../types';
 import {
   approvalModeChipLabel,
@@ -220,6 +226,8 @@ export function useSendMessage(
   };
   const invalidate = useInvalidateQuery();
   const queryClient = useQueryClient();
+  const { namespace: experienceNamespace, status: experienceAuthorityStatus } =
+    useAuthorityPersistence();
   const sendMessage = useCallback(
     async (
       sessionId: string,
@@ -242,6 +250,10 @@ export function useSendMessage(
       // The durable outbound queue owns deferred replay. A busy replay must
       // stay durable, rather than also entering this legacy in-memory queue.
       options?: {
+        skillExperienceDraft?: SkillExperienceDraft;
+        experienceRequestScope?: import('@kontourai/station-sdk/client').ApiRequestScope & {
+          isCurrent: () => boolean;
+        };
         skipInMemoryQueueOnBusy?: boolean;
         /**
          * When a turn is already running on a steering engine, still hold
@@ -264,6 +276,61 @@ export function useSendMessage(
       const allChats = activeChatsStore.getSnapshot();
       const currentState = allChats[sessionId];
       const submittedDraft = content;
+      const experienceDraft = options?.dispatch
+        ? undefined
+        : currentState?.skillExperienceDraft;
+      if (
+        !options?.dispatch &&
+        (experienceDraft ||
+          currentState?.skillExperienceDraftInvalid ||
+          options?.skillExperienceDraft)
+      ) {
+        const refusal = currentState?.skillExperienceDraftInvalid
+          ? 'The saved visual skill selection could not be read. Choose it again or explicitly remove it before sending.'
+          : !options?.skillExperienceDraft
+            ? 'Review the visual skill and send it explicitly; your selection has not been sent.'
+            : !experienceDraft ||
+                options.skillExperienceDraft !== experienceDraft
+              ? 'Visual skill inputs changed while preparing this message. Review them and send again; your current draft has not been sent.'
+              : experienceAuthorityStatus !== 'verified' ||
+                  !experienceNamespace ||
+                  experienceDraft?.namespace !== experienceNamespace ||
+                  experienceDraft.apiBase !== apiBase ||
+                  !options.experienceRequestScope?.isCurrent() ||
+                  options.experienceRequestScope.apiBase !== apiBase
+                ? 'This visual skill draft belongs to an unverified or different Station. Return to its Station or choose it again.'
+                : navigator.onLine === false
+                  ? 'Reconnect before starting this visual skill. It will not replay automatically.'
+                  : isTurnInFlight(currentState)
+                    ? 'Wait for the current turn before starting another visual skill.'
+                    : Object.values(
+                        skillExperienceInputErrors(
+                          experienceDraft.definition,
+                          options.skillExperienceDraft.start.inputs,
+                          attachments?.length
+                            ? attachments.length
+                            : (currentState.attachmentStages?.length ?? 0),
+                          skillExperienceAttachmentInputs(
+                            experienceDraft.definition.inputs
+                              .filter((input) => input.kind === 'attachments')
+                              .map((input) => input.id),
+                            attachments?.length
+                              ? attachments.map((attachment) => attachment.id)
+                              : (currentState.attachmentStages?.map(
+                                  (stage) => stage.clientAttachmentId,
+                                ) ?? []),
+                            experienceDraft.attachmentAssignments,
+                          ),
+                        ),
+                      )[0];
+        if (refusal) {
+          addEphemeralMessage(sessionId, { role: 'system', content: refusal });
+          return false;
+        }
+      }
+      const sourceStart = experienceDraft
+        ? options?.skillExperienceDraft?.start
+        : undefined;
       // Steer is more input on the OPEN turn (`steerTurn`). Queue is a
       // follow-up that waits for `turn.completed` and starts a new turn.
       // Durable outbound replay stays durable either way — it must not
@@ -272,10 +339,17 @@ export function useSendMessage(
       // #2309: "is a turn busy" is the server's open turn (on any device, in
       // any lineage child) or this composer's own unacknowledged send. A
       // server that sends no activity record keeps the legacy local status.
-      const turnBusy =
-        serverTurnLive(currentState) ?? currentState?.status === 'sending';
+      const turnBusy = isTurnInFlight(currentState);
 
       if (turnBusy && currentState) {
+        if (attachments?.length) {
+          addEphemeralMessage(sessionId, {
+            role: 'system',
+            content:
+              'Messages with attachments cannot be queued during a turn yet. Your message is still in the composer; send it when the turn finishes.',
+          });
+          return false;
+        }
         if (options?.skipInMemoryQueueOnBusy) {
           return options?.dispatch
             ? ({
@@ -288,6 +362,8 @@ export function useSendMessage(
         // rather than being folded into a reply they did not ask for.
         const steeringCapable =
           !options?.queueOnBusy &&
+          !currentState.queueSendNowPending &&
+          !currentState.queueDrainSettling &&
           currentState.conversationActivity?.openTurn?.trigger !== 'provider' &&
           sessionAdapterSupportsSteering(
             currentState.agentConnectionId,
@@ -299,13 +375,24 @@ export function useSendMessage(
           clearInput(sessionId);
           updateChat(sessionId, {
             queuedMessages: [...(currentState.queuedMessages || []), content],
+            queuedMessageMetadata: [
+              ...(currentState.queuedMessageMetadata ??
+                currentState.queuedMessages.map(() => ({
+                  id: randomCorrelationId(),
+                  mode: 'queue' as const,
+                }))),
+              {
+                id: randomCorrelationId(),
+                mode: options?.queueOnBusy ? 'queue' : 'steer',
+              },
+            ],
           });
           return;
         }
         steerOpenTurn = true;
       }
 
-      if (content.startsWith('/') && handleSlashCommand) {
+      if (!sourceStart && content.startsWith('/') && handleSlashCommand) {
         const result = await handleSlashCommand(sessionId, content);
         if (result === true || result === 'CLEAR') {
           return options?.dispatch
@@ -324,47 +411,128 @@ export function useSendMessage(
       }
 
       if (steerOpenTurn && currentState) {
-        // Inject into the live turn. Do not fall through to sendTurn — that
-        // would start a second turn and wipe the in-flight stream.
+        const clientInputId = randomCorrelationId();
+        const openTurn = currentState.conversationActivity?.openTurn;
+        const target = {
+          threadId:
+            openTurn?.threadId ?? currentState.currentSessionId ?? sessionId,
+          turnId: openTurn?.turnId ?? currentState.openTurnId,
+        };
+        const claimState = activeChatsStore.getSnapshot()[sessionId];
+        if (!claimState) return false;
         clearInput(sessionId);
+        updateChat(sessionId, {
+          queuedMessages: [...claimState.queuedMessages, content],
+          queuedMessageMetadata: [
+            ...(claimState.queuedMessageMetadata ?? []),
+            {
+              id: clientInputId,
+              mode: 'steer',
+              delivery: 'steering',
+              steerThreadId: target.threadId,
+              steerTurnId: target.turnId,
+            },
+          ],
+          queueSendNowPending: true,
+        });
+        if (!activeChatsStore.flushPendingSave()) {
+          const held = activeChatsStore.getSnapshot()[sessionId];
+          updateChat(sessionId, {
+            queueSendNowPending: false,
+            queuedMessageMetadata: held?.queuedMessageMetadata?.map((entry) =>
+              entry.id === clientInputId
+                ? { ...entry, delivery: 'indeterminate' }
+                : entry,
+            ),
+            queuedMessageFailure: {
+              code: 'steering-save-failed',
+              message:
+                'Could not save pending steering. It was not sent; your message remains held.',
+              at: Date.now(),
+            },
+          });
+          return false;
+        }
+        const removeClaim = () => {
+          const latest = activeChatsStore.getSnapshot()[sessionId];
+          const index =
+            latest?.queuedMessageMetadata?.findIndex(
+              (entry) => entry.id === clientInputId,
+            ) ?? -1;
+          if (!latest || index < 0) return;
+          updateChat(sessionId, {
+            queuedMessages: latest.queuedMessages.filter(
+              (_, position) => position !== index,
+            ),
+            queuedMessageMetadata: latest.queuedMessageMetadata?.filter(
+              (_, position) => position !== index,
+            ),
+          });
+        };
+        const holdUnconfirmed = () => {
+          const latest = activeChatsStore.getSnapshot()[sessionId];
+          updateChat(sessionId, {
+            queuedMessageMetadata: latest?.queuedMessageMetadata?.map(
+              (entry) =>
+                entry.id === clientInputId
+                  ? { ...entry, delivery: 'indeterminate' }
+                  : entry,
+            ),
+          });
+          addEphemeralMessage(sessionId, {
+            role: 'system',
+            content:
+              'Steering delivery was not confirmed. Your message is held; retry steering to check the same delivery.',
+          });
+        };
         try {
-          // #2309: the server's open turn names the lineage child running
-          // it and the exact turn; the local stamp is the older-server path.
-          const openTurn = currentState.conversationActivity?.openTurn;
           const result = await steerOrchestrationTurn({
-            threadId:
-              openTurn?.threadId ?? currentState.currentSessionId ?? sessionId,
+            ...target,
             text: content,
-            turnId: openTurn?.turnId ?? currentState.openTurnId,
+            clientInputId,
             apiBase,
           });
           if (result.outcome === 'steered') {
-            return options?.dispatch
-              ? ({
-                  kind: 'accepted',
-                  providerTurnId: result.turnId,
-                } satisfies OutboundDispatchTransportResult)
-              : true;
+            removeClaim();
+            addEphemeralMessage(sessionId, {
+              role: 'system',
+              content: 'Steering sent.',
+            });
+            return true;
           }
+          if (result.outcome === 'indeterminate') {
+            holdUnconfirmed();
+            return true;
+          }
+          removeClaim();
           addEphemeralMessage(sessionId, {
             role: 'system',
             content: steerRefusalMessage(result),
           });
+          const latest = activeChatsStore.getSnapshot()[sessionId];
+          if ((latest?.input ?? '') === '')
+            updateChat(sessionId, { input: submittedDraft });
+          return false;
         } catch (error) {
-          addEphemeralMessage(sessionId, {
-            role: 'system',
-            content: `Could not send steer: ${error instanceof Error ? error.message : String(error)}`,
-          });
+          if (isProvablyNotSent(error)) {
+            removeClaim();
+            const latest = activeChatsStore.getSnapshot()[sessionId];
+            if ((latest?.input ?? '') === '')
+              updateChat(sessionId, { input: submittedDraft });
+            return false;
+          }
+          holdUnconfirmed();
+          return true;
+        } finally {
+          updateChat(sessionId, { queueSendNowPending: false });
+          const latest = activeChatsStore.getSnapshot()[sessionId];
+          if (
+            latest &&
+            !isTurnInFlight(latest) &&
+            latest.orchestrationStatus !== 'aborted'
+          )
+            drainQueuedMessageOnTurnCompleted(apiBase, sessionId);
         }
-        const latest = activeChatsStore.getSnapshot()[sessionId];
-        if ((latest?.input ?? '') === '') {
-          updateChat(sessionId, { input: submittedDraft });
-        }
-        return options?.dispatch
-          ? ({
-              kind: 'not-invoked',
-            } satisfies OutboundDispatchTransportResult)
-          : undefined;
       }
 
       const transaction = prepareSendTransaction({
@@ -434,8 +602,18 @@ export function useSendMessage(
           clientTurnId: resolvedTurnId,
           automaticBackground: Boolean(options?.dispatch),
           signal: abortController.signal,
+          skillExperience: sourceStart,
+          skillExperienceAttachmentRoles: experienceDraft?.definition.inputs
+            .filter((input) => input.kind === 'attachments')
+            .map((input) => input.id),
+          skillExperienceAttachmentAssignments:
+            experienceDraft?.attachmentAssignments,
+          requestScope: sourceStart
+            ? options?.experienceRequestScope
+            : undefined,
         });
 
+        if (sourceStart) invalidate(['skills', 'experiences', 'session']);
         if (currentState?.conversationId !== receipt.conversationId) {
           assignConversationId(sessionId, receipt.conversationId);
         }
@@ -443,6 +621,15 @@ export function useSendMessage(
           status: 'sending',
           abortController: undefined,
           orchestrationSessionStarted: true,
+          ...(sourceStart &&
+          activeChatsStore.getSnapshot()[sessionId]?.skillExperienceDraft ===
+            experienceDraft
+            ? {
+                skillExperienceDraft: undefined,
+                skillExperienceDraftInvalid: undefined,
+                skillExperienceActive: true,
+              }
+            : {}),
           // A continuation can start a child execution session. Keep the
           // durable tab keyed by its conversation while routing subsequent
           // live controls/events to the server-receipted child identity.
@@ -502,6 +689,24 @@ export function useSendMessage(
             } satisfies OutboundDispatchTransportResult)
           : true;
       } catch (error) {
+        if (sourceStart) {
+          const latest = activeChatsStore.getSnapshot()[sessionId];
+          const rollback = rejectedSendRollback(transaction, latest);
+          updateChat(sessionId, {
+            ...rollback,
+            status: 'idle',
+            abortController: undefined,
+            pendingClientTurnId: undefined,
+            sendAwaitingTurnStart: undefined,
+          });
+          clearStreamingMessage(sessionId);
+          addEphemeralMessage(sessionId, {
+            role: 'system',
+            content: `Visual skill start was not confirmed. Your selection is retained; inspect the conversation before trying again. ${error instanceof Error ? error.message : String(error)}`,
+          });
+          invalidate(['orchestration-sessions']);
+          return false;
+        }
         // #2436: a carried full access this device may not grant refused the
         // whole send. The pick is dropped (resending it could only be
         // refused again).
@@ -890,6 +1095,8 @@ export function useSendMessage(
     },
     [
       addEphemeralMessage,
+      experienceNamespace,
+      experienceAuthorityStatus,
       agentConnections,
       apiBase,
       assignConversationId,

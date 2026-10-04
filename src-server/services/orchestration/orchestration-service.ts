@@ -44,6 +44,7 @@ import type {
   OrchestrationSessionSummary,
   SessionBoardItem,
   SetApprovalModeResult,
+  SteerInputInspectionResult,
   SteerTurnResult,
 } from '@kontourai/station-contracts/orchestration';
 import {
@@ -96,6 +97,11 @@ import {
   SESSION_LIFECYCLE_TRANSITIONS,
 } from '@kontourai/station-contracts/session-lifecycle';
 import type { DeclaredOutputDescriptor } from '@kontourai/station-contracts/session-output-declaration';
+import type {
+  SkillExperienceIdentityV1,
+  SkillExperienceInvocationReferenceV1,
+  SkillExperienceStartInputV1,
+} from '@kontourai/station-contracts/skill-experience';
 import {
   INTERNAL_SESSION_READ_SCOPE,
   type InternalSessionReadScope,
@@ -270,6 +276,16 @@ import {
   createCredentialRecoveryModule,
 } from './credential-recovery-module.js';
 import { DeltaCoalescer, isCoalescableDelta } from './delta-coalescer.js';
+import {
+  assertDispatchCwdUnmoved,
+  DISPATCH_CANONICAL_CWD_METADATA_KEY,
+  type DispatchCwdAdmission,
+  type DispatchCwdOrigin,
+  DispatchCwdRefusedError,
+  dispatchCwdMovedError,
+  recordedDispatchCanonicalCwd,
+  withoutDispatchCanonicalCwd,
+} from './dispatch-cwd-admission.js';
 import type { EventBus } from './event-bus.js';
 import type {
   CommandRefusalPhase,
@@ -385,6 +401,11 @@ import {
   runSessionStartWithBoundary,
   type SessionTurnBoundaryAuthority,
 } from './session-turn-boundary.js';
+import {
+  SkillExperienceRuntime,
+  type SkillExperienceSource,
+  SkillExperienceUnavailableError,
+} from './skill-experience-runtime.js';
 import type { TurnDeduplicator } from './turn-deduplicator.js';
 import { TurnProgressTracker } from './turn-progress-tracker.js';
 import { TurnProvenanceSidecar } from './turn-provenance-sidecar.js';
@@ -417,6 +438,7 @@ function telemetryEngine(
  * from an HTTP route.
  */
 interface OrchestrationDispatchInternalOptions {
+  skillExperience?: SkillExperienceStartInputV1;
   /** Request authority forwarded only by the server-owned foreground resolver. */
   nativeMemoryReadAuthority?: SessionReadAuthority;
   sessionStartAdmission?: SessionCommandInternalOptions['sessionStartAdmission'];
@@ -777,6 +799,17 @@ interface OrchestrationServiceOptions {
   /** Destination-local resource resolution for new starts and missing-cwd recovery. */
   resolveProjectSessionDirectory?: (
     slug: string,
+  ) => Promise<string | undefined>;
+  /**
+   * #2873: the directory an engine connection starts a session in when the
+   * session has none of its own (an ACP connection's `config.cwd`), which
+   * only the adapter otherwise sees. `undefined` when the connection sets
+   * none. Read only for a start a dispatch route admitted by scope; such a
+   * start refuses when this is not wired.
+   */
+  resolveConnectionDefaultCwd?: (
+    provider: string,
+    connectionId: string | undefined,
   ) => Promise<string | undefined>;
   /**
    * This Station's `AppConfig.defaultWorkspaceIsolation` (#2144 slice 2).
@@ -3010,6 +3043,8 @@ export class OrchestrationService {
       );
       let session: ProviderSession;
       try {
+        // #2873: a respawn re-resolves the recorded folder like any start.
+        assertDispatchCwdUnmoved(startInput, startInput.cwd);
         session = await withTenantExecutionContext(tenantExecutionContext, () =>
           this.runEngineSessionStart(startInput.threadId, () =>
             adapter.startSession(startInput),
@@ -5360,7 +5395,9 @@ export class OrchestrationService {
           } = input as ProviderSessionStartInput;
           let startInput = await resolveStartSessionCwd(
             normalizeOmittedModelId(
-              stripReservedCapabilityMetadata(publicStartInput),
+              withoutDispatchCanonicalCwd(
+                stripReservedCapabilityMetadata(publicStartInput),
+              ),
             ),
             this.options.listProjects,
             this.options.observeCwdShadow,
@@ -5385,6 +5422,25 @@ export class OrchestrationService {
               readExecutionWorkspaceBinding(internal?.executionWorkspace) ??
               internal?.receiverExecutionAdmission?.admitted,
           );
+          // #2873: record the canonical folder a scoped dispatch was
+          // admitted into (decided again here, for the directory this start
+          // is bound to), or carry forward the one the conversation's
+          // previous session recorded for this same folder. Written after
+          // the strip above removed any caller-supplied value.
+          const dispatchCanonicalCwd = context.dispatchCwdAdmission
+            ? context.dispatchCwdAdmission.recheck(
+                ...(await this.dispatchCwdBinding(startInput, internal)),
+              )
+            : this.inheritedDispatchCanonicalCwd(startInput);
+          if (dispatchCanonicalCwd !== undefined) {
+            startInput = {
+              ...startInput,
+              metadata: {
+                ...startInput.metadata,
+                [DISPATCH_CANONICAL_CWD_METADATA_KEY]: dispatchCanonicalCwd,
+              },
+            };
+          }
           // Station #90 lane D (R1): the one start choke point. A start an
           // unverified agent caused (derived at the HTTP seam, carried in the
           // dispatch context) is marked so it acts for no one.
@@ -5522,14 +5578,30 @@ export class OrchestrationService {
           );
           let session: ProviderSession;
           try {
-            const invoke = () =>
-              withTenantExecutionContext(context.tenantExecutionContext, () =>
-                this.runEngineSessionStart(
-                  input.threadId,
-                  () => adapter.startSession(input),
-                  internal?.sessionStartAdmission,
-                ),
+            const invoke = async () => {
+              // #2873: the folder is decided again here, after every
+              // preceding await. From the check to the adapter call nothing
+              // yields: the start boundary below claims synchronously. It
+              // runs outside that boundary, which would record a throw as
+              // an uncertain start.
+              const binding = context.dispatchCwdAdmission
+                ? await this.dispatchCwdBinding(input, internal)
+                : undefined;
+              this.assertDispatchCwdAtSpawn(
+                input,
+                context.dispatchCwdAdmission,
+                binding,
               );
+              return withTenantExecutionContext(
+                context.tenantExecutionContext,
+                () =>
+                  this.runEngineSessionStart(
+                    input.threadId,
+                    () => adapter.startSession(input),
+                    internal?.sessionStartAdmission,
+                  ),
+              );
+            };
             // #484 phase A: the receiver-owned offer/binding recheck runs
             // INSIDE the provider-effect path — after every preceding await
             // and adjacent to the adapter invocation — so a withdrawn offer
@@ -5680,7 +5752,9 @@ export class OrchestrationService {
       isRejectedError: (error) =>
         error instanceof ModelLaunchPlanUnavailableError ||
         error instanceof SessionReattachConflictError ||
-        error instanceof ConcurrentEngineStartCapacityError,
+        error instanceof ConcurrentEngineStartCapacityError ||
+        // #2873: a refusal to start, with nothing run.
+        error instanceof DispatchCwdRefusedError,
       attachedSessionReadOnlyMessage: ATTACHED_SESSION_READ_ONLY_ERROR,
     });
   }
@@ -5783,6 +5857,7 @@ export class OrchestrationService {
     | ProviderSession
     | ProviderTurnStartResult
     | SteerTurnResult
+    | SteerInputInspectionResult
     | InterruptTurnResult
     | SetApprovalModeResult
     | undefined
@@ -5792,9 +5867,58 @@ export class OrchestrationService {
       | ProviderSession
       | ProviderTurnStartResult
       | SteerTurnResult
+      | SteerInputInspectionResult
       | InterruptTurnResult
       | SetApprovalModeResult
       | undefined;
+  }
+
+  private skillExperienceRuntime?: SkillExperienceRuntime;
+  registerSkillExperienceSource(source: SkillExperienceSource): boolean {
+    if (!this.options.eventStore) return false;
+    this.skillExperienceRuntime = new SkillExperienceRuntime(
+      this.options.eventStore,
+      source,
+    );
+    return true;
+  }
+  async readSkillExperience(
+    threadId: string,
+    authority: SessionReadScope,
+    cursor?: string,
+    limit?: number,
+    expected?: { identity: SkillExperienceIdentityV1; eventId: string },
+  ) {
+    if (!this.sessionAuthz.canReadSession(threadId, authority)) return null;
+    if (!this.skillExperienceRuntime)
+      throw new Error('Skill experience execution is unavailable.');
+    const view = await this.skillExperienceRuntime.read(
+      threadId,
+      cursor,
+      limit,
+      expected,
+    );
+    if (
+      !this.sessionAuthz.canReadSession(threadId, authority) ||
+      [...view.history, ...(view.current ? [view.current] : [])].some(
+        (item) => !this.sessionAuthz.canReadSession(item.threadId, authority),
+      )
+    )
+      return null;
+    return view;
+  }
+  private withCurrentSkillExperience<T>(
+    threadId: string,
+    effect: (context?: string) => Promise<T>,
+  ): Promise<T> {
+    if (this.skillExperienceRuntime)
+      return this.skillExperienceRuntime.admitCurrent(threadId, effect);
+    if (
+      this.options.eventStore?.listSkillExperienceEvents(threadId, undefined, 1)
+        .length
+    )
+      throw new Error('Skill experience execution is unavailable.');
+    return effect();
   }
 
   /** Register a server-owned per-turn admission observer. */
@@ -5858,6 +5982,7 @@ export class OrchestrationService {
       | ProviderSession
       | ProviderTurnStartResult
       | SteerTurnResult
+      | SteerInputInspectionResult
       | InterruptTurnResult
       | SetApprovalModeResult
       | undefined
@@ -6337,6 +6462,56 @@ export class OrchestrationService {
                         }
                       };
                       assertInputRequestCurrent();
+                      let experienceReference:
+                        | SkillExperienceInvocationReferenceV1
+                        | undefined;
+                      let experienceContext: string | undefined;
+                      if (internal?.skillExperience) {
+                        if (
+                          !this.skillExperienceRuntime ||
+                          !turnInput.clientTurnId
+                        )
+                          throw new Error(
+                            'Skill experience execution requires its supported contract and a client turn id.',
+                          );
+                        await this.skillExperienceRuntime.start(
+                          {
+                            threadId: turnInput.threadId,
+                            clientTurnId: turnInput.clientTurnId,
+                            selection: internal.skillExperience,
+                            hasProject:
+                              typeof this.readLatestSessionStartMetadata(
+                                turnInput.threadId,
+                              )?.projectSlug === 'string',
+                            hasConversation: Boolean(
+                              this.options.eventStore?.firstTurnStartedWithPrompt(
+                                turnInput.threadId,
+                              ) ||
+                                this.options.eventStore?.conversationForSession(
+                                  turnInput.threadId,
+                                )?.predecessorSessionId ||
+                                internal.skillExperience
+                                  .expectedPreviousInvocationEventId,
+                            ),
+                            attachmentCount: turnInput.attachments?.length ?? 0,
+                            questionnaireDelivery:
+                              adapter.provider === 'claude' ||
+                              adapter.provider === 'codex'
+                                ? 'canonical-request'
+                                : 'chat-fallback',
+                          },
+                          async (reference, prompt) => {
+                            experienceReference = reference;
+                            experienceContext = prompt;
+                            turnInput = {
+                              ...turnInput,
+                              displayInput:
+                                turnInput.displayInput ?? command.input.input,
+                              input: `${prompt}\n\n${turnInput.input}`,
+                            };
+                          },
+                        );
+                      }
                       const begun = boundary.beginInvocation(
                         new Date().toISOString(),
                       );
@@ -6363,6 +6538,7 @@ export class OrchestrationService {
                           turnInput.threadId,
                           context?.clientOrigin,
                           context?.principal,
+                          experienceReference,
                         );
                         // The Station-agent adapter owns the canonical provider
                         // turn id for this engine, so mint it before crossing its
@@ -6502,13 +6678,53 @@ export class OrchestrationService {
                           throw new ForegroundInvocationUnavailableError();
                         const sendAdapter = () => {
                           assertInputRequestCurrent();
-                          providerInvoked = true;
-                          return nativeForeground
-                            ? runWithNativeForegroundRelay(
-                                nativeForeground,
-                                () => adapter.sendTurn(turnInput),
+                          const effect = (prompt?: string) => {
+                            if (prompt) {
+                              experienceContext = prompt;
+                              turnInput = {
+                                ...turnInput,
+                                displayInput:
+                                  turnInput.displayInput ?? command.input.input,
+                                input: `${prompt}\n\n${turnInput.input}`,
+                              };
+                            }
+                            assertInputRequestCurrent();
+                            this.assertAdapterCurrent(adapter);
+                            providerInvoked = true;
+                            const send = () =>
+                              nativeForeground
+                                ? runWithNativeForegroundRelay(
+                                    nativeForeground,
+                                    () => adapter.sendTurn(turnInput),
+                                  )
+                                : adapter.sendTurn(turnInput);
+                            return adapter.provider === 'station-agent' &&
+                              turnCorrelation &&
+                              experienceContext
+                              ? runWithAuthorizedTurnCorrelation(
+                                  turnCorrelation,
+                                  send,
+                                  nativeMemory,
+                                  experienceContext,
+                                )
+                              : send();
+                          };
+                          return internal?.skillExperience &&
+                            this.skillExperienceRuntime
+                            ? this.skillExperienceRuntime.admitSelection(
+                                internal.skillExperience.identity,
+                                effect,
+                                {
+                                  threadId: turnInput.threadId,
+                                  previousEventId:
+                                    internal.skillExperience
+                                      .expectedPreviousInvocationEventId,
+                                },
                               )
-                            : adapter.sendTurn(turnInput);
+                            : this.withCurrentSkillExperience(
+                                turnInput.threadId,
+                                effect,
+                              );
                         };
                         if (
                           nativeTurn &&
@@ -6573,6 +6789,7 @@ export class OrchestrationService {
                           accepted.turnId,
                           context?.clientOrigin,
                           context?.principal,
+                          experienceReference,
                         );
                         if (earlyOriginEvent) {
                           this.projectAndPublishEvent(earlyOriginEvent);
@@ -6625,7 +6842,8 @@ export class OrchestrationService {
                         }
                         if (
                           !providerInvoked &&
-                          error instanceof ReceiverExecutionRefusal
+                          (error instanceof ReceiverExecutionRefusal ||
+                            error instanceof SkillExperienceUnavailableError)
                         ) {
                           // The post-preparation offer/binding recheck refused
                           // BEFORE the provider effect ran (`providerInvoked`
@@ -7046,7 +7264,32 @@ export class OrchestrationService {
           this.persistReceipt(receipt);
           return { receipt, result: interrupted };
         }
+        case 'inspectSteerInput': {
+          const stored = this.options.eventStore?.readSteerInput(command);
+          const result: SteerInputInspectionResult = stored ?? {
+            outcome: this.options.eventStore ? 'not-received' : 'indeterminate',
+            threadId: command.threadId,
+            clientInputId: command.clientInputId,
+          };
+          this.persistReceipt(receipt);
+          return { receipt, result };
+        }
         case 'steerTurn': {
+          const steerInput = command.clientInputId
+            ? {
+                threadId: command.threadId,
+                clientInputId: command.clientInputId,
+                input: command.input,
+                turnId: command.turnId,
+              }
+            : undefined;
+          const storedSteer =
+            steerInput && this.options.eventStore?.readSteerInput(steerInput);
+          if (storedSteer) {
+            this.persistReceipt(receipt);
+            return { receipt, result: storedSteer };
+          }
+
           // archive#3476: same as interrupt — no engine, therefore no live
           // turn to steer. `no-active-turn` is the existing vocabulary for
           // exactly this and is what the caller would have received anyway
@@ -7162,6 +7405,19 @@ export class OrchestrationService {
             this.persistReceipt(receipt);
             return { receipt, result };
           }
+          if (
+            steerInput &&
+            !this.options.eventStore?.claimSteerInput(steerInput)
+          ) {
+            const result: SteerTurnResult =
+              this.options.eventStore?.readSteerInput(steerInput) ?? {
+                outcome: 'indeterminate',
+                threadId: command.threadId,
+                clientInputId: steerInput.clientInputId,
+              };
+            this.persistReceipt(receipt);
+            return { receipt, result };
+          }
           this.inFlightSteers.add(command.threadId);
           try {
             try {
@@ -7184,17 +7440,18 @@ export class OrchestrationService {
                 context?.principal,
               );
               try {
-                await adapter.steerTurn(
-                  command.threadId,
-                  command.input,
-                  activeTurnId,
-                );
+                await this.withCurrentSkillExperience(command.threadId, () => {
+                  this.assertAdapterCurrent(adapter);
+                  return adapter.steerTurn!(
+                    command.threadId,
+                    command.input,
+                    activeTurnId,
+                  );
+                });
               } catch (steerError) {
-                // Mirrors sendTurn's own `!providerAccepted` branch above
-                // (:3780): the adapter never accepted this steer, so there
-                // is no eventual `turn.started` to attribute — discard the
-                // reservation rather than settling it into a permanently
-                // unmatched `#accepted` entry.
+                // Release transient attribution on a failed acknowledgement.
+                // The durable steer claim stays held because engine acceptance
+                // cannot be ruled out.
                 this.clientOriginTurns.cancel(command.threadId);
                 throw steerError;
               }
@@ -7209,6 +7466,16 @@ export class OrchestrationService {
               }
               this.assertAdapterCurrentAfterCommand(adapter);
             } catch (error) {
+              if (steerInput) {
+                const result: SteerTurnResult = {
+                  outcome: 'indeterminate',
+                  threadId: command.threadId,
+                  clientInputId: steerInput.clientInputId,
+                };
+                this.persistReceipt(receipt);
+                return { receipt, result };
+              }
+
               if (
                 error instanceof ProviderTurnEndedError ||
                 !this.isAdapterCurrent(adapter)
@@ -7229,6 +7496,22 @@ export class OrchestrationService {
             }
           } finally {
             this.inFlightSteers.delete(command.threadId);
+          }
+          if (steerInput) {
+            try {
+              this.options.eventStore!.confirmSteerInput(
+                steerInput,
+                activeTurnId,
+              );
+            } catch {
+              const result: SteerTurnResult = {
+                outcome: 'indeterminate',
+                threadId: command.threadId,
+                clientInputId: steerInput.clientInputId,
+              };
+              this.persistReceipt(receipt);
+              return { receipt, result };
+            }
           }
           const result: SteerTurnResult = {
             outcome: 'steered',
@@ -7289,56 +7572,59 @@ export class OrchestrationService {
               throw new Error('A cancelled question cannot carry answers.');
           }
 
-          if (command.expectedRequestEventId !== undefined) {
-            if (context?.requestCurrent && !context.requestCurrent())
-              throw new RequestEventGuardError(
-                'request_verification_unavailable',
-                'Request authority changed before the decision.',
-              );
-            // Adapter resolution can await. Recheck authorization and the exact
-            // current request immediately before its synchronous adapter handoff.
-            if (
-              context?.userId !== undefined &&
-              !this.sessionAuthz.canReadSessionForCommand(
-                command.threadId,
-                context.userId,
-                context.tenantExecutionContext,
+          const assertAnswerCurrent = () => {
+            if (command.expectedRequestEventId !== undefined) {
+              if (context?.requestCurrent && !context.requestCurrent())
+                throw new RequestEventGuardError(
+                  'request_verification_unavailable',
+                  'Request authority changed before the decision.',
+                );
+              // Adapter resolution can await. Recheck authorization and the exact
+              // current request immediately before its synchronous adapter handoff.
+              if (
+                context?.userId !== undefined &&
+                !this.sessionAuthz.canReadSessionForCommand(
+                  command.threadId,
+                  context.userId,
+                  context.tenantExecutionContext,
+                )
               )
-            )
-              throw new RequestEventGuardError(
-                'request_verification_unavailable',
-                'This request is no longer available to you.',
+                throw new RequestEventGuardError(
+                  'request_verification_unavailable',
+                  'This request is no longer available to you.',
+                );
+              const inspected = this.inspectAttentionRequest(
+                {
+                  threadId: command.threadId,
+                  requestId: command.requestId,
+                  requestEventId: command.expectedRequestEventId,
+                },
+                INTERNAL_SESSION_READ_SCOPE,
               );
-            const inspected = this.inspectAttentionRequest(
-              {
-                threadId: command.threadId,
-                requestId: command.requestId,
-                requestEventId: command.expectedRequestEventId,
-              },
-              INTERNAL_SESSION_READ_SCOPE,
-            );
-            if (!inspected || inspected.state === 'unavailable') {
-              throw new RequestEventGuardError(
-                'request_verification_unavailable',
-                'This request could not be verified. Inspect it again before responding.',
-              );
+              if (!inspected || inspected.state === 'unavailable') {
+                throw new RequestEventGuardError(
+                  'request_verification_unavailable',
+                  'This request could not be verified. Inspect it again before responding.',
+                );
+              }
+              if (inspected.state !== 'open')
+                throw new RequestEventGuardError(
+                  'request_event_changed',
+                  inspected.message,
+                );
+              if (inspected.provider !== adapter.provider)
+                throw new RequestEventGuardError(
+                  'request_event_changed',
+                  'The request engine changed. Inspect the current request before responding.',
+                );
+              if (!inspected.canRespond)
+                throw new RequestEventGuardError(
+                  'request_verification_unavailable',
+                  'This session cannot currently answer the request.',
+                );
             }
-            if (inspected.state !== 'open')
-              throw new RequestEventGuardError(
-                'request_event_changed',
-                inspected.message,
-              );
-            if (inspected.provider !== adapter.provider)
-              throw new RequestEventGuardError(
-                'request_event_changed',
-                'The request engine changed. Inspect the current request before responding.',
-              );
-            if (!inspected.canRespond)
-              throw new RequestEventGuardError(
-                'request_verification_unavailable',
-                'This session cannot currently answer the request.',
-              );
-          }
+          };
+          assertAnswerCurrent();
           // #484 continuation: a portable thread answers a provider request
           // ONLY under a fresh admission naming its exact association —
           // rechecked here, after the request-verification awaits above and
@@ -7420,18 +7706,39 @@ export class OrchestrationService {
                     : {}),
                 }
               : undefined;
-          await (requestContext
-            ? adapter.respondToRequest(
-                command.threadId,
-                command.requestId,
-                decision,
-                requestContext,
-              )
-            : adapter.respondToRequest(
-                command.threadId,
-                command.requestId,
-                decision,
-              ));
+          const answer = () => {
+            assertAnswerCurrent();
+            return requestContext
+              ? adapter.respondToRequest(
+                  command.threadId,
+                  command.requestId,
+                  decision,
+                  requestContext,
+                )
+              : adapter.respondToRequest(
+                  command.threadId,
+                  command.requestId,
+                  decision,
+                );
+          };
+          if (
+            command.expectedSkillExperience &&
+            (decision === 'accept' || decision === 'acceptForSession')
+          ) {
+            if (!this.skillExperienceRuntime)
+              throw new SkillExperienceUnavailableError(
+                'Skill experience execution is unavailable.',
+              );
+            await this.skillExperienceRuntime.admitFrame(
+              command.threadId,
+              command.expectedSkillExperience,
+              answer,
+            );
+          } else {
+            await (decision === 'accept' || decision === 'acceptForSession'
+              ? this.withCurrentSkillExperience(command.threadId, answer)
+              : answer());
+          }
           this.assertAdapterCurrentAfterCommand(adapter);
           if (editModeAnswer && editModeAnswer !== 'downgrade')
             this.recordEditModeAutoPosture(
@@ -7837,6 +8144,101 @@ export class OrchestrationService {
     );
     this.discardedEngineExitWaiters.set(threadId, cancelAndSettle);
     return { settled, cancel };
+  }
+
+  /**
+   * #2873: the directory a start is bound to, for the dispatch route's scope
+   * decision. `undefined` where Station chose the directory itself: a
+   * workspace it provisioned for this thread (a worktree), or the home
+   * default. A start with no directory at all is left to its engine
+   * connection, so that connection's default is read instead.
+   */
+  private async dispatchCwdBinding(
+    input: ProviderSessionStartInput,
+    internal: OrchestrationDispatchInternalOptions | undefined,
+  ): Promise<[string | undefined, DispatchCwdOrigin]> {
+    if (
+      internal?.foregroundInvocationAdmission?.provisionedWorkspace ??
+      readExecutionWorkspaceBinding(internal?.executionWorkspace) ??
+      internal?.receiverExecutionAdmission?.admitted
+    )
+      return [undefined, 'session'];
+    // Truthiness, as the ACP adapter's own chain (`input.cwd || connection`):
+    // an empty `cwd` is no directory, so the connection's default applies.
+    if (input.cwd)
+      return [input.cwdDefaulted ? undefined : input.cwd, 'session'];
+    if (!this.options.resolveConnectionDefaultCwd)
+      throw new DispatchCwdRefusedError(
+        'Station cannot tell where this engine connection would start the session, so it will not start it for an agent.',
+        'station_control_role_required',
+      );
+    const connectionId =
+      typeof input.metadata?.connectionId === 'string'
+        ? input.metadata.connectionId
+        : undefined;
+    return [
+      await this.options.resolveConnectionDefaultCwd(
+        input.provider,
+        connectionId,
+      ),
+      'connection',
+    ];
+  }
+
+  /**
+   * #2873: the last check before an engine is spawned for a new session.
+   * With the route's admission, its decision is run again and must still
+   * name the canonical folder `prepareStart` recorded; without one, a
+   * recorded folder (carried from the conversation's previous session) must
+   * still resolve to itself.
+   */
+  private assertDispatchCwdAtSpawn(
+    input: ProviderSessionStartInput,
+    admission: DispatchCwdAdmission | undefined,
+    binding: [string | undefined, DispatchCwdOrigin] | undefined,
+  ): void {
+    if (!admission || !binding) {
+      assertDispatchCwdUnmoved(input, input.cwd);
+      return;
+    }
+    const recorded = recordedDispatchCanonicalCwd(input.metadata);
+    const current = admission.recheck(...binding);
+    if (current !== recorded) throw dispatchCwdMovedError(recorded, current);
+  }
+
+  /**
+   * #2873: the canonical folder the conversation's previous session
+   * recorded, for a session that starts in that same folder (a continuation
+   * child, or the same thread started again). The newest session with a
+   * start record decides; a different folder carries nothing forward.
+   */
+  private inheritedDispatchCanonicalCwd(
+    input: ProviderSessionStartInput,
+  ): string | undefined {
+    const store = this.options.eventStore;
+    if (!store || !input.cwd) return undefined;
+    const conversationId = store.conversationForSession(
+      input.threadId,
+    )?.conversationId;
+    const threads = conversationId
+      ? store
+          .conversationSessions(conversationId)
+          .map((session) => session.sessionId)
+          .reverse()
+      : [input.threadId];
+    for (const threadId of threads) {
+      const started = store.latestEventByMethod(threadId, 'session.started')
+        ?.payload as { metadata?: Record<string, unknown> } | undefined;
+      if (!started) continue;
+      const recorded = recordedDispatchCanonicalCwd(started.metadata);
+      const cwd = store.readSessionByThread(threadId)?.cwd;
+      return recorded !== undefined &&
+        cwd !== undefined &&
+        resolve(expandTilde(cwd)) === input.cwd
+        ? recorded
+        : undefined;
+    }
+    return undefined;
   }
 
   /**

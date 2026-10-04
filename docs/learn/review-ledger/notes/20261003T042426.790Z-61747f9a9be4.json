@@ -1,0 +1,13 @@
+{
+  "revision": "08a213548109bdd66187c839046422a5da6b577e",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed merged-main bytes after foundation squash conflicts: retained bounded/revision-aware GitHub acquisition, source-qualified route and inspection/update visibility, retained UI stale/name-conflict guards, and current operator-only plugin catalog. Reconciled the merged API review record against actual merged document/source bytes instead of selecting either historical review. The executed focused and mutation evidence in the prior note remains local diagnostic proof; hosted/native/release/private-provider qualification remains NOT_VERIFIED.","inputs":["docs/architecture/module-map.md"]},
+
+    {"path":"docs/guides/plugins.md","note":"Reviewed merged-main bytes after foundation squash conflicts: retained bounded/revision-aware GitHub acquisition, source-qualified route and inspection/update visibility, retained UI stale/name-conflict guards, and current operator-only plugin catalog. Reconciled the merged API review record against actual merged document/source bytes instead of selecting either historical review. The executed focused and mutation evidence in the prior note remains local diagnostic proof; hosted/native/release/private-provider qualification remains NOT_VERIFIED.","inputs":["docs/guides/plugins.md"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed merged-main bytes after foundation squash conflicts: retained bounded/revision-aware GitHub acquisition, source-qualified route and inspection/update visibility, retained UI stale/name-conflict guards, and current operator-only plugin catalog. Reconciled the merged API review record against actual merged document/source bytes instead of selecting either historical review. The executed focused and mutation evidence in the prior note remains local diagnostic proof; hosted/native/release/private-provider qualification remains NOT_VERIFIED.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed merged-main bytes after foundation squash conflicts: retained bounded/revision-aware GitHub acquisition, source-qualified route and inspection/update visibility, retained UI stale/name-conflict guards, and current operator-only plugin catalog. Reconciled the merged API review record against actual merged document/source bytes instead of selecting either historical review. The executed focused and mutation evidence in the prior note remains local diagnostic proof; hosted/native/release/private-provider qualification remains NOT_VERIFIED.","inputs":["docs/reference/sdk.md"]}
+  ]
+}

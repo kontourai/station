@@ -1,0 +1,7 @@
+{
+  "revision": "b0568b6eb4305aa50f762e2715f69661608c94e3",
+
+  "notes": [
+    {"path":"docs/guides/monitoring.md","note":"Reviewed final narrow-screen layout at the owning stylesheet: the hero now takes the available width instead of clipping the graph, date/name rows wrap, and sparse visible axis labels retain every daily bar and tooltip. The prior compiled-browser measurement was 633px hero width in a 390px viewport; the width control measured 292px. Final compiled geometry is recorded separately. The coverage-refetch test now restores its fixture and supplies an actually complete cached source before injecting its read error. Existing accounting, importer and live-provider limits remain unchanged.","inputs":["docs/guides/monitoring.md"]}
+  ]
+}

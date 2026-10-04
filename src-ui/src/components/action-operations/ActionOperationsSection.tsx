@@ -17,7 +17,7 @@ interface ActionOperationGroups {
 }
 
 /** Activity grouping is a pure projection of canonical lifecycle state. */
-export function groupActionOperations(
+function groupActionOperations(
   operations: readonly ActionOperation[],
 ): ActionOperationGroups {
   return {
@@ -32,7 +32,8 @@ export function groupActionOperations(
     needsAttention: operations.filter(
       (operation) =>
         operation.status === 'failed' ||
-        (operation.progress.kind === 'phase' &&
+        ((operation.status === 'accepted' || operation.status === 'running') &&
+          operation.progress.kind === 'phase' &&
           operation.progress.code === 'reconciliation-required'),
     ),
     recent: operations.filter(
@@ -42,7 +43,9 @@ export function groupActionOperations(
   };
 }
 
-function progressLabel(operation: ActionOperation): string {
+function progressLabel(operation: ActionOperation): string | undefined {
+  if (operation.status !== 'accepted' && operation.status !== 'running')
+    return undefined;
   if (operation.progress.kind === 'phase') {
     return {
       preparing: 'Preparing',
@@ -105,12 +108,14 @@ function Group({
           const cancellable =
             operation.cancellation === 'supported' &&
             (operation.status === 'accepted' || operation.status === 'running');
+          const progress = progressLabel(operation);
           return (
             <li className="action-operations__row" key={operation.id}>
               <div className="action-operations__body">
                 <strong>{operation.title}</strong>
                 <span>
-                  {statusLabel(operation)} · {progressLabel(operation)} ·{' '}
+                  {statusLabel(operation)}
+                  {progress ? ` · ${progress}` : ''} ·{' '}
                   {relativeTimeAgo(Date.parse(operation.updatedAt), Date.now())}
                 </span>
                 {operation.errorSummary && (
@@ -186,6 +191,17 @@ export function ActionOperationsSection() {
   }
   if (!data || data.items.length === 0) return null;
   const groups = groupActionOperations(data.items);
+  const counts = [
+    groups.needsAttention.length > 0
+      ? `${groups.needsAttention.length} ${groups.needsAttention.length === 1 ? 'needs' : 'need'} attention`
+      : undefined,
+    groups.inProgress.length > 0
+      ? `${groups.inProgress.length} in progress`
+      : undefined,
+    groups.recent.length > 0 ? `${groups.recent.length} recent` : undefined,
+  ]
+    .filter(Boolean)
+    .join(' · ');
   const open = (operation: ActionOperation) => {
     if (operation.reentry.kind === 'conversation') {
       navigate(
@@ -211,44 +227,57 @@ export function ActionOperationsSection() {
           ? 'Refreshing…'
           : undefined;
   return (
-    <section className="action-operations" aria-label="Platform actions">
-      <div className="action-operations__header">
-        <div>
-          <h3>Platform actions</h3>
-          <span>Progress from this Station</span>
-        </div>
+    <details
+      className="action-operations"
+      aria-label="Platform actions"
+      open={groups.needsAttention.length > 0}
+    >
+      <summary className="action-operations__summary">
+        Platform actions <span>{counts}</span>
+      </summary>
+      <div className="action-operations__content">
+        <p className="action-operations__state">
+          All platform actions. Session filters do not apply.
+        </p>
         {connectionStatus && (
           <span role={error && !isFetching ? 'alert' : 'status'}>
             {connectionStatus}
           </span>
         )}
+        {cancel.error && (
+          <p className="action-operations__state" role="alert">
+            {cancel.error.message}
+          </p>
+        )}
+        <Group
+          title="In progress"
+          items={groups.inProgress}
+          onOpen={open}
+          onCancel={(operation) => cancel.mutate(operation.id)}
+          cancelling={cancel.isPending}
+        />
+        <Group
+          title="Needs attention"
+          items={groups.needsAttention}
+          onOpen={open}
+          onCancel={(operation) => cancel.mutate(operation.id)}
+          cancelling={cancel.isPending}
+        />
+        {groups.recent.length > 0 && (
+          <details>
+            <summary className="action-operations__summary">
+              Recent history ({groups.recent.length})
+            </summary>
+            <Group
+              title="Recent"
+              items={groups.recent}
+              onOpen={open}
+              onCancel={(operation) => cancel.mutate(operation.id)}
+              cancelling={cancel.isPending}
+            />
+          </details>
+        )}
       </div>
-      {cancel.error && (
-        <p className="action-operations__state" role="alert">
-          {cancel.error.message}
-        </p>
-      )}
-      <Group
-        title="In progress"
-        items={groups.inProgress}
-        onOpen={open}
-        onCancel={(operation) => cancel.mutate(operation.id)}
-        cancelling={cancel.isPending}
-      />
-      <Group
-        title="Needs attention"
-        items={groups.needsAttention}
-        onOpen={open}
-        onCancel={(operation) => cancel.mutate(operation.id)}
-        cancelling={cancel.isPending}
-      />
-      <Group
-        title="Recent"
-        items={groups.recent}
-        onOpen={open}
-        onCancel={(operation) => cancel.mutate(operation.id)}
-        cancelling={cancel.isPending}
-      />
-    </section>
+    </details>
   );
 }

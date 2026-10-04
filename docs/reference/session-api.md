@@ -21,6 +21,22 @@ They do not replace foreground chat or the Task's current-session association.
 
 ---
 
+## Visual Skill presentation
+
+Installed [Skill experiences](skill-experiences.md) use this same foreground
+Session lifecycle. A supported inventory advertises `executionContract: "1.0"`.
+An explicit composer send may carry `skillExperience` with pinned installed
+identity, validated inputs and a client turn ID. Project Environment defaults are
+resolved normally; remote execution is refused for this contract.
+
+`GET /api/orchestration/sessions/:threadId/skill-experience` projects immutable
+invocation history across existing conversation lineage. Canonical turns,
+requests, answers, decisions and outputs remain the execution facts. A removed
+source leaves history readable and refuses subsequent source-backed effects.
+Rich frame reads/answers additionally bind `{identity, eventId}` in
+`expectedSkillExperience` and require its fresh `agents.invoke` grant. Ordinary
+user controls omit that frame-specific admission.
+
 ## Start a conversation
 
 ```
@@ -67,6 +83,10 @@ Calls made by a station-control Agent also pass the
 owner and Project scope constrain local work, and remote reach requires a bound
 operator caller. These checks also cover input replies and follow-ups. They do
 not replace the operator UI or paired Device's own request authorization.
+For a new Session, Station repeats the folder decision immediately before it
+starts the engine. If the folder no longer resolves to the admitted canonical
+path, or the directory the engine would start in belongs to another scope, the
+request returns the same typed `403` and no engine starts.
 
 The response is a foreground handle containing `conversationId`, `sessionId`,
 `providerTurnId`, the
@@ -113,7 +133,7 @@ memory paths or another Session's memory identity.
 ## Lifecycle control commands
 
 `POST /api/orchestration/commands` is a control surface, not an execution selector.
-It accepts `adoptSession`, `interruptTurn`, `steerTurn`, `respondToRequest`,
+It accepts `adoptSession`, `interruptTurn`, `steerTurn`, `steerTurnOnce`, `inspectSteerInput`, `respondToRequest`,
 `setApprovalMode`, `discardDraft`, and `stopSession`. Commands use the execution
 Session ID as `threadId`, not an assumed copy of the Conversation ID.
 Public `startSession` and `sendTurn` commands do not exist; adapter dispatch remains
@@ -212,6 +232,12 @@ organization requires approval for this tool`; and a request flagged
 SDK 0.3.278 forwards the first two; Station reads `requiresUserInteraction`
 from the engine's own request. `request.opened` carries the sanitised
 `decisionReason` and any of the flags that are set.
+
+An approval-guardian allow is held to the same rule (#2947). In a Claude
+Session it answers a plain call with no `request.opened`; an escalation, a
+plan exit or a question opens a request even when the guardian allowed the
+call. In an ACP Session it answers no plan exit, question or sandbox
+network-host ask.
 
 Station also reads the engine's structured reason for each ask, which the
 SDK does not forward, from the engine's `can_use_tool` request (#2932). The
@@ -336,10 +362,32 @@ A client that folds raw events without the shared rule still sees it open.
 The remaining controls are defined by
 `src-server/routes/orchestration/orchestration.ts`:
 
-- `steerTurn`: `{ type: 'steerTurn', threadId, input, turnId? }` sends steering
+- `steerTurn`: `{ type: 'steerTurn', threadId, input, turnId?, clientInputId? }` sends steering
   input where the engine supports it. An ACP engine without a native steer
   method is steered by cancelling and re-prompting the running turn; that
   steer's `turn.started` carries `steerInterruptedRun: true`.
+  On this server, a stable `clientInputId` makes acknowledgement retries safe: a durable claim
+  precedes the adapter call, confirmed same-ID input returns its stored result,
+  and an unresolved or mismatched claim returns `outcome: 'indeterminate'`
+  without invoking the engine again. Retain the original `threadId`, `turnId`
+  and input on retry. Never turn an indeterminate steer into an automatic new
+  turn; retain it for review. The digest-only claim survives restart and is
+  removed with its Session. Calls without this optional ID retain the legacy
+  behavior and cannot claim transport idempotency.
+
+- `steerTurnOnce`: `{ type: 'steerTurnOnce', threadId, input, turnId?, clientInputId }`
+  requires a stable ID and normalizes to the same internal `steerTurn` command
+  before authorization and dispatch. Older servers reject this distinct wire
+  type before any engine invocation; they cannot silently discard the ID. The
+  receipt's `commandType` remains `steerTurn`. Use this variant for retry-safe
+  clients that may connect to older servers.
+- `inspectSteerInput`: `{ type: 'inspectSteerInput', threadId, input, turnId?, clientInputId }`
+  reads the original journal identity and returns `steered`, `indeterminate` or
+  `not-received`. It creates a standard command audit receipt, but never resolves
+  an adapter or invokes an engine. Inspect uncertain delivery first; only
+  `not-received` permits a protected same-ID first attempt. An unsupported lookup
+  or unresolved claim must remain held.
+
 - `setApprovalMode`: `{ type: 'setApprovalMode', threadId, approvalMode,
   basedOnSequence }` records an ordered posture decision. `basedOnSequence` is
   required: use the latest observed decision sequence, or `null` when none was
@@ -378,6 +426,19 @@ as observed progress without inventing a verdict. Discovery and parser limits
 are reported as incomplete observations. Cursor progress is saved after the
 page's events, so an interrupted import replays through durable event-id
 deduplication.
+
+Claude transcript observation persists a bounded, source-owned ancestry map
+with its cursor. Late turn-duration records close their known parent turn;
+unknown or evicted parents leave the current turn's usage accumulator intact.
+An older aggregation cursor without ancestry uses one bounded look-behind to
+recover identities after its exact active user boundary. It replays no counters
+or events; a boundary outside that window remains unknown.
+An event-limited page that stops within a record retains that record's incoming
+turn and usage state so replay resumes coherently. The per-turn conversation
+window retains all per-turn Claude and Muse usage observations within its
+existing bounds; it coalesces session-cumulative Codex observations to the latest
+snapshot. See [Profile usage](../guides/monitoring.md#profile-usage-and-paired-people)
+for measurement scopes and remaining coverage limits.
 
 Claude and Codex continuation require a verified source configuration identity.
 The local sources expose an opaque reference to the configured home; the native
@@ -432,7 +493,7 @@ failures can occur before a receipt exists. Acceptance is not turn completion:
   "receipt": {
     "commandId": "uuid, generated server-side",
     "threadId": "string",
-    "commandType": "adoptSession | interruptTurn | steerTurn | respondToRequest | setApprovalMode | discardDraft | stopSession",
+    "commandType": "adoptSession | interruptTurn | steerTurn | inspectSteerInput | respondToRequest | setApprovalMode | discardDraft | stopSession",
     "status": "accepted | rejected | failed",
     "createdAt": "ISO 8601 timestamp"
   }

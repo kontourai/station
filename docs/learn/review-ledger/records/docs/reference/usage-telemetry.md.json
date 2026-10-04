@@ -7,24 +7,22 @@
 
   "summary": "Actual activation, precedence, caller order, persistence repair, queue and shutdown semantics traced; generated inventory preserved exactly. Captured premature station_started description as separate recommendation.",
 
-  "limits": "No browser collaboration acceptance, physical Windows reference run, native build, live provider, deployment, IAM or device proof. No runtime fixes; recommendations retained for parent backlog triage.",
-
-  "document": {"digest":"34b601ece3b7647bf54b64ad183e7d78f57e819eb0f4b4946fd7ad164f453e55","revision":"402cc332734feae7e8d45cdacdfedf2459fa657e"},
+  "limits": "No browser collaboration acceptance, physical Windows reference run, native build, live provider, deployment, IAM or device proof. No runtime fixes; recommendations retained for parent backlog triage. Merge reconciliation preserves both prior review anchors below as historical evidence, not a new review of combined source bytes. Active bindings retain existing reviewed anchors; any mismatch with merged bytes remains stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"src-server/runtime/bootstrap/station-runtime.ts\",\"ours\":{\"digest\":\"d055b5251c1dd749a04c7024406f262a097b24f87f68caba2f8a83fdc257c779\",\"revision\":\"34838898143e9a6048203520cdc6da3f78ecf49e\"},\"main\":{\"digest\":\"4e02fdbdc3ab121af4b11113970aaca7f19ee98ad4e52bfdfc743ad74e6f9a90\",\"revision\":\"9f8b407fac4a9e5536d72ca49be3a0b77715e1d8\"}},{\"path\":\"src-server/services/orchestration/orchestration-service.ts\",\"ours\":{\"digest\":\"7d2f48c82a5a3d9421ac2bbb67ecf249e892c4f9024fd65f0edfa7eb2e4f459a\",\"revision\":\"0bf65df71b04f48768c1f5bdb16db77e361a3177\"},\"main\":{\"digest\":\"d22d84695d84c9341467067e356483457115768ac3b5f34e2c8cd5c27144fbab\",\"revision\":\"4e19fa6ac6b87dff5b671d3c90d3a5b48b5e6ec5\"}}].\n\nAdditional existing main limits (preserved verbatim): No browser collaboration acceptance, physical Windows reference run, native build, live provider, deployment, IAM or device proof. No runtime fixes; recommendations retained for parent backlog triage.\n\nStructural merge of 5dff1dc5d6661c9ced8a5ff40994b96f3e258e2e and d1f68396648a4d450f1d743e436df703be0935be preserves both prior immutable document/source anchors and historical checks. Selecting an existing current-byte binding is structural reconciliation only, not semantic approval of merged inputs. No new digest/revision or coverage baseline was minted. Competing prior anchors remain pending semantic review and supported recording after the merge commit: [{\"path\":\"src-server/runtime/bootstrap/station-runtime.ts\",\"ours\":{\"path\":\"src-server/runtime/bootstrap/station-runtime.ts\",\"digest\":\"9ff2f86499e6ed1a0d562c3a470536c57f97f9dc2bc66829c22d96fbb0ce29bc\",\"revision\":\"83c4111b8c4dcda1e978d78bb191c974888c9ca4\"},\"main\":{\"path\":\"src-server/runtime/bootstrap/station-runtime.ts\",\"digest\":\"92d31dd655d7c0a62ce68dc6fd804268cda2f357bb775a512ee974d7c09564db\",\"revision\":\"1a235cd9bc482738abe4c3f011f73be86074d667\"},\"active\":{\"path\":\"src-server/runtime/bootstrap/station-runtime.ts\",\"digest\":\"9ff2f86499e6ed1a0d562c3a470536c57f97f9dc2bc66829c22d96fbb0ce29bc\",\"revision\":\"83c4111b8c4dcda1e978d78bb191c974888c9ca4\"},\"decision\":\"neitherMatch\"}]",
 
   "sources": [
-    {"path":"src-server/routes/operations/usage-telemetry-disclosure.ts","digest":"b40a1332b3e54897d0384af9f3a529126643949cd3e00a4cdcd07d79b2d7af50","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/routes/operations/usage-telemetry-disclosure.ts",
 
-    {"path":"src-server/runtime/bootstrap/station-runtime.ts","digest":"92d31dd655d7c0a62ce68dc6fd804268cda2f357bb775a512ee974d7c09564db","revision":"1a235cd9bc482738abe4c3f011f73be86074d667"},
+    "src-server/runtime/bootstrap/station-runtime.ts",
 
-    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"14d4d68ff2f8715e1428ca985125a9eff9eb5a05ea52946dc16b4f5971405a34","revision":"bc671142a7ae70587daf5bb0d94732e8ca74600a"},
+    "src-server/services/orchestration/orchestration-service.ts",
 
-    {"path":"src-server/services/persisted-random-identifier.ts","digest":"e897c8573d1e8ff8e9fac3b29421582186111243e322a7415819b69db5f6f044","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/services/persisted-random-identifier.ts",
 
-    {"path":"src-server/services/usage-telemetry-inventory.ts","digest":"97ea2961f800d1e55c849aac60cd2e7fbf7315c46869389bcd31dc6d26513e61","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/services/usage-telemetry-inventory.ts",
 
-    {"path":"src-server/services/usage-telemetry-service.ts","digest":"477dd0b6487762648a027efc928cf3fc087fc5e406792728805996109148eb38","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/services/usage-telemetry-service.ts",
 
-    {"path":"src-ui/src/components/UsageTelemetryDisclosure.tsx","digest":"22f355153f99e1a50a62eaeeb5f2fbc31cf9e711570610dad952f4052b614a1f","revision":"0c1f436037261c43eeca3e079f5106948360c591"}
+    "src-ui/src/components/UsageTelemetryDisclosure.tsx"
   ],
 
   "checks": [

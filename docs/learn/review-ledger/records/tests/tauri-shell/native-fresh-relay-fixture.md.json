@@ -1,0 +1,37 @@
+{
+  "path": "tests/tauri-shell/native-fresh-relay-fixture.md",
+
+  "kind": "fixture",
+
+  "state": "classified",
+
+  "summary": "Owned source fixture prepares an unpaired real Station, private immutable scope/artifact inputs, normal local-account/sharing/native-enrollment runtime opt-ins, registry-backed targeted native invitations and real operator approval/Project-invitation APIs. Receiver harness uses default production Tauri clients and actual active-profile host authorization. Documents genuine provider and independent account/Device/Project stages, nondefault private listener, small text budget, bounded cleanup and outstanding TURN TTL.",
+
+  "limits": "The isolated normal Linux Node runtime and real loopback Project/shared-work publisher executed in the preserved failed fresh-d8dd-20261001 run. Public connector registration never occurred: its initial lease expired before process spawn, exact credentials/scope matched, actual register/withdraw and cleanup returned 401. Actual fresh native host ceremony, main WebView, ordinary UI driver, physical iOS Nightly and Zach acceptance remain NOT_VERIFIED. Pion staging/build and a matching artifact digest do not establish an application peer. Node guard is not an OS sandbox; routing revocation is not instantaneous TURN credential revocation or a financial spend cap.",
+
+  "sources": [
+    "scripts/lib/native-fresh-relay-fixture.ts",
+
+    "scripts/native-fresh-relay-fixture.ts",
+
+    "scripts/__tests__/native-fresh-relay-fixture.test.ts",
+
+    "tests/tauri-shell/native-fresh-relay-acceptance-webview.ts",
+
+    "scripts/native-relay-invite.ts",
+
+    "src-server/runtime/bootstrap/__tests__/self-hosted-connector-config.test.ts",
+
+    "packages/connect/src/core/nativeRelayLink.ts",
+
+    "packages/contracts/src/native-relay-link.ts"
+  ],
+
+  "checks": [
+    "Executed 2 focused keeper tests: genuine empty Device registry/private custody and real owned local TCP guard controls. Permission-fence mutation RED 1/2 then exact restoration GREEN 2/2.",
+
+    "Executed scripts typecheck (385 compiled, 56 inherited deferred), E2E typecheck, full read-only lint, and fixture-policy guard (33 tests). Source inspection of normal entrypoint/connector/provider/enrollment/operator owners; no deployment or physical lifecycle proof.",
+
+    "Executed read-only private SQLite/credential hash and run-artifact timestamp diagnosis; lease expiry11:29:15.273UTC, process spawn11:30:39.248UTC; revision0/last-seen null. Source provision idempotency and live-lease register/renew guards traced. Isolated exact-guard public broker GET returned404; no secret output, restart, lease mutation or TTL increase."
+  ]
+}
