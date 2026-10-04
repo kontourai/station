@@ -108,6 +108,10 @@ not inherit the record, and neither does a child Session that continues the
 conversation in a different folder than the previous Session recorded: it
 starts with no record.
 
+`declare_pull_request` answers the same scope rule for the calling Session
+itself: a caller that is not bound does not declare in a Session that runs
+unconfined (`host`) or whose Project Station cannot confirm, so a Codex Session
+reached by its URL token cannot declare from a full-access Session.
 Interrupting a delegated task follows the same scope as a follow-up to it.
 The same applies to the Session commands that act on another Session: steer
 and steer-input inspection, adopt, interrupt, stop and draft discard.
