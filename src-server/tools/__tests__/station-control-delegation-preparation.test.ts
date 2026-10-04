@@ -20,12 +20,12 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import { environmentId } from '@kontourai/station-contracts/execution-target';
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import {
   delegationAttemptClaimKey,
   FileDelegationAttemptClaimStore,
@@ -185,6 +185,7 @@ function localService() {
   };
 }
 
+const makeTempDir = trackTempDirs();
 let dir: string;
 let checkout: string;
 let head: string;
@@ -193,13 +194,9 @@ beforeEach(() => {
   vi.stubGlobal('fetch', fetchMock);
   fetchMock.mockReset();
   installReceiverFetch();
-  dir = mkdtempSync(join(tmpdir(), 'delegation-preparation-'));
+  dir = makeTempDir('delegation-preparation-');
   checkout = join(dir, 'checkout');
   head = createCheckout(checkout);
-});
-
-afterEach(() => {
-  rmSync(dir, { recursive: true, force: true });
 });
 
 const CLAIM_KEY = delegationAttemptClaimKey('dev-verified-1', 'attempt-1');

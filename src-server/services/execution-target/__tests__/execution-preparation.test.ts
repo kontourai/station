@@ -1,14 +1,8 @@
 import { execFileSync } from 'node:child_process';
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { beforeEach, describe, expect, test } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { ReceiverExecutionRefusal } from '../../projects/project-contribution-service.js';
 import {
   gitCommitAdapter,
@@ -34,12 +28,13 @@ function git(cwd: string, args: string[]): string {
   ).trim();
 }
 
+const makeTempDir = trackTempDirs();
 let dir: string;
 let checkout: string;
 let head: string;
 
 beforeEach(() => {
-  dir = mkdtempSync(join(tmpdir(), 'execution-preparation-'));
+  dir = makeTempDir('execution-preparation-');
   checkout = join(dir, 'checkout');
   mkdirSync(join(checkout, 'service', 'inner'), { recursive: true });
   git(checkout, ['init', '--initial-branch', 'main']);
@@ -48,10 +43,6 @@ beforeEach(() => {
   git(checkout, ['add', '-A']);
   git(checkout, ['commit', '-m', 'fixture']);
   head = git(checkout, ['rev-parse', 'HEAD']);
-});
-
-afterEach(() => {
-  rmSync(dir, { recursive: true, force: true });
 });
 
 function verify(cwd = checkout, value = head) {
