@@ -2549,6 +2549,7 @@ export function registerStartInHomeRegistry(
   uiPort: number,
   serverPid: number,
   consentPort?: number,
+  host?: string,
 ): void {
   try {
     // OWNERSHIP GUARDS, now inside the shared module's mutation lock
@@ -2568,6 +2569,8 @@ export function registerStartInHomeRegistry(
         port: serverPort,
         uiPort,
         consentPort: consentPort ?? serverPort + 3,
+        // The address the UI listener bound, so `station open` links to it.
+        ...(host ? { host } : {}),
         type: instanceTypeForCheckout(),
         status: 'running',
         pid: serverPid,
@@ -4260,6 +4263,7 @@ export async function start(opts: StartOptions = {}): Promise<void> {
           runningMatch.uiPort,
           runningMatch.serverPid,
           runningMatch.consentPort,
+          runningMatch.host,
         );
       }
       warnOnSharedHome(instanceId, projectHome);
@@ -4739,6 +4743,7 @@ export async function start(opts: StartOptions = {}): Promise<void> {
         uiPort,
         serverProc.pid!,
         consentPort,
+        host,
       );
     }
     console.log(`\n  ✓ Server: http://${healthHost}:${serverPort}`);
