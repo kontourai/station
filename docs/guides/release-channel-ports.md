@@ -227,6 +227,13 @@ planted. `install.ps1` runs the installed `node.exe` only from such a root.
 The launcher directory must not be writable by accounts other than the
 user, SYSTEM and Administrators.
 
+A Station the installer starts keeps Windows PowerShell's own output handle
+(.NET passes every inheritable handle to the processes it starts). A caller
+that reads `install.ps1`'s output through a pipe therefore sees its end only
+when that Station stops; PowerShell itself returns as soon as the install
+does. A console, `irm | iex` and `station upgrade` are unaffected, and
+`STATION_INSTALL_NO_START=1` avoids it.
+
 A Station service is not switched on Windows yet (#2675 slice W3): an install
 or uninstall whose install root a service runs is refused, with the remedy.
 `station upgrade` from a Windows archive install re-runs the active

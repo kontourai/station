@@ -235,7 +235,13 @@ function environment(stationRoot, manifestUrl, overrides = {}) {
   };
 }
 
-function runAsync(program, args, env, cwd = undefined) {
+function runAsync(
+  program,
+  args,
+  env,
+  cwd = undefined,
+  { startsStation = false } = {},
+) {
   // The server answers in this process, so the child must not block it:
   // spawn and wait on its exit rather than spawnSync.
   return new Promise((done) => {
@@ -257,12 +263,20 @@ function runAsync(program, args, env, cwd = undefined) {
       process.stdout.write(
         `--- ${program} ${args.join(' ')} -> ${status}\n${stdout}${stderr}\n`,
       );
-      // A process the installer left running (a started Station) must not
-      // hold the installer's output open: a caller reading it, such as
-      // PowerShell's own pipeline, would wait for Station to stop.
-      if (held)
+      // Windows PowerShell starts the installer core through .NET, which
+      // passes every inheritable handle on, so a Station the run started
+      // keeps PowerShell's own output handle, and a caller reading it
+      // through a pipe (as here) sees its end only when Station stops: an
+      // accepted gap, so a run that starts Station resolves on its exit. Any
+      // other run must not leave its output held, and PowerShell itself must
+      // always exit (#2675 W2: the installer once kept PowerShell waiting).
+      if (held && !startsStation)
         throw new Error(
           'smoke failed: the run exited, but a process it left behind still holds its output open',
+        );
+      if (held)
+        process.stdout.write(
+          '(the Station this run started still holds its output; resolved on exit)\n',
         );
       done({ status, stdout, stderr });
     };
@@ -273,7 +287,13 @@ function runAsync(program, args, env, cwd = undefined) {
   });
 }
 
-function runFile(shell, env, script = installScript, args = ['install']) {
+function runFile(
+  shell,
+  env,
+  script = installScript,
+  args = ['install'],
+  options = {},
+) {
   return runAsync(
     shell,
     [
@@ -286,6 +306,8 @@ function runFile(shell, env, script = installScript, args = ['install']) {
       ...args,
     ],
     env,
+    undefined,
+    options,
   );
 }
 
@@ -400,6 +422,9 @@ async function fullInstall() {
       STATION_INSTALL_SERVER_PORT: String(serverPort),
       STATION_INSTALL_UI_PORT: String(uiPort),
     }),
+    installScript,
+    ['install'],
+    { startsStation: true },
   );
   check(install.status === 0, 'full install (Windows PowerShell 5.1) failed');
   check(
@@ -445,6 +470,8 @@ async function fullInstall() {
     win32.join(systemRoot, 'System32', 'cmd.exe'),
     ['/d', '/c', launcher, 'upgrade'],
     full(''),
+    undefined,
+    { startsStation: true },
   );
   check(upgrade.status === 0, '`station upgrade` through the launcher failed');
   check(
