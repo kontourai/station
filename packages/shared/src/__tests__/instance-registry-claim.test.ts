@@ -15,14 +15,17 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { beforeEach, describe, expect, test } from 'vitest';
 import {
+  claimHostOwner,
   claimInstanceEntry,
   entryOwnedByLiveProcess,
+  type InstanceConfig,
   readInstanceRegistry,
   removeOwnedInstance,
   replaceInstance,
   updateOwnedInstance,
   upsertInstance,
 } from '../instance-registry.js';
+import { lookupProcessBirthFingerprint } from '../process-identity.mjs';
 
 const DEAD_PID = 2 ** 31 - 1;
 
@@ -448,5 +451,202 @@ describe('updateOwnedInstance (station#3064)', () => {
       return null;
     });
     expect(readInstanceRegistry(home).instances.dev.port).toBe(3242);
+  });
+});
+
+/**
+ * #2961 (ADR 0020 D4) — the one host-owner claim. A home has at most one live
+ * host, sidecar or service, and the claimant learns the winner from the same
+ * locked observation that refused it.
+ */
+describe('claimHostOwner (#2961)', () => {
+  const liveBirth = () => lookupProcessBirthFingerprint(process.pid)!;
+  const sidecar = (pid = process.pid): InstanceConfig => ({
+    port: 0,
+    type: 'sidecar',
+    status: 'starting',
+    pid,
+    birth: lookupProcessBirthFingerprint(pid) ?? undefined,
+  });
+
+  test('a live service refuses a sidecar claim and is reported as the owner', () => {
+    upsertInstance(
+      'default',
+      { port: 3242, type: 'service', pid: process.pid, birth: liveBirth() },
+      home,
+    );
+    const result = claimHostOwner('desktop-sidecar-1', {
+      home,
+      type: 'sidecar',
+      ownerPids: [process.pid],
+      publish: () => sidecar(),
+    });
+    expect(result).toEqual({
+      won: false,
+      reason: 'host-owned',
+      owners: [
+        { id: 'default', type: 'service', port: 3242, pid: process.pid },
+      ],
+    });
+    expect(
+      readInstanceRegistry(home).instances['desktop-sidecar-1'],
+    ).toBeUndefined();
+  });
+
+  test('a live sidecar refuses a service claim', () => {
+    upsertInstance('desktop-sidecar-9', sidecar(), home);
+    upsertInstance('default', { port: 3242, type: 'service' }, home);
+    const result = claimHostOwner('default', {
+      home,
+      type: 'service',
+      publish: (existing) => ({ ...existing!, pid: process.pid }),
+    });
+    expect(result).toMatchObject({
+      won: false,
+      reason: 'host-owned',
+      owners: [{ id: 'desktop-sidecar-9', type: 'sidecar' }],
+    });
+    expect(readInstanceRegistry(home).instances.default.pid).toBeUndefined();
+  });
+
+  test('an installed service with no live supervisor does not hold the home', () => {
+    upsertInstance(
+      'default',
+      { port: 3242, type: 'service', env: { ALLOWED_ORIGINS: 'x' } },
+      home,
+    );
+    expect(
+      claimHostOwner('desktop-sidecar-1', {
+        home,
+        type: 'sidecar',
+        ownerPids: [process.pid],
+        publish: () => sidecar(),
+      }),
+    ).toEqual({ won: true, published: true });
+    // Durable policy is never reaped by the claim.
+    expect(readInstanceRegistry(home).instances.default.env).toEqual({
+      ALLOWED_ORIGINS: 'x',
+    });
+  });
+
+  test('a sidecar may never displace a service record at its own id', () => {
+    upsertInstance('shared-id', { port: 3242, type: 'service' }, home);
+    expect(
+      claimHostOwner('shared-id', {
+        home,
+        type: 'sidecar',
+        ownerPids: [process.pid],
+        publish: () => sidecar(),
+      }),
+    ).toMatchObject({ won: false, reason: 'id-held' });
+    expect(readInstanceRegistry(home).instances['shared-id'].type).toBe(
+      'service',
+    );
+  });
+
+  test('a service adopts its own live unit record (reinstall, update hand-off)', () => {
+    upsertInstance(
+      'default',
+      { port: 3242, type: 'service', pid: process.ppid, birth: 'launcher' },
+      home,
+    );
+    expect(
+      claimHostOwner('default', {
+        home,
+        type: 'service',
+        publish: () => ({ port: 3242, type: 'service' }),
+      }),
+    ).toEqual({ won: true, published: true });
+  });
+
+  test('an own sidecar id is adopted only from a claimant pid or a gone process', () => {
+    upsertInstance('desktop-sidecar-1', sidecar(), home);
+    // Recorded by a live process the claimant does not speak for.
+    expect(
+      claimHostOwner('desktop-sidecar-1', {
+        home,
+        type: 'sidecar',
+        ownerPids: [DEAD_PID],
+        publish: () => sidecar(),
+      }),
+    ).toMatchObject({ won: false, reason: 'id-held' });
+    // Recorded by the claimant's supervisor: the listening child replaces it.
+    expect(
+      claimHostOwner('desktop-sidecar-1', {
+        home,
+        type: 'sidecar',
+        ownerPids: [process.pid, DEAD_PID],
+        publish: () => ({ ...sidecar(), pid: DEAD_PID, status: 'running' }),
+      }),
+    ).toEqual({ won: true, published: true });
+    // That child is gone: the next generation adopts the record again.
+    expect(
+      claimHostOwner('desktop-sidecar-1', {
+        home,
+        type: 'sidecar',
+        ownerPids: [12345],
+        publish: () => sidecar(),
+      }),
+    ).toEqual({ won: true, published: true });
+  });
+
+  test('a null publish wins without writing, and a foreign type is refused', () => {
+    expect(
+      claimHostOwner('default', {
+        home,
+        type: 'service',
+        publish: () => null,
+      }),
+    ).toEqual({ won: true, published: false });
+    expect(existsSync(join(home, 'instances.json'))).toBe(false);
+    expect(() =>
+      claimHostOwner('default', {
+        home,
+        type: 'service',
+        publish: () => sidecar(),
+      }),
+    ).toThrow("must publish a numeric port and type 'service'");
+  });
+});
+
+describe('removeOwnedInstance removeWhenOwnerGone (#2961)', () => {
+  test('removes an owned record whose different recorded pid is gone', () => {
+    upsertInstance(
+      'desktop-sidecar-1',
+      { port: 1, type: 'sidecar', pid: DEAD_PID, birth: 'gone' },
+      home,
+    );
+    expect(
+      removeOwnedInstance('desktop-sidecar-1', {
+        home,
+        pid: process.pid,
+        ownTypes: ['sidecar'],
+        removeWhenOwnerGone: true,
+      }),
+    ).toBe(true);
+  });
+
+  test('never removes a record a different live process holds', () => {
+    upsertInstance(
+      'desktop-sidecar-1',
+      {
+        port: 1,
+        type: 'sidecar',
+        pid: process.pid,
+        birth: lookupProcessBirthFingerprint(process.pid)!,
+      },
+      home,
+    );
+    expect(
+      removeOwnedInstance('desktop-sidecar-1', {
+        home,
+        pid: DEAD_PID,
+        ownTypes: ['sidecar'],
+        removeWhenOwnerGone: true,
+      }),
+    ).toBe(false);
+    expect(
+      readInstanceRegistry(home).instances['desktop-sidecar-1'],
+    ).toBeDefined();
   });
 });

@@ -101,6 +101,18 @@ export function isConversationContinuationPending(
   });
 }
 
+/**
+ * Whether the session ever started a turn (any `turn.*` event on record).
+ * This is only the eligibility hint for naming a predecessor to retire. A send
+ * that resolves between a first turn's dispatch and its `turn.started` write
+ * sees no turn here, so the stop is re-decided when it runs:
+ * `OrchestrationService.retireNeverRanSession` re-checks turn facts, in-flight
+ * turns and "no longer current" under the Session's lifecycle lock.
+ */
+function hasTurnFacts(detail: OrchestrationSessionDetail): boolean {
+  return detail.events.some((event) => event.method.startsWith('turn.'));
+}
+
 export function canResolveConversationContinuation(
   detail: OrchestrationSessionDetail,
 ): boolean {
@@ -198,6 +210,7 @@ export class ConversationLineage {
     resumeModel?: string;
     transcriptSeed?: string;
     contextBoundary?: ConversationContextBoundaryProjection;
+    retirePredecessorSessionId?: string;
   }> {
     const store = this.deps.eventStore;
     if (!store) {
@@ -325,6 +338,13 @@ export class ConversationLineage {
     return {
       sessionId: child.lineage.sessionId,
       startRequired: true,
+      // A model change on a session that never ran a turn leaves its engine
+      // process resident for nothing; name it so the start seam can end it
+      // once the successor is up. Any session with turn facts keeps today's
+      // lineage and lifecycle behaviour untouched.
+      ...(needsModelRestart && !hasTurnFacts(detail)
+        ? { retirePredecessorSessionId: current.sessionId }
+        : {}),
       ...continuationLaunchContext(
         detail,
         requested,

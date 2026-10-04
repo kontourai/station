@@ -93,7 +93,10 @@ execution child for the row's conversation, including when no turn is open.
 It is omitted when the current child is outside the caller's readable scope.
 `lastRuntimeErrorMessage` carries the current terminal error when the event
 fold can prove one; `lastTurnAbortReason` carries a non-recovery abort's
-reason. A later successful terminal clears them.
+reason. A later successful terminal clears them. `lastRuntimeErrorUsageLimit`
+is `true` when that terminal error carried an engine adapter's
+`UsageLimitFailureDetails` (a Claude Code or Codex usage limit); clients hold
+queued follow-ups on it until a turn starts or the user sends one.
 
 `ORCHESTRATION_STREAM_ACTIVITY_EVENT` names an idless SSE frame carrying the
 current conversation activity after a burst of coalesced runtime events. It
@@ -196,7 +199,7 @@ server-owned caller declares it, and no production caller does today
 builds the Muse adapter with neither `turnIdleTimeoutMs`
 nor `turnTimeoutMs`), so production Muse turns carry no Station-imposed
 bound. A turn that goes silent is surfaced instead: the stall watchdog's
-`progressSilence` (below) shows "No output for …" and the stall notice with a
+`progressSilence` (below) shows "No response from <engine> for …" and the stall notice with a
 Stop button, and the user decides. On the exec fallback, Stop signals the
 child's process group and settles the turn `turn.aborted`; the serve transport
 uses its interrupt protocol, described below. The following idle/total timer
@@ -634,3 +637,34 @@ identity values or credentials. `UsageReceipt.accountKey` is an optional opaque
 engine/profile observation from the applied process environment. Its absence
 means account attribution is unknown; consumers must not infer the current
 active account. These fields are observations, never billing or routing authority.
+
+
+### Usage observation provenance
+
+`@kontourai/station-contracts/usage-rollup` owns `UsageReceipt`, `UsageCoverage`,
+and `UsageRollup`. A receipt's optional `sourceSequence` is durable order within
+its Station/thread, not a provider-clock timestamp or an authorization grant.
+Same-source cumulative replacements use that order and preserve omitted
+measured components. Older peers can omit it and retain timestamp ordering.
+Sparse or mixed-model/pricing evidence cannot substantiate a combined estimate.
+`aggregateReceipts` is bounded logical transfer material, separate from the
+receipt drilldown. See the [analytics API](api.md#read-usage-receipts-and-rollups)
+for limits and observation-window semantics.
+
+
+## Immutable Task output review
+
+`@kontourai/station-contracts/project-task-room` defines
+`ProjectTaskRoomOutputFeedback`: `kind: 'output-feedback'`, an exact
+`target: {outputId, digest, taskCreatedAt}`, `review` and nonempty `text`.
+The digest is `sha256:` plus 64 lowercase hexadecimal characters and the Task
+creation time is canonical ISO UTC. Review values are `comment`,
+`changes-requested` and `accepted`; all are human speech, never a Task status
+transition or workflow approval. The browser DTO retains this target and the
+attributed human actor in ordinary room history.
+
+Room records accept legacy `station.project-task-room/v2` and new
+`station.project-task-room/v3`; output feedback requires v3 and an operator
+principal. Existing records retain their exact bytes and integrity digests.
+See the [API review contract](api.md#review-an-immutable-task-output) for the
+per-room old-writer fence and permanent duplicate identity behavior.

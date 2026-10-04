@@ -298,6 +298,97 @@ describe('PairedDevicesPanel', () => {
     expect(notice.querySelectorAll('a')).toHaveLength(1);
   });
 
+  test('#2898: a session still running unconfined can be stopped now from the revoke notice', async () => {
+    const calls: Array<RecordedCall & { body?: string }> = [];
+    let stopStatus = 500;
+    vi.spyOn(globalThis, 'fetch').mockImplementation(
+      async (input: URL | RequestInfo, init?: RequestInit) => {
+        const method = init?.method ?? 'GET';
+        calls.push({
+          url: String(input),
+          method,
+          auth: new Headers(init?.headers).get('Authorization'),
+          ...(typeof init?.body === 'string' ? { body: init.body } : {}),
+        });
+        if (method === 'DELETE')
+          return new Response(
+            JSON.stringify({
+              id: 'abc',
+              fullAccessRevocation: {
+                cause: 'device-revoked',
+                reset: [],
+                stillFullAccess: [],
+                reconfined: [],
+                stillUnconfined: [
+                  {
+                    conversationId: 'conversation:running',
+                    title: 'Deploy',
+                    sessionId: 'session-running',
+                    until: 'next-turn',
+                  },
+                  // An older Station's answer: nothing to stop it by here.
+                  {
+                    conversationId: 'conversation:older',
+                    until: 'engine-restart',
+                  },
+                ],
+                unattributedHostStarts: { sessions: [], total: 0 },
+              },
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          );
+        if (method === 'POST')
+          return new Response(JSON.stringify({ success: true }), {
+            status: stopStatus,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        return new Response(
+          JSON.stringify({ devices: [device({ id: 'abc', name: 'Pixel 9' })] }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      },
+    );
+    renderPanel();
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Revoke Pixel 9' }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+
+    const notice = await screen.findByTestId('full-access-revocation');
+    expect(notice.textContent).toContain(
+      'Deploy conversation:running, because its engine is running: a turn already running finishes unconfined, and its next turn runs confined',
+    );
+    // Only the entry that names a running session offers a stop.
+    expect(screen.getAllByRole('button', { name: /^Stop / })).toHaveLength(1);
+
+    // A refused stop says so, and can be tried again.
+    fireEvent.click(screen.getByRole('button', { name: 'Stop Deploy now' }));
+    expect((await screen.findByRole('alert')).textContent).toContain(
+      'Station could not stop it.',
+    );
+    stopStatus = 200;
+    fireEvent.click(screen.getByRole('button', { name: 'Stop Deploy now' }));
+    await waitFor(() =>
+      expect(notice.textContent).toContain(
+        'Deploy conversation:running, stopped: its next start runs confined.',
+      ),
+    );
+
+    const stops = calls.filter((call) => call.method === 'POST');
+    expect(stops).toHaveLength(2);
+    expect(stops[1]).toMatchObject({
+      url: 'https://station.example.ts.net/api/orchestration/commands',
+      auth: 'Bearer secret-credential',
+    });
+    expect(JSON.parse(stops[1]!.body!)).toEqual({
+      type: 'stopSession',
+      threadId: 'session-running',
+    });
+    expect(
+      screen.queryByRole('button', { name: 'Stop Deploy now' }),
+    ).toBeNull();
+  });
+
   test('#1796 G3: a revoke notice strips bidi and zero-width characters from titles', async () => {
     // RLO reverses what follows; LRI/PDI isolate; ZWSP/ZWJ are invisible.
     // Left in, a title could read as another conversation's.

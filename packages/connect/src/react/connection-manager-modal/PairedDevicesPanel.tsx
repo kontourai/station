@@ -96,6 +96,24 @@ export function PairedDevicesPanel({
     ],
   );
 
+  // #2898: "Stop now" on a session the revocation left running unconfined,
+  // with the same operator credential as the revocation itself.
+  const stopSession = useCallback(
+    async (sessionId: string) => {
+      try {
+        const response = await deviceAdminFetch('/api/orchestration/commands', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: 'stopSession', threadId: sessionId }),
+        });
+        return response.ok;
+      } catch {
+        return false;
+      }
+    },
+    [deviceAdminFetch],
+  );
+
   const refresh = useCallback(async () => {
     const current = ++generation.current;
     try {
@@ -323,6 +341,7 @@ export function PairedDevicesPanel({
         <FullAccessRevocationNotice
           outcome={revocation}
           onDismiss={() => setRevocation(null)}
+          onStopSession={stopSession}
         />
       )}
 

@@ -44,6 +44,8 @@ const KEYS_THE_DISSOLVED_CARD_RENDERED = [
   // the local device helper the Device pane lists simulators/emulators
   // through (env fallback STATION_MOBILE_DEVICE_HUB_URL).
   'mobileDeviceHubUrl',
+  // #3157: whether a usage-limit stop resumes itself after the reset.
+  'usageLimitAutoResume',
 ] as const;
 
 test('#2182: the split renders every key the one card used to, and no other', () => {

@@ -5245,6 +5245,7 @@ describe('station#1684: station-control over ACP HTTP MCP', () => {
       // startSession returns, not at stopSession or the 12-hour TTL.
       expect(revokeStationControlMcpAuth).toHaveBeenCalledWith(
         'thread-gate-impostor',
+        'station-control',
       );
 
       const configured = await configuredEvent(iterator);
@@ -5306,6 +5307,7 @@ describe('station#1684: station-control over ACP HTTP MCP', () => {
 
       expect(revokeStationControlMcpAuth).toHaveBeenCalledWith(
         'thread-gate-stale-path',
+        'station-control',
       );
 
       const configured = await configuredEvent(iterator);
@@ -5369,6 +5371,7 @@ describe('station#1684: station-control over ACP HTTP MCP', () => {
       // The revoke is unchanged and still correct — only the wording moves.
       expect(revokeStationControlMcpAuth).toHaveBeenCalledWith(
         'thread-gate-unresolved',
+        'station-control',
       );
 
       const configured = await configuredEvent(iterator);

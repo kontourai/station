@@ -1,0 +1,7 @@
+{
+  "revision": "f114b42162757399cb32b714f860c67c95011988",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Design round: tests/screenshots.spec.ts differs from main only through the base branch's merge of main; this branch adds no gallery screen and changes no lane. Its browser evidence rides existing specs (pull-request-review, conversation-pull-request-links, diff-review-annotations) and new focused unit files, as the guide's lanes describe. No prose change.","inputs":["docs/guides/testing.md","docs/guides/documentation.md","docs/guides/native-shell-verification.md","package.json","scripts/__tests__/path-read-pin-boundary.test.ts","scripts/test-impact-manifest.mjs","tests/tauri-shell/native-project-acceptance-webview.ts"]}
+  ]
+}
