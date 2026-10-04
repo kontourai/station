@@ -331,6 +331,36 @@ export function latestSendFailureLine(
   return undefined;
 }
 
+/**
+ * The newest "queued to retry" notice, for the composer to carry while a short
+ * dock hides the transcript that holds it. It is a queued send, not a failure,
+ * so `latestSendFailureLine` never repeats it; its action (Discard) is what the
+ * composer must keep reachable. Like a failure it is stale once a LATER message
+ * was accepted; `queued` (the chat still waits on its retry) ends it too, since
+ * the notice itself is left in the transcript after the retry settles.
+ */
+export function latestQueuedRetryNotice<
+  Message extends {
+    role: string;
+    content: string;
+    ephemeral?: boolean;
+    queuedRetry?: boolean;
+    action?: { label: string; handler: () => void };
+  },
+>(messages: readonly Message[], queued: boolean) {
+  if (!queued) return undefined;
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message.ephemeral) {
+      if (!message.queuedRetry || !message.action) continue;
+      const line = noticeLine(message.content);
+      return line ? { line, action: message.action } : undefined;
+    }
+    if (message.role === 'user') return undefined;
+  }
+  return undefined;
+}
+
 function noticeLine(content: string) {
   if (!content) return undefined;
   const line = content
@@ -765,6 +795,20 @@ export function ChatDockBody({
   );
   const ephemeralMessages = activeSession.messages.filter((m) => m.ephemeral);
   const sendFailureNotice = latestSendFailureLine(activeSession.messages);
+  const queuedRetry = latestQueuedRetryNotice(
+    activeSession.messages,
+    activeSession.status === 'queued',
+  );
+  const queuedRetryNotice = queuedRetry
+    ? {
+        text: queuedRetry.line,
+        // What the transcript's own action does: run it, then drop the notice.
+        onDiscard: () => {
+          queuedRetry.action.handler();
+          clearEphemeralMessages(activeSession.id);
+        },
+      }
+    : undefined;
 
   // Every "New chat" affordance funnels rejections here: a typed
   // NewChatUnavailableError (the chat never started) surfaces bare, anything
@@ -1836,6 +1880,7 @@ export function ChatDockBody({
             quoteContext={chatInput.quotes}
             sessionId={activeSession.id}
             sendFailureNotice={sendFailureNotice}
+            queuedRetryNotice={queuedRetryNotice}
             activeConversationId={activeSession.conversationId}
             input={chatInput.input}
             workingDirectory={workingDirectory}

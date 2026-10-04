@@ -4375,3 +4375,180 @@ test.describe('on a touch tablet wider than the phone breakpoint', () => {
     // not pin their size either way.
   });
 });
+
+// A send whose delivery is not confirmed is queued and retried by itself: that
+// is not a failure, so the composer does not repeat it as one. Its notice and
+// its one action, Discard, sit in the transcript, which a short dock shrinks
+// to nothing. The composer therefore carries the notice and Discard itself.
+async function queueSendForRetry(
+  page: Page,
+  viewport: { width: number; height: number },
+  options: { maximize?: boolean } = {},
+) {
+  await page.setViewportSize(viewport);
+  await installMockOrchestrationSse(page);
+  await mockChatShell(page);
+  const textarea = await openComposer(page, false, 'station');
+  // Station stops answering: the send and the queue's replays never arrive,
+  // and the connection check fails. A queued send is replayed the moment the
+  // connection reads as healthy, so the state under test (queued, waiting)
+  // exists only once the app has noticed the outage.
+  await page.route('**/api/orchestration/chat{,/background}', (route) =>
+    route.abort(),
+  );
+  for (const health of [
+    '**/api/system/status',
+    '**/api/system/identity',
+    '**/.well-known/station/v1',
+  ])
+    await page.route(health, (route) => route.abort());
+  await page.evaluate(() => window.dispatchEvent(new Event('online')));
+  await expect(
+    page.getByRole('button', { name: /^Choose Station — Connected/ }),
+  ).toHaveCount(0, { timeout: 30_000 });
+  if (options.maximize) await expandMobileDock(page);
+  await textarea.fill('Message that has to be retried');
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  // The transcript keeps the notice whether or not a short dock shows it.
+  await expect(
+    page
+      .locator('.chat-messages')
+      .getByText("Send wasn't confirmed — queued to retry automatically"),
+  ).toHaveCount(1);
+  // Measure the settled state: the queue has listed the waiting message and
+  // the send's "Working" pill has left.
+  await expect(page.getByText(/waiting to send/i)).toBeVisible();
+  await expect(page.locator('.chat-status-pill')).toHaveCount(0);
+  return { textarea };
+}
+
+/**
+ * Every Discard button the page has, with where it sits. The transcript's copy
+ * stays in the DOM when a short dock shrinks the transcript to nothing, so a
+ * button merely existing says nothing; one counts when it is wholly on screen,
+ * at least 44px each way and the topmost element at its own centre.
+ */
+async function discardButtonReport(page: Page) {
+  return page
+    .getByRole('button', { name: 'Discard', exact: true })
+    .evaluateAll((buttons) =>
+      buttons.map((button, index) => {
+        const rect = button.getBoundingClientRect();
+        const hit = document.elementFromPoint(
+          rect.x + rect.width / 2,
+          rect.y + rect.height / 2,
+        );
+        const onScreen =
+          rect.width > 0 &&
+          rect.height > 0 &&
+          rect.left >= 0 &&
+          rect.top >= 0 &&
+          rect.right <= innerWidth &&
+          rect.bottom <= innerHeight;
+        return {
+          index,
+          inComposer: button.closest('.chat-input') !== null,
+          box: [rect.left, rect.top, rect.width, rect.height].map(Math.round),
+          viewport: [innerWidth, innerHeight],
+          onScreen,
+          touchTarget: rect.width >= 43.99 && rect.height >= 43.99,
+          topmost: Boolean(hit && button.contains(hit)),
+          coveredBy:
+            hit && !button.contains(hit)
+              ? `${hit.tagName.toLowerCase()}.${String(hit.className).slice(0, 60)}`
+              : null,
+        };
+      }),
+    );
+}
+
+for (const [name, viewport, maximize] of [
+  ['a 375x667 half dock', { width: 375, height: 667 }, false],
+  ['a maximized 375x667 dock', { width: 375, height: 667 }, true],
+  ['a maximized 390x844 dock', { width: 390, height: 844 }, true],
+] as const) {
+  test(`a message queued for retry keeps a 44px Discard on screen and uncovered in ${name}`, async ({
+    page,
+  }, testInfo) => {
+    test.setTimeout(60_000);
+    const { textarea } = await queueSendForRetry(page, viewport, { maximize });
+    await expect
+      .poll(async () => {
+        const reports = await discardButtonReport(page);
+        return reports.some(
+          (report) => report.onScreen && report.touchTarget && report.topmost,
+        )
+          ? 'reachable'
+          : JSON.stringify(reports);
+      })
+      .toBe('reachable');
+    await page.screenshot({
+      path: testInfo.outputPath('queued-retry.png'),
+      animations: 'disabled',
+    });
+    const priority =
+      (await page.locator('.chat-dock__body[data-composer-priority]').count()) >
+      0;
+    if (priority) {
+      // The composer carries Discard. It takes no room of its own: it sits in
+      // the controls row, which stays one touch row, so the composer needs no
+      // more height than before and the draft's reservation is unchanged.
+      const controlsRow = await page
+        .locator('.chat-controls-row')
+        .boundingBox();
+      expect(controlsRow!.height).toBeLessThanOrEqual(44.5);
+      // Send is concealed from the accessibility tree while the draft is
+      // empty, so it is found by its group rather than by role.
+      const send = await page
+        .locator('.chat-input__submit-controls')
+        .boundingBox();
+      const carried = (await discardButtonReport(page)).find(
+        (report) => report.inComposer,
+      );
+      expect(carried, 'the composer carries a Discard').toBeDefined();
+      expect(
+        carried!.box[0] + carried!.box[2],
+        'Discard stays clear of Send',
+      ).toBeLessThanOrEqual(send!.x + 0.5);
+    } else {
+      // Not short enough to engage the composer's priority: the transcript's
+      // own Discard serves, and the draft keeps its full two-line floor.
+      const geometry = await textarea.evaluate((element) => {
+        const box = element.getBoundingClientRect();
+        const style = getComputedStyle(element);
+        const line =
+          Number.parseFloat(style.lineHeight) ||
+          Number.parseFloat(style.fontSize) * 1.2;
+        const chrome =
+          Number.parseFloat(style.paddingTop) +
+          Number.parseFloat(style.paddingBottom);
+        return {
+          visibleContent: box.height - chrome,
+          twoLines: 2 * line,
+          inViewport: box.top >= 0 && box.bottom <= innerHeight,
+        };
+      });
+      expect(geometry.inViewport, JSON.stringify(geometry)).toBe(true);
+      expect(
+        geometry.visibleContent,
+        JSON.stringify(geometry),
+      ).toBeGreaterThanOrEqual(geometry.twoLines - 1);
+    }
+    // Reachable without a pointer, and it does what the transcript's does.
+    const reachable = (await discardButtonReport(page)).find(
+      (report) => report.onScreen && report.touchTarget && report.topmost,
+    );
+    const discard = page
+      .getByRole('button', { name: 'Discard', exact: true })
+      .nth(reachable!.index);
+    await discard.focus();
+    await expect(discard).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(
+      page.getByRole('button', { name: 'Discard', exact: true }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByText("Send wasn't confirmed — queued to retry automatically"),
+    ).toHaveCount(0);
+  });
+}

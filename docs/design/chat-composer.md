@@ -284,9 +284,14 @@ simple per-device preference rather than claiming to detect an attached keyboard
   as one line: a refused or failed send or steer, a dropped queued message or a
   blocked send; slash-command output and status notices are not repeated, and
   a later accepted send clears it. A message queued to retry automatically is
-  not a failure and is not repeated; its notice and Discard stay in the
-  transcript, which a short dock hides, while the queued turn and its Retry
-  stay in the dock body), the chip strip drops to one scrolling row, and only then does
+  not a failure, so its notice is not repeated; its **Discard** is, because the
+  notice that carries it lives in the transcript this state shrinks to nothing.
+  The controls row shows **Discard** itself while the chat is still queued: a
+  44px touch target that adds no height (the row is already a touch row), whose
+  accessible description is the notice's words, and which does what the
+  transcript's Discard does (that one, like every transcript notice action, is
+  also 44px on a phone or touch screen). The queued turn and its Retry stay in
+  the dock body), the chip strip drops to one scrolling row, and only then does
   the draft shrink below two lines — scrolling, never overlapped, with Send
   always on screen. The transcript is never taken out of the layout, and the
   composer re-measures whenever a sibling in the dock appears, leaves or

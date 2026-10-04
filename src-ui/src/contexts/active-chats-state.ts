@@ -200,6 +200,12 @@ export type EphemeralMessage = ChatMessage & {
    * composer repeats only these, and only until a later send is accepted.
    */
   sendFailure?: boolean;
+  /**
+   * This notice says a send was queued to be retried by itself and carries the
+   * one way to discard it. A short dock hides the transcript, so the composer
+   * repeats it (with that action) while the chat is still queued.
+   */
+  queuedRetry?: boolean;
   id?: string;
   timestamp?: number;
   /** archive#1292: the one flag every ephemeral-notice reader checks. Always
@@ -1606,6 +1612,7 @@ export function createEphemeralMessageState(
     attachments?: any[];
     action?: { label: string; handler: () => void };
     sendFailure?: boolean;
+    queuedRetry?: boolean;
   },
   now: () => number,
   randomId: () => string,

@@ -1602,7 +1602,8 @@ button:hover {
      footer and toolbar rows (the 38px dock header's actions, live-work rows,
      the inbox footer, tool-call actions) that have no wrap rule or coverage at
      this width. */
-  .chat-input__blocked-actions > button {
+  .chat-input__blocked-actions > button,
+  .chat-input__queued-retry-actions > button {
     min-height: 44px;
     min-width: 44px;
   }

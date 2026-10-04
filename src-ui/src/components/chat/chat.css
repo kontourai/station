@@ -1231,6 +1231,42 @@
   display: block;
 }
 
+/* A send queued to retry by itself is not a failure, but its notice carries the
+   one way to discard it, and that sits in the transcript this same state
+   shrinks to nothing. The composer repeats just the action, in the controls row
+   (already a 44px touch row, so the draft's floor is untouched); the notice's
+   words are its accessible description. The shared `-actions` row rule
+   (index.css) gives the button its 44px floor. */
+.chat-input__queued-retry-actions {
+  display: none;
+  flex: 0 0 auto;
+  align-items: center;
+}
+
+.chat-dock__body[data-composer-priority] .chat-input__queued-retry-actions {
+  display: inline-flex;
+}
+
+/* The transcript's own action button (Retry, Discard, New chat…) is a touch
+   target on a phone or a touch screen; inline styles set its look, not this. */
+@media (max-width: 768px), (pointer: coarse) {
+  .ephemeral-message__action {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
+.chat-input__queued-retry-actions > button {
+  padding: 0 var(--space-1);
+  border: 0;
+  background: transparent;
+  color: var(--accent-primary);
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 /* The banner steps aside (the composer's own line repeats what failed). The
    transcript only gives up its padding and shrinks to nothing: it is never
    taken out of the layout, so a stale reading cannot remove the conversation. */
