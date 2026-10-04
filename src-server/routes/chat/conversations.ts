@@ -500,19 +500,29 @@ async function _listPersonalFileConversationItems(
   const pages = await Promise.all(
     [...memoryAdapters].map(async ([slug, adapter]) => {
       // #3112: a successor Session's record belongs to its conversation, which
-      // is listed under its own id.
-      const conversations = (
-        await adapter.queryConversations({
+      // is listed under its own id. Read further pages until the page is
+      // full, so filtered successors never shorten it.
+      const conversations: Awaited<
+        ReturnType<FileMemoryAdapter['queryConversations']>
+      > = [];
+      for (let offset = 0; conversations.length <= limit; ) {
+        const batch = await adapter.queryConversations({
           userId,
           resourceId: slug,
           orderBy: 'updated_at',
           orderDirection: 'DESC',
           limit: limit + 1,
-        })
-      ).filter(
-        (conversation) =>
-          lineage?.successorConversationId?.(conversation.id) === undefined,
-      );
+          offset,
+        });
+        conversations.push(
+          ...batch.filter(
+            (conversation) =>
+              lineage?.successorConversationId?.(conversation.id) === undefined,
+          ),
+        );
+        if (batch.length <= limit) break;
+        offset += batch.length;
+      }
       return {
         hasMore: conversations.length > limit,
         items: await Promise.all(

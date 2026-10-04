@@ -522,4 +522,34 @@ describe('Station-agent conversation storage (#3112)', () => {
       });
     }
   });
+
+  test('a page of conversations is not shortened by successor records it skips', async () => {
+    // An older direct chat: a file-store conversation with no Session.
+    modelMode.fail = false;
+    const direct = await relayChat({
+      body: JSON.stringify({
+        input: 'A direct chat',
+        options: { conversationId: 'conv-direct', userId: OWNER },
+      }),
+    });
+    await direct.text();
+    expect(await memoryAdapter.getConversation('conv-direct')).not.toBeNull();
+    await failTwice('conv-paged');
+
+    const page = await readJson<{
+      items: Array<{ id: string }>;
+      hasMore: boolean;
+    }>(agentRoutes(), `/${SLUG}/conversations?limit=1`);
+    expect(page.items.map((item) => item.id)).toEqual(['conv-paged']);
+    // The direct chat is beyond this page, not lost from it.
+    expect(page.hasMore).toBe(true);
+    const all = await readJson<{ items: Array<{ id: string }> }>(
+      agentRoutes(),
+      `/${SLUG}/conversations?limit=2`,
+    );
+    expect(all.items.map((item) => item.id)).toEqual([
+      'conv-paged',
+      'conv-direct',
+    ]);
+  });
 });
