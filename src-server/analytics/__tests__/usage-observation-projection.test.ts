@@ -162,6 +162,28 @@ async function memory(
   return path;
 }
 
+test.each([null, true, false, [], [day1], {}])(
+  'invalid persisted timestamp %j stays undated',
+  async (timestamp) => {
+    const f = fixture();
+    try {
+      await memory(f.home, 'invalid-date', {
+        timestamp,
+        usage: { inputTokens: 7 },
+      });
+      const stats = await f.current();
+      expect(stats.byDate).toEqual({});
+      expect(stats.lifetime.firstMessageDate).toBeUndefined();
+      expect(stats.unallocated?.date).toMatchObject({
+        messages: 1,
+        inputTokens: 7,
+      });
+    } finally {
+      f.store.close();
+    }
+  },
+);
+
 test('real usage GET allocates retained per-call facts across UTC days, models and recorded principals without inventing missing attribution', async () => {
   const f = fixture();
   try {

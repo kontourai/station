@@ -193,9 +193,9 @@ export function UsageStatsPanel() {
       </div>
 
       <p className="usage-period-note">
-        Lifetime summaries retain historical totals. Engine model totals use the
-        session’s latest model; use usage receipts for comparisons across
-        models.
+        {usageStats?.snapshot?.projection === 'retained-source-v1'
+          ? 'Totals rebuild from retained observations. Corrections and deletions change these totals; ambiguous dates and models remain unallocated.'
+          : 'This older summary retains historical totals and uses the latest engine model. Rebuild it to refresh the recorded evidence.'}
       </p>
       <UsagePeriodSelector value={period} onChange={setPeriod} />
 

@@ -2501,7 +2501,9 @@ export function configureRuntimeRoutes(
           .filter((peer): peer is NonNullable<typeof peer> => peer !== null),
       context.environmentSecurityService.devicePairing.environmentId(),
       (request) =>
-        !hostedTenantRegistry && isBoundRuntimeLocalOperator(request),
+        !hostedTenantRegistry &&
+        !isHostedTenantExecutionRequired() &&
+        isBoundRuntimeLocalOperator(request),
     ),
   );
   context.app.route('/api/telemetry', createTelemetryRoutes(context.logger));

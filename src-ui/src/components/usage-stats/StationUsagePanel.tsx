@@ -187,6 +187,13 @@ export function StationUsagePanel() {
             {overview.stats.snapshot?.mirroredEngineActivity && (
               <p>{overview.stats.snapshot.mirroredEngineActivity.reason}</p>
             )}
+            {overview.stats.snapshot?.ambiguousRelayActivity && (
+              <p>
+                {overview.stats.snapshot.ambiguousRelayActivity.completedTurns.toLocaleString()}{' '}
+                unresolved relay turns are excluded from these totals:{' '}
+                {overview.stats.snapshot.ambiguousRelayActivity.reason}
+              </p>
+            )}
             {overview.stats.legacySummary && (
               <p>
                 An older summary is retained as unverified migration evidence

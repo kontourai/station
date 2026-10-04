@@ -203,8 +203,12 @@ function usableFigure(value: unknown): number | undefined {
     : undefined;
 }
 
-function recordedDate(value: string | number | undefined): string | undefined {
-  if (value === undefined) return undefined;
+function recordedDate(value: unknown): string | undefined {
+  if (
+    typeof value !== 'string' &&
+    (typeof value !== 'number' || !Number.isFinite(value))
+  )
+    return undefined;
   const date = new Date(value);
   return Number.isFinite(date.getTime())
     ? date.toISOString().slice(0, 10)
