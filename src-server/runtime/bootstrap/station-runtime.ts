@@ -141,6 +141,7 @@ import {
   VirtualApplicationIngress,
 } from '../../services/connections/virtual-application.js';
 import { ConsentChannelService } from '../../services/consent/consent-channel.js';
+import { parseTrustedConsentOrigin } from '../../services/consent/consent-origin.js';
 import { AssignmentClaimService } from '../../services/evidence/assignment-claim-service.js';
 import type { ConsoleBridgeService } from '../../services/evidence/console-bridge-service.js';
 import { WorkflowSidecarService } from '../../services/evidence/workflow-sidecar-service.js';
@@ -1105,7 +1106,12 @@ export class StationRuntime {
   // (transaction store + truthful availability state) exists from
   // construction so routes can consult it even when the listener never
   // binds; the listener itself starts during initialize.
-  public readonly consentChannel = new ConsentChannelService();
+  // A malformed STATION_TRUSTED_CONSENT_ORIGIN throws here, refusing startup.
+  public readonly consentChannel = new ConsentChannelService({
+    trustedOrigin: parseTrustedConsentOrigin(
+      process.env.STATION_TRUSTED_CONSENT_ORIGIN,
+    ),
+  });
   private consentListener: ConsentListener | null = null;
   private usageTelemetry?: UsageTelemetryService;
   /** One durable operation authority shared by route and fleet composition. */

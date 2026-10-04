@@ -43,6 +43,17 @@ repository-owned private-tailnet deployment described in the
 [deployment guide](../guides/deployment.md) private, and do not expose it to an
 untrusted network.
 
+Consent decisions are served by a separate listener on its own origin. By
+default review URLs are `http://<request host>:<consent port>`. If
+`STATION_TRUSTED_CONSENT_ORIGIN` names an exact HTTPS origin (for example a
+second Tailscale Serve mapping to the consent port), Station issues review URLs
+at that origin and accepts a decision only when the request `Host` is that name
+and the `Origin` header equals it exactly, in addition to the existing nonce,
+Fetch Metadata and session checks. The setting adds no authority: a different
+HTTPS origin is refused, the origin is not an `ALLOWED_ORIGINS` entry, and a
+malformed value (http, path, userinfo, wildcard, IP literal) stops startup. See
+the [deployment guide](../guides/deployment.md#reaching-the-consent-origin-over-https).
+
 Origin and authentication are independent controls:
 
 - Origin limits which browser origins may call Station. It never identifies or
