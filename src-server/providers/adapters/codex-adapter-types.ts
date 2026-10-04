@@ -4,6 +4,7 @@ import type {
 } from '../adapter-shape.js';
 import type { CodexChildWorkState } from './codex-adapter-child-work.js';
 import type { CodexThreadSandbox } from './codex-approval-mode.js';
+import type { CodexUsageLimitState } from './codex-usage-limit.js';
 
 export interface CodexProcessLike {
   readonly pid?: number;
@@ -85,7 +86,7 @@ export interface AwaitingApprovalAcknowledgement {
   warned: boolean;
 }
 
-export interface CodexSessionRecord {
+export interface CodexSessionRecord extends CodexUsageLimitState {
   externalThreadId: string;
   codexThreadId: string;
   process: CodexProcessLike;

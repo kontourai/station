@@ -1,3 +1,4 @@
+import type { ChildWorkModel } from '@kontourai/station-contracts/child-work';
 import type {
   ConversationHandoffProjection,
   ConversationOpenResolution,
@@ -200,6 +201,12 @@ export type EphemeralMessage = ChatMessage & {
    * composer repeats only these, and only until a later send is accepted.
    */
   sendFailure?: boolean;
+  /**
+   * This notice says a send was queued to be retried by itself and carries the
+   * one way to discard it. A short dock hides the transcript, so the composer
+   * repeats it (with that action) while the chat is still queued.
+   */
+  queuedRetry?: boolean;
   id?: string;
   timestamp?: number;
   /** archive#1292: the one flag every ephemeral-notice reader checks. Always
@@ -250,6 +257,8 @@ export type ChatBackgroundTask = {
   toolCallId?: string;
   description?: string;
   subagentType?: string;
+  /** #3163: the child's own reported model, when its engine reported one. */
+  model?: ChildWorkModel;
   backgrounded?: boolean;
   /**
    * Nesting depth reported by the provider: 1 for a top-level spawn, N+1 for
@@ -389,6 +398,14 @@ export type ChatUIState = {
    * Session-scoped and not persisted.
    */
   sendAwaitingTurnStart?: boolean;
+  /**
+   * #3157: the conversation's latest turn ended on a provider usage limit.
+   * Automatic queue drains wait (the provider would refuse the follow-up, and
+   * its turn would retire the resume Station holds for the reset); a turn
+   * starting clears it. Set by the live `runtime.error` and by snapshots, from
+   * the server's own verdict. Session-scoped and not persisted.
+   */
+  usageLimitStopped?: boolean;
   /**
    * #2309: the turn the record showed open when the current send window
    * began (a stopped turn not yet aborted, typically). That turn opening
@@ -1606,6 +1623,7 @@ export function createEphemeralMessageState(
     attachments?: any[];
     action?: { label: string; handler: () => void };
     sendFailure?: boolean;
+    queuedRetry?: boolean;
   },
   now: () => number,
   randomId: () => string,

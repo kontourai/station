@@ -1,4 +1,4 @@
-import { execFileSync, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
   existsSync,
@@ -9,9 +9,15 @@ import {
 } from 'node:fs';
 import { basename, dirname, resolve, sep } from 'node:path';
 import {
+  execFileSyncBounded,
+  spawnSyncBounded,
+} from './lib/bounded-capture.mjs';
+import {
   gitLocationKeys,
   sanitizedGitEnvironment,
 } from './lib/git-environment.mjs';
+import { scaleLivenessMs } from './lib/liveness-scale.mjs';
+import { ensureLivenessScale } from './lib/liveness-scale-resolve.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import { collectVerificationProvenance } from './lib/test-reliability.mjs';
 import {
@@ -36,7 +42,7 @@ function fail(message) {
 }
 
 function git(root, args) {
-  return execFileSync('git', ['-C', root, ...args], {
+  return execFileSyncBounded('git', ['-C', root, ...args], {
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
     env: transferGitEnvironment(),
@@ -145,7 +151,7 @@ function sameProvenance(left, right, label) {
  */
 function verifyReusableBaseline(root, baseSha) {
   exactRoot(root, 'reusable baseline', baseSha);
-  const result = spawnSync(
+  const result = spawnSyncBounded(
     process.execPath,
     ['scripts/dependency-lifecycle.mjs', 'verify'],
     {
@@ -155,9 +161,11 @@ function verifyReusableBaseline(root, baseSha) {
       windowsHide: true,
     },
   );
-  if (result.status !== 0)
+  // A capture overflow (or a spawn failure) leaves no child output to show;
+  // the error's own message names the cause.
+  if (result.error || result.status !== 0)
     fail(
-      `dependencies:verify failed in ${root}: ${(result.stderr || result.stdout || '').trim().slice(-400)}`,
+      `dependencies:verify failed in ${root}: ${(result.error?.message || result.stderr || result.stdout || '').trim().slice(-400)}`,
     );
 }
 
@@ -270,8 +278,10 @@ export const TRANSFER_BASELINE_ROOT_ENV = 'STATION_TRANSFER_BASELINE_ROOT';
  */
 export function transferCaptureLivenessTimeoutMs(env = process.env) {
   const raw = env[TRANSFER_CAPTURE_TIMEOUT_ENV];
+  // Only the default scales with host pressure (#3302); an explicit value is
+  // the operator's chosen bound and is used as given.
   if (raw === undefined || raw.trim() === '')
-    return TRANSFER_CAPTURE_LIVENESS_TIMEOUT_MS;
+    return scaleLivenessMs(TRANSFER_CAPTURE_LIVENESS_TIMEOUT_MS, env);
   const value = Number(raw.trim());
   if (!Number.isSafeInteger(value) || value <= 0)
     fail(
@@ -696,7 +706,7 @@ function runTransferGateInner(options) {
   const timeout = transferCaptureLivenessTimeoutMs();
   if (timeout !== TRANSFER_CAPTURE_LIVENESS_TIMEOUT_MS)
     console.log(
-      `capture liveness bound raised to ${timeout}ms by ${TRANSFER_CAPTURE_TIMEOUT_ENV} (liveness guard only; not a measured budget)`,
+      `capture liveness bound raised to ${timeout}ms by ${TRANSFER_CAPTURE_TIMEOUT_ENV} or the host-pressure liveness scale (liveness guard only; not a measured budget)`,
     );
   // Mark first so a sibling session's prune sees this gate even while it
   // runs checks that never name the baseline in argv or cwd.
@@ -736,6 +746,7 @@ export function runTransferGate(options = parseArgs(process.argv.slice(2))) {
 
 if (invokedDirectly(import.meta.url)) {
   try {
+    await ensureLivenessScale();
     runTransferGate();
   } catch (error) {
     console.error(`FAIL: ${error instanceof Error ? error.message : error}`);

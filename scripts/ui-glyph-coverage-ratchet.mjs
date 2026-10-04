@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+
 // Gate for #1649. The UI's `--font-sans` resolves to `"DM Sans", system-ui,
 // sans-serif` and `src-ui/src/fonts.css` bundles latin + latin-ext subsets
 // only, so every codepoint outside those subsets is drawn by whatever the
@@ -40,8 +41,8 @@
 // a `main()` gated behind `invokedDirectly(import.meta.url)`,
 // `git ls-files`-scoped).
 
-import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import {
   assertCoverageIntegrity,
@@ -118,10 +119,14 @@ function main() {
   );
   assertCoverageIntegrity({ ranges, declarationCount });
 
-  const tracked = execFileSync('git', ['ls-files', '--', ...SCAN_PATHSPECS], {
-    encoding: 'utf8',
-    windowsHide: true,
-  })
+  const tracked = execFileSyncBounded(
+    'git',
+    ['ls-files', '--', ...SCAN_PATHSPECS],
+    {
+      encoding: 'utf8',
+      windowsHide: true,
+    },
+  )
     .trim()
     .split('\n')
     .filter(Boolean);
