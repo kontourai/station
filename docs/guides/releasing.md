@@ -151,7 +151,10 @@ for local automation credentials and the repository instructions for arm/confirm
 Nightly has two entry points, and both serialize on one `nightly` concurrency
 group:
 
-- **From qualification.** When a main qualification run passes, it calls
+- **From qualification** (dormant until the owner sets the repository variable
+  `STATION_QUALIFIED_NIGHTLY` to `enabled`, after admitting
+  `main-qualification.yml@refs/heads/main` to the GCP workload identity
+  condition that Android staging uses). When a main qualification run passes, it calls
   [Nightly](../../.github/workflows/nightly.yml) from inside the same run for
   the commit it just qualified. That run's triggering commit is the qualified
   commit, and attestations, provenance and the cohort verifiers all bind to it.
@@ -175,8 +178,9 @@ The native cohort refuses a source its published markers already contain, so a
 Nightly that waited behind a newer one cannot move the markers back. A failed
 Nightly started from qualification leaves that qualification run red. Repair
 judges the run by its `Full source qualification` job, so the failure does not
-open a repair episode. `Main pipeline health` also does not watch it, so read
-the run itself. Manual delivery remains available. Preview
+open a repair episode, and source-qualification reuse also judges that run by
+the same gate job, so the passing qualification still counts. `Main pipeline
+health` does not watch the publication, so read the run itself. Manual delivery remains available. Preview
 and Stable are evidence-driven owner decisions, not automatic calendar releases.
 No public release is created merely by merging a normal PR. Package-version
 PR maintenance still runs on main pushes; the manual package-publish operation
