@@ -7,118 +7,116 @@
 
   "summary": "All 16 manual topics and metadata reviewed at their explanatory scope. Corrected optional Flow, engine delivery and authority, Agent/Task ownership, schedule forms, Fleet evidence and plugin/SDK contracts. Bounded MCP policy delta: reviewed secure-scheme filtering versus complete CSP source-expression validation and effective browser containment; routes to the current host design without upgrading ordinary tool availability to rendering qualification.",
 
-  "limits": "No live external-engine MCP delivery, plugin installation, provider execution, Fleet/device journey or repository-wide certification. Architecture topics have their own separate review scope.",
-
-  "document": {"digest":"c285f94ae042c902a6eeefc49821e4a3b4200d11716df22fbe9f89ba76c8a40a","revision":"9785e029ae32c7061de1a85ce63f0dc8dfe6f907"},
+  "limits": "No live external-engine MCP delivery, plugin installation, provider execution, Fleet/device journey or repository-wide certification. Architecture topics have their own separate review scope. Merge reconciliation preserves both prior review anchors below as historical evidence, not a new review of combined source bytes. Active bindings retain existing reviewed anchors; any mismatch with merged bytes remains stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"src-ui/src/hooks/useActiveChatSessionLifecycle.ts\",\"ours\":{\"digest\":\"5c2e758b958003e6c9dcc1e267ab344c18dd047bf30701d41b51fa0102aa2f61\",\"revision\":\"0c1f436037261c43eeca3e079f5106948360c591\"},\"main\":{\"digest\":\"2a90e4f43cde95121b12aec4ae642905f1329e9e23e95f797a41cd6746da9349\",\"revision\":\"2f3085a2920085f2283c41a1b0431a6ded12a480\"}},{\"path\":\"src-server/providers/adapters/acp-adapter.ts\",\"ours\":{\"digest\":\"4e098438c4306d4d1badb66d30cfb4bf541d3cbfbbf506805f11162bab2ad9ce\",\"revision\":\"84b98846bc1582f438d70871d4479283b5db1e67\"},\"main\":{\"digest\":\"ef06d970f1255c68262a8841e3684bcd94707cabb4d59b84bd691754b9214f9b\",\"revision\":\"17f96f535b5e1f8339d821a6b9cff9299f895b0e\"}},{\"path\":\"src-server/services/orchestration/orchestration-service.ts\",\"ours\":{\"digest\":\"7d2f48c82a5a3d9421ac2bbb67ecf249e892c4f9024fd65f0edfa7eb2e4f459a\",\"revision\":\"d721bd87d11a593f8d14d47c7a3184b797e61093\"},\"main\":{\"digest\":\"d22d84695d84c9341467067e356483457115768ac3b5f34e2c8cd5c27144fbab\",\"revision\":\"4e19fa6ac6b87dff5b671d3c90d3a5b48b5e6ec5\"}},{\"path\":\"src-server/tools/station-docs-content.ts\",\"ours\":{\"digest\":\"ae0027d60418e07585a986f9c60c6a356bde3bb2e22b75b2ce4f9fd8d3ceb639\",\"revision\":\"c3965cd344457289a429480bd1ccc845d5b95adf\"},\"main\":{\"digest\":\"27cfd3498b4543c9d1f04538671ffeb60dc245442284d6983cc97c20f901d113\",\"revision\":\"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac\"}},{\"path\":\"src-server/services/orchestration/orchestration-session-state.ts\",\"ours\":{\"digest\":\"b3d346bc1cef6f3b854aec16651f5d40189d69c6f7ed863863d02bdd4f86ea04\",\"revision\":\"d721bd87d11a593f8d14d47c7a3184b797e61093\"},\"main\":{\"digest\":\"44a232d30c1d080f58b798e418a54d3adacb1086b3b6757a06f307370b703943\",\"revision\":\"af3c8fbfee90c9179a0ac19659b76d24c707d574\"}}].\n\nAdditional existing main limits (preserved verbatim): No live external-engine MCP delivery, plugin installation, provider execution, Fleet/device journey or repository-wide certification. Architecture topics have their own separate review scope.\n\nStructural merge of 5fd2dd86ad0cd35018ce09537c1aa01ce58e0e55 and 8f9ea788561518398a488d35bb768b78a272e73b preserves both prior immutable document/source anchors and historical checks. Selecting an existing current-byte binding is structural reconciliation only, not semantic approval of merged inputs. No new digest/revision or coverage baseline was minted. Competing prior anchors remain pending semantic review and supported recording after the merge commit: [{\"path\":\"docs/reference/station-docs.md\",\"ours\":{\"digest\":\"9e17f0b1ab7f479d22fbcceeba33b78274cf022f4306da4fceb1ed026d791f11\",\"revision\":\"da7d7a5a189e8873b3d8047937486727c258feb3\"},\"main\":{\"digest\":\"20355d38c989b077e221d2811b14cd933fb656df7e4e864a90140ffd16520a1b\",\"revision\":\"69eb5db90072c149c16115135f495ac538155e71\"},\"active\":{\"digest\":\"20355d38c989b077e221d2811b14cd933fb656df7e4e864a90140ffd16520a1b\",\"revision\":\"69eb5db90072c149c16115135f495ac538155e71\"},\"decision\":\"mainMatch\"},{\"path\":\"packages/contracts/src/engine-capability-matrix.ts\",\"ours\":{\"path\":\"packages/contracts/src/engine-capability-matrix.ts\",\"digest\":\"e6d2c0397a5894f2f2c8aa175e9a6cd240c8a4445269041c982019245c5cc102\",\"revision\":\"0c1f436037261c43eeca3e079f5106948360c591\"},\"main\":{\"path\":\"packages/contracts/src/engine-capability-matrix.ts\",\"digest\":\"db82340760d09e965ac7ed17830f36060573fe48545995d4ad9149b755d36ea1\",\"revision\":\"518fae654af981373e872c2ab85438bb1b1b0e67\"},\"active\":{\"path\":\"packages/contracts/src/engine-capability-matrix.ts\",\"digest\":\"db82340760d09e965ac7ed17830f36060573fe48545995d4ad9149b755d36ea1\",\"revision\":\"518fae654af981373e872c2ab85438bb1b1b0e67\"},\"decision\":\"mainMatch\"},{\"path\":\"src-server/providers/adapters/acp-adapter.ts\",\"ours\":{\"path\":\"src-server/providers/adapters/acp-adapter.ts\",\"digest\":\"ef06d970f1255c68262a8841e3684bcd94707cabb4d59b84bd691754b9214f9b\",\"revision\":\"17f96f535b5e1f8339d821a6b9cff9299f895b0e\"},\"main\":{\"path\":\"src-server/providers/adapters/acp-adapter.ts\",\"digest\":\"b67b8535152f5964f1491089851480aadca7d18ff7106a0300a526dbabe82f65\",\"revision\":\"b2d3503cd33490cf074a99eae94562607360f72b\"},\"active\":{\"path\":\"src-server/providers/adapters/acp-adapter.ts\",\"digest\":\"b67b8535152f5964f1491089851480aadca7d18ff7106a0300a526dbabe82f65\",\"revision\":\"b2d3503cd33490cf074a99eae94562607360f72b\"},\"decision\":\"mainMatch\"},{\"path\":\"src-server/runtime/agents/runtime-default-agent.ts\",\"ours\":{\"path\":\"src-server/runtime/agents/runtime-default-agent.ts\",\"digest\":\"1e8ca834f915e477e055a6bda36e08d6cc4375d9604345bd69ef726082596e9f\",\"revision\":\"0c1f436037261c43eeca3e079f5106948360c591\"},\"main\":{\"path\":\"src-server/runtime/agents/runtime-default-agent.ts\",\"digest\":\"ac9e7fb59ca6ef72a15b70ce7a91c5510659a36e8a1f2686f355a08199eefdef\",\"revision\":\"69eb5db90072c149c16115135f495ac538155e71\"},\"active\":{\"path\":\"src-server/runtime/agents/runtime-default-agent.ts\",\"digest\":\"ac9e7fb59ca6ef72a15b70ce7a91c5510659a36e8a1f2686f355a08199eefdef\",\"revision\":\"69eb5db90072c149c16115135f495ac538155e71\"},\"decision\":\"mainMatch\"},{\"path\":\"src-server/services/orchestration/orchestration-service.ts\",\"ours\":{\"path\":\"src-server/services/orchestration/orchestration-service.ts\",\"digest\":\"d22d84695d84c9341467067e356483457115768ac3b5f34e2c8cd5c27144fbab\",\"revision\":\"4e19fa6ac6b87dff5b671d3c90d3a5b48b5e6ec5\"},\"main\":{\"path\":\"src-server/services/orchestration/orchestration-service.ts\",\"digest\":\"14d4d68ff2f8715e1428ca985125a9eff9eb5a05ea52946dc16b4f5971405a34\",\"revision\":\"bc671142a7ae70587daf5bb0d94732e8ca74600a\"},\"active\":{\"path\":\"src-server/services/orchestration/orchestration-service.ts\",\"digest\":\"14d4d68ff2f8715e1428ca985125a9eff9eb5a05ea52946dc16b4f5971405a34\",\"revision\":\"bc671142a7ae70587daf5bb0d94732e8ca74600a\"},\"decision\":\"mainMatch\"},{\"path\":\"src-server/services/orchestration/session-agent-resolution.ts\",\"ours\":{\"path\":\"src-server/services/orchestration/session-agent-resolution.ts\",\"digest\":\"4ec510404c46aa8fd0bd0739e593acb214998048418fcac797cbc66a031cea8a\",\"revision\":\"da7d7a5a189e8873b3d8047937486727c258feb3\"},\"main\":{\"path\":\"src-server/services/orchestration/session-agent-resolution.ts\",\"digest\":\"9782644b16fc2b7480f868339465b2acae5b7d59d880c718a2d5453213171009\",\"revision\":\"69eb5db90072c149c16115135f495ac538155e71\"},\"active\":{\"path\":\"src-server/services/orchestration/session-agent-resolution.ts\",\"digest\":\"9782644b16fc2b7480f868339465b2acae5b7d59d880c718a2d5453213171009\",\"revision\":\"69eb5db90072c149c16115135f495ac538155e71\"},\"decision\":\"mainMatch\"},{\"path\":\"src-server/tools/station-docs-content.ts\",\"ours\":{\"path\":\"src-server/tools/station-docs-content.ts\",\"digest\":\"a585bfe4f449d4b44908d90187ff3b0aac3f9db0f2aa3afbd6a84ef1dfce906b\",\"revision\":\"a3ac8721653c1c4dc646f54a5401f03f02ba795f\"},\"main\":{\"path\":\"src-server/tools/station-docs-content.ts\",\"digest\":\"c112f831517ab8df9af25fba576016ccdc41f3fdb711660418566bd9342cca3c\",\"revision\":\"e403554362186ebc38993487e46a7c4acf1004f8\"},\"active\":{\"path\":\"src-server/tools/station-docs-content.ts\",\"digest\":\"a585bfe4f449d4b44908d90187ff3b0aac3f9db0f2aa3afbd6a84ef1dfce906b\",\"revision\":\"a3ac8721653c1c4dc646f54a5401f03f02ba795f\"},\"decision\":\"neitherMatch\"}]",
 
   "sources": [
-    {"path":"docs/design/mcp-ui-host.md","digest":"060ae4fc6877a186e8ea6d5073729e03f161dbe270b700f62741095560000195","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "docs/design/mcp-ui-host.md",
 
-    {"path":"docs/learn/mcp-topics.json","digest":"e503d0ad447361bdedfecd35da6b1ac3c95b2cd3f95a93872146f02cef4d80e1","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "docs/learn/mcp-topics.json",
 
-    {"path":"packages/contracts/src/agent-plugin.ts","digest":"2e3d120f5eae47814db06203169553f98b31a39263efae9d768762cf8452b1a9","revision":"1e6450e0caa47975d33f505a1348bdc01ae1382e"},
+    "packages/contracts/src/agent-plugin.ts",
 
-    {"path":"packages/contracts/src/engine-capability-matrix.ts","digest":"db82340760d09e965ac7ed17830f36060573fe48545995d4ad9149b755d36ea1","revision":"518fae654af981373e872c2ab85438bb1b1b0e67"},
+    "packages/contracts/src/engine-capability-matrix.ts",
 
-    {"path":"packages/contracts/src/fleet-contribution.ts","digest":"6a898f68b1e2c9796bcc0c62ee3688a9880b8e5634c001185c0bbcbc4aa24445","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "packages/contracts/src/fleet-contribution.ts",
 
-    {"path":"packages/contracts/src/plugin.ts","digest":"98607c85d86241ccf638de4d207ebb64285752092eb7a827e4304c75df409b95","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "packages/contracts/src/plugin.ts",
 
-    {"path":"packages/contracts/src/project-reference-integrity.ts","digest":"2c3bdd0c04c54bb4af6db209b7b81ab5fd0ebe26b150dc45d7c3c02e92ff4f0c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "packages/contracts/src/project-reference-integrity.ts",
 
-    {"path":"packages/contracts/src/scheduler.ts","digest":"8d2dc7aaeeca2b4ea4a0763109edb7f792fb29ce6f6f1817c5a3e721cdc2e4f3","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "packages/contracts/src/scheduler.ts",
 
-    {"path":"packages/contracts/src/task-graph.ts","digest":"8def2bec3d9730b94f6dcae14233c64f3043a02d47e8abf5a004699fd09451b9","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "packages/contracts/src/task-graph.ts",
 
-    {"path":"packages/contracts/src/workspace-pane.ts","digest":"30d58ac97807dd5d51b6f8420186f4c5ad5cb110988c1f79a81745756dd504a9","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "packages/contracts/src/workspace-pane.ts",
 
-    {"path":"packages/sdk/src/hooks/context.ts","digest":"7b579f584b19684cdcadb54928c87f98e8ef47a088f1f66de48073d2d1fd6520","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "packages/sdk/src/hooks/context.ts",
 
-    {"path":"packages/sdk/src/hooks/operations.ts","digest":"02dbff5afebdbe657824c6718e11773b39a9f454062b43e6391c877fcf12d994","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "packages/sdk/src/hooks/operations.ts",
 
-    {"path":"packages/sdk/src/query-domains/chatRuntimeOrchestration.ts","digest":"c7d4a86b8d4473d417d3aa2c1cb2e13a5d0cf63e78fe075ad1f67c9aae60bde7","revision":"061ace7180fe67218f67d9a74230ce419b887c11"},
+    "packages/sdk/src/query-domains/chatRuntimeOrchestration.ts",
 
-    {"path":"packages/shared/src/agent-plugin-manifest.ts","digest":"a1b0dab918c8787193cc23e0f5362fc3ea5be6885440b56522314329974d55ba","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "packages/shared/src/agent-plugin-manifest.ts",
 
-    {"path":"packages/shared/src/build.ts","digest":"20f919a4a98519ce20e8e2f0d5d498a4be8daeba1314a97ddae752fd36df4630","revision":"1e6450e0caa47975d33f505a1348bdc01ae1382e"},
+    "packages/shared/src/build.ts",
 
-    {"path":"packages/shared/src/mcp-ui-csp.ts","digest":"811062edc652c17556380fb3ed3776bda4d3f568e004225405f22528ddb3fc23","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "packages/shared/src/mcp-ui-csp.ts",
 
-    {"path":"scripts/generate-station-docs.mjs","digest":"91bdbfd123dd1d24f58221e95e22e5edd50057a40f2142d3771268cb827e89e1","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "scripts/generate-station-docs.mjs",
 
-    {"path":"scripts/lib/documentation-model.mjs","digest":"cbfd7235be50696a0289524232c6d2b1de5de03bff71f8e6edef38f6adcaf6b4","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "scripts/lib/documentation-model.mjs",
 
-    {"path":"src-server/domain/agent-registry.ts","digest":"b25558e066b73e96a09310d9d8a4bc8a0db41f893047a6f86035411ee0df3f50","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/domain/agent-registry.ts",
 
-    {"path":"src-server/providers/adapters/acp-adapter.ts","digest":"061da89e00216d5c3250d7f13dc1dea5717765b50db7ebf8c49672208524a3d0","revision":"423cbe55b9e35e4cd8954fd441cb9f3c69740d66"},
+    "src-server/providers/adapters/acp-adapter.ts",
 
-    {"path":"src-server/routes/agents/enriched-agents.ts","digest":"6baed1928fa80cd18e59ea9d531b656099f6389b5457b2cbe39420ea0e5de20c","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
+    "src-server/routes/agents/enriched-agents.ts",
 
-    {"path":"src-server/routes/inference/fleet-inference.ts","digest":"63d107b638a0aebc99f58a191b37a68e68aab12da0e655e09019b58d42c0966e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/routes/inference/fleet-inference.ts",
 
-    {"path":"src-server/routes/plugins/plugin-validate-routes.ts","digest":"22e628993e930427de7679249466002699eb1819f8cfbe8728c12a27da9afdc4","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/routes/plugins/plugin-validate-routes.ts",
 
-    {"path":"src-server/runtime/agents/runtime-default-agent.ts","digest":"ac9e7fb59ca6ef72a15b70ce7a91c5510659a36e8a1f2686f355a08199eefdef","revision":"69eb5db90072c149c16115135f495ac538155e71"},
+    "src-server/runtime/agents/runtime-default-agent.ts",
 
-    {"path":"src-server/runtime/agents/station-capability-discovery.ts","digest":"fb95589365de3171f527ef96c98df9127dfb32e363df5f4253f86f105bf31e52","revision":"69eb5db90072c149c16115135f495ac538155e71"},
+    "src-server/runtime/agents/station-capability-discovery.ts",
 
-    {"path":"src-server/runtime/bootstrap/native-engine-adoption.ts","digest":"553480ee2b76b8672f4a187a0680b30dc2576397644fdecb1aead79d1ef62b82","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/runtime/bootstrap/native-engine-adoption.ts",
 
-    {"path":"src-server/runtime/bootstrap/station-control-runtime-env.ts","digest":"c4695660c3c92b217c4d57bced3e019b1764520ea669f5ed469d25f052997601","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
+    "src-server/runtime/bootstrap/station-control-runtime-env.ts",
 
-    {"path":"src-server/runtime/conversation/dispatch-model-policy.ts","digest":"3fe2e900fd33da1f883a02ee81c9ca8017cfe650390f772e4f7c65cea1e78387","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/runtime/conversation/dispatch-model-policy.ts",
 
-    {"path":"src-server/runtime/mcp/mcp-apps-metadata.ts","digest":"67a048ee54d656d731f4cb3c3a4c3ac92e86472b453ebe5e04e782d0b48b2ae5","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/runtime/mcp/mcp-apps-metadata.ts",
 
-    {"path":"src-server/runtime/mcp/mcp-ui-frame-server.ts","digest":"eaf7b70c1248c4020af4fafd05c5e38c6e8fd03fd2955991965d0e94dd3cc77c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/runtime/mcp/mcp-ui-frame-server.ts",
 
-    {"path":"src-server/runtime/mcp/mcp-ui-resolver.ts","digest":"b82399f787d6b71129684e5cb4fad8858846d5315d0c1077822ac1591199075e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/runtime/mcp/mcp-ui-resolver.ts",
 
-    {"path":"src-server/services/agents/skill-service.ts","digest":"b422d6e8444abe623ad16f39e37a535e9d6b6b3bdb8f009d621b493c2b22c369","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/services/agents/skill-service.ts",
 
-    {"path":"src-server/services/connections/fleet-contribution-manifest.ts","digest":"b652110a8ae06e2a05b9274128160b5c698a51a0cfa0a68a66664d71e1de72a5","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/services/connections/fleet-contribution-manifest.ts",
 
-    {"path":"src-server/services/inference/fleet-serve-receipt-log.ts","digest":"485c837417023935405deb8ca2d4f4b5479bf7ee5865e67fc3c5ac2ea9aeddea","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/services/inference/fleet-serve-receipt-log.ts",
 
-    {"path":"src-server/services/orchestration/flow-policy-sidecar.ts","digest":"437b48f82ba45cedac66ea4c8c933758226ad017ca957313fb9353b3a9abbe44","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/services/orchestration/flow-policy-sidecar.ts",
 
-    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"4582d45b868ea008447f5405bcedb1adf987b1e3ad7701e39de19fc6a8d8994c","revision":"4711f21b516d04300b15ad4da473e24bf2e7adb2"},
+    "src-server/services/orchestration/orchestration-service.ts",
 
-    {"path":"src-server/services/orchestration/orchestration-session-state.ts","digest":"44a232d30c1d080f58b798e418a54d3adacb1086b3b6757a06f307370b703943","revision":"af3c8fbfee90c9179a0ac19659b76d24c707d574"},
+    "src-server/services/orchestration/orchestration-session-state.ts",
 
-    {"path":"src-server/services/orchestration/session-agent-resolution.ts","digest":"eea912e5afec264ab495d93b40eaa2eee6d478f5bab262aa84b56068210991b2","revision":"aadb5aa183a58e97344d13b8c5f34f92a7d78a94"},
+    "src-server/services/orchestration/session-agent-resolution.ts",
 
-    {"path":"src-server/services/plugins/plugin-install-transaction.ts","digest":"d86ca9367f039174cd2aaaba83b65dc1df376f6474bd4a4f29be54341fd2c0e7","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
+    "src-server/services/plugins/plugin-install-transaction.ts",
 
-    {"path":"src-server/services/plugins/plugin-permissions.ts","digest":"12fa3b2a465074275d4317cc1a356000b2c1a53af247b56c352db754a8727c7c","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
+    "src-server/services/plugins/plugin-permissions.ts",
 
-    {"path":"src-server/services/projects/task-dispatcher.ts","digest":"ae50a30b27da6b16cc22a0910af821e0f5d08c80b45b7c336c2935fb87ea0ce1","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/services/projects/task-dispatcher.ts",
 
-    {"path":"src-server/services/projects/task-graph-service.ts","digest":"c895f75faffb94ab2cbe311400d0b5811bb00148ef83d72de18638635d5a8d68","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/services/projects/task-graph-service.ts",
 
-    {"path":"src-server/services/projects/task-output-module.ts","digest":"8e548f679e27457b848fd88dffaf11bf4e54fa775c6c5bd614462599b8f7a4d4","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/services/projects/task-output-module.ts",
 
-    {"path":"src-server/services/scheduling/builtin-scheduler-execution.ts","digest":"388c2403f460021860549a6e16a19f8fb710fa698692894d98a3255cc77a940a","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
+    "src-server/services/scheduling/builtin-scheduler-execution.ts",
 
-    {"path":"src-server/tools/__tests__/station-docs-mcp-server.test.ts","digest":"5ae33f0d320b2f18b8a8ace8edb252fb0c85fb23263bb3a7c095d90119a27be2","revision":"d1b4b2c9cfe4eeb01c62c945da2d595c9e414eb3"},
+    "src-server/tools/__tests__/station-docs-mcp-server.test.ts",
 
-    {"path":"src-server/tools/station-browser-mcp-server.ts","digest":"52c8ed2dbdf382a614021558ae9f91e5d52c2f157e264a4ae1c07b70d5ff4a66","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/tools/station-browser-mcp-server.ts",
 
-    {"path":"src-server/tools/station-control-platform-tools.ts","digest":"a209f508dffc890f68c90ef5393125ff4a4d68f020c66b55c4abb84812727f5d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/tools/station-control-platform-tools.ts",
 
-    {"path":"src-server/tools/station-docs-content.ts","digest":"da97f93c2ebf86c427eaab438edfe59c98a327577233de26c550f2d8bab04f9b","revision":"e15fe01696dceae30228b1a82f7df16592bace49"},
+    "src-server/tools/station-docs-content.ts",
 
-    {"path":"src-server/tools/station-docs-mcp-server.ts","digest":"6c3b7b2586bed5225ba1b32ddae94e61d5cc087083157d0f6e62d6ddf1490872","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/tools/station-docs-mcp-server.ts",
 
-    {"path":"src-server/tools/station-docs-server.ts","digest":"c76912b19734775f650634f5b97639c60168fe9995b61f927c0e35a62b3fb1ae","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-server/tools/station-docs-server.ts",
 
-    {"path":"src-ui/src/components/agent-selection-policy.ts","digest":"e96d360cff1e8f5c32f70c99687d240b6707b7a5d3de781f8f4227f796fded12","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-ui/src/components/agent-selection-policy.ts",
 
-    {"path":"src-ui/src/components/mcp-ui/MCPToolUIFrame.tsx","digest":"732a76fa3772bbc163f0c9c5b8da98c530614a27acfaba1b93fbecb497f240b3","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-ui/src/components/mcp-ui/MCPToolUIFrame.tsx",
 
-    {"path":"src-ui/src/components/monitoring/FleetRoutingReceipts.tsx","digest":"6fbaad9aca8523ce87fab5a8ccb20f2c9da40ab7b70f4e5a6bf965dfac4089bd","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    "src-ui/src/components/monitoring/FleetRoutingReceipts.tsx",
 
-    {"path":"src-ui/src/hooks/useActiveChatSessionLifecycle.ts","digest":"2a90e4f43cde95121b12aec4ae642905f1329e9e23e95f797a41cd6746da9349","revision":"2f3085a2920085f2283c41a1b0431a6ded12a480"}
+    "src-ui/src/hooks/useActiveChatSessionLifecycle.ts"
   ],
 
   "checks": [
@@ -172,6 +170,8 @@
 
     "Integration source review through e464b7065: station-docs-mcp-server.test.ts drops the PERMITTED installation statement for the deleted PluginForegroundRuns topic (#2900); the remaining permission and architecture statements are unchanged, so the prose is accurate. Source review is separate from executed test evidence.",
 
-    "2026-09-28 test-audit refresh: agent-registry.ts only removed the test-only beforeRename write hook, agentRegistrySourceSignature and saveAgentRegistry; updateAgentRegistry still persists through the same CAS saveRegistry after the schema check; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
+    "2026-09-28 test-audit refresh: agent-registry.ts only removed the test-only beforeRename write hook, agentRegistrySourceSignature and saveAgentRegistry; updateAgentRegistry still persists through the same CAS saveRegistry after the schema check; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
+
+    "Structural reconciliation of plugin-command branch and origin/main 84fb656cf0. Both prior bindings preserved here; this is not semantic approval of merged bytes. Conflicting historical anchors: [{\"field\":\"document\",\"branch\":{\"digest\":\"c285f94ae042c902a6eeefc49821e4a3b4200d11716df22fbe9f89ba76c8a40a\",\"revision\":\"9785e029ae32c7061de1a85ce63f0dc8dfe6f907\"},\"main\":{\"digest\":\"c285f94ae042c902a6eeefc49821e4a3b4200d11716df22fbe9f89ba76c8a40a\",\"revision\":\"c2c67c2f25d565ea97d757b370f2bbf942a9588b\"}},{\"field\":\"source\",\"path\":\"packages/contracts/src/plugin.ts\",\"branch\":{\"path\":\"packages/contracts/src/plugin.ts\",\"digest\":\"792d8276a237a79dbace80dc8171a578448b45bb720df125d674b1030207da30\",\"revision\":\"c2b1caf535d375c5195cc8b8a66c9dc6ce83205d\"},\"main\":{\"path\":\"packages/contracts/src/plugin.ts\",\"digest\":\"98607c85d86241ccf638de4d207ebb64285752092eb7a827e4304c75df409b95\",\"revision\":\"0c1f436037261c43eeca3e079f5106948360c591\"}},{\"field\":\"source\",\"path\":\"packages/sdk/src/query-domains/chatRuntimeOrchestration.ts\",\"branch\":{\"path\":\"packages/sdk/src/query-domains/chatRuntimeOrchestration.ts\",\"digest\":\"c7d4a86b8d4473d417d3aa2c1cb2e13a5d0cf63e78fe075ad1f67c9aae60bde7\",\"revision\":\"061ace7180fe67218f67d9a74230ce419b887c11\"},\"main\":{\"path\":\"packages/sdk/src/query-domains/chatRuntimeOrchestration.ts\",\"digest\":\"c7d4a86b8d4473d417d3aa2c1cb2e13a5d0cf63e78fe075ad1f67c9aae60bde7\",\"revision\":\"306ebf4317397e0b06c543c69b4f770184f50654\"}},{\"field\":\"source\",\"path\":\"src-server/services/orchestration/session-agent-resolution.ts\",\"branch\":{\"path\":\"src-server/services/orchestration/session-agent-resolution.ts\",\"digest\":\"eea912e5afec264ab495d93b40eaa2eee6d478f5bab262aa84b56068210991b2\",\"revision\":\"aadb5aa183a58e97344d13b8c5f34f92a7d78a94\"},\"main\":{\"path\":\"src-server/services/orchestration/session-agent-resolution.ts\",\"digest\":\"eea912e5afec264ab495d93b40eaa2eee6d478f5bab262aa84b56068210991b2\",\"revision\":\"c2c67c2f25d565ea97d757b370f2bbf942a9588b\"}},{\"field\":\"source\",\"path\":\"src-server/services/plugins/plugin-install-transaction.ts\",\"branch\":{\"path\":\"src-server/services/plugins/plugin-install-transaction.ts\",\"digest\":\"467e7b1890294780e4d2a379624a4275add33e2dbb5a4505040f54d14bd79afc\",\"revision\":\"efa773acac88792cda31595f9afca4a37d3efebc\"},\"main\":{\"path\":\"src-server/services/plugins/plugin-install-transaction.ts\",\"digest\":\"01ba3b7fe2249e6215c6fb62c6372e21324c863bee37bcac6e739a7b0170db61\",\"revision\":\"63833ae5666cb06da0b5671dc0e3bf63bdc1d0fa\"}},{\"field\":\"source\",\"path\":\"src-server/tools/station-docs-content.ts\",\"branch\":{\"path\":\"src-server/tools/station-docs-content.ts\",\"digest\":\"dc675bec45fb905f67a7b2c3c32289765790262059932f6f83e629beb5a85b4e\",\"revision\":\"efa773acac88792cda31595f9afca4a37d3efebc\"},\"main\":{\"path\":\"src-server/tools/station-docs-content.ts\",\"digest\":\"7d0005c5febfb5b5494dc552e1072215e952faaa9a3e5aca00b9defe42ca25ff\",\"revision\":\"fac321f9fd6ab55b3863bcc8127ba2c5dac09097\"}}]"
   ]
 }

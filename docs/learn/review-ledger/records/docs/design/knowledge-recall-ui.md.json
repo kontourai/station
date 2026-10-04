@@ -9,30 +9,28 @@
 
   "limits": "Executed shared/example tests and three Knowledge plugin builds; existing Playwright cases were inspected as regression ownership, not rerun as new proof. Actual Library browser receipt is snapshot-specific. No live model/embedding/Neo4j, native or authorization qualification.",
 
-  "document": {"digest":"6d02bb684296fcd35a2705e593fa6e8ac6b028dd1ef3e6c7552178fb2767abd4","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
-
   "sources": [
-    {"path":"examples/knowledge-library/src/KnowledgeLibrary.tsx","digest":"54c0aa1a3d3e9dfe341ed67348a0ab96b1aca65e562dbe0080810f6b51f40cca","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "examples/knowledge-library/src/KnowledgeLibrary.tsx",
 
-    {"path":"examples/knowledge-library/src/knowledge-library.css","digest":"1cc33286979d84d186c75d3921a1a616cb0f859a16a04333a8385882d39737b7","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "examples/knowledge-library/src/knowledge-library.css",
 
-    {"path":"examples/meeting-notes/src/GraphPane.tsx","digest":"0b484a80168add93868963e76abc8309f7e881e3aaf34dbb077cfca641799eb1","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "examples/meeting-notes/src/GraphPane.tsx",
 
-    {"path":"packages/sdk/src/client/knowledge.ts","digest":"3b99041b2b4df1ae1a08ea6584eaec86a649756ffb134a817666ec6919fda743","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+    "packages/sdk/src/client/knowledge.ts",
 
-    {"path":"packages/sdk/src/components/KnowledgeRecall.css","digest":"c10eeb9534ec0df6147b1f2cae7ab5907ca25675abbf87727794aa15b89c5474","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/sdk/src/components/KnowledgeRecall.css",
 
-    {"path":"packages/sdk/src/components/KnowledgeRecall.tsx","digest":"d0742a663f4a68f786c1e1772cf37ee90a0265701f2996f8a0a6de2b4e092c12","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/sdk/src/components/KnowledgeRecall.tsx",
 
-    {"path":"packages/sdk/src/index.ts","digest":"402d307a4252faa6d6f6c54698f6fc4f8746c49053bddaff7e2147187fd579c1","revision":"4711f21b516d04300b15ad4da473e24bf2e7adb2"},
+    "packages/sdk/src/index.ts",
 
-    {"path":"packages/sdk/src/query-domains/knowledgeStores.ts","digest":"52d61ed41a6e407387005a60f4c0504016471de1c42eed9d22ec7146a98516d6","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/sdk/src/query-domains/knowledgeStores.ts",
 
-    {"path":"packages/shared/src/knowledge-root-identity.ts","digest":"8c1dbadc429909b9b50dd25c273fb0dcdbddac3886adb49402b53e0ba96f3d9c","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/shared/src/knowledge-root-identity.ts",
 
-    {"path":"tests/knowledge-library.spec.ts","digest":"38c48e0ac475a44b9328dd836f2b3ed270575e232a096f79d387d51822661a45","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "tests/knowledge-library.spec.ts",
 
-    {"path":"tests/meeting-notes.spec.ts","digest":"a4fc102ab1a8b1b93d3aa37866bea8e35df914eae8e2d554511f39fcd120a9bd","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"}
+    "tests/meeting-notes.spec.ts"
   ],
 
   "checks": [

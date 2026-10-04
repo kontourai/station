@@ -217,16 +217,10 @@ export class SelfHostedBrokerRuntime {
         const expiry = knownExpiry();
         if (expiry !== undefined && now >= expiry)
           throw new Error('broker_runtime_lease_expired');
-        if (now >= heartbeat) {
-          failurePhase = 'heartbeat';
-          const result = await this.#registerWithRecovery(
-            knownExpiry,
-            'heartbeat',
-          );
-          onExpiry(result);
-          this.#reportRecovered('heartbeat');
-          heartbeat = Date.now() + this.options.heartbeatMs;
-        }
+        // Registration may finish near expiry without extending the lease.
+        // Reserve half the remaining window for renewal and its response.
+        if (expiry !== undefined)
+          renew = Math.min(renew, now + (expiry - now) / 2);
         if (now >= renew) {
           failurePhase = 'renewal';
           const expiryNow = knownExpiry();
@@ -236,15 +230,27 @@ export class SelfHostedBrokerRuntime {
           onExpiry(result);
           renew = Date.now() + this.options.renewMs;
         }
+        if (Date.now() >= heartbeat) {
+          failurePhase = 'heartbeat';
+          const result = await this.#registerWithRecovery(
+            knownExpiry,
+            'heartbeat',
+          );
+          onExpiry(result);
+          this.#reportRecovered('heartbeat');
+          heartbeat = Date.now() + this.options.heartbeatMs;
+        }
         if (
           this.#abort.signal.aborted ||
           this.options.application.signal.aborted
         )
           break;
         failurePhase = 'heartbeat';
-        await this.#sleep(
-          Math.min(this.options.heartbeatMs, this.options.renewMs),
-        );
+        const sleepStart = Date.now();
+        const sleepExpiry = knownExpiry();
+        if (sleepExpiry !== undefined)
+          renew = Math.min(renew, sleepStart + (sleepExpiry - sleepStart) / 2);
+        await this.#sleep(Math.max(1, Math.min(heartbeat, renew) - sleepStart));
       }
     } catch (error) {
       if (!this.#isCleanAbortCancellation(error))

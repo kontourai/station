@@ -103,6 +103,11 @@ const ENUMERATING_READERS = [
   'readCurrentWorkspacePaneCatalog',
   'deriveWorkspaceHomeRoleStatus',
   'listPluginCatalogIdentities',
+  // The command effect ledger's readers: every withdrawal and outstanding
+  // effect they return names the `pluginId` it belongs to (#1419).
+  'listWithdrawals',
+  'listUncapturedEffects',
+  'withdrawal',
 ];
 
 /**
@@ -117,6 +122,8 @@ const SCAN_EXCLUSIONS = {
     'A mutation naming its own target. It reveals no plugin the caller did not already name.',
   'POST /api/registry/plugins/install':
     'Same: a mutation naming its own target. The `plugins/` signal is the install destination, not a listing.',
+  'POST /api/registry/skills/install':
+    'A mutation of the caller-named Skill selection. Bare-name resolution uses caller-visible sources; plugin-owned sources are checked before reads and publication. It returns that Skill outcome or a closed refusal, not another plugin identity. The installed+name signal is the local Skill premise, not plugin inventory.',
   'POST /acp/registry/:id/install':
     'A mutation naming its own target: it installs the engine connection the caller named and returns that connection, never a listing. The `agent` receipt names the Agent this same mutation created or adopted for THAT connection id — a fact the projected agents list (`GET /api/agents`, the New Chat picker\u2019s own source) already carries — and names no other engine or plugin.',
   'POST /api/plugin-proposals':
@@ -125,6 +132,8 @@ const SCAN_EXCLUSIONS = {
     'A mutation addressed by id. The `plugins/` signal is the removal path.',
   'POST /api/plugins/home-role/requests':
     'A mutation: it creates a grant request for a pane the caller named, and returns the transaction, not a catalog. The candidate LIST it is paired with is the enumerator, and that one is projected.',
+  'GET /api/plugins/host-approvals/:id':
+    'Re-reads the command effect withdrawal an approval already recorded, by the withdrawal id stored on that approval, and returns only its `withdrawalId`, `status` and `outstanding` count (`projectApprovalCommandEffects`). The ledger read adds no plugin name to what the approval itself returns.',
   'POST /api/plugins/host-approvals':
     'A mutation naming its own target; it returns the approval transaction. The `installed+name` signal is the approval record it writes, not a listing of other plugins.',
   'POST /api/projects/:slug/plugin-scaffold':
@@ -280,6 +289,8 @@ function identitySignals(body) {
   for (const token of IDENTITY_TOKENS) {
     if (new RegExp(`\\b${token}\\b`).test(body)) hits.push(token);
   }
+  if (/\bcatalog\s*\(\s*(['"])plugins\1/.test(body))
+    hits.push('plugin catalog()');
   for (const reader of ENUMERATING_READERS) {
     if (new RegExp(`\\b${reader}\\s*\\(`).test(body)) hits.push(`${reader}()`);
   }

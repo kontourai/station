@@ -1,0 +1,7 @@
+{
+  "revision": "ce3f4c795551e3838afb14389cd5a0fd7f260649",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Reviewed compact Home introduction/setup reminder. First-chat and discovery callbacks remain canonical; mandatory consent, first-run state and permissions are unchanged. The setup reminder no longer promises a fixed completion time. Home/first-run focused suites pass; phone layout recheck follows.","inputs":["docs/user/getting-started.md"]}
+  ]
+}

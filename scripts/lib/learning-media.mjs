@@ -78,15 +78,25 @@ export async function compileLearningMedia(
         !isBindingPath(source.path) ||
         (!reportMissing && !tracked.has(file)) ||
         seen.has(source.path) ||
-        !/^[a-f0-9]{64}$/.test(source.digest) ||
-        !/^[a-f0-9]{40}$/.test(source.revision)
+        (capture.historyChanges === undefined &&
+          (!/^[a-f0-9]{64}$/.test(source.digest) ||
+            !/^[a-f0-9]{40}$/.test(source.revision)))
       )
         throw new Error(`Invalid capture source: ${path}`);
       seen.add(source.path);
       if (!tracked.has(file)) changed.push(source.path);
-      else if (bindingDigest(source.path, await read(file)) !== source.digest)
+      else if (
+        capture.historyChanges === undefined &&
+        bindingDigest(source.path, await read(file)) !== source.digest
+      )
         changed.push(source.path);
     }
+    if (capture.historyChanges !== undefined)
+      changed.splice(
+        0,
+        changed.length,
+        ...new Set([...capture.historyChanges, ...changed]),
+      );
     if (
       changed.length &&
       (typeof requireFresh === 'function'

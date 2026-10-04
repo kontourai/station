@@ -1,0 +1,7 @@
+{
+  "revision": "a507c417a354a25a2d09259a79b040361b26b3dd",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the follow-up layout: narrow-pane status and scroll controls are centered together and the scroll glyph is a compact SVG with unchanged button actions and touch target. The composer policy now states centered stacking. Component-fixture checks cover dark/light and narrow widths; no native proof.","inputs":["docs/design/chat-composer.md"]}
+  ]
+}

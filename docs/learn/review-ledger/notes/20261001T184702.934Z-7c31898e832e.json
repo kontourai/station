@@ -1,0 +1,7 @@
+{
+  "revision": "61109781a84058b3a3895504ae2c1b29842e441e",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"useAgentsViewModel.ts changed how the Agents editor reacts to a selection change (it resets per-record form state, asks for a fresh detail read, leaves the unsaved-changes decision to the route guard, and settles a save only on the visit it started from). The document's only claim about this file is that the editor reads the Agent tool catalog through useAgentToolsQuery; that call and its enabled condition are unchanged. No route, request or response shape changed.","inputs":["docs/reference/api.md"]}
+  ]
+}

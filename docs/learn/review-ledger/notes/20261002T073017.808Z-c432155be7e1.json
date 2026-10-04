@@ -1,0 +1,7 @@
+{
+  "revision": "ccc086dfc608f83c6905869faa11979d7d2cbd6c",
+
+  "notes": [
+    {"path":"scripts/AGENTS.md","note":"Re-record after main #2974: vitest-resource-manifest.mjs gained the install-ps1 bounded-child test entry (additive); scripts/AGENTS.md manifest guidance claims unchanged.","inputs":["scripts/AGENTS.md"]}
+  ]
+}

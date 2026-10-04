@@ -278,6 +278,19 @@ export function acpConnectionFingerprint(
     .slice(0, 16);
 }
 
+/**
+ * The directory a connection starts a session in when the session has none
+ * of its own: its configured `cwd`, tilde-expanded and resolved, else none
+ * (the adapter then prepares a Station-managed workspace). The one
+ * derivation, shared by the spawn below and by the dispatch scope check
+ * that must decide on the same directory before it (#2873).
+ */
+export function acpConnectionDefaultCwd(config: {
+  cwd?: string;
+}): string | undefined {
+  return config.cwd ? resolve(expandTilde(config.cwd)) : undefined;
+}
+
 export interface AcpAdapterOptions {
   getConnections: () => Promise<ACPConnectionConfig[]>;
   logger?: AcpLogger;
@@ -730,9 +743,7 @@ export class AcpAdapter implements ProviderAdapterShape {
     // `config.cwd` otherwise resolves against Station's own directory at spawn
     // time and is handed to `session/new` as a string the agent reads
     // differently.
-    const connectionCwd = config.cwd
-      ? resolve(expandTilde(config.cwd))
-      : undefined;
+    const connectionCwd = acpConnectionDefaultCwd(config);
     const cwd =
       input.cwd ||
       connectionCwd ||
@@ -2043,13 +2054,27 @@ export class AcpAdapter implements ProviderAdapterShape {
             identity: externalPreToolPolicyIdentity(toolName),
           },
         );
-        if (
-          decision.behavior === 'allow' &&
-          !(decision.toolGrant && needsPerson)
-        ) {
+        // #2947: no Station allow answers a request addressed to a person.
+        // That holds for the approval guardian's allow as for a tool-level
+        // grant: the guardian reviews a tool call, not the plan a plan exit
+        // asks a person to review.
+        if (decision.behavior === 'allow' && !needsPerson) {
           return {
             outcome: mapAcpDecisionToOutcome('accept', params.options),
           };
+        }
+        if (decision.behavior === 'allow' && !decision.toolGrant) {
+          // The evaluator has already logged the guardian's allow; say here
+          // that it did not decide the request. The guardian is still asked
+          // about such a request: its enforce-mode deny must decline it.
+          context.logger.info?.(
+            'Approval guardian allow not applied; the request goes to a person',
+            {
+              toolName,
+              threadId: record.session.threadId,
+              reason: 'the request is a plan exit or a question for a person',
+            },
+          );
         }
         if (decision.behavior === 'deny') {
           return {
@@ -2091,7 +2116,8 @@ export class AcpAdapter implements ProviderAdapterShape {
       }
 
       // #2933: a delegated child that may not grant approvals reaches here
-      // when a tool-level grant let a plan exit past the staged evaluator's
+      // when a tool-level grant or the approval guardian's allow (#2947) let
+      // a plan exit past the staged evaluator's
       // own denial, when no evaluator ran, or when the agent named no tool
       // (a nameless request skips the evaluator). Nobody can answer the
       // child's request, so decline it fail-fast rather than wait.

@@ -7,42 +7,40 @@
 
   "summary": "Completed full documented-claim review from management/view callers through token store, owner reauthorization, rate budgets, content/channel arbitration and standalone UI. Corrected token-memory/reload limits, network-origin admission, restricted contextInjection, block clipping disclosure, fourteen projected fields and store downgrade pruning. Corrected two matching source comments without changing parsed programs.",
 
-  "limits": "Source review of this document’s stated contracts and actual callers, not an exhaustive audit of unclaimed implementation branches. No new external SDK/CLI compatibility, provider billing/sign-in, gateway/deployment, network-partition, independent-host, OS keyring/ACL, native/device, release, power-loss or cryptographic penetration qualification. Dated probes and prior test receipts remain historical evidence.",
-
-  "document": {"digest":"0c8f1a02dc1e1b0658d8a402d0e779a9abfeb197964e458e7148c3127adb10b0","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+  "limits": "Source review of this document’s stated contracts and actual callers, not an exhaustive audit of unclaimed implementation branches. No new external SDK/CLI compatibility, provider billing/sign-in, gateway/deployment, network-partition, independent-host, OS keyring/ACL, native/device, release, power-loss or cryptographic penetration qualification. Dated probes and prior test receipts remain historical evidence. Merge reconciliation preserves both prior review anchors below as historical evidence, not a new review of combined source bytes. Active bindings retain existing reviewed anchors; any mismatch with merged bytes remains stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"src-ui/src/main.tsx\",\"ours\":{\"digest\":\"274ab7dbbfac9ab4a7f844cfcca5b16029bcc2b2ae1f937294f695b965add3bb\",\"revision\":\"967e08d408de5a4ae0a4106c4b082688f816d2f1\"},\"main\":{\"digest\":\"ea8ad745a9a86e49c5811a8320a01cce7764d38278a67f97b9ab2443d1f50e86\",\"revision\":\"da7d7a5a189e8873b3d8047937486727c258feb3\"}},{\"path\":\"src-server/security/pairing-route-scopes.ts\",\"ours\":{\"digest\":\"695ea92f345988962929764a4072cc5056f51cb0d7280f333d242c42ed3314b1\",\"revision\":\"904729ae7f4058a2cd7dbaf11a4daaa6b8837d08\"},\"main\":{\"digest\":\"6135d879afff21c7d3c8f82d0fb701f04c7bc8de28724848ce0ffa39b0ded204\",\"revision\":\"b004ed8cb3e885da544adf960b2894780aaf2b51\"}},{\"path\":\"packages/contracts/src/environment-security.ts\",\"ours\":{\"digest\":\"2af32eed92258686d0d4b68d8a042093ccf5833fbf2cb91835abdba0e7481b65\",\"revision\":\"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74\"},\"main\":{\"digest\":\"5e95b203695a37807a3b3c9464df4f0153ca32b408496dc12f59274f61fd2486\",\"revision\":\"91d79c3f0ce9ca5ae304e4248b67b6189103016e\"}},{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"ours\":{\"digest\":\"8da16e71c4909bef8f7cf21eb6cde9fbebc2b72997baeebbff7445db19fb237a\",\"revision\":\"904729ae7f4058a2cd7dbaf11a4daaa6b8837d08\"},\"main\":{\"digest\":\"e54cf49af965f2acabb5a7a97caead30fc8e4e3b619f5dea1cb7f6a464b2d901\",\"revision\":\"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac\"}}].\n\nAdditional existing main limits (preserved verbatim): Source review of this document’s stated contracts and actual callers, not an exhaustive audit of unclaimed implementation branches. No new external SDK/CLI compatibility, provider billing/sign-in, gateway/deployment, network-partition, independent-host, OS keyring/ACL, native/device, release, power-loss or cryptographic penetration qualification. Dated probes and prior test receipts remain historical evidence.\n\nStructural merge of 5fd2dd86ad0cd35018ce09537c1aa01ce58e0e55 and 8f9ea788561518398a488d35bb768b78a272e73b preserves both prior immutable document/source anchors and historical checks. Selecting an existing current-byte binding is structural reconciliation only, not semantic approval of merged inputs. No new digest/revision or coverage baseline was minted. Competing prior anchors remain pending semantic review and supported recording after the merge commit: [{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"ours\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"33e19d52230c0339923db1768b0cae89a71077634c4632f9a10c11f6a3e05f78\",\"revision\":\"83c4111b8c4dcda1e978d78bb191c974888c9ca4\"},\"main\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"ed83b5af4f41e38ea85de7ba4d975066b1c15f136b215926bd5cd31a45183a21\",\"revision\":\"068722323b07f15f14280d43b1c05dbc2ca212eb\"},\"active\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"33e19d52230c0339923db1768b0cae89a71077634c4632f9a10c11f6a3e05f78\",\"revision\":\"83c4111b8c4dcda1e978d78bb191c974888c9ca4\"},\"decision\":\"neitherMatch\"},{\"path\":\"src-server/security/pairing-route-scopes.ts\",\"ours\":{\"path\":\"src-server/security/pairing-route-scopes.ts\",\"digest\":\"ff18eca46b9725e26dd7245ba08c5b1463491eef5ae4cb0f7b80b785b4d4aced\",\"revision\":\"83c4111b8c4dcda1e978d78bb191c974888c9ca4\"},\"main\":{\"path\":\"src-server/security/pairing-route-scopes.ts\",\"digest\":\"6135d879afff21c7d3c8f82d0fb701f04c7bc8de28724848ce0ffa39b0ded204\",\"revision\":\"b004ed8cb3e885da544adf960b2894780aaf2b51\"},\"active\":{\"path\":\"src-server/security/pairing-route-scopes.ts\",\"digest\":\"ff18eca46b9725e26dd7245ba08c5b1463491eef5ae4cb0f7b80b785b4d4aced\",\"revision\":\"83c4111b8c4dcda1e978d78bb191c974888c9ca4\"},\"decision\":\"oursMatch\"},{\"path\":\"src-ui/src/main.tsx\",\"ours\":{\"path\":\"src-ui/src/main.tsx\",\"digest\":\"d00e280a16d70b37c42498476af7d21dc192a9d9ea62e337e71094c54cf39a33\",\"revision\":\"4cf503807d144ac197e10fcf4aee5e301b96e28d\"},\"main\":{\"path\":\"src-ui/src/main.tsx\",\"digest\":\"ea8ad745a9a86e49c5811a8320a01cce7764d38278a67f97b9ab2443d1f50e86\",\"revision\":\"da7d7a5a189e8873b3d8047937486727c258feb3\"},\"active\":{\"path\":\"src-ui/src/main.tsx\",\"digest\":\"d00e280a16d70b37c42498476af7d21dc192a9d9ea62e337e71094c54cf39a33\",\"revision\":\"4cf503807d144ac197e10fcf4aee5e301b96e28d\"},\"decision\":\"oursMatch\"}]",
 
   "sources": [
-    {"path":"packages/contracts/src/answer-share-channel.ts","digest":"0313c8b8740e8b0215b7313796f01f9ac1231cd40e93bd800a4610b2bd67535c","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/contracts/src/answer-share-channel.ts",
 
-    {"path":"packages/contracts/src/environment-security.ts","digest":"5e95b203695a37807a3b3c9464df4f0153ca32b408496dc12f59274f61fd2486","revision":"91d79c3f0ce9ca5ae304e4248b67b6189103016e"},
+    "packages/contracts/src/environment-security.ts",
 
-    {"path":"packages/contracts/src/turn-provenance.ts","digest":"7580bf4f0199a83b65236ab55eade23391f940fa0c206a58545f0b86f3570193","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/contracts/src/turn-provenance.ts",
 
-    {"path":"packages/shared/src/answer-share-projection.ts","digest":"38f572f674faf6b6939db1f1d56bd1c4c1fc65ee795d921d9a5d0d1f5246637e","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "packages/shared/src/answer-share-projection.ts",
 
-    {"path":"src-server/routes/share/__tests__/answer-share-routes.test.ts","digest":"f37f5bf49991f45a2ebb92fef702daf2dcfb8ad38352bb56cb7322390850978a","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-server/routes/share/__tests__/answer-share-routes.test.ts",
 
-    {"path":"src-server/routes/share/answer-share-routes.ts","digest":"de74fa89e8f9aa5d0770dc33fd1c0d9e95185c61c8a4bd23e94ab6070824a216","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-server/routes/share/answer-share-routes.ts",
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"90e94e3a617cb7c9642c029f8dd1c58fbebeca19e29dbd1b097af41952fe4b93","revision":"cf12c0d848d0dc068f3dcaa530e9a1f213618834"},
+    "src-server/runtime/routes/runtime-routes.ts",
 
-    {"path":"src-server/security/pairing-route-scopes.ts","digest":"6135d879afff21c7d3c8f82d0fb701f04c7bc8de28724848ce0ffa39b0ded204","revision":"b004ed8cb3e885da544adf960b2894780aaf2b51"},
+    "src-server/security/pairing-route-scopes.ts",
 
-    {"path":"src-server/services/share/answer-share-service.ts","digest":"d333e854f9cecb3a4dbbbf53793187a45848c8be7a30bf1369e4d75b32d1dc82","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-server/services/share/answer-share-service.ts",
 
-    {"path":"src-server/services/share/answer-share-store.ts","digest":"94800bf2befb365c7534ad99d70c410f0ec3963ffc42b3d4b3c16e2a8acadd7e","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-server/services/share/answer-share-store.ts",
 
-    {"path":"src-ui/src/components/chat/ShareAnswerButton.tsx","digest":"31619a6ca447e6a2f40821ecdddc1320bd189d8ae33c7bcf5e8884352af035cc","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-ui/src/components/chat/ShareAnswerButton.tsx",
 
-    {"path":"src-ui/src/main.tsx","digest":"ea8ad745a9a86e49c5811a8320a01cce7764d38278a67f97b9ab2443d1f50e86","revision":"da7d7a5a189e8873b3d8047937486727c258feb3"},
+    "src-ui/src/main.tsx",
 
-    {"path":"src-ui/src/utils/shareUiOrigin.ts","digest":"2678278a09bd74ba8d317c6d1d8f7ba13faef435e0a0844a6f4012105fc2210b","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-ui/src/utils/shareUiOrigin.ts",
 
-    {"path":"src-ui/src/views/settings/AnswerSharesSection.tsx","digest":"b8a33e1a1087df366781d6097897e62b4baf6afb6e445e0ef612454009c44cf5","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-ui/src/views/settings/AnswerSharesSection.tsx",
 
-    {"path":"src-ui/src/views/share/share-token.ts","digest":"9c93a11f705be6716cbe97c78930b3e7dea44d4bcb46f5d17f93d91746a34d56","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+    "src-ui/src/views/share/share-token.ts",
 
-    {"path":"src-ui/src/views/share/SharedAnswerView.tsx","digest":"c05e76750bbbea1e98f9fee1d8cafd06f1c76f16b0233d20b96e5be51c8ca8e8","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"}
+    "src-ui/src/views/share/SharedAnswerView.tsx"
   ],
 
   "checks": [

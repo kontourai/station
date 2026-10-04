@@ -1,0 +1,57 @@
+{
+  "path": "docs/design/native-relay-enrollment.md",
+
+  "kind": "design",
+
+  "state": "classified",
+
+  "summary": "Current native enrollment ceremony and evidence boundaries. Reviewed the document, host/server handoff and actual frontend controller/transport contracts; distinguishes account verification, exact operator Device approval, encrypted custody, explicit activation and host-owned recovery.",
+
+  "limits": "Bounded integration review with executed frontend/server composition and combined Rust library tests. No fresh installed Tauri IPC, actual OS-process recovery, physical iOS Nightly or Zach acceptance; in-memory peer/native IPC fixtures do not qualify those seams. Cryptographic interoperability is not a formal audit.",
+
+  "sources": [
+    "packages/connect/src/core/nativeApplicationTransport.ts",
+
+    "packages/connect/src/core/nativeEnrollmentExchange.ts",
+
+    "packages/connect/src/core/nativeRelayLink.ts",
+
+    "packages/contracts/src/native-relay-enrollment.ts",
+
+    "packages/contracts/src/native-relay-link.ts",
+
+    "src-desktop/src/native_relay_ios_launch.rs",
+
+    "src-desktop/src/native_relay_link_intake.rs",
+
+    "src-desktop/src/native_relay_redemption.rs",
+
+    "src-desktop/src/native_secure_entry.rs",
+
+    "src-ui/src/platform/native/nativeAccountSessionBridge.ts",
+
+    "src-ui/src/platform/native/nativeEnrollmentSignalingBridge.ts",
+
+    "src-ui/src/platform/native/nativeRelayConnectionOwner.ts",
+
+    "src-ui/src/platform/native/nativeRelayEnrollmentClient.ts",
+
+    "src-ui/src/platform/native/NativeRelayEntryBoundary.tsx",
+
+    "src-ui/src/platform/native/nativeRelayLinkAdapter.ts",
+
+    "src-ui/src/platform/native/NativeRelayLinkIntake.tsx",
+
+    "src-ui/src/platform/native/NativeRelayLinkReview.tsx",
+
+    "src-ui/src/views/connections-hub/NativeRelayEnrollmentWizard.tsx",
+
+    "src-ui/src/views/native-relay/NativeRelayMemberShell.tsx"
+  ],
+
+  "checks": [
+    "npm run test:focused -- src-ui/src/views/connections-hub/__tests__/RelayRouteProfiles.test.tsx src-ui/src/platform/native/__tests__/nativeRelayEnrollmentClient.test.ts",
+
+    "cargo test --manifest-path src-desktop/Cargo.toml --locked --lib"
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "2463f47c8492c6d5cefdf362cadba7600982a615",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Reviewed NavigationContext mobile page transition through canonical guarded navigation. Phone page actions clear dock and maximize atomically; desktop keeps the dock open, explicit chat links retain requested size, and a rejected dirty-navigation guard leaves the current chat and remembered size intact. New phone case failed on previous owner at dock visibility and 25 focused tests pass with the fix. Native screenshot caught the previous full-height snap masking Settings; repaired package visual verification is pending.","inputs":["docs/user/getting-started.md"]}
+  ]
+}

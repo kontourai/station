@@ -9,16 +9,14 @@
 
   "limits": "No full delegation/read-scope/security audit, real mutual pairing ceremony, SSH remote or target-execution proof.",
 
-  "document": {"digest":"c2844918dc78fd9924dd1fd1f9dfe649ef85d4ad1e6d7d89af148d17b84d239e","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
-
   "sources": [
-    {"path":"packages/contracts/src/environment-security.ts","digest":"5e95b203695a37807a3b3c9464df4f0153ca32b408496dc12f59274f61fd2486","revision":"91d79c3f0ce9ca5ae304e4248b67b6189103016e"},
+    "packages/contracts/src/environment-security.ts",
 
-    {"path":"src-server/services/peers/peer-credential-store.ts","digest":"08c2e2a1069e62cdc8196dffe4ed7a9c0dfc709047431d775e70c3c30e2378c3","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+    "src-server/services/peers/peer-credential-store.ts",
 
-    {"path":"src-server/tools/station-control-delegation.ts","digest":"8968805e6becbf85cb1316d6c9a3838e5d0d02203b27b7e69d95e2b080f1fec4","revision":"92d0ab926f74d804cb314dfadbbda9db73499015"},
+    "src-server/tools/station-control-delegation.ts",
 
-    {"path":"src-server/services/remote-stations/remote-station-forwarder.ts","digest":"d7dd70947247259c8564783e5e5dd30dbbd2ad5f569fa36cc7f9df4979040cf6","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"}
+    "src-server/services/remote-stations/remote-station-forwarder.ts"
   ],
 
   "checks": [

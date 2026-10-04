@@ -9,22 +9,20 @@
 
   "limits": "No actual plugin installation, native/device/audio journey, public package distribution, provider operation or cross-host qualification. Source/fixture checks do not establish those outcomes.",
 
-  "document": {"digest":"0ebd19384fff4d70d4669103918b4a401acd5a985a2b28b85caf8fce622400f8","revision":"020eb6a14e05313bb66724ec3504e613717e6ed1"},
-
   "sources": [
-    {"path":"examples/registry/default.json","digest":"ef03a6a928d57756719fa0ef4086397b87042e6aa9d825ce7a9f0f9b003162d1","revision":"f249300b2162c4ef35f8978e4cf9ded407027304"},
+    "examples/registry/default.json",
 
-    {"path":"examples/registry/manifest.json","digest":"7abfc33a3f2e281d8a15c3a72c64bcfbec502cb0feab23c3990894026dfd7b13","revision":"f249300b2162c4ef35f8978e4cf9ded407027304"},
+    "examples/registry/manifest.json",
 
-    {"path":"packages/cli/src/commands/install-registry.ts","digest":"f718a3fb5c763792c60f9a488f2369a1806f281683e62f13525ed851bcf0ec74","revision":"ed05e6f6c98c5b2bb994a88ff8fa8e1421639269"},
+    "packages/cli/src/commands/install-registry.ts",
 
-    {"path":"packages/cli/src/commands/install.ts","digest":"ca98a0fa5d41930d6b3bb5d33000804411d82ec80650a7d97294cb7dcd020ac5","revision":"ed05e6f6c98c5b2bb994a88ff8fa8e1421639269"},
+    "packages/cli/src/commands/install.ts",
 
-    {"path":"src-server/providers/registries/default-registry.ts","digest":"37610478ac1fcc60b9a777d7a9cbd05ee88f9f20b5d3ce57f5806907332600c8","revision":"ed05e6f6c98c5b2bb994a88ff8fa8e1421639269"},
+    "src-server/providers/registries/default-registry.ts",
 
-    {"path":"src-server/routes/plugins/registry.ts","digest":"182f1ca8372a27bd8f40e5b9ca8faec49b24cd1e4959b4a8aa1250def71e91dc","revision":"c191c6d08ae926b8d038cf5e2a4b494beee19243"},
+    "src-server/routes/plugins/registry.ts",
 
-    {"path":"src-server/services/plugins/plugin-install-consent.ts","digest":"6e34e0844061dd5311e027973b1919483bf29047e18721ecae8b72ece98765ed","revision":"ed05e6f6c98c5b2bb994a88ff8fa8e1421639269"}
+    "src-server/services/plugins/plugin-install-consent.ts"
   ],
 
   "checks": [
