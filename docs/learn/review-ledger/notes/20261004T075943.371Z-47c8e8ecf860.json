@@ -1,0 +1,7 @@
+{
+  "revision": "b95428d4fbb50b593eed0b6dd8abc821c915f22f",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Re-checked the queued follow-up claims after #3157 fixed the hold hint's wiring: the usage-limit flag is now derived onto the dock session and the hint renders with a neutral hold class instead of the failure row; the composer and journal claims here are unchanged.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/QueuedMessages.css","src-ui/src/components/chat/QueuedMessages.tsx"]}
+  ]
+}
