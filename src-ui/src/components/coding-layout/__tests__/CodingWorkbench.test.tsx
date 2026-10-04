@@ -1204,6 +1204,22 @@ describe('CodingWorkbench — the folded inbox’s edge, and the fold judged aga
     expect(
       strip.parentElement?.querySelector('[role="tooltip"]')?.textContent,
     ).toBe('Show inbox, 2 need you');
+    // A Needs-you count is what lifts the strip's rule to the accent.
+    expect(
+      strip.classList.contains('coding-workbench__inbox-edge--needs-you'),
+    ).toBe(true);
+  });
+
+  test('with nothing needing the reader the strip’s rule stays neutral (no accent class)', async () => {
+    harness.needsYou = 0;
+    renderStack({ wide: true });
+    await drillInto('Diff');
+    const strip = edge()!;
+    expect(strip.getAttribute('aria-label')).toBe('Show inbox');
+    expect(strip.classList.contains('coding-workbench__inbox-edge')).toBe(true);
+    expect(
+      strip.classList.contains('coding-workbench__inbox-edge--needs-you'),
+    ).toBe(false);
   });
 
   test('the edge is a keyboard-reachable button whose activation is the reader’s own choice', async () => {

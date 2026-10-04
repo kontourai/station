@@ -911,9 +911,40 @@ test.describe('Coding stack — wide (1440px): the folded inbox’s edge', () =>
     expect(rest.height).toBeGreaterThanOrEqual(44);
     const chat = (await chatPage(page).boundingBox())!;
     expect(Math.abs(rest.x - chat.x)).toBeLessThan(2);
+    // Nothing needs the reader here, so the strip's rule is the neutral
+    // border at rest and the accent only under the pointer.
+    await expect(edge(page)).toHaveAccessibleName('Show inbox');
+    const ruleColours = () =>
+      page.evaluate(() => {
+        const strip = document.querySelector<HTMLElement>(
+          '.coding-workbench__inbox-edge',
+        )!;
+        const resolve = (token: string) => {
+          const probe = document.createElement('span');
+          probe.style.color = `var(${token})`;
+          strip.parentElement!.append(probe);
+          const value = getComputedStyle(probe).color;
+          probe.remove();
+          return value;
+        };
+        return {
+          rule: getComputedStyle(strip).borderRightColor,
+          neutral: resolve('--border-primary'),
+          accent: resolve('--accent-primary'),
+        };
+      });
+    const atRest = await ruleColours();
+    expect(atRest.neutral).not.toBe(atRest.accent);
+    expect(atRest.rule).toBe(atRest.neutral);
     // Settle the pointer in the transcript first, then come to the edge.
     await page.mouse.move(chat.x + chat.width / 2, chat.y + chat.height / 2);
     await edge(page).hover();
+    await expect
+      .poll(async () => {
+        const now = await ruleColours();
+        return now.rule === now.accent;
+      })
+      .toBe(true);
     await expect
       .poll(async () => {
         const box = (await edge(page).boundingBox())!;
