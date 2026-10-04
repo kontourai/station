@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { relative, resolve } from 'node:path';
+import { scaleLivenessMs } from './liveness-scale.mjs';
 
 export const PRODUCT_LAW_SCHEMA_VERSION = 1;
 export const PRODUCT_LAW_FAMILIES = Object.freeze([
@@ -37,9 +38,16 @@ function nonEmptyString(value) {
 
 export function productLawObservationTimeoutMs(env = process.env) {
   const configured = Number(env?.[PRODUCT_LAW_OBSERVATION_TIMEOUT_ENV]);
+  // An explicit per-observation value is the caller's choice; only the
+  // default is a liveness bound that scales with host pressure (#3302).
   return Number.isFinite(configured) && configured > 0
     ? configured
-    : PRODUCT_LAW_OBSERVATION_TIMEOUT_MS;
+    : scaleLivenessMs(PRODUCT_LAW_OBSERVATION_TIMEOUT_MS, env);
+}
+
+/** The shared liveness ceiling for all observations, scaled like the default. */
+export function productLawRuntimeBudgetMs(env = process.env) {
+  return scaleLivenessMs(MAX_PRODUCT_LAW_RUNTIME_MS, env);
 }
 
 function pathInsideRoot(rootDir, file) {
