@@ -2,6 +2,14 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import nodePath from 'node:path';
+import {
   createLearningSourceReader,
   isLearningSourcePath,
 } from './learning-source-reader.mjs';
@@ -19,6 +27,15 @@ export const LEGACY_REVIEW_LEDGER = 'docs/learn/review-ledger.json';
 /** Capture metadata; the capture reviews live in the ledger directory. */
 export const LEARNING_MEDIA_MANIFEST = 'docs/learn/media.json';
 export const REVIEW_LEDGER_VERSION = 2;
+
+/**
+ * Longest repo-relative ledger file path accepted (#3036). Windows MAX_PATH is
+ * 260 including the terminating NUL, so 259 usable characters; an 80-character
+ * checkout root and one separator leave 178. On c1d07db19c the longest record
+ * file is 137 characters and the longest capture file 87, so this is a ceiling
+ * that only a pathological document path reaches, not a ratchet to maintain.
+ */
+export const REVIEW_LEDGER_PATH_BUDGET = 178;
 
 const RECORDS = `${REVIEW_LEDGER_DIR}/records/`;
 const CAPTURES = `${REVIEW_LEDGER_DIR}/captures/`;
@@ -369,6 +386,13 @@ export function parseReviewLedgerFiles(
   /** @type {Map<string, { file: string, data: any }>} */
   const captures = new Map();
   const notes = [];
+  for (const file of files.keys())
+    if (file.length > REVIEW_LEDGER_PATH_BUDGET)
+      throw reviewError(
+        'path-too-long',
+        `Review ledger path is ${file.length} characters, over the ${REVIEW_LEDGER_PATH_BUDGET} budget that keeps checkouts under the Windows 260-character limit: ${file}; shorten or move the document`,
+        { file },
+      );
   for (const [file, text] of [...files].sort(([a], [b]) =>
     a < b ? -1 : a > b ? 1 : 0,
   )) {
@@ -583,6 +607,61 @@ function git(root, args, input) {
     stdio: ['pipe', 'pipe', 'pipe'],
     maxBuffer: 256 * 1024 * 1024,
   });
+}
+
+/**
+ * Note files (repo-relative) at a commit.
+ * @param {string} root
+ * @param {string} ref
+ */
+export function listReviewNoteFilesAt(root, ref) {
+  return git(root, ['ls-tree', '-r', '-z', '--name-only', ref, '--', NOTES])
+    .toString('utf8')
+    .split('\0')
+    .filter(Boolean);
+}
+
+/**
+ * Write a batch of ledger files, rolling every change back if one write fails
+ * (#3036). Existing files get their prior bytes back and files this call
+ * created are removed; anything that cannot be restored is listed.
+ * @param {string} root
+ * @param {Map<string, string>} after repo-relative file -> new text
+ * @param {Map<string, string>} before repo-relative file -> prior text
+ * @returns {string[]} files written
+ */
+export function writeReviewFiles(root, after, before) {
+  const touched = [];
+  try {
+    for (const [file, text] of after) {
+      if (before.get(file) === text) continue;
+      const target = nodePath.join(root, file);
+      const prior = existsSync(target) ? readFileSync(target) : undefined;
+      touched.push({ file, target, prior });
+      mkdirSync(nodePath.dirname(target), { recursive: true });
+      writeFileSync(target, text);
+    }
+  } catch (cause) {
+    const unrestored = [];
+    for (const { file, target, prior } of [...touched].reverse()) {
+      try {
+        if (prior === undefined) rmSync(target, { force: true });
+        else writeFileSync(target, prior);
+      } catch {
+        unrestored.push(file);
+      }
+    }
+    throw reviewError(
+      'write-failed',
+      `Writing the review ledger failed (${cause instanceof Error ? cause.message : String(cause)}); ${
+        unrestored.length
+          ? `could not restore: ${unrestored.join(', ')}`
+          : 'every file written so far was restored'
+      }`,
+      { unrestored, cause },
+    );
+  }
+  return touched.map(({ file }) => file);
 }
 
 /** Working-tree ledger files, tracked or not yet added. */

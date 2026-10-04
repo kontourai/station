@@ -4,7 +4,7 @@
 //
 //   npm run docs:freshness:check
 //   STATION_DOCS_FRESHNESS_BASE=<ref> npm run docs:freshness:check
-//   npm run docs:freshness:check -- --json   # { mode, blocking, advisory } or { error: { code } }
+//   npm run docs:freshness:check -- --json   # { mode, appendOnly, blocking, advisory } or { error: { code } }
 //
 // Exit 1 names every stale entry this change owns; stale entries outside the
 // change are printed as advisory and do not fail.
@@ -34,6 +34,7 @@ export async function main(argv = process.argv.slice(2)) {
       JSON.stringify({
         mode: result.policy.mode,
         historyUnavailable: result.historyUnavailable,
+        appendOnly: result.policy.appendOnly ?? 'not-checked',
         reviews: result.reviews.size,
         captures: result.captures.size,
         blocking: result.blocking.map(entryJson),
@@ -44,6 +45,10 @@ export async function main(argv = process.argv.slice(2)) {
     return;
   }
   if (result.historyUnavailable) console.warn(result.historyUnavailable);
+  if (result.policy.appendOnly === 'NOT_VERIFIED')
+    console.warn(
+      'Append-only notes: NOT_VERIFIED (no merge base to compare against); a deleted note would pass this run.',
+    );
   const advisory = formatFreshnessAdvisory(result.policy, result.advisory);
   if (advisory) console.warn(advisory);
   assertDocumentationFresh(result);
