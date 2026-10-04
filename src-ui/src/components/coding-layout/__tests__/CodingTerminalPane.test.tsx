@@ -239,3 +239,40 @@ test('closing the last terminal is remembered: a remount opens no shell, and ope
   );
   expect(await screen.findByRole('tab', { name: 'Shell 1' })).toBeTruthy();
 });
+
+test('closing the last terminal is remembered per Project: another Project’s empty panel still opens a shell', async () => {
+  closeProjectTerminal.mockResolvedValue({
+    sessionId: 'project-a:terminal-one',
+    projectSlug: 'project-a',
+    terminalId: 'terminal-one',
+  });
+  const inA = renderPane([
+    { id: 'terminal-one', type: 'shell', label: 'Shell 1' },
+  ]);
+  fireEvent.click(screen.getByRole('button', { name: 'Close Shell 1' }));
+  await waitFor(() => expect(screen.queryByRole('tab')).toBeNull());
+  inA.unmount();
+  // Project B, with the (browser-tab-wide) tab list empty: its panel was
+  // never emptied by the reader, so it opens a shell.
+  expect(sessionStorage.getItem('coding-terminal-tabs')).toBe('[]');
+  const inB = render(
+    <CodingTerminalPane
+      presentation="pane"
+      projectSlug="project-b"
+      workingDir="/workspace-b"
+    />,
+  );
+  expect(await screen.findByRole('tab', { name: 'Shell 1' })).toBeTruthy();
+  inB.unmount();
+  // Back in Project A with an empty list: still the reader's closed panel.
+  sessionStorage.setItem('coding-terminal-tabs', '[]');
+  render(
+    <CodingTerminalPane
+      presentation="pane"
+      projectSlug="project-a"
+      workingDir="/workspace"
+    />,
+  );
+  await act(async () => undefined);
+  expect(screen.queryByRole('tab')).toBeNull();
+});

@@ -27,18 +27,25 @@ export interface CodingTerminalPaneProps {
   workingDir: string;
 }
 
-const CLOSED_LAST_TERMINAL_KEY = 'coding-terminal-closed-last';
-function readClosedLastTerminal(): boolean {
+/**
+ * "The reader closed the last terminal", per Project: closing Project A's
+ * last shell says nothing about Project B, whose empty panel still opens one.
+ */
+function closedLastTerminalKey(projectSlug: string): string {
+  return `coding-terminal-closed-last:${projectSlug}`;
+}
+function readClosedLastTerminal(projectSlug: string): boolean {
   try {
-    return sessionStorage.getItem(CLOSED_LAST_TERMINAL_KEY) === '1';
+    return sessionStorage.getItem(closedLastTerminalKey(projectSlug)) === '1';
   } catch {
     return false;
   }
 }
-function writeClosedLastTerminal(closed: boolean) {
+function writeClosedLastTerminal(projectSlug: string, closed: boolean) {
+  const key = closedLastTerminalKey(projectSlug);
   try {
-    if (closed) sessionStorage.setItem(CLOSED_LAST_TERMINAL_KEY, '1');
-    else sessionStorage.removeItem(CLOSED_LAST_TERMINAL_KEY);
+    if (closed) sessionStorage.setItem(key, '1');
+    else sessionStorage.removeItem(key);
   } catch {
     /* Storage is optional presentation state. */
   }
@@ -134,9 +141,9 @@ export function CodingTerminalPane({
       }
       setTabs((current) => [...current, tab]);
       setActiveTabId(id);
-      writeClosedLastTerminal(false);
+      writeClosedLastTerminal(projectSlug, false);
     },
-    [],
+    [projectSlug],
   );
 
   const openNewTerminal = () => {
@@ -155,13 +162,14 @@ export function CodingTerminalPane({
       return;
     }
     shellOpened.current = true;
-    // "The reader closed the last terminal" is remembered beside the tab
-    // list itself (the tab's session storage, keyed like the list), so a
-    // remount — a reload, a crossing of the layout's fold — does not open a
-    // shell they just closed. Opening one again forgets it.
-    if (readClosedLastTerminal()) return;
+    // "The reader closed the last terminal" is remembered in the browser
+    // tab's session storage, keyed by Project, so a remount — a reload, a
+    // crossing of the layout's fold — does not open a shell they just
+    // closed, while another Project's empty panel still opens one. Opening
+    // one again forgets it.
+    if (readClosedLastTerminal(projectSlug)) return;
     addTab('shell');
-  }, [addTab, open, shellIsTheOnlyKind, tabs.length]);
+  }, [addTab, open, projectSlug, shellIsTheOnlyKind, tabs.length]);
 
   const removeClosedTab = (id: string) => {
     setTabs((current) => {
@@ -172,7 +180,7 @@ export function CodingTerminalPane({
       }
       if (next.length === 0) {
         setActiveTabId('');
-        writeClosedLastTerminal(true);
+        writeClosedLastTerminal(projectSlug, true);
       }
       return next;
     });
