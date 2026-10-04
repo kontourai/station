@@ -32,7 +32,7 @@
 .pull-request-stacks__open {
   display: grid;
   gap: var(--space-2);
-  width: 100%;
+  width: calc(100% + 2 * var(--space-3));
   min-width: 0;
   min-height: 44px;
   padding: var(--space-2) var(--space-3);
