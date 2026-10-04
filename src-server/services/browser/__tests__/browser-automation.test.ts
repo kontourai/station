@@ -58,6 +58,14 @@ const HUMAN = {
 } as const;
 const ISOLATED_CONTEXT = 7;
 
+/** The sessions of a `status` page; a refusal fails the test here. */
+function statusSessions(
+  page: Awaited<ReturnType<BrowserAutomation['status']>>,
+) {
+  if (!page.ok) throw new Error(`status refused: ${page.code}`);
+  return page.sessions;
+}
+
 type Handler = (params: Record<string, unknown>) => unknown;
 
 function fakeHost() {
@@ -336,7 +344,7 @@ describe('BrowserAutomation: a session id is only a selector', () => {
     const adminAgent = await authorityFor(caller({}, ADMIN_ID));
     const own = await h.open({ kind: 'project-admin', principalId: ADMIN_ID });
     expect(
-      (await h.automation.status(adminAgent))
+      statusSessions(await h.automation.status(adminAgent))
         .map((s) => s.browserSessionId)
         .sort(),
     ).toEqual([adminSession.browserSessionId, own.browserSessionId].sort());
@@ -697,7 +705,7 @@ describe('BrowserAutomation: control through the live-surface lease', () => {
     expect(
       h.fake.sent.filter((s) => s.method === 'Page.handleJavaScriptDialog'),
     ).toEqual([]);
-    const status = await h.automation.status(authority);
+    const status = statusSessions(await h.automation.status(authority));
     expect(status[0]).toMatchObject({ dialogWaitingForPerson: true });
   });
 

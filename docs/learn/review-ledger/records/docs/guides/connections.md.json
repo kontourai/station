@@ -40,11 +40,11 @@
 
     "packages/connect/src/core/selfHostedBrokerBrowserClient.ts",
 
-    "packages/connect/src/react/HttpConnectionConsent.tsx",
-
     "packages/connect/src/react/connection-manager-modal-utils.ts",
 
     "packages/connect/src/react/connection-manager-modal/ConnectionListPanel.tsx",
+
+    "packages/connect/src/react/HttpConnectionConsent.tsx",
 
     "packages/contracts/src/agent.ts",
 
@@ -214,12 +214,6 @@
 
     "src-ui/src/app-shell/routing.ts",
 
-    "src-ui/src/components/OnboardingGate.tsx",
-
-    "src-ui/src/components/SplitPaneLayout.css",
-
-    "src-ui/src/components/SplitPaneLayout.tsx",
-
     "src-ui/src/components/acp-connections/ACPConnectionSetupStages.tsx",
 
     "src-ui/src/components/chat-dock/DelegationLauncher.tsx",
@@ -232,7 +226,13 @@
 
     "src-ui/src/components/header/useHeaderViewModel.ts",
 
+    "src-ui/src/components/OnboardingGate.tsx",
+
     "src-ui/src/components/session/SessionModelPicker.tsx",
+
+    "src-ui/src/components/SplitPaneLayout.css",
+
+    "src-ui/src/components/SplitPaneLayout.tsx",
 
     "src-ui/src/contexts/ApiBaseContext.tsx",
 
@@ -246,21 +246,11 @@
 
     "src-ui/src/lib/browserRelayTurnCustody.ts",
 
-    "src-ui/src/platform/native/NativeRelayConnectionRecovery.tsx",
-
-    "src-ui/src/platform/native/NativeRelayLinkIntakeController.tsx",
-
-    "src-ui/src/platform/native/NativeRelayLinkReview.tsx",
-
-    "src-ui/src/platform/native/__tests__/NativeRelayLinkIntake.test.tsx",
-
     "src-ui/src/platform/native/__tests__/pairingTransport.test.ts",
 
     "src-ui/src/platform/native/nativeRelayGrantRenewalAdapter.ts",
 
     "src-ui/src/platform/native/nativeRelayGrantRenewalSupervisor.ts",
-
-    "src-ui/src/platform/native/nativeRelayLinkCancellation.ts",
 
     "src-ui/src/platform/native/pairingTransport.ts",
 
@@ -270,6 +260,18 @@
 
     "src-ui/src/views/AgentConnectionView.tsx",
 
+    "src-ui/src/views/connections-hub/AddMachineModal.tsx",
+
+    "src-ui/src/views/connections-hub/BrowserRelayRoutes.tsx",
+
+    "src-ui/src/views/connections-hub/ComputersSection.tsx",
+
+    "src-ui/src/views/connections-hub/connection-sections.ts",
+
+    "src-ui/src/views/connections-hub/RelayRouteKeyApproval.tsx",
+
+    "src-ui/src/views/connections-hub/RelayRouteProfiles.tsx",
+
     "src-ui/src/views/ConnectionsHub.tsx",
 
     "src-ui/src/views/ConnectionsSectionFrame.tsx",
@@ -278,35 +280,33 @@
 
     "src-ui/src/views/EngineAccountOverview.tsx",
 
-    "src-ui/src/views/ProviderSettingsView.tsx",
-
-    "src-ui/src/views/connections-hub/AddMachineModal.tsx",
-
-    "src-ui/src/views/connections-hub/BrowserRelayRoutes.tsx",
-
-    "src-ui/src/views/connections-hub/ComputersSection.css",
-
-    "src-ui/src/views/connections-hub/ComputersSection.tsx",
-
-    "src-ui/src/views/connections-hub/NativeRelayEnrollmentWizard.tsx",
-
-    "src-ui/src/views/connections-hub/RelayRouteKeyApproval.tsx",
-
-    "src-ui/src/views/connections-hub/RelayRouteProfiles.tsx",
-
-    "src-ui/src/views/connections-hub/RelaySetupHelp.tsx",
-
-    "src-ui/src/views/connections-hub/connection-sections.ts",
-
     "src-ui/src/views/page-layout.css",
+
+    "src-ui/src/views/provider-settings/providerCatalog.tsx",
 
     "src-ui/src/views/provider-settings/ProviderConnectionForm.tsx",
 
     "src-ui/src/views/provider-settings/ProviderStackOverview.tsx",
 
-    "src-ui/src/views/provider-settings/providerCatalog.tsx",
+    "src-ui/src/views/ProviderSettingsView.tsx",
 
-    "tests/connections-crud.spec.ts"
+    "tests/connections-crud.spec.ts",
+
+    "src-ui/src/platform/native/NativeRelayConnectionRecovery.tsx",
+
+    "src-ui/src/platform/native/NativeRelayLinkIntakeController.tsx",
+
+    "src-ui/src/platform/native/NativeRelayLinkReview.tsx",
+
+    "src-ui/src/platform/native/__tests__/NativeRelayLinkIntake.test.tsx",
+
+    "src-ui/src/platform/native/nativeRelayLinkCancellation.ts",
+
+    "src-ui/src/views/connections-hub/ComputersSection.css",
+
+    "src-ui/src/views/connections-hub/NativeRelayEnrollmentWizard.tsx",
+
+    "src-ui/src/views/connections-hub/RelaySetupHelp.tsx"
   ],
 
   "checks": [

@@ -18,6 +18,10 @@
 
     "packages/cli/src/dev/server.ts",
 
+    "packages/contracts/src/catalog.ts",
+
+    "packages/sdk/src/agent/index.ts",
+
     "packages/sdk/src/api-core.ts",
 
     "packages/sdk/src/hooks/operations.ts",
@@ -44,11 +48,23 @@
 
     "src-server/providers/provider-interfaces.ts",
 
+    "src-server/providers/registries/filesystem-skill-registry.ts",
+
     "src-server/providers/registries/json-manifest-registry.ts",
+
+    "src-server/providers/registries/registry-catalog-installed-state.ts",
+
+    "src-server/providers/registries/registry-source-configuration.ts",
+
+    "src-server/providers/registries/registry-source-manager.ts",
 
     "src-server/routes/agents/tools.ts",
 
+    "src-server/routes/plugins/__tests__/registry-marketplaces.routes.test.ts",
+
     "src-server/routes/plugins/plugin-public-routes.ts",
+
+    "src-server/routes/plugins/registry.ts",
 
     "src-server/runtime/bootstrap/station-runtime.ts",
 
@@ -59,6 +75,8 @@
     "src-server/runtime/mcp/mcp-ui-resolver.ts",
 
     "src-server/runtime/plugins/plugin-operational-event-subscriptions.ts",
+
+    "src-server/services/agents/skill-service.ts",
 
     "src-server/services/operational-events/operational-event-subscriptions.ts",
 
@@ -90,27 +108,9 @@
 
     "src-ui/src/components/mcp-ui/MCPToolUIFrame.tsx",
 
-    "src-ui/src/core/PluginRegistry.ts",
+    "src-ui/src/components/plugins/plugin-frame-runtime.ts",
 
-    "packages/sdk/src/agent/index.ts",
-
-    "packages/contracts/src/catalog.ts",
-
-    "src-server/providers/registries/filesystem-skill-registry.ts",
-
-    "src-server/providers/registries/registry-catalog-installed-state.ts",
-
-    "src-server/providers/registries/registry-source-configuration.ts",
-
-    "src-server/providers/registries/registry-source-manager.ts",
-
-    "src-server/routes/plugins/__tests__/registry-marketplaces.routes.test.ts",
-
-    "src-server/routes/plugins/registry.ts",
-
-    "src-server/services/agents/skill-service.ts",
-
-    "src-ui/src/components/plugins/plugin-frame-runtime.ts"
+    "src-ui/src/core/PluginRegistry.ts"
   ],
 
   "checks": [

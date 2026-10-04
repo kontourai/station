@@ -1,0 +1,13 @@
+{
+  "revision": "9d7e34b4cb41ee60b952ded3a6af363f169befa0",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"Re-recorded after one wording correction in docs/reference/contracts.md (docs/reference/contracts.md): the Muse turn-bound paragraph quoted the stall watchdog's line as \"No output for …\"; since #3127 the UI shows \"No response from <engine> for …\" (TurnActivityProgress.tsx parts.silence, engineDisplayLabel). I checked the new quote against TurnActivityProgress.tsx and its tests. Nothing else in this document or its dependants changed; their claims do not mention the wording.","inputs":["docs/glossary.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Re-recorded after one wording correction in docs/reference/contracts.md (docs/reference/contracts.md): the Muse turn-bound paragraph quoted the stall watchdog's line as \"No output for …\"; since #3127 the UI shows \"No response from <engine> for …\" (TurnActivityProgress.tsx parts.silence, engineDisplayLabel). I checked the new quote against TurnActivityProgress.tsx and its tests. Nothing else in this document or its dependants changed; their claims do not mention the wording.","inputs":["docs/guides/integrating-station.md"]},
+
+    {"path":"docs/reference/contracts.md","note":"Re-recorded after one wording correction in docs/reference/contracts.md (docs/reference/contracts.md): the Muse turn-bound paragraph quoted the stall watchdog's line as \"No output for …\"; since #3127 the UI shows \"No response from <engine> for …\" (TurnActivityProgress.tsx parts.silence, engineDisplayLabel). I checked the new quote against TurnActivityProgress.tsx and its tests. Nothing else in this document or its dependants changed; their claims do not mention the wording.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"Re-recorded after one wording correction in docs/reference/contracts.md (docs/reference/contracts.md): the Muse turn-bound paragraph quoted the stall watchdog's line as \"No output for …\"; since #3127 the UI shows \"No response from <engine> for …\" (TurnActivityProgress.tsx parts.silence, engineDisplayLabel). I checked the new quote against TurnActivityProgress.tsx and its tests. Nothing else in this document or its dependants changed; their claims do not mention the wording.","inputs":["packages/contracts/AGENTS.md"]}
+  ]
+}

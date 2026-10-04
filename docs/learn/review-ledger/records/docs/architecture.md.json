@@ -16,12 +16,6 @@
 
     "packages/connect/package.json",
 
-    "packages/contracts/package.json",
-
-    "packages/contracts/package.json#/exports",
-
-    "packages/contracts/package.json#/files",
-
     "packages/contracts/src/tool.ts",
 
     "packages/sdk/package.json",
@@ -31,12 +25,6 @@
     "packages/sdk/src/index.ts",
 
     "packages/sdk/src/voice/registry.ts",
-
-    "packages/shared/package.json",
-
-    "packages/shared/package.json#/engines",
-
-    "packages/shared/package.json#/exports",
 
     "packages/shared/src/mcp-connection.ts",
 
@@ -98,7 +86,19 @@
 
     "src-ui/src/hooks/voiceWsUrl.ts",
 
-    "src-ui/src/providers/voice/NovaVoiceSessionAdapter.ts"
+    "src-ui/src/providers/voice/NovaVoiceSessionAdapter.ts",
+
+    "packages/contracts/package.json#/exports",
+
+    "packages/contracts/package.json#/files",
+
+    "packages/shared/package.json#/exports",
+
+    "packages/shared/package.json#/engines",
+
+    "packages/contracts/package.json",
+
+    "packages/shared/package.json"
   ],
 
   "checks": [

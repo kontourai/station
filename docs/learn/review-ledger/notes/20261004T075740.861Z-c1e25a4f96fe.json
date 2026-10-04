@@ -1,0 +1,7 @@
+{
+  "revision": "df4c924a8cc40393c03f45ff249b7aacf6b72d54",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"scripts/__tests__/path-read-pin-boundary.test.ts changed only by adding the OpenCode model-capabilities suite to UNREPORTED_PATH_READING_SUITES. I read the document: it does not list that guard's suites or describe the allowlist, so no claim changes.","inputs":["docs/guides/testing.md","scripts/__tests__/path-read-pin-boundary.test.ts"]}
+  ]
+}
