@@ -1,9 +1,8 @@
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ReviewPendingAttentionItem } from '@kontourai/station-contracts/attention';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { EventBus } from '../../services/orchestration/event-bus.js';
 import { EventStore } from '../../services/orchestration/event-store.js';
 import {
@@ -89,6 +88,9 @@ function peerSnapshot(pendingRequest?: Record<string, unknown>) {
   };
 }
 
+// Created before the cleanup hook below, so it removes the directories
+// after the stores in them have closed (after-hooks run in reverse order).
+const makeTempDir = trackTempDirs();
 const cleanups: Array<() => void> = [];
 afterEach(() => {
   for (const cleanup of cleanups.splice(0).reverse()) cleanup();
@@ -144,8 +146,7 @@ beforeEach(() => {
 });
 
 function fixture() {
-  const home = mkdtempSync(join(tmpdir(), 'station-peer-request-'));
-  cleanups.push(() => rmSync(home, { recursive: true, force: true }));
+  const home = makeTempDir('station-peer-request-');
   const store = new EventStore(join(home, 'orchestration.sqlite'));
   cleanups.push(() => {
     store.close();
