@@ -27,11 +27,7 @@ const makeHome = trackTempDirs();
 test('ordinary analytics and rescan responses omit the operator-only person breakdown', async () => {
   const aggregator = new UsageAggregator(makeHome('station-private-usage-'));
   const stats = createEmptyUsageStats();
-  const principal = humanPrincipal(
-    'oidc',
-    'recorded-user',
-    'Recorded person',
-  );
+  const principal = humanPrincipal('oidc', 'recorded-user', 'Recorded person');
   stats.byPrincipal = {
     [principal.id]: {
       principal,
