@@ -180,7 +180,8 @@ describe('append-only review notes and Git history (#3101)', () => {
     reviewShared(f, 'Reviewed change and restoration.');
     commit(f.root, 'catch up deliberately');
     expect(check(f.root, strict).status).toBe(0);
-  });
+    // Four CLI children by design: two records and two checks.
+  }, 90_000);
 
   it('merges two branches changing the same source with no ledger conflict and both documents fresh', () => {
     const f = pathOnlyFixture();
@@ -235,7 +236,8 @@ describe('append-only review notes and Git history (#3101)', () => {
     expect(check(f.root, scoped).status).toBe(0);
     expect(check(f.root, strict).status).toBe(0);
     expect(git(f.root, ['merge-base', base, 'HEAD'])).toBe(base);
-  });
+    // Seven CLI children by design: four records and three checks.
+  }, 90_000);
 
   it('judges squash commits by the note landed with the source, without requiring the original revision', () => {
     const f = pathOnlyFixture();
