@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import type { TransferAttempt } from './http-transfer-recorder.js';
 
 export const ORCHESTRATION_TRANSFER_PHASE_NAMES = Object.freeze([
   'initialEventWindow',
@@ -12,16 +13,6 @@ export const ORCHESTRATION_TRANSFER_PHASE_NAMES = Object.freeze([
 type OrchestrationTransferScenario = 'external-engine' | 'station-native';
 type OrchestrationTransferPhaseName =
   (typeof ORCHESTRATION_TRANSFER_PHASE_NAMES)[number];
-
-interface TransferAttempt {
-  socketBytesRead: number;
-  decodedBodyBytes: number;
-  frames: number;
-  contentEncoding: 'identity' | 'gzip';
-  compressionRatio: number | null;
-  complete: boolean;
-  abortedByClient?: boolean;
-}
 
 interface MeasuredTransferPhase {
   scenario: OrchestrationTransferScenario;
@@ -58,6 +49,21 @@ interface Budget {
   wireBytes: number;
   decodedBytes: number;
   frames: number;
+}
+
+export class TransferMeasurementFailure extends Error {
+  constructor(
+    message: string,
+    readonly diagnostic: {
+      kind: 'station-transfer-failure';
+      phase: MeasuredTransferPhase;
+      limit: Budget;
+      eventIdentities: TransferAttempt['eventIdentities'];
+      truncated: boolean;
+    },
+  ) {
+    super(`orchestration transfer scenario: ${message}`);
+  }
 }
 
 interface MeasureOrchestrationTransferOptions {
@@ -168,6 +174,7 @@ function phase(
 function assertWithinBudget(
   phases: MeasuredTransferPhase[],
   budget: Record<string, Budget>,
+  attempts: TransferAttempt[],
 ) {
   for (const item of phases) {
     const limit = budget[item.name];
@@ -177,10 +184,20 @@ function assertWithinBudget(
       decodedBytes: item.decodedBytes,
       frames: item.frames,
     })) {
-      if (value > limit[metric as keyof Budget])
-        fail(
+      if (value > limit[metric as keyof Budget]) {
+        const attempt =
+          attempts[ORCHESTRATION_TRANSFER_PHASE_NAMES.indexOf(item.name)]!;
+        throw new TransferMeasurementFailure(
           `WIRE_BUDGET_EXCEEDED_${item.scenario}_${item.name}: ${metric} ${value} > ${limit[metric as keyof Budget]}`,
+          {
+            kind: 'station-transfer-failure',
+            phase: item,
+            limit,
+            eventIdentities: attempt.eventIdentities,
+            truncated: attempt.frames > attempt.eventIdentities.length,
+          },
         );
+      }
     }
     if (item.wireBytes <= 0 || item.decodedBytes <= 0)
       fail(`${item.scenario}/${item.name} has no transfer bytes`);
@@ -357,7 +374,7 @@ export async function measureOrchestrationTransfer(
   const phases = ORCHESTRATION_TRANSFER_PHASE_NAMES.map((name, index) =>
     phase(source.scenario, name, options.recorder.attempts[index]),
   );
-  assertWithinBudget(phases, options.budget);
+  assertWithinBudget(phases, options.budget, options.recorder.attempts);
   if (phases[2]?.frames !== source.heavyLiveFrameCount)
     fail(`${source.scenario} live phase did not contain one heavy turn`);
   const finalCursor = options.service.readEventStreamHead();
