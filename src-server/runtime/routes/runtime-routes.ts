@@ -645,6 +645,7 @@ import {
 } from '../bootstrap/personal-home-authority-database.js';
 import {
   configureRuntimeHttp,
+  installStationEnvelopeMarker,
   LOOPBACK_DEVICE_SESSION_COOKIE,
   parseDeviceSessionCookie,
   SECURE_DEVICE_SESSION_COOKIE,
@@ -1743,6 +1744,9 @@ export function configureRuntimeRoutes(
     canReadSession: (sessionId, authority) =>
       context.orchestrationService.canUserReadSession(sessionId, authority),
   });
+  // #2842: ahead of the hosted tenant gate, so its refusals are marked as
+  // this Station's own like every other answer.
+  installStationEnvelopeMarker(context.app);
   if (hostedTenantRegistry) {
     context.app.use(
       '*',

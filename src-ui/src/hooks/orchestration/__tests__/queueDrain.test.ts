@@ -709,6 +709,82 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
     },
   );
 
+  // #2842: a gateway can answer with JSON in exactly Station's shape, so the
+  // shape cannot say who refused. Once this Station has sent its marker, a
+  // refusal without it came from something in between and keeps the message.
+  // The REAL fetcher both learns the marker and derives the flag.
+  test.each([
+    [
+      "a gateway JSON 403 in Station's shape, without the marker",
+      'requeued',
+      403,
+      { error: { code: 'forbidden' } },
+      {},
+    ],
+    [
+      'a gateway JSON 400 with success:false, without the marker',
+      'requeued',
+      400,
+      { success: false, error: 'Blocked by policy.' },
+      {},
+    ],
+    [
+      'a Station 400 with the marker',
+      'dropped',
+      400,
+      { success: false, error: 'Agent has no authored Agent definition.' },
+      { 'x-station-envelope': '1' },
+    ],
+  ] as const)(
+    'after Station has sent its marker, %s is %s',
+    async (_name, verdict, status, body, markerHeaders) => {
+      const actual = await vi.importActual<
+        typeof import('@kontourai/station-sdk/client')
+      >('@kontourai/station-sdk/client');
+      const apiBase = 'http://marking-station.test';
+      const answers = [
+        new Response(JSON.stringify({ success: true, data: [] }), {
+          status: 200,
+          headers: {
+            'content-type': 'application/json',
+            'x-station-envelope': '1',
+          },
+        }),
+        new Response(JSON.stringify(body), {
+          status,
+          headers: { 'content-type': 'application/json', ...markerHeaders },
+        }),
+      ];
+      vi.stubGlobal('fetch', async () => answers.shift());
+      // Any ordinary read: the first marked answer from this origin.
+      await actual.fetchAgentsBare(apiBase);
+      sendExecutionMessageMock.mockImplementationOnce(
+        (...args: Parameters<typeof actual.sendExecutionMessage>) =>
+          actual.sendExecutionMessage(...args),
+      );
+      activeChatsStore.updateChat(threadId, {
+        queuedMessages: ['queued message'],
+      });
+
+      drainQueuedMessageOnTurnCompleted(apiBase, threadId);
+      await vi.advanceTimersByTimeAsync(100);
+      await vi.dynamicImportSettled();
+
+      expect(sendExecutionMessageMock).toHaveBeenCalledOnce();
+      expect(answers).toEqual([]);
+      const after = activeChatsStore.getSnapshot()[threadId];
+      if (verdict === 'dropped') {
+        expect(after.queuedMessages).toEqual([]);
+        expect(after.unsentMessages).toEqual([
+          expect.objectContaining({ content: 'queued message' }),
+        ]);
+      } else {
+        expect(after.queuedMessages).toEqual(['queued message']);
+        expect(after.unsentMessages).toBeUndefined();
+      }
+    },
+  );
+
   // Two drops accumulate — the second must not overwrite the first: each row
   // is a distinct piece of user text.
   test('a second permanent drop appends to the existing unsent records', async () => {
