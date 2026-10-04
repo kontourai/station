@@ -291,18 +291,21 @@ describe('wait_session answers a refusal as an MCP error and a timeout as a resu
     ['a station-wide wait capacity refusal', 429, 'wait_capacity'],
     ['a cancelled wait', 408, 'wait_aborted'],
     ['a rejected query', 400, 'invalid_request'],
-  ] as const)('%s is an MCP error carrying its code', async (_name, status, code) => {
-    reply = { status, body: { success: false, code, error: 'refused' } };
-    const { call, close } = await connect();
-    const result = toolResult(await call('wait_session', wait));
-    expect(result.isError).toBe(true);
-    expect(JSON.parse(result.content[0].text)).toMatchObject({
-      success: false,
-      code,
-    });
-    expect(requests).toHaveLength(1);
-    await close();
-  });
+  ] as const)(
+    '%s is an MCP error carrying its code',
+    async (_name, status, code) => {
+      reply = { status, body: { success: false, code, error: 'refused' } };
+      const { call, close } = await connect();
+      const result = toolResult(await call('wait_session', wait));
+      expect(result.isError).toBe(true);
+      expect(JSON.parse(result.content[0].text)).toMatchObject({
+        success: false,
+        code,
+      });
+      expect(requests).toHaveLength(1);
+      await close();
+    },
+  );
 
   // A wait that ran its full time with the turn still running did what it was
   // asked: it observed the Session. `timedOut: true` is the answer, not a
