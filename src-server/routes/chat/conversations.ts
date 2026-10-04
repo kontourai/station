@@ -537,7 +537,8 @@ async function _listPersonalFileConversationItems(
               metadata?.titleSource === 'user' ||
               metadata?.titleSource === 'generated' ||
               metadata?.titleSource === 'provider' ||
-              metadata?.titleSource === 'prompt'
+              metadata?.titleSource === 'prompt' ||
+              metadata?.titleSource === 'agent'
                 ? metadata.titleSource
                 : undefined;
             const messages = await adapter.getMessages(
