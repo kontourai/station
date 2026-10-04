@@ -16,7 +16,7 @@
 
     {"path":"src-desktop/src/lib.rs","digest":"87107637c2b0c4d1c470664c3ae3d5b4f1f377777f561ea2c25bd63df8cf2cd6","revision":"01ae5b65e67e7456ed5d777266bb54b3774b4a56"},
 
-    {"path":"src-server/runtime/__tests__/operator-credential-host-locality.test.ts","digest":"115a3c9f5c6c30c396ab30f90541e14fe0fe8856dbca28993dd9b824d7b4b41d","revision":"782a93682304a7de7a3bc5980a9ad85053967502"},
+    {"path":"src-server/runtime/__tests__/operator-credential-host-locality.test.ts","digest":"6c896589d21ea60847aca41b08df7d96b8d8a4461fea89bda63638fac5815ecd","revision":"ac1660c74658094e6a7f617a5a2518a6c3d1aa3d"},
 
     {"path":"src-server/runtime/consent/consent-listener.ts","digest":"277b028e8716aa85aefe159da4b336052b0c5a4e4433785e44e504753ab4e2e2","revision":"dac129f874d7edf85a1834f2295412bc8f9603e1"},
 
