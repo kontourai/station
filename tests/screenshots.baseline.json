@@ -203,7 +203,7 @@
       "name": "overlay-command-palette-results",
       "width": 1440,
       "height": 900,
-      "sha256": "55f398619259a3af14338719b3a203c98311c396d615a05db94acdd6f2074407"
+      "sha256": "e9a8783c2cc78cf36475b45fc99e06ee4d1236c2c1179a9bd3ec05b94e136f77"
     },
     {
       "name": "overlay-confirm-dialog",
