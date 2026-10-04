@@ -52,7 +52,7 @@
 
     {"path":"src-server/providers/sessions/codex-rollout-session-source.ts","digest":"35e09b5648c9969919fa37fed58ff37af1e3b7e802a3b42c5fd236fa5100fba9","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"c3febaa85af6fa1d6b6edce04539a96b88cb7cb0660b7d0ee0de8d4fb6595530","revision":"b208a334880a96bb3f4267c2d2ffd6d03e118218"},
+    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"7a048c663be512601cbdda6e0e0e8d5a936d9355dc04b71c45b83fdcf983e7f0","revision":"c17cefa31586e2e4868589c976ff9fdba86cf839"},
 
     {"path":"src-server/runtime/agents/agent-engine-classification.ts","digest":"cec04bb10726e4ce741930da266458c95fa1f53acd475d8d696a5271c32f7c6d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -74,7 +74,7 @@
 
     {"path":"src-server/runtime/mcp/mcp-manager.ts","digest":"2b111148f423e896011695de09bca6f6f2990bc8285b4466a5fd70a3c93c65d1","revision":"c2c67c2f25d565ea97d757b370f2bbf942a9588b"},
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"88a3a2161a61eaee174d5404833230e31768afb8ea60fae898cfda39bb49ae09","revision":"efa773acac88792cda31595f9afca4a37d3efebc"},
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"ad3f9c648ab8b712bbb5815e9bc50004ead6c8b339ef2bf84b3f94e8b6193d8f","revision":"c17cefa31586e2e4868589c976ff9fdba86cf839"},
 
     {"path":"src-server/runtime/streaming/InjectableStream.ts","digest":"a35d9612bd7e68cf748b8cb9c5188b064446ac47a40b9ed7757cf109b7434ed1","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

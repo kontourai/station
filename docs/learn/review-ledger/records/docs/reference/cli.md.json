@@ -178,7 +178,7 @@
 
     {"path":"src-server/routes/orchestration/dispatch-scope.ts","digest":"8e311c1696036d143a124c97da344056077ac6dfde1f1db0925c0efefd085aed","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 
-    {"path":"src-server/tools/station-control-policy.ts","digest":"7861e4666c9ab7bdfafb6d38b4b9a742f707ca64741f1351b042384f4a51dc94","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+    {"path":"src-server/tools/station-control-policy.ts","digest":"cc431653c81a52ce71083c1941db06e6754bb7af9d8917625df2436d05ae195c","revision":"c17cefa31586e2e4868589c976ff9fdba86cf839"},
 
     {"path":"src-server/runtime/mcp/__tests__/station-control-dispatch-scope.test.ts","digest":"5c90078ba35ab314048e6efa0533de427b92fdc22f26425174cdbcdb144db30e","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
 

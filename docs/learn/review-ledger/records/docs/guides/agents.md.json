@@ -66,7 +66,7 @@
 
     {"path":"src-server/routes/connections/app-home.ts","digest":"ed7412dd78667321bec46937a4bc7a1fa92f1e9a3b27c344fbeea55345a20b5a","revision":"1a235cd9bc482738abe4c3f011f73be86074d667"},
 
-    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"c3febaa85af6fa1d6b6edce04539a96b88cb7cb0660b7d0ee0de8d4fb6595530","revision":"b208a334880a96bb3f4267c2d2ffd6d03e118218"},
+    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"7a048c663be512601cbdda6e0e0e8d5a936d9355dc04b71c45b83fdcf983e7f0","revision":"c17cefa31586e2e4868589c976ff9fdba86cf839"},
 
     {"path":"src-server/routes/system/system-status-routes.ts","digest":"0c52821e1938ae72876d26def0ee756db16f1cb2a33e9088bb4e1da8800e4f0b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
@@ -128,11 +128,11 @@
 
     {"path":"src-server/tools/station-control-delegation.ts","digest":"e5e4d1979cfa4997ce4b808f5268e69bbd0926f5c838ac1388bbdd5009389467","revision":"56f4c4897a189eeb30430119a4f4895e95fbb541"},
 
-    {"path":"src-server/tools/station-control-mcp-server.ts","digest":"71093b289019109469dfc6fcb495e981c45f0ae17a4ccf8f639126c5bc437c39","revision":"8d715b7bee77e593e64a1e0b2af99956571c9795"},
+    {"path":"src-server/tools/station-control-mcp-server.ts","digest":"545f57540ee41799b781a3e1b17f014d443321e97605574ba2978aae5e3bcb80","revision":"c17cefa31586e2e4868589c976ff9fdba86cf839"},
 
     {"path":"src-server/tools/station-control-operations-tools.ts","digest":"9174a9e845abca770133b6300050562fbfb220cac01bd611698d56a949f0eb3a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/tools/station-control-policy.ts","digest":"7861e4666c9ab7bdfafb6d38b4b9a742f707ca64741f1351b042384f4a51dc94","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+    {"path":"src-server/tools/station-control-policy.ts","digest":"cc431653c81a52ce71083c1941db06e6754bb7af9d8917625df2436d05ae195c","revision":"c17cefa31586e2e4868589c976ff9fdba86cf839"},
 
     {"path":"src-ui/src/__tests__/AgentEditorToolsTab.browser.test.tsx","digest":"70d1f4302a962e7932fbb53d23c128df8272af00484bf426a60e93412360bbd9","revision":"54fc4a556486e17d1f4f0546c02be91fedf3b6b7"},
 
