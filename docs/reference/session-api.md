@@ -805,6 +805,28 @@ answer it instead of offering a local reply. The field is absent for work this
 Station runs. A server that predates the field omits it; a reply sent to a peer
 record through that server is still refused, not delivered elsewhere.
 
+The paired Station's own open request reaches this Station through its
+delegated-task status read (`GET /api/orchestration/delegations/:taskId`,
+field `pendingRequest`). Each status refresh records it on the peer record as
+`delegation.peerPendingRequest` (id, type, title, `observedAt`). The record is
+cleared when the paired Station reports no open request, or answers `respond`
+for that request id. The attention item then carries `peerRequestReference`:
+`environmentId`, `taskId`, `requestId` and `requestType`. These ids name the
+request on the paired Station. It never carries `requestReference` or
+`inputReference`, so local request inspection and `respondToRequest` cannot use it.
+
+`viewerCanRespond` says whether the reader passes this Station's own checks on
+`POST /api/orchestration/delegations/:taskId/respond`: the credential and
+pairing-scope gate for that path, then the station-control dispatch scope with
+the `approve` action. Absent means unknown, and clients offer nothing. For an
+`approval` or `permission` request with `viewerCanRespond: true`, clients post
+`{ requestId, decision, environmentId }` to that route; the paired Station
+re-checks the request is open and decides it there. When the paired Station
+answers 403, the route reports "The paired Station refused this decision" in
+this Station's words; the paired Station's own diagnostics are not relayed.
+`input` and `confirmation` requests keep the note, because `respond` carries a
+decision, not an answer.
+
 Both kinds link into the item's own Project Review layout at the exact item —
 `/projects/<projectSlug>/layouts/review?change=<id>` and
 `?review=<reviewSessionRef>`, alongside Starter work's
