@@ -1,0 +1,17 @@
+{
+  "revision": "a88f36591e22b359e87d32a854643bbcbe14c0c3",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Source delta in packages/sdk/src/query-domains/agentAdmin.ts is a type-only change: agentMcpPromptsQueryKey (#3284) now returns string[] instead of a readonly tuple so it fits useApiQuery's key type. Same key value, same exports; this document's claims are unaffected. No prose change needed.","inputs":["docs/guides/responsive-ui.md","packages/sdk/src/query-domains/agentAdmin.ts"]},
+
+    {"path":"docs/guides/theming.md","note":"Source delta in packages/sdk/src/query-domains/agentAdmin.ts is a type-only change: agentMcpPromptsQueryKey (#3284) now returns string[] instead of a readonly tuple so it fits useApiQuery's key type. Same key value, same exports; this document's claims are unaffected. No prose change needed.","inputs":["docs/guides/theming.md","packages/sdk/src/query-domains/agentAdmin.ts"]},
+
+    {"path":"docs/patterns/backend.md","note":"Source delta in packages/sdk/src/query-domains/agentAdmin.ts is a type-only change: agentMcpPromptsQueryKey (#3284) now returns string[] instead of a readonly tuple so it fits useApiQuery's key type. Same key value, same exports; this document's claims are unaffected. No prose change needed.","inputs":["docs/patterns/backend.md","packages/sdk/src/query-domains/agentAdmin.ts"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Source delta in packages/sdk/src/query-domains/agentAdmin.ts is a type-only change: agentMcpPromptsQueryKey (#3284) now returns string[] instead of a readonly tuple so it fits useApiQuery's key type. Same key value, same exports; this document's claims are unaffected. No prose change needed.","inputs":["docs/patterns/frontend.md","packages/sdk/src/query-domains/agentAdmin.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Source delta in packages/sdk/src/query-domains/agentAdmin.ts is a type-only change: agentMcpPromptsQueryKey (#3284) now returns string[] instead of a readonly tuple so it fits useApiQuery's key type. Same key value, same exports; this document's claims are unaffected. No prose change needed.","inputs":["docs/reference/api.md","packages/sdk/src/query-domains/agentAdmin.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Source delta in packages/sdk/src/query-domains/agentAdmin.ts is a type-only change: agentMcpPromptsQueryKey (#3284) now returns string[] instead of a readonly tuple so it fits useApiQuery's key type. Same key value, same exports; this document's claims are unaffected. No prose change needed.","inputs":["docs/reference/sdk.md","packages/sdk/src/query-domains/agentAdmin.ts"]}
+  ]
+}
