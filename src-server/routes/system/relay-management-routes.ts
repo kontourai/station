@@ -1,4 +1,3 @@
-import { encodeNativeRelayLink } from '@kontourai/station-shared/native-relay-link';
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import type { RelayManagementView } from '@kontourai/station-contracts/relay-management';
 import {
@@ -6,6 +5,7 @@ import {
   stationConnectionKeyConfirmationCode,
   stationConnectionSigningKeyId,
 } from '@kontourai/station-shared/connection-proof';
+import { encodeNativeRelayLink } from '@kontourai/station-shared/native-relay-link';
 import { type Context, Hono, type MiddlewareHandler } from 'hono';
 import { z } from 'zod';
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';

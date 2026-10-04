@@ -1,7 +1,7 @@
 import { generateKeyPairSync, randomUUID } from 'node:crypto';
-import { parseNativeRelayLink } from '@kontourai/station-shared/native-relay-link';
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import type { SelfHostedBrokerNativeRouteInvitationV2 } from '@kontourai/station-contracts/self-hosted-broker';
+import { parseNativeRelayLink } from '@kontourai/station-shared/native-relay-link';
 import { Hono } from 'hono';
 import { afterEach, expect, test, vi } from 'vitest';
 import { z } from 'zod';
