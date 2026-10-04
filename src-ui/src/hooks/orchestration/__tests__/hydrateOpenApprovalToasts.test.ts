@@ -107,6 +107,24 @@ describe('hydrateOpenApprovalToasts (approvals opened before a reload)', () => {
     expect(chat?.approvalToasts.get('req-1')).toBe('real-toast');
   });
 
+  test('rebuilds only the toast: the snapshot already holds the chat state', async () => {
+    // The request opened in a turn that has since ended: the snapshot left the
+    // chat idle with the request still pending. Replaying the live handler's
+    // state write would set it back to awaiting-approval.
+    chat = { ...chat, orchestrationStatus: 'idle' };
+    fetchWindow.mockResolvedValue(window(requestOpened({ turnId: 'turn-1' })));
+    await hydrateOpenApprovalToasts(
+      'http://api',
+      'thread-1',
+      new Map([['req-1', 'placeholder-toast']]),
+    );
+
+    expect(showToolApproval).toHaveBeenCalledOnce();
+    expect(chat?.orchestrationStatus).toBe('idle');
+    for (const [, updates] of updateChat.mock.calls)
+      expect(Object.keys(updates)).toEqual(['approvalToasts']);
+  });
+
   test('an open id the window does not carry keeps its placeholder', async () => {
     fetchWindow.mockResolvedValue(
       window(requestOpened({ requestId: 'some-other-request' })),
