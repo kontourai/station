@@ -1,0 +1,11 @@
+{
+  "revision": "70483d7c928d6cc8078601ea301524af4f3e2df8",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"#2842 delta-review fix. Added the steer command to the producers that set ChatHttpError.stationEnvelope: main's dispatchSteerCommand (#3127, client/orchestration.ts) had auto-merged with the shape-only isStationEnvelope and now uses isStationAnswer(response, result). Checked against orchestration.ts and the new steer producer row in packages/sdk/src/__tests__/station-envelope-marker.test.ts (marked, fallback and gateway-after-marker cases; a shape-only injection fails it). A grep of packages/sdk/src finds no other isStationEnvelope( call outside station-envelope.ts, so the marker and fallback statements in Refused requests hold for every producer."},
+
+    {"path":"docs/guides/integrating-station.md","note":"#2842 delta-review fix. Re-checked after sdk.md gained the steer command among the marker producers: this guide only routes to the SDK reference and makes no producer-level claim; no prose change."},
+
+    {"path":"packages/sdk/AGENTS.md","note":"#2842 delta-review fix. Re-checked after sdk.md gained the steer command among the marker producers: the SDK scope still routes public behavior to docs/reference/sdk.md; no instruction changed."}
+  ]
+}
