@@ -1,5 +1,3 @@
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
@@ -7,6 +5,7 @@ import {
   GateTestAdapter,
 } from '../../../__test-utils__/orchestration-gate-test-harness';
 import { awaitSessionAttachmentSettled } from '../../../__test-utils__/session-runtime-barriers.js';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { EventBus } from '../../../services/orchestration/event-bus';
 import { EventStore } from '../../../services/orchestration/event-store';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service';
@@ -22,13 +21,14 @@ const NOW = '2026-09-24T21:00:00.000Z';
 const RESET_AT = '2099-01-01T00:00:00.000Z';
 const THREAD = 'session-a';
 
+const makeTempDir = trackTempDirs();
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
 });
 
 async function fixture(options: { autoResume?: boolean } = {}) {
-  const directory = mkdtempSync(join(tmpdir(), 'station-usage-limit-'));
+  const directory = makeTempDir('station-usage-limit-');
   const store = new EventStore(join(directory, 'events.sqlite'));
   const adapter = new GateTestAdapter();
   vi.spyOn(adapter, 'hasSession').mockResolvedValue(true);
@@ -94,7 +94,6 @@ async function fixture(options: { autoResume?: boolean } = {}) {
   cleanups.push(async () => {
     await service.shutdown();
     store.close();
-    rmSync(directory, { recursive: true, force: true });
   });
   return {
     store,
