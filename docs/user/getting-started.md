@@ -116,7 +116,8 @@ Choose the simplest path for what you want to do:
 
 On Home, write what you want done and choose **Start a chat**. Station uses
 working defaults, waits for discovery, and carries your original request into
-the conversation. You do not need to choose an Agent, Model, or provider first.
+the conversation. You do not need to choose an Agent, Model, or provider first;
+Home shows the Agent and Model that **Start a chat** will use.
 An already-ready engine can be prepared through the existing idempotent setup
 path; installed, unconnected apps can be connected when needed. Explicitly
 disabled apps remain disabled. A missing account, permission, or working target
