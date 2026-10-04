@@ -233,7 +233,7 @@ function rememberPath(key: string, path: string): void {
  * (`projects`, the project, the session, `subagents` and any workflow
  * level) must be a real directory.
  */
-export async function findClaudeSubagentTranscript(
+async function findClaudeSubagentTranscript(
   ref: ChildWorkTranscriptRef,
 ): Promise<string | undefined> {
   const projects = join(configHomeOf(ref), 'projects');
