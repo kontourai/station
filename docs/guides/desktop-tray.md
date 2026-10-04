@@ -248,8 +248,12 @@ recording a service owner with its PID and birth on a fresh home; installed
 policy is preserved when present. If Desktop or another live owner holds the
 home, the supervisor stays alive without running Station, polling with backoff
 capped at 30 seconds and logging reason changes. Once the owner is gone it
-claims and starts. Lost ownership at readiness stops Station before the same
-wait. An unreadable registry still fails closed.
+claims and starts. Lost ownership at readiness or on an existing five-second
+health tick stops and reaps Station before the same wait. Recovery waits for a
+live replacement at the same service id, and retraction checks PID and birth.
+An unreadable tick read keeps Station running until the next tick; a
+successful read showing a missing or different owner triggers recovery.
+An unreadable startup claim still fails closed.
 
 Desktop publishes the child PID/birth immediately after spawn, before Listening,
 retaining the fence while an orphan is shutting down. This does not make spawn

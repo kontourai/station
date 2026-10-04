@@ -222,8 +222,14 @@ system Node.
   claim itself, publishing a service owner with its PID and birth before start.
   A conflicting live owner keeps it alive and waiting, without running Station;
   polling backs off to at most 30 seconds and logs only reason changes. Lost
-  ownership at readiness stops Station before the same wait. An unreadable
-  registry still fails closed. Desktop records the spawned child's PID and birth before waiting for Listening, so
+  ownership at readiness or on an existing five-second health tick stops and
+  reaps Station before the same wait. The tick checks the service id, type,
+  PID and birth without refreshing the claim; recovery also waits for a live
+  replacement service at the same registry id. Only a successful registry read
+  proving a missing or different owner triggers recovery. An unreadable tick
+  read keeps Station running until the next tick; an unreadable startup claim
+  still fails closed. Desktop records the spawned child's PID and birth before
+  waiting for Listening, so
   an orphan still shutting down holds the reservation after desktop death.
   Runtime preparation's safety read does not choose the launch owner.
   This is cooperative fencing for service supervisors and Desktop sidecars,

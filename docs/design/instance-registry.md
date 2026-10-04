@@ -249,8 +249,16 @@ Two disclosed limits of the discipline (verified by probe, not assumed):
   publishes `starting` unless a live update launcher or replaced generation of
   this unit already fences it. An `installing` reservation always transfers to
   the supervisor before start. Readiness publishes `running`; lost ownership
-  stops Station, retracts only this supervisor's own PID, and returns to the
-  same wait. Publication I/O failure stops Station before a bounded retry;
+  at readiness or on an existing five-second health tick stops and reaps
+  Station, retracts only this supervisor's own PID and birth, and returns to
+  the same wait. Recovery also waits for a live replacement service at the
+  same id, rather than adopting its reservation. The tick reads the same
+  validated registry as the claim and
+  checks the service id, type, PID and birth without renewing ownership.
+  Only a successful read showing a missing or different owner triggers
+  recovery. An unreadable tick read (including an unavailable process birth)
+  keeps Station running and retries on the next health tick. Publication I/O
+  failure stops Station before a bounded retry;
   subsequent claim I/O failure exits nonzero. Retraction remains best effort.
   The Dockerfile's existing bare `service run` command self-claims a fresh home
   without a policy-registration step. Direct `command-station.js` remains

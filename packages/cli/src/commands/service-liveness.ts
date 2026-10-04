@@ -4,6 +4,8 @@ import {
   claimHostOwner,
   entryOwnedByLiveProcess,
   type HostOwnerSummary,
+  type InstanceConfig,
+  readInstanceRegistry,
   resolveInstanceRegistryPath,
   updateOwnedInstance,
 } from '@kontourai/station-shared/instance-registry';
@@ -50,6 +52,7 @@ export function publishServiceLivenessRecord(
       }
       return;
     }
+    const birth = lookupProcessBirthFingerprint(process.pid);
     updateOwnedInstance(
       target.instanceName,
       { home: target.home, ownTypes: ['service'] },
@@ -62,7 +65,12 @@ export function publishServiceLivenessRecord(
         // does, and Desktop would spawn a second writer — the exact
         // condition this signal exists to prevent. It does not self-heal:
         // B publishes once, at readiness.
-        if (existing.pid !== process.pid) return null;
+        if (
+          existing.pid !== process.pid ||
+          birth === null ||
+          existing.birth !== birth
+        )
+          return null;
         return {
           ...existing,
           status: 'stopped',
@@ -80,6 +88,17 @@ export function publishServiceLivenessRecord(
   }
 }
 
+/** Read the same validated registry used by the atomic claim, without refreshing it. */
+export function serviceHostIsOwned(target: ServiceLivenessTarget): boolean {
+  const entry = readInstanceRegistry(target.home).instances[
+    target.instanceName
+  ];
+  if (entry?.type !== 'service' || entry.pid !== process.pid) return false;
+  const birth = lookupProcessBirthFingerprint(process.pid);
+  if (birth === null) throw new Error('Supervisor process birth is unreadable');
+  return entry.birth === birth;
+}
+
 /**
  * The service's half of the one host-owner claim (#2961, ADR 0020 D4). The
  * supervisor claims before it starts Station, so a live Desktop sidecar on
@@ -91,11 +110,13 @@ export function publishServiceLivenessRecord(
  * `starting` leaves a record another live process of this unit already holds
  * untouched: during an update (#2675 D) that is the fixed launcher, and a
  * trial that then fails must not have replaced the launcher's fence with a pid
- * its retract would clear. `running` (readiness proven) always takes it.
+ * its retract would clear. Recovery waits for a live replacement even at this
+ * same id. `running` (readiness proven) always takes it.
  */
 export function claimServiceHost(
   target: ServiceLivenessTarget,
   status: 'starting' | 'running',
+  waitForLiveOwner = false,
 ): ClaimHostOwnerResult {
   // Probe OUTSIDE the mutation lock: the lookup spawns `ps` (or PowerShell
   // on Windows) with a 1.5s timeout, and holding the home-wide lock across
@@ -108,7 +129,8 @@ export function claimServiceHost(
     ensureStationHomeSchemaSync(target.home);
   }
   const birth = lookupProcessBirthFingerprint(process.pid) ?? undefined;
-  return claimHostOwner(target.instanceName, {
+  let held: InstanceConfig | undefined;
+  const claim = claimHostOwner(target.instanceName, {
     home: target.home,
     type: 'service',
     publish: (existing) => {
@@ -118,8 +140,12 @@ export function claimServiceHost(
         service &&
         service.status !== 'installing' &&
         entryOwnedByLiveProcess(service, process.pid)
-      )
+      ) {
+        // Recovery may not adopt a live replacement generation of this unit.
+        // Initial startup retains the update launcher's existing reservation.
+        if (waitForLiveOwner) held = service;
         return null;
+      }
       return {
         ...service,
         type: 'service',
@@ -131,6 +157,7 @@ export function claimServiceHost(
       };
     },
   });
+  return held ? { won: false, reason: 'id-held', existing: held } : claim;
 }
 
 /** Readable remediation for a service that another live host owner blocks. */

@@ -109,8 +109,12 @@ backend failure restores the prior entry. Without installed policy, the
 supervisor creates its own service owner record with PID/birth before start.
 A conflicting live owner keeps it alive without running Station, polling with
 backoff capped at 30 seconds and logging reason changes. Lost ownership at
-readiness stops Station before the same wait; unreadable registry state still
-fails closed.
+readiness or on an existing five-second health tick stops and reaps Station
+before the same wait. Recovery waits for a live replacement even at the same
+service id, and retraction checks both PID and birth. A tick read that is
+unreadable keeps Station running and retries next tick; only a successful
+read proving a missing or different owner triggers recovery. An unreadable
+startup claim still fails closed.
 Desktop records the child's PID/birth immediately after spawn, before Listening,
 so stale recovery retains a live orphan. Spawn and publication are still
 separate operations. Bare container `service run` self-claims a fresh home;

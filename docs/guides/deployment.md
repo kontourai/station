@@ -35,7 +35,13 @@ on a fresh home without `service install`. It records the supervisor's PID and
 birth fingerprint as a service owner. If Desktop or another live service holds
 the home, the supervisor stays alive without starting Station and polls with
 backoff capped at 30 seconds; it starts after the owner is gone. Lost ownership
-at readiness stops Station before returning to that wait. Existing Dockerfile
+at readiness or on an existing five-second health tick stops and reaps Station
+before returning to that wait. Each tick checks the service id, type, PID and
+birth without renewing the claim. Only a successful read showing a missing or
+different owner triggers recovery; an unreadable tick read keeps Station
+running and retries next tick. Startup claim read errors still exit nonzero.
+Recovery waits for a live replacement service even at the same registry id.
+Retraction clears only the supervisor's own PID and birth. Existing Dockerfile
 and Compose commands need no policy-registration step.
 
 Direct `command-station.js` launches remain unfenced and can serve the same
