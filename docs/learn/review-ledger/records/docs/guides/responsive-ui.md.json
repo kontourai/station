@@ -118,7 +118,9 @@
 
     "tests/helpers/visible-action-count.ts",
 
-    "src-ui/src/components/NewChatAction.tsx"
+    "src-ui/src/components/NewChatAction.tsx",
+
+    "src-ui/src/components/chat-dock/ChatDockProjectContext.css"
   ],
 
   "checks": [
