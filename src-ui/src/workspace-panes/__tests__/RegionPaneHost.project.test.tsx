@@ -800,12 +800,14 @@ test('a pull request and a file preview render as their own dock tabs, named by 
     ['#2049', 'false'],
     ['Header.tsx', 'true'],
   ]);
-  const pane = await screen.findByTestId('coding-pane');
-  expect(pane.closest('.chat-dock')).toBe(shell('right'));
-  expect(pane.dataset.descriptor).toBe(
-    'pane:builtin:workspace-preview:file-preview',
-  );
-  expect(pane.dataset.project).toBe('alpha-id');
+  await waitFor(() => {
+    const pane = within(shell('right')).getByTestId('coding-pane');
+    expect(pane.closest('.chat-dock')).toBe(shell('right'));
+    expect(pane.dataset.descriptor).toBe(
+      'pane:builtin:workspace-preview:file-preview',
+    );
+    expect(pane.dataset.project).toBe('alpha-id');
+  });
 
   act(() => currentModel().selectPane('right', PR_PANE_ID));
   await act(async () => {
