@@ -1348,15 +1348,14 @@ function getInstanceServicePorts(
   ];
 }
 
+/**
+ * A record is running only while a PID it recorded is alive. A listener on one
+ * of its ports proves nothing: the port may belong to a sibling Station whose
+ * band overlaps this record's (#3253), and counting it kept a failed start's
+ * record alive indefinitely and pointed `stop` at the sibling.
+ */
 function isInstanceRunning(record: InstanceStateRecord): boolean {
-  if (record.priorPidFile) {
-    return isProcessAlive(record.serverPid) || isProcessAlive(record.uiPid);
-  }
-  return (
-    isProcessAlive(record.serverPid) ||
-    isProcessAlive(record.uiPid) ||
-    findListeningPidsForPorts(getInstanceServicePorts(record)).length > 0
-  );
+  return isProcessAlive(record.serverPid) || isProcessAlive(record.uiPid);
 }
 
 function notifyBuildUpdated(serverPort: number): void {
@@ -1782,36 +1781,23 @@ export function findListeningPidsForPorts(ports: number[]): number[] {
 }
 
 export function isInstanceFullyStopped(record: InstanceStateRecord): boolean {
-  const pids = [record.serverPid, record.uiPid].filter(
-    (value): value is number => value != null,
-  );
-  const trackedProcessesAlive = pids.some((pid) => isProcessAlive(pid));
-  if (trackedProcessesAlive) {
-    return false;
-  }
-
-  return (
-    findListeningPidsForPorts(getInstanceServicePorts(record)).length === 0
-  );
+  // Recorded PIDs only. Whoever else listens on the instance's ports is not
+  // provably this instance, so it neither blocks nor is the target of a stop.
+  return !isInstanceRunning(record);
 }
 
 function waitForInstanceShutdown(
   record: InstanceStateRecord,
   timeoutMs = 15_000,
-  generationOnly = false,
 ): boolean {
-  const stopped = () =>
-    generationOnly
-      ? !isProcessAlive(record.serverPid) && !isProcessAlive(record.uiPid)
-      : isInstanceFullyStopped(record);
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    if (stopped()) {
+    if (isInstanceFullyStopped(record)) {
       return true;
     }
     sleepSync(200);
   }
-  return stopped();
+  return isInstanceFullyStopped(record);
 }
 
 function stopRecord(
@@ -1949,11 +1935,26 @@ function stopRecord(
     }
   }
   for (const pid of pids) {
-    if (managed) {
-      const expected =
-        pid === record.serverPid
-          ? record.serverFingerprint
-          : record.uiFingerprint;
+    const expected =
+      pid === record.serverPid
+        ? record.serverFingerprint
+        : record.uiFingerprint;
+    if (!managed) {
+      // Unmanaged records carry the same start-time fingerprint when it could
+      // be captured. A recorded PID that is alive but no longer matches it was
+      // reused by an unrelated process (possibly a sibling Station, #3253), so
+      // it is not signalled. Only a record that never captured a fingerprint
+      // (a legacy record, or an unreadable `ps`) falls back to trusting the
+      // PID alone: an accepted residual, never extended to port ownership.
+      if (expected && isProcessAlive(pid)) {
+        const actual = inspectProcessFingerprint(pid);
+        if (!actual || !fingerprintMatchesRecorded(actual, expected)) {
+          throw new Error(
+            `Refusing to signal PID ${pid}: it no longer matches the process recorded for Station instance ${record.instanceId}. The recorded state was kept; remove ${record.statePath} to forget this instance.`,
+          );
+        }
+      }
+    } else {
       if (!isProcessAlive(pid)) continue;
       const actual = inspectProcessFingerprint(pid);
       if (!actual) {
@@ -1971,48 +1972,19 @@ function stopRecord(
     }
     killProcessTree(pid);
   }
-  // A fully loaded runtime can need several seconds to unwind providers and
-  // child processes. Give unmanaged instances a graceful 10s phase before
-  // killing untracked port owners, then retain 5s for forced convergence.
-  if (!managed && !waitForInstanceShutdown(record, 10_000)) {
-    const fallbackPids = findListeningPidsForPorts(
-      getInstanceServicePorts(record),
-    );
-    for (const pid of fallbackPids) {
-      if (!pids.has(pid)) {
-        killProcessTree(pid);
-      }
-    }
-  }
-  if (
-    !waitForInstanceShutdown(record, managed ? 15_000 : 5_000, generationOnly)
-  ) {
+  if (!waitForInstanceShutdown(record, managed ? 15_000 : 5_000)) {
     appendStopResult('failed');
-    // Report what is actually still holding the instance open, not the full
-    // configured port list — the old message named every port on every failed
-    // stop, which hid the real blocker (station#1846).
+    // Report which recorded process is still holding the instance open
+    // (station#1846). Port listeners are not reported: a port owner that is
+    // not a recorded PID is not provably this instance.
     const alivePids = [...pids].filter((pid) => isProcessAlive(pid));
-    const lingeringPorts = getInstanceServicePorts(record).filter(
-      (port) => findListeningPidsForPorts([port]).length > 0,
-    );
     throw new Error(
       [
         `Failed to stop Station instance ${record.instanceId}.`,
         alivePids.length > 0
           ? `Tracked processes still running: ${alivePids.join(', ')}`
-          : undefined,
-        lingeringPorts.length > 0
-          ? `Lingering ports: ${lingeringPorts.join(', ')}`
-          : undefined,
-        // The re-check can race a shutdown that converged just after the
-        // bounded wait expired; keep the failure explicit rather than
-        // throwing a bare first line.
-        alivePids.length === 0 && lingeringPorts.length === 0
-          ? 'Shutdown did not converge within the wait window (processes and ports re-checked clean afterward — teardown race).'
-          : undefined,
-      ]
-        .filter((line): line is string => line !== undefined)
-        .join('\n'),
+          : 'Shutdown did not converge within the wait window (processes re-checked clean afterward — teardown race).',
+      ].join('\n'),
     );
   }
   appendStopResult('completed');
@@ -2423,6 +2395,62 @@ function assertNoPortConflicts(
         (record) =>
           `  - ${record.instanceId} reserves ${formatReservedPorts(record)}`,
       ),
+    ].join('\n'),
+  );
+}
+
+/**
+ * Refuse, before anything binds, a port band another live instance published
+ * to this home's registry (station#3253). `assertNoPortConflicts` only sees
+ * the records of THIS checkout; an instance started from another checkout on
+ * the same home is visible only here. A start that lost such a port race used
+ * to leave its own record claiming the sibling's ports.
+ *
+ * A registry that cannot be read is not evidence of a collision, so it is
+ * skipped here; `collectSharedHomeInstances` already reports it.
+ */
+function assertNoRegistryPortConflicts(
+  instanceId: string,
+  projectHome: string,
+  serverPort: number,
+  uiPort: number,
+  consentPort: number,
+): void {
+  const requested = new Set(
+    getInstanceServicePorts({ serverPort, uiPort, consentPort }),
+  );
+  const conflicts: string[] = [];
+  try {
+    if (!existsSync(resolveInstanceRegistryPath(projectHome))) return;
+    for (const [id, instance] of Object.entries(
+      readInstanceRegistry(projectHome).instances,
+    )) {
+      if (id === instanceId) continue;
+      if (typeof instance.pid !== 'number' || !isProcessAlive(instance.pid))
+        continue;
+      if (birthProvesReuse(instance.birth, instance.pid)) continue;
+      const band = [
+        instance.port,
+        instance.port + 1,
+        instance.port + 2,
+        instance.consentPort ?? instance.port + 3,
+        ...(instance.uiPort === undefined ? [] : [instance.uiPort]),
+      ];
+      const shared = band.filter((port) => requested.has(port));
+      if (shared.length === 0) continue;
+      conflicts.push(
+        `  - ${describeSharedHomeInstance({ id, port: instance.port, type: instance.type, checkout: instance.checkout })} reserves ports ${[...new Set(band)].join(', ')} (overlap: ${[...new Set(shared)].join(', ')})`,
+      );
+    }
+  } catch {
+    return;
+  }
+  if (conflicts.length === 0) return;
+  throw new Error(
+    [
+      'start is blocked because the requested ports overlap another registered Station instance.',
+      `Requested: ${formatReservedPorts({ serverPort, uiPort, consentPort })}`,
+      ...conflicts,
     ].join('\n'),
   );
 }
@@ -4180,6 +4208,13 @@ export async function start(opts: StartOptions = {}): Promise<void> {
   };
 
   assertNoPortConflicts(
+    instanceId,
+    projectHome,
+    serverPort,
+    uiPort,
+    consentPort,
+  );
+  assertNoRegistryPortConflicts(
     instanceId,
     projectHome,
     serverPort,
