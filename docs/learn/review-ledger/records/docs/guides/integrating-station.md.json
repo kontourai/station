@@ -32,7 +32,7 @@
 
     {"path":"docs/reference/contracts.md","digest":"a8ab14487297ba73e4c8313ccfb7f7750f2c07daaae893e5d0444349bbdcaf33","revision":"793ad2bb50d50f43d7601fb75d3736fc86550cd6"},
 
-    {"path":"docs/reference/sdk.md","digest":"66bc739e882ffe6ce188d5d1d7e773cc6c36b26266520c9bac4d6185af4e8029","revision":"534e4a52bc7cea488e6b98cffaf40ccff8c486b8"},
+    {"path":"docs/reference/sdk.md","digest":"2651190e0d10e2c51377c01ac633ef724421ea621cedcd91282ebee146a34059","revision":"f575b48480af7db79f68548006fdd1b0ff71a72a"},
 
     {"path":"packages/contracts/src/deployment-authentication.ts","digest":"e4665bfa103bf73250bf5d06776ed48fde193b57adfdfec91634568024745050","revision":"6c81ee1abdc1d8bbb91eb0c1565fa280d232c65e"},
 
