@@ -28,6 +28,8 @@
 
     "src-server/providers/__tests__/tool-policy-delivery-tripwire.test.ts",
 
+    "src-server/providers/adapters/acp-adapter-events.ts",
+
     "src-server/providers/adapters/acp-adapter.ts",
 
     "src-server/providers/adapters/claude-adapter-events.ts",
@@ -56,9 +58,7 @@
 
     "src-ui/src/hooks/orchestration/approvalHandlers.ts",
 
-    "src-ui/src/hooks/orchestration/pendingRequestRows.ts",
-
-    "src-server/providers/adapters/acp-adapter-events.ts"
+    "src-ui/src/hooks/orchestration/pendingRequestRows.ts"
   ],
 
   "checks": [
