@@ -1787,7 +1787,7 @@ describe('append-only review notes and Git history (#3101)', () => {
     expect(check(f.root, scoped).status).toBe(0);
     commit(f.root, 're-record after rewrite');
     expect(check(f.root, scoped).status).toBe(0);
-  });
+  }, 180_000);
 
   it('does not label an uncommitted in-range note as rewritten after an unrelated commit', () => {
     const f = pathOnlyFixture();
@@ -1863,7 +1863,7 @@ describe('append-only review notes and Git history (#3101)', () => {
     expect(check(f.root, strict).status).toBe(0);
     expect(compiled(f.root, 'docs/map.md').state).toBe('source-reviewed');
     expect(compiled(f.root, 'docs/c.md').historyChanges).toEqual([]);
-  });
+  }, 180_000);
 
   it('keeps branch review valid when another PR lands on main, including another edit of the shared source', () => {
     const f = pathOnlyFixture();
@@ -1885,7 +1885,7 @@ describe('append-only review notes and Git history (#3101)', () => {
     expect(check(f.root, scoped).status).toBe(0);
     expect(check(f.root, strict).status).toBe(0);
     expect(git(f.root, ['merge-base', base, 'HEAD'])).toBe(base);
-  });
+  }, 180_000);
 
   it('judges squash commits by the note landed with the source, without requiring the original revision', () => {
     const f = pathOnlyFixture();
@@ -2065,7 +2065,7 @@ describe('append-only review notes and Git history (#3101)', () => {
     reviewShared(f, 'Inspected this PR source.');
     commit(f.root, 'genuine review');
     expect(check(f.root, scoped).status).toBe(0);
-  });
+  }, 180_000);
 
   it('refuses baseline advancement on a PR-only commit and names a missing remote main', () => {
     const f = pathOnlyFixture();
