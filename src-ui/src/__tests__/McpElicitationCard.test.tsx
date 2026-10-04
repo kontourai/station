@@ -113,7 +113,17 @@ test.each([
     fireEvent.change(screen.getByRole('textbox', { name: /Name/ }), {
       target: { value: 'Typed but not sent' },
     });
-    fireEvent.click(screen.getByRole('button', { name: label }));
+    if (label === 'Cancel') {
+      // Cancel (dismiss without choosing) lives in the row's overflow menu.
+      fireEvent.click(
+        screen.getByRole('button', { name: 'More answer options' }),
+      );
+      fireEvent.click(
+        await screen.findByRole('menuitem', {
+          name: 'Cancel without answering',
+        }),
+      );
+    } else fireEvent.click(screen.getByRole('button', { name: label }));
     await waitFor(() =>
       expect(respond).toHaveBeenCalledWith(action, undefined),
     );

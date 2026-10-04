@@ -6,6 +6,7 @@ import type {
 import { validateMcpElicitationContent } from '@kontourai/station-shared/mcp-elicitation';
 import { useId, useState } from 'react';
 import { userFacingErrorMessage } from '../../utils/errorText';
+import { ActionRow } from '../ActionRow';
 import { Button } from '../Button';
 import './HarnessQuestionCard.css';
 import './McpElicitationCard.css';
@@ -277,35 +278,42 @@ export function McpElicitationCard({
         })}
       </fieldset>
       {error && <p role="alert">{error}</p>}
-      <div className="harness-question-card__actions">
-        <Button
-          variant="ghost"
-          disabled={!!pending}
-          pending={pending === 'cancel'}
-          pendingLabel="Cancelling…"
-          onClick={() => void respond('cancel')}
-        >
-          Cancel
-        </Button>
-        <Button
-          variant="secondary"
-          disabled={!!pending}
-          pending={pending === 'decline'}
-          pendingLabel="Declining…"
-          onClick={() => void respond('decline')}
-        >
-          Decline
-        </Button>
-        <Button
-          type="submit"
-          variant="primary"
-          disabled={!!pending && pending !== 'accept'}
-          pending={pending === 'accept'}
-          pendingLabel="Sending…"
-        >
-          Send
-        </Button>
-      </div>
+      {/* #3045: two labelled actions; Cancel (dismiss without choosing) is
+          in the overflow menu, and still returns `cancel`, not `decline`. */}
+      <ActionRow
+        className="harness-question-card__actions"
+        overflowLabel="More answer options"
+        secondary={
+          <Button
+            variant="secondary"
+            disabled={!!pending}
+            pending={pending === 'decline'}
+            pendingLabel="Declining…"
+            onClick={() => void respond('decline')}
+          >
+            Decline
+          </Button>
+        }
+        primary={
+          <Button
+            type="submit"
+            variant="primary"
+            disabled={!!pending && pending !== 'accept'}
+            pending={pending === 'accept'}
+            pendingLabel="Sending…"
+          >
+            Send
+          </Button>
+        }
+        overflow={[
+          {
+            key: 'cancel',
+            label: 'Cancel without answering',
+            disabled: !!pending,
+            onSelect: () => void respond('cancel'),
+          },
+        ]}
+      />
     </form>
   );
 }
