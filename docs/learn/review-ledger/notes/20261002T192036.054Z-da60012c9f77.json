@@ -1,0 +1,9 @@
+{
+  "revision": "8f54568ace0014007eee673a58f3d26d3588e282",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Followup delta review: ChatDockBody now retires a confirmed pending native intent by stable ID before releasing its queue lock; QueuedMessages owns no receipt-based index removal. Real fetched-SSE microtask regression failed with B visibly held before the fix and passed after, preserving ordinary A delivery. Added direct UI, storage, event and receipt-journal owners for the documented composer/keyboard/activity claims. Browser/device proof remains controlled-component scope; no new live engine or packaged release qualification.","inputs":["docs/design/chat-composer.md"]},
+
+    {"path":"docs/reference/config.md","note":"Followup source delta: only the referenced ChatDockBody native receipt consumer changed to retire a confirmed message by stable ID atomically before unlock. AppConfig, server configuration provenance, defaults and save behavior remain unchanged; Return remains device-local. The native/SSE owner regression passed; no new server-setting runtime qualification.","inputs":["docs/reference/config.md"]}
+  ]
+}

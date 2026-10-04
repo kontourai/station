@@ -9,10 +9,8 @@
 
   "limits": "Import target and bytes were checked. This is a client instruction route, not proof of every client version's instruction loading behavior. Protected governance text was not changed.",
 
-  "document": {"digest":"336cc4fbf19beaada7ccf9986414fa91851a8d7a07dfb3ccbe800a69eed0ab49","revision":"e1e8339750ff5b7210254866bd2d853454efaf04"},
-
   "sources": [
-    {"path":"packages/sdk/AGENTS.md","digest":"b57c8e11f45a7a52030614f2ef963a169b8b7be5b4e004becd5a8f483075ff06","revision":"e1e8339750ff5b7210254866bd2d853454efaf04"}
+    "packages/sdk/AGENTS.md"
   ],
 
   "checks": [

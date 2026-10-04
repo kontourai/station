@@ -1,0 +1,7 @@
+{
+  "revision": "9f993f436f37659ce5b7c005e7b616d83474ac44",
+
+  "notes": [
+    {"path":"docs/reference/skill-experiences.md","note":"Reviewed route fixture delta: temp directory lifetime now uses existing trackTempDirs after-hook, registered before EventStore-close cleanup, so failed setup/assertions retain cleanup. Existing real installed route/foreground source-admission assertions and public behavior unchanged.23 route tests passed; prior runtime/source evidence and its limits remain.","inputs":["docs/reference/skill-experiences.md"]}
+  ]
+}

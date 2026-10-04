@@ -1,0 +1,15 @@
+{
+  "revision": "c97e259bbacd23a3bc8fc25accb253a8cb2a7e43",
+
+  "notes": [
+    {"path":"docs/adr/0015-restore-desktop-owned-command-station-sidecar.md","note":"Checked desktop ownership ADR against native-shell retry guidance; saved-grant preview remains a renderer request to the native owner and does not move custody.","inputs":["docs/adr/0015-restore-desktop-owned-command-station-sidecar.md"]},
+
+    {"path":"docs/design/connection-broker.md","note":"Checked broker threat and native pilot claims against G11 same-generation retry guard; it only gates new redemption and preserves the broker confidentiality model.","inputs":["docs/design/connection-broker.md"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"Checked local lab scope against saved-grant preflight and installed G11 evidence; this renderer retry guard does not extend the lab's network or human proof claims.","inputs":["docs/guides/local-collaboration-lab.md"]},
+
+    {"path":"docs/guides/testing.md","note":"Checked native pilot evidence limits; focused mounted tests prove same-generation retry refusal but physical two-person acceptance remains unverified.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"src-desktop/AGENTS.md","note":"Checked referenced native verification guidance; no desktop source or custody change, and installed/device evidence remains separate from tests.","inputs":["src-desktop/AGENTS.md"]}
+  ]
+}

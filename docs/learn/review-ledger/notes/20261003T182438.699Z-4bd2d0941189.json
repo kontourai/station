@@ -1,0 +1,7 @@
+{
+  "revision": "eedebc3f5eba2bfb492a75306cf5ace14c61a125",
+
+  "notes": [
+    {"path":"README.md","note":"Read README lines 17, 76-82 and 152 against the nightly.md edit: README only links the Nightly guide for paths and limitations and makes no portable-pointer claim, so the new Nightly replace caveat leaves it accurate.","inputs":["README.md"]}
+  ]
+}

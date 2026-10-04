@@ -9,24 +9,22 @@
 
   "limits": "No native build, simulator/device, keychain, Linux artifact, transport/broker/provider, cloud or release execution. Source/fixture checks do not renew dated runtime/security evidence. Additional main merge b269a6cf9: structural reconciliation only; prior distinct anchors below are historical reviews, not approval of combined bytes. Active bindings retain existing anchors; combined dependency bytes remain stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"pnpm-lock.yaml\",\"ours\":{\"digest\":\"2907b97d6a2e98b4211695a78cf83b03419218f1dd95ce090ca753d9bdbad14a\",\"revision\":\"b50eeb9584c1808e429e59dcb3c3c2253307bbbe\"},\"main\":{\"digest\":\"29dbdce300fcd3d881ae511317af478da6e9c098a8e8cf51c6b2269a937525df\",\"revision\":\"df9188971e1a93d2c5525a7f5f38e3da93c9e4de\"}}].",
 
-  "document": {"digest":"fa89e2fa1c7c2487af76d52b2be36878de9021dfe3c50831e51158da95820dfb","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
-
   "sources": [
-    {"path":".github/workflows/node-pty-prebuilds.yml","digest":"764daeea2e3e7ce837be3daa83c22ad249050a7e6571598380e6a9574e37dcfc","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    ".github/workflows/node-pty-prebuilds.yml",
 
-    {"path":"config/dependency-lifecycle-allowlist.json","digest":"4b8f259cd745009531fe4740668a878289b06285414efa2e5a5319c5faf54f4a","revision":"8012fb77b1b95d1461c59827bf9690884526f30c"},
+    "config/dependency-lifecycle-allowlist.json",
 
-    {"path":"packaging/node-pty-prebuilds/manifest.json","digest":"22b3c66570004f238adb60b2b34c830c9d285ac01f060de3d1195f8098b73254","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "packaging/node-pty-prebuilds/manifest.json",
 
-    {"path":"pnpm-lock.yaml","digest":"e5666b03a0bedc8656564f5371ea01b19879ac4a8ed732280e1d0903025de0c5","revision":"fdca33b1896b280299ba72fc70a3c9b9cda7f3af"},
+    "pnpm-lock.yaml",
 
-    {"path":"scripts/__tests__/dependency-lifecycle.test.ts","digest":"b94c5e49462f77454aca7aaee0a34f29fd05b5d3b89839aaadbea6e922815d54","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "scripts/__tests__/dependency-lifecycle.test.ts",
 
-    {"path":"scripts/lib/dependency-lifecycle-policy.mjs","digest":"3221df34cc1ffaa99b9dedfcff8e2b1dce41baa44170464d2b8d3e88cd2894f4","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "scripts/lib/dependency-lifecycle-policy.mjs",
 
-    {"path":"scripts/lib/elf-symbol-floor.mjs","digest":"7b51f6f692022736fc8b41161c1b6f47e2d31819ecc0df5fd637af55066eb73b","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "scripts/lib/elf-symbol-floor.mjs",
 
-    {"path":"scripts/verify-node-pty-prebuild.mjs","digest":"62492e0cd3f0e92a0b2a35ebcee82aa7ad7862924351803ec8845c657080a55c","revision":"2b52ddf0663cdee3ccc2f0ebf848691f24ca4635"}
+    "scripts/verify-node-pty-prebuild.mjs"
   ],
 
   "checks": [

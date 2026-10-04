@@ -9,92 +9,90 @@
 
   "limits": "Small selected law set is not all-product semantic proof. No new law or protected policy activation. Merge reconciliation preserves both prior review anchors below as historical evidence, not a new review of combined source bytes. Active bindings retain existing reviewed anchors; any mismatch with merged bytes remains stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"src-server/routes/orchestration/orchestration.ts\",\"ours\":{\"digest\":\"d1b4c866cb5dd31ef5538ce7c8f19fe272d36fe49963a4b7b03178f0183ddc64\",\"revision\":\"390a624e73d6d9726117e9928e79e7c149607e7b\"},\"main\":{\"digest\":\"9d81b62b47bea3aee158c535ce04742eb5b33a0855ffd4b8a39b7d0f897ee838\",\"revision\":\"ee7cb7c444fb45f465be3f4ea5c938e5a130145e\"}},{\"path\":\"package.json\",\"ours\":{\"digest\":\"33148f13d0b86a0fc46e74f38eba8e87cef542801cca0606fd9c0ab6f287a380\",\"revision\":\"b50eeb9584c1808e429e59dcb3c3c2253307bbbe\"},\"main\":{\"digest\":\"a5bdcf2fc2c0871428f7ecfae8ce7d0a51483df2a5abd19eeec6563d76bc20f7\",\"revision\":\"4bf030fd83ec2d050da7cb4a567ba66450a9cfd3\"}},{\"path\":\"src-ui/src/workspace-panes/builtinWorkspacePaneRegistry.tsx\",\"ours\":{\"digest\":\"3dffbccd4597bbe4d0cc2eb7339a205fd21b73e5f1789c886e3ff73616588621\",\"revision\":\"892e14891bb23e9aeeee3af94ca3f4784da31536\"},\"main\":{\"digest\":\"9cf334499d01499656f57ea5a63f7efc7465972380778ec77ff547dc74906513\",\"revision\":\"79edb8d5dd98ef07de0722b0604b9ec606f2bdbf\"}},{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"ours\":{\"digest\":\"8da16e71c4909bef8f7cf21eb6cde9fbebc2b72997baeebbff7445db19fb237a\",\"revision\":\"904729ae7f4058a2cd7dbaf11a4daaa6b8837d08\"},\"main\":{\"digest\":\"e54cf49af965f2acabb5a7a97caead30fc8e4e3b619f5dea1cb7f6a464b2d901\",\"revision\":\"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac\"}},{\"path\":\"src-server/tools/station-control-delegation.ts\",\"ours\":{\"digest\":\"eae2e0c6e03ba402be7f470ac702de1d27736b9e677426457c9eecf883cf8751\",\"revision\":\"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8\"},\"main\":{\"digest\":\"b924e289e8e485cf249ec99ebd3097b014f001f58942aa29f91e0196bbc5af70\",\"revision\":\"ee7cb7c444fb45f465be3f4ea5c938e5a130145e\"}}]. Additional main merge b269a6cf9: structural reconciliation only; prior distinct anchors below are historical reviews, not approval of combined bytes. Active bindings retain existing anchors; combined dependency bytes remain stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"package.json\",\"ours\":{\"digest\":\"33148f13d0b86a0fc46e74f38eba8e87cef542801cca0606fd9c0ab6f287a380\",\"revision\":\"b50eeb9584c1808e429e59dcb3c3c2253307bbbe\"},\"main\":{\"digest\":\"7263c035fa5946e593a759d3a0b55d8f504e955eb14fab5a401b71c7d3b2ac50\",\"revision\":\"df9188971e1a93d2c5525a7f5f38e3da93c9e4de\"}},{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"ours\":{\"digest\":\"33e19d52230c0339923db1768b0cae89a71077634c4632f9a10c11f6a3e05f78\",\"revision\":\"83c4111b8c4dcda1e978d78bb191c974888c9ca4\"},\"main\":{\"digest\":\"e54cf49af965f2acabb5a7a97caead30fc8e4e3b619f5dea1cb7f6a464b2d901\",\"revision\":\"f466c6fd8aaa826fc26dbd5d2c6106683f9e4cac\"}}].\n\nAdditional existing main limits (preserved verbatim): Small selected law set is not all-product semantic proof. No new law or protected policy activation.\n\nStructural merge of 5fd2dd86ad0cd35018ce09537c1aa01ce58e0e55 and 8f9ea788561518398a488d35bb768b78a272e73b preserves both prior immutable document/source anchors and historical checks. Selecting an existing current-byte binding is structural reconciliation only, not semantic approval of merged inputs. No new digest/revision or coverage baseline was minted. Competing prior anchors remain pending semantic review and supported recording after the merge commit: [{\"path\":\".github/workflows/ci.yml\",\"ours\":{\"path\":\".github/workflows/ci.yml\",\"digest\":\"092798d877aa8138f197a0edbd7547e876dc2e310b54b4e00598f8f48b3535b8\",\"revision\":\"892e14891bb23e9aeeee3af94ca3f4784da31536\"},\"main\":{\"path\":\".github/workflows/ci.yml\",\"digest\":\"aedbb116a4ce043ec251ec20c47368aa89f77ebc1b5b526fecb9580af280bb91\",\"revision\":\"de240170769fcf739c188b104f801d4371f8086d\"},\"active\":{\"path\":\".github/workflows/ci.yml\",\"digest\":\"aedbb116a4ce043ec251ec20c47368aa89f77ebc1b5b526fecb9580af280bb91\",\"revision\":\"de240170769fcf739c188b104f801d4371f8086d\"},\"decision\":\"mainMatch\"},{\"path\":\"package.json\",\"ours\":{\"path\":\"package.json\",\"digest\":\"a6deceaea9701a9deb9d05ebd0b1f42db716b05f155c155b2e872443511def48\",\"revision\":\"8e884d84b5609d130f29937159601c65d119b664\"},\"main\":{\"path\":\"package.json\",\"digest\":\"8161e13f46212729130685df12cc34747e385002183410cd57e47d5cdd125306\",\"revision\":\"2fc8f69d15e5c8fa3188bb2ee4731f1b63c66218\"},\"active\":{\"path\":\"package.json\",\"digest\":\"a6deceaea9701a9deb9d05ebd0b1f42db716b05f155c155b2e872443511def48\",\"revision\":\"8e884d84b5609d130f29937159601c65d119b664\"},\"decision\":\"neitherMatch\"},{\"path\":\"src-server/routes/orchestration/orchestration.ts\",\"ours\":{\"path\":\"src-server/routes/orchestration/orchestration.ts\",\"digest\":\"9d81b62b47bea3aee158c535ce04742eb5b33a0855ffd4b8a39b7d0f897ee838\",\"revision\":\"ee7cb7c444fb45f465be3f4ea5c938e5a130145e\"},\"main\":{\"path\":\"src-server/routes/orchestration/orchestration.ts\",\"digest\":\"ed64b770e478fc8bed2649efcedd5fe86b6ccd43fe1447bf926fae1db5f93717\",\"revision\":\"7d294a14e8b7644fc42492389b8ba81651d0cced\"},\"active\":{\"path\":\"src-server/routes/orchestration/orchestration.ts\",\"digest\":\"ed64b770e478fc8bed2649efcedd5fe86b6ccd43fe1447bf926fae1db5f93717\",\"revision\":\"7d294a14e8b7644fc42492389b8ba81651d0cced\"},\"decision\":\"mainMatch\"},{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"ours\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"33e19d52230c0339923db1768b0cae89a71077634c4632f9a10c11f6a3e05f78\",\"revision\":\"83c4111b8c4dcda1e978d78bb191c974888c9ca4\"},\"main\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"ed83b5af4f41e38ea85de7ba4d975066b1c15f136b215926bd5cd31a45183a21\",\"revision\":\"068722323b07f15f14280d43b1c05dbc2ca212eb\"},\"active\":{\"path\":\"src-server/runtime/routes/runtime-routes.ts\",\"digest\":\"33e19d52230c0339923db1768b0cae89a71077634c4632f9a10c11f6a3e05f78\",\"revision\":\"83c4111b8c4dcda1e978d78bb191c974888c9ca4\"},\"decision\":\"neitherMatch\"},{\"path\":\"src-ui/src/views/HomeView.tsx\",\"ours\":{\"path\":\"src-ui/src/views/HomeView.tsx\",\"digest\":\"784bb154e907690bbbcfd6908698b4054098571514a437ae5476e35b0b50aa46\",\"revision\":\"892e14891bb23e9aeeee3af94ca3f4784da31536\"},\"main\":{\"path\":\"src-ui/src/views/HomeView.tsx\",\"digest\":\"e99f2aa97f3818b7af000ceb1632bd8a58316a9650829a3d40c1d6b0cf05ed1f\",\"revision\":\"c4e12e530c3346d3191a89e29cd504f2e2e475a7\"},\"active\":{\"path\":\"src-ui/src/views/HomeView.tsx\",\"digest\":\"e99f2aa97f3818b7af000ceb1632bd8a58316a9650829a3d40c1d6b0cf05ed1f\",\"revision\":\"c4e12e530c3346d3191a89e29cd504f2e2e475a7\"},\"decision\":\"mainMatch\"},{\"path\":\"src-ui/src/workspace-panes/WorkspacePaneFrame.tsx\",\"ours\":{\"path\":\"src-ui/src/workspace-panes/WorkspacePaneFrame.tsx\",\"digest\":\"511e0ac91b3e0c2b744ffe1da6967e1741aa9d2d99f9daa10f39d1b2e78e8494\",\"revision\":\"892e14891bb23e9aeeee3af94ca3f4784da31536\"},\"main\":{\"path\":\"src-ui/src/workspace-panes/WorkspacePaneFrame.tsx\",\"digest\":\"4e36711e28bbc6756fdd8e7b02bbd9842a27b241ff1f09cbf718c0065956f276\",\"revision\":\"0af0405fb22db35e44b4577b9c610067fbfd109b\"},\"active\":{\"path\":\"src-ui/src/workspace-panes/WorkspacePaneFrame.tsx\",\"digest\":\"4e36711e28bbc6756fdd8e7b02bbd9842a27b241ff1f09cbf718c0065956f276\",\"revision\":\"0af0405fb22db35e44b4577b9c610067fbfd109b\"},\"decision\":\"mainMatch\"}]",
 
-  "document": {"digest":"e73cd5b9a92cfe8795d643d6c583b120b486366eea57f015ff412f35524336c6","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
-
   "sources": [
-    {"path":".github/workflows/ci.yml","digest":"9b586bd70bb7c94986ce19ee41151ff768bad2a308a196a15047375c92f9646a","revision":"fa59c15763af8e75ddf59a250cdb0d5f8913d116"},
+    ".github/workflows/ci.yml",
 
-    {"path":".github/workflows/container-smoke.yml","digest":"8f0d7908fbf4cf305a5fd10ae17bb174b45344f584f8d38fe0be3f422e260ced","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    ".github/workflows/container-smoke.yml",
 
-    {"path":".github/workflows/interactive-workspace-performance.yml","digest":"edcaa2f6d7a7ce1eeb4e7953ff65d78f7a6f609460dfedaf6976b727a04b7004","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    ".github/workflows/interactive-workspace-performance.yml",
 
-    {"path":".github/workflows/security-analysis.yml","digest":"9c846e48c9b46b176db769350facf7d698d9012311e5706637648a3a33782422","revision":"983f3de3740aa9ee6878a0d4feec0b650aa67f3c"},
+    ".github/workflows/security-analysis.yml",
 
-    {"path":".github/workflows/windows-vitest-diagnostic.yml","digest":"040f1a8683332740c89c7c9716f7f70370838e9d86441827913cc3db7786d527","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    ".github/workflows/windows-vitest-diagnostic.yml",
 
-    {"path":"config/product-laws.json","digest":"2a32cd190581bca72ed1076f901fd9a427022e2d381e964a777101c9c6de3114","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    "config/product-laws.json",
 
-    {"path":"package.json","digest":"ee32f6a73f2428a8734396a7667e8ec009485b1c5a87f779652801ed4c51af1f","revision":"fdca33b1896b280299ba72fc70a3c9b9cda7f3af"},
+    "package.json",
 
-    {"path":"packages/cli/src/commands/cloud-project-import.ts","digest":"0831594f687da39abbf2bc7655663d459b97de900728d0d03e7fa2e28b2c5543","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    "packages/cli/src/commands/cloud-project-import.ts",
 
-    {"path":"packages/cli/src/commands/cloud.ts","digest":"7c50391b36b9c61736cc806b55296bed80d4c376921295ff406bdea000e9cd51","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    "packages/cli/src/commands/cloud.ts",
 
-    {"path":"packages/contracts/src/workspace-home-role.ts","digest":"afdd6ec33526422a7a455cfc575cdd5d662277a8a5c356db6f5b2b564de038f4","revision":"6bda463a0c9cb44b7f2686c6d47b4552f79220f2"},
+    "packages/contracts/src/workspace-home-role.ts",
 
-    {"path":"packages/sdk/src/client/delegations.ts","digest":"148d12ffed1091b83149a7d0caa834088f58eebf295ce4c97b697ec1fad747db","revision":"ffd6a23c9ecac1a682af216afd2f7e5eb7b1a5d8"},
+    "packages/sdk/src/client/delegations.ts",
 
-    {"path":"packages/shared/src/workspace-package-io.ts","digest":"39be3f0a5c1621a8421073c2fbf80ac835d4dd2dfb71e1a41d943af4fdcf41d7","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    "packages/shared/src/workspace-package-io.ts",
 
-    {"path":"packages/shared/src/workspace-package.ts","digest":"34c9a91798a6b8259dc7106387c94ffafe970aa43707887923c651d4313b4a40","revision":"5c18724d4ba50fd9b5f6c4043e7a00ebc893c70d"},
+    "packages/shared/src/workspace-package.ts",
 
-    {"path":"pnpm-workspace.yaml","digest":"ed259839e7e5efa8c6024aedf584c0cfd0f8fb23bb0604574d2b0e07afd5e411","revision":"fdca33b1896b280299ba72fc70a3c9b9cda7f3af"},
+    "pnpm-workspace.yaml",
 
-    {"path":"scripts/actionlint-gate.mjs","digest":"2354624c3dbea083d25c6e239bdda095cf27d903ef1d36ee16bec3f70c4fbe17","revision":"5120b73c0fbb9f4d4ca81c5504daef000ad8558e"},
+    "scripts/actionlint-gate.mjs",
 
-    {"path":"scripts/codeql-error-baseline.json","digest":"4ba71828ec6796808f7440edd8745d5ce9cb6d4f802f47eff4e869f1f1e648e3","revision":"1188208f32995f08e02bc87c2a0063184540fb6a"},
+    "scripts/codeql-error-baseline.json",
 
-    {"path":"scripts/codeql-sarif-policy.mjs","digest":"19227477b52acfe22fe18feb777bf30c2163a40e51fda2ad0a834a1fdae86f32","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    "scripts/codeql-sarif-policy.mjs",
 
-    {"path":"scripts/container-smoke.sh","digest":"31c9b8355ff35b0a954415a5d11a2813a8f6c1c922c7cffeff11161302218234","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    "scripts/container-smoke.sh",
 
-    {"path":"scripts/dependency-advisory-policy.mjs","digest":"9dfdd2899708f23256aa01e6ac899438c80b0fecba5497c8fc25270d6a8f6ae8","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    "scripts/dependency-advisory-policy.mjs",
 
-    {"path":"scripts/lib/dependency-audit-diagnostics.mjs","digest":"c81447d6f6746f19a8a75c5937359850d74935dd43ed53d991ee90929404993a","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    "scripts/lib/dependency-audit-diagnostics.mjs",
 
-    {"path":"scripts/lib/pnpm-advisory.mjs","digest":"d744934bbc925b7a8cf799b335864c0e8555d6b099de2acf6e6990ca5a580bc7","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    "scripts/lib/pnpm-advisory.mjs",
 
-    {"path":"scripts/lib/product-laws.mjs","digest":"b7a549ca0025afb7f662b215e56aad007308b999a3700e0bd7e28464954cc275","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    "scripts/lib/product-laws.mjs",
 
-    {"path":"scripts/product-law-gate.mjs","digest":"3611528993c47648caa7c64150902820410f1f330c235891396f4927033e4766","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    "scripts/product-law-gate.mjs",
 
-    {"path":"src-server/routes/environments/home-authority-routes.ts","digest":"64c1875089078327e3e74481923ecdec9ed1e6751e6b795b54ada44c7fca7ef4","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    "src-server/routes/environments/home-authority-routes.ts",
 
-    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"c3febaa85af6fa1d6b6edce04539a96b88cb7cb0660b7d0ee0de8d4fb6595530","revision":"b208a334880a96bb3f4267c2d2ffd6d03e118218"},
+    "src-server/routes/orchestration/orchestration.ts",
 
-    {"path":"src-server/routes/spatial-board.ts","digest":"461e485ff2a4597e62552c2ae8c9067b9da58347c737be91f925afecf8bab5da","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    "src-server/routes/spatial-board.ts",
 
-    {"path":"src-server/runtime/bootstrap/personal-home-authority-database.ts","digest":"8d7f81a7cef515dfff921152c74d03028409708395de6c280f2e013c70e84f7f","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    "src-server/runtime/bootstrap/personal-home-authority-database.ts",
 
-    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"88a3a2161a61eaee174d5404833230e31768afb8ea60fae898cfda39bb49ae09","revision":"efa773acac88792cda31595f9afca4a37d3efebc"},
+    "src-server/runtime/routes/runtime-routes.ts",
 
-    {"path":"src-server/services/orchestration/delegation-attempt-claim-store.ts","digest":"50dcada7bbbd9f55739a41f024393046c3845e1979aae4113ca9e4eb57f94171","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    "src-server/services/orchestration/delegation-attempt-claim-store.ts",
 
-    {"path":"src-server/services/orchestration/planned-home-admission-reconciliation.ts","digest":"b7f4f5da84fd564e60bf154c41e7270732d6a57046604e0ada5b9633a8fc1af4","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    "src-server/services/orchestration/planned-home-admission-reconciliation.ts",
 
-    {"path":"src-server/services/orchestration/planned-home-control-room-write-adapter.ts","digest":"dec0df930857ef8e7de10cbe5d4d8e4e3e604027a866355b020bda1711301f79","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    "src-server/services/orchestration/planned-home-control-room-write-adapter.ts",
 
-    {"path":"src-server/services/orchestration/project-task-room-history.ts","digest":"67647ae8dadce1e7d9af02128ec52782aa10d87cea0bc211144f1a3b7628f340","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    "src-server/services/orchestration/project-task-room-history.ts",
 
-    {"path":"src-server/services/spatial-board/spatial-board-reference.ts","digest":"f3f49b82131fc679b5454d4d5f1cc9ffbe0afd41dfd1317336ac74c7f057d5a1","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    "src-server/services/spatial-board/spatial-board-reference.ts",
 
-    {"path":"src-server/services/spatial-board/spatial-board-resolver.ts","digest":"cbcfdf257e846027371b77c11cb9ed41152358141078113deb65d1a6da93a399","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    "src-server/services/spatial-board/spatial-board-resolver.ts",
 
-    {"path":"src-server/services/spatial-board/spatial-board-store.ts","digest":"d5e9c1bf6380b16a83af74b7bcfb7fdf5c45a9f04068b78c394c7edf04394f4c","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    "src-server/services/spatial-board/spatial-board-store.ts",
 
-    {"path":"src-server/tools/station-control-delegation.ts","digest":"e5e4d1979cfa4997ce4b808f5268e69bbd0926f5c838ac1388bbdd5009389467","revision":"56f4c4897a189eeb30430119a4f4895e95fbb541"},
+    "src-server/tools/station-control-delegation.ts",
 
-    {"path":"src-ui/src/views/HomeView.tsx","digest":"e99f2aa97f3818b7af000ceb1632bd8a58316a9650829a3d40c1d6b0cf05ed1f","revision":"c4e12e530c3346d3191a89e29cd504f2e2e475a7"},
+    "src-ui/src/views/HomeView.tsx",
 
-    {"path":"src-ui/src/views/home/HomeRolePane.tsx","digest":"f83ed5b379bbddc5ba8b876e7c8c1200c91b06a1b8bd5f7f5023a3569979270f","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    "src-ui/src/views/home/HomeRolePane.tsx",
 
-    {"path":"src-ui/src/workspace-panes/WorkspacePaneFrame.tsx","digest":"4e36711e28bbc6756fdd8e7b02bbd9842a27b241ff1f09cbf718c0065956f276","revision":"0af0405fb22db35e44b4577b9c610067fbfd109b"},
+    "src-ui/src/workspace-panes/WorkspacePaneFrame.tsx",
 
-    {"path":"src-ui/src/workspace-panes/WorkspacePaneRouteView.tsx","digest":"a2e50ba67bfe92c4336f8accf96d3f3854e79527af839e95f6cd2ae2a6128207","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    "src-ui/src/workspace-panes/WorkspacePaneRouteView.tsx",
 
-    {"path":"src-ui/src/workspace-panes/builtinWorkspacePaneRegistry.tsx","digest":"9cf334499d01499656f57ea5a63f7efc7465972380778ec77ff547dc74906513","revision":"79edb8d5dd98ef07de0722b0604b9ec606f2bdbf"},
+    "src-ui/src/workspace-panes/builtinWorkspacePaneRegistry.tsx",
 
-    {"path":"tests/container-self-host.spec.ts","digest":"35a9f2abca5519fa980137f32f8011bb6a88311f2bc3bacd3e9cca830f5379f6","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"}
+    "tests/container-self-host.spec.ts"
   ],
 
   "checks": [

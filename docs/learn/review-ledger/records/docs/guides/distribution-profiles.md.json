@@ -9,26 +9,24 @@
 
   "limits": "Source-only explanation review; no live registry, plugin installation, layout application, or full authority/security audit. Remote adapters not inferred from source declarations.",
 
-  "document": {"digest":"605f3a4ef5ae882009998bc2c233dfa68b4bf9081c2d483789f0acde8a8b06fd","revision":"0814cc6ddb168cff69e5572b185a853540a4f6e0"},
-
   "sources": [
-    {"path":"packages/contracts/src/distribution.ts","digest":"0e46476abfa24b54bd36bc84ec2faec647d9ea8d6bd5767576af4f0a79c77ee4","revision":"e5efef30008198db7198fe9dac38f3ad632c6621"},
+    "packages/contracts/src/distribution.ts",
 
-    {"path":"packages/contracts/src/layout.ts","digest":"d239a39ed06c9dcb103e89da3a86f4d358aa3261a7623b1c5a86eff69e897a43","revision":"e5efef30008198db7198fe9dac38f3ad632c6621"},
+    "packages/contracts/src/layout.ts",
 
-    {"path":"packages/sdk/src/query-domains/workspaceProjects.ts","digest":"5ad96ef66bdcd70027e22da621b69446dac81dc0820527e43314e0370f2d7b81","revision":"1da4798fab6730e9c81fb91d9d3dbbebc952f976"},
+    "packages/sdk/src/query-domains/workspaceProjects.ts",
 
-    {"path":"src-server/routes/plugins/registry.ts","digest":"472ef054a5948150ed8f52bb59fbef9ce19c9ec29964a4c2fa78d8d8ef3d8fbc","revision":"efa773acac88792cda31595f9afca4a37d3efebc"},
+    "src-server/routes/plugins/registry.ts",
 
-    {"path":"src-server/routes/projects/projects.ts","digest":"d87cdfa66a657cd27955762d9142eb32d477ce37d30e64e2b592a65a2f083847","revision":"e5efef30008198db7198fe9dac38f3ad632c6621"},
+    "src-server/routes/projects/projects.ts",
 
-    {"path":"src-server/services/plugins/distribution-profile-service.ts","digest":"ee59bcd8c2c2e70746b73c58f8575dd340978bd74d0c8f314412719d38671f45","revision":"e5efef30008198db7198fe9dac38f3ad632c6621"},
+    "src-server/services/plugins/distribution-profile-service.ts",
 
-    {"path":"src-ui/src/components/registry/ProjectLayoutCatalog.tsx","digest":"f09391bac33fefcd71d892159bdb1474cd969879d953c0da2600faf313bc76a4","revision":"e5efef30008198db7198fe9dac38f3ad632c6621"},
+    "src-ui/src/components/registry/ProjectLayoutCatalog.tsx",
 
-    {"path":"src-ui/src/views/RegistryView.tsx","digest":"4e38b039e33035ab5fe9232013b7a8c1d3ea75777f6a7a57b1f6738c04d8446e","revision":"360a9f6eea4fb95e898e66b64b9d8d3b00a73aff"},
+    "src-ui/src/views/RegistryView.tsx",
 
-    {"path":"src-ui/src/views/project-settings/LayoutsSection.tsx","digest":"0ac6db4dbba5e289010048f0d599ec1d43362ef7feb16a9a9ed0231eb65b8667","revision":"e5efef30008198db7198fe9dac38f3ad632c6621"}
+    "src-ui/src/views/project-settings/LayoutsSection.tsx"
   ],
 
   "checks": [

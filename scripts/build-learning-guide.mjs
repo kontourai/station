@@ -9,6 +9,7 @@ import {
 } from './check-markdown-links.mjs';
 import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import {
+  assertDocumentationFresh,
   formatFreshnessAdvisory,
   freshnessRequirement,
   resolveDocumentationFreshness,
@@ -111,8 +112,17 @@ export async function buildLearningGuide({
   const policy = check
     ? (freshness ?? resolveDocumentationFreshness({ root: inputRoot }))
     : undefined;
+  if (policy?.sourceDrops?.length)
+    assertDocumentationFresh({ policy, blocking: policy.sourceDrops });
   // One read of the ledger directory and capture manifest (#2936).
   const reviewState = readReviewState(inputRoot);
+  if (reviewState.ledger.historyUnavailable) {
+    if (policy?.mode === 'strict')
+      throw new Error(
+        `Strict documentation freshness cannot judge freshness. ${reviewState.ledger.historyUnavailable}`,
+      );
+    console.warn(reviewState.ledger.historyUnavailable);
+  }
   const media = reviewState.media
     ? await compileLearningMedia(
         reviewState.media,
